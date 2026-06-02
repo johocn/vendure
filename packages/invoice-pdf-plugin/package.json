@@ -1,0 +1,16 @@
+{
+  "name": "@vendure/invoice-pdf-plugin",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch"
+  },
+  "dependencies": {
+    "pdfkit": "^0.15.0"
+  },
+  "peerDependencies": {
+    "@vendure/core": "^3.0.0"
+  }
+}
