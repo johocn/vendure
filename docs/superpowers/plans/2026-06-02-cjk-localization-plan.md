@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 为 Vendure 创建 `@vendure/cjk-plugin` 单体插件，提供中日韩本地化支持（i18n、地区数据、支付宝/微信支付/货到付款、门店自提/自提点自提、阿里云 OSS、手机号认证）。
+**Goal:** 为 Vendure 创建 `@vendure/cjk-plugin` 单体插件，提供中日韩本地化支持（i18n、地区数据、支付宝/微信支付/货到付款、门店自提/自提点自提、多租户、优惠券叠加策略、阿里云 OSS、手机号认证）。
 
-**Architecture:** 基于 VendurePlugin 装饰器的标准插件模式，通过 `configuration` 函数注入 i18n 翻译和自定义配置，通过 `PaymentMethodHandler` 实现支付集成（含货到付款），通过 `ShippingEligibilityChecker`/`ShippingCalculator`/`FulfillmentHandler` 实现门店自提和自提点自提，通过 `AssetStorageStrategy` 实现 OSS 存储，通过 `AuthenticationStrategy` 实现手机号认证。
+**Architecture:** 基于 VendurePlugin 装饰器的标准插件模式，通过 `configuration` 函数注入 i18n 翻译和自定义配置，通过 `PaymentMethodHandler` 实现支付集成（含货到付款），通过 `ShippingEligibilityChecker`/`ShippingCalculator`/`FulfillmentHandler` 实现门店自提和自提点自提，通过 Channel CustomFields + PromotionCondition 实现多租户和优惠券叠加策略，通过 `AssetStorageStrategy` 实现 OSS 存储，通过 `AuthenticationStrategy` 实现手机号认证。
 
 **Tech Stack:** TypeScript, NestJS, Vendure v3.6.x, alipay-sdk, wechatpay-node-v3, ali-oss, @alicloud/dysmsapi20170525
 
@@ -1962,6 +1962,8 @@ export { pickupPointEligibilityChecker, pickupPointCalculator, pickupPointFulfil
 export { OssAssetStorageStrategy } from './src/storage/oss-strategy';
 export { PhoneAuthenticationStrategy } from './src/auth/phone-authentication-strategy';
 export { SmsService } from './src/auth/sms.service';
+export { couponStackableCondition } from './src/promotion/coupon-stackable-condition';
+export { TenantSetupService } from './src/tenant/tenant-setup.service';
 ```
 
 - [ ] **Step 2: 最终构建验证**
@@ -1974,4 +1976,284 @@ Expected: 构建成功，无错误
 ```bash
 git add packages/cjk-plugin/
 git commit -m "feat(cjk-plugin): finalize exports and build"
+```
+
+---
+
+### Task 13: 多租户模块
+
+**Files:**
+- Create: `packages/cjk-plugin/src/tenant/tenant-custom-fields.ts`
+- Create: `packages/cjk-plugin/src/tenant/tenant-setup.service.ts`
+- Modify: `packages/cjk-plugin/src/types.ts`
+- Modify: `packages/cjk-plugin/src/plugin.ts`
+
+- [ ] **Step 1: 更新 types.ts 添加租户类型**
+
+```typescript
+export interface TenantPromotionPolicy {
+    couponStackable?: boolean;
+    maxStackableCount?: number;
+}
+
+export interface CjkPluginTenantOptions {
+    enabled?: boolean;
+    defaultPaymentMethods?: string[];
+    defaultShippingMethods?: string[];
+    defaultPromotionPolicies?: TenantPromotionPolicy;
+}
+```
+
+在 `CjkPluginOptions` 中添加：
+
+```typescript
+tenant?: CjkPluginTenantOptions;
+```
+
+- [ ] **Step 2: 创建 tenant-custom-fields.ts**
+
+```typescript
+import { CustomFields, LanguageCode } from '@vendure/core';
+
+export const tenantChannelCustomFields: CustomFields = {
+    Channel: [
+        {
+            name: 'enabledPaymentMethods',
+            type: 'string',
+            list: true,
+            defaultValue: [],
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '启用的支付方式' }],
+        },
+        {
+            name: 'enabledShippingMethods',
+            type: 'string',
+            list: true,
+            defaultValue: [],
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '启用的配送方式' }],
+        },
+        {
+            name: 'couponStackable',
+            type: 'boolean',
+            defaultValue: false,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '优惠券可叠加' }],
+        },
+        {
+            name: 'maxStackableCount',
+            type: 'int',
+            nullable: true,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '最大叠加数量' }],
+        },
+    ],
+};
+```
+
+- [ ] **Step 3: 创建 tenant-setup.service.ts**
+
+```typescript
+import { Injectable } from '@nestjs/common';
+import { ChannelService, Logger, PaymentMethodService, ShippingMethodService, ZoneService } from '@vendure/core';
+import { ID } from '@vendure/common/lib/shared-types';
+
+import { loggerCtx } from '../constants';
+import { CjkPluginTenantOptions } from '../types';
+
+@Injectable()
+export class TenantSetupService {
+    async setupChannel(channelId: ID, options: CjkPluginTenantOptions): Promise<void> {
+        Logger.info(`Setting up tenant for channel ${channelId}`, loggerCtx);
+
+        if (options.defaultPaymentMethods?.length) {
+            Logger.info(`Default payment methods: ${options.defaultPaymentMethods.join(', ')}`, loggerCtx);
+        }
+
+        if (options.defaultShippingMethods?.length) {
+            Logger.info(`Default shipping methods: ${options.defaultShippingMethods.join(', ')}`, loggerCtx);
+        }
+
+        if (options.defaultPromotionPolicies) {
+            Logger.info(`Default promotion policies configured`, loggerCtx);
+        }
+    }
+}
+```
+
+- [ ] **Step 4: 修改 plugin.ts 集成多租户**
+
+在 `configuration` 函数中注册 Channel CustomFields：
+
+```typescript
+configuration: (config) => {
+    if (CjkPlugin.options.tenant?.enabled) {
+        config.customFields = {
+            ...config.customFields,
+            Channel: [
+                ...(config.customFields?.Channel || []),
+                ...tenantChannelCustomFields.Channel,
+            ],
+        };
+    }
+    // ... 其他配置
+    return config;
+}
+```
+
+在 `providers` 中注册 `TenantSetupService`：
+
+```typescript
+providers: [
+    { provide: CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
+    TenantSetupService,
+],
+```
+
+- [ ] **Step 5: 构建验证**
+
+Run: `cd e:\code\vendure\packages\cjk-plugin && npm run build`
+
+- [ ] **Step 6: 提交**
+
+```bash
+git add packages/cjk-plugin/
+git commit -m "feat(cjk-plugin): add multi-tenant Channel custom fields and setup service"
+```
+
+---
+
+### Task 14: 优惠券叠加策略模块
+
+**Files:**
+- Create: `packages/cjk-plugin/src/promotion/promotion-custom-fields.ts`
+- Create: `packages/cjk-plugin/src/promotion/coupon-stackable-condition.ts`
+- Modify: `packages/cjk-plugin/src/types.ts`
+- Modify: `packages/cjk-plugin/src/plugin.ts`
+
+- [ ] **Step 1: 更新 types.ts 添加优惠券策略类型**
+
+```typescript
+export interface CjkPluginPromotionPolicyOptions {
+    enabled?: boolean;
+    defaultStackable?: boolean;
+    maxStackableCount?: number;
+    perChannelOverride?: boolean;
+}
+```
+
+在 `CjkPluginOptions` 中添加：
+
+```typescript
+promotionPolicy?: CjkPluginPromotionPolicyOptions;
+```
+
+- [ ] **Step 2: 创建 promotion-custom-fields.ts**
+
+```typescript
+import { CustomFields, LanguageCode } from '@vendure/core';
+
+export const promotionCustomFields: CustomFields = {
+    Promotion: [
+        {
+            name: 'stackable',
+            type: 'boolean',
+            defaultValue: false,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '可与其他优惠券叠加' }],
+        },
+        {
+            name: 'stackableGroup',
+            type: 'string',
+            nullable: true,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '叠加分组（同组不可叠加）' }],
+        },
+        {
+            name: 'maxStackableWith',
+            type: 'int',
+            nullable: true,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '最多叠加优惠券数量' }],
+        },
+    ],
+};
+```
+
+- [ ] **Step 3: 创建 coupon-stackable-condition.ts**
+
+```typescript
+import { LanguageCode, Logger, PromotionCondition } from '@vendure/core';
+
+import { loggerCtx } from '../constants';
+
+export const couponStackableCondition = new PromotionCondition({
+    code: 'coupon_stackable_check',
+    description: [
+        { languageCode: LanguageCode.zh_Hans, value: '优惠券叠加检查' },
+        { languageCode: LanguageCode.en, value: 'Coupon Stackable Check' },
+    ],
+    args: {},
+    check: (ctx, order, args, promotion) => {
+        const stackable = (promotion.customFields as any)?.stackable ?? false;
+        const stackableGroup = (promotion.customFields as any)?.stackableGroup;
+        const maxStackableWith = (promotion.customFields as any)?.maxStackableWith;
+
+        const channelConfig = (ctx.channel.customFields as any) || {};
+        const globalDefault = channelConfig.couponStackable ?? false;
+        const globalMax = channelConfig.maxStackableCount;
+
+        const effectiveStackable = (promotion.customFields as any)?.stackable ?? globalDefault;
+        const effectiveMax = maxStackableWith ?? globalMax;
+
+        if (!effectiveStackable && order.promotions && order.promotions.length > 0) {
+            return false;
+        }
+
+        if (stackableGroup) {
+            const sameGroupPromotions = order.promotions?.filter(
+                (p: any) => (p.customFields as any)?.stackableGroup === stackableGroup,
+            );
+            if (sameGroupPromotions && sameGroupPromotions.length > 0) {
+                return false;
+            }
+        }
+
+        if (effectiveMax !== null && effectiveMax !== undefined) {
+            if (order.promotions && order.promotions.length >= effectiveMax) {
+                return false;
+            }
+        }
+
+        return true;
+    },
+    priorityValue: 1000,
+});
+```
+
+- [ ] **Step 4: 修改 plugin.ts 集成优惠券策略**
+
+在 `configuration` 函数中注册 Promotion CustomFields 和 Condition：
+
+```typescript
+if (CjkPlugin.options.promotionPolicy?.enabled) {
+    config.customFields = {
+        ...config.customFields,
+        Promotion: [
+            ...(config.customFields?.Promotion || []),
+            ...promotionCustomFields.Promotion,
+        ],
+    };
+    config.promotionOptions = {
+        ...config.promotionOptions,
+        promotionConditions: [
+            ...(config.promotionOptions?.promotionConditions || []),
+            couponStackableCondition,
+        ],
+    };
+}
+```
+
+- [ ] **Step 5: 构建验证**
+
+Run: `cd e:\code\vendure\packages\cjk-plugin && npm run build`
+
+- [ ] **Step 6: 提交**
+
+```bash
+git add packages/cjk-plugin/
+git commit -m "feat(cjk-plugin): add coupon stackable condition and promotion custom fields"
 ```

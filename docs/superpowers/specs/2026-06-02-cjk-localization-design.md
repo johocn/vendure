@@ -2,7 +2,7 @@
 
 ## 概述
 
-`@vendure/cjk-plugin` 是一个单体插件，为 Vendure 提供中国、日本、韩国（CJK）本地化支持。通过配置项控制启用哪些模块。
+`@vendure/cjk-plugin` 是一个单体插件，为 Vendure 提供中国、日本、韩国（CJK）本地化支持。通过配置项控制启用哪些模块。支持基于 Channel 的多租户架构，每个租户可独立配置支付方式、配送方式和优惠券叠加策略。
 
 ## 核心发现（基于 Vendure v3.x 源码扫描）
 
@@ -14,6 +14,10 @@
 | PaymentMethodHandler | `createPayment`/`settlePayment`/`createRefund` | 标准扩展接口 |
 | AssetStorageStrategy | `writeFileFromBuffer`/`readFileToBuffer`/`toAbsoluteUrl` | 标准扩展接口 |
 | VendurePlugin 装饰器 | `configuration` 函数 + `shopApiExtensions`/`adminApiExtensions` | 标准插件模式 |
+| Channel 多租户 | Channel ManyToMany 关联 PaymentMethod/ShippingMethod/Promotion | 天然支持渠道级隔离 |
+| Seller 模型 | Seller OneToMany Channel | 支持多商家市场模式 |
+| Promotion 叠加 | 所有匹配 Promotion 按 priorityScore 顺序应用 | **无叠加控制字段**，需扩展 |
+| Promotion perCustomerUsageLimit | 限制每个客户使用次数 | 已有，但无叠加开关 |
 
 ## 插件结构
 
@@ -59,8 +63,14 @@ packages/cjk-plugin/
 │   │       └── point-fulfillment-handler.ts
 │   ├── storage/                           # 云存储
 │   │   └── oss-strategy.ts               # 阿里云 OSS AssetStorageStrategy
-│   └── auth/                              # 认证扩展
-│       └── phone-authentication-strategy.ts  # 手机号认证策略
+│   ├── auth/                              # 认证扩展
+│   │   └── phone-authentication-strategy.ts  # 手机号认证策略
+│   ├── tenant/                            # 多租户
+│   │   ├── tenant-setup.service.ts        # 租户初始化服务
+│   │   └── tenant-custom-fields.ts        # 租户自定义字段
+│   └── promotion/                         # 优惠券策略
+│       ├── coupon-stackable-condition.ts  # 优惠券可叠加条件
+│       └── promotion-custom-fields.ts     # Promotion 自定义字段
 ├── index.ts
 ├── package.json
 └── tsconfig.json
@@ -140,6 +150,22 @@ interface CjkPluginOptions {
       signName: string;
       templateCode: string;
     };
+  };
+
+  // 多租户配置
+  tenant?: {
+    enabled?: boolean;                    // 默认 false
+    defaultPaymentMethods?: string[];     // 新租户默认启用的支付方式 code
+    defaultShippingMethods?: string[];    // 新租户默认启用的配送方式 code
+    defaultPromotionPolicies?: TenantPromotionPolicy;  // 新租户默认优惠券策略
+  };
+
+  // 优惠券叠加策略
+  promotionPolicy?: {
+    enabled?: boolean;                    // 默认 false
+    defaultStackable?: boolean;           // 全局默认：优惠券是否可叠加，默认 false
+    maxStackableCount?: number;           // 最大叠加数量，默认 null（不限制）
+    perChannelOverride?: boolean;         // 是否允许渠道级覆盖，默认 true
   };
 }
 ```
@@ -435,6 +461,8 @@ extend type Mutation {
 | P1 | 货到付款 | 中国市场常见支付方式 |
 | P1 | 门店自提 | O2O 场景必需 |
 | P1 | 自提点自提 | 电商标配 |
+| P1 | 多租户（Channel 增强） | 多租户核心需求 |
+| P1 | 优惠券叠加策略 | 运营核心需求 |
 | P2 | 阿里云 OSS | 生产部署需要 |
 | P2 | 手机号认证 | 用户体验优化 |
 
@@ -447,3 +475,206 @@ extend type Mutation {
 5. **OSS 跨域配置**：需在阿里云控制台配置 CORS 规则
 6. **货到付款风控**：需配合订单风控策略，避免恶意下单
 7. **自提点数据**：门店/自提点信息需通过 API 或配置动态提供，初始版本通过配置注入
+8. **优惠券叠加时序**：PromotionCondition 的 check 在 applyPriceAdjustments 中按 priorityScore 顺序执行，需确保 CouponStackableCondition 的 priorityValue 足够高，在其他条件之前检查
+9. **多租户数据隔离**：Channel 级隔离已内置，但需注意跨渠道数据泄露风险，确保 API 层正确过滤
+
+## 多租户架构设计
+
+### 核心思路：Channel 即租户
+
+Vendure 的 Channel 实体已天然支持多租户隔离：
+- `Channel.paymentMethods` — ManyToMany，每个渠道可独立配置支付方式
+- `Channel.shippingMethods` — ManyToMany，每个渠道可独立配置配送方式
+- `Channel.promotions` — ManyToMany，每个渠道可独立配置促销活动
+
+**最佳方案：不重新发明轮子，在 Channel 机制上做增强。**
+
+### 10. 多租户模块
+
+#### 10.1 Channel 自定义字段
+
+通过 `config.customFields.Channel` 为 Channel 添加租户策略字段：
+
+```typescript
+// tenant-custom-fields.ts
+export const tenantChannelCustomFields: CustomFields = {
+  Channel: [
+    { name: 'enabledPaymentMethods', type: 'string', list: true, defaultValue: [] },
+    { name: 'enabledShippingMethods', type: 'string', list: true, defaultValue: [] },
+    { name: 'couponStackable', type: 'boolean', defaultValue: false },
+    { name: 'maxStackableCount', type: 'int', nullable: true },
+    { name: 'tenantConfig', type: 'string', defaultValue: '{}' },
+  ],
+};
+```
+
+#### 10.2 租户初始化服务
+
+创建新 Channel 时，自动关联默认支付方式和配送方式：
+
+```typescript
+class TenantSetupService {
+  async setupChannel(channelId: ID, options: TenantSetupOptions): Promise<void> {
+    // 1. 创建 PaymentMethod 实例并关联到 Channel
+    // 2. 创建 ShippingMethod 实例并关联到 Channel
+    // 3. 设置 Channel 自定义字段（优惠券策略等）
+    // 4. 创建 Zone（默认税率区域/配送区域）
+  }
+}
+```
+
+#### 10.3 支付方式按渠道隔离
+
+Vendure 已内置：PaymentMethod 与 Channel 是 ManyToMany 关系。每个租户在 Admin UI 中自行勾选启用的支付方式。
+
+**插件增强**：在 `configuration` 中注册的 PaymentMethodHandler（支付宝/微信/货到付款）是全局的，但 PaymentMethod 实例是按 Channel 分配的。租户只需在 Admin UI 中创建 PaymentMethod 并选择对应 Handler 即可。
+
+#### 10.4 配送方式按渠道隔离
+
+同支付方式，ShippingMethod 与 Channel 也是 ManyToMany。门店自提/自提点自提的 Handler 全局注册，ShippingMethod 实例按 Channel 分配。
+
+### 11. 优惠券叠加策略模块
+
+#### 11.1 问题分析
+
+Vendure 当前行为：所有匹配的 Promotion 按 `priorityScore` 顺序依次应用，**没有叠加控制**。这意味着：
+- 优惠券 A（9折）+ 优惠券 B（满100减20）会同时生效
+- 无法控制"此优惠券不可与其他优惠券叠加使用"
+
+#### 11.2 方案对比
+
+**方案 A：Promotion CustomFields + PromotionCondition（推荐）**
+
+为 Promotion 添加 `stackable` 自定义字段，创建 `CouponStackableCondition` 检查当前订单已应用的优惠券数量。
+
+- ✅ 不修改核心代码
+- ✅ 通过 Vendure 标准扩展机制实现
+- ✅ 每个优惠券可独立配置是否可叠加
+- ✅ 支持渠道级覆盖（通过 Channel CustomFields）
+- ⚠️ 需要在每个优惠券上手动配置
+
+**方案 B：OrderProcess 状态机拦截**
+
+在 OrderProcess 的 transition 中拦截，检查叠加规则。
+
+- ❌ 过于侵入，修改核心流程
+- ❌ 不够灵活
+
+**方案 C：EventBus 监听**
+
+监听 `OrderModificationEvent` 或 `OrderPlacedEvent`，事后校验。
+
+- ❌ 事后校验，无法阻止叠加
+- ❌ 需要回滚逻辑
+
+**推荐方案 A**：通过 CustomFields + PromotionCondition 实现，完全符合 Vendure 扩展模式。
+
+#### 11.3 详细设计
+
+**Step 1：Promotion CustomFields**
+
+```typescript
+export const promotionCustomFields: CustomFields = {
+  Promotion: [
+    {
+      name: 'stackable',
+      type: 'boolean',
+      defaultValue: false,
+      label: [{ languageCode: LanguageCode.zh_Hans, value: '可与其他优惠券叠加' }],
+    },
+    {
+      name: 'stackableGroup',
+      type: 'string',
+      nullable: true,
+      label: [{ languageCode: LanguageCode.zh_Hans, value: '叠加分组（同组不可叠加）' }],
+    },
+    {
+      name: 'maxStackableWith',
+      type: 'int',
+      nullable: true,
+      label: [{ languageCode: LanguageCode.zh_Hans, value: '最多叠加优惠券数量' }],
+    },
+  ],
+};
+```
+
+**Step 2：CouponStackableCondition**
+
+```typescript
+const couponStackableCondition = new PromotionCondition({
+  code: 'coupon_stackable_check',
+  description: [{ languageCode: LanguageCode.zh_Hans, value: '优惠券叠加检查' }],
+  args: {},
+  check: (ctx, order, args, promotion) => {
+    const stackable = promotion.customFields?.stackable ?? false;
+    const stackableGroup = promotion.customFields?.stackableGroup;
+    const maxStackableWith = promotion.customFields?.maxStackableWith;
+
+    // 如果当前优惠券不可叠加，且订单已有其他优惠券生效，则不适用
+    if (!stackable && order.promotions && order.promotions.length > 0) {
+      return false;
+    }
+
+    // 如果有叠加分组，同组优惠券不可叠加
+    if (stackableGroup) {
+      const sameGroupPromotions = order.promotions?.filter(
+        p => p.customFields?.stackableGroup === stackableGroup
+      );
+      if (sameGroupPromotions && sameGroupPromotions.length > 0) {
+        return false;
+      }
+    }
+
+    // 如果有最大叠加数量限制
+    if (maxStackableWith !== null && maxStackableWith !== undefined) {
+      if (order.promotions && order.promotions.length >= maxStackableWith) {
+        return false;
+      }
+    }
+
+    return true;
+  },
+  priorityValue: 1000,  // 高优先级，优先检查
+});
+```
+
+**Step 3：渠道级默认策略**
+
+通过 Channel CustomFields 的 `couponStackable`/`maxStackableCount` 字段，在 `CouponStackableCondition` 中读取渠道默认值：
+
+```typescript
+check: async (ctx, order, args, promotion) => {
+  const channelConfig = ctx.channel.customFields;
+  const globalDefault = channelConfig?.couponStackable ?? false;
+  const globalMax = channelConfig?.maxStackableCount;
+
+  // 优惠券级配置优先于渠道级配置
+  const stackable = promotion.customFields?.stackable ?? globalDefault;
+  // ... 其余逻辑
+}
+```
+
+#### 11.4 叠加规则优先级
+
+```
+优惠券级 stackable 字段 > 渠道级 couponStackable 字段 > 全局默认配置
+```
+
+#### 11.5 使用示例
+
+**场景 1：所有优惠券不可叠加（默认）**
+- 不配置任何条件，Vendure 默认行为就是所有匹配的都叠加
+- 启用 `couponStackableCondition` 后，默认 `stackable=false` 的优惠券不叠加
+
+**场景 2：部分优惠券可叠加**
+- 优惠券 A 设置 `stackable: true`
+- 优惠券 B 设置 `stackable: false`
+- A 和 B 同时匹配时，只有 A 生效（B 的条件检查到已有 A 在订单上，返回 false）
+
+**场景 3：同组不可叠加**
+- 优惠券 A 和 B 都设置 `stackableGroup: 'discount'`
+- A 和 B 不可同时使用，但可以和组外的优惠券 C 叠加
+
+**场景 4：限制最多叠加 2 个**
+- 渠道设置 `maxStackableCount: 2`
+- 最多同时使用 2 个优惠券
