@@ -69,8 +69,8 @@ export class DistributionService {
         }
 
         const distributor = new Distributor({
-            customerId,
-            parentId: parentId ?? null,
+            customerId: String(customerId),
+            parentId: parentId != null ? String(parentId) : null,
             level,
             status: 'pending',
             totalEarnings: 0,

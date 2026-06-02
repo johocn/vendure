@@ -95,6 +95,27 @@ const { gql } = require('graphql-tag');
     },
     shopApiExtensions: {
         schema: () => gql`
+            enum GroupBuyStatus { active completed expired }
+
+            type GroupBuyActivity {
+                id: ID!
+                name: String!
+                description: String!
+                targetCount: Int!
+                currentCount: Int!
+                maxCount: Int!
+                status: GroupBuyStatus!
+                startAt: DateTime!
+                endAt: DateTime!
+                groupPrice: Int!
+                leaderDiscount: Int!
+                leaderRewardType: String!
+                autoConfirm: Boolean!
+                allowJoinAfterComplete: Boolean!
+                createdAt: DateTime!
+                updatedAt: DateTime!
+            }
+
             type GroupBuyOrderResult {
                 id: ID!
                 groupBuyActivityId: ID!

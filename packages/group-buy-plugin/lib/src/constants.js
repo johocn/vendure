@@ -1,0 +1,6 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.GROUP_BUY_PLUGIN_OPTIONS = exports.loggerCtx = void 0;
+exports.loggerCtx = 'GroupBuyPlugin';
+exports.GROUP_BUY_PLUGIN_OPTIONS = Symbol('GROUP_BUY_PLUGIN_OPTIONS');
+//# sourceMappingURL=constants.js.map

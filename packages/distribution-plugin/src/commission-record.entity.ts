@@ -1,5 +1,5 @@
 import { Column, Entity, JoinTable, ManyToMany } from 'typeorm';
-import { Channel, ChannelAware, DeepPartial, ID, VendureEntity } from '@vendure/core';
+import { Channel, ChannelAware, DeepPartial, VendureEntity } from '@vendure/core';
 
 @Entity()
 export class CommissionRecord extends VendureEntity implements ChannelAware {
@@ -7,13 +7,13 @@ export class CommissionRecord extends VendureEntity implements ChannelAware {
         super(input);
     }
 
-    @Column() distributorId: ID;
+    @Column() distributorId: string;
 
-    @Column() orderId: ID;
+    @Column() orderId: string;
 
-    @Column({ nullable: true }) orderLineId: ID;
+    @Column({ nullable: true }) orderLineId: string;
 
-    @Column({ nullable: true }) fromDistributorId: ID;
+    @Column({ nullable: true }) fromDistributorId: string;
 
     @Column() commissionType: 'direct' | 'indirect';
 

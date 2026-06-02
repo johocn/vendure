@@ -1,5 +1,5 @@
 import { Column, Entity } from 'typeorm';
-import { DeepPartial, ID, VendureEntity } from '@vendure/core';
+import { DeepPartial, VendureEntity } from '@vendure/core';
 
 @Entity()
 export class GroupBuyOrder extends VendureEntity {
@@ -7,9 +7,9 @@ export class GroupBuyOrder extends VendureEntity {
         super(input);
     }
 
-    @Column() groupBuyActivityId: ID;
+    @Column() groupBuyActivityId: string;
 
-    @Column() orderId: ID;
+    @Column() orderId: string;
 
     @Column() isLeader: boolean;
 

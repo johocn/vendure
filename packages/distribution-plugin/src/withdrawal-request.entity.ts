@@ -1,5 +1,5 @@
 import { Column, Entity, JoinTable, ManyToMany } from 'typeorm';
-import { Channel, ChannelAware, DeepPartial, ID, VendureEntity } from '@vendure/core';
+import { Channel, ChannelAware, DeepPartial, VendureEntity } from '@vendure/core';
 
 @Entity()
 export class WithdrawalRequest extends VendureEntity implements ChannelAware {
@@ -7,7 +7,7 @@ export class WithdrawalRequest extends VendureEntity implements ChannelAware {
         super(input);
     }
 
-    @Column() distributorId: ID;
+    @Column() distributorId: string;
 
     @Column() amount: number;
 

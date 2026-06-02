@@ -1,5 +1,5 @@
 import { Column, Entity, JoinTable, ManyToMany } from 'typeorm';
-import { Channel, ChannelAware, DeepPartial, ID, VendureEntity } from '@vendure/core';
+import { Channel, ChannelAware, DeepPartial, VendureEntity } from '@vendure/core';
 
 @Entity()
 export class Distributor extends VendureEntity implements ChannelAware {
@@ -7,9 +7,9 @@ export class Distributor extends VendureEntity implements ChannelAware {
         super(input);
     }
 
-    @Column() customerId: ID;
+    @Column() customerId: string;
 
-    @Column({ nullable: true }) parentId: ID;
+    @Column({ nullable: true }) parentId: string;
 
     @Column({ default: 1 }) level: number;
 

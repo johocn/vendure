@@ -57,8 +57,8 @@ export class CommissionService {
         const channel = await this.connection.getEntityOrThrow(ctx, Channel, ctx.channelId);
 
         const directRecord = new CommissionRecord({
-            distributorId: directDistributor.id,
-            orderId: order.id,
+            distributorId: String(directDistributor.id),
+            orderId: String(order.id),
             commissionType: 'direct',
             commissionRate: directRate,
             orderAmount: orderTotal,
@@ -76,9 +76,9 @@ export class CommissionService {
             const indirectAmount = Math.floor(orderTotal * indirectRate / 10000);
 
             const indirectRecord = new CommissionRecord({
-                distributorId: directDistributor.parentId,
-                orderId: order.id,
-                fromDistributorId: directDistributor.id,
+                distributorId: String(directDistributor.parentId),
+                orderId: String(order.id),
+                fromDistributorId: String(directDistributor.id),
                 commissionType: 'indirect',
                 commissionRate: indirectRate,
                 orderAmount: orderTotal,

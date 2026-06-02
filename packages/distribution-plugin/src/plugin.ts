@@ -110,6 +110,51 @@ import { distributionCustomerCustomFields } from './customer-custom-fields';
     },
     shopApiExtensions: {
         schema: () => gql`
+            enum DistributorStatus { active frozen pending }
+            enum CommissionType { direct indirect }
+            enum CommissionStatus { pending confirmed paid cancelled }
+            enum WithdrawalMethod { bank alipay wechat }
+            enum WithdrawalStatus { pending approved rejected paid }
+
+            type Distributor {
+                id: ID!
+                customerId: ID!
+                parentId: ID
+                level: Int!
+                status: DistributorStatus!
+                totalEarnings: Int!
+                availableBalance: Int!
+                frozenBalance: Int!
+                referralCode: String!
+                createdAt: DateTime!
+                updatedAt: DateTime!
+            }
+
+            type CommissionRecord {
+                id: ID!
+                distributorId: ID!
+                orderId: ID!
+                commissionType: CommissionType!
+                commissionRate: Int!
+                orderAmount: Int!
+                commissionAmount: Int!
+                status: CommissionStatus!
+                settledAt: DateTime
+                createdAt: DateTime!
+            }
+
+            type WithdrawalRequest {
+                id: ID!
+                distributorId: ID!
+                amount: Int!
+                method: WithdrawalMethod!
+                accountInfo: String!
+                status: WithdrawalStatus!
+                reviewedAt: DateTime
+                paidAt: DateTime
+                createdAt: DateTime!
+            }
+
             extend type Query {
                 myDistributorProfile: Distributor
                 myCommissionRecords: [CommissionRecord!]!

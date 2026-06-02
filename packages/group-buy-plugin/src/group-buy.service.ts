@@ -87,8 +87,8 @@ export class GroupBuyService {
         }
 
         const groupBuyOrder = new GroupBuyOrder({
-            groupBuyActivityId: activityId,
-            orderId,
+            groupBuyActivityId: String(activityId),
+            orderId: String(orderId),
             isLeader,
             status: 'pending',
         });

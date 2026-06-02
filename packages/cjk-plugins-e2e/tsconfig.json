@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "declaration": true,
+    "removeComments": false,
+    "noLib": false,
+    "skipLibCheck": true,
+    "sourceMap": true,
+    "outDir": "./lib"
+  },
+  "include": ["e2e"],
+  "exclude": ["vitest.config.mts", "node_modules"]
+}

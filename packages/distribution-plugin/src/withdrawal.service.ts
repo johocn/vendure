@@ -63,7 +63,7 @@ export class WithdrawalService {
         await this.connection.getRepository(ctx, Distributor).save(distributor);
 
         const request = new WithdrawalRequest({
-            distributorId,
+            distributorId: String(distributorId),
             amount,
             method,
             accountInfo,
