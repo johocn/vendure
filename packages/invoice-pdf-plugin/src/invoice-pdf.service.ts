@@ -59,7 +59,7 @@ export class InvoicePdfService {
         const invoiceNumber = cf?.invoiceNumber || `INV-${order.id}-${Date.now()}`;
         const fileName = `invoices/${ctx.channelId}/${order.id}/${invoiceNumber}.pdf`;
 
-        await assetStorageStrategy.writeFileFromBuffer(fileName, pdfBuffer, 'application/pdf');
+        await assetStorageStrategy.writeFileFromBuffer(fileName, pdfBuffer);
 
         Logger.info(`Invoice PDF generated: ${fileName}`, loggerCtx);
         return fileName;
