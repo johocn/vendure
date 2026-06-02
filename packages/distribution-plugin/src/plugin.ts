@@ -182,6 +182,7 @@ import { distributionCustomerCustomFields } from './customer-custom-fields';
         };
         return config;
     },
+    dashboard: './dashboard/index.tsx',
     compatibility: '^3.0.0',
 })
 export class DistributionPlugin implements OnApplicationBootstrap {
