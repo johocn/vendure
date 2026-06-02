@@ -17,18 +17,44 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const constants_1 = require("./constants");
 let WechatpayController = class WechatpayController {
-    constructor(options, paymentService) {
+    constructor(options, orderService, channelService) {
         this.options = options;
-        this.paymentService = paymentService;
+        this.orderService = orderService;
+        this.channelService = channelService;
     }
     async notify(req, res, body) {
-        var _a, _b;
         try {
-            const { event_type, resource } = body;
-            if (event_type === 'TRANSACTION.SUCCESS') {
-                const outTradeNo = (_a = resource === null || resource === void 0 ? void 0 : resource.ciphertext) === null || _a === void 0 ? void 0 : _a.out_trade_no;
-                const transactionId = (_b = resource === null || resource === void 0 ? void 0 : resource.ciphertext) === null || _b === void 0 ? void 0 : _b.transaction_id;
+            const eventType = body === null || body === void 0 ? void 0 : body.event_type;
+            if (eventType === 'TRANSACTION.SUCCESS') {
+                const resource = body === null || body === void 0 ? void 0 : body.resource;
+                const ciphertext = resource === null || resource === void 0 ? void 0 : resource.ciphertext;
+                const outTradeNo = ciphertext === null || ciphertext === void 0 ? void 0 : ciphertext.out_trade_no;
+                const transactionId = ciphertext === null || ciphertext === void 0 ? void 0 : ciphertext.transaction_id;
                 core_1.Logger.info(`WeChat Pay trade success: ${outTradeNo}, txId: ${transactionId}`, constants_1.loggerCtx);
+                if (outTradeNo) {
+                    try {
+                        const channel = await this.channelService.getDefaultChannel();
+                        const ctx = new core_1.RequestContext({
+                            apiType: 'admin',
+                            channel,
+                            isAuthorized: true,
+                            authorizedAsOwnerOnly: false,
+                        });
+                        const order = await this.orderService.findOneByCode(ctx, outTradeNo);
+                        if (order && order.active) {
+                            const payments = order.payments || [];
+                            for (const payment of payments) {
+                                if (payment.state === 'Authorized') {
+                                    await this.orderService.settlePayment(ctx, payment.id);
+                                    core_1.Logger.info(`Settled payment ${payment.id} for order ${outTradeNo}`, constants_1.loggerCtx);
+                                }
+                            }
+                        }
+                    }
+                    catch (e) {
+                        core_1.Logger.error(`Failed to settle payment for order ${outTradeNo}: ${e.message}`, constants_1.loggerCtx);
+                    }
+                }
             }
             res.status(200).json({ code: 'SUCCESS', message: 'OK' });
         }
@@ -51,6 +77,7 @@ __decorate([
 exports.WechatpayController = WechatpayController = __decorate([
     (0, common_1.Controller)('wechatpay'),
     __param(0, (0, common_1.Inject)(constants_1.WECHATPAY_PLUGIN_OPTIONS)),
-    __metadata("design:paramtypes", [Object, core_1.PaymentService])
+    __metadata("design:paramtypes", [Object, core_1.OrderService,
+        core_1.ChannelService])
 ], WechatpayController);
 //# sourceMappingURL=wechatpay.controller.js.map

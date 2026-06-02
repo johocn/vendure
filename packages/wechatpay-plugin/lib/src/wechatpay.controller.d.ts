@@ -1,9 +1,10 @@
 import { Request, Response } from 'express';
-import { PaymentService } from '@vendure/core';
+import { OrderService, ChannelService } from '@vendure/core';
 import { WechatpayPluginOptions } from './types';
 export declare class WechatpayController {
     private options;
-    private paymentService;
-    constructor(options: WechatpayPluginOptions, paymentService: PaymentService);
+    private orderService;
+    private channelService;
+    constructor(options: WechatpayPluginOptions, orderService: OrderService, channelService: ChannelService);
     notify(req: Request, res: Response, body: any): Promise<void>;
 }

@@ -1,10 +1,10 @@
 import { Request, Response } from 'express';
-import { PaymentService, ChannelService } from '@vendure/core';
+import { OrderService, ChannelService } from '@vendure/core';
 import { AlipayPluginOptions } from './types';
 export declare class AlipayController {
     private options;
-    private paymentService;
+    private orderService;
     private channelService;
-    constructor(options: AlipayPluginOptions, paymentService: PaymentService, channelService: ChannelService);
+    constructor(options: AlipayPluginOptions, orderService: OrderService, channelService: ChannelService);
     notify(req: Request, res: Response, body: any): Promise<void>;
 }

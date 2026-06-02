@@ -1,16 +1,17 @@
 import { DocumentNode } from 'graphql';
-import { AuthenticationStrategy, RequestContext, User } from '@vendure/core';
-import { UserService } from '@vendure/core';
-import { SmsService } from './sms.service';
+import { AuthenticationStrategy, Injector, RequestContext } from '@vendure/core';
+import { PhoneAuthPluginOptions } from './types';
 export interface PhoneAuthData {
     phoneNumber: string;
     code: string;
 }
 export declare class PhoneAuthenticationStrategy implements AuthenticationStrategy<PhoneAuthData> {
+    private options;
+    readonly name = "phone";
     private smsService;
     private userService;
-    readonly name = "phone";
-    constructor(smsService: SmsService, userService: UserService);
+    constructor(options: PhoneAuthPluginOptions);
+    init(injector: Injector): Promise<void>;
     defineInputType(): DocumentNode;
     authenticate(ctx: RequestContext, data: PhoneAuthData): Promise<User | false | string>;
 }

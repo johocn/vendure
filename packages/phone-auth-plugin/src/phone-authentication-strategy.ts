@@ -1,25 +1,29 @@
 import { DocumentNode } from 'graphql';
 import { gql } from 'graphql-tag';
-import { Injectable } from '@nestjs/common';
-import { AuthenticationStrategy, Logger, RequestContext, User } from '@vendure/core';
-import { UserService } from '@vendure/core';
+import { AuthenticationStrategy, Injector, Logger, RequestContext, User, UserService } from '@vendure/core';
 
 import { loggerCtx } from './constants';
 import { SmsService } from './sms.service';
+import { PhoneAuthPluginOptions } from './types';
 
 export interface PhoneAuthData {
     phoneNumber: string;
     code: string;
 }
 
-@Injectable()
 export class PhoneAuthenticationStrategy implements AuthenticationStrategy<PhoneAuthData> {
     readonly name = 'phone';
 
-    constructor(
-        private smsService: SmsService,
-        private userService: UserService,
-    ) {}
+    private smsService: SmsService;
+    private userService: UserService;
+
+    constructor(private options: PhoneAuthPluginOptions) {
+        this.smsService = new SmsService(options);
+    }
+
+    async init(injector: Injector) {
+        this.userService = injector.get(UserService);
+    }
 
     defineInputType(): DocumentNode {
         return gql`

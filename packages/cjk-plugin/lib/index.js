@@ -21,4 +21,7 @@ __exportStar(require("./src/promotion/promotion-custom-fields"), exports);
 __exportStar(require("./src/promotion/coupon-stackable-condition"), exports);
 __exportStar(require("./src/tenant/tenant-channel-custom-fields"), exports);
 __exportStar(require("./src/tenant/tenant-setup.service"), exports);
+__exportStar(require("./src/pickup/pickup-location.entity"), exports);
+__exportStar(require("./src/pickup/pickup-location.service"), exports);
+__exportStar(require("./src/pickup/pickup-location-admin.resolver"), exports);
 //# sourceMappingURL=index.js.map

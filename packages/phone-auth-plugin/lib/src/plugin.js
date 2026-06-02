@@ -39,7 +39,6 @@ exports.PhoneAuthPlugin = PhoneAuthPlugin = PhoneAuthPlugin_1 = __decorate([
                 provide: sms_service_1.SmsService,
                 useFactory: () => new sms_service_1.SmsService(PhoneAuthPlugin.options),
             },
-            phone_authentication_strategy_1.PhoneAuthenticationStrategy,
             auth_resolver_1.PhoneAuthResolver,
         ],
         shopApiExtensions: {
@@ -54,8 +53,7 @@ exports.PhoneAuthPlugin = PhoneAuthPlugin = PhoneAuthPlugin_1 = __decorate([
             resolvers: [auth_resolver_1.PhoneAuthResolver],
         },
         configuration: config => {
-            const smsService = new sms_service_1.SmsService(PhoneAuthPlugin.options);
-            const strategy = new phone_authentication_strategy_1.PhoneAuthenticationStrategy(smsService, null);
+            const strategy = new phone_authentication_strategy_1.PhoneAuthenticationStrategy(PhoneAuthPlugin.options);
             config.authOptions.shopAuthenticationStrategy = [
                 ...(config.authOptions.shopAuthenticationStrategy || []),
                 strategy,

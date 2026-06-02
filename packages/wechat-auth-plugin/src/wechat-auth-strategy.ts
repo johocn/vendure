@@ -1,7 +1,6 @@
 import { DocumentNode } from 'graphql';
 import { gql } from 'graphql-tag';
-import { Injectable } from '@nestjs/common';
-import { AuthenticationStrategy, Logger, RequestContext, User, UserService } from '@vendure/core';
+import { AuthenticationStrategy, Injector, Logger, RequestContext, User, UserService } from '@vendure/core';
 
 import { loggerCtx } from './constants';
 import { WechatAuthPluginOptions } from './types';
@@ -11,14 +10,16 @@ export interface WechatAuthData {
     type: 'mp' | 'mini';
 }
 
-@Injectable()
 export class WechatAuthenticationStrategy implements AuthenticationStrategy<WechatAuthData> {
     readonly name = 'wechat';
 
-    constructor(
-        private options: WechatAuthPluginOptions,
-        private userService: UserService,
-    ) {}
+    private userService: UserService;
+
+    constructor(private options: WechatAuthPluginOptions) {}
+
+    async init(injector: Injector) {
+        this.userService = injector.get(UserService);
+    }
 
     defineInputType(): DocumentNode {
         return gql`

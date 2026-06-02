@@ -15,7 +15,6 @@ import { PhoneAuthPluginOptions } from './types';
             provide: SmsService,
             useFactory: () => new SmsService(PhoneAuthPlugin.options),
         },
-        PhoneAuthenticationStrategy,
         PhoneAuthResolver,
     ],
     shopApiExtensions: {
@@ -30,8 +29,7 @@ import { PhoneAuthPluginOptions } from './types';
         resolvers: [PhoneAuthResolver],
     },
     configuration: config => {
-        const smsService = new SmsService(PhoneAuthPlugin.options);
-        const strategy = new PhoneAuthenticationStrategy(smsService, null as any);
+        const strategy = new PhoneAuthenticationStrategy(PhoneAuthPlugin.options);
         config.authOptions.shopAuthenticationStrategy = [
             ...(config.authOptions.shopAuthenticationStrategy || []),
             strategy,

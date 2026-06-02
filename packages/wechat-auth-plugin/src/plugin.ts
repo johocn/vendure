@@ -14,10 +14,7 @@ import { WechatAuthPluginOptions } from './types';
         { provide: WECHAT_AUTH_PLUGIN_OPTIONS, useFactory: () => WechatAuthPlugin.options },
     ],
     configuration: config => {
-        const strategy = new WechatAuthenticationStrategy(
-            WechatAuthPlugin.options,
-            null as any,
-        );
+        const strategy = new WechatAuthenticationStrategy(WechatAuthPlugin.options);
         config.authOptions.shopAuthenticationStrategy = [
             ...(config.authOptions.shopAuthenticationStrategy || []),
             strategy,

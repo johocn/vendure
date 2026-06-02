@@ -25,6 +25,8 @@ const pickup_calculator_1 = require("./pickup/pickup-calculator");
 const pickup_eligibility_checker_1 = require("./pickup/pickup-eligibility-checker");
 const pickup_fulfillment_handler_1 = require("./pickup/pickup-fulfillment-handler");
 const pickup_location_entity_1 = require("./pickup/pickup-location.entity");
+const pickup_location_admin_resolver_1 = require("./pickup/pickup-location-admin.resolver");
+const pickup_location_service_1 = require("./pickup/pickup-location.service");
 const tenant_channel_custom_fields_1 = require("./tenant/tenant-channel-custom-fields");
 const tenant_setup_service_1 = require("./tenant/tenant-setup.service");
 let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
@@ -83,7 +85,63 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
         providers: [
             { provide: constants_1.CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
             tenant_setup_service_1.TenantSetupService,
+            pickup_location_service_1.PickupLocationService,
         ],
+        adminApiExtensions: {
+            schema: () => {
+                const { gql } = require('graphql-tag');
+                return gql `
+                type PickupLocation {
+                    id: ID!
+                    name: String!
+                    type: String!
+                    address: String!
+                    phoneNumber: String
+                    businessHours: String
+                    coordinates: JSON
+                    partner: String
+                }
+
+                type PickupLocationList implements PaginatedList {
+                    items: [PickupLocation!]!
+                    totalItems: Int!
+                }
+
+                input CreatePickupLocationInput {
+                    name: String!
+                    type: String!
+                    address: String!
+                    phoneNumber: String
+                    businessHours: String
+                    coordinates: JSON
+                    partner: String
+                }
+
+                input UpdatePickupLocationInput {
+                    id: ID!
+                    name: String
+                    type: String
+                    address: String
+                    phoneNumber: String
+                    businessHours: String
+                    coordinates: JSON
+                    partner: String
+                }
+
+                extend type Query {
+                    pickupLocations(options: ListQueryOptions): PickupLocationList!
+                    pickupLocation(id: ID!): PickupLocation
+                }
+
+                extend type Mutation {
+                    createPickupLocation(input: CreatePickupLocationInput!): PickupLocation!
+                    updatePickupLocation(input: UpdatePickupLocationInput!): PickupLocation!
+                    deletePickupLocation(id: ID!): Boolean!
+                }
+            `;
+            },
+            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver],
+        },
         configuration: config => {
             var _a, _b, _c, _d, _e, _f, _g, _h, _j;
             if ((_a = CjkPlugin.options.cod) === null || _a === void 0 ? void 0 : _a.enabled) {

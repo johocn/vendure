@@ -39,7 +39,7 @@ exports.WechatAuthPlugin = WechatAuthPlugin = WechatAuthPlugin_1 = __decorate([
         ],
         configuration: config => {
             var _a;
-            const strategy = new wechat_auth_strategy_1.WechatAuthenticationStrategy(WechatAuthPlugin.options, null);
+            const strategy = new wechat_auth_strategy_1.WechatAuthenticationStrategy(WechatAuthPlugin.options);
             config.authOptions.shopAuthenticationStrategy = [
                 ...(config.authOptions.shopAuthenticationStrategy || []),
                 strategy,
