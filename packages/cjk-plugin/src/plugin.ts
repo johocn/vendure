@@ -141,6 +141,7 @@ import { CjkPluginOptions } from './types';
 
         return config;
     },
+    dashboard: './dashboard/index.tsx',
     compatibility: '^3.0.0',
 })
 export class CjkPlugin implements OnApplicationBootstrap, NestModule {
