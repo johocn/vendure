@@ -81,6 +81,22 @@ import { flashSaleOrderCustomFields } from './order-custom-fields';
     },
     shopApiExtensions: {
         schema: () => gql`
+            enum FlashSaleStatus { upcoming active ended }
+
+            type FlashSaleActivity {
+                id: ID!
+                name: String!
+                startAt: DateTime!
+                endAt: DateTime!
+                flashPrice: Int!
+                totalStock: Int!
+                soldCount: Int!
+                limitPerUser: Int!
+                status: FlashSaleStatus!
+                createdAt: DateTime!
+                updatedAt: DateTime!
+            }
+
             extend type Query {
                 activeFlashSaleActivities: [FlashSaleActivity!]!
                 flashSaleActivity(id: ID!): FlashSaleActivity
@@ -103,6 +119,7 @@ import { flashSaleOrderCustomFields } from './order-custom-fields';
 
         return config;
     },
+    dashboard: './dashboard/index.tsx',
     compatibility: '^3.0.0',
 })
 export class FlashSalePlugin implements OnApplicationBootstrap {
