@@ -4,16 +4,23 @@ import { ModuleRef } from '@nestjs/core';
 
 import { CJK_PLUGIN_OPTIONS, loggerCtx } from './constants';
 import { codPaymentHandler } from './payment/cod-handler';
+import { couponStackableCondition } from './promotion/coupon-stackable-condition';
+import { promotionCustomFields } from './promotion/promotion-custom-fields';
 import { storePickupCalculator, pickupPointCalculator } from './pickup/pickup-calculator';
 import { storePickupEligibilityChecker, pickupPointEligibilityChecker } from './pickup/pickup-eligibility-checker';
 import { storePickupFulfillmentHandler, pickupPointFulfillmentHandler } from './pickup/pickup-fulfillment-handler';
 import { PickupLocation } from './pickup/pickup-location.entity';
+import { tenantChannelCustomFields } from './tenant/tenant-channel-custom-fields';
+import { TenantSetupService } from './tenant/tenant-setup.service';
 import { CjkPluginOptions } from './types';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
     entities: [PickupLocation],
-    providers: [{ provide: CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options }],
+    providers: [
+        { provide: CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
+        TenantSetupService,
+    ],
     configuration: config => {
         if (CjkPlugin.options.cod?.enabled) {
             config.paymentOptions.paymentMethodHandlers = [
@@ -46,6 +53,32 @@ import { CjkPluginOptions } from './types';
                 config.shippingOptions.shippingCalculators!.push(pickupPointCalculator);
                 config.shippingOptions.fulfillmentHandlers!.push(pickupPointFulfillmentHandler);
             }
+        }
+
+        if (CjkPlugin.options.promotionPolicy?.enabled) {
+            config.promotionOptions = config.promotionOptions || {};
+            config.promotionOptions.promotionConditions = [
+                ...(config.promotionOptions.promotionConditions || []),
+                couponStackableCondition,
+            ];
+
+            config.customFields = {
+                ...config.customFields,
+                Promotion: [
+                    ...(config.customFields?.Promotion || []),
+                    ...promotionCustomFields.Promotion!,
+                ],
+            };
+        }
+
+        if (CjkPlugin.options.tenant?.enabled) {
+            config.customFields = {
+                ...config.customFields,
+                Channel: [
+                    ...(config.customFields?.Channel || []),
+                    ...tenantChannelCustomFields.Channel!,
+                ],
+            };
         }
 
         return config;
@@ -97,6 +130,14 @@ export class CjkPlugin implements OnApplicationBootstrap, NestModule {
 
         if (this.options.pickupPoint?.enabled) {
             Logger.info('Pickup point shipping module enabled', loggerCtx);
+        }
+
+        if (this.options.promotionPolicy?.enabled) {
+            Logger.info('Promotion stacking policy module enabled', loggerCtx);
+        }
+
+        if (this.options.tenant?.enabled) {
+            Logger.info('Tenant (multi-channel) module enabled', loggerCtx);
         }
     }
 

@@ -17,4 +17,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 __exportStar(require("./src/plugin"), exports);
 __exportStar(require("./src/types"), exports);
 __exportStar(require("./src/constants"), exports);
+__exportStar(require("./src/promotion/promotion-custom-fields"), exports);
+__exportStar(require("./src/promotion/coupon-stackable-condition"), exports);
+__exportStar(require("./src/tenant/tenant-channel-custom-fields"), exports);
+__exportStar(require("./src/tenant/tenant-setup.service"), exports);
 //# sourceMappingURL=index.js.map

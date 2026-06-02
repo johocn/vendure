@@ -19,10 +19,14 @@ const core_1 = require("@vendure/core");
 const core_2 = require("@nestjs/core");
 const constants_1 = require("./constants");
 const cod_handler_1 = require("./payment/cod-handler");
+const coupon_stackable_condition_1 = require("./promotion/coupon-stackable-condition");
+const promotion_custom_fields_1 = require("./promotion/promotion-custom-fields");
 const pickup_calculator_1 = require("./pickup/pickup-calculator");
 const pickup_eligibility_checker_1 = require("./pickup/pickup-eligibility-checker");
 const pickup_fulfillment_handler_1 = require("./pickup/pickup-fulfillment-handler");
 const pickup_location_entity_1 = require("./pickup/pickup-location.entity");
+const tenant_channel_custom_fields_1 = require("./tenant/tenant-channel-custom-fields");
+const tenant_setup_service_1 = require("./tenant/tenant-setup.service");
 let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
     constructor(options, moduleRef) {
         this.options = options;
@@ -33,7 +37,7 @@ let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
         return CjkPlugin_1;
     }
     async onApplicationBootstrap() {
-        var _a, _b, _c, _d, _e, _f;
+        var _a, _b, _c, _d, _e, _f, _g, _h;
         if (((_a = this.options.i18n) === null || _a === void 0 ? void 0 : _a.enabled) !== false) {
             const i18nService = this.moduleRef.get(core_1.I18nService);
             const languages = ((_b = this.options.i18n) === null || _b === void 0 ? void 0 : _b.languages) || ['zh_Hans', 'zh_Hant', 'ja', 'ko'];
@@ -62,6 +66,12 @@ let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
         if ((_f = this.options.pickupPoint) === null || _f === void 0 ? void 0 : _f.enabled) {
             core_1.Logger.info('Pickup point shipping module enabled', constants_1.loggerCtx);
         }
+        if ((_g = this.options.promotionPolicy) === null || _g === void 0 ? void 0 : _g.enabled) {
+            core_1.Logger.info('Promotion stacking policy module enabled', constants_1.loggerCtx);
+        }
+        if ((_h = this.options.tenant) === null || _h === void 0 ? void 0 : _h.enabled) {
+            core_1.Logger.info('Tenant (multi-channel) module enabled', constants_1.loggerCtx);
+        }
     }
     configure(consumer) { }
 };
@@ -70,9 +80,12 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
         entities: [pickup_location_entity_1.PickupLocation],
-        providers: [{ provide: constants_1.CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options }],
+        providers: [
+            { provide: constants_1.CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
+            tenant_setup_service_1.TenantSetupService,
+        ],
         configuration: config => {
-            var _a, _b, _c, _d, _e;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j;
             if ((_a = CjkPlugin.options.cod) === null || _a === void 0 ? void 0 : _a.enabled) {
                 config.paymentOptions.paymentMethodHandlers = [
                     ...(config.paymentOptions.paymentMethodHandlers || []),
@@ -101,6 +114,23 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     config.shippingOptions.shippingCalculators.push(pickup_calculator_1.pickupPointCalculator);
                     config.shippingOptions.fulfillmentHandlers.push(pickup_fulfillment_handler_1.pickupPointFulfillmentHandler);
                 }
+            }
+            if ((_f = CjkPlugin.options.promotionPolicy) === null || _f === void 0 ? void 0 : _f.enabled) {
+                config.promotionOptions = config.promotionOptions || {};
+                config.promotionOptions.promotionConditions = [
+                    ...(config.promotionOptions.promotionConditions || []),
+                    coupon_stackable_condition_1.couponStackableCondition,
+                ];
+                config.customFields = Object.assign(Object.assign({}, config.customFields), { Promotion: [
+                        ...(((_g = config.customFields) === null || _g === void 0 ? void 0 : _g.Promotion) || []),
+                        ...promotion_custom_fields_1.promotionCustomFields.Promotion,
+                    ] });
+            }
+            if ((_h = CjkPlugin.options.tenant) === null || _h === void 0 ? void 0 : _h.enabled) {
+                config.customFields = Object.assign(Object.assign({}, config.customFields), { Channel: [
+                        ...(((_j = config.customFields) === null || _j === void 0 ? void 0 : _j.Channel) || []),
+                        ...tenant_channel_custom_fields_1.tenantChannelCustomFields.Channel,
+                    ] });
             }
             return config;
         },
