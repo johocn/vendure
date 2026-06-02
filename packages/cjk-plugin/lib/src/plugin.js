@@ -18,6 +18,7 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const core_2 = require("@nestjs/core");
 const constants_1 = require("./constants");
+const cod_handler_1 = require("./payment/cod-handler");
 let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
     constructor(options, moduleRef) {
         this.options = options;
@@ -28,7 +29,7 @@ let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
         return CjkPlugin_1;
     }
     async onApplicationBootstrap() {
-        var _a, _b;
+        var _a, _b, _c, _d;
         if (((_a = this.options.i18n) === null || _a === void 0 ? void 0 : _a.enabled) !== false) {
             const i18nService = this.moduleRef.get(core_1.I18nService);
             const languages = ((_b = this.options.i18n) === null || _b === void 0 ? void 0 : _b.languages) || ['zh_Hans', 'zh_Hant', 'ja', 'ko'];
@@ -45,6 +46,12 @@ let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
                 }
             }
         }
+        if (((_c = this.options.regions) === null || _c === void 0 ? void 0 : _c.enabled) !== false) {
+            core_1.Logger.info('CJK regions module enabled - use RegionPopulator in your server bootstrap to populate countries', constants_1.loggerCtx);
+        }
+        if ((_d = this.options.cod) === null || _d === void 0 ? void 0 : _d.enabled) {
+            core_1.Logger.info('Cash on Delivery payment module enabled', constants_1.loggerCtx);
+        }
     }
     configure(consumer) { }
 };
@@ -53,6 +60,16 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
         providers: [{ provide: constants_1.CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options }],
+        configuration: config => {
+            var _a;
+            if ((_a = CjkPlugin.options.cod) === null || _a === void 0 ? void 0 : _a.enabled) {
+                config.paymentOptions.paymentMethodHandlers = [
+                    ...(config.paymentOptions.paymentMethodHandlers || []),
+                    cod_handler_1.codPaymentHandler,
+                ];
+            }
+            return config;
+        },
         compatibility: '^3.0.0',
     }),
     __param(0, (0, common_1.Inject)(constants_1.CJK_PLUGIN_OPTIONS)),

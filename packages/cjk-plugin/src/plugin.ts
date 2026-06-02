@@ -1,13 +1,24 @@
 import { Inject, MiddlewareConsumer, NestModule, OnApplicationBootstrap, Type } from '@nestjs/common';
-import { I18nService, Logger, PluginCommonModule, VendurePlugin } from '@vendure/core';
+import { I18nService, Injector, Logger, PluginCommonModule, VendurePlugin } from '@vendure/core';
 import { ModuleRef } from '@nestjs/core';
 
 import { CJK_PLUGIN_OPTIONS, loggerCtx } from './constants';
+import { codPaymentHandler } from './payment/cod-handler';
+import { RegionPopulator } from './regions/region-populator';
 import { CjkPluginOptions } from './types';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
     providers: [{ provide: CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options }],
+    configuration: config => {
+        if (CjkPlugin.options.cod?.enabled) {
+            config.paymentOptions.paymentMethodHandlers = [
+                ...(config.paymentOptions.paymentMethodHandlers || []),
+                codPaymentHandler,
+            ];
+        }
+        return config;
+    },
     compatibility: '^3.0.0',
 })
 export class CjkPlugin implements OnApplicationBootstrap, NestModule {
@@ -39,6 +50,14 @@ export class CjkPlugin implements OnApplicationBootstrap, NestModule {
                     Logger.info(`Registered i18n translation for ${lang}`, loggerCtx);
                 }
             }
+        }
+
+        if (this.options.regions?.enabled !== false) {
+            Logger.info('CJK regions module enabled - use RegionPopulator in your server bootstrap to populate countries', loggerCtx);
+        }
+
+        if (this.options.cod?.enabled) {
+            Logger.info('Cash on Delivery payment module enabled', loggerCtx);
         }
     }
 
