@@ -36,6 +36,9 @@ import { LogisticsPlugin } from '@vendure/logistics-plugin';
 import { GroupBuyPlugin } from '@vendure/group-buy-plugin';
 import { FlashSalePlugin } from '@vendure/flash-sale-plugin';
 import { DistributionPlugin } from '@vendure/distribution-plugin';
+import { RedisStockPlugin } from '@vendure/redis-stock-plugin';
+import { LogisticsApiPlugin } from '@vendure/logistics-api-plugin';
+import { InvoicePdfPlugin } from '@vendure/invoice-pdf-plugin';
 import { NavModifierPlugin } from './test-plugins/nav-modifier-plugin/nav-modifier-plugin';
 // import { FieldTestPlugin } from './test-plugins/field-test/field-test-plugin';
 import { ReviewsPlugin } from './test-plugins/reviews/reviews-plugin';
@@ -246,6 +249,14 @@ export const devConfig: VendureConfig = {
             minWithdrawalAmount: 10000,
             settlementDays: 7,
         }),
+        RedisStockPlugin.init({
+            redisUrl: process.env.REDIS_URL ?? 'redis://localhost:6379',
+        }),
+        LogisticsApiPlugin.init({
+            customer: process.env.KUAIDI100_CUSTOMER ?? '',
+            key: process.env.KUAIDI100_KEY ?? '',
+        }),
+        InvoicePdfPlugin.init(),
     ],
 };
 
