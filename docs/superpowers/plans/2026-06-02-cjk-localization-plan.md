@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 为 Vendure 创建 `@vendure/cjk-plugin` 单体插件，提供中日韩本地化支持（i18n、地区数据、支付宝/微信支付、阿里云 OSS、手机号认证）。
+**Goal:** 为 Vendure 创建 `@vendure/cjk-plugin` 单体插件，提供中日韩本地化支持（i18n、地区数据、支付宝/微信支付/货到付款、门店自提/自提点自提、阿里云 OSS、手机号认证）。
 
-**Architecture:** 基于 VendurePlugin 装饰器的标准插件模式，通过 `configuration` 函数注入 i18n 翻译和自定义配置，通过 `PaymentMethodHandler` 实现支付集成，通过 `AssetStorageStrategy` 实现 OSS 存储，通过 `AuthenticationStrategy` 实现手机号认证。
+**Architecture:** 基于 VendurePlugin 装饰器的标准插件模式，通过 `configuration` 函数注入 i18n 翻译和自定义配置，通过 `PaymentMethodHandler` 实现支付集成（含货到付款），通过 `ShippingEligibilityChecker`/`ShippingCalculator`/`FulfillmentHandler` 实现门店自提和自提点自提，通过 `AssetStorageStrategy` 实现 OSS 存储，通过 `AuthenticationStrategy` 实现手机号认证。
 
 **Tech Stack:** TypeScript, NestJS, Vendure v3.6.x, alipay-sdk, wechatpay-node-v3, ali-oss, @alicloud/dysmsapi20170525
 
@@ -35,13 +35,24 @@ packages/cjk-plugin/
 │   │   └── region-populator.ts                # 地区数据导入服务
 │   ├── payment/
 │   │   ├── alipay/
-│   │   │   ├── alipay-handler.ts              # PaymentMethodHandler
-│   │   │   ├── alipay.controller.ts           # 异步通知 Controller
-│   │   │   └── types.ts                       # 支付宝类型
-│   │   └── wechatpay/
-│   │       ├── wechatpay-handler.ts           # PaymentMethodHandler
-│   │       ├── wechatpay.controller.ts        # 异步通知 Controller
-│   │       └── types.ts                       # 微信支付类型
+│   │   │   ├── alipay-handler.ts              # 支付宝 PaymentMethodHandler
+│   │   │   ├── alipay.controller.ts           # 支付回调 Controller
+│   │   │   └── types.ts
+│   │   ├── wechatpay/
+│   │   │   ├── wechatpay-handler.ts           # 微信支付 PaymentMethodHandler
+│   │   │   ├── wechatpay.controller.ts        # 支付回调 Controller
+│   │   │   └── types.ts
+│   │   └── cod/
+│   │       └── cod-handler.ts                 # 货到付款 PaymentMethodHandler
+│   ├── shipping/
+│   │   ├── store-pickup/
+│   │   │   ├── pickup-eligibility-checker.ts  # 门店自提资格检查
+│   │   │   ├── pickup-calculator.ts           # 门店自提运费计算
+│   │   │   └── pickup-fulfillment-handler.ts  # 门店自提履约处理
+│   │   └── pickup-point/
+│   │       ├── point-eligibility-checker.ts   # 自提点资格检查
+│   │       ├── point-calculator.ts            # 自提点运费计算
+│   │       └── point-fulfillment-handler.ts   # 自提点履约处理                       # 微信支付类型
 │   ├── storage/
 │   │   └── oss-strategy.ts                    # AssetStorageStrategy 实现
 │   └── auth/
@@ -213,11 +224,48 @@ export interface CjkPluginPhoneAuthOptions {
     };
 }
 
+export interface PickupStore {
+    id: string;
+    name: string;
+    address: string;
+    phoneNumber?: string;
+    businessHours?: string;
+    coordinates?: { lat: number; lng: number };
+}
+
+export interface PickupPoint {
+    id: string;
+    name: string;
+    address: string;
+    partner?: string;
+    phoneNumber?: string;
+    businessHours?: string;
+    coordinates?: { lat: number; lng: number };
+}
+
+export interface CjkPluginCodOptions {
+    enabled?: boolean;
+}
+
+export interface CjkPluginStorePickupOptions {
+    enabled?: boolean;
+    stores?: PickupStore[];
+}
+
+export interface CjkPluginPickupPointOptions {
+    enabled?: boolean;
+    points?: PickupPoint[];
+    shippingPrice?: number;
+}
+
 export interface CjkPluginOptions {
     i18n?: CjkPluginI18nOptions;
     regions?: CjkPluginRegionsOptions;
     alipay?: CjkPluginAlipayOptions;
     wechatpay?: CjkPluginWechatPayOptions;
+    cod?: CjkPluginCodOptions;
+    storePickup?: CjkPluginStorePickupOptions;
+    pickupPoint?: CjkPluginPickupPointOptions;
     oss?: CjkPluginOssOptions;
     phoneAuth?: CjkPluginPhoneAuthOptions;
 }
@@ -1219,7 +1267,358 @@ git commit -m "feat(cjk-plugin): add WeChat Pay integration"
 
 ---
 
-### Task 7: 阿里云 OSS 存储模块
+### Task 7: 货到付款模块
+
+**Files:**
+- Create: `packages/cjk-plugin/src/payment/cod/cod-handler.ts`
+- Modify: `packages/cjk-plugin/src/plugin.ts`
+
+- [ ] **Step 1: 创建 cod-handler.ts**
+
+```typescript
+import { LanguageCode, PaymentMethodHandler } from '@vendure/core';
+
+export const codPaymentHandler = new PaymentMethodHandler({
+    code: 'cash-on-delivery',
+    description: [
+        { languageCode: LanguageCode.zh_Hans, value: '货到付款' },
+        { languageCode: LanguageCode.zh_Hant, value: '貨到付款' },
+        { languageCode: LanguageCode.ja, value: '代金引換' },
+        { languageCode: LanguageCode.ko, value: '착불 결제' },
+        { languageCode: LanguageCode.en, value: 'Cash on Delivery' },
+    ],
+    args: {},
+    createPayment: async (ctx, order, amount, args, metadata, method) => {
+        return {
+            amount,
+            state: 'Authorized' as const,
+            transactionId: `COD-${order.code}`,
+            metadata: { method: 'cash-on-delivery' },
+        };
+    },
+    settlePayment: async (ctx, order, payment, args, method) => {
+        return { success: true };
+    },
+});
+```
+
+- [ ] **Step 2: 修改 plugin.ts 集成货到付款**
+
+在 `configuration` 函数中注册：
+
+```typescript
+if (CjkPlugin.options.cod?.enabled) {
+    config.paymentOptions.paymentMethodHandlers = [
+        ...(config.paymentOptions.paymentMethodHandlers || []),
+        codPaymentHandler,
+    ];
+}
+```
+
+在 `onApplicationBootstrap` 中添加日志：
+
+```typescript
+if (this.options.cod?.enabled) {
+    Logger.info('Cash on Delivery payment module enabled', loggerCtx);
+}
+```
+
+- [ ] **Step 3: 构建验证**
+
+Run: `cd e:\code\vendure\packages\cjk-plugin && npm run build`
+
+- [ ] **Step 4: 提交**
+
+```bash
+git add packages/cjk-plugin/
+git commit -m "feat(cjk-plugin): add Cash on Delivery payment handler"
+```
+
+---
+
+### Task 8: 门店自提模块
+
+**Files:**
+- Create: `packages/cjk-plugin/src/shipping/store-pickup/pickup-eligibility-checker.ts`
+- Create: `packages/cjk-plugin/src/shipping/store-pickup/pickup-calculator.ts`
+- Create: `packages/cjk-plugin/src/shipping/store-pickup/pickup-fulfillment-handler.ts`
+- Modify: `packages/cjk-plugin/src/plugin.ts`
+
+- [ ] **Step 1: 创建 pickup-eligibility-checker.ts**
+
+```typescript
+import { LanguageCode, ShippingEligibilityChecker } from '@vendure/core';
+
+export const storePickupEligibilityChecker = new ShippingEligibilityChecker({
+    code: 'store-pickup-eligibility',
+    description: [
+        { languageCode: LanguageCode.zh_Hans, value: '门店自提资格检查' },
+        { languageCode: LanguageCode.en, value: 'Store Pickup Eligibility Checker' },
+    ],
+    args: {},
+    check: (ctx, order, args, method) => {
+        return true;
+    },
+});
+```
+
+- [ ] **Step 2: 创建 pickup-calculator.ts**
+
+```typescript
+import { LanguageCode, ShippingCalculator } from '@vendure/core';
+
+export const storePickupCalculator = new ShippingCalculator({
+    code: 'store-pickup-calculator',
+    description: [
+        { languageCode: LanguageCode.zh_Hans, value: '门店自提运费计算（免费）' },
+        { languageCode: LanguageCode.en, value: 'Store Pickup Shipping Calculator (Free)' },
+    ],
+    args: {},
+    calculate: (ctx, order, args, method) => {
+        return {
+            price: 0,
+            taxRate: 0,
+            priceIncludesTax: true,
+            metadata: { pickupType: 'store' },
+        };
+    },
+});
+```
+
+- [ ] **Step 3: 创建 pickup-fulfillment-handler.ts**
+
+```typescript
+import { LanguageCode, FulfillmentHandler } from '@vendure/core';
+
+export const storePickupFulfillmentHandler = new FulfillmentHandler({
+    code: 'store-pickup',
+    description: [
+        { languageCode: LanguageCode.zh_Hans, value: '门店自提' },
+        { languageCode: LanguageCode.en, value: 'Store Pickup' },
+    ],
+    args: {
+        storeId: {
+            type: 'string',
+            label: [
+                { languageCode: LanguageCode.zh_Hans, value: '门店编号' },
+                { languageCode: LanguageCode.en, value: 'Store ID' },
+            ],
+        },
+        storeName: {
+            type: 'string',
+            label: [
+                { languageCode: LanguageCode.zh_Hans, value: '门店名称' },
+                { languageCode: LanguageCode.en, value: 'Store Name' },
+            ],
+        },
+    },
+    createFulfillment: async (ctx, orders, lines, args) => {
+        return {
+            method: `门店自提 - ${args.storeName || args.storeId}`,
+            trackingCode: `PICKUP-STORE-${args.storeId}`,
+            customFields: {
+                storeId: args.storeId,
+                storeName: args.storeName,
+            },
+        };
+    },
+});
+```
+
+- [ ] **Step 4: 修改 plugin.ts 集成门店自提**
+
+在 `configuration` 函数中注册：
+
+```typescript
+if (CjkPlugin.options.storePickup?.enabled) {
+    config.shippingOptions = config.shippingOptions || {};
+    config.shippingOptions.shippingEligibilityCheckers = [
+        ...(config.shippingOptions.shippingEligibilityCheckers || []),
+        storePickupEligibilityChecker,
+    ];
+    config.shippingOptions.shippingCalculators = [
+        ...(config.shippingOptions.shippingCalculators || []),
+        storePickupCalculator,
+    ];
+    config.shippingOptions.fulfillmentHandlers = [
+        ...(config.shippingOptions.fulfillmentHandlers || []),
+        storePickupFulfillmentHandler,
+    ];
+}
+```
+
+在 `onApplicationBootstrap` 中添加日志：
+
+```typescript
+if (this.options.storePickup?.enabled) {
+    Logger.info('Store pickup shipping module enabled', loggerCtx);
+}
+```
+
+- [ ] **Step 5: 构建验证**
+
+Run: `cd e:\code\vendure\packages\cjk-plugin && npm run build`
+
+- [ ] **Step 6: 提交**
+
+```bash
+git add packages/cjk-plugin/
+git commit -m "feat(cjk-plugin): add store pickup shipping module"
+```
+
+---
+
+### Task 9: 自提点自提模块
+
+**Files:**
+- Create: `packages/cjk-plugin/src/shipping/pickup-point/point-eligibility-checker.ts`
+- Create: `packages/cjk-plugin/src/shipping/pickup-point/point-calculator.ts`
+- Create: `packages/cjk-plugin/src/shipping/pickup-point/point-fulfillment-handler.ts`
+- Modify: `packages/cjk-plugin/src/plugin.ts`
+
+- [ ] **Step 1: 创建 point-eligibility-checker.ts**
+
+```typescript
+import { LanguageCode, ShippingEligibilityChecker } from '@vendure/core';
+
+export const pickupPointEligibilityChecker = new ShippingEligibilityChecker({
+    code: 'pickup-point-eligibility',
+    description: [
+        { languageCode: LanguageCode.zh_Hans, value: '自提点自提资格检查' },
+        { languageCode: LanguageCode.en, value: 'Pickup Point Eligibility Checker' },
+    ],
+    args: {},
+    check: (ctx, order, args, method) => {
+        return true;
+    },
+});
+```
+
+- [ ] **Step 2: 创建 point-calculator.ts**
+
+```typescript
+import { LanguageCode, ShippingCalculator } from '@vendure/core';
+
+export const pickupPointCalculator = new ShippingCalculator({
+    code: 'pickup-point-calculator',
+    description: [
+        { languageCode: LanguageCode.zh_Hans, value: '自提点运费计算' },
+        { languageCode: LanguageCode.en, value: 'Pickup Point Shipping Calculator' },
+    ],
+    args: {
+        shippingPrice: {
+            type: 'int',
+            defaultValue: 0,
+            label: [
+                { languageCode: LanguageCode.zh_Hans, value: '运费（分）' },
+                { languageCode: LanguageCode.en, value: 'Shipping Price (cents)' },
+            ],
+            ui: { component: 'currency-form-input' },
+        },
+    },
+    calculate: (ctx, order, args, method) => {
+        return {
+            price: args.shippingPrice || 0,
+            taxRate: 0,
+            priceIncludesTax: true,
+            metadata: { pickupType: 'point' },
+        };
+    },
+});
+```
+
+- [ ] **Step 3: 创建 point-fulfillment-handler.ts**
+
+```typescript
+import { LanguageCode, FulfillmentHandler } from '@vendure/core';
+
+export const pickupPointFulfillmentHandler = new FulfillmentHandler({
+    code: 'pickup-point',
+    description: [
+        { languageCode: LanguageCode.zh_Hans, value: '自提点自提' },
+        { languageCode: LanguageCode.en, value: 'Pickup Point' },
+    ],
+    args: {
+        pointId: {
+            type: 'string',
+            label: [
+                { languageCode: LanguageCode.zh_Hans, value: '自提点编号' },
+                { languageCode: LanguageCode.en, value: 'Pickup Point ID' },
+            ],
+        },
+        pointName: {
+            type: 'string',
+            label: [
+                { languageCode: LanguageCode.zh_Hans, value: '自提点名称' },
+                { languageCode: LanguageCode.en, value: 'Pickup Point Name' },
+            ],
+        },
+        pointAddress: {
+            type: 'string',
+            label: [
+                { languageCode: LanguageCode.zh_Hans, value: '自提点地址' },
+                { languageCode: LanguageCode.en, value: 'Pickup Point Address' },
+            ],
+        },
+    },
+    createFulfillment: async (ctx, orders, lines, args) => {
+        return {
+            method: `自提点自提 - ${args.pointName || args.pointId}`,
+            trackingCode: `PICKUP-POINT-${args.pointId}`,
+            customFields: {
+                pointId: args.pointId,
+                pointName: args.pointName,
+                pointAddress: args.pointAddress,
+            },
+        };
+    },
+});
+```
+
+- [ ] **Step 4: 修改 plugin.ts 集成自提点**
+
+在 `configuration` 函数中注册：
+
+```typescript
+if (CjkPlugin.options.pickupPoint?.enabled) {
+    config.shippingOptions = config.shippingOptions || {};
+    config.shippingOptions.shippingEligibilityCheckers = [
+        ...(config.shippingOptions.shippingEligibilityCheckers || []),
+        pickupPointEligibilityChecker,
+    ];
+    config.shippingOptions.shippingCalculators = [
+        ...(config.shippingOptions.shippingCalculators || []),
+        pickupPointCalculator,
+    ];
+    config.shippingOptions.fulfillmentHandlers = [
+        ...(config.shippingOptions.fulfillmentHandlers || []),
+        pickupPointFulfillmentHandler,
+    ];
+}
+```
+
+在 `onApplicationBootstrap` 中添加日志：
+
+```typescript
+if (this.options.pickupPoint?.enabled) {
+    Logger.info('Pickup point shipping module enabled', loggerCtx);
+}
+```
+
+- [ ] **Step 5: 构建验证**
+
+Run: `cd e:\code\vendure\packages\cjk-plugin && npm run build`
+
+- [ ] **Step 6: 提交**
+
+```bash
+git add packages/cjk-plugin/
+git commit -m "feat(cjk-plugin): add pickup point shipping module"
+```
+
+---
+
+### Task 10: 阿里云 OSS 存储模块
 
 **Files:**
 - Create: `packages/cjk-plugin/src/storage/oss-strategy.ts`
@@ -1334,7 +1733,7 @@ git commit -m "feat(cjk-plugin): add Aliyun OSS storage strategy"
 
 ---
 
-### Task 8: 手机号认证模块
+### Task 11: 手机号认证模块
 
 **Files:**
 - Create: `packages/cjk-plugin/src/auth/phone-authentication-strategy.ts`
@@ -1544,7 +1943,7 @@ git commit -m "feat(cjk-plugin): add phone authentication with SMS verification"
 
 ---
 
-### Task 9: 更新 index.ts 导出
+### Task 12: 更新 index.ts 导出
 
 **Files:**
 - Modify: `packages/cjk-plugin/index.ts`
@@ -1557,6 +1956,9 @@ export * from './src/types';
 export * from './src/constants';
 export { alipayPaymentHandler } from './src/payment/alipay/alipay-handler';
 export { wechatpayPaymentHandler } from './src/payment/wechatpay/wechatpay-handler';
+export { codPaymentHandler } from './src/payment/cod/cod-handler';
+export { storePickupEligibilityChecker, storePickupCalculator, storePickupFulfillmentHandler } from './src/shipping/store-pickup';
+export { pickupPointEligibilityChecker, pickupPointCalculator, pickupPointFulfillmentHandler } from './src/shipping/pickup-point';
 export { OssAssetStorageStrategy } from './src/storage/oss-strategy';
 export { PhoneAuthenticationStrategy } from './src/auth/phone-authentication-strategy';
 export { SmsService } from './src/auth/sms.service';

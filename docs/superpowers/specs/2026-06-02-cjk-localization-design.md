@@ -42,10 +42,21 @@ packages/cjk-plugin/
 │   │   │   ├── alipay-handler.ts          # 支付宝 PaymentMethodHandler
 │   │   │   ├── alipay.controller.ts       # 支付回调 Controller
 │   │   │   └── types.ts
-│   │   └── wechatpay/
-│   │       ├── wechatpay-handler.ts       # 微信支付 PaymentMethodHandler
-│   │       ├── wechatpay.controller.ts    # 支付回调 Controller
-│   │       └── types.ts
+│   │   ├── wechatpay/
+│   │   │   ├── wechatpay-handler.ts       # 微信支付 PaymentMethodHandler
+│   │   │   ├── wechatpay.controller.ts    # 支付回调 Controller
+│   │   │   └── types.ts
+│   │   └── cod/
+│   │       └── cod-handler.ts             # 货到付款 PaymentMethodHandler
+│   ├── shipping/                          # 配送方式
+│   │   ├── store-pickup/                  # 门店自提
+│   │   │   ├── pickup-eligibility-checker.ts
+│   │   │   ├── pickup-calculator.ts
+│   │   │   └── pickup-fulfillment-handler.ts
+│   │   └── pickup-point/                  # 自提点自提
+│   │       ├── point-eligibility-checker.ts
+│   │       ├── point-calculator.ts
+│   │       └── point-fulfillment-handler.ts
 │   ├── storage/                           # 云存储
 │   │   └── oss-strategy.ts               # 阿里云 OSS AssetStorageStrategy
 │   └── auth/                              # 认证扩展
@@ -90,6 +101,23 @@ interface CjkPluginOptions {
     certPath?: string;                    // 证书路径（退款需要）
     notifyUrl?: string;                   // 支付回调地址
     tradeType?: 'JSAPI' | 'NATIVE' | 'APP';  // 默认 NATIVE
+  };
+
+  // 货到付款
+  cod?: {
+    enabled?: boolean;                    // 默认 false
+  };
+
+  // 门店自提
+  storePickup?: {
+    enabled?: boolean;                    // 默认 false
+    stores?: PickupStore[];               // 门店列表
+  };
+
+  // 自提点自提
+  pickupPoint?: {
+    enabled?: boolean;                    // 默认 false
+    points?: PickupPoint[];               // 自提点列表
   };
 
   // 阿里云 OSS 存储
@@ -284,6 +312,95 @@ class PhoneAuthenticationStrategy implements AuthenticationStrategy {
 
 依赖：`@alicloud/dysmsapi20170525`（阿里云短信 SDK）
 
+### 7. 货到付款模块
+
+实现 `PaymentMethodHandler`，无需对接第三方支付，订单创建时直接标记为已授权，配送完成后手动结算。
+
+```typescript
+const codPaymentHandler = new PaymentMethodHandler({
+  code: 'cash-on-delivery',
+  description: [{ languageCode: LanguageCode.zh_Hans, value: '货到付款' }],
+  args: {},
+  createPayment: async (ctx, order, amount, args, metadata) => {
+    return {
+      amount,
+      state: 'Authorized',
+      transactionId: `COD-${order.code}`,
+      metadata: { method: 'cash-on-delivery' },
+    };
+  },
+  settlePayment: async (ctx, order, payment, args) => {
+    return { success: true };
+  },
+});
+```
+
+无外部依赖。
+
+### 8. 门店自提模块
+
+实现三个标准扩展：`ShippingEligibilityChecker` + `ShippingCalculator` + `FulfillmentHandler`。
+
+**数据模型**：门店信息通过配置注入，也可通过自定义实体持久化。
+
+```typescript
+interface PickupStore {
+  id: string;
+  name: string;              // 如 '北京朝阳门店'
+  address: string;           // 详细地址
+  phoneNumber?: string;      // 联系电话
+  businessHours?: string;    // 营业时间
+  coordinates?: { lat: number; lng: number };
+}
+```
+
+**ShippingEligibilityChecker**：始终返回 true（任何订单都可自提），或根据门店区域限制。
+
+**ShippingCalculator**：返回 `{ price: 0, taxRate: 0, priceIncludesTax: true }`（免费自提）。
+
+**FulfillmentHandler**：创建履约时记录门店信息，trackingCode 设为门店编号。
+
+```typescript
+const storePickupFulfillmentHandler = new FulfillmentHandler({
+  code: 'store-pickup',
+  description: [{ languageCode: LanguageCode.zh_Hans, value: '门店自提' }],
+  args: {
+    storeId: { type: 'string', label: [{ languageCode: LanguageCode.zh_Hans, value: '门店编号' }] },
+  },
+  createFulfillment: async (ctx, orders, lines, args) => {
+    return {
+      method: '门店自提',
+      trackingCode: `PICKUP-${args.storeId}`,
+      customFields: { storeId: args.storeId },
+    };
+  },
+});
+```
+
+无外部依赖。
+
+### 9. 自提点自提模块
+
+与门店自提结构类似，区别在于自提点通常是第三方物流网点（如菜鸟驿站、丰巢等）。
+
+```typescript
+interface PickupPoint {
+  id: string;
+  name: string;              // 如 '朝阳区菜鸟驿站'
+  address: string;
+  partner?: string;          // 合作方，如 'cainiao' | 'fengchao'
+  phoneNumber?: string;
+  businessHours?: string;
+  coordinates?: { lat: number; lng: number };
+}
+```
+
+**ShippingCalculator**：可配置固定费用或免费。
+
+**FulfillmentHandler**：创建履约时记录自提点信息，trackingCode 设为自提点编号。
+
+无外部依赖。
+
 ## GraphQL API 扩展
 
 ```graphql
@@ -315,6 +432,9 @@ extend type Mutation {
 | P1 | 地区数据（中国省市区） | 地址填写必需 |
 | P1 | 支付宝支付 | 中国市场核心 |
 | P1 | 微信支付 | 中国市场核心 |
+| P1 | 货到付款 | 中国市场常见支付方式 |
+| P1 | 门店自提 | O2O 场景必需 |
+| P1 | 自提点自提 | 电商标配 |
 | P2 | 阿里云 OSS | 生产部署需要 |
 | P2 | 手机号认证 | 用户体验优化 |
 
@@ -325,3 +445,5 @@ extend type Mutation {
 3. **Dashboard 翻译维护**：.po 文件需跟随 Dashboard 版本更新
 4. **微信支付证书**：退款接口需要商户证书，部署时需配置证书路径
 5. **OSS 跨域配置**：需在阿里云控制台配置 CORS 规则
+6. **货到付款风控**：需配合订单风控策略，避免恶意下单
+7. **自提点数据**：门店/自提点信息需通过 API 或配置动态提供，初始版本通过配置注入
