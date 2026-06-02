@@ -407,6 +407,12 @@ CouponStackableCondition 读取 `promotion.customFields` 和 `ctx.channel.custom
 
 **架构预留**：当前 cjk-plugin 的插件架构（分层独立包 + Channel 多租户 + CustomFields 扩展）已为后续功能提供良好的扩展基础，无需额外预留接口。
 
+**多租户约束**：所有后续功能插件必须遵循 Channel 即租户的多租户方案设计，即：
+- 实体必须实现 `ChannelAware` 接口，通过 `channels` ManyToMany 关联实现数据隔离
+- 业务逻辑通过 `ctx.channelId` 过滤数据，确保租户间不泄露
+- 配置通过 Channel CustomFields 或 PaymentMethodHandler.args 传入，支持渠道级覆盖
+- Admin API 按 Channel 权限控制访问
+
 ## 实施优先级
 
 | 优先级 | 模块 | 插件 |
