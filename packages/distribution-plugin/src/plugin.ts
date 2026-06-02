@@ -1,5 +1,6 @@
 import { Inject, OnApplicationBootstrap, Type } from '@nestjs/common';
 import { ChannelService, Logger, PluginCommonModule, RequestContext, VendurePlugin } from '@vendure/core';
+import gql from 'graphql-tag';
 
 import { DISTRIBUTION_PLUGIN_OPTIONS, loggerCtx } from './constants';
 import { CommissionJob } from './commission.job';
@@ -26,153 +27,100 @@ import { distributionCustomerCustomFields } from './customer-custom-fields';
         CommissionJob,
     ],
     adminApiExtensions: {
-        schema: () => {
-            const { gql } = require('graphql-tag');
-            return gql`
-                type Distributor {
-                    id: ID!
-                    customerId: ID!
-                    parentId: ID
-                    level: Int!
-                    status: String!
-                    totalEarnings: Int!
-                    availableBalance: Int!
-                    frozenBalance: Int!
-                    referralCode: String!
-                    createdAt: DateTime!
-                    updatedAt: DateTime!
-                }
+        schema: () => gql`
+            enum DistributorStatus { active frozen pending }
+            enum CommissionType { direct indirect }
+            enum CommissionStatus { pending confirmed paid cancelled }
+            enum WithdrawalMethod { bank alipay wechat }
+            enum WithdrawalStatus { pending approved rejected paid }
 
-                type DistributorList implements PaginatedList {
-                    items: [Distributor!]!
-                    totalItems: Int!
-                }
+            type Distributor {
+                id: ID!
+                customerId: ID!
+                parentId: ID
+                level: Int!
+                status: DistributorStatus!
+                totalEarnings: Int!
+                availableBalance: Int!
+                frozenBalance: Int!
+                referralCode: String!
+                createdAt: DateTime!
+                updatedAt: DateTime!
+            }
 
-                type CommissionRecord {
-                    id: ID!
-                    distributorId: ID!
-                    orderId: ID!
-                    orderLineId: ID
-                    fromDistributorId: ID
-                    commissionType: String!
-                    commissionRate: Int!
-                    orderAmount: Int!
-                    commissionAmount: Int!
-                    status: String!
-                    settledAt: DateTime
-                    createdAt: DateTime!
-                    updatedAt: DateTime!
-                }
+            type CommissionRecord {
+                id: ID!
+                distributorId: ID!
+                orderId: ID!
+                commissionType: CommissionType!
+                commissionRate: Int!
+                orderAmount: Int!
+                commissionAmount: Int!
+                status: CommissionStatus!
+                settledAt: DateTime
+                createdAt: DateTime!
+            }
 
-                type CommissionRecordList implements PaginatedList {
-                    items: [CommissionRecord!]!
-                    totalItems: Int!
-                }
+            type WithdrawalRequest {
+                id: ID!
+                distributorId: ID!
+                amount: Int!
+                method: WithdrawalMethod!
+                accountInfo: String!
+                status: WithdrawalStatus!
+                reviewedAt: DateTime
+                paidAt: DateTime
+                createdAt: DateTime!
+            }
 
-                type WithdrawalRequest {
-                    id: ID!
-                    distributorId: ID!
-                    amount: Int!
-                    method: String!
-                    accountInfo: String!
-                    status: String!
-                    reviewedAt: DateTime
-                    paidAt: DateTime
-                    createdAt: DateTime!
-                    updatedAt: DateTime!
-                }
+            type DistributorList implements PaginatedList {
+                items: [Distributor!]!
+                totalItems: Int!
+            }
 
-                type WithdrawalRequestList implements PaginatedList {
-                    items: [WithdrawalRequest!]!
-                    totalItems: Int!
-                }
+            type CommissionRecordList implements PaginatedList {
+                items: [CommissionRecord!]!
+                totalItems: Int!
+            }
 
-                extend type Query {
-                    distributors(options: ListQueryOptions): DistributorList!
-                    commissionRecords(options: ListQueryOptions): CommissionRecordList!
-                    withdrawalRequests(options: ListQueryOptions): WithdrawalRequestList!
-                }
+            type WithdrawalRequestList implements PaginatedList {
+                items: [WithdrawalRequest!]!
+                totalItems: Int!
+            }
 
-                extend type Mutation {
-                    approveDistributor(id: ID!): Distributor!
-                    freezeDistributor(id: ID!): Distributor!
-                    approveWithdrawal(id: ID!): WithdrawalRequest!
-                    rejectWithdrawal(id: ID!): WithdrawalRequest!
-                    markWithdrawalPaid(id: ID!): WithdrawalRequest!
-                }
-            `;
-        },
+            input DistributorListOptions
+            input CommissionRecordListOptions
+            input WithdrawalRequestListOptions
+
+            extend type Query {
+                distributors(options: DistributorListOptions): DistributorList!
+                commissionRecords(options: CommissionRecordListOptions): CommissionRecordList!
+                withdrawalRequests(options: WithdrawalRequestListOptions): WithdrawalRequestList!
+            }
+
+            extend type Mutation {
+                approveDistributor(id: ID!): Distributor!
+                freezeDistributor(id: ID!): Distributor!
+                approveWithdrawal(id: ID!): WithdrawalRequest!
+                rejectWithdrawal(id: ID!): WithdrawalRequest!
+                markWithdrawalPaid(id: ID!): WithdrawalRequest!
+            }
+        `,
         resolvers: [DistributionAdminResolver],
     },
     shopApiExtensions: {
-        schema: () => {
-            const { gql } = require('graphql-tag');
-            return gql`
-                type Distributor {
-                    id: ID!
-                    customerId: ID!
-                    parentId: ID
-                    level: Int!
-                    status: String!
-                    totalEarnings: Int!
-                    availableBalance: Int!
-                    frozenBalance: Int!
-                    referralCode: String!
-                    createdAt: DateTime!
-                    updatedAt: DateTime!
-                }
+        schema: () => gql`
+            extend type Query {
+                myDistributorProfile: Distributor
+                myCommissionRecords: [CommissionRecord!]!
+                myWithdrawalRequests: [WithdrawalRequest!]!
+            }
 
-                type CommissionRecord {
-                    id: ID!
-                    distributorId: ID!
-                    orderId: ID!
-                    orderLineId: ID
-                    fromDistributorId: ID
-                    commissionType: String!
-                    commissionRate: Int!
-                    orderAmount: Int!
-                    commissionAmount: Int!
-                    status: String!
-                    settledAt: DateTime
-                    createdAt: DateTime!
-                    updatedAt: DateTime!
-                }
-
-                type CommissionRecordList implements PaginatedList {
-                    items: [CommissionRecord!]!
-                    totalItems: Int!
-                }
-
-                type WithdrawalRequest {
-                    id: ID!
-                    distributorId: ID!
-                    amount: Int!
-                    method: String!
-                    accountInfo: String!
-                    status: String!
-                    reviewedAt: DateTime
-                    paidAt: DateTime
-                    createdAt: DateTime!
-                    updatedAt: DateTime!
-                }
-
-                type WithdrawalRequestList implements PaginatedList {
-                    items: [WithdrawalRequest!]!
-                    totalItems: Int!
-                }
-
-                extend type Query {
-                    myDistributorProfile: Distributor
-                    myCommissionRecords(options: ListQueryOptions): CommissionRecordList!
-                    myWithdrawalRequests(options: ListQueryOptions): WithdrawalRequestList!
-                }
-
-                extend type Mutation {
-                    applyDistributor(referredByCode: String): Distributor!
-                    requestWithdrawal(amount: Int!, method: String!, accountInfo: String!): WithdrawalRequest!
-                }
-            `;
-        },
+            extend type Mutation {
+                applyDistributor: Distributor!
+                requestWithdrawal(amount: Int!, method: WithdrawalMethod!, accountInfo: String!): WithdrawalRequest!
+            }
+        `,
         resolvers: [DistributionShopResolver],
     },
     configuration: config => {

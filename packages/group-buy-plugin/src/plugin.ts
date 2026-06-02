@@ -15,116 +15,6 @@ import { groupBuyLeaderRewardCondition } from './group-buy-leader-promotion';
 
 const { gql } = require('graphql-tag');
 
-const adminSchema = gql`
-    type GroupBuyActivity {
-        id: ID!
-        name: String!
-        description: String!
-        targetCount: Int!
-        currentCount: Int!
-        maxCount: Int!
-        status: String!
-        startAt: DateTime!
-        endAt: DateTime!
-        productId: ID!
-        variantId: ID!
-        groupPrice: Int!
-        leaderDiscount: Int!
-        leaderRewardType: String!
-        rewardRules: JSON
-        autoConfirm: Boolean!
-        allowJoinAfterComplete: Boolean!
-    }
-
-    type GroupBuyActivityList implements PaginatedList {
-        items: [GroupBuyActivity!]!
-        totalItems: Int!
-    }
-
-    input CreateGroupBuyActivityInput {
-        name: String!
-        description: String!
-        targetCount: Int!
-        maxCount: Int
-        startAt: DateTime!
-        endAt: DateTime!
-        productId: ID!
-        variantId: ID!
-        groupPrice: Int!
-        leaderDiscount: Int
-        leaderRewardType: String
-        rewardRules: JSON
-        autoConfirm: Boolean
-        allowJoinAfterComplete: Boolean
-    }
-
-    input UpdateGroupBuyActivityInput {
-        id: ID!
-        name: String
-        description: String
-        targetCount: Int
-        maxCount: Int
-        status: String
-        startAt: DateTime
-        endAt: DateTime
-        groupPrice: Int
-        leaderDiscount: Int
-        leaderRewardType: String
-        rewardRules: JSON
-        autoConfirm: Boolean
-        allowJoinAfterComplete: Boolean
-    }
-
-    extend type Query {
-        groupBuyActivities(options: ListQueryOptions): GroupBuyActivityList!
-        groupBuyActivity(id: ID!): GroupBuyActivity
-    }
-
-    extend type Mutation {
-        createGroupBuyActivity(input: CreateGroupBuyActivityInput!): GroupBuyActivity!
-        updateGroupBuyActivity(input: UpdateGroupBuyActivityInput!): GroupBuyActivity!
-        deleteGroupBuyActivity(id: ID!): Boolean!
-    }
-`;
-
-const shopSchema = gql`
-    type GroupBuyActivity {
-        id: ID!
-        name: String!
-        description: String!
-        targetCount: Int!
-        currentCount: Int!
-        maxCount: Int!
-        status: String!
-        startAt: DateTime!
-        endAt: DateTime!
-        productId: ID!
-        variantId: ID!
-        groupPrice: Int!
-        leaderDiscount: Int!
-        leaderRewardType: String!
-        rewardRules: JSON
-        autoConfirm: Boolean!
-        allowJoinAfterComplete: Boolean!
-    }
-
-    type GroupBuyOrder {
-        id: ID!
-        groupBuyActivityId: ID!
-        orderId: ID!
-        isLeader: Boolean!
-        status: String!
-    }
-
-    extend type Query {
-        activeGroupBuyActivities(variantId: ID!): [GroupBuyActivity!]!
-    }
-
-    extend type Mutation {
-        joinGroupBuy(activityId: ID!, orderId: ID!, isLeader: Boolean!): GroupBuyOrder!
-    }
-`;
-
 @VendurePlugin({
     imports: [PluginCommonModule],
     entities: [GroupBuyActivity, GroupBuyOrder],
@@ -134,11 +24,93 @@ const shopSchema = gql`
         GroupBuyJob,
     ],
     adminApiExtensions: {
-        schema: adminSchema,
+        schema: () => gql`
+            enum GroupBuyStatus { active completed expired }
+
+            type GroupBuyActivity {
+                id: ID!
+                name: String!
+                description: String!
+                targetCount: Int!
+                currentCount: Int!
+                maxCount: Int!
+                status: GroupBuyStatus!
+                startAt: DateTime!
+                endAt: DateTime!
+                groupPrice: Int!
+                leaderDiscount: Int!
+                leaderRewardType: String!
+                autoConfirm: Boolean!
+                allowJoinAfterComplete: Boolean!
+                createdAt: DateTime!
+                updatedAt: DateTime!
+            }
+
+            type GroupBuyActivityList implements PaginatedList {
+                items: [GroupBuyActivity!]!
+                totalItems: Int!
+            }
+
+            input CreateGroupBuyActivityInput {
+                name: String!
+                description: String!
+                targetCount: Int!
+                maxCount: Int
+                startAt: DateTime!
+                endAt: DateTime!
+                groupPrice: Int!
+                leaderDiscount: Int
+                leaderRewardType: String
+                autoConfirm: Boolean
+                allowJoinAfterComplete: Boolean
+                productId: ID!
+                variantId: ID!
+            }
+
+            input UpdateGroupBuyActivityInput {
+                id: ID!
+                name: String
+                description: String
+                targetCount: Int
+                maxCount: Int
+                startAt: DateTime
+                endAt: DateTime
+                groupPrice: Int
+                leaderDiscount: Int
+                status: GroupBuyStatus
+            }
+
+            extend type Query {
+                groupBuyActivities(options: Json): GroupBuyActivityList!
+                groupBuyActivity(id: ID!): GroupBuyActivity
+            }
+
+            extend type Mutation {
+                createGroupBuyActivity(input: CreateGroupBuyActivityInput!): GroupBuyActivity!
+                updateGroupBuyActivity(input: UpdateGroupBuyActivityInput!): GroupBuyActivity!
+                deleteGroupBuyActivity(id: ID!): Boolean!
+            }
+        `,
         resolvers: [GroupBuyAdminResolver],
     },
     shopApiExtensions: {
-        schema: shopSchema,
+        schema: () => gql`
+            type GroupBuyOrderResult {
+                id: ID!
+                groupBuyActivityId: ID!
+                isLeader: Boolean!
+                status: String!
+            }
+
+            extend type Query {
+                activeGroupBuyActivities: [GroupBuyActivity!]!
+                groupBuyActivity(id: ID!): GroupBuyActivity
+            }
+
+            extend type Mutation {
+                joinGroupBuy(activityId: ID!, isLeader: Boolean!): GroupBuyOrderResult!
+            }
+        `,
         resolvers: [GroupBuyShopResolver],
     },
     configuration: (config) => {

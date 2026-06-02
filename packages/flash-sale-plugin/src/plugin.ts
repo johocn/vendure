@@ -13,88 +13,6 @@ import { FlashSaleShopResolver } from './flash-sale-shop.resolver';
 import { FlashSalePluginOptions } from './types';
 import { flashSaleOrderCustomFields } from './order-custom-fields';
 
-const adminSchema = gql`
-    type FlashSaleActivity {
-        id: ID!
-        name: String!
-        startAt: DateTime!
-        endAt: DateTime!
-        flashPrice: Int!
-        totalStock: Int!
-        soldCount: Int!
-        limitPerUser: Int!
-        productId: Int!
-        variantId: Int!
-        status: String!
-    }
-
-    type FlashSaleActivityList implements PaginatedList {
-        items: [FlashSaleActivity!]!
-        totalItems: Int!
-    }
-
-    input CreateFlashSaleActivityInput {
-        name: String!
-        startAt: DateTime!
-        endAt: DateTime!
-        flashPrice: Int!
-        totalStock: Int!
-        limitPerUser: Int
-        productId: Int!
-        variantId: Int!
-    }
-
-    input UpdateFlashSaleActivityInput {
-        id: ID!
-        name: String
-        startAt: DateTime
-        endAt: DateTime
-        flashPrice: Int
-        totalStock: Int
-        limitPerUser: Int
-        productId: Int
-        variantId: Int
-        status: String
-    }
-
-    extend type Query {
-        flashSaleActivities(options: ListQueryOptions): FlashSaleActivityList!
-        flashSaleActivity(id: ID!): FlashSaleActivity
-    }
-
-    extend type Mutation {
-        createFlashSaleActivity(input: CreateFlashSaleActivityInput!): FlashSaleActivity!
-        updateFlashSaleActivity(input: UpdateFlashSaleActivityInput!): FlashSaleActivity!
-        deleteFlashSaleActivity(id: ID!): Boolean!
-    }
-`;
-
-const shopSchema = gql`
-    type FlashSaleActivity {
-        id: ID!
-        name: String!
-        startAt: DateTime!
-        endAt: DateTime!
-        flashPrice: Int!
-        totalStock: Int!
-        soldCount: Int!
-        limitPerUser: Int!
-        productId: Int!
-        variantId: Int!
-        status: String!
-    }
-
-    type FlashSaleActivityList implements PaginatedList {
-        items: [FlashSaleActivity!]!
-        totalItems: Int!
-    }
-
-    extend type Query {
-        activeFlashSaleActivities(options: ListQueryOptions): FlashSaleActivityList!
-        flashSaleActivity(id: ID!): FlashSaleActivity
-    }
-`;
-
 @VendurePlugin({
     imports: [PluginCommonModule],
     entities: [FlashSaleActivity],
@@ -104,11 +22,70 @@ const shopSchema = gql`
         FlashSaleJob,
     ],
     adminApiExtensions: {
-        schema: adminSchema,
+        schema: () => gql`
+            enum FlashSaleStatus { upcoming active ended }
+
+            type FlashSaleActivity {
+                id: ID!
+                name: String!
+                startAt: DateTime!
+                endAt: DateTime!
+                flashPrice: Int!
+                totalStock: Int!
+                soldCount: Int!
+                limitPerUser: Int!
+                status: FlashSaleStatus!
+                createdAt: DateTime!
+                updatedAt: DateTime!
+            }
+
+            type FlashSaleActivityList implements PaginatedList {
+                items: [FlashSaleActivity!]!
+                totalItems: Int!
+            }
+
+            input CreateFlashSaleActivityInput {
+                name: String!
+                startAt: DateTime!
+                endAt: DateTime!
+                flashPrice: Int!
+                totalStock: Int!
+                limitPerUser: Int
+                productId: ID!
+                variantId: ID!
+            }
+
+            input UpdateFlashSaleActivityInput {
+                id: ID!
+                name: String
+                startAt: DateTime
+                endAt: DateTime
+                flashPrice: Int
+                totalStock: Int
+                limitPerUser: Int
+                status: FlashSaleStatus
+            }
+
+            extend type Query {
+                flashSaleActivities(options: Json): FlashSaleActivityList!
+                flashSaleActivity(id: ID!): FlashSaleActivity
+            }
+
+            extend type Mutation {
+                createFlashSaleActivity(input: CreateFlashSaleActivityInput!): FlashSaleActivity!
+                updateFlashSaleActivity(input: UpdateFlashSaleActivityInput!): FlashSaleActivity!
+                deleteFlashSaleActivity(id: ID!): Boolean!
+            }
+        `,
         resolvers: [FlashSaleAdminResolver],
     },
     shopApiExtensions: {
-        schema: shopSchema,
+        schema: () => gql`
+            extend type Query {
+                activeFlashSaleActivities: [FlashSaleActivity!]!
+                flashSaleActivity(id: ID!): FlashSaleActivity
+            }
+        `,
         resolvers: [FlashSaleShopResolver],
     },
     configuration: (config) => {

@@ -24,6 +24,18 @@ import { TelemetryPlugin } from '@vendure/telemetry-plugin';
 import 'dotenv/config';
 import path from 'path';
 import { DataSourceOptions } from 'typeorm';
+import { CjkPlugin } from '@vendure/cjk-plugin';
+import { AlipayPlugin } from '@vendure/alipay-plugin';
+import { WechatpayPlugin } from '@vendure/wechatpay-plugin';
+import { OssPlugin } from '@vendure/oss-plugin';
+import { PhoneAuthPlugin } from '@vendure/phone-auth-plugin';
+import { WechatAuthPlugin } from '@vendure/wechat-auth-plugin';
+import { OrderTimeoutPlugin } from '@vendure/order-timeout-plugin';
+import { InvoicePlugin } from '@vendure/invoice-plugin';
+import { LogisticsPlugin } from '@vendure/logistics-plugin';
+import { GroupBuyPlugin } from '@vendure/group-buy-plugin';
+import { FlashSalePlugin } from '@vendure/flash-sale-plugin';
+import { DistributionPlugin } from '@vendure/distribution-plugin';
 import { NavModifierPlugin } from './test-plugins/nav-modifier-plugin/nav-modifier-plugin';
 // import { FieldTestPlugin } from './test-plugins/field-test/field-test-plugin';
 import { ReviewsPlugin } from './test-plugins/reviews/reviews-plugin';
@@ -198,6 +210,41 @@ export const devConfig: VendureConfig = {
         DashboardPlugin.init({
             route: 'dashboard',
             appDir: path.join(__dirname, './dist'),
+        }),
+        CjkPlugin.init({ i18n: { enabled: true }, regions: { enabled: true } }),
+        AlipayPlugin.init({
+            notifyUrl: process.env.ALIPAY_NOTIFY_URL ?? '',
+            alipayPublicKey: process.env.ALIPAY_PUBLIC_KEY ?? '',
+        }),
+        WechatpayPlugin.init({
+            notifyUrl: process.env.WECHATPAY_NOTIFY_URL ?? '',
+        }),
+        OssPlugin.init({
+            region: process.env.OSS_REGION ?? '',
+            accessKeyId: process.env.OSS_ACCESS_KEY_ID ?? '',
+            accessKeySecret: process.env.OSS_ACCESS_KEY_SECRET ?? '',
+            bucket: process.env.OSS_BUCKET ?? '',
+        }),
+        PhoneAuthPlugin.init({
+            accessKeyId: process.env.SMS_ACCESS_KEY_ID ?? '',
+            accessKeySecret: process.env.SMS_ACCESS_KEY_SECRET ?? '',
+            signName: process.env.SMS_SIGN_NAME ?? '',
+            templateCode: process.env.SMS_TEMPLATE_CODE ?? '',
+        }),
+        WechatAuthPlugin.init({
+            appId: process.env.WECHAT_AUTH_APP_ID ?? '',
+            appSecret: process.env.WECHAT_AUTH_APP_SECRET ?? '',
+        }),
+        OrderTimeoutPlugin.init({ defaultTimeoutMinutes: 30 }),
+        InvoicePlugin.init(),
+        LogisticsPlugin.init(),
+        GroupBuyPlugin.init({ defaultTimeoutMinutes: 60 }),
+        FlashSalePlugin.init({ defaultTimeoutMinutes: 15 }),
+        DistributionPlugin.init({
+            defaultDirectRate: 1000,
+            defaultIndirectRate: 500,
+            minWithdrawalAmount: 10000,
+            settlementDays: 7,
         }),
     ],
 };
