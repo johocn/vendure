@@ -388,6 +388,24 @@ CouponStackableCondition 读取 `promotion.customFields` 和 `ctx.channel.custom
 | 发票 | ❌ 后续 | - |
 | 物流追踪 | ❌ 后续 | - |
 | 订单超时自动取消 | ❌ 后续 | - |
+| 拼团 | ❌ 后续 | - |
+| 秒杀 | ❌ 后续 | - |
+| 分销/佣金 | ❌ 后续 | - |
+
+## 后续规划功能（独立子系统）
+
+以下功能与 CJK 本地化正交，各自是独立子系统，后续独立规划为独立插件包：
+
+| 功能 | 复杂度 | 依赖 | 建议包名 |
+|------|--------|------|----------|
+| 拼团 | 高 | OrderProcess + Promotion + 自定义实体 | `@vendure/group-buy-plugin` |
+| 秒杀 | 高 | 库存锁定 + 时间窗口 + 高并发 | `@vendure/flash-sale-plugin` |
+| 物流追踪 | 中 | FulfillmentHandler + 第三方 API | `@vendure/logistics-plugin` |
+| 分销/佣金 | 高 | 自定义实体 + 结算系统 | `@vendure/distribution-plugin` |
+| 发票 | 中 | Order CustomFields + PDF 生成 | `@vendure/invoice-plugin` |
+| 订单超时自动取消 | 低 | JobQueue + OrderProcess | `@vendure/order-timeout-plugin` |
+
+**架构预留**：当前 cjk-plugin 的插件架构（分层独立包 + Channel 多租户 + CustomFields 扩展）已为后续功能提供良好的扩展基础，无需额外预留接口。
 
 ## 实施优先级
 
