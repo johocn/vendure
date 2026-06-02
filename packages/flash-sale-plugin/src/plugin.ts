@@ -1,5 +1,5 @@
 import { Inject, OnApplicationBootstrap, Type } from '@nestjs/common';
-import { Logger, PluginCommonModule, VendurePlugin } from '@vendure/core';
+import { Logger, PluginCommonModule, VendurePlugin, Injector, OrderCancelledEvent, EventBus } from '@vendure/core';
 import gql from 'graphql-tag';
 
 import { FLASH_SALE_PLUGIN_OPTIONS, loggerCtx } from './constants';
@@ -129,6 +129,29 @@ export class FlashSalePlugin implements OnApplicationBootstrap {
         @Inject(FLASH_SALE_PLUGIN_OPTIONS) private options: FlashSalePluginOptions,
         private flashSaleJob: FlashSaleJob,
     ) {}
+
+    init(injector: Injector): void {
+        const flashSaleService = injector.get(FlashSaleService);
+        flashSaleService.init(injector);
+        const flashSaleJob = injector.get(FlashSaleJob);
+        flashSaleJob.initStock(injector);
+
+        const eventBus = injector.get(EventBus);
+        eventBus.ofType(OrderCancelledEvent).subscribe(async (event) => {
+            const order = event.entity as any;
+            const activityId = order?.customFields?.flashSaleActivityId;
+            if (!activityId) return;
+            try {
+                const { StockReserveService } = require('@vendure/redis-stock-plugin');
+                const stockReserveService = injector.get(StockReserveService);
+                if (stockReserveService?.isAvailable) {
+                    await stockReserveService.releaseStock(`flash-sale:${activityId}`, 1);
+                }
+            } catch {
+                // RedisStockPlugin not installed
+            }
+        });
+    }
 
     static init(options?: FlashSalePluginOptions): Type<FlashSalePlugin> {
         FlashSalePlugin.options = options ?? {};

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
     ID,
+    Injector,
     ListQueryBuilder,
     ListQueryOptions,
     Logger,
@@ -20,6 +21,17 @@ export class FlashSaleService {
         private listQueryBuilder: ListQueryBuilder,
         private orderService: OrderService,
     ) {}
+
+    private stockReserveService: any = null;
+
+    init(injector: Injector): void {
+        try {
+            const { StockReserveService } = require('@vendure/redis-stock-plugin');
+            this.stockReserveService = injector.get(StockReserveService);
+        } catch {
+            // RedisStockPlugin not installed, use DB fallback
+        }
+    }
 
     async findAll(
         ctx: RequestContext,
@@ -90,8 +102,18 @@ export class FlashSaleService {
             return { eligible: false, reason: 'Activity has ended' };
         }
 
-        if (activity.soldCount >= activity.totalStock) {
-            return { eligible: false, reason: 'Stock sold out' };
+        if (this.stockReserveService?.isAvailable) {
+            const remaining = await this.stockReserveService.reserveStock(
+                `flash-sale:${activityId}`,
+                1,
+            );
+            if (remaining < 0) {
+                return { eligible: false, reason: 'Stock sold out' };
+            }
+        } else {
+            if (activity.soldCount >= activity.totalStock) {
+                return { eligible: false, reason: 'Stock sold out' };
+            }
         }
 
         const existingOrders = await this.orderService.findByCustomerId(ctx, customerId);
@@ -99,6 +121,9 @@ export class FlashSaleService {
             (o: any) => o.customFields?.flashSaleActivityId === activityId && o.state !== 'Cancelled',
         );
         if (flashSaleOrders.length >= activity.limitPerUser) {
+            if (this.stockReserveService?.isAvailable) {
+                await this.stockReserveService.releaseStock(`flash-sale:${activityId}`, 1);
+            }
             return { eligible: false, reason: 'Purchase limit exceeded' };
         }
 
