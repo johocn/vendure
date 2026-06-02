@@ -19,6 +19,7 @@ import { OrderTimeoutJob } from './order-timeout.job';
         ];
         return config;
     },
+    dashboard: './dashboard/index.tsx',
     compatibility: '^3.0.0',
 })
 export class OrderTimeoutPlugin implements OnApplicationBootstrap {
