@@ -1,0 +1,114 @@
+import { Injectable } from '@nestjs/common';
+import { Channel, ID, ListQueryBuilder, ListQueryOptions, PaginatedList, RequestContext, TransactionalConnection } from '@vendure/core';
+
+import { Distributor } from './distributor.entity';
+import { loggerCtx } from './constants';
+
+@Injectable()
+export class DistributionService {
+    constructor(
+        private connection: TransactionalConnection,
+        private listQueryBuilder: ListQueryBuilder,
+    ) {}
+
+    findAll(ctx: RequestContext, options?: ListQueryOptions<Distributor>): Promise<PaginatedList<Distributor>> {
+        return this.listQueryBuilder
+            .build(Distributor, options, {
+                ctx,
+                channelId: ctx.channelId,
+                relations: ['channels'],
+            })
+            .getManyAndCount()
+            .then(([items, totalItems]) => ({ items, totalItems }));
+    }
+
+    findOne(ctx: RequestContext, id: ID): Promise<Distributor | undefined> {
+        return this.connection
+            .findOneInChannel(ctx, Distributor, id, ctx.channelId, { relations: ['channels'] })
+            .then(result => result ?? undefined);
+    }
+
+    async findByReferralCode(ctx: RequestContext, referralCode: string): Promise<Distributor | undefined> {
+        const repo = this.connection.getRepository(ctx, Distributor);
+        const result = await repo
+            .createQueryBuilder('distributor')
+            .leftJoinAndSelect('distributor.channels', 'channel')
+            .where('distributor.referralCode = :referralCode', { referralCode })
+            .andWhere('channel.id = :channelId', { channelId: ctx.channelId })
+            .getOne();
+        return result ?? undefined;
+    }
+
+    async findByCustomerId(ctx: RequestContext, customerId: ID): Promise<Distributor | undefined> {
+        const repo = this.connection.getRepository(ctx, Distributor);
+        const result = await repo
+            .createQueryBuilder('distributor')
+            .leftJoinAndSelect('distributor.channels', 'channel')
+            .where('distributor.customerId = :customerId', { customerId })
+            .andWhere('channel.id = :channelId', { channelId: ctx.channelId })
+            .getOne();
+        return result ?? undefined;
+    }
+
+    async apply(ctx: RequestContext, customerId: ID, referredByCode?: string): Promise<Distributor> {
+        const existing = await this.findByCustomerId(ctx, customerId);
+        if (existing) {
+            return existing;
+        }
+
+        const referralCode = this.generateReferralCode();
+        let parentId: ID | undefined;
+        let level = 1;
+
+        if (referredByCode) {
+            const parent = await this.findByReferralCode(ctx, referredByCode);
+            if (parent && parent.status === 'active') {
+                parentId = parent.id;
+                level = parent.level + 1;
+            }
+        }
+
+        const distributor = new Distributor({
+            customerId,
+            parentId: parentId ?? null,
+            level,
+            status: 'pending',
+            totalEarnings: 0,
+            availableBalance: 0,
+            frozenBalance: 0,
+            referralCode,
+        });
+
+        const channel = await this.connection.getEntityOrThrow(ctx, Channel, ctx.channelId);
+        distributor.channels = [channel];
+
+        return this.connection.getRepository(ctx, Distributor).save(distributor);
+    }
+
+    async approve(ctx: RequestContext, id: ID): Promise<Distributor> {
+        const distributor = await this.findOne(ctx, id);
+        if (!distributor) {
+            throw new Error(`Distributor ${id} not found`);
+        }
+        distributor.status = 'active';
+        return this.connection.getRepository(ctx, Distributor).save(distributor);
+    }
+
+    async freeze(ctx: RequestContext, id: ID): Promise<Distributor> {
+        const distributor = await this.findOne(ctx, id);
+        if (!distributor) {
+            throw new Error(`Distributor ${id} not found`);
+        }
+        distributor.status = 'frozen';
+        return this.connection.getRepository(ctx, Distributor).save(distributor);
+    }
+
+    generateReferralCode(): string {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        let code = '';
+        for (let i = 0; i < 8; i++) {
+            code += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return code;
+    }
+}
