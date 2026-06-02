@@ -152,6 +152,7 @@ const { gql } = require('graphql-tag');
 
         return config;
     },
+    dashboard: './dashboard/index.tsx',
     compatibility: '^3.0.0',
 })
 export class GroupBuyPlugin implements OnApplicationBootstrap {
