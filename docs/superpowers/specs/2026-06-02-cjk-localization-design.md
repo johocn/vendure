@@ -76,6 +76,13 @@ packages/
         ├── phone-authentication-strategy.ts
         ├── sms.service.ts
         └── auth.resolver.ts
+│
+└── wechat-auth-plugin/          # 微信登录独立插件
+    └── src/
+        ├── plugin.ts
+        ├── wechat-auth-strategy.ts
+        ├── wechat-auth.controller.ts
+        └── types.ts
 ```
 
 ## 配置接口
@@ -370,6 +377,43 @@ CouponStackableCondition 读取 `promotion.customFields` 和 `ctx.channel.custom
 
 `AuthenticationStrategy` + GraphQL resolver，独立插件。
 
+### 11. 微信登录（wechat-auth-plugin）
+
+支持两种场景：
+- **公众号扫码登录**：PC 端，用户扫码后通过 `code` 换取 `access_token` + `openid`
+- **小程序授权登录**：移动端，用户授权后通过 `code` 换取 `openid` + `session_key`
+
+```typescript
+interface WechatAuthPluginOptions {
+  appId: string;
+  appSecret: string;
+  miniProgramAppId?: string;
+  miniProgramAppSecret?: string;
+}
+```
+
+实现 `AuthenticationStrategy`，name 为 `wechat`：
+
+```typescript
+class WechatAuthenticationStrategy implements AuthenticationStrategy {
+  readonly name = 'wechat';
+
+  async authenticate(ctx, data: { code: string; type: 'mp' | 'mini' }): Promise<User | false> {
+    // 1. 通过 code 换取 access_token + openid
+    // 2. 查找或创建 Customer（通过 openid 关联）
+    // 3. 返回 User
+  }
+}
+```
+
+需扩展 GraphQL API：
+- `wechatAuth(code: String!, type: String!): LoginResult!` — 微信登录
+- `wechatMiniProgramLogin(code: String!): LoginResult!` — 小程序登录
+
+**与微信支付联动**：登录时获取的 `openid` 可直接用于 `wechatpay-plugin` 的 JSAPI 支付，通过 Customer CustomFields 存储 openid。
+
+依赖：无（使用 HTTP 请求调用微信 API）
+
 ## 国内电商场景覆盖
 
 | 场景 | 覆盖 | 插件 |
@@ -385,6 +429,7 @@ CouponStackableCondition 读取 `promotion.customFields` 和 `ctx.channel.custom
 | 优惠券叠加控制 | ✅ | cjk-plugin |
 | 多租户 | ✅ | cjk-plugin |
 | 阿里云 OSS | ✅ | oss-plugin |
+| 微信登录（OAuth/小程序） | ✅ | wechat-auth-plugin |
 | 发票 | ❌ 后续 | - |
 | 物流追踪 | ❌ 后续 | - |
 | 订单超时自动取消 | ❌ 后续 | - |
@@ -424,6 +469,7 @@ CouponStackableCondition 读取 `promotion.customFields` 和 `ctx.channel.custom
 | P1 | 优惠券叠加 + 多租户 | cjk-plugin |
 | P2 | 阿里云 OSS | oss-plugin |
 | P2 | 手机号认证 | phone-auth-plugin |
+| P2 | 微信登录 | wechat-auth-plugin |
 
 ## 风险点
 

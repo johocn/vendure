@@ -96,6 +96,19 @@ packages/
     ├── package.json
     ├── tsconfig.json
     └── tsconfig.build.json
+│
+└── wechat-auth-plugin/
+    ├── src/
+    │   ├── plugin.ts
+    │   ├── constants.ts
+    │   ├── types.ts
+    │   ├── wechat-auth-strategy.ts
+    │   ├── wechat-auth.controller.ts
+    │   └── customer-custom-fields.ts
+    ├── index.ts
+    ├── package.json
+    ├── tsconfig.json
+    └── tsconfig.build.json
 ```
 
 ---
@@ -711,7 +724,124 @@ git commit -m "feat(phone-auth-plugin): add phone authentication plugin"
 
 ---
 
-### Task 9: 最终集成验证
+### Task 9: wechat-auth-plugin
+
+**Files:**
+- Create: `packages/wechat-auth-plugin/` 完整骨架
+
+- [ ] **Step 1: 创建插件骨架**
+
+package.json / tsconfig / index.ts / constants.ts / types.ts / plugin.ts
+
+```typescript
+interface WechatAuthPluginOptions {
+  appId: string;
+  appSecret: string;
+  miniProgramAppId?: string;
+  miniProgramAppSecret?: string;
+}
+```
+
+- [ ] **Step 2: 创建 customer-custom-fields.ts**
+
+为 Customer 添加 `wechatOpenid` 字段，用于关联微信用户和 JSAPI 支付：
+
+```typescript
+import { CustomFields, LanguageCode } from '@vendure/core';
+
+export const wechatCustomerCustomFields: CustomFields = {
+    Customer: [
+        {
+            name: 'wechatOpenid',
+            type: 'string',
+            nullable: true,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '微信 OpenID' }],
+        },
+        {
+            name: 'wechatMiniOpenid',
+            type: 'string',
+            nullable: true,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '微信小程序 OpenID' }],
+        },
+    ],
+};
+```
+
+- [ ] **Step 3: 创建 wechat-auth-strategy.ts**
+
+实现 `AuthenticationStrategy`，支持公众号扫码和小程序授权两种方式：
+
+```typescript
+import { AuthenticationStrategy, Logger, User } from '@vendure/core';
+import { RequestContext } from '@vendure/core';
+
+export class WechatAuthenticationStrategy implements AuthenticationStrategy {
+    readonly name = 'wechat';
+
+    constructor(private options: WechatAuthPluginOptions) {}
+
+    defineSecurityHeaders(): string[] {
+        return [];
+    }
+
+    async authenticate(ctx: RequestContext, data: { code: string; type: 'mp' | 'mini' }): Promise<User | false> {
+        const { code, type } = data;
+
+        let openid: string;
+        if (type === 'mp') {
+            openid = await this.getMpOpenid(code);
+        } else {
+            openid = await this.getMiniOpenid(code);
+        }
+
+        if (!openid) return false;
+
+        // 通过 CustomerService 查找 wechatOpenid 匹配的用户
+        // 如果不存在，创建新 Customer 并关联 openid
+        // 返回 User
+        return false;
+    }
+
+    private async getMpOpenid(code: string): Promise<string> {
+        const url = `https://api.weixin.qq.com/sns/oauth2/access_token?appid=${this.options.appId}&secret=${this.options.appSecret}&code=${code}&grant_type=authorization_code`;
+        const response = await fetch(url);
+        const data = await response.json();
+        return data.openid;
+    }
+
+    private async getMiniOpenid(code: string): Promise<string> {
+        const appId = this.options.miniProgramAppId || this.options.appId;
+        const secret = this.options.miniProgramAppSecret || this.options.appSecret;
+        const url = `https://api.weixin.qq.com/sns/jscode2session?appid=${appId}&secret=${secret}&js_code=${code}&grant_type=authorization_code`;
+        const response = await fetch(url);
+        const data = await response.json();
+        return data.openid;
+    }
+}
+```
+
+- [ ] **Step 4: 创建 wechat-auth.controller.ts**
+
+提供微信 OAuth 回调接口。
+
+- [ ] **Step 5: 修改 plugin.ts**
+
+注册 AuthenticationStrategy、CustomFields、shopApiExtensions。
+
+- [ ] **Step 6: 构建验证**
+
+Run: `cd e:\code\vendure\packages\wechat-auth-plugin && npm install && npm run build`
+
+- [ ] **Step 7: 提交**
+
+```bash
+git add packages/wechat-auth-plugin/
+git commit -m "feat(wechat-auth-plugin): add WeChat OAuth and mini-program login plugin"
+```
+
+---
+
+### Task 10: 最终集成验证
 
 - [ ] **Step 1: 全量构建**
 
