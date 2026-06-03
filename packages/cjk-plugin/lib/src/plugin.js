@@ -40,14 +40,15 @@ let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
     }
     async onApplicationBootstrap() {
         var _a, _b, _c, _d, _e, _f, _g, _h;
+        const injector = new core_1.Injector(this.moduleRef);
         if (((_a = this.options.i18n) === null || _a === void 0 ? void 0 : _a.enabled) !== false) {
-            const i18nService = this.moduleRef.get(core_1.I18nService);
+            const i18nService = injector.get(core_1.I18nService);
             const languages = ((_b = this.options.i18n) === null || _b === void 0 ? void 0 : _b.languages) || ['zh_Hans', 'zh_Hant', 'ja', 'ko'];
             const translations = {
-                zh_Hans: await import('./i18n/zh_CN.json'),
-                zh_Hant: await import('./i18n/zh_TW.json'),
-                ja: await import('./i18n/ja.json'),
-                ko: await import('./i18n/ko.json'),
+                zh_Hans: require('./i18n/zh_CN.json'),
+                zh_Hant: require('./i18n/zh_TW.json'),
+                ja: require('./i18n/ja.json'),
+                ko: require('./i18n/ko.json'),
             };
             for (const lang of languages) {
                 if (translations[lang]) {
@@ -91,7 +92,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             schema: () => {
                 const { gql } = require('graphql-tag');
                 return gql `
-                type PickupLocation {
+                type PickupLocation implements Node {
                     id: ID!
                     name: String!
                     type: String!
@@ -128,8 +129,10 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     partner: String
                 }
 
+                input PickupLocationListOptions
+
                 extend type Query {
-                    pickupLocations(options: ListQueryOptions): PickupLocationList!
+                    pickupLocations(options: PickupLocationListOptions): PickupLocationList!
                     pickupLocation(id: ID!): PickupLocation
                 }
 
@@ -192,6 +195,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             }
             return config;
         },
+        dashboard: '../dashboard/index.tsx',
         compatibility: '^3.0.0',
     }),
     __param(0, (0, common_1.Inject)(constants_1.CJK_PLUGIN_OPTIONS)),

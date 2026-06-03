@@ -1,4 +1,4 @@
-import { ChannelService, ID, ListQueryBuilder, ListQueryOptions, PaginatedList, RequestContext, TransactionalConnection } from '@vendure/core';
+import { ChannelService, ID, Injector, ListQueryBuilder, ListQueryOptions, PaginatedList, RequestContext, TransactionalConnection } from '@vendure/core';
 import { GroupBuyActivity } from './group-buy-activity.entity';
 import { GroupBuyOrder } from './group-buy-order.entity';
 export declare class GroupBuyService {
@@ -6,6 +6,9 @@ export declare class GroupBuyService {
     private listQueryBuilder;
     private channelService;
     constructor(connection: TransactionalConnection, listQueryBuilder: ListQueryBuilder, channelService: ChannelService);
+    private stockReserveService;
+    private stockPrewarmService;
+    init(injector: Injector): void;
     findAll(ctx: RequestContext, options?: ListQueryOptions<GroupBuyActivity>): Promise<PaginatedList<GroupBuyActivity>>;
     findOne(ctx: RequestContext, id: ID): Promise<GroupBuyActivity | undefined>;
     create(ctx: RequestContext, input: Partial<GroupBuyActivity>): Promise<GroupBuyActivity>;
@@ -13,4 +16,5 @@ export declare class GroupBuyService {
     delete(ctx: RequestContext, id: ID): Promise<void>;
     joinGroupBuy(ctx: RequestContext, activityId: ID, orderId: ID, isLeader: boolean): Promise<GroupBuyOrder>;
     findActiveByVariant(ctx: RequestContext, variantId: ID): Promise<GroupBuyActivity[]>;
+    findActive(ctx: RequestContext): Promise<GroupBuyActivity[]>;
 }

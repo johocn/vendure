@@ -46,7 +46,7 @@ import { LogisticsApiPluginOptions } from './types';
         config.customFields.Channel = [...existingChannelFields, ...newChannelFields];
         return config;
     },
-    dashboard: './dashboard/index.tsx',
+    dashboard: '../dashboard/index.tsx',
     compatibility: '^3.0.0',
 })
 export class LogisticsApiPlugin {

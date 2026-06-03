@@ -19,6 +19,18 @@ let GroupBuyService = class GroupBuyService {
         this.connection = connection;
         this.listQueryBuilder = listQueryBuilder;
         this.channelService = channelService;
+        this.stockReserveService = null;
+        this.stockPrewarmService = null;
+    }
+    init(injector) {
+        try {
+            const { StockReserveService, StockPrewarmService } = require('@vendure/redis-stock-plugin');
+            this.stockReserveService = injector.get(StockReserveService);
+            this.stockPrewarmService = injector.get(StockPrewarmService);
+        }
+        catch (_a) {
+            // RedisStockPlugin not installed, use DB fallback
+        }
     }
     async findAll(ctx, options) {
         return this.listQueryBuilder
@@ -41,7 +53,11 @@ let GroupBuyService = class GroupBuyService {
         const repo = this.connection.getRepository(ctx, group_buy_activity_entity_1.GroupBuyActivity);
         const activity = new group_buy_activity_entity_1.GroupBuyActivity(input);
         activity.channels = [ctx.channel];
-        return repo.save(activity);
+        const saved = await repo.save(activity);
+        if (this.stockPrewarmService && saved.status === 'active') {
+            await this.stockPrewarmService.prewarm(`group-buy:${saved.id}`, saved.targetCount - saved.currentCount);
+        }
+        return saved;
     }
     async update(ctx, input) {
         const repo = this.connection.getRepository(ctx, group_buy_activity_entity_1.GroupBuyActivity);
@@ -57,6 +73,7 @@ let GroupBuyService = class GroupBuyService {
         await repo.delete(id);
     }
     async joinGroupBuy(ctx, activityId, orderId, isLeader) {
+        var _a;
         const activityRepo = this.connection.getRepository(ctx, group_buy_activity_entity_1.GroupBuyActivity);
         const orderRepo = this.connection.getRepository(ctx, group_buy_order_entity_1.GroupBuyOrder);
         const activity = await activityRepo.findOne({ where: { id: activityId } });
@@ -66,8 +83,16 @@ let GroupBuyService = class GroupBuyService {
         if (activity.status !== 'active') {
             throw new Error('Activity is not active');
         }
-        if (activity.currentCount >= activity.targetCount && !activity.allowJoinAfterComplete) {
-            throw new Error('Activity is already full');
+        if ((_a = this.stockReserveService) === null || _a === void 0 ? void 0 : _a.isAvailable) {
+            const remaining = await this.stockReserveService.reserveStock(`group-buy:${activityId}`, 1);
+            if (remaining < 0) {
+                throw new Error('Activity is already full');
+            }
+        }
+        else {
+            if (activity.currentCount >= activity.targetCount && !activity.allowJoinAfterComplete) {
+                throw new Error('Activity is already full');
+            }
         }
         const groupBuyOrder = new group_buy_order_entity_1.GroupBuyOrder({
             groupBuyActivityId: String(activityId),
@@ -90,6 +115,17 @@ let GroupBuyService = class GroupBuyService {
         qb.where('gba.variantId = :variantId', { variantId: variantId });
         qb.andWhere('gba.status = :status', { status: 'active' });
         return qb.getMany();
+    }
+    async findActive(ctx) {
+        const repo = this.connection.getRepository(ctx, group_buy_activity_entity_1.GroupBuyActivity);
+        const now = new Date();
+        return repo
+            .createQueryBuilder('gba')
+            .innerJoin('gba.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId })
+            .where('gba.status = :status', { status: 'active' })
+            .andWhere('gba.startAt <= :now', { now })
+            .andWhere('gba.endAt >= :now', { now })
+            .getMany();
     }
 };
 exports.GroupBuyService = GroupBuyService;

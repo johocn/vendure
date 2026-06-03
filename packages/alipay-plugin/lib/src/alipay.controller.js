@@ -11,15 +11,12 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AlipayController = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const constants_1 = require("./constants");
-const alipay_sdk_1 = __importDefault(require("alipay-sdk"));
+const alipay_sdk_1 = require("alipay-sdk");
 let AlipayController = class AlipayController {
     constructor(options, orderService, channelService) {
         this.options = options;
@@ -30,7 +27,7 @@ let AlipayController = class AlipayController {
         try {
             const sign = body.sign;
             const signType = body.sign_type || 'RSA2';
-            const alipaySdk = new alipay_sdk_1.default({
+            const alipaySdk = new alipay_sdk_1.AlipaySdk({
                 appId: body.app_id,
                 privateKey: '',
                 alipayPublicKey: this.options.alipayPublicKey,
@@ -45,7 +42,7 @@ let AlipayController = class AlipayController {
             const tradeStatus = body.trade_status;
             const outTradeNo = body.out_trade_no;
             if (tradeStatus === 'TRADE_SUCCESS' || tradeStatus === 'TRADE_FINISHED') {
-                core_1.Logger.info(`Alipay trade success: ${outTradeNo}, txId: ${body.trade_no}`, constants_1.loggerCtx);
+                core_1.Logger.info(`Alipay trade success: ${String(outTradeNo)}, txId: ${String(body.trade_no)}`, constants_1.loggerCtx);
                 try {
                     const channel = await this.channelService.getDefaultChannel();
                     const ctx = new core_1.RequestContext({
@@ -60,19 +57,19 @@ let AlipayController = class AlipayController {
                         for (const payment of payments) {
                             if (payment.state === 'Authorized') {
                                 await this.orderService.settlePayment(ctx, payment.id);
-                                core_1.Logger.info(`Settled payment ${payment.id} for order ${outTradeNo}`, constants_1.loggerCtx);
+                                core_1.Logger.info(`Settled payment ${String(payment.id)} for order ${String(outTradeNo)}`, constants_1.loggerCtx);
                             }
                         }
                     }
                 }
                 catch (e) {
-                    core_1.Logger.error(`Failed to settle payment for order ${outTradeNo}: ${e.message}`, constants_1.loggerCtx);
+                    core_1.Logger.error(`Failed to settle payment for order ${String(outTradeNo)}: ${String(e.message)}`, constants_1.loggerCtx);
                 }
             }
             res.send('success');
         }
         catch (e) {
-            core_1.Logger.error(`Alipay notify error: ${e.message}`, constants_1.loggerCtx);
+            core_1.Logger.error(`Alipay notify error: ${String(e.message)}`, constants_1.loggerCtx);
             res.send('fail');
         }
     }

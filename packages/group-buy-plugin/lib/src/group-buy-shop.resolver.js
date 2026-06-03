@@ -20,8 +20,8 @@ let GroupBuyShopResolver = class GroupBuyShopResolver {
     constructor(groupBuyService) {
         this.groupBuyService = groupBuyService;
     }
-    async activeGroupBuyActivities(ctx, variantId) {
-        return this.groupBuyService.findActiveByVariant(ctx, variantId);
+    async activeGroupBuyActivities(ctx) {
+        return this.groupBuyService.findActive(ctx);
     }
     async joinGroupBuy(ctx, activityId, orderId, isLeader) {
         return this.groupBuyService.joinGroupBuy(ctx, activityId, orderId, isLeader);
@@ -31,9 +31,8 @@ exports.GroupBuyShopResolver = GroupBuyShopResolver;
 __decorate([
     (0, graphql_1.Query)(),
     __param(0, (0, core_1.Ctx)()),
-    __param(1, (0, graphql_1.Args)('variantId')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
     __metadata("design:returntype", Promise)
 ], GroupBuyShopResolver.prototype, "activeGroupBuyActivities", null);
 __decorate([

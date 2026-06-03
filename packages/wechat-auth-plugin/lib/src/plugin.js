@@ -38,7 +38,7 @@ exports.WechatAuthPlugin = WechatAuthPlugin = WechatAuthPlugin_1 = __decorate([
             { provide: constants_1.WECHAT_AUTH_PLUGIN_OPTIONS, useFactory: () => WechatAuthPlugin.options },
         ],
         configuration: config => {
-            var _a;
+            var _a, _b;
             const strategy = new wechat_auth_strategy_1.WechatAuthenticationStrategy(WechatAuthPlugin.options);
             config.authOptions.shopAuthenticationStrategy = [
                 ...(config.authOptions.shopAuthenticationStrategy || []),
@@ -46,7 +46,7 @@ exports.WechatAuthPlugin = WechatAuthPlugin = WechatAuthPlugin_1 = __decorate([
             ];
             config.customFields = Object.assign(Object.assign({}, config.customFields), { Customer: [
                     ...(((_a = config.customFields) === null || _a === void 0 ? void 0 : _a.Customer) || []),
-                    ...customer_custom_fields_1.wechatCustomerCustomFields.Customer,
+                    ...((_b = customer_custom_fields_1.wechatCustomerCustomFields.Customer) !== null && _b !== void 0 ? _b : []),
                 ] });
             return config;
         },

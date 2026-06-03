@@ -16,7 +16,7 @@ import { invoiceOrderCustomFields } from './order-custom-fields';
         config.customFields.Order = [...existingOrderFields, ...newOrderFields];
         return config;
     },
-    dashboard: './dashboard/index.tsx',
+    dashboard: '../dashboard/index.tsx',
     compatibility: '^3.0.0',
 })
 export class InvoicePlugin {

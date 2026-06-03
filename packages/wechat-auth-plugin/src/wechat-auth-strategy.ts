@@ -53,18 +53,21 @@ export class WechatAuthenticationStrategy implements AuthenticationStrategy<Wech
 
             const result = await this.userService.createCustomerUser(ctx, identifier);
             if ('identifier' in result) {
-                return result as User;
+                return result;
             }
 
             return false;
         } catch (e: any) {
-            Logger.error(`WeChat auth failed: ${e.message}`, loggerCtx);
+            Logger.error(`WeChat auth failed: ${String(e.message)}`, loggerCtx);
             return false;
         }
     }
 
     private async getMpOpenid(code: string): Promise<string> {
-        const url = `https://api.weixin.qq.com/sns/oauth2/access_token?appid=${this.options.appId}&secret=${this.options.appSecret}&code=${code}&grant_type=authorization_code`;
+        const url =
+            `https://api.weixin.qq.com/sns/oauth2/access_token` +
+            `?appid=${this.options.appId}&secret=${this.options.appSecret}` +
+            `&code=${code}&grant_type=authorization_code`;
         const response = await fetch(url);
         const data = (await response.json()) as any;
         return data.openid;

@@ -65,7 +65,7 @@ export const alipayPaymentHandler = new PaymentMethodHandler({
                 },
             };
         } catch (e: any) {
-            Logger.error(`Alipay createPayment failed: ${e.message}`, loggerCtx);
+            Logger.error(`Alipay createPayment failed: ${e.message as string}`, loggerCtx);
             return {
                 amount,
                 state: 'Declined' as const,
@@ -107,7 +107,7 @@ export const alipayPaymentHandler = new PaymentMethodHandler({
                 metadata: result,
             };
         } catch (e: any) {
-            Logger.error(`Alipay refund failed: ${e.message}`, loggerCtx);
+            Logger.error(`Alipay refund failed: ${String(e.message)}`, loggerCtx);
             return {
                 state: 'Failed' as const,
                 metadata: { errorMessage: e.message },

@@ -12,9 +12,8 @@ export class GroupBuyShopResolver {
     @Query()
     async activeGroupBuyActivities(
         @Ctx() ctx: RequestContext,
-        @Args('variantId') variantId: ID,
     ): Promise<GroupBuyActivity[]> {
-        return this.groupBuyService.findActiveByVariant(ctx, variantId);
+        return this.groupBuyService.findActive(ctx);
     }
 
     @Mutation()

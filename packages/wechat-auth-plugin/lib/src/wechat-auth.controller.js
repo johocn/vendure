@@ -26,12 +26,14 @@ let WechatAuthController = class WechatAuthController {
             return;
         }
         try {
-            const url = `https://api.weixin.qq.com/sns/oauth2/access_token?appid=${this.options.appId}&secret=${this.options.appSecret}&code=${code}&grant_type=authorization_code`;
+            const url = `https://api.weixin.qq.com/sns/oauth2/access_token` +
+                `?appid=${this.options.appId}&secret=${this.options.appSecret}` +
+                `&code=${code}&grant_type=authorization_code`;
             const response = await fetch(url);
             const data = await response.json();
             if (data.openid) {
-                core_1.Logger.info(`WeChat OAuth callback received for openid: ${data.openid}`, constants_1.loggerCtx);
-                res.redirect(`/?wechat_code=${code}&openid=${data.openid}`);
+                core_1.Logger.info(`WeChat OAuth callback received for openid: ${String(data.openid)}`, constants_1.loggerCtx);
+                res.redirect(`/?wechat_code=${code}&openid=${String(data.openid)}`);
             }
             else {
                 core_1.Logger.error(`WeChat OAuth callback failed: ${JSON.stringify(data)}`, constants_1.loggerCtx);
@@ -39,7 +41,7 @@ let WechatAuthController = class WechatAuthController {
             }
         }
         catch (e) {
-            core_1.Logger.error(`WeChat OAuth callback error: ${e.message}`, constants_1.loggerCtx);
+            core_1.Logger.error(`WeChat OAuth callback error: ${String(e.message)}`, constants_1.loggerCtx);
             res.status(500).send('Internal error');
         }
     }

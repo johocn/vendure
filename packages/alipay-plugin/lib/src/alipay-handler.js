@@ -100,7 +100,7 @@ exports.alipayPaymentHandler = new core_1.PaymentMethodHandler({
             };
         }
         catch (e) {
-            core_1.Logger.error(`Alipay refund failed: ${e.message}`, constants_1.loggerCtx);
+            core_1.Logger.error(`Alipay refund failed: ${String(e.message)}`, constants_1.loggerCtx);
             return {
                 state: 'Failed',
                 metadata: { errorMessage: e.message },

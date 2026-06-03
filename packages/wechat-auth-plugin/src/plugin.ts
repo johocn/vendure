@@ -24,7 +24,7 @@ import { WechatAuthPluginOptions } from './types';
             ...config.customFields,
             Customer: [
                 ...(config.customFields?.Customer || []),
-                ...wechatCustomerCustomFields.Customer!,
+                ...(wechatCustomerCustomFields.Customer ?? []),
             ],
         };
 

@@ -19,7 +19,7 @@ export class GroupBuyActivity extends VendureEntity implements ChannelAware {
 
     @Column({ default: 0 }) maxCount: number;
 
-    @Column() status: 'active' | 'completed' | 'expired';
+    @Column({ default: 'active' }) status: 'active' | 'completed' | 'expired';
 
     @Column() startAt: Date;
 

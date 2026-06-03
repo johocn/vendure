@@ -48,7 +48,7 @@ class OssAssetStorageStrategy {
             return result.content;
         }
         catch (e) {
-            core_1.Logger.error(`OSS readFileToBuffer failed: ${e.message}`, constants_1.loggerCtx);
+            core_1.Logger.error(`OSS readFileToBuffer failed: ${String(e.message)}`, constants_1.loggerCtx);
             throw e;
         }
     }
@@ -59,7 +59,7 @@ class OssAssetStorageStrategy {
             return result.stream;
         }
         catch (e) {
-            core_1.Logger.error(`OSS readFileToStream failed: ${e.message}`, constants_1.loggerCtx);
+            core_1.Logger.error(`OSS readFileToStream failed: ${String(e.message)}`, constants_1.loggerCtx);
             throw e;
         }
     }
@@ -69,7 +69,7 @@ class OssAssetStorageStrategy {
             await this.client.delete(key);
         }
         catch (e) {
-            core_1.Logger.error(`OSS deleteFile failed: ${e.message}`, constants_1.loggerCtx);
+            core_1.Logger.error(`OSS deleteFile failed: ${String(e.message)}`, constants_1.loggerCtx);
             throw e;
         }
     }

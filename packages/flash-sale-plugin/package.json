@@ -9,7 +9,8 @@
         "watch": "tsc -p ./tsconfig.build.json --watch",
         "build": "rimraf lib && tsc -p ./tsconfig.build.json",
         "lint": "eslint --fix .",
-        "test": "vitest --config vitest.config.mts --run"
+        "test": "vitest --config vitest.config.mts --run",
+        "e2e": "cross-env PACKAGE=flash-sale-plugin vitest --config vitest.config.mts --run"
     },
     "dependencies": {},
     "peerDependencies": {

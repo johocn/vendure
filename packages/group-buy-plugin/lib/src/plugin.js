@@ -15,7 +15,8 @@ var GroupBuyPlugin_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.GroupBuyPlugin = void 0;
 const common_1 = require("@nestjs/common");
-const core_1 = require("@vendure/core");
+const core_1 = require("@nestjs/core");
+const core_2 = require("@vendure/core");
 const constants_1 = require("./constants");
 const group_buy_activity_entity_1 = require("./group-buy-activity.entity");
 const group_buy_order_entity_1 = require("./group-buy-order.entity");
@@ -28,25 +29,50 @@ const group_buy_promotion_condition_1 = require("./group-buy-promotion-condition
 const group_buy_leader_promotion_1 = require("./group-buy-leader-promotion");
 const { gql } = require('graphql-tag');
 let GroupBuyPlugin = GroupBuyPlugin_1 = class GroupBuyPlugin {
-    constructor(options, groupBuyJob) {
+    constructor(options, groupBuyService, groupBuyJob, eventBus, moduleRef) {
         this.options = options;
+        this.groupBuyService = groupBuyService;
         this.groupBuyJob = groupBuyJob;
+        this.eventBus = eventBus;
+        this.moduleRef = moduleRef;
     }
     static init(options) {
         GroupBuyPlugin_1.options = options !== null && options !== void 0 ? options : {};
         return GroupBuyPlugin_1;
     }
     async onApplicationBootstrap() {
+        this.injector = new core_2.Injector(this.moduleRef);
+        this.groupBuyService.init(this.injector);
+        this.groupBuyJob.initStock(this.injector);
+        this.eventBus.ofType(core_2.OrderStateTransitionEvent).subscribe(async (event) => {
+            var _a;
+            if (event.toState !== 'Cancelled')
+                return;
+            const order = event.order;
+            const activityId = (_a = order === null || order === void 0 ? void 0 : order.customFields) === null || _a === void 0 ? void 0 : _a.groupBuyActivityId;
+            if (!activityId)
+                return;
+            try {
+                const { StockReserveService } = require('@vendure/redis-stock-plugin');
+                const stockReserveService = this.injector.get(StockReserveService);
+                if (stockReserveService === null || stockReserveService === void 0 ? void 0 : stockReserveService.isAvailable) {
+                    await stockReserveService.releaseStock(`group-buy:${activityId}`, 1);
+                }
+            }
+            catch (_b) {
+                // RedisStockPlugin not installed
+            }
+        });
         await this.groupBuyJob.init();
         this.groupBuyJob.scheduleCheck();
-        core_1.Logger.info('GroupBuyPlugin initialized', constants_1.loggerCtx);
+        core_2.Logger.info('GroupBuyPlugin initialized', constants_1.loggerCtx);
     }
 };
 exports.GroupBuyPlugin = GroupBuyPlugin;
 GroupBuyPlugin.options = {};
 exports.GroupBuyPlugin = GroupBuyPlugin = GroupBuyPlugin_1 = __decorate([
-    (0, core_1.VendurePlugin)({
-        imports: [core_1.PluginCommonModule],
+    (0, core_2.VendurePlugin)({
+        imports: [core_2.PluginCommonModule],
         entities: [group_buy_activity_entity_1.GroupBuyActivity, group_buy_order_entity_1.GroupBuyOrder],
         providers: [
             { provide: constants_1.GROUP_BUY_PLUGIN_OPTIONS, useFactory: () => GroupBuyPlugin.options },
@@ -57,7 +83,7 @@ exports.GroupBuyPlugin = GroupBuyPlugin = GroupBuyPlugin_1 = __decorate([
             schema: () => gql `
             enum GroupBuyStatus { active completed expired }
 
-            type GroupBuyActivity {
+            type GroupBuyActivity implements Node {
                 id: ID!
                 name: String!
                 description: String!
@@ -110,8 +136,10 @@ exports.GroupBuyPlugin = GroupBuyPlugin = GroupBuyPlugin_1 = __decorate([
                 status: GroupBuyStatus
             }
 
+            input GroupBuyActivityListOptions
+
             extend type Query {
-                groupBuyActivities(options: Json): GroupBuyActivityList!
+                groupBuyActivities(options: GroupBuyActivityListOptions): GroupBuyActivityList!
                 groupBuyActivity(id: ID!): GroupBuyActivity
             }
 
@@ -127,7 +155,7 @@ exports.GroupBuyPlugin = GroupBuyPlugin = GroupBuyPlugin_1 = __decorate([
             schema: () => gql `
             enum GroupBuyStatus { active completed expired }
 
-            type GroupBuyActivity {
+            type GroupBuyActivity implements Node {
                 id: ID!
                 name: String!
                 description: String!
@@ -178,9 +206,13 @@ exports.GroupBuyPlugin = GroupBuyPlugin = GroupBuyPlugin_1 = __decorate([
             ];
             return config;
         },
+        dashboard: '../dashboard/index.tsx',
         compatibility: '^3.0.0',
     }),
     __param(0, (0, common_1.Inject)(constants_1.GROUP_BUY_PLUGIN_OPTIONS)),
-    __metadata("design:paramtypes", [Object, group_buy_job_1.GroupBuyJob])
+    __metadata("design:paramtypes", [Object, group_buy_service_1.GroupBuyService,
+        group_buy_job_1.GroupBuyJob,
+        core_2.EventBus,
+        core_1.ModuleRef])
 ], GroupBuyPlugin);
 //# sourceMappingURL=plugin.js.map

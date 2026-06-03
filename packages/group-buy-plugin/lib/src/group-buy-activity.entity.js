@@ -39,7 +39,7 @@ __decorate([
     __metadata("design:type", Number)
 ], GroupBuyActivity.prototype, "maxCount", void 0);
 __decorate([
-    (0, typeorm_1.Column)(),
+    (0, typeorm_1.Column)({ default: 'active' }),
     __metadata("design:type", String)
 ], GroupBuyActivity.prototype, "status", void 0);
 __decorate([

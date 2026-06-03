@@ -24,7 +24,7 @@ import { ChannelStockAllocationStrategy } from './channel-stock-allocation-strat
         config.orderOptions.stockAllocationStrategy = new ChannelStockAllocationStrategy();
         return config;
     },
-    dashboard: './dashboard/index.tsx',
+    dashboard: '../dashboard/index.tsx',
     compatibility: '^3.0.0',
 })
 export class LogisticsPlugin {

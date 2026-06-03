@@ -1,5 +1,5 @@
 import { Inject, MiddlewareConsumer, NestModule, OnApplicationBootstrap, Type } from '@nestjs/common';
-import { I18nService, Logger, PluginCommonModule, VendurePlugin } from '@vendure/core';
+import { I18nService, Injector, Logger, PluginCommonModule, VendurePlugin } from '@vendure/core';
 import { ModuleRef } from '@nestjs/core';
 
 import { CJK_PLUGIN_OPTIONS, loggerCtx } from './constants';
@@ -28,7 +28,7 @@ import { CjkPluginOptions } from './types';
         schema: () => {
             const { gql } = require('graphql-tag');
             return gql`
-                type PickupLocation {
+                type PickupLocation implements Node {
                     id: ID!
                     name: String!
                     type: String!
@@ -65,8 +65,10 @@ import { CjkPluginOptions } from './types';
                     partner: String
                 }
 
+                input PickupLocationListOptions
+
                 extend type Query {
-                    pickupLocations(options: ListQueryOptions): PickupLocationList!
+                    pickupLocations(options: PickupLocationListOptions): PickupLocationList!
                     pickupLocation(id: ID!): PickupLocation
                 }
 
@@ -141,7 +143,7 @@ import { CjkPluginOptions } from './types';
 
         return config;
     },
-    dashboard: './dashboard/index.tsx',
+    dashboard: '../dashboard/index.tsx',
     compatibility: '^3.0.0',
 })
 export class CjkPlugin implements OnApplicationBootstrap, NestModule {
@@ -158,14 +160,15 @@ export class CjkPlugin implements OnApplicationBootstrap, NestModule {
     }
 
     async onApplicationBootstrap(): Promise<void> {
+        const injector = new Injector(this.moduleRef);
         if (this.options.i18n?.enabled !== false) {
-            const i18nService = this.moduleRef.get(I18nService);
+            const i18nService = injector.get(I18nService);
             const languages = this.options.i18n?.languages || ['zh_Hans', 'zh_Hant', 'ja', 'ko'];
             const translations: Record<string, any> = {
-                zh_Hans: await import('./i18n/zh_CN.json'),
-                zh_Hant: await import('./i18n/zh_TW.json'),
-                ja: await import('./i18n/ja.json'),
-                ko: await import('./i18n/ko.json'),
+                zh_Hans: require('./i18n/zh_CN.json'),
+                zh_Hant: require('./i18n/zh_TW.json'),
+                ja: require('./i18n/ja.json'),
+                ko: require('./i18n/ko.json'),
             };
             for (const lang of languages) {
                 if (translations[lang]) {

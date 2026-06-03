@@ -5,6 +5,6 @@ import { GroupBuyService } from './group-buy.service';
 export declare class GroupBuyShopResolver {
     private groupBuyService;
     constructor(groupBuyService: GroupBuyService);
-    activeGroupBuyActivities(ctx: RequestContext, variantId: ID): Promise<GroupBuyActivity[]>;
+    activeGroupBuyActivities(ctx: RequestContext): Promise<GroupBuyActivity[]>;
     joinGroupBuy(ctx: RequestContext, activityId: ID, orderId: ID, isLeader: boolean): Promise<GroupBuyOrder>;
 }

@@ -34,7 +34,7 @@ import { distributionCustomerCustomFields } from './customer-custom-fields';
             enum WithdrawalMethod { bank alipay wechat }
             enum WithdrawalStatus { pending approved rejected paid }
 
-            type Distributor {
+            type Distributor implements Node {
                 id: ID!
                 customerId: ID!
                 parentId: ID
@@ -48,7 +48,7 @@ import { distributionCustomerCustomFields } from './customer-custom-fields';
                 updatedAt: DateTime!
             }
 
-            type CommissionRecord {
+            type CommissionRecord implements Node {
                 id: ID!
                 distributorId: ID!
                 orderId: ID!
@@ -61,7 +61,7 @@ import { distributionCustomerCustomFields } from './customer-custom-fields';
                 createdAt: DateTime!
             }
 
-            type WithdrawalRequest {
+            type WithdrawalRequest implements Node {
                 id: ID!
                 distributorId: ID!
                 amount: Int!
@@ -116,7 +116,7 @@ import { distributionCustomerCustomFields } from './customer-custom-fields';
             enum WithdrawalMethod { bank alipay wechat }
             enum WithdrawalStatus { pending approved rejected paid }
 
-            type Distributor {
+            type Distributor implements Node {
                 id: ID!
                 customerId: ID!
                 parentId: ID
@@ -130,10 +130,9 @@ import { distributionCustomerCustomFields } from './customer-custom-fields';
                 updatedAt: DateTime!
             }
 
-            type CommissionRecord {
+            type CommissionRecord implements Node {
                 id: ID!
                 distributorId: ID!
-                orderId: ID!
                 commissionType: CommissionType!
                 commissionRate: Int!
                 orderAmount: Int!
@@ -143,7 +142,7 @@ import { distributionCustomerCustomFields } from './customer-custom-fields';
                 createdAt: DateTime!
             }
 
-            type WithdrawalRequest {
+            type WithdrawalRequest implements Node {
                 id: ID!
                 distributorId: ID!
                 amount: Int!
@@ -182,7 +181,7 @@ import { distributionCustomerCustomFields } from './customer-custom-fields';
         };
         return config;
     },
-    dashboard: './dashboard/index.tsx',
+    dashboard: '../dashboard/index.tsx',
     compatibility: '^3.0.0',
 })
 export class DistributionPlugin implements OnApplicationBootstrap {

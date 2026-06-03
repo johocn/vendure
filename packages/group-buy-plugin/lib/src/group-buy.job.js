@@ -21,6 +21,16 @@ let GroupBuyJob = class GroupBuyJob {
         this.connection = connection;
         this.orderService = orderService;
         this.channelService = channelService;
+        this.stockPrewarmService = null;
+    }
+    initStock(injector) {
+        try {
+            const { StockPrewarmService } = require('@vendure/redis-stock-plugin');
+            this.stockPrewarmService = injector.get(StockPrewarmService);
+        }
+        catch (_a) {
+            // RedisStockPlugin not installed
+        }
     }
     async init() {
         this.jobQueue = await this.jobQueueService.createQueue({
@@ -53,6 +63,9 @@ let GroupBuyJob = class GroupBuyJob {
                                 activity.status = 'expired';
                             }
                             await activityRepo.save(activity);
+                            if (this.stockPrewarmService) {
+                                await this.stockPrewarmService.removePrewarm(`group-buy:${activity.id}`);
+                            }
                             if (activity.status === 'expired') {
                                 const pendingOrders = await orderRepo.find({
                                     where: { groupBuyActivityId: activity.id, status: 'pending' },

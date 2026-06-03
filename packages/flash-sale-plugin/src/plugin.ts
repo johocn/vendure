@@ -1,6 +1,8 @@
 import { Inject, OnApplicationBootstrap, Type } from '@nestjs/common';
-import { Logger, PluginCommonModule, VendurePlugin, Injector, OrderCancelledEvent, EventBus } from '@vendure/core';
-import gql from 'graphql-tag';
+import { ModuleRef } from '@nestjs/core';
+import { Logger, PluginCommonModule, VendurePlugin, Injector, OrderStateTransitionEvent, EventBus } from '@vendure/core';
+
+const { gql } = require('graphql-tag');
 
 import { FLASH_SALE_PLUGIN_OPTIONS, loggerCtx } from './constants';
 import { FlashSaleActivity } from './flash-sale-activity.entity';
@@ -25,7 +27,7 @@ import { flashSaleOrderCustomFields } from './order-custom-fields';
         schema: () => gql`
             enum FlashSaleStatus { upcoming active ended }
 
-            type FlashSaleActivity {
+            type FlashSaleActivity implements Node {
                 id: ID!
                 name: String!
                 startAt: DateTime!
@@ -66,8 +68,10 @@ import { flashSaleOrderCustomFields } from './order-custom-fields';
                 status: FlashSaleStatus
             }
 
+            input FlashSaleActivityListOptions
+
             extend type Query {
-                flashSaleActivities(options: Json): FlashSaleActivityList!
+                flashSaleActivities(options: FlashSaleActivityListOptions): FlashSaleActivityList!
                 flashSaleActivity(id: ID!): FlashSaleActivity
             }
 
@@ -83,7 +87,7 @@ import { flashSaleOrderCustomFields } from './order-custom-fields';
         schema: () => gql`
             enum FlashSaleStatus { upcoming active ended }
 
-            type FlashSaleActivity {
+            type FlashSaleActivity implements Node {
                 id: ID!
                 name: String!
                 startAt: DateTime!
@@ -99,7 +103,6 @@ import { flashSaleOrderCustomFields } from './order-custom-fields';
 
             extend type Query {
                 activeFlashSaleActivities: [FlashSaleActivity!]!
-                flashSaleActivity(id: ID!): FlashSaleActivity
             }
         `,
         resolvers: [FlashSaleShopResolver],
@@ -119,39 +122,20 @@ import { flashSaleOrderCustomFields } from './order-custom-fields';
 
         return config;
     },
-    dashboard: './dashboard/index.tsx',
+    dashboard: '../dashboard/index.tsx',
     compatibility: '^3.0.0',
 })
 export class FlashSalePlugin implements OnApplicationBootstrap {
     private static options: FlashSalePluginOptions = {};
+    private injector: Injector;
 
     constructor(
         @Inject(FLASH_SALE_PLUGIN_OPTIONS) private options: FlashSalePluginOptions,
+        private flashSaleService: FlashSaleService,
         private flashSaleJob: FlashSaleJob,
+        private eventBus: EventBus,
+        private moduleRef: ModuleRef,
     ) {}
-
-    init(injector: Injector): void {
-        const flashSaleService = injector.get(FlashSaleService);
-        flashSaleService.init(injector);
-        const flashSaleJob = injector.get(FlashSaleJob);
-        flashSaleJob.initStock(injector);
-
-        const eventBus = injector.get(EventBus);
-        eventBus.ofType(OrderCancelledEvent).subscribe(async (event) => {
-            const order = event.entity as any;
-            const activityId = order?.customFields?.flashSaleActivityId;
-            if (!activityId) return;
-            try {
-                const { StockReserveService } = require('@vendure/redis-stock-plugin');
-                const stockReserveService = injector.get(StockReserveService);
-                if (stockReserveService?.isAvailable) {
-                    await stockReserveService.releaseStock(`flash-sale:${activityId}`, 1);
-                }
-            } catch {
-                // RedisStockPlugin not installed
-            }
-        });
-    }
 
     static init(options?: FlashSalePluginOptions): Type<FlashSalePlugin> {
         FlashSalePlugin.options = options ?? {};
@@ -159,6 +143,25 @@ export class FlashSalePlugin implements OnApplicationBootstrap {
     }
 
     async onApplicationBootstrap(): Promise<void> {
+        this.injector = new Injector(this.moduleRef);
+        this.flashSaleService.init(this.injector);
+        this.flashSaleJob.initStock(this.injector);
+
+        this.eventBus.ofType(OrderStateTransitionEvent).subscribe(async (event) => {
+            if (event.toState !== 'Cancelled') return;
+            const order = event.order as any;
+            const activityId = order?.customFields?.flashSaleActivityId;
+            if (!activityId) return;
+            try {
+                const { StockReserveService } = require('@vendure/redis-stock-plugin') as any;
+                const stockReserveService = this.injector.get(StockReserveService) as any;
+                if (stockReserveService?.isAvailable) {
+                    await stockReserveService.releaseStock(`flash-sale:${activityId}`, 1);
+                }
+            } catch {
+                // RedisStockPlugin not installed
+            }
+        });
         await this.flashSaleJob.init();
         this.flashSaleJob.scheduleCheck();
         Logger.info('FlashSalePlugin initialized', loggerCtx);

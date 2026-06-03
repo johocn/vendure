@@ -29,7 +29,7 @@ export class OssAssetStorageStrategy implements AssetStorageStrategy {
             const result = await this.client.put(key, data);
             return this.toPublicUrl(result.name);
         } catch (e: any) {
-            Logger.error(`OSS writeFileFromBuffer failed: ${e.message}`, loggerCtx);
+            Logger.error(`OSS writeFileFromBuffer failed: ${e.message as string}`, loggerCtx);
             throw e;
         }
     }
@@ -40,7 +40,7 @@ export class OssAssetStorageStrategy implements AssetStorageStrategy {
             const result = await this.client.putStream(key, data as Readable);
             return this.toPublicUrl(result.name);
         } catch (e: any) {
-            Logger.error(`OSS writeFileFromStream failed: ${e.message}`, loggerCtx);
+            Logger.error(`OSS writeFileFromStream failed: ${e.message as string}`, loggerCtx);
             throw e;
         }
     }
@@ -49,9 +49,9 @@ export class OssAssetStorageStrategy implements AssetStorageStrategy {
         const key = this.getKeyFromIdentifier(identifier);
         try {
             const result = await this.client.get(key);
-            return result.content as Buffer;
+            return result.content;
         } catch (e: any) {
-            Logger.error(`OSS readFileToBuffer failed: ${e.message}`, loggerCtx);
+            Logger.error(`OSS readFileToBuffer failed: ${String(e.message)}`, loggerCtx);
             throw e;
         }
     }
@@ -62,7 +62,7 @@ export class OssAssetStorageStrategy implements AssetStorageStrategy {
             const result = await this.client.getStream(key);
             return result.stream as unknown as Stream;
         } catch (e: any) {
-            Logger.error(`OSS readFileToStream failed: ${e.message}`, loggerCtx);
+            Logger.error(`OSS readFileToStream failed: ${String(e.message)}`, loggerCtx);
             throw e;
         }
     }
@@ -72,7 +72,7 @@ export class OssAssetStorageStrategy implements AssetStorageStrategy {
         try {
             await this.client.delete(key);
         } catch (e: any) {
-            Logger.error(`OSS deleteFile failed: ${e.message}`, loggerCtx);
+            Logger.error(`OSS deleteFile failed: ${String(e.message)}`, loggerCtx);
             throw e;
         }
     }

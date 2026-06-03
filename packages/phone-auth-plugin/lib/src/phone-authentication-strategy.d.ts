@@ -1,5 +1,5 @@
 import { DocumentNode } from 'graphql';
-import { AuthenticationStrategy, Injector, RequestContext } from '@vendure/core';
+import { AuthenticationStrategy, Injector, RequestContext, User } from '@vendure/core';
 import { PhoneAuthPluginOptions } from './types';
 export interface PhoneAuthData {
     phoneNumber: string;

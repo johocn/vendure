@@ -36,7 +36,7 @@ export class OrderTimeoutJob {
                         Logger.info(`Order ${job.data.orderId} cancelled due to timeout`, loggerCtx);
                     }
                 } catch (e: any) {
-                    Logger.error(`Failed to process timeout for order ${job.data.orderId}: ${e.message}`, loggerCtx);
+                    Logger.error(`Failed to process timeout for order ${String(job.data.orderId)}: ${String(e.message)}`, loggerCtx);
                 }
             },
         });
@@ -44,7 +44,7 @@ export class OrderTimeoutJob {
 
     async scheduleCancellation(orderId: string, channelId: string, timeoutMinutes: number): Promise<void> {
         setTimeout(() => {
-            this.jobQueue.add({ orderId, channelId });
+            void this.jobQueue.add({ orderId, channelId });
         }, timeoutMinutes * 60 * 1000);
     }
 }

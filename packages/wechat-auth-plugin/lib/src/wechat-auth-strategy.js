@@ -45,12 +45,14 @@ class WechatAuthenticationStrategy {
             return false;
         }
         catch (e) {
-            core_1.Logger.error(`WeChat auth failed: ${e.message}`, constants_1.loggerCtx);
+            core_1.Logger.error(`WeChat auth failed: ${String(e.message)}`, constants_1.loggerCtx);
             return false;
         }
     }
     async getMpOpenid(code) {
-        const url = `https://api.weixin.qq.com/sns/oauth2/access_token?appid=${this.options.appId}&secret=${this.options.appSecret}&code=${code}&grant_type=authorization_code`;
+        const url = `https://api.weixin.qq.com/sns/oauth2/access_token` +
+            `?appid=${this.options.appId}&secret=${this.options.appSecret}` +
+            `&code=${code}&grant_type=authorization_code`;
         const response = await fetch(url);
         const data = (await response.json());
         return data.openid;

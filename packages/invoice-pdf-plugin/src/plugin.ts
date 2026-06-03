@@ -33,7 +33,7 @@ import { InvoicePdfPluginOptions } from './types';
         config.customFields.Order = [...existingOrderFields, ...newOrderFields];
         return config;
     },
-    dashboard: './dashboard/index.tsx',
+    dashboard: '../dashboard/index.tsx',
     compatibility: '^3.0.0',
 })
 export class InvoicePdfPlugin {

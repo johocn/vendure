@@ -1,5 +1,6 @@
 import { Inject, OnApplicationBootstrap, Type } from '@nestjs/common';
-import { Logger, PluginCommonModule, VendurePlugin } from '@vendure/core';
+import { ModuleRef } from '@nestjs/core';
+import { EventBus, Injector, Logger, OrderStateTransitionEvent, PluginCommonModule, VendurePlugin } from '@vendure/core';
 
 import { GROUP_BUY_PLUGIN_OPTIONS, loggerCtx } from './constants';
 import { GroupBuyPluginOptions } from './types';
@@ -27,7 +28,7 @@ const { gql } = require('graphql-tag');
         schema: () => gql`
             enum GroupBuyStatus { active completed expired }
 
-            type GroupBuyActivity {
+            type GroupBuyActivity implements Node {
                 id: ID!
                 name: String!
                 description: String!
@@ -80,8 +81,10 @@ const { gql } = require('graphql-tag');
                 status: GroupBuyStatus
             }
 
+            input GroupBuyActivityListOptions
+
             extend type Query {
-                groupBuyActivities(options: Json): GroupBuyActivityList!
+                groupBuyActivities(options: GroupBuyActivityListOptions): GroupBuyActivityList!
                 groupBuyActivity(id: ID!): GroupBuyActivity
             }
 
@@ -97,7 +100,7 @@ const { gql } = require('graphql-tag');
         schema: () => gql`
             enum GroupBuyStatus { active completed expired }
 
-            type GroupBuyActivity {
+            type GroupBuyActivity implements Node {
                 id: ID!
                 name: String!
                 description: String!
@@ -152,15 +155,19 @@ const { gql } = require('graphql-tag');
 
         return config;
     },
-    dashboard: './dashboard/index.tsx',
+    dashboard: '../dashboard/index.tsx',
     compatibility: '^3.0.0',
 })
 export class GroupBuyPlugin implements OnApplicationBootstrap {
     private static options: GroupBuyPluginOptions = {};
+    private injector: Injector;
 
     constructor(
         @Inject(GROUP_BUY_PLUGIN_OPTIONS) private options: GroupBuyPluginOptions,
+        private groupBuyService: GroupBuyService,
         private groupBuyJob: GroupBuyJob,
+        private eventBus: EventBus,
+        private moduleRef: ModuleRef,
     ) {}
 
     static init(options?: GroupBuyPluginOptions): Type<GroupBuyPlugin> {
@@ -169,6 +176,25 @@ export class GroupBuyPlugin implements OnApplicationBootstrap {
     }
 
     async onApplicationBootstrap(): Promise<void> {
+        this.injector = new Injector(this.moduleRef);
+        this.groupBuyService.init(this.injector);
+        this.groupBuyJob.initStock(this.injector);
+
+        this.eventBus.ofType(OrderStateTransitionEvent).subscribe(async (event) => {
+            if (event.toState !== 'Cancelled') return;
+            const order = event.order as any;
+            const activityId = order?.customFields?.groupBuyActivityId;
+            if (!activityId) return;
+            try {
+                const { StockReserveService } = require('@vendure/redis-stock-plugin') as any;
+                const stockReserveService = this.injector.get(StockReserveService) as any;
+                if (stockReserveService?.isAvailable) {
+                    await stockReserveService.releaseStock(`group-buy:${activityId}`, 1);
+                }
+            } catch {
+                // RedisStockPlugin not installed
+            }
+        });
         await this.groupBuyJob.init();
         this.groupBuyJob.scheduleCheck();
         Logger.info('GroupBuyPlugin initialized', loggerCtx);

@@ -130,6 +130,18 @@ export class FlashSaleService {
         return { eligible: true };
     }
 
+    async findActive(ctx: RequestContext): Promise<FlashSaleActivity[]> {
+        const repo = this.connection.getRepository(ctx, FlashSaleActivity);
+        const now = new Date();
+        return repo
+            .createQueryBuilder('fsa')
+            .innerJoin('fsa.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId })
+            .where('fsa.status = :status', { status: 'active' })
+            .andWhere('fsa.startAt <= :now', { now })
+            .andWhere('fsa.endAt >= :now', { now })
+            .getMany();
+    }
+
     async findActiveByVariant(ctx: RequestContext, variantId: ID): Promise<FlashSaleActivity | undefined> {
         const repo = this.connection.getRepository(ctx, FlashSaleActivity);
         const now = new Date();

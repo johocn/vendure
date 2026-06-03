@@ -15,11 +15,11 @@ import { OrderTimeoutJob } from './order-timeout.job';
     configuration: (config) => {
         config.customFields.Channel = [
             ...(config.customFields.Channel ?? []),
-            ...orderTimeoutChannelCustomFields.Channel!,
+            ...orderTimeoutChannelCustomFields.Channel ?? [],
         ];
         return config;
     },
-    dashboard: './dashboard/index.tsx',
+    dashboard: '../dashboard/index.tsx',
     compatibility: '^3.0.0',
 })
 export class OrderTimeoutPlugin implements OnApplicationBootstrap {
@@ -44,12 +44,15 @@ export class OrderTimeoutPlugin implements OnApplicationBootstrap {
                 const timeoutMinutes = (event.ctx.channel as any).customFields?.orderTimeoutMinutes
                     ?? this.options.defaultTimeoutMinutes
                     ?? 30;
-                this.orderTimeoutJob.scheduleCancellation(
+                void this.orderTimeoutJob.scheduleCancellation(
                     event.order.id as string,
                     event.ctx.channelId as string,
                     timeoutMinutes,
                 );
-                Logger.info(`Scheduled timeout for order ${event.order.id} in ${timeoutMinutes} minutes`, loggerCtx);
+                Logger.info(
+                    `Scheduled timeout for order ${String(event.order.id)} in ${String(timeoutMinutes)} minutes`,
+                    loggerCtx,
+                );
             }
         });
     }

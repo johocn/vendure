@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
     ChannelService,
+    Injector,
     JobQueue,
     JobQueueService,
     Logger,
@@ -23,6 +24,17 @@ export class GroupBuyJob {
         private orderService: OrderService,
         private channelService: ChannelService,
     ) {}
+
+    private stockPrewarmService: any = null;
+
+    initStock(injector: Injector): void {
+        try {
+            const { StockPrewarmService } = require('@vendure/redis-stock-plugin');
+            this.stockPrewarmService = injector.get(StockPrewarmService);
+        } catch {
+            // RedisStockPlugin not installed
+        }
+    }
 
     async init(): Promise<void> {
         this.jobQueue = await this.jobQueueService.createQueue({
@@ -57,6 +69,10 @@ export class GroupBuyJob {
                                 activity.status = 'expired';
                             }
                             await activityRepo.save(activity);
+
+                            if (this.stockPrewarmService) {
+                                await this.stockPrewarmService.removePrewarm(`group-buy:${activity.id}`);
+                            }
 
                             if (activity.status === 'expired') {
                                 const pendingOrders = await orderRepo.find({

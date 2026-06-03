@@ -79,7 +79,7 @@ exports.DistributionPlugin = DistributionPlugin = DistributionPlugin_1 = __decor
             enum WithdrawalMethod { bank alipay wechat }
             enum WithdrawalStatus { pending approved rejected paid }
 
-            type Distributor {
+            type Distributor implements Node {
                 id: ID!
                 customerId: ID!
                 parentId: ID
@@ -93,7 +93,7 @@ exports.DistributionPlugin = DistributionPlugin = DistributionPlugin_1 = __decor
                 updatedAt: DateTime!
             }
 
-            type CommissionRecord {
+            type CommissionRecord implements Node {
                 id: ID!
                 distributorId: ID!
                 orderId: ID!
@@ -106,7 +106,7 @@ exports.DistributionPlugin = DistributionPlugin = DistributionPlugin_1 = __decor
                 createdAt: DateTime!
             }
 
-            type WithdrawalRequest {
+            type WithdrawalRequest implements Node {
                 id: ID!
                 distributorId: ID!
                 amount: Int!
@@ -161,7 +161,7 @@ exports.DistributionPlugin = DistributionPlugin = DistributionPlugin_1 = __decor
             enum WithdrawalMethod { bank alipay wechat }
             enum WithdrawalStatus { pending approved rejected paid }
 
-            type Distributor {
+            type Distributor implements Node {
                 id: ID!
                 customerId: ID!
                 parentId: ID
@@ -175,10 +175,9 @@ exports.DistributionPlugin = DistributionPlugin = DistributionPlugin_1 = __decor
                 updatedAt: DateTime!
             }
 
-            type CommissionRecord {
+            type CommissionRecord implements Node {
                 id: ID!
                 distributorId: ID!
-                orderId: ID!
                 commissionType: CommissionType!
                 commissionRate: Int!
                 orderAmount: Int!
@@ -188,7 +187,7 @@ exports.DistributionPlugin = DistributionPlugin = DistributionPlugin_1 = __decor
                 createdAt: DateTime!
             }
 
-            type WithdrawalRequest {
+            type WithdrawalRequest implements Node {
                 id: ID!
                 distributorId: ID!
                 amount: Int!
@@ -224,6 +223,7 @@ exports.DistributionPlugin = DistributionPlugin = DistributionPlugin_1 = __decor
                 ] });
             return config;
         },
+        dashboard: '../dashboard/index.tsx',
         compatibility: '^3.0.0',
     }),
     __param(0, (0, common_1.Inject)(constants_1.DISTRIBUTION_PLUGIN_OPTIONS)),

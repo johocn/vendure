@@ -38,7 +38,7 @@ export class AlipayController {
             const outTradeNo = body.out_trade_no;
 
             if (tradeStatus === 'TRADE_SUCCESS' || tradeStatus === 'TRADE_FINISHED') {
-                Logger.info(`Alipay trade success: ${outTradeNo}, txId: ${body.trade_no}`, loggerCtx);
+                Logger.info(`Alipay trade success: ${String(outTradeNo)}, txId: ${String(body.trade_no)}`, loggerCtx);
 
                 try {
                     const channel = await this.channelService.getDefaultChannel();
@@ -55,18 +55,18 @@ export class AlipayController {
                         for (const payment of payments) {
                             if (payment.state === 'Authorized') {
                                 await this.orderService.settlePayment(ctx, payment.id);
-                                Logger.info(`Settled payment ${payment.id} for order ${outTradeNo}`, loggerCtx);
+                                Logger.info(`Settled payment ${String(payment.id)} for order ${String(outTradeNo)}`, loggerCtx);
                             }
                         }
                     }
                 } catch (e: any) {
-                    Logger.error(`Failed to settle payment for order ${outTradeNo}: ${e.message}`, loggerCtx);
+                    Logger.error(`Failed to settle payment for order ${String(outTradeNo)}: ${String(e.message)}`, loggerCtx);
                 }
             }
 
             res.send('success');
         } catch (e: any) {
-            Logger.error(`Alipay notify error: ${e.message}`, loggerCtx);
+            Logger.error(`Alipay notify error: ${String(e.message)}`, loggerCtx);
             res.send('fail');
         }
     }
