@@ -393,3 +393,7 @@ __admin-ui/
 
 # Vendure telemetry installation ID
 .vendure/
+
+# E2E test temp files
+cookies.txt
+e2e-*.json
