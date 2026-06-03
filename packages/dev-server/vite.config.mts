@@ -13,6 +13,9 @@ export default defineConfig({
                 port: Number(process.env.API_PORT) || 3000,
             },
             gqlOutputPath: path.resolve(__dirname, './graphql/'),
+            pluginPackageScanner: {
+                nodeModulesRoot: path.resolve(__dirname, '../../node_modules'),
+            },
         }),
     ],
 });

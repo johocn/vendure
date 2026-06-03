@@ -29,14 +29,14 @@ export interface ClarityIconOptions {
     label?: string;
 }
 
-export function renderClarityIcon(options: ClarityIconOptions): (view: EditorView) => HTMLElement {
+export function renderClarityIcon(options: ClarityIconOptions): (view: EditorView) => HTMLButtonElement {
     return (view: EditorView) => {
         const icon = document.createElement('clr-icon');
         icon.setAttribute('shape', options.shape);
         icon.setAttribute('size', (options.size ?? IconSize.Small).toString());
         const labelEl = document.createElement('span');
         labelEl.textContent = options.label ?? '';
-        return wrapInMenuItemWithIcon(icon, options.label ? labelEl : undefined);
+        return wrapInMenuItemWithIcon(icon, options.label ? labelEl : undefined) as unknown as HTMLButtonElement;
     };
 }
 

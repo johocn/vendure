@@ -162,82 +162,41 @@ export const devConfig: VendureConfig = {
             },
         }),
         ...(IS_INSTRUMENTED ? [TelemetryPlugin.init({})] : []),
-        // AdminUiPlugin.init({
-        //     route: 'admin',
-        //     port: 5001,
-        //     adminUiConfig: {},
-        //     // Un-comment to compile a custom admin ui
-        //     // app: compileUiExtensions({
-        //     //     outputPath: path.join(__dirname, './custom-admin-ui'),
-        //     //     extensions: [
-        //     //         {
-        //     //             id: 'ui-extensions-library',
-        //     //             extensionPath: path.join(__dirname, 'example-plugins/ui-extensions-library/ui'),
-        //     //             routes: [{ route: 'ui-library', filePath: 'routes.ts' }],
-        //     //             providers: ['providers.ts'],
-        //     //         },
-        //     //         {
-        //     //             globalStyles: path.join(
-        //     //                 __dirname,
-        //     //                 'test-plugins/with-ui-extension/ui/custom-theme.scss',
-        //     //             ),
-        //     //         },
-        //     //     ],
-        //     //     devMode: true,
-        //     // }),
-        // }),
+        // AdminUiPlugin requires pre-built admin-ui bundle. Build with:
+        // cd packages/admin-ui && npm run build:app
         AdminUiPlugin.init({
             route: 'admin',
             port: 5001,
             adminUiConfig: {},
-            // Un-comment to compile a custom admin ui
-            // app: compileUiExtensions({
-            //     outputPath: path.join(__dirname, './custom-admin-ui'),
-            //     extensions: [
-            //         {
-            //             id: 'ui-extensions-library',
-            //             extensionPath: path.join(__dirname, 'example-plugins/ui-extensions-library/ui'),
-            //             routes: [{ route: 'ui-library', filePath: 'routes.ts' }],
-            //             providers: ['providers.ts'],
-            //         },
-            //         {
-            //             globalStyles: path.join(
-            //                 __dirname,
-            //                 'test-plugins/with-ui-extension/ui/custom-theme.scss',
-            //             ),
-            //         },
-            //     ],
-            //     devMode: true,
-            // }),
         }),
         DashboardPlugin.init({
             route: 'dashboard',
             appDir: path.join(__dirname, './dist'),
         }),
         CjkPlugin.init({ i18n: { enabled: true }, regions: { enabled: true } }),
-        AlipayPlugin.init({
-            notifyUrl: process.env.ALIPAY_NOTIFY_URL ?? '',
+        ...(process.env.ALIPAY_NOTIFY_URL ? [AlipayPlugin.init({
+            notifyUrl: process.env.ALIPAY_NOTIFY_URL,
             alipayPublicKey: process.env.ALIPAY_PUBLIC_KEY ?? '',
-        }),
-        WechatpayPlugin.init({
-            notifyUrl: process.env.WECHATPAY_NOTIFY_URL ?? '',
-        }),
-        OssPlugin.init({
+        })] : []),
+        ...(process.env.WECHATPAY_NOTIFY_URL ? [WechatpayPlugin.init({
+            notifyUrl: process.env.WECHATPAY_NOTIFY_URL,
+        })] : []),
+        ...(process.env.OSS_ACCESS_KEY_ID ? [OssPlugin.init({
             region: process.env.OSS_REGION ?? '',
             accessKeyId: process.env.OSS_ACCESS_KEY_ID ?? '',
             accessKeySecret: process.env.OSS_ACCESS_KEY_SECRET ?? '',
             bucket: process.env.OSS_BUCKET ?? '',
-        }),
-        PhoneAuthPlugin.init({
-            accessKeyId: process.env.SMS_ACCESS_KEY_ID ?? '',
+        })] : []),
+        ...(process.env.SMS_ACCESS_KEY_ID ? [PhoneAuthPlugin.init({
+            accessKeyId: process.env.SMS_ACCESS_KEY_ID,
             accessKeySecret: process.env.SMS_ACCESS_KEY_SECRET ?? '',
             signName: process.env.SMS_SIGN_NAME ?? '',
             templateCode: process.env.SMS_TEMPLATE_CODE ?? '',
-        }),
-        WechatAuthPlugin.init({
-            appId: process.env.WECHAT_AUTH_APP_ID ?? '',
+        })] : []),
+        ...(process.env.WECHAT_AUTH_APP_ID ? [WechatAuthPlugin.init({
+            appId: process.env.WECHAT_AUTH_APP_ID,
             appSecret: process.env.WECHAT_AUTH_APP_SECRET ?? '',
-        }),
+        })] : []),
         OrderTimeoutPlugin.init({ defaultTimeoutMinutes: 30 }),
         InvoicePlugin.init(),
         LogisticsPlugin.init(),
@@ -249,13 +208,13 @@ export const devConfig: VendureConfig = {
             minWithdrawalAmount: 10000,
             settlementDays: 7,
         }),
-        RedisStockPlugin.init({
-            redisUrl: process.env.REDIS_URL ?? 'redis://localhost:6379',
-        }),
-        LogisticsApiPlugin.init({
-            customer: process.env.KUAIDI100_CUSTOMER ?? '',
+        ...(process.env.REDIS_URL ? [RedisStockPlugin.init({
+            redisUrl: process.env.REDIS_URL,
+        })] : []),
+        ...(process.env.KUAIDI100_CUSTOMER ? [LogisticsApiPlugin.init({
+            customer: process.env.KUAIDI100_CUSTOMER,
             key: process.env.KUAIDI100_KEY ?? '',
-        }),
+        })] : []),
         InvoicePdfPlugin.init(),
     ],
 };

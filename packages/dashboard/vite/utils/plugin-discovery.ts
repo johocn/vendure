@@ -48,10 +48,26 @@ export async function discoverPlugins({
         `[discoverPlugins] Expanded to ${expandedImports.length} packages: ${JSON.stringify(expandedImports, null, 2)}`,
     );
 
+    const localPluginLibGlobs: string[] = [];
+    for (const [pluginName, sourcePath] of localPluginLocations.entries()) {
+        const pluginDir = path.dirname(sourcePath);
+        for (const outDirName of ['lib', 'dist']) {
+            const outDir = path.join(pluginDir, '..', outDirName);
+            if (fs.existsSync(outDir)) {
+                localPluginLibGlobs.push(outDir.replace(/\\/g, '/') + '/**/*.js');
+                logger.debug(`[discoverPlugins] Adding local plugin ${outDirName} dir: ${outDir}`);
+                break;
+            }
+        }
+    }
+
     const filePaths = await findVendurePluginFiles({
         logger,
         nodeModulesRoot,
-        packageGlobs: expandedImports.map(pkg => pkg + '/**/*.js'),
+        packageGlobs: [
+            ...expandedImports.map(pkg => pkg + '/**/*.js'),
+            ...localPluginLibGlobs,
+        ],
         outputPath,
         vendureConfigPath,
     });
@@ -446,7 +462,9 @@ export async function findVendurePluginFiles({
         // Local compiled plugins in temp dir
         path.join(outputPath, '**/*.js'),
         // Node modules patterns
-        ...packageGlobs.map(pattern => path.join(nodeModulesRoot, pattern)),
+        ...packageGlobs.map(pattern =>
+            path.isAbsolute(pattern) ? pattern : path.join(nodeModulesRoot, pattern),
+        ),
     ].map(p => p.replace(/\\/g, '/'));
 
     logger.debug(`Finding Vendure plugins using patterns: ${patterns.join('\n')}`);

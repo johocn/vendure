@@ -19,11 +19,14 @@ export class SubMenuWithIcon extends DropdownSubmenu {
     render(view: EditorView): {
         dom: HTMLElement;
         update: (state: EditorState) => boolean;
+        focusable: HTMLElement;
     } {
-        const { dom, update } = super.render(view);
+        const { dom, update, focusable } = super.render(view);
+        const wrapped = wrapInMenuItemWithIcon(this.icon, dom);
         return {
-            dom: wrapInMenuItemWithIcon(this.icon, dom),
+            dom: wrapped,
             update,
+            focusable,
         };
     }
 }
