@@ -39,6 +39,8 @@ import { DistributionPlugin } from '@vendure/distribution-plugin';
 import { RedisStockPlugin } from '@vendure/redis-stock-plugin';
 import { LogisticsApiPlugin } from '@vendure/logistics-api-plugin';
 import { InvoicePdfPlugin } from '@vendure/invoice-pdf-plugin';
+import { RechargeCardPlugin } from '@vendure/recharge-card-plugin';
+import { AfterSalesPlugin } from '@vendure/after-sales-plugin';
 import { NavModifierPlugin } from './test-plugins/nav-modifier-plugin/nav-modifier-plugin';
 // import { FieldTestPlugin } from './test-plugins/field-test/field-test-plugin';
 import { ReviewsPlugin } from './test-plugins/reviews/reviews-plugin';
@@ -98,7 +100,7 @@ export const devConfig: VendureConfig = {
     authOptions: {
         disableAuth: false,
         tokenMethod: ['bearer', 'cookie', 'api-key'] as const,
-        requireVerification: true,
+        requireVerification: false,
         customPermissions: [],
         cookieOptions: {
             secret: 'abc',
@@ -187,15 +189,19 @@ export const devConfig: VendureConfig = {
             accessKeySecret: process.env.OSS_ACCESS_KEY_SECRET ?? '',
             bucket: process.env.OSS_BUCKET ?? '',
         })] : []),
-        ...(process.env.SMS_ACCESS_KEY_ID ? [PhoneAuthPlugin.init({
-            accessKeyId: process.env.SMS_ACCESS_KEY_ID,
+        ...((process.env.SMS_ACCESS_KEY_ID || process.env.DEV_BYPASS_SMS === 'true') ? [PhoneAuthPlugin.init({
+            accessKeyId: process.env.SMS_ACCESS_KEY_ID || '',
             accessKeySecret: process.env.SMS_ACCESS_KEY_SECRET ?? '',
             signName: process.env.SMS_SIGN_NAME ?? '',
             templateCode: process.env.SMS_TEMPLATE_CODE ?? '',
+            devBypass: process.env.DEV_BYPASS_SMS === 'true',
+            devBypassCode: '123456',
         })] : []),
-        ...(process.env.WECHAT_AUTH_APP_ID ? [WechatAuthPlugin.init({
-            appId: process.env.WECHAT_AUTH_APP_ID,
-            appSecret: process.env.WECHAT_AUTH_APP_SECRET ?? '',
+        ...((process.env.WECHAT_AUTH_APP_ID || process.env.DEV_BYPASS_WECHAT === 'true') ? [WechatAuthPlugin.init({
+            appId: process.env.WECHAT_AUTH_APP_ID || 'dev_test_app_id',
+            appSecret: process.env.WECHAT_AUTH_APP_SECRET || 'dev_test_app_secret',
+            miniProgramAppId: process.env.WECHAT_AUTH_MINI_APP_ID || '',
+            miniProgramAppSecret: process.env.WECHAT_AUTH_MINI_APP_SECRET || '',
         })] : []),
         OrderTimeoutPlugin.init({ defaultTimeoutMinutes: 30 }),
         InvoicePlugin.init(),
@@ -216,6 +222,8 @@ export const devConfig: VendureConfig = {
             key: process.env.KUAIDI100_KEY ?? '',
         })] : []),
         InvoicePdfPlugin.init(),
+        RechargeCardPlugin.init({ defaultExpiresMonths: 12 }),
+        AfterSalesPlugin.init(),
     ],
 };
 

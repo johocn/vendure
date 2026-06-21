@@ -17,12 +17,11 @@ export class PhoneAuthenticationStrategy implements AuthenticationStrategy<Phone
     private smsService: SmsService;
     private userService: UserService;
 
-    constructor(private options: PhoneAuthPluginOptions) {
-        this.smsService = new SmsService(options);
-    }
+    constructor(private options: PhoneAuthPluginOptions) {}
 
     async init(injector: Injector) {
         this.userService = injector.get(UserService);
+        this.smsService = injector.get(SmsService);
     }
 
     defineInputType(): DocumentNode {

@@ -39,11 +39,11 @@ __decorate([
     __metadata("design:type", String)
 ], WithdrawalRequest.prototype, "status", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
+    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
     __metadata("design:type", Date)
 ], WithdrawalRequest.prototype, "reviewedAt", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
+    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
     __metadata("design:type", Date)
 ], WithdrawalRequest.prototype, "paidAt", void 0);
 __decorate([

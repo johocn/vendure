@@ -25,7 +25,7 @@ export class CommissionRecord extends VendureEntity implements ChannelAware {
 
     @Column({ default: 'pending' }) status: 'pending' | 'confirmed' | 'paid' | 'cancelled';
 
-    @Column({ type: 'datetime', nullable: true }) settledAt: Date;
+    @Column({ type: 'timestamp', nullable: true }) settledAt: Date;
 
     @ManyToMany(() => Channel)
     @JoinTable()

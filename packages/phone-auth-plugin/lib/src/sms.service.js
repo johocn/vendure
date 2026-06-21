@@ -61,6 +61,8 @@ let SmsService = class SmsService {
         this.codeLength = options.codeLength || 6;
         this.codeExpirySeconds = options.codeExpirySeconds || 300;
         this.codeStore = new Map();
+        this.devBypass = options.devBypass || false;
+        this.devBypassCode = options.devBypassCode || '123456';
     }
     async sendVerificationCode(phoneNumber) {
         var _a, _b;
@@ -69,6 +71,10 @@ let SmsService = class SmsService {
             code,
             expiresAt: Date.now() + this.codeExpirySeconds * 1000,
         });
+        if (this.devBypass) {
+            core_1.Logger.info(`[DEV BYPASS] Verification code for ${phoneNumber}: ${code}`, constants_1.loggerCtx);
+            return true;
+        }
         try {
             const request = new dysmsapi20170525_1.SendSmsRequest({
                 phoneNumbers: phoneNumber,
@@ -99,6 +105,11 @@ let SmsService = class SmsService {
         }
         if (stored.code === code) {
             this.codeStore.delete(phoneNumber);
+            return true;
+        }
+        if (this.devBypass && code === this.devBypassCode) {
+            this.codeStore.delete(phoneNumber);
+            core_1.Logger.info(`[DEV BYPASS] Accepted bypass code for ${phoneNumber}`, constants_1.loggerCtx);
             return true;
         }
         return false;

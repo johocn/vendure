@@ -9,10 +9,11 @@ export declare class WechatAuthenticationStrategy implements AuthenticationStrat
     private options;
     readonly name = "wechat";
     private userService;
+    private customerService;
     constructor(options: WechatAuthPluginOptions);
     init(injector: Injector): Promise<void>;
     defineInputType(): DocumentNode;
     authenticate(ctx: RequestContext, data: WechatAuthData): Promise<User | false | string>;
-    private getMpOpenid;
+    private getMpOpenidWithInfo;
     private getMiniOpenid;
 }

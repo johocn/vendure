@@ -20,9 +20,12 @@ const constants_1 = require("./constants");
 const customer_custom_fields_1 = require("./customer-custom-fields");
 const wechat_auth_strategy_1 = require("./wechat-auth-strategy");
 const wechat_auth_controller_1 = require("./wechat-auth.controller");
+const wechat_auth_service_1 = require("./wechat-auth.service");
+const wechat_auth_shop_resolver_1 = require("./wechat-auth-shop.resolver");
 let WechatAuthPlugin = WechatAuthPlugin_1 = class WechatAuthPlugin {
-    constructor(options) {
+    constructor(options, wechatAuthService) {
         this.options = options;
+        this.wechatAuthService = wechatAuthService;
     }
     static init(options) {
         WechatAuthPlugin_1.options = options;
@@ -36,6 +39,7 @@ exports.WechatAuthPlugin = WechatAuthPlugin = WechatAuthPlugin_1 = __decorate([
         controllers: [wechat_auth_controller_1.WechatAuthController],
         providers: [
             { provide: constants_1.WECHAT_AUTH_PLUGIN_OPTIONS, useFactory: () => WechatAuthPlugin.options },
+            wechat_auth_service_1.WechatAuthService,
         ],
         configuration: config => {
             var _a, _b;
@@ -50,9 +54,26 @@ exports.WechatAuthPlugin = WechatAuthPlugin = WechatAuthPlugin_1 = __decorate([
                 ] });
             return config;
         },
+        shopApiExtensions: {
+            schema: () => {
+                const { gql } = require('graphql-tag');
+                return gql `
+                type JsapiSignature {
+                    appId: String!
+                    timestamp: Int!
+                    nonceStr: String!
+                    signature: String!
+                }
+                extend type Query {
+                    wechatJsapiSignature(url: String!): JsapiSignature!
+                }
+            `;
+            },
+            resolvers: [wechat_auth_shop_resolver_1.WechatAuthShopResolver],
+        },
         compatibility: '^3.0.0',
     }),
     __param(0, (0, common_1.Inject)(constants_1.WECHAT_AUTH_PLUGIN_OPTIONS)),
-    __metadata("design:paramtypes", [Object])
+    __metadata("design:paramtypes", [Object, wechat_auth_service_1.WechatAuthService])
 ], WechatAuthPlugin);
 //# sourceMappingURL=plugin.js.map

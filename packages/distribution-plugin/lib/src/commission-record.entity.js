@@ -55,7 +55,7 @@ __decorate([
     __metadata("design:type", String)
 ], CommissionRecord.prototype, "status", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
+    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
     __metadata("design:type", Date)
 ], CommissionRecord.prototype, "settledAt", void 0);
 __decorate([

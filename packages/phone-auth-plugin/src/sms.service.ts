@@ -27,7 +27,12 @@ export class SmsService {
         this.codeLength = options.codeLength || 6;
         this.codeExpirySeconds = options.codeExpirySeconds || 300;
         this.codeStore = new Map();
+        this.devBypass = options.devBypass || false;
+        this.devBypassCode = options.devBypassCode || '123456';
     }
+
+    private devBypass: boolean;
+    private devBypassCode: string;
 
     async sendVerificationCode(phoneNumber: string): Promise<boolean> {
         const code = this.generateCode();
@@ -35,6 +40,11 @@ export class SmsService {
             code,
             expiresAt: Date.now() + this.codeExpirySeconds * 1000,
         });
+
+        if (this.devBypass) {
+            Logger.info(`[DEV BYPASS] Verification code for ${phoneNumber}: ${code}`, loggerCtx);
+            return true;
+        }
 
         try {
             const request = new SendSmsRequest({
@@ -67,6 +77,11 @@ export class SmsService {
         }
         if (stored.code === code) {
             this.codeStore.delete(phoneNumber);
+            return true;
+        }
+        if (this.devBypass && code === this.devBypassCode) {
+            this.codeStore.delete(phoneNumber);
+            Logger.info(`[DEV BYPASS] Accepted bypass code for ${phoneNumber}`, loggerCtx);
             return true;
         }
         return false;

@@ -7,6 +7,8 @@ export declare class SmsService {
     private codeExpirySeconds;
     private codeStore;
     constructor(options: PhoneAuthPluginOptions);
+    private devBypass;
+    private devBypassCode;
     sendVerificationCode(phoneNumber: string): Promise<boolean>;
     verifyCode(phoneNumber: string, code: string): boolean;
     private generateCode;

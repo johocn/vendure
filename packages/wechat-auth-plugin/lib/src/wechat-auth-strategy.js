@@ -11,6 +11,7 @@ class WechatAuthenticationStrategy {
     }
     async init(injector) {
         this.userService = injector.get(core_1.UserService);
+        this.customerService = injector.get(core_1.CustomerService);
     }
     defineInputType() {
         return (0, graphql_tag_1.gql) `
@@ -24,8 +25,11 @@ class WechatAuthenticationStrategy {
         const { code, type } = data;
         try {
             let openid;
+            let userInfo = null;
             if (type === 'mp') {
-                openid = await this.getMpOpenid(code);
+                const mpResult = await this.getMpOpenidWithInfo(code);
+                openid = mpResult.openid;
+                userInfo = mpResult.userInfo;
             }
             else {
                 openid = await this.getMiniOpenid(code);
@@ -34,28 +38,82 @@ class WechatAuthenticationStrategy {
                 return '微信授权失败';
             }
             const identifier = type === 'mp' ? `wechat_mp_${openid}` : `wechat_mini_${openid}`;
-            const user = await this.userService.getUserByEmailAddress(ctx, identifier);
-            if (user) {
-                return user;
+            // Try to find existing user by identifier
+            let user = await this.userService.getUserByEmailAddress(ctx, identifier);
+            if (!user) {
+                // Create new customer user
+                const result = await this.userService.createCustomerUser(ctx, identifier);
+                if ('identifier' in result) {
+                    user = result;
+                }
+                else {
+                    return false;
+                }
             }
-            const result = await this.userService.createCustomerUser(ctx, identifier);
-            if ('identifier' in result) {
-                return result;
+            // Update openid in custom fields
+            try {
+                const customer = await this.customerService.findOneByUserId(ctx, user.id);
+                if (customer) {
+                    const customFields = {};
+                    if (type === 'mp') {
+                        customFields.wechatOpenid = openid;
+                        // If we got user info from snsapi_userinfo, update name
+                        if (userInfo === null || userInfo === void 0 ? void 0 : userInfo.nickname) {
+                            await this.customerService.update(ctx, {
+                                id: customer.id,
+                                firstName: userInfo.nickname,
+                                customFields: { wechatOpenid: openid },
+                            });
+                        }
+                        else {
+                            await this.customerService.update(ctx, {
+                                id: customer.id,
+                                customFields: { wechatOpenid: openid },
+                            });
+                        }
+                    }
+                    else {
+                        customFields.wechatMiniOpenid = openid;
+                        await this.customerService.update(ctx, {
+                            id: customer.id,
+                            customFields: { wechatMiniOpenid: openid },
+                        });
+                    }
+                }
             }
-            return false;
+            catch (e) {
+                core_1.Logger.warn(`Failed to update openid custom fields: ${e.message}`, constants_1.loggerCtx);
+            }
+            return user;
         }
         catch (e) {
             core_1.Logger.error(`WeChat auth failed: ${String(e.message)}`, constants_1.loggerCtx);
             return false;
         }
     }
-    async getMpOpenid(code) {
+    async getMpOpenidWithInfo(code) {
+        var _a;
         const url = `https://api.weixin.qq.com/sns/oauth2/access_token` +
             `?appid=${this.options.appId}&secret=${this.options.appSecret}` +
             `&code=${code}&grant_type=authorization_code`;
         const response = await fetch(url);
         const data = (await response.json());
-        return data.openid;
+        if (!data.openid) {
+            return { openid: '', userInfo: null };
+        }
+        // If scope was snsapi_userinfo, we can fetch user profile
+        let userInfo = null;
+        if (data.access_token && ((_a = data.scope) === null || _a === void 0 ? void 0 : _a.includes('snsapi_userinfo'))) {
+            try {
+                const infoUrl = `https://api.weixin.qq.com/sns/userinfo?access_token=${data.access_token}&openid=${data.openid}&lang=zh_CN`;
+                const infoRes = await fetch(infoUrl);
+                userInfo = await infoRes.json();
+            }
+            catch (e) {
+                core_1.Logger.warn('Failed to fetch WeChat user info', constants_1.loggerCtx);
+            }
+        }
+        return { openid: data.openid, userInfo };
     }
     async getMiniOpenid(code) {
         const appId = this.options.miniProgramAppId || this.options.appId;

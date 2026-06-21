@@ -9,10 +9,10 @@ class PhoneAuthenticationStrategy {
     constructor(options) {
         this.options = options;
         this.name = 'phone';
-        this.smsService = new sms_service_1.SmsService(options);
     }
     async init(injector) {
         this.userService = injector.get(core_1.UserService);
+        this.smsService = injector.get(sms_service_1.SmsService);
     }
     defineInputType() {
         return (0, graphql_tag_1.gql) `

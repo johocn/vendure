@@ -5,4 +5,6 @@ export interface PhoneAuthPluginOptions {
     templateCode: string;
     codeLength?: number;
     codeExpirySeconds?: number;
+    devBypass?: boolean;
+    devBypassCode?: string;
 }

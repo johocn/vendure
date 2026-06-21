@@ -24,7 +24,9 @@
         "@vendure/common": "3.6.4",
         "@vendure/core": "3.6.4",
         "@vendure/email-plugin": "3.6.4",
-        "typescript": "5.8.2"
+        "typescript": "5.8.2",
+        "@vendure/recharge-card-plugin": "0.0.1",
+        "@vendure/after-sales-plugin": "0.0.1"
     },
     "devDependencies": {
         "@vendure/testing": "3.6.4",
