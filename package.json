@@ -1,0 +1,16 @@
+{
+  "name": "vendure-prod",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "start": "node packages/dev-server/prod-start.js",
+    "start:worker": "node packages/dev-server/dist/index-worker.js"
+  },
+  "dependencies": {
+    "pg": "^8.0.0",
+    "dotenv": "^16.0.0"
+  }
+}
