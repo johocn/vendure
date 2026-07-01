@@ -30,7 +30,7 @@ function getDbConfig() {
     const dbType = process.env.DB || 'postgres';
     switch (dbType) {
         case 'postgres':
-            return { synchronize: false, type: 'postgres', host: process.env.DB_HOST || 'localhost', port: Number(process.env.DB_PORT) || 5432, username: process.env.DB_USERNAME || 'postgres', password: process.env.DB_PASSWORD || '', database: process.env.DB_NAME || 'vendure', schema: process.env.DB_SCHEMA || 'public' };
+            return { synchronize: true, type: 'postgres', host: process.env.DB_HOST || 'localhost', port: Number(process.env.DB_PORT) || 5432, username: process.env.DB_USERNAME || 'postgres', password: process.env.DB_PASSWORD || '', database: process.env.DB_NAME || 'vendure', schema: process.env.DB_SCHEMA || 'public' };
         case 'sqlite':
             return { synchronize: false, type: 'better-sqlite3', database: path_1.join(__dirname, 'vendure.sqlite') };
         default:
@@ -55,7 +55,7 @@ exports.devConfig = {
         cookieOptions: { secret: process.env.COOKIE_SECRET || 'vendure-prod' },
     },
     dbConnectionOptions: {
-        synchronize: false,
+        synchronize: true,
         logging: false,
         ...getDbConfig(),
     },
