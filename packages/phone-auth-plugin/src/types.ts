@@ -10,8 +10,8 @@ export interface PhoneAuthPluginOptions {
 }
 
 export interface RegisterCustomerInput {
-    phoneNumber: string;
-    code: string;
+    phoneNumber?: string;
+    code?: string;
     password: string;
     emailAddress?: string;
 }

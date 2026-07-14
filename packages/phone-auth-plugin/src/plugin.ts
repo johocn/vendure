@@ -27,10 +27,10 @@ import { PhoneAuthPluginOptions } from './types';
                 }
 
                 input PhoneRegisterInput {
-                    phoneNumber: String!
-                    code: String!
-                    password: String!
+                    phoneNumber: String
+                    code: String
                     emailAddress: String
+                    password: String!
                 }
             `;
         },

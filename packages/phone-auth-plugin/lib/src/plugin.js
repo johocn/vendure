@@ -51,10 +51,10 @@ exports.PhoneAuthPlugin = PhoneAuthPlugin = PhoneAuthPlugin_1 = __decorate([
                 }
 
                 input PhoneRegisterInput {
-                    phoneNumber: String!
-                    code: String!
-                    password: String!
+                    phoneNumber: String
+                    code: String
                     emailAddress: String
+                    password: String!
                 }
             `;
             },

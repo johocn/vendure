@@ -28,18 +28,38 @@ let PhoneAuthResolver = class PhoneAuthResolver {
         return this.smsService.sendVerificationCode(phoneNumber);
     }
     async registerCustomer(ctx, args) {
-        const { phoneNumber, code, password } = args.input;
-        const verified = this.smsService.verifyCode(phoneNumber, code);
-        if (!verified) {
-            throw new core_1.UserInputError('验证码错误或已过期');
+        const { phoneNumber, code, password, emailAddress } = args.input;
+        // 分派：手机号注册 or 邮箱注册（二选一）
+        const isPhoneMode = !!phoneNumber;
+        const isEmailMode = !!emailAddress && !phoneNumber;
+        if (!isPhoneMode && !isEmailMode) {
+            throw new core_1.UserInputError('必须提供 phoneNumber 或 emailAddress 之一');
+        }
+        let identifier;
+        let resolvedPhone;
+        if (isPhoneMode) {
+            if (!code) {
+                throw new core_1.UserInputError('手机号注册必须提供验证码');
+            }
+            const verified = this.smsService.verifyCode(phoneNumber, code);
+            if (!verified) {
+                throw new core_1.UserInputError('验证码错误或已过期');
+            }
+            identifier = phoneNumber;
+            resolvedPhone = phoneNumber;
+            // 手机号作为 identifier 存储（非邮箱格式不会被 normalize 转小写）
+        }
+        else {
+            identifier = emailAddress;
         }
         const result = await this.customerService.registerCustomerAccount(ctx, {
-            emailAddress: phoneNumber,
+            emailAddress: identifier,
             password,
-            phoneNumber,
+            phoneNumber: resolvedPhone,
         });
         if ((0, core_1.isGraphQlErrorResult)(result)) {
             if (result.errorCode === 'EMAIL_ADDRESS_CONFLICT_ERROR') {
+                // 防账户枚举：已存在时返回 success
                 return { success: true };
             }
             throw new core_1.UserInputError(result.message || '注册失败');
