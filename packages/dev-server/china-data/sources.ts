@@ -240,3 +240,39 @@ export const DEFAULT_PICKUP_LOCATIONS = [
 export const SHOP_A_PICKUP_LOCATIONS = [
     { name: '生鲜自提点(国贸店)', type: 'store' as const, address: '北京市朝阳区建国门外大街1号', phoneNumber: '010-11112222', businessHours: '07:00-21:00' },
 ];
+
+// ===== Promotions =====
+export interface PromotionSource {
+    name: string;
+    couponCode: string;
+    channel: 'default' | 'shop-a';
+    conditions: Array<{ code: string; arguments: Array<{ name: string; value: string }> }>;
+    actions: Array<{ code: string; arguments: Array<{ name: string; value: string }> }>;
+    customFields?: { stackable?: boolean; stackableGroup?: string | null; maxStackableWith?: number | null };
+}
+
+export const PROMOTIONS: PromotionSource[] = [
+    {
+        name: '满100减10',
+        couponCode: 'SAVE10',
+        channel: 'default',
+        conditions: [{ code: 'order-total', arguments: [{ name: 'minimum', value: '10000' }] }],
+        actions: [{ code: 'order-fixed-discount', arguments: [{ name: 'discount', value: '1000' }] }],
+    },
+    {
+        name: '新人9折',
+        couponCode: 'NEW90',
+        channel: 'shop-a',
+        conditions: [{ code: 'order-total', arguments: [{ name: 'minimum', value: '0' }] }],
+        actions: [{ code: 'order-percentage-discount', arguments: [{ name: 'discount', value: '10' }] }],
+        customFields: { stackable: true, stackableGroup: null, maxStackableWith: null },
+    },
+    {
+        name: '满50减5',
+        couponCode: 'SAVE5',
+        channel: 'shop-a',
+        conditions: [{ code: 'order-total', arguments: [{ name: 'minimum', value: '5000' }] }],
+        actions: [{ code: 'order-fixed-discount', arguments: [{ name: 'discount', value: '500' }] }],
+        customFields: { stackable: true, stackableGroup: null, maxStackableWith: null },
+    },
+];
