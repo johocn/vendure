@@ -3,4 +3,6 @@ export interface WechatAuthPluginOptions {
     appSecret: string;
     miniProgramAppId?: string;
     miniProgramAppSecret?: string;
+    devBypass?: boolean;
+    devBypassOpenid?: string;
 }

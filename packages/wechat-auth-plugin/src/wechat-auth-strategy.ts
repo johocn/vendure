@@ -33,6 +33,19 @@ export class WechatAuthenticationStrategy implements AuthenticationStrategy<Wech
     }
 
     async authenticate(ctx: RequestContext, data: WechatAuthData): Promise<User | false | string> {
+        // devBypass 分支：跳过微信 API，使用固定测试 openid
+        if (this.options.devBypass) {
+            const testOpenid = this.options.devBypassOpenid || 'dev_test_openid';
+            const identifier = `wechat_${data.type}_${testOpenid}`;
+            const user = await this.userService.getUserByEmailAddress(ctx, identifier);
+            if (user) return user;
+            const result = await this.userService.createCustomerUser(ctx, identifier);
+            if ('identifier' in result) {
+                return result as User;
+            }
+            return false;
+        }
+
         const { code, type } = data;
 
         try {

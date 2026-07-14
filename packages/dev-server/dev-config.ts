@@ -271,6 +271,8 @@ export const devConfig: VendureConfig = {
             appSecret: process.env.WECHAT_AUTH_APP_SECRET || 'dev_test_app_secret',
             miniProgramAppId: process.env.WECHAT_AUTH_MINI_APP_ID || '',
             miniProgramAppSecret: process.env.WECHAT_AUTH_MINI_APP_SECRET || '',
+            devBypass: process.env.DEV_BYPASS_WECHAT === 'true',
+            devBypassOpenid: 'dev_test_openid',
         })] : []),
         OrderTimeoutPlugin.init({ defaultTimeoutMinutes: 30 }),
         InvoicePlugin.init(),
