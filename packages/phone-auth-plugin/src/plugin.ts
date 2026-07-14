@@ -23,20 +23,15 @@ import { PhoneAuthPluginOptions } from './types';
             return gql`
                 extend type Mutation {
                     sendPhoneVerificationCode(phoneNumber: String!): Boolean!
-                    registerCustomer(input: RegisterCustomerInput!): RegisterResult!
+                    registerCustomer(input: PhoneRegisterInput!): Success!
                 }
 
-                input RegisterCustomerInput {
+                input PhoneRegisterInput {
                     phoneNumber: String!
                     code: String!
                     password: String!
                     emailAddress: String
                 }
-
-                union RegisterResult =
-                      Success
-                    | InvalidCredentialsError
-                    | PasswordValidationError
             `;
         },
         resolvers: [PhoneAuthResolver],

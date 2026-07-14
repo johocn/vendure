@@ -47,6 +47,14 @@ exports.PhoneAuthPlugin = PhoneAuthPlugin = PhoneAuthPlugin_1 = __decorate([
                 return gql `
                 extend type Mutation {
                     sendPhoneVerificationCode(phoneNumber: String!): Boolean!
+                    registerCustomer(input: PhoneRegisterInput!): Success!
+                }
+
+                input PhoneRegisterInput {
+                    phoneNumber: String!
+                    code: String!
+                    password: String!
+                    emailAddress: String
                 }
             `;
             },

@@ -3,11 +3,11 @@ import { Inject } from '@nestjs/common';
 import {
     Allow,
     Ctx,
-    InvalidCredentialsError,
+    CustomerService,
     isGraphQlErrorResult,
     Permission,
     RequestContext,
-    UserService,
+    UserInputError,
 } from '@vendure/core';
 import { PHONE_AUTH_PLUGIN_OPTIONS } from './constants';
 import { PhoneAuthPluginOptions, RegisterCustomerInput } from './types';
@@ -18,7 +18,7 @@ export class PhoneAuthResolver {
     constructor(
         @Inject(PHONE_AUTH_PLUGIN_OPTIONS) private options: PhoneAuthPluginOptions,
         private smsService: SmsService,
-        private userService: UserService,
+        private customerService: CustomerService,
     ) {}
 
     @Mutation()
@@ -31,26 +31,26 @@ export class PhoneAuthResolver {
     async registerCustomer(
         @Ctx() ctx: RequestContext,
         @Args() args: { input: RegisterCustomerInput },
-    ): Promise<any> {
-        const { phoneNumber, code, password, emailAddress } = args.input;
+    ): Promise<{ success: boolean }> {
+        const { phoneNumber, code, password } = args.input;
 
         const verified = this.smsService.verifyCode(phoneNumber, code);
         if (!verified) {
-            return new InvalidCredentialsError({ authenticationError: '验证码错误或已过期' });
+            throw new UserInputError('验证码错误或已过期');
         }
 
-        const existing = await this.userService.getUserByEmailAddress(ctx, phoneNumber);
-        if (existing) {
-            return { success: true };
-        }
+        const result = await this.customerService.registerCustomerAccount(ctx, {
+            emailAddress: phoneNumber,
+            password,
+            phoneNumber,
+        });
 
-        const user = await this.userService.createCustomerUser(ctx, phoneNumber, password);
-        if (isGraphQlErrorResult(user)) {
-            return user;
+        if (isGraphQlErrorResult(result)) {
+            if (result.errorCode === 'EMAIL_ADDRESS_CONFLICT_ERROR') {
+                return { success: true };
+            }
+            throw new UserInputError(result.message || '注册失败');
         }
-
-        // 注：不在此处创建 Customer，避免 customerService.create 内部再次创建 User 导致双 User
-        // Customer 将在用户首次下单时由 Vendure 自动创建
 
         return { success: true };
     }
