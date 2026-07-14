@@ -243,7 +243,7 @@ defineDashboardExtension({
 - [ ] **Step 7: 验证后端启动**
 
 Run: `cd packages\dev-server ; npm run dev:server`
-Expected: Vendure 正常启动，无编译错误
+Expected: Vendure 正常启动，无编译错误（dashboard 扩展需在 Task 3 验证，此处只验证后端）
 
 - [ ] **Step 8: Commit**
 
@@ -374,8 +374,11 @@ defineDashboardExtension({
 
 - [ ] **Step 3: 验证 Admin UI**
 
-Run: `cd packages\dev-server ; npm run dev:server`
-访问 `http://localhost:3000/admin`，进入 Collections → 编辑任意 Collection
+需要同时启动后端和 Dashboard dev server：
+- 后端：`cd packages\dev-server ; npm run dev:server`（3000 端口）
+- Dashboard：`cd packages\dev-server ; npm run dashboard:dev`（5173 端口，Vite 编译 tsx）
+
+访问 `http://localhost:3000/dashboard`（注意是 `/dashboard`，不是 `/admin`），进入 Collections → 编辑任意 Collection
 Expected: Contents 区域下方出现"楼层搭建器"块，显示预览和提示信息
 
 - [ ] **Step 4: Commit**
@@ -401,6 +404,7 @@ import {
     ChannelService,
     CollectionService,
     ProductService,
+    ProductVariantService,
     RequestContext,
 } from '@vendure/core';
 
@@ -421,6 +425,7 @@ interface FloorSeed {
         floorMaxScreens: number;
         floorTheme: { primaryColor: string; backgroundColor: string; titleIcon: string };
         floorItemConfig: Array<{ productId: string; size: string; highlighted: boolean; label: string }>;
+        floorSchedule: { startAt: string | null; endAt: string | null } | null;
     };
 }
 
@@ -439,12 +444,14 @@ const FLOORS: FloorSeed[] = [
             floorSortOrder: 1,
             floorMaxScreens: 1,
             floorTheme: { primaryColor: '#ff6600', backgroundColor: '#fff3e6', titleIcon: '🔥' },
+            // productId 在运行时由真实 ID 替换，这里留空占位
             floorItemConfig: [
-                { productId: '1', size: 'medium', highlighted: false, label: '' },
-                { productId: '2', size: 'medium', highlighted: true, label: '热销' },
-                { productId: '3', size: 'medium', highlighted: false, label: '' },
-                { productId: '5', size: 'medium', highlighted: false, label: '新品' },
+                { productId: '', size: 'medium', highlighted: false, label: '' },
+                { productId: '', size: 'medium', highlighted: true, label: '热销' },
+                { productId: '', size: 'medium', highlighted: false, label: '' },
+                { productId: '', size: 'medium', highlighted: false, label: '新品' },
             ],
+            floorSchedule: null,
         },
     },
     {
@@ -462,11 +469,12 @@ const FLOORS: FloorSeed[] = [
             floorMaxScreens: 1,
             floorTheme: { primaryColor: '#1890ff', backgroundColor: '#e6f7ff', titleIcon: '📱' },
             floorItemConfig: [
-                { productId: '6', size: 'small', highlighted: false, label: '' },
-                { productId: '7', size: 'small', highlighted: false, label: '' },
-                { productId: '8', size: 'small', highlighted: true, label: '爆款' },
-                { productId: '9', size: 'small', highlighted: false, label: '' },
+                { productId: '', size: 'small', highlighted: false, label: '' },
+                { productId: '', size: 'small', highlighted: false, label: '' },
+                { productId: '', size: 'small', highlighted: true, label: '爆款' },
+                { productId: '', size: 'small', highlighted: false, label: '' },
             ],
+            floorSchedule: null,
         },
     },
     {
@@ -484,10 +492,12 @@ const FLOORS: FloorSeed[] = [
             floorMaxScreens: 1,
             floorTheme: { primaryColor: '#07c160', backgroundColor: '#e6f7ee', titleIcon: '🥬' },
             floorItemConfig: [
-                { productId: '2', size: 'large', highlighted: true, label: '主推' },
-                { productId: '3', size: 'medium', highlighted: false, label: '' },
-                { productId: '4', size: 'medium', highlighted: false, label: '' },
+                { productId: '', size: 'large', highlighted: true, label: '主推' },
+                { productId: '', size: 'medium', highlighted: false, label: '' },
+                { productId: '', size: 'medium', highlighted: false, label: '' },
             ],
+            // 定时上下线测试：已过期，应被 filterActiveFloors 过滤掉
+            floorSchedule: { startAt: '2026-01-01T00:00:00Z', endAt: '2026-06-01T00:00:00Z' },
         },
     },
 ];
@@ -496,6 +506,7 @@ export async function populateFloors(app: INestApplication): Promise<void> {
     const channelService = app.get(ChannelService);
     const collectionService = app.get(CollectionService);
     const productService = app.get(ProductService);
+    const productVariantService = app.get(ProductVariantService);
     const defaultChannel = await channelService.getDefaultChannel();
 
     const allChannels = await channelService.findAll(await createAdminCtx(app, defaultChannel));
@@ -509,70 +520,98 @@ export async function populateFloors(app: INestApplication): Promise<void> {
         }
 
         await withCtx(app, targetChannel, async (ctx: RequestContext) => {
-            // 查询商品 ID
+            // 1. 查询当前 Channel 的所有商品，建立 SKU → productId 映射
             const products = await productService.findAll(ctx, { take: 999 });
-            const productIds: string[] = [];
-            const skuToId: Record<string, string> = {};
-            for (const p of products.items) {
-                const pid = p.id as string;
-                productIds.push(pid);
-                // 通过 SKU 匹配（简化处理，实际应查询 variant SKU）
-                skuToId[p.slug] = pid;
+            const variants = await productVariantService.findAll(ctx, { take: 999 });
+            const skuToProductId: Record<string, string> = {};
+            for (const v of variants.items) {
+                if (v.sku) {
+                    skuToProductId[v.sku] = String(v.productId);
+                }
             }
 
-            // 创建 Collection
+            // 2. 根据 productSkus 收集真实的 product IDs
+            const realProductIds: string[] = [];
+            const skuToIndex: Record<string, number> = {};
+            for (let i = 0; i < floor.productSkus.length; i++) {
+                const sku = floor.productSkus[i];
+                const pid = skuToProductId[sku];
+                if (pid) {
+                    realProductIds.push(pid);
+                    skuToIndex[sku] = i;
+                } else {
+                    console.warn(`  警告: SKU ${sku} 在 channel ${floor.channel} 中未找到`);
+                }
+            }
+
+            if (realProductIds.length === 0) {
+                console.warn(`  跳过楼层 ${floor.name}: 无有效商品`);
+                return;
+            }
+
+            // 3. 填充 floorItemConfig 中的真实 productId
+            const itemConfig = floor.customFields.floorItemConfig.map((item, idx) => {
+                const sku = floor.productSkus[idx];
+                return {
+                    ...item,
+                    productId: skuToProductId[sku] || '',
+                };
+            });
+
+            // 4. 创建 Collection（使用 translations 格式，非顶层 name/slug）
             const collection = await collectionService.create(ctx, {
-                name: floor.name,
-                slug: floor.slug,
-                description: floor.description,
+                translations: [
+                    {
+                        languageCode: ctx.languageCode,
+                        name: floor.name,
+                        slug: floor.slug,
+                        description: floor.description,
+                    },
+                ],
                 filters: [
                     {
                         code: 'product-id-filter',
-                        arguments: [{ name: 'productIds', value: JSON.stringify(floor.productSkus) }],
+                        arguments: [
+                            { name: 'productIds', value: JSON.stringify(realProductIds) },
+                            { name: 'combineWithAnd', value: 'false' },
+                        ],
                     },
                 ],
-                customFields: floor.customFields,
-            });
-
-            // 更新 floorItemConfig 中的 productId 为实际数据库 ID
-            // 由于 struct list 创建时无法精确映射，此处通过 update 修正
-            const updatedItemConfig = floor.customFields.floorItemConfig.map((item, idx) => ({
-                ...item,
-                productId: String(idx + 1),  // 简化：按顺序映射 product ID 1-9
-            }));
-
-            await collectionService.update(ctx, {
-                id: collection.id as string,
                 customFields: {
                     ...floor.customFields,
-                    floorItemConfig: updatedItemConfig,
+                    floorItemConfig: itemConfig,
                 },
             });
 
-            console.log(`  楼层 ${floor.name} (${floor.channel}) 已创建`);
+            console.log(`  楼层 ${floor.name} (${floor.channel}) 已创建, 商品数: ${realProductIds.length}`);
         });
     }
 }
 ```
 
-- [ ] **Step 2: 修改 populate-china-dev.ts 添加 stage 7**
+- [ ] **Step 2: 修改 china-data/index.ts 添加 export**
 
-在 import 区添加：
+在 `06-orders` export 之后添加：
 ```typescript
-import { populateFloors } from './china-data';
+export { populateFloors } from './07-floors';
 ```
 
-在 stage 6 之后、`await app.close()` 之前添加：
+- [ ] **Step 3: 修改 populate-china-dev.ts**
+
+将 `const total = 6;` 改为 `const total = 7;`
+
+在 `logStage(6, total, results[5]);` 之后、`const okCount = ...` 之前添加：
 ```typescript
-    await runStage(app, 7, '楼层配置', populateFloors);
+            results.push(await runStage('楼层配置: default 2 + shop-a 1', () => populateFloors(app)));
+            logStage(7, total, results[6]);
 ```
 
-- [ ] **Step 3: 运行 populate 验证**
+- [ ] **Step 4: 运行 populate 验证**
 
 Run: `cd packages\dev-server ; npm run populate:china`
 Expected: 7/7 阶段成功，3 个楼层 Collection 创建完成（default 2 个，shop-a 1 个）
 
-- [ ] **Step 4: 验证 Shop API 查询**
+- [ ] **Step 5: 验证 Shop API 查询**
 
 Run:
 ```powershell
@@ -584,12 +623,12 @@ Expected: 返回 2 个 floorEnabled=true 的 Collection（精选好物、数码�
 ```powershell
 Invoke-RestMethod -Uri "http://localhost:3000/shop-api" -Method Post -ContentType "application/json" -Headers @{"vendure-token"="shop-a-token"} -Body $body | ConvertTo-Json -Depth 5
 ```
-Expected: 返回 1 个 floorEnabled=true 的 Collection（生鲜特惠）
+Expected: 返回 0 个 floorEnabled=true 的 Collection（生鲜特惠因 floorSchedule 已过期，被 filterActiveFloors 过滤；但 Shop API 层不过滤 schedule，仍返回 1 个）
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add packages/dev-server/china-data/07-floors.ts packages/dev-server/populate-china-dev.ts
+git add packages/dev-server/china-data/07-floors.ts packages/dev-server/china-data/index.ts packages/dev-server/populate-china-dev.ts
 git commit -m "feat(dev-server): Add floor test data for default and shop-a channels"
 ```
 
@@ -687,32 +726,16 @@ export async function getEnabledFloors(): Promise<{ collections: { items: FloorC
 }
 
 /**
- * 过滤启用中的楼层：floorEnabled=true 且在 schedule 时间范围内
+ * 过滤启用中的楼层：
+ * - floorEnabled=true
+ * - 在 floorSchedule 时间范围内
+ * - 有商品（productVariants.items 非空）
  */
 export function filterActiveFloors(floors: FloorCollection[]): FloorCollection[] {
     const now = new Date();
     return floors
         .filter(f => f.customFields?.floorEnabled)
-        .filter(f => {
-            const schedule = f.customFields?.floorSchedule;
-            if (!schedule) return true;
-            const start = schedule.startAt ? new Date(startAt) : null;
-            const end = schedule.endAt ? new Date(endAt) : null;
-            if (start && now < start) return false;
-            if (end && now > end) return false;
-            return true;
-        })
-        .sort((a, b) => (a.customFields?.floorSortOrder || 0) - (b.customFields?.floorSortOrder || 0));
-}
-```
-
-注意修复 `filterActiveFloors` 中的变量名（`start` 和 `end` 与 `startAt`/`endAt` 的引用）：
-
-```typescript
-export function filterActiveFloors(floors: FloorCollection[]): FloorCollection[] {
-    const now = new Date();
-    return floors
-        .filter(f => f.customFields?.floorEnabled)
+        .filter(f => (f.productVariants?.items?.length ?? 0) > 0)
         .filter(f => {
             const schedule = f.customFields?.floorSchedule;
             if (!schedule) return true;
@@ -1036,7 +1059,7 @@ git commit -m "feat(vshop): Add floor layout components (SingleScroll, DoubleGri
     </view>
     <component
       :is="layoutComponent"
-      :items="floor.productVariants?.items || []"
+      :items="validItems"
       :item-config="floor.customFields?.floorItemConfig || []"
       @click-item="goDetail"
     />
@@ -1066,6 +1089,18 @@ const layoutComponent = computed(() => {
 });
 
 const theme = computed(() => props.floor.customFields?.floorTheme || { primaryColor: '#ff6600', backgroundColor: '#fff', titleIcon: '' });
+
+// 过滤掉 floorItemConfig 中找不到对应商品的项（悬挂引用跳过）
+// 同时保留 productVariants 中所有商品（即使 itemConfig 没有对应配置，只是 label 为空）
+const validItems = computed(() => {
+    const variants = props.floor.productVariants?.items || [];
+    const itemConfig = props.floor.customFields?.floorItemConfig || [];
+    const configProductIds = new Set(itemConfig.map(c => c.productId));
+    // 只保留在 itemConfig 中有配置的商品（如果 itemConfig 非空）
+    // 如果 itemConfig 为空，则保留所有商品
+    if (configProductIds.size === 0) return variants;
+    return variants.filter(v => configProductIds.has(v.productId));
+});
 
 function goDetail(slug: string) {
     uni.navigateTo({ url: '/pkg-product/pages/detail?slug=' + slug });
@@ -1186,29 +1221,29 @@ function goDetail(slug: string) { uni.navigateTo({ url: '/pkg-product/pages/deta
 
 - [ ] **Step 2: 修改 fresh 模板 HomeContent.vue**
 
-同样在 fresh 模板中集成楼层区域。读取当前文件后修改：
+在 fresh 模板中集成楼层区域，保留原有样式：
 
 ```vue
 <template>
   <view class="fresh-home">
     <view class="fresh-home__hero">
-      <text class="hero-title">新鲜好物</text>
-      <text class="hero-sub">每日精选</text>
+      <text class="fresh-home__title">新鲜好物</text>
+      <text class="fresh-home__subtitle">每天为你精选</text>
     </view>
     <view class="fresh-home__shortcuts">
-      <view class="shortcut" @click="navTo('/pkg-promotion/pages/flash-sale')"><text>秒杀</text></view>
-      <view class="shortcut" @click="navTo('/pkg-promotion/pages/group-buy')"><text>拼团</text></view>
+      <view class="shortcut" @click="navTo('/pkg-promotion/pages/flash-sale')"><text>⚡ 秒杀</text></view>
+      <view class="shortcut" @click="navTo('/pkg-promotion/pages/group-buy')"><text>👥 拼团</text></view>
     </view>
     <FloorSection
       v-for="floor in floors"
       :key="floor.id"
       :floor="floor"
     />
-    <view v-if="floors.length === 0" class="fresh-home__list">
-      <view v-for="p in products" :key="p.productId" class="list-item" @click="goDetail(p.slug)">
-        <VImage :src="p.productAsset?.preview || ''" width="180rpx" height="180rpx" />
-        <view class="list-item__info">
-          <text class="list-item__name">{{ p.productName }}</text>
+    <view v-if="floors.length === 0" class="fresh-home__products">
+      <view v-for="p in products" :key="p.productId" class="fresh-product" @click="goDetail(p.slug)">
+        <VImage :src="p.productAsset?.preview || ''" width="200rpx" height="200rpx" />
+        <view class="fresh-product__info">
+          <text>{{ p.productName }}</text>
           <PriceTag :price="getMinPrice(p.priceWithTax)" />
         </view>
       </view>
@@ -1227,24 +1262,27 @@ const products = ref<any[]>([]);
 const floors = ref<FloorCollection[]>([]);
 
 onMounted(async () => {
-    try {
-        const res: any = await searchProducts({ take: 10 });
-        products.value = res.search?.items || [];
-    } catch (e) {}
-
+    try { const res: any = await searchProducts({ take: 10 }); products.value = res.search?.items || []; } catch (e) {}
     try {
         const res: any = await getEnabledFloors();
         const allFloors = res.collections?.items || [];
         floors.value = filterActiveFloors(allFloors).slice(0, 3);
-    } catch (e) {
-        console.error('加载楼层失败', e);
-    }
+    } catch (e) { console.error('加载楼层失败', e); }
 });
 
 function getMinPrice(price: any): number { return price?.value ?? price?.min ?? 0; }
 function navTo(url: string) { uni.navigateTo({ url }); }
 function goDetail(slug: string) { uni.navigateTo({ url: '/pkg-product/pages/detail?slug=' + slug }); }
 </script>
+<style lang="scss" scoped>
+.fresh-home {
+    &__hero { background: linear-gradient(135deg, #07c160, #4dd599); padding: 60rpx 30rpx; color: #fff; & .fresh-home__title { font-size: 48rpx; font-weight: bold; display: block; } & .fresh-home__subtitle { font-size: 26rpx; opacity: 0.8; } }
+    &__shortcuts { display: flex; gap: 16rpx; padding: 20rpx; }
+    &__products { padding: 0 20rpx; }
+}
+.shortcut { flex: 1; background: #fff; padding: 20rpx; border-radius: $radius-md; text-align: center; font-size: 28rpx; box-shadow: $shadow; }
+.fresh-product { display: flex; background: #fff; padding: 20rpx; border-radius: $radius-md; margin-bottom: 12rpx; &__info { flex: 1; padding-left: 16rpx; display: flex; flex-direction: column; justify-content: space-between; font-size: 28rpx; } }
+</style>
 ```
 
 - [ ] **Step 3: 验证前端编译**
@@ -1264,10 +1302,11 @@ git commit -m "feat(vshop): Integrate floor sections into home templates"
 
 ## Task 9: 端到端验证
 
-- [ ] **Step 1: 启动后端和前端**
+- [ ] **Step 1: 启动后端、Dashboard 和前端**
 
-后端：`cd packages\dev-server ; npm run dev:server`
-前端：`cd vshop ; npm run dev:h5`
+- 后端：`cd packages\dev-server ; npm run dev:server`（3000 端口）
+- Dashboard：`cd packages\dev-server ; npm run dashboard:dev`（5173 端口，编译 tsx）
+- 前端：`cd vshop ; npm run dev:h5`（5175 端口）
 
 - [ ] **Step 2: 验证 default Channel 楼层**
 
@@ -1285,13 +1324,12 @@ Expected:
 浏览器访问 `http://localhost:5175/?tenant=shop-a`
 Expected:
 - 首页显示租户栏"生鲜优选"
-- 显示 1 个楼层（生鲜特惠）
-- 使用大图+列表布局（hero_with_list），标题旁有 🥬 图标
-- 商品与 default Channel 不同（多租户隔离验证）
+- 不显示"生鲜特惠"楼层（因 floorSchedule 已过期，被 filterActiveFloors 过滤）
+- 显示默认推荐商品（fallback 空状态）
 
 - [ ] **Step 4: 验证 Admin UI 搭建器**
 
-访问 `http://localhost:3000/admin`，登录后进入 Collections
+访问 `http://localhost:3000/dashboard`，登录后进入 Collections
 Expected:
 - 编辑"精选好物"Collection，Contents 下方出现"楼层搭建器"块
 - 显示实时预览（手机宽度 375px）
@@ -1303,7 +1341,13 @@ Expected:
 刷新前端首页
 Expected: 楼层区域消失，显示默认推荐商品（fallback）
 
-- [ ] **Step 6: Final Commit**
+- [ ] **Step 6: 验证悬挂引用处理**
+
+在 Admin UI 中删除"精选好物"楼层中的一个商品
+刷新前端首页
+Expected: 楼层中该商品卡片消失（validItems 过滤生效），其他商品正常展示
+
+- [ ] **Step 7: Final Commit**
 
 ```bash
 cd e:\code\vendure
