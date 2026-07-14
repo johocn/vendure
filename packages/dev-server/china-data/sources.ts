@@ -341,3 +341,79 @@ export const CUSTOMERS: CustomerSource[] = [
         },
     },
 ];
+
+// ===== Orders =====
+export interface OrderSource {
+    channel: 'default' | 'shop-a';
+    customerEmail: string;
+    items: Array<{ sku: string; quantity: number }>;
+    shippingMethodCode: string;
+    paymentMethodCode?: string; // 不传则不付款
+    state: 'ArrangingPayment' | 'PaymentSettled' | 'Shipped' | 'Completed' | 'Cancelled';
+    couponCodes?: string[];
+}
+
+export const ORDERS: OrderSource[] = [
+    {
+        channel: 'default',
+        customerEmail: 'zhangsan@test.cn',
+        items: [{ sku: 'NF-WATER-500', quantity: 5 }],
+        shippingMethodCode: 'sf-express',
+        state: 'ArrangingPayment',
+    },
+    {
+        channel: 'default',
+        customerEmail: 'zhangsan@test.cn',
+        items: [{ sku: 'TS-NUT-1KG', quantity: 1 }],
+        shippingMethodCode: 'free-shipping-99',
+        paymentMethodCode: 'dummy-payment',
+        state: 'PaymentSettled',
+    },
+    {
+        channel: 'default',
+        customerEmail: 'lisi@test.cn',
+        items: [{ sku: 'NF-RICE-5KG', quantity: 2 }, { sku: 'TS-BEEF-500', quantity: 1 }],
+        shippingMethodCode: 'sf-express',
+        paymentMethodCode: 'dummy-payment',
+        state: 'Shipped',
+    },
+    {
+        channel: 'default',
+        customerEmail: 'lisi@test.cn',
+        items: [{ sku: 'XM-BAND-8-STD', quantity: 1 }],
+        shippingMethodCode: 'free-shipping-99',
+        paymentMethodCode: 'balance-pay',
+        state: 'Completed',
+    },
+    {
+        channel: 'default',
+        customerEmail: 'zhangsan@test.cn',
+        items: [{ sku: 'HW-ROUTER-STD', quantity: 1 }],
+        shippingMethodCode: 'sf-express',
+        state: 'Cancelled',
+    },
+    {
+        channel: 'shop-a',
+        customerEmail: 'wangwu@test.cn',
+        items: [{ sku: 'TS-NUT-1KG', quantity: 1 }],
+        shippingMethodCode: 'store-pickup',
+        state: 'ArrangingPayment',
+    },
+    {
+        channel: 'shop-a',
+        customerEmail: 'wangwu@test.cn',
+        items: [{ sku: 'NF-RICE-5KG', quantity: 2 }],
+        shippingMethodCode: 'free-shipping-99',
+        paymentMethodCode: 'cash-on-delivery',
+        state: 'PaymentSettled',
+        couponCodes: ['NEW90', 'SAVE5'],
+    },
+    {
+        channel: 'shop-a',
+        customerEmail: 'wangwu@test.cn',
+        items: [{ sku: 'XM-PB-10000', quantity: 1 }],
+        shippingMethodCode: 'free-shipping-99',
+        paymentMethodCode: 'balance-pay',
+        state: 'Shipped',
+    },
+];
