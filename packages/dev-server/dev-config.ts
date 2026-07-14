@@ -129,6 +129,53 @@ export const devConfig: VendureConfig = {
         ],
     },
     customFields: {
+        Collection: [
+            { name: 'floorEnabled', type: 'boolean', defaultValue: false, public: true,
+              ui: { component: 'boolean-form-input' } },
+            { name: 'floorTitle', type: 'string', public: true,
+              ui: { component: 'text-form-input' } },
+            { name: 'floorSubtitle', type: 'string', public: true,
+              ui: { component: 'text-form-input' } },
+            { name: 'floorLayout', type: 'string', defaultValue: 'double_grid', public: true,
+              ui: {
+                  component: 'select-form-input',
+                  options: [
+                      { value: 'single_scroll', label: '单列横滑' },
+                      { value: 'double_grid', label: '双列网格' },
+                      { value: 'triple_grid', label: '三列网格' },
+                      { value: 'hero_with_list', label: '大图+列表' },
+                  ],
+              } },
+            { name: 'floorSortOrder', type: 'int', defaultValue: 0, public: true },
+            { name: 'floorMaxScreens', type: 'int', defaultValue: 3, public: true },
+            {
+                name: 'floorTheme', type: 'struct', public: true, fields: [
+                    { name: 'primaryColor', type: 'string', defaultValue: '#ff6600' },
+                    { name: 'backgroundColor', type: 'string', defaultValue: '#ffffff' },
+                    { name: 'titleIcon', type: 'string' },
+                ],
+            },
+            {
+                name: 'floorItemConfig', type: 'struct', list: true, public: true, fields: [
+                    { name: 'productId', type: 'string' },
+                    { name: 'size', type: 'string', defaultValue: 'medium',
+                      ui: { component: 'select-form-input',
+                            options: [
+                                { value: 'small', label: '小' },
+                                { value: 'medium', label: '中' },
+                                { value: 'large', label: '大' },
+                            ] } },
+                    { name: 'highlighted', type: 'boolean', defaultValue: false },
+                    { name: 'label', type: 'string' },
+                ],
+            },
+            {
+                name: 'floorSchedule', type: 'struct', public: true, fields: [
+                    { name: 'startAt', type: 'datetime' },
+                    { name: 'endAt', type: 'datetime' },
+                ],
+            },
+        ],
         Channel: [],
         Customer: [],
         Fulfillment: [],
