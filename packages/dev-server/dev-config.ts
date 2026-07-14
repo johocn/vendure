@@ -32,6 +32,7 @@ import { WechatpayPlugin } from '@vendure/wechatpay-plugin';
 import { OssPlugin } from '@vendure/oss-plugin';
 import { PhoneAuthPlugin } from '@vendure/phone-auth-plugin';
 import { WechatAuthPlugin } from '@vendure/wechat-auth-plugin';
+import { DouyinAuthPlugin } from '@vendure/douyin-auth-plugin';
 import { OrderTimeoutPlugin } from '@vendure/order-timeout-plugin';
 import { InvoicePlugin } from '@vendure/invoice-plugin';
 import { LogisticsPlugin } from '@vendure/logistics-plugin';
@@ -248,6 +249,10 @@ export const devConfig: VendureConfig = {
         ...(process.env.ALIPAY_NOTIFY_URL ? [AlipayPlugin.init({
             notifyUrl: process.env.ALIPAY_NOTIFY_URL,
             alipayPublicKey: process.env.ALIPAY_PUBLIC_KEY ?? '',
+            auth: process.env.DEV_BYPASS_ALIPAY === 'true' ? {
+                devBypass: true,
+                devBypassOpenid: 'dev_test_openid',
+            } : undefined,
         })] : []),
         ...(process.env.WECHATPAY_NOTIFY_URL ? [WechatpayPlugin.init({
             notifyUrl: process.env.WECHATPAY_NOTIFY_URL,
@@ -272,6 +277,12 @@ export const devConfig: VendureConfig = {
             miniProgramAppId: process.env.WECHAT_AUTH_MINI_APP_ID || '',
             miniProgramAppSecret: process.env.WECHAT_AUTH_MINI_APP_SECRET || '',
             devBypass: process.env.DEV_BYPASS_WECHAT === 'true',
+            devBypassOpenid: 'dev_test_openid',
+        })] : []),
+        ...((process.env.DOUYIN_AUTH_APP_ID || process.env.DEV_BYPASS_DOUYIN === 'true') ? [DouyinAuthPlugin.init({
+            appId: process.env.DOUYIN_AUTH_APP_ID || 'dev_test_app_id',
+            appSecret: process.env.DOUYIN_AUTH_APP_SECRET || 'dev_test_app_secret',
+            devBypass: process.env.DEV_BYPASS_DOUYIN === 'true',
             devBypassOpenid: 'dev_test_openid',
         })] : []),
         OrderTimeoutPlugin.init({ defaultTimeoutMinutes: 30 }),
