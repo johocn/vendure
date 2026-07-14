@@ -144,28 +144,41 @@ WechatAuthPlugin.init({
 新增 `registerCustomer` mutation，复用现有 `smsService.verifyCode` 校验验证码：
 
 ```typescript
+import { Allow } from '@vendure/core';
+import { Permission } from '@vendure/common/lib/generated-types';
+
 @Mutation()
-@Public()
+@Allow(Permission.Public)
 async registerCustomer(
     @Ctx() ctx: RequestContext,
     @Args() args: { input: RegisterCustomerInput },
 ): Promise<Result> {
     // 1. 校验验证码
     const verified = this.smsService.verifyCode(args.input.phoneNumber, args.input.code);
-    if (!verified) return new InvalidCredentialsError();
+    if (!verified) return new InvalidCredentialsError({ authenticationError: '验证码错误或已过期' });
     
-    // 2. 检查手机号是否已注册
-    const existing = await this.userService.getUserByIdentifier(ctx, args.input.phoneNumber);
-    if (existing) return new UserExistsError();
+    // 2. 检查手机号是否已注册（getUserByEmailAddress 已支持非邮箱 identifier）
+    const existing = await this.userService.getUserByEmailAddress(ctx, args.input.phoneNumber);
+    if (existing) {
+        // 防账户枚举：不暴露用户存在，直接返回 success（参考 registerCustomerAccount 模式）
+        return { success: true };
+    }
     
-    // 3. 创建 Customer + User
+    // 3. 创建 User（3 参数：ctx, identifier, password）
+    const user = await this.userService.createCustomerUser(
+        ctx, args.input.phoneNumber, args.input.password,
+    );
+    if (user instanceof PasswordValidationError) return user;
+    
+    // 4. 创建 Customer 并关联 User
     const customer = await this.customerService.create(ctx, {
         emailAddress: args.input.emailAddress || `${args.input.phoneNumber}@phone.local`,
         phoneNumber: args.input.phoneNumber,
     });
-    const user = await this.userService.createCustomerUser(
-        ctx, args.input.phoneNumber, args.input.password, customer,
-    );
+    // 关联 user 到 customer
+    customer.user = user;
+    await this.customerService.update(ctx, { id: customer.id, user: { id: user.id } as any });
+    
     return { success: true, userId: user.id };
 }
 ```
@@ -217,39 +230,49 @@ export async function registerCustomer(input: {
 }
 ```
 
-**登录方式：** Vendure 的 `NativeAuthenticationStrategy` 查询 `user.identifier` 字段，不限制格式。注册时 `createCustomerUser(ctx, phoneNumber, password, customer)` 将 identifier 设为手机号并设置密码，因此注册后用户可用 `native` 策略登录：`authenticate(native: {username: phoneNumber, password})`。
+**登录方式：** Vendure 的 `NativeAuthenticationStrategy` 查询 `user.identifier` 字段，不限制格式。注册时 `createCustomerUser(ctx, phoneNumber, password)` 将 identifier 设为手机号并设置密码（3 参数签名，无 customer 参数），因此注册后用户可用 `native` 策略登录：`authenticate(native: {username: phoneNumber, password})`。
 
 **前端登录页适配：** `pages/login/index.vue` 的 `local` 模式当前 placeholder 为"邮箱/手机号"，已兼容手机号登录，无需改动。
 
 **验证标准：**
 - 用 `13800139999` + 验证码 `123456` + 密码 `test123` 注册成功
-- 重复注册返回 `UserExistsError`
+- 重复注册返回 `{ success: true }`（防账户枚举，不暴露用户存在）
 - 注册后可用 `13800139999` + `test123` 通过 `native` 策略登录，返回有效 token
 
-### Phase 3：AlipayAuthPlugin
+### Phase 3：AlipayAuthPlugin（合并到 alipay-plugin 包）
 
-**目录结构：** `packages/alipay-auth-plugin/src/`
+> 卡点检查结论：alipay-sdk 已作为 `@vendure/alipay-plugin` 的 dependency 安装（`packages/alipay-plugin/package.json`），现有 `alipay-handler.ts` 已成功使用 `AlipaySdk` 类。为避免重复依赖，将认证功能合并到现有 `alipay-plugin` 包内。
+
+**目录结构：** 在 `packages/alipay-plugin/src/` 下新增认证模块
 
 ```
-├── plugin.ts                    # 插件入口
-├── alipay-auth-strategy.ts      # 认证策略
-├── alipay-auth.service.ts       # 支付宝 API 调用
-├── alipay-auth.controller.ts    # H5 OAuth 回调
-├── alipay-auth-shop.resolver.ts # GraphQL 输入类型
-├── customer-custom-fields.ts    # Customer.alipayOpenid
-└── types.ts                     # 配置类型
+packages/alipay-plugin/src/
+├── plugin.ts                    # 修改：注册认证策略 + customFields
+├── alipay-handler.ts            # 已有：支付处理
+├── alipay-auth-strategy.ts      # 新增：认证策略（策略名 'alipay'）
+├── alipay-auth.service.ts       # 新增：支付宝 OAuth API 调用（复用 alipay-sdk）
+├── alipay-auth.controller.ts    # 新增：H5 OAuth 回调
+├── alipay-auth-shop.resolver.ts # 新增：GraphQL 输入类型
+├── customer-custom-fields.ts    # 新增：Customer.alipayOpenid
+└── types.ts                     # 修改：增加 AlipayAuthPluginOptions
 ```
 
-**AlipayAuthPluginOptions：**
+**AlipayAuthPluginOptions（合并到 AlipayPluginOptions）：**
 
 ```typescript
-export interface AlipayAuthPluginOptions {
-    appId: string;
-    privateKey: string;          // 应用私钥
-    alipayPublicKey: string;     // 支付宝公钥
-    miniProgramAppId?: string;   // 小程序 appId（如与 H5 不同）
-    devBypass?: boolean;
-    devBypassOpenid?: string;    // 默认 'dev_test_openid'
+// packages/alipay-plugin/src/types.ts
+export interface AlipayPluginOptions {
+    // 已有：支付配置
+    notifyUrl: string;
+    alipayPublicKey: string;
+    // 新增：认证配置
+    auth?: {
+        appId?: string;            // 认证专用 appId（如与支付不同，不填则复用支付 appId）
+        privateKey?: string;       // 认证专用私钥（不填则复用支付私钥）
+        miniProgramAppId?: string;
+        devBypass?: boolean;
+        devBypassOpenid?: string;  // 默认 'dev_test_openid'
+    };
 }
 ```
 
@@ -289,9 +312,9 @@ async authenticate(ctx, input: { authCode: string; type: 'h5' | 'mini' }) {
 **环境变量：**
 
 ```env
-ALIPAY_AUTH_APP_ID=xxx
-ALIPAY_AUTH_PRIVATE_KEY=xxx
-ALIPAY_AUTH_PUBLIC_KEY=xxx
+# 复用支付配置或单独配置认证
+ALIPAY_AUTH_APP_ID=xxx          # 可选，不填则复用 ALIPAY_APP_ID
+ALIPAY_AUTH_PRIVATE_KEY=xxx     # 可选，不填则复用 ALIPAY_PRIVATE_KEY
 DEV_BYPASS_ALIPAY=true
 ```
 
@@ -383,8 +406,12 @@ export function detectPlatform(): Platform {
     if (ua.includes('newsclient') || ua.includes('bytedance')) return 'douyin';
     return 'browser';
     // #endif
+    // 默认兜底（条件编译未匹配时）
+    return 'browser';
 }
 ```
+
+> 卡点检查补充：需同步扩展 `vshop/src/utils/platform.ts` 的 `PlatformType` 类型，加入 `'mp-alipay'`，并在 `redirectPayment` 等函数中新增 `// #ifdef MP-ALIPAY` 分支。
 
 **登录页重构：** `vshop/src/pages/login/index.vue`
 
@@ -516,7 +543,10 @@ onMounted(() => {
 | 修改 | `packages/wechat-auth-plugin/src/types.ts` | P1 |
 | 修改 | `packages/dev-server/dev-config.ts` | P1, P2, P3, P4 |
 | 修改 | `packages/phone-auth-plugin/src/auth.resolver.ts` | P2 |
-| 创建 | `packages/alipay-auth-plugin/src/*.ts`（6 文件） | P3 |
+| 修改 | `packages/alipay-plugin/src/plugin.ts` | P3 |
+| 修改 | `packages/alipay-plugin/src/types.ts` | P3 |
+| 创建 | `packages/alipay-plugin/src/alipay-auth-*.ts`（4 文件） | P3 |
+| 创建 | `packages/alipay-plugin/src/customer-custom-fields.ts` | P3 |
 | 创建 | `packages/douyin-auth-plugin/src/*.ts`（6 文件） | P4 |
 
 ### 前端改动
@@ -528,3 +558,31 @@ onMounted(() => {
 | 修改 | `src/api/mutations/auth.ts` | P2, P3, P4 |
 | 修改 | `src/pages.json` | P2 |
 | 创建 | `src/utils/detect-env.ts` | P5 |
+
+## 卡点检查记录
+
+> 2026-07-14 完成 10 项卡点深度核查，修正 4 个硬阻塞点，1 个设计决策。
+
+### 已修正的硬阻塞点
+
+| 卡点 | 原假设 | 实际情况 | 修正 |
+|------|--------|----------|------|
+| 2 | `createCustomerUser(ctx, identifier, password, customer)` 4 参数 | 实际 3 参数 `(ctx, identifier, password?)`，无 customer 参数 | 改为分两步：先 createCustomerUser 创建 user，再 customerService.create 创建 customer 并关联 |
+| 3 | `userService.getUserByIdentifier` 存在 | 不存在 | 改用 `getUserByEmailAddress(ctx, identifier)`（已支持非邮箱 identifier） |
+| 7 | `UserExistsError` 存在 | 不存在 | 改用防账户枚举模式：用户已存在时返回 `{ success: true }` |
+| 9 | `@Public()` 装饰器 | 不存在 | 改用 `@Allow(Permission.Public)`，导入 `Allow` from `@vendure/core`、`Permission` from `@vendure/common/lib/generated-types` |
+
+### 设计决策
+
+- **AlipayAuthPlugin 合并到 alipay-plugin 包**：alipay-sdk 已作为 alipay-plugin 的 dependency 安装，合并可避免重复依赖，复用 AlipaySdk 类
+
+### 已确认无问题
+
+| 卡点 | 结论 |
+|------|------|
+| 1 smsService.verifyCode 可访问性 | ✅ public 方法，resolver 已注入 |
+| 4 alipay-sdk 依赖 | ✅ 已在 alipay-plugin 内安装 |
+| 5 Customer customFields 冲突 | ✅ 命名 alipayOpenid/douyinOpenid 与 wechat 模式一致 |
+| 6 AuthenticationStrategy 接口 | ✅ 实现 name/defineInputType/authenticate 即可 |
+| 8 uni-app `#ifdef H5 \|\| MP-ALIPAY` | ✅ 语法支持，需扩展 PlatformType |
+| 10 Plugin 定义模式 | ✅ 参照 WechatAuthPlugin 即可 |
