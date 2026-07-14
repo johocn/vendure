@@ -14,7 +14,7 @@ export async function withCtx(
     fn: (ctx: RequestContext) => Promise<void>,
 ): Promise<void> {
     const ctxService = app.get(RequestContextService);
-    const ctx = await ctxService.create({ apiType: 'admin', channel });
+    const ctx = await ctxService.create({ apiType: 'admin', channelOrToken: channel });
     await fn(ctx);
 }
 
