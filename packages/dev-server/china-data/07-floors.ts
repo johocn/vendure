@@ -2,12 +2,39 @@ import { INestApplication } from '@nestjs/common';
 import {
     ChannelService,
     CollectionService,
+    ConfigService,
     ProductService,
     ProductVariantService,
     RequestContext,
+    isInspectableJobQueueStrategy,
 } from '@vendure/core';
 
 import { withCtx, createAdminCtx } from './shared';
+
+const APPLY_FILTERS_QUEUE = 'apply-collection-filters';
+const UNSETTLED_STATES = ['PENDING', 'RUNNING', 'RETRYING'];
+
+async function waitForApplyFiltersJobs(app: INestApplication, timeoutMs = 30000): Promise<void> {
+    const configService = app.get(ConfigService);
+    const strategy = configService.jobQueueOptions.jobQueueStrategy;
+    if (!isInspectableJobQueueStrategy(strategy)) {
+        console.warn('  JobQueueStrategy 不可检查，跳过等待 apply-collection-filters 任务');
+        return;
+    }
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+        const result = await strategy.findMany({
+            filter: { queueName: { eq: APPLY_FILTERS_QUEUE } },
+            take: 100,
+        });
+        const unsettled = result.items.filter(j => UNSETTLED_STATES.includes(j.state));
+        if (unsettled.length === 0) {
+            return;
+        }
+        await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    console.warn(`  等待 apply-collection-filters 任务超时 (${timeoutMs}ms)`);
+}
 
 interface FloorSeed {
     name: string;
@@ -183,4 +210,10 @@ export async function populateFloors(app: INestApplication): Promise<void> {
             console.log(`  楼层 ${floor.name} (${floor.channel}) 已创建, 商品数: ${realProductIds.length}`);
         });
     }
+
+    // 等待 apply-collection-filters 任务完成，否则 app.close() 会提前终止 worker，
+    // 导致 collection 与 productVariant 的关联表为空（productVariants.items 返回空数组）
+    console.log('  等待 apply-collection-filters 任务完成...');
+    await waitForApplyFiltersJobs(app);
+    console.log('  apply-collection-filters 任务已完成');
 }
