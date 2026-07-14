@@ -4,6 +4,8 @@ import { AdminUiPlugin } from '@vendure/admin-ui-plugin';
 import { AssetServerPlugin } from '@vendure/asset-server-plugin';
 import { ADMIN_API_PATH, API_PORT, SHOP_API_PATH } from '@vendure/common/lib/shared-constants';
 import {
+    cleanOrphanedSettingsStoreTask,
+    cleanSessionsTask,
     DefaultJobQueuePlugin,
     DefaultLogger,
     DefaultSchedulerPlugin,
@@ -133,6 +135,9 @@ export const devConfig: VendureConfig = {
         Order: [],
         Product: [],
         Promotion: [],
+    },
+    schedulerOptions: {
+        tasks: [cleanSessionsTask, cleanOrphanedSettingsStoreTask],
     },
     logger: new DefaultLogger({ level: LogLevel.Verbose }),
     importExportOptions: {
