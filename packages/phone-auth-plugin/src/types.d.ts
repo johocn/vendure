@@ -8,10 +8,3 @@ export interface PhoneAuthPluginOptions {
     devBypass?: boolean;
     devBypassCode?: string;
 }
-
-export interface RegisterCustomerInput {
-    phoneNumber: string;
-    code: string;
-    password: string;
-    emailAddress?: string;
-}
