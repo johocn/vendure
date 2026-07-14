@@ -276,3 +276,68 @@ export const PROMOTIONS: PromotionSource[] = [
         customFields: { stackable: true, stackableGroup: null, maxStackableWith: null },
     },
 ];
+
+// ===== Customers =====
+export interface CustomerSource {
+    firstName: string;
+    lastName: string;
+    phoneNumber: string;
+    emailAddress: string;
+    channel: 'default' | 'shop-a';
+    balance: number; // 元，0 表示不创建余额
+    address: {
+        streetLine1: string;
+        city: string;
+        province: string;
+        postalCode: string;
+        country: string; // China
+    };
+}
+
+export const CUSTOMERS: CustomerSource[] = [
+    {
+        firstName: '三',
+        lastName: '张',
+        phoneNumber: '13800138001',
+        emailAddress: 'zhangsan@test.cn',
+        channel: 'default',
+        balance: 0,
+        address: {
+            streetLine1: '北京市海淀区中关村大街1号',
+            city: '北京市',
+            province: '北京市',
+            postalCode: '100080',
+            country: 'China',
+        },
+    },
+    {
+        firstName: '四',
+        lastName: '李',
+        phoneNumber: '13800138002',
+        emailAddress: 'lisi@test.cn',
+        channel: 'default',
+        balance: 500,
+        address: {
+            streetLine1: '北京市朝阳区望京街10号',
+            city: '北京市',
+            province: '北京市',
+            postalCode: '100102',
+            country: 'China',
+        },
+    },
+    {
+        firstName: '五',
+        lastName: '王',
+        phoneNumber: '13800138003',
+        emailAddress: 'wangwu@test.cn',
+        channel: 'shop-a',
+        balance: 200,
+        address: {
+            streetLine1: '北京市朝阳区建国门外大街1号',
+            city: '北京市',
+            province: '北京市',
+            postalCode: '100020',
+            country: 'China',
+        },
+    },
+];
