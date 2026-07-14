@@ -56,3 +56,187 @@ export const COLLECTIONS = [
         assetFile: 'chuttersnap-324234-unsplash.jpg',
     },
 ];
+
+// ===== Products =====
+export interface ProductSource {
+    name: string;
+    slug: string;
+    description: string;
+    brand: string;
+    category: string;
+    imageFile: string;
+    variants: Array<{ name: string; sku: string; price: number; stock: number; spec?: string }>;
+}
+
+export const PRODUCTS: ProductSource[] = [
+    {
+        name: '农夫山泉天然水',
+        slug: 'nongfu-spring-water',
+        description: '农夫山泉天然水 500ml',
+        brand: '农夫山泉',
+        category: '食品生鲜',
+        imageFile: 'nathan-fertig-249917-unsplash.jpg',
+        variants: [{ name: '500ml', sku: 'NF-WATER-500', price: 2, stock: 1000, spec: '500ml' }],
+    },
+    {
+        name: '三只松鼠坚果礼盒',
+        slug: 'three-squirrel-nut-gift-box',
+        description: '三只松鼠坚果礼盒 1kg',
+        brand: '三只松鼠',
+        category: '食品生鲜',
+        imageFile: 'neonbrand-428982-unsplash.jpg',
+        variants: [{ name: '1kg', sku: 'TS-NUT-1KG', price: 99, stock: 200, spec: '1kg' }],
+    },
+    {
+        name: '五常稻花香大米',
+        slug: 'wuchang-rice',
+        description: '五常稻花香大米 5kg',
+        brand: '农夫山泉',
+        category: '食品生鲜',
+        imageFile: 'nathan-fertig-249917-unsplash.jpg',
+        variants: [{ name: '5kg', sku: 'NF-RICE-5KG', price: 49, stock: 300, spec: '1kg' }],
+    },
+    {
+        name: '内蒙古牛肉卷',
+        slug: 'inner-mongolia-beef-roll',
+        description: '内蒙古牛肉卷 500g',
+        brand: '三只松鼠',
+        category: '食品生鲜',
+        imageFile: 'brandi-redd-104140-unsplash.jpg',
+        variants: [{ name: '500g', sku: 'TS-BEEF-500', price: 59, stock: 150, spec: '1kg' }],
+    },
+    {
+        name: '小米手环8',
+        slug: 'xiaomi-band-8',
+        description: '小米手环8',
+        brand: '小米',
+        category: '数码电器',
+        imageFile: 'chuttersnap-324234-unsplash.jpg',
+        variants: [
+            { name: '标准版', sku: 'XM-BAND-8-STD', price: 199, stock: 100, spec: '标准版' },
+            { name: 'Pro版', sku: 'XM-BAND-8-PRO', price: 299, stock: 80, spec: 'Pro版' },
+        ],
+    },
+    {
+        name: '华为路由器',
+        slug: 'huawei-router',
+        description: '华为路由器',
+        brand: '华为',
+        category: '数码电器',
+        imageFile: 'alexandru-acea-686569-unsplash.jpg',
+        variants: [{ name: '标准版', sku: 'HW-ROUTER-STD', price: 159, stock: 120, spec: '标准版' }],
+    },
+    {
+        name: '小米充电宝',
+        slug: 'xiaomi-power-bank',
+        description: '小米充电宝 10000mAh',
+        brand: '小米',
+        category: '数码电器',
+        imageFile: 'chuttersnap-584518-unsplash.jpg',
+        variants: [{ name: '10000mAh', sku: 'XM-PB-10000', price: 99, stock: 200, spec: '标准版' }],
+    },
+    {
+        name: '华为蓝牙耳机',
+        slug: 'huawei-bluetooth-earphone',
+        description: '华为蓝牙耳机',
+        brand: '华为',
+        category: '数码电器',
+        imageFile: 'chuttersnap-584518-unsplash.jpg',
+        variants: [{ name: '标准版', sku: 'HW-BT-EAR-STD', price: 399, stock: 60, spec: '标准版' }],
+    },
+];
+
+// ===== Shipping Methods (default Channel) =====
+// 注意：checker/calculator code 使用 vendure 默认及 cjk-plugin 注册的实际 code
+// - default-shipping-eligibility-checker (arg: orderMinimum, 单位: 分)
+// - default-shipping-calculator (args: rate/taxRate/includesTax, rate 单位: 分)
+// - store-pickup-eligibility / store-pickup-calculator (cjk-plugin, 无参数)
+// - pickup-point-eligibility / pickup-point-calculator (cjk-plugin, arg: shippingPrice, 单位: 分)
+// - fulfillmentHandler: manual-fulfillment / store-pickup / pickup-point
+export const DEFAULT_SHIPPING_METHODS = [
+    {
+        code: 'store-pickup',
+        name: '门店自提',
+        description: '到店自提，免运费',
+        fulfillmentHandler: 'store-pickup',
+        checker: { code: 'store-pickup-eligibility', arguments: [] },
+        calculator: { code: 'store-pickup-calculator', arguments: [] },
+    },
+    {
+        code: 'pickup-point',
+        name: '菜鸟驿站自提',
+        description: '到菜鸟驿站自提，3元',
+        fulfillmentHandler: 'pickup-point',
+        checker: { code: 'pickup-point-eligibility', arguments: [] },
+        calculator: { code: 'pickup-point-calculator', arguments: [{ name: 'shippingPrice', value: '300' }] },
+    },
+    {
+        code: 'free-shipping-99',
+        name: '满99包邮',
+        description: '订单满99元免运费',
+        fulfillmentHandler: 'manual-fulfillment',
+        checker: { code: 'default-shipping-eligibility-checker', arguments: [{ name: 'orderMinimum', value: '9900' }] },
+        calculator: {
+            code: 'default-shipping-calculator',
+            arguments: [
+                { name: 'rate', value: '0' },
+                { name: 'taxRate', value: '0' },
+                { name: 'includesTax', value: 'auto' },
+            ],
+        },
+    },
+    {
+        code: 'sf-express',
+        name: '顺丰标准快递',
+        description: '顺丰标准快递 12元',
+        fulfillmentHandler: 'manual-fulfillment',
+        checker: { code: 'default-shipping-eligibility-checker', arguments: [{ name: 'orderMinimum', value: '0' }] },
+        calculator: {
+            code: 'default-shipping-calculator',
+            arguments: [
+                { name: 'rate', value: '1200' },
+                { name: 'taxRate', value: '0' },
+                { name: 'includesTax', value: 'auto' },
+            ],
+        },
+    },
+];
+
+// ===== Shipping Methods (shop-a Channel) =====
+export const SHOP_A_SHIPPING_METHODS = [
+    DEFAULT_SHIPPING_METHODS[0], // store-pickup
+    DEFAULT_SHIPPING_METHODS[2], // free-shipping-99
+];
+
+// ===== Payment Methods =====
+export const PAYMENT_METHODS = [
+    {
+        code: 'dummy-payment',
+        name: '测试支付',
+        description: '开发环境测试支付',
+        handler: { code: 'dummy-payment-handler', arguments: [{ name: 'automaticSettle', value: 'false' }] },
+    },
+    {
+        code: 'cash-on-delivery',
+        name: '货到付款',
+        description: '收货时支付现金',
+        handler: { code: 'cash-on-delivery', arguments: [] },
+    },
+    {
+        code: 'balance-pay',
+        name: '余额支付',
+        description: '使用充值卡余额支付',
+        handler: { code: 'balance-pay', arguments: [] },
+    },
+];
+
+// ===== Pickup Locations =====
+export const DEFAULT_PICKUP_LOCATIONS = [
+    { name: '中关村门店', type: 'store' as const, address: '北京市海淀区中关村大街1号', phoneNumber: '010-12345678', businessHours: '09:00-22:00' },
+    { name: '望京SOHO店', type: 'store' as const, address: '北京市朝阳区望京街10号', phoneNumber: '010-87654321', businessHours: '09:00-21:00' },
+    { name: '菜鸟驿站(五道口店)', type: 'point' as const, address: '北京市海淀区成府路28号', phoneNumber: '010-66668888', businessHours: '08:00-22:00' },
+];
+
+export const SHOP_A_PICKUP_LOCATIONS = [
+    { name: '生鲜自提点(国贸店)', type: 'store' as const, address: '北京市朝阳区建国门外大街1号', phoneNumber: '010-11112222', businessHours: '07:00-21:00' },
+];
