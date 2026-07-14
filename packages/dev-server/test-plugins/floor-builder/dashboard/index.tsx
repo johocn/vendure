@@ -1,10 +1,12 @@
 import { defineDashboardExtension } from '@vendure/dashboard';
 
+import { FloorBuilderBlock } from './FloorBuilderBlock';
+
 defineDashboardExtension({
     pageBlocks: [
         {
             id: 'floor-builder',
-            component: () => null,
+            component: FloorBuilderBlock,
             title: '楼层搭建器',
             location: {
                 pageId: 'collection-detail',
