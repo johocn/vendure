@@ -7,3 +7,4 @@ export { populateShopAChannel } from './03-shop-a-channel';
 export { populatePromotions } from './04-promotions';
 export { populateCustomers } from './05-customers';
 export { populateOrders } from './06-orders';
+export { populateFloors } from './07-floors';

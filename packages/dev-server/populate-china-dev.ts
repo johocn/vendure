@@ -11,6 +11,7 @@ import {
     populatePromotions,
     populateCustomers,
     populateOrders,
+    populateFloors,
     runStage,
     logStage,
     StageResult,
@@ -51,7 +52,7 @@ if (require.main === module) {
         .then(async app => {
             await app.get(JobQueueService).start();
             const results: StageResult[] = [];
-            const total = 6;
+            const total = 7;
 
             results.push(await runStage('基础设置: superadmin + Zone/Country/TaxRate/Facet/Collection', () => populateBase(app)));
             logStage(1, total, results[0]);
@@ -70,6 +71,9 @@ if (require.main === module) {
 
             results.push(await runStage('历史订单: default 5 + shop-a 3', () => populateOrders(app)));
             logStage(6, total, results[5]);
+
+            results.push(await runStage('楼层配置: default 2 + shop-a 1', () => populateFloors(app)));
+            logStage(7, total, results[6]);
 
             const okCount = results.filter(r => r.ok).length;
             const totalMs = results.reduce((sum, r) => sum + r.durationMs, 0);
