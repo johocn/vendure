@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { ChannelService, LanguageCode, PromotionService, RequestContext } from '@vendure/core';
 
-import { withCtx } from './shared';
+import { withCtx, createAdminCtx } from './shared';
 import { PROMOTIONS } from './sources';
 
 export async function populatePromotions(app: INestApplication): Promise<void> {
@@ -10,7 +10,7 @@ export async function populatePromotions(app: INestApplication): Promise<void> {
 
     // 查询 shop-a Channel（需在 default Channel ctx 下调用 findAll）
     const allChannels = await channelService.findAll(
-        await app.get('RequestContextService').create({ apiType: 'admin', channelOrToken: defaultChannel }),
+        await createAdminCtx(app, defaultChannel),
     );
     const shopAChannel = allChannels.items.find(c => c.code === 'shop-a');
     if (!shopAChannel) throw new Error('shop-a channel not found');

@@ -6,6 +6,8 @@ import {
     CollectionService,
     CountryService,
     FacetService,
+    GlobalSettingsService,
+    LanguageCode,
     RoleService,
     TaxCategoryService,
     TaxRateService,
@@ -17,7 +19,7 @@ import {
 import fs from 'fs';
 import path from 'path';
 
-import { withCtx } from './shared';
+import { withPlainCtx } from './shared';
 import { COLLECTIONS, COUNTRIES, FACETS, TAX_RATES, ZONES } from './sources';
 
 const ASSETS_DIR = path.join(__dirname, '../../core/mock-data/assets');
@@ -37,7 +39,15 @@ export async function populateBase(app: INestApplication): Promise<void> {
 
     const defaultChannel = await channelService.getDefaultChannel();
 
-    await withCtx(app, defaultChannel, async ctx => {
+    // 01-base 是 bootstrap 阶段：superadmin 用户在此 stage 内创建，因此使用 withPlainCtx（无 user）
+    // 后续 stage（02-06）使用 withCtx（带 superadmin）
+    await withPlainCtx(app, defaultChannel, async ctx => {
+        // 0. 更新 GlobalSettings 添加 zh_Hans 语言（Channel 创建时需要）
+        const globalSettingsService = app.get(GlobalSettingsService);
+        await globalSettingsService.updateSettings(ctx, {
+            availableLanguages: [LanguageCode.en, LanguageCode.zh_Hans],
+        });
+
         // 1. 创建 superadmin 用户（createAdminUser 不带角色，需手动关联 Administrator + Role）
         const superAdminRole = await roleService.getSuperAdminRole(ctx);
         const user = await userService.createAdminUser(ctx, 'superadmin@china.test', 'superadmin');

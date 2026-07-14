@@ -1,5 +1,11 @@
 import { INestApplication } from '@nestjs/common';
-import { Channel, RequestContext, RequestContextService } from '@vendure/core';
+import {
+    Channel,
+    RequestContext,
+    RequestContextService,
+    TransactionalConnection,
+    User,
+} from '@vendure/core';
 
 export interface StageResult {
     name: string;
@@ -8,13 +14,48 @@ export interface StageResult {
     error?: string;
 }
 
+let cachedSuperAdminUser: User | undefined;
+
+export async function getSuperAdminUser(app: INestApplication): Promise<User> {
+    if (cachedSuperAdminUser) return cachedSuperAdminUser;
+    const conn = app.get(TransactionalConnection);
+    const userRepo = conn.rawConnection.getRepository('User');
+    const user = (await userRepo.findOne({
+        where: { identifier: 'superadmin@china.test' },
+        relations: ['roles', 'roles.channels'],
+    })) as User | null;
+    if (!user) throw new Error('superadmin user not found');
+    cachedSuperAdminUser = user;
+    return user;
+}
+
+export async function createAdminCtx(
+    app: INestApplication,
+    channelOrToken: Channel | string,
+): Promise<RequestContext> {
+    const ctxService = app.get(RequestContextService);
+    const user = await getSuperAdminUser(app);
+    return ctxService.create({ apiType: 'admin', channelOrToken, user });
+}
+
+export async function withPlainCtx(
+    app: INestApplication,
+    channel: Channel,
+    fn: (ctx: RequestContext) => Promise<void>,
+): Promise<void> {
+    // 普通 ctx（无 user），仅用于 bootstrap 阶段创建 superadmin 用户本身
+    const ctxService = app.get(RequestContextService);
+    const ctx = await ctxService.create({ apiType: 'admin', channelOrToken: channel });
+    await fn(ctx);
+}
+
 export async function withCtx(
     app: INestApplication,
     channel: Channel,
     fn: (ctx: RequestContext) => Promise<void>,
 ): Promise<void> {
-    const ctxService = app.get(RequestContextService);
-    const ctx = await ctxService.create({ apiType: 'admin', channelOrToken: channel });
+    // 带 superadmin user 的 ctx，用于需要 admin 权限的操作
+    const ctx = await createAdminCtx(app, channel);
     await fn(ctx);
 }
 

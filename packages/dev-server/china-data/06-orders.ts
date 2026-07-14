@@ -14,7 +14,7 @@ import {
     TransactionalConnection,
 } from '@vendure/core';
 
-import { withCtx } from './shared';
+import { withCtx, createAdminCtx } from './shared';
 import { ORDERS, OrderSource } from './sources';
 
 const loggerCtx = 'PopulateChina';
@@ -32,7 +32,7 @@ export async function populateOrders(app: INestApplication): Promise<void> {
     const defaultChannel = await channelService.getDefaultChannel();
     // 查询 shop-a Channel（需在 default Channel ctx 下调用 findAll）
     const allChannels = await channelService.findAll(
-        await app.get(RequestContextService).create({ apiType: 'admin', channelOrToken: defaultChannel }),
+        await createAdminCtx(app, defaultChannel),
     );
     const shopAChannel = allChannels.items.find(c => c.code === 'shop-a');
     if (!shopAChannel) throw new Error('shop-a channel not found');
