@@ -1,0 +1,62 @@
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
+var DouyinAuthPlugin_1;
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.DouyinAuthPlugin = void 0;
+const common_1 = require("@nestjs/common");
+const core_1 = require("@vendure/core");
+const constants_1 = require("./constants");
+const customer_custom_fields_1 = require("./customer-custom-fields");
+const douyin_auth_strategy_1 = require("./douyin-auth-strategy");
+const douyin_auth_controller_1 = require("./douyin-auth.controller");
+const douyin_auth_shop_resolver_1 = require("./douyin-auth-shop.resolver");
+let DouyinAuthPlugin = DouyinAuthPlugin_1 = class DouyinAuthPlugin {
+    constructor(options) {
+        this.options = options;
+    }
+    static init(options) {
+        DouyinAuthPlugin_1.options = options;
+        return DouyinAuthPlugin_1;
+    }
+};
+exports.DouyinAuthPlugin = DouyinAuthPlugin;
+exports.DouyinAuthPlugin = DouyinAuthPlugin = DouyinAuthPlugin_1 = __decorate([
+    (0, core_1.VendurePlugin)({
+        imports: [core_1.PluginCommonModule],
+        controllers: [douyin_auth_controller_1.DouyinAuthController],
+        providers: [
+            { provide: constants_1.DOUYIN_AUTH_PLUGIN_OPTIONS, useFactory: () => DouyinAuthPlugin.options },
+        ],
+        configuration: config => {
+            var _a, _b;
+            const strategy = new douyin_auth_strategy_1.DouyinAuthenticationStrategy(DouyinAuthPlugin.options);
+            config.authOptions.shopAuthenticationStrategy = [
+                ...(config.authOptions.shopAuthenticationStrategy || []),
+                strategy,
+            ];
+            config.customFields = Object.assign(Object.assign({}, config.customFields), { Customer: [
+                    ...(((_a = config.customFields) === null || _a === void 0 ? void 0 : _a.Customer) || []),
+                    ...((_b = customer_custom_fields_1.douyinCustomerCustomFields.Customer) !== null && _b !== void 0 ? _b : []),
+                ] });
+            return config;
+        },
+        shopApiExtensions: {
+            resolvers: [douyin_auth_shop_resolver_1.DouyinAuthShopResolver],
+        },
+        compatibility: '^3.0.0',
+    }),
+    __param(0, (0, common_1.Inject)(constants_1.DOUYIN_AUTH_PLUGIN_OPTIONS)),
+    __metadata("design:paramtypes", [Object])
+], DouyinAuthPlugin);
+//# sourceMappingURL=plugin.js.map
