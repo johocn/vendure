@@ -126,7 +126,14 @@ export const devConfig: VendureConfig = {
             },
         ],
     },
-    customFields: {},
+    customFields: {
+        Channel: [],
+        Customer: [],
+        Fulfillment: [],
+        Order: [],
+        Product: [],
+        Promotion: [],
+    },
     logger: new DefaultLogger({ level: LogLevel.Verbose }),
     importExportOptions: {
         importAssetsDir: path.join(__dirname, 'import-assets'),
@@ -175,7 +182,15 @@ export const devConfig: VendureConfig = {
             route: 'dashboard',
             appDir: path.join(__dirname, './dist'),
         }),
-        CjkPlugin.init({ i18n: { enabled: true }, regions: { enabled: true } }),
+        CjkPlugin.init({
+            i18n: { enabled: true },
+            regions: { enabled: true },
+            tenant: { enabled: true },
+            cod: { enabled: true },
+            storePickup: { enabled: true },
+            pickupPoint: { enabled: true },
+            promotionPolicy: { enabled: true },
+        }),
         ...(process.env.ALIPAY_NOTIFY_URL ? [AlipayPlugin.init({
             notifyUrl: process.env.ALIPAY_NOTIFY_URL,
             alipayPublicKey: process.env.ALIPAY_PUBLIC_KEY ?? '',
