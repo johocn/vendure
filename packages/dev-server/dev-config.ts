@@ -151,22 +151,22 @@ export const devConfig: VendureConfig = {
             { name: 'floorMaxScreens', type: 'int', defaultValue: 3, public: true },
             {
                 name: 'floorTheme', type: 'struct', public: true, fields: [
-                    { name: 'primaryColor', type: 'string', defaultValue: '#ff6600' },
-                    { name: 'backgroundColor', type: 'string', defaultValue: '#ffffff' },
+                    { name: 'primaryColor', type: 'string' },
+                    { name: 'backgroundColor', type: 'string' },
                     { name: 'titleIcon', type: 'string' },
                 ],
             },
             {
                 name: 'floorItemConfig', type: 'struct', list: true, public: true, fields: [
                     { name: 'productId', type: 'string' },
-                    { name: 'size', type: 'string', defaultValue: 'medium',
+                    { name: 'size', type: 'string',
                       ui: { component: 'select-form-input',
                             options: [
                                 { value: 'small', label: '小' },
                                 { value: 'medium', label: '中' },
                                 { value: 'large', label: '大' },
                             ] } },
-                    { name: 'highlighted', type: 'boolean', defaultValue: false },
+                    { name: 'highlighted', type: 'boolean' },
                     { name: 'label', type: 'string' },
                 ],
             },
