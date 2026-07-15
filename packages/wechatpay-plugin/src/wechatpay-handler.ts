@@ -1,5 +1,7 @@
 import { LanguageCode, Logger, PaymentMethodHandler } from '@vendure/core';
 import WxPay from 'wechatpay-node-v3';
+import { getPaymentOverride } from '@vendure/cjk-plugin';
+import type { WechatpayCredentials } from '@vendure/cjk-plugin';
 
 import { loggerCtx } from './constants';
 import { WechatpayPluginOptions } from './types';
@@ -45,16 +47,17 @@ export function createWechatpayHandler(options: WechatpayPluginOptions) {
         },
         async createPayment(ctx, order, amount, args, metadata, method) {
             try {
+                const override = getPaymentOverride(ctx, 'wechatpay') as WechatpayCredentials | null;
                 const pay = new WxPay({
-                    appid: args.appId,
-                    mchid: args.mchId,
-                    publicKey: Buffer.from(args.publicKey),
-                    privateKey: Buffer.from(args.privateKey),
-                    key: args.apiKey,
-                    serial_no: args.serialNo,
+                    appid: override?.appId || args.appId,
+                    mchid: override?.mchId || args.mchId,
+                    publicKey: Buffer.from(override?.publicKey || args.publicKey),
+                    privateKey: Buffer.from(override?.privateKey || args.privateKey),
+                    key: override?.apiKey || args.apiKey,
+                    serial_no: override?.serialNo || args.serialNo,
                 });
 
-                const tradeType = args.tradeType || 'JSAPI';
+                const tradeType = override?.tradeType || args.tradeType || 'JSAPI';
                 const openid = metadata?.openid as string | undefined;
                 const baseParams = {
                     description: `Order ${order.code}`,
@@ -122,7 +125,7 @@ export function createWechatpayHandler(options: WechatpayPluginOptions) {
                     metadata: {
                         prepayId: (result as any).data?.prepay_id,
                         payType: 'jsapi',
-                        appId: args.appId,
+                        appId: override?.appId || args.appId,
                     },
                 };
             } catch (e: any) {
