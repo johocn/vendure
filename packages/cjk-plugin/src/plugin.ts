@@ -209,8 +209,12 @@ import { setAuthSecret } from './auth/crypto';
                     isPublic: Boolean!
                 }
 
+                type AuthMethodsResult {
+                    methods: [String!]!
+                    wechatAppId: String
+                }
                 extend type Query {
-                    authMethods: [String!]!
+                    authMethods: AuthMethodsResult!
                     ssoProviders: [SsoProviderInfo!]!
                 }
 
