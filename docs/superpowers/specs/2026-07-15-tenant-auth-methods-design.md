@@ -44,27 +44,54 @@ interface TenantAuthConfig {
     /** 租户自定义凭证覆盖（不填则用平台默认环境变量） */
     overrides?: Partial<{
         phone: { accessKeyId: string; accessKeySecret: string; signName: string; templateCode: string };
-        wechat: { appId: string; appSecret: string; miniProgramAppId?: string; miniProgramAppSecret?: string };
+        wechat: {
+            appId: string;
+            appSecret: string;
+            miniProgramAppId?: string;
+            miniProgramAppSecret?: string;
+            /** 公众号消息校验 token（用于公众号服务器配置校验） */
+            token?: string;
+            /** 公众号通信加密密钥（EncodingAESKey，43 位） */
+            encodingAESKey?: string;
+        };
         alipay: { appId: string; privateKey: string; miniProgramAppId?: string };
         douyin: { appId: string; appSecret: string; miniProgramAppId?: string; miniProgramAppSecret?: string };
     }>;
-    /** SSO OAuth2 Provider 列表（数量不限） */
+    /** SSO Provider 列表（数量不限）。默认协议适配 zhao-sso（e:\code\basic\plugins\zhao-sso），也支持标准 OAuth2 */
     ssoProviders?: SsoProvider[];
 }
 
 interface SsoProvider {
     name: string;           // 显示名，如 "企业SSO"
-    providerKey: string;    // 唯一标识，如 "keycloak"
-    authorizeUrl: string;
-    tokenUrl: string;
-    userInfoUrl: string;
+    providerKey: string;    // 唯一标识，如 "zhao-sso-prod"
+    /**
+     * SSO 协议类型：
+     * - 'zhao-sso'（默认）: 适配 e:\code\basic\plugins\zhao-sso 插件
+     * - 'oauth2': 标准 OAuth2 Authorization Code 流程
+     */
+    protocol: 'zhao-sso' | 'oauth2';
+    /** SSO 服务基础 URL，如 "https://sso.example.com"。zhao-sso 协议下自动派生各端点路径 */
+    baseUrl: string;
+    /** OAuth2 协议下需显式指定；zhao-sso 协议下可留空（自动派生 /v1/auth/authorize） */
+    authorizeUrl?: string;
+    /** OAuth2 协议下需显式指定；zhao-sso 协议下可留空（自动派生 /v1/auth/token） */
+    tokenUrl?: string;
+    /** OAuth2 协议下需显式指定；zhao-sso 协议下可留空（自动派生 /v1/user/me） */
+    userInfoUrl?: string;
+    /** zhao-sso 协议下为 appCode；OAuth2 协议下为 clientId */
     clientId: string;
-    clientSecret: string;   // 存储前加密
-    scopes: string[];       // 如 ['openid', 'profile']
+    /** zhao-sso 协议下为 appSecret；OAuth2 协议下为 clientSecret。存储前加密 */
+    clientSecret: string;
+    /** OAuth2 scopes；zhao-sso 协议下可留空 */
+    scopes?: string[];
+    /** 渠道编码，zhao-sso 协议专用（传入 channel_code 字段），可用于租户识别 */
+    channelCode?: string;
     userInfoMapping?: {     // userInfo 响应字段到 Customer 字段的映射
-        externalIdField?: string;   // 默认 'sub'
+        externalIdField?: string;   // 默认 'uuid'（zhao-sso）或 'sub'（oauth2）
         emailField?: string;        // 默认 'email'
-        nicknameField?: string;     // 默认 'name'
+        nicknameField?: string;     // 默认 'nickname'（zhao-sso）或 'name'（oauth2）
+        mobileField?: string;       // 默认 'mobile'（zhao-sso）
+        avatarField?: string;       // 默认 'avatar_url'（zhao-sso）
     };
 }
 ```
@@ -76,8 +103,8 @@ interface SsoProvider {
 
 ### 凭证加密
 
-- 需加密的具体字段: `overrides.wechat.appSecret`、`overrides.wechat.miniProgramAppSecret`、`overrides.phone.accessKeySecret`、`overrides.alipay.privateKey`、`overrides.douyin.appSecret`、`overrides.douyin.miniProgramAppSecret`、`ssoProviders[].clientSecret`
-- 不加密的字段: appId、accessKeyId、signName、templateCode、clientId、authorizeUrl、tokenUrl、userInfoUrl、scopes 等非敏感配置
+- 需加密的具体字段: `overrides.wechat.appSecret`、`overrides.wechat.miniProgramAppSecret`、`overrides.wechat.encodingAESKey`、`overrides.phone.accessKeySecret`、`overrides.alipay.privateKey`、`overrides.douyin.appSecret`、`overrides.douyin.miniProgramAppSecret`、`ssoProviders[].clientSecret`
+- 不加密的字段: appId、accessKeyId、signName、templateCode、token（公众号消息 token 视为非敏感，需传给微信服务器明文校验）、clientId、baseUrl、authorizeUrl、tokenUrl、userInfoUrl、scopes、channelCode 等非敏感配置
 - 算法: AES-256-GCM
 - 存储格式: `enc:<iv-hex>:<tag-hex>:<ciphertext-hex>` 前缀标记
 - 密钥来源: cjk-plugin init options 的 `authSecret` 或 `process.env.AUTH_SECRET`
@@ -119,11 +146,20 @@ if (!isAuthMethodEnabled(ctx, 'phone')) {
 
 - name: `'sso'`
 - authenticate: Vendure 的 `AuthenticateInput` 是动态参数列表 `[{ name, value }]`，SSO 策略从 args 中提取 `providerKey` 和 `code` 两个参数。前端调用 `authenticate(input: { strategy: "sso", providerKey: "xxx", code: "xxx" })`，Vendure 会将额外参数传给 strategy。
-- 执行 OAuth2 Authorization Code 流程:
-  1. POST tokenUrl 换 access_token
-  2. GET userInfoUrl 获取用户信息
-  3. 按 userInfoMapping 映射 externalId/email/nickname
-  4. 按 `sso_<providerKey>_<externalId>` 格式查找或创建 Customer
+- 根据 `provider.protocol` 分支处理:
+
+**zhao-sso 协议**（默认，适配 `e:\code\basic\plugins\zhao-sso`）:
+1. POST `${baseUrl}/v1/auth/token` body `{ grant_type: "authorization_code", code, app_code: clientId, app_secret: clientSecret, redirect_uri }`，返回 `{ access_token, refresh_token, expires_in, token_type }`
+2. GET `${baseUrl}/v1/user/me` 带 `Authorization: Bearer <access_token>`，返回 SsoUser（含 uuid/username/mobile/email/nickname/avatar_url）
+3. 按 userInfoMapping 映射（默认 externalIdField='uuid'、emailField='email'、nicknameField='nickname'、mobileField='mobile'、avatarField='avatar_url'）
+4. 按 `sso_<providerKey>_<externalId>` 格式查找或创建 Customer
+
+**标准 OAuth2 协议**:
+1. POST `${tokenUrl}` body `{ grant_type: "authorization_code", code, client_id: clientId, client_secret: clientSecret, redirect_uri }`，返回 `{ access_token, ... }`
+2. GET `${userInfoUrl}` 带 `Authorization: Bearer <access_token>`
+3. 按 userInfoMapping 映射（默认 externalIdField='sub'、emailField='email'、nicknameField='name'）
+4. 按 `sso_<providerKey>_<externalId>` 格式查找或创建 Customer
+
 - 注册到 `config.authOptions.shopAuthenticationStrategy`
 
 ### 租户凭证覆盖
@@ -145,9 +181,12 @@ extend type Query {
 type SsoProviderInfo {
     name: String!
     providerKey: String!
-    authorizeUrl: String!          # 前端构建跳转 URL 需要
-    clientId: String!              # 前端构建跳转 URL 需要
-    scopes: [String!]!             # 前端构建跳转 URL 需要
+    protocol: String!              # 'zhao-sso' 或 'oauth2'
+    baseUrl: String!               # zhao-sso 协议下前端构建 authorizeUrl 需要
+    authorizeUrl: String           # oauth2 协议下前端跳转需要；zhao-sso 下为 null（前端自动派生 /v1/auth/authorize）
+    clientId: String!              # zhao-sso 下为 appCode，oauth2 下为 clientId
+    scopes: [String!]!             # oauth2 协议前端构建跳转 URL 需要
+    channelCode: String            # zhao-sso 协议专用
 }
 ```
 
@@ -167,12 +206,15 @@ type TenantAuthConfigMasked {
 type SsoProviderMasked {
     name: String!
     providerKey: String!
-    authorizeUrl: String!
-    tokenUrl: String!
-    userInfoUrl: String!
+    protocol: String!
+    baseUrl: String!
+    authorizeUrl: String
+    tokenUrl: String
+    userInfoUrl: String
     clientId: String!
     clientSecret: String!  # 返回 *** 或空
     scopes: [String!]!
+    channelCode: String
     userInfoMapping: JSON
 }
 ```
@@ -187,8 +229,19 @@ type SsoProviderMasked {
 
 新增:
 ```ts
+interface SsoProviderInfo {
+    name: string;
+    providerKey: string;
+    protocol: 'zhao-sso' | 'oauth2';
+    baseUrl: string;
+    authorizeUrl?: string | null;
+    clientId: string;
+    scopes: string[];
+    channelCode?: string | null;
+}
+
 const authMethods = ref<string[]>([]);
-const ssoProviders = ref<{name: string; providerKey: string; authorizeUrl: string; clientId: string; scopes: string[]}[]>([]);
+const ssoProviders = ref<SsoProviderInfo[]>([]);
 
 async function loadAuthMethods() {
     const res = await getAuthMethods();
@@ -209,7 +262,7 @@ export async function getAuthMethods() {
     return client.request(`query { authMethods }`);
 }
 export async function getSsoProviders() {
-    return client.request(`query { ssoProviders { name providerKey authorizeUrl clientId scopes } }`);
+    return client.request(`query { ssoProviders { name providerKey protocol baseUrl authorizeUrl clientId scopes channelCode } }`);
 }
 ```
 
@@ -241,15 +294,42 @@ export async function ssoLogin(providerKey: string, code: string) {
 
 ### SSO 登录流程
 
+根据 provider.protocol 构建不同的跳转 URL:
+
 ```ts
-function loginWithSso(provider: SsoProvider) {
+function loginWithSso(provider: SsoProviderInfo) {
     const redirectUri = `${window.location.origin}/pages/login/index`;
     const state = generateState();
     sessionStorage.setItem('sso_state', state);
     sessionStorage.setItem('sso_provider', provider.providerKey);
-    window.location.href = `${provider.authorizeUrl}?` +
-        `client_id=${provider.clientId}&redirect_uri=${redirectUri}` +
-        `&response_type=code&scope=${provider.scopes.join(' ')}&state=${state}`;
+
+    let authorizeUrl: string;
+    let params: Record<string, string>;
+
+    if (provider.protocol === 'zhao-sso') {
+        // zhao-sso 协议: GET /v1/auth/authorize?app_code=&redirect_uri=&response_type=code&state=&channel_code=
+        authorizeUrl = `${provider.baseUrl.replace(/\/$/, '')}/v1/auth/authorize`;
+        params = {
+            app_code: provider.clientId,
+            redirect_uri: redirectUri,
+            response_type: 'code',
+            state,
+        };
+        if (provider.channelCode) params.channel_code = provider.channelCode;
+    } else {
+        // 标准 OAuth2 协议
+        authorizeUrl = provider.authorizeUrl!;
+        params = {
+            client_id: provider.clientId,
+            redirect_uri: redirectUri,
+            response_type: 'code',
+            scope: provider.scopes.join(' '),
+            state,
+        };
+    }
+
+    const query = new URLSearchParams(params).toString();
+    window.location.href = `${authorizeUrl}?${query}`;
 }
 ```
 
@@ -294,27 +374,42 @@ if (ssoCode && ssoProviderKey) {
 │ ─── 凭证覆盖（可选，留空用平台默认）───── │
 │                                            │
 │ 微信凭证：                                 │
-│   appId:     [_______________]             │
-│   appSecret: [_______________]             │
-│   小程序appId: [_____________]             │
+│   appId:          [_______________]        │
+│   appSecret:      [_______________]        │
+│   小程序appId:    [_____________]          │
+│   小程序appSecret:[_____________]          │
+│   公众号Token:    [____________]           │
+│   EncodingAESKey: [____________]           │
 │                                            │
 │ ─── SSO Providers ──────────────────────── │
 │                                            │
 │ [+ 添加 SSO Provider]                      │
 │                                            │
-│ ┌ Provider: keycloak ────────────────────┐ │
+│ ┌ Provider: zhao-sso-prod ───────────────┐ │
 │ │ 显示名: [企业SSO]                      │ │
-│ │ 标识:   [keycloak]                     │ │
-│ │ Authorize URL: [https://...]           │ │
-│ │ Token URL:     [https://...]           │ │
-│ │ UserInfo URL:  [https://...]           │ │
-│ │ Client ID:     [____________]          │ │
-│ │ Client Secret: [********]              │ │
-│ │ Scopes:        [openid,profile]        │ │
-│ │ 字段映射:                              │ │
-│ │   外部ID字段: [sub]                    │ │
-│ │   邮箱字段:   [email]                  │ │
-│ │   昵称字段:   [name]                   │ │
+│ │ 标识:   [zhao-sso-prod]                │ │
+│ │ 协议:   [zhao-sso ▼] / [oauth2]        │ │
+│ │                                         │ │
+│ │ (zhao-sso 协议显示)                    │ │
+│ │ BaseUrl:     [https://sso.example.com]  │ │
+│ │ AppCode:     [____________]             │ │
+│ │ AppSecret:   [********]                 │ │
+│ │ ChannelCode: [shop-a]                   │ │
+│ │                                         │ │
+│ │ (oauth2 协议显示)                      │ │
+│ │ AuthorizeUrl:[https://...]              │ │
+│ │ TokenUrl:    [https://...]              │ │
+│ │ UserInfoUrl: [https://...]              │ │
+│ │ ClientId:    [____________]             │ │
+│ │ ClientSecret:[********]                 │ │
+│ │ Scopes:      [openid,profile]           │ │
+│ │                                         │ │
+│ │ 字段映射（可选，留空用默认）:          │ │
+│ │   外部ID字段: [uuid/sub]                │ │
+│ │   邮箱字段:   [email]                   │ │
+│ │   昵称字段:   [nickname/name]           │ │
+│ │   手机号字段: [mobile]                  │ │
+│ │   头像字段:   [avatar_url]              │ │
 │ │ [删除]                                 │ │
 │ └────────────────────────────────────────┘ │
 │                                            │
@@ -391,7 +486,7 @@ authConfig: {
 }
 ```
 
-### Shop-A channel（租户 A，自定义 SSO）
+### Shop-A channel（租户 A，自定义 SSO，zhao-sso 协议）
 
 文件: `e:\code\vendure\packages\dev-server\china-data\03-shop-a-channel.ts`
 
@@ -399,18 +494,23 @@ authConfig: {
 authConfig: {
     enabledMethods: ['native', 'phone', 'wechat', 'sso'],
     overrides: {
-        wechat: { appId: 'wx-tenant-a', appSecret: 'secret-a', miniProgramAppId: 'mini-a' }
+        wechat: {
+            appId: 'wx-tenant-a',
+            appSecret: 'secret-a',
+            miniProgramAppId: 'mini-a',
+            token: 'tenant-a-msg-token',
+            encodingAESKey: 'tenant-a-43-char-encoding-aes-key-herexxxxxxxx',
+        }
     },
     ssoProviders: [
         {
             name: '企业SSO',
-            providerKey: 'keycloak-dev',
-            authorizeUrl: 'http://localhost:8080/realms/test/protocol/openid-connect/auth',
-            tokenUrl: 'http://localhost:8080/realms/test/protocol/openid-connect/token',
-            userInfoUrl: 'http://localhost:8080/realms/test/protocol/openid-connect/userinfo',
-            clientId: 'vendure-test',
-            clientSecret: 'test-secret',
-            scopes: ['openid', 'profile', 'email'],
+            providerKey: 'zhao-sso-dev',
+            protocol: 'zhao-sso',
+            baseUrl: 'http://localhost:1337',
+            clientId: 'vendure-shop-a',
+            clientSecret: 'shop-a-app-secret',
+            channelCode: 'shop-a',
         }
     ]
 }
@@ -434,8 +534,9 @@ authConfig: {
 | `packages/cjk-plugin/index.ts` | 修改 | 导出新模块 |
 | `packages/cjk-plugin/dashboard/channel-detail-forms.tsx` | 修改 | AuthConfigForm 组件 |
 | `packages/phone-auth-plugin/src/phone-authentication-strategy.ts` | 修改 | 加 isAuthMethodEnabled 检查 |
-| `packages/wechat-auth-plugin/src/wechat-auth-strategy.ts` | 修改 | 同上 |
-| `packages/alipay-plugin/src/alipay-auth-strategy.ts` | 修改 | 同上 |
+| `packages/wechat-auth-plugin/src/wechat-auth-strategy.ts` | 修改 | 加 isAuthMethodEnabled 检查 + 读取 overrides 中 token/encodingAESKey |
+| `packages/wechat-auth-plugin/src/types.ts` | 修改 | WechatAuthPluginOptions 增加 token/encodingAESKey 字段 |
+| `packages/alipay-plugin/src/alipay-auth-strategy.ts` | 修改 | 加 isAuthMethodEnabled 检查 |
 | `packages/douyin-auth-plugin/src/douyin-auth-strategy.ts` | 修改 | 同上 |
 | `packages/dev-server/china-data/02-default-channel.ts` | 修改 | 测试数据 |
 | `packages/dev-server/china-data/03-shop-a-channel.ts` | 修改 | 测试数据 |
@@ -455,13 +556,14 @@ authConfig: {
 **本次实现**:
 - per-Channel 登录方式开关
 - 租户凭证覆盖（混合模式）
-- 通用 OAuth2 SSO
+- 微信公众号 token + EncodingAESKey 凭证支持
+- SSO 双协议支持: zhao-sso（默认，适配 `e:\code\basic\plugins\zhao-sso`）+ 标准 OAuth2
 - 管理后台配置 UI
 - 前端动态渲染
 - 4 语 i18n
 
 **本次不做**:
-- SAML 协议支持（仅 OAuth2）
+- SAML 协议支持（仅 OAuth2/zhao-sso）
 - 管理端 SSO 登录（仅 shop 端）
 - 登录方式排序配置
 - 登录方式 A/B 测试
