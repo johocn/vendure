@@ -244,10 +244,12 @@ export const devConfig: VendureConfig = {
             cod: { enabled: true },
             storePickup: { enabled: true },
             pickupPoint: { enabled: true },
+            employeePickup: { enabled: true },
             promotionPolicy: { enabled: true },
+            authSecret: process.env.AUTH_SECRET || 'dev-auth-secret-key',
         }),
-        ...(process.env.ALIPAY_NOTIFY_URL ? [AlipayPlugin.init({
-            notifyUrl: process.env.ALIPAY_NOTIFY_URL,
+        ...((process.env.ALIPAY_NOTIFY_URL || process.env.DEV_BYPASS_ALIPAY === 'true') ? [AlipayPlugin.init({
+            notifyUrl: process.env.ALIPAY_NOTIFY_URL || '',
             alipayPublicKey: process.env.ALIPAY_PUBLIC_KEY ?? '',
             auth: process.env.DEV_BYPASS_ALIPAY === 'true' ? {
                 devBypass: true,
