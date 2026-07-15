@@ -48,8 +48,6 @@ import { setAuthSecret } from './auth/crypto';
         TenantSetupService,
         PickupLocationService,
         EmployeeCustomerService,
-        AuthShopResolver,
-        AuthAdminResolver,
         { provide: APP_GUARD, useClass: AuthMethodGuard },
     ],
     adminApiExtensions: {
