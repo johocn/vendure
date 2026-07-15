@@ -100,6 +100,17 @@ export const devConfig: VendureConfig = {
             },
         },
         shopApiDebug: true,
+        middleware: [
+            {
+                handler: (req, res, next) => {
+                    if (req.path.startsWith('/assets') || req.url.startsWith('/assets')) {
+                        res.setHeader('Access-Control-Allow-Origin', '*');
+                    }
+                    next();
+                },
+                route: '/assets',
+            },
+        ],
     },
     authOptions: {
         disableAuth: false,
