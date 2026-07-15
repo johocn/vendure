@@ -7,6 +7,7 @@ import { WechatAuthenticationStrategy } from './wechat-auth-strategy';
 import { WechatAuthController } from './wechat-auth.controller';
 import { WechatAuthPluginOptions } from './types';
 import { WechatAuthService } from './wechat-auth.service';
+import { WxacodeService } from './wxacode.service';
 import { WechatAuthShopResolver } from './wechat-auth-shop.resolver';
 
 @VendurePlugin({
@@ -15,6 +16,7 @@ import { WechatAuthShopResolver } from './wechat-auth-shop.resolver';
     providers: [
         { provide: WECHAT_AUTH_PLUGIN_OPTIONS, useFactory: () => WechatAuthPlugin.options },
         WechatAuthService,
+        WxacodeService,
     ],
     configuration: config => {
         const strategy = new WechatAuthenticationStrategy(WechatAuthPlugin.options);
@@ -43,8 +45,13 @@ import { WechatAuthShopResolver } from './wechat-auth-shop.resolver';
                     nonceStr: String!
                     signature: String!
                 }
+                type WxacodeResult {
+                    contentType: String!
+                    base64: String!
+                }
                 extend type Query {
                     wechatJsapiSignature(url: String!): JsapiSignature!
+                    wechatWxacode(scene: String!, path: String, width: Int): WxacodeResult!
                 }
             `;
         },
