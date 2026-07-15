@@ -24,17 +24,24 @@
 ```ts
 {
     name: 'authConfig',
-    type: 'struct',  // Vendure 无 'json' 类型，用 'struct'（DB 存 json，GraphQL 暴露为 JSON 标量）
+    type: 'struct',  // Vendure 无 'json' 类型，用 'struct'（DB 存 json，GraphQL 暴露为结构化对象）
     nullable: true,
     public: true,  // C 端需读取以决定显示哪些登录按钮
     label: [{ languageCode: LanguageCode.zh_Hans, value: '租户登录方式配置' }],
-    schema: {
-        enabledMethods: { type: 'string', list: true },
-        overrides: { type: 'json' },
-        ssoProviders: { type: 'json' },
-    },
+    // struct 子字段仅支持 string/text/int/float/boolean/datetime，不支持 json
+    // overrides 和 ssoProviders 需存任意 JSON，用 text 类型存 JSON 字符串
+    fields: [
+        { name: 'enabledMethods', type: 'string', list: true },
+        { name: 'overridesJson', type: 'text' },      // JSON 字符串，存储凭证覆盖
+        { name: 'ssoProvidersJson', type: 'text' },   // JSON 字符串，存储 SSO Provider 列表
+    ],
 }
 ```
+
+**重要约束**:
+- struct 子字段不支持 `json` 类型，`overrides` 和 `ssoProviders` 用 `text` 存 JSON 字符串，读写时需 `JSON.parse/stringify`
+- struct 内部为**整体替换语义**，Dashboard 保存时需先读取完整 config 再合并修改后整体回写
+- GraphQL 查询时 struct 字段是结构化对象（非 JSON 标量），需逐个子字段查询
 
 ### authConfig JSON 结构
 
@@ -145,19 +152,32 @@ if (!isAuthMethodEnabled(ctx, 'phone')) {
 
 Guard 实现要点：
 ```ts
+import { Injectable, ExecutionContext, CanActivate } from '@nestjs/common';
+import { parseContext, internal_getRequestContext, ForbiddenError } from '@vendure/core';
+
 @Injectable()
 export class AuthMethodGuard implements CanActivate {
     canActivate(context: ExecutionContext): boolean {
+        const parsed = parseContext(context);
+        if (!parsed.isGraphQL) return true;
+        if (parsed.info?.fieldName !== 'authenticate') return true;
+
+        const ctx = internal_getRequestContext(parsed.req);
+        if (!ctx) return true; // 无 ctx 降级放行
+
+        // 用 ctx.apiType 区分 shop/admin，不依赖 req.path
+        if (ctx.apiType !== 'shop') return true; // 仅拦截 shop 端
+
+        const args = parsed.info;
+        // 从 GraphQL variableValues 获取 input
         const gqlCtx = GqlExecutionContext.create(context);
-        const info = gqlCtx.getInfo<GraphQLResolveInfo>();
-        // 仅拦截 shop 端 authenticate mutation
-        if (info?.fieldName !== 'authenticate') return true;
-        const args = gqlCtx.getArgs();
+        const inputArgs = gqlCtx.getArgs();
+        if (!inputArgs?.input) return true;
         // AuthenticationInput 是 map: { native?: {...}, phone?: {...}, sso?: {...} }
-        const method = Object.keys(args.input)[0];  // 如 'native'/'phone'/'wechat'/'sso'
-        const req = gqlCtx.getContext().req;
-        const ctx = internal_getRequestContext(req);  // 从 req 提取 RequestContext
-        if (!isAuthMethodEnabled(ctx, method as AuthMethod)) {
+        const method = Object.keys(inputArgs.input)[0] as AuthMethod;
+        if (!method) return true;
+
+        if (!isAuthMethodEnabled(ctx, method)) {
             throw new ForbiddenError();
         }
         return true;
@@ -165,15 +185,27 @@ export class AuthMethodGuard implements CanActivate {
 }
 ```
 
-**native 特殊处理**：Guard 仅注册到 shop API 模块（不拦截 admin API），这样 native 方法被禁用时仅影响 shop 端，admin 端 native 登录不受影响，防止管理员锁死。
+**native 特殊处理**：Guard 通过 `ctx.apiType !== 'shop'` 判断，仅拦截 shop 端 authenticate mutation。admin 端不受影响，防止管理员锁死。
 
-**Guard 执行顺序**：Vendure Core 的 AuthGuard 在 ApiModule 注册，先于插件 Guard 执行，确保 `RequestContext` 已写入 `req`。
+**Guard 执行顺序**：Vendure Core 的 AuthGuard 在 ApiModule 注册，先于插件 Guard 执行，确保 `RequestContext` 已写入 `req`。插件 Guard 通过 `internal_getRequestContext(req)` 读取已构建的 RequestContext。
 
 ### SSO 认证策略
 
 新增文件: `e:\code\vendure\packages\cjk-plugin\src\auth\sso-authentication-strategy.ts`
 
 - name: `'sso'`
+- **init(injector)**: 必须实现此钩子注入 NestJS 服务。策略在 `configuration` 钩子中手动 `new`，无法用构造函数注入；通过 `init` 钩子从 Injector 获取服务:
+```ts
+import { Injector, UserService, CustomerService } from '@vendure/core';
+
+private userService!: UserService;
+private customerService!: CustomerService;
+
+async init(injector: Injector) {
+    this.userService = injector.get(UserService);
+    this.customerService = injector.get(CustomerService);
+}
+```
 - **defineInputType()**: 必须实现此方法定义 GraphQL input 类型。Vendure 的 `AuthenticationInput` 是动态 map，每个策略名作为 key，value 是该策略定义的 input 类型:
 ```ts
 defineInputType() {
@@ -186,20 +218,37 @@ defineInputType() {
 }
 ```
 - authenticate(ctx, data): data 类型为 `SsoAuthInput`，即 `{ providerKey, code }`。
-- 前端调用方式: `authenticate(input: { sso: { providerKey: "xxx", code: "xxx" } })`（不是 `authenticate(input: { strategy: "sso", ... })`）。
+- 前端调用方式: `authenticate(input: { sso: { providerKey: "xxx", code: "xxx" } })`。
+- **不依赖 redirect_uri**: token 交换只需 `code + clientId + clientSecret`，redirect_uri 仅前端跳转 IdP 时使用，后端 strategy 不需要。
 - 根据 `provider.protocol` 分支处理:
 
 **zhao-sso 协议**（默认，适配 `e:\code\basic\plugins\zhao-sso`）:
-1. POST `${baseUrl}/v1/auth/token` body `{ grant_type: "authorization_code", code, app_code: clientId, app_secret: clientSecret, redirect_uri }`，返回 `{ access_token, refresh_token, expires_in, token_type }`
+1. POST `${baseUrl}/v1/auth/token` body `{ grant_type: "authorization_code", code, app_code: clientId, app_secret: clientSecret }`，返回 `{ access_token, refresh_token, expires_in, token_type }`
 2. GET `${baseUrl}/v1/user/me` 带 `Authorization: Bearer <access_token>`，返回 SsoUser（含 uuid/username/mobile/email/nickname/avatar_url）
 3. 按 userInfoMapping 映射（默认 externalIdField='uuid'、emailField='email'、nicknameField='nickname'、mobileField='mobile'、avatarField='avatar_url'）
-4. 按 `sso_<providerKey>_<externalId>` 格式查找或创建 Customer
+4. 按 `sso_<providerKey>_<externalId>` 格式作为 identifier，调用 `userService.getUserByEmailAddress` 查找，不存在则 `userService.createCustomerUser` 创建
 
 **标准 OAuth2 协议**:
-1. POST `${tokenUrl}` body `{ grant_type: "authorization_code", code, client_id: clientId, client_secret: clientSecret, redirect_uri }`，返回 `{ access_token, ... }`
+1. POST `${tokenUrl}` body `{ grant_type: "authorization_code", code, client_id: clientId, client_secret: clientSecret }`，返回 `{ access_token, ... }`
 2. GET `${userInfoUrl}` 带 `Authorization: Bearer <access_token>`
 3. 按 userInfoMapping 映射（默认 externalIdField='sub'、emailField='email'、nicknameField='name'）
-4. 按 `sso_<providerKey>_<externalId>` 格式查找或创建 Customer
+4. 按 `sso_<providerKey>_<externalId>` 格式作为 identifier，查找或创建 User
+
+**用户创建流程**（参照 wechat-auth-strategy.ts）:
+```ts
+const identifier = `sso_${provider.providerKey}_${externalId}`;
+let user = await this.userService.getUserByEmailAddress(ctx, identifier);
+if (!user) {
+    const result = await this.userService.createCustomerUser(ctx, identifier);
+    if ('identifier' in result) {
+        user = result as User;
+    } else {
+        return false;
+    }
+}
+// 可选：更新 Customer customFields（email/nickname/avatar 等）
+return user;
+```
 
 - 认证失败时返回 `false`（不是抛异常），Vendure 会包装为 `InvalidCredentialsError`。
 - 注册到 `config.authOptions.shopAuthenticationStrategy`
@@ -225,21 +274,47 @@ const encodingAESKey = override?.encodingAESKey || this.options.encodingAESKey;
 
 ### Shop API 扩展
 
+由于 struct 字段存储为 `enabledMethods`/`overridesJson`/`ssoProvidersJson`，Shop resolver 需解析 JSON 字符串:
+
 ```graphql
 extend type Query {
-    authMethods: [String!]!        # 当前 Channel 启用的登录方式列表
-    ssoProviders: [SsoProviderInfo!]!  # SSO Provider 列表（不含 secret）
+    authMethods: [String!]!
+    ssoProviders: [SsoProviderInfo!]!
 }
 
 type SsoProviderInfo {
     name: String!
     providerKey: String!
-    protocol: String!              # 'zhao-sso' 或 'oauth2'
-    baseUrl: String!               # zhao-sso 协议下前端构建 authorizeUrl 需要
-    authorizeUrl: String           # oauth2 协议下前端跳转需要；zhao-sso 下为 null（前端自动派生 /v1/auth/authorize）
-    clientId: String!              # zhao-sso 下为 appCode，oauth2 下为 clientId
-    scopes: [String!]!             # oauth2 协议前端构建跳转 URL 需要
-    channelCode: String            # zhao-sso 协议专用
+    protocol: String!
+    baseUrl: String!
+    authorizeUrl: String
+    clientId: String!
+    scopes: [String!]!
+    channelCode: String
+}
+```
+
+Resolver 实现:
+```ts
+@Query()
+authMethods(@Ctx() ctx: RequestContext): string[] {
+    const config = (ctx.channel as any)?.customFields?.authConfig;
+    if (!config?.enabledMethods) return ['native', 'phone', 'wechat', 'alipay', 'douyin'];
+    return config.enabledMethods;
+}
+
+@Query()
+ssoProviders(@Ctx() ctx: RequestContext): SsoProviderInfo[] {
+    const config = (ctx.channel as any)?.customFields?.authConfig;
+    if (!config?.ssoProvidersJson) return [];
+    try {
+        const providers = JSON.parse(config.ssoProvidersJson);
+        return providers.map(p => ({
+            name: p.name, providerKey: p.providerKey, protocol: p.protocol,
+            baseUrl: p.baseUrl, authorizeUrl: p.authorizeUrl,
+            clientId: p.clientId, scopes: p.scopes || [], channelCode: p.channelCode,
+        }));
+    } catch { return []; }
 }
 ```
 
@@ -247,12 +322,12 @@ type SsoProviderInfo {
 
 ```graphql
 extend type Query {
-    channelAuthConfig(channelId: ID!): TenantAuthConfigMasked  # 脱敏后的配置
+    channelAuthConfig(channelId: ID!): TenantAuthConfigMasked
 }
 
 type TenantAuthConfigMasked {
     enabledMethods: [String!]!
-    overrides: JSON  # secret 字段返回 ***
+    overrides: JSON
     ssoProviders: [SsoProviderMasked!]!
 }
 
@@ -265,14 +340,14 @@ type SsoProviderMasked {
     tokenUrl: String
     userInfoUrl: String
     clientId: String!
-    clientSecret: String!  # 返回 *** 或空
+    clientSecret: String!
     scopes: [String!]!
     channelCode: String
     userInfoMapping: JSON
 }
 ```
 
-无需新增 mutation，复用 Vendure 内置 `updateChannel` 更新 customFields.authConfig。
+Admin resolver 需解析 `overridesJson`/`ssoProvidersJson` 并脱敏后返回。写入时（updateChannel）需将前端传入的对象 `JSON.stringify` 后存入 `overridesJson`/`ssoProvidersJson`。
 
 ## 前端登录页改造
 
@@ -410,9 +485,9 @@ if (ssoCode && ssoProviderKey) {
 
 文件: `e:\code\vendure\packages\cjk-plugin\dashboard\channel-detail-forms.tsx` 和 `e:\code\vendure\packages\cjk-plugin\dashboard\auth-config-widget.tsx`
 
-**重要**: Dashboard 的 `DashboardDetailFormExtensionDefinition` 无 `form` 字段，`inputs` 只能替换已存在字段。自定义配置区需用 `pageBlocks`（添加新区块到页面）或 `widgets`。
+**重要**: Dashboard 的 `DashboardDetailFormExtensionDefinition` 无 `form` 字段，`inputs` 只能替换已存在字段。struct 类型字段由 `CustomFieldsPageBlock`（blockId=`custom-fields`）自动渲染为 `StructFormInput`（表单模式，非 JSON 编辑器），每个子字段按类型分发标准输入控件。
 
-实际方案：channel-detail 页面有 `CustomFieldsPageBlock` 自动渲染 customFields。`authConfig` 作为 `struct` 类型 customField 会被自动渲染为 JSON 编辑器（可用但体验差）。如需友好 UI，用 `inputs` 覆盖 `authConfig` 字段的渲染组件:
+由于 `authConfig` struct 的 `overridesJson`/`ssoProvidersJson` 是 text 类型存 JSON 字符串，默认会渲染为普通文本输入框，体验差且易出错。需用 `inputs` 覆盖渲染:
 
 ```tsx
 // channel-detail-forms.tsx
@@ -421,28 +496,37 @@ import { AuthConfigInput } from './auth-config-widget';
 export const cjkChannelDetailForms: DashboardDetailFormExtensionDefinition[] = [
     {
         pageId: 'channel-detail',
-        // 扩展 detail query 以确保 authConfig 字段被查询
         extendDetailDocument: `
             query ExtendChannelAuthConfig {
                 channel {
                     customFields {
-                        authConfig
+                        authConfig {
+                            enabledMethods
+                            overridesJson
+                            ssoProvidersJson
+                        }
                     }
                 }
             }
         `,
         inputs: [
             {
-                blockId: 'custom-fields',  // CustomFieldsPageBlock 的 blockId
-                field: 'authConfig',       // 要覆盖的 customField 名
-                component: AuthConfigInput, // 自定义 React 组件
+                blockId: 'custom-fields',
+                field: 'authConfig',  // 覆盖整个 struct 字段的渲染
+                component: AuthConfigInput,
             },
         ],
     },
 ];
 ```
 
-`AuthConfigInput` 组件接收 `DashboardFormComponentProps`（基于 react-hook-form 的 ControllerRenderProps），value 是 authConfig JSON 对象，onChange 更新表单值。
+`AuthConfigInput` 组件接收 `DashboardFormComponentProps`，value 是 `{ enabledMethods, overridesJson, ssoProvidersJson }` 结构。组件内部:
+1. `JSON.parse(overridesJson)` 得到 overrides 对象
+2. `JSON.parse(ssoProvidersJson)` 得到 ssoProviders 数组
+3. 渲染 checkbox 列表、凭证输入框、SSO Provider 编辑器
+4. onChange 时将 overrides/ssoProviders `JSON.stringify` 后整体回写
+
+**struct 整体替换语义**: 保存时必须传完整的 `{ enabledMethods, overridesJson, ssoProvidersJson }` 三个子字段，缺失的子字段会被置为 null。
 
 ### UI 结构
 
@@ -569,7 +653,8 @@ Guard 对 native 方法特殊处理：若 enabledMethods 不含 native，仅拦�
 ```ts
 authConfig: {
     enabledMethods: ['native', 'phone', 'wechat', 'alipay', 'douyin'],
-    // 无 overrides，用平台环境变量凭证
+    overridesJson: '',    // 空，用平台默认凭证
+    ssoProvidersJson: '', // 空，无 SSO
 }
 ```
 
@@ -580,7 +665,7 @@ authConfig: {
 ```ts
 authConfig: {
     enabledMethods: ['native', 'phone', 'wechat', 'sso'],
-    overrides: {
+    overridesJson: JSON.stringify({
         wechat: {
             appId: 'wx-tenant-a',
             appSecret: 'secret-a',
@@ -588,8 +673,8 @@ authConfig: {
             token: 'tenant-a-msg-token',
             encodingAESKey: 'tenant-a-43-char-encoding-aes-key-herexxxxxxxx',
         }
-    },
-    ssoProviders: [
+    }),
+    ssoProvidersJson: JSON.stringify([
         {
             name: '企业SSO',
             providerKey: 'zhao-sso-dev',
@@ -599,7 +684,7 @@ authConfig: {
             clientSecret: 'shop-a-app-secret',
             channelCode: 'shop-a',
         }
-    ]
+    ]),
 }
 ```
 
