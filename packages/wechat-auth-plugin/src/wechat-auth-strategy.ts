@@ -1,6 +1,7 @@
 import { DocumentNode } from 'graphql';
 import { gql } from 'graphql-tag';
-import { AuthenticationStrategy, Customer, CustomerService, Injector, Logger, RequestContext, User, UserService } from '@vendure/core';
+import { AuthenticationStrategy, Customer, CustomerService, ForbiddenError, Injector, Logger, RequestContext, User, UserService } from '@vendure/core';
+import { getAuthOverride, isAuthMethodEnabled } from '@vendure/cjk-plugin';
 
 import { loggerCtx } from './constants';
 import { WechatAuthPluginOptions } from './types';
@@ -33,7 +34,12 @@ export class WechatAuthenticationStrategy implements AuthenticationStrategy<Wech
     }
 
     async authenticate(ctx: RequestContext, data: WechatAuthData): Promise<User | false | string> {
-        // devBypass 分支：跳过微信 API，使用固定测试 openid
+        // 租户级登录方式开关检查（先于 devBypass）
+        if (!isAuthMethodEnabled(ctx, 'wechat')) {
+            throw new ForbiddenError();
+        }
+
+        // devBypass 分支：跳过微信 API，使用固定测试 openid（保持原样，不使用 override）
         if (this.options.devBypass) {
             const testOpenid = this.options.devBypassOpenid || 'dev_test_openid';
             const identifier = `wechat_${data.type}_${testOpenid}`;
@@ -46,6 +52,15 @@ export class WechatAuthenticationStrategy implements AuthenticationStrategy<Wech
             return false;
         }
 
+        // 租户凭证覆盖（已解密；无覆盖则回退 this.options）
+        const override = getAuthOverride(ctx, 'wechat');
+        const appId = override?.appId || this.options.appId;
+        const appSecret = override?.appSecret || this.options.appSecret;
+        const miniProgramAppId = override?.miniProgramAppId || this.options.miniProgramAppId;
+        const miniProgramAppSecret = override?.miniProgramAppSecret || this.options.miniProgramAppSecret;
+        const token = override?.token || this.options.token;
+        const encodingAESKey = override?.encodingAESKey || this.options.encodingAESKey;
+
         const { code, type } = data;
 
         try {
@@ -53,11 +68,11 @@ export class WechatAuthenticationStrategy implements AuthenticationStrategy<Wech
             let userInfo: { nickname?: string; headimgurl?: string } | null = null;
 
             if (type === 'mp') {
-                const mpResult = await this.getMpOpenidWithInfo(code);
+                const mpResult = await this.getMpOpenidWithInfo(code, appId, appSecret);
                 openid = mpResult.openid;
                 userInfo = mpResult.userInfo;
             } else {
-                openid = await this.getMiniOpenid(code);
+                openid = await this.getMiniOpenid(code, miniProgramAppId, miniProgramAppSecret, appId, appSecret);
             }
 
             if (!openid) {
@@ -118,10 +133,10 @@ export class WechatAuthenticationStrategy implements AuthenticationStrategy<Wech
         }
     }
 
-    private async getMpOpenidWithInfo(code: string): Promise<{ openid: string; userInfo: any }> {
+    private async getMpOpenidWithInfo(code: string, appId: string, appSecret: string): Promise<{ openid: string; userInfo: any }> {
         const url =
             `https://api.weixin.qq.com/sns/oauth2/access_token` +
-            `?appid=${this.options.appId}&secret=${this.options.appSecret}` +
+            `?appid=${appId}&secret=${appSecret}` +
             `&code=${code}&grant_type=authorization_code`;
         const response = await fetch(url);
         const data = (await response.json()) as any;
@@ -142,10 +157,16 @@ export class WechatAuthenticationStrategy implements AuthenticationStrategy<Wech
         return { openid: data.openid, userInfo };
     }
 
-    private async getMiniOpenid(code: string): Promise<string> {
-        const appId = this.options.miniProgramAppId || this.options.appId;
-        const secret = this.options.miniProgramAppSecret || this.options.appSecret;
-        const url = `https://api.weixin.qq.com/sns/jscode2session?appid=${appId}&secret=${secret}&js_code=${code}&grant_type=authorization_code`;
+    private async getMiniOpenid(
+        code: string,
+        miniProgramAppId: string | undefined,
+        miniProgramAppSecret: string | undefined,
+        appId: string,
+        appSecret: string,
+    ): Promise<string> {
+        const finalAppId = miniProgramAppId || appId;
+        const finalSecret = miniProgramAppSecret || appSecret;
+        const url = `https://api.weixin.qq.com/sns/jscode2session?appid=${finalAppId}&secret=${finalSecret}&js_code=${code}&grant_type=authorization_code`;
         const response = await fetch(url);
         const data = (await response.json()) as any;
         return data.openid;
