@@ -23,3 +23,5 @@ export * from './src/auth/sso-authentication-strategy';
 export * from './src/auth/i18n-messages';
 export * from './src/auth/auth-shop.resolver';
 export * from './src/auth/auth-admin.resolver';
+export * from './src/payment/payment-config.types';
+export * from './src/payment/payment-config';
