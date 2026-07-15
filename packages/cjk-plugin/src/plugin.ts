@@ -1,28 +1,56 @@
 import { Inject, MiddlewareConsumer, NestModule, OnApplicationBootstrap, Type } from '@nestjs/common';
 import { I18nService, Injector, Logger, PluginCommonModule, VendurePlugin } from '@vendure/core';
-import { ModuleRef } from '@nestjs/core';
+import { APP_GUARD, ModuleRef } from '@nestjs/core';
 
 import { CJK_PLUGIN_OPTIONS, loggerCtx } from './constants';
 import { codPaymentHandler } from './payment/cod-handler';
 import { couponStackableCondition } from './promotion/coupon-stackable-condition';
 import { promotionCustomFields } from './promotion/promotion-custom-fields';
-import { storePickupCalculator, pickupPointCalculator } from './pickup/pickup-calculator';
-import { storePickupEligibilityChecker, pickupPointEligibilityChecker } from './pickup/pickup-eligibility-checker';
-import { storePickupFulfillmentHandler, pickupPointFulfillmentHandler } from './pickup/pickup-fulfillment-handler';
+import {
+    storePickupCalculator,
+    pickupPointCalculator,
+    employeePickupCalculator,
+} from './pickup/pickup-calculator';
+import {
+    storePickupEligibilityChecker,
+    pickupPointEligibilityChecker,
+    employeePickupEligibilityChecker,
+} from './pickup/pickup-eligibility-checker';
+import {
+    storePickupFulfillmentHandler,
+    pickupPointFulfillmentHandler,
+    employeePickupFulfillmentHandler,
+} from './pickup/pickup-fulfillment-handler';
 import { PickupLocation } from './pickup/pickup-location.entity';
 import { PickupLocationAdminResolver } from './pickup/pickup-location-admin.resolver';
+import { PickupLocationShopResolver } from './pickup/pickup-location-shop.resolver';
+import { PickupShopResolver } from './pickup/pickup-shop.resolver';
 import { PickupLocationService } from './pickup/pickup-location.service';
+import { pickupPermissionDefinitions } from './pickup/pickup-permissions';
+import { EmployeeCustomer } from './pickup/enterprise-customer/enterprise-customer.entity';
+import { EmployeeCustomerService } from './pickup/enterprise-customer/enterprise-customer.service';
+import { EmployeeCustomerAdminResolver } from './pickup/enterprise-customer/enterprise-customer-admin.resolver';
+import { orderCustomFields } from './order/order-custom-fields';
 import { tenantChannelCustomFields } from './tenant/tenant-channel-custom-fields';
 import { TenantSetupService } from './tenant/tenant-setup.service';
 import { CjkPluginOptions } from './types';
+import { AuthShopResolver } from './auth/auth-shop.resolver';
+import { AuthAdminResolver } from './auth/auth-admin.resolver';
+import { AuthMethodGuard } from './auth/auth-method-guard';
+import { SsoAuthenticationStrategy } from './auth/sso-authentication-strategy';
+import { setAuthSecret } from './auth/crypto';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [PickupLocation],
+    entities: [PickupLocation, EmployeeCustomer],
     providers: [
         { provide: CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
         TenantSetupService,
         PickupLocationService,
+        EmployeeCustomerService,
+        AuthShopResolver,
+        AuthAdminResolver,
+        { provide: APP_GUARD, useClass: AuthMethodGuard },
     ],
     adminApiExtensions: {
         schema: () => {
@@ -37,6 +65,8 @@ import { CjkPluginOptions } from './types';
                     businessHours: String
                     coordinates: JSON
                     partner: String
+                    isPublic: Boolean!
+                    ownerChannelId: ID
                 }
 
                 type PickupLocationList implements PaginatedList {
@@ -52,6 +82,7 @@ import { CjkPluginOptions } from './types';
                     businessHours: String
                     coordinates: JSON
                     partner: String
+                    isPublic: Boolean
                 }
 
                 input UpdatePickupLocationInput {
@@ -63,6 +94,7 @@ import { CjkPluginOptions } from './types';
                     businessHours: String
                     coordinates: JSON
                     partner: String
+                    isPublic: Boolean
                 }
 
                 input PickupLocationListOptions
@@ -76,12 +108,139 @@ import { CjkPluginOptions } from './types';
                     createPickupLocation(input: CreatePickupLocationInput!): PickupLocation!
                     updatePickupLocation(input: UpdatePickupLocationInput!): PickupLocation!
                     deletePickupLocation(id: ID!): Boolean!
+                    promotePickupLocationToPublic(id: ID!): PickupLocation!
+                    assignPickupLocationsToChannel(ids: [ID!]!): Boolean!
+                    removePickupLocationsFromChannel(ids: [ID!]!): Boolean!
+                }
+
+                type EmployeeCustomer implements Node {
+                    id: ID!
+                    customer: Customer!
+                    enterpriseName: String!
+                    employeeId: String
+                    pickupLocations: [PickupLocation!]!
+                    channel: Channel!
+                    verified: Boolean!
+                    createdAt: DateTime!
+                }
+
+                input CreateEmployeeCustomerInput {
+                    customerId: ID!
+                    enterpriseName: String!
+                    employeeId: String
+                    pickupLocationIds: [ID!]!
+                    verified: Boolean
+                }
+
+                input UpdateEmployeeCustomerInput {
+                    id: ID!
+                    enterpriseName: String
+                    employeeId: String
+                    pickupLocationIds: [ID!]
+                    verified: Boolean
+                }
+
+                extend type Query {
+                    employeeCustomers: [EmployeeCustomer!]!
+                    employeeCustomer(id: ID!): EmployeeCustomer
+                    employeeCustomersByCustomer(customerId: ID!): [EmployeeCustomer!]!
+                }
+
+                extend type Mutation {
+                    createEmployeeCustomer(input: CreateEmployeeCustomerInput!): EmployeeCustomer!
+                    updateEmployeeCustomer(input: UpdateEmployeeCustomerInput!): EmployeeCustomer!
+                    deleteEmployeeCustomer(id: ID!): Boolean!
+                    bindEnterprisePickupLocations(id: ID!, pickupLocationIds: [ID!]!): EmployeeCustomer!
+                    verifyEmployeeCustomer(id: ID!): EmployeeCustomer!
+                }
+
+                extend type Query {
+                    channelAuthConfig(channelId: ID!): TenantAuthConfigMasked
+                }
+
+                extend type Mutation {
+                    updateChannelAuthConfig(channelId: ID!, input: JSON!): Boolean!
+                }
+
+                type TenantAuthConfigMasked {
+                    enabledMethods: [String!]!
+                    overrides: JSON
+                    ssoProviders: [SsoProviderMasked!]!
+                }
+
+                type SsoProviderMasked {
+                    name: String!
+                    providerKey: String!
+                    protocol: String!
+                    baseUrl: String!
+                    authorizeUrl: String
+                    tokenUrl: String
+                    userInfoUrl: String
+                    clientId: String!
+                    clientSecret: String!
+                    scopes: [String!]!
+                    channelCode: String
+                    userInfoMapping: JSON
                 }
             `;
         },
-        resolvers: [PickupLocationAdminResolver],
+        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver],
+    },
+    shopApiExtensions: {
+        schema: () => {
+            const { gql } = require('graphql-tag');
+            return gql`
+                extend type Query {
+                    pickupLocations(type: String, lat: Float, lng: Float): [PickupLocation!]!
+                    employeePickupLocations(lat: Float, lng: Float): [PickupLocation!]!
+                }
+
+                extend type Mutation {
+                    setOrderPickupLocation(pickupLocationId: ID!, pickupType: String!): Order!
+                }
+
+                type PickupLocation {
+                    id: ID!
+                    name: String!
+                    type: String!
+                    address: String!
+                    phoneNumber: String
+                    businessHours: String
+                    coordinates: JSON
+                    partner: String
+                    isPublic: Boolean!
+                }
+
+                extend type Query {
+                    authMethods: [String!]!
+                    ssoProviders: [SsoProviderInfo!]!
+                }
+
+                type SsoProviderInfo {
+                    name: String!
+                    providerKey: String!
+                    protocol: String!
+                    baseUrl: String!
+                    authorizeUrl: String
+                    clientId: String!
+                    scopes: [String!]!
+                    channelCode: String
+                }
+            `;
+        },
+        resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver],
     },
     configuration: config => {
+        // 注入 authSecret 到 crypto 模块（configuration 在 bootstrap 早期执行，此时 options 已可用）
+        setAuthSecret(CjkPlugin.options.authSecret);
+
+        // 注册 SSO 策略到 shop 端（init 钩子由 Vendure 自动调用）
+        config.authOptions = config.authOptions || {};
+        config.authOptions.shopAuthenticationStrategy = [
+            ...(config.authOptions.shopAuthenticationStrategy || []),
+            new SsoAuthenticationStrategy(),
+        ];
+
         if (CjkPlugin.options.cod?.enabled) {
             config.paymentOptions.paymentMethodHandlers = [
                 ...(config.paymentOptions.paymentMethodHandlers || []),
@@ -89,7 +248,9 @@ import { CjkPluginOptions } from './types';
             ];
         }
 
-        const hasPickup = CjkPlugin.options.storePickup?.enabled || CjkPlugin.options.pickupPoint?.enabled;
+        const hasPickup = CjkPlugin.options.storePickup?.enabled
+            || CjkPlugin.options.pickupPoint?.enabled
+            || CjkPlugin.options.employeePickup?.enabled;
         if (hasPickup) {
             config.shippingOptions = config.shippingOptions || {};
             config.shippingOptions.shippingEligibilityCheckers = [
@@ -112,6 +273,12 @@ import { CjkPluginOptions } from './types';
                 config.shippingOptions.shippingEligibilityCheckers!.push(pickupPointEligibilityChecker);
                 config.shippingOptions.shippingCalculators!.push(pickupPointCalculator);
                 config.shippingOptions.fulfillmentHandlers!.push(pickupPointFulfillmentHandler);
+            }
+
+            if (CjkPlugin.options.employeePickup?.enabled) {
+                config.shippingOptions.shippingEligibilityCheckers!.push(employeePickupEligibilityChecker);
+                config.shippingOptions.shippingCalculators!.push(employeePickupCalculator);
+                config.shippingOptions.fulfillmentHandlers!.push(employeePickupFulfillmentHandler);
             }
         }
 
@@ -140,6 +307,22 @@ import { CjkPluginOptions } from './types';
                 ],
             };
         }
+
+        // 注册 Order customFields（selectedPickupLocationId、pickupType）
+        config.customFields = {
+            ...config.customFields,
+            Order: [
+                ...(config.customFields?.Order || []),
+                ...orderCustomFields.Order!,
+            ],
+        };
+
+        // 注册自定义权限（PickupPermissions）
+        config.authOptions = config.authOptions || {};
+        config.authOptions.customPermissions = [
+            ...(config.authOptions.customPermissions || []),
+            ...pickupPermissionDefinitions,
+        ];
 
         return config;
     },
@@ -192,6 +375,10 @@ export class CjkPlugin implements OnApplicationBootstrap, NestModule {
 
         if (this.options.pickupPoint?.enabled) {
             Logger.info('Pickup point shipping module enabled', loggerCtx);
+        }
+
+        if (this.options.employeePickup?.enabled) {
+            Logger.info('Employee pickup shipping module enabled', loggerCtx);
         }
 
         if (this.options.promotionPolicy?.enabled) {
