@@ -26,6 +26,7 @@ import { TelemetryPlugin } from '@vendure/telemetry-plugin';
 import 'dotenv/config';
 import path from 'path';
 import { DataSourceOptions } from 'typeorm';
+import { Request, Response, NextFunction } from 'express';
 import { CjkPlugin } from '@vendure/cjk-plugin';
 import { AlipayPlugin } from '@vendure/alipay-plugin';
 import { WechatpayPlugin } from '@vendure/wechatpay-plugin';
@@ -102,7 +103,7 @@ export const devConfig: VendureConfig = {
         shopApiDebug: true,
         middleware: [
             {
-                handler: (req, res, next) => {
+                handler: (req: Request, res: Response, next: NextFunction) => {
                     if (req.path.startsWith('/assets') || req.url.startsWith('/assets')) {
                         res.setHeader('Access-Control-Allow-Origin', '*');
                     }
