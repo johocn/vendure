@@ -1,8 +1,9 @@
 import { INestApplication } from '@nestjs/common';
-import { PickupLocationService } from '@vendure/cjk-plugin';
+import { EmployeeCustomerService, PickupLocationService } from '@vendure/cjk-plugin';
 import {
     ChannelService,
     CurrencyCode,
+    CustomerService,
     LanguageCode,
     ProductService,
     ProductVariantService,
@@ -46,7 +47,35 @@ export async function populateShopAChannel(app: INestApplication): Promise<void>
                 pricesIncludeTax: true,
                 defaultTaxZoneId: asiaZone.id,
                 defaultShippingZoneId: asiaZone.id,
-                customFields: { couponStackable: true, maxStackableCount: 3 },
+                customFields: {
+                    couponStackable: true,
+                    maxStackableCount: 3,
+                    employeePickupMode: 'strict',
+                    defaultLocation: { lat: 43.525870, lng: 125.668950 },
+                    authConfig: {
+                        enabledMethods: ['native', 'phone', 'wechat', 'sso'],
+                        overridesJson: JSON.stringify({
+                            wechat: {
+                                appId: 'wx-tenant-a',
+                                appSecret: 'secret-a',
+                                miniProgramAppId: 'mini-a',
+                                token: 'tenant-a-msg-token',
+                                encodingAESKey: 'tenant-a-43-char-encoding-aes-key-herexxxxxxxx',
+                            }
+                        }),
+                        ssoProvidersJson: JSON.stringify([
+                            {
+                                name: '企业SSO',
+                                providerKey: 'zhao-sso-dev',
+                                protocol: 'zhao-sso',
+                                baseUrl: 'http://localhost:1337',
+                                clientId: 'vendure-shop-a',
+                                clientSecret: 'shop-a-app-secret',
+                                channelCode: 'shop-a',
+                            }
+                        ]),
+                    },
+                },
             });
         });
     } catch (e: any) {
@@ -113,6 +142,7 @@ export async function populateShopAChannel(app: INestApplication): Promise<void>
             await createShippingMethods(app, ctx);
             await createPaymentMethods(app, ctx);
             await createPickupLocations(app, ctx);
+            await createShopAEmployeeCustomers(app, ctx);
         });
     } catch (e: any) {
         throw new Error(`[step4 shop-a config] ${e.message}`);
@@ -190,6 +220,45 @@ async function createPickupLocations(app: INestApplication, ctx: RequestContext)
             address: loc.address,
             phoneNumber: loc.phoneNumber,
             businessHours: loc.businessHours,
-        });
+            coordinates: loc.coordinates,
+            isPublic: (loc as any).isPublic ?? false,
+        } as any);
+    }
+}
+
+async function createShopAEmployeeCustomers(app: INestApplication, ctx: RequestContext): Promise<void> {
+    const employeeCustomerService = app.get(EmployeeCustomerService);
+    const customerService = app.get(CustomerService);
+    const pickupLocationService = app.get(PickupLocationService);
+
+    // 通过 emailAddress 精确查找 shop-a 测试客户 wangwu@test.cn
+    const customers = await customerService.findAll(ctx, {
+        filter: { emailAddress: { eq: 'wangwu@test.cn' } },
+        take: 1,
+    });
+    const testCustomer = customers.items[0];
+    if (!testCustomer) {
+        console.warn('[populate] wangwu@test.cn not found in shop-a, skip EmployeeCustomer binding');
+        return;
+    }
+
+    // 查找吉林农业大学自提点（shop-a 自建，非公共）
+    const locations = await pickupLocationService.findByType(ctx, 'employee');
+    const jlauLocation = locations.find(l => l.name.includes('吉林农业大学'));
+    if (!jlauLocation) {
+        console.warn('[populate] 吉林农业大学自提点 not found in shop-a, skip EmployeeCustomer binding');
+        return;
+    }
+
+    try {
+        await employeeCustomerService.create(ctx, {
+            customerId: testCustomer.id,
+            enterpriseName: '吉林农业大学',
+            employeeId: 'JLNY20240088',
+            pickupLocationIds: [jlauLocation.id],
+            verified: true,  // shop-a 是 strict 模式，必须 verified=true 才能下单
+        } as any);
+    } catch (e: any) {
+        console.warn(`[populate] shop-a EmployeeCustomer binding skipped: ${e.message}`);
     }
 }
