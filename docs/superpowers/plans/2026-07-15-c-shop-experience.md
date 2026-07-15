@@ -493,23 +493,24 @@ import type { SsoProviderInfo } from './auth-config.types';
 @Resolver()
 export class AuthShopResolver {
     @Query()
-    async authMethods(@Ctx() ctx: RequestContext): Promise<{ methods: string[]; wechatAppId: string | null }> {
-        const config = await readChannelAuthConfig(ctx);
+    authMethods(@Ctx() ctx: RequestContext): { methods: string[]; wechatAppId: string | null } {
+        // readChannelAuthConfig 是同步函数，无需 async/await
+        const config = readChannelAuthConfig(ctx);
         if (!config?.enabledMethods) {
             // 向后兼容：返回所有已注册策略
             return { methods: ['native', 'phone', 'wechat', 'alipay', 'douyin'], wechatAppId: null };
         }
         let wechatAppId: string | null = null;
         if (config.enabledMethods.includes('wechat')) {
-            const wechatOverride = config.overrides?.wechat as any;
+            const wechatOverride = (config.overrides as Record<string, any> | undefined)?.wechat;
             wechatAppId = wechatOverride?.appId || null;
         }
         return { methods: config.enabledMethods, wechatAppId };
     }
 
     @Query()
-    async ssoProviders(@Ctx() ctx: RequestContext): Promise<SsoProviderInfo[]> {
-        const config = await readChannelAuthConfig(ctx);
+    ssoProviders(@Ctx() ctx: RequestContext): SsoProviderInfo[] {
+        const config = readChannelAuthConfig(ctx);
         if (!config?.ssoProvidersJson) return [];
         try {
             const providers = JSON.parse(config.ssoProvidersJson);
@@ -530,30 +531,30 @@ export class AuthShopResolver {
 }
 ```
 
+注意：`readChannelAuthConfig` 是同步函数（见 `crypto.ts:190`），不需要 `async/await`。ssoProviders 查询也改回同步（原代码已是同步）。
+
 - [ ] **Step 2: 修改 plugin.ts 中 shopApiExtensions schema**
 
-在 `e:\code\vendure\packages\cjk-plugin\src\plugin.ts` 中找到 shopApiExtensions 的 schema 定义，将 `authMethods` 的返回类型从 `[AuthMethod!]!` 改为 `AuthMethodsResult!`。
-
-追加类型定义：
+在 `e:\code\vendure\packages\cjk-plugin\src\plugin.ts` 第 212-215 行，当前 schema 是：
 
 ```graphql
-type AuthMethodsResult {
-    methods: [String!]!
-    wechatAppId: String
-}
+                extend type Query {
+                    authMethods: [String!]!
+                    ssoProviders: [SsoProviderInfo!]!
+                }
 ```
 
-替换原来的 `extend type Query { authMethods: [AuthMethod!]! }` 为：
+替换为：
 
 ```graphql
-type AuthMethodsResult {
-    methods: [String!]!
-    wechatAppId: String
-}
-extend type Query {
-    authMethods: AuthMethodsResult!
-    ssoProviders: [SsoProviderInfo!]!
-}
+                type AuthMethodsResult {
+                    methods: [String!]!
+                    wechatAppId: String
+                }
+                extend type Query {
+                    authMethods: AuthMethodsResult!
+                    ssoProviders: [SsoProviderInfo!]!
+                }
 ```
 
 - [ ] **Step 3: 编译验证**
@@ -872,12 +873,58 @@ async function handleWechatH5Callback(oauthCode: string) {
 
 同时将 `loginWithWechatH5` 函数中第 207 行 `if (!wechatAppId)` 改为 `if (!wechatAppId.value)`。
 
-- [ ] **Step 6: 提交**
+- [ ] **Step 6: 追加登录后补写 referredBy 逻辑**
+
+在 `login/index.vue` 的 `loginWithLocal` 和 `loginWithPhone` 函数中，登录成功后追加补写逻辑。
+
+在 `<script setup>` 中追加辅助函数：
+
+```typescript
+async function tryUpdateReferredBy(inviteCode: string) {
+    try {
+        const { getGraphQLClient } = require('../../api/client');
+        const client = getGraphQLClient();
+        // 先查询当前用户是否已有 referredBy
+        const res: any = await client.request(`query {
+            activeCustomer {
+                id
+                customFields { referredBy }
+            }
+        }`);
+        const existing = res?.activeCustomer?.customFields?.referredBy;
+        if (existing) return; // 已有值不覆盖
+        // 空则补写
+        await client.request(`mutation UpdateCustomerReferredBy($referredBy: String!) {
+            updateCustomer(input: { customFields: { referredBy: $referredBy } }) {
+                ...on Customer { id }
+                ...on ErrorResult { errorCode }
+            }
+        }`, { referredBy: inviteCode });
+    } catch (e) {
+        // 失败不影响主流程
+        console.error('补写 referredBy 失败', e);
+    }
+}
+```
+
+在 `loginWithLocal` 函数中，`authStore.setAuth(result.token, result.userId)` 之后追加：
+
+```typescript
+        if (authStore.inviteCode) {
+            tryUpdateReferredBy(authStore.inviteCode);
+        }
+```
+
+在 `loginWithPhone` 函数中同样追加。
+
+在 `handleWechatH5Callback`、`handleAlipayH5Callback`、`handleDouyinH5Callback` 中，`authStore.setAuth` 之后也追加同样的补写逻辑。
+
+- [ ] **Step 7: 提交**
 
 ```bash
 cd e:\code\vshop
 git add src/pages/login/index.vue
-git commit --no-verify -m "fix: wechat login reads appId from backend + prevents silent auth loop"
+git commit --no-verify -m "fix: wechat login reads appId from backend + prevents silent auth loop + login补写referredBy"
 ```
 
 ---
@@ -1019,7 +1066,7 @@ export interface PosterData {
     productTitle: string;
     price: string;
     originalPrice?: string;
-    wxacodeBase64: string;
+    qrCodeBase64: string;      // 统一字段名：H5 为 URL 二维码 base64，小程序为小程序码 base64
     inviteCode?: string;
 }
 
@@ -1040,6 +1087,16 @@ async function fetchWxacode(scene: string, path?: string): Promise<{ base64: str
     return result;
 }
 
+// H5 端：用 qrcode 库生成 URL 二维码（扫码跳转 H5 页面）
+async function generateH5QrCode(product: any, inviteCode: string): Promise<string> {
+    const { default: QRCode } = await import('qrcode');
+    const shareUrl = `${window.location.origin}/#/pkg-product/pages/detail?slug=${product.slug}`
+        + (inviteCode ? `&ref=${inviteCode}` : '');
+    const dataUrl = await QRCode.toDataURL(shareUrl, { width: 200, margin: 1 });
+    // dataUrl 格式为 data:image/png;base64,...，提取 base64 部分
+    return dataUrl.split(',')[1];
+}
+
 export function usePosterData() {
     const loading = ref(false);
     const error = ref('');
@@ -1052,15 +1109,27 @@ export function usePosterData() {
         try {
             const slug = product.slug || '';
             const inviteCode = authStore.inviteCode || '';
+
+            // 根据平台获取不同的二维码
+            let qrCodeBase64 = '';
+            // #ifdef MP-WEIXIN
+            // 小程序端：调用后端 wxacode 服务生成小程序码
             const scene = inviteCode ? `s=${slug}&r=${inviteCode}` : `s=${slug}`;
             const wxacode = await fetchWxacode(scene, 'pkg-product/pages/detail');
+            qrCodeBase64 = wxacode.base64;
+            // #endif
+            // #ifdef H5
+            // H5 端：用 qrcode 库生成 URL 二维码
+            qrCodeBase64 = await generateH5QrCode(product, inviteCode);
+            // #endif
+
             return {
                 channelName: tenantStore.tenantName || 'VShop 商城',
                 productImage: product.featuredAsset?.preview || '',
                 productTitle: product.name || '',
                 price: String(product.priceWithTax?.value ?? ''),
                 originalPrice: product.customFields?.compareAtPrice ? String(product.customFields.compareAtPrice) : undefined,
-                wxacodeBase64: wxacode.base64,
+                qrCodeBase64,
                 inviteCode: inviteCode || undefined,
             };
         } catch (e: any) {
@@ -1093,7 +1162,7 @@ export function usePosterData() {
         </view>
         <text class="poster-title">{{ data.productTitle }}</text>
         <view class="poster-footer">
-          <image class="poster-qr" :src="'data:image/png;base64,' + data.wxacodeBase64" mode="aspectFit" />
+          <image class="poster-qr" :src="'data:image/png;base64,' + data.qrCodeBase64" mode="aspectFit" />
           <view class="poster-footer-text">
             <text class="poster-scan-tip">扫码购买</text>
             <text v-if="data.inviteCode" class="poster-invite-code">邀请码：{{ data.inviteCode }}</text>
@@ -1235,8 +1304,8 @@ async function drawPoster() {
     }
 
     // 小程序码
-    if (d.wxacodeBase64) {
-        const wxacodePath = `data:image/png;base64,${d.wxacodeBase64}`;
+    if (d.qrCodeBase64) {
+        const wxacodePath = `data:image/png;base64,${d.qrCodeBase64}`;
         try {
             const imgInfo = await uni.getImageInfo({ src: wxacodePath });
             ctx.drawImage(imgInfo.path, 40, 1000, 150, 150);
@@ -1490,12 +1559,17 @@ extend type Mutation {
 Run: `cd e:\code\vendure\packages\distribution-plugin && npm run build`
 Expected: 构建成功
 
-- [ ] **Step 4: 提交**
+- [ ] **Step 4: 提交后端改动**
 
 ```bash
 cd e:\code\vendure
-git add packages/distribution-plugin/src/plugin.ts packages/distribution-plugin/src/distribution-shop.resolver.ts
-git commit --no-verify -m "feat: applyDistributor accepts referredByCode parameter"
+git add packages/distribution-plugin/src/plugin.ts
+git commit --no-verify -m "feat: applyDistributor schema accepts referredByCode parameter"
+```
+
+- [ ] **Step 5: 提交前端改动**
+
+```bash
 cd e:\code\vshop
 git add src/pkg-user/pages/distribution.vue
 git commit --no-verify -m "feat: distribution page passes referredByCode"
@@ -1510,22 +1584,41 @@ git commit --no-verify -m "feat: distribution page passes referredByCode"
 **Files:**
 - Modify: `e:\code\vendure\packages\dev-server\dev-config.ts`
 
-- [ ] **Step 1: 在 AssetServerPlugin.init 中追加 CORS 中间件**
+- [ ] **Step 1: 在 dev-config.ts 中配置 CORS**
 
-找到 `dev-config.ts` 中 `AssetServerPlugin.init` 的调用，追加 `middleware` 选项：
+注意：AssetServerPlugin 的 options **不支持** `middleware` 字段（已确认 `AssetServerOptions` 接口无此字段）。需使用 Vendure 的 `apiOptions.middleware` 配置全局 CORS 中间件。
+
+找到 `dev-config.ts` 中 `apiOptions` 配置，追加 CORS 中间件：
 
 ```typescript
-AssetServerPlugin.init({
-    route: '/assets',
-    assetUploadDir: path.join(__dirname, 'assets'),
-    middleware: (req, res, next) => {
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        next();
+    apiOptions: {
+        // ... 现有配置
+        middleware: [
+            {
+                handler: (req, res, next) => {
+                    // 仅对 /assets 路径设置 CORS（用于海报跨域图片加载）
+                    if (req.path.startsWith('/assets')) {
+                        res.setHeader('Access-Control-Allow-Origin', '*');
+                    }
+                    next();
+                },
+                route: '/assets',
+            },
+        ],
     },
-}),
 ```
 
-注意：需要确认 AssetServerPlugin.init 的 options 是否支持 `middleware` 字段。如果不支持，备选方案是在 dev-config.ts 的 `apiOptions` 中配置全局 CORS 中间件。
+备选方案：如果 `apiOptions.middleware` 路由匹配不生效，可直接在 DevServer 启动后追加 Express 全局中间件（在 dev-config.ts 的 `bootstrap` 函数中）：
+
+```typescript
+// 在 VendureServer.bootstrap 成功后追加
+app.use('/assets', (req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    next();
+});
+```
+
+前端 `<img>` 标签需添加 `crossorigin="anonymous"` 属性（已在 product-poster-h5.vue 中配置）。
 
 - [ ] **Step 2: 提交**
 
