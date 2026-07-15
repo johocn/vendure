@@ -1,6 +1,7 @@
 import { DocumentNode } from 'graphql';
 import { gql } from 'graphql-tag';
-import { AuthenticationStrategy, Injector, Logger, RequestContext, User, UserService } from '@vendure/core';
+import { AuthenticationStrategy, ForbiddenError, Injector, Logger, RequestContext, User, UserService } from '@vendure/core';
+import { getAuthOverride, isAuthMethodEnabled } from '@vendure/cjk-plugin';
 
 import { loggerCtx } from './constants';
 import { SmsService } from './sms.service';
@@ -34,6 +35,18 @@ export class PhoneAuthenticationStrategy implements AuthenticationStrategy<Phone
     }
 
     async authenticate(ctx: RequestContext, data: PhoneAuthData): Promise<User | false | string> {
+        // 租户级登录方式开关检查（"未启用"属权限错误，抛 ForbiddenError）
+        if (!isAuthMethodEnabled(ctx, 'phone')) {
+            throw new ForbiddenError();
+        }
+
+        // 租户凭证覆盖（已解密；无覆盖则回退 this.options；当前策略 authenticate 仅校验 code，凭证由 SmsService 在发码时使用）
+        const override = getAuthOverride(ctx, 'phone');
+        const accessKeyId = override?.accessKeyId || this.options.accessKeyId;
+        const accessKeySecret = override?.accessKeySecret || this.options.accessKeySecret;
+        const signName = override?.signName || this.options.signName;
+        const templateCode = override?.templateCode || this.options.templateCode;
+
         const { phoneNumber, code } = data;
 
         if (!this.smsService.verifyCode(phoneNumber, code)) {
