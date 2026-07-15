@@ -1,18 +1,22 @@
 import { INestApplication } from '@nestjs/common';
-import { PickupLocationService } from '@vendure/cjk-plugin';
+import { EmployeeCustomerService, PickupLocationService, PickupPermissions } from '@vendure/cjk-plugin';
 import {
     AssetService,
     ChannelService,
     CurrencyCode,
+    CustomerService,
     FacetService,
+    ID,
     LanguageCode,
     PaymentMethodService,
+    Permission,
     ProductService,
     ProductOptionGroupService,
     ProductOptionService,
     ProductVariantService,
     RequestContext,
     RequestContextService,
+    RoleService,
     ShippingMethodService,
     StockMovementService,
     TaxCategoryService,
@@ -42,13 +46,24 @@ export async function populateDefaultChannel(app: INestApplication): Promise<voi
 
         await channelService.update(ctx, {
             id: defaultChannel.id as string,
+            token: 'default-token',
             defaultCurrencyCode: CurrencyCode.CNY,
             availableCurrencyCodes: [CurrencyCode.CNY],
             defaultLanguageCode: LanguageCode.zh_Hans,
             availableLanguageCodes: [LanguageCode.zh_Hans, LanguageCode.en],
             defaultTaxZoneId: asiaZone.id,
             defaultShippingZoneId: asiaZone.id,
-            customFields: { couponStackable: false, maxStackableCount: null },
+            customFields: {
+                couponStackable: false,
+                maxStackableCount: null,
+                employeePickupMode: 'loose',
+                defaultLocation: { lat: 43.526210, lng: 125.664780 },
+                authConfig: {
+                    enabledMethods: ['native', 'phone', 'wechat', 'alipay', 'douyin'],
+                    overridesJson: '',
+                    ssoProvidersJson: '',
+                },
+            },
         });
     });
 
@@ -81,16 +96,20 @@ export async function populateDefaultChannel(app: INestApplication): Promise<voi
             await createShippingMethods(app, ctx2);
             await createPaymentMethods(app, ctx2);
             await createPickupLocations(app, ctx2);
+            await createRoles(app, ctx2, defaultChannel.id as ID);
+            await createEmployeeCustomers(app, ctx2);
             return;
         }
         throw new Error('defaultTaxZone still null after update');
     }
 
-    // 4. 商品 + 图片 + 配送 + 支付 + 自提点
+    // 4. 商品 + 图片 + 配送 + 支付 + 自提点 + 角色 + 企业绑定
     await createProducts(app, freshCtx);
     await createShippingMethods(app, freshCtx);
     await createPaymentMethods(app, freshCtx);
     await createPickupLocations(app, freshCtx);
+    await createRoles(app, freshCtx, defaultChannel.id as ID);
+    await createEmployeeCustomers(app, freshCtx);
 }
 
 async function createProducts(app: INestApplication, ctx: RequestContext): Promise<void> {
@@ -227,6 +246,102 @@ async function createPickupLocations(app: INestApplication, ctx: RequestContext)
             address: loc.address,
             phoneNumber: loc.phoneNumber,
             businessHours: loc.businessHours,
+            coordinates: loc.coordinates,
+            isPublic: (loc as any).isPublic ?? false,
+        } as any);
+    }
+}
+
+// TenantAdmin 权限：本 channel 全权（不含 SuperAdmin），加自提点/EmployeeCustomer 全部权限
+const TENANT_ADMIN_PERMISSIONS: Permission[] = [
+    Permission.Authenticated,
+    Permission.Owner,
+    Permission.ReadOrder,
+    Permission.UpdateOrder,
+    Permission.CreateCustomer,
+    Permission.ReadCustomer,
+    Permission.UpdateCustomer,
+    PickupPermissions.ReadPickupLocation as Permission,
+    PickupPermissions.CreatePickupLocation as Permission,
+    PickupPermissions.UpdatePickupLocation as Permission,
+    PickupPermissions.DeletePickupLocation as Permission,
+    PickupPermissions.AssignPickupLocation as Permission,
+    PickupPermissions.ReadEmployeeCustomer as Permission,
+    PickupPermissions.CreateEmployeeCustomer as Permission,
+    PickupPermissions.UpdateEmployeeCustomer as Permission,
+    PickupPermissions.DeleteEmployeeCustomer as Permission,
+    PickupPermissions.BindPickupLocation as Permission,
+    PickupPermissions.VerifyEmployeeCustomer as Permission,
+];
+
+// SalesPerson 权限：只读自提点 + 创建 EmployeeCustomer（不允许 Verify）
+const SALES_PERSON_PERMISSIONS: Permission[] = [
+    Permission.Authenticated,
+    Permission.Owner,
+    Permission.ReadOrder,
+    Permission.ReadCustomer,
+    PickupPermissions.ReadPickupLocation as Permission,
+    PickupPermissions.ReadEmployeeCustomer as Permission,
+    PickupPermissions.CreateEmployeeCustomer as Permission,
+];
+
+async function createRoles(app: INestApplication, ctx: RequestContext, channelId: ID): Promise<void> {
+    const roleService = app.get(RoleService);
+    try {
+        await roleService.create(ctx, {
+            code: 'tenant-admin',
+            description: '租户管理员',
+            permissions: TENANT_ADMIN_PERMISSIONS,
+            channelIds: [channelId],
         });
+    } catch (e: any) {
+        console.warn(`[populate] tenant-admin role creation skipped: ${e.message}`);
+    }
+    try {
+        await roleService.create(ctx, {
+            code: 'sales-person',
+            description: '销售人员',
+            permissions: SALES_PERSON_PERMISSIONS,
+            channelIds: [channelId],
+        });
+    } catch (e: any) {
+        console.warn(`[populate] sales-person role creation skipped: ${e.message}`);
+    }
+}
+
+async function createEmployeeCustomers(app: INestApplication, ctx: RequestContext): Promise<void> {
+    const employeeCustomerService = app.get(EmployeeCustomerService);
+    const customerService = app.get(CustomerService);
+    const pickupLocationService = app.get(PickupLocationService);
+
+    // 通过 emailAddress 精确查找测试客户 zhangsan@test.cn
+    const customers = await customerService.findAll(ctx, {
+        filter: { emailAddress: { eq: 'zhangsan@test.cn' } },
+        take: 1,
+    });
+    const testCustomer = customers.items[0];
+    if (!testCustomer) {
+        console.warn('[populate] zhangsan@test.cn not found, skip EmployeeCustomer binding');
+        return;
+    }
+
+    // 查找长春科技学院自提点（employee 类型，isPublic=true）
+    const locations = await pickupLocationService.findByType(ctx, 'employee');
+    const cctuLocation = locations.find(l => l.name.includes('长春科技学院'));
+    if (!cctuLocation) {
+        console.warn('[populate] 长春科技学院自提点 not found, skip EmployeeCustomer binding');
+        return;
+    }
+
+    try {
+        await employeeCustomerService.create(ctx, {
+            customerId: testCustomer.id,
+            enterpriseName: '长春科技学院',
+            employeeId: 'CT20240001',
+            pickupLocationIds: [cctuLocation.id],
+            verified: false,  // default channel 是 loose 模式，verified=false 即可
+        } as any);
+    } catch (e: any) {
+        console.warn(`[populate] EmployeeCustomer binding skipped: ${e.message}`);
     }
 }
