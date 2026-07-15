@@ -161,7 +161,7 @@ import { distributionCustomerCustomFields } from './customer-custom-fields';
             }
 
             extend type Mutation {
-                applyDistributor: Distributor!
+                applyDistributor(referredByCode: String): Distributor!
                 requestWithdrawal(amount: Int!, method: WithdrawalMethod!, accountInfo: String!): WithdrawalRequest!
             }
         `,
