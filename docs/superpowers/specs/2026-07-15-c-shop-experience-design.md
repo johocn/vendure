@@ -425,7 +425,18 @@ const qrCodeDataUrl = await QRCode.toDataURL(shareUrl, { width: 200 })
 #### 3.11 关键约束
 
 1. **小程序码 scene 限制 32 字符**：`s=slug&r=邀请码` 通常足够，长 slug 超长时截断
-2. **H5 跨域图片**：商品图来自 Vendure Asset，需配置 CORS 或走代理
+2. **H5 跨域图片（关键阻塞点）**：商品图来自 Vendure Asset，当前 AssetServerPlugin **未配置 CORS**，html-to-image 加载跨域图片到 canvas 会被 tainted，导致 `toPng()` 失败。需在 `dev-config.ts` 的 AssetServerPlugin 初始化中追加 CORS 中间件：
+   ```typescript
+   AssetServerPlugin.init({
+     route: '/assets',
+     assetUploadDir: path.join(__dirname, 'assets'),
+     middleware: (req, res, next) => {
+       res.setHeader('Access-Control-Allow-Origin', '*');
+       next();
+     },
+   })
+   ```
+   前端 `<img>` 标签需添加 `crossorigin="anonymous"` 属性。
 3. **canvas 性能**：小程序 canvas 绘制是同步阻塞的，大图可能卡顿，加 loading 提示
 4. **海报缓存**：同一商品+同一用户的小程序码 60 秒内复用（前端内存缓存）
 
@@ -503,25 +514,25 @@ async apply(ctx, customerId, referredByCode?) {
 
 **前端改动**：
 
-`api/mutations/auth.ts` — 注册成功后补写 referredBy（分两步执行）：
+`api/mutations/auth.ts` — 注册时直接在 input 中携带 customFields.referredBy：
 
-**步骤 1：注册**
+**关键约束**：Vendure 的 `registerCustomerAccount` mutation **不自动登录**（不创建 session），因此注册后无法立即调用 `updateCustomer`（要求 Permission.Owner）。但 `registerCustomerAccount` 的 input 支持直接传递 `customFields`（Vendure 内部通过 `createOrUpdate` 处理），因此注册时即可写入 referredBy。
 
-```graphql
-mutation Register($email: String!, $password: String!) {
-  register(input: { emailAddress: $email, password: $password }) {
-    ...on SuccessResult { success }
-  }
-}
-```
-
-**步骤 2：注册成功后，补写 referredBy**（仅当 inviteCode 存在时）
+**注册 mutation**：
 
 ```graphql
-mutation UpdateCustomerReferredBy($referredBy: String!) {
-  updateCustomer(input: { customFields: { referredBy: $referredBy } }) {
-    ...on Customer { id }
+mutation Register($email: String!, $password: String!, $referredBy: String) {
+  registerCustomerAccount(
+    input: {
+      emailAddress: $email
+      password: $password
+      customFields: { referredBy: $referredBy }
+    }
+  ) {
+    ...on Success { success }
     ...on MissingPasswordError { errorCode }
+    ...on PasswordValidationError { errorCode }
+    ...on NativeAuthStrategyError { errorCode }
   }
 }
 ```
@@ -530,18 +541,18 @@ mutation UpdateCustomerReferredBy($referredBy: String!) {
 
 ```typescript
 async function registerWithInviteCode(email, password) {
-  // 步骤 1：注册
-  const result = await register(email, password)
-  if (!result.success) return result
-  
-  // 步骤 2：补写 referredBy（仅当 inviteCode 存在）
-  if (authStore.inviteCode) {
-    await tryUpdateReferredBy(authStore.inviteCode)
-  }
-  
+  const inviteCode = authStore.inviteCode || null
+  const result = await client.mutate({
+    mutation: REGISTER,
+    variables: { email, password, referredBy: inviteCode }
+  })
   return result
 }
 ```
+
+**注意**：
+- 若 `requireVerification=true`（默认），用户还需邮件验证后才登录。验证后 referredBy 已在数据库中，无需补写。
+- 若 `requireVerification=false`，注册后需单独调用 `login` mutation 登录。referredBy 已在注册时写入。
 
 **登录时**：若用户已有 `referredBy`，不覆盖；若没有，登录成功后补写：
 
@@ -722,30 +733,49 @@ export class WxacodeService {
 
 `wechat-auth.service.ts` 现有单例缓存改为 Map：
 
+**关键约束**：
+- 现有 `fetchAccessToken()` 是 **private 无参方法**（用 `this.options.appId/appSecret`）
+- 新增 `getMiniProgramAccessToken(appId, appSecret)` 需要参数化版本
+- 公众号 token 缓存保持原 `getAccessToken()` 方法不变（向后兼容）
+
 ```typescript
 // 现有
 private accessTokenCache: TokenCache | null = null
+private async fetchAccessToken(): Promise<string> {
+  // 使用 this.options.appId / this.options.appSecret
+}
 
-// 改为
-private accessTokenCacheMap = new Map<string, TokenCache>()
+// 改为：新增 Map 缓存 + 参数化 fetchAccessToken
+private miniProgramTokenCacheMap = new Map<string, TokenCache>()
 
 async getMiniProgramAccessToken(appId: string, appSecret: string): Promise<string> {
-  const cached = this.accessTokenCacheMap.get(appId)
+  const cached = this.miniProgramTokenCacheMap.get(appId)
   if (cached && cached.expiresAt > Date.now() + REFRESH_BUFFER_SECONDS * 1000) {
     return cached.token
   }
-  const token = await this.fetchAccessToken(appId, appSecret)
-  this.accessTokenCacheMap.set(appId, {
+  // 调用参数化版本的 fetchAccessToken（新增）
+  const token = await this.fetchAccessTokenByCredentials(appId, appSecret)
+  this.miniProgramTokenCacheMap.set(appId, {
     token,
     expiresAt: Date.now() + 7200 * 1000
   })
   return token
 }
+
+// 新增：参数化版本，不依赖 this.options
+private async fetchAccessTokenByCredentials(appId: string, appSecret: string): Promise<string> {
+  const url = `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${appId}&secret=${appSecret}`
+  const data = await fetch(url).then(r => r.json())
+  if (data.errcode) {
+    throw new Error(`获取 access_token 失败: ${data.errcode} ${data.errmsg}`)
+  }
+  return data.access_token
+}
 ```
 
-- 公众号 token 缓存保持原 `getAccessToken()` 方法不变（向后兼容）
-- 新增 `getMiniProgramAccessToken(appId, appSecret)` 方法
-- 两套缓存独立，按 appId 隔离
+- 公众号 token 缓存（`accessTokenCache`）和小程序 token 缓存（`miniProgramTokenCacheMap`）独立
+- 小程序缓存按 appId 隔离，支持多租户
+- 原 `getAccessToken()` 方法不变，向后兼容
 
 #### 5.3 凭证来源（租户隔离）
 
@@ -823,8 +853,8 @@ async wechatWxacode(
   @Args({ name: 'path', type: () => String, nullable: true }) path?: string,
   @Args({ name: 'width', type: () => Int, nullable: true }) width?: number,
 ): Promise<WxacodeResult> {
-  // 1. 鉴权：仅登录用户
-  if (!ctx.activeUser) {
+  // 1. 鉴权：仅登录用户（ctx.activeUserId 而非 ctx.activeUser）
+  if (!ctx.activeUserId) {
     throw new ForbiddenError('请先登录')
   }
   
