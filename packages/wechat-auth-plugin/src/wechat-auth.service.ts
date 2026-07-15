@@ -13,6 +13,8 @@ interface TokenCache {
 @Injectable()
 export class WechatAuthService {
     private accessTokenCache: TokenCache | null = null;
+    private miniProgramTokenCacheMap = new Map<string, TokenCache>();
+    private miniProgramTokenPromiseMap = new Map<string, Promise<string>>();
     private ticketCache: TokenCache | null = null;
     private accessTokenPromise: Promise<string> | null = null;
     private ticketPromise: Promise<string> | null = null;
@@ -40,6 +42,37 @@ export class WechatAuthService {
             this.ticketPromise = null;
         });
         return this.ticketPromise;
+    }
+
+    async getMiniProgramAccessToken(appId: string, appSecret: string): Promise<string> {
+        const cached = this.miniProgramTokenCacheMap.get(appId);
+        if (cached && Date.now() < cached.expiresAt) {
+            return cached.token;
+        }
+        // 并发去重
+        const existing = this.miniProgramTokenPromiseMap.get(appId);
+        if (existing) return existing;
+        const promise = this.fetchAccessTokenByCredentials(appId, appSecret).finally(() => {
+            this.miniProgramTokenPromiseMap.delete(appId);
+        });
+        this.miniProgramTokenPromiseMap.set(appId, promise);
+        return promise;
+    }
+
+    private async fetchAccessTokenByCredentials(appId: string, appSecret: string): Promise<string> {
+        const url = `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${appId}&secret=${appSecret}`;
+        const response = await fetch(url);
+        const data = (await response.json()) as any;
+        if (data.access_token) {
+            this.miniProgramTokenCacheMap.set(appId, {
+                token: data.access_token,
+                expiresAt: Date.now() + (data.expires_in - this.REFRESH_BUFFER_SECONDS) * 1000,
+            });
+            Logger.info(`MiniProgram access_token refreshed for appId=${appId}, expires in ${data.expires_in}s`, loggerCtx);
+            return data.access_token;
+        }
+        Logger.error(`Failed to get MiniProgram access_token: ${JSON.stringify(data)}`, loggerCtx);
+        throw new Error('Failed to get WeChat MiniProgram access_token');
     }
 
     async generateJsapiSignature(url: string): Promise<{
