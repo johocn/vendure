@@ -42,6 +42,7 @@ e:\code\vshop (前端)
 ├── src/api/mutations/auth.ts         ← 注册/登录补写 referredBy
 ├── src/stores/tenant.ts              ← wechatAppId state
 ├── src/stores/auth.ts                ← 复用现有 inviteCode
+├── src/App.vue                       ← onLaunch 解析小程序 scene 中的 r=邀请码
 ├── src/pages/login/index.vue         ← 修复静默授权循环 + 读后端 appId
 ├── src/pages/home/index.vue          ← 接入分享
 ├── src/pkg-product/pages/detail.vue  ← 接入海报组件
@@ -61,7 +62,10 @@ e:\code\vendure (后端)
     ├── src/wechat-auth-shop.resolver.ts ← 追加 wechatWxacode 查询
     └── src/plugin.ts                 ← 注册 WxacodeService + schema
 └── packages/distribution-plugin/
-    └── src/distribution.service.ts   ← apply 成功后回写 customer.referralCode
+    ├── src/distribution.service.ts   ← apply 成功后回写 customer.referralCode
+    ├── src/commission.service.ts     ← 读取 referredBy 而非 referralCode + self-referral 校验
+    ├── src/distribution.service.spec.ts  ← 新增：单元测试
+    └── src/commission.service.spec.ts    ← 新增：单元测试
 ```
 
 ### 模块职责划分
@@ -427,13 +431,53 @@ const qrCodeDataUrl = await QRCode.toDataURL(shareUrl, { width: 200 })
 
 ### 4. 邀请码归因闭环修复
 
-#### 4.1 现状：三处断裂点
+#### 4.1 现状：五处断裂点
 
-1. **Customer.customFields.referralCode 无写入路径**：`commission.service.ts` L46 读取该字段做归因，但全代码库无写入。`DistributionService.apply()` 生成 Distributor 实体的 referralCode 后未回写到 Customer。
-2. **前端 inviteCode 未传给后端**：`App.vue` 捕获 URL `?ref=xxx` 后只存本地 storage，注册/登录/申请分销商时未传递。
-3. **applyDistributor 不传 referredByCode**：`distribution.vue` 调用 `applyDistributor` mutation 时漏传 `referredByCode` 参数。
+1. **commission.service 读取了错误的字段**：`commission.service.ts` L46 读取 `customer.customFields.referralCode`（用户自己的推荐码），但归因逻辑应读取 `customer.customFields.referredBy`（推荐人的推荐码）。当前逻辑导致用户 A 下单时用自己的 referralCode 查找分销商，找到 A 自己，给 A 自己发佣金（self-referral 错误）。
+2. **Customer.customFields.referralCode 无写入路径**：`DistributionService.apply()` 生成 Distributor 实体的 referralCode 后未回写到 Customer。
+3. **前端 inviteCode 未传给后端**：`App.vue` 捕获 URL `?ref=xxx` 后只存本地 storage，注册/登录/申请分销商时未传递。
+4. **applyDistributor 不传 referredByCode**：`distribution.vue` 调用 `applyDistributor` mutation 时漏传 `referredByCode` 参数。
+5. **小程序场景下 scene 参数未解析为 inviteCode**：`App.vue` 仅在 H5 环境捕获 `?ref=xxx`，小程序扫码进入时 scene 参数（含 `r=邀请码`）未被解析写入 `authStore.inviteCode`。
 
-#### 4.2 断裂点 1：申请分销商后回写 customer.referralCode
+#### 4.2 断裂点 1：修复 commission.service 读取字段错误 + self-referral 校验
+
+**位置**：`commission.service.ts` `calculateCommission()` 方法
+
+**问题**：当前 L46 读取 `customer.customFields.referralCode`（用户自己的推荐码），导致用户自己下单时给自己发佣金。
+
+**修复**：改为读取 `customer.customFields.referredBy`（推荐人的推荐码），并增加 self-referral 校验：
+
+```typescript
+async calculateCommission(event: PaymentStateTransitionEvent): Promise<void> {
+  const ctx = event.ctx;
+  const order = event.order;
+
+  if (!(ctx.channel as any).customFields?.distributionEnabled) {
+    return;
+  }
+
+  const customer = order.customer;
+  if (!customer) return;
+
+  // 修复 1：读取 referredBy（推荐人的推荐码），而非 referralCode（自己的码）
+  const referredBy = (customer as any).customFields?.referredBy;
+  if (!referredBy) return;
+
+  const directDistributor = await this.distributionService.findByReferralCode(ctx, referredBy);
+  if (!directDistributor || directDistributor.status !== 'active') return;
+
+  // 修复 2：self-referral 校验
+  // 若订单用户本身就是分销商 A（即 A 自己下单），且 A 的推荐人码指向自己，跳过
+  if (String(directDistributor.customerId) === String(customer.id)) {
+    Logger.info(`Skip self-referral commission for customer ${customer.id}`, loggerCtx);
+    return;
+  }
+
+  // ... 后续佣金计算逻辑不变 ...
+}
+```
+
+#### 4.3 断裂点 2：申请分销商后回写 customer.referralCode
 
 **位置**：`distribution.service.ts` `apply()` 方法
 
@@ -455,7 +499,7 @@ async apply(ctx, customerId, referredByCode?) {
 }
 ```
 
-#### 4.3 断裂点 2：注册/登录时传递 ref 码
+#### 4.4 断裂点 3：注册/登录时传递 ref 码
 
 **前端改动**：
 
@@ -535,7 +579,7 @@ async function tryUpdateReferredBy(inviteCode: string) {
 }
 ```
 
-#### 4.4 断裂点 3：applyDistributor 传递 referredByCode
+#### 4.5 断裂点 4：applyDistributor 传递 referredByCode
 
 `distribution.vue` — 申请时携带推荐人码：
 
@@ -553,7 +597,59 @@ const applyDistributorMutation = gql`
 await applyDistributor({ referredByCode: authStore.inviteCode })
 ```
 
-#### 4.5 命名统一策略
+#### 4.6 断裂点 5：小程序场景下 scene 参数解析为 inviteCode
+
+**位置**：`App.vue` `onLaunch` 钩子
+
+**问题**：当前仅 H5 环境捕获 `?ref=xxx`，小程序扫码进入时 scene 参数（格式 `s=slug&r=邀请码`）未被解析。
+
+**修复**：扩展 `onLaunch`，小程序环境下解析 scene 参数：
+
+```typescript
+// App.vue onLaunch
+onLaunch((options: any) => {
+  const tenantStore = useTenantStore();
+  const authStore = useAuthStore();
+
+  tenantStore.initTenant();
+  authStore.restoreSession();
+
+  // H5: 从 URL ?ref=xxx 捕获
+  // #ifdef H5
+  try {
+    const url = new URL(window.location.href);
+    const refCode = url.searchParams.get('ref');
+    if (refCode) {
+      authStore.setInviteCode(refCode);
+    }
+  } catch (e) {}
+  // #endif
+
+  // 小程序: 从 scene 参数解析 r=邀请码
+  // #ifdef MP-WEIXIN
+  try {
+    const scene = options?.query?.scene || options?.scene;
+    if (scene) {
+      const decoded = decodeURIComponent(scene);
+      const params = new URLSearchParams(decoded);
+      const refCode = params.get('r');
+      if (refCode) {
+        authStore.setInviteCode(refCode);
+      }
+    }
+  } catch (e) {}
+  // #endif
+
+  setupRouteGuard();
+});
+```
+
+**注意**：
+- 小程序码生成时 scene 格式为 `s=slug&r=邀请码`
+- 微信会将 scene 透传到 onLaunch 的 options.query.scene
+- 需 decodeURIComponent 解码（微信会对 scene 做 URL 编码）
+
+#### 4.7 命名统一策略
 
 **不强制重命名**，通过接口层映射：
 
@@ -563,28 +659,45 @@ await applyDistributor({ referredByCode: authStore.inviteCode })
 
 前端在调用 API 时将 `inviteCode` 映射为 `referredBy`（注册时）或 `referredByCode`（申请分销商时）。
 
-#### 4.6 数据流闭环
+#### 4.8 数据流闭环
 
 ```
-分销商 A 申请通过 → customer_A.customFields.referralCode = "XYZ8"
+1. 分销商 A 申请通过
+   → distribution.service.apply() 回写 customer_A.customFields.referralCode = "XYZ8"
                                         ↓
-A 分享海报/链接（带 ref=XYZ8）→ B 扫码/点击进入
+2. A 分享海报/链接（带 ref=XYZ8）
+   - H5: URL ?ref=XYZ8
+   - 小程序: scene 含 r=XYZ8
                                         ↓
-B 注册 → updateCustomer(referredBy: "XYZ8")
+3. B 扫码/点击进入
+   - H5: App.vue 捕获 ?ref=XYZ8 → authStore.inviteCode = "XYZ8"
+   - 小程序: App.vue 解析 scene → authStore.inviteCode = "XYZ8"
                                         ↓
-B 下单支付 → commission.service 读取 B.customer.referredBy = "XYZ8"
+4. B 注册
+   → register 成功后补写 customer_B.customFields.referredBy = "XYZ8"
                                         ↓
-findByReferralCode("XYZ8") → 找到 Distributor A → 创建佣金
+5. B 下单支付
+   → commission.service 读取 customer_B.customFields.referredBy = "XYZ8"
+   → self-referral 校验：B != A，通过
+   → findByReferralCode("XYZ8") → 找到 Distributor A
+   → 创建 direct 佣金给 A
+                                        ↓
+6. 若 B 也申请成为分销商
+   → applyDistributor(referredByCode: "XYZ8")
+   → 建立 distributor_B.parentId = distributor_A.id（上下级关系）
+   → B 后续下级 C 下单时，A 也能获得 indirect 佣金
 ```
 
-#### 4.7 影响范围
+#### 4.9 影响范围
 
 | 改动点 | 文件 | 说明 |
 |---|---|---|
+| 后端字段修复 | commission.service.ts | 读取 referredBy 而非 referralCode + self-referral 校验 |
 | 后端回写 | distribution.service.ts | apply 成功后回写 customer.referralCode |
 | 前端注册 | api/mutations/auth.ts | 注册后补写 referredBy |
 | 前端登录 | api/mutations/auth.ts | 登录后补写 referredBy（仅空时） |
 | 前端申请分销商 | pkg-user/pages/distribution.vue | 携带 referredByCode |
+| 前端小程序 scene 解析 | App.vue | onLaunch 解析 scene 参数中的 r=邀请码 |
 
 ### 5. 后端 wxacode 服务
 
@@ -869,6 +982,19 @@ describe('apply', () => {
 })
 ```
 
+**CommissionService.calculateCommission 字段修复** — `distribution-plugin/src/commission.service.spec.ts`
+
+```typescript
+describe('calculateCommission', () => {
+  it('读取 customer.referredBy 而非 referralCode')
+  it('referredBy 为空：不创建佣金')
+  it('referredBy 有效：创建 direct 佣金给上级分销商')
+  it('self-referral 校验：订单用户是分销商自己时跳过')
+  it('上级分销商有 parentId：创建 indirect 佣金给上上级')
+  it('上级分销商状态非 active：不创建佣金')
+})
+```
+
 ### 后端 e2e 测试
 
 **wxacode 查询** — `cjk-plugins-e2e/wxacode.e2e.spec.ts`
@@ -899,20 +1025,37 @@ describe('ProductPoster', () => {
 **邀请码数据流** — 手动测试
 
 ```
-测试用例 1：完整归因闭环
+测试用例 1：完整归因闭环（H5）
   1. 用户 A 申请分销商 → 验证 customer_A.referralCode 已回写
   2. 用户 A 分享海报 → 验证小程序码 scene 含 r=referralCode_A
   3. 用户 B 扫码进入 → 验证 authStore.inviteCode = referralCode_A
   4. 用户 B 注册 → 验证 customer_B.referredBy = referralCode_A
   5. 用户 B 下单支付 → 验证佣金记录创建给 A
 
-测试用例 2：登录补写
+测试用例 2：完整归因闭环（小程序）
+  1. 用户 A 在小程序中分享海报
+  2. 用户 B 扫小程序码进入 → 验证 App.vue 解析 scene 中 r=参数
+  3. 验证 authStore.inviteCode = referralCode_A
+  4. 后续流程同 H5
+
+测试用例 3：登录补写
   1. 用户 C 已注册但 referredBy 为空
   2. 通过 ref 链接登录 → 验证 referredBy 补写成功
 
-测试用例 3：不覆盖已有
+测试用例 4：不覆盖已有
   1. 用户 D 已有 referredBy = code_X
   2. 通过 ref=code_Y 链接登录 → 验证 referredBy 仍为 code_X
+
+测试用例 5：self-referral 防护
+  1. 用户 A 是分销商，customer_A.referralCode = "XYZ8"
+  2. 用户 A 的 referredBy 意外被设为 "XYZ8"（脏数据）
+  3. 用户 A 下单支付 → 验证不创建佣金（self-referral 校验）
+
+测试用例 6：上下级 indirect 佣金
+  1. 用户 A 是分销商（referralCode = "XYZ8"）
+  2. 用户 B 通过 A 的链接注册并申请分销商（referredByCode = "XYZ8"）
+  3. 用户 C 通过 B 的链接注册
+  4. 用户 C 下单支付 → 验证 B 获得 direct 佣金，A 获得 indirect 佣金
 ```
 
 ### 测试依赖
