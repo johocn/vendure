@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Channel, ID, ListQueryBuilder, ListQueryOptions, PaginatedList, RequestContext, TransactionalConnection } from '@vendure/core';
+import { Channel, CustomerService, ID, ListQueryBuilder, ListQueryOptions, Logger, PaginatedList, RequestContext, TransactionalConnection } from '@vendure/core';
 
 import { Distributor } from './distributor.entity';
 import { loggerCtx } from './constants';
@@ -9,6 +9,7 @@ export class DistributionService {
     constructor(
         private connection: TransactionalConnection,
         private listQueryBuilder: ListQueryBuilder,
+        private customerService: CustomerService,
     ) {}
 
     findAll(ctx: RequestContext, options?: ListQueryOptions<Distributor>): Promise<PaginatedList<Distributor>> {
@@ -82,7 +83,23 @@ export class DistributionService {
         const channel = await this.connection.getEntityOrThrow(ctx, Channel, ctx.channelId);
         distributor.channels = [channel];
 
-        return this.connection.getRepository(ctx, Distributor).save(distributor);
+        const saved = await this.connection.getRepository(ctx, Distributor).save(distributor);
+
+        // 回写 customer.customFields.referralCode
+        try {
+            const customer = await this.customerService.findOneByUserId(ctx, customerId as any);
+            if (customer) {
+                await this.customerService.update(ctx, {
+                    id: customer.id,
+                    customFields: { referralCode: saved.referralCode },
+                } as any);
+            }
+        } catch (e: any) {
+            // 回写失败不影响分销商创建
+            Logger.warn(`Failed to write back referralCode to customer ${customerId}: ${e.message}`, loggerCtx);
+        }
+
+        return saved;
     }
 
     async approve(ctx: RequestContext, id: ID): Promise<Distributor> {
