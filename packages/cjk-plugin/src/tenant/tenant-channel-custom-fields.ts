@@ -14,5 +14,17 @@ export const tenantChannelCustomFields: CustomFields = {
             nullable: true,
             label: [{ languageCode: LanguageCode.zh_Hans, value: '最大叠加数量' }],
         },
+        {
+            name: 'authConfig',
+            type: 'struct',
+            nullable: true,
+            public: true,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '租户登录方式配置' }],
+            fields: [
+                { name: 'enabledMethods', type: 'string', list: true },
+                { name: 'overridesJson', type: 'text' },
+                { name: 'ssoProvidersJson', type: 'text' },
+            ],
+        },
     ],
 };
