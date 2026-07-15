@@ -24,10 +24,15 @@
 ```ts
 {
     name: 'authConfig',
-    type: 'json',
+    type: 'struct',  // Vendure 无 'json' 类型，用 'struct'（DB 存 json，GraphQL 暴露为 JSON 标量）
     nullable: true,
     public: true,  // C 端需读取以决定显示哪些登录按钮
     label: [{ languageCode: LanguageCode.zh_Hans, value: '租户登录方式配置' }],
+    schema: {
+        enabledMethods: { type: 'string', list: true },
+        overrides: { type: 'json' },
+        ssoProviders: { type: 'json' },
+    },
 }
 ```
 
@@ -129,23 +134,59 @@ export function isAuthMethodEnabled(ctx: RequestContext, method: AuthMethod): bo
 
 ### 拦截方式：策略自查 + Guard 兜底
 
-**策略自查**：修改 4 个自定义策略文件（phone/wechat/alipay/douyin），在 `authenticate` 方法开头加检查:
+**策略自查**：修改 4 个自定义策略文件（phone/wechat/alipay/douyin），在 `authenticate` 方法开头加检查。注意 Vendure 认证策略契约：`authenticate` 应返回 `false | string` 表示认证失败，不抛异常。但"方法未启用"属于权限错误，抛 `ForbiddenError`（来自 `@vendure/core`）:
 ```ts
 if (!isAuthMethodEnabled(ctx, 'phone')) {
-    throw new UnauthorizedError('error.login-method-disabled');
+    throw new ForbiddenError();  // error.forbidden
 }
 ```
 
-**Guard 兜底**：在 cjk-plugin 注册全局 NestJS Guard，拦截 shop API 的 `authenticate` mutation。根据 args.strategy 参数映射到 AuthMethod，校验白名单。覆盖 native 策略（Vendure 内置，无法改源码）。
+**Guard 兜底**：在 cjk-plugin 注册全局 NestJS Guard（通过 `providers: [{ provide: APP_GUARD, useClass: AuthMethodGuard }]`），拦截 shop API 的 `authenticate` mutation。
 
-**native 特殊处理**：Guard 对 native 方法特殊处理——若 enabledMethods 不含 native，仍允许 admin 端 native 登录，仅拦截 shop 端。
+Guard 实现要点：
+```ts
+@Injectable()
+export class AuthMethodGuard implements CanActivate {
+    canActivate(context: ExecutionContext): boolean {
+        const gqlCtx = GqlExecutionContext.create(context);
+        const info = gqlCtx.getInfo<GraphQLResolveInfo>();
+        // 仅拦截 shop 端 authenticate mutation
+        if (info?.fieldName !== 'authenticate') return true;
+        const args = gqlCtx.getArgs();
+        // AuthenticationInput 是 map: { native?: {...}, phone?: {...}, sso?: {...} }
+        const method = Object.keys(args.input)[0];  // 如 'native'/'phone'/'wechat'/'sso'
+        const req = gqlCtx.getContext().req;
+        const ctx = internal_getRequestContext(req);  // 从 req 提取 RequestContext
+        if (!isAuthMethodEnabled(ctx, method as AuthMethod)) {
+            throw new ForbiddenError();
+        }
+        return true;
+    }
+}
+```
+
+**native 特殊处理**：Guard 仅注册到 shop API 模块（不拦截 admin API），这样 native 方法被禁用时仅影响 shop 端，admin 端 native 登录不受影响，防止管理员锁死。
+
+**Guard 执行顺序**：Vendure Core 的 AuthGuard 在 ApiModule 注册，先于插件 Guard 执行，确保 `RequestContext` 已写入 `req`。
 
 ### SSO 认证策略
 
 新增文件: `e:\code\vendure\packages\cjk-plugin\src\auth\sso-authentication-strategy.ts`
 
 - name: `'sso'`
-- authenticate: Vendure 的 `AuthenticateInput` 是动态参数列表 `[{ name, value }]`，SSO 策略从 args 中提取 `providerKey` 和 `code` 两个参数。前端调用 `authenticate(input: { strategy: "sso", providerKey: "xxx", code: "xxx" })`，Vendure 会将额外参数传给 strategy。
+- **defineInputType()**: 必须实现此方法定义 GraphQL input 类型。Vendure 的 `AuthenticationInput` 是动态 map，每个策略名作为 key，value 是该策略定义的 input 类型:
+```ts
+defineInputType() {
+    return gql`
+        input SsoAuthInput {
+            providerKey: String!
+            code: String!
+        }
+    `;
+}
+```
+- authenticate(ctx, data): data 类型为 `SsoAuthInput`，即 `{ providerKey, code }`。
+- 前端调用方式: `authenticate(input: { sso: { providerKey: "xxx", code: "xxx" } })`（不是 `authenticate(input: { strategy: "sso", ... })`）。
 - 根据 `provider.protocol` 分支处理:
 
 **zhao-sso 协议**（默认，适配 `e:\code\basic\plugins\zhao-sso`）:
@@ -160,14 +201,26 @@ if (!isAuthMethodEnabled(ctx, 'phone')) {
 3. 按 userInfoMapping 映射（默认 externalIdField='sub'、emailField='email'、nicknameField='name'）
 4. 按 `sso_<providerKey>_<externalId>` 格式查找或创建 Customer
 
+- 认证失败时返回 `false`（不是抛异常），Vendure 会包装为 `InvalidCredentialsError`。
 - 注册到 `config.authOptions.shopAuthenticationStrategy`
 
 ### 租户凭证覆盖
 
-各策略执行时读取 `ctx.channel.customFields.authConfig.overrides[method]`，若存在则用租户凭证覆盖全局环境变量:
+各策略当前从 `this.options`（插件全局 options）读取凭证，不从 `process.env` 读取。改为优先读取 `ctx.channel.customFields.authConfig.overrides[method]`，回退到 `this.options`:
 ```ts
+// 在各策略文件内内联此函数（避免依赖 cjk-plugin 造成循环依赖）
+function getAuthOverride(ctx: RequestContext, method: string) {
+    const config = (ctx.channel as any).customFields?.authConfig;
+    if (!config?.overrides) return null;
+    return config.overrides[method] || null;
+}
+
+// wechat-auth-strategy.ts 内使用:
 const override = getAuthOverride(ctx, 'wechat');
-const appId = override?.appId || process.env.WECHAT_AUTH_APP_ID;
+const appId = override?.appId || this.options.appId;
+const appSecret = override?.appSecret || this.options.appSecret;
+const token = override?.token || this.options.token;
+const encodingAESKey = override?.encodingAESKey || this.options.encodingAESKey;
 ```
 
 ### Shop API 扩展
@@ -271,8 +324,9 @@ export async function getSsoProviders() {
 新增 SSO 登录 mutation:
 ```ts
 export async function ssoLogin(providerKey: string, code: string) {
+    // AuthenticationInput 是 map: { sso: { providerKey, code } }
     return client.request(`mutation {
-        authenticate(input: { strategy: "sso", providerKey: "${providerKey}", code: "${code}" }) {
+        authenticate(input: { sso: { providerKey: "${providerKey}", code: "${code}" } }) {
             ... on CurrentUser { id identifier }
             ... on InvalidCredentialsError { errorCode message }
         }
@@ -354,9 +408,41 @@ if (ssoCode && ssoProviderKey) {
 
 ### 位置
 
-文件: `e:\code\vendure\packages\cjk-plugin\dashboard\channel-detail-forms.tsx`
+文件: `e:\code\vendure\packages\cjk-plugin\dashboard\channel-detail-forms.tsx` 和 `e:\code\vendure\packages\cjk-plugin\dashboard\auth-config-widget.tsx`
 
-替换当前空壳，实现真正的表单组件。
+**重要**: Dashboard 的 `DashboardDetailFormExtensionDefinition` 无 `form` 字段，`inputs` 只能替换已存在字段。自定义配置区需用 `pageBlocks`（添加新区块到页面）或 `widgets`。
+
+实际方案：channel-detail 页面有 `CustomFieldsPageBlock` 自动渲染 customFields。`authConfig` 作为 `struct` 类型 customField 会被自动渲染为 JSON 编辑器（可用但体验差）。如需友好 UI，用 `inputs` 覆盖 `authConfig` 字段的渲染组件:
+
+```tsx
+// channel-detail-forms.tsx
+import { AuthConfigInput } from './auth-config-widget';
+
+export const cjkChannelDetailForms: DashboardDetailFormExtensionDefinition[] = [
+    {
+        pageId: 'channel-detail',
+        // 扩展 detail query 以确保 authConfig 字段被查询
+        extendDetailDocument: `
+            query ExtendChannelAuthConfig {
+                channel {
+                    customFields {
+                        authConfig
+                    }
+                }
+            }
+        `,
+        inputs: [
+            {
+                blockId: 'custom-fields',  // CustomFieldsPageBlock 的 blockId
+                field: 'authConfig',       // 要覆盖的 customField 名
+                component: AuthConfigInput, // 自定义 React 组件
+            },
+        ],
+    },
+];
+```
+
+`AuthConfigInput` 组件接收 `DashboardFormComponentProps`（基于 react-hook-form 的 ControllerRenderProps），value 是 authConfig JSON 对象，onChange 更新表单值。
 
 ### UI 结构
 
@@ -455,11 +541,12 @@ Guard 对 native 方法特殊处理：若 enabledMethods 不含 native，仅拦�
 | 场景 | 处理 |
 |---|---|
 | authConfig JSON 解析失败 | 日志告警，降级为"所有策略启用" |
-| SSO Provider 配置缺失字段 | 返回 `error.sso-config-incomplete` |
-| OAuth2 token 换取失败 | 返回 `error.sso-token-exchange-failed` |
-| userInfo 获取失败 | 返回 `error.sso-user-info-failed` |
-| userInfo 映射字段缺失 | externalId 兜底用 `sub`，email/nickname 可空 |
-| 凭证解密失败 | 日志告警，该方式禁用 |
+| 登录方式未启用 | 策略自查抛 `ForbiddenError`（error.forbidden）；Guard 兜底也抛 `ForbiddenError` |
+| SSO Provider 配置缺失字段 | 策略返回 `false`（Vendure 包装为 InvalidCredentialsError） |
+| OAuth2 token 换取失败 | 策略返回 `false` |
+| userInfo 获取失败 | 策略返回 `false` |
+| userInfo 映射字段缺失 | externalId 兜底用默认字段，email/nickname 可空 |
+| 凭证解密失败 | 日志告警，该方式凭证回退到全局 options |
 
 ## i18n 消息
 
@@ -532,7 +619,8 @@ authConfig: {
 | `packages/cjk-plugin/src/auth/auth-admin.resolver.ts` | 新增 | channelAuthConfig query |
 | `packages/cjk-plugin/src/plugin.ts` | 修改 | 注册新模块 |
 | `packages/cjk-plugin/index.ts` | 修改 | 导出新模块 |
-| `packages/cjk-plugin/dashboard/channel-detail-forms.tsx` | 修改 | AuthConfigForm 组件 |
+| `packages/cjk-plugin/dashboard/channel-detail-forms.tsx` | 修改 | 注册 authConfig 字段的自定义 input 组件 |
+| `packages/cjk-plugin/dashboard/auth-config-widget.tsx` | 新增 | AuthConfigInput React 组件（checkbox+凭证+SSO Provider 编辑） |
 | `packages/phone-auth-plugin/src/phone-authentication-strategy.ts` | 修改 | 加 isAuthMethodEnabled 检查 |
 | `packages/wechat-auth-plugin/src/wechat-auth-strategy.ts` | 修改 | 加 isAuthMethodEnabled 检查 + 读取 overrides 中 token/encodingAESKey |
 | `packages/wechat-auth-plugin/src/types.ts` | 修改 | WechatAuthPluginOptions 增加 token/encodingAESKey 字段 |
