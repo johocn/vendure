@@ -10,6 +10,12 @@
 
 **Spec:** `e:\code\vendure\docs\superpowers\specs\2026-07-15-tenant-auth-methods-design.md`
 
+**关键架构事实（必读）**:
+- struct 存储形状（DB/GraphQL 层）: `authConfig` 是 struct 类型，子字段为 `enabledMethods: string[]` / `overridesJson: string` / `ssoProvidersJson: string`。通过 `ctx.channel.customFields.authConfig` 读到的是此 struct 形状，**没有** `overrides` 或 `ssoProviders` 属性。
+- domain 领域对象形状（解析+解密后）: `{ enabledMethods, overrides?, ssoProviders? }`，其中 overrides/ssoProviders 是从 JSON 字符串 parse 出来并解密后的对象。crypto.ts 的 `encryptAuthConfig`/`decryptAuthConfig`/`maskAuthConfig`/`mergeAuthConfig` 函数都操作 domain 形状。
+- 无循环依赖: 各独立插件包（wechat-auth-plugin/phone-auth-plugin/alipay-plugin/douyin-auth-plugin）不被 cjk-plugin 导入，因此可以直接 import cjk-plugin 导出的 `getAuthOverride`/`isAuthMethodEnabled`。
+- struct 整体替换语义: 保存时必须传完整三个子字段，缺失子字段会被置 null。
+
 ---
 
 ## Phase 1: 数据模型基础
@@ -124,23 +130,26 @@ git commit -m "feat(cjk-plugin): add auth-config type definitions"
 ```ts
 // e:\code\vendure\packages\cjk-plugin\src\auth\crypto.ts
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'crypto';
+import { RequestContext } from '@vendure/core';
+import type { TenantAuthConfig } from './auth-config.types';
 
 const ALGO = 'aes-256-gcm';
 const ENC_PREFIX = 'enc:';
 
-function getKey(): Buffer {
-    const secret = CjkPlugin.options.authSecret || process.env.AUTH_SECRET || 'default-dev-key-change-in-prod';
-    return scryptSync(secret, 'vendure-auth-salt', 32);
+// 延迟导入避免循环依赖
+let _CjkPluginOptions: any;
+function getCjkPluginOptions(): any {
+    if (!_CjkPluginOptions) {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { CjkPlugin } = require('../plugin');
+        _CjkPluginOptions = CjkPlugin.options;
+    }
+    return _CjkPluginOptions;
 }
 
-// 延迟导入避免循环依赖
-let _CjkPlugin: any;
-function getCjkPluginOptions(): any {
-    if (!_CjkPlugin) {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        _CjkPlugin = require('../plugin').CjkPlugin;
-    }
-    return _CjkPlugin.options;
+function getKey(): Buffer {
+    const secret = getCjkPluginOptions().authSecret || process.env.AUTH_SECRET || 'default-dev-key-change-in-prod';
+    return scryptSync(secret, 'vendure-auth-salt', 32);
 }
 
 export function encrypt(plain: string): string {
@@ -172,12 +181,11 @@ export function isEncrypted(value: string): boolean {
     return value?.startsWith(ENC_PREFIX) ?? false;
 }
 
-/** 加密 authConfig 中所有敏感字段（原地修改） */
+/** 加密 domain 形状 authConfig 中所有敏感字段（原地修改） */
 export function encryptAuthConfig(config: any): any {
     if (!config) return config;
     const result = JSON.parse(JSON.stringify(config));
 
-    // 加密 overrides 中的 secret 字段
     if (result.overrides?.wechat) {
         const w = result.overrides.wechat;
         if (w.appSecret) w.appSecret = encrypt(w.appSecret);
@@ -196,7 +204,6 @@ export function encryptAuthConfig(config: any): any {
         if (d.miniProgramAppSecret) d.miniProgramAppSecret = encrypt(d.miniProgramAppSecret);
     }
 
-    // 加密 ssoProviders clientSecret
     if (result.ssoProviders) {
         for (const p of result.ssoProviders) {
             if (p.clientSecret) p.clientSecret = encrypt(p.clientSecret);
@@ -206,7 +213,7 @@ export function encryptAuthConfig(config: any): any {
     return result;
 }
 
-/** 解密 authConfig 中所有敏感字段 */
+/** 解密 domain 形状 authConfig 中所有敏感字段 */
 export function decryptAuthConfig(config: any): any {
     if (!config) return config;
     const result = JSON.parse(JSON.stringify(config));
@@ -264,7 +271,7 @@ export function maskAuthConfig(config: any): any {
     return result;
 }
 
-/** 合并保存：新值中 *** 表示保留原值 */
+/** 合并保存：新值中 *** 表示保留原值，最终结果为加密后的 domain 形状 */
 export function mergeAuthConfig(original: any, incoming: any): any {
     if (!original) return encryptAuthConfig(incoming);
     if (!incoming) return original;
@@ -297,13 +304,52 @@ export function mergeAuthConfig(original: any, incoming: any): any {
 
     return encryptAuthConfig(result);
 }
+
+/**
+ * 把 struct 原始值（{ enabledMethods, overridesJson, ssoProvidersJson }）解析+解密为 domain 配置。
+ * 不依赖 ctx，纯函数，可用于任意来源的 struct 数据。
+ */
+export function parseAndDecryptStruct(rawStruct: any): TenantAuthConfig | null {
+    if (!rawStruct) return null;
+    const domain: any = { enabledMethods: rawStruct.enabledMethods || [] };
+    if (rawStruct.overridesJson) {
+        try { domain.overrides = JSON.parse(rawStruct.overridesJson); } catch { domain.overrides = {}; }
+    }
+    if (rawStruct.ssoProvidersJson) {
+        try { domain.ssoProviders = JSON.parse(rawStruct.ssoProvidersJson); } catch { domain.ssoProviders = []; }
+    }
+    return decryptAuthConfig(domain);
+}
+
+/** 把 struct 原始值解析+解密为 domain 配置；无配置返回 null。策略/resolver 读取的统一入口 */
+export function readChannelAuthConfig(ctx: RequestContext): TenantAuthConfig | null {
+    const raw = (ctx.channel as any)?.customFields?.authConfig;
+    return parseAndDecryptStruct(raw);
+}
+
+/** 策略用：取某方式的已解密凭证覆盖，无则 null */
+export function getAuthOverride(ctx: RequestContext, method: string): any | null {
+    const config = readChannelAuthConfig(ctx);
+    return config?.overrides?.[method] || null;
+}
+
+/** 把 domain 配置加密+序列化为 struct 形状（供写入 customFields.authConfig） */
+export function serializeAuthConfigToStruct(domain: TenantAuthConfig | null): any {
+    if (!domain) return null;
+    const encrypted = encryptAuthConfig(domain);
+    return {
+        enabledMethods: encrypted.enabledMethods || [],
+        overridesJson: encrypted.overrides ? JSON.stringify(encrypted.overrides) : '',
+        ssoProvidersJson: encrypted.ssoProviders ? JSON.stringify(encrypted.ssoProviders) : '',
+    };
+}
 ```
 
 - [ ] **Step 2: Commit**
 
 ```bash
 git add packages/cjk-plugin/src/auth/crypto.ts
-git commit -m "feat(cjk-plugin): add AES-256-GCM crypto utils for auth config"
+git commit -m "feat(cjk-plugin): add AES-256-GCM crypto utils with struct<->domain conversion"
 ```
 
 ---
@@ -319,7 +365,7 @@ Run: Read `e:\code\vendure\packages\cjk-plugin\src\tenant\tenant-channel-custom-
 
 - [ ] **Step 2: 在 Channel customFields 数组末尾增加 authConfig 字段**
 
-在 `Channel` 数组中现有字段（employeePickupMode、defaultLocation 等）之后追加:
+在 `Channel` 数组中现有字段（employeePickupMode、defaultLocation 等）之后追加。注意 struct 子字段用 `fields` 数组而非 `schema` 对象；`json` 不是合法 struct 子字段类型，所以 overrides/ssoProviders 用 `text` 类型存 JSON 字符串：
 
 ```ts
 {
@@ -328,11 +374,11 @@ Run: Read `e:\code\vendure\packages\cjk-plugin\src\tenant\tenant-channel-custom-
     nullable: true,
     public: true,
     label: [{ languageCode: LanguageCode.zh_Hans, value: '租户登录方式配置' }],
-    schema: {
-        enabledMethods: { type: 'string', list: true },
-        overrides: { type: 'json' },
-        ssoProviders: { type: 'json' },
-    },
+    fields: [
+        { name: 'enabledMethods', type: 'string', list: true },
+        { name: 'overridesJson', type: 'text' },
+        { name: 'ssoProvidersJson', type: 'text' },
+    ],
 },
 ```
 
@@ -359,18 +405,19 @@ git commit -m "feat(cjk-plugin): add authConfig struct field to Channel customFi
 
 - [ ] **Step 1: 创建 Guard 和工具函数**
 
+注意：用 `internal_getRequestContext(parsed.req)` 取 RequestContext，用 `ctx.apiType !== 'shop'` 判断 shop/admin，不依赖 `req.path`。
+
 ```ts
 // e:\code\vendure\packages\cjk-plugin\src\auth\auth-method-guard.ts
 import { Injectable, ExecutionContext, CanActivate } from '@nestjs/common';
 import { GqlExecutionContext } from '@nestjs/graphql';
-import { GraphQLResolveInfo } from 'graphql';
-import { RequestContext, ForbiddenError, parseContext } from '@vendure/core';
+import { RequestContext, ForbiddenError, parseContext, internal_getRequestContext } from '@vendure/core';
 import type { AuthMethod, TenantAuthConfig } from './auth-config.types';
 
 export function isAuthMethodEnabled(ctx: RequestContext, method: AuthMethod): boolean {
-    const config = (ctx.channel as any)?.customFields?.authConfig as TenantAuthConfig | null;
-    if (!config) return true; // 向后兼容
-    return config.enabledMethods.includes(method);
+    const config = (ctx.channel as any)?.customFields?.authConfig;
+    if (!config) return true; // 向后兼容：未配置时所有策略启用
+    return (config.enabledMethods || []).includes(method);
 }
 
 @Injectable()
@@ -382,10 +429,12 @@ export class AuthMethodGuard implements CanActivate {
         const info = parsed.info;
         if (!info || info.fieldName !== 'authenticate') return true;
 
-        // 仅拦截 shop API（通过路径判断）
-        const req = parsed.req;
-        const isShopApi = req?.path?.includes('/shop-api') || req?.url?.includes('/shop-api');
-        if (!isShopApi) return true;
+        // 用 internal_getRequestContext 取 RequestContext（Vendure AuthGuard 已写入）
+        const ctx = internal_getRequestContext(parsed.req);
+        if (!ctx) return true; // 无 ctx 降级放行
+
+        // 仅拦截 shop 端，admin 端不受影响（防止管理员锁死）
+        if (ctx.apiType !== 'shop') return true;
 
         const gqlCtx = GqlExecutionContext.create(context);
         const args = gqlCtx.getArgs();
@@ -394,10 +443,6 @@ export class AuthMethodGuard implements CanActivate {
         // AuthenticationInput 是 map: { native?: {...}, phone?: {...}, sso?: {...} }
         const method = Object.keys(args.input)[0] as AuthMethod;
         if (!method) return true;
-
-        // 从 req 提取 RequestContext（Vendure AuthGuard 已写入）
-        const ctx: RequestContext = (req as any)._requestContext;
-        if (!ctx) return true; // 无 ctx 则放行（降级）
 
         if (!isAuthMethodEnabled(ctx, method)) {
             throw new ForbiddenError();
@@ -411,7 +456,7 @@ export class AuthMethodGuard implements CanActivate {
 
 ```bash
 git add packages/cjk-plugin/src/auth/auth-method-guard.ts
-git commit -m "feat(cjk-plugin): add AuthMethodGuard for per-channel auth method control"
+git commit -m "feat(cjk-plugin): add AuthMethodGuard using internal_getRequestContext + ctx.apiType"
 ```
 
 ---
@@ -425,31 +470,32 @@ git commit -m "feat(cjk-plugin): add AuthMethodGuard for per-channel auth method
 
 Run: Read `e:\code\vendure\packages\phone-auth-plugin\src\phone-authentication-strategy.ts`
 
+了解 `this.options` 结构（accessKeyId/accessKeySecret/signName/templateCode）和 OAuth/SMS 调用位置。
+
 - [ ] **Step 2: 在 authenticate 方法开头加 isAuthMethodEnabled 检查和凭证覆盖**
 
-在 `async authenticate(ctx: RequestContext, data: PhoneAuthData)` 方法第一行插入:
-
+在文件头部增加 import（无循环依赖，phone-auth-plugin 不被 cjk-plugin 导入）:
 ```ts
-// 租户级登录方式开关检查
-const authConfig = (ctx.channel as any)?.customFields?.authConfig;
-if (authConfig?.enabledMethods && !authConfig.enabledMethods.includes('phone')) {
+import { ForbiddenError } from '@vendure/core';
+import { isAuthMethodEnabled, getAuthOverride } from '@vendure/cjk-plugin';
+```
+
+在 `async authenticate(ctx: RequestContext, data: PhoneAuthData)` 方法第一行插入:
+```ts
+// 租户级登录方式开关检查（"未启用"属权限错误，抛 ForbiddenError）
+if (!isAuthMethodEnabled(ctx, 'phone')) {
     throw new ForbiddenError();
 }
 
-// 租户凭证覆盖
-const override = authConfig?.overrides?.phone;
+// 租户凭证覆盖（已解密；无覆盖则回退 this.options）
+const override = getAuthOverride(ctx, 'phone');
 const accessKeyId = override?.accessKeyId || this.options.accessKeyId;
 const accessKeySecret = override?.accessKeySecret || this.options.accessKeySecret;
 const signName = override?.signName || this.options.signName;
 const templateCode = override?.templateCode || this.options.templateCode;
 ```
 
-在文件头部增加 import:
-```ts
-import { ForbiddenError } from '@vendure/core';
-```
-
-后续代码中使用 `accessKeyId/accessKeySecret/signName/templateCode` 局部变量替换 `this.options.xxx`。
+后续 SMS/OAuth 调用中用 `accessKeyId/accessKeySecret/signName/templateCode` 局部变量替换 `this.options.xxx`。
 
 - [ ] **Step 3: 验证编译**
 
@@ -483,28 +529,32 @@ encodingAESKey?: string;
 
 - [ ] **Step 2: 在 wechat-auth-strategy.ts 的 authenticate 方法加检查和凭证覆盖**
 
-在 `async authenticate(ctx: RequestContext, data: WechatAuthData)` 方法开头插入:
+Run: Read `e:\code\vendure\packages\wechat-auth-plugin\src\wechat-auth-strategy.ts` 了解 `this.options` 结构（appId/appSecret/miniProgramAppId/miniProgramAppSecret/devBypass 等）和 OAuth 调用位置（getMpOpenidWithInfo / getMiniOpenid 方法）。
+
+在文件头部增加 import（无循环依赖）:
+```ts
+import { ForbiddenError } from '@vendure/core';
+import { isAuthMethodEnabled, getAuthOverride } from '@vendure/cjk-plugin';
+```
+
+在 `async authenticate(ctx: RequestContext, data: WechatAuthData)` 方法开头（devBypass 分支之前）插入:
 ```ts
 // 租户级登录方式开关检查
-const authConfig = (ctx.channel as any)?.customFields?.authConfig;
-if (authConfig?.enabledMethods && !authConfig.enabledMethods.includes('wechat')) {
+if (!isAuthMethodEnabled(ctx, 'wechat')) {
     throw new ForbiddenError();
 }
 
-// 租户凭证覆盖
-const override = authConfig?.overrides?.wechat;
+// 租户凭证覆盖（已解密；无覆盖则回退 this.options）
+const override = getAuthOverride(ctx, 'wechat');
 const appId = override?.appId || this.options.appId;
 const appSecret = override?.appSecret || this.options.appSecret;
 const miniProgramAppId = override?.miniProgramAppId || this.options.miniProgramAppId;
 const miniProgramAppSecret = override?.miniProgramAppSecret || this.options.miniProgramAppSecret;
+const token = override?.token || this.options.token;
+const encodingAESKey = override?.encodingAESKey || this.options.encodingAESKey;
 ```
 
-在文件头部增加 import:
-```ts
-import { ForbiddenError } from '@vendure/core';
-```
-
-后续 OAuth 调用中使用局部变量 `appId/appSecret/miniProgramAppId/miniProgramAppSecret` 替换 `this.options.xxx`。
+后续 `getMpOpenidWithInfo` / `getMiniOpenid` 方法中用局部变量替换 `this.options.xxx`（注意 devBypass 分支不需要 override，保持原样）。可把 `getMpOpenidWithInfo(code)` 改为 `getMpOpenidWithInfo(code, appId, appSecret)` 等参数传递方式，或在 authenticate 内联调用。
 
 - [ ] **Step 3: 验证编译**
 
@@ -528,35 +578,49 @@ git commit -m "feat(wechat-auth): add token/encodingAESKey fields and per-channe
 
 - [ ] **Step 1: 在 alipay-auth-strategy.ts authenticate 方法加检查**
 
-在方法开头插入（alipay 的凭证在 `this.options.auth` 下）:
+Run: Read `e:\code\vendure\packages\alipay-plugin\src\alipay-auth-strategy.ts` 了解 `this.options.auth` 结构（appId/privateKey/miniProgramAppId/devBypass）。
+
+在文件头部增加 import:
 ```ts
 import { ForbiddenError } from '@vendure/core';
-// ...
-const authConfig = (ctx.channel as any)?.customFields?.authConfig;
-if (authConfig?.enabledMethods && !authConfig.enabledMethods.includes('alipay')) {
+import { isAuthMethodEnabled, getAuthOverride } from '@vendure/cjk-plugin';
+```
+
+在 `async authenticate` 方法开头（devBypass 分支之前）插入。alipay 的凭证在 `this.options.auth` 下，覆盖逻辑用 `override || this.options.auth || {}`:
+```ts
+if (!isAuthMethodEnabled(ctx, 'alipay')) {
     throw new ForbiddenError();
 }
-const override = authConfig?.overrides?.alipay;
+const override = getAuthOverride(ctx, 'alipay');
 const authConfigOpts = override || this.options.auth || {};
 // 后续用 authConfigOpts.appId / authConfigOpts.privateKey / authConfigOpts.miniProgramAppId
 ```
 
+后续 OAuth 调用中用 `authConfigOpts.xxx` 替换 `this.options.auth.xxx`（devBypass 分支保持原样）。
+
 - [ ] **Step 2: 在 douyin-auth-strategy.ts authenticate 方法加检查**
 
-在方法开头插入:
+Run: Read `e:\code\vendure\packages\douyin-auth-plugin\src\douyin-auth-strategy.ts` 了解 `this.options` 结构。
+
+在文件头部增加 import:
 ```ts
 import { ForbiddenError } from '@vendure/core';
-// ...
-const authConfig = (ctx.channel as any)?.customFields?.authConfig;
-if (authConfig?.enabledMethods && !authConfig.enabledMethods.includes('douyin')) {
+import { isAuthMethodEnabled, getAuthOverride } from '@vendure/cjk-plugin';
+```
+
+在 `async authenticate` 方法开头插入:
+```ts
+if (!isAuthMethodEnabled(ctx, 'douyin')) {
     throw new ForbiddenError();
 }
-const override = authConfig?.overrides?.douyin;
+const override = getAuthOverride(ctx, 'douyin');
 const appId = override?.appId || this.options.appId;
 const appSecret = override?.appSecret || this.options.appSecret;
 const miniProgramAppId = override?.miniProgramAppId || this.options.miniProgramAppId;
 const miniProgramAppSecret = override?.miniProgramAppSecret || this.options.miniProgramAppSecret;
 ```
+
+后续 OAuth 调用中用局部变量替换 `this.options.xxx`。
 
 - [ ] **Step 3: 验证编译**
 
@@ -582,12 +646,19 @@ git commit -m "feat(alipay,douyin): add per-channel auth method check and creden
 
 - [ ] **Step 1: 创建 SSO 策略**
 
+关键实现要点：
+- 实现 `init(injector: Injector)` 注入 UserService/CustomerService（策略在 configuration 钩子中手动 new，无法构造函数注入）。Vendure 的 AuthenticationStrategy 已继承 InjectableStrategy，init 是可选钩子，Vendure 会自动调用。
+- 用 `readChannelAuthConfig(ctx)` 取 domain 配置（已 parse+解密），从中读 `config.ssoProviders`。
+- `exchangeCodeForToken` **不依赖 redirect_uri**（spec 明确要求后端不依赖 redirect_uri，redirect_uri 仅前端跳转 IdP 时使用）。
+- `findOrCreateUser` 完整实现，参照 wechat-auth-strategy.ts 的 `getUserByEmailAddress` + `createCustomerUser` 流程。
+- 认证失败返回 `false`，不抛异常。
+
 ```ts
 // e:\code\vendure\packages\cjk-plugin\src\auth\sso-authentication-strategy.ts
-import { AuthenticationStrategy, RequestContext, User, Logger, ID } from '@vendure/core';
+import { AuthenticationStrategy, RequestContext, User, Logger, Injector, UserService, CustomerService } from '@vendure/core';
 import { gql } from 'graphql-tag';
-import type { SsoProvider, TenantAuthConfig } from './auth-config.types';
-import { decryptAuthConfig } from './crypto';
+import type { SsoProvider } from './auth-config.types';
+import { readChannelAuthConfig } from './crypto';
 
 const loggerCtx = 'SsoAuthenticationStrategy';
 
@@ -599,6 +670,14 @@ interface SsoAuthData {
 export class SsoAuthenticationStrategy implements AuthenticationStrategy<SsoAuthData> {
     readonly name = 'sso';
 
+    private userService!: UserService;
+    private customerService!: CustomerService;
+
+    async init(injector: Injector) {
+        this.userService = injector.get(UserService);
+        this.customerService = injector.get(CustomerService);
+    }
+
     defineInputType() {
         return gql`
             input SsoAuthInput {
@@ -609,23 +688,22 @@ export class SsoAuthenticationStrategy implements AuthenticationStrategy<SsoAuth
     }
 
     async authenticate(ctx: RequestContext, data: SsoAuthData): Promise<User | false | string> {
-        const rawConfig = (ctx.channel as any)?.customFields?.authConfig as TenantAuthConfig | null;
-        if (!rawConfig?.ssoProviders) {
+        const config = readChannelAuthConfig(ctx);
+        if (!config?.ssoProviders || config.ssoProviders.length === 0) {
             Logger.warn('No SSO providers configured for channel', loggerCtx);
             return false;
         }
 
-        const config = decryptAuthConfig(rawConfig);
-        const provider = config.ssoProviders!.find(p => p.providerKey === data.providerKey);
+        const provider = config.ssoProviders.find(p => p.providerKey === data.providerKey);
         if (!provider) {
             Logger.warn(`SSO provider "${data.providerKey}" not found`, loggerCtx);
             return false;
         }
 
         try {
-            // 1. 换取 access_token
+            // 1. 换取 access_token（后端不依赖 redirect_uri）
             const tokenRes = await this.exchangeCodeForToken(provider, data.code);
-            if (!tokenRes.access_token) {
+            if (!tokenRes?.access_token) {
                 Logger.warn('SSO token exchange failed', loggerCtx);
                 return false;
             }
@@ -670,8 +748,6 @@ export class SsoAuthenticationStrategy implements AuthenticationStrategy<SsoAuth
     }
 
     private async exchangeCodeForToken(provider: SsoProvider, code: string): Promise<any> {
-        const redirectUri = `${typeof window !== 'undefined' ? window.location.origin : ''}/pages/login/index`;
-
         if (provider.protocol === 'zhao-sso') {
             const tokenUrl = `${provider.baseUrl.replace(/\/$/, '')}/v1/auth/token`;
             const res = await fetch(tokenUrl, {
@@ -682,7 +758,6 @@ export class SsoAuthenticationStrategy implements AuthenticationStrategy<SsoAuth
                     code,
                     app_code: provider.clientId,
                     app_secret: provider.clientSecret,
-                    redirect_uri: redirectUri,
                 }),
             });
             return res.json();
@@ -696,7 +771,6 @@ export class SsoAuthenticationStrategy implements AuthenticationStrategy<SsoAuth
                     code,
                     client_id: provider.clientId,
                     client_secret: provider.clientSecret,
-                    redirect_uri: redirectUri,
                 }),
             });
             return res.json();
@@ -726,24 +800,38 @@ export class SsoAuthenticationStrategy implements AuthenticationStrategy<SsoAuth
         mobile: string,
         avatar: string,
     ): Promise<User | false> {
-        // 使用 Vendure 内部服务查找或创建用户
-        // 这里需要注入 UserService、CustomerService
-        // 由于策略是 new 实例化的，通过 NestJS Injector 获取服务
-        // 实际实现需通过 plugin configuration 注入服务
-        // 简化实现：返回 false，实际在 plugin.ts 中用 factory 包装
-        // TODO: 在 plugin.ts 中用闭包注入 userService/customerService
-        return false;
+        let user = await this.userService.getUserByEmailAddress(ctx, identifier);
+        if (!user) {
+            const result = await this.userService.createCustomerUser(ctx, identifier);
+            if ('identifier' in result) {
+                user = result as User;
+            } else {
+                return false;
+            }
+        }
+        // 可选：更新 Customer 资料（email/nickname 等）
+        try {
+            const customer = await this.customerService.findOneByUserId(ctx, user.id);
+            if (customer) {
+                await this.customerService.update(ctx, {
+                    id: customer.id,
+                    ...(email ? { emailAddress: email } : {}),
+                    ...(nickname ? { firstName: nickname } : {}),
+                });
+            }
+        } catch (e: any) {
+            Logger.warn(`Failed to update SSO customer profile: ${e.message}`, loggerCtx);
+        }
+        return user;
     }
 }
 ```
-
-**注意**: `findOrCreateUser` 的完整实现需要在 plugin.ts 中用工厂函数注入 `UserService` 和 `CustomerService`。在 Task 10 中完成。
 
 - [ ] **Step 2: Commit**
 
 ```bash
 git add packages/cjk-plugin/src/auth/sso-authentication-strategy.ts
-git commit -m "feat(cjk-plugin): add SSO authentication strategy with zhao-sso/oauth2 support"
+git commit -m "feat(cjk-plugin): add SSO authentication strategy with init injector and full findOrCreateUser"
 ```
 
 ---
@@ -805,16 +893,18 @@ git commit -m "feat(cjk-plugin): add SSO i18n messages (zh/en/ja/ko)"
 
 - [ ] **Step 1: 创建 Shop resolver**
 
+注意：struct 字段没有 `ssoProviders` 属性，只有 `ssoProvidersJson`（text 存 JSON 字符串）。`ssoProviders` query 需 `JSON.parse(ssoProvidersJson)`。`authMethods` query 直接读 `enabledMethods`（struct 直接字段，无需 parse）。**Shop 端不应解密 secret**，所以不调用 `readChannelAuthConfig`/`decryptAuthConfig`，只 parse 公开字段。
+
 ```ts
 // e:\code\vendure\packages\cjk-plugin\src\auth\auth-shop.resolver.ts
 import { Resolver, Query, RequestContext, Ctx } from '@vendure/core';
-import type { AuthMethod, SsoProviderInfo, TenantAuthConfig } from './auth-config.types';
+import type { SsoProviderInfo } from './auth-config.types';
 
 @Resolver()
 export class AuthShopResolver {
     @Query()
     authMethods(@Ctx() ctx: RequestContext): string[] {
-        const config = (ctx.channel as any)?.customFields?.authConfig as TenantAuthConfig | null;
+        const config = (ctx.channel as any)?.customFields?.authConfig;
         if (!config?.enabledMethods) {
             // 向后兼容：返回所有已注册策略
             return ['native', 'phone', 'wechat', 'alipay', 'douyin'];
@@ -824,18 +914,23 @@ export class AuthShopResolver {
 
     @Query()
     ssoProviders(@Ctx() ctx: RequestContext): SsoProviderInfo[] {
-        const config = (ctx.channel as any)?.customFields?.authConfig as TenantAuthConfig | null;
-        if (!config?.ssoProviders) return [];
-        return config.ssoProviders.map(p => ({
-            name: p.name,
-            providerKey: p.providerKey,
-            protocol: p.protocol,
-            baseUrl: p.baseUrl,
-            authorizeUrl: p.authorizeUrl,
-            clientId: p.clientId,
-            scopes: p.scopes || [],
-            channelCode: p.channelCode,
-        }));
+        const config = (ctx.channel as any)?.customFields?.authConfig;
+        if (!config?.ssoProvidersJson) return [];
+        try {
+            const providers = JSON.parse(config.ssoProvidersJson);
+            return providers.map((p: any) => ({
+                name: p.name,
+                providerKey: p.providerKey,
+                protocol: p.protocol,
+                baseUrl: p.baseUrl,
+                authorizeUrl: p.authorizeUrl,
+                clientId: p.clientId,
+                scopes: p.scopes || [],
+                channelCode: p.channelCode,
+            }));
+        } catch {
+            return [];
+        }
     }
 }
 ```
@@ -844,7 +939,7 @@ export class AuthShopResolver {
 
 ```bash
 git add packages/cjk-plugin/src/auth/auth-shop.resolver.ts
-git commit -m "feat(cjk-plugin): add Shop API resolver for authMethods and ssoProviders queries"
+git commit -m "feat(cjk-plugin): add Shop API resolver parsing ssoProvidersJson"
 ```
 
 ---
@@ -856,12 +951,16 @@ git commit -m "feat(cjk-plugin): add Shop API resolver for authMethods and ssoPr
 
 - [ ] **Step 1: 创建 Admin resolver**
 
+关键点：
+- `channelAuthConfig` query：用 `parseAndDecryptStruct` 把 struct 原始值 parse+解密为 domain 配置，再 `maskAuthConfig` 脱敏后返回。**不能**直接把 struct 原始对象传 `decryptAuthConfig`（后者期望 domain 形状，有 overrides/ssoProviders，不是 overridesJson/ssoProvidersJson）。
+- **新增 `updateChannelAuthConfig` mutation**：input 是 domain 形状（含 `***` 表示保留原值），用 `mergeAuthConfig` 合并原值，再用 `serializeAuthConfigToStruct` 序列化为 struct 写回。
+- GraphQL schema 需增加 `updateChannelAuthConfig(channelId: ID!, input: JSON!): Boolean!` mutation（JSON scalar）。
+
 ```ts
 // e:\code\vendure\packages\cjk-plugin\src\auth\auth-admin.resolver.ts
-import { Resolver, Query, Args, RequestContext, Ctx, ID } from '@vendure/core';
-import { ChannelService } from '@vendure/core';
+import { Resolver, Query, Mutation, Args, RequestContext, Ctx, ChannelService } from '@vendure/core';
 import { Inject } from '@nestjs/common';
-import { maskAuthConfig, decryptAuthConfig } from './crypto';
+import { parseAndDecryptStruct, maskAuthConfig, mergeAuthConfig, serializeAuthConfigToStruct } from './crypto';
 import type { TenantAuthConfigMasked } from './auth-config.types';
 
 @Resolver()
@@ -875,10 +974,29 @@ export class AuthAdminResolver {
     ): Promise<TenantAuthConfigMasked | null> {
         const channel = await this.channelService.findOne(ctx, args.channelId as any);
         if (!channel) return null;
-        const rawConfig = (channel as any).customFields?.authConfig;
-        if (!rawConfig) return null;
-        const decrypted = decryptAuthConfig(rawConfig);
-        return maskAuthConfig(decrypted);
+        const rawStruct = (channel as any).customFields?.authConfig;
+        if (!rawStruct) return null;
+        const domain = parseAndDecryptStruct(rawStruct);
+        return maskAuthConfig(domain) as TenantAuthConfigMasked;
+    }
+
+    @Mutation()
+    async updateChannelAuthConfig(
+        @Ctx() ctx: RequestContext,
+        @Args() args: { channelId: string; input: any },
+    ): Promise<boolean> {
+        const channel = await this.channelService.findOne(ctx, args.channelId as any);
+        if (!channel) return false;
+        const originalStruct = (channel as any).customFields?.authConfig;
+        const originalDomain = originalStruct ? parseAndDecryptStruct(originalStruct) : null;
+        // input 是 domain 形状（含 *** 表示保留原值）
+        const merged = mergeAuthConfig(originalDomain, args.input);
+        const newStruct = serializeAuthConfigToStruct(merged);
+        await this.channelService.update(ctx, {
+            id: args.channelId as any,
+            customFields: { authConfig: newStruct },
+        });
+        return true;
     }
 }
 ```
@@ -887,7 +1005,7 @@ export class AuthAdminResolver {
 
 ```bash
 git add packages/cjk-plugin/src/auth/auth-admin.resolver.ts
-git commit -m "feat(cjk-plugin): add Admin API resolver for channelAuthConfig query"
+git commit -m "feat(cjk-plugin): add Admin API resolver with channelAuthConfig query and updateChannelAuthConfig mutation"
 ```
 
 ---
@@ -915,22 +1033,75 @@ import { AuthShopResolver } from './auth/auth-shop.resolver';
 import { AuthAdminResolver } from './auth/auth-admin.resolver';
 import { AuthMethodGuard } from './auth/auth-method-guard';
 import { SsoAuthenticationStrategy } from './auth/sso-authentication-strategy';
+import { APP_GUARD } from '@nestjs/core';
 ```
 
 在 `@VendurePlugin` 装饰器中:
 - `providers` 增加 `AuthShopResolver`、`AuthAdminResolver`、`{ provide: APP_GUARD, useClass: AuthMethodGuard }`
-- `adminApiExtensions` 增加 authConfig 相关的 schema（`channelAuthConfig` query + `TenantAuthConfigMasked` type）
-- `shopApiExtensions` 增加 `authMethods` query、`ssoProviders` query、`SsoProviderInfo` type
-- `configuration` 钩子中注册 SSO 策略到 `shopAuthenticationStrategy`:
+- `adminApiExtensions`（参照 spec Admin API 扩展 section）包含 `channelAuthConfig` query + `updateChannelAuthConfig` mutation + `TenantAuthConfigMasked`/`SsoProviderMasked` type:
+```ts
+adminApiExtensions: {
+    schema: `
+        extend type Query {
+            channelAuthConfig(channelId: ID!): TenantAuthConfigMasked
+        }
+        extend type Mutation {
+            updateChannelAuthConfig(channelId: ID!, input: JSON!): Boolean!
+        }
+        type TenantAuthConfigMasked {
+            enabledMethods: [String!]!
+            overrides: JSON
+            ssoProviders: [SsoProviderMasked!]!
+        }
+        type SsoProviderMasked {
+            name: String!
+            providerKey: String!
+            protocol: String!
+            baseUrl: String!
+            authorizeUrl: String
+            tokenUrl: String
+            userInfoUrl: String
+            clientId: String!
+            clientSecret: String!
+            scopes: [String!]!
+            channelCode: String
+            userInfoMapping: JSON
+        }
+    `,
+}
+```
+- `shopApiExtensions`（参照 spec Shop API 扩展 section）包含 `authMethods`/`ssoProviders` query + `SsoProviderInfo` type:
+```ts
+shopApiExtensions: {
+    schema: `
+        extend type Query {
+            authMethods: [String!]!
+            ssoProviders: [SsoProviderInfo!]!
+        }
+        type SsoProviderInfo {
+            name: String!
+            providerKey: String!
+            protocol: String!
+            baseUrl: String!
+            authorizeUrl: String
+            clientId: String!
+            scopes: [String!]!
+            channelCode: String
+        }
+    `,
+}
+```
+- `configuration` 钩子里注册 SSO 策略到 `shopAuthenticationStrategy`。注意 SSO 策略无参 new（init 钩子注入，Vendure 会自动调用所有 AuthenticationStrategy 的 init）:
 ```ts
 config.authOptions.shopAuthenticationStrategy = [
     ...(config.authOptions.shopAuthenticationStrategy || []),
-    new SsoAuthenticationStrategy(/* 注入 userService/customerService */),
+    new SsoAuthenticationStrategy(),
 ];
 ```
 
 - [ ] **Step 3: 在 index.ts 增加导出**
 
+需包含 Task 2 新增的所有 crypto 函数（parseAndDecryptStruct/readChannelAuthConfig/getAuthOverride/serializeAuthConfigToStruct 都通过 `__exportStar(require('./src/auth/crypto'), exports)` 自动导出）:
 ```ts
 __exportStar(require('./src/auth/auth-config.types'), exports);
 __exportStar(require('./src/auth/crypto'), exports);
@@ -950,7 +1121,7 @@ Expected: 编译成功
 
 ```bash
 git add packages/cjk-plugin/src/plugin.ts packages/cjk-plugin/src/types.ts packages/cjk-plugin/index.ts
-git commit -m "feat(cjk-plugin): register auth modules, Guard, and SSO strategy in plugin"
+git commit -m "feat(cjk-plugin): register auth modules, Guard, SSO strategy, and admin/shop API extensions"
 ```
 
 ---
@@ -985,21 +1156,25 @@ git commit -m "feat(dev-server): add authSecret to CjkPlugin config"
 
 - [ ] **Step 1: 在 channel customFields 中设置 authConfig**
 
-在创建 default channel 时设置:
+struct 字段需传完整三个子字段（`enabledMethods`/`overridesJson`/`ssoProvidersJson`），缺失子字段会被置 null。与 spec dev-server 测试数据 section 完全一致:
 ```ts
 customFields: {
     // ... 现有字段 ...
     authConfig: {
         enabledMethods: ['native', 'phone', 'wechat', 'alipay', 'douyin'],
+        overridesJson: '',
+        ssoProvidersJson: '',
     },
 },
 ```
+
+**说明**: 测试数据直接写入 customFields，是明文 secret（populate 阶段不触发加密，只有通过 `updateChannelAuthConfig` mutation 或 `serializeAuthConfigToStruct` 才加密）。`decryptAuthConfig` 对无 `enc:` 前缀的值原样返回，所以明文也能工作。开发环境保持明文即可。
 
 - [ ] **Step 2: Commit**
 
 ```bash
 git add packages/dev-server/china-data/02-default-channel.ts
-git commit -m "feat(dev-server): add authConfig to default channel test data"
+git commit -m "feat(dev-server): add authConfig struct to default channel test data"
 ```
 
 ---
@@ -1011,21 +1186,22 @@ git commit -m "feat(dev-server): add authConfig to default channel test data"
 
 - [ ] **Step 1: 在 shop-a channel customFields 中设置 authConfig**
 
+注意 struct 字段名是 `overridesJson`/`ssoProvidersJson`（不是 `overrides`/`ssoProviders`），值是 `JSON.stringify(...)` 后的字符串。与 spec dev-server 测试数据 section 完全一致:
 ```ts
 customFields: {
     // ... 现有字段 ...
     authConfig: {
         enabledMethods: ['native', 'phone', 'wechat', 'sso'],
-        overrides: {
+        overridesJson: JSON.stringify({
             wechat: {
                 appId: 'wx-tenant-a',
                 appSecret: 'secret-a',
                 miniProgramAppId: 'mini-a',
                 token: 'tenant-a-msg-token',
                 encodingAESKey: 'tenant-a-43-char-encoding-aes-key-herexxxxxxxx',
-            },
-        },
-        ssoProviders: [
+            }
+        }),
+        ssoProvidersJson: JSON.stringify([
             {
                 name: '企业SSO',
                 providerKey: 'zhao-sso-dev',
@@ -1034,11 +1210,13 @@ customFields: {
                 clientId: 'vendure-shop-a',
                 clientSecret: 'shop-a-app-secret',
                 channelCode: 'shop-a',
-            },
-        ],
+            }
+        ]),
     },
 },
 ```
+
+**说明**: 同 Task 14，测试数据为明文 secret，`decryptAuthConfig` 对无 `enc:` 前缀的值原样返回，无需额外处理。
 
 - [ ] **Step 2: Commit**
 
@@ -1247,19 +1425,33 @@ git commit -m "feat(vshop): dynamic login method rendering based on tenant authM
 
 - [ ] **Step 1: 创建 AuthConfigInput 组件**
 
+关键点：组件 `value` 是 struct 形状 `{ enabledMethods, overridesJson, ssoProvidersJson }`（不是 domain 形状）。组件内部：
+- 读：`JSON.parse(overridesJson)` 得到 overrides 对象；`JSON.parse(ssoProvidersJson)` 得到 ssoProviders 数组。
+- 写（onChange）：把当前编辑状态 `{ enabledMethods, overrides, ssoProviders }` 转回 struct 形状（`overridesJson: JSON.stringify(overrides)`，`ssoProvidersJson: JSON.stringify(ssoProviders)`）整体回写。
+- secret 字段值为 `***` 表示保留原值（用户不改则回传 `***`，后端 `mergeAuthConfig` 处理）。
+- `channel-detail-forms.tsx` 的 `extendDetailDocument` 查询需查 struct 子字段（spec 已给出）。
+
 ```tsx
 // e:\code\vendure\packages\cjk-plugin\dashboard\auth-config-widget.tsx
 import React, { useState, useEffect } from 'react';
 
-interface AuthConfigData {
+/** struct 形状（来自 customFields.authConfig） */
+interface AuthConfigStruct {
+    enabledMethods?: string[];
+    overridesJson?: string;
+    ssoProvidersJson?: string;
+}
+
+/** domain 形状（组件内部编辑状态） */
+interface AuthConfigDomain {
     enabledMethods: string[];
-    overrides?: any;
-    ssoProviders?: any[];
+    overrides: Record<string, any>;
+    ssoProviders: any[];
 }
 
 interface AuthConfigInputProps {
-    value?: AuthConfigData | null;
-    onChange: (value: AuthConfigData | null) => void;
+    value?: AuthConfigStruct | null;
+    onChange: (value: AuthConfigStruct | null) => void;
     disabled?: boolean;
 }
 
@@ -1272,48 +1464,61 @@ const ALL_METHODS = [
     { key: 'sso', label: 'SSO' },
 ];
 
+function safeParse<T>(s: string | undefined | null, fallback: T): T {
+    if (!s) return fallback;
+    try { return JSON.parse(s) as T; } catch { return fallback; }
+}
+
 export function AuthConfigInput({ value, onChange, disabled }: AuthConfigInputProps) {
-    const [config, setConfig] = useState<AuthConfigData>(value || { enabledMethods: [], ssoProviders: [] });
+    const [enabledMethods, setEnabledMethods] = useState<string[]>(value?.enabledMethods || []);
+    const [overrides, setOverrides] = useState<Record<string, any>>(safeParse(value?.overridesJson, {}));
+    const [ssoProviders, setSsoProviders] = useState<any[]>(safeParse(value?.ssoProvidersJson, []));
 
-    useEffect(() => { setConfig(value || { enabledMethods: [], ssoProviders: [] }); }, [value]);
+    useEffect(() => {
+        setEnabledMethods(value?.enabledMethods || []);
+        setOverrides(safeParse(value?.overridesJson, {}));
+        setSsoProviders(safeParse(value?.ssoProvidersJson, []));
+    }, [value]);
 
-    const updateConfig = (newConfig: AuthConfigData) => {
-        setConfig(newConfig);
-        onChange(newConfig);
+    // 把 domain 编辑状态转回 struct 形状回写
+    const emit = (nextMethods: string[], nextOverrides: Record<string, any>, nextProviders: any[]) => {
+        setEnabledMethods(nextMethods);
+        setOverrides(nextOverrides);
+        setSsoProviders(nextProviders);
+        onChange({
+            enabledMethods: nextMethods,
+            overridesJson: JSON.stringify(nextOverrides),
+            ssoProvidersJson: JSON.stringify(nextProviders),
+        });
     };
 
     const toggleMethod = (method: string) => {
-        const methods = config.enabledMethods || [];
-        const newMethods = methods.includes(method)
-            ? methods.filter(m => m !== method)
-            : [...methods, method];
-        updateConfig({ ...config, enabledMethods: newMethods });
+        const has = enabledMethods.includes(method);
+        const next = has ? enabledMethods.filter(m => m !== method) : [...enabledMethods, method];
+        emit(next, overrides, ssoProviders);
     };
 
     const updateOverride = (method: string, field: string, val: string) => {
-        const overrides = { ...(config.overrides || {}) };
-        overrides[method] = { ...(overrides[method] || {}), [field]: val };
-        updateConfig({ ...config, overrides });
+        const nextOverrides = { ...overrides, [method]: { ...(overrides[method] || {}), [field]: val } };
+        emit(enabledMethods, nextOverrides, ssoProviders);
     };
 
     const addSsoProvider = () => {
-        const providers = [...(config.ssoProviders || [])];
-        providers.push({
+        const next = [...ssoProviders, {
             name: '', providerKey: '', protocol: 'zhao-sso',
-            baseUrl: '', clientId: '', clientSecret: '', scopes: [],
-        });
-        updateConfig({ ...config, ssoProviders: providers });
+            baseUrl: '', clientId: '', clientSecret: '***', scopes: [],
+        }];
+        emit(enabledMethods, overrides, next);
     };
 
     const updateSsoProvider = (index: number, field: string, val: any) => {
-        const providers = [...(config.ssoProviders || [])];
-        providers[index] = { ...providers[index], [field]: val };
-        updateConfig({ ...config, ssoProviders: providers });
+        const next = ssoProviders.map((p, i) => i === index ? { ...p, [field]: val } : p);
+        emit(enabledMethods, overrides, next);
     };
 
     const removeSsoProvider = (index: number) => {
-        const providers = (config.ssoProviders || []).filter((_, i) => i !== index);
-        updateConfig({ ...config, ssoProviders: providers });
+        const next = ssoProviders.filter((_, i) => i !== index);
+        emit(enabledMethods, overrides, next);
     };
 
     return (
@@ -1325,7 +1530,7 @@ export function AuthConfigInput({ value, onChange, disabled }: AuthConfigInputPr
                     <label key={m.key} style={{ marginRight: '12px' }}>
                         <input
                             type="checkbox"
-                            checked={config.enabledMethods?.includes(m.key) || false}
+                            checked={enabledMethods.includes(m.key)}
                             onChange={() => toggleMethod(m.key)}
                             disabled={disabled}
                         /> {m.label} ({m.key})
@@ -1334,29 +1539,29 @@ export function AuthConfigInput({ value, onChange, disabled }: AuthConfigInputPr
             </div>
 
             {/* 微信凭证覆盖 */}
-            {config.enabledMethods?.includes('wechat') && (
+            {enabledMethods.includes('wechat') && (
                 <details style={{ marginTop: '12px' }}>
                     <summary>微信凭证覆盖</summary>
                     <div style={{ padding: '8px' }}>
-                        <input placeholder="appId" value={config.overrides?.wechat?.appId || ''}
+                        <input placeholder="appId" value={overrides.wechat?.appId || ''}
                             onChange={e => updateOverride('wechat', 'appId', e.target.value)} disabled={disabled} />
-                        <input placeholder="appSecret (*** 保留原值)" value={config.overrides?.wechat?.appSecret || ''}
+                        <input placeholder="appSecret (*** 保留原值)" value={overrides.wechat?.appSecret || ''}
                             onChange={e => updateOverride('wechat', 'appSecret', e.target.value)} disabled={disabled} />
-                        <input placeholder="小程序appId" value={config.overrides?.wechat?.miniProgramAppId || ''}
+                        <input placeholder="小程序appId" value={overrides.wechat?.miniProgramAppId || ''}
                             onChange={e => updateOverride('wechat', 'miniProgramAppId', e.target.value)} disabled={disabled} />
-                        <input placeholder="公众号Token" value={config.overrides?.wechat?.token || ''}
+                        <input placeholder="公众号Token" value={overrides.wechat?.token || ''}
                             onChange={e => updateOverride('wechat', 'token', e.target.value)} disabled={disabled} />
-                        <input placeholder="EncodingAESKey (*** 保留原值)" value={config.overrides?.wechat?.encodingAESKey || ''}
+                        <input placeholder="EncodingAESKey (*** 保留原值)" value={overrides.wechat?.encodingAESKey || ''}
                             onChange={e => updateOverride('wechat', 'encodingAESKey', e.target.value)} disabled={disabled} />
                     </div>
                 </details>
             )}
 
             {/* SSO Providers */}
-            {config.enabledMethods?.includes('sso') && (
+            {enabledMethods.includes('sso') && (
                 <div style={{ marginTop: '12px' }}>
                     <h4>SSO Providers</h4>
-                    {config.ssoProviders?.map((p, i) => (
+                    {ssoProviders.map((p, i) => (
                         <div key={i} style={{ padding: '8px', border: '1px solid #ccc', marginBottom: '8px' }}>
                             <input placeholder="显示名" value={p.name} onChange={e => updateSsoProvider(i, 'name', e.target.value)} />
                             <input placeholder="标识" value={p.providerKey} onChange={e => updateSsoProvider(i, 'providerKey', e.target.value)} />
@@ -1383,6 +1588,8 @@ export function AuthConfigInput({ value, onChange, disabled }: AuthConfigInputPr
 
 - [ ] **Step 2: 修改 channel-detail-forms.tsx**
 
+`extendDetailDocument` 必须查 struct 子字段（不能只查 `authConfig` 整体，struct 是结构化对象，需逐个子字段查询）:
+
 ```tsx
 // e:\code\vendure\packages\cjk-plugin\dashboard\channel-detail-forms.tsx
 import { DashboardDetailFormExtensionDefinition } from '@vendure/dashboard';
@@ -1395,7 +1602,11 @@ export const cjkChannelDetailForms: DashboardDetailFormExtensionDefinition[] = [
             query ExtendChannelAuthConfig {
                 channel {
                     customFields {
-                        authConfig
+                        authConfig {
+                            enabledMethods
+                            overridesJson
+                            ssoProvidersJson
+                        }
                     }
                 }
             }
@@ -1415,7 +1626,7 @@ export const cjkChannelDetailForms: DashboardDetailFormExtensionDefinition[] = [
 
 ```bash
 git add packages/cjk-plugin/dashboard/auth-config-widget.tsx packages/cjk-plugin/dashboard/channel-detail-forms.tsx
-git commit -m "feat(cjk-plugin): add AuthConfigInput dashboard widget for channel auth config"
+git commit -m "feat(cjk-plugin): add AuthConfigInput dashboard widget handling struct<->domain conversion"
 ```
 
 ---
@@ -1432,7 +1643,7 @@ Expected: 编译成功，无错误
 - [ ] **Step 2: 验证导出**
 
 Run: `cd e:\code\vendure\packages\cjk-plugin; node -e "const m = require('./lib/index'); console.log(Object.keys(m).filter(k => k.toLowerCase().includes('auth')))"` 
-Expected: 包含 auth 相关导出
+Expected: 包含 auth 相关导出（authI18nMessages、parseAndDecryptStruct、readChannelAuthConfig、getAuthOverride、serializeAuthConfigToStruct、encryptAuthConfig、decryptAuthConfig、maskAuthConfig、mergeAuthConfig、AuthMethodGuard、SsoAuthenticationStrategy、AuthShopResolver、AuthAdminResolver 等）
 
 - [ ] **Step 3: tsc 检查 dev-server**
 
@@ -1466,7 +1677,7 @@ Expected: 显示全部 5 种登录方式
 - [ ] **Step 5: 测试管理后台**
 
 访问 Dashboard channel-detail 页面
-Expected: 自定义配置区块可编辑 authConfig
+Expected: 自定义配置区块可编辑 authConfig（含 enabledMethods 复选框、微信凭证覆盖折叠面板、SSO Provider 增删改）
 
 ---
 
@@ -1474,15 +1685,36 @@ Expected: 自定义配置区块可编辑 authConfig
 
 **Spec 覆盖检查**:
 - [x] per-Channel 登录方式开关 → Task 3, 4, 5, 6, 7
-- [x] 租户凭证覆盖（混合模式）→ Task 5, 6, 7
+- [x] 租户凭证覆盖（混合模式）→ Task 5, 6, 7（通过 `getAuthOverride` 读取已解密凭证）
 - [x] 微信公众号 token + EncodingAESKey → Task 6
 - [x] SSO 双协议（zhao-sso + oauth2）→ Task 8
 - [x] 管理后台配置 UI → Task 19
 - [x] 前端动态渲染 → Task 16, 17, 18
 - [x] 4 语 i18n → Task 9
-- [x] 凭证加密 → Task 2
+- [x] 凭证加密 → Task 2（encrypt/decrypt/mask/merge + struct↔domain 转换）
 - [x] dev-server 测试数据 → Task 13, 14, 15
+- [x] Admin 写回 mutation → Task 11（`updateChannelAuthConfig`，含 `***` 保留原值合并语义）
+
+**struct↔domain 转换一致性检查**:
+- [x] Task 2 crypto.ts 提供 `parseAndDecryptStruct`（纯函数，struct→domain）/ `readChannelAuthConfig`（ctx 版本）/ `getAuthOverride`（策略用）/ `serializeAuthConfigToStruct`（domain→struct 写入用）
+- [x] Task 4 Guard 的 `isAuthMethodEnabled` 读 `enabledMethods`（struct 直接字段，无需 parse）
+- [x] Task 5/6/7 各策略通过 `getAuthOverride(ctx, method)` 取已解密凭证覆盖
+- [x] Task 8 SSO 策略通过 `readChannelAuthConfig(ctx)` 取 domain 配置（含已 parse+解密的 ssoProviders）
+- [x] Task 10 Shop resolver `ssoProviders` query 解析 `ssoProvidersJson`（不解密 secret）
+- [x] Task 11 Admin resolver `channelAuthConfig` query 用 `parseAndDecryptStruct` + `maskAuthConfig`；`updateChannelAuthConfig` mutation 用 `mergeAuthConfig` + `serializeAuthConfigToStruct`
+- [x] Task 14/15 测试数据用 struct 形状（`overridesJson`/`ssoProvidersJson` 为 JSON 字符串）
+- [x] Task 19 Dashboard widget 内部 parse struct JSON 字符串，onChange 时 stringify 回 struct 形状
+
+**Guard 检查**:
+- [x] Task 4 用 `internal_getRequestContext(parsed.req)` 取 ctx（不用 `(req as any)._requestContext`）
+- [x] Task 4 用 `ctx.apiType !== 'shop'` 判断 shop/admin（不用 `req.path.includes('/shop-api')`）
+
+**SSO 策略检查**:
+- [x] Task 8 实现 `init(injector: Injector)` 注入 UserService/CustomerService
+- [x] Task 8 `exchangeCodeForToken` 不依赖 redirect_uri（zhao-sso 和 oauth2 都不含 redirect_uri）
+- [x] Task 8 `findOrCreateUser` 完整实现（参照 wechat-auth-strategy.ts）
+- [x] Task 12 SSO 注册 `new SsoAuthenticationStrategy()`（无参，init 钩子注入）
 
 **已知需完善**:
-- Task 8 中 `findOrCreateUser` 需在 Task 12 plugin.ts 中用工厂函数注入 UserService/CustomerService 完成完整实现
 - Task 19 的 Dashboard widget 需实际运行验证 `blockId: 'custom-fields'` 是否正确（可能需要调整为实际 blockId）
+- Task 12 `adminApiExtensions` / `shopApiExtensions` 的 schema 字符串需在实际 plugin.ts 中按现有插件风格拼接（可能已存在 `adminApiExtensions` 字段，需合并而非覆盖）
