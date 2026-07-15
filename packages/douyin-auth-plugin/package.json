@@ -13,6 +13,7 @@
     },
     "dependencies": {},
     "peerDependencies": {
+        "@vendure/cjk-plugin": "^0.0.1",
         "@vendure/common": "^3.6.0",
         "@vendure/core": "^3.6.0"
     },

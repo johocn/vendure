@@ -1,5 +1,6 @@
-import { Injector, RequestContext, User, UserService, AuthenticationStrategy } from '@vendure/core';
+import { Injector, RequestContext, User, UserService, AuthenticationStrategy, ForbiddenError } from '@vendure/core';
 import { gql } from 'graphql-tag';
+import { getAuthOverride, isAuthMethodEnabled } from '@vendure/cjk-plugin';
 import { AlipayAuthService } from './alipay-auth.service';
 import { AlipayPluginOptions } from './types';
 
@@ -30,18 +31,27 @@ export class AlipayAuthenticationStrategy implements AuthenticationStrategy<Alip
     }
 
     async authenticate(ctx: RequestContext, data: AlipayAuthData): Promise<User | false | string> {
+        // 租户级登录方式开关检查（先于 devBypass）
+        if (!isAuthMethodEnabled(ctx, 'alipay')) {
+            throw new ForbiddenError();
+        }
+
         const authConfig = this.options.auth || {};
 
-        // devBypass 分支
+        // devBypass 分支（保持原样，不使用 override）
         if (authConfig.devBypass) {
             const testOpenid = authConfig.devBypassOpenid || 'dev_test_openid';
             const identifier = `alipay_${data.type}_${testOpenid}`;
             return this.findOrCreateUser(ctx, identifier);
         }
 
+        // 租户凭证覆盖（已解密；无覆盖则回退 this.options.auth）
+        const override = getAuthOverride(ctx, 'alipay');
+        const authConfigOpts = override || this.options.auth || {};
+
         // 真实分支
         try {
-            const openid = await this.alipayAuthService.getOpenidByAuthCode(data.authCode);
+            const openid = await this.alipayAuthService.getOpenidByAuthCode(data.authCode, authConfigOpts);
             const identifier = `alipay_${data.type}_${openid}`;
             return this.findOrCreateUser(ctx, identifier);
         } catch (e) {

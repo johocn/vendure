@@ -5,13 +5,19 @@ import { DouyinAuthPluginOptions } from './types';
 export class DouyinAuthService {
     constructor(private options: DouyinAuthPluginOptions) {}
 
-    async getOpenidByCode(code: string): Promise<string> {
-        const appId = this.options.miniProgramAppId || this.options.appId;
-        const secret = this.options.miniProgramAppSecret || this.options.appSecret;
+    async getOpenidByCode(
+        code: string,
+        appId: string,
+        appSecret: string,
+        miniProgramAppId?: string,
+        miniProgramAppSecret?: string,
+    ): Promise<string> {
+        const finalAppId = miniProgramAppId || appId;
+        const finalSecret = miniProgramAppSecret || appSecret;
         const response = await fetch('https://developer.toutiao.com/api/apps/v2/jscode2session', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ appid: appId, secret, code }),
+            body: JSON.stringify({ appid: finalAppId, secret: finalSecret, code }),
         });
         const data = (await response.json()) as any;
         return data.openid;
