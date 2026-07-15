@@ -1,5 +1,7 @@
 import { LanguageCode, Logger, PaymentMethodHandler } from '@vendure/core';
 import { AlipaySdk } from 'alipay-sdk';
+import { getPaymentOverride } from '@vendure/cjk-plugin';
+import type { AlipayCredentials } from '@vendure/cjk-plugin';
 
 import { loggerCtx } from './constants';
 
@@ -27,9 +29,13 @@ export const alipayPaymentHandler = new PaymentMethodHandler({
     },
     async createPayment(ctx, order, amount, args, metadata, method) {
         try {
+            const override = getPaymentOverride(ctx, 'alipay') as AlipayCredentials | null;
+            const appId = override?.appId || args.appId;
+            const privateKey = override?.privateKey || args.privateKey;
+
             const alipaySdk = new AlipaySdk({
-                appId: args.appId,
-                privateKey: args.privateKey,
+                appId,
+                privateKey,
                 signType: 'RSA2',
             });
 
