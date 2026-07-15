@@ -19,7 +19,7 @@ PickupLocation (现有实体扩展)
 ├─ type: 'store' | 'point' | 'employee'   // 新增 employee
 ├─ isPublic: boolean                         // 新增：公共=true / 租户自建=false
 ├─ ownerChannelId: ID (nullable)             // 新增：自建者 channel；公共为 null
-├─ address: string (unique)                  // 现有，新增全局唯一约束
+├─ address: string                            // 现有，应用层校验"同 address+coordinates 组合唯一"
 ├─ name, phoneNumber, businessHours, coordinates, partner  // 现有
 └─ channels: Channel[] (manyToMany)          // 现有：启用的租户列表
 ```
@@ -161,9 +161,15 @@ async promoteToPublic(ctx, id): Promise<PickupLocation> {
 ### 2.4 employee-pickup-eligibility checker
 
 ```typescript
+// 通过 init(injector) 注入 service（checker 是模块级单例）
+let employeeCustomerService: EmployeeCustomerService;
+
 export const employeePickupEligibilityChecker = new ShippingEligibilityChecker({
     code: 'employee-pickup-eligibility',
     args: {},
+    init: (injector: Injector) => {
+        employeeCustomerService = injector.get(EmployeeCustomerService);
+    },
     check: async (ctx, order) => {
         const mode = ctx.channel.customFields.employeePickupMode;
         if (mode === 'disabled') return false;
@@ -182,14 +188,22 @@ export const employeePickupEligibilityChecker = new ShippingEligibilityChecker({
 ### 2.5 employee-pickup fulfillmentHandler
 
 ```typescript
+// 通过 init 注入 service
+let pickupLocationService: PickupLocationService;
+let employeeCustomerService: EmployeeCustomerService;
+
 export const employeePickupFulfillmentHandler = new FulfillmentHandler({
     code: 'employee-pickup',
     args: {},
+    init: (injector: Injector) => {
+        pickupLocationService = injector.get(PickupLocationService);
+        employeeCustomerService = injector.get(EmployeeCustomerService);
+    },
     createFulfillment: async (ctx, orders, lines, args) => {
         const order = orders[0];
         const locationId = order.customFields.selectedPickupLocationId;
         if (!locationId) throw new Error(translateError(ctx, 'PICKUP_LOCATION_NOT_SELECTED'));
-        
+
         const location = await pickupLocationService.findOne(ctx, locationId);
         // strict 模式额外校验绑定
         const mode = ctx.channel.customFields.employeePickupMode;
@@ -593,10 +607,14 @@ export const PickupPermissions = {
 ## 9. 技术约束与风险
 
 **约束**：
-1. PickupLocation 地址唯一约束需数据库迁移（已有数据需去重）
+1. PickupLocation 地址唯一性通过应用层校验（同 address+coordinates 组合），不设数据库全局唯一约束
 2. Vendure `eligibleShippingMethods` 不返回 metadata，前端用 `code` 识别类型
-3. `setOrderCustomFields` 非内置 shop API，需自定义 mutation
+3. `setOrderCustomFields` 非内置 shop API，需自定义 mutation（setOrderPickupLocation）
 4. Admin UI 扩展需编译 Angular 模块
+5. **coordinates 是 JSON 类型**：前端 GraphQL 查询直接返回 JSON 对象（`coordinates`），不能选子字段（`coordinates { lat lng }` 无效）
+6. **ShippingMethod channel 分配**：populate 时 employee-pickup 必须通过 `shippingMethodService.assignToChannel` 分配到 default 和 shop-a channel
+7. **checker/handler service 注入**：通过 `init(injector: Injector)` 注入 EmployeeCustomerService/PickupLocationService，不能直接引用模块级变量
+8. **strict 模式测试用户**：shop-a 是 strict 模式，populate 必须为测试用户创建 EmployeeCustomer 绑定（verified=true），否则无法测试下单
 
 **风险**：
 1. strict 模式兼容性：现有未绑定用户在 strict channel 无法使用企业自提
