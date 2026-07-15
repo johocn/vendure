@@ -8,3 +8,6 @@ export * from './src/tenant/tenant-setup.service';
 export * from './src/pickup/pickup-location.entity';
 export * from './src/pickup/pickup-location.service';
 export * from './src/pickup/pickup-location-admin.resolver';
+export * from './src/auth/auth-config.types';
+export * from './src/auth/crypto';
+export * from './src/auth/auth-method-guard';
