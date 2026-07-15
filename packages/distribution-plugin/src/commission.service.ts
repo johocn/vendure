@@ -43,11 +43,18 @@ export class CommissionService {
         const customer = order.customer;
         if (!customer) return;
 
-        const referralCode = (customer as any).customFields?.referralCode;
-        if (!referralCode) return;
+        // 修复：读取 referredBy（推荐人的推荐码），而非 referralCode（自己的码）
+        const referredBy = (customer as any).customFields?.referredBy;
+        if (!referredBy) return;
 
-        const directDistributor = await this.distributionService.findByReferralCode(ctx, referralCode);
+        const directDistributor = await this.distributionService.findByReferralCode(ctx, referredBy);
         if (!directDistributor || directDistributor.status !== 'active') return;
+
+        // self-referral 校验：订单用户不能是分销商自己
+        if (String(directDistributor.customerId) === String(customer.id)) {
+            Logger.info(`Skip self-referral commission for customer ${customer.id}`, loggerCtx);
+            return;
+        }
 
         const directRate = (ctx.channel as any).customFields?.directCommissionRate ?? 1000;
         const orderTotal = order.total;
