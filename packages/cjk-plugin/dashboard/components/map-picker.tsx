@@ -58,7 +58,8 @@ export function MapPicker({ value, onChange, onReverseGeocode }: MapPickerProps)
         if (!AMap || !containerRef.current) return;
         if (mapRef.current) return; // 已初始化
 
-        const center: [number, number] = value
+        const hasCoords = value && value.lng != null && value.lat != null;
+        const center: [number, number] = hasCoords
             ? [value.lng, value.lat]
             : [116.397428, 39.90923]; // 北京天安门默认
 
@@ -67,7 +68,7 @@ export function MapPicker({ value, onChange, onReverseGeocode }: MapPickerProps)
             center,
         });
 
-        if (value) {
+        if (hasCoords) {
             markerRef.current = new AMap.Marker({
                 position: [value.lng, value.lat],
                 map: mapRef.current,
@@ -170,14 +171,14 @@ export function MapPicker({ value, onChange, onReverseGeocode }: MapPickerProps)
         <div className="space-y-2">
             <div className="flex items-center justify-between">
                 <span className="text-sm font-medium"><Trans>点击地图选择位置</Trans></span>
-                {value && (
+                {value && value.lng != null && value.lat != null && (
                     <button onClick={handleClear} className="flex items-center gap-1 text-sm text-destructive">
                         <X className="h-4 w-4" /> <Trans>清除选点</Trans>
                     </button>
                 )}
             </div>
             <div ref={containerRef} className="h-[400px] w-full border rounded" />
-            {value && (
+            {value && value.lng != null && value.lat != null && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <MapPin className="h-4 w-4" />
                     <Trans>经度</Trans>: {value.lng.toFixed(6)}, <Trans>纬度</Trans>: {value.lat.toFixed(6)}
