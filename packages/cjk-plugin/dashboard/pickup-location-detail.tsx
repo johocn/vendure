@@ -138,7 +138,7 @@ function PickupLocationDetailPage({ route }: { route: any }) {
         if (result.province) form.setValue('province', result.province, { shouldDirty: true });
         if (result.city) form.setValue('city', result.city, { shouldDirty: true });
         if (result.district) form.setValue('district', result.district, { shouldDirty: true });
-        if (result.street) form.setValue('street', result.street, { shouldDirty: true });
+        // 街道字段不自动回填（高德 town 数据不准），留给用户手填
     };
 
     const handleReverseGeocodePromise = async (lat: number, lng: number) => {
@@ -251,6 +251,12 @@ function PickupLocationDetailPage({ route }: { route: any }) {
                                     }}
                                 />
                             )}
+                        />
+                        <FormFieldWrapper
+                            control={form.control}
+                            name="street"
+                            label={<Trans>街道</Trans>}
+                            render={({ field }) => <TextInput {...field} placeholder="手动填写街道，如：云山街道" />}
                         />
                     </DetailFormGrid>
                 </PageBlock>

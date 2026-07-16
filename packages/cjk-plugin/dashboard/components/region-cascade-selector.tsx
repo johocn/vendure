@@ -59,14 +59,6 @@ export function RegionCascadeSelector({ value, onChange, hasConfigured, onRegion
         retry: false,
     });
 
-    // 拉街道级列表
-    const streetsQuery = useQuery({
-        queryKey: ['mapDistricts', selectedAdcodes.district],
-        queryFn: () => api.query(getMapDistricts, { parentAdcode: selectedAdcodes.district! }),
-        enabled: hasConfigured && !!selectedAdcodes.district,
-        retry: false,
-    });
-
     // 回显：根据 value.name 逐级匹配 adcode
     useEffect(() => {
         if (!provincesQuery.data) return;
@@ -122,21 +114,13 @@ export function RegionCascadeSelector({ value, onChange, hasConfigured, onRegion
     const handleDistrictChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const adcode = e.target.value;
         const node = (districtsQuery.data?.mapDistricts as DistrictNode[])?.find(d => d.adcode === adcode);
-        setSelectedAdcodes(prev => ({ ...prev, province: prev.province, city: prev.city, district: adcode, street: undefined }));
+        setSelectedAdcodes(prev => ({ ...prev, province: prev.province, city: prev.city, district: adcode }));
         onChange({ province: value.province, city: value.city, district: node?.name ?? '', street: '' });
         if (node?.center) onRegionCenterChange?.(node.center, 'district');
     };
 
-    const handleStreetChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const adcode = e.target.value;
-        const node = (streetsQuery.data?.mapDistricts as DistrictNode[])?.find(s => s.adcode === adcode);
-        setSelectedAdcodes(prev => ({ ...prev, street: adcode }));
-        onChange({ province: value.province, city: value.city, district: value.district, street: node?.name ?? '' });
-        if (node?.center) onRegionCenterChange?.(node.center, 'street');
-    };
-
     return (
-        <div className="col-span-2 grid grid-cols-2 md:grid-cols-4 gap-2">
+        <div className="col-span-2 grid grid-cols-2 md:grid-cols-3 gap-2">
             <SelectField
                 label={<Trans>省</Trans>}
                 value={selectedAdcodes.province ?? ''}
@@ -165,16 +149,6 @@ export function RegionCascadeSelector({ value, onChange, hasConfigured, onRegion
                 error={districtsQuery.isError}
                 onRetry={() => districtsQuery.refetch()}
                 disabled={!selectedAdcodes.city}
-            />
-            <SelectField
-                label={<Trans>街道</Trans>}
-                value={selectedAdcodes.street ?? ''}
-                onChange={handleStreetChange}
-                options={streetsQuery.data?.mapDistricts as DistrictNode[] | undefined}
-                loading={streetsQuery.isLoading}
-                error={streetsQuery.isError}
-                onRetry={() => streetsQuery.refetch()}
-                disabled={!selectedAdcodes.district}
             />
         </div>
     );
