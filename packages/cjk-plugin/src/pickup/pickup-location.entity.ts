@@ -1,5 +1,5 @@
 import { Column, Entity, JoinTable, ManyToMany } from 'typeorm';
-import { ChannelAware, Channel, DeepPartial, HasCustomFields, VendureEntity } from '@vendure/core';
+import { ChannelAware, Channel, DeepPartial, EntityId, HasCustomFields, ID, VendureEntity } from '@vendure/core';
 
 class CustomPickupLocationFields {}
 
@@ -11,7 +11,8 @@ export class PickupLocation extends VendureEntity implements ChannelAware, HasCu
 
     @Column() name: string;
 
-    @Column() type: 'store' | 'point';
+    @Column({ type: 'varchar', default: 'store' })
+    type: 'store' | 'point' | 'employee';
 
     @Column() address: string;
 
@@ -23,6 +24,16 @@ export class PickupLocation extends VendureEntity implements ChannelAware, HasCu
     coordinates: { lat: number; lng: number } | null;
 
     @Column({ nullable: true }) partner: string;
+
+    @Column({ nullable: true }) province: string | null;
+    @Column({ nullable: true }) city: string | null;
+    @Column({ nullable: true }) district: string | null;
+    @Column({ nullable: true }) street: string | null;
+
+    @Column({ default: false }) isPublic: boolean;
+
+    @EntityId({ nullable: true })
+    ownerChannelId: ID | null;
 
     @ManyToMany(() => Channel)
     @JoinTable()
