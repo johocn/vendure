@@ -134,10 +134,12 @@ function PickupLocationDetailPage({ route }: { route: any }) {
         city: string | null;
         district: string | null;
         street: string | null;
+        formattedAddress: string | null;
     }) => {
         if (result.province) form.setValue('province', result.province, { shouldDirty: true });
         if (result.city) form.setValue('city', result.city, { shouldDirty: true });
         if (result.district) form.setValue('district', result.district, { shouldDirty: true });
+        if (result.formattedAddress) form.setValue('address', result.formattedAddress, { shouldDirty: true });
         // 街道字段不自动回填（高德 town 数据不准），留给用户手填
     };
 

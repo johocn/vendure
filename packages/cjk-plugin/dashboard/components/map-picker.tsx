@@ -20,6 +20,7 @@ interface MapPickerProps {
         city: string | null;
         district: string | null;
         street: string | null;
+        formattedAddress: string | null;
     }) => void;
 }
 
@@ -170,6 +171,7 @@ export const MapPicker = forwardRef<MapPickerHandle, MapPickerProps>(function Ma
                 city: addr.city,
                 district: addr.district,
                 street: addr.street,
+                formattedAddress: addr.formattedAddress,
             });
         } catch (err: any) {
             toast.error('逆地理编码失败: ' + (err?.message ?? '未知错误'));
