@@ -22,11 +22,10 @@ import { Trans } from '@lingui/react/macro';
 import { useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { Controller } from 'react-hook-form';
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { MapPicker, MapPickerHandle } from './components/map-picker';
-import { AddressAutoComplete } from './components/address-auto-complete';
 import { RegionCascadeSelector, RegionValue } from './components/region-cascade-selector';
-import { getMapSdkConfig, reverseGeocode } from './lib/map-graphql';
+import { getMapSdkConfig } from './lib/map-graphql';
 
 const getPickupLocationDetail = graphql(`
     query GetPickupLocationDetail($id: ID!) {
@@ -82,6 +81,8 @@ function PickupLocationDetailPage({ route }: { route: any }) {
     const params = route.useParams();
     const navigate = useNavigate();
     const mapPickerRef = useRef<MapPickerHandle>(null);
+    const [mapShouldRender, setMapShouldRender] = useState(false);
+    const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null);
 
     const { form, submitHandler, entity, isPending } = useDetailPage<any, any, any>({
         queryDocument: getPickupLocationDetail,
@@ -122,6 +123,14 @@ function PickupLocationDetailPage({ route }: { route: any }) {
     });
     const hasMapConfigured = sdkConfigQuery.data?.mapSdkConfig?.hasConfigured ?? false;
 
+    // 编辑模式回显：已有 coordinates 则自动渲染地图
+    useEffect(() => {
+        if (entity?.coordinates?.lat != null && entity?.coordinates?.lng != null) {
+            setMapCenter({ lat: entity.coordinates.lat, lng: entity.coordinates.lng });
+            setMapShouldRender(true);
+        }
+    }, [entity]);
+
     const handleRegionChange = (val: RegionValue) => {
         form.setValue('province', val.province || null, { shouldDirty: true });
         form.setValue('city', val.city || null, { shouldDirty: true });
@@ -140,17 +149,6 @@ function PickupLocationDetailPage({ route }: { route: any }) {
         if (result.city) form.setValue('city', result.city, { shouldDirty: true });
         if (result.district) form.setValue('district', result.district, { shouldDirty: true });
         if (result.formattedAddress) form.setValue('address', result.formattedAddress, { shouldDirty: true });
-        // 街道字段不自动回填（高德 town 数据不准），留给用户手填
-    };
-
-    const handleReverseGeocodePromise = async (lat: number, lng: number) => {
-        try {
-            const result = await api.query(reverseGeocode, { lat, lng });
-            const addr = result.reverseGeocode;
-            handleReverseGeocode(addr);
-        } catch (err: any) {
-            toast.error('逆地理编码失败: ' + (err?.message ?? '未知错误'));
-        }
     };
 
     return (
@@ -230,8 +228,11 @@ function PickupLocationDetailPage({ route }: { route: any }) {
                                     onChange={handleRegionChange}
                                     hasConfigured={hasMapConfigured}
                                     onRegionCenterChange={(center, level) => {
-                                        const zoomMap = { province: 7, city: 9, district: 11, street: 13 };
-                                        mapPickerRef.current?.setCenter(center.lng, center.lat, false, zoomMap[level]);
+                                        // 只有选完区才触发地图加载和定位
+                                        if (level === 'district') {
+                                            setMapCenter(center);
+                                            setMapShouldRender(true);
+                                        }
                                     }}
                                 />
                             )}
@@ -241,41 +242,32 @@ function PickupLocationDetailPage({ route }: { route: any }) {
                             name="address"
                             label={<Trans>详细地址</Trans>}
                             render={({ field }) => (
-                                <AddressAutoComplete
-                                    value={field.value ?? ''}
-                                    onChange={field.onChange}
-                                    hasConfigured={hasMapConfigured}
-                                    placeholder="门牌号，如：西双阳大街188号"
-                                    onLocationSelect={(location) => {
-                                        form.setValue('coordinates', { lat: location.lat, lng: location.lng }, { shouldDirty: true });
-                                        mapPickerRef.current?.setCenter(location.lng, location.lat, true);
-                                        handleReverseGeocodePromise(location.lat, location.lng);
-                                    }}
+                                <TextInput
+                                    {...field}
+                                    placeholder="点击地图自动填充，或手动输入门牌号"
                                 />
                             )}
                         />
-                        <FormFieldWrapper
-                            control={form.control}
-                            name="street"
-                            label={<Trans>街道</Trans>}
-                            render={({ field }) => <TextInput {...field} placeholder="手动填写街道，如：云山街道" />}
-                        />
                     </DetailFormGrid>
                 </PageBlock>
-                <PageBlock column="main" blockId="map-picker">
-                    <Controller
-                        control={form.control}
-                        name="coordinates"
-                        render={({ field }) => (
-                            <MapPicker
-                                ref={mapPickerRef}
-                                value={field.value}
-                                onChange={field.onChange}
-                                onReverseGeocode={handleReverseGeocode}
-                            />
-                        )}
-                    />
-                </PageBlock>
+                {mapShouldRender && (
+                    <PageBlock column="main" blockId="map-picker">
+                        <Controller
+                            control={form.control}
+                            name="coordinates"
+                            render={({ field }) => (
+                                <MapPicker
+                                    ref={mapPickerRef}
+                                    value={field.value}
+                                    onChange={field.onChange}
+                                    onReverseGeocode={handleReverseGeocode}
+                                    initialCenter={mapCenter}
+                                    initialZoom={13}
+                                />
+                            )}
+                        />
+                    </PageBlock>
+                )}
             </PageLayout>
         </Page>
     );

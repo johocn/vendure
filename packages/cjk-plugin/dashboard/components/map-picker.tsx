@@ -22,6 +22,8 @@ interface MapPickerProps {
         street: string | null;
         formattedAddress: string | null;
     }) => void;
+    initialCenter?: { lat: number; lng: number } | null;
+    initialZoom?: number;
 }
 
 interface AutoCompleteItem {
@@ -31,7 +33,7 @@ interface AutoCompleteItem {
 }
 
 export const MapPicker = forwardRef<MapPickerHandle, MapPickerProps>(function MapPicker(
-    { value, onChange, onReverseGeocode },
+    { value, onChange, onReverseGeocode, initialCenter, initialZoom },
     ref,
 ) {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -109,12 +111,15 @@ export const MapPicker = forwardRef<MapPickerHandle, MapPickerProps>(function Ma
         if (mapRef.current) return;
 
         const hasCoords = value && value.lng != null && value.lat != null;
+        const hasInitial = initialCenter && initialCenter.lng != null && initialCenter.lat != null;
         const center: [number, number] = hasCoords
             ? [value.lng, value.lat]
-            : [116.397428, 39.90923];
+            : hasInitial
+                ? [initialCenter.lng, initialCenter.lat]
+                : [116.397428, 39.90923];
 
         mapRef.current = new AMap.Map(containerRef.current, {
-            zoom: 15,
+            zoom: initialZoom ?? 15,
             center,
         });
 
