@@ -62,30 +62,50 @@
 `cjk-plugin/src/plugin.ts` 扩展 `PickupLocation`、`CreatePickupLocationInput`、`UpdatePickupLocationInput`：
 
 ```graphql
+# 新增枚举（让前端 useGeneratedForm 自动渲染为 Select）
+enum PickupLocationType {
+    store
+    point
+    employee
+}
+
 type PickupLocation implements Node {
     # ... 现有字段
+    # type: String!  ← 改为下方枚举
+    type: PickupLocationType!
     province: String
     city: String
     district: String
     street: String
+    isPublic: Boolean!    # 原实体已有，但旧 GraphQL schema 未暴露，需补
 }
 
 input CreatePickupLocationInput {
     # ... 现有字段
+    # type: String!  ← 改为枚举
+    type: PickupLocationType!
     province: String
     city: String
     district: String
     street: String
+    isPublic: Boolean
 }
 
 input UpdatePickupLocationInput {
     # ... 现有字段
+    type: PickupLocationType
     province: String
     city: String
     district: String
     street: String
+    isPublic: Boolean
 }
 ```
+
+**关键决策：type 改为 GraphQL enum**
+- 原因：`useGeneratedForm` 的 `isStringFieldWithOptions` 只对带 options 的 customFields 生效，对普通 String 字段渲染为 TextInput
+- enum 类型会被 `getOperationVariablesFields` 识别为带 options 的字段，自动用 `SelectWithOptions` 渲染
+- 实体层 `type: 'store' | 'point' | 'employee'` 联合类型保持不变，只是 GraphQL schema 层面声明为 enum
 
 ### 1.3 Migration
 
@@ -93,20 +113,65 @@ input UpdatePickupLocationInput {
 
 ### 1.4 地图服务商配置存储
 
-复用 Channel customFields 机制（参考已完成的 payConfig 模式），在 Channel 加 `mapConfig` 自定义字段：
+复用 Channel customFields 机制（参考已完成的 payConfig 模式），在 [tenant-channel-custom-fields.ts](file:///e:/code/vendure/packages/cjk-plugin/src/tenant/tenant-channel-custom-fields.ts) 的 `Channel` 数组追加 `mapConfig` struct 字段：
+
+```typescript
+{
+    name: 'mapConfig',
+    type: 'struct',
+    nullable: true,
+    public: false,  // 仅管理员可访问
+    label: [{ languageCode: LanguageCode.zh_Hans, value: '地图服务配置' }],
+    fields: [
+        { name: 'provider', type: 'string' },        // 'amap' | 'tencent' | 'baidu'
+        { name: 'apiKey', type: 'text' },            // 高德 key / 腾讯 key / 百度 AK
+        { name: 'securityJsCode', type: 'text' },    // 高德安全密钥（高德专用，可空）
+    ],
+},
+```
+
+**不加密存储**（与 payConfig 不同，地图 key 本身需要在前端 SDK 加载时暴露，加密意义不大；管理员后台访问受权限保护）。
+
+MapProviderConfig TypeScript 接口：
 
 ```typescript
 // cjk-plugin/src/map/map-config.ts
 export interface MapProviderConfig {
     provider: 'amap' | 'tencent' | 'baidu';
-    apiKey: string;        // 高德 key / 腾讯 key / 百度 AK
-    securityJsCode?: string; // 高德安全密钥（高德专用）
+    apiKey: string;
+    securityJsCode?: string;
 }
 ```
 
-通过 Channel.customFields.mapConfig 存储（JSON）。默认 Channel（默认租户）配置好后，子租户继承或覆盖。
+### 1.5 Plugin Module 注册
 
-### 1.5 地图配置查询接口（掩码展示用）
+[plugin.ts](file:///e:/code/vendure/packages/cjk-plugin/src/plugin.ts) 的 `@VendurePlugin` 装饰器需要扩展：
+
+```typescript
+@VendurePlugin({
+    imports: [PluginCommonModule],
+    entities: [PickupLocation, EmployeeCustomer],
+    providers: [
+        // ... 现有 providers
+        MapProviderRegistry,   // 新增
+        MapService,            // 新增
+    ],
+    adminApiExtensions: {
+        schema: () => { /* 包含 PickupLocationType enum + 省市区街道字段 + mapDistricts/reverseGeocode/mapSdkConfig/channelMapConfig Query */ },
+        resolvers: [
+            PickupLocationAdminResolver,    // 现有，需扩展省市区街道字段处理
+            EmployeeCustomerAdminResolver,
+            AuthAdminResolver,
+            MapAdminResolver,               // 新增：处理 mapDistricts/reverseGeocode/mapSdkConfig/channelMapConfig
+        ],
+    },
+    // ...
+})
+```
+
+**注意**：`PickupLocationAdminResolver` 需要修改 create/update 方法，把 `province/city/district/street/isPublic` 字段透传给 service。
+
+### 1.6 地图配置查询接口（掩码展示用）
 
 ```graphql
 extend type Query {
@@ -342,6 +407,9 @@ interface MapPickerProps {
 ### 3.5 pickup-location-detail.tsx 重写
 
 ```tsx
+import { Controller } from 'react-hook-form';
+import { FormFieldWrapper, SelectWithOptions, TextInput, BooleanInput } from '@vendure/dashboard';
+
 function PickupLocationDetailPage({ route }: { route: any }) {
     const params = route.useParams();
     const navigate = useNavigate();
@@ -363,6 +431,7 @@ function PickupLocationDetailPage({ route }: { route: any }) {
             city: loc.city,
             district: loc.district,
             street: loc.street,
+            isPublic: loc.isPublic,
         }),
         onSuccess: async data => {
             toast.success(entity ? '更新成功' : '创建成功');
@@ -379,10 +448,11 @@ function PickupLocationDetailPage({ route }: { route: any }) {
     const district = form.watch('district');
     const street = form.watch('street');
     const detailAddr = form.watch('address');
-    
+
     useEffect(() => {
-        const fullAddress = [province, city, district, street, detailAddr].filter(Boolean).join('');
-        if (province || city || district || street) {
+        const regionPart = [province, city, district, street].filter(Boolean).join('');
+        if (regionPart) {
+            const fullAddress = regionPart + (detailAddr ?? '');
             form.setValue('address', fullAddress, { shouldDirty: true });
         }
     }, [province, city, district, street]);
@@ -400,17 +470,98 @@ function PickupLocationDetailPage({ route }: { route: any }) {
             <PageLayout>
                 <PageBlock column="main" blockId="basic-info">
                     <DetailFormGrid>
-                        {/* 基础字段：name, type(select), phoneNumber, businessHours, partner, isPublic(checkbox) */}
+                        <FormFieldWrapper
+                            control={form.control}
+                            name="name"
+                            label="名称"
+                            render={({ field }) => <TextInput {...field} placeholder="如：双阳商城店" />}
+                        />
+                        <FormFieldWrapper
+                            control={form.control}
+                            name="type"
+                            label="类型"
+                            render={({ field }) => (
+                                <SelectWithOptions
+                                    {...field}
+                                    fieldDef={{
+                                        type: 'string',
+                                        name: 'type',
+                                        options: [
+                                            { value: 'store', label: '门店' },
+                                            { value: 'point', label: '驿站' },
+                                            { value: 'employee', label: '员工自提点' },
+                                        ],
+                                    }}
+                                />
+                            )}
+                        />
+                        <FormFieldWrapper
+                            control={form.control}
+                            name="phoneNumber"
+                            label="电话"
+                            render={({ field }) => <TextInput {...field} placeholder="如：0431-84221001" />}
+                        />
+                        <FormFieldWrapper
+                            control={form.control}
+                            name="businessHours"
+                            label="营业时间"
+                            render={({ field }) => <TextInput {...field} placeholder="如：09:00-22:00" />}
+                        />
+                        <FormFieldWrapper
+                            control={form.control}
+                            name="partner"
+                            label="合作方"
+                            render={({ field }) => <TextInput {...field} />}
+                        />
+                        <FormFieldWrapper
+                            control={form.control}
+                            name="isPublic"
+                            label="是否公开"
+                            render={({ field }) => <BooleanInput {...field} />}
+                        />
                     </DetailFormGrid>
                 </PageBlock>
                 <PageBlock column="main" blockId="region-address">
                     <DetailFormGrid>
-                        <RegionCascadeSelector /* ... */ />
-                        {/* 详细地址输入框（address 字段，作为门牌号） */}
+                        <Controller
+                            control={form.control}
+                            name="province"
+                            render={({ field }) => (
+                                <RegionCascadeSelector
+                                    value={{
+                                        province: field.value,
+                                        city: form.watch('city'),
+                                        district: form.watch('district'),
+                                        street: form.watch('street'),
+                                    }}
+                                    onChange={val => {
+                                        form.setValue('province', val.province, { shouldDirty: true });
+                                        form.setValue('city', val.city, { shouldDirty: true });
+                                        form.setValue('district', val.district, { shouldDirty: true });
+                                        form.setValue('street', val.street, { shouldDirty: true });
+                                    }}
+                                />
+                            )}
+                        />
+                        <FormFieldWrapper
+                            control={form.control}
+                            name="address"
+                            label="详细地址"
+                            render={({ field }) => <TextInput {...field} placeholder="门牌号，如：西双阳大街188号" />}
+                        />
                     </DetailFormGrid>
                 </PageBlock>
                 <PageBlock column="main" blockId="map-picker">
-                    <MapPicker /* ... */ />
+                    <Controller
+                        control={form.control}
+                        name="coordinates"
+                        render={({ field }) => (
+                            <MapPicker
+                                value={field.value}
+                                onChange={field.onChange}
+                            />
+                        )}
+                    />
                 </PageBlock>
             </PageLayout>
         </Page>
@@ -418,7 +569,55 @@ function PickupLocationDetailPage({ route }: { route: any }) {
 }
 ```
 
-### 3.6 pickup-location-list.tsx 中文化微调
+**关键点**：
+- `name/type/phoneNumber/businessHours/partner/isPublic/address` 用 `FormFieldWrapper` + 内置控件
+- `type` 用 `SelectWithOptions` 手动传 `fieldDef.options`（因为 GraphQL enum 在 form schema 中可能不自动带 options，需手动指定）
+- `province/city/district/street` 用单个 `Controller` 包裹 `RegionCascadeSelector`（4 字段联动，由组件内部管理）
+- `coordinates` 用 `Controller` 包裹 `MapPicker`
+- **不使用 `DetailFormGrid` 的自动渲染**，全部手动用 `FormFieldWrapper` / `Controller`
+
+### 3.6 lib/map-graphql.ts 内容
+
+```typescript
+import { graphql } from '@vendure/dashboard';
+
+export const getMapSdkConfig = graphql(`
+    query GetMapSdkConfig {
+        mapSdkConfig {
+            provider
+            sdkUrl
+        }
+    }
+`);
+
+export const getMapDistricts = graphql(`
+    query GetMapDistricts($parentAdcode: String) {
+        mapDistricts(parentAdcode: $parentAdcode) {
+            adcode
+            name
+            level
+            center {
+                lat
+                lng
+            }
+        }
+    }
+`);
+
+export const reverseGeocode = graphql(`
+    query ReverseGeocode($lat: Float!, $lng: Float!) {
+        reverseGeocode(lat: $lat, lng: $lng) {
+            province
+            city
+            district
+            street
+            formattedAddress
+        }
+    }
+`);
+```
+
+### 3.7 pickup-location-list.tsx 中文化微调
 
 仅修改：
 - 列标题：`ID` / `名称` / `类型` / `地址` / `操作`
@@ -639,12 +838,18 @@ it('MapConfig 未配置时降级为输入框', async () => {});
 
 ## 关键技术约束
 
-1. **DetailPage 组件不支持自定义字段渲染**（`detail-page.tsx` 用 `DefaultInputForType` 自动渲染所有字段，无 `fieldRenderers` prop），必须改用 `Page` + `useDetailPage` hook 完全自定义表单
+1. **DetailPage 组件不支持自定义字段渲染**（`detail-page.tsx` 用 `DefaultInputForType` 自动渲染所有字段，无 `fieldRenderers` prop），必须改用 `Page` + `useDetailPage` hook + 手动 `FormFieldWrapper`/`Controller` 完全自定义表单
 2. **`useDetailPage` 的 `setValuesForUpdate` 在新建模式下不会被调用**（`use-generated-form.tsx:154-157` 有 `processedEntity ?` 保护），只需 `title` 回调加空值保护
-3. **行政区划数据每次实时查询高德 API**，不缓存（数据量小，省市区共约 4000 条）
-4. **JS SDK 加载 URL 暴露 key 给前端**（地图渲染必须在浏览器端，管理员后台场景可接受）
-5. **腾讯/百度 Provider 首版只占位**，实现相同接口但不保证功能完整
-6. **address 字段冗余保留**，由前端自动拼接，后端不强制校验一致性
+3. **type 字段必须改为 GraphQL enum**，否则 `useGeneratedForm` 会渲染为 TextInput 而非 Select（`isStringFieldWithOptions` 只对带 options 的 customFields 生效）
+4. **行政区划数据每次实时查询高德 API**，不缓存（数据量小，省市区共约 4000 条）
+5. **JS SDK 加载 URL 暴露 key 给前端**（地图渲染必须在浏览器端，管理员后台场景可接受）
+6. **腾讯/百度 Provider 首版只占位**，实现相同接口但不保证功能完整
+7. **address 字段冗余保留**，由前端自动拼接，后端不强制校验一致性
+8. **mapConfig 不加密存储**（与 payConfig 不同，地图 key 需在前端 SDK 加载时暴露，加密无意义）
+9. **Module 注册**：MapProviderRegistry、MapService 需在 [plugin.ts](file:///e:/code/vendure/packages/cjk-plugin/src/plugin.ts) 的 `providers` 注册；MapAdminResolver 需在 `adminApiExtensions.resolvers` 注册
+10. **mapConfig customField 注册位置**：[tenant-channel-custom-fields.ts](file:///e:/code/vendure/packages/cjk-plugin/src/tenant/tenant-channel-custom-fields.ts) 的 Channel 数组追加 struct 字段
+11. **前端表单全部手动渲染**：不使用 `DetailFormGrid` 自动渲染，每个字段用 `FormFieldWrapper`（普通字段）或 `Controller`（自定义控件）包裹
+12. **coordinates 字段是 simple-json 类型**：`useGeneratedForm` 会渲染为 TextInput，必须用 `Controller` 包裹 `MapPicker` 覆盖
 
 ## 参考文件
 
