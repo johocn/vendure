@@ -41,13 +41,13 @@ export class AmapProvider implements MapProvider {
         if (data.status !== '1') {
             throw new Error(`高德逆地理编码失败: ${data.info}`);
         }
-        const addr = data.regeocoded?.addressComponent ?? {};
+        const addr = data.regeocode?.addressComponent ?? {};
         return {
             province: addr.province && addr.province.length > 0 ? addr.province : null,
             city: addr.city && addr.city.length > 0 ? addr.city : null,
             district: addr.district && addr.district.length > 0 ? addr.district : null,
             street: addr.township && addr.township.length > 0 ? addr.township : null,
-            formattedAddress: data.regeocoded?.formatted_address ?? '',
+            formattedAddress: data.regeocode?.formatted_address ?? '',
         };
     }
 }
