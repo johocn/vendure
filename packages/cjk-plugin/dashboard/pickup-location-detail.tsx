@@ -22,9 +22,11 @@ import { Trans } from '@lingui/react/macro';
 import { useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { Controller } from 'react-hook-form';
-import { MapPicker } from './components/map-picker';
+import { useRef } from 'react';
+import { MapPicker, MapPickerHandle } from './components/map-picker';
+import { AddressAutoComplete } from './components/address-auto-complete';
 import { RegionCascadeSelector, RegionValue } from './components/region-cascade-selector';
-import { getMapSdkConfig } from './lib/map-graphql';
+import { getMapSdkConfig, reverseGeocode } from './lib/map-graphql';
 
 const getPickupLocationDetail = graphql(`
     query GetPickupLocationDetail($id: ID!) {
@@ -79,6 +81,7 @@ export const pickupLocationDetail: DashboardRouteDefinition = {
 function PickupLocationDetailPage({ route }: { route: any }) {
     const params = route.useParams();
     const navigate = useNavigate();
+    const mapPickerRef = useRef<MapPickerHandle>(null);
 
     const { form, submitHandler, entity, isPending } = useDetailPage<any, any, any>({
         queryDocument: getPickupLocationDetail,
@@ -136,6 +139,16 @@ function PickupLocationDetailPage({ route }: { route: any }) {
         if (result.city) form.setValue('city', result.city, { shouldDirty: true });
         if (result.district) form.setValue('district', result.district, { shouldDirty: true });
         if (result.street) form.setValue('street', result.street, { shouldDirty: true });
+    };
+
+    const handleReverseGeocodePromise = async (lat: number, lng: number) => {
+        try {
+            const result = await api.query(reverseGeocode, { lat, lng });
+            const addr = result.reverseGeocode;
+            handleReverseGeocode(addr);
+        } catch (err: any) {
+            toast.error('逆地理编码失败: ' + (err?.message ?? '未知错误'));
+        }
     };
 
     return (
@@ -214,6 +227,10 @@ function PickupLocationDetailPage({ route }: { route: any }) {
                                     }}
                                     onChange={handleRegionChange}
                                     hasConfigured={hasMapConfigured}
+                                    onRegionCenterChange={(center, level) => {
+                                        const zoomMap = { province: 7, city: 9, district: 11, street: 13 };
+                                        mapPickerRef.current?.setCenter(center.lng, center.lat, false, zoomMap[level]);
+                                    }}
                                 />
                             )}
                         />
@@ -221,7 +238,19 @@ function PickupLocationDetailPage({ route }: { route: any }) {
                             control={form.control}
                             name="address"
                             label={<Trans>详细地址</Trans>}
-                            render={({ field }) => <TextInput {...field} placeholder="门牌号，如：西双阳大街188号" />}
+                            render={({ field }) => (
+                                <AddressAutoComplete
+                                    value={field.value ?? ''}
+                                    onChange={field.onChange}
+                                    hasConfigured={hasMapConfigured}
+                                    placeholder="门牌号，如：西双阳大街188号"
+                                    onLocationSelect={(location) => {
+                                        form.setValue('coordinates', { lat: location.lat, lng: location.lng }, { shouldDirty: true });
+                                        mapPickerRef.current?.setCenter(location.lng, location.lat, true);
+                                        handleReverseGeocodePromise(location.lat, location.lng);
+                                    }}
+                                />
+                            )}
                         />
                     </DetailFormGrid>
                 </PageBlock>
@@ -231,6 +260,7 @@ function PickupLocationDetailPage({ route }: { route: any }) {
                         name="coordinates"
                         render={({ field }) => (
                             <MapPicker
+                                ref={mapPickerRef}
                                 value={field.value}
                                 onChange={field.onChange}
                                 onReverseGeocode={handleReverseGeocode}

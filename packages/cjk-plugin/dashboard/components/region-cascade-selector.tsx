@@ -17,15 +17,17 @@ interface RegionCascadeSelectorProps {
     value: RegionValue;
     onChange: (value: RegionValue) => void;
     hasConfigured: boolean;
+    onRegionCenterChange?: (center: { lat: number; lng: number }, level: 'province' | 'city' | 'district' | 'street') => void;
 }
 
 interface DistrictNode {
     adcode: string;
     name: string;
     level: string;
+    center: { lat: number; lng: number };
 }
 
-export function RegionCascadeSelector({ value, onChange, hasConfigured }: RegionCascadeSelectorProps) {
+export function RegionCascadeSelector({ value, onChange, hasConfigured, onRegionCenterChange }: RegionCascadeSelectorProps) {
     const [selectedAdcodes, setSelectedAdcodes] = useState<{
         province?: string;
         city?: string;
@@ -106,6 +108,7 @@ export function RegionCascadeSelector({ value, onChange, hasConfigured }: Region
         const node = (provincesQuery.data?.mapDistricts as DistrictNode[])?.find(p => p.adcode === adcode);
         setSelectedAdcodes({ province: adcode });
         onChange({ province: node?.name ?? '', city: '', district: '', street: '' });
+        if (node?.center) onRegionCenterChange?.(node.center, 'province');
     };
 
     const handleCityChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -113,6 +116,7 @@ export function RegionCascadeSelector({ value, onChange, hasConfigured }: Region
         const node = (citiesQuery.data?.mapDistricts as DistrictNode[])?.find(c => c.adcode === adcode);
         setSelectedAdcodes(prev => ({ ...prev, province: prev.province, city: adcode, district: undefined, street: undefined }));
         onChange({ province: value.province, city: node?.name ?? '', district: '', street: '' });
+        if (node?.center) onRegionCenterChange?.(node.center, 'city');
     };
 
     const handleDistrictChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -120,6 +124,7 @@ export function RegionCascadeSelector({ value, onChange, hasConfigured }: Region
         const node = (districtsQuery.data?.mapDistricts as DistrictNode[])?.find(d => d.adcode === adcode);
         setSelectedAdcodes(prev => ({ ...prev, province: prev.province, city: prev.city, district: adcode, street: undefined }));
         onChange({ province: value.province, city: value.city, district: node?.name ?? '', street: '' });
+        if (node?.center) onRegionCenterChange?.(node.center, 'district');
     };
 
     const handleStreetChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -127,6 +132,7 @@ export function RegionCascadeSelector({ value, onChange, hasConfigured }: Region
         const node = (streetsQuery.data?.mapDistricts as DistrictNode[])?.find(s => s.adcode === adcode);
         setSelectedAdcodes(prev => ({ ...prev, street: adcode }));
         onChange({ province: value.province, city: value.city, district: value.district, street: node?.name ?? '' });
+        if (node?.center) onRegionCenterChange?.(node.center, 'street');
     };
 
     return (
