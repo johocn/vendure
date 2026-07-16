@@ -48,7 +48,7 @@ export const pickupLocationDetail: DashboardRouteDefinition = {
             createDocument={createPickupLocation}
             updateDocument={updatePickupLocation}
             route={route}
-            title={location => location.name}
+            title={location => location?.name ?? '新建自提点'}
             setValuesForUpdate={location => ({
                 id: location.id,
                 name: location.name,
