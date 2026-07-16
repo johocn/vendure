@@ -36,6 +36,8 @@
 7. **type 字段用 SelectWithOptions 手动传 options**：因为 GraphQL enum 在 form schema 中可能不自动带 options，需手动指定
 8. **coordinates 字段是 simple-json**：useGeneratedForm 会渲染为 TextInput，必须用 Controller 包裹 MapPicker 覆盖
 9. **useDetailPage 的 setValuesForUpdate 在新建模式下不会被调用**（有 processedEntity 保护），只需 title 回调加空值保护
+10. **多语言机制**：Vendure Dashboard 用 `@lingui/cli` 管理，`sourceLocale: 'en'`，所有用户可见文案必须用 `@lingui/react/macro` 的 `<Trans>...</Trans>` 包裹。cjk-plugin 现有代码混用：英文源文案（如 `<Trans>Pickup Locations</Trans>`）和中文源文案（如 `<Trans>新建自提点</Trans>`）都存在。**本 plan 采取实用策略**：所有文案用 `<Trans>` 包裹，文案本身用中文（cjk-plugin 是中国特化插件，主要面向中文用户；lingui 仍会提取 msgid，未来可翻译其他语言）
+11. **toast 消息也应用 `<Trans>` 包裹**：但 `toast.success(msg)` 接收 string，需要用 `i18n._(t\`msg\`)` 模式。简化方案：toast 消息硬编码中文（与现有 pickup-location-list.tsx 的 `toast.success('删除成功')` 一致），不走 lingui
 
 ---
 
@@ -158,6 +160,7 @@ git commit -m "feat: Add map SDK loader singleton"
 // e:\code\vendure\packages\cjk-plugin\dashboard\components\region-cascade-selector.tsx
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@vendure/dashboard';
+import { Trans } from '@lingui/react/macro';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { getMapDistricts } from '../lib/map-graphql';
@@ -252,7 +255,7 @@ export function RegionCascadeSelector({ value, onChange, hasConfigured }: Region
     if (!hasConfigured) {
         return (
             <div className="col-span-2 p-4 border rounded bg-muted/30 text-sm text-muted-foreground">
-                行政区划数据不可用（地图服务未配置），请手动在下方详细地址输入完整地址
+                <Trans>行政区划数据不可用（地图服务未配置），请手动在下方详细地址输入完整地址</Trans>
             </div>
         );
     }
@@ -288,7 +291,7 @@ export function RegionCascadeSelector({ value, onChange, hasConfigured }: Region
     return (
         <div className="col-span-2 grid grid-cols-2 md:grid-cols-4 gap-2">
             <SelectField
-                label="省"
+                label={<Trans>省</Trans>}
                 value={selectedAdcodes.province ?? ''}
                 onChange={handleProvinceChange}
                 options={provincesQuery.data?.mapDistricts as DistrictNode[] | undefined}
@@ -297,7 +300,7 @@ export function RegionCascadeSelector({ value, onChange, hasConfigured }: Region
                 onRetry={() => provincesQuery.refetch()}
             />
             <SelectField
-                label="市"
+                label={<Trans>市</Trans>}
                 value={selectedAdcodes.city ?? ''}
                 onChange={handleCityChange}
                 options={citiesQuery.data?.mapDistricts as DistrictNode[] | undefined}
@@ -307,7 +310,7 @@ export function RegionCascadeSelector({ value, onChange, hasConfigured }: Region
                 disabled={!selectedAdcodes.province}
             />
             <SelectField
-                label="区/县"
+                label={<Trans>区/县</Trans>}
                 value={selectedAdcodes.district ?? ''}
                 onChange={handleDistrictChange}
                 options={districtsQuery.data?.mapDistricts as DistrictNode[] | undefined}
@@ -317,7 +320,7 @@ export function RegionCascadeSelector({ value, onChange, hasConfigured }: Region
                 disabled={!selectedAdcodes.city}
             />
             <SelectField
-                label="街道"
+                label={<Trans>街道</Trans>}
                 value={selectedAdcodes.street ?? ''}
                 onChange={handleStreetChange}
                 options={streetsQuery.data?.mapDistricts as DistrictNode[] | undefined}
@@ -333,7 +336,7 @@ export function RegionCascadeSelector({ value, onChange, hasConfigured }: Region
 function SelectField({
     label, value, onChange, options, loading, error, onRetry, disabled,
 }: {
-    label: string;
+    label: React.ReactNode;
     value: string;
     onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
     options?: DistrictNode[];
@@ -347,11 +350,11 @@ function SelectField({
             <label className="text-sm font-medium mb-1 block">{label}</label>
             {loading ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" /> 加载中
+                    <Loader2 className="h-4 w-4 animate-spin" /> <Trans>加载中</Trans>
                 </div>
             ) : error ? (
                 <button onClick={onRetry} className="flex items-center gap-2 text-sm text-destructive">
-                    <RefreshCw className="h-4 w-4" /> 加载失败，点击重试
+                    <RefreshCw className="h-4 w-4" /> <Trans>加载失败，点击重试</Trans>
                 </button>
             ) : (
                 <select
@@ -360,7 +363,7 @@ function SelectField({
                     disabled={disabled}
                     className="w-full border rounded px-2 py-1 text-sm disabled:bg-muted/30"
                 >
-                    <option value="">请选择{label}</option>
+                    <option value="">{<Trans>请选择</Trans>}{label}</option>
                     {options?.map(o => (
                         <option key={o.adcode} value={o.adcode}>{o.name}</option>
                     ))}
@@ -392,6 +395,7 @@ git commit -m "feat: Add RegionCascadeSelector with 4-level cascade"
 // e:\code\vendure\packages\cjk-plugin\dashboard\components\map-picker.tsx
 import { useQuery } from '@tanstack/react-query';
 import { api, toast } from '@vendure/dashboard';
+import { Trans } from '@lingui/react/macro';
 import { Loader2, MapPin, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { getMapSdkConfig, reverseGeocode } from '../lib/map-graphql';
@@ -521,28 +525,37 @@ export function MapPicker({ value, onChange, onReverseGeocode }: MapPickerProps)
     }
 
     if (sdkConfigQuery.isError) {
-        return <div className="h-[400px] flex items-center justify-center border rounded text-destructive">地图配置加载失败，请刷新页面</div>;
+        return (
+            <div className="h-[400px] flex items-center justify-center border rounded text-destructive">
+                <Trans>地图配置加载失败，请刷新页面</Trans>
+            </div>
+        );
     }
 
     const cfg = sdkConfigQuery.data?.mapSdkConfig;
     if (!cfg?.hasConfigured) {
         return (
             <div className="h-[400px] flex items-center justify-center border rounded bg-muted/30 text-sm text-muted-foreground text-center px-4">
-                地图功能未配置，请联系管理员在后台 Channel 配置 mapConfig。<br />
-                您可以手动在下方经纬度字段填写坐标。
+                <Trans>地图功能未配置，请联系管理员在后台 Channel 配置 mapConfig。您可以手动在下方经纬度字段填写坐标。</Trans>
             </div>
         );
     }
 
     if (loading) {
-        return <div className="h-[400px] flex items-center justify-center border rounded"><Loader2 className="h-6 w-6 animate-spin" /> 地图加载中</div>;
+        return (
+            <div className="h-[400px] flex items-center justify-center border rounded gap-2">
+                <Loader2 className="h-6 w-6 animate-spin" /> <Trans>地图加载中</Trans>
+            </div>
+        );
     }
 
     if (sdkError) {
         return (
             <div className="h-[400px] flex flex-col items-center justify-center border rounded text-destructive gap-2">
-                <span>地图加载失败：{sdkError}</span>
-                <button onClick={() => { setSdkError(null); setLoading(true); }} className="px-3 py-1 border rounded">重试</button>
+                <span><Trans>地图加载失败</Trans>：{sdkError}</span>
+                <button onClick={() => { setSdkError(null); setLoading(true); }} className="px-3 py-1 border rounded">
+                    <Trans>重试</Trans>
+                </button>
             </div>
         );
     }
@@ -550,10 +563,10 @@ export function MapPicker({ value, onChange, onReverseGeocode }: MapPickerProps)
     return (
         <div className="space-y-2">
             <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">点击地图选择位置</span>
+                <span className="text-sm font-medium"><Trans>点击地图选择位置</Trans></span>
                 {value && (
                     <button onClick={handleClear} className="flex items-center gap-1 text-sm text-destructive">
-                        <X className="h-4 w-4" /> 清除选点
+                        <X className="h-4 w-4" /> <Trans>清除选点</Trans>
                     </button>
                 )}
             </div>
@@ -561,7 +574,7 @@ export function MapPicker({ value, onChange, onReverseGeocode }: MapPickerProps)
             {value && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <MapPin className="h-4 w-4" />
-                    经度: {value.lng.toFixed(6)}, 纬度: {value.lat.toFixed(6)}
+                    <Trans>经度</Trans>: {value.lng.toFixed(6)}, <Trans>纬度</Trans>: {value.lat.toFixed(6)}
                 </div>
             )}
         </div>
@@ -607,6 +620,7 @@ import {
     toast,
     useDetailPage,
 } from '@vendure/dashboard';
+import { Trans } from '@lingui/react/macro';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect } from 'react';
 import { Controller } from 'react-hook-form';
@@ -745,11 +759,11 @@ function PickupLocationDetailPage({ route }: { route: any }) {
 
     return (
         <Page pageId="pickup-location-detail" form={form} submitHandler={submitHandler}>
-            <PageTitle>{entity?.name ?? '新建自提点'}</PageTitle>
+            <PageTitle>{entity?.name ?? <Trans>新建自提点</Trans>}</PageTitle>
             <PageActionBar>
                 <PageActionBarRight>
                     <Button type="submit" disabled={!form.formState.isDirty || isPending}>
-                        {entity ? '保存' : '创建'}
+                        {entity ? <Trans>保存</Trans> : <Trans>创建</Trans>}
                     </Button>
                 </PageActionBarRight>
             </PageActionBar>
@@ -759,13 +773,13 @@ function PickupLocationDetailPage({ route }: { route: any }) {
                         <FormFieldWrapper
                             control={form.control}
                             name="name"
-                            label="名称"
+                            label={<Trans>名称</Trans>}
                             render={({ field }) => <TextInput {...field} placeholder="如：双阳商城店" />}
                         />
                         <FormFieldWrapper
                             control={form.control}
                             name="type"
-                            label="类型"
+                            label={<Trans>类型</Trans>}
                             render={({ field }) => (
                                 <SelectWithOptions
                                     {...field}
@@ -784,25 +798,25 @@ function PickupLocationDetailPage({ route }: { route: any }) {
                         <FormFieldWrapper
                             control={form.control}
                             name="phoneNumber"
-                            label="电话"
+                            label={<Trans>电话</Trans>}
                             render={({ field }) => <TextInput {...field} placeholder="如：0431-84221001" />}
                         />
                         <FormFieldWrapper
                             control={form.control}
                             name="businessHours"
-                            label="营业时间"
+                            label={<Trans>营业时间</Trans>}
                             render={({ field }) => <TextInput {...field} placeholder="如：09:00-22:00" />}
                         />
                         <FormFieldWrapper
                             control={form.control}
                             name="partner"
-                            label="合作方"
+                            label={<Trans>合作方</Trans>}
                             render={({ field }) => <TextInput {...field} />}
                         />
                         <FormFieldWrapper
                             control={form.control}
                             name="isPublic"
-                            label="是否公开"
+                            label={<Trans>是否公开</Trans>}
                             render={({ field }) => <BooleanInput {...field} />}
                         />
                     </DetailFormGrid>
@@ -828,7 +842,7 @@ function PickupLocationDetailPage({ route }: { route: any }) {
                         <FormFieldWrapper
                             control={form.control}
                             name="address"
-                            label="详细地址"
+                            label={<Trans>详细地址</Trans>}
                             render={({ field }) => <TextInput {...field} placeholder="门牌号，如：西双阳大街188号" />}
                         />
                     </DetailFormGrid>
@@ -852,6 +866,8 @@ function PickupLocationDetailPage({ route }: { route: any }) {
 }
 ```
 
+**注意**：`<option>` 标签内的文本（如"门店/驿站/员工自提点"）和 `<Trans>` 在 `<option>` 内的支持有限，所以 SelectWithOptions 的 options label 硬编码中文。这是已知限制，因为 native `<option>` 不支持 React 子组件。
+
 - [ ] **Step 2: 提交**
 
 ```bash
@@ -871,15 +887,17 @@ git commit -m "feat: Rewrite pickup location detail page with map picker and reg
 
 Run: `Read e:\code\vendure\packages\cjk-plugin\dashboard\pickup-location-list.tsx`
 
-- [ ] **Step 2: 修改列标题为中文**
+- [ ] **Step 2: 修改列标题为中文（用 Trans 包裹）**
 
-将 `customizeColumns` 中的 `header` 字段改为中文：
+将 `customizeColumns` 中的 `header` 字段改为 JSX（用 `<Trans>` 包裹）。注意：header 接受 `string | ReactNode`，可放 JSX。
 
 - `id` 的 `header: 'ID'` 保持
-- `name` 的 `header: 'Name'` → `header: '名称'`
-- `type` 的 `header: 'Type'` → `header: '类型'`（如果存在 type 列）
-- `address` 的 `header: 'Address'` → `header: '地址'`（如果存在）
-- `actions` 的 `header: '操作'` 保持
+- `name` 的 `header: 'Name'` → `header: <Trans>名称</Trans>`
+- `type` 的 `header: 'Type'` → `header: <Trans>类型</Trans>`（如果存在 type 列）
+- `address` 的 `header: 'Address'` → `header: <Trans>地址</Trans>`（如果存在）
+- `actions` 的 `header: '操作'` → `header: <Trans>操作</Trans>`
+
+需要在文件顶部追加 `import { Trans } from '@lingui/react/macro';`（如果未导入）。
 
 - [ ] **Step 3: type 列显示中文映射**
 
@@ -887,7 +905,7 @@ Run: `Read e:\code\vendure\packages\cjk-plugin\dashboard\pickup-location-list.ts
 
 ```tsx
 type: {
-    header: '类型',
+    header: <Trans>类型</Trans>,
     cell: ({ row }) => {
         const typeMap: Record<string, string> = {
             store: '门店',
@@ -903,7 +921,11 @@ type: {
 
 - [ ] **Step 4: 修改页面标题为中文**
 
-将 `title={<Trans>Pickup Locations</Trans>}` 改为 `title="自提点管理"`
+将 `title={<Trans>Pickup Locations</Trans>}` 改为 `title={<Trans>自提点管理</Trans>}`
+
+同时修改 `navMenuItem.title: 'Pickup Locations'` → `navMenuItem.title: '自提点管理'`（navMenuItem.title 是 string 类型，不能用 Trans，直接硬编码中文）。
+
+修改 `loader: () => ({ breadcrumb: 'Pickup Locations' })` → `breadcrumb: '自提点管理'`。
 
 - [ ] **Step 5: 提交**
 

@@ -19,6 +19,7 @@
 | `e:\code\vendure\packages\cjk-plugin\src\tenant\tenant-channel-custom-fields.ts` | 修改 | 追加 mapConfig struct 字段 |
 | `e:\code\vendure\packages\cjk-plugin\src\pickup\pickup-location-admin.resolver.ts` | 修改 | create/update 透传省市区街道 + isPublic 字段 |
 | `e:\code\vendure\packages\cjk-plugin\src\pickup\pickup-location.service.ts` | 修改 | create/update 方法接收省市区街道 + isPublic |
+| `e:\code\vendure\packages\cjk-plugin\src\pickup\i18n-messages.ts` | 修改 | 追加地图相关 i18n 错误 key |
 | `e:\code\vendure\packages\cjk-plugin\src\map\map-config.ts` | 创建 | MapProviderConfig 接口 |
 | `e:\code\vendure\packages\cjk-plugin\src\map\map-provider.ts` | 创建 | MapProvider 接口 + DistrictNode/ReverseGeocodeResult 类型 |
 | `e:\code\vendure\packages\cjk-plugin\src\map\map-provider-registry.ts` | 创建 | Provider 注册与解析 |
@@ -38,6 +39,7 @@
 4. **高德 API**：行政区划查询 `/v3/config/district`，逆地理编码 `/v3/geocode/regeo`，JS SDK 加载 `https://webapi.amap.com/maps?v=2.0&key=xxx&plugin=...`
 5. **RequestContext**：Vendure resolver 用 `@Ctx() ctx: RequestContext` 获取当前 channelId，通过 `ctx.channelId` 访问
 6. **Channel customFields 读取**：`ctx.channel.customFields.mapConfig`
+7. **后端 i18n 机制**：cjk-plugin 用 `src/pickup/i18n-messages.ts` 定义 `ERROR_MESSAGES` 字典（支持 zh_Hans/en/ja/ko），用 `translateError(ctx, key)` 函数返回当前语言错误消息。**所有抛给用户的错误消息必须走此机制**，不能硬编码中文
 
 ---
 
@@ -75,6 +77,54 @@ Expected: 无错误。
 cd e:\code\vendure
 git add packages/cjk-plugin/src/pickup/pickup-location.entity.ts
 git commit -m "feat: Add province/city/district/street fields to PickupLocation entity"
+```
+
+---
+
+## Task 1.5: 在 i18n-messages.ts 追加地图相关错误 key
+
+**Files:**
+- Modify: `e:\code\vendure\packages\cjk-plugin\src\pickup\i18n-messages.ts`
+
+- [ ] **Step 1: 在 ERROR_MESSAGES 字典追加 3 个地图相关 key**
+
+在 `i18n-messages.ts` 的 `PICKUP_LOCATION_NOT_VISIBLE` 项后追加（在 `};` 闭合前）：
+
+```typescript
+    MAP_CONFIG_NOT_CONFIGURED: {
+        [LanguageCode.zh_Hans]: '地图服务未配置，请在后台 Channel 配置 mapConfig',
+        [LanguageCode.en]: 'Map service not configured, please configure mapConfig in Channel settings',
+        [LanguageCode.ja]: 'マップサービスが未設定です。バックグラウンド Channel の mapConfig を設定してください',
+        [LanguageCode.ko]: '지도 서비스가 미구성되었습니다. 백엔드 Channel의 mapConfig를 구성하십시오',
+    } as MessageMap,
+    MAP_PROVIDER_NOT_REGISTERED: {
+        [LanguageCode.zh_Hans]: '未注册的地图 Provider: {provider}',
+        [LanguageCode.en]: 'Unregistered map provider: {provider}',
+        [LanguageCode.ja]: '未登録のマッププロバイダ: {provider}',
+        [LanguageCode.ko]: '등록되지 않은 지도 프로바이더: {provider}',
+    } as MessageMap,
+    MAP_PROVIDER_API_ERROR: {
+        [LanguageCode.zh_Hans]: '地图服务调用失败: {message}',
+        [LanguageCode.en]: 'Map service API error: {message}',
+        [LanguageCode.ja]: 'マップサービス呼び出し失敗: {message}',
+        [LanguageCode.ko]: '지도 서비스 호출 실패: {message}',
+    } as MessageMap,
+```
+
+**注意**：`{provider}` 和 `{message}` 是占位符，调用方需手动 `.replace('{provider}', val)`。或者扩展 `translateError` 接受参数对象（但为简化，本计划用 replace 模式）。
+
+- [ ] **Step 2: 验证 TypeScript 编译**
+
+Run: `cd e:\code\vendure\packages\cjk-plugin && npx tsc --noEmit -p tsconfig.json`
+
+Expected: 无错误。
+
+- [ ] **Step 3: 提交**
+
+```bash
+cd e:\code\vendure
+git add packages/cjk-plugin/src/pickup/i18n-messages.ts
+git commit -m "feat: Add map-related i18n error keys"
 ```
 
 ---
@@ -355,10 +405,17 @@ export class MapProviderRegistry {
         this.providers.set(provider.name, provider);
     }
 
+    /**
+     * 获取 provider。若未注册抛出带 i18n key 的错误对象（由调用方翻译）。
+     */
     get(name: string): MapProvider {
         const provider = this.providers.get(name);
         if (!provider) {
-            throw new Error(`未注册的地图 Provider: ${name}`);
+            // 抛出带 i18n key 的错误，调用方用 translateError 翻译
+            const err = new Error(name) as any;
+            err.i18nKey = 'MAP_PROVIDER_NOT_REGISTERED';
+            err.i18nVars = { provider: name };
+            throw err;
         }
         return provider;
     }
@@ -395,6 +452,7 @@ import { ChannelService, ID, RequestContext } from '@vendure/core';
 import { MapProviderConfig } from './map-config';
 import { DistrictNode, MapProvider, ReverseGeocodeResult } from './map-provider';
 import { MapProviderRegistry } from './map-provider-registry';
+import { translateError } from '../pickup/i18n-messages';
 
 @Injectable()
 export class MapService {
@@ -421,6 +479,29 @@ export class MapService {
         return config ?? null;
     }
 
+    /**
+     * 包装 provider 调用，捕获 i18n 错误并翻译
+     */
+    private async callProvider<T>(
+        ctx: RequestContext,
+        fn: () => Promise<T>,
+    ): Promise<T> {
+        try {
+            return await fn();
+        } catch (err: any) {
+            if (err?.i18nKey === 'MAP_PROVIDER_NOT_REGISTERED') {
+                const vars = err.i18nVars ?? {};
+                const msg = translateError(ctx, 'MAP_PROVIDER_NOT_REGISTERED')
+                    .replace('{provider}', vars.provider ?? '');
+                throw new Error(msg);
+            }
+            // provider 内部抛出的普通 Error（含 HTTP 错误信息）
+            const msg = translateError(ctx, 'MAP_PROVIDER_API_ERROR')
+                .replace('{message}', err?.message ?? 'unknown');
+            throw new Error(msg);
+        }
+    }
+
     private getProvider(config: MapProviderConfig): MapProvider {
         return this.registry.get(config.provider);
     }
@@ -436,19 +517,19 @@ export class MapService {
     async getDistricts(ctx: RequestContext, parentAdcode: string | null): Promise<DistrictNode[]> {
         const config = await this.getConfigForChannel(ctx);
         if (!config) {
-            throw new Error('地图服务未配置，请在后台 Channel 配置 mapConfig');
+            throw new Error(translateError(ctx, 'MAP_CONFIG_NOT_CONFIGURED'));
         }
         const provider = this.getProvider(config);
-        return provider.fetchDistricts(parentAdcode, config.apiKey);
+        return this.callProvider(ctx, () => provider.fetchDistricts(parentAdcode, config.apiKey));
     }
 
     async reverseGeocode(ctx: RequestContext, lat: number, lng: number): Promise<ReverseGeocodeResult> {
         const config = await this.getConfigForChannel(ctx);
         if (!config) {
-            throw new Error('地图服务未配置，请在后台 Channel 配置 mapConfig');
+            throw new Error(translateError(ctx, 'MAP_CONFIG_NOT_CONFIGURED'));
         }
         const provider = this.getProvider(config);
-        return provider.reverseGeocode(lat, lng, config.apiKey);
+        return this.callProvider(ctx, () => provider.reverseGeocode(lat, lng, config.apiKey));
     }
 
     async getSdkConfig(ctx: RequestContext): Promise<{ provider: string; sdkUrl: string; hasConfigured: boolean }> {
@@ -474,6 +555,12 @@ export class MapService {
     }
 }
 ```
+
+**关键设计**：
+- `MapProviderRegistry.get` 抛出带 `i18nKey` 的错误对象
+- `MapService.callProvider` 捕获错误，用 `translateError(ctx, key)` 翻译后再抛出
+- `MAP_CONFIG_NOT_CONFIGURED` 直接在 MapService 翻译（不需要经过 callProvider，因为不涉及 provider 调用）
+- 这样所有抛给前端的错误消息都按 `ctx.languageCode` 返回对应语言
 
 - [ ] **Step 2: 验证 TypeScript 编译**
 
