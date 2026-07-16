@@ -99,5 +99,17 @@ export const tenantChannelCustomFields: CustomFields = {
             public: true,
             label: [{ languageCode: LanguageCode.zh_Hans, value: '自定义域名' }],
         },
+        {
+            name: 'mapConfig',
+            type: 'struct',
+            nullable: true,
+            public: false,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '地图服务配置' }],
+            fields: [
+                { name: 'provider', type: 'string' },
+                { name: 'apiKey', type: 'text' },
+                { name: 'securityJsCode', type: 'text' },
+            ],
+        },
     ],
 };
