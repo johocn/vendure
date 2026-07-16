@@ -42,12 +42,12 @@ export const pickupLocationList: DashboardRouteDefinition = {
         sectionId: 'settings',
         id: 'pickup-locations',
         url: '/pickup-locations',
-        title: 'Pickup Locations',
+        title: '自提点管理',
         requiresPermission: ['ReadSettings'],
     },
     path: '/pickup-locations',
     loader: () => ({
-        breadcrumb: 'Pickup Locations',
+        breadcrumb: '自提点管理',
     }),
     component: route => <PickupLocationListPage route={route} />,
 };
@@ -74,7 +74,7 @@ function PickupLocationListPage({ route }: { route: any }) {
     return (
         <ListPage
             pageId="pickup-location-list"
-            title={<Trans>Pickup Locations</Trans>}
+            title={<Trans>自提点管理</Trans>}
             listQuery={getPickupLocations}
             route={route}
             defaultVisibility={{
@@ -88,11 +88,22 @@ function PickupLocationListPage({ route }: { route: any }) {
                     cell: ({ row }) => <DetailPageButton id={row.original.id} label={row.original.id} />,
                 },
                 name: {
-                    header: 'Name',
+                    header: <Trans>名称</Trans>,
                     cell: ({ row }) => <DetailPageButton id={row.original.id} label={row.original.name} />,
                 },
+                type: {
+                    header: <Trans>类型</Trans>,
+                    cell: ({ row }) => {
+                        const typeMap: Record<string, string> = {
+                            store: '门店',
+                            point: '驿站',
+                            employee: '员工自提点',
+                        };
+                        return <DetailPageButton id={row.original.id} label={typeMap[row.original.type] ?? row.original.type} />;
+                    },
+                },
                 actions: {
-                    header: '操作',
+                    header: <Trans>操作</Trans>,
                     cell: ({ row }) => (
                         <PermissionGuard requires={['PickupLocationDelete']}>
                             <Button
