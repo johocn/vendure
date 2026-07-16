@@ -25,7 +25,7 @@ __decorate([
     __metadata("design:type", String)
 ], PickupLocation.prototype, "name", void 0);
 __decorate([
-    (0, typeorm_1.Column)(),
+    (0, typeorm_1.Column)({ type: 'varchar', default: 'store' }),
     __metadata("design:type", String)
 ], PickupLocation.prototype, "type", void 0);
 __decorate([
@@ -48,6 +48,30 @@ __decorate([
     (0, typeorm_1.Column)({ nullable: true }),
     __metadata("design:type", String)
 ], PickupLocation.prototype, "partner", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], PickupLocation.prototype, "province", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], PickupLocation.prototype, "city", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], PickupLocation.prototype, "district", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], PickupLocation.prototype, "street", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ default: false }),
+    __metadata("design:type", Boolean)
+], PickupLocation.prototype, "isPublic", void 0);
+__decorate([
+    (0, core_1.EntityId)({ nullable: true }),
+    __metadata("design:type", Object)
+], PickupLocation.prototype, "ownerChannelId", void 0);
 __decorate([
     (0, typeorm_1.ManyToMany)(() => core_1.Channel),
     (0, typeorm_1.JoinTable)(),

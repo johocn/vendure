@@ -13,40 +13,39 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthShopResolver = void 0;
-// e:\code\vendure\packages\cjk-plugin\src\auth\auth-shop.resolver.ts
 const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
+const crypto_1 = require("./crypto");
 let AuthShopResolver = class AuthShopResolver {
     authMethods(ctx) {
-        var _a, _b;
-        const config = (_b = (_a = ctx.channel) === null || _a === void 0 ? void 0 : _a.customFields) === null || _b === void 0 ? void 0 : _b.authConfig;
+        var _a;
+        // readChannelAuthConfig 是同步函数，无需 async/await
+        const config = (0, crypto_1.readChannelAuthConfig)(ctx);
         if (!(config === null || config === void 0 ? void 0 : config.enabledMethods)) {
             // 向后兼容：返回所有已注册策略
-            return ['native', 'phone', 'wechat', 'alipay', 'douyin'];
+            return { methods: ['native', 'phone', 'wechat', 'alipay', 'douyin'], wechatAppId: null };
         }
-        return config.enabledMethods;
+        let wechatAppId = null;
+        if (config.enabledMethods.includes('wechat')) {
+            const wechatOverride = (_a = config.overrides) === null || _a === void 0 ? void 0 : _a.wechat;
+            wechatAppId = (wechatOverride === null || wechatOverride === void 0 ? void 0 : wechatOverride.appId) || null;
+        }
+        return { methods: config.enabledMethods, wechatAppId };
     }
     ssoProviders(ctx) {
-        var _a, _b;
-        const config = (_b = (_a = ctx.channel) === null || _a === void 0 ? void 0 : _a.customFields) === null || _b === void 0 ? void 0 : _b.authConfig;
-        if (!(config === null || config === void 0 ? void 0 : config.ssoProvidersJson))
+        const config = (0, crypto_1.readChannelAuthConfig)(ctx);
+        if (!(config === null || config === void 0 ? void 0 : config.ssoProviders))
             return [];
-        try {
-            const providers = JSON.parse(config.ssoProvidersJson);
-            return providers.map((p) => ({
-                name: p.name,
-                providerKey: p.providerKey,
-                protocol: p.protocol,
-                baseUrl: p.baseUrl,
-                authorizeUrl: p.authorizeUrl,
-                clientId: p.clientId,
-                scopes: p.scopes || [],
-                channelCode: p.channelCode,
-            }));
-        }
-        catch (_c) {
-            return [];
-        }
+        return config.ssoProviders.map((p) => ({
+            name: p.name,
+            providerKey: p.providerKey,
+            protocol: p.protocol,
+            baseUrl: p.baseUrl,
+            authorizeUrl: p.authorizeUrl,
+            clientId: p.clientId,
+            scopes: p.scopes || [],
+            channelCode: p.channelCode,
+        }));
     }
 };
 exports.AuthShopResolver = AuthShopResolver;
@@ -55,7 +54,7 @@ __decorate([
     __param(0, (0, core_1.Ctx)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext]),
-    __metadata("design:returntype", Array)
+    __metadata("design:returntype", Object)
 ], AuthShopResolver.prototype, "authMethods", null);
 __decorate([
     (0, graphql_1.Query)(),

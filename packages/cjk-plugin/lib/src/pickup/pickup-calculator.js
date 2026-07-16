@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.pickupPointCalculator = exports.storePickupCalculator = void 0;
+exports.employeePickupCalculator = exports.pickupPointCalculator = exports.storePickupCalculator = void 0;
 const core_1 = require("@vendure/core");
 exports.storePickupCalculator = new core_1.ShippingCalculator({
     code: 'store-pickup-calculator',
@@ -40,6 +40,35 @@ exports.pickupPointCalculator = new core_1.ShippingCalculator({
             taxRate: 0,
             priceIncludesTax: true,
             metadata: { pickupType: 'point' },
+        };
+    },
+});
+exports.employeePickupCalculator = new core_1.ShippingCalculator({
+    code: 'employee-pickup-calculator',
+    description: [
+        { languageCode: core_1.LanguageCode.zh_Hans, value: '企业职工自提运费计算' },
+        { languageCode: core_1.LanguageCode.en, value: 'Employee Pickup Shipping Calculator' },
+        { languageCode: core_1.LanguageCode.ja, value: '従業員受取送料計算' },
+        { languageCode: core_1.LanguageCode.ko, value: '직원 수거 배송비 계산' },
+    ],
+    args: {
+        shippingPrice: {
+            type: 'int',
+            defaultValue: 0,
+            label: [
+                { languageCode: core_1.LanguageCode.zh_Hans, value: '运费（分）' },
+                { languageCode: core_1.LanguageCode.en, value: 'Shipping Price (cents)' },
+                { languageCode: core_1.LanguageCode.ja, value: '送料（分）' },
+                { languageCode: core_1.LanguageCode.ko, value: '배송비(분)' },
+            ],
+        },
+    },
+    calculate: (ctx, order, args) => {
+        return {
+            price: args.shippingPrice || 0,
+            taxRate: 0,
+            priceIncludesTax: true,
+            metadata: { pickupType: 'employee' },
         };
     },
 });

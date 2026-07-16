@@ -25,10 +25,10 @@ export class PickupLocation extends VendureEntity implements ChannelAware, HasCu
 
     @Column({ nullable: true }) partner: string;
 
-    @Column({ nullable: true }) province: string | null;
-    @Column({ nullable: true }) city: string | null;
-    @Column({ nullable: true }) district: string | null;
-    @Column({ nullable: true }) street: string | null;
+    @Column({ type: 'varchar', nullable: true }) province: string | null;
+    @Column({ type: 'varchar', nullable: true }) city: string | null;
+    @Column({ type: 'varchar', nullable: true }) district: string | null;
+    @Column({ type: 'varchar', nullable: true }) street: string | null;
 
     @Column({ default: false }) isPublic: boolean;
 

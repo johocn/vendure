@@ -39,4 +39,7 @@ __exportStar(require("./src/auth/sso-authentication-strategy"), exports);
 __exportStar(require("./src/auth/i18n-messages"), exports);
 __exportStar(require("./src/auth/auth-shop.resolver"), exports);
 __exportStar(require("./src/auth/auth-admin.resolver"), exports);
+__exportStar(require("./src/payment/payment-config.types"), exports);
+__exportStar(require("./src/payment/payment-config"), exports);
+__exportStar(require("./src/tenant/domain-resolver.service"), exports);
 //# sourceMappingURL=index.js.map

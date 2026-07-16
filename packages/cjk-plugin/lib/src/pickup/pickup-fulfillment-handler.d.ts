@@ -1,4 +1,4 @@
-import { LanguageCode, FulfillmentHandler } from '@vendure/core';
+import { FulfillmentHandler, LanguageCode } from '@vendure/core';
 export declare const storePickupFulfillmentHandler: FulfillmentHandler<{
     storeId: {
         type: "string";
@@ -53,3 +53,4 @@ export declare const pickupPointFulfillmentHandler: FulfillmentHandler<{
         })[];
     };
 }>;
+export declare const employeePickupFulfillmentHandler: FulfillmentHandler<{}>;

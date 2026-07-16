@@ -16,6 +16,7 @@ exports.PickupLocationAdminResolver = void 0;
 const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
 const pickup_location_service_1 = require("./pickup-location.service");
+const pickup_permissions_1 = require("./pickup-permissions");
 let PickupLocationAdminResolver = class PickupLocationAdminResolver {
     constructor(pickupLocationService) {
         this.pickupLocationService = pickupLocationService;
@@ -34,6 +35,17 @@ let PickupLocationAdminResolver = class PickupLocationAdminResolver {
     }
     async deletePickupLocation(ctx, id) {
         await this.pickupLocationService.delete(ctx, id);
+        return true;
+    }
+    async promotePickupLocationToPublic(ctx, id) {
+        return this.pickupLocationService.promoteToPublic(ctx, id);
+    }
+    async assignPickupLocationsToChannel(ctx, ids) {
+        await this.pickupLocationService.assignToChannel(ctx, ids, ctx.channelId);
+        return true;
+    }
+    async removePickupLocationsFromChannel(ctx, ids) {
+        await this.pickupLocationService.removeFromChannel(ctx, ids, ctx.channelId);
         return true;
     }
 };
@@ -81,6 +93,36 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], PickupLocationAdminResolver.prototype, "deletePickupLocation", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Transaction)(),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], PickupLocationAdminResolver.prototype, "promotePickupLocationToPublic", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Transaction)(),
+    (0, core_1.Allow)(pickup_permissions_1.PickupPermissions.AssignPickupLocation),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('ids')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Array]),
+    __metadata("design:returntype", Promise)
+], PickupLocationAdminResolver.prototype, "assignPickupLocationsToChannel", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Transaction)(),
+    (0, core_1.Allow)(pickup_permissions_1.PickupPermissions.AssignPickupLocation),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('ids')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Array]),
+    __metadata("design:returntype", Promise)
+], PickupLocationAdminResolver.prototype, "removePickupLocationsFromChannel", null);
 exports.PickupLocationAdminResolver = PickupLocationAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [pickup_location_service_1.PickupLocationService])
