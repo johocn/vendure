@@ -91,5 +91,13 @@ export const tenantChannelCustomFields: CustomFields = {
                 { name: 'wechatpayJson', type: 'text' },
             ],
         },
+        {
+            name: 'customDomains',
+            type: 'string',
+            list: true,
+            nullable: true,
+            public: true,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '自定义域名' }],
+        },
     ],
 };
