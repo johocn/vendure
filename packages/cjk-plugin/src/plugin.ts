@@ -39,6 +39,8 @@ import { AuthAdminResolver } from './auth/auth-admin.resolver';
 import { AuthMethodGuard } from './auth/auth-method-guard';
 import { SsoAuthenticationStrategy } from './auth/sso-authentication-strategy';
 import { setAuthSecret } from './auth/crypto';
+import { DomainResolverService } from './tenant/domain-resolver.service';
+import { DomainShopResolver } from './tenant/domain-shop.resolver';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
@@ -48,6 +50,7 @@ import { setAuthSecret } from './auth/crypto';
         TenantSetupService,
         PickupLocationService,
         EmployeeCustomerService,
+        DomainResolverService,
         { provide: APP_GUARD, useClass: AuthMethodGuard },
     ],
     adminApiExtensions: {
@@ -228,9 +231,17 @@ import { setAuthSecret } from './auth/crypto';
                     scopes: [String!]!
                     channelCode: String
                 }
+
+                type DomainResolveResult {
+                    token: String!
+                    code: String!
+                }
+                extend type Query {
+                    resolveChannelByDomain(host: String!): DomainResolveResult
+                }
             `;
         },
-        resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver],
+        resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver, DomainShopResolver],
     },
     configuration: config => {
         // 注入 authSecret 到 crypto 模块（configuration 在 bootstrap 早期执行，此时 options 已可用）
