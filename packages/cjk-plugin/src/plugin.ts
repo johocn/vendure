@@ -41,6 +41,9 @@ import { SsoAuthenticationStrategy } from './auth/sso-authentication-strategy';
 import { setAuthSecret } from './auth/crypto';
 import { DomainResolverService } from './tenant/domain-resolver.service';
 import { DomainShopResolver } from './tenant/domain-shop.resolver';
+import { MapProviderRegistry } from './map/map-provider-registry';
+import { MapService } from './map/map.service';
+import { MapAdminResolver } from './map/map-admin.resolver';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
@@ -51,16 +54,24 @@ import { DomainShopResolver } from './tenant/domain-shop.resolver';
         PickupLocationService,
         EmployeeCustomerService,
         DomainResolverService,
+        MapProviderRegistry,
+        MapService,
         { provide: APP_GUARD, useClass: AuthMethodGuard },
     ],
     adminApiExtensions: {
         schema: () => {
             const { gql } = require('graphql-tag');
             return gql`
+                enum PickupLocationType {
+                    store
+                    point
+                    employee
+                }
+
                 type PickupLocation implements Node {
                     id: ID!
                     name: String!
-                    type: String!
+                    type: PickupLocationType!
                     address: String!
                     phoneNumber: String
                     businessHours: String
@@ -68,6 +79,10 @@ import { DomainShopResolver } from './tenant/domain-shop.resolver';
                     partner: String
                     isPublic: Boolean!
                     ownerChannelId: ID
+                    province: String
+                    city: String
+                    district: String
+                    street: String
                 }
 
                 type PickupLocationList implements PaginatedList {
@@ -77,25 +92,33 @@ import { DomainShopResolver } from './tenant/domain-shop.resolver';
 
                 input CreatePickupLocationInput {
                     name: String!
-                    type: String!
+                    type: PickupLocationType!
                     address: String!
                     phoneNumber: String
                     businessHours: String
                     coordinates: JSON
                     partner: String
                     isPublic: Boolean
+                    province: String
+                    city: String
+                    district: String
+                    street: String
                 }
 
                 input UpdatePickupLocationInput {
                     id: ID!
                     name: String
-                    type: String
+                    type: PickupLocationType
                     address: String
                     phoneNumber: String
                     businessHours: String
                     coordinates: JSON
                     partner: String
                     isPublic: Boolean
+                    province: String
+                    city: String
+                    district: String
+                    street: String
                 }
 
                 input PickupLocationListOptions
@@ -183,9 +206,48 @@ import { DomainShopResolver } from './tenant/domain-shop.resolver';
                     channelCode: String
                     userInfoMapping: JSON
                 }
+
+                type DistrictNode {
+                    adcode: String!
+                    name: String!
+                    level: String!
+                    center: LatLng!
+                }
+
+                type ReverseGeocodeResult {
+                    province: String
+                    city: String
+                    district: String
+                    street: String
+                    formattedAddress: String!
+                }
+
+                type MapSdkConfig {
+                    provider: String!
+                    sdkUrl: String!
+                    hasConfigured: Boolean!
+                }
+
+                type ChannelMapConfig {
+                    provider: String!
+                    apiKey: String!
+                    hasConfigured: Boolean!
+                }
+
+                type LatLng {
+                    lat: Float!
+                    lng: Float!
+                }
+
+                extend type Query {
+                    mapDistricts(parentAdcode: String): [DistrictNode!]!
+                    reverseGeocode(lat: Float!, lng: Float!): ReverseGeocodeResult!
+                    mapSdkConfig: MapSdkConfig!
+                    channelMapConfig: ChannelMapConfig!
+                }
             `;
         },
-        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver],
+        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {
