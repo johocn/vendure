@@ -127,9 +127,10 @@ extend type Query {
 }
 ```
 
-- 公开查询（无需登录），在 `shopApiExtensions` 中注册
+- 公开查询（无需登录），在 `shopApiExtensions` 中注册，resolver 方法需 `@Allow(Permission.Public)` 装饰器
 - 返回 null 时前端回退到 `?tenant=` 机制
 - 需注册到 plugin `providers` 中（因为依赖 ChannelService 注入）
+- **数据安全**：`ChannelService.findAll` 返回所有 channel，但 resolver 仅返回 `{token, code}`，不泄露其他 channel 数据
 
 ### CORS 考量
 
@@ -242,8 +243,17 @@ async function initTenant() {
 ### initTenant 调用方改造
 
 `initTenant` 从同步变异步，需检查所有调用点：
-- `App.vue` `onLaunch` — 改为 `await initTenant()`
-- `main.ts` — 确保初始化完成后再挂载
+- `App.vue` `onLaunch` — 改为 `await initTenant()`，且 `restoreSession()` 必须在 `initTenant()` 完成后调用（因为 restoreSession 依赖 token 已设置）
+- 新增 `tenantReady` ref（初始 false），`initTenant` 完成后设为 true，页面渲染可据此显示 loading
+
+```typescript
+// App.vue onLaunch
+async onLaunch() {
+    await tenantStore.initTenant()
+    await authStore.restoreSession()
+    tenantStore.tenantReady = true
+}
+```
 
 ### sessionStorage 缓存策略
 
