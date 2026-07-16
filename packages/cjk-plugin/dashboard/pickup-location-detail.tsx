@@ -13,7 +13,6 @@ import {
     PageBlock,
     PageLayout,
     PageTitle,
-    SelectWithOptions,
     TextInput,
     toast,
     useDetailPage,
@@ -163,18 +162,15 @@ function PickupLocationDetailPage({ route }: { route: any }) {
                             name="type"
                             label={<Trans>类型</Trans>}
                             render={({ field }) => (
-                                <SelectWithOptions
-                                    {...field}
-                                    fieldDef={{
-                                        type: 'string',
-                                        name: 'type',
-                                        options: [
-                                            { value: 'store', label: '门店' },
-                                            { value: 'point', label: '驿站' },
-                                            { value: 'employee', label: '员工自提点' },
-                                        ],
-                                    }}
-                                />
+                                <select
+                                    value={field.value ?? 'store'}
+                                    onChange={field.onChange}
+                                    className="w-full border rounded px-2 py-1 text-sm"
+                                >
+                                    <option value="store">门店</option>
+                                    <option value="point">驿站</option>
+                                    <option value="employee">员工自提点</option>
+                                </select>
                             )}
                         />
                         <FormFieldWrapper
