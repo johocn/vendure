@@ -1,0 +1,108 @@
+// e:\code\vendure\packages\cjk-plugin\src\map\map.service.ts
+import { Injectable } from '@nestjs/common';
+import { ChannelService, ID, RequestContext } from '@vendure/core';
+import { MapProviderConfig } from './map-config';
+import { DistrictNode, MapProvider, ReverseGeocodeResult } from './map-provider';
+import { MapProviderRegistry } from './map-provider-registry';
+import { translateError } from '../pickup/i18n-messages';
+
+@Injectable()
+export class MapService {
+    constructor(
+        private registry: MapProviderRegistry,
+        private channelService: ChannelService,
+    ) {}
+
+    /**
+     * 从当前 Channel 的 customFields.mapConfig 读取配置
+     * 如果当前 Channel 未配置，回退到默认 Channel
+     */
+    private async getConfigForChannel(ctx: RequestContext): Promise<MapProviderConfig | null> {
+        // 优先用当前 channel
+        let channel = ctx.channel;
+        let config = (channel?.customFields as any)?.mapConfig as MapProviderConfig | undefined;
+        
+        if (!config) {
+            // 回退到默认 channel
+            const defaultChannel = await this.channelService.getDefaultChannel(ctx);
+            config = (defaultChannel?.customFields as any)?.mapConfig as MapProviderConfig | undefined;
+        }
+        
+        return config ?? null;
+    }
+
+    /**
+     * 包装 provider 调用，捕获 i18n 错误并翻译
+     */
+    private async callProvider<T>(
+        ctx: RequestContext,
+        fn: () => Promise<T>,
+    ): Promise<T> {
+        try {
+            return await fn();
+        } catch (err: any) {
+            if (err?.i18nKey === 'MAP_PROVIDER_NOT_REGISTERED') {
+                const vars = err.i18nVars ?? {};
+                const msg = translateError(ctx, 'MAP_PROVIDER_NOT_REGISTERED')
+                    .replace('{provider}', vars.provider ?? '');
+                throw new Error(msg);
+            }
+            // provider 内部抛出的普通 Error（含 HTTP 错误信息）
+            const msg = translateError(ctx, 'MAP_PROVIDER_API_ERROR')
+                .replace('{message}', err?.message ?? 'unknown');
+            throw new Error(msg);
+        }
+    }
+
+    private getProvider(config: MapProviderConfig): MapProvider {
+        return this.registry.get(config.provider);
+    }
+
+    /**
+     * 掩码 apiKey，用于 channelMapConfig 查询（展示用）
+     */
+    maskApiKey(key: string): string {
+        if (key.length <= 8) return '****';
+        return key.slice(0, 4) + '****' + key.slice(-4);
+    }
+
+    async getDistricts(ctx: RequestContext, parentAdcode: string | null): Promise<DistrictNode[]> {
+        const config = await this.getConfigForChannel(ctx);
+        if (!config) {
+            throw new Error(translateError(ctx, 'MAP_CONFIG_NOT_CONFIGURED'));
+        }
+        const provider = this.getProvider(config);
+        return this.callProvider(ctx, () => provider.fetchDistricts(parentAdcode, config.apiKey));
+    }
+
+    async reverseGeocode(ctx: RequestContext, lat: number, lng: number): Promise<ReverseGeocodeResult> {
+        const config = await this.getConfigForChannel(ctx);
+        if (!config) {
+            throw new Error(translateError(ctx, 'MAP_CONFIG_NOT_CONFIGURED'));
+        }
+        const provider = this.getProvider(config);
+        return this.callProvider(ctx, () => provider.reverseGeocode(lat, lng, config.apiKey));
+    }
+
+    async getSdkConfig(ctx: RequestContext): Promise<{ provider: string; sdkUrl: string; hasConfigured: boolean }> {
+        const config = await this.getConfigForChannel(ctx);
+        if (!config) {
+            return { provider: '', sdkUrl: '', hasConfigured: false };
+        }
+        const provider = this.getProvider(config);
+        const sdkUrl = provider.getSdkLoaderUrl(config.apiKey, config.securityJsCode);
+        return { provider: config.provider, sdkUrl, hasConfigured: true };
+    }
+
+    async getChannelMapConfig(ctx: RequestContext): Promise<{ provider: string; apiKey: string; hasConfigured: boolean }> {
+        const config = await this.getConfigForChannel(ctx);
+        if (!config) {
+            return { provider: '', apiKey: '', hasConfigured: false };
+        }
+        return {
+            provider: config.provider,
+            apiKey: this.maskApiKey(config.apiKey),
+            hasConfigured: true,
+        };
+    }
+}
