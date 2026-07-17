@@ -52,7 +52,7 @@ Channel: [
         ],
     },
     {
-        name: 'payConfig', type: 'struct',                // 已加密
+        name: 'payConfig', type: 'struct',                // 现状明文,本次补加密
         fields: [
             { name: 'alipayJson', type: 'text' },
             { name: 'wechatpayJson', type: 'text' },
@@ -301,25 +301,29 @@ type TestSsoResult {
 **校验位置**: Resolver 层,Service 层不重复校验。
 
 **规则**:
-1. **Super-admin**(Role code = `super-admin`): 可访问任意 channelId,`canEdit = true`
+1. **Super-admin**: `ctx.userHasPermissions([Permission.SuperAdmin])` 为 true 时,可访问任意 channelId,`canEdit = true`
 2. **租户管理员**: `ctx.user.channels` 必须包含目标 channelId,否则抛 `PermissionError { code: 'TENANT_CONFIG_FORBIDDEN' }`,`canEdit = true`
 3. **无关联**: 抛 `PermissionError`,前端展示"无权访问此租户配置"
 
 **实现要点**:
-- Vendure 已有 `ctx.user.channels`(Administrator.channels 关联),Resolver 直接读
+- Vendure `CurrentUser.channels` 真实存在(返回 `CurrentUserChannel[]`,含 id/token/code/permissions),Resolver 直接读 `ctx.user.channels`
+- Super-admin 判断用 `ctx.userHasPermissions([Permission.SuperAdmin])`(Vendure 标准 API,非 `ctx.user.isSuperAdmin`)
 - 用 Vendure `PermissionDefinition` 注册自定义权限 `ManageTenantConfig`,super-admin 角色默认拥有
 - 租户管理员通过 channel 关联隐式获得权限(不写 Role permission 表,运行时 channel 校验)
+- Resolver 方法用 `@Allow(Permission.Authenticated)` 允许已登录管理员访问,内部手动做 channel 级校验(因 Vendure 原生 `@Allow` 不支持 channel 级粒度)
 
 ### 6.3 Service 层契约
+
+**现状**: `PayConfigService`/`AuthConfigService`/`SsoProviderService`/`MapConfigService` 这些 Service 类**当前均不存在**。现状是 crypto.ts 提供函数,resolver 内联调用。本次**新建**这些 Service,将逻辑从 resolver 迁入。
 
 三个 Service 接口对齐:
 
 | Service | getMasked(id) | update(id, patch) | testConnection? |
 |---|---|---|---|
-| AuthConfigService | 复用 maskAuthConfig | 复用 mergeAuthConfig | — |
-| PayConfigService | 新增 maskPayConfig | 新增 mergePayConfig | — |
-| MapConfigService | 新增 maskMapConfig | 新增 mergeMapConfig | — |
-| SsoProviderService | (属 AuthConfigService) | — | 新增 testConnection |
+| AuthConfigService(新建) | 复用 maskAuthConfig | 复用 mergeAuthConfig | — |
+| PayConfigService(新建) | 新增 maskPayConfig | 新增 mergePayConfig | — |
+| MapConfigService(新建) | 新增 maskMapConfig | 新增 mergeMapConfig | — |
+| SsoProviderService(新建,属 AuthConfigService) | — | — | 新增 testConnection |
 
 **合并语义** (三 Service 一致): `***` = 保留原值,空字符串 = 清空,其他 = 覆盖。
 
@@ -341,6 +345,22 @@ type TestSsoResult {
 - `type: 'TENANT_CONFIG_UPDATE'`
 - `data: { channelId, sections: ['auth','pay','map'], operator: ctx.user.identifier }`
 - 不记录具体值(避免 secret 泄露)
+
+**HistoryEntryType 注册**: `TENANT_CONFIG_UPDATE`/`MAP_CONFIG_MIGRATION_DONE`/`PAY_CONFIG_MIGRATION_DONE` 需通过 `defineHistoryEntryType()` 注册(见 Vendure `HistoryService`),并在 plugin `configuration()` 中添加。
+
+### 6.6 旧 Resolver 去向(重要)
+
+**现状安全漏洞**:
+- `AuthAdminResolver`(`src/auth/auth-admin.resolver.ts`)暴露 `channelAuthConfig` Query 与 `updateChannelAuthConfig` Mutation,**无任何 `@Allow` 装饰器**,任意已登录管理员可读写任意 Channel 的 authConfig(含解密后的 secret 掩码前的潜在风险)
+- `MapAdminResolver`(`src/map/map-admin.resolver.ts`)暴露 `channelMapConfig`/`mapSdkConfig` Query,同样无 channel 级校验
+
+**处理方案**:
+1. **保留旧 Resolver,补 `@Allow(Permission.Authenticated)` + 内部 channel 校验**:避免破坏现有前端调用(web 项目 `src/api/` 可能依赖 `channelAuthConfig`/`channelMapConfig` Query)
+2. **新 `TenantConfigAdminResolver` 作为聚合入口**:内部调用三个新 Service,与旧 Resolver 共享 Service 层
+3. **去重**:旧 Resolver 的实现迁移到 Service 后,旧 Resolver 改为薄封装(调 Service),避免逻辑重复
+4. **前端迁移**(后续,不在本次范围):web 项目从 `channelAuthConfig`/`channelMapConfig` 迁移到 `tenantConfig` 聚合 Query
+
+**`mapSdkConfig` Query 特殊处理**: 此 Query 供 shop 侧读取地图 SDK 配置(含解密后的 apiKey),**不掩码**。本次补加密后,此 Query 内部调 `decryptMapConfig` 返回明文,shop 前端无感。权限保持 `@Allow(Permission.Owner)` 或 shop 侧公开(需核实现状)。
 
 ## 7. UI 层
 
@@ -369,15 +389,18 @@ dashboard/
 ```ts
 pageBlocks: [
     {
+        id: 'tenant-config-center',
+        title: '租户配置中心',
         location: {
             pageId: 'channel-detail',
-            blockId: 'custom-fields',
-            position: { order: 'after' },
+            position: { blockId: 'custom-fields', order: 'after' },
         },
         component: () => import('./tenant-config-center'),
     },
 ],
 ```
+
+> 注: `PageBlockLocation` 结构为 `{ pageId, position: { blockId, order } }`(见 `dashboard/src/lib/framework/extension-api/types/layout.ts:100`)。`pageId: 'channel-detail'` 与 `blockId: 'custom-fields'` 均已核实存在于 Vendure 3.6.4。
 
 `tenant-config-center.tsx`:
 - 通过 `useDetailPage()` 获取当前 channelId
@@ -485,7 +508,7 @@ class InviteCodeService {
 }
 ```
 
-本次仅实现 `bindIfPresent` 框架:存 inviteCode 到 Customer.customFields 预留字段(若不存在则新增 `inviteCode` 字段),记一条 HistoryEntry,奖励发放标 TODO。
+本次仅实现 `bindIfPresent` 框架。**现状**: `Customer.customFields.inviteCode` 字段**不存在**(已核实 cjk-plugin 无此字段),本次**新增** `Customer.customFields.inviteCode`(string, nullable)。逻辑:存 inviteCode 到该字段,记一条 HistoryEntry(`INVITE_CODE_BOUND`),奖励发放标 TODO。
 
 ## 10. 测试策略
 
@@ -519,26 +542,30 @@ class InviteCodeService {
 
 | 风险 | 级别 | 缓解 |
 |---|---|---|
-| pageBlocks after 扩展点在 Vendure 3.6.4 行为不符预期 | 中 | 已验证 cjk-plugin 现有 `channel-detail-forms.tsx` 用 detailForms 先例;pageBlocks 是同级 API。若失败退回 detailForms 模式(字段级替换,体验略差) |
-| mapConfig 加密后前端 map-picker 无法读 apiKey | 高 | `mapConfig` 字段 `public: false`,仅 admin 可见;shop 侧通过 `mapSdkConfig` Query 读取(已有 MapAdminResolver 逻辑),迁移后该 Query 解密返回,前端无感 |
+| pageBlocks after 扩展点在 Vendure 3.6.4 行为不符预期 | 中 | 已核实 `pageId='channel-detail'`/`blockId='custom-fields'`/`position.order='after'` 均真实存在(dashboard src 确认)。若失败退回 detailForms 模式 |
+| mapConfig 加密后前端 map-picker 无法读 apiKey | 高 | `mapConfig` 字段 `public: false`,仅 admin 可见;shop 侧通过 `mapSdkConfig` Query 读取(已核实 MapAdminResolver 有此 Query),迁移后该 Query 解密返回,前端无感 |
 | 公众号消息加解密协议实现错误 | 高 | 用微信官方测试向量单测;先在 dev 环境用测试公众号验证一轮再上线 |
 | SSO 连通性测试若 zhao-sso 不支持 client_credentials | 低 | 降级 health 端点;已在 6.4 标注,需实现时确认 |
 | 多租户管理员 channel 关联校验绕过 | 中 | Resolver 层强制校验,所有 Mutation 入口走 `assertCanWrite`;Service 不暴露未校验的写入方法 |
-| 邀请码字段在 Customer.customFields 未定义 | 低 | 迁移阶段检查,若无则新增 `inviteCode` 字段 |
+| 邀请码字段在 Customer.customFields 未定义 | 低 | 已确认不存在,本次新增 `inviteCode` 字段(9.3 节) |
+| 旧 AuthAdminResolver/MapAdminResolver 无权限校验(现状安全漏洞) | 高 | 本次补 `@Allow(Permission.Authenticated)` + 内部 channel 校验(6.6 节);新 TenantConfigAdminResolver 一开始就带校验 |
+| payConfig 加密迁移导致现有明文数据丢失 | 中 | 迁移脚本幂等,先检测 `enc:` 前缀再加密;dev 环境验证一轮再上生产 |
+| wechat-auth-plugin 新增 controller 路由与现有 `@Controller('wechat-auth')` 冲突 | 低 | 新 controller 用 `@Controller('wechat/message')`,路径不冲突;Vendure plugin controller 挂载前缀一致 |
 
 ## 12. 实现顺序建议
 
 供 writing-plans 参考:
 
-1. 数据层: 扩展 `payment-config.types.ts` / `tenant-channel-custom-fields.ts` / `payment-config.ts`
+1. 数据层: 扩展 `payment-config.types.ts` / `tenant-channel-custom-fields.ts`(payConfig.douyinpayJson + Customer.inviteCode)/ `payment-config.ts`
 2. 加密层: 新增 `map-crypto.ts` / `pay-config-crypto.ts`
-3. 迁移: `mapConfig`/`payConfig` 加密迁移脚本 + bootstrap 调用
-4. Service 层: `PayConfigService` / `MapConfigService` 接口对齐(getMasked/update)
-5. Resolver 层: `TenantConfigAdminResolver` + 权限校验 + 审计
-6. 公众号消息加解密: `wechat-message-crypto.ts` + controller
-7. SSO 连通性测试 + 邀请码衔接
-8. UI 层: pageBlock 注册 + 4 tab 组件 + 掩码输入
-9. 测试: 单元 + E2E + Dashboard E2E
+3. 迁移: `mapConfig`/`payConfig` 加密迁移脚本 + bootstrap 调用 + HistoryEntryType 注册(`TENANT_CONFIG_UPDATE`/`MAP_CONFIG_MIGRATION_DONE`/`PAY_CONFIG_MIGRATION_DONE`/`INVITE_CODE_BOUND`)
+4. Service 层: 新建 `AuthConfigService`/`PayConfigService`/`MapConfigService`/`SsoProviderService`,接口对齐(getMasked/update/testConnection)
+5. Resolver 层: 新建 `TenantConfigAdminResolver` + 权限校验(`ctx.userHasPermissions([Permission.SuperAdmin])` + `ctx.user.channels`)+ 审计
+6. 旧 Resolver 改造: `AuthAdminResolver`/`MapAdminResolver` 补 `@Allow` + channel 校验,实现改为薄封装调 Service
+7. 公众号消息加解密: `wechat-message-crypto.ts` + `wechat-message.controller.ts`(`@Controller('wechat/message')`)
+8. SSO 连通性测试 + 邀请码衔接(`SsoAuthenticationStrategy` 加 inviteCode + `InviteCodeService` 框架)
+9. UI 层: pageBlock 注册(`position: { blockId: 'custom-fields', order: 'after' }`)+ 4 tab 组件 + 掩码输入
+10. 测试: 单元 + E2E + Dashboard E2E
 
 ## 13. 关键文件路径速查
 
