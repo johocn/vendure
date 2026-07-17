@@ -1,3 +1,6 @@
 export interface OrderTimeoutPluginOptions {
-    defaultTimeoutMinutes?: number;
+    defaultPaymentTimeoutMinutes?: number;
+    defaultFulfillmentTimeoutHours?: number;
+    defaultReceiptTimeoutDays?: number;
+    defaultReviewReminderDays?: number;
 }

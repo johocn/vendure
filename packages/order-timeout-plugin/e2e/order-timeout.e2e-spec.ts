@@ -12,7 +12,7 @@ registerInitializer('sqljs', new SqljsInitializer(path.join(__dirname, '__data__
 describe('OrderTimeoutPlugin', () => {
     const { server, adminClient } = createTestEnvironment(
         mergeConfig(testConfig(), {
-            plugins: [OrderTimeoutPlugin.init({ defaultTimeoutMinutes: 30 })],
+            plugins: [OrderTimeoutPlugin.init({ defaultPaymentTimeoutMinutes: 30 })],
         }),
     );
 
@@ -33,10 +33,13 @@ describe('OrderTimeoutPlugin', () => {
         expect(server.app).toBeDefined();
     });
 
-    it('registers orderTimeoutMinutes custom field on Channel', async () => {
+    it('registers orderPaymentTimeoutMinutes custom field on Channel', async () => {
         const result = await adminClient.query(gql`
-            query { channel(id: "1") { id customFields { orderTimeoutMinutes } } }
+            query { channel(id: "1") { id customFields { orderPaymentTimeoutMinutes orderFulfillmentTimeoutHours orderReceiptTimeoutDays orderReviewReminderDays } } }
         `);
-        expect(result.channel.customFields.orderTimeoutMinutes).toBe(30);
+        expect(result.channel.customFields.orderPaymentTimeoutMinutes).toBe(30);
+        expect(result.channel.customFields.orderFulfillmentTimeoutHours).toBe(48);
+        expect(result.channel.customFields.orderReceiptTimeoutDays).toBe(15);
+        expect(result.channel.customFields.orderReviewReminderDays).toBe(7);
     });
 });
