@@ -31,6 +31,7 @@ import { EmployeeCustomer } from './pickup/enterprise-customer/enterprise-custom
 import { EmployeeCustomerService } from './pickup/enterprise-customer/enterprise-customer.service';
 import { EmployeeCustomerAdminResolver } from './pickup/enterprise-customer/enterprise-customer-admin.resolver';
 import { orderCustomFields } from './order/order-custom-fields';
+import { customerCustomFields } from './customer/customer-custom-fields';
 import { tenantChannelCustomFields } from './tenant/tenant-channel-custom-fields';
 import { TenantSetupService } from './tenant/tenant-setup.service';
 import { CjkPluginOptions } from './types';
@@ -389,6 +390,14 @@ import { MapAdminResolver } from './map/map-admin.resolver';
             Order: [
                 ...(config.customFields?.Order || []),
                 ...orderCustomFields.Order!,
+            ],
+        };
+
+        config.customFields = {
+            ...config.customFields,
+            Customer: [
+                ...(config.customFields?.Customer || []),
+                ...customerCustomFields.Customer!,
             ],
         };
 

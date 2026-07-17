@@ -89,6 +89,7 @@ export const tenantChannelCustomFields: CustomFields = {
             fields: [
                 { name: 'alipayJson', type: 'text' },
                 { name: 'wechatpayJson', type: 'text' },
+                { name: 'douyinpayJson', type: 'text' },
             ],
         },
         {
