@@ -259,7 +259,7 @@ import { TenantConfigAdminResolver } from './admin/tenant-config-admin.resolver'
                     mapDistricts(parentAdcode: String): [DistrictNode!]!
                     reverseGeocode(lat: Float!, lng: Float!): ReverseGeocodeResult!
                     mapSdkConfig: MapSdkConfig!
-                    channelMapConfig: ChannelMapConfig!
+                    channelMapConfig(channelId: ID!): ChannelMapConfig!
                 }
 
                 extend type Query {
