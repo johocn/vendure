@@ -17,4 +17,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 __exportStar(require("./src/plugin"), exports);
 __exportStar(require("./src/types"), exports);
 __exportStar(require("./src/constants"), exports);
+__exportStar(require("./src/logistics-track.entity"), exports);
+__exportStar(require("./src/logistics.service"), exports);
+__exportStar(require("./src/tracking-provider"), exports);
+__exportStar(require("./src/carrier-dictionary"), exports);
 //# sourceMappingURL=index.js.map

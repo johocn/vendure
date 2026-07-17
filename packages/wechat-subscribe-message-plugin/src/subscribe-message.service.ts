@@ -197,7 +197,7 @@ export class SubscribeMessageService {
         log.status = result.success ? 'sent' : 'failed';
         log.msgId = result.msgId ?? null;
         log.errorMsg = result.error ?? null;
-        log.sentAt = result.success ? new Date() : null;
+        log.sentAt = result.success ? new Date() : undefined;
         await this.connection.getRepository(ctx, SubscribeMessageLog).save(log);
 
         if (!result.success) {

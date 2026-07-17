@@ -31,7 +31,7 @@ export class Review extends VendureEntity implements ChannelAware {
 
     @Column({ type: 'text', nullable: true }) reply: string | null;
 
-    @Column({ type: 'timestamptz', nullable: true }) repliedAt: Date | null;
+    @Column({ nullable: true }) repliedAt?: Date;
 
     @Column({ default: 0 }) helpfulCount: number;
 

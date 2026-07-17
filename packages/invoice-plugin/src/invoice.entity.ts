@@ -46,9 +46,9 @@ export class Invoice extends VendureEntity implements ChannelAware {
 
     @Column({ type: 'varchar', nullable: true }) pdfUrl: string | null;
 
-    @Column({ type: 'timestamptz', nullable: true }) issuedAt: Date;
+    @Column({ nullable: true }) issuedAt?: Date;
 
-    @Column({ type: 'timestamptz', nullable: true }) reversedAt: Date;
+    @Column({ nullable: true }) reversedAt?: Date;
 
     @Column({ type: 'text', nullable: true }) reverseReason: string | null;
 

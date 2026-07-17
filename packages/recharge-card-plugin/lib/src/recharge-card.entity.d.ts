@@ -9,7 +9,7 @@ export declare class RechargeCard extends VendureEntity implements ChannelAware 
     batchId: number;
     redeemedBy: Customer | null;
     redeemedByCustomerId: number | null;
-    redeemedAt: Date | null;
-    expiresAt: Date | null;
+    redeemedAt?: Date;
+    expiresAt?: Date;
     channels: Channel[];
 }

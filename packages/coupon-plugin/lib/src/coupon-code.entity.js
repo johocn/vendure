@@ -35,12 +35,12 @@ __decorate([
     __metadata("design:type", String)
 ], CouponCode.prototype, "status", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamptz', nullable: true }),
-    __metadata("design:type", Object)
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Date)
 ], CouponCode.prototype, "claimedAt", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamptz', nullable: true }),
-    __metadata("design:type", Object)
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Date)
 ], CouponCode.prototype, "usedAt", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'int', nullable: true }),

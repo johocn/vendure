@@ -25,8 +25,8 @@ export declare class Invoice extends VendureEntity implements ChannelAware {
     customerId: number;
     orderIds: number[];
     pdfUrl: string | null;
-    issuedAt: Date;
-    reversedAt: Date;
+    issuedAt?: Date;
+    reversedAt?: Date;
     reverseReason: string | null;
     providerInvoiceNo: string | null;
     lastError: string | null;

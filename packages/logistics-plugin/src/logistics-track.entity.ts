@@ -17,11 +17,11 @@ export class LogisticsTrack extends VendureEntity implements ChannelAware {
 
     @Column({ type: 'text', nullable: true }) trackInfo: string | null; // JSON: 物流轨迹详情
 
-    @Column({ type: 'timestamptz', nullable: true }) signedAt: Date | null; // 签收时间
+    @Column({ nullable: true }) signedAt?: Date; // 签收时间
 
     @Column({ type: 'text', nullable: true }) lastError: string | null;
 
-    @Column({ type: 'timestamptz', nullable: true }) lastSyncedAt: Date | null;
+    @Column({ nullable: true }) lastSyncedAt?: Date;
 
     @ManyToOne(() => Channel) channel: Channel;
 

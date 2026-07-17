@@ -19,9 +19,9 @@ export class Coupon extends VendureEntity implements ChannelAware {
 
     @Column({ type: 'int', default: 0 }) maxDiscount: number;
 
-    @Column({ type: 'timestamptz' }) startAt: Date;
+    @Column() startAt: Date;
 
-    @Column({ type: 'timestamptz' }) endAt: Date;
+    @Column() endAt: Date;
 
     @Column({ type: 'int' }) totalQuantity: number;
 

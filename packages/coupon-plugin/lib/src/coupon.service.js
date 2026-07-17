@@ -285,7 +285,7 @@ let CouponService = class CouponService {
         if (couponCode.status !== constants_1.CouponCodeStatus.Used)
             return couponCode;
         couponCode.status = constants_1.CouponCodeStatus.Unused;
-        couponCode.usedAt = null;
+        couponCode.usedAt = undefined;
         couponCode.orderId = null;
         const saved = await repo.save(couponCode);
         core_1.Logger.info(`Coupon ${code} released`, constants_1.loggerCtx);

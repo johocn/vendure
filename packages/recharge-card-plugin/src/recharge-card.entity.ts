@@ -30,11 +30,11 @@ export class RechargeCard extends VendureEntity implements ChannelAware {
     @Column({ type: 'int', nullable: true })
     redeemedByCustomerId: number | null;
 
-    @Column({ type: 'datetime', nullable: true })
-    redeemedAt: Date | null;
+    @Column({ nullable: true })
+    redeemedAt?: Date;
 
-    @Column({ type: 'datetime', nullable: true })
-    expiresAt: Date | null;
+    @Column({ nullable: true })
+    expiresAt?: Date;
 
     @ManyToMany(() => Channel)
     @JoinTable()

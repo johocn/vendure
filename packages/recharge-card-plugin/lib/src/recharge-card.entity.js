@@ -47,12 +47,12 @@ __decorate([
     __metadata("design:type", Object)
 ], RechargeCard.prototype, "redeemedByCustomerId", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
-    __metadata("design:type", Object)
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Date)
 ], RechargeCard.prototype, "redeemedAt", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
-    __metadata("design:type", Object)
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Date)
 ], RechargeCard.prototype, "expiresAt", void 0);
 __decorate([
     (0, typeorm_1.ManyToMany)(() => core_1.Channel),

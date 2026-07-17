@@ -319,7 +319,7 @@ export class CouponService {
         if (couponCode.status !== CouponCodeStatus.Used) return couponCode;
 
         couponCode.status = CouponCodeStatus.Unused;
-        couponCode.usedAt = null;
+        couponCode.usedAt = undefined;
         couponCode.orderId = null;
         const saved = await repo.save(couponCode);
         Logger.info(`Coupon ${code} released`, loggerCtx);

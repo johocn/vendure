@@ -24,11 +24,11 @@ export class OrderTimeoutTask extends VendureEntity implements ChannelAware {
     @Column({ type: 'varchar' }) type: TimeoutType;
     @Column() orderId: number;
     @Column() channelId: number;
-    @Column({ type: 'timestamptz' }) dueAt: Date;
+    @Column() dueAt: Date;
     @Column({ type: 'varchar', default: TimeoutTaskStatus.PENDING }) status: TimeoutTaskStatus;
     @Column({ type: 'int', default: 0 }) retryCount: number;
     @Column({ type: 'text', nullable: true }) lastError: string | null;
-    @Column({ type: 'timestamptz', nullable: true }) executedAt: Date | null;
+    @Column({ nullable: true }) executedAt?: Date;
     @ManyToOne(() => Channel) channel: Channel;
     @ManyToMany(() => Channel)
     @JoinTable()

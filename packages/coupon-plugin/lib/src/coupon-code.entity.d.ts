@@ -5,8 +5,8 @@ export declare class CouponCode extends VendureEntity implements ChannelAware {
     customerId: number;
     code: string;
     status: string;
-    claimedAt: Date | null;
-    usedAt: Date | null;
+    claimedAt?: Date;
+    usedAt?: Date;
     orderId: number | null;
     channel: Channel;
     channelId: number;

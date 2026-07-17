@@ -28,7 +28,7 @@ export class SubscribeMessageLog extends VendureEntity implements ChannelAware {
 
     @Column({ type: 'varchar', nullable: true }) msgId: string | null;
 
-    @Column({ type: 'timestamptz', nullable: true }) sentAt: Date | null;
+    @Column({ nullable: true }) sentAt?: Date;
 
     @ManyToOne(() => Channel) channel: Channel;
 

@@ -67,8 +67,8 @@ __decorate([
     __metadata("design:type", Object)
 ], Review.prototype, "reply", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamptz', nullable: true }),
-    __metadata("design:type", Object)
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Date)
 ], Review.prototype, "repliedAt", void 0);
 __decorate([
     (0, typeorm_1.Column)({ default: 0 }),

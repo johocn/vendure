@@ -28,7 +28,7 @@ export class MemberPointsHistory extends VendureEntity implements ChannelAware {
 
     @Column({ type: 'text', nullable: true }) remark: string | null;
 
-    @Column({ type: 'timestamptz', nullable: true }) expiresAt: Date | null;
+    @Column({ nullable: true }) expiresAt?: Date;
 
     @ManyToOne(() => Channel) channel: Channel;
 

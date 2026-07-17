@@ -45,6 +45,10 @@ import { LogisticsApiPlugin } from '@vendure/logistics-api-plugin';
 import { InvoicePdfPlugin } from '@vendure/invoice-pdf-plugin';
 import { RechargeCardPlugin } from '@vendure/recharge-card-plugin';
 import { AfterSalesPlugin } from '@vendure/after-sales-plugin';
+import { MemberLevelPlugin } from '@vendure/member-level-plugin';
+import { ReviewPlugin } from '@vendure/review-plugin';
+import { WechatSubscribeMessagePlugin } from '@vendure/wechat-subscribe-message-plugin';
+import { CouponPlugin } from '@vendure/coupon-plugin';
 import { NavModifierPlugin } from './test-plugins/nav-modifier-plugin/nav-modifier-plugin';
 // import { FieldTestPlugin } from './test-plugins/field-test/field-test-plugin';
 import { ReviewsPlugin } from './test-plugins/reviews/reviews-plugin';
@@ -299,7 +303,7 @@ export const devConfig: VendureConfig = {
             devBypass: process.env.DEV_BYPASS_DOUYIN === 'true',
             devBypassOpenid: 'dev_test_openid',
         })] : []),
-        OrderTimeoutPlugin.init({ defaultTimeoutMinutes: 30 }),
+        OrderTimeoutPlugin.init({ defaultPaymentTimeoutMinutes: 30 }),
         InvoicePlugin.init(),
         LogisticsPlugin.init(),
         GroupBuyPlugin.init({ defaultTimeoutMinutes: 60 }),
@@ -320,6 +324,10 @@ export const devConfig: VendureConfig = {
         InvoicePdfPlugin.init(),
         RechargeCardPlugin.init({ defaultExpiresMonths: 12 }),
         AfterSalesPlugin.init(),
+        MemberLevelPlugin.init(),
+        ReviewPlugin.init(),
+        WechatSubscribeMessagePlugin.init(),
+        CouponPlugin.init(),
     ],
 };
 

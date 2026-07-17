@@ -15,9 +15,9 @@ export class CouponCode extends VendureEntity implements ChannelAware {
 
     @Column({ type: 'varchar', default: 'unused' }) status: string;
 
-    @Column({ type: 'timestamptz', nullable: true }) claimedAt: Date | null;
+    @Column({ nullable: true }) claimedAt?: Date;
 
-    @Column({ type: 'timestamptz', nullable: true }) usedAt: Date | null;
+    @Column({ nullable: true }) usedAt?: Date;
 
     @Column({ type: 'int', nullable: true }) orderId: number | null;
 

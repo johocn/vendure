@@ -84,11 +84,11 @@ __decorate([
     __metadata("design:type", Object)
 ], Invoice.prototype, "pdfUrl", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamptz', nullable: true }),
+    (0, typeorm_1.Column)({ nullable: true }),
     __metadata("design:type", Date)
 ], Invoice.prototype, "issuedAt", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamptz', nullable: true }),
+    (0, typeorm_1.Column)({ nullable: true }),
     __metadata("design:type", Date)
 ], Invoice.prototype, "reversedAt", void 0);
 __decorate([

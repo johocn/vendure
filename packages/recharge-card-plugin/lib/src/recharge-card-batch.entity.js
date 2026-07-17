@@ -39,8 +39,8 @@ __decorate([
     __metadata("design:type", Number)
 ], RechargeCardBatch.prototype, "generatedCount", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
-    __metadata("design:type", Object)
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Date)
 ], RechargeCardBatch.prototype, "expiresAt", void 0);
 __decorate([
     (0, typeorm_1.ManyToMany)(() => core_1.Channel),

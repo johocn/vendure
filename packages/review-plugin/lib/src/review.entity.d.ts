@@ -13,7 +13,7 @@ export declare class Review extends VendureEntity implements ChannelAware {
     isAnonymous: boolean;
     status: string;
     reply: string | null;
-    repliedAt: Date | null;
+    repliedAt?: Date;
     helpfulCount: number;
     channel: Channel;
     channelId: number;

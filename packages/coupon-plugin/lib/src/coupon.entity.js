@@ -43,11 +43,11 @@ __decorate([
     __metadata("design:type", Number)
 ], Coupon.prototype, "maxDiscount", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamptz' }),
+    (0, typeorm_1.Column)(),
     __metadata("design:type", Date)
 ], Coupon.prototype, "startAt", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamptz' }),
+    (0, typeorm_1.Column)(),
     __metadata("design:type", Date)
 ], Coupon.prototype, "endAt", void 0);
 __decorate([

@@ -91,7 +91,7 @@ export class LogisticsService {
             const result = await this.trackingProvider.queryTrack(ctx, track.carrierCode, track.trackingNo);
             track.status = result.status;
             track.trackInfo = JSON.stringify(result.tracks);
-            track.signedAt = result.signedAt ?? null;
+            track.signedAt = result.signedAt ?? undefined;
             track.lastSyncedAt = new Date();
             track.lastError = null;
             await repo.save(track);
@@ -238,7 +238,7 @@ export class LogisticsService {
         }
         track.status = trackResult.status;
         track.trackInfo = JSON.stringify(trackResult.tracks);
-        track.signedAt = trackResult.signedAt ?? null;
+        track.signedAt = trackResult.signedAt ?? undefined;
         track.lastSyncedAt = new Date();
         track.lastError = null;
         return repo.save(track);
