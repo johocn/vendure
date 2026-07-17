@@ -260,6 +260,42 @@ import { tenantConfigPermission } from './admin/tenant-config-permissions';
                     mapSdkConfig: MapSdkConfig!
                     channelMapConfig: ChannelMapConfig!
                 }
+
+                extend type Query {
+                    tenantConfig(channelId: ID!): TenantConfigPayload!
+                }
+
+                extend type Mutation {
+                    updateTenantConfig(input: UpdateTenantConfigInput!): TenantConfigPayload!
+                    testSsoConnection(input: TestSsoInput!): TestSsoResult!
+                }
+
+                type TenantConfigPayload {
+                    channelId: ID!
+                    auth: JSON!
+                    pay: JSON!
+                    map: JSON!
+                    canEdit: Boolean!
+                }
+
+                input UpdateTenantConfigInput {
+                    channelId: ID!
+                    authPatch: JSON
+                    payPatch: JSON
+                    mapPatch: JSON
+                }
+
+                input TestSsoInput {
+                    channelId: ID!
+                    providerKey: String!
+                    newClientSecret: String
+                }
+
+                type TestSsoResult {
+                    success: Boolean!
+                    latencyMs: Int!
+                    error: String
+                }
             `;
         },
         resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver],
