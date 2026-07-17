@@ -8,10 +8,28 @@ import {
     PaginatedList,
     RequestContext,
     TransactionalConnection,
+    UserInputError,
 } from '@vendure/core';
 
 import { GroupBuyActivity } from './group-buy-activity.entity';
 import { GroupBuyOrder } from './group-buy-order.entity';
+
+const ALLOWED_UPDATE_FIELDS = [
+    'name',
+    'description',
+    'startAt',
+    'endAt',
+    'targetCount',
+    'maxCount',
+    'groupPrice',
+    'leaderDiscount',
+    'leaderRewardType',
+    'productId',
+    'variantId',
+    'autoConfirm',
+    'allowJoinAfterComplete',
+    'status',
+] as const;
 
 @Injectable()
 export class GroupBuyService {
@@ -71,9 +89,15 @@ export class GroupBuyService {
         const repo = this.connection.getRepository(ctx, GroupBuyActivity);
         const activity = await repo.findOne({ where: { id: input.id } });
         if (!activity) {
-            throw new Error(`GroupBuyActivity with id ${input.id} not found`);
+            throw new UserInputError(`GroupBuyActivity with id ${input.id} not found`);
         }
-        Object.assign(activity, input);
+        const patch: Record<string, unknown> = {};
+        for (const key of ALLOWED_UPDATE_FIELDS) {
+            if (input[key] !== undefined) {
+                patch[key] = input[key];
+            }
+        }
+        Object.assign(activity, patch);
         return repo.save(activity);
     }
 
@@ -91,44 +115,59 @@ export class GroupBuyService {
         const activityRepo = this.connection.getRepository(ctx, GroupBuyActivity);
         const orderRepo = this.connection.getRepository(ctx, GroupBuyOrder);
 
-        const activity = await activityRepo.findOne({ where: { id: activityId as any } });
-        if (!activity) {
-            throw new Error(`GroupBuyActivity with id ${activityId} not found`);
-        }
-
-        if (activity.status !== 'active') {
-            throw new Error('Activity is not active');
-        }
-
-        if (this.stockReserveService?.isAvailable) {
-            const remaining = await this.stockReserveService.reserveStock(
-                `group-buy:${activityId}`,
-                1,
-            );
-            if (remaining < 0) {
-                throw new Error('Activity is already full');
+        await this.connection.startTransaction(ctx);
+        try {
+            const activity = await activityRepo.findOne({ where: { id: activityId as any } });
+            if (!activity) {
+                throw new UserInputError(`GroupBuyActivity with id ${activityId} not found`);
             }
-        } else {
-            if (activity.currentCount >= activity.targetCount && !activity.allowJoinAfterComplete) {
-                throw new Error('Activity is already full');
+
+            if (activity.status !== 'active') {
+                throw new UserInputError('Activity is not active');
             }
+
+            const now = new Date();
+            if (activity.startAt && now < activity.startAt) {
+                throw new UserInputError('Group buy activity has not started yet');
+            }
+            if (activity.endAt && now > activity.endAt) {
+                throw new UserInputError('Group buy activity has ended');
+            }
+
+            if (this.stockReserveService?.isAvailable) {
+                const remaining = await this.stockReserveService.reserveStock(
+                    `group-buy:${activityId}`,
+                    1,
+                );
+                if (remaining < 0) {
+                    throw new UserInputError('Activity is already full');
+                }
+            } else {
+                if (activity.currentCount >= activity.targetCount && !activity.allowJoinAfterComplete) {
+                    throw new UserInputError('Activity is already full');
+                }
+            }
+
+            const groupBuyOrder = new GroupBuyOrder({
+                groupBuyActivityId: String(activityId),
+                orderId: String(orderId),
+                isLeader,
+                status: 'pending',
+            });
+            const savedOrder = await orderRepo.save(groupBuyOrder);
+
+            activity.currentCount += 1;
+            if (activity.currentCount >= activity.targetCount) {
+                activity.status = 'completed';
+            }
+            await activityRepo.save(activity);
+
+            await this.connection.commitOpenTransaction(ctx);
+            return savedOrder;
+        } catch (e) {
+            await this.connection.rollBackTransaction(ctx);
+            throw e;
         }
-
-        const groupBuyOrder = new GroupBuyOrder({
-            groupBuyActivityId: String(activityId),
-            orderId: String(orderId),
-            isLeader,
-            status: 'pending',
-        });
-        const savedOrder = await orderRepo.save(groupBuyOrder);
-
-        activity.currentCount += 1;
-        if (activity.currentCount >= activity.targetCount) {
-            activity.status = 'completed';
-        }
-        await activityRepo.save(activity);
-
-        return savedOrder;
     }
 
     async findActiveByVariant(ctx: RequestContext, variantId: ID): Promise<GroupBuyActivity[]> {

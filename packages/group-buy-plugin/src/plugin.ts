@@ -1,6 +1,7 @@
 import { Inject, OnApplicationBootstrap, Type } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { EventBus, Injector, Logger, OrderStateTransitionEvent, PluginCommonModule, VendurePlugin } from '@vendure/core';
+import gql from 'graphql-tag';
 
 import { GROUP_BUY_PLUGIN_OPTIONS, loggerCtx } from './constants';
 import { GroupBuyPluginOptions } from './types';
@@ -13,8 +14,9 @@ import { GroupBuyJob } from './group-buy.job';
 import { groupBuyOrderCustomFields } from './order-custom-fields';
 import { groupBuyDiscountCondition } from './group-buy-promotion-condition';
 import { groupBuyLeaderRewardCondition } from './group-buy-leader-promotion';
-
-const { gql } = require('graphql-tag');
+import { groupBuyPriceAction } from './group-buy-price-action';
+import { groupBuyLeaderRewardAction } from './group-buy-leader-reward-action';
+import { groupBuyCheckTask } from './group-buy-scheduled-task';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
@@ -132,7 +134,7 @@ const { gql } = require('graphql-tag');
             }
 
             extend type Mutation {
-                joinGroupBuy(activityId: ID!, isLeader: Boolean!): GroupBuyOrderResult!
+                joinGroupBuy(activityId: ID!, orderId: ID!, isLeader: Boolean!): GroupBuyOrderResult!
             }
         `,
         resolvers: [GroupBuyShopResolver],
@@ -152,6 +154,14 @@ const { gql } = require('graphql-tag');
             groupBuyDiscountCondition,
             groupBuyLeaderRewardCondition,
         ];
+        config.promotionOptions.promotionActions = [
+            ...(config.promotionOptions.promotionActions ?? []),
+            groupBuyPriceAction,
+            groupBuyLeaderRewardAction,
+        ];
+
+        config.schedulerOptions = config.schedulerOptions || {};
+        config.schedulerOptions.tasks = [...(config.schedulerOptions.tasks ?? []), groupBuyCheckTask];
 
         return config;
     },
@@ -195,8 +205,6 @@ export class GroupBuyPlugin implements OnApplicationBootstrap {
                 // RedisStockPlugin not installed
             }
         });
-        await this.groupBuyJob.init();
-        this.groupBuyJob.scheduleCheck();
         Logger.info('GroupBuyPlugin initialized', loggerCtx);
     }
 }

@@ -1,5 +1,5 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { Ctx, ID, RequestContext } from '@vendure/core';
+import { Ctx, ID, RequestContext, Transaction } from '@vendure/core';
 
 import { GroupBuyActivity } from './group-buy-activity.entity';
 import { GroupBuyOrder } from './group-buy-order.entity';
@@ -17,6 +17,7 @@ export class GroupBuyShopResolver {
     }
 
     @Mutation()
+    @Transaction('manual')
     async joinGroupBuy(
         @Ctx() ctx: RequestContext,
         @Args('activityId') activityId: ID,
