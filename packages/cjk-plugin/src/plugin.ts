@@ -52,6 +52,7 @@ import { MapConfigService } from './map/map-config.service';
 import { SsoProviderService } from './auth/sso-provider.service';
 import { InviteCodeService } from './auth/invite-code.service';
 import { tenantConfigPermission } from './admin/tenant-config-permissions';
+import { TenantConfigAdminResolver } from './admin/tenant-config-admin.resolver';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
@@ -298,7 +299,7 @@ import { tenantConfigPermission } from './admin/tenant-config-permissions';
                 }
             `;
         },
-        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver],
+        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {
