@@ -1,8 +1,14 @@
-import { Type } from '@nestjs/common';
+import { OnApplicationBootstrap, Type } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { InvoicePluginOptions } from './types';
-export declare class InvoicePlugin {
+import { InvoiceService } from './invoice.service';
+export declare class InvoicePlugin implements OnApplicationBootstrap {
     private options;
+    private invoiceService;
+    private moduleRef;
     private static options;
-    constructor(options: InvoicePluginOptions);
+    private injector;
+    constructor(options: InvoicePluginOptions, invoiceService: InvoiceService, moduleRef: ModuleRef);
     static init(options?: InvoicePluginOptions): Type<InvoicePlugin>;
+    onApplicationBootstrap(): Promise<void>;
 }

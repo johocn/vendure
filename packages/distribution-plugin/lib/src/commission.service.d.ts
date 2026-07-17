@@ -13,4 +13,9 @@ export declare class CommissionService {
     findAll(ctx: RequestContext, options?: ListQueryOptions<CommissionRecord>): Promise<PaginatedList<CommissionRecord>>;
     findByDistributor(ctx: RequestContext, distributorId: ID, options?: ListQueryOptions<CommissionRecord>): Promise<PaginatedList<CommissionRecord>>;
     settlePendingCommissions(ctx: RequestContext): Promise<number>;
+    /**
+     * 退款冲销：反查 orderId 对应的 CommissionRecord，pending/confirmed 置 cancelled；
+     * 已 confirmed 的还需扣回 distributor.availableBalance。
+     */
+    cancelCommissionByOrder(ctx: RequestContext, orderId: string): Promise<number>;
 }

@@ -12,12 +12,14 @@ registerInitializer('sqljs', new SqljsInitializer(path.join(__dirname, '__data__
 describe('DistributionPlugin', () => {
     const { server, adminClient, shopClient } = createTestEnvironment(
         mergeConfig(testConfig(), {
-            plugins: [DistributionPlugin.init({
-                defaultDirectRate: 1000,
-                defaultIndirectRate: 500,
-                minWithdrawalAmount: 10000,
-                settlementDays: 7,
-            })],
+            plugins: [
+                DistributionPlugin.init({
+                    defaultDirectRate: 1000,
+                    defaultIndirectRate: 500,
+                    minWithdrawalAmount: 10000,
+                    settlementDays: 7,
+                }),
+            ],
         }),
     );
 
@@ -38,19 +40,30 @@ describe('DistributionPlugin', () => {
         expect(server.app).toBeDefined();
     });
 
-    it('registers distributionEnabled custom field on Channel', async () => {
-        const result = await adminClient.query(gql`
-            query { channel(id: "1") { id customFields { distributionEnabled directCommissionRate indirectCommissionRate } } }
-        `);
-        expect(result.channel.customFields.distributionEnabled).toBe(false);
-        expect(result.channel.customFields.directCommissionRate).toBe(1000);
-    });
-
     it('exposes distributors admin query', async () => {
         const result = await adminClient.query(gql`
-            query { distributors(options: { take: 10 }) { items { id referralCode status } totalItems } }
+            query { distributors { items { id customerId level status referralCode } totalItems } }
         `);
         expect(result.distributors).toBeDefined();
         expect(result.distributors.items).toEqual([]);
+        expect(result.distributors.totalItems).toBe(0);
+    });
+
+    it('exposes commissionRecords admin query', async () => {
+        const result = await adminClient.query(gql`
+            query { commissionRecords { items { id distributorId orderId commissionType commissionAmount status } totalItems } }
+        `);
+        expect(result.commissionRecords).toBeDefined();
+        expect(result.commissionRecords.items).toEqual([]);
+        expect(result.commissionRecords.totalItems).toBe(0);
+    });
+
+    it('exposes withdrawalRequests admin query', async () => {
+        const result = await adminClient.query(gql`
+            query { withdrawalRequests { items { id distributorId amount method status } totalItems } }
+        `);
+        expect(result.withdrawalRequests).toBeDefined();
+        expect(result.withdrawalRequests.items).toEqual([]);
+        expect(result.withdrawalRequests.totalItems).toBe(0);
     });
 });

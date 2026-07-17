@@ -1,6 +1,6 @@
 import { ID, ListQueryBuilder, ListQueryOptions, PaginatedList, RequestContext, TransactionalConnection } from '@vendure/core';
-import { WithdrawalRequest } from './withdrawal-request.entity';
 import { DistributionService } from './distribution.service';
+import { WithdrawalRequest } from './withdrawal-request.entity';
 export declare class WithdrawalService {
     private connection;
     private listQueryBuilder;

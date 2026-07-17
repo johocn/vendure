@@ -326,6 +326,41 @@ export class CouponService {
         return saved;
     }
 
+    // ===== Promotion 桥接 =====
+
+    /**
+     * 将券码绑定到订单（设置 order.customFields.appliedCouponCode）。
+     * 调用后，couponOrderAction 会在订单计算时自动应用折扣。
+     * 不修改券码状态——状态变更由 OrderPlacedEvent 触发 redeemCoupon 完成。
+     */
+    async applyCouponToOrder(
+        ctx: RequestContext,
+        orderId: ID,
+        code: string,
+    ): Promise<CouponValidationResult> {
+        const orderLines = await this.getOrderLinesForCoupon(ctx, orderId);
+        const result = await this.validateCoupon(ctx, code, orderLines);
+        if (!result.valid) {
+            return result;
+        }
+        await this.orderService.updateCustomFields(ctx, orderId, { appliedCouponCode: code });
+        return result;
+    }
+
+    /** 订单取消时清除绑定的券码并释放券码。 */
+    async releaseCouponOnOrder(ctx: RequestContext, orderId: ID): Promise<void> {
+        const order = await this.orderService.findOne(ctx, orderId);
+        if (!order) return;
+        const code = (order as any).customFields?.appliedCouponCode;
+        if (!code) return;
+        try {
+            await this.releaseCoupon(ctx, code);
+            await this.orderService.updateCustomFields(ctx, orderId, { appliedCouponCode: null });
+        } catch (e: any) {
+            Logger.error(`Failed to release coupon ${code} for order ${orderId}: ${e?.message ?? e}`, loggerCtx);
+        }
+    }
+
     // ===== Scheduled: expire =====
 
     /** 过期所有 unused 且对应券已过 endAt 的券码。 */

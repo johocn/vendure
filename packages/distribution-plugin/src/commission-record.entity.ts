@@ -15,17 +15,17 @@ export class CommissionRecord extends VendureEntity implements ChannelAware {
 
     @Column({ nullable: true }) fromDistributorId: string;
 
-    @Column() commissionType: 'direct' | 'indirect';
+    @Column({ type: 'varchar' }) commissionType: 'direct' | 'indirect';
 
-    @Column() commissionRate: number;
+    @Column({ type: 'int' }) commissionRate: number;
 
-    @Column() orderAmount: number;
+    @Column({ type: 'int' }) orderAmount: number;
 
-    @Column() commissionAmount: number;
+    @Column({ type: 'int' }) commissionAmount: number;
 
-    @Column({ default: 'pending' }) status: 'pending' | 'confirmed' | 'paid' | 'cancelled';
+    @Column({ type: 'varchar', default: 'pending' }) status: 'pending' | 'confirmed' | 'paid' | 'cancelled';
 
-    @Column({ type: 'timestamp', nullable: true }) settledAt: Date;
+    @Column({ type: 'datetime', nullable: true }) settledAt: Date;
 
     @ManyToMany(() => Channel)
     @JoinTable()

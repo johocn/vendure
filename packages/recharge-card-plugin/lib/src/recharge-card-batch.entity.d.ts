@@ -8,4 +8,8 @@ export declare class RechargeCardBatch extends VendureEntity implements ChannelA
     generatedCount: number;
     expiresAt: Date | null;
     channels: Channel[];
+    plaintextPins?: {
+        code: string;
+        pin: string;
+    }[];
 }

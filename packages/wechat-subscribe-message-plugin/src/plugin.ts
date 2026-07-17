@@ -21,7 +21,7 @@ import { WechatMessageProvider } from './wechat-message-provider';
 const { gql } = require('graphql-tag');
 
 const adminSchema = () => gql`
-    type SubscribeMessageLog {
+    type SubscribeMessageLog implements Node {
         id: ID!
         customerId: ID!
         openid: String!
@@ -96,6 +96,7 @@ const adminSchema = () => gql`
         };
         return config;
     },
+    dashboard: '../dashboard/index.tsx',
     compatibility: '^3.0.0',
 })
 export class WechatSubscribeMessagePlugin implements OnApplicationBootstrap {

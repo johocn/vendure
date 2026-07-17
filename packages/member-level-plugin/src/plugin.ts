@@ -30,7 +30,7 @@ const adminSchema = () => gql`
         nextLevelName: String
     }
 
-    type MemberPointsHistory {
+    type MemberPointsHistory implements Node {
         id: ID!
         customerId: ID!
         type: String!
@@ -74,7 +74,7 @@ const shopSchema = () => gql`
         nextLevelName: String
     }
 
-    type MemberPointsHistory {
+    type MemberPointsHistory implements Node {
         id: ID!
         customerId: ID!
         type: String!
@@ -129,6 +129,7 @@ const shopSchema = () => gql`
         ];
         return config;
     },
+    dashboard: '../dashboard/index.tsx',
     compatibility: '^3.0.0',
 })
 export class MemberLevelPlugin implements OnApplicationBootstrap {

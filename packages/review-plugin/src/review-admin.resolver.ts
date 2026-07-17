@@ -20,6 +20,12 @@ export class ReviewAdminResolver {
         return this.reviewService.getReview(ctx, id);
     }
 
+    @Query()
+    @Allow(Permission.ReadOrder)
+    async reviewStats(@Ctx() ctx: RequestContext, @Args('productId') productId: ID): Promise<any> {
+        return this.reviewService.getReviewStats(ctx, productId);
+    }
+
     @Mutation()
     @Allow(Permission.UpdateOrder)
     async replyReview(

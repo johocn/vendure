@@ -11,9 +11,9 @@ export class Review extends VendureEntity implements ChannelAware {
 
     @Column() productId: number;
 
-    @Column({ nullable: true }) orderLineId: number | null;
+    @Column({ type: 'int', nullable: true }) orderLineId: number | null;
 
-    @Column({ nullable: true }) variantId: number | null;
+    @Column({ type: 'int', nullable: true }) variantId: number | null;
 
     @Column({ type: 'int' }) rating: number;
 

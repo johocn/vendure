@@ -25,13 +25,13 @@ __decorate([
 __decorate([
     (0, typeorm_1.Column)({ nullable: true }),
     __metadata("design:type", String)
-], RechargeCard.prototype, "pin", void 0);
+], RechargeCard.prototype, "pinHash", void 0);
 __decorate([
     (0, typeorm_1.Column)(),
     __metadata("design:type", Number)
 ], RechargeCard.prototype, "faceValue", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ default: 'unused' }),
+    (0, typeorm_1.Column)({ type: 'varchar', default: 'unused' }),
     __metadata("design:type", String)
 ], RechargeCard.prototype, "state", void 0);
 __decorate([
@@ -47,11 +47,11 @@ __decorate([
     __metadata("design:type", Object)
 ], RechargeCard.prototype, "redeemedByCustomerId", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
+    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
     __metadata("design:type", Object)
 ], RechargeCard.prototype, "redeemedAt", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
+    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
     __metadata("design:type", Object)
 ], RechargeCard.prototype, "expiresAt", void 0);
 __decorate([

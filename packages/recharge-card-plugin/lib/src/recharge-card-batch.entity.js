@@ -39,7 +39,7 @@ __decorate([
     __metadata("design:type", Number)
 ], RechargeCardBatch.prototype, "generatedCount", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
+    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
     __metadata("design:type", Object)
 ], RechargeCardBatch.prototype, "expiresAt", void 0);
 __decorate([

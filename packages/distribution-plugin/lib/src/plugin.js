@@ -21,7 +21,6 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const graphql_tag_1 = __importDefault(require("graphql-tag"));
 const constants_1 = require("./constants");
-const commission_job_1 = require("./commission.job");
 const commission_record_entity_1 = require("./commission-record.entity");
 const commission_service_1 = require("./commission.service");
 const distribution_admin_resolver_1 = require("./distribution-admin.resolver");
@@ -32,29 +31,18 @@ const withdrawal_request_entity_1 = require("./withdrawal-request.entity");
 const withdrawal_service_1 = require("./withdrawal.service");
 const channel_custom_fields_1 = require("./channel-custom-fields");
 const customer_custom_fields_1 = require("./customer-custom-fields");
+const commission_job_1 = require("./commission.job");
 let DistributionPlugin = DistributionPlugin_1 = class DistributionPlugin {
-    constructor(options, commissionService, commissionJob, channelService) {
+    constructor(options, commissionService) {
         this.options = options;
         this.commissionService = commissionService;
-        this.commissionJob = commissionJob;
-        this.channelService = channelService;
     }
     static init(options) {
         DistributionPlugin_1.options = options !== null && options !== void 0 ? options : {};
         return DistributionPlugin_1;
     }
     async onApplicationBootstrap() {
-        var _a;
         await this.commissionService.init();
-        await this.commissionJob.init();
-        const emptyCtx = core_1.RequestContext.empty();
-        const channels = await this.channelService.findAll(emptyCtx);
-        for (const channel of channels.items) {
-            if ((_a = channel.customFields) === null || _a === void 0 ? void 0 : _a.distributionEnabled) {
-                await this.commissionJob.scheduleSettlement(channel.id);
-                core_1.Logger.info(`Scheduled commission settlement for channel ${channel.id}`, constants_1.loggerCtx);
-            }
-        }
         core_1.Logger.info('DistributionPlugin initialized', constants_1.loggerCtx);
     }
 };
@@ -69,7 +57,6 @@ exports.DistributionPlugin = DistributionPlugin = DistributionPlugin_1 = __decor
             distribution_service_1.DistributionService,
             commission_service_1.CommissionService,
             withdrawal_service_1.WithdrawalService,
-            commission_job_1.CommissionJob,
         ],
         adminApiExtensions: {
             schema: () => (0, graphql_tag_1.default) `
@@ -199,14 +186,27 @@ exports.DistributionPlugin = DistributionPlugin = DistributionPlugin_1 = __decor
                 createdAt: DateTime!
             }
 
+            type CommissionRecordList implements PaginatedList {
+                items: [CommissionRecord!]!
+                totalItems: Int!
+            }
+
+            type WithdrawalRequestList implements PaginatedList {
+                items: [WithdrawalRequest!]!
+                totalItems: Int!
+            }
+
+            input CommissionRecordListOptions
+            input WithdrawalRequestListOptions
+
             extend type Query {
                 myDistributorProfile: Distributor
-                myCommissionRecords: [CommissionRecord!]!
-                myWithdrawalRequests: [WithdrawalRequest!]!
+                myCommissionRecords(options: CommissionRecordListOptions): CommissionRecordList!
+                myWithdrawalRequests(options: WithdrawalRequestListOptions): WithdrawalRequestList!
             }
 
             extend type Mutation {
-                applyDistributor: Distributor!
+                applyDistributor(referredByCode: String): Distributor!
                 requestWithdrawal(amount: Int!, method: WithdrawalMethod!, accountInfo: String!): WithdrawalRequest!
             }
         `,
@@ -221,14 +221,20 @@ exports.DistributionPlugin = DistributionPlugin = DistributionPlugin_1 = __decor
                     ...((_d = (_c = config.customFields) === null || _c === void 0 ? void 0 : _c.Customer) !== null && _d !== void 0 ? _d : []),
                     ...customer_custom_fields_1.distributionCustomerCustomFields.Customer,
                 ] });
+            // 注册每日佣金结算 ScheduledTask（由 DefaultSchedulerPlugin 在 worker 上周期执行）
+            if (!config.schedulerOptions) {
+                config.schedulerOptions = { tasks: [] };
+            }
+            if (!config.schedulerOptions.tasks) {
+                config.schedulerOptions.tasks = [];
+            }
+            config.schedulerOptions.tasks.push(commission_job_1.settleCommissionsTask);
             return config;
         },
         dashboard: '../dashboard/index.tsx',
         compatibility: '^3.0.0',
     }),
     __param(0, (0, common_1.Inject)(constants_1.DISTRIBUTION_PLUGIN_OPTIONS)),
-    __metadata("design:paramtypes", [Object, commission_service_1.CommissionService,
-        commission_job_1.CommissionJob,
-        core_1.ChannelService])
+    __metadata("design:paramtypes", [Object, commission_service_1.CommissionService])
 ], DistributionPlugin);
 //# sourceMappingURL=plugin.js.map

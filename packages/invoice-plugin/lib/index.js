@@ -17,4 +17,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 __exportStar(require("./src/plugin"), exports);
 __exportStar(require("./src/types"), exports);
 __exportStar(require("./src/constants"), exports);
+__exportStar(require("./src/invoice.entity"), exports);
+__exportStar(require("./src/invoice-provider"), exports);
+__exportStar(require("./src/invoice.service"), exports);
 //# sourceMappingURL=index.js.map

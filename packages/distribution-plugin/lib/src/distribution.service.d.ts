@@ -1,9 +1,10 @@
-import { ID, ListQueryBuilder, ListQueryOptions, PaginatedList, RequestContext, TransactionalConnection } from '@vendure/core';
+import { CustomerService, ID, ListQueryBuilder, ListQueryOptions, PaginatedList, RequestContext, TransactionalConnection } from '@vendure/core';
 import { Distributor } from './distributor.entity';
 export declare class DistributionService {
     private connection;
     private listQueryBuilder;
-    constructor(connection: TransactionalConnection, listQueryBuilder: ListQueryBuilder);
+    private customerService;
+    constructor(connection: TransactionalConnection, listQueryBuilder: ListQueryBuilder, customerService: CustomerService);
     findAll(ctx: RequestContext, options?: ListQueryOptions<Distributor>): Promise<PaginatedList<Distributor>>;
     findOne(ctx: RequestContext, id: ID): Promise<Distributor | undefined>;
     findByReferralCode(ctx: RequestContext, referralCode: string): Promise<Distributor | undefined>;

@@ -38,6 +38,10 @@ __decorate([
     (0, typeorm_1.Column)({ default: 0 }),
     __metadata("design:type", Number)
 ], CustomerBalance.prototype, "balance", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', default: 0 }),
+    __metadata("design:type", Number)
+], CustomerBalance.prototype, "frozenBalance", void 0);
 exports.CustomerBalance = CustomerBalance = __decorate([
     (0, typeorm_1.Entity)(),
     (0, typeorm_1.Unique)(['customer', 'channel']),

@@ -20,6 +20,9 @@
     "devDependencies": {
         "@vendure/common": "3.6.4",
         "@vendure/core": "3.6.4",
+        "@vendure/testing": "3.6.4",
+        "cross-env": "^7.0.3",
+        "graphql-tag": "^2.12.6",
         "rimraf": "^5.0.5",
         "typescript": "5.8.2"
     }

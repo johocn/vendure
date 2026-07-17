@@ -20,13 +20,13 @@ export class SubscribeMessageLog extends VendureEntity implements ChannelAware {
 
     @Column({ type: 'varchar', default: 'pending' }) status: SubscribeMessageStatus;
 
-    @Column({ nullable: true }) page: string | null;
+    @Column({ type: 'varchar', nullable: true }) page: string | null;
 
-    @Column({ nullable: true }) miniprogramState: string | null;
+    @Column({ type: 'varchar', nullable: true }) miniprogramState: string | null;
 
-    @Column({ nullable: true }) errorMsg: string | null;
+    @Column({ type: 'text', nullable: true }) errorMsg: string | null;
 
-    @Column({ nullable: true }) msgId: string | null;
+    @Column({ type: 'varchar', nullable: true }) msgId: string | null;
 
     @Column({ type: 'timestamptz', nullable: true }) sentAt: Date | null;
 

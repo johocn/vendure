@@ -19,7 +19,7 @@ export class CouponCode extends VendureEntity implements ChannelAware {
 
     @Column({ type: 'timestamptz', nullable: true }) usedAt: Date | null;
 
-    @Column({ nullable: true }) orderId: number | null;
+    @Column({ type: 'int', nullable: true }) orderId: number | null;
 
     @ManyToOne(() => Channel) channel: Channel;
 

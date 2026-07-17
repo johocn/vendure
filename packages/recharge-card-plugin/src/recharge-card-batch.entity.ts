@@ -22,7 +22,7 @@ export class RechargeCardBatch extends VendureEntity implements ChannelAware {
     @Column({ default: 0 })
     generatedCount: number;
 
-    @Column({ type: 'timestamp', nullable: true })
+    @Column({ type: 'datetime', nullable: true })
     expiresAt: Date | null;
 
     @ManyToMany(() => Channel)

@@ -1,6 +1,8 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { Allow, Ctx, Permission, RequestContext } from '@vendure/core';
+import { Allow, Ctx, ListQueryOptions, PaginatedList, Permission, RequestContext } from '@vendure/core';
 
+import { RechargeCard } from './recharge-card.entity';
+import { RechargeCardBatch } from './recharge-card-batch.entity';
 import { RechargeCardService } from './recharge-card.service';
 
 @Resolver()
@@ -9,13 +11,19 @@ export class RechargeCardAdminResolver {
 
     @Query()
     @Allow(Permission.ReadSettings)
-    async rechargeCards(@Ctx() ctx: RequestContext, @Args('options', { nullable: true }) options: any): Promise<any> {
+    async rechargeCards(
+        @Ctx() ctx: RequestContext,
+        @Args() options: ListQueryOptions<RechargeCard>,
+    ): Promise<PaginatedList<RechargeCard>> {
         return this.rechargeCardService.findAll(ctx, options);
     }
 
     @Query()
     @Allow(Permission.ReadSettings)
-    async rechargeCardBatches(@Ctx() ctx: RequestContext, @Args('options', { nullable: true }) options: any): Promise<any> {
+    async rechargeCardBatches(
+        @Ctx() ctx: RequestContext,
+        @Args() options: ListQueryOptions<RechargeCardBatch>,
+    ): Promise<PaginatedList<RechargeCardBatch>> {
         return this.rechargeCardService.findAllBatches(ctx, options);
     }
 

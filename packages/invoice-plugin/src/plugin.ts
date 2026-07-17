@@ -13,7 +13,7 @@ import { InvoiceShopResolver } from './invoice-shop.resolver';
 const { gql } = require('graphql-tag');
 
 const adminSchema = () => gql`
-    type Invoice {
+    type Invoice implements Node {
         id: ID!
         invoiceType: String!
         status: String!
@@ -56,7 +56,7 @@ const adminSchema = () => gql`
 `;
 
 const shopSchema = () => gql`
-    type Invoice {
+    type Invoice implements Node {
         id: ID!
         invoiceType: String!
         status: String!

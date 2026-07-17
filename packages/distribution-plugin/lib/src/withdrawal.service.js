@@ -12,10 +12,13 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.WithdrawalService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
-const withdrawal_request_entity_1 = require("./withdrawal-request.entity");
+const typeorm_1 = require("typeorm");
+const account_crypto_1 = require("./account-crypto");
+const commission_record_entity_1 = require("./commission-record.entity");
 const distributor_entity_1 = require("./distributor.entity");
 const distribution_service_1 = require("./distribution.service");
 const constants_1 = require("./constants");
+const withdrawal_request_entity_1 = require("./withdrawal-request.entity");
 let WithdrawalService = class WithdrawalService {
     constructor(connection, listQueryBuilder, distributionService) {
         this.connection = connection;
@@ -30,7 +33,12 @@ let WithdrawalService = class WithdrawalService {
             relations: ['channels'],
         })
             .getManyAndCount()
-            .then(([items, totalItems]) => ({ items, totalItems }));
+            .then(([items, totalItems]) => {
+            items.forEach(item => {
+                item.accountInfo = (0, account_crypto_1.decryptAccount)(item.accountInfo);
+            });
+            return { items, totalItems };
+        });
     }
     findByDistributor(ctx, distributorId, options) {
         return this.listQueryBuilder
@@ -41,7 +49,12 @@ let WithdrawalService = class WithdrawalService {
             where: { distributorId },
         })
             .getManyAndCount()
-            .then(([items, totalItems]) => ({ items, totalItems }));
+            .then(([items, totalItems]) => {
+            items.forEach(item => {
+                item.accountInfo = (0, account_crypto_1.decryptAccount)(item.accountInfo);
+            });
+            return { items, totalItems };
+        });
     }
     async request(ctx, distributorId, amount, method, accountInfo) {
         var _a, _b;
@@ -63,12 +76,13 @@ let WithdrawalService = class WithdrawalService {
             distributorId: String(distributorId),
             amount,
             method,
-            accountInfo,
+            accountInfo: (0, account_crypto_1.encryptAccount)(accountInfo),
             status: 'pending',
         });
         const channel = await this.connection.getEntityOrThrow(ctx, 'Channel', ctx.channelId);
         request.channels = [channel];
         const saved = await this.connection.getRepository(ctx, withdrawal_request_entity_1.WithdrawalRequest).save(request);
+        saved.accountInfo = (0, account_crypto_1.decryptAccount)(saved.accountInfo);
         core_1.Logger.info(`Withdrawal request ${saved.id} created for distributor ${distributorId}, amount ${amount}`, constants_1.loggerCtx);
         return saved;
     }
@@ -80,7 +94,9 @@ let WithdrawalService = class WithdrawalService {
         }
         request.status = 'approved';
         request.reviewedAt = new Date();
-        return repo.save(request);
+        const saved = await repo.save(request);
+        saved.accountInfo = (0, account_crypto_1.decryptAccount)(saved.accountInfo);
+        return saved;
     }
     async reject(ctx, id) {
         const repo = this.connection.getRepository(ctx, withdrawal_request_entity_1.WithdrawalRequest);
@@ -94,7 +110,9 @@ let WithdrawalService = class WithdrawalService {
         distributor.frozenBalance -= request.amount;
         distributor.availableBalance += request.amount;
         await this.connection.getRepository(ctx, distributor_entity_1.Distributor).save(distributor);
-        return repo.save(request);
+        const saved = await repo.save(request);
+        saved.accountInfo = (0, account_crypto_1.decryptAccount)(saved.accountInfo);
+        return saved;
     }
     async markPaid(ctx, id) {
         const repo = this.connection.getRepository(ctx, withdrawal_request_entity_1.WithdrawalRequest);
@@ -107,7 +125,24 @@ let WithdrawalService = class WithdrawalService {
         const distributor = await this.connection.getEntityOrThrow(ctx, distributor_entity_1.Distributor, request.distributorId);
         distributor.frozenBalance -= request.amount;
         await this.connection.getRepository(ctx, distributor_entity_1.Distributor).save(distributor);
-        return repo.save(request);
+        // 联动 CommissionRecord：将该分销商 pending/confirmed 佣金记录置 paid
+        const commissionRepo = this.connection.getRepository(ctx, commission_record_entity_1.CommissionRecord);
+        const pendingRecords = await commissionRepo.find({
+            where: {
+                distributorId: request.distributorId,
+                status: (0, typeorm_1.In)(['pending', 'confirmed']),
+            },
+        });
+        for (const record of pendingRecords) {
+            record.status = 'paid';
+            await commissionRepo.save(record);
+        }
+        if (pendingRecords.length > 0) {
+            core_1.Logger.info(`Marked ${pendingRecords.length} commission records as paid for distributor ${request.distributorId}`, constants_1.loggerCtx);
+        }
+        const saved = await repo.save(request);
+        saved.accountInfo = (0, account_crypto_1.decryptAccount)(saved.accountInfo);
+        return saved;
     }
 };
 exports.WithdrawalService = WithdrawalService;

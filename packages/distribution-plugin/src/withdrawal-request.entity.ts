@@ -9,18 +9,18 @@ export class WithdrawalRequest extends VendureEntity implements ChannelAware {
 
     @Column() distributorId: string;
 
-    @Column() amount: number;
+    @Column({ type: 'int' }) amount: number;
 
-    @Column() method: 'bank' | 'alipay' | 'wechat';
+    @Column({ type: 'varchar' }) method: 'bank' | 'alipay' | 'wechat';
 
     // 密文存储：由 WithdrawalService 在写入前调用 encryptAccount、读取时调用 decryptAccount
-    @Column() accountInfo: string;
+    @Column({ type: 'text' }) accountInfo: string;
 
-    @Column({ default: 'pending' }) status: 'pending' | 'approved' | 'rejected' | 'paid';
+    @Column({ type: 'varchar', default: 'pending' }) status: 'pending' | 'approved' | 'rejected' | 'paid';
 
-    @Column({ type: 'timestamp', nullable: true }) reviewedAt: Date;
+    @Column({ type: 'datetime', nullable: true }) reviewedAt: Date;
 
-    @Column({ type: 'timestamp', nullable: true }) paidAt: Date;
+    @Column({ type: 'datetime', nullable: true }) paidAt: Date;
 
     @ManyToMany(() => Channel)
     @JoinTable()

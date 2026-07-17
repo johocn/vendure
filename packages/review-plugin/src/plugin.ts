@@ -11,7 +11,7 @@ import { ReviewPluginOptions } from './types';
 const { gql } = require('graphql-tag');
 
 const adminSchema = () => gql`
-    type Review {
+    type Review implements Node {
         id: ID!
         customerId: ID!
         customerName: String
@@ -44,9 +44,28 @@ const adminSchema = () => gql`
         status: String
     }
 
+    type RatingCount {
+        rating: Int!
+        count: Int!
+    }
+
+    type TagCount {
+        tag: String!
+        count: Int!
+    }
+
+    type ReviewStats {
+        totalCount: Int!
+        goodRate: Float!
+        averageRating: Float!
+        ratingDistribution: [RatingCount!]!
+        topTags: [TagCount!]!
+    }
+
     extend type Query {
         reviews(options: ReviewListOptions): ReviewList!
         review(id: ID!): Review
+        reviewStats(productId: ID!): ReviewStats!
     }
 
     extend type Mutation {
@@ -57,7 +76,7 @@ const adminSchema = () => gql`
 `;
 
 const shopSchema = () => gql`
-    type Review {
+    type Review implements Node {
         id: ID!
         customerId: ID!
         customerName: String
@@ -145,6 +164,7 @@ const shopSchema = () => gql`
         schema: shopSchema,
         resolvers: [ReviewShopResolver],
     },
+    dashboard: '../dashboard/index.tsx',
     compatibility: '^3.0.0',
 })
 export class ReviewPlugin {

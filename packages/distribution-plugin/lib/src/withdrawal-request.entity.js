@@ -23,27 +23,27 @@ __decorate([
     __metadata("design:type", String)
 ], WithdrawalRequest.prototype, "distributorId", void 0);
 __decorate([
-    (0, typeorm_1.Column)(),
+    (0, typeorm_1.Column)({ type: 'int' }),
     __metadata("design:type", Number)
 ], WithdrawalRequest.prototype, "amount", void 0);
 __decorate([
-    (0, typeorm_1.Column)(),
+    (0, typeorm_1.Column)({ type: 'varchar' }),
     __metadata("design:type", String)
 ], WithdrawalRequest.prototype, "method", void 0);
 __decorate([
-    (0, typeorm_1.Column)(),
+    (0, typeorm_1.Column)({ type: 'text' }),
     __metadata("design:type", String)
 ], WithdrawalRequest.prototype, "accountInfo", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ default: 'pending' }),
+    (0, typeorm_1.Column)({ type: 'varchar', default: 'pending' }),
     __metadata("design:type", String)
 ], WithdrawalRequest.prototype, "status", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
+    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
     __metadata("design:type", Date)
 ], WithdrawalRequest.prototype, "reviewedAt", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
+    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
     __metadata("design:type", Date)
 ], WithdrawalRequest.prototype, "paidAt", void 0);
 __decorate([

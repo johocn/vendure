@@ -1,3 +1,6 @@
 export * from './src/plugin';
 export * from './src/types';
 export * from './src/constants';
+export * from './src/invoice.entity';
+export * from './src/invoice-provider';
+export * from './src/invoice.service';

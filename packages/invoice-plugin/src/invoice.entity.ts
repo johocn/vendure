@@ -44,15 +44,15 @@ export class Invoice extends VendureEntity implements ChannelAware {
 
     @Column({ type: 'simple-json' }) orderIds: number[];
 
-    @Column({ nullable: true }) pdfUrl: string | null;
+    @Column({ type: 'varchar', nullable: true }) pdfUrl: string | null;
 
     @Column({ type: 'timestamptz', nullable: true }) issuedAt: Date;
 
     @Column({ type: 'timestamptz', nullable: true }) reversedAt: Date;
 
-    @Column({ nullable: true }) reverseReason: string | null;
+    @Column({ type: 'text', nullable: true }) reverseReason: string | null;
 
-    @Column({ nullable: true }) providerInvoiceNo: string | null;
+    @Column({ type: 'varchar', nullable: true }) providerInvoiceNo: string | null;
 
     @Column({ type: 'text', nullable: true }) lastError: string | null;
 

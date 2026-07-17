@@ -18,7 +18,7 @@ export class RechargeCard extends VendureEntity implements ChannelAware {
     @Column()
     faceValue: number;
 
-    @Column({ default: 'unused' })
+    @Column({ type: 'varchar', default: 'unused' })
     state: RechargeCardState;
 
     @Column({ nullable: true })
@@ -30,10 +30,10 @@ export class RechargeCard extends VendureEntity implements ChannelAware {
     @Column({ type: 'int', nullable: true })
     redeemedByCustomerId: number | null;
 
-    @Column({ type: 'timestamp', nullable: true })
+    @Column({ type: 'datetime', nullable: true })
     redeemedAt: Date | null;
 
-    @Column({ type: 'timestamp', nullable: true })
+    @Column({ type: 'datetime', nullable: true })
     expiresAt: Date | null;
 
     @ManyToMany(() => Channel)

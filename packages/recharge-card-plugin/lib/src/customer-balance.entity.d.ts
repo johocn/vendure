@@ -6,4 +6,5 @@ export declare class CustomerBalance extends VendureEntity {
     channel: Channel;
     channelId: number;
     balance: number;
+    frozenBalance: number;
 }

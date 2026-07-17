@@ -20,15 +20,17 @@ const constants_1 = require("./constants");
 const recharge_card_entity_1 = require("./recharge-card.entity");
 const recharge_card_batch_entity_1 = require("./recharge-card-batch.entity");
 const customer_balance_entity_1 = require("./customer-balance.entity");
+const balance_transaction_entity_1 = require("./balance-transaction.entity");
 const recharge_card_service_1 = require("./recharge-card.service");
 const balance_payment_handler_1 = require("./balance-payment-handler");
 const recharge_card_shop_resolver_1 = require("./recharge-card-shop.resolver");
 const recharge_card_admin_resolver_1 = require("./recharge-card-admin.resolver");
 const { gql } = require('graphql-tag');
 let RechargeCardPlugin = RechargeCardPlugin_1 = class RechargeCardPlugin {
-    constructor(options, rechargeCardService) {
+    constructor(options, rechargeCardService, orderService) {
         this.options = options;
         this.rechargeCardService = rechargeCardService;
+        this.orderService = orderService;
     }
     static init(options) {
         RechargeCardPlugin_1.options = options !== null && options !== void 0 ? options : {};
@@ -36,6 +38,7 @@ let RechargeCardPlugin = RechargeCardPlugin_1 = class RechargeCardPlugin {
     }
     async onApplicationBootstrap() {
         (0, balance_payment_handler_1.setRechargeService)(this.rechargeCardService);
+        (0, balance_payment_handler_1.setOrderService)(this.orderService);
         core_1.Logger.info('RechargeCardPlugin initialized', constants_1.loggerCtx);
     }
 };
@@ -44,7 +47,7 @@ RechargeCardPlugin.options = {};
 exports.RechargeCardPlugin = RechargeCardPlugin = RechargeCardPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [recharge_card_entity_1.RechargeCard, recharge_card_batch_entity_1.RechargeCardBatch, customer_balance_entity_1.CustomerBalance],
+        entities: [recharge_card_entity_1.RechargeCard, recharge_card_batch_entity_1.RechargeCardBatch, customer_balance_entity_1.CustomerBalance, balance_transaction_entity_1.BalanceTransaction],
         providers: [
             { provide: constants_1.RECHARGE_CARD_PLUGIN_OPTIONS, useFactory: () => RechargeCardPlugin.options },
             recharge_card_service_1.RechargeCardService,
@@ -83,7 +86,6 @@ exports.RechargeCardPlugin = RechargeCardPlugin = RechargeCardPlugin_1 = __decor
             type RechargeCardAdmin implements Node {
                 id: ID!
                 code: String!
-                pin: String
                 faceValue: Int!
                 state: String!
                 batchId: ID
@@ -155,6 +157,7 @@ exports.RechargeCardPlugin = RechargeCardPlugin = RechargeCardPlugin_1 = __decor
         compatibility: '^3.0.0',
     }),
     __param(0, (0, common_1.Inject)(constants_1.RECHARGE_CARD_PLUGIN_OPTIONS)),
-    __metadata("design:paramtypes", [Object, recharge_card_service_1.RechargeCardService])
+    __metadata("design:paramtypes", [Object, recharge_card_service_1.RechargeCardService,
+        core_1.OrderService])
 ], RechargeCardPlugin);
 //# sourceMappingURL=plugin.js.map

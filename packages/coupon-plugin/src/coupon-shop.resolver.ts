@@ -64,4 +64,19 @@ export class CouponShopResolver {
     ): Promise<CouponCode> {
         return this.couponService.redeemCoupon(ctx, code, orderId);
     }
+
+    /**
+     * 绑定券码到订单（Promotion 桥接入口）。
+     * 设置 order.customFields.appliedCouponCode，由 couponOrderAction 自动计算折扣。
+     * 不立即核销——核销由 OrderPlacedEvent 触发。
+     */
+    @Mutation()
+    @Allow(Permission.Authenticated)
+    async applyCoupon(
+        @Ctx() ctx: RequestContext,
+        @Args('orderId') orderId: ID,
+        @Args('code') code: string,
+    ): Promise<CouponValidationResult> {
+        return this.couponService.applyCouponToOrder(ctx, orderId, code);
+    }
 }
