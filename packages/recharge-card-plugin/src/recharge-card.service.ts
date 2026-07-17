@@ -8,6 +8,7 @@ import {
     PaginatedList,
     RequestContext,
     TransactionalConnection,
+    UserInputError,
 } from '@vendure/core';
 import crypto from 'crypto';
 
@@ -15,6 +16,42 @@ import { loggerCtx } from './constants';
 import { RechargeCard } from './recharge-card.entity';
 import { RechargeCardBatch } from './recharge-card-batch.entity';
 import { CustomerBalance } from './customer-balance.entity';
+import { BalanceTransaction, BalanceTransactionType } from './balance-transaction.entity';
+
+const SCRYPT_KEYLEN = 64;
+
+function scryptDerive(password: string, salt: Buffer): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+        crypto.scrypt(password, salt, SCRYPT_KEYLEN, (err, derivedKey) => {
+            if (err) reject(err);
+            else resolve(derivedKey);
+        });
+    });
+}
+
+async function hashPin(pin: string): Promise<string> {
+    const salt = crypto.randomBytes(16);
+    const hash = await scryptDerive(pin, salt);
+    return `scrypt$${salt.toString('hex')}$${hash.toString('hex')}`;
+}
+
+async function verifyPin(pin: string, stored: string): Promise<boolean> {
+    if (!stored) return true;
+    const parts = stored.split('$');
+    if (parts.length !== 3 || parts[0] !== 'scrypt') return false;
+    const salt = Buffer.from(parts[1], 'hex');
+    const expected = Buffer.from(parts[2], 'hex');
+    const test = await scryptDerive(pin, salt);
+    if (test.length !== expected.length) return false;
+    return crypto.timingSafeEqual(test, expected);
+}
+
+interface BalanceChangeMeta {
+    orderId?: ID | null;
+    paymentId?: ID | null;
+    rechargeCardId?: ID | null;
+    remark?: string | null;
+}
 
 @Injectable()
 export class RechargeCardService {
@@ -35,66 +72,119 @@ export class RechargeCardService {
         return record?.balance ?? 0;
     }
 
-    async addBalance(ctx: RequestContext, customerId: any, amount: number): Promise<number> {
-        const repo = this.connection.getRepository(ctx, CustomerBalance);
-        let record = await repo.findOne({
-            where: { customerId: customerId as any, channelId: ctx.channelId as any },
-        });
-        if (!record) {
-            record = new CustomerBalance({
-                customerId: customerId as any,
-                channelId: ctx.channelId as any,
-                balance: 0,
-            });
+    async addBalance(
+        ctx: RequestContext,
+        customerId: any,
+        amount: number,
+        orderId?: ID | null,
+        paymentId?: ID | null,
+        type: BalanceTransactionType = BalanceTransactionType.REFUND,
+    ): Promise<number> {
+        const amt = Math.floor(amount);
+        if (!Number.isFinite(amt) || amt <= 0) {
+            throw new UserInputError('Invalid amount');
         }
-        record.balance += amount;
-        await repo.save(record);
-        return record.balance;
+        await this.connection.startTransaction(ctx);
+        try {
+            const result = await this.applyBalanceChange(ctx, customerId, amt, type, {
+                orderId: orderId ?? null,
+                paymentId: paymentId ?? null,
+            });
+            await this.connection.commitOpenTransaction(ctx);
+            return result;
+        } catch (e) {
+            await this.connection.rollBackTransaction(ctx);
+            throw e;
+        }
     }
 
-    async deductBalance(ctx: RequestContext, customerId: any, amount: number): Promise<{ success: boolean; balance: number }> {
-        const repo = this.connection.getRepository(ctx, CustomerBalance);
-        const record = await repo.findOne({
-            where: { customerId: customerId as any, channelId: ctx.channelId as any },
-        });
-        if (!record || record.balance < amount) {
-            return { success: false, balance: record?.balance ?? 0 };
+    async deductBalance(
+        ctx: RequestContext,
+        customerId: any,
+        amount: number,
+        orderId?: ID | null,
+        paymentId?: ID | null,
+    ): Promise<number> {
+        const amt = Math.floor(amount);
+        if (!Number.isFinite(amt) || amt <= 0) {
+            throw new UserInputError('Invalid amount');
         }
-        record.balance -= amount;
-        await repo.save(record);
-        return { success: true, balance: record.balance };
+        await this.connection.startTransaction(ctx);
+        try {
+            const result = await this.applyBalanceChange(ctx, customerId, -amt, BalanceTransactionType.CONSUME, {
+                orderId: orderId ?? null,
+                paymentId: paymentId ?? null,
+            });
+            await this.connection.commitOpenTransaction(ctx);
+            return result;
+        } catch (e) {
+            await this.connection.rollBackTransaction(ctx);
+            throw e;
+        }
     }
 
     // ===== Card Operations =====
 
     async redeemCard(ctx: RequestContext, code: string, pin?: string): Promise<RechargeCard> {
         if (!ctx.activeUserId) {
-            throw new Error('Must be logged in to redeem a recharge card');
+            throw new UserInputError('Must be logged in to redeem a recharge card');
         }
         const repo = this.connection.getRepository(ctx, RechargeCard);
         const card = await repo.findOne({ where: { code } });
         if (!card) {
-            throw new Error('Invalid recharge card code');
+            throw new UserInputError('Invalid recharge card code');
         }
         if (card.state !== 'unused') {
-            throw new Error(`Card is already ${card.state}`);
+            throw new UserInputError(`Card is already ${card.state}`);
         }
         if (card.expiresAt && new Date() > card.expiresAt) {
-            card.state = 'expired';
-            await repo.save(card);
-            throw new Error('Card has expired');
+            await this.connection.startTransaction(ctx);
+            try {
+                await repo.createQueryBuilder()
+                    .update(RechargeCard)
+                    .set({ state: 'expired' })
+                    .where('id = :id AND state = :state', { id: card.id, state: 'unused' })
+                    .execute();
+                await this.connection.commitOpenTransaction(ctx);
+            } catch (e) {
+                await this.connection.rollBackTransaction(ctx);
+                throw e;
+            }
+            throw new UserInputError('Card has expired');
         }
-        if (card.pin && pin !== card.pin) {
-            throw new Error('Invalid PIN');
+        if (card.pinHash) {
+            if (!pin || !(await verifyPin(pin, card.pinHash))) {
+                throw new UserInputError('Invalid code or PIN');
+            }
         }
 
-        card.state = 'used';
-        card.redeemedByCustomerId = ctx.activeUserId as any;
-        card.redeemedAt = new Date();
-        await repo.save(card);
+        await this.connection.startTransaction(ctx);
+        try {
+            // Atomically mark card as used (prevents double-redeem under concurrency)
+            const claimResult = await repo.createQueryBuilder()
+                .update(RechargeCard)
+                .set({
+                    state: 'used',
+                    redeemedByCustomerId: ctx.activeUserId as any,
+                    redeemedAt: new Date(),
+                })
+                .where('id = :id AND state = :state', { id: card.id, state: 'unused' })
+                .execute();
+            if (claimResult.affected === 0) {
+                throw new UserInputError(`Card is already ${card.state}`);
+            }
+            // Credit balance + record transaction within the same transaction
+            await this.applyBalanceChange(ctx, ctx.activeUserId, card.faceValue, BalanceTransactionType.RECHARGE, {
+                rechargeCardId: card.id,
+            });
+            await this.connection.commitOpenTransaction(ctx);
+        } catch (e) {
+            await this.connection.rollBackTransaction(ctx);
+            throw e;
+        }
 
-        await this.addBalance(ctx, ctx.activeUserId, card.faceValue);
         Logger.info(`Card ${code} redeemed by customer ${ctx.activeUserId}, added ${card.faceValue} to balance`, loggerCtx);
+        card.state = 'used';
         return card;
     }
 
@@ -144,12 +234,15 @@ export class RechargeCardService {
         const savedBatch = await batchRepo.save(batch);
 
         const cards: RechargeCard[] = [];
+        const plaintextPins: { code: string; pin: string }[] = [];
         for (let i = 0; i < input.quantity; i++) {
             const code = `${savedBatch.prefix}${Date.now()}${crypto.randomBytes(4).toString('hex')}`.toUpperCase();
-            const pin = crypto.randomBytes(3).toString('hex').toUpperCase();
+            // 12-char hex PIN = 48 bit entropy (up from 24 bit)
+            const pin = crypto.randomBytes(6).toString('hex').toUpperCase();
+            const pinHash = await hashPin(pin);
             const card = new RechargeCard({
                 code,
-                pin,
+                pinHash,
                 faceValue: input.faceValue,
                 state: 'unused',
                 batchId: savedBatch.id as any,
@@ -157,10 +250,12 @@ export class RechargeCardService {
             });
             card.channels = [ctx.channel];
             cards.push(card);
+            plaintextPins.push({ code, pin });
         }
         await cardRepo.save(cards);
 
         savedBatch.generatedCount = input.quantity;
+        savedBatch.plaintextPins = plaintextPins;
         await batchRepo.save(savedBatch);
 
         Logger.info(`Created batch ${savedBatch.name} with ${input.quantity} cards`, loggerCtx);
@@ -170,7 +265,7 @@ export class RechargeCardService {
     async freezeCard(ctx: RequestContext, id: ID): Promise<RechargeCard> {
         const repo = this.connection.getRepository(ctx, RechargeCard);
         const card = await repo.findOne({ where: { id: id as any } });
-        if (!card) throw new Error('Card not found');
+        if (!card) throw new UserInputError('Card not found');
         if (card.state === 'unused') {
             card.state = 'frozen';
             await repo.save(card);
@@ -181,11 +276,87 @@ export class RechargeCardService {
     async unfreezeCard(ctx: RequestContext, id: ID): Promise<RechargeCard> {
         const repo = this.connection.getRepository(ctx, RechargeCard);
         const card = await repo.findOne({ where: { id: id as any } });
-        if (!card) throw new Error('Card not found');
+        if (!card) throw new UserInputError('Card not found');
         if (card.state === 'frozen') {
             card.state = 'unused';
             await repo.save(card);
         }
         return card;
+    }
+
+    // ===== Internal helpers =====
+
+    /**
+     * Applies an atomic balance change and records a BalanceTransaction.
+     * Must be called within an already-started transaction.
+     * `delta` > 0 adds balance, `delta` < 0 deducts (with sufficiency check).
+     * Returns the balance after the change.
+     */
+    private async applyBalanceChange(
+        ctx: RequestContext,
+        customerId: any,
+        delta: number,
+        type: BalanceTransactionType,
+        meta: BalanceChangeMeta,
+    ): Promise<number> {
+        const repo = this.connection.getRepository(ctx, CustomerBalance);
+        const absAmt = Math.abs(delta);
+        const cid = customerId as any;
+        const chid = ctx.channelId as any;
+
+        if (delta < 0) {
+            const result = await repo.createQueryBuilder()
+                .update(CustomerBalance)
+                .set({ balance: () => `balance - ${absAmt}` })
+                .where('customerId = :cid AND channelId = :chid AND balance >= :amt', {
+                    cid, chid, amt: absAmt,
+                })
+                .execute();
+            if (result.affected === 0) {
+                throw new UserInputError('Insufficient balance');
+            }
+        } else {
+            const result = await repo.createQueryBuilder()
+                .update(CustomerBalance)
+                .set({ balance: () => `balance + ${absAmt}` })
+                .where('customerId = :cid AND channelId = :chid', { cid, chid })
+                .execute();
+            if (result.affected === 0) {
+                // Balance row does not exist yet; create it. A concurrent insert
+                // would fail on the (customer, channel) unique constraint, in which
+                // case we fall back to a second atomic update.
+                try {
+                    await repo.save(new CustomerBalance({
+                        customerId: cid,
+                        channelId: chid,
+                        balance: absAmt,
+                    }));
+                } catch (e) {
+                    await repo.createQueryBuilder()
+                        .update(CustomerBalance)
+                        .set({ balance: () => `balance + ${absAmt}` })
+                        .where('customerId = :cid AND channelId = :chid', { cid, chid })
+                        .execute();
+                }
+            }
+        }
+
+        const record = await repo.findOne({ where: { customerId: cid, channelId: chid } });
+        const balanceAfter = record?.balance ?? 0;
+        const balanceBefore = balanceAfter - delta;
+
+        await this.connection.getRepository(ctx, BalanceTransaction).save(new BalanceTransaction({
+            customerId: cid,
+            type,
+            amount: delta,
+            balanceBefore,
+            balanceAfter,
+            orderId: meta.orderId as any,
+            paymentId: meta.paymentId as any,
+            rechargeCardId: meta.rechargeCardId as any,
+            remark: meta.remark ?? null,
+        }));
+
+        return balanceAfter;
     }
 }

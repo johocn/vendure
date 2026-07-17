@@ -22,4 +22,7 @@ export class CustomerBalance extends VendureEntity {
 
     @Column({ default: 0 })
     balance: number;
+
+    @Column({ type: 'int', default: 0 })
+    frozenBalance: number;
 }

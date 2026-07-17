@@ -1,13 +1,14 @@
 import { Inject, OnApplicationBootstrap, Type } from '@nestjs/common';
-import { Injector, Logger, PluginCommonModule, VendurePlugin } from '@vendure/core';
+import { Injector, Logger, OrderService, PluginCommonModule, VendurePlugin } from '@vendure/core';
 
 import { RECHARGE_CARD_PLUGIN_OPTIONS, loggerCtx } from './constants';
 import { RechargeCardPluginOptions } from './types';
 import { RechargeCard } from './recharge-card.entity';
 import { RechargeCardBatch } from './recharge-card-batch.entity';
 import { CustomerBalance } from './customer-balance.entity';
+import { BalanceTransaction } from './balance-transaction.entity';
 import { RechargeCardService } from './recharge-card.service';
-import { balancePaymentHandler, setRechargeService } from './balance-payment-handler';
+import { balancePaymentHandler, setOrderService, setRechargeService } from './balance-payment-handler';
 import { RechargeCardShopResolver } from './recharge-card-shop.resolver';
 import { RechargeCardAdminResolver } from './recharge-card-admin.resolver';
 
@@ -15,7 +16,7 @@ const { gql } = require('graphql-tag');
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [RechargeCard, RechargeCardBatch, CustomerBalance],
+    entities: [RechargeCard, RechargeCardBatch, CustomerBalance, BalanceTransaction],
     providers: [
         { provide: RECHARGE_CARD_PLUGIN_OPTIONS, useFactory: () => RechargeCardPlugin.options },
         RechargeCardService,
@@ -54,7 +55,6 @@ const { gql } = require('graphql-tag');
             type RechargeCardAdmin implements Node {
                 id: ID!
                 code: String!
-                pin: String
                 faceValue: Int!
                 state: String!
                 batchId: ID
@@ -131,6 +131,7 @@ export class RechargeCardPlugin implements OnApplicationBootstrap {
     constructor(
         @Inject(RECHARGE_CARD_PLUGIN_OPTIONS) private options: RechargeCardPluginOptions,
         private rechargeCardService: RechargeCardService,
+        private orderService: OrderService,
     ) {}
 
     static init(options?: RechargeCardPluginOptions): Type<RechargeCardPlugin> {
@@ -140,6 +141,7 @@ export class RechargeCardPlugin implements OnApplicationBootstrap {
 
     async onApplicationBootstrap(): Promise<void> {
         setRechargeService(this.rechargeCardService);
+        setOrderService(this.orderService);
         Logger.info('RechargeCardPlugin initialized', loggerCtx);
     }
 }

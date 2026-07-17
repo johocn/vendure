@@ -13,7 +13,7 @@ export class RechargeCard extends VendureEntity implements ChannelAware {
     code: string;
 
     @Column({ nullable: true })
-    pin: string;
+    pinHash: string;
 
     @Column()
     faceValue: number;

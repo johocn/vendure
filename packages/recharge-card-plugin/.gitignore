@@ -1,0 +1,5 @@
+# Ignore compiled artifacts that may be emitted into src/ by editor/tsc
+# (the canonical build output lives in lib/, which is tracked separately)
+src/**/*.js
+src/**/*.js.map
+src/**/*.d.ts

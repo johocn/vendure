@@ -4,3 +4,4 @@ export * from './src/constants';
 export * from './src/recharge-card.entity';
 export * from './src/recharge-card-batch.entity';
 export * from './src/customer-balance.entity';
+export * from './src/balance-transaction.entity';

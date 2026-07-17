@@ -28,4 +28,6 @@ export class RechargeCardBatch extends VendureEntity implements ChannelAware {
     @ManyToMany(() => Channel)
     @JoinTable()
     channels: Channel[];
+
+    plaintextPins?: { code: string; pin: string }[];
 }

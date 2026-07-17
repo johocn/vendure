@@ -1,16 +1,21 @@
-import { LanguageCode, Logger, PaymentMethodHandler } from '@vendure/core';
+import { LanguageCode, Logger, OrderService, PaymentMethodHandler } from '@vendure/core';
 
 import { loggerCtx } from './constants';
 import { RechargeCardService } from './recharge-card.service';
 
 /**
  * Payment method handler for balance payment (recharge card top-up balance).
- * The service is injected dynamically via Injector in plugin.onApplicationBootstrap().
+ * The services are injected dynamically via Injector in plugin.onApplicationBootstrap().
  */
 let rechargeService: RechargeCardService;
+let orderService: OrderService;
 
 export function setRechargeService(service: RechargeCardService): void {
     rechargeService = service;
+}
+
+export function setOrderService(service: OrderService): void {
+    orderService = service;
 }
 
 export const balancePaymentHandler = new PaymentMethodHandler({
@@ -26,20 +31,14 @@ export const balancePaymentHandler = new PaymentMethodHandler({
             if (!ctx.activeUserId) {
                 return { amount, state: 'Declined' as const, errorMessage: 'Not logged in', metadata: {} };
             }
-            const result = await rechargeService.deductBalance(ctx, ctx.activeUserId, amount);
-            if (!result.success) {
-                return {
-                    amount,
-                    state: 'Declined' as const,
-                    errorMessage: 'Insufficient balance',
-                    metadata: { currentBalance: result.balance },
-                };
-            }
+            const remainingBalance = await rechargeService.deductBalance(
+                ctx, ctx.activeUserId, amount, order.id,
+            );
             return {
                 amount,
                 state: 'Settled' as const,
                 transactionId: `BALANCE-${order.code}-${Date.now()}`,
-                metadata: { remainingBalance: result.balance },
+                metadata: { remainingBalance },
             };
         } catch (e: any) {
             Logger.error(`Balance payment failed: ${e.message}`, loggerCtx);
@@ -51,11 +50,17 @@ export const balancePaymentHandler = new PaymentMethodHandler({
     },
     async createRefund(ctx, input, amount, order, payment, args, method) {
         try {
-            if (!ctx.activeUserId) {
-                return { state: 'Failed' as const, metadata: { errorMessage: 'No active user' } };
+            // Refunds may be triggered by an administrator or system job, so
+            // ctx.activeUserId cannot be trusted to identify the order's owner.
+            // Reload the order to reliably resolve its customer.
+            const orderWithCustomer = await orderService.findOne(ctx, order.id);
+            if (!orderWithCustomer?.customer) {
+                return { state: 'Failed' as const, metadata: { errorMessage: 'Cannot refund: order has no customer' } };
             }
-            const newBalance = await rechargeService.addBalance(ctx, ctx.activeUserId, amount);
-            Logger.info(`Balance refund: added ${amount} back to customer ${ctx.activeUserId}`, loggerCtx);
+            const newBalance = await rechargeService.addBalance(
+                ctx, String(orderWithCustomer.customer.id), amount, order.id, payment.id,
+            );
+            Logger.info(`Balance refund: added ${amount} back to customer ${orderWithCustomer.customer.id}`, loggerCtx);
             return {
                 state: 'Settled' as const,
                 transactionId: payment.transactionId,
