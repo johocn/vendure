@@ -16,7 +16,7 @@ export class AfterSalesShopResolver {
     @Query()
     @Allow(Permission.Authenticated)
     async afterSalesRequest(@Ctx() ctx: RequestContext, @Args('id') id: number): Promise<any> {
-        return this.afterSalesService.findOne(ctx, id);
+        return this.afterSalesService.findOneForCustomer(ctx, id);
     }
 
     @Mutation()

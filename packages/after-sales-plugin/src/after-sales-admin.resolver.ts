@@ -8,19 +8,19 @@ export class AfterSalesAdminResolver {
     constructor(private afterSalesService: AfterSalesService) {}
 
     @Query()
-    @Allow(Permission.ReadSettings)
+    @Allow(Permission.ReadOrder)
     async afterSalesRequests(@Ctx() ctx: RequestContext, @Args('options', { nullable: true }) options: any): Promise<any> {
         return this.afterSalesService.findAll(ctx, options);
     }
 
     @Mutation()
-    @Allow(Permission.UpdateSettings)
+    @Allow(Permission.UpdateOrder)
     async approveAfterSalesRequest(@Ctx() ctx: RequestContext, @Args('id') id: number): Promise<any> {
         return this.afterSalesService.approveRequest(ctx, id);
     }
 
     @Mutation()
-    @Allow(Permission.UpdateSettings)
+    @Allow(Permission.UpdateOrder)
     async rejectAfterSalesRequest(
         @Ctx() ctx: RequestContext,
         @Args('id') id: number,
@@ -30,13 +30,13 @@ export class AfterSalesAdminResolver {
     }
 
     @Mutation()
-    @Allow(Permission.UpdateSettings)
+    @Allow(Permission.UpdateOrder)
     async confirmReturnReceived(@Ctx() ctx: RequestContext, @Args('id') id: number): Promise<any> {
         return this.afterSalesService.confirmReceive(ctx, id);
     }
 
     @Mutation()
-    @Allow(Permission.UpdateSettings)
+    @Allow(Permission.UpdateOrder)
     async processAfterSalesRefund(@Ctx() ctx: RequestContext, @Args('id') id: number): Promise<any> {
         return this.afterSalesService.processRefund(ctx, id);
     }
