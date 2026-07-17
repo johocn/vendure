@@ -20,22 +20,39 @@
 git clone <仓库地址> vendure
 cd vendure
 
-# 2. 安装运行时依赖（跳过 devDependencies，节省磁盘和内存）
-npm install --omit=dev
+# 2. 安装运行时依赖
+#    2GB 内存服务器推荐：限制堆内存 + 跳过可选依赖和 postinstall 脚本
+#    （sharp 的平台二进制需后续单独补装，见步骤 6）
+NODE_OPTIONS="--max-old-space-size=512" npm install --omit=dev --no-optional --ignore-scripts
 
 # 3. 配置环境变量
 cp packages/dev-server/.env.example packages/dev-server/.env
-# 编辑 .env，填入生产环境配置（参考下一节）
+vi packages/dev-server/.env
+# 修改 DB_PASSWORD 为你的 PostgreSQL 密码
+# 确认 DB_HOST/DB_PORT/DB_USERNAME/DB_NAME 正确
+# 确认 DEV_BYPASS_* 全部为 false（生产环境必须关闭调试旁路）
 
 # 4. 准备数据库（PostgreSQL 中创建库）
 psql -U postgres -c "CREATE DATABASE vendure OWNER postgres;"
 
-# 5. 启动服务
+# 5. 验证关键产物存在（确认构建产物已随 Git 提交）
+ls node_modules/@vendure/core/dist/index.js
+ls packages/dev-server/dist/index.js
+ls packages/dev-server/dist/index.html
+
+# 6. 补装 sharp 平台二进制（asset-server-plugin 依赖，必须）
+#    因步骤 2 用了 --no-optional 跳过，需单独安装 linux-x64 版本
+npm install --os=linux --cpu=x64 @img/sharp-linux-x64
+node -e "require('sharp'); console.log('sharp OK')"  # 验证
+
+# 7. 启动服务（限制堆内存，2GB 服务器推荐 768MB）
 cd packages/dev-server
-node prod-start.js
+NODE_OPTIONS="--max-old-space-size=768" node prod-start.js
 ```
 
 启动成功后控制台会输出 `Vendure server listening on port 3000`。
+
+> **内存充裕的服务器**（4GB+）可简化步骤 2 为 `npm install --omit=dev`，并跳过步骤 6（sharp 会随 optional 依赖自动安装）。
 
 ## 三、环境变量配置
 
@@ -148,21 +165,21 @@ git push
 ## 七、常用运维命令
 
 ```bash
-# 停止服务
-# 前台运行：Ctrl+C
-# 后台运行（推荐用 pm2）：
+# 后台运行（推荐用 pm2）
 npm install -g pm2
-pm2 start packages/dev-server/prod-start.js --name vendure
-pm2 logs vendure
+pm2 start packages/dev-server/prod-start.js \
+  --name vendure \
+  --max-memory-restart 1G \
+  --node-args="--max-old-space-size=768"
+pm2 logs vendure --lines 100   # 查看实时日志
 pm2 stop vendure
 pm2 restart vendure
+pm2 save                       # 保存进程列表
+pm2 startup                    # 开机自启
 
 # 更新代码
 git pull
 pm2 restart vendure
-
-# 查看实时日志
-pm2 logs vendure --lines 100
 ```
 
 ## 八、常见问题
@@ -191,6 +208,16 @@ node --max-old-space-size=1024 packages/dev-server/prod-start.js
 **解决**：
 1. 确认 `.env` 中所有 `DEV_BYPASS_*` 为 `false`
 2. 登录 Dashboard → Settings → Channels → 选择 Channel → 滚动到「租户配置中心」配置支付/微信登录/SSO/地图密钥
+
+### Q6: 启动报错 `Could not load the "sharp" module using the linux-x64 runtime`
+**原因**：安装时使用 `--no-optional` 跳过了 sharp 的平台特定二进制 `@img/sharp-linux-x64`（asset-server-plugin 依赖 sharp 做图像处理）。
+**解决**：单独补装 sharp 的 linux-x64 平台二进制：
+```bash
+npm install --os=linux --cpu=x64 @img/sharp-linux-x64
+node -e "require('sharp'); console.log('sharp OK')"  # 验证
+pm2 restart vendure
+```
+该包为预编译二进制，无需编译，2GB 内存服务器可安全安装。
 
 ## 九、架构备注
 
