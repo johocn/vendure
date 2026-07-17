@@ -3,6 +3,7 @@ import { MapService } from './map.service';
 export declare class MapAdminResolver {
     private mapService;
     constructor(mapService: MapService);
+    private assertChannelAccess;
     mapDistricts(ctx: RequestContext, args: {
         parentAdcode?: string | null;
     }): Promise<import("./map-provider").DistrictNode[]>;
@@ -15,7 +16,9 @@ export declare class MapAdminResolver {
         sdkUrl: string;
         hasConfigured: boolean;
     }>;
-    channelMapConfig(ctx: RequestContext): Promise<{
+    channelMapConfig(ctx: RequestContext, args: {
+        channelId: string;
+    }): Promise<{
         provider: string;
         apiKey: string;
         hasConfigured: boolean;

@@ -18,9 +18,9 @@ export class WithdrawalRequest extends VendureEntity implements ChannelAware {
 
     @Column({ type: 'varchar', default: 'pending' }) status: 'pending' | 'approved' | 'rejected' | 'paid';
 
-    @Column({ type: 'datetime', nullable: true }) reviewedAt: Date;
+    @Column({ nullable: true }) reviewedAt: Date;
 
-    @Column({ type: 'datetime', nullable: true }) paidAt: Date;
+    @Column({ nullable: true }) paidAt: Date;
 
     @ManyToMany(() => Channel)
     @JoinTable()

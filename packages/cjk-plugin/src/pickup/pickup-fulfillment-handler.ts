@@ -1,4 +1,7 @@
-import { LanguageCode, FulfillmentHandler } from '@vendure/core';
+import { FulfillmentHandler, Injector, LanguageCode } from '@vendure/core';
+import { PickupLocationService } from './pickup-location.service';
+import { EmployeeCustomerService } from './enterprise-customer/enterprise-customer.service';
+import { translateError } from './i18n-messages';
 
 export const storePickupFulfillmentHandler = new FulfillmentHandler({
     code: 'store-pickup',
@@ -63,6 +66,54 @@ export const pickupPointFulfillmentHandler = new FulfillmentHandler({
         return {
             method: `自提点自提 - ${args.pointName || args.pointId}`,
             trackingCode: `PICKUP-POINT-${args.pointId}`,
+        };
+    },
+});
+
+let pickupLocationService: PickupLocationService;
+let employeeCustomerService: EmployeeCustomerService;
+
+const methodLabels: Partial<Record<LanguageCode, string>> = {
+    [LanguageCode.zh_Hans]: '企业职工自提',
+    [LanguageCode.en]: 'Employee Pickup',
+    [LanguageCode.ja]: '従業員受取',
+    [LanguageCode.ko]: '직원 수거',
+};
+
+export const employeePickupFulfillmentHandler = new FulfillmentHandler({
+    code: 'employee-pickup',
+    description: [
+        { languageCode: LanguageCode.zh_Hans, value: '企业职工自提' },
+        { languageCode: LanguageCode.en, value: 'Employee Pickup' },
+        { languageCode: LanguageCode.ja, value: '従業員受取' },
+        { languageCode: LanguageCode.ko, value: '직원 수거' },
+    ],
+    args: {},
+    init: (injector: Injector) => {
+        pickupLocationService = injector.get(PickupLocationService);
+        employeeCustomerService = injector.get(EmployeeCustomerService);
+    },
+    createFulfillment: async (ctx, orders, lines, args) => {
+        const order = orders[0];
+        const locationId = (order as any).customFields.selectedPickupLocationId;
+        if (!locationId) throw new Error(translateError(ctx, 'PICKUP_LOCATION_NOT_SELECTED'));
+
+        const location = await pickupLocationService.findOne(ctx, locationId);
+        if (!location) throw new Error(translateError(ctx, 'PICKUP_LOCATION_NOT_VISIBLE'));
+
+        const mode = (ctx.channel as any).customFields.employeePickupMode;
+        if (mode === 'strict') {
+            if (!order.customer) throw new Error(translateError(ctx, 'PICKUP_LOCATION_NOT_BOUND'));
+            const bindings = await employeeCustomerService.findByCustomer(ctx, order.customer.id);
+            const allowed = bindings.flatMap(b => b.pickupLocations.map(l => l.id));
+            if (!allowed.includes(locationId)) {
+                throw new Error(translateError(ctx, 'PICKUP_LOCATION_NOT_BOUND'));
+            }
+        }
+
+        return {
+            method: `${methodLabels[ctx.languageCode] || methodLabels[LanguageCode.en]} - ${location.name}`,
+            trackingCode: `PICKUP-EMP-${location.id}`,
         };
     },
 });

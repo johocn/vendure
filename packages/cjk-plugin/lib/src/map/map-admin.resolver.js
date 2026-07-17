@@ -21,6 +21,15 @@ let MapAdminResolver = class MapAdminResolver {
     constructor(mapService) {
         this.mapService = mapService;
     }
+    assertChannelAccess(ctx, channelId) {
+        var _a, _b;
+        if (ctx.userHasPermissions([core_1.Permission.SuperAdmin]))
+            return;
+        const channelPermissions = ((_b = (_a = ctx.session) === null || _a === void 0 ? void 0 : _a.user) === null || _b === void 0 ? void 0 : _b.channelPermissions) || [];
+        const allowed = channelPermissions.some((c) => String(c.id) === String(channelId));
+        if (!allowed)
+            throw new Error('TENANT_CONFIG_FORBIDDEN');
+    }
     async mapDistricts(ctx, args) {
         var _a;
         return this.mapService.getDistricts(ctx, (_a = args === null || args === void 0 ? void 0 : args.parentAdcode) !== null && _a !== void 0 ? _a : null);
@@ -29,15 +38,19 @@ let MapAdminResolver = class MapAdminResolver {
         return this.mapService.reverseGeocode(ctx, args.lat, args.lng);
     }
     async mapSdkConfig(ctx) {
+        // 返回解密后的明文(供 dashboard 加载地图 SDK),不掩码。MapService 内部已 decrypt。
         return this.mapService.getSdkConfig(ctx);
     }
-    async channelMapConfig(ctx) {
-        return this.mapService.getChannelMapConfig(ctx);
+    async channelMapConfig(ctx, args) {
+        this.assertChannelAccess(ctx, args.channelId);
+        // MapService.getChannelMapConfig 返回 { provider, apiKey(masked), hasConfigured },与 GraphQL schema 兼容
+        return this.mapService.getChannelMapConfig(ctx, args.channelId);
     }
 };
 exports.MapAdminResolver = MapAdminResolver;
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)()),
     __metadata("design:type", Function),
@@ -46,6 +59,7 @@ __decorate([
 ], MapAdminResolver.prototype, "mapDistricts", null);
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)()),
     __metadata("design:type", Function),
@@ -54,6 +68,7 @@ __decorate([
 ], MapAdminResolver.prototype, "reverseGeocode", null);
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext]),
@@ -61,9 +76,11 @@ __decorate([
 ], MapAdminResolver.prototype, "mapSdkConfig", null);
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], MapAdminResolver.prototype, "channelMapConfig", null);
 exports.MapAdminResolver = MapAdminResolver = __decorate([

@@ -1,5 +1,5 @@
 /cli
-dist
+# dist  # 生产构建产物需提交
 e2e/__data__/*.sqlite
 !e2e/__data__/.gitkeep
 test-emails

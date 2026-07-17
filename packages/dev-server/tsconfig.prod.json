@@ -1,0 +1,24 @@
+{
+  "extends": "../../tsconfig",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": ".",
+    "declaration": false,
+    "sourceMap": false,
+    "removeComments": true,
+    "paths": {
+      "@vendure/admin-ui/*": [
+        "../admin-ui/package/*"
+      ],
+      "@plugins/*": [
+        "./test-plugins/*"
+      ]
+    }
+  },
+  "include": [
+    "index.ts",
+    "dev-config.ts",
+    "index-worker.ts",
+    "migration.ts"
+  ]
+}

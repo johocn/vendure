@@ -1,4 +1,4 @@
-import { generateMigration, revertLastMigration, runMigrations } from '@vendure/core';
+﻿import { generateMigration, revertLastMigration, runMigrations } from '@vendure/core';
 import { program } from 'commander';
 
 import { devConfig } from './dev-config';
@@ -13,8 +13,8 @@ program
 program
     .command('run')
     .description('Run all pending migrations')
-    .action(() => {
-        return runMigrations(devConfig);
+    .action(async () => {
+        await runMigrations(devConfig);
     });
 
 program

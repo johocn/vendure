@@ -152,7 +152,8 @@ export const PRODUCTS: ProductSource[] = [
 // - default-shipping-calculator (args: rate/taxRate/includesTax, rate 单位: 分)
 // - store-pickup-eligibility / store-pickup-calculator (cjk-plugin, 无参数)
 // - pickup-point-eligibility / pickup-point-calculator (cjk-plugin, arg: shippingPrice, 单位: 分)
-// - fulfillmentHandler: manual-fulfillment / store-pickup / pickup-point
+// - employee-pickup-eligibility / employee-pickup-calculator (cjk-plugin, arg: shippingPrice, 单位: 分)
+// - fulfillmentHandler: manual-fulfillment / store-pickup / pickup-point / employee-pickup
 export const DEFAULT_SHIPPING_METHODS = [
     {
         code: 'store-pickup',
@@ -200,12 +201,22 @@ export const DEFAULT_SHIPPING_METHODS = [
             ],
         },
     },
+    {
+        code: 'employee-pickup',
+        name: '企业职工自提',
+        description: '企业职工自提点自提',
+        fulfillmentHandler: 'employee-pickup',
+        checker: { code: 'employee-pickup-eligibility', arguments: [] },
+        calculator: { code: 'employee-pickup-calculator', arguments: [{ name: 'shippingPrice', value: '0' }] },
+    },
 ];
 
 // ===== Shipping Methods (shop-a Channel) =====
+// 注意：每个 channel 需独立创建 ShippingMethod 实例（即使 code 相同）
 export const SHOP_A_SHIPPING_METHODS = [
     DEFAULT_SHIPPING_METHODS[0], // store-pickup
     DEFAULT_SHIPPING_METHODS[2], // free-shipping-99
+    DEFAULT_SHIPPING_METHODS.find(sm => sm.code === 'employee-pickup')!, // employee-pickup（shop-a strict 模式）
 ];
 
 // ===== Payment Methods =====
@@ -232,13 +243,56 @@ export const PAYMENT_METHODS = [
 
 // ===== Pickup Locations =====
 export const DEFAULT_PICKUP_LOCATIONS = [
-    { name: '中关村门店', type: 'store' as const, address: '北京市海淀区中关村大街1号', phoneNumber: '010-12345678', businessHours: '09:00-22:00' },
-    { name: '望京SOHO店', type: 'store' as const, address: '北京市朝阳区望京街10号', phoneNumber: '010-87654321', businessHours: '09:00-21:00' },
-    { name: '菜鸟驿站(五道口店)', type: 'point' as const, address: '北京市海淀区成府路28号', phoneNumber: '010-66668888', businessHours: '08:00-22:00' },
+    {
+        name: '中关村门店', type: 'store' as const, address: '北京市海淀区中关村大街1号',
+        phoneNumber: '010-12345678', businessHours: '09:00-22:00',
+        coordinates: { lat: 39.984702, lng: 116.311407 },
+    },
+    {
+        name: '望京SOHO店', type: 'store' as const, address: '北京市朝阳区望京街10号',
+        phoneNumber: '010-87654321', businessHours: '09:00-21:00',
+        coordinates: { lat: 39.995830, lng: 116.478850 },
+    },
+    {
+        name: '菜鸟驿站(五道口店)', type: 'point' as const, address: '北京市海淀区成府路28号',
+        phoneNumber: '010-66668888', businessHours: '08:00-22:00',
+        coordinates: { lat: 39.992870, lng: 116.337650 },
+    },
+    {
+        name: '双阳商城店', type: 'store' as const, address: '吉林省长春市双阳区西双阳大街188号',
+        phoneNumber: '0431-84221001', businessHours: '08:30-20:30',
+        coordinates: { lat: 43.526210, lng: 125.664780 },
+    },
+    {
+        name: '菜鸟驿站(双阳泰山店)', type: 'point' as const, address: '吉林省长春市双阳区泰山路25号',
+        phoneNumber: '0431-84221202', businessHours: '08:00-21:00',
+        coordinates: { lat: 43.528890, lng: 125.665420 },
+    },
+    {
+        name: '长春科技学院自提点', type: 'employee' as const, address: '吉林省长春市双阳区双阳大街1697号',
+        phoneNumber: '0431-84221666', businessHours: '09:00-17:00',
+        coordinates: { lat: 43.533450, lng: 125.671230 },
+        isPublic: true,
+    },
 ];
 
 export const SHOP_A_PICKUP_LOCATIONS = [
-    { name: '生鲜自提点(国贸店)', type: 'store' as const, address: '北京市朝阳区建国门外大街1号', phoneNumber: '010-11112222', businessHours: '07:00-21:00' },
+    {
+        name: '生鲜自提点(国贸店)', type: 'store' as const, address: '北京市朝阳区建国门外大街1号',
+        phoneNumber: '010-11112222', businessHours: '07:00-21:00',
+        coordinates: { lat: 39.908160, lng: 116.459790 },
+    },
+    {
+        name: '双阳生鲜自提点', type: 'store' as const, address: '吉林省长春市双阳区东双阳大街555号',
+        phoneNumber: '0431-84222888', businessHours: '07:00-21:00',
+        coordinates: { lat: 43.525870, lng: 125.668950 },
+    },
+    {
+        name: '吉林农业大学自提点', type: 'employee' as const, address: '吉林省长春市双阳区新城大街2888号',
+        phoneNumber: '0431-84222999', businessHours: '08:00-18:00',
+        coordinates: { lat: 43.531120, lng: 125.679840 },
+        isPublic: false,
+    },
 ];
 
 // ===== Promotions =====

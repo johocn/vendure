@@ -12,6 +12,21 @@
 
 ---
 
+## Plan Review Notes（代码对照后修订）
+
+对照实际代码审查后，对原计划作出以下关键修订：
+
+1. **Task 1**: `ownerChannelId` 使用 `@EntityId({ nullable: true })` 而非 `@Column`（Vendure 外键引用规范），同步引入 `EntityId` 和 `ID` 装饰器
+2. **Task 2**: `EmployeeCustomer` 必须 `implements ChannelAware`，补 `JoinTable`、`DeepPartial`、`EntityId` import
+3. **Task 8**: 删除不存在的 `paginate` 函数引用，保留现有手动 `skip/take` 模式；`EntityNotFoundError` 从 `@vendure/core` 导入
+4. **Task 16**: 必须修改 `types.ts` 扩展 `CjkPluginOptions`；`hasPickup` 表达式需包含 `employeePickup?.enabled`；通过 `config.authOptions.customPermissions` 注册自定义权限；`shopApiExtensions` 必须扩展 `Order.customFields` 暴露 `selectedPickupLocationId` 和 `pickupType`
+5. **Task 17**: 为现有 3 个自提点补全经纬度（北京中关村、望京、五道口）
+6. **Task 18-19**: shop-a 通过 `SHOP_A_SHIPPING_METHODS` 独立创建 ShippingMethod（非从 default 分配）；明确角色权限列表 `TENANT_ADMIN_PERMISSIONS` 和 `SALES_PERSON_PERMISSIONS`；明确测试客户为 `zhangsan@test.cn`（default）和 `wangwu@test.cn`（shop-a）
+7. **Task 22**: tenant store 改为通过 `activeChannel` query 从后端加载 `employeePickupMode` 和 `defaultLocation`，而非写死在 `TENANT_CONFIGS`
+8. **Task 27-28**: Admin UI 实际使用 Vendure Dashboard 扩展（React/TSX），不是 Angular 模块。plugin.ts 已有 `dashboard: '../dashboard/index.tsx'` 配置
+
+---
+
 ## File Structure
 
 ### 后端 cjk-plugin（扩展）
@@ -73,20 +88,51 @@ Read `e:\code\vendure\packages\cjk-plugin\src\pickup\pickup-location.entity.ts` 
 
 - [ ] **Step 2: 扩展实体**
 
-在 `PickupLocation` 实体中新增字段：
+修改 `pickup-location.entity.ts`，扩展 `type` 字段类型联合为 `'store' | 'point' | 'employee'`，新增 `isPublic` 和 `ownerChannelId` 字段。`ownerChannelId` 使用 `@EntityId` 装饰器（Vendure 外键引用规范），需引入 `EntityId` 和 `ID`：
 
 ```typescript
-@Column({ type: 'varchar', default: 'store' })
-type: 'store' | 'point' | 'employee';
+import { Column, Entity, JoinTable, ManyToMany } from 'typeorm';
+import { ChannelAware, Channel, DeepPartial, EntityId, HasCustomFields, ID, VendureEntity } from '@vendure/core';
 
-@Column({ default: false })
-isPublic: boolean;
+class CustomPickupLocationFields {}
 
-@Column({ nullable: true })
-ownerChannelId: ID | null;
+@Entity()
+export class PickupLocation extends VendureEntity implements ChannelAware, HasCustomFields {
+    constructor(input?: DeepPartial<PickupLocation>) {
+        super(input);
+    }
+
+    @Column() name: string;
+
+    @Column({ type: 'varchar', default: 'store' })
+    type: 'store' | 'point' | 'employee';
+
+    @Column() address: string;
+
+    @Column({ nullable: true }) phoneNumber: string;
+
+    @Column({ nullable: true }) businessHours: string;
+
+    @Column({ type: 'simple-json', nullable: true })
+    coordinates: { lat: number; lng: number } | null;
+
+    @Column({ nullable: true }) partner: string;
+
+    @Column({ default: false }) isPublic: boolean;
+
+    @EntityId({ nullable: true })
+    ownerChannelId: ID | null;
+
+    @ManyToMany(() => Channel)
+    @JoinTable()
+    channels: Channel[];
+
+    @Column(() => CustomPickupLocationFields)
+    customFields: CustomPickupLocationFields;
+}
 ```
 
-注意：`type` 字段已存在，只需扩展类型联合为 `'store' | 'point' | 'employee'`。新增 `isPublic` 和 `ownerChannelId` 字段。
+注意：保留现有 `type` 字段的 `@Column()` 装饰器形式也可工作（TypeScript 联合类型不会影响数据库列类型），但显式声明 `type: 'varchar'` 更清晰。`synchronize: true`（dev）会自动添加新列；生产环境需手写 migration。
 
 - [ ] **Step 3: 编译验证**
 
@@ -108,15 +154,20 @@ git commit -m "Feat: extend PickupLocation with type/isPublic/ownerChannelId"
 - [ ] **Step 1: 创建实体文件**
 
 ```typescript
-import { Column, Entity, ManyToMany, ManyToOne } from 'typeorm';
-import { ID } from '@vendure/common/lib/shared-types';
-import { Channel, Customer } from '@vendure/core';
-import { VendureEntity } from '@vendure/core';
-import { EntityId } from '@vendure/core';
+import { Column, Entity, JoinTable, ManyToMany, ManyToOne } from 'typeorm';
+import {
+    Channel,
+    ChannelAware,
+    Customer,
+    DeepPartial,
+    EntityId,
+    ID,
+    VendureEntity,
+} from '@vendure/core';
 import { PickupLocation } from '../pickup-location.entity';
 
 @Entity()
-export class EmployeeCustomer extends VendureEntity {
+export class EmployeeCustomer extends VendureEntity implements ChannelAware {
     constructor(input?: DeepPartial<EmployeeCustomer>) {
         super(input);
     }
@@ -151,6 +202,8 @@ export class EmployeeCustomer extends VendureEntity {
     verified: boolean;
 }
 ```
+
+注意：`implements ChannelAware` 是必需的，Vendure 通过此接口识别 channel 隔离实体。`@EntityId` 用于外键引用字段（customerId、channelId），与 `@ManyToOne` 关系字段配对。
 
 - [ ] **Step 2: 编译验证**
 
@@ -505,7 +558,7 @@ Read `e:\code\vendure\packages\cjk-plugin\src\pickup\pickup-location.service.ts`
 
 - [ ] **Step 2: 修改 findAll 可见性查询**
 
-将现有 `findAll` 方法改为：
+将现有 `findAll` 方法改为（保留手动 skip/take 分页模式，与现有代码一致；不使用不存在的 `paginate` 函数）：
 
 ```typescript
 async findAll(ctx: RequestContext, options?: ListQueryOptions<PickupLocation>): Promise<PaginatedList<PickupLocation>> {
@@ -517,10 +570,24 @@ async findAll(ctx: RequestContext, options?: ListQueryOptions<PickupLocation>): 
     );
     // channels 关联：仅返回已启用的
     qb.innerJoin('pl.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId });
-    // ... 分页逻辑保持不变
-    return paginate(qb, options);
+
+    if (options?.filter?.name) {
+        qb.andWhere('pl.name LIKE :name', { name: `%${options.filter.name}%` });
+    }
+    if (options?.filter?.type) {
+        qb.andWhere('pl.type = :type', { type: options.filter.type });
+    }
+
+    const skip = options?.skip || 0;
+    const take = options?.take || 10;
+    qb.skip(skip).take(take);
+
+    const [items, totalItems] = await qb.getManyAndCount();
+    return { items, totalItems };
 }
 ```
+
+注意：原 `findAll` 已经有 `name`/`type` filter 和手动 skip/take，本次修改仅在 where 子句追加可见性条件。
 
 - [ ] **Step 3: 新增 findByType 方法**
 
@@ -565,6 +632,8 @@ async promoteToPublic(ctx: RequestContext, id: ID): Promise<PickupLocation> {
 }
 ```
 
+注意：`EntityNotFoundError` 需在文件顶部从 `@vendure/core` 导入：`import { EntityNotFoundError } from '@vendure/core';`
+
 - [ ] **Step 6: 新增 sortByDistance 方法**
 
 ```typescript
@@ -593,7 +662,20 @@ private haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number
 
 - [ ] **Step 7: 修改 create 方法设置 ownerChannelId**
 
-在现有 `create` 方法中，设置 `location.ownerChannelId = ctx.channelId` 和 `location.isPublic = input.isPublic ?? false`。
+修改现有 `create` 方法，设置 `ownerChannelId` 和 `isPublic`：
+
+```typescript
+async create(ctx: RequestContext, input: any): Promise<PickupLocation> {
+    const repo = this.connection.getRepository(ctx, PickupLocation);
+    const location = new PickupLocation(input);
+    location.channels = [ctx.channel];
+    location.ownerChannelId = ctx.channelId;
+    location.isPublic = input.isPublic ?? false;
+    return repo.save(location);
+}
+```
+
+注意：公共自提点（isPublic=true）的 ownerChannelId 在 promoteToPublic 时会被置为 null；其余自提点的 ownerChannelId 始终等于创建者的 channelId。
 
 - [ ] **Step 8: 编译验证**
 
@@ -806,46 +888,76 @@ git commit -m "Feat: add employee-pickup fulfillmentHandler with strict mode val
 
 - [ ] **Step 2: 新增 promote/assign/remove mutation**
 
+为新增的 mutation 添加 `@Allow` 装饰器明确权限（需从 `@vendure/core` 导入 `Allow`、`Permission`、`PickupPermissions`）：
+
 ```typescript
+import { Allow, Ctx, Permission, RequestContext, Transaction, ID, PaginatedList, ListQueryOptions } from '@vendure/core';
+import { PickupPermissions } from './pickup-permissions';
+
+// 在现有 PickupLocationAdminResolver 类中追加：
+
 @Mutation()
+@Transaction()
+@Allow(Permission.SuperAdmin)
 async promotePickupLocationToPublic(@Ctx() ctx: RequestContext, @Args('id') id: ID): Promise<PickupLocation> {
     return this.pickupLocationService.promoteToPublic(ctx, id);
 }
 
 @Mutation()
+@Transaction()
+@Allow(PickupPermissions.AssignPickupLocation)
 async assignPickupLocationsToChannel(@Ctx() ctx: RequestContext, @Args('ids') ids: ID[]): Promise<boolean> {
-    // 将自提点分配到当前 channel
     await this.pickupLocationService.assignToChannel(ctx, ids, ctx.channelId);
     return true;
 }
 
 @Mutation()
+@Transaction()
+@Allow(PickupPermissions.AssignPickupLocation)
 async removePickupLocationsFromChannel(@Ctx() ctx: RequestContext, @Args('ids') ids: ID[]): Promise<boolean> {
     await this.pickupLocationService.removeFromChannel(ctx, ids, ctx.channelId);
     return true;
 }
 ```
 
+注意：Vendure 默认 admin API 要求登录，但不会自动校验具体权限。`@Allow` 装饰器显式声明所需权限，由 `AuthService` 在请求时校验。`promotePickupLocationToPublic` 仅 SuperAdmin 可调用；assign/remove 需 `PickupPermissions.AssignPickupLocation` 权限。
+
 - [ ] **Step 3: 在 PickupLocationService 中新增 assignToChannel/removeFromChannel**
 
+需在 service 文件顶部 import `Channel`：`import { Channel } from '@vendure/core';`。使用 `findOne` 而非已弃用的 `findByIds`，并通过 `In` 操作符批量查询：
+
 ```typescript
+import { In } from 'typeorm';
+
 async assignToChannel(ctx: RequestContext, ids: ID[], channelId: ID): Promise<void> {
-    const locations = await this.connection.getRepository(ctx, PickupLocation).findByIds(ids);
-    const channel = await this.connection.getRepository(ctx, Channel).findOne(channelId);
+    const repo = this.connection.getRepository(ctx, PickupLocation);
+    const locations = await repo.find({
+        where: { id: In(ids as any[]) },
+        relations: { channels: true },
+    });
+    const channel = await this.connection.getRepository(ctx, Channel).findOne({
+        where: { id: channelId as any },
+    });
+    if (!channel) throw new EntityNotFoundError('Channel', channelId);
+
     for (const loc of locations) {
         if (!loc.channels.find(c => c.id === channelId)) {
             loc.channels.push(channel);
         }
     }
-    await this.connection.getRepository(ctx, PickupLocation).save(locations);
+    await repo.save(locations);
 }
 
 async removeFromChannel(ctx: RequestContext, ids: ID[], channelId: ID): Promise<void> {
-    const locations = await this.connection.getRepository(ctx, PickupLocation).findByIds(ids);
+    const repo = this.connection.getRepository(ctx, PickupLocation);
+    const locations = await repo.find({
+        where: { id: In(ids as any[]) },
+        relations: { channels: true },
+    });
     for (const loc of locations) {
         loc.channels = loc.channels.filter(c => c.id !== channelId);
     }
-    await this.connection.getRepository(ctx, PickupLocation).save(locations);
+    await repo.save(locations);
 }
 ```
 
@@ -1107,15 +1219,45 @@ git commit -m "Feat: add setOrderPickupLocation shop mutation"
 
 - [ ] **Step 1: 读取现有 plugin.ts**
 
-- [ ] **Step 2: 注册 ShippingMethod 组件**
+- [ ] **Step 2: 修改 hasPickup 表达式并注册 ShippingMethod 组件**
 
-在 `configuration` 钩子中，追加 employee-pickup 组件注册（与 storePickup/pickupPoint 同模式）：
+**关键**：现有 `hasPickup = CjkPlugin.options.storePickup?.enabled || CjkPlugin.options.pickupPoint?.enabled;` 必须扩展加入 `employeePickup?.enabled`，否则当只启用 employeePickup 时 `shippingOptions` 不会被初始化，后续 push 操作会失败。
+
+修改 `configuration` 钩子中的 `hasPickup` 表达式，并追加 employee-pickup 分支：
 
 ```typescript
-if (CjkPlugin.options.employeePickup?.enabled) {
-    config.shippingOptions!.shippingEligibilityCheckers!.push(employeePickupEligibilityChecker);
-    config.shippingOptions!.shippingCalculators!.push(employeePickupCalculator);
-    config.shippingOptions!.fulfillmentHandlers!.push(employeePickupFulfillmentHandler);
+const hasPickup = CjkPlugin.options.storePickup?.enabled
+    || CjkPlugin.options.pickupPoint?.enabled
+    || CjkPlugin.options.employeePickup?.enabled;
+if (hasPickup) {
+    config.shippingOptions = config.shippingOptions || {};
+    config.shippingOptions.shippingEligibilityCheckers = [
+        ...(config.shippingOptions.shippingEligibilityCheckers || []),
+    ];
+    config.shippingOptions.shippingCalculators = [
+        ...(config.shippingOptions.shippingCalculators || []),
+    ];
+    config.shippingOptions.fulfillmentHandlers = [
+        ...(config.shippingOptions.fulfillmentHandlers || []),
+    ];
+
+    if (CjkPlugin.options.storePickup?.enabled) {
+        config.shippingOptions.shippingEligibilityCheckers!.push(storePickupEligibilityChecker);
+        config.shippingOptions.shippingCalculators!.push(storePickupCalculator);
+        config.shippingOptions.fulfillmentHandlers!.push(storePickupFulfillmentHandler);
+    }
+
+    if (CjkPlugin.options.pickupPoint?.enabled) {
+        config.shippingOptions.shippingEligibilityCheckers!.push(pickupPointEligibilityChecker);
+        config.shippingOptions.shippingCalculators!.push(pickupPointCalculator);
+        config.shippingOptions.fulfillmentHandlers!.push(pickupPointFulfillmentHandler);
+    }
+
+    if (CjkPlugin.options.employeePickup?.enabled) {
+        config.shippingOptions.shippingEligibilityCheckers!.push(employeePickupEligibilityChecker);
+        config.shippingOptions.shippingCalculators!.push(employeePickupCalculator);
+        config.shippingOptions.fulfillmentHandlers!.push(employeePickupFulfillmentHandler);
+    }
 }
 ```
 
@@ -1179,6 +1321,8 @@ extend type Mutation {
 
 - [ ] **Step 5: 扩展 shopApiExtensions schema**
 
+**关键**：除了 query/mutation，必须显式扩展 `Order.customFields` 暴露 `selectedPickupLocationId` 和 `pickupType` 字段，否则前端 shop API 查询无法返回这些字段（即使 customFields 配置了 `public: true`，shop API 仍需在 schema 中声明）。
+
 ```graphql
 extend type Query {
     pickupLocations(type: String, lat: Float, lng: Float): [PickupLocation!]!
@@ -1188,7 +1332,19 @@ extend type Query {
 extend type Mutation {
     setOrderPickupLocation(pickupLocationId: ID!, pickupType: String!): Order!
 }
+
+# 暴露 Order.customFields 给 shop API（Vendure 不会自动暴露 customFields 到 shop schema）
+extend type Order {
+    customFields: OrderCustomFields!
+}
+
+type OrderCustomFields {
+    selectedPickupLocationId: ID
+    pickupType: String
+}
 ```
+
+注意：Vendure v3 中，admin API 默认自动暴露 customFields，但 shop API 需要手动声明。`OrderCustomFields` 是新建类型，不与 Vendure 内置冲突。
 
 - [ ] **Step 6: 注册 Order customFields**
 
@@ -1204,21 +1360,47 @@ config.customFields = {
 };
 ```
 
-- [ ] **Step 7: 扩展 CjkPluginOptions 类型**
+- [ ] **Step 7: 注册自定义权限**
 
-在 types.ts 中新增：
+**关键**：Vendure 自定义权限必须通过 `config.authOptions.customPermissions` 注册，否则 `@Allow(PickupPermissions.XXX)` 装饰器无法识别这些权限。在 `configuration` 钩子中追加：
 
 ```typescript
-employeePickup?: {
-    enabled: boolean;
-};
+import { PickupPermissions } from './pickup/pickup-permissions';
+
+// 在 configuration 钩子中：
+config.authOptions = config.authOptions || {};
+config.authOptions.customPermissions = [
+    ...(config.authOptions.customPermissions || []),
+    ...Object.entries(PickupPermissions).map(([key, value]) => ({
+        name: value,
+        label: key,
+        assignable: true,
+    })),
+];
 ```
 
-- [ ] **Step 8: 编译验证**
+- [ ] **Step 8: 扩展 CjkPluginOptions 类型**
+
+修改 `e:\code\vendure\packages\cjk-plugin\src\types.ts`，新增 `employeePickup` 字段：
+
+```typescript
+export interface CjkPluginOptions {
+    i18n?: { enabled: boolean; languages?: string[] };
+    regions?: { enabled: boolean };
+    tenant?: { enabled: boolean };
+    cod?: { enabled: boolean };
+    storePickup?: { enabled: boolean };
+    pickupPoint?: { enabled: boolean };
+    employeePickup?: { enabled: boolean };   // 新增
+    promotionPolicy?: { enabled: boolean };
+}
+```
+
+- [ ] **Step 9: 编译验证**
 
 Run: `cd e:\code\vendure\packages\cjk-plugin && npm run build`
 
-- [ ] **Step 9: 提交**
+- [ ] **Step 10: 提交**
 
 ```bash
 git add packages/cjk-plugin/src/
@@ -1238,7 +1420,39 @@ git commit -m "Feat: register employee-pickup components in plugin.ts"
 
 - [ ] **Step 2: 为现有自提点补全经纬度**
 
-更新 `DEFAULT_PICKUP_LOCATIONS` 每项添加 `coordinates` 字段。
+更新 `DEFAULT_PICKUP_LOCATIONS` 每项添加 `coordinates` 字段（北京三里屯/五道口/望京的近似经纬度）：
+
+```typescript
+export const DEFAULT_PICKUP_LOCATIONS = [
+    {
+        name: '中关村门店', type: 'store' as const,
+        address: '北京市海淀区中关村大街1号',
+        phoneNumber: '010-12345678', businessHours: '09:00-22:00',
+        coordinates: { lat: 39.984702, lng: 116.311407 },
+    },
+    {
+        name: '望京SOHO店', type: 'store' as const,
+        address: '北京市朝阳区望京街10号',
+        phoneNumber: '010-87654321', businessHours: '09:00-21:00',
+        coordinates: { lat: 39.995830, lng: 116.478850 },
+    },
+    {
+        name: '菜鸟驿站(五道口店)', type: 'point' as const,
+        address: '北京市海淀区成府路28号',
+        phoneNumber: '010-66668888', businessHours: '08:00-22:00',
+        coordinates: { lat: 39.992870, lng: 116.337650 },
+    },
+];
+
+export const SHOP_A_PICKUP_LOCATIONS = [
+    {
+        name: '生鲜自提点(国贸店)', type: 'store' as const,
+        address: '北京市朝阳区建国门外大街1号',
+        phoneNumber: '010-11112222', businessHours: '07:00-21:00',
+        coordinates: { lat: 39.908160, lng: 116.459790 },
+    },
+];
+```
 
 - [ ] **Step 3: 新增双阳区自提点**
 
@@ -1288,7 +1502,7 @@ git commit -m "Feat: register employee-pickup components in plugin.ts"
 
 - [ ] **Step 5: 新增 employee-pickup ShippingMethod 定义**
 
-在 `DEFAULT_SHIPPING_METHODS` 追加：
+在 `DEFAULT_SHIPPING_METHODS` 追加 employee-pickup（default channel，loose 模式可用）：
 
 ```typescript
 {
@@ -1300,6 +1514,18 @@ git commit -m "Feat: register employee-pickup components in plugin.ts"
     calculator: { code: 'employee-pickup-calculator', arguments: [{ name: 'shippingPrice', value: '0' }] },
 },
 ```
+
+同时修改 `SHOP_A_SHIPPING_METHODS`，让 shop-a 也独立创建一份 employee-pickup（与 store-pickup 同模式：每个 channel 独立创建 ShippingMethod 实例）：
+
+```typescript
+export const SHOP_A_SHIPPING_METHODS = [
+    DEFAULT_SHIPPING_METHODS[0], // store-pickup
+    DEFAULT_SHIPPING_METHODS[2], // free-shipping-99
+    DEFAULT_SHIPPING_METHODS.find(sm => sm.code === 'employee-pickup')!, // employee-pickup（shop-a strict 模式）
+];
+```
+
+注意：Vendure 的 ShippingMethod 是 channel 隔离的实体，每个 channel 需要独立的 ShippingMethod 实例（即使 code 相同）。`SHOP_A_SHIPPING_METHODS` 引用 `DEFAULT_SHIPPING_METHODS` 中相同的对象定义，但在 shop-a channel 的 ctx 下创建，会生成独立的实例。
 
 - [ ] **Step 6: 提交**
 
@@ -1336,58 +1562,112 @@ customFields: {
 
 ShippingMethod 默认创建在 default channel，无需额外分配。
 
-- [ ] **Step 5: 创建 EmployeeCustomer 测试绑定**
+- [ ] **Step 5: 创建 EmployeeCustomer 测试绑定（default channel）**
+
+明确使用 `zhangsan@test.cn`（default channel 的测试客户，CUSTOMERS[0]）作为绑定对象：
 
 ```typescript
+import { EmployeeCustomerService } from '@vendure/cjk-plugin';
+import { CustomerService } from '@vendure/core';
+
 async function createEmployeeCustomers(app: INestApplication, ctx: RequestContext): Promise<void> {
     const employeeCustomerService = app.get(EmployeeCustomerService);
     const customerService = app.get(CustomerService);
-    
-    // 找到测试客户
-    const customers = await customerService.findAll(ctx);
-    const testCustomer = customers.items.find(c => c.emailAddress?.includes('test'));
-    
-    if (testCustomer) {
-        // 找到长春科技学院自提点
-        const pickupLocations = await pickupLocationService.findAll(ctx);
-        const cctuLocation = pickupLocations.items.find(l => l.name.includes('长春科技学院'));
-        
-        if (cctuLocation) {
-            await employeeCustomerService.create(ctx, {
-                customerId: testCustomer.id,
-                enterpriseName: '长春科技学院',
-                employeeId: 'CT20240001',
-                pickupLocationIds: [cctuLocation.id],
-                verified: false,
-            });
-        }
+    const pickupLocationService = app.get(PickupLocationService);
+
+    // 通过 emailAddress 精确查找测试客户
+    const customers = await customerService.findAll(ctx, { filter: { emailAddress: { eq: 'zhangsan@test.cn' } }, take: 1 });
+    const testCustomer = customers.items[0];
+    if (!testCustomer) {
+        console.warn('[populate] zhangsan@test.cn not found, skip EmployeeCustomer binding');
+        return;
     }
+
+    // 查找长春科技学院自提点
+    const locations = await pickupLocationService.findByType(ctx, 'employee');
+    const cctuLocation = locations.find(l => l.name.includes('长春科技学院'));
+    if (!cctuLocation) {
+        console.warn('[populate] 长春科技学院自提点 not found, skip EmployeeCustomer binding');
+        return;
+    }
+
+    await employeeCustomerService.create(ctx, {
+        customerId: testCustomer.id,
+        enterpriseName: '长春科技学院',
+        employeeId: 'CT20240001',
+        pickupLocationIds: [cctuLocation.id],
+        verified: false,  // default channel 是 loose 模式，verified=false 即可
+    });
 }
 ```
 
+注意：default channel 是 loose 模式，verified=false 即可使用。绑定后此客户在 default channel 下可以选择企业自提点下单。
+
 - [ ] **Step 6: 创建 tenant-admin 和 sales-person 角色**
 
+明确权限列表（参考 spec §5.2 权限矩阵）。Vendure 内置 `Permission` enum 包含 `SuperAdmin`、`Owner`、`Public`、`Authenticated` 等；自定义权限通过 `PickupPermissions` 引用。
+
 ```typescript
-async function createRoles(app: INestApplication, ctx: RequestContext): Promise<void> {
+import { Permission } from '@vendure/core';
+import { PickupPermissions } from '@vendure/cjk-plugin';
+
+// TenantAdmin 权限：本 channel 全权（不含 SuperAdmin），加自提点/EmployeeCustomer 全部权限
+const TENANT_ADMIN_PERMISSIONS: Permission[] = [
+    Permission.Authenticated,
+    Permission.Owner,
+    // Order/Customer/Product 等业务权限
+    Permission.ReadOrder,
+    Permission.UpdateOrder,
+    Permission.CreateCustomer,
+    Permission.ReadCustomer,
+    Permission.UpdateCustomer,
+    // 自提点权限（不含 PromotePickupLocation 和 UpdateChannelPickupConfig）
+    PickupPermissions.ReadPickupLocation,
+    PickupPermissions.CreatePickupLocation,
+    PickupPermissions.UpdatePickupLocation,
+    PickupPermissions.DeletePickupLocation,
+    PickupPermissions.AssignPickupLocation,
+    PickupPermissions.ReadEmployeeCustomer,
+    PickupPermissions.CreateEmployeeCustomer,
+    PickupPermissions.UpdateEmployeeCustomer,
+    PickupPermissions.DeleteEmployeeCustomer,
+    PickupPermissions.BindPickupLocation,
+    PickupPermissions.VerifyEmployeeCustomer,
+];
+
+// SalesPerson 权限：只读自提点 + 创建 EmployeeCustomer（verified=false）
+const SALES_PERSON_PERMISSIONS: Permission[] = [
+    Permission.Authenticated,
+    Permission.Owner,
+    Permission.ReadOrder,
+    Permission.ReadCustomer,
+    PickupPermissions.ReadPickupLocation,
+    PickupPermissions.ReadEmployeeCustomer,
+    PickupPermissions.CreateEmployeeCustomer,  // 但不允许 Verify
+];
+
+async function createRoles(app: INestApplication, ctx: RequestContext, channelId: ID): Promise<void> {
     const roleService = app.get(RoleService);
-    
+
     await roleService.create(ctx, {
         code: 'tenant-admin',
         title: '租户管理员',
         description: '租户级管理员',
         permissions: TENANT_ADMIN_PERMISSIONS,
-        channelIds: [defaultChannel.id],
+        channelIds: [channelId],
     });
-    
+
     await roleService.create(ctx, {
         code: 'sales-person',
         title: '销售人员',
         description: '租户级销售人员',
         permissions: SALES_PERSON_PERMISSIONS,
-        channelIds: [defaultChannel.id],
+        channelIds: [channelId],
     });
 }
 ```
+
+调用：`await createRoles(app, freshCtx, defaultChannel.id as string);`
 
 - [ ] **Step 7: 编译验证**
 
@@ -1418,21 +1698,49 @@ customFields: {
 },
 ```
 
-- [ ] **Step 3: 分配 employee-pickup ShippingMethod 到 shop-a**
+- [ ] **Step 3: 创建 shop-a 的 employee-pickup ShippingMethod**
 
-```typescript
-// 找到 employee-pickup ShippingMethod 并分配到 shop-a channel
-const shippingMethodService = app.get(ShippingMethodService);
-const shippingMethods = await shippingMethodService.findAll(ctx);
-const employeePickupMethod = shippingMethods.items.find(sm => sm.code === 'employee-pickup');
-if (employeePickupMethod) {
-    await shippingMethodService.assignToChannel(ctx, employeePickupMethod.id, shopAChannel.id);
-}
-```
+shop-a 通过 `SHOP_A_SHIPPING_METHODS`（已在 Task 17 修改）独立创建 employee-pickup 实例。现有 `createShippingMethods` 函数已循环 `SHOP_A_SHIPPING_METHODS` 创建，无需额外修改。验证 SHOP_A_SHIPPING_METHODS 中包含 employee-pickup 即可。
+
+注意：**不要**使用 `shippingMethodService.assignToChannel` 从 default channel 分配。Vendure 中 ShippingMethod 是 channel 隔离实体，shop-a 需要独立创建自己的实例（与现有 store-pickup/free-shipping-99 同模式）。
 
 - [ ] **Step 4: 创建 shop-a 的 EmployeeCustomer 绑定（verified=true）**
 
-为 shop-a 测试客户创建绑定，关联吉林农业大学自提点。
+明确使用 `wangwu@test.cn`（shop-a channel 的测试客户，CUSTOMERS[2]）作为绑定对象。shop-a 是 strict 模式，必须 `verified=true` 才能下单：
+
+```typescript
+async function createShopAEmployeeCustomers(app: INestApplication, ctx: RequestContext): Promise<void> {
+    const employeeCustomerService = app.get(EmployeeCustomerService);
+    const customerService = app.get(CustomerService);
+    const pickupLocationService = app.get(PickupLocationService);
+
+    // 通过 emailAddress 精确查找 shop-a 测试客户
+    const customers = await customerService.findAll(ctx, { filter: { emailAddress: { eq: 'wangwu@test.cn' } }, take: 1 });
+    const testCustomer = customers.items[0];
+    if (!testCustomer) {
+        console.warn('[populate] wangwu@test.cn not found in shop-a, skip EmployeeCustomer binding');
+        return;
+    }
+
+    // 查找吉林农业大学自提点（shop-a 自建，非公共）
+    const locations = await pickupLocationService.findByType(ctx, 'employee');
+    const jlauLocation = locations.find(l => l.name.includes('吉林农业大学'));
+    if (!jlauLocation) {
+        console.warn('[populate] 吉林农业大学自提点 not found in shop-a, skip EmployeeCustomer binding');
+        return;
+    }
+
+    await employeeCustomerService.create(ctx, {
+        customerId: testCustomer.id,
+        enterpriseName: '吉林农业大学',
+        employeeId: 'JLNY20240088',
+        pickupLocationIds: [jlauLocation.id],
+        verified: true,  // shop-a 是 strict 模式，必须 verified=true 才能下单
+    });
+}
+```
+
+注意：shop-a strict 模式下，只有 verified=true 的 EmployeeCustomer 才能通过 `employeePickupEligibilityChecker` 检查并选择企业自提点下单。未绑定或 verified=false 的用户无法看到企业自提选项。
 
 - [ ] **Step 5: 编译验证**
 
@@ -1546,22 +1854,89 @@ git add src/api/queries/pickup.ts src/api/mutations/checkout.ts
 git commit -m "Feat: add pickup location API queries and setOrderPickupLocation mutation"
 ```
 
-### Task 22: tenant store 扩展
+### Task 22: tenant store 扩展（从后端加载 channel customFields）
 
 **Files:**
 - Modify: `e:\code\vshop\src\stores\tenant.ts`
+- Modify: `e:\code\vshop\src\api\queries\user.ts`（或新建 `e:\code\vshop\src\api\queries\channel.ts`）
 
 - [ ] **Step 1: 读取现有 tenant store**
 
-- [ ] **Step 2: 新增 defaultLocation 和 employeePickupMode**
+- [ ] **Step 2: 新增 activeChannel query**
 
-在 `TenantConfig` interface 和 `tenantStore` state 中新增 `defaultLocation` 和 `employeePickupMode` 字段。在 `initTenant` 中从 `activeChannel` 查询加载。
+现有 `tenant.ts` 中 `TENANT_CONFIGS` 是写死的，**不**在此处添加 `defaultLocation` 和 `employeePickupMode`。改为在 store 中新增一个 `loadChannelConfig` 方法，通过 shop API 查询 `activeChannel` 获取 channel customFields。
 
-- [ ] **Step 3: 提交**
+新建 `e:\code\vshop\src\api\queries\channel.ts`：
+
+```typescript
+import { getGraphQLClient } from '../client';
+
+export async function getActiveChannelConfig() {
+    const client = getGraphQLClient();
+    return client.request(`query {
+        activeChannel {
+            id code token
+            customFields {
+                employeePickupMode
+                defaultLocation
+            }
+        }
+    }`);
+}
+```
+
+注意：shop API 中 `activeChannel.customFields` 默认不暴露，需在后端 shopApiExtensions 中扩展（已在 Task 16 Step 5 处理 `Order.customFields`，但 `Channel.customFields` 也需扩展）。补充 Task 16 shopApiExtensions：
+
+```graphql
+extend type Channel {
+    customFields: ChannelCustomFields!
+}
+
+type ChannelCustomFields {
+    couponStackable: Boolean
+    maxStackableCount: Int
+    employeePickupMode: String
+    defaultLocation: JSON
+}
+```
+
+- [ ] **Step 3: 修改 tenant store 添加 loadChannelConfig**
+
+在 `useTenantStore` 中新增 state `employeePickupMode` 和 `defaultLocation`，并提供 `loadChannelConfig` 方法在结算页 onMounted 时调用：
+
+```typescript
+export const useTenantStore = defineStore('tenant', () => {
+    // 现有 state...
+    const employeePickupMode = ref<'disabled' | 'loose' | 'strict'>('disabled');
+    const defaultLocation = ref<{ lat: number; lng: number } | null>(null);
+
+    async function loadChannelConfig() {
+        try {
+            const res: any = await getActiveChannelConfig();
+            const cf = res?.activeChannel?.customFields;
+            if (cf) {
+                employeePickupMode.value = cf.employeePickupMode || 'disabled';
+                defaultLocation.value = cf.defaultLocation || null;
+            }
+        } catch (e) {
+            console.warn('[tenant] loadChannelConfig failed', e);
+        }
+    }
+
+    return {
+        // 现有返回...
+        employeePickupMode,
+        defaultLocation,
+        loadChannelConfig,
+    };
+});
+```
+
+- [ ] **Step 4: 提交**
 
 ```bash
-git add src/stores/tenant.ts
-git commit -m "Feat: load defaultLocation and employeePickupMode from activeChannel"
+git add src/stores/tenant.ts src/api/queries/channel.ts
+git commit -m "Feat: load employeePickupMode and defaultLocation from activeChannel"
 ```
 
 ### Task 23: checkout.vue 配送方式分类 + 动态 UI
@@ -1938,24 +2313,24 @@ Run: `cd e:\code\vshop && npm run dev:h5`
 
 | Spec 章节 | 对应 Task | 状态 |
 |---|---|---|
-| 1.1 PickupLocation 扩展 | Task 1 | ✅ |
-| 1.2 EmployeeCustomer 实体 | Task 2, 7 | ✅ |
+| 1.1 PickupLocation 扩展 | Task 1（已修订：使用 @EntityId） | ✅ |
+| 1.2 EmployeeCustomer 实体 | Task 2（已修订：implements ChannelAware）, 7 | ✅ |
 | 1.3 Channel.customFields | Task 4 | ✅ |
-| 1.4 Order.customFields | Task 3 | ✅ |
+| 1.4 Order.customFields | Task 3 + Task 16（shopApiExtensions 暴露） | ✅ |
 | 1.5 三模式语义 | Task 9, 13 | ✅ |
 | 2.1 模块结构 | Task 1-16 | ✅ |
-| 2.2 可见性查询 | Task 8 | ✅ |
-| 2.3 升级公共 | Task 8, 12 | ✅ |
+| 2.2 可见性查询 | Task 8（已修订：手动 skip/take） | ✅ |
+| 2.3 升级公共 | Task 8, 12（已修订：@Allow SuperAdmin） | ✅ |
 | 2.4 eligibility checker | Task 9 | ✅ |
 | 2.5 fulfillmentHandler | Task 11 | ✅ |
 | 2.6 Shop API | Task 13, 15 | ✅ |
 | 2.7 就近排序 | Task 8 | ✅ |
-| 2.8 Admin API | Task 12, 14 | ✅ |
+| 2.8 Admin API | Task 12（已修订：@Allow 装饰器）, 14 | ✅ |
 | 3 前端结算页 | Task 21-23 | ✅ |
 | 4 多语言 | Task 24-26 | ✅ |
-| 5 权限分级 | Task 5, 18 | ✅ |
-| 6 测试数据 | Task 17-20 | ✅ |
-| 7 Admin UI | Task 27-28 | ✅（可能降级） |
+| 5 权限分级 | Task 5, 16（已修订：customPermissions 注册）, 18（已修订：明确权限列表） | ✅ |
+| 6 测试数据 | Task 17（已修订：补全经纬度）-20 | ✅ |
+| 7 Admin UI | Task 27-28（Dashboard React 扩展，非 Angular） | ⚠️（降级为 API 验证） |
 | 8 端到端验证 | Task 29-32 | ✅ |
 
 ### Placeholder scan
@@ -1968,3 +2343,21 @@ Run: `cd e:\code\vshop && npm run dev:h5`
 - `employee-pickup` 命名全局一致
 - `employeePickupMode` / `defaultLocation` / `selectedPickupLocationId` / `pickupType` 命名一致
 - `pickupLocations` / `employeePickupLocations` query 命名一致
+
+### 关键修订点回顾
+
+1. **Task 1**: `ownerChannelId` 使用 `@EntityId({ nullable: true })`
+2. **Task 2**: `EmployeeCustomer implements ChannelAware`
+3. **Task 8**: 保留手动 skip/take，弃用 paginate；import `EntityNotFoundError`
+4. **Task 12**: 所有新增 mutation 添加 `@Allow` 装饰器；`assignToChannel/removeFromChannel` 使用 `In` 操作符
+5. **Task 16**: `hasPickup` 表达式扩展包含 employeePickup；`shopApiExtensions` 扩展 `Order.customFields` 和 `Channel.customFields`；`config.authOptions.customPermissions` 注册自定义权限；`types.ts` 扩展 `CjkPluginOptions`
+6. **Task 17**: 现有 3 个自提点补全经纬度；`SHOP_A_SHIPPING_METHODS` 加入 employee-pickup
+7. **Task 18**: 明确测试客户 `zhangsan@test.cn`；明确 `TENANT_ADMIN_PERMISSIONS` / `SALES_PERSON_PERMISSIONS` 列表
+8. **Task 19**: shop-a 独立创建 employee-pickup（非从 default 分配）；明确测试客户 `wangwu@test.cn`，verified=true
+9. **Task 22**: tenant store 通过 `activeChannel` query 从后端加载 channel customFields
+
+### 未解决问题（需在执行时关注）
+
+1. **Admin UI 扩展（Task 27-28）**：Vendure Dashboard 是 React/TSX 扩展（plugin.ts 已有 `dashboard: '../dashboard/index.tsx'`），但具体扩展 API 需在执行时确认。如果 Dashboard 扩展不支持自定义页面，降级为仅通过 Admin API（GraphQL Playground）操作。
+2. **OrderService API 名称**：Task 15 使用 `orderService.updateCustomFields` 和 `orderService.setShippingAddress`，需在执行时确认 Vendure v3.6.4 的实际 API 名称（可能是 `orderService.updateCustomFields(ctx, id, customFields)` 或 `orderService.update(ctx, id, { customFields })`）。
+3. **Channel.customFields shop API 暴露**：Task 22 提到需在 shopApiExtensions 扩展 `Channel.customFields`，但 Vendure v3 中 `activeChannel` query 可能已自动暴露 customFields（需执行时验证）。

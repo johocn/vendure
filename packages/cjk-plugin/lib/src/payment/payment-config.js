@@ -20,6 +20,12 @@ function readChannelPayConfig(ctx) {
         }
         catch (_d) { }
     }
+    if (raw.douyinpayJson) {
+        try {
+            result.douyinpay = JSON.parse(raw.douyinpayJson);
+        }
+        catch (_e) { }
+    }
     return Object.keys(result).length > 0 ? result : null;
 }
 function getPaymentOverride(ctx, method) {

@@ -42,13 +42,13 @@ class AmapProvider {
         if (data.status !== '1') {
             throw new Error(`高德逆地理编码失败: ${data.info}`);
         }
-        const addr = (_b = (_a = data.regeocoded) === null || _a === void 0 ? void 0 : _a.addressComponent) !== null && _b !== void 0 ? _b : {};
+        const addr = (_b = (_a = data.regeocode) === null || _a === void 0 ? void 0 : _a.addressComponent) !== null && _b !== void 0 ? _b : {};
         return {
             province: addr.province && addr.province.length > 0 ? addr.province : null,
             city: addr.city && addr.city.length > 0 ? addr.city : null,
             district: addr.district && addr.district.length > 0 ? addr.district : null,
             street: addr.township && addr.township.length > 0 ? addr.township : null,
-            formattedAddress: (_d = (_c = data.regeocoded) === null || _c === void 0 ? void 0 : _c.formatted_address) !== null && _d !== void 0 ? _d : '',
+            formattedAddress: (_d = (_c = data.regeocode) === null || _c === void 0 ? void 0 : _c.formatted_address) !== null && _d !== void 0 ? _d : '',
         };
     }
 }

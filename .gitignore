@@ -10,7 +10,7 @@
 .idea/dictionaries
 .env
 lerna-debug.log
-dist
+# dist  # 注释掉：生产构建产物需提交（dev-server/dist, graphiql-plugin/dist, telemetry-plugin/dist, invoice-pdf-plugin/dist 等）
 **/e2e/__data__/*
 docs/resources/_gen/*
 docs/static/main.js*

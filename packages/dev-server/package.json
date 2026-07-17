@@ -27,7 +27,11 @@
         "@vendure/email-plugin": "3.6.4",
         "typescript": "5.8.2",
         "@vendure/recharge-card-plugin": "0.0.1",
-        "@vendure/after-sales-plugin": "0.0.1"
+        "@vendure/after-sales-plugin": "0.0.1",
+        "@vendure/member-level-plugin": "0.0.1",
+        "@vendure/review-plugin": "0.0.1",
+        "@vendure/wechat-subscribe-message-plugin": "0.0.1",
+        "@vendure/coupon-plugin": "0.0.1"
     },
     "devDependencies": {
         "@vendure/testing": "3.6.4",

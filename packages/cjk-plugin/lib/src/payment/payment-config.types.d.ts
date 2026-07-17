@@ -1,4 +1,4 @@
-export type PaymentMethodCode = 'alipay' | 'wechatpay';
+export type PaymentMethodCode = 'alipay' | 'wechatpay' | 'douyinpay';
 export interface AlipayCredentials {
     appId: string;
     privateKey: string;
@@ -13,11 +13,21 @@ export interface WechatpayCredentials {
     serialNo: string;
     tradeType?: 'JSAPI' | 'NATIVE' | 'APP' | 'H5';
 }
+export interface DouyinpayCredentials {
+    appId: string;
+    appSecret: string;
+    mchId: string;
+    privateKey: string;
+    salt?: string;
+    tradeType?: 'QR' | 'WAP' | 'APP' | 'MINI';
+}
 export interface PayConfig {
     alipay?: AlipayCredentials;
     wechatpay?: WechatpayCredentials;
+    douyinpay?: DouyinpayCredentials;
 }
 export interface PayConfigStruct {
     alipayJson: string;
     wechatpayJson: string;
+    douyinpayJson: string;
 }

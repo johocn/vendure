@@ -1,13 +1,15 @@
 import { RequestContext, ChannelService } from '@vendure/core';
-import type { TenantAuthConfigMasked } from './auth-config.types';
+import { AuthConfigService } from './auth-config.service';
 export declare class AuthAdminResolver {
     private channelService;
-    constructor(channelService: ChannelService);
+    private authConfigService;
+    constructor(channelService: ChannelService, authConfigService: AuthConfigService);
+    private assertChannelAccess;
     channelAuthConfig(ctx: RequestContext, args: {
         channelId: string;
-    }): Promise<TenantAuthConfigMasked | null>;
+    }): Promise<import("./auth-config.types").TenantAuthConfigMasked | null>;
     updateChannelAuthConfig(ctx: RequestContext, args: {
         channelId: string;
         input: any;
-    }): Promise<boolean>;
+    }): Promise<import("./auth-config.types").TenantAuthConfigMasked | null>;
 }

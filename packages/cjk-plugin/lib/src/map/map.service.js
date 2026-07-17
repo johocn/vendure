@@ -13,6 +13,7 @@ exports.MapService = void 0;
 // e:\code\vendure\packages\cjk-plugin\src\map\map.service.ts
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
+const map_crypto_1 = require("./map-crypto");
 const map_provider_registry_1 = require("./map-provider-registry");
 const i18n_messages_1 = require("../pickup/i18n-messages");
 let MapService = class MapService {
@@ -21,20 +22,29 @@ let MapService = class MapService {
         this.channelService = channelService;
     }
     /**
-     * 从当前 Channel 的 customFields.mapConfig 读取配置
-     * 如果当前 Channel 未配置，回退到默认 Channel
+     * 从 Channel 的 customFields.mapConfig 读取配置
+     * - 传入 channelId 时读指定 channel
+     * - 否则优先用当前 channel，回退到默认 Channel
+     * 读出的 raw 加密 config 解密后再返回
      */
-    async getConfigForChannel(ctx) {
-        var _a, _b;
-        // 优先用当前 channel
-        let channel = ctx.channel;
-        let config = (_a = channel === null || channel === void 0 ? void 0 : channel.customFields) === null || _a === void 0 ? void 0 : _a.mapConfig;
-        if (!config) {
-            // 回退到默认 channel
-            const defaultChannel = await this.channelService.getDefaultChannel(ctx);
-            config = (_b = defaultChannel === null || defaultChannel === void 0 ? void 0 : defaultChannel.customFields) === null || _b === void 0 ? void 0 : _b.mapConfig;
+    async getConfigForChannel(ctx, channelId) {
+        var _a, _b, _c, _d;
+        let config;
+        if (channelId) {
+            // 读指定 channel
+            const channel = await this.channelService.findOne(ctx, channelId);
+            config = (_a = channel === null || channel === void 0 ? void 0 : channel.customFields) === null || _a === void 0 ? void 0 : _a.mapConfig;
         }
-        return config !== null && config !== void 0 ? config : null;
+        else {
+            // 优先用当前 channel
+            config = (_c = (_b = ctx.channel) === null || _b === void 0 ? void 0 : _b.customFields) === null || _c === void 0 ? void 0 : _c.mapConfig;
+            if (!config) {
+                const defaultChannel = await this.channelService.getDefaultChannel(ctx);
+                config = (_d = defaultChannel === null || defaultChannel === void 0 ? void 0 : defaultChannel.customFields) === null || _d === void 0 ? void 0 : _d.mapConfig;
+            }
+        }
+        // 解密后返回(加密格式 enc:xxx → 明文)
+        return config ? (0, map_crypto_1.decryptMapConfig)(config) : null;
     }
     /**
      * 包装 provider 调用，捕获 i18n 错误并翻译
@@ -93,8 +103,8 @@ let MapService = class MapService {
         const sdkUrl = provider.getSdkLoaderUrl(config.apiKey, config.securityJsCode);
         return { provider: config.provider, sdkUrl, hasConfigured: true };
     }
-    async getChannelMapConfig(ctx) {
-        const config = await this.getConfigForChannel(ctx);
+    async getChannelMapConfig(ctx, channelId) {
+        const config = await this.getConfigForChannel(ctx, channelId);
         if (!config) {
             return { provider: '', apiKey: '', hasConfigured: false };
         }

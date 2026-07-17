@@ -6,8 +6,10 @@ export declare class MapService {
     private channelService;
     constructor(registry: MapProviderRegistry, channelService: ChannelService);
     /**
-     * 从当前 Channel 的 customFields.mapConfig 读取配置
-     * 如果当前 Channel 未配置，回退到默认 Channel
+     * 从 Channel 的 customFields.mapConfig 读取配置
+     * - 传入 channelId 时读指定 channel
+     * - 否则优先用当前 channel，回退到默认 Channel
+     * 读出的 raw 加密 config 解密后再返回
      */
     private getConfigForChannel;
     /**
@@ -26,7 +28,7 @@ export declare class MapService {
         sdkUrl: string;
         hasConfigured: boolean;
     }>;
-    getChannelMapConfig(ctx: RequestContext): Promise<{
+    getChannelMapConfig(ctx: RequestContext, channelId?: string): Promise<{
         provider: string;
         apiKey: string;
         hasConfigured: boolean;

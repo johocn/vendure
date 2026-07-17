@@ -1,3 +1,3 @@
-/client
-/compiler
+# /client  # 生产构建产物需提交
+# /compiler  # 生产构建产物需提交
 node_modules

@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "plugins": [
+      {
+        "name": "gql.tada/ts-plugin",
+        "schema": "./schema.graphql"
+      }
+    ]
+  }
+}

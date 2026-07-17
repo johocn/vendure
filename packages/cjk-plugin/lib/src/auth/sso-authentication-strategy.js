@@ -5,6 +5,7 @@ exports.SsoAuthenticationStrategy = void 0;
 const core_1 = require("@vendure/core");
 const graphql_tag_1 = require("graphql-tag");
 const crypto_1 = require("./crypto");
+const invite_code_service_1 = require("./invite-code.service");
 const loggerCtx = 'SsoAuthenticationStrategy';
 class SsoAuthenticationStrategy {
     constructor() {
@@ -13,12 +14,14 @@ class SsoAuthenticationStrategy {
     async init(injector) {
         this.userService = injector.get(core_1.UserService);
         this.customerService = injector.get(core_1.CustomerService);
+        this.inviteCodeService = injector.get(invite_code_service_1.InviteCodeService);
     }
     defineInputType() {
         return (0, graphql_tag_1.gql) `
             input SsoAuthInput {
                 providerKey: String!
                 code: String!
+                inviteCode: String
             }
         `;
     }
@@ -57,7 +60,20 @@ class SsoAuthenticationStrategy {
             const avatar = this.getField(userInfo, provider, 'avatarField', 'avatar_url');
             // 4. 查找或创建 Customer
             const identifier = `sso_${provider.providerKey}_${externalId}`;
-            return await this.findOrCreateUser(ctx, identifier, email, nickname, mobile, avatar);
+            const result = await this.findOrCreateUser(ctx, identifier, email, nickname, mobile, avatar);
+            // inviteCode 衔接:优先用 data.inviteCode,否则尝试从 userInfo.invite_code 取
+            if (result && typeof result === 'object') {
+                const finalInviteCode = data.inviteCode || (userInfo === null || userInfo === void 0 ? void 0 : userInfo.invite_code);
+                if (finalInviteCode) {
+                    try {
+                        await this.inviteCodeService.bindIfPresent(ctx, String(result.id), String(finalInviteCode));
+                    }
+                    catch (e) {
+                        core_1.Logger.warn(`Failed to bind invite code: ${e.message}`, loggerCtx);
+                    }
+                }
+            }
+            return result;
         }
         catch (e) {
             core_1.Logger.error(`SSO authentication failed: ${e.message}`, loggerCtx);

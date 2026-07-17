@@ -8,7 +8,7 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-dist
+# dist  # 生产构建产物需提交
 dist-plugin
 dist-ssr
 .temp

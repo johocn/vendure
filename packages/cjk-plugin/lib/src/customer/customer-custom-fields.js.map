@@ -1,0 +1,1 @@
+{"version":3,"file":"customer-custom-fields.js","sourceRoot":"","sources":["../../../src/customer/customer-custom-fields.ts"],"names":[],"mappings":";;;AAEa,QAAA,oBAAoB,GAAiB;IAC9C,QAAQ,EAAE;QACN;YACI,IAAI,EAAE,YAAY;YAClB,IAAI,EAAE,QAAQ;YACd,QAAQ,EAAE,IAAI;YACd,MAAM,EAAE,KAAK;SAChB;KACJ;CACJ,CAAC"}

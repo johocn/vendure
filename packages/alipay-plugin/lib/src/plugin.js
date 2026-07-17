@@ -19,6 +19,10 @@ const core_1 = require("@vendure/core");
 const constants_1 = require("./constants");
 const alipay_handler_1 = require("./alipay-handler");
 const alipay_controller_1 = require("./alipay.controller");
+const customer_custom_fields_1 = require("./customer-custom-fields");
+const alipay_auth_strategy_1 = require("./alipay-auth-strategy");
+const alipay_auth_controller_1 = require("./alipay-auth.controller");
+const alipay_auth_shop_resolver_1 = require("./alipay-auth-shop.resolver");
 let AlipayPlugin = AlipayPlugin_1 = class AlipayPlugin {
     constructor(options) {
         this.options = options;
@@ -32,14 +36,36 @@ exports.AlipayPlugin = AlipayPlugin;
 exports.AlipayPlugin = AlipayPlugin = AlipayPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        controllers: [alipay_controller_1.AlipayController],
+        controllers: [alipay_controller_1.AlipayController, alipay_auth_controller_1.AlipayAuthController],
         providers: [{ provide: constants_1.ALIPAY_PLUGIN_OPTIONS, useFactory: () => AlipayPlugin.options }],
         configuration: config => {
+            var _a, _b;
             config.paymentOptions.paymentMethodHandlers = [
                 ...(config.paymentOptions.paymentMethodHandlers || []),
                 alipay_handler_1.alipayPaymentHandler,
             ];
+            const strategy = new alipay_auth_strategy_1.AlipayAuthenticationStrategy(AlipayPlugin.options);
+            config.authOptions.shopAuthenticationStrategy = [
+                ...(config.authOptions.shopAuthenticationStrategy || []),
+                strategy,
+            ];
+            config.customFields = Object.assign(Object.assign({}, config.customFields), { Customer: [
+                    ...(((_a = config.customFields) === null || _a === void 0 ? void 0 : _a.Customer) || []),
+                    ...((_b = customer_custom_fields_1.alipayCustomerCustomFields.Customer) !== null && _b !== void 0 ? _b : []),
+                ] });
             return config;
+        },
+        shopApiExtensions: {
+            schema: () => {
+                const { gql } = require('graphql-tag');
+                return gql `
+                input AlipayAuthInput {
+                    authCode: String!
+                    type: String!
+                }
+            `;
+            },
+            resolvers: [alipay_auth_shop_resolver_1.AlipayAuthShopResolver],
         },
         compatibility: '^3.0.0',
     }),

@@ -42,3 +42,33 @@ export const pickupPointCalculator = new ShippingCalculator({
         };
     },
 });
+
+export const employeePickupCalculator = new ShippingCalculator({
+    code: 'employee-pickup-calculator',
+    description: [
+        { languageCode: LanguageCode.zh_Hans, value: '企业职工自提运费计算' },
+        { languageCode: LanguageCode.en, value: 'Employee Pickup Shipping Calculator' },
+        { languageCode: LanguageCode.ja, value: '従業員受取送料計算' },
+        { languageCode: LanguageCode.ko, value: '직원 수거 배송비 계산' },
+    ],
+    args: {
+        shippingPrice: {
+            type: 'int',
+            defaultValue: 0,
+            label: [
+                { languageCode: LanguageCode.zh_Hans, value: '运费（分）' },
+                { languageCode: LanguageCode.en, value: 'Shipping Price (cents)' },
+                { languageCode: LanguageCode.ja, value: '送料（分）' },
+                { languageCode: LanguageCode.ko, value: '배송비(분)' },
+            ],
+        },
+    },
+    calculate: (ctx, order, args) => {
+        return {
+            price: args.shippingPrice || 0,
+            taxRate: 0,
+            priceIncludesTax: true,
+            metadata: { pickupType: 'employee' },
+        };
+    },
+});
