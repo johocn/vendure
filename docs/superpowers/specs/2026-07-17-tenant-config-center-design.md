@@ -346,7 +346,7 @@ type TestSsoResult {
 - `data: { channelId, sections: ['auth','pay','map'], operator: ctx.user.identifier }`
 - 不记录具体值(避免 secret 泄露)
 
-**HistoryEntryType 注册**: `TENANT_CONFIG_UPDATE`/`MAP_CONFIG_MIGRATION_DONE`/`PAY_CONFIG_MIGRATION_DONE` 需通过 `defineHistoryEntryType()` 注册(见 Vendure `HistoryService`),并在 plugin `configuration()` 中添加。
+**实现方式**: Vendure `HistoryService` **仅支持** `createHistoryEntryForOrder`/`createHistoryEntryForCustomer`(类型受限于预定义枚举),**无** `createHistoryEntryForChannel` 或 `defineHistoryEntryType` API。因此自定义 HistoryEntryType(如 `TENANT_CONFIG_UPDATE`/`MAP_CONFIG_MIGRATION_DONE`/`PAY_CONFIG_MIGRATION_DONE`)直接用 `connection.getRepository('history_entry').save()` 写入,不走 HistoryService。幂等检查用同表 `findOne({ where: { type } })` 查询。
 
 ### 6.6 旧 Resolver 去向(重要)
 
@@ -558,7 +558,7 @@ class InviteCodeService {
 
 1. 数据层: 扩展 `payment-config.types.ts` / `tenant-channel-custom-fields.ts`(payConfig.douyinpayJson + Customer.inviteCode)/ `payment-config.ts`
 2. 加密层: 新增 `map-crypto.ts` / `pay-config-crypto.ts`
-3. 迁移: `mapConfig`/`payConfig` 加密迁移脚本 + bootstrap 调用 + HistoryEntryType 注册(`TENANT_CONFIG_UPDATE`/`MAP_CONFIG_MIGRATION_DONE`/`PAY_CONFIG_MIGRATION_DONE`/`INVITE_CODE_BOUND`)
+3. 迁移: `mapConfig`/`payConfig` 加密迁移脚本 + bootstrap 调用(迁移记录直接写 `history_entry` 表,不走 HistoryService)
 4. Service 层: 新建 `AuthConfigService`/`PayConfigService`/`MapConfigService`/`SsoProviderService`,接口对齐(getMasked/update/testConnection)
 5. Resolver 层: 新建 `TenantConfigAdminResolver` + 权限校验(`ctx.userHasPermissions([Permission.SuperAdmin])` + `ctx.user.channels`)+ 审计
 6. 旧 Resolver 改造: `AuthAdminResolver`/`MapAdminResolver` 补 `@Allow` + channel 校验,实现改为薄封装调 Service
