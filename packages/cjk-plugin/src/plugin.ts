@@ -45,6 +45,7 @@ import { DomainShopResolver } from './tenant/domain-shop.resolver';
 import { MapProviderRegistry } from './map/map-provider-registry';
 import { MapService } from './map/map.service';
 import { MapAdminResolver } from './map/map-admin.resolver';
+import { MapConfigEncryptionMigration, PayConfigEncryptionMigration } from './migrations';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
@@ -58,6 +59,8 @@ import { MapAdminResolver } from './map/map-admin.resolver';
         MapProviderRegistry,
         MapService,
         { provide: APP_GUARD, useClass: AuthMethodGuard },
+        MapConfigEncryptionMigration,
+        PayConfigEncryptionMigration,
     ],
     adminApiExtensions: {
         schema: () => {
