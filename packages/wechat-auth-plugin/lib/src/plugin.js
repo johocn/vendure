@@ -20,7 +20,9 @@ const constants_1 = require("./constants");
 const customer_custom_fields_1 = require("./customer-custom-fields");
 const wechat_auth_strategy_1 = require("./wechat-auth-strategy");
 const wechat_auth_controller_1 = require("./wechat-auth.controller");
+const wechat_message_controller_1 = require("./wechat-message.controller");
 const wechat_auth_service_1 = require("./wechat-auth.service");
+const wxacode_service_1 = require("./wxacode.service");
 const wechat_auth_shop_resolver_1 = require("./wechat-auth-shop.resolver");
 let WechatAuthPlugin = WechatAuthPlugin_1 = class WechatAuthPlugin {
     constructor(options, wechatAuthService) {
@@ -36,10 +38,11 @@ exports.WechatAuthPlugin = WechatAuthPlugin;
 exports.WechatAuthPlugin = WechatAuthPlugin = WechatAuthPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        controllers: [wechat_auth_controller_1.WechatAuthController],
+        controllers: [wechat_auth_controller_1.WechatAuthController, wechat_message_controller_1.WechatMessageController],
         providers: [
             { provide: constants_1.WECHAT_AUTH_PLUGIN_OPTIONS, useFactory: () => WechatAuthPlugin.options },
             wechat_auth_service_1.WechatAuthService,
+            wxacode_service_1.WxacodeService,
         ],
         configuration: config => {
             var _a, _b;
@@ -64,8 +67,13 @@ exports.WechatAuthPlugin = WechatAuthPlugin = WechatAuthPlugin_1 = __decorate([
                     nonceStr: String!
                     signature: String!
                 }
+                type WxacodeResult {
+                    contentType: String!
+                    base64: String!
+                }
                 extend type Query {
                     wechatJsapiSignature(url: String!): JsapiSignature!
+                    wechatWxacode(scene: String!, path: String, width: Int): WxacodeResult!
                 }
             `;
             },

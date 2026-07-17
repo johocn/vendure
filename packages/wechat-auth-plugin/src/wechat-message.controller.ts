@@ -1,7 +1,7 @@
 import * as crypto from 'crypto';
 import { Controller, Get, Post, Query, Body, BadRequestException } from '@nestjs/common';
 import { RequestContext, ChannelService } from '@vendure/core';
-import { getAuthOverride } from '../../cjk-plugin/src/auth/crypto';
+import { getAuthOverride } from '@vendure/cjk-plugin';
 import { WechatAuthPlugin } from './plugin';
 import { decryptMessage, verifySignature } from './wechat-message-crypto';
 

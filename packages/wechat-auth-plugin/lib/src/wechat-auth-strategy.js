@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.WechatAuthenticationStrategy = void 0;
 const graphql_tag_1 = require("graphql-tag");
 const core_1 = require("@vendure/core");
+const cjk_plugin_1 = require("@vendure/cjk-plugin");
 const constants_1 = require("./constants");
 class WechatAuthenticationStrategy {
     constructor(options) {
@@ -22,17 +23,42 @@ class WechatAuthenticationStrategy {
         `;
     }
     async authenticate(ctx, data) {
+        // 租户级登录方式开关检查（先于 devBypass）
+        if (!(0, cjk_plugin_1.isAuthMethodEnabled)(ctx, 'wechat')) {
+            throw new core_1.ForbiddenError();
+        }
+        // devBypass 分支：跳过微信 API，使用固定测试 openid（保持原样，不使用 override）
+        if (this.options.devBypass) {
+            const testOpenid = this.options.devBypassOpenid || 'dev_test_openid';
+            const identifier = `wechat_${data.type}_${testOpenid}`;
+            const user = await this.userService.getUserByEmailAddress(ctx, identifier);
+            if (user)
+                return user;
+            const result = await this.userService.createCustomerUser(ctx, identifier);
+            if ('identifier' in result) {
+                return result;
+            }
+            return false;
+        }
+        // 租户凭证覆盖（已解密；无覆盖则回退 this.options）
+        const override = (0, cjk_plugin_1.getAuthOverride)(ctx, 'wechat');
+        const appId = (override === null || override === void 0 ? void 0 : override.appId) || this.options.appId;
+        const appSecret = (override === null || override === void 0 ? void 0 : override.appSecret) || this.options.appSecret;
+        const miniProgramAppId = (override === null || override === void 0 ? void 0 : override.miniProgramAppId) || this.options.miniProgramAppId;
+        const miniProgramAppSecret = (override === null || override === void 0 ? void 0 : override.miniProgramAppSecret) || this.options.miniProgramAppSecret;
+        const token = (override === null || override === void 0 ? void 0 : override.token) || this.options.token;
+        const encodingAESKey = (override === null || override === void 0 ? void 0 : override.encodingAESKey) || this.options.encodingAESKey;
         const { code, type } = data;
         try {
             let openid;
             let userInfo = null;
             if (type === 'mp') {
-                const mpResult = await this.getMpOpenidWithInfo(code);
+                const mpResult = await this.getMpOpenidWithInfo(code, appId, appSecret);
                 openid = mpResult.openid;
                 userInfo = mpResult.userInfo;
             }
             else {
-                openid = await this.getMiniOpenid(code);
+                openid = await this.getMiniOpenid(code, miniProgramAppId, miniProgramAppSecret, appId, appSecret);
             }
             if (!openid) {
                 return '微信授权失败';
@@ -91,10 +117,10 @@ class WechatAuthenticationStrategy {
             return false;
         }
     }
-    async getMpOpenidWithInfo(code) {
+    async getMpOpenidWithInfo(code, appId, appSecret) {
         var _a;
         const url = `https://api.weixin.qq.com/sns/oauth2/access_token` +
-            `?appid=${this.options.appId}&secret=${this.options.appSecret}` +
+            `?appid=${appId}&secret=${appSecret}` +
             `&code=${code}&grant_type=authorization_code`;
         const response = await fetch(url);
         const data = (await response.json());
@@ -115,10 +141,10 @@ class WechatAuthenticationStrategy {
         }
         return { openid: data.openid, userInfo };
     }
-    async getMiniOpenid(code) {
-        const appId = this.options.miniProgramAppId || this.options.appId;
-        const secret = this.options.miniProgramAppSecret || this.options.appSecret;
-        const url = `https://api.weixin.qq.com/sns/jscode2session?appid=${appId}&secret=${secret}&js_code=${code}&grant_type=authorization_code`;
+    async getMiniOpenid(code, miniProgramAppId, miniProgramAppSecret, appId, appSecret) {
+        const finalAppId = miniProgramAppId || appId;
+        const finalSecret = miniProgramAppSecret || appSecret;
+        const url = `https://api.weixin.qq.com/sns/jscode2session?appid=${finalAppId}&secret=${finalSecret}&js_code=${code}&grant_type=authorization_code`;
         const response = await fetch(url);
         const data = (await response.json());
         return data.openid;

@@ -17,7 +17,4 @@ Object.defineProperty(exports, "__esModule", { value: true });
 __exportStar(require("./src/plugin"), exports);
 __exportStar(require("./src/types"), exports);
 __exportStar(require("./src/constants"), exports);
-__exportStar(require("./src/wechat-auth.service"), exports);
-__exportStar(require("./src/wechat-auth-shop.resolver"), exports);
-__exportStar(require("./src/wxacode.service"), exports);
 //# sourceMappingURL=index.js.map

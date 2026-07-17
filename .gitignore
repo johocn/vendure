@@ -11,7 +11,7 @@
 .env
 lerna-debug.log
 dist
-e2e/__data__/*
+**/e2e/__data__/*
 docs/resources/_gen/*
 docs/static/main.js*
 docs/static/main.css*
