@@ -591,7 +591,9 @@ git commit -m "feat: Add pay-config-crypto with encrypt/decrypt/mask/merge"
 **Files:**
 - Create: `packages/cjk-plugin/src/migrations/migrate-mapconfig-encryption.ts`
 
-> 注: Vendure HistoryService **仅支持** `createHistoryEntryForOrder`/`createHistoryEntryForCustomer`(类型受限于预定义枚举),**无** `createHistoryEntryForChannel`/`defineHistoryEntryType`。迁移记录直接用 `connection.getRepository('history_entry').save()` 写入,幂等检查用同表查询。
+> 注: Vendure HistoryService **仅支持** `createHistoryEntryForOrder`/`createHistoryEntryForCustomer`(类型受限于预定义枚举),**无** `createHistoryEntryForChannel`/`defineHistoryEntryType`。迁移记录直接用 `connection.createQueryBuilder().insert().into('history_entry')` 写入,幂等检查用同表查询。
+>
+> **重要**: `HistoryEntry` 是 abstract class,使用 `@TableInheritance` 单表继承(`discriminator` 列区分 `OrderHistoryEntry`/`CustomerHistoryEntry`)。**不能** 用 `getRepository('history_entry').save({...})` 传对象字面量(会因缺少 discriminator 值报错)。必须用 query builder 显式插入所有列(含 `discriminator`)。
 
 - [ ] **Step 1: 实现迁移脚本(幂等)**
 
@@ -605,6 +607,7 @@ import { encryptMapConfig } from '../map/map-crypto';
 import { isEncrypted } from '../auth/crypto';
 
 export const MAP_CONFIG_MIGRATION_DONE = 'MAP_CONFIG_MIGRATION_DONE';
+const DISCRIMINATOR = 'tenant-config-migration';
 
 @Injectable()
 export class MapConfigEncryptionMigration implements OnApplicationBootstrap {
@@ -616,9 +619,12 @@ export class MapConfigEncryptionMigration implements OnApplicationBootstrap {
     async onApplicationBootstrap() {
         const ctx = RequestContext.empty();
         // 幂等检查:若已迁移过则跳过
-        const done = await this.connection.getRepository('history_entry').findOne({
-            where: { type: MAP_CONFIG_MIGRATION_DONE },
-        });
+        const done = await this.connection
+            .createQueryBuilder()
+            .select('id')
+            .from('history_entry', 'he')
+            .where('he.type = :type', { type: MAP_CONFIG_MIGRATION_DONE })
+            .getRawOne();
         if (done) return;
 
         const channels = await this.channelService.findAll(ctx);
@@ -637,12 +643,20 @@ export class MapConfigEncryptionMigration implements OnApplicationBootstrap {
             });
             migrated++;
         }
-        // 直接写 history_entry 表(不走 HistoryService,因不支持自定义类型)
-        await this.connection.getRepository('history_entry').save({
-            createdAt: new Date(),
-            type: MAP_CONFIG_MIGRATION_DONE,
-            data: { migrated },
-        } as any);
+        // 用 query builder 直接插入(因 HistoryEntry 是 abstract 单表继承,不能 save 对象字面量)
+        await this.connection
+            .createQueryBuilder()
+            .insert()
+            .into('history_entry')
+            .values({
+                createdAt: () => 'NOW()',
+                updatedAt: () => 'NOW()',
+                type: MAP_CONFIG_MIGRATION_DONE,
+                isPublic: false,
+                data: JSON.stringify({ migrated }),
+                discriminator: DISCRIMINATOR,
+            })
+            .execute();
     }
 }
 ```
@@ -679,6 +693,7 @@ import { isEncrypted } from '../auth/crypto';
 import type { AlipayCredentials, DouyinpayCredentials, PayConfig, PayConfigStruct, WechatpayCredentials } from '../payment/payment-config.types';
 
 export const PAY_CONFIG_MIGRATION_DONE = 'PAY_CONFIG_MIGRATION_DONE';
+const DISCRIMINATOR = 'tenant-config-migration';
 
 @Injectable()
 export class PayConfigEncryptionMigration implements OnApplicationBootstrap {
@@ -689,9 +704,12 @@ export class PayConfigEncryptionMigration implements OnApplicationBootstrap {
 
     async onApplicationBootstrap() {
         const ctx = RequestContext.empty();
-        const done = await this.connection.getRepository('history_entry').findOne({
-            where: { type: PAY_CONFIG_MIGRATION_DONE },
-        });
+        const done = await this.connection
+            .createQueryBuilder()
+            .select('id')
+            .from('history_entry', 'he')
+            .where('he.type = :type', { type: PAY_CONFIG_MIGRATION_DONE })
+            .getRawOne();
         if (done) return;
 
         const channels = await this.channelService.findAll(ctx);
@@ -719,11 +737,20 @@ export class PayConfigEncryptionMigration implements OnApplicationBootstrap {
                 migrated++;
             }
         }
-        await this.connection.getRepository('history_entry').save({
-            createdAt: new Date(),
-            type: PAY_CONFIG_MIGRATION_DONE,
-            data: { migrated },
-        } as any);
+        // 用 query builder 直接插入(因 HistoryEntry 是 abstract 单表继承,不能 save 对象字面量)
+        await this.connection
+            .createQueryBuilder()
+            .insert()
+            .into('history_entry')
+            .values({
+                createdAt: () => 'NOW()',
+                updatedAt: () => 'NOW()',
+                type: PAY_CONFIG_MIGRATION_DONE,
+                isPublic: false,
+                data: JSON.stringify({ migrated }),
+                discriminator: DISCRIMINATOR,
+            })
+            .execute();
     }
 
     private needsEncryption(config: PayConfig): boolean {
@@ -1288,6 +1315,10 @@ git commit -m "feat: Add tenantConfig GraphQL schema"
 - Create: `packages/cjk-plugin/src/admin/tenant-config-admin.resolver.ts`
 - Test: `packages/cjk-plugin/src/admin/tenant-config-admin.resolver.spec.ts`
 
+> **API 核实**(已查证 `request-context.ts`): Vendure RequestContext **没有** `ctx.user` 属性,用户信息在 `ctx.session.user`。用户关联的 channels 通过 `ctx.session?.user?.channelPermissions` 获取(类型 `UserChannelPermissions[]`,每项 `{ id, token, code, permissions }`)。`ctx.userHasPermissions()` 内部也是读 `this.session.user.channelPermissions`。super-admin 判断用 `ctx.userHasPermissions([Permission.SuperAdmin])`(对 active channel 校验,super-admin 默认拥有所有权限)。
+>
+> **history_entry 写入**: `HistoryEntry` 是 abstract 单表继承实体,**不能** 用 `getRepository('history_entry').save({...})` 传对象字面量。必须用 `createQueryBuilder().insert().into('history_entry').values({...})` 显式指定所有列(含 `discriminator`)。
+
 - [ ] **Step 1: 写失败测试(权限校验三路径)**
 
 ```ts
@@ -1300,15 +1331,21 @@ const mockAuthConfigService: any = { getMasked: vi.fn().mockResolvedValue({ enab
 const mockPayConfigService: any = { getMasked: vi.fn().mockResolvedValue(null) };
 const mockMapConfigService: any = { getMasked: vi.fn().mockResolvedValue(null) };
 const mockSsoProviderService: any = { testConnection: vi.fn() };
-const mockConnection: any = { getRepository: vi.fn().mockReturnValue({ save: vi.fn().mockResolvedValue({}) }) };
+const mockConnection: any = {
+    createQueryBuilder: vi.fn().mockReturnValue({
+        insert: vi.fn().mockReturnThis(),
+        into: vi.fn().mockReturnThis(),
+        values: vi.fn().mockReturnThis(),
+        execute: vi.fn().mockResolvedValue({}),
+    }),
+};
 
-// Mock ctx
+// Mock ctx — 模拟 ctx.session.user.channelPermissions 结构
 function makeCtx(opts: { isSuperAdmin?: boolean; channelIds?: string[] } = {}) {
-    const user: any = {
-        channels: (opts.channelIds || []).map(id => ({ id, token: `t-${id}`, code: `c-${id}`, permissions: [] })),
-    };
+    const channelPermissions = (opts.channelIds || []).map(id => ({ id, token: `t-${id}`, code: `c-${id}`, permissions: [] }));
+    const user: any = { id: 1, identifier: 'admin@test', channelPermissions };
     return {
-        user,
+        session: { user },
         userHasPermissions: (perms: any[]) => opts.isSuperAdmin === true,
         activeUserId: 1,
     } as any;
@@ -1393,7 +1430,9 @@ export class TenantConfigAdminResolver {
 
     private canEdit(ctx: RequestContext, channelId: string): boolean {
         if (ctx.userHasPermissions([Permission.SuperAdmin])) return true;
-        return (ctx.user?.channels || []).some((c: any) => String(c.id) === String(channelId));
+        // Vendure API: ctx.session.user.channelPermissions 是 { id, token, code, permissions }[]
+        const channelPermissions = (ctx as any).session?.user?.channelPermissions || [];
+        return channelPermissions.some((c: any) => String(c.id) === String(channelId));
     }
 
     private assertCanWrite(ctx: RequestContext, channelId: string) {
@@ -1424,12 +1463,25 @@ export class TenantConfigAdminResolver {
         if (authPatch) await this.authConfigService.update(ctx, channelId, authPatch);
         if (payPatch) await this.payConfigService.update(ctx, channelId, payPatch);
         if (mapPatch) await this.mapConfigService.update(ctx, channelId, mapPatch);
-        // 审计日志:直接写 history_entry 表(因 HistoryService 不支持自定义类型)
-        await this.connection.getRepository('history_entry').save({
-            createdAt: new Date(),
-            type: 'TENANT_CONFIG_UPDATE',
-            data: { channelId, sections: [authPatch && 'auth', payPatch && 'pay', mapPatch && 'map'].filter(Boolean), operator: ctx.user?.identifier },
-        } as any);
+        // 审计日志:用 query builder 直接插入(因 HistoryEntry 是 abstract 单表继承,不能 save 对象字面量)
+        const operator = (ctx as any).session?.user?.identifier || ctx.activeUserId;
+        await this.connection
+            .createQueryBuilder()
+            .insert()
+            .into('history_entry')
+            .values({
+                createdAt: () => 'NOW()',
+                updatedAt: () => 'NOW()',
+                type: 'TENANT_CONFIG_UPDATE',
+                isPublic: false,
+                data: JSON.stringify({
+                    channelId,
+                    sections: [authPatch && 'auth', payPatch && 'pay', mapPatch && 'map'].filter(Boolean),
+                    operator,
+                }),
+                discriminator: 'tenant-config',
+            })
+            .execute();
         return this.tenantConfig(ctx, { channelId });
     }
 
@@ -1478,6 +1530,8 @@ git commit -m "feat: Add TenantConfigAdminResolver with channel-based permission
 **Files:**
 - Modify: `packages/cjk-plugin/src/auth/auth-admin.resolver.ts`
 
+> 注: `ctx.user` 不存在,用户关联 channels 通过 `ctx.session?.user?.channelPermissions`(每项 `{ id, token, code, permissions }`)。super-admin 用 `ctx.userHasPermissions([Permission.SuperAdmin])`。
+
 - [ ] **Step 1: 改造为薄封装,补 @Allow + channel 校验**
 
 ```ts
@@ -1494,23 +1548,24 @@ export class AuthAdminResolver {
         @Inject(AuthConfigService) private authConfigService: AuthConfigService,
     ) {}
 
-    private async assertChannelAccess(ctx: RequestContext, channelId: string) {
+    private assertChannelAccess(ctx: RequestContext, channelId: string) {
         if (ctx.userHasPermissions([Permission.SuperAdmin])) return;
-        const allowed = (ctx.user?.channels || []).some((c: any) => String(c.id) === String(channelId));
+        const channelPermissions = (ctx as any).session?.user?.channelPermissions || [];
+        const allowed = channelPermissions.some((c: any) => String(c.id) === String(channelId));
         if (!allowed) throw new Error('TENANT_CONFIG_FORBIDDEN');
     }
 
     @Query()
     @Allow(Permission.Authenticated)
     async channelAuthConfig(@CtxParam() ctx: RequestContext, @Args() args: { channelId: string }) {
-        await this.assertChannelAccess(ctx, args.channelId);
+        this.assertChannelAccess(ctx, args.channelId);
         return this.authConfigService.getMasked(ctx, args.channelId);
     }
 
     @Mutation()
     @Allow(Permission.Authenticated)
     async updateChannelAuthConfig(@CtxParam() ctx: RequestContext, @Args() args: { channelId: string; input: any }) {
-        await this.assertChannelAccess(ctx, args.channelId);
+        this.assertChannelAccess(ctx, args.channelId);
         return this.authConfigService.update(ctx, args.channelId, args.input);
     }
 }
@@ -1534,30 +1589,70 @@ git commit -m "refactor: AuthAdminResolver thin wrapper with channel permission"
 - Modify: `packages/cjk-plugin/src/map/map-admin.resolver.ts`
 - Modify: `packages/cjk-plugin/src/map/map.service.ts`
 
-> 注: MapAdminResolver 现状 4 个 Query(`mapDistricts`/`reverseGeocode`/`mapSdkConfig`/`channelMapConfig`)均**无 @Allow 装饰器**(已核实)。其中:
-> - `mapSdkConfig`: 供 dashboard 前端加载地图 SDK(需解密后的明文 apiKey),补 `@Allow(Permission.Authenticated)`,不掩码
-> - `channelMapConfig`: 供 admin 查看指定 channel 配置,补 `@Allow(Permission.Authenticated)` + channel 校验,返回掩码
-> - `mapDistricts`/`reverseGeocode`: 补 `@Allow(Permission.Authenticated)`(admin 工具查询)
+> 注(已核实现状): MapAdminResolver 4 个 Query 均无 @Allow。`MapService` 当前:
+> - `getConfigForChannel(ctx)`: 读 `ctx.channel.customFields.mapConfig`,回退默认 channel。**未解密**(Phase 3 加密后这里需接入 `decryptMapConfig`)
+> - `getChannelMapConfig(ctx)`: 返回 `{ provider, apiKey(masked), hasConfigured }`,**已掩码**,与 GraphQL schema `ChannelMapConfig` 兼容
+> - `getSdkConfig(ctx)`: 返回 `{ provider, sdkUrl, hasConfigured }`,用明文 apiKey 拼 sdkUrl
+>
+> **改造策略**:
+> - `getConfigForChannel` 接入 `decryptMapConfig`(读出的 raw 加密 config 解密后再用)
+> - `getChannelMapConfig(ctx, channelId?)` 加可选 channelId 参数,传入时读指定 channel(用 channelService.findOne),否则用 ctx.channel
+> - Resolver `channelMapConfig` 直接返回 MapService 结果(已是 GraphQL shape + masked),不再额外 mask
+> - `ctx.user.channels` 不存在,用 `ctx.session?.user?.channelPermissions`(每项 `{ id, token, code, permissions }`)
 
-- [ ] **Step 1: map.service.ts 接入 decryptMapConfig**
+- [ ] **Step 1: map.service.ts 改造**
 
-在 `MapService.getChannelMapConfig`(或等价方法)中,读取 mapConfig 后调 `decryptMapConfig`:
+在 `map.service.ts` 中:
+
+(a) `getConfigForChannel` 接入 decryptMapConfig:
 
 ```ts
 import { decryptMapConfig } from './map-crypto';
 // ...
-const raw = (ctx.channel as any)?.customFields?.mapConfig;
-return decryptMapConfig(raw);
+private async getConfigForChannel(ctx: RequestContext, channelId?: string): Promise<MapProviderConfig | null> {
+    let config: MapProviderConfig | undefined;
+    if (channelId) {
+        // 读指定 channel
+        const channel = await this.channelService.findOne(ctx, channelId as any);
+        config = (channel?.customFields as any)?.mapConfig as MapProviderConfig | undefined;
+    } else {
+        // 优先用当前 channel
+        config = (ctx.channel?.customFields as any)?.mapConfig as MapProviderConfig | undefined;
+        if (!config) {
+            const defaultChannel = await this.channelService.getDefaultChannel(ctx);
+            config = (defaultChannel?.customFields as any)?.mapConfig as MapProviderConfig | undefined;
+        }
+    }
+    // 解密后返回(加密格式 enc:xxx → 明文)
+    return config ? decryptMapConfig(config) : null;
+}
 ```
 
-- [ ] **Step 2: map-admin.resolver.ts 补 @Allow + channel 校验 + mask**
+(b) `getChannelMapConfig` 加可选 channelId 参数,透传:
+
+```ts
+async getChannelMapConfig(ctx: RequestContext, channelId?: string): Promise<{ provider: string; apiKey: string; hasConfigured: boolean }> {
+    const config = await this.getConfigForChannel(ctx, channelId);
+    if (!config) {
+        return { provider: '', apiKey: '', hasConfigured: false };
+    }
+    return {
+        provider: config.provider,
+        apiKey: this.maskApiKey(config.apiKey),
+        hasConfigured: true,
+    };
+}
+```
+
+(c) `getDistricts`/`reverseGeocode`/`getSdkConfig` 无需改签名,内部 `getConfigForChannel(ctx)` 调用保持不变(因 decrypt 已在 getConfigForChannel 内完成)。
+
+- [ ] **Step 2: map-admin.resolver.ts 补 @Allow + channel 校验**
 
 ```ts
 // packages/cjk-plugin/src/map/map-admin.resolver.ts
 import { Resolver, Query, Args } from '@nestjs/graphql';
 import { Allow, Ctx, RequestContext, Permission } from '@vendure/core';
 import { MapService } from './map.service';
-import { maskMapConfig } from './map-crypto';
 
 @Resolver()
 export class MapAdminResolver {
@@ -1565,7 +1660,8 @@ export class MapAdminResolver {
 
     private assertChannelAccess(ctx: RequestContext, channelId: string) {
         if (ctx.userHasPermissions([Permission.SuperAdmin])) return;
-        const allowed = (ctx.user?.channels || []).some((c: any) => String(c.id) === String(channelId));
+        const channelPermissions = (ctx as any).session?.user?.channelPermissions || [];
+        const allowed = channelPermissions.some((c: any) => String(c.id) === String(channelId));
         if (!allowed) throw new Error('TENANT_CONFIG_FORBIDDEN');
     }
 
@@ -1584,7 +1680,7 @@ export class MapAdminResolver {
     @Query()
     @Allow(Permission.Authenticated)
     async mapSdkConfig(@Ctx() ctx: RequestContext) {
-        // 返回解密后的明文(供 dashboard 加载地图 SDK),不掩码
+        // 返回解密后的明文(供 dashboard 加载地图 SDK),不掩码。MapService 内部已 decrypt。
         return this.mapService.getSdkConfig(ctx);
     }
 
@@ -1592,13 +1688,11 @@ export class MapAdminResolver {
     @Allow(Permission.Authenticated)
     async channelMapConfig(@Ctx() ctx: RequestContext, @Args() args: { channelId: string }) {
         this.assertChannelAccess(ctx, args.channelId);
-        const config = await this.mapService.getChannelMapConfig(ctx, args.channelId);
-        return maskMapConfig(config);
+        // MapService.getChannelMapConfig 返回 { provider, apiKey(masked), hasConfigured },与 GraphQL schema 兼容
+        return this.mapService.getChannelMapConfig(ctx, args.channelId);
     }
 }
 ```
-
-> 注: `getChannelMapConfig` 现状可能只读 `ctx.channel`,需改为接受 `channelId` 参数读指定 channel。实现时调整签名。
 
 - [ ] **Step 3: 验证编译**
 
@@ -2505,7 +2599,7 @@ git commit -m "fix: Smoke test fixes"
 - ✅ 11 风险缓解 — 在各任务中体现(如迁移幂等、pageBlocks fallback)
 
 **卡点修正记录(本次复查已修正)**:
-1. ✅ `HistoryService.createHistoryEntryForChannel`/`defineHistoryEntryType` 是虚构 API — 已改为 `connection.getRepository('history_entry').save()` 直接写(Task 4.1/4.2/6.3)
+1. ✅ `HistoryService.createHistoryEntryForChannel`/`defineHistoryEntryType` 是虚构 API — 已改为 query builder insert 直接写(Task 4.1/4.2/6.3)
 2. ✅ `PermissionDefinition.permissions` 错误 — 已改为 `.Permission` getter + `config.authOptions.customPermissions` 注册(Task 6.1)
 3. ✅ `useDetailPage()` 误用于 pageBlock — 已改为 `context.entity.id`(Task 10.1,PageContextValue 已核实)
 4. ✅ Customer customFields 在 cjk-plugin 不存在 — 已改为新建 `customer-custom-fields.ts` + plugin.ts 注册(Task 2.2)
@@ -2515,19 +2609,24 @@ git commit -m "fix: Smoke test fixes"
 8. ✅ Task 4.3 第一段错误导出代码 — 已删除,只保留正确版本
 9. ✅ Task 5.5 注入 HistoryService 但未用 — 已改用 Logger
 10. ✅ Task 8.2 `require('crypto')` — 已改为 `import * as crypto`
+11. ✅ **[本次新增] `ctx.user?.channels` 不存在** — Vendure RequestContext 无 `ctx.user`,用户关联 channels 通过 `ctx.session?.user?.channelPermissions`(每项 `{ id, token, code, permissions }`)。已修正 Task 6.3/7.1/7.2 的 `canEdit`/`assertChannelAccess` 方法及 resolver spec mock。
+12. ✅ **[本次新增] `HistoryEntry` 是 abstract 单表继承实体** — `@TableInheritance` + `@ChildEntity`,`discriminator` 列区分子类。`getRepository('history_entry').save({...})` 传对象字面量会因缺少 discriminator 失败。已改为 `connection.createQueryBuilder().insert().into('history_entry').values({... discriminator ...}).execute()`(Task 4.1/4.2/6.3)。
+13. ✅ **[本次新增] Task 7.2 MapService 改造代码缺失** — 原 plan Step 1 仅一句话提示,无具体代码。已补充 `getConfigForChannel(ctx, channelId?)` 完整改造代码(接入 decryptMapConfig + 支持读指定 channel)+ `getChannelMapConfig(ctx, channelId?)` 签名扩展。
+14. ✅ **[本次新增] Task 7.2 `channelMapConfig` 返回类型不匹配** — 原 plan `return maskMapConfig(config)` 返回 `MapProviderConfig | null`(`{ provider, apiKey, securityJsCode? }`),与 GraphQL schema `ChannelMapConfig { provider, apiKey, hasConfigured }` 不兼容。已改为直接返回 `MapService.getChannelMapConfig(ctx, channelId)`(已 masked + GraphQL shape)。
 
 **Placeholder 扫描**:
-- Task 4.1 HistoryService API 已修正为 connection 直接写
+- Task 4.1/4.2/6.3 history_entry 写入已统一为 query builder insert
 - Task 8.2 `getAuthOverride` 跨 plugin 导入 "需在实现时确认" — 合理的运行时确认项
 - Task 9.1 给出了明确的代码片段和插入点,可执行(伪代码因依赖现有 authenticate 方法体,需实现时插入)
 - E2E 测试(Task 11.1/11.2)为测试框架,具体 login/mutate 实现需参照 vendure e2e-utils 现有模式
 
 **类型一致性**:
-- `MapConfig` 在 Task 3.1/5.3/10.3 一致
+- `MapConfig` 在 Task 3.1/5.3/10.3 一致(注:实际类型名 `MapProviderConfig`,已在 Phase 3 执行时修正)
 - `PayConfig`/`PayConfigStruct`/`DouyinpayCredentials` 在 Task 2.1/2.3/3.2/5.2 一致
 - `TenantConfigPayload` 字段 `auth/pay/map/canEdit` 在 Task 6.2/6.3/10.1 一致
 - `SsoProvider`/`TestSsoResult` 在 Task 5.4/6.2/6.3 一致
 - `INVITE_CODE_BOUND` 在 Task 5.5/9.1 一致
+- `channelPermissions` 结构 `{ id, token, code, permissions }` 在 Task 6.3/7.1/7.2 一致(已查证 `get-user-channels-permissions.ts`)
 
 **已知简化(需实现时注意)**:
 1. GraphQL schema 用 `JSON` 标量承载 auth/pay/map,非强类型。若需强类型,后续拆 type。
