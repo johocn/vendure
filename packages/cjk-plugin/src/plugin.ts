@@ -273,9 +273,9 @@ import { TenantConfigAdminResolver } from './admin/tenant-config-admin.resolver'
 
                 type TenantConfigPayload {
                     channelId: ID!
-                    auth: JSON!
-                    pay: JSON!
-                    map: JSON!
+                    auth: JSON
+                    pay: JSON
+                    map: JSON
                     canEdit: Boolean!
                 }
 
