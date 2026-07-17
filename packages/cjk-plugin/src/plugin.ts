@@ -51,6 +51,7 @@ import { PayConfigService } from './payment/pay-config.service';
 import { MapConfigService } from './map/map-config.service';
 import { SsoProviderService } from './auth/sso-provider.service';
 import { InviteCodeService } from './auth/invite-code.service';
+import { tenantConfigPermission } from './admin/tenant-config-permissions';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
@@ -419,6 +420,11 @@ import { InviteCodeService } from './auth/invite-code.service';
         config.authOptions.customPermissions = [
             ...(config.authOptions.customPermissions || []),
             ...pickupPermissionDefinitions,
+        ];
+
+        config.authOptions.customPermissions = [
+            ...(config.authOptions.customPermissions || []),
+            tenantConfigPermission,
         ];
 
         return config;
