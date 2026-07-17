@@ -3,12 +3,14 @@ import { AuthenticationStrategy, RequestContext, User, Logger, Injector, UserSer
 import { gql } from 'graphql-tag';
 import type { SsoProvider } from './auth-config.types';
 import { readChannelAuthConfig } from './crypto';
+import { InviteCodeService } from './invite-code.service';
 
 const loggerCtx = 'SsoAuthenticationStrategy';
 
 interface SsoAuthData {
     providerKey: string;
     code: string;
+    inviteCode?: string;
 }
 
 export class SsoAuthenticationStrategy implements AuthenticationStrategy<SsoAuthData> {
@@ -16,10 +18,12 @@ export class SsoAuthenticationStrategy implements AuthenticationStrategy<SsoAuth
 
     private userService!: UserService;
     private customerService!: CustomerService;
+    private inviteCodeService!: InviteCodeService;
 
     async init(injector: Injector) {
         this.userService = injector.get(UserService);
         this.customerService = injector.get(CustomerService);
+        this.inviteCodeService = injector.get(InviteCodeService);
     }
 
     defineInputType() {
@@ -27,6 +31,7 @@ export class SsoAuthenticationStrategy implements AuthenticationStrategy<SsoAuth
             input SsoAuthInput {
                 providerKey: String!
                 code: String!
+                inviteCode: String
             }
         `;
     }
@@ -74,7 +79,19 @@ export class SsoAuthenticationStrategy implements AuthenticationStrategy<SsoAuth
 
             // 4. 查找或创建 Customer
             const identifier = `sso_${provider.providerKey}_${externalId}`;
-            return await this.findOrCreateUser(ctx, identifier, email, nickname, mobile, avatar);
+            const result = await this.findOrCreateUser(ctx, identifier, email, nickname, mobile, avatar);
+            // inviteCode 衔接:优先用 data.inviteCode,否则尝试从 userInfo.invite_code 取
+            if (result && typeof result === 'object') {
+                const finalInviteCode = data.inviteCode || (userInfo as any)?.invite_code;
+                if (finalInviteCode) {
+                    try {
+                        await this.inviteCodeService.bindIfPresent(ctx, String(result.id), String(finalInviteCode));
+                    } catch (e: any) {
+                        Logger.warn(`Failed to bind invite code: ${e.message}`, loggerCtx);
+                    }
+                }
+            }
+            return result;
         } catch (e: any) {
             Logger.error(`SSO authentication failed: ${e.message}`, loggerCtx);
             return false;
