@@ -1,48 +1,49 @@
-import { Injectable } from '@nestjs/common';
-import { ChannelService, JobQueue, JobQueueService, Logger, RequestContext } from '@vendure/core';
+import { ChannelService, Logger, RequestContext, ScheduledTask } from '@vendure/core';
 
 import { CommissionService } from './commission.service';
 import { loggerCtx } from './constants';
 
-@Injectable()
-export class CommissionJob {
-    private jobQueue: JobQueue<{ channelId: string }>;
+/**
+ * 每日凌晨 00:00 触发的佣金结算 ScheduledTask。
+ *
+ * 使用 Vendure 内置 ScheduledTask（v3.3+）替代原 setTimeout(24h) 一次性调度：
+ * - 由 DefaultSchedulerPlugin 在 worker 进程按 cron 周期执行
+ * - 多实例下通过 SchedulerStrategy 锁机制保证 only-once
+ * - 进程重启不丢任务
+ *
+ * 需在 plugin.ts 的 configuration 中 push 到 config.schedulerOptions.tasks。
+ */
+export const settleCommissionsTask = new ScheduledTask({
+    id: 'distribution-settle-commissions',
+    description: 'Settle pending distribution commissions for all enabled channels',
+    schedule: '0 0 * * *',
+    timeout: 5 * 60 * 1000,
+    preventOverlap: true,
+    async execute({ injector, scheduledContext }) {
+        const channelService = injector.get(ChannelService);
+        const commissionService = injector.get(CommissionService);
 
-    constructor(
-        private jobQueueService: JobQueueService,
-        private commissionService: CommissionService,
-        private channelService: ChannelService,
-    ) {}
+        const channels = await channelService.findAll(scheduledContext);
+        let totalSettled = 0;
+        for (const channel of channels.items) {
+            if (!(channel as any).customFields?.distributionEnabled) {
+                continue;
+            }
+            const ctx = new RequestContext({
+                apiType: 'admin',
+                channel,
+                isAuthorized: true,
+                authorizedAsOwnerOnly: false,
+            });
+            try {
+                const count = await commissionService.settlePendingCommissions(ctx);
+                totalSettled += count;
+                Logger.info(`Settled ${count} pending commissions for channel ${channel.id}`, loggerCtx);
+            } catch (e: any) {
+                Logger.error(`Failed to settle commissions for channel ${channel.id}: ${e.message}`, loggerCtx);
+            }
+        }
 
-    async init(): Promise<void> {
-        this.jobQueue = await this.jobQueueService.createQueue({
-            name: 'commission-settlement',
-            process: async (job) => {
-                try {
-                    const emptyCtx = RequestContext.empty();
-                    const channel = await this.channelService.findOne(emptyCtx, job.data.channelId as any);
-                    if (!channel) {
-                        Logger.warn(`Channel ${job.data.channelId} not found, skipping commission settlement`, loggerCtx);
-                        return;
-                    }
-                    const ctx = new RequestContext({
-                        apiType: 'admin',
-                        channel,
-                        isAuthorized: true,
-                        authorizedAsOwnerOnly: false,
-                    });
-                    const count = await this.commissionService.settlePendingCommissions(ctx);
-                    Logger.info(`Settled ${count} pending commissions for channel ${job.data.channelId}`, loggerCtx);
-                } catch (e: any) {
-                    Logger.error(`Failed to process commission settlement for channel ${job.data.channelId}: ${e.message}`, loggerCtx);
-                }
-            },
-        });
-    }
-
-    async scheduleSettlement(channelId: string): Promise<void> {
-        setTimeout(() => {
-            this.jobQueue.add({ channelId });
-        }, 24 * 60 * 60 * 1000);
-    }
-}
+        return { totalSettled };
+    },
+});

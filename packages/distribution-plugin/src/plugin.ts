@@ -1,9 +1,8 @@
 import { Inject, OnApplicationBootstrap, Type } from '@nestjs/common';
-import { ChannelService, Logger, PluginCommonModule, RequestContext, VendurePlugin } from '@vendure/core';
+import { Logger, PluginCommonModule, VendurePlugin } from '@vendure/core';
 import gql from 'graphql-tag';
 
 import { DISTRIBUTION_PLUGIN_OPTIONS, loggerCtx } from './constants';
-import { CommissionJob } from './commission.job';
 import { CommissionRecord } from './commission-record.entity';
 import { CommissionService } from './commission.service';
 import { DistributionAdminResolver } from './distribution-admin.resolver';
@@ -15,6 +14,7 @@ import { WithdrawalRequest } from './withdrawal-request.entity';
 import { WithdrawalService } from './withdrawal.service';
 import { distributionChannelCustomFields } from './channel-custom-fields';
 import { distributionCustomerCustomFields } from './customer-custom-fields';
+import { settleCommissionsTask } from './commission.job';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
@@ -24,7 +24,6 @@ import { distributionCustomerCustomFields } from './customer-custom-fields';
         DistributionService,
         CommissionService,
         WithdrawalService,
-        CommissionJob,
     ],
     adminApiExtensions: {
         schema: () => gql`
@@ -154,10 +153,23 @@ import { distributionCustomerCustomFields } from './customer-custom-fields';
                 createdAt: DateTime!
             }
 
+            type CommissionRecordList implements PaginatedList {
+                items: [CommissionRecord!]!
+                totalItems: Int!
+            }
+
+            type WithdrawalRequestList implements PaginatedList {
+                items: [WithdrawalRequest!]!
+                totalItems: Int!
+            }
+
+            input CommissionRecordListOptions
+            input WithdrawalRequestListOptions
+
             extend type Query {
                 myDistributorProfile: Distributor
-                myCommissionRecords: [CommissionRecord!]!
-                myWithdrawalRequests: [WithdrawalRequest!]!
+                myCommissionRecords(options: CommissionRecordListOptions): CommissionRecordList!
+                myWithdrawalRequests(options: WithdrawalRequestListOptions): WithdrawalRequestList!
             }
 
             extend type Mutation {
@@ -179,6 +191,14 @@ import { distributionCustomerCustomFields } from './customer-custom-fields';
                 ...distributionCustomerCustomFields.Customer!,
             ],
         };
+        // 注册每日佣金结算 ScheduledTask（由 DefaultSchedulerPlugin 在 worker 上周期执行）
+        if (!config.schedulerOptions) {
+            config.schedulerOptions = { tasks: [] } as any;
+        }
+        if (!config.schedulerOptions.tasks) {
+            config.schedulerOptions.tasks = [];
+        }
+        config.schedulerOptions.tasks.push(settleCommissionsTask);
         return config;
     },
     dashboard: '../dashboard/index.tsx',
@@ -190,8 +210,6 @@ export class DistributionPlugin implements OnApplicationBootstrap {
     constructor(
         @Inject(DISTRIBUTION_PLUGIN_OPTIONS) private options: DistributionPluginOptions,
         private commissionService: CommissionService,
-        private commissionJob: CommissionJob,
-        private channelService: ChannelService,
     ) {}
 
     static init(options?: DistributionPluginOptions): Type<DistributionPlugin> {
@@ -201,18 +219,6 @@ export class DistributionPlugin implements OnApplicationBootstrap {
 
     async onApplicationBootstrap(): Promise<void> {
         await this.commissionService.init();
-        await this.commissionJob.init();
-
-        const emptyCtx = RequestContext.empty();
-        const channels = await this.channelService.findAll(emptyCtx);
-
-        for (const channel of channels.items) {
-            if ((channel as any).customFields?.distributionEnabled) {
-                await this.commissionJob.scheduleSettlement(channel.id as string);
-                Logger.info(`Scheduled commission settlement for channel ${channel.id}`, loggerCtx);
-            }
-        }
-
         Logger.info('DistributionPlugin initialized', loggerCtx);
     }
 }

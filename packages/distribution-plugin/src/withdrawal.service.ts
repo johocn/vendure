@@ -1,10 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { ID, ListQueryBuilder, ListQueryOptions, Logger, PaginatedList, RequestContext, TransactionalConnection } from '@vendure/core';
+import { In } from 'typeorm';
 
-import { WithdrawalRequest } from './withdrawal-request.entity';
+import { decryptAccount, encryptAccount } from './account-crypto';
+import { CommissionRecord } from './commission-record.entity';
 import { Distributor } from './distributor.entity';
 import { DistributionService } from './distribution.service';
 import { loggerCtx } from './constants';
+import { WithdrawalRequest } from './withdrawal-request.entity';
 
 @Injectable()
 export class WithdrawalService {
@@ -22,7 +25,12 @@ export class WithdrawalService {
                 relations: ['channels'],
             })
             .getManyAndCount()
-            .then(([items, totalItems]) => ({ items, totalItems }));
+            .then(([items, totalItems]) => {
+                items.forEach(item => {
+                    item.accountInfo = decryptAccount(item.accountInfo);
+                });
+                return { items, totalItems };
+            });
     }
 
     findByDistributor(ctx: RequestContext, distributorId: ID, options?: ListQueryOptions<WithdrawalRequest>): Promise<PaginatedList<WithdrawalRequest>> {
@@ -34,7 +42,12 @@ export class WithdrawalService {
                 where: { distributorId } as any,
             })
             .getManyAndCount()
-            .then(([items, totalItems]) => ({ items, totalItems }));
+            .then(([items, totalItems]) => {
+                items.forEach(item => {
+                    item.accountInfo = decryptAccount(item.accountInfo);
+                });
+                return { items, totalItems };
+            });
     }
 
     async request(
@@ -66,13 +79,14 @@ export class WithdrawalService {
             distributorId: String(distributorId),
             amount,
             method,
-            accountInfo,
+            accountInfo: encryptAccount(accountInfo),
             status: 'pending',
         });
         const channel = await this.connection.getEntityOrThrow(ctx, 'Channel' as any, ctx.channelId);
         request.channels = [channel as any];
 
         const saved = await this.connection.getRepository(ctx, WithdrawalRequest).save(request);
+        saved.accountInfo = decryptAccount(saved.accountInfo);
         Logger.info(`Withdrawal request ${saved.id} created for distributor ${distributorId}, amount ${amount}`, loggerCtx);
         return saved;
     }
@@ -85,7 +99,9 @@ export class WithdrawalService {
         }
         request.status = 'approved';
         request.reviewedAt = new Date();
-        return repo.save(request);
+        const saved = await repo.save(request);
+        saved.accountInfo = decryptAccount(saved.accountInfo);
+        return saved;
     }
 
     async reject(ctx: RequestContext, id: ID): Promise<WithdrawalRequest> {
@@ -102,7 +118,9 @@ export class WithdrawalService {
         distributor.availableBalance += request.amount;
         await this.connection.getRepository(ctx, Distributor).save(distributor);
 
-        return repo.save(request);
+        const saved = await repo.save(request);
+        saved.accountInfo = decryptAccount(saved.accountInfo);
+        return saved;
     }
 
     async markPaid(ctx: RequestContext, id: ID): Promise<WithdrawalRequest> {
@@ -118,6 +136,24 @@ export class WithdrawalService {
         distributor.frozenBalance -= request.amount;
         await this.connection.getRepository(ctx, Distributor).save(distributor);
 
-        return repo.save(request);
+        // 联动 CommissionRecord：将该分销商 pending/confirmed 佣金记录置 paid
+        const commissionRepo = this.connection.getRepository(ctx, CommissionRecord);
+        const pendingRecords = await commissionRepo.find({
+            where: {
+                distributorId: request.distributorId,
+                status: In(['pending', 'confirmed']) as any,
+            } as any,
+        });
+        for (const record of pendingRecords) {
+            record.status = 'paid';
+            await commissionRepo.save(record);
+        }
+        if (pendingRecords.length > 0) {
+            Logger.info(`Marked ${pendingRecords.length} commission records as paid for distributor ${request.distributorId}`, loggerCtx);
+        }
+
+        const saved = await repo.save(request);
+        saved.accountInfo = decryptAccount(saved.accountInfo);
+        return saved;
     }
 }

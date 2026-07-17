@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Channel, CustomerService, ID, ListQueryBuilder, ListQueryOptions, Logger, PaginatedList, RequestContext, TransactionalConnection } from '@vendure/core';
+import { Channel, CustomerService, ID, ListQueryBuilder, ListQueryOptions, Logger, PaginatedList, RequestContext, TransactionalConnection, UserInputError } from '@vendure/core';
 
 import { Distributor } from './distributor.entity';
 import { loggerCtx } from './constants';
@@ -66,6 +66,9 @@ export class DistributionService {
             if (parent && parent.status === 'active') {
                 parentId = parent.id;
                 level = parent.level + 1;
+                if (level > 3) {
+                    throw new UserInputError('Maximum 3 levels of distribution relationship allowed');
+                }
             }
         }
 
@@ -87,7 +90,7 @@ export class DistributionService {
 
         // 回写 customer.customFields.referralCode
         try {
-            const customer = await this.customerService.findOneByUserId(ctx, customerId as any);
+            const customer = await this.customerService.findOne(ctx, customerId);
             if (customer) {
                 await this.customerService.update(ctx, {
                     id: customer.id,

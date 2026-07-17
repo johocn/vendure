@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Channel, EventBus, ID, ListQueryBuilder, ListQueryOptions, Logger, PaginatedList, PaymentStateTransitionEvent, RequestContext, TransactionalConnection } from '@vendure/core';
+import { Channel, EventBus, ID, ListQueryBuilder, ListQueryOptions, Logger, PaginatedList, PaymentStateTransitionEvent, RequestContext, RefundStateTransitionEvent, TransactionalConnection } from '@vendure/core';
 
 import { CommissionRecord } from './commission-record.entity';
 import { Distributor } from './distributor.entity';
@@ -27,6 +27,16 @@ export class CommissionService {
                     await this.calculateCommission(event);
                 } catch (e: any) {
                     Logger.error(`Failed to calculate commission for order ${event.order.id}: ${e.message}`, loggerCtx);
+                }
+            }
+        });
+
+        this.eventBus.ofType(RefundStateTransitionEvent).subscribe(async (event) => {
+            if (event.toState === 'Settled') {
+                try {
+                    await this.cancelCommissionByOrder(event.ctx, String(event.order.id));
+                } catch (e: any) {
+                    Logger.error(`Failed to cancel commission for order ${event.order.id} on refund: ${e.message}`, loggerCtx);
                 }
             }
         });
@@ -61,42 +71,51 @@ export class CommissionService {
 
         const directAmount = Math.floor(orderTotal * directRate / 10000);
 
-        const channel = await this.connection.getEntityOrThrow(ctx, Channel, ctx.channelId);
+        // 事务包装：保证多条 CommissionRecord 原子写入
+        await this.connection.startTransaction(ctx);
+        try {
+            const channel = await this.connection.getEntityOrThrow(ctx, Channel, ctx.channelId);
 
-        const directRecord = new CommissionRecord({
-            distributorId: String(directDistributor.id),
-            orderId: String(order.id),
-            commissionType: 'direct',
-            commissionRate: directRate,
-            orderAmount: orderTotal,
-            commissionAmount: directAmount,
-            status: 'pending',
-            settledAt: null,
-        });
-        directRecord.channels = [channel];
-        await this.connection.getRepository(ctx, CommissionRecord).save(directRecord);
-
-        Logger.info(`Created direct commission ${directAmount} for distributor ${directDistributor.id}`, loggerCtx);
-
-        if (directDistributor.parentId) {
-            const indirectRate = (ctx.channel as any).customFields?.indirectCommissionRate ?? 500;
-            const indirectAmount = Math.floor(orderTotal * indirectRate / 10000);
-
-            const indirectRecord = new CommissionRecord({
-                distributorId: String(directDistributor.parentId),
+            const directRecord = new CommissionRecord({
+                distributorId: String(directDistributor.id),
                 orderId: String(order.id),
-                fromDistributorId: String(directDistributor.id),
-                commissionType: 'indirect',
-                commissionRate: indirectRate,
+                commissionType: 'direct',
+                commissionRate: directRate,
                 orderAmount: orderTotal,
-                commissionAmount: indirectAmount,
+                commissionAmount: directAmount,
                 status: 'pending',
                 settledAt: null,
             });
-            indirectRecord.channels = [channel];
-            await this.connection.getRepository(ctx, CommissionRecord).save(indirectRecord);
+            directRecord.channels = [channel];
+            await this.connection.getRepository(ctx, CommissionRecord).save(directRecord);
 
-            Logger.info(`Created indirect commission ${indirectAmount} for distributor ${directDistributor.parentId}`, loggerCtx);
+            Logger.info(`Created direct commission ${directAmount} for distributor ${directDistributor.id}`, loggerCtx);
+
+            if (directDistributor.parentId) {
+                const indirectRate = (ctx.channel as any).customFields?.indirectCommissionRate ?? 500;
+                const indirectAmount = Math.floor(orderTotal * indirectRate / 10000);
+
+                const indirectRecord = new CommissionRecord({
+                    distributorId: String(directDistributor.parentId),
+                    orderId: String(order.id),
+                    fromDistributorId: String(directDistributor.id),
+                    commissionType: 'indirect',
+                    commissionRate: indirectRate,
+                    orderAmount: orderTotal,
+                    commissionAmount: indirectAmount,
+                    status: 'pending',
+                    settledAt: null,
+                });
+                indirectRecord.channels = [channel];
+                await this.connection.getRepository(ctx, CommissionRecord).save(indirectRecord);
+
+                Logger.info(`Created indirect commission ${indirectAmount} for distributor ${directDistributor.parentId}`, loggerCtx);
+            }
+
+            await this.connection.commitOpenTransaction(ctx);
+        } catch (e) {
+            await this.connection.rollBackTransaction(ctx);
+            throw e;
         }
     }
 
@@ -156,5 +175,41 @@ export class CommissionService {
         }
 
         return settledCount;
+    }
+
+    /**
+     * 退款冲销：反查 orderId 对应的 CommissionRecord，pending/confirmed 置 cancelled；
+     * 已 confirmed 的还需扣回 distributor.availableBalance。
+     */
+    async cancelCommissionByOrder(ctx: RequestContext, orderId: string): Promise<number> {
+        const repo = this.connection.getRepository(ctx, CommissionRecord);
+        const records = await repo.find({ where: { orderId } as any });
+
+        let cancelledCount = 0;
+        for (const record of records) {
+            if (record.status !== 'pending' && record.status !== 'confirmed') {
+                continue;
+            }
+            const wasConfirmed = record.status === 'confirmed';
+            record.status = 'cancelled';
+            await repo.save(record);
+
+            if (wasConfirmed) {
+                const distributor = await this.connection.getEntityOrThrow(ctx, Distributor, record.distributorId);
+                distributor.availableBalance -= record.commissionAmount;
+                if (distributor.availableBalance < 0) {
+                    distributor.availableBalance = 0;
+                }
+                await this.connection.getRepository(ctx, Distributor).save(distributor);
+            }
+
+            cancelledCount++;
+        }
+
+        if (cancelledCount > 0) {
+            Logger.info(`Cancelled ${cancelledCount} commission records for order ${orderId}`, loggerCtx);
+        }
+
+        return cancelledCount;
     }
 }

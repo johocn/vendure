@@ -13,6 +13,7 @@ export class WithdrawalRequest extends VendureEntity implements ChannelAware {
 
     @Column() method: 'bank' | 'alipay' | 'wechat';
 
+    // 密文存储：由 WithdrawalService 在写入前调用 encryptAccount、读取时调用 decryptAccount
     @Column() accountInfo: string;
 
     @Column({ default: 'pending' }) status: 'pending' | 'approved' | 'rejected' | 'paid';
