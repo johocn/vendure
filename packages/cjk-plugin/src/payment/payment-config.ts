@@ -1,5 +1,5 @@
 import { RequestContext } from '@vendure/core';
-import { AlipayCredentials, PayConfig, PayConfigStruct, PaymentMethodCode, WechatpayCredentials } from './payment-config.types';
+import { AlipayCredentials, DouyinpayCredentials, PayConfig, PayConfigStruct, PaymentMethodCode, WechatpayCredentials } from './payment-config.types';
 
 export function readChannelPayConfig(ctx: RequestContext): PayConfig | null {
     const raw = (ctx.channel as any)?.customFields?.payConfig as PayConfigStruct | undefined;
@@ -19,13 +19,19 @@ export function readChannelPayConfig(ctx: RequestContext): PayConfig | null {
         } catch {}
     }
 
+    if (raw.douyinpayJson) {
+        try {
+            result.douyinpay = JSON.parse(raw.douyinpayJson);
+        } catch {}
+    }
+
     return Object.keys(result).length > 0 ? result : null;
 }
 
 export function getPaymentOverride(
     ctx: RequestContext,
     method: PaymentMethodCode,
-): AlipayCredentials | WechatpayCredentials | null {
+): AlipayCredentials | WechatpayCredentials | DouyinpayCredentials | null {
     try {
         const config = readChannelPayConfig(ctx);
         if (!config) return null;
