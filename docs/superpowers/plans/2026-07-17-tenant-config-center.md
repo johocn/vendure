@@ -1534,9 +1534,14 @@ git commit -m "refactor: AuthAdminResolver thin wrapper with channel permission"
 - Modify: `packages/cjk-plugin/src/map/map-admin.resolver.ts`
 - Modify: `packages/cjk-plugin/src/map/map.service.ts`
 
+> 注: MapAdminResolver 现状 4 个 Query(`mapDistricts`/`reverseGeocode`/`mapSdkConfig`/`channelMapConfig`)均**无 @Allow 装饰器**(已核实)。其中:
+> - `mapSdkConfig`: 供 dashboard 前端加载地图 SDK(需解密后的明文 apiKey),补 `@Allow(Permission.Authenticated)`,不掩码
+> - `channelMapConfig`: 供 admin 查看指定 channel 配置,补 `@Allow(Permission.Authenticated)` + channel 校验,返回掩码
+> - `mapDistricts`/`reverseGeocode`: 补 `@Allow(Permission.Authenticated)`(admin 工具查询)
+
 - [ ] **Step 1: map.service.ts 接入 decryptMapConfig**
 
-在 `MapService.getConfigForChannel`(或等价方法)中,读取 mapConfig 后调 `decryptMapConfig`:
+在 `MapService.getChannelMapConfig`(或等价方法)中,读取 mapConfig 后调 `decryptMapConfig`:
 
 ```ts
 import { decryptMapConfig } from './map-crypto';
@@ -1547,7 +1552,53 @@ return decryptMapConfig(raw);
 
 - [ ] **Step 2: map-admin.resolver.ts 补 @Allow + channel 校验 + mask**
 
-`channelMapConfig` Query 返回前调 `maskMapConfig`;`mapSdkConfig` Query 返回解密后的明文(供 shop 用)。补 channel 校验逻辑(同 Task 7.1 模式)。
+```ts
+// packages/cjk-plugin/src/map/map-admin.resolver.ts
+import { Resolver, Query, Args } from '@nestjs/graphql';
+import { Allow, Ctx, RequestContext, Permission } from '@vendure/core';
+import { MapService } from './map.service';
+import { maskMapConfig } from './map-crypto';
+
+@Resolver()
+export class MapAdminResolver {
+    constructor(private mapService: MapService) {}
+
+    private assertChannelAccess(ctx: RequestContext, channelId: string) {
+        if (ctx.userHasPermissions([Permission.SuperAdmin])) return;
+        const allowed = (ctx.user?.channels || []).some((c: any) => String(c.id) === String(channelId));
+        if (!allowed) throw new Error('TENANT_CONFIG_FORBIDDEN');
+    }
+
+    @Query()
+    @Allow(Permission.Authenticated)
+    async mapDistricts(@Ctx() ctx: RequestContext, @Args() args: { parentAdcode?: string | null }) {
+        return this.mapService.getDistricts(ctx, args?.parentAdcode ?? null);
+    }
+
+    @Query()
+    @Allow(Permission.Authenticated)
+    async reverseGeocode(@Ctx() ctx: RequestContext, @Args() args: { lat: number; lng: number }) {
+        return this.mapService.reverseGeocode(ctx, args.lat, args.lng);
+    }
+
+    @Query()
+    @Allow(Permission.Authenticated)
+    async mapSdkConfig(@Ctx() ctx: RequestContext) {
+        // 返回解密后的明文(供 dashboard 加载地图 SDK),不掩码
+        return this.mapService.getSdkConfig(ctx);
+    }
+
+    @Query()
+    @Allow(Permission.Authenticated)
+    async channelMapConfig(@Ctx() ctx: RequestContext, @Args() args: { channelId: string }) {
+        this.assertChannelAccess(ctx, args.channelId);
+        const config = await this.mapService.getChannelMapConfig(ctx, args.channelId);
+        return maskMapConfig(config);
+    }
+}
+```
+
+> 注: `getChannelMapConfig` 现状可能只读 `ctx.channel`,需改为接受 `channelId` 参数读指定 channel。实现时调整签名。
 
 - [ ] **Step 3: 验证编译**
 
@@ -2083,6 +2134,8 @@ git commit -m "feat: TenantConfigTabs with MaskedInput and SectionCard"
 - Create: `packages/cjk-plugin/dashboard/tenant-config/wechat-auth-tab.tsx`
 - Create: `packages/cjk-plugin/dashboard/tenant-config/sso-tab.tsx`
 - Create: `packages/cjk-plugin/dashboard/tenant-config/map-tab.tsx`
+
+> 注: cjk-plugin dashboard 现有 `auth-config-widget.tsx`/`payment-config-widget.tsx`(已核实存在),是旧版 `detailForms` 模式的字段级组件。本次新建的 4 个 tab 组件用 `MaskedInput` 重新构建,**替代**现有 widget 的功能(不直接复用,因交互模式不同)。现有 widget 文件**保留不删**(避免破坏可能的其他引用),后续确认无引用后可清理。
 
 - [ ] **Step 1: payment-tab.tsx**
 
