@@ -1993,11 +1993,18 @@ git commit -m "feat: SsoAuthenticationStrategy accepts inviteCode, binds via Inv
 - Create: `packages/cjk-plugin/dashboard/tenant-config-center.tsx`
 - Create: `packages/cjk-plugin/dashboard/tenant-config/shared/use-tenant-config.ts`
 
+> **API 核实**(已查证 `extension-api/types/layout.ts` + `invoice-plugin/dashboard/invoice-block.tsx` 现有用法):
+> - `DashboardPageBlockDefinition.location` **必须** 包含 `column: 'main' | 'side' | 'full'` 字段(plan 早期版本漏写)
+> - `component` 是 `React.FunctionComponent<{ context: PageContextValue }>`,**直接传组件引用**(如 `component: TenantConfigCenter`),**不能** 写成 `component: () => import('./tenant-config-center')`
+> - `PageContextValue` 已从 `@vendure/dashboard` 公开导出(经 `lib/index.ts` re-export `page-provider.tsx`),不要在本地重定义
+> - cjk-plugin dashboard 现有 GraphQL 调用模式: 用 `@vendure/dashboard` 的 `api` + `graphql` 模板字符串 + `@tanstack/react-query`(参见 `pickup-location-detail.tsx`),**不用** `@apollo/client`
+
 - [ ] **Step 1: dashboard/index.tsx 注册 pageBlocks**
 
 ```tsx
 // 在现有 defineDashboardExtension 中追加 pageBlocks
 import { defineDashboardExtension } from '@vendure/dashboard';
+import { TenantConfigCenter } from './tenant-config-center';
 
 defineDashboardExtension({
     routes: [/* existing */],
@@ -2008,9 +2015,10 @@ defineDashboardExtension({
             title: '租户配置中心',
             location: {
                 pageId: 'channel-detail',
+                column: 'main',                                          // ← 必填字段
                 position: { blockId: 'custom-fields', order: 'after' },
             },
-            component: () => import('./tenant-config-center'),
+            component: TenantConfigCenter,                                // ← 组件引用,非 import()
         },
     ],
 });
@@ -2018,11 +2026,14 @@ defineDashboardExtension({
 
 - [ ] **Step 2: use-tenant-config.ts GraphQL hook**
 
+> 注: 用 cjk-plugin dashboard 现有模式(`api` + `graphql` + `@tanstack/react-query`),不用 `@apollo/client`。
+
 ```ts
 // packages/cjk-plugin/dashboard/tenant-config/shared/use-tenant-config.ts
-import { useQuery, useMutation, gql } from '@apollo/client';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { api, graphql } from '@vendure/dashboard';
 
-const TENANT_CONFIG_QUERY = gql`
+const TENANT_CONFIG_QUERY = graphql(`
     query TenantConfig($channelId: ID!) {
         tenantConfig(channelId: $channelId) {
             channelId
@@ -2032,9 +2043,9 @@ const TENANT_CONFIG_QUERY = gql`
             canEdit
         }
     }
-`;
+`);
 
-const UPDATE_TENANT_CONFIG = gql`
+const UPDATE_TENANT_CONFIG = graphql(`
     mutation UpdateTenantConfig($input: UpdateTenantConfigInput!) {
         updateTenantConfig(input: $input) {
             channelId
@@ -2044,9 +2055,9 @@ const UPDATE_TENANT_CONFIG = gql`
             canEdit
         }
     }
-`;
+`);
 
-const TEST_SSO = gql`
+const TEST_SSO = graphql(`
     mutation TestSso($input: TestSsoInput!) {
         testSsoConnection(input: $input) {
             success
@@ -2054,39 +2065,42 @@ const TEST_SSO = gql`
             error
         }
     }
-`;
+`);
 
 export function useTenantConfig(channelId: string) {
-    const { data, loading, error, refetch } = useQuery(TENANT_CONFIG_QUERY, { variables: { channelId } });
-    const [updateMutation] = useMutation(UPDATE_TENANT_CONFIG);
-    const [testSsoMutation] = useMutation(TEST_SSO);
+    const query = useQuery({
+        queryKey: ['tenantConfig', channelId],
+        queryFn: () => api.query(TENANT_CONFIG_QUERY, { channelId }),
+    });
+    const updateMutation = useMutation({
+        mutationFn: (patch: any) => api.mutate(UPDATE_TENANT_CONFIG, { input: { channelId, ...patch } }),
+    });
+    const testSsoMutation = useMutation({
+        mutationFn: (vars: { providerKey: string; newClientSecret?: string }) =>
+            api.mutate(TEST_SSO, { input: { channelId, ...vars } }),
+    });
     return {
-        data: data?.tenantConfig,
-        loading,
-        error,
-        refetch,
-        update: (patch: any) => updateMutation({ variables: { input: { channelId, ...patch } } }),
+        data: query.data?.tenantConfig,
+        loading: query.isLoading,
+        error: query.error,
+        refetch: query.refetch,
+        update: (patch: any) => updateMutation.mutateAsync(patch),
         testSso: (providerKey: string, newClientSecret?: string) =>
-            testSsoMutation({ variables: { input: { channelId, providerKey, newClientSecret } } }),
+            testSsoMutation.mutateAsync({ providerKey, newClientSecret }),
     };
 }
 ```
 
 - [ ] **Step 3: tenant-config-center.tsx 容器**
 
-> 注: pageBlock component 收到 `context: PageContextValue`(`{ pageId?, entity?, form? }`,见 `dashboard/src/lib/framework/layout-engine/page-provider.tsx`)。`context.entity` 是当前 Channel 对象,直接用 `context.entity.id` 获取 channelId。**不要用 `useDetailPage()`**(它是页面主体 hook,需要 queryDocument 等复杂参数,不适用于 pageBlock)。
+> 注: pageBlock component 收到 `{ context: PageContextValue }`(`{ pageId?, entity?, form? }`)。`context.entity` 是当前 Channel 对象,直接用 `context.entity.id` 获取 channelId。**不要用 `useDetailPage()`**(它是页面主体 hook,需要 queryDocument 等复杂参数,不适用于 pageBlock)。`PageContextValue` 从 `@vendure/dashboard` 导入,不要本地重定义。
 
 ```tsx
 // packages/cjk-plugin/dashboard/tenant-config-center.tsx
+import { PageContextValue } from '@vendure/dashboard';
 import { TenantConfigTabs } from './tenant-config-tabs';
 
-interface PageContextValue {
-    pageId?: string;
-    entity?: any;
-    form?: any;
-}
-
-export default function TenantConfigCenter({ context }: { context: PageContextValue }) {
+export function TenantConfigCenter({ context }: { context: PageContextValue }) {
     const channelId = context.entity?.id;
     if (!channelId) return null;
     return <TenantConfigTabs channelId={String(channelId)} />;
@@ -2229,7 +2243,11 @@ git commit -m "feat: TenantConfigTabs with MaskedInput and SectionCard"
 - Create: `packages/cjk-plugin/dashboard/tenant-config/sso-tab.tsx`
 - Create: `packages/cjk-plugin/dashboard/tenant-config/map-tab.tsx`
 
-> 注: cjk-plugin dashboard 现有 `auth-config-widget.tsx`/`payment-config-widget.tsx`(已核实存在),是旧版 `detailForms` 模式的字段级组件。本次新建的 4 个 tab 组件用 `MaskedInput` 重新构建,**替代**现有 widget 的功能(不直接复用,因交互模式不同)。现有 widget 文件**保留不删**(避免破坏可能的其他引用),后续确认无引用后可清理。
+> **重要(避免 UI 重复)**: cjk-plugin dashboard 现有 `auth-config-widget.tsx`/`payment-config-widget.tsx`(已核实存在),是旧版 `detailForms` 模式的字段级组件,注册在 `channel-detail-forms.tsx` 的 `cjkChannelDetailForms` 数组中(blockId: `custom-fields`)。本次新建的 4 个 tab 组件用 `MaskedInput` 重新构建,**功能上替代**现有 widget。
+>
+> **若新旧并存**: 同一 channel 详情页会同时出现「custom-fields block 内的旧 widget」+「custom-fields 之后的 tenant-config-center pageBlock」,造成两个 SSO/支付配置入口,UX 不可接受。
+>
+> **处理策略**: Task 10.3 完成后,需在 `channel-detail-forms.tsx` 中**移除** authConfig 和 payConfig 两个 detailForm 注册项(保留 `customDomains` 注册)。widget 文件本身保留不删(避免破坏可能的其他引用),仅从注册数组移除。具体操作: 编辑 `cjkChannelDetailForms` 数组,删除前两项(authConfig/payConfig),保留第三项(customDomains)。
 
 - [ ] **Step 1: payment-tab.tsx**
 
@@ -2431,11 +2449,38 @@ export function MapTab({ data, canEdit, onSave }: Props) {
 }
 ```
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: 移除旧 widget 的 detailForm 注册(避免 UI 重复)**
+
+编辑 `packages/cjk-plugin/dashboard/channel-detail-forms.tsx`,从 `cjkChannelDetailForms` 数组中移除 authConfig 和 payConfig 两项,仅保留 customDomains 项:
+
+```ts
+// packages/cjk-plugin/dashboard/channel-detail-forms.tsx
+import { DashboardDetailFormExtensionDefinition } from '@vendure/dashboard';
+
+// 旧 widget 文件保留 import 不删(避免破坏可能的其他引用),但不再注册到 channel-detail
+export const cjkChannelDetailForms: DashboardDetailFormExtensionDefinition[] = [
+    {
+        pageId: 'channel-detail',
+        extendDetailDocument: `
+            query ExtendChannelCustomDomains {
+                channel {
+                    customFields {
+                        customDomains
+                    }
+                }
+            }
+        `,
+    },
+];
+```
+
+> 注: 旧的 `auth-config-widget.tsx`/`payment-config-widget.tsx` 文件保留不删,仅从注册数组移除。新 pageBlock(tenant-config-center)完整覆盖其功能。
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add packages/cjk-plugin/dashboard/tenant-config/payment-tab.tsx packages/cjk-plugin/dashboard/tenant-config/wechat-auth-tab.tsx packages/cjk-plugin/dashboard/tenant-config/sso-tab.tsx packages/cjk-plugin/dashboard/tenant-config/map-tab.tsx
-git commit -m "feat: Add 4 tenant config tabs (payment/wechat-auth/sso/map)"
+git add packages/cjk-plugin/dashboard/tenant-config/payment-tab.tsx packages/cjk-plugin/dashboard/tenant-config/wechat-auth-tab.tsx packages/cjk-plugin/dashboard/tenant-config/sso-tab.tsx packages/cjk-plugin/dashboard/tenant-config/map-tab.tsx packages/cjk-plugin/dashboard/channel-detail-forms.tsx
+git commit -m "feat: Add 4 tenant config tabs; remove legacy auth/pay widget registration"
 ```
 
 ---
@@ -2538,21 +2583,16 @@ git commit -m "test: Add dashboard E2E for tenant config tabs"
 
 ## Phase 12: 文档与收尾
 
-### Task 12.1: 更新 plugin README
+### Task 12.1: 文档说明(可选,不主动创建)
 
 **Files:**
-- Modify: `packages/cjk-plugin/README.md`(若存在)
+- 无新建文件
 
-- [ ] **Step 1: 追加租户配置中心使用说明**
+> 注: cjk-plugin 当前**无** README.md(已核实)。按用户规则 "NEVER proactively create documentation files",**不主动创建** README。若用户后续明确要求文档化,再创建。本任务跳过。
 
-简述:如何访问 Channel 详情页的「租户配置中心」tab;四类配置含义;掩码输入交互;权限模型;迁移脚本行为。
+- [ ] **Step 1: 跳过**
 
-- [ ] **Step 2: Commit**
-
-```bash
-git add packages/cjk-plugin/README.md
-git commit -m "docs: Document tenant config center usage"
-```
+无操作。Phase 12 仅执行 Task 12.2(全量测试 + 构建 + 烟测)。
 
 ### Task 12.2: 最终全量测试 + 构建
 
@@ -2613,6 +2653,12 @@ git commit -m "fix: Smoke test fixes"
 12. ✅ **[本次新增] `HistoryEntry` 是 abstract 单表继承实体** — `@TableInheritance` + `@ChildEntity`,`discriminator` 列区分子类。`getRepository('history_entry').save({...})` 传对象字面量会因缺少 discriminator 失败。已改为 `connection.createQueryBuilder().insert().into('history_entry').values({... discriminator ...}).execute()`(Task 4.1/4.2/6.3)。
 13. ✅ **[本次新增] Task 7.2 MapService 改造代码缺失** — 原 plan Step 1 仅一句话提示,无具体代码。已补充 `getConfigForChannel(ctx, channelId?)` 完整改造代码(接入 decryptMapConfig + 支持读指定 channel)+ `getChannelMapConfig(ctx, channelId?)` 签名扩展。
 14. ✅ **[本次新增] Task 7.2 `channelMapConfig` 返回类型不匹配** — 原 plan `return maskMapConfig(config)` 返回 `MapProviderConfig | null`(`{ provider, apiKey, securityJsCode? }`),与 GraphQL schema `ChannelMapConfig { provider, apiKey, hasConfigured }` 不兼容。已改为直接返回 `MapService.getChannelMapConfig(ctx, channelId)`(已 masked + GraphQL shape)。
+15. ✅ **[本次新增] Task 10.1 `pageBlocks.location` 缺 `column` 字段** — `PageBlockLocation` 类型要求 `column: 'main' | 'side' | 'full'`(必填)。原 plan 漏写。已修正为 `column: 'main'`(参照 `invoice-block.tsx` 现有用法)。
+16. ✅ **[本次新增] Task 10.1 `component: () => import(...)` 错误** — `DashboardPageBlockDefinition.component` 是 `React.FunctionComponent<{ context: PageContextValue }>`,应直接传组件引用(如 `component: TenantConfigCenter`),不能写成动态 import 函数。已修正。
+17. ✅ **[本次新增] Task 10.1 `use-tenant-config.ts` 误用 `@apollo/client`** — cjk-plugin dashboard 现有 GraphQL 调用模式是 `@vendure/dashboard` 的 `api` + `graphql` 模板字符串 + `@tanstack/react-query`(参见 `pickup-location-detail.tsx`),不用 `@apollo/client`。已改为现有模式。
+18. ✅ **[本次新增] Task 10.1 `PageContextValue` 本地重定义** — `PageContextValue` 已从 `@vendure/dashboard` 公开导出(经 `lib/index.ts` re-export `page-provider.tsx`)。已改为 `import { PageContextValue } from '@vendure/dashboard'`,删除本地接口定义。
+19. ✅ **[本次新增] Task 10.3 新旧 widget UI 重复** — 现有 `auth-config-widget.tsx`/`payment-config-widget.tsx` 注册在 `channel-detail-forms.tsx` 的 `cjkChannelDetailForms` 数组(blockId: `custom-fields`)。新 pageBlock 在 `custom-fields` 之后,若新旧并存会造成两个 SSO/支付配置入口。已新增 Task 10.3 Step 5:从 `cjkChannelDetailForms` 移除 authConfig/payConfig 注册(保留 customDomains),widget 文件保留不删。
+20. ✅ **[本次新增] Task 12.1 README 不存在** — cjk-plugin 当前无 README.md(已核实)。按用户规则 "NEVER proactively create documentation files",改为跳过此任务,不主动创建文档。
 
 **Placeholder 扫描**:
 - Task 4.1/4.2/6.3 history_entry 写入已统一为 query builder insert
