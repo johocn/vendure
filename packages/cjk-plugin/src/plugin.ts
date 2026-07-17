@@ -46,6 +46,11 @@ import { MapProviderRegistry } from './map/map-provider-registry';
 import { MapService } from './map/map.service';
 import { MapAdminResolver } from './map/map-admin.resolver';
 import { MapConfigEncryptionMigration, PayConfigEncryptionMigration } from './migrations';
+import { AuthConfigService } from './auth/auth-config.service';
+import { PayConfigService } from './payment/pay-config.service';
+import { MapConfigService } from './map/map-config.service';
+import { SsoProviderService } from './auth/sso-provider.service';
+import { InviteCodeService } from './auth/invite-code.service';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
@@ -61,6 +66,11 @@ import { MapConfigEncryptionMigration, PayConfigEncryptionMigration } from './mi
         { provide: APP_GUARD, useClass: AuthMethodGuard },
         MapConfigEncryptionMigration,
         PayConfigEncryptionMigration,
+        AuthConfigService,
+        PayConfigService,
+        MapConfigService,
+        SsoProviderService,
+        InviteCodeService,
     ],
     adminApiExtensions: {
         schema: () => {
