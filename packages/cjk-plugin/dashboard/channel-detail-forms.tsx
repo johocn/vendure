@@ -1,54 +1,10 @@
 import { DashboardDetailFormExtensionDefinition } from '@vendure/dashboard';
 
-import { AuthConfigInput } from './auth-config-widget';
-import { PaymentConfigInput } from './payment-config-widget';
+// 旧 widget 文件保留 import 不删(避免破坏可能的其他引用),但不再注册到 channel-detail
+// import { AuthConfigInput } from './auth-config-widget';
+// import { PaymentConfigInput } from './payment-config-widget';
 
 export const cjkChannelDetailForms: DashboardDetailFormExtensionDefinition[] = [
-    {
-        pageId: 'channel-detail',
-        extendDetailDocument: `
-            query ExtendChannelAuthConfig {
-                channel {
-                    customFields {
-                        authConfig {
-                            enabledMethods
-                            overridesJson
-                            ssoProvidersJson
-                        }
-                    }
-                }
-            }
-        `,
-        inputs: [
-            {
-                blockId: 'custom-fields',
-                field: 'authConfig',
-                component: AuthConfigInput,
-            },
-        ],
-    },
-    {
-        pageId: 'channel-detail',
-        extendDetailDocument: `
-            query ExtendChannelPayConfig {
-                channel {
-                    customFields {
-                        payConfig {
-                            alipayJson
-                            wechatpayJson
-                        }
-                    }
-                }
-            }
-        `,
-        inputs: [
-            {
-                blockId: 'custom-fields',
-                field: 'payConfig',
-                component: PaymentConfigInput,
-            },
-        ],
-    },
     {
         pageId: 'channel-detail',
         extendDetailDocument: `
