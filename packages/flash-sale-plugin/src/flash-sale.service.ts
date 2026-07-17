@@ -9,10 +9,26 @@ import {
     PaginatedList,
     RequestContext,
     TransactionalConnection,
+    UserInputError,
 } from '@vendure/core';
 
 import { loggerCtx } from './constants';
 import { FlashSaleActivity } from './flash-sale-activity.entity';
+
+/**
+ * update() 允许写入的字段白名单。
+ * 显式过滤 soldCount/totalStock/status 等敏感字段，避免被外部 input 篡改。
+ */
+const UPDATE_ALLOWED_FIELDS: ReadonlyArray<keyof FlashSaleActivity> = [
+    'name',
+    'startAt',
+    'endAt',
+    'flashPrice',
+    'totalStock',
+    'limitPerUser',
+    'productId',
+    'variantId',
+];
 
 @Injectable()
 export class FlashSaleService {
@@ -73,9 +89,14 @@ export class FlashSaleService {
         const repo = this.connection.getRepository(ctx, FlashSaleActivity);
         const activity = await repo.findOne({ where: { id: input.id } });
         if (!activity) {
-            throw new Error(`FlashSaleActivity with id ${input.id} not found`);
+            throw new UserInputError(`FlashSaleActivity with id ${input.id} not found`);
         }
-        Object.assign(activity, input);
+        // 字段白名单：禁止外部 input 篡改 soldCount/status 等内部字段
+        for (const key of UPDATE_ALLOWED_FIELDS) {
+            if (key in input) {
+                (activity as any)[key] = input[key];
+            }
+        }
         return repo.save(activity);
     }
 
@@ -111,7 +132,9 @@ export class FlashSaleService {
                 return { eligible: false, reason: 'Stock sold out' };
             }
         } else {
-            if (activity.soldCount >= activity.totalStock) {
+            // DB fallback：原子 UPDATE 实现 check + reserve，避免并发超卖
+            const reserved = await this.reserveStockAtomic(ctx, activityId, 1);
+            if (!reserved) {
                 return { eligible: false, reason: 'Stock sold out' };
             }
         }
@@ -123,6 +146,9 @@ export class FlashSaleService {
         if (flashSaleOrders.length >= activity.limitPerUser) {
             if (this.stockReserveService?.isAvailable) {
                 await this.stockReserveService.releaseStock(`flash-sale:${activityId}`, 1);
+            } else {
+                // DB fallback：资格未通过，回滚上面原子预占的 1 单位
+                await this.releaseStockAtomic(ctx, activityId, 1);
             }
             return { eligible: false, reason: 'Purchase limit exceeded' };
         }
@@ -158,12 +184,73 @@ export class FlashSaleService {
 
     async incrementSoldCount(ctx: RequestContext, activityId: ID, quantity: number): Promise<void> {
         const repo = this.connection.getRepository(ctx, FlashSaleActivity);
-        await repo.increment({ id: activityId as any }, 'soldCount', quantity);
+        // 原子 UPDATE：soldCount += quantity 仅在未超 totalStock 时生效
+        const result = await repo
+            .createQueryBuilder()
+            .update()
+            .set({ soldCount: () => `soldCount + ${quantity}` })
+            .where('id = :id AND soldCount + :qty <= totalStock', { id: activityId as any, qty: quantity })
+            .execute();
+        if ((result.affected ?? 0) === 0) {
+            Logger.warn(
+                `FlashSaleActivity ${activityId}: soldCount + ${quantity} would exceed totalStock, increment skipped`,
+                loggerCtx,
+            );
+        }
         const activity = await this.findOne(ctx, activityId);
         if (activity && activity.soldCount >= activity.totalStock) {
             activity.status = 'ended';
             await repo.save(activity);
             Logger.info(`FlashSaleActivity ${activityId} ended due to stock depletion`, loggerCtx);
         }
+    }
+
+    /**
+     * 订单取消时回滚库存：Redis 路径走 StockReserveService，DB 路径走原子 UPDATE。
+     */
+    async releaseStock(ctx: RequestContext, activityId: ID, quantity: number): Promise<void> {
+        if (this.stockReserveService?.isAvailable) {
+            await this.stockReserveService.releaseStock(`flash-sale:${activityId}`, quantity);
+        } else {
+            await this.releaseStockAtomic(ctx, activityId, quantity);
+        }
+    }
+
+    /**
+     * DB fallback 原子预占：UPDATE ... SET soldCount = soldCount + quantity
+     * WHERE id = ? AND soldCount + quantity <= totalStock。
+     * 返回是否成功扣减（affected > 0）。
+     */
+    private async reserveStockAtomic(
+        ctx: RequestContext,
+        activityId: ID,
+        quantity: number,
+    ): Promise<boolean> {
+        const repo = this.connection.getRepository(ctx, FlashSaleActivity);
+        const result = await repo
+            .createQueryBuilder()
+            .update()
+            .set({ soldCount: () => `soldCount + ${quantity}` })
+            .where('id = :id AND soldCount + :qty <= totalStock', { id: activityId as any, qty: quantity })
+            .execute();
+        return (result.affected ?? 0) > 0;
+    }
+
+    /**
+     * DB fallback 原子回滚：资格未通过或订单取消时，回滚预占的库存。
+     * 使用 WHERE soldCount - quantity >= 0 防止负数。
+     */
+    private async releaseStockAtomic(
+        ctx: RequestContext,
+        activityId: ID,
+        quantity: number,
+    ): Promise<void> {
+        const repo = this.connection.getRepository(ctx, FlashSaleActivity);
+        await repo
+            .createQueryBuilder()
+            .update()
+            .set({ soldCount: () => `soldCount - ${quantity}` })
+            .where('id = :id AND soldCount - :qty >= 0', { id: activityId as any, qty: quantity })
+            .execute();
     }
 }

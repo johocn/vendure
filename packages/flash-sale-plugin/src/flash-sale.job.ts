@@ -1,52 +1,39 @@
-import { Injectable } from '@nestjs/common';
-import { JobQueue, JobQueueService, Logger, Injector, TransactionalConnection } from '@vendure/core';
+import { Logger, ScheduledTask, TransactionalConnection } from '@vendure/core';
 
 import { loggerCtx } from './constants';
 import { FlashSaleActivity } from './flash-sale-activity.entity';
 
-@Injectable()
-export class FlashSaleJob {
-    private jobQueue: JobQueue<{}>;
-    private intervalRef: NodeJS.Timeout | undefined;
+/**
+ * 秒杀活动状态转换 ScheduledTask。
+ *
+ * 使用 Vendure 内置 ScheduledTask（v3.3+）替代原 setInterval：
+ * - 由 DefaultSchedulerPlugin 在 worker 进程按 cron 周期执行
+ * - 多实例下通过 SchedulerStrategy 锁机制保证 only-once，避免多实例重复处理状态转换
+ * - 进程重启不丢任务
+ *
+ * 需在 plugin.ts 的 configuration 中 push 到 config.schedulerOptions.tasks。
+ *
+ * schedule `* * * * *` = 每分钟一次（与原 setInterval(60s) 频率一致）。
+ */
+export const flashSaleStatusTask = new ScheduledTask({
+    id: 'flash-sale-status-transition',
+    description: 'Activate upcoming and end expired flash sale activities',
+    schedule: '* * * * *',
+    timeout: 30 * 1000,
+    preventOverlap: true,
+    async execute({ injector }) {
+        const connection = injector.get(TransactionalConnection);
+        const repo = connection.rawConnection.getRepository(FlashSaleActivity);
+        const now = new Date();
 
-    constructor(
-        private jobQueueService: JobQueueService,
-        private connection: TransactionalConnection,
-    ) {}
-
-    private stockPrewarmService: any = null;
-
-    initStock(injector: Injector): void {
+        // 可选预热：若安装了 redis-stock-plugin 的 StockPrewarmService，则用之
+        let stockPrewarmService: any = null;
         try {
             const { StockPrewarmService } = require('@vendure/redis-stock-plugin');
-            this.stockPrewarmService = injector.get(StockPrewarmService);
+            stockPrewarmService = injector.get(StockPrewarmService);
         } catch {
             // RedisStockPlugin not installed
         }
-    }
-
-    async init(): Promise<void> {
-        this.jobQueue = await this.jobQueueService.createQueue({
-            name: 'flash-sale-status',
-            process: async (job) => {
-                try {
-                    await this.processStatusTransitions();
-                } catch (e: any) {
-                    Logger.error(`Failed to process flash sale status: ${e.message}`, loggerCtx);
-                }
-            },
-        });
-    }
-
-    scheduleCheck(): void {
-        this.intervalRef = setInterval(() => {
-            this.jobQueue.add({});
-        }, 60 * 1000);
-    }
-
-    private async processStatusTransitions(): Promise<void> {
-        const repo = this.connection.rawConnection.getRepository(FlashSaleActivity);
-        const now = new Date();
 
         const toActivate = await repo
             .createQueryBuilder('fsa')
@@ -56,8 +43,11 @@ export class FlashSaleJob {
 
         for (const activity of toActivate) {
             activity.status = 'active';
-            if (this.stockPrewarmService) {
-                await this.stockPrewarmService.prewarm(`flash-sale:${activity.id}`, activity.totalStock - activity.soldCount);
+            if (stockPrewarmService) {
+                await stockPrewarmService.prewarm(
+                    `flash-sale:${activity.id}`,
+                    activity.totalStock - activity.soldCount,
+                );
             }
             await repo.save(activity);
             Logger.info(`FlashSaleActivity ${activity.id} activated`, loggerCtx);
@@ -71,11 +61,16 @@ export class FlashSaleJob {
 
         for (const activity of toEnd) {
             activity.status = 'ended';
-            if (this.stockPrewarmService) {
-                await this.stockPrewarmService.removePrewarm(`flash-sale:${activity.id}`);
+            if (stockPrewarmService) {
+                await stockPrewarmService.removePrewarm(`flash-sale:${activity.id}`);
             }
             await repo.save(activity);
             Logger.info(`FlashSaleActivity ${activity.id} ended`, loggerCtx);
         }
-    }
-}
+
+        return {
+            activated: toActivate.length,
+            ended: toEnd.length,
+        };
+    },
+});
