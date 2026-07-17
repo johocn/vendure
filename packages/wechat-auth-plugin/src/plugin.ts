@@ -5,6 +5,7 @@ import { WECHAT_AUTH_PLUGIN_OPTIONS, loggerCtx } from './constants';
 import { wechatCustomerCustomFields } from './customer-custom-fields';
 import { WechatAuthenticationStrategy } from './wechat-auth-strategy';
 import { WechatAuthController } from './wechat-auth.controller';
+import { WechatMessageController } from './wechat-message.controller';
 import { WechatAuthPluginOptions } from './types';
 import { WechatAuthService } from './wechat-auth.service';
 import { WxacodeService } from './wxacode.service';
@@ -12,7 +13,7 @@ import { WechatAuthShopResolver } from './wechat-auth-shop.resolver';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    controllers: [WechatAuthController],
+    controllers: [WechatAuthController, WechatMessageController],
     providers: [
         { provide: WECHAT_AUTH_PLUGIN_OPTIONS, useFactory: () => WechatAuthPlugin.options },
         WechatAuthService,
@@ -60,7 +61,7 @@ import { WechatAuthShopResolver } from './wechat-auth-shop.resolver';
     compatibility: '^3.0.0',
 })
 export class WechatAuthPlugin {
-    private static options: WechatAuthPluginOptions;
+    static options: WechatAuthPluginOptions;
 
     constructor(
         @Inject(WECHAT_AUTH_PLUGIN_OPTIONS) private options: WechatAuthPluginOptions,
