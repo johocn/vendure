@@ -54,6 +54,9 @@ import { NavModifierPlugin } from './test-plugins/nav-modifier-plugin/nav-modifi
 import { ReviewsPlugin } from './test-plugins/reviews/reviews-plugin';
 import { FloorBuilderPlugin } from './test-plugins/floor-builder';
 
+// 统一解析 dev-server 目录：dev 模式 __dirname=packages/dev-server，prod 模式 __dirname=packages/dev-server/dist
+const devServerDir = path.basename(__dirname) === 'dist' ? path.dirname(__dirname) : __dirname;
+
 const IS_INSTRUMENTED = process.env.IS_INSTRUMENTED === 'true';
 
 @VendurePlugin({
@@ -129,7 +132,7 @@ export const devConfig: VendureConfig = {
     dbConnectionOptions: {
         synchronize: false,
         logging: false,
-        migrations: [path.join(__dirname, 'migrations/*.ts')],
+        migrations: [path.join(devServerDir, 'migrations/*.ts')],
         ...getDbConfig(),
     },
     paymentOptions: {
@@ -206,7 +209,7 @@ export const devConfig: VendureConfig = {
     },
     logger: new DefaultLogger({ level: LogLevel.Verbose }),
     importExportOptions: {
-        importAssetsDir: path.join(__dirname, 'import-assets'),
+        importAssetsDir: path.join(devServerDir, 'import-assets'),
     },
     plugins: [
         // MultivendorPlugin.init({
@@ -221,7 +224,7 @@ export const devConfig: VendureConfig = {
         GraphiqlPlugin.init(),
         AssetServerPlugin.init({
             route: 'assets',
-            assetUploadDir: path.join(__dirname, 'assets'),
+            assetUploadDir: path.join(devServerDir, 'assets'),
         }),
         DefaultSearchPlugin.init({ bufferUpdates: false, indexStockStatus: false }),
         // Enable if you need to debug the job queue
@@ -233,8 +236,10 @@ export const devConfig: VendureConfig = {
             devMode: true,
             route: 'mailbox',
             handlers: defaultEmailHandlers,
-            templateLoader: new FileBasedTemplateLoader(path.join(__dirname, '../email-plugin/templates')),
-            outputPath: path.join(__dirname, 'test-emails'),
+            templateLoader: new FileBasedTemplateLoader(
+                path.join(devServerDir, '../email-plugin/templates'),
+            ),
+            outputPath: path.join(devServerDir, 'test-emails'),
             globalTemplateVars: {
                 verifyEmailAddressUrl: 'http://localhost:4201/verify',
                 passwordResetUrl: 'http://localhost:4201/reset-password',
@@ -251,7 +256,7 @@ export const devConfig: VendureConfig = {
         }),
         DashboardPlugin.init({
             route: 'dashboard',
-            appDir: path.join(__dirname, './dist'),
+            appDir: path.join(devServerDir, './dist'),
         }),
         CjkPlugin.init({
             i18n: { enabled: true },
@@ -351,7 +356,7 @@ function getDbConfig(): DataSourceOptions {
             return {
                 synchronize: true,
                 type: 'better-sqlite3',
-                database: path.join(__dirname, 'vendure.sqlite'),
+                database: path.join(devServerDir, 'vendure.sqlite'),
             };
         case 'sqljs':
             console.log('Using sql.js connection');
@@ -359,7 +364,7 @@ function getDbConfig(): DataSourceOptions {
                 type: 'sqljs',
                 autoSave: true,
                 database: new Uint8Array([]),
-                location: path.join(__dirname, 'vendure.sqlite'),
+                location: path.join(devServerDir, 'vendure.sqlite'),
             };
         case 'mysql':
         case 'mariadb':

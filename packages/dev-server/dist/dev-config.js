@@ -30,6 +30,7 @@ const wechatpay_plugin_1 = require("@vendure/wechatpay-plugin");
 const oss_plugin_1 = require("@vendure/oss-plugin");
 const phone_auth_plugin_1 = require("@vendure/phone-auth-plugin");
 const wechat_auth_plugin_1 = require("@vendure/wechat-auth-plugin");
+const douyin_auth_plugin_1 = require("@vendure/douyin-auth-plugin");
 const order_timeout_plugin_1 = require("@vendure/order-timeout-plugin");
 const invoice_plugin_1 = require("@vendure/invoice-plugin");
 const logistics_plugin_1 = require("@vendure/logistics-plugin");
@@ -41,8 +42,14 @@ const logistics_api_plugin_1 = require("@vendure/logistics-api-plugin");
 const invoice_pdf_plugin_1 = require("@vendure/invoice-pdf-plugin");
 const recharge_card_plugin_1 = require("@vendure/recharge-card-plugin");
 const after_sales_plugin_1 = require("@vendure/after-sales-plugin");
+const member_level_plugin_1 = require("@vendure/member-level-plugin");
+const review_plugin_1 = require("@vendure/review-plugin");
+const wechat_subscribe_message_plugin_1 = require("@vendure/wechat-subscribe-message-plugin");
+const coupon_plugin_1 = require("@vendure/coupon-plugin");
 const nav_modifier_plugin_1 = require("./test-plugins/nav-modifier-plugin/nav-modifier-plugin");
 const reviews_plugin_1 = require("./test-plugins/reviews/reviews-plugin");
+const floor_builder_1 = require("./test-plugins/floor-builder");
+const devServerDir = path_1.default.basename(__dirname) === 'dist' ? path_1.default.dirname(__dirname) : __dirname;
 const IS_INSTRUMENTED = process.env.IS_INSTRUMENTED === 'true';
 let ReadonlySettingsTestPlugin = class ReadonlySettingsTestPlugin {
     constructor(settingsStoreService, requestContextService) {
@@ -90,6 +97,17 @@ exports.devConfig = {
             },
         },
         shopApiDebug: true,
+        middleware: [
+            {
+                handler: (req, res, next) => {
+                    if (req.path.startsWith('/assets') || req.url.startsWith('/assets')) {
+                        res.setHeader('Access-Control-Allow-Origin', '*');
+                    }
+                    next();
+                },
+                route: '/assets',
+            },
+        ],
     },
     authOptions: {
         disableAuth: false,
@@ -100,7 +118,7 @@ exports.devConfig = {
             secret: 'abc',
         },
     },
-    dbConnectionOptions: Object.assign({ synchronize: false, logging: false, migrations: [path_1.default.join(__dirname, 'migrations/*.ts')] }, getDbConfig()),
+    dbConnectionOptions: Object.assign({ synchronize: false, logging: false, migrations: [path_1.default.join(devServerDir, 'migrations/*.ts')] }, getDbConfig()),
     paymentOptions: {
         paymentMethodHandlers: [core_1.dummyPaymentHandler],
     },
@@ -115,19 +133,77 @@ exports.devConfig = {
             },
         ],
     },
-    customFields: {},
+    customFields: {
+        Collection: [
+            { name: 'floorEnabled', type: 'boolean', defaultValue: false, public: true,
+                ui: { component: 'boolean-form-input' } },
+            { name: 'floorTitle', type: 'string', public: true,
+                ui: { component: 'text-form-input' } },
+            { name: 'floorSubtitle', type: 'string', public: true,
+                ui: { component: 'text-form-input' } },
+            { name: 'floorLayout', type: 'string', defaultValue: 'double_grid', public: true,
+                ui: {
+                    component: 'select-form-input',
+                    options: [
+                        { value: 'single_scroll', label: '单列横滑' },
+                        { value: 'double_grid', label: '双列网格' },
+                        { value: 'triple_grid', label: '三列网格' },
+                        { value: 'hero_with_list', label: '大图+列表' },
+                    ],
+                } },
+            { name: 'floorSortOrder', type: 'int', defaultValue: 0, public: true },
+            { name: 'floorMaxScreens', type: 'int', defaultValue: 3, public: true },
+            {
+                name: 'floorTheme', type: 'struct', public: true, fields: [
+                    { name: 'primaryColor', type: 'string' },
+                    { name: 'backgroundColor', type: 'string' },
+                    { name: 'titleIcon', type: 'string' },
+                ],
+            },
+            {
+                name: 'floorItemConfig', type: 'struct', list: true, public: true, fields: [
+                    { name: 'productId', type: 'string' },
+                    { name: 'size', type: 'string',
+                        ui: { component: 'select-form-input',
+                            options: [
+                                { value: 'small', label: '小' },
+                                { value: 'medium', label: '中' },
+                                { value: 'large', label: '大' },
+                            ] } },
+                    { name: 'highlighted', type: 'boolean' },
+                    { name: 'label', type: 'string' },
+                ],
+            },
+            {
+                name: 'floorSchedule', type: 'struct', public: true, fields: [
+                    { name: 'startAt', type: 'datetime' },
+                    { name: 'endAt', type: 'datetime' },
+                ],
+            },
+        ],
+        Channel: [],
+        Customer: [],
+        Fulfillment: [],
+        Order: [],
+        Product: [],
+        Promotion: [],
+    },
+    schedulerOptions: {
+        tasks: [core_1.cleanSessionsTask, core_1.cleanOrphanedSettingsStoreTask],
+    },
     logger: new core_1.DefaultLogger({ level: core_1.LogLevel.Verbose }),
     importExportOptions: {
-        importAssetsDir: path_1.default.join(__dirname, 'import-assets'),
+        importAssetsDir: path_1.default.join(devServerDir, 'import-assets'),
     },
     plugins: [
         ReadonlySettingsTestPlugin,
         reviews_plugin_1.ReviewsPlugin,
+        floor_builder_1.FloorBuilderPlugin,
         nav_modifier_plugin_1.NavModifierPlugin,
         graphiql_plugin_1.GraphiqlPlugin.init(),
         asset_server_plugin_1.AssetServerPlugin.init({
             route: 'assets',
-            assetUploadDir: path_1.default.join(__dirname, 'assets'),
+            assetUploadDir: path_1.default.join(devServerDir, 'assets'),
         }),
         core_1.DefaultSearchPlugin.init({ bufferUpdates: false, indexStockStatus: false }),
         core_1.DefaultJobQueuePlugin.init({}),
@@ -136,8 +212,8 @@ exports.devConfig = {
             devMode: true,
             route: 'mailbox',
             handlers: email_plugin_1.defaultEmailHandlers,
-            templateLoader: new email_plugin_1.FileBasedTemplateLoader(path_1.default.join(__dirname, '../email-plugin/templates')),
-            outputPath: path_1.default.join(__dirname, 'test-emails'),
+            templateLoader: new email_plugin_1.FileBasedTemplateLoader(path_1.default.join(devServerDir, '../email-plugin/templates')),
+            outputPath: path_1.default.join(devServerDir, 'test-emails'),
             globalTemplateVars: {
                 verifyEmailAddressUrl: 'http://localhost:4201/verify',
                 passwordResetUrl: 'http://localhost:4201/reset-password',
@@ -152,12 +228,26 @@ exports.devConfig = {
         }),
         plugin_1.DashboardPlugin.init({
             route: 'dashboard',
-            appDir: path_1.default.join(__dirname, './dist'),
+            appDir: path_1.default.join(devServerDir, './dist'),
         }),
-        cjk_plugin_1.CjkPlugin.init({ i18n: { enabled: true }, regions: { enabled: true } }),
-        ...(process.env.ALIPAY_NOTIFY_URL ? [alipay_plugin_1.AlipayPlugin.init({
-                notifyUrl: process.env.ALIPAY_NOTIFY_URL,
+        cjk_plugin_1.CjkPlugin.init({
+            i18n: { enabled: true },
+            regions: { enabled: true },
+            tenant: { enabled: true },
+            cod: { enabled: true },
+            storePickup: { enabled: true },
+            pickupPoint: { enabled: true },
+            employeePickup: { enabled: true },
+            promotionPolicy: { enabled: true },
+            authSecret: process.env.AUTH_SECRET || 'dev-auth-secret-key',
+        }),
+        ...((process.env.ALIPAY_NOTIFY_URL || process.env.DEV_BYPASS_ALIPAY === 'true') ? [alipay_plugin_1.AlipayPlugin.init({
+                notifyUrl: process.env.ALIPAY_NOTIFY_URL || '',
                 alipayPublicKey: (_a = process.env.ALIPAY_PUBLIC_KEY) !== null && _a !== void 0 ? _a : '',
+                auth: process.env.DEV_BYPASS_ALIPAY === 'true' ? {
+                    devBypass: true,
+                    devBypassOpenid: 'dev_test_openid',
+                } : undefined,
             })] : []),
         ...(process.env.WECHATPAY_NOTIFY_URL ? [wechatpay_plugin_1.WechatpayPlugin.init({
                 notifyUrl: process.env.WECHATPAY_NOTIFY_URL,
@@ -181,8 +271,16 @@ exports.devConfig = {
                 appSecret: process.env.WECHAT_AUTH_APP_SECRET || 'dev_test_app_secret',
                 miniProgramAppId: process.env.WECHAT_AUTH_MINI_APP_ID || '',
                 miniProgramAppSecret: process.env.WECHAT_AUTH_MINI_APP_SECRET || '',
+                devBypass: process.env.DEV_BYPASS_WECHAT === 'true',
+                devBypassOpenid: 'dev_test_openid',
             })] : []),
-        order_timeout_plugin_1.OrderTimeoutPlugin.init({ defaultTimeoutMinutes: 30 }),
+        ...((process.env.DOUYIN_AUTH_APP_ID || process.env.DEV_BYPASS_DOUYIN === 'true') ? [douyin_auth_plugin_1.DouyinAuthPlugin.init({
+                appId: process.env.DOUYIN_AUTH_APP_ID || 'dev_test_app_id',
+                appSecret: process.env.DOUYIN_AUTH_APP_SECRET || 'dev_test_app_secret',
+                devBypass: process.env.DEV_BYPASS_DOUYIN === 'true',
+                devBypassOpenid: 'dev_test_openid',
+            })] : []),
+        order_timeout_plugin_1.OrderTimeoutPlugin.init({ defaultPaymentTimeoutMinutes: 30 }),
         invoice_plugin_1.InvoicePlugin.init(),
         logistics_plugin_1.LogisticsPlugin.init(),
         group_buy_plugin_1.GroupBuyPlugin.init({ defaultTimeoutMinutes: 60 }),
@@ -203,6 +301,10 @@ exports.devConfig = {
         invoice_pdf_plugin_1.InvoicePdfPlugin.init(),
         recharge_card_plugin_1.RechargeCardPlugin.init({ defaultExpiresMonths: 12 }),
         after_sales_plugin_1.AfterSalesPlugin.init(),
+        member_level_plugin_1.MemberLevelPlugin.init(),
+        review_plugin_1.ReviewPlugin.init(),
+        wechat_subscribe_message_plugin_1.WechatSubscribeMessagePlugin.init(),
+        coupon_plugin_1.CouponPlugin.init(),
     ],
 };
 function getDbConfig() {
@@ -225,7 +327,7 @@ function getDbConfig() {
             return {
                 synchronize: true,
                 type: 'better-sqlite3',
-                database: path_1.default.join(__dirname, 'vendure.sqlite'),
+                database: path_1.default.join(devServerDir, 'vendure.sqlite'),
             };
         case 'sqljs':
             console.log('Using sql.js connection');
@@ -233,7 +335,7 @@ function getDbConfig() {
                 type: 'sqljs',
                 autoSave: true,
                 database: new Uint8Array([]),
-                location: path_1.default.join(__dirname, 'vendure.sqlite'),
+                location: path_1.default.join(devServerDir, 'vendure.sqlite'),
             };
         case 'mysql':
         case 'mariadb':
