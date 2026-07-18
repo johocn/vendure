@@ -8,6 +8,11 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.NavModifierPlugin = void 0;
 const core_1 = require("@vendure/core");
+/**
+ * A minimal test plugin that demonstrates the function form of `navSections`
+ * in `defineDashboardExtension`. It moves the "Administrators" and "Roles"
+ * items out of the "Settings" section into a new "Access & Identity" section.
+ */
 let NavModifierPlugin = class NavModifierPlugin {
 };
 exports.NavModifierPlugin = NavModifierPlugin;
@@ -16,3 +21,4 @@ exports.NavModifierPlugin = NavModifierPlugin = __decorate([
         dashboard: './dashboard/index.tsx',
     })
 ], NavModifierPlugin);
+//# sourceMappingURL=nav-modifier-plugin.js.map

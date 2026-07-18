@@ -75,3 +75,4 @@ exports.ProductReviewShopResolver = ProductReviewShopResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [core_1.TransactionalConnection, core_1.ListQueryBuilder])
 ], ProductReviewShopResolver);
+//# sourceMappingURL=product-review-shop.resolver.js.map

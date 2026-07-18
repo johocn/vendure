@@ -54,6 +54,10 @@ import { NavModifierPlugin } from './test-plugins/nav-modifier-plugin/nav-modifi
 import { ReviewsPlugin } from './test-plugins/reviews/reviews-plugin';
 import { FloorBuilderPlugin } from './test-plugins/floor-builder';
 
+// 生产模式（dist/）跳过开发演示插件，避免 tsc 编译 test-plugins 的复杂依赖
+const IS_PROD = path.basename(__dirname) === 'dist';
+const devOnlyPlugins = IS_PROD ? [] : [ReviewsPlugin, FloorBuilderPlugin, NavModifierPlugin];
+
 // 统一解析 dev-server 目录：dev 模式 __dirname=packages/dev-server，prod 模式 __dirname=packages/dev-server/dist
 const devServerDir = path.basename(__dirname) === 'dist' ? path.dirname(__dirname) : __dirname;
 
@@ -217,10 +221,8 @@ export const devConfig: VendureConfig = {
         //     platformFeeSKU: 'FEE',
         // }),
         ReadonlySettingsTestPlugin,
-        ReviewsPlugin,
-        FloorBuilderPlugin,
         // FieldTestPlugin,
-        NavModifierPlugin,
+        ...devOnlyPlugins,
         GraphiqlPlugin.init(),
         AssetServerPlugin.init({
             route: 'assets',

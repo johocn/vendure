@@ -49,6 +49,8 @@ const coupon_plugin_1 = require("@vendure/coupon-plugin");
 const nav_modifier_plugin_1 = require("./test-plugins/nav-modifier-plugin/nav-modifier-plugin");
 const reviews_plugin_1 = require("./test-plugins/reviews/reviews-plugin");
 const floor_builder_1 = require("./test-plugins/floor-builder");
+const IS_PROD = path_1.default.basename(__dirname) === 'dist';
+const devOnlyPlugins = IS_PROD ? [] : [reviews_plugin_1.ReviewsPlugin, floor_builder_1.FloorBuilderPlugin, nav_modifier_plugin_1.NavModifierPlugin];
 const devServerDir = path_1.default.basename(__dirname) === 'dist' ? path_1.default.dirname(__dirname) : __dirname;
 const IS_INSTRUMENTED = process.env.IS_INSTRUMENTED === 'true';
 let ReadonlySettingsTestPlugin = class ReadonlySettingsTestPlugin {
@@ -197,9 +199,7 @@ exports.devConfig = {
     },
     plugins: [
         ReadonlySettingsTestPlugin,
-        reviews_plugin_1.ReviewsPlugin,
-        floor_builder_1.FloorBuilderPlugin,
-        nav_modifier_plugin_1.NavModifierPlugin,
+        ...devOnlyPlugins,
         graphiql_plugin_1.GraphiqlPlugin.init(),
         asset_server_plugin_1.AssetServerPlugin.init({
             route: 'assets',

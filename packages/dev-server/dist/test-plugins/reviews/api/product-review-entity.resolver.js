@@ -76,3 +76,4 @@ exports.ProductReviewEntityResolver = ProductReviewEntityResolver = __decorate([
     (0, graphql_1.Resolver)('ProductReview'),
     __metadata("design:paramtypes", [core_1.TransactionalConnection])
 ], ProductReviewEntityResolver);
+//# sourceMappingURL=product-review-entity.resolver.js.map

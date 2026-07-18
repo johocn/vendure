@@ -97,3 +97,4 @@ exports.shopApiExtensions = (0, graphql_tag_1.gql) `
         voteOnReview(id: ID!, vote: Boolean!): ProductReview!
     }
 `;
+//# sourceMappingURL=api-extensions.js.map
