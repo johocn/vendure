@@ -6,53 +6,129 @@
 
 | 依赖 | 版本 | 说明 |
 |------|------|------|
-| Node.js | `^20.19.0` 或 `>=22.12.0` | 必须满足，使用 `node -v` 验证 |
+| Node.js | `^20.19.0` 或 `>=22.12.0` | 使用 `node -v` 验证 |
 | PostgreSQL | `>=12` | 主数据库 |
 | npm | `>=10` | 随 Node.js 安装 |
 | Git | 任意版本 | 拉取代码 |
+| pm2 | 最新版 | 进程守护（推荐） |
 
-服务器内存建议 **>= 1GB**（运行时无需构建，内存占用远低于开发模式）。
+服务器内存建议 **>= 2GB**（1GB 也可运行，但需严格限制 Node 堆内存）。
 
-## 二、快速部署
+## 二、快速部署（完整流程）
+
+### 步骤 1：克隆仓库
 
 ```bash
-# 1. 克隆仓库
 git clone <仓库地址> vendure
 cd vendure
+```
 
-# 2. 安装运行时依赖
-#    2GB 内存服务器推荐：限制堆内存 + 跳过可选依赖和 postinstall 脚本
-#    （sharp 的平台二进制需后续单独补装，见步骤 6）
+### 步骤 2：安装运行时依赖
+
+**2GB 内存服务器推荐**（限制堆内存 + 跳过可选依赖和编译脚本）：
+
+```bash
 NODE_OPTIONS="--max-old-space-size=512" npm install --omit=dev --no-optional --ignore-scripts
+```
 
-# 3. 配置环境变量
+**关键参数说明**：
+- `--max-old-space-size=512`：限制 npm 自身堆内存 512MB，避免 OOM
+- `--omit=dev`：跳过 devDependencies
+- `--no-optional`：跳过 optionalDependencies（含 sharp 平台二进制，后续单独补装）
+- `--ignore-scripts`：跳过 postinstall 脚本（避免触发 better-sqlite3 等原生模块编译）
+
+**4GB+ 内存服务器**可简化：
+
+```bash
+npm install --omit=dev
+```
+
+### 步骤 3：补装 sharp 平台二进制（必须）
+
+步骤 2 用 `--no-optional` 跳过了 sharp 的 linux-x64 二进制，asset-server-plugin 依赖 sharp 做图像处理，必须补装：
+
+```bash
+npm install --os=linux --cpu=x64 @img/sharp-linux-x64
+node -e "require('sharp'); console.log('sharp OK')"
+```
+
+> 如果验证输出 `sharp OK` 即可。该包为预编译二进制，无需编译，2GB 服务器可安全安装。
+
+### 步骤 4：配置环境变量
+
+```bash
 cp packages/dev-server/.env.example packages/dev-server/.env
 vi packages/dev-server/.env
-# 修改 DB_PASSWORD 为你的 PostgreSQL 密码
-# 确认 DB_HOST/DB_PORT/DB_USERNAME/DB_NAME 正确
-# 确认 DEV_BYPASS_* 全部为 false（生产环境必须关闭调试旁路）
+```
 
-# 4. 准备数据库（PostgreSQL 中创建库）
+**必填项**：
+- `DB_PASSWORD`：PostgreSQL 密码
+- 确认 `DB_HOST`/`DB_PORT`/`DB_USERNAME`/`DB_NAME` 正确
+- 确认所有 `DEV_BYPASS_*` 为 `false`（生产环境必须关闭调试旁路）
+
+### 步骤 5：准备数据库
+
+```bash
 psql -U postgres -c "CREATE DATABASE vendure OWNER postgres;"
+```
 
-# 5. 验证关键产物存在（确认构建产物已随 Git 提交）
+### 步骤 6：验证关键产物存在
+
+```bash
 ls node_modules/@vendure/core/dist/index.js
 ls packages/dev-server/dist/index.js
 ls packages/dev-server/dist/index.html
+ls packages/dev-server/dist/test-plugins/floor-builder/index.js
+```
 
-# 6. 补装 sharp 平台二进制（asset-server-plugin 依赖，必须）
-#    因步骤 2 用了 --no-optional 跳过，需单独安装 linux-x64 版本
-npm install --os=linux --cpu=x64 @img/sharp-linux-x64
-node -e "require('sharp'); console.log('sharp OK')"  # 验证
+如果任何文件缺失，说明 Git 拉取不完整，执行 `git pull` 重新拉取。
 
-# 7. 启动服务（限制堆内存，2GB 服务器推荐 768MB）
+### 步骤 7：启动服务
+
+**前台启动（验证用）**：
+
+```bash
 cd packages/dev-server
 NODE_OPTIONS="--max-old-space-size=768" node prod-start.js
 ```
 
-启动成功后控制台会输出 `Vendure server listening on port 3000`。
+**后台守护启动（生产推荐用 pm2）**：
 
-> **内存充裕的服务器**（4GB+）可简化步骤 2 为 `npm install --omit=dev`，并跳过步骤 6（sharp 会随 optional 依赖自动安装）。
+```bash
+# 安装 pm2（如未安装）
+npm install -g pm2
+
+# 彻底清理可能残留的旧进程（重要）
+pm2 delete vendure 2>/dev/null
+pm2 kill
+pm2 clear
+
+# 启动（注意：script 用绝对路径，--cwd 指向 packages/dev-server）
+pm2 start /www/apps/vendure/packages/dev-server/prod-start.js \
+  --name vendure \
+  --cwd /www/apps/vendure/packages/dev-server \
+  --max-memory-restart 1G \
+  --node-args="--max-old-space-size=768"
+
+# 查看日志
+pm2 logs vendure --lines 80
+
+# 保存进程列表 + 开机自启
+pm2 save
+pm2 startup
+```
+
+启动成功后日志会输出：
+
+```
+Vendure server (v3.6.4) now running on port 3020
+Shop API:       http://localhost:3020/shop-api
+Admin API:      http://localhost:3020/admin-api
+Dashboard UI:   http://localhost:3020/dashboard
+Admin UI:       http://localhost:3020/admin
+```
+
+> 端口号取决于 `.env` 中的 `API_PORT` 配置。
 
 ## 三、环境变量配置
 
@@ -68,7 +144,7 @@ DB_PASSWORD=<你的数据库密码>
 DB_NAME=vendure
 
 # === API 端口 ===
-API_PORT=3000
+API_PORT=3020
 
 # === 短信 / 手机号登录 ===
 SMS_ACCESS_KEY_ID=
@@ -107,13 +183,16 @@ DEV_BYPASS_DOUYIN=false
 
 ## 四、访问地址
 
-启动成功后：
+启动成功后（替换 `<服务器IP>` 和 `<端口>`）：
 
 | 入口 | 地址 | 说明 |
 |------|------|------|
-| Dashboard 管理后台 | `http://<服务器IP>:3000/dashboard` | 管理员登录后使用 |
-| Admin GraphQL API | `http://<服务器IP>:3000/admin-api` | 管理端接口 |
-| Shop GraphQL API | `http://<服务器IP>:3000/shop-api` | 商城端接口 |
+| Dashboard 管理后台 | `http://<服务器IP>:<端口>/dashboard` | 管理员登录后使用 |
+| Admin UI | `http://<服务器IP>:<端口>/admin` | 传统 Admin 后台 |
+| Admin GraphQL API | `http://<服务器IP>:<端口>/admin-api` | 管理端接口 |
+| Shop GraphQL API | `http://<服务器IP>:<端口>/shop-api` | 商城端接口 |
+| GraphiQL Admin | `http://<服务器IP>:<端口>/graphiql/admin` | GraphQL 调试工具 |
+| Asset Server | `http://<服务器IP>:<端口>/assets` | 静态资源服务 |
 
 默认管理员账号（首次启动自动创建）：
 - 用户名：`superadmin`
@@ -136,7 +215,7 @@ DEV_BYPASS_DOUYIN=false
 | `packages/telemetry-plugin/dist` | 遥测插件 |
 | `packages/graphiql-plugin/dist` | GraphiQL 插件 |
 | `packages/<各业务插件>/lib` | 22 个业务插件编译产物 |
-| `packages/dev-server/dist` | dev-server 入口 + Dashboard 静态资源 |
+| `packages/dev-server/dist` | dev-server 入口 + Dashboard 静态资源 + test-plugins |
 
 ## 六、本地重新构建产物
 
@@ -165,62 +244,153 @@ git push
 ## 七、常用运维命令
 
 ```bash
-# 后台运行（推荐用 pm2）
-npm install -g pm2
-pm2 start packages/dev-server/prod-start.js \
-  --name vendure \
-  --max-memory-restart 1G \
-  --node-args="--max-old-space-size=768"
-pm2 logs vendure --lines 100   # 查看实时日志
-pm2 stop vendure
+# 查看日志
+pm2 logs vendure --lines 100
+
+# 重启
 pm2 restart vendure
-pm2 save                       # 保存进程列表
-pm2 startup                    # 开机自启
+
+# 停止
+pm2 stop vendure
 
 # 更新代码
+cd /www/apps/vendure
 git pull
 pm2 restart vendure
+
+# 查看进程状态
+pm2 status
+pm2 describe vendure
 ```
 
 ## 八、常见问题
 
-### Q1: 启动报错 `Cannot find module ... lib/index.js`
-**原因**：产物目录缺失或被 `.gitignore` 误伤。
-**解决**：在仓库根目录执行 `git status` 确认 `packages/*/lib` 和 `packages/dev-server/dist` 都已跟踪；若未跟踪，检查 `.gitignore` 是否有 `dist` 或 `lib` 行（应为注释状态）。
+### Q1: `npm install` 报 `ENOENT: directory not empty, rename ... @eslint/eslintrc`
 
-### Q2: 启动报错 `EFATAL: connect ECONNREFUSED 127.0.0.1:5432`
-**原因**：PostgreSQL 未启动或 `.env` 中 `DB_HOST/DB_PORT` 配置错误。
-**解决**：确认 PostgreSQL 服务运行中，`.env` 配置正确。
+**原因**：之前安装残留了嵌套 `packages/*/node_modules`，导致 npm rename 失败。
 
-### Q3: Dashboard 显示「Build your dashboard or run in development mode」
-**原因**：`packages/dev-server/dist` 中缺少 Dashboard 静态资源（index.html / assets/）。
-**解决**：本地执行 `.\build-prod.ps1` 重新构建并 `git push`，服务器 `git pull` 后重启。
+**解决**：彻底清理所有层级的 node_modules 后重装：
 
-### Q4: 内存不足导致启动失败
-**原因**：Node.js 默认堆内存不足。
-**解决**：启动时指定堆内存：
 ```bash
-node --max-old-space-size=1024 packages/dev-server/prod-start.js
+find . -name "node_modules" -type d -prune -exec rm -rf {} +
+rm -f package-lock.json packages/*/package-lock.json
+npm cache clean --force
+NODE_OPTIONS="--max-old-space-size=512" npm install --omit=dev --no-optional --ignore-scripts
 ```
 
-### Q5: 第三方登录/支付不生效
+### Q2: `npm install` 报 `gyp ERR! configure error` / `better-sqlite3` 编译失败
+
+**原因**：未加 `--ignore-scripts`，触发了 better-sqlite3 的 postinstall 编译，而服务器 Python 版本过低（需 Python 3.8+）或不支持 `:=` 语法。
+
+**解决**：
+1. 安装时必须加 `--ignore-scripts`（见步骤 2）
+2. 生产环境用 PostgreSQL，不需要 better-sqlite3，编译失败可忽略
+3. 如已误触发编译失败，按 Q1 清理后重装
+
+### Q3: 启动报错 `Could not load the "sharp" module using the linux-x64 runtime`
+
+**原因**：安装时用 `--no-optional` 跳过了 sharp 的平台特定二进制 `@img/sharp-linux-x64`。
+
+**解决**：单独补装（见步骤 3）：
+
+```bash
+npm install --os=linux --cpu=x64 @img/sharp-linux-x64
+node -e "require('sharp'); console.log('sharp OK')"
+```
+
+### Q4: 启动报错 `Cannot find module '/www/apps/vendure'`
+
+**原因**：pm2 之前注册的进程入口指向了目录而非 `prod-start.js` 文件。
+
+**解决**：彻底清理 pm2 并用正确参数重新注册：
+
+```bash
+pm2 delete vendure 2>/dev/null
+pm2 kill
+pm2 clear
+
+pm2 start /www/apps/vendure/packages/dev-server/prod-start.js \
+  --name vendure \
+  --cwd /www/apps/vendure/packages/dev-server \
+  --max-memory-restart 1G \
+  --node-args="--max-old-space-size=768"
+```
+
+**关键**：
+- script 参数用**绝对路径**（如 `/www/apps/vendure/packages/dev-server/prod-start.js`）
+- `--cwd` 指向 `packages/dev-server`（让 dotenv 找到 `.env`，让 `require('./dist/index')` 能解析）
+
+### Q5: 启动报错 `Cannot find module './test-plugins/floor-builder'`
+
+**原因**：dev-config.ts 静态引用了 3 个开发演示插件（ReviewsPlugin, FloorBuilderPlugin, NavModifierPlugin），其源码有复杂 Angular UI 依赖，不适合 tsc prod 编译。
+
+**解决**：产物已包含 `dist/test-plugins/` 目录（从源码 `test-plugins/*.js` 复制）。如仍报错，确认 Git 拉取完整：
+
+```bash
+ls packages/dev-server/dist/test-plugins/floor-builder/index.js
+```
+
+如果文件不存在，执行 `git pull` 重新拉取。
+
+> 生产模式下 `IS_PROD=true`，这 3 个插件会通过 `devOnlyPlugins = []` 被跳过，不会实际加载，但静态 import 仍需文件存在以通过 require 解析。
+
+### Q6: 启动报错 `ENOENT: no such file or directory, scandir '.../email-plugin/templates/partials'`
+
+**原因**：`__dirname` 在 prod 模式下是 `packages/dev-server/dist`，相对路径 `../email-plugin/templates` 解析成错误的 `packages/dev-server/email-plugin/templates`。
+
+**解决**：已在 dev-config.ts 中引入 `devServerDir` 变量统一解析路径（无论 dev/prod 都指向 `packages/dev-server`）。如仍报错，确认代码为最新版本：
+
+```bash
+git pull
+pm2 restart vendure
+```
+
+### Q7: 启动报错 `Cannot find module ... lib/index.js`
+
+**原因**：产物目录缺失或被 `.gitignore` 误伤。
+
+**解决**：在仓库根目录执行 `git status` 确认 `packages/*/lib` 和 `packages/dev-server/dist` 都已跟踪；若未跟踪，检查 `.gitignore` 是否有 `dist` 或 `lib` 行（应为注释状态）。
+
+### Q8: Dashboard 显示「Build your dashboard or run in development mode」
+
+**原因**：`packages/dev-server/dist` 中缺少 Dashboard 静态资源（index.html / assets/）。
+
+**解决**：本地执行 `.\build-prod.ps1` 重新构建并 `git push`，服务器 `git pull` 后重启。
+
+### Q9: 启动报错 `EFATAL: connect ECONNREFUSED 127.0.0.1:5432`
+
+**原因**：PostgreSQL 未启动或 `.env` 中 `DB_HOST/DB_PORT` 配置错误。
+
+**解决**：确认 PostgreSQL 服务运行中，`.env` 配置正确。
+
+### Q10: 内存不足导致启动失败
+
+**原因**：Node.js 默认堆内存不足。
+
+**解决**：启动时指定堆内存（2GB 服务器推荐 768MB）：
+
+```bash
+NODE_OPTIONS="--max-old-space-size=768" node packages/dev-server/prod-start.js
+```
+
+pm2 方式通过 `--node-args` 传递：
+
+```bash
+pm2 start prod-start.js --node-args="--max-old-space-size=768"
+```
+
+### Q11: 第三方登录/支付不生效
+
 **原因**：`.env` 中 `DEV_BYPASS_*=true` 未关闭，或租户配置中心未配置 Channel 级密钥。
+
 **解决**：
 1. 确认 `.env` 中所有 `DEV_BYPASS_*` 为 `false`
 2. 登录 Dashboard → Settings → Channels → 选择 Channel → 滚动到「租户配置中心」配置支付/微信登录/SSO/地图密钥
-
-### Q6: 启动报错 `Could not load the "sharp" module using the linux-x64 runtime`
-**原因**：安装时使用 `--no-optional` 跳过了 sharp 的平台特定二进制 `@img/sharp-linux-x64`（asset-server-plugin 依赖 sharp 做图像处理）。
-**解决**：单独补装 sharp 的 linux-x64 平台二进制：
-```bash
-npm install --os=linux --cpu=x64 @img/sharp-linux-x64
-node -e "require('sharp'); console.log('sharp OK')"  # 验证
-pm2 restart vendure
-```
-该包为预编译二进制，无需编译，2GB 内存服务器可安全安装。
 
 ## 九、架构备注
 
 - **多租户**：每个 Channel 即一个租户，租户级配置（支付、登录、地图）存储在 Channel 的 customFields（`authConfig`/`payConfig`/`mapConfig`），敏感字段 AES-256-GCM 加密存储。
 - **Dashboard 入口**：统一配置中心以 pageBlock 形式注入到 Channel 详情页（位于 custom-fields 区块下方），非左侧独立菜单。
 - **数据库同步**：`synchronize=true` 已开启，schema 变更自动应用，无需手动 migration。生产环境如需关闭自动同步，可在 `packages/dev-server/dev-config.ts` 的 `getDbConfig()` 中改为 `false` 并改用 migration 工作流。
+- **开发演示插件**：dev-config.ts 引用的 ReviewsPlugin、FloorBuilderPlugin、NavModifierPlugin 仅用于本地开发演示，生产模式自动跳过加载（通过 `IS_PROD` 标志 + `devOnlyPlugins` 数组实现）。
+- **路径解析**：dev-config.ts 中所有资源路径（migrations、import-assets、assets、email 模板、sqlite、dashboard appDir）统一使用 `devServerDir` 变量，兼容 dev 模式（`__dirname = packages/dev-server`）和 prod 模式（`__dirname = packages/dev-server/dist`）。
