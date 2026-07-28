@@ -1,0 +1,17 @@
+{
+  "name": "@vendure/inventory-plugin",
+  "version": "1.0.0",
+  "description": "Inventory management plugin (stock-in/out/move/stocktake) for vendure",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w"
+  },
+  "dependencies": {
+    "@vendure/core": "^3.6.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
