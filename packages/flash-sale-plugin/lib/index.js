@@ -18,4 +18,5 @@ __exportStar(require("./src/plugin"), exports);
 __exportStar(require("./src/types"), exports);
 __exportStar(require("./src/constants"), exports);
 __exportStar(require("./src/flash-sale-activity.entity"), exports);
+__exportStar(require("./src/flash-sale.service"), exports);
 //# sourceMappingURL=index.js.map

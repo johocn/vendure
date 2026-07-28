@@ -1,13 +1,12 @@
-import { ChannelService, Injector, JobQueueService, OrderService, TransactionalConnection } from '@vendure/core';
+import { ChannelService, Injector, OrderService, PaymentService, RequestContext, TransactionalConnection } from '@vendure/core';
 export declare class GroupBuyJob {
-    private jobQueueService;
     private connection;
     private orderService;
+    private paymentService;
     private channelService;
-    private jobQueue;
-    constructor(jobQueueService: JobQueueService, connection: TransactionalConnection, orderService: OrderService, channelService: ChannelService);
+    constructor(connection: TransactionalConnection, orderService: OrderService, paymentService: PaymentService, channelService: ChannelService);
     private stockPrewarmService;
     initStock(injector: Injector): void;
-    init(): Promise<void>;
-    scheduleCheck(): void;
+    runCheck(ctx: RequestContext): Promise<void>;
+    private refundOrderPayments;
 }

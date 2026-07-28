@@ -1,55 +1,40 @@
 "use strict";
-var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
-    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
-    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
-    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
-    return c > 3 && r && Object.defineProperty(target, key, r), r;
-};
-var __metadata = (this && this.__metadata) || function (k, v) {
-    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
-};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.FlashSaleJob = void 0;
-const common_1 = require("@nestjs/common");
+exports.flashSaleStatusTask = void 0;
 const core_1 = require("@vendure/core");
 const constants_1 = require("./constants");
 const flash_sale_activity_entity_1 = require("./flash-sale-activity.entity");
-let FlashSaleJob = class FlashSaleJob {
-    constructor(jobQueueService, connection) {
-        this.jobQueueService = jobQueueService;
-        this.connection = connection;
-        this.stockPrewarmService = null;
-    }
-    initStock(injector) {
+/**
+ * 秒杀活动状态转换 ScheduledTask。
+ *
+ * 使用 Vendure 内置 ScheduledTask（v3.3+）替代原 setInterval：
+ * - 由 DefaultSchedulerPlugin 在 worker 进程按 cron 周期执行
+ * - 多实例下通过 SchedulerStrategy 锁机制保证 only-once，避免多实例重复处理状态转换
+ * - 进程重启不丢任务
+ *
+ * 需在 plugin.ts 的 configuration 中 push 到 config.schedulerOptions.tasks。
+ *
+ * schedule `* * * * *` = 每分钟一次（与原 setInterval(60s) 频率一致）。
+ */
+exports.flashSaleStatusTask = new core_1.ScheduledTask({
+    id: 'flash-sale-status-transition',
+    description: 'Activate upcoming and end expired flash sale activities',
+    schedule: '* * * * *',
+    timeout: 30 * 1000,
+    preventOverlap: true,
+    async execute({ injector }) {
+        const connection = injector.get(core_1.TransactionalConnection);
+        const repo = connection.rawConnection.getRepository(flash_sale_activity_entity_1.FlashSaleActivity);
+        const now = new Date();
+        // 可选预热：若安装了 redis-stock-plugin 的 StockPrewarmService，则用之
+        let stockPrewarmService = null;
         try {
             const { StockPrewarmService } = require('@vendure/redis-stock-plugin');
-            this.stockPrewarmService = injector.get(StockPrewarmService);
+            stockPrewarmService = injector.get(StockPrewarmService);
         }
         catch (_a) {
             // RedisStockPlugin not installed
         }
-    }
-    async init() {
-        this.jobQueue = await this.jobQueueService.createQueue({
-            name: 'flash-sale-status',
-            process: async (job) => {
-                try {
-                    await this.processStatusTransitions();
-                }
-                catch (e) {
-                    core_1.Logger.error(`Failed to process flash sale status: ${e.message}`, constants_1.loggerCtx);
-                }
-            },
-        });
-    }
-    scheduleCheck() {
-        this.intervalRef = setInterval(() => {
-            this.jobQueue.add({});
-        }, 60 * 1000);
-    }
-    async processStatusTransitions() {
-        const repo = this.connection.rawConnection.getRepository(flash_sale_activity_entity_1.FlashSaleActivity);
-        const now = new Date();
         const toActivate = await repo
             .createQueryBuilder('fsa')
             .where('fsa.status = :status', { status: 'upcoming' })
@@ -57,8 +42,8 @@ let FlashSaleJob = class FlashSaleJob {
             .getMany();
         for (const activity of toActivate) {
             activity.status = 'active';
-            if (this.stockPrewarmService) {
-                await this.stockPrewarmService.prewarm(`flash-sale:${activity.id}`, activity.totalStock - activity.soldCount);
+            if (stockPrewarmService) {
+                await stockPrewarmService.prewarm(`flash-sale:${activity.id}`, activity.totalStock - activity.soldCount);
             }
             await repo.save(activity);
             core_1.Logger.info(`FlashSaleActivity ${activity.id} activated`, constants_1.loggerCtx);
@@ -70,18 +55,16 @@ let FlashSaleJob = class FlashSaleJob {
             .getMany();
         for (const activity of toEnd) {
             activity.status = 'ended';
-            if (this.stockPrewarmService) {
-                await this.stockPrewarmService.removePrewarm(`flash-sale:${activity.id}`);
+            if (stockPrewarmService) {
+                await stockPrewarmService.removePrewarm(`flash-sale:${activity.id}`);
             }
             await repo.save(activity);
             core_1.Logger.info(`FlashSaleActivity ${activity.id} ended`, constants_1.loggerCtx);
         }
-    }
-};
-exports.FlashSaleJob = FlashSaleJob;
-exports.FlashSaleJob = FlashSaleJob = __decorate([
-    (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [core_1.JobQueueService,
-        core_1.TransactionalConnection])
-], FlashSaleJob);
+        return {
+            activated: toActivate.length,
+            ended: toEnd.length,
+        };
+    },
+});
 //# sourceMappingURL=flash-sale.job.js.map

@@ -11,27 +11,30 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 var FlashSalePlugin_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FlashSalePlugin = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@nestjs/core");
 const core_2 = require("@vendure/core");
-const { gql } = require('graphql-tag');
+const graphql_tag_1 = __importDefault(require("graphql-tag"));
 const constants_1 = require("./constants");
 const flash_sale_activity_entity_1 = require("./flash-sale-activity.entity");
 const flash_sale_admin_resolver_1 = require("./flash-sale-admin.resolver");
 const flash_sale_eligibility_checker_1 = require("./flash-sale-eligibility-checker");
 const flash_sale_job_1 = require("./flash-sale.job");
 const flash_sale_promotion_condition_1 = require("./flash-sale-promotion-condition");
+const flash_sale_price_action_1 = require("./flash-sale-price-action");
 const flash_sale_service_1 = require("./flash-sale.service");
 const flash_sale_shop_resolver_1 = require("./flash-sale-shop.resolver");
 const order_custom_fields_1 = require("./order-custom-fields");
 let FlashSalePlugin = FlashSalePlugin_1 = class FlashSalePlugin {
-    constructor(options, flashSaleService, flashSaleJob, eventBus, moduleRef) {
+    constructor(options, flashSaleService, eventBus, moduleRef) {
         this.options = options;
         this.flashSaleService = flashSaleService;
-        this.flashSaleJob = flashSaleJob;
         this.eventBus = eventBus;
         this.moduleRef = moduleRef;
     }
@@ -42,28 +45,34 @@ let FlashSalePlugin = FlashSalePlugin_1 = class FlashSalePlugin {
     async onApplicationBootstrap() {
         this.injector = new core_2.Injector(this.moduleRef);
         this.flashSaleService.init(this.injector);
-        this.flashSaleJob.initStock(this.injector);
-        this.eventBus.ofType(core_2.OrderStateTransitionEvent).subscribe(async (event) => {
+        // 秒杀订单下单后递增 soldCount（含 customFields.flashSaleActivityId 的订单）
+        this.eventBus.ofType(core_2.OrderPlacedEvent).subscribe(async (event) => {
             var _a;
+            const flashSaleActivityId = (_a = event.order.customFields) === null || _a === void 0 ? void 0 : _a.flashSaleActivityId;
+            if (!flashSaleActivityId)
+                return;
+            try {
+                await this.flashSaleService.incrementSoldCount(event.ctx, flashSaleActivityId, event.order.totalQuantity);
+            }
+            catch (e) {
+                core_2.Logger.error(`Failed to increment soldCount for activity ${flashSaleActivityId}: ${e.message}`, constants_1.loggerCtx);
+            }
+        });
+        // 订单取消时回滚预占库存（Redis / DB 路径均覆盖）
+        this.eventBus.ofType(core_2.OrderStateTransitionEvent).subscribe(async (event) => {
+            var _a, _b;
             if (event.toState !== 'Cancelled')
                 return;
-            const order = event.order;
-            const activityId = (_a = order === null || order === void 0 ? void 0 : order.customFields) === null || _a === void 0 ? void 0 : _a.flashSaleActivityId;
+            const activityId = (_b = (_a = event.order) === null || _a === void 0 ? void 0 : _a.customFields) === null || _b === void 0 ? void 0 : _b.flashSaleActivityId;
             if (!activityId)
                 return;
             try {
-                const { StockReserveService } = require('@vendure/redis-stock-plugin');
-                const stockReserveService = this.injector.get(StockReserveService);
-                if (stockReserveService === null || stockReserveService === void 0 ? void 0 : stockReserveService.isAvailable) {
-                    await stockReserveService.releaseStock(`flash-sale:${activityId}`, 1);
-                }
+                await this.flashSaleService.releaseStock(event.ctx, activityId, 1);
             }
-            catch (_b) {
-                // RedisStockPlugin not installed
+            catch (e) {
+                core_2.Logger.error(`Failed to release stock for activity ${activityId} on cancel: ${e.message}`, constants_1.loggerCtx);
             }
         });
-        await this.flashSaleJob.init();
-        this.flashSaleJob.scheduleCheck();
         core_2.Logger.info('FlashSalePlugin initialized', constants_1.loggerCtx);
     }
 };
@@ -76,10 +85,9 @@ exports.FlashSalePlugin = FlashSalePlugin = FlashSalePlugin_1 = __decorate([
         providers: [
             { provide: constants_1.FLASH_SALE_PLUGIN_OPTIONS, useFactory: () => FlashSalePlugin.options },
             flash_sale_service_1.FlashSaleService,
-            flash_sale_job_1.FlashSaleJob,
         ],
         adminApiExtensions: {
-            schema: () => gql `
+            schema: () => (0, graphql_tag_1.default) `
             enum FlashSaleStatus { upcoming active ended }
 
             type FlashSaleActivity implements Node {
@@ -91,6 +99,8 @@ exports.FlashSalePlugin = FlashSalePlugin = FlashSalePlugin_1 = __decorate([
                 totalStock: Int!
                 soldCount: Int!
                 limitPerUser: Int!
+                productId: ID!
+                variantId: ID!
                 status: FlashSaleStatus!
                 createdAt: DateTime!
                 updatedAt: DateTime!
@@ -120,6 +130,8 @@ exports.FlashSalePlugin = FlashSalePlugin = FlashSalePlugin_1 = __decorate([
                 flashPrice: Int
                 totalStock: Int
                 limitPerUser: Int
+                productId: ID
+                variantId: ID
                 status: FlashSaleStatus
             }
 
@@ -139,7 +151,7 @@ exports.FlashSalePlugin = FlashSalePlugin = FlashSalePlugin_1 = __decorate([
             resolvers: [flash_sale_admin_resolver_1.FlashSaleAdminResolver],
         },
         shopApiExtensions: {
-            schema: () => gql `
+            schema: () => (0, graphql_tag_1.default) `
             enum FlashSaleStatus { upcoming active ended }
 
             type FlashSaleActivity implements Node {
@@ -151,6 +163,8 @@ exports.FlashSalePlugin = FlashSalePlugin = FlashSalePlugin_1 = __decorate([
                 totalStock: Int!
                 soldCount: Int!
                 limitPerUser: Int!
+                productId: ID!
+                variantId: ID!
                 status: FlashSaleStatus!
                 createdAt: DateTime!
                 updatedAt: DateTime!
@@ -163,7 +177,7 @@ exports.FlashSalePlugin = FlashSalePlugin = FlashSalePlugin_1 = __decorate([
             resolvers: [flash_sale_shop_resolver_1.FlashSaleShopResolver],
         },
         configuration: (config) => {
-            var _a, _b;
+            var _a, _b, _c;
             config.customFields.Order = [
                 ...((_a = config.customFields.Order) !== null && _a !== void 0 ? _a : []),
                 ...order_custom_fields_1.flashSaleOrderCustomFields.Order,
@@ -174,6 +188,18 @@ exports.FlashSalePlugin = FlashSalePlugin = FlashSalePlugin_1 = __decorate([
                 flash_sale_promotion_condition_1.flashSaleDiscountCondition,
                 flash_sale_eligibility_checker_1.flashSaleEligibilityCondition,
             ];
+            config.promotionOptions.promotionActions = [
+                ...((_c = config.promotionOptions.promotionActions) !== null && _c !== void 0 ? _c : []),
+                flash_sale_price_action_1.flashSalePriceAction,
+            ];
+            // 注册秒杀状态转换 ScheduledTask（由 DefaultSchedulerPlugin 在 worker 上周期执行）
+            if (!config.schedulerOptions) {
+                config.schedulerOptions = { tasks: [] };
+            }
+            if (!config.schedulerOptions.tasks) {
+                config.schedulerOptions.tasks = [];
+            }
+            config.schedulerOptions.tasks.push(flash_sale_job_1.flashSaleStatusTask);
             return config;
         },
         dashboard: '../dashboard/index.tsx',
@@ -181,7 +207,6 @@ exports.FlashSalePlugin = FlashSalePlugin = FlashSalePlugin_1 = __decorate([
     }),
     __param(0, (0, common_1.Inject)(constants_1.FLASH_SALE_PLUGIN_OPTIONS)),
     __metadata("design:paramtypes", [Object, flash_sale_service_1.FlashSaleService,
-        flash_sale_job_1.FlashSaleJob,
         core_2.EventBus,
         core_1.ModuleRef])
 ], FlashSalePlugin);

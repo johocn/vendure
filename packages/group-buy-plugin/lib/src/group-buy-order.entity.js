@@ -34,6 +34,11 @@ __decorate([
     (0, typeorm_1.Column)({ default: 'pending' }),
     __metadata("design:type", String)
 ], GroupBuyOrder.prototype, "status", void 0);
+__decorate([
+    (0, typeorm_1.ManyToMany)(() => core_1.Channel),
+    (0, typeorm_1.JoinTable)(),
+    __metadata("design:type", Array)
+], GroupBuyOrder.prototype, "channels", void 0);
 exports.GroupBuyOrder = GroupBuyOrder = __decorate([
     (0, typeorm_1.Entity)(),
     __metadata("design:paramtypes", [Object])

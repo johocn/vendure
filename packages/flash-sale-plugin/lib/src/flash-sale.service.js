@@ -14,6 +14,20 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const constants_1 = require("./constants");
 const flash_sale_activity_entity_1 = require("./flash-sale-activity.entity");
+/**
+ * update() 允许写入的字段白名单。
+ * 显式过滤 soldCount/totalStock/status 等敏感字段，避免被外部 input 篡改。
+ */
+const UPDATE_ALLOWED_FIELDS = [
+    'name',
+    'startAt',
+    'endAt',
+    'flashPrice',
+    'totalStock',
+    'limitPerUser',
+    'productId',
+    'variantId',
+];
 let FlashSaleService = class FlashSaleService {
     constructor(connection, listQueryBuilder, orderService) {
         this.connection = connection;
@@ -65,9 +79,14 @@ let FlashSaleService = class FlashSaleService {
         const repo = this.connection.getRepository(ctx, flash_sale_activity_entity_1.FlashSaleActivity);
         const activity = await repo.findOne({ where: { id: input.id } });
         if (!activity) {
-            throw new Error(`FlashSaleActivity with id ${input.id} not found`);
+            throw new core_1.UserInputError(`FlashSaleActivity with id ${input.id} not found`);
         }
-        Object.assign(activity, input);
+        // 字段白名单：禁止外部 input 篡改 soldCount/status 等内部字段
+        for (const key of UPDATE_ALLOWED_FIELDS) {
+            if (key in input) {
+                activity[key] = input[key];
+            }
+        }
         return repo.save(activity);
     }
     async delete(ctx, id) {
@@ -94,7 +113,9 @@ let FlashSaleService = class FlashSaleService {
             }
         }
         else {
-            if (activity.soldCount >= activity.totalStock) {
+            // DB fallback：原子 UPDATE 实现 check + reserve，避免并发超卖
+            const reserved = await this.reserveStockAtomic(ctx, activityId, 1);
+            if (!reserved) {
                 return { eligible: false, reason: 'Stock sold out' };
             }
         }
@@ -103,6 +124,10 @@ let FlashSaleService = class FlashSaleService {
         if (flashSaleOrders.length >= activity.limitPerUser) {
             if ((_b = this.stockReserveService) === null || _b === void 0 ? void 0 : _b.isAvailable) {
                 await this.stockReserveService.releaseStock(`flash-sale:${activityId}`, 1);
+            }
+            else {
+                // DB fallback：资格未通过，回滚上面原子预占的 1 单位
+                await this.releaseStockAtomic(ctx, activityId, 1);
             }
             return { eligible: false, reason: 'Purchase limit exceeded' };
         }
@@ -133,14 +158,65 @@ let FlashSaleService = class FlashSaleService {
         return result !== null && result !== void 0 ? result : undefined;
     }
     async incrementSoldCount(ctx, activityId, quantity) {
+        var _a;
         const repo = this.connection.getRepository(ctx, flash_sale_activity_entity_1.FlashSaleActivity);
-        await repo.increment({ id: activityId }, 'soldCount', quantity);
+        // 原子 UPDATE：soldCount += quantity 仅在未超 totalStock 时生效
+        const result = await repo
+            .createQueryBuilder()
+            .update()
+            .set({ soldCount: () => `soldCount + ${quantity}` })
+            .where('id = :id AND soldCount + :qty <= totalStock', { id: activityId, qty: quantity })
+            .execute();
+        if (((_a = result.affected) !== null && _a !== void 0 ? _a : 0) === 0) {
+            core_1.Logger.warn(`FlashSaleActivity ${activityId}: soldCount + ${quantity} would exceed totalStock, increment skipped`, constants_1.loggerCtx);
+        }
         const activity = await this.findOne(ctx, activityId);
         if (activity && activity.soldCount >= activity.totalStock) {
             activity.status = 'ended';
             await repo.save(activity);
             core_1.Logger.info(`FlashSaleActivity ${activityId} ended due to stock depletion`, constants_1.loggerCtx);
         }
+    }
+    /**
+     * 订单取消时回滚库存：Redis 路径走 StockReserveService，DB 路径走原子 UPDATE。
+     */
+    async releaseStock(ctx, activityId, quantity) {
+        var _a;
+        if ((_a = this.stockReserveService) === null || _a === void 0 ? void 0 : _a.isAvailable) {
+            await this.stockReserveService.releaseStock(`flash-sale:${activityId}`, quantity);
+        }
+        else {
+            await this.releaseStockAtomic(ctx, activityId, quantity);
+        }
+    }
+    /**
+     * DB fallback 原子预占：UPDATE ... SET soldCount = soldCount + quantity
+     * WHERE id = ? AND soldCount + quantity <= totalStock。
+     * 返回是否成功扣减（affected > 0）。
+     */
+    async reserveStockAtomic(ctx, activityId, quantity) {
+        var _a;
+        const repo = this.connection.getRepository(ctx, flash_sale_activity_entity_1.FlashSaleActivity);
+        const result = await repo
+            .createQueryBuilder()
+            .update()
+            .set({ soldCount: () => `soldCount + ${quantity}` })
+            .where('id = :id AND soldCount + :qty <= totalStock', { id: activityId, qty: quantity })
+            .execute();
+        return ((_a = result.affected) !== null && _a !== void 0 ? _a : 0) > 0;
+    }
+    /**
+     * DB fallback 原子回滚：资格未通过或订单取消时，回滚预占的库存。
+     * 使用 WHERE soldCount - quantity >= 0 防止负数。
+     */
+    async releaseStockAtomic(ctx, activityId, quantity) {
+        const repo = this.connection.getRepository(ctx, flash_sale_activity_entity_1.FlashSaleActivity);
+        await repo
+            .createQueryBuilder()
+            .update()
+            .set({ soldCount: () => `soldCount - ${quantity}` })
+            .where('id = :id AND soldCount - :qty >= 0', { id: activityId, qty: quantity })
+            .execute();
     }
 };
 exports.FlashSaleService = FlashSaleService;

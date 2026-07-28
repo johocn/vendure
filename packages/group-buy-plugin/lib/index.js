@@ -19,4 +19,5 @@ __exportStar(require("./src/types"), exports);
 __exportStar(require("./src/constants"), exports);
 __exportStar(require("./src/group-buy-activity.entity"), exports);
 __exportStar(require("./src/group-buy-order.entity"), exports);
+__exportStar(require("./src/group-buy.service"), exports);
 //# sourceMappingURL=index.js.map

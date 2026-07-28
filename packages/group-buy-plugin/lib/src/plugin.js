@@ -11,12 +11,16 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 var GroupBuyPlugin_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.GroupBuyPlugin = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@nestjs/core");
 const core_2 = require("@vendure/core");
+const graphql_tag_1 = __importDefault(require("graphql-tag"));
 const constants_1 = require("./constants");
 const group_buy_activity_entity_1 = require("./group-buy-activity.entity");
 const group_buy_order_entity_1 = require("./group-buy-order.entity");
@@ -27,7 +31,9 @@ const group_buy_job_1 = require("./group-buy.job");
 const order_custom_fields_1 = require("./order-custom-fields");
 const group_buy_promotion_condition_1 = require("./group-buy-promotion-condition");
 const group_buy_leader_promotion_1 = require("./group-buy-leader-promotion");
-const { gql } = require('graphql-tag');
+const group_buy_price_action_1 = require("./group-buy-price-action");
+const group_buy_leader_reward_action_1 = require("./group-buy-leader-reward-action");
+const group_buy_scheduled_task_1 = require("./group-buy-scheduled-task");
 let GroupBuyPlugin = GroupBuyPlugin_1 = class GroupBuyPlugin {
     constructor(options, groupBuyService, groupBuyJob, eventBus, moduleRef) {
         this.options = options;
@@ -63,8 +69,6 @@ let GroupBuyPlugin = GroupBuyPlugin_1 = class GroupBuyPlugin {
                 // RedisStockPlugin not installed
             }
         });
-        await this.groupBuyJob.init();
-        this.groupBuyJob.scheduleCheck();
         core_2.Logger.info('GroupBuyPlugin initialized', constants_1.loggerCtx);
     }
 };
@@ -80,7 +84,7 @@ exports.GroupBuyPlugin = GroupBuyPlugin = GroupBuyPlugin_1 = __decorate([
             group_buy_job_1.GroupBuyJob,
         ],
         adminApiExtensions: {
-            schema: () => gql `
+            schema: () => (0, graphql_tag_1.default) `
             enum GroupBuyStatus { active completed expired }
 
             type GroupBuyActivity implements Node {
@@ -152,7 +156,7 @@ exports.GroupBuyPlugin = GroupBuyPlugin = GroupBuyPlugin_1 = __decorate([
             resolvers: [group_buy_admin_resolver_1.GroupBuyAdminResolver],
         },
         shopApiExtensions: {
-            schema: () => gql `
+            schema: () => (0, graphql_tag_1.default) `
             enum GroupBuyStatus { active completed expired }
 
             type GroupBuyActivity implements Node {
@@ -187,13 +191,13 @@ exports.GroupBuyPlugin = GroupBuyPlugin = GroupBuyPlugin_1 = __decorate([
             }
 
             extend type Mutation {
-                joinGroupBuy(activityId: ID!, isLeader: Boolean!): GroupBuyOrderResult!
+                joinGroupBuy(activityId: ID!, orderId: ID!, isLeader: Boolean!): GroupBuyOrderResult!
             }
         `,
             resolvers: [group_buy_shop_resolver_1.GroupBuyShopResolver],
         },
         configuration: (config) => {
-            var _a, _b, _c;
+            var _a, _b, _c, _d, _e;
             config.customFields = Object.assign(Object.assign({}, config.customFields), { Order: [
                     ...((_b = (_a = config.customFields) === null || _a === void 0 ? void 0 : _a.Order) !== null && _b !== void 0 ? _b : []),
                     ...order_custom_fields_1.groupBuyOrderCustomFields.Order,
@@ -204,6 +208,13 @@ exports.GroupBuyPlugin = GroupBuyPlugin = GroupBuyPlugin_1 = __decorate([
                 group_buy_promotion_condition_1.groupBuyDiscountCondition,
                 group_buy_leader_promotion_1.groupBuyLeaderRewardCondition,
             ];
+            config.promotionOptions.promotionActions = [
+                ...((_d = config.promotionOptions.promotionActions) !== null && _d !== void 0 ? _d : []),
+                group_buy_price_action_1.groupBuyPriceAction,
+                group_buy_leader_reward_action_1.groupBuyLeaderRewardAction,
+            ];
+            config.schedulerOptions = config.schedulerOptions || {};
+            config.schedulerOptions.tasks = [...((_e = config.schedulerOptions.tasks) !== null && _e !== void 0 ? _e : []), group_buy_scheduled_task_1.groupBuyCheckTask];
             return config;
         },
         dashboard: '../dashboard/index.tsx',

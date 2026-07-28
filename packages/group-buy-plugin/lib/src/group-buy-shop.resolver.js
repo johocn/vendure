@@ -37,6 +37,7 @@ __decorate([
 ], GroupBuyShopResolver.prototype, "activeGroupBuyActivities", null);
 __decorate([
     (0, graphql_1.Mutation)(),
+    (0, core_1.Transaction)('manual'),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('activityId')),
     __param(2, (0, graphql_1.Args)('orderId')),
