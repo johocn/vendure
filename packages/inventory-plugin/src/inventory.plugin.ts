@@ -19,14 +19,6 @@ const { gql } = require('graphql-tag');
                 items: [StockLevel!]!
                 totalItems: Int!
             }
-            type StockMovementList {
-                items: [JSON!]!
-                totalItems: Int!
-            }
-            type StockLocationList {
-                items: [StockLocation!]!
-                totalItems: Int!
-            }
 
             type StockInOrderLine {
                 id: ID!
@@ -185,7 +177,6 @@ const { gql } = require('graphql-tag');
 
             extend type Query {
                 stockLevels(locationId: ID, page: Int, pageSize: Int): StockLevelList!
-                stockLocations(page: Int, pageSize: Int): StockLocationList!
                 stockMovements(productVariantId: ID, locationId: ID, type: String, page: Int, pageSize: Int): StockMovementList!
 
                 stockInOrders(state: String, page: Int, pageSize: Int): StockInOrderList!

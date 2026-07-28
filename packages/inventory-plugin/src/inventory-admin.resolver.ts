@@ -23,16 +23,6 @@ export class InventoryAdminResolver {
 
     @Query()
     @Allow(InventoryPermissions.ViewStock as Permission)
-    async stockLocations(
-        @Ctx() ctx: RequestContext,
-        @Args({ name: 'page', type: () => Number, nullable: true, defaultValue: 1 }) page?: number,
-        @Args({ name: 'pageSize', type: () => Number, nullable: true, defaultValue: 20 }) pageSize?: number,
-    ) {
-        return this.inventoryService.findStockLocations(ctx, { page, pageSize });
-    }
-
-    @Query()
-    @Allow(InventoryPermissions.ViewStock as Permission)
     async stockMovements(
         @Ctx() ctx: RequestContext,
         @Args({ name: 'productVariantId', type: () => String, nullable: true }) productVariantId?: ID,

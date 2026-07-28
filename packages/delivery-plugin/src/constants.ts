@@ -117,7 +117,7 @@ export const ROLE_PERMISSIONS_MAP: Record<string, string[]> = {
 export const MODULE_CONFIGS = [
   { code: 'delivery',  name: '送货',  enabled: true,  entryPath: '/pkg-delivery/pages/list/index', icon: '📦', sort: 10, perms: ['DeliverOrder','MarkDelivered','ReportException','ViewAllDeliveries','ReassignDelivery'] },
   { code: 'sales',     name: '销售',  enabled: true,  entryPath: '/pkg-sales/pages/list/index',    icon: '📝', sort: 20, perms: ['CreateOrder','ViewOwnSales','ManageCustomer','ViewSalesReport'] },
-  { code: 'inventory', name: '调库',  enabled: false, entryPath: '/pkg-inventory/pages/stock/index', icon: '📊', sort: 30, perms: ['ViewStock','ManageStockMove','ManageStocktake','ManageStockIn','ManageStockOut'] },
+  { code: 'inventory', name: '调库',  enabled: true,  entryPath: '/pkg-inventory/pages/stock/index', icon: '📊', sort: 30, perms: ['ViewStock','ManageStockMove','ManageStocktake','ManageStockIn','ManageStockOut'] },
   { code: 'cs',        name: '客服',  enabled: true,  entryPath: '/pkg-cs/pages/orders/index',    icon: '🎧', sort: 40, perms: ['ViewAllOrders','HandleAfterSales','HandleException'] },
   { code: 'ops',       name: '运营',  enabled: false, entryPath: '/pkg-ops/pages/promotion/index', icon: '🎁', sort: 50, perms: ['ManagePromotion','ManageContent','ViewDashboard'] },
   { code: 'admin',     name: '管理',  enabled: false, entryPath: '/pkg-admin/pages/dashboard/index', icon: '⚙️', sort: 60, perms: ['ManageProduct','ManageUser','ViewFinance','ManageMessage','ViewDashboard'] },
