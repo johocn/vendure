@@ -1,6 +1,6 @@
 // e:\code\vendure\packages\inventory-plugin\src\entities\stocktake-order.entity.ts
 import { Column, Entity, ManyToMany, ManyToOne, OneToMany, JoinTable } from 'typeorm';
-import { Channel, DeepPartial, ID, StockLocation, VendureEntity } from '@vendure/core';
+import { Channel, DeepPartial, EntityId, ID, StockLocation, VendureEntity } from '@vendure/core';
 
 import { StocktakeState } from '../constants';
 
@@ -17,9 +17,9 @@ export class StocktakeOrder extends VendureEntity {
 
     @ManyToOne(() => StockLocation)
     location: StockLocation;
-    @Column() locationId: ID;
+    @EntityId() locationId: ID;
 
-    @OneToMany(() => StocktakeOrderLine, line => line.order)
+    @OneToMany(() => StocktakeOrderLine, line => line.order, { cascade: true })
     lines: StocktakeOrderLine[];
 
     @Column({ type: 'timestamp', nullable: true }) countingStartedAt?: Date;
@@ -39,8 +39,8 @@ export class StocktakeOrderLine extends VendureEntity {
     }
 
     @ManyToOne(() => StocktakeOrder) order: StocktakeOrder;
-    @Column() orderId: ID;
-    @Column() productVariantId: ID;
+    @EntityId() orderId: ID;
+    @EntityId() productVariantId: ID;
     @Column() systemQuantity: number;
     @Column({ default: 0 }) countedQuantity: number;
     @Column({ default: 0 }) difference: number;

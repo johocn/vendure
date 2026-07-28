@@ -1,6 +1,6 @@
 // e:\code\vendure\packages\inventory-plugin\src\entities\stock-in-order.entity.ts
 import { Column, Entity, ManyToMany, ManyToOne, OneToMany, JoinTable } from 'typeorm';
-import { Channel, DeepPartial, ID, StockLocation, VendureEntity } from '@vendure/core';
+import { Channel, DeepPartial, EntityId, ID, StockLocation, VendureEntity } from '@vendure/core';
 
 import { StockInState } from '../constants';
 
@@ -18,9 +18,9 @@ export class StockInOrder extends VendureEntity {
 
     @ManyToOne(() => StockLocation)
     targetLocation: StockLocation;
-    @Column() targetLocationId: ID;
+    @EntityId() targetLocationId: ID;
 
-    @OneToMany(() => StockInOrderLine, line => line.order)
+    @OneToMany(() => StockInOrderLine, line => line.order, { cascade: true })
     lines: StockInOrderLine[];
 
     @Column({ type: 'timestamp', nullable: true }) completedAt?: Date;
@@ -38,8 +38,8 @@ export class StockInOrderLine extends VendureEntity {
     }
 
     @ManyToOne(() => StockInOrder) order: StockInOrder;
-    @Column() orderId: ID;
-    @Column() productVariantId: ID;
+    @EntityId() orderId: ID;
+    @EntityId() productVariantId: ID;
     @Column() quantity: number;
-    @Column({ nullable: true }) unitPrice: number | null;
+    @Column({ type: 'int', nullable: true }) unitPrice: number | null;
 }

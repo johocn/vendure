@@ -1,6 +1,6 @@
 // e:\code\vendure\packages\inventory-plugin\src\entities\stock-move-order.entity.ts
 import { Column, Entity, ManyToMany, ManyToOne, OneToMany, JoinTable } from 'typeorm';
-import { Channel, DeepPartial, ID, StockLocation, VendureEntity } from '@vendure/core';
+import { Channel, DeepPartial, EntityId, ID, StockLocation, VendureEntity } from '@vendure/core';
 
 import { StockMoveState } from '../constants';
 
@@ -17,13 +17,13 @@ export class StockMoveOrder extends VendureEntity {
 
     @ManyToOne(() => StockLocation)
     sourceLocation: StockLocation;
-    @Column() sourceLocationId: ID;
+    @EntityId() sourceLocationId: ID;
 
     @ManyToOne(() => StockLocation)
     targetLocation: StockLocation;
-    @Column() targetLocationId: ID;
+    @EntityId() targetLocationId: ID;
 
-    @OneToMany(() => StockMoveOrderLine, line => line.order)
+    @OneToMany(() => StockMoveOrderLine, line => line.order, { cascade: true })
     lines: StockMoveOrderLine[];
 
     @Column({ type: 'timestamp', nullable: true }) shippedAt?: Date;
@@ -43,7 +43,7 @@ export class StockMoveOrderLine extends VendureEntity {
     }
 
     @ManyToOne(() => StockMoveOrder) order: StockMoveOrder;
-    @Column() orderId: ID;
-    @Column() productVariantId: ID;
+    @EntityId() orderId: ID;
+    @EntityId() productVariantId: ID;
     @Column() quantity: number;
 }

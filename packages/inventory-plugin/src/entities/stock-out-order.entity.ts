@@ -1,6 +1,6 @@
 // e:\code\vendure\packages\inventory-plugin\src\entities\stock-out-order.entity.ts
 import { Column, Entity, ManyToMany, ManyToOne, OneToMany, JoinTable } from 'typeorm';
-import { Channel, DeepPartial, ID, StockLocation, VendureEntity } from '@vendure/core';
+import { Channel, DeepPartial, EntityId, ID, StockLocation, VendureEntity } from '@vendure/core';
 
 import { StockOutState } from '../constants';
 
@@ -18,9 +18,9 @@ export class StockOutOrder extends VendureEntity {
 
     @ManyToOne(() => StockLocation)
     sourceLocation: StockLocation;
-    @Column() sourceLocationId: ID;
+    @EntityId() sourceLocationId: ID;
 
-    @OneToMany(() => StockOutOrderLine, line => line.order)
+    @OneToMany(() => StockOutOrderLine, line => line.order, { cascade: true })
     lines: StockOutOrderLine[];
 
     @Column({ type: 'timestamp', nullable: true }) completedAt?: Date;
@@ -38,8 +38,8 @@ export class StockOutOrderLine extends VendureEntity {
     }
 
     @ManyToOne(() => StockOutOrder) order: StockOutOrder;
-    @Column() orderId: ID;
-    @Column() productVariantId: ID;
+    @EntityId() orderId: ID;
+    @EntityId() productVariantId: ID;
     @Column() quantity: number;
-    @Column({ nullable: true }) unitPrice: number | null;
+    @Column({ type: 'int', nullable: true }) unitPrice: number | null;
 }
