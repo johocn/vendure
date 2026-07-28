@@ -1,9 +1,22 @@
 # Operations Module Design (P1: Dashboard + CMS)
 
 **Date:** 2026-07-28
-**Status:** Approved
+**Status:** Approved (Rev.1 — 修正 8 项卡点)
 **Scope:** P1 — Dashboard (聚合统计) + CMS (单表多态内容管理)
 **Out of scope:** P2 营销聚合（Coupon/FlashSale/GroupBuy/Promotion），P3 会员/消息群发
+
+## 0. Rev.1 修订记录（卡点修正）
+
+| # | 卡点 | 原方案 | 修正方案 |
+|---|---|---|---|
+| 1 | 定时任务实现 | JobQueue 每 60 秒 | `ScheduledTask` + `schedule: '* * * * *'`，注册到 `config.schedulerOptions.tasks`（参照 flash-sale-plugin）|
+| 2 | 软删除查询 | `where: { deletedAt: undefined }` | FindOptions 风格用 `IsNull()`；QueryBuilder 风格用 `IS NULL` |
+| 3 | shop-api 公开 Query 权限 | "无 @Allow（公开）" | 必须 `@Allow(Permission.Public)`（Vendure 默认未设 @Allow 不允许访问）|
+| 4 | shortcuts.ts 现状 | "5 项 placeholder" | 实际 2 项（ops-promo + ops-dashboard），保留 ops-promo 不变，ops-dashboard 改 enabled:true + 真实路由，新增 4 项（banner/recommendation/notice/floor）|
+| 5 | pages.json subPackage 名 | `pkg-operations` | 保持现有 `pkg-ops`（已注册，含 placeholder 页），在 pages 数组追加 9 页 |
+| 6 | MODULE_CONFIGS.ops.entryPath | `/pkg-operations/pages/dashboard/index` | `/pkg-ops/pages/dashboard/index`；perms 追加 4 个新权限 |
+| 7 | 前端目录名 | `pkg-operations` | `pkg-ops`（与 pages.json 一致）|
+| 8 | customFields 查询 | 未明确写法 | Vendure customFields 按列存储（`customFields_xxx` 列），QueryBuilder 直接 `order.customFields.deliveryStatus`，无需 `->>` |
 
 ---
 
@@ -41,7 +54,7 @@ Vendure 移动后端已完成 4 个业务模块（delivery / sales / inventory /
 - **目录**：`e:\code\vendure\packages\operations-plugin\`
 - **Plugin 类名**：`OperationsPlugin`
 - **模块 code**：`ops`（保持不变，与 shortcuts.ts 已有前缀对齐）
-- **前端目录**：`e:\code\vadmin\src\pkg-operations\`
+- **前端目录**：`e:\code\vadmin\src\pkg-ops\`（与 pages.json 已注册的 subPackage 名一致）
 
 ### 2.2 目录结构
 
@@ -55,7 +68,8 @@ packages/operations-plugin/
 │   ├── entities/
 │   │   └── content-item.entity.ts        # ContentItem 单表多态实体（含软删除）
 │   ├── operations-dashboard.service.ts   # 看板聚合 service（实时调用各模块 service / 直查表）
-│   ├── content.service.ts                # CMS CRUD + 自动上下线 Job
+│   ├── content.service.ts                # CMS CRUD
+│   ├── content-lifecycle.task.ts         # 自动上下线 ScheduledTask（每分钟执行）
 │   ├── operations-admin.resolver.ts      # admin-api resolver（看板 + CMS 管理）
 │   ├── operations-shop.resolver.ts       # shop-api resolver（CMS 公开查询）
 │   └── operations.plugin.ts              # Plugin 入口（SDL + config + bootstrap）
@@ -65,10 +79,10 @@ packages/operations-plugin/
 
 | 文件 | 修改内容 |
 |---|---|
-| `packages/delivery-plugin/src/constants.ts` | 新增 4 个权限：ManageBanner/Recommendation/Notice/Floor；扩展 operations-staff / manager / super-admin 角色权限；MODULE_CONFIGS.ops.enabled: true，entryPath: /pkg-operations/pages/dashboard/index |
+| `packages/delivery-plugin/src/constants.ts` | 新增 4 个权限：ManageBanner/Recommendation/Notice/Floor；扩展 operations-staff / manager / super-admin 角色权限；MODULE_CONFIGS.ops.enabled: true，entryPath: /pkg-ops/pages/dashboard/index，perms 追加 4 个新权限 |
 | `packages/dev-server/dev-config.ts` | 注册 `OperationsPlugin.init()` |
-| `vadmin/src/pages.json` | 注册 `pkg-operations/pages` 子包 |
-| `vadmin/src/config/shortcuts.ts` | 更新 ops shortcuts（5 项 placeholder → actual，enabled: true） |
+| `vadmin/src/pages.json` | 在现有 `pkg-ops` subPackage 的 pages 数组中追加 9 页（dashboard/banner×2/recommendation×2/notice×2/floor×2） |
+| `vadmin/src/config/shortcuts.ts` | ops-dashboard 改 enabled:true + 真实路由；新增 4 项（banner/recommendation/notice/floor，enabled:true）；保留 ops-promo 不变（enabled:false） |
 
 ### 2.4 架构边界
 - OperationsPlugin **不依赖** inventory-plugin / delivery-plugin / customer-service-plugin 的实体
@@ -207,14 +221,20 @@ export class ContentItem extends VendureEntity {
 - **JSON 字段**：差异化内容存 `data`，由 service 层按 type 校验结构
 - **唯一约束**：`UNIQUE(code, channel_id, deletedAt)` — 同一渠道下未删除的 code 不重复；删除后可重建同 code
 - **软删除**：`deletedAt` 标记删除时间，`deletedBy` 记录操作人；所有查询默认加 `deletedAt IS NULL`
-- **时间审计**：startAt/endAt 配合 Job 自动上下线；publishedAt/unpublishedAt 记录实际生效时间
+  - FindOptions 风格：`findOne({ where: { id, deletedAt: IsNull() } })`（导入 `IsNull` from `typeorm`）
+  - QueryBuilder 风格：`qb.where('content.deletedAt IS NULL')`
+- **时间审计**：startAt/endAt 配合 ScheduledTask 自动上下线；publishedAt/unpublishedAt 记录实际生效时间
 
-### 4.3 自动上下线 Job
-- **Job 名**：`operations-content-lifecycle`
-- **频率**：每 60 秒执行一次（Vendure JobQueue）
+### 4.3 自动上下线 ScheduledTask
+- **Task id**：`operations-content-lifecycle`
+- **实现方式**：Vendure `ScheduledTask` + `schedule: '* * * * *'`（每分钟执行，cron 最小粒度）
+- **注册位置**：`OperationsPlugin.configuration` 中 `config.schedulerOptions.tasks.push(contentLifecycleTask)`
+- **前置依赖**：`DefaultSchedulerPlugin.init({})` 必须在 dev-config.ts 注册（已注册）
+- **参照模板**：`flash-sale-plugin/src/flash-sale.job.ts`
 - **上线逻辑**：查询 `enabled=true AND startAt <= now() AND publishedAt IS NULL AND deletedAt IS NULL` → 设置 `publishedAt = now()`
 - **下线逻辑**：查询 `enabled=true AND endAt <= now() AND unpublishedAt IS NULL AND deletedAt IS NULL` → 设置 `enabled=false, unpublishedAt = now()`
 - **错误处理**：单条失败记录错误日志，继续处理下一条
+- **配置项**：`timeout: 30_000`，`preventOverlap: true`
 
 ---
 
@@ -353,7 +373,7 @@ export class ContentService {
 
     async findOneContentItem(ctx, id: ID): Promise<ContentItem | null> {
         return this.connection.getRepository(ctx, ContentItem)
-            .findOne({ where: { id: id as any, deletedAt: undefined }, relations: ['channels'] });
+            .findOne({ where: { id: id as any, deletedAt: IsNull() }, relations: ['channels'] });
     }
 
     // ===== shop-api 公开查询（仅返回已发布内容） =====
@@ -391,7 +411,8 @@ export class ContentService {
 ### 5.3 依赖与边界
 - `OperationsDashboardService` 仅依赖 `TransactionalConnection`，通过原生 TypeORM QueryBuilder 直接查表（避免循环依赖 inventory/delivery/customer-service 插件的 service）
 - `ContentService` 完全自包含，仅操作 ContentItem 表
-- 自动上下线 Job 在 plugin 的 `onApplicationBootstrap` 中通过 `JobQueue` 注册
+- 自动上下线通过 `ScheduledTask` 实现（见 `content-lifecycle.task.ts`），在 `OperationsPlugin.configuration` 中注册到 `config.schedulerOptions.tasks`
+- customFields 查询写法：Vendure customFields 按列存储（`customFields_xxx` 列），QueryBuilder 中直接 `order.customFields.deliveryStatus`，无需 `->>` JSON 操作符
 
 ---
 
@@ -567,7 +588,7 @@ extend type Query {
 | `createContentItem` | 按 input.type 区分权限 | CMS 创建（手动鉴权） |
 | `updateContentItem` | 先查 type，按 type 区分权限 | CMS 更新（手动鉴权） |
 | `deleteContentItem` | 同 update | CMS 删除（手动鉴权） |
-| `publishedContent` (shop) | 公开（无 @Allow） | 商城查询 |
+| `publishedContent` (shop) | `@Allow(Permission.Public)` | 商城查询（Vendure 默认未设 @Allow 不允许访问，必须显式声明 Public） |
 
 ### 6.4 实现要点
 
@@ -603,15 +624,15 @@ private getPermissionByType(type?: string): Permission {
 
 | 页面 | 路径 | 功能 | 权限 |
 |---|---|---|---|
-| 看板 | `/pkg-operations/pages/dashboard/index` | 6 类指标卡片 + 趋势图 + 品类 TOP10 | `ViewDashboard` |
-| Banner 列表 | `/pkg-operations/pages/banner/index` | 列表 + 筛选 + 启停 | `ManageBanner` |
-| Banner 详情 | `/pkg-operations/pages/banner/detail` | 创建/编辑 + JSON 预览 | `ManageBanner` |
-| 推荐位列表 | `/pkg-operations/pages/recommendation/index` | 列表 + 筛选 | `ManageRecommendation` |
-| 推荐位详情 | `/pkg-operations/pages/recommendation/detail` | 创建/编辑 | `ManageRecommendation` |
-| 公告列表 | `/pkg-operations/pages/notice/index` | 列表 + 筛选 | `ManageNotice` |
-| 公告详情 | `/pkg-operations/pages/notice/detail` | 创建/编辑 + 富文本 | `ManageNotice` |
-| 楼层列表 | `/pkg-operations/pages/floor/index` | 列表 + 筛选 | `ManageFloor` |
-| 楼层详情 | `/pkg-operations/pages/floor/detail` | 创建/编辑 + items 数组管理 | `ManageFloor` |
+| 看板 | `/pkg-ops/pages/dashboard/index` | 6 类指标卡片 + 趋势图 + 品类 TOP10 | `ViewDashboard` |
+| Banner 列表 | `/pkg-ops/pages/banner/index` | 列表 + 筛选 + 启停 | `ManageBanner` |
+| Banner 详情 | `/pkg-ops/pages/banner/detail` | 创建/编辑 + JSON 预览 | `ManageBanner` |
+| 推荐位列表 | `/pkg-ops/pages/recommendation/index` | 列表 + 筛选 | `ManageRecommendation` |
+| 推荐位详情 | `/pkg-ops/pages/recommendation/detail` | 创建/编辑 | `ManageRecommendation` |
+| 公告列表 | `/pkg-ops/pages/notice/index` | 列表 + 筛选 | `ManageNotice` |
+| 公告详情 | `/pkg-ops/pages/notice/detail` | 创建/编辑 + 富文本 | `ManageNotice` |
+| 楼层列表 | `/pkg-ops/pages/floor/index` | 列表 + 筛选 | `ManageFloor` |
+| 楼层详情 | `/pkg-ops/pages/floor/detail` | 创建/编辑 + items 数组管理 | `ManageFloor` |
 
 ### 7.2 看板页面布局
 
@@ -748,22 +769,24 @@ async function loadDashboard() {
 ### 7.6 shortcuts.ts 更新
 
 ```typescript
-// ops 运营模块（启用）
+// ops 运营模块（保留 ops-promo 占位，启用 ops-dashboard，新增 4 项）
+{ code: 'ops-promo', name: '营销', icon: '🎁', perm: 'ManagePromotion',
+  route: '/pkg-ops/pages/placeholder', enabled: false },  // 保留不变（P2 实现）
 { code: 'ops-dashboard', name: '看板', icon: '📊', perm: 'ViewDashboard',
-  route: '/pkg-operations/pages/dashboard/index', enabled: true },
+  route: '/pkg-ops/pages/dashboard/index', enabled: true },  // 改 enabled + 真实路由
 { code: 'ops-banner', name: 'Banner', icon: '🖼️', perm: 'ManageBanner',
-  route: '/pkg-operations/pages/banner/index', enabled: true },
+  route: '/pkg-ops/pages/banner/index', enabled: true },  // 新增
 { code: 'ops-recommendation', name: '推荐位', icon: '📌', perm: 'ManageRecommendation',
-  route: '/pkg-operations/pages/recommendation/index', enabled: true },
+  route: '/pkg-ops/pages/recommendation/index', enabled: true },  // 新增
 { code: 'ops-notice', name: '公告', icon: '📢', perm: 'ManageNotice',
-  route: '/pkg-operations/pages/notice/index', enabled: true },
+  route: '/pkg-ops/pages/notice/index', enabled: true },  // 新增
 { code: 'ops-floor', name: '楼层', icon: '🏠', perm: 'ManageFloor',
-  route: '/pkg-operations/pages/floor/index', enabled: true },
+  route: '/pkg-ops/pages/floor/index', enabled: true },  // 新增
 ```
 
 ### 7.7 uCharts 集成
-- **安装**：`npm install @qiun/ucharts`（uni-app 原生兼容，约 200KB）
-- **组件封装**：`pkg-operations/components/LineChart.vue` / `BarChart.vue`
+- **安装**：`npm install @qiun/ucharts`（uni-app 原生兼容，约 200KB，vadmin 当前未安装任何图表库）
+- **组件封装**：`pkg-ops/components/LineChart.vue` / `BarChart.vue`
 - **折线图**（销售趋势）：x 轴日期，y 轴订单数/GMV 双轴
 - **横向柱状图**（品类 TOP10）：按 gmv 降序
 
@@ -870,14 +893,18 @@ async function loadDashboard() {
 - 鉴权方式：cookie（与 cs/inventory 测试脚本一致）
 - TypeScript 编译：`findOne` 返回 `T | null`（vendure v3.6 TypeORM API）
 
-### 9.2 JobQueue 注册
-- 在 `OperationsPlugin.onApplicationBootstrap` 中通过 `JobQueueService` 注册 `operations-content-lifecycle` Job
-- 每 60 秒触发一次 `ContentService.runLifecycleCheck`
-- 错误重试：单次失败不阻塞下一次执行
+### 9.2 ScheduledTask 注册（自动上下线）
+- 在 `OperationsPlugin.configuration` 中将 `contentLifecycleTask` push 到 `config.schedulerOptions.tasks`
+- 参照 `flash-sale-plugin/src/plugin.ts:140-148` 的注册方式
+- schedule: `'* * * * *'`（每分钟执行，cron 最小粒度）
+- timeout: 30000，preventOverlap: true
+- 前置依赖：`DefaultSchedulerPlugin.init({})` 必须在 dev-config.ts 注册（已注册，见 `dev-config.ts:244`）
+- `runTasksInWorkerOnly` 默认 true，任务只在 worker 进程执行；若部署未起 worker，任务不会执行——dev 模式单进程下正常执行
 
 ### 9.3 shop-api 扩展
 - Plugin 配置中 `shopApiExtensions` 暴露 `publishedContent` Query
-- 无 `@Allow` 装饰器（公开访问）
+- 必须使用 `@Allow(Permission.Public)` 装饰器（Vendure 默认未设 @Allow 不允许访问）
+- 参照 `default-search-plugin/api/fulltext-search.resolver.ts` 的 `@Allow(Permission.Public)` 写法
 - Resolver 在 `operations-shop.resolver.ts` 中实现
 
 ### 9.4 构建与部署
@@ -891,8 +918,8 @@ async function loadDashboard() {
 
 本 spec 范围为 Operations 模块 P1（Dashboard + CMS），遵循 customer-service-plugin / inventory-plugin 既有模式：
 
-- **后端**：独立 `@vendure/operations-plugin`，含 ContentItem 实体（单表多态 + 软删除）+ 看板聚合 service + CMS service + admin/shop resolver + 自动上下线 Job
-- **前端**：vadmin 中 9 页（1 看板 + 4 类型 × 2 列表/详情），集成 uCharts 图表
+- **后端**：独立 `@vendure/operations-plugin`，含 ContentItem 实体（单表多态 + 软删除）+ 看板聚合 service + CMS service + admin/shop resolver + 自动上下线 ScheduledTask
+- **前端**：vadmin `pkg-ops` subPackage 中 9 页（1 看板 + 4 类型 × 2 列表/详情），集成 uCharts 图表
 - **权限**：4 个新权限按内容类型细分，operations-staff 角色同步
 - **测试**：10 组 e2e 测试覆盖权限、CRUD、软删除、自动上下线、权限隔离
 
