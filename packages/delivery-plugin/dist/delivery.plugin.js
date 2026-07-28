@@ -5,21 +5,45 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
 var DeliveryPlugin_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DeliveryPlugin = void 0;
-// e:\code\vendure\packages\delivery-plugin\src\delivery.plugin.ts
-const core_1 = require("@vendure/core");
-const constants_1 = require("./constants");
-const order_custom_fields_1 = require("./config/order-custom-fields");
+const core_1 = require("@nestjs/core");
+const core_2 = require("@vendure/core");
 const address_custom_fields_1 = require("./config/address-custom-fields");
+const order_custom_fields_1 = require("./config/order-custom-fields");
+const constants_1 = require("./constants");
+const role_sync_1 = require("./role-sync");
+const loggerCtx = 'DeliveryPlugin';
 let DeliveryPlugin = DeliveryPlugin_1 = class DeliveryPlugin {
+    constructor(moduleRef) {
+        this.moduleRef = moduleRef;
+    }
+    async onApplicationBootstrap() {
+        var _a;
+        if (!this.moduleRef) {
+            return;
+        }
+        try {
+            const injector = new core_2.Injector(this.moduleRef);
+            const roleSync = new role_sync_1.RoleSyncService();
+            roleSync.init(injector);
+            await roleSync.syncRoles();
+        }
+        catch (err) {
+            // 同步失败不阻塞 bootstrap，仅记录日志，便于后续手动排查
+            core_2.Logger.error(`Role sync failed on bootstrap: ${(_a = err === null || err === void 0 ? void 0 : err.message) !== null && _a !== void 0 ? _a : err}`, loggerCtx);
+        }
+    }
 };
 exports.DeliveryPlugin = DeliveryPlugin;
 DeliveryPlugin.init = () => new DeliveryPlugin_1();
 exports.DeliveryPlugin = DeliveryPlugin = DeliveryPlugin_1 = __decorate([
-    (0, core_1.VendurePlugin)({
-        imports: [core_1.PluginCommonModule],
+    (0, core_2.VendurePlugin)({
+        imports: [core_2.PluginCommonModule],
         configuration: (config) => {
             var _a, _b, _c, _d, _e;
             // 注册自定义 Permission
@@ -39,5 +63,6 @@ exports.DeliveryPlugin = DeliveryPlugin = DeliveryPlugin_1 = __decorate([
             ];
             return config;
         },
-    })
+    }),
+    __metadata("design:paramtypes", [core_1.ModuleRef])
 ], DeliveryPlugin);
