@@ -15,4 +15,6 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 __exportStar(require("./delivery.plugin"), exports);
+__exportStar(require("./delivery.service"), exports);
+__exportStar(require("./delivery-admin.resolver"), exports);
 __exportStar(require("./constants"), exports);

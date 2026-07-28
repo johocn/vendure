@@ -4,6 +4,8 @@ import { Injector, Logger, PluginCommonModule, VendurePlugin } from '@vendure/co
 
 import { deliveryAddressCustomFields } from './config/address-custom-fields';
 import { deliveryOrderCustomFields } from './config/order-custom-fields';
+import { DeliveryAdminResolver } from './delivery-admin.resolver';
+import { DeliveryService } from './delivery.service';
 import { deliveryPermissionDefinitions } from './constants';
 import { PermissionAdminResolver } from './permission-admin.resolver';
 import { RoleSyncService } from './role-sync';
@@ -12,6 +14,7 @@ const loggerCtx = 'DeliveryPlugin';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
+    providers: [DeliveryService],
     adminApiExtensions: {
         schema: () => {
             const { gql } = require('graphql-tag');
@@ -33,10 +36,19 @@ const loggerCtx = 'DeliveryPlugin';
 
                 extend type Query {
                     myPermissions: MyPermissionsResult!
+                    myDeliveries(status: String): [Order!]!
+                    allDeliveries(status: String): [Order!]!
+                }
+
+                extend type Mutation {
+                    startDelivery(orderId: ID!): Order!
+                    markDelivered(orderId: ID!, photos: [String!]!, note: String): Order!
+                    reportException(orderId: ID!, type: String!, photos: [String!]!, note: String): Order!
+                    reassignDelivery(orderId: ID!, newStaffId: ID!): Order!
                 }
             `;
         },
-        resolvers: [PermissionAdminResolver],
+        resolvers: [PermissionAdminResolver, DeliveryAdminResolver],
     },
     configuration: (config) => {
         // 注册自定义 Permission

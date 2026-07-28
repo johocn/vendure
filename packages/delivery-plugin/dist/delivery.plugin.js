@@ -15,6 +15,8 @@ const core_1 = require("@nestjs/core");
 const core_2 = require("@vendure/core");
 const address_custom_fields_1 = require("./config/address-custom-fields");
 const order_custom_fields_1 = require("./config/order-custom-fields");
+const delivery_admin_resolver_1 = require("./delivery-admin.resolver");
+const delivery_service_1 = require("./delivery.service");
 const constants_1 = require("./constants");
 const permission_admin_resolver_1 = require("./permission-admin.resolver");
 const role_sync_1 = require("./role-sync");
@@ -45,6 +47,7 @@ DeliveryPlugin.init = () => new DeliveryPlugin_1();
 exports.DeliveryPlugin = DeliveryPlugin = DeliveryPlugin_1 = __decorate([
     (0, core_2.VendurePlugin)({
         imports: [core_2.PluginCommonModule],
+        providers: [delivery_service_1.DeliveryService],
         adminApiExtensions: {
             schema: () => {
                 const { gql } = require('graphql-tag');
@@ -66,10 +69,19 @@ exports.DeliveryPlugin = DeliveryPlugin = DeliveryPlugin_1 = __decorate([
 
                 extend type Query {
                     myPermissions: MyPermissionsResult!
+                    myDeliveries(status: String): [Order!]!
+                    allDeliveries(status: String): [Order!]!
+                }
+
+                extend type Mutation {
+                    startDelivery(orderId: ID!): Order!
+                    markDelivered(orderId: ID!, photos: [String!]!, note: String): Order!
+                    reportException(orderId: ID!, type: String!, photos: [String!]!, note: String): Order!
+                    reassignDelivery(orderId: ID!, newStaffId: ID!): Order!
                 }
             `;
             },
-            resolvers: [permission_admin_resolver_1.PermissionAdminResolver],
+            resolvers: [permission_admin_resolver_1.PermissionAdminResolver, delivery_admin_resolver_1.DeliveryAdminResolver],
         },
         configuration: (config) => {
             var _a, _b, _c, _d, _e;
