@@ -18,4 +18,5 @@ __exportStar(require("./src/plugin"), exports);
 __exportStar(require("./src/types"), exports);
 __exportStar(require("./src/constants"), exports);
 __exportStar(require("./src/after-sales-request.entity"), exports);
+__exportStar(require("./src/after-sales.service"), exports);
 //# sourceMappingURL=index.js.map

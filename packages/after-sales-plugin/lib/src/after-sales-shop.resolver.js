@@ -24,7 +24,7 @@ let AfterSalesShopResolver = class AfterSalesShopResolver {
         return this.afterSalesService.findMyRequests(ctx, options);
     }
     async afterSalesRequest(ctx, id) {
-        return this.afterSalesService.findOne(ctx, id);
+        return this.afterSalesService.findOneForCustomer(ctx, id);
     }
     async createAfterSalesRequest(ctx, input) {
         return this.afterSalesService.createRequest(ctx, input);

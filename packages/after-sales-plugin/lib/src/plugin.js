@@ -50,6 +50,7 @@ exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
             { provide: constants_1.AFTER_SALES_PLUGIN_OPTIONS, useFactory: () => AfterSalesPlugin.options },
             after_sales_service_1.AfterSalesService,
         ],
+        exports: [after_sales_service_1.AfterSalesService],
         shopApiExtensions: {
             schema: () => gql `
             enum AfterSalesType { return_refund refund_only exchange }

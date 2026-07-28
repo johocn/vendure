@@ -4,9 +4,14 @@ export declare class AfterSalesService {
     private connection;
     private listQueryBuilder;
     private orderService;
+    private options;
     constructor(connection: TransactionalConnection, listQueryBuilder: ListQueryBuilder);
     init(injector: Injector): void;
     findOne(ctx: RequestContext, id: ID): Promise<AfterSalesRequest | undefined>;
+    /**
+     * Shop API 专用：按 customerId 过滤，防止越权枚举他人售后单。
+     */
+    findOneForCustomer(ctx: RequestContext, id: ID): Promise<AfterSalesRequest | undefined>;
     findMyRequests(ctx: RequestContext, options?: ListQueryOptions<AfterSalesRequest>): Promise<PaginatedList<AfterSalesRequest>>;
     findAll(ctx: RequestContext, options?: ListQueryOptions<AfterSalesRequest>): Promise<PaginatedList<AfterSalesRequest>>;
     createRequest(ctx: RequestContext, input: {
@@ -24,5 +29,9 @@ export declare class AfterSalesService {
     rejectRequest(ctx: RequestContext, id: ID, reason: string): Promise<AfterSalesRequest>;
     confirmReceive(ctx: RequestContext, id: ID): Promise<AfterSalesRequest>;
     processRefund(ctx: RequestContext, id: ID): Promise<AfterSalesRequest>;
+    /**
+     * 回写 Order customFields.afterSalesStatus。失败仅告警，不影响主流程。
+     */
+    private updateOrderAfterSalesStatus;
     private transitionState;
 }

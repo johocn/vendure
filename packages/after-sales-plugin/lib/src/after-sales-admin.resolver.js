@@ -39,7 +39,7 @@ let AfterSalesAdminResolver = class AfterSalesAdminResolver {
 exports.AfterSalesAdminResolver = AfterSalesAdminResolver;
 __decorate([
     (0, graphql_1.Query)(),
-    (0, core_1.Allow)(core_1.Permission.ReadSettings),
+    (0, core_1.Allow)(core_1.Permission.ReadOrder),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('options', { nullable: true })),
     __metadata("design:type", Function),
@@ -48,7 +48,7 @@ __decorate([
 ], AfterSalesAdminResolver.prototype, "afterSalesRequests", null);
 __decorate([
     (0, graphql_1.Mutation)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateSettings),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __metadata("design:type", Function),
@@ -57,7 +57,7 @@ __decorate([
 ], AfterSalesAdminResolver.prototype, "approveAfterSalesRequest", null);
 __decorate([
     (0, graphql_1.Mutation)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateSettings),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __param(2, (0, graphql_1.Args)('reason')),
@@ -67,7 +67,7 @@ __decorate([
 ], AfterSalesAdminResolver.prototype, "rejectAfterSalesRequest", null);
 __decorate([
     (0, graphql_1.Mutation)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateSettings),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __metadata("design:type", Function),
@@ -76,7 +76,7 @@ __decorate([
 ], AfterSalesAdminResolver.prototype, "confirmReturnReceived", null);
 __decorate([
     (0, graphql_1.Mutation)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateSettings),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __metadata("design:type", Function),

@@ -19,6 +19,7 @@ const { gql } = require('graphql-tag');
         { provide: AFTER_SALES_PLUGIN_OPTIONS, useFactory: () => AfterSalesPlugin.options },
         AfterSalesService,
     ],
+    exports: [AfterSalesService],
     shopApiExtensions: {
         schema: () => gql`
             enum AfterSalesType { return_refund refund_only exchange }
