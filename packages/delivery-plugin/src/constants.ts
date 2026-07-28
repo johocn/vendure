@@ -85,13 +85,15 @@ export enum ExceptionType {
 }
 
 // Role 与 Permission 绑定表
+// 所有角色必须包含 'Authenticated' 基础权限，否则无法访问任何受保护的 API
 export const ROLE_PERMISSIONS_MAP: Record<string, string[]> = {
-  'delivery-staff':     ['DeliverOrder', 'MarkDelivered', 'ReportException'],
-  'sales-staff':        ['CreateOrder', 'ViewOwnSales', 'ManageCustomer', 'ViewSalesReport', 'ViewStock', 'ManageProduct'],
-  'inventory-staff':    ['ViewStock', 'ManageStockMove', 'ManageStocktake', 'ManageStockIn', 'ManageStockOut', 'ManageProduct'],
-  'customer-service':   ['ViewAllOrders', 'HandleAfterSales', 'HandleException', 'ManageCustomer', 'ManageProduct'],
-  'operations-staff':   ['ManagePromotion', 'ManageContent', 'ViewDashboard'],
+  'delivery-staff':     ['Authenticated', 'DeliverOrder', 'MarkDelivered', 'ReportException'],
+  'sales-staff':        ['Authenticated', 'CreateOrder', 'ViewOwnSales', 'ManageCustomer', 'ViewSalesReport', 'ViewStock', 'ManageProduct'],
+  'inventory-staff':    ['Authenticated', 'ViewStock', 'ManageStockMove', 'ManageStocktake', 'ManageStockIn', 'ManageStockOut', 'ManageProduct'],
+  'customer-service':   ['Authenticated', 'ViewAllOrders', 'HandleAfterSales', 'HandleException', 'ManageCustomer', 'ManageProduct'],
+  'operations-staff':   ['Authenticated', 'ManagePromotion', 'ManageContent', 'ViewDashboard'],
   'manager':            [
+    'Authenticated',
     'DeliverOrder', 'MarkDelivered', 'ReportException', 'ViewAllDeliveries', 'ReassignDelivery',
     'CreateOrder', 'ViewOwnSales', 'ManageCustomer', 'ViewSalesReport',
     'ViewStock', 'ManageStockMove', 'ManageStocktake', 'ManageStockIn', 'ManageStockOut',
@@ -100,6 +102,7 @@ export const ROLE_PERMISSIONS_MAP: Record<string, string[]> = {
     'ManageProduct', 'ManageUser', 'ViewFinance', 'ManageMessage',
   ],
   'super-admin':        [
+    'Authenticated',
     'DeliverOrder', 'MarkDelivered', 'ReportException', 'ViewAllDeliveries', 'ReassignDelivery',
     'CreateOrder', 'ViewOwnSales', 'ManageCustomer', 'ViewSalesReport',
     'ViewStock', 'ManageStockMove', 'ManageStocktake', 'ManageStockIn', 'ManageStockOut',
@@ -113,9 +116,9 @@ export const ROLE_PERMISSIONS_MAP: Record<string, string[]> = {
 // 模块配置（与前端 shortcuts.ts 对齐）
 export const MODULE_CONFIGS = [
   { code: 'delivery',  name: '送货',  enabled: true,  entryPath: '/pkg-delivery/pages/list/index', icon: '📦', sort: 10, perms: ['DeliverOrder','MarkDelivered','ReportException','ViewAllDeliveries','ReassignDelivery'] },
-  { code: 'sales',     name: '销售',  enabled: false, entryPath: '/pkg-sales/pages/list/index',    icon: '📝', sort: 20, perms: ['CreateOrder','ViewOwnSales','ManageCustomer','ViewSalesReport'] },
+  { code: 'sales',     name: '销售',  enabled: true,  entryPath: '/pkg-sales/pages/list/index',    icon: '📝', sort: 20, perms: ['CreateOrder','ViewOwnSales','ManageCustomer','ViewSalesReport'] },
   { code: 'inventory', name: '调库',  enabled: false, entryPath: '/pkg-inventory/pages/stock/index', icon: '📊', sort: 30, perms: ['ViewStock','ManageStockMove','ManageStocktake','ManageStockIn','ManageStockOut'] },
-  { code: 'cs',        name: '客服',  enabled: false, entryPath: '/pkg-cs/pages/orders/index',    icon: '🎧', sort: 40, perms: ['ViewAllOrders','HandleAfterSales','HandleException'] },
+  { code: 'cs',        name: '客服',  enabled: true,  entryPath: '/pkg-cs/pages/orders/index',    icon: '🎧', sort: 40, perms: ['ViewAllOrders','HandleAfterSales','HandleException'] },
   { code: 'ops',       name: '运营',  enabled: false, entryPath: '/pkg-ops/pages/promotion/index', icon: '🎁', sort: 50, perms: ['ManagePromotion','ManageContent','ViewDashboard'] },
   { code: 'admin',     name: '管理',  enabled: false, entryPath: '/pkg-admin/pages/dashboard/index', icon: '⚙️', sort: 60, perms: ['ManageProduct','ManageUser','ViewFinance','ManageMessage','ViewDashboard'] },
   { code: 'common',    name: '通用',  enabled: true,  entryPath: '/pages/profile/index',         icon: '👤', sort: 70, perms: [] },

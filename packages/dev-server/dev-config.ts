@@ -50,6 +50,9 @@ import { ReviewPlugin } from '@vendure/review-plugin';
 import { WechatSubscribeMessagePlugin } from '@vendure/wechat-subscribe-message-plugin';
 import { CouponPlugin } from '@vendure/coupon-plugin';
 import { DeliveryPlugin } from '@vendure/delivery-plugin';
+import { SalesPlugin } from '@vendure/sales-plugin';
+import { SalesOrderItemPriceCalculationStrategy } from '@vendure/sales-plugin';
+import { CustomerServicePlugin } from '@vendure/customer-service-plugin';
 import { NavModifierPlugin } from './test-plugins/nav-modifier-plugin/nav-modifier-plugin';
 // import { FieldTestPlugin } from './test-plugins/field-test/field-test-plugin';
 import { ReviewsPlugin } from './test-plugins/reviews/reviews-plugin';
@@ -142,6 +145,9 @@ export const devConfig: VendureConfig = {
     },
     paymentOptions: {
         paymentMethodHandlers: [dummyPaymentHandler],
+    },
+    orderOptions: {
+        orderItemPriceCalculationStrategy: new SalesOrderItemPriceCalculationStrategy(),
     },
     settingsStoreFields: {
         MyPlugin: [
@@ -337,8 +343,11 @@ export const devConfig: VendureConfig = {
         WechatSubscribeMessagePlugin.init(),
         CouponPlugin.init(),
         DeliveryPlugin.init(),
+        SalesPlugin.init(),
+        CustomerServicePlugin.init(),
     ],
 };
+// SYNTAX_ERROR_TEST: const x: = ;
 
 function getDbConfig(): DataSourceOptions {
     const dbType = process.env.DB || 'mysql';
