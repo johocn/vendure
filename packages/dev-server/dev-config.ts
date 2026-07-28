@@ -49,6 +49,7 @@ import { MemberLevelPlugin } from '@vendure/member-level-plugin';
 import { ReviewPlugin } from '@vendure/review-plugin';
 import { WechatSubscribeMessagePlugin } from '@vendure/wechat-subscribe-message-plugin';
 import { CouponPlugin } from '@vendure/coupon-plugin';
+import { DeliveryPlugin } from '@vendure/delivery-plugin';
 import { NavModifierPlugin } from './test-plugins/nav-modifier-plugin/nav-modifier-plugin';
 // import { FieldTestPlugin } from './test-plugins/field-test/field-test-plugin';
 import { ReviewsPlugin } from './test-plugins/reviews/reviews-plugin';
@@ -335,6 +336,7 @@ export const devConfig: VendureConfig = {
         ReviewPlugin.init(),
         WechatSubscribeMessagePlugin.init(),
         CouponPlugin.init(),
+        DeliveryPlugin.init(),
     ],
 };
 
