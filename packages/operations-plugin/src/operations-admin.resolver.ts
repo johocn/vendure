@@ -142,7 +142,7 @@ export class OperationsAdminResolver {
     private assertContentPermission(ctx: RequestContext, type?: string): void {
         const requiredPerm = this.getPermissionByType(type);
         if (!ctx.userHasPermissions([requiredPerm])) {
-            throw new ForbiddenError(`User is not authorized to manage ${type ?? 'content'} content`);
+            throw new ForbiddenError();
         }
     }
 
