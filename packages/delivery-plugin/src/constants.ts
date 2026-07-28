@@ -31,6 +31,9 @@ export const DeliveryPermissions = {
   ManageRecommendation: 'ManageRecommendation',
   ManageNotice: 'ManageNotice',
   ManageFloor: 'ManageFloor',
+  ManageFlashSale: 'ManageFlashSale',
+  ManageGroupBuy: 'ManageGroupBuy',
+  ManageCoupon: 'ManageCoupon',
 } as const;
 
 // 权限描述映射
@@ -63,6 +66,9 @@ const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   ManageRecommendation: '推荐位管理',
   ManageNotice: '公告/弹窗管理',
   ManageFloor: '首页楼层管理',
+  ManageFlashSale: '闪购活动管理',
+  ManageGroupBuy: '拼团活动管理',
+  ManageCoupon: '优惠券管理',
 };
 
 // PermissionDefinition 实例数组，用于注册到 config.authOptions.customPermissions
@@ -99,7 +105,7 @@ export const ROLE_PERMISSIONS_MAP: Record<string, string[]> = {
   'sales-staff':        ['Authenticated', 'CreateOrder', 'ViewOwnSales', 'ManageCustomer', 'ViewSalesReport', 'ViewStock', 'ManageProduct'],
   'inventory-staff':    ['Authenticated', 'ViewStock', 'ManageStockMove', 'ManageStocktake', 'ManageStockIn', 'ManageStockOut', 'ManageProduct'],
   'customer-service':   ['Authenticated', 'ViewAllOrders', 'HandleAfterSales', 'HandleException', 'ManageCustomer', 'ManageProduct'],
-  'operations-staff':   ['Authenticated', 'ViewDashboard', 'ManageBanner', 'ManageRecommendation', 'ManageNotice', 'ManageFloor', 'ManagePromotion', 'ManageContent'],
+  'operations-staff':   ['Authenticated', 'ViewDashboard', 'ManageBanner', 'ManageRecommendation', 'ManageNotice', 'ManageFloor', 'ManagePromotion', 'ManageContent', 'ManageFlashSale', 'ManageGroupBuy', 'ManageCoupon'],
   'manager':            [
     'Authenticated',
     'DeliverOrder', 'MarkDelivered', 'ReportException', 'ViewAllDeliveries', 'ReassignDelivery',
@@ -109,6 +115,7 @@ export const ROLE_PERMISSIONS_MAP: Record<string, string[]> = {
     'ManagePromotion', 'ManageContent', 'ViewDashboard',
     'ManageProduct', 'ManageUser', 'ViewFinance', 'ManageMessage',
     'ManageBanner', 'ManageRecommendation', 'ManageNotice', 'ManageFloor',
+    'ManageFlashSale', 'ManageGroupBuy', 'ManageCoupon',
   ],
   'super-admin':        [
     'Authenticated',
@@ -119,6 +126,7 @@ export const ROLE_PERMISSIONS_MAP: Record<string, string[]> = {
     'ManagePromotion', 'ManageContent', 'ViewDashboard',
     'ManageProduct', 'ManageUser', 'ViewFinance', 'ManageMessage',
     'ManageBanner', 'ManageRecommendation', 'ManageNotice', 'ManageFloor',
+    'ManageFlashSale', 'ManageGroupBuy', 'ManageCoupon',
     'SuperAdmin',
   ],
 };

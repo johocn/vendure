@@ -29,6 +29,13 @@ exports.DeliveryPermissions = {
     ManageUser: 'ManageUser',
     ViewFinance: 'ViewFinance',
     ManageMessage: 'ManageMessage',
+    ManageBanner: 'ManageBanner',
+    ManageRecommendation: 'ManageRecommendation',
+    ManageNotice: 'ManageNotice',
+    ManageFloor: 'ManageFloor',
+    ManageFlashSale: 'ManageFlashSale',
+    ManageGroupBuy: 'ManageGroupBuy',
+    ManageCoupon: 'ManageCoupon',
 };
 // 权限描述映射
 const PERMISSION_DESCRIPTIONS = {
@@ -56,6 +63,13 @@ const PERMISSION_DESCRIPTIONS = {
     ManageUser: '用户管理',
     ViewFinance: '财务概览',
     ManageMessage: '消息群发',
+    ManageBanner: 'Banner 轮播管理',
+    ManageRecommendation: '推荐位管理',
+    ManageNotice: '公告/弹窗管理',
+    ManageFloor: '首页楼层管理',
+    ManageFlashSale: '闪购活动管理',
+    ManageGroupBuy: '拼团活动管理',
+    ManageCoupon: '优惠券管理',
 };
 // PermissionDefinition 实例数组，用于注册到 config.authOptions.customPermissions
 exports.deliveryPermissionDefinitions = Object.entries(exports.DeliveryPermissions).map(([key, name]) => {
@@ -82,37 +96,44 @@ var ExceptionType;
     ExceptionType["Other"] = "other";
 })(ExceptionType || (exports.ExceptionType = ExceptionType = {}));
 // Role 与 Permission 绑定表
+// 所有角色必须包含 'Authenticated' 基础权限，否则无法访问任何受保护的 API
 exports.ROLE_PERMISSIONS_MAP = {
-    'delivery-staff': ['DeliverOrder', 'MarkDelivered', 'ReportException'],
-    'sales-staff': ['CreateOrder', 'ViewOwnSales', 'ManageCustomer', 'ViewSalesReport', 'ViewStock', 'ManageProduct'],
-    'inventory-staff': ['ViewStock', 'ManageStockMove', 'ManageStocktake', 'ManageStockIn', 'ManageStockOut', 'ManageProduct'],
-    'customer-service': ['ViewAllOrders', 'HandleAfterSales', 'HandleException', 'ManageCustomer', 'ManageProduct'],
-    'operations-staff': ['ManagePromotion', 'ManageContent', 'ViewDashboard'],
+    'delivery-staff': ['Authenticated', 'DeliverOrder', 'MarkDelivered', 'ReportException'],
+    'sales-staff': ['Authenticated', 'CreateOrder', 'ViewOwnSales', 'ManageCustomer', 'ViewSalesReport', 'ViewStock', 'ManageProduct'],
+    'inventory-staff': ['Authenticated', 'ViewStock', 'ManageStockMove', 'ManageStocktake', 'ManageStockIn', 'ManageStockOut', 'ManageProduct'],
+    'customer-service': ['Authenticated', 'ViewAllOrders', 'HandleAfterSales', 'HandleException', 'ManageCustomer', 'ManageProduct'],
+    'operations-staff': ['Authenticated', 'ViewDashboard', 'ManageBanner', 'ManageRecommendation', 'ManageNotice', 'ManageFloor', 'ManagePromotion', 'ManageContent', 'ManageFlashSale', 'ManageGroupBuy', 'ManageCoupon'],
     'manager': [
+        'Authenticated',
         'DeliverOrder', 'MarkDelivered', 'ReportException', 'ViewAllDeliveries', 'ReassignDelivery',
         'CreateOrder', 'ViewOwnSales', 'ManageCustomer', 'ViewSalesReport',
         'ViewStock', 'ManageStockMove', 'ManageStocktake', 'ManageStockIn', 'ManageStockOut',
         'ViewAllOrders', 'HandleAfterSales', 'HandleException',
         'ManagePromotion', 'ManageContent', 'ViewDashboard',
         'ManageProduct', 'ManageUser', 'ViewFinance', 'ManageMessage',
+        'ManageBanner', 'ManageRecommendation', 'ManageNotice', 'ManageFloor',
+        'ManageFlashSale', 'ManageGroupBuy', 'ManageCoupon',
     ],
     'super-admin': [
+        'Authenticated',
         'DeliverOrder', 'MarkDelivered', 'ReportException', 'ViewAllDeliveries', 'ReassignDelivery',
         'CreateOrder', 'ViewOwnSales', 'ManageCustomer', 'ViewSalesReport',
         'ViewStock', 'ManageStockMove', 'ManageStocktake', 'ManageStockIn', 'ManageStockOut',
         'ViewAllOrders', 'HandleAfterSales', 'HandleException',
         'ManagePromotion', 'ManageContent', 'ViewDashboard',
         'ManageProduct', 'ManageUser', 'ViewFinance', 'ManageMessage',
+        'ManageBanner', 'ManageRecommendation', 'ManageNotice', 'ManageFloor',
+        'ManageFlashSale', 'ManageGroupBuy', 'ManageCoupon',
         'SuperAdmin',
     ],
 };
 // 模块配置（与前端 shortcuts.ts 对齐）
 exports.MODULE_CONFIGS = [
     { code: 'delivery', name: '送货', enabled: true, entryPath: '/pkg-delivery/pages/list/index', icon: '📦', sort: 10, perms: ['DeliverOrder', 'MarkDelivered', 'ReportException', 'ViewAllDeliveries', 'ReassignDelivery'] },
-    { code: 'sales', name: '销售', enabled: false, entryPath: '/pkg-sales/pages/list/index', icon: '📝', sort: 20, perms: ['CreateOrder', 'ViewOwnSales', 'ManageCustomer', 'ViewSalesReport'] },
-    { code: 'inventory', name: '调库', enabled: false, entryPath: '/pkg-inventory/pages/stock/index', icon: '📊', sort: 30, perms: ['ViewStock', 'ManageStockMove', 'ManageStocktake', 'ManageStockIn', 'ManageStockOut'] },
-    { code: 'cs', name: '客服', enabled: false, entryPath: '/pkg-cs/pages/orders/index', icon: '🎧', sort: 40, perms: ['ViewAllOrders', 'HandleAfterSales', 'HandleException'] },
-    { code: 'ops', name: '运营', enabled: false, entryPath: '/pkg-ops/pages/promotion/index', icon: '🎁', sort: 50, perms: ['ManagePromotion', 'ManageContent', 'ViewDashboard'] },
+    { code: 'sales', name: '销售', enabled: true, entryPath: '/pkg-sales/pages/list/index', icon: '📝', sort: 20, perms: ['CreateOrder', 'ViewOwnSales', 'ManageCustomer', 'ViewSalesReport'] },
+    { code: 'inventory', name: '调库', enabled: true, entryPath: '/pkg-inventory/pages/stock/index', icon: '📊', sort: 30, perms: ['ViewStock', 'ManageStockMove', 'ManageStocktake', 'ManageStockIn', 'ManageStockOut'] },
+    { code: 'cs', name: '客服', enabled: true, entryPath: '/pkg-cs/pages/orders/index', icon: '🎧', sort: 40, perms: ['ViewAllOrders', 'HandleAfterSales', 'HandleException'] },
+    { code: 'ops', name: '运营', enabled: true, entryPath: '/pkg-ops/pages/dashboard/index', icon: '📊', sort: 50, perms: ['ViewDashboard', 'ManageBanner', 'ManageRecommendation', 'ManageNotice', 'ManageFloor', 'ManagePromotion', 'ManageContent'] },
     { code: 'admin', name: '管理', enabled: false, entryPath: '/pkg-admin/pages/dashboard/index', icon: '⚙️', sort: 60, perms: ['ManageProduct', 'ManageUser', 'ViewFinance', 'ManageMessage', 'ViewDashboard'] },
     { code: 'common', name: '通用', enabled: true, entryPath: '/pages/profile/index', icon: '👤', sort: 70, perms: [] },
 ];

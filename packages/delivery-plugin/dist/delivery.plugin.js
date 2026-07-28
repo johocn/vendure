@@ -28,6 +28,7 @@ let DeliveryPlugin = DeliveryPlugin_1 = class DeliveryPlugin {
     }
     async onApplicationBootstrap() {
         var _a;
+        core_2.Logger.info('onApplicationBootstrap called, moduleRef exists: ' + !!this.moduleRef, loggerCtx);
         if (!this.moduleRef) {
             return;
         }
@@ -47,7 +48,7 @@ let DeliveryPlugin = DeliveryPlugin_1 = class DeliveryPlugin {
     }
 };
 exports.DeliveryPlugin = DeliveryPlugin;
-DeliveryPlugin.init = () => new DeliveryPlugin_1();
+DeliveryPlugin.init = () => DeliveryPlugin_1;
 exports.DeliveryPlugin = DeliveryPlugin = DeliveryPlugin_1 = __decorate([
     (0, core_2.VendurePlugin)({
         imports: [core_2.PluginCommonModule],
