@@ -1,0 +1,18 @@
+{
+  "name": "@vendure/operations-plugin",
+  "version": "1.0.0",
+  "description": "Operations dashboard and CMS management plugin for vendure",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w"
+  },
+  "dependencies": {
+    "@vendure/core": "^3.6.0",
+    "@vendure/delivery-plugin": "1.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
