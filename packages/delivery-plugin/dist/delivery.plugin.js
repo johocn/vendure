@@ -16,6 +16,7 @@ const core_2 = require("@vendure/core");
 const address_custom_fields_1 = require("./config/address-custom-fields");
 const order_custom_fields_1 = require("./config/order-custom-fields");
 const delivery_admin_resolver_1 = require("./delivery-admin.resolver");
+const delivery_events_1 = require("./delivery-events");
 const delivery_service_1 = require("./delivery.service");
 const constants_1 = require("./constants");
 const permission_admin_resolver_1 = require("./permission-admin.resolver");
@@ -35,10 +36,13 @@ let DeliveryPlugin = DeliveryPlugin_1 = class DeliveryPlugin {
             const roleSync = new role_sync_1.RoleSyncService();
             roleSync.init(injector);
             await roleSync.syncRoles();
+            // 注册自动派单事件订阅（订单进入 PaymentSettled 时触发）
+            const eventSubscriber = new delivery_events_1.DeliveryEventSubscriber();
+            eventSubscriber.init(injector);
         }
         catch (err) {
             // 同步失败不阻塞 bootstrap，仅记录日志，便于后续手动排查
-            core_2.Logger.error(`Role sync failed on bootstrap: ${(_a = err === null || err === void 0 ? void 0 : err.message) !== null && _a !== void 0 ? _a : err}`, loggerCtx);
+            core_2.Logger.error(`Bootstrap failed: ${(_a = err === null || err === void 0 ? void 0 : err.message) !== null && _a !== void 0 ? _a : err}`, loggerCtx);
         }
     }
 };

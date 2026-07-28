@@ -5,6 +5,7 @@ import { Injector, Logger, PluginCommonModule, VendurePlugin } from '@vendure/co
 import { deliveryAddressCustomFields } from './config/address-custom-fields';
 import { deliveryOrderCustomFields } from './config/order-custom-fields';
 import { DeliveryAdminResolver } from './delivery-admin.resolver';
+import { DeliveryEventSubscriber } from './delivery-events';
 import { DeliveryService } from './delivery.service';
 import { deliveryPermissionDefinitions } from './constants';
 import { PermissionAdminResolver } from './permission-admin.resolver';
@@ -83,9 +84,13 @@ export class DeliveryPlugin implements OnApplicationBootstrap {
             const roleSync = new RoleSyncService();
             roleSync.init(injector);
             await roleSync.syncRoles();
+
+            // 注册自动派单事件订阅（订单进入 PaymentSettled 时触发）
+            const eventSubscriber = new DeliveryEventSubscriber();
+            eventSubscriber.init(injector);
         } catch (err: any) {
             // 同步失败不阻塞 bootstrap，仅记录日志，便于后续手动排查
-            Logger.error(`Role sync failed on bootstrap: ${err?.message ?? err}`, loggerCtx);
+            Logger.error(`Bootstrap failed: ${err?.message ?? err}`, loggerCtx);
         }
     }
 }
