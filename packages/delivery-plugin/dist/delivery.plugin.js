@@ -16,6 +16,7 @@ const core_2 = require("@vendure/core");
 const address_custom_fields_1 = require("./config/address-custom-fields");
 const order_custom_fields_1 = require("./config/order-custom-fields");
 const constants_1 = require("./constants");
+const permission_admin_resolver_1 = require("./permission-admin.resolver");
 const role_sync_1 = require("./role-sync");
 const loggerCtx = 'DeliveryPlugin';
 let DeliveryPlugin = DeliveryPlugin_1 = class DeliveryPlugin {
@@ -44,6 +45,32 @@ DeliveryPlugin.init = () => new DeliveryPlugin_1();
 exports.DeliveryPlugin = DeliveryPlugin = DeliveryPlugin_1 = __decorate([
     (0, core_2.VendurePlugin)({
         imports: [core_2.PluginCommonModule],
+        adminApiExtensions: {
+            schema: () => {
+                const { gql } = require('graphql-tag');
+                return gql `
+                type PermissionModule {
+                    code: String!
+                    name: String!
+                    enabled: Boolean!
+                    entryPath: String!
+                    icon: String!
+                    sort: Int!
+                }
+
+                type MyPermissionsResult {
+                    roles: [String!]!
+                    permissions: [String!]!
+                    visibleModules: [PermissionModule!]!
+                }
+
+                extend type Query {
+                    myPermissions: MyPermissionsResult!
+                }
+            `;
+            },
+            resolvers: [permission_admin_resolver_1.PermissionAdminResolver],
+        },
         configuration: (config) => {
             var _a, _b, _c, _d, _e;
             // 注册自定义 Permission

@@ -5,12 +5,39 @@ import { Injector, Logger, PluginCommonModule, VendurePlugin } from '@vendure/co
 import { deliveryAddressCustomFields } from './config/address-custom-fields';
 import { deliveryOrderCustomFields } from './config/order-custom-fields';
 import { deliveryPermissionDefinitions } from './constants';
+import { PermissionAdminResolver } from './permission-admin.resolver';
 import { RoleSyncService } from './role-sync';
 
 const loggerCtx = 'DeliveryPlugin';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
+    adminApiExtensions: {
+        schema: () => {
+            const { gql } = require('graphql-tag');
+            return gql`
+                type PermissionModule {
+                    code: String!
+                    name: String!
+                    enabled: Boolean!
+                    entryPath: String!
+                    icon: String!
+                    sort: Int!
+                }
+
+                type MyPermissionsResult {
+                    roles: [String!]!
+                    permissions: [String!]!
+                    visibleModules: [PermissionModule!]!
+                }
+
+                extend type Query {
+                    myPermissions: MyPermissionsResult!
+                }
+            `;
+        },
+        resolvers: [PermissionAdminResolver],
+    },
     configuration: (config) => {
         // 注册自定义 Permission
         config.authOptions.customPermissions = [
