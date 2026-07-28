@@ -69,29 +69,29 @@ export enum StocktakeState {
 
 // ===== 状态转换表 =====
 export const STOCK_IN_TRANSITIONS: Record<StockInState, StockInState[]> = {
-  Pending: ['Completed', 'Cancelled'],
-  Completed: [],
-  Cancelled: [],
+  [StockInState.Pending]: [StockInState.Completed, StockInState.Cancelled],
+  [StockInState.Completed]: [],
+  [StockInState.Cancelled]: [],
 };
 
 export const STOCK_OUT_TRANSITIONS: Record<StockOutState, StockOutState[]> = {
-  Pending: ['Completed', 'Cancelled'],
-  Completed: [],
-  Cancelled: [],
+  [StockOutState.Pending]: [StockOutState.Completed, StockOutState.Cancelled],
+  [StockOutState.Completed]: [],
+  [StockOutState.Cancelled]: [],
 };
 
 export const STOCK_MOVE_TRANSITIONS: Record<StockMoveState, StockMoveState[]> = {
-  Pending: ['InTransit', 'Cancelled'],
-  InTransit: ['Received', 'Cancelled'],
-  Received: ['Completed'],
-  Completed: [],
-  Cancelled: [],
+  [StockMoveState.Pending]: [StockMoveState.InTransit, StockMoveState.Cancelled],
+  [StockMoveState.InTransit]: [StockMoveState.Received, StockMoveState.Cancelled],
+  [StockMoveState.Received]: [StockMoveState.Completed],
+  [StockMoveState.Completed]: [],
+  [StockMoveState.Cancelled]: [],
 };
 
 export const STOCKTAKE_TRANSITIONS: Record<StocktakeState, StocktakeState[]> = {
-  Pending: ['Counting', 'Cancelled'],
-  Counting: ['Reconciling', 'Cancelled'],
-  Reconciling: ['Completed'],
-  Completed: [],
-  Cancelled: [],
+  [StocktakeState.Pending]: [StocktakeState.Counting, StocktakeState.Cancelled],
+  [StocktakeState.Counting]: [StocktakeState.Reconciling, StocktakeState.Cancelled],
+  [StocktakeState.Reconciling]: [StocktakeState.Completed],
+  [StocktakeState.Completed]: [],
+  [StocktakeState.Cancelled]: [],
 };
