@@ -1,98 +1,109 @@
 // e:\code\vendure\reset-operations-pwd.js
-// Sets up test account: ops1@zhao.test / a963963 with operations-staff role
-// Usage: node reset-operations-pwd.js
-//
-// Implementation note: Uses admin GraphQL API (consistent with reset-cs-pwd.js
-// and test-sales-flow.js). Avoids direct DB access to be cross-database
-// compatible (dev-config default is MariaDB; PostgreSQL is also supported).
-// Vendure's User entity table name is `user` (reserved keyword in PostgreSQL)
-// and `user_record` is NOT a valid table name. Role.permissions is stored as
-// simple-array (comma-separated string), not JSON.
+// 创建/重置 ops1@zhao.test 测试账号 (operations-staff 角色)
+// 运行: node reset-operations-pwd.js
+// 鉴权方式：参考 reset-cs-pwd.js / reset-inventory-pwd.js，从 response header `vendure-auth-token` 取 Bearer token
 
 const fetch = require('node-fetch');
 
 const ADMIN_API = 'http://localhost:3000/admin-api';
 
+// 统一 GraphQL 请求函数
 async function gql(query, variables = {}, token = '') {
-  const headers = { 'Content-Type': 'application/json' };
-  if (token) headers.authorization = `Bearer ${token}`;
-  const res = await fetch(ADMIN_API, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ query, variables }),
-  });
-  const body = await res.json();
-  if (body.errors) {
-    const err = new Error(body.errors.map(e => e.message).join('; '));
-    err.body = body;
-    throw err;
-  }
-  const headerToken = res.headers.get('vendure-auth-token');
-  if (headerToken) body.data.__authToken = headerToken;
-  return body.data;
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers.authorization = `Bearer ${token}`;
+    const res = await fetch(ADMIN_API, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ query, variables }),
+    });
+    const body = await res.json();
+    if (body.errors) throw new Error(JSON.stringify(body.errors));
+    const headerToken = res.headers.get('vendure-auth-token');
+    if (headerToken) body.data.__authToken = headerToken;
+    return body.data;
 }
 
+// 登录函数：从 response header 取 Bearer token
 async function login(username, password) {
-  const data = await gql(
-    `mutation Login($username: String!, $password: String!) {
-      login(username: $username, password: $password) {
-        ... on CurrentUser { identifier id }
-        ... on InvalidCredentialsError { message }
-      }
-    }`,
-    { username, password },
-  );
-  if (!data.__authToken) {
-    throw new Error('Login failed: ' + (data.login?.message ?? 'no token returned'));
-  }
-  return data.__authToken;
+    const data = await gql(
+        `mutation Login($username: String!, $password: String!) {
+            login(username: $username, password: $password) {
+                ... on CurrentUser { identifier }
+                ... on InvalidCredentialsError { message }
+            }
+        }`,
+        { username, password },
+    );
+    if (!data.__authToken) throw new Error('Login failed');
+    return data.__authToken;
 }
 
 async function main() {
-  console.log('=== Operations test account setup ===\n');
+    // 1. 超管登录
+    const token = await login('superadmin@china.test', 'superadmin');
+    console.log('✓ superadmin login ok');
 
-  // 1. superadmin login
-  const adminToken = await login('superadmin@china.test', 'superadmin');
-  console.log('superadmin login ok');
-
-  // 2. Verify operations-staff role exists (RoleSync should have created it)
-  const rolesData = await gql(
-    `query { roles(options: { filter: { code: { eq: "operations-staff" } } }) { items { id code permissions } } }`,
-    {},
-    adminToken,
-  );
-  const opsRole = rolesData.roles.items[0];
-  if (!opsRole) {
-    console.error('operations-staff role not found. Start the server first to trigger RoleSync.');
-    process.exit(1);
-  }
-  console.log(`operations-staff role found: id=${opsRole.id}`);
-  console.log(`  permissions: ${opsRole.permissions.join(', ')}`);
-
-  // 3. Create ops1 administrator (skip if exists)
-  try {
-    await gql(
-      `mutation {
-        createAdministrator(input: {
-          firstName: "Ops"
-          lastName: "Staff"
-          emailAddress: "ops1@zhao.test"
-          password: "a963963"
-          roleCodes: ["operations-staff"]
-        }) { id }
-      }`,
-      {},
-      adminToken,
+    // 2. 查询 operations-staff 角色 ID
+    const rolesRes = await gql(
+        `query { roles(options: { filter: { code: { eq: "operations-staff" } } }) { items { id code } } }`,
+        {},
+        token,
     );
-    console.log('Created administrator ops1@zhao.test');
-  } catch (e) {
-    console.log('Administrator ops1@zhao.test already exists, skipping creation');
-  }
+    const opsRoleId = rolesRes.roles.items[0]?.id;
+    if (!opsRoleId) throw new Error('operations-staff role not found');
+    console.log(`✓ operations-staff role id: ${opsRoleId}`);
 
-  console.log('\nDone. Login: ops1@zhao.test / a963963');
+    // 3. 查询 ops1@zhao.test 是否已存在
+    const adminsRes = await gql(
+        `query { administrators(options: { filter: { emailAddress: { eq: "ops1@zhao.test" } } }) { items { id emailAddress } } }`,
+        {},
+        token,
+    );
+    const existing = adminsRes.administrators.items[0];
+
+    if (!existing) {
+        // 创建
+        const created = await gql(
+            `mutation($input: CreateAdministratorInput!) {
+                createAdministrator(input: $input) { id emailAddress }
+            }`,
+            {
+                input: {
+                    firstName: 'Ops',
+                    lastName: 'Staff',
+                    emailAddress: 'ops1@zhao.test',
+                    password: 'a963963',
+                    roleIds: [opsRoleId],
+                },
+            },
+            token,
+        );
+        console.log(`✓ Administrator created: ${created.createAdministrator.emailAddress}`);
+    } else {
+        // 更新密码 + 角色绑定
+        await gql(
+            `mutation($id: ID!, $pwd: String!) {
+                updateAdministrator(input: { id: $id, password: $pwd }) { id emailAddress }
+            }`,
+            { id: existing.id, pwd: 'a963963' },
+            token,
+        );
+        await gql(
+            `mutation($id: ID!, $roleIds: [ID!]!) {
+                updateAdministrator(input: { id: $id, roleIds: $roleIds }) { id emailAddress }
+            }`,
+            { id: existing.id, roleIds: [opsRoleId] },
+            token,
+        );
+        console.log(`✓ Administrator updated: ${existing.emailAddress} (password reset + role bound)`);
+    }
+
+    // 4. 验证 ops1 能登录
+    const opsToken = await login('ops1@zhao.test', 'a963963');
+    console.log('✓ ops1@zhao.test login verified, token acquired');
 }
 
 main().catch(e => {
-  console.error(e?.message ?? e);
-  process.exit(1);
+    console.error('ERROR:', e.message);
+    process.exit(1);
 });

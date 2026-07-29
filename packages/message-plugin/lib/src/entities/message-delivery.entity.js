@@ -35,7 +35,7 @@ __decorate([
     __metadata("design:type", String)
 ], MessageDelivery.prototype, "deliveryError", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
+    (0, typeorm_1.Column)({ nullable: true }),
     __metadata("design:type", Date)
 ], MessageDelivery.prototype, "readAt", void 0);
 __decorate([

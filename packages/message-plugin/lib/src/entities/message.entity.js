@@ -55,7 +55,7 @@ __decorate([
     __metadata("design:type", Number)
 ], Message.prototype, "totalFailed", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
+    (0, typeorm_1.Column)({ nullable: true }),
     __metadata("design:type", Date)
 ], Message.prototype, "sentAt", void 0);
 __decorate([

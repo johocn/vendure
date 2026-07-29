@@ -50,7 +50,7 @@ exports.MessagePlugin = MessagePlugin = MessagePlugin_1 = __decorate([
         ],
         adminApiExtensions: {
             schema: () => gql `
-            type Message {
+            type Message implements Node {
                 id: ID!
                 title: String!
                 body: String!
@@ -110,7 +110,7 @@ exports.MessagePlugin = MessagePlugin = MessagePlugin_1 = __decorate([
         },
         shopApiExtensions: {
             schema: () => gql `
-            type MyMessage {
+            type MyMessage implements Node {
                 id: ID!
                 messageId: ID!
                 title: String!
