@@ -1,0 +1,170 @@
+import { ID } from '@vendure/common/lib/shared-types';
+import { RequestContext, StockLevel, StockLevelService, StockLocationService, StockMovementService, StockLocation, TransactionalConnection } from '@vendure/core';
+import { StockInOrder } from './entities/stock-in-order.entity';
+import { StockOutOrder } from './entities/stock-out-order.entity';
+import { StockMoveOrder } from './entities/stock-move-order.entity';
+import { StocktakeOrder } from './entities/stocktake-order.entity';
+export declare class InventoryService {
+    private connection;
+    private stockMovementService;
+    private stockLevelService;
+    private stockLocationService;
+    constructor(connection: TransactionalConnection, stockMovementService: StockMovementService, stockLevelService: StockLevelService, stockLocationService: StockLocationService);
+    /**
+     * 调整某仓库的库存（delta 为正数表示增加，负数表示减少）
+     * 通过 adjustProductVariantStock 写入 StockAdjustment 流水
+     * 在 customFields.businessReason 记录业务来源（无需二次查询）
+     */
+    protected adjustStockForLocation(ctx: RequestContext, variantId: ID, locationId: ID, delta: number, reason: string): Promise<void>;
+    /**
+     * 校验源仓库存是否充足（available = stockOnHand - stockAllocated）
+     */
+    protected assertSufficientStock(ctx: RequestContext, variantId: ID, locationId: ID, requiredQty: number): Promise<void>;
+    /**
+     * 状态转换校验
+     */
+    protected assertTransition<S extends string>(order: {
+        state: S;
+    }, fromState: S, toState: S, transitions: Record<S, S[]>): void;
+    /**
+     * 生成业务单号（前缀 + 时间戳 + 随机数）
+     */
+    protected generateCode(prefix: string): string;
+    findStockLevels(ctx: RequestContext, options?: {
+        locationId?: ID;
+        page?: number;
+        pageSize?: number;
+    }): Promise<{
+        items: StockLevel[];
+        totalItems: number;
+    }>;
+    findStockMovements(ctx: RequestContext, options?: {
+        productVariantId?: ID;
+        locationId?: ID;
+        type?: string;
+        page?: number;
+        pageSize?: number;
+    }): Promise<{
+        items: any[];
+        totalItems: number;
+    }>;
+    findStockLocations(ctx: RequestContext, options?: {
+        page?: number;
+        pageSize?: number;
+    }): Promise<{
+        items: StockLocation[];
+        totalItems: number;
+    }>;
+    createStockInOrder(ctx: RequestContext, input: {
+        type?: string;
+        note?: string;
+        targetLocationId: ID;
+        lines: Array<{
+            productVariantId: ID;
+            quantity: number;
+            unitPrice?: number;
+        }>;
+    }): Promise<StockInOrder>;
+    findStockInOrders(ctx: RequestContext, options?: {
+        state?: string;
+        page?: number;
+        pageSize?: number;
+    }): Promise<{
+        items: StockInOrder[];
+        totalItems: number;
+    }>;
+    findOneStockInOrder(ctx: RequestContext, id: ID): Promise<StockInOrder | null>;
+    completeStockInOrder(ctx: RequestContext, id: ID): Promise<StockInOrder>;
+    cancelStockInOrder(ctx: RequestContext, id: ID): Promise<StockInOrder>;
+    createStockOutOrder(ctx: RequestContext, input: {
+        type?: string;
+        note?: string;
+        sourceLocationId: ID;
+        lines: Array<{
+            productVariantId: ID;
+            quantity: number;
+            unitPrice?: number;
+        }>;
+    }): Promise<StockOutOrder>;
+    findStockOutOrders(ctx: RequestContext, options?: {
+        state?: string;
+        page?: number;
+        pageSize?: number;
+    }): Promise<{
+        items: StockOutOrder[];
+        totalItems: number;
+    }>;
+    findOneStockOutOrder(ctx: RequestContext, id: ID): Promise<StockOutOrder | null>;
+    completeStockOutOrder(ctx: RequestContext, id: ID): Promise<StockOutOrder>;
+    cancelStockOutOrder(ctx: RequestContext, id: ID): Promise<StockOutOrder>;
+    createStockMoveOrder(ctx: RequestContext, input: {
+        note?: string;
+        sourceLocationId: ID;
+        targetLocationId: ID;
+        lines: Array<{
+            productVariantId: ID;
+            quantity: number;
+        }>;
+    }): Promise<StockMoveOrder>;
+    findStockMoveOrders(ctx: RequestContext, options?: {
+        state?: string;
+        page?: number;
+        pageSize?: number;
+    }): Promise<{
+        items: StockMoveOrder[];
+        totalItems: number;
+    }>;
+    findOneStockMoveOrder(ctx: RequestContext, id: ID): Promise<StockMoveOrder | null>;
+    /**
+     * Pending → InTransit：源仓出库（扣减）
+     */
+    shipStockMoveOrder(ctx: RequestContext, id: ID): Promise<StockMoveOrder>;
+    /**
+     * InTransit → Received：目的仓入库（增加）
+     */
+    receiveStockMoveOrder(ctx: RequestContext, id: ID): Promise<StockMoveOrder>;
+    /**
+     * Received → Completed：仅状态变更
+     */
+    completeStockMoveOrder(ctx: RequestContext, id: ID): Promise<StockMoveOrder>;
+    /**
+     * Pending/InTransit → Cancelled
+     * - Pending 态：无库存操作
+     * - InTransit 态：回滚源仓（加回去）
+     */
+    cancelStockMoveOrder(ctx: RequestContext, id: ID): Promise<StockMoveOrder>;
+    createStocktakeOrder(ctx: RequestContext, input: {
+        note?: string;
+        locationId: ID;
+        productVariantIds: ID[];
+    }): Promise<StocktakeOrder>;
+    findStocktakeOrders(ctx: RequestContext, options?: {
+        state?: string;
+        page?: number;
+        pageSize?: number;
+    }): Promise<{
+        items: StocktakeOrder[];
+        totalItems: number;
+    }>;
+    findOneStocktakeOrder(ctx: RequestContext, id: ID): Promise<StocktakeOrder | null>;
+    /**
+     * Pending → Counting：快照 systemQuantity
+     */
+    startCountingStocktake(ctx: RequestContext, id: ID): Promise<StocktakeOrder>;
+    /**
+     * Counting → Reconciling：录入 countedQuantity，计算 difference
+     */
+    submitStocktakeCount(ctx: RequestContext, id: ID, counts: Array<{
+        lineId: ID;
+        countedQuantity: number;
+    }>): Promise<StocktakeOrder>;
+    /**
+     * 审核单行（标记 reconciled = true）
+     */
+    reconcileStocktakeLine(ctx: RequestContext, orderId: ID, lineId: ID): Promise<StocktakeOrder>;
+    /**
+     * Reconciling → Completed：对每行 reconciled=true 的行应用差异调整
+     */
+    completeStocktakeOrder(ctx: RequestContext, id: ID): Promise<StocktakeOrder>;
+    cancelStocktakeOrder(ctx: RequestContext, id: ID): Promise<StocktakeOrder>;
+}

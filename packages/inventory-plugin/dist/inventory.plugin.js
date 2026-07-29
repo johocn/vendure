@@ -1,30 +1,62 @@
-import { OnApplicationBootstrap } from '@nestjs/common';
-import { ModuleRef } from '@nestjs/core';
-import { Injector, Logger, PluginCommonModule, VendurePlugin } from '@vendure/core';
-
-import { InventoryAdminResolver } from './inventory-admin.resolver';
-import { InventoryService } from './inventory.service';
-import { RoleSyncService } from './role-sync';
-import { StockInOrder, StockInOrderLine } from './entities/stock-in-order.entity';
-import { StockOutOrder, StockOutOrderLine } from './entities/stock-out-order.entity';
-import { StockMoveOrder, StockMoveOrderLine } from './entities/stock-move-order.entity';
-import { StocktakeOrder, StocktakeOrderLine } from './entities/stocktake-order.entity';
-
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+var InventoryPlugin_1;
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.InventoryPlugin = void 0;
+const core_1 = require("@nestjs/core");
+const core_2 = require("@vendure/core");
+const inventory_admin_resolver_1 = require("./inventory-admin.resolver");
+const inventory_service_1 = require("./inventory.service");
+const role_sync_1 = require("./role-sync");
+const stock_in_order_entity_1 = require("./entities/stock-in-order.entity");
+const stock_out_order_entity_1 = require("./entities/stock-out-order.entity");
+const stock_move_order_entity_1 = require("./entities/stock-move-order.entity");
+const stocktake_order_entity_1 = require("./entities/stocktake-order.entity");
 const loggerCtx = 'InventoryPlugin';
-
 const { gql } = require('graphql-tag');
-
-@VendurePlugin({
-    imports: [PluginCommonModule],
-    providers: [InventoryService],
-    entities: [
-        StockInOrder, StockInOrderLine,
-        StockOutOrder, StockOutOrderLine,
-        StockMoveOrder, StockMoveOrderLine,
-        StocktakeOrder, StocktakeOrderLine,
-    ],
-    adminApiExtensions: {
-        schema: () => gql`
+let InventoryPlugin = InventoryPlugin_1 = class InventoryPlugin {
+    constructor(moduleRef) {
+        this.moduleRef = moduleRef;
+    }
+    async onApplicationBootstrap() {
+        var _a;
+        core_2.Logger.info('onApplicationBootstrap called', loggerCtx);
+        if (!this.moduleRef) {
+            return;
+        }
+        try {
+            const injector = new core_2.Injector(this.moduleRef);
+            const roleSync = new role_sync_1.RoleSyncService();
+            roleSync.init(injector);
+            await roleSync.syncRoles();
+        }
+        catch (err) {
+            core_2.Logger.error(`Bootstrap failed: ${(_a = err === null || err === void 0 ? void 0 : err.message) !== null && _a !== void 0 ? _a : err}`, loggerCtx);
+        }
+    }
+};
+exports.InventoryPlugin = InventoryPlugin;
+InventoryPlugin.init = () => InventoryPlugin_1;
+exports.InventoryPlugin = InventoryPlugin = InventoryPlugin_1 = __decorate([
+    (0, core_2.VendurePlugin)({
+        imports: [core_2.PluginCommonModule],
+        providers: [inventory_service_1.InventoryService],
+        entities: [
+            stock_in_order_entity_1.StockInOrder, stock_in_order_entity_1.StockInOrderLine,
+            stock_out_order_entity_1.StockOutOrder, stock_out_order_entity_1.StockOutOrderLine,
+            stock_move_order_entity_1.StockMoveOrder, stock_move_order_entity_1.StockMoveOrderLine,
+            stocktake_order_entity_1.StocktakeOrder, stocktake_order_entity_1.StocktakeOrderLine,
+        ],
+        adminApiExtensions: {
+            schema: () => gql `
             type StockLevelList {
                 items: [StockLevel!]!
                 totalItems: Int!
@@ -225,34 +257,17 @@ const { gql } = require('graphql-tag');
                 cancelStocktakeOrder(id: ID!): StocktakeOrder!
             }
         `,
-        resolvers: [InventoryAdminResolver],
-    },
-    configuration: (config) => {
-        config.customFields.StockMovement = [
-            ...(config.customFields.StockMovement ?? []),
-            { name: 'businessReason', type: 'string', nullable: true },
-        ];
-        return config;
-    },
-    compatibility: '^3.6.0',
-})
-export class InventoryPlugin implements OnApplicationBootstrap {
-    constructor(private moduleRef?: ModuleRef) {}
-
-    static init = (): typeof InventoryPlugin => InventoryPlugin;
-
-    async onApplicationBootstrap(): Promise<void> {
-        Logger.info('onApplicationBootstrap called', loggerCtx);
-        if (!this.moduleRef) {
-            return;
-        }
-        try {
-            const injector = new Injector(this.moduleRef);
-            const roleSync = new RoleSyncService();
-            roleSync.init(injector);
-            await roleSync.syncRoles();
-        } catch (err: any) {
-            Logger.error(`Bootstrap failed: ${err?.message ?? err}`, loggerCtx);
-        }
-    }
-}
+            resolvers: [inventory_admin_resolver_1.InventoryAdminResolver],
+        },
+        configuration: (config) => {
+            var _a;
+            config.customFields.StockMovement = [
+                ...((_a = config.customFields.StockMovement) !== null && _a !== void 0 ? _a : []),
+                { name: 'businessReason', type: 'string', nullable: true },
+            ];
+            return config;
+        },
+        compatibility: '^3.6.0',
+    }),
+    __metadata("design:paramtypes", [core_1.ModuleRef])
+], InventoryPlugin);
