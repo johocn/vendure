@@ -13,7 +13,7 @@ export class MessageDelivery extends VendureEntity implements ChannelAware {
     @Column() customerId: number;
     @Column({ default: 'pending' }) deliveryStatus: 'pending' | 'sent' | 'failed';
     @Column({ type: 'text', nullable: true }) deliveryError?: string;
-    @Column({ type: 'datetime', nullable: true }) readAt?: Date;
+    @Column({ nullable: true }) readAt?: Date;
 
     @ManyToMany(() => Channel)
     @JoinTable()

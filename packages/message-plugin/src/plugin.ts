@@ -26,7 +26,7 @@ const { gql } = require('graphql-tag');
     ],
     adminApiExtensions: {
         schema: () => gql`
-            type Message {
+            type Message implements Node {
                 id: ID!
                 title: String!
                 body: String!
@@ -86,7 +86,7 @@ const { gql } = require('graphql-tag');
     },
     shopApiExtensions: {
         schema: () => gql`
-            type MyMessage {
+            type MyMessage implements Node {
                 id: ID!
                 messageId: ID!
                 title: String!

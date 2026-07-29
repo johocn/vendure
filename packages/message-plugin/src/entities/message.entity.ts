@@ -16,7 +16,7 @@ export class Message extends VendureEntity implements ChannelAware {
     @Column({ default: 0 }) totalTarget: number;
     @Column({ default: 0 }) totalSent: number;
     @Column({ default: 0 }) totalFailed: number;
-    @Column({ type: 'datetime', nullable: true }) sentAt?: Date;
+    @Column({ nullable: true }) sentAt?: Date;
 
     @ManyToMany(() => Channel)
     @JoinTable()
