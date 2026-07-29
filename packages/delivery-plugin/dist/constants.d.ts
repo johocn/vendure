@@ -31,6 +31,7 @@ export declare const DeliveryPermissions: {
     readonly ManageFlashSale: "ManageFlashSale";
     readonly ManageGroupBuy: "ManageGroupBuy";
     readonly ManageCoupon: "ManageCoupon";
+    readonly ManageMember: "ManageMember";
 };
 export declare const deliveryPermissionDefinitions: PermissionDefinition[];
 export declare enum DeliveryStatus {

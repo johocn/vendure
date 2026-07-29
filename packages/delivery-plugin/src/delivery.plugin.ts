@@ -73,9 +73,10 @@ const loggerCtx = 'DeliveryPlugin';
 export class DeliveryPlugin implements OnApplicationBootstrap {
     constructor(private moduleRef?: ModuleRef) {}
 
-    static init = () => new DeliveryPlugin();
+    static init = (): typeof DeliveryPlugin => DeliveryPlugin;
 
     async onApplicationBootstrap(): Promise<void> {
+        Logger.info('onApplicationBootstrap called, moduleRef exists: ' + !!this.moduleRef, loggerCtx);
         if (!this.moduleRef) {
             return;
         }

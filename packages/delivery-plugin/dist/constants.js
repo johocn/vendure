@@ -36,6 +36,7 @@ exports.DeliveryPermissions = {
     ManageFlashSale: 'ManageFlashSale',
     ManageGroupBuy: 'ManageGroupBuy',
     ManageCoupon: 'ManageCoupon',
+    ManageMember: 'ManageMember',
 };
 // 权限描述映射
 const PERMISSION_DESCRIPTIONS = {
@@ -70,6 +71,7 @@ const PERMISSION_DESCRIPTIONS = {
     ManageFlashSale: '闪购活动管理',
     ManageGroupBuy: '拼团活动管理',
     ManageCoupon: '优惠券管理',
+    ManageMember: '会员管理',
 };
 // PermissionDefinition 实例数组，用于注册到 config.authOptions.customPermissions
 exports.deliveryPermissionDefinitions = Object.entries(exports.DeliveryPermissions).map(([key, name]) => {
@@ -102,7 +104,7 @@ exports.ROLE_PERMISSIONS_MAP = {
     'sales-staff': ['Authenticated', 'CreateOrder', 'ViewOwnSales', 'ManageCustomer', 'ViewSalesReport', 'ViewStock', 'ManageProduct'],
     'inventory-staff': ['Authenticated', 'ViewStock', 'ManageStockMove', 'ManageStocktake', 'ManageStockIn', 'ManageStockOut', 'ManageProduct'],
     'customer-service': ['Authenticated', 'ViewAllOrders', 'HandleAfterSales', 'HandleException', 'ManageCustomer', 'ManageProduct'],
-    'operations-staff': ['Authenticated', 'ViewDashboard', 'ManageBanner', 'ManageRecommendation', 'ManageNotice', 'ManageFloor', 'ManagePromotion', 'ManageContent', 'ManageFlashSale', 'ManageGroupBuy', 'ManageCoupon'],
+    'operations-staff': ['Authenticated', 'ViewDashboard', 'ManageBanner', 'ManageRecommendation', 'ManageNotice', 'ManageFloor', 'ManagePromotion', 'ManageContent', 'ManageFlashSale', 'ManageGroupBuy', 'ManageCoupon', 'ManageMember', 'ManageMessage'],
     'manager': [
         'Authenticated',
         'DeliverOrder', 'MarkDelivered', 'ReportException', 'ViewAllDeliveries', 'ReassignDelivery',
@@ -110,7 +112,7 @@ exports.ROLE_PERMISSIONS_MAP = {
         'ViewStock', 'ManageStockMove', 'ManageStocktake', 'ManageStockIn', 'ManageStockOut',
         'ViewAllOrders', 'HandleAfterSales', 'HandleException',
         'ManagePromotion', 'ManageContent', 'ViewDashboard',
-        'ManageProduct', 'ManageUser', 'ViewFinance', 'ManageMessage',
+        'ManageProduct', 'ManageUser', 'ViewFinance', 'ManageMessage', 'ManageMember',
         'ManageBanner', 'ManageRecommendation', 'ManageNotice', 'ManageFloor',
         'ManageFlashSale', 'ManageGroupBuy', 'ManageCoupon',
     ],
@@ -121,7 +123,7 @@ exports.ROLE_PERMISSIONS_MAP = {
         'ViewStock', 'ManageStockMove', 'ManageStocktake', 'ManageStockIn', 'ManageStockOut',
         'ViewAllOrders', 'HandleAfterSales', 'HandleException',
         'ManagePromotion', 'ManageContent', 'ViewDashboard',
-        'ManageProduct', 'ManageUser', 'ViewFinance', 'ManageMessage',
+        'ManageProduct', 'ManageUser', 'ViewFinance', 'ManageMessage', 'ManageMember',
         'ManageBanner', 'ManageRecommendation', 'ManageNotice', 'ManageFloor',
         'ManageFlashSale', 'ManageGroupBuy', 'ManageCoupon',
         'SuperAdmin',
@@ -133,7 +135,7 @@ exports.MODULE_CONFIGS = [
     { code: 'sales', name: '销售', enabled: true, entryPath: '/pkg-sales/pages/list/index', icon: '📝', sort: 20, perms: ['CreateOrder', 'ViewOwnSales', 'ManageCustomer', 'ViewSalesReport'] },
     { code: 'inventory', name: '调库', enabled: true, entryPath: '/pkg-inventory/pages/stock/index', icon: '📊', sort: 30, perms: ['ViewStock', 'ManageStockMove', 'ManageStocktake', 'ManageStockIn', 'ManageStockOut'] },
     { code: 'cs', name: '客服', enabled: true, entryPath: '/pkg-cs/pages/orders/index', icon: '🎧', sort: 40, perms: ['ViewAllOrders', 'HandleAfterSales', 'HandleException'] },
-    { code: 'ops', name: '运营', enabled: true, entryPath: '/pkg-ops/pages/dashboard/index', icon: '📊', sort: 50, perms: ['ViewDashboard', 'ManageBanner', 'ManageRecommendation', 'ManageNotice', 'ManageFloor', 'ManagePromotion', 'ManageContent'] },
+    { code: 'ops', name: '运营', enabled: true, entryPath: '/pkg-ops/pages/dashboard/index', icon: '📊', sort: 50, perms: ['ViewDashboard', 'ManageBanner', 'ManageRecommendation', 'ManageNotice', 'ManageFloor', 'ManagePromotion', 'ManageContent', 'ManageMember', 'ManageMessage'] },
     { code: 'admin', name: '管理', enabled: false, entryPath: '/pkg-admin/pages/dashboard/index', icon: '⚙️', sort: 60, perms: ['ManageProduct', 'ManageUser', 'ViewFinance', 'ManageMessage', 'ViewDashboard'] },
     { code: 'common', name: '通用', enabled: true, entryPath: '/pages/profile/index', icon: '👤', sort: 70, perms: [] },
 ];
