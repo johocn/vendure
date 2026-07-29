@@ -12,6 +12,8 @@ import {
     populateCustomers,
     populateOrders,
     populateFloors,
+    populateShippingTemplates,
+    populateCoupons,
     runStage,
     logStage,
     StageResult,
@@ -42,6 +44,53 @@ async function clearPluginTables(): Promise<void> {
             console.warn(`清空 customer_balance 表时警告: ${e.message}`);
         }
     }
+    // 清空 shipping_template 关联表（避免 FK 约束阻止 clearAllTables 清理 channel 表）
+    try {
+        await dataSource.query('DELETE FROM shipping_template_channels');
+    } catch (e: any) {
+        if (!/does not exist|不存在|no such table/i.test(e.message)) {
+            console.warn(`清空 shipping_template_channels 表时警告: ${e.message}`);
+        }
+    }
+    try {
+        await dataSource.query('DELETE FROM shipping_template');
+        console.log('已清空 shipping_template 表');
+    } catch (e: any) {
+        if (!/does not exist|不存在|no such table/i.test(e.message)) {
+            console.warn(`清空 shipping_template 表时警告: ${e.message}`);
+        }
+    }
+    // 清空 coupon 相关表（避免 FK 约束阻止 clearAllTables 清理 channel 表）
+    try {
+        await dataSource.query('DELETE FROM coupon_code_channels');
+    } catch (e: any) {
+        if (!/does not exist|不存在|no such table/i.test(e.message)) {
+            console.warn(`清空 coupon_code_channels 表时警告: ${e.message}`);
+        }
+    }
+    try {
+        await dataSource.query('DELETE FROM coupon_channels');
+    } catch (e: any) {
+        if (!/does not exist|不存在|no such table/i.test(e.message)) {
+            console.warn(`清空 coupon_channels 表时警告: ${e.message}`);
+        }
+    }
+    try {
+        await dataSource.query('DELETE FROM coupon_code');
+        console.log('已清空 coupon_code 表');
+    } catch (e: any) {
+        if (!/does not exist|不存在|no such table/i.test(e.message)) {
+            console.warn(`清空 coupon_code 表时警告: ${e.message}`);
+        }
+    }
+    try {
+        await dataSource.query('DELETE FROM coupon');
+        console.log('已清空 coupon 表');
+    } catch (e: any) {
+        if (!/does not exist|不存在|no such table/i.test(e.message)) {
+            console.warn(`清空 coupon 表时警告: ${e.message}`);
+        }
+    }
     await dataSource.destroy();
 }
 
@@ -52,7 +101,7 @@ if (require.main === module) {
         .then(async app => {
             await app.get(JobQueueService).start();
             const results: StageResult[] = [];
-            const total = 7;
+            const total = 9;
 
             results.push(await runStage('基础设置: superadmin + Zone/Country/TaxRate/Facet/Collection', () => populateBase(app)));
             logStage(1, total, results[0]);
@@ -74,6 +123,12 @@ if (require.main === module) {
 
             results.push(await runStage('楼层配置: default 2 + shop-a 1', () => populateFloors(app)));
             logStage(7, total, results[6]);
+
+            results.push(await runStage('全局配送模板: 11 个', () => populateShippingTemplates(app)));
+            logStage(8, total, results[7]);
+
+            results.push(await runStage('全局优惠券: 10 个', () => populateCoupons(app)));
+            logStage(9, total, results[8]);
 
             const okCount = results.filter(r => r.ok).length;
             const totalMs = results.reduce((sum, r) => sum + r.durationMs, 0);

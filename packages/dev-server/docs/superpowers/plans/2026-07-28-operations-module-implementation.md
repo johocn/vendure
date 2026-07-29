@@ -78,13 +78,16 @@
     "watch": "tsc -w"
   },
   "dependencies": {
-    "@vendure/core": "^3.6.0"
+    "@vendure/core": "^3.6.0",
+    "@vendure/delivery-plugin": "1.0.0"
   },
   "devDependencies": {
     "typescript": "^5.0.0"
   }
 }
 ```
+
+Note: `@vendure/delivery-plugin` is required because Task 3 imports `ROLE_PERMISSIONS_MAP` from it (the authoritative source with all 7 roles).
 
 - [ ] **Step 2: Create tsconfig.json**
 
@@ -287,7 +290,7 @@ git commit --no-verify -m "feat(operations-plugin): add RoleSyncService"
 ```typescript
 // e:\code\vendure\packages\operations-plugin\src\entities\content-item.entity.ts
 import { Channel, DeepPartial, ID, VendureEntity } from '@vendure/core';
-import { Column, Entity, Index, JoinTable, ManyToMany, Unique } from 'typeorm';
+import { Column, Entity, Index, JoinTable, ManyToMany } from 'typeorm';
 
 import { ContentType } from '../constants';
 
@@ -296,10 +299,11 @@ import { ContentType } from '../constants';
  * Single-table polymorphism entity for CMS content (Banner/Recommendation/Notice/Floor).
  * Soft delete via deletedAt field; all queries must filter `deletedAt IS NULL`.
  *
- * Unique constraint: (code, channel_id, deletedAt) — allows re-creating same code after soft delete.
+ * Note: No database-level @Unique constraint because PostgreSQL/MariaDB treat NULL values
+ * as distinct in UNIQUE constraints, which would allow duplicate codes among active rows.
+ * Uniqueness is enforced at the application layer in ContentService.createContentItem.
  */
 @Entity()
-@Unique('UQ_content_code_channel', ['code', 'deletedAt'])
 export class ContentItem extends VendureEntity {
     constructor(input?: DeepPartial<ContentItem>) {
         super(input);
@@ -332,7 +336,8 @@ export class ContentItem extends VendureEntity {
     @Column({ type: 'timestamp', nullable: true })
     endAt?: Date;
 
-    @Column({ type: 'jsonb', nullable: true })
+    // Use 'json' (not 'jsonb') for cross-database compatibility (dev default is MariaDB)
+    @Column({ type: 'json', nullable: true })
     data?: any;
 
     @Column({ nullable: true })
@@ -356,8 +361,6 @@ export class ContentItem extends VendureEntity {
     channels: Channel[];
 }
 ```
-
-Note: The `@Unique` decorator includes `deletedAt` so that PostgreSQL's NULL-unique rule allows multiple soft-deleted rows with the same code, while enforcing uniqueness among non-deleted rows.
 
 - [ ] **Step 2: Commit**
 
@@ -878,11 +881,13 @@ export class OperationsDashboardService {
         const orderRepo = this.connection.getRepository(ctx, 'Order' as any);
 
         // Current period: valid orders (Paid, Shipped, Delivered, PartiallyShipped)
+        // Note: order.totalWithTax is a @Calculated getter, not a physical column.
+        // Use order.subTotalWithTax + order.shippingWithTax instead.
         const validStatuses = ['Paid', 'Shipped', 'Delivered', 'PartiallyShipped'];
         const current = await orderRepo
             .createQueryBuilder('order')
             .select('COUNT(order.id)', 'orderCount')
-            .addSelect('COALESCE(SUM(order.totalWithTax), 0)', 'gmv')
+            .addSelect('COALESCE(SUM(order.subTotalWithTax + order.shippingWithTax), 0)', 'gmv')
             .where('order.createdAt BETWEEN :start AND :end', { start, end })
             .andWhere('order.state IN (:...statuses)', { statuses: validStatuses })
             .getRawOne();
@@ -890,7 +895,7 @@ export class OperationsDashboardService {
         const previous = await orderRepo
             .createQueryBuilder('order')
             .select('COUNT(order.id)', 'orderCount')
-            .addSelect('COALESCE(SUM(order.totalWithTax), 0)', 'gmv')
+            .addSelect('COALESCE(SUM(order.subTotalWithTax + order.shippingWithTax), 0)', 'gmv')
             .where('order.createdAt BETWEEN :start AND :end', { start: prevStart, end: prevEnd })
             .andWhere('order.state IN (:...statuses)', { statuses: validStatuses })
             .getRawOne();
@@ -1074,12 +1079,14 @@ export class OperationsDashboardService {
         const end = new Date();
         const orderRepo = this.connection.getRepository(ctx, 'Order' as any);
 
+        // Note: order.totalWithTax is a @Calculated getter, not a physical column.
+        // Use order.subTotalWithTax + order.shippingWithTax instead.
         const validStatuses = ['Paid', 'Shipped', 'Delivered', 'PartiallyShipped'];
         const rows = await orderRepo
             .createQueryBuilder('order')
             .select("DATE(order.createdAt)", 'date')
             .addSelect('COUNT(order.id)', 'orderCount')
-            .addSelect('COALESCE(SUM(order.totalWithTax), 0)', 'gmv')
+            .addSelect('COALESCE(SUM(order.subTotalWithTax + order.shippingWithTax), 0)', 'gmv')
             .where('order.createdAt BETWEEN :start AND :end', { start, end })
             .andWhere('order.state IN (:...statuses)', { statuses: validStatuses })
             .groupBy('date')
@@ -1098,6 +1105,9 @@ export class OperationsDashboardService {
         const end = new Date();
         const orderRepo = this.connection.getRepository(ctx, 'Order' as any);
 
+        // Note: line.linePriceWithTax is a @Calculated getter, not a physical column.
+        // Use line.listPrice * line.quantity as a close approximation (listPrice usually
+        // includes tax for B2C channels; taxRate is also @Calculated so cannot be used in SQL).
         const validStatuses = ['Paid', 'Shipped', 'Delivered', 'PartiallyShipped'];
         const rows = await orderRepo
             .createQueryBuilder('order')
@@ -1107,7 +1117,7 @@ export class OperationsDashboardService {
             .innerJoin('product.categories', 'category')
             .select('category.id', 'categoryId')
             .addSelect('category.name', 'categoryName') // May need translation
-            .addSelect('COALESCE(SUM(line.linePriceWithTax), 0)', 'gmv')
+            .addSelect('COALESCE(SUM(line.listPrice * line.quantity), 0)', 'gmv')
             .addSelect('COUNT(DISTINCT order.id)', 'orderCount')
             .where('order.createdAt BETWEEN :start AND :end', { start, end })
             .andWhere('order.state IN (:...statuses)', { statuses: validStatuses })
@@ -1295,6 +1305,16 @@ export class OperationsAdminResolver {
         }
         this.assertContentPermission(ctx, item.type);
         return this.contentService.deleteContentItem(ctx, id);
+    }
+
+    // ===== Manual lifecycle trigger (admin/testing) =====
+
+    @Mutation()
+    @Allow(OperationsPermissions.ManageContent as Permission)
+    async triggerContentLifecycle(
+        @Ctx() ctx: RequestContext,
+    ) {
+        return this.contentService.runLifecycleCheck(ctx);
     }
 
     // ===== Dynamic permission check =====
@@ -1534,6 +1554,11 @@ const { gql } = require('graphql-tag');
                 data: JSON
             }
 
+            type ContentLifecycleResult {
+                published: Int!
+                unpublished: Int!
+            }
+
             extend type Query {
                 contentItems(type: String, position: String, enabled: Boolean, page: Int, pageSize: Int): ContentItemList!
                 contentItem(id: ID!): ContentItem
@@ -1543,6 +1568,7 @@ const { gql } = require('graphql-tag');
                 createContentItem(input: CreateContentItemInput!): ContentItem!
                 updateContentItem(id: ID!, input: UpdateContentItemInput!): ContentItem!
                 deleteContentItem(id: ID!): Boolean!
+                triggerContentLifecycle: ContentLifecycleResult!
             }
         `,
         resolvers: [OperationsAdminResolver],
@@ -1725,7 +1751,19 @@ Expected: package.json updated with @qiun/ucharts dependency.
 
 ```typescript
 // e:\code\vadmin\src\pkg-ops\api\operations.ts
-import { getClient } from '@/api/client';
+import { gql, GraphQLClient } from 'graphql-request';
+import { useAuthStore } from '@/stores/auth';
+
+// Local getClient pattern (consistent with pkg-sales/api/sales.ts).
+// Note: @/api/client does not export getClient; existing plugins use this local pattern.
+const endpoint = `${import.meta.env.VITE_API_URL}/admin-api`;
+
+function getClient() {
+  const authStore = useAuthStore();
+  return new GraphQLClient(endpoint, {
+    headers: authStore.token ? { authorization: `Bearer ${authStore.token}` } : {},
+  });
+}
 
 export const operationsApi = {
     // ===== Dashboard =====
@@ -2523,71 +2561,100 @@ git commit --no-verify -m "feat(pkg-ops): register 9 pages in pages.json and upd
 // e:\code\vendure\reset-operations-pwd.js
 // Sets up test account: ops1@zhao.test / a963963 with operations-staff role
 // Usage: node reset-operations-pwd.js
+//
+// Implementation note: Uses admin GraphQL API (consistent with reset-cs-pwd.js
+// and test-sales-flow.js). Avoids direct DB access to be cross-database
+// compatible (dev-config default is MariaDB; PostgreSQL is also supported).
+// Vendure's User entity table name is `user` (reserved keyword in PostgreSQL)
+// and `user_record` is NOT a valid table name. Role.permissions is stored as
+// simple-array (comma-separated string), not JSON.
 
-const { Client } = require('pg');
+const fetch = require('node-fetch');
+
+const ADMIN_API = 'http://localhost:3000/admin-api';
+
+async function gql(query, variables = {}, token = '') {
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers.authorization = `Bearer ${token}`;
+  const res = await fetch(ADMIN_API, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ query, variables }),
+  });
+  const body = await res.json();
+  if (body.errors) {
+    const err = new Error(body.errors.map(e => e.message).join('; '));
+    err.body = body;
+    throw err;
+  }
+  const headerToken = res.headers.get('vendure-auth-token');
+  if (headerToken) body.data.__authToken = headerToken;
+  return body.data;
+}
+
+async function login(username, password) {
+  const data = await gql(
+    `mutation Login($username: String!, $password: String!) {
+      login(username: $username, password: $password) {
+        ... on CurrentUser { identifier id }
+        ... on InvalidCredentialsError { message }
+      }
+    }`,
+    { username, password },
+  );
+  if (!data.__authToken) {
+    throw new Error('Login failed: ' + (data.login?.message ?? 'no token returned'));
+  }
+  return data.__authToken;
+}
 
 async function main() {
-    const client = new Client({
-        host: 'localhost',
-        port: 5432,
-        database: 'vendure',
-        user: 'vendure',
-        password: 'vendure',
-    });
+  console.log('=== Operations test account setup ===\n');
 
-    await client.connect();
-    console.log('Connected to database');
+  // 1. superadmin login
+  const adminToken = await login('superadmin@china.test', 'superadmin');
+  console.log('superadmin login ok');
 
-    // Find operations-staff role
-    const roleRes = await client.query(`SELECT id, code FROM role WHERE code = 'operations-staff'`);
-    if (roleRes.rows.length === 0) {
-        console.error('operations-staff role not found. Start the server first to trigger RoleSync.');
-        process.exit(1);
-    }
-    const roleId = roleRes.rows[0].id;
-    console.log(`Found operations-staff role: id=${roleId}`);
+  // 2. Verify operations-staff role exists (RoleSync should have created it)
+  const rolesData = await gql(
+    `query { roles(options: { filter: { code: { eq: "operations-staff" } } }) { items { id code permissions } } }`,
+    {},
+    adminToken,
+  );
+  const opsRole = rolesData.roles.items[0];
+  if (!opsRole) {
+    console.error('operations-staff role not found. Start the server first to trigger RoleSync.');
+    process.exit(1);
+  }
+  console.log(`operations-staff role found: id=${opsRole.id}`);
+  console.log(`  permissions: ${opsRole.permissions.join(', ')}`);
 
-    // Find or create user
-    const userRes = await client.query(`SELECT id FROM user_record WHERE identifier = 'ops1@zhao.test'`);
-    let userId;
-    if (userRes.rows.length === 0) {
-        // Create user with bcrypt hash of 'a963963'
-        // bcrypt hash for 'a963963' with salt rounds 10 (Vendure default)
-        const bcrypt = require('bcryptjs');
-        const hash = bcrypt.hashSync('a963963', 10);
-        const insertRes = await client.query(
-            `INSERT INTO user_record (identifier, password_hash, verified) VALUES ($1, $2, true) RETURNING id`,
-            ['ops1@zhao.test', hash]
-        );
-        userId = insertRes.rows[0].id;
-        console.log(`Created user ops1@zhao.test: id=${userId}`);
-    } else {
-        userId = userRes.rows[0].id;
-        console.log(`User ops1@zhao.test exists: id=${userId}`);
-    }
-
-    // Assign role
-    const existingRole = await client.query(
-        `SELECT * FROM user_roles WHERE user_id = $1 AND role_id = $2`,
-        [userId, roleId]
+  // 3. Create ops1 administrator (skip if exists)
+  try {
+    await gql(
+      `mutation {
+        createAdministrator(input: {
+          firstName: "Ops"
+          lastName: "Staff"
+          emailAddress: "ops1@zhao.test"
+          password: "a963963"
+          roleCodes: ["operations-staff"]
+        }) { id }
+      }`,
+      {},
+      adminToken,
     );
-    if (existingRole.rows.length === 0) {
-        await client.query(
-            `INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)`,
-            [userId, roleId]
-        );
-        console.log(`Assigned operations-staff role to user`);
-    } else {
-        console.log(`User already has operations-staff role`);
-    }
+    console.log('Created administrator ops1@zhao.test');
+  } catch (e) {
+    console.log('Administrator ops1@zhao.test already exists, skipping creation');
+  }
 
-    await client.end();
-    console.log('Done');
+  console.log('\nDone. Login: ops1@zhao.test / a963963');
 }
 
 main().catch(e => {
-    console.error(e);
-    process.exit(1);
+  console.error(e?.message ?? e);
+  process.exit(1);
 });
 ```
 
@@ -2617,59 +2684,74 @@ git commit --no-verify -m "test(operations-plugin): add test account setup scrip
 // e:\code\vendure\test-operations-flow.js
 // E2E tests for operations module (10 groups)
 // Usage: node test-operations-flow.js
+//
+// Implementation note: Uses admin GraphQL API exclusively (no direct DB access)
+// to be cross-database compatible. dev-config default is MariaDB; PostgreSQL
+// also supported. Login token is returned in response header `vendure-auth-token`.
+//
+// Prerequisites:
+//   1. dev-server running (npm run dev in packages/dev-server)
+//   2. Run reset-operations-pwd.js to create ops1@zhao.test account
+//   3. (Optional) Run test-sales-flow.js to create sales1@zhao.test for [10]
+//      permission isolation test. If sales1 doesn't exist, [10] is skipped.
 
 const fetch = require('node-fetch');
-const { Client } = require('pg');
 
-const BASE = 'http://localhost:3000';
-const ADMIN_EMAIL = 'ops1@zhao.test';
-const ADMIN_PWD = 'a963963';
-const SALES_EMAIL = 'sales1@zhao.test'; // for permission isolation test
+const ADMIN_API = 'http://localhost:3000/admin-api';
+const SHOP_API = 'http://localhost:3000/shop-api';
+
+const OPS_EMAIL = 'ops1@zhao.test';
+const OPS_PWD = 'a963963';
+const SALES_EMAIL = 'sales1@zhao.test';
 const SALES_PWD = 'a963963';
 
-let adminCookie = '';
-let salesCookie = '';
+let opsToken = '';
+let salesToken = '';
+let superAdminToken = '';
 let createdItemIds = [];
 
+async function gql(endpoint, query, variables = {}, token = '') {
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers.authorization = `Bearer ${token}`;
+    const res = await fetch(endpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ query, variables }),
+    });
+    const body = await res.json();
+    if (body.errors) {
+        const err = new Error(body.errors.map(e => e.message).join('; '));
+        err.body = body;
+        throw err;
+    }
+    const headerToken = res.headers.get('vendure-auth-token');
+    if (headerToken) body.data.__authToken = headerToken;
+    return body.data;
+}
+
+async function adminGql(query, variables = {}, token = opsToken) {
+    return gql(ADMIN_API, query, variables, token);
+}
+
+async function shopGql(query, variables = {}, token = '') {
+    return gql(SHOP_API, query, variables, token);
+}
+
 async function login(email, pwd) {
-    const res = await fetch(`${BASE}/shop-api/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ emailAddress: email, password: pwd, rememberMe: false }),
-    });
-    const cookie = res.headers.get('set-cookie');
-    return cookie ? cookie.split(';')[0] : '';
-}
-
-async function adminGql(query, variables = {}) {
-    const res = await fetch(`${BASE}/admin-api`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Cookie': adminCookie },
-        body: JSON.stringify({ query, variables }),
-    });
-    const json = await res.json();
-    if (json.errors) throw new Error(JSON.stringify(json.errors));
-    return json.data;
-}
-
-async function shopGql(query, variables = {}) {
-    const res = await fetch(`${BASE}/shop-api`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Cookie': adminCookie },
-        body: JSON.stringify({ query, variables }),
-    });
-    const json = await res.json();
-    if (json.errors) throw new Error(JSON.stringify(json.errors));
-    return json.data;
-}
-
-async function salesGql(query, variables = {}) {
-    const res = await fetch(`${BASE}/admin-api`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Cookie': salesCookie },
-        body: JSON.stringify({ query, variables }),
-    });
-    return res.json();
+    const data = await adminGql(
+        `mutation Login($username: String!, $password: String!) {
+            login(username: $username, password: $password) {
+                ... on CurrentUser { identifier id }
+                ... on InvalidCredentialsError { message }
+            }
+        }`,
+        { username: email, password: pwd },
+        '',
+    );
+    if (!data.__authToken) {
+        throw new Error('Login failed: ' + (data.login?.message ?? 'no token'));
+    }
+    return data.__authToken;
 }
 
 let pass = 0, fail = 0;
@@ -2679,29 +2761,47 @@ function assert(cond, msg) {
 }
 
 async function main() {
+    console.log('=== Operations Module E2E Tests ===\n');
+
+    // Login
     console.log('Logging in...');
-    adminCookie = await login(ADMIN_EMAIL, ADMIN_PWD);
-    if (!adminCookie) { console.error('Admin login failed'); process.exit(1); }
-    console.log('Admin login OK');
+    opsToken = await login(OPS_EMAIL, OPS_PWD);
+    console.log('ops1 login OK');
+    try {
+        superAdminToken = await login('superadmin@china.test', 'superadmin');
+    } catch (e) { console.log('superadmin login skipped'); }
+    try {
+        salesToken = await login(SALES_EMAIL, SALES_PWD);
+        console.log('sales1 login OK');
+    } catch (e) { console.log('sales1 login skipped (account may not exist; [10] will be skipped)'); }
 
-    try { salesCookie = await login(SALES_EMAIL, SALES_PWD); } catch (e) { console.log('Sales login skipped (account may not exist)'); }
-
-    // [1] Role permissions sync
+    // [1] Role permissions sync (via admin API, not pg)
     console.log('\n[1] Role permissions sync');
-    const dbClient = new Client({ host: 'localhost', port: 5432, database: 'vendure', user: 'vendure', password: 'vendure' });
-    await dbClient.connect();
-    const roleRes = await dbClient.query(`SELECT permissions FROM role WHERE code = 'operations-staff'`);
-    const perms = roleRes.rows[0]?.permissions ?? [];
-    assert(perms.includes('ViewDashboard'), 'operations-staff has ViewDashboard');
-    assert(perms.includes('ManageBanner'), 'operations-staff has ManageBanner');
-    assert(perms.includes('ManageRecommendation'), 'operations-staff has ManageRecommendation');
-    assert(perms.includes('ManageNotice'), 'operations-staff has ManageNotice');
-    assert(perms.includes('ManageFloor'), 'operations-staff has ManageFloor');
-    const mgrRes = await dbClient.query(`SELECT permissions FROM role WHERE code = 'manager'`);
-    const mgrPerms = mgrRes.rows[0]?.permissions ?? [];
-    assert(mgrPerms.includes('ManageBanner'), 'manager has ManageBanner');
-    assert(mgrPerms.includes('ManageFloor'), 'manager has ManageFloor');
-    await dbClient.end();
+    if (superAdminToken) {
+        const rolesData = await adminGql(
+            `query { roles(options: { filter: { code: { eq: "operations-staff" } } }) { items { code permissions } } }`,
+            {},
+            superAdminToken,
+        );
+        const opsRole = rolesData.roles.items[0];
+        const perms = opsRole?.permissions ?? [];
+        assert(perms.includes('ViewDashboard'), 'operations-staff has ViewDashboard');
+        assert(perms.includes('ManageBanner'), 'operations-staff has ManageBanner');
+        assert(perms.includes('ManageRecommendation'), 'operations-staff has ManageRecommendation');
+        assert(perms.includes('ManageNotice'), 'operations-staff has ManageNotice');
+        assert(perms.includes('ManageFloor'), 'operations-staff has ManageFloor');
+
+        const mgrData = await adminGql(
+            `query { roles(options: { filter: { code: { eq: "manager" } } }) { items { code permissions } } }`,
+            {},
+            superAdminToken,
+        );
+        const mgrPerms = mgrData.roles.items[0]?.permissions ?? [];
+        assert(mgrPerms.includes('ManageBanner'), 'manager has ManageBanner');
+        assert(mgrPerms.includes('ManageFloor'), 'manager has ManageFloor');
+    } else {
+        console.log('  (skipped: superadmin login failed)');
+    }
 
     // [2] Dashboard queries
     console.log('\n[2] Dashboard queries');
@@ -2787,64 +2887,102 @@ async function main() {
         assert(false, `Re-create should succeed: ${e.message}`);
     }
 
-    // [8] Auto online/offline
-    console.log('\n[8] Auto online/offline (manual trigger via DB simulation)');
-    // Note: ScheduledTask runs every minute; for test we check runLifecycleCheck via DB
-    const dbClient2 = new Client({ host: 'localhost', port: 5432, database: 'vendure', user: 'vendure', password: 'vendure' });
-    await dbClient2.connect();
-    // Create item with startAt in the past, publishedAt null
-    const startRes = await dbClient2.query(`
-        INSERT INTO content_item (type, code, name, enabled, sort, position, "startAt", "publishedAt", "deletedAt", "createdAt", "updatedAt", data)
-        VALUES ('Banner', 'test_auto_publish', 'AutoPublish', true, 0, 'home', NOW() - INTERVAL '1 minute', NULL, NULL, NOW(), NOW(), '{"imageUrl":"x"}'::jsonb)
-        RETURNING id
-    `);
-    const autoId = startRes.rows[0].id;
+    // [8] Auto online/offline (synchronous via triggerContentLifecycle mutation)
+    console.log('\n[8] Auto online/offline (via triggerContentLifecycle)');
+    // Create item with startAt in the past, enabled=true. publishedAt is null after creation.
+    const autoItem = await adminGql(
+        `mutation Create($input: CreateContentItemInput!) {
+            createContentItem(input: $input) { id publishedAt }
+        }`,
+        {
+            input: {
+                type: 'Banner',
+                code: 'test_auto_publish',
+                name: 'AutoPublish',
+                position: 'home',
+                sort: 0,
+                startAt: new Date(Date.now() - 60_000).toISOString(),
+                data: { imageUrl: 'x' },
+            },
+        },
+    );
+    const autoId = autoItem.createContentItem.id;
     createdItemIds.push(autoId);
+    assert(autoItem.createContentItem.publishedAt === null, 'Newly created item has publishedAt=null');
 
-    // Wait 70 seconds for ScheduledTask to run (or skip if in CI)
-    console.log('  Waiting 70s for ScheduledTask...');
-    await new Promise(r => setTimeout(r, 70000));
+    // Manually trigger lifecycle check (avoids waiting 60s for ScheduledTask)
+    const triggerRes = await adminGql(`mutation { triggerContentLifecycle { published unpublished } }`);
+    assert(triggerRes.triggerContentLifecycle.published >= 1, 'triggerContentLifecycle published >= 1');
 
-    const checkRes = await dbClient2.query(`SELECT "publishedAt" FROM content_item WHERE id = $1`, [autoId]);
-    assert(checkRes.rows[0].publishedAt !== null, 'Auto-published after startAt');
-
-    await dbClient2.end();
+    // Verify the item is now published
+    const checkItem = await adminGql(
+        `query($id: ID!) { contentItem(id: $id) { id publishedAt } }`,
+        { id: autoId },
+    );
+    assert(checkItem.contentItem.publishedAt !== null, 'Auto-published item has publishedAt set');
 
     // [9] shop-api publishedContent
     console.log('\n[9] shop-api publishedContent');
     const pubRes = await shopGql(`query { publishedContent(type: "Banner") { id code name } }`);
     assert(Array.isArray(pubRes.publishedContent), 'publishedContent returns array');
 
-    // [10] Permission isolation
+    // [10] Permission isolation (sales1@zhao.test should NOT have ops perms)
     console.log('\n[10] Permission isolation');
-    if (salesCookie) {
-        const salesRes = await salesGql(`query { dashboardOverview(range: "today") { sales { orderCount } } }`);
-        assert(salesRes.errors && salesRes.errors[0].message.includes('authorized'), 'sales-staff cannot access dashboard');
+    if (salesToken) {
+        // sales-staff should not have ViewDashboard permission
+        // Note: gql() throws on body.errors (which Vendure returns for ForbiddenError)
+        try {
+            await adminGql(
+                `query { dashboardOverview(range: "today") { sales { orderCount } } }`,
+                {},
+                salesToken,
+            );
+            assert(false, 'sales-staff should not access dashboard');
+        } catch (e) {
+            assert(
+                e.message.includes('authorized') ||
+                e.message.includes('forbidden') ||
+                e.message.includes('permission') ||
+                e.message.includes('Forbidden'),
+                'sales-staff cannot access dashboard (throws auth error)',
+            );
+        }
 
-        const salesCreateRes = await salesGql(
-            `mutation Create($input: CreateContentItemInput!) { createContentItem(input: $input) { id } }`,
-            { input: { type: 'Banner', code: 'perm_test', name: 'x', position: 'home', data: { imageUrl: 'x' } } }
-        );
-        assert(salesCreateRes.errors, 'sales-staff cannot create Banner');
+        // sales-staff should not be able to create Banner
+        try {
+            await adminGql(
+                `mutation Create($input: CreateContentItemInput!) { createContentItem(input: $input) { id } }`,
+                { input: { type: 'Banner', code: 'perm_test', name: 'x', position: 'home', data: { imageUrl: 'x' } } },
+                salesToken,
+            );
+            assert(false, 'sales-staff should not create Banner');
+        } catch (e) {
+            assert(
+                e.message.includes('authorized') ||
+                e.message.includes('forbidden') ||
+                e.message.includes('permission') ||
+                e.message.includes('Forbidden'),
+                'sales-staff create Banner throws auth error',
+            );
+        }
     } else {
-        console.log('  (skipped: sales account not available)');
+        console.log('  (skipped: sales1@zhao.test account not available; run test-sales-flow.js first)');
     }
 
-    // Cleanup
+    // Cleanup (soft-delete all created items)
     console.log('\n[Cleanup] Deleting test items...');
-    const dbClient3 = new Client({ host: 'localhost', port: 5432, database: 'vendure', user: 'vendure', password: 'vendure' });
-    await dbClient3.connect();
     for (const id of createdItemIds) {
-        await dbClient3.query(`DELETE FROM content_item WHERE id = $1`, [id]);
+        try {
+            await adminGql(`mutation Del($id: ID!) { deleteContentItem(id: $id) }`, { id });
+        } catch (e) { /* ignore */ }
     }
-    await dbClient3.end();
 
     console.log(`\n=== Results: ${pass} passed, ${fail} failed ===`);
     process.exit(fail > 0 ? 1 : 0);
 }
 
 main().catch(e => {
-    console.error('Fatal:', e);
+    console.error('Fatal:', e?.message ?? e);
     process.exit(1);
 });
 ```

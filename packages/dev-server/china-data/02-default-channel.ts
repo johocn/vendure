@@ -188,6 +188,12 @@ async function createProducts(app: INestApplication, ctx: RequestContext): Promi
                 price: yuanToCents(v.price),
                 taxCategoryId: standardTax.id as string,
                 optionIds: optionIds.length > 0 ? [optionIds[i]] : undefined,
+                customFields: {
+                    weight: v.weight,
+                    length: v.length,
+                    width: v.width,
+                    height: v.height,
+                },
             })),
         );
 
