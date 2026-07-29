@@ -12,7 +12,9 @@
         "test": "vitest --config vitest.config.mts --run",
         "e2e": "cross-env PACKAGE=member-level-plugin vitest --config vitest.config.mts --run"
     },
-    "dependencies": {},
+    "dependencies": {
+        "@vendure/delivery-plugin": "1.0.0"
+    },
     "peerDependencies": {
         "@vendure/common": "^3.6.0",
         "@vendure/core": "^3.6.0"

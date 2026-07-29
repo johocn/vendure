@@ -58,13 +58,64 @@ const adminSchema = () => gql `
         take: Int
     }
 
+    type MemberListItem {
+        customerId: ID!
+        emailAddress: String
+        firstName: String
+        lastName: String
+        level: Int!
+        levelName: String!
+        growthValue: Int!
+        points: Int!
+        createdAt: DateTime!
+    }
+
+    type MemberList implements PaginatedList {
+        items: [MemberListItem!]!
+        totalItems: Int!
+    }
+
+    type LevelConfig {
+        level1Threshold: Int!
+        level1Name: String!
+        level2Threshold: Int!
+        level2Name: String!
+        level3Threshold: Int!
+        level3Name: String!
+        level4Threshold: Int!
+        level4Name: String!
+        level5Threshold: Int!
+        level5Name: String!
+        pointsEarnRatio: Float!
+        pointsEarnOnShipping: Boolean!
+    }
+
+    input UpdateLevelConfigInput {
+        level1Threshold: Int
+        level1Name: String
+        level2Threshold: Int
+        level2Name: String
+        level3Threshold: Int
+        level3Name: String
+        level4Threshold: Int
+        level4Name: String
+        level5Threshold: Int
+        level5Name: String
+        pointsEarnRatio: Float
+        pointsEarnOnShipping: Boolean
+    }
+
     extend type Query {
         memberInfo(customerId: ID!): MemberInfo!
         pointsHistory(customerId: ID!, options: PointsHistoryListOptions): PointsHistoryList!
+        members(options: JSON): MemberList!
+        levelConfig: LevelConfig!
     }
 
     extend type Mutation {
         adjustPoints(customerId: ID!, amount: Int!, remark: String): MemberInfo!
+        adjustMemberGrowth(customerId: ID!, amount: Int!, source: String): MemberInfo!
+        updateLevelConfig(input: UpdateLevelConfigInput!): LevelConfig!
     }
 `;
 const shopSchema = () => gql `

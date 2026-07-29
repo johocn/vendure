@@ -17,10 +17,11 @@ const member_points_history_entity_1 = require("./member-points-history.entity")
 const DEFAULT_THRESHOLDS = [0, 1000, 5000, 20000, 100000];
 const DEFAULT_NAMES = ['普通会员', '银卡会员', '金卡会员', '白金会员', '钻石会员'];
 let MemberLevelService = class MemberLevelService {
-    constructor(connection, listQueryBuilder, customerService) {
+    constructor(connection, listQueryBuilder, customerService, channelService) {
         this.connection = connection;
         this.listQueryBuilder = listQueryBuilder;
         this.customerService = customerService;
+        this.channelService = channelService;
     }
     // ===== Public API =====
     async getMemberInfo(ctx, customerId) {
@@ -95,7 +96,7 @@ let MemberLevelService = class MemberLevelService {
         return this.applyPointsChange(ctx, customerId, amt, member_points_history_entity_1.PointsHistoryType.ADJUST, undefined, remark);
     }
     calculateLevel(ctx, growthValue) {
-        const { thresholds } = this.getLevelConfig(ctx);
+        const { thresholds } = this.getLevelThresholds(ctx);
         let level = 1;
         for (let i = 0; i < thresholds.length; i++) {
             if (growthValue >= thresholds[i]) {
@@ -131,6 +132,105 @@ let MemberLevelService = class MemberLevelService {
             where: { customerId: customerId, orderId: Number(orderId), type },
         });
         return count > 0;
+    }
+    async findAllMembers(ctx, options) {
+        const listOptions = {};
+        if (options) {
+            if (options.skip != null)
+                listOptions.skip = options.skip;
+            if (options.take != null)
+                listOptions.take = options.take;
+            if (options.filter) {
+                const filter = {};
+                if (options.filter.emailAddress) {
+                    filter.emailAddress = { contains: options.filter.emailAddress };
+                }
+                if (options.filter.level != null) {
+                    filter.customFields = { memberLevel: { eq: options.filter.level } };
+                }
+                if (Object.keys(filter).length > 0) {
+                    listOptions.filter = filter;
+                }
+            }
+        }
+        const [customers, totalItems] = await this.listQueryBuilder
+            .build(core_1.Customer, listOptions, {
+            ctx,
+            relations: ['channels'],
+            channelId: ctx.channelId,
+        })
+            .getManyAndCount();
+        const items = customers.map((c) => {
+            var _a, _b, _c, _d;
+            const cf = (_a = c.customFields) !== null && _a !== void 0 ? _a : {};
+            const level = (_b = cf.memberLevel) !== null && _b !== void 0 ? _b : 1;
+            return {
+                customerId: c.id,
+                emailAddress: c.emailAddress,
+                firstName: c.firstName,
+                lastName: c.lastName,
+                level,
+                levelName: this.getLevelName(ctx, level),
+                growthValue: (_c = cf.growthValue) !== null && _c !== void 0 ? _c : 0,
+                points: (_d = cf.points) !== null && _d !== void 0 ? _d : 0,
+                createdAt: c.createdAt,
+            };
+        });
+        return { items, totalItems };
+    }
+    getLevelConfig(ctx) {
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o;
+        const cf = (_a = ctx.channel.customFields) !== null && _a !== void 0 ? _a : {};
+        return {
+            level1Threshold: (_b = cf.level1Threshold) !== null && _b !== void 0 ? _b : DEFAULT_THRESHOLDS[0],
+            level1Name: (_c = cf.level1Name) !== null && _c !== void 0 ? _c : DEFAULT_NAMES[0],
+            level2Threshold: (_d = cf.level2Threshold) !== null && _d !== void 0 ? _d : DEFAULT_THRESHOLDS[1],
+            level2Name: (_e = cf.level2Name) !== null && _e !== void 0 ? _e : DEFAULT_NAMES[1],
+            level3Threshold: (_f = cf.level3Threshold) !== null && _f !== void 0 ? _f : DEFAULT_THRESHOLDS[2],
+            level3Name: (_g = cf.level3Name) !== null && _g !== void 0 ? _g : DEFAULT_NAMES[2],
+            level4Threshold: (_h = cf.level4Threshold) !== null && _h !== void 0 ? _h : DEFAULT_THRESHOLDS[3],
+            level4Name: (_j = cf.level4Name) !== null && _j !== void 0 ? _j : DEFAULT_NAMES[3],
+            level5Threshold: (_k = cf.level5Threshold) !== null && _k !== void 0 ? _k : DEFAULT_THRESHOLDS[4],
+            level5Name: (_l = cf.level5Name) !== null && _l !== void 0 ? _l : DEFAULT_NAMES[4],
+            pointsEarnRatio: (_m = cf.pointsEarnRatio) !== null && _m !== void 0 ? _m : 1,
+            pointsEarnOnShipping: (_o = cf.pointsEarnOnShipping) !== null && _o !== void 0 ? _o : false,
+        };
+    }
+    async updateLevelConfig(ctx, input) {
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p;
+        await this.channelService.update(ctx, {
+            id: ctx.channelId,
+            customFields: {
+                level1Threshold: input.level1Threshold,
+                level1Name: input.level1Name,
+                level2Threshold: input.level2Threshold,
+                level2Name: input.level2Name,
+                level3Threshold: input.level3Threshold,
+                level3Name: input.level3Name,
+                level4Threshold: input.level4Threshold,
+                level4Name: input.level4Name,
+                level5Threshold: input.level5Threshold,
+                level5Name: input.level5Name,
+                pointsEarnRatio: input.pointsEarnRatio,
+                pointsEarnOnShipping: input.pointsEarnOnShipping,
+            },
+        });
+        const channel = await this.channelService.findOne(ctx, ctx.channelId);
+        const cf = (_b = (_a = channel === null || channel === void 0 ? void 0 : channel.customFields) !== null && _a !== void 0 ? _a : ctx.channel.customFields) !== null && _b !== void 0 ? _b : {};
+        return {
+            level1Threshold: (_c = cf.level1Threshold) !== null && _c !== void 0 ? _c : DEFAULT_THRESHOLDS[0],
+            level1Name: (_d = cf.level1Name) !== null && _d !== void 0 ? _d : DEFAULT_NAMES[0],
+            level2Threshold: (_e = cf.level2Threshold) !== null && _e !== void 0 ? _e : DEFAULT_THRESHOLDS[1],
+            level2Name: (_f = cf.level2Name) !== null && _f !== void 0 ? _f : DEFAULT_NAMES[1],
+            level3Threshold: (_g = cf.level3Threshold) !== null && _g !== void 0 ? _g : DEFAULT_THRESHOLDS[2],
+            level3Name: (_h = cf.level3Name) !== null && _h !== void 0 ? _h : DEFAULT_NAMES[2],
+            level4Threshold: (_j = cf.level4Threshold) !== null && _j !== void 0 ? _j : DEFAULT_THRESHOLDS[3],
+            level4Name: (_k = cf.level4Name) !== null && _k !== void 0 ? _k : DEFAULT_NAMES[3],
+            level5Threshold: (_l = cf.level5Threshold) !== null && _l !== void 0 ? _l : DEFAULT_THRESHOLDS[4],
+            level5Name: (_m = cf.level5Name) !== null && _m !== void 0 ? _m : DEFAULT_NAMES[4],
+            pointsEarnRatio: (_o = cf.pointsEarnRatio) !== null && _o !== void 0 ? _o : 1,
+            pointsEarnOnShipping: (_p = cf.pointsEarnOnShipping) !== null && _p !== void 0 ? _p : false,
+        };
     }
     // ===== Internal helpers =====
     async applyPointsChange(ctx, customerId, delta, type, orderId, remark) {
@@ -191,7 +291,7 @@ let MemberLevelService = class MemberLevelService {
             nextLevelName: next.name,
         };
     }
-    getLevelConfig(ctx) {
+    getLevelThresholds(ctx) {
         var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
         const cf = (_a = ctx.channel.customFields) !== null && _a !== void 0 ? _a : {};
         return {
@@ -212,14 +312,14 @@ let MemberLevelService = class MemberLevelService {
         };
     }
     getLevelName(ctx, level) {
-        const { names } = this.getLevelConfig(ctx);
+        const { names } = this.getLevelThresholds(ctx);
         return names[Math.min(Math.max(level, 1), 5) - 1];
     }
     getNextLevel(ctx, level) {
         if (level >= 5) {
             return { threshold: null, name: null };
         }
-        const { thresholds, names } = this.getLevelConfig(ctx);
+        const { thresholds, names } = this.getLevelThresholds(ctx);
         return { threshold: thresholds[level], name: names[level] };
     }
 };
@@ -228,6 +328,7 @@ exports.MemberLevelService = MemberLevelService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
         core_1.ListQueryBuilder,
-        core_1.CustomerService])
+        core_1.CustomerService,
+        core_1.ChannelService])
 ], MemberLevelService);
 //# sourceMappingURL=member-level.service.js.map
