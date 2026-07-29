@@ -26,6 +26,7 @@ import { groupBuyCheckTask } from './group-buy-scheduled-task';
         GroupBuyService,
         GroupBuyJob,
     ],
+    exports: [GroupBuyService],
     adminApiExtensions: {
         schema: () => gql`
             enum GroupBuyStatus { active completed expired }

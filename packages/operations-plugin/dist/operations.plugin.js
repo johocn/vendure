@@ -13,6 +13,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.OperationsPlugin = void 0;
 const core_1 = require("@nestjs/core");
 const core_2 = require("@vendure/core");
+const coupon_plugin_1 = require("@vendure/coupon-plugin");
+const flash_sale_plugin_1 = require("@vendure/flash-sale-plugin");
+const group_buy_plugin_1 = require("@vendure/group-buy-plugin");
 const content_lifecycle_task_1 = require("./content-lifecycle.task");
 const content_service_1 = require("./content.service");
 const constants_1 = require("./constants");
@@ -52,7 +55,7 @@ exports.OperationsPlugin = OperationsPlugin;
 OperationsPlugin.init = () => OperationsPlugin_1;
 exports.OperationsPlugin = OperationsPlugin = OperationsPlugin_1 = __decorate([
     (0, core_2.VendurePlugin)({
-        imports: [core_2.PluginCommonModule],
+        imports: [core_2.PluginCommonModule, flash_sale_plugin_1.FlashSalePlugin, group_buy_plugin_1.GroupBuyPlugin, coupon_plugin_1.CouponPlugin],
         entities: [content_item_entity_1.ContentItem],
         providers: [
             operations_dashboard_service_1.OperationsDashboardService,

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+    EntityNotFoundError,
     ForbiddenError,
     ID,
     ListQueryOptions,
@@ -50,11 +51,45 @@ export class CouponMarketingService {
 
     async enableForChannel(ctx: RequestContext, id: ID): Promise<any> {
         this.assertPermission(ctx);
-        return this.couponService.enableCouponForChannel(ctx, id);
+        const coupon = await this.couponService.getCoupon(ctx, id);
+        if (!coupon) throw new EntityNotFoundError('Coupon' as any, id);
+        let result: any;
+        if (coupon.isGlobal) {
+            result = await this.couponService.enableCouponForChannel(ctx, id);
+        } else if (!coupon.isActive) {
+            // 非全局券：通过 isActive 启停
+            result = await this.couponService.updateCoupon(ctx, id, { isActive: true });
+        } else {
+            result = coupon;
+        }
+        return this.attachEnabledInCurrentChannel(ctx, result);
     }
 
     async disableForChannel(ctx: RequestContext, id: ID): Promise<any> {
         this.assertPermission(ctx);
-        return this.couponService.disableCouponForChannel(ctx, id);
+        const coupon = await this.couponService.getCoupon(ctx, id);
+        if (!coupon) throw new EntityNotFoundError('Coupon' as any, id);
+        let result: any;
+        if (coupon.isGlobal) {
+            result = await this.couponService.disableCouponForChannel(ctx, id);
+        } else {
+            // 非全局券：通过 isActive 启停
+            result = await this.couponService.updateCoupon(ctx, id, { isActive: false });
+        }
+        return this.attachEnabledInCurrentChannel(ctx, result);
+    }
+
+    /**
+     * MarketingCoupon schema 类型没有 enabledInCurrentChannel 字段解析器，
+     * 需在 service 层计算并附加到返回对象上，供 GraphQL 直接读取。
+     */
+    private attachEnabledInCurrentChannel(ctx: RequestContext, coupon: any): any {
+        if (!coupon) return coupon;
+        if (!coupon.isGlobal) {
+            coupon.enabledInCurrentChannel = true;
+        } else {
+            coupon.enabledInCurrentChannel = !!(coupon.channels?.some((ch: any) => ch.id === ctx.channelId));
+        }
+        return coupon;
     }
 }

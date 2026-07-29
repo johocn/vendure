@@ -30,6 +30,7 @@ import { flashSaleOrderCustomFields } from './order-custom-fields';
         { provide: FLASH_SALE_PLUGIN_OPTIONS, useFactory: () => FlashSalePlugin.options },
         FlashSaleService,
     ],
+    exports: [FlashSaleService],
     adminApiExtensions: {
         schema: () => gql`
             enum FlashSaleStatus { upcoming active ended }

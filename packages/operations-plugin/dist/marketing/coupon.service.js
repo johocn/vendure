@@ -45,11 +45,52 @@ let CouponMarketingService = class CouponMarketingService {
     }
     async enableForChannel(ctx, id) {
         this.assertPermission(ctx);
-        return this.couponService.enableCouponForChannel(ctx, id);
+        const coupon = await this.couponService.getCoupon(ctx, id);
+        if (!coupon)
+            throw new core_1.EntityNotFoundError('Coupon', id);
+        let result;
+        if (coupon.isGlobal) {
+            result = await this.couponService.enableCouponForChannel(ctx, id);
+        }
+        else if (!coupon.isActive) {
+            // 非全局券：通过 isActive 启停
+            result = await this.couponService.updateCoupon(ctx, id, { isActive: true });
+        }
+        else {
+            result = coupon;
+        }
+        return this.attachEnabledInCurrentChannel(ctx, result);
     }
     async disableForChannel(ctx, id) {
         this.assertPermission(ctx);
-        return this.couponService.disableCouponForChannel(ctx, id);
+        const coupon = await this.couponService.getCoupon(ctx, id);
+        if (!coupon)
+            throw new core_1.EntityNotFoundError('Coupon', id);
+        let result;
+        if (coupon.isGlobal) {
+            result = await this.couponService.disableCouponForChannel(ctx, id);
+        }
+        else {
+            // 非全局券：通过 isActive 启停
+            result = await this.couponService.updateCoupon(ctx, id, { isActive: false });
+        }
+        return this.attachEnabledInCurrentChannel(ctx, result);
+    }
+    /**
+     * MarketingCoupon schema 类型没有 enabledInCurrentChannel 字段解析器，
+     * 需在 service 层计算并附加到返回对象上，供 GraphQL 直接读取。
+     */
+    attachEnabledInCurrentChannel(ctx, coupon) {
+        var _a;
+        if (!coupon)
+            return coupon;
+        if (!coupon.isGlobal) {
+            coupon.enabledInCurrentChannel = true;
+        }
+        else {
+            coupon.enabledInCurrentChannel = !!((_a = coupon.channels) === null || _a === void 0 ? void 0 : _a.some((ch) => ch.id === ctx.channelId));
+        }
+        return coupon;
     }
 };
 exports.CouponMarketingService = CouponMarketingService;

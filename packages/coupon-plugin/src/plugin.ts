@@ -39,6 +39,9 @@ const adminSchema = () => gql`
         applicableProductIds: [ID!]
         applicableCategoryIds: [ID!]
         isNewUserOnly: Boolean!
+        isGlobal: Boolean!
+        ownerChannelId: ID
+        enabledInCurrentChannel: Boolean!
         createdAt: DateTime!
         updatedAt: DateTime!
     }
@@ -63,6 +66,7 @@ const adminSchema = () => gql`
         applicableProductIds: [ID!]
         applicableCategoryIds: [ID!]
         isNewUserOnly: Boolean
+        isGlobal: Boolean
     }
 
     input UpdateCouponInput {
@@ -73,9 +77,17 @@ const adminSchema = () => gql`
         totalQuantity: Int
         limitPerUser: Int
         isActive: Boolean
+        minSpend: Int
+        maxDiscount: Int
+        isNewUserOnly: Boolean
     }
 
-    input CouponListOptions
+    input CouponListOptions {
+        skip: Int
+        take: Int
+        sort: JSON
+        filter: JSON
+    }
 
     extend type Query {
         coupons(options: CouponListOptions): CouponList!
@@ -86,6 +98,8 @@ const adminSchema = () => gql`
         createCoupon(input: CreateCouponInput!): Coupon!
         updateCoupon(id: ID!, input: UpdateCouponInput!): Coupon!
         deleteCoupon(id: ID!): Boolean!
+        enableCouponForChannel(id: ID!): Coupon!
+        disableCouponForChannel(id: ID!): Coupon!
     }
 `;
 
@@ -107,6 +121,7 @@ const shopSchema = () => gql`
         applicableProductIds: [ID!]
         applicableCategoryIds: [ID!]
         isNewUserOnly: Boolean!
+        isGlobal: Boolean!
         createdAt: DateTime!
         updatedAt: DateTime!
     }
@@ -140,6 +155,7 @@ const shopSchema = () => gql`
         claimCoupon(couponId: ID!): CouponCode!
         redeemCoupon(code: String!, orderId: ID!): CouponCode!
         applyCoupon(orderId: ID!, code: String!): CouponValidationResult!
+        removeCoupon(orderId: ID!): Boolean!
     }
 `;
 
@@ -150,6 +166,7 @@ const shopSchema = () => gql`
         { provide: COUPON_PLUGIN_OPTIONS, useFactory: () => CouponPlugin.options },
         CouponService,
     ],
+    exports: [CouponService],
     adminApiExtensions: {
         schema: adminSchema,
         resolvers: [CouponAdminResolver],

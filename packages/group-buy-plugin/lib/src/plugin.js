@@ -83,6 +83,7 @@ exports.GroupBuyPlugin = GroupBuyPlugin = GroupBuyPlugin_1 = __decorate([
             group_buy_service_1.GroupBuyService,
             group_buy_job_1.GroupBuyJob,
         ],
+        exports: [group_buy_service_1.GroupBuyService],
         adminApiExtensions: {
             schema: () => (0, graphql_tag_1.default) `
             enum GroupBuyStatus { active completed expired }

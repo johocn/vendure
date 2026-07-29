@@ -86,6 +86,7 @@ exports.FlashSalePlugin = FlashSalePlugin = FlashSalePlugin_1 = __decorate([
             { provide: constants_1.FLASH_SALE_PLUGIN_OPTIONS, useFactory: () => FlashSalePlugin.options },
             flash_sale_service_1.FlashSaleService,
         ],
+        exports: [flash_sale_service_1.FlashSaleService],
         adminApiExtensions: {
             schema: () => (0, graphql_tag_1.default) `
             enum FlashSaleStatus { upcoming active ended }

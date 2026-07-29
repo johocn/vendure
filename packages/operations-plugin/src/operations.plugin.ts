@@ -2,6 +2,9 @@
 import { OnApplicationBootstrap } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { Injector, Logger, PluginCommonModule, ScheduledTask, VendurePlugin } from '@vendure/core';
+import { CouponPlugin } from '@vendure/coupon-plugin';
+import { FlashSalePlugin } from '@vendure/flash-sale-plugin';
+import { GroupBuyPlugin } from '@vendure/group-buy-plugin';
 
 import { contentLifecycleTask } from './content-lifecycle.task';
 import { ContentService } from './content.service';
@@ -20,7 +23,7 @@ import { RoleSyncService } from './role-sync';
 const { gql } = require('graphql-tag');
 
 @VendurePlugin({
-    imports: [PluginCommonModule],
+    imports: [PluginCommonModule, FlashSalePlugin, GroupBuyPlugin, CouponPlugin],
     entities: [ContentItem],
     providers: [
         OperationsDashboardService,

@@ -44,6 +44,9 @@ const adminSchema = () => gql `
         applicableProductIds: [ID!]
         applicableCategoryIds: [ID!]
         isNewUserOnly: Boolean!
+        isGlobal: Boolean!
+        ownerChannelId: ID
+        enabledInCurrentChannel: Boolean!
         createdAt: DateTime!
         updatedAt: DateTime!
     }
@@ -68,6 +71,7 @@ const adminSchema = () => gql `
         applicableProductIds: [ID!]
         applicableCategoryIds: [ID!]
         isNewUserOnly: Boolean
+        isGlobal: Boolean
     }
 
     input UpdateCouponInput {
@@ -78,9 +82,17 @@ const adminSchema = () => gql `
         totalQuantity: Int
         limitPerUser: Int
         isActive: Boolean
+        minSpend: Int
+        maxDiscount: Int
+        isNewUserOnly: Boolean
     }
 
-    input CouponListOptions
+    input CouponListOptions {
+        skip: Int
+        take: Int
+        sort: JSON
+        filter: JSON
+    }
 
     extend type Query {
         coupons(options: CouponListOptions): CouponList!
@@ -91,6 +103,8 @@ const adminSchema = () => gql `
         createCoupon(input: CreateCouponInput!): Coupon!
         updateCoupon(id: ID!, input: UpdateCouponInput!): Coupon!
         deleteCoupon(id: ID!): Boolean!
+        enableCouponForChannel(id: ID!): Coupon!
+        disableCouponForChannel(id: ID!): Coupon!
     }
 `;
 const shopSchema = () => gql `
@@ -111,6 +125,7 @@ const shopSchema = () => gql `
         applicableProductIds: [ID!]
         applicableCategoryIds: [ID!]
         isNewUserOnly: Boolean!
+        isGlobal: Boolean!
         createdAt: DateTime!
         updatedAt: DateTime!
     }
@@ -144,6 +159,7 @@ const shopSchema = () => gql `
         claimCoupon(couponId: ID!): CouponCode!
         redeemCoupon(code: String!, orderId: ID!): CouponCode!
         applyCoupon(orderId: ID!, code: String!): CouponValidationResult!
+        removeCoupon(orderId: ID!): Boolean!
     }
 `;
 let CouponPlugin = CouponPlugin_1 = class CouponPlugin {
@@ -202,6 +218,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
             { provide: constants_1.COUPON_PLUGIN_OPTIONS, useFactory: () => CouponPlugin.options },
             coupon_service_1.CouponService,
         ],
+        exports: [coupon_service_1.CouponService],
         adminApiExtensions: {
             schema: adminSchema,
             resolvers: [coupon_admin_resolver_1.CouponAdminResolver],

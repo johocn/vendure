@@ -11,4 +11,9 @@ export declare class CouponMarketingService {
     delete(ctx: RequestContext, id: ID): Promise<boolean>;
     enableForChannel(ctx: RequestContext, id: ID): Promise<any>;
     disableForChannel(ctx: RequestContext, id: ID): Promise<any>;
+    /**
+     * MarketingCoupon schema 类型没有 enabledInCurrentChannel 字段解析器，
+     * 需在 service 层计算并附加到返回对象上，供 GraphQL 直接读取。
+     */
+    private attachEnabledInCurrentChannel;
 }
