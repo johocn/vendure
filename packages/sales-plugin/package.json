@@ -1,0 +1,17 @@
+{
+  "name": "@vendure/sales-plugin",
+  "version": "1.0.0",
+  "description": "Sales staff management plugin for vendure",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w"
+  },
+  "dependencies": {
+    "@vendure/core": "^3.6.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
