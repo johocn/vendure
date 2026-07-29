@@ -34,7 +34,8 @@ let MemberLevelAdminResolver = class MemberLevelAdminResolver {
         return this.memberLevelService.getLevelConfig(ctx);
     }
     async adjustPoints(ctx, customerId, amount, remark) {
-        return this.memberLevelService.adjustPoints(ctx, customerId, amount, remark);
+        await this.memberLevelService.adjustPoints(ctx, customerId, amount, remark);
+        return this.memberLevelService.getMemberInfo(ctx, customerId);
     }
     async adjustMemberGrowth(ctx, customerId, amount, source) {
         await this.memberLevelService.addGrowthValue(ctx, customerId, amount, source);

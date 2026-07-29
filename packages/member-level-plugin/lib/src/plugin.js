@@ -70,7 +70,7 @@ const adminSchema = () => gql `
         createdAt: DateTime!
     }
 
-    type MemberList implements PaginatedList {
+    type MemberList {
         items: [MemberListItem!]!
         totalItems: Int!
     }

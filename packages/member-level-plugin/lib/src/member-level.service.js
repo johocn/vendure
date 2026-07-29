@@ -42,14 +42,13 @@ let MemberLevelService = class MemberLevelService {
         return this.buildMemberInfo(ctx, customer);
     }
     async addGrowthValue(ctx, customerId, amount, source) {
-        var _a, _b;
         const amt = Math.floor(amount);
         if (!Number.isFinite(amt) || amt === 0) {
             throw new core_1.UserInputError('amount must be a non-zero integer');
         }
-        await this.connection.startTransaction(ctx);
-        try {
-            const repo = this.connection.getRepository(ctx, core_1.Customer);
+        return this.connection.withTransaction(ctx, async (txCtx) => {
+            var _a, _b;
+            const repo = this.connection.getRepository(txCtx, core_1.Customer);
             const customer = await repo
                 .createQueryBuilder('customer')
                 .setLock('pessimistic_write')
@@ -62,17 +61,12 @@ let MemberLevelService = class MemberLevelService {
             const currentGrowth = (_b = cf.growthValue) !== null && _b !== void 0 ? _b : 0;
             const newGrowth = Math.max(0, currentGrowth + amt);
             cf.growthValue = newGrowth;
-            const newLevel = this.calculateLevel(ctx, newGrowth);
+            const newLevel = this.calculateLevel(txCtx, newGrowth);
             cf.memberLevel = newLevel;
             await repo.save(customer);
-            await this.connection.commitOpenTransaction(ctx);
             core_1.Logger.info(`Customer ${customerId} growthValue ${currentGrowth} -> ${newGrowth} (${source !== null && source !== void 0 ? source : ''})`, constants_1.loggerCtx);
             return newGrowth;
-        }
-        catch (e) {
-            await this.connection.rollBackTransaction(ctx);
-            throw e;
-        }
+        });
     }
     async addPoints(ctx, customerId, amount, orderId, remark) {
         const amt = Math.floor(amount);
@@ -234,10 +228,9 @@ let MemberLevelService = class MemberLevelService {
     }
     // ===== Internal helpers =====
     async applyPointsChange(ctx, customerId, delta, type, orderId, remark) {
-        var _a, _b;
-        await this.connection.startTransaction(ctx);
-        try {
-            const repo = this.connection.getRepository(ctx, core_1.Customer);
+        return this.connection.withTransaction(ctx, async (txCtx) => {
+            var _a, _b;
+            const repo = this.connection.getRepository(txCtx, core_1.Customer);
             const customer = await repo
                 .createQueryBuilder('customer')
                 .setLock('pessimistic_write')
@@ -263,15 +256,11 @@ let MemberLevelService = class MemberLevelService {
                 orderId: orderId != null ? Number(orderId) : null,
                 remark: remark !== null && remark !== void 0 ? remark : null,
             });
-            history.channels = [ctx.channel];
-            await this.connection.getRepository(ctx, member_points_history_entity_1.MemberPointsHistory).save(history);
-            await this.connection.commitOpenTransaction(ctx);
+            history.channelId = txCtx.channelId;
+            history.channels = [txCtx.channel];
+            await this.connection.getRepository(txCtx, member_points_history_entity_1.MemberPointsHistory).save(history);
             return balanceAfter;
-        }
-        catch (e) {
-            await this.connection.rollBackTransaction(ctx);
-            throw e;
-        }
+        });
     }
     async buildMemberInfo(ctx, customer) {
         var _a, _b, _c, _d;

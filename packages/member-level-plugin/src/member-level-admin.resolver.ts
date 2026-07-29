@@ -47,7 +47,8 @@ export class MemberLevelAdminResolver {
         @Args('amount') amount: number,
         @Args('remark', { nullable: true }) remark?: string,
     ): Promise<any> {
-        return this.memberLevelService.adjustPoints(ctx, customerId, amount, remark);
+        await this.memberLevelService.adjustPoints(ctx, customerId, amount, remark);
+        return this.memberLevelService.getMemberInfo(ctx, customerId);
     }
 
     @Mutation()

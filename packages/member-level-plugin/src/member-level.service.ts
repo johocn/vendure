@@ -103,9 +103,8 @@ export class MemberLevelService {
         if (!Number.isFinite(amt) || amt === 0) {
             throw new UserInputError('amount must be a non-zero integer');
         }
-        await this.connection.startTransaction(ctx);
-        try {
-            const repo = this.connection.getRepository(ctx, Customer);
+        return this.connection.withTransaction(ctx, async txCtx => {
+            const repo = this.connection.getRepository(txCtx, Customer);
             const customer = await repo
                 .createQueryBuilder('customer')
                 .setLock('pessimistic_write')
@@ -118,19 +117,15 @@ export class MemberLevelService {
             const currentGrowth = cf.growthValue ?? 0;
             const newGrowth = Math.max(0, currentGrowth + amt);
             cf.growthValue = newGrowth;
-            const newLevel = this.calculateLevel(ctx, newGrowth);
+            const newLevel = this.calculateLevel(txCtx, newGrowth);
             cf.memberLevel = newLevel;
             await repo.save(customer);
-            await this.connection.commitOpenTransaction(ctx);
             Logger.info(
                 `Customer ${customerId} growthValue ${currentGrowth} -> ${newGrowth} (${source ?? ''})`,
                 loggerCtx,
             );
             return newGrowth;
-        } catch (e) {
-            await this.connection.rollBackTransaction(ctx);
-            throw e;
-        }
+        });
     }
 
     async addPoints(
@@ -345,9 +340,8 @@ export class MemberLevelService {
         orderId?: ID | null,
         remark?: string | null,
     ): Promise<number> {
-        await this.connection.startTransaction(ctx);
-        try {
-            const repo = this.connection.getRepository(ctx, Customer);
+        return this.connection.withTransaction(ctx, async txCtx => {
+            const repo = this.connection.getRepository(txCtx, Customer);
             const customer = await repo
                 .createQueryBuilder('customer')
                 .setLock('pessimistic_write')
@@ -374,15 +368,12 @@ export class MemberLevelService {
                 orderId: orderId != null ? Number(orderId) : null,
                 remark: remark ?? null,
             });
-            history.channels = [ctx.channel];
-            await this.connection.getRepository(ctx, MemberPointsHistory).save(history);
+            history.channelId = txCtx.channelId as number;
+            history.channels = [txCtx.channel];
+            await this.connection.getRepository(txCtx, MemberPointsHistory).save(history);
 
-            await this.connection.commitOpenTransaction(ctx);
             return balanceAfter;
-        } catch (e) {
-            await this.connection.rollBackTransaction(ctx);
-            throw e;
-        }
+        });
     }
 
     private async buildMemberInfo(ctx: RequestContext, customer: Customer): Promise<MemberInfo> {
