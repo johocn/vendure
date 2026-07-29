@@ -11,6 +11,9 @@ export declare const OperationsPermissions: {
     readonly ManageFloor: "ManageFloor";
     readonly ManagePromotion: "ManagePromotion";
     readonly ManageContent: "ManageContent";
+    readonly ManageFlashSale: "ManageFlashSale";
+    readonly ManageGroupBuy: "ManageGroupBuy";
+    readonly ManageCoupon: "ManageCoupon";
 };
 /**
  * CMS content types for ContentItem entity (single-table polymorphism discriminator).

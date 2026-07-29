@@ -13,6 +13,9 @@ export const OperationsPermissions = {
     ManageFloor: 'ManageFloor',
     ManagePromotion: 'ManagePromotion',
     ManageContent: 'ManageContent',
+    ManageFlashSale: 'ManageFlashSale',
+    ManageGroupBuy: 'ManageGroupBuy',
+    ManageCoupon: 'ManageCoupon',
 } as const;
 
 /**

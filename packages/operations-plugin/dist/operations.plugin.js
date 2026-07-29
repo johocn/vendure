@@ -17,6 +17,11 @@ const content_lifecycle_task_1 = require("./content-lifecycle.task");
 const content_service_1 = require("./content.service");
 const constants_1 = require("./constants");
 const content_item_entity_1 = require("./entities/content-item.entity");
+const coupon_service_1 = require("./marketing/coupon.service");
+const flash_sale_service_1 = require("./marketing/flash-sale.service");
+const group_buy_service_1 = require("./marketing/group-buy.service");
+const marketing_admin_resolver_1 = require("./marketing/marketing-admin.resolver");
+const marketing_overview_service_1 = require("./marketing/marketing-overview.service");
 const operations_admin_resolver_1 = require("./operations-admin.resolver");
 const operations_dashboard_service_1 = require("./operations-dashboard.service");
 const operations_shop_resolver_1 = require("./operations-shop.resolver");
@@ -49,7 +54,14 @@ exports.OperationsPlugin = OperationsPlugin = OperationsPlugin_1 = __decorate([
     (0, core_2.VendurePlugin)({
         imports: [core_2.PluginCommonModule],
         entities: [content_item_entity_1.ContentItem],
-        providers: [operations_dashboard_service_1.OperationsDashboardService, content_service_1.ContentService],
+        providers: [
+            operations_dashboard_service_1.OperationsDashboardService,
+            content_service_1.ContentService,
+            flash_sale_service_1.FlashSaleMarketingService,
+            group_buy_service_1.GroupBuyMarketingService,
+            coupon_service_1.CouponMarketingService,
+            marketing_overview_service_1.MarketingOverviewService,
+        ],
         adminApiExtensions: {
             schema: () => gql `
             # ===== Dashboard =====
@@ -190,8 +202,214 @@ exports.OperationsPlugin = OperationsPlugin = OperationsPlugin_1 = __decorate([
                 deleteContentItem(id: ID!): Boolean!
                 triggerContentLifecycle: ContentLifecycleResult!
             }
+
+            # ===== Marketing Overview =====
+            type MarketingCategoryCount {
+                active: Int!
+                upcoming: Int!
+                ended: Int!
+            }
+
+            type MarketingOverview {
+                flashSale: MarketingCategoryCount!
+                groupBuy: MarketingCategoryCount!
+                coupon: MarketingCategoryCount!
+            }
+
+            # ===== FlashSale (prefixed types to avoid clash with FlashSalePlugin) =====
+            type MarketingFlashSaleActivity {
+                id: ID!
+                name: String!
+                startAt: DateTime!
+                endAt: DateTime!
+                flashPrice: Int!
+                totalStock: Int!
+                soldCount: Int!
+                limitPerUser: Int!
+                productId: ID!
+                variantId: ID!
+                status: String!
+                createdAt: DateTime!
+                updatedAt: DateTime!
+            }
+
+            type MarketingFlashSaleActivityList {
+                items: [MarketingFlashSaleActivity!]!
+                totalItems: Int!
+            }
+
+            input CreateFlashSaleInput {
+                name: String!
+                startAt: DateTime!
+                endAt: DateTime!
+                flashPrice: Int!
+                totalStock: Int!
+                limitPerUser: Int
+                productId: ID!
+                variantId: ID!
+            }
+
+            input UpdateFlashSaleInput {
+                id: ID!
+                name: String
+                startAt: DateTime
+                endAt: DateTime
+                flashPrice: Int
+                totalStock: Int
+                limitPerUser: Int
+                productId: ID
+                variantId: ID
+            }
+
+            # ===== GroupBuy (prefixed types to avoid clash with GroupBuyPlugin) =====
+            type MarketingGroupBuyActivity {
+                id: ID!
+                name: String!
+                description: String!
+                targetCount: Int!
+                currentCount: Int!
+                maxCount: Int!
+                status: String!
+                startAt: DateTime!
+                endAt: DateTime!
+                groupPrice: Int!
+                leaderDiscount: Int!
+                leaderRewardType: String!
+                rewardRules: JSON
+                autoConfirm: Boolean!
+                productId: ID!
+                variantId: ID!
+                createdAt: DateTime!
+                updatedAt: DateTime!
+            }
+
+            type MarketingGroupBuyActivityList {
+                items: [MarketingGroupBuyActivity!]!
+                totalItems: Int!
+            }
+
+            input CreateGroupBuyInput {
+                name: String!
+                description: String!
+                targetCount: Int!
+                maxCount: Int
+                startAt: DateTime!
+                endAt: DateTime!
+                groupPrice: Int!
+                leaderDiscount: Int
+                leaderRewardType: String
+                autoConfirm: Boolean
+                productId: ID!
+                variantId: ID!
+                rewardRules: JSON
+            }
+
+            input UpdateGroupBuyInput {
+                id: ID!
+                name: String
+                description: String
+                targetCount: Int
+                maxCount: Int
+                startAt: DateTime
+                endAt: DateTime
+                groupPrice: Int
+                leaderDiscount: Int
+                leaderRewardType: String
+                autoConfirm: Boolean
+                status: String
+                rewardRules: JSON
+            }
+
+            # ===== Coupon (prefixed types/inputs to avoid clash with CouponPlugin) =====
+            type MarketingCoupon {
+                id: ID!
+                name: String!
+                description: String
+                couponType: String!
+                discountValue: Int!
+                minSpend: Int!
+                maxDiscount: Int!
+                startAt: DateTime!
+                endAt: DateTime!
+                totalQuantity: Int!
+                claimedCount: Int!
+                limitPerUser: Int!
+                isActive: Boolean!
+                applicableProductIds: JSON
+                applicableCategoryIds: JSON
+                isNewUserOnly: Boolean!
+                isGlobal: Boolean!
+                enabledInCurrentChannel: Boolean!
+                createdAt: DateTime!
+                updatedAt: DateTime!
+            }
+
+            type MarketingCouponList {
+                items: [MarketingCoupon!]!
+                totalItems: Int!
+            }
+
+            input MarketingCreateCouponInput {
+                name: String!
+                description: String
+                couponType: String!
+                discountValue: Int!
+                minSpend: Int
+                maxDiscount: Int
+                startAt: DateTime!
+                endAt: DateTime!
+                totalQuantity: Int!
+                limitPerUser: Int
+                isNewUserOnly: Boolean
+                isGlobal: Boolean
+                applicableProductIds: JSON
+                applicableCategoryIds: JSON
+            }
+
+            input MarketingUpdateCouponInput {
+                name: String
+                description: String
+                couponType: String
+                discountValue: Int
+                minSpend: Int
+                maxDiscount: Int
+                startAt: DateTime
+                endAt: DateTime
+                totalQuantity: Int
+                limitPerUser: Int
+                isNewUserOnly: Boolean
+                applicableProductIds: JSON
+                applicableCategoryIds: JSON
+            }
+
+            # ===== Marketing Queries & Mutations =====
+            extend type Query {
+                marketingOverview: MarketingOverview!
+                marketingFlashSaleActivities(options: JSON): MarketingFlashSaleActivityList!
+                marketingFlashSaleActivity(id: ID!): MarketingFlashSaleActivity
+                marketingGroupBuyActivities(options: JSON): MarketingGroupBuyActivityList!
+                marketingGroupBuyActivity(id: ID!): MarketingGroupBuyActivity
+                marketingCoupons(options: JSON): MarketingCouponList!
+                marketingCoupon(id: ID!): MarketingCoupon
+            }
+
+            extend type Mutation {
+                createFlashSale(input: CreateFlashSaleInput!): MarketingFlashSaleActivity!
+                updateFlashSale(input: UpdateFlashSaleInput!): MarketingFlashSaleActivity!
+                deleteFlashSale(id: ID!): Boolean!
+
+                createGroupBuy(input: CreateGroupBuyInput!): MarketingGroupBuyActivity!
+                updateGroupBuy(input: UpdateGroupBuyInput!): MarketingGroupBuyActivity!
+                deleteGroupBuy(id: ID!): Boolean!
+
+                marketingCreateCoupon(input: MarketingCreateCouponInput!): MarketingCoupon!
+                marketingUpdateCoupon(id: ID!, input: MarketingUpdateCouponInput!): MarketingCoupon!
+                marketingDeleteCoupon(id: ID!): Boolean!
+                marketingEnableCouponForChannel(id: ID!): MarketingCoupon!
+                marketingDisableCouponForChannel(id: ID!): MarketingCoupon!
+            }
         `,
-            resolvers: [operations_admin_resolver_1.OperationsAdminResolver],
+            resolvers: [operations_admin_resolver_1.OperationsAdminResolver, marketing_admin_resolver_1.MarketingAdminResolver],
         },
         shopApiExtensions: {
             schema: () => gql `

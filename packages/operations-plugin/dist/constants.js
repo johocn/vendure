@@ -15,6 +15,9 @@ exports.OperationsPermissions = {
     ManageFloor: 'ManageFloor',
     ManagePromotion: 'ManagePromotion',
     ManageContent: 'ManageContent',
+    ManageFlashSale: 'ManageFlashSale',
+    ManageGroupBuy: 'ManageGroupBuy',
+    ManageCoupon: 'ManageCoupon',
 };
 /**
  * CMS content types for ContentItem entity (single-table polymorphism discriminator).
