@@ -97,6 +97,19 @@ var ExceptionType;
     ExceptionType["Damaged"] = "damaged";
     ExceptionType["Other"] = "other";
 })(ExceptionType || (exports.ExceptionType = ExceptionType = {}));
+// Vendure 原生 Read/Update 权限（admin 模块直接调用 core admin-api 时需要）
+const VENDURE_NATIVE_READ_PERMS = [
+    'ReadCatalog', 'ReadProduct', 'ReadCustomer', 'ReadCustomerGroup', 'ReadOrder',
+    'ReadAdministrator', 'ReadSettings', 'ReadAsset', 'ReadCollection', 'ReadFacet',
+    'ReadPromotion', 'ReadShippingMethod', 'ReadPaymentMethod', 'ReadCountry', 'ReadZone',
+    'ReadTaxCategory', 'ReadTaxRate', 'ReadChannel', 'ReadStockLocation', 'ReadSystem',
+];
+const VENDURE_NATIVE_UPDATE_PERMS = [
+    'UpdateCatalog', 'UpdateProduct', 'UpdateCustomer', 'UpdateAdministrator',
+    'UpdateSettings', 'UpdateAsset', 'UpdateCollection', 'UpdateFacet',
+    'UpdatePromotion', 'UpdateShippingMethod', 'UpdatePaymentMethod',
+    'CreateCatalog', 'CreateProduct', 'CreateCustomer',
+];
 // Role 与 Permission 绑定表
 // 所有角色必须包含 'Authenticated' 基础权限，否则无法访问任何受保护的 API
 exports.ROLE_PERMISSIONS_MAP = {
@@ -115,6 +128,9 @@ exports.ROLE_PERMISSIONS_MAP = {
         'ManageProduct', 'ManageUser', 'ViewFinance', 'ManageMessage', 'ManageMember',
         'ManageBanner', 'ManageRecommendation', 'ManageNotice', 'ManageFloor',
         'ManageFlashSale', 'ManageGroupBuy', 'ManageCoupon',
+        // Vendure 原生权限（manager 需查看商品/客户/订单/管理员）
+        ...VENDURE_NATIVE_READ_PERMS,
+        'UpdateCatalog', 'UpdateProduct', 'UpdateCustomer',
     ],
     'super-admin': [
         'Authenticated',
@@ -127,6 +143,9 @@ exports.ROLE_PERMISSIONS_MAP = {
         'ManageBanner', 'ManageRecommendation', 'ManageNotice', 'ManageFloor',
         'ManageFlashSale', 'ManageGroupBuy', 'ManageCoupon',
         'SuperAdmin',
+        // Vendure 原生权限（super-admin 持有全部 Read + Update，等价于内置 superadmin 角色）
+        ...VENDURE_NATIVE_READ_PERMS,
+        ...VENDURE_NATIVE_UPDATE_PERMS,
     ],
 };
 // 模块配置（与前端 shortcuts.ts 对齐）
