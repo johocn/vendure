@@ -1,0 +1,141 @@
+import { OnApplicationBootstrap, Type } from '@nestjs/common';
+import { Logger, PluginCommonModule, VendurePlugin } from '@vendure/core';
+
+import { messageChannelCustomFields } from './channel-custom-fields';
+import { loggerCtx, MESSAGE_PLUGIN_OPTIONS } from './constants';
+import { messageCustomerCustomFields } from './customer-custom-fields';
+import { MessageDelivery } from './entities/message-delivery.entity';
+import { Message } from './entities/message.entity';
+import { MessageJob } from './message-job';
+import { MessageAdminResolver } from './message-admin.resolver';
+import { MessagePushService } from './message-push.service';
+import { MessageService } from './message.service';
+import { MessageShopResolver } from './message-shop.resolver';
+import { MessagePluginOptions } from './types';
+
+const { gql } = require('graphql-tag');
+
+@VendurePlugin({
+    imports: [PluginCommonModule],
+    entities: [Message, MessageDelivery],
+    providers: [
+        { provide: MESSAGE_PLUGIN_OPTIONS, useFactory: () => MessagePlugin.options },
+        MessageService,
+        MessagePushService,
+        MessageJob,
+    ],
+    adminApiExtensions: {
+        schema: () => gql`
+            type Message {
+                id: ID!
+                title: String!
+                body: String!
+                deliveryChannel: String!
+                audienceType: String!
+                audienceLevel: Int
+                status: String!
+                totalTarget: Int!
+                totalSent: Int!
+                totalFailed: Int!
+                createdAt: DateTime!
+                sentAt: DateTime
+            }
+
+            type MessageList implements PaginatedList {
+                items: [Message!]!
+                totalItems: Int!
+            }
+
+            input CreateMessageInput {
+                title: String!
+                body: String!
+                deliveryChannel: String
+                audienceType: String
+                audienceLevel: Int
+            }
+
+            input UpdateMessageInput {
+                title: String
+                body: String
+                deliveryChannel: String
+                audienceType: String
+                audienceLevel: Int
+            }
+
+            type MessageDeliveryStats {
+                totalTarget: Int!
+                totalSent: Int!
+                totalFailed: Int!
+                totalRead: Int!
+            }
+
+            extend type Query {
+                messages(options: JSON): MessageList!
+                message(id: ID!): Message
+                messageDeliveryStats(id: ID!): MessageDeliveryStats!
+            }
+
+            extend type Mutation {
+                createMessage(input: CreateMessageInput!): Message!
+                updateMessage(id: ID!, input: UpdateMessageInput!): Message!
+                deleteMessage(id: ID!): Boolean!
+                sendMessage(id: ID!): Message!
+            }
+        `,
+        resolvers: [MessageAdminResolver],
+    },
+    shopApiExtensions: {
+        schema: () => gql`
+            type MyMessage {
+                id: ID!
+                messageId: ID!
+                title: String!
+                body: String!
+                readAt: DateTime
+                createdAt: DateTime!
+            }
+
+            type MyMessageList implements PaginatedList {
+                items: [MyMessage!]!
+                totalItems: Int!
+            }
+
+            extend type Query {
+                myMessages(options: JSON): MyMessageList!
+                myUnreadMessageCount: Int!
+            }
+
+            extend type Mutation {
+                markMessageRead(id: ID!): Boolean!
+            }
+        `,
+        resolvers: [MessageShopResolver],
+    },
+    configuration: (config) => {
+        config.customFields.Channel = [
+            ...(config.customFields.Channel ?? []),
+            ...(messageChannelCustomFields.Channel ?? []),
+        ];
+        config.customFields.Customer = [
+            ...(config.customFields.Customer ?? []),
+            ...(messageCustomerCustomFields.Customer ?? []),
+        ];
+        return config;
+    },
+    compatibility: '^3.0.0',
+})
+export class MessagePlugin implements OnApplicationBootstrap {
+    private static options: MessagePluginOptions = {};
+
+    constructor(private messageJob: MessageJob) {}
+
+    static init(options?: MessagePluginOptions): Type<MessagePlugin> {
+        MessagePlugin.options = options ?? {};
+        return MessagePlugin;
+    }
+
+    async onApplicationBootstrap(): Promise<void> {
+        await this.messageJob.init();
+        Logger.info('MessagePlugin initialized', loggerCtx);
+    }
+}

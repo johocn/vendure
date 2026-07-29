@@ -54,6 +54,7 @@ import { SalesPlugin } from '@vendure/sales-plugin';
 import { SalesOrderItemPriceCalculationStrategy } from '@vendure/sales-plugin';
 import { CustomerServicePlugin } from '@vendure/customer-service-plugin';
 import { InventoryPlugin } from '@vendure/inventory-plugin';
+import { MessagePlugin } from '@vendure/message-plugin';
 import { OperationsPlugin } from '@vendure/operations-plugin';
 import { NavModifierPlugin } from './test-plugins/nav-modifier-plugin/nav-modifier-plugin';
 // import { FieldTestPlugin } from './test-plugins/field-test/field-test-plugin';
@@ -349,6 +350,7 @@ export const devConfig: VendureConfig = {
         CustomerServicePlugin.init(),
         InventoryPlugin.init(),
         OperationsPlugin.init(),
+        MessagePlugin.init(),
     ],
 };
 // SYNTAX_ERROR_TEST: const x: = ;
