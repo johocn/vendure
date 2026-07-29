@@ -78,10 +78,19 @@ packages/message-plugin/
 ### 3.4 权限注册
 
 在 `delivery-plugin/constants.ts` 注册（沿用 P1/P2 模式）：
-- `ManageMember`
-- `ManageMessage`
+- `ManageMember`（新增，当前未定义）
+- `ManageMessage`（已定义，已在 manager/super-admin 中）
 
-`operations-staff` / `manager` / `super-admin` 角色同步追加。
+**需修改的位置：**
+1. `DeliveryPermissions` 对象追加 `ManageMember: 'ManageMember'`
+2. `PERMISSION_DESCRIPTIONS` 追加 `ManageMember: '会员管理'`
+3. `ROLE_PERMISSIONS_MAP.operations-staff` 追加 `'ManageMember', 'ManageMessage'`（两者都缺）
+4. `MODULE_CONFIGS` 的 ops 模块 perms 追加 `'ManageMember', 'ManageMessage'`
+
+**破坏性变更标注：**
+member-level-plugin 现有 3 个 admin API（memberInfo/pointsHistory/adjustPoints）权限从 `ReadCustomer`/`UpdateCustomer` 改为 `ManageMember`。原来有 ReadCustomer/UpdateCustomer 但没 ManageMember 的角色（如 sales-staff、customer-service）将无法访问这些 API。这是 P3 的意图（权限细分），需在 RoleSyncService 同步后验证不影响其他模块。
+
+shop-api（myMemberInfo/myPointsHistory）用 `Permission.Authenticated`，不受影响。
 
 ## 4. 后端 API
 
@@ -190,7 +199,7 @@ async getLevelConfig(ctx): Promise<LevelConfig>  // 读取 channel.customFields
 ```typescript
 // message.entity.ts
 @Entity()
-export class Message {
+export class Message extends VendureEntity {
     id: ID;
     title: string;                    // 消息标题
     body: string;                     // 消息正文（纯文本）
@@ -203,12 +212,16 @@ export class Message {
     totalFailed: number;              // 失败数
     createdAt: DateTime;
     sentAt?: DateTime;
+    @ManyToMany(() => Channel)
+    @JoinTable()
     channels: Channel[];              // 多租户关联（Vendure Channel）
 }
 
 // message-delivery.entity.ts
 @Entity()
-export class MessageDelivery {
+@Index(['messageId', 'customerId'])   // 群发查询核心索引
+@Index(['customerId', 'readAt'])      // C 端未读查询索引
+export class MessageDelivery extends VendureEntity {
     id: ID;
     messageId: ID;
     customerId: ID;
@@ -216,9 +229,13 @@ export class MessageDelivery {
     deliveryError?: string;           // 失败原因
     readAt?: DateTime;                // 站内信已读时间
     createdAt: DateTime;
+    @ManyToMany(() => Channel)
+    @JoinTable()
     channels: Channel[];
 }
 ```
+
+**实体继承 VendureEntity**（含 id/createdAt/updatedAt/deletedAt 基础字段），多租户用 `@ManyToMany(() => Channel) + @JoinTable()`（Vendure 标准模式）。
 
 **admin Query/Mutation：**
 
@@ -387,6 +404,24 @@ shortcuts.ts 新增 2 项：
 ```
 
 pages.json 新增 2 个 subPackage：`pkg-member`、`pkg-message`。
+
+### 5.4 前端 API client 组织
+
+```
+vadmin/src/
+├── pkg-member/
+│   ├── api/member.ts          # 会员管理 API（members/memberInfo/adjustPoints/adjustMemberGrowth/pointsHistory/levelConfig）
+│   └── pages/...
+├── pkg-message/
+│   ├── api/message.ts         # 消息群发 API（messages/message/createMessage/updateMessage/deleteMessage/sendMessage/messageDeliveryStats）
+│   └── pages/...
+```
+
+沿用 pkg-ops/api/operations.ts 的模式：`getClient().request(query, variables)`。
+
+### 5.5 message-plugin 与 member-level-plugin 的关系
+
+message-plugin **不依赖** member-level-plugin（无需 imports）。查询目标人群时直接用 `TransactionalConnection` 查 `customer` 表的 `customFields_memberLevel` 列（Vendure customFields 按列存储），不需要注入 MemberLevelService。
 
 ## 6. 关键风险点
 
