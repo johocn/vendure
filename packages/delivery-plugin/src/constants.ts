@@ -140,6 +140,6 @@ export const MODULE_CONFIGS = [
   { code: 'inventory', name: '调库',  enabled: true,  entryPath: '/pkg-inventory/pages/stock/index', icon: '📊', sort: 30, perms: ['ViewStock','ManageStockMove','ManageStocktake','ManageStockIn','ManageStockOut'] },
   { code: 'cs',        name: '客服',  enabled: true,  entryPath: '/pkg-cs/pages/orders/index',    icon: '🎧', sort: 40, perms: ['ViewAllOrders','HandleAfterSales','HandleException'] },
   { code: 'ops',       name: '运营',  enabled: true,  entryPath: '/pkg-ops/pages/dashboard/index', icon: '📊', sort: 50, perms: ['ViewDashboard','ManageBanner','ManageRecommendation','ManageNotice','ManageFloor','ManagePromotion','ManageContent','ManageMember','ManageMessage'] },
-  { code: 'admin',     name: '管理',  enabled: false, entryPath: '/pkg-admin/pages/dashboard/index', icon: '⚙️', sort: 60, perms: ['ManageProduct','ManageUser','ViewFinance','ManageMessage','ViewDashboard'] },
+  { code: 'admin',     name: '管理',  enabled: true,  entryPath: '/pkg-admin/pages/products/index', icon: '⚙️', sort: 60, perms: ['ManageProduct','ManageUser','ViewFinance','ManageMessage','ViewDashboard'] },
   { code: 'common',    name: '通用',  enabled: true,  entryPath: '/pages/profile/index',         icon: '👤', sort: 70, perms: [] },
 ];
