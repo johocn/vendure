@@ -16,6 +16,10 @@ export declare class Coupon extends VendureEntity implements ChannelAware {
     applicableProductIds: number[];
     applicableCategoryIds: number[];
     isNewUserOnly: boolean;
+    /** 全局优惠券：由超级管理员创建，所有渠道可见 */
+    isGlobal: boolean;
+    /** 优惠券所属渠道 ID（全局券为 null） */
+    ownerChannelId: number | null;
     channel: Channel;
     channelId: number;
     channels: Channel[];

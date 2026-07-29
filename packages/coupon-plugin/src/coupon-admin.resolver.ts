@@ -1,4 +1,4 @@
-import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Args, Mutation, Parent, Query, ResolveField, Resolver } from '@nestjs/graphql';
 import {
     Allow,
     Ctx,
@@ -12,9 +12,22 @@ import {
 import { Coupon } from './coupon.entity';
 import { CouponService } from './coupon.service';
 
-@Resolver()
+@Resolver(() => Coupon)
 export class CouponAdminResolver {
     constructor(private couponService: CouponService) {}
+
+    @ResolveField('enabledInCurrentChannel', () => Boolean)
+    async enabledInCurrentChannel(
+        @Ctx() ctx: RequestContext,
+        @Parent() coupon: Coupon,
+    ): Promise<boolean> {
+        // 如果是租户自建券，总是返回 true（自己渠道的券自然是启用的）
+        if (!coupon.isGlobal) return true;
+        // 全局券：检查 channels 关系中是否包含当前渠道
+        const full = await this.couponService.getCoupon(ctx, coupon.id);
+        if (!full || !full.channels) return false;
+        return full.channels.some(ch => ch.id === ctx.channelId);
+    }
 
     @Query()
     @Allow(Permission.ReadSettings)
@@ -54,5 +67,17 @@ export class CouponAdminResolver {
     @Allow(Permission.UpdateSettings)
     async deleteCoupon(@Ctx() ctx: RequestContext, @Args('id') id: ID): Promise<boolean> {
         return this.couponService.deleteCoupon(ctx, id);
+    }
+
+    @Mutation()
+    @Allow(Permission.UpdateSettings)
+    async enableCouponForChannel(@Ctx() ctx: RequestContext, @Args('id') id: ID): Promise<Coupon> {
+        return this.couponService.enableCouponForChannel(ctx, id);
+    }
+
+    @Mutation()
+    @Allow(Permission.UpdateSettings)
+    async disableCouponForChannel(@Ctx() ctx: RequestContext, @Args('id') id: ID): Promise<Coupon> {
+        return this.couponService.disableCouponForChannel(ctx, id);
     }
 }

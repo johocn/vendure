@@ -37,6 +37,12 @@ export class Coupon extends VendureEntity implements ChannelAware {
 
     @Column({ default: false }) isNewUserOnly: boolean;
 
+    /** 全局优惠券：由超级管理员创建，所有渠道可见 */
+    @Column({ default: false }) isGlobal: boolean;
+
+    /** 优惠券所属渠道 ID（全局券为 null） */
+    @Column({ type: 'int', nullable: true }) ownerChannelId: number | null;
+
     @ManyToOne(() => Channel) channel: Channel;
 
     @Column() channelId: number;

@@ -79,6 +79,14 @@ __decorate([
     __metadata("design:type", Boolean)
 ], Coupon.prototype, "isNewUserOnly", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ default: false }),
+    __metadata("design:type", Boolean)
+], Coupon.prototype, "isGlobal", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', nullable: true }),
+    __metadata("design:type", Object)
+], Coupon.prototype, "ownerChannelId", void 0);
+__decorate([
     (0, typeorm_1.ManyToOne)(() => core_1.Channel),
     __metadata("design:type", core_1.Channel)
 ], Coupon.prototype, "channel", void 0);

@@ -4,9 +4,12 @@ import { CouponService } from './coupon.service';
 export declare class CouponAdminResolver {
     private couponService;
     constructor(couponService: CouponService);
+    enabledInCurrentChannel(ctx: RequestContext, coupon: Coupon): Promise<boolean>;
     coupons(ctx: RequestContext, options: ListQueryOptions<Coupon>): Promise<PaginatedList<Coupon>>;
     coupon(ctx: RequestContext, id: ID): Promise<Coupon | null>;
     createCoupon(ctx: RequestContext, input: any): Promise<Coupon>;
     updateCoupon(ctx: RequestContext, id: ID, input: any): Promise<Coupon>;
     deleteCoupon(ctx: RequestContext, id: ID): Promise<boolean>;
+    enableCouponForChannel(ctx: RequestContext, id: ID): Promise<Coupon>;
+    disableCouponForChannel(ctx: RequestContext, id: ID): Promise<Coupon>;
 }

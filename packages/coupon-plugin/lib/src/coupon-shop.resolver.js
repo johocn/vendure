@@ -52,6 +52,14 @@ let CouponShopResolver = class CouponShopResolver {
     async applyCoupon(ctx, orderId, code) {
         return this.couponService.applyCouponToOrder(ctx, orderId, code);
     }
+    /**
+     * 移除订单上绑定的优惠券。
+     * 清除 customFields.appliedCouponCode 并触发价格重新计算。
+     */
+    async removeCoupon(ctx, orderId) {
+        await this.couponService.removeCouponFromOrder(ctx, orderId);
+        return true;
+    }
 };
 exports.CouponShopResolver = CouponShopResolver;
 __decorate([
@@ -65,7 +73,7 @@ __decorate([
 ], CouponShopResolver.prototype, "coupon", null);
 __decorate([
     (0, graphql_1.Query)(),
-    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    (0, core_1.Allow)(core_1.Permission.Public),
     __param(0, (0, core_1.Ctx)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext]),
@@ -119,6 +127,15 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
     __metadata("design:returntype", Promise)
 ], CouponShopResolver.prototype, "applyCoupon", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], CouponShopResolver.prototype, "removeCoupon", null);
 exports.CouponShopResolver = CouponShopResolver = __decorate([
     (0, graphql_1.Resolver)(() => coupon_code_entity_1.CouponCode),
     __metadata("design:paramtypes", [coupon_service_1.CouponService])

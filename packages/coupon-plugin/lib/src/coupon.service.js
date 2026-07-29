@@ -27,14 +27,18 @@ let CouponService = class CouponService {
     }
     // ===== Admin CRUD =====
     async getCoupons(ctx, options) {
-        return this.listQueryBuilder
+        const isSuperadmin = ctx.userHasPermissions([core_1.Permission.SuperAdmin]);
+        const qb = this.listQueryBuilder
             .build(coupon_entity_1.Coupon, options, {
             ctx,
             relations: ['channels'],
-            channelId: ctx.channelId,
-        })
-            .getManyAndCount()
-            .then(([items, totalItems]) => ({ items, totalItems }));
+        });
+        if (!isSuperadmin) {
+            // 租户管理员：看全局券 + 自己渠道的券
+            qb.andWhere('(coupon.isGlobal = :isGlobal OR coupon.ownerChannelId = :channelId)', { isGlobal: true, channelId: ctx.channelId });
+        }
+        const [items, totalItems] = await qb.getManyAndCount();
+        return { items, totalItems };
     }
     async getCoupon(ctx, id) {
         return this.connection.getRepository(ctx, coupon_entity_1.Coupon).findOne({
@@ -54,6 +58,8 @@ let CouponService = class CouponService {
             throw new core_1.UserInputError('startAt and endAt are required');
         if (input.totalQuantity == null)
             throw new core_1.UserInputError('totalQuantity is required');
+        const isSuperadmin = ctx.userHasPermissions([core_1.Permission.SuperAdmin]);
+        const isGlobal = input.isGlobal === true && isSuperadmin;
         const coupon = new coupon_entity_1.Coupon({
             name: input.name,
             description: (_a = input.description) !== null && _a !== void 0 ? _a : null,
@@ -71,15 +77,22 @@ let CouponService = class CouponService {
             applicableCategoryIds: (_g = input.applicableCategoryIds) !== null && _g !== void 0 ? _g : null,
             isNewUserOnly: (_h = input.isNewUserOnly) !== null && _h !== void 0 ? _h : false,
         });
+        coupon.isGlobal = isGlobal;
+        coupon.ownerChannelId = isGlobal ? null : Number(ctx.channelId);
+        coupon.channelId = Number(ctx.channelId);
         coupon.channels = [ctx.channel];
         return this.connection.getRepository(ctx, coupon_entity_1.Coupon).save(coupon);
     }
     /** updateCoupon 字段白名单：不允许修改 claimedCount / couponType / discountValue。 */
     async updateCoupon(ctx, id, input) {
         const repo = this.connection.getRepository(ctx, coupon_entity_1.Coupon);
-        const coupon = await repo.findOne({ where: { id: id } });
+        const coupon = await repo.findOne({ where: { id: id }, relations: ['channels'] });
         if (!coupon)
             throw new core_1.EntityNotFoundError('Coupon', id);
+        // 租户不能修改全局券
+        if (coupon.isGlobal && !ctx.userHasPermissions([core_1.Permission.SuperAdmin])) {
+            throw new core_1.UserInputError('Cannot modify global coupon');
+        }
         if (input.name != null)
             coupon.name = input.name;
         if (input.description != null)
@@ -94,6 +107,12 @@ let CouponService = class CouponService {
             coupon.limitPerUser = input.limitPerUser;
         if (input.isActive != null)
             coupon.isActive = input.isActive;
+        if (input.minSpend != null)
+            coupon.minSpend = input.minSpend;
+        if (input.maxDiscount != null)
+            coupon.maxDiscount = input.maxDiscount;
+        if (input.isNewUserOnly != null)
+            coupon.isNewUserOnly = input.isNewUserOnly;
         return repo.save(coupon);
     }
     async deleteCoupon(ctx, id) {
@@ -101,8 +120,51 @@ let CouponService = class CouponService {
         const coupon = await repo.findOne({ where: { id: id } });
         if (!coupon)
             return false;
+        // 租户不能删除全局券
+        if (coupon.isGlobal && !ctx.userHasPermissions([core_1.Permission.SuperAdmin])) {
+            throw new core_1.UserInputError('Cannot delete global coupon');
+        }
         await repo.remove(coupon);
         return true;
+    }
+    /**
+     * 租户启用全局优惠券：把当前渠道加入 coupon.channels。
+     * 已启用时幂等返回。
+     */
+    async enableCouponForChannel(ctx, id) {
+        const repo = this.connection.getRepository(ctx, coupon_entity_1.Coupon);
+        const coupon = await repo.findOne({ where: { id: id }, relations: ['channels'] });
+        if (!coupon)
+            throw new core_1.EntityNotFoundError('Coupon', id);
+        if (!coupon.isGlobal) {
+            throw new core_1.UserInputError('Only global coupons can be enabled/disabled per channel');
+        }
+        const alreadyEnabled = coupon.channels.some(ch => ch.id === ctx.channelId);
+        if (!alreadyEnabled) {
+            const channelRepo = this.connection.getRepository(ctx, core_1.Channel);
+            const channel = await channelRepo.findOne({ where: { id: ctx.channelId } });
+            if (channel) {
+                coupon.channels.push(channel);
+                await repo.save(coupon);
+            }
+        }
+        return coupon;
+    }
+    /**
+     * 租户禁用全局优惠券：把当前渠道从 coupon.channels 移除。
+     * 已禁用时幂等返回。
+     */
+    async disableCouponForChannel(ctx, id) {
+        const repo = this.connection.getRepository(ctx, coupon_entity_1.Coupon);
+        const coupon = await repo.findOne({ where: { id: id }, relations: ['channels'] });
+        if (!coupon)
+            throw new core_1.EntityNotFoundError('Coupon', id);
+        if (!coupon.isGlobal) {
+            throw new core_1.UserInputError('Only global coupons can be enabled/disabled per channel');
+        }
+        coupon.channels = coupon.channels.filter(ch => ch.id !== ctx.channelId);
+        await repo.save(coupon);
+        return coupon;
     }
     // ===== Shop: claim / list / validate / redeem / release =====
     /** 可领取的券：当前 channel、激活、活动期内、有库存。 */
@@ -151,9 +213,8 @@ let CouponService = class CouponService {
             if (!isNew)
                 throw new core_1.UserInputError('Coupon is for new users only');
         }
-        await this.connection.startTransaction(ctx);
-        try {
-            const couponRepo = this.connection.getRepository(ctx, coupon_entity_1.Coupon);
+        return this.connection.withTransaction(ctx, async (txCtx) => {
+            const couponRepo = this.connection.getRepository(txCtx, coupon_entity_1.Coupon);
             const lockedCoupon = await couponRepo
                 .createQueryBuilder('coupon')
                 .setLock('pessimistic_write')
@@ -173,15 +234,11 @@ let CouponService = class CouponService {
                 status: constants_1.CouponCodeStatus.Unused,
                 claimedAt: now,
             });
-            code.channels = [ctx.channel];
-            const saved = await claimedRepo.save(code);
-            await this.connection.commitOpenTransaction(ctx);
-            return saved;
-        }
-        catch (e) {
-            await this.connection.rollBackTransaction(ctx);
-            throw e;
-        }
+            code.channelId = Number(txCtx.channelId);
+            code.channels = [txCtx.channel];
+            const txClaimedRepo = this.connection.getRepository(txCtx, coupon_code_entity_1.CouponCode);
+            return txClaimedRepo.save(code);
+        });
     }
     async getMyCoupons(ctx, status) {
         if (!ctx.activeUserId)
@@ -250,9 +307,8 @@ let CouponService = class CouponService {
         if (!result.valid) {
             throw new core_1.UserInputError((_a = result.error) !== null && _a !== void 0 ? _a : 'Coupon is not valid');
         }
-        await this.connection.startTransaction(ctx);
-        try {
-            const repo = this.connection.getRepository(ctx, coupon_code_entity_1.CouponCode);
+        return this.connection.withTransaction(ctx, async (txCtx) => {
+            const repo = this.connection.getRepository(txCtx, coupon_code_entity_1.CouponCode);
             const locked = await repo
                 .createQueryBuilder('cc')
                 .setLock('pessimistic_write')
@@ -267,14 +323,9 @@ let CouponService = class CouponService {
             locked.usedAt = new Date();
             locked.orderId = Number(orderId);
             const saved = await repo.save(locked);
-            await this.connection.commitOpenTransaction(ctx);
             core_1.Logger.info(`Coupon ${code} redeemed for order ${orderId}, discount=${result.discountAmount}`, constants_1.loggerCtx);
             return saved;
-        }
-        catch (e) {
-            await this.connection.rollBackTransaction(ctx);
-            throw e;
-        }
+        });
     }
     /** 释放：订单取消时归还券码。 */
     async releaseCoupon(ctx, code) {
@@ -294,7 +345,8 @@ let CouponService = class CouponService {
     // ===== Promotion 桥接 =====
     /**
      * 将券码绑定到订单（设置 order.customFields.appliedCouponCode）。
-     * 调用后，couponOrderAction 会在订单计算时自动应用折扣。
+     * 设置后立即调用 applyPriceAdjustments 触发价格重新计算，
+     * 使 couponOrderAction 计算的折扣反映到 order.discounts 和 totalWithTax。
      * 不修改券码状态——状态变更由 OrderPlacedEvent 触发 redeemCoupon 完成。
      */
     async applyCouponToOrder(ctx, orderId, code) {
@@ -304,7 +356,26 @@ let CouponService = class CouponService {
             return result;
         }
         await this.orderService.updateCustomFields(ctx, orderId, { appliedCouponCode: code });
+        // updateCustomFields 不触发价格重新计算，需手动调用 applyPriceAdjustments
+        await this.recalculateOrder(ctx, orderId);
         return result;
+    }
+    /**
+     * 移除订单上绑定的优惠券：清除 customFields.appliedCouponCode 并触发价格重新计算。
+     */
+    async removeCouponFromOrder(ctx, orderId) {
+        await this.orderService.updateCustomFields(ctx, orderId, { appliedCouponCode: null });
+        await this.recalculateOrder(ctx, orderId);
+    }
+    /** 触发订单价格重新计算（使 couponOrderAction 等 promotion 生效）。 */
+    async recalculateOrder(ctx, orderId) {
+        const order = await this.orderService.findOne(ctx, orderId, [
+            'lines',
+            'lines.productVariant',
+        ]);
+        if (order) {
+            await this.orderService.applyPriceAdjustments(ctx, order);
+        }
     }
     /** 订单取消时清除绑定的券码并释放券码。 */
     async releaseCouponOnOrder(ctx, orderId) {

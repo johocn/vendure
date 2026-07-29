@@ -17,4 +17,9 @@ export declare class CouponShopResolver {
      * 不立即核销——核销由 OrderPlacedEvent 触发。
      */
     applyCoupon(ctx: RequestContext, orderId: ID, code: string): Promise<CouponValidationResult>;
+    /**
+     * 移除订单上绑定的优惠券。
+     * 清除 customFields.appliedCouponCode 并触发价格重新计算。
+     */
+    removeCoupon(ctx: RequestContext, orderId: ID): Promise<boolean>;
 }

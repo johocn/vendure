@@ -25,6 +25,16 @@ export declare class CouponService {
     /** updateCoupon 字段白名单：不允许修改 claimedCount / couponType / discountValue。 */
     updateCoupon(ctx: RequestContext, id: ID, input: Partial<Coupon>): Promise<Coupon>;
     deleteCoupon(ctx: RequestContext, id: ID): Promise<boolean>;
+    /**
+     * 租户启用全局优惠券：把当前渠道加入 coupon.channels。
+     * 已启用时幂等返回。
+     */
+    enableCouponForChannel(ctx: RequestContext, id: ID): Promise<Coupon>;
+    /**
+     * 租户禁用全局优惠券：把当前渠道从 coupon.channels 移除。
+     * 已禁用时幂等返回。
+     */
+    disableCouponForChannel(ctx: RequestContext, id: ID): Promise<Coupon>;
     /** 可领取的券：当前 channel、激活、活动期内、有库存。 */
     getAvailableCoupons(ctx: RequestContext): Promise<Coupon[]>;
     claimCoupon(ctx: RequestContext, couponId: ID): Promise<CouponCode>;
@@ -37,10 +47,17 @@ export declare class CouponService {
     releaseCoupon(ctx: RequestContext, code: string): Promise<CouponCode>;
     /**
      * 将券码绑定到订单（设置 order.customFields.appliedCouponCode）。
-     * 调用后，couponOrderAction 会在订单计算时自动应用折扣。
+     * 设置后立即调用 applyPriceAdjustments 触发价格重新计算，
+     * 使 couponOrderAction 计算的折扣反映到 order.discounts 和 totalWithTax。
      * 不修改券码状态——状态变更由 OrderPlacedEvent 触发 redeemCoupon 完成。
      */
     applyCouponToOrder(ctx: RequestContext, orderId: ID, code: string): Promise<CouponValidationResult>;
+    /**
+     * 移除订单上绑定的优惠券：清除 customFields.appliedCouponCode 并触发价格重新计算。
+     */
+    removeCouponFromOrder(ctx: RequestContext, orderId: ID): Promise<void>;
+    /** 触发订单价格重新计算（使 couponOrderAction 等 promotion 生效）。 */
+    private recalculateOrder;
     /** 订单取消时清除绑定的券码并释放券码。 */
     releaseCouponOnOrder(ctx: RequestContext, orderId: ID): Promise<void>;
     /** 过期所有 unused 且对应券已过 endAt 的券码。 */

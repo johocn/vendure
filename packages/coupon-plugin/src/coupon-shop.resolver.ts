@@ -18,7 +18,7 @@ export class CouponShopResolver {
     }
 
     @Query()
-    @Allow(Permission.Authenticated)
+    @Allow(Permission.Public)
     async availableCoupons(@Ctx() ctx: RequestContext): Promise<Coupon[]> {
         return this.couponService.getAvailableCoupons(ctx);
     }
@@ -78,5 +78,19 @@ export class CouponShopResolver {
         @Args('code') code: string,
     ): Promise<CouponValidationResult> {
         return this.couponService.applyCouponToOrder(ctx, orderId, code);
+    }
+
+    /**
+     * 移除订单上绑定的优惠券。
+     * 清除 customFields.appliedCouponCode 并触发价格重新计算。
+     */
+    @Mutation()
+    @Allow(Permission.Authenticated)
+    async removeCoupon(
+        @Ctx() ctx: RequestContext,
+        @Args('orderId') orderId: ID,
+    ): Promise<boolean> {
+        await this.couponService.removeCouponFromOrder(ctx, orderId);
+        return true;
     }
 }
