@@ -33,6 +33,13 @@ import { EmployeeCustomerAdminResolver } from './pickup/enterprise-customer/ente
 import { orderCustomFields } from './order/order-custom-fields';
 import { customerCustomFields } from './customer/customer-custom-fields';
 import { tenantChannelCustomFields } from './tenant/tenant-channel-custom-fields';
+import { productVariantCustomFields } from './shipping/product-variant-custom-fields';
+import { tieredWeightShippingCalculator, tieredQuantityShippingCalculator } from './shipping/tiered-shipping-calculator';
+import { tieredShippingEligibilityChecker } from './shipping/tiered-shipping-eligibility-checker';
+import { ShippingTemplate } from './shipping/shipping-template.entity';
+import { ShippingTemplateService } from './shipping/shipping-template.service';
+import { ShippingTemplateAdminResolver } from './shipping/shipping-template-admin.resolver';
+import { shippingTemplatePermissionDefinitions } from './shipping/shipping-template-permissions';
 import { TenantSetupService } from './tenant/tenant-setup.service';
 import { CjkPluginOptions } from './types';
 import { AuthShopResolver } from './auth/auth-shop.resolver';
@@ -45,6 +52,7 @@ import { DomainShopResolver } from './tenant/domain-shop.resolver';
 import { MapProviderRegistry } from './map/map-provider-registry';
 import { MapService } from './map/map.service';
 import { MapAdminResolver } from './map/map-admin.resolver';
+import { MapShopResolver } from './map/map-shop.resolver';
 import { MapConfigEncryptionMigration, PayConfigEncryptionMigration } from './migrations';
 import { AuthConfigService } from './auth/auth-config.service';
 import { PayConfigService } from './payment/pay-config.service';
@@ -56,7 +64,7 @@ import { TenantConfigAdminResolver } from './admin/tenant-config-admin.resolver'
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [PickupLocation, EmployeeCustomer],
+    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate],
     providers: [
         { provide: CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
         TenantSetupService,
@@ -73,6 +81,7 @@ import { TenantConfigAdminResolver } from './admin/tenant-config-admin.resolver'
         MapConfigService,
         SsoProviderService,
         InviteCodeService,
+        ShippingTemplateService,
     ],
     adminApiExtensions: {
         schema: () => {
@@ -297,9 +306,65 @@ import { TenantConfigAdminResolver } from './admin/tenant-config-admin.resolver'
                     latencyMs: Int!
                     error: String
                 }
+
+                # ===== Shipping Template =====
+                type ShippingTemplate {
+                    id: ID!
+                    name: String!
+                    description: String!
+                    code: String!
+                    fulfillmentHandler: String!
+                    checker: ConfigArg!
+                    calculator: ConfigArg!
+                    isGlobal: Boolean!
+                }
+
+                type ShippingTemplateList {
+                    items: [ShippingTemplate!]!
+                    totalItems: Int!
+                }
+
+                input ShippingTemplateListOptions {
+                    skip: Int
+                    take: Int
+                    sort: JSON
+                    filter: JSON
+                }
+
+                input CreateShippingTemplateInput {
+                    name: String!
+                    description: String!
+                    code: String!
+                    fulfillmentHandler: String!
+                    checker: ConfigArgInput!
+                    calculator: ConfigArgInput!
+                    isGlobal: Boolean
+                }
+
+                input UpdateShippingTemplateInput {
+                    id: ID!
+                    name: String
+                    description: String
+                    code: String
+                    fulfillmentHandler: String
+                    checker: ConfigArgInput
+                    calculator: ConfigArgInput
+                }
+
+                extend type Query {
+                    shippingTemplates(options: ShippingTemplateListOptions): ShippingTemplateList!
+                    shippingTemplate(id: ID!): ShippingTemplate
+                }
+
+                extend type Mutation {
+                    createShippingTemplate(input: CreateShippingTemplateInput!): ShippingTemplate!
+                    updateShippingTemplate(input: UpdateShippingTemplateInput!): ShippingTemplate!
+                    deleteShippingTemplate(id: ID!): Boolean!
+                    createShippingMethodFromTemplate(templateId: ID!, name: String, code: String): ShippingMethod!
+                }
             `;
         },
-        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver],
+        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {
@@ -353,9 +418,34 @@ import { TenantConfigAdminResolver } from './admin/tenant-config-admin.resolver'
                 extend type Query {
                     resolveChannelByDomain(host: String!): DomainResolveResult
                 }
+
+                type DistrictNode {
+                    adcode: String!
+                    name: String!
+                    level: String!
+                    center: LatLng!
+                }
+
+                type ReverseGeocodeResult {
+                    province: String
+                    city: String
+                    district: String
+                    street: String
+                    formattedAddress: String!
+                }
+
+                type LatLng {
+                    lat: Float!
+                    lng: Float!
+                }
+
+                extend type Query {
+                    mapDistricts(parentAdcode: String): [DistrictNode!]!
+                    reverseGeocode(lat: Float!, lng: Float!): ReverseGeocodeResult!
+                }
             `;
         },
-        resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver, DomainShopResolver],
+        resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver, DomainShopResolver, MapShopResolver],
     },
     configuration: config => {
         // 注入 authSecret 到 crypto 模块（configuration 在 bootstrap 早期执行，此时 options 已可用）
@@ -409,6 +499,18 @@ import { TenantConfigAdminResolver } from './admin/tenant-config-admin.resolver'
             }
         }
 
+        // 阶梯重量/件数计费（始终注册，供快递配送方式使用）
+        config.shippingOptions = config.shippingOptions || {};
+        config.shippingOptions.shippingEligibilityCheckers = [
+            ...(config.shippingOptions.shippingEligibilityCheckers || []),
+            tieredShippingEligibilityChecker,
+        ];
+        config.shippingOptions.shippingCalculators = [
+            ...(config.shippingOptions.shippingCalculators || []),
+            tieredWeightShippingCalculator,
+            tieredQuantityShippingCalculator,
+        ];
+
         if (CjkPlugin.options.promotionPolicy?.enabled) {
             config.promotionOptions = config.promotionOptions || {};
             config.promotionOptions.promotionConditions = [
@@ -452,6 +554,23 @@ import { TenantConfigAdminResolver } from './admin/tenant-config-admin.resolver'
             ],
         };
 
+        // 注册 ProductVariant customFields（weight/dimensions）—— 去重防止重复注册
+        {
+            const existingPvFields = (config.customFields?.ProductVariant || []).map(f => f.name);
+            const newPvFields = (productVariantCustomFields.ProductVariant || []).filter(
+                f => !existingPvFields.includes(f.name),
+            );
+            if (newPvFields.length > 0) {
+                config.customFields = {
+                    ...config.customFields,
+                    ProductVariant: [
+                        ...(config.customFields?.ProductVariant || []),
+                        ...newPvFields,
+                    ],
+                };
+            }
+        }
+
         // 注册自定义权限（PickupPermissions）
         config.authOptions = config.authOptions || {};
         config.authOptions.customPermissions = [
@@ -462,6 +581,12 @@ import { TenantConfigAdminResolver } from './admin/tenant-config-admin.resolver'
         config.authOptions.customPermissions = [
             ...(config.authOptions.customPermissions || []),
             tenantConfigPermission,
+        ];
+
+        // 注册 ShippingTemplate 权限
+        config.authOptions.customPermissions = [
+            ...(config.authOptions.customPermissions || []),
+            ...shippingTemplatePermissionDefinitions,
         ];
 
         return config;

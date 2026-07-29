@@ -1,0 +1,146 @@
+import { Injectable } from '@nestjs/common';
+import {
+    Channel,
+    EntityNotFoundError,
+    ID,
+    PaginatedList,
+    ListQueryOptions,
+    Permission,
+    RequestContext,
+    TransactionalConnection,
+    ShippingMethodService,
+    UserInputError,
+} from '@vendure/core';
+import { ShippingTemplate } from './shipping-template.entity';
+
+@Injectable()
+export class ShippingTemplateService {
+    constructor(
+        private connection: TransactionalConnection,
+        private shippingMethodService: ShippingMethodService,
+    ) {}
+
+    /**
+     * 查询模板列表（可见规则：全局模板 + 本租户模板）
+     */
+    async findAll(
+        ctx: RequestContext,
+        options?: ListQueryOptions<ShippingTemplate>,
+    ): Promise<PaginatedList<ShippingTemplate>> {
+        const qb = this.connection.getRepository(ctx, ShippingTemplate).createQueryBuilder('st');
+        qb.where('(st.isGlobal = :isGlobal OR st.ownerChannelId = :channelId)', {
+            isGlobal: true,
+            channelId: ctx.channelId,
+        });
+
+        if (options?.filter?.name?.['contains']) {
+            qb.andWhere('st.name LIKE :name', { name: `%${options.filter.name['contains']}%` });
+        }
+        if (options?.filter?.code?.['contains']) {
+            qb.andWhere('st.code LIKE :code', { code: `%${options.filter.code['contains']}%` });
+        }
+        if (options?.filter?.isGlobal !== undefined) {
+            qb.andWhere('st.isGlobal = :isGlobalFilter', { isGlobalFilter: options.filter.isGlobal });
+        }
+
+        const skip = options?.skip || 0;
+        const take = options?.take || 10;
+        qb.skip(skip).take(take);
+
+        const [items, totalItems] = await qb.getManyAndCount();
+        return { items, totalItems };
+    }
+
+    /**
+     * 查询单个模板
+     */
+    async findOne(ctx: RequestContext, id: ID): Promise<ShippingTemplate | undefined> {
+        const result = await this.connection.getRepository(ctx, ShippingTemplate).findOne({
+            where: { id: id as any },
+        });
+        return result ?? undefined;
+    }
+
+    /**
+     * 创建模板
+     * - 超级管理员：isGlobal=true，ownerChannelId=null
+     * - 租户管理员：isGlobal=false，ownerChannelId=当前channelId
+     */
+    async create(ctx: RequestContext, input: any): Promise<ShippingTemplate> {
+        const repo = this.connection.getRepository(ctx, ShippingTemplate);
+        const template = new ShippingTemplate(input);
+        template.channels = [ctx.channel];
+        template.ownerChannelId = input.isGlobal ? null : ctx.channelId;
+        template.isGlobal = input.isGlobal ?? false;
+        return repo.save(template);
+    }
+
+    /**
+     * 更新模板（租户只能更新自己的模板，不能更新全局模板）
+     */
+    async update(ctx: RequestContext, input: any): Promise<ShippingTemplate> {
+        const repo = this.connection.getRepository(ctx, ShippingTemplate);
+        const template = await repo.findOne({ where: { id: input.id } });
+        if (!template) {
+            throw new EntityNotFoundError('ShippingTemplate', input.id);
+        }
+        // 租户不能修改全局模板
+        if (template.isGlobal && !ctx.userHasPermissions([Permission.SuperAdmin])) {
+            throw new UserInputError('Cannot modify global template');
+        }
+        const { id, ...updateData } = input;
+        Object.assign(template, updateData);
+        return repo.save(template);
+    }
+
+    /**
+     * 删除模板（租户只能删除自己的模板，不能删除全局模板）
+     */
+    async delete(ctx: RequestContext, id: ID): Promise<void> {
+        const repo = this.connection.getRepository(ctx, ShippingTemplate);
+        const template = await repo.findOne({ where: { id: id as any } });
+        if (!template) {
+            throw new EntityNotFoundError('ShippingTemplate', id);
+        }
+        if (template.isGlobal && !ctx.userHasPermissions([Permission.SuperAdmin])) {
+            throw new UserInputError('Cannot delete global template');
+        }
+        await repo.delete(id);
+    }
+
+    /**
+     * 从模板创建配送方式（绑定到当前 Channel）
+     * 租户可覆盖名称，否则使用模板名称
+     */
+    async createShippingMethodFromTemplate(
+        ctx: RequestContext,
+        templateId: ID,
+        nameOverride?: string,
+        codeOverride?: string,
+    ): Promise<any> {
+        const template = await this.findOne(ctx, templateId);
+        if (!template) {
+            throw new EntityNotFoundError('ShippingTemplate', templateId);
+        }
+
+        const name = nameOverride || template.name;
+        const code = codeOverride || template.code;
+
+        // 使用 Vendure 内置 ShippingMethodService 创建
+        const shippingMethod = await this.shippingMethodService.create(ctx, {
+            code,
+            translations: [
+                {
+                    languageCode: ctx.languageCode,
+                    name,
+                    description: template.description,
+                },
+            ],
+            fulfillmentHandler: template.fulfillmentHandler,
+            checker: template.checker,
+            calculator: template.calculator,
+        });
+
+        return shippingMethod;
+    }
+}

@@ -36,6 +36,13 @@ const enterprise_customer_admin_resolver_1 = require("./pickup/enterprise-custom
 const order_custom_fields_1 = require("./order/order-custom-fields");
 const customer_custom_fields_1 = require("./customer/customer-custom-fields");
 const tenant_channel_custom_fields_1 = require("./tenant/tenant-channel-custom-fields");
+const product_variant_custom_fields_1 = require("./shipping/product-variant-custom-fields");
+const tiered_shipping_calculator_1 = require("./shipping/tiered-shipping-calculator");
+const tiered_shipping_eligibility_checker_1 = require("./shipping/tiered-shipping-eligibility-checker");
+const shipping_template_entity_1 = require("./shipping/shipping-template.entity");
+const shipping_template_service_1 = require("./shipping/shipping-template.service");
+const shipping_template_admin_resolver_1 = require("./shipping/shipping-template-admin.resolver");
+const shipping_template_permissions_1 = require("./shipping/shipping-template-permissions");
 const tenant_setup_service_1 = require("./tenant/tenant-setup.service");
 const auth_shop_resolver_1 = require("./auth/auth-shop.resolver");
 const auth_admin_resolver_1 = require("./auth/auth-admin.resolver");
@@ -47,6 +54,7 @@ const domain_shop_resolver_1 = require("./tenant/domain-shop.resolver");
 const map_provider_registry_1 = require("./map/map-provider-registry");
 const map_service_1 = require("./map/map.service");
 const map_admin_resolver_1 = require("./map/map-admin.resolver");
+const map_shop_resolver_1 = require("./map/map-shop.resolver");
 const migrations_1 = require("./migrations");
 const auth_config_service_1 = require("./auth/auth-config.service");
 const pay_config_service_1 = require("./payment/pay-config.service");
@@ -111,7 +119,7 @@ exports.CjkPlugin = CjkPlugin;
 exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer],
+        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate],
         providers: [
             { provide: constants_1.CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
             tenant_setup_service_1.TenantSetupService,
@@ -128,6 +136,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             map_config_service_1.MapConfigService,
             sso_provider_service_1.SsoProviderService,
             invite_code_service_1.InviteCodeService,
+            shipping_template_service_1.ShippingTemplateService,
         ],
         adminApiExtensions: {
             schema: () => {
@@ -352,9 +361,65 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     latencyMs: Int!
                     error: String
                 }
+
+                # ===== Shipping Template =====
+                type ShippingTemplate {
+                    id: ID!
+                    name: String!
+                    description: String!
+                    code: String!
+                    fulfillmentHandler: String!
+                    checker: ConfigArg!
+                    calculator: ConfigArg!
+                    isGlobal: Boolean!
+                }
+
+                type ShippingTemplateList {
+                    items: [ShippingTemplate!]!
+                    totalItems: Int!
+                }
+
+                input ShippingTemplateListOptions {
+                    skip: Int
+                    take: Int
+                    sort: JSON
+                    filter: JSON
+                }
+
+                input CreateShippingTemplateInput {
+                    name: String!
+                    description: String!
+                    code: String!
+                    fulfillmentHandler: String!
+                    checker: ConfigArgInput!
+                    calculator: ConfigArgInput!
+                    isGlobal: Boolean
+                }
+
+                input UpdateShippingTemplateInput {
+                    id: ID!
+                    name: String
+                    description: String
+                    code: String
+                    fulfillmentHandler: String
+                    checker: ConfigArgInput
+                    calculator: ConfigArgInput
+                }
+
+                extend type Query {
+                    shippingTemplates(options: ShippingTemplateListOptions): ShippingTemplateList!
+                    shippingTemplate(id: ID!): ShippingTemplate
+                }
+
+                extend type Mutation {
+                    createShippingTemplate(input: CreateShippingTemplateInput!): ShippingTemplate!
+                    updateShippingTemplate(input: UpdateShippingTemplateInput!): ShippingTemplate!
+                    deleteShippingTemplate(id: ID!): Boolean!
+                    createShippingMethodFromTemplate(templateId: ID!, name: String, code: String): ShippingMethod!
+                }
             `;
             },
-            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver],
+            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver],
         },
         shopApiExtensions: {
             schema: () => {
@@ -408,12 +473,37 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                 extend type Query {
                     resolveChannelByDomain(host: String!): DomainResolveResult
                 }
+
+                type DistrictNode {
+                    adcode: String!
+                    name: String!
+                    level: String!
+                    center: LatLng!
+                }
+
+                type ReverseGeocodeResult {
+                    province: String
+                    city: String
+                    district: String
+                    street: String
+                    formattedAddress: String!
+                }
+
+                type LatLng {
+                    lat: Float!
+                    lng: Float!
+                }
+
+                extend type Query {
+                    mapDistricts(parentAdcode: String): [DistrictNode!]!
+                    reverseGeocode(lat: Float!, lng: Float!): ReverseGeocodeResult!
+                }
             `;
             },
-            resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver],
+            resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver],
         },
         configuration: config => {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q;
             // 注入 authSecret 到 crypto 模块（configuration 在 bootstrap 早期执行，此时 options 已可用）
             (0, crypto_1.setAuthSecret)(CjkPlugin.options.authSecret);
             // 注册 SSO 策略到 shop 端（init 钩子由 Vendure 自动调用）
@@ -458,6 +548,17 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     config.shippingOptions.fulfillmentHandlers.push(pickup_fulfillment_handler_1.employeePickupFulfillmentHandler);
                 }
             }
+            // 阶梯重量/件数计费（始终注册，供快递配送方式使用）
+            config.shippingOptions = config.shippingOptions || {};
+            config.shippingOptions.shippingEligibilityCheckers = [
+                ...(config.shippingOptions.shippingEligibilityCheckers || []),
+                tiered_shipping_eligibility_checker_1.tieredShippingEligibilityChecker,
+            ];
+            config.shippingOptions.shippingCalculators = [
+                ...(config.shippingOptions.shippingCalculators || []),
+                tiered_shipping_calculator_1.tieredWeightShippingCalculator,
+                tiered_shipping_calculator_1.tieredQuantityShippingCalculator,
+            ];
             if ((_h = CjkPlugin.options.promotionPolicy) === null || _h === void 0 ? void 0 : _h.enabled) {
                 config.promotionOptions = config.promotionOptions || {};
                 config.promotionOptions.promotionConditions = [
@@ -484,6 +585,17 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     ...(((_o = config.customFields) === null || _o === void 0 ? void 0 : _o.Customer) || []),
                     ...customer_custom_fields_1.customerCustomFields.Customer,
                 ] });
+            // 注册 ProductVariant customFields（weight/dimensions）—— 去重防止重复注册
+            {
+                const existingPvFields = (((_p = config.customFields) === null || _p === void 0 ? void 0 : _p.ProductVariant) || []).map(f => f.name);
+                const newPvFields = (product_variant_custom_fields_1.productVariantCustomFields.ProductVariant || []).filter(f => !existingPvFields.includes(f.name));
+                if (newPvFields.length > 0) {
+                    config.customFields = Object.assign(Object.assign({}, config.customFields), { ProductVariant: [
+                            ...(((_q = config.customFields) === null || _q === void 0 ? void 0 : _q.ProductVariant) || []),
+                            ...newPvFields,
+                        ] });
+                }
+            }
             // 注册自定义权限（PickupPermissions）
             config.authOptions = config.authOptions || {};
             config.authOptions.customPermissions = [
@@ -493,6 +605,11 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             config.authOptions.customPermissions = [
                 ...(config.authOptions.customPermissions || []),
                 tenant_config_permissions_1.tenantConfigPermission,
+            ];
+            // 注册 ShippingTemplate 权限
+            config.authOptions.customPermissions = [
+                ...(config.authOptions.customPermissions || []),
+                ...shipping_template_permissions_1.shippingTemplatePermissionDefinitions,
             ];
             return config;
         },

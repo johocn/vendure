@@ -42,4 +42,8 @@ __exportStar(require("./src/auth/auth-admin.resolver"), exports);
 __exportStar(require("./src/payment/payment-config.types"), exports);
 __exportStar(require("./src/payment/payment-config"), exports);
 __exportStar(require("./src/tenant/domain-resolver.service"), exports);
+__exportStar(require("./src/shipping/shipping-template.entity"), exports);
+__exportStar(require("./src/shipping/shipping-template.service"), exports);
+__exportStar(require("./src/shipping/shipping-template-admin.resolver"), exports);
+__exportStar(require("./src/shipping/shipping-template-permissions"), exports);
 //# sourceMappingURL=index.js.map

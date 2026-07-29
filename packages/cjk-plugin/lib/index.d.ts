@@ -26,3 +26,7 @@ export * from './src/auth/auth-admin.resolver';
 export * from './src/payment/payment-config.types';
 export * from './src/payment/payment-config';
 export * from './src/tenant/domain-resolver.service';
+export * from './src/shipping/shipping-template.entity';
+export * from './src/shipping/shipping-template.service';
+export * from './src/shipping/shipping-template-admin.resolver';
+export * from './src/shipping/shipping-template-permissions';
