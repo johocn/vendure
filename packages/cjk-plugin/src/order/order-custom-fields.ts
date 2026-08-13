@@ -28,5 +28,23 @@ export const orderCustomFields: CustomFields = {
                 { languageCode: LanguageCode.ko, value: '수거 유형' },
             ],
         },
+        {
+            name: 'shippingProfileSnapshot',
+            type: 'text',
+            nullable: true,
+            public: true,
+            label: [
+                { languageCode: LanguageCode.zh_Hans, value: '配送档案快照' },
+            ],
+        },
+        {
+            name: 'paymentProfileSnapshot',
+            type: 'text',
+            nullable: true,
+            public: true,
+            label: [
+                { languageCode: LanguageCode.zh_Hans, value: '支付档案快照' },
+            ],
+        },
     ],
 };

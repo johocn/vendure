@@ -26,7 +26,7 @@ let MemberPointsHistory = class MemberPointsHistory extends core_1.VendureEntity
 };
 exports.MemberPointsHistory = MemberPointsHistory;
 __decorate([
-    (0, typeorm_1.Column)(),
+    (0, typeorm_1.Column)({ type: 'int' }),
     __metadata("design:type", Number)
 ], MemberPointsHistory.prototype, "customerId", void 0);
 __decorate([
@@ -54,15 +54,11 @@ __decorate([
     __metadata("design:type", Object)
 ], MemberPointsHistory.prototype, "remark", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
+    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
     __metadata("design:type", Date)
 ], MemberPointsHistory.prototype, "expiresAt", void 0);
 __decorate([
-    (0, typeorm_1.ManyToOne)(() => core_1.Channel),
-    __metadata("design:type", core_1.Channel)
-], MemberPointsHistory.prototype, "channel", void 0);
-__decorate([
-    (0, typeorm_1.Column)(),
+    (0, typeorm_1.Column)({ type: 'int' }),
     __metadata("design:type", Number)
 ], MemberPointsHistory.prototype, "channelId", void 0);
 __decorate([

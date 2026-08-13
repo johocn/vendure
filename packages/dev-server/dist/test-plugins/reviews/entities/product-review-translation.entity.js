@@ -43,4 +43,3 @@ exports.ProductReviewTranslation = ProductReviewTranslation = __decorate([
     (0, typeorm_1.Entity)(),
     __metadata("design:paramtypes", [Object])
 ], ProductReviewTranslation);
-//# sourceMappingURL=product-review-translation.entity.js.map

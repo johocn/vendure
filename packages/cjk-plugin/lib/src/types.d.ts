@@ -44,6 +44,10 @@ export interface CjkPluginOptions {
     employeePickup?: CjkPluginEmployeePickupOptions;
     tenant?: CjkPluginTenantOptions;
     promotionPolicy?: CjkPluginPromotionPolicyOptions;
+    profiles?: CjkPluginProfilesOptions;
     /** 用于加密 authConfig 中凭证的密钥 */
     authSecret?: string;
+}
+export interface CjkPluginProfilesOptions {
+    enabled?: boolean;
 }

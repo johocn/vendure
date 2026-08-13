@@ -135,6 +135,12 @@ type Query {
   mapSdkConfig: MapSdkConfig!
   channelMapConfig(channelId: ID!): ChannelMapConfig!
   tenantConfig(channelId: ID!): TenantConfigPayload!
+  shippingTemplates(options: ShippingTemplateListOptions): ShippingTemplateList!
+  shippingTemplate(id: ID!): ShippingTemplate
+  shippingProfiles(options: ShippingProfileListOptions): ShippingProfileList!
+  shippingProfile(id: ID!): ShippingProfile
+  paymentProfiles(options: PaymentProfileListOptions): PaymentProfileList!
+  paymentProfile(id: ID!): PaymentProfile
   invoices(options: InvoiceListOptions): InvoiceList!
   invoice(id: ID!): Invoice
   logisticsTracks(orderId: ID!): [LogisticsTrack!]!
@@ -152,12 +158,52 @@ type Query {
   afterSalesRequests(options: AfterSalesRequestAdminListOptions): AfterSalesRequestAdminList!
   memberInfo(customerId: ID!): MemberInfo!
   pointsHistory(customerId: ID!, options: PointsHistoryListOptions): PointsHistoryList!
+  members(options: JSON): MemberList!
+  levelConfig: LevelConfig!
   reviews(options: ReviewListOptions): ReviewList!
   review(id: ID!): Review
   reviewStats(productId: ID!): ReviewStats!
   subscribeMessageLogs(options: SubscribeMessageLogListOptions): SubscribeMessageLogList!
   coupons(options: CouponListOptions): CouponList!
   coupon(id: ID!): Coupon
+  myPermissions: MyPermissionsResult!
+  myDeliveries(status: String): [Order!]!
+  allDeliveries(status: String): [Order!]!
+  mySales(state: String, page: Int, pageSize: Int): [Order!]!
+  allSales(state: String, staffId: String, page: Int, pageSize: Int): [Order!]!
+  salesOrder(id: ID!): Order
+  mySalesReport(start: String!, end: String!): SalesReportResult!
+  salesReport(staffId: String, start: String!, end: String!): SalesReportResult!
+  csAllOrders(state: String, customerEmail: String, startDate: String, endDate: String, page: Int, pageSize: Int): CsOrderList!
+  csOrderDetail(id: ID!): CsOrderDetail
+  csAfterSalesRequests(state: String, page: Int, pageSize: Int): CsAfterSalesList!
+  csAfterSalesRequestDetail(id: ID!): AfterSalesRequestAdmin
+  csExceptionOrders(exceptionType: String, page: Int, pageSize: Int): CsExceptionOrderList!
+  stockLevels(locationId: ID, page: Int, pageSize: Int): StockLevelList!
+  stockMovements(productVariantId: ID, locationId: ID, type: String, page: Int, pageSize: Int): StockMovementList!
+  stockInOrders(state: String, page: Int, pageSize: Int): StockInOrderList!
+  stockInOrder(id: ID!): StockInOrder
+  stockOutOrders(state: String, page: Int, pageSize: Int): StockOutOrderList!
+  stockOutOrder(id: ID!): StockOutOrder
+  stockMoveOrders(state: String, page: Int, pageSize: Int): StockMoveOrderList!
+  stockMoveOrder(id: ID!): StockMoveOrder
+  stocktakeOrders(state: String, page: Int, pageSize: Int): StocktakeOrderList!
+  stocktakeOrder(id: ID!): StocktakeOrder
+  dashboardOverview(range: String!): DashboardMetrics!
+  salesTrend(days: Int!): [SalesTrendPoint!]!
+  categoryTop(days: Int!): [CategoryTopItem!]!
+  contentItems(type: String, position: String, enabled: Boolean, page: Int, pageSize: Int): ContentItemList!
+  contentItem(id: ID!): ContentItem
+  marketingOverview: MarketingOverview!
+  marketingFlashSaleActivities(options: JSON): MarketingFlashSaleActivityList!
+  marketingFlashSaleActivity(id: ID!): MarketingFlashSaleActivity
+  marketingGroupBuyActivities(options: JSON): MarketingGroupBuyActivityList!
+  marketingGroupBuyActivity(id: ID!): MarketingGroupBuyActivity
+  marketingCoupons(options: JSON): MarketingCouponList!
+  marketingCoupon(id: ID!): MarketingCoupon
+  messages(options: MessageListOptions = null): MessageList!
+  message(id: ID!): Message
+  messageDeliveryStats(id: ID!): MessageDeliveryStats!
 }
 
 type Mutation {
@@ -696,6 +742,18 @@ type Mutation {
   updateChannelAuthConfig(channelId: ID!, input: JSON!): Boolean!
   updateTenantConfig(input: UpdateTenantConfigInput!): TenantConfigPayload!
   testSsoConnection(input: TestSsoInput!): TestSsoResult!
+  createShippingTemplate(input: CreateShippingTemplateInput!): ShippingTemplate!
+  updateShippingTemplate(input: UpdateShippingTemplateInput!): ShippingTemplate!
+  deleteShippingTemplate(id: ID!): Boolean!
+  createShippingMethodFromTemplate(templateId: ID!, name: String, code: String): ShippingMethod!
+  createShippingProfile(input: CreateShippingProfileInput!): ShippingProfile!
+  updateShippingProfile(input: UpdateShippingProfileInput!): ShippingProfile!
+  deleteShippingProfile(id: ID!): Boolean!
+  assignShippingProfile(variantIds: [ID!]!, profileId: ID!): Boolean!
+  createPaymentProfile(input: CreatePaymentProfileInput!): PaymentProfile!
+  updatePaymentProfile(input: UpdatePaymentProfileInput!): PaymentProfile!
+  deletePaymentProfile(id: ID!): Boolean!
+  assignPaymentProfile(variantIds: [ID!]!, profileId: ID!): Boolean!
   issueInvoice(id: ID!): Invoice!
   reverseInvoice(id: ID!, reason: String!): Invoice!
   batchCreateFulfillment(items: [BatchFulfillmentItem!]!): BatchFulfillmentResult!
@@ -720,12 +778,64 @@ type Mutation {
   confirmReturnReceived(id: ID!): AfterSalesRequestAdmin!
   processAfterSalesRefund(id: ID!): AfterSalesRequestAdmin!
   adjustPoints(customerId: ID!, amount: Int!, remark: String): MemberInfo!
+  adjustMemberGrowth(customerId: ID!, amount: Int!, source: String): MemberInfo!
+  updateLevelConfig(input: UpdateLevelConfigInput!): LevelConfig!
   replyReview(id: ID!, reply: String!): Review!
   approveReview(id: ID!): Review!
   rejectReview(id: ID!): Review!
   createCoupon(input: CreateCouponInput!): Coupon!
   updateCoupon(id: ID!, input: UpdateCouponInput!): Coupon!
   deleteCoupon(id: ID!): Boolean!
+  enableCouponForChannel(id: ID!): Coupon!
+  disableCouponForChannel(id: ID!): Coupon!
+  startDelivery(orderId: ID!): Order!
+  markDelivered(orderId: ID!, photos: [String!]!, note: String): Order!
+  reportException(orderId: ID!, type: String!, photos: [String!]!, note: String): Order!
+  reassignDelivery(orderId: ID!, newStaffId: ID!): Order!
+  salesCreateOrder(input: SalesCreateOrderInput!): Order!
+  modifyOrderLinePrice(orderLineId: ID!, newPrice: Int!): Order!
+  cancelSalesOrder(orderId: ID!, reason: String): Order!
+  csApproveAfterSales(id: ID!): AfterSalesRequestAdmin!
+  csRejectAfterSales(id: ID!, reason: String!): AfterSalesRequestAdmin!
+  csConfirmReturnReceived(id: ID!): AfterSalesRequestAdmin!
+  csProcessRefund(id: ID!): AfterSalesRequestAdmin!
+  csAddExceptionNote(orderId: ID!, note: String!): CsExceptionOrder!
+  createStockInOrder(input: CreateStockInOrderInput!): StockInOrder!
+  completeStockInOrder(id: ID!): StockInOrder!
+  cancelStockInOrder(id: ID!): StockInOrder!
+  createStockOutOrder(input: CreateStockOutOrderInput!): StockOutOrder!
+  completeStockOutOrder(id: ID!): StockOutOrder!
+  cancelStockOutOrder(id: ID!): StockOutOrder!
+  createStockMoveOrder(input: CreateStockMoveOrderInput!): StockMoveOrder!
+  shipStockMoveOrder(id: ID!): StockMoveOrder!
+  receiveStockMoveOrder(id: ID!): StockMoveOrder!
+  completeStockMoveOrder(id: ID!): StockMoveOrder!
+  cancelStockMoveOrder(id: ID!): StockMoveOrder!
+  createStocktakeOrder(input: CreateStocktakeOrderInput!): StocktakeOrder!
+  startCountingStocktake(id: ID!): StocktakeOrder!
+  submitStocktakeCount(id: ID!, counts: [StocktakeCountInput!]!): StocktakeOrder!
+  reconcileStocktakeLine(orderId: ID!, lineId: ID!): StocktakeOrder!
+  completeStocktakeOrder(id: ID!): StocktakeOrder!
+  cancelStocktakeOrder(id: ID!): StocktakeOrder!
+  createContentItem(input: CreateContentItemInput!): ContentItem!
+  updateContentItem(id: ID!, input: UpdateContentItemInput!): ContentItem!
+  deleteContentItem(id: ID!): Boolean!
+  triggerContentLifecycle: ContentLifecycleResult!
+  createFlashSale(input: CreateFlashSaleInput!): MarketingFlashSaleActivity!
+  updateFlashSale(input: UpdateFlashSaleInput!): MarketingFlashSaleActivity!
+  deleteFlashSale(id: ID!): Boolean!
+  createGroupBuy(input: CreateGroupBuyInput!): MarketingGroupBuyActivity!
+  updateGroupBuy(input: UpdateGroupBuyInput!): MarketingGroupBuyActivity!
+  deleteGroupBuy(id: ID!): Boolean!
+  marketingCreateCoupon(input: MarketingCreateCouponInput!): MarketingCoupon!
+  marketingUpdateCoupon(id: ID!, input: MarketingUpdateCouponInput!): MarketingCoupon!
+  marketingDeleteCoupon(id: ID!): Boolean!
+  marketingEnableCouponForChannel(id: ID!): MarketingCoupon!
+  marketingDisableCouponForChannel(id: ID!): MarketingCoupon!
+  createMessage(input: CreateMessageInput!): Message!
+  updateMessage(id: ID!, input: UpdateMessageInput!): Message!
+  deleteMessage(id: ID!): Boolean!
+  sendMessage(id: ID!): Message!
 }
 
 input RechargeCardAdminListOptions {
@@ -812,6 +922,57 @@ input RechargeCardBatchAdminFilterParameter {
   createdAt: DateOperators
   _and: [RechargeCardBatchAdminFilterParameter!]
   _or: [RechargeCardBatchAdminFilterParameter!]
+}
+
+input MessageListOptions {
+  """Skips the first n results, for use in pagination"""
+  skip: Int
+
+  """Takes n results, for use in pagination"""
+  take: Int
+
+  """Specifies which properties to sort the results by"""
+  sort: MessageSortParameter
+
+  """Allows the results to be filtered"""
+  filter: MessageFilterParameter
+
+  """
+  Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND.
+  """
+  filterOperator: LogicalOperator
+}
+
+input MessageSortParameter {
+  id: SortOrder
+  title: SortOrder
+  body: SortOrder
+  deliveryChannel: SortOrder
+  audienceType: SortOrder
+  audienceLevel: SortOrder
+  status: SortOrder
+  totalTarget: SortOrder
+  totalSent: SortOrder
+  totalFailed: SortOrder
+  createdAt: SortOrder
+  sentAt: SortOrder
+}
+
+input MessageFilterParameter {
+  id: IDOperators
+  title: StringOperators
+  body: StringOperators
+  deliveryChannel: StringOperators
+  audienceType: StringOperators
+  audienceLevel: NumberOperators
+  status: StringOperators
+  totalTarget: NumberOperators
+  totalSent: NumberOperators
+  totalFailed: NumberOperators
+  createdAt: DateOperators
+  sentAt: DateOperators
+  _and: [MessageFilterParameter!]
+  _or: [MessageFilterParameter!]
 }
 
 input AdministratorListOptions {
@@ -1395,6 +1556,11 @@ input CustomerFilterParameter {
   growthValue: NumberOperators
   points: NumberOperators
   memberLevel: NumberOperators
+  customerType: StringOperators
+  companyInfo: StringOperators
+  salesStaffId: StringOperators
+  customerTags: StringListOperators
+  pushCid: StringOperators
 }
 
 input CustomerListOptions {
@@ -1855,6 +2021,8 @@ input OrderFilterParameter {
   _and: [OrderFilterParameter!]
   _or: [OrderFilterParameter!]
   pickupType: StringOperators
+  shippingProfileSnapshot: StringOperators
+  paymentProfileSnapshot: StringOperators
   invoiceRequired: BooleanOperators
   invoiceType: StringOperators
   invoiceTitle: StringOperators
@@ -1873,6 +2041,18 @@ input OrderFilterParameter {
   invoiceNumber: StringOperators
   afterSalesStatus: StringOperators
   appliedCouponCode: StringOperators
+  deliveryStaffId: StringOperators
+  deliveryStatus: StringOperators
+  assignedAt: DateOperators
+  deliveredAt: DateOperators
+  deliveryPhotos: StringListOperators
+  deliveryNote: StringOperators
+  exceptionType: StringOperators
+  exceptionNote: StringOperators
+  exceptionPhotos: StringListOperators
+  salesStaffId: StringOperators
+  salesChannel: StringOperators
+  salesNote: StringOperators
 }
 
 input OrderSortParameter {
@@ -1894,6 +2074,8 @@ input OrderSortParameter {
   totalWithTax: SortOrder
   selectedPickupLocationId: SortOrder
   pickupType: SortOrder
+  shippingProfileSnapshot: SortOrder
+  paymentProfileSnapshot: SortOrder
   invoiceRequired: SortOrder
   invoiceType: SortOrder
   invoiceTitle: SortOrder
@@ -1912,6 +2094,16 @@ input OrderSortParameter {
   invoiceNumber: SortOrder
   afterSalesStatus: SortOrder
   appliedCouponCode: SortOrder
+  deliveryStaffId: SortOrder
+  deliveryStatus: SortOrder
+  assignedAt: SortOrder
+  deliveredAt: SortOrder
+  deliveryNote: SortOrder
+  exceptionType: SortOrder
+  exceptionNote: SortOrder
+  salesStaffId: SortOrder
+  salesChannel: SortOrder
+  salesNote: SortOrder
 }
 
 input OrderListOptions {
@@ -1982,6 +2174,7 @@ input RefundOrderInput {
 input OrderLineInput {
   orderLineId: ID!
   quantity: Int!
+  customFields: OrderLineCustomFieldsInput
 }
 
 input SettleRefundInput {
@@ -2033,6 +2226,7 @@ input UpdateOrderAddressInput {
   postalCode: String
   countryCode: String
   phoneNumber: String
+  customFields: UpdateAddressCustomFieldsInput
 }
 
 input ModifyOrderInput {
@@ -2062,6 +2256,7 @@ input ModifyOrderInput {
 input AddItemInput {
   productVariantId: ID!
   quantity: Int!
+  customFields: OrderLineCustomFieldsInput
 }
 
 input SurchargeInput {
@@ -2083,11 +2278,13 @@ input ManualPaymentInput {
 input AddItemToDraftOrderInput {
   productVariantId: ID!
   quantity: Int!
+  customFields: OrderLineCustomFieldsInput
 }
 
 input AdjustDraftOrderLineInput {
   orderLineId: ID!
   quantity: Int!
+  customFields: OrderLineCustomFieldsInput
 }
 
 """Returned if the Payment settlement fails"""
@@ -2425,7 +2622,7 @@ type ProductVariant implements Node {
   options: [ProductOption!]!
   facetValues: [FacetValue!]!
   translations: [ProductVariantTranslation!]!
-  customFields: JSON
+  customFields: ProductVariantCustomFields
 }
 
 type ProductOptionGroup implements Node {
@@ -2670,6 +2867,12 @@ input ProductVariantFilterParameter {
   stockLevel: StringOperators
   _and: [ProductVariantFilterParameter!]
   _or: [ProductVariantFilterParameter!]
+  weight: NumberOperators
+  length: NumberOperators
+  width: NumberOperators
+  height: NumberOperators
+  shippingProfileId: StringOperators
+  paymentProfileId: StringOperators
 }
 
 input ProductTranslationInput {
@@ -2752,7 +2955,7 @@ input CreateProductVariantInput {
   outOfStockThreshold: Int
   useGlobalOutOfStockThreshold: Boolean
   trackInventory: GlobalFlag
-  customFields: JSON
+  customFields: CreateProductVariantCustomFieldsInput
 }
 
 input UpdateProductVariantInput {
@@ -2780,7 +2983,7 @@ input UpdateProductVariantInput {
   outOfStockThreshold: Int
   useGlobalOutOfStockThreshold: Boolean
   trackInventory: GlobalFlag
-  customFields: JSON
+  customFields: UpdateProductVariantCustomFieldsInput
 }
 
 input AssignProductsToChannelInput {
@@ -3231,7 +3434,7 @@ type StockAdjustment implements Node & StockMovement {
   productVariant: ProductVariant!
   type: StockMovementType!
   quantity: Int!
-  customFields: JSON
+  customFields: StockAdjustmentCustomFields
 }
 
 type Allocation implements Node & StockMovement {
@@ -3242,7 +3445,7 @@ type Allocation implements Node & StockMovement {
   type: StockMovementType!
   quantity: Int!
   orderLine: OrderLine!
-  customFields: JSON
+  customFields: AllocationCustomFields
 }
 
 type Sale implements Node & StockMovement {
@@ -3252,7 +3455,7 @@ type Sale implements Node & StockMovement {
   productVariant: ProductVariant!
   type: StockMovementType!
   quantity: Int!
-  customFields: JSON
+  customFields: SaleCustomFields
 }
 
 type Cancellation implements Node & StockMovement {
@@ -3263,7 +3466,7 @@ type Cancellation implements Node & StockMovement {
   type: StockMovementType!
   quantity: Int!
   orderLine: OrderLine!
-  customFields: JSON
+  customFields: CancellationCustomFields
 }
 
 type Return implements Node & StockMovement {
@@ -3273,7 +3476,7 @@ type Return implements Node & StockMovement {
   productVariant: ProductVariant!
   type: StockMovementType!
   quantity: Int!
-  customFields: JSON
+  customFields: ReturnCustomFields
 }
 
 type Release implements Node & StockMovement {
@@ -3283,7 +3486,7 @@ type Release implements Node & StockMovement {
   productVariant: ProductVariant!
   type: StockMovementType!
   quantity: Int!
-  customFields: JSON
+  customFields: ReleaseCustomFields
 }
 
 union StockMovementItem = StockAdjustment | Allocation | Sale | Cancellation | Return | Release
@@ -3462,7 +3665,7 @@ type Address implements Node {
   phoneNumber: String
   defaultShippingAddress: Boolean
   defaultBillingAddress: Boolean
-  customFields: JSON
+  customFields: AddressCustomFields
 }
 
 type Asset implements Node {
@@ -3774,7 +3977,7 @@ enum Permission {
   """Grants permission to delete Facet"""
   DeleteFacet
 
-  """Grants permission to create Order"""
+  """销售开单"""
   CreateOrder
 
   """Grants permission to read Order"""
@@ -3965,6 +4168,138 @@ enum Permission {
 
   """Manage tenant-level configuration (payment/auth/sso/map)"""
   ManageTenantConfig
+
+  """Grants ReadShippingTemplate permission"""
+  ShippingTemplateRead
+
+  """Grants CreateShippingTemplate permission"""
+  ShippingTemplateCreate
+
+  """Grants UpdateShippingTemplate permission"""
+  ShippingTemplateUpdate
+
+  """Grants DeleteShippingTemplate permission"""
+  ShippingTemplateDelete
+
+  """Grants CreateShippingMethodFromTemplate permission"""
+  ShippingMethodFromTemplate
+
+  """Grants permissions for ShippingProfile operations"""
+  ShippingProfile
+
+  """Grants permissions for PaymentProfile operations"""
+  PaymentProfile
+
+  """Grants permission to create MemberLevel"""
+  CreateMemberLevel
+
+  """Grants permission to read MemberLevel"""
+  ReadMemberLevel
+
+  """Grants permission to update MemberLevel"""
+  UpdateMemberLevel
+
+  """Grants permission to delete MemberLevel"""
+  DeleteMemberLevel
+
+  """查看配送任务"""
+  DeliverOrder
+
+  """标记送达"""
+  MarkDelivered
+
+  """上报异常"""
+  ReportException
+
+  """查看全部配送"""
+  ViewAllDeliveries
+
+  """改派"""
+  ReassignDelivery
+
+  """查看自己的销售订单"""
+  ViewOwnSales
+
+  """客户档案管理"""
+  ManageCustomer
+
+  """业绩报表"""
+  ViewSalesReport
+
+  """库存查询"""
+  ViewStock
+
+  """调拨单"""
+  ManageStockMove
+
+  """盘点"""
+  ManageStocktake
+
+  """入库"""
+  ManageStockIn
+
+  """出库"""
+  ManageStockOut
+
+  """查看全部订单"""
+  ViewAllOrders
+
+  """售后处理"""
+  HandleAfterSales
+
+  """异常跟进"""
+  HandleException
+
+  """营销活动"""
+  ManagePromotion
+
+  """内容管理"""
+  ManageContent
+
+  """数据看板"""
+  ViewDashboard
+
+  """商品管理"""
+  ManageProduct
+
+  """用户管理"""
+  ManageUser
+
+  """财务概览"""
+  ViewFinance
+
+  """消息群发"""
+  ManageMessage
+
+  """Banner 轮播管理"""
+  ManageBanner
+
+  """推荐位管理"""
+  ManageRecommendation
+
+  """公告/弹窗管理"""
+  ManageNotice
+
+  """首页楼层管理"""
+  ManageFloor
+
+  """闪购活动管理"""
+  ManageFlashSale
+
+  """拼团活动管理"""
+  ManageGroupBuy
+
+  """优惠券管理"""
+  ManageCoupon
+
+  """会员管理"""
+  ManageMember
+
+  """查看全部销售订单"""
+  ViewAllSales
+
+  """手动改价"""
+  ModifyOrderPrice
 }
 
 enum SortOrder {
@@ -4374,7 +4709,7 @@ input CreateAddressInput {
   phoneNumber: String
   defaultShippingAddress: Boolean
   defaultBillingAddress: Boolean
-  customFields: JSON
+  customFields: CreateAddressCustomFieldsInput
 }
 
 """
@@ -4397,7 +4732,7 @@ input UpdateAddressInput {
   phoneNumber: String
   defaultShippingAddress: Boolean
   defaultBillingAddress: Boolean
-  customFields: JSON
+  customFields: UpdateAddressCustomFieldsInput
 }
 
 """
@@ -5840,7 +6175,7 @@ type OrderAddress {
   country: String
   countryCode: String
   phoneNumber: String
-  customFields: JSON
+  customFields: AddressCustomFields
 }
 
 type OrderList implements PaginatedList {
@@ -5948,7 +6283,7 @@ type OrderLine implements Node {
   taxLines: [TaxLine!]!
   order: Order!
   fulfillmentLines: [FulfillmentLine!]
-  customFields: JSON
+  customFields: OrderLineCustomFields
 }
 
 type RefundLine {
@@ -6653,6 +6988,144 @@ type TestSsoResult {
   error: String
 }
 
+type ShippingTemplate {
+  id: ID!
+  name: String!
+  description: String!
+  code: String!
+  fulfillmentHandler: String!
+  checker: ConfigArg!
+  calculator: ConfigArg!
+  isGlobal: Boolean!
+}
+
+type ShippingTemplateList {
+  items: [ShippingTemplate!]!
+  totalItems: Int!
+}
+
+input ShippingTemplateListOptions {
+  skip: Int
+  take: Int
+  sort: JSON
+  filter: JSON
+}
+
+input CreateShippingTemplateInput {
+  name: String!
+  description: String!
+  code: String!
+  fulfillmentHandler: String!
+  checker: ConfigArgInput!
+  calculator: ConfigArgInput!
+  isGlobal: Boolean
+}
+
+input UpdateShippingTemplateInput {
+  id: ID!
+  name: String
+  description: String
+  code: String
+  fulfillmentHandler: String
+  checker: ConfigArgInput
+  calculator: ConfigArgInput
+}
+
+type ShippingProfile implements Node {
+  id: ID!
+  name: String!
+  description: String!
+  code: String!
+  isGlobal: Boolean!
+  freeShippingThreshold: Int
+  shippingMethods: [ShippingMethod!]!
+  pickupLocations: [PickupLocation!]!
+}
+
+type ShippingProfileList implements PaginatedList {
+  items: [ShippingProfile!]!
+  totalItems: Int!
+}
+
+input CreateShippingProfileInput {
+  name: String!
+  code: String!
+  description: String
+  isGlobal: Boolean
+  freeShippingThreshold: Int
+  shippingMethodIds: [ID!]!
+  pickupLocationIds: [ID!]
+}
+
+input UpdateShippingProfileInput {
+  id: ID!
+  name: String
+  code: String
+  description: String
+  isGlobal: Boolean
+  freeShippingThreshold: Int
+  shippingMethodIds: [ID!]
+  pickupLocationIds: [ID!]
+}
+
+input ShippingProfileListOptions {
+  skip: Int
+  take: Int
+  sort: JSON
+  filter: JSON
+
+  """
+  Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND.
+  """
+  filterOperator: LogicalOperator
+}
+
+type PaymentProfile implements Node {
+  id: ID!
+  name: String!
+  description: String!
+  code: String!
+  isGlobal: Boolean!
+  installmentOptions: JSON
+  paymentMethods: [PaymentMethod!]!
+}
+
+type PaymentProfileList implements PaginatedList {
+  items: [PaymentProfile!]!
+  totalItems: Int!
+}
+
+input CreatePaymentProfileInput {
+  name: String!
+  code: String!
+  description: String
+  isGlobal: Boolean
+  installmentOptions: JSON
+  paymentMethodIds: [ID!]!
+}
+
+input UpdatePaymentProfileInput {
+  id: ID!
+  name: String
+  code: String
+  description: String
+  isGlobal: Boolean
+  installmentOptions: JSON
+  paymentMethodIds: [ID!]
+}
+
+input PaymentProfileListOptions {
+  skip: Int
+  take: Int
+  sort: JSON
+  filter: JSON
+
+  """
+  Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND.
+  """
+  filterOperator: LogicalOperator
+}
+
 type Invoice implements Node {
   id: ID!
   invoiceType: String!
@@ -6831,6 +7304,8 @@ type FlashSaleActivity implements Node {
   totalStock: Int!
   soldCount: Int!
   limitPerUser: Int!
+  productId: ID!
+  variantId: ID!
   status: FlashSaleStatus!
   createdAt: DateTime!
   updatedAt: DateTime!
@@ -6860,6 +7335,8 @@ input UpdateFlashSaleActivityInput {
   flashPrice: Int
   totalStock: Int
   limitPerUser: Int
+  productId: ID
+  variantId: ID
   status: FlashSaleStatus
 }
 
@@ -7155,6 +7632,53 @@ input PointsHistoryListOptions {
   take: Int
 }
 
+type MemberListItem {
+  customerId: ID!
+  emailAddress: String
+  firstName: String
+  lastName: String
+  level: Int!
+  levelName: String!
+  growthValue: Int!
+  points: Int!
+  createdAt: DateTime!
+}
+
+type MemberList {
+  items: [MemberListItem!]!
+  totalItems: Int!
+}
+
+type LevelConfig {
+  level1Threshold: Int!
+  level1Name: String!
+  level2Threshold: Int!
+  level2Name: String!
+  level3Threshold: Int!
+  level3Name: String!
+  level4Threshold: Int!
+  level4Name: String!
+  level5Threshold: Int!
+  level5Name: String!
+  pointsEarnRatio: Float!
+  pointsEarnOnShipping: Boolean!
+}
+
+input UpdateLevelConfigInput {
+  level1Threshold: Int
+  level1Name: String
+  level2Threshold: Int
+  level2Name: String
+  level3Threshold: Int
+  level3Name: String
+  level4Threshold: Int
+  level4Name: String
+  level5Threshold: Int
+  level5Name: String
+  pointsEarnRatio: Float
+  pointsEarnOnShipping: Boolean
+}
+
 type Review implements Node {
   id: ID!
   customerId: ID!
@@ -7295,6 +7819,9 @@ type Coupon implements Node {
   applicableProductIds: [ID!]
   applicableCategoryIds: [ID!]
   isNewUserOnly: Boolean!
+  isGlobal: Boolean!
+  ownerChannelId: ID
+  enabledInCurrentChannel: Boolean!
   createdAt: DateTime!
   updatedAt: DateTime!
 }
@@ -7319,6 +7846,7 @@ input CreateCouponInput {
   applicableProductIds: [ID!]
   applicableCategoryIds: [ID!]
   isNewUserOnly: Boolean
+  isGlobal: Boolean
 }
 
 input UpdateCouponInput {
@@ -7329,25 +7857,643 @@ input UpdateCouponInput {
   totalQuantity: Int
   limitPerUser: Int
   isActive: Boolean
+  minSpend: Int
+  maxDiscount: Int
+  isNewUserOnly: Boolean
 }
 
 input CouponListOptions {
-  """Skips the first n results, for use in pagination"""
   skip: Int
-
-  """Takes n results, for use in pagination"""
   take: Int
-
-  """Specifies which properties to sort the results by"""
-  sort: CouponSortParameter
-
-  """Allows the results to be filtered"""
-  filter: CouponFilterParameter
+  sort: JSON
+  filter: JSON
 
   """
   Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND.
   """
   filterOperator: LogicalOperator
+}
+
+type PermissionModule {
+  code: String!
+  name: String!
+  enabled: Boolean!
+  entryPath: String!
+  icon: String!
+  sort: Int!
+}
+
+type MyPermissionsResult {
+  roles: [String!]!
+  permissions: [String!]!
+  visibleModules: [PermissionModule!]!
+}
+
+enum SalesChannel {
+  store
+  telesales
+  b2b
+}
+
+enum CustomerType {
+  individual
+  enterprise
+}
+
+input SalesOrderLineInput {
+  productVariantId: ID!
+  quantity: Int!
+  overwrittenPrice: Int
+}
+
+input NewCustomerInput {
+  firstName: String!
+  lastName: String!
+  emailAddress: String
+  phoneNumber: String!
+  customerType: CustomerType!
+  companyInfo: JSON
+}
+
+input SalesCreateOrderInput {
+  customerId: ID
+  newCustomer: NewCustomerInput
+  lines: [SalesOrderLineInput!]!
+  shippingAddress: CreateAddressInput!
+  shippingMethodId: ID!
+  salesChannel: SalesChannel!
+  note: String
+}
+
+type SalesReportResult {
+  totalOrders: Int!
+  totalRevenue: Int!
+  uniqueCustomers: Int!
+  avgOrderValue: Int!
+  topProducts: [SalesReportTopProduct!]!
+  dailyBreakdown: [SalesReportDaily!]!
+}
+
+type SalesReportTopProduct {
+  productVariantId: String!
+  name: String!
+  quantitySold: Int!
+  revenue: Int!
+}
+
+type SalesReportDaily {
+  date: String!
+  orderCount: Int!
+  revenue: Int!
+}
+
+type CsOrderList {
+  items: [Order!]!
+  totalItems: Int!
+}
+
+type CsExceptionInfo {
+  deliveryStatus: String!
+  exceptionType: String
+  exceptionNote: String
+  exceptionPhotos: [String!]
+  deliveryStaffId: String
+}
+
+type CsOrderDetail {
+  order: Order!
+  afterSalesRequests: [AfterSalesRequestAdmin!]!
+  exceptionInfo: CsExceptionInfo
+}
+
+type CsAfterSalesList {
+  items: [AfterSalesRequestAdmin!]!
+  totalItems: Int!
+}
+
+type CsExceptionOrderList {
+  items: [CsExceptionOrder!]!
+  totalItems: Int!
+}
+
+type CsNote {
+  content: String!
+  createdBy: String!
+  createdAt: DateTime!
+}
+
+type CsExceptionOrder {
+  order: Order!
+  exceptionInfo: CsExceptionInfo!
+  csNotes: [CsNote!]!
+}
+
+type StockLevelList {
+  items: [StockLevel!]!
+  totalItems: Int!
+}
+
+type StockInOrderLine {
+  id: ID!
+  productVariantId: ID!
+  quantity: Int!
+  unitPrice: Int
+}
+
+type StockInOrder {
+  id: ID!
+  code: String!
+  state: String!
+  type: String
+  note: String
+  staffId: String
+  targetLocationId: ID!
+  targetLocation: StockLocation
+  lines: [StockInOrderLine!]!
+  completedAt: DateTime
+  cancelledAt: DateTime
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type StockInOrderList {
+  items: [StockInOrder!]!
+  totalItems: Int!
+}
+
+type StockOutOrderLine {
+  id: ID!
+  productVariantId: ID!
+  quantity: Int!
+  unitPrice: Int
+}
+
+type StockOutOrder {
+  id: ID!
+  code: String!
+  state: String!
+  type: String
+  note: String
+  staffId: String
+  sourceLocationId: ID!
+  sourceLocation: StockLocation
+  lines: [StockOutOrderLine!]!
+  completedAt: DateTime
+  cancelledAt: DateTime
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type StockOutOrderList {
+  items: [StockOutOrder!]!
+  totalItems: Int!
+}
+
+type StockMoveOrderLine {
+  id: ID!
+  productVariantId: ID!
+  quantity: Int!
+}
+
+type StockMoveOrder {
+  id: ID!
+  code: String!
+  state: String!
+  note: String
+  staffId: String
+  sourceLocationId: ID!
+  sourceLocation: StockLocation
+  targetLocationId: ID!
+  targetLocation: StockLocation
+  lines: [StockMoveOrderLine!]!
+  shippedAt: DateTime
+  receivedAt: DateTime
+  completedAt: DateTime
+  cancelledAt: DateTime
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type StockMoveOrderList {
+  items: [StockMoveOrder!]!
+  totalItems: Int!
+}
+
+type StocktakeOrderLine {
+  id: ID!
+  productVariantId: ID!
+  systemQuantity: Int!
+  countedQuantity: Int!
+  difference: Int!
+  reconciled: Boolean!
+}
+
+type StocktakeOrder {
+  id: ID!
+  code: String!
+  state: String!
+  note: String
+  staffId: String
+  locationId: ID!
+  location: StockLocation
+  lines: [StocktakeOrderLine!]!
+  countingStartedAt: DateTime
+  reconcilingStartedAt: DateTime
+  completedAt: DateTime
+  cancelledAt: DateTime
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type StocktakeOrderList {
+  items: [StocktakeOrder!]!
+  totalItems: Int!
+}
+
+input StockInLineInput {
+  productVariantId: ID!
+  quantity: Int!
+  unitPrice: Int
+}
+
+input CreateStockInOrderInput {
+  type: String
+  note: String
+  targetLocationId: ID!
+  lines: [StockInLineInput!]!
+}
+
+input StockOutLineInput {
+  productVariantId: ID!
+  quantity: Int!
+  unitPrice: Int
+}
+
+input CreateStockOutOrderInput {
+  type: String
+  note: String
+  sourceLocationId: ID!
+  lines: [StockOutLineInput!]!
+}
+
+input StockMoveLineInput {
+  productVariantId: ID!
+  quantity: Int!
+}
+
+input CreateStockMoveOrderInput {
+  note: String
+  sourceLocationId: ID!
+  targetLocationId: ID!
+  lines: [StockMoveLineInput!]!
+}
+
+input CreateStocktakeOrderInput {
+  note: String
+  locationId: ID!
+  productVariantIds: [ID!]!
+}
+
+input StocktakeCountInput {
+  lineId: ID!
+  countedQuantity: Int!
+}
+
+type DashboardMetrics {
+  sales: SalesMetrics
+  delivery: DeliveryMetrics
+  customer: CustomerMetrics
+  inventory: InventoryMetrics
+  afterSales: AfterSalesMetrics
+  marketing: MarketingMetrics
+}
+
+type SalesMetrics {
+  orderCount: Int!
+  gmv: Int!
+  previousOrderCount: Int!
+  previousGmv: Int!
+  pendingCount: Int!
+}
+
+type DeliveryMetrics {
+  pending: Int!
+  inProgress: Int!
+  delivered: Int!
+  exception: Int!
+}
+
+type CustomerMetrics {
+  newCount: Int!
+  totalCount: Int!
+  levelDistribution: [MemberLevelCount!]!
+}
+
+type MemberLevelCount {
+  levelId: ID
+  levelName: String
+  count: Int!
+}
+
+type InventoryMetrics {
+  lowStockCount: Int!
+  pendingStockIn: Int!
+  pendingStockOut: Int!
+  pendingStockMove: Int!
+  pendingStocktake: Int!
+}
+
+type AfterSalesMetrics {
+  pendingCount: Int!
+  exceptionOrderCount: Int!
+}
+
+type MarketingMetrics {
+  activeFlashSaleCount: Int!
+  activeGroupBuyCount: Int!
+  couponClaimedCount: Int!
+}
+
+type SalesTrendPoint {
+  date: String!
+  orderCount: Int!
+  gmv: Int!
+}
+
+type CategoryTopItem {
+  categoryId: ID!
+  categoryName: String!
+  gmv: Int!
+  orderCount: Int!
+}
+
+type ContentItem {
+  id: ID!
+  type: String!
+  code: String!
+  name: String!
+  enabled: Boolean!
+  sort: Int!
+  position: String!
+  startAt: DateTime
+  endAt: DateTime
+  data: JSON
+  staffId: String
+  publishedAt: DateTime
+  unpublishedAt: DateTime
+  deletedAt: DateTime
+  deletedBy: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type ContentItemList {
+  items: [ContentItem!]!
+  totalItems: Int!
+}
+
+input CreateContentItemInput {
+  type: String!
+  code: String!
+  name: String!
+  position: String
+  sort: Int
+  startAt: DateTime
+  endAt: DateTime
+  data: JSON
+}
+
+input UpdateContentItemInput {
+  name: String
+  enabled: Boolean
+  sort: Int
+  position: String
+  startAt: DateTime
+  endAt: DateTime
+  data: JSON
+}
+
+type ContentLifecycleResult {
+  published: Int!
+  unpublished: Int!
+}
+
+type MarketingCategoryCount {
+  active: Int!
+  upcoming: Int!
+  ended: Int!
+}
+
+type MarketingOverview {
+  flashSale: MarketingCategoryCount!
+  groupBuy: MarketingCategoryCount!
+  coupon: MarketingCategoryCount!
+}
+
+type MarketingFlashSaleActivity {
+  id: ID!
+  name: String!
+  startAt: DateTime!
+  endAt: DateTime!
+  flashPrice: Int!
+  totalStock: Int!
+  soldCount: Int!
+  limitPerUser: Int!
+  productId: ID!
+  variantId: ID!
+  status: String!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type MarketingFlashSaleActivityList {
+  items: [MarketingFlashSaleActivity!]!
+  totalItems: Int!
+}
+
+input CreateFlashSaleInput {
+  name: String!
+  startAt: DateTime!
+  endAt: DateTime!
+  flashPrice: Int!
+  totalStock: Int!
+  limitPerUser: Int
+  productId: ID!
+  variantId: ID!
+}
+
+input UpdateFlashSaleInput {
+  id: ID!
+  name: String
+  startAt: DateTime
+  endAt: DateTime
+  flashPrice: Int
+  totalStock: Int
+  limitPerUser: Int
+  productId: ID
+  variantId: ID
+}
+
+type MarketingGroupBuyActivity {
+  id: ID!
+  name: String!
+  description: String!
+  targetCount: Int!
+  currentCount: Int!
+  maxCount: Int!
+  status: String!
+  startAt: DateTime!
+  endAt: DateTime!
+  groupPrice: Int!
+  leaderDiscount: Int!
+  leaderRewardType: String!
+  rewardRules: JSON
+  autoConfirm: Boolean!
+  productId: ID!
+  variantId: ID!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type MarketingGroupBuyActivityList {
+  items: [MarketingGroupBuyActivity!]!
+  totalItems: Int!
+}
+
+input CreateGroupBuyInput {
+  name: String!
+  description: String!
+  targetCount: Int!
+  maxCount: Int
+  startAt: DateTime!
+  endAt: DateTime!
+  groupPrice: Int!
+  leaderDiscount: Int
+  leaderRewardType: String
+  autoConfirm: Boolean
+  productId: ID!
+  variantId: ID!
+  rewardRules: JSON
+}
+
+input UpdateGroupBuyInput {
+  id: ID!
+  name: String
+  description: String
+  targetCount: Int
+  maxCount: Int
+  startAt: DateTime
+  endAt: DateTime
+  groupPrice: Int
+  leaderDiscount: Int
+  leaderRewardType: String
+  autoConfirm: Boolean
+  status: String
+  rewardRules: JSON
+}
+
+type MarketingCoupon {
+  id: ID!
+  name: String!
+  description: String
+  couponType: String!
+  discountValue: Int!
+  minSpend: Int!
+  maxDiscount: Int!
+  startAt: DateTime!
+  endAt: DateTime!
+  totalQuantity: Int!
+  claimedCount: Int!
+  limitPerUser: Int!
+  isActive: Boolean!
+  applicableProductIds: JSON
+  applicableCategoryIds: JSON
+  isNewUserOnly: Boolean!
+  isGlobal: Boolean!
+  enabledInCurrentChannel: Boolean!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type MarketingCouponList {
+  items: [MarketingCoupon!]!
+  totalItems: Int!
+}
+
+input MarketingCreateCouponInput {
+  name: String!
+  description: String
+  couponType: String!
+  discountValue: Int!
+  minSpend: Int
+  maxDiscount: Int
+  startAt: DateTime!
+  endAt: DateTime!
+  totalQuantity: Int!
+  limitPerUser: Int
+  isNewUserOnly: Boolean
+  isGlobal: Boolean
+  applicableProductIds: JSON
+  applicableCategoryIds: JSON
+}
+
+input MarketingUpdateCouponInput {
+  name: String
+  description: String
+  couponType: String
+  discountValue: Int
+  minSpend: Int
+  maxDiscount: Int
+  startAt: DateTime
+  endAt: DateTime
+  totalQuantity: Int
+  limitPerUser: Int
+  isNewUserOnly: Boolean
+  applicableProductIds: JSON
+  applicableCategoryIds: JSON
+}
+
+type Message implements Node {
+  id: ID!
+  title: String!
+  body: String!
+  deliveryChannel: String!
+  audienceType: String!
+  audienceLevel: Int
+  status: String!
+  totalTarget: Int!
+  totalSent: Int!
+  totalFailed: Int!
+  createdAt: DateTime!
+  sentAt: DateTime
+}
+
+type MessageList implements PaginatedList {
+  items: [Message!]!
+  totalItems: Int!
+}
+
+input CreateMessageInput {
+  title: String!
+  body: String!
+  deliveryChannel: String
+  audienceType: String
+  audienceLevel: Int
+}
+
+input UpdateMessageInput {
+  title: String
+  body: String
+  deliveryChannel: String
+  audienceType: String
+  audienceLevel: Int
+}
+
+type MessageDeliveryStats {
+  totalTarget: Int!
+  totalSent: Int!
+  totalFailed: Int!
+  totalRead: Int!
 }
 
 input AdministratorFilterParameter {
@@ -7467,6 +8613,8 @@ input ChannelFilterParameter {
   orderRefundedTemplateId: StringOperators
   subscribeMessagePage: StringOperators
   subscribeMessageMiniprogramState: StringOperators
+  uniPushAppKey: StringOperators
+  uniPushMasterSecret: StringOperators
 }
 
 input ChannelSortParameter {
@@ -7508,6 +8656,8 @@ input ChannelSortParameter {
   orderRefundedTemplateId: SortOrder
   subscribeMessagePage: SortOrder
   subscribeMessageMiniprogramState: SortOrder
+  uniPushAppKey: SortOrder
+  uniPushMasterSecret: SortOrder
 }
 
 input CollectionFilterParameter {
@@ -7564,6 +8714,12 @@ input ProductVariantSortParameter {
   price: SortOrder
   priceWithTax: SortOrder
   stockLevel: SortOrder
+  weight: SortOrder
+  length: SortOrder
+  width: SortOrder
+  height: SortOrder
+  shippingProfileId: SortOrder
+  paymentProfileId: SortOrder
 }
 
 input CountryFilterParameter {
@@ -7625,6 +8781,10 @@ input CustomerSortParameter {
   growthValue: SortOrder
   points: SortOrder
   memberLevel: SortOrder
+  customerType: SortOrder
+  companyInfo: SortOrder
+  salesStaffId: SortOrder
+  pushCid: SortOrder
 }
 
 input FacetFilterParameter {
@@ -8025,6 +9185,42 @@ input PickupLocationSortParameter {
   street: SortOrder
 }
 
+input ShippingProfileFilterParameter {
+  id: IDOperators
+  name: StringOperators
+  description: StringOperators
+  code: StringOperators
+  isGlobal: BooleanOperators
+  freeShippingThreshold: NumberOperators
+  _and: [ShippingProfileFilterParameter!]
+  _or: [ShippingProfileFilterParameter!]
+}
+
+input ShippingProfileSortParameter {
+  id: SortOrder
+  name: SortOrder
+  description: SortOrder
+  code: SortOrder
+  freeShippingThreshold: SortOrder
+}
+
+input PaymentProfileFilterParameter {
+  id: IDOperators
+  name: StringOperators
+  description: StringOperators
+  code: StringOperators
+  isGlobal: BooleanOperators
+  _and: [PaymentProfileFilterParameter!]
+  _or: [PaymentProfileFilterParameter!]
+}
+
+input PaymentProfileSortParameter {
+  id: SortOrder
+  name: SortOrder
+  description: SortOrder
+  code: SortOrder
+}
+
 input InvoiceFilterParameter {
   id: IDOperators
   invoiceType: StringOperators
@@ -8119,6 +9315,8 @@ input FlashSaleActivityFilterParameter {
   totalStock: NumberOperators
   soldCount: NumberOperators
   limitPerUser: NumberOperators
+  productId: IDOperators
+  variantId: IDOperators
   status: StringOperators
   createdAt: DateOperators
   updatedAt: DateOperators
@@ -8135,6 +9333,8 @@ input FlashSaleActivitySortParameter {
   totalStock: SortOrder
   soldCount: SortOrder
   limitPerUser: SortOrder
+  productId: SortOrder
+  variantId: SortOrder
   createdAt: SortOrder
   updatedAt: SortOrder
 }
@@ -8306,6 +9506,9 @@ input CouponFilterParameter {
   limitPerUser: NumberOperators
   isActive: BooleanOperators
   isNewUserOnly: BooleanOperators
+  isGlobal: BooleanOperators
+  ownerChannelId: IDOperators
+  enabledInCurrentChannel: BooleanOperators
   createdAt: DateOperators
   updatedAt: DateOperators
   _and: [CouponFilterParameter!]
@@ -8325,6 +9528,7 @@ input CouponSortParameter {
   totalQuantity: SortOrder
   claimedCount: SortOrder
   limitPerUser: SortOrder
+  ownerChannelId: SortOrder
   createdAt: SortOrder
   updatedAt: SortOrder
 }
@@ -8343,6 +9547,21 @@ input HistoryEntrySortParameter {
   id: SortOrder
   createdAt: SortOrder
   updatedAt: SortOrder
+}
+
+type AddressCustomFields {
+  latitude: Float
+  longitude: Float
+}
+
+input CreateAddressCustomFieldsInput {
+  latitude: Float
+  longitude: Float
+}
+
+input UpdateAddressCustomFieldsInput {
+  latitude: Float
+  longitude: Float
 }
 
 type ChannelDefaultLocationStruct {
@@ -8406,6 +9625,8 @@ type ChannelCustomFields {
   orderRefundedTemplateId: String
   subscribeMessagePage: String
   subscribeMessageMiniprogramState: String
+  uniPushAppKey: String
+  uniPushMasterSecret: String
 }
 
 input ChannelDefaultLocationStructInput {
@@ -8469,6 +9690,8 @@ input CreateChannelCustomFieldsInput {
   orderRefundedTemplateId: String
   subscribeMessagePage: String
   subscribeMessageMiniprogramState: String
+  uniPushAppKey: String
+  uniPushMasterSecret: String
 }
 
 input UpdateChannelCustomFieldsInput {
@@ -8509,6 +9732,8 @@ input UpdateChannelCustomFieldsInput {
   orderRefundedTemplateId: String
   subscribeMessagePage: String
   subscribeMessageMiniprogramState: String
+  uniPushAppKey: String
+  uniPushMasterSecret: String
 }
 
 type CollectionFloorThemeStruct {
@@ -8594,6 +9819,11 @@ type CustomerCustomFields {
   growthValue: Int
   points: Int
   memberLevel: Int
+  customerType: String
+  companyInfo: String
+  salesStaffId: String
+  customerTags: [String!]
+  pushCid: String
 }
 
 input CreateCustomerCustomFieldsInput {
@@ -8607,6 +9837,11 @@ input CreateCustomerCustomFieldsInput {
   growthValue: Int
   points: Int
   memberLevel: Int
+  customerType: String
+  companyInfo: String
+  salesStaffId: String
+  customerTags: [String!]
+  pushCid: String
 }
 
 input UpdateCustomerCustomFieldsInput {
@@ -8620,6 +9855,11 @@ input UpdateCustomerCustomFieldsInput {
   growthValue: Int
   points: Int
   memberLevel: Int
+  customerType: String
+  companyInfo: String
+  salesStaffId: String
+  customerTags: [String!]
+  pushCid: String
 }
 
 type FulfillmentCustomFields {
@@ -8629,9 +9869,17 @@ type FulfillmentCustomFields {
   shippingNote: String
 }
 
+type OrderCsNotesStruct {
+  content: String
+  createdBy: String
+  createdAt: DateTime
+}
+
 type OrderCustomFields {
   selectedPickupLocationId: PickupLocation
   pickupType: String
+  shippingProfileSnapshot: String
+  paymentProfileSnapshot: String
   invoiceRequired: Boolean
   invoiceType: String
   invoiceTitle: String
@@ -8650,11 +9898,32 @@ type OrderCustomFields {
   invoiceNumber: String
   afterSalesStatus: String
   appliedCouponCode: String
+  deliveryStaffId: String
+  deliveryStatus: String
+  assignedAt: DateTime
+  deliveredAt: DateTime
+  deliveryPhotos: [String!]
+  deliveryNote: String
+  exceptionType: String
+  exceptionNote: String
+  exceptionPhotos: [String!]
+  salesStaffId: String
+  salesChannel: String
+  salesNote: String
+  csNotes: [OrderCsNotesStruct!]
+}
+
+input OrderCsNotesStructInput {
+  content: String
+  createdBy: String
+  createdAt: DateTime
 }
 
 input UpdateOrderCustomFieldsInput {
   selectedPickupLocationIdId: ID
   pickupType: String
+  shippingProfileSnapshot: String
+  paymentProfileSnapshot: String
   invoiceRequired: Boolean
   invoiceType: String
   invoiceTitle: String
@@ -8673,6 +9942,26 @@ input UpdateOrderCustomFieldsInput {
   invoiceNumber: String
   afterSalesStatus: String
   appliedCouponCode: String
+  deliveryStaffId: String
+  deliveryStatus: String
+  assignedAt: DateTime
+  deliveredAt: DateTime
+  deliveryPhotos: [String!]
+  deliveryNote: String
+  exceptionType: String
+  exceptionNote: String
+  exceptionPhotos: [String!]
+  salesStaffId: String
+  salesChannel: String
+  salesNote: String
+  csNotes: [OrderCsNotesStructInput!]
+}
+
+type OrderLineCustomFields {
+  overwrittenPrice: Int
+  originalPrice: Int
+  modifiedBy: String
+  modifiedAt: DateTime
 }
 
 type ProductCustomFields {
@@ -8685,6 +9974,33 @@ input CreateProductCustomFieldsInput {
 
 input UpdateProductCustomFieldsInput {
   reviewsIds: [ID!]
+}
+
+type ProductVariantCustomFields {
+  weight: Float
+  length: Float
+  width: Float
+  height: Float
+  shippingProfileId: String
+  paymentProfileId: String
+}
+
+input CreateProductVariantCustomFieldsInput {
+  weight: Float
+  length: Float
+  width: Float
+  height: Float
+  shippingProfileId: String
+  paymentProfileId: String
+}
+
+input UpdateProductVariantCustomFieldsInput {
+  weight: Float
+  length: Float
+  width: Float
+  height: Float
+  shippingProfileId: String
+  paymentProfileId: String
 }
 
 type PromotionCustomFields {
@@ -8703,6 +10019,37 @@ input UpdatePromotionCustomFieldsInput {
   stackable: Boolean
   stackableGroup: String
   maxStackableWith: Int
+}
+
+type StockAdjustmentCustomFields {
+  businessReason: String
+}
+
+type AllocationCustomFields {
+  businessReason: String
+}
+
+type SaleCustomFields {
+  businessReason: String
+}
+
+type CancellationCustomFields {
+  businessReason: String
+}
+
+type ReturnCustomFields {
+  businessReason: String
+}
+
+type ReleaseCustomFields {
+  businessReason: String
+}
+
+input OrderLineCustomFieldsInput {
+  overwrittenPrice: Int
+  originalPrice: Int
+  modifiedBy: String
+  modifiedAt: DateTime
 }
 
 input NativeAuthInput {

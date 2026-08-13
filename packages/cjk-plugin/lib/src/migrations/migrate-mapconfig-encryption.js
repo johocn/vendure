@@ -62,8 +62,8 @@ let MapConfigEncryptionMigration = class MapConfigEncryptionMigration {
             .insert()
             .into('history_entry')
             .values({
-            createdAt: () => 'NOW()',
-            updatedAt: () => 'NOW()',
+            createdAt: new Date(),
+            updatedAt: new Date(),
             type: exports.MAP_CONFIG_MIGRATION_DONE,
             isPublic: false,
             data: JSON.stringify({ migrated }),

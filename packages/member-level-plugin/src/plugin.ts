@@ -11,6 +11,7 @@ import {
 import { memberLevelChannelCustomFields } from './channel-custom-fields';
 import { memberLevelCustomerCustomFields } from './customer-custom-fields';
 import { MEMBER_LEVEL_PLUGIN_OPTIONS, loggerCtx } from './constants';
+import { memberLevelPermission } from './permissions';
 import { MemberLevelPluginOptions } from './types';
 import { MemberPointsHistory, PointsHistoryType } from './member-points-history.entity';
 import { MemberLevelService } from './member-level.service';
@@ -177,6 +178,11 @@ const shopSchema = () => gql`
         config.customFields.Customer = [
             ...(config.customFields.Customer ?? []),
             ...(memberLevelCustomerCustomFields.Customer ?? []),
+        ];
+        config.authOptions = config.authOptions ?? {};
+        config.authOptions.customPermissions = [
+            ...(config.authOptions.customPermissions ?? []),
+            memberLevelPermission,
         ];
         return config;
     },

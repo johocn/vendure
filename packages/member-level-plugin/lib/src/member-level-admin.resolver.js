@@ -15,7 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.MemberLevelAdminResolver = void 0;
 const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
-const delivery_plugin_1 = require("@vendure/delivery-plugin");
+const permissions_1 = require("./permissions");
 const member_level_service_1 = require("./member-level.service");
 let MemberLevelAdminResolver = class MemberLevelAdminResolver {
     constructor(memberLevelService) {
@@ -48,7 +48,7 @@ let MemberLevelAdminResolver = class MemberLevelAdminResolver {
 exports.MemberLevelAdminResolver = MemberLevelAdminResolver;
 __decorate([
     (0, graphql_1.Query)(),
-    (0, core_1.Allow)(delivery_plugin_1.DeliveryPermissions.ManageMember),
+    (0, core_1.Allow)(permissions_1.memberLevelPermission.Read),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('customerId')),
     __metadata("design:type", Function),
@@ -57,7 +57,7 @@ __decorate([
 ], MemberLevelAdminResolver.prototype, "memberInfo", null);
 __decorate([
     (0, graphql_1.Query)(),
-    (0, core_1.Allow)(delivery_plugin_1.DeliveryPermissions.ManageMember),
+    (0, core_1.Allow)(permissions_1.memberLevelPermission.Read),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('customerId')),
     __param(2, (0, graphql_1.Args)('options', { nullable: true })),
@@ -67,7 +67,7 @@ __decorate([
 ], MemberLevelAdminResolver.prototype, "pointsHistory", null);
 __decorate([
     (0, graphql_1.Query)(),
-    (0, core_1.Allow)(delivery_plugin_1.DeliveryPermissions.ManageMember),
+    (0, core_1.Allow)(permissions_1.memberLevelPermission.Read),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('options', { nullable: true })),
     __metadata("design:type", Function),
@@ -76,7 +76,7 @@ __decorate([
 ], MemberLevelAdminResolver.prototype, "members", null);
 __decorate([
     (0, graphql_1.Query)(),
-    (0, core_1.Allow)(delivery_plugin_1.DeliveryPermissions.ManageMember),
+    (0, core_1.Allow)(permissions_1.memberLevelPermission.Read),
     __param(0, (0, core_1.Ctx)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext]),
@@ -84,7 +84,7 @@ __decorate([
 ], MemberLevelAdminResolver.prototype, "levelConfig", null);
 __decorate([
     (0, graphql_1.Mutation)(),
-    (0, core_1.Allow)(delivery_plugin_1.DeliveryPermissions.ManageMember),
+    (0, core_1.Allow)(permissions_1.memberLevelPermission.Update),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('customerId')),
     __param(2, (0, graphql_1.Args)('amount')),
@@ -95,7 +95,7 @@ __decorate([
 ], MemberLevelAdminResolver.prototype, "adjustPoints", null);
 __decorate([
     (0, graphql_1.Mutation)(),
-    (0, core_1.Allow)(delivery_plugin_1.DeliveryPermissions.ManageMember),
+    (0, core_1.Allow)(permissions_1.memberLevelPermission.Update),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('customerId')),
     __param(2, (0, graphql_1.Args)('amount')),
@@ -106,7 +106,7 @@ __decorate([
 ], MemberLevelAdminResolver.prototype, "adjustMemberGrowth", null);
 __decorate([
     (0, graphql_1.Mutation)(),
-    (0, core_1.Allow)(delivery_plugin_1.DeliveryPermissions.ManageMember),
+    (0, core_1.Allow)(permissions_1.memberLevelPermission.Update),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('input')),
     __metadata("design:type", Function),

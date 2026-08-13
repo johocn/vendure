@@ -58,8 +58,8 @@ export class PayConfigEncryptionMigration implements OnApplicationBootstrap {
             .insert()
             .into('history_entry')
             .values({
-                createdAt: () => 'NOW()',
-                updatedAt: () => 'NOW()',
+                createdAt: new Date(),
+                updatedAt: new Date(),
                 type: PAY_CONFIG_MIGRATION_DONE,
                 isPublic: false,
                 data: JSON.stringify({ migrated }),

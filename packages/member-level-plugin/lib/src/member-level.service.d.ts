@@ -1,4 +1,4 @@
-import { ChannelService, CustomerService, ID, ListQueryBuilder, ListQueryOptions, PaginatedList, RequestContext, TransactionalConnection } from '@vendure/core';
+import { ChannelService, ConfigService, CustomerService, ID, ListQueryBuilder, ListQueryOptions, PaginatedList, RequestContext, TransactionalConnection } from '@vendure/core';
 import { MemberPointsHistory, PointsHistoryType } from './member-points-history.entity';
 export interface MemberInfo {
     customerId: ID;
@@ -39,7 +39,14 @@ export declare class MemberLevelService {
     private listQueryBuilder;
     private customerService;
     private channelService;
-    constructor(connection: TransactionalConnection, listQueryBuilder: ListQueryBuilder, customerService: CustomerService, channelService: ChannelService);
+    private configService;
+    private readonly supportsPessimisticLock;
+    constructor(connection: TransactionalConnection, listQueryBuilder: ListQueryBuilder, customerService: CustomerService, channelService: ChannelService, configService: ConfigService);
+    /**
+     * 包装 customer 查询：驱动支持时加 pessimistic_write 锁，sqljs/better-sqlite3 跳过锁
+     * 并发安全在生产驱动（mysql/postgres）由悲观锁保证；sqljs 测试环境降级为无锁。
+     */
+    private loadCustomerForUpdate;
     getMemberInfo(ctx: RequestContext, customerId: ID): Promise<MemberInfo>;
     getMyMemberInfo(ctx: RequestContext): Promise<MemberInfo>;
     addGrowthValue(ctx: RequestContext, customerId: ID, amount: number, source?: string): Promise<number>;

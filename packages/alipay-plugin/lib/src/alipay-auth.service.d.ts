@@ -4,5 +4,8 @@ export declare class AlipayAuthService {
     private sdk;
     constructor(options: AlipayPluginOptions);
     private getSdk;
-    getOpenidByAuthCode(authCode: string): Promise<string>;
+    getOpenidByAuthCode(authCode: string, authOverride?: {
+        appId?: string;
+        privateKey?: string;
+    }): Promise<string>;
 }

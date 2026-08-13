@@ -12,16 +12,34 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.MemberLevelService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
+// 不支持 pessimistic_write 锁的驱动（sqljs 内存库用于测试，better-sqlite3 同步驱动无锁）
+const NO_LOCK_DRIVERS = ['sqljs', 'better-sqlite3'];
 const constants_1 = require("./constants");
 const member_points_history_entity_1 = require("./member-points-history.entity");
 const DEFAULT_THRESHOLDS = [0, 1000, 5000, 20000, 100000];
 const DEFAULT_NAMES = ['普通会员', '银卡会员', '金卡会员', '白金会员', '钻石会员'];
 let MemberLevelService = class MemberLevelService {
-    constructor(connection, listQueryBuilder, customerService, channelService) {
+    constructor(connection, listQueryBuilder, customerService, channelService, configService) {
         this.connection = connection;
         this.listQueryBuilder = listQueryBuilder;
         this.customerService = customerService;
         this.channelService = channelService;
+        this.configService = configService;
+        const driverType = this.configService.dbConnectionOptions.type;
+        this.supportsPessimisticLock = !NO_LOCK_DRIVERS.includes(driverType);
+    }
+    /**
+     * 包装 customer 查询：驱动支持时加 pessimistic_write 锁，sqljs/better-sqlite3 跳过锁
+     * 并发安全在生产驱动（mysql/postgres）由悲观锁保证；sqljs 测试环境降级为无锁。
+     */
+    async loadCustomerForUpdate(repo, customerId) {
+        const qb = repo.createQueryBuilder('customer').where('customer.id = :id', {
+            id: customerId,
+        });
+        if (this.supportsPessimisticLock) {
+            qb.setLock('pessimistic_write');
+        }
+        return qb.getOne();
     }
     // ===== Public API =====
     async getMemberInfo(ctx, customerId) {
@@ -49,11 +67,7 @@ let MemberLevelService = class MemberLevelService {
         return this.connection.withTransaction(ctx, async (txCtx) => {
             var _a, _b;
             const repo = this.connection.getRepository(txCtx, core_1.Customer);
-            const customer = await repo
-                .createQueryBuilder('customer')
-                .setLock('pessimistic_write')
-                .where('customer.id = :id', { id: customerId })
-                .getOne();
+            const customer = await this.loadCustomerForUpdate(repo, customerId);
             if (!customer) {
                 throw new core_1.EntityNotFoundError('Customer', customerId);
             }
@@ -231,11 +245,7 @@ let MemberLevelService = class MemberLevelService {
         return this.connection.withTransaction(ctx, async (txCtx) => {
             var _a, _b;
             const repo = this.connection.getRepository(txCtx, core_1.Customer);
-            const customer = await repo
-                .createQueryBuilder('customer')
-                .setLock('pessimistic_write')
-                .where('customer.id = :id', { id: customerId })
-                .getOne();
+            const customer = await this.loadCustomerForUpdate(repo, customerId);
             if (!customer) {
                 throw new core_1.EntityNotFoundError('Customer', customerId);
             }
@@ -318,6 +328,7 @@ exports.MemberLevelService = MemberLevelService = __decorate([
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
         core_1.ListQueryBuilder,
         core_1.CustomerService,
-        core_1.ChannelService])
+        core_1.ChannelService,
+        core_1.ConfigService])
 ], MemberLevelService);
 //# sourceMappingURL=member-level.service.js.map

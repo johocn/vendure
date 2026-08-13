@@ -144,4 +144,3 @@ exports.ProductReviewAdminResolver = ProductReviewAdminResolver = __decorate([
         core_1.ListQueryBuilder,
         core_1.TranslatableSaver])
 ], ProductReviewAdminResolver);
-//# sourceMappingURL=product-review-admin.resolver.js.map

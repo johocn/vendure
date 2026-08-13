@@ -19,6 +19,7 @@ const core_1 = require("@vendure/core");
 const channel_custom_fields_1 = require("./channel-custom-fields");
 const customer_custom_fields_1 = require("./customer-custom-fields");
 const constants_1 = require("./constants");
+const permissions_1 = require("./permissions");
 const member_points_history_entity_1 = require("./member-points-history.entity");
 const member_level_service_1 = require("./member-level.service");
 const member_level_admin_resolver_1 = require("./member-level-admin.resolver");
@@ -248,7 +249,7 @@ exports.MemberLevelPlugin = MemberLevelPlugin = MemberLevelPlugin_1 = __decorate
             resolvers: [member_level_shop_resolver_1.MemberLevelShopResolver],
         },
         configuration: (config) => {
-            var _a, _b, _c, _d;
+            var _a, _b, _c, _d, _e, _f;
             config.customFields.Channel = [
                 ...((_a = config.customFields.Channel) !== null && _a !== void 0 ? _a : []),
                 ...((_b = channel_custom_fields_1.memberLevelChannelCustomFields.Channel) !== null && _b !== void 0 ? _b : []),
@@ -256,6 +257,11 @@ exports.MemberLevelPlugin = MemberLevelPlugin = MemberLevelPlugin_1 = __decorate
             config.customFields.Customer = [
                 ...((_c = config.customFields.Customer) !== null && _c !== void 0 ? _c : []),
                 ...((_d = customer_custom_fields_1.memberLevelCustomerCustomFields.Customer) !== null && _d !== void 0 ? _d : []),
+            ];
+            config.authOptions = (_e = config.authOptions) !== null && _e !== void 0 ? _e : {};
+            config.authOptions.customPermissions = [
+                ...((_f = config.authOptions.customPermissions) !== null && _f !== void 0 ? _f : []),
+                permissions_1.memberLevelPermission,
             ];
             return config;
         },

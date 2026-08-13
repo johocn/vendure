@@ -55,6 +55,14 @@ export const alipayPaymentHandler = new PaymentMethodHandler({
                         total_amount: (amount / 100).toFixed(2),
                         subject: `Order ${order.code}`,
                         product_code: productCode,
+                        ...(metadata?.installmentPeriod
+                            ? {
+                                  extend_params: {
+                                      hbFqNum: String(metadata.installmentPeriod),
+                                      hbFqSellerPercent: '0',
+                                  },
+                              }
+                            : {}),
                     },
                     notifyUrl,
                     returnUrl,

@@ -289,9 +289,12 @@ export const devConfig: VendureConfig = {
                 devBypassOpenid: 'dev_test_openid',
             } : undefined,
         })] : []),
-        ...(process.env.WECHATPAY_NOTIFY_URL ? [WechatpayPlugin.init({
-            notifyUrl: process.env.WECHATPAY_NOTIFY_URL,
-        })] : []),
+        ...((process.env.WECHATPAY_NOTIFY_URL || process.env.DEV_BYPASS_WECHATPAY === 'true')
+            ? [WechatpayPlugin.init({
+                notifyUrl: process.env.WECHATPAY_NOTIFY_URL || '',
+                devBypass: process.env.DEV_BYPASS_WECHATPAY === 'true',
+                devBypassOpenid: 'dev_test_openid',
+            })] : []),
         ...(process.env.OSS_ACCESS_KEY_ID ? [OssPlugin.init({
             region: process.env.OSS_REGION ?? '',
             accessKeyId: process.env.OSS_ACCESS_KEY_ID ?? '',

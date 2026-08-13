@@ -46,6 +46,13 @@ const member_level_plugin_1 = require("@vendure/member-level-plugin");
 const review_plugin_1 = require("@vendure/review-plugin");
 const wechat_subscribe_message_plugin_1 = require("@vendure/wechat-subscribe-message-plugin");
 const coupon_plugin_1 = require("@vendure/coupon-plugin");
+const delivery_plugin_1 = require("@vendure/delivery-plugin");
+const sales_plugin_1 = require("@vendure/sales-plugin");
+const sales_plugin_2 = require("@vendure/sales-plugin");
+const customer_service_plugin_1 = require("@vendure/customer-service-plugin");
+const inventory_plugin_1 = require("@vendure/inventory-plugin");
+const message_plugin_1 = require("@vendure/message-plugin");
+const operations_plugin_1 = require("@vendure/operations-plugin");
 const nav_modifier_plugin_1 = require("./test-plugins/nav-modifier-plugin/nav-modifier-plugin");
 const reviews_plugin_1 = require("./test-plugins/reviews/reviews-plugin");
 const floor_builder_1 = require("./test-plugins/floor-builder");
@@ -123,6 +130,9 @@ exports.devConfig = {
     dbConnectionOptions: Object.assign({ synchronize: false, logging: false, migrations: [path_1.default.join(devServerDir, 'migrations/*.ts')] }, getDbConfig()),
     paymentOptions: {
         paymentMethodHandlers: [core_1.dummyPaymentHandler],
+    },
+    orderOptions: {
+        orderItemPriceCalculationStrategy: new sales_plugin_2.SalesOrderItemPriceCalculationStrategy(),
     },
     settingsStoreFields: {
         MyPlugin: [
@@ -249,9 +259,12 @@ exports.devConfig = {
                     devBypassOpenid: 'dev_test_openid',
                 } : undefined,
             })] : []),
-        ...(process.env.WECHATPAY_NOTIFY_URL ? [wechatpay_plugin_1.WechatpayPlugin.init({
-                notifyUrl: process.env.WECHATPAY_NOTIFY_URL,
-            })] : []),
+        ...((process.env.WECHATPAY_NOTIFY_URL || process.env.DEV_BYPASS_WECHATPAY === 'true')
+            ? [wechatpay_plugin_1.WechatpayPlugin.init({
+                    notifyUrl: process.env.WECHATPAY_NOTIFY_URL || '',
+                    devBypass: process.env.DEV_BYPASS_WECHATPAY === 'true',
+                    devBypassOpenid: 'dev_test_openid',
+                })] : []),
         ...(process.env.OSS_ACCESS_KEY_ID ? [oss_plugin_1.OssPlugin.init({
                 region: (_b = process.env.OSS_REGION) !== null && _b !== void 0 ? _b : '',
                 accessKeyId: (_c = process.env.OSS_ACCESS_KEY_ID) !== null && _c !== void 0 ? _c : '',
@@ -305,6 +318,12 @@ exports.devConfig = {
         review_plugin_1.ReviewPlugin.init(),
         wechat_subscribe_message_plugin_1.WechatSubscribeMessagePlugin.init(),
         coupon_plugin_1.CouponPlugin.init(),
+        delivery_plugin_1.DeliveryPlugin.init(),
+        sales_plugin_1.SalesPlugin.init(),
+        customer_service_plugin_1.CustomerServicePlugin.init(),
+        inventory_plugin_1.InventoryPlugin.init(),
+        operations_plugin_1.OperationsPlugin.init(),
+        message_plugin_1.MessagePlugin.init(),
     ],
 };
 function getDbConfig() {

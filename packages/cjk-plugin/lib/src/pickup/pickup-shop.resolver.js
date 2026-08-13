@@ -24,7 +24,16 @@ let PickupShopResolver = class PickupShopResolver {
         this.pickupLocationService = pickupLocationService;
     }
     async setOrderPickupLocation(ctx, pickupLocationId, pickupType) {
-        const order = await this.orderService.getActiveOrderForUser(ctx, ctx.activeUserId);
+        var _a, _b;
+        // 支持匿名用户和登录用户
+        // 匿名用户 ctx.activeUserId 为 undefined，需通过 session.activeOrderId 获取订单
+        let order;
+        if (ctx.activeUserId) {
+            order = await this.orderService.getActiveOrderForUser(ctx, ctx.activeUserId);
+        }
+        else if ((_a = ctx.session) === null || _a === void 0 ? void 0 : _a.activeOrderId) {
+            order = (_b = await this.orderService.findOne(ctx, ctx.session.activeOrderId)) !== null && _b !== void 0 ? _b : undefined;
+        }
         if (!order)
             throw new core_1.UserInputError((0, i18n_messages_1.translateError)(ctx, 'NO_ACTIVE_ORDER'));
         const location = await this.pickupLocationService.findOne(ctx, pickupLocationId);

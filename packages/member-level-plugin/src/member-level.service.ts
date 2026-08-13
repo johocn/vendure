@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
     ChannelService,
+    ConfigService,
     Customer,
     CustomerService,
     EntityNotFoundError,
@@ -14,6 +15,9 @@ import {
     UnauthorizedError,
     UserInputError,
 } from '@vendure/core';
+
+// 不支持 pessimistic_write 锁的驱动（sqljs 内存库用于测试，better-sqlite3 同步驱动无锁）
+const NO_LOCK_DRIVERS = ['sqljs', 'better-sqlite3'];
 
 import { loggerCtx } from './constants';
 import { MemberPointsHistory, PointsHistoryType } from './member-points-history.entity';
@@ -65,12 +69,34 @@ const DEFAULT_NAMES = ['普通会员', '银卡会员', '金卡会员', '白金�
 
 @Injectable()
 export class MemberLevelService {
+    private readonly supportsPessimisticLock: boolean;
     constructor(
         private connection: TransactionalConnection,
         private listQueryBuilder: ListQueryBuilder,
         private customerService: CustomerService,
         private channelService: ChannelService,
-    ) {}
+        private configService: ConfigService,
+    ) {
+        const driverType = (this.configService.dbConnectionOptions as any).type as string;
+        this.supportsPessimisticLock = !NO_LOCK_DRIVERS.includes(driverType);
+    }
+
+    /**
+     * 包装 customer 查询：驱动支持时加 pessimistic_write 锁，sqljs/better-sqlite3 跳过锁
+     * 并发安全在生产驱动（mysql/postgres）由悲观锁保证；sqljs 测试环境降级为无锁。
+     */
+    private async loadCustomerForUpdate(
+        repo: ReturnType<TransactionalConnection['getRepository']>,
+        customerId: ID,
+    ): Promise<Customer | null> {
+        const qb = repo.createQueryBuilder('customer').where('customer.id = :id', {
+            id: customerId,
+        });
+        if (this.supportsPessimisticLock) {
+            qb.setLock('pessimistic_write');
+        }
+        return (qb.getOne() as Promise<Customer | null>);
+    }
 
     // ===== Public API =====
 
@@ -105,11 +131,7 @@ export class MemberLevelService {
         }
         return this.connection.withTransaction(ctx, async txCtx => {
             const repo = this.connection.getRepository(txCtx, Customer);
-            const customer = await repo
-                .createQueryBuilder('customer')
-                .setLock('pessimistic_write')
-                .where('customer.id = :id', { id: customerId })
-                .getOne();
+            const customer = await this.loadCustomerForUpdate(repo, customerId);
             if (!customer) {
                 throw new EntityNotFoundError('Customer', customerId);
             }
@@ -342,11 +364,7 @@ export class MemberLevelService {
     ): Promise<number> {
         return this.connection.withTransaction(ctx, async txCtx => {
             const repo = this.connection.getRepository(txCtx, Customer);
-            const customer = await repo
-                .createQueryBuilder('customer')
-                .setLock('pessimistic_write')
-                .where('customer.id = :id', { id: customerId })
-                .getOne();
+            const customer = await this.loadCustomerForUpdate(repo, customerId);
             if (!customer) {
                 throw new EntityNotFoundError('Customer', customerId);
             }

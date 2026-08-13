@@ -46,10 +46,22 @@ const member_level_plugin_1 = require("@vendure/member-level-plugin");
 const review_plugin_1 = require("@vendure/review-plugin");
 const wechat_subscribe_message_plugin_1 = require("@vendure/wechat-subscribe-message-plugin");
 const coupon_plugin_1 = require("@vendure/coupon-plugin");
+const delivery_plugin_1 = require("@vendure/delivery-plugin");
+const sales_plugin_1 = require("@vendure/sales-plugin");
+const sales_plugin_2 = require("@vendure/sales-plugin");
+const customer_service_plugin_1 = require("@vendure/customer-service-plugin");
+const inventory_plugin_1 = require("@vendure/inventory-plugin");
+const message_plugin_1 = require("@vendure/message-plugin");
+const operations_plugin_1 = require("@vendure/operations-plugin");
 const nav_modifier_plugin_1 = require("./test-plugins/nav-modifier-plugin/nav-modifier-plugin");
 // import { FieldTestPlugin } from './test-plugins/field-test/field-test-plugin';
 const reviews_plugin_1 = require("./test-plugins/reviews/reviews-plugin");
 const floor_builder_1 = require("./test-plugins/floor-builder");
+// 生产模式（dist/）跳过开发演示插件，避免 tsc 编译 test-plugins 的复杂依赖
+const IS_PROD = path_1.default.basename(__dirname) === 'dist';
+const devOnlyPlugins = IS_PROD ? [] : [reviews_plugin_1.ReviewsPlugin, floor_builder_1.FloorBuilderPlugin, nav_modifier_plugin_1.NavModifierPlugin];
+// 统一解析 dev-server 目录：dev 模式 __dirname=packages/dev-server，prod 模式 __dirname=packages/dev-server/dist
+const devServerDir = path_1.default.basename(__dirname) === 'dist' ? path_1.default.dirname(__dirname) : __dirname;
 const IS_INSTRUMENTED = process.env.IS_INSTRUMENTED === 'true';
 let ReadonlySettingsTestPlugin = class ReadonlySettingsTestPlugin {
     constructor(settingsStoreService, requestContextService) {
@@ -126,11 +138,14 @@ exports.devConfig = {
     dbConnectionOptions: {
         synchronize: false,
         logging: false,
-        migrations: [path_1.default.join(__dirname, 'migrations/*.ts')],
+        migrations: [path_1.default.join(devServerDir, 'migrations/*.ts')],
         ...getDbConfig(),
     },
     paymentOptions: {
         paymentMethodHandlers: [core_1.dummyPaymentHandler],
+    },
+    orderOptions: {
+        orderItemPriceCalculationStrategy: new sales_plugin_2.SalesOrderItemPriceCalculationStrategy(),
     },
     settingsStoreFields: {
         MyPlugin: [
@@ -203,7 +218,7 @@ exports.devConfig = {
     },
     logger: new core_1.DefaultLogger({ level: core_1.LogLevel.Verbose }),
     importExportOptions: {
-        importAssetsDir: path_1.default.join(__dirname, 'import-assets'),
+        importAssetsDir: path_1.default.join(devServerDir, 'import-assets'),
     },
     plugins: [
         // MultivendorPlugin.init({
@@ -211,14 +226,12 @@ exports.devConfig = {
         //     platformFeeSKU: 'FEE',
         // }),
         ReadonlySettingsTestPlugin,
-        reviews_plugin_1.ReviewsPlugin,
-        floor_builder_1.FloorBuilderPlugin,
         // FieldTestPlugin,
-        nav_modifier_plugin_1.NavModifierPlugin,
+        ...devOnlyPlugins,
         graphiql_plugin_1.GraphiqlPlugin.init(),
         asset_server_plugin_1.AssetServerPlugin.init({
             route: 'assets',
-            assetUploadDir: path_1.default.join(__dirname, 'assets'),
+            assetUploadDir: path_1.default.join(devServerDir, 'assets'),
         }),
         core_1.DefaultSearchPlugin.init({ bufferUpdates: false, indexStockStatus: false }),
         // Enable if you need to debug the job queue
@@ -230,8 +243,8 @@ exports.devConfig = {
             devMode: true,
             route: 'mailbox',
             handlers: email_plugin_1.defaultEmailHandlers,
-            templateLoader: new email_plugin_1.FileBasedTemplateLoader(path_1.default.join(__dirname, '../email-plugin/templates')),
-            outputPath: path_1.default.join(__dirname, 'test-emails'),
+            templateLoader: new email_plugin_1.FileBasedTemplateLoader(path_1.default.join(devServerDir, '../email-plugin/templates')),
+            outputPath: path_1.default.join(devServerDir, 'test-emails'),
             globalTemplateVars: {
                 verifyEmailAddressUrl: 'http://localhost:4201/verify',
                 passwordResetUrl: 'http://localhost:4201/reset-password',
@@ -248,7 +261,7 @@ exports.devConfig = {
         }),
         plugin_1.DashboardPlugin.init({
             route: 'dashboard',
-            appDir: path_1.default.join(__dirname, './dist'),
+            appDir: path_1.default.join(devServerDir, './dist'),
         }),
         cjk_plugin_1.CjkPlugin.init({
             i18n: { enabled: true },
@@ -269,9 +282,12 @@ exports.devConfig = {
                     devBypassOpenid: 'dev_test_openid',
                 } : undefined,
             })] : []),
-        ...(process.env.WECHATPAY_NOTIFY_URL ? [wechatpay_plugin_1.WechatpayPlugin.init({
-                notifyUrl: process.env.WECHATPAY_NOTIFY_URL,
-            })] : []),
+        ...((process.env.WECHATPAY_NOTIFY_URL || process.env.DEV_BYPASS_WECHATPAY === 'true')
+            ? [wechatpay_plugin_1.WechatpayPlugin.init({
+                    notifyUrl: process.env.WECHATPAY_NOTIFY_URL || '',
+                    devBypass: process.env.DEV_BYPASS_WECHATPAY === 'true',
+                    devBypassOpenid: 'dev_test_openid',
+                })] : []),
         ...(process.env.OSS_ACCESS_KEY_ID ? [oss_plugin_1.OssPlugin.init({
                 region: process.env.OSS_REGION ?? '',
                 accessKeyId: process.env.OSS_ACCESS_KEY_ID ?? '',
@@ -325,8 +341,15 @@ exports.devConfig = {
         review_plugin_1.ReviewPlugin.init(),
         wechat_subscribe_message_plugin_1.WechatSubscribeMessagePlugin.init(),
         coupon_plugin_1.CouponPlugin.init(),
+        delivery_plugin_1.DeliveryPlugin.init(),
+        sales_plugin_1.SalesPlugin.init(),
+        customer_service_plugin_1.CustomerServicePlugin.init(),
+        inventory_plugin_1.InventoryPlugin.init(),
+        operations_plugin_1.OperationsPlugin.init(),
+        message_plugin_1.MessagePlugin.init(),
     ],
 };
+// SYNTAX_ERROR_TEST: const x: = ;
 function getDbConfig() {
     const dbType = process.env.DB || 'mysql';
     switch (dbType) {
@@ -347,7 +370,7 @@ function getDbConfig() {
             return {
                 synchronize: true,
                 type: 'better-sqlite3',
-                database: path_1.default.join(__dirname, 'vendure.sqlite'),
+                database: path_1.default.join(devServerDir, 'vendure.sqlite'),
             };
         case 'sqljs':
             console.log('Using sql.js connection');
@@ -355,7 +378,7 @@ function getDbConfig() {
                 type: 'sqljs',
                 autoSave: true,
                 database: new Uint8Array([]),
-                location: path_1.default.join(__dirname, 'vendure.sqlite'),
+                location: path_1.default.join(devServerDir, 'vendure.sqlite'),
             };
         case 'mysql':
         case 'mariadb':

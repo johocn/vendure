@@ -47,6 +47,24 @@ exports.productVariantCustomFields = {
                 { languageCode: core_1.LanguageCode.en, value: 'Height (cm)' },
             ],
         },
+        {
+            name: 'shippingProfileId',
+            type: 'string',
+            nullable: true,
+            public: true,
+            label: [
+                { languageCode: core_1.LanguageCode.zh_Hans, value: '配送档案 ID' },
+            ],
+        },
+        {
+            name: 'paymentProfileId',
+            type: 'string',
+            nullable: true,
+            public: true,
+            label: [
+                { languageCode: core_1.LanguageCode.zh_Hans, value: '支付档案 ID' },
+            ],
+        },
     ],
 };
 //# sourceMappingURL=product-variant-custom-fields.js.map

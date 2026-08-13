@@ -15,7 +15,6 @@ export declare class MemberPointsHistory extends VendureEntity implements Channe
     orderId: number | null;
     remark: string | null;
     expiresAt?: Date;
-    channel: Channel;
     channelId: number;
     channels: Channel[];
 }

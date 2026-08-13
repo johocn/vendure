@@ -44,4 +44,3 @@ exports.ReviewsPlugin = ReviewsPlugin = __decorate([
         dashboard: './dashboard/index.tsx',
     })
 ], ReviewsPlugin);
-//# sourceMappingURL=reviews-plugin.js.map

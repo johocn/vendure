@@ -30,6 +30,24 @@ exports.orderCustomFields = {
                 { languageCode: core_1.LanguageCode.ko, value: '수거 유형' },
             ],
         },
+        {
+            name: 'shippingProfileSnapshot',
+            type: 'text',
+            nullable: true,
+            public: true,
+            label: [
+                { languageCode: core_1.LanguageCode.zh_Hans, value: '配送档案快照' },
+            ],
+        },
+        {
+            name: 'paymentProfileSnapshot',
+            type: 'text',
+            nullable: true,
+            public: true,
+            label: [
+                { languageCode: core_1.LanguageCode.zh_Hans, value: '支付档案快照' },
+            ],
+        },
     ],
 };
 //# sourceMappingURL=order-custom-fields.js.map

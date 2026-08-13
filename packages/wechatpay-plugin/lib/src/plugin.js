@@ -20,12 +20,48 @@ const constants_1 = require("./constants");
 const wechatpay_handler_1 = require("./wechatpay-handler");
 const wechatpay_controller_1 = require("./wechatpay.controller");
 let WechatpayPlugin = WechatpayPlugin_1 = class WechatpayPlugin {
-    constructor(options) {
+    constructor(options, paymentMethodService, channelService, requestContextService) {
         this.options = options;
+        this.paymentMethodService = paymentMethodService;
+        this.channelService = channelService;
+        this.requestContextService = requestContextService;
     }
     static init(options) {
         WechatpayPlugin_1.options = options;
         return WechatpayPlugin_1;
+    }
+    /**
+     * Dev Bypass 模式下，启动时自动创建 wechatpay PaymentMethod（如果不存在）
+     */
+    async onApplicationBootstrap() {
+        if (!this.options.devBypass)
+            return;
+        try {
+            const channel = await this.channelService.getDefaultChannel();
+            const ctx = new core_1.RequestContext({
+                apiType: 'admin',
+                channel,
+                isAuthorized: true,
+                authorizedAsOwnerOnly: false,
+            });
+            const existing = await this.paymentMethodService.findAll(ctx);
+            const hasWechatpay = existing.items.some(p => p.code === 'wechatpay');
+            if (!hasWechatpay) {
+                await this.paymentMethodService.create(ctx, {
+                    code: 'wechatpay',
+                    enabled: true,
+                    handler: { code: 'wechatpay', arguments: [] },
+                    translations: [
+                        { languageCode: core_1.LanguageCode.zh_Hans, name: '微信支付' },
+                        { languageCode: core_1.LanguageCode.en, name: 'WeChat Pay' },
+                    ],
+                });
+                core_1.Logger.info('[WechatpayPlugin] Created wechatpay PaymentMethod (devBypass)', constants_1.loggerCtx);
+            }
+        }
+        catch (e) {
+            core_1.Logger.error(`[WechatpayPlugin] Failed to auto-create PaymentMethod: ${e.message}`, constants_1.loggerCtx);
+        }
     }
 };
 exports.WechatpayPlugin = WechatpayPlugin;
@@ -45,6 +81,8 @@ exports.WechatpayPlugin = WechatpayPlugin = WechatpayPlugin_1 = __decorate([
         compatibility: '^3.0.0',
     }),
     __param(0, (0, common_1.Inject)(constants_1.WECHATPAY_PLUGIN_OPTIONS)),
-    __metadata("design:paramtypes", [Object])
+    __metadata("design:paramtypes", [Object, core_1.PaymentMethodService,
+        core_1.ChannelService,
+        core_1.RequestContextService])
 ], WechatpayPlugin);
 //# sourceMappingURL=plugin.js.map

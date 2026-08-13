@@ -52,10 +52,9 @@ async function createGraphQLOptions(i18nService, configService, idCodecService, 
     if (!(0, get_final_vendure_schema_1.isUsingDefaultEntityIdStrategy)((_a = configService.entityOptions.entityIdStrategy) !== null && _a !== void 0 ? _a : configService.entityIdStrategy)) {
         apolloServerPlugins.unshift(new id_codec_plugin_1.IdCodecPlugin(idCodecService));
     }
-    const finalTypeDefs = (0, graphql_2.printSchema)(builtSchema);
     return {
         path: '/' + options.apiPath,
-        typeDefs: finalTypeDefs,
+        typeDefs: (0, graphql_2.printSchema)(builtSchema),
         include: [options.resolverModule],
         inheritResolversFromInterfaces: true,
         fieldResolverEnhancers: ['guards'],

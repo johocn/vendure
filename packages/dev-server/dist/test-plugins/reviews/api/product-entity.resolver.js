@@ -66,4 +66,3 @@ exports.ProductEntityResolver = ProductEntityResolver = __decorate([
     (0, graphql_1.Resolver)('Product'),
     __metadata("design:paramtypes", [core_1.ListQueryBuilder, core_1.TransactionalConnection])
 ], ProductEntityResolver);
-//# sourceMappingURL=product-entity.resolver.js.map

@@ -61,10 +61,21 @@ import { SsoProviderService } from './auth/sso-provider.service';
 import { InviteCodeService } from './auth/invite-code.service';
 import { tenantConfigPermission } from './admin/tenant-config-permissions';
 import { TenantConfigAdminResolver } from './admin/tenant-config-admin.resolver';
+import { ShippingProfile } from './shipping/shipping-profile.entity';
+import { ShippingProfileService } from './shipping/shipping-profile.service';
+import { ShippingProfileAdminResolver } from './shipping/shipping-profile-admin.resolver';
+import { shippingProfilePermission, shippingProfilePermissionDefinitions } from './shipping/shipping-profile-permissions';
+import { PaymentProfile } from './payment/payment-profile.entity';
+import { PaymentProfileService } from './payment/payment-profile.service';
+import { PaymentProfileAdminResolver } from './payment/payment-profile-admin.resolver';
+import { paymentProfilePermission, paymentProfilePermissionDefinitions } from './payment/payment-profile-permissions';
+import { ShippingProfileShopResolver } from './shipping/shipping-profile-shop.resolver';
+import { PaymentProfileShopResolver } from './payment/payment-profile-shop.resolver';
+import { EventBus, OrderEvent, OrderService, TransactionalConnection } from '@vendure/core';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate],
+    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile],
     providers: [
         { provide: CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
         TenantSetupService,
@@ -82,6 +93,8 @@ import { TenantConfigAdminResolver } from './admin/tenant-config-admin.resolver'
         SsoProviderService,
         InviteCodeService,
         ShippingTemplateService,
+        ShippingProfileService,
+        PaymentProfileService,
     ],
     adminApiExtensions: {
         schema: () => {
@@ -362,9 +375,120 @@ import { TenantConfigAdminResolver } from './admin/tenant-config-admin.resolver'
                     deleteShippingTemplate(id: ID!): Boolean!
                     createShippingMethodFromTemplate(templateId: ID!, name: String, code: String): ShippingMethod!
                 }
+
+                # ===== Shipping Profile =====
+                type ShippingProfile implements Node {
+                    id: ID!
+                    name: String!
+                    description: String!
+                    code: String!
+                    isGlobal: Boolean!
+                    freeShippingThreshold: Int
+                    shippingMethods: [ShippingMethod!]!
+                    pickupLocations: [PickupLocation!]!
+                }
+
+                type ShippingProfileList implements PaginatedList {
+                    items: [ShippingProfile!]!
+                    totalItems: Int!
+                }
+
+                input CreateShippingProfileInput {
+                    name: String!
+                    code: String!
+                    description: String
+                    isGlobal: Boolean
+                    freeShippingThreshold: Int
+                    shippingMethodIds: [ID!]!
+                    pickupLocationIds: [ID!]
+                }
+
+                input UpdateShippingProfileInput {
+                    id: ID!
+                    name: String
+                    code: String
+                    description: String
+                    isGlobal: Boolean
+                    freeShippingThreshold: Int
+                    shippingMethodIds: [ID!]
+                    pickupLocationIds: [ID!]
+                }
+
+                input ShippingProfileListOptions {
+                    skip: Int
+                    take: Int
+                    sort: JSON
+                    filter: JSON
+                }
+
+                extend type Query {
+                    shippingProfiles(options: ShippingProfileListOptions): ShippingProfileList!
+                    shippingProfile(id: ID!): ShippingProfile
+                }
+
+                extend type Mutation {
+                    createShippingProfile(input: CreateShippingProfileInput!): ShippingProfile!
+                    updateShippingProfile(input: UpdateShippingProfileInput!): ShippingProfile!
+                    deleteShippingProfile(id: ID!): Boolean!
+                    assignShippingProfile(variantIds: [ID!]!, profileId: ID!): Boolean!
+                }
+
+                # ===== Payment Profile =====
+                type PaymentProfile implements Node {
+                    id: ID!
+                    name: String!
+                    description: String!
+                    code: String!
+                    isGlobal: Boolean!
+                    installmentOptions: JSON
+                    paymentMethods: [PaymentMethod!]!
+                }
+
+                type PaymentProfileList implements PaginatedList {
+                    items: [PaymentProfile!]!
+                    totalItems: Int!
+                }
+
+                input CreatePaymentProfileInput {
+                    name: String!
+                    code: String!
+                    description: String
+                    isGlobal: Boolean
+                    installmentOptions: JSON
+                    paymentMethodIds: [ID!]!
+                }
+
+                input UpdatePaymentProfileInput {
+                    id: ID!
+                    name: String
+                    code: String
+                    description: String
+                    isGlobal: Boolean
+                    installmentOptions: JSON
+                    paymentMethodIds: [ID!]
+                }
+
+                input PaymentProfileListOptions {
+                    skip: Int
+                    take: Int
+                    sort: JSON
+                    filter: JSON
+                }
+
+                extend type Query {
+                    paymentProfiles(options: PaymentProfileListOptions): PaymentProfileList!
+                    paymentProfile(id: ID!): PaymentProfile
+                }
+
+                extend type Mutation {
+                    createPaymentProfile(input: CreatePaymentProfileInput!): PaymentProfile!
+                    updatePaymentProfile(input: UpdatePaymentProfileInput!): PaymentProfile!
+                    deletePaymentProfile(id: ID!): Boolean!
+                    assignPaymentProfile(variantIds: [ID!]!, profileId: ID!): Boolean!
+                }
             `;
         },
-        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver],
+        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {
@@ -443,9 +567,24 @@ import { TenantConfigAdminResolver } from './admin/tenant-config-admin.resolver'
                     mapDistricts(parentAdcode: String): [DistrictNode!]!
                     reverseGeocode(lat: Float!, lng: Float!): ReverseGeocodeResult!
                 }
+
+                extend type Query {
+                    eligibleShippingMethodsByProfile(profileIds: [ID!]!): [ShippingMethod!]!
+                    eligiblePaymentMethodsByProfile(profileIds: [ID!]!): [PaymentMethod!]!
+                    eligibleInstallmentOptions(profileIds: [ID!]!): JSON
+                    checkShippingProfileCompatibility(profileIds: [ID!]!): ProfileCompatibilityResult!
+                    checkPaymentProfileCompatibility(profileIds: [ID!]!): ProfileCompatibilityResult!
+                    eligiblePickupLocationsByProfile(profileIds: [ID!]!): [PickupLocation!]!
+                    checkPickupLocationConstraint(profileIds: [ID!]!): Boolean!
+                }
+
+                type ProfileCompatibilityResult {
+                    compatible: Boolean!
+                    intersectedCount: Int!
+                }
             `;
         },
-        resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver, DomainShopResolver, MapShopResolver],
+        resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver, DomainShopResolver, MapShopResolver, ShippingProfileShopResolver, PaymentProfileShopResolver],
     },
     configuration: config => {
         // 注入 authSecret 到 crypto 模块（configuration 在 bootstrap 早期执行，此时 options 已可用）
@@ -589,6 +728,18 @@ import { TenantConfigAdminResolver } from './admin/tenant-config-admin.resolver'
             ...shippingTemplatePermissionDefinitions,
         ];
 
+        // 注册 ShippingProfile 权限
+        config.authOptions.customPermissions = [
+            ...(config.authOptions.customPermissions || []),
+            ...shippingProfilePermissionDefinitions,
+        ];
+
+        // 注册 PaymentProfile 权限
+        config.authOptions.customPermissions = [
+            ...(config.authOptions.customPermissions || []),
+            ...paymentProfilePermissionDefinitions,
+        ];
+
         return config;
     },
     dashboard: '../dashboard/index.tsx',
@@ -652,6 +803,74 @@ export class CjkPlugin implements OnApplicationBootstrap, NestModule {
 
         if (this.options.tenant?.enabled) {
             Logger.info('Tenant (multi-channel) module enabled', loggerCtx);
+        }
+
+        // 注册 Profile 事件订阅
+        if (this.options.profiles?.enabled !== false) {
+            const eventBus = injector.get(EventBus);
+            const shippingSvc = injector.get(ShippingProfileService);
+            const paymentSvc = injector.get(PaymentProfileService);
+            const connection = injector.get(TransactionalConnection);
+
+            // 订单结算时快照 Profile 信息
+            eventBus.ofType(OrderEvent).subscribe(async (event) => {
+                if (event.type !== 'updated') return;
+                const order = event.entity;
+                if (order.state !== 'PaymentSettled' && order.state !== 'PaymentAuthorized') return;
+                const lines = order.lines ?? [];
+                if (lines.length === 0) return;
+
+                try {
+                    const shippingProfileNames: Record<string, string> = {};
+                    const paymentProfileNames: Record<string, string> = {};
+
+                    for (const line of lines) {
+                        const variant = line.productVariant;
+                        if (!variant) continue;
+                        const spId = (variant as any).customFields?.shippingProfileId;
+                        const ppId = (variant as any).customFields?.paymentProfileId;
+                        if (spId && !shippingProfileNames[spId]) {
+                            const profile = await shippingSvc.findOne(event.ctx, spId as any);
+                            shippingProfileNames[spId] = profile?.name ?? spId;
+                        }
+                        if (ppId && !paymentProfileNames[ppId]) {
+                            const profile = await paymentSvc.findOne(event.ctx, ppId as any);
+                            paymentProfileNames[ppId] = profile?.name ?? ppId;
+                        }
+                    }
+
+                    const orderRepo = connection.getRepository(event.ctx, 'Order' as any);
+                    await orderRepo.update(order.id, {
+                        customFields: {
+                            shippingProfileSnapshot: JSON.stringify(shippingProfileNames),
+                            paymentProfileSnapshot: JSON.stringify(paymentProfileNames),
+                        },
+                    } as any);
+                } catch (e: any) {
+                    Logger.error(`Failed to save profile snapshot: ${e.message}`, loggerCtx);
+                }
+            });
+
+            // 加购时检测混合 Profile 并记录日志
+            eventBus.ofType(OrderEvent).subscribe(async (event) => {
+                if (event.type !== 'updated') return;
+                const order = event.entity;
+                if (order.state !== 'AddingItems') return;
+                const lines = order.lines ?? [];
+                if (lines.length < 2) return;
+
+                const profileIds = new Set<string>();
+                for (const line of lines) {
+                    const spId = (line.productVariant as any)?.customFields?.shippingProfileId;
+                    if (spId) profileIds.add(spId);
+                }
+                if (profileIds.size > 1) {
+                    Logger.info(
+                        `Order ${order.code} has mixed shipping profiles: ${[...profileIds].join(', ')}`,
+                        loggerCtx,
+                    );
+                }
+            });
         }
     }
 

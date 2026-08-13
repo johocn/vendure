@@ -18,7 +18,14 @@ export class PickupShopResolver {
         @Args('pickupLocationId') pickupLocationId: ID,
         @Args('pickupType') pickupType: string,
     ): Promise<Order> {
-        const order = await this.orderService.getActiveOrderForUser(ctx, ctx.activeUserId as any);
+        // 支持匿名用户和登录用户
+        // 匿名用户 ctx.activeUserId 为 undefined，需通过 session.activeOrderId 获取订单
+        let order: Order | undefined;
+        if (ctx.activeUserId) {
+            order = await this.orderService.getActiveOrderForUser(ctx, ctx.activeUserId);
+        } else if (ctx.session?.activeOrderId) {
+            order = await this.orderService.findOne(ctx, ctx.session.activeOrderId) ?? undefined;
+        }
         if (!order) throw new UserInputError(translateError(ctx, 'NO_ACTIVE_ORDER'));
 
         const location = await this.pickupLocationService.findOne(ctx, pickupLocationId);

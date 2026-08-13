@@ -17,6 +17,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 __exportStar(require("./src/plugin"), exports);
 __exportStar(require("./src/types"), exports);
 __exportStar(require("./src/constants"), exports);
+__exportStar(require("./src/permissions"), exports);
 __exportStar(require("./src/member-points-history.entity"), exports);
 __exportStar(require("./src/member-level.service"), exports);
 __exportStar(require("./src/channel-custom-fields"), exports);

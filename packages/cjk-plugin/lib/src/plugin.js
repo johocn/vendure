@@ -63,6 +63,17 @@ const sso_provider_service_1 = require("./auth/sso-provider.service");
 const invite_code_service_1 = require("./auth/invite-code.service");
 const tenant_config_permissions_1 = require("./admin/tenant-config-permissions");
 const tenant_config_admin_resolver_1 = require("./admin/tenant-config-admin.resolver");
+const shipping_profile_entity_1 = require("./shipping/shipping-profile.entity");
+const shipping_profile_service_1 = require("./shipping/shipping-profile.service");
+const shipping_profile_admin_resolver_1 = require("./shipping/shipping-profile-admin.resolver");
+const shipping_profile_permissions_1 = require("./shipping/shipping-profile-permissions");
+const payment_profile_entity_1 = require("./payment/payment-profile.entity");
+const payment_profile_service_1 = require("./payment/payment-profile.service");
+const payment_profile_admin_resolver_1 = require("./payment/payment-profile-admin.resolver");
+const payment_profile_permissions_1 = require("./payment/payment-profile-permissions");
+const shipping_profile_shop_resolver_1 = require("./shipping/shipping-profile-shop.resolver");
+const payment_profile_shop_resolver_1 = require("./payment/payment-profile-shop.resolver");
+const core_3 = require("@vendure/core");
 let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
     constructor(options, moduleRef) {
         this.options = options;
@@ -73,7 +84,7 @@ let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
         return CjkPlugin_1;
     }
     async onApplicationBootstrap() {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
         const injector = new core_1.Injector(this.moduleRef);
         if (((_a = this.options.i18n) === null || _a === void 0 ? void 0 : _a.enabled) !== false) {
             const i18nService = injector.get(core_1.I18nService);
@@ -112,6 +123,75 @@ let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
         if ((_j = this.options.tenant) === null || _j === void 0 ? void 0 : _j.enabled) {
             core_1.Logger.info('Tenant (multi-channel) module enabled', constants_1.loggerCtx);
         }
+        // 注册 Profile 事件订阅
+        if (((_k = this.options.profiles) === null || _k === void 0 ? void 0 : _k.enabled) !== false) {
+            const eventBus = injector.get(core_3.EventBus);
+            const shippingSvc = injector.get(shipping_profile_service_1.ShippingProfileService);
+            const paymentSvc = injector.get(payment_profile_service_1.PaymentProfileService);
+            const connection = injector.get(core_3.TransactionalConnection);
+            // 订单结算时快照 Profile 信息
+            eventBus.ofType(core_3.OrderEvent).subscribe(async (event) => {
+                var _a, _b, _c, _d, _e;
+                if (event.type !== 'updated')
+                    return;
+                const order = event.entity;
+                if (order.state !== 'PaymentSettled' && order.state !== 'PaymentAuthorized')
+                    return;
+                const lines = (_a = order.lines) !== null && _a !== void 0 ? _a : [];
+                if (lines.length === 0)
+                    return;
+                try {
+                    const shippingProfileNames = {};
+                    const paymentProfileNames = {};
+                    for (const line of lines) {
+                        const variant = line.productVariant;
+                        if (!variant)
+                            continue;
+                        const spId = (_b = variant.customFields) === null || _b === void 0 ? void 0 : _b.shippingProfileId;
+                        const ppId = (_c = variant.customFields) === null || _c === void 0 ? void 0 : _c.paymentProfileId;
+                        if (spId && !shippingProfileNames[spId]) {
+                            const profile = await shippingSvc.findOne(event.ctx, spId);
+                            shippingProfileNames[spId] = (_d = profile === null || profile === void 0 ? void 0 : profile.name) !== null && _d !== void 0 ? _d : spId;
+                        }
+                        if (ppId && !paymentProfileNames[ppId]) {
+                            const profile = await paymentSvc.findOne(event.ctx, ppId);
+                            paymentProfileNames[ppId] = (_e = profile === null || profile === void 0 ? void 0 : profile.name) !== null && _e !== void 0 ? _e : ppId;
+                        }
+                    }
+                    const orderRepo = connection.getRepository(event.ctx, 'Order');
+                    await orderRepo.update(order.id, {
+                        customFields: {
+                            shippingProfileSnapshot: JSON.stringify(shippingProfileNames),
+                            paymentProfileSnapshot: JSON.stringify(paymentProfileNames),
+                        },
+                    });
+                }
+                catch (e) {
+                    core_1.Logger.error(`Failed to save profile snapshot: ${e.message}`, constants_1.loggerCtx);
+                }
+            });
+            // 加购时检测混合 Profile 并记录日志
+            eventBus.ofType(core_3.OrderEvent).subscribe(async (event) => {
+                var _a, _b, _c;
+                if (event.type !== 'updated')
+                    return;
+                const order = event.entity;
+                if (order.state !== 'AddingItems')
+                    return;
+                const lines = (_a = order.lines) !== null && _a !== void 0 ? _a : [];
+                if (lines.length < 2)
+                    return;
+                const profileIds = new Set();
+                for (const line of lines) {
+                    const spId = (_c = (_b = line.productVariant) === null || _b === void 0 ? void 0 : _b.customFields) === null || _c === void 0 ? void 0 : _c.shippingProfileId;
+                    if (spId)
+                        profileIds.add(spId);
+                }
+                if (profileIds.size > 1) {
+                    core_1.Logger.info(`Order ${order.code} has mixed shipping profiles: ${[...profileIds].join(', ')}`, constants_1.loggerCtx);
+                }
+            });
+        }
     }
     configure(consumer) { }
 };
@@ -119,7 +199,7 @@ exports.CjkPlugin = CjkPlugin;
 exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate],
+        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile],
         providers: [
             { provide: constants_1.CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
             tenant_setup_service_1.TenantSetupService,
@@ -137,6 +217,8 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             sso_provider_service_1.SsoProviderService,
             invite_code_service_1.InviteCodeService,
             shipping_template_service_1.ShippingTemplateService,
+            shipping_profile_service_1.ShippingProfileService,
+            payment_profile_service_1.PaymentProfileService,
         ],
         adminApiExtensions: {
             schema: () => {
@@ -417,9 +499,120 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     deleteShippingTemplate(id: ID!): Boolean!
                     createShippingMethodFromTemplate(templateId: ID!, name: String, code: String): ShippingMethod!
                 }
+
+                # ===== Shipping Profile =====
+                type ShippingProfile implements Node {
+                    id: ID!
+                    name: String!
+                    description: String!
+                    code: String!
+                    isGlobal: Boolean!
+                    freeShippingThreshold: Int
+                    shippingMethods: [ShippingMethod!]!
+                    pickupLocations: [PickupLocation!]!
+                }
+
+                type ShippingProfileList implements PaginatedList {
+                    items: [ShippingProfile!]!
+                    totalItems: Int!
+                }
+
+                input CreateShippingProfileInput {
+                    name: String!
+                    code: String!
+                    description: String
+                    isGlobal: Boolean
+                    freeShippingThreshold: Int
+                    shippingMethodIds: [ID!]!
+                    pickupLocationIds: [ID!]
+                }
+
+                input UpdateShippingProfileInput {
+                    id: ID!
+                    name: String
+                    code: String
+                    description: String
+                    isGlobal: Boolean
+                    freeShippingThreshold: Int
+                    shippingMethodIds: [ID!]
+                    pickupLocationIds: [ID!]
+                }
+
+                input ShippingProfileListOptions {
+                    skip: Int
+                    take: Int
+                    sort: JSON
+                    filter: JSON
+                }
+
+                extend type Query {
+                    shippingProfiles(options: ShippingProfileListOptions): ShippingProfileList!
+                    shippingProfile(id: ID!): ShippingProfile
+                }
+
+                extend type Mutation {
+                    createShippingProfile(input: CreateShippingProfileInput!): ShippingProfile!
+                    updateShippingProfile(input: UpdateShippingProfileInput!): ShippingProfile!
+                    deleteShippingProfile(id: ID!): Boolean!
+                    assignShippingProfile(variantIds: [ID!]!, profileId: ID!): Boolean!
+                }
+
+                # ===== Payment Profile =====
+                type PaymentProfile implements Node {
+                    id: ID!
+                    name: String!
+                    description: String!
+                    code: String!
+                    isGlobal: Boolean!
+                    installmentOptions: JSON
+                    paymentMethods: [PaymentMethod!]!
+                }
+
+                type PaymentProfileList implements PaginatedList {
+                    items: [PaymentProfile!]!
+                    totalItems: Int!
+                }
+
+                input CreatePaymentProfileInput {
+                    name: String!
+                    code: String!
+                    description: String
+                    isGlobal: Boolean
+                    installmentOptions: JSON
+                    paymentMethodIds: [ID!]!
+                }
+
+                input UpdatePaymentProfileInput {
+                    id: ID!
+                    name: String
+                    code: String
+                    description: String
+                    isGlobal: Boolean
+                    installmentOptions: JSON
+                    paymentMethodIds: [ID!]
+                }
+
+                input PaymentProfileListOptions {
+                    skip: Int
+                    take: Int
+                    sort: JSON
+                    filter: JSON
+                }
+
+                extend type Query {
+                    paymentProfiles(options: PaymentProfileListOptions): PaymentProfileList!
+                    paymentProfile(id: ID!): PaymentProfile
+                }
+
+                extend type Mutation {
+                    createPaymentProfile(input: CreatePaymentProfileInput!): PaymentProfile!
+                    updatePaymentProfile(input: UpdatePaymentProfileInput!): PaymentProfile!
+                    deletePaymentProfile(id: ID!): Boolean!
+                    assignPaymentProfile(variantIds: [ID!]!, profileId: ID!): Boolean!
+                }
             `;
             },
-            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver],
+            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver],
         },
         shopApiExtensions: {
             schema: () => {
@@ -498,9 +691,24 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     mapDistricts(parentAdcode: String): [DistrictNode!]!
                     reverseGeocode(lat: Float!, lng: Float!): ReverseGeocodeResult!
                 }
+
+                extend type Query {
+                    eligibleShippingMethodsByProfile(profileIds: [ID!]!): [ShippingMethod!]!
+                    eligiblePaymentMethodsByProfile(profileIds: [ID!]!): [PaymentMethod!]!
+                    eligibleInstallmentOptions(profileIds: [ID!]!): JSON
+                    checkShippingProfileCompatibility(profileIds: [ID!]!): ProfileCompatibilityResult!
+                    checkPaymentProfileCompatibility(profileIds: [ID!]!): ProfileCompatibilityResult!
+                    eligiblePickupLocationsByProfile(profileIds: [ID!]!): [PickupLocation!]!
+                    checkPickupLocationConstraint(profileIds: [ID!]!): Boolean!
+                }
+
+                type ProfileCompatibilityResult {
+                    compatible: Boolean!
+                    intersectedCount: Int!
+                }
             `;
             },
-            resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver],
+            resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver, shipping_profile_shop_resolver_1.ShippingProfileShopResolver, payment_profile_shop_resolver_1.PaymentProfileShopResolver],
         },
         configuration: config => {
             var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q;
@@ -610,6 +818,16 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             config.authOptions.customPermissions = [
                 ...(config.authOptions.customPermissions || []),
                 ...shipping_template_permissions_1.shippingTemplatePermissionDefinitions,
+            ];
+            // 注册 ShippingProfile 权限
+            config.authOptions.customPermissions = [
+                ...(config.authOptions.customPermissions || []),
+                ...shipping_profile_permissions_1.shippingProfilePermissionDefinitions,
+            ];
+            // 注册 PaymentProfile 权限
+            config.authOptions.customPermissions = [
+                ...(config.authOptions.customPermissions || []),
+                ...payment_profile_permissions_1.paymentProfilePermissionDefinitions,
             ];
             return config;
         },

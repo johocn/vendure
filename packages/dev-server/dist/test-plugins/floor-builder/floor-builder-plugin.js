@@ -16,12 +16,9 @@ let FloorBuilderPlugin = class FloorBuilderPlugin {
         this.eventBus = eventBus;
     }
     onApplicationBootstrap() {
-        // 商品删除时，清理 floorItemConfig 中的悬挂 productId 引用
         this.eventBus.ofType(core_1.ProductEvent).subscribe(async (event) => {
             if (event.type !== 'deleted')
                 return;
-            // struct list 的悬挂引用在前端查询时跳过即可，无需后端清理
-            // 此处仅记录日志，便于排查
             console.log(`[FloorBuilderPlugin] Product deleted: ${event.entity.id}, floorItemConfig references may be orphaned`);
         });
     }
@@ -34,4 +31,3 @@ exports.FloorBuilderPlugin = FloorBuilderPlugin = __decorate([
     }),
     __metadata("design:paramtypes", [core_1.EventBus])
 ], FloorBuilderPlugin);
-//# sourceMappingURL=floor-builder-plugin.js.map

@@ -17,7 +17,16 @@ let AlipayAuthService = class AlipayAuthService {
         this.options = options;
         this.sdk = null;
     }
-    getSdk() {
+    getSdk(authOverride) {
+        if (authOverride && (authOverride.appId || authOverride.privateKey)) {
+            // 租户覆盖：per-request 构造 SDK，不缓存
+            return new alipay_sdk_1.AlipaySdk({
+                appId: authOverride.appId || '',
+                privateKey: authOverride.privateKey || '',
+                signType: 'RSA2',
+                alipayPublicKey: this.options.alipayPublicKey,
+            });
+        }
         if (!this.sdk) {
             const authConfig = this.options.auth || {};
             this.sdk = new alipay_sdk_1.AlipaySdk({
@@ -29,8 +38,8 @@ let AlipayAuthService = class AlipayAuthService {
         }
         return this.sdk;
     }
-    async getOpenidByAuthCode(authCode) {
-        const sdk = this.getSdk();
+    async getOpenidByAuthCode(authCode, authOverride) {
+        const sdk = this.getSdk(authOverride);
         const result = await sdk.exec('alipay.system.oauth.auth', {
             grantType: 'authorization_code',
             code: authCode,

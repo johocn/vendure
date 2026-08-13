@@ -4,14 +4,19 @@
     "license": "GPL-3.0-or-later",
     "main": "lib/index.js",
     "types": "lib/index.d.ts",
-    "files": ["lib/**/*", "src/i18n/**/*.json"],
+    "files": [
+        "lib/**/*",
+        "src/i18n/**/*.json"
+    ],
     "scripts": {
         "watch": "tsc -p ./tsconfig.build.json --watch",
         "build": "rimraf lib && tsc -p ./tsconfig.build.json && node -e \"require('fs').cpSync('src/i18n','lib/src/i18n',{recursive:true})\"",
         "lint": "eslint --fix .",
         "test": "vitest --config vitest.config.mts --run"
     },
-    "dependencies": {},
+    "dependencies": {
+        "@nestjs/event-emitter": "^3.1.0"
+    },
     "peerDependencies": {
         "@vendure/common": "^3.6.0",
         "@vendure/core": "^3.6.0"

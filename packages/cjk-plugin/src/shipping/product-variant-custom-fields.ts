@@ -45,5 +45,23 @@ export const productVariantCustomFields: CustomFields = {
                 { languageCode: LanguageCode.en, value: 'Height (cm)' },
             ],
         },
+        {
+            name: 'shippingProfileId',
+            type: 'string',
+            nullable: true,
+            public: true,
+            label: [
+                { languageCode: LanguageCode.zh_Hans, value: '配送档案 ID' },
+            ],
+        },
+        {
+            name: 'paymentProfileId',
+            type: 'string',
+            nullable: true,
+            public: true,
+            label: [
+                { languageCode: LanguageCode.zh_Hans, value: '支付档案 ID' },
+            ],
+        },
     ],
 };

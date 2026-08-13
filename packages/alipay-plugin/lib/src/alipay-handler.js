@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.alipayPaymentHandler = void 0;
 const core_1 = require("@vendure/core");
 const alipay_sdk_1 = require("alipay-sdk");
+const cjk_plugin_1 = require("@vendure/cjk-plugin");
 const constants_1 = require("./constants");
 exports.alipayPaymentHandler = new core_1.PaymentMethodHandler({
     code: 'alipay',
@@ -29,9 +30,12 @@ exports.alipayPaymentHandler = new core_1.PaymentMethodHandler({
     async createPayment(ctx, order, amount, args, metadata, method) {
         var _a, _b;
         try {
+            const override = (0, cjk_plugin_1.getPaymentOverride)(ctx, 'alipay');
+            const appId = (override === null || override === void 0 ? void 0 : override.appId) || args.appId;
+            const privateKey = (override === null || override === void 0 ? void 0 : override.privateKey) || args.privateKey;
             const alipaySdk = new alipay_sdk_1.AlipaySdk({
-                appId: args.appId,
-                privateKey: args.privateKey,
+                appId,
+                privateKey,
                 signType: 'RSA2',
             });
             const notifyUrl = ((_a = method.customFields) === null || _a === void 0 ? void 0 : _a.notifyUrl) || '';
@@ -40,12 +44,14 @@ exports.alipayPaymentHandler = new core_1.PaymentMethodHandler({
             const apiMethod = isWap ? 'alipay.trade.wap.pay' : 'alipay.trade.page.pay';
             const productCode = isWap ? 'QUICK_WAP_WAY' : 'FAST_INSTANT_TRADE_PAY';
             const payForm = alipaySdk.pageExec(apiMethod, 'POST', {
-                bizContent: {
-                    out_trade_no: order.code,
-                    total_amount: (amount / 100).toFixed(2),
-                    subject: `Order ${order.code}`,
-                    product_code: productCode,
-                },
+                bizContent: Object.assign({ out_trade_no: order.code, total_amount: (amount / 100).toFixed(2), subject: `Order ${order.code}`, product_code: productCode }, ((metadata === null || metadata === void 0 ? void 0 : metadata.installmentPeriod)
+                    ? {
+                        extend_params: {
+                            hbFqNum: String(metadata.installmentPeriod),
+                            hbFqSellerPercent: '0',
+                        },
+                    }
+                    : {})),
                 notifyUrl,
                 returnUrl,
             });

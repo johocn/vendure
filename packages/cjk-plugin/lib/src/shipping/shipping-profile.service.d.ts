@@ -1,0 +1,40 @@
+import { ID, ListQueryOptions, PaginatedList, RequestContext, TransactionalConnection } from '@vendure/core';
+import { ShippingProfile } from './shipping-profile.entity';
+import { PickupLocation } from '../pickup/pickup-location.entity';
+export declare class ShippingProfileService {
+    private connection;
+    constructor(connection: TransactionalConnection);
+    findAll(ctx: RequestContext, options?: ListQueryOptions<ShippingProfile>): Promise<PaginatedList<ShippingProfile>>;
+    findOne(ctx: RequestContext, id: ID): Promise<ShippingProfile | undefined>;
+    findByCode(ctx: RequestContext, code: string): Promise<ShippingProfile | undefined>;
+    create(ctx: RequestContext, input: any): Promise<ShippingProfile>;
+    update(ctx: RequestContext, input: any): Promise<ShippingProfile>;
+    delete(ctx: RequestContext, id: ID): Promise<void>;
+    assignToVariants(ctx: RequestContext, variantIds: ID[], profileId: ID): Promise<void>;
+    getIntersectedShippingMethods(ctx: RequestContext, profileIds: ID[]): Promise<Array<{
+        id: ID;
+        code: string;
+    }>>;
+    /**
+     * 按交集 id 查询完整 ShippingMethod 实体（供 Shop API 返回完整字段）
+     * ShippingMethod 是 translatable 实体，需 join translations 加载 name
+     */
+    findShippingMethodsByIds(ctx: RequestContext, ids: ID[]): Promise<any[]>;
+    /**
+     * 获取多个 Profile 的自提点交集。
+     * 规则：
+     * - 任一 Profile 的 pickupLocations 为空（未约束）→ 视为该 Profile 不约束，跳过
+     * - 所有约束了的 Profile 的 pickupLocations 取交集
+     * - 若所有 Profile 都未约束，返回 null（表示不限制，前端展示全部自提点）
+     * - 若交集为空但至少有一个约束，返回 []（表示无可用自提点）
+     */
+    getIntersectedPickupLocations(ctx: RequestContext, profileIds: ID[]): Promise<ID[] | null>;
+    /**
+     * 查询是否任一 Profile 约束了自提点。
+     * 前端用此区分 eligiblePickupLocationsByProfile 返回 [] 的两种情况：
+     * - false → 未约束，前端展示全部自提点
+     * - true  → 约束了但交集为空，前端展示"无可用自提点"
+     */
+    hasPickupLocationConstraint(ctx: RequestContext, profileIds: ID[]): Promise<boolean>;
+    findPickupLocationsByIds(ctx: RequestContext, ids: ID[]): Promise<PickupLocation[]>;
+}

@@ -1,4 +1,4 @@
-import { Column, Entity, JoinTable, ManyToMany, ManyToOne } from 'typeorm';
+import { Column, Entity, JoinTable, ManyToMany } from 'typeorm';
 import { Channel, ChannelAware, DeepPartial, VendureEntity } from '@vendure/core';
 
 export enum PointsHistoryType {
@@ -14,7 +14,7 @@ export class MemberPointsHistory extends VendureEntity implements ChannelAware {
         super(input);
     }
 
-    @Column() customerId: number;
+    @Column({ type: 'int' }) customerId: number;
 
     @Column({ type: 'varchar' }) type: PointsHistoryType;
 
@@ -28,11 +28,9 @@ export class MemberPointsHistory extends VendureEntity implements ChannelAware {
 
     @Column({ type: 'text', nullable: true }) remark: string | null;
 
-    @Column({ nullable: true }) expiresAt?: Date;
+    @Column({ type: 'timestamp', nullable: true }) expiresAt?: Date;
 
-    @ManyToOne(() => Channel) channel: Channel;
-
-    @Column() channelId: number;
+    @Column({ type: 'int' }) channelId: number;
 
     @ManyToMany(() => Channel)
     @JoinTable()

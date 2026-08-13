@@ -1,7 +1,7 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { Allow, Ctx, ID, RequestContext } from '@vendure/core';
-import { DeliveryPermissions } from '@vendure/delivery-plugin';
 
+import { memberLevelPermission } from './permissions';
 import { MemberLevelService } from './member-level.service';
 
 @Resolver()
@@ -9,13 +9,13 @@ export class MemberLevelAdminResolver {
     constructor(private memberLevelService: MemberLevelService) {}
 
     @Query()
-    @Allow(DeliveryPermissions.ManageMember as any)
+    @Allow(memberLevelPermission.Read)
     async memberInfo(@Ctx() ctx: RequestContext, @Args('customerId') customerId: ID): Promise<any> {
         return this.memberLevelService.getMemberInfo(ctx, customerId);
     }
 
     @Query()
-    @Allow(DeliveryPermissions.ManageMember as any)
+    @Allow(memberLevelPermission.Read)
     async pointsHistory(
         @Ctx() ctx: RequestContext,
         @Args('customerId') customerId: ID,
@@ -25,7 +25,7 @@ export class MemberLevelAdminResolver {
     }
 
     @Query()
-    @Allow(DeliveryPermissions.ManageMember as any)
+    @Allow(memberLevelPermission.Read)
     async members(
         @Ctx() ctx: RequestContext,
         @Args('options', { nullable: true }) options: any,
@@ -34,13 +34,13 @@ export class MemberLevelAdminResolver {
     }
 
     @Query()
-    @Allow(DeliveryPermissions.ManageMember as any)
+    @Allow(memberLevelPermission.Read)
     async levelConfig(@Ctx() ctx: RequestContext): Promise<any> {
         return this.memberLevelService.getLevelConfig(ctx);
     }
 
     @Mutation()
-    @Allow(DeliveryPermissions.ManageMember as any)
+    @Allow(memberLevelPermission.Update)
     async adjustPoints(
         @Ctx() ctx: RequestContext,
         @Args('customerId') customerId: ID,
@@ -52,7 +52,7 @@ export class MemberLevelAdminResolver {
     }
 
     @Mutation()
-    @Allow(DeliveryPermissions.ManageMember as any)
+    @Allow(memberLevelPermission.Update)
     async adjustMemberGrowth(
         @Ctx() ctx: RequestContext,
         @Args('customerId') customerId: ID,
@@ -64,7 +64,7 @@ export class MemberLevelAdminResolver {
     }
 
     @Mutation()
-    @Allow(DeliveryPermissions.ManageMember as any)
+    @Allow(memberLevelPermission.Update)
     async updateLevelConfig(
         @Ctx() ctx: RequestContext,
         @Args('input') input: any,
