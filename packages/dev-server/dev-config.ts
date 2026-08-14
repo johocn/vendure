@@ -28,6 +28,8 @@ import path from 'path';
 import { DataSourceOptions } from 'typeorm';
 import { Request, Response, NextFunction } from 'express';
 import { CjkPlugin } from '@vendure/cjk-plugin';
+// 注意：ReviewsPlugin/FloorBuilderPlugin/NavModifierPlugin 为开发演示插件，
+// 改为惰性 require（见 devOnlyPlugins），避免生产模式静态 require 缺失的 test-plugins 产物。
 import { AlipayPlugin } from '@vendure/alipay-plugin';
 import { WechatpayPlugin } from '@vendure/wechatpay-plugin';
 import { OssPlugin } from '@vendure/oss-plugin';
@@ -56,14 +58,16 @@ import { CustomerServicePlugin } from '@vendure/customer-service-plugin';
 import { InventoryPlugin } from '@vendure/inventory-plugin';
 import { MessagePlugin } from '@vendure/message-plugin';
 import { OperationsPlugin } from '@vendure/operations-plugin';
-import { NavModifierPlugin } from './test-plugins/nav-modifier-plugin/nav-modifier-plugin';
-// import { FieldTestPlugin } from './test-plugins/field-test/field-test-plugin';
-import { ReviewsPlugin } from './test-plugins/reviews/reviews-plugin';
-import { FloorBuilderPlugin } from './test-plugins/floor-builder';
-
-// 生产模式（dist/）跳过开发演示插件，避免 tsc 编译 test-plugins 的复杂依赖
+// 生产模式（dist/）跳过开发演示插件，避免静态 import require 缺失的 test-plugins 产物
 const IS_PROD = path.basename(__dirname) === 'dist';
-const devOnlyPlugins = IS_PROD ? [] : [ReviewsPlugin, FloorBuilderPlugin, NavModifierPlugin];
+const devOnlyPlugins = IS_PROD
+    ? []
+    : (() => {
+          const { ReviewsPlugin } = require('./test-plugins/reviews/reviews-plugin');
+          const { FloorBuilderPlugin } = require('./test-plugins/floor-builder');
+          const { NavModifierPlugin } = require('./test-plugins/nav-modifier-plugin/nav-modifier-plugin');
+          return [ReviewsPlugin, FloorBuilderPlugin, NavModifierPlugin];
+      })();
 
 // 统一解析 dev-server 目录：dev 模式 __dirname=packages/dev-server，prod 模式 __dirname=packages/dev-server/dist
 const devServerDir = path.basename(__dirname) === 'dist' ? path.dirname(__dirname) : __dirname;

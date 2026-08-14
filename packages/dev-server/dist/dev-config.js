@@ -53,11 +53,15 @@ const customer_service_plugin_1 = require("@vendure/customer-service-plugin");
 const inventory_plugin_1 = require("@vendure/inventory-plugin");
 const message_plugin_1 = require("@vendure/message-plugin");
 const operations_plugin_1 = require("@vendure/operations-plugin");
-const nav_modifier_plugin_1 = require("./test-plugins/nav-modifier-plugin/nav-modifier-plugin");
-const reviews_plugin_1 = require("./test-plugins/reviews/reviews-plugin");
-const floor_builder_1 = require("./test-plugins/floor-builder");
 const IS_PROD = path_1.default.basename(__dirname) === 'dist';
-const devOnlyPlugins = IS_PROD ? [] : [reviews_plugin_1.ReviewsPlugin, floor_builder_1.FloorBuilderPlugin, nav_modifier_plugin_1.NavModifierPlugin];
+const devOnlyPlugins = IS_PROD
+    ? []
+    : (() => {
+        const { ReviewsPlugin } = require('./test-plugins/reviews/reviews-plugin');
+        const { FloorBuilderPlugin } = require('./test-plugins/floor-builder');
+        const { NavModifierPlugin } = require('./test-plugins/nav-modifier-plugin/nav-modifier-plugin');
+        return [ReviewsPlugin, FloorBuilderPlugin, NavModifierPlugin];
+    })();
 const devServerDir = path_1.default.basename(__dirname) === 'dist' ? path_1.default.dirname(__dirname) : __dirname;
 const IS_INSTRUMENTED = process.env.IS_INSTRUMENTED === 'true';
 let ReadonlySettingsTestPlugin = class ReadonlySettingsTestPlugin {
