@@ -73,6 +73,9 @@ import { PayConfigService } from './payment/pay-config.service';
 import { MapConfigService } from './map/map-config.service';
 import { SsoProviderService } from './auth/sso-provider.service';
 import { InviteCodeService } from './auth/invite-code.service';
+import { BasicConfigService } from './tenant/basic-config.service';
+import { ServiceNotifyConfigService } from './tenant/service-notify-config.service';
+import { MultiLanguageConfigService } from './tenant/multi-language-config.service';
 import { tenantConfigPermission } from './admin/tenant-config-permissions';
 import { TenantConfigAdminResolver } from './admin/tenant-config-admin.resolver';
 import { ShippingProfile } from './shipping/shipping-profile.entity';
@@ -212,6 +215,9 @@ function mergeCustomFields<T extends { name: string }>(
         MapConfigService,
         SsoProviderService,
         InviteCodeService,
+        BasicConfigService,
+        ServiceNotifyConfigService,
+        MultiLanguageConfigService,
         ShippingTemplateService,
         ShippingProfileService,
         DeliveryFacetService,
@@ -481,6 +487,32 @@ function mergeCustomFields<T extends { name: string }>(
                     success: Boolean!
                     latencyMs: Int!
                     error: String
+                }
+
+                extend type Query {
+                    tenantSettings(channelId: ID!): TenantSettingsPayload!
+                }
+
+                type TenantSettingsPayload {
+                    channelId: ID!
+                    basic: JSON
+                    auth: JSON
+                    pay: JSON
+                    map: JSON
+                    serviceNotify: JSON
+                    multiLanguage: JSON
+                    canEdit: Boolean!
+                }
+
+                extend type Mutation {
+                    updateTenantBasic(input: TenantSectionPatchInput!): TenantSettingsPayload!
+                    updateTenantMultiLanguage(input: TenantSectionPatchInput!): TenantSettingsPayload!
+                    updateTenantServiceNotify(input: TenantSectionPatchInput!): TenantSettingsPayload!
+                }
+
+                input TenantSectionPatchInput {
+                    channelId: ID!
+                    patch: JSON!
                 }
 
                 # ===== Shipping Template =====
