@@ -74,6 +74,7 @@ const payment_profile_permissions_1 = require("./payment/payment-profile-permiss
 const shipping_profile_shop_resolver_1 = require("./shipping/shipping-profile-shop.resolver");
 const payment_profile_shop_resolver_1 = require("./payment/payment-profile-shop.resolver");
 const core_3 = require("@vendure/core");
+const default_data_service_1 = require("./seed/default-data.service");
 let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
     constructor(options, moduleRef) {
         this.options = options;
@@ -84,11 +85,16 @@ let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
         return CjkPlugin_1;
     }
     async onApplicationBootstrap() {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
         const injector = new core_1.Injector(this.moduleRef);
-        if (((_a = this.options.i18n) === null || _a === void 0 ? void 0 : _a.enabled) !== false) {
+        // 幂等创建默认配送/支付数据（自提点、门店自提配送档案、门店收银支付档案）
+        if (this.options.seedDefaultData !== false && ((_a = this.options.profiles) === null || _a === void 0 ? void 0 : _a.enabled) !== false) {
+            const seedService = injector.get(default_data_service_1.DefaultDataService);
+            await seedService.seed();
+        }
+        if (((_b = this.options.i18n) === null || _b === void 0 ? void 0 : _b.enabled) !== false) {
             const i18nService = injector.get(core_1.I18nService);
-            const languages = ((_b = this.options.i18n) === null || _b === void 0 ? void 0 : _b.languages) || ['zh_Hans', 'zh_Hant', 'ja', 'ko'];
+            const languages = ((_c = this.options.i18n) === null || _c === void 0 ? void 0 : _c.languages) || ['zh_Hans', 'zh_Hant', 'ja', 'ko'];
             const translations = {
                 zh_Hans: require('./i18n/zh_CN.json'),
                 zh_Hant: require('./i18n/zh_TW.json'),
@@ -102,29 +108,29 @@ let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
                 }
             }
         }
-        if (((_c = this.options.regions) === null || _c === void 0 ? void 0 : _c.enabled) !== false) {
+        if (((_d = this.options.regions) === null || _d === void 0 ? void 0 : _d.enabled) !== false) {
             core_1.Logger.info('CJK regions module enabled - use RegionPopulator in your server bootstrap to populate countries', constants_1.loggerCtx);
         }
-        if ((_d = this.options.cod) === null || _d === void 0 ? void 0 : _d.enabled) {
+        if ((_e = this.options.cod) === null || _e === void 0 ? void 0 : _e.enabled) {
             core_1.Logger.info('Cash on Delivery payment module enabled', constants_1.loggerCtx);
         }
-        if ((_e = this.options.storePickup) === null || _e === void 0 ? void 0 : _e.enabled) {
+        if ((_f = this.options.storePickup) === null || _f === void 0 ? void 0 : _f.enabled) {
             core_1.Logger.info('Store pickup shipping module enabled', constants_1.loggerCtx);
         }
-        if ((_f = this.options.pickupPoint) === null || _f === void 0 ? void 0 : _f.enabled) {
+        if ((_g = this.options.pickupPoint) === null || _g === void 0 ? void 0 : _g.enabled) {
             core_1.Logger.info('Pickup point shipping module enabled', constants_1.loggerCtx);
         }
-        if ((_g = this.options.employeePickup) === null || _g === void 0 ? void 0 : _g.enabled) {
+        if ((_h = this.options.employeePickup) === null || _h === void 0 ? void 0 : _h.enabled) {
             core_1.Logger.info('Employee pickup shipping module enabled', constants_1.loggerCtx);
         }
-        if ((_h = this.options.promotionPolicy) === null || _h === void 0 ? void 0 : _h.enabled) {
+        if ((_j = this.options.promotionPolicy) === null || _j === void 0 ? void 0 : _j.enabled) {
             core_1.Logger.info('Promotion stacking policy module enabled', constants_1.loggerCtx);
         }
-        if ((_j = this.options.tenant) === null || _j === void 0 ? void 0 : _j.enabled) {
+        if ((_k = this.options.tenant) === null || _k === void 0 ? void 0 : _k.enabled) {
             core_1.Logger.info('Tenant (multi-channel) module enabled', constants_1.loggerCtx);
         }
         // 注册 Profile 事件订阅
-        if (((_k = this.options.profiles) === null || _k === void 0 ? void 0 : _k.enabled) !== false) {
+        if (((_l = this.options.profiles) === null || _l === void 0 ? void 0 : _l.enabled) !== false) {
             const eventBus = injector.get(core_3.EventBus);
             const shippingSvc = injector.get(shipping_profile_service_1.ShippingProfileService);
             const paymentSvc = injector.get(payment_profile_service_1.PaymentProfileService);
@@ -219,6 +225,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             shipping_template_service_1.ShippingTemplateService,
             shipping_profile_service_1.ShippingProfileService,
             payment_profile_service_1.PaymentProfileService,
+            default_data_service_1.DefaultDataService,
         ],
         adminApiExtensions: {
             schema: () => {

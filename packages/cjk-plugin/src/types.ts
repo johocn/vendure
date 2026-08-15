@@ -57,6 +57,8 @@ export interface CjkPluginOptions {
     profiles?: CjkPluginProfilesOptions;
     /** 用于加密 authConfig 中凭证的密钥 */
     authSecret?: string;
+    /** 启动时是否自动创建默认配送/支付数据（快递自提点、门店自提档案、门店收银档案），默认 true */
+    seedDefaultData?: boolean;
 }
 
 export interface CjkPluginProfilesOptions {

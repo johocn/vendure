@@ -72,6 +72,7 @@ import { paymentProfilePermission, paymentProfilePermissionDefinitions } from '.
 import { ShippingProfileShopResolver } from './shipping/shipping-profile-shop.resolver';
 import { PaymentProfileShopResolver } from './payment/payment-profile-shop.resolver';
 import { EventBus, OrderEvent, OrderService, TransactionalConnection } from '@vendure/core';
+import { DefaultDataService } from './seed/default-data.service';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
@@ -95,6 +96,7 @@ import { EventBus, OrderEvent, OrderService, TransactionalConnection } from '@ve
         ShippingTemplateService,
         ShippingProfileService,
         PaymentProfileService,
+        DefaultDataService,
     ],
     adminApiExtensions: {
         schema: () => {
@@ -760,6 +762,13 @@ export class CjkPlugin implements OnApplicationBootstrap, NestModule {
 
     async onApplicationBootstrap(): Promise<void> {
         const injector = new Injector(this.moduleRef);
+
+        // 幂等创建默认配送/支付数据（自提点、门店自提配送档案、门店收银支付档案）
+        if (this.options.seedDefaultData !== false && this.options.profiles?.enabled !== false) {
+            const seedService = injector.get(DefaultDataService);
+            await seedService.seed();
+        }
+
         if (this.options.i18n?.enabled !== false) {
             const i18nService = injector.get(I18nService);
             const languages = this.options.i18n?.languages || ['zh_Hans', 'zh_Hant', 'ja', 'ko'];

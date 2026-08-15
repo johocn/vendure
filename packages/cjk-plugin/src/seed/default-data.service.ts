@@ -1,0 +1,196 @@
+import { Injectable } from '@nestjs/common';
+import {
+    ID,
+    LanguageCode,
+    Logger,
+    PaymentMethodService,
+    RequestContext,
+    RequestContextService,
+    ShippingMethodService,
+    TransactionalConnection,
+} from '@vendure/core';
+
+import { loggerCtx } from '../constants';
+import { PaymentProfile } from '../payment/payment-profile.entity';
+import { PaymentProfileService } from '../payment/payment-profile.service';
+import { PickupLocation } from '../pickup/pickup-location.entity';
+import { ShippingProfile } from '../shipping/shipping-profile.entity';
+import { ShippingProfileService } from '../shipping/shipping-profile.service';
+import { ShippingTemplate } from '../shipping/shipping-template.entity';
+import { ShippingTemplateService } from '../shipping/shipping-template.service';
+
+/**
+ * 插件默认数据初始化
+ *
+ * 商品级配送/支付方案（ShippingProfile/PaymentProfile）建表后为空。
+ * 本服务在 onApplicationBootstrap 阶段幂等创建一套全局默认数据，便于快速投入使用：
+ * - 自提点（门店）
+ * - 门店自提配送方式 + 配送模板 + 配送档案
+ * - 门店收银支付方式 + 支付档案
+ *
+ * 默认数据均为全局档案（isGlobal=true），所有租户共享。
+ * 通过 CjkPlugin.options.seedDefaultData = false 可禁用。
+ */
+@Injectable()
+export class DefaultDataService {
+    constructor(
+        private connection: TransactionalConnection,
+        private requestContextService: RequestContextService,
+        private shippingMethodService: ShippingMethodService,
+        private paymentMethodService: PaymentMethodService,
+        private shippingTemplateService: ShippingTemplateService,
+        private shippingProfileService: ShippingProfileService,
+        private paymentProfileService: PaymentProfileService,
+    ) {}
+
+    /**
+     * 幂等创建默认数据。任何单项失败仅记日志，不阻塞应用启动。
+     */
+    async seed(): Promise<void> {
+        try {
+            const ctx = await this.requestContextService.create({ apiType: 'admin' });
+            Logger.info('开始初始化购物配送/支付默认数据', loggerCtx);
+            await this.seedPickupLocation(ctx);
+            await this.seedStorePickupMethod(ctx);
+            await this.seedStorePickupTemplate(ctx);
+            await this.seedStorePickupProfile(ctx);
+            await this.seedCashierPaymentMethod(ctx);
+            await this.seedCashierPaymentProfile(ctx);
+            Logger.info('购物配送/支付默认数据初始化完成', loggerCtx);
+        } catch (e: any) {
+            Logger.error(`默认数据初始化失败: ${e.message}`, loggerCtx);
+        }
+    }
+
+    /** 默认门店自提点 */
+    private async seedPickupLocation(ctx: RequestContext): Promise<void> {
+        const existing = await this.connection
+            .getRepository(ctx, PickupLocation)
+            .findOne({ where: { name: DEFAULT_STORE.name } });
+        if (existing) return;
+        const repo = this.connection.getRepository(ctx, PickupLocation);
+        const location = new PickupLocation({
+            ...DEFAULT_STORE,
+            isPublic: true,
+            ownerChannelId: null,
+        } as any);
+        location.channels = [ctx.channel];
+        await repo.save(location);
+        Logger.info(`已创建默认自提点: ${DEFAULT_STORE.name}`, loggerCtx);
+    }
+
+    /** 门店自提配送方式 */
+    private async seedStorePickupMethod(ctx: RequestContext): Promise<void> {
+        const existing = await this.connection
+            .getRepository(ctx, 'ShippingMethod')
+            .findOne({ where: { code: STORE_PICKUP_METHOD_CODE } });
+        if (existing) return;
+        await this.shippingMethodService.create(ctx, {
+            code: STORE_PICKUP_METHOD_CODE,
+            fulfillmentHandler: 'store-pickup',
+            checker: { code: 'store-pickup-eligibility', arguments: [] },
+            calculator: { code: 'store-pickup-calculator', arguments: [] },
+            translations: [
+                { languageCode: LanguageCode.zh_Hans, name: '门店自提', description: '到指定门店自提商品' },
+                { languageCode: LanguageCode.en, name: 'Store Pickup', description: 'Pick up at the store' },
+            ],
+        } as any);
+        Logger.info(`已创建默认配送方式: ${STORE_PICKUP_METHOD_CODE}`, loggerCtx);
+    }
+
+    /** 门店自提配送模板 */
+    private async seedStorePickupTemplate(ctx: RequestContext): Promise<void> {
+        const existing = await this.connection
+            .getRepository(ctx, ShippingTemplate)
+            .findOne({ where: { code: STORE_PICKUP_TEMPLATE_CODE } });
+        if (existing) return;
+        await this.shippingTemplateService.create(ctx, {
+            name: '门店自提模板',
+            description: '到指定门店自提',
+            code: STORE_PICKUP_TEMPLATE_CODE,
+            fulfillmentHandler: 'store-pickup',
+            checker: { code: 'store-pickup-eligibility', arguments: [] },
+            calculator: { code: 'store-pickup-calculator', arguments: [] },
+            isGlobal: true,
+        } as any);
+        Logger.info(`已创建默认配送模板: ${STORE_PICKUP_TEMPLATE_CODE}`, loggerCtx);
+    }
+
+    /** 门店自提配送档案（关联配送方式 + 自提点） */
+    private async seedStorePickupProfile(ctx: RequestContext): Promise<void> {
+        const existing = await this.shippingProfileService.findByCode(ctx, STORE_PICKUP_PROFILE_CODE);
+        if (existing) return;
+        const method = await this.connection
+            .getRepository(ctx, 'ShippingMethod')
+            .findOne({ where: { code: STORE_PICKUP_METHOD_CODE } });
+        const location = await this.connection
+            .getRepository(ctx, PickupLocation)
+            .findOne({ where: { name: DEFAULT_STORE.name } });
+        if (!method) {
+            Logger.warn(`配送方式 ${STORE_PICKUP_METHOD_CODE} 不存在，跳过配送档案`, loggerCtx);
+            return;
+        }
+        await this.shippingProfileService.create(ctx, {
+            name: '门店自提配送档案',
+            description: '到指定门店自提',
+            code: STORE_PICKUP_PROFILE_CODE,
+            isGlobal: true,
+            shippingMethodIds: [method.id],
+            pickupLocationIds: location ? [location.id] : [],
+        } as any);
+        Logger.info(`已创建默认配送档案: ${STORE_PICKUP_PROFILE_CODE}`, loggerCtx);
+    }
+
+    /** 门店收银支付方式（货到付款处理器） */
+    private async seedCashierPaymentMethod(ctx: RequestContext): Promise<void> {
+        const existing = await this.connection
+            .getRepository(ctx, 'PaymentMethod')
+            .findOne({ where: { code: CASHIER_PAYMENT_METHOD_CODE } });
+        if (existing) return;
+        await this.paymentMethodService.create(ctx, {
+            code: CASHIER_PAYMENT_METHOD_CODE,
+            enabled: true,
+            handler: { code: 'cash-on-delivery', arguments: [] },
+            translations: [
+                { languageCode: LanguageCode.zh_Hans, name: '门店收银', description: '到店扫码/收银台支付' },
+                { languageCode: LanguageCode.en, name: 'Store Cashier', description: 'Pay at the store cashier' },
+            ],
+        } as any);
+        Logger.info(`已创建默认支付方式: ${CASHIER_PAYMENT_METHOD_CODE}`, loggerCtx);
+    }
+
+    /** 门店收银支付档案 */
+    private async seedCashierPaymentProfile(ctx: RequestContext): Promise<void> {
+        const existing = await this.paymentProfileService.findByCode(ctx, CASHIER_PAYMENT_PROFILE_CODE);
+        if (existing) return;
+        const method = await this.connection
+            .getRepository(ctx, 'PaymentMethod')
+            .findOne({ where: { code: CASHIER_PAYMENT_METHOD_CODE } });
+        if (!method) {
+            Logger.warn(`支付方式 ${CASHIER_PAYMENT_METHOD_CODE} 不存在，跳过支付档案`, loggerCtx);
+            return;
+        }
+        await this.paymentProfileService.create(ctx, {
+            name: '门店收银支付档案',
+            description: '到店收银台支付',
+            code: CASHIER_PAYMENT_PROFILE_CODE,
+            isGlobal: true,
+            paymentMethodIds: [method.id],
+        } as any);
+        Logger.info(`已创建默认支付档案: ${CASHIER_PAYMENT_PROFILE_CODE}`, loggerCtx);
+    }
+}
+
+export const DEFAULT_STORE = {
+    name: '自由大路店',
+    type: 'store' as const,
+    address: '自由大路',
+    phoneNumber: '',
+    businessHours: '09:00-21:00',
+};
+
+export const STORE_PICKUP_METHOD_CODE = 'store-pickup';
+export const STORE_PICKUP_TEMPLATE_CODE = 'store-pickup-template';
+export const STORE_PICKUP_PROFILE_CODE = 'store-pickup-profile';
+export const CASHIER_PAYMENT_METHOD_CODE = 'cash-on-delivery';
+export const CASHIER_PAYMENT_PROFILE_CODE = 'store-cashier-profile';
