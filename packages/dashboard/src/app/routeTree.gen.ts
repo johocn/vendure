@@ -13,6 +13,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedZonesZonesRouteImport } from './routes/_authenticated/_zones/zones'
+import { Route as AuthenticatedTenantSettingsTenantSettingsRouteImport } from './routes/_authenticated/_tenant-settings/tenant-settings'
 import { Route as AuthenticatedTaxRatesTaxRatesRouteImport } from './routes/_authenticated/_tax-rates/tax-rates'
 import { Route as AuthenticatedTaxCategoriesTaxCategoriesRouteImport } from './routes/_authenticated/_tax-categories/tax-categories'
 import { Route as AuthenticatedSystemSettingsStoreRouteImport } from './routes/_authenticated/_system/settings-store'
@@ -87,6 +88,12 @@ const AuthenticatedZonesZonesRoute = AuthenticatedZonesZonesRouteImport.update({
   path: '/zones',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedTenantSettingsTenantSettingsRoute =
+  AuthenticatedTenantSettingsTenantSettingsRouteImport.update({
+    id: '/_tenant-settings/tenant-settings',
+    path: '/tenant-settings',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedTaxRatesTaxRatesRoute =
   AuthenticatedTaxRatesTaxRatesRouteImport.update({
     id: '/_tax-rates/tax-rates',
@@ -442,6 +449,7 @@ export interface FileRoutesByFullPath {
   '/settings-store': typeof AuthenticatedSystemSettingsStoreRoute
   '/tax-categories': typeof AuthenticatedTaxCategoriesTaxCategoriesRoute
   '/tax-rates': typeof AuthenticatedTaxRatesTaxRatesRoute
+  '/tenant-settings': typeof AuthenticatedTenantSettingsTenantSettingsRoute
   '/zones': typeof AuthenticatedZonesZonesRoute
   '/administrators/$id': typeof AuthenticatedAdministratorsAdministratorsIdRoute
   '/api-keys/$id': typeof AuthenticatedApiKeysApiKeysIdRoute
@@ -501,6 +509,7 @@ export interface FileRoutesByTo {
   '/settings-store': typeof AuthenticatedSystemSettingsStoreRoute
   '/tax-categories': typeof AuthenticatedTaxCategoriesTaxCategoriesRoute
   '/tax-rates': typeof AuthenticatedTaxRatesTaxRatesRoute
+  '/tenant-settings': typeof AuthenticatedTenantSettingsTenantSettingsRoute
   '/zones': typeof AuthenticatedZonesZonesRoute
   '/administrators/$id': typeof AuthenticatedAdministratorsAdministratorsIdRoute
   '/api-keys/$id': typeof AuthenticatedApiKeysApiKeysIdRoute
@@ -562,6 +571,7 @@ export interface FileRoutesById {
   '/_authenticated/_system/settings-store': typeof AuthenticatedSystemSettingsStoreRoute
   '/_authenticated/_tax-categories/tax-categories': typeof AuthenticatedTaxCategoriesTaxCategoriesRoute
   '/_authenticated/_tax-rates/tax-rates': typeof AuthenticatedTaxRatesTaxRatesRoute
+  '/_authenticated/_tenant-settings/tenant-settings': typeof AuthenticatedTenantSettingsTenantSettingsRoute
   '/_authenticated/_zones/zones': typeof AuthenticatedZonesZonesRoute
   '/_authenticated/_administrators/administrators_/$id': typeof AuthenticatedAdministratorsAdministratorsIdRoute
   '/_authenticated/_api-keys/api-keys_/$id': typeof AuthenticatedApiKeysApiKeysIdRoute
@@ -623,6 +633,7 @@ export interface FileRouteTypes {
     | '/settings-store'
     | '/tax-categories'
     | '/tax-rates'
+    | '/tenant-settings'
     | '/zones'
     | '/administrators/$id'
     | '/api-keys/$id'
@@ -682,6 +693,7 @@ export interface FileRouteTypes {
     | '/settings-store'
     | '/tax-categories'
     | '/tax-rates'
+    | '/tenant-settings'
     | '/zones'
     | '/administrators/$id'
     | '/api-keys/$id'
@@ -742,6 +754,7 @@ export interface FileRouteTypes {
     | '/_authenticated/_system/settings-store'
     | '/_authenticated/_tax-categories/tax-categories'
     | '/_authenticated/_tax-rates/tax-rates'
+    | '/_authenticated/_tenant-settings/tenant-settings'
     | '/_authenticated/_zones/zones'
     | '/_authenticated/_administrators/administrators_/$id'
     | '/_authenticated/_api-keys/api-keys_/$id'
@@ -806,6 +819,13 @@ declare module '@tanstack/react-router' {
       path: '/zones'
       fullPath: '/zones'
       preLoaderRoute: typeof AuthenticatedZonesZonesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/_tenant-settings/tenant-settings': {
+      id: '/_authenticated/_tenant-settings/tenant-settings'
+      path: '/tenant-settings'
+      fullPath: '/tenant-settings'
+      preLoaderRoute: typeof AuthenticatedTenantSettingsTenantSettingsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/_tax-rates/tax-rates': {
@@ -1217,6 +1237,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedSystemSettingsStoreRoute: typeof AuthenticatedSystemSettingsStoreRoute
   AuthenticatedTaxCategoriesTaxCategoriesRoute: typeof AuthenticatedTaxCategoriesTaxCategoriesRoute
   AuthenticatedTaxRatesTaxRatesRoute: typeof AuthenticatedTaxRatesTaxRatesRoute
+  AuthenticatedTenantSettingsTenantSettingsRoute: typeof AuthenticatedTenantSettingsTenantSettingsRoute
   AuthenticatedZonesZonesRoute: typeof AuthenticatedZonesZonesRoute
   AuthenticatedAdministratorsAdministratorsIdRoute: typeof AuthenticatedAdministratorsAdministratorsIdRoute
   AuthenticatedApiKeysApiKeysIdRoute: typeof AuthenticatedApiKeysApiKeysIdRoute
@@ -1288,6 +1309,8 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedTaxCategoriesTaxCategoriesRoute:
     AuthenticatedTaxCategoriesTaxCategoriesRoute,
   AuthenticatedTaxRatesTaxRatesRoute: AuthenticatedTaxRatesTaxRatesRoute,
+  AuthenticatedTenantSettingsTenantSettingsRoute:
+    AuthenticatedTenantSettingsTenantSettingsRoute,
   AuthenticatedZonesZonesRoute: AuthenticatedZonesZonesRoute,
   AuthenticatedAdministratorsAdministratorsIdRoute:
     AuthenticatedAdministratorsAdministratorsIdRoute,

@@ -170,6 +170,13 @@ export function registerDefaults() {
                 order: 100,
                 items: [
                     {
+                        id: 'tenant-settings',
+                        title: /* i18n*/ 'Tenant Settings',
+                        url: '/tenant-settings',
+                        order: 150,
+                        requiresPermission: ['Authenticated'],
+                    },
+                    {
                         id: 'sellers',
                         title: /* i18n*/ 'Sellers',
                         url: '/sellers',
