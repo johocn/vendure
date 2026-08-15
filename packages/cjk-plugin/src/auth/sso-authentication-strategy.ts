@@ -11,6 +11,7 @@ interface SsoAuthData {
     providerKey: string;
     code: string;
     inviteCode?: string;
+    redirectUri?: string;
 }
 
 export class SsoAuthenticationStrategy implements AuthenticationStrategy<SsoAuthData> {
@@ -32,6 +33,7 @@ export class SsoAuthenticationStrategy implements AuthenticationStrategy<SsoAuth
                 providerKey: String!
                 code: String!
                 inviteCode: String
+                redirectUri: String
             }
         `;
     }
@@ -50,8 +52,8 @@ export class SsoAuthenticationStrategy implements AuthenticationStrategy<SsoAuth
         }
 
         try {
-            // 1. 换取 access_token（后端不依赖 redirect_uri）
-            const tokenRes = await this.exchangeCodeForToken(provider, data.code);
+            // 1. 换取 access_token（zhao-sso 要求 redirect_uri 与 authorize 阶段一致，透传前端回跳地址）
+            const tokenRes = await this.exchangeCodeForToken(provider, data.code, data.redirectUri);
             if (!tokenRes?.access_token) {
                 Logger.warn('SSO token exchange failed', loggerCtx);
                 return false;
@@ -108,7 +110,7 @@ export class SsoAuthenticationStrategy implements AuthenticationStrategy<SsoAuth
         return this.getFieldValue(userInfo, mappingField, defaultField);
     }
 
-    private async exchangeCodeForToken(provider: SsoProvider, code: string): Promise<any> {
+    private async exchangeCodeForToken(provider: SsoProvider, code: string, redirectUri?: string): Promise<any> {
         if (provider.protocol === 'zhao-sso') {
             const tokenUrl = `${provider.baseUrl.replace(/\/$/, '')}/v1/auth/token`;
             const res = await fetch(tokenUrl, {
@@ -119,6 +121,7 @@ export class SsoAuthenticationStrategy implements AuthenticationStrategy<SsoAuth
                     code,
                     app_code: provider.clientId,
                     app_secret: provider.clientSecret,
+                    redirect_uri: redirectUri,
                 }),
             });
             return res.json();

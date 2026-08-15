@@ -135,6 +135,29 @@ export const devConfig: VendureConfig = {
                 },
                 route: '/assets',
             },
+            {
+                // 修复：GET 访问 /admin-api 且不含 GraphQL query 参数时，Apollo 默认返回 400，
+                // 导致访问 e.joho.cn 时浏览器控制台出现 "400 (Bad Request)"。
+                // 例如 Dashboard 的 admin-api 客户端会拼接 ?languageCode=zh_Hans 发起 GET。
+                // 这里对无 query 的 GET 返回 200 的 GraphQL 错误信封，避免 400 刷屏。
+                handler: (req: Request, res: Response, next: NextFunction) => {
+                    if (req.method === 'GET' && !req.query.query) {
+                        res.status(200).json({
+                            data: null,
+                            errors: [
+                                {
+                                    message:
+                                        'GET requests to the GraphQL Admin API require a "query" parameter. Use POST or include ?query=.',
+                                    extensions: { code: 'BAD_REQUEST' },
+                                },
+                            ],
+                        });
+                        return;
+                    }
+                    next();
+                },
+                route: '/admin-api',
+            },
         ],
     },
     authOptions: {
