@@ -6,6 +6,9 @@ const mockAuthConfigService: any = { getMasked: vi.fn().mockResolvedValue({ enab
 const mockPayConfigService: any = { getMasked: vi.fn().mockResolvedValue(null) };
 const mockMapConfigService: any = { getMasked: vi.fn().mockResolvedValue(null) };
 const mockSsoProviderService: any = { testConnection: vi.fn() };
+const mockBasicConfigService: any = { get: vi.fn().mockResolvedValue(null), update: vi.fn().mockResolvedValue(null) };
+const mockMultiLanguageConfigService: any = { get: vi.fn().mockResolvedValue(null), update: vi.fn().mockResolvedValue(null) };
+const mockServiceNotifyConfigService: any = { getMasked: vi.fn().mockResolvedValue(null), update: vi.fn().mockResolvedValue(null) };
 const mockConnection: any = {
     createQueryBuilder: vi.fn().mockReturnValue({
         insert: vi.fn().mockReturnThis(),
@@ -35,6 +38,9 @@ describe('TenantConfigAdminResolver', () => {
             mockPayConfigService,
             mockMapConfigService,
             mockSsoProviderService,
+            mockBasicConfigService,
+            mockMultiLanguageConfigService,
+            mockServiceNotifyConfigService,
             mockConnection,
         );
     });
@@ -62,5 +68,17 @@ describe('TenantConfigAdminResolver', () => {
         await expect(
             resolver.updateTenantConfig(ctx, { input: { channelId: '99', payPatch: {} } }),
         ).rejects.toThrow(/TENANT_CONFIG_FORBIDDEN/);
+    });
+
+    it('tenantSettings rejects unassociated channel', async () => {
+        const ctx = makeCtx({ isSuperAdmin: false, channelIds: ['1'] });
+        await expect(resolver.tenantSettings(ctx, '99')).rejects.toThrow(/TENANT_CONFIG_FORBIDDEN/);
+    });
+
+    it('updateTenantBasic writes audit and returns settings', async () => {
+        const ctx = makeCtx({ isSuperAdmin: true });
+        const result = await resolver.updateTenantBasic(ctx, { input: { channelId: '1', patch: { tenantName: 'X' } } });
+        expect(result.channelId).toBe('1');
+        expect(mockConnection.createQueryBuilder).toHaveBeenCalled();
     });
 });
