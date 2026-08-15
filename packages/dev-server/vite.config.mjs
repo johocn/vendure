@@ -8,8 +8,8 @@ export default defineConfig({
         vendureDashboardPlugin({
             vendureConfigPath: pathToFileURL('./dev-config.ts'),
             api: {
-                host: 'http://localhost',
-                port: Number(process.env.API_PORT) || 3000,
+                host: 'auto',
+                port: 'auto',
             },
             gqlOutputPath: path.resolve(__dirname, './graphql/'),
             pluginPackageScanner: {

@@ -116,8 +116,6 @@ type Query {
   taxRate(id: ID!): TaxRate
   zones(options: ZoneListOptions): ZoneList!
   zone(id: ID!): Zone
-  productReviews(options: ProductReviewListOptions): ProductReviewList!
-  productReview(id: ID!): ProductReview
 
   """Get metrics for the given interval and metric types."""
   metricSummary(input: MetricSummaryInput): [MetricSummary!]!
@@ -725,9 +723,6 @@ type Mutation {
 
   """Remove members from a Zone"""
   removeMembersFromZone(zoneId: ID!, memberIds: [ID!]!): Zone!
-  updateProductReview(input: UpdateProductReviewInput!): ProductReview!
-  approveProductReview(id: ID!): ProductReview
-  rejectProductReview(id: ID!): ProductReview
   createPickupLocation(input: CreatePickupLocationInput!): PickupLocation!
   updatePickupLocation(input: UpdatePickupLocationInput!): PickupLocation!
   deletePickupLocation(id: ID!): Boolean!
@@ -2581,9 +2576,7 @@ type Product implements Node {
   facetValues: [FacetValue!]!
   translations: [ProductTranslation!]!
   collections: [Collection!]!
-  reviews(options: ProductReviewListOptions): ProductReviewList!
-  reviewsHistogram: [ProductReviewHistogramItem!]!
-  customFields: ProductCustomFields
+  customFields: JSON
 }
 
 type ProductVariantPrice {
@@ -2890,7 +2883,7 @@ input CreateProductInput {
   assetIds: [ID!]
   facetValueIds: [ID!]
   translations: [ProductTranslationInput!]!
-  customFields: CreateProductCustomFieldsInput
+  customFields: JSON
 }
 
 input UpdateProductInput {
@@ -2900,7 +2893,7 @@ input UpdateProductInput {
   assetIds: [ID!]
   facetValueIds: [ID!]
   translations: [ProductTranslationInput!]
-  customFields: UpdateProductCustomFieldsInput
+  customFields: JSON
 }
 
 input ProductVariantTranslationInput {
@@ -6682,75 +6675,6 @@ type Zone implements Node {
   customFields: JSON
 }
 
-type ProductReviewTranslation {
-  id: ID!
-  languageCode: LanguageCode!
-  text: String!
-}
-
-type ProductReview implements Node {
-  id: ID!
-  createdAt: DateTime!
-  updatedAt: DateTime!
-  product: Product!
-  productVariant: ProductVariant
-  summary: String!
-  body: String
-  rating: Float!
-  authorName: String!
-  authorLocation: String
-  upvotes: Int!
-  downvotes: Int!
-  state: String!
-  response: String
-  responseCreatedAt: DateTime
-  translations: [ProductReviewTranslation!]!
-  author: Customer
-}
-
-type ProductReviewList implements PaginatedList {
-  items: [ProductReview!]!
-  totalItems: Int!
-}
-
-type ProductReviewHistogramItem {
-  bin: Int!
-  frequency: Int!
-}
-
-input ProductReviewListOptions {
-  """Skips the first n results, for use in pagination"""
-  skip: Int
-
-  """Takes n results, for use in pagination"""
-  take: Int
-
-  """Specifies which properties to sort the results by"""
-  sort: ProductReviewSortParameter
-
-  """Allows the results to be filtered"""
-  filter: ProductReviewFilterParameter
-
-  """
-  Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND.
-  """
-  filterOperator: LogicalOperator
-}
-
-input ProductReviewTranslationInput {
-  languageCode: LanguageCode!
-  text: String!
-}
-
-input UpdateProductReviewInput {
-  id: ID!
-  summary: String
-  body: String
-  response: String
-  state: String
-  translations: [ProductReviewTranslationInput!]!
-}
-
 type MetricSummary {
   interval: MetricInterval!
   type: MetricType!
@@ -9119,40 +9043,6 @@ input ZoneSortParameter {
   name: SortOrder
 }
 
-input ProductReviewFilterParameter {
-  id: IDOperators
-  createdAt: DateOperators
-  updatedAt: DateOperators
-  summary: StringOperators
-  body: StringOperators
-  rating: NumberOperators
-  authorName: StringOperators
-  authorLocation: StringOperators
-  upvotes: NumberOperators
-  downvotes: NumberOperators
-  state: StringOperators
-  response: StringOperators
-  responseCreatedAt: DateOperators
-  _and: [ProductReviewFilterParameter!]
-  _or: [ProductReviewFilterParameter!]
-}
-
-input ProductReviewSortParameter {
-  id: SortOrder
-  createdAt: SortOrder
-  updatedAt: SortOrder
-  summary: SortOrder
-  body: SortOrder
-  rating: SortOrder
-  authorName: SortOrder
-  authorLocation: SortOrder
-  upvotes: SortOrder
-  downvotes: SortOrder
-  state: SortOrder
-  response: SortOrder
-  responseCreatedAt: SortOrder
-}
-
 input PickupLocationFilterParameter {
   id: IDOperators
   name: StringOperators
@@ -9962,18 +9852,6 @@ type OrderLineCustomFields {
   originalPrice: Int
   modifiedBy: String
   modifiedAt: DateTime
-}
-
-type ProductCustomFields {
-  reviews: [ProductReview!]
-}
-
-input CreateProductCustomFieldsInput {
-  reviewsIds: [ID!]
-}
-
-input UpdateProductCustomFieldsInput {
-  reviewsIds: [ID!]
 }
 
 type ProductVariantCustomFields {

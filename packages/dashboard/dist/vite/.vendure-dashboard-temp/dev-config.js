@@ -25,6 +25,8 @@ const telemetry_plugin_1 = require("@vendure/telemetry-plugin");
 require("dotenv/config");
 const path_1 = __importDefault(require("path"));
 const cjk_plugin_1 = require("@vendure/cjk-plugin");
+// 注意：ReviewsPlugin/FloorBuilderPlugin/NavModifierPlugin 为开发演示插件，
+// 改为惰性 require（见 devOnlyPlugins），避免生产模式静态 require 缺失的 test-plugins 产物。
 const alipay_plugin_1 = require("@vendure/alipay-plugin");
 const wechatpay_plugin_1 = require("@vendure/wechatpay-plugin");
 const oss_plugin_1 = require("@vendure/oss-plugin");
@@ -53,13 +55,18 @@ const customer_service_plugin_1 = require("@vendure/customer-service-plugin");
 const inventory_plugin_1 = require("@vendure/inventory-plugin");
 const message_plugin_1 = require("@vendure/message-plugin");
 const operations_plugin_1 = require("@vendure/operations-plugin");
-const nav_modifier_plugin_1 = require("./test-plugins/nav-modifier-plugin/nav-modifier-plugin");
-// import { FieldTestPlugin } from './test-plugins/field-test/field-test-plugin';
-const reviews_plugin_1 = require("./test-plugins/reviews/reviews-plugin");
-const floor_builder_1 = require("./test-plugins/floor-builder");
-// 生产模式（dist/）跳过开发演示插件，避免 tsc 编译 test-plugins 的复杂依赖
-const IS_PROD = path_1.default.basename(__dirname) === 'dist';
-const devOnlyPlugins = IS_PROD ? [] : [reviews_plugin_1.ReviewsPlugin, floor_builder_1.FloorBuilderPlugin, nav_modifier_plugin_1.NavModifierPlugin];
+// 生产模式（dist/）跳过开发演示插件，避免静态 import require 缺失的 test-plugins 产物
+// IS_PROD=true 环境变量：dashboard vite 构建时 config-loader 编译到临时目录，
+// __dirname 非 dist，需用环境变量显式标记生产，跳过 test-plugins
+const IS_PROD = path_1.default.basename(__dirname) === 'dist' || process.env.IS_PROD === 'true';
+const devOnlyPlugins = IS_PROD
+    ? []
+    : (() => {
+        const { ReviewsPlugin } = require('./test-plugins/reviews/reviews-plugin');
+        const { FloorBuilderPlugin } = require('./test-plugins/floor-builder');
+        const { NavModifierPlugin } = require('./test-plugins/nav-modifier-plugin/nav-modifier-plugin');
+        return [ReviewsPlugin, FloorBuilderPlugin, NavModifierPlugin];
+    })();
 // 统一解析 dev-server 目录：dev 模式 __dirname=packages/dev-server，prod 模式 __dirname=packages/dev-server/dist
 const devServerDir = path_1.default.basename(__dirname) === 'dist' ? path_1.default.dirname(__dirname) : __dirname;
 const IS_INSTRUMENTED = process.env.IS_INSTRUMENTED === 'true';

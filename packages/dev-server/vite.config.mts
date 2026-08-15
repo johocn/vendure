@@ -9,8 +9,10 @@ export default defineConfig({
         vendureDashboardPlugin({
             vendureConfigPath: pathToFileURL('./dev-config.ts'),
             api: {
-                host: 'http://localhost',
-                port: Number(process.env.API_PORT) || 3000,
+                // auto：dashboard 运行时用 window.location 推导 admin-api（同源走 nginx 反代），
+                // 生产部署不能硬编码 http://localhost
+                host: 'auto',
+                port: 'auto',
             },
             gqlOutputPath: path.resolve(__dirname, './graphql/'),
             pluginPackageScanner: {

@@ -10,7 +10,9 @@ import { vendureDashboardPlugin } from './vite/vite-plugin-vendure-dashboard.js'
 export default ({ mode }: { mode: string }) => {
     process.env = { ...process.env, ...loadEnv(mode, process.cwd()) };
 
-    const adminApiHost = process.env.VITE_ADMIN_API_HOST ?? 'http://localhost';
+    // 默认 auto：dashboard 运行时用 window.location 推导 admin-api 地址（同源走反代）。
+    // 生产部署（nginx 反代）必须用同源地址，不能默认 http://localhost
+    const adminApiHost = process.env.VITE_ADMIN_API_HOST ?? 'auto';
     const adminApiPort = process.env.VITE_ADMIN_API_PORT ? +process.env.VITE_ADMIN_API_PORT : 'auto';
 
     process.env.IS_LOCAL_DEV = adminApiHost.includes('localhost') ? 'true' : 'false';
