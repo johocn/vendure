@@ -41,3 +41,15 @@ export const updateTenantServiceNotifyDocument = `
         }
     }
 `;
+
+export const updateTenantConfigDocument = `
+    mutation UpdateTenantConfig($input: UpdateTenantConfigInput!) {
+        updateTenantConfig(input: $input) {
+            channelId
+            auth
+            pay
+            map
+            canEdit
+        }
+    }
+`;
