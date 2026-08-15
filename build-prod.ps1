@@ -1,4 +1,4 @@
-﻿# 生产构建脚本 - 本地执行，产物提交到 git，服务器直接运行无需构建
+# 生产构建脚本 - 本地执行，产物提交到 git，服务器直接运行无需构建
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSCommandPath
 Set-Location $root
@@ -24,6 +24,11 @@ Push-Location "packages/dev-server"
 npx --package=typescript tsc -p tsconfig.prod.json
 if ($LASTEXITCODE -ne 0) { Pop-Location; throw "dev-server tsc failed" }
 Write-Host "`n--- 构建 dev-server (vite dashboard) ---" -ForegroundColor Yellow
+# 指定 auto：dashboard 运行时用 window.location 推导 admin-api 地址（同源走反代），
+# 否则默认 http://localhost 导致生产端 admin-api 连接失败
+$env:VITE_ADMIN_API_HOST = "auto"
+$env:VITE_ADMIN_API_PORT = "auto"
+$env:IS_PROD = "true"
 npx vite build
 if ($LASTEXITCODE -ne 0) { Pop-Location; throw "dev-server vite build failed" }
 Pop-Location
