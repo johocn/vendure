@@ -59,9 +59,19 @@ export async function populateDefaultChannel(app: INestApplication): Promise<voi
                 employeePickupMode: 'loose',
                 defaultLocation: { lat: 43.526210, lng: 125.664780 },
                 authConfig: {
-                    enabledMethods: ['native', 'phone', 'wechat', 'alipay', 'douyin'],
+                    enabledMethods: ['native', 'phone', 'wechat', 'alipay', 'douyin', 'sso'],
                     overridesJson: '',
-                    ssoProvidersJson: '',
+                    ssoProvidersJson: JSON.stringify([
+                        {
+                            name: '企业 SSO (h.joho.cn)',
+                            providerKey: 'zhao-sso-hjoho',
+                            protocol: 'zhao-sso',
+                            baseUrl: 'https://h.joho.cn/api/zhao-sso',
+                            clientId: 'vendure-default',
+                            clientSecret: 'default-app-secret',
+                            channelCode: 'default',
+                        }
+                    ]),
                 },
             },
         });

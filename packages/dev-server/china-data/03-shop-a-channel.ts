@@ -68,7 +68,7 @@ export async function populateShopAChannel(app: INestApplication): Promise<void>
                                 name: '企业SSO',
                                 providerKey: 'zhao-sso-dev',
                                 protocol: 'zhao-sso',
-                                baseUrl: 'http://localhost:1337',
+                                baseUrl: 'https://h.joho.cn/api/zhao-sso',
                                 clientId: 'vendure-shop-a',
                                 clientSecret: 'shop-a-app-secret',
                                 channelCode: 'shop-a',
