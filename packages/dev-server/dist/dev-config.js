@@ -53,7 +53,7 @@ const customer_service_plugin_1 = require("@vendure/customer-service-plugin");
 const inventory_plugin_1 = require("@vendure/inventory-plugin");
 const message_plugin_1 = require("@vendure/message-plugin");
 const operations_plugin_1 = require("@vendure/operations-plugin");
-const IS_PROD = path_1.default.basename(__dirname) === 'dist';
+const IS_PROD = path_1.default.basename(__dirname) === 'dist' || process.env.IS_PROD === 'true';
 const devOnlyPlugins = IS_PROD
     ? []
     : (() => {
@@ -119,6 +119,24 @@ exports.devConfig = {
                     next();
                 },
                 route: '/assets',
+            },
+            {
+                handler: (req, res, next) => {
+                    if (req.method === 'GET' && !req.query.query) {
+                        res.status(200).json({
+                            data: null,
+                            errors: [
+                                {
+                                    message: 'GET requests to the GraphQL Admin API require a "query" parameter. Use POST or include ?query=.',
+                                    extensions: { code: 'BAD_REQUEST' },
+                                },
+                            ],
+                        });
+                        return;
+                    }
+                    next();
+                },
+                route: '/admin-api',
             },
         ],
     },

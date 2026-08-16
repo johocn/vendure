@@ -20,6 +20,11 @@ const channel_custom_fields_1 = require("./channel-custom-fields");
 const constants_1 = require("./constants");
 const order_timeout_job_1 = require("./order-timeout.job");
 const order_timeout_task_entity_1 = require("./order-timeout-task.entity");
+/** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
+function mergeCustomFields(existingFields, additions) {
+    const names = new Set((existingFields !== null && existingFields !== void 0 ? existingFields : []).map(f => f.name));
+    return [...(existingFields !== null && existingFields !== void 0 ? existingFields : []), ...(additions !== null && additions !== void 0 ? additions : []).filter(f => !names.has(f.name))];
+}
 const COMPENSATION_TASK_ID = 'order-timeout-compensation';
 const compensationTask = new core_1.ScheduledTask({
     id: COMPENSATION_TASK_ID,
@@ -91,11 +96,7 @@ exports.OrderTimeoutPlugin = OrderTimeoutPlugin = OrderTimeoutPlugin_1 = __decor
             order_timeout_job_1.OrderTimeoutJob,
         ],
         configuration: (config) => {
-            var _a, _b;
-            config.customFields.Channel = [
-                ...((_a = config.customFields.Channel) !== null && _a !== void 0 ? _a : []),
-                ...((_b = channel_custom_fields_1.orderTimeoutChannelCustomFields.Channel) !== null && _b !== void 0 ? _b : []),
-            ];
+            config.customFields.Channel = mergeCustomFields(config.customFields.Channel, channel_custom_fields_1.orderTimeoutChannelCustomFields.Channel);
             const exists = config.schedulerOptions.tasks.some(t => t.id === COMPENSATION_TASK_ID);
             if (!exists) {
                 config.schedulerOptions.tasks.push(compensationTask);

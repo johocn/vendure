@@ -1,6 +1,8 @@
 // e:\code\vendure\packages\cjk-plugin\src\auth\sso-authentication-strategy.ts
 import { AuthenticationStrategy, RequestContext, User, Logger, Injector, UserService, CustomerService } from '@vendure/core';
+import { DocumentNode } from 'graphql';
 import { gql } from 'graphql-tag';
+import { DistributionService } from '@vendure/distribution-plugin';
 import type { SsoProvider } from './auth-config.types';
 import { readChannelAuthConfig } from './crypto';
 import { InviteCodeService } from './invite-code.service';
@@ -20,14 +22,21 @@ export class SsoAuthenticationStrategy implements AuthenticationStrategy<SsoAuth
     private userService!: UserService;
     private customerService!: CustomerService;
     private inviteCodeService!: InviteCodeService;
+    private distributionService?: DistributionService;
 
     async init(injector: Injector) {
         this.userService = injector.get(UserService);
         this.customerService = injector.get(CustomerService);
         this.inviteCodeService = injector.get(InviteCodeService);
+        // DistributionService 由 distribution-plugin 提供，缺失时优雅降级（不自动开通分销商）
+        try {
+            this.distributionService = injector.get(DistributionService);
+        } catch (e: any) {
+            Logger.warn(`DistributionService unavailable, skip auto-distributor: ${e.message}`, loggerCtx);
+        }
     }
 
-    defineInputType() {
+    defineInputType(): DocumentNode {
         return gql`
             input SsoAuthInput {
                 providerKey: String!
@@ -90,6 +99,12 @@ export class SsoAuthenticationStrategy implements AuthenticationStrategy<SsoAuth
                         await this.inviteCodeService.bindIfPresent(ctx, String(result.id), String(finalInviteCode));
                     } catch (e: any) {
                         Logger.warn(`Failed to bind invite code: ${e.message}`, loggerCtx);
+                    }
+                    // 方案A：自动开通分销商（幂等，已存在则直接返回），并把邀请码写入 referredBy（推荐人码）
+                    try {
+                        await this.distributionService?.apply(ctx, result.id, String(finalInviteCode));
+                    } catch (e: any) {
+                        Logger.warn(`Failed to auto-apply distributor: ${e.message}`, loggerCtx);
                     }
                 }
             }

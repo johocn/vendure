@@ -21,6 +21,11 @@ const message_job_1 = require("./message-job");
 const message_admin_resolver_1 = require("./message-admin.resolver");
 const message_push_service_1 = require("./message-push.service");
 const message_service_1 = require("./message.service");
+/** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
+function mergeCustomFields(existingFields, additions) {
+    const names = new Set((existingFields !== null && existingFields !== void 0 ? existingFields : []).map(f => f.name));
+    return [...(existingFields !== null && existingFields !== void 0 ? existingFields : []), ...(additions !== null && additions !== void 0 ? additions : []).filter(f => !names.has(f.name))];
+}
 const message_shop_resolver_1 = require("./message-shop.resolver");
 const { gql } = require('graphql-tag');
 let MessagePlugin = MessagePlugin_1 = class MessagePlugin {
@@ -136,15 +141,8 @@ exports.MessagePlugin = MessagePlugin = MessagePlugin_1 = __decorate([
             resolvers: [message_shop_resolver_1.MessageShopResolver],
         },
         configuration: (config) => {
-            var _a, _b, _c, _d;
-            config.customFields.Channel = [
-                ...((_a = config.customFields.Channel) !== null && _a !== void 0 ? _a : []),
-                ...((_b = channel_custom_fields_1.messageChannelCustomFields.Channel) !== null && _b !== void 0 ? _b : []),
-            ];
-            config.customFields.Customer = [
-                ...((_c = config.customFields.Customer) !== null && _c !== void 0 ? _c : []),
-                ...((_d = customer_custom_fields_1.messageCustomerCustomFields.Customer) !== null && _d !== void 0 ? _d : []),
-            ];
+            config.customFields.Channel = mergeCustomFields(config.customFields.Channel, channel_custom_fields_1.messageChannelCustomFields.Channel);
+            config.customFields.Customer = mergeCustomFields(config.customFields.Customer, customer_custom_fields_1.messageCustomerCustomFields.Customer);
             return config;
         },
         compatibility: '^3.0.0',

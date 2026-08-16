@@ -20,6 +20,11 @@ const constants_1 = require("./constants");
 const channel_custom_fields_1 = require("./channel-custom-fields");
 const stock_prewarm_service_1 = require("./stock-prewarm.service");
 const stock_reserve_service_1 = require("./stock-reserve.service");
+/** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
+function mergeCustomFields(existingFields, additions) {
+    const names = new Set((existingFields !== null && existingFields !== void 0 ? existingFields : []).map(f => f.name));
+    return [...(existingFields !== null && existingFields !== void 0 ? existingFields : []), ...(additions !== null && additions !== void 0 ? additions : []).filter(f => !names.has(f.name))];
+}
 let RedisStockPlugin = RedisStockPlugin_1 = class RedisStockPlugin {
     constructor(options, stockReserveService) {
         this.options = options;
@@ -45,10 +50,7 @@ exports.RedisStockPlugin = RedisStockPlugin = RedisStockPlugin_1 = __decorate([
             stock_prewarm_service_1.StockPrewarmService,
         ],
         configuration: (config) => {
-            var _a, _b;
-            const existingChannelFields = (_a = config.customFields.Channel) !== null && _a !== void 0 ? _a : [];
-            const newChannelFields = (_b = channel_custom_fields_1.redisStockChannelCustomFields.Channel) !== null && _b !== void 0 ? _b : [];
-            config.customFields.Channel = [...existingChannelFields, ...newChannelFields];
+            config.customFields.Channel = mergeCustomFields(config.customFields.Channel, channel_custom_fields_1.redisStockChannelCustomFields.Channel);
             return config;
         },
         dashboard: '../dashboard/index.tsx',

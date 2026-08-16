@@ -4,6 +4,7 @@ exports.SsoAuthenticationStrategy = void 0;
 // e:\code\vendure\packages\cjk-plugin\src\auth\sso-authentication-strategy.ts
 const core_1 = require("@vendure/core");
 const graphql_tag_1 = require("graphql-tag");
+const distribution_plugin_1 = require("@vendure/distribution-plugin");
 const crypto_1 = require("./crypto");
 const invite_code_service_1 = require("./invite-code.service");
 const loggerCtx = 'SsoAuthenticationStrategy';
@@ -15,6 +16,13 @@ class SsoAuthenticationStrategy {
         this.userService = injector.get(core_1.UserService);
         this.customerService = injector.get(core_1.CustomerService);
         this.inviteCodeService = injector.get(invite_code_service_1.InviteCodeService);
+        // DistributionService 由 distribution-plugin 提供，缺失时优雅降级（不自动开通分销商）
+        try {
+            this.distributionService = injector.get(distribution_plugin_1.DistributionService);
+        }
+        catch (e) {
+            core_1.Logger.warn(`DistributionService unavailable, skip auto-distributor: ${e.message}`, loggerCtx);
+        }
     }
     defineInputType() {
         return (0, graphql_tag_1.gql) `
@@ -22,10 +30,12 @@ class SsoAuthenticationStrategy {
                 providerKey: String!
                 code: String!
                 inviteCode: String
+                redirectUri: String
             }
         `;
     }
     async authenticate(ctx, data) {
+        var _a;
         const config = (0, crypto_1.readChannelAuthConfig)(ctx);
         if (!(config === null || config === void 0 ? void 0 : config.ssoProviders) || config.ssoProviders.length === 0) {
             core_1.Logger.warn('No SSO providers configured for channel', loggerCtx);
@@ -37,8 +47,8 @@ class SsoAuthenticationStrategy {
             return false;
         }
         try {
-            // 1. 换取 access_token（后端不依赖 redirect_uri）
-            const tokenRes = await this.exchangeCodeForToken(provider, data.code);
+            // 1. 换取 access_token（zhao-sso 要求 redirect_uri 与 authorize 阶段一致，透传前端回跳地址）
+            const tokenRes = await this.exchangeCodeForToken(provider, data.code, data.redirectUri);
             if (!(tokenRes === null || tokenRes === void 0 ? void 0 : tokenRes.access_token)) {
                 core_1.Logger.warn('SSO token exchange failed', loggerCtx);
                 return false;
@@ -71,6 +81,13 @@ class SsoAuthenticationStrategy {
                     catch (e) {
                         core_1.Logger.warn(`Failed to bind invite code: ${e.message}`, loggerCtx);
                     }
+                    // 方案A：自动开通分销商（幂等，已存在则直接返回），并把邀请码写入 referredBy（推荐人码）
+                    try {
+                        await ((_a = this.distributionService) === null || _a === void 0 ? void 0 : _a.apply(ctx, result.id, String(finalInviteCode)));
+                    }
+                    catch (e) {
+                        core_1.Logger.warn(`Failed to auto-apply distributor: ${e.message}`, loggerCtx);
+                    }
                 }
             }
             return result;
@@ -89,7 +106,7 @@ class SsoAuthenticationStrategy {
         const mappingField = (_a = provider.userInfoMapping) === null || _a === void 0 ? void 0 : _a[mappingKey];
         return this.getFieldValue(userInfo, mappingField, defaultField);
     }
-    async exchangeCodeForToken(provider, code) {
+    async exchangeCodeForToken(provider, code, redirectUri) {
         if (provider.protocol === 'zhao-sso') {
             const tokenUrl = `${provider.baseUrl.replace(/\/$/, '')}/v1/auth/token`;
             const res = await fetch(tokenUrl, {
@@ -100,6 +117,7 @@ class SsoAuthenticationStrategy {
                     code,
                     app_code: provider.clientId,
                     app_secret: provider.clientSecret,
+                    redirect_uri: redirectUri,
                 }),
             });
             return res.json();

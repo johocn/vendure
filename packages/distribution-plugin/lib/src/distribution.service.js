@@ -86,13 +86,13 @@ let DistributionService = class DistributionService {
         const channel = await this.connection.getEntityOrThrow(ctx, core_1.Channel, ctx.channelId);
         distributor.channels = [channel];
         const saved = await this.connection.getRepository(ctx, distributor_entity_1.Distributor).save(distributor);
-        // 回写 customer.customFields.referralCode
+        // 回写 customer.customFields.referralCode（自己的码）与 referredBy（推荐人的码）
         try {
             const customer = await this.customerService.findOne(ctx, customerId);
             if (customer) {
                 await this.customerService.update(ctx, {
                     id: customer.id,
-                    customFields: { referralCode: saved.referralCode },
+                    customFields: Object.assign({ referralCode: saved.referralCode }, (referredByCode ? { referredBy: referredByCode } : {})),
                 });
             }
         }

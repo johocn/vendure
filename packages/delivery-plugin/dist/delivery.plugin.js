@@ -21,6 +21,11 @@ const delivery_service_1 = require("./delivery.service");
 const constants_1 = require("./constants");
 const permission_admin_resolver_1 = require("./permission-admin.resolver");
 const role_sync_1 = require("./role-sync");
+/** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
+function mergeCustomFields(existingFields, additions) {
+    const names = new Set((existingFields !== null && existingFields !== void 0 ? existingFields : []).map(f => f.name));
+    return [...(existingFields !== null && existingFields !== void 0 ? existingFields : []), ...(additions !== null && additions !== void 0 ? additions : []).filter(f => !names.has(f.name))];
+}
 const loggerCtx = 'DeliveryPlugin';
 let DeliveryPlugin = DeliveryPlugin_1 = class DeliveryPlugin {
     constructor(moduleRef) {
@@ -89,22 +94,16 @@ exports.DeliveryPlugin = DeliveryPlugin = DeliveryPlugin_1 = __decorate([
             resolvers: [permission_admin_resolver_1.PermissionAdminResolver, delivery_admin_resolver_1.DeliveryAdminResolver],
         },
         configuration: (config) => {
-            var _a, _b, _c, _d, _e;
+            var _a;
             // 注册自定义 Permission
             config.authOptions.customPermissions = [
                 ...((_a = config.authOptions.customPermissions) !== null && _a !== void 0 ? _a : []),
                 ...constants_1.deliveryPermissionDefinitions,
             ];
             // 扩展 Order customFields
-            config.customFields.Order = [
-                ...((_b = config.customFields.Order) !== null && _b !== void 0 ? _b : []),
-                ...((_c = order_custom_fields_1.deliveryOrderCustomFields.Order) !== null && _c !== void 0 ? _c : []),
-            ];
+            config.customFields.Order = mergeCustomFields(config.customFields.Order, order_custom_fields_1.deliveryOrderCustomFields.Order);
             // 扩展 Address customFields
-            config.customFields.Address = [
-                ...((_d = config.customFields.Address) !== null && _d !== void 0 ? _d : []),
-                ...((_e = address_custom_fields_1.deliveryAddressCustomFields.Address) !== null && _e !== void 0 ? _e : []),
-            ];
+            config.customFields.Address = mergeCustomFields(config.customFields.Address, address_custom_fields_1.deliveryAddressCustomFields.Address);
             return config;
         },
     }),

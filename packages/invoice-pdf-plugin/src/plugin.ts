@@ -8,6 +8,15 @@ import { InvoicePdfService } from './invoice-pdf.service';
 import { invoicePdfOrderCustomFields } from './order-custom-fields';
 import { InvoicePdfPluginOptions } from './types';
 
+/** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
+function mergeCustomFields<T extends { name: string }>(
+    existingFields: T[] | undefined,
+    additions: T[] | undefined,
+): T[] {
+    const names = new Set((existingFields ?? []).map(f => f.name));
+    return [...(existingFields ?? []), ...(additions ?? []).filter(f => !names.has(f.name))];
+}
+
 @VendurePlugin({
     imports: [PluginCommonModule],
     providers: [
@@ -28,9 +37,7 @@ import { InvoicePdfPluginOptions } from './types';
         resolvers: [InvoicePdfAdminResolver],
     },
     configuration: (config) => {
-        const existingOrderFields = config.customFields.Order ?? [];
-        const newOrderFields = invoicePdfOrderCustomFields.Order ?? [];
-        config.customFields.Order = [...existingOrderFields, ...newOrderFields];
+        config.customFields.Order = mergeCustomFields(config.customFields.Order, invoicePdfOrderCustomFields.Order);
         return config;
     },
     dashboard: '../dashboard/index.tsx',

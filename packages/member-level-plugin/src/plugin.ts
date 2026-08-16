@@ -18,6 +18,15 @@ import { MemberLevelService } from './member-level.service';
 import { MemberLevelAdminResolver } from './member-level-admin.resolver';
 import { MemberLevelShopResolver } from './member-level-shop.resolver';
 
+/** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
+function mergeCustomFields<T extends { name: string }>(
+    existingFields: T[] | undefined,
+    additions: T[] | undefined,
+): T[] {
+    const names = new Set((existingFields ?? []).map(f => f.name));
+    return [...(existingFields ?? []), ...(additions ?? []).filter(f => !names.has(f.name))];
+}
+
 const { gql } = require('graphql-tag');
 
 const adminSchema = () => gql`
@@ -171,14 +180,8 @@ const shopSchema = () => gql`
         resolvers: [MemberLevelShopResolver],
     },
     configuration: (config) => {
-        config.customFields.Channel = [
-            ...(config.customFields.Channel ?? []),
-            ...(memberLevelChannelCustomFields.Channel ?? []),
-        ];
-        config.customFields.Customer = [
-            ...(config.customFields.Customer ?? []),
-            ...(memberLevelCustomerCustomFields.Customer ?? []),
-        ];
+        config.customFields.Channel = mergeCustomFields(config.customFields.Channel, memberLevelChannelCustomFields.Channel);
+        config.customFields.Customer = mergeCustomFields(config.customFields.Customer, memberLevelCustomerCustomFields.Customer);
         config.authOptions = config.authOptions ?? {};
         config.authOptions.customPermissions = [
             ...(config.authOptions.customPermissions ?? []),

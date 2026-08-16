@@ -24,6 +24,11 @@ const member_points_history_entity_1 = require("./member-points-history.entity")
 const member_level_service_1 = require("./member-level.service");
 const member_level_admin_resolver_1 = require("./member-level-admin.resolver");
 const member_level_shop_resolver_1 = require("./member-level-shop.resolver");
+/** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
+function mergeCustomFields(existingFields, additions) {
+    const names = new Set((existingFields !== null && existingFields !== void 0 ? existingFields : []).map(f => f.name));
+    return [...(existingFields !== null && existingFields !== void 0 ? existingFields : []), ...(additions !== null && additions !== void 0 ? additions : []).filter(f => !names.has(f.name))];
+}
 const { gql } = require('graphql-tag');
 const adminSchema = () => gql `
     type MemberInfo {
@@ -249,18 +254,12 @@ exports.MemberLevelPlugin = MemberLevelPlugin = MemberLevelPlugin_1 = __decorate
             resolvers: [member_level_shop_resolver_1.MemberLevelShopResolver],
         },
         configuration: (config) => {
-            var _a, _b, _c, _d, _e, _f;
-            config.customFields.Channel = [
-                ...((_a = config.customFields.Channel) !== null && _a !== void 0 ? _a : []),
-                ...((_b = channel_custom_fields_1.memberLevelChannelCustomFields.Channel) !== null && _b !== void 0 ? _b : []),
-            ];
-            config.customFields.Customer = [
-                ...((_c = config.customFields.Customer) !== null && _c !== void 0 ? _c : []),
-                ...((_d = customer_custom_fields_1.memberLevelCustomerCustomFields.Customer) !== null && _d !== void 0 ? _d : []),
-            ];
-            config.authOptions = (_e = config.authOptions) !== null && _e !== void 0 ? _e : {};
+            var _a, _b;
+            config.customFields.Channel = mergeCustomFields(config.customFields.Channel, channel_custom_fields_1.memberLevelChannelCustomFields.Channel);
+            config.customFields.Customer = mergeCustomFields(config.customFields.Customer, customer_custom_fields_1.memberLevelCustomerCustomFields.Customer);
+            config.authOptions = (_a = config.authOptions) !== null && _a !== void 0 ? _a : {};
             config.authOptions.customPermissions = [
-                ...((_f = config.authOptions.customPermissions) !== null && _f !== void 0 ? _f : []),
+                ...((_b = config.authOptions.customPermissions) !== null && _b !== void 0 ? _b : []),
                 permissions_1.memberLevelPermission,
             ];
             return config;

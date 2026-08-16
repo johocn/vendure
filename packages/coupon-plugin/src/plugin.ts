@@ -19,6 +19,15 @@ import { Coupon } from './coupon.entity';
 import { couponOrderCustomFields } from './order-custom-fields';
 import { CouponPluginOptions } from './types';
 
+/** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
+function mergeCustomFields<T extends { name: string }>(
+    existingFields: T[] | undefined,
+    additions: T[] | undefined,
+): T[] {
+    const names = new Set((existingFields ?? []).map(f => f.name));
+    return [...(existingFields ?? []), ...(additions ?? []).filter(f => !names.has(f.name))];
+}
+
 const { gql } = require('graphql-tag');
 
 const adminSchema = () => gql`
@@ -176,10 +185,7 @@ const shopSchema = () => gql`
         resolvers: [CouponShopResolver],
     },
     configuration: config => {
-        config.customFields.Order = [
-            ...(config.customFields.Order ?? []),
-            ...(couponOrderCustomFields.Order ?? []),
-        ];
+        config.customFields.Order = mergeCustomFields(config.customFields.Order, couponOrderCustomFields.Order);
 
         config.promotionOptions = config.promotionOptions || {};
         config.promotionOptions.promotionActions = [

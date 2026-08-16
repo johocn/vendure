@@ -9,6 +9,15 @@ import { CustomerServiceAdminResolver } from './customer-service-admin.resolver'
 import { CustomerServiceService } from './customer-service.service';
 import { RoleSyncService } from './role-sync';
 
+/** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
+function mergeCustomFields<T extends { name: string }>(
+    existingFields: T[] | undefined,
+    additions: T[] | undefined,
+): T[] {
+    const names = new Set((existingFields ?? []).map(f => f.name));
+    return [...(existingFields ?? []), ...(additions ?? []).filter(f => !names.has(f.name))];
+}
+
 const loggerCtx = 'CustomerServicePlugin';
 
 const { gql } = require('graphql-tag');
@@ -85,10 +94,7 @@ const { gql } = require('graphql-tag');
         resolvers: [CustomerServiceAdminResolver],
     },
     configuration: (config) => {
-        config.customFields.Order = [
-            ...(config.customFields.Order ?? []),
-            ...(csOrderCustomFields.Order ?? []),
-        ];
+        config.customFields.Order = mergeCustomFields(config.customFields.Order, csOrderCustomFields.Order);
         return config;
     },
     compatibility: '^3.6.0',

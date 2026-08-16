@@ -10,6 +10,15 @@ import { StockOutOrder, StockOutOrderLine } from './entities/stock-out-order.ent
 import { StockMoveOrder, StockMoveOrderLine } from './entities/stock-move-order.entity';
 import { StocktakeOrder, StocktakeOrderLine } from './entities/stocktake-order.entity';
 
+/** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
+function mergeCustomFields<T extends { name: string }>(
+    existingFields: T[] | undefined,
+    additions: T[] | undefined,
+): T[] {
+    const names = new Set((existingFields ?? []).map(f => f.name));
+    return [...(existingFields ?? []), ...(additions ?? []).filter(f => !names.has(f.name))];
+}
+
 const loggerCtx = 'InventoryPlugin';
 
 const { gql } = require('graphql-tag');
@@ -228,10 +237,9 @@ const { gql } = require('graphql-tag');
         resolvers: [InventoryAdminResolver],
     },
     configuration: (config) => {
-        config.customFields.StockMovement = [
-            ...(config.customFields.StockMovement ?? []),
+        config.customFields.StockMovement = mergeCustomFields(config.customFields.StockMovement, [
             { name: 'businessReason', type: 'string', nullable: true },
-        ];
+        ]);
         return config;
     },
     compatibility: '^3.6.0',

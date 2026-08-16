@@ -10,6 +10,15 @@ import { ChannelStockAllocationStrategy } from './channel-stock-allocation-strat
 import { LogisticsTrack } from './logistics-track.entity';
 import { LogisticsService } from './logistics.service';
 import { LogisticsAdminResolver } from './logistics-admin.resolver';
+
+/** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
+function mergeCustomFields<T extends { name: string }>(
+    existingFields: T[] | undefined,
+    additions: T[] | undefined,
+): T[] {
+    const names = new Set((existingFields ?? []).map(f => f.name));
+    return [...(existingFields ?? []), ...(additions ?? []).filter(f => !names.has(f.name))];
+}
 import { LogisticsShopResolver } from './logistics-shop.resolver';
 
 const { gql } = require('graphql-tag');
@@ -98,14 +107,8 @@ const shopSchema = () => gql`
         resolvers: [LogisticsShopResolver],
     },
     configuration: (config) => {
-        config.customFields.Fulfillment = [
-            ...(config.customFields.Fulfillment ?? []),
-            ...logisticsFulfillmentCustomFields.Fulfillment!,
-        ];
-        config.customFields.Channel = [
-            ...(config.customFields.Channel ?? []),
-            ...logisticsChannelCustomFields.Channel!,
-        ];
+        config.customFields.Fulfillment = mergeCustomFields(config.customFields.Fulfillment, logisticsFulfillmentCustomFields.Fulfillment);
+        config.customFields.Channel = mergeCustomFields(config.customFields.Channel, logisticsChannelCustomFields.Channel);
         config.orderOptions.stockAllocationStrategy = new ChannelStockAllocationStrategy();
         return config;
     },

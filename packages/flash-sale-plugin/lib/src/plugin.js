@@ -31,6 +31,11 @@ const flash_sale_price_action_1 = require("./flash-sale-price-action");
 const flash_sale_service_1 = require("./flash-sale.service");
 const flash_sale_shop_resolver_1 = require("./flash-sale-shop.resolver");
 const order_custom_fields_1 = require("./order-custom-fields");
+/** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
+function mergeCustomFields(existingFields, additions) {
+    const names = new Set((existingFields !== null && existingFields !== void 0 ? existingFields : []).map(f => f.name));
+    return [...(existingFields !== null && existingFields !== void 0 ? existingFields : []), ...(additions !== null && additions !== void 0 ? additions : []).filter(f => !names.has(f.name))];
+}
 let FlashSalePlugin = FlashSalePlugin_1 = class FlashSalePlugin {
     constructor(options, flashSaleService, eventBus, moduleRef) {
         this.options = options;
@@ -178,19 +183,16 @@ exports.FlashSalePlugin = FlashSalePlugin = FlashSalePlugin_1 = __decorate([
             resolvers: [flash_sale_shop_resolver_1.FlashSaleShopResolver],
         },
         configuration: (config) => {
-            var _a, _b, _c;
-            config.customFields.Order = [
-                ...((_a = config.customFields.Order) !== null && _a !== void 0 ? _a : []),
-                ...order_custom_fields_1.flashSaleOrderCustomFields.Order,
-            ];
+            var _a, _b;
+            config.customFields.Order = mergeCustomFields(config.customFields.Order, order_custom_fields_1.flashSaleOrderCustomFields.Order);
             config.promotionOptions = config.promotionOptions || {};
             config.promotionOptions.promotionConditions = [
-                ...((_b = config.promotionOptions.promotionConditions) !== null && _b !== void 0 ? _b : []),
+                ...((_a = config.promotionOptions.promotionConditions) !== null && _a !== void 0 ? _a : []),
                 flash_sale_promotion_condition_1.flashSaleDiscountCondition,
                 flash_sale_eligibility_checker_1.flashSaleEligibilityCondition,
             ];
             config.promotionOptions.promotionActions = [
-                ...((_c = config.promotionOptions.promotionActions) !== null && _c !== void 0 ? _c : []),
+                ...((_b = config.promotionOptions.promotionActions) !== null && _b !== void 0 ? _b : []),
                 flash_sale_price_action_1.flashSalePriceAction,
             ];
             // 注册秒杀状态转换 ScheduledTask（由 DefaultSchedulerPlugin 在 worker 上周期执行）

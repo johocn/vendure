@@ -18,6 +18,11 @@ const order_custom_fields_1 = require("./config/order-custom-fields");
 const customer_service_admin_resolver_1 = require("./customer-service-admin.resolver");
 const customer_service_service_1 = require("./customer-service.service");
 const role_sync_1 = require("./role-sync");
+/** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
+function mergeCustomFields(existingFields, additions) {
+    const names = new Set((existingFields !== null && existingFields !== void 0 ? existingFields : []).map(f => f.name));
+    return [...(existingFields !== null && existingFields !== void 0 ? existingFields : []), ...(additions !== null && additions !== void 0 ? additions : []).filter(f => !names.has(f.name))];
+}
 const loggerCtx = 'CustomerServicePlugin';
 const { gql } = require('graphql-tag');
 let CustomerServicePlugin = CustomerServicePlugin_1 = class CustomerServicePlugin {
@@ -116,11 +121,7 @@ exports.CustomerServicePlugin = CustomerServicePlugin = CustomerServicePlugin_1 
             resolvers: [customer_service_admin_resolver_1.CustomerServiceAdminResolver],
         },
         configuration: (config) => {
-            var _a, _b;
-            config.customFields.Order = [
-                ...((_a = config.customFields.Order) !== null && _a !== void 0 ? _a : []),
-                ...((_b = order_custom_fields_1.csOrderCustomFields.Order) !== null && _b !== void 0 ? _b : []),
-            ];
+            config.customFields.Order = mergeCustomFields(config.customFields.Order, order_custom_fields_1.csOrderCustomFields.Order);
             return config;
         },
         compatibility: '^3.6.0',

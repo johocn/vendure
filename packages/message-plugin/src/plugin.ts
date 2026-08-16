@@ -10,6 +10,15 @@ import { MessageJob } from './message-job';
 import { MessageAdminResolver } from './message-admin.resolver';
 import { MessagePushService } from './message-push.service';
 import { MessageService } from './message.service';
+
+/** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
+function mergeCustomFields<T extends { name: string }>(
+    existingFields: T[] | undefined,
+    additions: T[] | undefined,
+): T[] {
+    const names = new Set((existingFields ?? []).map(f => f.name));
+    return [...(existingFields ?? []), ...(additions ?? []).filter(f => !names.has(f.name))];
+}
 import { MessageShopResolver } from './message-shop.resolver';
 import { MessagePluginOptions } from './types';
 
@@ -112,14 +121,8 @@ const { gql } = require('graphql-tag');
         resolvers: [MessageShopResolver],
     },
     configuration: (config) => {
-        config.customFields.Channel = [
-            ...(config.customFields.Channel ?? []),
-            ...(messageChannelCustomFields.Channel ?? []),
-        ];
-        config.customFields.Customer = [
-            ...(config.customFields.Customer ?? []),
-            ...(messageCustomerCustomFields.Customer ?? []),
-        ];
+        config.customFields.Channel = mergeCustomFields(config.customFields.Channel, messageChannelCustomFields.Channel);
+        config.customFields.Customer = mergeCustomFields(config.customFields.Customer, messageCustomerCustomFields.Customer);
         return config;
     },
     compatibility: '^3.0.0',

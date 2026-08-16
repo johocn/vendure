@@ -7,6 +7,15 @@ import { StockPrewarmService } from './stock-prewarm.service';
 import { StockReserveService } from './stock-reserve.service';
 import { RedisStockPluginOptions } from './types';
 
+/** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
+function mergeCustomFields<T extends { name: string }>(
+    existingFields: T[] | undefined,
+    additions: T[] | undefined,
+): T[] {
+    const names = new Set((existingFields ?? []).map(f => f.name));
+    return [...(existingFields ?? []), ...(additions ?? []).filter(f => !names.has(f.name))];
+}
+
 @VendurePlugin({
     imports: [PluginCommonModule],
     providers: [
@@ -15,9 +24,7 @@ import { RedisStockPluginOptions } from './types';
         StockPrewarmService,
     ],
     configuration: (config) => {
-        const existingChannelFields = config.customFields.Channel ?? [];
-        const newChannelFields = redisStockChannelCustomFields.Channel ?? [];
-        config.customFields.Channel = [...existingChannelFields, ...newChannelFields];
+        config.customFields.Channel = mergeCustomFields(config.customFields.Channel, redisStockChannelCustomFields.Channel);
         return config;
     },
     dashboard: '../dashboard/index.tsx',

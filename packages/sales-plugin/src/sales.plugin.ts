@@ -11,6 +11,15 @@ import { RoleSyncService } from './role-sync';
 import { SalesService } from './sales.service';
 import { SalesAdminResolver } from './sales-admin.resolver';
 
+/** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
+function mergeCustomFields<T extends { name: string }>(
+    existingFields: T[] | undefined,
+    additions: T[] | undefined,
+): T[] {
+    const names = new Set((existingFields ?? []).map(f => f.name));
+    return [...(existingFields ?? []), ...(additions ?? []).filter(f => !names.has(f.name))];
+}
+
 const loggerCtx = 'SalesPlugin';
 
 @VendurePlugin({
@@ -100,18 +109,9 @@ const loggerCtx = 'SalesPlugin';
             ...(config.authOptions.customPermissions ?? []),
             ...salesPermissionDefinitions,
         ];
-        config.customFields.Order = [
-            ...(config.customFields.Order ?? []),
-            ...(salesOrderCustomFields.Order ?? []),
-        ];
-        config.customFields.Customer = [
-            ...(config.customFields.Customer ?? []),
-            ...(salesCustomerCustomFields.Customer ?? []),
-        ];
-        config.customFields.OrderLine = [
-            ...(config.customFields.OrderLine ?? []),
-            ...(salesOrderLineCustomFields.OrderLine ?? []),
-        ];
+        config.customFields.Order = mergeCustomFields(config.customFields.Order, salesOrderCustomFields.Order);
+        config.customFields.Customer = mergeCustomFields(config.customFields.Customer, salesCustomerCustomFields.Customer);
+        config.customFields.OrderLine = mergeCustomFields(config.customFields.OrderLine, salesOrderLineCustomFields.OrderLine);
         return config;
     },
     compatibility: '^3.6.0',

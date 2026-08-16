@@ -20,6 +20,11 @@ const stock_in_order_entity_1 = require("./entities/stock-in-order.entity");
 const stock_out_order_entity_1 = require("./entities/stock-out-order.entity");
 const stock_move_order_entity_1 = require("./entities/stock-move-order.entity");
 const stocktake_order_entity_1 = require("./entities/stocktake-order.entity");
+/** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
+function mergeCustomFields(existingFields, additions) {
+    const names = new Set((existingFields !== null && existingFields !== void 0 ? existingFields : []).map(f => f.name));
+    return [...(existingFields !== null && existingFields !== void 0 ? existingFields : []), ...(additions !== null && additions !== void 0 ? additions : []).filter(f => !names.has(f.name))];
+}
 const loggerCtx = 'InventoryPlugin';
 const { gql } = require('graphql-tag');
 let InventoryPlugin = InventoryPlugin_1 = class InventoryPlugin {
@@ -260,11 +265,9 @@ exports.InventoryPlugin = InventoryPlugin = InventoryPlugin_1 = __decorate([
             resolvers: [inventory_admin_resolver_1.InventoryAdminResolver],
         },
         configuration: (config) => {
-            var _a;
-            config.customFields.StockMovement = [
-                ...((_a = config.customFields.StockMovement) !== null && _a !== void 0 ? _a : []),
+            config.customFields.StockMovement = mergeCustomFields(config.customFields.StockMovement, [
                 { name: 'businessReason', type: 'string', nullable: true },
-            ];
+            ]);
             return config;
         },
         compatibility: '^3.6.0',

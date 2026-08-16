@@ -11,6 +11,15 @@ import { deliveryPermissionDefinitions } from './constants';
 import { PermissionAdminResolver } from './permission-admin.resolver';
 import { RoleSyncService } from './role-sync';
 
+/** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
+function mergeCustomFields<T extends { name: string }>(
+    existingFields: T[] | undefined,
+    additions: T[] | undefined,
+): T[] {
+    const names = new Set((existingFields ?? []).map(f => f.name));
+    return [...(existingFields ?? []), ...(additions ?? []).filter(f => !names.has(f.name))];
+}
+
 const loggerCtx = 'DeliveryPlugin';
 
 @VendurePlugin({
@@ -58,15 +67,9 @@ const loggerCtx = 'DeliveryPlugin';
             ...deliveryPermissionDefinitions,
         ];
         // 扩展 Order customFields
-        config.customFields.Order = [
-            ...(config.customFields.Order ?? []),
-            ...(deliveryOrderCustomFields.Order ?? []),
-        ];
+        config.customFields.Order = mergeCustomFields(config.customFields.Order, deliveryOrderCustomFields.Order);
         // 扩展 Address customFields
-        config.customFields.Address = [
-            ...(config.customFields.Address ?? []),
-            ...(deliveryAddressCustomFields.Address ?? []),
-        ];
+        config.customFields.Address = mergeCustomFields(config.customFields.Address, deliveryAddressCustomFields.Address);
         return config;
     },
 })

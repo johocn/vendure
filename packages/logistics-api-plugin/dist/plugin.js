@@ -24,6 +24,11 @@ const constants_1 = require("./constants");
 const channel_custom_fields_1 = require("./channel-custom-fields");
 const logistics_api_admin_resolver_1 = require("./logistics-api-admin.resolver");
 const logistics_query_service_1 = require("./logistics-query.service");
+/** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
+function mergeCustomFields(existingFields, additions) {
+    const names = new Set((existingFields !== null && existingFields !== void 0 ? existingFields : []).map(f => f.name));
+    return [...(existingFields !== null && existingFields !== void 0 ? existingFields : []), ...(additions !== null && additions !== void 0 ? additions : []).filter(f => !names.has(f.name))];
+}
 let LogisticsApiPlugin = LogisticsApiPlugin_1 = class LogisticsApiPlugin {
     constructor(options) {
         this.options = options;
@@ -69,10 +74,7 @@ exports.LogisticsApiPlugin = LogisticsApiPlugin = LogisticsApiPlugin_1 = __decor
             resolvers: [logistics_api_admin_resolver_1.LogisticsApiAdminResolver],
         },
         configuration: (config) => {
-            var _a, _b;
-            const existingChannelFields = (_a = config.customFields.Channel) !== null && _a !== void 0 ? _a : [];
-            const newChannelFields = (_b = channel_custom_fields_1.logisticsApiChannelCustomFields.Channel) !== null && _b !== void 0 ? _b : [];
-            config.customFields.Channel = [...existingChannelFields, ...newChannelFields];
+            config.customFields.Channel = mergeCustomFields(config.customFields.Channel, channel_custom_fields_1.logisticsApiChannelCustomFields.Channel);
             return config;
         },
         dashboard: '../dashboard/index.tsx',

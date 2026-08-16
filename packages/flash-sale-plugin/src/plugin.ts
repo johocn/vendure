@@ -23,6 +23,15 @@ import { FlashSaleShopResolver } from './flash-sale-shop.resolver';
 import { FlashSalePluginOptions } from './types';
 import { flashSaleOrderCustomFields } from './order-custom-fields';
 
+/** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
+function mergeCustomFields<T extends { name: string }>(
+    existingFields: T[] | undefined,
+    additions: T[] | undefined,
+): T[] {
+    const names = new Set((existingFields ?? []).map(f => f.name));
+    return [...(existingFields ?? []), ...(additions ?? []).filter(f => !names.has(f.name))];
+}
+
 @VendurePlugin({
     imports: [PluginCommonModule],
     entities: [FlashSaleActivity],
@@ -122,10 +131,7 @@ import { flashSaleOrderCustomFields } from './order-custom-fields';
         resolvers: [FlashSaleShopResolver],
     },
     configuration: (config) => {
-        config.customFields.Order = [
-            ...(config.customFields.Order ?? []),
-            ...flashSaleOrderCustomFields.Order!,
-        ];
+        config.customFields.Order = mergeCustomFields(config.customFields.Order, flashSaleOrderCustomFields.Order);
 
         config.promotionOptions = config.promotionOptions || {};
         config.promotionOptions.promotionConditions = [

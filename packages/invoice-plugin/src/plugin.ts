@@ -10,6 +10,15 @@ import { InvoiceService } from './invoice.service';
 import { InvoiceAdminResolver } from './invoice-admin.resolver';
 import { InvoiceShopResolver } from './invoice-shop.resolver';
 
+/** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
+function mergeCustomFields<T extends { name: string }>(
+    existingFields: T[] | undefined,
+    additions: T[] | undefined,
+): T[] {
+    const names = new Set((existingFields ?? []).map(f => f.name));
+    return [...(existingFields ?? []), ...(additions ?? []).filter(f => !names.has(f.name))];
+}
+
 const { gql } = require('graphql-tag');
 
 const adminSchema = () => gql`
@@ -119,9 +128,7 @@ const shopSchema = () => gql`
         resolvers: [InvoiceShopResolver],
     },
     configuration: (config) => {
-        const existingOrderFields = config.customFields.Order ?? [];
-        const newOrderFields = invoiceOrderCustomFields.Order ?? [];
-        config.customFields.Order = [...existingOrderFields, ...newOrderFields];
+        config.customFields.Order = mergeCustomFields(config.customFields.Order, invoiceOrderCustomFields.Order);
         return config;
     },
     dashboard: '../dashboard/index.tsx',

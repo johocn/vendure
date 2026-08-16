@@ -23,6 +23,11 @@ const invoice_entity_1 = require("./invoice.entity");
 const invoice_service_1 = require("./invoice.service");
 const invoice_admin_resolver_1 = require("./invoice-admin.resolver");
 const invoice_shop_resolver_1 = require("./invoice-shop.resolver");
+/** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
+function mergeCustomFields(existingFields, additions) {
+    const names = new Set((existingFields !== null && existingFields !== void 0 ? existingFields : []).map(f => f.name));
+    return [...(existingFields !== null && existingFields !== void 0 ? existingFields : []), ...(additions !== null && additions !== void 0 ? additions : []).filter(f => !names.has(f.name))];
+}
 const { gql } = require('graphql-tag');
 const adminSchema = () => gql `
     type Invoice implements Node {
@@ -148,10 +153,7 @@ exports.InvoicePlugin = InvoicePlugin = InvoicePlugin_1 = __decorate([
             resolvers: [invoice_shop_resolver_1.InvoiceShopResolver],
         },
         configuration: (config) => {
-            var _a, _b;
-            const existingOrderFields = (_a = config.customFields.Order) !== null && _a !== void 0 ? _a : [];
-            const newOrderFields = (_b = order_custom_fields_1.invoiceOrderCustomFields.Order) !== null && _b !== void 0 ? _b : [];
-            config.customFields.Order = [...existingOrderFields, ...newOrderFields];
+            config.customFields.Order = mergeCustomFields(config.customFields.Order, order_custom_fields_1.invoiceOrderCustomFields.Order);
             return config;
         },
         dashboard: '../dashboard/index.tsx',

@@ -24,6 +24,11 @@ const constants_1 = require("./constants");
 const invoice_pdf_admin_resolver_1 = require("./invoice-pdf-admin.resolver");
 const invoice_pdf_service_1 = require("./invoice-pdf.service");
 const order_custom_fields_1 = require("./order-custom-fields");
+/** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
+function mergeCustomFields(existingFields, additions) {
+    const names = new Set((existingFields !== null && existingFields !== void 0 ? existingFields : []).map(f => f.name));
+    return [...(existingFields !== null && existingFields !== void 0 ? existingFields : []), ...(additions !== null && additions !== void 0 ? additions : []).filter(f => !names.has(f.name))];
+}
 let InvoicePdfPlugin = InvoicePdfPlugin_1 = class InvoicePdfPlugin {
     constructor(options) {
         this.options = options;
@@ -56,10 +61,7 @@ exports.InvoicePdfPlugin = InvoicePdfPlugin = InvoicePdfPlugin_1 = __decorate([
             resolvers: [invoice_pdf_admin_resolver_1.InvoicePdfAdminResolver],
         },
         configuration: (config) => {
-            var _a, _b;
-            const existingOrderFields = (_a = config.customFields.Order) !== null && _a !== void 0 ? _a : [];
-            const newOrderFields = (_b = order_custom_fields_1.invoicePdfOrderCustomFields.Order) !== null && _b !== void 0 ? _b : [];
-            config.customFields.Order = [...existingOrderFields, ...newOrderFields];
+            config.customFields.Order = mergeCustomFields(config.customFields.Order, order_custom_fields_1.invoicePdfOrderCustomFields.Order);
             return config;
         },
         dashboard: '../dashboard/index.tsx',

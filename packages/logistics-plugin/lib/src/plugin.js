@@ -24,6 +24,11 @@ const channel_stock_allocation_strategy_1 = require("./channel-stock-allocation-
 const logistics_track_entity_1 = require("./logistics-track.entity");
 const logistics_service_1 = require("./logistics.service");
 const logistics_admin_resolver_1 = require("./logistics-admin.resolver");
+/** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
+function mergeCustomFields(existingFields, additions) {
+    const names = new Set((existingFields !== null && existingFields !== void 0 ? existingFields : []).map(f => f.name));
+    return [...(existingFields !== null && existingFields !== void 0 ? existingFields : []), ...(additions !== null && additions !== void 0 ? additions : []).filter(f => !names.has(f.name))];
+}
 const logistics_shop_resolver_1 = require("./logistics-shop.resolver");
 const { gql } = require('graphql-tag');
 const adminSchema = () => gql `
@@ -127,15 +132,8 @@ exports.LogisticsPlugin = LogisticsPlugin = LogisticsPlugin_1 = __decorate([
             resolvers: [logistics_shop_resolver_1.LogisticsShopResolver],
         },
         configuration: (config) => {
-            var _a, _b;
-            config.customFields.Fulfillment = [
-                ...((_a = config.customFields.Fulfillment) !== null && _a !== void 0 ? _a : []),
-                ...fulfillment_custom_fields_1.logisticsFulfillmentCustomFields.Fulfillment,
-            ];
-            config.customFields.Channel = [
-                ...((_b = config.customFields.Channel) !== null && _b !== void 0 ? _b : []),
-                ...channel_custom_fields_1.logisticsChannelCustomFields.Channel,
-            ];
+            config.customFields.Fulfillment = mergeCustomFields(config.customFields.Fulfillment, fulfillment_custom_fields_1.logisticsFulfillmentCustomFields.Fulfillment);
+            config.customFields.Channel = mergeCustomFields(config.customFields.Channel, channel_custom_fields_1.logisticsChannelCustomFields.Channel);
             config.orderOptions.stockAllocationStrategy = new channel_stock_allocation_strategy_1.ChannelStockAllocationStrategy();
             return config;
         },

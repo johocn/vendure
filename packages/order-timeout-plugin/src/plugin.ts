@@ -15,6 +15,15 @@ import { OrderTimeoutJob } from './order-timeout.job';
 import { OrderTimeoutTask, TimeoutType } from './order-timeout-task.entity';
 import { OrderTimeoutPluginOptions } from './types';
 
+/** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
+function mergeCustomFields<T extends { name: string }>(
+    existingFields: T[] | undefined,
+    additions: T[] | undefined,
+): T[] {
+    const names = new Set((existingFields ?? []).map(f => f.name));
+    return [...(existingFields ?? []), ...(additions ?? []).filter(f => !names.has(f.name))];
+}
+
 const COMPENSATION_TASK_ID = 'order-timeout-compensation';
 
 const compensationTask = new ScheduledTask({
@@ -35,10 +44,7 @@ const compensationTask = new ScheduledTask({
         OrderTimeoutJob,
     ],
     configuration: (config) => {
-        config.customFields.Channel = [
-            ...(config.customFields.Channel ?? []),
-            ...(orderTimeoutChannelCustomFields.Channel ?? []),
-        ];
+        config.customFields.Channel = mergeCustomFields(config.customFields.Channel, orderTimeoutChannelCustomFields.Channel);
         const exists = config.schedulerOptions.tasks.some(t => t.id === COMPENSATION_TASK_ID);
         if (!exists) {
             config.schedulerOptions.tasks.push(compensationTask);

@@ -25,6 +25,11 @@ const coupon_service_1 = require("./coupon.service");
 const coupon_shop_resolver_1 = require("./coupon-shop.resolver");
 const coupon_entity_1 = require("./coupon.entity");
 const order_custom_fields_1 = require("./order-custom-fields");
+/** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
+function mergeCustomFields(existingFields, additions) {
+    const names = new Set((existingFields !== null && existingFields !== void 0 ? existingFields : []).map(f => f.name));
+    return [...(existingFields !== null && existingFields !== void 0 ? existingFields : []), ...(additions !== null && additions !== void 0 ? additions : []).filter(f => !names.has(f.name))];
+}
 const { gql } = require('graphql-tag');
 const adminSchema = () => gql `
     type Coupon implements Node {
@@ -228,14 +233,11 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
             resolvers: [coupon_shop_resolver_1.CouponShopResolver],
         },
         configuration: config => {
-            var _a, _b, _c;
-            config.customFields.Order = [
-                ...((_a = config.customFields.Order) !== null && _a !== void 0 ? _a : []),
-                ...((_b = order_custom_fields_1.couponOrderCustomFields.Order) !== null && _b !== void 0 ? _b : []),
-            ];
+            var _a;
+            config.customFields.Order = mergeCustomFields(config.customFields.Order, order_custom_fields_1.couponOrderCustomFields.Order);
             config.promotionOptions = config.promotionOptions || {};
             config.promotionOptions.promotionActions = [
-                ...((_c = config.promotionOptions.promotionActions) !== null && _c !== void 0 ? _c : []),
+                ...((_a = config.promotionOptions.promotionActions) !== null && _a !== void 0 ? _a : []),
                 coupon_order_action_1.couponOrderAction,
             ];
             if (!config.schedulerOptions) {
