@@ -11,6 +11,7 @@ exports.MarketplacePlugin = void 0;
 const core_1 = require("@vendure/core");
 const core_2 = require("@vendure/core");
 const constants_1 = require("./constants");
+const custom_fields_1 = require("./custom-fields");
 let MarketplacePlugin = MarketplacePlugin_1 = class MarketplacePlugin {
     static init(options) {
         MarketplacePlugin_1.options = options;
@@ -21,6 +22,25 @@ exports.MarketplacePlugin = MarketplacePlugin;
 exports.MarketplacePlugin = MarketplacePlugin = MarketplacePlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_2.PluginCommonModule],
+        configuration: config => {
+            config.customFields.Product = [
+                ...(config.customFields.Product || []),
+                ...custom_fields_1.marketplaceCustomFields.Product,
+            ];
+            config.customFields.Order = [
+                ...(config.customFields.Order || []),
+                ...custom_fields_1.marketplaceCustomFields.Order,
+            ];
+            config.customFields.Channel = [
+                ...(config.customFields.Channel || []),
+                ...custom_fields_1.marketplaceCustomFields.Channel,
+            ];
+            config.customFields.Seller = [
+                ...(config.customFields.Seller || []),
+                ...custom_fields_1.marketplaceCustomFields.Seller,
+            ];
+            return config;
+        },
         providers: [
             { provide: constants_1.MARKETPLACE_PLUGIN_OPTIONS, useFactory: () => MarketplacePlugin.options },
         ],
