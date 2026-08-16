@@ -53,34 +53,67 @@ let MarketplacePlugin = MarketplacePlugin_1 = class MarketplacePlugin {
             if (!event.toState || !states.has(event.toState)) {
                 return;
             }
-            await this.connection.withTransaction(async (txnCtx) => {
-                await this.entityHydrator.hydrate(txnCtx, order, {
-                    relations: [
-                        'lines',
-                        'lines.productVariant',
-                        'lines.productVariant.stockLevels',
-                        'lines.sellerChannel',
-                    ],
-                });
-                for (const line of order.lines) {
-                    const merchantChannelId = line.sellerChannelId
-                        ? String(line.sellerChannelId)
-                        : String(ctx.channelId);
-                    const stockOnHand = line.productVariant.stockLevels
-                        ? line.productVariant.stockLevels.reduce((sum, l) => sum + l.stockOnHand, 0)
-                        : 0;
-                    await this.ledgerService.recordChange(Object.assign(Object.assign({}, txnCtx), { apiType: 'admin' }), {
-                        variantId: line.productVariantId,
-                        merchantChannelId,
-                        saleSource: constants_1.SALE_SOURCE_MARKETPLACE,
-                        stockBefore: stockOnHand,
-                        stockAfter: stockOnHand - line.quantity,
-                        stockDelta: -line.quantity,
-                        actionType: 'sale',
-                        orderId: String(order.id),
-                    });
-                }
+            await this.entityHydrator.hydrate(ctx, order, {
+                relations: ['lines', 'lines.productVariant', 'lines.productVariant.stockLevels', 'lines.sellerChannel'],
             });
+            for (const line of order.lines) {
+                const merchantChannelId = line.sellerChannelId
+                    ? String(line.sellerChannelId)
+                    : String(ctx.channelId);
+                const stockOnHand = line.productVariant.stockLevels
+                    ? line.productVariant.stockLevels.reduce((sum, l) => sum + l.stockOnHand, 0)
+                    : 0;
+                await this.ledgerService.recordChange(ctx, {
+                    variantId: line.productVariantId,
+                    merchantChannelId,
+                    saleSource: constants_1.SALE_SOURCE_MARKETPLACE,
+                    stockBefore: stockOnHand,
+                    stockAfter: stockOnHand - line.quantity,
+                    stockDelta: -line.quantity,
+                    actionType: 'sale',
+                    orderId: String(order.id),
+                });
+            }
+        });
+        // marketplace 商家子单退款时回补库存（actionType='refund'，stockDelta 为正）
+        this.eventBus.ofType(core_1.RefundEvent).subscribe(async (event) => {
+            var _a, _b, _c;
+            const { order, refund, ctx } = event;
+            // 仅处理 marketplace 商家子单的退款
+            if (((_a = order.customFields) === null || _a === void 0 ? void 0 : _a.saleSource) !== constants_1.SALE_SOURCE_MARKETPLACE) {
+                return;
+            }
+            await this.entityHydrator.hydrate(ctx, refund, {
+                relations: [
+                    'lines',
+                    'lines.orderLine',
+                    'lines.orderLine.productVariant',
+                    'lines.orderLine.productVariant.stockLevels',
+                    'lines.orderLine.sellerChannel',
+                ],
+            });
+            for (const line of (_b = refund.lines) !== null && _b !== void 0 ? _b : []) {
+                const orderLine = line.orderLine;
+                if (!orderLine) {
+                    continue;
+                }
+                const merchantChannelId = orderLine.sellerChannelId
+                    ? String(orderLine.sellerChannelId)
+                    : String(ctx.channelId);
+                const stockOnHand = ((_c = orderLine.productVariant) === null || _c === void 0 ? void 0 : _c.stockLevels)
+                    ? orderLine.productVariant.stockLevels.reduce((sum, l) => sum + l.stockOnHand, 0)
+                    : 0;
+                await this.ledgerService.recordChange(ctx, {
+                    variantId: orderLine.productVariantId,
+                    merchantChannelId,
+                    saleSource: constants_1.SALE_SOURCE_MARKETPLACE,
+                    stockBefore: stockOnHand,
+                    stockAfter: stockOnHand + line.quantity,
+                    stockDelta: line.quantity,
+                    actionType: 'refund',
+                    orderId: String(order.id),
+                });
+            }
         });
     }
 };

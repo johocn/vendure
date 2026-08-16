@@ -7,6 +7,7 @@ import {
     EventBus,
     OrderStateTransitionEvent,
     PluginCommonModule,
+    RefundEvent,
     TransactionalConnection,
     VendurePlugin,
 } from '@vendure/core';
@@ -121,6 +122,46 @@ export class MarketplacePlugin implements OnApplicationBootstrap {
                     stockAfter: stockOnHand - line.quantity,
                     stockDelta: -line.quantity,
                     actionType: 'sale',
+                    orderId: String(order.id),
+                });
+            }
+        });
+
+        // marketplace 商家子单退款时回补库存（actionType='refund'，stockDelta 为正）
+        this.eventBus.ofType(RefundEvent).subscribe(async event => {
+            const { order, refund, ctx } = event;
+            // 仅处理 marketplace 商家子单的退款
+            if (order.customFields?.saleSource !== SALE_SOURCE_MARKETPLACE) {
+                return;
+            }
+            await this.entityHydrator.hydrate(ctx, refund, {
+                relations: [
+                    'lines',
+                    'lines.orderLine',
+                    'lines.orderLine.productVariant',
+                    'lines.orderLine.productVariant.stockLevels',
+                    'lines.orderLine.sellerChannel',
+                ],
+            });
+            for (const line of refund.lines ?? []) {
+                const orderLine = line.orderLine;
+                if (!orderLine) {
+                    continue;
+                }
+                const merchantChannelId = orderLine.sellerChannelId
+                    ? String(orderLine.sellerChannelId)
+                    : String(ctx.channelId);
+                const stockOnHand = orderLine.productVariant?.stockLevels
+                    ? orderLine.productVariant.stockLevels.reduce<number>((sum, l) => sum + l.stockOnHand, 0)
+                    : 0;
+                await this.ledgerService.recordChange(ctx, {
+                    variantId: orderLine.productVariantId,
+                    merchantChannelId,
+                    saleSource: SALE_SOURCE_MARKETPLACE,
+                    stockBefore: stockOnHand,
+                    stockAfter: stockOnHand + line.quantity,
+                    stockDelta: line.quantity,
+                    actionType: 'refund',
                     orderId: String(order.id),
                 });
             }
