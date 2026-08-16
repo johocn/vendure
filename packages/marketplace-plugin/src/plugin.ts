@@ -14,6 +14,7 @@ import { shopApiExtensions } from './api/api-extensions';
 import { ShopResolver } from './api/shop.resolver';
 import { multivendorShippingEligibilityChecker } from './config/mv-shipping-eligibility-checker';
 import { MarketplaceSellerStrategy } from './marketplace-seller.strategy';
+import { MarketplaceStockLocationStrategy } from './marketplace-stock.strategy';
 import { marketplaceOrderProcess } from './marketplace-order-process';
 import { paymentApiExtensions } from './payment/api-extensions';
 import { DirectPaymentResolver } from './payment/direct-payment.resolver';
@@ -44,6 +45,7 @@ import { DirectPaymentResolver } from './payment/direct-payment.resolver';
         config.orderOptions.orderSellerStrategy = new MarketplaceSellerStrategy();
         config.catalogOptions.productVariantPriceUpdateStrategy =
             new DefaultProductVariantPriceUpdateStrategy({ syncPricesAcrossChannels: true });
+        config.catalogOptions.stockLocationStrategy = new MarketplaceStockLocationStrategy();
         return config;
     },
     shopApiExtensions: {

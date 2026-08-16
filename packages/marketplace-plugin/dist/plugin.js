@@ -17,6 +17,7 @@ const api_extensions_1 = require("./api/api-extensions");
 const shop_resolver_1 = require("./api/shop.resolver");
 const mv_shipping_eligibility_checker_1 = require("./config/mv-shipping-eligibility-checker");
 const marketplace_seller_strategy_1 = require("./marketplace-seller.strategy");
+const marketplace_stock_strategy_1 = require("./marketplace-stock.strategy");
 const marketplace_order_process_1 = require("./marketplace-order-process");
 const api_extensions_2 = require("./payment/api-extensions");
 const direct_payment_resolver_1 = require("./payment/direct-payment.resolver");
@@ -53,6 +54,7 @@ exports.MarketplacePlugin = MarketplacePlugin = MarketplacePlugin_1 = __decorate
             config.orderOptions.orderSellerStrategy = new marketplace_seller_strategy_1.MarketplaceSellerStrategy();
             config.catalogOptions.productVariantPriceUpdateStrategy =
                 new core_1.DefaultProductVariantPriceUpdateStrategy({ syncPricesAcrossChannels: true });
+            config.catalogOptions.stockLocationStrategy = new marketplace_stock_strategy_1.MarketplaceStockLocationStrategy();
             return config;
         },
         shopApiExtensions: {
