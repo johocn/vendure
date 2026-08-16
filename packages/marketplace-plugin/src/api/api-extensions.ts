@@ -3,6 +3,25 @@ export const shopApiExtensions = `
         registerMarketplaceSeller(input: RegisterMarketplaceSellerInput!): RegisterMarketplaceSellerResult!
     }
 
+    extend type Query {
+        marketplaceProducts: [MarketplaceProduct!]!
+    }
+
+    type MarketplaceProduct {
+        id: ID!
+        name: String!
+        slug: String!
+        barcode: String
+        internalCode: String
+        merchantChannel: MarketplaceMerchantChannel
+    }
+
+    type MarketplaceMerchantChannel {
+        id: ID!
+        code: String!
+        name: String!
+    }
+
     input RegisterMarketplaceSellerInput {
         shopName: String!
         seller: CreateSellerInput!

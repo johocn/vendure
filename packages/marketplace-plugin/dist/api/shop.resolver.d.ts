@@ -1,9 +1,11 @@
 import { RequestContext } from '@vendure/core';
 import { MarketplaceSellerService } from '../marketplace-seller-service';
+import { MarketplaceService } from '../marketplace.service';
 import { CreateSellerInput } from '../types';
 export declare class ShopResolver {
     private marketplaceSellerService;
-    constructor(marketplaceSellerService: MarketplaceSellerService);
+    private marketplaceService;
+    constructor(marketplaceSellerService: MarketplaceSellerService, marketplaceService: MarketplaceService);
     registerMarketplaceSeller(ctx: RequestContext, args: {
         input: {
             shopName: string;
@@ -22,4 +24,16 @@ export declare class ShopResolver {
         code?: undefined;
         token?: undefined;
     }>;
+    marketplaceProducts(ctx: RequestContext): Promise<{
+        id: import("@vendure/core").ID;
+        name: import("@vendure/core").LocaleString;
+        slug: import("@vendure/core").LocaleString;
+        barcode: string | null;
+        internalCode: string | null;
+        merchantChannel: {
+            id: any;
+            code: any;
+            name: any;
+        } | null;
+    }[]>;
 }

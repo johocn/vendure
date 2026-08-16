@@ -16,9 +16,11 @@ exports.ShopResolver = void 0;
 const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
 const marketplace_seller_service_1 = require("../marketplace-seller-service");
+const marketplace_service_1 = require("../marketplace.service");
 let ShopResolver = class ShopResolver {
-    constructor(marketplaceSellerService) {
+    constructor(marketplaceSellerService, marketplaceService) {
         this.marketplaceSellerService = marketplaceSellerService;
+        this.marketplaceService = marketplaceService;
     }
     async registerMarketplaceSeller(ctx, args) {
         try {
@@ -36,6 +38,26 @@ let ShopResolver = class ShopResolver {
             throw e;
         }
     }
+    async marketplaceProducts(ctx) {
+        const products = await this.marketplaceService.getMarketplaceProducts(ctx);
+        return products.map(product => {
+            var _a, _b;
+            return ({
+                id: product.id,
+                name: product.name,
+                slug: product.slug,
+                barcode: (_a = product.customFields.barcode) !== null && _a !== void 0 ? _a : null,
+                internalCode: (_b = product.customFields.internalCode) !== null && _b !== void 0 ? _b : null,
+                merchantChannel: product.customFields.merchantRef
+                    ? {
+                        id: product.customFields.merchantRef.id,
+                        code: product.customFields.merchantRef.code,
+                        name: product.customFields.merchantRef.name,
+                    }
+                    : null,
+            });
+        });
+    }
 };
 exports.ShopResolver = ShopResolver;
 __decorate([
@@ -48,7 +70,16 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], ShopResolver.prototype, "registerMarketplaceSeller", null);
+__decorate([
+    (0, graphql_1.Query)('marketplaceProducts'),
+    (0, core_1.Allow)(core_1.Permission.Public),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], ShopResolver.prototype, "marketplaceProducts", null);
 exports.ShopResolver = ShopResolver = __decorate([
     (0, graphql_1.Resolver)(),
-    __metadata("design:paramtypes", [marketplace_seller_service_1.MarketplaceSellerService])
+    __metadata("design:paramtypes", [marketplace_seller_service_1.MarketplaceSellerService,
+        marketplace_service_1.MarketplaceService])
 ], ShopResolver);

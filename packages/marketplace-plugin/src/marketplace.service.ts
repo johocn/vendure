@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+    EntityHydrator,
     ID,
     Product,
     RequestContext,
@@ -12,9 +13,17 @@ import {
     MARKETPLACE_STATUS_REJECTED,
 } from './constants';
 
+export interface MarketplaceProductsOptions {
+    take?: number;
+    skip?: number;
+}
+
 @Injectable()
 export class MarketplaceService {
-    constructor(private connection: TransactionalConnection) {}
+    constructor(
+        private connection: TransactionalConnection,
+        private entityHydrator: EntityHydrator,
+    ) {}
 
     /** 校验条形码在平台内唯一（跨所有 Channel）。返回所属 ProductId 与首个 VariantId；空则无冲突。 */
     async findBarcodeOwner(barcode: string): Promise<{ productId: ID; variantId: ID } | null> {
@@ -85,5 +94,33 @@ export class MarketplaceService {
         return this.connection.getRepository(ctx, Product).find({
             where: { customFields: { marketplaceStatus: MARKETPLACE_STATUS_PENDING } as any },
         });
+    }
+
+    /**
+     * 聚合 marketplace 对外展示的商品（自营 + 各商家）。
+     * 仅返回 marketplaceStatus='approved' 且 listedInMarketplace=true 的商品，
+     * 并 hydrate 商家渠道（merchantRef）与商品主图（featuredAsset），供前端按商家分组展示。
+     * relation custom field 存储于独立 junction 表，故用 EntityHydrator 加载最稳妥。
+     */
+    async getMarketplaceProducts(
+        ctx: RequestContext,
+        options?: MarketplaceProductsOptions,
+    ): Promise<Product[]> {
+        const products = await this.connection.getRepository(ctx, Product).find({
+            where: {
+                customFields: {
+                    marketplaceStatus: MARKETPLACE_STATUS_APPROVED,
+                    listedInMarketplace: true,
+                } as any,
+            },
+            take: options?.take,
+            skip: options?.skip,
+        });
+        for (const product of products) {
+            await this.entityHydrator.hydrate(ctx, product, {
+                relations: ['customFields.merchantRef', 'featuredAsset'],
+            });
+        }
+        return products;
     }
 }

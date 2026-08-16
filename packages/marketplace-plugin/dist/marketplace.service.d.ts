@@ -1,7 +1,12 @@
-import { ID, Product, RequestContext, TransactionalConnection } from '@vendure/core';
+import { EntityHydrator, ID, Product, RequestContext, TransactionalConnection } from '@vendure/core';
+export interface MarketplaceProductsOptions {
+    take?: number;
+    skip?: number;
+}
 export declare class MarketplaceService {
     private connection;
-    constructor(connection: TransactionalConnection);
+    private entityHydrator;
+    constructor(connection: TransactionalConnection, entityHydrator: EntityHydrator);
     /** 校验条形码在平台内唯一（跨所有 Channel）。返回所属 ProductId 与首个 VariantId；空则无冲突。 */
     findBarcodeOwner(barcode: string): Promise<{
         productId: ID;
@@ -18,4 +23,11 @@ export declare class MarketplaceService {
     rejectMarketplaceProduct(ctx: RequestContext, productId: ID, reason: string): Promise<void>;
     /** 待审批商品列表 */
     getPendingProducts(ctx: RequestContext): Promise<Product[]>;
+    /**
+     * 聚合 marketplace 对外展示的商品（自营 + 各商家）。
+     * 仅返回 marketplaceStatus='approved' 且 listedInMarketplace=true 的商品，
+     * 并 hydrate 商家渠道（merchantRef）与商品主图（featuredAsset），供前端按商家分组展示。
+     * relation custom field 存储于独立 junction 表，故用 EntityHydrator 加载最稳妥。
+     */
+    getMarketplaceProducts(ctx: RequestContext, options?: MarketplaceProductsOptions): Promise<Product[]>;
 }

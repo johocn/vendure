@@ -14,8 +14,9 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const constants_1 = require("./constants");
 let MarketplaceService = class MarketplaceService {
-    constructor(connection) {
+    constructor(connection, entityHydrator) {
         this.connection = connection;
+        this.entityHydrator = entityHydrator;
     }
     /** 校验条形码在平台内唯一（跨所有 Channel）。返回所属 ProductId 与首个 VariantId；空则无冲突。 */
     async findBarcodeOwner(barcode) {
@@ -82,9 +83,34 @@ let MarketplaceService = class MarketplaceService {
             where: { customFields: { marketplaceStatus: constants_1.MARKETPLACE_STATUS_PENDING } },
         });
     }
+    /**
+     * 聚合 marketplace 对外展示的商品（自营 + 各商家）。
+     * 仅返回 marketplaceStatus='approved' 且 listedInMarketplace=true 的商品，
+     * 并 hydrate 商家渠道（merchantRef）与商品主图（featuredAsset），供前端按商家分组展示。
+     * relation custom field 存储于独立 junction 表，故用 EntityHydrator 加载最稳妥。
+     */
+    async getMarketplaceProducts(ctx, options) {
+        const products = await this.connection.getRepository(ctx, core_1.Product).find({
+            where: {
+                customFields: {
+                    marketplaceStatus: constants_1.MARKETPLACE_STATUS_APPROVED,
+                    listedInMarketplace: true,
+                },
+            },
+            take: options === null || options === void 0 ? void 0 : options.take,
+            skip: options === null || options === void 0 ? void 0 : options.skip,
+        });
+        for (const product of products) {
+            await this.entityHydrator.hydrate(ctx, product, {
+                relations: ['customFields.merchantRef', 'featuredAsset'],
+            });
+        }
+        return products;
+    }
 };
 exports.MarketplaceService = MarketplaceService;
 exports.MarketplaceService = MarketplaceService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [core_1.TransactionalConnection])
+    __metadata("design:paramtypes", [core_1.TransactionalConnection,
+        core_1.EntityHydrator])
 ], MarketplaceService);
