@@ -12,6 +12,7 @@ const core_1 = require("@vendure/core");
 const core_2 = require("@vendure/core");
 const constants_1 = require("./constants");
 const custom_fields_1 = require("./custom-fields");
+const marketplace_service_1 = require("./marketplace.service");
 let MarketplacePlugin = MarketplacePlugin_1 = class MarketplacePlugin {
     static init(options) {
         MarketplacePlugin_1.options = options;
@@ -42,6 +43,7 @@ exports.MarketplacePlugin = MarketplacePlugin = MarketplacePlugin_1 = __decorate
             return config;
         },
         providers: [
+            marketplace_service_1.MarketplaceService,
             { provide: constants_1.MARKETPLACE_PLUGIN_OPTIONS, useFactory: () => MarketplacePlugin.options },
         ],
     })

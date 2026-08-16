@@ -3,6 +3,7 @@ import { PluginCommonModule } from '@vendure/core';
 import { MARKETPLACE_PLUGIN_OPTIONS } from './constants';
 import { MarketplacePluginOptions } from './types';
 import { marketplaceCustomFields } from './custom-fields';
+import { MarketplaceService } from './marketplace.service';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
@@ -26,6 +27,7 @@ import { marketplaceCustomFields } from './custom-fields';
         return config;
     },
     providers: [
+        MarketplaceService,
         { provide: MARKETPLACE_PLUGIN_OPTIONS, useFactory: () => MarketplacePlugin.options },
     ],
 })
