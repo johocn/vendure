@@ -1,14 +1,22 @@
 import { OnApplicationBootstrap } from '@nestjs/common';
 import { DocumentNode } from 'graphql';
 import {
+    ChannelService,
+    ConfigService,
     configureDefaultOrderProcess,
     DefaultProductVariantPriceUpdateStrategy,
     EntityHydrator,
     EventBus,
     OrderStateTransitionEvent,
+    Permission,
     PluginCommonModule,
     RefundEvent,
+    RequestContext,
+    RequestContextService,
+    Role,
+    RoleService,
     TransactionalConnection,
+    User,
     VendurePlugin,
 } from '@vendure/core';
 import { MARKETPLACE_PLUGIN_OPTIONS, SALE_SOURCE_MARKETPLACE } from './constants';
@@ -74,6 +82,10 @@ import { SettlementService } from './settlement.service';
         MarketplaceSellerService,
         SettlementService,
         LedgerService,
+        RoleService,
+        ChannelService,
+        ConfigService,
+        RequestContextService,
         { provide: MARKETPLACE_PLUGIN_OPTIONS, useFactory: () => MarketplacePlugin.options },
     ],
     controllers: [MerchantApiController],
@@ -86,6 +98,10 @@ export class MarketplacePlugin implements OnApplicationBootstrap {
         private connection: TransactionalConnection,
         private entityHydrator: EntityHydrator,
         private ledgerService: LedgerService,
+        private roleService: RoleService,
+        private channelService: ChannelService,
+        private configService: ConfigService,
+        private requestContextService: RequestContextService,
     ) {}
 
     static init(options: MarketplacePluginOptions) {
@@ -94,6 +110,8 @@ export class MarketplacePlugin implements OnApplicationBootstrap {
     }
 
     async onApplicationBootstrap(): Promise<void> {
+        await this.ensurePlatformOpsRole();
+
         this.eventBus.ofType(OrderStateTransitionEvent).subscribe(async event => {
             const { order, ctx } = event;
             // 仅记录 marketplace 商家子单的销售
@@ -165,6 +183,49 @@ export class MarketplacePlugin implements OnApplicationBootstrap {
                     orderId: String(order.id),
                 });
             }
+        });
+    }
+
+    /**
+     * 幂等创建「平台运营」角色（code = platform-ops），用于接入 marketplace 审批等平台运营能力。
+     */
+    private async ensurePlatformOpsRole(): Promise<void> {
+        const ctx = await this.getSuperAdminContext();
+        const roleCode = MarketplacePlugin.options.platformOpsRoleCode ?? 'platform-ops';
+        const existing = await this.connection.getRepository(ctx, Role).findOne({
+            where: { code: roleCode },
+        });
+        if (existing) {
+            return;
+        }
+        const defaultChannel = await this.channelService.getDefaultChannel(ctx);
+        await this.roleService.create(ctx, {
+            code: roleCode,
+            description: '平台运营',
+            channelIds: [defaultChannel.id],
+            permissions: [
+                Permission.ReadCatalog,
+                Permission.UpdateCatalog,
+                Permission.ReadProduct,
+                Permission.UpdateProduct,
+                Permission.ReadOrder,
+                Permission.UpdateOrder,
+                Permission.ReadCustomer,
+            ],
+        });
+    }
+
+    private async getSuperAdminContext(): Promise<RequestContext> {
+        const { superadminCredentials } = this.configService.authOptions;
+        const superAdminUser = await this.connection.getRepository(RequestContext.empty(), User).findOne({
+            where: {
+                identifier: superadminCredentials.identifier,
+            },
+        });
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        return this.requestContextService.create({
+            apiType: 'shop',
+            user: superAdminUser!,
         });
     }
 }

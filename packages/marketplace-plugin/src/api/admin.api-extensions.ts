@@ -5,5 +5,7 @@ export const adminApiExtensions = `
     }
     extend type Query {
         marketplacePendingProducts: [Product!]!
+        marketplaceMerchantChannel: Channel!
+        merchantOrders(saleSource: String, options: OrderListOptions): OrderList!
     }
 `;

@@ -31,17 +31,22 @@ const admin_resolver_1 = require("./api/admin.resolver");
 const merchant_api_controller_1 = require("./api/merchant-api.controller");
 const settlement_service_1 = require("./settlement.service");
 let MarketplacePlugin = MarketplacePlugin_1 = class MarketplacePlugin {
-    constructor(eventBus, connection, entityHydrator, ledgerService) {
+    constructor(eventBus, connection, entityHydrator, ledgerService, roleService, channelService, configService, requestContextService) {
         this.eventBus = eventBus;
         this.connection = connection;
         this.entityHydrator = entityHydrator;
         this.ledgerService = ledgerService;
+        this.roleService = roleService;
+        this.channelService = channelService;
+        this.configService = configService;
+        this.requestContextService = requestContextService;
     }
     static init(options) {
         MarketplacePlugin_1.options = options;
         return MarketplacePlugin_1;
     }
     async onApplicationBootstrap() {
+        await this.ensurePlatformOpsRole();
         this.eventBus.ofType(core_1.OrderStateTransitionEvent).subscribe(async (event) => {
             var _a;
             const { order, ctx } = event;
@@ -116,6 +121,48 @@ let MarketplacePlugin = MarketplacePlugin_1 = class MarketplacePlugin {
             }
         });
     }
+    /**
+     * 幂等创建「平台运营」角色（code = platform-ops），用于接入 marketplace 审批等平台运营能力。
+     */
+    async ensurePlatformOpsRole() {
+        var _a;
+        const ctx = await this.getSuperAdminContext();
+        const roleCode = (_a = MarketplacePlugin_1.options.platformOpsRoleCode) !== null && _a !== void 0 ? _a : 'platform-ops';
+        const existing = await this.connection.getRepository(ctx, core_1.Role).findOne({
+            where: { code: roleCode },
+        });
+        if (existing) {
+            return;
+        }
+        const defaultChannel = await this.channelService.getDefaultChannel(ctx);
+        await this.roleService.create(ctx, {
+            code: roleCode,
+            description: '平台运营',
+            channelIds: [defaultChannel.id],
+            permissions: [
+                core_1.Permission.ReadCatalog,
+                core_1.Permission.UpdateCatalog,
+                core_1.Permission.ReadProduct,
+                core_1.Permission.UpdateProduct,
+                core_1.Permission.ReadOrder,
+                core_1.Permission.UpdateOrder,
+                core_1.Permission.ReadCustomer,
+            ],
+        });
+    }
+    async getSuperAdminContext() {
+        const { superadminCredentials } = this.configService.authOptions;
+        const superAdminUser = await this.connection.getRepository(core_1.RequestContext.empty(), core_1.User).findOne({
+            where: {
+                identifier: superadminCredentials.identifier,
+            },
+        });
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        return this.requestContextService.create({
+            apiType: 'shop',
+            user: superAdminUser,
+        });
+    }
 };
 exports.MarketplacePlugin = MarketplacePlugin;
 exports.MarketplacePlugin = MarketplacePlugin = MarketplacePlugin_1 = __decorate([
@@ -161,6 +208,10 @@ exports.MarketplacePlugin = MarketplacePlugin = MarketplacePlugin_1 = __decorate
             marketplace_seller_service_1.MarketplaceSellerService,
             settlement_service_1.SettlementService,
             ledger_service_1.LedgerService,
+            core_1.RoleService,
+            core_1.ChannelService,
+            core_1.ConfigService,
+            core_1.RequestContextService,
             { provide: constants_1.MARKETPLACE_PLUGIN_OPTIONS, useFactory: () => MarketplacePlugin.options },
         ],
         controllers: [merchant_api_controller_1.MerchantApiController],
@@ -168,5 +219,9 @@ exports.MarketplacePlugin = MarketplacePlugin = MarketplacePlugin_1 = __decorate
     __metadata("design:paramtypes", [core_1.EventBus,
         core_1.TransactionalConnection,
         core_1.EntityHydrator,
-        ledger_service_1.LedgerService])
+        ledger_service_1.LedgerService,
+        core_1.RoleService,
+        core_1.ChannelService,
+        core_1.ConfigService,
+        core_1.RequestContextService])
 ], MarketplacePlugin);
