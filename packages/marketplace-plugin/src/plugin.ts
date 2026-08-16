@@ -1,11 +1,18 @@
+import { OnApplicationBootstrap } from '@nestjs/common';
 import { DocumentNode } from 'graphql';
 import {
     configureDefaultOrderProcess,
     DefaultProductVariantPriceUpdateStrategy,
+    EntityHydrator,
+    EventBus,
+    OrderStateTransitionEvent,
     PluginCommonModule,
+    TransactionalConnection,
     VendurePlugin,
 } from '@vendure/core';
-import { MARKETPLACE_PLUGIN_OPTIONS } from './constants';
+import { MARKETPLACE_PLUGIN_OPTIONS, SALE_SOURCE_MARKETPLACE } from './constants';
+import { LedgerService } from './ledger.service';
+import { MarketplaceInventoryLedger } from './entities/marketplace-inventory-ledger.entity';
 import { MarketplacePluginOptions } from './types';
 import { marketplaceCustomFields } from './custom-fields';
 import { MarketplaceService } from './marketplace.service';
@@ -20,9 +27,12 @@ import { paymentApiExtensions } from './payment/api-extensions';
 import { DirectPaymentResolver } from './payment/direct-payment.resolver';
 import { adminApiExtensions } from './api/admin.api-extensions';
 import { AdminMarketplaceResolver } from './api/admin.resolver';
+import { MerchantApiController } from './api/merchant-api.controller';
+import { SettlementService } from './settlement.service';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
+    entities: [MarketplaceInventoryLedger],
     configuration: config => {
         config.customFields.Product = [
             ...(config.customFields.Product || []),
@@ -61,14 +71,59 @@ import { AdminMarketplaceResolver } from './api/admin.resolver';
     providers: [
         MarketplaceService,
         MarketplaceSellerService,
+        SettlementService,
+        LedgerService,
         { provide: MARKETPLACE_PLUGIN_OPTIONS, useFactory: () => MarketplacePlugin.options },
     ],
+    controllers: [MerchantApiController],
 })
-export class MarketplacePlugin {
+export class MarketplacePlugin implements OnApplicationBootstrap {
     static options: MarketplacePluginOptions;
+
+    constructor(
+        private eventBus: EventBus,
+        private connection: TransactionalConnection,
+        private entityHydrator: EntityHydrator,
+        private ledgerService: LedgerService,
+    ) {}
 
     static init(options: MarketplacePluginOptions) {
         MarketplacePlugin.options = options;
         return MarketplacePlugin;
+    }
+
+    async onApplicationBootstrap(): Promise<void> {
+        this.eventBus.ofType(OrderStateTransitionEvent).subscribe(async event => {
+            const { order, ctx } = event;
+            // 仅记录 marketplace 商家子单的销售
+            if (order.customFields?.saleSource !== SALE_SOURCE_MARKETPLACE) {
+                return;
+            }
+            const states = new Set(['Shipped', 'Fulfilled', 'Delivered', 'Completed']);
+            if (!event.toState || !states.has(event.toState)) {
+                return;
+            }
+            await this.entityHydrator.hydrate(ctx, order, {
+                relations: ['lines', 'lines.productVariant', 'lines.productVariant.stockLevels', 'lines.sellerChannel'],
+            });
+            for (const line of order.lines) {
+                const merchantChannelId = line.sellerChannelId
+                    ? String(line.sellerChannelId)
+                    : String(ctx.channelId);
+                const stockOnHand = line.productVariant.stockLevels
+                    ? line.productVariant.stockLevels.reduce<number>((sum, l) => sum + l.stockOnHand, 0)
+                    : 0;
+                await this.ledgerService.recordChange(ctx, {
+                    variantId: line.productVariantId,
+                    merchantChannelId,
+                    saleSource: SALE_SOURCE_MARKETPLACE,
+                    stockBefore: stockOnHand,
+                    stockAfter: stockOnHand - line.quantity,
+                    stockDelta: -line.quantity,
+                    actionType: 'sale',
+                    orderId: String(order.id),
+                });
+            }
+        });
     }
 }

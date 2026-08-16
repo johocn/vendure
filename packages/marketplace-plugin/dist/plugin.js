@@ -5,11 +5,16 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
 var MarketplacePlugin_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MarketplacePlugin = void 0;
 const core_1 = require("@vendure/core");
 const constants_1 = require("./constants");
+const ledger_service_1 = require("./ledger.service");
+const marketplace_inventory_ledger_entity_1 = require("./entities/marketplace-inventory-ledger.entity");
 const custom_fields_1 = require("./custom-fields");
 const marketplace_service_1 = require("./marketplace.service");
 const marketplace_seller_service_1 = require("./marketplace-seller-service");
@@ -23,16 +28,67 @@ const api_extensions_2 = require("./payment/api-extensions");
 const direct_payment_resolver_1 = require("./payment/direct-payment.resolver");
 const admin_api_extensions_1 = require("./api/admin.api-extensions");
 const admin_resolver_1 = require("./api/admin.resolver");
+const merchant_api_controller_1 = require("./api/merchant-api.controller");
+const settlement_service_1 = require("./settlement.service");
 let MarketplacePlugin = MarketplacePlugin_1 = class MarketplacePlugin {
+    constructor(eventBus, connection, entityHydrator, ledgerService) {
+        this.eventBus = eventBus;
+        this.connection = connection;
+        this.entityHydrator = entityHydrator;
+        this.ledgerService = ledgerService;
+    }
     static init(options) {
         MarketplacePlugin_1.options = options;
         return MarketplacePlugin_1;
+    }
+    async onApplicationBootstrap() {
+        this.eventBus.ofType(core_1.OrderStateTransitionEvent).subscribe(async (event) => {
+            var _a;
+            const { order, ctx } = event;
+            // 仅记录 marketplace 商家子单的销售
+            if (((_a = order.customFields) === null || _a === void 0 ? void 0 : _a.saleSource) !== constants_1.SALE_SOURCE_MARKETPLACE) {
+                return;
+            }
+            const states = new Set(['Shipped', 'Fulfilled', 'Delivered', 'Completed']);
+            if (!event.toState || !states.has(event.toState)) {
+                return;
+            }
+            await this.connection.withTransaction(async (txnCtx) => {
+                await this.entityHydrator.hydrate(txnCtx, order, {
+                    relations: [
+                        'lines',
+                        'lines.productVariant',
+                        'lines.productVariant.stockLevels',
+                        'lines.sellerChannel',
+                    ],
+                });
+                for (const line of order.lines) {
+                    const merchantChannelId = line.sellerChannelId
+                        ? String(line.sellerChannelId)
+                        : String(ctx.channelId);
+                    const stockOnHand = line.productVariant.stockLevels
+                        ? line.productVariant.stockLevels.reduce((sum, l) => sum + l.stockOnHand, 0)
+                        : 0;
+                    await this.ledgerService.recordChange(Object.assign(Object.assign({}, txnCtx), { apiType: 'admin' }), {
+                        variantId: line.productVariantId,
+                        merchantChannelId,
+                        saleSource: constants_1.SALE_SOURCE_MARKETPLACE,
+                        stockBefore: stockOnHand,
+                        stockAfter: stockOnHand - line.quantity,
+                        stockDelta: -line.quantity,
+                        actionType: 'sale',
+                        orderId: String(order.id),
+                    });
+                }
+            });
+        });
     }
 };
 exports.MarketplacePlugin = MarketplacePlugin;
 exports.MarketplacePlugin = MarketplacePlugin = MarketplacePlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
+        entities: [marketplace_inventory_ledger_entity_1.MarketplaceInventoryLedger],
         configuration: config => {
             config.customFields.Product = [
                 ...(config.customFields.Product || []),
@@ -70,7 +126,14 @@ exports.MarketplacePlugin = MarketplacePlugin = MarketplacePlugin_1 = __decorate
         providers: [
             marketplace_service_1.MarketplaceService,
             marketplace_seller_service_1.MarketplaceSellerService,
+            settlement_service_1.SettlementService,
+            ledger_service_1.LedgerService,
             { provide: constants_1.MARKETPLACE_PLUGIN_OPTIONS, useFactory: () => MarketplacePlugin.options },
         ],
-    })
+        controllers: [merchant_api_controller_1.MerchantApiController],
+    }),
+    __metadata("design:paramtypes", [core_1.EventBus,
+        core_1.TransactionalConnection,
+        core_1.EntityHydrator,
+        ledger_service_1.LedgerService])
 ], MarketplacePlugin);
