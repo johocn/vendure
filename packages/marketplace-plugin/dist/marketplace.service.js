@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.MarketplaceService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
+const constants_1 = require("./constants");
 let MarketplaceService = class MarketplaceService {
     constructor(connection) {
         this.connection = connection;
@@ -38,6 +39,48 @@ let MarketplaceService = class MarketplaceService {
         if (owner && (!excludeProductId || owner.productId !== excludeProductId)) {
             throw new core_1.UserInputError(`条形码 ${barcode} 已被占用`);
         }
+    }
+    async getProductOrThrow(ctx, productId) {
+        const product = await this.connection.getRepository(ctx, core_1.Product).findOne({
+            where: { id: productId },
+        });
+        if (!product) {
+            throw new core_1.UserInputError('商品不存在');
+        }
+        return product;
+    }
+    /** 商家提交商品上架 marketplace（置审批中，不对外展示） */
+    async submitForMarketplace(ctx, productId) {
+        const product = await this.getProductOrThrow(ctx, productId);
+        if (product.customFields.barcode) {
+            await this.assertBarcodeUnique(product.customFields.barcode, productId);
+        }
+        product.customFields.listedInMarketplace = false;
+        product.customFields.marketplaceStatus = constants_1.MARKETPLACE_STATUS_PENDING;
+        product.customFields.rejectReason = undefined;
+        await this.connection.getRepository(ctx, core_1.Product).save(product);
+    }
+    /** 平台运营/超管审批通过：对外展示 */
+    async approveMarketplaceProduct(ctx, productId) {
+        const product = await this.getProductOrThrow(ctx, productId);
+        product.customFields.marketplaceStatus = constants_1.MARKETPLACE_STATUS_APPROVED;
+        product.customFields.listedInMarketplace = true;
+        product.customFields.rejectReason = undefined;
+        await this.connection.getRepository(ctx, core_1.Product).save(product);
+    }
+    /** 平台运营/超管驳回：不展示，记录原因 */
+    async rejectMarketplaceProduct(ctx, productId, reason) {
+        const product = await this.getProductOrThrow(ctx, productId);
+        product.customFields.marketplaceStatus = constants_1.MARKETPLACE_STATUS_REJECTED;
+        product.customFields.listedInMarketplace = false;
+        product.customFields.rejectReason = reason;
+        await this.connection.getRepository(ctx, core_1.Product).save(product);
+    }
+    /** 待审批商品列表 */
+    async getPendingProducts(ctx) {
+        return this.connection.getRepository(ctx, core_1.Product).find({
+            where: { customFields: { marketplaceStatus: constants_1.MARKETPLACE_STATUS_PENDING } },
+        });
     }
 };
 exports.MarketplaceService = MarketplaceService;

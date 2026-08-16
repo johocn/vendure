@@ -21,6 +21,8 @@ const marketplace_stock_strategy_1 = require("./marketplace-stock.strategy");
 const marketplace_order_process_1 = require("./marketplace-order-process");
 const api_extensions_2 = require("./payment/api-extensions");
 const direct_payment_resolver_1 = require("./payment/direct-payment.resolver");
+const admin_api_extensions_1 = require("./api/admin.api-extensions");
+const admin_resolver_1 = require("./api/admin.resolver");
 let MarketplacePlugin = MarketplacePlugin_1 = class MarketplacePlugin {
     static init(options) {
         MarketplacePlugin_1.options = options;
@@ -60,6 +62,10 @@ exports.MarketplacePlugin = MarketplacePlugin = MarketplacePlugin_1 = __decorate
         shopApiExtensions: {
             schema: (api_extensions_1.shopApiExtensions + api_extensions_2.paymentApiExtensions),
             resolvers: [shop_resolver_1.ShopResolver, direct_payment_resolver_1.DirectPaymentResolver],
+        },
+        adminApiExtensions: {
+            schema: admin_api_extensions_1.adminApiExtensions,
+            resolvers: [admin_resolver_1.AdminMarketplaceResolver],
         },
         providers: [
             marketplace_service_1.MarketplaceService,

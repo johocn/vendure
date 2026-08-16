@@ -2,9 +2,15 @@ import { Injectable } from '@nestjs/common';
 import {
     ID,
     Product,
+    RequestContext,
     TransactionalConnection,
     UserInputError,
 } from '@vendure/core';
+import {
+    MARKETPLACE_STATUS_APPROVED,
+    MARKETPLACE_STATUS_PENDING,
+    MARKETPLACE_STATUS_REJECTED,
+} from './constants';
 
 @Injectable()
 export class MarketplaceService {
@@ -32,5 +38,52 @@ export class MarketplaceService {
         if (owner && (!excludeProductId || owner.productId !== excludeProductId)) {
             throw new UserInputError(`条形码 ${barcode} 已被占用`);
         }
+    }
+
+    async getProductOrThrow(ctx: RequestContext, productId: ID): Promise<Product> {
+        const product = await this.connection.getRepository(ctx, Product).findOne({
+            where: { id: productId as any },
+        });
+        if (!product) {
+            throw new UserInputError('商品不存在');
+        }
+        return product;
+    }
+
+    /** 商家提交商品上架 marketplace（置审批中，不对外展示） */
+    async submitForMarketplace(ctx: RequestContext, productId: ID): Promise<void> {
+        const product = await this.getProductOrThrow(ctx, productId);
+        if (product.customFields.barcode) {
+            await this.assertBarcodeUnique(product.customFields.barcode, productId);
+        }
+        product.customFields.listedInMarketplace = false;
+        product.customFields.marketplaceStatus = MARKETPLACE_STATUS_PENDING;
+        product.customFields.rejectReason = undefined;
+        await this.connection.getRepository(ctx, Product).save(product);
+    }
+
+    /** 平台运营/超管审批通过：对外展示 */
+    async approveMarketplaceProduct(ctx: RequestContext, productId: ID): Promise<void> {
+        const product = await this.getProductOrThrow(ctx, productId);
+        product.customFields.marketplaceStatus = MARKETPLACE_STATUS_APPROVED;
+        product.customFields.listedInMarketplace = true;
+        product.customFields.rejectReason = undefined;
+        await this.connection.getRepository(ctx, Product).save(product);
+    }
+
+    /** 平台运营/超管驳回：不展示，记录原因 */
+    async rejectMarketplaceProduct(ctx: RequestContext, productId: ID, reason: string): Promise<void> {
+        const product = await this.getProductOrThrow(ctx, productId);
+        product.customFields.marketplaceStatus = MARKETPLACE_STATUS_REJECTED;
+        product.customFields.listedInMarketplace = false;
+        product.customFields.rejectReason = reason;
+        await this.connection.getRepository(ctx, Product).save(product);
+    }
+
+    /** 待审批商品列表 */
+    async getPendingProducts(ctx: RequestContext): Promise<Product[]> {
+        return this.connection.getRepository(ctx, Product).find({
+            where: { customFields: { marketplaceStatus: MARKETPLACE_STATUS_PENDING } as any },
+        });
     }
 }

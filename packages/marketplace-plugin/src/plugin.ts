@@ -18,6 +18,8 @@ import { MarketplaceStockLocationStrategy } from './marketplace-stock.strategy';
 import { marketplaceOrderProcess } from './marketplace-order-process';
 import { paymentApiExtensions } from './payment/api-extensions';
 import { DirectPaymentResolver } from './payment/direct-payment.resolver';
+import { adminApiExtensions } from './api/admin.api-extensions';
+import { AdminMarketplaceResolver } from './api/admin.resolver';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
@@ -51,6 +53,10 @@ import { DirectPaymentResolver } from './payment/direct-payment.resolver';
     shopApiExtensions: {
         schema: (shopApiExtensions + paymentApiExtensions) as unknown as DocumentNode,
         resolvers: [ShopResolver, DirectPaymentResolver],
+    },
+    adminApiExtensions: {
+        schema: adminApiExtensions as unknown as DocumentNode,
+        resolvers: [AdminMarketplaceResolver],
     },
     providers: [
         MarketplaceService,
