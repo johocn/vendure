@@ -6,6 +6,10 @@ exports.paymentApiExtensions = `
         payMarketplaceSellerOrder(orderId: ID!, method: String!, metadata: JSON): PaySellerOrderResult!
     }
 
+    extend type Query {
+        myMarketplaceSellerOrders: [PaySellerOrder!]!
+    }
+
     union PaySellerOrderResult =
         | Order
         | OrderPaymentStateError
@@ -14,4 +18,21 @@ exports.paymentApiExtensions = `
         | PaymentDeclinedError
         | OrderStateTransitionError
         | NoActiveOrderError
+
+    type PaySellerOrder {
+        id: ID!
+        code: String!
+        state: String!
+        totalWithTax: Int!
+        sellerChannelName: String
+        lines: [PaySellerOrderLine!]!
+    }
+
+    type PaySellerOrderLine {
+        id: ID!
+        productName: String!
+        quantity: Int!
+        unitPriceWithTax: Int!
+        linePriceWithTax: Int!
+    }
 `;

@@ -1,5 +1,14 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { Allow, Ctx, InternalServerError, Permission, RequestContext, Transaction } from '@vendure/core';
+import {
+    Allow,
+    Ctx,
+    InternalServerError,
+    Permission,
+    RequestContext,
+    Transaction,
+    TransactionalConnection,
+} from '@vendure/core';
+import { Product } from '@vendure/core';
 
 import { MarketplaceSellerService } from '../marketplace-seller-service';
 import { MarketplaceService } from '../marketplace.service';
@@ -10,6 +19,7 @@ export class ShopResolver {
     constructor(
         private marketplaceSellerService: MarketplaceSellerService,
         private marketplaceService: MarketplaceService,
+        private connection: TransactionalConnection,
     ) {}
 
     @Mutation('registerMarketplaceSeller')
@@ -52,5 +62,72 @@ export class ShopResolver {
                   }
                 : null,
         }));
+    }
+
+    @Mutation('submitForMarketplace')
+    @Transaction()
+    @Allow(Permission.UpdateCatalog, Permission.UpdateProduct)
+    async submitForMarketplace(
+        @Ctx() ctx: RequestContext,
+        @Args() args: { productId: string },
+    ): Promise<boolean> {
+        await this.marketplaceService.submitForMarketplace(ctx, args.productId);
+        return true;
+    }
+
+    @Query('myMerchantProducts')
+    @Allow(Permission.ReadCatalog, Permission.ReadProduct)
+    async myMerchantProducts(@Ctx() ctx: RequestContext) {
+        const products = await this.connection.getRepository(ctx, Product).find({
+            where: { channels: { id: ctx.channelId } } as any,
+        });
+        return products.map(product => ({
+            id: product.id,
+            name: product.name,
+            slug: product.slug,
+            barcode: product.customFields.barcode ?? null,
+            internalCode: product.customFields.internalCode ?? null,
+            marketplaceStatus: product.customFields.marketplaceStatus ?? 'pending',
+            rejectReason: product.customFields.rejectReason ?? null,
+            listedInMarketplace: product.customFields.listedInMarketplace ?? false,
+        }));
+    }
+
+    @Query('marketplacePendingProducts')
+    @Allow(Permission.SuperAdmin, Permission.UpdateProduct)
+    async marketplacePendingProducts(@Ctx() ctx: RequestContext) {
+        const products = await this.marketplaceService.getPendingProducts(ctx);
+        return products.map(product => ({
+            id: product.id,
+            name: product.name,
+            slug: product.slug,
+            barcode: product.customFields.barcode ?? null,
+            internalCode: product.customFields.internalCode ?? null,
+            marketplaceStatus: product.customFields.marketplaceStatus ?? 'pending',
+            rejectReason: product.customFields.rejectReason ?? null,
+            listedInMarketplace: product.customFields.listedInMarketplace ?? false,
+        }));
+    }
+
+    @Mutation('marketplaceApprove')
+    @Transaction()
+    @Allow(Permission.SuperAdmin, Permission.UpdateProduct)
+    async marketplaceApprove(
+        @Ctx() ctx: RequestContext,
+        @Args() args: { productId: string },
+    ): Promise<boolean> {
+        await this.marketplaceService.approveMarketplaceProduct(ctx, args.productId);
+        return true;
+    }
+
+    @Mutation('marketplaceReject')
+    @Transaction()
+    @Allow(Permission.SuperAdmin, Permission.UpdateProduct)
+    async marketplaceReject(
+        @Ctx() ctx: RequestContext,
+        @Args() args: { productId: string; reason: string },
+    ): Promise<boolean> {
+        await this.marketplaceService.rejectMarketplaceProduct(ctx, args.productId, args.reason);
+        return true;
     }
 }

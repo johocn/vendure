@@ -17,9 +17,10 @@ const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
 const constants_1 = require("../constants");
 let DirectPaymentResolver = class DirectPaymentResolver {
-    constructor(orderService, customerService) {
+    constructor(orderService, customerService, connection) {
         this.orderService = orderService;
         this.customerService = customerService;
+        this.connection = connection;
     }
     async payMarketplaceSellerOrder(ctx, args) {
         var _a;
@@ -51,6 +52,50 @@ let DirectPaymentResolver = class DirectPaymentResolver {
         }
         return result;
     }
+    async myMarketplaceSellerOrders(ctx) {
+        if (!ctx.activeUserId) {
+            return [];
+        }
+        const customer = await this.customerService.findOneByUserId(ctx, ctx.activeUserId, false);
+        if (!customer) {
+            return [];
+        }
+        const qb = this.connection
+            .getRepository(ctx, core_1.Order)
+            .createQueryBuilder('order')
+            .leftJoinAndSelect('order.customer', 'customer')
+            .leftJoinAndSelect('order.channels', 'channel')
+            .leftJoinAndSelect('channel.seller', 'sellerChannel')
+            .leftJoinAndSelect('order.lines', 'line')
+            .leftJoinAndSelect('line.productVariant', 'productVariant')
+            .where('order.customFields.saleSource = :saleSource', {
+            saleSource: constants_1.SALE_SOURCE_MARKETPLACE,
+        })
+            .andWhere('customer.id = :customerId', { customerId: customer.id })
+            .andWhere('order.state != :draftState', { draftState: 'Draft' })
+            .orderBy('order.orderPlacedAt', 'DESC');
+        const orders = await qb.getMany();
+        return orders.map(order => {
+            var _a, _b, _c, _d, _e, _f, _g, _h;
+            return ({
+                id: order.id,
+                code: order.code,
+                state: order.state,
+                totalWithTax: order.totalWithTax,
+                sellerChannelName: (_g = (_d = (_c = (_b = (_a = order.channels) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.seller) === null || _c === void 0 ? void 0 : _c.name) !== null && _d !== void 0 ? _d : (_f = (_e = order.channels) === null || _e === void 0 ? void 0 : _e[0]) === null || _f === void 0 ? void 0 : _f.code) !== null && _g !== void 0 ? _g : null,
+                lines: ((_h = order.lines) !== null && _h !== void 0 ? _h : []).map(line => {
+                    var _a, _b;
+                    return ({
+                        id: line.id,
+                        productName: (_b = (_a = line.productVariant) === null || _a === void 0 ? void 0 : _a.name) !== null && _b !== void 0 ? _b : '',
+                        quantity: line.quantity,
+                        unitPriceWithTax: line.unitPriceWithTax,
+                        linePriceWithTax: line.linePriceWithTax,
+                    });
+                }),
+            });
+        });
+    }
 };
 exports.DirectPaymentResolver = DirectPaymentResolver;
 __decorate([
@@ -63,8 +108,17 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], DirectPaymentResolver.prototype, "payMarketplaceSellerOrder", null);
+__decorate([
+    (0, graphql_1.Query)('myMarketplaceSellerOrders'),
+    (0, core_1.Allow)(core_1.Permission.Owner),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], DirectPaymentResolver.prototype, "myMarketplaceSellerOrders", null);
 exports.DirectPaymentResolver = DirectPaymentResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [core_1.OrderService,
-        core_1.CustomerService])
+        core_1.CustomerService,
+        core_1.TransactionalConnection])
 ], DirectPaymentResolver);

@@ -1,10 +1,26 @@
 export const shopApiExtensions = `
     extend type Mutation {
         registerMarketplaceSeller(input: RegisterMarketplaceSellerInput!): RegisterMarketplaceSellerResult!
+        submitForMarketplace(productId: ID!): Boolean!
+        marketplaceApprove(productId: ID!): Boolean!
+        marketplaceReject(productId: ID!, reason: String!): Boolean!
     }
 
     extend type Query {
         marketplaceProducts: [MarketplaceProduct!]!
+        myMerchantProducts: [MyProduct!]!
+        marketplacePendingProducts: [MyProduct!]!
+    }
+
+    type MyProduct {
+        id: ID!
+        name: String!
+        slug: String!
+        barcode: String
+        internalCode: String
+        marketplaceStatus: String!
+        rejectReason: String
+        listedInMarketplace: Boolean!
     }
 
     type MarketplaceProduct {

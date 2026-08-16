@@ -1,4 +1,4 @@
-import { Args, Mutation, Resolver } from '@nestjs/graphql';
+import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 import {
     Allow,
     Ctx,
@@ -10,6 +10,7 @@ import {
     Permission,
     RequestContext,
     Transaction,
+    TransactionalConnection,
 } from '@vendure/core';
 import { SALE_SOURCE_MARKETPLACE } from '../constants';
 
@@ -18,6 +19,7 @@ export class DirectPaymentResolver {
     constructor(
         private orderService: OrderService,
         private customerService: CustomerService,
+        private connection: TransactionalConnection,
     ) {}
 
     @Mutation('payMarketplaceSellerOrder')
@@ -56,5 +58,47 @@ export class DirectPaymentResolver {
             return result;
         }
         return result;
+    }
+
+    @Query('myMarketplaceSellerOrders')
+    @Allow(Permission.Owner)
+    async myMarketplaceSellerOrders(@Ctx() ctx: RequestContext): Promise<any[]> {
+        if (!ctx.activeUserId) {
+            return [];
+        }
+        const customer = await this.customerService.findOneByUserId(ctx, ctx.activeUserId, false);
+        if (!customer) {
+            return [];
+        }
+        const qb = this.connection
+            .getRepository(ctx, Order)
+            .createQueryBuilder('order')
+            .leftJoinAndSelect('order.customer', 'customer')
+            .leftJoinAndSelect('order.channels', 'channel')
+            .leftJoinAndSelect('channel.seller', 'sellerChannel')
+            .leftJoinAndSelect('order.lines', 'line')
+            .leftJoinAndSelect('line.productVariant', 'productVariant')
+            .where('order.customFields.saleSource = :saleSource', {
+                saleSource: SALE_SOURCE_MARKETPLACE,
+            })
+            .andWhere('customer.id = :customerId', { customerId: customer.id })
+            .andWhere('order.state != :draftState', { draftState: 'Draft' })
+            .orderBy('order.orderPlacedAt', 'DESC');
+
+        const orders = await qb.getMany();
+        return orders.map(order => ({
+            id: order.id,
+            code: order.code,
+            state: order.state,
+            totalWithTax: order.totalWithTax,
+            sellerChannelName: order.channels?.[0]?.seller?.name ?? order.channels?.[0]?.code ?? null,
+            lines: (order.lines ?? []).map(line => ({
+                id: (line as any).id,
+                productName: (line as any).productVariant?.name ?? '',
+                quantity: (line as any).quantity,
+                unitPriceWithTax: (line as any).unitPriceWithTax,
+                linePriceWithTax: (line as any).linePriceWithTax,
+            })),
+        }));
     }
 }
