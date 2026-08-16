@@ -1,0 +1,17 @@
+{
+  "name": "@vendure/marketplace-plugin",
+  "version": "0.1.0",
+  "description": "Vendure marketplace: 自营 + 第三方商家，商户自收结",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w"
+  },
+  "dependencies": {
+    "@vendure/core": "^3.6.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
