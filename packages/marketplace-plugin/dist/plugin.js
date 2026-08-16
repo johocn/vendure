@@ -13,6 +13,10 @@ const core_2 = require("@vendure/core");
 const constants_1 = require("./constants");
 const custom_fields_1 = require("./custom-fields");
 const marketplace_service_1 = require("./marketplace.service");
+const marketplace_seller_service_1 = require("./marketplace-seller-service");
+const api_extensions_1 = require("./api/api-extensions");
+const shop_resolver_1 = require("./api/shop.resolver");
+const mv_shipping_eligibility_checker_1 = require("./config/mv-shipping-eligibility-checker");
 let MarketplacePlugin = MarketplacePlugin_1 = class MarketplacePlugin {
     static init(options) {
         MarketplacePlugin_1.options = options;
@@ -40,10 +44,16 @@ exports.MarketplacePlugin = MarketplacePlugin = MarketplacePlugin_1 = __decorate
                 ...(config.customFields.Seller || []),
                 ...custom_fields_1.marketplaceCustomFields.Seller,
             ];
+            config.shippingOptions.shippingEligibilityCheckers.push(mv_shipping_eligibility_checker_1.multivendorShippingEligibilityChecker);
             return config;
+        },
+        shopApiExtensions: {
+            schema: api_extensions_1.shopApiExtensions,
+            resolvers: [shop_resolver_1.ShopResolver],
         },
         providers: [
             marketplace_service_1.MarketplaceService,
+            marketplace_seller_service_1.MarketplaceSellerService,
             { provide: constants_1.MARKETPLACE_PLUGIN_OPTIONS, useFactory: () => MarketplacePlugin.options },
         ],
     })

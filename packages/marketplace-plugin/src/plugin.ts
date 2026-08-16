@@ -1,9 +1,14 @@
+import { DocumentNode } from 'graphql';
 import { VendurePlugin } from '@vendure/core';
 import { PluginCommonModule } from '@vendure/core';
 import { MARKETPLACE_PLUGIN_OPTIONS } from './constants';
 import { MarketplacePluginOptions } from './types';
 import { marketplaceCustomFields } from './custom-fields';
 import { MarketplaceService } from './marketplace.service';
+import { MarketplaceSellerService } from './marketplace-seller-service';
+import { shopApiExtensions } from './api/api-extensions';
+import { ShopResolver } from './api/shop.resolver';
+import { multivendorShippingEligibilityChecker } from './config/mv-shipping-eligibility-checker';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
@@ -24,10 +29,16 @@ import { MarketplaceService } from './marketplace.service';
             ...(config.customFields.Seller || []),
             ...marketplaceCustomFields.Seller!,
         ];
+        config.shippingOptions.shippingEligibilityCheckers.push(multivendorShippingEligibilityChecker);
         return config;
+    },
+    shopApiExtensions: {
+        schema: shopApiExtensions as unknown as DocumentNode,
+        resolvers: [ShopResolver],
     },
     providers: [
         MarketplaceService,
+        MarketplaceSellerService,
         { provide: MARKETPLACE_PLUGIN_OPTIONS, useFactory: () => MarketplacePlugin.options },
     ],
 })

@@ -4,3 +4,9 @@ export interface MarketplacePluginOptions {
     /** 「平台运营」角色 code */
     platformOpsRoleCode?: string;
 }
+export interface CreateSellerInput {
+    firstName: string;
+    lastName: string;
+    emailAddress: string;
+    password: string;
+}
