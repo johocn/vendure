@@ -1,6 +1,10 @@
 import { DocumentNode } from 'graphql';
-import { VendurePlugin } from '@vendure/core';
-import { PluginCommonModule } from '@vendure/core';
+import {
+    configureDefaultOrderProcess,
+    DefaultProductVariantPriceUpdateStrategy,
+    PluginCommonModule,
+    VendurePlugin,
+} from '@vendure/core';
 import { MARKETPLACE_PLUGIN_OPTIONS } from './constants';
 import { MarketplacePluginOptions } from './types';
 import { marketplaceCustomFields } from './custom-fields';
@@ -9,6 +13,8 @@ import { MarketplaceSellerService } from './marketplace-seller-service';
 import { shopApiExtensions } from './api/api-extensions';
 import { ShopResolver } from './api/shop.resolver';
 import { multivendorShippingEligibilityChecker } from './config/mv-shipping-eligibility-checker';
+import { MarketplaceSellerStrategy } from './marketplace-seller.strategy';
+import { marketplaceOrderProcess } from './marketplace-order-process';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
@@ -30,6 +36,12 @@ import { multivendorShippingEligibilityChecker } from './config/mv-shipping-elig
             ...marketplaceCustomFields.Seller!,
         ];
         config.shippingOptions.shippingEligibilityCheckers.push(multivendorShippingEligibilityChecker);
+
+        const customDefaultOrderProcess = configureDefaultOrderProcess({ checkFulfillmentStates: false });
+        config.orderOptions.process = [customDefaultOrderProcess, marketplaceOrderProcess];
+        config.orderOptions.orderSellerStrategy = new MarketplaceSellerStrategy();
+        config.catalogOptions.productVariantPriceUpdateStrategy =
+            new DefaultProductVariantPriceUpdateStrategy({ syncPricesAcrossChannels: true });
         return config;
     },
     shopApiExtensions: {

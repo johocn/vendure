@@ -9,7 +9,6 @@ var MarketplacePlugin_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MarketplacePlugin = void 0;
 const core_1 = require("@vendure/core");
-const core_2 = require("@vendure/core");
 const constants_1 = require("./constants");
 const custom_fields_1 = require("./custom-fields");
 const marketplace_service_1 = require("./marketplace.service");
@@ -17,6 +16,8 @@ const marketplace_seller_service_1 = require("./marketplace-seller-service");
 const api_extensions_1 = require("./api/api-extensions");
 const shop_resolver_1 = require("./api/shop.resolver");
 const mv_shipping_eligibility_checker_1 = require("./config/mv-shipping-eligibility-checker");
+const marketplace_seller_strategy_1 = require("./marketplace-seller.strategy");
+const marketplace_order_process_1 = require("./marketplace-order-process");
 let MarketplacePlugin = MarketplacePlugin_1 = class MarketplacePlugin {
     static init(options) {
         MarketplacePlugin_1.options = options;
@@ -26,7 +27,7 @@ let MarketplacePlugin = MarketplacePlugin_1 = class MarketplacePlugin {
 exports.MarketplacePlugin = MarketplacePlugin;
 exports.MarketplacePlugin = MarketplacePlugin = MarketplacePlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
-        imports: [core_2.PluginCommonModule],
+        imports: [core_1.PluginCommonModule],
         configuration: config => {
             config.customFields.Product = [
                 ...(config.customFields.Product || []),
@@ -45,6 +46,11 @@ exports.MarketplacePlugin = MarketplacePlugin = MarketplacePlugin_1 = __decorate
                 ...custom_fields_1.marketplaceCustomFields.Seller,
             ];
             config.shippingOptions.shippingEligibilityCheckers.push(mv_shipping_eligibility_checker_1.multivendorShippingEligibilityChecker);
+            const customDefaultOrderProcess = (0, core_1.configureDefaultOrderProcess)({ checkFulfillmentStates: false });
+            config.orderOptions.process = [customDefaultOrderProcess, marketplace_order_process_1.marketplaceOrderProcess];
+            config.orderOptions.orderSellerStrategy = new marketplace_seller_strategy_1.MarketplaceSellerStrategy();
+            config.catalogOptions.productVariantPriceUpdateStrategy =
+                new core_1.DefaultProductVariantPriceUpdateStrategy({ syncPricesAcrossChannels: true });
             return config;
         },
         shopApiExtensions: {
