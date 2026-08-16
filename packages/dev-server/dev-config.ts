@@ -54,6 +54,7 @@ import { CouponPlugin } from '@vendure/coupon-plugin';
 import { DeliveryPlugin } from '@vendure/delivery-plugin';
 import { SalesPlugin } from '@vendure/sales-plugin';
 import { SalesOrderItemPriceCalculationStrategy } from '@vendure/sales-plugin';
+import { MarketplacePlugin } from '@vendure/marketplace-plugin';
 import { CustomerServicePlugin } from '@vendure/customer-service-plugin';
 import { InventoryPlugin } from '@vendure/inventory-plugin';
 import { MessagePlugin } from '@vendure/message-plugin';
@@ -379,6 +380,7 @@ export const devConfig: VendureConfig = {
         CouponPlugin.init(),
         DeliveryPlugin.init(),
         SalesPlugin.init(),
+        MarketplacePlugin.init({}),
         CustomerServicePlugin.init(),
         InventoryPlugin.init(),
         OperationsPlugin.init(),
