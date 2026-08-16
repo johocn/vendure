@@ -15,6 +15,8 @@ import { ShopResolver } from './api/shop.resolver';
 import { multivendorShippingEligibilityChecker } from './config/mv-shipping-eligibility-checker';
 import { MarketplaceSellerStrategy } from './marketplace-seller.strategy';
 import { marketplaceOrderProcess } from './marketplace-order-process';
+import { paymentApiExtensions } from './payment/api-extensions';
+import { DirectPaymentResolver } from './payment/direct-payment.resolver';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
@@ -45,8 +47,8 @@ import { marketplaceOrderProcess } from './marketplace-order-process';
         return config;
     },
     shopApiExtensions: {
-        schema: shopApiExtensions as unknown as DocumentNode,
-        resolvers: [ShopResolver],
+        schema: (shopApiExtensions + paymentApiExtensions) as unknown as DocumentNode,
+        resolvers: [ShopResolver, DirectPaymentResolver],
     },
     providers: [
         MarketplaceService,
