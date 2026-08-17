@@ -38,6 +38,12 @@ let OrderTimeoutJob = class OrderTimeoutJob {
                     core_1.Logger.info(`Task ${taskId} status=${task.status}, skipping`, constants_1.loggerCtx);
                     return;
                 }
+                // SQL JobQueue（DefaultJobQueuePlugin）忽略 `delay` 选项，任务入队后可能立即执行。
+                // 若未到 dueAt 则跳过执行，任务保持 PENDING，由补偿扫描任务在到期后重新入队。
+                if (new Date() < task.dueAt) {
+                    core_1.Logger.debug(`Task ${taskId} not due until ${task.dueAt.toISOString()}, skipping (compensation will re-enqueue)`, constants_1.loggerCtx);
+                    return;
+                }
                 try {
                     const ctx = await this.buildCtx(task.channelId);
                     if (!ctx) {
