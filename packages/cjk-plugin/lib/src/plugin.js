@@ -694,9 +694,16 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     lng: Float!
                 }
 
+                type MapSdkConfig {
+                    provider: String!
+                    sdkUrl: String!
+                    hasConfigured: Boolean!
+                }
+
                 extend type Query {
                     mapDistricts(parentAdcode: String): [DistrictNode!]!
                     reverseGeocode(lat: Float!, lng: Float!): ReverseGeocodeResult!
+                    mapSdkConfig: MapSdkConfig!
                 }
 
                 extend type Query {

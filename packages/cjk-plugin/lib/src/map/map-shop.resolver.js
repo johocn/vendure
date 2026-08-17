@@ -26,6 +26,10 @@ let MapShopResolver = class MapShopResolver {
     async reverseGeocode(ctx, lat, lng) {
         return this.mapService.reverseGeocode(ctx, lat, lng);
     }
+    async mapSdkConfig(ctx) {
+        // 供前端加载地图 SDK 定位；apiKey 由服务端下发，前端不硬编码
+        return this.mapService.getSdkConfig(ctx);
+    }
 };
 exports.MapShopResolver = MapShopResolver;
 __decorate([
@@ -47,6 +51,14 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Number, Number]),
     __metadata("design:returntype", Promise)
 ], MapShopResolver.prototype, "reverseGeocode", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Public),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], MapShopResolver.prototype, "mapSdkConfig", null);
 exports.MapShopResolver = MapShopResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [map_service_1.MapService])

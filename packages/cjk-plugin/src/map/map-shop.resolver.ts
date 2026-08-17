@@ -25,4 +25,11 @@ export class MapShopResolver {
     ): Promise<ReverseGeocodeResult> {
         return this.mapService.reverseGeocode(ctx, lat, lng);
     }
+
+    @Query()
+    @Allow(Permission.Public)
+    async mapSdkConfig(@Ctx() ctx: RequestContext) {
+        // 供前端加载地图 SDK 定位；apiKey 由服务端下发，前端不硬编码
+        return this.mapService.getSdkConfig(ctx);
+    }
 }

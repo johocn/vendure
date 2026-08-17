@@ -6,4 +6,9 @@ export declare class MapShopResolver {
     constructor(mapService: MapService);
     mapDistricts(ctx: RequestContext, parentAdcode?: string): Promise<DistrictNode[]>;
     reverseGeocode(ctx: RequestContext, lat: number, lng: number): Promise<ReverseGeocodeResult>;
+    mapSdkConfig(ctx: RequestContext): Promise<{
+        provider: string;
+        sdkUrl: string;
+        hasConfigured: boolean;
+    }>;
 }
