@@ -12,6 +12,7 @@ export const catalogCustomFields: CustomFields = {
             name: 'belongCity',
             type: 'string',
             nullable: true,
+            public: true, // Shop API 需要读取，前端按归属城市展示
             label: [{ languageCode: LanguageCode.zh_Hans, value: '归属城市' }],
         },
         {
@@ -19,6 +20,7 @@ export const catalogCustomFields: CustomFields = {
             type: 'string',
             list: true,
             nullable: true,
+            public: true, // Shop API 需要读取，前端超区提示
             label: [{ languageCode: LanguageCode.zh_Hans, value: '服务城市列表' }],
         },
     ],
@@ -48,24 +50,28 @@ export const catalogCustomFields: CustomFields = {
             name: 'lat',
             type: 'float',
             nullable: true,
+            public: true, // Shop API 结账写入/读取下单定位
             label: [{ languageCode: LanguageCode.zh_Hans, value: '下单定位纬度' }],
         },
         {
             name: 'lng',
             type: 'float',
             nullable: true,
+            public: true,
             label: [{ languageCode: LanguageCode.zh_Hans, value: '下单定位经度' }],
         },
         {
             name: 'city',
             type: 'string',
             nullable: true,
+            public: true,
             label: [{ languageCode: LanguageCode.zh_Hans, value: '服务城市' }],
         },
         {
             name: 'deliveryType',
             type: 'string',
             nullable: true,
+            public: true,
             defaultValue: 'delivery',
             label: [{ languageCode: LanguageCode.zh_Hans, value: '履约方式' }],
             ui: {
