@@ -5,3 +5,6 @@ export * from './src/logistics-track.entity';
 export * from './src/logistics.service';
 export * from './src/tracking-provider';
 export * from './src/carrier-dictionary';
+export * from './src/location-utils';
+export * from './src/catalog-custom-fields';
+export * from './src/nearest-stock-location-strategy';

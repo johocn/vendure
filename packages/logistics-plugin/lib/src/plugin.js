@@ -21,6 +21,8 @@ const constants_1 = require("./constants");
 const fulfillment_custom_fields_1 = require("./fulfillment-custom-fields");
 const channel_custom_fields_1 = require("./channel-custom-fields");
 const channel_stock_allocation_strategy_1 = require("./channel-stock-allocation-strategy");
+const catalog_custom_fields_1 = require("./catalog-custom-fields");
+const nearest_stock_location_strategy_1 = require("./nearest-stock-location-strategy");
 const logistics_track_entity_1 = require("./logistics-track.entity");
 const logistics_service_1 = require("./logistics.service");
 const logistics_admin_resolver_1 = require("./logistics-admin.resolver");
@@ -134,7 +136,12 @@ exports.LogisticsPlugin = LogisticsPlugin = LogisticsPlugin_1 = __decorate([
         configuration: (config) => {
             config.customFields.Fulfillment = mergeCustomFields(config.customFields.Fulfillment, fulfillment_custom_fields_1.logisticsFulfillmentCustomFields.Fulfillment);
             config.customFields.Channel = mergeCustomFields(config.customFields.Channel, channel_custom_fields_1.logisticsChannelCustomFields.Channel);
+            config.customFields.Product = mergeCustomFields(config.customFields.Product, catalog_custom_fields_1.catalogCustomFields.Product);
+            config.customFields.StockLocation = mergeCustomFields(config.customFields.StockLocation, catalog_custom_fields_1.catalogCustomFields.StockLocation);
+            config.customFields.Order = mergeCustomFields(config.customFields.Order, catalog_custom_fields_1.catalogCustomFields.Order);
             config.orderOptions.stockAllocationStrategy = new channel_stock_allocation_strategy_1.ChannelStockAllocationStrategy();
+            // 就近发货：覆写仓库/门店分配策略（真正的按订单定位就近）
+            config.catalogOptions.stockLocationStrategy = new nearest_stock_location_strategy_1.NearestStockLocationStrategy();
             return config;
         },
         dashboard: '../dashboard/index.tsx',

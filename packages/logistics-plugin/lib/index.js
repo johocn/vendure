@@ -21,4 +21,7 @@ __exportStar(require("./src/logistics-track.entity"), exports);
 __exportStar(require("./src/logistics.service"), exports);
 __exportStar(require("./src/tracking-provider"), exports);
 __exportStar(require("./src/carrier-dictionary"), exports);
+__exportStar(require("./src/location-utils"), exports);
+__exportStar(require("./src/catalog-custom-fields"), exports);
+__exportStar(require("./src/nearest-stock-location-strategy"), exports);
 //# sourceMappingURL=index.js.map

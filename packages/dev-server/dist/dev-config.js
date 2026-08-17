@@ -49,6 +49,7 @@ const coupon_plugin_1 = require("@vendure/coupon-plugin");
 const delivery_plugin_1 = require("@vendure/delivery-plugin");
 const sales_plugin_1 = require("@vendure/sales-plugin");
 const sales_plugin_2 = require("@vendure/sales-plugin");
+const marketplace_plugin_1 = require("@vendure/marketplace-plugin");
 const customer_service_plugin_1 = require("@vendure/customer-service-plugin");
 const inventory_plugin_1 = require("@vendure/inventory-plugin");
 const message_plugin_1 = require("@vendure/message-plugin");
@@ -342,6 +343,7 @@ exports.devConfig = {
         coupon_plugin_1.CouponPlugin.init(),
         delivery_plugin_1.DeliveryPlugin.init(),
         sales_plugin_1.SalesPlugin.init(),
+        marketplace_plugin_1.MarketplacePlugin.init({}),
         customer_service_plugin_1.CustomerServicePlugin.init(),
         inventory_plugin_1.InventoryPlugin.init(),
         operations_plugin_1.OperationsPlugin.init(),

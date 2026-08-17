@@ -7,6 +7,8 @@ import { LogisticsPluginOptions } from './types';
 import { logisticsFulfillmentCustomFields } from './fulfillment-custom-fields';
 import { logisticsChannelCustomFields } from './channel-custom-fields';
 import { ChannelStockAllocationStrategy } from './channel-stock-allocation-strategy';
+import { catalogCustomFields } from './catalog-custom-fields';
+import { NearestStockLocationStrategy } from './nearest-stock-location-strategy';
 import { LogisticsTrack } from './logistics-track.entity';
 import { LogisticsService } from './logistics.service';
 import { LogisticsAdminResolver } from './logistics-admin.resolver';
@@ -109,7 +111,12 @@ const shopSchema = () => gql`
     configuration: (config) => {
         config.customFields.Fulfillment = mergeCustomFields(config.customFields.Fulfillment, logisticsFulfillmentCustomFields.Fulfillment);
         config.customFields.Channel = mergeCustomFields(config.customFields.Channel, logisticsChannelCustomFields.Channel);
+        config.customFields.Product = mergeCustomFields(config.customFields.Product, catalogCustomFields.Product);
+        config.customFields.StockLocation = mergeCustomFields(config.customFields.StockLocation, catalogCustomFields.StockLocation);
+        config.customFields.Order = mergeCustomFields(config.customFields.Order, catalogCustomFields.Order);
         config.orderOptions.stockAllocationStrategy = new ChannelStockAllocationStrategy();
+        // 就近发货：覆写仓库/门店分配策略（真正的按订单定位就近）
+        config.catalogOptions.stockLocationStrategy = new NearestStockLocationStrategy();
         return config;
     },
     dashboard: '../dashboard/index.tsx',
