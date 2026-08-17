@@ -44,7 +44,11 @@ let MapService = class MapService {
             }
         }
         // 解密后返回(加密格式 enc:xxx → 明文)
-        return config ? (0, map_crypto_1.decryptMapConfig)(config) : null;
+        const decrypted = config ? (0, map_crypto_1.decryptMapConfig)(config) : null;
+        // 配置存在但缺少有效 provider（如后台误存空对象）时视为未配置，避免 registry.get(undefined) 抛错
+        if (decrypted && !decrypted.provider)
+            return null;
+        return decrypted;
     }
     /**
      * 包装 provider 调用，捕获 i18n 错误并翻译
