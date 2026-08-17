@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import {
+    ChannelService,
     EntityHydrator,
     ID,
+    idsAreEqual,
     Product,
     RequestContext,
     TransactionalConnection,
@@ -23,18 +25,17 @@ export class MarketplaceService {
     constructor(
         private connection: TransactionalConnection,
         private entityHydrator: EntityHydrator,
+        private channelService: ChannelService,
     ) {}
 
     /** 校验条形码在平台内唯一（跨所有 Channel）。返回所属 ProductId 与首个 VariantId；空则无冲突。 */
     async findBarcodeOwner(barcode: string): Promise<{ productId: ID; variantId: ID } | null> {
         if (!barcode) return null;
         const repo = this.connection.rawConnection.getRepository(Product);
-        const product = await repo
-            .createQueryBuilder('product')
-            .leftJoinAndSelect('product.customFields', 'cf')
-            .leftJoinAndSelect('product.variants', 'variant')
-            .where('cf.barcode = :barcode', { barcode })
-            .getOne();
+        const product = await repo.findOne({
+            where: { customFields: { barcode } as any },
+            relations: ['variants'],
+        });
         if (!product || !product.variants || product.variants.length === 0) {
             return null;
         }
@@ -74,6 +75,12 @@ export class MarketplaceService {
     /** 平台运营/超管审批通过：对外展示 */
     async approveMarketplaceProduct(ctx: RequestContext, productId: ID): Promise<void> {
         const product = await this.getProductOrThrow(ctx, productId);
+        // 商家商品归属于 default + 商家渠道：merchantRef 指向非默认渠道（与分单策略一致）。
+        // 仅属于 default 的自营商品则 merchantRef 保持 null。
+        await this.entityHydrator.hydrate(ctx, product, { relations: ['channels'] } as any);
+        const defaultChannel = await this.channelService.getDefaultChannel(ctx);
+        const nonDefaultChannel = product.channels?.find(c => !idsAreEqual(c.id, defaultChannel.id));
+        product.customFields.merchantRef = nonDefaultChannel ? (nonDefaultChannel.id as any) : null;
         product.customFields.marketplaceStatus = MARKETPLACE_STATUS_APPROVED;
         product.customFields.listedInMarketplace = true;
         product.customFields.rejectReason = undefined;

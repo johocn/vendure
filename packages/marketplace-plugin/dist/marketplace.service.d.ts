@@ -1,4 +1,4 @@
-import { EntityHydrator, ID, Product, RequestContext, TransactionalConnection } from '@vendure/core';
+import { ChannelService, EntityHydrator, ID, Product, RequestContext, TransactionalConnection } from '@vendure/core';
 export interface MarketplaceProductsOptions {
     take?: number;
     skip?: number;
@@ -6,7 +6,8 @@ export interface MarketplaceProductsOptions {
 export declare class MarketplaceService {
     private connection;
     private entityHydrator;
-    constructor(connection: TransactionalConnection, entityHydrator: EntityHydrator);
+    private channelService;
+    constructor(connection: TransactionalConnection, entityHydrator: EntityHydrator, channelService: ChannelService);
     /** 校验条形码在平台内唯一（跨所有 Channel）。返回所属 ProductId 与首个 VariantId；空则无冲突。 */
     findBarcodeOwner(barcode: string): Promise<{
         productId: ID;

@@ -124,18 +124,11 @@ function extendSchemaWithPluginApiExtensions(
     apiType: 'admin' | 'shop',
 ) {
     const extensions = getPluginAPIExtensions(plugins, apiType);
-    // eslint-disable-next-line no-console
-    console.log(`[extendSchemaWithPluginApiExtensions] apiType=${apiType} extensions count=${extensions.length}`);
     extensions.forEach((e, i) => {
         const schemaVal = typeof e.schema === 'function' ? e.schema(schema) : e.schema;
         if (schemaVal) {
-            // eslint-disable-next-line no-console
-            console.log(`  ext[${i}] defs=${schemaVal.definitions.length}`);
             try {
                 schema = extendSchema(schema, schemaVal);
-                const qFields = Object.keys(schema.getQueryType()?.getFields() || {});
-                // eslint-disable-next-line no-console
-                console.log(`  after ext[${i}] Query fields count=${qFields.length} has channelAuthConfig=${qFields.includes('channelAuthConfig')}`);
             } catch (err: any) {
                 // eslint-disable-next-line no-console
                 console.log(`  ext[${i}] extendSchema ERROR: ${err.message}`);

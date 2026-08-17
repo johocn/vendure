@@ -1,5 +1,5 @@
 import { OnApplicationBootstrap } from '@nestjs/common';
-import { DocumentNode } from 'graphql';
+import { DocumentNode, parse } from 'graphql';
 import {
     ChannelService,
     ConfigService,
@@ -70,11 +70,11 @@ import { SettlementService } from './settlement.service';
         return config;
     },
     shopApiExtensions: {
-        schema: (shopApiExtensions + paymentApiExtensions) as unknown as DocumentNode,
+        schema: (): DocumentNode => parse(`${shopApiExtensions}\n${paymentApiExtensions}`),
         resolvers: [ShopResolver, DirectPaymentResolver],
     },
     adminApiExtensions: {
-        schema: adminApiExtensions as unknown as DocumentNode,
+        schema: (): DocumentNode => parse(`${adminApiExtensions}`),
         resolvers: [AdminMarketplaceResolver],
     },
     providers: [
@@ -82,10 +82,6 @@ import { SettlementService } from './settlement.service';
         MarketplaceSellerService,
         SettlementService,
         LedgerService,
-        RoleService,
-        ChannelService,
-        ConfigService,
-        RequestContextService,
         { provide: MARKETPLACE_PLUGIN_OPTIONS, useFactory: () => MarketplacePlugin.options },
     ],
     controllers: [MerchantApiController],

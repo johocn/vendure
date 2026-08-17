@@ -7,6 +7,7 @@
     "scripts": {
         "populate": "node -r ts-node/register -r dotenv/config populate-dev-server.ts",
         "populate:china": "node -r ts-node/register -r dotenv/config -r tsconfig-paths/register populate-china-dev.ts",
+        "e2e:marketplace": "node -r ts-node/register -r dotenv/config -r tsconfig-paths/register e2e-marketplace-test.ts",
         "dev:server": "node -r ts-node/register -r dotenv/config -r tsconfig-paths/register index.ts",
         "dev:server:instrumented": "IS_INSTRUMENTED=true node -r ts-node/register -r dotenv/config -r tsconfig-paths/register -r ./instrumentation.ts index.ts",
         "dev:worker": "node -r ts-node/register -r dotenv/config -r tsconfig-paths/register index-worker.ts",

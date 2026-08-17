@@ -44,13 +44,13 @@ export class MarketplaceInventoryLedger extends VendureEntity {
     @Column()
     actionType: string; // 上架/补货/销售/发货/核销/审批
 
-    @Column({ type: 'datetime' })
+    @Column({ type: 'timestamp' })
     validFrom: Date;
 
-    @Column({ type: 'datetime', nullable: true })
+    @Column({ type: 'timestamp', nullable: true })
     validTo: Date | null;
 
     @Index()
-    @Column({ nullable: true })
+    @Column({ type: 'varchar', nullable: true })
     orderId: string | null;
 }

@@ -58,23 +58,15 @@ function buildSchemaFromVendureConfig(schema, config, apiType) {
 }
 function extendSchemaWithPluginApiExtensions(schema, plugins, apiType) {
     const extensions = (0, plugin_metadata_1.getPluginAPIExtensions)(plugins, apiType);
-    // eslint-disable-next-line no-console
-    console.log(`[extendSchemaWithPluginApiExtensions] apiType=${apiType} extensions count=${extensions.length}`);
     extensions.forEach((e, i) => {
-        var _a;
         const schemaVal = typeof e.schema === 'function' ? e.schema(schema) : e.schema;
         if (schemaVal) {
-            // eslint-disable-next-line no-console
-            console.log(`  ext[${i}] defs=${schemaVal.definitions.length}`);
             try {
                 schema = (0, index_1.extendSchema)(schema, schemaVal);
-                const qFields = Object.keys(((_a = schema.getQueryType()) === null || _a === void 0 ? void 0 : _a.getFields()) || {});
-                // eslint-disable-next-line no-console
-                console.log(`  after ext[${i}] Query fields count=${qFields.length} has channelAuthConfig=${qFields.includes('channelAuthConfig')}`);
             }
             catch (err) {
                 // eslint-disable-next-line no-console
-                console.log(`  ext[${i}] extendSchema ERROR: ${err.message}`);
+                console.log(`  ext[${i}] plugin=${e.pluginName ?? '?'} extendSchema ERROR: ${err.message}`);
                 throw err;
             }
         }

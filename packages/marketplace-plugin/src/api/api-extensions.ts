@@ -56,5 +56,10 @@ export const shopApiExtensions = `
         token: String!
     }
 
-    union RegisterMarketplaceSellerResult = RegisterMarketplaceSellerSuccess | ErrorResult
+    type RegisterMarketplaceSellerError {
+        errorCode: String!
+        message: String!
+    }
+
+    union RegisterMarketplaceSellerResult = RegisterMarketplaceSellerSuccess | RegisterMarketplaceSellerError
 `;

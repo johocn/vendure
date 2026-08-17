@@ -14,21 +14,20 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const constants_1 = require("./constants");
 let MarketplaceService = class MarketplaceService {
-    constructor(connection, entityHydrator) {
+    constructor(connection, entityHydrator, channelService) {
         this.connection = connection;
         this.entityHydrator = entityHydrator;
+        this.channelService = channelService;
     }
     /** 校验条形码在平台内唯一（跨所有 Channel）。返回所属 ProductId 与首个 VariantId；空则无冲突。 */
     async findBarcodeOwner(barcode) {
         if (!barcode)
             return null;
         const repo = this.connection.rawConnection.getRepository(core_1.Product);
-        const product = await repo
-            .createQueryBuilder('product')
-            .leftJoinAndSelect('product.customFields', 'cf')
-            .leftJoinAndSelect('product.variants', 'variant')
-            .where('cf.barcode = :barcode', { barcode })
-            .getOne();
+        const product = await repo.findOne({
+            where: { customFields: { barcode } },
+            relations: ['variants'],
+        });
         if (!product || !product.variants || product.variants.length === 0) {
             return null;
         }
@@ -63,7 +62,14 @@ let MarketplaceService = class MarketplaceService {
     }
     /** 平台运营/超管审批通过：对外展示 */
     async approveMarketplaceProduct(ctx, productId) {
+        var _a;
         const product = await this.getProductOrThrow(ctx, productId);
+        // 商家商品归属于 default + 商家渠道：merchantRef 指向非默认渠道（与分单策略一致）。
+        // 仅属于 default 的自营商品则 merchantRef 保持 null。
+        await this.entityHydrator.hydrate(ctx, product, { relations: ['channels'] });
+        const defaultChannel = await this.channelService.getDefaultChannel(ctx);
+        const nonDefaultChannel = (_a = product.channels) === null || _a === void 0 ? void 0 : _a.find(c => !(0, core_1.idsAreEqual)(c.id, defaultChannel.id));
+        product.customFields.merchantRef = nonDefaultChannel ? nonDefaultChannel.id : null;
         product.customFields.marketplaceStatus = constants_1.MARKETPLACE_STATUS_APPROVED;
         product.customFields.listedInMarketplace = true;
         product.customFields.rejectReason = undefined;
@@ -112,5 +118,6 @@ exports.MarketplaceService = MarketplaceService;
 exports.MarketplaceService = MarketplaceService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
-        core_1.EntityHydrator])
+        core_1.EntityHydrator,
+        core_1.ChannelService])
 ], MarketplaceService);

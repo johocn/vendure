@@ -42,7 +42,15 @@ function getPluginAPIExtensions(plugins, apiType) {
     const extensions = apiType === 'shop'
         ? plugins.map(p => reflectMetadata(p, exports.PLUGIN_METADATA.SHOP_API_EXTENSIONS))
         : plugins.map(p => reflectMetadata(p, exports.PLUGIN_METADATA.ADMIN_API_EXTENSIONS));
-    return extensions.filter(shared_utils_1.notNullOrUndefined);
+    return extensions
+        .map((ext, i) => {
+        if (!ext) {
+            return null;
+        }
+        const p = plugins[i];
+        return Object.assign(Object.assign({}, ext), { pluginName: (p === null || p === void 0 ? void 0 : p.name) || (p === null || p === void 0 ? void 0 : p.module) ? p.name : (p === null || p === void 0 ? void 0 : p.module) });
+    })
+        .filter(shared_utils_1.notNullOrUndefined);
 }
 function getPluginDashboardExtensions(plugins) {
     return plugins.map(p => reflectMetadata(p, exports.PLUGIN_METADATA.DASHBOARD)).filter(shared_utils_1.notNullOrUndefined);

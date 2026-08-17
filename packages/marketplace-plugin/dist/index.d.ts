@@ -1,6 +1,9 @@
 export * from './plugin';
 export * from './constants';
 export * from './types';
+export * from './marketplace.service';
+export * from './marketplace-seller-service';
+export * from './settlement.service';
 declare module '@vendure/core/dist/entity/custom-entity-fields' {
     interface CustomOrderFields {
         saleSource: string;

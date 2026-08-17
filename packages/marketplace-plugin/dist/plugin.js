@@ -11,6 +11,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var MarketplacePlugin_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MarketplacePlugin = void 0;
+const graphql_1 = require("graphql");
 const core_1 = require("@vendure/core");
 const constants_1 = require("./constants");
 const ledger_service_1 = require("./ledger.service");
@@ -196,11 +197,11 @@ exports.MarketplacePlugin = MarketplacePlugin = MarketplacePlugin_1 = __decorate
             return config;
         },
         shopApiExtensions: {
-            schema: (api_extensions_1.shopApiExtensions + api_extensions_2.paymentApiExtensions),
+            schema: () => (0, graphql_1.parse)(`${api_extensions_1.shopApiExtensions}\n${api_extensions_2.paymentApiExtensions}`),
             resolvers: [shop_resolver_1.ShopResolver, direct_payment_resolver_1.DirectPaymentResolver],
         },
         adminApiExtensions: {
-            schema: admin_api_extensions_1.adminApiExtensions,
+            schema: () => (0, graphql_1.parse)(`${admin_api_extensions_1.adminApiExtensions}`),
             resolvers: [admin_resolver_1.AdminMarketplaceResolver],
         },
         providers: [
@@ -208,10 +209,6 @@ exports.MarketplacePlugin = MarketplacePlugin = MarketplacePlugin_1 = __decorate
             marketplace_seller_service_1.MarketplaceSellerService,
             settlement_service_1.SettlementService,
             ledger_service_1.LedgerService,
-            core_1.RoleService,
-            core_1.ChannelService,
-            core_1.ConfigService,
-            core_1.RequestContextService,
             { provide: constants_1.MARKETPLACE_PLUGIN_OPTIONS, useFactory: () => MarketplacePlugin.options },
         ],
         controllers: [merchant_api_controller_1.MerchantApiController],
