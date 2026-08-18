@@ -4,18 +4,27 @@ import { StockInOrder } from './entities/stock-in-order.entity';
 import { StockOutOrder } from './entities/stock-out-order.entity';
 import { StockMoveOrder } from './entities/stock-move-order.entity';
 import { StocktakeOrder } from './entities/stocktake-order.entity';
+import { StockLedgerService, LedgerBizType } from './stock-ledger.service';
+/** 账本元信息（写入 adjustStockForLocation 时可选传入，用于在仓库/门店维度落供销存账本）。 */
+export interface LedgerMeta {
+    bizType: LedgerBizType;
+    bizCode?: string;
+    orderLineId?: ID;
+    otherLocationId?: ID;
+}
 export declare class InventoryService {
     private connection;
     private stockMovementService;
     private stockLevelService;
     private stockLocationService;
-    constructor(connection: TransactionalConnection, stockMovementService: StockMovementService, stockLevelService: StockLevelService, stockLocationService: StockLocationService);
+    private stockLedgerService;
+    constructor(connection: TransactionalConnection, stockMovementService: StockMovementService, stockLevelService: StockLevelService, stockLocationService: StockLocationService, stockLedgerService: StockLedgerService);
     /**
      * 调整某仓库的库存（delta 为正数表示增加，负数表示减少）
      * 通过 adjustProductVariantStock 写入 StockAdjustment 流水
      * 在 customFields.businessReason 记录业务来源（无需二次查询）
      */
-    protected adjustStockForLocation(ctx: RequestContext, variantId: ID, locationId: ID, delta: number, reason: string): Promise<void>;
+    protected adjustStockForLocation(ctx: RequestContext, variantId: ID, locationId: ID, delta: number, reason: string, meta?: LedgerMeta): Promise<void>;
     /**
      * 校验源仓库存是否充足（available = stockOnHand - stockAllocated）
      */
@@ -55,6 +64,44 @@ export declare class InventoryService {
         items: StockLocation[];
         totalItems: number;
     }>;
+    findStockLedger(ctx: RequestContext, options?: {
+        productVariantId?: ID;
+        locationId?: ID;
+        bizType?: string;
+        bizCode?: string;
+        orderLineId?: ID;
+        page?: number;
+        pageSize?: number;
+    }): Promise<{
+        items: any[];
+        totalItems: number;
+    }>;
+    /**
+     * 多库库存展示（就近门店库存）：返回某商品在各仓库/门店的逐仓可售库存 + 距离。
+     * - productId 必填；variantId 省略时返回该商品全部 variant。
+     * - 带 lat/lng 时按距离升序排序（无坐标为 -1 排末尾）；带 city 时仅保留服务该城市的仓。
+     */
+    findNearbyStock(ctx: RequestContext, options: {
+        productId: ID;
+        variantId?: ID;
+        lat?: number;
+        lng?: number;
+        city?: string;
+    }): Promise<Array<{
+        location: StockLocation;
+        distanceKm: number;
+        variants: Array<{
+            variantId: ID;
+            variantName: string;
+            sku: string;
+            stockOnHand: number;
+            stockAllocated: number;
+            stockAvailable: number;
+        }>;
+    }>>;
+    private locationServesCity;
+    private locationDistanceKm;
+    private haversineKm;
     createStockInOrder(ctx: RequestContext, input: {
         type?: string;
         note?: string;

@@ -18,13 +18,15 @@ const stock_in_order_entity_1 = require("./entities/stock-in-order.entity");
 const stock_out_order_entity_1 = require("./entities/stock-out-order.entity");
 const stock_move_order_entity_1 = require("./entities/stock-move-order.entity");
 const stocktake_order_entity_1 = require("./entities/stocktake-order.entity");
+const stock_ledger_service_1 = require("./stock-ledger.service");
 const loggerCtx = 'InventoryService';
 let InventoryService = class InventoryService {
-    constructor(connection, stockMovementService, stockLevelService, stockLocationService) {
+    constructor(connection, stockMovementService, stockLevelService, stockLocationService, stockLedgerService) {
         this.connection = connection;
         this.stockMovementService = stockMovementService;
         this.stockLevelService = stockLevelService;
         this.stockLocationService = stockLocationService;
+        this.stockLedgerService = stockLedgerService;
     }
     // ===== 内部辅助方法 =====
     /**
@@ -32,16 +34,33 @@ let InventoryService = class InventoryService {
      * 通过 adjustProductVariantStock 写入 StockAdjustment 流水
      * 在 customFields.businessReason 记录业务来源（无需二次查询）
      */
-    async adjustStockForLocation(ctx, variantId, locationId, delta, reason) {
+    async adjustStockForLocation(ctx, variantId, locationId, delta, reason, meta) {
         var _a;
         const current = await this.stockLevelService.getStockLevel(ctx, variantId, locationId);
-        const newOnHand = current.stockOnHand + delta;
+        const beforeOnHand = current.stockOnHand;
+        const newOnHand = beforeOnHand + delta;
         const adjustments = await this.stockMovementService.adjustProductVariantStock(ctx, variantId, [{ stockLocationId: locationId, stockOnHand: newOnHand }]);
         // 直接写入 customFields.businessReason
         const adjustmentRepo = this.connection.getRepository(ctx, core_1.StockAdjustment);
         for (const adj of adjustments) {
             adj.customFields = Object.assign(Object.assign({}, ((_a = adj.customFields) !== null && _a !== void 0 ? _a : {})), { businessReason: reason });
             await adjustmentRepo.save(adj);
+        }
+        // 供销存账本：真实 onHand 变动，同事务写一条
+        if (meta) {
+            const ledgerInput = {
+                productVariantId: variantId,
+                stockLocationId: locationId,
+                bizType: meta.bizType,
+                bizCode: meta.bizCode,
+                orderLineId: meta.orderLineId,
+                otherLocationId: meta.otherLocationId,
+                quantity: delta,
+                beforeOnHand,
+                afterOnHand: newOnHand,
+                reason,
+            };
+            await this.stockLedgerService.record(ctx, ledgerInput);
         }
         core_1.Logger.info(`Stock adjusted: variant=${variantId} location=${locationId} delta=${delta} reason=${reason}`, loggerCtx);
     }
@@ -133,6 +152,79 @@ let InventoryService = class InventoryService {
         });
         return { items: result.items, totalItems: result.totalItems };
     }
+    async findStockLedger(ctx, options) {
+        return this.stockLedgerService.list(ctx, options);
+    }
+    // ===== 多库库存展示 =====
+    /**
+     * 多库库存展示（就近门店库存）：返回某商品在各仓库/门店的逐仓可售库存 + 距离。
+     * - productId 必填；variantId 省略时返回该商品全部 variant。
+     * - 带 lat/lng 时按距离升序排序（无坐标为 -1 排末尾）；带 city 时仅保留服务该城市的仓。
+     */
+    async findNearbyStock(ctx, options) {
+        const locations = (await this.stockLocationService.findAll(ctx, { take: 10000 })).items;
+        const variantRepo = this.connection.getRepository(ctx, core_1.ProductVariant);
+        const variants = await variantRepo.find({
+            where: options.variantId
+                ? { id: options.variantId }
+                : { product: { id: options.productId } },
+            relations: ['product'],
+        });
+        const origin = options.lat != null && options.lng != null
+            ? { lat: options.lat, lng: options.lng }
+            : null;
+        const rows = [];
+        for (const loc of locations) {
+            if (options.city && !this.locationServesCity(loc, options.city)) {
+                continue;
+            }
+            const distanceKm = this.locationDistanceKm(loc, origin);
+            const perLocation = [];
+            for (const v of variants) {
+                const level = await this.stockLevelService.getStockLevel(ctx, v.id, loc.id);
+                perLocation.push({
+                    variantId: v.id,
+                    variantName: v.name,
+                    sku: v.sku,
+                    stockOnHand: level.stockOnHand,
+                    stockAllocated: level.stockAllocated,
+                    stockAvailable: level.stockOnHand - level.stockAllocated,
+                });
+            }
+            rows.push({ location: loc, distanceKm, variants: perLocation });
+        }
+        // 带定位：距离升序（无坐标为 MAX 排末尾）；无定位：保持原顺序
+        rows.sort((a, b) => a.distanceKm - b.distanceKm);
+        return rows;
+    }
+    locationServesCity(loc, city) {
+        var _a;
+        const serviceCities = (_a = loc.customFields) === null || _a === void 0 ? void 0 : _a.serviceCities;
+        if (!Array.isArray(serviceCities) || serviceCities.length === 0) {
+            return true;
+        }
+        return serviceCities.includes(city);
+    }
+    locationDistanceKm(loc, origin) {
+        var _a;
+        if (!origin)
+            return -1;
+        const cf = (_a = loc.customFields) !== null && _a !== void 0 ? _a : {};
+        const lat = cf.lat != null ? Number(cf.lat) : NaN;
+        const lng = cf.lng != null ? Number(cf.lng) : NaN;
+        if (!isFinite(lat) || !isFinite(lng))
+            return Number.MAX_SAFE_INTEGER;
+        return this.haversineKm(origin.lat, origin.lng, lat, lng);
+    }
+    haversineKm(lat1, lng1, lat2, lng2) {
+        const R = 6371;
+        const toRad = (deg) => (deg * Math.PI) / 180;
+        const dLat = toRad(lat2 - lat1);
+        const dLng = toRad(lng2 - lng1);
+        const a = Math.sin(dLat / 2) ** 2 +
+            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+        return 2 * R * Math.asin(Math.sqrt(a));
+    }
     // ===== 入库单 =====
     async createStockInOrder(ctx, input) {
         const order = new stock_in_order_entity_1.StockInOrder({
@@ -188,7 +280,7 @@ let InventoryService = class InventoryService {
                 throw new core_1.UserInputError(`StockInOrder ${id} not found`);
             this.assertTransition(order, constants_1.StockInState.Pending, constants_1.StockInState.Completed, constants_1.STOCK_IN_TRANSITIONS);
             for (const line of order.lines) {
-                await this.adjustStockForLocation(txCtx, line.productVariantId, order.targetLocationId, line.quantity, `StockInOrder#${order.code}:inbound`);
+                await this.adjustStockForLocation(txCtx, line.productVariantId, order.targetLocationId, line.quantity, `StockInOrder#${order.code}:inbound`, { bizType: 'stockIn', bizCode: order.code });
             }
             order.state = constants_1.StockInState.Completed;
             order.completedAt = new Date();
@@ -265,7 +357,7 @@ let InventoryService = class InventoryService {
             }
             // 2. 扣减库存
             for (const line of order.lines) {
-                await this.adjustStockForLocation(txCtx, line.productVariantId, order.sourceLocationId, -line.quantity, `StockOutOrder#${order.code}:outbound`);
+                await this.adjustStockForLocation(txCtx, line.productVariantId, order.sourceLocationId, -line.quantity, `StockOutOrder#${order.code}:outbound`, { bizType: 'stockOut', bizCode: order.code });
             }
             order.state = constants_1.StockOutState.Completed;
             order.completedAt = new Date();
@@ -343,7 +435,7 @@ let InventoryService = class InventoryService {
                 await this.assertSufficientStock(txCtx, line.productVariantId, order.sourceLocationId, line.quantity);
             }
             for (const line of order.lines) {
-                await this.adjustStockForLocation(txCtx, line.productVariantId, order.sourceLocationId, -line.quantity, `StockMoveOrder#${order.code}:source-out`);
+                await this.adjustStockForLocation(txCtx, line.productVariantId, order.sourceLocationId, -line.quantity, `StockMoveOrder#${order.code}:source-out`, { bizType: 'stockMove', bizCode: order.code, otherLocationId: order.targetLocationId });
             }
             order.state = constants_1.StockMoveState.InTransit;
             order.shippedAt = new Date();
@@ -364,7 +456,7 @@ let InventoryService = class InventoryService {
                 throw new core_1.UserInputError(`StockMoveOrder ${id} not found`);
             this.assertTransition(order, constants_1.StockMoveState.InTransit, constants_1.StockMoveState.Received, constants_1.STOCK_MOVE_TRANSITIONS);
             for (const line of order.lines) {
-                await this.adjustStockForLocation(txCtx, line.productVariantId, order.targetLocationId, +line.quantity, `StockMoveOrder#${order.code}:target-in`);
+                await this.adjustStockForLocation(txCtx, line.productVariantId, order.targetLocationId, +line.quantity, `StockMoveOrder#${order.code}:target-in`, { bizType: 'stockMove', bizCode: order.code, otherLocationId: order.sourceLocationId });
             }
             order.state = constants_1.StockMoveState.Received;
             order.receivedAt = new Date();
@@ -403,7 +495,7 @@ let InventoryService = class InventoryService {
             }
             if (order.state === constants_1.StockMoveState.InTransit) {
                 for (const line of order.lines) {
-                    await this.adjustStockForLocation(txCtx, line.productVariantId, order.sourceLocationId, +line.quantity, `StockMoveOrder#${order.code}:rollback-source`);
+                    await this.adjustStockForLocation(txCtx, line.productVariantId, order.sourceLocationId, +line.quantity, `StockMoveOrder#${order.code}:rollback-source`, { bizType: 'stockMove', bizCode: order.code, otherLocationId: order.targetLocationId });
                 }
             }
             order.state = constants_1.StockMoveState.Cancelled;
@@ -537,7 +629,7 @@ let InventoryService = class InventoryService {
             }
             for (const line of order.lines) {
                 if (line.difference !== 0) {
-                    await this.adjustStockForLocation(txCtx, line.productVariantId, order.locationId, line.difference, `StocktakeOrder#${order.code}:reconcile`);
+                    await this.adjustStockForLocation(txCtx, line.productVariantId, order.locationId, line.difference, `StocktakeOrder#${order.code}:reconcile`, { bizType: 'stocktake', bizCode: order.code });
                 }
             }
             order.state = constants_1.StocktakeState.Completed;
@@ -564,5 +656,6 @@ exports.InventoryService = InventoryService = __decorate([
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
         core_1.StockMovementService,
         core_1.StockLevelService,
-        core_1.StockLocationService])
+        core_1.StockLocationService,
+        stock_ledger_service_1.StockLedgerService])
 ], InventoryService);

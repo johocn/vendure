@@ -3,8 +3,11 @@ import { ModuleRef } from '@nestjs/core';
 import { Injector, Logger, PluginCommonModule, VendurePlugin } from '@vendure/core';
 
 import { InventoryAdminResolver } from './inventory-admin.resolver';
+import { InventoryShopResolver } from './inventory-shop.resolver';
 import { InventoryService } from './inventory.service';
 import { RoleSyncService } from './role-sync';
+import { StockLedgerService } from './stock-ledger.service';
+import { OrderStockLedger } from './entities/order-stock-ledger.entity';
 import { StockInOrder, StockInOrderLine } from './entities/stock-in-order.entity';
 import { StockOutOrder, StockOutOrderLine } from './entities/stock-out-order.entity';
 import { StockMoveOrder, StockMoveOrderLine } from './entities/stock-move-order.entity';
@@ -25,13 +28,46 @@ const { gql } = require('graphql-tag');
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    providers: [InventoryService],
+    providers: [InventoryService, StockLedgerService],
     entities: [
+        OrderStockLedger,
         StockInOrder, StockInOrderLine,
         StockOutOrder, StockOutOrderLine,
         StockMoveOrder, StockMoveOrderLine,
         StocktakeOrder, StocktakeOrderLine,
     ],
+    shopApiExtensions: {
+        schema: () => gql`
+            type NearVariantStock {
+                variantId: ID!
+                variantName: String!
+                sku: String!
+                stockOnHand: Int!
+                stockAllocated: Int!
+                stockAvailable: Int!
+            }
+
+            type NearStockLocation {
+                distanceKm: Float!
+                location: NearStockLocationBrief!
+                variants: [NearVariantStock!]!
+            }
+
+            type NearStockLocationBrief {
+                id: ID!
+                name: String!
+                description: String
+                lat: Float
+                lng: Float
+                serviceCities: [String!]
+            }
+
+            extend type Query {
+                variantNearbyStock(productId: ID!, variantId: ID, lat: Float, lng: Float, city: String): [NearStockLocation!]!
+            }
+        `,
+        resolvers: [InventoryShopResolver],
+    },
     adminApiExtensions: {
         schema: () => gql`
             type StockLevelList {
@@ -194,9 +230,32 @@ const { gql } = require('graphql-tag');
                 countedQuantity: Int!
             }
 
+            type StockLedgerEntry {
+                id: ID!
+                code: String!
+                productVariantId: ID!
+                stockLocationId: ID!
+                bizType: String!
+                bizCode: String
+                orderLineId: ID
+                direction: String!
+                quantity: Int!
+                beforeOnHand: Int
+                afterOnHand: Int
+                otherLocationId: ID
+                reason: String
+                createdAt: DateTime!
+                updatedAt: DateTime!
+            }
+            type StockLedgerList {
+                items: [StockLedgerEntry!]!
+                totalItems: Int!
+            }
+
             extend type Query {
                 stockLevels(locationId: ID, page: Int, pageSize: Int): StockLevelList!
                 stockMovements(productVariantId: ID, locationId: ID, type: String, page: Int, pageSize: Int): StockMovementList!
+                stockLedger(productVariantId: ID, locationId: ID, bizType: String, bizCode: String, orderLineId: ID, page: Int, pageSize: Int): StockLedgerList!
 
                 stockInOrders(state: String, page: Int, pageSize: Int): StockInOrderList!
                 stockInOrder(id: ID!): StockInOrder

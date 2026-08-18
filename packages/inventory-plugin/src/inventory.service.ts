@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { ID } from '@vendure/common/lib/shared-types';
 import {
     Logger,
+    ProductVariant,
     RequestContext,
     StockAdjustment,
     StockLevel,
@@ -28,8 +29,17 @@ import { StockInOrder, StockInOrderLine } from './entities/stock-in-order.entity
 import { StockOutOrder, StockOutOrderLine } from './entities/stock-out-order.entity';
 import { StockMoveOrder, StockMoveOrderLine } from './entities/stock-move-order.entity';
 import { StocktakeOrder, StocktakeOrderLine } from './entities/stocktake-order.entity';
+import { StockLedgerService, StockLedgerInput, LedgerBizType } from './stock-ledger.service';
 
 const loggerCtx = 'InventoryService';
+
+/** 账本元信息（写入 adjustStockForLocation 时可选传入，用于在仓库/门店维度落供销存账本）。 */
+export interface LedgerMeta {
+    bizType: LedgerBizType;
+    bizCode?: string;
+    orderLineId?: ID;
+    otherLocationId?: ID;
+}
 
 @Injectable()
 export class InventoryService {
@@ -38,6 +48,7 @@ export class InventoryService {
         private stockMovementService: StockMovementService,
         private stockLevelService: StockLevelService,
         private stockLocationService: StockLocationService,
+        private stockLedgerService: StockLedgerService,
     ) {}
 
     // ===== 内部辅助方法 =====
@@ -53,9 +64,11 @@ export class InventoryService {
         locationId: ID,
         delta: number,
         reason: string,
+        meta?: LedgerMeta,
     ): Promise<void> {
         const current = await this.stockLevelService.getStockLevel(ctx, variantId, locationId);
-        const newOnHand = current.stockOnHand + delta;
+        const beforeOnHand = current.stockOnHand;
+        const newOnHand = beforeOnHand + delta;
         const adjustments = await this.stockMovementService.adjustProductVariantStock(
             ctx,
             variantId,
@@ -66,6 +79,22 @@ export class InventoryService {
         for (const adj of adjustments) {
             adj.customFields = { ...(adj.customFields as any ?? {}), businessReason: reason } as any;
             await adjustmentRepo.save(adj);
+        }
+        // 供销存账本：真实 onHand 变动，同事务写一条
+        if (meta) {
+            const ledgerInput: StockLedgerInput = {
+                productVariantId: variantId,
+                stockLocationId: locationId,
+                bizType: meta.bizType,
+                bizCode: meta.bizCode,
+                orderLineId: meta.orderLineId,
+                otherLocationId: meta.otherLocationId,
+                quantity: delta,
+                beforeOnHand,
+                afterOnHand: newOnHand,
+                reason,
+            };
+            await this.stockLedgerService.record(ctx, ledgerInput);
         }
         Logger.info(`Stock adjusted: variant=${variantId} location=${locationId} delta=${delta} reason=${reason}`, loggerCtx);
     }
@@ -187,6 +216,107 @@ export class InventoryService {
         return { items: result.items, totalItems: result.totalItems };
     }
 
+    async findStockLedger(
+        ctx: RequestContext,
+        options?: {
+            productVariantId?: ID;
+            locationId?: ID;
+            bizType?: string;
+            bizCode?: string;
+            orderLineId?: ID;
+            page?: number;
+            pageSize?: number;
+        },
+    ): Promise<{ items: any[]; totalItems: number }> {
+        return this.stockLedgerService.list(ctx, options);
+    }
+
+    // ===== 多库库存展示 =====
+
+    /**
+     * 多库库存展示（就近门店库存）：返回某商品在各仓库/门店的逐仓可售库存 + 距离。
+     * - productId 必填；variantId 省略时返回该商品全部 variant。
+     * - 带 lat/lng 时按距离升序排序（无坐标为 -1 排末尾）；带 city 时仅保留服务该城市的仓。
+     */
+    async findNearbyStock(
+        ctx: RequestContext,
+        options: { productId: ID; variantId?: ID; lat?: number; lng?: number; city?: string },
+    ): Promise<Array<{ location: StockLocation; distanceKm: number; variants: Array<{ variantId: ID; variantName: string; sku: string; stockOnHand: number; stockAllocated: number; stockAvailable: number }> }>> {
+        const locations = (await this.stockLocationService.findAll(ctx, { take: 10000 })).items;
+        const variantRepo = this.connection.getRepository(ctx, ProductVariant);
+        const variants = await variantRepo.find({
+            where: options.variantId
+                ? { id: options.variantId as any }
+                : { product: { id: options.productId as any } } as any,
+            relations: ['product'],
+        });
+
+        const origin = options.lat != null && options.lng != null
+            ? { lat: options.lat, lng: options.lng }
+            : null;
+
+        type VariantStock = {
+            variantId: ID;
+            variantName: string;
+            sku: string;
+            stockOnHand: number;
+            stockAllocated: number;
+            stockAvailable: number;
+        };
+        const rows: Array<{ location: StockLocation; distanceKm: number; variants: VariantStock[] }> = [];
+        for (const loc of locations) {
+            if (options.city && !this.locationServesCity(loc, options.city)) {
+                continue;
+            }
+            const distanceKm = this.locationDistanceKm(loc, origin);
+            const perLocation: VariantStock[] = [];
+            for (const v of variants) {
+                const level = await this.stockLevelService.getStockLevel(ctx, v.id, loc.id);
+                perLocation.push({
+                    variantId: v.id,
+                    variantName: v.name,
+                    sku: v.sku,
+                    stockOnHand: level.stockOnHand,
+                    stockAllocated: level.stockAllocated,
+                    stockAvailable: level.stockOnHand - level.stockAllocated,
+                });
+            }
+            rows.push({ location: loc, distanceKm, variants: perLocation });
+        }
+
+        // 带定位：距离升序（无坐标为 MAX 排末尾）；无定位：保持原顺序
+        rows.sort((a, b) => a.distanceKm - b.distanceKm);
+        return rows;
+    }
+
+    private locationServesCity(loc: StockLocation, city: string): boolean {
+        const serviceCities = (loc.customFields as any)?.serviceCities;
+        if (!Array.isArray(serviceCities) || serviceCities.length === 0) {
+            return true;
+        }
+        return serviceCities.includes(city);
+    }
+
+    private locationDistanceKm(loc: StockLocation, origin: { lat: number; lng: number } | null): number {
+        if (!origin) return -1;
+        const cf = (loc.customFields as any) ?? {};
+        const lat = cf.lat != null ? Number(cf.lat) : NaN;
+        const lng = cf.lng != null ? Number(cf.lng) : NaN;
+        if (!isFinite(lat) || !isFinite(lng)) return Number.MAX_SAFE_INTEGER;
+        return this.haversineKm(origin.lat, origin.lng, lat, lng);
+    }
+
+    private haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+        const R = 6371;
+        const toRad = (deg: number) => (deg * Math.PI) / 180;
+        const dLat = toRad(lat2 - lat1);
+        const dLng = toRad(lng2 - lng1);
+        const a =
+            Math.sin(dLat / 2) ** 2 +
+            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+        return 2 * R * Math.asin(Math.sqrt(a));
+    }
+
     // ===== 入库单 =====
 
     async createStockInOrder(
@@ -262,6 +392,7 @@ export class InventoryService {
                     order.targetLocationId,
                     line.quantity,
                     `StockInOrder#${order.code}:inbound`,
+                    { bizType: 'stockIn', bizCode: order.code },
                 );
             }
 
@@ -364,6 +495,7 @@ export class InventoryService {
                     order.sourceLocationId,
                     -line.quantity,
                     `StockOutOrder#${order.code}:outbound`,
+                    { bizType: 'stockOut', bizCode: order.code },
                 );
             }
 
@@ -468,6 +600,7 @@ export class InventoryService {
                     txCtx, line.productVariantId, order.sourceLocationId,
                     -line.quantity,
                     `StockMoveOrder#${order.code}:source-out`,
+                    { bizType: 'stockMove', bizCode: order.code, otherLocationId: order.targetLocationId },
                 );
             }
 
@@ -496,6 +629,7 @@ export class InventoryService {
                     txCtx, line.productVariantId, order.targetLocationId,
                     +line.quantity,
                     `StockMoveOrder#${order.code}:target-in`,
+                    { bizType: 'stockMove', bizCode: order.code, otherLocationId: order.sourceLocationId },
                 );
             }
 
@@ -543,6 +677,7 @@ export class InventoryService {
                         txCtx, line.productVariantId, order.sourceLocationId,
                         +line.quantity,
                         `StockMoveOrder#${order.code}:rollback-source`,
+                        { bizType: 'stockMove', bizCode: order.code, otherLocationId: order.targetLocationId },
                     );
                 }
             }
@@ -714,6 +849,7 @@ export class InventoryService {
                         txCtx, line.productVariantId, order.locationId,
                         line.difference,
                         `StocktakeOrder#${order.code}:reconcile`,
+                        { bizType: 'stocktake', bizCode: order.code },
                     );
                 }
             }

@@ -28,6 +28,11 @@ let InventoryAdminResolver = class InventoryAdminResolver {
     async stockMovements(ctx, productVariantId, locationId, type, page, pageSize) {
         return this.inventoryService.findStockMovements(ctx, { productVariantId, locationId, type, page, pageSize });
     }
+    async stockLedger(ctx, productVariantId, locationId, bizType, bizCode, orderLineId, page, pageSize) {
+        return this.inventoryService.findStockLedger(ctx, {
+            productVariantId, locationId, bizType, bizCode, orderLineId, page, pageSize,
+        });
+    }
     // ===== 入库单 =====
     async stockInOrders(ctx, state, page, pageSize) {
         return this.inventoryService.findStockInOrders(ctx, { state, page, pageSize });
@@ -133,6 +138,21 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, String, Number, Number]),
     __metadata("design:returntype", Promise)
 ], InventoryAdminResolver.prototype, "stockMovements", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(constants_1.InventoryPermissions.ViewStock),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)({ name: 'productVariantId', type: () => String, nullable: true })),
+    __param(2, (0, graphql_1.Args)({ name: 'locationId', type: () => String, nullable: true })),
+    __param(3, (0, graphql_1.Args)({ name: 'bizType', type: () => String, nullable: true })),
+    __param(4, (0, graphql_1.Args)({ name: 'bizCode', type: () => String, nullable: true })),
+    __param(5, (0, graphql_1.Args)({ name: 'orderLineId', type: () => String, nullable: true })),
+    __param(6, (0, graphql_1.Args)({ name: 'page', type: () => Number, nullable: true, defaultValue: 1 })),
+    __param(7, (0, graphql_1.Args)({ name: 'pageSize', type: () => Number, nullable: true, defaultValue: 20 })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, String, String, Object, Number, Number]),
+    __metadata("design:returntype", Promise)
+], InventoryAdminResolver.prototype, "stockLedger", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(constants_1.InventoryPermissions.ManageStockIn),

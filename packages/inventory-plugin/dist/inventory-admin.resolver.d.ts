@@ -11,6 +11,10 @@ export declare class InventoryAdminResolver {
         items: any[];
         totalItems: number;
     }>;
+    stockLedger(ctx: RequestContext, productVariantId?: ID, locationId?: ID, bizType?: string, bizCode?: string, orderLineId?: ID, page?: number, pageSize?: number): Promise<{
+        items: any[];
+        totalItems: number;
+    }>;
     stockInOrders(ctx: RequestContext, state?: string, page?: number, pageSize?: number): Promise<{
         items: import(".").StockInOrder[];
         totalItems: number;

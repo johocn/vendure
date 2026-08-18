@@ -34,6 +34,23 @@ export class InventoryAdminResolver {
         return this.inventoryService.findStockMovements(ctx, { productVariantId, locationId, type, page, pageSize });
     }
 
+    @Query()
+    @Allow(InventoryPermissions.ViewStock as Permission)
+    async stockLedger(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'productVariantId', type: () => String, nullable: true }) productVariantId?: ID,
+        @Args({ name: 'locationId', type: () => String, nullable: true }) locationId?: ID,
+        @Args({ name: 'bizType', type: () => String, nullable: true }) bizType?: string,
+        @Args({ name: 'bizCode', type: () => String, nullable: true }) bizCode?: string,
+        @Args({ name: 'orderLineId', type: () => String, nullable: true }) orderLineId?: ID,
+        @Args({ name: 'page', type: () => Number, nullable: true, defaultValue: 1 }) page?: number,
+        @Args({ name: 'pageSize', type: () => Number, nullable: true, defaultValue: 20 }) pageSize?: number,
+    ) {
+        return this.inventoryService.findStockLedger(ctx, {
+            productVariantId, locationId, bizType, bizCode, orderLineId, page, pageSize,
+        });
+    }
+
     // ===== 入库单 =====
 
     @Query()

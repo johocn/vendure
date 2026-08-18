@@ -14,8 +14,11 @@ exports.InventoryPlugin = void 0;
 const core_1 = require("@nestjs/core");
 const core_2 = require("@vendure/core");
 const inventory_admin_resolver_1 = require("./inventory-admin.resolver");
+const inventory_shop_resolver_1 = require("./inventory-shop.resolver");
 const inventory_service_1 = require("./inventory.service");
 const role_sync_1 = require("./role-sync");
+const stock_ledger_service_1 = require("./stock-ledger.service");
+const order_stock_ledger_entity_1 = require("./entities/order-stock-ledger.entity");
 const stock_in_order_entity_1 = require("./entities/stock-in-order.entity");
 const stock_out_order_entity_1 = require("./entities/stock-out-order.entity");
 const stock_move_order_entity_1 = require("./entities/stock-move-order.entity");
@@ -53,13 +56,46 @@ InventoryPlugin.init = () => InventoryPlugin_1;
 exports.InventoryPlugin = InventoryPlugin = InventoryPlugin_1 = __decorate([
     (0, core_2.VendurePlugin)({
         imports: [core_2.PluginCommonModule],
-        providers: [inventory_service_1.InventoryService],
+        providers: [inventory_service_1.InventoryService, stock_ledger_service_1.StockLedgerService],
         entities: [
+            order_stock_ledger_entity_1.OrderStockLedger,
             stock_in_order_entity_1.StockInOrder, stock_in_order_entity_1.StockInOrderLine,
             stock_out_order_entity_1.StockOutOrder, stock_out_order_entity_1.StockOutOrderLine,
             stock_move_order_entity_1.StockMoveOrder, stock_move_order_entity_1.StockMoveOrderLine,
             stocktake_order_entity_1.StocktakeOrder, stocktake_order_entity_1.StocktakeOrderLine,
         ],
+        shopApiExtensions: {
+            schema: () => gql `
+            type NearVariantStock {
+                variantId: ID!
+                variantName: String!
+                sku: String!
+                stockOnHand: Int!
+                stockAllocated: Int!
+                stockAvailable: Int!
+            }
+
+            type NearStockLocation {
+                distanceKm: Float!
+                location: NearStockLocationBrief!
+                variants: [NearVariantStock!]!
+            }
+
+            type NearStockLocationBrief {
+                id: ID!
+                name: String!
+                description: String
+                lat: Float
+                lng: Float
+                serviceCities: [String!]
+            }
+
+            extend type Query {
+                variantNearbyStock(productId: ID!, variantId: ID, lat: Float, lng: Float, city: String): [NearStockLocation!]!
+            }
+        `,
+            resolvers: [inventory_shop_resolver_1.InventoryShopResolver],
+        },
         adminApiExtensions: {
             schema: () => gql `
             type StockLevelList {
@@ -222,9 +258,32 @@ exports.InventoryPlugin = InventoryPlugin = InventoryPlugin_1 = __decorate([
                 countedQuantity: Int!
             }
 
+            type StockLedgerEntry {
+                id: ID!
+                code: String!
+                productVariantId: ID!
+                stockLocationId: ID!
+                bizType: String!
+                bizCode: String
+                orderLineId: ID
+                direction: String!
+                quantity: Int!
+                beforeOnHand: Int
+                afterOnHand: Int
+                otherLocationId: ID
+                reason: String
+                createdAt: DateTime!
+                updatedAt: DateTime!
+            }
+            type StockLedgerList {
+                items: [StockLedgerEntry!]!
+                totalItems: Int!
+            }
+
             extend type Query {
                 stockLevels(locationId: ID, page: Int, pageSize: Int): StockLevelList!
                 stockMovements(productVariantId: ID, locationId: ID, type: String, page: Int, pageSize: Int): StockMovementList!
+                stockLedger(productVariantId: ID, locationId: ID, bizType: String, bizCode: String, orderLineId: ID, page: Int, pageSize: Int): StockLedgerList!
 
                 stockInOrders(state: String, page: Int, pageSize: Int): StockInOrderList!
                 stockInOrder(id: ID!): StockInOrder
