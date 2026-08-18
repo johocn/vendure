@@ -72,7 +72,7 @@ let AfterSalesService = class AfterSalesService {
             relations: ['order', 'orderLine', 'channels'],
             channelId: ctx.channelId,
         })
-            .andWhere('afterSalesRequest.customerId = :customerId', { customerId: ctx.activeUserId })
+            .andWhere('aftersalesrequest."customerId" = :customerId', { customerId: ctx.activeUserId })
             .getManyAndCount()
             .then(([items, totalItems]) => ({ items, totalItems }));
     }
