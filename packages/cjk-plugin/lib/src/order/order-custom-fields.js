@@ -47,6 +47,17 @@ exports.orderCustomFields = {
             label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '自提点经度' }],
         },
         {
+            // 自提核销标记：交付到点后由 confirmPickupHandover 置为 true，推动 Fulfillment → Delivered。
+            name: 'pickupClaimed',
+            type: 'boolean',
+            nullable: true,
+            public: true,
+            label: [
+                { languageCode: core_1.LanguageCode.zh_Hans, value: '自提已核销' },
+                { languageCode: core_1.LanguageCode.en, value: 'Pickup Claimed' },
+            ],
+        },
+        {
             name: 'shippingProfileSnapshot',
             type: 'text',
             nullable: true,

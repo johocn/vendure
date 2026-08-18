@@ -16,6 +16,7 @@ export declare class DeliveryAdminResolver {
     myDeliveries(ctx: RequestContext, status?: string): Promise<Order[]>;
     startDelivery(ctx: RequestContext, orderId: ID): Promise<Order>;
     markDelivered(ctx: RequestContext, orderId: ID, photos: string[], note?: string): Promise<Order>;
+    confirmPickupHandover(ctx: RequestContext, orderId: ID): Promise<Order>;
     reportException(ctx: RequestContext, orderId: ID, type: string, photos: string[], note?: string): Promise<Order>;
     reassignDelivery(ctx: RequestContext, orderId: ID, newStaffId: ID): Promise<Order>;
 }

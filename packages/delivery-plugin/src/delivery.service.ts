@@ -144,6 +144,72 @@ export class DeliveryService {
     }
 
     /**
+     * 自提点核销（交付到点）：pickup 订单交付后确认已取货。
+     *
+     * 与 markDelivered（配送员签收）不同，自提场景无配送员指派链路，
+     * 由店员/管理员在自提点交付后调用。校验：
+     * - 订单为 pickup 类型（deliveryType === 'pickup'）且已选自提点
+     * - 存在 Shipped 的 Fulfillment
+     * 完成后：标记 pickupClaimed=true，并将所有 Shipped Fulfillment 推进到 Delivered。
+     */
+    async confirmPickupHandover(ctx: RequestContext, orderId: ID): Promise<Order> {
+        const order = await this.getOrderOrThrow(ctx, orderId);
+        const cf = (order.customFields ?? {}) as DeliveryCustomFields & Record<string, any>;
+        if (cf.deliveryType !== 'pickup') {
+            throw new IllegalOperationError(
+                `Cannot confirm pickup handover: order deliveryType is "${cf.deliveryType ?? '(none)'}", expected "pickup"`,
+            );
+        }
+        if (!cf.selectedPickupLocationId) {
+            throw new IllegalOperationError(
+                'Cannot confirm pickup handover: no pickup location selected on order',
+            );
+        }
+
+        await this.connection.withTransaction(ctx, async txCtx => {
+            await this.orderService.updateCustomFields(txCtx, orderId, {
+                pickupClaimed: true,
+                deliveredAt: new Date(),
+            });
+
+            const orderWithFulfillments = await this.orderService.findOne(txCtx, orderId, [
+                'fulfillments',
+            ]);
+            const fulfillments: Fulfillment[] = orderWithFulfillments?.fulfillments ?? [];
+            let advanced = false;
+            for (const f of fulfillments) {
+                if (f.state === 'Shipped') {
+                    const result = await this.fulfillmentService.transitionToState(
+                        txCtx,
+                        f.id,
+                        'Delivered',
+                    );
+                    if ('transitionError' in result) {
+                        Logger.warn(
+                            `Fulfillment ${f.id} transition to Delivered failed: ${result.transitionError}`,
+                            loggerCtx,
+                        );
+                    } else {
+                        advanced = true;
+                    }
+                }
+            }
+            if (!advanced) {
+                Logger.warn(
+                    `confirmPickupHandover: order ${order.code} has no Shipped fulfillment to advance`,
+                    loggerCtx,
+                );
+            }
+        });
+
+        Logger.info(
+            `Order ${order.code} pickup handover confirmed by user ${ctx.activeUserId}`,
+            loggerCtx,
+        );
+        return this.reloadOrder(ctx, orderId);
+    }
+
+    /**
      * 异常上报：写入异常字段并将状态置为 exception。
      * 不变更 Fulfillment 状态（保持 Shipped，待人工处理）。
      */
@@ -266,4 +332,8 @@ interface DeliveryCustomFields {
     exceptionType?: string | null;
     exceptionNote?: string | null;
     exceptionPhotos?: string[] | null;
+    // 自提相关（由 cjk-plugin 定义，此处仅类型声明）
+    deliveryType?: string | null;
+    selectedPickupLocationId?: any;
+    pickupClaimed?: boolean | null;
 }

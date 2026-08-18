@@ -34,6 +34,16 @@ export declare class DeliveryService {
      */
     markDelivered(ctx: RequestContext, orderId: ID, photos: string[], note?: string): Promise<Order>;
     /**
+     * 自提点核销（交付到点）：pickup 订单交付后确认已取货。
+     *
+     * 与 markDelivered（配送员签收）不同，自提场景无配送员指派链路，
+     * 由店员/管理员在自提点交付后调用。校验：
+     * - 订单为 pickup 类型（deliveryType === 'pickup'）且已选自提点
+     * - 存在 Shipped 的 Fulfillment
+     * 完成后：标记 pickupClaimed=true，并将所有 Shipped Fulfillment 推进到 Delivered。
+     */
+    confirmPickupHandover(ctx: RequestContext, orderId: ID): Promise<Order>;
+    /**
      * 异常上报：写入异常字段并将状态置为 exception。
      * 不变更 Fulfillment 状态（保持 Shipped，待人工处理）。
      */

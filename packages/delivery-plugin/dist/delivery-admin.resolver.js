@@ -45,6 +45,9 @@ let DeliveryAdminResolver = class DeliveryAdminResolver {
     async markDelivered(ctx, orderId, photos, note) {
         return this.deliveryService.markDelivered(ctx, orderId, photos, note);
     }
+    async confirmPickupHandover(ctx, orderId) {
+        return this.deliveryService.confirmPickupHandover(ctx, orderId);
+    }
     async reportException(ctx, orderId, type, photos, note) {
         return this.deliveryService.reportException(ctx, orderId, type, photos, note);
     }
@@ -91,6 +94,15 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object, Array, String]),
     __metadata("design:returntype", Promise)
 ], DeliveryAdminResolver.prototype, "markDelivered", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(constants_1.DeliveryPermissions.MarkDelivered),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], DeliveryAdminResolver.prototype, "confirmPickupHandover", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(constants_1.DeliveryPermissions.ReportException),

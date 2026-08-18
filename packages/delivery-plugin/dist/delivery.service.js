@@ -114,6 +114,54 @@ let DeliveryService = class DeliveryService {
         return this.reloadOrder(ctx, orderId);
     }
     /**
+     * 自提点核销（交付到点）：pickup 订单交付后确认已取货。
+     *
+     * 与 markDelivered（配送员签收）不同，自提场景无配送员指派链路，
+     * 由店员/管理员在自提点交付后调用。校验：
+     * - 订单为 pickup 类型（deliveryType === 'pickup'）且已选自提点
+     * - 存在 Shipped 的 Fulfillment
+     * 完成后：标记 pickupClaimed=true，并将所有 Shipped Fulfillment 推进到 Delivered。
+     */
+    async confirmPickupHandover(ctx, orderId) {
+        var _a, _b;
+        const order = await this.getOrderOrThrow(ctx, orderId);
+        const cf = ((_a = order.customFields) !== null && _a !== void 0 ? _a : {});
+        if (cf.deliveryType !== 'pickup') {
+            throw new core_1.IllegalOperationError(`Cannot confirm pickup handover: order deliveryType is "${(_b = cf.deliveryType) !== null && _b !== void 0 ? _b : '(none)'}", expected "pickup"`);
+        }
+        if (!cf.selectedPickupLocationId) {
+            throw new core_1.IllegalOperationError('Cannot confirm pickup handover: no pickup location selected on order');
+        }
+        await this.connection.withTransaction(ctx, async (txCtx) => {
+            var _a;
+            await this.orderService.updateCustomFields(txCtx, orderId, {
+                pickupClaimed: true,
+                deliveredAt: new Date(),
+            });
+            const orderWithFulfillments = await this.orderService.findOne(txCtx, orderId, [
+                'fulfillments',
+            ]);
+            const fulfillments = (_a = orderWithFulfillments === null || orderWithFulfillments === void 0 ? void 0 : orderWithFulfillments.fulfillments) !== null && _a !== void 0 ? _a : [];
+            let advanced = false;
+            for (const f of fulfillments) {
+                if (f.state === 'Shipped') {
+                    const result = await this.fulfillmentService.transitionToState(txCtx, f.id, 'Delivered');
+                    if ('transitionError' in result) {
+                        core_1.Logger.warn(`Fulfillment ${f.id} transition to Delivered failed: ${result.transitionError}`, loggerCtx);
+                    }
+                    else {
+                        advanced = true;
+                    }
+                }
+            }
+            if (!advanced) {
+                core_1.Logger.warn(`confirmPickupHandover: order ${order.code} has no Shipped fulfillment to advance`, loggerCtx);
+            }
+        });
+        core_1.Logger.info(`Order ${order.code} pickup handover confirmed by user ${ctx.activeUserId}`, loggerCtx);
+        return this.reloadOrder(ctx, orderId);
+    }
+    /**
      * 异常上报：写入异常字段并将状态置为 exception。
      * 不变更 Fulfillment 状态（保持 Shipped，待人工处理）。
      */

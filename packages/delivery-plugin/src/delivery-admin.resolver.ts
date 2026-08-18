@@ -63,6 +63,15 @@ export class DeliveryAdminResolver {
     }
 
     @Mutation()
+    @Allow(DeliveryPermissions.MarkDelivered as Permission)
+    async confirmPickupHandover(
+        @Ctx() ctx: RequestContext,
+        @Args('orderId') orderId: ID,
+    ): Promise<Order> {
+        return this.deliveryService.confirmPickupHandover(ctx, orderId);
+    }
+
+    @Mutation()
     @Allow(DeliveryPermissions.ReportException as Permission)
     async reportException(
         @Ctx() ctx: RequestContext,

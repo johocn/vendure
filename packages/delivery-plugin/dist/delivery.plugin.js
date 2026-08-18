@@ -86,6 +86,7 @@ exports.DeliveryPlugin = DeliveryPlugin = DeliveryPlugin_1 = __decorate([
                 extend type Mutation {
                     startDelivery(orderId: ID!): Order!
                     markDelivered(orderId: ID!, photos: [String!]!, note: String): Order!
+                    confirmPickupHandover(orderId: ID!): Order!
                     reportException(orderId: ID!, type: String!, photos: [String!]!, note: String): Order!
                     reassignDelivery(orderId: ID!, newStaffId: ID!): Order!
                 }
