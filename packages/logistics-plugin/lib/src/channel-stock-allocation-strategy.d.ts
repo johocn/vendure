@@ -1,6 +1,6 @@
 import { RequestContext, StockAllocationStrategy } from '@vendure/core';
 export declare class ChannelStockAllocationStrategy implements StockAllocationStrategy {
-    shouldAllocateStock(): boolean | Promise<boolean>;
+    shouldAllocateStock(_ctx: RequestContext, _fromState: any, toState: any): boolean | Promise<boolean>;
     allocateFromStockLocation(ctx: RequestContext, stockLocations: Array<{
         id: string;
         stockOnHand: number;

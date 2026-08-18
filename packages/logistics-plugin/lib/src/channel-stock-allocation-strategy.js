@@ -2,8 +2,10 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ChannelStockAllocationStrategy = void 0;
 class ChannelStockAllocationStrategy {
-    shouldAllocateStock() {
-        return true;
+    shouldAllocateStock(_ctx, _fromState, toState) {
+        // 下单（进入 ArrangingPayment）即分配库存；但订单取消（进入 Cancelled）时
+        // 不得再次分配，否则会抵消 cancelOrder 流程中的 RELEASE，导致库存永久泄漏。
+        return toState !== 'Cancelled';
     }
     async allocateFromStockLocation(ctx, stockLocations, _item) {
         var _a;

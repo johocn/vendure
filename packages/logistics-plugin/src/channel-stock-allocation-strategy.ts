@@ -1,8 +1,14 @@
 import { RequestContext, StockAllocationStrategy } from '@vendure/core';
 
 export class ChannelStockAllocationStrategy implements StockAllocationStrategy {
-    shouldAllocateStock(): boolean | Promise<boolean> {
-        return true;
+    shouldAllocateStock(
+        _ctx: RequestContext,
+        _fromState: any,
+        toState: any,
+    ): boolean | Promise<boolean> {
+        // 下单（进入 ArrangingPayment）即分配库存；但订单取消（进入 Cancelled）时
+        // 不得再次分配，否则会抵消 cancelOrder 流程中的 RELEASE，导致库存永久泄漏。
+        return toState !== 'Cancelled';
     }
 
     async allocateFromStockLocation(
