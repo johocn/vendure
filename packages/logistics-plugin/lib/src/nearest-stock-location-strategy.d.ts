@@ -12,6 +12,11 @@ import { LocationWithQuantity, MultiChannelStockLocationStrategy, OrderLine, Req
  */
 export declare class NearestStockLocationStrategy extends MultiChannelStockLocationStrategy {
     forAllocation(ctx: RequestContext, stockLocations: StockLocation[], orderLine: OrderLine, quantity: number): Promise<LocationWithQuantity[]>;
+    /**
+     * 将原分配仓写入 OrderLine 自定义字段 stockLocationId。
+     * 失败仅告警，绝不阻断下单/分配主流程。
+     */
+    private persistAllocationLocation;
     private orderByProximity;
     private servesCity;
     private locationDistanceKm;

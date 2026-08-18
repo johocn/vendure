@@ -114,6 +114,7 @@ const shopSchema = () => gql`
         config.customFields.Product = mergeCustomFields(config.customFields.Product, catalogCustomFields.Product);
         config.customFields.StockLocation = mergeCustomFields(config.customFields.StockLocation, catalogCustomFields.StockLocation);
         config.customFields.Order = mergeCustomFields(config.customFields.Order, catalogCustomFields.Order);
+        config.customFields.OrderLine = mergeCustomFields(config.customFields.OrderLine, catalogCustomFields.OrderLine);
         config.orderOptions.stockAllocationStrategy = new ChannelStockAllocationStrategy();
         // 就近发货：覆写仓库/门店分配策略（真正的按订单定位就近）
         config.catalogOptions.stockLocationStrategy = new NearestStockLocationStrategy();

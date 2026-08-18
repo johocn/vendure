@@ -5,6 +5,7 @@ import { CustomFields, LanguageCode } from '@vendure/core';
  * - Product ：归属城市 + 服务城市列表（前端按当前选城过滤/超区提示）
  * - StockLocation ：仓库/门店经纬度 + 服务城市列表（就近算法 + 超区门禁输入）
  * - Order ：下单时锁定的定位经纬度 + 服务城市 + 履约方式（就近分配输入）
+ * - OrderLine ：原分配仓（就近分配时持久化，售后回补定位原发货仓用）
  */
 export const catalogCustomFields: CustomFields = {
     Product: [
@@ -81,6 +82,14 @@ export const catalogCustomFields: CustomFields = {
                     { value: 'pickup', label: [{ languageCode: LanguageCode.zh_Hans, value: '到店自提' }] },
                 ],
             },
+        },
+    ],
+    OrderLine: [
+        {
+            name: 'stockLocationId',
+            type: 'string',
+            nullable: true,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '原分配仓' }],
         },
     ],
 }

@@ -65,6 +65,14 @@ let InventoryService = class InventoryService {
         core_1.Logger.info(`Stock adjusted: variant=${variantId} location=${locationId} delta=${delta} reason=${reason}`, loggerCtx);
     }
     /**
+     * 售后退货回补：将收到的退货回补到原发货仓，同一事务内写 afterSales 账本。
+     * 供 after-sales-plugin 在 confirmReceive（Returning→Received）时调用。
+     * @param quantity 正数表示回补数量（= min(订单行数量, 实收数量)）
+     */
+    async applyAfterSalesRestock(ctx, variantId, locationId, quantity, afterSalesCode, orderLineId) {
+        await this.adjustStockForLocation(ctx, variantId, locationId, +quantity, `AfterSales#${afterSalesCode}:return-restock`, { bizType: 'afterSales', bizCode: afterSalesCode, orderLineId });
+    }
+    /**
      * 校验源仓库存是否充足（available = stockOnHand - stockAllocated）
      */
     async assertSufficientStock(ctx, variantId, locationId, requiredQty) {

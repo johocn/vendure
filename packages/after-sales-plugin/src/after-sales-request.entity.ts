@@ -39,6 +39,10 @@ export class AfterSalesRequest extends VendureEntity implements ChannelAware {
     @Column()
     refundAmount: number;
 
+    /** 实收数量（部分退货按实收回补；null 表示全额按订单行数量回补） */
+    @Column({ type: 'int', nullable: true })
+    receivedQuantity: number | null;
+
     @Column({ type: 'varchar', nullable: true })
     returnTrackingNo: string | null;
 

@@ -4,6 +4,7 @@ export declare class AfterSalesService {
     private connection;
     private listQueryBuilder;
     private orderService;
+    private inventoryService;
     private options;
     constructor(connection: TransactionalConnection, listQueryBuilder: ListQueryBuilder);
     init(injector: Injector): void;
@@ -27,7 +28,13 @@ export declare class AfterSalesService {
     updateReturnTracking(ctx: RequestContext, id: ID, trackingNo: string, carrier: string): Promise<AfterSalesRequest>;
     approveRequest(ctx: RequestContext, id: ID): Promise<AfterSalesRequest>;
     rejectRequest(ctx: RequestContext, id: ID, reason: string): Promise<AfterSalesRequest>;
-    confirmReceive(ctx: RequestContext, id: ID): Promise<AfterSalesRequest>;
+    /**
+     * Returning → Received（收到退货）：
+     * 在状态流转前先做库存回补——把收到的退货回补到原发货仓（orderLine.stockLocationId），
+     * 同一事务内写 afterSales 账本，避免“退款了但库存不回来”。回补失败不影响收退货流程（告警）。
+     * @param receivedQuantity 实收数量（部分退货按实收回补；缺省按订单行数量全额回补）
+     */
+    confirmReceive(ctx: RequestContext, id: ID, receivedQuantity?: number): Promise<AfterSalesRequest>;
     processRefund(ctx: RequestContext, id: ID): Promise<AfterSalesRequest>;
     /**
      * 回写 Order customFields.afterSalesStatus。失败仅告警，不影响主流程。

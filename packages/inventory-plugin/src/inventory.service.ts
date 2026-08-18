@@ -100,6 +100,29 @@ export class InventoryService {
     }
 
     /**
+     * 售后退货回补：将收到的退货回补到原发货仓，同一事务内写 afterSales 账本。
+     * 供 after-sales-plugin 在 confirmReceive（Returning→Received）时调用。
+     * @param quantity 正数表示回补数量（= min(订单行数量, 实收数量)）
+     */
+    async applyAfterSalesRestock(
+        ctx: RequestContext,
+        variantId: ID,
+        locationId: ID,
+        quantity: number,
+        afterSalesCode: string,
+        orderLineId?: ID,
+    ): Promise<void> {
+        await this.adjustStockForLocation(
+            ctx,
+            variantId,
+            locationId,
+            +quantity,
+            `AfterSales#${afterSalesCode}:return-restock`,
+            { bizType: 'afterSales', bizCode: afterSalesCode, orderLineId },
+        );
+    }
+
+    /**
      * 校验源仓库存是否充足（available = stockOnHand - stockAllocated）
      */
     protected async assertSufficientStock(

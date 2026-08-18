@@ -1,11 +1,14 @@
 import {
     LocationWithQuantity,
+    Logger,
     MultiChannelStockLocationStrategy,
     OrderLine,
     RequestContext,
     StockLocation,
 } from '@vendure/core';
 import { distanceKm } from './location-utils';
+
+const loggerCtx = 'NearestStockLocationStrategy';
 
 /**
  * 订单级地理信息：来自 Order 的自定义字段（lat/lng/city）。
@@ -47,7 +50,39 @@ export class NearestStockLocationStrategy extends MultiChannelStockLocationStrat
         quantity: number,
     ): Promise<LocationWithQuantity[]> {
         const ordered = this.orderByProximity(stockLocations, orderLine);
-        return super.forAllocation(ctx, ordered, orderLine, quantity);
+        const result = await super.forAllocation(ctx, ordered, orderLine, quantity);
+        // 记录原分配仓：就近结果中数量为正的首个 location，供售后回补定位原发货仓
+        await this.persistAllocationLocation(ctx, orderLine, result);
+        return result;
+    }
+
+    /**
+     * 将原分配仓写入 OrderLine 自定义字段 stockLocationId。
+     * 失败仅告警，绝不阻断下单/分配主流程。
+     */
+    private async persistAllocationLocation(
+        ctx: RequestContext,
+        orderLine: OrderLine,
+        result: LocationWithQuantity[],
+    ): Promise<void> {
+        try {
+            const chosen = result.find(r => r.quantity > 0);
+            if (!chosen) return;
+            const locId = String(chosen.location.id);
+            const current = (orderLine.customFields as any)?.stockLocationId;
+            if (current != null && String(current) === locId) {
+                return; // 已一致，无需重复写
+            }
+            const repo = this.connection.getRepository(ctx, OrderLine);
+            await repo.update(
+                { id: orderLine.id },
+                { customFields: { ...(orderLine.customFields ?? {}), stockLocationId: locId } } as any,
+            );
+            (orderLine.customFields as any).stockLocationId = locId;
+            Logger.debug(`orderLine#${orderLine.id} 原分配仓 -> loc#${locId}`, loggerCtx);
+        } catch (e: any) {
+            Logger.warn(`记录原分配仓失败（不影响下单）: ${e?.message ?? e}`, loggerCtx);
+        }
     }
 
     private orderByProximity(

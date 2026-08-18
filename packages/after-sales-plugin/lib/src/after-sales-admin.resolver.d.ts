@@ -6,6 +6,6 @@ export declare class AfterSalesAdminResolver {
     afterSalesRequests(ctx: RequestContext, options: any): Promise<any>;
     approveAfterSalesRequest(ctx: RequestContext, id: number): Promise<any>;
     rejectAfterSalesRequest(ctx: RequestContext, id: number, reason: string): Promise<any>;
-    confirmReturnReceived(ctx: RequestContext, id: number): Promise<any>;
+    confirmReturnReceived(ctx: RequestContext, id: number, receivedQuantity?: number): Promise<any>;
     processAfterSalesRefund(ctx: RequestContext, id: number): Promise<any>;
 }

@@ -29,8 +29,8 @@ let AfterSalesAdminResolver = class AfterSalesAdminResolver {
     async rejectAfterSalesRequest(ctx, id, reason) {
         return this.afterSalesService.rejectRequest(ctx, id, reason);
     }
-    async confirmReturnReceived(ctx, id) {
-        return this.afterSalesService.confirmReceive(ctx, id);
+    async confirmReturnReceived(ctx, id, receivedQuantity) {
+        return this.afterSalesService.confirmReceive(ctx, id, receivedQuantity);
     }
     async processAfterSalesRefund(ctx, id) {
         return this.afterSalesService.processRefund(ctx, id);
@@ -70,8 +70,9 @@ __decorate([
     (0, core_1.Allow)(core_1.Permission.UpdateOrder),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('receivedQuantity', { nullable: true, type: () => Number })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, Number]),
+    __metadata("design:paramtypes", [core_1.RequestContext, Number, Number]),
     __metadata("design:returntype", Promise)
 ], AfterSalesAdminResolver.prototype, "confirmReturnReceived", null);
 __decorate([

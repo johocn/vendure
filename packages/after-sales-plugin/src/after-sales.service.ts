@@ -19,10 +19,12 @@ import {
 import { loggerCtx, AFTER_SALES_PLUGIN_OPTIONS } from './constants';
 import { AfterSalesRequest } from './after-sales-request.entity';
 import { AfterSalesState, AfterSalesPluginOptions, STATE_TRANSITIONS } from './types';
+import { InventoryService } from '@vendure/inventory-plugin';
 
 @Injectable()
 export class AfterSalesService {
     private orderService: OrderService | null = null;
+    private inventoryService: InventoryService | null = null;
     private options: AfterSalesPluginOptions = {};
 
     constructor(
@@ -32,6 +34,12 @@ export class AfterSalesService {
 
     init(injector: Injector): void {
         this.orderService = injector.get(OrderService);
+        try {
+            this.inventoryService = injector.get(InventoryService);
+        } catch (e: any) {
+            this.inventoryService = null;
+            Logger.warn(`InventoryService 不可用，售后回补库存被禁用: ${e?.message ?? e}`, loggerCtx);
+        }
         try {
             this.options = injector.get<AfterSalesPluginOptions>(AFTER_SALES_PLUGIN_OPTIONS as any) ?? {};
         } catch {
@@ -219,8 +227,76 @@ export class AfterSalesService {
         return repo.save(request);
     }
 
-    async confirmReceive(ctx: RequestContext, id: ID): Promise<AfterSalesRequest> {
-        return this.transitionState(ctx, id, 'Received');
+    /**
+     * Returning → Received（收到退货）：
+     * 在状态流转前先做库存回补——把收到的退货回补到原发货仓（orderLine.stockLocationId），
+     * 同一事务内写 afterSales 账本，避免“退款了但库存不回来”。回补失败不影响收退货流程（告警）。
+     * @param receivedQuantity 实收数量（部分退货按实收回补；缺省按订单行数量全额回补）
+     */
+    async confirmReceive(ctx: RequestContext, id: ID, receivedQuantity?: number): Promise<AfterSalesRequest> {
+        return this.connection.withTransaction(ctx, async txCtx => {
+            const repo = this.connection.getRepository(txCtx, AfterSalesRequest);
+            const request = await repo.findOne({
+                where: { id: id as any },
+                relations: ['orderLine'],
+            });
+            if (!request) throw new Error('Request not found');
+            const allowed = STATE_TRANSITIONS[request.state];
+            if (!allowed?.includes('Received')) {
+                throw new Error(`Invalid transition: ${request.state} -> Received`);
+            }
+
+            // 实收数量：显式传入则记录；否则缺省为订单行数量（全额回补）
+            const orderLine = request.orderLine;
+            const orderedQty = orderLine ? Number(orderLine.quantity) || 0 : 0;
+            if (receivedQuantity != null) {
+                request.receivedQuantity = Math.max(0, Math.floor(receivedQuantity));
+            }
+            const recoverQty = Math.max(
+                0,
+                Math.min(
+                    orderedQty,
+                    request.receivedQuantity != null ? request.receivedQuantity : orderedQty,
+                ),
+            );
+
+            // 库存回补：退货入库到原发货仓（仅当找到了原分配仓）
+            if (orderLine && this.inventoryService) {
+                const locationId = (orderLine.customFields as any)?.stockLocationId ?? null;
+                if (locationId != null && recoverQty > 0) {
+                    try {
+                        await this.inventoryService.applyAfterSalesRestock(
+                            txCtx,
+                            (orderLine.productVariantId as any) as ID,
+                            locationId as any,
+                            recoverQty,
+                            `AS${request.id}`,
+                            (orderLine.id as any) as ID,
+                        );
+                        Logger.info(
+                            `库存回补 loc#${locationId} qty=${recoverQty} for after-sales#${request.id}`,
+                            loggerCtx,
+                        );
+                    } catch (e: any) {
+                        // 回补失败不阻断收退货流程（仍可退款），仅告警便于运维追查
+                        Logger.error(
+                            `库存回补失败 after-sales#${request.id}: ${e?.message ?? e}`,
+                            loggerCtx,
+                        );
+                    }
+                } else if (recoverQty === 0) {
+                    Logger.warn(`after-sales#${request.id} recoverQty=0，跳过库存回补`, loggerCtx);
+                } else {
+                    Logger.warn(
+                        `after-sales#${request.id} 未找到原发货仓（orderLine.stockLocationId），跳过库存回补`,
+                        loggerCtx,
+                    );
+                }
+            }
+
+            request.state = 'Received';
+            return repo.save(request);
+        });
     }
 
     async processRefund(ctx: RequestContext, id: ID): Promise<AfterSalesRequest> {

@@ -69,6 +69,7 @@ exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
                 returnTrackingNo: String
                 returnCarrier: String
                 rejectReason: String
+                receivedQuantity: Int
                 createdAt: DateTime!
                 updatedAt: DateTime!
             }
@@ -86,6 +87,7 @@ exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
                 description: String
                 evidenceImages: [String!]
                 refundAmount: Int!
+                receivedQuantity: Int
             }
 
             input AfterSalesRequestListOptions
@@ -119,6 +121,7 @@ exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
                 returnTrackingNo: String
                 returnCarrier: String
                 rejectReason: String
+                receivedQuantity: Int
                 customerId: ID!
                 createdAt: DateTime!
                 updatedAt: DateTime!
@@ -138,7 +141,7 @@ exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
             extend type Mutation {
                 approveAfterSalesRequest(id: ID!): AfterSalesRequestAdmin!
                 rejectAfterSalesRequest(id: ID!, reason: String!): AfterSalesRequestAdmin!
-                confirmReturnReceived(id: ID!): AfterSalesRequestAdmin!
+                confirmReturnReceived(id: ID!, receivedQuantity: Int): AfterSalesRequestAdmin!
                 processAfterSalesRefund(id: ID!): AfterSalesRequestAdmin!
             }
         `,

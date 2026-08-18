@@ -38,6 +38,7 @@ const { gql } = require('graphql-tag');
                 returnTrackingNo: String
                 returnCarrier: String
                 rejectReason: String
+                receivedQuantity: Int
                 createdAt: DateTime!
                 updatedAt: DateTime!
             }
@@ -55,6 +56,7 @@ const { gql } = require('graphql-tag');
                 description: String
                 evidenceImages: [String!]
                 refundAmount: Int!
+                receivedQuantity: Int
             }
 
             input AfterSalesRequestListOptions
@@ -88,6 +90,7 @@ const { gql } = require('graphql-tag');
                 returnTrackingNo: String
                 returnCarrier: String
                 rejectReason: String
+                receivedQuantity: Int
                 customerId: ID!
                 createdAt: DateTime!
                 updatedAt: DateTime!
@@ -107,7 +110,7 @@ const { gql } = require('graphql-tag');
             extend type Mutation {
                 approveAfterSalesRequest(id: ID!): AfterSalesRequestAdmin!
                 rejectAfterSalesRequest(id: ID!, reason: String!): AfterSalesRequestAdmin!
-                confirmReturnReceived(id: ID!): AfterSalesRequestAdmin!
+                confirmReturnReceived(id: ID!, receivedQuantity: Int): AfterSalesRequestAdmin!
                 processAfterSalesRefund(id: ID!): AfterSalesRequestAdmin!
             }
         `,

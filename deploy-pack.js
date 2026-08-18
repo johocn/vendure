@@ -1,4 +1,4 @@
-﻿const { execSync } = require("child_process");
+const { execSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 const ROOT = __dirname;
@@ -12,8 +12,8 @@ const PLUGINS = [
   "order-timeout-plugin","invoice-plugin","logistics-plugin",
   "group-buy-plugin","flash-sale-plugin","distribution-plugin",
   "redis-stock-plugin","logistics-api-plugin","invoice-pdf-plugin",
-  "recharge-card-plugin","after-sales-plugin","job-queue-plugin",
-  "graphiql-plugin","harden-plugin","telemetry-plugin","dashboard",
+  "recharge-card-plugin","after-sales-plugin","inventory-plugin",
+  "job-queue-plugin","graphiql-plugin","harden-plugin","telemetry-plugin","dashboard",
 ];
 function copy(src, dst) {
   if (fs.existsSync(src)) fs.cpSync(src, dst, { recursive: true, force: true });

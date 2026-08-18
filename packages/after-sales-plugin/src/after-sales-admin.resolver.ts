@@ -31,8 +31,12 @@ export class AfterSalesAdminResolver {
 
     @Mutation()
     @Allow(Permission.UpdateOrder)
-    async confirmReturnReceived(@Ctx() ctx: RequestContext, @Args('id') id: number): Promise<any> {
-        return this.afterSalesService.confirmReceive(ctx, id);
+    async confirmReturnReceived(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: number,
+        @Args('receivedQuantity', { nullable: true, type: () => Number }) receivedQuantity?: number,
+    ): Promise<any> {
+        return this.afterSalesService.confirmReceive(ctx, id, receivedQuantity);
     }
 
     @Mutation()
