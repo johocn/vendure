@@ -224,6 +224,7 @@ exports.devConfig = {
         Promotion: [],
     },
     schedulerOptions: {
+        runTasksInWorkerOnly: false,
         tasks: [core_1.cleanSessionsTask, core_1.cleanOrphanedSettingsStoreTask],
     },
     logger: new core_1.DefaultLogger({ level: core_1.LogLevel.Verbose }),

@@ -249,6 +249,9 @@ export const devConfig: VendureConfig = {
         Promotion: [],
     },
     schedulerOptions: {
+        // 生产环境只运行主进程（无 worker），必须允许主进程执行调度任务，
+        // 否则 OrderTimeoutPlugin 的补偿扫描等 ScheduledTask 永不触发。
+        runTasksInWorkerOnly: false,
         tasks: [cleanSessionsTask, cleanOrphanedSettingsStoreTask],
     },
     logger: new DefaultLogger({ level: LogLevel.Verbose }),
