@@ -172,6 +172,9 @@ type Query {
   salesOrder(id: ID!): Order
   mySalesReport(start: String!, end: String!): SalesReportResult!
   salesReport(staffId: String, start: String!, end: String!): SalesReportResult!
+  marketplacePendingProducts: [Product!]!
+  marketplaceMerchantChannel: Channel!
+  merchantOrders(saleSource: String, options: OrderListOptions): OrderList!
   csAllOrders(state: String, customerEmail: String, startDate: String, endDate: String, page: Int, pageSize: Int): CsOrderList!
   csOrderDetail(id: ID!): CsOrderDetail
   csAfterSalesRequests(state: String, page: Int, pageSize: Int): CsAfterSalesList!
@@ -790,6 +793,8 @@ type Mutation {
   salesCreateOrder(input: SalesCreateOrderInput!): Order!
   modifyOrderLinePrice(orderLineId: ID!, newPrice: Int!): Order!
   cancelSalesOrder(orderId: ID!, reason: String): Order!
+  approveMarketplaceProduct(productId: ID!): Boolean!
+  rejectMarketplaceProduct(productId: ID!, reason: String!): Boolean!
   csApproveAfterSales(id: ID!): AfterSalesRequestAdmin!
   csRejectAfterSales(id: ID!, reason: String!): AfterSalesRequestAdmin!
   csConfirmReturnReceived(id: ID!): AfterSalesRequestAdmin!
@@ -2027,6 +2032,10 @@ input OrderFilterParameter {
   invoiceCompanyPhone: StringOperators
   invoiceBankName: StringOperators
   invoiceBankAccount: StringOperators
+  lat: NumberOperators
+  lng: NumberOperators
+  city: StringOperators
+  deliveryType: StringOperators
   groupBuyActivityId: NumberOperators
   groupBuyIsLeader: BooleanOperators
   flashSaleActivityId: NumberOperators
@@ -2048,6 +2057,7 @@ input OrderFilterParameter {
   salesStaffId: StringOperators
   salesChannel: StringOperators
   salesNote: StringOperators
+  saleSource: StringOperators
 }
 
 input OrderSortParameter {
@@ -2080,6 +2090,10 @@ input OrderSortParameter {
   invoiceCompanyPhone: SortOrder
   invoiceBankName: SortOrder
   invoiceBankAccount: SortOrder
+  lat: SortOrder
+  lng: SortOrder
+  city: SortOrder
+  deliveryType: SortOrder
   groupBuyActivityId: SortOrder
   groupBuyIsLeader: SortOrder
   flashSaleActivityId: SortOrder
@@ -2099,6 +2113,7 @@ input OrderSortParameter {
   salesStaffId: SortOrder
   salesChannel: SortOrder
   salesNote: SortOrder
+  saleSource: SortOrder
 }
 
 input OrderListOptions {
@@ -2576,7 +2591,7 @@ type Product implements Node {
   facetValues: [FacetValue!]!
   translations: [ProductTranslation!]!
   collections: [Collection!]!
-  customFields: JSON
+  customFields: ProductCustomFields
 }
 
 type ProductVariantPrice {
@@ -2818,6 +2833,13 @@ input ProductFilterParameter {
   enabled: BooleanOperators
   _and: [ProductFilterParameter!]
   _or: [ProductFilterParameter!]
+  belongCity: StringOperators
+  serviceCities: StringListOperators
+  listedInMarketplace: BooleanOperators
+  marketplaceStatus: StringOperators
+  rejectReason: StringOperators
+  barcode: StringOperators
+  internalCode: StringOperators
 }
 
 input ProductVariantListOptions {
@@ -2883,7 +2905,7 @@ input CreateProductInput {
   assetIds: [ID!]
   facetValueIds: [ID!]
   translations: [ProductTranslationInput!]!
-  customFields: JSON
+  customFields: CreateProductCustomFieldsInput
 }
 
 input UpdateProductInput {
@@ -2893,7 +2915,7 @@ input UpdateProductInput {
   assetIds: [ID!]
   facetValueIds: [ID!]
   translations: [ProductTranslationInput!]
-  customFields: JSON
+  customFields: UpdateProductCustomFieldsInput
 }
 
 input ProductVariantTranslationInput {
@@ -3204,13 +3226,13 @@ input SellerListOptions {
 
 input CreateSellerInput {
   name: String!
-  customFields: JSON
+  customFields: CreateSellerCustomFieldsInput
 }
 
 input UpdateSellerInput {
   id: ID!
   name: String
-  customFields: JSON
+  customFields: UpdateSellerCustomFieldsInput
 }
 
 enum SettingsStoreScopeType {
@@ -3368,14 +3390,14 @@ type StockLocationList implements PaginatedList {
 input CreateStockLocationInput {
   name: String!
   description: String
-  customFields: JSON
+  customFields: CreateStockLocationCustomFieldsInput
 }
 
 input UpdateStockLocationInput {
   id: ID!
   name: String
   description: String
-  customFields: JSON
+  customFields: UpdateStockLocationCustomFieldsInput
 }
 
 input DeleteStockLocationInput {
@@ -3399,7 +3421,7 @@ type StockLocation implements Node {
   updatedAt: DateTime!
   name: String!
   description: String!
-  customFields: JSON
+  customFields: StockLocationCustomFields
 }
 
 enum StockMovementType {
@@ -6576,7 +6598,7 @@ type Seller implements Node {
   createdAt: DateTime!
   updatedAt: DateTime!
   name: String!
-  customFields: JSON
+  customFields: SellerCustomFields
 }
 
 type ShippingMethod implements Node {
@@ -8537,6 +8559,7 @@ input ChannelFilterParameter {
   orderRefundedTemplateId: StringOperators
   subscribeMessagePage: StringOperators
   subscribeMessageMiniprogramState: StringOperators
+  settlementBasis: StringOperators
   uniPushAppKey: StringOperators
   uniPushMasterSecret: StringOperators
 }
@@ -8580,6 +8603,7 @@ input ChannelSortParameter {
   orderRefundedTemplateId: SortOrder
   subscribeMessagePage: SortOrder
   subscribeMessageMiniprogramState: SortOrder
+  settlementBasis: SortOrder
   uniPushAppKey: SortOrder
   uniPushMasterSecret: SortOrder
 }
@@ -8850,6 +8874,13 @@ input ProductSortParameter {
   name: SortOrder
   slug: SortOrder
   description: SortOrder
+  belongCity: SortOrder
+  listedInMarketplace: SortOrder
+  marketplaceStatus: SortOrder
+  rejectReason: SortOrder
+  merchantRef: SortOrder
+  barcode: SortOrder
+  internalCode: SortOrder
 }
 
 input PromotionFilterParameter {
@@ -8936,6 +8967,7 @@ input SellerFilterParameter {
   name: StringOperators
   _and: [SellerFilterParameter!]
   _or: [SellerFilterParameter!]
+  marketplaceMerchant: BooleanOperators
 }
 
 input SellerSortParameter {
@@ -8943,6 +8975,7 @@ input SellerSortParameter {
   createdAt: SortOrder
   updatedAt: SortOrder
   name: SortOrder
+  marketplaceMerchant: SortOrder
 }
 
 input ShippingMethodFilterParameter {
@@ -8976,6 +9009,9 @@ input StockLocationFilterParameter {
   description: StringOperators
   _and: [StockLocationFilterParameter!]
   _or: [StockLocationFilterParameter!]
+  lat: NumberOperators
+  lng: NumberOperators
+  serviceCities: StringListOperators
 }
 
 input StockLocationSortParameter {
@@ -8984,6 +9020,8 @@ input StockLocationSortParameter {
   updatedAt: SortOrder
   name: SortOrder
   description: SortOrder
+  lat: SortOrder
+  lng: SortOrder
 }
 
 input TagFilterParameter {
@@ -9515,6 +9553,7 @@ type ChannelCustomFields {
   orderRefundedTemplateId: String
   subscribeMessagePage: String
   subscribeMessageMiniprogramState: String
+  settlementBasis: String
   uniPushAppKey: String
   uniPushMasterSecret: String
 }
@@ -9580,6 +9619,7 @@ input CreateChannelCustomFieldsInput {
   orderRefundedTemplateId: String
   subscribeMessagePage: String
   subscribeMessageMiniprogramState: String
+  settlementBasis: String
   uniPushAppKey: String
   uniPushMasterSecret: String
 }
@@ -9622,6 +9662,7 @@ input UpdateChannelCustomFieldsInput {
   orderRefundedTemplateId: String
   subscribeMessagePage: String
   subscribeMessageMiniprogramState: String
+  settlementBasis: String
   uniPushAppKey: String
   uniPushMasterSecret: String
 }
@@ -9779,6 +9820,10 @@ type OrderCustomFields {
   invoiceCompanyPhone: String
   invoiceBankName: String
   invoiceBankAccount: String
+  lat: Float
+  lng: Float
+  city: String
+  deliveryType: String
   groupBuyActivityId: Int
   groupBuyIsLeader: Boolean
   flashSaleActivityId: Int
@@ -9800,6 +9845,7 @@ type OrderCustomFields {
   salesStaffId: String
   salesChannel: String
   salesNote: String
+  saleSource: String
   csNotes: [OrderCsNotesStruct!]
 }
 
@@ -9823,6 +9869,10 @@ input UpdateOrderCustomFieldsInput {
   invoiceCompanyPhone: String
   invoiceBankName: String
   invoiceBankAccount: String
+  lat: Float
+  lng: Float
+  city: String
+  deliveryType: String
   groupBuyActivityId: Int
   groupBuyIsLeader: Boolean
   flashSaleActivityId: Int
@@ -9844,6 +9894,7 @@ input UpdateOrderCustomFieldsInput {
   salesStaffId: String
   salesChannel: String
   salesNote: String
+  saleSource: String
   csNotes: [OrderCsNotesStructInput!]
 }
 
@@ -9852,6 +9903,39 @@ type OrderLineCustomFields {
   originalPrice: Int
   modifiedBy: String
   modifiedAt: DateTime
+}
+
+type ProductCustomFields {
+  belongCity: String
+  serviceCities: [String!]
+  listedInMarketplace: Boolean
+  marketplaceStatus: String
+  rejectReason: String
+  merchantRef: Channel
+  barcode: String
+  internalCode: String
+}
+
+input CreateProductCustomFieldsInput {
+  belongCity: String
+  serviceCities: [String!]
+  listedInMarketplace: Boolean
+  marketplaceStatus: String
+  rejectReason: String
+  merchantRefId: ID
+  barcode: String
+  internalCode: String
+}
+
+input UpdateProductCustomFieldsInput {
+  belongCity: String
+  serviceCities: [String!]
+  listedInMarketplace: Boolean
+  marketplaceStatus: String
+  rejectReason: String
+  merchantRefId: ID
+  barcode: String
+  internalCode: String
 }
 
 type ProductVariantCustomFields {
@@ -9897,6 +9981,36 @@ input UpdatePromotionCustomFieldsInput {
   stackable: Boolean
   stackableGroup: String
   maxStackableWith: Int
+}
+
+type SellerCustomFields {
+  marketplaceMerchant: Boolean
+}
+
+input CreateSellerCustomFieldsInput {
+  marketplaceMerchant: Boolean
+}
+
+input UpdateSellerCustomFieldsInput {
+  marketplaceMerchant: Boolean
+}
+
+type StockLocationCustomFields {
+  lat: Float
+  lng: Float
+  serviceCities: [String!]
+}
+
+input CreateStockLocationCustomFieldsInput {
+  lat: Float
+  lng: Float
+  serviceCities: [String!]
+}
+
+input UpdateStockLocationCustomFieldsInput {
+  lat: Float
+  lng: Float
+  serviceCities: [String!]
 }
 
 type StockAdjustmentCustomFields {

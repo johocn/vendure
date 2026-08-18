@@ -51,6 +51,7 @@ const coupon_plugin_1 = require("@vendure/coupon-plugin");
 const delivery_plugin_1 = require("@vendure/delivery-plugin");
 const sales_plugin_1 = require("@vendure/sales-plugin");
 const sales_plugin_2 = require("@vendure/sales-plugin");
+const marketplace_plugin_1 = require("@vendure/marketplace-plugin");
 const customer_service_plugin_1 = require("@vendure/customer-service-plugin");
 const inventory_plugin_1 = require("@vendure/inventory-plugin");
 const message_plugin_1 = require("@vendure/message-plugin");
@@ -130,6 +131,28 @@ exports.devConfig = {
                     next();
                 },
                 route: '/assets',
+            },
+            {
+                // 修复：GET 访问 /admin-api 且不含 GraphQL query 参数时，Apollo 默认返回 400，
+                // 导致访问 e.joho.cn 时浏览器控制台出现 "400 (Bad Request)"。
+                // 例如 Dashboard 的 admin-api 客户端会拼接 ?languageCode=zh_Hans 发起 GET。
+                // 这里对无 query 的 GET 返回 200 的 GraphQL 错误信封，避免 400 刷屏。
+                handler: (req, res, next) => {
+                    if (req.method === 'GET' && !req.query.query) {
+                        res.status(200).json({
+                            data: null,
+                            errors: [
+                                {
+                                    message: 'GET requests to the GraphQL Admin API require a "query" parameter. Use POST or include ?query=.',
+                                    extensions: { code: 'BAD_REQUEST' },
+                                },
+                            ],
+                        });
+                        return;
+                    }
+                    next();
+                },
+                route: '/admin-api',
             },
         ],
     },
@@ -221,6 +244,9 @@ exports.devConfig = {
         Promotion: [],
     },
     schedulerOptions: {
+        // 生产环境只运行主进程（无 worker），必须允许主进程执行调度任务，
+        // 否则 OrderTimeoutPlugin 的补偿扫描等 ScheduledTask 永不触发。
+        runTasksInWorkerOnly: false,
         tasks: [core_1.cleanSessionsTask, core_1.cleanOrphanedSettingsStoreTask],
     },
     logger: new core_1.DefaultLogger({ level: core_1.LogLevel.Verbose }),
@@ -350,6 +376,7 @@ exports.devConfig = {
         coupon_plugin_1.CouponPlugin.init(),
         delivery_plugin_1.DeliveryPlugin.init(),
         sales_plugin_1.SalesPlugin.init(),
+        marketplace_plugin_1.MarketplacePlugin.init({}),
         customer_service_plugin_1.CustomerServicePlugin.init(),
         inventory_plugin_1.InventoryPlugin.init(),
         operations_plugin_1.OperationsPlugin.init(),

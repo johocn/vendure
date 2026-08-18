@@ -1,0 +1,841 @@
+﻿Using postgres connection
+[33mYour database schema does not match your current configuration. Generate a new migration for the following changes:[39m
+ - [33mCREATE TABLE "collection_asset" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "assetId" integer NOT NULL, "position" integer NOT NULL, "collectionId" integer NOT NULL, "id" SERIAL NOT NULL, CONSTRAINT "PK_a2adab6fd086adfb7858f1f110c" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_51da53b26522dc0525762d2de8" ON "collection_asset" ("assetId") [39m
+ - [33mCREATE INDEX "IDX_1ed9e48dfbf74b5fcbb35d3d68" ON "collection_asset" ("collectionId") [39m
+ - [33mCREATE TABLE "collection_translation" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "languageCode" character varying NOT NULL, "name" character varying NOT NULL, "slug" character varying NOT NULL, "description" text NOT NULL, "id" SERIAL NOT NULL, "baseId" integer, CONSTRAINT "PK_bb49cfcde50401eb5f463a84dac" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_9f9da7d94b0278ea0f7831e1fc" ON "collection_translation" ("slug") [39m
+ - [33mCREATE INDEX "IDX_e329f9036210d75caa1d8f2154" ON "collection_translation" ("baseId") [39m
+ - [33mCREATE TABLE "collection" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "isRoot" boolean NOT NULL DEFAULT false, "position" integer NOT NULL, "isPrivate" boolean NOT NULL DEFAULT false, "filters" text NOT NULL, "inheritFilters" boolean NOT NULL DEFAULT true, "id" SERIAL NOT NULL, "parentId" integer, "featuredAssetId" integer, "customFieldsFloorenabled" boolean DEFAULT false, "customFieldsFloortitle" character varying(255), "customFieldsFloorsubtitle" character varying(255), "customFieldsFloorlayout" character varying(255) DEFAULT 'double_grid', "customFieldsFloorsortorder" integer DEFAULT '0', "customFieldsFloormaxscreens" integer DEFAULT '3', "customFieldsFloortheme" jsonb, "customFieldsFlooritemconfig" jsonb, "customFieldsFloorschedule" jsonb, CONSTRAINT "PK_ad3f485bbc99d875491f44d7c85" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_7256fef1bb42f1b38156b7449f" ON "collection" ("featuredAssetId") [39m
+ - [33mCREATE TABLE "facet_translation" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "languageCode" character varying NOT NULL, "name" character varying NOT NULL, "id" SERIAL NOT NULL, "baseId" integer, CONSTRAINT "PK_a6902cc1dcbb5e52a980f0189ad" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_eaea53f44bf9e97790d38a3d68" ON "facet_translation" ("baseId") [39m
+ - [33mCREATE TABLE "facet" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "isPrivate" boolean NOT NULL DEFAULT false, "code" character varying NOT NULL, "id" SERIAL NOT NULL, CONSTRAINT "UQ_0c9a5d053fdf4ebb5f0490b40fd" UNIQUE ("code"), CONSTRAINT "PK_a0ebfe3c68076820c6886aa9ff3" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "facet_value_translation" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "languageCode" character varying NOT NULL, "name" character varying NOT NULL, "id" SERIAL NOT NULL, "baseId" integer, CONSTRAINT "PK_a09fdeb788deff7a9ed827a6160" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_3d6e45823b65de808a66cb1423" ON "facet_value_translation" ("baseId") [39m
+ - [33mCREATE TABLE "facet_value" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "code" character varying NOT NULL, "id" SERIAL NOT NULL, "facetId" integer NOT NULL, CONSTRAINT "PK_d231e8eecc7e1a6059e1da7d325" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_d101dc2265a7341be3d94968c5" ON "facet_value" ("facetId") [39m
+ - [33mCREATE TABLE "product_option_translation" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "languageCode" character varying NOT NULL, "name" character varying NOT NULL, "id" SERIAL NOT NULL, "baseId" integer, CONSTRAINT "PK_69c79a84baabcad3c7328576ac0" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_a79a443c1f7841f3851767faa6" ON "product_option_translation" ("baseId") [39m
+ - [33mCREATE TABLE "product_option" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "deletedAt" TIMESTAMP, "code" character varying NOT NULL, "id" SERIAL NOT NULL, "groupId" integer NOT NULL, CONSTRAINT "PK_4cf3c467e9bc764bdd32c4cd938" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_a6debf9198e2fbfa006aa10d71" ON "product_option" ("groupId") [39m
+ - [33mCREATE TABLE "product_option_group_translation" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "languageCode" character varying NOT NULL, "name" character varying NOT NULL, "id" SERIAL NOT NULL, "baseId" integer, CONSTRAINT "PK_44ab19f118175288dff147c4a00" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_93751abc1451972c02e033b766" ON "product_option_group_translation" ("baseId") [39m
+ - [33mCREATE TABLE "product_option_group" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "deletedAt" TIMESTAMP, "code" character varying NOT NULL, "id" SERIAL NOT NULL, CONSTRAINT "PK_d76e92fdbbb5a2e6752ffd4a2c1" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "product_asset" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "assetId" integer NOT NULL, "position" integer NOT NULL, "productId" integer NOT NULL, "id" SERIAL NOT NULL, CONSTRAINT "PK_c56a83efd14ec4175532e1867fc" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_5888ac17b317b93378494a1062" ON "product_asset" ("assetId") [39m
+ - [33mCREATE INDEX "IDX_0d1294f5c22a56da7845ebab72" ON "product_asset" ("productId") [39m
+ - [33mCREATE TABLE "product_translation" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "languageCode" character varying NOT NULL, "name" character varying NOT NULL, "slug" character varying NOT NULL, "description" text NOT NULL, "id" SERIAL NOT NULL, "baseId" integer, CONSTRAINT "PK_62d00fbc92e7a495701d6fee9d5" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_f4a2ec16ba86d277b6faa0b67b" ON "product_translation" ("slug") [39m
+ - [33mCREATE INDEX "IDX_7dbc75cb4e8b002620c4dbfdac" ON "product_translation" ("baseId") [39m
+ - [33mCREATE TABLE "product" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "deletedAt" TIMESTAMP, "enabled" boolean NOT NULL DEFAULT true, "id" SERIAL NOT NULL, "featuredAssetId" integer, CONSTRAINT "PK_bebc9158e480b949565b4dc7a82" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_91a19e6613534949a4ce6e76ff" ON "product" ("featuredAssetId") [39m
+ - [33mCREATE TABLE "tag" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "value" character varying NOT NULL, "id" SERIAL NOT NULL, CONSTRAINT "PK_8e4052373c579afc1471f526760" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "asset_translation" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "languageCode" character varying NOT NULL, "name" character varying NOT NULL, "id" SERIAL NOT NULL, "baseId" integer, CONSTRAINT "PK_2f22e63eefeef14d245bdb956b6" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_4eed4464adef51f53e1c7d8021" ON "asset_translation" ("baseId") [39m
+ - [33mCREATE TABLE "asset" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "type" character varying NOT NULL, "mimeType" character varying NOT NULL, "width" integer NOT NULL DEFAULT '0', "height" integer NOT NULL DEFAULT '0', "fileSize" integer NOT NULL, "source" character varying NOT NULL, "preview" character varying NOT NULL, "focalPoint" text, "id" SERIAL NOT NULL, CONSTRAINT "PK_1209d107fe21482beaea51b745e" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "order_line_reference" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "quantity" integer NOT NULL, "id" SERIAL NOT NULL, "fulfillmentId" integer, "modificationId" integer, "orderLineId" integer NOT NULL, "refundId" integer, "discriminator" character varying NOT NULL, CONSTRAINT "PK_21891d07accb8fa87e11165bca2" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_7d57857922dfc7303604697dbe" ON "order_line_reference" ("orderLineId") [39m
+ - [33mCREATE INDEX "IDX_06b02fb482b188823e419d37bd" ON "order_line_reference" ("fulfillmentId") [39m
+ - [33mCREATE INDEX "IDX_22b818af8722746fb9f206068c" ON "order_line_reference" ("modificationId") [39m
+ - [33mCREATE INDEX "IDX_30019aa65b17fe9ee962893199" ON "order_line_reference" ("refundId") [39m
+ - [33mCREATE INDEX "IDX_49a8632be8cef48b076446b8b9" ON "order_line_reference" ("discriminator") [39m
+ - [33mCREATE TABLE "fulfillment" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "state" character varying NOT NULL, "trackingCode" character varying NOT NULL DEFAULT '', "method" character varying NOT NULL, "handlerCode" character varying NOT NULL, "id" SERIAL NOT NULL, "customFieldsTrackingnumber" character varying(255), "customFieldsCarrier" character varying(255), "customFieldsCarriercode" character varying(255), "customFieldsShippingnote" character varying(255), CONSTRAINT "PK_50c102da132afffae660585981f" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "refund" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "method" character varying NOT NULL, "reason" character varying, "state" character varying NOT NULL, "transactionId" character varying, "metadata" text NOT NULL, "id" SERIAL NOT NULL, "paymentId" integer NOT NULL, "items" integer NOT NULL, "shipping" integer NOT NULL, "adjustment" integer NOT NULL, "total" integer NOT NULL, CONSTRAINT "PK_f1cefa2e60d99b206c46c1116e5" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_1c6932a756108788a361e7d440" ON "refund" ("paymentId") [39m
+ - [33mCREATE TABLE "payment" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "method" character varying NOT NULL, "state" character varying NOT NULL, "errorMessage" character varying, "transactionId" character varying, "metadata" text NOT NULL, "id" SERIAL NOT NULL, "amount" integer NOT NULL, "orderId" integer, CONSTRAINT "PK_fcaec7df5adf9cac408c686b2ab" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_d09d285fe1645cd2f0db811e29" ON "payment" ("orderId") [39m
+ - [33mCREATE TABLE "surcharge" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "description" character varying NOT NULL, "listPriceIncludesTax" boolean NOT NULL, "sku" character varying NOT NULL, "taxLines" text NOT NULL, "id" SERIAL NOT NULL, "listPrice" integer NOT NULL, "orderId" integer, "orderModificationId" integer, CONSTRAINT "PK_a62b89257bcc802b5d77346f432" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_154eb685f9b629033bd266df7f" ON "surcharge" ("orderId") [39m
+ - [33mCREATE INDEX "IDX_a49c5271c39cc8174a0535c808" ON "surcharge" ("orderModificationId") [39m
+ - [33mCREATE TABLE "order_modification" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "note" character varying NOT NULL, "shippingAddressChange" text, "billingAddressChange" text, "id" SERIAL NOT NULL, "priceChange" integer NOT NULL, "orderId" integer, "paymentId" integer, "refundId" integer, CONSTRAINT "PK_cccf2e1612694eeb1e5b6760ffa" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_1df5bc14a47ef24d2e681f4559" ON "order_modification" ("orderId") [39m
+ - [33mCREATE TABLE "promotion_translation" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "languageCode" character varying NOT NULL, "name" character varying NOT NULL, "description" text NOT NULL, "id" SERIAL NOT NULL, "baseId" integer, CONSTRAINT "PK_0b4fd34d2fc7abc06189494a178" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_1cc009e9ab2263a35544064561" ON "promotion_translation" ("baseId") [39m
+ - [33mCREATE TABLE "promotion" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "deletedAt" TIMESTAMP, "startsAt" TIMESTAMP, "endsAt" TIMESTAMP, "couponCode" character varying, "perCustomerUsageLimit" integer, "usageLimit" integer, "enabled" boolean NOT NULL, "conditions" text NOT NULL, "actions" text NOT NULL, "priorityScore" integer NOT NULL, "id" SERIAL NOT NULL, "customFieldsStackable" boolean DEFAULT false, "customFieldsStackablegroup" character varying(255), "customFieldsMaxstackablewith" integer, CONSTRAINT "PK_fab3630e0789a2002f1cadb7d38" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "shipping_method_translation" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "languageCode" character varying NOT NULL, "name" character varying NOT NULL DEFAULT '', "description" character varying NOT NULL DEFAULT '', "id" SERIAL NOT NULL, "baseId" integer, CONSTRAINT "PK_b862a1fac1c6e1fd201eadadbcb" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_85ec26c71067ebc84adcd98d1a" ON "shipping_method_translation" ("baseId") [39m
+ - [33mCREATE TABLE "shipping_method" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "deletedAt" TIMESTAMP, "code" character varying NOT NULL, "checker" text NOT NULL, "calculator" text NOT NULL, "fulfillmentHandlerCode" character varying NOT NULL, "id" SERIAL NOT NULL, CONSTRAINT "PK_b9b0adfad3c6b99229c1e7d4865" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "shipping_line" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "listPriceIncludesTax" boolean NOT NULL, "adjustments" text NOT NULL, "taxLines" text NOT NULL, "id" SERIAL NOT NULL, "shippingMethodId" integer NOT NULL, "listPrice" integer NOT NULL, "orderId" integer, CONSTRAINT "PK_890522bfc44a4b6eb7cb1e52609" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_e2e7642e1e88167c1dfc827fdf" ON "shipping_line" ("shippingMethodId") [39m
+ - [33mCREATE INDEX "IDX_c9f34a440d490d1b66f6829b86" ON "shipping_line" ("orderId") [39m
+ - [33mCREATE TABLE "order" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "type" character varying NOT NULL DEFAULT 'Regular', "code" character varying NOT NULL, "state" character varying NOT NULL, "active" boolean NOT NULL DEFAULT true, "orderPlacedAt" TIMESTAMP, "couponCodes" text NOT NULL, "shippingAddress" text NOT NULL, "billingAddress" text NOT NULL, "currencyCode" character varying NOT NULL, "id" SERIAL NOT NULL, "aggregateOrderId" integer, "customerId" integer, "taxZoneId" integer, "subTotal" integer NOT NULL, "subTotalWithTax" integer NOT NULL, "shipping" integer NOT NULL DEFAULT '0', "shippingWithTax" integer NOT NULL DEFAULT '0', "customFieldsSelectedpickuplocationidid" integer, "customFieldsPickuptype" character varying(255), "customFieldsShippingprofilesnapshot" text, "customFieldsPaymentprofilesnapshot" text, "customFieldsInvoicerequired" boolean DEFAULT false, "customFieldsInvoicetype" character varying(255), "customFieldsInvoicetitle" character varying(255), "customFieldsInvoicetaxnumber" character varying(255), "customFieldsInvoiceemail" character varying(255), "customFieldsInvoicecompanyaddress" character varying(255), "customFieldsInvoicecompanyphone" character varying(255), "customFieldsInvoicebankname" character varying(255), "customFieldsInvoicebankaccount" character varying(255), "customFieldsGroupbuyactivityid" integer, "customFieldsGroupbuyisleader" boolean DEFAULT false, "customFieldsFlashsaleactivityid" integer, "customFieldsFlashsalestartat" TIMESTAMP(6), "customFieldsFlashsaleendat" TIMESTAMP(6), "customFieldsInvoicepdfurl" character varying(255), "customFieldsInvoicenumber" character varying(255), "customFieldsAftersalesstatus" character varying(255), "customFieldsAppliedcouponcode" character varying(255), "customFieldsDeliverystaffid" character varying(255), "customFieldsDeliverystatus" character varying(255), "customFieldsAssignedat" TIMESTAMP(6), "customFieldsDeliveredat" TIMESTAMP(6), "customFieldsDeliveryphotos" text, "customFieldsDeliverynote" character varying(255), "customFieldsExceptiontype" character varying(255), "customFieldsExceptionnote" character varying(255), "customFieldsExceptionphotos" text, "customFieldsSalesstaffid" character varying(255), "customFieldsSaleschannel" character varying(255), "customFieldsSalesnote" character varying(255), "customFieldsCsnotes" jsonb, CONSTRAINT "PK_1031171c13130102495201e3e20" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_73a78d7df09541ac5eba620d18" ON "order" ("aggregateOrderId") [39m
+ - [33mCREATE UNIQUE INDEX "IDX_729b3eea7ce540930dbb706949" ON "order" ("code") [39m
+ - [33mCREATE INDEX "IDX_af13739f4962eab899bdff34be" ON "order" ("orderPlacedAt") [39m
+ - [33mCREATE INDEX "IDX_124456e637cca7a415897dce65" ON "order" ("customerId") [39m
+ - [33mCREATE TABLE "stock_location" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "name" character varying NOT NULL, "description" character varying NOT NULL, "id" SERIAL NOT NULL, CONSTRAINT "PK_adf770067d0df1421f525fa25cc" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "stock_movement" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "type" character varying NOT NULL, "quantity" integer NOT NULL, "id" SERIAL NOT NULL, "stockLocationId" integer NOT NULL, "discriminator" character varying NOT NULL, "productVariantId" integer, "orderLineId" integer, "customFieldsBusinessreason" character varying(255), CONSTRAINT "PK_9fe1232f916686ae8cf00294749" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_e65ba3882557cab4febb54809b" ON "stock_movement" ("productVariantId") [39m
+ - [33mCREATE INDEX "IDX_a2fe7172eeae9f1cca86f8f573" ON "stock_movement" ("stockLocationId") [39m
+ - [33mCREATE INDEX "IDX_d2c8d5fca981cc820131f81aa8" ON "stock_movement" ("orderLineId") [39m
+ - [33mCREATE TABLE "order_line" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "quantity" integer NOT NULL, "orderPlacedQuantity" integer NOT NULL DEFAULT '0', "listPriceIncludesTax" boolean NOT NULL, "adjustments" text NOT NULL, "taxLines" text NOT NULL, "id" SERIAL NOT NULL, "sellerChannelId" integer, "shippingLineId" integer, "productVariantId" integer NOT NULL, "taxCategoryId" integer, "initialListPrice" integer, "listPrice" integer NOT NULL, "featuredAssetId" integer, "orderId" integer, "customFieldsOverwrittenprice" integer, "customFieldsOriginalprice" integer, "customFieldsModifiedby" character varying(255), "customFieldsModifiedat" TIMESTAMP(6), CONSTRAINT "PK_01a7c973d9f30479647e44f9892" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_6901d8715f5ebadd764466f7bd" ON "order_line" ("sellerChannelId") [39m
+ - [33mCREATE INDEX "IDX_dc9ac68b47da7b62249886affb" ON "order_line" ("shippingLineId") [39m
+ - [33mCREATE INDEX "IDX_cbcd22193eda94668e84d33f18" ON "order_line" ("productVariantId") [39m
+ - [33mCREATE INDEX "IDX_77be94ce9ec650446617946227" ON "order_line" ("taxCategoryId") [39m
+ - [33mCREATE INDEX "IDX_9f065453910ea77d4be8e92618" ON "order_line" ("featuredAssetId") [39m
+ - [33mCREATE INDEX "IDX_239cfca2a55b98b90b6bef2e44" ON "order_line" ("orderId") [39m
+ - [33mCREATE TABLE "stock_level" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "stockOnHand" integer NOT NULL, "stockAllocated" integer NOT NULL, "id" SERIAL NOT NULL, "productVariantId" integer NOT NULL, "stockLocationId" integer NOT NULL, CONSTRAINT "PK_88ff7d9dfb57dc9d435e365eb69" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_9950eae3180f39c71978748bd0" ON "stock_level" ("productVariantId") [39m
+ - [33mCREATE INDEX "IDX_984c48572468c69661a0b7b049" ON "stock_level" ("stockLocationId") [39m
+ - [33mCREATE UNIQUE INDEX "IDX_7fc20486b8cfd33dc84c96e168" ON "stock_level" ("productVariantId", "stockLocationId") [39m
+ - [33mCREATE TABLE "product_variant_asset" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "assetId" integer NOT NULL, "position" integer NOT NULL, "productVariantId" integer NOT NULL, "id" SERIAL NOT NULL, CONSTRAINT "PK_cb1e33ae13779da176f8b03a5d3" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_10b5a2e3dee0e30b1e26c32f5c" ON "product_variant_asset" ("assetId") [39m
+ - [33mCREATE INDEX "IDX_fa21412afac15a2304f3eb35fe" ON "product_variant_asset" ("productVariantId") [39m
+ - [33mCREATE TABLE "product_variant_price" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "currencyCode" character varying NOT NULL, "id" SERIAL NOT NULL, "channelId" integer, "price" integer NOT NULL, "variantId" integer, CONSTRAINT "PK_ba659ff2940702124e799c5c854" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_e6126cd268aea6e9b31d89af9a" ON "product_variant_price" ("variantId") [39m
+ - [33mCREATE TABLE "product_variant_translation" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "languageCode" character varying NOT NULL, "name" character varying NOT NULL, "id" SERIAL NOT NULL, "baseId" integer, CONSTRAINT "PK_4b7f882e2b669800bed7ed065f0" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_420f4d6fb75d38b9dca79bc43b" ON "product_variant_translation" ("baseId") [39m
+ - [33mCREATE TABLE "product_variant" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "deletedAt" TIMESTAMP, "enabled" boolean NOT NULL DEFAULT true, "sku" character varying NOT NULL, "outOfStockThreshold" integer NOT NULL DEFAULT '0', "useGlobalOutOfStockThreshold" boolean NOT NULL DEFAULT true, "trackInventory" character varying NOT NULL DEFAULT 'INHERIT', "id" SERIAL NOT NULL, "featuredAssetId" integer, "taxCategoryId" integer, "productId" integer, "customFieldsWeight" double precision, "customFieldsLength" double precision, "customFieldsWidth" double precision, "customFieldsHeight" double precision, "customFieldsShippingprofileid" character varying(255), "customFieldsPaymentprofileid" character varying(255), CONSTRAINT "PK_1ab69c9935c61f7c70791ae0a9f" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_0e6f516053cf982b537836e21c" ON "product_variant" ("featuredAssetId") [39m
+ - [33mCREATE INDEX "IDX_e38dca0d82fd64c7cf8aac8b8e" ON "product_variant" ("taxCategoryId") [39m
+ - [33mCREATE INDEX "IDX_6e420052844edf3a5506d863ce" ON "product_variant" ("productId") [39m
+ - [33mCREATE TABLE "tax_category" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "name" character varying NOT NULL, "isDefault" boolean NOT NULL DEFAULT false, "id" SERIAL NOT NULL, CONSTRAINT "PK_2432988f825c336d5584a96cded" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "region_translation" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "languageCode" character varying NOT NULL, "name" character varying NOT NULL, "id" SERIAL NOT NULL, "baseId" integer, CONSTRAINT "PK_3e0c9619cafbe579eeecfd88abc" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_1afd722b943c81310705fc3e61" ON "region_translation" ("baseId") [39m
+ - [33mCREATE TABLE "region" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "code" character varying NOT NULL, "type" character varying NOT NULL, "enabled" boolean NOT NULL, "id" SERIAL NOT NULL, "parentId" integer, "discriminator" character varying NOT NULL, CONSTRAINT "PK_5f48ffc3af96bc486f5f3f3a6da" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_ed0c8098ce6809925a437f42ae" ON "region" ("parentId") [39m
+ - [33mCREATE TABLE "zone" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "name" character varying NOT NULL, "id" SERIAL NOT NULL, CONSTRAINT "PK_bd3989e5a3c3fb5ed546dfaf832" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "tax_rate" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "name" character varying NOT NULL, "enabled" boolean NOT NULL, "value" numeric(5,2) NOT NULL, "id" SERIAL NOT NULL, "categoryId" integer, "zoneId" integer, "customerGroupId" integer, CONSTRAINT "PK_23b71b53f650c0b39e99ccef4fd" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_7ee3306d7638aa85ca90d67219" ON "tax_rate" ("categoryId") [39m
+ - [33mCREATE INDEX "IDX_9872fc7de2f4e532fd3230d191" ON "tax_rate" ("zoneId") [39m
+ - [33mCREATE INDEX "IDX_8b5ab52fc8887c1a769b9276ca" ON "tax_rate" ("customerGroupId") [39m
+ - [33mCREATE TABLE "customer_group" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "name" character varying NOT NULL, "id" SERIAL NOT NULL, CONSTRAINT "PK_88e7da3ff7262d9e0a35aa3664e" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "authentication_method" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "identifier" character varying, "passwordHash" character varying, "verificationToken" character varying, "passwordResetToken" character varying, "identifierChangeToken" character varying, "pendingIdentifier" character varying, "strategy" character varying, "externalIdentifier" character varying, "metadata" text, "id" SERIAL NOT NULL, "type" character varying NOT NULL, "userId" integer, CONSTRAINT "PK_e204686018c3c60f6164e385081" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_00cbe87bc0d4e36758d61bd31d" ON "authentication_method" ("userId") [39m
+ - [33mCREATE INDEX "IDX_a23445b2c942d8dfcae15b8de2" ON "authentication_method" ("type") [39m
+ - [33mCREATE TABLE "role" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "code" character varying NOT NULL, "description" character varying NOT NULL, "permissions" text NOT NULL, "id" SERIAL NOT NULL, CONSTRAINT "PK_b36bcfe02fc8de3c57a8b2391c2" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "session" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "token" character varying NOT NULL, "expires" TIMESTAMP NOT NULL, "invalidated" boolean NOT NULL, "authenticationStrategy" character varying, "id" SERIAL NOT NULL, "activeOrderId" integer, "activeChannelId" integer, "type" character varying NOT NULL, "userId" integer, CONSTRAINT "PK_f55da76ac1c3ac420f444d2ff11" PRIMARY KEY ("id"))[39m
+ - [33mCREATE UNIQUE INDEX "IDX_232f8e85d7633bd6ddfad42169" ON "session" ("token") [39m
+ - [33mCREATE INDEX "IDX_7a75399a4f4ffa48ee02e98c05" ON "session" ("activeOrderId") [39m
+ - [33mCREATE INDEX "IDX_eb87ef1e234444728138302263" ON "session" ("activeChannelId") [39m
+ - [33mCREATE INDEX "IDX_3d2f174ef04fb312fdebd0ddc5" ON "session" ("userId") [39m
+ - [33mCREATE TABLE "user" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "deletedAt" TIMESTAMP, "identifier" character varying NOT NULL, "verified" boolean NOT NULL DEFAULT false, "lastLogin" TIMESTAMP, "id" SERIAL NOT NULL, CONSTRAINT "PK_cace4a159ff9f2512dd42373760" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "customer" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "deletedAt" TIMESTAMP, "title" character varying, "firstName" character varying NOT NULL, "lastName" character varying NOT NULL, "phoneNumber" character varying, "emailAddress" character varying NOT NULL, "id" SERIAL NOT NULL, "userId" integer, "customFieldsInvitecode" character varying(255), "customFieldsAlipayopenid" character varying(255), "customFieldsDouyinopenid" character varying(255), "customFieldsReferralcode" character varying(255), "customFieldsReferredby" character varying(255), "customFieldsGrowthvalue" integer DEFAULT '0', "customFieldsPoints" integer DEFAULT '0', "customFieldsMemberlevel" integer DEFAULT '1', "customFieldsCustomertype" character varying(255) NOT NULL DEFAULT 'individual', "customFieldsCompanyinfo" character varying(255), "customFieldsSalesstaffid" character varying(255), "customFieldsCustomertags" text, "customFieldsPushcid" character varying(255), CONSTRAINT "REL_3f62b42ed23958b120c235f74d" UNIQUE ("userId"), CONSTRAINT "PK_a7a13f4cacb744524e44dfdad32" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "address" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "fullName" character varying NOT NULL DEFAULT '', "company" character varying NOT NULL DEFAULT '', "streetLine1" character varying NOT NULL, "streetLine2" character varying NOT NULL DEFAULT '', "city" character varying NOT NULL DEFAULT '', "province" character varying NOT NULL DEFAULT '', "postalCode" character varying NOT NULL DEFAULT '', "phoneNumber" character varying NOT NULL DEFAULT '', "defaultShippingAddress" boolean NOT NULL DEFAULT false, "defaultBillingAddress" boolean NOT NULL DEFAULT false, "id" SERIAL NOT NULL, "customerId" integer, "countryId" integer, "customFieldsLatitude" double precision, "customFieldsLongitude" double precision, CONSTRAINT "PK_d92de1f82754668b5f5f5dd4fd5" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_dc34d382b493ade1f70e834c4d" ON "address" ("customerId") [39m
+ - [33mCREATE INDEX "IDX_d87215343c3a3a67e6a0b7f3ea" ON "address" ("countryId") [39m
+ - [33mCREATE TABLE "administrator" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "deletedAt" TIMESTAMP, "firstName" character varying NOT NULL, "lastName" character varying NOT NULL, "emailAddress" character varying NOT NULL, "id" SERIAL NOT NULL, "userId" integer, CONSTRAINT "REL_1966e18ce6a39a82b19204704d" UNIQUE ("userId"), CONSTRAINT "PK_ee58e71b3b4008b20ddc7b3092b" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "global_settings" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "availableLanguages" text NOT NULL, "trackInventory" boolean NOT NULL DEFAULT true, "outOfStockThreshold" integer NOT NULL DEFAULT '0', "id" SERIAL NOT NULL, CONSTRAINT "PK_fec5e2c0bf238e30b25d4a82976" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "payment_method_translation" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "languageCode" character varying NOT NULL, "name" character varying NOT NULL, "description" text NOT NULL, "id" SERIAL NOT NULL, "baseId" integer, CONSTRAINT "PK_ae5ae0af71ae8d15da9eb75768b" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_66187f782a3e71b9e0f5b50b68" ON "payment_method_translation" ("baseId") [39m
+ - [33mCREATE TABLE "payment_method" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "code" character varying NOT NULL DEFAULT '', "enabled" boolean NOT NULL, "checker" text, "handler" text NOT NULL, "id" SERIAL NOT NULL, CONSTRAINT "PK_7744c2b2dd932c9cf42f2b9bc3a" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "seller" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "deletedAt" TIMESTAMP, "name" character varying NOT NULL, "id" SERIAL NOT NULL, CONSTRAINT "PK_36445a9c6e794945a4a4a8d3c9d" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "settings_store_entry" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "key" character varying NOT NULL, "value" json, "scope" character varying, "id" SERIAL NOT NULL, CONSTRAINT "PK_3a905b358c0b454f6fc6637d6db" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_ab560f7983976aec91b91c26a4" ON "settings_store_entry" ("key") [39m
+ - [33mCREATE INDEX "IDX_8d8ddb95a0fbd11ffb5606ef0c" ON "settings_store_entry" ("scope") [39m
+ - [33mCREATE UNIQUE INDEX "settings_store_key_scope_unique" ON "settings_store_entry" ("key", "scope") [39m
+ - [33mCREATE TABLE "api_key_translation" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "languageCode" character varying NOT NULL, "name" character varying NOT NULL, "id" SERIAL NOT NULL, "baseId" integer, CONSTRAINT "PK_b703f4951cec9da71354120bd8a" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_bf45bd67c7b3278d7e1f2f9517" ON "api_key_translation" ("baseId") [39m
+ - [33mCREATE TABLE "api_key" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "lookupId" character varying NOT NULL, "apiKeyHash" character varying NOT NULL, "lastUsedAt" TIMESTAMP, "deletedAt" TIMESTAMP, "id" SERIAL NOT NULL, "ownerId" integer NOT NULL, "userId" integer NOT NULL, CONSTRAINT "UQ_ade30668b991772489bf875be5f" UNIQUE ("lookupId"), CONSTRAINT "UQ_3c254ac4ce1a6d4a26da30c5575" UNIQUE ("apiKeyHash"), CONSTRAINT "PK_b1bd840641b8acbaad89c3d8d11" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "channel" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "code" character varying NOT NULL, "token" character varying NOT NULL, "description" character varying DEFAULT '', "defaultLanguageCode" character varying NOT NULL, "availableLanguageCodes" text, "defaultCurrencyCode" character varying NOT NULL, "availableCurrencyCodes" text, "trackInventory" boolean NOT NULL DEFAULT true, "outOfStockThreshold" integer NOT NULL DEFAULT '0', "pricesIncludeTax" boolean NOT NULL, "id" SERIAL NOT NULL, "sellerId" integer, "defaultTaxZoneId" integer, "defaultShippingZoneId" integer, "customFieldsCouponstackable" boolean DEFAULT false, "customFieldsMaxstackablecount" integer, "customFieldsEmployeepickupmode" character varying(255) DEFAULT 'disabled', "customFieldsDefaultlocation" jsonb, "customFieldsAuthconfig" jsonb, "customFieldsPayconfig" jsonb, "customFieldsCustomdomains" text, "customFieldsMapconfig" jsonb, "customFieldsOrderpaymenttimeoutminutes" integer DEFAULT '30', "customFieldsOrderfulfillmenttimeouthours" integer DEFAULT '48', "customFieldsOrderreceipttimeoutdays" integer DEFAULT '15', "customFieldsOrderreviewreminderdays" integer DEFAULT '7', "customFieldsStocklocationpriority" character varying(255), "customFieldsShippingstrategy" character varying(255) DEFAULT 'priority', "customFieldsDirectcommissionrate" integer DEFAULT '1000', "customFieldsIndirectcommissionrate" integer DEFAULT '500', "customFieldsMinwithdrawalamount" integer DEFAULT '10000', "customFieldsCommissionsettlementdays" integer DEFAULT '7', "customFieldsDistributionenabled" boolean DEFAULT false, "customFieldsLevel1threshold" integer DEFAULT '0', "customFieldsLevel1name" character varying(255) DEFAULT '普通会员', "customFieldsLevel2threshold" integer DEFAULT '1000', "customFieldsLevel2name" character varying(255) DEFAULT '银卡会员', "customFieldsLevel3threshold" integer DEFAULT '5000', "customFieldsLevel3name" character varying(255) DEFAULT '金卡会员', "customFieldsLevel4threshold" integer DEFAULT '20000', "customFieldsLevel4name" character varying(255) DEFAULT '白金会员', "customFieldsLevel5threshold" integer DEFAULT '100000', "customFieldsLevel5name" character varying(255) DEFAULT '钻石会员', "customFieldsPointsearnratio" double precision DEFAULT '1', "customFieldsPointsearnonshipping" boolean DEFAULT false, "customFieldsOrderpaidtemplateid" character varying(255), "customFieldsOrdershippedtemplateid" character varying(255), "customFieldsOrderdeliveredtemplateid" character varying(255), "customFieldsOrderrefundedtemplateid" character varying(255), "customFieldsSubscribemessagepage" character varying(255), "customFieldsSubscribemessageminiprogramstate" character varying(255), "customFieldsUnipushappkey" character varying(255), "customFieldsUnipushmastersecret" character varying(255), CONSTRAINT "UQ_06127ac6c6d913f4320759971db" UNIQUE ("code"), CONSTRAINT "UQ_842699fce4f3470a7d06d89de88" UNIQUE ("token"), CONSTRAINT "PK_590f33ee6ee7d76437acf362e39" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_af2116c7e176b6b88dceceeb74" ON "channel" ("sellerId") [39m
+ - [33mCREATE INDEX "IDX_afe9f917a1c82b9e9e69f7c612" ON "channel" ("defaultTaxZoneId") [39m
+ - [33mCREATE INDEX "IDX_c9ca2f58d4517460435cbd8b4c" ON "channel" ("defaultShippingZoneId") [39m
+ - [33mCREATE TABLE "history_entry" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "type" character varying NOT NULL, "isPublic" boolean NOT NULL, "data" text NOT NULL, "id" SERIAL NOT NULL, "discriminator" character varying NOT NULL, "administratorId" integer, "customerId" integer, "orderId" integer, CONSTRAINT "PK_b65bd95b0d2929668589d57b97a" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_92f8c334ef06275f9586fd0183" ON "history_entry" ("administratorId") [39m
+ - [33mCREATE INDEX "IDX_43ac602f839847fdb91101f30e" ON "history_entry" ("customerId") [39m
+ - [33mCREATE INDEX "IDX_3a05127e67435b4d2332ded7c9" ON "history_entry" ("orderId") [39m
+ - [33mCREATE TABLE "job_record" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "queueName" character varying NOT NULL, "data" text, "state" character varying NOT NULL, "progress" integer NOT NULL, "result" text, "error" character varying, "startedAt" TIMESTAMP(6), "settledAt" TIMESTAMP(6), "isSettled" boolean NOT NULL, "retries" integer NOT NULL, "attempts" integer NOT NULL, "id" SERIAL NOT NULL, CONSTRAINT "PK_88ce3ea0c9dca8b571450b457a7" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_86bc376c56af8cefd41a847a95" ON "job_record" ("createdAt") [39m
+ - [33mCREATE TABLE "scheduled_task_record" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "taskId" character varying NOT NULL, "enabled" boolean NOT NULL DEFAULT true, "lockedAt" TIMESTAMP(3), "lastExecutedAt" TIMESTAMP(3), "manuallyTriggeredAt" TIMESTAMP(3), "lastResult" json, "id" SERIAL NOT NULL, CONSTRAINT "UQ_661876d97056cad9fd37eaa8774" UNIQUE ("taskId"), CONSTRAINT "PK_efd4b61a3b227f3eba94de32e4c" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "search_index_item" ("languageCode" character varying NOT NULL, "enabled" boolean NOT NULL, "productName" character varying NOT NULL, "productVariantName" character varying NOT NULL, "description" text NOT NULL, "slug" character varying NOT NULL, "sku" character varying NOT NULL, "facetIds" text NOT NULL, "facetValueIds" text NOT NULL, "collectionIds" text NOT NULL, "collectionSlugs" text NOT NULL, "channelIds" text NOT NULL, "productPreview" character varying NOT NULL, "productPreviewFocalPoint" text, "productVariantPreview" character varying NOT NULL, "productVariantPreviewFocalPoint" text, "productVariantId" integer NOT NULL, "channelId" integer NOT NULL, "productId" integer NOT NULL, "productAssetId" integer, "productVariantAssetId" integer, "price" integer NOT NULL, "priceWithTax" integer NOT NULL, CONSTRAINT "PK_6470dd173311562c89e5f80b30e" PRIMARY KEY ("languageCode", "productVariantId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_6fb55742e13e8082954d0436dc" ON "search_index_item" ("productName") [39m
+ - [33mCREATE INDEX "IDX_d8791f444a8bf23fe4c1bc020c" ON "search_index_item" ("productVariantName") [39m
+ - [33mCREATE INDEX "IDX_9a5a6a556f75c4ac7bfdd03410" ON "search_index_item" ("description") [39m
+ - [33mCREATE TABLE "pickup_location" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "name" character varying NOT NULL, "type" character varying NOT NULL DEFAULT 'store', "address" character varying NOT NULL, "phoneNumber" character varying, "businessHours" character varying, "coordinates" text, "partner" character varying, "province" character varying, "city" character varying, "district" character varying, "street" character varying, "isPublic" boolean NOT NULL DEFAULT false, "id" SERIAL NOT NULL, "ownerChannelId" integer, CONSTRAINT "PK_dff0bb23dcd6e0dd4c88db85374" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "employee_customer" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "enterpriseName" character varying NOT NULL, "employeeId" character varying, "verified" boolean NOT NULL DEFAULT false, "id" SERIAL NOT NULL, "customerId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_06d129015f87cc68656ee211d45" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "shipping_template" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "name" character varying NOT NULL, "description" text NOT NULL, "code" character varying NOT NULL, "fulfillmentHandler" character varying NOT NULL DEFAULT 'manual-fulfillment', "checker" text NOT NULL, "calculator" text NOT NULL, "isGlobal" boolean NOT NULL DEFAULT false, "id" SERIAL NOT NULL, "ownerChannelId" integer, CONSTRAINT "PK_6cd4da7f440e1626c27de9659ab" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "shipping_profile" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "name" character varying NOT NULL, "description" text NOT NULL, "code" character varying NOT NULL, "isGlobal" boolean NOT NULL DEFAULT false, "freeShippingThreshold" integer, "id" SERIAL NOT NULL, "ownerChannelId" integer, CONSTRAINT "PK_c8120e4543a5a3a121f2968a1ec" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "payment_profile" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "name" character varying NOT NULL, "description" text NOT NULL, "code" character varying NOT NULL, "isGlobal" boolean NOT NULL DEFAULT false, "installmentOptions" text, "id" SERIAL NOT NULL, "ownerChannelId" integer, CONSTRAINT "PK_643552fcfc44ed6f6036befe656" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "order_timeout_task" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "type" character varying NOT NULL, "orderId" integer NOT NULL, "channelId" integer NOT NULL, "dueAt" TIMESTAMP NOT NULL, "status" character varying NOT NULL DEFAULT 'pending', "retryCount" integer NOT NULL DEFAULT '0', "lastError" text, "executedAt" TIMESTAMP, "id" SERIAL NOT NULL, CONSTRAINT "PK_b5d94673747c60fbfa7eca91722" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "invoice" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "invoiceType" character varying NOT NULL, "status" character varying NOT NULL DEFAULT 'pending', "title" text NOT NULL, "taxNumber" character varying, "email" character varying, "companyAddress" character varying, "companyPhone" character varying, "bankName" character varying, "bankAccount" character varying, "amount" integer NOT NULL, "customerId" integer NOT NULL, "orderIds" text NOT NULL, "pdfUrl" character varying, "issuedAt" TIMESTAMP, "reversedAt" TIMESTAMP, "reverseReason" text, "providerInvoiceNo" character varying, "lastError" text, "id" SERIAL NOT NULL, CONSTRAINT "PK_15d25c200d9bcd8a33f698daf18" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "logistics_track" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "fulfillmentId" integer NOT NULL, "trackingNo" character varying NOT NULL, "carrierCode" character varying NOT NULL, "status" character varying NOT NULL DEFAULT 'unknown', "trackInfo" text, "signedAt" TIMESTAMP, "lastError" text, "lastSyncedAt" TIMESTAMP, "channelId" integer NOT NULL, "id" SERIAL NOT NULL, CONSTRAINT "PK_5bbf6ce39145ed786b0abeb693e" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "group_buy_activity" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "name" character varying NOT NULL, "description" character varying NOT NULL, "targetCount" integer NOT NULL, "currentCount" integer NOT NULL DEFAULT '0', "maxCount" integer NOT NULL DEFAULT '0', "status" character varying NOT NULL DEFAULT 'active', "startAt" TIMESTAMP NOT NULL, "endAt" TIMESTAMP NOT NULL, "productId" integer NOT NULL, "variantId" integer NOT NULL, "groupPrice" integer NOT NULL, "leaderDiscount" integer NOT NULL DEFAULT '0', "leaderRewardType" character varying NOT NULL DEFAULT 'discount', "rewardRules" text, "autoConfirm" boolean NOT NULL DEFAULT true, "allowJoinAfterComplete" boolean NOT NULL DEFAULT false, "id" SERIAL NOT NULL, CONSTRAINT "PK_38f17d06330460e304db516edd9" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "group_buy_order" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "groupBuyActivityId" character varying NOT NULL, "orderId" character varying NOT NULL, "isLeader" boolean NOT NULL, "status" character varying NOT NULL DEFAULT 'pending', "id" SERIAL NOT NULL, CONSTRAINT "PK_5ec9de1581fbf382555bcb95434" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "flash_sale_activity" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "name" character varying NOT NULL, "startAt" TIMESTAMP NOT NULL, "endAt" TIMESTAMP NOT NULL, "flashPrice" integer NOT NULL, "totalStock" integer NOT NULL, "soldCount" integer NOT NULL DEFAULT '0', "limitPerUser" integer NOT NULL DEFAULT '1', "productId" integer NOT NULL, "variantId" integer NOT NULL, "status" character varying NOT NULL DEFAULT 'upcoming', "id" SERIAL NOT NULL, CONSTRAINT "PK_27fb33e2b300d9977bf616bb12a" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "commission_record" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "distributorId" character varying NOT NULL, "orderId" character varying NOT NULL, "orderLineId" character varying, "fromDistributorId" character varying, "commissionType" character varying NOT NULL, "commissionRate" integer NOT NULL, "orderAmount" integer NOT NULL, "commissionAmount" integer NOT NULL, "status" character varying NOT NULL DEFAULT 'pending', "settledAt" TIMESTAMP, "id" SERIAL NOT NULL, CONSTRAINT "PK_f927adbc54c7a7f3114a339b00a" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "distributor" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "customerId" character varying NOT NULL, "parentId" character varying, "level" integer NOT NULL DEFAULT '1', "status" character varying NOT NULL DEFAULT 'pending', "totalEarnings" integer NOT NULL DEFAULT '0', "availableBalance" integer NOT NULL DEFAULT '0', "frozenBalance" integer NOT NULL DEFAULT '0', "referralCode" character varying NOT NULL, "id" SERIAL NOT NULL, CONSTRAINT "UQ_e260d4c4c66508f93bf3ca08857" UNIQUE ("referralCode"), CONSTRAINT "PK_949c7e62bf60d4e6488f6f29b8d" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "withdrawal_request" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "distributorId" character varying NOT NULL, "amount" integer NOT NULL, "method" character varying NOT NULL, "accountInfo" text NOT NULL, "status" character varying NOT NULL DEFAULT 'pending', "reviewedAt" TIMESTAMP, "paidAt" TIMESTAMP, "id" SERIAL NOT NULL, CONSTRAINT "PK_bc9a9e96931501edf31e665327f" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "recharge_card" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "code" character varying NOT NULL, "pinHash" character varying, "faceValue" integer NOT NULL, "state" character varying NOT NULL DEFAULT 'unused', "batchId" integer, "redeemedByCustomerId" integer, "redeemedAt" TIMESTAMP, "expiresAt" TIMESTAMP, "id" SERIAL NOT NULL, "redeemedById" integer, CONSTRAINT "UQ_c94acac47ac6acfd2fc0a5b2d6b" UNIQUE ("code"), CONSTRAINT "PK_59cf66e35592f67ee3766ea7f3a" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "recharge_card_batch" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "name" character varying NOT NULL, "prefix" character varying, "faceValue" integer NOT NULL, "quantity" integer NOT NULL, "generatedCount" integer NOT NULL DEFAULT '0', "expiresAt" TIMESTAMP, "id" SERIAL NOT NULL, CONSTRAINT "PK_9a21e795fa00dc0689b6e1fc40d" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "customer_balance" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "customerId" integer NOT NULL, "channelId" integer NOT NULL, "balance" integer NOT NULL DEFAULT '0', "frozenBalance" integer NOT NULL DEFAULT '0', "id" SERIAL NOT NULL, CONSTRAINT "UQ_6a35a11f758b9618d46f7cb8547" UNIQUE ("customerId", "channelId"), CONSTRAINT "PK_6924c3f261eac5bb326c90b5e37" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "balance_transaction" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "customerId" integer NOT NULL, "type" character varying NOT NULL, "amount" integer NOT NULL, "balanceBefore" integer NOT NULL, "balanceAfter" integer NOT NULL, "orderId" integer, "paymentId" integer, "rechargeCardId" integer, "remark" text, "channelId" integer NOT NULL, "id" SERIAL NOT NULL, CONSTRAINT "PK_5e3fd7a79cf10c4cd192e5648dc" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "after_sales_request" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "orderId" integer NOT NULL, "orderLineId" integer, "type" character varying NOT NULL DEFAULT 'return_refund', "state" character varying NOT NULL DEFAULT 'Pending', "reason" character varying NOT NULL, "description" text, "evidenceImages" text, "refundAmount" integer NOT NULL, "returnTrackingNo" character varying, "returnCarrier" character varying, "rejectReason" text, "customerId" integer NOT NULL, "id" SERIAL NOT NULL, CONSTRAINT "PK_9d0b40380dd1cffe7b3c2dedd02" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "member_points_history" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "customerId" integer NOT NULL, "type" character varying NOT NULL, "amount" integer NOT NULL, "balanceBefore" integer NOT NULL, "balanceAfter" integer NOT NULL, "orderId" integer, "remark" text, "expiresAt" TIMESTAMP, "channelId" integer NOT NULL, "id" SERIAL NOT NULL, CONSTRAINT "PK_f4a632b235e0a7d9eebd9c27f46" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "review" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "customerId" integer NOT NULL, "productId" integer NOT NULL, "orderLineId" integer, "variantId" integer, "rating" integer NOT NULL, "content" text NOT NULL, "images" text, "videos" text, "tags" text, "isAnonymous" boolean NOT NULL DEFAULT false, "status" character varying NOT NULL DEFAULT 'pending', "reply" text, "repliedAt" TIMESTAMP, "helpfulCount" integer NOT NULL DEFAULT '0', "channelId" integer NOT NULL, "id" SERIAL NOT NULL, CONSTRAINT "PK_2e4299a343a81574217255c00ca" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "subscribe_message_log" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "customerId" integer NOT NULL, "openid" character varying NOT NULL, "templateId" character varying NOT NULL, "data" text NOT NULL, "status" character varying NOT NULL DEFAULT 'pending', "page" character varying, "miniprogramState" character varying, "errorMsg" text, "msgId" character varying, "sentAt" TIMESTAMP, "channelId" integer NOT NULL, "id" SERIAL NOT NULL, CONSTRAINT "PK_05da19772c4869a12967b6ec639" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "coupon_code" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "couponId" integer NOT NULL, "customerId" integer NOT NULL, "code" text NOT NULL, "status" character varying NOT NULL DEFAULT 'unused', "claimedAt" TIMESTAMP, "usedAt" TIMESTAMP, "orderId" integer, "channelId" integer NOT NULL, "id" SERIAL NOT NULL, CONSTRAINT "PK_3a85716dc17bbabb437402290c3" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "coupon" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "name" character varying NOT NULL, "description" character varying, "couponType" character varying NOT NULL, "discountValue" integer NOT NULL, "minSpend" integer NOT NULL DEFAULT '0', "maxDiscount" integer NOT NULL DEFAULT '0', "startAt" TIMESTAMP NOT NULL, "endAt" TIMESTAMP NOT NULL, "totalQuantity" integer NOT NULL, "claimedCount" integer NOT NULL DEFAULT '0', "limitPerUser" integer NOT NULL DEFAULT '1', "isActive" boolean NOT NULL DEFAULT true, "applicableProductIds" text, "applicableCategoryIds" text, "isNewUserOnly" boolean NOT NULL DEFAULT false, "isGlobal" boolean NOT NULL DEFAULT false, "ownerChannelId" integer, "channelId" integer NOT NULL, "id" SERIAL NOT NULL, CONSTRAINT "PK_fcbe9d72b60eed35f46dc35a682" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "stock_in_order" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "code" character varying NOT NULL, "state" character varying NOT NULL DEFAULT 'Pending', "type" character varying, "note" character varying, "staffId" character varying, "completedAt" TIMESTAMP, "cancelledAt" TIMESTAMP, "id" SERIAL NOT NULL, "targetLocationId" integer NOT NULL, CONSTRAINT "PK_154b07f0f145849fbd77ecd3f55" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "stock_in_order_line" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "quantity" integer NOT NULL, "unitPrice" integer, "id" SERIAL NOT NULL, "orderId" integer NOT NULL, "productVariantId" integer NOT NULL, CONSTRAINT "PK_fc0343ffa4d62e0e30de8e78dcf" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "stock_out_order" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "code" character varying NOT NULL, "state" character varying NOT NULL DEFAULT 'Pending', "type" character varying, "note" character varying, "staffId" character varying, "completedAt" TIMESTAMP, "cancelledAt" TIMESTAMP, "id" SERIAL NOT NULL, "sourceLocationId" integer NOT NULL, CONSTRAINT "PK_97b76e248e3ef4f2331f3f81155" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "stock_out_order_line" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "quantity" integer NOT NULL, "unitPrice" integer, "id" SERIAL NOT NULL, "orderId" integer NOT NULL, "productVariantId" integer NOT NULL, CONSTRAINT "PK_6631521c18f5322f94292852ebe" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "stock_move_order" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "code" character varying NOT NULL, "state" character varying NOT NULL DEFAULT 'Pending', "note" character varying, "staffId" character varying, "shippedAt" TIMESTAMP, "receivedAt" TIMESTAMP, "completedAt" TIMESTAMP, "cancelledAt" TIMESTAMP, "id" SERIAL NOT NULL, "sourceLocationId" integer NOT NULL, "targetLocationId" integer NOT NULL, CONSTRAINT "PK_4d3af39e8690921388271f404e6" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "stock_move_order_line" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "quantity" integer NOT NULL, "id" SERIAL NOT NULL, "orderId" integer NOT NULL, "productVariantId" integer NOT NULL, CONSTRAINT "PK_2d4b4087a15f1336b9c74723753" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "stocktake_order" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "code" character varying NOT NULL, "state" character varying NOT NULL DEFAULT 'Pending', "note" character varying, "staffId" character varying, "countingStartedAt" TIMESTAMP, "reconcilingStartedAt" TIMESTAMP, "completedAt" TIMESTAMP, "cancelledAt" TIMESTAMP, "id" SERIAL NOT NULL, "locationId" integer NOT NULL, CONSTRAINT "PK_531c0138ac656f41c2d1ce82fb0" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "stocktake_order_line" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "systemQuantity" integer NOT NULL, "countedQuantity" integer NOT NULL DEFAULT '0', "difference" integer NOT NULL DEFAULT '0', "reconciled" boolean NOT NULL DEFAULT false, "id" SERIAL NOT NULL, "orderId" integer NOT NULL, "productVariantId" integer NOT NULL, CONSTRAINT "PK_e22ddb5d393e68b8e220a25d896" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "message_delivery" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "messageId" integer NOT NULL, "customerId" integer NOT NULL, "deliveryStatus" character varying NOT NULL DEFAULT 'pending', "deliveryError" text, "readAt" TIMESTAMP, "id" SERIAL NOT NULL, CONSTRAINT "PK_bdcfffd395c57ec0b9c4d9d76d1" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_e0624b66e3ec03a4bbbfd0c7e0" ON "message_delivery" ("customerId", "readAt") [39m
+ - [33mCREATE INDEX "IDX_093637a208c3fc6a4a8c771ca1" ON "message_delivery" ("messageId", "customerId") [39m
+ - [33mCREATE TABLE "message" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "title" character varying NOT NULL, "body" text NOT NULL, "deliveryChannel" character varying NOT NULL DEFAULT 'inapp', "audienceType" character varying NOT NULL DEFAULT 'all', "audienceLevel" integer, "status" character varying NOT NULL DEFAULT 'draft', "totalTarget" integer NOT NULL DEFAULT '0', "totalSent" integer NOT NULL DEFAULT '0', "totalFailed" integer NOT NULL DEFAULT '0', "sentAt" TIMESTAMP, "id" SERIAL NOT NULL, CONSTRAINT "PK_ba01f0a3e0123651915008bc578" PRIMARY KEY ("id"))[39m
+ - [33mCREATE TABLE "content_item" ("createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "type" character varying NOT NULL, "code" character varying NOT NULL, "name" character varying NOT NULL, "enabled" boolean NOT NULL DEFAULT true, "sort" integer NOT NULL DEFAULT '0', "position" character varying NOT NULL DEFAULT 'home', "startAt" TIMESTAMP, "endAt" TIMESTAMP, "data" json, "staffId" character varying, "publishedAt" TIMESTAMP, "unpublishedAt" TIMESTAMP, "deletedAt" TIMESTAMP, "deletedBy" character varying, "id" SERIAL NOT NULL, CONSTRAINT "PK_65d05a7056f7b695c9473ce43b9" PRIMARY KEY ("id"))[39m
+ - [33mCREATE INDEX "IDX_0b070ed93208e67edbc5d627e5" ON "content_item" ("code") [39m
+ - [33mCREATE INDEX "IDX_b6ba31f30810da52e8c749f49a" ON "content_item" ("sort") [39m
+ - [33mCREATE INDEX "IDX_17b434dfb75b1bb827cfec93d8" ON "content_item" ("position") [39m
+ - [33mCREATE INDEX "IDX_46803e3d60c3de02858f2fd87e" ON "content_item" ("deletedAt") [39m
+ - [33mCREATE TABLE "collection_product_variants_product_variant" ("collectionId" integer NOT NULL, "productVariantId" integer NOT NULL, CONSTRAINT "PK_50c5ed0504ded53967be811f633" PRIMARY KEY ("collectionId", "productVariantId"))[39m
+ - [33mCREATE INDEX "IDX_6faa7b72422d9c4679e2f186ad" ON "collection_product_variants_product_variant" ("collectionId") [39m
+ - [33mCREATE INDEX "IDX_fb05887e2867365f236d7dd95e" ON "collection_product_variants_product_variant" ("productVariantId") [39m
+ - [33mCREATE TABLE "collection_channels_channel" ("collectionId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_0e292d80228c9b4a114d2b09476" PRIMARY KEY ("collectionId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_cdbf33ffb5d451916125152008" ON "collection_channels_channel" ("collectionId") [39m
+ - [33mCREATE INDEX "IDX_7216ab24077cf5cbece7857dbb" ON "collection_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "facet_channels_channel" ("facetId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_df0579886093b2f830c159adfde" PRIMARY KEY ("facetId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_ca796020c6d097e251e5d6d2b0" ON "facet_channels_channel" ("facetId") [39m
+ - [33mCREATE INDEX "IDX_2a8ea404d05bf682516184db7d" ON "facet_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "facet_value_channels_channel" ("facetValueId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_653fb72a256f100f52c573e419f" PRIMARY KEY ("facetValueId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_ad690c1b05596d7f52e52ffeed" ON "facet_value_channels_channel" ("facetValueId") [39m
+ - [33mCREATE INDEX "IDX_e1d54c0b9db3e2eb17faaf5919" ON "facet_value_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "product_option_channels_channel" ("productOptionId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_be681a3bd2f92f17d084fa4375a" PRIMARY KEY ("productOptionId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_8dbe001861ca34ae8b687e6bae" ON "product_option_channels_channel" ("productOptionId") [39m
+ - [33mCREATE INDEX "IDX_717e7792b8f31c319b6c7b8135" ON "product_option_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "product_option_group_channels_channel" ("productOptionGroupId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_ddad9696c49ebbc8032caf76fe3" PRIMARY KEY ("productOptionGroupId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_4fbe6303db2827370c0ec2d027" ON "product_option_group_channels_channel" ("productOptionGroupId") [39m
+ - [33mCREATE INDEX "IDX_d689965b8c58ebf316fce60fab" ON "product_option_group_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "product_option_groups_product_option_group" ("productId" integer NOT NULL, "productOptionGroupId" integer NOT NULL, CONSTRAINT "PK_6a7a0291e226fbb0d4df828a483" PRIMARY KEY ("productId", "productOptionGroupId"))[39m
+ - [33mCREATE INDEX "IDX_9148fe2c2fd83f5b59d391088c" ON "product_option_groups_product_option_group" ("productId") [39m
+ - [33mCREATE INDEX "IDX_9b03a92219b0684dbd4403e624" ON "product_option_groups_product_option_group" ("productOptionGroupId") [39m
+ - [33mCREATE TABLE "product_facet_values_facet_value" ("productId" integer NOT NULL, "facetValueId" integer NOT NULL, CONSTRAINT "PK_d57f06b38805181019d75662aa6" PRIMARY KEY ("productId", "facetValueId"))[39m
+ - [33mCREATE INDEX "IDX_6a0558e650d75ae639ff38e413" ON "product_facet_values_facet_value" ("productId") [39m
+ - [33mCREATE INDEX "IDX_06e7d73673ee630e8ec50d0b29" ON "product_facet_values_facet_value" ("facetValueId") [39m
+ - [33mCREATE TABLE "product_channels_channel" ("productId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_722acbcc06403e693b518d2c345" PRIMARY KEY ("productId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_26d12be3b5fec6c4adb1d79284" ON "product_channels_channel" ("productId") [39m
+ - [33mCREATE INDEX "IDX_a51dfbd87c330c075c39832b6e" ON "product_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "asset_tags_tag" ("assetId" integer NOT NULL, "tagId" integer NOT NULL, CONSTRAINT "PK_c4113b84381e953901fa5553654" PRIMARY KEY ("assetId", "tagId"))[39m
+ - [33mCREATE INDEX "IDX_9e412b00d4c6cee1a4b3d92071" ON "asset_tags_tag" ("assetId") [39m
+ - [33mCREATE INDEX "IDX_fb5e800171ffbe9823f2cc727f" ON "asset_tags_tag" ("tagId") [39m
+ - [33mCREATE TABLE "asset_channels_channel" ("assetId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_d943908a39e32952e8425d2f1ba" PRIMARY KEY ("assetId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_dc4e7435f9f5e9e6436bebd33b" ON "asset_channels_channel" ("assetId") [39m
+ - [33mCREATE INDEX "IDX_16ca9151a5153f1169da5b7b7e" ON "asset_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "promotion_channels_channel" ("promotionId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_4b34f9b7bf95a8d3dc7f7f6dd23" PRIMARY KEY ("promotionId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_6d9e2c39ab12391aaa374bcdaa" ON "promotion_channels_channel" ("promotionId") [39m
+ - [33mCREATE INDEX "IDX_0eaaf0f4b6c69afde1e88ffb52" ON "promotion_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "shipping_method_channels_channel" ("shippingMethodId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_c92b2b226a6ee87888d8dcd8bd6" PRIMARY KEY ("shippingMethodId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_f0a17b94aa5a162f0d422920eb" ON "shipping_method_channels_channel" ("shippingMethodId") [39m
+ - [33mCREATE INDEX "IDX_f2b98dfb56685147bed509acc3" ON "shipping_method_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "order_promotions_promotion" ("orderId" integer NOT NULL, "promotionId" integer NOT NULL, CONSTRAINT "PK_001dfe7435f3946fbc2d66a4e92" PRIMARY KEY ("orderId", "promotionId"))[39m
+ - [33mCREATE INDEX "IDX_67be0e40122ab30a62a9817efe" ON "order_promotions_promotion" ("orderId") [39m
+ - [33mCREATE INDEX "IDX_2c26b988769c0e3b0120bdef31" ON "order_promotions_promotion" ("promotionId") [39m
+ - [33mCREATE TABLE "order_fulfillments_fulfillment" ("orderId" integer NOT NULL, "fulfillmentId" integer NOT NULL, CONSTRAINT "PK_414600087d71aee1583bc517590" PRIMARY KEY ("orderId", "fulfillmentId"))[39m
+ - [33mCREATE INDEX "IDX_f80d84d525af2ffe974e7e8ca2" ON "order_fulfillments_fulfillment" ("orderId") [39m
+ - [33mCREATE INDEX "IDX_4add5a5796e1582dec2877b289" ON "order_fulfillments_fulfillment" ("fulfillmentId") [39m
+ - [33mCREATE TABLE "order_channels_channel" ("orderId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_39853134b20afe9dfb25de18292" PRIMARY KEY ("orderId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_0d8e5c204480204a60e151e485" ON "order_channels_channel" ("orderId") [39m
+ - [33mCREATE INDEX "IDX_d0d16db872499e83b15999f8c7" ON "order_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "stock_location_channels_channel" ("stockLocationId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_e6f8b2d61ff58c51505c38da8a0" PRIMARY KEY ("stockLocationId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_39513fd02a573c848d23bee587" ON "stock_location_channels_channel" ("stockLocationId") [39m
+ - [33mCREATE INDEX "IDX_ff8150fe54e56a900d5712671a" ON "stock_location_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "product_variant_options_product_option" ("productVariantId" integer NOT NULL, "productOptionId" integer NOT NULL, CONSTRAINT "PK_c57de5cb6bb74504180604a00c0" PRIMARY KEY ("productVariantId", "productOptionId"))[39m
+ - [33mCREATE INDEX "IDX_526f0131260eec308a3bd2b61b" ON "product_variant_options_product_option" ("productVariantId") [39m
+ - [33mCREATE INDEX "IDX_e96a71affe63c97f7fa2f076da" ON "product_variant_options_product_option" ("productOptionId") [39m
+ - [33mCREATE TABLE "product_variant_facet_values_facet_value" ("productVariantId" integer NOT NULL, "facetValueId" integer NOT NULL, CONSTRAINT "PK_a28474836b2feeffcef98c806e1" PRIMARY KEY ("productVariantId", "facetValueId"))[39m
+ - [33mCREATE INDEX "IDX_69567bc225b6bbbd732d6c5455" ON "product_variant_facet_values_facet_value" ("productVariantId") [39m
+ - [33mCREATE INDEX "IDX_0d641b761ed1dce4ef3cd33d55" ON "product_variant_facet_values_facet_value" ("facetValueId") [39m
+ - [33mCREATE TABLE "product_variant_channels_channel" ("productVariantId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_1a10ca648c3d73c0f2b455ae191" PRIMARY KEY ("productVariantId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_beeb2b3cd800e589f2213ae99d" ON "product_variant_channels_channel" ("productVariantId") [39m
+ - [33mCREATE INDEX "IDX_d194bff171b62357688a5d0f55" ON "product_variant_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "zone_members_region" ("zoneId" integer NOT NULL, "regionId" integer NOT NULL, CONSTRAINT "PK_fc4eaa2236c4d4f61db0ae3826f" PRIMARY KEY ("zoneId", "regionId"))[39m
+ - [33mCREATE INDEX "IDX_433f45158e4e2b2a2f344714b2" ON "zone_members_region" ("zoneId") [39m
+ - [33mCREATE INDEX "IDX_b45b65256486a15a104e17d495" ON "zone_members_region" ("regionId") [39m
+ - [33mCREATE TABLE "role_channels_channel" ("roleId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_6fb9277e9f11bb8a63445c36242" PRIMARY KEY ("roleId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_bfd2a03e9988eda6a9d1176011" ON "role_channels_channel" ("roleId") [39m
+ - [33mCREATE INDEX "IDX_e09dfee62b158307404202b43a" ON "role_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "user_roles_role" ("userId" integer NOT NULL, "roleId" integer NOT NULL, CONSTRAINT "PK_b47cd6c84ee205ac5a713718292" PRIMARY KEY ("userId", "roleId"))[39m
+ - [33mCREATE INDEX "IDX_5f9286e6c25594c6b88c108db7" ON "user_roles_role" ("userId") [39m
+ - [33mCREATE INDEX "IDX_4be2f7adf862634f5f803d246b" ON "user_roles_role" ("roleId") [39m
+ - [33mCREATE TABLE "customer_groups_customer_group" ("customerId" integer NOT NULL, "customerGroupId" integer NOT NULL, CONSTRAINT "PK_0f902789cba691ce7ebbc9fcaa6" PRIMARY KEY ("customerId", "customerGroupId"))[39m
+ - [33mCREATE INDEX "IDX_b823a3c8bf3b78d3ed68736485" ON "customer_groups_customer_group" ("customerId") [39m
+ - [33mCREATE INDEX "IDX_85feea3f0e5e82133605f78db0" ON "customer_groups_customer_group" ("customerGroupId") [39m
+ - [33mCREATE TABLE "customer_channels_channel" ("customerId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_27e2fa538c020889d32a0a784e8" PRIMARY KEY ("customerId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_a842c9fe8cd4c8ff31402d172d" ON "customer_channels_channel" ("customerId") [39m
+ - [33mCREATE INDEX "IDX_dc9f69207a8867f83b0fd257e3" ON "customer_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "payment_method_channels_channel" ("paymentMethodId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_c83e4a201c0402ce5cdb170a9a2" PRIMARY KEY ("paymentMethodId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_5bcb569635ce5407eb3f264487" ON "payment_method_channels_channel" ("paymentMethodId") [39m
+ - [33mCREATE INDEX "IDX_c00e36f667d35031087b382e61" ON "payment_method_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "api_key_channels_channel" ("apiKeyId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_acb0650ccd9b2df593d1b4f1c52" PRIMARY KEY ("apiKeyId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_460b1afc096014ca2dc5a5f5aa" ON "api_key_channels_channel" ("apiKeyId") [39m
+ - [33mCREATE INDEX "IDX_d37be6b22047f56ea87bea795b" ON "api_key_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "pickup_location_channels_channel" ("pickupLocationId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_22da82166696bf11e1149dd899f" PRIMARY KEY ("pickupLocationId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_6aab6742cf24b18b8b9b95364e" ON "pickup_location_channels_channel" ("pickupLocationId") [39m
+ - [33mCREATE INDEX "IDX_31212ff188ab6424d5ba29b866" ON "pickup_location_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "employee_customer_pickup_location" ("employee_customer_id" integer NOT NULL, "pickup_location_id" integer NOT NULL, CONSTRAINT "PK_203b402633ee1e0fd67aef9202d" PRIMARY KEY ("employee_customer_id", "pickup_location_id"))[39m
+ - [33mCREATE INDEX "IDX_eeb7c3e95eef973b0f0da1dad0" ON "employee_customer_pickup_location" ("employee_customer_id") [39m
+ - [33mCREATE INDEX "IDX_1541bb73e38bccc2e227d8ef61" ON "employee_customer_pickup_location" ("pickup_location_id") [39m
+ - [33mCREATE TABLE "shipping_template_channels_channel" ("shippingTemplateId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_818a6600299de7c14d3751244c2" PRIMARY KEY ("shippingTemplateId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_95c1def6a65e1a041386c5acd1" ON "shipping_template_channels_channel" ("shippingTemplateId") [39m
+ - [33mCREATE INDEX "IDX_7780843a81de1172dc652a64e8" ON "shipping_template_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "shipping_profile_shipping_methods_shipping_method" ("shippingProfileId" integer NOT NULL, "shippingMethodId" integer NOT NULL, CONSTRAINT "PK_5a18f348a3d828df160efe2d855" PRIMARY KEY ("shippingProfileId", "shippingMethodId"))[39m
+ - [33mCREATE INDEX "IDX_d2310c536328ba66e2914ef61c" ON "shipping_profile_shipping_methods_shipping_method" ("shippingProfileId") [39m
+ - [33mCREATE INDEX "IDX_b064a3b98e25918074b8ed90e7" ON "shipping_profile_shipping_methods_shipping_method" ("shippingMethodId") [39m
+ - [33mCREATE TABLE "shipping_profile_pickup_locations_pickup_location" ("shippingProfileId" integer NOT NULL, "pickupLocationId" integer NOT NULL, CONSTRAINT "PK_6675ae133beba3eeb729f672db8" PRIMARY KEY ("shippingProfileId", "pickupLocationId"))[39m
+ - [33mCREATE INDEX "IDX_8279bb665969d89e6ffca670a9" ON "shipping_profile_pickup_locations_pickup_location" ("shippingProfileId") [39m
+ - [33mCREATE INDEX "IDX_c610a7cab8c812c5d52f929c3e" ON "shipping_profile_pickup_locations_pickup_location" ("pickupLocationId") [39m
+ - [33mCREATE TABLE "shipping_profile_channels_channel" ("shippingProfileId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_2877977cc81669d3c48e0eeb5d8" PRIMARY KEY ("shippingProfileId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_c9e389eb1a3d4f5afe301eeba0" ON "shipping_profile_channels_channel" ("shippingProfileId") [39m
+ - [33mCREATE INDEX "IDX_a4d0d8c1c7a234ce823dee7f3e" ON "shipping_profile_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "payment_profile_payment_methods_payment_method" ("paymentProfileId" integer NOT NULL, "paymentMethodId" integer NOT NULL, CONSTRAINT "PK_16cc6841e8f08fea49e30d63d05" PRIMARY KEY ("paymentProfileId", "paymentMethodId"))[39m
+ - [33mCREATE INDEX "IDX_6bc7d070b134197a51ed8f23b7" ON "payment_profile_payment_methods_payment_method" ("paymentProfileId") [39m
+ - [33mCREATE INDEX "IDX_f45c6aa5cb8f17c9569f146461" ON "payment_profile_payment_methods_payment_method" ("paymentMethodId") [39m
+ - [33mCREATE TABLE "payment_profile_channels_channel" ("paymentProfileId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_94ed08a5c24bc62ab7f9a8f5065" PRIMARY KEY ("paymentProfileId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_20159eb800fdfd7951bd598f1a" ON "payment_profile_channels_channel" ("paymentProfileId") [39m
+ - [33mCREATE INDEX "IDX_dd2b028c343ccebd50ff3d6a81" ON "payment_profile_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "order_timeout_task_channels_channel" ("orderTimeoutTaskId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_ee45321a8b644a12ffdb9d0fccc" PRIMARY KEY ("orderTimeoutTaskId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_30b7ea9c8e76f4799b907e2ab5" ON "order_timeout_task_channels_channel" ("orderTimeoutTaskId") [39m
+ - [33mCREATE INDEX "IDX_54f459b235e21c90d1d9752e2f" ON "order_timeout_task_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "invoice_channels_channel" ("invoiceId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_74b3d60727d967317e3cdb7c92f" PRIMARY KEY ("invoiceId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_8d7bbd5eceb1dc6141bbb842b3" ON "invoice_channels_channel" ("invoiceId") [39m
+ - [33mCREATE INDEX "IDX_922b988b1f1b8ee56b9dd8b28f" ON "invoice_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "logistics_track_channels_channel" ("logisticsTrackId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_195639da7a1848d0b3aa843e986" PRIMARY KEY ("logisticsTrackId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_77adce25e12685bf7658470e94" ON "logistics_track_channels_channel" ("logisticsTrackId") [39m
+ - [33mCREATE INDEX "IDX_920079cbc71ea3acc7bd315dad" ON "logistics_track_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "group_buy_activity_channels_channel" ("groupBuyActivityId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_a008d80da8f0f7d624b340ac179" PRIMARY KEY ("groupBuyActivityId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_7ccc378b39b2504774d9284537" ON "group_buy_activity_channels_channel" ("groupBuyActivityId") [39m
+ - [33mCREATE INDEX "IDX_6966e93260efc66e58d895b83a" ON "group_buy_activity_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "group_buy_order_channels_channel" ("groupBuyOrderId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_ceed70ec8f35a4e02f163b43eb9" PRIMARY KEY ("groupBuyOrderId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_6a62435a4139d6f11239d9a700" ON "group_buy_order_channels_channel" ("groupBuyOrderId") [39m
+ - [33mCREATE INDEX "IDX_fa7fdb3f4a80c1fec681b137e4" ON "group_buy_order_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "flash_sale_activity_channels_channel" ("flashSaleActivityId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_f5a0817a1908c0fae31793fae01" PRIMARY KEY ("flashSaleActivityId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_4e3fd5a331fab939d23b1b32b8" ON "flash_sale_activity_channels_channel" ("flashSaleActivityId") [39m
+ - [33mCREATE INDEX "IDX_6941e1b27dd6add25b3fb866d1" ON "flash_sale_activity_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "commission_record_channels_channel" ("commissionRecordId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_a33e4dfcab60ef8dd3c53322604" PRIMARY KEY ("commissionRecordId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_64b1e610b7ca8fe8e1ef76e3f7" ON "commission_record_channels_channel" ("commissionRecordId") [39m
+ - [33mCREATE INDEX "IDX_5fec05520c0374ab79d01a2d37" ON "commission_record_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "distributor_channels_channel" ("distributorId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_57082cc164fd4e233eba176aad4" PRIMARY KEY ("distributorId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_1a72ca7c011720c06d0515f8b0" ON "distributor_channels_channel" ("distributorId") [39m
+ - [33mCREATE INDEX "IDX_f3e472ec7d120f058dd509f7be" ON "distributor_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "withdrawal_request_channels_channel" ("withdrawalRequestId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_ab5c28459e774a7c9718a01198b" PRIMARY KEY ("withdrawalRequestId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_5c2895ecec05777091482c4aac" ON "withdrawal_request_channels_channel" ("withdrawalRequestId") [39m
+ - [33mCREATE INDEX "IDX_5ff3ad4d2c0317b8cd3cbf1727" ON "withdrawal_request_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "recharge_card_channels_channel" ("rechargeCardId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_6b4d92fb17888e4795957c950d5" PRIMARY KEY ("rechargeCardId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_0420583ba6af9dac0bf1fa7eed" ON "recharge_card_channels_channel" ("rechargeCardId") [39m
+ - [33mCREATE INDEX "IDX_c6dbb9631693bd13bf68104a56" ON "recharge_card_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "recharge_card_batch_channels_channel" ("rechargeCardBatchId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_b229b31a1470f6371d97b375fe7" PRIMARY KEY ("rechargeCardBatchId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_7a2c91d9ffce1325491658078b" ON "recharge_card_batch_channels_channel" ("rechargeCardBatchId") [39m
+ - [33mCREATE INDEX "IDX_baab716042540bd347c333f7b6" ON "recharge_card_batch_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "after_sales_request_channels_channel" ("afterSalesRequestId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_9afb9d455b0151f8e4b8bd43647" PRIMARY KEY ("afterSalesRequestId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_bf2acf07beb22efb27ce4e8666" ON "after_sales_request_channels_channel" ("afterSalesRequestId") [39m
+ - [33mCREATE INDEX "IDX_3a68405502192771e289a7c2c0" ON "after_sales_request_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "member_points_history_channels_channel" ("memberPointsHistoryId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_65b7df14af8c8d7e7ab14ce3871" PRIMARY KEY ("memberPointsHistoryId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_7e6843ce18f54c3e13c9377fc0" ON "member_points_history_channels_channel" ("memberPointsHistoryId") [39m
+ - [33mCREATE INDEX "IDX_e7ce3661d4a4f17b5029ec006d" ON "member_points_history_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "review_channels_channel" ("reviewId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_d48c9059cc5715049c0ce0d127b" PRIMARY KEY ("reviewId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_0a7659a0601336f0890fffb101" ON "review_channels_channel" ("reviewId") [39m
+ - [33mCREATE INDEX "IDX_5b7faf48b133186e9e1e6d81f0" ON "review_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "subscribe_message_log_channels_channel" ("subscribeMessageLogId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_2d3d265024ece108b4fc62ff4f4" PRIMARY KEY ("subscribeMessageLogId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_df67c35f110a5e4238b87a6985" ON "subscribe_message_log_channels_channel" ("subscribeMessageLogId") [39m
+ - [33mCREATE INDEX "IDX_56aadbfaf63c9924bfd4e7daf6" ON "subscribe_message_log_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "coupon_code_channels_channel" ("couponCodeId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_16025d2482cfc729aad417f2684" PRIMARY KEY ("couponCodeId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_9f6d56b03494cdefb5ad89108c" ON "coupon_code_channels_channel" ("couponCodeId") [39m
+ - [33mCREATE INDEX "IDX_cb28993e758c1e8db8fe094991" ON "coupon_code_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "coupon_channels_channel" ("couponId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_36eb22fb8c396be6d6ea539b38f" PRIMARY KEY ("couponId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_73530fbcb21b4138ffe583c65b" ON "coupon_channels_channel" ("couponId") [39m
+ - [33mCREATE INDEX "IDX_f4399da1c2980ada7207e751e5" ON "coupon_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "stock_in_order_channels_channel" ("stockInOrderId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_1efbfa923cbd8b4c400e2800f60" PRIMARY KEY ("stockInOrderId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_6e2e519f8d81301cd0ffbf8f12" ON "stock_in_order_channels_channel" ("stockInOrderId") [39m
+ - [33mCREATE INDEX "IDX_934de5c42e63b705ab9d9f1dbc" ON "stock_in_order_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "stock_out_order_channels_channel" ("stockOutOrderId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_74f8c3a55353d73acf36286a376" PRIMARY KEY ("stockOutOrderId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_24e4c9c9426ee0e8bd7c024550" ON "stock_out_order_channels_channel" ("stockOutOrderId") [39m
+ - [33mCREATE INDEX "IDX_ec6d5dea1b14ca92ff719265d1" ON "stock_out_order_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "stock_move_order_channels_channel" ("stockMoveOrderId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_7177ef622af8dc35c19b1a3b287" PRIMARY KEY ("stockMoveOrderId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_e2481c1b6a6c859eca170e0813" ON "stock_move_order_channels_channel" ("stockMoveOrderId") [39m
+ - [33mCREATE INDEX "IDX_297330c1fd57fc38cc363c8c0b" ON "stock_move_order_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "stocktake_order_channels_channel" ("stocktakeOrderId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_20d5722f50b7a2139b5993a8648" PRIMARY KEY ("stocktakeOrderId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_4d3f9972eaeb3f45714a9d06a4" ON "stocktake_order_channels_channel" ("stocktakeOrderId") [39m
+ - [33mCREATE INDEX "IDX_1ae5f5fe69257a4c8501b7199e" ON "stocktake_order_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "message_delivery_channels_channel" ("messageDeliveryId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_d0de313148c75764367798012f9" PRIMARY KEY ("messageDeliveryId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_272351ed3b5a720b68b22547d4" ON "message_delivery_channels_channel" ("messageDeliveryId") [39m
+ - [33mCREATE INDEX "IDX_7aefecafc5900b9d253a52b974" ON "message_delivery_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "message_channels_channel" ("messageId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_d8d4ae38be3997da96ce13a03c6" PRIMARY KEY ("messageId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_e90b731564468a5522786e2002" ON "message_channels_channel" ("messageId") [39m
+ - [33mCREATE INDEX "IDX_834fec66c9a8b60a23beebafc7" ON "message_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "content_item_channels_channel" ("contentItemId" integer NOT NULL, "channelId" integer NOT NULL, CONSTRAINT "PK_d3a3d0ba35f64c190fcb8e3ed02" PRIMARY KEY ("contentItemId", "channelId"))[39m
+ - [33mCREATE INDEX "IDX_1295fdc42a4c7391be87401ef1" ON "content_item_channels_channel" ("contentItemId") [39m
+ - [33mCREATE INDEX "IDX_619637a633250f0f5b18dcd1b2" ON "content_item_channels_channel" ("channelId") [39m
+ - [33mCREATE TABLE "collection_closure" ("id_ancestor" integer NOT NULL, "id_descendant" integer NOT NULL, CONSTRAINT "PK_9dda38e2273a7744b8f655782a5" PRIMARY KEY ("id_ancestor", "id_descendant"))[39m
+ - [33mCREATE INDEX "IDX_c309f8cd152bbeaea08491e0c6" ON "collection_closure" ("id_ancestor") [39m
+ - [33mCREATE INDEX "IDX_457784c710f8ac9396010441f6" ON "collection_closure" ("id_descendant") [39m
+ - [33mALTER TABLE "collection_asset" ADD CONSTRAINT "FK_51da53b26522dc0525762d2de8e" FOREIGN KEY ("assetId") REFERENCES "asset"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "collection_asset" ADD CONSTRAINT "FK_1ed9e48dfbf74b5fcbb35d3d686" FOREIGN KEY ("collectionId") REFERENCES "collection"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "collection_translation" ADD CONSTRAINT "FK_e329f9036210d75caa1d8f2154a" FOREIGN KEY ("baseId") REFERENCES "collection"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "collection" ADD CONSTRAINT "FK_7256fef1bb42f1b38156b7449f5" FOREIGN KEY ("featuredAssetId") REFERENCES "asset"("id") ON DELETE SET NULL ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "collection" ADD CONSTRAINT "FK_4257b61275144db89fa0f5dc059" FOREIGN KEY ("parentId") REFERENCES "collection"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "facet_translation" ADD CONSTRAINT "FK_eaea53f44bf9e97790d38a3d68f" FOREIGN KEY ("baseId") REFERENCES "facet"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "facet_value_translation" ADD CONSTRAINT "FK_3d6e45823b65de808a66cb1423b" FOREIGN KEY ("baseId") REFERENCES "facet_value"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "facet_value" ADD CONSTRAINT "FK_d101dc2265a7341be3d94968c5b" FOREIGN KEY ("facetId") REFERENCES "facet"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "product_option_translation" ADD CONSTRAINT "FK_a79a443c1f7841f3851767faa6d" FOREIGN KEY ("baseId") REFERENCES "product_option"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "product_option" ADD CONSTRAINT "FK_a6debf9198e2fbfa006aa10d710" FOREIGN KEY ("groupId") REFERENCES "product_option_group"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "product_option_group_translation" ADD CONSTRAINT "FK_93751abc1451972c02e033b766c" FOREIGN KEY ("baseId") REFERENCES "product_option_group"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "product_asset" ADD CONSTRAINT "FK_5888ac17b317b93378494a10620" FOREIGN KEY ("assetId") REFERENCES "asset"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "product_asset" ADD CONSTRAINT "FK_0d1294f5c22a56da7845ebab72c" FOREIGN KEY ("productId") REFERENCES "product"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "product_translation" ADD CONSTRAINT "FK_7dbc75cb4e8b002620c4dbfdac5" FOREIGN KEY ("baseId") REFERENCES "product"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "product" ADD CONSTRAINT "FK_91a19e6613534949a4ce6e76ff8" FOREIGN KEY ("featuredAssetId") REFERENCES "asset"("id") ON DELETE SET NULL ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "asset_translation" ADD CONSTRAINT "FK_4eed4464adef51f53e1c7d80212" FOREIGN KEY ("baseId") REFERENCES "asset"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "order_line_reference" ADD CONSTRAINT "FK_7d57857922dfc7303604697dbe9" FOREIGN KEY ("orderLineId") REFERENCES "order_line"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "order_line_reference" ADD CONSTRAINT "FK_06b02fb482b188823e419d37bd4" FOREIGN KEY ("fulfillmentId") REFERENCES "fulfillment"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "order_line_reference" ADD CONSTRAINT "FK_22b818af8722746fb9f206068c2" FOREIGN KEY ("modificationId") REFERENCES "order_modification"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "order_line_reference" ADD CONSTRAINT "FK_30019aa65b17fe9ee9628931991" FOREIGN KEY ("refundId") REFERENCES "refund"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "refund" ADD CONSTRAINT "FK_1c6932a756108788a361e7d4404" FOREIGN KEY ("paymentId") REFERENCES "payment"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "payment" ADD CONSTRAINT "FK_d09d285fe1645cd2f0db811e293" FOREIGN KEY ("orderId") REFERENCES "order"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "surcharge" ADD CONSTRAINT "FK_154eb685f9b629033bd266df7fa" FOREIGN KEY ("orderId") REFERENCES "order"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "surcharge" ADD CONSTRAINT "FK_a49c5271c39cc8174a0535c8088" FOREIGN KEY ("orderModificationId") REFERENCES "order_modification"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "order_modification" ADD CONSTRAINT "FK_1df5bc14a47ef24d2e681f45598" FOREIGN KEY ("orderId") REFERENCES "order"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "order_modification" ADD CONSTRAINT "FK_ad2991fa2933ed8b7f86a716338" FOREIGN KEY ("paymentId") REFERENCES "payment"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "order_modification" ADD CONSTRAINT "FK_cb66b63b6e97613013795eadbd5" FOREIGN KEY ("refundId") REFERENCES "refund"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "promotion_translation" ADD CONSTRAINT "FK_1cc009e9ab2263a35544064561b" FOREIGN KEY ("baseId") REFERENCES "promotion"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "shipping_method_translation" ADD CONSTRAINT "FK_85ec26c71067ebc84adcd98d1a5" FOREIGN KEY ("baseId") REFERENCES "shipping_method"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "shipping_line" ADD CONSTRAINT "FK_e2e7642e1e88167c1dfc827fdf3" FOREIGN KEY ("shippingMethodId") REFERENCES "shipping_method"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "shipping_line" ADD CONSTRAINT "FK_c9f34a440d490d1b66f6829b86c" FOREIGN KEY ("orderId") REFERENCES "order"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "order" ADD CONSTRAINT "FK_73a78d7df09541ac5eba620d181" FOREIGN KEY ("aggregateOrderId") REFERENCES "order"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "order" ADD CONSTRAINT "FK_124456e637cca7a415897dce659" FOREIGN KEY ("customerId") REFERENCES "customer"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "order" ADD CONSTRAINT "FK_b004645af054f1ed39a9abaf8a2" FOREIGN KEY ("customFieldsSelectedpickuplocationidid") REFERENCES "pickup_location"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "stock_movement" ADD CONSTRAINT "FK_e65ba3882557cab4febb54809bb" FOREIGN KEY ("productVariantId") REFERENCES "product_variant"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "stock_movement" ADD CONSTRAINT "FK_a2fe7172eeae9f1cca86f8f573a" FOREIGN KEY ("stockLocationId") REFERENCES "stock_location"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "stock_movement" ADD CONSTRAINT "FK_d2c8d5fca981cc820131f81aa83" FOREIGN KEY ("orderLineId") REFERENCES "order_line"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "order_line" ADD CONSTRAINT "FK_6901d8715f5ebadd764466f7bde" FOREIGN KEY ("sellerChannelId") REFERENCES "channel"("id") ON DELETE SET NULL ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "order_line" ADD CONSTRAINT "FK_dc9ac68b47da7b62249886affba" FOREIGN KEY ("shippingLineId") REFERENCES "shipping_line"("id") ON DELETE SET NULL ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "order_line" ADD CONSTRAINT "FK_cbcd22193eda94668e84d33f185" FOREIGN KEY ("productVariantId") REFERENCES "product_variant"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "order_line" ADD CONSTRAINT "FK_77be94ce9ec6504466179462275" FOREIGN KEY ("taxCategoryId") REFERENCES "tax_category"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "order_line" ADD CONSTRAINT "FK_9f065453910ea77d4be8e92618f" FOREIGN KEY ("featuredAssetId") REFERENCES "asset"("id") ON DELETE SET NULL ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "order_line" ADD CONSTRAINT "FK_239cfca2a55b98b90b6bef2e44f" FOREIGN KEY ("orderId") REFERENCES "order"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "stock_level" ADD CONSTRAINT "FK_9950eae3180f39c71978748bd08" FOREIGN KEY ("productVariantId") REFERENCES "product_variant"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "stock_level" ADD CONSTRAINT "FK_984c48572468c69661a0b7b0494" FOREIGN KEY ("stockLocationId") REFERENCES "stock_location"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "product_variant_asset" ADD CONSTRAINT "FK_10b5a2e3dee0e30b1e26c32f5c7" FOREIGN KEY ("assetId") REFERENCES "asset"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "product_variant_asset" ADD CONSTRAINT "FK_fa21412afac15a2304f3eb35feb" FOREIGN KEY ("productVariantId") REFERENCES "product_variant"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "product_variant_price" ADD CONSTRAINT "FK_e6126cd268aea6e9b31d89af9ab" FOREIGN KEY ("variantId") REFERENCES "product_variant"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "product_variant_translation" ADD CONSTRAINT "FK_420f4d6fb75d38b9dca79bc43b4" FOREIGN KEY ("baseId") REFERENCES "product_variant"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "product_variant" ADD CONSTRAINT "FK_0e6f516053cf982b537836e21cf" FOREIGN KEY ("featuredAssetId") REFERENCES "asset"("id") ON DELETE SET NULL ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "product_variant" ADD CONSTRAINT "FK_e38dca0d82fd64c7cf8aac8b8ef" FOREIGN KEY ("taxCategoryId") REFERENCES "tax_category"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "product_variant" ADD CONSTRAINT "FK_6e420052844edf3a5506d863ce6" FOREIGN KEY ("productId") REFERENCES "product"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "region_translation" ADD CONSTRAINT "FK_1afd722b943c81310705fc3e612" FOREIGN KEY ("baseId") REFERENCES "region"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "region" ADD CONSTRAINT "FK_ed0c8098ce6809925a437f42aec" FOREIGN KEY ("parentId") REFERENCES "region"("id") ON DELETE SET NULL ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "tax_rate" ADD CONSTRAINT "FK_7ee3306d7638aa85ca90d672198" FOREIGN KEY ("categoryId") REFERENCES "tax_category"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "tax_rate" ADD CONSTRAINT "FK_9872fc7de2f4e532fd3230d1915" FOREIGN KEY ("zoneId") REFERENCES "zone"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "tax_rate" ADD CONSTRAINT "FK_8b5ab52fc8887c1a769b9276caf" FOREIGN KEY ("customerGroupId") REFERENCES "customer_group"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "authentication_method" ADD CONSTRAINT "FK_00cbe87bc0d4e36758d61bd31d6" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "session" ADD CONSTRAINT "FK_7a75399a4f4ffa48ee02e98c059" FOREIGN KEY ("activeOrderId") REFERENCES "order"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "session" ADD CONSTRAINT "FK_eb87ef1e234444728138302263b" FOREIGN KEY ("activeChannelId") REFERENCES "channel"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "session" ADD CONSTRAINT "FK_3d2f174ef04fb312fdebd0ddc53" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "customer" ADD CONSTRAINT "FK_3f62b42ed23958b120c235f74df" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "address" ADD CONSTRAINT "FK_dc34d382b493ade1f70e834c4d3" FOREIGN KEY ("customerId") REFERENCES "customer"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "address" ADD CONSTRAINT "FK_d87215343c3a3a67e6a0b7f3ea9" FOREIGN KEY ("countryId") REFERENCES "region"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "administrator" ADD CONSTRAINT "FK_1966e18ce6a39a82b19204704d7" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "payment_method_translation" ADD CONSTRAINT "FK_66187f782a3e71b9e0f5b50b68b" FOREIGN KEY ("baseId") REFERENCES "payment_method"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "api_key_translation" ADD CONSTRAINT "FK_bf45bd67c7b3278d7e1f2f95170" FOREIGN KEY ("baseId") REFERENCES "api_key"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "api_key" ADD CONSTRAINT "FK_74d2236b1de818d00bd3fd01602" FOREIGN KEY ("ownerId") REFERENCES "user"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "api_key" ADD CONSTRAINT "FK_277972f4944205eb29127f9bb6c" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "channel" ADD CONSTRAINT "FK_af2116c7e176b6b88dceceeb74b" FOREIGN KEY ("sellerId") REFERENCES "seller"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "channel" ADD CONSTRAINT "FK_afe9f917a1c82b9e9e69f7c6129" FOREIGN KEY ("defaultTaxZoneId") REFERENCES "zone"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "channel" ADD CONSTRAINT "FK_c9ca2f58d4517460435cbd8b4c9" FOREIGN KEY ("defaultShippingZoneId") REFERENCES "zone"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "history_entry" ADD CONSTRAINT "FK_92f8c334ef06275f9586fd01832" FOREIGN KEY ("administratorId") REFERENCES "administrator"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "history_entry" ADD CONSTRAINT "FK_43ac602f839847fdb91101f30ec" FOREIGN KEY ("customerId") REFERENCES "customer"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "history_entry" ADD CONSTRAINT "FK_3a05127e67435b4d2332ded7c9e" FOREIGN KEY ("orderId") REFERENCES "order"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "employee_customer" ADD CONSTRAINT "FK_7c7db3da367b5b148ae61573fbd" FOREIGN KEY ("customerId") REFERENCES "customer"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "employee_customer" ADD CONSTRAINT "FK_89255147d79c6b59262f977f092" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "order_timeout_task" ADD CONSTRAINT "FK_ea761275afe6f85e750f210eae8" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "logistics_track" ADD CONSTRAINT "FK_b7e3a2ecbf84577ba6bd55356c3" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "recharge_card" ADD CONSTRAINT "FK_dde38a8a28bf560510588598d98" FOREIGN KEY ("redeemedById") REFERENCES "customer"("id") ON DELETE SET NULL ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "customer_balance" ADD CONSTRAINT "FK_03b9c4c8f203b052be3352d21c0" FOREIGN KEY ("customerId") REFERENCES "customer"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "customer_balance" ADD CONSTRAINT "FK_133d77b31a8e0b286480ce221b1" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "balance_transaction" ADD CONSTRAINT "FK_86b66315a3e14759418ddb58a62" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "after_sales_request" ADD CONSTRAINT "FK_23694aea0e1fd1866ec3fd59fa0" FOREIGN KEY ("orderId") REFERENCES "order"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "after_sales_request" ADD CONSTRAINT "FK_5f8d9f6c403454580fc60fb37af" FOREIGN KEY ("orderLineId") REFERENCES "order_line"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "after_sales_request" ADD CONSTRAINT "FK_f61f065cecac29c9bbb728a6f8d" FOREIGN KEY ("customerId") REFERENCES "customer"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "review" ADD CONSTRAINT "FK_398e3eafbb3974eb8e6291d9069" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "subscribe_message_log" ADD CONSTRAINT "FK_7ff1e0ce639bb4d02677e9c8bca" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "coupon_code" ADD CONSTRAINT "FK_2cb5529e181c87c3de04e3188d8" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "coupon" ADD CONSTRAINT "FK_87808d39c7e969b1f5a94b5be5b" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "stock_in_order" ADD CONSTRAINT "FK_0ebdcbdbf582627b206c24fd81d" FOREIGN KEY ("targetLocationId") REFERENCES "stock_location"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "stock_in_order_line" ADD CONSTRAINT "FK_9fd3df01bb38fb0c5d43db090c9" FOREIGN KEY ("orderId") REFERENCES "stock_in_order"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "stock_out_order" ADD CONSTRAINT "FK_55849f7564e212c296e0611fda7" FOREIGN KEY ("sourceLocationId") REFERENCES "stock_location"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "stock_out_order_line" ADD CONSTRAINT "FK_3ca515050390ccf757f84c9d57d" FOREIGN KEY ("orderId") REFERENCES "stock_out_order"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "stock_move_order" ADD CONSTRAINT "FK_3cbea28570144f763ff19853b73" FOREIGN KEY ("sourceLocationId") REFERENCES "stock_location"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "stock_move_order" ADD CONSTRAINT "FK_0aa2198a225c7596fee131b2ed4" FOREIGN KEY ("targetLocationId") REFERENCES "stock_location"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "stock_move_order_line" ADD CONSTRAINT "FK_4cf45010ed0ab67f0b91e822794" FOREIGN KEY ("orderId") REFERENCES "stock_move_order"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "stocktake_order" ADD CONSTRAINT "FK_2deebb87e21063a07201f95e796" FOREIGN KEY ("locationId") REFERENCES "stock_location"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "stocktake_order_line" ADD CONSTRAINT "FK_42a08c3577c24274c20bfc1a36e" FOREIGN KEY ("orderId") REFERENCES "stocktake_order"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "collection_product_variants_product_variant" ADD CONSTRAINT "FK_6faa7b72422d9c4679e2f186ad1" FOREIGN KEY ("collectionId") REFERENCES "collection"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "collection_product_variants_product_variant" ADD CONSTRAINT "FK_fb05887e2867365f236d7dd95ee" FOREIGN KEY ("productVariantId") REFERENCES "product_variant"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "collection_channels_channel" ADD CONSTRAINT "FK_cdbf33ffb5d4519161251520083" FOREIGN KEY ("collectionId") REFERENCES "collection"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "collection_channels_channel" ADD CONSTRAINT "FK_7216ab24077cf5cbece7857dbbd" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "facet_channels_channel" ADD CONSTRAINT "FK_ca796020c6d097e251e5d6d2b02" FOREIGN KEY ("facetId") REFERENCES "facet"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "facet_channels_channel" ADD CONSTRAINT "FK_2a8ea404d05bf682516184db7d3" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "facet_value_channels_channel" ADD CONSTRAINT "FK_ad690c1b05596d7f52e52ffeedd" FOREIGN KEY ("facetValueId") REFERENCES "facet_value"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "facet_value_channels_channel" ADD CONSTRAINT "FK_e1d54c0b9db3e2eb17faaf5919c" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "product_option_channels_channel" ADD CONSTRAINT "FK_8dbe001861ca34ae8b687e6baef" FOREIGN KEY ("productOptionId") REFERENCES "product_option"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "product_option_channels_channel" ADD CONSTRAINT "FK_717e7792b8f31c319b6c7b81352" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "product_option_group_channels_channel" ADD CONSTRAINT "FK_4fbe6303db2827370c0ec2d0276" FOREIGN KEY ("productOptionGroupId") REFERENCES "product_option_group"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "product_option_group_channels_channel" ADD CONSTRAINT "FK_d689965b8c58ebf316fce60fab2" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "product_option_groups_product_option_group" ADD CONSTRAINT "FK_9148fe2c2fd83f5b59d391088c5" FOREIGN KEY ("productId") REFERENCES "product"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "product_option_groups_product_option_group" ADD CONSTRAINT "FK_9b03a92219b0684dbd4403e6246" FOREIGN KEY ("productOptionGroupId") REFERENCES "product_option_group"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "product_facet_values_facet_value" ADD CONSTRAINT "FK_6a0558e650d75ae639ff38e413a" FOREIGN KEY ("productId") REFERENCES "product"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "product_facet_values_facet_value" ADD CONSTRAINT "FK_06e7d73673ee630e8ec50d0b29f" FOREIGN KEY ("facetValueId") REFERENCES "facet_value"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "product_channels_channel" ADD CONSTRAINT "FK_26d12be3b5fec6c4adb1d792844" FOREIGN KEY ("productId") REFERENCES "product"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "product_channels_channel" ADD CONSTRAINT "FK_a51dfbd87c330c075c39832b6e7" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "asset_tags_tag" ADD CONSTRAINT "FK_9e412b00d4c6cee1a4b3d920716" FOREIGN KEY ("assetId") REFERENCES "asset"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "asset_tags_tag" ADD CONSTRAINT "FK_fb5e800171ffbe9823f2cc727fd" FOREIGN KEY ("tagId") REFERENCES "tag"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "asset_channels_channel" ADD CONSTRAINT "FK_dc4e7435f9f5e9e6436bebd33bb" FOREIGN KEY ("assetId") REFERENCES "asset"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "asset_channels_channel" ADD CONSTRAINT "FK_16ca9151a5153f1169da5b7b7e3" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "promotion_channels_channel" ADD CONSTRAINT "FK_6d9e2c39ab12391aaa374bcdaa4" FOREIGN KEY ("promotionId") REFERENCES "promotion"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "promotion_channels_channel" ADD CONSTRAINT "FK_0eaaf0f4b6c69afde1e88ffb52d" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "shipping_method_channels_channel" ADD CONSTRAINT "FK_f0a17b94aa5a162f0d422920eb2" FOREIGN KEY ("shippingMethodId") REFERENCES "shipping_method"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "shipping_method_channels_channel" ADD CONSTRAINT "FK_f2b98dfb56685147bed509acc3d" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "order_promotions_promotion" ADD CONSTRAINT "FK_67be0e40122ab30a62a9817efe0" FOREIGN KEY ("orderId") REFERENCES "order"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "order_promotions_promotion" ADD CONSTRAINT "FK_2c26b988769c0e3b0120bdef31b" FOREIGN KEY ("promotionId") REFERENCES "promotion"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "order_fulfillments_fulfillment" ADD CONSTRAINT "FK_f80d84d525af2ffe974e7e8ca29" FOREIGN KEY ("orderId") REFERENCES "order"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "order_fulfillments_fulfillment" ADD CONSTRAINT "FK_4add5a5796e1582dec2877b2898" FOREIGN KEY ("fulfillmentId") REFERENCES "fulfillment"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "order_channels_channel" ADD CONSTRAINT "FK_0d8e5c204480204a60e151e4853" FOREIGN KEY ("orderId") REFERENCES "order"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "order_channels_channel" ADD CONSTRAINT "FK_d0d16db872499e83b15999f8c7a" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "stock_location_channels_channel" ADD CONSTRAINT "FK_39513fd02a573c848d23bee587d" FOREIGN KEY ("stockLocationId") REFERENCES "stock_location"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "stock_location_channels_channel" ADD CONSTRAINT "FK_ff8150fe54e56a900d5712671a0" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "product_variant_options_product_option" ADD CONSTRAINT "FK_526f0131260eec308a3bd2b61b6" FOREIGN KEY ("productVariantId") REFERENCES "product_variant"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "product_variant_options_product_option" ADD CONSTRAINT "FK_e96a71affe63c97f7fa2f076dac" FOREIGN KEY ("productOptionId") REFERENCES "product_option"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "product_variant_facet_values_facet_value" ADD CONSTRAINT "FK_69567bc225b6bbbd732d6c5455b" FOREIGN KEY ("productVariantId") REFERENCES "product_variant"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "product_variant_facet_values_facet_value" ADD CONSTRAINT "FK_0d641b761ed1dce4ef3cd33d559" FOREIGN KEY ("facetValueId") REFERENCES "facet_value"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "product_variant_channels_channel" ADD CONSTRAINT "FK_beeb2b3cd800e589f2213ae99d6" FOREIGN KEY ("productVariantId") REFERENCES "product_variant"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "product_variant_channels_channel" ADD CONSTRAINT "FK_d194bff171b62357688a5d0f559" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "zone_members_region" ADD CONSTRAINT "FK_433f45158e4e2b2a2f344714b22" FOREIGN KEY ("zoneId") REFERENCES "zone"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "zone_members_region" ADD CONSTRAINT "FK_b45b65256486a15a104e17d495c" FOREIGN KEY ("regionId") REFERENCES "region"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "role_channels_channel" ADD CONSTRAINT "FK_bfd2a03e9988eda6a9d11760119" FOREIGN KEY ("roleId") REFERENCES "role"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "role_channels_channel" ADD CONSTRAINT "FK_e09dfee62b158307404202b43a5" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "user_roles_role" ADD CONSTRAINT "FK_5f9286e6c25594c6b88c108db77" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "user_roles_role" ADD CONSTRAINT "FK_4be2f7adf862634f5f803d246b8" FOREIGN KEY ("roleId") REFERENCES "role"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "customer_groups_customer_group" ADD CONSTRAINT "FK_b823a3c8bf3b78d3ed68736485c" FOREIGN KEY ("customerId") REFERENCES "customer"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "customer_groups_customer_group" ADD CONSTRAINT "FK_85feea3f0e5e82133605f78db02" FOREIGN KEY ("customerGroupId") REFERENCES "customer_group"("id") ON DELETE NO ACTION ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "customer_channels_channel" ADD CONSTRAINT "FK_a842c9fe8cd4c8ff31402d172d7" FOREIGN KEY ("customerId") REFERENCES "customer"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "customer_channels_channel" ADD CONSTRAINT "FK_dc9f69207a8867f83b0fd257e30" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "payment_method_channels_channel" ADD CONSTRAINT "FK_5bcb569635ce5407eb3f264487d" FOREIGN KEY ("paymentMethodId") REFERENCES "payment_method"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "payment_method_channels_channel" ADD CONSTRAINT "FK_c00e36f667d35031087b382e61b" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "api_key_channels_channel" ADD CONSTRAINT "FK_460b1afc096014ca2dc5a5f5aa9" FOREIGN KEY ("apiKeyId") REFERENCES "api_key"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "api_key_channels_channel" ADD CONSTRAINT "FK_d37be6b22047f56ea87bea795b6" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "pickup_location_channels_channel" ADD CONSTRAINT "FK_6aab6742cf24b18b8b9b95364e9" FOREIGN KEY ("pickupLocationId") REFERENCES "pickup_location"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "pickup_location_channels_channel" ADD CONSTRAINT "FK_31212ff188ab6424d5ba29b866a" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "employee_customer_pickup_location" ADD CONSTRAINT "FK_eeb7c3e95eef973b0f0da1dad0e" FOREIGN KEY ("employee_customer_id") REFERENCES "employee_customer"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "employee_customer_pickup_location" ADD CONSTRAINT "FK_1541bb73e38bccc2e227d8ef617" FOREIGN KEY ("pickup_location_id") REFERENCES "pickup_location"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "shipping_template_channels_channel" ADD CONSTRAINT "FK_95c1def6a65e1a041386c5acd17" FOREIGN KEY ("shippingTemplateId") REFERENCES "shipping_template"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "shipping_template_channels_channel" ADD CONSTRAINT "FK_7780843a81de1172dc652a64e89" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "shipping_profile_shipping_methods_shipping_method" ADD CONSTRAINT "FK_d2310c536328ba66e2914ef61c2" FOREIGN KEY ("shippingProfileId") REFERENCES "shipping_profile"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "shipping_profile_shipping_methods_shipping_method" ADD CONSTRAINT "FK_b064a3b98e25918074b8ed90e75" FOREIGN KEY ("shippingMethodId") REFERENCES "shipping_method"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "shipping_profile_pickup_locations_pickup_location" ADD CONSTRAINT "FK_8279bb665969d89e6ffca670a98" FOREIGN KEY ("shippingProfileId") REFERENCES "shipping_profile"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "shipping_profile_pickup_locations_pickup_location" ADD CONSTRAINT "FK_c610a7cab8c812c5d52f929c3eb" FOREIGN KEY ("pickupLocationId") REFERENCES "pickup_location"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "shipping_profile_channels_channel" ADD CONSTRAINT "FK_c9e389eb1a3d4f5afe301eeba03" FOREIGN KEY ("shippingProfileId") REFERENCES "shipping_profile"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "shipping_profile_channels_channel" ADD CONSTRAINT "FK_a4d0d8c1c7a234ce823dee7f3e9" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "payment_profile_payment_methods_payment_method" ADD CONSTRAINT "FK_6bc7d070b134197a51ed8f23b71" FOREIGN KEY ("paymentProfileId") REFERENCES "payment_profile"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "payment_profile_payment_methods_payment_method" ADD CONSTRAINT "FK_f45c6aa5cb8f17c9569f1464618" FOREIGN KEY ("paymentMethodId") REFERENCES "payment_method"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "payment_profile_channels_channel" ADD CONSTRAINT "FK_20159eb800fdfd7951bd598f1a2" FOREIGN KEY ("paymentProfileId") REFERENCES "payment_profile"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "payment_profile_channels_channel" ADD CONSTRAINT "FK_dd2b028c343ccebd50ff3d6a81f" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "order_timeout_task_channels_channel" ADD CONSTRAINT "FK_30b7ea9c8e76f4799b907e2ab5e" FOREIGN KEY ("orderTimeoutTaskId") REFERENCES "order_timeout_task"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "order_timeout_task_channels_channel" ADD CONSTRAINT "FK_54f459b235e21c90d1d9752e2fc" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "invoice_channels_channel" ADD CONSTRAINT "FK_8d7bbd5eceb1dc6141bbb842b3b" FOREIGN KEY ("invoiceId") REFERENCES "invoice"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "invoice_channels_channel" ADD CONSTRAINT "FK_922b988b1f1b8ee56b9dd8b28fa" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "logistics_track_channels_channel" ADD CONSTRAINT "FK_77adce25e12685bf7658470e942" FOREIGN KEY ("logisticsTrackId") REFERENCES "logistics_track"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "logistics_track_channels_channel" ADD CONSTRAINT "FK_920079cbc71ea3acc7bd315dadd" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "group_buy_activity_channels_channel" ADD CONSTRAINT "FK_7ccc378b39b2504774d9284537c" FOREIGN KEY ("groupBuyActivityId") REFERENCES "group_buy_activity"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "group_buy_activity_channels_channel" ADD CONSTRAINT "FK_6966e93260efc66e58d895b83af" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "group_buy_order_channels_channel" ADD CONSTRAINT "FK_6a62435a4139d6f11239d9a700a" FOREIGN KEY ("groupBuyOrderId") REFERENCES "group_buy_order"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "group_buy_order_channels_channel" ADD CONSTRAINT "FK_fa7fdb3f4a80c1fec681b137e48" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "flash_sale_activity_channels_channel" ADD CONSTRAINT "FK_4e3fd5a331fab939d23b1b32b83" FOREIGN KEY ("flashSaleActivityId") REFERENCES "flash_sale_activity"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "flash_sale_activity_channels_channel" ADD CONSTRAINT "FK_6941e1b27dd6add25b3fb866d1b" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "commission_record_channels_channel" ADD CONSTRAINT "FK_64b1e610b7ca8fe8e1ef76e3f7f" FOREIGN KEY ("commissionRecordId") REFERENCES "commission_record"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "commission_record_channels_channel" ADD CONSTRAINT "FK_5fec05520c0374ab79d01a2d375" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "distributor_channels_channel" ADD CONSTRAINT "FK_1a72ca7c011720c06d0515f8b0e" FOREIGN KEY ("distributorId") REFERENCES "distributor"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "distributor_channels_channel" ADD CONSTRAINT "FK_f3e472ec7d120f058dd509f7be5" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "withdrawal_request_channels_channel" ADD CONSTRAINT "FK_5c2895ecec05777091482c4aac8" FOREIGN KEY ("withdrawalRequestId") REFERENCES "withdrawal_request"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "withdrawal_request_channels_channel" ADD CONSTRAINT "FK_5ff3ad4d2c0317b8cd3cbf1727e" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "recharge_card_channels_channel" ADD CONSTRAINT "FK_0420583ba6af9dac0bf1fa7eed2" FOREIGN KEY ("rechargeCardId") REFERENCES "recharge_card"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "recharge_card_channels_channel" ADD CONSTRAINT "FK_c6dbb9631693bd13bf68104a56e" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "recharge_card_batch_channels_channel" ADD CONSTRAINT "FK_7a2c91d9ffce1325491658078b3" FOREIGN KEY ("rechargeCardBatchId") REFERENCES "recharge_card_batch"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "recharge_card_batch_channels_channel" ADD CONSTRAINT "FK_baab716042540bd347c333f7b60" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "after_sales_request_channels_channel" ADD CONSTRAINT "FK_bf2acf07beb22efb27ce4e86663" FOREIGN KEY ("afterSalesRequestId") REFERENCES "after_sales_request"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "after_sales_request_channels_channel" ADD CONSTRAINT "FK_3a68405502192771e289a7c2c02" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "member_points_history_channels_channel" ADD CONSTRAINT "FK_7e6843ce18f54c3e13c9377fc04" FOREIGN KEY ("memberPointsHistoryId") REFERENCES "member_points_history"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "member_points_history_channels_channel" ADD CONSTRAINT "FK_e7ce3661d4a4f17b5029ec006dd" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "review_channels_channel" ADD CONSTRAINT "FK_0a7659a0601336f0890fffb101d" FOREIGN KEY ("reviewId") REFERENCES "review"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "review_channels_channel" ADD CONSTRAINT "FK_5b7faf48b133186e9e1e6d81f02" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "subscribe_message_log_channels_channel" ADD CONSTRAINT "FK_df67c35f110a5e4238b87a69859" FOREIGN KEY ("subscribeMessageLogId") REFERENCES "subscribe_message_log"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "subscribe_message_log_channels_channel" ADD CONSTRAINT "FK_56aadbfaf63c9924bfd4e7daf69" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "coupon_code_channels_channel" ADD CONSTRAINT "FK_9f6d56b03494cdefb5ad89108c4" FOREIGN KEY ("couponCodeId") REFERENCES "coupon_code"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "coupon_code_channels_channel" ADD CONSTRAINT "FK_cb28993e758c1e8db8fe0949911" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "coupon_channels_channel" ADD CONSTRAINT "FK_73530fbcb21b4138ffe583c65b0" FOREIGN KEY ("couponId") REFERENCES "coupon"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "coupon_channels_channel" ADD CONSTRAINT "FK_f4399da1c2980ada7207e751e54" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "stock_in_order_channels_channel" ADD CONSTRAINT "FK_6e2e519f8d81301cd0ffbf8f123" FOREIGN KEY ("stockInOrderId") REFERENCES "stock_in_order"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "stock_in_order_channels_channel" ADD CONSTRAINT "FK_934de5c42e63b705ab9d9f1dbc5" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "stock_out_order_channels_channel" ADD CONSTRAINT "FK_24e4c9c9426ee0e8bd7c0245505" FOREIGN KEY ("stockOutOrderId") REFERENCES "stock_out_order"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "stock_out_order_channels_channel" ADD CONSTRAINT "FK_ec6d5dea1b14ca92ff719265d1f" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "stock_move_order_channels_channel" ADD CONSTRAINT "FK_e2481c1b6a6c859eca170e0813b" FOREIGN KEY ("stockMoveOrderId") REFERENCES "stock_move_order"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "stock_move_order_channels_channel" ADD CONSTRAINT "FK_297330c1fd57fc38cc363c8c0ba" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "stocktake_order_channels_channel" ADD CONSTRAINT "FK_4d3f9972eaeb3f45714a9d06a4f" FOREIGN KEY ("stocktakeOrderId") REFERENCES "stocktake_order"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "stocktake_order_channels_channel" ADD CONSTRAINT "FK_1ae5f5fe69257a4c8501b7199e4" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "message_delivery_channels_channel" ADD CONSTRAINT "FK_272351ed3b5a720b68b22547d41" FOREIGN KEY ("messageDeliveryId") REFERENCES "message_delivery"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "message_delivery_channels_channel" ADD CONSTRAINT "FK_7aefecafc5900b9d253a52b9748" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "message_channels_channel" ADD CONSTRAINT "FK_e90b731564468a5522786e2002f" FOREIGN KEY ("messageId") REFERENCES "message"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "message_channels_channel" ADD CONSTRAINT "FK_834fec66c9a8b60a23beebafc75" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "content_item_channels_channel" ADD CONSTRAINT "FK_1295fdc42a4c7391be87401ef17" FOREIGN KEY ("contentItemId") REFERENCES "content_item"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "content_item_channels_channel" ADD CONSTRAINT "FK_619637a633250f0f5b18dcd1b28" FOREIGN KEY ("channelId") REFERENCES "channel"("id") ON DELETE CASCADE ON UPDATE CASCADE[39m
+ - [33mALTER TABLE "collection_closure" ADD CONSTRAINT "FK_c309f8cd152bbeaea08491e0c66" FOREIGN KEY ("id_ancestor") REFERENCES "collection"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+ - [33mALTER TABLE "collection_closure" ADD CONSTRAINT "FK_457784c710f8ac9396010441f6c" FOREIGN KEY ("id_descendant") REFERENCES "collection"("id") ON DELETE CASCADE ON UPDATE NO ACTION[39m
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[Vendure Server][39m Bootstrapping Vendure Server (pid: 22900)... 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[Vendure Server][39m The plugin "ReadonlySettingsTestPlugin" does not specify a compatibility range, so it is not guaranteed to be compatible with this version of Vendure. 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[Vendure Server][39m The plugin "DeliveryPlugin" does not specify a compatibility range, so it is not guaranteed to be compatible with this version of Vendure. 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[NestFactory][39m Starting Nest application... 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m ProcessContextModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m ServiceModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m ConnectionModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m ConnectionModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m TypeOrmModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m PluginModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m ConnectionModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m TypeOrmModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m ConnectionModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m PluginCommonModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m ConnectionModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m TypeOrmModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m AlipayPluginDynamicShopModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m DouyinAuthPluginDynamicShopModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m PluginModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m DefaultJobQueuePlugin dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m ConfigModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m InvoicePdfPlugin dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m I18nModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m CacheModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m SchedulerModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m DouyinAuthPlugin dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m TerminusModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m AppModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m JobQueueModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m HealthCheckModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m GraphiqlPlugin dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m AssetServerPlugin dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m GraphQLSchemaBuilderModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m TypeOrmCoreModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m ConnectionCoreModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m DefaultSchedulerPlugin dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m AdminUiPlugin dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m DashboardPlugin dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m EventBusModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m LogisticsPlugin dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m LogisticsPluginDynamicAdminModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m LogisticsPluginDynamicShopModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m OperationsPluginDynamicShopModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m AdminUiPluginDynamicAdminModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m DashboardPluginDynamicAdminModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m InvoicePlugin dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m InvoicePluginDynamicAdminModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m InvoicePluginDynamicShopModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m AfterSalesPlugin dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m AfterSalesPluginDynamicAdminModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m AfterSalesPluginDynamicShopModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m WechatSubscribeMessagePluginDynamicAdminModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m WechatSubscribeMessagePlugin dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m TelemetryModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m MessagePluginDynamicShopModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m EmailPlugin dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m ApiSharedModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m ReadonlySettingsTestPlugin dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m MessagePlugin dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m MessagePluginDynamicAdminModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m InventoryPlugin dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m GroupBuyPluginDynamicAdminModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m GroupBuyPluginDynamicShopModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m CjkPlugin dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m ReviewPlugin dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m DataImportModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m InventoryPluginDynamicAdminModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m RechargeCardPluginDynamicAdminModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m RechargeCardPluginDynamicShopModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m MemberLevelPluginDynamicAdminModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m MemberLevelPlugin dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m MemberLevelPluginDynamicShopModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m ReviewPluginDynamicAdminModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m ReviewPluginDynamicShopModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m CjkPluginDynamicAdminModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m AlipayPlugin dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m DistributionPlugin dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m RechargeCardPlugin dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m DeliveryPlugin dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m SalesPlugin dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m InvoicePdfPluginDynamicAdminModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m CjkPluginDynamicShopModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m CustomerServicePlugin dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m DefaultSearchPlugin dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m ServiceCoreModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m GroupBuyPlugin dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m FlashSalePlugin dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m FlashSalePluginDynamicShopModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m CouponPluginDynamicAdminModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m CouponPlugin dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m CouponPluginDynamicShopModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m OperationsPlugin dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m DeliveryPluginDynamicAdminModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m SalesPluginDynamicAdminModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m OrderTimeoutPlugin dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m CustomerServicePluginDynamicAdminModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m DefaultSearchPluginDynamicAdminModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m DefaultSearchPluginDynamicShopModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m ApiModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m DistributionPluginDynamicAdminModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m DistributionPluginDynamicShopModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m FlashSalePluginDynamicAdminModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m OperationsPluginDynamicAdminModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m ShopApiModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m AdminApiModule dependencies initialized 
+[extendSchemaWithPluginApiExtensions] apiType=admin extensions count=22
+  ext[1] defs=6
+  after ext[1] Query fields count=82 has channelAuthConfig=false
+  ext[2] defs=5
+  after ext[2] Query fields count=83 has channelAuthConfig=false
+  ext[3] defs=50
+  after ext[3] Query fields count=100 has channelAuthConfig=true
+  ext[4] defs=5
+  after ext[4] Query fields count=102 has channelAuthConfig=true
+  ext[5] defs=7
+  after ext[5] Query fields count=105 has channelAuthConfig=true
+  ext[6] defs=8
+  after ext[6] Query fields count=107 has channelAuthConfig=true
+  ext[7] defs=8
+  after ext[7] Query fields count=109 has channelAuthConfig=true
+  ext[8] defs=16
+  after ext[8] Query fields count=112 has channelAuthConfig=true
+  ext[9] defs=2
+  after ext[9] Query fields count=112 has channelAuthConfig=true
+  ext[10] defs=9
+  after ext[10] Query fields count=114 has channelAuthConfig=true
+  ext[11] defs=5
+  after ext[11] Query fields count=115 has channelAuthConfig=true
+  ext[12] defs=10
+  after ext[12] Query fields count=119 has channelAuthConfig=true
+  ext[13] defs=8
+  after ext[13] Query fields count=122 has channelAuthConfig=true
+  ext[14] defs=6
+  after ext[14] Query fields count=123 has channelAuthConfig=true
+  ext[15] defs=7
+  after ext[15] Query fields count=125 has channelAuthConfig=true
+  ext[16] defs=4
+  after ext[16] Query fields count=128 has channelAuthConfig=true
+  ext[17] defs=10
+  after ext[17] Query fields count=133 has channelAuthConfig=true
+  ext[18] defs=9
+  after ext[18] Query fields count=138 has channelAuthConfig=true
+  ext[19] defs=23
+  after ext[19] Query fields count=148 has channelAuthConfig=true
+  ext[20] defs=34
+  after ext[20] Query fields count=160 has channelAuthConfig=true
+  ext[21] defs=7
+  after ext[21] Query fields count=163 has channelAuthConfig=true
+[extendSchemaWithPluginApiExtensions] apiType=shop extensions count=16
+  ext[1] defs=14
+  after ext[1] Query fields count=33 has channelAuthConfig=false
+  ext[2] defs=1
+  after ext[2] Query fields count=33 has channelAuthConfig=false
+  ext[4] defs=4
+  after ext[4] Query fields count=35 has channelAuthConfig=false
+  ext[5] defs=2
+  after ext[5] Query fields count=36 has channelAuthConfig=false
+  ext[6] defs=5
+  after ext[6] Query fields count=38 has channelAuthConfig=false
+  ext[7] defs=3
+  after ext[7] Query fields count=39 has channelAuthConfig=false
+  ext[8] defs=14
+  after ext[8] Query fields count=42 has channelAuthConfig=false
+  ext[9] defs=4
+  after ext[9] Query fields count=44 has channelAuthConfig=false
+  ext[10] defs=8
+  after ext[10] Query fields count=46 has channelAuthConfig=false
+  ext[11] defs=5
+  after ext[11] Query fields count=48 has channelAuthConfig=false
+  ext[12] defs=9
+  after ext[12] Query fields count=51 has channelAuthConfig=false
+  ext[13] defs=5
+  after ext[13] Query fields count=54 has channelAuthConfig=false
+  ext[14] defs=2
+  after ext[14] Query fields count=55 has channelAuthConfig=false
+  ext[15] defs=4
+  after ext[15] Query fields count=57 has channelAuthConfig=false
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m GraphQLModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InstanceLoader][39m GraphQLModule dependencies initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[AdminUiPlugin][39m Creating admin ui middleware (prod mode) 
+[35mverbose[39m [90m26/8/15 07:10 -[39m [36m[AdminUiPlugin][39m Checking for admin ui file: D:\zhao\vendure\packages\admin-ui-plugin\lib\admin-ui\browser\vendure-ui-config.json 
+[35mverbose[39m [90m26/8/15 07:10 -[39m [36m[DashboardPlugin][39m Creating dashboard middleware 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[AssetServerPlugin][39m Creating asset server middleware 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[EmailPlugin][39m Creating dev mailbox middleware 
+[35mverbose[39m [90m26/8/15 07:10 -[39m [36m[AdminUiPlugin][39m Applied configuration to vendure-ui-config.json file 
+[35mverbose[39m [90m26/8/15 07:10 -[39m [36m[AdminUiPlugin][39m Checking for admin ui file: D:\zhao\vendure\packages\admin-ui-plugin\lib\admin-ui\browser\index.html 
+[35mverbose[39m [90m26/8/15 07:10 -[39m [36m[AdminUiPlugin][39m Applied baseHref "/admin/" to index.html file 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[RoutesResolver][39m HealthController {/health}: 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[RouterExplorer][39m Mapped {/health, GET} route 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[RoutesResolver][39m AlipayController {/alipay}: 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[RouterExplorer][39m Mapped {/alipay/notify, POST} route 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[RoutesResolver][39m AlipayAuthController {/alipay-auth}: 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[RouterExplorer][39m Mapped {/alipay-auth/callback, GET} route 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[RoutesResolver][39m DouyinAuthController {/douyin-auth}: 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[RouterExplorer][39m Mapped {/douyin-auth/callback, GET} route 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[GraphQLModule][39m Mapped {/shop-api, POST} route 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[GraphQLModule][39m Mapped {/admin-api, POST} route 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[CJKPlugin][39m Registered i18n translation for zh_Hans 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[CJKPlugin][39m Registered i18n translation for zh_Hant 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[CJKPlugin][39m Registered i18n translation for ja 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[CJKPlugin][39m Registered i18n translation for ko 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[CJKPlugin][39m CJK regions module enabled - use RegionPopulator in your server bootstrap to populate countries 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[CJKPlugin][39m Cash on Delivery payment module enabled 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[CJKPlugin][39m Store pickup shipping module enabled 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[CJKPlugin][39m Pickup point shipping module enabled 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[CJKPlugin][39m Employee pickup shipping module enabled 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[CJKPlugin][39m Promotion stacking policy module enabled 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[CJKPlugin][39m Tenant (multi-channel) module enabled 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InvoicePlugin][39m InvoiceService initialized with provider: noop 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InvoicePlugin][39m InvoicePlugin initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[LogisticsPlugin][39m LogisticsPlugin initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[GroupBuyPlugin][39m GroupBuyPlugin initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[FlashSalePlugin][39m FlashSalePlugin initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[DistributionPlugin][39m DistributionPlugin initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[RechargeCardPlugin][39m RechargeCardPlugin initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[AfterSalesPlugin][39m AfterSalesPlugin initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[MemberLevelPlugin][39m MemberLevelPlugin initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[WechatSubscribeMessagePlugin][39m WechatSubscribeMessagePlugin initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[CouponPlugin][39m CouponPlugin initialized (with Promotion bridge) 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[DeliveryPlugin][39m onApplicationBootstrap called, moduleRef exists: true 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[DeliveryRoleSync][39m Created role: delivery-staff 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[DeliveryRoleSync][39m Created role: sales-staff 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[DeliveryRoleSync][39m Created role: inventory-staff 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[DeliveryRoleSync][39m Created role: customer-service 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[DeliveryRoleSync][39m Created role: operations-staff 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[DeliveryRoleSync][39m Created role: manager 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[DeliveryRoleSync][39m Created role: super-admin 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[DeliveryRoleSync][39m Synced 7 roles, 161 permissions 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[SalesPlugin][39m onApplicationBootstrap called, moduleRef exists: true 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[SalesRoleSync][39m Synced 0 roles, 5 permissions 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[CustomerServicePlugin][39m onApplicationBootstrap called 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[CustomerServiceRoleSync][39m Synced 0 roles, 0 permissions 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InventoryPlugin][39m onApplicationBootstrap called 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[InventoryRoleSync][39m Synced 0 roles, 0 permissions 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[OperationsPlugin][39m onApplicationBootstrap called 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[OperationsRoleSync][39m Synced 0 roles, 0 permissions 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[MessagePlugin][39m MessageJob queue initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[MessagePlugin][39m MessagePlugin initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[OrderTimeoutPlugin][39m OrderTimeoutPlugin initialized 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[NestApplication][39m Nest application successfully started 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[Vendure Server][39m ==================================================== 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[Vendure Server][39m   Vendure server (v3.6.4) now running on port 3000 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[Vendure Server][39m ---------------------------------------------------- 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[Vendure Server][39m Shop API:       http://localhost:3000/shop-api 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[Vendure Server][39m Admin API:      http://localhost:3000/admin-api 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[Vendure Server][39m Dashboard UI:   http://localhost:3000/dashboard 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[Vendure Server][39m GraphiQL Admin: http://localhost:3000/graphiql/admin 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[Vendure Server][39m GraphiQL Shop:  http://localhost:3000/graphiql/shop 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[Vendure Server][39m Asset server:   http://localhost:3000/assets 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[Vendure Server][39m Dev mailbox:    http://localhost:3000/mailbox 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[Vendure Server][39m Admin UI:       http://localhost:3000/admin 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[Vendure Server][39m ==================================================== 
+[34minfo[39m [90m26/8/15 07:10 -[39m [36m[Vendure Server][39m Anonymous telemetry is disabled. 
+[35mverbose[39m [90m26/8/15 07:11 -[39m [36m[Vendure Server][39m Cannot GET /@vite/client 
+[35mverbose[39m [90m26/8/15 07:12 -[39m [36m[Vendure Server][39m Cannot GET /@vite/client 

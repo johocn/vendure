@@ -66,7 +66,7 @@ function extendSchemaWithPluginApiExtensions(schema, plugins, apiType) {
             }
             catch (err) {
                 // eslint-disable-next-line no-console
-                console.log(`  ext[${i}] plugin=${e.pluginName ?? '?'} extendSchema ERROR: ${err.message}`);
+                console.log(`  ext[${i}] extendSchema ERROR: ${err.message}`);
                 throw err;
             }
         }
