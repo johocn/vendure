@@ -184,7 +184,21 @@ let InventoryService = class InventoryService {
      * - 带 lat/lng 时按距离升序排序（无坐标为 -1 排末尾）；带 city 时仅保留服务该城市的仓。
      */
     async findNearbyStock(ctx, options) {
-        const locations = (await this.stockLocationService.findAll(ctx, { take: 10000 })).items;
+        // 分页拉取全部仓库（单次列表查询有上限，避免 take 超限报错）
+        const pageSize = 100;
+        const locations = [];
+        let page = 1;
+        while (true) {
+            const result = await this.stockLocationService.findAll(ctx, {
+                skip: (page - 1) * pageSize,
+                take: pageSize,
+            });
+            locations.push(...result.items);
+            if (result.items.length < pageSize || result.totalItems <= locations.length) {
+                break;
+            }
+            page++;
+        }
         const variantRepo = this.connection.getRepository(ctx, core_1.ProductVariant);
         const variants = await variantRepo.find({
             where: options.variantId

@@ -286,7 +286,21 @@ export class InventoryService {
         ctx: RequestContext,
         options: { productId: ID; variantId?: ID; lat?: number; lng?: number; city?: string },
     ): Promise<Array<{ location: StockLocation; distanceKm: number; variants: Array<{ variantId: ID; variantName: string; sku: string; stockOnHand: number; stockAllocated: number; stockAvailable: number }> }>> {
-        const locations = (await this.stockLocationService.findAll(ctx, { take: 10000 })).items;
+        // 分页拉取全部仓库（单次列表查询有上限，避免 take 超限报错）
+        const pageSize = 100;
+        const locations: StockLocation[] = [];
+        let page = 1;
+        while (true) {
+            const result = await this.stockLocationService.findAll(ctx, {
+                skip: (page - 1) * pageSize,
+                take: pageSize,
+            });
+            locations.push(...result.items);
+            if (result.items.length < pageSize || result.totalItems <= locations.length) {
+                break;
+            }
+            page++;
+        }
         const variantRepo = this.connection.getRepository(ctx, ProductVariant);
         const variants = await variantRepo.find({
             where: options.variantId

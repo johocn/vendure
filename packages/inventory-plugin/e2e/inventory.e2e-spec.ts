@@ -32,9 +32,17 @@ async function importProducts(adminClient: any, csvPath: string) {
 }
 
 describe('InventoryPlugin · 移库账本化（方案A验证）', () => {
-    const { server, adminClient } = createTestEnvironment(
+    const { server, adminClient, shopClient } = createTestEnvironment(
         mergeConfig(testConfig(), {
             plugins: [InventoryPlugin.init()],
+            // 为 variantNearbyStock 排序/门禁验证注册 StockLocation 自定义字段
+            customFields: {
+                StockLocation: [
+                    { name: 'lat', type: 'float', nullable: true },
+                    { name: 'lng', type: 'float', nullable: true },
+                    { name: 'serviceCities', type: 'text', list: true, nullable: true },
+                ],
+            },
         }),
     );
 
@@ -188,5 +196,76 @@ describe('InventoryPlugin · 移库账本化（方案A验证）', () => {
         const roll = led.stockLedger.items.find((i: any) => i.stockLocationId === source.id && i.direction === 'in');
         expect(roll).toBeDefined();
         expect(roll.quantity).toBe(5);
+    }, TEST_SETUP_TIMEOUT_MS);
+
+    it('variantNearbyStock 双仓按距离排序 + 服务城市过滤', async () => {
+        const products = await importProducts(adminClient, '');
+        const product = products.items[0];
+        const variant = product.variants[0];
+
+        // 准备两个带坐标的仓库：近仓（成都）与远仓（北京）
+        const nearLoc = await adminClient.query(gql`
+            mutation {
+                createStockLocation(input: {
+                    name: "成都仓"
+                    customFields: { lat: 30.66, lng: 104.06, serviceCities: ["成都", "绵阳"] }
+                }) { id name }
+            }
+        `);
+        const farLoc = await adminClient.query(gql`
+            mutation {
+                createStockLocation(input: {
+                    name: "北京仓"
+                    customFields: { lat: 39.9, lng: 116.4, serviceCities: ["北京"] }
+                }) { id name }
+            }
+        `);
+        const nearId = nearLoc.createStockLocation.id;
+        const farId = farLoc.createStockLocation.id;
+
+        // 近仓 30 件、远仓 5 件
+        await adminClient.query(gql`
+            mutation { setVariantStock(productVariantId: "${variant.id}", stockLocationId: "${nearId}", stockOnHand: 30) }
+        `);
+        await adminClient.query(gql`
+            mutation { setVariantStock(productVariantId: "${variant.id}", stockLocationId: "${farId}", stockOnHand: 5) }
+        `);
+
+        // 以成都为锚点查询（无 city 参数时按距离升序）——variantNearbyStock 为 Shop API
+        const byDist = await shopClient.query(gql`
+            query {
+                variantNearbyStock(productId: "${product.id}", variantId: "${variant.id}", lat: 30.66, lng: 104.06) {
+                    distanceKm
+                    location { id name }
+                    variants { variantId stockOnHand stockAllocated stockAvailable }
+                }
+            }
+        `);
+        const nearRows = byDist.variantNearbyStock.filter((r: any) => r.location.id === nearId);
+        const farRows = byDist.variantNearbyStock.filter((r: any) => r.location.id === farId);
+        expect(nearRows).toHaveLength(1);
+        expect(farRows).toHaveLength(1);
+        // 近仓距离更小 → 排在远仓之前
+        expect(nearRows[0].distanceKm).toBeLessThan(farRows[0].distanceKm);
+        // 库存三口径
+        expect(nearRows[0].variants[0]).toMatchObject({
+            variantId: variant.id,
+            stockOnHand: 30,
+            stockAllocated: 0,
+            stockAvailable: 30,
+        });
+        expect(farRows[0].variants[0].stockAvailable).toBe(5);
+
+        // 带 city 过滤：成都客户只看得到成都仓
+        const byCity = await shopClient.query(gql`
+            query {
+                variantNearbyStock(productId: "${product.id}", variantId: "${variant.id}", lat: 30.66, lng: 104.06, city: "成都") {
+                    location { id }
+                }
+            }
+        `);
+        const cityIds = byCity.variantNearbyStock.map((r: any) => r.location.id);
+        expect(cityIds).toContain(nearId);
+        expect(cityIds).not.toContain(farId);
     }, TEST_SETUP_TIMEOUT_MS);
 });

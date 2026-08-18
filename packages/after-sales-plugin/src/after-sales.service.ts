@@ -117,12 +117,20 @@ export class AfterSalesService {
             throw new Error('OrderService not initialized');
         }
 
-        // 1. 校验订单存在且归属当前用户
-        const order = await this.orderService.findOne(ctx, input.orderId, ['customer', 'lines']);
+        // 1. 校验订单存在且归属当前用户。
+        // 注意：order.customer.id 是 Customer 主键，而 ctx.activeUserId 是关联 User 主键，两者不同。
+        // 归属校验必须基于 customer.user.id 与 activeUserId 比较。
+        let order;
+        try {
+            order = await this.orderService.findOne(ctx, input.orderId, ['customer', 'customer.user', 'lines'] as any);
+        } catch (e: any) {
+            throw e;
+        }
         if (!order) {
             throw new UserInputError(`Order ${input.orderId} not found`);
         }
-        if (!order.customer || String(order.customer.id) !== String(ctx.activeUserId)) {
+        const customerUserId = (order.customer as any)?.user?.id;
+        if (!order.customer || customerUserId == null || String(customerUserId) !== String(ctx.activeUserId)) {
             throw new ForbiddenError();
         }
 
@@ -156,11 +164,16 @@ export class AfterSalesService {
             throw new UserInputError(`Refund amount ${input.refundAmount} exceeds max ${maxRefund}`);
         }
 
+        // 4.1 用解码后的实体 ID 存储外键：order.id / line.id 已是数据库内部数字 ID，
+        // 不能直接用 GraphQL 编码 ID（T_1）写入 number 外键列，否则触发 FOREIGN KEY 约束失败。
+        const entityOrderId = order.id;
+        const entityOrderLineId = orderLine ? orderLine.id : null;
+
         // 5. 重复售后校验（同一 orderLineId 不能有未关闭的售后单）
-        if (input.orderLineId) {
+        if (entityOrderLineId != null) {
             const repo = this.connection.getRepository(ctx, AfterSalesRequest);
             const existing = await repo.findOne({
-                where: { orderLineId: input.orderLineId as any, state: Not('Closed' as any) },
+                where: { orderLineId: entityOrderLineId as any, state: Not('Closed' as any) },
             });
             if (existing) {
                 throw new UserInputError(`After-sales already exists for order line ${input.orderLineId}`);
@@ -169,15 +182,15 @@ export class AfterSalesService {
 
         const repo = this.connection.getRepository(ctx, AfterSalesRequest);
         const request = new AfterSalesRequest({
-            orderId: input.orderId as any,
-            orderLineId: (input.orderLineId as any) || null,
+            orderId: entityOrderId as any,
+            orderLineId: entityOrderLineId as any,
             type: (input.type as any) || 'return_refund',
             state: 'Pending',
             reason: input.reason,
             description: input.description || null,
             evidenceImages: input.evidenceImages || null,
             refundAmount: input.refundAmount,
-            customerId: ctx.activeUserId as any,
+            customerId: (order.customer as any).id as any,
         });
         request.channels = [ctx.channel];
         const saved = await repo.save(request);

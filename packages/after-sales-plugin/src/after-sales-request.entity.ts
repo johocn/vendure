@@ -21,10 +21,10 @@ export class AfterSalesRequest extends VendureEntity implements ChannelAware {
     @Column({ type: 'int', nullable: true })
     orderLineId: number | null;
 
-    @Column({ default: 'return_refund' })
+    @Column({ type: 'varchar', default: 'return_refund' })
     type: AfterSalesType;
 
-    @Column({ default: 'Pending' })
+    @Column({ type: 'varchar', default: 'Pending' })
     state: AfterSalesState;
 
     @Column()

@@ -4,9 +4,22 @@ exports.NearestStockLocationStrategy = void 0;
 const core_1 = require("@vendure/core");
 const location_utils_1 = require("./location-utils");
 const loggerCtx = 'NearestStockLocationStrategy';
-function readOrderGeo(orderLine) {
-    var _a, _b;
-    const cf = ((_b = (_a = orderLine.order) === null || _a === void 0 ? void 0 : _a.customFields) !== null && _b !== void 0 ? _b : {});
+async function readOrderGeo(ctx, orderLine, connection) {
+    var _a;
+    let order = orderLine.order;
+    // createAllocationsForOrderLines 加载 OrderLine 时未带 order 关系（orderLine.order 为 undefined），
+    // 必须按 orderId 补查 Order，否则经纬度/城市永远读不到，就近分配退化为默认顺序。
+    if (!order && orderLine.orderId != null) {
+        try {
+            order = await connection
+                .getRepository(ctx, core_1.Order)
+                .findOne({ where: { id: orderLine.orderId } });
+        }
+        catch (e) {
+            order = undefined;
+        }
+    }
+    const cf = ((_a = order === null || order === void 0 ? void 0 : order.customFields) !== null && _a !== void 0 ? _a : {});
     let lat = cf.lat != null ? Number(cf.lat) : NaN;
     let lng = cf.lng != null ? Number(cf.lng) : NaN;
     // 到店自提：以自提点坐标为核心（替代顾客定位），确保分配到离自提点最近的仓/门店
@@ -37,7 +50,7 @@ function readOrderGeo(orderLine) {
  */
 class NearestStockLocationStrategy extends core_1.MultiChannelStockLocationStrategy {
     async forAllocation(ctx, stockLocations, orderLine, quantity) {
-        const ordered = this.orderByProximity(stockLocations, orderLine);
+        const ordered = await this.orderByProximity(ctx, stockLocations, orderLine);
         const result = await super.forAllocation(ctx, ordered, orderLine, quantity);
         // 记录原分配仓：就近结果中数量为正的首个 location，供售后回补定位原发货仓
         await this.persistAllocationLocation(ctx, orderLine, result);
@@ -67,8 +80,8 @@ class NearestStockLocationStrategy extends core_1.MultiChannelStockLocationStrat
             core_1.Logger.warn(`记录原分配仓失败（不影响下单）: ${(_c = e === null || e === void 0 ? void 0 : e.message) !== null && _c !== void 0 ? _c : e}`, loggerCtx);
         }
     }
-    orderByProximity(stockLocations, orderLine) {
-        const geo = readOrderGeo(orderLine);
+    async orderByProximity(ctx, stockLocations, orderLine) {
+        const geo = await readOrderGeo(ctx, orderLine, this.connection);
         let candidates = stockLocations;
         // 超区门禁：订单带城市时，仅保留服务该城市的仓库/门店
         if (geo.city) {

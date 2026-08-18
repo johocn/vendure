@@ -2,6 +2,7 @@ import {
     LocationWithQuantity,
     Logger,
     MultiChannelStockLocationStrategy,
+    Order,
     OrderLine,
     RequestContext,
     StockLocation,
@@ -22,8 +23,24 @@ interface OrderGeo {
     city: string | null;
 }
 
-function readOrderGeo(orderLine: OrderLine): OrderGeo {
-    const cf = ((orderLine.order as any)?.customFields ?? {}) as Record<string, any>;
+async function readOrderGeo(
+    ctx: RequestContext,
+    orderLine: OrderLine,
+    connection: any,
+): Promise<OrderGeo> {
+    let order = orderLine.order as (Order | undefined);
+    // createAllocationsForOrderLines 加载 OrderLine 时未带 order 关系（orderLine.order 为 undefined），
+    // 必须按 orderId 补查 Order，否则经纬度/城市永远读不到，就近分配退化为默认顺序。
+    if (!order && (orderLine as any).orderId != null) {
+        try {
+            order = await connection
+                .getRepository(ctx, Order)
+                .findOne({ where: { id: (orderLine as any).orderId as any } });
+        } catch (e: any) {
+            order = undefined;
+        }
+    }
+    const cf = ((order as any)?.customFields ?? {}) as Record<string, any>;
     let lat = cf.lat != null ? Number(cf.lat) : NaN;
     let lng = cf.lng != null ? Number(cf.lng) : NaN;
     // 到店自提：以自提点坐标为核心（替代顾客定位），确保分配到离自提点最近的仓/门店
@@ -60,7 +77,7 @@ export class NearestStockLocationStrategy extends MultiChannelStockLocationStrat
         orderLine: OrderLine,
         quantity: number,
     ): Promise<LocationWithQuantity[]> {
-        const ordered = this.orderByProximity(stockLocations, orderLine);
+        const ordered = await this.orderByProximity(ctx, stockLocations, orderLine);
         const result = await super.forAllocation(ctx, ordered, orderLine, quantity);
         // 记录原分配仓：就近结果中数量为正的首个 location，供售后回补定位原发货仓
         await this.persistAllocationLocation(ctx, orderLine, result);
@@ -96,11 +113,12 @@ export class NearestStockLocationStrategy extends MultiChannelStockLocationStrat
         }
     }
 
-    private orderByProximity(
+    private async orderByProximity(
+        ctx: RequestContext,
         stockLocations: StockLocation[],
         orderLine: OrderLine,
-    ): StockLocation[] {
-        const geo = readOrderGeo(orderLine);
+    ): Promise<StockLocation[]> {
+        const geo = await readOrderGeo(ctx, orderLine, this.connection);
         let candidates = stockLocations;
 
         // 超区门禁：订单带城市时，仅保留服务该城市的仓库/门店
