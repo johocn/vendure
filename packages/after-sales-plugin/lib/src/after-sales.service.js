@@ -87,19 +87,28 @@ let AfterSalesService = class AfterSalesService {
             .then(([items, totalItems]) => ({ items, totalItems }));
     }
     async createRequest(ctx, input) {
-        var _a, _b;
+        var _a, _b, _c, _d;
         if (!ctx.activeUserId) {
             throw new core_1.UnauthorizedError();
         }
         if (!this.orderService) {
             throw new Error('OrderService not initialized');
         }
-        // 1. 校验订单存在且归属当前用户
-        const order = await this.orderService.findOne(ctx, input.orderId, ['customer', 'lines']);
+        // 1. 校验订单存在且归属当前用户。
+        // 注意：order.customer.id 是 Customer 主键，而 ctx.activeUserId 是关联 User 主键，两者不同。
+        // 归属校验必须基于 customer.user.id 与 activeUserId 比较。
+        let order;
+        try {
+            order = await this.orderService.findOne(ctx, input.orderId, ['customer', 'customer.user', 'lines']);
+        }
+        catch (e) {
+            throw e;
+        }
         if (!order) {
             throw new core_1.UserInputError(`Order ${input.orderId} not found`);
         }
-        if (!order.customer || String(order.customer.id) !== String(ctx.activeUserId)) {
+        const customerUserId = (_b = (_a = order.customer) === null || _a === void 0 ? void 0 : _a.user) === null || _b === void 0 ? void 0 : _b.id;
+        if (!order.customer || customerUserId == null || String(customerUserId) !== String(ctx.activeUserId)) {
             throw new core_1.ForbiddenError();
         }
         // 2. 校验订单状态（必须 Shipped/Delivered/PartialDelivery/Cancelled 才能售后）
@@ -108,7 +117,7 @@ let AfterSalesService = class AfterSalesService {
             throw new core_1.UserInputError(`Cannot create after-sales: order state must be one of ${allowedStates.join('/')}, got ${order.state}`);
         }
         // 3. 售后期窗口校验（默认 7 天无理由 + 15 天质量问题 = 22 天上限）
-        const maxDays = (_b = (_a = this.options) === null || _a === void 0 ? void 0 : _a.maxDaysAfterDelivery) !== null && _b !== void 0 ? _b : 7;
+        const maxDays = (_d = (_c = this.options) === null || _c === void 0 ? void 0 : _c.maxDaysAfterDelivery) !== null && _d !== void 0 ? _d : 7;
         const orderDate = order.updatedAt || order.createdAt;
         const daysSince = (Date.now() - orderDate.getTime()) / (1000 * 60 * 60 * 24);
         if (daysSince > maxDays + 15) {
@@ -127,11 +136,15 @@ let AfterSalesService = class AfterSalesService {
         if (input.refundAmount > maxRefund) {
             throw new core_1.UserInputError(`Refund amount ${input.refundAmount} exceeds max ${maxRefund}`);
         }
+        // 4.1 用解码后的实体 ID 存储外键：order.id / line.id 已是数据库内部数字 ID，
+        // 不能直接用 GraphQL 编码 ID（T_1）写入 number 外键列，否则触发 FOREIGN KEY 约束失败。
+        const entityOrderId = order.id;
+        const entityOrderLineId = orderLine ? orderLine.id : null;
         // 5. 重复售后校验（同一 orderLineId 不能有未关闭的售后单）
-        if (input.orderLineId) {
+        if (entityOrderLineId != null) {
             const repo = this.connection.getRepository(ctx, after_sales_request_entity_1.AfterSalesRequest);
             const existing = await repo.findOne({
-                where: { orderLineId: input.orderLineId, state: (0, typeorm_1.Not)('Closed') },
+                where: { orderLineId: entityOrderLineId, state: (0, typeorm_1.Not)('Closed') },
             });
             if (existing) {
                 throw new core_1.UserInputError(`After-sales already exists for order line ${input.orderLineId}`);
@@ -139,15 +152,15 @@ let AfterSalesService = class AfterSalesService {
         }
         const repo = this.connection.getRepository(ctx, after_sales_request_entity_1.AfterSalesRequest);
         const request = new after_sales_request_entity_1.AfterSalesRequest({
-            orderId: input.orderId,
-            orderLineId: input.orderLineId || null,
+            orderId: entityOrderId,
+            orderLineId: entityOrderLineId,
             type: input.type || 'return_refund',
             state: 'Pending',
             reason: input.reason,
             description: input.description || null,
             evidenceImages: input.evidenceImages || null,
             refundAmount: input.refundAmount,
-            customerId: ctx.activeUserId,
+            customerId: order.customer.id,
         });
         request.channels = [ctx.channel];
         const saved = await repo.save(request);

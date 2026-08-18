@@ -35,11 +35,11 @@ __decorate([
     __metadata("design:type", Object)
 ], AfterSalesRequest.prototype, "orderLineId", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ default: 'return_refund' }),
+    (0, typeorm_1.Column)({ type: 'varchar', default: 'return_refund' }),
     __metadata("design:type", String)
 ], AfterSalesRequest.prototype, "type", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ default: 'Pending' }),
+    (0, typeorm_1.Column)({ type: 'varchar', default: 'Pending' }),
     __metadata("design:type", String)
 ], AfterSalesRequest.prototype, "state", void 0);
 __decorate([
