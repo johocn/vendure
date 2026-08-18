@@ -16,11 +16,12 @@ const constants_1 = require("./constants");
 const order_timeout_task_entity_1 = require("./order-timeout-task.entity");
 const MAX_RETRY = 3;
 let OrderTimeoutJob = class OrderTimeoutJob {
-    constructor(jobQueueService, orderService, channelService, connection) {
+    constructor(jobQueueService, orderService, channelService, connection, stockMovementService) {
         this.jobQueueService = jobQueueService;
         this.orderService = orderService;
         this.channelService = channelService;
         this.connection = connection;
+        this.stockMovementService = stockMovementService;
         this.taskRepo = this.connection.rawConnection.getRepository(order_timeout_task_entity_1.OrderTimeoutTask);
     }
     async init() {
@@ -105,6 +106,9 @@ let OrderTimeoutJob = class OrderTimeoutJob {
         const orderId = order.id;
         switch (type) {
             case order_timeout_task_entity_1.TimeoutType.PAYMENT:
+                // active 订单（ArrangingPayment）经 cancelOrder 取消不会释放库存分配，
+                // 需先显式释放分配，避免超时取消后库存被永久占用（库存泄漏）。
+                await this.releaseAllocationsForOrder(ctx, order);
                 await this.orderService.cancelOrder(ctx, { orderId });
                 core_1.Logger.warn(`Order ${order.id} cancelled due to payment timeout`, constants_1.loggerCtx);
                 break;
@@ -121,6 +125,20 @@ let OrderTimeoutJob = class OrderTimeoutJob {
             default:
                 throw new Error(`Unknown timeout type: ${type}`);
         }
+    }
+    /**
+     * 显式释放订单行的库存分配。
+     * Vendure 的 cancelOrder 对 active 订单（如 ArrangingPayment）不会释放库存，
+     * 需在取消前调用 createReleasesForOrderLines 把分配归还（写 RELEASE 流水并回退 stockAllocated）。
+     */
+    async releaseAllocationsForOrder(ctx, order) {
+        var _a;
+        const lines = ((_a = order.lines) !== null && _a !== void 0 ? _a : []).map(l => ({ orderLineId: l.id, quantity: l.quantity }));
+        if (lines.length === 0) {
+            return;
+        }
+        await this.stockMovementService.createReleasesForOrderLines(ctx, lines);
+        core_1.Logger.info(`Order ${order.id}: released ${lines.length} line(s) allocation before cancel`, constants_1.loggerCtx);
     }
     async buildCtx(channelId) {
         const emptyCtx = core_1.RequestContext.empty();
@@ -199,6 +217,7 @@ exports.OrderTimeoutJob = OrderTimeoutJob = __decorate([
     __metadata("design:paramtypes", [core_1.JobQueueService,
         core_1.OrderService,
         core_1.ChannelService,
-        core_1.TransactionalConnection])
+        core_1.TransactionalConnection,
+        core_1.StockMovementService])
 ], OrderTimeoutJob);
 //# sourceMappingURL=order-timeout.job.js.map

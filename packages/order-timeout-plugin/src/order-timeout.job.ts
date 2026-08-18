@@ -8,6 +8,7 @@ import {
     Order,
     OrderService,
     RequestContext,
+    StockMovementService,
     TransactionalConnection,
 } from '@vendure/core';
 import { Repository } from 'typeorm';
@@ -34,6 +35,7 @@ export class OrderTimeoutJob {
         private orderService: OrderService,
         private channelService: ChannelService,
         private connection: TransactionalConnection,
+        private stockMovementService: StockMovementService,
     ) {
         this.taskRepo = this.connection.rawConnection.getRepository(OrderTimeoutTask);
     }
@@ -134,6 +136,9 @@ export class OrderTimeoutJob {
         const orderId = order.id as ID;
         switch (type) {
             case TimeoutType.PAYMENT:
+                // active 订单（ArrangingPayment）经 cancelOrder 取消不会释放库存分配，
+                // 需先显式释放分配，避免超时取消后库存被永久占用（库存泄漏）。
+                await this.releaseAllocationsForOrder(ctx, order);
                 await this.orderService.cancelOrder(ctx, { orderId });
                 Logger.warn(`Order ${order.id} cancelled due to payment timeout`, loggerCtx);
                 break;
@@ -153,6 +158,23 @@ export class OrderTimeoutJob {
             default:
                 throw new Error(`Unknown timeout type: ${type}`);
         }
+    }
+
+    /**
+     * 显式释放订单行的库存分配。
+     * Vendure 的 cancelOrder 对 active 订单（如 ArrangingPayment）不会释放库存，
+     * 需在取消前调用 createReleasesForOrderLines 把分配归还（写 RELEASE 流水并回退 stockAllocated）。
+     */
+    private async releaseAllocationsForOrder(ctx: RequestContext, order: Order): Promise<void> {
+        const lines = (order.lines ?? []).map(l => ({ orderLineId: l.id, quantity: l.quantity }));
+        if (lines.length === 0) {
+            return;
+        }
+        await this.stockMovementService.createReleasesForOrderLines(ctx, lines);
+        Logger.info(
+            `Order ${order.id}: released ${lines.length} line(s) allocation before cancel`,
+            loggerCtx,
+        );
     }
 
     private async buildCtx(channelId: number | string): Promise<RequestContext | null> {
