@@ -1,4 +1,5 @@
 // e:\code\vendure\packages\inventory-plugin\src\constants.ts
+import { PermissionDefinition } from '@vendure/core';
 
 // 权限名常量（引用 delivery-plugin 中已注册的权限，此处不重复注册 PermissionDefinition）
 export const InventoryPermissions = {
@@ -8,6 +9,26 @@ export const InventoryPermissions = {
   ManageStockMove: 'ManageStockMove',
   ManageStocktake: 'ManageStocktake',
 } as const;
+
+// 权限描述（供 PermissionDefinition 注册使用）
+const PERMISSION_DESCRIPTIONS: Record<string, string> = {
+  ViewStock: '库存查询',
+  ManageStockIn: '入库单管理',
+  ManageStockOut: '出库单管理',
+  ManageStockMove: '调拨单管理',
+  ManageStocktake: '盘点单管理',
+};
+
+// PermissionDefinition 实例数组，注册到 config.authOptions.customPermissions（与 delivery-plugin 同源权限同名，可安全重复注册）
+export const inventoryPermissionDefinitions: PermissionDefinition[] = Object.entries(
+  InventoryPermissions,
+).map(
+  ([key, name]) =>
+    new PermissionDefinition({
+      name,
+      description: PERMISSION_DESCRIPTIONS[key] ?? `Grants ${key} permission`,
+    }),
+);
 
 // Role 与 Permission 绑定表（增量同步：已存在的角色仅补绑缺失权限）
 export const ROLE_PERMISSIONS_MAP: Record<string, string[]> = {

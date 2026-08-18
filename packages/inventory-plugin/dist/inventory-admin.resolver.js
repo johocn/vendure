@@ -25,6 +25,10 @@ let InventoryAdminResolver = class InventoryAdminResolver {
     async stockLevels(ctx, locationId, page, pageSize) {
         return this.inventoryService.findStockLevels(ctx, { locationId, page, pageSize });
     }
+    async setVariantStock(ctx, productVariantId, stockLocationId, stockOnHand) {
+        await this.inventoryService.setStockForVariant(ctx, productVariantId, stockLocationId, stockOnHand);
+        return true;
+    }
     async stockMovements(ctx, productVariantId, locationId, type, page, pageSize) {
         return this.inventoryService.findStockMovements(ctx, { productVariantId, locationId, type, page, pageSize });
     }
@@ -125,6 +129,17 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object, Number, Number]),
     __metadata("design:returntype", Promise)
 ], InventoryAdminResolver.prototype, "stockLevels", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(constants_1.InventoryPermissions.ViewStock),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)({ name: 'productVariantId', type: () => String })),
+    __param(2, (0, graphql_1.Args)({ name: 'stockLocationId', type: () => String })),
+    __param(3, (0, graphql_1.Args)({ name: 'stockOnHand', type: () => Number })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, Number]),
+    __metadata("design:returntype", Promise)
+], InventoryAdminResolver.prototype, "setVariantStock", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(constants_1.InventoryPermissions.ViewStock),

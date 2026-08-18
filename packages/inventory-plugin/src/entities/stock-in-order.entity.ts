@@ -11,7 +11,7 @@ export class StockInOrder extends VendureEntity {
     }
 
     @Column() code: string;
-    @Column({ default: 'Pending' }) state: StockInState;
+    @Column({ type: 'varchar', default: 'Pending' }) state: StockInState;
     @Column({ nullable: true }) type: string;
     @Column({ nullable: true }) note: string;
     @Column({ nullable: true }) staffId: string;
@@ -23,8 +23,8 @@ export class StockInOrder extends VendureEntity {
     @OneToMany(() => StockInOrderLine, line => line.order, { cascade: true })
     lines: StockInOrderLine[];
 
-    @Column({ type: 'timestamp', nullable: true }) completedAt?: Date;
-    @Column({ type: 'timestamp', nullable: true }) cancelledAt?: Date;
+    @Column({ nullable: true }) completedAt?: Date;
+    @Column({ nullable: true }) cancelledAt?: Date;
 
     @ManyToMany(() => Channel)
     @JoinTable()

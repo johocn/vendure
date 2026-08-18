@@ -26,6 +26,11 @@ export declare class InventoryService {
      */
     protected adjustStockForLocation(ctx: RequestContext, variantId: ID, locationId: ID, delta: number, reason: string, meta?: LedgerMeta): Promise<void>;
     /**
+     * 手工校准某仓可变体库存为指定绝对数量（delta = 目标 - 当前，写 manual 账本便于追溯）。
+     * delta 为 0 时不写任何流水。
+     */
+    setStockForVariant(ctx: RequestContext, variantId: ID, locationId: ID, stockOnHand: number, reason?: string): Promise<void>;
+    /**
      * 售后退货回补：将收到的退货回补到原发货仓，同一事务内写 afterSales 账本。
      * 供 after-sales-plugin 在 confirmReceive（Returning→Received）时调用。
      * @param quantity 正数表示回补数量（= min(订单行数量, 实收数量)）

@@ -25,7 +25,7 @@ __decorate([
     __metadata("design:type", String)
 ], StocktakeOrder.prototype, "code", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ default: 'Pending' }),
+    (0, typeorm_1.Column)({ type: 'varchar', default: 'Pending' }),
     __metadata("design:type", String)
 ], StocktakeOrder.prototype, "state", void 0);
 __decorate([
@@ -49,19 +49,19 @@ __decorate([
     __metadata("design:type", Array)
 ], StocktakeOrder.prototype, "lines", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
+    (0, typeorm_1.Column)({ nullable: true }),
     __metadata("design:type", Date)
 ], StocktakeOrder.prototype, "countingStartedAt", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
+    (0, typeorm_1.Column)({ nullable: true }),
     __metadata("design:type", Date)
 ], StocktakeOrder.prototype, "reconcilingStartedAt", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
+    (0, typeorm_1.Column)({ nullable: true }),
     __metadata("design:type", Date)
 ], StocktakeOrder.prototype, "completedAt", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
+    (0, typeorm_1.Column)({ nullable: true }),
     __metadata("design:type", Date)
 ], StocktakeOrder.prototype, "cancelledAt", void 0);
 __decorate([

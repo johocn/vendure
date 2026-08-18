@@ -1,3 +1,4 @@
+import { PermissionDefinition } from '@vendure/core';
 export declare const InventoryPermissions: {
     readonly ViewStock: "ViewStock";
     readonly ManageStockIn: "ManageStockIn";
@@ -5,6 +6,7 @@ export declare const InventoryPermissions: {
     readonly ManageStockMove: "ManageStockMove";
     readonly ManageStocktake: "ManageStocktake";
 };
+export declare const inventoryPermissionDefinitions: PermissionDefinition[];
 export declare const ROLE_PERMISSIONS_MAP: Record<string, string[]>;
 export declare enum StockInState {
     Pending = "Pending",

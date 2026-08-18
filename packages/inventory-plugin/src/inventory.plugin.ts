@@ -7,6 +7,7 @@ import { InventoryShopResolver } from './inventory-shop.resolver';
 import { InventoryService } from './inventory.service';
 import { RoleSyncService } from './role-sync';
 import { StockLedgerService } from './stock-ledger.service';
+import { inventoryPermissionDefinitions } from './constants';
 import { OrderStockLedger } from './entities/order-stock-ledger.entity';
 import { StockInOrder, StockInOrderLine } from './entities/stock-in-order.entity';
 import { StockOutOrder, StockOutOrderLine } from './entities/stock-out-order.entity';
@@ -70,8 +71,16 @@ const { gql } = require('graphql-tag');
     },
     adminApiExtensions: {
         schema: () => gql`
+            type StockLevelRow {
+                id: ID!
+                productVariantId: ID!
+                stockLocationId: ID!
+                stockOnHand: Int!
+                stockAllocated: Int!
+            }
+
             type StockLevelList {
-                items: [StockLevel!]!
+                items: [StockLevelRow!]!
                 totalItems: Int!
             }
 
@@ -271,6 +280,8 @@ const { gql } = require('graphql-tag');
             }
 
             extend type Mutation {
+                setVariantStock(productVariantId: ID!, stockLocationId: ID!, stockOnHand: Int!): Boolean!
+
                 createStockInOrder(input: CreateStockInOrderInput!): StockInOrder!
                 completeStockInOrder(id: ID!): StockInOrder!
                 cancelStockInOrder(id: ID!): StockInOrder!
@@ -296,6 +307,11 @@ const { gql } = require('graphql-tag');
         resolvers: [InventoryAdminResolver],
     },
     configuration: (config) => {
+        // 注册自定义 Permission（与 delivery-plugin 同源权限同名，重复注册安全）
+        config.authOptions.customPermissions = [
+            ...(config.authOptions.customPermissions ?? []),
+            ...inventoryPermissionDefinitions,
+        ];
         config.customFields.StockMovement = mergeCustomFields(config.customFields.StockMovement, [
             { name: 'businessReason', type: 'string', nullable: true },
         ]);

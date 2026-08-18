@@ -46,11 +46,11 @@ __decorate([
     __metadata("design:type", String)
 ], OrderStockLedger.prototype, "bizCode", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
+    (0, typeorm_1.Column)({ type: 'int', nullable: true }),
     __metadata("design:type", Object)
 ], OrderStockLedger.prototype, "orderLineId", void 0);
 __decorate([
-    (0, typeorm_1.Column)(),
+    (0, typeorm_1.Column)({ type: 'varchar' }),
     __metadata("design:type", String)
 ], OrderStockLedger.prototype, "direction", void 0);
 __decorate([
@@ -66,7 +66,7 @@ __decorate([
     __metadata("design:type", Number)
 ], OrderStockLedger.prototype, "afterOnHand", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
+    (0, typeorm_1.Column)({ type: 'int', nullable: true }),
     __metadata("design:type", Object)
 ], OrderStockLedger.prototype, "otherLocationId", void 0);
 __decorate([

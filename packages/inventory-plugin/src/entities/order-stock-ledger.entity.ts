@@ -29,10 +29,10 @@ export class OrderStockLedger extends VendureEntity {
     @Column({ nullable: true }) bizCode: string;
 
     /** 关联订单行（bizType=order/afterSales 时） */
-    @Column({ nullable: true }) orderLineId: number | null;
+    @Column({ type: 'int', nullable: true }) orderLineId: number | null;
 
     /** 方向：in=入库/回补，out=扣减/发出 */
-    @Column() direction: 'in' | 'out';
+    @Column({ type: 'varchar' }) direction: 'in' | 'out';
 
     /** 数量（正数） */
     @Column() quantity: number;
@@ -42,7 +42,7 @@ export class OrderStockLedger extends VendureEntity {
     @Column({ nullable: true }) afterOnHand: number;
 
     /** 跨仓关联（调拨 源仓↔目标仓 互指；null 表示无） */
-    @Column({ nullable: true }) otherLocationId: number | null;
+    @Column({ type: 'int', nullable: true }) otherLocationId: number | null;
 
     /** 业务说明（如 order#xxx:fulfill-sell、afterSales#xxx:return-restock） */
     @Column({ nullable: true }) reason: string;

@@ -1,7 +1,8 @@
 "use strict";
-// e:\code\vendure\packages\inventory-plugin\src\constants.ts
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.STOCKTAKE_TRANSITIONS = exports.STOCK_MOVE_TRANSITIONS = exports.STOCK_OUT_TRANSITIONS = exports.STOCK_IN_TRANSITIONS = exports.StocktakeState = exports.StockMoveState = exports.StockOutState = exports.StockInState = exports.ROLE_PERMISSIONS_MAP = exports.InventoryPermissions = void 0;
+exports.STOCKTAKE_TRANSITIONS = exports.STOCK_MOVE_TRANSITIONS = exports.STOCK_OUT_TRANSITIONS = exports.STOCK_IN_TRANSITIONS = exports.StocktakeState = exports.StockMoveState = exports.StockOutState = exports.StockInState = exports.ROLE_PERMISSIONS_MAP = exports.inventoryPermissionDefinitions = exports.InventoryPermissions = void 0;
+// e:\code\vendure\packages\inventory-plugin\src\constants.ts
+const core_1 = require("@vendure/core");
 // 权限名常量（引用 delivery-plugin 中已注册的权限，此处不重复注册 PermissionDefinition）
 exports.InventoryPermissions = {
     ViewStock: 'ViewStock',
@@ -10,6 +11,22 @@ exports.InventoryPermissions = {
     ManageStockMove: 'ManageStockMove',
     ManageStocktake: 'ManageStocktake',
 };
+// 权限描述（供 PermissionDefinition 注册使用）
+const PERMISSION_DESCRIPTIONS = {
+    ViewStock: '库存查询',
+    ManageStockIn: '入库单管理',
+    ManageStockOut: '出库单管理',
+    ManageStockMove: '调拨单管理',
+    ManageStocktake: '盘点单管理',
+};
+// PermissionDefinition 实例数组，注册到 config.authOptions.customPermissions（与 delivery-plugin 同源权限同名，可安全重复注册）
+exports.inventoryPermissionDefinitions = Object.entries(exports.InventoryPermissions).map(([key, name]) => {
+    var _a;
+    return new core_1.PermissionDefinition({
+        name,
+        description: (_a = PERMISSION_DESCRIPTIONS[key]) !== null && _a !== void 0 ? _a : `Grants ${key} permission`,
+    });
+});
 // Role 与 Permission 绑定表（增量同步：已存在的角色仅补绑缺失权限）
 exports.ROLE_PERMISSIONS_MAP = {
     'inventory-staff': [

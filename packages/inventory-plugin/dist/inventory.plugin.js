@@ -18,6 +18,7 @@ const inventory_shop_resolver_1 = require("./inventory-shop.resolver");
 const inventory_service_1 = require("./inventory.service");
 const role_sync_1 = require("./role-sync");
 const stock_ledger_service_1 = require("./stock-ledger.service");
+const constants_1 = require("./constants");
 const order_stock_ledger_entity_1 = require("./entities/order-stock-ledger.entity");
 const stock_in_order_entity_1 = require("./entities/stock-in-order.entity");
 const stock_out_order_entity_1 = require("./entities/stock-out-order.entity");
@@ -98,8 +99,16 @@ exports.InventoryPlugin = InventoryPlugin = InventoryPlugin_1 = __decorate([
         },
         adminApiExtensions: {
             schema: () => gql `
+            type StockLevelRow {
+                id: ID!
+                productVariantId: ID!
+                stockLocationId: ID!
+                stockOnHand: Int!
+                stockAllocated: Int!
+            }
+
             type StockLevelList {
-                items: [StockLevel!]!
+                items: [StockLevelRow!]!
                 totalItems: Int!
             }
 
@@ -299,6 +308,8 @@ exports.InventoryPlugin = InventoryPlugin = InventoryPlugin_1 = __decorate([
             }
 
             extend type Mutation {
+                setVariantStock(productVariantId: ID!, stockLocationId: ID!, stockOnHand: Int!): Boolean!
+
                 createStockInOrder(input: CreateStockInOrderInput!): StockInOrder!
                 completeStockInOrder(id: ID!): StockInOrder!
                 cancelStockInOrder(id: ID!): StockInOrder!
@@ -324,6 +335,12 @@ exports.InventoryPlugin = InventoryPlugin = InventoryPlugin_1 = __decorate([
             resolvers: [inventory_admin_resolver_1.InventoryAdminResolver],
         },
         configuration: (config) => {
+            var _a;
+            // 注册自定义 Permission（与 delivery-plugin 同源权限同名，重复注册安全）
+            config.authOptions.customPermissions = [
+                ...((_a = config.authOptions.customPermissions) !== null && _a !== void 0 ? _a : []),
+                ...constants_1.inventoryPermissionDefinitions,
+            ];
             config.customFields.StockMovement = mergeCustomFields(config.customFields.StockMovement, [
                 { name: 'businessReason', type: 'string', nullable: true },
             ]);

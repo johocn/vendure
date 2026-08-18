@@ -21,6 +21,18 @@ export class InventoryAdminResolver {
         return this.inventoryService.findStockLevels(ctx, { locationId, page, pageSize });
     }
 
+    @Mutation()
+    @Allow(InventoryPermissions.ViewStock as Permission)
+    async setVariantStock(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'productVariantId', type: () => String }) productVariantId: ID,
+        @Args({ name: 'stockLocationId', type: () => String }) stockLocationId: ID,
+        @Args({ name: 'stockOnHand', type: () => Number }) stockOnHand: number,
+    ) {
+        await this.inventoryService.setStockForVariant(ctx, productVariantId, stockLocationId, stockOnHand);
+        return true;
+    }
+
     @Query()
     @Allow(InventoryPermissions.ViewStock as Permission)
     async stockMovements(

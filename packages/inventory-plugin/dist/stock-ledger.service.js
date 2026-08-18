@@ -56,8 +56,8 @@ let StockLedgerService = class StockLedgerService {
             .build(order_stock_ledger_entity_1.OrderStockLedger, queryOptions, {
             ctx,
             channelId: ctx.channelId,
-        })
-            .leftJoinAndSelect('order_stock_ledger.productVariant', 'variant');
+            entityAlias: 'order_stock_ledger',
+        });
         if (options === null || options === void 0 ? void 0 : options.productVariantId)
             qb.andWhere('order_stock_ledger.productVariantId = :vid', { vid: options.productVariantId });
         if (options === null || options === void 0 ? void 0 : options.locationId)

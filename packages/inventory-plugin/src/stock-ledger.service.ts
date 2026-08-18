@@ -83,8 +83,8 @@ export class StockLedgerService {
             .build(OrderStockLedger, queryOptions, {
                 ctx,
                 channelId: ctx.channelId,
-            })
-            .leftJoinAndSelect('order_stock_ledger.productVariant', 'variant');
+                entityAlias: 'order_stock_ledger',
+            });
 
         if (options?.productVariantId) qb.andWhere('order_stock_ledger.productVariantId = :vid', { vid: options.productVariantId });
         if (options?.locationId) qb.andWhere('order_stock_ledger.stockLocationId = :lid', { lid: options.locationId });

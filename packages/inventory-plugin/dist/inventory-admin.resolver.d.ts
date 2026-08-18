@@ -7,6 +7,7 @@ export declare class InventoryAdminResolver {
         items: import("@vendure/core").StockLevel[];
         totalItems: number;
     }>;
+    setVariantStock(ctx: RequestContext, productVariantId: ID, stockLocationId: ID, stockOnHand: number): Promise<boolean>;
     stockMovements(ctx: RequestContext, productVariantId?: ID, locationId?: ID, type?: string, page?: number, pageSize?: number): Promise<{
         items: any[];
         totalItems: number;

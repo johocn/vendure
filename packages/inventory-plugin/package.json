@@ -6,7 +6,8 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "watch": "tsc -w"
+    "watch": "tsc -w",
+    "e2e": "cross-env PACKAGE=inventory-plugin vitest --config vitest.config.mts --run"
   },
   "dependencies": {
     "@vendure/core": "^3.6.0"

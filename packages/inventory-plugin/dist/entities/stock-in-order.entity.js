@@ -25,7 +25,7 @@ __decorate([
     __metadata("design:type", String)
 ], StockInOrder.prototype, "code", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ default: 'Pending' }),
+    (0, typeorm_1.Column)({ type: 'varchar', default: 'Pending' }),
     __metadata("design:type", String)
 ], StockInOrder.prototype, "state", void 0);
 __decorate([
@@ -53,11 +53,11 @@ __decorate([
     __metadata("design:type", Array)
 ], StockInOrder.prototype, "lines", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
+    (0, typeorm_1.Column)({ nullable: true }),
     __metadata("design:type", Date)
 ], StockInOrder.prototype, "completedAt", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
+    (0, typeorm_1.Column)({ nullable: true }),
     __metadata("design:type", Date)
 ], StockInOrder.prototype, "cancelledAt", void 0);
 __decorate([

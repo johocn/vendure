@@ -11,7 +11,7 @@ export class StocktakeOrder extends VendureEntity {
     }
 
     @Column() code: string;
-    @Column({ default: 'Pending' }) state: StocktakeState;
+    @Column({ type: 'varchar', default: 'Pending' }) state: StocktakeState;
     @Column({ nullable: true }) note: string;
     @Column({ nullable: true }) staffId: string;
 
@@ -22,10 +22,10 @@ export class StocktakeOrder extends VendureEntity {
     @OneToMany(() => StocktakeOrderLine, line => line.order, { cascade: true })
     lines: StocktakeOrderLine[];
 
-    @Column({ type: 'timestamp', nullable: true }) countingStartedAt?: Date;
-    @Column({ type: 'timestamp', nullable: true }) reconcilingStartedAt?: Date;
-    @Column({ type: 'timestamp', nullable: true }) completedAt?: Date;
-    @Column({ type: 'timestamp', nullable: true }) cancelledAt?: Date;
+    @Column({ nullable: true }) countingStartedAt?: Date;
+    @Column({ nullable: true }) reconcilingStartedAt?: Date;
+    @Column({ nullable: true }) completedAt?: Date;
+    @Column({ nullable: true }) cancelledAt?: Date;
 
     @ManyToMany(() => Channel)
     @JoinTable()
