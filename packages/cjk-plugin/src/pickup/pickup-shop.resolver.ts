@@ -31,10 +31,12 @@ export class PickupShopResolver {
         const location = await this.pickupLocationService.findOne(ctx, pickupLocationId);
         if (!location) throw new UserInputError(translateError(ctx, 'PICKUP_LOCATION_NOT_VISIBLE'));
 
-        // 1. 写入 Order.customFields
+        // 1. 写入 Order.customFields：选中的自提点、类型 + 坐标快照（就近分配锚点用）
         await this.orderService.updateCustomFields(ctx, order.id, {
             selectedPickupLocationId: pickupLocationId,
             pickupType,
+            pickupLat: location.coordinates?.lat ?? null,
+            pickupLng: location.coordinates?.lng ?? null,
         } as any);
 
         // 2. 同步设置 shipping address 为自提点地址

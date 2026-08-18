@@ -24,7 +24,7 @@ let PickupShopResolver = class PickupShopResolver {
         this.pickupLocationService = pickupLocationService;
     }
     async setOrderPickupLocation(ctx, pickupLocationId, pickupType) {
-        var _a, _b;
+        var _a, _b, _c, _d, _e, _f;
         // 支持匿名用户和登录用户
         // 匿名用户 ctx.activeUserId 为 undefined，需通过 session.activeOrderId 获取订单
         let order;
@@ -39,10 +39,12 @@ let PickupShopResolver = class PickupShopResolver {
         const location = await this.pickupLocationService.findOne(ctx, pickupLocationId);
         if (!location)
             throw new core_1.UserInputError((0, i18n_messages_1.translateError)(ctx, 'PICKUP_LOCATION_NOT_VISIBLE'));
-        // 1. 写入 Order.customFields
+        // 1. 写入 Order.customFields：选中的自提点、类型 + 坐标快照（就近分配锚点用）
         await this.orderService.updateCustomFields(ctx, order.id, {
             selectedPickupLocationId: pickupLocationId,
             pickupType,
+            pickupLat: (_d = (_c = location.coordinates) === null || _c === void 0 ? void 0 : _c.lat) !== null && _d !== void 0 ? _d : null,
+            pickupLng: (_f = (_e = location.coordinates) === null || _e === void 0 ? void 0 : _e.lng) !== null && _f !== void 0 ? _f : null,
         });
         // 2. 同步设置 shipping address 为自提点地址
         await this.orderService.setShippingAddress(ctx, order.id, {

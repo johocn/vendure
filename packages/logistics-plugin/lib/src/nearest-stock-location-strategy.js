@@ -7,8 +7,17 @@ const loggerCtx = 'NearestStockLocationStrategy';
 function readOrderGeo(orderLine) {
     var _a, _b;
     const cf = ((_b = (_a = orderLine.order) === null || _a === void 0 ? void 0 : _a.customFields) !== null && _b !== void 0 ? _b : {});
-    const lat = cf.lat != null ? Number(cf.lat) : NaN;
-    const lng = cf.lng != null ? Number(cf.lng) : NaN;
+    let lat = cf.lat != null ? Number(cf.lat) : NaN;
+    let lng = cf.lng != null ? Number(cf.lng) : NaN;
+    // 到店自提：以自提点坐标为核心（替代顾客定位），确保分配到离自提点最近的仓/门店
+    if (cf.deliveryType === 'pickup') {
+        const pLat = cf.pickupLat != null ? Number(cf.pickupLat) : NaN;
+        const pLng = cf.pickupLng != null ? Number(cf.pickupLng) : NaN;
+        if (isFinite(pLat) && isFinite(pLng)) {
+            lat = pLat;
+            lng = pLng;
+        }
+    }
     return {
         lat: isFinite(lat) ? lat : null,
         lng: isFinite(lng) ? lng : null,

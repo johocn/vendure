@@ -12,7 +12,9 @@ const loggerCtx = 'NearestStockLocationStrategy';
 
 /**
  * 订单级地理信息：来自 Order 的自定义字段（lat/lng/city）。
- * lat/lng 由前端在 C 端定位后写入；city 为服务城市（与仓库/门店的 serviceCities 比对做超区门禁）。
+ * 普通配送：lat/lng 为顾客定位（前端定位后写入）；
+ * 到店自提（deliveryType=pickup）：优先用自提点坐标快照 pickupLat/pickupLng 作为就近锚点。
+ * city 为服务城市（与仓库/门店的 serviceCities 比对做超区门禁，自提场景应写为自提点所在城市）。
  */
 interface OrderGeo {
     lat: number | null;
@@ -22,8 +24,17 @@ interface OrderGeo {
 
 function readOrderGeo(orderLine: OrderLine): OrderGeo {
     const cf = ((orderLine.order as any)?.customFields ?? {}) as Record<string, any>;
-    const lat = cf.lat != null ? Number(cf.lat) : NaN;
-    const lng = cf.lng != null ? Number(cf.lng) : NaN;
+    let lat = cf.lat != null ? Number(cf.lat) : NaN;
+    let lng = cf.lng != null ? Number(cf.lng) : NaN;
+    // 到店自提：以自提点坐标为核心（替代顾客定位），确保分配到离自提点最近的仓/门店
+    if (cf.deliveryType === 'pickup') {
+        const pLat = cf.pickupLat != null ? Number(cf.pickupLat) : NaN;
+        const pLng = cf.pickupLng != null ? Number(cf.pickupLng) : NaN;
+        if (isFinite(pLat) && isFinite(pLng)) {
+            lat = pLat;
+            lng = pLng;
+        }
+    }
     return {
         lat: isFinite(lat) ? lat : null,
         lng: isFinite(lng) ? lng : null,

@@ -31,6 +31,22 @@ exports.orderCustomFields = {
             ],
         },
         {
+            // 自提点坐标快照：就近分配锚点。deliveryType=pickup 且选自提点时，由 setOrderPickupLocation 写入，
+            // NearestStockLocationStrategy 用它替代顾客定位做就近排序，避免依赖前端回传坐标。
+            name: 'pickupLat',
+            type: 'float',
+            nullable: true,
+            public: true,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '自提点纬度' }],
+        },
+        {
+            name: 'pickupLng',
+            type: 'float',
+            nullable: true,
+            public: true,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '自提点经度' }],
+        },
+        {
             name: 'shippingProfileSnapshot',
             type: 'text',
             nullable: true,
