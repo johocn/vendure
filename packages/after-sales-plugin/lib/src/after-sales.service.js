@@ -112,7 +112,7 @@ let AfterSalesService = class AfterSalesService {
             throw new core_1.ForbiddenError();
         }
         // 2. 校验订单状态（必须 Shipped/Delivered/PartialDelivery/Cancelled 才能售后）
-        const allowedStates = ['Shipped', 'Delivered', 'PartialDelivery', 'Cancelled'];
+        const allowedStates = ['Shipped', 'Delivered', 'PartiallyDelivered', 'Cancelled'];
         if (!allowedStates.includes(order.state)) {
             throw new core_1.UserInputError(`Cannot create after-sales: order state must be one of ${allowedStates.join('/')}, got ${order.state}`);
         }

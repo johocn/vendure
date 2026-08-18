@@ -41,6 +41,8 @@ const { gql } = require('graphql-tag');
                 receivedQuantity: Int
                 createdAt: DateTime!
                 updatedAt: DateTime!
+                order: Order!
+                orderLine: OrderLine
             }
 
             type AfterSalesRequestList implements PaginatedList {

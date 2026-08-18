@@ -72,6 +72,8 @@ exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
                 receivedQuantity: Int
                 createdAt: DateTime!
                 updatedAt: DateTime!
+                order: Order!
+                orderLine: OrderLine
             }
 
             type AfterSalesRequestList implements PaginatedList {
