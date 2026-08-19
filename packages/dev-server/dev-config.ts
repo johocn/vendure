@@ -358,7 +358,6 @@ export const devConfig: VendureConfig = {
         })] : []),
         OrderTimeoutPlugin.init({ defaultPaymentTimeoutMinutes: 30 }),
         InvoicePlugin.init(),
-        LogisticsPlugin.init(),
         GroupBuyPlugin.init({ defaultTimeoutMinutes: 60 }),
         FlashSalePlugin.init({ defaultTimeoutMinutes: 15 }),
         DistributionPlugin.init({
@@ -384,6 +383,9 @@ export const devConfig: VendureConfig = {
         DeliveryPlugin.init(),
         SalesPlugin.init(),
         MarketplacePlugin.init({}),
+        // LogisticsPlugin 必须在 MarketplacePlugin 之后注册：两者都会设置 stockLocationStrategy，
+        // 最后注册的 MatrixStockLocationStrategy（单一全局矩阵）需覆盖 Marketplace 的组合策略。
+        LogisticsPlugin.init(),
         CustomerServicePlugin.init(),
         InventoryPlugin.init(),
         OperationsPlugin.init(),

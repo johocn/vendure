@@ -43,6 +43,13 @@ export class MatrixStockLocationStrategy extends NearestStockLocationStrategy {
         const order = await this.loadOrder(ctx, orderLine);
         const channelCf = ((ctx.channel as any)?.customFields ?? {}) as Record<string, any>;
 
+        Logger.info(
+            `[dbg] line#${orderLine.id} ctx.channel=#${(ctx.channel as any)?.id}(${(ctx.channel as any)?.code}) ` +
+            `cf=${JSON.stringify(channelCf)} order=${order ? `#${order.id}(${order.code})` : 'undefined'} ` +
+            `orderLat=${(order as any)?.customFields?.lat} orderLng=${(order as any)?.customFields?.lng}`,
+            loggerCtx,
+        );
+
         // 渠道隔离：商城(店)/云仓(云仓) 按后缀过滤，无命中则全量（沿用 Marketplace 惯例）
         const suffix = (order as any)?.customFields?.saleSource === 'marketplace' ? MARKETPLACE_SUFFIX : STORE_SUFFIX;
         const pool = stockLocations.filter(loc => loc.name.endsWith(suffix));
@@ -103,6 +110,11 @@ export class MatrixStockLocationStrategy extends NearestStockLocationStrategy {
         if (rules.length > 0) {
             const level = await this.resolveMemberLevel(ctx, order);
             const rule = rules.find(r => r.level === level);
+            Logger.info(
+                `[dbg] decideRule rules=${rules.length} level=${level} matched=${rule ? rule.level : 'none'} ` +
+                `shippingStrategy=${channelCf.shippingStrategy}`,
+                loggerCtx,
+            );
             if (rule) {
                 const hasStock = rule.locationIds.some(id =>
                     candidates.some(c => String(c.id) === String(id) && (stockOnHandMap.get(String(id)) ?? 0) > 0));
@@ -148,11 +160,21 @@ export class MatrixStockLocationStrategy extends NearestStockLocationStrategy {
             return orderLine.order as Order;
         }
         const orderId = (orderLine as any).orderId;
-        if (orderId == null) {
-            return undefined;
+        if (orderId != null) {
+            try {
+                return (await this.connection.getRepository(ctx, Order).findOne({ where: { id: orderId as any } })) ?? undefined;
+            } catch {
+                return undefined;
+            }
         }
+        // OrderLine 实体未声明 orderId 列（TypeORM 不会自动填充 FK 属性），
+        // 兜底：重载 OrderLine 并带上 order 关系，从 order.customFields 读取矩阵输入（saleSource/经纬度等）。
         try {
-            return (await this.connection.getRepository(ctx, Order).findOne({ where: { id: orderId as any } })) ?? undefined;
+            const freshLine = await this.connection.getRepository(ctx, OrderLine).findOne({
+                where: { id: orderLine.id },
+                relations: ['order'],
+            });
+            return (freshLine?.order as (Order | undefined)) ?? undefined;
         } catch {
             return undefined;
         }

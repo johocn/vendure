@@ -107,29 +107,30 @@ export class MultiChannelStockLocationStrategy extends BaseStockLocationStrategy
             orderLine.productVariantId,
             { loadEagerRelations: false },
         );
-        let totalAllocated = 0;
+        let remaining = quantity;
         const locations: LocationWithQuantity[] = [];
         const { inventoryNotTracked, effectiveOutOfStockThreshold } = await this.getVariantStockSettings(
             ctx,
             variant,
         );
         for (const stockLocation of stockLocations) {
+            if (remaining <= 0) {
+                break;
+            }
             const stockLevel = stockLevels.find(sl => sl.stockLocationId === stockLocation.id);
             if (stockLevel && (await this.stockLevelAppliesToActiveChannel(ctx, stockLevel))) {
                 const quantityAvailable = inventoryNotTracked
                     ? Number.MAX_SAFE_INTEGER
                     : stockLevel.stockOnHand - stockLevel.stockAllocated - effectiveOutOfStockThreshold;
                 if (quantityAvailable > 0) {
-                    const quantityToAllocate = Math.min(quantity, quantityAvailable);
+                    // 多仓拆单：后续仓只分配"剩余数量"，避免重复按原始数量分配导致超量
+                    const quantityToAllocate = Math.min(remaining, quantityAvailable);
                     locations.push({
                         location: stockLocation,
                         quantity: quantityToAllocate,
                     });
-                    totalAllocated += quantityToAllocate;
+                    remaining -= quantityToAllocate;
                 }
-            }
-            if (totalAllocated >= quantity) {
-                break;
             }
         }
         return locations;

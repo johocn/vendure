@@ -19,11 +19,14 @@ class MatrixStockLocationStrategy extends nearest_stock_location_strategy_1.Near
         this.stockLevelService = injector.get(core_1.StockLevelService);
     }
     async forAllocation(ctx, stockLocations, orderLine, quantity) {
-        var _a, _b, _c, _d;
+        var _a, _b, _c, _d, _e, _f, _g, _h;
         const order = await this.loadOrder(ctx, orderLine);
         const channelCf = ((_b = (_a = ctx.channel) === null || _a === void 0 ? void 0 : _a.customFields) !== null && _b !== void 0 ? _b : {});
+        core_1.Logger.info(`[dbg] line#${orderLine.id} ctx.channel=#${(_c = ctx.channel) === null || _c === void 0 ? void 0 : _c.id}(${(_d = ctx.channel) === null || _d === void 0 ? void 0 : _d.code}) ` +
+            `cf=${JSON.stringify(channelCf)} order=${order ? `#${order.id}(${order.code})` : 'undefined'} ` +
+            `orderLat=${(_e = order === null || order === void 0 ? void 0 : order.customFields) === null || _e === void 0 ? void 0 : _e.lat} orderLng=${(_f = order === null || order === void 0 ? void 0 : order.customFields) === null || _f === void 0 ? void 0 : _f.lng}`, matrix_allocators_1.loggerCtx);
         // 渠道隔离：商城(店)/云仓(云仓) 按后缀过滤，无命中则全量（沿用 Marketplace 惯例）
-        const suffix = ((_c = order === null || order === void 0 ? void 0 : order.customFields) === null || _c === void 0 ? void 0 : _c.saleSource) === 'marketplace' ? MARKETPLACE_SUFFIX : STORE_SUFFIX;
+        const suffix = ((_g = order === null || order === void 0 ? void 0 : order.customFields) === null || _g === void 0 ? void 0 : _g.saleSource) === 'marketplace' ? MARKETPLACE_SUFFIX : STORE_SUFFIX;
         const pool = stockLocations.filter(loc => loc.name.endsWith(suffix));
         const candidates = pool.length > 0 ? pool : stockLocations;
         // 服务范围门禁 + 锚点由父类 orderByProximity 处理；此处仅按矩阵重排
@@ -32,9 +35,9 @@ class MatrixStockLocationStrategy extends nearest_stock_location_strategy_1.Near
         for (const loc of candidates) {
             try {
                 const level = await this.stockLevelService.getStockLevel(ctx, orderLine.productVariantId, loc.id);
-                stockOnHandMap.set(String(loc.id), (_d = level.stockOnHand) !== null && _d !== void 0 ? _d : 0);
+                stockOnHandMap.set(String(loc.id), (_h = level.stockOnHand) !== null && _h !== void 0 ? _h : 0);
             }
-            catch (_e) {
+            catch (_j) {
                 stockOnHandMap.set(String(loc.id), 0);
             }
         }
@@ -71,6 +74,8 @@ class MatrixStockLocationStrategy extends nearest_stock_location_strategy_1.Near
         if (rules.length > 0) {
             const level = await this.resolveMemberLevel(ctx, order);
             const rule = rules.find(r => r.level === level);
+            core_1.Logger.info(`[dbg] decideRule rules=${rules.length} level=${level} matched=${rule ? rule.level : 'none'} ` +
+                `shippingStrategy=${channelCf.shippingStrategy}`, matrix_allocators_1.loggerCtx);
             if (rule) {
                 const hasStock = rule.locationIds.some(id => candidates.some(c => { var _a; return String(c.id) === String(id) && ((_a = stockOnHandMap.get(String(id))) !== null && _a !== void 0 ? _a : 0) > 0; }));
                 if (hasStock) {
@@ -105,18 +110,29 @@ class MatrixStockLocationStrategy extends nearest_stock_location_strategy_1.Near
         }
     }
     async loadOrder(ctx, orderLine) {
-        var _a;
+        var _a, _b;
         if (orderLine.order) {
             return orderLine.order;
         }
         const orderId = orderLine.orderId;
-        if (orderId == null) {
-            return undefined;
+        if (orderId != null) {
+            try {
+                return (_a = (await this.connection.getRepository(ctx, core_1.Order).findOne({ where: { id: orderId } }))) !== null && _a !== void 0 ? _a : undefined;
+            }
+            catch (_c) {
+                return undefined;
+            }
         }
+        // OrderLine 实体未声明 orderId 列（TypeORM 不会自动填充 FK 属性），
+        // 兜底：重载 OrderLine 并带上 order 关系，从 order.customFields 读取矩阵输入（saleSource/经纬度等）。
         try {
-            return (_a = (await this.connection.getRepository(ctx, core_1.Order).findOne({ where: { id: orderId } }))) !== null && _a !== void 0 ? _a : undefined;
+            const freshLine = await this.connection.getRepository(ctx, core_1.OrderLine).findOne({
+                where: { id: orderLine.id },
+                relations: ['order'],
+            });
+            return (_b = freshLine === null || freshLine === void 0 ? void 0 : freshLine.order) !== null && _b !== void 0 ? _b : undefined;
         }
-        catch (_b) {
+        catch (_d) {
             return undefined;
         }
     }

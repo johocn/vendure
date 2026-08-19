@@ -6,7 +6,7 @@ const core_1 = require("@vendure/core");
 const location_utils_1 = require("./location-utils");
 const loggerCtx = 'NearestStockLocationStrategy';
 async function readOrderGeo(ctx, orderLine, connection) {
-    var _a;
+    var _a, _b;
     let order = orderLine.order;
     // createAllocationsForOrderLines 加载 OrderLine 时未带 order 关系（orderLine.order 为 undefined），
     // 必须按 orderId 补查 Order，否则经纬度/城市永远读不到，就近分配退化为默认顺序。
@@ -20,7 +20,20 @@ async function readOrderGeo(ctx, orderLine, connection) {
             order = undefined;
         }
     }
-    const cf = ((_a = order === null || order === void 0 ? void 0 : order.customFields) !== null && _a !== void 0 ? _a : {});
+    // OrderLine 实体未声明 orderId 列（TypeORM 不会自动填充 FK 属性），
+    // 兜底：重载 OrderLine 并带上 order 关系，从 order.customFields 读取经纬度/城市。
+    if (!order) {
+        try {
+            const freshLine = await connection
+                .getRepository(ctx, core_1.OrderLine)
+                .findOne({ where: { id: orderLine.id }, relations: ['order'] });
+            order = (_a = freshLine === null || freshLine === void 0 ? void 0 : freshLine.order) !== null && _a !== void 0 ? _a : undefined;
+        }
+        catch (e) {
+            order = undefined;
+        }
+    }
+    const cf = ((_b = order === null || order === void 0 ? void 0 : order.customFields) !== null && _b !== void 0 ? _b : {});
     let lat = cf.lat != null ? Number(cf.lat) : NaN;
     let lng = cf.lng != null ? Number(cf.lng) : NaN;
     // 到店自提：以自提点坐标为核心（替代顾客定位），确保分配到离自提点最近的仓/门店

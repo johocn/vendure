@@ -41,6 +41,18 @@ async function readOrderGeo(
             order = undefined;
         }
     }
+    // OrderLine 实体未声明 orderId 列（TypeORM 不会自动填充 FK 属性），
+    // 兜底：重载 OrderLine 并带上 order 关系，从 order.customFields 读取经纬度/城市。
+    if (!order) {
+        try {
+            const freshLine = await connection
+                .getRepository(ctx, OrderLine)
+                .findOne({ where: { id: orderLine.id }, relations: ['order'] });
+            order = (freshLine?.order as (Order | undefined)) ?? undefined;
+        } catch (e: any) {
+            order = undefined;
+        }
+    }
     const cf = ((order as any)?.customFields ?? {}) as Record<string, any>;
     let lat = cf.lat != null ? Number(cf.lat) : NaN;
     let lng = cf.lng != null ? Number(cf.lng) : NaN;
