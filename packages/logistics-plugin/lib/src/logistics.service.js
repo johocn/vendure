@@ -121,12 +121,8 @@ let LogisticsService = class LogisticsService {
                     throw new Error(`Fulfillment error: ${(_a = fulfillmentResult.message) !== null && _a !== void 0 ? _a : 'unknown'}`);
                 }
                 const fulfillment = fulfillmentResult;
-                // 2. 回写 Fulfillment customFields（carrierCode/carrier/trackingNumber）
-                await this.updateFulfillmentCustomFields(ctx, fulfillment.id, {
-                    trackingNumber: item.trackingNo,
-                    carrier: carrierDef.name,
-                    carrierCode: item.carrierCode,
-                });
+                // 2. 回写 Fulfillment customFields（carrierCode/carrier/trackingNumber + 拆单包号/本包运费）
+                await this.updateFulfillmentCustomFields(ctx, fulfillment.id, Object.assign(Object.assign({ trackingNumber: item.trackingNo, carrier: carrierDef.name, carrierCode: item.carrierCode }, (item.packageId != null ? { packageId: item.packageId } : {})), (item.shippingFee != null ? { shippingFee: item.shippingFee } : {})));
                 // 3. 创建 LogisticsTrack 记录
                 const track = await this.createTrack(ctx, fulfillment.id, item.trackingNo, item.carrierCode);
                 results.push({ orderId: item.orderId, success: true, trackId: track.id });

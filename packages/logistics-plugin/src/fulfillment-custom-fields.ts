@@ -26,5 +26,17 @@ export const logisticsFulfillmentCustomFields: CustomFields = {
             nullable: true,
             label: [{ languageCode: LanguageCode.zh_Hans, value: '物流备注' }],
         },
+        {
+            name: 'packageId',
+            type: 'string',
+            nullable: true,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '拆单包号' }],
+        },
+        {
+            name: 'shippingFee',
+            type: 'int',
+            defaultValue: 0,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '本包实际运费（分）' }],
+        },
     ],
 };

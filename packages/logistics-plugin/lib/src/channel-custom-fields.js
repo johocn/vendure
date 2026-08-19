@@ -31,6 +31,12 @@ exports.logisticsChannelCustomFields = {
             nullable: true,
             label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '会员等级专属发货策略（JSON）' }],
         },
+        {
+            name: 'packageShippingRule',
+            type: 'string',
+            nullable: true,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '每包运费规则（JSON: [{locationId,baseFee,perKmFee,freeThreshold}]）' }],
+        },
     ],
 };
 //# sourceMappingURL=channel-custom-fields.js.map

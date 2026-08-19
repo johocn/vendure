@@ -85,6 +85,20 @@ exports.catalogCustomFields = {
                 ],
             },
         },
+        {
+            name: 'packageShippingJson',
+            type: 'string',
+            nullable: true,
+            public: true,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '每包运费明细（JSON）' }],
+        },
+        {
+            name: 'shippingAdjustment',
+            type: 'int',
+            defaultValue: 0,
+            public: true,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '调单运费差额（正=补收 负=退）' }],
+        },
     ],
     OrderLine: [
         {

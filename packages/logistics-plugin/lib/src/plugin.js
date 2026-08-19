@@ -29,6 +29,7 @@ const logistics_admin_resolver_1 = require("./logistics-admin.resolver");
 const auto_split_plan_service_1 = require("./auto-split-plan.service");
 const manual_split_adjust_service_1 = require("./manual-split-adjust.service");
 const split_admin_resolver_1 = require("./split-admin.resolver");
+const split_shipping_calculator_1 = require("./split-shipping-calculator");
 /** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
 function mergeCustomFields(existingFields, additions) {
     const names = new Set((existingFields !== null && existingFields !== void 0 ? existingFields : []).map(f => f.name));
@@ -61,6 +62,8 @@ const adminSchema = () => gql `
         orderId: ID!
         trackingNo: String!
         carrierCode: String!
+        packageId: String
+        shippingFee: Int
     }
 
     type BatchFulfillmentItemResult {
@@ -127,7 +130,56 @@ let LogisticsPlugin = LogisticsPlugin_1 = class LogisticsPlugin {
         this.logisticsService.init(this.injector);
         this.autoSplit.init(this.injector);
         this.manualSplit.init(this.injector);
+        // Task4 每包独立计费：库存分配在进入 ArrangingPayment 时才写 stockLocationsJson，
+        // 而计费时点（setOrderShippingMethod）早于分配 → 运费先按 0 落库。
+        // 在此监听 ArrangingPayment 过渡（onTransitionEnd 已分配库存），按拆分明细重算运费并落库 packageShippingJson。
+        this.injector
+            .get(core_2.EventBus)
+            .ofType(core_2.OrderStateTransitionEvent)
+            .subscribe(async (event) => {
+            if (event.toState !== 'ArrangingPayment') {
+                return;
+            }
+            await this.recalcSplitShipping(event.ctx, event.order.id);
+        });
         core_2.Logger.info('LogisticsPlugin initialized', constants_1.loggerCtx);
+    }
+    /**
+     * 重算拆单订单运费：仅在存在 stockLocationsJson 拆分明细时触发，
+     * 使 SplitShippingCalculator 按已落库的每包明细计费并写入 Order.packageShippingJson / shippingWithTax。
+     */
+    async recalcSplitShipping(ctx, orderId) {
+        var _a, _b, _c, _d;
+        try {
+            const orderService = this.injector.get(core_2.OrderService);
+            const order = await orderService.findOne(ctx, orderId);
+            if (!order || !((_a = order.shippingLines) === null || _a === void 0 ? void 0 : _a.length)) {
+                return;
+            }
+            const hasSplit = ((_b = order.lines) !== null && _b !== void 0 ? _b : []).some((line) => {
+                var _a;
+                const raw = (_a = line.customFields) === null || _a === void 0 ? void 0 : _a.stockLocationsJson;
+                if (!raw) {
+                    return false;
+                }
+                try {
+                    const arr = JSON.parse(String(raw));
+                    return Array.isArray(arr) && arr.length > 0;
+                }
+                catch (_b) {
+                    return false;
+                }
+            });
+            if (!hasSplit) {
+                return;
+            }
+            const updated = await orderService.applyPriceAdjustments(ctx, order);
+            await this.injector.get(core_2.TransactionalConnection).getRepository(ctx, core_2.Order).save(updated, { reload: false });
+            core_2.Logger.info(`拆单运费重算 order#${(_c = order.code) !== null && _c !== void 0 ? _c : orderId} -> shippingWithTax=${updated.shippingWithTax}`, constants_1.loggerCtx);
+        }
+        catch (e) {
+            core_2.Logger.warn(`拆单运费重算失败 order#${orderId}: ${(_d = e === null || e === void 0 ? void 0 : e.message) !== null && _d !== void 0 ? _d : e}`, constants_1.loggerCtx);
+        }
     }
 };
 exports.LogisticsPlugin = LogisticsPlugin;
@@ -160,6 +212,11 @@ exports.LogisticsPlugin = LogisticsPlugin = LogisticsPlugin_1 = __decorate([
             config.orderOptions.stockAllocationStrategy = new channel_stock_allocation_strategy_1.ChannelStockAllocationStrategy();
             // 库存策略矩阵：单一全局入口（就近/优先级/库存优先/会员专属），余量天然拆单
             config.catalogOptions.stockLocationStrategy = new matrix_stock_location_strategy_1.MatrixStockLocationStrategy();
+            // 每包裹独立计费：读 stockLocationsJson 逐包计费合计（channel.packageShippingRule）
+            config.shippingOptions.shippingCalculators = [
+                ...(config.shippingOptions.shippingCalculators || []),
+                split_shipping_calculator_1.splitShippingCalculator,
+            ];
             return config;
         },
         dashboard: '../dashboard/index.tsx',

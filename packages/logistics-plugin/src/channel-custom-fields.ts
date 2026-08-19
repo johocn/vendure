@@ -29,5 +29,11 @@ export const logisticsChannelCustomFields: CustomFields = {
             nullable: true,
             label: [{ languageCode: LanguageCode.zh_Hans, value: '会员等级专属发货策略（JSON）' }],
         },
+        {
+            name: 'packageShippingRule',
+            type: 'string',
+            nullable: true,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '每包运费规则（JSON: [{locationId,baseFee,perKmFee,freeThreshold}]）' }],
+        },
     ],
 };

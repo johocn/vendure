@@ -1,6 +1,19 @@
 import { Inject, OnApplicationBootstrap, Type } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import { Injector, Logger, PluginCommonModule, VendurePlugin } from '@vendure/core';
+import {
+    EventBus,
+    ID,
+    Injector,
+    Logger,
+    Order,
+    OrderLine,
+    OrderService,
+    OrderStateTransitionEvent,
+    PluginCommonModule,
+    RequestContext,
+    TransactionalConnection,
+    VendurePlugin,
+} from '@vendure/core';
 
 import { LOGISTICS_PLUGIN_OPTIONS, loggerCtx } from './constants';
 import { LogisticsPluginOptions } from './types';
@@ -15,6 +28,7 @@ import { LogisticsAdminResolver } from './logistics-admin.resolver';
 import { AutoSplitPlanService } from './auto-split-plan.service';
 import { ManualSplitAdjustService } from './manual-split-adjust.service';
 import { SplitAdminResolver } from './split-admin.resolver';
+import { splitShippingCalculator } from './split-shipping-calculator';
 
 /** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
 function mergeCustomFields<T extends { name: string }>(
@@ -53,6 +67,8 @@ const adminSchema = () => gql`
         orderId: ID!
         trackingNo: String!
         carrierCode: String!
+        packageId: String
+        shippingFee: Int
     }
 
     type BatchFulfillmentItemResult {
@@ -131,6 +147,11 @@ const shopSchema = () => gql`
         config.orderOptions.stockAllocationStrategy = new ChannelStockAllocationStrategy();
         // 库存策略矩阵：单一全局入口（就近/优先级/库存优先/会员专属），余量天然拆单
         config.catalogOptions.stockLocationStrategy = new MatrixStockLocationStrategy();
+        // 每包裹独立计费：读 stockLocationsJson 逐包计费合计（channel.packageShippingRule）
+        config.shippingOptions.shippingCalculators = [
+            ...(config.shippingOptions.shippingCalculators || []),
+            splitShippingCalculator,
+        ];
         return config;
     },
     dashboard: '../dashboard/index.tsx',
@@ -158,6 +179,52 @@ export class LogisticsPlugin implements OnApplicationBootstrap {
         this.logisticsService.init(this.injector);
         this.autoSplit.init(this.injector);
         this.manualSplit.init(this.injector);
+        // Task4 每包独立计费：库存分配在进入 ArrangingPayment 时才写 stockLocationsJson，
+        // 而计费时点（setOrderShippingMethod）早于分配 → 运费先按 0 落库。
+        // 在此监听 ArrangingPayment 过渡（onTransitionEnd 已分配库存），按拆分明细重算运费并落库 packageShippingJson。
+        this.injector
+            .get(EventBus)
+            .ofType(OrderStateTransitionEvent)
+            .subscribe(async event => {
+                if (event.toState !== 'ArrangingPayment') {
+                    return;
+                }
+                await this.recalcSplitShipping(event.ctx, event.order.id);
+            });
         Logger.info('LogisticsPlugin initialized', loggerCtx);
+    }
+
+    /**
+     * 重算拆单订单运费：仅在存在 stockLocationsJson 拆分明细时触发，
+     * 使 SplitShippingCalculator 按已落库的每包明细计费并写入 Order.packageShippingJson / shippingWithTax。
+     */
+    private async recalcSplitShipping(ctx: RequestContext, orderId: ID): Promise<void> {
+        try {
+            const orderService = this.injector.get(OrderService);
+            const order = await orderService.findOne(ctx, orderId);
+            if (!order || !(order.shippingLines?.length)) {
+                return;
+            }
+            const hasSplit = (order.lines ?? []).some((line: OrderLine & { customFields?: any }) => {
+                const raw = (line.customFields as any)?.stockLocationsJson;
+                if (!raw) {
+                    return false;
+                }
+                try {
+                    const arr = JSON.parse(String(raw));
+                    return Array.isArray(arr) && arr.length > 0;
+                } catch {
+                    return false;
+                }
+            });
+            if (!hasSplit) {
+                return;
+            }
+            const updated = await orderService.applyPriceAdjustments(ctx, order);
+            await this.injector.get(TransactionalConnection).getRepository(ctx, Order).save(updated, { reload: false });
+            Logger.info(`拆单运费重算 order#${order.code ?? orderId} -> shippingWithTax=${updated.shippingWithTax}`, loggerCtx);
+        } catch (e: any) {
+            Logger.warn(`拆单运费重算失败 order#${orderId}: ${e?.message ?? e}`, loggerCtx);
+        }
     }
 }

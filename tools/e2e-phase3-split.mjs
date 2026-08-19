@@ -26,6 +26,15 @@ const LOC_DEFAULT = "1"; // Default（A 仓）
 const NEAR_ANCHOR = { lat: 43.8502, lng: 125.4232 }; // 与二道区仓坐标一致 → 就近命中 B 仓
 const ORDER_QTY = 8; // 下单 8 件 → 双仓各 5 件可售 → 拆两仓（B 仓 5 + A 仓 3）
 
+// Task4 每包独立计费：split-package-shipping 计费配送方式 + channel 级每包运费规则
+const SPLIT_SHIPPING_CODE = "split-package-shipping-method";
+const SHOP_A_CHANNEL_ID = "2";
+const SPLIT_CARRIER = "SF"; // carrier-dictionary 中的有效编码（大写）
+const PACKAGE_RULES = JSON.stringify([
+    { locationId: LOC_DEFAULT, baseFee: 800, perKmFee: 150, freeThreshold: 0 },
+    { locationId: LOC_PRIORITY, baseFee: 1000, perKmFee: 200, freeThreshold: 0 },
+]);
+
 let passed = 0, failed = 0, skipped = 0;
 function result(name, ok, detail) {
   const tag = ok === true ? "PASS" : ok === false ? "FAIL" : "SKIP";
@@ -67,7 +76,7 @@ async function adminLogin() {
 }
 async function setChannelCustomFields(token, cf) {
   const r = await adminGql(
-    `mutation($id: ID!, $cf: UpdateChannelCustomFieldsInput!){ updateChannel(input: { id: $id, customFields: $cf }){ ... on Channel { id customFields{ shippingStrategy stockLocationPriority memberStockStrategy } } } }`,
+    `mutation($id: ID!, $cf: UpdateChannelCustomFieldsInput!){ updateChannel(input: { id: $id, customFields: $cf }){ ... on Channel { id customFields{ shippingStrategy stockLocationPriority memberStockStrategy packageShippingRule } } } }`,
     { id: "2", cf },
     token,
   );
@@ -98,7 +107,7 @@ async function ensureLoc2InShopA(token) {
 }
 async function readOrder(token, orderId) {
   const r = await adminGql(
-    `query($id: ID!){ order(id: $id){ id code state lines { id quantity customFields { stockLocationId stockLocationsJson } } } }`,
+    `query($id: ID!){ order(id: $id){ id code state shippingWithTax shippingLines { shippingMethod { code } } lines { id quantity customFields { stockLocationId stockLocationsJson } } customFields { packageShippingJson shippingAdjustment } } }`,
     { id: orderId },
     token,
   );
@@ -119,6 +128,67 @@ async function confirmSplitPlan(token, orderId, packages) {
     token,
   );
   return r;
+}
+
+// ---- Task4 每包独立计费辅助 ----
+
+// 幂等创建使用 split-package-shipping 计费器的配送方式，并确保归入 shop-a 渠道
+async function ensureSplitShippingMethod(token) {
+  const q = await adminGql(`query{ shippingMethods(options:{take:200}){ items{ id code calculator{ code } } } }`, {}, token);
+  let method = (q.data?.shippingMethods?.items || []).find(m => m.code === SPLIT_SHIPPING_CODE);
+  if (!method) {
+    const r = await adminGql(
+      `mutation($input: CreateShippingMethodInput!){ createShippingMethod(input: $input){ id code } }`,
+      {
+        input: {
+          code: SPLIT_SHIPPING_CODE,
+          fulfillmentHandler: "manual-fulfillment",
+          checker: { code: "default-shipping-eligibility-checker", arguments: [{ name: "orderMinimum", value: "0" }] },
+          calculator: { code: "split-package-shipping", arguments: [] },
+          translations: [{ languageCode: "zh_Hans", name: "每包独立计费(拆单)", description: "多仓拆单每包裹独立计费" }],
+        },
+      },
+      token,
+    );
+    method = r.data?.createShippingMethod;
+    if (r.errors) console.log("[ship-err]", r.errors.map(e => e.message).join(" | "));
+  }
+  if (!method) return null;
+  const assign = await adminGql(
+    `mutation($input: AssignShippingMethodsToChannelInput!){ assignShippingMethodsToChannel(input: $input){ id } }`,
+    { input: { shippingMethodIds: [String(method.id)], channelId: SHOP_A_CHANNEL_ID } },
+    token,
+  );
+  return { id: method.id, assigned: (assign.data?.assignShippingMethodsToChannel || []).length > 0 };
+}
+
+// 计费器将 packageShippingJson 异步落库，轮询等待明细出现
+async function waitForPackageShipping(token, orderId, tries = 15, delayMs = 300) {
+  for (let i = 0; i < tries; i++) {
+    const o = await readOrder(token, orderId);
+    if (parseDetail(o?.customFields?.packageShippingJson).length > 0) return o;
+    await new Promise(res => setTimeout(res, delayMs));
+  }
+  return readOrder(token, orderId);
+}
+
+// 发货（batchCreateFulfillment），并回写 Fulfillment.packageId/shippingFee
+async function shipOrder(token, orderId, packageId, shippingFee, trackingNo) {
+  return adminGql(
+    `mutation($items: [BatchFulfillmentItem!]!){ batchCreateFulfillment(items: $items){ items { orderId success trackId error } } }`,
+    { items: [{ orderId, trackingNo, carrierCode: SPLIT_CARRIER, packageId, shippingFee }] },
+    token,
+  );
+}
+
+// 读取订单 Fulfillment 记录（校验 packageId/shippingFee 回写）
+async function readOrderFulfillments(token, orderId) {
+  const r = await adminGql(
+    `query($id: ID!){ order(id: $id){ id fulfillments { id state customFields { packageId shippingFee } } } }`,
+    { id: orderId },
+    token,
+  );
+  return r.data?.order?.fulfillments || [];
 }
 
 // 下单流程（匿名会话 → ArrangingPayment，触发 Matrix 分配并写入拆分明细）
@@ -161,7 +231,9 @@ async function placeOrder({ variantId, qty, email, coords }) {
   token = r.data?.__sessionToken || token;
   r = await shopGql(`query { eligibleShippingMethods { id code } }`, {}, token);
   token = r.data?.__sessionToken || token;
-  const sm = r.data?.eligibleShippingMethods?.[0];
+  const methods = r.data?.eligibleShippingMethods || [];
+  // 优先选择 split-package-shipping 计费配送方式（Task4 每包独立计费），否则回退第一个
+  const sm = methods.find(m => m.code === SPLIT_SHIPPING_CODE) || methods[0];
   if (!sm) throw new Error("无可用配送方式");
   r = await shopGql(
     `mutation($id: ID!){ setOrderShippingMethod(shippingMethodId: [$id]){ ... on Order { id } ... on ErrorResult { message } } }`,
@@ -177,7 +249,7 @@ async function placeOrder({ variantId, qty, email, coords }) {
   token = r.data?.__sessionToken || token;
   const tr = r.data?.transitionOrderToState;
   if (!tr || tr.__typename === "OrderStateTransitionError") throw new Error(`转入 ArrangingPayment 失败: ${JSON.stringify(tr)}`);
-  return { orderId, code: tr.code, token };
+  return { orderId, code: tr.code, token, shippingMethodCode: sm.code };
 }
 
 async function cancelOrder(token, orderId) {
@@ -198,6 +270,9 @@ function parseDetail(raw) {
 }
 function sumQty(detail) {
   return detail.reduce((s, x) => s + (Number(x.quantity) || 0), 0);
+}
+function sumFee(detail) {
+  return detail.reduce((s, x) => s + (Number(x.fee) || 0), 0);
 }
 function sumPlanQty(plan) {
   return (plan?.packages || []).reduce((s, p) => s + (p.lines || []).reduce((a, l) => a + (Number(l.quantity) || 0), 0), 0);
@@ -241,6 +316,12 @@ function sumPlanQty(plan) {
     const setupCf = { shippingStrategy: "nearest", stockLocationPriority: JSON.stringify([{ locationId: "1", priority: 1 }, { locationId: "2", priority: 2 }]), memberStockStrategy: null };
     const ch = await setChannelCustomFields(adminToken, setupCf);
     result("配置.nearest 写入渠道", ch?.customFields?.shippingStrategy === "nearest", JSON.stringify(ch?.customFields));
+
+    // ---- 0.7 Task4 前置：split-package-shipping 计费配送方式 + channel 每包运费规则 ----
+    const splitMethod = await ensureSplitShippingMethod(adminToken);
+    result("t4前置.创建/复用 split 计费配送方式", !!splitMethod, splitMethod ? `id=${splitMethod.id} assigned=${splitMethod.assigned}` : "创建失败");
+    const ch2 = await setChannelCustomFields(adminToken, { packageShippingRule: PACKAGE_RULES });
+    result("t4前置.渠道 packageShippingRule 已配置", ch2?.customFields?.packageShippingRule === PACKAGE_RULES, String(ch2?.customFields?.packageShippingRule));
 
     // ---- 1. Test1: 下单 8 件（定位靠近 B 仓）→ 拆两仓 ----
     const ts = Date.now();
@@ -294,6 +375,44 @@ function sumPlanQty(plan) {
     } catch (e5) {
       result("t5.货量不足被拦截", null, `降库存异常，跳过: ${e5.message}`);
     }
+
+    // ---- 6. Task4: 每包独立计费 ----
+    // 6.0 前置：确认下单使用 split 计费配送方式
+    const usedSplit = order1.shippingMethodCode === SPLIT_SHIPPING_CODE;
+    result("t4前置.下单使用 split 计费配送方式", usedSplit, order1.shippingMethodCode);
+    const rules4 = JSON.parse(PACKAGE_RULES);
+    const feeFor4 = (locId) => {
+      const rule = rules4.find(r => String(r.locationId) === String(locId));
+      // 计费器 distanceKm 恒为 0，故 fee = baseFee + perKmFee*0 = baseFee
+      return (rule?.baseFee ?? 1000) + Math.round((rule?.perKmFee ?? 200) * 0);
+    };
+    // 6.1 Order.packageShippingJson：两仓各一笔、金额符合 channel packageShippingRule
+    const o1s = await waitForPackageShipping(adminToken, order1.orderId);
+    const psDetail = parseDetail(o1s?.customFields?.packageShippingJson);
+    const t6 = psDetail.length === 2 &&
+      [LOC_DEFAULT, LOC_PRIORITY].every(id => psDetail.some(d => String(d.locationId) === String(id))) &&
+      psDetail.every(d => Number(d.fee) === feeFor4(d.locationId));
+    result("t6.packageShippingJson 每包独立计费明细(两仓各一笔)", t6,
+      psDetail.length ? JSON.stringify(psDetail) : `raw=${o1s?.customFields?.packageShippingJson}`);
+    // 6.2 运费合计 == Order.shippingWithTax（ShippingLine 金额）
+    const psTotal = sumFee(psDetail);
+    const t7 = psTotal > 0 && Number(o1s?.shippingWithTax) === psTotal;
+    result("t7.运费合计 == ShippingLine 金额", t7, `psTotal=${psTotal} shippingWithTax=${o1s?.shippingWithTax}`);
+    // 6.3 shippingAdjustment 默认为 0
+    const t8 = Number(o1s?.customFields?.shippingAdjustment ?? 0) === 0;
+    result("t8.shippingAdjustment 默认 0", t8, String(o1s?.customFields?.shippingAdjustment));
+    // 6.4 发货 → Fulfillment.packageId/shippingFee 回写
+    const shipRes = await shipOrder(adminToken, order1.orderId, "P1", psTotal, `SF${Date.now()}`);
+    const shipItem = shipRes.data?.batchCreateFulfillment?.items?.[0];
+    const fulfs4 = await readOrderFulfillments(adminToken, order1.orderId);
+    const f4 = fulfs4[0];
+    const t9 = shipItem?.success === true &&
+      !!f4 && f4.customFields?.packageId === "P1" &&
+      Number(f4.customFields?.shippingFee) === psTotal;
+    result("t9.Fulfillment 回写 packageId/shippingFee", t9,
+      shipItem?.success
+        ? `fulfillment#${f4?.id} packageId=${f4?.customFields?.packageId} shippingFee=${f4?.customFields?.shippingFee}`
+        : `shipErr=${shipItem?.error ?? JSON.stringify(shipRes.data)}`);
   } finally {
     // ---- 6. 清理：取消测试单 + 还原库存 + 渠道配置（无论成败都执行） ----
     for (const o of orders) await cancelOrder(o.token, o.orderId);

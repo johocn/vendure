@@ -37,6 +37,8 @@ export class LogisticsAdminResolver {
                 orderId: i.orderId,
                 trackingNo: i.trackingNo,
                 carrierCode: i.carrierCode,
+                packageId: i.packageId ?? undefined,
+                shippingFee: i.shippingFee ?? undefined,
             })),
         );
         return {

@@ -33,11 +33,16 @@ let LogisticsAdminResolver = class LogisticsAdminResolver {
         return carrier_dictionary_1.CARRIERS;
     }
     async batchCreateFulfillment(ctx, items) {
-        const results = await this.logisticsService.batchCreateFulfillment(ctx, items.map((i) => ({
-            orderId: i.orderId,
-            trackingNo: i.trackingNo,
-            carrierCode: i.carrierCode,
-        })));
+        const results = await this.logisticsService.batchCreateFulfillment(ctx, items.map((i) => {
+            var _a, _b;
+            return ({
+                orderId: i.orderId,
+                trackingNo: i.trackingNo,
+                carrierCode: i.carrierCode,
+                packageId: (_a = i.packageId) !== null && _a !== void 0 ? _a : undefined,
+                shippingFee: (_b = i.shippingFee) !== null && _b !== void 0 ? _b : undefined,
+            });
+        }));
         return {
             items: results.map(r => {
                 var _a;

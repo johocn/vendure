@@ -24,6 +24,10 @@ export interface BatchFulfillmentItem {
     orderId: ID;
     trackingNo: string;
     carrierCode: string;
+    /** 拆单包号（如 P1/P2），回写到 Fulfillment.customFields.packageId */
+    packageId?: string;
+    /** 本包实际运费（分），回写到 Fulfillment.customFields.shippingFee */
+    shippingFee?: number;
 }
 
 export interface BatchFulfillmentItemResult {
@@ -147,11 +151,13 @@ export class LogisticsService {
                 }
                 const fulfillment = fulfillmentResult as Fulfillment;
 
-                // 2. 回写 Fulfillment customFields（carrierCode/carrier/trackingNumber）
+                // 2. 回写 Fulfillment customFields（carrierCode/carrier/trackingNumber + 拆单包号/本包运费）
                 await this.updateFulfillmentCustomFields(ctx, fulfillment.id, {
                     trackingNumber: item.trackingNo,
                     carrier: carrierDef.name,
                     carrierCode: item.carrierCode,
+                    ...(item.packageId != null ? { packageId: item.packageId } : {}),
+                    ...(item.shippingFee != null ? { shippingFee: item.shippingFee } : {}),
                 });
 
                 // 3. 创建 LogisticsTrack 记录

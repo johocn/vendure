@@ -5,6 +5,10 @@ export interface BatchFulfillmentItem {
     orderId: ID;
     trackingNo: string;
     carrierCode: string;
+    /** 拆单包号（如 P1/P2），回写到 Fulfillment.customFields.packageId */
+    packageId?: string;
+    /** 本包实际运费（分），回写到 Fulfillment.customFields.shippingFee */
+    shippingFee?: number;
 }
 export interface BatchFulfillmentItemResult {
     orderId: ID;
