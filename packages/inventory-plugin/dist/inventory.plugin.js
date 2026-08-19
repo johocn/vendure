@@ -34,6 +34,7 @@ const { gql } = require('graphql-tag');
 let InventoryPlugin = InventoryPlugin_1 = class InventoryPlugin {
     constructor(moduleRef) {
         this.moduleRef = moduleRef;
+        this.ledgerHandlerRegistered = false;
     }
     async onApplicationBootstrap() {
         var _a;
@@ -43,6 +44,23 @@ let InventoryPlugin = InventoryPlugin_1 = class InventoryPlugin {
         }
         try {
             const injector = new core_2.Injector(this.moduleRef);
+            if (!this.ledgerHandlerRegistered) {
+                // 订单发货账本：Fulfillment 发货产生 Sale（真实扣 onHand）时，同一事务内写 order:out，
+                // 与 core 扣库原子化，保证账实一致（阻塞处理器在 publish 后被同步等待）。
+                const inventoryService = injector.get(inventory_service_1.InventoryService);
+                const eventBus = injector.get(core_2.EventBus);
+                eventBus.registerBlockingEventHandler({
+                    event: core_2.StockMovementEvent,
+                    id: 'inventory-plugin.record-order-sales-out',
+                    handler: (event) => {
+                        if (event.type === 'SALE') {
+                            return inventoryService.recordOrderSalesOut(event.ctx, event.stockMovements);
+                        }
+                        return undefined;
+                    },
+                });
+                this.ledgerHandlerRegistered = true;
+            }
             const roleSync = new role_sync_1.RoleSyncService();
             roleSync.init(injector);
             await roleSync.syncRoles();

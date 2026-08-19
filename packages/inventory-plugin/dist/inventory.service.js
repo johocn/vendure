@@ -87,6 +87,61 @@ let InventoryService = class InventoryService {
         await this.adjustStockForLocation(ctx, variantId, locationId, +quantity, `AfterSales#${afterSalesCode}:return-restock`, { bizType: 'afterSales', bizCode: afterSalesCode, orderLineId });
     }
     /**
+     * 订单发货记账：core 在 Fulfillment Created→Pending 时创建 Sale 流水（真实扣减 onHand），
+     * 本方法在同一事务内为该批 Sale 写入 order:out 账本，保证账实一致（账本口径铁律：只记真实 onHand 变动，
+     * 占货 ALLOCATION 不记、超时取消 RELEASE 不记）。
+     * 由 inventory.plugin.ts 注册的 StockMovementEvent(SALE) 阻塞事件处理器调用。
+     */
+    async recordOrderSalesOut(ctx, sales) {
+        var _a, _b, _c, _d, _e, _f, _g;
+        for (const sale of sales) {
+            const orderLineId = (_a = sale.orderLine) === null || _a === void 0 ? void 0 : _a.id;
+            if (orderLineId == null) {
+                continue;
+            }
+            const variantId = (_b = sale.productVariant) === null || _b === void 0 ? void 0 : _b.id;
+            const locationId = (_c = sale.stockLocationId) !== null && _c !== void 0 ? _c : (_d = sale.stockLocation) === null || _d === void 0 ? void 0 : _d.id;
+            if (variantId == null || locationId == null) {
+                core_1.Logger.warn(`Ledger order:out skipped (missing variant/location): orderLine=${orderLineId}`, loggerCtx);
+                continue;
+            }
+            // bizCode 取订单号，便于按单一站式追溯
+            let orderCode = `OL${orderLineId}`;
+            try {
+                const orderLine = await this.connection.getRepository(ctx, core_1.OrderLine).findOne({
+                    where: { id: orderLineId },
+                    relations: ['order'],
+                });
+                orderCode = (_f = (_e = orderLine === null || orderLine === void 0 ? void 0 : orderLine.order) === null || _e === void 0 ? void 0 : _e.code) !== null && _f !== void 0 ? _f : orderCode;
+            }
+            catch (e) {
+                core_1.Logger.warn(`Ledger order:out order-code lookup failed: ${(_g = e === null || e === void 0 ? void 0 : e.message) !== null && _g !== void 0 ? _g : e}`, loggerCtx);
+            }
+            // publish 发生在扣库之后，读取当前 onHand 作为 afterOnHand 快照（sale.quantity 为负数）
+            let beforeOnHand;
+            let afterOnHand;
+            try {
+                afterOnHand = (await this.stockLevelService.getStockLevel(ctx, variantId, locationId)).stockOnHand;
+                beforeOnHand = afterOnHand - sale.quantity;
+            }
+            catch (_h) {
+                /* 快照失败不阻断记账 */
+            }
+            await this.stockLedgerService.record(ctx, {
+                productVariantId: variantId,
+                stockLocationId: locationId,
+                bizType: 'order',
+                bizCode: orderCode,
+                orderLineId,
+                direction: 'out',
+                quantity: Math.abs(sale.quantity),
+                beforeOnHand,
+                afterOnHand,
+                reason: `Order#${orderCode}:sale`,
+            });
+        }
+    }
+    /**
      * 校验源仓库存是否充足（available = stockOnHand - stockAllocated）
      */
     async assertSufficientStock(ctx, variantId, locationId, requiredQty) {

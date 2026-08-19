@@ -1,6 +1,6 @@
 import { OnApplicationBootstrap } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import { Injector, Logger, PluginCommonModule, VendurePlugin } from '@vendure/core';
+import { EventBus, Injector, Logger, PluginCommonModule, Sale, StockMovementEvent, VendurePlugin } from '@vendure/core';
 
 import { InventoryAdminResolver } from './inventory-admin.resolver';
 import { InventoryShopResolver } from './inventory-shop.resolver';
@@ -324,6 +324,8 @@ export class InventoryPlugin implements OnApplicationBootstrap {
 
     static init = (): typeof InventoryPlugin => InventoryPlugin;
 
+    private ledgerHandlerRegistered = false;
+
     async onApplicationBootstrap(): Promise<void> {
         Logger.info('onApplicationBootstrap called', loggerCtx);
         if (!this.moduleRef) {
@@ -331,6 +333,23 @@ export class InventoryPlugin implements OnApplicationBootstrap {
         }
         try {
             const injector = new Injector(this.moduleRef);
+            if (!this.ledgerHandlerRegistered) {
+                // 订单发货账本：Fulfillment 发货产生 Sale（真实扣 onHand）时，同一事务内写 order:out，
+                // 与 core 扣库原子化，保证账实一致（阻塞处理器在 publish 后被同步等待）。
+                const inventoryService = injector.get(InventoryService);
+                const eventBus = injector.get(EventBus);
+                eventBus.registerBlockingEventHandler({
+                    event: StockMovementEvent,
+                    id: 'inventory-plugin.record-order-sales-out',
+                    handler: (event) => {
+                        if (event.type === 'SALE') {
+                            return inventoryService.recordOrderSalesOut(event.ctx, event.stockMovements as Sale[]);
+                        }
+                        return undefined;
+                    },
+                });
+                this.ledgerHandlerRegistered = true;
+            }
             const roleSync = new RoleSyncService();
             roleSync.init(injector);
             await roleSync.syncRoles();

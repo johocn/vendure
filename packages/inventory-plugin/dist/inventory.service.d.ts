@@ -1,5 +1,5 @@
 import { ID } from '@vendure/common/lib/shared-types';
-import { RequestContext, StockLevel, StockLevelService, StockLocationService, StockMovementService, StockLocation, TransactionalConnection } from '@vendure/core';
+import { RequestContext, Sale, StockLevel, StockLevelService, StockLocationService, StockMovementService, StockLocation, TransactionalConnection } from '@vendure/core';
 import { StockInOrder } from './entities/stock-in-order.entity';
 import { StockOutOrder } from './entities/stock-out-order.entity';
 import { StockMoveOrder } from './entities/stock-move-order.entity';
@@ -36,6 +36,13 @@ export declare class InventoryService {
      * @param quantity 正数表示回补数量（= min(订单行数量, 实收数量)）
      */
     applyAfterSalesRestock(ctx: RequestContext, variantId: ID, locationId: ID, quantity: number, afterSalesCode: string, orderLineId?: ID): Promise<void>;
+    /**
+     * 订单发货记账：core 在 Fulfillment Created→Pending 时创建 Sale 流水（真实扣减 onHand），
+     * 本方法在同一事务内为该批 Sale 写入 order:out 账本，保证账实一致（账本口径铁律：只记真实 onHand 变动，
+     * 占货 ALLOCATION 不记、超时取消 RELEASE 不记）。
+     * 由 inventory.plugin.ts 注册的 StockMovementEvent(SALE) 阻塞事件处理器调用。
+     */
+    recordOrderSalesOut(ctx: RequestContext, sales: Sale[]): Promise<void>;
     /**
      * 校验源仓库存是否充足（available = stockOnHand - stockAllocated）
      */

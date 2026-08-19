@@ -3,8 +3,10 @@ import { Injectable } from '@nestjs/common';
 import { ID } from '@vendure/common/lib/shared-types';
 import {
     Logger,
+    OrderLine,
     ProductVariant,
     RequestContext,
+    Sale,
     StockAdjustment,
     StockLevel,
     StockLevelService,
@@ -141,6 +143,59 @@ export class InventoryService {
             `AfterSales#${afterSalesCode}:return-restock`,
             { bizType: 'afterSales', bizCode: afterSalesCode, orderLineId },
         );
+    }
+
+    /**
+     * 订单发货记账：core 在 Fulfillment Created→Pending 时创建 Sale 流水（真实扣减 onHand），
+     * 本方法在同一事务内为该批 Sale 写入 order:out 账本，保证账实一致（账本口径铁律：只记真实 onHand 变动，
+     * 占货 ALLOCATION 不记、超时取消 RELEASE 不记）。
+     * 由 inventory.plugin.ts 注册的 StockMovementEvent(SALE) 阻塞事件处理器调用。
+     */
+    async recordOrderSalesOut(ctx: RequestContext, sales: Sale[]): Promise<void> {
+        for (const sale of sales) {
+            const orderLineId = sale.orderLine?.id;
+            if (orderLineId == null) {
+                continue;
+            }
+            const variantId = sale.productVariant?.id;
+            const locationId = sale.stockLocationId ?? sale.stockLocation?.id;
+            if (variantId == null || locationId == null) {
+                Logger.warn(`Ledger order:out skipped (missing variant/location): orderLine=${orderLineId}`, loggerCtx);
+                continue;
+            }
+            // bizCode 取订单号，便于按单一站式追溯
+            let orderCode = `OL${orderLineId}`;
+            try {
+                const orderLine = await this.connection.getRepository(ctx, OrderLine).findOne({
+                    where: { id: orderLineId as any },
+                    relations: ['order'],
+                });
+                orderCode = orderLine?.order?.code ?? orderCode;
+            } catch (e: any) {
+                Logger.warn(`Ledger order:out order-code lookup failed: ${e?.message ?? e}`, loggerCtx);
+            }
+            // publish 发生在扣库之后，读取当前 onHand 作为 afterOnHand 快照（sale.quantity 为负数）
+            let beforeOnHand: number | undefined;
+            let afterOnHand: number | undefined;
+            try {
+                afterOnHand = (await this.stockLevelService.getStockLevel(ctx, variantId, locationId)).stockOnHand;
+                beforeOnHand = afterOnHand - sale.quantity;
+            } catch {
+                /* 快照失败不阻断记账 */
+            }
+            await this.stockLedgerService.record(ctx, {
+                productVariantId: variantId,
+                stockLocationId: locationId,
+                bizType: 'order',
+                bizCode: orderCode,
+                orderLineId,
+                direction: 'out',
+                quantity: Math.abs(sale.quantity),
+                beforeOnHand,
+                afterOnHand,
+                reason: `Order#${orderCode}:sale`,
+            });
+        }
     }
 
     /**

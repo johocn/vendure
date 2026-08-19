@@ -4,5 +4,6 @@ export declare class InventoryPlugin implements OnApplicationBootstrap {
     private moduleRef?;
     constructor(moduleRef?: ModuleRef | undefined);
     static init: () => typeof InventoryPlugin;
+    private ledgerHandlerRegistered;
     onApplicationBootstrap(): Promise<void>;
 }
