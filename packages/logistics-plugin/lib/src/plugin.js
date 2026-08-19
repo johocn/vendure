@@ -22,7 +22,7 @@ const fulfillment_custom_fields_1 = require("./fulfillment-custom-fields");
 const channel_custom_fields_1 = require("./channel-custom-fields");
 const channel_stock_allocation_strategy_1 = require("./channel-stock-allocation-strategy");
 const catalog_custom_fields_1 = require("./catalog-custom-fields");
-const nearest_stock_location_strategy_1 = require("./nearest-stock-location-strategy");
+const matrix_stock_location_strategy_1 = require("./matrix-stock-location-strategy");
 const logistics_track_entity_1 = require("./logistics-track.entity");
 const logistics_service_1 = require("./logistics.service");
 const logistics_admin_resolver_1 = require("./logistics-admin.resolver");
@@ -141,8 +141,8 @@ exports.LogisticsPlugin = LogisticsPlugin = LogisticsPlugin_1 = __decorate([
             config.customFields.Order = mergeCustomFields(config.customFields.Order, catalog_custom_fields_1.catalogCustomFields.Order);
             config.customFields.OrderLine = mergeCustomFields(config.customFields.OrderLine, catalog_custom_fields_1.catalogCustomFields.OrderLine);
             config.orderOptions.stockAllocationStrategy = new channel_stock_allocation_strategy_1.ChannelStockAllocationStrategy();
-            // 就近发货：覆写仓库/门店分配策略（真正的按订单定位就近）
-            config.catalogOptions.stockLocationStrategy = new nearest_stock_location_strategy_1.NearestStockLocationStrategy();
+            // 库存策略矩阵：单一全局入口（就近/优先级/库存优先/会员专属），余量天然拆单
+            config.catalogOptions.stockLocationStrategy = new matrix_stock_location_strategy_1.MatrixStockLocationStrategy();
             return config;
         },
         dashboard: '../dashboard/index.tsx',

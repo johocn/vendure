@@ -8,7 +8,7 @@ import { logisticsFulfillmentCustomFields } from './fulfillment-custom-fields';
 import { logisticsChannelCustomFields } from './channel-custom-fields';
 import { ChannelStockAllocationStrategy } from './channel-stock-allocation-strategy';
 import { catalogCustomFields } from './catalog-custom-fields';
-import { NearestStockLocationStrategy } from './nearest-stock-location-strategy';
+import { MatrixStockLocationStrategy } from './matrix-stock-location-strategy';
 import { LogisticsTrack } from './logistics-track.entity';
 import { LogisticsService } from './logistics.service';
 import { LogisticsAdminResolver } from './logistics-admin.resolver';
@@ -116,8 +116,8 @@ const shopSchema = () => gql`
         config.customFields.Order = mergeCustomFields(config.customFields.Order, catalogCustomFields.Order);
         config.customFields.OrderLine = mergeCustomFields(config.customFields.OrderLine, catalogCustomFields.OrderLine);
         config.orderOptions.stockAllocationStrategy = new ChannelStockAllocationStrategy();
-        // 就近发货：覆写仓库/门店分配策略（真正的按订单定位就近）
-        config.catalogOptions.stockLocationStrategy = new NearestStockLocationStrategy();
+        // 库存策略矩阵：单一全局入口（就近/优先级/库存优先/会员专属），余量天然拆单
+        config.catalogOptions.stockLocationStrategy = new MatrixStockLocationStrategy();
         return config;
     },
     dashboard: '../dashboard/index.tsx',

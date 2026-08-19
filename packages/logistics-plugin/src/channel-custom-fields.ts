@@ -19,8 +19,15 @@ export const logisticsChannelCustomFields: CustomFields = {
                     { value: 'priority', label: [{ languageCode: LanguageCode.zh_Hans, value: '按优先级' }] },
                     { value: 'nearest', label: [{ languageCode: LanguageCode.zh_Hans, value: '就近发货' }] },
                     { value: 'stock-first', label: [{ languageCode: LanguageCode.zh_Hans, value: '库存优先' }] },
+                    { value: 'member', label: [{ languageCode: LanguageCode.zh_Hans, value: '会员等级专属' }] },
                 ],
             },
+        },
+        {
+            name: 'memberStockStrategy',
+            type: 'string',
+            nullable: true,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '会员等级专属发货策略（JSON）' }],
         },
     ],
 };
