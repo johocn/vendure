@@ -4,8 +4,9 @@ exports.MatrixStockLocationStrategy = void 0;
 const core_1 = require("@vendure/core");
 const nearest_stock_location_strategy_1 = require("./nearest-stock-location-strategy");
 const matrix_allocators_1 = require("./matrix-allocators");
-const STORE_SUFFIX = '店';
-const MARKETPLACE_SUFFIX = '云仓';
+// 渠道隔离后缀，须与 MarketplaceStockLocationStrategy 约定一致（-store/-marketplace）
+const STORE_SUFFIX = '-store';
+const MARKETPLACE_SUFFIX = '-marketplace';
 /**
  * 库存策略矩阵：单一全局 StockLocationStrategy。
  * 继承 NearestStockLocationStrategy（含 MultiChannel 库存核算 + 服务范围门禁 + 自提锚点），
@@ -19,14 +20,11 @@ class MatrixStockLocationStrategy extends nearest_stock_location_strategy_1.Near
         this.stockLevelService = injector.get(core_1.StockLevelService);
     }
     async forAllocation(ctx, stockLocations, orderLine, quantity) {
-        var _a, _b, _c, _d, _e, _f, _g, _h;
+        var _a, _b, _c, _d;
         const order = await this.loadOrder(ctx, orderLine);
         const channelCf = ((_b = (_a = ctx.channel) === null || _a === void 0 ? void 0 : _a.customFields) !== null && _b !== void 0 ? _b : {});
-        core_1.Logger.info(`[dbg] line#${orderLine.id} ctx.channel=#${(_c = ctx.channel) === null || _c === void 0 ? void 0 : _c.id}(${(_d = ctx.channel) === null || _d === void 0 ? void 0 : _d.code}) ` +
-            `cf=${JSON.stringify(channelCf)} order=${order ? `#${order.id}(${order.code})` : 'undefined'} ` +
-            `orderLat=${(_e = order === null || order === void 0 ? void 0 : order.customFields) === null || _e === void 0 ? void 0 : _e.lat} orderLng=${(_f = order === null || order === void 0 ? void 0 : order.customFields) === null || _f === void 0 ? void 0 : _f.lng}`, matrix_allocators_1.loggerCtx);
         // 渠道隔离：商城(店)/云仓(云仓) 按后缀过滤，无命中则全量（沿用 Marketplace 惯例）
-        const suffix = ((_g = order === null || order === void 0 ? void 0 : order.customFields) === null || _g === void 0 ? void 0 : _g.saleSource) === 'marketplace' ? MARKETPLACE_SUFFIX : STORE_SUFFIX;
+        const suffix = ((_c = order === null || order === void 0 ? void 0 : order.customFields) === null || _c === void 0 ? void 0 : _c.saleSource) === 'marketplace' ? MARKETPLACE_SUFFIX : STORE_SUFFIX;
         const pool = stockLocations.filter(loc => loc.name.endsWith(suffix));
         const candidates = pool.length > 0 ? pool : stockLocations;
         // 服务范围门禁 + 锚点由父类 orderByProximity 处理；此处仅按矩阵重排
@@ -35,9 +33,9 @@ class MatrixStockLocationStrategy extends nearest_stock_location_strategy_1.Near
         for (const loc of candidates) {
             try {
                 const level = await this.stockLevelService.getStockLevel(ctx, orderLine.productVariantId, loc.id);
-                stockOnHandMap.set(String(loc.id), (_h = level.stockOnHand) !== null && _h !== void 0 ? _h : 0);
+                stockOnHandMap.set(String(loc.id), (_d = level.stockOnHand) !== null && _d !== void 0 ? _d : 0);
             }
-            catch (_j) {
+            catch (_e) {
                 stockOnHandMap.set(String(loc.id), 0);
             }
         }
@@ -74,8 +72,6 @@ class MatrixStockLocationStrategy extends nearest_stock_location_strategy_1.Near
         if (rules.length > 0) {
             const level = await this.resolveMemberLevel(ctx, order);
             const rule = rules.find(r => r.level === level);
-            core_1.Logger.info(`[dbg] decideRule rules=${rules.length} level=${level} matched=${rule ? rule.level : 'none'} ` +
-                `shippingStrategy=${channelCf.shippingStrategy}`, matrix_allocators_1.loggerCtx);
             if (rule) {
                 const hasStock = rule.locationIds.some(id => candidates.some(c => { var _a; return String(c.id) === String(id) && ((_a = stockOnHandMap.get(String(id))) !== null && _a !== void 0 ? _a : 0) > 0; }));
                 if (hasStock) {

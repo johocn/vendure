@@ -10,8 +10,9 @@ import {
     rankByStockFirst,
 } from './matrix-allocators';
 
-const STORE_SUFFIX = '店';
-const MARKETPLACE_SUFFIX = '云仓';
+// 渠道隔离后缀，须与 MarketplaceStockLocationStrategy 约定一致（-store/-marketplace）
+const STORE_SUFFIX = '-store';
+const MARKETPLACE_SUFFIX = '-marketplace';
 
 interface MatrixDecision {
     rule: 'member' | 'nearest' | 'priority' | 'stock-first';
@@ -42,13 +43,6 @@ export class MatrixStockLocationStrategy extends NearestStockLocationStrategy {
     ): Promise<import('@vendure/core').LocationWithQuantity[]> {
         const order = await this.loadOrder(ctx, orderLine);
         const channelCf = ((ctx.channel as any)?.customFields ?? {}) as Record<string, any>;
-
-        Logger.info(
-            `[dbg] line#${orderLine.id} ctx.channel=#${(ctx.channel as any)?.id}(${(ctx.channel as any)?.code}) ` +
-            `cf=${JSON.stringify(channelCf)} order=${order ? `#${order.id}(${order.code})` : 'undefined'} ` +
-            `orderLat=${(order as any)?.customFields?.lat} orderLng=${(order as any)?.customFields?.lng}`,
-            loggerCtx,
-        );
 
         // 渠道隔离：商城(店)/云仓(云仓) 按后缀过滤，无命中则全量（沿用 Marketplace 惯例）
         const suffix = (order as any)?.customFields?.saleSource === 'marketplace' ? MARKETPLACE_SUFFIX : STORE_SUFFIX;
@@ -110,11 +104,6 @@ export class MatrixStockLocationStrategy extends NearestStockLocationStrategy {
         if (rules.length > 0) {
             const level = await this.resolveMemberLevel(ctx, order);
             const rule = rules.find(r => r.level === level);
-            Logger.info(
-                `[dbg] decideRule rules=${rules.length} level=${level} matched=${rule ? rule.level : 'none'} ` +
-                `shippingStrategy=${channelCf.shippingStrategy}`,
-                loggerCtx,
-            );
             if (rule) {
                 const hasStock = rule.locationIds.some(id =>
                     candidates.some(c => String(c.id) === String(id) && (stockOnHandMap.get(String(id)) ?? 0) > 0));
