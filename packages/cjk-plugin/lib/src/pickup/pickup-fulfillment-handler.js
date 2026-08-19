@@ -72,6 +72,7 @@ exports.pickupPointFulfillmentHandler = new core_1.FulfillmentHandler({
 });
 let pickupLocationService;
 let employeeCustomerService;
+let connection;
 const methodLabels = {
     [core_1.LanguageCode.zh_Hans]: '企业职工自提',
     [core_1.LanguageCode.en]: 'Employee Pickup',
@@ -90,10 +91,20 @@ exports.employeePickupFulfillmentHandler = new core_1.FulfillmentHandler({
     init: (injector) => {
         pickupLocationService = injector.get(pickup_location_service_1.PickupLocationService);
         employeeCustomerService = injector.get(enterprise_customer_service_1.EmployeeCustomerService);
+        connection = injector.get(core_1.TransactionalConnection);
     },
     createFulfillment: async (ctx, orders, lines, args) => {
         const order = orders[0];
-        const locationId = order.customFields.selectedPickupLocationId;
+        // relation 自定义字段（selectedPickupLocationId）不随 Order 实体加载（未设 eager），
+        // 用 QueryBuilder 关联查询读取 FK 值（与 CustomFieldRelationResolverService 同法，跨库通用）
+        const row = await connection
+            .getRepository(ctx, order.constructor)
+            .createQueryBuilder('o')
+            .leftJoin('o.customFields.selectedPickupLocationId', 'pl')
+            .select('pl.id', 'pickupLocationId')
+            .where('o.id = :id', { id: order.id })
+            .getRawOne();
+        const locationId = row === null || row === void 0 ? void 0 : row.pickupLocationId;
         if (!locationId)
             throw new Error((0, i18n_messages_1.translateError)(ctx, 'PICKUP_LOCATION_NOT_SELECTED'));
         const location = await pickupLocationService.findOne(ctx, locationId);

@@ -9,7 +9,8 @@
     "watch": "tsc -w"
   },
   "dependencies": {
-    "@vendure/core": "^3.6.0"
+    "@vendure/core": "^3.6.0",
+    "@vendure/logistics-plugin": "0.0.1"
   },
   "devDependencies": {
     "typescript": "^5.0.0"

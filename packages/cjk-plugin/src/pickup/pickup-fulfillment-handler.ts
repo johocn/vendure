@@ -1,4 +1,4 @@
-import { FulfillmentHandler, Injector, LanguageCode } from '@vendure/core';
+import { FulfillmentHandler, Injector, LanguageCode, TransactionalConnection } from '@vendure/core';
 import { PickupLocationService } from './pickup-location.service';
 import { EmployeeCustomerService } from './enterprise-customer/enterprise-customer.service';
 import { translateError } from './i18n-messages';
@@ -72,6 +72,7 @@ export const pickupPointFulfillmentHandler = new FulfillmentHandler({
 
 let pickupLocationService: PickupLocationService;
 let employeeCustomerService: EmployeeCustomerService;
+let connection: TransactionalConnection;
 
 const methodLabels: Partial<Record<LanguageCode, string>> = {
     [LanguageCode.zh_Hans]: '企业职工自提',
@@ -92,10 +93,20 @@ export const employeePickupFulfillmentHandler = new FulfillmentHandler({
     init: (injector: Injector) => {
         pickupLocationService = injector.get(PickupLocationService);
         employeeCustomerService = injector.get(EmployeeCustomerService);
+        connection = injector.get(TransactionalConnection);
     },
     createFulfillment: async (ctx, orders, lines, args) => {
         const order = orders[0];
-        const locationId = (order as any).customFields.selectedPickupLocationId;
+        // relation 自定义字段（selectedPickupLocationId）不随 Order 实体加载（未设 eager），
+        // 用 QueryBuilder 关联查询读取 FK 值（与 CustomFieldRelationResolverService 同法，跨库通用）
+        const row = await connection
+            .getRepository(ctx, order.constructor as any)
+            .createQueryBuilder('o')
+            .leftJoin('o.customFields.selectedPickupLocationId', 'pl')
+            .select('pl.id', 'pickupLocationId')
+            .where('o.id = :id', { id: order.id })
+            .getRawOne();
+        const locationId = row?.pickupLocationId;
         if (!locationId) throw new Error(translateError(ctx, 'PICKUP_LOCATION_NOT_SELECTED'));
 
         const location = await pickupLocationService.findOne(ctx, locationId);

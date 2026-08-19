@@ -1,24 +1,21 @@
-import { AvailableStock, ID, Injector, LocationWithQuantity, OrderLine, RequestContext, StockLevel, StockLocation, StockLocationStrategy } from '@vendure/core';
+import { Injector, LocationWithQuantity, OrderLine, RequestContext, StockLocation } from '@vendure/core';
+import { NearestStockLocationStrategy } from '@vendure/logistics-plugin';
 /**
  * @description
- * 独立的库存策略：根据订单行的销售来源（Order.customFields.saleSource）决定库存操作
- * 使用哪个 StockLocation。
+ * 组合库存策略：继承 {@link NearestStockLocationStrategy}（就近发货 + 多仓数量拆分 +
+ * 原发货仓记录 orderLine.customFields.stockLocationId），仅在下单分配库存时按销售来源
+ * 预筛目标仓，其余逻辑（分配/释放/销售/取消、多仓核算、原发货仓留痕）全部委托父级：
  *
- * 每个 marketplace 商家需预置两个 StockLocation：
- * - `<商家>-marketplace`：marketplace 销售使用
- * - `<商家>-store`：商家自营销售使用
+ * - marketplace 销售 → 仅用 `<商家>-marketplace` 仓
+ * - 普通销售 → 仅用 `<商家>-store` 仓
  *
- * 对于所有库存操作（分配/释放/销售/取消），先判断该 OrderLine 所属订单是否为
- * marketplace 销售，再按对应后缀筛选目标 StockLocation。
+ * 预筛后交给父级完成就近分配与库存核算，保证：
+ *   1) 每个 location 只分配应分配的数量（不再对全部仓各写全量 ALLOCATION 流水）；
+ *   2) orderLine.customFields.stockLocationId 被正确记录，供售后回补定位原发货仓。
  */
-export declare class MarketplaceStockLocationStrategy implements StockLocationStrategy {
+export declare class MarketplaceStockLocationStrategy extends NearestStockLocationStrategy {
     private entityHydrator;
-    init(injector: Injector): void;
-    getAvailableStock(ctx: RequestContext, productVariantId: ID, stockLevels: StockLevel[]): AvailableStock | Promise<AvailableStock>;
+    init(injector: Injector): Promise<void>;
     forAllocation(ctx: RequestContext, stockLocations: StockLocation[], orderLine: OrderLine, quantity: number): Promise<LocationWithQuantity[]>;
-    forRelease(ctx: RequestContext, stockLocations: StockLocation[], orderLine: OrderLine, quantity: number): Promise<LocationWithQuantity[]>;
-    forSale(ctx: RequestContext, stockLocations: StockLocation[], orderLine: OrderLine, quantity: number): Promise<LocationWithQuantity[]>;
-    forCancellation(ctx: RequestContext, stockLocations: StockLocation[], orderLine: OrderLine, quantity: number): Promise<LocationWithQuantity[]>;
-    private getLocationForLine;
     private isMarketplaceSale;
 }

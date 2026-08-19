@@ -1,3 +1,4 @@
+import { pick } from '@vendure/common/lib/pick';
 import {
     LocationWithQuantity,
     Logger,
@@ -77,6 +78,10 @@ export class NearestStockLocationStrategy extends MultiChannelStockLocationStrat
         orderLine: OrderLine,
         quantity: number,
     ): Promise<LocationWithQuantity[]> {
+        Logger.info(
+            `forAllocation called line#${orderLine.id} qty=${quantity} locs=${stockLocations.length}`,
+            loggerCtx,
+        );
         const ordered = await this.orderByProximity(ctx, stockLocations, orderLine);
         const result = await super.forAllocation(ctx, ordered, orderLine, quantity);
         // 记录原分配仓：就近结果中数量为正的首个 location，供售后回补定位原发货仓
@@ -95,21 +100,32 @@ export class NearestStockLocationStrategy extends MultiChannelStockLocationStrat
     ): Promise<void> {
         try {
             const chosen = result.find(r => r.quantity > 0);
-            if (!chosen) return;
+            if (!chosen) {
+                Logger.warn(`orderLine#${orderLine.id} 分配结果无正数量仓，跳过记录原发货仓`, loggerCtx);
+                return;
+            }
             const locId = String(chosen.location.id);
             const current = (orderLine.customFields as any)?.stockLocationId;
             if (current != null && String(current) === locId) {
                 return; // 已一致，无需重复写
             }
             const repo = this.connection.getRepository(ctx, OrderLine);
-            await repo.update(
-                { id: orderLine.id },
-                { customFields: { ...(orderLine.customFields ?? {}), stockLocationId: locId } } as any,
-            );
+            // 注意：Vendure 的 customFields 是嵌入式列，repo.update 无法可靠更新（会被静默丢弃），
+            // 必须按核心惯例 save(pick(entity, ['id','customFields'])) 更新。
+            const fresh = await repo.findOne({ where: { id: orderLine.id } as any });
+            if (!fresh) {
+                Logger.warn(`orderLine#${orderLine.id} 重载失败，跳过记录原发货仓`, loggerCtx);
+                return;
+            }
+            fresh.customFields = {
+                ...(fresh.customFields ?? {}),
+                stockLocationId: locId,
+            };
+            await repo.save(pick(fresh, ['id', 'customFields']) as any, { reload: false });
             (orderLine.customFields as any).stockLocationId = locId;
-            Logger.debug(`orderLine#${orderLine.id} 原分配仓 -> loc#${locId}`, loggerCtx);
+            Logger.info(`orderLine#${orderLine.id} 原分配仓 -> loc#${locId}`, loggerCtx);
         } catch (e: any) {
-            Logger.warn(`记录原分配仓失败（不影响下单）: ${e?.message ?? e}`, loggerCtx);
+            Logger.error(`记录原分配仓失败（不影响下单）: ${e?.message ?? e}`, loggerCtx);
         }
     }
 

@@ -154,13 +154,22 @@ export class DeliveryService {
      */
     async confirmPickupHandover(ctx: RequestContext, orderId: ID): Promise<Order> {
         const order = await this.getOrderOrThrow(ctx, orderId);
-        const cf = (order.customFields ?? {}) as DeliveryCustomFields & Record<string, any>;
+        const cf = (order.customFields ?? {}) as DeliveryCustomFields;
         if (cf.deliveryType !== 'pickup') {
             throw new IllegalOperationError(
                 `Cannot confirm pickup handover: order deliveryType is "${cf.deliveryType ?? '(none)'}", expected "pickup"`,
             );
         }
-        if (!cf.selectedPickupLocationId) {
+        // relation 自定义字段（selectedPickupLocationId）不随 Order 实体加载（未设 eager），
+        // 必须用 QueryBuilder 关联查询读取 FK 值（与 Vendure 官方 CustomFieldRelationResolverService 同法，跨库通用）
+        const row = await this.connection
+            .getRepository(ctx, Order)
+            .createQueryBuilder('o')
+            .leftJoin('o.customFields.selectedPickupLocationId', 'pl')
+            .select('pl.id', 'pickupLocationId')
+            .where('o.id = :id', { id: orderId })
+            .getRawOne();
+        if (!row?.pickupLocationId) {
             throw new IllegalOperationError(
                 'Cannot confirm pickup handover: no pickup location selected on order',
             );
@@ -334,6 +343,5 @@ interface DeliveryCustomFields {
     exceptionPhotos?: string[] | null;
     // 自提相关（由 cjk-plugin 定义，此处仅类型声明）
     deliveryType?: string | null;
-    selectedPickupLocationId?: any;
     pickupClaimed?: boolean | null;
 }

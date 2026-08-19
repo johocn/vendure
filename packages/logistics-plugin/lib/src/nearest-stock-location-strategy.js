@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.NearestStockLocationStrategy = void 0;
+const pick_1 = require("@vendure/common/lib/pick");
 const core_1 = require("@vendure/core");
 const location_utils_1 = require("./location-utils");
 const loggerCtx = 'NearestStockLocationStrategy';
@@ -50,6 +51,7 @@ async function readOrderGeo(ctx, orderLine, connection) {
  */
 class NearestStockLocationStrategy extends core_1.MultiChannelStockLocationStrategy {
     async forAllocation(ctx, stockLocations, orderLine, quantity) {
+        core_1.Logger.info(`forAllocation called line#${orderLine.id} qty=${quantity} locs=${stockLocations.length}`, loggerCtx);
         const ordered = await this.orderByProximity(ctx, stockLocations, orderLine);
         const result = await super.forAllocation(ctx, ordered, orderLine, quantity);
         // 记录原分配仓：就近结果中数量为正的首个 location，供售后回补定位原发货仓
@@ -64,20 +66,30 @@ class NearestStockLocationStrategy extends core_1.MultiChannelStockLocationStrat
         var _a, _b, _c;
         try {
             const chosen = result.find(r => r.quantity > 0);
-            if (!chosen)
+            if (!chosen) {
+                core_1.Logger.warn(`orderLine#${orderLine.id} 分配结果无正数量仓，跳过记录原发货仓`, loggerCtx);
                 return;
+            }
             const locId = String(chosen.location.id);
             const current = (_a = orderLine.customFields) === null || _a === void 0 ? void 0 : _a.stockLocationId;
             if (current != null && String(current) === locId) {
                 return; // 已一致，无需重复写
             }
             const repo = this.connection.getRepository(ctx, core_1.OrderLine);
-            await repo.update({ id: orderLine.id }, { customFields: Object.assign(Object.assign({}, ((_b = orderLine.customFields) !== null && _b !== void 0 ? _b : {})), { stockLocationId: locId }) });
+            // 注意：Vendure 的 customFields 是嵌入式列，repo.update 无法可靠更新（会被静默丢弃），
+            // 必须按核心惯例 save(pick(entity, ['id','customFields'])) 更新。
+            const fresh = await repo.findOne({ where: { id: orderLine.id } });
+            if (!fresh) {
+                core_1.Logger.warn(`orderLine#${orderLine.id} 重载失败，跳过记录原发货仓`, loggerCtx);
+                return;
+            }
+            fresh.customFields = Object.assign(Object.assign({}, ((_b = fresh.customFields) !== null && _b !== void 0 ? _b : {})), { stockLocationId: locId });
+            await repo.save((0, pick_1.pick)(fresh, ['id', 'customFields']), { reload: false });
             orderLine.customFields.stockLocationId = locId;
-            core_1.Logger.debug(`orderLine#${orderLine.id} 原分配仓 -> loc#${locId}`, loggerCtx);
+            core_1.Logger.info(`orderLine#${orderLine.id} 原分配仓 -> loc#${locId}`, loggerCtx);
         }
         catch (e) {
-            core_1.Logger.warn(`记录原分配仓失败（不影响下单）: ${(_c = e === null || e === void 0 ? void 0 : e.message) !== null && _c !== void 0 ? _c : e}`, loggerCtx);
+            core_1.Logger.error(`记录原分配仓失败（不影响下单）: ${(_c = e === null || e === void 0 ? void 0 : e.message) !== null && _c !== void 0 ? _c : e}`, loggerCtx);
         }
     }
     async orderByProximity(ctx, stockLocations, orderLine) {

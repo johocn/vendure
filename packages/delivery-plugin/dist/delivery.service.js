@@ -129,7 +129,16 @@ let DeliveryService = class DeliveryService {
         if (cf.deliveryType !== 'pickup') {
             throw new core_1.IllegalOperationError(`Cannot confirm pickup handover: order deliveryType is "${(_b = cf.deliveryType) !== null && _b !== void 0 ? _b : '(none)'}", expected "pickup"`);
         }
-        if (!cf.selectedPickupLocationId) {
+        // relation 自定义字段（selectedPickupLocationId）不随 Order 实体加载（未设 eager），
+        // 必须用 QueryBuilder 关联查询读取 FK 值（与 Vendure 官方 CustomFieldRelationResolverService 同法，跨库通用）
+        const row = await this.connection
+            .getRepository(ctx, core_1.Order)
+            .createQueryBuilder('o')
+            .leftJoin('o.customFields.selectedPickupLocationId', 'pl')
+            .select('pl.id', 'pickupLocationId')
+            .where('o.id = :id', { id: orderId })
+            .getRawOne();
+        if (!(row === null || row === void 0 ? void 0 : row.pickupLocationId)) {
             throw new core_1.IllegalOperationError('Cannot confirm pickup handover: no pickup location selected on order');
         }
         await this.connection.withTransaction(ctx, async (txCtx) => {

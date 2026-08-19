@@ -36,7 +36,8 @@ export class PickupShopResolver {
         //    必须在选点时落库，不能依赖前端回传（否则默认值 'delivery' 会让 pickup 闭环失效）。
         await this.orderService.updateCustomFields(ctx, order.id, {
             deliveryType: 'pickup',
-            selectedPickupLocationId: pickupLocationId,
+            // relation 自定义字段的 GraphQL 输入键为 <name>Id，updateRelations 按此键读取
+            selectedPickupLocationIdId: pickupLocationId,
             pickupType,
             pickupLat: location.coordinates?.lat ?? null,
             pickupLng: location.coordinates?.lng ?? null,
