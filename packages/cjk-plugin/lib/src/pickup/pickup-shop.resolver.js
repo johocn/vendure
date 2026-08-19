@@ -40,7 +40,10 @@ let PickupShopResolver = class PickupShopResolver {
         if (!location)
             throw new core_1.UserInputError((0, i18n_messages_1.translateError)(ctx, 'PICKUP_LOCATION_NOT_VISIBLE'));
         // 1. 写入 Order.customFields：选中的自提点、类型 + 坐标快照（就近分配锚点用）
+        //    deliveryType='pickup' 是就近锚点（NearestStockLocationStrategy）与核销（confirmPickupHandover）的前置条件，
+        //    必须在选点时落库，不能依赖前端回传（否则默认值 'delivery' 会让 pickup 闭环失效）。
         await this.orderService.updateCustomFields(ctx, order.id, {
+            deliveryType: 'pickup',
             selectedPickupLocationId: pickupLocationId,
             pickupType,
             pickupLat: (_d = (_c = location.coordinates) === null || _c === void 0 ? void 0 : _c.lat) !== null && _d !== void 0 ? _d : null,
