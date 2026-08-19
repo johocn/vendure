@@ -93,6 +93,12 @@ exports.catalogCustomFields = {
             nullable: true,
             label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '原分配仓' }],
         },
+        {
+            name: 'stockLocationsJson',
+            type: 'string',
+            nullable: true,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '拆分明细（JSON: [{locationId,quantity}]）' }],
+        },
     ],
 };
 //# sourceMappingURL=catalog-custom-fields.js.map
