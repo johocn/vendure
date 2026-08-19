@@ -195,7 +195,7 @@ export class AfterSalesService {
         request.channels = [ctx.channel];
         const saved = await repo.save(request);
         Logger.info(`After-sales request ${saved.id} created by customer ${ctx.activeUserId}`, loggerCtx);
-        return saved;
+        return this.hydrate(ctx, saved.id);
     }
 
     async cancelRequest(ctx: RequestContext, id: ID): Promise<AfterSalesRequest> {
@@ -206,7 +206,8 @@ export class AfterSalesService {
             throw new Error(`Cannot cancel request in state: ${request.state}`);
         }
         request.state = 'Closed';
-        return repo.save(request);
+        const saved = await repo.save(request);
+        return this.hydrate(ctx, saved.id);
     }
 
     async updateReturnTracking(ctx: RequestContext, id: ID, trackingNo: string, carrier: string): Promise<AfterSalesRequest> {
@@ -219,7 +220,25 @@ export class AfterSalesService {
         request.returnTrackingNo = trackingNo;
         request.returnCarrier = carrier;
         request.state = 'Returning';
-        return repo.save(request);
+        const saved = await repo.save(request);
+        return this.hydrate(ctx, saved.id);
+    }
+
+    /**
+     * Mutation 保存后重新加载并返回带关系（order/orderLine）的实体。
+     * 直接 repo.save() 返回的实体关系未加载，Shop SDL 中 `order: Order!` 非空字段会被自动关系解析取到 null，
+     * 触发 "Cannot return null for non-nullable field AfterSalesRequest.order"。
+     */
+    private async hydrate(ctx: RequestContext, id: ID): Promise<AfterSalesRequest> {
+        const repo = this.connection.getRepository(ctx, AfterSalesRequest);
+        const full = await repo.findOne({
+            where: { id: id as any },
+            relations: { order: true, orderLine: true, channels: true },
+        });
+        if (full) {
+            return full;
+        }
+        throw new Error(`AfterSalesRequest #${id} not found after save`);
     }
 
     // ===== Admin Operations =====

@@ -165,7 +165,7 @@ let AfterSalesService = class AfterSalesService {
         request.channels = [ctx.channel];
         const saved = await repo.save(request);
         core_1.Logger.info(`After-sales request ${saved.id} created by customer ${ctx.activeUserId}`, constants_1.loggerCtx);
-        return saved;
+        return this.hydrate(ctx, saved.id);
     }
     async cancelRequest(ctx, id) {
         const repo = this.connection.getRepository(ctx, after_sales_request_entity_1.AfterSalesRequest);
@@ -176,7 +176,8 @@ let AfterSalesService = class AfterSalesService {
             throw new Error(`Cannot cancel request in state: ${request.state}`);
         }
         request.state = 'Closed';
-        return repo.save(request);
+        const saved = await repo.save(request);
+        return this.hydrate(ctx, saved.id);
     }
     async updateReturnTracking(ctx, id, trackingNo, carrier) {
         const repo = this.connection.getRepository(ctx, after_sales_request_entity_1.AfterSalesRequest);
@@ -189,7 +190,24 @@ let AfterSalesService = class AfterSalesService {
         request.returnTrackingNo = trackingNo;
         request.returnCarrier = carrier;
         request.state = 'Returning';
-        return repo.save(request);
+        const saved = await repo.save(request);
+        return this.hydrate(ctx, saved.id);
+    }
+    /**
+     * Mutation 保存后重新加载并返回带关系（order/orderLine）的实体。
+     * 直接 repo.save() 返回的实体关系未加载，Shop SDL 中 `order: Order!` 非空字段会被自动关系解析取到 null，
+     * 触发 "Cannot return null for non-nullable field AfterSalesRequest.order"。
+     */
+    async hydrate(ctx, id) {
+        const repo = this.connection.getRepository(ctx, after_sales_request_entity_1.AfterSalesRequest);
+        const full = await repo.findOne({
+            where: { id: id },
+            relations: { order: true, orderLine: true, channels: true },
+        });
+        if (full) {
+            return full;
+        }
+        throw new Error(`AfterSalesRequest #${id} not found after save`);
     }
     // ===== Admin Operations =====
     async approveRequest(ctx, id) {

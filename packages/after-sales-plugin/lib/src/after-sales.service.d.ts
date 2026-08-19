@@ -26,6 +26,12 @@ export declare class AfterSalesService {
     }): Promise<AfterSalesRequest>;
     cancelRequest(ctx: RequestContext, id: ID): Promise<AfterSalesRequest>;
     updateReturnTracking(ctx: RequestContext, id: ID, trackingNo: string, carrier: string): Promise<AfterSalesRequest>;
+    /**
+     * Mutation 保存后重新加载并返回带关系（order/orderLine）的实体。
+     * 直接 repo.save() 返回的实体关系未加载，Shop SDL 中 `order: Order!` 非空字段会被自动关系解析取到 null，
+     * 触发 "Cannot return null for non-nullable field AfterSalesRequest.order"。
+     */
+    private hydrate;
     approveRequest(ctx: RequestContext, id: ID): Promise<AfterSalesRequest>;
     rejectRequest(ctx: RequestContext, id: ID, reason: string): Promise<AfterSalesRequest>;
     /**
