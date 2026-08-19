@@ -26,6 +26,9 @@ const matrix_stock_location_strategy_1 = require("./matrix-stock-location-strate
 const logistics_track_entity_1 = require("./logistics-track.entity");
 const logistics_service_1 = require("./logistics.service");
 const logistics_admin_resolver_1 = require("./logistics-admin.resolver");
+const auto_split_plan_service_1 = require("./auto-split-plan.service");
+const manual_split_adjust_service_1 = require("./manual-split-adjust.service");
+const split_admin_resolver_1 = require("./split-admin.resolver");
 /** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
 function mergeCustomFields(existingFields, additions) {
     const names = new Set((existingFields !== null && existingFields !== void 0 ? existingFields : []).map(f => f.name));
@@ -75,12 +78,20 @@ const adminSchema = () => gql `
         logisticsTracks(orderId: ID!): [LogisticsTrack!]!
         logisticsTrack(id: ID!): LogisticsTrack
         carriers: [Carrier!]!
+        splitPlanPreview(orderId: ID!): OrderSplitPlan!
     }
 
     extend type Mutation {
         batchCreateFulfillment(items: [BatchFulfillmentItem!]!): BatchFulfillmentResult!
         refreshTrack(id: ID!): LogisticsTrack!
+        confirmSplitPlan(orderId: ID!, packages: [SplitPackageInput!]!): OrderSplitPlan!
     }
+
+    input SplitLineInput { orderLineId: ID!, quantity: Int! }
+    input SplitPackageInput { stockLocationId: ID!, lines: [SplitLineInput!]! }
+    type SplitLine { orderLineId: ID!, quantity: Int! }
+    type SplitPackage { packageId: String!, stockLocationId: ID!, lines: [SplitLine!]!, estimatedShippingFee: Float!, deliveryMode: String! }
+    type OrderSplitPlan { orderId: ID!, packages: [SplitPackage!]! }
 `;
 const shopSchema = () => gql `
     type LogisticsTrackShop {
@@ -100,9 +111,11 @@ const shopSchema = () => gql `
     }
 `;
 let LogisticsPlugin = LogisticsPlugin_1 = class LogisticsPlugin {
-    constructor(options, logisticsService, moduleRef) {
+    constructor(options, logisticsService, autoSplit, manualSplit, moduleRef) {
         this.options = options;
         this.logisticsService = logisticsService;
+        this.autoSplit = autoSplit;
+        this.manualSplit = manualSplit;
         this.moduleRef = moduleRef;
     }
     static init(options) {
@@ -112,6 +125,8 @@ let LogisticsPlugin = LogisticsPlugin_1 = class LogisticsPlugin {
     async onApplicationBootstrap() {
         this.injector = new core_2.Injector(this.moduleRef);
         this.logisticsService.init(this.injector);
+        this.autoSplit.init(this.injector);
+        this.manualSplit.init(this.injector);
         core_2.Logger.info('LogisticsPlugin initialized', constants_1.loggerCtx);
     }
 };
@@ -124,10 +139,12 @@ exports.LogisticsPlugin = LogisticsPlugin = LogisticsPlugin_1 = __decorate([
         providers: [
             { provide: constants_1.LOGISTICS_PLUGIN_OPTIONS, useFactory: () => LogisticsPlugin.options },
             logistics_service_1.LogisticsService,
+            auto_split_plan_service_1.AutoSplitPlanService,
+            manual_split_adjust_service_1.ManualSplitAdjustService,
         ],
         adminApiExtensions: {
             schema: adminSchema,
-            resolvers: [logistics_admin_resolver_1.LogisticsAdminResolver],
+            resolvers: [logistics_admin_resolver_1.LogisticsAdminResolver, split_admin_resolver_1.SplitAdminResolver],
         },
         shopApiExtensions: {
             schema: shopSchema,
@@ -150,6 +167,8 @@ exports.LogisticsPlugin = LogisticsPlugin = LogisticsPlugin_1 = __decorate([
     }),
     __param(0, (0, common_1.Inject)(constants_1.LOGISTICS_PLUGIN_OPTIONS)),
     __metadata("design:paramtypes", [Object, logistics_service_1.LogisticsService,
+        auto_split_plan_service_1.AutoSplitPlanService,
+        manual_split_adjust_service_1.ManualSplitAdjustService,
         core_1.ModuleRef])
 ], LogisticsPlugin);
 //# sourceMappingURL=plugin.js.map

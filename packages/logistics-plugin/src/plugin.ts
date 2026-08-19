@@ -12,6 +12,9 @@ import { MatrixStockLocationStrategy } from './matrix-stock-location-strategy';
 import { LogisticsTrack } from './logistics-track.entity';
 import { LogisticsService } from './logistics.service';
 import { LogisticsAdminResolver } from './logistics-admin.resolver';
+import { AutoSplitPlanService } from './auto-split-plan.service';
+import { ManualSplitAdjustService } from './manual-split-adjust.service';
+import { SplitAdminResolver } from './split-admin.resolver';
 
 /** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
 function mergeCustomFields<T extends { name: string }>(
@@ -67,12 +70,20 @@ const adminSchema = () => gql`
         logisticsTracks(orderId: ID!): [LogisticsTrack!]!
         logisticsTrack(id: ID!): LogisticsTrack
         carriers: [Carrier!]!
+        splitPlanPreview(orderId: ID!): OrderSplitPlan!
     }
 
     extend type Mutation {
         batchCreateFulfillment(items: [BatchFulfillmentItem!]!): BatchFulfillmentResult!
         refreshTrack(id: ID!): LogisticsTrack!
+        confirmSplitPlan(orderId: ID!, packages: [SplitPackageInput!]!): OrderSplitPlan!
     }
+
+    input SplitLineInput { orderLineId: ID!, quantity: Int! }
+    input SplitPackageInput { stockLocationId: ID!, lines: [SplitLineInput!]! }
+    type SplitLine { orderLineId: ID!, quantity: Int! }
+    type SplitPackage { packageId: String!, stockLocationId: ID!, lines: [SplitLine!]!, estimatedShippingFee: Float!, deliveryMode: String! }
+    type OrderSplitPlan { orderId: ID!, packages: [SplitPackage!]! }
 `;
 
 const shopSchema = () => gql`
@@ -99,10 +110,12 @@ const shopSchema = () => gql`
     providers: [
         { provide: LOGISTICS_PLUGIN_OPTIONS, useFactory: () => LogisticsPlugin.options },
         LogisticsService,
+        AutoSplitPlanService,
+        ManualSplitAdjustService,
     ],
     adminApiExtensions: {
         schema: adminSchema,
-        resolvers: [LogisticsAdminResolver],
+        resolvers: [LogisticsAdminResolver, SplitAdminResolver],
     },
     shopApiExtensions: {
         schema: shopSchema,
@@ -130,6 +143,8 @@ export class LogisticsPlugin implements OnApplicationBootstrap {
     constructor(
         @Inject(LOGISTICS_PLUGIN_OPTIONS) private options: LogisticsPluginOptions,
         private logisticsService: LogisticsService,
+        private autoSplit: AutoSplitPlanService,
+        private manualSplit: ManualSplitAdjustService,
         private moduleRef: ModuleRef,
     ) {}
 
@@ -141,6 +156,8 @@ export class LogisticsPlugin implements OnApplicationBootstrap {
     async onApplicationBootstrap(): Promise<void> {
         this.injector = new Injector(this.moduleRef);
         this.logisticsService.init(this.injector);
+        this.autoSplit.init(this.injector);
+        this.manualSplit.init(this.injector);
         Logger.info('LogisticsPlugin initialized', loggerCtx);
     }
 }
