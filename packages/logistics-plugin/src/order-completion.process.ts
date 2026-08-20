@@ -15,5 +15,6 @@ declare module '@vendure/core' {
 export const orderCompletionProcess: OrderProcess<any> = {
     transitions: {
         Delivered: { to: ['Cancelled', 'Completed'] },
+        Completed: { to: [] }, // 终态：不可回退
     },
 };
