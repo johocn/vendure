@@ -3,9 +3,12 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ChannelStockAllocationStrategy = void 0;
 class ChannelStockAllocationStrategy {
     shouldAllocateStock(_ctx, _fromState, toState) {
-        // 下单（进入 ArrangingPayment）即分配库存；但订单取消（进入 Cancelled）时
-        // 不得再次分配，否则会抵消 cancelOrder 流程中的 RELEASE，导致库存永久泄漏。
-        return toState !== 'Cancelled';
+        // 下单（进入 ArrangingPayment）即分配库存，且只在进入 ArrangingPayment 时分配一次。
+        // 注意：不能对所有非 Cancelled 转换都返回 true —— 否则订单后续每次状态转换
+        // （如 ArrangingPayment → PaymentSettled）都会再次 createAllocationsForOrder，
+        // 产生重复 Allocation 记录，污染售后回补按 Allocation 分组的仓间比例。
+        // 进入 Cancelled 时同样不分配，避免抵消 cancelOrder 流程中的 RELEASE。
+        return toState === 'ArrangingPayment';
     }
     async allocateFromStockLocation(ctx, stockLocations, _item) {
         var _a;
