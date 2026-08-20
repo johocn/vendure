@@ -25,6 +25,8 @@ export declare class OrderPackageService {
     linkDeliveryOrder(ctx: RequestContext, orderId: ID, packageId: string, deliveryOrderId: ID): Promise<boolean>;
     /** 订单级包裹查询（按包号排序） */
     findByOrder(ctx: RequestContext, orderId: ID): Promise<OrderPackage[]>;
+    /** 按订单+包号查询单个包裹（供 batchCreateFulfillment 按包行过滤复用） */
+    findByOrderAndCode(ctx: RequestContext, orderId: ID, code: string): Promise<OrderPackage | null>;
     /** 状态流转：幂等（同状态返回 true）、非法流转告警忽略、未命中告警返回 false；不抛错不阻断主链路 */
     transition(ctx: RequestContext, orderId: ID, packageId: string, toStatus: OrderPackageStatus): Promise<boolean>;
     /** C端查询：本人订单包裹列表（按包号排序），返回可直接渲染的富化结果 */

@@ -134,6 +134,13 @@ export class OrderPackageService {
         });
     }
 
+    /** 按订单+包号查询单个包裹（供 batchCreateFulfillment 按包行过滤复用） */
+    async findByOrderAndCode(ctx: RequestContext, orderId: ID, code: string): Promise<OrderPackage | null> {
+        return this.connection.getRepository(ctx, OrderPackage).findOne({
+            where: { orderId: orderId as any, code } as any,
+        });
+    }
+
     /** 状态流转：幂等（同状态返回 true）、非法流转告警忽略、未命中告警返回 false；不抛错不阻断主链路 */
     async transition(ctx: RequestContext, orderId: ID, packageId: string, toStatus: OrderPackageStatus): Promise<boolean> {
         const repo = this.connection.getRepository(ctx, OrderPackage);

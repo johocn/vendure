@@ -101,6 +101,12 @@ let OrderPackageService = class OrderPackageService {
             order: { code: 'ASC' },
         });
     }
+    /** 按订单+包号查询单个包裹（供 batchCreateFulfillment 按包行过滤复用） */
+    async findByOrderAndCode(ctx, orderId, code) {
+        return this.connection.getRepository(ctx, order_package_entity_1.OrderPackage).findOne({
+            where: { orderId: orderId, code },
+        });
+    }
     /** 状态流转：幂等（同状态返回 true）、非法流转告警忽略、未命中告警返回 false；不抛错不阻断主链路 */
     async transition(ctx, orderId, packageId, toStatus) {
         const repo = this.connection.getRepository(ctx, order_package_entity_1.OrderPackage);
