@@ -40,6 +40,10 @@ let SplitAdminResolver = class SplitAdminResolver {
             deliveryMode: p.deliveryMode,
             fulfillmentId: p.fulfillmentId,
             deliveryOrderId: p.deliveryOrderId,
+            status: p.status,
+            shippedAt: p.shippedAt,
+            deliveredAt: p.deliveredAt,
+            cancelledAt: p.cancelledAt,
             createdAt: p.createdAt,
             updatedAt: p.updatedAt,
         }));
@@ -55,6 +59,10 @@ let SplitAdminResolver = class SplitAdminResolver {
             deliveryMode: p.deliveryMode,
         })));
         return plan;
+    }
+    /** self 包人工送达确认：OrderPackage shipped→delivered（幂等；非法状态返回 false） */
+    async markPackageDelivered(ctx, orderId, packageId) {
+        return this.orderPackageService.transition(ctx, orderId, packageId, 'delivered');
     }
 };
 exports.SplitAdminResolver = SplitAdminResolver;
@@ -86,6 +94,16 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, String, Array]),
     __metadata("design:returntype", Promise)
 ], SplitAdminResolver.prototype, "confirmSplitPlan", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __param(2, (0, graphql_1.Args)('packageId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, String]),
+    __metadata("design:returntype", Promise)
+], SplitAdminResolver.prototype, "markPackageDelivered", null);
 exports.SplitAdminResolver = SplitAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [auto_split_plan_service_1.AutoSplitPlanService,

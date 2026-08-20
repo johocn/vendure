@@ -96,6 +96,7 @@ const adminSchema = () => gql`
         batchCreateFulfillment(items: [BatchFulfillmentItem!]!): BatchFulfillmentResult!
         refreshTrack(id: ID!): LogisticsTrack!
         confirmSplitPlan(orderId: ID!, packages: [SplitPackageInput!]!): OrderSplitPlan!
+        markPackageDelivered(orderId: ID!, packageId: String!): Boolean!
     }
 
     input SplitLineInput { orderLineId: ID!, quantity: Int! }
@@ -114,6 +115,10 @@ const adminSchema = () => gql`
         deliveryMode: String!
         fulfillmentId: ID
         deliveryOrderId: ID
+        status: String!
+        shippedAt: DateTime
+        deliveredAt: DateTime
+        cancelledAt: DateTime
         createdAt: DateTime!
         updatedAt: DateTime!
     }

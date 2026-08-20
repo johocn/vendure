@@ -20,6 +20,10 @@ export declare class SplitAdminResolver {
         deliveryMode: string;
         fulfillmentId: import("@vendure/core").ID | null;
         deliveryOrderId: import("@vendure/core").ID | null;
+        status: import("./order-package.entity").OrderPackageStatus;
+        shippedAt: Date | null;
+        deliveredAt: Date | null;
+        cancelledAt: Date | null;
         createdAt: Date;
         updatedAt: Date;
     }[]>;
@@ -27,4 +31,6 @@ export declare class SplitAdminResolver {
         stockLocationId: string;
         lines: SplitLine[];
     }>): Promise<OrderSplitPlan>;
+    /** self 包人工送达确认：OrderPackage shipped→delivered（幂等；非法状态返回 false） */
+    markPackageDelivered(ctx: RequestContext, orderId: string, packageId: string): Promise<boolean>;
 }

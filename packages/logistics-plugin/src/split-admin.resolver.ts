@@ -35,6 +35,10 @@ export class SplitAdminResolver {
             deliveryMode: p.deliveryMode,
             fulfillmentId: p.fulfillmentId,
             deliveryOrderId: p.deliveryOrderId,
+            status: p.status,
+            shippedAt: p.shippedAt,
+            deliveredAt: p.deliveredAt,
+            cancelledAt: p.cancelledAt,
             createdAt: p.createdAt,
             updatedAt: p.updatedAt,
         }));
@@ -61,5 +65,16 @@ export class SplitAdminResolver {
             })),
         );
         return plan;
+    }
+
+    /** self 包人工送达确认：OrderPackage shipped→delivered（幂等；非法状态返回 false） */
+    @Mutation()
+    @Allow(Permission.UpdateOrder)
+    async markPackageDelivered(
+        @Ctx() ctx: RequestContext,
+        @Args('orderId') orderId: string,
+        @Args('packageId') packageId: string,
+    ): Promise<boolean> {
+        return this.orderPackageService.transition(ctx, orderId, packageId, 'delivered');
     }
 }
