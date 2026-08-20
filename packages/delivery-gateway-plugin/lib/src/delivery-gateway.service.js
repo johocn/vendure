@@ -12,8 +12,10 @@ const core_1 = require("@vendure/core");
 const delivery_order_entity_1 = require("./delivery-order.entity");
 const constants_1 = require("./constants");
 const TRANSITIONS = {
-    pending: ['accepted', 'cancelled', 'exception'],
-    accepted: ['pickup', 'cancelled', 'exception'],
+    // 允许向前跳档：达达等真实平台回调可能跳过中间态（如 accepted 直接 delivered）；
+    // 终态（delivered/cancelled）锁定不可再流转；非终态可随时取消/异常。
+    pending: ['accepted', 'pickup', 'delivered', 'cancelled', 'exception'],
+    accepted: ['pickup', 'delivered', 'cancelled', 'exception'],
     pickup: ['delivered', 'cancelled', 'exception'],
     delivered: [],
     cancelled: [],
@@ -104,9 +106,15 @@ let DeliveryGatewayService = class DeliveryGatewayService {
     async applyStatusEvent(ctx, event) {
         var _a, _b, _c, _d;
         const repo = this.connection.getRepository(ctx, delivery_order_entity_1.DeliveryOrder);
-        const delivery = await repo.findOne({
+        let delivery = await repo.findOne({
             where: { code: event.deliveryOrderNo },
         });
+        // 兜底：达达回调可能仅含 client_id（达达单号=thirdPartyNo），按 thirdPartyNo 二次定位
+        if (!delivery && event.deliveryOrderNo) {
+            delivery = await repo.findOne({
+                where: { thirdPartyNo: event.deliveryOrderNo },
+            });
+        }
         if (!delivery) {
             throw new Error(`配送单不存在: ${event.deliveryOrderNo}`);
         }

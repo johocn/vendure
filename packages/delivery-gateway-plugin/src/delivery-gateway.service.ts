@@ -5,8 +5,10 @@ import { DeliveryProvider, DeliveryStatus, DeliveryStatusEvent } from './deliver
 import { loggerCtx } from './constants';
 
 const TRANSITIONS: Record<DeliveryStatus, DeliveryStatus[]> = {
-    pending: ['accepted', 'cancelled', 'exception'],
-    accepted: ['pickup', 'cancelled', 'exception'],
+    // 允许向前跳档：达达等真实平台回调可能跳过中间态（如 accepted 直接 delivered）；
+    // 终态（delivered/cancelled）锁定不可再流转；非终态可随时取消/异常。
+    pending: ['accepted', 'pickup', 'delivered', 'cancelled', 'exception'],
+    accepted: ['pickup', 'delivered', 'cancelled', 'exception'],
     pickup: ['delivered', 'cancelled', 'exception'],
     delivered: [],
     cancelled: [],
@@ -106,9 +108,15 @@ export class DeliveryGatewayService {
     /** 处理平台回写（webhook 或 Mock 模拟），驱动状态机 */
     async applyStatusEvent(ctx: RequestContext, event: DeliveryStatusEvent): Promise<DeliveryOrder> {
         const repo = this.connection.getRepository(ctx, DeliveryOrder);
-        const delivery = await repo.findOne({
+        let delivery = await repo.findOne({
             where: { code: event.deliveryOrderNo } as any,
         });
+        // 兜底：达达回调可能仅含 client_id（达达单号=thirdPartyNo），按 thirdPartyNo 二次定位
+        if (!delivery && event.deliveryOrderNo) {
+            delivery = await repo.findOne({
+                where: { thirdPartyNo: event.deliveryOrderNo } as any,
+            });
+        }
         if (!delivery) {
             throw new Error(`配送单不存在: ${event.deliveryOrderNo}`);
         }

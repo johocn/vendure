@@ -388,7 +388,18 @@ export const devConfig: VendureConfig = {
         // 最后注册的 MatrixStockLocationStrategy（单一全局矩阵）需覆盖 Marketplace 的组合策略。
         LogisticsPlugin.init(),
         // 同城配送抽象网关：Provider 注册表 + Mock 配送商，必须在 LogisticsPlugin 之后注册（Task5）
-        DeliveryGatewayPlugin.init(),
+        DeliveryGatewayPlugin.init({
+            // 达达凭据：默认占位（dev 骨架），生产用环境变量注入；凭据不落 git。
+            // 配置了 DADA_APP_KEY 即注册 DadaProvider；否则回退 mock provider。
+            dada: {
+                appKey: process.env.DADA_APP_KEY || 'dev-dada-app-key',
+                appSecret: process.env.DADA_APP_SECRET || 'dev-dada-app-secret',
+                shopNo: process.env.DADA_SHOP_NO || 'dev-dada-shop-no',
+                sourceId: process.env.DADA_SOURCE_ID || 'dev-dada-source',
+                environment: (process.env.DADA_ENV as 'sandbox' | 'production') || 'sandbox',
+                callbackUrl: process.env.DADA_CALLBACK_URL || 'http://127.0.0.1:3000/delivery-gateway/dada/webhook',
+            },
+        }),
         CustomerServicePlugin.init(),
         InventoryPlugin.init(),
         OperationsPlugin.init(),

@@ -6,6 +6,8 @@ import { DeliveryOrder } from './delivery-order.entity';
 import { DeliveryGatewayService } from './delivery-gateway.service';
 import { MockDeliveryProvider } from './mock-delivery-provider';
 import { MockAdminResolver } from './mock-admin.resolver';
+import { DadaDeliveryProvider } from './dada-delivery-provider';
+import { DadaWebhookController } from './dada-webhook.controller';
 
 const { gql } = require('graphql-tag');
 
@@ -62,6 +64,7 @@ const adminSchema = () => gql`
 
 @VendurePlugin({
     imports: [PluginCommonModule],
+    controllers: [DadaWebhookController],
     entities: [DeliveryOrder],
     providers: [
         { provide: DELIVERY_GATEWAY_OPTIONS, useFactory: () => DeliveryGatewayPlugin.options },
@@ -94,6 +97,21 @@ export class DeliveryGatewayPlugin {
         this.injector = new Injector(this.moduleRef);
         this.deliveryGateway.init(this.injector);
         this.deliveryGateway.registerProvider(new MockDeliveryProvider());
+        const dada = (DeliveryGatewayPlugin.options.dada ?? {}) as Record<string, unknown>;
+        if (dada?.appKey) {
+            this.deliveryGateway.registerProvider(
+                new DadaDeliveryProvider({
+                    appKey: String(dada.appKey),
+                    appSecret: String(dada.appSecret ?? ''),
+                    shopNo: String(dada.shopNo ?? ''),
+                    sourceId: dada.sourceId ? String(dada.sourceId) : undefined,
+                    environment: dada.environment === 'production' ? 'production' : 'sandbox',
+                    callbackUrl: String(dada.callbackUrl ?? ''),
+                }),
+            );
+        } else {
+            Logger.warn('未配置达达凭据（dada.appKey），跳过 DadaDeliveryProvider 注册', loggerCtx);
+        }
         Logger.info('DeliveryGatewayPlugin initialized (MockProvider 已注册)', loggerCtx);
     }
 }

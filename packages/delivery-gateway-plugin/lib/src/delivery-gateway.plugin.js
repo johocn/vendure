@@ -22,6 +22,8 @@ const delivery_order_entity_1 = require("./delivery-order.entity");
 const delivery_gateway_service_1 = require("./delivery-gateway.service");
 const mock_delivery_provider_1 = require("./mock-delivery-provider");
 const mock_admin_resolver_1 = require("./mock-admin.resolver");
+const dada_delivery_provider_1 = require("./dada-delivery-provider");
+const dada_webhook_controller_1 = require("./dada-webhook.controller");
 const { gql } = require('graphql-tag');
 const DELIVERY_GATEWAY_OPTIONS = 'DELIVERY_GATEWAY_OPTIONS';
 const adminSchema = () => gql `
@@ -83,9 +85,24 @@ let DeliveryGatewayPlugin = DeliveryGatewayPlugin_1 = class DeliveryGatewayPlugi
         return DeliveryGatewayPlugin_1;
     }
     async onApplicationBootstrap() {
+        var _a, _b, _c, _d;
         this.injector = new core_2.Injector(this.moduleRef);
         this.deliveryGateway.init(this.injector);
         this.deliveryGateway.registerProvider(new mock_delivery_provider_1.MockDeliveryProvider());
+        const dada = ((_a = DeliveryGatewayPlugin_1.options.dada) !== null && _a !== void 0 ? _a : {});
+        if (dada === null || dada === void 0 ? void 0 : dada.appKey) {
+            this.deliveryGateway.registerProvider(new dada_delivery_provider_1.DadaDeliveryProvider({
+                appKey: String(dada.appKey),
+                appSecret: String((_b = dada.appSecret) !== null && _b !== void 0 ? _b : ''),
+                shopNo: String((_c = dada.shopNo) !== null && _c !== void 0 ? _c : ''),
+                sourceId: dada.sourceId ? String(dada.sourceId) : undefined,
+                environment: dada.environment === 'production' ? 'production' : 'sandbox',
+                callbackUrl: String((_d = dada.callbackUrl) !== null && _d !== void 0 ? _d : ''),
+            }));
+        }
+        else {
+            core_2.Logger.warn('未配置达达凭据（dada.appKey），跳过 DadaDeliveryProvider 注册', constants_1.loggerCtx);
+        }
         core_2.Logger.info('DeliveryGatewayPlugin initialized (MockProvider 已注册)', constants_1.loggerCtx);
     }
 };
@@ -94,6 +111,7 @@ DeliveryGatewayPlugin.options = {};
 exports.DeliveryGatewayPlugin = DeliveryGatewayPlugin = DeliveryGatewayPlugin_1 = __decorate([
     (0, core_2.VendurePlugin)({
         imports: [core_2.PluginCommonModule],
+        controllers: [dada_webhook_controller_1.DadaWebhookController],
         entities: [delivery_order_entity_1.DeliveryOrder],
         providers: [
             { provide: DELIVERY_GATEWAY_OPTIONS, useFactory: () => DeliveryGatewayPlugin.options },
