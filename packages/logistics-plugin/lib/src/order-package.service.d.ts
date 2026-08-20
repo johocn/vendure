@@ -42,6 +42,8 @@ export declare class OrderPackageService {
     reconcileOrderState(ctx: RequestContext, orderId: ID): Promise<void>;
     /** 订单首次进入 Delivered 时写 fulfillmentDeliveredAt（自动交易完成的扫描基准；已写过则跳过） */
     markDeliveredAt(ctx: RequestContext, orderId: ID): Promise<void>;
+    /** 订单进入 Completed（确认收货/自动完成/手动完成）落 fulfillmentCompletedAt，作为售后期计时起点（已写过则跳过） */
+    markCompletedAt(ctx: RequestContext, orderId: ID): Promise<void>;
     /** self 包 fulfillment 镜像：包裹 shipped/delivered 时同步 fulfillment 状态（core 一致性，失败仅告警） */
     mirrorFulfillment(ctx: RequestContext, pkg: OrderPackage, toStatus: 'shipped' | 'delivered'): Promise<void>;
     /**
@@ -54,9 +56,9 @@ export declare class OrderPackageService {
         code: string;
         deliveryMode: string;
         status: string;
-        shippedAt: Date | null;
-        deliveredAt: Date | null;
-        cancelledAt: Date | null;
+        shippedAt: Date | undefined;
+        deliveredAt: Date | undefined;
+        cancelledAt: Date | undefined;
         shippingFee: number | null;
         lines: Array<{
             orderLineId: ID;

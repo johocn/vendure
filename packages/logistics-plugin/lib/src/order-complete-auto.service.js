@@ -70,7 +70,7 @@ let OrderCompleteAutoService = class OrderCompleteAutoService {
     }
     /** 扫描并自动完成；返回本次完成订单数 */
     async runAutoCompleteScan(ctx, now = new Date()) {
-        var _a, _b, _c, _d, _e, _f;
+        var _a, _b, _c, _d, _e, _f, _g;
         if (!this.orderService || !this.injector)
             return 0;
         const connection = this.injector.get(core_1.TransactionalConnection);
@@ -94,8 +94,12 @@ let OrderCompleteAutoService = class OrderCompleteAutoService {
                 continue;
             const result = await this.orderService.transitionToState(ctx, order.id, 'Completed');
             if (!(0, core_1.isGraphQlErrorResult)(result)) {
+                // 落交易完成时间（售后期计时起点；已写过则跳过）
+                if (!((_f = order.customFields) === null || _f === void 0 ? void 0 : _f.fulfillmentCompletedAt)) {
+                    await this.orderService.updateCustomFields(ctx, order.id, { fulfillmentCompletedAt: new Date() });
+                }
                 done++;
-                core_1.Logger.info(`自动交易完成 order#${(_f = order.code) !== null && _f !== void 0 ? _f : order.id}`, constants_1.loggerCtx);
+                core_1.Logger.info(`自动交易完成 order#${(_g = order.code) !== null && _g !== void 0 ? _g : order.id}`, constants_1.loggerCtx);
             }
         }
         if (done > 0) {

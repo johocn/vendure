@@ -43,6 +43,19 @@ export declare class AfterSalesService {
     confirmReceive(ctx: RequestContext, id: ID, receivedQuantity?: number): Promise<AfterSalesRequest>;
     processRefund(ctx: RequestContext, id: ID): Promise<AfterSalesRequest>;
     /**
+     * 退款失败后重试：仅 RefundFailed 允许；复用 executeRefund 退款核心。
+     */
+    retryRefund(ctx: RequestContext, id: ID): Promise<AfterSalesRequest>;
+    /**
+     * 退款核心：调用 orderService.refundOrder 创建原生 Refund；若支付处理器将 Refund 停在 Pending
+     * （真实网关异步对账场景），则再调 settleRefund 推进到 Settled 终态。
+     * 仅当 Refund 达 Settled 才把售后单置 Refunded 并落账；失败则置 RefundFailed（留 refundError，可重试）。
+     * 杜绝"已标退款但钱从未退回"的假退款脏数据。
+     */
+    private executeRefund;
+    /** 幂等地把售后单置为 RefundFailed（不入事务，供 catch 兜底），避免异常路径留下半成品脏数据 */
+    private applyRefundFailed;
+    /**
      * 回写 Order customFields.afterSalesStatus。失败仅告警，不影响主流程。
      */
     private updateOrderAfterSalesStatus;

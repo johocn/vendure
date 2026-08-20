@@ -19,6 +19,14 @@ export declare class AfterSalesRequest extends VendureEntity implements ChannelA
     returnTrackingNo: string | null;
     returnCarrier: string | null;
     rejectReason: string | null;
+    /** 支付网关退款流水号（退款成功后落） */
+    refundTransactionId: string | null;
+    /** 实际退款到账金额（退款成功后落） */
+    actualRefundAmount: number | null;
+    /** 退款完成时间（Refund 达 Settled 时落） */
+    refundedAt?: Date;
+    /** 退款失败原因（RefundFailed 留痕，重试成功前保留） */
+    refundError: string | null;
     customer: Customer;
     customerId: number;
     channels: Channel[];

@@ -89,10 +89,15 @@ export class SplitAdminResolver {
     async completeOrder(@Ctx() ctx: RequestContext, @Args('orderId') orderId: string): Promise<boolean> {
         const order = await this.orderService.findOne(ctx, orderId);
         if (!order) return false;
-        if (order.state === 'Completed') return true; // 幂等
+        if (order.state === 'Completed') {
+            await this.orderPackageService.markCompletedAt(ctx, orderId as any); // 幂等补写售后期起点
+            return true; // 幂等
+        }
         if (order.state !== 'Delivered') return false; // 仅 Delivered 可确认收货
         const result = await this.orderService.transitionToState(ctx, orderId, 'Completed' as any);
-        return !isGraphQlErrorResult(result);
+        if (isGraphQlErrorResult(result)) return false;
+        await this.orderPackageService.markCompletedAt(ctx, orderId as any); // 落交易完成时间（售后期计时起点）
+        return true;
     }
 
     /** 手动触发自动交易完成扫描，返回本次完成订单数（运营/e2e 用） */

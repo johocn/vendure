@@ -3,6 +3,7 @@ import { Not } from 'typeorm';
 import {
     ID,
     Injector,
+    isGraphQlErrorResult,
     ListQueryBuilder,
     ListQueryOptions,
     OrderService,
@@ -134,17 +135,21 @@ export class AfterSalesService {
             throw new ForbiddenError();
         }
 
-        // 2. 校验订单状态（必须 Shipped/Delivered/PartialDelivery/Cancelled 才能售后）
-        const allowedStates = ['Shipped', 'Delivered', 'PartiallyDelivered', 'Cancelled'];
+        // 2. 校验订单状态（必须 Shipped/Delivered/PartiallyDelivered/Completed/Cancelled 才能售后）
+        const allowedStates = ['Shipped', 'Delivered', 'PartiallyDelivered', 'Completed', 'Cancelled'];
         if (!allowedStates.includes(order.state)) {
             throw new UserInputError(
                 `Cannot create after-sales: order state must be one of ${allowedStates.join('/')}, got ${order.state}`,
             );
         }
 
-        // 3. 售后期窗口校验（默认 7 天无理由 + 15 天质量问题 = 22 天上限）
+        // 3. 售后期窗口校验（默认 7 天无理由 + 15 天质量问题 = 22 天上限）。
+        // 计时起点优先取交易完成时间 fulfillmentCompletedAt（阶段10 确认收货/自动完成落库），
+        // 其次首次送达 fulfillmentDeliveredAt，最后回退订单 updatedAt。
         const maxDays = this.options?.maxDaysAfterDelivery ?? 7;
-        const orderDate = order.updatedAt || order.createdAt;
+        const completedAt = (order.customFields as any)?.fulfillmentCompletedAt;
+        const deliveredAt = (order.customFields as any)?.fulfillmentDeliveredAt;
+        const orderDate = completedAt || deliveredAt || order.updatedAt || order.createdAt;
         const daysSince = (Date.now() - orderDate.getTime()) / (1000 * 60 * 60 * 24);
         if (daysSince > maxDays + 15) {
             throw new UserInputError(`Cannot create after-sales: exceeded ${maxDays + 15} days limit`);
@@ -342,38 +347,126 @@ export class AfterSalesService {
         if (request.state !== 'Received') {
             throw new UserInputError('Cannot refund: request must be in Received state');
         }
+        return this.executeRefund(ctx, request);
+    }
 
-        const payments = (request.order as any)?.payments as Array<{ id: ID }> | undefined;
+    /**
+     * 退款失败后重试：仅 RefundFailed 允许；复用 executeRefund 退款核心。
+     */
+    async retryRefund(ctx: RequestContext, id: ID): Promise<AfterSalesRequest> {
+        if (!this.orderService) {
+            throw new Error('OrderService not initialized');
+        }
+        const repo = this.connection.getRepository(ctx, AfterSalesRequest);
+        const request = await repo.findOne({
+            where: { id: id as any },
+            relations: ['order', 'order.payments'] as any,
+        });
+        if (!request) {
+            throw new EntityNotFoundError('AfterSalesRequest', id);
+        }
+        if (request.state !== 'RefundFailed') {
+            throw new UserInputError('Cannot retry refund: request must be in RefundFailed state');
+        }
+        return this.executeRefund(ctx, request);
+    }
+
+    /**
+     * 退款核心：调用 orderService.refundOrder 创建原生 Refund；若支付处理器将 Refund 停在 Pending
+     * （真实网关异步对账场景），则再调 settleRefund 推进到 Settled 终态。
+     * 仅当 Refund 达 Settled 才把售后单置 Refunded 并落账；失败则置 RefundFailed（留 refundError，可重试）。
+     * 杜绝"已标退款但钱从未退回"的假退款脏数据。
+     */
+    private async executeRefund(ctx: RequestContext, request: AfterSalesRequest): Promise<AfterSalesRequest> {
+        const payments = (request.order as any)?.payments as Array<{ id: ID; amount: number }> | undefined;
         if (!payments || payments.length === 0) {
             throw new UserInputError(`Cannot refund: no payment found for order ${request.orderId}`);
         }
         const paymentId = payments[0].id;
 
-        // 事务包裹：退款成功后才改状态，避免“已退款但实际未退”脏数据
+        // 事务包裹：退款成功后统一提交（改状态 + 落账 + 回写 order.afterSalesStatus），失败回滚整笔。
         await this.connection.startTransaction(ctx);
         try {
-            // 1. 先调用 refundOrder（实际退款）
-            await this.orderService.refundOrder(ctx, {
+            const repo = this.connection.getRepository(ctx, AfterSalesRequest);
+            const refundResult = await this.orderService!.refundOrder(ctx, {
                 paymentId,
                 amount: request.refundAmount,
                 reason: `After-sales refund #${request.id}`,
+                shipping: 0, // Refund.shipping 为 NOT NULL 列，必须显式置 0
+                adjustment: 0,
             } as any);
-            Logger.info(`Refund processed for after-sales request ${request.id}`, loggerCtx);
 
-            // 2. 退款成功后才改状态
-            request.state = 'Refunded';
-            await repo.save(request);
+            if (isGraphQlErrorResult(refundResult)) {
+                // refundOrder 拒绝（如超额 RefundAmountError）：无实际退款发生，置 RefundFailed 留痕并提交
+                request.state = 'RefundFailed';
+                request.refundError = `refundOrder 拒绝: ${JSON.stringify(refundResult)}`;
+                request.refundedAt = undefined;
+                await repo.save(request);
+                await this.updateOrderAfterSalesStatus(ctx, request.orderId, 'RefundFailed');
+                await this.connection.commitOpenTransaction(ctx);
+                Logger.warn(`after-sales #${request.id} refundOrder 拒绝: ${request.refundError}`, loggerCtx);
+                return this.hydrate(ctx, request.id as any);
+            }
+            const refund = refundResult as any; // Vendure 原生 Refund
 
-            // 3. 回写 Order customFields.afterSalesStatus
-            await this.updateOrderAfterSalesStatus(ctx, request.orderId, 'Refunded');
+            // 若仍停在 Pending（异步对账/需手动落定场景），推进到 Settled 终态
+            if (refund.state === 'Pending') {
+                const settled = await this.orderService!.settleRefund(ctx, {
+                    id: refund.id as ID,
+                    transactionId: refund.transactionId ?? '',
+                } as any);
+                refund.state = settled.state;
+            }
+
+            if (refund.state === 'Settled') {
+                request.refundTransactionId = refund.transactionId || null;
+                request.actualRefundAmount = refund.total != null ? Number(refund.total) : request.refundAmount;
+                request.refundError = null;
+                request.refundedAt = new Date();
+                request.state = 'Refunded';
+                await repo.save(request);
+                await this.updateOrderAfterSalesStatus(ctx, request.orderId, 'Refunded');
+                Logger.info(`Refund settled for after-sales request #${request.id}, tx=${request.refundTransactionId}`, loggerCtx);
+            } else {
+                // Failed 等非成功终态：不抛（调用方可进入 RefundFailed 重试），仅告警与留痕
+                request.state = 'RefundFailed';
+                request.refundError = `退款未达 Settled，当前 ${refund.state}`;
+                request.refundedAt = undefined;
+                await repo.save(request);
+                await this.updateOrderAfterSalesStatus(ctx, request.orderId, 'RefundFailed');
+                Logger.warn(`after-sales #${request.id} 退款终态 ${refund.state}，已置 RefundFailed`, loggerCtx);
+            }
 
             await this.connection.commitOpenTransaction(ctx);
         } catch (e: any) {
             await this.connection.rollBackTransaction(ctx);
-            Logger.error(`Refund failed for after-sales #${id}: ${e.message}`, loggerCtx);
+            if (e instanceof UserInputError && String(e.message).includes('refundOrder')) {
+                // refundOrder 拒绝已留痕 RefundFailed，这里直接抛给调用方
+                throw e;
+            }
+            Logger.error(`Refund failed for after-sales #${request.id}: ${e.message}`, loggerCtx);
+            // 未知异常：置 RefundFailed 以便重试，而非让事务留下半成品
+            await this.applyRefundFailed(ctx, request.id, e.message, false);
             throw e;
         }
-        return request;
+        return this.hydrate(ctx, request.id as any);
+    }
+
+    /** 幂等地把售后单置为 RefundFailed（不入事务，供 catch 兜底），避免异常路径留下半成品脏数据 */
+    private async applyRefundFailed(ctx: RequestContext, idOrRequest: ID | AfterSalesRequest, error: string, inTx: boolean): Promise<void> {
+        try {
+            const repo = this.connection.getRepository(ctx, AfterSalesRequest);
+            const request =
+                typeof idOrRequest === 'object' ? idOrRequest : await repo.findOne({ where: { id: idOrRequest as any } });
+            if (!request || request.state === 'Refunded') return;
+            request.state = 'RefundFailed';
+            request.refundError = error;
+            request.refundedAt = undefined;
+            await repo.save(request);
+            await this.updateOrderAfterSalesStatus(ctx, (request as any).orderId, 'RefundFailed');
+        } catch (inner: any) {
+            Logger.error(`applyRefundFailed 兜底写入失败: ${inner?.message ?? inner}`, loggerCtx);
+        }
     }
 
     /**

@@ -7,9 +7,9 @@ export declare class OrderPackageShopResolver {
         code: string;
         deliveryMode: string;
         status: string;
-        shippedAt: Date | null;
-        deliveredAt: Date | null;
-        cancelledAt: Date | null;
+        shippedAt: Date | undefined;
+        deliveredAt: Date | undefined;
+        cancelledAt: Date | undefined;
         shippingFee: number | null;
         lines: Array<{
             orderLineId: import("@vendure/core").ID;

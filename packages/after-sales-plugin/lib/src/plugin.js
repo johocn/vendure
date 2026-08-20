@@ -54,7 +54,7 @@ exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
         shopApiExtensions: {
             schema: () => gql `
             enum AfterSalesType { return_refund refund_only exchange }
-            enum AfterSalesState { Pending Approved Rejected Returning Received Refunded Closed }
+            enum AfterSalesState { Pending Approved Rejected Returning Received Refunded RefundFailed Closed }
 
             type AfterSalesRequest implements Node {
                 id: ID!
@@ -70,6 +70,10 @@ exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
                 returnCarrier: String
                 rejectReason: String
                 receivedQuantity: Int
+                refundTransactionId: String
+                actualRefundAmount: Int
+                refundedAt: DateTime
+                refundError: String
                 createdAt: DateTime!
                 updatedAt: DateTime!
                 order: Order!
@@ -125,6 +129,10 @@ exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
                 rejectReason: String
                 receivedQuantity: Int
                 restockJson: String
+                refundTransactionId: String
+                actualRefundAmount: Int
+                refundedAt: DateTime
+                refundError: String
                 customerId: ID!
                 createdAt: DateTime!
                 updatedAt: DateTime!
@@ -146,6 +154,7 @@ exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
                 rejectAfterSalesRequest(id: ID!, reason: String!): AfterSalesRequestAdmin!
                 confirmReturnReceived(id: ID!, receivedQuantity: Int): AfterSalesRequestAdmin!
                 processAfterSalesRefund(id: ID!): AfterSalesRequestAdmin!
+                retryAfterSalesRefund(id: ID!): AfterSalesRequestAdmin!
             }
         `,
             resolvers: [after_sales_admin_resolver_1.AfterSalesAdminResolver],

@@ -6,7 +6,8 @@ exports.STATE_TRANSITIONS = {
     Approved: ['Returning', 'Closed'],
     Rejected: [],
     Returning: ['Received', 'Closed'],
-    Received: ['Refunded'],
+    Received: ['Refunded', 'RefundFailed'],
+    RefundFailed: ['Refunded'], // 退款失败后可重试
     Refunded: [],
     Closed: [],
 };

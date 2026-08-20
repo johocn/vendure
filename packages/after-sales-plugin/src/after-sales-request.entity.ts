@@ -56,6 +56,22 @@ export class AfterSalesRequest extends VendureEntity implements ChannelAware {
     @Column({ nullable: true, type: 'text' })
     rejectReason: string | null;
 
+    /** 支付网关退款流水号（退款成功后落） */
+    @Column({ type: 'varchar', nullable: true })
+    refundTransactionId: string | null;
+
+    /** 实际退款到账金额（退款成功后落） */
+    @Column({ type: 'int', nullable: true })
+    actualRefundAmount: number | null;
+
+    /** 退款完成时间（Refund 达 Settled 时落） */
+    @Column({ nullable: true })
+    refundedAt?: Date;
+
+    /** 退款失败原因（RefundFailed 留痕，重试成功前保留） */
+    @Column({ nullable: true, type: 'text' })
+    refundError: string | null;
+
     @ManyToOne(() => Customer)
     customer: Customer;
 

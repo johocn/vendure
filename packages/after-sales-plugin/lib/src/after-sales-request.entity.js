@@ -79,6 +79,22 @@ __decorate([
     __metadata("design:type", Object)
 ], AfterSalesRequest.prototype, "rejectReason", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], AfterSalesRequest.prototype, "refundTransactionId", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', nullable: true }),
+    __metadata("design:type", Object)
+], AfterSalesRequest.prototype, "actualRefundAmount", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Date)
+], AfterSalesRequest.prototype, "refundedAt", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true, type: 'text' }),
+    __metadata("design:type", Object)
+], AfterSalesRequest.prototype, "refundError", void 0);
+__decorate([
     (0, typeorm_1.ManyToOne)(() => core_1.Customer),
     __metadata("design:type", core_1.Customer)
 ], AfterSalesRequest.prototype, "customer", void 0);

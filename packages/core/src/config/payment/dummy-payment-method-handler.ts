@@ -1,6 +1,6 @@
 import { LanguageCode } from '@vendure/common/lib/generated-types';
 
-import { CreatePaymentResult, PaymentMethodHandler } from './payment-method-handler';
+import { CreateRefundResult, CreatePaymentResult, PaymentMethodHandler } from './payment-method-handler';
 
 /**
  * @description
@@ -95,6 +95,15 @@ export const dummyPaymentHandler = new PaymentMethodHandler({
             metadata: {
                 cancellationDate: new Date().toISOString(),
             },
+        };
+    },
+    // 退款：开发环境模拟网关退款成功，返回 Settled 终态 + 流水号，使虚拟订单退款能走到账。
+    // 退款失败（RefundFailed→重试）分支在 after-sales 服务层防御处理，并以单测桩验证。
+    createRefund: async (ctx, input, amount, order, payment, args, method): Promise<CreateRefundResult> => {
+        return {
+            state: 'Settled',
+            transactionId: `refund_${Math.random().toString(36).substr(3)}`,
+            metadata: { simulated: true },
         };
     },
 });

@@ -30,9 +30,9 @@ export class OrderPackage extends VendureEntity {
     /** 包裹状态：待发货/已发货/已送达/配送取消 */
     @Column({ default: 'pending' }) status: OrderPackageStatus;
     /** 发货时间 */
-    @Column({ type: 'timestamp', nullable: true }) shippedAt: Date | null;
+    @Column({ nullable: true }) shippedAt?: Date;
     /** 送达时间 */
-    @Column({ type: 'timestamp', nullable: true }) deliveredAt: Date | null;
+    @Column({ nullable: true }) deliveredAt?: Date;
     /** 取消时间 */
-    @Column({ type: 'timestamp', nullable: true }) cancelledAt: Date | null;
+    @Column({ nullable: true }) cancelledAt?: Date;
 }

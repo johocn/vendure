@@ -13,17 +13,26 @@ import { TEST_SETUP_TIMEOUT_MS, testConfig } from '../../../e2e-common/test-conf
 import { AfterSalesPlugin } from '../src/plugin';
 import { InventoryPlugin } from '@vendure/inventory-plugin';
 import { LogisticsPlugin } from '@vendure/logistics-plugin';
-import { testSuccessfulPaymentMethod } from '../../core/e2e/fixtures/test-payment-methods';
+import {
+    singleStageRefundFailingPaymentMethod,
+    singleStageRefundablePaymentMethod,
+    testSuccessfulPaymentMethod,
+} from '../../core/e2e/fixtures/test-payment-methods';
 import { addPaymentToOrder, proceedToArrangingPayment } from '../../core/e2e/utils/test-order-utils';
 
 registerInitializer('sqljs', new SqljsInitializer(path.join(__dirname, '__data__')));
 
-describe('AfterSalesPlugin · 售后退货回补入账本', () => {
+describe('AfterSalesPlugin · 售后退款/回补入账本闭环', () => {
     const { server, adminClient, shopClient } = createTestEnvironment(
         mergeConfig(testConfig(), {
             plugins: [AfterSalesPlugin.init(), InventoryPlugin.init(), LogisticsPlugin.init()],
             paymentOptions: {
-                paymentMethodHandlers: [testSuccessfulPaymentMethod],
+                // 主支付方式用可退款的单段处理器：processor.createRefund 直接返回 Settled（真实网关路径）
+                paymentMethodHandlers: [
+                    singleStageRefundablePaymentMethod,
+                    singleStageRefundFailingPaymentMethod,
+                    testSuccessfulPaymentMethod,
+                ],
             },
         }),
     );
@@ -40,8 +49,8 @@ describe('AfterSalesPlugin · 售后退货回补入账本', () => {
                 ...initialData,
                 paymentMethods: [
                     {
-                        name: testSuccessfulPaymentMethod.code,
-                        handler: { code: testSuccessfulPaymentMethod.code, arguments: [] },
+                        name: singleStageRefundablePaymentMethod.code,
+                        handler: { code: singleStageRefundablePaymentMethod.code, arguments: [] },
                     },
                 ],
             },
@@ -158,7 +167,7 @@ describe('AfterSalesPlugin · 售后退货回补入账本', () => {
         `);
 
         await proceedToArrangingPayment(shopClient);
-        const paidOrder = await addPaymentToOrder(shopClient, testSuccessfulPaymentMethod);
+        const paidOrder = await addPaymentToOrder(shopClient, singleStageRefundablePaymentMethod);
         orderId = paidOrder.id;
         expect(orderId).toBeDefined();
 
@@ -266,5 +275,120 @@ describe('AfterSalesPlugin · 售后退货回补入账本', () => {
             bizCode: `AS${asNumId}`,
         });
         expect(led.stockLedger.items[0].reason).toContain('AfterSales');
+
+        // 7. 退款关闭：processAfterSalesRefund → AfterSalesRequest Refunded + Refund 达 Settled（钱真正退回）
+        const refunded = await adminClient.query(gql`
+            mutation { processAfterSalesRefund(id: "${asId}") { id state refundAmount actualRefundAmount refundTransactionId refundedAt } }
+        `);
+        const r = refunded.processAfterSalesRefund;
+        expect(r.state).toBe('Refunded');
+        expect(r.actualRefundAmount).toBeGreaterThan(0);
+        expect(r.refundTransactionId).toBeTruthy();
+        expect(r.refundedAt).toBeTruthy();
+        // 底层 Vendure Refund 必须是 Settled 终态（非假退款 Pending）
+        const refundsOnOrder = await adminClient.query(gql`
+            query { order(id: "${orderId}") { payments { id refunds { id state total } } } }
+        `);
+        const refunds = refundsOnOrder.order.payments.flatMap((p: any) => p.refunds);
+        expect(refunds.length).toBeGreaterThan(0);
+        expect(refunds.every((f: any) => f.state === 'Settled')).toBe(true);
+    }, TEST_SETUP_TIMEOUT_MS);
+
+    it('退款失败 → RefundFailed → 重试成功 → Refunded（退款闭环可重试）', async () => {
+        // 专用订单：用「首退失败、重试成功」处理器，模拟退款网关第一次失败、重试成功
+        await shopClient.asUserWithCredentials('hayden.zieme12@hotmail.com', 'test');
+        const addResult = await shopClient.query(gql`
+            mutation {
+                addItemToOrder(productVariantId: "${variantId}", quantity: 1) {
+                    ... on Order { id code state totalWithTax }
+                    ... on ErrorResult { errorCode message }
+                }
+            }
+        `);
+        const failOrderId = addResult.addItemToOrder.id;
+        expect(failOrderId).toBeDefined();
+        await shopClient.query(gql`
+            mutation {
+                setOrderCustomFields(input: { customFields: { lat: 30.66, lng: 104.06, city: "成都" } }) {
+                    ... on Order { id }
+                    ... on ErrorResult { errorCode message }
+                }
+            }
+        `);
+        await proceedToArrangingPayment(shopClient);
+        // 创建一张挂载「首退失败」处理器的支付方式，并支付
+        await adminClient.query(gql`
+            mutation {
+                createPaymentMethod(input: {
+                    code: "${singleStageRefundFailingPaymentMethod.code}"
+                    enabled: true
+                    translations: [{ languageCode: zh_Hans, name: "${singleStageRefundFailingPaymentMethod.code}" }]
+                    handler: { code: "${singleStageRefundFailingPaymentMethod.code}" arguments: [] }
+                }) { id code }
+            }
+        `);
+        const paid = await addPaymentToOrder(shopClient, singleStageRefundFailingPaymentMethod);
+        expect(paid.id).toBeDefined();
+
+        // 发货推进到 Shipped（与主测试相同的 fulfillment 链路）
+        const detail = await adminClient.query(gql`
+            query { order(id: "${failOrderId}") { id state lines { id quantity } } }
+        `);
+        const fl = detail.order.lines[0];
+        const fulfillment = await adminClient.query(gql`
+            mutation {
+                addFulfillmentToOrder(input: {
+                    lines: [{ orderLineId: "${fl.id}", quantity: ${fl.quantity} }]
+                    handler: {
+                        code: "manual-fulfillment"
+                        arguments: [
+                            { name: "method", value: "standard" }
+                            { name: "trackingCode", value: "SF_RETRY" }
+                        ]
+                    }
+                }) { ... on Fulfillment { id } ... on ErrorResult { errorCode message } }
+            }
+        `);
+        const fId = fulfillment.addFulfillmentToOrder.id;
+        await adminClient.query(gql`
+            mutation { transitionFulfillmentToState(id: "${fId}", state: "Shipped") { ... on Fulfillment { id state } } }
+        `);
+        await adminClient.query(gql`
+            mutation { transitionOrderToState(id: "${failOrderId}", state: "Shipped") { ... on Order { id state } } }
+        `);
+
+        // Shipped 订单发起售后（return_refund），走完整 Pending→Approved→Returning→Received
+        const created = await shopClient.query(gql`
+            mutation {
+                createAfterSalesRequest(input: {
+                    orderId: "${failOrderId}"
+                    type: return_refund
+                    reason: "e2e-refund-fail"
+                    refundAmount: 1
+                }) { id state }
+            }
+        `);
+        const asId = created.createAfterSalesRequest.id;
+        expect(created.createAfterSalesRequest.state).toBe('Pending');
+        await adminClient.query(gql`
+            mutation { approveAfterSalesRequest(id: "${asId}") { id } }
+        `);
+        await shopClient.query(gql`
+            mutation { updateReturnTracking(id: "${asId}", trackingNo: "SF123", carrier: "顺丰") { id state } }
+        `);
+        await adminClient.query(gql`
+            mutation { confirmReturnReceived(id: "${asId}") { id state } }
+        `);
+        // 第一次退款失败 → RefundFailed（网关首退返回 Failed）
+        const failed = await adminClient.query(gql`
+            mutation { processAfterSalesRefund(id: "${asId}") { id state refundError } }
+        `);
+        expect(failed.processAfterSalesRefund.state).toBe('RefundFailed');
+        expect(failed.processAfterSalesRefund.refundError).toBeTruthy();
+        // 重试成功 → Refunded
+        const retried = await adminClient.query(gql`
+            mutation { retryAfterSalesRefund(id: "${asId}") { id state } }
+        `);
+        expect(retried.retryAfterSalesRefund.state).toBe('Refunded');
     }, TEST_SETUP_TIMEOUT_MS);
 });

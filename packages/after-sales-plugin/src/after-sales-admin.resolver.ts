@@ -44,4 +44,10 @@ export class AfterSalesAdminResolver {
     async processAfterSalesRefund(@Ctx() ctx: RequestContext, @Args('id') id: number): Promise<any> {
         return this.afterSalesService.processRefund(ctx, id);
     }
+
+    @Mutation()
+    @Allow(Permission.UpdateOrder)
+    async retryAfterSalesRefund(@Ctx() ctx: RequestContext, @Args('id') id: number): Promise<any> {
+        return this.afterSalesService.retryRefund(ctx, id);
+    }
 }

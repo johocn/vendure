@@ -276,6 +276,14 @@ export class OrderPackageService {
         await this.orderService.updateCustomFields(ctx, orderId, { fulfillmentDeliveredAt: new Date() });
     }
 
+    /** 订单进入 Completed（确认收货/自动完成/手动完成）落 fulfillmentCompletedAt，作为售后期计时起点（已写过则跳过） */
+    async markCompletedAt(ctx: RequestContext, orderId: ID): Promise<void> {
+        if (!this.orderService) return;
+        const order = await this.orderService.findOne(ctx, orderId);
+        if (!order || (order.customFields as any)?.fulfillmentCompletedAt) return;
+        await this.orderService.updateCustomFields(ctx, orderId, { fulfillmentCompletedAt: new Date() });
+    }
+
     /** self 包 fulfillment 镜像：包裹 shipped/delivered 时同步 fulfillment 状态（core 一致性，失败仅告警） */
     async mirrorFulfillment(
         ctx: RequestContext,
@@ -313,13 +321,20 @@ export class OrderPackageService {
         if (!order.customer || customerUserId == null || String(customerUserId) !== String(ctx.activeUserId)) {
             throw new ForbiddenError();
         }
-        if (order.state === 'Completed') return true; // 幂等
+        if (order.state === 'Completed') {
+            await this.markCompletedAt(ctx, orderId); // 幂等补写售后期起点
+            return true; // 幂等
+        }
         if (order.state !== 'Delivered') {
             Logger.warn(`确认收货要求订单在 Delivered（当前 ${order.state}），跳过`, loggerCtx);
             return false;
         }
         const result = await this.orderService.transitionToState(ctx, orderId, 'Completed' as any);
-        return !isGraphQlErrorResult(result);
+        if (isGraphQlErrorResult(result)) {
+            return false;
+        }
+        await this.markCompletedAt(ctx, orderId); // 落交易完成时间（售后期计时起点）
+        return true;
     }
 
     /** C端查询：本人订单包裹列表（按包号排序），返回可直接渲染的富化结果 */
@@ -330,9 +345,9 @@ export class OrderPackageService {
         code: string;
         deliveryMode: string;
         status: string;
-        shippedAt: Date | null;
-        deliveredAt: Date | null;
-        cancelledAt: Date | null;
+        shippedAt: Date | undefined;
+        deliveredAt: Date | undefined;
+        cancelledAt: Date | undefined;
         shippingFee: number | null;
         lines: Array<{
             orderLineId: ID;

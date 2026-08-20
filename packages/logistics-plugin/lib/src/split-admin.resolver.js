@@ -74,12 +74,17 @@ let SplitAdminResolver = class SplitAdminResolver {
         const order = await this.orderService.findOne(ctx, orderId);
         if (!order)
             return false;
-        if (order.state === 'Completed')
+        if (order.state === 'Completed') {
+            await this.orderPackageService.markCompletedAt(ctx, orderId); // 幂等补写售后期起点
             return true; // 幂等
+        }
         if (order.state !== 'Delivered')
             return false; // 仅 Delivered 可确认收货
         const result = await this.orderService.transitionToState(ctx, orderId, 'Completed');
-        return !(0, core_1.isGraphQlErrorResult)(result);
+        if ((0, core_1.isGraphQlErrorResult)(result))
+            return false;
+        await this.orderPackageService.markCompletedAt(ctx, orderId); // 落交易完成时间（售后期计时起点）
+        return true;
     }
     /** 手动触发自动交易完成扫描，返回本次完成订单数（运营/e2e 用） */
     async runAutoCompleteScan(ctx) {

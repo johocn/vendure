@@ -3,5 +3,5 @@ export interface AfterSalesPluginOptions {
     maxDaysAfterDelivery?: number;
 }
 export type AfterSalesType = 'return_refund' | 'refund_only' | 'exchange';
-export type AfterSalesState = 'Pending' | 'Approved' | 'Rejected' | 'Returning' | 'Received' | 'Refunded' | 'Closed';
+export type AfterSalesState = 'Pending' | 'Approved' | 'Rejected' | 'Returning' | 'Received' | 'Refunded' | 'RefundFailed' | 'Closed';
 export declare const STATE_TRANSITIONS: Record<AfterSalesState, AfterSalesState[]>;

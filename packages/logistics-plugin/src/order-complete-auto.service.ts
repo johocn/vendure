@@ -92,6 +92,10 @@ export class OrderCompleteAutoService {
             if (new Date(deliveredAt).getTime() > deadline.getTime()) continue;
             const result = await this.orderService.transitionToState(ctx, order.id, 'Completed' as any);
             if (!isGraphQlErrorResult(result)) {
+                // 落交易完成时间（售后期计时起点；已写过则跳过）
+                if (!(order.customFields as any)?.fulfillmentCompletedAt) {
+                    await this.orderService.updateCustomFields(ctx, order.id, { fulfillmentCompletedAt: new Date() });
+                }
                 done++;
                 Logger.info(`自动交易完成 order#${order.code ?? order.id}`, loggerCtx);
             }

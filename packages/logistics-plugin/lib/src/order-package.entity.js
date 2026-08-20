@@ -56,16 +56,16 @@ __decorate([
     __metadata("design:type", String)
 ], OrderPackage.prototype, "status", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
-    __metadata("design:type", Object)
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Date)
 ], OrderPackage.prototype, "shippedAt", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
-    __metadata("design:type", Object)
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Date)
 ], OrderPackage.prototype, "deliveredAt", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
-    __metadata("design:type", Object)
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Date)
 ], OrderPackage.prototype, "cancelledAt", void 0);
 exports.OrderPackage = OrderPackage = __decorate([
     (0, typeorm_1.Entity)(),

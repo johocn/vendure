@@ -23,9 +23,9 @@ export declare class OrderPackage extends VendureEntity {
     /** 包裹状态：待发货/已发货/已送达/配送取消 */
     status: OrderPackageStatus;
     /** 发货时间 */
-    shippedAt: Date | null;
+    shippedAt?: Date;
     /** 送达时间 */
-    deliveredAt: Date | null;
+    deliveredAt?: Date;
     /** 取消时间 */
-    cancelledAt: Date | null;
+    cancelledAt?: Date;
 }

@@ -247,6 +247,16 @@ let OrderPackageService = class OrderPackageService {
         // 就地修改同一对象引用 TypeORM 变更检测不识别（identity map 快照指向同一对象），UPDATE 会被跳过
         await this.orderService.updateCustomFields(ctx, orderId, { fulfillmentDeliveredAt: new Date() });
     }
+    /** 订单进入 Completed（确认收货/自动完成/手动完成）落 fulfillmentCompletedAt，作为售后期计时起点（已写过则跳过） */
+    async markCompletedAt(ctx, orderId) {
+        var _a;
+        if (!this.orderService)
+            return;
+        const order = await this.orderService.findOne(ctx, orderId);
+        if (!order || ((_a = order.customFields) === null || _a === void 0 ? void 0 : _a.fulfillmentCompletedAt))
+            return;
+        await this.orderService.updateCustomFields(ctx, orderId, { fulfillmentCompletedAt: new Date() });
+    }
     /** self 包 fulfillment 镜像：包裹 shipped/delivered 时同步 fulfillment 状态（core 一致性，失败仅告警） */
     async mirrorFulfillment(ctx, pkg, toStatus) {
         var _a;
@@ -283,14 +293,20 @@ let OrderPackageService = class OrderPackageService {
         if (!order.customer || customerUserId == null || String(customerUserId) !== String(ctx.activeUserId)) {
             throw new core_1.ForbiddenError();
         }
-        if (order.state === 'Completed')
+        if (order.state === 'Completed') {
+            await this.markCompletedAt(ctx, orderId); // 幂等补写售后期起点
             return true; // 幂等
+        }
         if (order.state !== 'Delivered') {
             core_1.Logger.warn(`确认收货要求订单在 Delivered（当前 ${order.state}），跳过`, constants_1.loggerCtx);
             return false;
         }
         const result = await this.orderService.transitionToState(ctx, orderId, 'Completed');
-        return !(0, core_1.isGraphQlErrorResult)(result);
+        if ((0, core_1.isGraphQlErrorResult)(result)) {
+            return false;
+        }
+        await this.markCompletedAt(ctx, orderId); // 落交易完成时间（售后期计时起点）
+        return true;
     }
     /** C端查询：本人订单包裹列表（按包号排序），返回可直接渲染的富化结果 */
     async getMyOrderPackages(ctx, orderId) {

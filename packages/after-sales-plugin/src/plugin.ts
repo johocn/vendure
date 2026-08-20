@@ -23,7 +23,7 @@ const { gql } = require('graphql-tag');
     shopApiExtensions: {
         schema: () => gql`
             enum AfterSalesType { return_refund refund_only exchange }
-            enum AfterSalesState { Pending Approved Rejected Returning Received Refunded Closed }
+            enum AfterSalesState { Pending Approved Rejected Returning Received Refunded RefundFailed Closed }
 
             type AfterSalesRequest implements Node {
                 id: ID!
@@ -39,6 +39,10 @@ const { gql } = require('graphql-tag');
                 returnCarrier: String
                 rejectReason: String
                 receivedQuantity: Int
+                refundTransactionId: String
+                actualRefundAmount: Int
+                refundedAt: DateTime
+                refundError: String
                 createdAt: DateTime!
                 updatedAt: DateTime!
                 order: Order!
@@ -94,6 +98,10 @@ const { gql } = require('graphql-tag');
                 rejectReason: String
                 receivedQuantity: Int
                 restockJson: String
+                refundTransactionId: String
+                actualRefundAmount: Int
+                refundedAt: DateTime
+                refundError: String
                 customerId: ID!
                 createdAt: DateTime!
                 updatedAt: DateTime!
@@ -115,6 +123,7 @@ const { gql } = require('graphql-tag');
                 rejectAfterSalesRequest(id: ID!, reason: String!): AfterSalesRequestAdmin!
                 confirmReturnReceived(id: ID!, receivedQuantity: Int): AfterSalesRequestAdmin!
                 processAfterSalesRefund(id: ID!): AfterSalesRequestAdmin!
+                retryAfterSalesRefund(id: ID!): AfterSalesRequestAdmin!
             }
         `,
         resolvers: [AfterSalesAdminResolver],

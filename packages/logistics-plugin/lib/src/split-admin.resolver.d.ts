@@ -24,9 +24,9 @@ export declare class SplitAdminResolver {
         fulfillmentId: import("@vendure/core").ID | null;
         deliveryOrderId: import("@vendure/core").ID | null;
         status: import("./order-package.entity").OrderPackageStatus;
-        shippedAt: Date | null;
-        deliveredAt: Date | null;
-        cancelledAt: Date | null;
+        shippedAt: Date | undefined;
+        deliveredAt: Date | undefined;
+        cancelledAt: Date | undefined;
         createdAt: Date;
         updatedAt: Date;
     }[]>;

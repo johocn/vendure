@@ -104,6 +104,13 @@ export const catalogCustomFields: CustomFields = {
             public: true,
             label: [{ languageCode: LanguageCode.zh_Hans, value: '履约完成时间（订单首次送达）' }],
         },
+        {
+            name: 'fulfillmentCompletedAt',
+            type: 'datetime',
+            nullable: true,
+            public: true,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '交易完成时间（确认收货/自动完成）' }],
+        },
     ],
     OrderLine: [
         {
