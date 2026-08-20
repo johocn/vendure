@@ -51,7 +51,15 @@ export function buildSignedParams(
         params.source_id = options.sourceId;
     }
     const signature = sign(appSecret, buildParamString(params));
-    return { ...params, signature };
+    return {
+        app_key: params.app_key,
+        body: params.body,
+        format: params.format,
+        timestamp: params.timestamp,
+        v: params.v,
+        ...(params.source_id ? { source_id: params.source_id } : {}),
+        signature,
+    };
 }
 
 /**
