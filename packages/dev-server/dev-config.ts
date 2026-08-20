@@ -386,7 +386,8 @@ export const devConfig: VendureConfig = {
         MarketplacePlugin.init({}),
         // LogisticsPlugin 必须在 MarketplacePlugin 之后注册：两者都会设置 stockLocationStrategy，
         // 最后注册的 MatrixStockLocationStrategy（单一全局矩阵）需覆盖 Marketplace 的组合策略。
-        LogisticsPlugin.init(),
+        // defaultCompleteDays：自动交易完成默认天数（Delivered 后 N 天），Channel.orderCompleteDays 可覆盖。
+        LogisticsPlugin.init({ defaultCompleteDays: 3 }),
         // 同城配送抽象网关：Provider 注册表 + Mock 配送商，必须在 LogisticsPlugin 之后注册（Task5）
         DeliveryGatewayPlugin.init({
             // 达达凭据：默认占位（dev 骨架），生产用环境变量注入；凭据不落 git。
