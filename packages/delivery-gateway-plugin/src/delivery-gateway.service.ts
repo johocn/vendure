@@ -137,4 +137,27 @@ export class DeliveryGatewayService {
         Logger.info(`配送单 ${delivery.code} -> ${event.status}`, loggerCtx);
         return delivery;
     }
+
+    /** 供 C端 Shop API 查询：返回配送单骑手信息（仅公开字段） */
+    async getShopDelivery(
+        ctx: RequestContext,
+        deliveryOrderId: ID,
+    ): Promise<{
+        courierName: string | null;
+        courierPhone: string | null;
+        thirdPartyNo: string | null;
+        etaMinutes: number | null;
+    } | null> {
+        const repo = this.connection.getRepository(ctx, DeliveryOrder);
+        const delivery = await repo.findOne({ where: { id: deliveryOrderId } });
+        if (!delivery) {
+            return null;
+        }
+        return {
+            courierName: delivery.courierName ?? null,
+            courierPhone: delivery.courierPhone ?? null,
+            thirdPartyNo: delivery.thirdPartyNo ?? null,
+            etaMinutes: delivery.etaMinutes ?? null,
+        };
+    }
 }

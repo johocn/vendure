@@ -98,6 +98,8 @@ exports.DeliveryGatewayPlugin = DeliveryGatewayPlugin = DeliveryGatewayPlugin_1 
         providers: [
             { provide: DELIVERY_GATEWAY_OPTIONS, useFactory: () => DeliveryGatewayPlugin.options },
             delivery_gateway_service_1.DeliveryGatewayService,
+            // 字符串 token：供 logistics-plugin 通过注入器 duck-typing 解耦调用（零编译依赖）
+            { provide: 'DeliveryOrderShopLinker', useExisting: delivery_gateway_service_1.DeliveryGatewayService },
         ],
         adminApiExtensions: {
             schema: adminSchema,

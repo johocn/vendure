@@ -66,6 +66,8 @@ const adminSchema = () => gql`
     providers: [
         { provide: DELIVERY_GATEWAY_OPTIONS, useFactory: () => DeliveryGatewayPlugin.options },
         DeliveryGatewayService,
+        // 字符串 token：供 logistics-plugin 通过注入器 duck-typing 解耦调用（零编译依赖）
+        { provide: 'DeliveryOrderShopLinker', useExisting: DeliveryGatewayService },
     ],
     adminApiExtensions: {
         schema: adminSchema,

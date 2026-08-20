@@ -23,4 +23,11 @@ export declare class DeliveryGatewayService {
     findByOrder(ctx: RequestContext, orderId: ID): Promise<DeliveryOrder[]>;
     /** 处理平台回写（webhook 或 Mock 模拟），驱动状态机 */
     applyStatusEvent(ctx: RequestContext, event: DeliveryStatusEvent): Promise<DeliveryOrder>;
+    /** 供 C端 Shop API 查询：返回配送单骑手信息（仅公开字段） */
+    getShopDelivery(ctx: RequestContext, deliveryOrderId: ID): Promise<{
+        courierName: string | null;
+        courierPhone: string | null;
+        thirdPartyNo: string | null;
+        etaMinutes: number | null;
+    } | null>;
 }

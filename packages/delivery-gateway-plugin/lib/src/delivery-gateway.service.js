@@ -140,6 +140,21 @@ let DeliveryGatewayService = class DeliveryGatewayService {
         core_1.Logger.info(`配送单 ${delivery.code} -> ${event.status}`, constants_1.loggerCtx);
         return delivery;
     }
+    /** 供 C端 Shop API 查询：返回配送单骑手信息（仅公开字段） */
+    async getShopDelivery(ctx, deliveryOrderId) {
+        var _a, _b, _c, _d;
+        const repo = this.connection.getRepository(ctx, delivery_order_entity_1.DeliveryOrder);
+        const delivery = await repo.findOne({ where: { id: deliveryOrderId } });
+        if (!delivery) {
+            return null;
+        }
+        return {
+            courierName: (_a = delivery.courierName) !== null && _a !== void 0 ? _a : null,
+            courierPhone: (_b = delivery.courierPhone) !== null && _b !== void 0 ? _b : null,
+            thirdPartyNo: (_c = delivery.thirdPartyNo) !== null && _c !== void 0 ? _c : null,
+            etaMinutes: (_d = delivery.etaMinutes) !== null && _d !== void 0 ? _d : null,
+        };
+    }
 };
 exports.DeliveryGatewayService = DeliveryGatewayService;
 exports.DeliveryGatewayService = DeliveryGatewayService = __decorate([
