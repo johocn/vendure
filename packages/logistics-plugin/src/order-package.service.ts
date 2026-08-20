@@ -4,7 +4,9 @@ import {
     ForbiddenError,
     ID,
     Injector,
+    isGraphQlErrorResult,
     Logger,
+    Order,
     OrderLine,
     OrderService,
     RequestContext,
@@ -162,7 +164,91 @@ export class OrderPackageService {
         if (toStatus === 'cancelled') pkg.cancelledAt = new Date();
         await repo.save(pkg);
         Logger.info(`OrderPackage order#${orderId} pkg=${packageId} -> ${toStatus}`, loggerCtx);
+        // 履约闭环：包裹状态变化后镜像 self 包 fulfillment（core 一致性）+ 聚合驱动订单状态（失败仅告警，不阻断）
+        if (toStatus === 'shipped' || toStatus === 'delivered') {
+            await this.mirrorFulfillment(ctx, pkg, toStatus);
+        }
+        try {
+            await this.reconcileOrderState(ctx, orderId);
+        } catch (e: any) {
+            Logger.warn(`订单状态聚合失败 order#${orderId}: ${e?.message ?? e}`, loggerCtx);
+        }
         return true;
+    }
+
+    /**
+     * 履约闭环核心：按包裹生命周期聚合推导订单目标状态并推进。
+     * 幂等（订单已到目标状态跳过）、非法流转经 getNextOrderStates 二次过滤仅告警。
+     */
+    async reconcileOrderState(ctx: RequestContext, orderId: ID): Promise<void> {
+        if (!this.orderService) {
+            Logger.warn('OrderService 未初始化，跳过订单状态聚合', loggerCtx);
+            return;
+        }
+        const packages = await this.findByOrder(ctx, orderId);
+        const hasPending = packages.some(p => p.status === 'pending');
+        const shippedCount = packages.filter(p => p.status === 'shipped').length;
+        const deliveredCount = packages.filter(p => p.status === 'delivered').length;
+
+        let target: string | null = null;
+        if (deliveredCount > 0 && packages.every(p => p.status === 'delivered')) {
+            target = 'Delivered'; // 全部送达
+        } else if (deliveredCount > 0) {
+            target = 'PartiallyDelivered'; // 部分送达
+        } else if (!hasPending && shippedCount > 0 && packages.every(p => p.status !== 'pending')) {
+            target = 'Shipped'; // 全部发货（含 cancelled）
+        } else if (shippedCount > 0) {
+            target = 'PartiallyShipped'; // 部分发货
+        }
+        // 全部 cancelled：不推进（订单级取消是独立语义，已发货/送达包取消走售后）
+        if (!target) return;
+
+        const order = await this.orderService.findOne(ctx, orderId);
+        if (!order || order.state === target) return;
+        const next = this.orderService.getNextOrderStates(order);
+        if (!next.includes(target as any)) {
+            Logger.warn(
+                `订单聚合目标 ${target} 不在可达状态 [${next.join(',')}]（order#${orderId} 当前 ${order.state}），跳过`,
+                loggerCtx,
+            );
+            return;
+        }
+        const result = await this.orderService.transitionToState(ctx, orderId, target as any);
+        if (isGraphQlErrorResult(result)) {
+            Logger.warn(`订单状态流转 ${order.state}->${target} 失败: ${JSON.stringify(result)}`, loggerCtx);
+            return;
+        }
+        if (target === 'Delivered') {
+            await this.markDeliveredAt(ctx, orderId); // 首次送达写 fulfillmentDeliveredAt（自动完成扫描基准）
+        }
+        Logger.info(`订单聚合回写 order#${orderId} -> ${target}`, loggerCtx);
+    }
+
+    /** 订单首次进入 Delivered 时写 fulfillmentDeliveredAt（自动交易完成的扫描基准；已写过则跳过） */
+    async markDeliveredAt(ctx: RequestContext, orderId: ID): Promise<void> {
+        if (!this.orderService) return;
+        const order = await this.orderService.findOne(ctx, orderId);
+        if (!order || (order.customFields as any)?.fulfillmentDeliveredAt) return;
+        (order.customFields as any).fulfillmentDeliveredAt = new Date();
+        await this.connection.getRepository(ctx, Order).save(order, { reload: false });
+    }
+
+    /** self 包 fulfillment 镜像：包裹 shipped/delivered 时同步 fulfillment 状态（core 一致性，失败仅告警） */
+    async mirrorFulfillment(
+        ctx: RequestContext,
+        pkg: OrderPackage,
+        toStatus: 'shipped' | 'delivered',
+    ): Promise<void> {
+        if (pkg.fulfillmentId == null || !this.orderService) return;
+        const target = toStatus === 'shipped' ? 'Shipped' : 'Delivered';
+        try {
+            const res = await this.orderService.transitionFulfillmentToState(ctx, pkg.fulfillmentId, target as any);
+            if (isGraphQlErrorResult(res)) {
+                Logger.warn(`fulfillment#${pkg.fulfillmentId} 镜像 ${target} 失败: ${JSON.stringify(res)}`, loggerCtx);
+            }
+        } catch (e: any) {
+            Logger.warn(`fulfillment#${pkg.fulfillmentId} 镜像 ${target} 异常: ${e?.message ?? e}`, loggerCtx);
+        }
     }
 
     /** C端查询：本人订单包裹列表（按包号排序），返回可直接渲染的富化结果 */
