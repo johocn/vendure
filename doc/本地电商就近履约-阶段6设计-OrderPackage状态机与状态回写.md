@@ -80,12 +80,16 @@ async transition(ctx, orderId, code, toStatus): Promise<boolean> {
 
 | 驱动事件 | 位置 | 回写 |
 |---|---|---|
-| 发货成功（挂钩点2） | `logistics.service.ts` `linkFulfillment` 成功后 | `pending→shipped`（仅当当前 pending） |
-| 配送送达（`applyStatusEvent` → delivered） | `delivery-gateway.service.ts` | `shipped→delivered`（city 包） |
-| 配送取消（`applyStatusEvent` → cancelled） | `delivery-gateway.service.ts` | `*→cancelled` |
+| 发货成功（挂钩点2） | `logistics.service.ts` `linkFulfillment` 成功后 | `pending→shipped`（self 包） |
+| 同城配送单创建（挂钩点3） | `delivery-gateway.service.ts` `createDelivery` | `pending→shipped`（city 包；回填 deliveryOrderId 时同步，同城下单即视为发货） |
+| 配送送达（`applyStatusEvent` → delivered） | `delivery-gateway.service.ts` | `shipped→delivered` |
+| 配送取消（`applyStatusEvent` → cancelled） | `delivery-gateway.service.ts` | `shipped→cancelled` |
 | self 包人工确认送达 | 新增 admin mutation `markPackageDelivered` | `shipped→delivered` |
 
-self 包送达决策：本期用 `markPackageDelivered(orderId, packageId)` 人工确认（e2e 可控、mock 跟踪无签收能力）；「queryTrack 得 signedAt 自动回写」列为后续增强边界。
+设计要点：
+- city 包与 self 包**统一走 `pending→shipped→delivered` 线性链路**：city 包在 `createDelivery`（同城下单）时即视为已发货置 `shipped`，再由配送事件送达/取消；否则 `applyStatusEvent(delivered)` 会因 `pending→delivered` 非法流转被拦截，city 包永远无法送达。
+- 配送取消只发生在配送单创建之后（此时包已 shipped），故回写为 `shipped→cancelled`。
+- self 包送达决策：本期用 `markPackageDelivered(orderId, packageId)` 人工确认（e2e 可控、mock 跟踪无签收能力）；「queryTrack 得 signedAt 自动回写」列为后续增强边界。
 
 ### 3.4 跨插件 OrderPackageLinker 扩展
 
@@ -100,7 +104,9 @@ self 包送达决策：本期用 `markPackageDelivered(orderId, packageId)` 人�
 ```
 
 - logistics-plugin 侧：token `'OrderPackageLinker'` 仍指向 `OrderPackageService`，`transition` 直接可用。
-- delivery-gateway 侧：在 `applyStatusEvent` 落库后、若 `delivery.packageId` 且事件为 `delivered`/`cancelled`，调用 `this.orderPackageLinker?.transition(ctx, delivery.orderId, delivery.packageId, status)`；try/catch 降级 + 未命中仅告警，不阻断配送主链路。
+- delivery-gateway 侧，两处调用（均 try/catch 降级 + 未命中仅告警，不阻断配送主链路）：
+  - `createDelivery` 回填 `deliveryOrderId` 后：`transition(ctx, orderId, packageId, 'shipped')`（同城下单即视为发货）。
+  - `applyStatusEvent` 落库后、若 `delivery.packageId` 且事件为 `delivered`/`cancelled`：`transition(ctx, orderId, packageId, event.status)`。
 - 保持零编译依赖：delivery-gateway 依旧不 import `@vendure/logistics-plugin`。
 
 ### 3.5 API 暴露（admin，本期）
@@ -131,6 +137,7 @@ P1 发货 → batchCreateFulfillment(packageId=P1, fee=1000)
   → P1.shippedAt 置位, P1.status=shipped, P1.fulfillmentId/fee 回填
 
 P2 转同城 → createDelivery(packageId=P2) → 配送单 pending
+  → P2.status=shipped, P2.deliveryOrderId 回填（同城下单即视为发货）
   → 配送商接单/取货/送达 → applyStatusEvent(delivered)
   → P2.status=delivered, P2.deliveredAt 置位
 
@@ -146,7 +153,7 @@ P1 自有司机送达 → 运营确认 → markPackageDelivered(orderId, P1)
 |---|---|---|
 | t1 | 下单拆两仓 → confirmSplitPlan | 两包 `status=pending`，shippedAt/deliveredAt 为空 |
 | t2 | `batchCreateFulfillment(P1)`（self 发货） | P1 `shipped` + shippedAt 非空；P2 仍 `pending` |
-| t3 | `createDelivery(P2)` → `mockDeliveryEvent(delivered)` | P2 `delivered` + deliveredAt 非空 |
+| t3 | `createDelivery(P2)` → P2 `shipped` + deliveryOrderId 回填；再 `mockDeliveryEvent(delivered)` | P2 `delivered` + deliveredAt 非空 |
 | t4 | `markPackageDelivered(P1)` | P1 `delivered` |
 | t5 | 对已 delivered 的 P1 再 `markPackageDelivered` | 幂等返回 true，状态不变、deliveredAt 不重置 |
 | t6 | 另建订单：`createDelivery(P3)` → `mockDeliveryEvent(cancelled)` | P3 `cancelled` + cancelledAt 非空 |
