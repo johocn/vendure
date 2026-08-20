@@ -1,7 +1,8 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { Allow, Ctx, Permission, RequestContext } from '@vendure/core';
+import { Allow, Ctx, isGraphQlErrorResult, OrderService, Permission, RequestContext } from '@vendure/core';
 import { AutoSplitPlanService } from './auto-split-plan.service';
 import { ManualSplitAdjustService } from './manual-split-adjust.service';
+import { OrderCompleteAutoService } from './order-complete-auto.service';
 import { OrderPackage } from './order-package.entity';
 import { OrderPackageService } from './order-package.service';
 import { OrderSplitPlan, SplitLine } from './order-split-plan';
@@ -12,6 +13,8 @@ export class SplitAdminResolver {
         private autoSplit: AutoSplitPlanService,
         private manualSplit: ManualSplitAdjustService,
         private orderPackageService: OrderPackageService,
+        private orderCompleteAuto: OrderCompleteAutoService,
+        private orderService: OrderService,
     ) {}
 
     @Query()
@@ -76,5 +79,24 @@ export class SplitAdminResolver {
         @Args('packageId') packageId: string,
     ): Promise<boolean> {
         return this.orderPackageService.transition(ctx, orderId, packageId, 'delivered');
+    }
+
+    /** 手动交易完成：Delivered → Completed（幂等；非 Delivered 状态返回 false） */
+    @Mutation()
+    @Allow(Permission.UpdateOrder)
+    async completeOrder(@Ctx() ctx: RequestContext, @Args('orderId') orderId: string): Promise<boolean> {
+        const order = await this.orderService.findOne(ctx, orderId);
+        if (!order) return false;
+        if (order.state === 'Completed') return true; // 幂等
+        if (order.state !== 'Delivered') return false; // 仅 Delivered 可确认收货
+        const result = await this.orderService.transitionToState(ctx, orderId, 'Completed' as any);
+        return !isGraphQlErrorResult(result);
+    }
+
+    /** 手动触发自动交易完成扫描，返回本次完成订单数（运营/e2e 用） */
+    @Mutation()
+    @Allow(Permission.UpdateOrder)
+    async runAutoCompleteScan(@Ctx() ctx: RequestContext): Promise<number> {
+        return this.orderCompleteAuto.runAutoCompleteScan(ctx);
     }
 }

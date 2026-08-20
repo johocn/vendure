@@ -251,6 +251,34 @@ export class OrderPackageService {
         }
     }
 
+    /**
+     * C端确认收货：归属校验（customer.user.id === activeUserId）+ Delivered → Completed（幂等）。
+     * 复用阶段7 的归属校验模式：ctx.activeUserId 是登录 User 主键，而 Order.customer.id 是 Customer 主键，两者不同。
+     */
+    async confirmOrderReceipt(ctx: RequestContext, orderId: ID): Promise<boolean> {
+        if (!this.orderService) {
+            throw new Error('OrderService 未初始化');
+        }
+        if (!ctx.activeUserId) {
+            throw new UnauthorizedError();
+        }
+        const order = await this.orderService.findOne(ctx, orderId, ['customer', 'customer.user']);
+        if (!order) {
+            throw new EntityNotFoundError('Order', orderId);
+        }
+        const customerUserId = (order.customer as any)?.user?.id;
+        if (!order.customer || customerUserId == null || String(customerUserId) !== String(ctx.activeUserId)) {
+            throw new ForbiddenError();
+        }
+        if (order.state === 'Completed') return true; // 幂等
+        if (order.state !== 'Delivered') {
+            Logger.warn(`确认收货要求订单在 Delivered（当前 ${order.state}），跳过`, loggerCtx);
+            return false;
+        }
+        const result = await this.orderService.transitionToState(ctx, orderId, 'Completed' as any);
+        return !isGraphQlErrorResult(result);
+    }
+
     /** C端查询：本人订单包裹列表（按包号排序），返回可直接渲染的富化结果 */
     async getMyOrderPackages(
         ctx: RequestContext,
