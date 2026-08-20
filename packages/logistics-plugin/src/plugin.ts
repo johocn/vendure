@@ -220,6 +220,7 @@ export class LogisticsPlugin implements OnApplicationBootstrap {
         private logisticsService: LogisticsService,
         private autoSplit: AutoSplitPlanService,
         private manualSplit: ManualSplitAdjustService,
+        private orderPackageService: OrderPackageService,
         private moduleRef: ModuleRef,
     ) {}
 
@@ -233,6 +234,7 @@ export class LogisticsPlugin implements OnApplicationBootstrap {
         this.logisticsService.init(this.injector);
         this.autoSplit.init(this.injector);
         this.manualSplit.init(this.injector);
+        this.orderPackageService.init(this.injector);
         // Task4 每包独立计费：库存分配在进入 ArrangingPayment 时才写 stockLocationsJson，
         // 而计费时点（setOrderShippingMethod）早于分配 → 运费先按 0 落库。
         // 在此监听 ArrangingPayment 过渡（onTransitionEnd 已分配库存），按拆分明细重算运费并落库 packageShippingJson。

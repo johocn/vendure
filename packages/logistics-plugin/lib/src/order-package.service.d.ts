@@ -1,4 +1,3 @@
-import { OnApplicationBootstrap } from '@nestjs/common';
 import { ID, Injector, RequestContext, TransactionalConnection } from '@vendure/core';
 import { OrderPackage, OrderPackageStatus } from './order-package.entity';
 import { SplitLine } from './order-split-plan';
@@ -10,13 +9,14 @@ export interface OrderPackageInput {
     estimatedShippingFee: number;
     deliveryMode: string;
 }
-export declare class OrderPackageService implements OnApplicationBootstrap {
+export declare class OrderPackageService {
     private connection;
     private injector;
     private orderService;
     private deliveryShopLinker;
-    constructor(connection: TransactionalConnection, injector: Injector);
-    onApplicationBootstrap(): void;
+    constructor(connection: TransactionalConnection);
+    /** 由 LogisticsPlugin.onApplicationBootstrap 调用，注入器就绪后解析可选依赖 */
+    init(injector: Injector): void;
     /** 拆单确认：先删后插（幂等，重复确认干净替换），返回落库后的包裹列表 */
     replaceForOrder(ctx: RequestContext, orderId: ID, packages: OrderPackageInput[]): Promise<OrderPackage[]>;
     /** 发货回填：按 orderId + code 匹配包裹，补 fulfillmentId 与实际运费，返回是否命中 */

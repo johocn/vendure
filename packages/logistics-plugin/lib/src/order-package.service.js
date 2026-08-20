@@ -24,13 +24,15 @@ const TRANSITIONS = {
     cancelled: [],
 };
 let OrderPackageService = class OrderPackageService {
-    constructor(connection, injector) {
+    constructor(connection) {
         this.connection = connection;
-        this.injector = injector;
+        this.injector = null;
         this.orderService = null;
         this.deliveryShopLinker = null;
     }
-    onApplicationBootstrap() {
+    /** 由 LogisticsPlugin.onApplicationBootstrap 调用，注入器就绪后解析可选依赖 */
+    init(injector) {
+        this.injector = injector;
         try {
             this.orderService = this.injector.get(core_1.OrderService);
         }
@@ -127,7 +129,7 @@ let OrderPackageService = class OrderPackageService {
     }
     /** C端查询：本人订单包裹列表（按包号排序），返回可直接渲染的富化结果 */
     async getMyOrderPackages(ctx, orderId) {
-        var _a;
+        var _a, _b, _c;
         // 1. 归属校验
         if (!this.orderService) {
             throw new Error('OrderService 未初始化');
@@ -135,11 +137,14 @@ let OrderPackageService = class OrderPackageService {
         if (!ctx.activeUserId) {
             throw new core_1.UnauthorizedError();
         }
-        const order = await this.orderService.findOne(ctx, orderId, ['customer']);
+        const order = await this.orderService.findOne(ctx, orderId, ['customer', 'customer.user']);
         if (!order) {
             throw new core_1.EntityNotFoundError('Order', orderId);
         }
-        if (!order.customer || String(order.customer.id) !== String(ctx.activeUserId)) {
+        // 注意：order.customer.id 是 Customer 主键，而 ctx.activeUserId 是关联 User 主键，两者不同。
+        // 归属校验必须基于 customer.user.id 与 activeUserId 比较。
+        const customerUserId = (_b = (_a = order.customer) === null || _a === void 0 ? void 0 : _a.user) === null || _b === void 0 ? void 0 : _b.id;
+        if (!order.customer || customerUserId == null || String(customerUserId) !== String(ctx.activeUserId)) {
             throw new core_1.ForbiddenError();
         }
         // 2. 取包裹列表（已按 code 排序）
@@ -169,7 +174,7 @@ let OrderPackageService = class OrderPackageService {
             });
             for (const line of orderLines) {
                 const translation = line.productVariant.product.translations.find(t => t.languageCode === ctx.languageCode);
-                const productName = (_a = translation === null || translation === void 0 ? void 0 : translation.name) !== null && _a !== void 0 ? _a : '(未知)';
+                const productName = (_c = translation === null || translation === void 0 ? void 0 : translation.name) !== null && _c !== void 0 ? _c : '(未知)';
                 lineMap.set(line.id, { productName, sku: line.productVariant.sku });
             }
         }
@@ -239,7 +244,6 @@ let OrderPackageService = class OrderPackageService {
 exports.OrderPackageService = OrderPackageService;
 exports.OrderPackageService = OrderPackageService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [core_1.TransactionalConnection,
-        core_1.Injector])
+    __metadata("design:paramtypes", [core_1.TransactionalConnection])
 ], OrderPackageService);
 //# sourceMappingURL=order-package.service.js.map

@@ -165,11 +165,12 @@ const shopSchema = () => gql `
     }
 `;
 let LogisticsPlugin = LogisticsPlugin_1 = class LogisticsPlugin {
-    constructor(options, logisticsService, autoSplit, manualSplit, moduleRef) {
+    constructor(options, logisticsService, autoSplit, manualSplit, orderPackageService, moduleRef) {
         this.options = options;
         this.logisticsService = logisticsService;
         this.autoSplit = autoSplit;
         this.manualSplit = manualSplit;
+        this.orderPackageService = orderPackageService;
         this.moduleRef = moduleRef;
     }
     static init(options) {
@@ -181,6 +182,7 @@ let LogisticsPlugin = LogisticsPlugin_1 = class LogisticsPlugin {
         this.logisticsService.init(this.injector);
         this.autoSplit.init(this.injector);
         this.manualSplit.init(this.injector);
+        this.orderPackageService.init(this.injector);
         // Task4 每包独立计费：库存分配在进入 ArrangingPayment 时才写 stockLocationsJson，
         // 而计费时点（setOrderShippingMethod）早于分配 → 运费先按 0 落库。
         // 在此监听 ArrangingPayment 过渡（onTransitionEnd 已分配库存），按拆分明细重算运费并落库 packageShippingJson。
@@ -280,6 +282,7 @@ exports.LogisticsPlugin = LogisticsPlugin = LogisticsPlugin_1 = __decorate([
     __metadata("design:paramtypes", [Object, logistics_service_1.LogisticsService,
         auto_split_plan_service_1.AutoSplitPlanService,
         manual_split_adjust_service_1.ManualSplitAdjustService,
+        order_package_service_1.OrderPackageService,
         core_1.ModuleRef])
 ], LogisticsPlugin);
 //# sourceMappingURL=plugin.js.map

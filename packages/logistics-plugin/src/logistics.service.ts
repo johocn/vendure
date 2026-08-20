@@ -234,11 +234,14 @@ export class LogisticsService {
         if (!ctx.activeUserId) {
             throw new UnauthorizedError();
         }
-        const order = await this.orderService.findOne(ctx, orderId, ['customer', 'fulfillments']);
+        const order = await this.orderService.findOne(ctx, orderId, ['customer', 'customer.user', 'fulfillments']);
         if (!order) {
             throw new EntityNotFoundError('Order', orderId);
         }
-        if (!order.customer || String(order.customer.id) !== String(ctx.activeUserId)) {
+        // 注意：order.customer.id 是 Customer 主键，而 ctx.activeUserId 是关联 User 主键，两者不同。
+        // 归属校验必须基于 customer.user.id 与 activeUserId 比较。
+        const customerUserId = (order.customer as any)?.user?.id;
+        if (!order.customer || customerUserId == null || String(customerUserId) !== String(ctx.activeUserId)) {
             throw new ForbiddenError();
         }
         const fulfillmentIds = (order.fulfillments ?? []).map(f => f.id);

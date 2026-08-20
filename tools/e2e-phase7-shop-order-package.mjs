@@ -145,6 +145,40 @@ async function markDelivered(token, orderId, packageId) {
   );
   return r.data?.markPackageDelivered;
 }
+// 前置：确保 __customer_role__ 关联 shop-a 渠道。
+// 根因：ChannelService.create 不会自动给新渠道分配客户角色，且客户角色受保护无法经 admin
+// updateRole 修改（"cannot be modified"），只能直接写 role_channels_channel 关联表。
+// 若不关联，shop-a 渠道客户会话 channelPermissions 缺 Authenticated，
+// 所有 @Allow(Authenticated) 的 Shop 查询（me/myOrderPackages）均被 Forbidden 拦截。
+async function ensureCustomerRoleOnChannel() {
+  const { default: pg } = await import("pg");
+  const { Client } = pg;
+  const client = new Client({ host: "127.0.0.1", port: 5432, user: "postgres", password: "admin", database: "vendure" });
+  try {
+    await client.connect();
+    const roles = await client.query(`SELECT id FROM role WHERE code = '__customer_role__'`);
+    if (!roles.rows.length) return false;
+    const roleId = roles.rows[0].id;
+    const ch = await client.query(`SELECT id FROM channel WHERE token = 'shop-a-token'`);
+    if (!ch.rows.length) return false;
+    const channelId = ch.rows[0].id;
+    const existing = await client.query(
+      `SELECT 1 FROM role_channels_channel WHERE "roleId" = $1 AND "channelId" = $2`,
+      [roleId, channelId],
+    );
+    if (existing.rows.length) return true;
+    await client.query(
+      `INSERT INTO role_channels_channel ("roleId", "channelId") VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [roleId, channelId],
+    );
+    return true;
+  } catch (e) {
+    console.log("[role-assure-err]", e?.message ?? String(e));
+    return false;
+  } finally {
+    await client.end().catch(() => {});
+  }
+}
 async function resetTwoLocStock(token, variantId, targetAvail) {
   const pl = await adminGql(`query{ products(options:{ take: 100 }){ items{ variants{ id sku stockLevels{ stockOnHand stockAllocated stockLocationId } } } } }`, {}, token);
   const v = pl.data?.products?.items?.flatMap(x => x.variants || []).find(x => x.sku === VARIANT_SKU);
@@ -173,8 +207,24 @@ async function customerLogin(c) {
 }
 async function placeOrderAsCustomer(c, variantId, qty, coords) {
   let token = await customerLogin(c);
-  let r = await shopGql(`mutation{ removeAllOrderLines{ ... on Order { id } ... on ErrorResult { message } } }`, {}, token);
-  token = r.data?.__sessionToken || token;
+  // 清理残留 activeOrder：客户会话可能残留处于 ArrangingPayment 等非 AddingItems 状态的订单。
+  // 直接 removeAllOrderLines 会报 "Order contents may only be modified when in the AddingItems state"，
+  // 且已分配库存的订单删行会触发 stock_movement 外键约束 → 先取消（Cancelled）释放分配。
+  let ar = await shopGql(`query { activeOrder { id state } }`, {}, token);
+  token = ar.data?.__sessionToken || token;
+  let ao = ar.data?.activeOrder;
+  if (ao?.id && ao.state !== "AddingItems") {
+    const tr = await shopGql(`mutation{ transitionOrderToState(state: "Cancelled"){ ... on Order { id state } ... on OrderStateTransitionError { message } } }`, {}, token);
+    token = tr.data?.__sessionToken || token;
+    const ar2 = await shopGql(`query { activeOrder { id state } }`, {}, token);
+    token = ar2.data?.__sessionToken || token;
+    ao = ar2.data?.activeOrder;
+  }
+  let r;
+  if (ao?.id) {
+    r = await shopGql(`mutation{ removeAllOrderLines{ ... on Order { id } ... on ErrorResult { message } } }`, {}, token);
+    token = r.data?.__sessionToken || token;
+  }
   r = await shopGql(`mutation($id: ID!, $q: Int!){ addItemToOrder(productVariantId: $id, quantity: $q){ ... on Order { id code } ... on ErrorResult { message } } }`, { id: variantId, q: qty }, token);
   token = r.data?.__sessionToken || token;
   const o = r.data?.addItemToOrder;
@@ -217,6 +267,7 @@ async function myOrderPackages(token, orderId) {
     await setChannelCustomFields(adminToken, { shippingStrategy: "nearest", stockLocationPriority: JSON.stringify([{ locationId: "1", priority: 1 }, { locationId: "2", priority: 2 }]), memberStockStrategy: null });
     await ensureSplitShippingMethod(adminToken);
     await adminGql(`mutation($id: ID!, $cf: UpdateChannelCustomFieldsInput!){ updateChannel(input: { id: $id, customFields: $cf }){ ... on Channel { id } } }`, { id: "2", cf: { packageShippingRule: PACKAGE_RULES } }, adminToken);
+    result("前置.客户角色关联 shop-a 渠道", await ensureCustomerRoleOnChannel(), `channel#${SHOP_A_CHANNEL_ID}`);
     result("前置.双仓可售重置为各 5", await resetTwoLocStock(adminToken, v.id, TARGET_AVAIL),
       (v?.stockLevels || []).map(l => `#${l.stockLocationId} onHand=${l.stockOnHand} alloc=${l.stockAllocated}`).join(" | "));
     await ensureCustomer(CUSTOMER_A);
@@ -273,12 +324,12 @@ async function myOrderPackages(token, orderId) {
     // ---- 5. 权限：客户B 查询客户A 的订单 → Forbidden ----
     const tokenB = await customerLogin(CUSTOMER_B);
     const res5 = await shopGql(`query($orderId: ID!){ myOrderPackages(orderId: $orderId){ code } }`, { orderId: order.orderId }, tokenB);
-    const t5 = !!res5.errors && /forbidden/i.test(res5.errors[0].message);
+    const t5 = !!res5.errors && res5.errors[0]?.extensions?.code === "FORBIDDEN";
     result("t5.他人订单查询返回 ForbiddenError", t5, res5.errors?.[0]?.message);
 
     // ---- 6. 权限：未登录查询 → 未授权（@Allow(Authenticated) 由 Vendure 拦截） ----
     const res6 = await shopGql(`query($orderId: ID!){ myOrderPackages(orderId: $orderId){ code } }`, { orderId: order.orderId }, "");
-    const t6 = !!res6.errors && /forbidden|unauthorized/i.test(res6.errors[0].message);
+    const t6 = !!res6.errors && (res6.errors[0]?.extensions?.code === "FORBIDDEN" || res6.errors[0]?.extensions?.code === "UNAUTHORIZED");
     result("t6.未登录查询返回未授权错误", t6, res6.errors?.[0]?.message);
 
     // ---- 7. 回归：未发货 self 包 tracking/carrierName/courierName 为 null（客户B 新订单，拆单后不发货即查） ----

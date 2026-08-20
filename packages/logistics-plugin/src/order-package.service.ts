@@ -1,4 +1,4 @@
-import { Injectable, OnApplicationBootstrap } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import {
     EntityNotFoundError,
     ForbiddenError,
@@ -45,16 +45,16 @@ const TRANSITIONS: Record<OrderPackageStatus, OrderPackageStatus[]> = {
 };
 
 @Injectable()
-export class OrderPackageService implements OnApplicationBootstrap {
+export class OrderPackageService {
+    private injector: Injector | null = null;
     private orderService: OrderService | null = null;
     private deliveryShopLinker: DeliveryOrderShopLinker | null = null;
 
-    constructor(
-        private connection: TransactionalConnection,
-        private injector: Injector,
-    ) {}
+    constructor(private connection: TransactionalConnection) {}
 
-    onApplicationBootstrap(): void {
+    /** 由 LogisticsPlugin.onApplicationBootstrap 调用，注入器就绪后解析可选依赖 */
+    init(injector: Injector): void {
+        this.injector = injector;
         try {
             this.orderService = this.injector.get(OrderService);
         } catch (e) {
@@ -190,11 +190,14 @@ export class OrderPackageService implements OnApplicationBootstrap {
         if (!ctx.activeUserId) {
             throw new UnauthorizedError();
         }
-        const order = await this.orderService.findOne(ctx, orderId, ['customer']);
+        const order = await this.orderService.findOne(ctx, orderId, ['customer', 'customer.user']);
         if (!order) {
             throw new EntityNotFoundError('Order', orderId);
         }
-        if (!order.customer || String(order.customer.id) !== String(ctx.activeUserId)) {
+        // 注意：order.customer.id 是 Customer 主键，而 ctx.activeUserId 是关联 User 主键，两者不同。
+        // 归属校验必须基于 customer.user.id 与 activeUserId 比较。
+        const customerUserId = (order.customer as any)?.user?.id;
+        if (!order.customer || customerUserId == null || String(customerUserId) !== String(ctx.activeUserId)) {
             throw new ForbiddenError();
         }
 

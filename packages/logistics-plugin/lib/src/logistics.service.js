@@ -183,21 +183,24 @@ let LogisticsService = class LogisticsService {
      * Shop 端查询订单物流轨迹：需校验订单归属（customerId 匹配）。
      */
     async getMyOrderTracks(ctx, orderId) {
-        var _a;
+        var _a, _b, _c;
         if (!this.orderService) {
             throw new Error('OrderService not initialized');
         }
         if (!ctx.activeUserId) {
             throw new core_1.UnauthorizedError();
         }
-        const order = await this.orderService.findOne(ctx, orderId, ['customer', 'fulfillments']);
+        const order = await this.orderService.findOne(ctx, orderId, ['customer', 'customer.user', 'fulfillments']);
         if (!order) {
             throw new core_1.EntityNotFoundError('Order', orderId);
         }
-        if (!order.customer || String(order.customer.id) !== String(ctx.activeUserId)) {
+        // 注意：order.customer.id 是 Customer 主键，而 ctx.activeUserId 是关联 User 主键，两者不同。
+        // 归属校验必须基于 customer.user.id 与 activeUserId 比较。
+        const customerUserId = (_b = (_a = order.customer) === null || _a === void 0 ? void 0 : _a.user) === null || _b === void 0 ? void 0 : _b.id;
+        if (!order.customer || customerUserId == null || String(customerUserId) !== String(ctx.activeUserId)) {
             throw new core_1.ForbiddenError();
         }
-        const fulfillmentIds = ((_a = order.fulfillments) !== null && _a !== void 0 ? _a : []).map(f => f.id);
+        const fulfillmentIds = ((_c = order.fulfillments) !== null && _c !== void 0 ? _c : []).map(f => f.id);
         if (fulfillmentIds.length === 0) {
             return [];
         }
