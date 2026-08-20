@@ -29,6 +29,8 @@ const logistics_admin_resolver_1 = require("./logistics-admin.resolver");
 const auto_split_plan_service_1 = require("./auto-split-plan.service");
 const manual_split_adjust_service_1 = require("./manual-split-adjust.service");
 const split_admin_resolver_1 = require("./split-admin.resolver");
+const order_package_entity_1 = require("./order-package.entity");
+const order_package_service_1 = require("./order-package.service");
 const split_shipping_calculator_1 = require("./split-shipping-calculator");
 /** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
 function mergeCustomFields(existingFields, additions) {
@@ -82,6 +84,7 @@ const adminSchema = () => gql `
         logisticsTrack(id: ID!): LogisticsTrack
         carriers: [Carrier!]!
         splitPlanPreview(orderId: ID!): OrderSplitPlan!
+        orderPackages(orderId: ID!): [OrderPackage!]!
     }
 
     extend type Mutation {
@@ -187,12 +190,15 @@ LogisticsPlugin.options = {};
 exports.LogisticsPlugin = LogisticsPlugin = LogisticsPlugin_1 = __decorate([
     (0, core_2.VendurePlugin)({
         imports: [core_2.PluginCommonModule],
-        entities: [logistics_track_entity_1.LogisticsTrack],
+        entities: [logistics_track_entity_1.LogisticsTrack, order_package_entity_1.OrderPackage],
         providers: [
             { provide: constants_1.LOGISTICS_PLUGIN_OPTIONS, useFactory: () => LogisticsPlugin.options },
             logistics_service_1.LogisticsService,
             auto_split_plan_service_1.AutoSplitPlanService,
             manual_split_adjust_service_1.ManualSplitAdjustService,
+            order_package_service_1.OrderPackageService,
+            // 字符串 token：供 delivery-gateway-plugin 通过注入器 duck-typing 解耦调用（挂钩点3）
+            { provide: 'OrderPackageLinker', useExisting: order_package_service_1.OrderPackageService },
         ],
         adminApiExtensions: {
             schema: adminSchema,

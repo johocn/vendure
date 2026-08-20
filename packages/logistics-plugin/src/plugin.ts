@@ -28,6 +28,8 @@ import { LogisticsAdminResolver } from './logistics-admin.resolver';
 import { AutoSplitPlanService } from './auto-split-plan.service';
 import { ManualSplitAdjustService } from './manual-split-adjust.service';
 import { SplitAdminResolver } from './split-admin.resolver';
+import { OrderPackage } from './order-package.entity';
+import { OrderPackageService } from './order-package.service';
 import { splitShippingCalculator } from './split-shipping-calculator';
 
 /** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
@@ -87,6 +89,7 @@ const adminSchema = () => gql`
         logisticsTrack(id: ID!): LogisticsTrack
         carriers: [Carrier!]!
         splitPlanPreview(orderId: ID!): OrderSplitPlan!
+        orderPackages(orderId: ID!): [OrderPackage!]!
     }
 
     extend type Mutation {
@@ -122,12 +125,15 @@ const shopSchema = () => gql`
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [LogisticsTrack],
+    entities: [LogisticsTrack, OrderPackage],
     providers: [
         { provide: LOGISTICS_PLUGIN_OPTIONS, useFactory: () => LogisticsPlugin.options },
         LogisticsService,
         AutoSplitPlanService,
         ManualSplitAdjustService,
+        OrderPackageService,
+        // 字符串 token：供 delivery-gateway-plugin 通过注入器 duck-typing 解耦调用（挂钩点3）
+        { provide: 'OrderPackageLinker', useExisting: OrderPackageService },
     ],
     adminApiExtensions: {
         schema: adminSchema,

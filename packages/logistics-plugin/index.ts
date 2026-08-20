@@ -8,3 +8,5 @@ export * from './src/carrier-dictionary';
 export * from './src/location-utils';
 export * from './src/catalog-custom-fields';
 export * from './src/nearest-stock-location-strategy';
+export * from './src/order-package.entity';
+export * from './src/order-package.service';

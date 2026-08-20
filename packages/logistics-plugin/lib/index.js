@@ -24,4 +24,6 @@ __exportStar(require("./src/carrier-dictionary"), exports);
 __exportStar(require("./src/location-utils"), exports);
 __exportStar(require("./src/catalog-custom-fields"), exports);
 __exportStar(require("./src/nearest-stock-location-strategy"), exports);
+__exportStar(require("./src/order-package.entity"), exports);
+__exportStar(require("./src/order-package.service"), exports);
 //# sourceMappingURL=index.js.map
