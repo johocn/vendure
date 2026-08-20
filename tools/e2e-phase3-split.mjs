@@ -447,12 +447,17 @@ function sumPlanQty(plan) {
     result("t7.拆单预览 2 包且数量合计=8", t7a,
       pkgs7.length ? JSON.stringify(pkgs7.map(p => `#${p.stockLocationId}:${(p.lines || []).map(l => l.quantity).join("+")}`)) : JSON.stringify(plan7));
 
-    // 7.2 整单发货（batchCreateFulfillment 覆盖全部行；core 按 Allocation 逐仓扣 → 每仓一条 Sale）
-    const ship7 = await shipOrder(adminToken, order2.orderId, "P1", 0, `SF${ts7}`);
-    const shipItem7 = ship7.data?.batchCreateFulfillment?.items?.[0];
-    result("t7.整单发货（含双仓分配）", shipItem7?.success === true, shipItem7?.error ?? `trackId=${shipItem7?.trackId}`);
+    // 7.2 先发 P1（B仓，5件）→ 账本仅 1 条 Sale（B仓）
+    const ship7a = await shipOrder(adminToken, order2.orderId, "P1", 1000, `SF7a${ts7}`);
+    const shipItem7a = ship7a.data?.batchCreateFulfillment?.items?.[0];
+    result("t7a.发货P1（B仓5件）", shipItem7a?.success === true, shipItem7a?.error ?? `trackId=${shipItem7a?.trackId}`);
 
-    // 7.3 断言 order:out 账本：2 条 bizType=order，stockLocationId 分别为两仓，数量合计 8
+    // 7.2b 再发 P2（A仓，3件）→ 账本现 2 条
+    const ship7b = await shipOrder(adminToken, order2.orderId, "P2", 800, `SF7b${ts7}`);
+    const shipItem7b = ship7b.data?.batchCreateFulfillment?.items?.[0];
+    result("t7b.发货P2（A仓3件）", shipItem7b?.success === true, shipItem7b?.error ?? `trackId=${shipItem7b?.trackId}`);
+
+    // 7.3 断言 order:out 账本：2 条，stockLocationId 分别为两仓，数量合计 8
     const lg7 = await adminGql(
       `query($bc: String!){ stockLedger(bizCode: $bc, pageSize: 50){ totalItems items { bizType bizCode direction quantity stockLocationId reason } } }`,
       { bc: order2.code },
@@ -464,7 +469,7 @@ function sumPlanQty(plan) {
     const t7b = entries7.length === 2 &&
       locSet7.has(LOC_DEFAULT) && locSet7.has(LOC_PRIORITY) &&
       sum7 === ORDER_QTY;
-    result("t7.ledger 每仓各一条 order:out(两仓各一笔,合计8)", t7b,
+    result("t7.ledger 每仓各一条 order:out(双仓各一,合计8)", t7b,
       entries7.length ? JSON.stringify(entries7.map(e => `#${e.stockLocationId}:${e.quantity}`)) : `entries=${entries7.length} raw=${lg7.data?.stockLedger?.totalItems}`);
   } finally {
     // ---- 6. 清理：取消测试单 + 还原库存 + 渠道配置（无论成败都执行） ----
