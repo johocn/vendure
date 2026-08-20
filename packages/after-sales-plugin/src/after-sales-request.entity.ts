@@ -43,6 +43,10 @@ export class AfterSalesRequest extends VendureEntity implements ChannelAware {
     @Column({ type: 'int', nullable: true })
     receivedQuantity: number | null;
 
+    /** 多仓回补明细 JSON（[{ stockLocationId, quantity }]）；单仓/旧数据为 null */
+    @Column({ type: 'text', nullable: true })
+    restockJson: string | null;
+
     @Column({ type: 'varchar', nullable: true })
     returnTrackingNo: string | null;
 

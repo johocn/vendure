@@ -14,6 +14,8 @@ export declare class AfterSalesRequest extends VendureEntity implements ChannelA
     refundAmount: number;
     /** 实收数量（部分退货按实收回补；null 表示全额按订单行数量回补） */
     receivedQuantity: number | null;
+    /** 多仓回补明细 JSON（[{ stockLocationId, quantity }]）；单仓/旧数据为 null */
+    restockJson: string | null;
     returnTrackingNo: string | null;
     returnCarrier: string | null;
     rejectReason: string | null;

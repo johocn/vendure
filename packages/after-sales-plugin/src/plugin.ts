@@ -93,6 +93,7 @@ const { gql } = require('graphql-tag');
                 returnCarrier: String
                 rejectReason: String
                 receivedQuantity: Int
+                restockJson: String
                 customerId: ID!
                 createdAt: DateTime!
                 updatedAt: DateTime!

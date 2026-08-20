@@ -124,6 +124,7 @@ exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
                 returnCarrier: String
                 rejectReason: String
                 receivedQuantity: Int
+                restockJson: String
                 customerId: ID!
                 createdAt: DateTime!
                 updatedAt: DateTime!
