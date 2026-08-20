@@ -300,16 +300,18 @@ async function resetTwoLocStock(token, variantId, targetAvail) {
     // ================= 场景1（self 包链路）：t1-t6 =================
     const order = await placeOrderAsCustomer(CUSTOMER_A, v.id, ORDER_QTY, NEAR_ANCHOR);
     orders.push({ token: order.token, orderId: order.orderId });
-    await payAndSettle(order.token, adminToken, order.orderId);
+    // 先确认拆单（applyAdjustment 落定每包运费）再支付：否则支付额不含运费 → checkPaymentsCoverTotal 失败
     const o1 = await readOrder(adminToken, order.orderId);
     const lineId = o1?.lines?.[0]?.id || "";
 
-    // ---- t1: 下单拆两仓 + 支付 → PaymentSettled；confirmSplitPlan → 2 包 pending（订单仍 PaymentSettled）----
+    // ---- t1: 拆两仓(每包运费已定) + 支付 → PaymentSettled；2 包 pending ----
     const planB5A3 = [
       { stockLocationId: LOC_PRIORITY, lines: [{ orderLineId: lineId, quantity: 5 }] },
       { stockLocationId: LOC_DEFAULT, lines: [{ orderLineId: lineId, quantity: 3 }] },
     ];
     const r1 = await confirmSplitPlan(adminToken, order.orderId, planB5A3);
+    // t1 断言「订单仍 PaymentSettled」需在支付后校验
+    await payAndSettle(order.token, adminToken, order.orderId);
     const pkgs1 = await orderPackages(adminToken, order.orderId);
     const od1 = await readOrder(adminToken, order.orderId);
     const t1 = !!r1.data?.confirmSplitPlan && pkgs1.length === 2 &&
@@ -372,13 +374,14 @@ async function resetTwoLocStock(token, variantId, targetAvail) {
     await resetTwoLocStock(adminToken, v.id, TARGET_AVAIL);
     const order7 = await placeOrderAsCustomer(CUSTOMER_B, v.id, ORDER_QTY, NEAR_ANCHOR);
     orders.push({ token: order7.token, orderId: order7.orderId });
-    await payAndSettle(order7.token, adminToken, order7.orderId);
+    // 先拆单(落定每包运费)再支付，避免支付额不含运费 → checkPaymentsCoverTotal 失败
     const o7 = await readOrder(adminToken, order7.orderId);
     const lineId7 = o7?.lines?.[0]?.id || "";
     const r7plan = await confirmSplitPlan(adminToken, order7.orderId, [
       { stockLocationId: LOC_PRIORITY, lines: [{ orderLineId: lineId7, quantity: 5 }] },
       { stockLocationId: LOC_DEFAULT, lines: [{ orderLineId: lineId7, quantity: 3 }] },
     ]);
+    await payAndSettle(order7.token, adminToken, order7.orderId);
     // city：对两个包都 createDelivery（无 fulfillment，验证不被 checkFulfillmentStates 拦截）
     const dlv1 = await createDelivery(adminToken, { orderId: order7.orderId, packageId: "P1" });
     const dlv2 = await createDelivery(adminToken, { orderId: order7.orderId, packageId: "P2" });
@@ -420,13 +423,14 @@ async function resetTwoLocStock(token, variantId, targetAvail) {
     await resetTwoLocStock(adminToken, v.id, TARGET_AVAIL);
     const order8 = await placeOrderAsCustomer(CUSTOMER_C, v.id, ORDER_QTY, NEAR_ANCHOR);
     orders.push({ token: order8.token, orderId: order8.orderId });
-    await payAndSettle(order8.token, adminToken, order8.orderId);
+    // 先拆单(落定每包运费)再支付，避免支付额不含运费 → checkPaymentsCoverTotal 失败
     const o8 = await readOrder(adminToken, order8.orderId);
     const lineId8 = o8?.lines?.[0]?.id || "";
     await confirmSplitPlan(adminToken, order8.orderId, [
       { stockLocationId: LOC_PRIORITY, lines: [{ orderLineId: lineId8, quantity: 5 }] },
       { stockLocationId: LOC_DEFAULT, lines: [{ orderLineId: lineId8, quantity: 3 }] },
     ]);
+    await payAndSettle(order8.token, adminToken, order8.orderId);
     await shipOrder(adminToken, order8.orderId, "P1", 1000, `SF10P1${Date.now()}`);
     await shipOrder(adminToken, order8.orderId, "P2", 800, `SF10P2${Date.now()}`);
     await markDelivered(adminToken, order8.orderId, "P1");

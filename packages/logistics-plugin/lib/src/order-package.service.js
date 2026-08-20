@@ -67,6 +67,41 @@ let OrderPackageService = class OrderPackageService {
         core_1.Logger.info(`order#${orderId} 落库 OrderPackage ${entities.length} 包`, constants_1.loggerCtx);
         return this.findByOrder(ctx, orderId);
     }
+    /**
+     * 同步重算拆单运费：拆单确认后调用，确保 shippingWithTax 在支付前已落定。
+     * 否则仅依赖 ArrangingPayment 过渡的异步 recalcSplitShipping，支付时总额可能漏计运费
+     * → checkPaymentsCoverTotal 失败、订单滞留 ArrangingPayment。
+     */
+    async finalizeSplitShipping(ctx, orderId) {
+        var _a, _b, _c;
+        if (!this.orderService) {
+            return;
+        }
+        const order = await this.orderService.findOne(ctx, orderId);
+        if (!order || !((_a = order.shippingLines) === null || _a === void 0 ? void 0 : _a.length)) {
+            return;
+        }
+        const hasSplit = ((_b = order.lines) !== null && _b !== void 0 ? _b : []).some((line) => {
+            var _a;
+            const raw = (_a = line.customFields) === null || _a === void 0 ? void 0 : _a.stockLocationsJson;
+            if (!raw) {
+                return false;
+            }
+            try {
+                const arr = JSON.parse(String(raw));
+                return Array.isArray(arr) && arr.length > 0;
+            }
+            catch (_b) {
+                return false;
+            }
+        });
+        if (!hasSplit) {
+            return;
+        }
+        const updated = await this.orderService.applyPriceAdjustments(ctx, order);
+        await this.connection.getRepository(ctx, core_1.Order).save(updated, { reload: false });
+        core_1.Logger.info(`拆单确认后同步重算运费 order#${(_c = order.code) !== null && _c !== void 0 ? _c : orderId} -> shippingWithTax=${updated.shippingWithTax}`, constants_1.loggerCtx);
+    }
     /** 发货回填：按 orderId + code 匹配包裹，补 fulfillmentId 与实际运费，返回是否命中 */
     async linkFulfillment(ctx, orderId, packageId, fulfillmentId, actualShippingFee) {
         const repo = this.connection.getRepository(ctx, order_package_entity_1.OrderPackage);

@@ -93,6 +93,39 @@ export class OrderPackageService {
         return this.findByOrder(ctx, orderId);
     }
 
+    /**
+     * 同步重算拆单运费：拆单确认后调用，确保 shippingWithTax 在支付前已落定。
+     * 否则仅依赖 ArrangingPayment 过渡的异步 recalcSplitShipping，支付时总额可能漏计运费
+     * → checkPaymentsCoverTotal 失败、订单滞留 ArrangingPayment。
+     */
+    async finalizeSplitShipping(ctx: RequestContext, orderId: ID): Promise<void> {
+        if (!this.orderService) {
+            return;
+        }
+        const order = await this.orderService.findOne(ctx, orderId);
+        if (!order || !(order.shippingLines?.length)) {
+            return;
+        }
+        const hasSplit = (order.lines ?? []).some((line: OrderLine & { customFields?: any }) => {
+            const raw = (line.customFields as any)?.stockLocationsJson;
+            if (!raw) {
+                return false;
+            }
+            try {
+                const arr = JSON.parse(String(raw));
+                return Array.isArray(arr) && arr.length > 0;
+            } catch {
+                return false;
+            }
+        });
+        if (!hasSplit) {
+            return;
+        }
+        const updated = await this.orderService.applyPriceAdjustments(ctx, order);
+        await this.connection.getRepository(ctx, Order).save(updated, { reload: false });
+        Logger.info(`拆单确认后同步重算运费 order#${order.code ?? orderId} -> shippingWithTax=${updated.shippingWithTax}`, loggerCtx);
+    }
+
     /** 发货回填：按 orderId + code 匹配包裹，补 fulfillmentId 与实际运费，返回是否命中 */
     async linkFulfillment(
         ctx: RequestContext,

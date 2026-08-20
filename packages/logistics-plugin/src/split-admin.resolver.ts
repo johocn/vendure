@@ -67,6 +67,8 @@ export class SplitAdminResolver {
                 deliveryMode: p.deliveryMode,
             })),
         );
+        // 同步重算拆单运费：确保支付前 shippingWithTax 已落定（否则支付额漏计运费 → 订单滞留 ArrangingPayment）
+        await this.orderPackageService.finalizeSplitShipping(ctx, orderId);
         return plan;
     }
 

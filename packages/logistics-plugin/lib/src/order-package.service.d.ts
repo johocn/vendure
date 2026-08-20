@@ -19,6 +19,12 @@ export declare class OrderPackageService {
     init(injector: Injector): void;
     /** 拆单确认：先删后插（幂等，重复确认干净替换），返回落库后的包裹列表 */
     replaceForOrder(ctx: RequestContext, orderId: ID, packages: OrderPackageInput[]): Promise<OrderPackage[]>;
+    /**
+     * 同步重算拆单运费：拆单确认后调用，确保 shippingWithTax 在支付前已落定。
+     * 否则仅依赖 ArrangingPayment 过渡的异步 recalcSplitShipping，支付时总额可能漏计运费
+     * → checkPaymentsCoverTotal 失败、订单滞留 ArrangingPayment。
+     */
+    finalizeSplitShipping(ctx: RequestContext, orderId: ID): Promise<void>;
     /** 发货回填：按 orderId + code 匹配包裹，补 fulfillmentId 与实际运费，返回是否命中 */
     linkFulfillment(ctx: RequestContext, orderId: ID, packageId: string, fulfillmentId: ID, actualShippingFee: number | null): Promise<boolean>;
     /** 配送关联：按 orderId + code 匹配包裹，回填 deliveryOrderId，返回是否命中 */
