@@ -17,12 +17,14 @@ const constants_1 = require("./constants");
 const logistics_track_entity_1 = require("./logistics-track.entity");
 const carrier_dictionary_1 = require("./carrier-dictionary");
 const tracking_provider_1 = require("./tracking-provider");
+const order_package_service_1 = require("./order-package.service");
 const MANUAL_FULFILLMENT_HANDLER_CODE = 'manual-fulfillment';
 let LogisticsService = class LogisticsService {
     constructor(connection) {
         this.connection = connection;
         this.orderService = null;
         this.trackingProvider = new tracking_provider_1.NoopTrackingProvider();
+        this.orderPackageService = null;
     }
     init(injector) {
         var _a;
@@ -33,6 +35,12 @@ let LogisticsService = class LogisticsService {
         }
         catch (_b) {
             this.trackingProvider = new tracking_provider_1.NoopTrackingProvider();
+        }
+        try {
+            this.orderPackageService = injector.get(order_package_service_1.OrderPackageService);
+        }
+        catch (_c) {
+            this.orderPackageService = null;
         }
     }
     /**
@@ -87,7 +95,7 @@ let LogisticsService = class LogisticsService {
      * Fulfillment customFields（trackingNumber/carrier/carrierCode）同步回写。
      */
     async batchCreateFulfillment(ctx, items) {
-        var _a;
+        var _a, _b, _c, _d;
         if (!this.orderService) {
             throw new Error('OrderService not initialized');
         }
@@ -123,6 +131,15 @@ let LogisticsService = class LogisticsService {
                 const fulfillment = fulfillmentResult;
                 // 2. 回写 Fulfillment customFields（carrierCode/carrier/trackingNumber + 拆单包号/本包运费）
                 await this.updateFulfillmentCustomFields(ctx, fulfillment.id, Object.assign(Object.assign({ trackingNumber: item.trackingNo, carrier: carrierDef.name, carrierCode: item.carrierCode }, (item.packageId != null ? { packageId: item.packageId } : {})), (item.shippingFee != null ? { shippingFee: item.shippingFee } : {})));
+                // 挂钩点2：按包回填 OrderPackage.fulfillmentId + 实际运费（未命中仅告警，不阻断发货）
+                if (item.packageId) {
+                    try {
+                        await ((_b = this.orderPackageService) === null || _b === void 0 ? void 0 : _b.linkFulfillment(ctx, item.orderId, item.packageId, fulfillment.id, (_c = item.shippingFee) !== null && _c !== void 0 ? _c : null));
+                    }
+                    catch (e) {
+                        core_1.Logger.warn(`OrderPackage 回填发货失败 order#${item.orderId} pkg=${item.packageId}: ${(_d = e === null || e === void 0 ? void 0 : e.message) !== null && _d !== void 0 ? _d : e}`, constants_1.loggerCtx);
+                    }
+                }
                 // 3. 创建 LogisticsTrack 记录
                 const track = await this.createTrack(ctx, fulfillment.id, item.trackingNo, item.carrierCode);
                 results.push({ orderId: item.orderId, success: true, trackId: track.id });

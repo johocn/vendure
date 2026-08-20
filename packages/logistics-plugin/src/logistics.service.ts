@@ -19,6 +19,7 @@ import { LogisticsTrack } from './logistics-track.entity';
 import { getCarrierByCode } from './carrier-dictionary';
 import { LogisticsPluginOptions } from './types';
 import { LogisticsTrackingProvider, NoopTrackingProvider, TrackResult } from './tracking-provider';
+import { OrderPackageService } from './order-package.service';
 
 export interface BatchFulfillmentItem {
     orderId: ID;
@@ -43,6 +44,7 @@ const MANUAL_FULFILLMENT_HANDLER_CODE = 'manual-fulfillment';
 export class LogisticsService {
     private orderService: OrderService | null = null;
     private trackingProvider: LogisticsTrackingProvider = new NoopTrackingProvider();
+    private orderPackageService: OrderPackageService | null = null;
 
     constructor(private connection: TransactionalConnection) {}
 
@@ -53,6 +55,11 @@ export class LogisticsService {
             this.trackingProvider = options?.trackingProvider ?? new NoopTrackingProvider();
         } catch {
             this.trackingProvider = new NoopTrackingProvider();
+        }
+        try {
+            this.orderPackageService = injector.get(OrderPackageService);
+        } catch {
+            this.orderPackageService = null;
         }
     }
 
@@ -159,6 +166,24 @@ export class LogisticsService {
                     ...(item.packageId != null ? { packageId: item.packageId } : {}),
                     ...(item.shippingFee != null ? { shippingFee: item.shippingFee } : {}),
                 });
+
+                // 挂钩点2：按包回填 OrderPackage.fulfillmentId + 实际运费（未命中仅告警，不阻断发货）
+                if (item.packageId) {
+                    try {
+                        await this.orderPackageService?.linkFulfillment(
+                            ctx,
+                            item.orderId,
+                            item.packageId,
+                            fulfillment.id,
+                            item.shippingFee ?? null,
+                        );
+                    } catch (e: any) {
+                        Logger.warn(
+                            `OrderPackage 回填发货失败 order#${item.orderId} pkg=${item.packageId}: ${e?.message ?? e}`,
+                            loggerCtx,
+                        );
+                    }
+                }
 
                 // 3. 创建 LogisticsTrack 记录
                 const track = await this.createTrack(ctx, fulfillment.id, item.trackingNo, item.carrierCode);

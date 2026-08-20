@@ -20,6 +20,7 @@ export declare class LogisticsService {
     private connection;
     private orderService;
     private trackingProvider;
+    private orderPackageService;
     constructor(connection: TransactionalConnection);
     init(injector: Injector): void;
     /**
