@@ -15,7 +15,8 @@ export declare class Review extends VendureEntity implements ChannelAware {
     reply: string | null;
     repliedAt?: Date;
     helpfulCount: number;
-    channel: Channel;
     channelId: number;
     channels: Channel[];
+    /** 自关联：追评。parentId 为主评 id，NULL 表示主评。聚合只统计 parentId==NULL 的主评。 */
+    parentId: number | null;
 }

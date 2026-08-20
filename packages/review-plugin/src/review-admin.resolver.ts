@@ -26,6 +26,12 @@ export class ReviewAdminResolver {
         return this.reviewService.getReviewStats(ctx, productId);
     }
 
+    @Query()
+    @Allow(Permission.ReadOrder)
+    async productRating(@Ctx() ctx: RequestContext, @Args('productId') productId: ID): Promise<any> {
+        return this.reviewService.getProductRating(ctx, productId);
+    }
+
     @Mutation()
     @Allow(Permission.UpdateOrder)
     async replyReview(
@@ -46,6 +52,11 @@ export class ReviewAdminResolver {
     @Allow(Permission.UpdateOrder)
     async rejectReview(@Ctx() ctx: RequestContext, @Args('id') id: ID): Promise<any> {
         return this.reviewService.rejectReview(ctx, id);
+    }
+
+    @ResolveField()
+    async followUps(@Ctx() ctx: RequestContext, @Parent() review: Review): Promise<any> {
+        return this.reviewService.getReviewFollowUps(ctx, review);
     }
 
     @ResolveField()

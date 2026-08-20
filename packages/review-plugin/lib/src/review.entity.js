@@ -75,11 +75,7 @@ __decorate([
     __metadata("design:type", Number)
 ], Review.prototype, "helpfulCount", void 0);
 __decorate([
-    (0, typeorm_1.ManyToOne)(() => core_1.Channel),
-    __metadata("design:type", core_1.Channel)
-], Review.prototype, "channel", void 0);
-__decorate([
-    (0, typeorm_1.Column)(),
+    (0, typeorm_1.Column)({ type: 'int' }),
     __metadata("design:type", Number)
 ], Review.prototype, "channelId", void 0);
 __decorate([
@@ -87,6 +83,10 @@ __decorate([
     (0, typeorm_1.JoinTable)(),
     __metadata("design:type", Array)
 ], Review.prototype, "channels", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', nullable: true }),
+    __metadata("design:type", Object)
+], Review.prototype, "parentId", void 0);
 exports.Review = Review = __decorate([
     (0, typeorm_1.Entity)(),
     __metadata("design:paramtypes", [Object])

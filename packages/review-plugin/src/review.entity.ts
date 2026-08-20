@@ -1,4 +1,4 @@
-import { Column, Entity, JoinTable, ManyToMany, ManyToOne } from 'typeorm';
+import { Column, Entity, JoinTable, ManyToMany } from 'typeorm';
 import { Channel, ChannelAware, DeepPartial, VendureEntity } from '@vendure/core';
 
 @Entity()
@@ -35,11 +35,13 @@ export class Review extends VendureEntity implements ChannelAware {
 
     @Column({ default: 0 }) helpfulCount: number;
 
-    @ManyToOne(() => Channel) channel: Channel;
-
-    @Column() channelId: number;
+    @Column({ type: 'int' }) channelId: number;
 
     @ManyToMany(() => Channel)
     @JoinTable()
     channels: Channel[];
+
+    /** 自关联：追评。parentId 为主评 id，NULL 表示主评。聚合只统计 parentId==NULL 的主评。 */
+    @Column({ type: 'int', nullable: true })
+    parentId: number | null;
 }

@@ -4,11 +4,21 @@ import { PluginCommonModule, VendurePlugin } from '@vendure/core';
 import { REVIEW_PLUGIN_OPTIONS } from './constants';
 import { Review } from './review.entity';
 import { ReviewAdminResolver } from './review-admin.resolver';
+import { reviewProductCustomFields } from './review-product-custom-fields';
 import { ReviewService } from './review.service';
 import { ReviewShopResolver } from './review-shop.resolver';
 import { ReviewPluginOptions } from './types';
 
 const { gql } = require('graphql-tag');
+
+/** 幂等并入自定义字段，按 name 去重（preBootstrapConfig 可能多次执行插件配置）。 */
+function mergeCustomFields<T extends { name: string }>(
+    existingFields: T[] | undefined,
+    additions: T[] | undefined,
+): T[] {
+    const names = new Set((existingFields ?? []).map(f => f.name));
+    return [...(existingFields ?? []), ...(additions ?? []).filter(f => !names.has(f.name))];
+}
 
 const adminSchema = () => gql`
     type Review implements Node {
@@ -18,6 +28,8 @@ const adminSchema = () => gql`
         productId: ID!
         variantId: ID
         orderLineId: ID
+        parentId: ID
+        followUps: [Review!]!
         rating: Int!
         content: String!
         images: [String!]
@@ -62,10 +74,16 @@ const adminSchema = () => gql`
         topTags: [TagCount!]!
     }
 
+    type ProductRating {
+        rating: Float!
+        reviewCount: Int!
+    }
+
     extend type Query {
         reviews(options: ReviewListOptions): ReviewList!
         review(id: ID!): Review
         reviewStats(productId: ID!): ReviewStats!
+        productRating(productId: ID!): ProductRating!
     }
 
     extend type Mutation {
@@ -83,6 +101,8 @@ const shopSchema = () => gql`
         productId: ID!
         variantId: ID
         orderLineId: ID
+        parentId: ID
+        followUps: [Review!]!
         rating: Int!
         content: String!
         images: [String!]
@@ -119,12 +139,35 @@ const shopSchema = () => gql`
         isAnonymous: Boolean
     }
 
+    input UpdateReviewInput {
+        content: String
+        rating: Int
+        images: [String!]
+        videos: [String!]
+        tags: [String!]
+        isAnonymous: Boolean
+    }
+
+    input FollowUpReviewInput {
+        content: String
+        rating: Int
+        images: [String!]
+        videos: [String!]
+        tags: [String!]
+        isAnonymous: Boolean
+    }
+
     type ReviewStats {
         totalCount: Int!
         goodRate: Float!
         averageRating: Float!
         ratingDistribution: [RatingCount!]!
         topTags: [TagCount!]!
+    }
+
+    type ProductRating {
+        rating: Float!
+        reviewCount: Int!
     }
 
     type RatingCount {
@@ -141,10 +184,14 @@ const shopSchema = () => gql`
         productReviews(productId: ID!, options: ReviewListOptions): ReviewList!
         myReviews: [Review!]!
         reviewStats(productId: ID!): ReviewStats!
+        productRating(productId: ID!): ProductRating!
     }
 
     extend type Mutation {
         createReview(input: CreateReviewInput!): Review!
+        updateReview(id: ID!, input: UpdateReviewInput!): Review!
+        deleteReview(id: ID!): Boolean!
+        createFollowUpReview(reviewId: ID!, input: FollowUpReviewInput!): Review!
         markReviewHelpful(id: ID!): Review!
     }
 `;
@@ -163,6 +210,14 @@ const shopSchema = () => gql`
     shopApiExtensions: {
         schema: shopSchema,
         resolvers: [ReviewShopResolver],
+    },
+    configuration: (config) => {
+        // 评星驱动的商品评分聚合结果写入 Product 自定义字段
+        config.customFields.Product = mergeCustomFields(
+            config.customFields.Product,
+            reviewProductCustomFields.Product,
+        );
+        return config;
     },
     dashboard: '../dashboard/index.tsx',
     compatibility: '^3.0.0',

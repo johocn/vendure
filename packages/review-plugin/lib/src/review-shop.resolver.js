@@ -30,11 +30,26 @@ let ReviewShopResolver = class ReviewShopResolver {
     async reviewStats(ctx, productId) {
         return this.reviewService.getReviewStats(ctx, productId);
     }
+    async productRating(ctx, productId) {
+        return this.reviewService.getProductRating(ctx, productId);
+    }
     async createReview(ctx, input) {
         return this.reviewService.createReview(ctx, input);
     }
+    async updateReview(ctx, id, input) {
+        return this.reviewService.updateReview(ctx, id, input);
+    }
+    async deleteReview(ctx, id) {
+        return this.reviewService.deleteReview(ctx, id);
+    }
+    async createFollowUpReview(ctx, reviewId, input) {
+        return this.reviewService.createFollowUpReview(ctx, reviewId, input);
+    }
     async markReviewHelpful(ctx, id) {
         return this.reviewService.markHelpful(ctx, id);
+    }
+    async followUps(ctx, review) {
+        return this.reviewService.getReviewFollowUps(ctx, review);
     }
     async customerName(ctx, review) {
         return this.reviewService.getCustomerName(ctx, review);
@@ -69,6 +84,15 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], ReviewShopResolver.prototype, "reviewStats", null);
 __decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Public),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('productId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], ReviewShopResolver.prototype, "productRating", null);
+__decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
@@ -82,10 +106,47 @@ __decorate([
     (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('input')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object]),
+    __metadata("design:returntype", Promise)
+], ReviewShopResolver.prototype, "updateReview", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], ReviewShopResolver.prototype, "deleteReview", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('reviewId')),
+    __param(2, (0, graphql_1.Args)('input')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object]),
+    __metadata("design:returntype", Promise)
+], ReviewShopResolver.prototype, "createFollowUpReview", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], ReviewShopResolver.prototype, "markReviewHelpful", null);
+__decorate([
+    (0, graphql_1.ResolveField)(),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Parent)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, review_entity_1.Review]),
+    __metadata("design:returntype", Promise)
+], ReviewShopResolver.prototype, "followUps", null);
 __decorate([
     (0, graphql_1.ResolveField)(),
     __param(0, (0, core_1.Ctx)()),
