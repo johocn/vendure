@@ -1,6 +1,7 @@
 import { Inject, OnApplicationBootstrap, Type } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import {
+    configureDefaultOrderProcess,
     EventBus,
     ID,
     Injector,
@@ -11,6 +12,7 @@ import {
     OrderStateTransitionEvent,
     PluginCommonModule,
     RequestContext,
+    ScheduledTask,
     TransactionalConnection,
     VendurePlugin,
 } from '@vendure/core';
@@ -30,7 +32,23 @@ import { ManualSplitAdjustService } from './manual-split-adjust.service';
 import { SplitAdminResolver } from './split-admin.resolver';
 import { OrderPackage } from './order-package.entity';
 import { OrderPackageService } from './order-package.service';
+import { OrderCompleteAutoService } from './order-complete-auto.service';
+import { orderCompletionProcess } from './order-completion.process';
 import { splitShippingCalculator } from './split-shipping-calculator';
+
+/** 自动交易完成定时任务 id（幂等检测用） */
+const AUTO_COMPLETE_TASK_ID = 'order-complete-auto';
+
+/** 自动交易完成定时任务：每 5 分钟扫描 Delivered 超期订单 → Completed（复用 OrderTimeoutPlugin 补偿扫描模式） */
+const autoCompleteTask = new ScheduledTask({
+    id: AUTO_COMPLETE_TASK_ID,
+    description: 'Scan Delivered orders past completion deadline and mark Completed',
+    schedule: cron => cron.every(5).minutes(),
+    async execute({ injector, scheduledContext }) {
+        const service = injector.get(OrderCompleteAutoService);
+        await service.runAutoCompleteScan(scheduledContext);
+    },
+});
 
 /** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
 function mergeCustomFields<T extends { name: string }>(
@@ -98,6 +116,8 @@ const adminSchema = () => gql`
         refreshTrack(id: ID!): LogisticsTrack!
         confirmSplitPlan(orderId: ID!, packages: [SplitPackageInput!]!): OrderSplitPlan!
         markPackageDelivered(orderId: ID!, packageId: String!): Boolean!
+        completeOrder(orderId: ID!): Boolean!
+        runAutoCompleteScan: Int!
     }
 
     input SplitLineInput { orderLineId: ID!, quantity: Int! }
@@ -169,6 +189,10 @@ const shopSchema = () => gql`
     extend type Query {
         myOrderPackages(orderId: ID!): [OrderPackageShop!]!
     }
+
+    extend type Mutation {
+        confirmOrderReceipt(orderId: ID!): Boolean!
+    }
 `;
 
 @VendurePlugin({
@@ -180,6 +204,7 @@ const shopSchema = () => gql`
         AutoSplitPlanService,
         ManualSplitAdjustService,
         OrderPackageService,
+        OrderCompleteAutoService,
         // 字符串 token：供 delivery-gateway-plugin 通过注入器 duck-typing 解耦调用（挂钩点3）
         { provide: 'OrderPackageLinker', useExisting: OrderPackageService },
     ],
@@ -206,6 +231,17 @@ const shopSchema = () => gql`
             ...(config.shippingOptions.shippingCalculators || []),
             splitShippingCalculator,
         ];
+        // 履约闭环：包裹聚合驱动订单状态机（禁用 checkFulfillmentStates，city 包无 fulfillment 不拦截）
+        if (!(config.orderOptions.process ?? []).some(p => (p as any).__logisticsClosure)) {
+            config.orderOptions.process = [
+                configureDefaultOrderProcess({ checkFulfillmentStates: false }),
+                { ...orderCompletionProcess, __logisticsClosure: true } as any,
+            ];
+        }
+        // 自动交易完成定时任务（幂等注册，复用 OrderTimeoutPlugin 的补偿扫描模式）
+        if (!config.schedulerOptions.tasks.some(t => t.id === AUTO_COMPLETE_TASK_ID)) {
+            config.schedulerOptions.tasks.push(autoCompleteTask);
+        }
         return config;
     },
     dashboard: '../dashboard/index.tsx',
@@ -221,6 +257,7 @@ export class LogisticsPlugin implements OnApplicationBootstrap {
         private autoSplit: AutoSplitPlanService,
         private manualSplit: ManualSplitAdjustService,
         private orderPackageService: OrderPackageService,
+        private orderCompleteAuto: OrderCompleteAutoService,
         private moduleRef: ModuleRef,
     ) {}
 
@@ -235,6 +272,7 @@ export class LogisticsPlugin implements OnApplicationBootstrap {
         this.autoSplit.init(this.injector);
         this.manualSplit.init(this.injector);
         this.orderPackageService.init(this.injector);
+        this.orderCompleteAuto.init(this.injector);
         // Task4 每包独立计费：库存分配在进入 ArrangingPayment 时才写 stockLocationsJson，
         // 而计费时点（setOrderShippingMethod）早于分配 → 运费先按 0 落库。
         // 在此监听 ArrangingPayment 过渡（onTransitionEnd 已分配库存），按拆分明细重算运费并落库 packageShippingJson。
