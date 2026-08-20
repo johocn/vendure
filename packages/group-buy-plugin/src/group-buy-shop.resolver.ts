@@ -17,7 +17,7 @@ export class GroupBuyShopResolver {
     }
 
     @Mutation()
-    @Transaction('manual')
+    @Transaction()
     async joinGroupBuy(
         @Ctx() ctx: RequestContext,
         @Args('activityId') activityId: ID,

@@ -5,14 +5,20 @@ import {
     Injector,
     ListQueryBuilder,
     ListQueryOptions,
+    Logger,
+    Order,
+    OrderService,
     PaginatedList,
+    PaymentService,
     RequestContext,
     TransactionalConnection,
     UserInputError,
 } from '@vendure/core';
 
+import { loggerCtx } from './constants';
 import { GroupBuyActivity } from './group-buy-activity.entity';
 import { GroupBuyOrder } from './group-buy-order.entity';
+import { setGroupBuyConnection } from './group-buy-runtime';
 
 const ALLOWED_UPDATE_FIELDS = [
     'name',
@@ -37,12 +43,16 @@ export class GroupBuyService {
         private connection: TransactionalConnection,
         private listQueryBuilder: ListQueryBuilder,
         private channelService: ChannelService,
+        private orderService: OrderService,
+        private paymentService: PaymentService,
     ) {}
 
     private stockReserveService: any = null;
     private stockPrewarmService: any = null;
 
     init(injector: Injector): void {
+        // 供 Promotion 条件/动作在结算期动态取活动配置
+        setGroupBuyConnection(this.connection);
         try {
             const { StockReserveService, StockPrewarmService } = require('@vendure/redis-stock-plugin');
             this.stockReserveService = injector.get(StockReserveService);
@@ -51,6 +61,8 @@ export class GroupBuyService {
             // RedisStockPlugin not installed, use DB fallback
         }
     }
+
+    /* ------------------------- 活动管理 ------------------------- */
 
     async findAll(
         ctx: RequestContext,
@@ -106,69 +118,193 @@ export class GroupBuyService {
         await repo.delete(id);
     }
 
+    /* ------------------------- 开团 / 参团（闭环核心） ------------------------- */
+
+    /**
+     * 开团/参团一体：
+     * 1. 校验订单归属（customer.user.id，勿用 customer.id）
+     * 2. 校验活动：存在、非 expired、窗口内、可参（未满 / 已成团且允许续参）
+     * 3. 校验订单包含拼团变体行
+     * 4. 原子递增 currentCount（防超员，受影响=0 即满员/不可参）
+     * 5. 写订单 customFields（groupBuyActivityId + groupBuyIsLeader）并重算价格 → 拼团价立即生效
+     * 6. 登记/更新参团记录（同一 orderId 幂等，不重复递增）
+     * 7. 达 targetCount → 活动 completed + 全部 pending 参团记录置 success
+     */
     async joinGroupBuy(
         ctx: RequestContext,
         activityId: ID,
         orderId: ID,
         isLeader: boolean,
     ): Promise<GroupBuyOrder> {
+        const order = await this.orderService.findOne(ctx, orderId, [
+            'customer',
+            'customer.user',
+            'lines',
+            'lines.productVariant',
+        ]);
+        if (!order) {
+            throw new UserInputError(`Order ${orderId} not found`);
+        }
+        // 归属校验：登录 User 主键 vs order.customer.user.id
+        if ((order as any)?.customer?.user?.id !== ctx.activeUserId) {
+            throw new UserInputError('You can only join a group buy with your own order');
+        }
+
         const activityRepo = this.connection.getRepository(ctx, GroupBuyActivity);
+        const activity = await activityRepo.findOne({ where: { id: activityId as any } });
+        if (!activity) {
+            throw new UserInputError(`GroupBuyActivity with id ${activityId} not found`);
+        }
+
+        const now = new Date();
+        if (activity.status === 'expired') {
+            throw new UserInputError('Activity has expired');
+        }
+        if (activity.status !== 'active' && !activity.allowJoinAfterComplete) {
+            throw new UserInputError('Activity is not joinable');
+        }
+        if (activity.startAt && now < activity.startAt) {
+            throw new UserInputError('Group buy activity has not started yet');
+        }
+        if (activity.endAt && now > activity.endAt) {
+            throw new UserInputError('Group buy activity has ended');
+        }
+
+        // 订单须包含拼团变体行
+        const hasVariant = (order as any)?.lines?.some(
+            (l: any) => l?.productVariant && String(l.productVariant.id) === String(activity.variantId),
+        );
+        if (!hasVariant) {
+            throw new UserInputError('Order does not contain the group buy variant');
+        }
+
         const orderRepo = this.connection.getRepository(ctx, GroupBuyOrder);
+        const existing = await orderRepo.findOne({ where: { orderId: String(orderId) } });
+        const alreadyJoined = !!existing;
 
-        await this.connection.startTransaction(ctx);
-        try {
-            const activity = await activityRepo.findOne({ where: { id: activityId as any } });
-            if (!activity) {
-                throw new UserInputError(`GroupBuyActivity with id ${activityId} not found`);
+        if (!alreadyJoined) {
+            // 原子递增（权威防超员/防续参条件）
+            const incResult = await activityRepo
+                .createQueryBuilder()
+                .update()
+                .set({ currentCount: () => 'currentCount + 1' })
+                .where('id = :id', { id: activity.id })
+                .andWhere(
+                    '(status = :active OR (status = :completed AND :allowJoin = true))',
+                    {
+                        active: 'active',
+                        completed: 'completed',
+                        allowJoin: activity.allowJoinAfterComplete,
+                    },
+                )
+                .andWhere('startAt <= :now', { now })
+                .andWhere('endAt >= :now', { now })
+                .andWhere('(maxCount = 0 OR currentCount < maxCount)')
+                .execute();
+            if ((incResult.affected ?? 0) === 0) {
+                throw new UserInputError('Activity is already full or not joinable');
             }
+        }
 
-            if (activity.status !== 'active') {
-                throw new UserInputError('Activity is not active');
-            }
+        // 写订单自定义字段 → 触发拼团价 Promotion 生效
+        const updatedOrder = await this.orderService.updateCustomFields(ctx, orderId, {
+            groupBuyActivityId: Number(activityId),
+            groupBuyIsLeader: isLeader,
+        });
+        await this.orderService.applyPriceAdjustments(ctx, updatedOrder);
 
-            const now = new Date();
-            if (activity.startAt && now < activity.startAt) {
-                throw new UserInputError('Group buy activity has not started yet');
-            }
-            if (activity.endAt && now > activity.endAt) {
-                throw new UserInputError('Group buy activity has ended');
-            }
-
-            if (this.stockReserveService?.isAvailable) {
-                const remaining = await this.stockReserveService.reserveStock(
-                    `group-buy:${activityId}`,
-                    1,
-                );
-                if (remaining < 0) {
-                    throw new UserInputError('Activity is already full');
-                }
-            } else {
-                if (activity.currentCount >= activity.targetCount && !activity.allowJoinAfterComplete) {
-                    throw new UserInputError('Activity is already full');
-                }
-            }
-
-            const groupBuyOrder = new GroupBuyOrder({
-                groupBuyActivityId: String(activityId),
+        // 登记/更新参团记录（幂等：已存在则只更新 isLeader）
+        let groupBuyOrder: GroupBuyOrder;
+        if (alreadyJoined && existing) {
+            existing.isLeader = isLeader;
+            groupBuyOrder = await orderRepo.save(existing);
+        } else {
+            const status: 'pending' | 'success' =
+                activity.status === 'completed' ? 'success' : 'pending';
+            groupBuyOrder = new GroupBuyOrder({
+                groupBuyActivityId: String(activity.id),
                 orderId: String(orderId),
                 isLeader,
-                status: 'pending',
+                status,
             });
-            const savedOrder = await orderRepo.save(groupBuyOrder);
+            groupBuyOrder = await orderRepo.save(groupBuyOrder);
+        }
 
-            activity.currentCount += 1;
+        // 成团联动：当前人数达到目标 → 活动 completed + 全部 pending 参团记录 success
+        if (!alreadyJoined && activity.status === 'active') {
+            const fresh = await activityRepo.findOne({ where: { id: activity.id } });
+            if (fresh && fresh.currentCount >= fresh.targetCount) {
+                fresh.status = 'completed';
+                await activityRepo.save(fresh);
+                await this.markAllSuccess(ctx, activity.id);
+            }
+        }
+
+        Logger.info(
+            `User ${ctx.activeUserId} ${isLeader ? 'opened' : 'joined'} group buy ${activity.id} on order ${orderId} (count ${activity.currentCount + (alreadyJoined ? 0 : 1)})`,
+            loggerCtx,
+        );
+        return groupBuyOrder;
+    }
+
+    /* ------------------------- 过期检查（定时任务 + 手动触发共用） ------------------------- */
+
+    /**
+     * 处理已过 endAt 且仍 active 的活动：
+     * - 已成团（currentCount >= targetCount）→ 置 completed（兜底，通常 join 时已处理）
+     * - 未成团 → 置 expired，并取消+退款全部 pending 参团订单，参团记录置 failed
+     * 返回处理过的活动，便于调用方清理 prewarm 库存。
+     */
+    async processExpired(ctx: RequestContext): Promise<GroupBuyActivity[]> {
+        const activityRepo = this.connection.getRepository(ctx, GroupBuyActivity);
+        const orderRepo = this.connection.getRepository(ctx, GroupBuyOrder);
+        const now = new Date();
+
+        const expiredActivities = await activityRepo
+            .createQueryBuilder('gba')
+            .innerJoin('gba.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId })
+            .where('gba.endAt < :now', { now })
+            .andWhere('gba.status = :status', { status: 'active' })
+            .getMany();
+
+        const processed: GroupBuyActivity[] = [];
+        for (const activity of expiredActivities) {
             if (activity.currentCount >= activity.targetCount) {
                 activity.status = 'completed';
+            } else {
+                activity.status = 'expired';
             }
             await activityRepo.save(activity);
+            processed.push(activity);
 
-            await this.connection.commitOpenTransaction(ctx);
-            return savedOrder;
-        } catch (e) {
-            await this.connection.rollBackTransaction(ctx);
-            throw e;
+            if (activity.status === 'expired') {
+                const pendingOrders = await orderRepo.find({
+                    where: { groupBuyActivityId: String(activity.id), status: 'pending' as any },
+                });
+                for (const gbo of pendingOrders) {
+                    try {
+                        await this.orderService.cancelOrder(ctx, { orderId: gbo.orderId as any });
+                        await this.refundOrderPayments(ctx, gbo.orderId);
+                        gbo.status = 'failed';
+                        await orderRepo.save(gbo);
+                        Logger.info(
+                            `Cancelled and refunded group buy order ${gbo.orderId} for expired activity ${activity.id}`,
+                            loggerCtx,
+                        );
+                    } catch (e: any) {
+                        Logger.error(
+                            `Failed to cancel group buy order ${gbo.orderId}: ${e.message}`,
+                            loggerCtx,
+                        );
+                    }
+                }
+            }
+            Logger.info(`Activity ${activity.id} status changed to ${activity.status}`, loggerCtx);
         }
+        return processed;
     }
+
+    /* ------------------------- 查询 ------------------------- */
 
     async findActiveByVariant(ctx: RequestContext, variantId: ID): Promise<GroupBuyActivity[]> {
         const repo = this.connection.getRepository(ctx, GroupBuyActivity);
@@ -189,5 +325,55 @@ export class GroupBuyService {
             .andWhere('gba.startAt <= :now', { now })
             .andWhere('gba.endAt >= :now', { now })
             .getMany();
+    }
+
+    /* ------------------------- 私有工具 ------------------------- */
+
+    /** 活动成团后，把该活动全部 pending 参团记录置 success */
+    private async markAllSuccess(ctx: RequestContext, activityId: ID): Promise<void> {
+        const orderRepo = this.connection.getRepository(ctx, GroupBuyOrder);
+        await orderRepo
+            .createQueryBuilder()
+            .update()
+            .set({ status: 'success' })
+            .where('groupBuyActivityId = :activityId', { activityId: String(activityId) })
+            .andWhere('status = :pending', { pending: 'pending' })
+            .execute();
+    }
+
+    /** 对订单的 Settled 支付逐个退款（拼团失败/过期） */
+    private async refundOrderPayments(ctx: RequestContext, orderId: string): Promise<void> {
+        const order = await this.connection.getRepository(ctx, Order).findOne({
+            where: { id: orderId as any },
+            relations: ['payments'],
+        });
+        if (!order?.payments?.length) {
+            return;
+        }
+        for (const payment of order.payments) {
+            if ((payment.state as string) === 'Settled') {
+                try {
+                    const result = await this.paymentService.createRefund(
+                        ctx,
+                        {
+                            paymentId: payment.id,
+                            amount: payment.amount,
+                            reason: 'Group buy failed/expired',
+                            // Refund.shipping / Refund.adjustment 为 NOT NULL 列，必须显式置 0
+                            // （否则 sqljs 报 NOT NULL constraint failed: refund.shipping）
+                            shipping: 0,
+                            adjustment: 0,
+                        },
+                        order,
+                        payment,
+                    );
+                    if (result instanceof Error) {
+                        Logger.warn(`Refund for payment ${payment.id} returned error: ${result.message}`, loggerCtx);
+                    }
+                } catch (e: any) {
+                    Logger.error(`Failed to refund payment ${payment.id} for order ${orderId}: ${e.message}`, loggerCtx);
+                }
+            }
+        }
     }
 }

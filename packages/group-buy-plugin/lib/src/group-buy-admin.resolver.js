@@ -36,6 +36,10 @@ let GroupBuyAdminResolver = class GroupBuyAdminResolver {
         await this.groupBuyService.delete(ctx, id);
         return true;
     }
+    async runGroupBuyExpiryCheck(ctx) {
+        await this.groupBuyService.processExpired(ctx);
+        return true;
+    }
 };
 exports.GroupBuyAdminResolver = GroupBuyAdminResolver;
 __decorate([
@@ -81,6 +85,14 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], GroupBuyAdminResolver.prototype, "deleteGroupBuyActivity", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Transaction)(),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], GroupBuyAdminResolver.prototype, "runGroupBuyExpiryCheck", null);
 exports.GroupBuyAdminResolver = GroupBuyAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [group_buy_service_1.GroupBuyService])

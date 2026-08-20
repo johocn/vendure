@@ -95,6 +95,7 @@ import { groupBuyCheckTask } from './group-buy-scheduled-task';
                 createGroupBuyActivity(input: CreateGroupBuyActivityInput!): GroupBuyActivity!
                 updateGroupBuyActivity(input: UpdateGroupBuyActivityInput!): GroupBuyActivity!
                 deleteGroupBuyActivity(id: ID!): Boolean!
+                runGroupBuyExpiryCheck: Boolean!
             }
         `,
         resolvers: [GroupBuyAdminResolver],

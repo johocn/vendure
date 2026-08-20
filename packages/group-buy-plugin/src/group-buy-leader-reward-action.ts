@@ -1,23 +1,29 @@
-import { LanguageCode, PromotionItemAction } from '@vendure/core';
+import { LanguageCode, PromotionItemAction, RequestContext } from '@vendure/core';
 
-// TODO: 仅实现 leaderRewardType=discount（直接扣减金额）。
-// cashback（返现，需在订单完成后触发转账）与 free（免单，需整行置零并记录）
-// 涉及独立的状态机与副作用，暂留待后续补全。
-export const groupBuyLeaderRewardAction = new PromotionItemAction({
+import { GroupBuyLeaderRewardConditionState } from './types';
+import { groupBuyLeaderRewardCondition } from './group-buy-leader-promotion';
+
+/**
+ * 拼团团长折扣动作：依赖 group_buy_leader_reward 条件（条件已把 leaderDiscount 放入 state）。
+ * 仅对命中拼团变体的行折让 leaderDiscount（PromotionItemAction 返回值须为负数）。
+ *
+ * TODO: leaderRewardType=cashback（返现）与 free（免单）涉及独立状态机与副作用，暂留待后续。
+ */
+export const groupBuyLeaderRewardAction = new PromotionItemAction<any>({
     code: 'group_buy_leader_reward',
     description: [
         { languageCode: LanguageCode.zh_Hans, value: '拼团团长折扣' },
         { languageCode: LanguageCode.en, value: 'Group buy leader discount' },
     ],
-    args: {
-        leaderDiscount: {
-            type: 'int',
-            ui: {
-                component: 'currency-form-input',
-            },
-        },
-    },
-    async execute(ctx, orderLine, args) {
-        return args.leaderDiscount > 0 ? -args.leaderDiscount : 0;
+    args: {},
+    conditions: [groupBuyLeaderRewardCondition] as any,
+    async execute(ctx: RequestContext, orderLine: any, _args, state): Promise<number> {
+        // state 按条件 code 嵌套：state = { group_buy_leader_reward: { leaderDiscount, variantId } }
+        const s = (state as any)?.group_buy_leader_reward as GroupBuyLeaderRewardConditionState | undefined;
+        if (!s?.leaderDiscount) return 0;
+        if (!orderLine?.productVariant || String(orderLine.productVariant.id) !== String(s.variantId)) {
+            return 0;
+        }
+        return -s.leaderDiscount;
     },
 });

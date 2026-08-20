@@ -152,6 +152,7 @@ exports.GroupBuyPlugin = GroupBuyPlugin = GroupBuyPlugin_1 = __decorate([
                 createGroupBuyActivity(input: CreateGroupBuyActivityInput!): GroupBuyActivity!
                 updateGroupBuyActivity(input: UpdateGroupBuyActivityInput!): GroupBuyActivity!
                 deleteGroupBuyActivity(id: ID!): Boolean!
+                runGroupBuyExpiryCheck: Boolean!
             }
         `,
             resolvers: [group_buy_admin_resolver_1.GroupBuyAdminResolver],

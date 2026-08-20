@@ -51,4 +51,11 @@ export class GroupBuyAdminResolver {
         await this.groupBuyService.delete(ctx, id);
         return true;
     }
+
+    @Mutation()
+    @Transaction()
+    async runGroupBuyExpiryCheck(@Ctx() ctx: RequestContext): Promise<boolean> {
+        await this.groupBuyService.processExpired(ctx);
+        return true;
+    }
 }

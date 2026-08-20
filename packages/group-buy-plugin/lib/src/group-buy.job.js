@@ -12,15 +12,12 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.GroupBuyJob = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
-const group_buy_activity_entity_1 = require("./group-buy-activity.entity");
-const group_buy_order_entity_1 = require("./group-buy-order.entity");
 const constants_1 = require("./constants");
+const group_buy_service_1 = require("./group-buy.service");
 let GroupBuyJob = class GroupBuyJob {
-    constructor(connection, orderService, paymentService, channelService) {
-        this.connection = connection;
-        this.orderService = orderService;
-        this.paymentService = paymentService;
+    constructor(channelService, groupBuyService) {
         this.channelService = channelService;
+        this.groupBuyService = groupBuyService;
         this.stockPrewarmService = null;
     }
     initStock(injector) {
@@ -33,6 +30,7 @@ let GroupBuyJob = class GroupBuyJob {
         }
     }
     // 由 GroupBuyScheduledTask 每分钟触发，避免多实例内存 setTimeout 并发。
+    // 逐渠道构建 admin ctx 后委托 GroupBuyService.processExpired 处理过期活动。
     async runCheck(ctx) {
         const channels = await this.channelService.findAll(ctx);
         for (const channel of channels.items) {
@@ -42,80 +40,16 @@ let GroupBuyJob = class GroupBuyJob {
                 isAuthorized: true,
                 authorizedAsOwnerOnly: false,
             });
-            const activityRepo = this.connection.getRepository(channelCtx, group_buy_activity_entity_1.GroupBuyActivity);
-            const orderRepo = this.connection.getRepository(channelCtx, group_buy_order_entity_1.GroupBuyOrder);
-            const now = new Date();
-            const expiredActivities = await activityRepo
-                .createQueryBuilder('gba')
-                .innerJoin('gba.channels', 'channel', 'channel.id = :channelId', { channelId: channel.id })
-                .where('gba.endAt < :now', { now })
-                .andWhere('gba.status = :status', { status: 'active' })
-                .getMany();
-            for (const activity of expiredActivities) {
-                if (activity.currentCount >= activity.targetCount) {
-                    activity.status = 'completed';
-                }
-                else {
-                    activity.status = 'expired';
-                }
-                await activityRepo.save(activity);
+            try {
+                const processed = await this.groupBuyService.processExpired(channelCtx);
                 if (this.stockPrewarmService) {
-                    await this.stockPrewarmService.removePrewarm(`group-buy:${activity.id}`);
-                }
-                if (activity.status === 'expired') {
-                    const pendingOrders = await orderRepo.find({
-                        where: { groupBuyActivityId: activity.id, status: 'pending' },
-                    });
-                    for (const gbo of pendingOrders) {
-                        try {
-                            await this.orderService.cancelOrder(channelCtx, { orderId: gbo.orderId });
-                            await this.refundOrderPayments(channelCtx, gbo.orderId);
-                            gbo.status = 'failed';
-                            await orderRepo.save(gbo);
-                            core_1.Logger.info(`Cancelled and refunded group buy order ${gbo.orderId} for expired activity ${activity.id}`, constants_1.loggerCtx);
-                        }
-                        catch (e) {
-                            core_1.Logger.error(`Failed to cancel group buy order ${gbo.orderId}: ${e.message}`, constants_1.loggerCtx);
-                        }
+                    for (const activity of processed) {
+                        await this.stockPrewarmService.removePrewarm(`group-buy:${activity.id}`);
                     }
                 }
-                else {
-                    const pendingOrders = await orderRepo.find({
-                        where: { groupBuyActivityId: activity.id, status: 'pending' },
-                    });
-                    for (const gbo of pendingOrders) {
-                        gbo.status = 'success';
-                        await orderRepo.save(gbo);
-                    }
-                }
-                core_1.Logger.info(`Activity ${activity.id} status changed to ${activity.status}`, constants_1.loggerCtx);
             }
-        }
-    }
-    async refundOrderPayments(ctx, orderId) {
-        var _a;
-        const order = await this.connection.getRepository(ctx, core_1.Order).findOne({
-            where: { id: orderId },
-            relations: ['payments'],
-        });
-        if (!((_a = order === null || order === void 0 ? void 0 : order.payments) === null || _a === void 0 ? void 0 : _a.length)) {
-            return;
-        }
-        for (const payment of order.payments) {
-            if (payment.state === 'Settled') {
-                try {
-                    const result = await this.paymentService.createRefund(ctx, {
-                        paymentId: payment.id,
-                        amount: payment.amount,
-                        reason: 'Group buy failed/expired',
-                    }, order, payment);
-                    if (result instanceof Error) {
-                        core_1.Logger.warn(`Refund for payment ${payment.id} returned error: ${result.message}`, constants_1.loggerCtx);
-                    }
-                }
-                catch (e) {
-                    core_1.Logger.error(`Failed to refund payment ${payment.id} for order ${orderId}: ${e.message}`, constants_1.loggerCtx);
-                }
+            catch (e) {
+                core_1.Logger.error(`Failed to run group buy expiry check for channel ${channel.code}: ${e.message}`, constants_1.loggerCtx);
             }
         }
     }
@@ -123,9 +57,7 @@ let GroupBuyJob = class GroupBuyJob {
 exports.GroupBuyJob = GroupBuyJob;
 exports.GroupBuyJob = GroupBuyJob = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [core_1.TransactionalConnection,
-        core_1.OrderService,
-        core_1.PaymentService,
-        core_1.ChannelService])
+    __metadata("design:paramtypes", [core_1.ChannelService,
+        group_buy_service_1.GroupBuyService])
 ], GroupBuyJob);
 //# sourceMappingURL=group-buy.job.js.map

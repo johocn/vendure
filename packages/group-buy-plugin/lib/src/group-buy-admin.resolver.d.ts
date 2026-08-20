@@ -9,4 +9,5 @@ export declare class GroupBuyAdminResolver {
     createGroupBuyActivity(ctx: RequestContext, input: any): Promise<GroupBuyActivity>;
     updateGroupBuyActivity(ctx: RequestContext, input: any): Promise<GroupBuyActivity>;
     deleteGroupBuyActivity(ctx: RequestContext, id: ID): Promise<boolean>;
+    runGroupBuyExpiryCheck(ctx: RequestContext): Promise<boolean>;
 }
