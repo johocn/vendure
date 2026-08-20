@@ -1,8 +1,31 @@
-import { Injectable } from '@nestjs/common';
-import { ID, Logger, RequestContext, TransactionalConnection } from '@vendure/core';
+import { Injectable, OnApplicationBootstrap } from '@nestjs/common';
+import {
+    EntityNotFoundError,
+    ForbiddenError,
+    ID,
+    Injector,
+    Logger,
+    OrderLine,
+    OrderService,
+    RequestContext,
+    TransactionalConnection,
+    UnauthorizedError,
+} from '@vendure/core';
+import { In } from 'typeorm';
 import { loggerCtx } from './constants';
 import { OrderPackage, OrderPackageStatus } from './order-package.entity';
+import { LogisticsTrack } from './logistics-track.entity';
 import { SplitLine } from './order-split-plan';
+
+/** C端 Shop 查询接口：经 duck-typing 零依赖获取配送单骑手信息 */
+interface DeliveryOrderShopLinker {
+    getShopDelivery(ctx: RequestContext, deliveryOrderId: ID): Promise<{
+        courierName: string | null;
+        courierPhone: string | null;
+        thirdPartyNo: string | null;
+        etaMinutes: number | null;
+    } | null>;
+}
 
 /** 拆单确认时写入的包裹载荷（字段取自 SplitPackage） */
 export interface OrderPackageInput {
@@ -22,8 +45,30 @@ const TRANSITIONS: Record<OrderPackageStatus, OrderPackageStatus[]> = {
 };
 
 @Injectable()
-export class OrderPackageService {
-    constructor(private connection: TransactionalConnection) {}
+export class OrderPackageService implements OnApplicationBootstrap {
+    private orderService: OrderService | null = null;
+    private deliveryShopLinker: DeliveryOrderShopLinker | null = null;
+
+    constructor(
+        private connection: TransactionalConnection,
+        private injector: Injector,
+    ) {}
+
+    onApplicationBootstrap(): void {
+        try {
+            this.orderService = this.injector.get(OrderService);
+        } catch (e) {
+            Logger.warn('OrderPackageService 无法获取 OrderService，getMyOrderPackages 将不可用', loggerCtx);
+            this.orderService = null;
+        }
+        try {
+            // duck-typing：delivery-gateway-plugin 可选提供（零编译依赖）
+            this.deliveryShopLinker = this.injector.get('DeliveryOrderShopLinker') as any;
+        } catch (e) {
+            Logger.warn('DeliveryOrderShopLinker 未找到，city 包骑手信息将不可用', loggerCtx);
+            this.deliveryShopLinker = null;
+        }
+    }
 
     /** 拆单确认：先删后插（幂等，重复确认干净替换），返回落库后的包裹列表 */
     async replaceForOrder(ctx: RequestContext, orderId: ID, packages: OrderPackageInput[]): Promise<OrderPackage[]> {
@@ -111,5 +156,144 @@ export class OrderPackageService {
         await repo.save(pkg);
         Logger.info(`OrderPackage order#${orderId} pkg=${packageId} -> ${toStatus}`, loggerCtx);
         return true;
+    }
+
+    /** C端查询：本人订单包裹列表（按包号排序），返回可直接渲染的富化结果 */
+    async getMyOrderPackages(
+        ctx: RequestContext,
+        orderId: ID,
+    ): Promise<Array<{
+        code: string;
+        deliveryMode: string;
+        status: string;
+        shippedAt: Date | null;
+        deliveredAt: Date | null;
+        cancelledAt: Date | null;
+        shippingFee: number | null;
+        lines: Array<{
+            orderLineId: ID;
+            quantity: number;
+            productName: string;
+            sku: string;
+        }>;
+        trackingNo: string | null;
+        carrierName: string | null;
+        courierName: string | null;
+        courierPhone: string | null;
+        thirdPartyNo: string | null;
+        etaMinutes: number | null;
+    }>> {
+        // 1. 归属校验
+        if (!this.orderService) {
+            throw new Error('OrderService 未初始化');
+        }
+        if (!ctx.activeUserId) {
+            throw new UnauthorizedError();
+        }
+        const order = await this.orderService.findOne(ctx, orderId, ['customer']);
+        if (!order) {
+            throw new EntityNotFoundError('Order', orderId);
+        }
+        if (!order.customer || String(order.customer.id) !== String(ctx.activeUserId)) {
+            throw new ForbiddenError();
+        }
+
+        // 2. 取包裹列表（已按 code 排序）
+        const packages = await this.findByOrder(ctx, orderId);
+
+        // 3. 解析 linesJson，收集 lineIds 用于富化
+        const allLineIds: ID[] = [];
+        const linesByPackage: Array<SplitLine[]> = [];
+        for (const pkg of packages) {
+            let lines: SplitLine[] = [];
+            if (pkg.linesJson) {
+                try {
+                    lines = JSON.parse(pkg.linesJson) as SplitLine[];
+                } catch (e) {
+                    Logger.warn(`order#${orderId} pkg=${pkg.code} linesJson 解析失败`, loggerCtx);
+                }
+            }
+            linesByPackage.push(lines);
+            allLineIds.push(...lines.map(l => l.orderLineId));
+        }
+
+        // 4. 富化：join OrderLine → variant → product → translations 取 productName/sku
+        const lineMap = new Map<ID, { productName: string; sku: string }>();
+        if (allLineIds.length > 0) {
+            const orderLines = await this.connection.getRepository(ctx, OrderLine).find({
+                where: { id: In(allLineIds) },
+                relations: ['productVariant', 'productVariant.product', 'productVariant.product.translations'],
+            });
+            for (const line of orderLines) {
+                const translation = line.productVariant.product.translations.find(
+                    t => t.languageCode === ctx.languageCode,
+                );
+                const productName = translation?.name ?? '(未知)';
+                lineMap.set(line.id, { productName, sku: line.productVariant.sku });
+            }
+        }
+
+        // 5. 若有 self 物流，加载 LogisticsTrack 映射 trackingNo/carrierName
+        //    注：LogisticsTrack 实体无 carrierName 列，resolver 约定以 carrierCode 作为展示名（同 logistics-shop.resolver.ts）
+        const fulfillmentIds = packages
+            .map(p => p.fulfillmentId)
+            .filter((id): id is ID => id != null);
+        const trackMap = new Map<ID, { trackingNo: string; carrierName: string }>();
+        if (fulfillmentIds.length > 0) {
+            const repo = this.connection.getRepository(ctx, LogisticsTrack);
+            const tracks = await repo.find({ where: { fulfillmentId: In(fulfillmentIds as any) } });
+            for (const track of tracks) {
+                trackMap.set(track.fulfillmentId, {
+                    trackingNo: track.trackingNo,
+                    carrierName: track.carrierCode,
+                });
+            }
+        }
+
+        // 6. 若有 city 配送，经 linker 获取骑手信息（linker 可选）
+        const deliveryMap = new Map<ID, Awaited<ReturnType<NonNullable<DeliveryOrderShopLinker>['getShopDelivery']>>>();
+        const deliveryIds = packages
+            .map(p => p.deliveryOrderId)
+            .filter((id): id is ID => id != null);
+        if (deliveryIds.length > 0 && this.deliveryShopLinker) {
+            for (const deliveryId of deliveryIds) {
+                const info = await this.deliveryShopLinker.getShopDelivery(ctx, deliveryId);
+                deliveryMap.set(deliveryId, info);
+            }
+        }
+
+        // 7. 组装返回结果
+        const result = await Promise.all(packages.map(async (pkg, idx) => {
+            const lines = linesByPackage[idx];
+            const richLines = lines.map(line => {
+                const rich = lineMap.get(line.orderLineId);
+                return {
+                    orderLineId: line.orderLineId,
+                    quantity: line.quantity,
+                    productName: rich?.productName ?? '(未知)',
+                    sku: rich?.sku ?? '',
+                };
+            });
+            const track = pkg.fulfillmentId ? trackMap.get(pkg.fulfillmentId) : null;
+            const delivery = pkg.deliveryOrderId ? deliveryMap.get(pkg.deliveryOrderId) : null;
+            return {
+                code: pkg.code,
+                deliveryMode: pkg.deliveryMode,
+                status: pkg.status,
+                shippedAt: pkg.shippedAt,
+                deliveredAt: pkg.deliveredAt,
+                cancelledAt: pkg.cancelledAt,
+                shippingFee: pkg.shippingFee,
+                lines: richLines,
+                trackingNo: track?.trackingNo ?? null,
+                carrierName: track?.carrierName ?? null,
+                courierName: delivery?.courierName ?? null,
+                courierPhone: delivery?.courierPhone ?? null,
+                thirdPartyNo: delivery?.thirdPartyNo ?? null,
+                etaMinutes: delivery?.etaMinutes ?? null,
+            };
+        }));
+
+        return result;
     }
 }
