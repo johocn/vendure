@@ -6,7 +6,7 @@
 //   - NF-WATER-500（variant id 动态查）在两仓均有库存记录
 //
 // 验证拆单履约（OrderSplitPlan 抽象 + 自动拆单 + 手动调单 + Admin resolver）：
-//   1) 构造双仓各 5 件可售、下单 8 件（定位靠近二道区仓 → nearest 命中 B 仓先分配）
+//   1) 构造 loc1 可售 8 件 / loc2 可售 5 件、下单 8 件（定位靠近二道区仓 → nearest 命中 B 仓先分配）
 //      → OrderLine.stockLocationsJson 拆成两仓（{loc2:5, loc1:3}）
 //   2) admin splitPlanPreview(orderId) 返回 2 个包，数量合计 8
 //   3) 手动调单：把 B 仓整包改到 A 仓且数量守恒 → confirmSplitPlan 成功（1 包 8 件）
@@ -24,7 +24,7 @@ const VARIANT_SKU = "NF-WATER-500";
 const LOC_PRIORITY = "2"; // 二道区仓（B 仓，nearest 命中优先）
 const LOC_DEFAULT = "1"; // Default（A 仓）
 const NEAR_ANCHOR = { lat: 43.8502, lng: 125.4232 }; // 与二道区仓坐标一致 → 就近命中 B 仓
-const ORDER_QTY = 8; // 下单 8 件 → 双仓各 5 件可售 → 拆两仓（B 仓 5 + A 仓 3）
+const ORDER_QTY = 8; // 下单 8 件 → loc2 可售 5 件（只够 5）→ 余量 3 溢到 A 仓，强制拆两仓（B 仓 5 + A 仓 3）
 
 // Task4 每包独立计费：split-package-shipping 计费配送方式 + channel 级每包运费规则
 const SPLIT_SHIPPING_CODE = "split-package-shipping-method";
@@ -162,11 +162,14 @@ async function ensureSplitShippingMethod(token) {
   return { id: method.id, assigned: (assign.data?.assignShippingMethodsToChannel || []).length > 0 };
 }
 
-// 计费器将 packageShippingJson 异步落库，轮询等待明细出现
-async function waitForPackageShipping(token, orderId, tries = 15, delayMs = 300) {
+// 计费器把 packageShippingJson 异步落库，且 shippingWithTax 在重算保存后才更新；
+// 轮询等待两者同时出现，避免读到「明细已落、运费未更新」的中间态（异步重算竞态）。
+async function waitForPackageShipping(token, orderId, tries = 20, delayMs = 300) {
   for (let i = 0; i < tries; i++) {
     const o = await readOrder(token, orderId);
-    if (parseDetail(o?.customFields?.packageShippingJson).length > 0) return o;
+    const hasDetail = parseDetail(o?.customFields?.packageShippingJson).length > 0;
+    const hasFee = Number(o?.shippingWithTax ?? 0) > 0;
+    if (hasDetail && hasFee) return o;
     await new Promise(res => setTimeout(res, delayMs));
   }
   return readOrder(token, orderId);
@@ -302,15 +305,16 @@ function sumPlanQty(plan) {
     const okAssign = await ensureLoc2InShopA(adminToken);
     result("前置.loc2 归入 shop-a 渠道", okAssign, "assign + 缓存失效 touch");
 
-    // ---- 0.5 库存配置：双仓各 5 件可售（loc1/loc2 onHand = 5 + 各自已分配） ----
+    // ---- 0.5 库存配置：双仓可售（loc1=8 可容纳整单、loc2=5 限制拆两仓）----
+    // loc1.onHand = 8 + 已分配：t3 手动把整单 8 件调到 A 仓需物理货量 ≥ 8（不依赖历史脏库存）
+    // loc2.onHand = 5 + 已分配：nearest 命中 B 仓只够 5 件 → 余量 3 溢到 A 仓强制拆两仓
     const levels0 = v.stockLevels || [];
+    const loc1OnHand = ORDER_QTY + (levels0.find(l => String(l.stockLocationId) === LOC_DEFAULT)?.stockAllocated ?? 0);
+    const loc2OnHand = TARGET_AVAIL + (levels0.find(l => String(l.stockLocationId) === LOC_PRIORITY)?.stockAllocated ?? 0);
     const setOk = [];
-    for (const locId of [LOC_DEFAULT, LOC_PRIORITY]) {
-      const lv = levels0.find(l => String(l.stockLocationId) === String(locId));
-      const onHand = TARGET_AVAIL + (lv?.stockAllocated ?? 0);
-      setOk.push(await setVariantStock(adminToken, v.id, locId, onHand));
-    }
-    result("前置.双仓各 5 件可售", setOk.every(Boolean), `loc1.onHand=${TARGET_AVAIL + (levels0.find(l => String(l.stockLocationId) === LOC_DEFAULT)?.stockAllocated ?? 0)} loc2.onHand=${TARGET_AVAIL + (levels0.find(l => String(l.stockLocationId) === LOC_PRIORITY)?.stockAllocated ?? 0)}`);
+    setOk.push(await setVariantStock(adminToken, v.id, LOC_DEFAULT, loc1OnHand));
+    setOk.push(await setVariantStock(adminToken, v.id, LOC_PRIORITY, loc2OnHand));
+    result("前置.双仓可售(loc1=8/loc2=5)", setOk.every(Boolean), `loc1.onHand=${loc1OnHand} loc2.onHand=${loc2OnHand}`);
 
     // ---- 0.6 渠道策略：nearest（定位靠近 B 仓 → B 仓先分配，余量溢到 A 仓） ----
     const setupCf = { shippingStrategy: "nearest", stockLocationPriority: JSON.stringify([{ locationId: "1", priority: 1 }, { locationId: "2", priority: 2 }]), memberStockStrategy: null };
