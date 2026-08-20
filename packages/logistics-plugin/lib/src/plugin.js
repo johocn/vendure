@@ -38,6 +38,7 @@ function mergeCustomFields(existingFields, additions) {
     return [...(existingFields !== null && existingFields !== void 0 ? existingFields : []), ...(additions !== null && additions !== void 0 ? additions : []).filter(f => !names.has(f.name))];
 }
 const logistics_shop_resolver_1 = require("./logistics-shop.resolver");
+const order_package_shop_resolver_1 = require("./order-package-shop.resolver");
 const { gql } = require('graphql-tag');
 const adminSchema = () => gql `
     type LogisticsTrack implements Node {
@@ -134,6 +135,34 @@ const shopSchema = () => gql `
     extend type Query {
         myOrderTracks(orderId: ID!): [LogisticsTrackShop!]!
     }
+
+    type OrderPackageLineShop {
+        orderLineId: ID!
+        quantity: Int!
+        productName: String!
+        sku: String!
+    }
+
+    type OrderPackageShop {
+        code: String!
+        deliveryMode: String!
+        status: String!
+        shippedAt: DateTime
+        deliveredAt: DateTime
+        cancelledAt: DateTime
+        shippingFee: Int
+        lines: [OrderPackageLineShop!]!
+        trackingNo: String
+        carrierName: String
+        courierName: String
+        courierPhone: String
+        thirdPartyNo: String
+        etaMinutes: Int
+    }
+
+    extend type Query {
+        myOrderPackages(orderId: ID!): [OrderPackageShop!]!
+    }
 `;
 let LogisticsPlugin = LogisticsPlugin_1 = class LogisticsPlugin {
     constructor(options, logisticsService, autoSplit, manualSplit, moduleRef) {
@@ -225,7 +254,7 @@ exports.LogisticsPlugin = LogisticsPlugin = LogisticsPlugin_1 = __decorate([
         },
         shopApiExtensions: {
             schema: shopSchema,
-            resolvers: [logistics_shop_resolver_1.LogisticsShopResolver],
+            resolvers: [logistics_shop_resolver_1.LogisticsShopResolver, order_package_shop_resolver_1.OrderPackageShopResolver],
         },
         configuration: (config) => {
             config.customFields.Fulfillment = mergeCustomFields(config.customFields.Fulfillment, fulfillment_custom_fields_1.logisticsFulfillmentCustomFields.Fulfillment);

@@ -41,6 +41,7 @@ function mergeCustomFields<T extends { name: string }>(
     return [...(existingFields ?? []), ...(additions ?? []).filter(f => !names.has(f.name))];
 }
 import { LogisticsShopResolver } from './logistics-shop.resolver';
+import { OrderPackageShopResolver } from './order-package-shop.resolver';
 
 const { gql } = require('graphql-tag');
 
@@ -140,6 +141,34 @@ const shopSchema = () => gql`
     extend type Query {
         myOrderTracks(orderId: ID!): [LogisticsTrackShop!]!
     }
+
+    type OrderPackageLineShop {
+        orderLineId: ID!
+        quantity: Int!
+        productName: String!
+        sku: String!
+    }
+
+    type OrderPackageShop {
+        code: String!
+        deliveryMode: String!
+        status: String!
+        shippedAt: DateTime
+        deliveredAt: DateTime
+        cancelledAt: DateTime
+        shippingFee: Int
+        lines: [OrderPackageLineShop!]!
+        trackingNo: String
+        carrierName: String
+        courierName: String
+        courierPhone: String
+        thirdPartyNo: String
+        etaMinutes: Int
+    }
+
+    extend type Query {
+        myOrderPackages(orderId: ID!): [OrderPackageShop!]!
+    }
 `;
 
 @VendurePlugin({
@@ -160,7 +189,7 @@ const shopSchema = () => gql`
     },
     shopApiExtensions: {
         schema: shopSchema,
-        resolvers: [LogisticsShopResolver],
+        resolvers: [LogisticsShopResolver, OrderPackageShopResolver],
     },
     configuration: (config) => {
         config.customFields.Fulfillment = mergeCustomFields(config.customFields.Fulfillment, logisticsFulfillmentCustomFields.Fulfillment);
