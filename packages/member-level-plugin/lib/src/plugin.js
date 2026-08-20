@@ -18,6 +18,10 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const channel_custom_fields_1 = require("./channel-custom-fields");
 const customer_custom_fields_1 = require("./customer-custom-fields");
+const order_custom_fields_1 = require("./order-custom-fields");
+const points_redeem_condition_1 = require("./points-redeem-condition");
+const points_redeem_action_1 = require("./points-redeem-action");
+const points_expire_job_1 = require("./points-expire.job");
 const constants_1 = require("./constants");
 const permissions_1 = require("./permissions");
 const member_points_history_entity_1 = require("./member-points-history.entity");
@@ -162,6 +166,10 @@ const shopSchema = () => gql `
         myMemberInfo: MemberInfo!
         myPointsHistory(options: PointsHistoryListOptions): PointsHistoryList!
     }
+
+    extend type Mutation {
+        redeemPoints(points: Int!): Order!
+    }
 `;
 let MemberLevelPlugin = MemberLevelPlugin_1 = class MemberLevelPlugin {
     constructor(options, memberLevelService, eventBus) {
@@ -175,9 +183,12 @@ let MemberLevelPlugin = MemberLevelPlugin_1 = class MemberLevelPlugin {
     }
     async onApplicationBootstrap() {
         this.eventBus.ofType(core_1.OrderStateTransitionEvent).subscribe((event) => {
-            if (event.toState !== 'Delivered')
-                return;
-            void this.handleOrderDelivered(event);
+            if (event.toState === 'Delivered') {
+                void this.handleOrderDelivered(event);
+            }
+            else if (event.toState === 'Cancelled') {
+                void this.handleOrderCancelled(event);
+            }
         });
         this.eventBus.ofType(core_1.RefundStateTransitionEvent).subscribe((event) => {
             if (event.toState !== 'Settled')
@@ -187,7 +198,7 @@ let MemberLevelPlugin = MemberLevelPlugin_1 = class MemberLevelPlugin {
         core_1.Logger.info('MemberLevelPlugin initialized', constants_1.loggerCtx);
     }
     async handleOrderDelivered(event) {
-        var _a, _b, _c, _d, _e, _f, _g, _h;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
         const { ctx, order } = event;
         if (!order.customer)
             return;
@@ -206,32 +217,45 @@ let MemberLevelPlugin = MemberLevelPlugin_1 = class MemberLevelPlugin {
                 return;
             }
             await this.memberLevelService.addGrowthValue(ctx, customerId, Math.floor(base), 'order_delivered');
-            await this.memberLevelService.addPoints(ctx, customerId, points, order.id, 'order_delivered');
-            core_1.Logger.info(`Order ${order.id} delivered: +${Math.floor(base)} growth, +${points} points for customer ${customerId}`, constants_1.loggerCtx);
+            // 积分有效期：Channel.pointsExpireDays 配置后写入 expiresAt（过期清理任务据此扫描）
+            const expireDays = (_j = (_h = cf.pointsExpireDays) !== null && _h !== void 0 ? _h : this.options.defaultPointsExpireDays) !== null && _j !== void 0 ? _j : 0;
+            const expiresAt = expireDays > 0 ? new Date(Date.now() + expireDays * 24 * 60 * 60 * 1000) : null;
+            await this.memberLevelService.addPoints(ctx, customerId, points, order.id, 'order_delivered', expiresAt);
+            core_1.Logger.info(`Order ${order.id} delivered: +${Math.floor(base)} growth, +${points} points (expires ${(_k = expiresAt === null || expiresAt === void 0 ? void 0 : expiresAt.toISOString()) !== null && _k !== void 0 ? _k : 'never'}) for customer ${customerId}`, constants_1.loggerCtx);
         }
         catch (e) {
-            core_1.Logger.error(`Failed to credit points for order ${order.id}: ${(_h = e === null || e === void 0 ? void 0 : e.message) !== null && _h !== void 0 ? _h : e}`, constants_1.loggerCtx);
+            core_1.Logger.error(`Failed to credit points for order ${order.id}: ${(_l = e === null || e === void 0 ? void 0 : e.message) !== null && _l !== void 0 ? _l : e}`, constants_1.loggerCtx);
+        }
+    }
+    /**
+     * 订单取消 → 回退已抵扣积分（若该订单曾 redeemPoints 且未回退）+ 清空订单字段。
+     */
+    async handleOrderCancelled(event) {
+        var _a, _b, _c;
+        const { ctx, order } = event;
+        if (!order.customer)
+            return;
+        try {
+            const pointsToRedeem = (_b = (_a = order === null || order === void 0 ? void 0 : order.customFields) === null || _a === void 0 ? void 0 : _a.pointsToRedeem) !== null && _b !== void 0 ? _b : 0;
+            if (pointsToRedeem <= 0)
+                return;
+            await this.memberLevelService.releasePointsByOrder(ctx, order);
+        }
+        catch (e) {
+            core_1.Logger.error(`Failed to release points for cancelled order ${order.id}: ${(_c = e === null || e === void 0 ? void 0 : e.message) !== null && _c !== void 0 ? _c : e}`, constants_1.loggerCtx);
         }
     }
     async handleRefundSettled(event) {
-        var _a, _b, _c, _d, _e;
+        var _a;
         const { ctx, order, refund } = event;
-        if (!order.customer)
-            return;
-        const customerId = order.customer.id;
+        // 注意：Refund 事件携带的 order 不保证加载了 customer 关系，
+        // 归属与 pointsToRedeem 由 refundPointsByOrder 内部按 id 重载，勿在此拦截 order.customer。
         try {
-            const cf = (_a = ctx.channel.customFields) !== null && _a !== void 0 ? _a : {};
-            const ratio = (_c = (_b = cf.pointsEarnRatio) !== null && _b !== void 0 ? _b : this.options.defaultPointsEarnRatio) !== null && _c !== void 0 ? _c : 1;
-            const refundAmount = (_d = refund.total) !== null && _d !== void 0 ? _d : 0;
-            const pointsToDeduct = Math.floor(refundAmount * ratio);
-            if (pointsToDeduct <= 0)
-                return;
-            await this.memberLevelService.spendPoints(ctx, customerId, pointsToDeduct, order.id, `refund_settled:${refund.id}`);
-            await this.memberLevelService.addGrowthValue(ctx, customerId, -Math.floor(refundAmount), 'refund_settled');
-            core_1.Logger.info(`Refund ${refund.id} settled for order ${order.id}: -${Math.floor(refundAmount)} growth, -${pointsToDeduct} points for customer ${customerId}`, constants_1.loggerCtx);
+            // 退款按比例回退该订单已抵扣的积分（只回退、不额外扣分，避免双重记账）
+            await this.memberLevelService.refundPointsByOrder(ctx, order, refund);
         }
         catch (e) {
-            core_1.Logger.error(`Failed to deduct points for refund on order ${order.id}: ${(_e = e === null || e === void 0 ? void 0 : e.message) !== null && _e !== void 0 ? _e : e}`, constants_1.loggerCtx);
+            core_1.Logger.error(`Failed to refund points for order ${order.id}: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, constants_1.loggerCtx);
         }
     }
 };
@@ -254,12 +278,27 @@ exports.MemberLevelPlugin = MemberLevelPlugin = MemberLevelPlugin_1 = __decorate
             resolvers: [member_level_shop_resolver_1.MemberLevelShopResolver],
         },
         configuration: (config) => {
-            var _a, _b;
+            var _a, _b, _c, _d, _e, _f, _g;
             config.customFields.Channel = mergeCustomFields(config.customFields.Channel, channel_custom_fields_1.memberLevelChannelCustomFields.Channel);
             config.customFields.Customer = mergeCustomFields(config.customFields.Customer, customer_custom_fields_1.memberLevelCustomerCustomFields.Customer);
-            config.authOptions = (_a = config.authOptions) !== null && _a !== void 0 ? _a : {};
+            config.customFields.Order = mergeCustomFields(config.customFields.Order, order_custom_fields_1.memberLevelOrderCustomFields.Order);
+            config.promotionOptions = (_a = config.promotionOptions) !== null && _a !== void 0 ? _a : {};
+            config.promotionOptions.promotionConditions = [
+                ...((_b = config.promotionOptions.promotionConditions) !== null && _b !== void 0 ? _b : []),
+                points_redeem_condition_1.pointsRedeemCondition,
+            ];
+            config.promotionOptions.promotionActions = [
+                ...((_c = config.promotionOptions.promotionActions) !== null && _c !== void 0 ? _c : []),
+                points_redeem_action_1.pointsRedeemAction,
+            ];
+            config.schedulerOptions = (_d = config.schedulerOptions) !== null && _d !== void 0 ? _d : {};
+            config.schedulerOptions.tasks = (_e = config.schedulerOptions.tasks) !== null && _e !== void 0 ? _e : [];
+            if (!config.schedulerOptions.tasks.some(t => t.id === points_expire_job_1.pointsExpireTask.id)) {
+                config.schedulerOptions.tasks.push(points_expire_job_1.pointsExpireTask);
+            }
+            config.authOptions = (_f = config.authOptions) !== null && _f !== void 0 ? _f : {};
             config.authOptions.customPermissions = [
-                ...((_b = config.authOptions.customPermissions) !== null && _b !== void 0 ? _b : []),
+                ...((_g = config.authOptions.customPermissions) !== null && _g !== void 0 ? _g : []),
                 permissions_1.memberLevelPermission,
             ];
             return config;

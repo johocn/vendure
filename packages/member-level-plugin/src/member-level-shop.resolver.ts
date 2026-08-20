@@ -1,5 +1,5 @@
-import { Args, Query, Resolver } from '@nestjs/graphql';
-import { Allow, Ctx, Permission, RequestContext } from '@vendure/core';
+import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Allow, Ctx, Permission, RequestContext, Transaction } from '@vendure/core';
 
 import { MemberLevelService } from './member-level.service';
 
@@ -20,5 +20,12 @@ export class MemberLevelShopResolver {
         @Args('options', { nullable: true }) options: any,
     ): Promise<any> {
         return this.memberLevelService.getMyPointsHistory(ctx, options);
+    }
+
+    @Mutation()
+    @Transaction()
+    @Allow(Permission.Authenticated)
+    async redeemPoints(@Ctx() ctx: RequestContext, @Args('points') points: number): Promise<any> {
+        return this.memberLevelService.redeemPoints(ctx, points);
     }
 }

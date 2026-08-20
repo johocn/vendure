@@ -74,5 +74,17 @@ export const memberLevelChannelCustomFields: CustomFields = {
             defaultValue: false,
             label: [{ languageCode: LanguageCode.zh_Hans, value: '运费是否产生积分' }],
         },
+        {
+            name: 'pointsPerYuan',
+            type: 'int',
+            defaultValue: 100,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '积分抵现折算率（多少积分抵1元）' }],
+        },
+        {
+            name: 'pointsExpireDays',
+            type: 'int',
+            defaultValue: 0,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '积分有效期（天，0=不过期）' }],
+        },
     ],
 };

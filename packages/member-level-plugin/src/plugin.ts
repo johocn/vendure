@@ -10,6 +10,10 @@ import {
 
 import { memberLevelChannelCustomFields } from './channel-custom-fields';
 import { memberLevelCustomerCustomFields } from './customer-custom-fields';
+import { memberLevelOrderCustomFields } from './order-custom-fields';
+import { pointsRedeemCondition } from './points-redeem-condition';
+import { pointsRedeemAction } from './points-redeem-action';
+import { pointsExpireTask } from './points-expire.job';
 import { MEMBER_LEVEL_PLUGIN_OPTIONS, loggerCtx } from './constants';
 import { memberLevelPermission } from './permissions';
 import { MemberLevelPluginOptions } from './types';
@@ -162,6 +166,10 @@ const shopSchema = () => gql`
         myMemberInfo: MemberInfo!
         myPointsHistory(options: PointsHistoryListOptions): PointsHistoryList!
     }
+
+    extend type Mutation {
+        redeemPoints(points: Int!): Order!
+    }
 `;
 
 @VendurePlugin({
@@ -182,6 +190,21 @@ const shopSchema = () => gql`
     configuration: (config) => {
         config.customFields.Channel = mergeCustomFields(config.customFields.Channel, memberLevelChannelCustomFields.Channel);
         config.customFields.Customer = mergeCustomFields(config.customFields.Customer, memberLevelCustomerCustomFields.Customer);
+        config.customFields.Order = mergeCustomFields(config.customFields.Order, memberLevelOrderCustomFields.Order);
+        config.promotionOptions = config.promotionOptions ?? {};
+        config.promotionOptions.promotionConditions = [
+            ...(config.promotionOptions.promotionConditions ?? []),
+            pointsRedeemCondition,
+        ];
+        config.promotionOptions.promotionActions = [
+            ...(config.promotionOptions.promotionActions ?? []),
+            pointsRedeemAction,
+        ];
+        config.schedulerOptions = config.schedulerOptions ?? {};
+        config.schedulerOptions.tasks = config.schedulerOptions.tasks ?? [];
+        if (!config.schedulerOptions.tasks.some(t => t.id === pointsExpireTask.id)) {
+            config.schedulerOptions.tasks.push(pointsExpireTask);
+        }
         config.authOptions = config.authOptions ?? {};
         config.authOptions.customPermissions = [
             ...(config.authOptions.customPermissions ?? []),
@@ -208,8 +231,11 @@ export class MemberLevelPlugin implements OnApplicationBootstrap {
 
     async onApplicationBootstrap(): Promise<void> {
         this.eventBus.ofType(OrderStateTransitionEvent).subscribe((event) => {
-            if (event.toState !== 'Delivered') return;
-            void this.handleOrderDelivered(event);
+            if (event.toState === 'Delivered') {
+                void this.handleOrderDelivered(event);
+            } else if (event.toState === 'Cancelled') {
+                void this.handleOrderCancelled(event);
+            }
         });
 
         this.eventBus.ofType(RefundStateTransitionEvent).subscribe((event) => {
@@ -250,15 +276,19 @@ export class MemberLevelPlugin implements OnApplicationBootstrap {
                 Math.floor(base),
                 'order_delivered',
             );
+            // 积分有效期：Channel.pointsExpireDays 配置后写入 expiresAt（过期清理任务据此扫描）
+            const expireDays = cf.pointsExpireDays ?? this.options.defaultPointsExpireDays ?? 0;
+            const expiresAt = expireDays > 0 ? new Date(Date.now() + expireDays * 24 * 60 * 60 * 1000) : null;
             await this.memberLevelService.addPoints(
                 ctx,
                 customerId,
                 points,
                 order.id,
                 'order_delivered',
+                expiresAt,
             );
             Logger.info(
-                `Order ${order.id} delivered: +${Math.floor(base)} growth, +${points} points for customer ${customerId}`,
+                `Order ${order.id} delivered: +${Math.floor(base)} growth, +${points} points (expires ${expiresAt?.toISOString() ?? 'never'}) for customer ${customerId}`,
                 loggerCtx,
             );
         } catch (e: any) {
@@ -269,37 +299,34 @@ export class MemberLevelPlugin implements OnApplicationBootstrap {
         }
     }
 
-    private async handleRefundSettled(event: RefundStateTransitionEvent): Promise<void> {
-        const { ctx, order, refund } = event;
+    /**
+     * 订单取消 → 回退已抵扣积分（若该订单曾 redeemPoints 且未回退）+ 清空订单字段。
+     */
+    private async handleOrderCancelled(event: OrderStateTransitionEvent): Promise<void> {
+        const { ctx, order } = event;
         if (!order.customer) return;
-        const customerId = order.customer.id;
         try {
-            const cf = (ctx.channel as any).customFields ?? {};
-            const ratio = cf.pointsEarnRatio ?? this.options.defaultPointsEarnRatio ?? 1;
-            const refundAmount = refund.total ?? 0;
-            const pointsToDeduct = Math.floor(refundAmount * ratio);
-            if (pointsToDeduct <= 0) return;
-
-            await this.memberLevelService.spendPoints(
-                ctx,
-                customerId,
-                pointsToDeduct,
-                order.id,
-                `refund_settled:${refund.id}`,
-            );
-            await this.memberLevelService.addGrowthValue(
-                ctx,
-                customerId,
-                -Math.floor(refundAmount),
-                'refund_settled',
-            );
-            Logger.info(
-                `Refund ${refund.id} settled for order ${order.id}: -${Math.floor(refundAmount)} growth, -${pointsToDeduct} points for customer ${customerId}`,
-                loggerCtx,
-            );
+            const pointsToRedeem = (order as any)?.customFields?.pointsToRedeem ?? 0;
+            if (pointsToRedeem <= 0) return;
+            await this.memberLevelService.releasePointsByOrder(ctx, order);
         } catch (e: any) {
             Logger.error(
-                `Failed to deduct points for refund on order ${order.id}: ${e?.message ?? e}`,
+                `Failed to release points for cancelled order ${order.id}: ${e?.message ?? e}`,
+                loggerCtx,
+            );
+        }
+    }
+
+    private async handleRefundSettled(event: RefundStateTransitionEvent): Promise<void> {
+        const { ctx, order, refund } = event;
+        // 注意：Refund 事件携带的 order 不保证加载了 customer 关系，
+        // 归属与 pointsToRedeem 由 refundPointsByOrder 内部按 id 重载，勿在此拦截 order.customer。
+        try {
+            // 退款按比例回退该订单已抵扣的积分（只回退、不额外扣分，避免双重记账）
+            await this.memberLevelService.refundPointsByOrder(ctx, order, refund);
+        } catch (e: any) {
+            Logger.error(
+                `Failed to refund points for order ${order.id}: ${e?.message ?? e}`,
                 loggerCtx,
             );
         }

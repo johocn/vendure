@@ -28,7 +28,7 @@ export class MemberPointsHistory extends VendureEntity implements ChannelAware {
 
     @Column({ type: 'text', nullable: true }) remark: string | null;
 
-    @Column({ type: 'timestamp', nullable: true }) expiresAt?: Date;
+    @Column({ nullable: true }) expiresAt?: Date;
 
     @Column({ type: 'int' }) channelId: number;
 

@@ -26,6 +26,9 @@ let MemberLevelShopResolver = class MemberLevelShopResolver {
     async myPointsHistory(ctx, options) {
         return this.memberLevelService.getMyPointsHistory(ctx, options);
     }
+    async redeemPoints(ctx, points) {
+        return this.memberLevelService.redeemPoints(ctx, points);
+    }
 };
 exports.MemberLevelShopResolver = MemberLevelShopResolver;
 __decorate([
@@ -45,6 +48,16 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], MemberLevelShopResolver.prototype, "myPointsHistory", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Transaction)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('points')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Number]),
+    __metadata("design:returntype", Promise)
+], MemberLevelShopResolver.prototype, "redeemPoints", null);
 exports.MemberLevelShopResolver = MemberLevelShopResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [member_level_service_1.MemberLevelService])

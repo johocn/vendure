@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Like } from 'typeorm';
 import {
     ChannelService,
     ConfigService,
@@ -9,7 +10,10 @@ import {
     ListQueryBuilder,
     ListQueryOptions,
     Logger,
+    Order,
+    OrderService,
     PaginatedList,
+    Refund,
     RequestContext,
     TransactionalConnection,
     UnauthorizedError,
@@ -76,9 +80,24 @@ export class MemberLevelService {
         private customerService: CustomerService,
         private channelService: ChannelService,
         private configService: ConfigService,
+        private orderService: OrderService,
     ) {
         const driverType = (this.configService.dbConnectionOptions as any).type as string;
         this.supportsPessimisticLock = !NO_LOCK_DRIVERS.includes(driverType);
+    }
+
+    /**
+     * 折算率：多少积分抵 1 元。读 Channel.pointsPerYuan，未配置用默认 100（100 积分抵 1 元）。
+     */
+    private getPointsPerYuan(ctx: RequestContext): number {
+        return (ctx.channel as any)?.customFields?.pointsPerYuan ?? 100;
+    }
+
+    /**
+     * 积分有效期（天），0=不过期。读 Channel.pointsExpireDays。
+     */
+    private getPointsExpireDays(ctx: RequestContext): number {
+        return (ctx.channel as any)?.customFields?.pointsExpireDays ?? 0;
     }
 
     /**
@@ -156,12 +175,21 @@ export class MemberLevelService {
         amount: number,
         orderId?: ID | null,
         remark?: string | null,
+        expiresAt?: Date | null,
     ): Promise<number> {
         const amt = Math.floor(amount);
         if (!Number.isFinite(amt) || amt <= 0) {
             throw new UserInputError('amount must be a positive integer');
         }
-        return this.applyPointsChange(ctx, customerId, amt, PointsHistoryType.EARN, orderId, remark);
+        return this.applyPointsChange(
+            ctx,
+            customerId,
+            amt,
+            PointsHistoryType.EARN,
+            orderId,
+            remark,
+            expiresAt,
+        );
     }
 
     async spendPoints(
@@ -250,6 +278,271 @@ export class MemberLevelService {
             where: { customerId: customerId as any, orderId: Number(orderId), type },
         });
         return count > 0;
+    }
+
+    /**
+     * 幂等判重：按订单 + 明细类型 + remark 前缀检查是否已有同源积分明细
+     * （如取消回退 `order_cancelled:` / 退款回退 `refund_settled:` / 过期 `earn_expired:`）。
+     */
+    private async hasPointsRemark(
+        ctx: RequestContext,
+        customerId: ID,
+        orderId: ID,
+        type: PointsHistoryType,
+        remarkPrefix: string,
+    ): Promise<boolean> {
+        const repo = this.connection.getRepository(ctx, MemberPointsHistory);
+        const count = await repo.count({
+            where: {
+                customerId: customerId as any,
+                orderId: Number(orderId),
+                type,
+                remark: Like(`${remarkPrefix}%`),
+            },
+        });
+        return count > 0;
+    }
+
+    /**
+     * 积分抵现（绑定即扣）：
+     * 1. 校验登录、订单归属、points 为正整数
+     * 2. 折算：discountAmount = floor(points / pointsPerYuan) * 100（分）
+     * 3. 校验：折算金额 > 0 且 < 订单 subTotal（不能全免单）
+     * 4. 原子扣减积分余额（pessimistic lock 或 sqljs 降级）+ 写 SPEND 明细
+     * 5. 写订单 customFields（pointsToRedeem / pointsRedeemAmount）→ 重算价格触发积分抵现 Promotion
+     * 6. 幂等：同一订单已绑定相同积分直接返回当前订单
+     */
+    async redeemPoints(ctx: RequestContext, points: number): Promise<Order> {
+        const userId = ctx.activeUserId;
+        if (!userId) {
+            throw new UserInputError('Not authenticated');
+        }
+        const amt = Math.floor(points);
+        if (!Number.isFinite(amt) || amt <= 0) {
+            throw new UserInputError('points must be a positive integer');
+        }
+        const customer = await this.customerService.findOneByUserId(ctx, userId);
+        if (!customer) {
+            throw new EntityNotFoundError('Customer', userId);
+        }
+        const order = await this.orderService.getActiveOrderForUser(ctx, userId);
+        if (!order) {
+            throw new UserInputError('No active order found');
+        }
+        // 归属校验：用 customer.user.id（登录 User 主键），勿用 customer.id
+        if ((order as any)?.customer?.user?.id !== userId) {
+            throw new UserInputError('You can only redeem points on your own order');
+        }
+        // 幂等：同一订单已绑定相同积分直接返回
+        if ((order as any)?.customFields?.pointsToRedeem === amt) {
+            return this.orderService.findOne(ctx, order.id, [
+                'lines',
+                'lines.productVariant',
+            ]) as Promise<Order>;
+        }
+
+        const pointsPerYuan = this.getPointsPerYuan(ctx);
+        const discountAmount = Math.floor(amt / pointsPerYuan) * 100;
+        const subTotal = order.subTotal ?? 0;
+        if (discountAmount <= 0) {
+            throw new UserInputError('Redeemed amount is zero');
+        }
+        if (discountAmount >= subTotal) {
+            throw new UserInputError('Redeemed amount must be less than order subtotal');
+        }
+
+        return this.connection.withTransaction(ctx, async txCtx => {
+            const repo = this.connection.getRepository(txCtx, Customer);
+            const locked = await this.loadCustomerForUpdate(repo, customer.id);
+            if (!locked) {
+                throw new EntityNotFoundError('Customer', customer.id);
+            }
+            const ccf = (locked as any).customFields ?? {};
+            const balance = ccf.points ?? 0;
+            if (balance < amt) {
+                throw new UserInputError('Insufficient points');
+            }
+            ccf.points = balance - amt;
+            await repo.save(locked);
+
+            const history = new MemberPointsHistory({
+                customerId: customer.id as any,
+                type: PointsHistoryType.SPEND,
+                amount: -amt,
+                balanceBefore: balance,
+                balanceAfter: balance - amt,
+                orderId: Number(order.id),
+                remark: 'points_redeem',
+            });
+            history.channelId = txCtx.channelId as number;
+            history.channels = [txCtx.channel];
+            await this.connection.getRepository(txCtx, MemberPointsHistory).save(history);
+
+            // 写订单字段 → 触发积分抵现 Promotion 折让 → 重算价格
+            const updatedOrder = await this.orderService.updateCustomFields(txCtx, order.id, {
+                pointsToRedeem: amt,
+                pointsRedeemAmount: discountAmount,
+            });
+            await this.orderService.applyPriceAdjustments(txCtx, updatedOrder);
+            Logger.info(
+                `Customer ${customer.id} redeemed ${amt} points (${discountAmount}分) on order ${order.id}`,
+                loggerCtx,
+            );
+            return this.orderService.findOne(txCtx, order.id, [
+                'lines',
+                'lines.productVariant',
+            ]) as Promise<Order>;
+        });
+    }
+
+    /**
+     * 取消回退：订单取消时按已抵扣积分全额回退（EARN 明细）+ 清空订单字段。
+     * 幂等：该订单已有 `order_cancelled:` EARN 明细则跳过。
+     */
+    async releasePointsByOrder(ctx: RequestContext, order: Order): Promise<void> {
+        const pointsToRedeem = (order as any)?.customFields?.pointsToRedeem ?? 0;
+        if (pointsToRedeem <= 0) return;
+        const customerId = (order as any)?.customer?.id;
+        if (customerId == null) return;
+        if (
+            await this.hasPointsRemark(
+                ctx,
+                customerId,
+                order.id,
+                PointsHistoryType.EARN,
+                'order_cancelled:',
+            )
+        ) {
+            return;
+        }
+        await this.connection.withTransaction(ctx, async txCtx => {
+            await this.addPoints(
+                txCtx,
+                customerId,
+                pointsToRedeem,
+                order.id,
+                `order_cancelled:${order.id}`,
+            );
+            await this.orderService.updateCustomFields(txCtx, order.id, {
+                pointsToRedeem: 0,
+                pointsRedeemAmount: 0,
+            });
+        });
+        Logger.info(
+            `Order ${order.id} cancelled: released ${pointsToRedeem} points to customer ${customerId}`,
+            loggerCtx,
+        );
+    }
+
+    /**
+     * 退款按比例回退：Refund Settled 时按 floor(pointsToRedeem × refund.total / order.totalWithTax)
+     * 回退已抵扣积分（EARN 明细）。幂等：该订单已有 `refund_settled:` EARN 明细则跳过。
+     *
+     * 口径说明：refund.total 是含税金额（proratedUnitPriceWithTax + shipping/withTax），
+     * 必须用 order.totalWithTax 作分母保持同口径，否则含税价下比例 ≠ 1，退回积分会多退。
+     */
+    async refundPointsByOrder(ctx: RequestContext, order: Order, refund: Refund): Promise<void> {
+        // 事件携带的 order 不一定加载了 customer / customFields，这里用 OrderService 按 id 重载
+        // 保证能读到归属 customer 与 pointsToRedeem（退款事件 order.customer 为空是常见坑）。
+        const reloaded =
+            (await this.orderService.findOne(ctx, order.id, ['customer'])) ?? order;
+        const pointsToRedeem = (reloaded as any)?.customFields?.pointsToRedeem ?? 0;
+        if (pointsToRedeem <= 0) return;
+        const customerId = (reloaded as any)?.customer?.id;
+        if (customerId == null) return;
+        const orderTotal = reloaded.totalWithTax ?? 0;
+        const refundAmount = refund.total ?? 0;
+        if (orderTotal <= 0 || refundAmount <= 0) return;
+        const pointsToReturn = Math.floor((pointsToRedeem * refundAmount) / orderTotal);
+        if (pointsToReturn <= 0) return;
+        if (
+            await this.hasPointsRemark(
+                ctx,
+                customerId,
+                order.id,
+                PointsHistoryType.EARN,
+                'refund_settled:',
+            )
+        ) {
+            return;
+        }
+        await this.connection.withTransaction(ctx, async txCtx => {
+            await this.addPoints(
+                txCtx,
+                customerId,
+                pointsToReturn,
+                order.id,
+                `refund_settled:${refund.id}`,
+            );
+        });
+        Logger.info(
+            `Refund ${refund.id} for order ${order.id}: returned ${pointsToReturn} points to customer ${customerId}`,
+            loggerCtx,
+        );
+    }
+
+    /**
+     * 过期清理：扫描本渠道 type=EARN 且 expiresAt 已过且 amount>0 的明细，
+     * 逐条幂等扣减余额并写 EXPIRE 明细（remark=`earn_expired:<earnId>`）。返回处理条数。
+     */
+    async expireEarnedPoints(ctx: RequestContext): Promise<number> {
+        // 从 DB 重新拉取 channel 配置（不能依赖 ctx.channel 快照：admin/定时上下文可能持有
+        // 早于 pointsExpireDays 配置更新的快照，否则 expireDays 恒为默认 0 导致永远扫不到过期单）。
+        const channel = await this.channelService.findOne(ctx, ctx.channelId);
+        const expireDays = (channel as any)?.customFields?.pointsExpireDays ?? 0;
+        if (expireDays <= 0) return 0;
+        const now = new Date();
+        const repo = this.connection.getRepository(ctx, MemberPointsHistory);
+        const expired = await repo
+            .createQueryBuilder('mph')
+            .where('mph.type = :type', { type: PointsHistoryType.EARN })
+            .andWhere('mph.channelId = :channelId', { channelId: ctx.channelId })
+            .andWhere('mph.expiresAt IS NOT NULL')
+            .andWhere('mph.expiresAt < :now', { now })
+            .andWhere('mph.amount > 0')
+            .getMany();
+
+        let count = 0;
+        for (const record of expired) {
+            const already = await repo.count({
+                where: {
+                    customerId: record.customerId,
+                    type: PointsHistoryType.EXPIRE,
+                    remark: `earn_expired:${record.id}`,
+                },
+            });
+            if (already > 0) continue;
+
+            await this.connection.withTransaction(ctx, async txCtx => {
+                const customerRepo = this.connection.getRepository(txCtx, Customer);
+                const customer = await this.loadCustomerForUpdate(customerRepo, record.customerId as any);
+                if (!customer) return;
+                const ccf = (customer as any).customFields ?? {};
+                const balance = ccf.points ?? 0;
+                const deduct = Math.min(record.amount, balance);
+                if (deduct <= 0) return;
+                ccf.points = balance - deduct;
+                await customerRepo.save(customer);
+
+                const history = new MemberPointsHistory({
+                    customerId: record.customerId,
+                    type: PointsHistoryType.EXPIRE,
+                    amount: -deduct,
+                    balanceBefore: balance,
+                    balanceAfter: balance - deduct,
+                    orderId: null,
+                    remark: `earn_expired:${record.id}`,
+                });
+                history.channelId = txCtx.channelId as number;
+                history.channels = [txCtx.channel];
+                await this.connection.getRepository(txCtx, MemberPointsHistory).save(history);
+            });
+            count++;
+        }
+        if (count > 0) {
+            Logger.info(`Points expiration: expired ${count} records`, loggerCtx);
+        }
+        return count;
     }
 
     async findAllMembers(
@@ -361,6 +654,7 @@ export class MemberLevelService {
         type: PointsHistoryType,
         orderId?: ID | null,
         remark?: string | null,
+        expiresAt?: Date | null,
     ): Promise<number> {
         return this.connection.withTransaction(ctx, async txCtx => {
             const repo = this.connection.getRepository(txCtx, Customer);
@@ -385,6 +679,7 @@ export class MemberLevelService {
                 balanceAfter,
                 orderId: orderId != null ? Number(orderId) : null,
                 remark: remark ?? null,
+                expiresAt: expiresAt ?? null,
             });
             history.channelId = txCtx.channelId as number;
             history.channels = [txCtx.channel];
