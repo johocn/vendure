@@ -266,6 +266,8 @@ async function resetTwoLocStock(token, variantId, targetAvail) {
       fulfs4.length ? JSON.stringify(fulfs4.map(f => `#${f.id}:pkg=${f.customFields?.packageId}:lines=${JSON.stringify(f.lines)}`)) : "无 fulfillment");
 
     // ---- t5: 非拆单订单不带 packageId 发货 → 整单降级兼容 ----
+    // 前置：t1-t4 已消耗 8 件（B5+A3），先重置双仓可售各 5，避免库存不足
+    result("t5前置.双仓可售重置为各 5", await resetTwoLocStock(adminToken, v.id, TARGET_AVAIL));
     const order5 = await placeOrderAsCustomer({ email: "pkg8b@example.com", password: "Test@123", firstName: "阶段8", lastName: "客户B" }, v.id, 3, { lat: 43.85, lng: 125.42 });
     orders.push({ token: order5.token, orderId: order5.orderId });
     // 不下 splitPlan，直接发货（无 packageId）

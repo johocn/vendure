@@ -447,6 +447,17 @@ function sumPlanQty(plan) {
     result("t7.拆单预览 2 包且数量合计=8", t7a,
       pkgs7.length ? JSON.stringify(pkgs7.map(p => `#${p.stockLocationId}:${(p.lines || []).map(l => l.quantity).join("+")}`)) : JSON.stringify(plan7));
 
+    // 7.1 confirmSplitPlan 落库 OrderPackage（否则 batchCreateFulfillment 按包查不到 linesJson，
+    //    降级整单 8 件 → t7a 发 P1 即整单发完 → t7b 发 P2 报 ITEMS_ALREADY_FULFILLED_ERROR）
+    const plan7Input = pkgs7.map(p => ({
+      stockLocationId: p.stockLocationId,
+      lines: p.lines.map(l => ({ orderLineId: l.orderLineId, quantity: l.quantity })),
+    }));
+    const cf7 = await confirmSplitPlan(adminToken, order2.orderId, plan7Input);
+    const cf7ok = !!cf7.data?.confirmSplitPlan && cf7.data.confirmSplitPlan.packages.length === 2;
+    result("t7.确认拆单落库 2 包", cf7ok,
+      cf7ok ? JSON.stringify(cf7.data.confirmSplitPlan.packages.map(p => `#${p.stockLocationId}:${(p.lines || []).map(l => l.quantity).join("+")}`)) : `errors=${JSON.stringify(cf7.errors?.map(e => e.message))}`);
+
     // 7.2 先发 P1（B仓，5件）→ 账本仅 1 条 Sale（B仓）
     const ship7a = await shipOrder(adminToken, order2.orderId, "P1", 1000, `SF7a${ts7}`);
     const shipItem7a = ship7a.data?.batchCreateFulfillment?.items?.[0];

@@ -339,7 +339,7 @@ export class StockMovementService {
             for (const releaseLocation of releaseLocations) {
                 const release = new Release({
                     productVariant: orderLine.productVariant,
-                    quantity: lineInput.quantity,
+                    quantity: releaseLocation.quantity,
                     orderLine,
                     stockLocation: releaseLocation.location,
                 });

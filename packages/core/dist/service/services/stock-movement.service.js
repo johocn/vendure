@@ -247,7 +247,7 @@ let StockMovementService = class StockMovementService {
             for (const releaseLocation of releaseLocations) {
                 const release = new release_entity_1.Release({
                     productVariant: orderLine.productVariant,
-                    quantity: lineInput.quantity,
+                    quantity: releaseLocation.quantity,
                     orderLine,
                     stockLocation: releaseLocation.location,
                 });

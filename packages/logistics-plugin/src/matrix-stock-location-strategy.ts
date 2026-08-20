@@ -1,4 +1,17 @@
-import { EntityHydrator, Injector, Logger, Order, OrderLine, StockLevelService, StockLocation } from '@vendure/core';
+import {
+    Allocation,
+    EntityHydrator,
+    Injector,
+    LocationWithQuantity,
+    Logger,
+    Order,
+    OrderLine,
+    RequestContext,
+    Sale,
+    StockLevelService,
+    StockLocation,
+    idsAreEqual,
+} from '@vendure/core';
 import { NearestStockLocationStrategy } from './nearest-stock-location-strategy';
 import {
     loggerCtx,
@@ -89,6 +102,66 @@ export class MatrixStockLocationStrategy extends NearestStockLocationStrategy {
 
         const result = await super.forAllocation(ctx, ranked, orderLine, quantity);
         await this.persistSplitDetail(ctx, orderLine, result);
+        return result;
+    }
+
+    /**
+     * 覆写 forSale：按「分配量 − 已售量」匹配剩余发货仓。
+     *
+     * 默认实现 getLocationsBasedOnAllocations 按 Allocation 顺序贪心分配，
+     * 多仓分批发货时（如 P1 发 B仓5 件、P2 发 A仓3 件），第二次传入 quantity=3
+     * 仍从首个 Allocation 仓（B仓）开始扣减，导致 Sale 归属和库存扣减错仓。
+     *
+     * 本覆写先扣除已创建的 Sale 记录，仅对剩余未售分配量匹配本次请求数量，
+     * 确保每批发货的 Sale 正确归属对应仓库。首批发货时无已售记录，行为与基类一致。
+     */
+    override async forSale(
+        ctx: RequestContext,
+        stockLocations: StockLocation[],
+        orderLine: OrderLine,
+        quantity: number,
+    ): Promise<LocationWithQuantity[]> {
+        const allocations = await this.connection.getRepository(ctx, Allocation).find({
+            where: { orderLine: { id: orderLine.id } },
+        });
+        const sales = await this.connection.getRepository(ctx, Sale).find({
+            where: { orderLine: { id: orderLine.id } },
+        });
+
+        // 计算各仓剩余（未售）分配量
+        const remainingByLocation = new Map<string, number>();
+        for (const alloc of allocations) {
+            const locId = String(alloc.stockLocationId);
+            remainingByLocation.set(locId, (remainingByLocation.get(locId) ?? 0) + Math.abs(alloc.quantity));
+        }
+        for (const sale of sales) {
+            const locId = String(sale.stockLocationId);
+            const sold = Math.abs(sale.quantity);
+            remainingByLocation.set(locId, (remainingByLocation.get(locId) ?? 0) - sold);
+        }
+
+        let remaining = quantity;
+        const result: LocationWithQuantity[] = [];
+        for (const [locId, avail] of remainingByLocation) {
+            if (remaining <= 0) { break; }
+            if (avail <= 0) { continue; }
+            const qty = Math.min(avail, remaining);
+            const location = stockLocations.find(l => idsAreEqual(l.id, locId as any));
+            if (location) {
+                result.push({ location, quantity: qty });
+                remaining -= qty;
+            }
+        }
+
+        // 降级：剩余数量无法匹配任落地仓时回退父类默认行为
+        if (remaining > 0 && result.length === 0) {
+            Logger.warn(
+                `forSale 剩余 ${remaining} 无法匹配到仓库（allocations=${allocations.length} sales=${sales.length}），回退父类`,
+                loggerCtx,
+            );
+            return super.forSale(ctx, stockLocations, orderLine, quantity);
+        }
+
         return result;
     }
 
