@@ -109,6 +109,7 @@ let OrderPackageService = class OrderPackageService {
     }
     /** 状态流转：幂等（同状态返回 true）、非法流转告警忽略、未命中告警返回 false；不抛错不阻断主链路 */
     async transition(ctx, orderId, packageId, toStatus) {
+        var _a;
         const repo = this.connection.getRepository(ctx, order_package_entity_1.OrderPackage);
         const pkg = await repo.findOne({ where: { orderId: orderId, code: packageId } });
         if (!pkg) {
@@ -131,7 +132,120 @@ let OrderPackageService = class OrderPackageService {
             pkg.cancelledAt = new Date();
         await repo.save(pkg);
         core_1.Logger.info(`OrderPackage order#${orderId} pkg=${packageId} -> ${toStatus}`, constants_1.loggerCtx);
+        // 履约闭环：包裹状态变化后镜像 self 包 fulfillment（core 一致性）+ 聚合驱动订单状态（失败仅告警，不阻断）
+        if (toStatus === 'shipped' || toStatus === 'delivered') {
+            await this.mirrorFulfillment(ctx, pkg, toStatus);
+        }
+        try {
+            await this.reconcileOrderState(ctx, orderId);
+        }
+        catch (e) {
+            core_1.Logger.warn(`订单状态聚合失败 order#${orderId}: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, constants_1.loggerCtx);
+        }
         return true;
+    }
+    /**
+     * 履约闭环核心：按包裹生命周期聚合推导订单目标状态并推进。
+     * 幂等（订单已到目标状态跳过）、非法流转经 getNextOrderStates 二次过滤仅告警。
+     */
+    async reconcileOrderState(ctx, orderId) {
+        if (!this.orderService) {
+            core_1.Logger.warn('OrderService 未初始化，跳过订单状态聚合', constants_1.loggerCtx);
+            return;
+        }
+        const packages = await this.findByOrder(ctx, orderId);
+        const hasPending = packages.some(p => p.status === 'pending');
+        const shippedCount = packages.filter(p => p.status === 'shipped').length;
+        const deliveredCount = packages.filter(p => p.status === 'delivered').length;
+        let target = null;
+        if (deliveredCount > 0 && packages.every(p => p.status === 'delivered')) {
+            target = 'Delivered'; // 全部送达
+        }
+        else if (deliveredCount > 0) {
+            target = 'PartiallyDelivered'; // 部分送达
+        }
+        else if (!hasPending && shippedCount > 0 && packages.every(p => p.status !== 'pending')) {
+            target = 'Shipped'; // 全部发货（含 cancelled）
+        }
+        else if (shippedCount > 0) {
+            target = 'PartiallyShipped'; // 部分发货
+        }
+        // 全部 cancelled：不推进（订单级取消是独立语义，已发货/送达包取消走售后）
+        if (!target)
+            return;
+        const order = await this.orderService.findOne(ctx, orderId);
+        if (!order || order.state === target)
+            return;
+        const next = this.orderService.getNextOrderStates(order);
+        if (!next.includes(target)) {
+            core_1.Logger.warn(`订单聚合目标 ${target} 不在可达状态 [${next.join(',')}]（order#${orderId} 当前 ${order.state}），跳过`, constants_1.loggerCtx);
+            return;
+        }
+        const result = await this.orderService.transitionToState(ctx, orderId, target);
+        if ((0, core_1.isGraphQlErrorResult)(result)) {
+            core_1.Logger.warn(`订单状态流转 ${order.state}->${target} 失败: ${JSON.stringify(result)}`, constants_1.loggerCtx);
+            return;
+        }
+        if (target === 'Delivered') {
+            await this.markDeliveredAt(ctx, orderId); // 首次送达写 fulfillmentDeliveredAt（自动完成扫描基准）
+        }
+        core_1.Logger.info(`订单聚合回写 order#${orderId} -> ${target}`, constants_1.loggerCtx);
+    }
+    /** 订单首次进入 Delivered 时写 fulfillmentDeliveredAt（自动交易完成的扫描基准；已写过则跳过） */
+    async markDeliveredAt(ctx, orderId) {
+        var _a;
+        if (!this.orderService)
+            return;
+        const order = await this.orderService.findOne(ctx, orderId);
+        if (!order || ((_a = order.customFields) === null || _a === void 0 ? void 0 : _a.fulfillmentDeliveredAt))
+            return;
+        order.customFields.fulfillmentDeliveredAt = new Date();
+        await this.connection.getRepository(ctx, core_1.Order).save(order, { reload: false });
+    }
+    /** self 包 fulfillment 镜像：包裹 shipped/delivered 时同步 fulfillment 状态（core 一致性，失败仅告警） */
+    async mirrorFulfillment(ctx, pkg, toStatus) {
+        var _a;
+        if (pkg.fulfillmentId == null || !this.orderService)
+            return;
+        const target = toStatus === 'shipped' ? 'Shipped' : 'Delivered';
+        try {
+            const res = await this.orderService.transitionFulfillmentToState(ctx, pkg.fulfillmentId, target);
+            if ((0, core_1.isGraphQlErrorResult)(res)) {
+                core_1.Logger.warn(`fulfillment#${pkg.fulfillmentId} 镜像 ${target} 失败: ${JSON.stringify(res)}`, constants_1.loggerCtx);
+            }
+        }
+        catch (e) {
+            core_1.Logger.warn(`fulfillment#${pkg.fulfillmentId} 镜像 ${target} 异常: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, constants_1.loggerCtx);
+        }
+    }
+    /**
+     * C端确认收货：归属校验（customer.user.id === activeUserId）+ Delivered → Completed（幂等）。
+     * 复用阶段7 的归属校验模式：ctx.activeUserId 是登录 User 主键，而 Order.customer.id 是 Customer 主键，两者不同。
+     */
+    async confirmOrderReceipt(ctx, orderId) {
+        var _a, _b;
+        if (!this.orderService) {
+            throw new Error('OrderService 未初始化');
+        }
+        if (!ctx.activeUserId) {
+            throw new core_1.UnauthorizedError();
+        }
+        const order = await this.orderService.findOne(ctx, orderId, ['customer', 'customer.user']);
+        if (!order) {
+            throw new core_1.EntityNotFoundError('Order', orderId);
+        }
+        const customerUserId = (_b = (_a = order.customer) === null || _a === void 0 ? void 0 : _a.user) === null || _b === void 0 ? void 0 : _b.id;
+        if (!order.customer || customerUserId == null || String(customerUserId) !== String(ctx.activeUserId)) {
+            throw new core_1.ForbiddenError();
+        }
+        if (order.state === 'Completed')
+            return true; // 幂等
+        if (order.state !== 'Delivered') {
+            core_1.Logger.warn(`确认收货要求订单在 Delivered（当前 ${order.state}），跳过`, constants_1.loggerCtx);
+            return false;
+        }
+        const result = await this.orderService.transitionToState(ctx, orderId, 'Completed');
+        return !(0, core_1.isGraphQlErrorResult)(result);
     }
     /** C端查询：本人订单包裹列表（按包号排序），返回可直接渲染的富化结果 */
     async getMyOrderPackages(ctx, orderId) {

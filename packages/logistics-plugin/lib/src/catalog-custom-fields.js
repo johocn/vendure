@@ -99,6 +99,13 @@ exports.catalogCustomFields = {
             public: true,
             label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '调单运费差额（正=补收 负=退）' }],
         },
+        {
+            name: 'fulfillmentDeliveredAt',
+            type: 'datetime',
+            nullable: true,
+            public: true,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '履约完成时间（订单首次送达）' }],
+        },
     ],
     OrderLine: [
         {

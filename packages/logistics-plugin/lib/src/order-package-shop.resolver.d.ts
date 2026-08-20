@@ -24,4 +24,6 @@ export declare class OrderPackageShopResolver {
         thirdPartyNo: string | null;
         etaMinutes: number | null;
     }[]>;
+    /** C端确认收货：本人订单 Delivered → Completed（归属校验 + 幂等） */
+    confirmOrderReceipt(ctx: RequestContext, orderId: string): Promise<boolean>;
 }

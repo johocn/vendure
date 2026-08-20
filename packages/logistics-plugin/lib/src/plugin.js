@@ -31,7 +31,21 @@ const manual_split_adjust_service_1 = require("./manual-split-adjust.service");
 const split_admin_resolver_1 = require("./split-admin.resolver");
 const order_package_entity_1 = require("./order-package.entity");
 const order_package_service_1 = require("./order-package.service");
+const order_complete_auto_service_1 = require("./order-complete-auto.service");
+const order_completion_process_1 = require("./order-completion.process");
 const split_shipping_calculator_1 = require("./split-shipping-calculator");
+/** 自动交易完成定时任务 id（幂等检测用） */
+const AUTO_COMPLETE_TASK_ID = 'order-complete-auto';
+/** 自动交易完成定时任务：每 5 分钟扫描 Delivered 超期订单 → Completed（复用 OrderTimeoutPlugin 补偿扫描模式） */
+const autoCompleteTask = new core_2.ScheduledTask({
+    id: AUTO_COMPLETE_TASK_ID,
+    description: 'Scan Delivered orders past completion deadline and mark Completed',
+    schedule: cron => cron.every(5).minutes(),
+    async execute({ injector, scheduledContext }) {
+        const service = injector.get(order_complete_auto_service_1.OrderCompleteAutoService);
+        await service.runAutoCompleteScan(scheduledContext);
+    },
+});
 /** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
 function mergeCustomFields(existingFields, additions) {
     const names = new Set((existingFields !== null && existingFields !== void 0 ? existingFields : []).map(f => f.name));
@@ -93,6 +107,8 @@ const adminSchema = () => gql `
         refreshTrack(id: ID!): LogisticsTrack!
         confirmSplitPlan(orderId: ID!, packages: [SplitPackageInput!]!): OrderSplitPlan!
         markPackageDelivered(orderId: ID!, packageId: String!): Boolean!
+        completeOrder(orderId: ID!): Boolean!
+        runAutoCompleteScan: Int!
     }
 
     input SplitLineInput { orderLineId: ID!, quantity: Int! }
@@ -163,14 +179,19 @@ const shopSchema = () => gql `
     extend type Query {
         myOrderPackages(orderId: ID!): [OrderPackageShop!]!
     }
+
+    extend type Mutation {
+        confirmOrderReceipt(orderId: ID!): Boolean!
+    }
 `;
 let LogisticsPlugin = LogisticsPlugin_1 = class LogisticsPlugin {
-    constructor(options, logisticsService, autoSplit, manualSplit, orderPackageService, moduleRef) {
+    constructor(options, logisticsService, autoSplit, manualSplit, orderPackageService, orderCompleteAuto, moduleRef) {
         this.options = options;
         this.logisticsService = logisticsService;
         this.autoSplit = autoSplit;
         this.manualSplit = manualSplit;
         this.orderPackageService = orderPackageService;
+        this.orderCompleteAuto = orderCompleteAuto;
         this.moduleRef = moduleRef;
     }
     static init(options) {
@@ -183,6 +204,7 @@ let LogisticsPlugin = LogisticsPlugin_1 = class LogisticsPlugin {
         this.autoSplit.init(this.injector);
         this.manualSplit.init(this.injector);
         this.orderPackageService.init(this.injector);
+        this.orderCompleteAuto.init(this.injector);
         // Task4 每包独立计费：库存分配在进入 ArrangingPayment 时才写 stockLocationsJson，
         // 而计费时点（setOrderShippingMethod）早于分配 → 运费先按 0 落库。
         // 在此监听 ArrangingPayment 过渡（onTransitionEnd 已分配库存），按拆分明细重算运费并落库 packageShippingJson。
@@ -247,6 +269,7 @@ exports.LogisticsPlugin = LogisticsPlugin = LogisticsPlugin_1 = __decorate([
             auto_split_plan_service_1.AutoSplitPlanService,
             manual_split_adjust_service_1.ManualSplitAdjustService,
             order_package_service_1.OrderPackageService,
+            order_complete_auto_service_1.OrderCompleteAutoService,
             // 字符串 token：供 delivery-gateway-plugin 通过注入器 duck-typing 解耦调用（挂钩点3）
             { provide: 'OrderPackageLinker', useExisting: order_package_service_1.OrderPackageService },
         ],
@@ -259,6 +282,7 @@ exports.LogisticsPlugin = LogisticsPlugin = LogisticsPlugin_1 = __decorate([
             resolvers: [logistics_shop_resolver_1.LogisticsShopResolver, order_package_shop_resolver_1.OrderPackageShopResolver],
         },
         configuration: (config) => {
+            var _a;
             config.customFields.Fulfillment = mergeCustomFields(config.customFields.Fulfillment, fulfillment_custom_fields_1.logisticsFulfillmentCustomFields.Fulfillment);
             config.customFields.Channel = mergeCustomFields(config.customFields.Channel, channel_custom_fields_1.logisticsChannelCustomFields.Channel);
             config.customFields.Product = mergeCustomFields(config.customFields.Product, catalog_custom_fields_1.catalogCustomFields.Product);
@@ -273,6 +297,17 @@ exports.LogisticsPlugin = LogisticsPlugin = LogisticsPlugin_1 = __decorate([
                 ...(config.shippingOptions.shippingCalculators || []),
                 split_shipping_calculator_1.splitShippingCalculator,
             ];
+            // 履约闭环：包裹聚合驱动订单状态机（禁用 checkFulfillmentStates，city 包无 fulfillment 不拦截）
+            if (!((_a = config.orderOptions.process) !== null && _a !== void 0 ? _a : []).some(p => p.__logisticsClosure)) {
+                config.orderOptions.process = [
+                    (0, core_2.configureDefaultOrderProcess)({ checkFulfillmentStates: false }),
+                    Object.assign(Object.assign({}, order_completion_process_1.orderCompletionProcess), { __logisticsClosure: true }),
+                ];
+            }
+            // 自动交易完成定时任务（幂等注册，复用 OrderTimeoutPlugin 的补偿扫描模式）
+            if (!config.schedulerOptions.tasks.some(t => t.id === AUTO_COMPLETE_TASK_ID)) {
+                config.schedulerOptions.tasks.push(autoCompleteTask);
+            }
             return config;
         },
         dashboard: '../dashboard/index.tsx',
@@ -283,6 +318,7 @@ exports.LogisticsPlugin = LogisticsPlugin = LogisticsPlugin_1 = __decorate([
         auto_split_plan_service_1.AutoSplitPlanService,
         manual_split_adjust_service_1.ManualSplitAdjustService,
         order_package_service_1.OrderPackageService,
+        order_complete_auto_service_1.OrderCompleteAutoService,
         core_1.ModuleRef])
 ], LogisticsPlugin);
 //# sourceMappingURL=plugin.js.map

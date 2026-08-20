@@ -23,6 +23,10 @@ let OrderPackageShopResolver = class OrderPackageShopResolver {
     async myOrderPackages(ctx, orderId) {
         return this.orderPackageService.getMyOrderPackages(ctx, orderId);
     }
+    /** C端确认收货：本人订单 Delivered → Completed（归属校验 + 幂等） */
+    async confirmOrderReceipt(ctx, orderId) {
+        return this.orderPackageService.confirmOrderReceipt(ctx, orderId);
+    }
 };
 exports.OrderPackageShopResolver = OrderPackageShopResolver;
 __decorate([
@@ -34,6 +38,15 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, String]),
     __metadata("design:returntype", Promise)
 ], OrderPackageShopResolver.prototype, "myOrderPackages", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String]),
+    __metadata("design:returntype", Promise)
+], OrderPackageShopResolver.prototype, "confirmOrderReceipt", null);
 exports.OrderPackageShopResolver = OrderPackageShopResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [order_package_service_1.OrderPackageService])

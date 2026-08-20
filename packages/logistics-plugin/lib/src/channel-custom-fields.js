@@ -37,6 +37,12 @@ exports.logisticsChannelCustomFields = {
             nullable: true,
             label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '每包运费规则（JSON: [{locationId,baseFee,perKmFee,freeThreshold}]）' }],
         },
+        {
+            name: 'orderCompleteDays',
+            type: 'int',
+            nullable: true,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '自动交易完成天数（送达后 N 天，覆盖默认值）' }],
+        },
     ],
 };
 //# sourceMappingURL=channel-custom-fields.js.map

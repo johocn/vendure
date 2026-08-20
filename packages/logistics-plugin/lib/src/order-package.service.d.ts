@@ -29,6 +29,20 @@ export declare class OrderPackageService {
     findByOrderAndCode(ctx: RequestContext, orderId: ID, code: string): Promise<OrderPackage | null>;
     /** 状态流转：幂等（同状态返回 true）、非法流转告警忽略、未命中告警返回 false；不抛错不阻断主链路 */
     transition(ctx: RequestContext, orderId: ID, packageId: string, toStatus: OrderPackageStatus): Promise<boolean>;
+    /**
+     * 履约闭环核心：按包裹生命周期聚合推导订单目标状态并推进。
+     * 幂等（订单已到目标状态跳过）、非法流转经 getNextOrderStates 二次过滤仅告警。
+     */
+    reconcileOrderState(ctx: RequestContext, orderId: ID): Promise<void>;
+    /** 订单首次进入 Delivered 时写 fulfillmentDeliveredAt（自动交易完成的扫描基准；已写过则跳过） */
+    markDeliveredAt(ctx: RequestContext, orderId: ID): Promise<void>;
+    /** self 包 fulfillment 镜像：包裹 shipped/delivered 时同步 fulfillment 状态（core 一致性，失败仅告警） */
+    mirrorFulfillment(ctx: RequestContext, pkg: OrderPackage, toStatus: 'shipped' | 'delivered'): Promise<void>;
+    /**
+     * C端确认收货：归属校验（customer.user.id === activeUserId）+ Delivered → Completed（幂等）。
+     * 复用阶段7 的归属校验模式：ctx.activeUserId 是登录 User 主键，而 Order.customer.id 是 Customer 主键，两者不同。
+     */
+    confirmOrderReceipt(ctx: RequestContext, orderId: ID): Promise<boolean>;
     /** C端查询：本人订单包裹列表（按包号排序），返回可直接渲染的富化结果 */
     getMyOrderPackages(ctx: RequestContext, orderId: ID): Promise<Array<{
         code: string;

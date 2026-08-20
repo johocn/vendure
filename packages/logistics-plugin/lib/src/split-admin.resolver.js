@@ -17,12 +17,15 @@ const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
 const auto_split_plan_service_1 = require("./auto-split-plan.service");
 const manual_split_adjust_service_1 = require("./manual-split-adjust.service");
+const order_complete_auto_service_1 = require("./order-complete-auto.service");
 const order_package_service_1 = require("./order-package.service");
 let SplitAdminResolver = class SplitAdminResolver {
-    constructor(autoSplit, manualSplit, orderPackageService) {
+    constructor(autoSplit, manualSplit, orderPackageService, orderCompleteAuto, orderService) {
         this.autoSplit = autoSplit;
         this.manualSplit = manualSplit;
         this.orderPackageService = orderPackageService;
+        this.orderCompleteAuto = orderCompleteAuto;
+        this.orderService = orderService;
     }
     async splitPlanPreview(ctx, orderId) {
         return this.autoSplit.buildAutoPlan(ctx, orderId);
@@ -64,6 +67,22 @@ let SplitAdminResolver = class SplitAdminResolver {
     async markPackageDelivered(ctx, orderId, packageId) {
         return this.orderPackageService.transition(ctx, orderId, packageId, 'delivered');
     }
+    /** 手动交易完成：Delivered → Completed（幂等；非 Delivered 状态返回 false） */
+    async completeOrder(ctx, orderId) {
+        const order = await this.orderService.findOne(ctx, orderId);
+        if (!order)
+            return false;
+        if (order.state === 'Completed')
+            return true; // 幂等
+        if (order.state !== 'Delivered')
+            return false; // 仅 Delivered 可确认收货
+        const result = await this.orderService.transitionToState(ctx, orderId, 'Completed');
+        return !(0, core_1.isGraphQlErrorResult)(result);
+    }
+    /** 手动触发自动交易完成扫描，返回本次完成订单数（运营/e2e 用） */
+    async runAutoCompleteScan(ctx) {
+        return this.orderCompleteAuto.runAutoCompleteScan(ctx);
+    }
 };
 exports.SplitAdminResolver = SplitAdminResolver;
 __decorate([
@@ -104,10 +123,29 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, String, String]),
     __metadata("design:returntype", Promise)
 ], SplitAdminResolver.prototype, "markPackageDelivered", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String]),
+    __metadata("design:returntype", Promise)
+], SplitAdminResolver.prototype, "completeOrder", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], SplitAdminResolver.prototype, "runAutoCompleteScan", null);
 exports.SplitAdminResolver = SplitAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [auto_split_plan_service_1.AutoSplitPlanService,
         manual_split_adjust_service_1.ManualSplitAdjustService,
-        order_package_service_1.OrderPackageService])
+        order_package_service_1.OrderPackageService,
+        order_complete_auto_service_1.OrderCompleteAutoService,
+        core_1.OrderService])
 ], SplitAdminResolver);
 //# sourceMappingURL=split-admin.resolver.js.map

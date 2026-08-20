@@ -5,16 +5,18 @@ import { LogisticsService } from './logistics.service';
 import { AutoSplitPlanService } from './auto-split-plan.service';
 import { ManualSplitAdjustService } from './manual-split-adjust.service';
 import { OrderPackageService } from './order-package.service';
+import { OrderCompleteAutoService } from './order-complete-auto.service';
 export declare class LogisticsPlugin implements OnApplicationBootstrap {
     private options;
     private logisticsService;
     private autoSplit;
     private manualSplit;
     private orderPackageService;
+    private orderCompleteAuto;
     private moduleRef;
     private static options;
     private injector;
-    constructor(options: LogisticsPluginOptions, logisticsService: LogisticsService, autoSplit: AutoSplitPlanService, manualSplit: ManualSplitAdjustService, orderPackageService: OrderPackageService, moduleRef: ModuleRef);
+    constructor(options: LogisticsPluginOptions, logisticsService: LogisticsService, autoSplit: AutoSplitPlanService, manualSplit: ManualSplitAdjustService, orderPackageService: OrderPackageService, orderCompleteAuto: OrderCompleteAutoService, moduleRef: ModuleRef);
     static init(options?: LogisticsPluginOptions): Type<LogisticsPlugin>;
     onApplicationBootstrap(): Promise<void>;
     /**
