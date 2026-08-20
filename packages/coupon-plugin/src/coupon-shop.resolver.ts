@@ -1,96 +1,48 @@
-import { Args, Mutation, Parent, Query, ResolveField, Resolver } from '@nestjs/graphql';
-import { Allow, Ctx, ID, Permission, RequestContext } from '@vendure/core';
+import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Ctx, ID, OrderService, RequestContext, Transaction, UserInputError } from '@vendure/core';
 
-import { CouponCode } from './coupon-code.entity';
-import { Coupon } from './coupon.entity';
-import { CouponService, CouponValidationResult } from './coupon.service';
+import { CouponService } from './coupon.service';
 
-@Resolver(() => CouponCode)
+@Resolver()
 export class CouponShopResolver {
-    constructor(private couponService: CouponService) {}
+    constructor(
+        private couponService: CouponService,
+        private orderService: OrderService,
+    ) {}
 
-    @ResolveField('coupon', () => Coupon)
-    async coupon(
-        @Ctx() ctx: RequestContext,
-        @Parent() couponCode: CouponCode,
-    ): Promise<Coupon | null> {
-        return this.couponService.getCoupon(ctx, couponCode.couponId);
+    @Query()
+    async couponCentre(@Ctx() ctx: RequestContext) {
+        return this.couponService.couponCentre(ctx);
     }
 
     @Query()
-    @Allow(Permission.Public)
-    async availableCoupons(@Ctx() ctx: RequestContext): Promise<Coupon[]> {
-        return this.couponService.getAvailableCoupons(ctx);
+    async myCoupons(@Ctx() ctx: RequestContext, @Args('status') status?: string) {
+        return this.couponService.listMyCoupons(ctx, status);
     }
 
-    @Query()
-    @Allow(Permission.Authenticated)
-    async myCoupons(
-        @Ctx() ctx: RequestContext,
-        @Args('status', { nullable: true }) status?: string,
-    ): Promise<CouponCode[]> {
-        return this.couponService.getMyCoupons(ctx, status);
+    @Mutation()
+    @Transaction()
+    async claimCoupon(@Ctx() ctx: RequestContext, @Args('templateId') templateId: ID) {
+        return this.couponService.claimCoupon(ctx, templateId);
     }
 
-    @Query()
-    @Allow(Permission.Authenticated)
-    async validateCoupon(
-        @Ctx() ctx: RequestContext,
-        @Args('code') code: string,
-        @Args('orderId', { nullable: true }) orderId?: ID,
-    ): Promise<CouponValidationResult> {
-        if (!orderId) {
-            return { valid: true, discountAmount: 0, error: null };
+    @Mutation()
+    @Transaction()
+    async applyCouponToOrder(@Ctx() ctx: RequestContext, @Args('code') code: string) {
+        const order = await this.orderService.getActiveOrderForUser(ctx, ctx.activeUserId!);
+        if (!order) {
+            throw new UserInputError('No active order to apply coupon');
         }
-        const orderLines = await this.couponService.getOrderLinesForCoupon(ctx, orderId);
-        return this.couponService.validateCoupon(ctx, code, orderLines);
+        return this.couponService.applyCouponToOrder(ctx, order.id, code);
     }
 
     @Mutation()
-    @Allow(Permission.Authenticated)
-    async claimCoupon(
-        @Ctx() ctx: RequestContext,
-        @Args('couponId') couponId: ID,
-    ): Promise<CouponCode> {
-        return this.couponService.claimCoupon(ctx, couponId);
-    }
-
-    @Mutation()
-    @Allow(Permission.Authenticated)
-    async redeemCoupon(
-        @Ctx() ctx: RequestContext,
-        @Args('code') code: string,
-        @Args('orderId') orderId: ID,
-    ): Promise<CouponCode> {
-        return this.couponService.redeemCoupon(ctx, code, orderId);
-    }
-
-    /**
-     * 绑定券码到订单（Promotion 桥接入口）。
-     * 设置 order.customFields.appliedCouponCode，由 couponOrderAction 自动计算折扣。
-     * 不立即核销——核销由 OrderPlacedEvent 触发。
-     */
-    @Mutation()
-    @Allow(Permission.Authenticated)
-    async applyCoupon(
-        @Ctx() ctx: RequestContext,
-        @Args('orderId') orderId: ID,
-        @Args('code') code: string,
-    ): Promise<CouponValidationResult> {
-        return this.couponService.applyCouponToOrder(ctx, orderId, code);
-    }
-
-    /**
-     * 移除订单上绑定的优惠券。
-     * 清除 customFields.appliedCouponCode 并触发价格重新计算。
-     */
-    @Mutation()
-    @Allow(Permission.Authenticated)
-    async removeCoupon(
-        @Ctx() ctx: RequestContext,
-        @Args('orderId') orderId: ID,
-    ): Promise<boolean> {
-        await this.couponService.removeCouponFromOrder(ctx, orderId);
-        return true;
+    @Transaction()
+    async clearCouponFromOrder(@Ctx() ctx: RequestContext) {
+        const order = await this.orderService.getActiveOrderForUser(ctx, ctx.activeUserId!);
+        if (!order) {
+            throw new UserInputError('No active order to clear coupon');
+        }
+        return this.couponService.clearCouponFromOrder(ctx, order.id);
     }
 }

@@ -15,129 +15,81 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CouponShopResolver = void 0;
 const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
-const coupon_code_entity_1 = require("./coupon-code.entity");
-const coupon_entity_1 = require("./coupon.entity");
 const coupon_service_1 = require("./coupon.service");
 let CouponShopResolver = class CouponShopResolver {
-    constructor(couponService) {
+    constructor(couponService, orderService) {
         this.couponService = couponService;
+        this.orderService = orderService;
     }
-    async coupon(ctx, couponCode) {
-        return this.couponService.getCoupon(ctx, couponCode.couponId);
-    }
-    async availableCoupons(ctx) {
-        return this.couponService.getAvailableCoupons(ctx);
+    async couponCentre(ctx) {
+        return this.couponService.couponCentre(ctx);
     }
     async myCoupons(ctx, status) {
-        return this.couponService.getMyCoupons(ctx, status);
+        return this.couponService.listMyCoupons(ctx, status);
     }
-    async validateCoupon(ctx, code, orderId) {
-        if (!orderId) {
-            return { valid: true, discountAmount: 0, error: null };
+    async claimCoupon(ctx, templateId) {
+        return this.couponService.claimCoupon(ctx, templateId);
+    }
+    async applyCouponToOrder(ctx, code) {
+        const order = await this.orderService.getActiveOrderForUser(ctx, ctx.activeUserId);
+        if (!order) {
+            throw new core_1.UserInputError('No active order to apply coupon');
         }
-        const orderLines = await this.couponService.getOrderLinesForCoupon(ctx, orderId);
-        return this.couponService.validateCoupon(ctx, code, orderLines);
+        return this.couponService.applyCouponToOrder(ctx, order.id, code);
     }
-    async claimCoupon(ctx, couponId) {
-        return this.couponService.claimCoupon(ctx, couponId);
-    }
-    async redeemCoupon(ctx, code, orderId) {
-        return this.couponService.redeemCoupon(ctx, code, orderId);
-    }
-    /**
-     * 绑定券码到订单（Promotion 桥接入口）。
-     * 设置 order.customFields.appliedCouponCode，由 couponOrderAction 自动计算折扣。
-     * 不立即核销——核销由 OrderPlacedEvent 触发。
-     */
-    async applyCoupon(ctx, orderId, code) {
-        return this.couponService.applyCouponToOrder(ctx, orderId, code);
-    }
-    /**
-     * 移除订单上绑定的优惠券。
-     * 清除 customFields.appliedCouponCode 并触发价格重新计算。
-     */
-    async removeCoupon(ctx, orderId) {
-        await this.couponService.removeCouponFromOrder(ctx, orderId);
-        return true;
+    async clearCouponFromOrder(ctx) {
+        const order = await this.orderService.getActiveOrderForUser(ctx, ctx.activeUserId);
+        if (!order) {
+            throw new core_1.UserInputError('No active order to clear coupon');
+        }
+        return this.couponService.clearCouponFromOrder(ctx, order.id);
     }
 };
 exports.CouponShopResolver = CouponShopResolver;
 __decorate([
-    (0, graphql_1.ResolveField)('coupon', () => coupon_entity_1.Coupon),
-    __param(0, (0, core_1.Ctx)()),
-    __param(1, (0, graphql_1.Parent)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext,
-        coupon_code_entity_1.CouponCode]),
-    __metadata("design:returntype", Promise)
-], CouponShopResolver.prototype, "coupon", null);
-__decorate([
     (0, graphql_1.Query)(),
-    (0, core_1.Allow)(core_1.Permission.Public),
     __param(0, (0, core_1.Ctx)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext]),
     __metadata("design:returntype", Promise)
-], CouponShopResolver.prototype, "availableCoupons", null);
+], CouponShopResolver.prototype, "couponCentre", null);
 __decorate([
     (0, graphql_1.Query)(),
-    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
-    __param(1, (0, graphql_1.Args)('status', { nullable: true })),
+    __param(1, (0, graphql_1.Args)('status')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext, String]),
     __metadata("design:returntype", Promise)
 ], CouponShopResolver.prototype, "myCoupons", null);
 __decorate([
-    (0, graphql_1.Query)(),
-    (0, core_1.Allow)(core_1.Permission.Authenticated),
-    __param(0, (0, core_1.Ctx)()),
-    __param(1, (0, graphql_1.Args)('code')),
-    __param(2, (0, graphql_1.Args)('orderId', { nullable: true })),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, String, Object]),
-    __metadata("design:returntype", Promise)
-], CouponShopResolver.prototype, "validateCoupon", null);
-__decorate([
     (0, graphql_1.Mutation)(),
-    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    (0, core_1.Transaction)(),
     __param(0, (0, core_1.Ctx)()),
-    __param(1, (0, graphql_1.Args)('couponId')),
+    __param(1, (0, graphql_1.Args)('templateId')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], CouponShopResolver.prototype, "claimCoupon", null);
 __decorate([
     (0, graphql_1.Mutation)(),
-    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    (0, core_1.Transaction)(),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('code')),
-    __param(2, (0, graphql_1.Args)('orderId')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, String, Object]),
+    __metadata("design:paramtypes", [core_1.RequestContext, String]),
     __metadata("design:returntype", Promise)
-], CouponShopResolver.prototype, "redeemCoupon", null);
+], CouponShopResolver.prototype, "applyCouponToOrder", null);
 __decorate([
     (0, graphql_1.Mutation)(),
-    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    (0, core_1.Transaction)(),
     __param(0, (0, core_1.Ctx)()),
-    __param(1, (0, graphql_1.Args)('orderId')),
-    __param(2, (0, graphql_1.Args)('code')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
     __metadata("design:returntype", Promise)
-], CouponShopResolver.prototype, "applyCoupon", null);
-__decorate([
-    (0, graphql_1.Mutation)(),
-    (0, core_1.Allow)(core_1.Permission.Authenticated),
-    __param(0, (0, core_1.Ctx)()),
-    __param(1, (0, graphql_1.Args)('orderId')),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
-    __metadata("design:returntype", Promise)
-], CouponShopResolver.prototype, "removeCoupon", null);
+], CouponShopResolver.prototype, "clearCouponFromOrder", null);
 exports.CouponShopResolver = CouponShopResolver = __decorate([
-    (0, graphql_1.Resolver)(() => coupon_code_entity_1.CouponCode),
-    __metadata("design:paramtypes", [coupon_service_1.CouponService])
+    (0, graphql_1.Resolver)(),
+    __metadata("design:paramtypes", [coupon_service_1.CouponService,
+        core_1.OrderService])
 ], CouponShopResolver);
 //# sourceMappingURL=coupon-shop.resolver.js.map

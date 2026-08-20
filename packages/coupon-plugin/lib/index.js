@@ -17,7 +17,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 __exportStar(require("./src/plugin"), exports);
 __exportStar(require("./src/types"), exports);
 __exportStar(require("./src/constants"), exports);
-__exportStar(require("./src/coupon.entity"), exports);
-__exportStar(require("./src/coupon-code.entity"), exports);
+__exportStar(require("./src/coupon-template.entity"), exports);
+__exportStar(require("./src/customer-coupon.entity"), exports);
 __exportStar(require("./src/coupon.service"), exports);
 //# sourceMappingURL=index.js.map

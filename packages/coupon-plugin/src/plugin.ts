@@ -1,25 +1,30 @@
 import { Inject, OnApplicationBootstrap, Type } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import {
     EventBus,
+    Injector,
     Logger,
     OrderPlacedEvent,
     OrderStateTransitionEvent,
     PluginCommonModule,
+    TransactionalConnection,
     VendurePlugin,
 } from '@vendure/core';
+import gql from 'graphql-tag';
 
 import { COUPON_PLUGIN_OPTIONS, loggerCtx } from './constants';
-import { CouponCode } from './coupon-code.entity';
 import { CouponAdminResolver } from './coupon-admin.resolver';
-import { couponOrderAction, setCouponServiceRef } from './coupon-order-action';
-import { expireCouponsTask } from './coupon-expire.job';
+import { couponDiscountAction } from './coupon-promotion-action';
+import { couponAppliedCondition } from './coupon-promotion-condition';
+import { setCouponConnection } from './coupon-runtime';
 import { CouponService } from './coupon.service';
 import { CouponShopResolver } from './coupon-shop.resolver';
-import { Coupon } from './coupon.entity';
+import { CouponTemplate } from './coupon-template.entity';
+import { CustomerCoupon } from './customer-coupon.entity';
 import { couponOrderCustomFields } from './order-custom-fields';
 import { CouponPluginOptions } from './types';
 
-/** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
+/** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations several times). */
 function mergeCustomFields<T extends { name: string }>(
     existingFields: T[] | undefined,
     additions: T[] | undefined,
@@ -28,190 +33,170 @@ function mergeCustomFields<T extends { name: string }>(
     return [...(existingFields ?? []), ...(additions ?? []).filter(f => !names.has(f.name))];
 }
 
-const { gql } = require('graphql-tag');
+const couponTemplateType = `
+type CouponTemplate implements Node {
+    id: ID!
+    name: String!
+    type: CouponType!
+    discountValue: Int!
+    minSpend: Int!
+    startsAt: DateTime
+    endsAt: DateTime
+    totalCount: Int!
+    claimedCount: Int!
+    perUserLimit: Int!
+    scope: String!
+    categoryId: ID
+    variantId: ID
+    enabled: Boolean!
+    createdAt: DateTime!
+    updatedAt: DateTime!
+}`;
 
-const adminSchema = () => gql`
-    type Coupon implements Node {
-        id: ID!
-        name: String!
-        description: String
-        couponType: String!
-        discountValue: Int!
-        minSpend: Int!
-        maxDiscount: Int!
-        startAt: DateTime!
-        endAt: DateTime!
-        totalQuantity: Int!
-        claimedCount: Int!
-        limitPerUser: Int!
-        isActive: Boolean!
-        applicableProductIds: [ID!]
-        applicableCategoryIds: [ID!]
-        isNewUserOnly: Boolean!
-        isGlobal: Boolean!
-        ownerChannelId: ID
-        enabledInCurrentChannel: Boolean!
-        createdAt: DateTime!
-        updatedAt: DateTime!
-    }
-
-    type CouponList implements PaginatedList {
-        items: [Coupon!]!
-        totalItems: Int!
-    }
-
-    input CreateCouponInput {
-        name: String!
-        description: String
-        couponType: String!
-        discountValue: Int!
-        minSpend: Int
-        maxDiscount: Int
-        startAt: DateTime!
-        endAt: DateTime!
-        totalQuantity: Int!
-        limitPerUser: Int
-        isActive: Boolean
-        applicableProductIds: [ID!]
-        applicableCategoryIds: [ID!]
-        isNewUserOnly: Boolean
-        isGlobal: Boolean
-    }
-
-    input UpdateCouponInput {
-        name: String
-        description: String
-        startAt: DateTime
-        endAt: DateTime
-        totalQuantity: Int
-        limitPerUser: Int
-        isActive: Boolean
-        minSpend: Int
-        maxDiscount: Int
-        isNewUserOnly: Boolean
-    }
-
-    input CouponListOptions {
-        skip: Int
-        take: Int
-        sort: JSON
-        filter: JSON
-    }
-
-    extend type Query {
-        coupons(options: CouponListOptions): CouponList!
-        coupon(id: ID!): Coupon
-    }
-
-    extend type Mutation {
-        createCoupon(input: CreateCouponInput!): Coupon!
-        updateCoupon(id: ID!, input: UpdateCouponInput!): Coupon!
-        deleteCoupon(id: ID!): Boolean!
-        enableCouponForChannel(id: ID!): Coupon!
-        disableCouponForChannel(id: ID!): Coupon!
-    }
-`;
-
-const shopSchema = () => gql`
-    type Coupon implements Node {
-        id: ID!
-        name: String!
-        description: String
-        couponType: String!
-        discountValue: Int!
-        minSpend: Int!
-        maxDiscount: Int!
-        startAt: DateTime!
-        endAt: DateTime!
-        totalQuantity: Int!
-        claimedCount: Int!
-        limitPerUser: Int!
-        isActive: Boolean!
-        applicableProductIds: [ID!]
-        applicableCategoryIds: [ID!]
-        isNewUserOnly: Boolean!
-        isGlobal: Boolean!
-        createdAt: DateTime!
-        updatedAt: DateTime!
-    }
-
-    type CouponCode {
-        id: ID!
-        couponId: ID!
-        coupon: Coupon!
-        customerId: ID!
-        code: String!
-        status: String!
-        claimedAt: DateTime
-        usedAt: DateTime
-        orderId: ID
-        createdAt: DateTime!
-    }
-
-    type CouponValidationResult {
-        valid: Boolean!
-        discountAmount: Int!
-        error: String
-    }
-
-    extend type Query {
-        availableCoupons: [Coupon!]!
-        myCoupons(status: String): [CouponCode!]!
-        validateCoupon(code: String!, orderId: ID): CouponValidationResult!
-    }
-
-    extend type Mutation {
-        claimCoupon(couponId: ID!): CouponCode!
-        redeemCoupon(code: String!, orderId: ID!): CouponCode!
-        applyCoupon(orderId: ID!, code: String!): CouponValidationResult!
-        removeCoupon(orderId: ID!): Boolean!
-    }
-`;
+const customerCouponType = `
+type CustomerCoupon implements Node {
+    id: ID!
+    customerId: ID!
+    templateId: ID!
+    code: String!
+    status: CouponStatus!
+    issuedBy: CouponIssuedBy!
+    reservedOrderId: ID
+    usedOrderId: ID
+    issuedAt: DateTime
+    usedAt: DateTime
+    expiredAt: DateTime
+    template: CouponTemplate
+    createdAt: DateTime!
+    updatedAt: DateTime!
+}`;
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [Coupon, CouponCode],
+    entities: [CouponTemplate, CustomerCoupon],
     providers: [
         { provide: COUPON_PLUGIN_OPTIONS, useFactory: () => CouponPlugin.options },
         CouponService,
     ],
     exports: [CouponService],
     adminApiExtensions: {
-        schema: adminSchema,
+        schema: () => gql`
+            enum CouponType { FIXED PERCENT FULL }
+            enum CouponStatus { UNUSED USED RETURNED EXPIRED INVALID }
+            enum CouponIssuedBy { CENTRE ADMIN }
+
+            ${couponTemplateType}
+            ${customerCouponType}
+
+            type CouponTemplateList implements PaginatedList {
+                items: [CouponTemplate!]!
+                totalItems: Int!
+            }
+
+            type CustomerCouponList implements PaginatedList {
+                items: [CustomerCoupon!]!
+                totalItems: Int!
+            }
+
+            input CreateCouponTemplateInput {
+                name: String!
+                type: CouponType!
+                discountValue: Int!
+                minSpend: Int
+                startsAt: DateTime
+                endsAt: DateTime
+                totalCount: Int
+                perUserLimit: Int
+                scope: String
+                categoryId: ID
+                variantId: ID
+                enabled: Boolean
+            }
+
+            input UpdateCouponTemplateInput {
+                id: ID!
+                name: String
+                type: CouponType
+                discountValue: Int
+                minSpend: Int
+                startsAt: DateTime
+                endsAt: DateTime
+                totalCount: Int
+                perUserLimit: Int
+                scope: String
+                categoryId: ID
+                variantId: ID
+                enabled: Boolean
+            }
+
+            input CouponTemplateListOptions
+
+            input CustomerCouponListOptions
+
+            extend type Query {
+                couponTemplates(options: CouponTemplateListOptions): CouponTemplateList!
+                couponTemplate(id: ID!): CouponTemplate
+                customerCoupons(options: CustomerCouponListOptions): CustomerCouponList!
+            }
+
+            extend type Mutation {
+                createCouponTemplate(input: CreateCouponTemplateInput!): CouponTemplate!
+                updateCouponTemplate(input: UpdateCouponTemplateInput!): CouponTemplate!
+                deleteCouponTemplate(id: ID!): Boolean!
+                grantCoupon(templateId: ID!, customerIds: [ID!]!): [String!]!
+                revokeCustomerCoupon(id: ID!): CustomerCoupon!
+            }
+        `,
         resolvers: [CouponAdminResolver],
     },
     shopApiExtensions: {
-        schema: shopSchema,
+        schema: () => gql`
+            enum CouponType { FIXED PERCENT FULL }
+            enum CouponStatus { UNUSED USED RETURNED EXPIRED INVALID }
+            enum CouponIssuedBy { CENTRE ADMIN }
+
+            ${couponTemplateType}
+            ${customerCouponType}
+
+            extend type Query {
+                couponCentre: [CouponTemplate!]!
+                myCoupons(status: CouponStatus): [CustomerCoupon!]!
+            }
+
+            extend type Mutation {
+                claimCoupon(templateId: ID!): CustomerCoupon!
+                applyCouponToOrder(code: String!): Order!
+                clearCouponFromOrder: Order!
+            }
+        `,
         resolvers: [CouponShopResolver],
     },
-    configuration: config => {
+    configuration: (config) => {
         config.customFields.Order = mergeCustomFields(config.customFields.Order, couponOrderCustomFields.Order);
 
         config.promotionOptions = config.promotionOptions || {};
+        config.promotionOptions.promotionConditions = [
+            ...(config.promotionOptions.promotionConditions ?? []),
+            couponAppliedCondition,
+        ];
         config.promotionOptions.promotionActions = [
             ...(config.promotionOptions.promotionActions ?? []),
-            couponOrderAction,
+            couponDiscountAction,
         ];
 
-        if (!config.schedulerOptions) {
-            config.schedulerOptions = { tasks: [] } as any;
-        }
-        if (!config.schedulerOptions.tasks) {
-            config.schedulerOptions.tasks = [];
-        }
-        config.schedulerOptions.tasks.push(expireCouponsTask);
         return config;
     },
-    dashboard: '../dashboard/index.tsx',
     compatibility: '^3.0.0',
 })
 export class CouponPlugin implements OnApplicationBootstrap {
     private static options: CouponPluginOptions = {};
+    private injector: Injector;
 
     constructor(
         @Inject(COUPON_PLUGIN_OPTIONS) private options: CouponPluginOptions,
         private couponService: CouponService,
         private eventBus: EventBus,
+        private moduleRef: ModuleRef,
     ) {}
 
     static init(options?: CouponPluginOptions): Type<CouponPlugin> {
@@ -220,40 +205,29 @@ export class CouponPlugin implements OnApplicationBootstrap {
     }
 
     async onApplicationBootstrap(): Promise<void> {
-        // 注入 service 引用给 PromotionOrderAction（模块级单例）
-        setCouponServiceRef(this.couponService);
+        this.injector = new Injector(this.moduleRef);
+        this.couponService.init(this.injector);
+        setCouponConnection(this.injector.get(TransactionalConnection));
 
-        // 订单下单后核销券码
-        this.eventBus.ofType(OrderPlacedEvent).subscribe(async event => {
-            const code = (event.order as any).customFields?.appliedCouponCode;
-            if (!code) return;
+        // 支付成功（订单下单成功）核销券
+        this.eventBus.ofType(OrderPlacedEvent).subscribe(async (event) => {
             try {
-                await this.couponService.redeemCoupon(event.ctx, code, event.order.id);
-                Logger.info(`Coupon ${code} redeemed on order ${event.order.code} placed`, loggerCtx);
+                await this.couponService.bindAsUsed(event.ctx, event.order.id);
             } catch (e: any) {
-                Logger.error(
-                    `Failed to redeem coupon ${code} on order ${event.order.code}: ${e?.message ?? e}`,
-                    loggerCtx,
-                );
+                Logger.error(`Failed to bind coupon as used on order ${event.order.id}: ${e.message}`, loggerCtx);
             }
         });
 
-        // 订单取消时释放券码（releaseCouponOnOrder 内部已调用 releaseCoupon + 清除 customField）
-        this.eventBus.ofType(OrderStateTransitionEvent).subscribe(async event => {
+        // 订单取消回退券（幂等）
+        this.eventBus.ofType(OrderStateTransitionEvent).subscribe(async (event) => {
             if (event.toState !== 'Cancelled') return;
-            const code = (event.order as any).customFields?.appliedCouponCode;
-            if (!code) return;
             try {
-                await this.couponService.releaseCouponOnOrder(event.ctx, event.order.id);
-                Logger.info(`Coupon ${code} released on order ${event.order.code} cancelled`, loggerCtx);
+                await this.couponService.returnCoupon(event.ctx, event.order.id);
             } catch (e: any) {
-                Logger.error(
-                    `Failed to release coupon ${code} on order ${event.order.code}: ${e?.message ?? e}`,
-                    loggerCtx,
-                );
+                Logger.error(`Failed to return coupon on order ${event.order.id} cancel: ${e.message}`, loggerCtx);
             }
         });
 
-        Logger.info('CouponPlugin initialized (with Promotion bridge)', loggerCtx);
+        Logger.info('CouponPlugin initialized', loggerCtx);
     }
 }

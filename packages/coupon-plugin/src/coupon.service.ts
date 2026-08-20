@@ -1,560 +1,405 @@
 import { Injectable } from '@nestjs/common';
-import { randomBytes } from 'crypto';
 import {
-    Channel,
     CustomerService,
-    EntityNotFoundError,
     ID,
+    Injector,
     ListQueryBuilder,
     ListQueryOptions,
     Logger,
-    Order,
     OrderService,
-    PaginatedList,
-    Permission,
     RequestContext,
     TransactionalConnection,
-    UnauthorizedError,
     UserInputError,
 } from '@vendure/core';
 
-import { CouponCodeStatus, loggerCtx } from './constants';
-import { CouponCode } from './coupon-code.entity';
-import { Coupon } from './coupon.entity';
+import { loggerCtx } from './constants';
+import { CouponTemplate } from './coupon-template.entity';
+import { CustomerCoupon } from './customer-coupon.entity';
 
-export interface CouponOrderLineInput {
-    productId: number;
-    variantId: number;
-    quantity: number;
-    lineTotal: number;
-    collectionIds: number[];
+/** 模板 update() 允许写入的字段白名单 */
+const TEMPLATE_UPDATE_ALLOWED: ReadonlyArray<keyof CouponTemplate> = [
+    'name',
+    'type',
+    'discountValue',
+    'minSpend',
+    'startsAt',
+    'endsAt',
+    'totalCount',
+    'perUserLimit',
+    'scope',
+    'categoryId',
+    'variantId',
+    'enabled',
+];
+
+const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+function generateCode(prefix: string): string {
+    const seg = (n: number) =>
+        Array.from({ length: n }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
+    return `${prefix}-${seg(4)}-${seg(4)}`;
 }
-
-export interface CouponValidationResult {
-    valid: boolean;
-    discountAmount: number;
-    error: string | null;
-}
-
-/** 订单状态若处于以下集合之外，视为“已下单”（用于新人券判定）。 */
-const NON_PLACED_STATES = ['Draft', 'AddingItems', 'ArrangingPayment', 'Cancelled'];
 
 @Injectable()
 export class CouponService {
     constructor(
         private connection: TransactionalConnection,
         private listQueryBuilder: ListQueryBuilder,
-        private customerService: CustomerService,
-        private orderService: OrderService,
     ) {}
 
-    // ===== Admin CRUD =====
+    private orderService!: OrderService;
+    private customerService!: CustomerService;
+    private codePrefix = 'C';
 
-    async getCoupons(
-        ctx: RequestContext,
-        options?: ListQueryOptions<Coupon>,
-    ): Promise<PaginatedList<Coupon>> {
-        const isSuperadmin = ctx.userHasPermissions([Permission.SuperAdmin]);
-        const qb = this.listQueryBuilder
-            .build(Coupon, options, {
-                ctx,
-                relations: ['channels'],
-            });
-
-        if (!isSuperadmin) {
-            // 租户管理员：看全局券 + 自己渠道的券
-            qb.andWhere(
-                '(coupon.isGlobal = :isGlobal OR coupon.ownerChannelId = :channelId)',
-                { isGlobal: true, channelId: ctx.channelId },
-            );
-        }
-
-        const [items, totalItems] = await qb.getManyAndCount();
-        return { items, totalItems };
-    }
-
-    async getCoupon(ctx: RequestContext, id: ID): Promise<Coupon | null> {
-        return this.connection.getRepository(ctx, Coupon).findOne({
-            where: { id: id as any },
-            relations: ['channels'],
-        });
-    }
-
-    async createCoupon(ctx: RequestContext, input: Partial<Coupon>): Promise<Coupon> {
-        if (!input.name) throw new UserInputError('name is required');
-        if (!input.couponType) throw new UserInputError('couponType is required');
-        if (input.discountValue == null) throw new UserInputError('discountValue is required');
-        if (!input.startAt || !input.endAt) throw new UserInputError('startAt and endAt are required');
-        if (input.totalQuantity == null) throw new UserInputError('totalQuantity is required');
-
-        const isSuperadmin = ctx.userHasPermissions([Permission.SuperAdmin]);
-        const isGlobal = input.isGlobal === true && isSuperadmin;
-
-        const coupon = new Coupon({
-            name: input.name,
-            description: input.description ?? null,
-            couponType: input.couponType,
-            discountValue: input.discountValue,
-            minSpend: input.minSpend ?? 0,
-            maxDiscount: input.maxDiscount ?? 0,
-            startAt: input.startAt,
-            endAt: input.endAt,
-            totalQuantity: input.totalQuantity,
-            claimedCount: 0,
-            limitPerUser: input.limitPerUser ?? 1,
-            isActive: input.isActive ?? true,
-            applicableProductIds: input.applicableProductIds ?? null,
-            applicableCategoryIds: input.applicableCategoryIds ?? null,
-            isNewUserOnly: input.isNewUserOnly ?? false,
-        });
-        coupon.isGlobal = isGlobal;
-        coupon.ownerChannelId = isGlobal ? null : Number(ctx.channelId);
-        coupon.channelId = Number(ctx.channelId);
-        coupon.channels = [ctx.channel];
-        return this.connection.getRepository(ctx, Coupon).save(coupon);
-    }
-
-    /** updateCoupon 字段白名单：不允许修改 claimedCount / couponType / discountValue。 */
-    async updateCoupon(ctx: RequestContext, id: ID, input: Partial<Coupon>): Promise<Coupon> {
-        const repo = this.connection.getRepository(ctx, Coupon);
-        const coupon = await repo.findOne({ where: { id: id as any }, relations: ['channels'] });
-        if (!coupon) throw new EntityNotFoundError('Coupon', id);
-
-        // 租户不能修改全局券
-        if (coupon.isGlobal && !ctx.userHasPermissions([Permission.SuperAdmin])) {
-            throw new UserInputError('Cannot modify global coupon');
-        }
-
-        if (input.name != null) coupon.name = input.name;
-        if (input.description != null) coupon.description = input.description;
-        if (input.startAt != null) coupon.startAt = input.startAt;
-        if (input.endAt != null) coupon.endAt = input.endAt;
-        if (input.totalQuantity != null) coupon.totalQuantity = input.totalQuantity;
-        if (input.limitPerUser != null) coupon.limitPerUser = input.limitPerUser;
-        if (input.isActive != null) coupon.isActive = input.isActive;
-        if (input.minSpend != null) coupon.minSpend = input.minSpend;
-        if (input.maxDiscount != null) coupon.maxDiscount = input.maxDiscount;
-        if (input.isNewUserOnly != null) coupon.isNewUserOnly = input.isNewUserOnly;
-
-        return repo.save(coupon);
-    }
-
-    async deleteCoupon(ctx: RequestContext, id: ID): Promise<boolean> {
-        const repo = this.connection.getRepository(ctx, Coupon);
-        const coupon = await repo.findOne({ where: { id: id as any } });
-        if (!coupon) return false;
-
-        // 租户不能删除全局券
-        if (coupon.isGlobal && !ctx.userHasPermissions([Permission.SuperAdmin])) {
-            throw new UserInputError('Cannot delete global coupon');
-        }
-
-        await repo.remove(coupon);
-        return true;
-    }
-
-    /**
-     * 租户启用全局优惠券：把当前渠道加入 coupon.channels。
-     * 已启用时幂等返回。
-     */
-    async enableCouponForChannel(ctx: RequestContext, id: ID): Promise<Coupon> {
-        const repo = this.connection.getRepository(ctx, Coupon);
-        const coupon = await repo.findOne({ where: { id: id as any }, relations: ['channels'] });
-        if (!coupon) throw new EntityNotFoundError('Coupon', id);
-
-        if (!coupon.isGlobal) {
-            throw new UserInputError('Only global coupons can be enabled/disabled per channel');
-        }
-
-        const alreadyEnabled = coupon.channels.some(ch => ch.id === ctx.channelId);
-        if (!alreadyEnabled) {
-            const channelRepo = this.connection.getRepository(ctx, Channel);
-            const channel = await channelRepo.findOne({ where: { id: ctx.channelId as any } });
-            if (channel) {
-                coupon.channels.push(channel);
-                await repo.save(coupon);
-            }
-        }
-        return coupon;
-    }
-
-    /**
-     * 租户禁用全局优惠券：把当前渠道从 coupon.channels 移除。
-     * 已禁用时幂等返回。
-     */
-    async disableCouponForChannel(ctx: RequestContext, id: ID): Promise<Coupon> {
-        const repo = this.connection.getRepository(ctx, Coupon);
-        const coupon = await repo.findOne({ where: { id: id as any }, relations: ['channels'] });
-        if (!coupon) throw new EntityNotFoundError('Coupon', id);
-
-        if (!coupon.isGlobal) {
-            throw new UserInputError('Only global coupons can be enabled/disabled per channel');
-        }
-
-        coupon.channels = coupon.channels.filter(ch => ch.id !== ctx.channelId);
-        await repo.save(coupon);
-        return coupon;
-    }
-
-    // ===== Shop: claim / list / validate / redeem / release =====
-
-    /** 可领取的券：当前 channel、激活、活动期内、有库存。 */
-    async getAvailableCoupons(ctx: RequestContext): Promise<Coupon[]> {
-        const now = new Date();
-        const repo = this.connection.getRepository(ctx, Coupon);
-        return repo
-            .createQueryBuilder('coupon')
-            .leftJoinAndSelect('coupon.channels', 'channel')
-            .where('channel.id = :channelId', { channelId: ctx.channelId })
-            .andWhere('coupon.isActive = :active', { active: true })
-            .andWhere('coupon.startAt <= :now', { now })
-            .andWhere('coupon.endAt >= :now', { now })
-            .andWhere('coupon.totalQuantity > coupon.claimedCount')
-            .getMany();
-    }
-
-    async claimCoupon(ctx: RequestContext, couponId: ID): Promise<CouponCode> {
-        if (!ctx.activeUserId) throw new UnauthorizedError();
-        const customer = await this.customerService.findOneByUserId(ctx, ctx.activeUserId);
-        if (!customer) throw new EntityNotFoundError('Customer', ctx.activeUserId);
-
-        const coupon = await this.connection.getRepository(ctx, Coupon).findOne({
-            where: { id: couponId as any },
-        });
-        if (!coupon) throw new EntityNotFoundError('Coupon', couponId);
-        if (!coupon.isActive) throw new UserInputError('Coupon is not active');
-
-        const now = new Date();
-        if (now < coupon.startAt || now > coupon.endAt) {
-            throw new UserInputError('Coupon is not within active period');
-        }
-        if (coupon.claimedCount >= coupon.totalQuantity) {
-            throw new UserInputError('Coupon out of stock');
-        }
-
-        const claimedRepo = this.connection.getRepository(ctx, CouponCode);
-        const claimedByUser = await claimedRepo.count({
-            where: { couponId: Number(coupon.id), customerId: Number(customer.id) },
-        });
-        if (claimedByUser >= coupon.limitPerUser) {
-            throw new UserInputError('Claim limit reached for this user');
-        }
-
-        if (coupon.isNewUserOnly) {
-            const isNew = await this.isNewCustomer(ctx, customer.id);
-            if (!isNew) throw new UserInputError('Coupon is for new users only');
-        }
-
-        return this.connection.withTransaction(ctx, async txCtx => {
-            const couponRepo = this.connection.getRepository(txCtx, Coupon);
-            const lockedCoupon = await couponRepo
-                .createQueryBuilder('coupon')
-                .setLock('pessimistic_write')
-                .where('coupon.id = :id', { id: coupon.id })
-                .getOne();
-            if (!lockedCoupon) throw new EntityNotFoundError('Coupon', couponId);
-            if (lockedCoupon.claimedCount >= lockedCoupon.totalQuantity) {
-                throw new UserInputError('Coupon out of stock');
-            }
-            lockedCoupon.claimedCount += 1;
-            await couponRepo.save(lockedCoupon);
-
-            const code = new CouponCode({
-                couponId: Number(coupon.id),
-                customerId: Number(customer.id),
-                code: this.generateCode(),
-                status: CouponCodeStatus.Unused,
-                claimedAt: now,
-            });
-            code.channelId = Number(txCtx.channelId);
-            code.channels = [txCtx.channel];
-            const txClaimedRepo = this.connection.getRepository(txCtx, CouponCode);
-            return txClaimedRepo.save(code);
-        });
-    }
-
-    async getMyCoupons(
-        ctx: RequestContext,
-        status?: string,
-    ): Promise<CouponCode[]> {
-        if (!ctx.activeUserId) throw new UnauthorizedError();
-        const customer = await this.customerService.findOneByUserId(ctx, ctx.activeUserId);
-        if (!customer) return [];
-
-        const repo = this.connection.getRepository(ctx, CouponCode);
-        const where: any = { customerId: customer.id };
-        if (status) where.status = status;
-        return repo.find({ where });
-    }
-
-    /** 校验券码可用性并计算折扣金额（不修改状态）。 */
-    async validateCoupon(
-        ctx: RequestContext,
-        code: string,
-        orderLines: CouponOrderLineInput[],
-    ): Promise<CouponValidationResult> {
-        const couponCode = await this.connection
-            .getRepository(ctx, CouponCode)
-            .findOne({ where: { code }, relations: [] });
-        if (!couponCode) {
-            return { valid: false, discountAmount: 0, error: 'Coupon code not found' };
-        }
-        if (couponCode.status !== CouponCodeStatus.Unused) {
-            return { valid: false, discountAmount: 0, error: `Coupon is ${couponCode.status}` };
-        }
-
-        const coupon = await this.connection
-            .getRepository(ctx, Coupon)
-            .findOne({ where: { id: couponCode.couponId } });
-        if (!coupon) {
-            return { valid: false, discountAmount: 0, error: 'Coupon not found' };
-        }
-        if (!coupon.isActive) {
-            return { valid: false, discountAmount: 0, error: 'Coupon is inactive' };
-        }
-        const now = new Date();
-        if (now < coupon.startAt || now > coupon.endAt) {
-            return { valid: false, discountAmount: 0, error: 'Coupon is out of active period' };
-        }
-
-        const orderSubtotal = orderLines.reduce((sum, l) => sum + l.lineTotal, 0);
-        if (coupon.minSpend > 0 && orderSubtotal < coupon.minSpend) {
-            return {
-                valid: false,
-                discountAmount: 0,
-                error: `Order amount does not meet minSpend ${coupon.minSpend}`,
-            };
-        }
-
-        const eligibleTotal = this.computeEligibleTotal(coupon, orderLines);
-        if (eligibleTotal <= 0) {
-            return { valid: false, discountAmount: 0, error: 'No eligible items in order' };
-        }
-
-        const discountAmount = this.computeDiscount(coupon, eligibleTotal);
-        return { valid: true, discountAmount, error: null };
-    }
-
-    /** 核销：事务化，校验 + 标记 used。 */
-    async redeemCoupon(ctx: RequestContext, code: string, orderId: ID): Promise<CouponCode> {
-        const order = await this.orderService.findOne(ctx, orderId, [
-            'lines',
-            'lines.productVariant',
-            'lines.productVariant.product',
-            'lines.productVariant.collections',
-        ]);
-        if (!order) throw new EntityNotFoundError('Order', orderId);
-
-        const orderLines = this.mapOrderToLines(order);
-        const result = await this.validateCoupon(ctx, code, orderLines);
-        if (!result.valid) {
-            throw new UserInputError(result.error ?? 'Coupon is not valid');
-        }
-
-        return this.connection.withTransaction(ctx, async txCtx => {
-            const repo = this.connection.getRepository(txCtx, CouponCode);
-            const locked = await repo
-                .createQueryBuilder('cc')
-                .setLock('pessimistic_write')
-                .where('cc.code = :code', { code })
-                .getOne();
-            if (!locked) throw new EntityNotFoundError('CouponCode', code);
-            if (locked.status !== CouponCodeStatus.Unused) {
-                throw new UserInputError(`Coupon is ${locked.status}`);
-            }
-            locked.status = CouponCodeStatus.Used;
-            locked.usedAt = new Date();
-            locked.orderId = Number(orderId);
-            const saved = await repo.save(locked);
-
-            Logger.info(
-                `Coupon ${code} redeemed for order ${orderId}, discount=${result.discountAmount}`,
-                loggerCtx,
-            );
-            return saved;
-        });
-    }
-
-    /** 释放：订单取消时归还券码。 */
-    async releaseCoupon(ctx: RequestContext, code: string): Promise<CouponCode> {
-        const repo = this.connection.getRepository(ctx, CouponCode);
-        const couponCode = await repo.findOne({ where: { code } });
-        if (!couponCode) throw new EntityNotFoundError('CouponCode', code);
-        if (couponCode.status !== CouponCodeStatus.Used) return couponCode;
-
-        couponCode.status = CouponCodeStatus.Unused;
-        couponCode.usedAt = undefined;
-        couponCode.orderId = null;
-        const saved = await repo.save(couponCode);
-        Logger.info(`Coupon ${code} released`, loggerCtx);
-        return saved;
-    }
-
-    // ===== Promotion 桥接 =====
-
-    /**
-     * 将券码绑定到订单（设置 order.customFields.appliedCouponCode）。
-     * 设置后立即调用 applyPriceAdjustments 触发价格重新计算，
-     * 使 couponOrderAction 计算的折扣反映到 order.discounts 和 totalWithTax。
-     * 不修改券码状态——状态变更由 OrderPlacedEvent 触发 redeemCoupon 完成。
-     */
-    async applyCouponToOrder(
-        ctx: RequestContext,
-        orderId: ID,
-        code: string,
-    ): Promise<CouponValidationResult> {
-        const orderLines = await this.getOrderLinesForCoupon(ctx, orderId);
-        const result = await this.validateCoupon(ctx, code, orderLines);
-        if (!result.valid) {
-            return result;
-        }
-        await this.orderService.updateCustomFields(ctx, orderId, { appliedCouponCode: code });
-        // updateCustomFields 不触发价格重新计算，需手动调用 applyPriceAdjustments
-        await this.recalculateOrder(ctx, orderId);
-        return result;
-    }
-
-    /**
-     * 移除订单上绑定的优惠券：清除 customFields.appliedCouponCode 并触发价格重新计算。
-     */
-    async removeCouponFromOrder(ctx: RequestContext, orderId: ID): Promise<void> {
-        await this.orderService.updateCustomFields(ctx, orderId, { appliedCouponCode: null });
-        await this.recalculateOrder(ctx, orderId);
-    }
-
-    /** 触发订单价格重新计算（使 couponOrderAction 等 promotion 生效）。 */
-    private async recalculateOrder(ctx: RequestContext, orderId: ID): Promise<void> {
-        const order = await this.orderService.findOne(ctx, orderId, [
-            'lines',
-            'lines.productVariant',
-        ]);
-        if (order) {
-            await this.orderService.applyPriceAdjustments(ctx, order);
-        }
-    }
-
-    /** 订单取消时清除绑定的券码并释放券码。 */
-    async releaseCouponOnOrder(ctx: RequestContext, orderId: ID): Promise<void> {
-        const order = await this.orderService.findOne(ctx, orderId);
-        if (!order) return;
-        const code = (order as any).customFields?.appliedCouponCode;
-        if (!code) return;
+    init(injector: Injector): void {
+        this.orderService = injector.get(OrderService);
+        this.customerService = injector.get(CustomerService);
         try {
-            await this.releaseCoupon(ctx, code);
-            await this.orderService.updateCustomFields(ctx, orderId, { appliedCouponCode: null });
-        } catch (e: any) {
-            Logger.error(`Failed to release coupon ${code} for order ${orderId}: ${e?.message ?? e}`, loggerCtx);
+            const opts = injector.get('COUPON_PLUGIN_OPTIONS' as any) as { codePrefix?: string } | undefined;
+            if (opts?.codePrefix) {
+                this.codePrefix = opts.codePrefix;
+            }
+        } catch {
+            // options not injected
         }
     }
 
-    // ===== Scheduled: expire =====
+    /* ------------------------- 模板管理 ------------------------- */
 
-    /** 过期所有 unused 且对应券已过 endAt 的券码。 */
-    async expireCoupons(ctx: RequestContext): Promise<number> {
-        const codeRepo = this.connection.getRepository(ctx, CouponCode);
-        const couponRepo = this.connection.getRepository(ctx, Coupon);
-        const now = new Date();
-
-        const expiredCoupons = await couponRepo
-            .createQueryBuilder('coupon')
-            .select(['coupon.id'])
-            .where('coupon.endAt < :now', { now })
-            .getMany();
-        if (expiredCoupons.length === 0) return 0;
-        const expiredCouponIds = expiredCoupons.map(c => c.id);
-
-        const result = await codeRepo
-            .createQueryBuilder()
-            .update(CouponCode)
-            .set({ status: CouponCodeStatus.Expired })
-            .where('status = :status', { status: CouponCodeStatus.Unused })
-            .andWhere('couponId IN (:...ids)', { ids: expiredCouponIds })
-            .execute();
-
-        const affected = result.affected ?? 0;
-        if (affected > 0) {
-            Logger.info(`Expired ${affected} coupon codes`, loggerCtx);
-        }
-        return affected;
-    }
-
-    // ===== Helpers =====
-
-    /** 将订单行映射为券校验所需的简化结构。供 resolver 与 redeemCoupon 复用。 */
-    async getOrderLinesForCoupon(
+    async findAllTemplates(
         ctx: RequestContext,
-        orderId: ID,
-    ): Promise<CouponOrderLineInput[]> {
-        const order = await this.orderService.findOne(ctx, orderId, [
-            'lines',
-            'lines.productVariant',
-            'lines.productVariant.product',
-            'lines.productVariant.collections',
-        ]);
-        if (!order) throw new EntityNotFoundError('Order', orderId);
-        return this.mapOrderToLines(order);
+        options?: ListQueryOptions<CouponTemplate>,
+    ): Promise<{ items: CouponTemplate[]; totalItems: number }> {
+        return this.listQueryBuilder
+            .build(CouponTemplate, options, { ctx, channelId: ctx.channelId, relations: ['channels'] })
+            .getManyAndCount()
+            .then(([items, totalItems]) => ({ items, totalItems }));
     }
 
-    private mapOrderToLines(order: Order): CouponOrderLineInput[] {
-        return (order.lines ?? []).map(line => ({
-            productId: Number(line.productVariant?.productId ?? 0),
-            variantId: Number(line.productVariantId ?? 0),
-            quantity: line.quantity ?? 0,
-            lineTotal: line.linePrice ?? 0,
-            collectionIds: (line.productVariant?.collections ?? []).map(c => Number(c.id)),
-        }));
+    async findOneTemplate(ctx: RequestContext, id: ID): Promise<CouponTemplate | undefined> {
+        const repo = this.connection.getRepository(ctx, CouponTemplate);
+        return (
+            (await repo.findOne({
+                where: { id: id as any },
+                relations: { channels: true },
+            })) ?? undefined
+        );
     }
 
-    private computeEligibleTotal(coupon: Coupon, orderLines: CouponOrderLineInput[]): number {
-        const productFilter =
-            coupon.applicableProductIds && coupon.applicableProductIds.length > 0
-                ? new Set(coupon.applicableProductIds)
-                : null;
-        const categoryFilter =
-            coupon.applicableCategoryIds && coupon.applicableCategoryIds.length > 0
-                ? new Set(coupon.applicableCategoryIds)
-                : null;
+    async createTemplate(ctx: RequestContext, input: any): Promise<CouponTemplate> {
+        const repo = this.connection.getRepository(ctx, CouponTemplate);
+        const tpl = new CouponTemplate(input);
+        if (tpl.type === 'FULL') {
+            tpl.minSpend = 0;
+        }
+        tpl.channels = [ctx.channel];
+        tpl.claimedCount = 0;
+        return repo.save(tpl);
+    }
 
-        return orderLines
-            .filter(line => {
-                if (productFilter && !productFilter.has(line.productId)) return false;
-                if (categoryFilter) {
-                    const hit = line.collectionIds.some(id => categoryFilter.has(id));
-                    if (!hit) return false;
-                }
-                return true;
+    async updateTemplate(ctx: RequestContext, input: any): Promise<CouponTemplate> {
+        const repo = this.connection.getRepository(ctx, CouponTemplate);
+        const tpl = await repo.findOne({ where: { id: input.id } });
+        if (!tpl) {
+            throw new UserInputError(`CouponTemplate with id ${input.id} not found`);
+        }
+        for (const key of TEMPLATE_UPDATE_ALLOWED) {
+            if (key in input) {
+                (tpl as any)[key] = input[key];
+            }
+        }
+        return repo.save(tpl);
+    }
+
+    async deleteTemplate(ctx: RequestContext, id: ID): Promise<void> {
+        const repo = this.connection.getRepository(ctx, CouponTemplate);
+        await repo.delete(id);
+    }
+
+    /* ------------------------- 领券中心 / 券包 ------------------------- */
+
+    async couponCentre(ctx: RequestContext): Promise<CouponTemplate[]> {
+        const repo = this.connection.getRepository(ctx, CouponTemplate);
+        const now = new Date();
+        return repo
+            .createQueryBuilder('tpl')
+            .innerJoin('tpl.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId })
+            .where('tpl.enabled = :enabled', { enabled: true })
+            .andWhere('(tpl.startsAt IS NULL OR tpl.startsAt <= :now)', { now })
+            .andWhere('(tpl.endsAt IS NULL OR tpl.endsAt >= :now)', { now })
+            .getMany();
+    }
+
+    async listMyCoupons(ctx: RequestContext, status?: string): Promise<CustomerCoupon[]> {
+        const customerId = await this.currentCustomerId(ctx);
+        if (!customerId) return [];
+        const repo = this.connection.getRepository(ctx, CustomerCoupon);
+        const qb = repo
+            .createQueryBuilder('cc')
+            .leftJoinAndSelect('cc.template', 'template')
+            .where('cc.customerId = :customerId', { customerId });
+        if (status) {
+            qb.andWhere('cc.status = :status', { status });
+        }
+        return qb.getMany();
+    }
+
+    async listAllCoupons(
+        ctx: RequestContext,
+        options?: ListQueryOptions<CustomerCoupon>,
+    ): Promise<{ items: CustomerCoupon[]; totalItems: number }> {
+        return this.listQueryBuilder
+            .build(CustomerCoupon, options, {
+                ctx,
+                relations: ['template'],
             })
-            .reduce((sum, line) => sum + line.lineTotal, 0);
+            .getManyAndCount()
+            .then(([items, totalItems]) => ({ items, totalItems }));
     }
 
-    private computeDiscount(coupon: Coupon, eligibleTotal: number): number {
-        let discount = 0;
-        if (coupon.couponType === 'fixed') {
-            discount = coupon.discountValue;
-        } else if (coupon.couponType === 'percentage') {
-            discount = Math.floor((eligibleTotal * coupon.discountValue) / 100);
+    /* ------------------------- 领券 / 定向发券 ------------------------- */
+
+    async claimCoupon(ctx: RequestContext, templateId: ID): Promise<CustomerCoupon> {
+        const customerId = await this.currentCustomerId(ctx);
+        if (!customerId) {
+            throw new UserInputError('No customer for the current user');
         }
-        if (coupon.maxDiscount > 0 && discount > coupon.maxDiscount) {
-            discount = coupon.maxDiscount;
+        const repo = this.connection.getRepository(ctx, CouponTemplate);
+        const tpl = await repo.findOne({
+            where: { id: templateId as any },
+            relations: { channels: true },
+        });
+        if (!tpl) {
+            throw new UserInputError(`CouponTemplate ${templateId} not found`);
         }
-        if (discount > eligibleTotal) {
-            discount = eligibleTotal;
+        const now = new Date();
+        if (!tpl.enabled) {
+            throw new UserInputError('Coupon template is disabled');
         }
-        return Math.max(0, discount);
+        if (tpl.startsAt && now < tpl.startsAt) {
+            throw new UserInputError('Coupon not yet started');
+        }
+        if (tpl.endsAt && now > tpl.endsAt) {
+            throw new UserInputError('Coupon has expired');
+        }
+        // 限领校验
+        if (tpl.perUserLimit > 0) {
+            const owned = await this.countHeld(customerId, tpl.id);
+            if (owned >= tpl.perUserLimit) {
+                throw new UserInputError('Per-user coupon limit reached');
+            }
+        }
+        // 原子扣减发行余量（防超发）
+        const claim = await this.atomicIncrementClaimed(ctx, tpl.id, tpl);
+        if (!claim) {
+            throw new UserInputError('Coupon sold out');
+        }
+        return this.createUserCoupon(ctx, customerId, tpl, 'CENTRE');
     }
 
-    private generateCode(): string {
-        return randomBytes(6).toString('hex').toUpperCase();
+    async grantCoupon(ctx: RequestContext, templateId: ID, customerIds: ID[]): Promise<string[]> {
+        const tpl = await this.findOneTemplate(ctx, templateId);
+        if (!tpl) {
+            throw new UserInputError(`CouponTemplate ${templateId} not found`);
+        }
+        const codes: string[] = [];
+        for (const customerId of customerIds) {
+            const ok = await this.atomicIncrementClaimed(ctx, tpl.id, tpl);
+            if (!ok) {
+                throw new UserInputError('Coupon sold out');
+            }
+            const cc = await this.createUserCoupon(ctx, customerId as number, tpl, 'ADMIN');
+            codes.push(cc.code);
+        }
+        return codes;
     }
 
-    private async isNewCustomer(ctx: RequestContext, customerId: ID): Promise<boolean> {
-        const repo = this.connection.getRepository(ctx, Order);
-        const count = await repo
-            .createQueryBuilder('order')
-            .leftJoin('order.customer', 'customer')
-            .where('customer.id = :customerId', { customerId })
-            .andWhere('order.state NOT IN (:...states)', { states: NON_PLACED_STATES })
+    async revokeCoupon(ctx: RequestContext, id: ID): Promise<CustomerCoupon> {
+        const repo = this.connection.getRepository(ctx, CustomerCoupon);
+        const cc = await repo.findOne({ where: { id: id as any } });
+        if (!cc) {
+            throw new UserInputError(`CustomerCoupon ${id} not found`);
+        }
+        if (cc.status === 'UNUSED') {
+            cc.status = 'INVALID';
+            await repo.save(cc);
+        }
+        return cc;
+    }
+
+    /* ------------------------- 结算选券 / 清券 ------------------------- */
+
+    async applyCouponToOrder(ctx: RequestContext, orderId: ID, code: string): Promise<any> {
+        const order = await this.orderService.findOne(ctx, orderId, ['customer', 'customer.user']);
+        if (!order) {
+            throw new UserInputError(`Order ${orderId} not found`);
+        }
+        // 归属校验：order.customer.user.id === ctx.activeUserId（勿用 customer.id）
+        if ((order as any)?.customer?.user?.id !== ctx.activeUserId) {
+            throw new UserInputError('You can only apply coupons to your own order');
+        }
+        const customerId = (order as any)?.customer?.id as number | undefined;
+        if (!customerId) {
+            throw new UserInputError('Order has no customer');
+        }
+
+        const ccRepo = this.connection.getRepository(ctx, CustomerCoupon);
+        const cc = await ccRepo.findOne({
+            where: { code } as any,
+            relations: { template: true },
+        });
+        if (!cc || cc.customerId !== customerId) {
+            throw new UserInputError('Coupon not found or does not belong to you');
+        }
+        // UNUSED / RETURNED（取消回退后可复用）可被选定
+        if (cc.status !== 'UNUSED' && cc.status !== 'RETURNED') {
+            throw new UserInputError('Coupon is not in a usable state');
+        }
+        const tpl = cc.template;
+        if (!tpl) {
+            throw new UserInputError('Coupon template not found');
+        }
+        const now = new Date();
+        if (!tpl.enabled) {
+            throw new UserInputError('Coupon template is disabled');
+        }
+        if (tpl.startsAt && now < tpl.startsAt) {
+            throw new UserInputError('Coupon not yet active');
+        }
+        if (tpl.endsAt && now > tpl.endsAt) {
+            throw new UserInputError('Coupon has expired');
+        }
+        const base = ctx.channel.pricesIncludeTax ? order.subTotalWithTax : order.subTotal;
+        if (tpl.minSpend > base) {
+            throw new UserInputError(
+                `Order total below minimum spend of ${tpl.minSpend} for this coupon`,
+            );
+        }
+
+        // 一单一券：先清旧再覆写，随后重算 promotions
+        const updatedOrder = await this.orderService.updateCustomFields(ctx, orderId, {
+            couponCode: cc.code,
+            couponId: cc.id,
+        });
+        return this.orderService.applyPriceAdjustments(ctx, updatedOrder);
+    }
+
+    async clearCouponFromOrder(ctx: RequestContext, orderId: ID): Promise<any> {
+        const order = await this.orderService.findOne(ctx, orderId, ['customer', 'customer.user']);
+        if (!order) {
+            throw new UserInputError(`Order ${orderId} not found`);
+        }
+        if ((order as any)?.customer?.user?.id !== ctx.activeUserId) {
+            throw new UserInputError('You can only clear coupons on your own order');
+        }
+        const updatedOrder = await this.orderService.updateCustomFields(ctx, orderId, {
+            couponCode: null,
+            couponId: null,
+        });
+        return this.orderService.applyPriceAdjustments(ctx, updatedOrder);
+    }
+
+    /* ------------------------- 销核 / 回退（事件触发） ------------------------- */
+
+    /** 支付成功后核销券 */
+    async bindAsUsed(ctx: RequestContext, orderId: ID): Promise<void> {
+        const repo = this.connection.getRepository(ctx, CustomerCoupon);
+        const code = await this.orderCode(ctx, orderId);
+        if (!code) return;
+        const cc = await repo.findOne({ where: { code } as any });
+        if (!cc || cc.status !== 'UNUSED') return;
+        cc.status = 'USED';
+        cc.usedOrderId = orderId;
+        cc.usedAt = new Date();
+        await repo.save(cc);
+        Logger.info(`Coupon ${code} marked as USED on order ${orderId}`, loggerCtx);
+    }
+
+    /** 订单取消回退券（可复用） */
+    async returnCoupon(ctx: RequestContext, orderId: ID): Promise<void> {
+        const repo = this.connection.getRepository(ctx, CustomerCoupon);
+        const code = await this.orderCode(ctx, orderId);
+        if (!code) return;
+        const cc = await repo.findOne({ where: { code } as any });
+        if (!cc || cc.status !== 'USED') return;
+        if (String(cc.usedOrderId) !== String(orderId)) return; // 幂等
+        cc.status = 'RETURNED';
+        // TypeORM 对 undefined 不作为变更持久化，清理可空列必须显式置 null
+        cc.usedOrderId = null as any;
+        cc.usedAt = null as any;
+        await repo.save(cc);
+        Logger.info(`Coupon ${code} returned on order ${orderId} cancellation`, loggerCtx);
+    }
+
+    /* ------------------------- 私有工具 ------------------------- */
+
+    private async orderCode(_ctx: RequestContext, orderId: ID): Promise<string | undefined> {
+        // 用户券销核/回退时，从订单 customFields 读券码
+        const order = await this.orderService.findOne(_ctx, orderId);
+        return (order as any)?.customFields?.couponCode ?? undefined;
+    }
+
+    private async currentCustomerId(ctx: RequestContext): Promise<number | undefined> {
+        const customer = await this.customerService.findOneByUserId(ctx, ctx.activeUserId!);
+        return customer?.id as number | undefined;
+    }
+
+    private async countHeld(customerId: number, templateId: ID): Promise<number> {
+        // 未跑在具体 ctx 内，用原始连接
+        const countRepo = this.connection.rawConnection.getRepository(CustomerCoupon);
+        return countRepo
+            .createQueryBuilder('cc')
+            .where('cc.customerId = :customerId', { customerId })
+            .andWhere('cc.templateId = :templateId', { templateId: templateId as any })
+            .andWhere("cc.status NOT IN ('RETURNED','INVALID','EXPIRED')")
             .getCount();
-        return count === 0;
+    }
+
+    /** 原子扣减发行余量；受影响数大于 0 表示成功 */
+    private async atomicIncrementClaimed(
+        ctx: RequestContext,
+        templateId: ID,
+        tpl: CouponTemplate,
+    ): Promise<boolean> {
+        const repo = this.connection.getRepository(ctx, CouponTemplate);
+        const result = await repo
+            .createQueryBuilder()
+            .update()
+            .set({ claimedCount: () => 'claimedCount + 1' })
+            .where(
+                'id = :id AND (totalCount = 0 OR claimedCount < totalCount)',
+                { id: templateId as any },
+            )
+            .execute();
+        return (result.affected ?? 0) > 0;
+    }
+
+    private async createUserCoupon(
+        ctx: RequestContext,
+        customerId: number,
+        tpl: CouponTemplate,
+        issuedBy: 'CENTRE' | 'ADMIN',
+    ): Promise<CustomerCoupon> {
+        const repo = this.connection.getRepository(ctx, CustomerCoupon);
+        // 重试兜底唯一码冲突（碰撞概率极低）
+        for (let attempt = 0; attempt < 3; attempt++) {
+            const code = generateCode(this.codePrefix);
+            const cc = new CustomerCoupon({
+                customerId,
+                templateId: tpl.id as number,
+                code,
+                status: 'UNUSED',
+                issuedBy,
+                issuedAt: new Date(),
+                expiredAt: tpl.endsAt ?? undefined,
+            });
+            try {
+                return await repo.save(cc);
+            } catch (e: any) {
+                if (String(e?.message ?? '').includes('unique')) continue;
+                throw e;
+            }
+        }
+        throw new UserInputError('Failed to generate a unique coupon code');
     }
 }

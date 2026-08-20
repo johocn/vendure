@@ -2,12 +2,7 @@ import { CustomFields, LanguageCode } from '@vendure/core';
 
 export const couponOrderCustomFields: CustomFields = {
     Order: [
-        {
-            name: 'appliedCouponCode',
-            type: 'string',
-            nullable: true,
-            public: true,
-            label: [{ languageCode: LanguageCode.zh_Hans, value: '已使用优惠券码' }],
-        },
+        { name: 'couponCode', type: 'string', nullable: true, label: [{ languageCode: LanguageCode.zh_Hans, value: '优惠券码' }] },
+        { name: 'couponId', type: 'int', nullable: true, label: [{ languageCode: LanguageCode.zh_Hans, value: '用户优惠券ID' }] },
     ],
 };

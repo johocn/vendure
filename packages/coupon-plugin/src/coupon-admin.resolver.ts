@@ -1,83 +1,67 @@
-import { Args, Mutation, Parent, Query, ResolveField, Resolver } from '@nestjs/graphql';
-import {
-    Allow,
-    Ctx,
-    ID,
-    ListQueryOptions,
-    PaginatedList,
-    Permission,
-    RequestContext,
-} from '@vendure/core';
+import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Ctx, ID, ListQueryOptions, RequestContext, Transaction } from '@vendure/core';
 
-import { Coupon } from './coupon.entity';
 import { CouponService } from './coupon.service';
+import { CouponTemplate } from './coupon-template.entity';
+import { CustomerCoupon } from './customer-coupon.entity';
 
-@Resolver(() => Coupon)
+@Resolver()
 export class CouponAdminResolver {
     constructor(private couponService: CouponService) {}
 
-    @ResolveField('enabledInCurrentChannel', () => Boolean)
-    async enabledInCurrentChannel(
+    @Query()
+    async couponTemplates(
         @Ctx() ctx: RequestContext,
-        @Parent() coupon: Coupon,
-    ): Promise<boolean> {
-        // 如果是租户自建券，总是返回 true（自己渠道的券自然是启用的）
-        if (!coupon.isGlobal) return true;
-        // 全局券：检查 channels 关系中是否包含当前渠道
-        const full = await this.couponService.getCoupon(ctx, coupon.id);
-        if (!full || !full.channels) return false;
-        return full.channels.some(ch => ch.id === ctx.channelId);
+        @Args() options: ListQueryOptions<CouponTemplate>,
+    ) {
+        return this.couponService.findAllTemplates(ctx, options);
     }
 
     @Query()
-    @Allow(Permission.ReadSettings)
-    async coupons(
-        @Ctx() ctx: RequestContext,
-        @Args() options: ListQueryOptions<Coupon>,
-    ): Promise<PaginatedList<Coupon>> {
-        return this.couponService.getCoupons(ctx, options);
+    async couponTemplate(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
+        return this.couponService.findOneTemplate(ctx, id);
     }
 
     @Query()
-    @Allow(Permission.ReadSettings)
-    async coupon(@Ctx() ctx: RequestContext, @Args('id') id: ID): Promise<Coupon | null> {
-        return this.couponService.getCoupon(ctx, id);
-    }
-
-    @Mutation()
-    @Allow(Permission.UpdateSettings)
-    async createCoupon(
+    async customerCoupons(
         @Ctx() ctx: RequestContext,
-        @Args('input') input: any,
-    ): Promise<Coupon> {
-        return this.couponService.createCoupon(ctx, input);
+        @Args() options: ListQueryOptions<CustomerCoupon>,
+    ) {
+        return this.couponService.listAllCoupons(ctx, options);
     }
 
     @Mutation()
-    @Allow(Permission.UpdateSettings)
-    async updateCoupon(
+    @Transaction()
+    async createCouponTemplate(@Ctx() ctx: RequestContext, @Args('input') input: any) {
+        return this.couponService.createTemplate(ctx, input);
+    }
+
+    @Mutation()
+    @Transaction()
+    async updateCouponTemplate(@Ctx() ctx: RequestContext, @Args('input') input: any) {
+        return this.couponService.updateTemplate(ctx, input);
+    }
+
+    @Mutation()
+    @Transaction()
+    async deleteCouponTemplate(@Ctx() ctx: RequestContext, @Args('id') id: ID): Promise<boolean> {
+        await this.couponService.deleteTemplate(ctx, id);
+        return true;
+    }
+
+    @Mutation()
+    @Transaction()
+    async grantCoupon(
         @Ctx() ctx: RequestContext,
-        @Args('id') id: ID,
-        @Args('input') input: any,
-    ): Promise<Coupon> {
-        return this.couponService.updateCoupon(ctx, id, input);
+        @Args('templateId') templateId: ID,
+        @Args('customerIds') customerIds: ID[],
+    ): Promise<string[]> {
+        return this.couponService.grantCoupon(ctx, templateId, customerIds);
     }
 
     @Mutation()
-    @Allow(Permission.UpdateSettings)
-    async deleteCoupon(@Ctx() ctx: RequestContext, @Args('id') id: ID): Promise<boolean> {
-        return this.couponService.deleteCoupon(ctx, id);
-    }
-
-    @Mutation()
-    @Allow(Permission.UpdateSettings)
-    async enableCouponForChannel(@Ctx() ctx: RequestContext, @Args('id') id: ID): Promise<Coupon> {
-        return this.couponService.enableCouponForChannel(ctx, id);
-    }
-
-    @Mutation()
-    @Allow(Permission.UpdateSettings)
-    async disableCouponForChannel(@Ctx() ctx: RequestContext, @Args('id') id: ID): Promise<Coupon> {
-        return this.couponService.disableCouponForChannel(ctx, id);
+    @Transaction()
+    async revokeCustomerCoupon(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
+        return this.couponService.revokeCoupon(ctx, id);
     }
 }
