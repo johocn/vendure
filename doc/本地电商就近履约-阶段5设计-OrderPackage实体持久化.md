@@ -121,6 +121,8 @@ updateFulfillmentCustomFields 之后 → orderPackageService.linkFulfillment(
 ```
 
 - 复用已有入参 `packageId`/`shippingFee`，仅补一条关联更新，不改发货主链路。
+- 说明：当前 `batchCreateFulfillment` 为整单发货（lines 覆盖订单全部行），发货一次对应传入的一个 `packageId`；
+  回填按 `orderId + code` 精确匹配，未发货的其他包保持估算值不被误回填。「每包独立 fulfillment（按包行过滤发货）」属后续边界项。
 
 **挂钩点 3（可选，同城配送关联）**：`delivery-gateway.service.ts` 的 `createDelivery`
 在 `DeliveryOrder` 创建后，按 `orderId + packageId` 回填 `deliveryOrderId`。
@@ -186,7 +188,8 @@ extend type Query {
 - 调单确认后 `orderPackages(orderId)` 返回 **2 个包裹**：
   - P1：stockLocationId=B，lines=[{orderLineId, 5}]，shippingFee=估算值，deliveryMode='self'
   - P2：stockLocationId=A，lines=[{orderLineId, 3}]，shippingFee=估算值，deliveryMode='self'
-- 按包发货后：P1/P2 的 `fulfillmentId` 已回填，`shippingFee` 更新为实际运费（如 800/600 分）。
+- 按包发货后：**传入 packageId 对应的包**（如 P1）`fulfillmentId` 已回填、`shippingFee` 更新为实际运费（如 1000 分）；
+  未发货的其他包（如 P2）保持估算值、不被误回填（按包精确匹配，不串包）。
 - 再次调单确认（重复确认）后包裹行数**不翻倍**（幂等，仍为 2 条）。
 - 同城配送场景：`deliveryOrderId` 正确关联到对应 `DeliveryOrder`。
 - 原有 4 套 e2e（phase2/split/matrix/city）+ 阶段4 e2e 全部回归通过，不破坏现有链路。
@@ -196,7 +199,7 @@ extend type Query {
 扩展 `tools/e2e-phase3-split.mjs`（或新增 `tools/e2e-phase5-order-package.mjs`）新增断言：
 
 1. 拆单确认后查询 `orderPackages`：2 包、B5/A3、行明细与数量正确、deliveryMode 正确。
-2. 发货后查询：`fulfillmentId` 已回填、`shippingFee` = 实际运费。
+2. 发货后查询：`packageId` 对应包的 `fulfillmentId` 已回填、`shippingFee` = 实际运费；未发货包不被误回填。
 3. 重复确认幂等：包裹数仍为 2，不翻倍。
 4. 回归：4 套既有 e2e 全绿（phase2 54 / split 23 / matrix 14 / city 8 / phase4 9）。
 
@@ -205,4 +208,5 @@ extend type Query {
 - OrderPackage 状态机（pending→shipped→delivered）与状态回写（方案 B）。
 - 历史订单包裹数据回填。
 - 真实配送平台对接（接入达达/蜂鸟等真实 provider）——本设计为其提供数据底座。
+- 每包独立 fulfillment：`batchCreateFulfillment` 按包行过滤发货（当前为整单发货，一次发货回填一个包）。
 - 前端订单详情展示「按包裹」拆分明细。
