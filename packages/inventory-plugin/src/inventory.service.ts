@@ -2,6 +2,7 @@
 import { Injectable } from '@nestjs/common';
 import { ID } from '@vendure/common/lib/shared-types';
 import {
+    Allocation,
     Logger,
     OrderLine,
     ProductVariant,
@@ -15,6 +16,7 @@ import {
     StockLocation,
     TransactionalConnection,
     UserInputError,
+    idsAreEqual,
 } from '@vendure/core';
 
 import {
@@ -165,12 +167,22 @@ export class InventoryService {
             }
             // bizCode 取订单号，便于按单一站式追溯
             let orderCode = `OL${orderLineId}`;
+            // 拆单/多仓时 Sale.quantity 为整行数量（上游 Vendure 行为，每仓各记整行），
+            // 本仓真实扣减量以订单行 Allocation 记录为准（逐仓数量），单仓时回退整行数量。
+            let soldQty = Math.abs(sale.quantity);
             try {
                 const orderLine = await this.connection.getRepository(ctx, OrderLine).findOne({
                     where: { id: orderLineId as any },
                     relations: ['order'],
                 });
                 orderCode = orderLine?.order?.code ?? orderCode;
+                const perLocation = await this.connection.getRepository(ctx, Allocation).find({
+                    where: { orderLine: { id: orderLineId as any } } as any,
+                });
+                const allocForLoc = perLocation.find(a => idsAreEqual(a.stockLocationId as any, locationId as any));
+                if (allocForLoc != null && allocForLoc.quantity != null) {
+                    soldQty = Math.abs(allocForLoc.quantity);
+                }
             } catch (e: any) {
                 Logger.warn(`Ledger order:out order-code lookup failed: ${e?.message ?? e}`, loggerCtx);
             }
@@ -179,7 +191,7 @@ export class InventoryService {
             let afterOnHand: number | undefined;
             try {
                 afterOnHand = (await this.stockLevelService.getStockLevel(ctx, variantId, locationId)).stockOnHand;
-                beforeOnHand = afterOnHand - sale.quantity;
+                beforeOnHand = afterOnHand + soldQty;
             } catch {
                 /* 快照失败不阻断记账 */
             }
@@ -190,7 +202,7 @@ export class InventoryService {
                 bizCode: orderCode,
                 orderLineId,
                 direction: 'out',
-                quantity: Math.abs(sale.quantity),
+                quantity: soldQty,
                 beforeOnHand,
                 afterOnHand,
                 reason: `Order#${orderCode}:sale`,

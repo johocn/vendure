@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.StockMovementService = void 0;
 const common_1 = require("@nestjs/common");
 const generated_types_1 = require("@vendure/common/lib/generated-types");
+const shared_utils_1 = require("@vendure/common/lib/shared-utils");
 const typeorm_1 = require("typeorm");
 const instrument_decorator_1 = require("../../common/instrument-decorator");
 const utils_1 = require("../../common/utils");
@@ -261,6 +262,41 @@ let StockMovementService = class StockMovementService {
             await this.eventBus.publish(new stock_movement_event_1.StockMovementEvent(ctx, savedReleases));
         }
         return savedReleases;
+    }
+    /**
+     * @description
+     * 幂等释放：按行计算当前尚未释放的分配量（allocations + sales - releases，Sale.quantity 为负），
+     * 仅对未释放部分创建 Release。订单进入 Cancelled 状态时调用，可安全覆盖
+     * 「客户侧 transitionOrderToState('Cancelled') 直接取消」与「admin cancelOrder 已释放」两条路径，
+     * 避免重复释放或分配永久占用导致库存泄漏。
+     */
+    async createOutstandingReleasesForOrderLines(ctx, lines) {
+        const toRelease = [];
+        for (const line of lines) {
+            const orderLineId = line.orderLineId;
+            const allocations = await this.connection.getRepository(ctx, allocation_entity_1.Allocation).find({
+                where: { orderLine: { id: orderLineId } },
+            });
+            const sales = await this.connection.getRepository(ctx, sale_entity_1.Sale).find({
+                where: { orderLine: { id: orderLineId } },
+            });
+            const releases = await this.connection.getRepository(ctx, release_entity_1.Release).find({
+                where: { orderLine: { id: orderLineId } },
+            });
+            const outstanding = (0, shared_utils_1.summate)(allocations, 'quantity') +
+                (0, shared_utils_1.summate)(sales, 'quantity') -
+                (0, shared_utils_1.summate)(releases, 'quantity');
+            if (0 < outstanding) {
+                toRelease.push({
+                    orderLineId,
+                    quantity: Math.min(outstanding, line.quantity),
+                });
+            }
+        }
+        if (toRelease.length === 0) {
+            return [];
+        }
+        return this.createReleasesForOrderLines(ctx, toRelease);
     }
     trackInventoryForVariant(variant, globalTrackInventory) {
         return (variant.trackInventory === generated_types_1.GlobalFlag.TRUE ||

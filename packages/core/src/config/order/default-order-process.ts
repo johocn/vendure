@@ -435,6 +435,13 @@ export function configureDefaultOrderProcess(options: DefaultOrderProcessOptions
             }
             if (toState === 'Cancelled') {
                 order.active = false;
+                // 自定义 ChannelStockAllocationStrategy 在进入 ArrangingPayment 即分配库存；
+                // 客户侧 transitionOrderToState('Cancelled') 直接取消订单不经过 admin cancelOrder 的
+                // 释放流程，这里幂等释放尚未结算的分配（已释放部分自动跳过，避免与 cancelOrder 重复释放）。
+                await stockMovementService.createOutstandingReleasesForOrderLines(
+                    ctx,
+                    order.lines.map(line => ({ orderLineId: line.id, quantity: line.quantity })),
+                );
             }
             if (fromState === 'Draft' && toState === 'ArrangingPayment') {
                 // Once we exit the Draft state, we can consider the order active,

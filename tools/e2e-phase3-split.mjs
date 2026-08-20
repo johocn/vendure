@@ -203,7 +203,7 @@ async function placeOrder({ variantId, qty, email, coords }) {
   );
   token = r.data?.__sessionToken || token;
   const o = r.data?.addItemToOrder;
-  if (!o || o.__typename === "ErrorResult") throw new Error(`addItemToOrder 失败: ${JSON.stringify(o)}`);
+  if (!o?.id) throw new Error(`addItemToOrder 失败: ${JSON.stringify(o)}`);
   const orderId = o.id;
 
   r = await shopGql(
@@ -213,7 +213,7 @@ async function placeOrder({ variantId, qty, email, coords }) {
   );
   token = r.data?.__sessionToken || token;
   const so = r.data?.setCustomerForOrder;
-  if (!so || so.__typename === "ErrorResult") throw new Error(`setCustomerForOrder 失败: ${JSON.stringify(so)}`);
+  if (!so?.id) throw new Error(`setCustomerForOrder 失败: ${JSON.stringify(so)}`);
 
   if (coords) {
     r = await shopGql(
@@ -413,6 +413,55 @@ function sumPlanQty(plan) {
       shipItem?.success
         ? `fulfillment#${f4?.id} packageId=${f4?.customFields?.packageId} shippingFee=${f4?.customFields?.shippingFee}`
         : `shipErr=${shipItem?.error ?? JSON.stringify(shipRes.data)}`);
+
+    // ---- 7. Task7: 拆单发货逐仓落账（order:out 每仓各一条） ----
+    // 前置：重置双仓可售=5（Test5 已把 loc2 降到 7，t6.4 发货后 onHand=B:2/A:2）。
+    // setVariantStock 只改 onHand 不动存量 allocation，故 onHand = 5 + 当前 allocated 才能保证可售=5
+    const lv7q = await adminGql(
+      `query{ products(options:{ take: 100 }){ items{ variants{ id sku stockLevels{ stockOnHand stockAllocated stockLocationId } } } } }`,
+      {},
+      adminToken,
+    );
+    const v7 = lv7q.data?.products?.items?.flatMap(x => x.variants || []).find(x => x.sku === VARIANT_SKU);
+    const reset7 = [];
+    for (const locId of [LOC_DEFAULT, LOC_PRIORITY]) {
+      const lv = (v7?.stockLevels || []).find(l => String(l.stockLocationId) === String(locId));
+      const onHand = TARGET_AVAIL + (lv?.stockAllocated ?? 0);
+      reset7.push(await setVariantStock(adminToken, v.id, locId, onHand));
+    }
+    result("t7前置.双仓可售重置为各 5", reset7.every(Boolean),
+      (v7?.stockLevels || []).map(l => `#${l.stockLocationId} onHand=${l.stockOnHand} alloc=${l.stockAllocated}`).join(" | "));
+
+    // 7.1 下单 8 件（定位靠近 B 仓）→ 保持双仓拆单（不做手动调单）
+    const ts7 = Date.now();
+    const order2 = await placeOrder({ variantId: v.id, qty: ORDER_QTY, email: `split-ledger-${ts7}@example.com`, coords: NEAR_ANCHOR });
+    orders.push({ token: order2.token, orderId: order2.orderId });
+    result("t7.下单 8 件（保持双仓拆单）", !!order2.orderId, `code=${order2.code}`);
+    const plan7 = await splitPlanPreview(adminToken, order2.orderId);
+    const pkgs7 = plan7?.packages || [];
+    const t7a = pkgs7.length === 2 && sumPlanQty(plan7) === ORDER_QTY;
+    result("t7.拆单预览 2 包且数量合计=8", t7a,
+      pkgs7.length ? JSON.stringify(pkgs7.map(p => `#${p.stockLocationId}:${(p.lines || []).map(l => l.quantity).join("+")}`)) : JSON.stringify(plan7));
+
+    // 7.2 整单发货（batchCreateFulfillment 覆盖全部行；core 按 Allocation 逐仓扣 → 每仓一条 Sale）
+    const ship7 = await shipOrder(adminToken, order2.orderId, "P1", 0, `SF${ts7}`);
+    const shipItem7 = ship7.data?.batchCreateFulfillment?.items?.[0];
+    result("t7.整单发货（含双仓分配）", shipItem7?.success === true, shipItem7?.error ?? `trackId=${shipItem7?.trackId}`);
+
+    // 7.3 断言 order:out 账本：2 条 bizType=order，stockLocationId 分别为两仓，数量合计 8
+    const lg7 = await adminGql(
+      `query($bc: String!){ stockLedger(bizCode: $bc, pageSize: 50){ totalItems items { bizType bizCode direction quantity stockLocationId reason } } }`,
+      { bc: order2.code },
+      adminToken,
+    );
+    const entries7 = (lg7.data?.stockLedger?.items || []).filter(e => e.bizType === "order" && e.direction === "out");
+    const locSet7 = new Set(entries7.map(e => String(e.stockLocationId)));
+    const sum7 = entries7.reduce((s, e) => s + Number(e.quantity), 0);
+    const t7b = entries7.length === 2 &&
+      locSet7.has(LOC_DEFAULT) && locSet7.has(LOC_PRIORITY) &&
+      sum7 === ORDER_QTY;
+    result("t7.ledger 每仓各一条 order:out(两仓各一笔,合计8)", t7b,
+      entries7.length ? JSON.stringify(entries7.map(e => `#${e.stockLocationId}:${e.quantity}`)) : `entries=${entries7.length} raw=${lg7.data?.stockLedger?.totalItems}`);
   } finally {
     // ---- 6. 清理：取消测试单 + 还原库存 + 渠道配置（无论成败都执行） ----
     for (const o of orders) await cancelOrder(o.token, o.orderId);

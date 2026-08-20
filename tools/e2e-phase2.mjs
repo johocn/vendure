@@ -12,9 +12,9 @@
 //   node tools/e2e-phase2.mjs --check variant       # 只跑某项
 //   node tools/e2e-phase2.mjs http://127.0.0.1:13020/shop-api http://127.0.0.1:13020/admin-api
 // 退出码: 0=全部通过(含SKIP)  1=存在FAIL
-const SHOP = process.argv[2] || "http://127.0.0.1:13020/shop-api";
-const ADMIN = process.argv[3] || "http://127.0.0.1:13020/admin-api";
-const CHANNEL_TOKEN = "abc123xyz";
+const SHOP = process.argv[2] || "http://127.0.0.1:3000/shop-api";
+const ADMIN = process.argv[3] || "http://127.0.0.1:3000/admin-api";
+const CHANNEL_TOKEN = "shop-a-token";
 const COORDS = { lat: 43.8256, lng: 125.3235 }; // 默认长春坐标（与测试门店一致）
 
 const only = (() => {

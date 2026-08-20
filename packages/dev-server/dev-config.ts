@@ -39,6 +39,7 @@ import { DouyinAuthPlugin } from '@vendure/douyin-auth-plugin';
 import { OrderTimeoutPlugin } from '@vendure/order-timeout-plugin';
 import { InvoicePlugin } from '@vendure/invoice-plugin';
 import { LogisticsPlugin } from '@vendure/logistics-plugin';
+import { DeliveryGatewayPlugin } from '@vendure/delivery-gateway-plugin';
 import { GroupBuyPlugin } from '@vendure/group-buy-plugin';
 import { FlashSalePlugin } from '@vendure/flash-sale-plugin';
 import { DistributionPlugin } from '@vendure/distribution-plugin';
@@ -386,6 +387,8 @@ export const devConfig: VendureConfig = {
         // LogisticsPlugin 必须在 MarketplacePlugin 之后注册：两者都会设置 stockLocationStrategy，
         // 最后注册的 MatrixStockLocationStrategy（单一全局矩阵）需覆盖 Marketplace 的组合策略。
         LogisticsPlugin.init(),
+        // 同城配送抽象网关：Provider 注册表 + Mock 配送商，必须在 LogisticsPlugin 之后注册（Task5）
+        DeliveryGatewayPlugin.init(),
         CustomerServicePlugin.init(),
         InventoryPlugin.init(),
         OperationsPlugin.init(),

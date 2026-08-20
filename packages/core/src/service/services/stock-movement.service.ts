@@ -6,6 +6,7 @@ import {
     StockMovementListOptions,
 } from '@vendure/common/lib/generated-types';
 import { ID, PaginatedList } from '@vendure/common/lib/shared-types';
+import { summate } from '@vendure/common/lib/shared-utils';
 import { In } from 'typeorm';
 
 import { RequestContext } from '../../api/common/request-context';
@@ -358,6 +359,46 @@ export class StockMovementService {
             await this.eventBus.publish(new StockMovementEvent(ctx, savedReleases));
         }
         return savedReleases;
+    }
+
+    /**
+     * @description
+     * 幂等释放：按行计算当前尚未释放的分配量（allocations + sales - releases，Sale.quantity 为负），
+     * 仅对未释放部分创建 Release。订单进入 Cancelled 状态时调用，可安全覆盖
+     * 「客户侧 transitionOrderToState('Cancelled') 直接取消」与「admin cancelOrder 已释放」两条路径，
+     * 避免重复释放或分配永久占用导致库存泄漏。
+     */
+    async createOutstandingReleasesForOrderLines(
+        ctx: RequestContext,
+        lines: OrderLineInput[],
+    ): Promise<Release[]> {
+        const toRelease: OrderLineInput[] = [];
+        for (const line of lines) {
+            const orderLineId = line.orderLineId;
+            const allocations = await this.connection.getRepository(ctx, Allocation).find({
+                where: { orderLine: { id: orderLineId } },
+            });
+            const sales = await this.connection.getRepository(ctx, Sale).find({
+                where: { orderLine: { id: orderLineId } },
+            });
+            const releases = await this.connection.getRepository(ctx, Release).find({
+                where: { orderLine: { id: orderLineId } },
+            });
+            const outstanding =
+                summate(allocations, 'quantity') +
+                summate(sales, 'quantity') -
+                summate(releases, 'quantity');
+            if (0 < outstanding) {
+                toRelease.push({
+                    orderLineId,
+                    quantity: Math.min(outstanding, line.quantity),
+                });
+            }
+        }
+        if (toRelease.length === 0) {
+            return [];
+        }
+        return this.createReleasesForOrderLines(ctx, toRelease);
     }
 
     private trackInventoryForVariant(variant: ProductVariant, globalTrackInventory: boolean): boolean {

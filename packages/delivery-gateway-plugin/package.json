@@ -1,0 +1,25 @@
+{
+    "name": "@vendure/delivery-gateway-plugin",
+    "version": "0.0.1",
+    "description": "同城配送抽象网关：Provider 注册表 + Mock 配送商 + DeliveryOrder 状态机",
+    "license": "GPL-3.0-or-later",
+    "main": "lib/index.js",
+    "types": "lib/index.d.ts",
+    "files": ["lib/**/*"],
+    "scripts": {
+        "watch": "tsc -p ./tsconfig.build.json --watch",
+        "build": "rimraf lib && tsc -p ./tsconfig.build.json",
+        "lint": "eslint --fix ."
+    },
+    "dependencies": {},
+    "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0"
+    },
+    "devDependencies": {
+        "@vendure/common": "3.6.4",
+        "@vendure/core": "3.6.4",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2"
+    }
+}

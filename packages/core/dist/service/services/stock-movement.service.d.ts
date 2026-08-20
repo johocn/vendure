@@ -80,5 +80,13 @@ export declare class StockMovementService {
      * reduced, indicating that this stock is once again available to buy.
      */
     createReleasesForOrderLines(ctx: RequestContext, lineInputs: OrderLineInput[]): Promise<Release[]>;
+    /**
+     * @description
+     * 幂等释放：按行计算当前尚未释放的分配量（allocations + sales - releases，Sale.quantity 为负），
+     * 仅对未释放部分创建 Release。订单进入 Cancelled 状态时调用，可安全覆盖
+     * 「客户侧 transitionOrderToState('Cancelled') 直接取消」与「admin cancelOrder 已释放」两条路径，
+     * 避免重复释放或分配永久占用导致库存泄漏。
+     */
+    createOutstandingReleasesForOrderLines(ctx: RequestContext, lines: OrderLineInput[]): Promise<Release[]>;
     private trackInventoryForVariant;
 }

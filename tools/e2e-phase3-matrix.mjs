@@ -126,7 +126,7 @@ async function placeOrder({ variantId, qty, email, coords, beforeTransition }) {
   );
   token = r.data?.__sessionToken || token;
   const o = r.data?.addItemToOrder;
-  if (!o || o.__typename === "ErrorResult") throw new Error(`addItemToOrder 失败: ${JSON.stringify(o)}`);
+  if (!o?.id) throw new Error(`addItemToOrder 失败: ${JSON.stringify(o)}`);
   const orderId = o.id;
 
   r = await shopGql(
@@ -199,6 +199,7 @@ function parseDetail(raw) {
   const baseCf = { shippingStrategy: "priority", stockLocationPriority: null, memberStockStrategy: null };
   const orders = []; // 测试单，finally 中取消并释放库存占用
   const TARGET_AVAIL_2 = 20; // loc2(B仓) 可售目标：够 t1(5) + t2 拆单余量(15)，且 < 25 强制拆两仓
+  const TARGET_AVAIL_1 = 100; // loc1(A仓) 可售目标：够 t2 拆单余量(5) + t3(5)，且充足（>20 断言）
   const origStock = {}; // 库存还原快照 { [locId]: { onHand } }
   let variantId = "1";
   try {
@@ -221,6 +222,13 @@ function parseDetail(raw) {
     const onHand2 = TARGET_AVAIL_2 + lv2.stockAllocated;
     const set2 = await setVariantStock(adminToken, v.id, LOC_PRIORITY, onHand2);
     result("前置.配置 loc2 可售=20", set2, `loc2 onHand=${onHand2} allocated=${lv2.stockAllocated} 可售=${TARGET_AVAIL_2}`);
+
+    // loc1(A仓) 同理重置为已知可售（累计 allocation 会侵蚀可用量，需按 目标可售+allocated 显式设 onHand）
+    const lv1 = (v.stockLevels || []).find(l => String(l.stockLocationId) === String(LOC_DEFAULT));
+    if (!lv1) { result("前置.loc1 有库存记录", false, `loc#${LOC_DEFAULT} 无 stockLevel`); process.exit(1); }
+    const onHand1 = TARGET_AVAIL_1 + lv1.stockAllocated;
+    const set1 = await setVariantStock(adminToken, v.id, LOC_DEFAULT, onHand1);
+    result("前置.配置 loc1 可售=100", set1, `loc1 onHand=${onHand1} allocated=${lv1.stockAllocated} 可售=${TARGET_AVAIL_1}`);
 
     // 重读库存计算可用量
     const pl2 = await adminGql(`query{ products(options:{ take: 100 }){ items{ id name variants{ id sku name stockLevels{ stockOnHand stockAllocated stockLocationId } } } } }`, {}, adminToken);

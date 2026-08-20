@@ -107,12 +107,22 @@ let InventoryService = class InventoryService {
             }
             // bizCode 取订单号，便于按单一站式追溯
             let orderCode = `OL${orderLineId}`;
+            // 拆单/多仓时 Sale.quantity 为整行数量（上游 Vendure 行为，每仓各记整行），
+            // 本仓真实扣减量以订单行 Allocation 记录为准（逐仓数量），单仓时回退整行数量。
+            let soldQty = Math.abs(sale.quantity);
             try {
                 const orderLine = await this.connection.getRepository(ctx, core_1.OrderLine).findOne({
                     where: { id: orderLineId },
                     relations: ['order'],
                 });
                 orderCode = (_f = (_e = orderLine === null || orderLine === void 0 ? void 0 : orderLine.order) === null || _e === void 0 ? void 0 : _e.code) !== null && _f !== void 0 ? _f : orderCode;
+                const perLocation = await this.connection.getRepository(ctx, core_1.Allocation).find({
+                    where: { orderLine: { id: orderLineId } },
+                });
+                const allocForLoc = perLocation.find(a => (0, core_1.idsAreEqual)(a.stockLocationId, locationId));
+                if (allocForLoc != null && allocForLoc.quantity != null) {
+                    soldQty = Math.abs(allocForLoc.quantity);
+                }
             }
             catch (e) {
                 core_1.Logger.warn(`Ledger order:out order-code lookup failed: ${(_g = e === null || e === void 0 ? void 0 : e.message) !== null && _g !== void 0 ? _g : e}`, loggerCtx);
@@ -122,7 +132,7 @@ let InventoryService = class InventoryService {
             let afterOnHand;
             try {
                 afterOnHand = (await this.stockLevelService.getStockLevel(ctx, variantId, locationId)).stockOnHand;
-                beforeOnHand = afterOnHand - sale.quantity;
+                beforeOnHand = afterOnHand + soldQty;
             }
             catch (_h) {
                 /* 快照失败不阻断记账 */
@@ -134,7 +144,7 @@ let InventoryService = class InventoryService {
                 bizCode: orderCode,
                 orderLineId,
                 direction: 'out',
-                quantity: Math.abs(sale.quantity),
+                quantity: soldQty,
                 beforeOnHand,
                 afterOnHand,
                 reason: `Order#${orderCode}:sale`,
