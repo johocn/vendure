@@ -95,7 +95,7 @@ let LogisticsService = class LogisticsService {
      * Fulfillment customFields（trackingNumber/carrier/carrierCode）同步回写。
      */
     async batchCreateFulfillment(ctx, items) {
-        var _a, _b, _c, _d;
+        var _a, _b, _c, _d, _e;
         if (!this.orderService) {
             throw new Error('OrderService not initialized');
         }
@@ -135,9 +135,11 @@ let LogisticsService = class LogisticsService {
                 if (item.packageId) {
                     try {
                         await ((_b = this.orderPackageService) === null || _b === void 0 ? void 0 : _b.linkFulfillment(ctx, item.orderId, item.packageId, fulfillment.id, (_c = item.shippingFee) !== null && _c !== void 0 ? _c : null));
+                        // 挂钩点2b：发货成功 → OrderPackage pending→shipped（幂等；失败仅告警，不阻断发货）
+                        await ((_d = this.orderPackageService) === null || _d === void 0 ? void 0 : _d.transition(ctx, item.orderId, item.packageId, 'shipped'));
                     }
                     catch (e) {
-                        core_1.Logger.warn(`OrderPackage 回填发货失败 order#${item.orderId} pkg=${item.packageId}: ${(_d = e === null || e === void 0 ? void 0 : e.message) !== null && _d !== void 0 ? _d : e}`, constants_1.loggerCtx);
+                        core_1.Logger.warn(`OrderPackage 回填发货失败 order#${item.orderId} pkg=${item.packageId}: ${(_e = e === null || e === void 0 ? void 0 : e.message) !== null && _e !== void 0 ? _e : e}`, constants_1.loggerCtx);
                     }
                 }
                 // 3. 创建 LogisticsTrack 记录

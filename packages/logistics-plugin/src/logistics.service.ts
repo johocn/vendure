@@ -177,6 +177,8 @@ export class LogisticsService {
                             fulfillment.id,
                             item.shippingFee ?? null,
                         );
+                        // 挂钩点2b：发货成功 → OrderPackage pending→shipped（幂等；失败仅告警，不阻断发货）
+                        await this.orderPackageService?.transition(ctx, item.orderId, item.packageId, 'shipped');
                     } catch (e: any) {
                         Logger.warn(
                             `OrderPackage 回填发货失败 order#${item.orderId} pkg=${item.packageId}: ${e?.message ?? e}`,
