@@ -15,23 +15,17 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.FlashSaleShopResolver = void 0;
 const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
-const constants_1 = require("./constants");
 const flash_sale_service_1 = require("./flash-sale.service");
 let FlashSaleShopResolver = class FlashSaleShopResolver {
     constructor(flashSaleService) {
         this.flashSaleService = flashSaleService;
     }
     async activeFlashSaleActivities(ctx) {
-        var _a;
-        try {
-            const result = await this.flashSaleService.findActive(ctx);
-            core_1.Logger.info(`activeFlashSaleActivities returned ${(_a = result === null || result === void 0 ? void 0 : result.length) !== null && _a !== void 0 ? _a : 'null'} items`, constants_1.loggerCtx);
-            return result !== null && result !== void 0 ? result : [];
-        }
-        catch (e) {
-            core_1.Logger.error(`activeFlashSaleActivities error: ${e.message}`, constants_1.loggerCtx);
-            return [];
-        }
+        const result = await this.flashSaleService.findActive(ctx);
+        return result !== null && result !== void 0 ? result : [];
+    }
+    async applyFlashSale(ctx, activityId) {
+        return this.flashSaleService.applyFlashSale(ctx, activityId);
     }
 };
 exports.FlashSaleShopResolver = FlashSaleShopResolver;
@@ -42,6 +36,15 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext]),
     __metadata("design:returntype", Promise)
 ], FlashSaleShopResolver.prototype, "activeFlashSaleActivities", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Transaction)(),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('activityId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], FlashSaleShopResolver.prototype, "applyFlashSale", null);
 exports.FlashSaleShopResolver = FlashSaleShopResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [flash_sale_service_1.FlashSaleService])

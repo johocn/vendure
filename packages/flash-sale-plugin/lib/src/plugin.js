@@ -24,7 +24,6 @@ const graphql_tag_1 = __importDefault(require("graphql-tag"));
 const constants_1 = require("./constants");
 const flash_sale_activity_entity_1 = require("./flash-sale-activity.entity");
 const flash_sale_admin_resolver_1 = require("./flash-sale-admin.resolver");
-const flash_sale_eligibility_checker_1 = require("./flash-sale-eligibility-checker");
 const flash_sale_job_1 = require("./flash-sale.job");
 const flash_sale_promotion_condition_1 = require("./flash-sale-promotion-condition");
 const flash_sale_price_action_1 = require("./flash-sale-price-action");
@@ -50,20 +49,7 @@ let FlashSalePlugin = FlashSalePlugin_1 = class FlashSalePlugin {
     async onApplicationBootstrap() {
         this.injector = new core_2.Injector(this.moduleRef);
         this.flashSaleService.init(this.injector);
-        // 秒杀订单下单后递增 soldCount（含 customFields.flashSaleActivityId 的订单）
-        this.eventBus.ofType(core_2.OrderPlacedEvent).subscribe(async (event) => {
-            var _a;
-            const flashSaleActivityId = (_a = event.order.customFields) === null || _a === void 0 ? void 0 : _a.flashSaleActivityId;
-            if (!flashSaleActivityId)
-                return;
-            try {
-                await this.flashSaleService.incrementSoldCount(event.ctx, flashSaleActivityId, event.order.totalQuantity);
-            }
-            catch (e) {
-                core_2.Logger.error(`Failed to increment soldCount for activity ${flashSaleActivityId}: ${e.message}`, constants_1.loggerCtx);
-            }
-        });
-        // 订单取消时回滚预占库存（Redis / DB 路径均覆盖）
+        // 订单取消时按订单内秒杀行实际件数回滚预占库存（修正固定 1 件）
         this.eventBus.ofType(core_2.OrderStateTransitionEvent).subscribe(async (event) => {
             var _a, _b;
             if (event.toState !== 'Cancelled')
@@ -72,7 +58,7 @@ let FlashSalePlugin = FlashSalePlugin_1 = class FlashSalePlugin {
             if (!activityId)
                 return;
             try {
-                await this.flashSaleService.releaseStock(event.ctx, activityId, 1);
+                await this.flashSaleService.releaseStockForOrder(event.ctx, event.order.id);
             }
             catch (e) {
                 core_2.Logger.error(`Failed to release stock for activity ${activityId} on cancel: ${e.message}`, constants_1.loggerCtx);
@@ -179,6 +165,10 @@ exports.FlashSalePlugin = FlashSalePlugin = FlashSalePlugin_1 = __decorate([
             extend type Query {
                 activeFlashSaleActivities: [FlashSaleActivity!]!
             }
+
+            extend type Mutation {
+                applyFlashSale(activityId: ID!): Order!
+            }
         `,
             resolvers: [flash_sale_shop_resolver_1.FlashSaleShopResolver],
         },
@@ -189,7 +179,6 @@ exports.FlashSalePlugin = FlashSalePlugin = FlashSalePlugin_1 = __decorate([
             config.promotionOptions.promotionConditions = [
                 ...((_a = config.promotionOptions.promotionConditions) !== null && _a !== void 0 ? _a : []),
                 flash_sale_promotion_condition_1.flashSaleDiscountCondition,
-                flash_sale_eligibility_checker_1.flashSaleEligibilityCondition,
             ];
             config.promotionOptions.promotionActions = [
                 ...((_b = config.promotionOptions.promotionActions) !== null && _b !== void 0 ? _b : []),

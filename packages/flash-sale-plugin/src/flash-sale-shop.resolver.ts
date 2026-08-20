@@ -1,7 +1,6 @@
-import { Query, Resolver } from '@nestjs/graphql';
-import { Ctx, Logger, RequestContext } from '@vendure/core';
+import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Ctx, ID, Order, RequestContext, Transaction } from '@vendure/core';
 
-import { loggerCtx } from './constants';
 import { FlashSaleActivity } from './flash-sale-activity.entity';
 import { FlashSaleService } from './flash-sale.service';
 
@@ -13,13 +12,16 @@ export class FlashSaleShopResolver {
     async activeFlashSaleActivities(
         @Ctx() ctx: RequestContext,
     ): Promise<FlashSaleActivity[]> {
-        try {
-            const result = await this.flashSaleService.findActive(ctx);
-            Logger.info(`activeFlashSaleActivities returned ${result?.length ?? 'null'} items`, loggerCtx);
-            return result ?? [];
-        } catch (e: any) {
-            Logger.error(`activeFlashSaleActivities error: ${e.message}`, loggerCtx);
-            return [];
-        }
+        const result = await this.flashSaleService.findActive(ctx);
+        return result ?? [];
+    }
+
+    @Mutation()
+    @Transaction()
+    async applyFlashSale(
+        @Ctx() ctx: RequestContext,
+        @Args('activityId') activityId: ID,
+    ): Promise<Order> {
+        return this.flashSaleService.applyFlashSale(ctx, activityId);
     }
 }

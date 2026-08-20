@@ -3,7 +3,6 @@ import { ModuleRef } from '@nestjs/core';
 import {
     Injector,
     Logger,
-    OrderPlacedEvent,
     OrderStateTransitionEvent,
     PluginCommonModule,
     VendurePlugin,
@@ -14,7 +13,6 @@ import gql from 'graphql-tag';
 import { FLASH_SALE_PLUGIN_OPTIONS, loggerCtx } from './constants';
 import { FlashSaleActivity } from './flash-sale-activity.entity';
 import { FlashSaleAdminResolver } from './flash-sale-admin.resolver';
-import { flashSaleEligibilityCondition } from './flash-sale-eligibility-checker';
 import { flashSaleStatusTask } from './flash-sale.job';
 import { flashSaleDiscountCondition } from './flash-sale-promotion-condition';
 import { flashSalePriceAction } from './flash-sale-price-action';
@@ -127,6 +125,10 @@ function mergeCustomFields<T extends { name: string }>(
             extend type Query {
                 activeFlashSaleActivities: [FlashSaleActivity!]!
             }
+
+            extend type Mutation {
+                applyFlashSale(activityId: ID!): Order!
+            }
         `,
         resolvers: [FlashSaleShopResolver],
     },
@@ -137,7 +139,6 @@ function mergeCustomFields<T extends { name: string }>(
         config.promotionOptions.promotionConditions = [
             ...(config.promotionOptions.promotionConditions ?? []),
             flashSaleDiscountCondition,
-            flashSaleEligibilityCondition,
         ];
         config.promotionOptions.promotionActions = [
             ...(config.promotionOptions.promotionActions ?? []),
@@ -178,31 +179,13 @@ export class FlashSalePlugin implements OnApplicationBootstrap {
         this.injector = new Injector(this.moduleRef);
         this.flashSaleService.init(this.injector);
 
-        // 秒杀订单下单后递增 soldCount（含 customFields.flashSaleActivityId 的订单）
-        this.eventBus.ofType(OrderPlacedEvent).subscribe(async (event) => {
-            const flashSaleActivityId = (event.order as any).customFields?.flashSaleActivityId;
-            if (!flashSaleActivityId) return;
-            try {
-                await this.flashSaleService.incrementSoldCount(
-                    event.ctx,
-                    flashSaleActivityId,
-                    event.order.totalQuantity,
-                );
-            } catch (e: any) {
-                Logger.error(
-                    `Failed to increment soldCount for activity ${flashSaleActivityId}: ${e.message}`,
-                    loggerCtx,
-                );
-            }
-        });
-
-        // 订单取消时回滚预占库存（Redis / DB 路径均覆盖）
+        // 订单取消时按订单内秒杀行实际件数回滚预占库存（修正固定 1 件）
         this.eventBus.ofType(OrderStateTransitionEvent).subscribe(async (event) => {
             if (event.toState !== 'Cancelled') return;
             const activityId = (event.order as any)?.customFields?.flashSaleActivityId;
             if (!activityId) return;
             try {
-                await this.flashSaleService.releaseStock(event.ctx, activityId, 1);
+                await this.flashSaleService.releaseStockForOrder(event.ctx, event.order.id);
             } catch (e: any) {
                 Logger.error(
                     `Failed to release stock for activity ${activityId} on cancel: ${e.message}`,
