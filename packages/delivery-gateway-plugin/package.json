@@ -9,7 +9,8 @@
     "scripts": {
         "watch": "tsc -p ./tsconfig.build.json --watch",
         "build": "rimraf lib && tsc -p ./tsconfig.build.json",
-        "lint": "eslint --fix ."
+        "lint": "eslint --fix .",
+        "test": "vitest --config vitest.config.mts --run"
     },
     "dependencies": {},
     "peerDependencies": {
