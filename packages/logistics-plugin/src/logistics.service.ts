@@ -137,7 +137,26 @@ export class LogisticsService {
                 if (!order) {
                     throw new UserInputError(`Order ${item.orderId} not found`);
                 }
-                const lines = order.lines.map(l => ({ orderLineId: l.id, quantity: l.quantity }));
+                let lines: Array<{ orderLineId: ID; quantity: number }>;
+                if (item.packageId) {
+                    const pkg = await this.orderPackageService?.findByOrderAndCode(ctx, item.orderId, item.packageId);
+                    let pkgLines: Array<{ orderLineId: ID; quantity: number }> = [];
+                    if (pkg?.linesJson) {
+                        try {
+                            pkgLines = JSON.parse(pkg.linesJson);
+                        } catch (e: any) {
+                            Logger.warn(`包 ${item.packageId} linesJson 解析失败，降级整单发货: ${e?.message ?? e}`, loggerCtx);
+                        }
+                    }
+                    if (pkg && pkgLines.length > 0) {
+                        lines = pkgLines;                       // 按包行发货
+                    } else {
+                        lines = order.lines.map(l => ({ orderLineId: l.id, quantity: l.quantity }));  // 降级整单
+                        Logger.warn(`包 ${item.packageId} linesJson 缺失，降级整单发货`, loggerCtx);
+                    }
+                } else {
+                    lines = order.lines.map(l => ({ orderLineId: l.id, quantity: l.quantity }));      // 非拆单整单
+                }
                 if (lines.length === 0) {
                     throw new UserInputError(`Order ${item.orderId} has no lines`);
                 }

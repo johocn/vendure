@@ -95,7 +95,7 @@ let LogisticsService = class LogisticsService {
      * Fulfillment customFields（trackingNumber/carrier/carrierCode）同步回写。
      */
     async batchCreateFulfillment(ctx, items) {
-        var _a, _b, _c, _d, _e;
+        var _a, _b, _c, _d, _e, _f, _g;
         if (!this.orderService) {
             throw new Error('OrderService not initialized');
         }
@@ -110,7 +110,29 @@ let LogisticsService = class LogisticsService {
                 if (!order) {
                     throw new core_1.UserInputError(`Order ${item.orderId} not found`);
                 }
-                const lines = order.lines.map(l => ({ orderLineId: l.id, quantity: l.quantity }));
+                let lines;
+                if (item.packageId) {
+                    const pkg = await ((_a = this.orderPackageService) === null || _a === void 0 ? void 0 : _a.findByOrderAndCode(ctx, item.orderId, item.packageId));
+                    let pkgLines = [];
+                    if (pkg === null || pkg === void 0 ? void 0 : pkg.linesJson) {
+                        try {
+                            pkgLines = JSON.parse(pkg.linesJson);
+                        }
+                        catch (e) {
+                            core_1.Logger.warn(`包 ${item.packageId} linesJson 解析失败，降级整单发货: ${(_b = e === null || e === void 0 ? void 0 : e.message) !== null && _b !== void 0 ? _b : e}`, constants_1.loggerCtx);
+                        }
+                    }
+                    if (pkg && pkgLines.length > 0) {
+                        lines = pkgLines; // 按包行发货
+                    }
+                    else {
+                        lines = order.lines.map(l => ({ orderLineId: l.id, quantity: l.quantity })); // 降级整单
+                        core_1.Logger.warn(`包 ${item.packageId} linesJson 缺失，降级整单发货`, constants_1.loggerCtx);
+                    }
+                }
+                else {
+                    lines = order.lines.map(l => ({ orderLineId: l.id, quantity: l.quantity })); // 非拆单整单
+                }
                 if (lines.length === 0) {
                     throw new core_1.UserInputError(`Order ${item.orderId} has no lines`);
                 }
@@ -126,7 +148,7 @@ let LogisticsService = class LogisticsService {
                     },
                 });
                 if (isFulfillmentError(fulfillmentResult)) {
-                    throw new Error(`Fulfillment error: ${(_a = fulfillmentResult.message) !== null && _a !== void 0 ? _a : 'unknown'}`);
+                    throw new Error(`Fulfillment error: ${(_c = fulfillmentResult.message) !== null && _c !== void 0 ? _c : 'unknown'}`);
                 }
                 const fulfillment = fulfillmentResult;
                 // 2. 回写 Fulfillment customFields（carrierCode/carrier/trackingNumber + 拆单包号/本包运费）
@@ -134,12 +156,12 @@ let LogisticsService = class LogisticsService {
                 // 挂钩点2：按包回填 OrderPackage.fulfillmentId + 实际运费（未命中仅告警，不阻断发货）
                 if (item.packageId) {
                     try {
-                        await ((_b = this.orderPackageService) === null || _b === void 0 ? void 0 : _b.linkFulfillment(ctx, item.orderId, item.packageId, fulfillment.id, (_c = item.shippingFee) !== null && _c !== void 0 ? _c : null));
+                        await ((_d = this.orderPackageService) === null || _d === void 0 ? void 0 : _d.linkFulfillment(ctx, item.orderId, item.packageId, fulfillment.id, (_e = item.shippingFee) !== null && _e !== void 0 ? _e : null));
                         // 挂钩点2b：发货成功 → OrderPackage pending→shipped（幂等；失败仅告警，不阻断发货）
-                        await ((_d = this.orderPackageService) === null || _d === void 0 ? void 0 : _d.transition(ctx, item.orderId, item.packageId, 'shipped'));
+                        await ((_f = this.orderPackageService) === null || _f === void 0 ? void 0 : _f.transition(ctx, item.orderId, item.packageId, 'shipped'));
                     }
                     catch (e) {
-                        core_1.Logger.warn(`OrderPackage 回填发货失败 order#${item.orderId} pkg=${item.packageId}: ${(_e = e === null || e === void 0 ? void 0 : e.message) !== null && _e !== void 0 ? _e : e}`, constants_1.loggerCtx);
+                        core_1.Logger.warn(`OrderPackage 回填发货失败 order#${item.orderId} pkg=${item.packageId}: ${(_g = e === null || e === void 0 ? void 0 : e.message) !== null && _g !== void 0 ? _g : e}`, constants_1.loggerCtx);
                     }
                 }
                 // 3. 创建 LogisticsTrack 记录
