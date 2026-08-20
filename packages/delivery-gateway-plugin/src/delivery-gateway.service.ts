@@ -18,8 +18,11 @@ export class DeliveryGatewayService {
     private injector!: Injector;
     private connection!: TransactionalConnection;
     private providers = new Map<string, DeliveryProvider>();
-    /** 可选：logistics-plugin 注册的 OrderPackageLinker（OrderPackageService），用于按包回填配送单 */
-    private orderPackageLinker: { linkDeliveryOrder(ctx: any, orderId: ID, packageId: string, deliveryOrderId: ID): Promise<boolean> } | null = null;
+    /** 可选：logistics-plugin 注册的 OrderPackageLinker（OrderPackageService），用于按包回填配送单 + 状态回写 */
+    private orderPackageLinker: {
+        linkDeliveryOrder(ctx: any, orderId: ID, packageId: string, deliveryOrderId: ID): Promise<boolean>;
+        transition(ctx: any, orderId: ID, packageId: string, toStatus: 'shipped' | 'delivered' | 'cancelled'): Promise<boolean>;
+    } | null = null;
 
     init(injector: Injector): void {
         this.injector = injector;
@@ -81,6 +84,14 @@ export class DeliveryGatewayService {
                 Logger.warn(`OrderPackage 关联配送单失败 order#${input.orderId} pkg=${input.packageId}: ${e?.message ?? e}`, loggerCtx);
             }
         }
+        // 挂钩点3b：同城下单即视为发货 → OrderPackage pending→shipped（未命中仅告警，不阻断）
+        if (this.orderPackageLinker) {
+            try {
+                await this.orderPackageLinker.transition(ctx, input.orderId, input.packageId, 'shipped');
+            } catch (e: any) {
+                Logger.warn(`OrderPackage 状态置 shipped 失败 order#${input.orderId} pkg=${input.packageId}: ${e?.message ?? e}`, loggerCtx);
+            }
+        }
         return entity;
     }
 
@@ -115,6 +126,14 @@ export class DeliveryGatewayService {
         if (event.status === 'delivered') delivery.deliveredAt = new Date();
         if (event.status === 'cancelled') delivery.cancelledAt = new Date();
         await repo.save(delivery);
+        // 挂钩点3c：配送终态（delivered/cancelled）回写 OrderPackage（未命中仅告警，不阻断）
+        if ((event.status === 'delivered' || event.status === 'cancelled') && this.orderPackageLinker && delivery.packageId) {
+            try {
+                await this.orderPackageLinker.transition(ctx, delivery.orderId, delivery.packageId, event.status);
+            } catch (e: any) {
+                Logger.warn(`OrderPackage 状态回写失败 ${delivery.code}: ${e?.message ?? e}`, loggerCtx);
+            }
+        }
         Logger.info(`配送单 ${delivery.code} -> ${event.status}`, loggerCtx);
         return delivery;
     }

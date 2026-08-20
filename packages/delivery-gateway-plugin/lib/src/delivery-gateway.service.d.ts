@@ -5,7 +5,7 @@ export declare class DeliveryGatewayService {
     private injector;
     private connection;
     private providers;
-    /** 可选：logistics-plugin 注册的 OrderPackageLinker（OrderPackageService），用于按包回填配送单 */
+    /** 可选：logistics-plugin 注册的 OrderPackageLinker（OrderPackageService），用于按包回填配送单 + 状态回写 */
     private orderPackageLinker;
     init(injector: Injector): void;
     registerProvider(provider: DeliveryProvider): void;
