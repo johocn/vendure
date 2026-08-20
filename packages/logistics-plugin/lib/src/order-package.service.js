@@ -174,8 +174,17 @@ let OrderPackageService = class OrderPackageService {
         if (!target)
             return;
         const order = await this.orderService.findOne(ctx, orderId);
-        if (!order || order.state === target)
+        if (!order)
             return;
+        // 订单已到目标态：无需重复推进，但需补写首次送达基准 fda——
+        // self 包有 fulfillment，核心 fulfillment 流程（不依赖本 reconcile）会把订单推到
+        // Delivered，此时若直接 return 会漏写 markDeliveredAt（t5/t8pre FAIL 根因）。
+        if (order.state === target) {
+            if (target === 'Delivered') {
+                await this.markDeliveredAt(ctx, orderId);
+            }
+            return;
+        }
         const next = this.orderService.getNextOrderStates(order);
         if (!next.includes(target)) {
             core_1.Logger.warn(`订单聚合目标 ${target} 不在可达状态 [${next.join(',')}]（order#${orderId} 当前 ${order.state}），跳过`, constants_1.loggerCtx);
@@ -199,8 +208,9 @@ let OrderPackageService = class OrderPackageService {
         const order = await this.orderService.findOne(ctx, orderId);
         if (!order || ((_a = order.customFields) === null || _a === void 0 ? void 0 : _a.fulfillmentDeliveredAt))
             return;
-        order.customFields.fulfillmentDeliveredAt = new Date();
-        await this.connection.getRepository(ctx, core_1.Order).save(order, { reload: false });
+        // 用 updateCustomFields（patchEntity 生成新对象）而非就地改 customFields：
+        // 就地修改同一对象引用 TypeORM 变更检测不识别（identity map 快照指向同一对象），UPDATE 会被跳过
+        await this.orderService.updateCustomFields(ctx, orderId, { fulfillmentDeliveredAt: new Date() });
     }
     /** self 包 fulfillment 镜像：包裹 shipped/delivered 时同步 fulfillment 状态（core 一致性，失败仅告警） */
     async mirrorFulfillment(ctx, pkg, toStatus) {

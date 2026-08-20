@@ -80,7 +80,9 @@ export class OrderCompleteAutoService {
         const candidates = await repo
             .createQueryBuilder('order')
             .where('order.state = :state', { state: 'Delivered' })
-            .andWhere('order.active = :active', { active: true })
+            // 注意：不能用 active=true 过滤——core 的 OrderPlacedStrategy 在支付完成时即把
+            // order.active 置为 false（下单后订单不再"活跃"），Delivered 都是非 active 订单，
+            // 误加 active 过滤会导致所有已完成送达的订单永远扫不到（t8 count 恒为 0）。
             .getMany();
 
         let done = 0;
