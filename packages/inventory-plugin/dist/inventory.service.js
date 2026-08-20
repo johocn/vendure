@@ -87,6 +87,77 @@ let InventoryService = class InventoryService {
         await this.adjustStockForLocation(ctx, variantId, locationId, +quantity, `AfterSales#${afterSalesCode}:return-restock`, { bizType: 'afterSales', bizCode: afterSalesCode, orderLineId });
     }
     /**
+     * 售后退货多仓按包回补：按 orderLine 的 Allocation 记录（各仓实际发货量）将退货按比例回补到各仓。
+     * - 单仓 → 退化现有 applyAfterSalesRestock（回补该仓）
+     * - 多仓 → 最大余数法整数分配，逐仓 adjustStockForLocation 写 afterSales:in 账本
+     * - 兜底：查不到 Allocation → 回退 orderLine.customFields.stockLocationId 单仓（现状行为）
+     * @returns 各仓回补明细 [{ stockLocationId, quantity }]（供 restockJson 留痕）
+     */
+    async applyAfterSalesRestockMulti(ctx, orderLineId, quantity, afterSalesCode) {
+        var _a, _b, _c;
+        // 1. 取订单行 + variant
+        const orderLine = await this.connection.getRepository(ctx, core_1.OrderLine).findOne({
+            where: { id: orderLineId },
+        });
+        if (!orderLine) {
+            throw new core_1.UserInputError(`OrderLine not found: ${orderLineId}`);
+        }
+        const variantId = orderLine.productVariantId;
+        // 2. 按仓分组求和（Allocation 记录为各仓实际发货量，取绝对值）
+        //    注意：不能按 Sale 分组 —— core 的 createSalesForOrder 每条 Sale 都记整行数量
+        const allocations = await this.connection.getRepository(ctx, core_1.Allocation).find({
+            where: { orderLine: { id: orderLineId } },
+        });
+        const shippedByLoc = new Map();
+        for (const a of allocations) {
+            const locId = String(a.stockLocationId);
+            if (!locId)
+                continue;
+            shippedByLoc.set(locId, ((_a = shippedByLoc.get(locId)) !== null && _a !== void 0 ? _a : 0) + Math.abs(Number(a.quantity) || 0));
+        }
+        // 3. 兜底：查不到 Allocation → 回退 orderLine.customFields.stockLocationId 单仓（现状行为）
+        if (shippedByLoc.size === 0) {
+            const fallbackLoc = (_c = (_b = orderLine.customFields) === null || _b === void 0 ? void 0 : _b.stockLocationId) !== null && _c !== void 0 ? _c : null;
+            if (fallbackLoc != null && quantity > 0) {
+                await this.applyAfterSalesRestock(ctx, variantId, fallbackLoc, quantity, afterSalesCode, orderLineId);
+                return [{ stockLocationId: fallbackLoc, quantity: +quantity }];
+            }
+            core_1.Logger.warn(`applyAfterSalesRestockMulti: orderLine ${orderLineId} 无 Allocation 亦无 stockLocationId，跳过回补`, loggerCtx);
+            return [];
+        }
+        // 4. 单仓 → 退化现有 applyAfterSalesRestock
+        if (shippedByLoc.size === 1) {
+            const [locId] = [...shippedByLoc.keys()];
+            await this.applyAfterSalesRestock(ctx, variantId, locId, quantity, afterSalesCode, orderLineId);
+            return [{ stockLocationId: locId, quantity: +quantity }];
+        }
+        // 5. 多仓 → 最大余数法整数分配（保证 Σ=quantity 且非负整数）
+        const totalShipped = [...shippedByLoc.values()].reduce((s, v) => s + v, 0);
+        const entries = [...shippedByLoc.entries()].map(([locId, shipped]) => {
+            const exact = (quantity * shipped) / totalShipped;
+            const floor = Math.floor(exact);
+            return { locId, shipped, floor, remainder: exact - floor };
+        });
+        // 余数从大到小排序，余数相同取发货量大者优先
+        entries.sort((a, b) => b.remainder - a.remainder || b.shipped - a.shipped);
+        let remaining = quantity - entries.reduce((s, e) => s + e.floor, 0);
+        for (const e of entries) {
+            if (remaining <= 0)
+                break;
+            e.floor += 1;
+            remaining -= 1;
+        }
+        // 6. 逐仓回补 + 落账本
+        const detail = [];
+        for (const e of entries) {
+            if (e.floor <= 0)
+                continue;
+            await this.adjustStockForLocation(ctx, variantId, e.locId, e.floor, `AfterSales#${afterSalesCode}:return-restock`, { bizType: 'afterSales', bizCode: afterSalesCode, orderLineId });
+            detail.push({ stockLocationId: e.locId, quantity: e.floor });
+        }
+        return detail;
+    }
+    /**
      * 订单发货记账：core 在 Fulfillment Created→Pending 时创建 Sale 流水（真实扣减 onHand），
      * 本方法在同一事务内为该批 Sale 写入 order:out 账本，保证账实一致（账本口径铁律：只记真实 onHand 变动，
      * 占货 ALLOCATION 不记、超时取消 RELEASE 不记）。

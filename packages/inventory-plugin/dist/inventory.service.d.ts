@@ -37,6 +37,17 @@ export declare class InventoryService {
      */
     applyAfterSalesRestock(ctx: RequestContext, variantId: ID, locationId: ID, quantity: number, afterSalesCode: string, orderLineId?: ID): Promise<void>;
     /**
+     * 售后退货多仓按包回补：按 orderLine 的 Allocation 记录（各仓实际发货量）将退货按比例回补到各仓。
+     * - 单仓 → 退化现有 applyAfterSalesRestock（回补该仓）
+     * - 多仓 → 最大余数法整数分配，逐仓 adjustStockForLocation 写 afterSales:in 账本
+     * - 兜底：查不到 Allocation → 回退 orderLine.customFields.stockLocationId 单仓（现状行为）
+     * @returns 各仓回补明细 [{ stockLocationId, quantity }]（供 restockJson 留痕）
+     */
+    applyAfterSalesRestockMulti(ctx: RequestContext, orderLineId: ID, quantity: number, afterSalesCode: string): Promise<Array<{
+        stockLocationId: ID;
+        quantity: number;
+    }>>;
+    /**
      * 订单发货记账：core 在 Fulfillment Created→Pending 时创建 Sale 流水（真实扣减 onHand），
      * 本方法在同一事务内为该批 Sale 写入 order:out 账本，保证账实一致（账本口径铁律：只记真实 onHand 变动，
      * 占货 ALLOCATION 不记、超时取消 RELEASE 不记）。
