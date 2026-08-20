@@ -1,7 +1,10 @@
 import { Column, Entity } from 'typeorm';
 import { DeepPartial, EntityId, ID, VendureEntity } from '@vendure/core';
 
-/** 拆单包裹（追溯底座）：一个包 = 一个出货仓的履约单元，落库拆单确认时的 SplitPackage */
+/** 包裹状态：待发货 → 已发货 → 已送达；配送取消 → 已取消（终态） */
+export type OrderPackageStatus = 'pending' | 'shipped' | 'delivered' | 'cancelled';
+
+/** 拆单包裹（追溯底座 + 状态机）：一个包 = 一个出货仓的履约单元，落库拆单确认时的 SplitPackage */
 @Entity()
 export class OrderPackage extends VendureEntity {
     constructor(input?: DeepPartial<OrderPackage>) {
@@ -24,4 +27,12 @@ export class OrderPackage extends VendureEntity {
     @EntityId({ nullable: true }) fulfillmentId: ID | null;
     /** 关联配送单 DeliveryOrder（同城配送回填） */
     @EntityId({ nullable: true }) deliveryOrderId: ID | null;
+    /** 包裹状态：待发货/已发货/已送达/配送取消 */
+    @Column({ default: 'pending' }) status: OrderPackageStatus;
+    /** 发货时间 */
+    @Column({ type: 'timestamp', nullable: true }) shippedAt: Date | null;
+    /** 送达时间 */
+    @Column({ type: 'timestamp', nullable: true }) deliveredAt: Date | null;
+    /** 取消时间 */
+    @Column({ type: 'timestamp', nullable: true }) cancelledAt: Date | null;
 }

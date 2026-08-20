@@ -12,7 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.OrderPackage = void 0;
 const typeorm_1 = require("typeorm");
 const core_1 = require("@vendure/core");
-/** 拆单包裹（追溯底座）：一个包 = 一个出货仓的履约单元，落库拆单确认时的 SplitPackage */
+/** 拆单包裹（追溯底座 + 状态机）：一个包 = 一个出货仓的履约单元，落库拆单确认时的 SplitPackage */
 let OrderPackage = class OrderPackage extends core_1.VendureEntity {
     constructor(input) {
         super(input);
@@ -51,6 +51,22 @@ __decorate([
     (0, core_1.EntityId)({ nullable: true }),
     __metadata("design:type", Object)
 ], OrderPackage.prototype, "deliveryOrderId", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ default: 'pending' }),
+    __metadata("design:type", String)
+], OrderPackage.prototype, "status", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
+    __metadata("design:type", Object)
+], OrderPackage.prototype, "shippedAt", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
+    __metadata("design:type", Object)
+], OrderPackage.prototype, "deliveredAt", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
+    __metadata("design:type", Object)
+], OrderPackage.prototype, "cancelledAt", void 0);
 exports.OrderPackage = OrderPackage = __decorate([
     (0, typeorm_1.Entity)(),
     __metadata("design:paramtypes", [Object])

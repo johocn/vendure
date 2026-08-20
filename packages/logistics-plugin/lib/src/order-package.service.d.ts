@@ -1,5 +1,5 @@
 import { ID, RequestContext, TransactionalConnection } from '@vendure/core';
-import { OrderPackage } from './order-package.entity';
+import { OrderPackage, OrderPackageStatus } from './order-package.entity';
 import { SplitLine } from './order-split-plan';
 /** 拆单确认时写入的包裹载荷（字段取自 SplitPackage） */
 export interface OrderPackageInput {
@@ -20,4 +20,6 @@ export declare class OrderPackageService {
     linkDeliveryOrder(ctx: RequestContext, orderId: ID, packageId: string, deliveryOrderId: ID): Promise<boolean>;
     /** 订单级包裹查询（按包号排序） */
     findByOrder(ctx: RequestContext, orderId: ID): Promise<OrderPackage[]>;
+    /** 状态流转：幂等（同状态返回 true）、非法流转告警忽略、未命中告警返回 false；不抛错不阻断主链路 */
+    transition(ctx: RequestContext, orderId: ID, packageId: string, toStatus: OrderPackageStatus): Promise<boolean>;
 }

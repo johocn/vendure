@@ -14,6 +14,13 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const constants_1 = require("./constants");
 const order_package_entity_1 = require("./order-package.entity");
+/** 合法流转表：终态（delivered/cancelled）不在任何源态中，天然不可回退 */
+const TRANSITIONS = {
+    pending: ['shipped', 'cancelled'],
+    shipped: ['delivered', 'cancelled'],
+    delivered: [],
+    cancelled: [],
+};
 let OrderPackageService = class OrderPackageService {
     constructor(connection) {
         this.connection = connection;
@@ -69,6 +76,32 @@ let OrderPackageService = class OrderPackageService {
             where: { orderId: orderId },
             order: { code: 'ASC' },
         });
+    }
+    /** 状态流转：幂等（同状态返回 true）、非法流转告警忽略、未命中告警返回 false；不抛错不阻断主链路 */
+    async transition(ctx, orderId, packageId, toStatus) {
+        const repo = this.connection.getRepository(ctx, order_package_entity_1.OrderPackage);
+        const pkg = await repo.findOne({ where: { orderId: orderId, code: packageId } });
+        if (!pkg) {
+            core_1.Logger.warn(`OrderPackage 未命中 order#${orderId} pkg=${packageId}，跳过状态流转 ${toStatus}`, constants_1.loggerCtx);
+            return false;
+        }
+        if (pkg.status === toStatus) {
+            return true; // 幂等
+        }
+        if (!TRANSITIONS[pkg.status].includes(toStatus)) {
+            core_1.Logger.warn(`非法包裹状态流转 ${pkg.status}->${toStatus}（order#${orderId} pkg=${packageId}），忽略`, constants_1.loggerCtx);
+            return false;
+        }
+        pkg.status = toStatus;
+        if (toStatus === 'shipped')
+            pkg.shippedAt = new Date();
+        if (toStatus === 'delivered')
+            pkg.deliveredAt = new Date();
+        if (toStatus === 'cancelled')
+            pkg.cancelledAt = new Date();
+        await repo.save(pkg);
+        core_1.Logger.info(`OrderPackage order#${orderId} pkg=${packageId} -> ${toStatus}`, constants_1.loggerCtx);
+        return true;
     }
 };
 exports.OrderPackageService = OrderPackageService;

@@ -1,5 +1,7 @@
 import { DeepPartial, ID, VendureEntity } from '@vendure/core';
-/** 拆单包裹（追溯底座）：一个包 = 一个出货仓的履约单元，落库拆单确认时的 SplitPackage */
+/** 包裹状态：待发货 → 已发货 → 已送达；配送取消 → 已取消（终态） */
+export type OrderPackageStatus = 'pending' | 'shipped' | 'delivered' | 'cancelled';
+/** 拆单包裹（追溯底座 + 状态机）：一个包 = 一个出货仓的履约单元，落库拆单确认时的 SplitPackage */
 export declare class OrderPackage extends VendureEntity {
     constructor(input?: DeepPartial<OrderPackage>);
     /** 包号，沿用现有命名 P1/P2 */
@@ -18,4 +20,12 @@ export declare class OrderPackage extends VendureEntity {
     fulfillmentId: ID | null;
     /** 关联配送单 DeliveryOrder（同城配送回填） */
     deliveryOrderId: ID | null;
+    /** 包裹状态：待发货/已发货/已送达/配送取消 */
+    status: OrderPackageStatus;
+    /** 发货时间 */
+    shippedAt: Date | null;
+    /** 送达时间 */
+    deliveredAt: Date | null;
+    /** 取消时间 */
+    cancelledAt: Date | null;
 }
