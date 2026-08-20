@@ -292,38 +292,34 @@ export class AfterSalesService {
                 ),
             );
 
-            // 库存回补：退货入库到原发货仓（仅当找到了原分配仓）
-            if (orderLine && this.inventoryService) {
-                const locationId = (orderLine.customFields as any)?.stockLocationId ?? null;
-                if (locationId != null && recoverQty > 0) {
-                    try {
-                        await this.inventoryService.applyAfterSalesRestock(
-                            txCtx,
-                            (orderLine.productVariantId as any) as ID,
-                            locationId as any,
-                            recoverQty,
-                            `AS${request.id}`,
-                            (orderLine.id as any) as ID,
-                        );
-                        Logger.info(
-                            `库存回补 loc#${locationId} qty=${recoverQty} for after-sales#${request.id}`,
-                            loggerCtx,
-                        );
-                    } catch (e: any) {
-                        // 回补失败不阻断收退货流程（仍可退款），仅告警便于运维追查
-                        Logger.error(
-                            `库存回补失败 after-sales#${request.id}: ${e?.message ?? e}`,
-                            loggerCtx,
-                        );
-                    }
-                } else if (recoverQty === 0) {
-                    Logger.warn(`after-sales#${request.id} recoverQty=0，跳过库存回补`, loggerCtx);
-                } else {
-                    Logger.warn(
-                        `after-sales#${request.id} 未找到原发货仓（orderLine.stockLocationId），跳过库存回补`,
+            // 库存回补：按各仓实际发货比例多仓按包回补（单仓退化原逻辑），落 restockJson 留痕
+            if (orderLine && this.inventoryService && recoverQty > 0) {
+                try {
+                    const restockDetail = await this.inventoryService.applyAfterSalesRestockMulti(
+                        txCtx,
+                        (orderLine.id as any) as ID,
+                        recoverQty,
+                        `AS${request.id}`,
+                    );
+                    request.restockJson = restockDetail.length ? JSON.stringify(restockDetail) : null;
+                    Logger.info(
+                        `库存回补 after-sales#${request.id}: ${JSON.stringify(restockDetail)}`,
+                        loggerCtx,
+                    );
+                } catch (e: any) {
+                    // 回补失败不阻断收退货流程（仍可退款），仅告警便于运维追查
+                    Logger.error(
+                        `库存回补失败 after-sales#${request.id}: ${e?.message ?? e}`,
                         loggerCtx,
                     );
                 }
+            } else if (recoverQty === 0) {
+                Logger.warn(`after-sales#${request.id} recoverQty=0，跳过库存回补`, loggerCtx);
+            } else {
+                Logger.warn(
+                    `after-sales#${request.id} 无订单行或 InventoryService 不可用，跳过库存回补`,
+                    loggerCtx,
+                );
             }
 
             request.state = 'Received';
