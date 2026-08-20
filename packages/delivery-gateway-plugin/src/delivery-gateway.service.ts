@@ -18,10 +18,18 @@ export class DeliveryGatewayService {
     private injector!: Injector;
     private connection!: TransactionalConnection;
     private providers = new Map<string, DeliveryProvider>();
+    /** 可选：logistics-plugin 注册的 OrderPackageLinker（OrderPackageService），用于按包回填配送单 */
+    private orderPackageLinker: { linkDeliveryOrder(ctx: any, orderId: ID, packageId: string, deliveryOrderId: ID): Promise<boolean> } | null = null;
 
     init(injector: Injector): void {
         this.injector = injector;
         this.connection = injector.get(TransactionalConnection);
+        try {
+            // 字符串 token + duck-typing：不引入对 @vendure/logistics-plugin 的编译依赖
+            this.orderPackageLinker = injector.get('OrderPackageLinker');
+        } catch {
+            this.orderPackageLinker = null;
+        }
     }
 
     registerProvider(provider: DeliveryProvider): void {
@@ -65,6 +73,14 @@ export class DeliveryGatewayService {
             fee: result.fee,
         });
         await this.connection.getRepository(ctx, DeliveryOrder).save(entity);
+        // 挂钩点3：按 orderId + packageId 回填 OrderPackage.deliveryOrderId（未命中仅告警，不阻断）
+        if (this.orderPackageLinker) {
+            try {
+                await this.orderPackageLinker.linkDeliveryOrder(ctx, input.orderId, input.packageId, entity.id);
+            } catch (e: any) {
+                Logger.warn(`OrderPackage 关联配送单失败 order#${input.orderId} pkg=${input.packageId}: ${e?.message ?? e}`, loggerCtx);
+            }
+        }
         return entity;
     }
 

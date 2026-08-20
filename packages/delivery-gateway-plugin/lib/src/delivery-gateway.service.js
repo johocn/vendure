@@ -22,10 +22,19 @@ const TRANSITIONS = {
 let DeliveryGatewayService = class DeliveryGatewayService {
     constructor() {
         this.providers = new Map();
+        /** 可选：logistics-plugin 注册的 OrderPackageLinker（OrderPackageService），用于按包回填配送单 */
+        this.orderPackageLinker = null;
     }
     init(injector) {
         this.injector = injector;
         this.connection = injector.get(core_1.TransactionalConnection);
+        try {
+            // 字符串 token + duck-typing：不引入对 @vendure/logistics-plugin 的编译依赖
+            this.orderPackageLinker = injector.get('OrderPackageLinker');
+        }
+        catch (_a) {
+            this.orderPackageLinker = null;
+        }
     }
     registerProvider(provider) {
         this.providers.set(provider.code, provider);
@@ -35,6 +44,7 @@ let DeliveryGatewayService = class DeliveryGatewayService {
         return this.providers.get(code);
     }
     async createDelivery(ctx, input) {
+        var _a;
         const provider = this.getProvider(input.providerCode);
         if (!provider) {
             throw new Error(`未注册的配送商: ${input.providerCode}`);
@@ -63,6 +73,15 @@ let DeliveryGatewayService = class DeliveryGatewayService {
             fee: result.fee,
         });
         await this.connection.getRepository(ctx, delivery_order_entity_1.DeliveryOrder).save(entity);
+        // 挂钩点3：按 orderId + packageId 回填 OrderPackage.deliveryOrderId（未命中仅告警，不阻断）
+        if (this.orderPackageLinker) {
+            try {
+                await this.orderPackageLinker.linkDeliveryOrder(ctx, input.orderId, input.packageId, entity.id);
+            }
+            catch (e) {
+                core_1.Logger.warn(`OrderPackage 关联配送单失败 order#${input.orderId} pkg=${input.packageId}: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, constants_1.loggerCtx);
+            }
+        }
         return entity;
     }
     /** 按订单查询配送单列表（新建在前） */
