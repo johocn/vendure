@@ -98,6 +98,20 @@ const adminSchema = () => gql `
     type SplitLine { orderLineId: ID!, quantity: Int! }
     type SplitPackage { packageId: String!, stockLocationId: ID!, lines: [SplitLine!]!, estimatedShippingFee: Float!, deliveryMode: String! }
     type OrderSplitPlan { orderId: ID!, packages: [SplitPackage!]! }
+
+    type OrderPackage implements Node {
+        id: ID!
+        code: String!
+        orderId: ID!
+        stockLocationId: ID!
+        lines: [SplitLine!]!
+        shippingFee: Int
+        deliveryMode: String!
+        fulfillmentId: ID
+        deliveryOrderId: ID
+        createdAt: DateTime!
+        updatedAt: DateTime!
+    }
 `;
 const shopSchema = () => gql `
     type LogisticsTrackShop {
