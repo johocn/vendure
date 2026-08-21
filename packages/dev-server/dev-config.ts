@@ -384,6 +384,13 @@ export const devConfig: VendureConfig = {
         ReviewPlugin.init(),
         WechatSubscribeMessagePlugin.init(),
         CouponPlugin.init(),
+        LiveStreamingPlugin.init({
+            pushDomain: process.env.LIVE_PUSH_DOMAIN || 'rtmp://push.test.com/live/',
+            playDomain: process.env.LIVE_PLAY_DOMAIN || 'https://play.test.com/live/',
+            liveCommissionRate: Number(process.env.LIVE_COMMISSION_RATE || 1000),
+            wsUrl: process.env.LIVE_WS_URL || 'ws://localhost:3003',
+            wsSecret: process.env.LIVE_WS_SECRET || 'dev-live-secret',
+        }),
         DeliveryPlugin.init(),
         SalesPlugin.init(),
         MarketplacePlugin.init({}),
