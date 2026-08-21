@@ -1,0 +1,22 @@
+{
+    "name": "@vendure/live-streaming-plugin",
+    "version": "0.0.1",
+    "license": "GPL-3.0-or-later",
+    "description": "Live streaming commerce: rooms, product shelf, attribution commission, replay",
+    "main": "lib/index.js",
+    "types": "lib/index.d.ts",
+    "files": ["lib/**/*"],
+    "scripts": {
+        "watch": "tsc -p ./tsconfig.json --watch",
+        "build": "rimraf lib && tsc -p ./tsconfig.json"
+    },
+    "dependencies": {},
+    "peerDependencies": {
+        "@vendure/core": "^3.6.0"
+    },
+    "devDependencies": {
+        "@vendure/core": "3.6.4",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2"
+    }
+}
