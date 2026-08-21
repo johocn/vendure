@@ -300,6 +300,7 @@ let MemberLevelPlugin = MemberLevelPlugin_1 = class MemberLevelPlugin {
 exports.MemberLevelPlugin = MemberLevelPlugin;
 MemberLevelPlugin.options = {};
 exports.MemberLevelPlugin = MemberLevelPlugin = MemberLevelPlugin_1 = __decorate([
+    (0, common_1.Global)(),
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
         entities: [member_points_history_entity_1.MemberPointsHistory, member_tier_entity_1.MemberTier],

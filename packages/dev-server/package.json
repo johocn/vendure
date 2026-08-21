@@ -30,6 +30,7 @@
         "@vendure/recharge-card-plugin": "0.0.1",
         "@vendure/after-sales-plugin": "0.0.1",
         "@vendure/member-level-plugin": "0.0.1",
+        "@vendure/checkin-plugin": "0.0.1",
         "@vendure/review-plugin": "0.0.1",
         "@vendure/wechat-subscribe-message-plugin": "0.0.1",
         "@vendure/coupon-plugin": "0.0.1"

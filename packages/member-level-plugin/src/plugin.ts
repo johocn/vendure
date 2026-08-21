@@ -1,4 +1,4 @@
-import { Inject, OnApplicationBootstrap, Type } from '@nestjs/common';
+import { Global, Inject, OnApplicationBootstrap, Type } from '@nestjs/common';
 import {
     EventBus,
     Logger,
@@ -208,6 +208,7 @@ const shopSchema = () => gql`
     }
 `;
 
+@Global()
 @VendurePlugin({
     imports: [PluginCommonModule],
     entities: [MemberPointsHistory, MemberTier],

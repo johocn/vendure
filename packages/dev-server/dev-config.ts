@@ -49,6 +49,7 @@ import { InvoicePdfPlugin } from '@vendure/invoice-pdf-plugin';
 import { RechargeCardPlugin } from '@vendure/recharge-card-plugin';
 import { AfterSalesPlugin } from '@vendure/after-sales-plugin';
 import { MemberLevelPlugin } from '@vendure/member-level-plugin';
+import { CheckinPlugin } from '@vendure/checkin-plugin';
 import { ReviewPlugin } from '@vendure/review-plugin';
 import { WechatSubscribeMessagePlugin } from '@vendure/wechat-subscribe-message-plugin';
 import { CouponPlugin } from '@vendure/coupon-plugin';
@@ -378,6 +379,7 @@ export const devConfig: VendureConfig = {
         RechargeCardPlugin.init({ defaultExpiresMonths: 12 }),
         AfterSalesPlugin.init(),
         MemberLevelPlugin.init(),
+        CheckinPlugin.init(),
         ReviewPlugin.init(),
         WechatSubscribeMessagePlugin.init(),
         CouponPlugin.init(),
