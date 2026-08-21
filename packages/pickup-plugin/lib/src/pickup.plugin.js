@@ -8,9 +8,13 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
 var PickupPlugin_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PickupPlugin = void 0;
+const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const operators_1 = require("rxjs/operators");
 const constants_1 = require("./constants");
@@ -20,6 +24,18 @@ const pickup_customer_resolver_1 = require("./pickup-customer.resolver");
 const pickup_owner_resolver_1 = require("./pickup-owner.resolver");
 const pickup_admin_resolver_1 = require("./pickup-admin.resolver");
 const { gql } = require('graphql-tag');
+/** 自提闭环所需的 Order 自定义字段（自含，避免依赖外部插件装配顺序）。 */
+const pickupOrderCustomFields = {
+    Order: [
+        { name: 'deliveryType', type: 'string', nullable: true, defaultValue: 'delivery', public: true },
+        { name: 'pickupClaimed', type: 'boolean', nullable: true, public: true },
+    ],
+};
+/** 幂等合并 Order 自定义字段（avoid duplicate definition on re-run). */
+function mergeOrderCustomFields(existing, additions) {
+    const names = new Set((existing !== null && existing !== void 0 ? existing : []).map(f => f.name));
+    return [...(existing !== null && existing !== void 0 ? existing : []), ...(additions !== null && additions !== void 0 ? additions : []).filter(f => !names.has(f.name))];
+}
 const adminSchema = gql `
     type PickupRedemption {
         id: ID!
@@ -47,6 +63,15 @@ const adminSchema = gql `
     }
     `;
 const shopSchema = gql `
+    type PickupRedemption {
+        id: ID!
+        orderId: ID!
+        orderCode: String
+        code: String!
+        status: String!
+        claimedAt: DateTime
+        claimChannel: String
+    }
     extend type Query {
         myPickupCode(orderId: ID!): PickupRedemption!
     }
@@ -55,12 +80,14 @@ const shopSchema = gql `
     }
     `;
 let PickupPlugin = PickupPlugin_1 = class PickupPlugin {
-    constructor(service, eventBus) {
+    constructor(options, service, eventBus) {
+        this.options = options;
         this.service = service;
         this.eventBus = eventBus;
     }
     static init(options) {
-        return { module: PickupPlugin_1, providers: [{ provide: constants_1.PICKUP_PLUGIN_OPTIONS, useValue: options }] };
+        PickupPlugin_1.options = options !== null && options !== void 0 ? options : {};
+        return PickupPlugin_1;
     }
     onApplicationBootstrap() {
         this.eventBus
@@ -76,10 +103,14 @@ let PickupPlugin = PickupPlugin_1 = class PickupPlugin {
     }
 };
 exports.PickupPlugin = PickupPlugin;
+PickupPlugin.options = {};
 exports.PickupPlugin = PickupPlugin = PickupPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        providers: [pickup_service_1.PickupService],
+        providers: [
+            { provide: constants_1.PICKUP_PLUGIN_OPTIONS, useFactory: () => PickupPlugin.options },
+            pickup_service_1.PickupService,
+        ],
         entities: [pickup_redemption_entity_1.PickupRedemption],
         adminApiExtensions: {
             schema: adminSchema,
@@ -89,7 +120,14 @@ exports.PickupPlugin = PickupPlugin = PickupPlugin_1 = __decorate([
             schema: shopSchema,
             resolvers: [pickup_customer_resolver_1.PickupCustomerResolver],
         },
+        configuration: (config) => {
+            // 注册 Order 自定义字段：deliveryType（履约方式）+ pickupClaimed（自提已核销）
+            config.customFields.Order = mergeOrderCustomFields(config.customFields.Order, pickupOrderCustomFields.Order);
+            return config;
+        },
     }),
-    __metadata("design:paramtypes", [pickup_service_1.PickupService, core_1.EventBus])
+    __param(0, (0, common_1.Inject)(constants_1.PICKUP_PLUGIN_OPTIONS)),
+    __metadata("design:paramtypes", [Object, pickup_service_1.PickupService,
+        core_1.EventBus])
 ], PickupPlugin);
 //# sourceMappingURL=pickup.plugin.js.map

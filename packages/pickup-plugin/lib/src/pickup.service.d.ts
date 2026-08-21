@@ -14,6 +14,11 @@ export declare class PickupService {
     requireMyOrder(ctx: RequestContext, orderId: ID): Promise<Order>;
     requireMyShop(ctx: RequestContext): Promise<Shop>;
     private isPickupPaid;
+    /**
+     * 店归属强校验：被核销订单主商品的 Product.customFields.shopId 归店（与 settlement-plugin 阶段24
+     * 按店拆账同一判据）。订单任一行商品归属本店即视为本店单，否则不归属。
+     */
+    private orderBelongsToShop;
     /** 懒生成/取回固定提货码（幂等：一生对一单）。 */
     resolveMyPickupCode(ctx: RequestContext, orderId: ID): Promise<PickupRedemption>;
     private getOrCreateRedemption;
@@ -21,7 +26,7 @@ export declare class PickupService {
     private findGeneratable;
     /** 顾客自核销。 */
     claimMyPickup(ctx: RequestContext, orderId: ID, code: string): Promise<PickupRedemption>;
-    /** 店员核销（本店订单）。 */
+    /** 店员核销（仅本店订单，跨店抛 Forbidden）。 */
     claimPickupByShop(ctx: RequestContext, code: string): Promise<PickupRedemption>;
     private commitRedeem;
     onOrderCancelled(orderId: number): Promise<void>;

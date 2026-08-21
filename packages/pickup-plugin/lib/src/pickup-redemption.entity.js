@@ -20,7 +20,7 @@ let PickupRedemption = class PickupRedemption extends core_1.VendureEntity {
 exports.PickupRedemption = PickupRedemption;
 __decorate([
     (0, typeorm_1.Index)(),
-    (0, typeorm_1.Column)(),
+    (0, typeorm_1.Column)({ type: 'int' }),
     __metadata("design:type", Number)
 ], PickupRedemption.prototype, "channelId", void 0);
 __decorate([
@@ -30,16 +30,16 @@ __decorate([
 ], PickupRedemption.prototype, "channels", void 0);
 __decorate([
     (0, typeorm_1.Index)({ unique: true }),
-    (0, typeorm_1.Column)(),
+    (0, typeorm_1.Column)({ type: 'int' }),
     __metadata("design:type", Number)
 ], PickupRedemption.prototype, "orderId", void 0);
 __decorate([
     (0, typeorm_1.Index)({ unique: true }),
-    (0, typeorm_1.Column)(),
+    (0, typeorm_1.Column)({ type: 'varchar' }),
     __metadata("design:type", String)
 ], PickupRedemption.prototype, "code", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ default: 'generated' }),
+    (0, typeorm_1.Column)({ type: 'varchar', default: 'generated' }),
     __metadata("design:type", String)
 ], PickupRedemption.prototype, "status", void 0);
 __decorate([
