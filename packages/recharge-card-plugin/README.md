@@ -23,6 +23,15 @@
 - **下单**：前端先 `createRechargeOrder(amount)` 建单，再用 `order.id` 发起网关支付。
 - **取消**：未支付前可 `cancelRechargeOrder`。
 
+## 在线充值（微信支付网关，Phase 34）
+
+前置：根 `plugins` 数组需同时注册 `RechargeCardPlugin.init()` 与 `WechatpayPlugin.init({...})`。recharge 插件**不** import 网关模块，而是在 bootstrap 用 `ModuleRef` + `new Injector(...)` + try/catch 可选取到 `WechatpayService` / `WechatpaySettlementRegistry`（未注册网关时充值支付提示「Payment gateway not configured」，卡密/余额功能不受影响）。
+
+- **建支付**：`createWechatRechargePayment(rechargeOrderId, tradeType?, openid?)`，仅本人 **pending** 单可建；回写 `paymentMethod='wechatpay'` + `externalRef`（`RC-<id>`），返回 `{ rechargeOrderId, outTradeNo, pay }` 支付参数（JSAPI 需传 `openid`）。
+- **入账**：微信回调落到网关 → 按 `out_trade_no` 前缀 `RC-` 命中结算注册表 → `settleRechargeOrderByOutTradeNo` 原子 `pending → paid` + 记 `RECHARGE` 流水 + 余额到账（admin ctx 无 activeUser，用单归属 `customerId` 显式入账）。
+- **幂等**：重复回调/重复结算被 `UPDATE ... WHERE status='pending'` 拦截，余额不重复增加。
+- **越权**：他人单 / 已支付单再次建支付被拒。
+
 ## 测试
 
 ```powershell
