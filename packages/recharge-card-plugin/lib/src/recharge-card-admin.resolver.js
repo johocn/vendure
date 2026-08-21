@@ -35,6 +35,22 @@ let RechargeCardAdminResolver = class RechargeCardAdminResolver {
     async unfreezeRechargeCard(ctx, id) {
         return this.rechargeCardService.unfreezeCard(ctx, id);
     }
+    async customerBalances(ctx, options) {
+        return this.rechargeCardService.customerBalances(ctx, options);
+    }
+    async customerBalanceTransactions(ctx, customerId, options) {
+        return this.rechargeCardService.customerBalanceTransactions(ctx, customerId, options);
+    }
+    async adminAdjustBalance(ctx, input) {
+        const newBalance = await this.rechargeCardService.adminAdjustBalance(ctx, input);
+        return {
+            id: input.customerId,
+            customerId: input.customerId,
+            channelId: ctx.channelId,
+            balance: newBalance,
+            frozenBalance: 0,
+        };
+    }
 };
 exports.RechargeCardAdminResolver = RechargeCardAdminResolver;
 __decorate([
@@ -82,6 +98,34 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Number]),
     __metadata("design:returntype", Promise)
 ], RechargeCardAdminResolver.prototype, "unfreezeRechargeCard", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.ReadSettings),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], RechargeCardAdminResolver.prototype, "customerBalances", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.ReadSettings),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('customerId')),
+    __param(2, (0, graphql_1.Args)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Number, Object]),
+    __metadata("design:returntype", Promise)
+], RechargeCardAdminResolver.prototype, "customerBalanceTransactions", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateSettings),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('input')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], RechargeCardAdminResolver.prototype, "adminAdjustBalance", null);
 exports.RechargeCardAdminResolver = RechargeCardAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [recharge_card_service_1.RechargeCardService])

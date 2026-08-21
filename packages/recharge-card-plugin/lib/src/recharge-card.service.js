@@ -21,6 +21,7 @@ const recharge_card_entity_1 = require("./recharge-card.entity");
 const recharge_card_batch_entity_1 = require("./recharge-card-batch.entity");
 const customer_balance_entity_1 = require("./customer-balance.entity");
 const balance_transaction_entity_1 = require("./balance-transaction.entity");
+const recharge_order_entity_1 = require("./recharge-order.entity");
 const SCRYPT_KEYLEN = 64;
 function scryptDerive(password, salt) {
     return new Promise((resolve, reject) => {
@@ -57,13 +58,32 @@ let RechargeCardService = class RechargeCardService {
         this.customerService = customerService;
     }
     // ===== Balance Operations =====
-    async getBalance(ctx) {
+    /**
+     * Unifies the customer identity across all balance entry points.
+     * Given an explicit `customerId`, returns it directly. Otherwise resolves
+     * the Customer.id from the active session's User.id via customerService.
+     * This fixes the prior mix of User.id (consumption/recharge) and
+     * Customer.id (refund) keys that fragmented a single account's balance.
+     */
+    async resolveCustomerId(ctx, customerId) {
+        if (customerId !== undefined && customerId !== null) {
+            return Number(customerId);
+        }
+        if (!ctx.activeUserId) {
+            throw new core_1.UserInputError('Must be logged in');
+        }
+        const customer = await this.customerService.findOneByUserId(ctx, ctx.activeUserId);
+        if (!customer) {
+            throw new core_1.UserInputError('Customer not found');
+        }
+        return Number(customer.id);
+    }
+    async getBalance(ctx, customerId) {
         var _a;
-        if (!ctx.activeUserId)
-            return 0;
+        const cid = await this.resolveCustomerId(ctx, customerId);
         const repo = this.connection.getRepository(ctx, customer_balance_entity_1.CustomerBalance);
         const record = await repo.findOne({
-            where: { customerId: ctx.activeUserId, channelId: ctx.channelId },
+            where: { customerId: cid, channelId: ctx.channelId },
         });
         return (_a = record === null || record === void 0 ? void 0 : record.balance) !== null && _a !== void 0 ? _a : 0;
     }
@@ -105,11 +125,88 @@ let RechargeCardService = class RechargeCardService {
             throw e;
         }
     }
+    // ===== Recharge Order Operations (Phase 33) =====
+    async createRechargeOrder(ctx, amount, remark) {
+        const cid = await this.resolveCustomerId(ctx);
+        const amt = Math.floor(amount);
+        if (!Number.isFinite(amt) || amt <= 0) {
+            throw new core_1.UserInputError('Invalid amount');
+        }
+        const repo = this.connection.getRepository(ctx, recharge_order_entity_1.RechargeOrder);
+        const order = new recharge_order_entity_1.RechargeOrder({
+            customerId: cid,
+            amount: amt,
+            status: 'pending',
+            paymentMethod: null,
+            paidAt: null,
+            remark: remark || null,
+        });
+        order.channelId = ctx.channelId;
+        order.channel = ctx.channel;
+        return repo.save(order);
+    }
+    async payRechargeOrder(ctx, id) {
+        const cid = await this.resolveCustomerId(ctx);
+        const repo = this.connection.getRepository(ctx, recharge_order_entity_1.RechargeOrder);
+        const order = await repo.findOne({
+            where: { id: id, customerId: cid, channelId: ctx.channelId },
+        });
+        if (!order) {
+            throw new core_1.UserInputError('Recharge order not found');
+        }
+        if (order.status !== 'pending') {
+            // 幂等：重复 pay 直接返回当前状态，不重复入账
+            return order;
+        }
+        await this.connection.startTransaction(ctx);
+        try {
+            // 幂等：按 id 判重（防止网关回调并发重复入账）
+            const claim = await repo.createQueryBuilder()
+                .update(recharge_order_entity_1.RechargeOrder)
+                .set({ status: 'paid', paidAt: new Date() })
+                .where('id = :id AND status = :status', { id: order.id, status: 'pending' })
+                .execute();
+            if (claim.affected === 0) {
+                throw new core_1.UserInputError(`Recharge order is already ${order.status}`);
+            }
+            await this.applyBalanceChange(ctx, cid, order.amount, balance_transaction_entity_1.BalanceTransactionType.RECHARGE, {
+                remark: `Recharge order #${order.id}`,
+            });
+            await this.connection.commitOpenTransaction(ctx);
+        }
+        catch (e) {
+            await this.connection.rollBackTransaction(ctx);
+            throw e;
+        }
+        order.status = 'paid';
+        order.paidAt = new Date();
+        return order;
+    }
+    async cancelRechargeOrder(ctx, id) {
+        const cid = await this.resolveCustomerId(ctx);
+        const repo = this.connection.getRepository(ctx, recharge_order_entity_1.RechargeOrder);
+        const order = await repo.findOne({
+            where: { id: id, customerId: cid, channelId: ctx.channelId },
+        });
+        if (!order) {
+            throw new core_1.UserInputError('Recharge order not found');
+        }
+        if (order.status !== 'pending') {
+            throw new core_1.UserInputError(`Recharge order is already ${order.status}`);
+        }
+        order.status = 'cancelled';
+        return repo.save(order);
+    }
+    async findMyRechargeOrders(ctx) {
+        const cid = await this.resolveCustomerId(ctx);
+        return this.connection.getRepository(ctx, recharge_order_entity_1.RechargeOrder).find({
+            where: { customerId: cid, channelId: ctx.channelId },
+            order: { createdAt: 'DESC' },
+        });
+    }
     // ===== Card Operations =====
     async redeemCard(ctx, code, pin) {
-        if (!ctx.activeUserId) {
-            throw new core_1.UserInputError('Must be logged in to redeem a recharge card');
-        }
+        const cid = await this.resolveCustomerId(ctx);
         const repo = this.connection.getRepository(ctx, recharge_card_entity_1.RechargeCard);
         const card = await repo.findOne({ where: { code } });
         if (!card) {
@@ -146,7 +243,7 @@ let RechargeCardService = class RechargeCardService {
                 .update(recharge_card_entity_1.RechargeCard)
                 .set({
                 state: 'used',
-                redeemedByCustomerId: ctx.activeUserId,
+                redeemedByCustomerId: cid,
                 redeemedAt: new Date(),
             })
                 .where('id = :id AND state = :state', { id: card.id, state: 'unused' })
@@ -155,7 +252,7 @@ let RechargeCardService = class RechargeCardService {
                 throw new core_1.UserInputError(`Card is already ${card.state}`);
             }
             // Credit balance + record transaction within the same transaction
-            await this.applyBalanceChange(ctx, ctx.activeUserId, card.faceValue, balance_transaction_entity_1.BalanceTransactionType.RECHARGE, {
+            await this.applyBalanceChange(ctx, cid, card.faceValue, balance_transaction_entity_1.BalanceTransactionType.RECHARGE, {
                 rechargeCardId: card.id,
             });
             await this.connection.commitOpenTransaction(ctx);
@@ -164,16 +261,15 @@ let RechargeCardService = class RechargeCardService {
             await this.connection.rollBackTransaction(ctx);
             throw e;
         }
-        core_1.Logger.info(`Card ${code} redeemed by customer ${ctx.activeUserId}, added ${card.faceValue} to balance`, constants_1.loggerCtx);
+        core_1.Logger.info(`Card ${code} redeemed by customer ${cid}, added ${card.faceValue} to balance`, constants_1.loggerCtx);
         card.state = 'used';
         return card;
     }
     async findMyCards(ctx) {
-        if (!ctx.activeUserId)
-            return [];
+        const cid = await this.resolveCustomerId(ctx);
         const repo = this.connection.getRepository(ctx, recharge_card_entity_1.RechargeCard);
         return repo.find({
-            where: { redeemedByCustomerId: ctx.activeUserId },
+            where: { redeemedByCustomerId: cid },
             order: { createdAt: 'DESC' },
         });
     }
@@ -306,6 +402,7 @@ let RechargeCardService = class RechargeCardService {
         const balanceBefore = balanceAfter - delta;
         await this.connection.getRepository(ctx, balance_transaction_entity_1.BalanceTransaction).save(new balance_transaction_entity_1.BalanceTransaction({
             customerId: cid,
+            channelId: chid,
             type,
             amount: delta,
             balanceBefore,
@@ -316,6 +413,74 @@ let RechargeCardService = class RechargeCardService {
             remark: (_b = meta.remark) !== null && _b !== void 0 ? _b : null,
         }));
         return balanceAfter;
+    }
+    // ===== Balance Wallet (Phase 33) =====
+    async adminAdjustBalance(ctx, input) {
+        var _a;
+        const amt = Math.floor(input.amount);
+        if (!Number.isFinite(amt) || amt === 0) {
+            throw new core_1.UserInputError('Invalid amount');
+        }
+        const targetCustomerId = Number(input.customerId);
+        await this.connection.startTransaction(ctx);
+        try {
+            const result = await this.applyBalanceChange(ctx, targetCustomerId, amt, input.type, {
+                remark: (_a = input.remark) !== null && _a !== void 0 ? _a : null,
+            });
+            await this.connection.commitOpenTransaction(ctx);
+            return result;
+        }
+        catch (e) {
+            await this.connection.rollBackTransaction(ctx);
+            throw e;
+        }
+    }
+    async myBalanceTransactions(ctx, options) {
+        const cid = await this.resolveCustomerId(ctx);
+        return this.listQueryBuilder
+            .build(balance_transaction_entity_1.BalanceTransaction, options, { ctx })
+            .andWhere(`BalanceTransaction.customerId = :cid`, { cid })
+            .andWhere(`BalanceTransaction.channelId = :chid`, { chid: ctx.channelId })
+            .getManyAndCount()
+            .then(([items, totalItems]) => ({ items, totalItems }));
+    }
+    async customerBalances(ctx, options) {
+        return this.listQueryBuilder
+            .build(customer_balance_entity_1.CustomerBalance, options, { ctx })
+            .andWhere(`CustomerBalance.channelId = :chid`, { chid: ctx.channelId })
+            .getManyAndCount()
+            .then(([items, totalItems]) => ({ items, totalItems }));
+    }
+    async customerBalanceTransactions(ctx, customerId, options) {
+        const cid = Number(customerId);
+        return this.listQueryBuilder
+            .build(balance_transaction_entity_1.BalanceTransaction, options, { ctx })
+            .andWhere(`BalanceTransaction.customerId = :cid`, { cid })
+            .andWhere(`BalanceTransaction.channelId = :chid`, { chid: ctx.channelId })
+            .getManyAndCount()
+            .then(([items, totalItems]) => ({ items, totalItems }));
+    }
+    async isRechargeOrderPaid(ctx, id) {
+        const repo = this.connection.getRepository(ctx, recharge_order_entity_1.RechargeOrder);
+        const order = await repo.findOne({ where: { id: id, channelId: ctx.channelId } });
+        return !!order && order.status === 'paid';
+    }
+    // ===== Balance Payment Enhancement =====
+    /** 该订单是否已用余额 `balance-pay` 扣过款（Authorization 防重复扣减用） */
+    async isOrderBalancePaid(ctx, orderId) {
+        const repo = this.connection.getRepository(ctx, balance_transaction_entity_1.BalanceTransaction);
+        const tx = await repo.findOne({
+            where: { orderId: orderId, type: balance_transaction_entity_1.BalanceTransactionType.CONSUME },
+        });
+        return !!tx;
+    }
+    /** 该订单通过余额累计划扣的金额（分）；createRefund 上限依据 */
+    async getOrderBalanceConsumed(ctx, orderId) {
+        const repo = this.connection.getRepository(ctx, balance_transaction_entity_1.BalanceTransaction);
+        const rows = await repo.find({
+            where: { orderId: orderId, type: balance_transaction_entity_1.BalanceTransactionType.CONSUME },
+        });
+        return rows.reduce((sum, r) => sum + Math.abs(r.amount), 0);
     }
 };
 exports.RechargeCardService = RechargeCardService;

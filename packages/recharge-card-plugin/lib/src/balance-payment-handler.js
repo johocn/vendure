@@ -30,7 +30,16 @@ exports.balancePaymentHandler = new core_1.PaymentMethodHandler({
             if (!ctx.activeUserId) {
                 return { amount, state: 'Declined', errorMessage: 'Not logged in', metadata: {} };
             }
-            const remainingBalance = await rechargeService.deductBalance(ctx, ctx.activeUserId, amount, order.id);
+            const orderWithCustomer = await orderService.findOne(ctx, order.id);
+            if (!(orderWithCustomer === null || orderWithCustomer === void 0 ? void 0 : orderWithCustomer.customer)) {
+                return { amount, state: 'Declined', errorMessage: 'Cannot identify customer', metadata: {} };
+            }
+            // 防重复扣减：该订单已有余额 CONSUME 记录则拒绝
+            const alreadyPaid = await rechargeService.isOrderBalancePaid(ctx, order.id);
+            if (alreadyPaid) {
+                return { amount, state: 'Declined', errorMessage: 'Order already paid by balance', metadata: {} };
+            }
+            const remainingBalance = await rechargeService.deductBalance(ctx, String(orderWithCustomer.customer.id), amount, order.id);
             return {
                 amount,
                 state: 'Settled',
@@ -54,6 +63,11 @@ exports.balancePaymentHandler = new core_1.PaymentMethodHandler({
             const orderWithCustomer = await orderService.findOne(ctx, order.id);
             if (!(orderWithCustomer === null || orderWithCustomer === void 0 ? void 0 : orderWithCustomer.customer)) {
                 return { state: 'Failed', metadata: { errorMessage: 'Cannot refund: order has no customer' } };
+            }
+            // 退款不超该单余额消费额
+            const consumed = await rechargeService.getOrderBalanceConsumed(ctx, order.id);
+            if (amount > consumed) {
+                return { state: 'Failed', metadata: { errorMessage: 'Refund exceeds order balance payment' } };
             }
             const newBalance = await rechargeService.addBalance(ctx, String(orderWithCustomer.customer.id), amount, order.id, payment.id);
             core_1.Logger.info(`Balance refund: added ${amount} back to customer ${orderWithCustomer.customer.id}`, constants_1.loggerCtx);

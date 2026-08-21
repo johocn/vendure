@@ -21,7 +21,9 @@ const recharge_card_entity_1 = require("./recharge-card.entity");
 const recharge_card_batch_entity_1 = require("./recharge-card-batch.entity");
 const customer_balance_entity_1 = require("./customer-balance.entity");
 const balance_transaction_entity_1 = require("./balance-transaction.entity");
+const recharge_order_entity_1 = require("./recharge-order.entity");
 const recharge_card_service_1 = require("./recharge-card.service");
+const recharge_order_resolver_1 = require("./recharge-order.resolver");
 const balance_payment_handler_1 = require("./balance-payment-handler");
 const recharge_card_shop_resolver_1 = require("./recharge-card-shop.resolver");
 const recharge_card_admin_resolver_1 = require("./recharge-card-admin.resolver");
@@ -47,7 +49,7 @@ RechargeCardPlugin.options = {};
 exports.RechargeCardPlugin = RechargeCardPlugin = RechargeCardPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [recharge_card_entity_1.RechargeCard, recharge_card_batch_entity_1.RechargeCardBatch, customer_balance_entity_1.CustomerBalance, balance_transaction_entity_1.BalanceTransaction],
+        entities: [recharge_card_entity_1.RechargeCard, recharge_card_batch_entity_1.RechargeCardBatch, customer_balance_entity_1.CustomerBalance, balance_transaction_entity_1.BalanceTransaction, recharge_order_entity_1.RechargeOrder],
         providers: [
             { provide: constants_1.RECHARGE_CARD_PLUGIN_OPTIONS, useFactory: () => RechargeCardPlugin.options },
             recharge_card_service_1.RechargeCardService,
@@ -70,16 +72,54 @@ exports.RechargeCardPlugin = RechargeCardPlugin = RechargeCardPlugin_1 = __decor
                 createdAt: DateTime!
             }
 
+            type RechargeOrderItem {
+                id: ID!
+                customerId: Int!
+                amount: Int!
+                status: String!
+                paymentMethod: String
+                paidAt: DateTime
+                remark: String
+                createdAt: DateTime!
+            }
+
+            type BalanceTransactionItem implements Node {
+                id: ID!
+                customerId: Int!
+                type: String!
+                amount: Int!
+                balanceBefore: Int!
+                balanceAfter: Int!
+                orderId: ID
+                remark: String
+                createdAt: DateTime!
+            }
+
+            type BalanceTransactionList implements PaginatedList {
+                items: [BalanceTransactionItem!]!
+                totalItems: Int!
+            }
+
+            input RechargeCardListOptions {
+                skip: Int
+                take: Int
+            }
+
             extend type Query {
                 myRechargeBalance: Int!
                 myRechargeHistory: [RechargeCard!]!
+                myRechargeOrders: [RechargeOrderItem!]!
+                myBalanceTransactions(options: RechargeCardListOptions): BalanceTransactionList!
             }
 
             extend type Mutation {
                 redeemRechargeCard(code: String!, pin: String): RechargeResult!
+                createRechargeOrder(amount: Int!, remark: String): RechargeOrderItem!
+                payRechargeOrder(id: ID!): RechargeOrderItem!
+                cancelRechargeOrder(id: ID!): RechargeOrderItem!
             }
         `,
-            resolvers: [recharge_card_shop_resolver_1.RechargeCardShopResolver],
+            resolvers: [recharge_card_shop_resolver_1.RechargeCardShopResolver, recharge_order_resolver_1.RechargeOrderResolver],
         },
         adminApiExtensions: {
             schema: () => gql `
@@ -94,6 +134,11 @@ exports.RechargeCardPlugin = RechargeCardPlugin = RechargeCardPlugin_1 = __decor
                 createdAt: DateTime!
             }
 
+            type RechargeCardPinOutput {
+                code: String!
+                pin: String!
+            }
+
             type RechargeCardBatchAdmin implements Node {
                 id: ID!
                 name: String!
@@ -103,6 +148,7 @@ exports.RechargeCardPlugin = RechargeCardPlugin = RechargeCardPlugin_1 = __decor
                 generatedCount: Int!
                 expiresAt: DateTime
                 createdAt: DateTime!
+                plaintextPins: [RechargeCardPinOutput!]
             }
 
             type RechargeCardAdminList implements PaginatedList {
@@ -134,15 +180,57 @@ exports.RechargeCardPlugin = RechargeCardPlugin = RechargeCardPlugin_1 = __decor
                 take: Int
             }
 
+            type CustomerBalanceItem implements Node {
+                id: ID!
+                customerId: Int!
+                channelId: Int!
+                balance: Int!
+                frozenBalance: Int!
+            }
+
+            type CustomerBalanceList implements PaginatedList {
+                items: [CustomerBalanceItem!]!
+                totalItems: Int!
+            }
+
+            type BalanceTransactionItemAdmin implements Node {
+                id: ID!
+                customerId: Int!
+                type: String!
+                amount: Int!
+                balanceBefore: Int!
+                balanceAfter: Int!
+                orderId: ID
+                paymentId: ID
+                rechargeCardId: ID
+                remark: String
+                createdAt: DateTime!
+            }
+
+            type BalanceTransactionListAdmin implements PaginatedList {
+                items: [BalanceTransactionItemAdmin!]!
+                totalItems: Int!
+            }
+
+            input AdminAdjustBalanceInput {
+                customerId: ID!
+                amount: Int!
+                type: String!
+                remark: String
+            }
+
             extend type Query {
                 rechargeCards(options: RechargeCardListOptions): RechargeCardAdminList!
                 rechargeCardBatches(options: RechargeCardBatchListOptions): RechargeCardBatchAdminList!
+                customerBalances(options: RechargeCardListOptions): CustomerBalanceList!
+                customerBalanceTransactions(customerId: ID!, options: RechargeCardListOptions): BalanceTransactionListAdmin!
             }
 
             extend type Mutation {
                 createRechargeCardBatch(input: CreateRechargeBatchInput!): RechargeCardBatchAdmin!
                 freezeRechargeCard(id: ID!): RechargeCardAdmin!
                 unfreezeRechargeCard(id: ID!): RechargeCardAdmin!
+                adminAdjustBalance(input: AdminAdjustBalanceInput!): CustomerBalanceItem!
             }
         `,
             resolvers: [recharge_card_admin_resolver_1.RechargeCardAdminResolver],

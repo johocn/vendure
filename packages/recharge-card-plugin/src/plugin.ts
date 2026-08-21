@@ -7,7 +7,9 @@ import { RechargeCard } from './recharge-card.entity';
 import { RechargeCardBatch } from './recharge-card-batch.entity';
 import { CustomerBalance } from './customer-balance.entity';
 import { BalanceTransaction } from './balance-transaction.entity';
+import { RechargeOrder } from './recharge-order.entity';
 import { RechargeCardService } from './recharge-card.service';
+import { RechargeOrderResolver } from './recharge-order.resolver';
 import { balancePaymentHandler, setOrderService, setRechargeService } from './balance-payment-handler';
 import { RechargeCardShopResolver } from './recharge-card-shop.resolver';
 import { RechargeCardAdminResolver } from './recharge-card-admin.resolver';
@@ -50,7 +52,7 @@ const { gql } = require('graphql-tag');
                 createdAt: DateTime!
             }
 
-            type BalanceTransactionItem {
+            type BalanceTransactionItem implements Node {
                 id: ID!
                 customerId: Int!
                 type: String!
@@ -101,6 +103,11 @@ const { gql } = require('graphql-tag');
                 createdAt: DateTime!
             }
 
+            type RechargeCardPinOutput {
+                code: String!
+                pin: String!
+            }
+
             type RechargeCardBatchAdmin implements Node {
                 id: ID!
                 name: String!
@@ -110,6 +117,7 @@ const { gql } = require('graphql-tag');
                 generatedCount: Int!
                 expiresAt: DateTime
                 createdAt: DateTime!
+                plaintextPins: [RechargeCardPinOutput!]
             }
 
             type RechargeCardAdminList implements PaginatedList {
@@ -141,7 +149,7 @@ const { gql } = require('graphql-tag');
                 take: Int
             }
 
-            type CustomerBalanceItem {
+            type CustomerBalanceItem implements Node {
                 id: ID!
                 customerId: Int!
                 channelId: Int!
@@ -154,7 +162,7 @@ const { gql } = require('graphql-tag');
                 totalItems: Int!
             }
 
-            type BalanceTransactionItemAdmin {
+            type BalanceTransactionItemAdmin implements Node {
                 id: ID!
                 customerId: Int!
                 type: String!

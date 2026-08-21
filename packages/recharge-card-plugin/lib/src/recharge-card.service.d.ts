@@ -1,15 +1,29 @@
 import { CustomerService, ID, ListQueryBuilder, ListQueryOptions, PaginatedList, RequestContext, TransactionalConnection } from '@vendure/core';
 import { RechargeCard } from './recharge-card.entity';
 import { RechargeCardBatch } from './recharge-card-batch.entity';
-import { BalanceTransactionType } from './balance-transaction.entity';
+import { CustomerBalance } from './customer-balance.entity';
+import { BalanceTransaction, BalanceTransactionType } from './balance-transaction.entity';
+import { RechargeOrder } from './recharge-order.entity';
 export declare class RechargeCardService {
     private connection;
     private listQueryBuilder;
     private customerService;
     constructor(connection: TransactionalConnection, listQueryBuilder: ListQueryBuilder, customerService: CustomerService);
-    getBalance(ctx: RequestContext): Promise<number>;
+    /**
+     * Unifies the customer identity across all balance entry points.
+     * Given an explicit `customerId`, returns it directly. Otherwise resolves
+     * the Customer.id from the active session's User.id via customerService.
+     * This fixes the prior mix of User.id (consumption/recharge) and
+     * Customer.id (refund) keys that fragmented a single account's balance.
+     */
+    private resolveCustomerId;
+    getBalance(ctx: RequestContext, customerId?: any): Promise<number>;
     addBalance(ctx: RequestContext, customerId: any, amount: number, orderId?: ID | null, paymentId?: ID | null, type?: BalanceTransactionType): Promise<number>;
     deductBalance(ctx: RequestContext, customerId: any, amount: number, orderId?: ID | null, paymentId?: ID | null): Promise<number>;
+    createRechargeOrder(ctx: RequestContext, amount: number, remark?: string): Promise<RechargeOrder>;
+    payRechargeOrder(ctx: RequestContext, id: ID): Promise<RechargeOrder>;
+    cancelRechargeOrder(ctx: RequestContext, id: ID): Promise<RechargeOrder>;
+    findMyRechargeOrders(ctx: RequestContext): Promise<RechargeOrder[]>;
     redeemCard(ctx: RequestContext, code: string, pin?: string): Promise<RechargeCard>;
     findMyCards(ctx: RequestContext): Promise<RechargeCard[]>;
     findAll(ctx: RequestContext, options?: ListQueryOptions<RechargeCard>): Promise<PaginatedList<RechargeCard>>;
@@ -30,4 +44,18 @@ export declare class RechargeCardService {
      * Returns the balance after the change.
      */
     private applyBalanceChange;
+    adminAdjustBalance(ctx: RequestContext, input: {
+        customerId: ID;
+        amount: number;
+        type: BalanceTransactionType;
+        remark?: string;
+    }): Promise<number>;
+    myBalanceTransactions(ctx: RequestContext, options?: ListQueryOptions<BalanceTransaction>): Promise<PaginatedList<BalanceTransaction>>;
+    customerBalances(ctx: RequestContext, options?: ListQueryOptions<CustomerBalance>): Promise<PaginatedList<CustomerBalance>>;
+    customerBalanceTransactions(ctx: RequestContext, customerId: ID, options?: ListQueryOptions<BalanceTransaction>): Promise<PaginatedList<BalanceTransaction>>;
+    isRechargeOrderPaid(ctx: RequestContext, id: ID): Promise<boolean>;
+    /** 该订单是否已用余额 `balance-pay` 扣过款（Authorization 防重复扣减用） */
+    isOrderBalancePaid(ctx: RequestContext, orderId: ID): Promise<boolean>;
+    /** 该订单通过余额累计划扣的金额（分）；createRefund 上限依据 */
+    getOrderBalanceConsumed(ctx: RequestContext, orderId: ID): Promise<number>;
 }

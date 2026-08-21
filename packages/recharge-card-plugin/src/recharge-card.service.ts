@@ -82,7 +82,7 @@ export class RechargeCardService {
         if (!customer) {
             throw new UserInputError('Customer not found');
         }
-        return customer.id;
+        return Number(customer.id);
     }
 
     async getBalance(ctx: RequestContext, customerId?: any): Promise<number> {
@@ -177,7 +177,8 @@ export class RechargeCardService {
             throw new UserInputError('Recharge order not found');
         }
         if (order.status !== 'pending') {
-            throw new UserInputError(`Recharge order is already ${order.status}`);
+            // 幂等：重复 pay 直接返回当前状态，不重复入账
+            return order;
         }
         await this.connection.startTransaction(ctx);
         try {
@@ -449,6 +450,7 @@ export class RechargeCardService {
 
         await this.connection.getRepository(ctx, BalanceTransaction).save(new BalanceTransaction({
             customerId: cid,
+            channelId: chid,
             type,
             amount: delta,
             balanceBefore,
@@ -491,15 +493,17 @@ export class RechargeCardService {
     async myBalanceTransactions(ctx: RequestContext, options?: ListQueryOptions<BalanceTransaction>): Promise<PaginatedList<BalanceTransaction>> {
         const cid = await this.resolveCustomerId(ctx);
         return this.listQueryBuilder
-            .build(BalanceTransaction, options, { ctx, channelId: ctx.channelId })
+            .build(BalanceTransaction, options, { ctx })
             .andWhere(`BalanceTransaction.customerId = :cid`, { cid })
+            .andWhere(`BalanceTransaction.channelId = :chid`, { chid: ctx.channelId })
             .getManyAndCount()
             .then(([items, totalItems]) => ({ items, totalItems }));
     }
 
     async customerBalances(ctx: RequestContext, options?: ListQueryOptions<CustomerBalance>): Promise<PaginatedList<CustomerBalance>> {
         return this.listQueryBuilder
-            .build(CustomerBalance, options, { ctx, channelId: ctx.channelId })
+            .build(CustomerBalance, options, { ctx })
+            .andWhere(`CustomerBalance.channelId = :chid`, { chid: ctx.channelId })
             .getManyAndCount()
             .then(([items, totalItems]) => ({ items, totalItems }));
     }
@@ -507,8 +511,9 @@ export class RechargeCardService {
     async customerBalanceTransactions(ctx: RequestContext, customerId: ID, options?: ListQueryOptions<BalanceTransaction>): Promise<PaginatedList<BalanceTransaction>> {
         const cid = Number(customerId);
         return this.listQueryBuilder
-            .build(BalanceTransaction, options, { ctx, channelId: ctx.channelId })
+            .build(BalanceTransaction, options, { ctx })
             .andWhere(`BalanceTransaction.customerId = :cid`, { cid })
+            .andWhere(`BalanceTransaction.channelId = :chid`, { chid: ctx.channelId })
             .getManyAndCount()
             .then(([items, totalItems]) => ({ items, totalItems }));
     }
