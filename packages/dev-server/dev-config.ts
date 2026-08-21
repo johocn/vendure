@@ -61,6 +61,7 @@ import { CustomerServicePlugin } from '@vendure/customer-service-plugin';
 import { InventoryPlugin } from '@vendure/inventory-plugin';
 import { MessagePlugin } from '@vendure/message-plugin';
 import { OperationsPlugin } from '@vendure/operations-plugin';
+import { PreSalePlugin } from '@vendure/pre-sale-plugin';
 // 生产模式（dist/）跳过开发演示插件，避免静态 import require 缺失的 test-plugins 产物
 // IS_PROD=true 环境变量：dashboard vite 构建时 config-loader 编译到临时目录，
 // __dirname 非 dist，需用环境变量显式标记生产，跳过 test-plugins
@@ -407,6 +408,8 @@ export const devConfig: VendureConfig = {
         InventoryPlugin.init(),
         OperationsPlugin.init(),
         MessagePlugin.init(),
+        // 预售/定金预售：两阶段支付（定金→尾款）+ 全款预售 + 分档定价 + 到货释放库存
+        PreSalePlugin.init({}),
     ],
 };
 // SYNTAX_ERROR_TEST: const x: = ;
