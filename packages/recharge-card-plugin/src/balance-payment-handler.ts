@@ -35,6 +35,11 @@ export const balancePaymentHandler = new PaymentMethodHandler({
             if (!orderWithCustomer?.customer) {
                 return { amount, state: 'Declined' as const, errorMessage: 'Cannot identify customer', metadata: {} };
             }
+            // 防重复扣减：该订单已有余额 CONSUME 记录则拒绝
+            const alreadyPaid = await rechargeService.isOrderBalancePaid(ctx, order.id);
+            if (alreadyPaid) {
+                return { amount, state: 'Declined' as const, errorMessage: 'Order already paid by balance', metadata: {} };
+            }
             const remainingBalance = await rechargeService.deductBalance(
                 ctx, String(orderWithCustomer.customer.id), amount, order.id,
             );
@@ -60,6 +65,11 @@ export const balancePaymentHandler = new PaymentMethodHandler({
             const orderWithCustomer = await orderService.findOne(ctx, order.id);
             if (!orderWithCustomer?.customer) {
                 return { state: 'Failed' as const, metadata: { errorMessage: 'Cannot refund: order has no customer' } };
+            }
+            // 退款不超该单余额消费额
+            const consumed = await rechargeService.getOrderBalanceConsumed(ctx, order.id);
+            if (amount > consumed) {
+                return { state: 'Failed' as const, metadata: { errorMessage: 'Refund exceeds order balance payment' } };
             }
             const newBalance = await rechargeService.addBalance(
                 ctx, String(orderWithCustomer.customer.id), amount, order.id, payment.id,
