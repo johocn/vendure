@@ -20,9 +20,9 @@ export class AffiliateAdminResolver {
         return this.service.affiliates(ctx);
     }
 
-    /** 店主支付提现（幂等）。 */
+    /** 店主支付提现（幂等）。schema 仅需 Authenticated 保底，真正授权由 service.requireMyShop 把关。 */
     @Mutation()
-    @Allow(Permission.UpdateSettings)
+    @Allow(Permission.Authenticated)
     async payWithdrawal(
         @Ctx() ctx: RequestContext,
         @Args('id') id: ID,
@@ -32,7 +32,7 @@ export class AffiliateAdminResolver {
 
     /** 店主拒绝提现（幂等）。 */
     @Mutation()
-    @Allow(Permission.UpdateSettings)
+    @Allow(Permission.Authenticated)
     async rejectWithdrawal(
         @Ctx() ctx: RequestContext,
         @Args('id') id: ID,
