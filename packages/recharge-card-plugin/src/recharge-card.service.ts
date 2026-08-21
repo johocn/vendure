@@ -17,6 +17,7 @@ import { RechargeCard } from './recharge-card.entity';
 import { RechargeCardBatch } from './recharge-card-batch.entity';
 import { CustomerBalance } from './customer-balance.entity';
 import { BalanceTransaction, BalanceTransactionType } from './balance-transaction.entity';
+import { RechargeOrder } from './recharge-order.entity';
 
 const SCRYPT_KEYLEN = 64;
 
@@ -142,6 +143,88 @@ export class RechargeCardService {
             await this.connection.rollBackTransaction(ctx);
             throw e;
         }
+    }
+
+    // ===== Recharge Order Operations (Phase 33) =====
+
+    async createRechargeOrder(ctx: RequestContext, amount: number, remark?: string): Promise<RechargeOrder> {
+        const cid = await this.resolveCustomerId(ctx);
+        const amt = Math.floor(amount);
+        if (!Number.isFinite(amt) || amt <= 0) {
+            throw new UserInputError('Invalid amount');
+        }
+        const repo = this.connection.getRepository(ctx, RechargeOrder);
+        const order = new RechargeOrder({
+            customerId: cid,
+            amount: amt,
+            status: 'pending',
+            paymentMethod: null,
+            paidAt: null,
+            remark: remark || null,
+        });
+        order.channelId = ctx.channelId as number;
+        order.channel = ctx.channel;
+        return repo.save(order);
+    }
+
+    async payRechargeOrder(ctx: RequestContext, id: ID): Promise<RechargeOrder> {
+        const cid = await this.resolveCustomerId(ctx);
+        const repo = this.connection.getRepository(ctx, RechargeOrder);
+        const order = await repo.findOne({
+            where: { id: id as any, customerId: cid, channelId: ctx.channelId as any },
+        });
+        if (!order) {
+            throw new UserInputError('Recharge order not found');
+        }
+        if (order.status !== 'pending') {
+            throw new UserInputError(`Recharge order is already ${order.status}`);
+        }
+        await this.connection.startTransaction(ctx);
+        try {
+            // 幂等：按 id 判重（防止网关回调并发重复入账）
+            const claim = await repo.createQueryBuilder()
+                .update(RechargeOrder)
+                .set({ status: 'paid', paidAt: new Date() })
+                .where('id = :id AND status = :status', { id: order.id, status: 'pending' })
+                .execute();
+            if (claim.affected === 0) {
+                throw new UserInputError(`Recharge order is already ${order.status}`);
+            }
+            await this.applyBalanceChange(ctx, cid, order.amount, BalanceTransactionType.RECHARGE, {
+                remark: `Recharge order #${order.id}`,
+            });
+            await this.connection.commitOpenTransaction(ctx);
+        } catch (e) {
+            await this.connection.rollBackTransaction(ctx);
+            throw e;
+        }
+        order.status = 'paid';
+        order.paidAt = new Date();
+        return order;
+    }
+
+    async cancelRechargeOrder(ctx: RequestContext, id: ID): Promise<RechargeOrder> {
+        const cid = await this.resolveCustomerId(ctx);
+        const repo = this.connection.getRepository(ctx, RechargeOrder);
+        const order = await repo.findOne({
+            where: { id: id as any, customerId: cid, channelId: ctx.channelId as any },
+        });
+        if (!order) {
+            throw new UserInputError('Recharge order not found');
+        }
+        if (order.status !== 'pending') {
+            throw new UserInputError(`Recharge order is already ${order.status}`);
+        }
+        order.status = 'cancelled';
+        return repo.save(order);
+    }
+
+    async findMyRechargeOrders(ctx: RequestContext): Promise<RechargeOrder[]> {
+        const cid = await this.resolveCustomerId(ctx);
+        return this.connection.getRepository(ctx, RechargeOrder).find({
+            where: { customerId: cid, channelId: ctx.channelId as any },
+            order: { createdAt: 'DESC' },
+        });
     }
 
     // ===== Card Operations =====
@@ -377,5 +460,82 @@ export class RechargeCardService {
         }));
 
         return balanceAfter;
+    }
+
+    // ===== Balance Wallet (Phase 33) =====
+
+    async adminAdjustBalance(ctx: RequestContext, input: {
+        customerId: ID;
+        amount: number;
+        type: BalanceTransactionType;
+        remark?: string;
+    }): Promise<number> {
+        const amt = Math.floor(input.amount);
+        if (!Number.isFinite(amt) || amt === 0) {
+            throw new UserInputError('Invalid amount');
+        }
+        const targetCustomerId = Number(input.customerId);
+        await this.connection.startTransaction(ctx);
+        try {
+            const result = await this.applyBalanceChange(ctx, targetCustomerId, amt, input.type, {
+                remark: input.remark ?? null,
+            });
+            await this.connection.commitOpenTransaction(ctx);
+            return result;
+        } catch (e) {
+            await this.connection.rollBackTransaction(ctx);
+            throw e;
+        }
+    }
+
+    async myBalanceTransactions(ctx: RequestContext, options?: ListQueryOptions<BalanceTransaction>): Promise<PaginatedList<BalanceTransaction>> {
+        const cid = await this.resolveCustomerId(ctx);
+        return this.listQueryBuilder
+            .build(BalanceTransaction, options, { ctx, channelId: ctx.channelId })
+            .andWhere(`BalanceTransaction.customerId = :cid`, { cid })
+            .getManyAndCount()
+            .then(([items, totalItems]) => ({ items, totalItems }));
+    }
+
+    async customerBalances(ctx: RequestContext, options?: ListQueryOptions<CustomerBalance>): Promise<PaginatedList<CustomerBalance>> {
+        return this.listQueryBuilder
+            .build(CustomerBalance, options, { ctx, channelId: ctx.channelId })
+            .getManyAndCount()
+            .then(([items, totalItems]) => ({ items, totalItems }));
+    }
+
+    async customerBalanceTransactions(ctx: RequestContext, customerId: ID, options?: ListQueryOptions<BalanceTransaction>): Promise<PaginatedList<BalanceTransaction>> {
+        const cid = Number(customerId);
+        return this.listQueryBuilder
+            .build(BalanceTransaction, options, { ctx, channelId: ctx.channelId })
+            .andWhere(`BalanceTransaction.customerId = :cid`, { cid })
+            .getManyAndCount()
+            .then(([items, totalItems]) => ({ items, totalItems }));
+    }
+
+    async isRechargeOrderPaid(ctx: RequestContext, id: ID): Promise<boolean> {
+        const repo = this.connection.getRepository(ctx, RechargeOrder);
+        const order = await repo.findOne({ where: { id: id as any, channelId: ctx.channelId as any } });
+        return !!order && order.status === 'paid';
+    }
+
+    // ===== Balance Payment Enhancement =====
+
+    /** 该订单是否已用余额 `balance-pay` 扣过款（Authorization 防重复扣减用） */
+    async isOrderBalancePaid(ctx: RequestContext, orderId: ID): Promise<boolean> {
+        const repo = this.connection.getRepository(ctx, BalanceTransaction);
+        const tx = await repo.findOne({
+            where: { orderId: orderId as any, type: BalanceTransactionType.CONSUME },
+        });
+        return !!tx;
+    }
+
+    /** 该订单通过余额累计划扣的金额（分）；createRefund 上限依据 */
+    async getOrderBalanceConsumed(ctx: RequestContext, orderId: ID): Promise<number> {
+        const repo = this.connection.getRepository(ctx, BalanceTransaction);
+        const rows = await repo.find({
+            where: { orderId: orderId as any, type: BalanceTransactionType.CONSUME },
+        });
+        return rows.reduce((sum, r) => sum + Math.abs(r.amount), 0);
     }
 }
