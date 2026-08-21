@@ -141,15 +141,57 @@ const { gql } = require('graphql-tag');
                 take: Int
             }
 
+            type CustomerBalanceItem {
+                id: ID!
+                customerId: Int!
+                channelId: Int!
+                balance: Int!
+                frozenBalance: Int!
+            }
+
+            type CustomerBalanceList implements PaginatedList {
+                items: [CustomerBalanceItem!]!
+                totalItems: Int!
+            }
+
+            type BalanceTransactionItemAdmin {
+                id: ID!
+                customerId: Int!
+                type: String!
+                amount: Int!
+                balanceBefore: Int!
+                balanceAfter: Int!
+                orderId: ID
+                paymentId: ID
+                rechargeCardId: ID
+                remark: String
+                createdAt: DateTime!
+            }
+
+            type BalanceTransactionListAdmin implements PaginatedList {
+                items: [BalanceTransactionItemAdmin!]!
+                totalItems: Int!
+            }
+
+            input AdminAdjustBalanceInput {
+                customerId: ID!
+                amount: Int!
+                type: String!
+                remark: String
+            }
+
             extend type Query {
                 rechargeCards(options: RechargeCardListOptions): RechargeCardAdminList!
                 rechargeCardBatches(options: RechargeCardBatchListOptions): RechargeCardBatchAdminList!
+                customerBalances(options: RechargeCardListOptions): CustomerBalanceList!
+                customerBalanceTransactions(customerId: ID!, options: RechargeCardListOptions): BalanceTransactionListAdmin!
             }
 
             extend type Mutation {
                 createRechargeCardBatch(input: CreateRechargeBatchInput!): RechargeCardBatchAdmin!
                 freezeRechargeCard(id: ID!): RechargeCardAdmin!
                 unfreezeRechargeCard(id: ID!): RechargeCardAdmin!
+                adminAdjustBalance(input: AdminAdjustBalanceInput!): CustomerBalanceItem!
             }
         `,
         resolvers: [RechargeCardAdminResolver],

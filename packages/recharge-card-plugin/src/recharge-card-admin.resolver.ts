@@ -3,6 +3,8 @@ import { Allow, Ctx, ListQueryOptions, PaginatedList, Permission, RequestContext
 
 import { RechargeCard } from './recharge-card.entity';
 import { RechargeCardBatch } from './recharge-card-batch.entity';
+import { CustomerBalance } from './customer-balance.entity';
+import { BalanceTransaction } from './balance-transaction.entity';
 import { RechargeCardService } from './recharge-card.service';
 
 @Resolver()
@@ -46,5 +48,37 @@ export class RechargeCardAdminResolver {
     @Allow(Permission.UpdateSettings)
     async unfreezeRechargeCard(@Ctx() ctx: RequestContext, @Args('id') id: number): Promise<any> {
         return this.rechargeCardService.unfreezeCard(ctx, id);
+    }
+
+    @Query()
+    @Allow(Permission.ReadSettings)
+    async customerBalances(
+        @Ctx() ctx: RequestContext,
+        @Args() options: ListQueryOptions<CustomerBalance>,
+    ): Promise<PaginatedList<CustomerBalance>> {
+        return this.rechargeCardService.customerBalances(ctx, options);
+    }
+
+    @Query()
+    @Allow(Permission.ReadSettings)
+    async customerBalanceTransactions(
+        @Ctx() ctx: RequestContext,
+        @Args('customerId') customerId: number,
+        @Args() options: ListQueryOptions<BalanceTransaction>,
+    ): Promise<PaginatedList<BalanceTransaction>> {
+        return this.rechargeCardService.customerBalanceTransactions(ctx, customerId, options);
+    }
+
+    @Mutation()
+    @Allow(Permission.UpdateSettings)
+    async adminAdjustBalance(@Ctx() ctx: RequestContext, @Args('input') input: any): Promise<any> {
+        const newBalance = await this.rechargeCardService.adminAdjustBalance(ctx, input);
+        return {
+            id: input.customerId,
+            customerId: input.customerId,
+            channelId: ctx.channelId,
+            balance: newBalance,
+            frozenBalance: 0,
+        };
     }
 }
