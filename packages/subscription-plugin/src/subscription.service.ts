@@ -199,6 +199,27 @@ export class SubscriptionService {
         return this.connection.getRepository(ctx, SubscriptionOccurrence).save(occ);
     }
 
+    /**
+     * 店主为本店某期次指定商品清单（归属隔离强制在业务层）。
+     * requireMyShop 拿到店主所属店 → 校验该期次所属订阅的 shopId === 店主所属店，否则 ForbiddenError。
+     */
+    async ownerSetOccurrenceItems(ctx: RequestContext, occId: ID, items: SubscriptionItem[]): Promise<SubscriptionOccurrence> {
+        const shop = await this.requireMyShop(ctx);
+        const occRepo = this.connection.getRepository(ctx, SubscriptionOccurrence);
+        const occ = await occRepo.findOne({ where: { id: Number(occId) } as any });
+        if (!occ) {
+            throw new UserInputError('Occurrence not found');
+        }
+        const sub = await this.connection.getRepository(ctx, Subscription).findOne({
+            where: { id: occ.subscriptionId } as any,
+        });
+        const subShopId = sub?.shopId;
+        if (subShopId == null || subShopId !== (shop.id as number)) {
+            throw new ForbiddenError();
+        }
+        return this.setOccurrenceItems(ctx, occId, items);
+    }
+
     /** 最后一期履约后进入续订待定；买家确认开启新一段（沿用 createSubscription）。 */
     async initiateRenewal(ctx: RequestContext, subscriptionId: ID): Promise<Subscription> {
         const subRepo = this.connection.getRepository(ctx, Subscription);
@@ -265,6 +286,28 @@ export class SubscriptionService {
         const [items, totalItems] = await this.connection.getRepository(ctx, SubscriptionPlan).findAndCount({
             where: { channelId: ctx.channelId as number, enabled: true } as any,
             order: { createdAt: 'DESC' },
+            skip: options?.skip ?? 0,
+            take: options?.take ?? 50,
+        });
+        return { items, totalItems };
+    }
+
+    /** 平台视角：全部订阅（按 channel 过滤，不按客户）。 */
+    async allSubscriptions(ctx: RequestContext, options?: ListOptions): Promise<{ items: Subscription[]; totalItems: number }> {
+        const [items, totalItems] = await this.connection.getRepository(ctx, Subscription).findAndCount({
+            where: { channelId: ctx.channelId as number } as any,
+            order: { createdAt: 'DESC' },
+            skip: options?.skip ?? 0,
+            take: options?.take ?? 50,
+        });
+        return { items, totalItems };
+    }
+
+    /** 平台视角：全部期次（按 channel 过滤，不按客户）。 */
+    async allOccurrences(ctx: RequestContext, options?: ListOptions): Promise<{ items: SubscriptionOccurrence[]; totalItems: number }> {
+        const [items, totalItems] = await this.connection.getRepository(ctx, SubscriptionOccurrence).findAndCount({
+            where: { channelId: ctx.channelId as number } as any,
+            order: { scheduledDate: 'ASC' },
             skip: options?.skip ?? 0,
             take: options?.take ?? 50,
         });
