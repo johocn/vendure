@@ -212,6 +212,13 @@ let CommunityService = class CommunityService {
             .findAndCount({ take: (_a = options === null || options === void 0 ? void 0 : options.take) !== null && _a !== void 0 ? _a : 20, skip: (_b = options === null || options === void 0 ? void 0 : options.skip) !== null && _b !== void 0 ? _b : 0 });
         return { items, totalItems };
     }
+    async commissionEntries(ctx, options) {
+        var _a, _b;
+        const [items, totalItems] = await this.connection
+            .getRepository(ctx, community_commission_entry_entity_1.CommunityCommissionEntry)
+            .findAndCount({ take: (_a = options === null || options === void 0 ? void 0 : options.take) !== null && _a !== void 0 ? _a : 20, skip: (_b = options === null || options === void 0 ? void 0 : options.skip) !== null && _b !== void 0 ? _b : 0 });
+        return { items, totalItems };
+    }
     async handleOrderStateTransition(event) {
         var _a, _b;
         if (event.toState === 'Delivered') {

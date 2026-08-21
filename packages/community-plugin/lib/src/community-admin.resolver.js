@@ -26,6 +26,12 @@ let CommunityAdminResolver = class CommunityAdminResolver {
     async suspendLeader(ctx, id) {
         return this.service.setLeaderStatus(ctx, id, 'suspended');
     }
+    async setActivityStatus(ctx, id, status) {
+        return this.service.setActivityStatus(ctx, id, status);
+    }
+    async participate(ctx, orderId, activityId, subtotal) {
+        return this.service.participate(ctx, orderId, activityId, subtotal);
+    }
     async cutoverActivity(ctx, id) {
         return this.service.cutoverActivity(ctx, id);
     }
@@ -34,6 +40,9 @@ let CommunityAdminResolver = class CommunityAdminResolver {
     }
     async communityParticipations(ctx, args) {
         return this.service.participations(ctx, args.options);
+    }
+    async communityCommissionEntries(ctx, args) {
+        return this.service.commissionEntries(ctx, args.options);
     }
 };
 exports.CommunityAdminResolver = CommunityAdminResolver;
@@ -55,6 +64,27 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], CommunityAdminResolver.prototype, "suspendLeader", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateSettings),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('status')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
+    __metadata("design:returntype", Promise)
+], CommunityAdminResolver.prototype, "setActivityStatus", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateSettings),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __param(2, (0, graphql_1.Args)('activityId')),
+    __param(3, (0, graphql_1.Args)('subtotal')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, Number]),
+    __metadata("design:returntype", Promise)
+], CommunityAdminResolver.prototype, "participate", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(core_1.Permission.UpdateSettings),
@@ -82,6 +112,15 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], CommunityAdminResolver.prototype, "communityParticipations", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateSettings),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], CommunityAdminResolver.prototype, "communityCommissionEntries", null);
 exports.CommunityAdminResolver = CommunityAdminResolver = __decorate([
     (0, graphql_1.Resolver)('CommunityActivity'),
     __metadata("design:paramtypes", [community_service_1.CommunityService])

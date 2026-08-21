@@ -34,7 +34,7 @@ __decorate([
     __metadata("design:type", Number)
 ], CommunityCommissionEntry.prototype, "amount", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ default: 'pending' }),
+    (0, typeorm_1.Column)({ type: 'varchar', default: 'pending' }),
     __metadata("design:type", String)
 ], CommunityCommissionEntry.prototype, "status", void 0);
 exports.CommunityCommissionEntry = CommunityCommissionEntry = __decorate([

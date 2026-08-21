@@ -57,7 +57,7 @@ __decorate([
     __metadata("design:type", Number)
 ], CommunityActivity.prototype, "commissionRate", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ default: 'draft' }),
+    (0, typeorm_1.Column)({ type: 'varchar', default: 'draft' }),
     __metadata("design:type", String)
 ], CommunityActivity.prototype, "status", void 0);
 exports.CommunityActivity = CommunityActivity = __decorate([

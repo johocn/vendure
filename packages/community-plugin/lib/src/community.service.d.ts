@@ -2,6 +2,7 @@ import { ID, Order, OrderService, RequestContext, TransactionalConnection } from
 import { CommunityPluginOptions } from './constants';
 import { CommunityActivity, CommunityActivityStatus } from './community-activity.entity';
 import { CommunityParticipation } from './community-participation.entity';
+import { CommunityCommissionEntry } from './community-commission-entry.entity';
 import { CommunityLeader, CommunityLeaderStatus } from './community-leader.entity';
 import { OrderStateTransitionEvent } from '@vendure/core';
 export declare class CommunityService {
@@ -38,6 +39,10 @@ export declare class CommunityService {
     }>;
     participations(ctx: RequestContext, options?: any): Promise<{
         items: CommunityParticipation[];
+        totalItems: number;
+    }>;
+    commissionEntries(ctx: RequestContext, options?: any): Promise<{
+        items: CommunityCommissionEntry[];
         totalItems: number;
     }>;
     handleOrderStateTransition(event: OrderStateTransitionEvent): Promise<void>;
