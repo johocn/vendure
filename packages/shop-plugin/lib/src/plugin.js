@@ -17,6 +17,8 @@ exports.ShopPlugin = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const constants_1 = require("./constants");
+const merchant_permissions_1 = require("./merchant-permissions");
+const merchant_resolver_1 = require("./merchant-resolver");
 const shop_entity_1 = require("./shop.entity");
 const shop_admin_resolver_1 = require("./shop-admin.resolver");
 const shop_custom_fields_1 = require("./shop-custom-fields");
@@ -28,6 +30,14 @@ function mergeCustomFields(existingFields, additions) {
     const names = new Set((existingFields !== null && existingFields !== void 0 ? existingFields : []).map(f => f.name));
     return [...(existingFields !== null && existingFields !== void 0 ? existingFields : []), ...(additions !== null && additions !== void 0 ? additions : []).filter(f => !names.has(f.name))];
 }
+/** 幂等并入自定义权限定义（PermissionDefinition 按 metadata name 去重），避免重复注册。 */
+function mergeCustomPermissions(existing, additions) {
+    const names = new Set((existing !== null && existing !== void 0 ? existing : []).flatMap(d => d.getMetadata().map(m => m.name)));
+    return [
+        ...(existing !== null && existing !== void 0 ? existing : []),
+        ...additions.filter(d => !d.getMetadata().some(m => names.has(m.name))),
+    ];
+}
 const adminSchema = () => gql `
     type Shop implements Node {
         id: ID!
@@ -37,7 +47,7 @@ const adminSchema = () => gql `
         bannerAssetId: ID
         description: String
         status: String!
-        ownerId: ID
+        administratorId: ID
         rating: ShopRating!
         productCount: Int!
         products(options: ShopListOptions): ProductList!
@@ -87,6 +97,75 @@ const adminSchema = () => gql `
         assignProductsToShop(input: AssignProductsInput!): Boolean!
         unassignProductsFromShop(input: AssignProductsInput!): Boolean!
         recomputeShopRating(id: ID!): Shop!
+    }
+
+    input CreateOwnerInput {
+        emailAddress: String!
+        password: String!
+        firstName: String
+        lastName: String
+    }
+
+    input UpdateMyShopInput {
+        name: String
+        description: String
+        logoAssetId: ID
+        bannerAssetId: ID
+    }
+
+    input UpdateMyShopProductInput {
+        name: String
+        description: String
+    }
+
+    type MerchantOrderLine {
+        orderLineId: ID!
+        productId: ID!
+        productName: String!
+        variantName: String!
+        quantity: Int!
+        unitPriceWithTax: Int!
+        lineTotalWithTax: Int!
+    }
+
+    type MerchantOrder {
+        orderId: ID!
+        code: String!
+        state: String!
+        totalWithTax: Int!
+        currencyCode: String!
+        customerName: String
+        placedAt: DateTime
+        items: [MerchantOrderLine!]!
+    }
+
+    type MerchantReview {
+        reviewId: ID!
+        productId: ID!
+        productName: String!
+        rating: Int!
+        content: String!
+        status: String!
+        customerName: String
+        createdAt: DateTime!
+    }
+
+    extend type Query {
+        myShop: Shop!
+        myShopProducts(options: ShopListOptions): ProductList!
+        myShopOrder(orderId: ID!): MerchantOrder
+        myShopOrders: [MerchantOrder!]!
+        myShopReviews: [MerchantReview!]!
+    }
+
+    extend type Mutation {
+        provisionShopOwner(shopId: ID!, input: CreateOwnerInput!): Administrator
+        updateMyShop(input: UpdateMyShopInput!): Shop!
+        addProductToMyShop(productId: ID!): Boolean!
+        removeProductFromMyShop(productId: ID!): Boolean!
+        updateMyShopProduct(productId: ID!, input: UpdateMyShopProductInput!): Product
+        approveMerchantReview(id: ID!): Boolean!
+        rejectMerchantReview(id: ID!): Boolean!
     }
 `;
 const shopSchema = () => gql `
@@ -140,7 +219,7 @@ exports.ShopPlugin = ShopPlugin = ShopPlugin_1 = __decorate([
         ],
         adminApiExtensions: {
             schema: adminSchema,
-            resolvers: [shop_admin_resolver_1.ShopAdminResolver],
+            resolvers: [shop_admin_resolver_1.ShopAdminResolver, merchant_resolver_1.MerchantResolver],
         },
         shopApiExtensions: {
             schema: shopSchema,
@@ -149,6 +228,8 @@ exports.ShopPlugin = ShopPlugin = ShopPlugin_1 = __decorate([
         configuration: (config) => {
             // 商品归属店铺：Product.shopId（int, nullable, public）
             config.customFields.Product = mergeCustomFields(config.customFields.Product, shop_custom_fields_1.shopCustomFields.Product);
+            // 店主自营后台权限：ManageOwnShop（自定义权限，可分配到 Role）
+            config.authOptions.customPermissions = mergeCustomPermissions(config.authOptions.customPermissions, [merchant_permissions_1.manageOwnShop]);
             return config;
         },
         compatibility: '^3.0.0',

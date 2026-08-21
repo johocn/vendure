@@ -13,8 +13,8 @@ export declare class Shop extends VendureEntity implements ChannelAware {
     description: string | null;
     /** applicant | active | closed */
     status: string;
-    /** 店主后台账号主键，本阶段仅登记。 */
-    ownerId: number | null;
+    /** 店主后台账号主键（Administrator.id）。归属解析：activeUserId→Administrator.user→this.administratorId。 */
+    administratorId: number | null;
     channelId: number;
     /** 评分缓存列（service 实时聚合后写回，供列表/店铺页直接读取，避免 N+1）。 */
     shopRating: number | null;

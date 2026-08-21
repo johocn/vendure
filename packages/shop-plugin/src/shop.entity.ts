@@ -31,9 +31,9 @@ export class Shop extends VendureEntity implements ChannelAware {
     @Column({ type: 'varchar', default: 'applicant' })
     status: string;
 
-    /** 店主后台账号主键，本阶段仅登记。 */
+    /** 店主后台账号主键（Administrator.id）。归属解析：activeUserId→Administrator.user→this.administratorId。 */
     @Column({ type: 'int', nullable: true })
-    ownerId: number | null;
+    administratorId: number | null;
 
     @Column({ type: 'int' })
     channelId: number;

@@ -15,7 +15,8 @@
     "dependencies": {},
     "peerDependencies": {
         "@vendure/common": "^3.6.0",
-        "@vendure/core": "^3.6.0"
+        "@vendure/core": "^3.6.0",
+        "@vendure/review-plugin": "^0.0.1"
     },
     "devDependencies": {
         "@vendure/common": "3.6.4",

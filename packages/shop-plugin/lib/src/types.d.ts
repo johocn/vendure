@@ -30,3 +30,48 @@ export interface ShopListOptions {
 }
 export interface ShopPluginOptions {
 }
+export interface CreateOwnerInput {
+    emailAddress: string;
+    password: string;
+    firstName?: string;
+    lastName?: string;
+}
+export interface UpdateMyShopInput {
+    name?: string;
+    description?: string;
+    logoAssetId?: ID;
+    bannerAssetId?: ID;
+}
+export interface UpdateMyShopProductInput {
+    name?: string;
+    description?: string;
+}
+export interface MerchantOrderLine {
+    orderLineId: string;
+    productId: string;
+    productName: string;
+    variantName: string;
+    quantity: number;
+    unitPriceWithTax: number;
+    lineTotalWithTax: number;
+}
+export interface MerchantOrder {
+    orderId: string;
+    code: string;
+    state: string;
+    totalWithTax: number;
+    currencyCode: string;
+    customerName: string | null;
+    placedAt: Date | null;
+    items: MerchantOrderLine[];
+}
+export interface MerchantReview {
+    reviewId: string;
+    productId: string;
+    productName: string;
+    rating: number;
+    content: string;
+    status: string;
+    customerName: string | null;
+    createdAt: Date;
+}

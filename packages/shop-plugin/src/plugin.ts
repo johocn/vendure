@@ -1,7 +1,9 @@
 import { Inject, Type } from '@nestjs/common';
-import { PluginCommonModule, VendurePlugin } from '@vendure/core';
+import { PermissionDefinition, PluginCommonModule, VendurePlugin } from '@vendure/core';
 
 import { SHOP_PLUGIN_OPTIONS } from './constants';
+import { manageOwnShop } from './merchant-permissions';
+import { MerchantResolver } from './merchant-resolver';
 import { Shop } from './shop.entity';
 import { ShopAdminResolver } from './shop-admin.resolver';
 import { shopCustomFields } from './shop-custom-fields';
@@ -20,6 +22,18 @@ function mergeCustomFields<T extends { name: string }>(
     return [...(existingFields ?? []), ...(additions ?? []).filter(f => !names.has(f.name))];
 }
 
+/** 幂等并入自定义权限定义（PermissionDefinition 按 metadata name 去重），避免重复注册。 */
+function mergeCustomPermissions(
+    existing: PermissionDefinition[] | undefined,
+    additions: PermissionDefinition[],
+): PermissionDefinition[] {
+    const names = new Set((existing ?? []).flatMap(d => d.getMetadata().map(m => m.name)));
+    return [
+        ...(existing ?? []),
+        ...additions.filter(d => !d.getMetadata().some(m => names.has(m.name))),
+    ];
+}
+
 const adminSchema = () => gql`
     type Shop implements Node {
         id: ID!
@@ -29,7 +43,7 @@ const adminSchema = () => gql`
         bannerAssetId: ID
         description: String
         status: String!
-        ownerId: ID
+        administratorId: ID
         rating: ShopRating!
         productCount: Int!
         products(options: ShopListOptions): ProductList!
@@ -80,6 +94,75 @@ const adminSchema = () => gql`
         unassignProductsFromShop(input: AssignProductsInput!): Boolean!
         recomputeShopRating(id: ID!): Shop!
     }
+
+    input CreateOwnerInput {
+        emailAddress: String!
+        password: String!
+        firstName: String
+        lastName: String
+    }
+
+    input UpdateMyShopInput {
+        name: String
+        description: String
+        logoAssetId: ID
+        bannerAssetId: ID
+    }
+
+    input UpdateMyShopProductInput {
+        name: String
+        description: String
+    }
+
+    type MerchantOrderLine {
+        orderLineId: ID!
+        productId: ID!
+        productName: String!
+        variantName: String!
+        quantity: Int!
+        unitPriceWithTax: Int!
+        lineTotalWithTax: Int!
+    }
+
+    type MerchantOrder {
+        orderId: ID!
+        code: String!
+        state: String!
+        totalWithTax: Int!
+        currencyCode: String!
+        customerName: String
+        placedAt: DateTime
+        items: [MerchantOrderLine!]!
+    }
+
+    type MerchantReview {
+        reviewId: ID!
+        productId: ID!
+        productName: String!
+        rating: Int!
+        content: String!
+        status: String!
+        customerName: String
+        createdAt: DateTime!
+    }
+
+    extend type Query {
+        myShop: Shop!
+        myShopProducts(options: ShopListOptions): ProductList!
+        myShopOrder(orderId: ID!): MerchantOrder
+        myShopOrders: [MerchantOrder!]!
+        myShopReviews: [MerchantReview!]!
+    }
+
+    extend type Mutation {
+        provisionShopOwner(shopId: ID!, input: CreateOwnerInput!): Administrator
+        updateMyShop(input: UpdateMyShopInput!): Shop!
+        addProductToMyShop(productId: ID!): Boolean!
+        removeProductFromMyShop(productId: ID!): Boolean!
+        updateMyShopProduct(productId: ID!, input: UpdateMyShopProductInput!): Product
+        approveMerchantReview(id: ID!): Boolean!
+        rejectMerchantReview(id: ID!): Boolean!
+    }
 `;
 
 const shopSchema = () => gql`
@@ -122,7 +205,7 @@ const shopSchema = () => gql`
     ],
     adminApiExtensions: {
         schema: adminSchema,
-        resolvers: [ShopAdminResolver],
+        resolvers: [ShopAdminResolver, MerchantResolver],
     },
     shopApiExtensions: {
         schema: shopSchema,
@@ -133,6 +216,11 @@ const shopSchema = () => gql`
         config.customFields.Product = mergeCustomFields(
             config.customFields.Product,
             shopCustomFields.Product,
+        );
+        // 店主自营后台权限：ManageOwnShop（自定义权限，可分配到 Role）
+        config.authOptions.customPermissions = mergeCustomPermissions(
+            config.authOptions.customPermissions,
+            [manageOwnShop],
         );
         return config;
     },
