@@ -1,0 +1,37 @@
+import { Channel, DeepPartial, VendureEntity } from '@vendure/core';
+import { Column, Entity, ManyToOne } from 'typeorm';
+
+export type RechargeOrderStatus = 'pending' | 'paid' | 'cancelled';
+
+@Entity()
+export class RechargeOrder extends VendureEntity {
+    constructor(input?: DeepPartial<RechargeOrder>) {
+        super(input);
+    }
+
+    @Column({ type: 'int' })
+    customerId: number;
+
+    @Column({ type: 'int' })
+    amount: number;
+
+    // 显式 varchar 防 Object 反射（阶段12/27 铁律）
+    @Column({ type: 'varchar' })
+    status: RechargeOrderStatus;
+
+    // 预留网关口（alipay/wechat）；现无网关时留空
+    @Column({ type: 'varchar', nullable: true })
+    paymentMethod: string | null;
+
+    @Column({ type: 'datetime', nullable: true })
+    paidAt: Date | null;
+
+    @Column({ type: 'text', nullable: true })
+    remark: string | null;
+
+    @ManyToOne(() => Channel, { eager: false })
+    channel: Channel;
+
+    @Column()
+    channelId: number;
+}

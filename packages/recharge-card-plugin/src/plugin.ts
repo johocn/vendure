@@ -16,7 +16,7 @@ const { gql } = require('graphql-tag');
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [RechargeCard, RechargeCardBatch, CustomerBalance, BalanceTransaction],
+    entities: [RechargeCard, RechargeCardBatch, CustomerBalance, BalanceTransaction, RechargeOrder],
     providers: [
         { provide: RECHARGE_CARD_PLUGIN_OPTIONS, useFactory: () => RechargeCardPlugin.options },
         RechargeCardService,
