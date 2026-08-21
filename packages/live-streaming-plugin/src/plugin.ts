@@ -9,6 +9,7 @@ import { LiveRoomProduct } from './live-room-product.entity';
 import { LiveAdminResolver } from './live-admin.resolver';
 import { LiveShopResolver } from './live-shop.resolver';
 import { LiveRoomService } from './live-room.service';
+import { LiveRoomShopService } from './live-room-shop.service';
 import { LiveCommissionService } from './live-commission.service';
 import { LiveStreamingPluginOptions } from './types';
 
@@ -136,6 +137,7 @@ export class LiveStreamingPlugin implements OnApplicationBootstrap {
     constructor(
         @Inject(LIVE_PLUGIN_OPTIONS) private options: LiveStreamingPluginOptions,
         private liveRoomService: LiveRoomService,
+        private liveRoomShopService: LiveRoomShopService,
         private liveCommissionService: LiveCommissionService,
         private moduleRef: ModuleRef,
     ) {}
@@ -148,6 +150,7 @@ export class LiveStreamingPlugin implements OnApplicationBootstrap {
     async onApplicationBootstrap(): Promise<void> {
         this.injector = new Injector(this.moduleRef);
         this.liveRoomService.setOptions(this.options);
+        this.liveRoomShopService.setOptions(this.options);
         this.liveCommissionService.setOptions(this.options);
         await this.liveCommissionService.init();
         Logger.info('LiveStreamingPlugin initialized', loggerCtx);

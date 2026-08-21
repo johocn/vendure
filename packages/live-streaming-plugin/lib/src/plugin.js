@@ -27,6 +27,7 @@ const live_room_product_entity_1 = require("./live-room-product.entity");
 const live_admin_resolver_1 = require("./live-admin.resolver");
 const live_shop_resolver_1 = require("./live-shop.resolver");
 const live_room_service_1 = require("./live-room.service");
+const live_room_shop_service_1 = require("./live-room-shop.service");
 const live_commission_service_1 = require("./live-commission.service");
 const liveRoomType = `
 type LiveRoom implements Node {
@@ -71,13 +72,15 @@ let LiveStreamingPlugin = class LiveStreamingPlugin {
     static { LiveStreamingPlugin_1 = this; }
     options;
     liveRoomService;
+    liveRoomShopService;
     liveCommissionService;
     moduleRef;
     static options = {};
     injector;
-    constructor(options, liveRoomService, liveCommissionService, moduleRef) {
+    constructor(options, liveRoomService, liveRoomShopService, liveCommissionService, moduleRef) {
         this.options = options;
         this.liveRoomService = liveRoomService;
+        this.liveRoomShopService = liveRoomShopService;
         this.liveCommissionService = liveCommissionService;
         this.moduleRef = moduleRef;
     }
@@ -88,6 +91,7 @@ let LiveStreamingPlugin = class LiveStreamingPlugin {
     async onApplicationBootstrap() {
         this.injector = new core_2.Injector(this.moduleRef);
         this.liveRoomService.setOptions(this.options);
+        this.liveRoomShopService.setOptions(this.options);
         this.liveCommissionService.setOptions(this.options);
         await this.liveCommissionService.init();
         core_2.Logger.info('LiveStreamingPlugin initialized', constants_1.loggerCtx);
@@ -174,6 +178,7 @@ exports.LiveStreamingPlugin = LiveStreamingPlugin = LiveStreamingPlugin_1 = __de
     }),
     __param(0, (0, common_1.Inject)(constants_1.LIVE_PLUGIN_OPTIONS)),
     __metadata("design:paramtypes", [Object, live_room_service_1.LiveRoomService,
+        live_room_shop_service_1.LiveRoomShopService,
         live_commission_service_1.LiveCommissionService,
         core_1.ModuleRef])
 ], LiveStreamingPlugin);
