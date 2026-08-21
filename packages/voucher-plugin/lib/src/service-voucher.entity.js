@@ -29,7 +29,7 @@ __decorate([
     __metadata("design:type", Array)
 ], ServiceVoucher.prototype, "channels", void 0);
 __decorate([
-    (0, typeorm_1.Index)({ unique: true }),
+    (0, typeorm_1.Index)(),
     (0, typeorm_1.Column)({ type: 'int' }),
     __metadata("design:type", Number)
 ], ServiceVoucher.prototype, "orderId", void 0);

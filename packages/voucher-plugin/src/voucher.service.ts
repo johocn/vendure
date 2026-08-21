@@ -87,6 +87,7 @@ export class VoucherService {
             for (let i = 0; i < line.quantity; i++) {
                 const voucher = repo.create({
                     channelId: ctx.channelId as number,
+                    orderId,
                     customerId,
                     shopId,
                     productVariantId: line.productVariant?.id as number,
@@ -153,6 +154,7 @@ export class VoucherService {
         const effectiveDays = voucher.effectiveDays;
         const next = repo.create({
             channelId: voucher.channelId,
+            orderId: voucher.orderId, // 换券继承原单归属，保证 orderId 非空
             customerId: voucher.customerId,
             shopId: voucher.shopId,
             productVariantId: voucher.productVariantId,

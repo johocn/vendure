@@ -4,7 +4,7 @@ export declare class ServiceVoucher extends VendureEntity implements ChannelAwar
     constructor(input?: DeepPartial<ServiceVoucher>);
     channelId: number;
     channels: Channel[];
-    /** 幂等唯一：一单一生成一次。 */
+    /** 关联订单（按件生成，非唯一；幂等由 service existing 检查兜底）。 */
     orderId: number;
     customerId: number;
     shopId: number;

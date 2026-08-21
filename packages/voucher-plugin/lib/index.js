@@ -18,4 +18,7 @@ __exportStar(require("./src/service-voucher.entity"), exports);
 __exportStar(require("./src/voucher-booking.entity"), exports);
 __exportStar(require("./src/voucher.options"), exports);
 __exportStar(require("./src/voucher.plugin"), exports);
+__exportStar(require("./src/voucher.service"), exports);
+__exportStar(require("./src/voucher.admin.resolver"), exports);
+__exportStar(require("./src/voucher.shop.resolver"), exports);
 //# sourceMappingURL=index.js.map

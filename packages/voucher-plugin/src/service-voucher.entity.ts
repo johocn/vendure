@@ -17,8 +17,8 @@ export class ServiceVoucher extends VendureEntity implements ChannelAware {
     @JoinTable()
     channels: Channel[];
 
-    /** 幂等唯一：一单一生成一次。 */
-    @Index({ unique: true })
+    /** 关联订单（按件生成，非唯一；幂等由 service existing 检查兜底）。 */
+    @Index()
     @Column({ type: 'int' })
     orderId: number;
 

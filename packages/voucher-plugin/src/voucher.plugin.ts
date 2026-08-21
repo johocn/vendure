@@ -71,12 +71,14 @@ const adminSchema = gql`
     extend type Query {
         scanVoucher(code: String!): ServiceVoucher
         myVouchersAdmin: [ServiceVoucher!]!
+        voucherBookings(voucherId: ID!): [VoucherBooking!]!
     }
     extend type Mutation {
         redeemVoucher(code: String!): ServiceVoucher!
         extendVoucher(voucherId: ID!, days: Int!): ServiceVoucher!
         exchangeVoucher(voucherId: ID!): ServiceVoucher!
         runExpireScan: Int!
+        createBooking(voucherId: ID!, slotAt: DateTime!, customerCount: Int!): VoucherBooking!
     }
 `;
 
