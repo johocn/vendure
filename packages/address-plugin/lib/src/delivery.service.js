@@ -15,6 +15,7 @@ const core_1 = require("@vendure/core");
 const shop_plugin_1 = require("@vendure/shop-plugin");
 const delivery_address_entity_1 = require("./delivery-address.entity");
 const delivery_range_entity_1 = require("./delivery-range.entity");
+const shipping_rules_1 = require("./shipping-rules");
 let DeliveryService = class DeliveryService {
     constructor(connection, customerService) {
         this.connection = connection;
@@ -46,6 +47,16 @@ let DeliveryService = class DeliveryService {
         });
         const addr = new delivery_address_entity_1.DeliveryAddress(Object.assign(Object.assign({}, input), { customerId: customer.id, isDefault: count === 0 ? true : false, channelId: ctx.channelId }));
         return this.connection.getRepository(ctx, delivery_address_entity_1.DeliveryAddress).save(addr);
+    }
+    async getAddress(ctx, id) {
+        const customer = await this.requireCustomer(ctx);
+        const addr = await this.connection.getRepository(ctx, delivery_address_entity_1.DeliveryAddress).findOne({
+            where: { id: Number(id), customerId: customer.id, channelId: ctx.channelId },
+        });
+        if (!addr) {
+            throw new core_1.EntityNotFoundError('DeliveryAddress', id);
+        }
+        return addr;
     }
     async updateAddress(ctx, id, input) {
         const customer = await this.requireCustomer(ctx);
@@ -110,6 +121,7 @@ let DeliveryService = class DeliveryService {
     }
     /** 每店每渠道单档 upsert：存在则 update，否则 insert（幂等）。 */
     async upsertRange(ctx, input) {
+        var _a, _b;
         await this.requireShop(ctx, input.shopId);
         const repo = this.connection.getRepository(ctx, delivery_range_entity_1.DeliveryRange);
         let range = await repo.findOne({
@@ -134,6 +146,10 @@ let DeliveryService = class DeliveryService {
         if (input.districtCodes !== undefined) {
             range.districtCodes = input.districtCodes ? JSON.stringify(input.districtCodes) : null;
         }
+        if (input.baseFee !== undefined)
+            range.baseFee = (_a = input.baseFee) !== null && _a !== void 0 ? _a : 0;
+        if (input.freeThreshold !== undefined)
+            range.freeThreshold = (_b = input.freeThreshold) !== null && _b !== void 0 ? _b : null;
         return repo.save(range);
     }
     // ---------- 配送校验 ----------
@@ -144,6 +160,33 @@ let DeliveryService = class DeliveryService {
             results.push(this.evaluateRange(range, shopId, address));
         }
         return results;
+    }
+    // ---------- 订单运费联动 ----------
+    /** 当前订单行所属商品去重后的 shopId 列表（沿 Product.shopId 反查）。 */
+    async getOrderShopIds(ctx, order) {
+        const map = await (0, shipping_rules_1.resolveOrderShopMap)(this.connection, ctx, order);
+        return [...new Set(map.values())];
+    }
+    /** 读取订单当前收件码/经纬度并逐店校验可得性。 */
+    async evaluateOrderDelivery(ctx, order, shopIds) {
+        const ids = shopIds !== null && shopIds !== void 0 ? shopIds : (await this.getOrderShopIds(ctx, order));
+        const addr = (0, shipping_rules_1.readOrderShippingCodes)(order);
+        return this.validateDelivery(ctx, addr, ids);
+    }
+    /** 是否已具备收件码可参与校验。 */
+    hasOrderShippingCodes(order) {
+        return (0, shipping_rules_1.hasOrderShippingCodes)(order);
+    }
+    /** 从地址簿写入订单收件码/经纬度（stage22 前置：setOrderShippingFromAddress）。 */
+    applyAddressToOrderShipping(order, address) {
+        var _a, _b, _c, _d, _e, _f;
+        const cf = ((_a = order.customFields) !== null && _a !== void 0 ? _a : {});
+        cf.shippingProvinceCode = (_b = address.provinceCode) !== null && _b !== void 0 ? _b : null;
+        cf.shippingCityCode = (_c = address.cityCode) !== null && _c !== void 0 ? _c : null;
+        cf.shippingDistrictCode = (_d = address.districtCode) !== null && _d !== void 0 ? _d : null;
+        cf.shippingLng = (_e = address.lng) !== null && _e !== void 0 ? _e : null;
+        cf.shippingLat = (_f = address.lat) !== null && _f !== void 0 ? _f : null;
+        order.customFields = cf;
     }
     evaluateRange(range, shopId, addr) {
         var _a, _b, _c;

@@ -13,6 +13,9 @@ export declare class DeliveryRange extends VendureEntity implements ChannelAware
     centerLat: number | null;
     radiusKm: number | null;
     districtCodes: string | null;
+    /** 基础运费（分）；freeThreshold 满额包邮阈值（分），null=该店不支持包邮。 */
+    baseFee: number;
+    freeThreshold: number | null;
     channelId: number;
     channels: Channel[];
 }

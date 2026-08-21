@@ -18,8 +18,10 @@ const core_1 = require("@vendure/core");
 const delivery_range_entity_1 = require("./delivery-range.entity");
 const delivery_service_1 = require("./delivery.service");
 let DeliveryShopResolver = class DeliveryShopResolver {
-    constructor(deliveryService) {
+    constructor(deliveryService, orderService, connection) {
         this.deliveryService = deliveryService;
+        this.orderService = orderService;
+        this.connection = connection;
     }
     async myDeliveryAddresses(ctx) {
         return this.deliveryService.listMyAddresses(ctx);
@@ -41,6 +43,42 @@ let DeliveryShopResolver = class DeliveryShopResolver {
     }
     async validateDelivery(ctx, input) {
         return this.deliveryService.validateDelivery(ctx, input.address, input.shopIds);
+    }
+    async activeOrderDeliveryStatus(ctx) {
+        var _a;
+        const activeOrderId = (_a = ctx.session) === null || _a === void 0 ? void 0 : _a.activeOrderId;
+        if (!activeOrderId) {
+            return null;
+        }
+        const order = await this.orderService.findOne(ctx, activeOrderId);
+        if (!order) {
+            return null;
+        }
+        // 未设置收件区码/经纬度 → 无可预检结果
+        if (!this.deliveryService.hasOrderShippingCodes(order)) {
+            return null;
+        }
+        const results = await this.deliveryService.evaluateOrderDelivery(ctx, order);
+        const deliverable = results.every((r) => r.inRange);
+        return { deliverable, results };
+    }
+    async setOrderShippingFromAddress(ctx, deliveryAddressId) {
+        var _a;
+        const addr = await this.deliveryService.getAddress(ctx, deliveryAddressId);
+        const activeOrderId = (_a = ctx.session) === null || _a === void 0 ? void 0 : _a.activeOrderId;
+        if (activeOrderId) {
+            const order = await this.orderService.findOne(ctx, activeOrderId);
+            if (order) {
+                this.deliveryService.applyAddressToOrderShipping(order, addr);
+                await this.connection
+                    .getRepository(ctx, core_1.Order)
+                    .save(order, { reload: false });
+            }
+        }
+        else {
+            throw new core_1.EntityNotFoundError('Order', deliveryAddressId);
+        }
+        return addr;
     }
     districtCodes(range) {
         const raw = range.districtCodes;
@@ -120,6 +158,23 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], DeliveryShopResolver.prototype, "validateDelivery", null);
 __decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], DeliveryShopResolver.prototype, "activeOrderDeliveryStatus", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('deliveryAddressId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], DeliveryShopResolver.prototype, "setOrderShippingFromAddress", null);
+__decorate([
     (0, graphql_1.ResolveField)('districtCodes'),
     __param(0, (0, graphql_1.Parent)()),
     __metadata("design:type", Function),
@@ -128,6 +183,8 @@ __decorate([
 ], DeliveryShopResolver.prototype, "districtCodes", null);
 exports.DeliveryShopResolver = DeliveryShopResolver = __decorate([
     (0, graphql_1.Resolver)('DeliveryRange'),
-    __metadata("design:paramtypes", [delivery_service_1.DeliveryService])
+    __metadata("design:paramtypes", [delivery_service_1.DeliveryService,
+        core_1.OrderService,
+        core_1.TransactionalConnection])
 ], DeliveryShopResolver);
 //# sourceMappingURL=delivery-shop.resolver.js.map

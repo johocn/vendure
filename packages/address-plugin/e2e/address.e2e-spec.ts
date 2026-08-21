@@ -1,4 +1,4 @@
-import { mergeConfig } from '@vendure/core';
+import { LanguageCode, mergeConfig } from '@vendure/core';
 import { ShopPlugin } from '@vendure/shop-plugin';
 import { createTestEnvironment, registerInitializer, SimpleGraphQLClient, SqljsInitializer } from '@vendure/testing';
 import gql from 'graphql-tag';
@@ -270,5 +270,255 @@ describe('AddressPlugin · 阶段21 收货地址 + 按店配送范围（CRUD/默
         const byShop: Record<string, any> = Object.fromEntries(res.map(r => [r.shopId, r]));
         expect(byShop[shopAId]).toMatchObject({ inRange: true, reason: 'OK' });
         expect(byShop[shopBId]).toMatchObject({ inRange: true, reason: 'OK' });
+    });
+
+    /* ===================== 阶段22：结算/下单运费计算 + 范围联动 ===================== */
+    describe('阶段22 结算运费计算 + 配送范围联动', () => {
+        let shopMethodId: string;
+        let laptopVariantId: string;
+        let phoneVariantId: string;
+        let goodsAddrId: string;
+        let shallowAddrId: string;
+
+        async function resetCart(): Promise<void> {
+            try {
+                await shopClient.query(gql`mutation { removeAllOrderLines { ... on Order { id } } }`);
+            } catch {
+                /* 无 active order 时忽略 */
+            }
+        }
+
+        async function addItem(variantId: string, quantity = 1): Promise<void> {
+            await shopClient.query(gql`
+                mutation { addItemToOrder(productVariantId: "${variantId}", quantity: ${quantity}) { ... on Order { id } } }
+            `);
+        }
+
+        async function setShippingAddr(addrId: string): Promise<void> {
+            await shopClient.query(gql`mutation { setOrderShippingFromAddress(deliveryAddressId: "${addrId}") { id } }`);
+        }
+
+        async function eligibleFee(): Promise<number | undefined> {
+            const rng = (await adminClient.query(gql`query { deliveryRange(shopId: "${shopAId}") { rangeType radiusKm centerLng centerLat baseFee } }`)) as any;
+            console.error(`[E2E-C${expect.getState().currentTestName?.includes('C8') ? '8' : expect.getState().currentTestName ?? ''}] range=${JSON.stringify(rng.deliveryRange)}`);
+            const res = (await shopClient.query(gql`
+                query { eligibleShippingMethods { id name priceWithTax } }
+            `)) as any;
+            const it = res.eligibleShippingMethods.find((m: any) => m.id === shopMethodId);
+            return it ? it.priceWithTax : undefined;
+        }
+
+        async function ensureLoaded(): Promise<string[]> {
+            // 读 Laptop 变体 id，并创建一档 Phone 商品归属 shopB（供多店用例）
+            const laptop = (await adminClient.query(gql`
+                { product(id: "T_1") { id variants { id } } }
+            `)) as any;
+            laptopVariantId = laptop.product.variants[0].id;
+            await adminClient.query(gql`
+                mutation { assignProductsToShop(input: { shopId: "${shopAId}", productIds: ["${laptop.product.id}"] }) }
+            `);
+            const created = (await adminClient.query(gql`
+                mutation {
+                    createProduct(input: { translations: [{ languageCode: en, name: "Phone", slug: "phone", description: "phone" }] }) { id }
+                }
+            `)) as any;
+            const tax = (await adminClient.query(gql`{ taxCategories { items { id } } }`)) as any;
+            const variants = (await adminClient.query(gql`
+                mutation CreateVariants($input: [CreateProductVariantInput!]!) {
+                    createProductVariants(input: $input) { id }
+                }
+            `, {
+                input: [{
+                    productId: created.createProduct.id,
+                    sku: 'PHONE-93',
+                    price: 99900,
+                    taxCategoryId: tax.taxCategories.items[0].id,
+                    stockOnHand: 100,
+                    translations: [{ languageCode: LanguageCode.en, name: 'Phone' }],
+                }],
+            })) as any;
+            phoneVariantId = variants.createProductVariants[0].id;
+            await adminClient.query(gql`
+                mutation { assignProductsToShop(input: { shopId: "${shopBId}", productIds: ["${created.createProduct.id}"] }) }
+            `);
+            return [laptopVariantId, phoneVariantId];
+        }
+
+        function feeLabel(baseFee: number, freeThreshold: number | null): string {
+            if (freeThreshold != null) {
+                return `base=${baseFee} free>=${freeThreshold}`;
+            }
+            return `base=${baseFee} 不包邮`;
+        }
+
+        beforeAll(async () => {
+            // 运费档位：shopA 基础1000 不包邮；shopB 基础500 满20000包邮
+            await adminClient.query(gql`
+                mutation { upsertDeliveryRange(input: { shopId: "${shopAId}", enabled: true, rangeType: "all", baseFee: 1000, freeThreshold: null }) { id baseFee freeThreshold } }
+            `);
+            await adminClient.query(gql`
+                mutation { upsertDeliveryRange(input: { shopId: "${shopBId}", enabled: true, rangeType: "all", baseFee: 500, freeThreshold: 20000 }) { id baseFee freeThreshold } }
+            `);
+            // 注册 range-shipping 运费方式（checker + calculator）
+            const sm = (await adminClient.query(gql`
+                mutation CreateSM($input: CreateShippingMethodInput!) {
+                    createShippingMethod(input: $input) { id }
+                }
+            `, {
+                input: {
+                    code: 'range-shipping-test',
+                    translations: [{ languageCode: LanguageCode.en, name: 'Range Shipping', description: '' }],
+                    fulfillmentHandler: 'manual-fulfillment',
+                    checker: { code: 'range-delivery-eligibility', arguments: [] },
+                    calculator: { code: 'range-shipping', arguments: [] },
+                },
+            })) as any;
+            shopMethodId = sm.createShippingMethod.id;
+
+            await ensureLoaded();
+
+            // 收件地址：杭州（圈内）；外埠地址：上海（圈外，超远）
+            const goods = (await shopClient.query(gql`
+                mutation { createDeliveryAddress(input: {
+                    fullName: "收件人", phone: "13800000009",
+                    province: "浙江省", city: "杭州市", district: "西湖区",
+                    provinceCode: "330000", cityCode: "330100", districtCode: "330106",
+                    detail: "文三路200号", lng: 120.1551, lat: 30.2741
+                }) { id } }
+            `)) as any;
+            goodsAddrId = goods.createDeliveryAddress.id;
+            const shallow = (await shopClient.query(gql`
+                mutation { createDeliveryAddress(input: {
+                    fullName: "外埠", phone: "13800000010",
+                    cityCode: "310100", districtCode: "310106",
+                    detail: "南京东路100号", lng: 121.4737, lat: 31.2304
+                }) { id } }
+            `)) as any;
+            shallowAddrId = shallow.createDeliveryAddress.id;
+        }, TEST_SETUP_TIMEOUT_MS);
+
+        it('C1 admin 可读写 baseFee/freeThreshold（persist）', async () => {
+            const q = (await adminClient.query(gql`query { deliveryRange(shopId: "${shopAId}") { baseFee freeThreshold } }`)) as any;
+            expect(q.deliveryRange).toMatchObject({ baseFee: 1000, freeThreshold: null });
+            const b = (await adminClient.query(gql`query { deliveryRange(shopId: "${shopBId}") { baseFee freeThreshold } }`)) as any;
+            expect(b.deliveryRange).toMatchObject({ baseFee: 500, freeThreshold: 20000 });
+        });
+
+        it('C2 空订单/未设地址：activeOrderDeliveryStatus 为 null', async () => {
+            await resetCart();
+            expect(goodsAddrId).toBeTruthy();
+            const res = (await shopClient.query(gql`query { activeOrderDeliveryStatus { deliverable } }`)) as any;
+            expect(res.activeOrderDeliveryStatus).toBeNull();
+        });
+
+        it(`C3 单店求和不包邮（${feeLabel(1000, null)}）：2×Laptop → 运费 1000`, async () => {
+            await resetCart();
+            await addItem(laptopVariantId, 2);
+            await setShippingAddr(goodsAddrId);
+            expect(await eligibleFee()).toBe(1000);
+        });
+
+        it(`C4 包邮（${feeLabel(500, 20000)}）：Phone(999) 满额 → 运费 0`, async () => {
+            await resetCart();
+            await addItem(phoneVariantId, 1);
+            await setShippingAddr(goodsAddrId);
+            expect(await eligibleFee()).toBe(0);
+        });
+
+        it('C5 多店混合（A不包邮 + B包邮）：Laptop+Phone → 1000', async () => {
+            await resetCart();
+            await addItem(laptopVariantId, 1);
+            await addItem(phoneVariantId, 1);
+            await setShippingAddr(goodsAddrId);
+            // A=1000（不包邮），B=0（满额包邮）
+            expect(await eligibleFee()).toBe(1000);
+        });
+
+        it('C6 全店不包邮求和（A+B 基础运费相加）：关闭 B 包邮后 Laptop+Phone → 1500', async () => {
+            await adminClient.query(gql`
+                mutation { upsertDeliveryRange(input: { shopId: "${shopBId}", enabled: true, rangeType: "all", baseFee: 500, freeThreshold: null }) { id } }
+            `);
+            await resetCart();
+            await addItem(laptopVariantId, 1);
+            await addItem(phoneVariantId, 1);
+            await setShippingAddr(goodsAddrId);
+            expect(await eligibleFee()).toBe(1500);
+        });
+
+        it('C7 地址未设跳过校验：无收件区码仍可报价（shouldRunCheck=false）', async () => {
+            await resetCart();
+            await addItem(laptopVariantId, 1);
+            // 不调用 setOrderShippingFromAddress → 订单无收件区码/经纬度
+            expect(await eligibleFee()).toBe(1000);
+        });
+
+        it('C8 结算拦截：地址超范围 → range 方式不出现在 eligibleShippingMethods', async () => {
+            // shopA 收件在校验的杭州点（120.1551,30.2741）；设圆心为上海，半径5km → 超范围
+            await adminClient.query(gql`
+                mutation { upsertDeliveryRange(input: { shopId: "${shopAId}", enabled: true, rangeType: "circle", centerLng: 121.4737, centerLat: 31.2304, radiusKm: 5, baseFee: 1000, freeThreshold: null }) { id } }
+            `);
+            await resetCart();
+            await addItem(laptopVariantId, 1);
+            await setShippingAddr(goodsAddrId);
+            expect(await eligibleFee()).toBeUndefined();
+        });
+
+        it('C9 结算放行：扩大半径到范围内部 → 恢复可报价', async () => {
+            await adminClient.query(gql`
+                mutation { upsertDeliveryRange(input: { shopId: "${shopAId}", enabled: true, rangeType: "circle", centerLng: 121.4737, centerLat: 31.2304, radiusKm: 500, baseFee: 1000, freeThreshold: null }) { id } }
+            `);
+            await resetCart();
+            await addItem(laptopVariantId, 1);
+            await setShippingAddr(goodsAddrId);
+            expect(await eligibleFee()).toBe(1000);
+        });
+
+        it('C10 range circle 半径联动：X<圈内报价 / X>=圈内放开（连续收发可校验）', async () => {
+            // 收件设在上海（圈内），扩大/缩小半径联动报价
+            await adminClient.query(gql`
+                mutation { upsertDeliveryRange(input: { shopId: "${shopAId}", enabled: true, rangeType: "circle", centerLng: 121.4737, centerLat: 31.2304, radiusKm: 5, baseFee: 1000, freeThreshold: null }) { id } }
+            `);
+            await resetCart();
+            await addItem(laptopVariantId, 1);
+            await setShippingAddr(shallowAddrId); // 上海收件，圆心同点
+            // 收件=range 圆心 5km 内 → 应可报价
+            expect(await eligibleFee()).toBe(1000);
+        });
+
+        it('C11 activeOrderDeliveryStatus：范围外 deliverable=false 且携带逐店结果', async () => {
+            await adminClient.query(gql`
+                mutation { upsertDeliveryRange(input: { shopId: "${shopAId}", enabled: true, rangeType: "circle", centerLng: 121.4737, centerLat: 31.2304, radiusKm: 5, baseFee: 1000, freeThreshold: null }) { id } }
+            `);
+            await resetCart();
+            await addItem(laptopVariantId, 1);
+            await setShippingAddr(goodsAddrId); // 杭州收件，圆心上海 → 超范围
+            const res = (await shopClient.query(gql`
+                query { activeOrderDeliveryStatus { deliverable results { shopId inRange reason } } }
+            `)) as any;
+            expect(res.activeOrderDeliveryStatus.deliverable).toBe(false);
+            const r = res.activeOrderDeliveryStatus.results[0];
+            expect(r).toMatchObject({ inRange: false, reason: 'BEYOND_RANGE' });
+        });
+
+        it('C12 activeOrderDeliveryStatus：范围内 deliverable=true', async () => {
+            await adminClient.query(gql`
+                mutation { upsertDeliveryRange(input: { shopId: "${shopAId}", enabled: true, rangeType: "all", baseFee: 1000, freeThreshold: null }) { id } }
+            `);
+            await resetCart();
+            await addItem(laptopVariantId, 1);
+            await setShippingAddr(goodsAddrId);
+            const res = (await shopClient.query(gql`
+                query { activeOrderDeliveryStatus { deliverable results { shopId inRange reason } } }
+            `)) as any;
+            expect(res.activeOrderDeliveryStatus.deliverable).toBe(true);
+            expect(res.activeOrderDeliveryStatus.results[0].reason).toBe('OK');
+        });
+
+        it('C13 收件地址越权隔离：用户B 不能以 A 的地址写自己订单?（仅校验自己地址归属）', async () => {
+            await assertThrowsWithMessage(
+                () => secondClient.query(gql`mutation { setOrderShippingFromAddress(deliveryAddressId: "${goodsAddrId}") { id } }`),
+                'No DeliveryAddress',
+            );
+        });
     });
 });

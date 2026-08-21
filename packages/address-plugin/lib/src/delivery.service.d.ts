@@ -22,6 +22,10 @@ export interface RangeInput {
     centerLat?: number | null;
     radiusKm?: number | null;
     districtCodes?: string[] | null;
+    /** 基础运费（分）。 */
+    baseFee?: number | null;
+    /** 满额包邮阈值（分）；null=该店不支持包邮。 */
+    freeThreshold?: number | null;
 }
 export interface DeliveryResult {
     shopId: ID;
@@ -36,6 +40,7 @@ export declare class DeliveryService {
     private requireCustomer;
     listMyAddresses(ctx: RequestContext): Promise<DeliveryAddress[]>;
     createAddress(ctx: RequestContext, input: AddressInput): Promise<DeliveryAddress>;
+    getAddress(ctx: RequestContext, id: ID): Promise<DeliveryAddress>;
     updateAddress(ctx: RequestContext, id: ID, input: AddressInput): Promise<DeliveryAddress>;
     deleteAddress(ctx: RequestContext, id: ID): Promise<boolean>;
     /** 设为默认：事务内先清空该顾客全部默认，再置目标为默认（保证唯一）。 */
@@ -46,6 +51,14 @@ export declare class DeliveryService {
     /** 每店每渠道单档 upsert：存在则 update，否则 insert（幂等）。 */
     upsertRange(ctx: RequestContext, input: RangeInput): Promise<DeliveryRange>;
     validateDelivery(ctx: RequestContext, address: AddressInput, shopIds: ID[]): Promise<DeliveryResult[]>;
+    /** 当前订单行所属商品去重后的 shopId 列表（沿 Product.shopId 反查）。 */
+    getOrderShopIds(ctx: RequestContext, order: any): Promise<number[]>;
+    /** 读取订单当前收件码/经纬度并逐店校验可得性。 */
+    evaluateOrderDelivery(ctx: RequestContext, order: any, shopIds?: number[]): Promise<DeliveryResult[]>;
+    /** 是否已具备收件码可参与校验。 */
+    hasOrderShippingCodes(order: any): boolean;
+    /** 从地址簿写入订单收件码/经纬度（stage22 前置：setOrderShippingFromAddress）。 */
+    applyAddressToOrderShipping(order: any, address: DeliveryAddress): void;
     private evaluateRange;
     private parseDistrictCodes;
     /** 大地距离（km），haversine 公式。 */

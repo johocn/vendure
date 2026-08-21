@@ -22,6 +22,9 @@ const delivery_admin_resolver_1 = require("./delivery-admin.resolver");
 const delivery_range_entity_1 = require("./delivery-range.entity");
 const delivery_service_1 = require("./delivery.service");
 const delivery_shop_resolver_1 = require("./delivery-shop.resolver");
+const order_custom_fields_1 = require("./order-custom-fields");
+const range_shipping_calculator_1 = require("./range-shipping-calculator");
+const range_shipping_eligibility_checker_1 = require("./range-shipping-eligibility-checker");
 const { gql } = require('graphql-tag');
 const adminSchema = () => gql `
     type DeliveryRange {
@@ -33,6 +36,8 @@ const adminSchema = () => gql `
         centerLat: Float
         radiusKm: Float
         districtCodes: [String!]
+        baseFee: Int!
+        freeThreshold: Int
     }
 
     input DeliveryRangeInput {
@@ -43,6 +48,8 @@ const adminSchema = () => gql `
         centerLat: Float
         radiusKm: Float
         districtCodes: [String!]
+        baseFee: Int
+        freeThreshold: Int
     }
 
     extend type Query {
@@ -93,12 +100,19 @@ const shopSchema = () => gql `
         centerLat: Float
         radiusKm: Float
         districtCodes: [String!]
+        baseFee: Int!
+        freeThreshold: Int
     }
 
     type DeliveryResult {
         shopId: ID!
         inRange: Boolean!
         reason: String!
+    }
+
+    type OrderDeliveryStatus {
+        deliverable: Boolean!
+        results: [DeliveryResult!]!
     }
 
     input ValidateDeliveryInput {
@@ -110,6 +124,7 @@ const shopSchema = () => gql `
         myDeliveryAddresses: [DeliveryAddress!]!
         shopDeliveryRange(shopId: ID!): DeliveryRange
         validateDelivery(input: ValidateDeliveryInput!): [DeliveryResult!]!
+        activeOrderDeliveryStatus: OrderDeliveryStatus
     }
 
     extend type Mutation {
@@ -117,6 +132,7 @@ const shopSchema = () => gql `
         updateDeliveryAddress(id: ID!, input: DeliveryAddressInput!): DeliveryAddress!
         deleteDeliveryAddress(id: ID!): Boolean!
         setDefaultDeliveryAddress(id: ID!): [DeliveryAddress!]!
+        setOrderShippingFromAddress(deliveryAddressId: ID!): DeliveryAddress!
     }
 `;
 let AddressPlugin = AddressPlugin_1 = class AddressPlugin {
@@ -146,7 +162,25 @@ exports.AddressPlugin = AddressPlugin = AddressPlugin_1 = __decorate([
             schema: shopSchema,
             resolvers: [delivery_shop_resolver_1.DeliveryShopResolver],
         },
-        configuration: (config) => config,
+        configuration: (config) => {
+            var _a, _b;
+            // 订单侧收件区划码/经纬度（结算校验 + 运费联动取值源）；按字段名幂等去重
+            const orderNames = new Set(((_a = config.customFields.Order) !== null && _a !== void 0 ? _a : []).map(f => f.name));
+            config.customFields.Order = [
+                ...((_b = config.customFields.Order) !== null && _b !== void 0 ? _b : []),
+                ...order_custom_fields_1.addressOrderCustomFields.filter(f => f != null && !orderNames.has(f.name)),
+            ];
+            // 结算拦截 + 按店运费：注册 checker/calculator（幂等去重）
+            const checkerCodes = new Set(config.shippingOptions.shippingEligibilityCheckers.map(c => c.code));
+            if (!checkerCodes.has(range_shipping_eligibility_checker_1.rangeShippingEligibilityChecker.code)) {
+                config.shippingOptions.shippingEligibilityCheckers.push(range_shipping_eligibility_checker_1.rangeShippingEligibilityChecker);
+            }
+            const calcCodes = new Set(config.shippingOptions.shippingCalculators.map(c => c.code));
+            if (!calcCodes.has(range_shipping_calculator_1.rangeShippingCalculator.code)) {
+                config.shippingOptions.shippingCalculators.push(range_shipping_calculator_1.rangeShippingCalculator);
+            }
+            return config;
+        },
         compatibility: '^3.0.0',
     }),
     __param(0, (0, common_1.Inject)(constants_1.ADDRESS_PLUGIN_OPTIONS)),

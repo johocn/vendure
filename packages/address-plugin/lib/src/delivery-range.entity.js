@@ -52,6 +52,14 @@ __decorate([
     __metadata("design:type", Object)
 ], DeliveryRange.prototype, "districtCodes", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ type: 'int', default: 0 }),
+    __metadata("design:type", Number)
+], DeliveryRange.prototype, "baseFee", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', nullable: true }),
+    __metadata("design:type", Object)
+], DeliveryRange.prototype, "freeThreshold", void 0);
+__decorate([
     (0, typeorm_1.Column)({ type: 'int' }),
     __metadata("design:type", Number)
 ], DeliveryRange.prototype, "channelId", void 0);

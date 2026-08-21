@@ -34,6 +34,13 @@ export class DeliveryRange extends VendureEntity implements ChannelAware {
     @Column({ type: 'varchar', nullable: true })
     districtCodes: string | null;
 
+    /** 基础运费（分）；freeThreshold 满额包邮阈值（分），null=该店不支持包邮。 */
+    @Column({ type: 'int', default: 0 })
+    baseFee: number;
+
+    @Column({ type: 'int', nullable: true })
+    freeThreshold: number | null;
+
     @Column({ type: 'int' })
     channelId: number;
 

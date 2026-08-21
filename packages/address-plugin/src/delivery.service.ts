@@ -11,6 +11,7 @@ import { Shop } from '@vendure/shop-plugin';
 
 import { DeliveryAddress } from './delivery-address.entity';
 import { DeliveryRange } from './delivery-range.entity';
+import { computeShopFees, hasOrderShippingCodes, readOrderShippingCodes, resolveOrderShopMap } from './shipping-rules';
 
 export interface AddressInput {
     fullName: string;
@@ -34,6 +35,10 @@ export interface RangeInput {
     centerLat?: number | null;
     radiusKm?: number | null;
     districtCodes?: string[] | null;
+    /** 基础运费（分）。 */
+    baseFee?: number | null;
+    /** 满额包邮阈值（分）；null=该店不支持包邮。 */
+    freeThreshold?: number | null;
 }
 
 export interface DeliveryResult {
@@ -83,6 +88,17 @@ export class DeliveryService {
             channelId: ctx.channelId as number,
         } as any);
         return this.connection.getRepository(ctx, DeliveryAddress).save(addr);
+    }
+
+    async getAddress(ctx: RequestContext, id: ID): Promise<DeliveryAddress> {
+        const customer = await this.requireCustomer(ctx);
+        const addr = await this.connection.getRepository(ctx, DeliveryAddress).findOne({
+            where: { id: Number(id), customerId: customer.id, channelId: ctx.channelId as number } as any,
+        });
+        if (!addr) {
+            throw new EntityNotFoundError('DeliveryAddress', id);
+        }
+        return addr;
     }
 
     async updateAddress(ctx: RequestContext, id: ID, input: AddressInput): Promise<DeliveryAddress> {
@@ -173,6 +189,8 @@ export class DeliveryService {
         if (input.districtCodes !== undefined) {
             range.districtCodes = input.districtCodes ? JSON.stringify(input.districtCodes) : null;
         }
+        if (input.baseFee !== undefined) range.baseFee = input.baseFee ?? 0;
+        if (input.freeThreshold !== undefined) range.freeThreshold = input.freeThreshold ?? null;
         return repo.save(range);
     }
 
@@ -185,6 +203,37 @@ export class DeliveryService {
             results.push(this.evaluateRange(range, shopId, address));
         }
         return results;
+    }
+
+    // ---------- 订单运费联动 ----------
+
+    /** 当前订单行所属商品去重后的 shopId 列表（沿 Product.shopId 反查）。 */
+    async getOrderShopIds(ctx: RequestContext, order: any): Promise<number[]> {
+        const map = await resolveOrderShopMap(this.connection, ctx, order);
+        return [...new Set(map.values())];
+    }
+
+    /** 读取订单当前收件码/经纬度并逐店校验可得性。 */
+    async evaluateOrderDelivery(ctx: RequestContext, order: any, shopIds?: number[]) {
+        const ids = shopIds ?? (await this.getOrderShopIds(ctx, order));
+        const addr = readOrderShippingCodes(order);
+        return this.validateDelivery(ctx, addr as AddressInput, ids as ID[]);
+    }
+
+    /** 是否已具备收件码可参与校验。 */
+    hasOrderShippingCodes(order: any): boolean {
+        return hasOrderShippingCodes(order);
+    }
+
+    /** 从地址簿写入订单收件码/经纬度（stage22 前置：setOrderShippingFromAddress）。 */
+    applyAddressToOrderShipping(order: any, address: DeliveryAddress): void {
+        const cf = (order.customFields ?? {}) as Record<string, any>;
+        cf.shippingProvinceCode = address.provinceCode ?? null;
+        cf.shippingCityCode = address.cityCode ?? null;
+        cf.shippingDistrictCode = address.districtCode ?? null;
+        cf.shippingLng = address.lng ?? null;
+        cf.shippingLat = address.lat ?? null;
+        order.customFields = cf;
     }
 
     private evaluateRange(range: DeliveryRange | null, shopId: ID, addr: AddressInput): DeliveryResult {
