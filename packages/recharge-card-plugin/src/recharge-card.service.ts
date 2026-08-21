@@ -63,11 +63,32 @@ export class RechargeCardService {
 
     // ===== Balance Operations =====
 
-    async getBalance(ctx: RequestContext): Promise<number> {
-        if (!ctx.activeUserId) return 0;
+    /**
+     * Unifies the customer identity across all balance entry points.
+     * Given an explicit `customerId`, returns it directly. Otherwise resolves
+     * the Customer.id from the active session's User.id via customerService.
+     * This fixes the prior mix of User.id (consumption/recharge) and
+     * Customer.id (refund) keys that fragmented a single account's balance.
+     */
+    private async resolveCustomerId(ctx: RequestContext, customerId?: any): Promise<number> {
+        if (customerId !== undefined && customerId !== null) {
+            return Number(customerId);
+        }
+        if (!ctx.activeUserId) {
+            throw new UserInputError('Must be logged in');
+        }
+        const customer = await this.customerService.findOneByUserId(ctx, ctx.activeUserId);
+        if (!customer) {
+            throw new UserInputError('Customer not found');
+        }
+        return customer.id;
+    }
+
+    async getBalance(ctx: RequestContext, customerId?: any): Promise<number> {
+        const cid = await this.resolveCustomerId(ctx, customerId);
         const repo = this.connection.getRepository(ctx, CustomerBalance);
         const record = await repo.findOne({
-            where: { customerId: ctx.activeUserId as any, channelId: ctx.channelId as any },
+            where: { customerId: cid, channelId: ctx.channelId as any },
         });
         return record?.balance ?? 0;
     }
@@ -126,9 +147,7 @@ export class RechargeCardService {
     // ===== Card Operations =====
 
     async redeemCard(ctx: RequestContext, code: string, pin?: string): Promise<RechargeCard> {
-        if (!ctx.activeUserId) {
-            throw new UserInputError('Must be logged in to redeem a recharge card');
-        }
+        const cid = await this.resolveCustomerId(ctx);
         const repo = this.connection.getRepository(ctx, RechargeCard);
         const card = await repo.findOne({ where: { code } });
         if (!card) {
@@ -165,7 +184,7 @@ export class RechargeCardService {
                 .update(RechargeCard)
                 .set({
                     state: 'used',
-                    redeemedByCustomerId: ctx.activeUserId as any,
+                    redeemedByCustomerId: cid as any,
                     redeemedAt: new Date(),
                 })
                 .where('id = :id AND state = :state', { id: card.id, state: 'unused' })
@@ -174,7 +193,7 @@ export class RechargeCardService {
                 throw new UserInputError(`Card is already ${card.state}`);
             }
             // Credit balance + record transaction within the same transaction
-            await this.applyBalanceChange(ctx, ctx.activeUserId, card.faceValue, BalanceTransactionType.RECHARGE, {
+            await this.applyBalanceChange(ctx, cid, card.faceValue, BalanceTransactionType.RECHARGE, {
                 rechargeCardId: card.id,
             });
             await this.connection.commitOpenTransaction(ctx);
@@ -183,16 +202,16 @@ export class RechargeCardService {
             throw e;
         }
 
-        Logger.info(`Card ${code} redeemed by customer ${ctx.activeUserId}, added ${card.faceValue} to balance`, loggerCtx);
+        Logger.info(`Card ${code} redeemed by customer ${cid}, added ${card.faceValue} to balance`, loggerCtx);
         card.state = 'used';
         return card;
     }
 
     async findMyCards(ctx: RequestContext): Promise<RechargeCard[]> {
-        if (!ctx.activeUserId) return [];
+        const cid = await this.resolveCustomerId(ctx);
         const repo = this.connection.getRepository(ctx, RechargeCard);
         return repo.find({
-            where: { redeemedByCustomerId: ctx.activeUserId as any },
+            where: { redeemedByCustomerId: cid as any },
             order: { createdAt: 'DESC' },
         });
     }

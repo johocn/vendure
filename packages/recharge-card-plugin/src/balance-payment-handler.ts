@@ -31,8 +31,12 @@ export const balancePaymentHandler = new PaymentMethodHandler({
             if (!ctx.activeUserId) {
                 return { amount, state: 'Declined' as const, errorMessage: 'Not logged in', metadata: {} };
             }
+            const orderWithCustomer = await orderService.findOne(ctx, order.id);
+            if (!orderWithCustomer?.customer) {
+                return { amount, state: 'Declined' as const, errorMessage: 'Cannot identify customer', metadata: {} };
+            }
             const remainingBalance = await rechargeService.deductBalance(
-                ctx, ctx.activeUserId, amount, order.id,
+                ctx, String(orderWithCustomer.customer.id), amount, order.id,
             );
             return {
                 amount,
