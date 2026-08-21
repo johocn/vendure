@@ -4,6 +4,7 @@ import {
     ForbiddenError,
     ID,
     OrderService,
+    PaymentMethod,
     RequestContext,
     TransactionalConnection,
     UserInputError,
@@ -15,7 +16,7 @@ import { SUBSCRIPTION_PLUGIN_OPTIONS } from './constants';
 import { SubscriptionOccurrence } from './subscription-occurrence.entity';
 import { SubscriptionPlan } from './subscription-plan.entity';
 import { Subscription } from './subscription.entity';
-import { ListOptions, SubscriptionItem, SubscriptionPluginOptions } from './types';
+import { SubscriptionListOptions, SubscriptionItem, SubscriptionPluginOptions } from './types';
 
 /**
  * 周期购/订阅复购核心：买断开通（购审 + 展开排期）、每期生成正式订单并抵扣预存款、
@@ -118,13 +119,12 @@ export class SubscriptionService {
      */
     async processDueOccurrences(ctx: RequestContext, asOf: Date = new Date()): Promise<{ created: number; skipped: number }> {
         const occRepo = this.connection.getRepository(ctx, SubscriptionOccurrence);
-        const due = await occRepo.find({
-            where: {
-                status: 'pending',
-                scheduledDate: { lessThanOrEqual: asOf },
-            } as any,
+        // 注：sql.js 无法把 Date 对象绑定进 where（lessThanOrEqual）参数，故先取全部 pending、在内存按时间过滤。
+        const pendings = await occRepo.find({
+            where: { status: 'pending' } as any,
             order: { scheduledDate: 'ASC' },
         });
+        const due = pendings.filter(o => new Date(o.scheduledDate).getTime() <= asOf.getTime());
         let created = 0;
         let skipped = 0;
         for (const occ of due) {
@@ -147,26 +147,77 @@ export class SubscriptionService {
         return { created, skipped };
     }
 
-    /** 用 OrderService 建正式订单并加入期次清单，随后推进到 PaymentSettled（平台统一采集语义）。 */
+    /** 用 OrderService 建正式订单并加入期次清单，补全收货地址/运费/支付后推进到 PaymentSettled。 */
     private async createFormalOrder(ctx: RequestContext, occ: SubscriptionOccurrence, items: SubscriptionItem[]): Promise<any> {
         const sub = await this.connection.getRepository(ctx, Subscription).findOne({ where: { id: occ.subscriptionId } as any });
         if (!sub) {
             throw new UserInputError('Subscription not found');
         }
-        const order = await this.orderService.create(ctx, sub.customerId);
-        for (const it of items) {
-            await this.orderService.addItemToOrder(ctx, order.id, it.variantId as any, it.quantity);
+        // 交易内构建订单（addPaymentToOrder 需事务 ctx），失败整体回滚不残留半成品订单。
+        return this.connection.withTransaction(ctx, async txCtx => {
+            const order = await this.orderService.create(txCtx, sub.customerId);
+            for (const it of items) {
+                const addRes: any = await this.orderService.addItemToOrder(txCtx, order.id, it.variantId as any, it.quantity);
+                if (!addRes || addRes.id == null) {
+                    throw new UserInputError('Failed to add item to subscription order');
+                }
+            }
+            await this.orderService.setShippingAddress(txCtx, order.id, this.defaultShippingAddress());
+            const quotes = await this.orderService.getEligibleShippingMethods(txCtx, order.id);
+            if (quotes.length) {
+                const shipRes: any = await this.orderService.setShippingMethod(txCtx, order.id, [quotes[0].id]);
+                if (shipRes && shipRes.errorCode) {
+                    throw new UserInputError('Failed to set shipping method');
+                }
+            }
+            await this.transitionToStateChecked(txCtx, order.id, 'ArrangingPayment');
+            const pmCode = await this.resolvePaymentMethodCode(txCtx);
+            const payRes: any = await this.orderService.addPaymentToOrder(txCtx, order.id, { method: pmCode, metadata: {} });
+            if (!payRes || payRes.id == null) {
+                throw new UserInputError('Failed to add payment to subscription order');
+            }
+            await this.transitionToStateChecked(txCtx, order.id, 'PaymentSettled');
+            return this.orderService.findOne(txCtx, order.id);
+        });
+    }
+
+    /** 从插件配置或当前 channel 已启用支付方式中解析支付方式 code，用于 Buyout 统一采集。 */
+    private async resolvePaymentMethodCode(ctx: RequestContext): Promise<string> {
+        if (this.options.paymentMethodCode) {
+            return this.options.paymentMethodCode;
         }
-        // 推进到 ArrangingPayment → PaymentSettled（内部采集，不接真实支付网关）
-        const transitions = ['ArrangingPayment', 'PaymentSettled'];
-        for (const t of transitions) {
-            try {
-                await this.orderService.transitionToState(ctx, order.id, t as any);
-            } catch {
-                // 某些过渡可能已到位，忽略
+        const methods = await this.connection.getRepository(ctx, PaymentMethod).find({
+            order: { id: 'ASC' } as any,
+            take: 1,
+        });
+        const method = methods[0];
+        if (!method?.code) {
+            throw new UserInputError('No payment method available for subscription order');
+        }
+        return method.code;
+    }
+
+    /** 期次订单默认收货地址（买到到店无需真实门牌，仅占位）。 */
+    private defaultShippingAddress(): any {
+        return {
+            fullName: 'Subscription Buyer',
+            streetLine1: '1 Test Street',
+            city: 'Springfield',
+            postalCode: '00000',
+            countryCode: 'US',
+        };
+    }
+
+    /** 过渡订单状态；已在目标态则视为成功，否则抛错以触发创建事务回滚。 */
+    private async transitionToStateChecked(ctx: RequestContext, orderId: ID, state: any): Promise<void> {
+        const res: any = await this.orderService.transitionToState(ctx, orderId, state as any);
+        if (!res || res.id == null) {
+            const current: any = await this.orderService.findOne(ctx, orderId);
+            const text = res?.transitionError ?? res?.message ?? 'order transition failed';
+            if (!current || String(current.state) !== state) {
+                throw new UserInputError(`Order transition to "${state}" failed: ${text}`);
             }
         }
-        return this.orderService.findOne(ctx, order.id);
     }
 
     /** 每期按 periodPrice 抵扣预存款；余额不足则回滚期次 pending 并抛错。 */
@@ -186,6 +237,10 @@ export class SubscriptionService {
             throw new UserInputError('Insufficient prepaid balance');
         }
         sub.prepaidBalance -= periodPrice;
+        // 全部期次抵扣完毕 → 本段到期
+        if (sub.prepaidBalance <= 0) {
+            sub.status = 'expired';
+        }
         await subRepo.save(sub);
     }
 
@@ -251,7 +306,7 @@ export class SubscriptionService {
         return sub;
     }
 
-    async customerSubscriptions(ctx: RequestContext, customerId: number, options?: ListOptions): Promise<{ items: Subscription[]; totalItems: number }> {
+    async customerSubscriptions(ctx: RequestContext, customerId: number, options?: SubscriptionListOptions): Promise<{ items: Subscription[]; totalItems: number }> {
         const [items, totalItems] = await this.connection.getRepository(ctx, Subscription).findAndCount({
             where: { channelId: ctx.channelId as number, customerId } as any,
             order: { createdAt: 'DESC' },
@@ -261,7 +316,7 @@ export class SubscriptionService {
         return { items, totalItems };
     }
 
-    async occurrencesOf(ctx: RequestContext, subscriptionId: ID, options?: ListOptions): Promise<{ items: SubscriptionOccurrence[]; totalItems: number }> {
+    async occurrencesOf(ctx: RequestContext, subscriptionId: ID, options?: SubscriptionListOptions): Promise<{ items: SubscriptionOccurrence[]; totalItems: number }> {
         const [items, totalItems] = await this.connection.getRepository(ctx, SubscriptionOccurrence).findAndCount({
             where: { channelId: ctx.channelId as number, subscriptionId: Number(subscriptionId) } as any,
             order: { periodNo: 'ASC' },
@@ -271,7 +326,7 @@ export class SubscriptionService {
         return { items, totalItems };
     }
 
-    async shopPlans(ctx: RequestContext, options?: ListOptions): Promise<{ items: SubscriptionPlan[]; totalItems: number }> {
+    async shopPlans(ctx: RequestContext, options?: SubscriptionListOptions): Promise<{ items: SubscriptionPlan[]; totalItems: number }> {
         const shop = await this.requireMyShop(ctx);
         const [items, totalItems] = await this.connection.getRepository(ctx, SubscriptionPlan).findAndCount({
             where: { channelId: ctx.channelId as number, shopId: shop.id as number } as any,
@@ -282,7 +337,7 @@ export class SubscriptionService {
         return { items, totalItems };
     }
 
-    async allPlans(ctx: RequestContext, options?: ListOptions): Promise<{ items: SubscriptionPlan[]; totalItems: number }> {
+    async allPlans(ctx: RequestContext, options?: SubscriptionListOptions): Promise<{ items: SubscriptionPlan[]; totalItems: number }> {
         const [items, totalItems] = await this.connection.getRepository(ctx, SubscriptionPlan).findAndCount({
             where: { channelId: ctx.channelId as number, enabled: true } as any,
             order: { createdAt: 'DESC' },
@@ -293,7 +348,7 @@ export class SubscriptionService {
     }
 
     /** 平台视角：全部订阅（按 channel 过滤，不按客户）。 */
-    async allSubscriptions(ctx: RequestContext, options?: ListOptions): Promise<{ items: Subscription[]; totalItems: number }> {
+    async allSubscriptions(ctx: RequestContext, options?: SubscriptionListOptions): Promise<{ items: Subscription[]; totalItems: number }> {
         const [items, totalItems] = await this.connection.getRepository(ctx, Subscription).findAndCount({
             where: { channelId: ctx.channelId as number } as any,
             order: { createdAt: 'DESC' },
@@ -304,7 +359,7 @@ export class SubscriptionService {
     }
 
     /** 平台视角：全部期次（按 channel 过滤，不按客户）。 */
-    async allOccurrences(ctx: RequestContext, options?: ListOptions): Promise<{ items: SubscriptionOccurrence[]; totalItems: number }> {
+    async allOccurrences(ctx: RequestContext, options?: SubscriptionListOptions): Promise<{ items: SubscriptionOccurrence[]; totalItems: number }> {
         const [items, totalItems] = await this.connection.getRepository(ctx, SubscriptionOccurrence).findAndCount({
             where: { channelId: ctx.channelId as number } as any,
             order: { scheduledDate: 'ASC' },
@@ -316,10 +371,20 @@ export class SubscriptionService {
 
     async createPlan(ctx: RequestContext, input: any): Promise<SubscriptionPlan> {
         const shop = await this.requireMyShop(ctx);
+        // frequency 以 JSON 字符串形式经 GraphQL 传入，这里解析为多频次对象后落库（simple-json）。
+        let frequency = input.frequency;
+        if (typeof frequency === 'string') {
+            try {
+                frequency = JSON.parse(frequency);
+            } catch {
+                throw new UserInputError('Invalid frequency');
+            }
+        }
         const plan = new SubscriptionPlan({
             channelId: ctx.channelId as number,
             shopId: shop.id as number,
             ...input,
+            frequency,
             enabled: input.enabled ?? true,
         } as any);
         return this.connection.getRepository(ctx, SubscriptionPlan).save(plan);
