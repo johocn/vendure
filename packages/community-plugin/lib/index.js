@@ -20,4 +20,5 @@ __exportStar(require("./src/community-activity.entity"), exports);
 __exportStar(require("./src/community-activity-item.entity"), exports);
 __exportStar(require("./src/community-participation.entity"), exports);
 __exportStar(require("./src/community-commission-entry.entity"), exports);
+__exportStar(require("./src/community.service"), exports);
 //# sourceMappingURL=index.js.map

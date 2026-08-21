@@ -4,3 +4,4 @@ export * from './src/community-activity.entity';
 export * from './src/community-activity-item.entity';
 export * from './src/community-participation.entity';
 export * from './src/community-commission-entry.entity';
+export * from './src/community.service';
