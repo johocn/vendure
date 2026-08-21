@@ -15,7 +15,7 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 __exportStar(require("./src/constants"), exports);
-// export * from './src/pickup.service';
+__exportStar(require("./src/pickup.service"), exports);
 // export * from './src/pickup.plugin';
 // export * from './src/pickup-customer.resolver';
 // export * from './src/pickup-admin.resolver';
