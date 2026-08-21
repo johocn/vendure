@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "outDir": "lib" },
+  "exclude": ["node_modules", "e2e", "**/*.e2e-spec.ts"]
+}
