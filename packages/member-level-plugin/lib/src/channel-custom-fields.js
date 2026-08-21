@@ -88,6 +88,12 @@ exports.memberLevelChannelCustomFields = {
             defaultValue: 0,
             label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '积分有效期（天，0=不过期）' }],
         },
+        {
+            name: 'freeShippingLevel',
+            type: 'int',
+            defaultValue: 0,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '启用等级免运费所需最低档位(0=不启用)' }],
+        },
     ],
 };
 //# sourceMappingURL=channel-custom-fields.js.map

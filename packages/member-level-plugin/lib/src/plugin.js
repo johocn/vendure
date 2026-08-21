@@ -25,7 +25,11 @@ const points_expire_job_1 = require("./points-expire.job");
 const constants_1 = require("./constants");
 const permissions_1 = require("./permissions");
 const member_points_history_entity_1 = require("./member-points-history.entity");
+const member_tier_entity_1 = require("./member-tier.entity");
 const member_level_service_1 = require("./member-level.service");
+const tier_discount_condition_1 = require("./tier-discount-condition");
+const tier_discount_action_1 = require("./tier-discount-action");
+const tier_free_shipping_1 = require("./tier-free-shipping");
 const member_level_admin_resolver_1 = require("./member-level-admin.resolver");
 const member_level_shop_resolver_1 = require("./member-level-shop.resolver");
 /** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
@@ -43,6 +47,31 @@ const adminSchema = () => gql `
         points: Int!
         nextLevelThreshold: Int
         nextLevelName: String
+        pointsMultiplier: Int!
+        redeemDiscountRate: Int!
+        redeemCapRatio: Int!
+        specialDiscountRate: Int!
+    }
+
+    type MemberTier {
+        id: ID!
+        tierLevel: Int!
+        threshold: Int!
+        name: String!
+        pointsMultiplier: Int!
+        redeemDiscountRate: Int!
+        redeemCapRatio: Int!
+        specialDiscountRate: Int!
+    }
+
+    input MemberTierInput {
+        tierLevel: Int!
+        threshold: Int!
+        name: String!
+        pointsMultiplier: Int
+        redeemDiscountRate: Int
+        redeemCapRatio: Int
+        specialDiscountRate: Int
     }
 
     type MemberPointsHistory implements Node {
@@ -120,12 +149,14 @@ const adminSchema = () => gql `
         pointsHistory(customerId: ID!, options: PointsHistoryListOptions): PointsHistoryList!
         members(options: JSON): MemberList!
         levelConfig: LevelConfig!
+        memberTiers: [MemberTier!]!
     }
 
     extend type Mutation {
         adjustPoints(customerId: ID!, amount: Int!, remark: String): MemberInfo!
         adjustMemberGrowth(customerId: ID!, amount: Int!, source: String): MemberInfo!
         updateLevelConfig(input: UpdateLevelConfigInput!): LevelConfig!
+        saveTiers(input: [MemberTierInput!]!): [MemberTier!]!
     }
 `;
 const shopSchema = () => gql `
@@ -137,6 +168,10 @@ const shopSchema = () => gql `
         points: Int!
         nextLevelThreshold: Int
         nextLevelName: String
+        pointsMultiplier: Int!
+        redeemDiscountRate: Int!
+        redeemCapRatio: Int!
+        specialDiscountRate: Int!
     }
 
     type MemberPointsHistory implements Node {
@@ -164,6 +199,7 @@ const shopSchema = () => gql `
 
     extend type Query {
         myMemberInfo: MemberInfo!
+        myTier: MemberInfo!
         myPointsHistory(options: PointsHistoryListOptions): PointsHistoryList!
     }
 
@@ -198,16 +234,18 @@ let MemberLevelPlugin = MemberLevelPlugin_1 = class MemberLevelPlugin {
         core_1.Logger.info('MemberLevelPlugin initialized', constants_1.loggerCtx);
     }
     async handleOrderDelivered(event) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
         const { ctx, order } = event;
         if (!order.customer)
             return;
         const customerId = order.customer.id;
         try {
             const cf = (_a = ctx.channel.customFields) !== null && _a !== void 0 ? _a : {};
-            const ratio = (_c = (_b = cf.pointsEarnRatio) !== null && _b !== void 0 ? _b : this.options.defaultPointsEarnRatio) !== null && _c !== void 0 ? _c : 1;
-            const earnOnShipping = (_e = (_d = cf.pointsEarnOnShipping) !== null && _d !== void 0 ? _d : this.options.defaultPointsEarnOnShipping) !== null && _e !== void 0 ? _e : false;
-            const base = earnOnShipping ? (_f = order.total) !== null && _f !== void 0 ? _f : 0 : (_g = order.subTotal) !== null && _g !== void 0 ? _g : 0;
+            const earnOnShipping = (_c = (_b = cf.pointsEarnOnShipping) !== null && _b !== void 0 ? _b : this.options.defaultPointsEarnOnShipping) !== null && _c !== void 0 ? _c : false;
+            const base = earnOnShipping ? (_d = order.total) !== null && _d !== void 0 ? _d : 0 : (_e = order.subTotal) !== null && _e !== void 0 ? _e : 0;
+            // 设计4.2：积分获取倍率以当前会员档位 pointsMultiplier 为准（千分比，1000=×1），取代 channel pointsEarnRatio
+            const tier = await this.memberLevelService.resolveTierForCustomer(ctx, customerId);
+            const ratio = ((_f = tier.pointsMultiplier) !== null && _f !== void 0 ? _f : 1000) / 1000;
             const points = Math.floor(base * ratio);
             if (points <= 0)
                 return;
@@ -218,13 +256,13 @@ let MemberLevelPlugin = MemberLevelPlugin_1 = class MemberLevelPlugin {
             }
             await this.memberLevelService.addGrowthValue(ctx, customerId, Math.floor(base), 'order_delivered');
             // 积分有效期：Channel.pointsExpireDays 配置后写入 expiresAt（过期清理任务据此扫描）
-            const expireDays = (_j = (_h = cf.pointsExpireDays) !== null && _h !== void 0 ? _h : this.options.defaultPointsExpireDays) !== null && _j !== void 0 ? _j : 0;
+            const expireDays = (_h = (_g = cf.pointsExpireDays) !== null && _g !== void 0 ? _g : this.options.defaultPointsExpireDays) !== null && _h !== void 0 ? _h : 0;
             const expiresAt = expireDays > 0 ? new Date(Date.now() + expireDays * 24 * 60 * 60 * 1000) : null;
             await this.memberLevelService.addPoints(ctx, customerId, points, order.id, 'order_delivered', expiresAt);
-            core_1.Logger.info(`Order ${order.id} delivered: +${Math.floor(base)} growth, +${points} points (expires ${(_k = expiresAt === null || expiresAt === void 0 ? void 0 : expiresAt.toISOString()) !== null && _k !== void 0 ? _k : 'never'}) for customer ${customerId}`, constants_1.loggerCtx);
+            core_1.Logger.info(`Order ${order.id} delivered: +${Math.floor(base)} growth, +${points} points (expires ${(_j = expiresAt === null || expiresAt === void 0 ? void 0 : expiresAt.toISOString()) !== null && _j !== void 0 ? _j : 'never'}) for customer ${customerId}`, constants_1.loggerCtx);
         }
         catch (e) {
-            core_1.Logger.error(`Failed to credit points for order ${order.id}: ${(_l = e === null || e === void 0 ? void 0 : e.message) !== null && _l !== void 0 ? _l : e}`, constants_1.loggerCtx);
+            core_1.Logger.error(`Failed to credit points for order ${order.id}: ${(_k = e === null || e === void 0 ? void 0 : e.message) !== null && _k !== void 0 ? _k : e}`, constants_1.loggerCtx);
         }
     }
     /**
@@ -264,7 +302,7 @@ MemberLevelPlugin.options = {};
 exports.MemberLevelPlugin = MemberLevelPlugin = MemberLevelPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [member_points_history_entity_1.MemberPointsHistory],
+        entities: [member_points_history_entity_1.MemberPointsHistory, member_tier_entity_1.MemberTier],
         providers: [
             { provide: constants_1.MEMBER_LEVEL_PLUGIN_OPTIONS, useFactory: () => MemberLevelPlugin.options },
             member_level_service_1.MemberLevelService,
@@ -278,7 +316,7 @@ exports.MemberLevelPlugin = MemberLevelPlugin = MemberLevelPlugin_1 = __decorate
             resolvers: [member_level_shop_resolver_1.MemberLevelShopResolver],
         },
         configuration: (config) => {
-            var _a, _b, _c, _d, _e, _f, _g;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
             config.customFields.Channel = mergeCustomFields(config.customFields.Channel, channel_custom_fields_1.memberLevelChannelCustomFields.Channel);
             config.customFields.Customer = mergeCustomFields(config.customFields.Customer, customer_custom_fields_1.memberLevelCustomerCustomFields.Customer);
             config.customFields.Order = mergeCustomFields(config.customFields.Order, order_custom_fields_1.memberLevelOrderCustomFields.Order);
@@ -286,19 +324,30 @@ exports.MemberLevelPlugin = MemberLevelPlugin = MemberLevelPlugin_1 = __decorate
             config.promotionOptions.promotionConditions = [
                 ...((_b = config.promotionOptions.promotionConditions) !== null && _b !== void 0 ? _b : []),
                 points_redeem_condition_1.pointsRedeemCondition,
+                tier_discount_condition_1.tierEligibleCondition,
             ];
             config.promotionOptions.promotionActions = [
                 ...((_c = config.promotionOptions.promotionActions) !== null && _c !== void 0 ? _c : []),
                 points_redeem_action_1.pointsRedeemAction,
+                tier_discount_action_1.tierDiscountAction,
             ];
-            config.schedulerOptions = (_d = config.schedulerOptions) !== null && _d !== void 0 ? _d : {};
-            config.schedulerOptions.tasks = (_e = config.schedulerOptions.tasks) !== null && _e !== void 0 ? _e : [];
+            config.shippingOptions = (_d = config.shippingOptions) !== null && _d !== void 0 ? _d : {};
+            config.shippingOptions.shippingEligibilityCheckers = [
+                ...((_e = config.shippingOptions.shippingEligibilityCheckers) !== null && _e !== void 0 ? _e : []),
+                tier_free_shipping_1.tierFreeShippingEligibilityChecker,
+            ];
+            config.shippingOptions.shippingCalculators = [
+                ...((_f = config.shippingOptions.shippingCalculators) !== null && _f !== void 0 ? _f : []),
+                tier_free_shipping_1.tierFreeShippingCalculator,
+            ];
+            config.schedulerOptions = (_g = config.schedulerOptions) !== null && _g !== void 0 ? _g : {};
+            config.schedulerOptions.tasks = (_h = config.schedulerOptions.tasks) !== null && _h !== void 0 ? _h : [];
             if (!config.schedulerOptions.tasks.some(t => t.id === points_expire_job_1.pointsExpireTask.id)) {
                 config.schedulerOptions.tasks.push(points_expire_job_1.pointsExpireTask);
             }
-            config.authOptions = (_f = config.authOptions) !== null && _f !== void 0 ? _f : {};
+            config.authOptions = (_j = config.authOptions) !== null && _j !== void 0 ? _j : {};
             config.authOptions.customPermissions = [
-                ...((_g = config.authOptions.customPermissions) !== null && _g !== void 0 ? _g : []),
+                ...((_k = config.authOptions.customPermissions) !== null && _k !== void 0 ? _k : []),
                 permissions_1.memberLevelPermission,
             ];
             return config;

@@ -71,4 +71,19 @@ export class MemberLevelAdminResolver {
     ): Promise<any> {
         return this.memberLevelService.updateLevelConfig(ctx, input);
     }
+
+    @Query()
+    @Allow(memberLevelPermission.Read)
+    async memberTiers(@Ctx() ctx: RequestContext): Promise<any> {
+        return this.memberLevelService.listMemberTiers(ctx);
+    }
+
+    @Mutation()
+    @Allow(memberLevelPermission.Update)
+    async saveTiers(
+        @Ctx() ctx: RequestContext,
+        @Args('input', { type: () => [Object] }) input: any[],
+    ): Promise<any> {
+        return this.memberLevelService.saveMemberTiers(ctx, input);
+    }
 }

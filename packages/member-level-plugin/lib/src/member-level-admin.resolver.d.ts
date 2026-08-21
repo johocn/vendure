@@ -10,4 +10,6 @@ export declare class MemberLevelAdminResolver {
     adjustPoints(ctx: RequestContext, customerId: ID, amount: number, remark?: string): Promise<any>;
     adjustMemberGrowth(ctx: RequestContext, customerId: ID, amount: number, source?: string): Promise<any>;
     updateLevelConfig(ctx: RequestContext, input: any): Promise<any>;
+    memberTiers(ctx: RequestContext): Promise<any>;
+    saveTiers(ctx: RequestContext, input: any[]): Promise<any>;
 }

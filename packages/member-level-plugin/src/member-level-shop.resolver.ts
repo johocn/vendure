@@ -15,6 +15,12 @@ export class MemberLevelShopResolver {
 
     @Query()
     @Allow(Permission.Authenticated)
+    async myTier(@Ctx() ctx: RequestContext): Promise<any> {
+        return this.memberLevelService.getMyMemberInfo(ctx);
+    }
+
+    @Query()
+    @Allow(Permission.Authenticated)
     async myPointsHistory(
         @Ctx() ctx: RequestContext,
         @Args('options', { nullable: true }) options: any,

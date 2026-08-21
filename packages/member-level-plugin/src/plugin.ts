@@ -18,7 +18,11 @@ import { MEMBER_LEVEL_PLUGIN_OPTIONS, loggerCtx } from './constants';
 import { memberLevelPermission } from './permissions';
 import { MemberLevelPluginOptions } from './types';
 import { MemberPointsHistory, PointsHistoryType } from './member-points-history.entity';
+import { MemberTier } from './member-tier.entity';
 import { MemberLevelService } from './member-level.service';
+import { tierEligibleCondition } from './tier-discount-condition';
+import { tierDiscountAction } from './tier-discount-action';
+import { tierFreeShippingCalculator, tierFreeShippingEligibilityChecker } from './tier-free-shipping';
 import { MemberLevelAdminResolver } from './member-level-admin.resolver';
 import { MemberLevelShopResolver } from './member-level-shop.resolver';
 
@@ -42,6 +46,31 @@ const adminSchema = () => gql`
         points: Int!
         nextLevelThreshold: Int
         nextLevelName: String
+        pointsMultiplier: Int!
+        redeemDiscountRate: Int!
+        redeemCapRatio: Int!
+        specialDiscountRate: Int!
+    }
+
+    type MemberTier {
+        id: ID!
+        tierLevel: Int!
+        threshold: Int!
+        name: String!
+        pointsMultiplier: Int!
+        redeemDiscountRate: Int!
+        redeemCapRatio: Int!
+        specialDiscountRate: Int!
+    }
+
+    input MemberTierInput {
+        tierLevel: Int!
+        threshold: Int!
+        name: String!
+        pointsMultiplier: Int
+        redeemDiscountRate: Int
+        redeemCapRatio: Int
+        specialDiscountRate: Int
     }
 
     type MemberPointsHistory implements Node {
@@ -119,12 +148,14 @@ const adminSchema = () => gql`
         pointsHistory(customerId: ID!, options: PointsHistoryListOptions): PointsHistoryList!
         members(options: JSON): MemberList!
         levelConfig: LevelConfig!
+        memberTiers: [MemberTier!]!
     }
 
     extend type Mutation {
         adjustPoints(customerId: ID!, amount: Int!, remark: String): MemberInfo!
         adjustMemberGrowth(customerId: ID!, amount: Int!, source: String): MemberInfo!
         updateLevelConfig(input: UpdateLevelConfigInput!): LevelConfig!
+        saveTiers(input: [MemberTierInput!]!): [MemberTier!]!
     }
 `;
 
@@ -137,6 +168,10 @@ const shopSchema = () => gql`
         points: Int!
         nextLevelThreshold: Int
         nextLevelName: String
+        pointsMultiplier: Int!
+        redeemDiscountRate: Int!
+        redeemCapRatio: Int!
+        specialDiscountRate: Int!
     }
 
     type MemberPointsHistory implements Node {
@@ -164,6 +199,7 @@ const shopSchema = () => gql`
 
     extend type Query {
         myMemberInfo: MemberInfo!
+        myTier: MemberInfo!
         myPointsHistory(options: PointsHistoryListOptions): PointsHistoryList!
     }
 
@@ -174,7 +210,7 @@ const shopSchema = () => gql`
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [MemberPointsHistory],
+    entities: [MemberPointsHistory, MemberTier],
     providers: [
         { provide: MEMBER_LEVEL_PLUGIN_OPTIONS, useFactory: () => MemberLevelPlugin.options },
         MemberLevelService,
@@ -195,10 +231,21 @@ const shopSchema = () => gql`
         config.promotionOptions.promotionConditions = [
             ...(config.promotionOptions.promotionConditions ?? []),
             pointsRedeemCondition,
+            tierEligibleCondition,
         ];
         config.promotionOptions.promotionActions = [
             ...(config.promotionOptions.promotionActions ?? []),
             pointsRedeemAction,
+            tierDiscountAction,
+        ];
+        config.shippingOptions = config.shippingOptions ?? {};
+        config.shippingOptions.shippingEligibilityCheckers = [
+            ...(config.shippingOptions.shippingEligibilityCheckers ?? []),
+            tierFreeShippingEligibilityChecker,
+        ];
+        config.shippingOptions.shippingCalculators = [
+            ...(config.shippingOptions.shippingCalculators ?? []),
+            tierFreeShippingCalculator,
         ];
         config.schedulerOptions = config.schedulerOptions ?? {};
         config.schedulerOptions.tasks = config.schedulerOptions.tasks ?? [];
@@ -252,10 +299,12 @@ export class MemberLevelPlugin implements OnApplicationBootstrap {
         const customerId = order.customer.id;
         try {
             const cf = (ctx.channel as any).customFields ?? {};
-            const ratio = cf.pointsEarnRatio ?? this.options.defaultPointsEarnRatio ?? 1;
             const earnOnShipping =
                 cf.pointsEarnOnShipping ?? this.options.defaultPointsEarnOnShipping ?? false;
             const base = earnOnShipping ? order.total ?? 0 : order.subTotal ?? 0;
+            // 设计4.2：积分获取倍率以当前会员档位 pointsMultiplier 为准（千分比，1000=×1），取代 channel pointsEarnRatio
+            const tier = await this.memberLevelService.resolveTierForCustomer(ctx, customerId);
+            const ratio = (tier.pointsMultiplier ?? 1000) / 1000;
             const points = Math.floor(base * ratio);
             if (points <= 0) return;
 

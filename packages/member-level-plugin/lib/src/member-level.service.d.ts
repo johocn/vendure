@@ -1,5 +1,6 @@
 import { ChannelService, ConfigService, CustomerService, ID, ListQueryBuilder, ListQueryOptions, Order, OrderService, PaginatedList, Refund, RequestContext, TransactionalConnection } from '@vendure/core';
 import { MemberPointsHistory, PointsHistoryType } from './member-points-history.entity';
+import { MemberTier } from './member-tier.entity';
 export interface MemberInfo {
     customerId: ID;
     level: number;
@@ -8,6 +9,10 @@ export interface MemberInfo {
     points: number;
     nextLevelThreshold: number | null;
     nextLevelName: string | null;
+    pointsMultiplier: number;
+    redeemDiscountRate: number;
+    redeemCapRatio: number;
+    specialDiscountRate: number;
 }
 export interface ChannelLevelConfig {
     level1Threshold: number;
@@ -114,4 +119,30 @@ export declare class MemberLevelService {
     private getLevelThresholds;
     private getLevelName;
     private getNextLevel;
+    /**
+     * 播种：仅当本渠道无任何 MemberTier 记录时，从 channel level* 字段 + 默认权益生成。
+     * 幂等：already seeded 直接返回；并发由唯一索引 (tierLevel, channelId) 兜底。
+     */
+    private seedDefaultTiers;
+    /** 解析顾客当前档位：读成长值 → 查表（未播种先播种）→ threshold<=growth 的最大 tierLevel。 */
+    resolveTierForCustomer(ctx: RequestContext, customerId: ID): Promise<MemberTier>;
+    /** 按成长值解析档位（表驱动，未播种先播种兜底）。 */
+    resolveTierForGrowth(ctx: RequestContext, growthValue: number): Promise<MemberTier>;
+    /** 下一档位（threshold/name），已最高档返回 null/null。 */
+    private getNextTier;
+    /**
+     * 整体保存各档（幂等 upsert）：按 (tierLevel, channelId) 匹配更新或新增；
+     * 入参之外的旧档保留。返回保存后按 tierLevel 升序的全量列表。
+     */
+    saveMemberTiers(ctx: RequestContext, input: Array<{
+        tierLevel: number;
+        threshold: number;
+        name: string;
+        pointsMultiplier?: number;
+        redeemDiscountRate?: number;
+        redeemCapRatio?: number;
+        specialDiscountRate?: number;
+    }>): Promise<MemberTier[]>;
+    /** 列表查询（未播种先播种）。 */
+    listMemberTiers(ctx: RequestContext): Promise<MemberTier[]>;
 }

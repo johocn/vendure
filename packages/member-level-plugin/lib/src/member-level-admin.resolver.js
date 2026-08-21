@@ -44,6 +44,12 @@ let MemberLevelAdminResolver = class MemberLevelAdminResolver {
     async updateLevelConfig(ctx, input) {
         return this.memberLevelService.updateLevelConfig(ctx, input);
     }
+    async memberTiers(ctx) {
+        return this.memberLevelService.listMemberTiers(ctx);
+    }
+    async saveTiers(ctx, input) {
+        return this.memberLevelService.saveMemberTiers(ctx, input);
+    }
 };
 exports.MemberLevelAdminResolver = MemberLevelAdminResolver;
 __decorate([
@@ -113,6 +119,23 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], MemberLevelAdminResolver.prototype, "updateLevelConfig", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.memberLevelPermission.Read),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], MemberLevelAdminResolver.prototype, "memberTiers", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.memberLevelPermission.Update),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('input', { type: () => [Object] })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Array]),
+    __metadata("design:returntype", Promise)
+], MemberLevelAdminResolver.prototype, "saveTiers", null);
 exports.MemberLevelAdminResolver = MemberLevelAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [member_level_service_1.MemberLevelService])

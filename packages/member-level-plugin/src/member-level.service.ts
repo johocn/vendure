@@ -25,6 +25,7 @@ const NO_LOCK_DRIVERS = ['sqljs', 'better-sqlite3'];
 
 import { loggerCtx } from './constants';
 import { MemberPointsHistory, PointsHistoryType } from './member-points-history.entity';
+import { MemberTier } from './member-tier.entity';
 
 export interface MemberInfo {
     customerId: ID;
@@ -34,6 +35,10 @@ export interface MemberInfo {
     points: number;
     nextLevelThreshold: number | null;
     nextLevelName: string | null;
+    pointsMultiplier: number;
+    redeemDiscountRate: number;
+    redeemCapRatio: number;
+    specialDiscountRate: number;
 }
 
 export interface ChannelLevelConfig {
@@ -158,7 +163,8 @@ export class MemberLevelService {
             const currentGrowth = cf.growthValue ?? 0;
             const newGrowth = Math.max(0, currentGrowth + amt);
             cf.growthValue = newGrowth;
-            const newLevel = this.calculateLevel(txCtx, newGrowth);
+            const tier = await this.resolveTierForGrowth(txCtx, newGrowth);
+            const newLevel = tier.tierLevel;
             cf.memberLevel = newLevel;
             await repo.save(customer);
             Logger.info(
@@ -342,8 +348,15 @@ export class MemberLevelService {
         }
 
         const pointsPerYuan = this.getPointsPerYuan(ctx);
-        const discountAmount = Math.floor(amt / pointsPerYuan) * 100;
+        const tier = await this.resolveTierForGrowth(ctx, (customer as any)?.customFields?.growthValue ?? 0);
+        const rate = tier.redeemDiscountRate ?? 1000;
+        const effectivePerYuan = Math.ceil((pointsPerYuan * 1000) / rate);
+        const baseAmount = Math.floor(amt / effectivePerYuan) * 100;
         const subTotal = order.subTotal ?? 0;
+        // 封顶：可抵不超过订单金额上限比例（redeemCapRatio 千分比，默认 500 = 最多抵 50%）
+        const capRatio = tier.redeemCapRatio ?? 500;
+        const cap = Math.floor((subTotal * capRatio) / 1000);
+        const discountAmount = Math.min(baseAmount, cap);
         if (discountAmount <= 0) {
             throw new UserInputError('Redeemed amount is zero');
         }
@@ -693,17 +706,20 @@ export class MemberLevelService {
         const cf = (customer as any).customFields ?? {};
         const growthValue = cf.growthValue ?? 0;
         const points = cf.points ?? 0;
-        const level = cf.memberLevel ?? this.calculateLevel(ctx, growthValue);
-        const levelName = this.getLevelName(ctx, level);
-        const next = this.getNextLevel(ctx, level);
+        const tier = await this.resolveTierForGrowth(ctx, growthValue);
+        const next = await this.getNextTier(ctx, tier.tierLevel);
         return {
             customerId: customer.id,
-            level,
-            levelName,
+            level: tier.tierLevel,
+            levelName: tier.name,
             growthValue,
             points,
             nextLevelThreshold: next.threshold,
             nextLevelName: next.name,
+            pointsMultiplier: tier.pointsMultiplier,
+            redeemDiscountRate: tier.redeemDiscountRate,
+            redeemCapRatio: tier.redeemCapRatio,
+            specialDiscountRate: tier.specialDiscountRate,
         };
     }
 
@@ -741,5 +757,129 @@ export class MemberLevelService {
         }
         const { thresholds, names } = this.getLevelThresholds(ctx);
         return { threshold: thresholds[level], name: names[level] };
+    }
+
+    // ===== MemberTier 表驱动（阶段30） =====
+
+    /**
+     * 播种：仅当本渠道无任何 MemberTier 记录时，从 channel level* 字段 + 默认权益生成。
+     * 幂等：already seeded 直接返回；并发由唯一索引 (tierLevel, channelId) 兜底。
+     */
+    private async seedDefaultTiers(ctx: RequestContext): Promise<MemberTier[]> {
+        const repo = this.connection.getRepository(ctx, MemberTier);
+        const existing = await repo.find({ where: { channelId: ctx.channelId as number } as any });
+        if (existing.length > 0) return existing;
+        const cf = (ctx.channel as any).customFields ?? {};
+        const defs = [1, 2, 3, 4, 5].map(level => ({
+            tierLevel: level,
+            threshold: cf[`level${level}Threshold`] ?? DEFAULT_THRESHOLDS[level - 1],
+            name: cf[`level${level}Name`] ?? DEFAULT_NAMES[level - 1],
+            pointsMultiplier: 1000,
+            redeemDiscountRate: 1000,
+            redeemCapRatio: 500,
+            specialDiscountRate: 0,
+        }));
+        const saved: MemberTier[] = [];
+        for (const d of defs) {
+            const t = new MemberTier({ ...d, channelId: ctx.channelId as number });
+            t.channels = [ctx.channel];
+            saved.push(await repo.save(t));
+        }
+        return saved;
+    }
+
+    /** 解析顾客当前档位：读成长值 → 查表（未播种先播种）→ threshold<=growth 的最大 tierLevel。 */
+    async resolveTierForCustomer(ctx: RequestContext, customerId: ID): Promise<MemberTier> {
+        const customer = await this.customerService.findOne(ctx, customerId);
+        const growth = (customer as any)?.customFields?.growthValue ?? 0;
+        return this.resolveTierForGrowth(ctx, growth);
+    }
+
+    /** 按成长值解析档位（表驱动，未播种先播种兜底）。 */
+    async resolveTierForGrowth(ctx: RequestContext, growthValue: number): Promise<MemberTier> {
+        const repo = this.connection.getRepository(ctx, MemberTier);
+        const all = await repo.find({
+            where: { channelId: ctx.channelId as number } as any,
+            order: { tierLevel: 'ASC' },
+        });
+        if (all.length === 0) {
+            const seeded = await this.seedDefaultTiers(ctx);
+            return seeded[0];
+        }
+        let hit = all[0];
+        for (const t of all) {
+            if (growthValue >= t.threshold) {
+                hit = t;
+            }
+        }
+        return hit;
+    }
+
+    /** 下一档位（threshold/name），已最高档返回 null/null。 */
+    private async getNextTier(
+        ctx: RequestContext,
+        level: number,
+    ): Promise<{ threshold: number | null; name: string | null }> {
+        const repo = this.connection.getRepository(ctx, MemberTier);
+        const all = await repo.find({
+            where: { channelId: ctx.channelId as number } as any,
+            order: { tierLevel: 'ASC' },
+        });
+        const next = all.find(t => t.tierLevel > level);
+        if (!next) return { threshold: null, name: null };
+        return { threshold: next.threshold, name: next.name };
+    }
+
+    /**
+     * 整体保存各档（幂等 upsert）：按 (tierLevel, channelId) 匹配更新或新增；
+     * 入参之外的旧档保留。返回保存后按 tierLevel 升序的全量列表。
+     */
+    async saveMemberTiers(
+        ctx: RequestContext,
+        input: Array<{
+            tierLevel: number;
+            threshold: number;
+            name: string;
+            pointsMultiplier?: number;
+            redeemDiscountRate?: number;
+            redeemCapRatio?: number;
+            specialDiscountRate?: number;
+        }>,
+    ): Promise<MemberTier[]> {
+        const sorted = [...input].sort((a, b) => a.tierLevel - b.tierLevel);
+        const repo = this.connection.getRepository(ctx, MemberTier);
+        const existing = await repo.find({ where: { channelId: ctx.channelId as number } as any });
+        for (const item of sorted) {
+            const found = existing.find(e => e.tierLevel === item.tierLevel);
+            const data = {
+                threshold: item.threshold,
+                name: item.name,
+                pointsMultiplier: item.pointsMultiplier ?? found?.pointsMultiplier ?? 1000,
+                redeemDiscountRate: item.redeemDiscountRate ?? found?.redeemDiscountRate ?? 1000,
+                redeemCapRatio: item.redeemCapRatio ?? found?.redeemCapRatio ?? 500,
+                specialDiscountRate: item.specialDiscountRate ?? found?.specialDiscountRate ?? 0,
+            };
+            if (found) {
+                await repo.update(found.id, data as any);
+            } else {
+                const t = new MemberTier({ ...data, tierLevel: item.tierLevel, channelId: ctx.channelId as number });
+                t.channels = [ctx.channel];
+                await repo.save(t);
+            }
+        }
+        return repo.find({
+            where: { channelId: ctx.channelId as number } as any,
+            order: { tierLevel: 'ASC' },
+        });
+    }
+
+    /** 列表查询（未播种先播种）。 */
+    async listMemberTiers(ctx: RequestContext): Promise<MemberTier[]> {
+        await this.seedDefaultTiers(ctx);
+        const repo = this.connection.getRepository(ctx, MemberTier);
+        return repo.find({
+            where: { channelId: ctx.channelId as number } as any,
+            order: { tierLevel: 'ASC' },
+        });
     }
 }

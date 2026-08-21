@@ -6,3 +6,4 @@ export * from './src/member-points-history.entity';
 export * from './src/member-level.service';
 export * from './src/channel-custom-fields';
 export * from './src/customer-custom-fields';
+export * from './src/member-tier.entity';

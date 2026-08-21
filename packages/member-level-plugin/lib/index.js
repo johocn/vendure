@@ -22,4 +22,5 @@ __exportStar(require("./src/member-points-history.entity"), exports);
 __exportStar(require("./src/member-level.service"), exports);
 __exportStar(require("./src/channel-custom-fields"), exports);
 __exportStar(require("./src/customer-custom-fields"), exports);
+__exportStar(require("./src/member-tier.entity"), exports);
 //# sourceMappingURL=index.js.map

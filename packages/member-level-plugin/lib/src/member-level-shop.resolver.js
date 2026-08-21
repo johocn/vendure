@@ -23,6 +23,9 @@ let MemberLevelShopResolver = class MemberLevelShopResolver {
     async myMemberInfo(ctx) {
         return this.memberLevelService.getMyMemberInfo(ctx);
     }
+    async myTier(ctx) {
+        return this.memberLevelService.getMyMemberInfo(ctx);
+    }
     async myPointsHistory(ctx, options) {
         return this.memberLevelService.getMyPointsHistory(ctx, options);
     }
@@ -39,6 +42,14 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext]),
     __metadata("design:returntype", Promise)
 ], MemberLevelShopResolver.prototype, "myMemberInfo", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], MemberLevelShopResolver.prototype, "myTier", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(core_1.Permission.Authenticated),
