@@ -1,5 +1,5 @@
-import { DynamicModule, OnApplicationBootstrap } from '@nestjs/common';
-import { EventBus, OrderStateTransitionEvent, PluginCommonModule, VendurePlugin } from '@vendure/core';
+import { Inject, OnApplicationBootstrap, Type } from '@nestjs/common';
+import { CustomFields, EventBus, OrderStateTransitionEvent, PluginCommonModule, VendurePlugin } from '@vendure/core';
 import { filter } from 'rxjs/operators';
 
 import { PICKUP_PLUGIN_OPTIONS, PickupPluginOptions } from './constants';
@@ -10,6 +10,23 @@ import { PickupOwnerResolver } from './pickup-owner.resolver';
 import { PickupAdminResolver } from './pickup-admin.resolver';
 
 const { gql } = require('graphql-tag');
+
+/** 自提闭环所需的 Order 自定义字段（自含，避免依赖外部插件装配顺序）。 */
+const pickupOrderCustomFields: CustomFields = {
+    Order: [
+        { name: 'deliveryType', type: 'string', nullable: true, defaultValue: 'delivery', public: true },
+        { name: 'pickupClaimed', type: 'boolean', nullable: true, public: true },
+    ],
+};
+
+/** 幂等合并 Order 自定义字段（avoid duplicate definition on re-run). */
+function mergeOrderCustomFields(
+    existing: { name: string }[] | undefined,
+    additions: { name: string }[] | undefined,
+): { name: string }[] {
+    const names = new Set((existing ?? []).map(f => f.name));
+    return [...(existing ?? []), ...(additions ?? []).filter(f => !names.has(f.name))];
+}
 
 const adminSchema = gql`
     type PickupRedemption {
@@ -39,6 +56,15 @@ const adminSchema = gql`
     `;
 
 const shopSchema = gql`
+    type PickupRedemption {
+        id: ID!
+        orderId: ID!
+        orderCode: String
+        code: String!
+        status: String!
+        claimedAt: DateTime
+        claimChannel: String
+    }
     extend type Query {
         myPickupCode(orderId: ID!): PickupRedemption!
     }
@@ -49,7 +75,10 @@ const shopSchema = gql`
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    providers: [PickupService],
+    providers: [
+        { provide: PICKUP_PLUGIN_OPTIONS, useFactory: () => PickupPlugin.options },
+        PickupService,
+    ],
     entities: [PickupRedemption],
     adminApiExtensions: {
         schema: adminSchema,
@@ -59,12 +88,27 @@ const shopSchema = gql`
         schema: shopSchema,
         resolvers: [PickupCustomerResolver],
     },
+    configuration: (config) => {
+        // 注册 Order 自定义字段：deliveryType（履约方式）+ pickupClaimed（自提已核销）
+        config.customFields.Order = mergeOrderCustomFields(
+            config.customFields.Order,
+            pickupOrderCustomFields.Order,
+        ) as any;
+        return config;
+    },
 })
 export class PickupPlugin implements OnApplicationBootstrap {
-    constructor(private service: PickupService, private eventBus: EventBus) {}
+    private static options: PickupPluginOptions = {};
 
-    static init(options: PickupPluginOptions): DynamicModule {
-        return { module: PickupPlugin, providers: [{ provide: PICKUP_PLUGIN_OPTIONS, useValue: options }] };
+    constructor(
+        @Inject(PICKUP_PLUGIN_OPTIONS) private options: PickupPluginOptions,
+        private service: PickupService,
+        private eventBus: EventBus,
+    ) {}
+
+    static init(options?: PickupPluginOptions): Type<PickupPlugin> {
+        PickupPlugin.options = options ?? {};
+        return PickupPlugin;
     }
 
     onApplicationBootstrap(): void {

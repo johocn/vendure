@@ -68,7 +68,38 @@ export class PickupService {
 
     private isPickupPaid(ctx: RequestContext, order: Order): boolean {
         const cf = (order.customFields ?? {}) as any;
-        return cf.deliveryType === 'pickup' && order.state !== 'PaymentAuthorized';
+        // 「已付款 pickup 单」：履约方式为 pickup，且订单已完成支付（授权/结算及之后的物流各态均算）。
+        return (
+            cf.deliveryType === 'pickup' &&
+            ![
+                'AddingItems',
+                'ArrangingPayment',
+                'Draft',
+                'Cancelled',
+                'PaymentAuthorized',
+            ].includes(order.state as string) &&
+            (order.totalWithTax ?? 0) > 0
+        );
+    }
+
+    /**
+     * 店归属强校验：被核销订单主商品的 Product.customFields.shopId 归店（与 settlement-plugin 阶段24
+     * 按店拆账同一判据）。订单任一行商品归属本店即视为本店单，否则不归属。
+     */
+    private async orderBelongsToShop(ctx: RequestContext, orderId: ID, shopId: number): Promise<boolean> {
+        const order = await this.orderService.findOne(ctx, orderId, [
+            'lines',
+            'lines.productVariant',
+            'lines.productVariant.product',
+        ] as any);
+        const lines = ((order as any)?.lines ?? []) as any[];
+        if (lines.length === 0) {
+            return false;
+        }
+        return lines.some((l: any) => {
+            const sid = (l?.productVariant?.product?.customFields ?? {})?.shopId;
+            return sid != null && Number(sid) === shopId;
+        });
     }
 
     /** 懒生成/取回固定提货码（幂等：一生对一单）。 */
@@ -120,16 +151,18 @@ export class PickupService {
         return this.commitRedeem(ctx, orderId, code, 'customer');
     }
 
-    /** 店员核销（本店订单）。 */
+    /** 店员核销（仅本店订单，跨店抛 Forbidden）。 */
     async claimPickupByShop(ctx: RequestContext, code: string): Promise<PickupRedemption> {
+        // 先取店主所属店作为归属上下文
+        const shop = await this.requireMyShop(ctx);
         const repo = this.connection.getRepository(ctx, PickupRedemption);
         const redemption = await repo.findOne({ where: { code } });
         if (!redemption) throw new UserInputError('Pickup code not found');
-        // TODO(Task5 e2e): 店归属强校验。当前实现不自建「订单→自提点→店」归属字段，无法从 PickupRedemption
-        // 直接影响判断订单是否属于本店。待仓库可用字段（如订单 customFields 自提点 shopId 或主商品 shopId）
-        // 明确后，在 commitRedeem 前据此对 requireMyShop 得到的 shop 做归属比对，否则抛 ForbiddenError。
-        // 此处不做跨店防护，仅保证状态闸门统一走 commitRedeem。注意：店归属校验需先 requireMyShop 取得店归属上下文。
-        await this.requireMyShop(ctx);
+        // 店归属强校验：被核销订单主商品必须归本店，否则跨店核销拒绝。
+        const owns = await this.orderBelongsToShop(ctx, redemption.orderId, shop.id as number);
+        if (!owns) {
+            throw new ForbiddenError();
+        }
         if (redemption.status !== 'generated') {
             throw new UserInputError('Pickup code already used / voided');
         }

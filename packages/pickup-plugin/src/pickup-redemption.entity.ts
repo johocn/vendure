@@ -10,7 +10,7 @@ export class PickupRedemption extends VendureEntity implements ChannelAware {
     }
 
     @Index()
-    @Column()
+    @Column({ type: 'int' })
     channelId: number;
 
     @ManyToMany(() => Channel)
@@ -18,14 +18,14 @@ export class PickupRedemption extends VendureEntity implements ChannelAware {
     channels: Channel[];
 
     @Index({ unique: true })
-    @Column()
+    @Column({ type: 'int' })
     orderId: number;
 
     @Index({ unique: true })
-    @Column()
+    @Column({ type: 'varchar' })
     code: string;
 
-    @Column({ default: 'generated' })
+    @Column({ type: 'varchar', default: 'generated' })
     status: PickupRedemptionStatus;
 
     @Column({ type: 'datetime', nullable: true })
