@@ -12,6 +12,22 @@
 lerna-debug.log
 # dist  # 注释掉：生产构建产物需提交（dev-server/dist, graphiql-plugin/dist, telemetry-plugin/dist, invoice-pdf-plugin/dist 等）
 **/e2e/__data__/*
+# e2e/vitest 编译产物（仅追踪源 .ts/.mts，对齐 coupon 惯例）
+**/e2e/*.d.ts
+**/e2e/*.js
+**/e2e/*.js.map
+**/vitest.config.mjs
+**/vitest.config.mjs.map
+**/vitest.config.d.mts
+e2e-common/*.js
+e2e-common/*.d.ts
+e2e-common/*.js.map
+packages/core/e2e/graphql/*.js
+packages/core/e2e/graphql/*.d.ts
+packages/core/e2e/graphql/*.js.map
+packages/core/e2e/utils/*.js
+packages/core/e2e/utils/*.d.ts
+packages/core/e2e/utils/*.js.map
 docs/resources/_gen/*
 docs/static/main.js*
 docs/static/main.css*
