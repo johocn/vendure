@@ -1,5 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
+    AdministratorService,
+    ForbiddenError,
     ID,
     OrderService,
     Product,
@@ -9,7 +11,7 @@ import {
 } from '@vendure/core';
 import { In } from 'typeorm';
 
-import { Shop, ShopService } from '@vendure/shop-plugin';
+import { Shop } from '@vendure/shop-plugin';
 
 import { SETTLEMENT_PLUGIN_OPTIONS } from './constants';
 import { MerchantAccount } from './merchant-account.entity';
@@ -35,7 +37,7 @@ export class SettlementService {
         @Inject(SETTLEMENT_PLUGIN_OPTIONS) private options: SettlementPluginOptions,
         private connection: TransactionalConnection,
         private orderService: OrderService,
-        private shopService: ShopService,
+        private administratorService: AdministratorService,
     ) {}
 
     /** 订单完成履结 → 按店入账（幂等：orderId×shopId unique，仅新建明细时累加账户）。 */
@@ -276,8 +278,22 @@ export class SettlementService {
     }
 
     private async requireMyShop(ctx: RequestContext): Promise<Shop> {
-        // 复用 shop-plugin 阶段18 账权：resolveMyShopFromActiveUser + active 校验，无归属/非 active → ForbiddenError
-        return this.shopService.requireMyShop(ctx);
+        // 复用 shop-plugin 阶段18 账权语义（Shop.administratorId 归属 + active 校验）。
+        // 不直接注入 ShopService（跨插件模块不可注入），依核心服务/仓储复刻 resolveMyShopFromActiveUser + requireMyShop。
+        if (!ctx.activeUserId) {
+            throw new ForbiddenError();
+        }
+        const admin = await this.administratorService.findOneByUserId(ctx, ctx.activeUserId);
+        if (!admin || admin.id == null) {
+            throw new ForbiddenError();
+        }
+        const shop = await this.connection
+            .getRepository(ctx, Shop)
+            .findOne({ where: { administratorId: admin.id as number } as any });
+        if (!shop || shop.status !== 'active') {
+            throw new ForbiddenError();
+        }
+        return shop;
     }
 
     private async resolveShopAggregation(ctx: RequestContext, order: any): Promise<ShopAggregate[]> {
