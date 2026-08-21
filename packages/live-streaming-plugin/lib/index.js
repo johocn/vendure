@@ -20,4 +20,5 @@ __exportStar(require("./src/constants"), exports);
 __exportStar(require("./src/live-room.entity"), exports);
 __exportStar(require("./src/live-room-product.entity"), exports);
 __exportStar(require("./src/live-room.service"), exports);
+__exportStar(require("./src/live-room-shop.service"), exports);
 __exportStar(require("./src/live-commission.service"), exports);

@@ -115,6 +115,25 @@ input LiveRoomListOptions
     shopApiExtensions: {
         schema: () => gql`
             ${liveRoomType}
+
+            type LiveRoomEnterResult {
+                roomId: ID!
+                playUrl: String
+                pushUrl: String
+                wsUrl: String!
+                wsTicket: String!
+            }
+
+            extend type Query {
+                liveRooms(status: String): [LiveRoom!]!
+                liveRoom(id: ID!): LiveRoom!
+                liveRoomProducts(id: ID!): [LiveRoomProduct!]!
+            }
+
+            extend type Mutation {
+                enterLiveRoom(roomId: ID!): LiveRoomEnterResult!
+                setOrderLiveRoom(roomId: ID!): Order!
+            }
         `,
         resolvers: [LiveShopResolver],
     },

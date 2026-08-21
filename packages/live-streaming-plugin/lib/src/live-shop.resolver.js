@@ -18,15 +18,20 @@ const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
 const live_room_service_1 = require("./live-room.service");
 const live_room_shop_service_1 = require("./live-room-shop.service");
+const live_commission_service_1 = require("./live-commission.service");
 const constants_1 = require("./constants");
 let LiveShopResolver = class LiveShopResolver {
     options;
     liveRoomService;
     liveRoomShopService;
-    constructor(options, liveRoomService, liveRoomShopService) {
+    liveCommissionService;
+    orderService;
+    constructor(options, liveRoomService, liveRoomShopService, liveCommissionService, orderService) {
         this.options = options;
         this.liveRoomService = liveRoomService;
         this.liveRoomShopService = liveRoomShopService;
+        this.liveCommissionService = liveCommissionService;
+        this.orderService = orderService;
     }
     async liveRooms(ctx, status) {
         return this.liveRoomShopService.list(ctx, status);
@@ -42,6 +47,13 @@ let LiveShopResolver = class LiveShopResolver {
         if (!room)
             throw new Error('Live room not found');
         return this.liveRoomShopService.enterForRoom(room, ctx.activeUserId, this.options.wsUrl, this.options.wsSecret);
+    }
+    async setOrderLiveRoom(ctx, roomId) {
+        const order = await this.orderService.getActiveOrderForUser(ctx, ctx.activeUserId);
+        if (!order)
+            throw new Error('No active order');
+        await this.liveCommissionService.setOrderLiveRoom(ctx, String(order.id), String(roomId));
+        return this.orderService.getActiveOrderForUser(ctx, ctx.activeUserId);
     }
 };
 exports.LiveShopResolver = LiveShopResolver;
@@ -78,9 +90,20 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], LiveShopResolver.prototype, "enterLiveRoom", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Transaction)(),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('roomId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], LiveShopResolver.prototype, "setOrderLiveRoom", null);
 exports.LiveShopResolver = LiveShopResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __param(0, (0, common_1.Inject)(constants_1.LIVE_PLUGIN_OPTIONS)),
     __metadata("design:paramtypes", [Object, live_room_service_1.LiveRoomService,
-        live_room_shop_service_1.LiveRoomShopService])
+        live_room_shop_service_1.LiveRoomShopService,
+        live_commission_service_1.LiveCommissionService,
+        core_1.OrderService])
 ], LiveShopResolver);
