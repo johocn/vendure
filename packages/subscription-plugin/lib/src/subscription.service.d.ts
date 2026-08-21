@@ -2,7 +2,7 @@ import { AdministratorService, ID, OrderService, RequestContext, TransactionalCo
 import { SubscriptionOccurrence } from './subscription-occurrence.entity';
 import { SubscriptionPlan } from './subscription-plan.entity';
 import { Subscription } from './subscription.entity';
-import { ListOptions, SubscriptionItem, SubscriptionPluginOptions } from './types';
+import { SubscriptionListOptions, SubscriptionItem, SubscriptionPluginOptions } from './types';
 /**
  * 周期购/订阅复购核心：买断开通（购审 + 展开排期）、每期生成正式订单并抵扣预存款、
  * 每日调度扫到期期次、续订确认、取消、平台/店主/买家查询，以及 requireMyShop 归属隔离。
@@ -29,8 +29,14 @@ export declare class SubscriptionService {
         created: number;
         skipped: number;
     }>;
-    /** 用 OrderService 建正式订单并加入期次清单，随后推进到 PaymentSettled（平台统一采集语义）。 */
+    /** 用 OrderService 建正式订单并加入期次清单，补全收货地址/运费/支付后推进到 PaymentSettled。 */
     private createFormalOrder;
+    /** 从插件配置或当前 channel 已启用支付方式中解析支付方式 code，用于 Buyout 统一采集。 */
+    private resolvePaymentMethodCode;
+    /** 期次订单默认收货地址（买到到店无需真实门牌，仅占位）。 */
+    private defaultShippingAddress;
+    /** 过渡订单状态；已在目标态则视为成功，否则抛错以触发创建事务回滚。 */
+    private transitionToStateChecked;
     /** 每期按 periodPrice 抵扣预存款；余额不足则回滚期次 pending 并抛错。 */
     private deductPrepaid;
     /** 店主为本店某期次指定商品清单（归属校验在外层 resolver）。 */
@@ -44,29 +50,29 @@ export declare class SubscriptionService {
     initiateRenewal(ctx: RequestContext, subscriptionId: ID): Promise<Subscription>;
     /** 取消：status → cancelled，并把所有 pending 期次 → cancelled。 */
     cancelSubscription(ctx: RequestContext, subscriptionId: ID): Promise<Subscription>;
-    customerSubscriptions(ctx: RequestContext, customerId: number, options?: ListOptions): Promise<{
+    customerSubscriptions(ctx: RequestContext, customerId: number, options?: SubscriptionListOptions): Promise<{
         items: Subscription[];
         totalItems: number;
     }>;
-    occurrencesOf(ctx: RequestContext, subscriptionId: ID, options?: ListOptions): Promise<{
+    occurrencesOf(ctx: RequestContext, subscriptionId: ID, options?: SubscriptionListOptions): Promise<{
         items: SubscriptionOccurrence[];
         totalItems: number;
     }>;
-    shopPlans(ctx: RequestContext, options?: ListOptions): Promise<{
+    shopPlans(ctx: RequestContext, options?: SubscriptionListOptions): Promise<{
         items: SubscriptionPlan[];
         totalItems: number;
     }>;
-    allPlans(ctx: RequestContext, options?: ListOptions): Promise<{
+    allPlans(ctx: RequestContext, options?: SubscriptionListOptions): Promise<{
         items: SubscriptionPlan[];
         totalItems: number;
     }>;
     /** 平台视角：全部订阅（按 channel 过滤，不按客户）。 */
-    allSubscriptions(ctx: RequestContext, options?: ListOptions): Promise<{
+    allSubscriptions(ctx: RequestContext, options?: SubscriptionListOptions): Promise<{
         items: Subscription[];
         totalItems: number;
     }>;
     /** 平台视角：全部期次（按 channel 过滤，不按客户）。 */
-    allOccurrences(ctx: RequestContext, options?: ListOptions): Promise<{
+    allOccurrences(ctx: RequestContext, options?: SubscriptionListOptions): Promise<{
         items: SubscriptionOccurrence[];
         totalItems: number;
     }>;

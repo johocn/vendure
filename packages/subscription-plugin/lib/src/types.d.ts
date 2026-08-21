@@ -7,7 +7,7 @@ export interface SubscriptionPluginOptions {
     /** 平台统一征收买断总价（true 时 createSubscription 视为平台已收，无需真实支付网关）。默认 true。 */
     collectBuyoutCentrally?: boolean;
 }
-export interface ListOptions {
+export interface SubscriptionListOptions {
     skip?: number;
     take?: number;
 }

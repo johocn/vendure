@@ -52,7 +52,7 @@ __decorate([
     __metadata("design:type", Array)
 ], SubscriptionPlan.prototype, "templateItems", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'bool', default: true }),
+    (0, typeorm_1.Column)({ type: 'boolean', default: true }),
     __metadata("design:type", Boolean)
 ], SubscriptionPlan.prototype, "enabled", void 0);
 __decorate([

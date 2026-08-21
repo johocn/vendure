@@ -55,6 +55,7 @@ const subscriptionTypeDefs = `
         periodNo: Int!
         scheduledDate: DateTime!
         orderCode: String
+        generatedOrderId: ID
         status: String!
         skipReason: String
     }
@@ -75,15 +76,16 @@ const subscriptionTypeDefs = `
     type SubscriptionPlanList { items: [SubscriptionPlan!]! totalItems: Int! }
     type SubscriptionList { items: [Subscription!]! totalItems: Int! }
     type SubscriptionOccurrenceList { items: [SubscriptionOccurrence!]! totalItems: Int! }
-    input ListOptions { skip: Int take: Int }
+    input SubscriptionListOptions { skip: Int take: Int }
+    type SubscriptionProcessingResult { created: Int! skipped: Int! }
 `;
 /** 买家 SHOP API。 */
 const customerSchema = () => gql `
     ${subscriptionTypeDefs}
     extend type Query {
-        availablePlans(shopId: ID, options: ListOptions): SubscriptionPlanList!
-        mySubscriptions(options: ListOptions): SubscriptionList!
-        mySubscriptionOccurrences(subscriptionId: ID!, options: ListOptions): SubscriptionOccurrenceList!
+        availablePlans(shopId: ID, options: SubscriptionListOptions): SubscriptionPlanList!
+        mySubscriptions(options: SubscriptionListOptions): SubscriptionList!
+        mySubscriptionOccurrences(subscriptionId: ID!, options: SubscriptionListOptions): SubscriptionOccurrenceList!
     }
     extend type Mutation {
         createSubscription(planId: ID!, input: CreateSubscriptionInput!): Subscription!
@@ -94,16 +96,17 @@ const customerSchema = () => gql `
 const adminSchema = () => gql `
     ${subscriptionTypeDefs}
     extend type Query {
-        myShopSubscriptionPlans(options: ListOptions): SubscriptionPlanList!
-        subscriptionPlans(options: ListOptions): SubscriptionPlanList!
-        subscriptions(options: ListOptions): SubscriptionList!
-        subscriptionOccurrences(options: ListOptions): SubscriptionOccurrenceList!
+        myShopSubscriptionPlans(options: SubscriptionListOptions): SubscriptionPlanList!
+        subscriptionPlans(options: SubscriptionListOptions): SubscriptionPlanList!
+        subscriptions(options: SubscriptionListOptions): SubscriptionList!
+        subscriptionOccurrences(options: SubscriptionListOptions): SubscriptionOccurrenceList!
     }
     extend type Mutation {
         createSubscriptionPlan(input: SubscriptionPlanInput!): SubscriptionPlan!
         setSubscriptionOccurrenceItems(id: ID!, items: [SubscriptionItemInput!]!): SubscriptionOccurrence!
         cancelSubscriptionOwner(id: ID!): Subscription!
         setSubscriptionPlanEnabled(id: ID!, enabled: Boolean!): SubscriptionPlan!
+        processDueSubscriptions: SubscriptionProcessingResult!
     }
 `;
 let SubscriptionPlugin = SubscriptionPlugin_1 = class SubscriptionPlugin {

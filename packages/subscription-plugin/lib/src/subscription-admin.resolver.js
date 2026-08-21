@@ -41,6 +41,10 @@ let SubscriptionAdminResolver = class SubscriptionAdminResolver {
         plan.enabled = enabled;
         return repo.save(plan);
     }
+    /** 调试/平台调度入口：扫描所有到期期次生成订单。asOf 缺省为当前时间。 */
+    async processDueSubscriptions(ctx) {
+        return this.service.processDueOccurrences(ctx);
+    }
 };
 exports.SubscriptionAdminResolver = SubscriptionAdminResolver;
 __decorate([
@@ -80,6 +84,14 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object, Boolean]),
     __metadata("design:returntype", Promise)
 ], SubscriptionAdminResolver.prototype, "setSubscriptionPlanEnabled", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateSettings),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], SubscriptionAdminResolver.prototype, "processDueSubscriptions", null);
 exports.SubscriptionAdminResolver = SubscriptionAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [subscription_service_1.SubscriptionService,
