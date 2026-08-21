@@ -14,7 +14,10 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+__exportStar(require("./src/plugin"), exports);
 __exportStar(require("./src/types"), exports);
 __exportStar(require("./src/constants"), exports);
 __exportStar(require("./src/live-room.entity"), exports);
 __exportStar(require("./src/live-room-product.entity"), exports);
+__exportStar(require("./src/live-room.service"), exports);
+__exportStar(require("./src/live-commission.service"), exports);
