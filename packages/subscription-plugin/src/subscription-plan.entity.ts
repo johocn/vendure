@@ -38,7 +38,7 @@ export class SubscriptionPlan extends VendureEntity implements ChannelAware {
     @Column({ type: 'simple-json', nullable: true })
     templateItems?: Array<{ variantId: string | number; quantity: number }>;
 
-    @Column({ type: 'bool', default: true })
+    @Column({ type: 'boolean', default: true })
     enabled: boolean;
 
     @ManyToMany(() => Channel)

@@ -9,7 +9,7 @@ export interface SubscriptionPluginOptions {
     collectBuyoutCentrally?: boolean;
 }
 
-export interface ListOptions {
+export interface SubscriptionListOptions {
     skip?: number;
     take?: number;
 }

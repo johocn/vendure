@@ -5,7 +5,7 @@ import { Subscription } from './subscription.entity';
 import { SubscriptionOccurrence } from './subscription-occurrence.entity';
 import { SubscriptionPlan } from './subscription-plan.entity';
 import { SubscriptionService } from './subscription.service';
-import { ListOptions } from './types';
+import { SubscriptionListOptions } from './types';
 
 /** 买家自营（SHOP API）：查看可用套餐档/我的订阅/期次，买断开通与续订确认。全部 Permission.Owner，customerId 取 ctx.activeUserId。 */
 @Resolver()
@@ -17,7 +17,7 @@ export class SubscriptionCustomerResolver {
     async availablePlans(
         @Ctx() ctx: RequestContext,
         @Args('shopId', { nullable: true }) shopId: ID,
-        @Args('options', { nullable: true }) options: ListOptions,
+        @Args('options', { nullable: true }) options: SubscriptionListOptions,
     ): Promise<{ items: SubscriptionPlan[]; totalItems: number }> {
         return this.service.allPlans(ctx, options);
     }
@@ -26,7 +26,7 @@ export class SubscriptionCustomerResolver {
     @Allow(Permission.Owner)
     async mySubscriptions(
         @Ctx() ctx: RequestContext,
-        @Args('options', { nullable: true }) options: ListOptions,
+        @Args('options', { nullable: true }) options: SubscriptionListOptions,
     ): Promise<{ items: Subscription[]; totalItems: number }> {
         return this.service.customerSubscriptions(ctx, ctx.activeUserId as number, options);
     }
@@ -36,7 +36,7 @@ export class SubscriptionCustomerResolver {
     async mySubscriptionOccurrences(
         @Ctx() ctx: RequestContext,
         @Args('subscriptionId') subscriptionId: ID,
-        @Args('options', { nullable: true }) options: ListOptions,
+        @Args('options', { nullable: true }) options: SubscriptionListOptions,
     ): Promise<{ items: SubscriptionOccurrence[]; totalItems: number }> {
         return this.service.occurrencesOf(ctx, subscriptionId, options);
     }
