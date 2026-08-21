@@ -39,16 +39,54 @@ const { gql } = require('graphql-tag');
                 createdAt: DateTime!
             }
 
+            type RechargeOrderItem {
+                id: ID!
+                customerId: Int!
+                amount: Int!
+                status: String!
+                paymentMethod: String
+                paidAt: DateTime
+                remark: String
+                createdAt: DateTime!
+            }
+
+            type BalanceTransactionItem {
+                id: ID!
+                customerId: Int!
+                type: String!
+                amount: Int!
+                balanceBefore: Int!
+                balanceAfter: Int!
+                orderId: ID
+                remark: String
+                createdAt: DateTime!
+            }
+
+            type BalanceTransactionList implements PaginatedList {
+                items: [BalanceTransactionItem!]!
+                totalItems: Int!
+            }
+
+            input RechargeCardListOptions {
+                skip: Int
+                take: Int
+            }
+
             extend type Query {
                 myRechargeBalance: Int!
                 myRechargeHistory: [RechargeCard!]!
+                myRechargeOrders: [RechargeOrderItem!]!
+                myBalanceTransactions(options: RechargeCardListOptions): BalanceTransactionList!
             }
 
             extend type Mutation {
                 redeemRechargeCard(code: String!, pin: String): RechargeResult!
+                createRechargeOrder(amount: Int!, remark: String): RechargeOrderItem!
+                payRechargeOrder(id: ID!): RechargeOrderItem!
+                cancelRechargeOrder(id: ID!): RechargeOrderItem!
             }
         `,
-        resolvers: [RechargeCardShopResolver],
+        resolvers: [RechargeCardShopResolver, RechargeOrderResolver],
     },
     adminApiExtensions: {
         schema: () => gql`
