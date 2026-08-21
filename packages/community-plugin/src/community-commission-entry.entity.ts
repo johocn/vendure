@@ -19,6 +19,6 @@ export class CommunityCommissionEntry extends VendureEntity {
     @Column({ type: 'bigint' }) // 佣金(分)
     amount: number;
 
-    @Column({ default: 'pending' })
+    @Column({ type: 'varchar', default: 'pending' })
     status: CommunityCommissionStatus;
 }

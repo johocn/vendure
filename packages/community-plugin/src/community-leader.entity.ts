@@ -26,7 +26,7 @@ export class CommunityLeader extends VendureEntity implements ChannelAware {
     @Column({ type: 'int' })
     pickupLocationId: number; // 绑定自提点
 
-    @Column({ default: 'applied' })
+    @Column({ type: 'varchar', default: 'applied' })
     status: CommunityLeaderStatus;
 
     @Column({ type: 'bigint', default: 0 })

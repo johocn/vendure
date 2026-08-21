@@ -14,10 +14,65 @@ import { CommunityLeaderResolver } from './community-leader.resolver';
 
 const { gql } = require('graphql-tag');
 
-/** 共享类型全部放 admin schema；shop schema 仅 extend Query/Mutation 引用。 */
+/**
+ * 共享类型。admin 与 shop 两个 API 各自对独立基底 schema 做扩展，无法互相引用对方声明的类型，
+ * 因此所有 plugin 类型必须在两类 schema 中各自声明一遍（对照 pickup-plugin 在 admin/shop 各自声明）。
+ */
+const communityTypeDefs = `
+    type CommunityLeader { id: ID! userId: ID! pickupLocationId: ID! status: String! totalCommission: Int! }
+    type CommunityActivity {
+        id: ID! leaderId: ID! pickupLocationId: ID!
+        windowStart: DateTime! windowEnd: DateTime! cutoffTime: DateTime! commissionRate: Int!
+        status: String!
+    }
+    input CommunityActivityItemInput { variantId: ID! price: Int! stockLimit: Int }
+    input CreateCommunityActivityInput {
+        pickupLocationId: ID! windowStart: DateTime! windowEnd: DateTime! cutoffTime: DateTime!
+        commissionRate: Int! items: [CommunityActivityItemInput!]!
+    }
+    type CommunityActivityList { items: [CommunityActivity!]! totalItems: Int! }
+    type CommunityParticipation { id: ID! activityId: ID! orderId: ID! leaderId: ID! subtotal: Int! }
+    type CommunityParticipationList { items: [CommunityParticipation!]! totalItems: Int! }
+    type CommunityCommissionSummary { totalCommission: Int! }
+    type CommunityCommissionEntry { id: ID! orderId: ID! leaderId: ID! amount: Int! status: String! }
+    type CommunityCommissionEntryList { items: [CommunityCommissionEntry!]! totalItems: Int! }
+    input CommunityListOptions { skip: Int take: Int }
+`;
+
+const adminSchema = gql`
+    ${communityTypeDefs}
+    extend type Mutation {
+        approveLeader(id: ID!): CommunityLeader!
+        suspendLeader(id: ID!): CommunityLeader!
+        setActivityStatus(id: ID!, status: String!): CommunityActivity!
+        participate(orderId: ID!, activityId: ID!, subtotal: Int!): CommunityParticipation!
+        cutoverActivity(id: ID!): CommunityActivity!
+    }
+    extend type Query {
+        communityActivities(options: CommunityListOptions): CommunityActivityList!
+        communityParticipations(options: CommunityListOptions): CommunityParticipationList!
+        communityCommissionEntries(options: CommunityListOptions): CommunityCommissionEntryList!
+    }
+`;
+
+const shopSchema = gql`
+    ${communityTypeDefs}
+    extend type Query {
+        myActivities(options: CommunityListOptions): CommunityActivityList!
+        myCommission: CommunityCommissionSummary!
+    }
+    extend type Mutation {
+        applyLeader(pickupLocationId: ID!): CommunityLeader!
+        createActivity(input: CreateCommunityActivityInput!): CommunityActivity!
+    }
+`;
+
 @VendurePlugin({
     imports: [PluginCommonModule],
-    providers: [CommunityService],
+    providers: [
+        { provide: COMMUNITY_PLUGIN_OPTIONS, useFactory: () => CommunityPlugin.options },
+        CommunityService,
+    ],
     entities: [
         CommunityLeader,
         CommunityActivity,
@@ -26,54 +81,22 @@ const { gql } = require('graphql-tag');
         CommunityCommissionEntry,
     ],
     adminApiExtensions: {
-        schema: gql`
-            type CommunityLeader { id: ID! userId: ID! pickupLocationId: ID! status: String! totalCommission: Int! }
-            type CommunityActivity {
-                id: ID! leaderId: ID! pickupLocationId: ID!
-                windowStart: DateTime! windowEnd: DateTime! cutoffTime: DateTime! commissionRate: Int!
-                status: String!
-            }
-            input CommunityActivityItemInput { variantId: ID! price: Int! stockLimit: Int }
-            input CreateCommunityActivityInput {
-                pickupLocationId: ID! windowStart: DateTime! windowEnd: DateTime! cutoffTime: DateTime!
-                commissionRate: Int! items: [CommunityActivityItemInput!]!
-            }
-            type CommunityActivityList { items: [CommunityActivity!]! totalItems: Int! }
-            type CommunityParticipation { id: ID! activityId: ID! orderId: ID! leaderId: ID! subtotal: Int! }
-            type CommunityParticipationList { items: [CommunityParticipation!]! totalItems: Int! }
-            type CommunityCommissionSummary { totalCommission: Int! }
-            input CommunityListOptions { skip: Int take: Int }
-            extend type Mutation {
-                approveLeader(id: ID!): CommunityLeader!
-                suspendLeader(id: ID!): CommunityLeader!
-                cutoverActivity(id: ID!): CommunityActivity!
-            }
-            extend type Query {
-                communityActivities(options: CommunityListOptions): CommunityActivityList!
-                communityParticipations(options: CommunityListOptions): CommunityParticipationList!
-            }
-        `,
+        schema: adminSchema,
         resolvers: [CommunityAdminResolver],
     },
     shopApiExtensions: {
-        schema: gql`
-            extend type Query { myActivities(options: CommunityListOptions): CommunityActivityList! myCommission: CommunityCommissionSummary! }
-            extend type Mutation {
-                applyLeader(pickupLocationId: ID!): CommunityLeader!
-                createActivity(input: CreateCommunityActivityInput!): CommunityActivity!
-            }
-        `,
+        schema: shopSchema,
         resolvers: [CommunityLeaderResolver],
     },
 })
 export class CommunityPlugin implements OnApplicationBootstrap {
+    private static options: CommunityPluginOptions = {};
+
     constructor(private service: CommunityService, private eventBus: EventBus) {}
 
-    static init(options: CommunityPluginOptions) {
-        return {
-            module: CommunityPlugin,
-            providers: [{ provide: COMMUNITY_PLUGIN_OPTIONS, useValue: options }],
-        };
+    static init(options?: CommunityPluginOptions): typeof CommunityPlugin {
+        CommunityPlugin.options = options ?? {};
+        return CommunityPlugin;
     }
 
     onApplicationBootstrap(): void {

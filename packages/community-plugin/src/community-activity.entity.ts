@@ -37,6 +37,6 @@ export class CommunityActivity extends VendureEntity implements ChannelAware {
     @Column({ type: 'bigint' }) // 千分比，3% = 3000
     commissionRate: number;
 
-    @Column({ default: 'draft' })
+    @Column({ type: 'varchar', default: 'draft' })
     status: CommunityActivityStatus;
 }

@@ -196,6 +196,13 @@ export class CommunityService {
         return { items, totalItems };
     }
 
+    async commissionEntries(ctx: RequestContext, options?: any) {
+        const [items, totalItems] = await this.connection
+            .getRepository(ctx, CommunityCommissionEntry)
+            .findAndCount({ take: options?.take ?? 20, skip: options?.skip ?? 0 });
+        return { items, totalItems };
+    }
+
     async handleOrderStateTransition(event: OrderStateTransitionEvent): Promise<void> {
         if (event.toState === 'Delivered') {
             // 无 ctx 的结算回调：用 raw 连接（对齐 pickup.onOrderCancelled 手法）
