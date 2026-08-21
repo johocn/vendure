@@ -17,6 +17,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 __exportStar(require("./src/plugin"), exports);
 __exportStar(require("./src/types"), exports);
 __exportStar(require("./src/constants"), exports);
+__exportStar(require("./src/merchant-permissions"), exports);
 __exportStar(require("./src/shop.entity"), exports);
 __exportStar(require("./src/shop.service"), exports);
 __exportStar(require("./src/shop-custom-fields"), exports);
