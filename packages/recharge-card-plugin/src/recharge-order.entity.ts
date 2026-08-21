@@ -23,6 +23,10 @@ export class RechargeOrder extends VendureEntity {
     @Column({ type: 'varchar', nullable: true })
     paymentMethod: string | null;
 
+    // 网关商户单号 out_trade_no（幂等核对）
+    @Column({ type: 'varchar', nullable: true })
+    externalRef: string | null;
+
     @Column({ type: 'datetime', nullable: true })
     paidAt: Date | null;
 

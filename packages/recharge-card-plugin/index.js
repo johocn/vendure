@@ -20,4 +20,6 @@ __exportStar(require("./src/constants"), exports);
 __exportStar(require("./src/recharge-card.entity"), exports);
 __exportStar(require("./src/recharge-card-batch.entity"), exports);
 __exportStar(require("./src/customer-balance.entity"), exports);
+__exportStar(require("./src/balance-transaction.entity"), exports);
+__exportStar(require("./src/recharge-order.entity"), exports);
 //# sourceMappingURL=index.js.map

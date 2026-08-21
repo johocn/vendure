@@ -55,7 +55,7 @@ export function createWechatpayHandler(options: WechatpayPluginOptions) {
                 // 分期支持：微信支付分付（Installment）是消费者侧功能，
                 // 商户需在微信支付商户平台开通分付产品，用户端自动展示分期选项。
                 // 商户无需在 createPayment 中传递额外分期参数。
-                if (options.devBypass) {
+                if (options?.devBypass) {
                     const devPayUrl = `/wechatpay/dev-pay?orderCode=${order.code}`;
                     return {
                         amount,
@@ -81,11 +81,11 @@ export function createWechatpayHandler(options: WechatpayPluginOptions) {
                 });
 
                 const tradeType = override?.tradeType || args.tradeType || 'JSAPI';
-                const openid = (metadata?.openid as string | undefined) || options.devBypassOpenid;
+                const openid = (metadata?.openid as string | undefined) || options?.devBypassOpenid;
                 const baseParams = {
                     description: `Order ${order.code}`,
                     out_trade_no: order.code,
-                    notify_url: options.notifyUrl,
+                    notify_url: options?.notifyUrl || '',
                     amount: {
                         total: Math.round(amount / 100),
                         currency: 'CNY',

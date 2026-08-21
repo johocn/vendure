@@ -4,6 +4,8 @@ import { RechargeCardBatch } from './recharge-card-batch.entity';
 import { CustomerBalance } from './customer-balance.entity';
 import { BalanceTransaction, BalanceTransactionType } from './balance-transaction.entity';
 import { RechargeOrder } from './recharge-order.entity';
+import { WechatpayService } from '@vendure/wechatpay-plugin';
+export declare function setWechatpayGateway(gw: WechatpayService | null): void;
 export declare class RechargeCardService {
     private connection;
     private listQueryBuilder;
@@ -24,6 +26,10 @@ export declare class RechargeCardService {
     payRechargeOrder(ctx: RequestContext, id: ID): Promise<RechargeOrder>;
     cancelRechargeOrder(ctx: RequestContext, id: ID): Promise<RechargeOrder>;
     findMyRechargeOrders(ctx: RequestContext): Promise<RechargeOrder[]>;
+    /** 在线充值：生成微信支付参数并在充值单回写支付方式（仅本人 pending 单） */
+    createWechatRechargePayment(ctx: RequestContext, rechargeOrderId: ID, tradeType?: string, openid?: string): Promise<any>;
+    /** 网关回调结算入口：解析 RC-<id>，原子入账（admin ctx 无 activeUser，用单归属 customerId 显式入账） */
+    settleRechargeOrderByOutTradeNo(ctx: RequestContext, outTradeNo: string): Promise<void>;
     redeemCard(ctx: RequestContext, code: string, pin?: string): Promise<RechargeCard>;
     findMyCards(ctx: RequestContext): Promise<RechargeCard[]>;
     findAll(ctx: RequestContext, options?: ListQueryOptions<RechargeCard>): Promise<PaginatedList<RechargeCard>>;

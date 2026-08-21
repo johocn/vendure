@@ -14,6 +14,7 @@ import type { WechatpayCredentials } from '@vendure/cjk-plugin';
 
 import { WECHATPAY_PLUGIN_OPTIONS, loggerCtx } from './constants';
 import { WechatpayPluginOptions } from './types';
+import { WechatpaySettlementRegistry } from './wechatpay-settlement';
 
 @Controller('wechatpay')
 export class WechatpayController {
@@ -23,7 +24,25 @@ export class WechatpayController {
         private channelService: ChannelService,
         private paymentMethodService: PaymentMethodService,
         private requestContextService: RequestContextService,
+        private settlementRegistry: WechatpaySettlementRegistry,
     ) {}
+
+    /** 结算路由：非订单前缀（如 RC-）交给注册的结算器，否则默认结 Vendure Order */
+    private async routeSettlement(outTradeNo: string, transactionId: string): Promise<void> {
+        const settlement = this.settlementRegistry.find(outTradeNo);
+        if (settlement) {
+            const channel = await this.channelService.getDefaultChannel();
+            const ctx = new RequestContext({
+                apiType: 'admin',
+                channel,
+                isAuthorized: true,
+                authorizedAsOwnerOnly: false,
+            });
+            await settlement.settle(ctx, outTradeNo, transactionId);
+            return;
+        }
+        await this.settleOrderPayment(outTradeNo);
+    }
 
     /**
      * 结算订单支付：dev-notify 和 notify 共用
@@ -141,7 +160,7 @@ export class WechatpayController {
 
             // 3. 处理支付结果
             if (body?.event_type === 'TRANSACTION.SUCCESS' && outTradeNo) {
-                await this.settleOrderPayment(outTradeNo);
+                await this.routeSettlement(outTradeNo, transactionId || '');
             }
 
             res.status(200).json({ code: 'SUCCESS', message: 'OK' });
@@ -156,7 +175,7 @@ export class WechatpayController {
      */
     @Get('dev-pay')
     getDevPayPage(@Req() req: Request, @Res() res: Response) {
-        const orderCode = (req.query as any).orderCode as string;
+        const outTradeNo = (req.query as any).outTradeNo as string;
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.send(`<!DOCTYPE html>
 <html>
@@ -167,7 +186,7 @@ export class WechatpayController {
 </head>
 <body style="font-family:sans-serif;text-align:center;padding:40px;">
     <h2>模拟微信支付</h2>
-    <p>订单号: ${orderCode}</p>
+    <p>订单号: ${outTradeNo}</p>
     <button onclick="pay()" style="padding:12px 40px;font-size:16px;background:#07c160;color:#fff;border:none;border-radius:4px;cursor:pointer;">
         模拟支付成功
     </button>
@@ -176,14 +195,14 @@ export class WechatpayController {
         async function pay() {
             document.getElementById('msg').innerText = '正在处理...';
             try {
-                const res = await fetch('/wechatpay/dev-notify?orderCode=${orderCode}', {
+                const res = await fetch('/wechatpay/dev-notify?outTradeNo=${outTradeNo}', {
                     method: 'POST'
                 });
                 const data = await res.json();
                 if (data.code === 'SUCCESS') {
                     document.body.innerHTML =
                         '<h2 style="color:#07c160">支付成功</h2>' +
-                        '<p>订单: ${orderCode}</p>' +
+                        '<p>订单: ${outTradeNo}</p>' +
                         '<a href="/" style="color:#576b95;">返回商城</a>';
                 } else {
                     document.getElementById('msg').innerText = '支付失败: ' + (data.message || '未知错误');
@@ -198,16 +217,16 @@ export class WechatpayController {
     }
 
     /**
-     * Dev Bypass: 自动回调，结算订单
+     * Dev Bypass: 自动回调，结算订单或走注册表结算
      */
     @Post('dev-notify')
     async devNotify(@Req() req: Request, @Res() res: Response) {
-        const orderCode = (req.query as any).orderCode as string;
+        const outTradeNo = (req.query as any).outTradeNo as string;
         try {
-            if (!orderCode) {
-                return res.status(400).json({ code: 'FAIL', message: 'missing orderCode' });
+            if (!outTradeNo) {
+                return res.status(400).json({ code: 'FAIL', message: 'missing outTradeNo' });
             }
-            await this.settleOrderPayment(orderCode);
+            await this.routeSettlement(outTradeNo, 'DEV-TX');
             res.status(200).json({ code: 'SUCCESS', message: 'OK' });
         } catch (e: any) {
             Logger.error(`WeChat Pay dev-notify error: ${e.message}`, loggerCtx);

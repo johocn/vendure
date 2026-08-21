@@ -1,13 +1,17 @@
 import { Request, Response } from 'express';
 import { OrderService, ChannelService, PaymentMethodService, RequestContextService } from '@vendure/core';
 import { WechatpayPluginOptions } from './types';
+import { WechatpaySettlementRegistry } from './wechatpay-settlement';
 export declare class WechatpayController {
     private options;
     private orderService;
     private channelService;
     private paymentMethodService;
     private requestContextService;
-    constructor(options: WechatpayPluginOptions, orderService: OrderService, channelService: ChannelService, paymentMethodService: PaymentMethodService, requestContextService: RequestContextService);
+    private settlementRegistry;
+    constructor(options: WechatpayPluginOptions, orderService: OrderService, channelService: ChannelService, paymentMethodService: PaymentMethodService, requestContextService: RequestContextService, settlementRegistry: WechatpaySettlementRegistry);
+    /** 结算路由：非订单前缀（如 RC-）交给注册的结算器，否则默认结 Vendure Order */
+    private routeSettlement;
     /**
      * 结算订单支付：dev-notify 和 notify 共用
      * 查询 Authorized 状态的支付并调用 settlePayment
@@ -28,7 +32,7 @@ export declare class WechatpayController {
      */
     getDevPayPage(req: Request, res: Response): void;
     /**
-     * Dev Bypass: 自动回调，结算订单
+     * Dev Bypass: 自动回调，结算订单或走注册表结算
      */
     devNotify(req: Request, res: Response): Promise<Response<any, Record<string, any>> | undefined>;
 }

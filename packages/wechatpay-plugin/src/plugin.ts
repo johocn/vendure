@@ -12,13 +12,48 @@ import {
 
 import { WECHATPAY_PLUGIN_OPTIONS, loggerCtx } from './constants';
 import { createWechatpayHandler } from './wechatpay-handler';
+import { WechatpayService } from './wechatpay.service';
+import { WechatpaySettlementRegistry } from './wechatpay-settlement';
+import { WechatpayShopResolver } from './wechatpay-shop.resolver';
 import { WechatpayController } from './wechatpay.controller';
 import { WechatpayPluginOptions } from './types';
+
+const { gql } = require('graphql-tag');
 
 @VendurePlugin({
     imports: [PluginCommonModule],
     controllers: [WechatpayController],
-    providers: [{ provide: WECHATPAY_PLUGIN_OPTIONS, useFactory: () => WechatpayPlugin.options }],
+    providers: [
+        { provide: WECHATPAY_PLUGIN_OPTIONS, useFactory: () => WechatpayPlugin.options },
+        WechatpayService,
+        WechatpaySettlementRegistry,
+    ],
+    shopApiExtensions: {
+        schema: () => gql`
+            type WechatpayCreatePaymentResult {
+                payType: String!
+                prepayId: String
+                appId: String
+                timeStamp: String
+                nonceStr: String
+                package: String
+                signType: String
+                paySign: String
+                payUrl: String
+            }
+            input WechatpayPaymentInput {
+                outTradeNo: String!
+                amount: Int!
+                tradeType: String
+                openid: String
+                description: String
+            }
+            extend type Mutation {
+                wechatpayCreatePayment(input: WechatpayPaymentInput!): WechatpayCreatePaymentResult!
+            }
+        `,
+        resolvers: [WechatpayShopResolver],
+    },
     configuration: config => {
         const handler = createWechatpayHandler(WechatpayPlugin.options);
         config.paymentOptions.paymentMethodHandlers = [
@@ -48,7 +83,7 @@ export class WechatpayPlugin implements OnApplicationBootstrap {
      * Dev Bypass 模式下，启动时自动创建 wechatpay PaymentMethod（如果不存在）
      */
     async onApplicationBootstrap() {
-        if (!this.options.devBypass) return;
+        if (!this.options?.devBypass) return;
         try {
             const channel = await this.channelService.getDefaultChannel();
             const ctx = new RequestContext({

@@ -18,6 +18,13 @@ import { RechargeCardBatch } from './recharge-card-batch.entity';
 import { CustomerBalance } from './customer-balance.entity';
 import { BalanceTransaction, BalanceTransactionType } from './balance-transaction.entity';
 import { RechargeOrder } from './recharge-order.entity';
+import { WechatpayService } from '@vendure/wechatpay-plugin';
+
+// 网关联接线（可选）：进程内未注册 WechatpayPlugin 时为 null，充值支付提示网关未配置
+let gatewayService: WechatpayService | null = null;
+export function setWechatpayGateway(gw: WechatpayService | null): void {
+    gatewayService = gw;
+}
 
 const SCRYPT_KEYLEN = 64;
 
@@ -226,6 +233,77 @@ export class RechargeCardService {
             where: { customerId: cid, channelId: ctx.channelId as any },
             order: { createdAt: 'DESC' },
         });
+    }
+
+    /** 在线充值：生成微信支付参数并在充值单回写支付方式（仅本人 pending 单） */
+    async createWechatRechargePayment(
+        ctx: RequestContext,
+        rechargeOrderId: ID,
+        tradeType?: string,
+        openid?: string,
+    ): Promise<any> {
+        const cid = await this.resolveCustomerId(ctx);
+        const repo = this.connection.getRepository(ctx, RechargeOrder);
+        const order = await repo.findOne({
+            where: { id: rechargeOrderId as any, customerId: cid, channelId: ctx.channelId as any },
+        });
+        if (!order) throw new UserInputError('Recharge order not found');
+        if (order.status !== 'pending') {
+            throw new UserInputError(`Recharge order is already ${order.status}`);
+        }
+        if (!gatewayService) {
+            throw new UserInputError('Payment gateway not configured');
+        }
+        const outTradeNo = `RC-${order.id}`;
+        const pay = await gatewayService.createBarePayment({
+            outTradeNo,
+            amount: order.amount,
+            tradeType: (tradeType as any) || 'JSAPI',
+            openid,
+            description: `Recharge ${outTradeNo}`,
+        });
+        order.paymentMethod = 'wechatpay';
+        order.externalRef = outTradeNo;
+        await repo.save(order);
+        return { rechargeOrderId: order.id, outTradeNo, pay };
+    }
+
+    /** 网关回调结算入口：解析 RC-<id>，原子入账（admin ctx 无 activeUser，用单归属 customerId 显式入账） */
+    async settleRechargeOrderByOutTradeNo(
+        ctx: RequestContext,
+        outTradeNo: string,
+    ): Promise<void> {
+        const m = String(outTradeNo).match(/^RC-(\d+)$/);
+        if (!m) throw new UserInputError('Invalid recharge out_trade_no');
+        const repo = this.connection.getRepository(ctx, RechargeOrder);
+        const order = await repo.findOne({
+            where: { id: m[1] as any, channelId: ctx.channelId as any },
+        });
+        if (!order) throw new UserInputError('Recharge order not found');
+        if (order.status !== 'pending') return; // 幂等：已结算直接返回
+        await this.connection.startTransaction(ctx);
+        try {
+            const claim = await repo.createQueryBuilder()
+                .update(RechargeOrder)
+                .set({ status: 'paid', paidAt: new Date() })
+                .where('id = :id AND status = :status', { id: order.id, status: 'pending' })
+                .execute();
+            if (claim.affected === 0) {
+                await this.connection.commitOpenTransaction(ctx);
+                return; // 并发下已被他人结算，跳过
+            }
+            await this.applyBalanceChange(
+                ctx,
+                order.customerId,
+                order.amount,
+                BalanceTransactionType.RECHARGE,
+                { remark: `Recharge order #${order.id}` },
+            );
+            await this.connection.commitOpenTransaction(ctx);
+        } catch (e) {
+            await this.connection.rollBackTransaction(ctx);
+            throw e;
+        }
     }
 
     // ===== Card Operations =====

@@ -13,6 +13,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RechargeCardService = void 0;
+exports.setWechatpayGateway = setWechatpayGateway;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const crypto_1 = __importDefault(require("crypto"));
@@ -22,6 +23,11 @@ const recharge_card_batch_entity_1 = require("./recharge-card-batch.entity");
 const customer_balance_entity_1 = require("./customer-balance.entity");
 const balance_transaction_entity_1 = require("./balance-transaction.entity");
 const recharge_order_entity_1 = require("./recharge-order.entity");
+// 网关联接线（可选）：进程内未注册 WechatpayPlugin 时为 null，充值支付提示网关未配置
+let gatewayService = null;
+function setWechatpayGateway(gw) {
+    gatewayService = gw;
+}
 const SCRYPT_KEYLEN = 64;
 function scryptDerive(password, salt) {
     return new Promise((resolve, reject) => {
@@ -203,6 +209,66 @@ let RechargeCardService = class RechargeCardService {
             where: { customerId: cid, channelId: ctx.channelId },
             order: { createdAt: 'DESC' },
         });
+    }
+    /** 在线充值：生成微信支付参数并在充值单回写支付方式（仅本人 pending 单） */
+    async createWechatRechargePayment(ctx, rechargeOrderId, tradeType, openid) {
+        const cid = await this.resolveCustomerId(ctx);
+        const repo = this.connection.getRepository(ctx, recharge_order_entity_1.RechargeOrder);
+        const order = await repo.findOne({
+            where: { id: rechargeOrderId, customerId: cid, channelId: ctx.channelId },
+        });
+        if (!order)
+            throw new core_1.UserInputError('Recharge order not found');
+        if (order.status !== 'pending') {
+            throw new core_1.UserInputError(`Recharge order is already ${order.status}`);
+        }
+        if (!gatewayService) {
+            throw new core_1.UserInputError('Payment gateway not configured');
+        }
+        const outTradeNo = `RC-${order.id}`;
+        const pay = await gatewayService.createBarePayment({
+            outTradeNo,
+            amount: order.amount,
+            tradeType: tradeType || 'JSAPI',
+            openid,
+            description: `Recharge ${outTradeNo}`,
+        });
+        order.paymentMethod = 'wechatpay';
+        order.externalRef = outTradeNo;
+        await repo.save(order);
+        return { rechargeOrderId: order.id, outTradeNo, pay };
+    }
+    /** 网关回调结算入口：解析 RC-<id>，原子入账（admin ctx 无 activeUser，用单归属 customerId 显式入账） */
+    async settleRechargeOrderByOutTradeNo(ctx, outTradeNo) {
+        const m = String(outTradeNo).match(/^RC-(\d+)$/);
+        if (!m)
+            throw new core_1.UserInputError('Invalid recharge out_trade_no');
+        const repo = this.connection.getRepository(ctx, recharge_order_entity_1.RechargeOrder);
+        const order = await repo.findOne({
+            where: { id: m[1], channelId: ctx.channelId },
+        });
+        if (!order)
+            throw new core_1.UserInputError('Recharge order not found');
+        if (order.status !== 'pending')
+            return; // 幂等：已结算直接返回
+        await this.connection.startTransaction(ctx);
+        try {
+            const claim = await repo.createQueryBuilder()
+                .update(recharge_order_entity_1.RechargeOrder)
+                .set({ status: 'paid', paidAt: new Date() })
+                .where('id = :id AND status = :status', { id: order.id, status: 'pending' })
+                .execute();
+            if (claim.affected === 0) {
+                await this.connection.commitOpenTransaction(ctx);
+                return; // 并发下已被他人结算，跳过
+            }
+            await this.applyBalanceChange(ctx, order.customerId, order.amount, balance_transaction_entity_1.BalanceTransactionType.RECHARGE, { remark: `Recharge order #${order.id}` });
+            await this.connection.commitOpenTransaction(ctx);
+        }
+        catch (e) {
+            await this.connection.rollBackTransaction(ctx);
+            throw e;
+        }
     }
     // ===== Card Operations =====
     async redeemCard(ctx, code, pin) {

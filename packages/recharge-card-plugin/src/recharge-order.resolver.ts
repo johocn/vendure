@@ -44,4 +44,15 @@ export class RechargeOrderResolver {
     async cancelRechargeOrder(@Ctx() ctx: RequestContext, @Args('id') id: number): Promise<any> {
         return this.rechargeCardService.cancelRechargeOrder(ctx, id);
     }
+
+    @Mutation()
+    @Allow(Permission.Authenticated)
+    async createWechatRechargePayment(
+        @Ctx() ctx: RequestContext,
+        @Args('rechargeOrderId') rechargeOrderId: number,
+        @Args('tradeType', { nullable: true }) tradeType?: string,
+        @Args('openid', { nullable: true }) openid?: string,
+    ): Promise<any> {
+        return this.rechargeCardService.createWechatRechargePayment(ctx, rechargeOrderId, tradeType, openid);
+    }
 }

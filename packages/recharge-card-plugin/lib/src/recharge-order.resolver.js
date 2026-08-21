@@ -35,6 +35,9 @@ let RechargeOrderResolver = class RechargeOrderResolver {
     async cancelRechargeOrder(ctx, id) {
         return this.rechargeCardService.cancelRechargeOrder(ctx, id);
     }
+    async createWechatRechargePayment(ctx, rechargeOrderId, tradeType, openid) {
+        return this.rechargeCardService.createWechatRechargePayment(ctx, rechargeOrderId, tradeType, openid);
+    }
 };
 exports.RechargeOrderResolver = RechargeOrderResolver;
 __decorate([
@@ -82,6 +85,17 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Number]),
     __metadata("design:returntype", Promise)
 ], RechargeOrderResolver.prototype, "cancelRechargeOrder", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('rechargeOrderId')),
+    __param(2, (0, graphql_1.Args)('tradeType', { nullable: true })),
+    __param(3, (0, graphql_1.Args)('openid', { nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Number, String, String]),
+    __metadata("design:returntype", Promise)
+], RechargeOrderResolver.prototype, "createWechatRechargePayment", null);
 exports.RechargeOrderResolver = RechargeOrderResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [recharge_card_service_1.RechargeCardService])

@@ -1,5 +1,5 @@
 export interface WechatpayPluginOptions {
-    notifyUrl: string;
+    notifyUrl?: string;
     certPath?: string;
     certBuffer?: Buffer;
     devBypass?: boolean;

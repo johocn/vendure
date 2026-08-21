@@ -9,4 +9,5 @@ export declare class RechargeOrderResolver {
     createRechargeOrder(ctx: RequestContext, amount: number, remark: string): Promise<any>;
     payRechargeOrder(ctx: RequestContext, id: number): Promise<any>;
     cancelRechargeOrder(ctx: RequestContext, id: number): Promise<any>;
+    createWechatRechargePayment(ctx: RequestContext, rechargeOrderId: number, tradeType?: string, openid?: string): Promise<any>;
 }

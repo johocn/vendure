@@ -15,7 +15,8 @@ var RechargeCardPlugin_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RechargeCardPlugin = void 0;
 const common_1 = require("@nestjs/common");
-const core_1 = require("@vendure/core");
+const core_1 = require("@nestjs/core");
+const core_2 = require("@vendure/core");
 const constants_1 = require("./constants");
 const recharge_card_entity_1 = require("./recharge-card.entity");
 const recharge_card_batch_entity_1 = require("./recharge-card-batch.entity");
@@ -27,12 +28,14 @@ const recharge_order_resolver_1 = require("./recharge-order.resolver");
 const balance_payment_handler_1 = require("./balance-payment-handler");
 const recharge_card_shop_resolver_1 = require("./recharge-card-shop.resolver");
 const recharge_card_admin_resolver_1 = require("./recharge-card-admin.resolver");
+const wechatpay_plugin_1 = require("@vendure/wechatpay-plugin");
 const { gql } = require('graphql-tag');
 let RechargeCardPlugin = RechargeCardPlugin_1 = class RechargeCardPlugin {
-    constructor(options, rechargeCardService, orderService) {
+    constructor(options, rechargeCardService, orderService, moduleRef) {
         this.options = options;
         this.rechargeCardService = rechargeCardService;
         this.orderService = orderService;
+        this.moduleRef = moduleRef;
     }
     static init(options) {
         RechargeCardPlugin_1.options = options !== null && options !== void 0 ? options : {};
@@ -41,14 +44,34 @@ let RechargeCardPlugin = RechargeCardPlugin_1 = class RechargeCardPlugin {
     async onApplicationBootstrap() {
         (0, balance_payment_handler_1.setRechargeService)(this.rechargeCardService);
         (0, balance_payment_handler_1.setOrderService)(this.orderService);
-        core_1.Logger.info('RechargeCardPlugin initialized', constants_1.loggerCtx);
+        // 可选接入支付网关：进程内注册了 WechatpayPlugin 时解析到，否则保持独立可用
+        const injector = new core_2.Injector(this.moduleRef);
+        let registry = null;
+        let gateway = null;
+        try {
+            gateway = injector.get(wechatpay_plugin_1.WechatpayService);
+            registry = injector.get(wechatpay_plugin_1.WechatpaySettlementRegistry);
+        }
+        catch (e) {
+            // 未注册网关 → 保持独立可用
+        }
+        (0, recharge_card_service_1.setWechatpayGateway)(gateway);
+        if (registry) {
+            const svc = this.rechargeCardService;
+            registry.register({
+                prefix: 'RC-',
+                settle: (ctx, outTradeNo) => svc.settleRechargeOrderByOutTradeNo(ctx, outTradeNo),
+            });
+            core_2.Logger.info('RechargeOrder ~RC- settlement registered (wechatpay gateway)', constants_1.loggerCtx);
+        }
+        core_2.Logger.info('RechargeCardPlugin initialized', constants_1.loggerCtx);
     }
 };
 exports.RechargeCardPlugin = RechargeCardPlugin;
 RechargeCardPlugin.options = {};
 exports.RechargeCardPlugin = RechargeCardPlugin = RechargeCardPlugin_1 = __decorate([
-    (0, core_1.VendurePlugin)({
-        imports: [core_1.PluginCommonModule],
+    (0, core_2.VendurePlugin)({
+        imports: [core_2.PluginCommonModule],
         entities: [recharge_card_entity_1.RechargeCard, recharge_card_batch_entity_1.RechargeCardBatch, customer_balance_entity_1.CustomerBalance, balance_transaction_entity_1.BalanceTransaction, recharge_order_entity_1.RechargeOrder],
         providers: [
             { provide: constants_1.RECHARGE_CARD_PLUGIN_OPTIONS, useFactory: () => RechargeCardPlugin.options },
@@ -100,6 +123,24 @@ exports.RechargeCardPlugin = RechargeCardPlugin = RechargeCardPlugin_1 = __decor
                 totalItems: Int!
             }
 
+            type WechatRechargePaymentResult {
+                rechargeOrderId: ID!
+                outTradeNo: String!
+                pay: WechatPayParams!
+            }
+
+            type WechatPayParams {
+                payType: String!
+                prepayId: String
+                appId: String
+                timeStamp: String
+                nonceStr: String
+                package: String
+                signType: String
+                paySign: String
+                payUrl: String
+            }
+
             input RechargeCardListOptions {
                 skip: Int
                 take: Int
@@ -117,6 +158,7 @@ exports.RechargeCardPlugin = RechargeCardPlugin = RechargeCardPlugin_1 = __decor
                 createRechargeOrder(amount: Int!, remark: String): RechargeOrderItem!
                 payRechargeOrder(id: ID!): RechargeOrderItem!
                 cancelRechargeOrder(id: ID!): RechargeOrderItem!
+                createWechatRechargePayment(rechargeOrderId: ID!, tradeType: String, openid: String): WechatRechargePaymentResult!
             }
         `,
             resolvers: [recharge_card_shop_resolver_1.RechargeCardShopResolver, recharge_order_resolver_1.RechargeOrderResolver],
@@ -246,6 +288,7 @@ exports.RechargeCardPlugin = RechargeCardPlugin = RechargeCardPlugin_1 = __decor
     }),
     __param(0, (0, common_1.Inject)(constants_1.RECHARGE_CARD_PLUGIN_OPTIONS)),
     __metadata("design:paramtypes", [Object, recharge_card_service_1.RechargeCardService,
-        core_1.OrderService])
+        core_2.OrderService,
+        core_1.ModuleRef])
 ], RechargeCardPlugin);
 //# sourceMappingURL=plugin.js.map

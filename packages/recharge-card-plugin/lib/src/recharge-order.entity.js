@@ -35,6 +35,10 @@ __decorate([
     __metadata("design:type", Object)
 ], RechargeOrder.prototype, "paymentMethod", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], RechargeOrder.prototype, "externalRef", void 0);
+__decorate([
     (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
     __metadata("design:type", Object)
 ], RechargeOrder.prototype, "paidAt", void 0);
