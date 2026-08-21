@@ -2,21 +2,43 @@ import { createTestEnvironment, registerInitializer, SqljsInitializer } from '@v
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import path from 'path';
 import gql from 'graphql-tag';
-import { mergeConfig } from '@vendure/core';
+import { mergeConfig, ChannelService, RequestContext } from '@vendure/core';
 import { initialData } from '../../../e2e-common/e2e-initial-data';
 import { TEST_SETUP_TIMEOUT_MS, testConfig } from '../../../e2e-common/test-config';
 import { RechargeCardPlugin } from '../src/plugin';
 import { balancePaymentHandler } from '../src/balance-payment-handler';
 import { addPaymentToOrder, proceedToArrangingPayment } from '../../core/e2e/utils/test-order-utils';
+import { WechatpayPlugin, WechatpaySettlementRegistry } from '@vendure/wechatpay-plugin';
 
 registerInitializer('sqljs', new SqljsInitializer(path.join(__dirname, '__data__')));
 
 describe('RechargeCardPlugin · 会员储值余额钱包', () => {
     const { server, adminClient, shopClient } = createTestEnvironment(
         mergeConfig(testConfig(), {
-            plugins: [RechargeCardPlugin.init()],
+            plugins: [
+                RechargeCardPlugin.init(),
+                WechatpayPlugin.init({
+                    notifyUrl: 'http://localhost/wechatpay/notify',
+                    devBypass: true,
+                }),
+            ],
         }),
     );
+
+    // 等价网关 notify 的 admin ctx 路由触发，供在线充值用例保确定性结算
+    async function settleViaGateway(outTradeNo: string, txId = 'DEV-TX'): Promise<void> {
+        const registry = server.app.get(WechatpaySettlementRegistry);
+        const settlement = registry.find(outTradeNo);
+        expect(settlement).toBeDefined();
+        const channel = await server.app.get(ChannelService).getDefaultChannel();
+        const ctx = new RequestContext({
+            apiType: 'admin',
+            channel,
+            isAuthorized: true,
+            authorizedAsOwnerOnly: false,
+        });
+        await settlement!.settle(ctx, outTradeNo, txId);
+    }
 
     const OTHER_EMAIL = 'second.balance@test.com';
 
@@ -210,5 +232,63 @@ describe('RechargeCardPlugin · 会员储值余额钱包', () => {
             query { customerBalanceTransactions(customerId: "${otherId}", options: {}) { totalItems } }
         `);
         expect(tx.customerBalanceTransactions.totalItems).toBe(0);
+    });
+
+    it('在线充值：建单→建支付参数→网关结算→余额到账+流水', async () => {
+        const before = (await shopClient.query(gql`query { myRechargeBalance }`)).myRechargeBalance;
+        const created = (await shopClient.query(gql`
+            mutation { createRechargeOrder(amount: 5000, remark: "wc") { id status } }
+        `)) as any;
+        const orderId = created.createRechargeOrder.id;
+
+        const pay = (await shopClient.query(gql`
+            mutation { createWechatRechargePayment(rechargeOrderId: "${orderId}", tradeType: "JSAPI") { rechargeOrderId outTradeNo pay { payType payUrl } } }
+        `)) as any;
+        // TestingEntityIdStrategy 下 GraphQL id 带 T_ 前缀，out_trade_no 用原始数字 id
+        const outTradeNo = pay.createWechatRechargePayment.outTradeNo;
+        expect(outTradeNo).toMatch(/^RC-\d+$/);
+        expect(pay.createWechatRechargePayment.pay.payType).toBe('dev-h5');
+
+        // 触发 RC- 结算（等价网关 notify 路由）
+        await settleViaGateway(outTradeNo, 'DEV-TX');
+
+        const after = (await shopClient.query(gql`query { myRechargeBalance }`)).myRechargeBalance;
+        const list = (await shopClient.query(gql`query { myRechargeOrders { id status } }`)).myRechargeOrders;
+        expect(after).toBe(before + 5000);
+        expect(list.find(o => o.id === orderId).status).toBe('paid');
+    });
+
+    it('在线充值：重复结算幂等（余额不再加）', async () => {
+        const before = (await shopClient.query(gql`query { myRechargeBalance }`)).myRechargeBalance;
+        const created = (await shopClient.query(gql`
+            mutation { createRechargeOrder(amount: 2000) { id } }
+        `)) as any;
+        const orderId = created.createRechargeOrder.id;
+        const pay = (await shopClient.query(gql`
+            mutation { createWechatRechargePayment(rechargeOrderId: "${orderId}") { outTradeNo } }
+        `)) as any;
+        const outTradeNo = pay.createWechatRechargePayment.outTradeNo;
+        await settleViaGateway(outTradeNo, 'DEV-TX1');
+        const afterOne = (await shopClient.query(gql`query { myRechargeBalance }`)).myRechargeBalance;
+        expect(afterOne).toBe(before + 2000);
+        await settleViaGateway(outTradeNo, 'DEV-TX2'); // 第二次应跳过
+        const afterTwo = (await shopClient.query(gql`query { myRechargeBalance }`)).myRechargeBalance;
+        expect(afterTwo).toBe(afterOne);
+    });
+
+    it('在线充值：已支付单建支付被拒', async () => {
+        const created = (await shopClient.query(gql`
+            mutation { createRechargeOrder(amount: 1000) { id } }
+        `)) as any;
+        const orderId = created.createRechargeOrder.id;
+        const pay = (await shopClient.query(gql`
+            mutation { createWechatRechargePayment(rechargeOrderId: "${orderId}") { outTradeNo } }
+        `)) as any;
+        await settleViaGateway(pay.createWechatRechargePayment.outTradeNo, 'DEV-TX');
+
+        // 已结算单再次建支付 → 报错
+        await expect(shopClient.query(gql`
+            mutation { createWechatRechargePayment(rechargeOrderId: "${orderId}") { outTradeNo } }
+        `)).rejects.toThrow();
     });
 });
