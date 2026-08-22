@@ -4,7 +4,7 @@ import { CustomerService, Ctx, ID, ListQueryOptions, PaginatedList, RequestConte
 import { CommissionRecord } from './commission-record.entity';
 import { CommissionService } from './commission.service';
 import { Distributor } from './distributor.entity';
-import { DistributionService } from './distribution.service';
+import { DistributionService, TeamSummary } from './distribution.service';
 import { WithdrawalRequest } from './withdrawal-request.entity';
 import { WithdrawalService } from './withdrawal.service';
 
@@ -58,6 +58,19 @@ export class DistributionShopResolver {
         const distributor = await this.distributionService.findByCustomerId(ctx, customerId);
         if (!distributor) return { items: [], totalItems: 0 };
         return this.withdrawalService.findByDistributor(ctx, distributor.id, options);
+    }
+
+    @Query()
+    async myTeamSummary(@Ctx() ctx: RequestContext): Promise<TeamSummary> {
+        const customerId = await this.resolveCustomerId(ctx);
+        if (!customerId) {
+            return { directTeamSize: 0, indirectTeamSize: 0, totalTeamSize: 0, orderCount: 0, orderAmount: 0, teamCommission: 0 };
+        }
+        const distributor = await this.distributionService.findByCustomerId(ctx, customerId);
+        if (!distributor) {
+            return { directTeamSize: 0, indirectTeamSize: 0, totalTeamSize: 0, orderCount: 0, orderAmount: 0, teamCommission: 0 };
+        }
+        return this.distributionService.getTeamSummary(ctx, distributor.id);
     }
 
     @Mutation()

@@ -206,6 +206,15 @@ exports.DistributionPlugin = DistributionPlugin = DistributionPlugin_1 = __decor
                 totalItems: Int!
             }
 
+            type TeamSummary {
+                directTeamSize: Int!
+                indirectTeamSize: Int!
+                totalTeamSize: Int!
+                orderCount: Int!
+                orderAmount: Int!
+                teamCommission: Int!
+            }
+
             input DistributorListOptions
             input CommissionRecordListOptions
             input WithdrawalRequestListOptions
@@ -214,6 +223,7 @@ exports.DistributionPlugin = DistributionPlugin = DistributionPlugin_1 = __decor
                 myDistributorProfile: Distributor
                 myCommissionRecords(options: CommissionRecordListOptions): CommissionRecordList!
                 myWithdrawalRequests(options: WithdrawalRequestListOptions): WithdrawalRequestList!
+                myTeamSummary: TeamSummary!
                 distributors(options: DistributorListOptions): DistributorList!
                 commissionRecords(options: CommissionRecordListOptions): CommissionRecordList!
                 withdrawalRequests(options: WithdrawalRequestListOptions): WithdrawalRequestList!

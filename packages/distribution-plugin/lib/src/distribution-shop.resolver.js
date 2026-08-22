@@ -59,6 +59,17 @@ let DistributionShopResolver = class DistributionShopResolver {
             return { items: [], totalItems: 0 };
         return this.withdrawalService.findByDistributor(ctx, distributor.id, options);
     }
+    async myTeamSummary(ctx) {
+        const customerId = await this.resolveCustomerId(ctx);
+        if (!customerId) {
+            return { directTeamSize: 0, indirectTeamSize: 0, totalTeamSize: 0, orderCount: 0, orderAmount: 0, teamCommission: 0 };
+        }
+        const distributor = await this.distributionService.findByCustomerId(ctx, customerId);
+        if (!distributor) {
+            return { directTeamSize: 0, indirectTeamSize: 0, totalTeamSize: 0, orderCount: 0, orderAmount: 0, teamCommission: 0 };
+        }
+        return this.distributionService.getTeamSummary(ctx, distributor.id);
+    }
     async applyDistributor(ctx, referredByCode) {
         const customerId = await this.resolveCustomerId(ctx);
         if (!customerId) {
@@ -102,6 +113,13 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], DistributionShopResolver.prototype, "myWithdrawalRequests", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], DistributionShopResolver.prototype, "myTeamSummary", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),

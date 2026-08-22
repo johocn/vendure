@@ -194,6 +194,14 @@ async function main() {
     const myWD = await shop(`query { myWithdrawalRequests { items { id amount status paidAt } } }`, {}, aTok);
     assert(myWD.data?.myWithdrawalRequests?.items?.[0]?.status === 'paid', `C 端 myWithdrawalRequests 可见已打款记录`);
 
+    // 团队汇总：X 有直推 A；B 经 A（A 已打款）为 X 生成 indirect 佣金（confirmed/paid 计入）
+    const team = await shop(`query { myTeamSummary { directTeamSize indirectTeamSize totalTeamSize orderCount orderAmount teamCommission } }`, {}, xTok);
+    const teamData = team.data?.myTeamSummary;
+    assert(teamData && teamData.directTeamSize >= 1, `X 团队直推=> ${teamData?.directTeamSize}`);
+    assert(teamData && teamData.totalTeamSize >= 1, `X 团队总 => ${teamData?.totalTeamSize}`);
+    assert(teamData && teamData.orderCount >= 1, `X 团队 orderCount => ${teamData?.orderCount}`);
+    assert(teamData && teamData.teamCommission >= expIndirect, `X 团队佣金 >= 间推佣金(${expIndirect}) => ${teamData?.teamCommission}`);
+
     // 9. 拒绝链：X（间推佣金已结算入可用余额）提现后管理员驳回 → 余额回退解冻
     const xDist = await shop(`query { distributors { items { id availableBalance referralCode } } }`, {}, shopAdminToken);
     const xData = xDist.data.distributors.items.find(d => d.id === x.id);

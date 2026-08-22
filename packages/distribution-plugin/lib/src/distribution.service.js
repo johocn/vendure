@@ -13,6 +13,7 @@ exports.DistributionService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const distributor_entity_1 = require("./distributor.entity");
+const commission_record_entity_1 = require("./commission-record.entity");
 const constants_1 = require("./constants");
 let DistributionService = class DistributionService {
     constructor(connection, listQueryBuilder, customerService) {
@@ -125,6 +126,48 @@ let DistributionService = class DistributionService {
             code += chars.charAt(Math.floor(Math.random() * chars.length));
         }
         return code;
+    }
+    async getTeamSummary(ctx, distributorId) {
+        var _a, _b, _c;
+        const repo = this.connection.getRepository(ctx, distributor_entity_1.Distributor);
+        const channelId = ctx.channelId;
+        // 直推下级：parentId = 当前分销员（限当前 channel）
+        const directChildren = await repo
+            .createQueryBuilder('d')
+            .innerJoin('d.channels', 'channel')
+            .where('d.parentId = :pid', { pid: String(distributorId) })
+            .andWhere('channel.id = :channelId', { channelId })
+            .getMany();
+        const directIds = directChildren.map(c => c.id);
+        const directTeamSize = directChildren.length;
+        // 间推下级：parentId ∈ 直推 ids（限当前 channel）
+        let indirectTeamSize = 0;
+        if (directIds.length) {
+            indirectTeamSize = await repo
+                .createQueryBuilder('d')
+                .innerJoin('d.channels', 'channel')
+                .where('d.parentId IN (:...ids)', { ids: directIds.map(String) })
+                .andWhere('channel.id = :channelId', { channelId })
+                .getCount();
+        }
+        // 当前分销员带来的订单与收益（仅 confirmed/paid，避免 pending 未结算虚高）
+        const crRepo = this.connection.getRepository(ctx, commission_record_entity_1.CommissionRecord);
+        const rows = await crRepo
+            .createQueryBuilder('cr')
+            .select('COUNT(DISTINCT cr.orderId)', 'orderCount')
+            .addSelect('COALESCE(SUM(cr.orderAmount),0)', 'orderAmount')
+            .addSelect('COALESCE(SUM(cr.commissionAmount),0)', 'commission')
+            .where('cr.distributorId = :did', { did: String(distributorId) })
+            .andWhere('cr.status IN (:...s)', { s: ['confirmed', 'paid'] })
+            .getRawOne();
+        return {
+            directTeamSize,
+            indirectTeamSize,
+            totalTeamSize: directTeamSize + indirectTeamSize,
+            orderCount: Number((_a = rows === null || rows === void 0 ? void 0 : rows.orderCount) !== null && _a !== void 0 ? _a : 0),
+            orderAmount: Number((_b = rows === null || rows === void 0 ? void 0 : rows.orderAmount) !== null && _b !== void 0 ? _b : 0),
+            teamCommission: Number((_c = rows === null || rows === void 0 ? void 0 : rows.commission) !== null && _c !== void 0 ? _c : 0),
+        };
     }
 };
 exports.DistributionService = DistributionService;

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Channel, CustomerService, ID, ListQueryBuilder, ListQueryOptions, Logger, PaginatedList, RequestContext, TransactionalConnection, UserInputError } from '@vendure/core';
 
 import { Distributor } from './distributor.entity';
+import { CommissionRecord } from './commission-record.entity';
 import { loggerCtx } from './constants';
 
 @Injectable()
@@ -134,4 +135,59 @@ export class DistributionService {
         }
         return code;
     }
+
+    async getTeamSummary(ctx: RequestContext, distributorId: ID): Promise<TeamSummary> {
+        const repo = this.connection.getRepository(ctx, Distributor);
+        const channelId = ctx.channelId;
+
+        // 直推下级：parentId = 当前分销员（限当前 channel）
+        const directChildren = await repo
+            .createQueryBuilder('d')
+            .innerJoin('d.channels', 'channel')
+            .where('d.parentId = :pid', { pid: String(distributorId) })
+            .andWhere('channel.id = :channelId', { channelId })
+            .getMany();
+        const directIds = directChildren.map(c => c.id);
+        const directTeamSize = directChildren.length;
+
+        // 间推下级：parentId ∈ 直推 ids（限当前 channel）
+        let indirectTeamSize = 0;
+        if (directIds.length) {
+            indirectTeamSize = await repo
+                .createQueryBuilder('d')
+                .innerJoin('d.channels', 'channel')
+                .where('d.parentId IN (:...ids)', { ids: directIds.map(String) })
+                .andWhere('channel.id = :channelId', { channelId })
+                .getCount();
+        }
+
+        // 当前分销员带来的订单与收益（仅 confirmed/paid，避免 pending 未结算虚高）
+        const crRepo = this.connection.getRepository(ctx, CommissionRecord);
+        const rows = await crRepo
+            .createQueryBuilder('cr')
+            .select('COUNT(DISTINCT cr.orderId)', 'orderCount')
+            .addSelect('COALESCE(SUM(cr.orderAmount),0)', 'orderAmount')
+            .addSelect('COALESCE(SUM(cr.commissionAmount),0)', 'commission')
+            .where('cr.distributorId = :did', { did: String(distributorId) })
+            .andWhere('cr.status IN (:...s)', { s: ['confirmed', 'paid'] })
+            .getRawOne();
+
+        return {
+            directTeamSize,
+            indirectTeamSize,
+            totalTeamSize: directTeamSize + indirectTeamSize,
+            orderCount: Number(rows?.orderCount ?? 0),
+            orderAmount: Number(rows?.orderAmount ?? 0),
+            teamCommission: Number(rows?.commission ?? 0),
+        };
+    }
+}
+
+export interface TeamSummary {
+    directTeamSize: number;
+    indirectTeamSize: number;
+    totalTeamSize: number;
+    orderCount: number;
+    orderAmount: number;
+    teamCommission: number;
 }

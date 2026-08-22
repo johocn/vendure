@@ -2,7 +2,7 @@ import { CustomerService, ListQueryOptions, PaginatedList, RequestContext } from
 import { CommissionRecord } from './commission-record.entity';
 import { CommissionService } from './commission.service';
 import { Distributor } from './distributor.entity';
-import { DistributionService } from './distribution.service';
+import { DistributionService, TeamSummary } from './distribution.service';
 import { WithdrawalRequest } from './withdrawal-request.entity';
 import { WithdrawalService } from './withdrawal.service';
 export declare class DistributionShopResolver {
@@ -19,6 +19,7 @@ export declare class DistributionShopResolver {
     myDistributorProfile(ctx: RequestContext): Promise<Distributor | undefined>;
     myCommissionRecords(ctx: RequestContext, options: ListQueryOptions<CommissionRecord>): Promise<PaginatedList<CommissionRecord>>;
     myWithdrawalRequests(ctx: RequestContext, options: ListQueryOptions<WithdrawalRequest>): Promise<PaginatedList<WithdrawalRequest>>;
+    myTeamSummary(ctx: RequestContext): Promise<TeamSummary>;
     applyDistributor(ctx: RequestContext, referredByCode?: string): Promise<Distributor>;
     requestWithdrawal(ctx: RequestContext, amount: number, method: 'bank' | 'alipay' | 'wechat', accountInfo: string): Promise<WithdrawalRequest>;
 }

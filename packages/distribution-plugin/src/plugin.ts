@@ -173,6 +173,15 @@ import { settleCommissionsTask } from './commission.job';
                 totalItems: Int!
             }
 
+            type TeamSummary {
+                directTeamSize: Int!
+                indirectTeamSize: Int!
+                totalTeamSize: Int!
+                orderCount: Int!
+                orderAmount: Int!
+                teamCommission: Int!
+            }
+
             input DistributorListOptions
             input CommissionRecordListOptions
             input WithdrawalRequestListOptions
@@ -181,6 +190,7 @@ import { settleCommissionsTask } from './commission.job';
                 myDistributorProfile: Distributor
                 myCommissionRecords(options: CommissionRecordListOptions): CommissionRecordList!
                 myWithdrawalRequests(options: WithdrawalRequestListOptions): WithdrawalRequestList!
+                myTeamSummary: TeamSummary!
                 distributors(options: DistributorListOptions): DistributorList!
                 commissionRecords(options: CommissionRecordListOptions): CommissionRecordList!
                 withdrawalRequests(options: WithdrawalRequestListOptions): WithdrawalRequestList!

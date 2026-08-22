@@ -13,4 +13,13 @@ export declare class DistributionService {
     approve(ctx: RequestContext, id: ID): Promise<Distributor>;
     freeze(ctx: RequestContext, id: ID): Promise<Distributor>;
     generateReferralCode(): string;
+    getTeamSummary(ctx: RequestContext, distributorId: ID): Promise<TeamSummary>;
+}
+export interface TeamSummary {
+    directTeamSize: number;
+    indirectTeamSize: number;
+    totalTeamSize: number;
+    orderCount: number;
+    orderAmount: number;
+    teamCommission: number;
 }
