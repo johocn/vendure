@@ -45,7 +45,7 @@ import { FlashSalePlugin } from '@vendure/flash-sale-plugin';
 import { DistributionPlugin } from '@vendure/distribution-plugin';
 import { RedisStockPlugin } from '@vendure/redis-stock-plugin';
 import { LogisticsApiPlugin } from '@vendure/logistics-api-plugin';
-import { InvoicePdfPlugin } from '@vendure/invoice-pdf-plugin';
+import { InvoicePdfPlugin, PdfInvoiceProvider } from '@vendure/invoice-pdf-plugin';
 import { RechargeCardPlugin } from '@vendure/recharge-card-plugin';
 import { AfterSalesPlugin } from '@vendure/after-sales-plugin';
 import { MemberLevelPlugin } from '@vendure/member-level-plugin';
@@ -361,7 +361,7 @@ export const devConfig: VendureConfig = {
             devBypassOpenid: 'dev_test_openid',
         })] : []),
         OrderTimeoutPlugin.init({ defaultPaymentTimeoutMinutes: 30 }),
-        InvoicePlugin.init(),
+        InvoicePlugin.init({ provider: new PdfInvoiceProvider() }),
         GroupBuyPlugin.init({ defaultTimeoutMinutes: 60 }),
         FlashSalePlugin.init({ defaultTimeoutMinutes: 15 }),
         DistributionPlugin.init({

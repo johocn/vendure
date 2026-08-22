@@ -12,6 +12,7 @@ const core_1 = require("@vendure/core");
 const constants_1 = require("./constants");
 const ordinary_invoice_1 = require("./templates/ordinary-invoice");
 const special_invoice_1 = require("./templates/special-invoice");
+const combined_1 = require("./templates/combined");
 let InvoicePdfService = class InvoicePdfService {
     async generatePdf(ctx, order) {
         var _a, _b, _c, _d, _e, _f, _g, _h, _j;
@@ -53,6 +54,42 @@ let InvoicePdfService = class InvoicePdfService {
             currencyCode: (_g = order.currencyCode) !== null && _g !== void 0 ? _g : 'CNY',
             orderDate: (_j = (_h = order.orderPlacedAt) === null || _h === void 0 ? void 0 : _h.toISOString()) !== null && _j !== void 0 ? _j : '',
             lines,
+        });
+    }
+    async generateCombinedPdf(ctx, input, orders) {
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
+        const items = [];
+        let orderTotal = 0;
+        let orderDate = '';
+        for (const order of orders) {
+            orderTotal += (_a = order.totalWithTax) !== null && _a !== void 0 ? _a : 0;
+            if (!orderDate && order.orderPlacedAt) {
+                orderDate = order.orderPlacedAt.toISOString();
+            }
+            for (const line of (_b = order.lines) !== null && _b !== void 0 ? _b : []) {
+                items.push({
+                    orderCode: order.code,
+                    name: ((_c = line.productVariant) === null || _c === void 0 ? void 0 : _c.name) || 'Item',
+                    quantity: line.quantity,
+                    price: ((_d = line.proratedLinePriceWithTax) !== null && _d !== void 0 ? _d : 0) / 100,
+                });
+            }
+        }
+        return (0, combined_1.generateCombinedInvoice)({
+            invoiceNumber: input.invoiceNo,
+            invoiceType: input.invoiceType,
+            invoiceTitle: input.title,
+            invoiceTaxNumber: (_e = input.taxNumber) !== null && _e !== void 0 ? _e : '',
+            invoiceEmail: (_f = input.email) !== null && _f !== void 0 ? _f : '',
+            invoiceCompanyAddress: (_g = input.companyAddress) !== null && _g !== void 0 ? _g : '',
+            invoiceCompanyPhone: (_h = input.companyPhone) !== null && _h !== void 0 ? _h : '',
+            invoiceBankName: (_j = input.bankName) !== null && _j !== void 0 ? _j : '',
+            invoiceBankAccount: (_k = input.bankAccount) !== null && _k !== void 0 ? _k : '',
+            orderCodes: orders.map(o => o.code),
+            orderTotal,
+            currencyCode: (_m = (_l = orders[0]) === null || _l === void 0 ? void 0 : _l.currencyCode) !== null && _m !== void 0 ? _m : 'CNY',
+            orderDate,
+            items,
         });
     }
     async generateAndStore(ctx, order, assetStorageStrategy) {

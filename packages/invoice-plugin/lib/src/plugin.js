@@ -23,6 +23,9 @@ const invoice_entity_1 = require("./invoice.entity");
 const invoice_service_1 = require("./invoice.service");
 const invoice_admin_resolver_1 = require("./invoice-admin.resolver");
 const invoice_shop_resolver_1 = require("./invoice-shop.resolver");
+const invoice_title_entity_1 = require("./invoice-title.entity");
+const invoice_title_service_1 = require("./invoice-title.service");
+const invoice_title_shop_resolver_1 = require("./invoice-title-shop.resolver");
 /** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
 function mergeCustomFields(existingFields, additions) {
     const names = new Set((existingFields !== null && existingFields !== void 0 ? existingFields : []).map(f => f.name));
@@ -117,6 +120,54 @@ const shopSchema = () => gql `
         createInvoice(input: CreateInvoiceInput!): Invoice!
         downloadInvoicePdf(id: ID!): Invoice!
     }
+
+    type InvoiceTitle implements Node {
+        id: ID!
+        title: String!
+        taxNumber: String
+        email: String
+        companyAddress: String
+        companyPhone: String
+        bankName: String
+        bankAccount: String
+        customerId: ID!
+        isDefault: Boolean!
+        createdAt: DateTime!
+        updatedAt: DateTime!
+    }
+
+    input CreateInvoiceTitleInput {
+        title: String!
+        taxNumber: String
+        email: String
+        companyAddress: String
+        companyPhone: String
+        bankName: String
+        bankAccount: String
+        isDefault: Boolean
+    }
+
+    input UpdateInvoiceTitleInput {
+        title: String
+        taxNumber: String
+        email: String
+        companyAddress: String
+        companyPhone: String
+        bankName: String
+        bankAccount: String
+        isDefault: Boolean
+    }
+
+    extend type Query {
+        myInvoiceTitles: [InvoiceTitle!]!
+    }
+
+    extend type Mutation {
+        createInvoiceTitle(input: CreateInvoiceTitleInput!): InvoiceTitle!
+        updateInvoiceTitle(id: ID!, input: UpdateInvoiceTitleInput!): InvoiceTitle!
+        setDefaultInvoiceTitle(id: ID!): InvoiceTitle!
+        deleteInvoiceTitle(id: ID!): Boolean!
+    }
 `;
 let InvoicePlugin = InvoicePlugin_1 = class InvoicePlugin {
     constructor(options, invoiceService, moduleRef) {
@@ -131,6 +182,11 @@ let InvoicePlugin = InvoicePlugin_1 = class InvoicePlugin {
     async onApplicationBootstrap() {
         this.injector = new core_2.Injector(this.moduleRef);
         this.invoiceService.init(this.injector);
+        // 支持可注入的 provider（如 PdfInvoiceProvider：内部懒取 InvoicePdfService/AssetStorageStrategy/OrderService）
+        const provider = this.options.provider;
+        if (provider && typeof provider.init === 'function') {
+            provider.init(this.injector);
+        }
         core_2.Logger.info('InvoicePlugin initialized', constants_1.loggerCtx);
     }
 };
@@ -139,10 +195,11 @@ InvoicePlugin.options = {};
 exports.InvoicePlugin = InvoicePlugin = InvoicePlugin_1 = __decorate([
     (0, core_2.VendurePlugin)({
         imports: [core_2.PluginCommonModule],
-        entities: [invoice_entity_1.Invoice],
+        entities: [invoice_entity_1.Invoice, invoice_title_entity_1.InvoiceTitle],
         providers: [
             { provide: constants_1.INVOICE_PLUGIN_OPTIONS, useFactory: () => InvoicePlugin.options },
             invoice_service_1.InvoiceService,
+            invoice_title_service_1.InvoiceTitleService,
         ],
         adminApiExtensions: {
             schema: adminSchema,
@@ -150,7 +207,7 @@ exports.InvoicePlugin = InvoicePlugin = InvoicePlugin_1 = __decorate([
         },
         shopApiExtensions: {
             schema: shopSchema,
-            resolvers: [invoice_shop_resolver_1.InvoiceShopResolver],
+            resolvers: [invoice_shop_resolver_1.InvoiceShopResolver, invoice_title_shop_resolver_1.InvoiceTitleShopResolver],
         },
         configuration: (config) => {
             config.customFields.Order = mergeCustomFields(config.customFields.Order, order_custom_fields_1.invoiceOrderCustomFields.Order);

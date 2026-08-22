@@ -119,11 +119,14 @@ export class InvoiceService {
         // 1. 校验订单归属 + 状态，累计订单实付金额
         let totalPaid = 0;
         for (const orderId of input.orderIds) {
-            const order = await this.orderService.findOne(ctx, orderId, ['customer']);
+            const order = await this.orderService.findOne(ctx, orderId, ['customer', 'customer.user']);
             if (!order) {
                 throw new UserInputError(`Order ${orderId} not found`);
             }
-            if (!order.customer || String(order.customer.id) !== String(ctx.activeUserId)) {
+            // order.customer.id 是 Customer 主键，ctx.activeUserId 是关联 User 主键，二者不同；
+            // 归属校验基于 customer.user.id 与 activeUserId 比较。
+            const customerUserId = (order.customer as any)?.user?.id;
+            if (!order.customer || customerUserId == null || String(customerUserId) !== String(ctx.activeUserId)) {
                 throw new ForbiddenError();
             }
             const allowedStates = ['Delivered', 'Completed', 'PartialDelivery'];

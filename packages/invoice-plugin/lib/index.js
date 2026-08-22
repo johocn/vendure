@@ -20,4 +20,7 @@ __exportStar(require("./src/constants"), exports);
 __exportStar(require("./src/invoice.entity"), exports);
 __exportStar(require("./src/invoice-provider"), exports);
 __exportStar(require("./src/invoice.service"), exports);
+__exportStar(require("./src/invoice-title.entity"), exports);
+__exportStar(require("./src/invoice-title.service"), exports);
+__exportStar(require("./src/invoice-title-shop.resolver"), exports);
 //# sourceMappingURL=index.js.map

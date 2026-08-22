@@ -4,3 +4,6 @@ export * from './src/constants';
 export * from './src/invoice.entity';
 export * from './src/invoice-provider';
 export * from './src/invoice.service';
+export * from './src/invoice-title.entity';
+export * from './src/invoice-title.service';
+export * from './src/invoice-title-shop.resolver';

@@ -76,7 +76,7 @@ let InvoiceService = class InvoiceService {
         return result !== null && result !== void 0 ? result : undefined;
     }
     async createInvoice(ctx, input) {
-        var _a, _b, _c, _d, _e, _f, _g, _h;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
         if (!ctx.activeUserId) {
             throw new core_1.UnauthorizedError();
         }
@@ -92,18 +92,21 @@ let InvoiceService = class InvoiceService {
         // 1. 校验订单归属 + 状态，累计订单实付金额
         let totalPaid = 0;
         for (const orderId of input.orderIds) {
-            const order = await this.orderService.findOne(ctx, orderId, ['customer']);
+            const order = await this.orderService.findOne(ctx, orderId, ['customer', 'customer.user']);
             if (!order) {
                 throw new core_1.UserInputError(`Order ${orderId} not found`);
             }
-            if (!order.customer || String(order.customer.id) !== String(ctx.activeUserId)) {
+            // order.customer.id 是 Customer 主键，ctx.activeUserId 是关联 User 主键，二者不同；
+            // 归属校验基于 customer.user.id 与 activeUserId 比较。
+            const customerUserId = (_b = (_a = order.customer) === null || _a === void 0 ? void 0 : _a.user) === null || _b === void 0 ? void 0 : _b.id;
+            if (!order.customer || customerUserId == null || String(customerUserId) !== String(ctx.activeUserId)) {
                 throw new core_1.ForbiddenError();
             }
             const allowedStates = ['Delivered', 'Completed', 'PartialDelivery'];
             if (!allowedStates.includes(order.state)) {
                 throw new core_1.UserInputError(`Order ${orderId} state must be one of ${allowedStates.join('/')}, got ${order.state}`);
             }
-            totalPaid += ((_a = order.total) !== null && _a !== void 0 ? _a : 0);
+            totalPaid += ((_c = order.total) !== null && _c !== void 0 ? _c : 0);
         }
         // 2. 重复开票校验（任一 orderId 已有 PENDING/ISSUED 发票）
         const repo = this.connection.getRepository(ctx, invoice_entity_1.Invoice);
@@ -121,7 +124,7 @@ let InvoiceService = class InvoiceService {
             }
         }
         // 3. 金额上限校验（开票金额 ≤ 订单实付金额合计）
-        const amount = (_b = input.amount) !== null && _b !== void 0 ? _b : totalPaid;
+        const amount = (_d = input.amount) !== null && _d !== void 0 ? _d : totalPaid;
         if (amount > totalPaid) {
             throw new core_1.UserInputError(`Invoice amount ${amount} exceeds orders total ${totalPaid}`);
         }
@@ -130,12 +133,12 @@ let InvoiceService = class InvoiceService {
             invoiceType: input.invoiceType,
             status: invoice_entity_1.InvoiceStatus.PENDING,
             title: input.title,
-            taxNumber: (_c = input.taxNumber) !== null && _c !== void 0 ? _c : null,
-            email: (_d = input.email) !== null && _d !== void 0 ? _d : null,
-            companyAddress: (_e = input.companyAddress) !== null && _e !== void 0 ? _e : null,
-            companyPhone: (_f = input.companyPhone) !== null && _f !== void 0 ? _f : null,
-            bankName: (_g = input.bankName) !== null && _g !== void 0 ? _g : null,
-            bankAccount: (_h = input.bankAccount) !== null && _h !== void 0 ? _h : null,
+            taxNumber: (_e = input.taxNumber) !== null && _e !== void 0 ? _e : null,
+            email: (_f = input.email) !== null && _f !== void 0 ? _f : null,
+            companyAddress: (_g = input.companyAddress) !== null && _g !== void 0 ? _g : null,
+            companyPhone: (_h = input.companyPhone) !== null && _h !== void 0 ? _h : null,
+            bankName: (_j = input.bankName) !== null && _j !== void 0 ? _j : null,
+            bankAccount: (_k = input.bankAccount) !== null && _k !== void 0 ? _k : null,
             amount,
             customerId: ctx.activeUserId,
             orderIds: input.orderIds.map(id => Number(id)),
