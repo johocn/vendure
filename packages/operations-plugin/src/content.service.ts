@@ -204,6 +204,16 @@ export class ContentService {
                     throw new UserInputError(`Invalid data for type '${type}': missing required field 'items' (array)`);
                 }
                 break;
+            case ContentType.IconGrid:
+                if (!Array.isArray(data.items) || data.items.length === 0) {
+                    throw new UserInputError(`Invalid data for type '${type}': missing required field 'items' (array of {icon,label,link})`);
+                }
+                break;
+            case ContentType.CategoryNav:
+                if (!Array.isArray(data.items) || data.items.length === 0) {
+                    throw new UserInputError(`Invalid data for type '${type}': missing required field 'items' (array of {name,slug|collection})`);
+                }
+                break;
         }
     }
 
