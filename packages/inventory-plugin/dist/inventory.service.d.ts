@@ -4,6 +4,8 @@ import { StockInOrder } from './entities/stock-in-order.entity';
 import { StockOutOrder } from './entities/stock-out-order.entity';
 import { StockMoveOrder } from './entities/stock-move-order.entity';
 import { StocktakeOrder } from './entities/stocktake-order.entity';
+import { Supplier } from './entities/supplier.entity';
+import { PurchaseOrder } from './entities/purchase-order.entity';
 import { StockLedgerService, LedgerBizType } from './stock-ledger.service';
 /** 账本元信息（写入 adjustStockForLocation 时可选传入，用于在仓库/门店维度落供销存账本）。 */
 export interface LedgerMeta {
@@ -243,4 +245,59 @@ export declare class InventoryService {
      */
     completeStocktakeOrder(ctx: RequestContext, id: ID): Promise<StocktakeOrder>;
     cancelStocktakeOrder(ctx: RequestContext, id: ID): Promise<StocktakeOrder>;
+    private assertSupplierCodeUnique;
+    createSupplier(ctx: RequestContext, input: {
+        code: string;
+        name: string;
+        taxNumber?: string;
+        contactName?: string;
+        contactPhone?: string;
+        address?: string;
+        settlementDays?: number;
+        note?: string;
+    }): Promise<Supplier>;
+    updateSupplier(ctx: RequestContext, id: ID, input: any): Promise<Supplier>;
+    deleteSupplier(ctx: RequestContext, id: ID): Promise<boolean>;
+    findSuppliers(ctx: RequestContext, options?: {
+        keyword?: string;
+        page?: number;
+        pageSize?: number;
+    }): Promise<{
+        items: Supplier[];
+        totalItems: number;
+    }>;
+    findOneSupplier(ctx: RequestContext, id: ID): Promise<Supplier | null>;
+    createPurchaseOrder(ctx: RequestContext, input: {
+        supplierId: ID;
+        targetLocationId: ID;
+        note?: string;
+        orderDate?: Date;
+        expectedArrivalDate?: Date;
+        lines: Array<{
+            productVariantId: ID;
+            quantity: number;
+            unitPrice?: number;
+        }>;
+    }): Promise<PurchaseOrder>;
+    findPurchaseOrders(ctx: RequestContext, options?: {
+        state?: string;
+        page?: number;
+        pageSize?: number;
+    }): Promise<{
+        items: PurchaseOrder[];
+        totalItems: number;
+    }>;
+    findOnePurchaseOrder(ctx: RequestContext, id: ID): Promise<PurchaseOrder | null>;
+    placePurchaseOrder(ctx: RequestContext, id: ID): Promise<PurchaseOrder>;
+    /**
+     * 分批收货：deltas 为本次实收增量 [{ lineId, quantity }]，累加 receivedQuantity，
+     * 单行超收/负数校验，全部收满 → Received，未收满 → PartiallyReceived。
+     * 每行按增量对 targetLocation 调库(+delta) 并写 purchase 账本。
+     */
+    receivePurchaseOrder(ctx: RequestContext, id: ID, deltas: Array<{
+        lineId: ID;
+        quantity: number;
+    }>): Promise<PurchaseOrder>;
+    completePurchaseOrder(ctx: RequestContext, id: ID): Promise<PurchaseOrder>;
+    cancelPurchaseOrder(ctx: RequestContext, id: ID): Promise<PurchaseOrder>;
 }

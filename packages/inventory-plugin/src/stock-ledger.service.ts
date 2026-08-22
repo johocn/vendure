@@ -12,6 +12,7 @@ export type LedgerBizType =
     | 'stockOut'
     | 'stockMove'
     | 'stocktake'
+    | 'purchase'
     | 'manual';
 
 export interface StockLedgerInput {

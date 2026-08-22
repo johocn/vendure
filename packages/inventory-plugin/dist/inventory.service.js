@@ -18,6 +18,8 @@ const stock_in_order_entity_1 = require("./entities/stock-in-order.entity");
 const stock_out_order_entity_1 = require("./entities/stock-out-order.entity");
 const stock_move_order_entity_1 = require("./entities/stock-move-order.entity");
 const stocktake_order_entity_1 = require("./entities/stocktake-order.entity");
+const supplier_entity_1 = require("./entities/supplier.entity");
+const purchase_order_entity_1 = require("./entities/purchase-order.entity");
 const stock_ledger_service_1 = require("./stock-ledger.service");
 const loggerCtx = 'InventoryService';
 let InventoryService = class InventoryService {
@@ -818,6 +820,234 @@ let InventoryService = class InventoryService {
             throw new core_1.UserInputError(`Cannot cancel stocktake order in state: ${order.state}`);
         }
         order.state = constants_1.StocktakeState.Cancelled;
+        order.cancelledAt = new Date();
+        return repo.save(order);
+    }
+    // ===== 供应商档案 =====
+    async assertSupplierCodeUnique(ctx, code, excludeId) {
+        const repo = this.connection.getRepository(ctx, supplier_entity_1.Supplier);
+        const existing = await repo.createQueryBuilder('s')
+            .andWhere('s.code = :code', { code })
+            .andWhere(excludeId ? 's.id != :excludeId' : '1=1', excludeId ? { excludeId } : {})
+            .getOne();
+        if (existing) {
+            throw new core_1.UserInputError(`Supplier code already exists: ${code}`);
+        }
+    }
+    async createSupplier(ctx, input) {
+        var _a, _b, _c, _d, _e, _f;
+        if (!input.code || !input.name) {
+            throw new core_1.UserInputError('Supplier code and name are required');
+        }
+        await this.assertSupplierCodeUnique(ctx, input.code);
+        const supplier = new supplier_entity_1.Supplier({
+            code: input.code,
+            name: input.name,
+            taxNumber: (_a = input.taxNumber) !== null && _a !== void 0 ? _a : null,
+            contactName: (_b = input.contactName) !== null && _b !== void 0 ? _b : null,
+            contactPhone: (_c = input.contactPhone) !== null && _c !== void 0 ? _c : null,
+            address: (_d = input.address) !== null && _d !== void 0 ? _d : null,
+            settlementDays: (_e = input.settlementDays) !== null && _e !== void 0 ? _e : 0,
+            note: (_f = input.note) !== null && _f !== void 0 ? _f : null,
+            channelId: ctx.channelId,
+        });
+        supplier.channels = [ctx.channel];
+        return this.connection.getRepository(ctx, supplier_entity_1.Supplier).save(supplier);
+    }
+    async updateSupplier(ctx, id, input) {
+        const repo = this.connection.getRepository(ctx, supplier_entity_1.Supplier);
+        const supplier = await repo.findOne({ where: { id: id } });
+        if (!supplier)
+            throw new core_1.UserInputError(`Supplier ${id} not found`);
+        if (input.code != null && input.code !== supplier.code) {
+            await this.assertSupplierCodeUnique(ctx, input.code, id);
+            supplier.code = input.code;
+        }
+        if (input.name != null)
+            supplier.name = input.name;
+        if (input.taxNumber != null)
+            supplier.taxNumber = input.taxNumber;
+        if (input.contactName != null)
+            supplier.contactName = input.contactName;
+        if (input.contactPhone != null)
+            supplier.contactPhone = input.contactPhone;
+        if (input.address != null)
+            supplier.address = input.address;
+        if (input.settlementDays != null)
+            supplier.settlementDays = input.settlementDays;
+        if (input.note != null)
+            supplier.note = input.note;
+        return repo.save(supplier);
+    }
+    async deleteSupplier(ctx, id) {
+        // 删除前置校验：已有采购单的供应商禁止删除
+        const purchaseRepo = this.connection.getRepository(ctx, purchase_order_entity_1.PurchaseOrder);
+        const linked = await purchaseRepo.count({ where: { supplierId: id } });
+        if (linked > 0) {
+            throw new core_1.UserInputError(`Supplier ${id} has ${linked} purchase order(s), cannot delete`);
+        }
+        await this.connection.getRepository(ctx, supplier_entity_1.Supplier).delete({ id: id });
+        return true;
+    }
+    async findSuppliers(ctx, options) {
+        var _a, _b;
+        const page = (_a = options === null || options === void 0 ? void 0 : options.page) !== null && _a !== void 0 ? _a : 1;
+        const pageSize = (_b = options === null || options === void 0 ? void 0 : options.pageSize) !== null && _b !== void 0 ? _b : 20;
+        const qb = this.connection.getRepository(ctx, supplier_entity_1.Supplier)
+            .createQueryBuilder('s')
+            .andWhere('s.channelId = :channelId', { channelId: ctx.channelId })
+            .orderBy('s.createdAt', 'DESC');
+        if (options === null || options === void 0 ? void 0 : options.keyword) {
+            qb.andWhere('(s.name LIKE :kw OR s.code LIKE :kw OR s.taxNumber LIKE :kw)', {
+                kw: `%${options.keyword}%`,
+            });
+        }
+        qb.skip((page - 1) * pageSize).take(pageSize);
+        const [items, totalItems] = await qb.getManyAndCount();
+        return { items, totalItems };
+    }
+    async findOneSupplier(ctx, id) {
+        return this.connection.getRepository(ctx, supplier_entity_1.Supplier).findOne({ where: { id: id } });
+    }
+    // ===== 采购单 =====
+    async createPurchaseOrder(ctx, input) {
+        var _a, _b, _c;
+        if (!input.lines || input.lines.length === 0) {
+            throw new core_1.UserInputError('Purchase order requires at least one line');
+        }
+        for (const l of input.lines) {
+            if (!l.quantity || l.quantity <= 0) {
+                throw new core_1.UserInputError('Line quantity must be positive');
+            }
+        }
+        const supplierRepo = this.connection.getRepository(ctx, supplier_entity_1.Supplier);
+        const supplier = await supplierRepo.findOne({ where: { id: input.supplierId } });
+        if (!supplier)
+            throw new core_1.UserInputError(`Supplier ${input.supplierId} not found`);
+        const order = new purchase_order_entity_1.PurchaseOrder({
+            code: this.generateCode('CG'),
+            state: constants_1.PurchaseOrderState.Draft,
+            supplierId: input.supplierId,
+            targetLocationId: input.targetLocationId,
+            note: (_a = input.note) !== null && _a !== void 0 ? _a : null,
+            staffId: ctx.activeUserId ? String(ctx.activeUserId) : null,
+            orderDate: (_b = input.orderDate) !== null && _b !== void 0 ? _b : new Date(),
+            expectedArrivalDate: (_c = input.expectedArrivalDate) !== null && _c !== void 0 ? _c : null,
+            channelId: ctx.channelId,
+        });
+        order.lines = input.lines.map(l => {
+            var _a;
+            return new purchase_order_entity_1.PurchaseOrderLine({
+                productVariantId: l.productVariantId,
+                quantity: l.quantity,
+                receivedQuantity: 0,
+                unitPrice: (_a = l.unitPrice) !== null && _a !== void 0 ? _a : null,
+            });
+        });
+        order.totalAmount = order.lines.reduce((s, l) => s + l.amount, 0);
+        order.channels = [ctx.channel];
+        return this.connection.getRepository(ctx, purchase_order_entity_1.PurchaseOrder).save(order);
+    }
+    async findPurchaseOrders(ctx, options) {
+        var _a, _b;
+        const page = (_a = options === null || options === void 0 ? void 0 : options.page) !== null && _a !== void 0 ? _a : 1;
+        const pageSize = (_b = options === null || options === void 0 ? void 0 : options.pageSize) !== null && _b !== void 0 ? _b : 20;
+        const qb = this.connection.getRepository(ctx, purchase_order_entity_1.PurchaseOrder)
+            .createQueryBuilder('order')
+            .leftJoinAndSelect('order.supplier', 'supplier')
+            .leftJoinAndSelect('order.targetLocation', 'targetLocation')
+            .leftJoinAndSelect('order.lines', 'lines')
+            .andWhere('order.channelId = :channelId', { channelId: ctx.channelId })
+            .orderBy('order.createdAt', 'DESC');
+        if (options === null || options === void 0 ? void 0 : options.state) {
+            qb.andWhere('order.state = :state', { state: options.state });
+        }
+        qb.skip((page - 1) * pageSize).take(pageSize);
+        const [items, totalItems] = await qb.getManyAndCount();
+        return { items, totalItems };
+    }
+    async findOnePurchaseOrder(ctx, id) {
+        return this.connection.getRepository(ctx, purchase_order_entity_1.PurchaseOrder).findOne({
+            where: { id: id },
+            relations: ['lines', 'supplier', 'targetLocation'],
+        });
+    }
+    async placePurchaseOrder(ctx, id) {
+        const repo = this.connection.getRepository(ctx, purchase_order_entity_1.PurchaseOrder);
+        const order = await repo.findOne({ where: { id: id }, relations: ['lines'] });
+        if (!order)
+            throw new core_1.UserInputError(`PurchaseOrder ${id} not found`);
+        this.assertTransition(order, constants_1.PurchaseOrderState.Draft, constants_1.PurchaseOrderState.Ordered, constants_1.PURCHASE_ORDER_TRANSITIONS);
+        order.state = constants_1.PurchaseOrderState.Ordered;
+        order.orderedAt = new Date();
+        return repo.save(order);
+    }
+    /**
+     * 分批收货：deltas 为本次实收增量 [{ lineId, quantity }]，累加 receivedQuantity，
+     * 单行超收/负数校验，全部收满 → Received，未收满 → PartiallyReceived。
+     * 每行按增量对 targetLocation 调库(+delta) 并写 purchase 账本。
+     */
+    async receivePurchaseOrder(ctx, id, deltas) {
+        if (!deltas || deltas.length === 0) {
+            throw new core_1.UserInputError('Receive requires at least one line');
+        }
+        return this.connection.withTransaction(ctx, async (txCtx) => {
+            const repo = this.connection.getRepository(txCtx, purchase_order_entity_1.PurchaseOrder);
+            const order = await repo.findOne({ where: { id: id }, relations: ['lines'] });
+            if (!order)
+                throw new core_1.UserInputError(`PurchaseOrder ${id} not found`);
+            if (![constants_1.PurchaseOrderState.Ordered, constants_1.PurchaseOrderState.PartiallyReceived].includes(order.state)) {
+                throw new core_1.UserInputError(`Cannot receive purchase order in state: ${order.state}`);
+            }
+            let allFilled = true;
+            for (const d of deltas) {
+                if (!d.quantity || d.quantity <= 0) {
+                    throw new core_1.UserInputError(`Receive quantity for line ${d.lineId} must be positive`);
+                }
+                const line = order.lines.find(l => String(l.id) === String(d.lineId));
+                if (!line)
+                    throw new core_1.UserInputError(`Line ${d.lineId} not found in order ${id}`);
+                const newReceived = line.receivedQuantity + d.quantity;
+                if (newReceived > line.quantity) {
+                    throw new core_1.UserInputError(`Line ${d.lineId} over-received: ordered ${line.quantity}, received would be ${newReceived}`);
+                }
+                // 调库 + 写 purchase 账本
+                await this.adjustStockForLocation(txCtx, line.productVariantId, order.targetLocationId, d.quantity, `PurchaseOrder#${order.code}:purchase-in`, { bizType: 'purchase', bizCode: order.code });
+                line.receivedQuantity = newReceived;
+                if (newReceived < line.quantity) {
+                    allFilled = false;
+                }
+            }
+            // 校验未在本次收货列表中的行也必须已收满，才能置 Received
+            for (const line of order.lines) {
+                if (line.receivedQuantity < line.quantity) {
+                    allFilled = false;
+                    break;
+                }
+            }
+            order.state = allFilled ? constants_1.PurchaseOrderState.Received : constants_1.PurchaseOrderState.PartiallyReceived;
+            return repo.save(order);
+        });
+    }
+    async completePurchaseOrder(ctx, id) {
+        const repo = this.connection.getRepository(ctx, purchase_order_entity_1.PurchaseOrder);
+        const order = await repo.findOne({ where: { id: id } });
+        if (!order)
+            throw new core_1.UserInputError(`PurchaseOrder ${id} not found`);
+        this.assertTransition(order, constants_1.PurchaseOrderState.Received, constants_1.PurchaseOrderState.Completed, constants_1.PURCHASE_ORDER_TRANSITIONS);
+        order.state = constants_1.PurchaseOrderState.Completed;
+        order.completedAt = new Date();
+        return repo.save(order);
+    }
+    async cancelPurchaseOrder(ctx, id) {
+        const repo = this.connection.getRepository(ctx, purchase_order_entity_1.PurchaseOrder);
+        const order = await repo.findOne({ where: { id: id } });
+        if (!order)
+            throw new core_1.UserInputError(`PurchaseOrder ${id} not found`);
+        if (![constants_1.PurchaseOrderState.Draft, constants_1.PurchaseOrderState.Ordered].includes(order.state)) {
+            throw new core_1.UserInputError(`Cannot cancel purchase order in state: ${order.state}`);
+        }
+        order.state = constants_1.PurchaseOrderState.Cancelled;
         order.cancelledAt = new Date();
         return repo.save(order);
     }

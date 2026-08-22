@@ -13,6 +13,8 @@ import { StockInOrder, StockInOrderLine } from './entities/stock-in-order.entity
 import { StockOutOrder, StockOutOrderLine } from './entities/stock-out-order.entity';
 import { StockMoveOrder, StockMoveOrderLine } from './entities/stock-move-order.entity';
 import { StocktakeOrder, StocktakeOrderLine } from './entities/stocktake-order.entity';
+import { Supplier } from './entities/supplier.entity';
+import { PurchaseOrder, PurchaseOrderLine } from './entities/purchase-order.entity';
 
 /** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
 function mergeCustomFields<T extends { name: string }>(
@@ -36,6 +38,8 @@ const { gql } = require('graphql-tag');
         StockOutOrder, StockOutOrderLine,
         StockMoveOrder, StockMoveOrderLine,
         StocktakeOrder, StocktakeOrderLine,
+        Supplier,
+        PurchaseOrder, PurchaseOrderLine,
     ],
     shopApiExtensions: {
         schema: () => gql`
@@ -261,6 +265,104 @@ const { gql } = require('graphql-tag');
                 totalItems: Int!
             }
 
+            type Supplier {
+                id: ID!
+                code: String!
+                name: String!
+                taxNumber: String
+                contactName: String
+                contactPhone: String
+                address: String
+                settlementDays: Int!
+                note: String
+                createdAt: DateTime!
+                updatedAt: DateTime!
+            }
+            type SupplierList {
+                items: [Supplier!]!
+                totalItems: Int!
+            }
+
+            type PurchaseOrderLine {
+                id: ID!
+                productVariantId: ID!
+                quantity: Int!
+                receivedQuantity: Int!
+                unitPrice: Int
+                amount: Int!
+            }
+            type PurchaseOrder {
+                id: ID!
+                code: String!
+                state: String!
+                supplierId: ID!
+                supplier: Supplier
+                targetLocationId: ID!
+                targetLocation: StockLocation
+                note: String
+                staffId: String
+                orderDate: DateTime
+                expectedArrivalDate: DateTime
+                totalAmount: Int!
+                lines: [PurchaseOrderLine!]!
+                orderedAt: DateTime
+                completedAt: DateTime
+                cancelledAt: DateTime
+                createdAt: DateTime!
+                updatedAt: DateTime!
+            }
+            type PurchaseOrderList {
+                items: [PurchaseOrder!]!
+                totalItems: Int!
+            }
+
+            input CreateSupplierInput {
+                code: String!
+                name: String!
+                taxNumber: String
+                contactName: String
+                contactPhone: String
+                address: String
+                settlementDays: Int
+                note: String
+            }
+            input UpdateSupplierInput {
+                code: String
+                name: String
+                taxNumber: String
+                contactName: String
+                contactPhone: String
+                address: String
+                settlementDays: Int
+                note: String
+            }
+            input PurchaseOrderLineInput {
+                productVariantId: ID!
+                quantity: Int!
+                unitPrice: Int
+            }
+            input CreatePurchaseOrderInput {
+                supplierId: ID!
+                targetLocationId: ID!
+                note: String
+                orderDate: DateTime
+                expectedArrivalDate: DateTime
+                lines: [PurchaseOrderLineInput!]!
+            }
+            input ReceivePurchaseOrderInput {
+                lineId: ID!
+                quantity: Int!
+            }
+
+            input SupplierListOptions {
+                skip: Int
+                take: Int
+            }
+            input PurchaseOrderListOptions {
+                skip: Int
+                take: Int
+            }
+
             extend type Query {
                 stockLevels(locationId: ID, page: Int, pageSize: Int): StockLevelList!
                 stockMovements(productVariantId: ID, locationId: ID, type: String, page: Int, pageSize: Int): StockMovementList!
@@ -277,6 +379,12 @@ const { gql } = require('graphql-tag');
 
                 stocktakeOrders(state: String, page: Int, pageSize: Int): StocktakeOrderList!
                 stocktakeOrder(id: ID!): StocktakeOrder
+
+                suppliers(keyword: String, options: SupplierListOptions): SupplierList!
+                supplier(id: ID!): Supplier
+
+                purchaseOrders(state: String, options: PurchaseOrderListOptions): PurchaseOrderList!
+                purchaseOrder(id: ID!): PurchaseOrder
             }
 
             extend type Mutation {
@@ -302,6 +410,16 @@ const { gql } = require('graphql-tag');
                 reconcileStocktakeLine(orderId: ID!, lineId: ID!): StocktakeOrder!
                 completeStocktakeOrder(id: ID!): StocktakeOrder!
                 cancelStocktakeOrder(id: ID!): StocktakeOrder!
+
+                createSupplier(input: CreateSupplierInput!): Supplier!
+                updateSupplier(id: ID!, input: UpdateSupplierInput!): Supplier!
+                deleteSupplier(id: ID!): Boolean!
+
+                createPurchaseOrder(input: CreatePurchaseOrderInput!): PurchaseOrder!
+                placePurchaseOrder(id: ID!): PurchaseOrder!
+                receivePurchaseOrder(id: ID!, lines: [ReceivePurchaseOrderInput!]!): PurchaseOrder!
+                completePurchaseOrder(id: ID!): PurchaseOrder!
+                cancelPurchaseOrder(id: ID!): PurchaseOrder!
             }
         `,
         resolvers: [InventoryAdminResolver],
@@ -317,6 +435,7 @@ const { gql } = require('graphql-tag');
         ]);
         return config;
     },
+    dashboard: '../dashboard/index.tsx',
     compatibility: '^3.6.0',
 })
 export class InventoryPlugin implements OnApplicationBootstrap {

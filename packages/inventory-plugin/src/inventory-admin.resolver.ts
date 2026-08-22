@@ -248,4 +248,92 @@ export class InventoryAdminResolver {
     async cancelStocktakeOrder(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
         return this.inventoryService.cancelStocktakeOrder(ctx, id);
     }
+
+    // ===== 供应商 =====
+    @Query()
+    @Allow(InventoryPermissions.ManageSupplier as Permission)
+    async suppliers(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'keyword', type: () => String, nullable: true }) keyword?: string,
+        @Args({ name: 'options', type: () => Object, nullable: true }) options?: { skip?: number; take?: number },
+    ) {
+        const page = options?.skip != null ? Math.floor(options.skip / (options.take ?? 20)) + 1 : 1;
+        return this.inventoryService.findSuppliers(ctx, { keyword, page, pageSize: options?.take ?? 20 });
+    }
+
+    @Query()
+    @Allow(InventoryPermissions.ManageSupplier as Permission)
+    async supplier(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
+        return this.inventoryService.findOneSupplier(ctx, id);
+    }
+
+    @Mutation()
+    @Allow(InventoryPermissions.ManageSupplier as Permission)
+    async createSupplier(@Ctx() ctx: RequestContext, @Args('input') input: any) {
+        return this.inventoryService.createSupplier(ctx, input);
+    }
+
+    @Mutation()
+    @Allow(InventoryPermissions.ManageSupplier as Permission)
+    async updateSupplier(@Ctx() ctx: RequestContext, @Args('id') id: ID, @Args('input') input: any) {
+        return this.inventoryService.updateSupplier(ctx, id, input);
+    }
+
+    @Mutation()
+    @Allow(InventoryPermissions.ManageSupplier as Permission)
+    async deleteSupplier(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
+        return this.inventoryService.deleteSupplier(ctx, id);
+    }
+
+    // ===== 采购单 =====
+    @Query()
+    @Allow(InventoryPermissions.ManagePurchase as Permission)
+    async purchaseOrders(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'state', type: () => String, nullable: true }) state?: string,
+        @Args({ name: 'options', type: () => Object, nullable: true }) options?: { skip?: number; take?: number },
+    ) {
+        const page = options?.skip != null ? Math.floor(options.skip / (options.take ?? 20)) + 1 : 1;
+        return this.inventoryService.findPurchaseOrders(ctx, { state, page, pageSize: options?.take ?? 20 });
+    }
+
+    @Query()
+    @Allow(InventoryPermissions.ManagePurchase as Permission)
+    async purchaseOrder(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
+        return this.inventoryService.findOnePurchaseOrder(ctx, id);
+    }
+
+    @Mutation()
+    @Allow(InventoryPermissions.ManagePurchase as Permission)
+    async createPurchaseOrder(@Ctx() ctx: RequestContext, @Args('input') input: any) {
+        return this.inventoryService.createPurchaseOrder(ctx, input);
+    }
+
+    @Mutation()
+    @Allow(InventoryPermissions.ManagePurchase as Permission)
+    async placePurchaseOrder(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
+        return this.inventoryService.placePurchaseOrder(ctx, id);
+    }
+
+    @Mutation()
+    @Allow(InventoryPermissions.ManagePurchase as Permission)
+    async receivePurchaseOrder(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args('lines') lines: any[],
+    ) {
+        return this.inventoryService.receivePurchaseOrder(ctx, id, lines);
+    }
+
+    @Mutation()
+    @Allow(InventoryPermissions.ManagePurchase as Permission)
+    async completePurchaseOrder(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
+        return this.inventoryService.completePurchaseOrder(ctx, id);
+    }
+
+    @Mutation()
+    @Allow(InventoryPermissions.ManagePurchase as Permission)
+    async cancelPurchaseOrder(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
+        return this.inventoryService.cancelPurchaseOrder(ctx, id);
+    }
 }

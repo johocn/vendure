@@ -8,6 +8,8 @@ export const InventoryPermissions = {
   ManageStockOut: 'ManageStockOut',
   ManageStockMove: 'ManageStockMove',
   ManageStocktake: 'ManageStocktake',
+  ManagePurchase: 'ManagePurchase',
+  ManageSupplier: 'ManageSupplier',
 } as const;
 
 // 权限描述（供 PermissionDefinition 注册使用）
@@ -17,6 +19,8 @@ const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   ManageStockOut: '出库单管理',
   ManageStockMove: '调拨单管理',
   ManageStocktake: '盘点单管理',
+  ManagePurchase: '采购单管理',
+  ManageSupplier: '供应商管理',
 };
 
 // PermissionDefinition 实例数组，注册到 config.authOptions.customPermissions（与 delivery-plugin 同源权限同名，可安全重复注册）
@@ -47,6 +51,8 @@ export const ROLE_PERMISSIONS_MAP: Record<string, string[]> = {
     'ManageStockOut',
     'ManageStockMove',
     'ManageStocktake',
+    'ManagePurchase',
+    'ManageSupplier',
   ],
   'super-admin': [
     'Authenticated',
@@ -55,6 +61,8 @@ export const ROLE_PERMISSIONS_MAP: Record<string, string[]> = {
     'ManageStockOut',
     'ManageStockMove',
     'ManageStocktake',
+    'ManagePurchase',
+    'ManageSupplier',
     'SuperAdmin',
   ],
 };
@@ -88,6 +96,15 @@ export enum StocktakeState {
   Cancelled = 'Cancelled',
 }
 
+export enum PurchaseOrderState {
+  Draft = 'Draft',
+  Ordered = 'Ordered',
+  PartiallyReceived = 'PartiallyReceived',
+  Received = 'Received',
+  Completed = 'Completed',
+  Cancelled = 'Cancelled',
+}
+
 // ===== 状态转换表 =====
 export const STOCK_IN_TRANSITIONS: Record<StockInState, StockInState[]> = {
   [StockInState.Pending]: [StockInState.Completed, StockInState.Cancelled],
@@ -115,4 +132,21 @@ export const STOCKTAKE_TRANSITIONS: Record<StocktakeState, StocktakeState[]> = {
   [StocktakeState.Reconciling]: [StocktakeState.Completed],
   [StocktakeState.Completed]: [],
   [StocktakeState.Cancelled]: [],
+};
+
+export const PURCHASE_ORDER_TRANSITIONS: Record<PurchaseOrderState, PurchaseOrderState[]> = {
+  [PurchaseOrderState.Draft]: [PurchaseOrderState.Ordered, PurchaseOrderState.Cancelled],
+  [PurchaseOrderState.Ordered]: [
+    PurchaseOrderState.PartiallyReceived,
+    PurchaseOrderState.Received,
+    PurchaseOrderState.Cancelled,
+  ],
+  // 分批收货：PartiallyReceived 未收满可继续收货（保持 PartiallyReceived），全部收满变 Received
+  [PurchaseOrderState.PartiallyReceived]: [
+    PurchaseOrderState.PartiallyReceived,
+    PurchaseOrderState.Received,
+  ],
+  [PurchaseOrderState.Received]: [PurchaseOrderState.Completed],
+  [PurchaseOrderState.Completed]: [],
+  [PurchaseOrderState.Cancelled]: [],
 };

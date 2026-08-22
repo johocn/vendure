@@ -1,6 +1,6 @@
 import { ID, ListQueryBuilder, RequestContext, TransactionalConnection } from '@vendure/core';
 import { OrderStockLedger } from './entities/order-stock-ledger.entity';
-export type LedgerBizType = 'order' | 'afterSales' | 'stockIn' | 'stockOut' | 'stockMove' | 'stocktake' | 'manual';
+export type LedgerBizType = 'order' | 'afterSales' | 'stockIn' | 'stockOut' | 'stockMove' | 'stocktake' | 'purchase' | 'manual';
 export interface StockLedgerInput {
     productVariantId: ID;
     stockLocationId: ID;

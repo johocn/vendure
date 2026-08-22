@@ -8,3 +8,5 @@ export * from './entities/stock-in-order.entity';
 export * from './entities/stock-out-order.entity';
 export * from './entities/stock-move-order.entity';
 export * from './entities/stocktake-order.entity';
+export * from './entities/supplier.entity';
+export * from './entities/purchase-order.entity';

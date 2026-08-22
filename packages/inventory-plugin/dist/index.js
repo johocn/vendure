@@ -24,3 +24,5 @@ __exportStar(require("./entities/stock-in-order.entity"), exports);
 __exportStar(require("./entities/stock-out-order.entity"), exports);
 __exportStar(require("./entities/stock-move-order.entity"), exports);
 __exportStar(require("./entities/stocktake-order.entity"), exports);
+__exportStar(require("./entities/supplier.entity"), exports);
+__exportStar(require("./entities/purchase-order.entity"), exports);

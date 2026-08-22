@@ -24,6 +24,8 @@ const stock_in_order_entity_1 = require("./entities/stock-in-order.entity");
 const stock_out_order_entity_1 = require("./entities/stock-out-order.entity");
 const stock_move_order_entity_1 = require("./entities/stock-move-order.entity");
 const stocktake_order_entity_1 = require("./entities/stocktake-order.entity");
+const supplier_entity_1 = require("./entities/supplier.entity");
+const purchase_order_entity_1 = require("./entities/purchase-order.entity");
 /** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations multiple times). */
 function mergeCustomFields(existingFields, additions) {
     const names = new Set((existingFields !== null && existingFields !== void 0 ? existingFields : []).map(f => f.name));
@@ -82,6 +84,8 @@ exports.InventoryPlugin = InventoryPlugin = InventoryPlugin_1 = __decorate([
             stock_out_order_entity_1.StockOutOrder, stock_out_order_entity_1.StockOutOrderLine,
             stock_move_order_entity_1.StockMoveOrder, stock_move_order_entity_1.StockMoveOrderLine,
             stocktake_order_entity_1.StocktakeOrder, stocktake_order_entity_1.StocktakeOrderLine,
+            supplier_entity_1.Supplier,
+            purchase_order_entity_1.PurchaseOrder, purchase_order_entity_1.PurchaseOrderLine,
         ],
         shopApiExtensions: {
             schema: () => gql `
@@ -307,6 +311,104 @@ exports.InventoryPlugin = InventoryPlugin = InventoryPlugin_1 = __decorate([
                 totalItems: Int!
             }
 
+            type Supplier {
+                id: ID!
+                code: String!
+                name: String!
+                taxNumber: String
+                contactName: String
+                contactPhone: String
+                address: String
+                settlementDays: Int!
+                note: String
+                createdAt: DateTime!
+                updatedAt: DateTime!
+            }
+            type SupplierList {
+                items: [Supplier!]!
+                totalItems: Int!
+            }
+
+            type PurchaseOrderLine {
+                id: ID!
+                productVariantId: ID!
+                quantity: Int!
+                receivedQuantity: Int!
+                unitPrice: Int
+                amount: Int!
+            }
+            type PurchaseOrder {
+                id: ID!
+                code: String!
+                state: String!
+                supplierId: ID!
+                supplier: Supplier
+                targetLocationId: ID!
+                targetLocation: StockLocation
+                note: String
+                staffId: String
+                orderDate: DateTime
+                expectedArrivalDate: DateTime
+                totalAmount: Int!
+                lines: [PurchaseOrderLine!]!
+                orderedAt: DateTime
+                completedAt: DateTime
+                cancelledAt: DateTime
+                createdAt: DateTime!
+                updatedAt: DateTime!
+            }
+            type PurchaseOrderList {
+                items: [PurchaseOrder!]!
+                totalItems: Int!
+            }
+
+            input CreateSupplierInput {
+                code: String!
+                name: String!
+                taxNumber: String
+                contactName: String
+                contactPhone: String
+                address: String
+                settlementDays: Int
+                note: String
+            }
+            input UpdateSupplierInput {
+                code: String
+                name: String
+                taxNumber: String
+                contactName: String
+                contactPhone: String
+                address: String
+                settlementDays: Int
+                note: String
+            }
+            input PurchaseOrderLineInput {
+                productVariantId: ID!
+                quantity: Int!
+                unitPrice: Int
+            }
+            input CreatePurchaseOrderInput {
+                supplierId: ID!
+                targetLocationId: ID!
+                note: String
+                orderDate: DateTime
+                expectedArrivalDate: DateTime
+                lines: [PurchaseOrderLineInput!]!
+            }
+            input ReceivePurchaseOrderInput {
+                lineId: ID!
+                quantity: Int!
+            }
+
+            input SupplierListOptions {
+                skip: Int
+                take: Int
+            }
+            input PurchaseOrderListOptions {
+                skip: Int
+                take: Int
+            }
+
             extend type Query {
                 stockLevels(locationId: ID, page: Int, pageSize: Int): StockLevelList!
                 stockMovements(productVariantId: ID, locationId: ID, type: String, page: Int, pageSize: Int): StockMovementList!
@@ -323,6 +425,12 @@ exports.InventoryPlugin = InventoryPlugin = InventoryPlugin_1 = __decorate([
 
                 stocktakeOrders(state: String, page: Int, pageSize: Int): StocktakeOrderList!
                 stocktakeOrder(id: ID!): StocktakeOrder
+
+                suppliers(keyword: String, options: SupplierListOptions): SupplierList!
+                supplier(id: ID!): Supplier
+
+                purchaseOrders(state: String, options: PurchaseOrderListOptions): PurchaseOrderList!
+                purchaseOrder(id: ID!): PurchaseOrder
             }
 
             extend type Mutation {
@@ -348,6 +456,16 @@ exports.InventoryPlugin = InventoryPlugin = InventoryPlugin_1 = __decorate([
                 reconcileStocktakeLine(orderId: ID!, lineId: ID!): StocktakeOrder!
                 completeStocktakeOrder(id: ID!): StocktakeOrder!
                 cancelStocktakeOrder(id: ID!): StocktakeOrder!
+
+                createSupplier(input: CreateSupplierInput!): Supplier!
+                updateSupplier(id: ID!, input: UpdateSupplierInput!): Supplier!
+                deleteSupplier(id: ID!): Boolean!
+
+                createPurchaseOrder(input: CreatePurchaseOrderInput!): PurchaseOrder!
+                placePurchaseOrder(id: ID!): PurchaseOrder!
+                receivePurchaseOrder(id: ID!, lines: [ReceivePurchaseOrderInput!]!): PurchaseOrder!
+                completePurchaseOrder(id: ID!): PurchaseOrder!
+                cancelPurchaseOrder(id: ID!): PurchaseOrder!
             }
         `,
             resolvers: [inventory_admin_resolver_1.InventoryAdminResolver],
@@ -364,6 +482,7 @@ exports.InventoryPlugin = InventoryPlugin = InventoryPlugin_1 = __decorate([
             ]);
             return config;
         },
+        dashboard: '../dashboard/index.tsx',
         compatibility: '^3.6.0',
     }),
     __metadata("design:paramtypes", [core_1.ModuleRef])

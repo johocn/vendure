@@ -53,4 +53,28 @@ export declare class InventoryAdminResolver {
     reconcileStocktakeLine(ctx: RequestContext, orderId: ID, lineId: ID): Promise<import(".").StocktakeOrder>;
     completeStocktakeOrder(ctx: RequestContext, id: ID): Promise<import(".").StocktakeOrder>;
     cancelStocktakeOrder(ctx: RequestContext, id: ID): Promise<import(".").StocktakeOrder>;
+    suppliers(ctx: RequestContext, keyword?: string, options?: {
+        skip?: number;
+        take?: number;
+    }): Promise<{
+        items: import(".").Supplier[];
+        totalItems: number;
+    }>;
+    supplier(ctx: RequestContext, id: ID): Promise<import(".").Supplier | null>;
+    createSupplier(ctx: RequestContext, input: any): Promise<import(".").Supplier>;
+    updateSupplier(ctx: RequestContext, id: ID, input: any): Promise<import(".").Supplier>;
+    deleteSupplier(ctx: RequestContext, id: ID): Promise<boolean>;
+    purchaseOrders(ctx: RequestContext, state?: string, options?: {
+        skip?: number;
+        take?: number;
+    }): Promise<{
+        items: import(".").PurchaseOrder[];
+        totalItems: number;
+    }>;
+    purchaseOrder(ctx: RequestContext, id: ID): Promise<import(".").PurchaseOrder | null>;
+    createPurchaseOrder(ctx: RequestContext, input: any): Promise<import(".").PurchaseOrder>;
+    placePurchaseOrder(ctx: RequestContext, id: ID): Promise<import(".").PurchaseOrder>;
+    receivePurchaseOrder(ctx: RequestContext, id: ID, lines: any[]): Promise<import(".").PurchaseOrder>;
+    completePurchaseOrder(ctx: RequestContext, id: ID): Promise<import(".").PurchaseOrder>;
+    cancelPurchaseOrder(ctx: RequestContext, id: ID): Promise<import(".").PurchaseOrder>;
 }

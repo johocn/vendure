@@ -116,6 +116,48 @@ let InventoryAdminResolver = class InventoryAdminResolver {
     async cancelStocktakeOrder(ctx, id) {
         return this.inventoryService.cancelStocktakeOrder(ctx, id);
     }
+    // ===== 供应商 =====
+    async suppliers(ctx, keyword, options) {
+        var _a, _b;
+        const page = (options === null || options === void 0 ? void 0 : options.skip) != null ? Math.floor(options.skip / ((_a = options.take) !== null && _a !== void 0 ? _a : 20)) + 1 : 1;
+        return this.inventoryService.findSuppliers(ctx, { keyword, page, pageSize: (_b = options === null || options === void 0 ? void 0 : options.take) !== null && _b !== void 0 ? _b : 20 });
+    }
+    async supplier(ctx, id) {
+        return this.inventoryService.findOneSupplier(ctx, id);
+    }
+    async createSupplier(ctx, input) {
+        return this.inventoryService.createSupplier(ctx, input);
+    }
+    async updateSupplier(ctx, id, input) {
+        return this.inventoryService.updateSupplier(ctx, id, input);
+    }
+    async deleteSupplier(ctx, id) {
+        return this.inventoryService.deleteSupplier(ctx, id);
+    }
+    // ===== 采购单 =====
+    async purchaseOrders(ctx, state, options) {
+        var _a, _b;
+        const page = (options === null || options === void 0 ? void 0 : options.skip) != null ? Math.floor(options.skip / ((_a = options.take) !== null && _a !== void 0 ? _a : 20)) + 1 : 1;
+        return this.inventoryService.findPurchaseOrders(ctx, { state, page, pageSize: (_b = options === null || options === void 0 ? void 0 : options.take) !== null && _b !== void 0 ? _b : 20 });
+    }
+    async purchaseOrder(ctx, id) {
+        return this.inventoryService.findOnePurchaseOrder(ctx, id);
+    }
+    async createPurchaseOrder(ctx, input) {
+        return this.inventoryService.createPurchaseOrder(ctx, input);
+    }
+    async placePurchaseOrder(ctx, id) {
+        return this.inventoryService.placePurchaseOrder(ctx, id);
+    }
+    async receivePurchaseOrder(ctx, id, lines) {
+        return this.inventoryService.receivePurchaseOrder(ctx, id, lines);
+    }
+    async completePurchaseOrder(ctx, id) {
+        return this.inventoryService.completePurchaseOrder(ctx, id);
+    }
+    async cancelPurchaseOrder(ctx, id) {
+        return this.inventoryService.cancelPurchaseOrder(ctx, id);
+    }
 };
 exports.InventoryAdminResolver = InventoryAdminResolver;
 __decorate([
@@ -403,6 +445,118 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], InventoryAdminResolver.prototype, "cancelStocktakeOrder", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(constants_1.InventoryPermissions.ManageSupplier),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)({ name: 'keyword', type: () => String, nullable: true })),
+    __param(2, (0, graphql_1.Args)({ name: 'options', type: () => Object, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, Object]),
+    __metadata("design:returntype", Promise)
+], InventoryAdminResolver.prototype, "suppliers", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(constants_1.InventoryPermissions.ManageSupplier),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], InventoryAdminResolver.prototype, "supplier", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(constants_1.InventoryPermissions.ManageSupplier),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('input')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], InventoryAdminResolver.prototype, "createSupplier", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(constants_1.InventoryPermissions.ManageSupplier),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('input')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object]),
+    __metadata("design:returntype", Promise)
+], InventoryAdminResolver.prototype, "updateSupplier", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(constants_1.InventoryPermissions.ManageSupplier),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], InventoryAdminResolver.prototype, "deleteSupplier", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(constants_1.InventoryPermissions.ManagePurchase),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)({ name: 'state', type: () => String, nullable: true })),
+    __param(2, (0, graphql_1.Args)({ name: 'options', type: () => Object, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, Object]),
+    __metadata("design:returntype", Promise)
+], InventoryAdminResolver.prototype, "purchaseOrders", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(constants_1.InventoryPermissions.ManagePurchase),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], InventoryAdminResolver.prototype, "purchaseOrder", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(constants_1.InventoryPermissions.ManagePurchase),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('input')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], InventoryAdminResolver.prototype, "createPurchaseOrder", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(constants_1.InventoryPermissions.ManagePurchase),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], InventoryAdminResolver.prototype, "placePurchaseOrder", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(constants_1.InventoryPermissions.ManagePurchase),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('lines')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Array]),
+    __metadata("design:returntype", Promise)
+], InventoryAdminResolver.prototype, "receivePurchaseOrder", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(constants_1.InventoryPermissions.ManagePurchase),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], InventoryAdminResolver.prototype, "completePurchaseOrder", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(constants_1.InventoryPermissions.ManagePurchase),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], InventoryAdminResolver.prototype, "cancelPurchaseOrder", null);
 exports.InventoryAdminResolver = InventoryAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [inventory_service_1.InventoryService])

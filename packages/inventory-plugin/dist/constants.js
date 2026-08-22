@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.STOCKTAKE_TRANSITIONS = exports.STOCK_MOVE_TRANSITIONS = exports.STOCK_OUT_TRANSITIONS = exports.STOCK_IN_TRANSITIONS = exports.StocktakeState = exports.StockMoveState = exports.StockOutState = exports.StockInState = exports.ROLE_PERMISSIONS_MAP = exports.inventoryPermissionDefinitions = exports.InventoryPermissions = void 0;
+exports.PURCHASE_ORDER_TRANSITIONS = exports.STOCKTAKE_TRANSITIONS = exports.STOCK_MOVE_TRANSITIONS = exports.STOCK_OUT_TRANSITIONS = exports.STOCK_IN_TRANSITIONS = exports.PurchaseOrderState = exports.StocktakeState = exports.StockMoveState = exports.StockOutState = exports.StockInState = exports.ROLE_PERMISSIONS_MAP = exports.inventoryPermissionDefinitions = exports.InventoryPermissions = void 0;
 // e:\code\vendure\packages\inventory-plugin\src\constants.ts
 const core_1 = require("@vendure/core");
 // 权限名常量（引用 delivery-plugin 中已注册的权限，此处不重复注册 PermissionDefinition）
@@ -10,6 +10,8 @@ exports.InventoryPermissions = {
     ManageStockOut: 'ManageStockOut',
     ManageStockMove: 'ManageStockMove',
     ManageStocktake: 'ManageStocktake',
+    ManagePurchase: 'ManagePurchase',
+    ManageSupplier: 'ManageSupplier',
 };
 // 权限描述（供 PermissionDefinition 注册使用）
 const PERMISSION_DESCRIPTIONS = {
@@ -18,6 +20,8 @@ const PERMISSION_DESCRIPTIONS = {
     ManageStockOut: '出库单管理',
     ManageStockMove: '调拨单管理',
     ManageStocktake: '盘点单管理',
+    ManagePurchase: '采购单管理',
+    ManageSupplier: '供应商管理',
 };
 // PermissionDefinition 实例数组，注册到 config.authOptions.customPermissions（与 delivery-plugin 同源权限同名，可安全重复注册）
 exports.inventoryPermissionDefinitions = Object.entries(exports.InventoryPermissions).map(([key, name]) => {
@@ -44,6 +48,8 @@ exports.ROLE_PERMISSIONS_MAP = {
         'ManageStockOut',
         'ManageStockMove',
         'ManageStocktake',
+        'ManagePurchase',
+        'ManageSupplier',
     ],
     'super-admin': [
         'Authenticated',
@@ -52,6 +58,8 @@ exports.ROLE_PERMISSIONS_MAP = {
         'ManageStockOut',
         'ManageStockMove',
         'ManageStocktake',
+        'ManagePurchase',
+        'ManageSupplier',
         'SuperAdmin',
     ],
 };
@@ -84,6 +92,15 @@ var StocktakeState;
     StocktakeState["Completed"] = "Completed";
     StocktakeState["Cancelled"] = "Cancelled";
 })(StocktakeState || (exports.StocktakeState = StocktakeState = {}));
+var PurchaseOrderState;
+(function (PurchaseOrderState) {
+    PurchaseOrderState["Draft"] = "Draft";
+    PurchaseOrderState["Ordered"] = "Ordered";
+    PurchaseOrderState["PartiallyReceived"] = "PartiallyReceived";
+    PurchaseOrderState["Received"] = "Received";
+    PurchaseOrderState["Completed"] = "Completed";
+    PurchaseOrderState["Cancelled"] = "Cancelled";
+})(PurchaseOrderState || (exports.PurchaseOrderState = PurchaseOrderState = {}));
 // ===== 状态转换表 =====
 exports.STOCK_IN_TRANSITIONS = {
     [StockInState.Pending]: [StockInState.Completed, StockInState.Cancelled],
@@ -108,4 +125,20 @@ exports.STOCKTAKE_TRANSITIONS = {
     [StocktakeState.Reconciling]: [StocktakeState.Completed],
     [StocktakeState.Completed]: [],
     [StocktakeState.Cancelled]: [],
+};
+exports.PURCHASE_ORDER_TRANSITIONS = {
+    [PurchaseOrderState.Draft]: [PurchaseOrderState.Ordered, PurchaseOrderState.Cancelled],
+    [PurchaseOrderState.Ordered]: [
+        PurchaseOrderState.PartiallyReceived,
+        PurchaseOrderState.Received,
+        PurchaseOrderState.Cancelled,
+    ],
+    // 分批收货：PartiallyReceived 未收满可继续收货（保持 PartiallyReceived），全部收满变 Received
+    [PurchaseOrderState.PartiallyReceived]: [
+        PurchaseOrderState.PartiallyReceived,
+        PurchaseOrderState.Received,
+    ],
+    [PurchaseOrderState.Received]: [PurchaseOrderState.Completed],
+    [PurchaseOrderState.Completed]: [],
+    [PurchaseOrderState.Cancelled]: [],
 };

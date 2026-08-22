@@ -268,4 +268,281 @@ describe('InventoryPlugin · 移库账本化（方案A验证）', () => {
         expect(cityIds).toContain(nearId);
         expect(cityIds).not.toContain(farId);
     }, TEST_SETUP_TIMEOUT_MS);
+
+    it('供应商 CRUD + 唯一 code 校验', async () => {
+        const { createSupplier } = await adminClient.query(gql`
+            mutation {
+                createSupplier(input: {
+                    code: "SUP-001"
+                    name: "华东供应商"
+                    taxNumber: "913100001"
+                    contactName: "张三"
+                    contactPhone: "13800000000"
+                    address: "上海"
+                    settlementDays: 30
+                    note: "e2e"
+                }) { id code name taxNumber contactName settlementDays }
+            }
+        `);
+        expect(createSupplier).toMatchObject({
+            code: 'SUP-001',
+            name: '华东供应商',
+            taxNumber: '913100001',
+            contactName: '张三',
+            settlementDays: 30,
+        });
+
+        // 同 code 重复创建报错
+        let duplicateRejected = false;
+        try {
+            await adminClient.query(gql`
+                mutation {
+                    createSupplier(input: { code: "SUP-001", name: "重复" }) { id }
+                }
+            `);
+        } catch (e: any) {
+            duplicateRejected = String(e?.message ?? '').includes('already exists');
+        }
+        expect(duplicateRejected).toBe(true);
+
+        // 编辑 + 删除
+        const { updateSupplier } = await adminClient.query(gql`
+            mutation { updateSupplier(id: "${createSupplier.id}", input: { contactName: "李四", settlementDays: 60 }) { id contactName settlementDays } }
+        `);
+        expect(updateSupplier.contactName).toBe('李四');
+        expect(updateSupplier.settlementDays).toBe(60);
+
+        const { deleteSupplier } = await adminClient.query(gql`
+            mutation { deleteSupplier(id: "${createSupplier.id}") }
+        `);
+        expect(deleteSupplier).toBe(true);
+    }, TEST_SETUP_TIMEOUT_MS);
+
+    it('采购整单收货：库存增加 + purchase 账本', async () => {
+        // 建供应商（删除一个空供应商后重新建，保证是干净 id）
+        const { createSupplier } = await adminClient.query(gql`
+            mutation {
+                createSupplier(input: { code: "SUP-PO-001", name: "采购供应商" }) { id code }
+            }
+        `);
+        const locs = await adminClient.query(gql`
+            query { stockLocations { items { id name } } }
+        `);
+        const location = locs.stockLocations.items[0];
+        const products = await importProducts(adminClient, '');
+        const variant = products.items[0].variants[0];
+
+        // 建采购单（2 行）
+        const { createPurchaseOrder } = await adminClient.query(gql`
+            mutation {
+                createPurchaseOrder(input: {
+                    supplierId: "${createSupplier.id}"
+                    targetLocationId: "${location.id}"
+                    lines: [
+                        { productVariantId: "${variant.id}", quantity: 10, unitPrice: 500 }
+                    ]
+                    note: "e2e-po"
+                }) { id code state totalAmount lines { id quantity receivedQuantity unitPrice amount } }
+            }
+        `);
+        expect(createPurchaseOrder.state).toBe('Draft');
+        expect(createPurchaseOrder.totalAmount).toBe(10 * 500);
+        expect(createPurchaseOrder.lines[0].amount).toBe(10 * 500);
+
+        // 下单：Draft → Ordered
+        const { placePurchaseOrder } = await adminClient.query(gql`
+            mutation { placePurchaseOrder(id: "${createPurchaseOrder.id}") { id state orderedAt } }
+        `);
+        expect(placePurchaseOrder.state).toBe('Ordered');
+
+        // 收货：整单数量
+        // 先记录收货前库存，用增量断言（避免依赖前序测试残留库存）
+        const beforeLvl = await adminClient.query(gql`
+            query { stockLevels(locationId: "${location.id}") { items { productVariantId stockOnHand } } }
+        `);
+        const beforeOnHand =
+            beforeLvl.stockLevels.items.find((l: any) => String(l.productVariantId) === String(variant.id))?.stockOnHand ??
+            0;
+
+        const { receivePurchaseOrder } = await adminClient.query(gql`
+            mutation {
+                receivePurchaseOrder(id: "${createPurchaseOrder.id}", lines: [
+                    { lineId: "${createPurchaseOrder.lines[0].id}", quantity: 10 }
+                ]) { id state lines { receivedQuantity } }
+            }
+        `);
+        expect(receivePurchaseOrder.state).toBe('Received');
+        expect(receivePurchaseOrder.lines[0].receivedQuantity).toBe(10);
+
+        // 库存 +10
+        const after = await adminClient.query(gql`
+            query { stockLevels(locationId: "${location.id}") { items { productVariantId stockOnHand } } }
+        `);
+        const lvl = after.stockLevels.items.find((l: any) => String(l.productVariantId) === String(variant.id));
+        expect(lvl.stockOnHand).toBe(beforeOnHand + 10);
+
+        // purchase 账本
+        const led = await adminClient.query(gql`
+            query { stockLedger(bizType: "purchase", bizCode: "${createPurchaseOrder.code}") {
+                items { bizType direction quantity stockLocationId bizCode } totalItems }
+            }
+        `);
+        expect(led.stockLedger.totalItems).toBe(1);
+        expect(led.stockLedger.items[0]).toMatchObject({
+            bizType: 'purchase',
+            direction: 'in',
+            quantity: 10,
+            stockLocationId: location.id,
+            bizCode: createPurchaseOrder.code,
+        });
+
+        // 完成：Received → Completed
+        const { completePurchaseOrder } = await adminClient.query(gql`
+            mutation { completePurchaseOrder(id: "${createPurchaseOrder.id}") { id state completedAt } }
+        `);
+        expect(completePurchaseOrder.state).toBe('Completed');
+    }, TEST_SETUP_TIMEOUT_MS);
+
+    it('采购分批收货：PartiallyReceived 中间态 + 终态 Received', async () => {
+        const { createSupplier } = await adminClient.query(gql`
+            mutation { createSupplier(input: { code: "SUP-PO-002", name: "分批供应商" }) { id } }
+        `);
+        const locs = await adminClient.query(gql`
+            query { stockLocations { items { id } } }
+        `);
+        const location = locs.stockLocations.items[0];
+        const products = await importProducts(adminClient, '');
+        const v2 = products.items[0].variants[0];
+
+        const { createPurchaseOrder } = await adminClient.query(gql`
+            mutation {
+                createPurchaseOrder(input: {
+                    supplierId: "${createSupplier.id}"
+                    targetLocationId: "${location.id}"
+                    lines: [{ productVariantId: "${v2.id}", quantity: 20, unitPrice: 300 }]
+                }) { id code state lines { id quantity unitPrice } }
+            }
+        `);
+        await adminClient.query(gql`
+            mutation { placePurchaseOrder(id: "${createPurchaseOrder.id}") { id state } }
+        `);
+
+        // 超收拒绝：在 Ordered 态尝试收 25 > 20
+        let overRejected = false;
+        try {
+            await adminClient.query(gql`
+                mutation {
+                    receivePurchaseOrder(id: "${createPurchaseOrder.id}", lines: [
+                        { lineId: "${createPurchaseOrder.lines[0].id}", quantity: 25 }
+                    ]) { id state }
+                }
+            `);
+        } catch (e: any) {
+            overRejected = String(e?.message ?? '').includes('over-received');
+        }
+        expect(overRejected).toBe(true);
+
+        // 第一批 8
+        const r1 = await adminClient.query(gql`
+            mutation {
+                receivePurchaseOrder(id: "${createPurchaseOrder.id}", lines: [
+                    { lineId: "${createPurchaseOrder.lines[0].id}", quantity: 8 }
+                ]) { id state lines { receivedQuantity } }
+            }
+        `);
+        expect(r1.receivePurchaseOrder.state).toBe('PartiallyReceived');
+        expect(r1.receivePurchaseOrder.lines[0].receivedQuantity).toBe(8);
+
+        // 第二批 12 → 全部收满 → Received
+        const r2 = await adminClient.query(gql`
+            mutation {
+                receivePurchaseOrder(id: "${createPurchaseOrder.id}", lines: [
+                    { lineId: "${createPurchaseOrder.lines[0].id}", quantity: 12 }
+                ]) { id state lines { receivedQuantity } }
+            }
+        `);
+        expect(r2.receivePurchaseOrder.state).toBe('Received');
+        expect(r2.receivePurchaseOrder.lines[0].receivedQuantity).toBe(20);
+
+        // 已收货禁止取消
+        let cancelRejected = false;
+        try {
+            await adminClient.query(gql`
+                mutation { cancelPurchaseOrder(id: "${createPurchaseOrder.id}") { id state } }
+            `);
+        } catch (e: any) {
+            cancelRejected = String(e?.message ?? '').includes('Cannot cancel');
+        }
+        expect(cancelRejected).toBe(true);
+    }, TEST_SETUP_TIMEOUT_MS);
+
+    it('采购权限：无 ManagePurchase 被拒，有权限角色成功', async () => {
+        // 准备供应商/仓库/变体（super admin）
+        const { createSupplier } = await adminClient.query(gql`
+            mutation { createSupplier(input: { code: "SUP-PERM-001", name: "权限供应商" }) { id } }
+        `);
+        const locs = await adminClient.query(gql`
+            query { stockLocations { items { id } } }
+        `);
+        const location = locs.stockLocations.items[0];
+        const products = await importProducts(adminClient, '');
+        const v = products.items[0].variants[0];
+
+        // 取 role-sync 在 bootstrap 创建的角色：inventory-staff（无 ManagePurchase）/ manager（有 ManagePurchase）
+        const rolesRes = await adminClient.query(gql`
+            query { roles { items { id code } } }
+        `);
+        const roles = rolesRes.roles.items;
+        const staffRole = roles.find((r: any) => r.code === 'inventory-staff');
+        const managerRole = roles.find((r: any) => r.code === 'manager');
+        expect(staffRole).toBeDefined();
+        expect(managerRole).toBeDefined();
+
+        // 建两个管理员，分别挂无权限/有权限角色
+        const emailDenied = 'purchase-denied@test.com';
+        const emailGranted = 'purchase-granted@test.com';
+        await adminClient.query(gql`
+            mutation {
+                createAdministrator(input: {
+                    emailAddress: "${emailDenied}"
+                    firstName: "deny"
+                    lastName: "deny"
+                    password: "test12345"
+                    roleIds: ["${staffRole.id}"]
+                }) { id }
+            }
+        `);
+        await adminClient.query(gql`
+            mutation {
+                createAdministrator(input: {
+                    emailAddress: "${emailGranted}"
+                    firstName: "grant"
+                    lastName: "grant"
+                    password: "test12345"
+                    roleIds: ["${managerRole.id}"]
+                }) { id }
+            }
+        `);
+
+        const poMutation = () => gql`
+            mutation {
+                createPurchaseOrder(input: {
+                    supplierId: "${createSupplier.id}"
+                    targetLocationId: "${location.id}"
+                    lines: [{ productVariantId: "${v.id}", quantity: 1, unitPrice: 100 }]
+                }) { id state }
+            }
+        `;
+
+        // 无 ManagePurchase → 被拒（staff 分支抛出即被拒；manager 分支可成功验证差异）
+        await adminClient.asUserWithCredentials(emailDenied, 'test12345');
+        const deniedError = await adminClient.query(poMutation()).catch((e: any) => e);
+        expect(deniedError instanceof Error || deniedError?.message).toBeTruthy();
+
+        // 有 ManagePurchase → 成功
+        await adminClient.asUserWithCredentials(emailGranted, 'test12345');
+        const ok = await adminClient.query(poMutation());
+        expect(ok.createPurchaseOrder.state).toBe('Draft');
+        await adminClient.asSuperAdmin();
+    }, TEST_SETUP_TIMEOUT_MS);
 });
