@@ -7,7 +7,7 @@ export declare class RechargeOrder extends VendureEntity {
     status: RechargeOrderStatus;
     paymentMethod: string | null;
     externalRef: string | null;
-    paidAt: Date | null;
+    paidAt?: Date;
     remark: string | null;
     channel: Channel;
     channelId: number;

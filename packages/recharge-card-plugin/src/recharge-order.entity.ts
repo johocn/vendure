@@ -27,8 +27,10 @@ export class RechargeOrder extends VendureEntity {
     @Column({ type: 'varchar', nullable: true })
     externalRef: string | null;
 
-    @Column({ type: 'timestamp', nullable: true })
-    paidAt: Date | null;
+    // 不写死字段类型，交由驱动自动映射（postgres->timestamp，sqlite->datetime）
+    // 用可选 `?`（非 `| null`）以令反射为 Date，TypeORM 才能推断列类型
+    @Column({ nullable: true })
+    paidAt?: Date;
 
     @Column({ type: 'text', nullable: true })
     remark: string | null;

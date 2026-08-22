@@ -39,8 +39,8 @@ __decorate([
     __metadata("design:type", Object)
 ], RechargeOrder.prototype, "externalRef", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
-    __metadata("design:type", Object)
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Date)
 ], RechargeOrder.prototype, "paidAt", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'text', nullable: true }),
