@@ -156,6 +156,10 @@ export class OperationsAdminResolver {
                 return OperationsPermissions.ManageNotice as Permission;
             case 'Floor':
                 return OperationsPermissions.ManageFloor as Permission;
+            case 'IconGrid':
+                return OperationsPermissions.ManageContent as Permission;
+            case 'CategoryNav':
+                return OperationsPermissions.ManageContent as Permission;
             default:
                 return OperationsPermissions.ManageContent as Permission;
         }
