@@ -428,7 +428,11 @@ export class ShopService {
         trackingCode?: string,
     ): Promise<FulfillMyShopOrderResult> {
         const shop = await this.requireMyShop(ctx);
-        const { myLines } = await this.resolveMyShopOrder(ctx, orderId, shop);
+        const { myLines, orderHasLines } = await this.resolveMyShopOrder(ctx, orderId, shop);
+        // 越权隔离：订单确有行但无一属于本店 → 属他人店铺订单，直接拒绝（勿静默返回空）。
+        if (orderHasLines && myLines.length === 0) {
+            throw new ForbiddenError();
+        }
         const toFulfill = myLines.filter(l => l.remaining > 0);
         const fulfillmentIds: string[] = [];
         if (toFulfill.length > 0) {
@@ -522,6 +526,7 @@ export class ShopService {
     ): Promise<{
         myLines: Array<{ line: OrderLine; remaining: number }>;
         nameByLine: Map<number, { productName: string; variantName: string }>;
+        orderHasLines: boolean;
     }> {
         const order = await this.connection.getRepository(ctx, Order).findOne({
             where: { id: Number(orderId) } as any,
@@ -536,6 +541,7 @@ export class ShopService {
         if (!order) {
             throw new EntityNotFoundError('Order', orderId);
         }
+        const orderHasLines = (order.lines?.length ?? 0) > 0;
         const myLines = (order.lines ?? []).filter(l => {
             const cf = (l.productVariant?.product?.customFields ?? {}) as any;
             return Number(cf.shopId) === shop.id;
@@ -567,6 +573,7 @@ export class ShopService {
                 return { line: l, remaining: total - fulfilled };
             }),
             nameByLine,
+            orderHasLines,
         };
     }
 

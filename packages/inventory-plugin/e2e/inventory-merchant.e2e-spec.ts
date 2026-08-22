@@ -6,6 +6,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { initialData } from '../../../e2e-common/e2e-initial-data';
 import { TEST_SETUP_TIMEOUT_MS, testConfig } from '../../../e2e-common/test-config';
+import { addPaymentToOrder, proceedToArrangingPayment } from '../../core/e2e/utils/test-order-utils';
+import { singleStageRefundablePaymentMethod } from '../../core/e2e/fixtures/test-payment-methods';
 
 // 本插件未注册进 node_modules（新包），从其源码导入；shop-plugin 经 @vendure 别名（构建 lib 已有）。
 import { InventoryPlugin } from '../src/inventory.plugin';
@@ -16,6 +18,9 @@ registerInitializer('sqljs', new SqljsInitializer(path.join(__dirname, '__data__
 describe('InventoryPlugin · 阶段47 店主自营库存（只读水位 + 归属校准）', () => {
     const config = mergeConfig(testConfig(), {
         plugins: [ShopPlugin.init({}), InventoryPlugin.init()],
+        paymentOptions: {
+            paymentMethodHandlers: [singleStageRefundablePaymentMethod],
+        },
     });
     const { server, adminClient, shopClient } = createTestEnvironment(config);
 
@@ -46,6 +51,22 @@ describe('InventoryPlugin · 阶段47 店主自营库存（只读水位 + 归属
     `;
     const PRODSTOCK = gql`
         query ($pid: ID!) { myShopProductStock(productId: $pid) { productId variantCount totalOnHand totalAvailable } }
+    `;
+    const MYORDERS = gql`
+        query { myShopOrders { orderId code state totalWithTax items { orderLineId productId productName variantName quantity fulfilledQuantity unitPriceWithTax lineTotalWithTax } } }
+    `;
+    const FULFILL = gql`
+        mutation ($orderId: ID!, $method: String, $trackingCode: String) {
+            fulfillMyShopOrder(orderId: $orderId, method: $method, trackingCode: $trackingCode) {
+                orderId totalItemCount shippedItemCount remainingItemCount fulfillmentIds
+            }
+        }
+    `;
+    const MYFULFILLMENTS = gql`
+        query ($orderId: ID!) { myShopOrderFulfillments(orderId: $orderId) { fulfillmentId state method trackingCode createdAt items { orderLineId productName variantName quantity } } }
+    `;
+    const ADMIN_FULFILLMENTS = gql`
+        query ($id: ID!) { order(id: $id) { id state lines { id quantity } fulfillments { id state method trackingCode createdAt } } }
     `;
 
     async function createShop(name: string, slug: string): Promise<string> {
@@ -79,13 +100,40 @@ describe('InventoryPlugin · 阶段47 店主自营库存（只读水位 + 归属
         return c;
     }
 
+    /** 建单支付成功（单阶段结算支付），返回 orderId。 */
+    async function createPaidOrder(variantId: string, quantity = 1): Promise<string> {
+        await shopClient.query(gql`
+            mutation {
+                addItemToOrder(productVariantId: "${variantId}", quantity: ${quantity}) {
+                    ... on Order { id code state totalWithTax }
+                    ... on ErrorResult { errorCode message }
+                }
+            }
+        `);
+        await proceedToArrangingPayment(shopClient);
+        const paid = await addPaymentToOrder(shopClient, singleStageRefundablePaymentMethod);
+        expect(paid.id).toBeDefined();
+        return paid.id as unknown as string;
+    }
+
     beforeAll(async () => {
         await server.init({
-            initialData,
+            initialData: {
+                ...initialData,
+                paymentMethods: [
+                    { name: singleStageRefundablePaymentMethod.code, handler: { code: singleStageRefundablePaymentMethod.code, arguments: [] } },
+                ],
+            },
             productsCsvPath: path.join(__dirname, '../../core/e2e/fixtures/e2e-products-minimal.csv'),
             customerCount: 0,
         });
         await adminClient.asSuperAdmin();
+
+        // 下单顾客（购物车/支付走 shop API）
+        await adminClient.query(gql`
+            mutation { createCustomer(input: { firstName: "M", lastName: "R", emailAddress: "main.merchant@test.com" }, password: "test") { ... on Customer { id } } }
+        `);
+        await shopClient.asUserWithCredentials('main.merchant@test.com', 'test');
 
         shopAId = await createShop('Shop A', 'shop-a');
         shopBId = await createShop('Shop B', 'shop-b');
@@ -205,5 +253,64 @@ describe('InventoryPlugin · 阶段47 店主自营库存（只读水位 + 归属
         expect(r.myShopProductStock.totalAvailable).toBe(80);
         // 越权：聚合他人店铺商品被拒
         await expect(ownerA.query(PRODSTOCK, { pid: productBId })).rejects.toThrow();
+    });
+
+    it('8 店主发货：本店订单行建履约单并流转至 Shipped', async () => {
+        const orderId = await createPaidOrder(variantAId, 2);
+        const ownerA = await asOwner('ownerA.stock@test.com');
+        const r = (await ownerA.query(FULFILL, { orderId, method: '顺丰', trackingCode: 'SF123' })) as any;
+        expect(r.fulfillMyShopOrder.totalItemCount).toBe(2);
+        expect(r.fulfillMyShopOrder.fulfillmentIds.length).toBe(1);
+        expect(r.fulfillMyShopOrder.remainingItemCount).toBe(0);
+        // 履约单状态流转至 Shipped，方法/单号正确
+        const detail = (await adminClient.query(ADMIN_FULFILLMENTS, { id: orderId })) as any;
+        expect(detail.order.fulfillments.length).toBe(1);
+        expect(detail.order.fulfillments[0].state).toBe('Shipped');
+        expect(detail.order.fulfillments[0].method).toBe('顺丰');
+        expect(detail.order.fulfillments[0].trackingCode).toBe('SF123');
+    });
+
+    it('9 店主履约明细：myShopOrderFulfillments 返回履约行；myShopOrders 带 fulfilledQuantity', async () => {
+        const ownerA = await asOwner('ownerA.stock@test.com');
+        const orders = (await ownerA.query(MYORDERS)) as any;
+        const a = orders.myShopOrders.find((o: any) => o.items.some((i: any) => i.fulfilledQuantity > 0));
+        expect(a).toBeDefined();
+        const line = a.items.find((i: any) => i.fulfilledQuantity > 0);
+        expect(line.fulfilledQuantity).toBe(line.quantity);
+        const fls = (await ownerA.query(MYFULFILLMENTS, { orderId: a.orderId })) as any;
+        expect(fls.myShopOrderFulfillments.length).toBe(1);
+        const f = fls.myShopOrderFulfillments[0];
+        expect(f.state).toBe('Shipped');
+        expect(f.method).toBe('顺丰');
+        expect(f.trackingCode).toBe('SF123');
+        expect(f.createdAt).toBeDefined();
+        expect(f.items.reduce((acc: number, i: any) => acc + i.quantity, 0)).toBe(line.quantity);
+    });
+
+    it('10 重复发货：全部已履约再次调用不新建履约单', async () => {
+        const ownerA = await asOwner('ownerA.stock@test.com');
+        const orders = (await ownerA.query(MYORDERS)) as any;
+        const a = orders.myShopOrders.find((o: any) => o.items.some((i: any) => i.fulfilledQuantity > 0));
+        const r = (await ownerA.query(FULFILL, { orderId: a.orderId })) as any;
+        expect(r.fulfillMyShopOrder.fulfillmentIds.length).toBe(0);
+        // 履约单数量仍为 1
+        const detail = (await adminClient.query(ADMIN_FULFILLMENTS, { id: a.orderId })) as any;
+        expect(detail.order.fulfillments.length).toBe(1);
+    });
+
+    it('11 越权隔离：店主A对纯他人店铺订单发货被拒；查看履约返回空', async () => {
+        const orderBId = await createPaidOrder(variantBId, 1);
+        const ownerA = await asOwner('ownerA.stock@test.com');
+        // 发货被拒（订单行无一本店）
+        await expect(ownerA.query(FULFILL, { orderId: orderBId })).rejects.toThrow();
+        // 查看履约返回空数组（视图不报错但不可见他人行）
+        const fls = (await ownerA.query(MYFULFILLMENTS, { orderId: orderBId })) as any;
+        expect(fls.myShopOrderFulfillments.length).toBe(0);
+        // B店店主可发货本人订单
+        const ownerB = await asOwner('ownerB.stock@test.com');
+        const rb = (await ownerB.query(FULFILL, { orderId: orderBId })) as any;
+        expect(rb.fulfillMyShopOrder.fulfillmentIds.length).toBe(1);
+        const detail = (await adminClient.query(ADMIN_FULFILLMENTS, { id: orderBId })) as any;
+        expect(detail.order.fulfillments[0].state).toBe('Shipped');
     });
 });

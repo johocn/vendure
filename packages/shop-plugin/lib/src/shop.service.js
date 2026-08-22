@@ -357,7 +357,11 @@ let ShopService = class ShopService {
     async fulfillMyShopOrder(ctx, orderId, method, trackingCode) {
         var _a, _b;
         const shop = await this.requireMyShop(ctx);
-        const { myLines } = await this.resolveMyShopOrder(ctx, orderId, shop);
+        const { myLines, orderHasLines } = await this.resolveMyShopOrder(ctx, orderId, shop);
+        // 越权隔离：订单确有行但无一属于本店 → 属他人店铺订单，直接拒绝（勿静默返回空）。
+        if (orderHasLines && myLines.length === 0) {
+            throw new core_1.ForbiddenError();
+        }
         const toFulfill = myLines.filter(l => l.remaining > 0);
         const fulfillmentIds = [];
         if (toFulfill.length > 0) {
@@ -432,7 +436,7 @@ let ShopService = class ShopService {
      * 返回：myLines（line + fulfilled + remaining）、总产量、nameByLine（orderLineId→商品/变体名）。
      */
     async resolveMyShopOrder(ctx, orderId, shop) {
-        var _a, _b, _c, _d, _e;
+        var _a, _b, _c, _d, _e, _f, _g;
         const order = await this.connection.getRepository(ctx, core_1.Order).findOne({
             where: { id: Number(orderId) },
             relations: [
@@ -446,7 +450,8 @@ let ShopService = class ShopService {
         if (!order) {
             throw new core_1.EntityNotFoundError('Order', orderId);
         }
-        const myLines = ((_a = order.lines) !== null && _a !== void 0 ? _a : []).filter(l => {
+        const orderHasLines = ((_b = (_a = order.lines) === null || _a === void 0 ? void 0 : _a.length) !== null && _b !== void 0 ? _b : 0) > 0;
+        const myLines = ((_c = order.lines) !== null && _c !== void 0 ? _c : []).filter(l => {
             var _a, _b, _c;
             const cf = ((_c = (_b = (_a = l.productVariant) === null || _a === void 0 ? void 0 : _a.product) === null || _b === void 0 ? void 0 : _b.customFields) !== null && _c !== void 0 ? _c : {});
             return Number(cf.shopId) === shop.id;
@@ -462,13 +467,13 @@ let ShopService = class ShopService {
                 .andWhere('fulfillment.state != :state', { state: 'Cancelled' })
                 .getMany();
             for (const fl of fls) {
-                fulfilledMap.set(fl.orderLineId, ((_b = fulfilledMap.get(fl.orderLineId)) !== null && _b !== void 0 ? _b : 0) + fl.quantity);
+                fulfilledMap.set(fl.orderLineId, ((_d = fulfilledMap.get(fl.orderLineId)) !== null && _d !== void 0 ? _d : 0) + fl.quantity);
             }
         }
         const nameByLine = new Map();
         for (const l of myLines) {
-            const pvName = this.pickName((_c = l.productVariant) === null || _c === void 0 ? void 0 : _c.translations, ctx.languageCode, 'name');
-            const pName = this.pickName((_e = (_d = l.productVariant) === null || _d === void 0 ? void 0 : _d.product) === null || _e === void 0 ? void 0 : _e.translations, ctx.languageCode, 'name');
+            const pvName = this.pickName((_e = l.productVariant) === null || _e === void 0 ? void 0 : _e.translations, ctx.languageCode, 'name');
+            const pName = this.pickName((_g = (_f = l.productVariant) === null || _f === void 0 ? void 0 : _f.product) === null || _g === void 0 ? void 0 : _g.translations, ctx.languageCode, 'name');
             nameByLine.set(l.id, { productName: pName, variantName: pvName });
         }
         return {
@@ -479,6 +484,7 @@ let ShopService = class ShopService {
                 return { line: l, remaining: total - fulfilled };
             }),
             nameByLine,
+            orderHasLines,
         };
     }
     async getMyShopReviews(ctx) {
