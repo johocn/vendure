@@ -18,6 +18,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 __exportStar(require("./inventory.plugin"), exports);
 __exportStar(require("./constants"), exports);
 __exportStar(require("./inventory.service"), exports);
+__exportStar(require("./inventory-merchant.resolver"), exports);
 __exportStar(require("./stock-ledger.service"), exports);
 __exportStar(require("./entities/order-stock-ledger.entity"), exports);
 __exportStar(require("./entities/stock-in-order.entity"), exports);

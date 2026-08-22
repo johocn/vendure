@@ -2,9 +2,12 @@
 import { Injectable } from '@nestjs/common';
 import { ID } from '@vendure/common/lib/shared-types';
 import {
+    AdministratorService,
     Allocation,
+    ForbiddenError,
     Logger,
     OrderLine,
+    Product,
     ProductVariant,
     RequestContext,
     Sale,
@@ -18,6 +21,7 @@ import {
     UserInputError,
     idsAreEqual,
 } from '@vendure/core';
+import { Shop } from '@vendure/shop-plugin';
 
 import {
     STOCK_IN_TRANSITIONS,
@@ -57,6 +61,7 @@ export class InventoryService {
         private stockLevelService: StockLevelService,
         private stockLocationService: StockLocationService,
         private stockLedgerService: StockLedgerService,
+        private administratorService: AdministratorService,
     ) {}
 
     // ===== 内部辅助方法 =====
@@ -1348,5 +1353,123 @@ export class InventoryService {
         order.state = PurchaseOrderState.Cancelled;
         order.cancelledAt = new Date();
         return repo.save(order);
+    }
+
+    // ===== 店主自营库存（阶段47）：只读水位 + 归属校验下绝对量校准，复用平台账本封装 =====
+
+    /**
+     * 归属解析（与 shop-plugin 阶段18 账权同口径）：activeUserId → Administrator → Shop.administratorId。
+     * 不注入 ShopService（跨插件模块不可注入），依核心服务/仓储复刻 resolveMyShopFromActiveUser + requireMyShop。
+     */
+    private async requireMyShop(ctx: RequestContext): Promise<Shop> {
+        if (!ctx.activeUserId) {
+            throw new ForbiddenError();
+        }
+        const admin = await this.administratorService.findOneByUserId(ctx, ctx.activeUserId);
+        if (!admin || admin.id == null) {
+            throw new ForbiddenError();
+        }
+        const shop = await this.connection
+            .getRepository(ctx, Shop)
+            .findOne({ where: { administratorId: admin.id as number } as any });
+        if (!shop || shop.status !== 'active') {
+            throw new ForbiddenError();
+        }
+        return shop;
+    }
+
+    /** 校验商品归属本人店铺（Product.customFields.shopId === 我的 shopId）；否则 Forbidden。 */
+    private async assertMyProduct(ctx: RequestContext, productId: ID, shopId: number): Promise<void> {
+        const product = await this.connection
+            .getRepository(ctx, Product)
+            .findOne({ where: { id: productId as any as number } as any });
+        if (!product || (product.customFields as any)?.shopId !== shopId) {
+            throw new ForbiddenError();
+        }
+    }
+
+    /**
+     * 店主只读水位：本人店铺某商品的逐仓库存（含可售/占用）。
+     * 归属：先校验商品属于本人店铺（Product.customFields.shopId === 我的 shopId）。
+     */
+    async getMyShopStock(
+        ctx: RequestContext,
+        productId: ID,
+    ): Promise<Array<{ variantId: ID; variantName: string | null; sku: string | null; locations: any[] }>> {
+        const shop = await this.requireMyShop(ctx);
+        await this.assertMyProduct(ctx, productId, shop.id as number);
+
+        const variantRepo = this.connection.getRepository(ctx, ProductVariant);
+        const variants = await variantRepo.find({
+            where: { product: { id: productId as any as number } } as any,
+        });
+
+        // 分页拉取全部仓库（单次列表查询有上限）
+        const pageSize = 100;
+        const locations: StockLocation[] = [];
+        let page = 1;
+        while (true) {
+            const result = await this.stockLocationService.findAll(ctx, {
+                skip: (page - 1) * pageSize,
+                take: pageSize,
+            });
+            locations.push(...result.items);
+            if (result.items.length < pageSize || result.totalItems <= locations.length) {
+                break;
+            }
+            page++;
+        }
+
+        const rows: Array<{ variantId: ID; variantName: string; sku: string | null; locations: any[] }> = [];
+        for (const v of variants) {
+            const locationsRow: any[] = [];
+            for (const loc of locations) {
+                const level = await this.stockLevelService.getStockLevel(ctx, v.id, loc.id);
+                locationsRow.push({
+                    locationId: loc.id,
+                    locationName: loc.name,
+                    stockOnHand: level.stockOnHand,
+                    stockAllocated: level.stockAllocated,
+                    stockAvailable: level.stockOnHand - level.stockAllocated,
+                });
+            }
+            rows.push({ variantId: v.id, variantName: (v.name as any) ?? null, sku: v.sku ?? null, locations: locationsRow });
+        }
+        return rows;
+    }
+
+    /**
+     * 店主库存绝对量校准：对本人店铺商品某 variant 在某位置置为目标水位（delta=目标-当前），写 manual 账本。
+     * 归属：先校验 variant 所属商品属于本人店铺，避免越权调他人店铺商品。
+     */
+    async adjustMyShopStock(
+        ctx: RequestContext,
+        variantId: ID,
+        stockLocationId: ID,
+        stockOnHand: number,
+    ): Promise<boolean> {
+        const shop = await this.requireMyShop(ctx);
+        if (stockOnHand < 0) {
+            throw new UserInputError('stockOnHand must be >= 0');
+        }
+
+        const variant = await this.connection
+            .getRepository(ctx, ProductVariant)
+            .findOne({ where: { id: variantId as any as number } as any, relations: ['product'] });
+        if (!variant) {
+            throw new UserInputError(`ProductVariant ${variantId} not found`);
+        }
+        await this.assertMyProduct(ctx, variant.product.id, shop.id as number);
+
+        const current = await this.stockLevelService.getStockLevel(ctx, variantId, stockLocationId);
+        const delta = stockOnHand - current.stockOnHand;
+        if (delta === 0) {
+            return true;
+        }
+        await this.adjustStockForLocation(ctx, variantId, stockLocationId, delta, `MyShop#${shop.slug}:manual-adjust`, {
+            bizType: 'manual',
+            bizCode: `MyShop-${shop.slug}`,
+        });
+        return true;
     }
 }

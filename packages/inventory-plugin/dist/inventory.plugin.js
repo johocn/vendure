@@ -14,6 +14,7 @@ exports.InventoryPlugin = void 0;
 const core_1 = require("@nestjs/core");
 const core_2 = require("@vendure/core");
 const inventory_admin_resolver_1 = require("./inventory-admin.resolver");
+const inventory_merchant_resolver_1 = require("./inventory-merchant.resolver");
 const inventory_shop_resolver_1 = require("./inventory-shop.resolver");
 const inventory_service_1 = require("./inventory.service");
 const role_sync_1 = require("./role-sync");
@@ -311,6 +312,20 @@ exports.InventoryPlugin = InventoryPlugin = InventoryPlugin_1 = __decorate([
                 totalItems: Int!
             }
 
+            type MerchantVariantStockLocation {
+                locationId: ID!
+                locationName: String!
+                stockOnHand: Int!
+                stockAllocated: Int!
+                stockAvailable: Int!
+            }
+            type MerchantVariantStock {
+                variantId: ID!
+                variantName: String
+                sku: String
+                locations: [MerchantVariantStockLocation!]!
+            }
+
             type Supplier {
                 id: ID!
                 code: String!
@@ -431,6 +446,8 @@ exports.InventoryPlugin = InventoryPlugin = InventoryPlugin_1 = __decorate([
 
                 purchaseOrders(state: String, options: PurchaseOrderListOptions): PurchaseOrderList!
                 purchaseOrder(id: ID!): PurchaseOrder
+
+                myShopStock(productId: ID!): [MerchantVariantStock!]!
             }
 
             extend type Mutation {
@@ -466,9 +483,11 @@ exports.InventoryPlugin = InventoryPlugin = InventoryPlugin_1 = __decorate([
                 receivePurchaseOrder(id: ID!, lines: [ReceivePurchaseOrderInput!]!): PurchaseOrder!
                 completePurchaseOrder(id: ID!): PurchaseOrder!
                 cancelPurchaseOrder(id: ID!): PurchaseOrder!
+
+                myShopStockAdjust(variantId: ID!, stockLocationId: ID!, stockOnHand: Int!): Boolean!
             }
         `,
-            resolvers: [inventory_admin_resolver_1.InventoryAdminResolver],
+            resolvers: [inventory_admin_resolver_1.InventoryAdminResolver, inventory_merchant_resolver_1.InventoryMerchantResolver],
         },
         configuration: (config) => {
             var _a;

@@ -1,6 +1,7 @@
 export * from './inventory.plugin';
 export * from './constants';
 export * from './inventory.service';
+export * from './inventory-merchant.resolver';
 export * from './stock-ledger.service';
 export * from './entities/order-stock-ledger.entity';
 export * from './entities/stock-in-order.entity';

@@ -13,6 +13,7 @@ exports.InventoryService = void 0;
 // e:\code\vendure\packages\inventory-plugin\src\inventory.service.ts
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
+const shop_plugin_1 = require("@vendure/shop-plugin");
 const constants_1 = require("./constants");
 const stock_in_order_entity_1 = require("./entities/stock-in-order.entity");
 const stock_out_order_entity_1 = require("./entities/stock-out-order.entity");
@@ -23,12 +24,13 @@ const purchase_order_entity_1 = require("./entities/purchase-order.entity");
 const stock_ledger_service_1 = require("./stock-ledger.service");
 const loggerCtx = 'InventoryService';
 let InventoryService = class InventoryService {
-    constructor(connection, stockMovementService, stockLevelService, stockLocationService, stockLedgerService) {
+    constructor(connection, stockMovementService, stockLevelService, stockLocationService, stockLedgerService, administratorService) {
         this.connection = connection;
         this.stockMovementService = stockMovementService;
         this.stockLevelService = stockLevelService;
         this.stockLocationService = stockLocationService;
         this.stockLedgerService = stockLedgerService;
+        this.administratorService = administratorService;
     }
     // ===== 内部辅助方法 =====
     /**
@@ -1051,6 +1053,108 @@ let InventoryService = class InventoryService {
         order.cancelledAt = new Date();
         return repo.save(order);
     }
+    // ===== 店主自营库存（阶段47）：只读水位 + 归属校验下绝对量校准，复用平台账本封装 =====
+    /**
+     * 归属解析（与 shop-plugin 阶段18 账权同口径）：activeUserId → Administrator → Shop.administratorId。
+     * 不注入 ShopService（跨插件模块不可注入），依核心服务/仓储复刻 resolveMyShopFromActiveUser + requireMyShop。
+     */
+    async requireMyShop(ctx) {
+        if (!ctx.activeUserId) {
+            throw new core_1.ForbiddenError();
+        }
+        const admin = await this.administratorService.findOneByUserId(ctx, ctx.activeUserId);
+        if (!admin || admin.id == null) {
+            throw new core_1.ForbiddenError();
+        }
+        const shop = await this.connection
+            .getRepository(ctx, shop_plugin_1.Shop)
+            .findOne({ where: { administratorId: admin.id } });
+        if (!shop || shop.status !== 'active') {
+            throw new core_1.ForbiddenError();
+        }
+        return shop;
+    }
+    /** 校验商品归属本人店铺（Product.customFields.shopId === 我的 shopId）；否则 Forbidden。 */
+    async assertMyProduct(ctx, productId, shopId) {
+        var _a;
+        const product = await this.connection
+            .getRepository(ctx, core_1.Product)
+            .findOne({ where: { id: productId } });
+        if (!product || ((_a = product.customFields) === null || _a === void 0 ? void 0 : _a.shopId) !== shopId) {
+            throw new core_1.ForbiddenError();
+        }
+    }
+    /**
+     * 店主只读水位：本人店铺某商品的逐仓库存（含可售/占用）。
+     * 归属：先校验商品属于本人店铺（Product.customFields.shopId === 我的 shopId）。
+     */
+    async getMyShopStock(ctx, productId) {
+        var _a, _b;
+        const shop = await this.requireMyShop(ctx);
+        await this.assertMyProduct(ctx, productId, shop.id);
+        const variantRepo = this.connection.getRepository(ctx, core_1.ProductVariant);
+        const variants = await variantRepo.find({
+            where: { product: { id: productId } },
+        });
+        // 分页拉取全部仓库（单次列表查询有上限）
+        const pageSize = 100;
+        const locations = [];
+        let page = 1;
+        while (true) {
+            const result = await this.stockLocationService.findAll(ctx, {
+                skip: (page - 1) * pageSize,
+                take: pageSize,
+            });
+            locations.push(...result.items);
+            if (result.items.length < pageSize || result.totalItems <= locations.length) {
+                break;
+            }
+            page++;
+        }
+        const rows = [];
+        for (const v of variants) {
+            const locationsRow = [];
+            for (const loc of locations) {
+                const level = await this.stockLevelService.getStockLevel(ctx, v.id, loc.id);
+                locationsRow.push({
+                    locationId: loc.id,
+                    locationName: loc.name,
+                    stockOnHand: level.stockOnHand,
+                    stockAllocated: level.stockAllocated,
+                    stockAvailable: level.stockOnHand - level.stockAllocated,
+                });
+            }
+            rows.push({ variantId: v.id, variantName: (_a = v.name) !== null && _a !== void 0 ? _a : null, sku: (_b = v.sku) !== null && _b !== void 0 ? _b : null, locations: locationsRow });
+        }
+        return rows;
+    }
+    /**
+     * 店主库存绝对量校准：对本人店铺商品某 variant 在某位置置为目标水位（delta=目标-当前），写 manual 账本。
+     * 归属：先校验 variant 所属商品属于本人店铺，避免越权调他人店铺商品。
+     */
+    async adjustMyShopStock(ctx, variantId, stockLocationId, stockOnHand) {
+        const shop = await this.requireMyShop(ctx);
+        if (stockOnHand < 0) {
+            throw new core_1.UserInputError('stockOnHand must be >= 0');
+        }
+        const variant = await this.connection
+            .getRepository(ctx, core_1.ProductVariant)
+            .findOne({ where: { id: variantId }, relations: ['product'] });
+        if (!variant) {
+            throw new core_1.UserInputError(`ProductVariant ${variantId} not found`);
+        }
+        await this.assertMyProduct(ctx, variant.product.id, shop.id);
+        const current = await this.stockLevelService.getStockLevel(ctx, variantId, stockLocationId);
+        const delta = stockOnHand - current.stockOnHand;
+        if (delta === 0) {
+            return true;
+        }
+        await this.adjustStockForLocation(ctx, variantId, stockLocationId, delta, `MyShop#${shop.slug}:manual-adjust`, {
+            bizType: 'manual',
+            bizCode: `MyShop-${shop.slug}`,
+        });
+        return true;
+    }
 };
 exports.InventoryService = InventoryService;
 exports.InventoryService = InventoryService = __decorate([
@@ -1059,5 +1163,6 @@ exports.InventoryService = InventoryService = __decorate([
         core_1.StockMovementService,
         core_1.StockLevelService,
         core_1.StockLocationService,
-        stock_ledger_service_1.StockLedgerService])
+        stock_ledger_service_1.StockLedgerService,
+        core_1.AdministratorService])
 ], InventoryService);

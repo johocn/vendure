@@ -3,6 +3,7 @@ import { ModuleRef } from '@nestjs/core';
 import { EventBus, Injector, Logger, PluginCommonModule, Sale, StockMovementEvent, VendurePlugin } from '@vendure/core';
 
 import { InventoryAdminResolver } from './inventory-admin.resolver';
+import { InventoryMerchantResolver } from './inventory-merchant.resolver';
 import { InventoryShopResolver } from './inventory-shop.resolver';
 import { InventoryService } from './inventory.service';
 import { RoleSyncService } from './role-sync';
@@ -265,6 +266,20 @@ const { gql } = require('graphql-tag');
                 totalItems: Int!
             }
 
+            type MerchantVariantStockLocation {
+                locationId: ID!
+                locationName: String!
+                stockOnHand: Int!
+                stockAllocated: Int!
+                stockAvailable: Int!
+            }
+            type MerchantVariantStock {
+                variantId: ID!
+                variantName: String
+                sku: String
+                locations: [MerchantVariantStockLocation!]!
+            }
+
             type Supplier {
                 id: ID!
                 code: String!
@@ -385,6 +400,8 @@ const { gql } = require('graphql-tag');
 
                 purchaseOrders(state: String, options: PurchaseOrderListOptions): PurchaseOrderList!
                 purchaseOrder(id: ID!): PurchaseOrder
+
+                myShopStock(productId: ID!): [MerchantVariantStock!]!
             }
 
             extend type Mutation {
@@ -420,9 +437,11 @@ const { gql } = require('graphql-tag');
                 receivePurchaseOrder(id: ID!, lines: [ReceivePurchaseOrderInput!]!): PurchaseOrder!
                 completePurchaseOrder(id: ID!): PurchaseOrder!
                 cancelPurchaseOrder(id: ID!): PurchaseOrder!
+
+                myShopStockAdjust(variantId: ID!, stockLocationId: ID!, stockOnHand: Int!): Boolean!
             }
         `,
-        resolvers: [InventoryAdminResolver],
+        resolvers: [InventoryAdminResolver, InventoryMerchantResolver],
     },
     configuration: (config) => {
         // 注册自定义 Permission（与 delivery-plugin 同源权限同名，重复注册安全）

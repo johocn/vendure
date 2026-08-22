@@ -1,5 +1,5 @@
 import { ID } from '@vendure/common/lib/shared-types';
-import { RequestContext, Sale, StockLevel, StockLevelService, StockLocationService, StockMovementService, StockLocation, TransactionalConnection } from '@vendure/core';
+import { AdministratorService, RequestContext, Sale, StockLevel, StockLevelService, StockLocationService, StockMovementService, StockLocation, TransactionalConnection } from '@vendure/core';
 import { StockInOrder } from './entities/stock-in-order.entity';
 import { StockOutOrder } from './entities/stock-out-order.entity';
 import { StockMoveOrder } from './entities/stock-move-order.entity';
@@ -20,7 +20,8 @@ export declare class InventoryService {
     private stockLevelService;
     private stockLocationService;
     private stockLedgerService;
-    constructor(connection: TransactionalConnection, stockMovementService: StockMovementService, stockLevelService: StockLevelService, stockLocationService: StockLocationService, stockLedgerService: StockLedgerService);
+    private administratorService;
+    constructor(connection: TransactionalConnection, stockMovementService: StockMovementService, stockLevelService: StockLevelService, stockLocationService: StockLocationService, stockLedgerService: StockLedgerService, administratorService: AdministratorService);
     /**
      * 调整某仓库的库存（delta 为正数表示增加，负数表示减少）
      * 通过 adjustProductVariantStock 写入 StockAdjustment 流水
@@ -300,4 +301,26 @@ export declare class InventoryService {
     }>): Promise<PurchaseOrder>;
     completePurchaseOrder(ctx: RequestContext, id: ID): Promise<PurchaseOrder>;
     cancelPurchaseOrder(ctx: RequestContext, id: ID): Promise<PurchaseOrder>;
+    /**
+     * 归属解析（与 shop-plugin 阶段18 账权同口径）：activeUserId → Administrator → Shop.administratorId。
+     * 不注入 ShopService（跨插件模块不可注入），依核心服务/仓储复刻 resolveMyShopFromActiveUser + requireMyShop。
+     */
+    private requireMyShop;
+    /** 校验商品归属本人店铺（Product.customFields.shopId === 我的 shopId）；否则 Forbidden。 */
+    private assertMyProduct;
+    /**
+     * 店主只读水位：本人店铺某商品的逐仓库存（含可售/占用）。
+     * 归属：先校验商品属于本人店铺（Product.customFields.shopId === 我的 shopId）。
+     */
+    getMyShopStock(ctx: RequestContext, productId: ID): Promise<Array<{
+        variantId: ID;
+        variantName: string | null;
+        sku: string | null;
+        locations: any[];
+    }>>;
+    /**
+     * 店主库存绝对量校准：对本人店铺商品某 variant 在某位置置为目标水位（delta=目标-当前），写 manual 账本。
+     * 归属：先校验 variant 所属商品属于本人店铺，避免越权调他人店铺商品。
+     */
+    adjustMyShopStock(ctx: RequestContext, variantId: ID, stockLocationId: ID, stockOnHand: number): Promise<boolean>;
 }
