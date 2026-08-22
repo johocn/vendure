@@ -424,6 +424,7 @@ const { gql } = require('graphql-tag');
                 type: 'localeString',
                 defaultValue: 'standard',
                 list: false,
+                public: true,
                 ui: {
                     component: 'select-form-input',
                     options: [
@@ -441,6 +442,7 @@ const { gql } = require('graphql-tag');
                 type: 'string',
                 defaultValue: 'taobao-orange',
                 list: false,
+                public: true,
                 ui: {
                     component: 'select-form-input',
                     options: [
