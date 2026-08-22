@@ -435,6 +435,7 @@ exports.OperationsPlugin = OperationsPlugin = OperationsPlugin_1 = __decorate([
             resolvers: [operations_shop_resolver_1.OperationsShopResolver],
         },
         configuration: (config) => {
+            var _a, _b, _c;
             // Register ScheduledTask for content lifecycle
             if (!config.schedulerOptions) {
                 config.schedulerOptions = { tasks: [] };
@@ -445,6 +446,44 @@ exports.OperationsPlugin = OperationsPlugin = OperationsPlugin_1 = __decorate([
             const exists = config.schedulerOptions.tasks.some(t => t.id === content_lifecycle_task_1.contentLifecycleTask.id);
             if (!exists) {
                 config.schedulerOptions.tasks.push(content_lifecycle_task_1.contentLifecycleTask);
+            }
+            // 合并自定义字段：Product.displayTemplate 与 Channel.themeId
+            config.customFields = (_a = config.customFields) !== null && _a !== void 0 ? _a : {};
+            config.customFields.Product = (_b = config.customFields.Product) !== null && _b !== void 0 ? _b : [];
+            if (!config.customFields.Product.some(cf => cf.name === 'displayTemplate')) {
+                config.customFields.Product.push({
+                    name: 'displayTemplate',
+                    type: 'localeString',
+                    defaultValue: 'standard',
+                    list: false,
+                    ui: {
+                        component: 'select-form-input',
+                        options: [
+                            { value: 'standard', label: 'Standard' },
+                            { value: 'galleryFirst', label: 'Gallery First' },
+                            { value: 'rich', label: 'Rich' },
+                        ],
+                    },
+                });
+            }
+            config.customFields.Channel = (_c = config.customFields.Channel) !== null && _c !== void 0 ? _c : [];
+            if (!config.customFields.Channel.some(cf => cf.name === 'themeId')) {
+                config.customFields.Channel.push({
+                    name: 'themeId',
+                    type: 'localeString',
+                    defaultValue: 'taobao-orange',
+                    list: false,
+                    ui: {
+                        component: 'select-form-input',
+                        options: [
+                            { value: 'jd-red', label: '京东红' },
+                            { value: 'taobao-orange', label: '淘宝橙' },
+                            { value: 'modern-minimal', label: '现代极简' },
+                            { value: 'brand', label: '品牌定制' },
+                            { value: 'default', label: '默认' },
+                        ],
+                    },
+                });
             }
             return config;
         },

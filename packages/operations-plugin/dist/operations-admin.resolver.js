@@ -110,6 +110,10 @@ let OperationsAdminResolver = class OperationsAdminResolver {
                 return constants_1.OperationsPermissions.ManageNotice;
             case 'Floor':
                 return constants_1.OperationsPermissions.ManageFloor;
+            case 'IconGrid':
+                return constants_1.OperationsPermissions.ManageContent;
+            case 'CategoryNav':
+                return constants_1.OperationsPermissions.ManageContent;
             default:
                 return constants_1.OperationsPermissions.ManageContent;
         }

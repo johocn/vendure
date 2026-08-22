@@ -22,7 +22,9 @@ export declare enum ContentType {
     Banner = "Banner",
     Recommendation = "Recommendation",
     Notice = "Notice",
-    Floor = "Floor"
+    Floor = "Floor",
+    IconGrid = "IconGrid",
+    CategoryNav = "CategoryNav"
 }
 /**
  * Low stock threshold for inventory metrics (hardcoded per spec Q1 decision).

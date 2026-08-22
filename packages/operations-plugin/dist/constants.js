@@ -28,6 +28,8 @@ var ContentType;
     ContentType["Recommendation"] = "Recommendation";
     ContentType["Notice"] = "Notice";
     ContentType["Floor"] = "Floor";
+    ContentType["IconGrid"] = "IconGrid";
+    ContentType["CategoryNav"] = "CategoryNav";
 })(ContentType || (exports.ContentType = ContentType = {}));
 /**
  * Low stock threshold for inventory metrics (hardcoded per spec Q1 decision).

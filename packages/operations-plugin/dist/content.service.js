@@ -170,6 +170,16 @@ let ContentService = class ContentService {
                     throw new core_1.UserInputError(`Invalid data for type '${type}': missing required field 'items' (array)`);
                 }
                 break;
+            case constants_1.ContentType.IconGrid:
+                if (!Array.isArray(data.items) || data.items.length === 0) {
+                    throw new core_1.UserInputError(`Invalid data for type '${type}': missing required field 'items' (array of {icon,label,link})`);
+                }
+                break;
+            case constants_1.ContentType.CategoryNav:
+                if (!Array.isArray(data.items) || data.items.length === 0) {
+                    throw new core_1.UserInputError(`Invalid data for type '${type}': missing required field 'items' (array of {name,slug|collection})`);
+                }
+                break;
         }
     }
     // ===== Auto online/offline (called by ScheduledTask) =====

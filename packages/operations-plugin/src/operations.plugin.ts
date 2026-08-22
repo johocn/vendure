@@ -414,6 +414,45 @@ const { gql } = require('graphql-tag');
         if (!exists) {
             config.schedulerOptions.tasks.push(contentLifecycleTask);
         }
+
+        // 合并自定义字段：Product.displayTemplate 与 Channel.themeId
+        config.customFields = config.customFields ?? {};
+        config.customFields.Product = config.customFields.Product ?? [];
+        if (!config.customFields.Product.some(cf => cf.name === 'displayTemplate')) {
+            config.customFields.Product.push({
+                name: 'displayTemplate',
+                type: 'localeString',
+                defaultValue: 'standard',
+                list: false,
+                ui: {
+                    component: 'select-form-input',
+                    options: [
+                        { value: 'standard', label: 'Standard' },
+                        { value: 'galleryFirst', label: 'Gallery First' },
+                        { value: 'rich', label: 'Rich' },
+                    ],
+                },
+            });
+        }
+        config.customFields.Channel = config.customFields.Channel ?? [];
+        if (!config.customFields.Channel.some(cf => cf.name === 'themeId')) {
+            config.customFields.Channel.push({
+                name: 'themeId',
+                type: 'localeString',
+                defaultValue: 'taobao-orange',
+                list: false,
+                ui: {
+                    component: 'select-form-input',
+                    options: [
+                        { value: 'jd-red', label: '京东红' },
+                        { value: 'taobao-orange', label: '淘宝橙' },
+                        { value: 'modern-minimal', label: '现代极简' },
+                        { value: 'brand', label: '品牌定制' },
+                        { value: 'default', label: '默认' },
+                    ],
+                },
+            });
+        }
         return config;
     },
     compatibility: '^3.6.0',
