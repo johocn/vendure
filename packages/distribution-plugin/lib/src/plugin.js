@@ -24,6 +24,7 @@ const constants_1 = require("./constants");
 const commission_record_entity_1 = require("./commission-record.entity");
 const commission_service_1 = require("./commission.service");
 const distribution_admin_resolver_1 = require("./distribution-admin.resolver");
+const distribution_admin_shop_resolver_1 = require("./distribution-admin-shop.resolver");
 const distribution_service_1 = require("./distribution.service");
 const distribution_shop_resolver_1 = require("./distribution-shop.resolver");
 const distributor_entity_1 = require("./distributor.entity");
@@ -151,6 +152,7 @@ exports.DistributionPlugin = DistributionPlugin = DistributionPlugin_1 = __decor
             type Distributor implements Node {
                 id: ID!
                 customerId: ID!
+                customerEmail: String
                 parentId: ID
                 level: Int!
                 status: DistributorStatus!
@@ -165,6 +167,9 @@ exports.DistributionPlugin = DistributionPlugin = DistributionPlugin_1 = __decor
             type CommissionRecord implements Node {
                 id: ID!
                 distributorId: ID!
+                orderId: ID!
+                orderLineId: ID
+                fromDistributorId: ID
                 commissionType: CommissionType!
                 commissionRate: Int!
                 orderAmount: Int!
@@ -186,6 +191,11 @@ exports.DistributionPlugin = DistributionPlugin = DistributionPlugin_1 = __decor
                 createdAt: DateTime!
             }
 
+            type DistributorList implements PaginatedList {
+                items: [Distributor!]!
+                totalItems: Int!
+            }
+
             type CommissionRecordList implements PaginatedList {
                 items: [CommissionRecord!]!
                 totalItems: Int!
@@ -196,6 +206,7 @@ exports.DistributionPlugin = DistributionPlugin = DistributionPlugin_1 = __decor
                 totalItems: Int!
             }
 
+            input DistributorListOptions
             input CommissionRecordListOptions
             input WithdrawalRequestListOptions
 
@@ -203,14 +214,23 @@ exports.DistributionPlugin = DistributionPlugin = DistributionPlugin_1 = __decor
                 myDistributorProfile: Distributor
                 myCommissionRecords(options: CommissionRecordListOptions): CommissionRecordList!
                 myWithdrawalRequests(options: WithdrawalRequestListOptions): WithdrawalRequestList!
+                distributors(options: DistributorListOptions): DistributorList!
+                commissionRecords(options: CommissionRecordListOptions): CommissionRecordList!
+                withdrawalRequests(options: WithdrawalRequestListOptions): WithdrawalRequestList!
             }
 
             extend type Mutation {
                 applyDistributor(referredByCode: String): Distributor!
                 requestWithdrawal(amount: Int!, method: WithdrawalMethod!, accountInfo: String!): WithdrawalRequest!
+                approveDistributor(id: ID!): Distributor!
+                freezeDistributor(id: ID!): Distributor!
+                approveWithdrawal(id: ID!): WithdrawalRequest!
+                rejectWithdrawal(id: ID!): WithdrawalRequest!
+                markWithdrawalPaid(id: ID!): WithdrawalRequest!
+                settleCommissionsNow: Int!
             }
         `,
-            resolvers: [distribution_shop_resolver_1.DistributionShopResolver],
+            resolvers: [distribution_shop_resolver_1.DistributionShopResolver, distribution_admin_shop_resolver_1.DistributionAdminShopResolver],
         },
         configuration: config => {
             var _a, _b, _c, _d;

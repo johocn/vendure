@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Channel, EventBus, ID, ListQueryBuilder, ListQueryOptions, Logger, PaginatedList, PaymentStateTransitionEvent, RequestContext, RefundStateTransitionEvent, TransactionalConnection } from '@vendure/core';
+import { Channel, CustomerService, EventBus, ID, ListQueryBuilder, ListQueryOptions, Logger, OrderService, PaginatedList, PaymentStateTransitionEvent, RequestContext, RefundStateTransitionEvent, TransactionalConnection } from '@vendure/core';
 
 import { CommissionRecord } from './commission-record.entity';
 import { Distributor } from './distributor.entity';
@@ -15,6 +15,8 @@ export class CommissionService {
         private listQueryBuilder: ListQueryBuilder,
         private distributionService: DistributionService,
         private eventBus: EventBus,
+        private customerService: CustomerService,
+        private orderService: OrderService,
     ) {}
 
     init(): void {
@@ -44,13 +46,18 @@ export class CommissionService {
 
     async calculateCommission(event: PaymentStateTransitionEvent): Promise<void> {
         const ctx = event.ctx;
-        const order = event.order;
+        const rawOrder = event.order;
 
         if (!(ctx.channel as any).customFields?.distributionEnabled) {
             return;
         }
 
-        const customer = order.customer;
+        // 事件携带的 order 不保证已加载 customer 及其 customFields（支付/退款事件 order.customer 为空是常见坑），按 id 重载。
+        const order = (await this.orderService.findOne(ctx, rawOrder.id as ID, ['customer'])) ?? rawOrder;
+        const customerId = rawOrder.customerId != null ? rawOrder.customerId : (order as any)?.customer?.id;
+        if (!customerId) return;
+
+        const customer = (await this.customerService.findOne(ctx, customerId as ID)) ?? (order as any)?.customer;
         if (!customer) return;
 
         // 修复：读取 referredBy（推荐人的推荐码），而非 referralCode（自己的码）
@@ -67,7 +74,8 @@ export class CommissionService {
         }
 
         const directRate = (ctx.channel as any).customFields?.directCommissionRate ?? 1000;
-        const orderTotal = order.total;
+        // 佣金基数 = 扣券后实际应付（含税金额），与阶段37券体系一致：券不影响佣金率，只影响应付额。
+        const orderTotal = order.totalWithTax ?? rawOrder.totalWithTax ?? 0;
 
         const directAmount = Math.floor(orderTotal * directRate / 10000);
 

@@ -1,5 +1,5 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { Ctx, ID, ListQueryOptions, PaginatedList, RequestContext, Transaction } from '@vendure/core';
+import { CustomerService, Ctx, ID, ListQueryOptions, PaginatedList, RequestContext, Transaction } from '@vendure/core';
 
 import { CommissionRecord } from './commission-record.entity';
 import { CommissionService } from './commission.service';
@@ -14,14 +14,26 @@ export class DistributionShopResolver {
         private distributionService: DistributionService,
         private commissionService: CommissionService,
         private withdrawalService: WithdrawalService,
+        private customerService: CustomerService,
     ) {}
+
+    /**
+     * shop-api 会话的 ctx.activeUserId 是 User 的 id，而 Distributor.customerId 存的是 Customer 的 id，
+     * 二者数字空间重叠会错配。统一经 findOneByUserId 解析出真实 customer id。
+     */
+    private async resolveCustomerId(ctx: RequestContext): Promise<ID | undefined> {
+        if (!ctx.activeUserId) return undefined;
+        const customer = await this.customerService.findOneByUserId(ctx, ctx.activeUserId as ID);
+        return customer?.id;
+    }
 
     @Query()
     async myDistributorProfile(
         @Ctx() ctx: RequestContext,
     ): Promise<Distributor | undefined> {
-        if (!ctx.activeUserId) return undefined;
-        return this.distributionService.findByCustomerId(ctx, ctx.activeUserId as any);
+        const customerId = await this.resolveCustomerId(ctx);
+        if (!customerId) return undefined;
+        return this.distributionService.findByCustomerId(ctx, customerId);
     }
 
     @Query()
@@ -29,8 +41,9 @@ export class DistributionShopResolver {
         @Ctx() ctx: RequestContext,
         @Args() options: ListQueryOptions<CommissionRecord>,
     ): Promise<PaginatedList<CommissionRecord>> {
-        if (!ctx.activeUserId) return { items: [], totalItems: 0 };
-        const distributor = await this.distributionService.findByCustomerId(ctx, ctx.activeUserId as any);
+        const customerId = await this.resolveCustomerId(ctx);
+        if (!customerId) return { items: [], totalItems: 0 };
+        const distributor = await this.distributionService.findByCustomerId(ctx, customerId);
         if (!distributor) return { items: [], totalItems: 0 };
         return this.commissionService.findByDistributor(ctx, distributor.id, options);
     }
@@ -40,8 +53,9 @@ export class DistributionShopResolver {
         @Ctx() ctx: RequestContext,
         @Args() options: ListQueryOptions<WithdrawalRequest>,
     ): Promise<PaginatedList<WithdrawalRequest>> {
-        if (!ctx.activeUserId) return { items: [], totalItems: 0 };
-        const distributor = await this.distributionService.findByCustomerId(ctx, ctx.activeUserId as any);
+        const customerId = await this.resolveCustomerId(ctx);
+        if (!customerId) return { items: [], totalItems: 0 };
+        const distributor = await this.distributionService.findByCustomerId(ctx, customerId);
         if (!distributor) return { items: [], totalItems: 0 };
         return this.withdrawalService.findByDistributor(ctx, distributor.id, options);
     }
@@ -52,10 +66,11 @@ export class DistributionShopResolver {
         @Ctx() ctx: RequestContext,
         @Args('referredByCode') referredByCode?: string,
     ): Promise<Distributor> {
-        if (!ctx.activeUserId) {
+        const customerId = await this.resolveCustomerId(ctx);
+        if (!customerId) {
             throw new Error('Must be logged in to apply as distributor');
         }
-        return this.distributionService.apply(ctx, ctx.activeUserId as any, referredByCode ?? undefined);
+        return this.distributionService.apply(ctx, customerId, referredByCode ?? undefined);
     }
 
     @Mutation()
@@ -66,10 +81,11 @@ export class DistributionShopResolver {
         @Args('method') method: 'bank' | 'alipay' | 'wechat',
         @Args('accountInfo') accountInfo: string,
     ): Promise<WithdrawalRequest> {
-        if (!ctx.activeUserId) {
+        const customerId = await this.resolveCustomerId(ctx);
+        if (!customerId) {
             throw new Error('Must be logged in to request withdrawal');
         }
-        const distributor = await this.distributionService.findByCustomerId(ctx, ctx.activeUserId as any);
+        const distributor = await this.distributionService.findByCustomerId(ctx, customerId);
         if (!distributor) {
             throw new Error('Not a distributor');
         }

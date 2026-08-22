@@ -1,4 +1,4 @@
-import { EventBus, ID, ListQueryBuilder, ListQueryOptions, PaginatedList, PaymentStateTransitionEvent, RequestContext, TransactionalConnection } from '@vendure/core';
+import { CustomerService, EventBus, ID, ListQueryBuilder, ListQueryOptions, OrderService, PaginatedList, PaymentStateTransitionEvent, RequestContext, TransactionalConnection } from '@vendure/core';
 import { CommissionRecord } from './commission-record.entity';
 import { DistributionService } from './distribution.service';
 export declare class CommissionService {
@@ -6,8 +6,10 @@ export declare class CommissionService {
     private listQueryBuilder;
     private distributionService;
     private eventBus;
+    private customerService;
+    private orderService;
     private initialized;
-    constructor(connection: TransactionalConnection, listQueryBuilder: ListQueryBuilder, distributionService: DistributionService, eventBus: EventBus);
+    constructor(connection: TransactionalConnection, listQueryBuilder: ListQueryBuilder, distributionService: DistributionService, eventBus: EventBus, customerService: CustomerService, orderService: OrderService);
     init(): void;
     calculateCommission(event: PaymentStateTransitionEvent): Promise<void>;
     findAll(ctx: RequestContext, options?: ListQueryOptions<CommissionRecord>): Promise<PaginatedList<CommissionRecord>>;

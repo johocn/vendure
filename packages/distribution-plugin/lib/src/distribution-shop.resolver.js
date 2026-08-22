@@ -19,43 +19,59 @@ const commission_service_1 = require("./commission.service");
 const distribution_service_1 = require("./distribution.service");
 const withdrawal_service_1 = require("./withdrawal.service");
 let DistributionShopResolver = class DistributionShopResolver {
-    constructor(distributionService, commissionService, withdrawalService) {
+    constructor(distributionService, commissionService, withdrawalService, customerService) {
         this.distributionService = distributionService;
         this.commissionService = commissionService;
         this.withdrawalService = withdrawalService;
+        this.customerService = customerService;
     }
-    async myDistributorProfile(ctx) {
+    /**
+     * shop-api 会话的 ctx.activeUserId 是 User 的 id，而 Distributor.customerId 存的是 Customer 的 id，
+     * 二者数字空间重叠会错配。统一经 findOneByUserId 解析出真实 customer id。
+     */
+    async resolveCustomerId(ctx) {
         if (!ctx.activeUserId)
             return undefined;
-        return this.distributionService.findByCustomerId(ctx, ctx.activeUserId);
+        const customer = await this.customerService.findOneByUserId(ctx, ctx.activeUserId);
+        return customer === null || customer === void 0 ? void 0 : customer.id;
+    }
+    async myDistributorProfile(ctx) {
+        const customerId = await this.resolveCustomerId(ctx);
+        if (!customerId)
+            return undefined;
+        return this.distributionService.findByCustomerId(ctx, customerId);
     }
     async myCommissionRecords(ctx, options) {
-        if (!ctx.activeUserId)
+        const customerId = await this.resolveCustomerId(ctx);
+        if (!customerId)
             return { items: [], totalItems: 0 };
-        const distributor = await this.distributionService.findByCustomerId(ctx, ctx.activeUserId);
+        const distributor = await this.distributionService.findByCustomerId(ctx, customerId);
         if (!distributor)
             return { items: [], totalItems: 0 };
         return this.commissionService.findByDistributor(ctx, distributor.id, options);
     }
     async myWithdrawalRequests(ctx, options) {
-        if (!ctx.activeUserId)
+        const customerId = await this.resolveCustomerId(ctx);
+        if (!customerId)
             return { items: [], totalItems: 0 };
-        const distributor = await this.distributionService.findByCustomerId(ctx, ctx.activeUserId);
+        const distributor = await this.distributionService.findByCustomerId(ctx, customerId);
         if (!distributor)
             return { items: [], totalItems: 0 };
         return this.withdrawalService.findByDistributor(ctx, distributor.id, options);
     }
     async applyDistributor(ctx, referredByCode) {
-        if (!ctx.activeUserId) {
+        const customerId = await this.resolveCustomerId(ctx);
+        if (!customerId) {
             throw new Error('Must be logged in to apply as distributor');
         }
-        return this.distributionService.apply(ctx, ctx.activeUserId, referredByCode !== null && referredByCode !== void 0 ? referredByCode : undefined);
+        return this.distributionService.apply(ctx, customerId, referredByCode !== null && referredByCode !== void 0 ? referredByCode : undefined);
     }
     async requestWithdrawal(ctx, amount, method, accountInfo) {
-        if (!ctx.activeUserId) {
+        const customerId = await this.resolveCustomerId(ctx);
+        if (!customerId) {
             throw new Error('Must be logged in to request withdrawal');
         }
-        const distributor = await this.distributionService.findByCustomerId(ctx, ctx.activeUserId);
+        const distributor = await this.distributionService.findByCustomerId(ctx, customerId);
         if (!distributor) {
             throw new Error('Not a distributor');
         }
@@ -110,6 +126,7 @@ exports.DistributionShopResolver = DistributionShopResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [distribution_service_1.DistributionService,
         commission_service_1.CommissionService,
-        withdrawal_service_1.WithdrawalService])
+        withdrawal_service_1.WithdrawalService,
+        core_1.CustomerService])
 ], DistributionShopResolver);
 //# sourceMappingURL=distribution-shop.resolver.js.map

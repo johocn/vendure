@@ -6,6 +6,7 @@ import { DISTRIBUTION_PLUGIN_OPTIONS, loggerCtx } from './constants';
 import { CommissionRecord } from './commission-record.entity';
 import { CommissionService } from './commission.service';
 import { DistributionAdminResolver } from './distribution-admin.resolver';
+import { DistributionAdminShopResolver } from './distribution-admin-shop.resolver';
 import { DistributionService } from './distribution.service';
 import { DistributionShopResolver } from './distribution-shop.resolver';
 import { Distributor } from './distributor.entity';
@@ -118,6 +119,7 @@ import { settleCommissionsTask } from './commission.job';
             type Distributor implements Node {
                 id: ID!
                 customerId: ID!
+                customerEmail: String
                 parentId: ID
                 level: Int!
                 status: DistributorStatus!
@@ -132,6 +134,9 @@ import { settleCommissionsTask } from './commission.job';
             type CommissionRecord implements Node {
                 id: ID!
                 distributorId: ID!
+                orderId: ID!
+                orderLineId: ID
+                fromDistributorId: ID
                 commissionType: CommissionType!
                 commissionRate: Int!
                 orderAmount: Int!
@@ -153,6 +158,11 @@ import { settleCommissionsTask } from './commission.job';
                 createdAt: DateTime!
             }
 
+            type DistributorList implements PaginatedList {
+                items: [Distributor!]!
+                totalItems: Int!
+            }
+
             type CommissionRecordList implements PaginatedList {
                 items: [CommissionRecord!]!
                 totalItems: Int!
@@ -163,6 +173,7 @@ import { settleCommissionsTask } from './commission.job';
                 totalItems: Int!
             }
 
+            input DistributorListOptions
             input CommissionRecordListOptions
             input WithdrawalRequestListOptions
 
@@ -170,14 +181,23 @@ import { settleCommissionsTask } from './commission.job';
                 myDistributorProfile: Distributor
                 myCommissionRecords(options: CommissionRecordListOptions): CommissionRecordList!
                 myWithdrawalRequests(options: WithdrawalRequestListOptions): WithdrawalRequestList!
+                distributors(options: DistributorListOptions): DistributorList!
+                commissionRecords(options: CommissionRecordListOptions): CommissionRecordList!
+                withdrawalRequests(options: WithdrawalRequestListOptions): WithdrawalRequestList!
             }
 
             extend type Mutation {
                 applyDistributor(referredByCode: String): Distributor!
                 requestWithdrawal(amount: Int!, method: WithdrawalMethod!, accountInfo: String!): WithdrawalRequest!
+                approveDistributor(id: ID!): Distributor!
+                freezeDistributor(id: ID!): Distributor!
+                approveWithdrawal(id: ID!): WithdrawalRequest!
+                rejectWithdrawal(id: ID!): WithdrawalRequest!
+                markWithdrawalPaid(id: ID!): WithdrawalRequest!
+                settleCommissionsNow: Int!
             }
         `,
-        resolvers: [DistributionShopResolver],
+        resolvers: [DistributionShopResolver, DistributionAdminShopResolver],
     },
     configuration: config => {
         config.customFields = {
