@@ -40,10 +40,10 @@ export class ContentItem extends VendureEntity {
     @Column({ default: 'home' })
     position: string;
 
-    @Column({ type: 'datetime', nullable: true })
+    @Column({ type: 'timestamp', nullable: true })
     startAt?: Date;
 
-    @Column({ type: 'datetime', nullable: true })
+    @Column({ type: 'timestamp', nullable: true })
     endAt?: Date;
 
     // Use 'json' (not 'jsonb') for cross-database compatibility (dev default is MariaDB)
@@ -53,14 +53,14 @@ export class ContentItem extends VendureEntity {
     @Column({ nullable: true })
     staffId?: string;
 
-    @Column({ type: 'datetime', nullable: true })
+    @Column({ type: 'timestamp', nullable: true })
     publishedAt?: Date;
 
-    @Column({ type: 'datetime', nullable: true })
+    @Column({ type: 'timestamp', nullable: true })
     unpublishedAt?: Date;
 
     @Index()
-    @Column({ type: 'datetime', nullable: true })
+    @Column({ type: 'timestamp', nullable: true })
     deletedAt?: Date;
 
     @Column({ nullable: true })
