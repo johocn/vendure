@@ -426,6 +426,7 @@ export class ShopService {
         orderId: ID,
         method?: string,
         trackingCode?: string,
+        lines?: Array<{ orderLineId: ID; quantity: number }>,
     ): Promise<FulfillMyShopOrderResult> {
         const shop = await this.requireMyShop(ctx);
         const { myLines, orderHasLines } = await this.resolveMyShopOrder(ctx, orderId, shop);
@@ -433,7 +434,8 @@ export class ShopService {
         if (orderHasLines && myLines.length === 0) {
             throw new ForbiddenError();
         }
-        const toFulfill = myLines.filter(l => l.remaining > 0);
+        // 分批配送：传入 lines 则只发指定行/数量（按 remaining 截断），不传则本店剩余行全发。
+        const toFulfill = this.pickToFulfill(myLines, lines);
         const fulfillmentIds: string[] = [];
         if (toFulfill.length > 0) {
             const fulfillment = await this.orderService.createFulfillment(ctx, {
@@ -444,7 +446,7 @@ export class ShopService {
                         { name: 'trackingCode', value: trackingCode ?? '' },
                     ],
                 },
-                lines: toFulfill.map(l => ({ orderLineId: l.line.id as string as any, quantity: l.remaining })),
+                lines: toFulfill,
             });
             if (!fulfillment || 'errorCode' in (fulfillment as any)) {
                 throw new UserInputError((fulfillment as any)?.message ?? '创建发货单失败');
@@ -459,14 +461,43 @@ export class ShopService {
             }
             fulfillmentIds.push(String((fulfillment as any).id));
         }
+        // 结果按订单本店行整体口径：shipped = 已履约总和、remaining = 未履约总和。
+        // shipBefore 是本调用前的已履约量，叠加本次 toFulfill 数量得出新口径（resolve 时尚未落库）。
+        const totalQuantity = myLines.reduce((acc, l) => acc + l.line.quantity, 0);
+        const totalRemaining = myLines.reduce((acc, l) => acc + l.remaining, 0);
+        const shippedBefore = totalQuantity - totalRemaining;
+        const shippedNow = shippedBefore + toFulfill.reduce((acc, l) => acc + l.quantity, 0);
         return {
             orderId: String(orderId),
-            totalItemCount: myLines.reduce((acc, l) => acc + l.line.quantity, 0),
-            // 本调用将全部剩余行一次履约，故履约后 shipped=total、remaining=0
-            shippedItemCount: myLines.reduce((acc, l) => acc + l.line.quantity, 0),
-            remainingItemCount: 0,
+            totalItemCount: totalQuantity,
+            shippedItemCount: shippedNow,
+            remainingItemCount: totalQuantity - shippedNow,
             fulfillmentIds,
         };
+    }
+
+    /**
+     * 筛选本次要发货的行/数量。传 lines 则只发命中本店、且 quantity>0 的行（量超 remaining 截断）；
+     * 否则把本店所有 remaining>0 的行按剩余量一次发出。
+     */
+    private pickToFulfill(
+        myLines: Array<{ line: OrderLine; remaining: number }>,
+        lines?: Array<{ orderLineId: ID; quantity: number }>,
+    ): Array<{ orderLineId: string; quantity: number }> {
+        if (lines && lines.length > 0) {
+            const requested = new Map(lines.map(l => [String(l.orderLineId), l.quantity]));
+            return myLines
+                .filter(l => requested.has(String(l.line.id)))
+                .filter(l => l.remaining > 0)
+                .map(l => ({
+                    orderLineId: String(l.line.id),
+                    quantity: Math.min(requested.get(String(l.line.id))!, l.remaining),
+                }))
+                .filter(p => p.quantity > 0);
+        }
+        return myLines
+            .filter(l => l.remaining > 0)
+            .map(l => ({ orderLineId: String(l.line.id), quantity: l.remaining }));
     }
 
     /** 店主查看该订单本店行的发货单列表（state!=Cancelled）。 */

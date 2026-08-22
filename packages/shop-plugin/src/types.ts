@@ -86,6 +86,11 @@ export interface MerchantFulfillment {
     items: MerchantFulfillmentLine[];
 }
 
+export interface FulfillLineInput {
+    orderLineId: ID;
+    quantity: number;
+}
+
 export interface FulfillMyShopOrderResult {
     orderId: string;
     totalItemCount: number;

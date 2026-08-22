@@ -51,7 +51,15 @@ export declare class ShopService {
      * 店主发货：对该订单中归属本店、且尚未履约的行创建 manual Fulfillment 并流转至 Shipped。
      * 已履约完的行跳过；全部已履约则直接返回摘要不发重复货。
      */
-    fulfillMyShopOrder(ctx: RequestContext, orderId: ID, method?: string, trackingCode?: string): Promise<FulfillMyShopOrderResult>;
+    fulfillMyShopOrder(ctx: RequestContext, orderId: ID, method?: string, trackingCode?: string, lines?: Array<{
+        orderLineId: ID;
+        quantity: number;
+    }>): Promise<FulfillMyShopOrderResult>;
+    /**
+     * 筛选本次要发货的行/数量。传 lines 则只发命中本店、且 quantity>0 的行（量超 remaining 截断）；
+     * 否则把本店所有 remaining>0 的行按剩余量一次发出。
+     */
+    private pickToFulfill;
     /** 店主查看该订单本店行的发货单列表（state!=Cancelled）。 */
     getMyShopOrderFulfillments(ctx: RequestContext, orderId: ID): Promise<MerchantFulfillment[]>;
     /**

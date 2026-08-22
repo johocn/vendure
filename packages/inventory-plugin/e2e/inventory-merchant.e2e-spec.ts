@@ -56,8 +56,8 @@ describe('InventoryPlugin · 阶段47 店主自营库存（只读水位 + 归属
         query { myShopOrders { orderId code state totalWithTax items { orderLineId productId productName variantName quantity fulfilledQuantity unitPriceWithTax lineTotalWithTax } } }
     `;
     const FULFILL = gql`
-        mutation ($orderId: ID!, $method: String, $trackingCode: String) {
-            fulfillMyShopOrder(orderId: $orderId, method: $method, trackingCode: $trackingCode) {
+        mutation ($orderId: ID!, $lines: [FulfillLineInput!], $method: String, $trackingCode: String) {
+            fulfillMyShopOrder(orderId: $orderId, lines: $lines, method: $method, trackingCode: $trackingCode) {
                 orderId totalItemCount shippedItemCount remainingItemCount fulfillmentIds
             }
         }
@@ -312,5 +312,52 @@ describe('InventoryPlugin · 阶段47 店主自营库存（只读水位 + 归属
         expect(rb.fulfillMyShopOrder.fulfillmentIds.length).toBe(1);
         const detail = (await adminClient.query(ADMIN_FULFILLMENTS, { id: orderBId })) as any;
         expect(detail.order.fulfillments[0].state).toBe('Shipped');
+    });
+
+    it('12 分批发货：指定行/数量多次发货，生成多履约单并聚合', async () => {
+        const orderId = await createPaidOrder(variantAId, 3);
+        // 取本单 orderLineId
+        const before = (await adminClient.query(ADMIN_FULFILLMENTS, { id: orderId })) as any;
+        const lineId = String(before.order.lines[0].id);
+        expect(before.order.lines[0].quantity).toBe(3);
+
+        const ownerA = await asOwner('ownerA.stock@test.com');
+        // 第一批：只发 1 件
+        const r1 = (await ownerA.query(FULFILL, {
+            orderId,
+            lines: [{ orderLineId: lineId, quantity: 1 }],
+            method: '第一批法务',
+            trackingCode: 'SF-B1',
+        })) as any;
+        expect(r1.fulfillMyShopOrder.totalItemCount).toBe(3);
+        expect(r1.fulfillMyShopOrder.shippedItemCount).toBe(1);
+        expect(r1.fulfillMyShopOrder.remainingItemCount).toBe(2);
+        expect(r1.fulfillMyShopOrder.fulfillmentIds.length).toBe(1);
+        const firstFid = r1.fulfillMyShopOrder.fulfillmentIds[0];
+
+        // 第二批：发剩余 2 件
+        const r2 = (await ownerA.query(FULFILL, {
+            orderId,
+            lines: [{ orderLineId: lineId, quantity: 2 }],
+            method: '第二批法务',
+            trackingCode: 'SF-B2',
+        })) as any;
+        expect(r2.fulfillMyShopOrder.totalItemCount).toBe(3);
+        expect(r2.fulfillMyShopOrder.shippedItemCount).toBe(3); // 累计已履约 = 1 + 2
+        expect(r2.fulfillMyShopOrder.remainingItemCount).toBe(0);
+        expect(r2.fulfillMyShopOrder.fulfillmentIds.length).toBe(1);
+
+        // 聚合视图：共 2 个履约单，各发 1/2 件，行总量 3 全履约
+        const fls = (await ownerA.query(MYFULFILLMENTS, { orderId })) as any;
+        expect(fls.myShopOrderFulfillments.length).toBe(2);
+        expect(fls.myShopOrderFulfillments.some((f: any) => String(f.fulfillmentId) === String(firstFid))).toBe(true);
+        const totalShipped = fls.myShopOrderFulfillments.reduce(
+            (acc: number, f: any) => acc + f.items.reduce((a: number, i: any) => a + i.quantity, 0),
+            0,
+        );
+        expect(totalShipped).toBe(3);
+        const orderRow = (await ownerA.query(MYORDERS)) as any;
+        const o = orderRow.myShopOrders.find((x: any) => String(x.orderId) === String(orderId));
+        expect(o.items[0].fulfilledQuantity).toBe(3);
     });
 });

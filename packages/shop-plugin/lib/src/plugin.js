@@ -140,6 +140,11 @@ const adminSchema = () => gql `
         items: [MerchantOrderLine!]!
     }
 
+    input FulfillLineInput {
+        orderLineId: ID!
+        quantity: Int!
+    }
+
     type MerchantFulfillmentLine {
         orderLineId: ID!
         productName: String!
@@ -191,7 +196,7 @@ const adminSchema = () => gql `
         removeProductFromMyShop(productId: ID!): Boolean!
         updateMyShopProduct(productId: ID!, input: UpdateMyShopProductInput!): Product
         setMyShopProductEnabled(productId: ID!, enabled: Boolean!): Boolean!
-        fulfillMyShopOrder(orderId: ID!, method: String, trackingCode: String): FulfillMyShopOrderResult!
+        fulfillMyShopOrder(orderId: ID!, lines: [FulfillLineInput!], method: String, trackingCode: String): FulfillMyShopOrderResult!
         approveMerchantReview(id: ID!): Boolean!
         rejectMerchantReview(id: ID!): Boolean!
     }

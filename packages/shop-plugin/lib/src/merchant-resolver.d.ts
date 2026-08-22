@@ -1,7 +1,7 @@
 import { Administrator, ID, RequestContext } from '@vendure/core';
 import { Shop } from './shop.entity';
 import { ShopService } from './shop.service';
-import { CreateOwnerInput, FulfillMyShopOrderResult, MerchantFulfillment, MerchantOrder, MerchantReview, ShopListOptions, UpdateMyShopInput, UpdateMyShopProductInput } from './types';
+import { CreateOwnerInput, FulfillLineInput, FulfillMyShopOrderResult, MerchantFulfillment, MerchantOrder, MerchantReview, ShopListOptions, UpdateMyShopInput, UpdateMyShopProductInput } from './types';
 /**
  * 店主自营后台（ADMIN API）。全部能力 @Allow(manageOwnShop.Permission) 把关「店主管理员」，
  * 归属隔离（Shop.administratorId / Product.shopId）由 service 层二次把关。
@@ -15,7 +15,7 @@ export declare class MerchantResolver {
     myShopOrders(ctx: RequestContext): Promise<MerchantOrder[]>;
     myShopOrder(ctx: RequestContext, orderId: ID): Promise<MerchantOrder | undefined>;
     myShopOrderFulfillments(ctx: RequestContext, orderId: ID): Promise<MerchantFulfillment[]>;
-    fulfillMyShopOrder(ctx: RequestContext, orderId: ID, method?: string, trackingCode?: string): Promise<FulfillMyShopOrderResult>;
+    fulfillMyShopOrder(ctx: RequestContext, orderId: ID, lines?: FulfillLineInput[], method?: string, trackingCode?: string): Promise<FulfillMyShopOrderResult>;
     myShopReviews(ctx: RequestContext): Promise<MerchantReview[]>;
     provisionShopOwner(ctx: RequestContext, shopId: ID, input: CreateOwnerInput): Promise<Administrator>;
     updateMyShop(ctx: RequestContext, input: UpdateMyShopInput): Promise<Shop>;

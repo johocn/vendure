@@ -354,7 +354,7 @@ let ShopService = class ShopService {
      * 店主发货：对该订单中归属本店、且尚未履约的行创建 manual Fulfillment 并流转至 Shipped。
      * 已履约完的行跳过；全部已履约则直接返回摘要不发重复货。
      */
-    async fulfillMyShopOrder(ctx, orderId, method, trackingCode) {
+    async fulfillMyShopOrder(ctx, orderId, method, trackingCode, lines) {
         var _a, _b;
         const shop = await this.requireMyShop(ctx);
         const { myLines, orderHasLines } = await this.resolveMyShopOrder(ctx, orderId, shop);
@@ -362,7 +362,8 @@ let ShopService = class ShopService {
         if (orderHasLines && myLines.length === 0) {
             throw new core_1.ForbiddenError();
         }
-        const toFulfill = myLines.filter(l => l.remaining > 0);
+        // 分批配送：传入 lines 则只发指定行/数量（按 remaining 截断），不传则本店剩余行全发。
+        const toFulfill = this.pickToFulfill(myLines, lines);
         const fulfillmentIds = [];
         if (toFulfill.length > 0) {
             const fulfillment = await this.orderService.createFulfillment(ctx, {
@@ -373,7 +374,7 @@ let ShopService = class ShopService {
                         { name: 'trackingCode', value: trackingCode !== null && trackingCode !== void 0 ? trackingCode : '' },
                     ],
                 },
-                lines: toFulfill.map(l => ({ orderLineId: l.line.id, quantity: l.remaining })),
+                lines: toFulfill,
             });
             if (!fulfillment || 'errorCode' in fulfillment) {
                 throw new core_1.UserInputError((_a = fulfillment === null || fulfillment === void 0 ? void 0 : fulfillment.message) !== null && _a !== void 0 ? _a : '创建发货单失败');
@@ -384,14 +385,39 @@ let ShopService = class ShopService {
             }
             fulfillmentIds.push(String(fulfillment.id));
         }
+        // 结果按订单本店行整体口径：shipped = 已履约总和、remaining = 未履约总和。
+        // shipBefore 是本调用前的已履约量，叠加本次 toFulfill 数量得出新口径（resolve 时尚未落库）。
+        const totalQuantity = myLines.reduce((acc, l) => acc + l.line.quantity, 0);
+        const totalRemaining = myLines.reduce((acc, l) => acc + l.remaining, 0);
+        const shippedBefore = totalQuantity - totalRemaining;
+        const shippedNow = shippedBefore + toFulfill.reduce((acc, l) => acc + l.quantity, 0);
         return {
             orderId: String(orderId),
-            totalItemCount: myLines.reduce((acc, l) => acc + l.line.quantity, 0),
-            // 本调用将全部剩余行一次履约，故履约后 shipped=total、remaining=0
-            shippedItemCount: myLines.reduce((acc, l) => acc + l.line.quantity, 0),
-            remainingItemCount: 0,
+            totalItemCount: totalQuantity,
+            shippedItemCount: shippedNow,
+            remainingItemCount: totalQuantity - shippedNow,
             fulfillmentIds,
         };
+    }
+    /**
+     * 筛选本次要发货的行/数量。传 lines 则只发命中本店、且 quantity>0 的行（量超 remaining 截断）；
+     * 否则把本店所有 remaining>0 的行按剩余量一次发出。
+     */
+    pickToFulfill(myLines, lines) {
+        if (lines && lines.length > 0) {
+            const requested = new Map(lines.map(l => [String(l.orderLineId), l.quantity]));
+            return myLines
+                .filter(l => requested.has(String(l.line.id)))
+                .filter(l => l.remaining > 0)
+                .map(l => ({
+                orderLineId: String(l.line.id),
+                quantity: Math.min(requested.get(String(l.line.id)), l.remaining),
+            }))
+                .filter(p => p.quantity > 0);
+        }
+        return myLines
+            .filter(l => l.remaining > 0)
+            .map(l => ({ orderLineId: String(l.line.id), quantity: l.remaining }));
     }
     /** 店主查看该订单本店行的发货单列表（state!=Cancelled）。 */
     async getMyShopOrderFulfillments(ctx, orderId) {
