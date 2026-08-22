@@ -15,11 +15,10 @@ const crypto_1 = require("crypto");
 const core_1 = require("@vendure/core");
 const live_room_entity_1 = require("./live-room.entity");
 let LiveRoomShopService = class LiveRoomShopService {
-    connection;
     constructor(connection) {
         this.connection = connection;
+        this.opts = {};
     }
-    opts = {};
     setOptions(opts) { this.opts = opts; }
     async list(ctx, status) {
         const repo = this.connection.getRepository(ctx, live_room_entity_1.LiveRoom);

@@ -17,7 +17,6 @@ const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
 const live_room_service_1 = require("./live-room.service");
 let LiveAdminResolver = class LiveAdminResolver {
-    liveRoomService;
     constructor(liveRoomService) {
         this.liveRoomService = liveRoomService;
     }

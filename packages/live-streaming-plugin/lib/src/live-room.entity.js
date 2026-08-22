@@ -17,23 +17,6 @@ let LiveRoom = class LiveRoom extends core_1.VendureEntity {
     constructor(input) {
         super(input);
     }
-    name;
-    coverUrl;
-    description;
-    streamerCustomerId;
-    streamerName;
-    type;
-    status;
-    scheduledStartAt;
-    startedAt;
-    endedAt;
-    streamKey;
-    playUrl;
-    replayUrl;
-    likeCount;
-    viewCount;
-    products;
-    channels;
 };
 exports.LiveRoom = LiveRoom;
 __decorate([
@@ -42,7 +25,7 @@ __decorate([
     __metadata("design:type", String)
 ], LiveRoom.prototype, "name", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
     __metadata("design:type", Object)
 ], LiveRoom.prototype, "coverUrl", void 0);
 __decorate([
@@ -55,7 +38,7 @@ __decorate([
     __metadata("design:type", Object)
 ], LiveRoom.prototype, "streamerCustomerId", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
     __metadata("design:type", Object)
 ], LiveRoom.prototype, "streamerName", void 0);
 __decorate([

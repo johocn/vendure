@@ -21,11 +21,6 @@ const live_room_shop_service_1 = require("./live-room-shop.service");
 const live_commission_service_1 = require("./live-commission.service");
 const constants_1 = require("./constants");
 let LiveShopResolver = class LiveShopResolver {
-    options;
-    liveRoomService;
-    liveRoomShopService;
-    liveCommissionService;
-    orderService;
     constructor(options, liveRoomService, liveRoomShopService, liveCommissionService, orderService) {
         this.options = options;
         this.liveRoomService = liveRoomService;

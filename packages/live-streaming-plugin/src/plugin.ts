@@ -50,7 +50,10 @@ type LiveRoomList implements PaginatedList {
     totalItems: Int!
 }
 
-input LiveRoomListOptions
+input LiveRoomListOptions {
+    take: Int
+    skip: Int
+}
 `;
 
 @VendurePlugin({
@@ -59,6 +62,7 @@ input LiveRoomListOptions
     providers: [
         { provide: LIVE_PLUGIN_OPTIONS, useFactory: () => LiveStreamingPlugin.options },
         LiveRoomService,
+        LiveRoomShopService,
         LiveCommissionService,
     ],
     exports: [LiveRoomService, LiveCommissionService],

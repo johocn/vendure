@@ -14,7 +14,7 @@ export class LiveRoom extends VendureEntity implements ChannelAware {
     name: string;
 
     /** 封面图 URL */
-    @Column({ nullable: true })
+    @Column({ type: 'varchar', nullable: true })
     coverUrl: string | null;
 
     /** 简介 */
@@ -27,7 +27,7 @@ export class LiveRoom extends VendureEntity implements ChannelAware {
     streamerCustomerId: string | null;
 
     /** 主播展示名 */
-    @Column({ nullable: true })
+    @Column({ type: 'varchar', nullable: true })
     streamerName: string | null;
 
     /** 直播类型：product 带货 / show 展示 */

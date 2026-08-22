@@ -16,12 +16,6 @@ let LiveRoomProduct = class LiveRoomProduct extends core_1.VendureEntity {
     constructor(input) {
         super(input);
     }
-    variantId;
-    name;
-    price;
-    imageUrl;
-    sortOrder;
-    channels;
 };
 exports.LiveRoomProduct = LiveRoomProduct;
 __decorate([

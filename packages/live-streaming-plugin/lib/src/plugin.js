@@ -66,17 +66,14 @@ type LiveRoomList implements PaginatedList {
     totalItems: Int!
 }
 
-input LiveRoomListOptions
+input LiveRoomListOptions {
+    take: Int
+    skip: Int
+}
 `;
 let LiveStreamingPlugin = class LiveStreamingPlugin {
     static { LiveStreamingPlugin_1 = this; }
-    options;
-    liveRoomService;
-    liveRoomShopService;
-    liveCommissionService;
-    moduleRef;
-    static options = {};
-    injector;
+    static { this.options = {}; }
     constructor(options, liveRoomService, liveRoomShopService, liveCommissionService, moduleRef) {
         this.options = options;
         this.liveRoomService = liveRoomService;
@@ -105,6 +102,7 @@ exports.LiveStreamingPlugin = LiveStreamingPlugin = LiveStreamingPlugin_1 = __de
         providers: [
             { provide: constants_1.LIVE_PLUGIN_OPTIONS, useFactory: () => LiveStreamingPlugin.options },
             live_room_service_1.LiveRoomService,
+            live_room_shop_service_1.LiveRoomShopService,
             live_commission_service_1.LiveCommissionService,
         ],
         exports: [live_room_service_1.LiveRoomService, live_commission_service_1.LiveCommissionService],

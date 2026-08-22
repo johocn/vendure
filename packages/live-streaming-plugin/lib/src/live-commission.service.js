@@ -16,13 +16,11 @@ const distribution_plugin_1 = require("@vendure/distribution-plugin");
 const live_room_entity_1 = require("./live-room.entity");
 const constants_1 = require("./constants");
 let LiveCommissionService = class LiveCommissionService {
-    connection;
-    eventBus;
-    initialized = false;
-    opts = {};
     constructor(connection, eventBus) {
         this.connection = connection;
         this.eventBus = eventBus;
+        this.initialized = false;
+        this.opts = {};
     }
     setOptions(opts) { this.opts = opts; }
     init() {

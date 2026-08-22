@@ -22,13 +22,11 @@ function randomKey(len) {
     return out;
 }
 let LiveRoomService = class LiveRoomService {
-    connection;
-    listQueryBuilder;
     constructor(connection, listQueryBuilder) {
         this.connection = connection;
         this.listQueryBuilder = listQueryBuilder;
+        this.opts = {};
     }
-    opts = {};
     setOptions(opts) { this.opts = opts; }
     findAll(ctx, options) {
         return this.listQueryBuilder
@@ -84,11 +82,14 @@ let LiveRoomService = class LiveRoomService {
         const room = await this.findOne(ctx, id);
         if (!room)
             throw new core_1.UserInputError('Live room not found');
-        await this.connection.getRepository(ctx, live_room_product_entity_1.LiveRoomProduct)
-            .createQueryBuilder('p')
-            .delete()
-            .where('id IN (:...ids)', { ids: room.products.map(p => p.id) })
-            .execute().catch(() => undefined);
+        const productIds = room.products.map(p => p.id);
+        if (productIds.length) {
+            await this.connection.getRepository(ctx, live_room_product_entity_1.LiveRoomProduct)
+                .createQueryBuilder('p')
+                .delete()
+                .where('id IN (:...ids)', { ids: productIds })
+                .execute();
+        }
         await this.connection.getRepository(ctx, live_room_entity_1.LiveRoom).remove(room);
         return true;
     }

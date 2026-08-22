@@ -70,11 +70,14 @@ export class LiveRoomService {
     async delete(ctx: RequestContext, id: ID): Promise<boolean> {
         const room = await this.findOne(ctx, id);
         if (!room) throw new UserInputError('Live room not found');
-        await this.connection.getRepository(ctx, LiveRoomProduct)
-            .createQueryBuilder('p')
-            .delete()
-            .where('id IN (:...ids)', { ids: room.products.map(p => p.id) })
-            .execute().catch(() => undefined);
+        const productIds = room.products.map(p => p.id);
+        if (productIds.length) {
+            await this.connection.getRepository(ctx, LiveRoomProduct)
+                .createQueryBuilder('p')
+                .delete()
+                .where('id IN (:...ids)', { ids: productIds })
+                .execute();
+        }
         await this.connection.getRepository(ctx, LiveRoom).remove(room);
         return true;
     }
