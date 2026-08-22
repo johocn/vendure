@@ -29,6 +29,9 @@ let InvoiceAdminResolver = class InvoiceAdminResolver {
     async issueInvoice(ctx, id) {
         return this.invoiceService.issueInvoice(ctx, id);
     }
+    async bulkIssueInvoices(ctx, ids) {
+        return this.invoiceService.bulkIssueInvoices(ctx, ids);
+    }
     async reverseInvoice(ctx, id, reason) {
         return this.invoiceService.reverseInvoice(ctx, id, reason);
     }
@@ -61,6 +64,15 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], InvoiceAdminResolver.prototype, "issueInvoice", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('ids', { type: () => [String] })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Array]),
+    __metadata("design:returntype", Promise)
+], InvoiceAdminResolver.prototype, "bulkIssueInvoices", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(core_1.Permission.UpdateOrder),

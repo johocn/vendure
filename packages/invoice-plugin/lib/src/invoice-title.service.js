@@ -25,6 +25,15 @@ let InvoiceTitleService = class InvoiceTitleService {
         }
         return item;
     }
+    /** 供发票创建复用：按 id 取抬头（管理员可为客户代取）。不强制归属当前 activeUser。 */
+    async getOwned(ctx, id) {
+        const repo = this.connection.getRepository(ctx, invoice_title_entity_1.InvoiceTitle);
+        const item = await repo.findOne({ where: { id: id } });
+        if (!item) {
+            throw new core_1.EntityNotFoundError('InvoiceTitle', id);
+        }
+        return item;
+    }
     async listMine(ctx) {
         if (!ctx.activeUserId) {
             throw new core_1.UnauthorizedError();

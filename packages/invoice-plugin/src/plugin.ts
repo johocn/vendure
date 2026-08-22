@@ -1,6 +1,6 @@
 import { Inject, OnApplicationBootstrap, Type } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import { Injector, Logger, PluginCommonModule, VendurePlugin } from '@vendure/core';
+import { EventBus, Injector, Logger, OrderStateTransitionEvent, PluginCommonModule, VendurePlugin } from '@vendure/core';
 
 import { INVOICE_PLUGIN_OPTIONS, loggerCtx } from './constants';
 import { InvoicePluginOptions } from './types';
@@ -25,6 +25,27 @@ function mergeCustomFields<T extends { name: string }>(
 const { gql } = require('graphql-tag');
 
 const adminSchema = () => gql`
+    type InvoiceLine {
+        orderId: ID!
+        orderCode: String!
+        productVariantId: ID
+        sku: String
+        name: String!
+        quantity: Int!
+        unitPrice: Int!
+        unitPriceWithTax: Int!
+        amount: Int!
+        taxRate: Int!
+        taxAmount: Int!
+        amountWithTax: Int!
+    }
+
+    type InvoiceTotals {
+        totalExcludingTax: Int!
+        totalTax: Int!
+        totalWithTax: Int!
+    }
+
     type Invoice implements Node {
         id: ID!
         invoiceType: String!
@@ -39,6 +60,9 @@ const adminSchema = () => gql`
         amount: Int!
         customerId: ID!
         orderIds: [ID!]!
+        lines: [InvoiceLine!]
+        totals: InvoiceTotals
+        invoiceNo: String
         pdfUrl: String
         issuedAt: DateTime
         reversedAt: DateTime
@@ -64,10 +88,32 @@ const adminSchema = () => gql`
     extend type Mutation {
         issueInvoice(id: ID!): Invoice!
         reverseInvoice(id: ID!, reason: String!): Invoice!
+        bulkIssueInvoices(ids: [ID!]!): [Invoice!]!
     }
 `;
 
 const shopSchema = () => gql`
+    type InvoiceLine {
+        orderId: ID!
+        orderCode: String!
+        productVariantId: ID
+        sku: String
+        name: String!
+        quantity: Int!
+        unitPrice: Int!
+        unitPriceWithTax: Int!
+        amount: Int!
+        taxRate: Int!
+        taxAmount: Int!
+        amountWithTax: Int!
+    }
+
+    type InvoiceTotals {
+        totalExcludingTax: Int!
+        totalTax: Int!
+        totalWithTax: Int!
+    }
+
     type Invoice implements Node {
         id: ID!
         invoiceType: String!
@@ -82,6 +128,9 @@ const shopSchema = () => gql`
         amount: Int!
         customerId: ID!
         orderIds: [ID!]!
+        lines: [InvoiceLine!]
+        totals: InvoiceTotals
+        invoiceNo: String
         pdfUrl: String
         issuedAt: DateTime
         reversedAt: DateTime
@@ -102,6 +151,7 @@ const shopSchema = () => gql`
         companyPhone: String
         bankName: String
         bankAccount: String
+        invoiceTitleId: ID
     }
 
     extend type Query {
@@ -208,6 +258,20 @@ export class InvoicePlugin implements OnApplicationBootstrap {
         const provider = this.options.provider as any;
         if (provider && typeof provider.init === 'function') {
             provider.init(this.injector);
+        }
+        // 自动开票（默认关）：订单进入可开票状态且要求发票时自动开具
+        if (this.options.autoIssue) {
+            const eventBus = this.injector.get(EventBus);
+            const allowedStates = ['Delivered', 'Completed', 'PartialDelivery'];
+            eventBus.ofType(OrderStateTransitionEvent).subscribe(async (event) => {
+                if (!allowedStates.includes(event.toState)) return;
+                try {
+                    await this.invoiceService.autoIssueForOrder(event.ctx, event.order.id);
+                } catch (e: any) {
+                    Logger.error(`autoIssue order ${event.order.id} failed: ${e.message}`, loggerCtx);
+                }
+            });
+            Logger.info('autoIssue enabled', loggerCtx);
         }
         Logger.info('InvoicePlugin initialized', loggerCtx);
     }

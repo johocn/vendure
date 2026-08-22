@@ -34,6 +34,7 @@ class PdfInvoiceProvider {
         core_1.Logger.info('PdfInvoiceProvider initialized', constants_1.loggerCtx);
     }
     async issue(ctx, input) {
+        var _a;
         if (!this.invoicePdfService || !this.orderService || !this.assetStorageStrategy) {
             throw new Error('PdfInvoiceProvider not initialized');
         }
@@ -46,7 +47,8 @@ class PdfInvoiceProvider {
             orders.push(order);
         }
         const orderIds = input.orderIds.slice().sort((a, b) => Number(a) - Number(b));
-        const invoiceNo = `INV-${this.channelId(ctx)}-${orderIds.join('_')}-${Date.now()}`;
+        // 直接复用业务层统一发票号（INV-{yyyyMMdd}-{channelId}-{seq}），保证 admin/前台一致
+        const invoiceNo = (_a = input.invoiceNo) !== null && _a !== void 0 ? _a : `INV-${this.channelId(ctx)}-${orderIds.join('_')}-${Date.now()}`;
         const buffer = await this.invoicePdfService.generateCombinedPdf(ctx, Object.assign(Object.assign({}, input), { invoiceNo }), orders);
         const fileName = `invoices/${this.channelId(ctx)}/${invoiceNo}.pdf`;
         await this.assetStorageStrategy.writeFileFromBuffer(fileName, buffer);

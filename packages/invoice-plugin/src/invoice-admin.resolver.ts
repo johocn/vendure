@@ -27,6 +27,12 @@ export class InvoiceAdminResolver {
 
     @Mutation()
     @Allow(Permission.UpdateOrder)
+    async bulkIssueInvoices(@Ctx() ctx: RequestContext, @Args('ids', { type: () => [String] }) ids: string[]): Promise<any> {
+        return this.invoiceService.bulkIssueInvoices(ctx, ids);
+    }
+
+    @Mutation()
+    @Allow(Permission.UpdateOrder)
     async reverseInvoice(
         @Ctx() ctx: RequestContext,
         @Args('id') id: ID,

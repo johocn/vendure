@@ -56,7 +56,8 @@ export class PdfInvoiceProvider implements InvoiceProvider {
         }
 
         const orderIds = input.orderIds.slice().sort((a, b) => Number(a) - Number(b));
-        const invoiceNo = `INV-${this.channelId(ctx)}-${orderIds.join('_')}-${Date.now()}`;
+        // 直接复用业务层统一发票号（INV-{yyyyMMdd}-{channelId}-{seq}），保证 admin/前台一致
+        const invoiceNo = input.invoiceNo ?? `INV-${this.channelId(ctx)}-${orderIds.join('_')}-${Date.now()}`;
 
         const buffer = await this.invoicePdfService.generateCombinedPdf(
             ctx,

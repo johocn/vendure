@@ -76,9 +76,25 @@ __decorate([
     __metadata("design:type", Number)
 ], Invoice.prototype, "customerId", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Number)
+], Invoice.prototype, "channelId", void 0);
+__decorate([
     (0, typeorm_1.Column)({ type: 'simple-json' }),
     __metadata("design:type", Array)
 ], Invoice.prototype, "orderIds", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'simple-json', nullable: true }),
+    __metadata("design:type", Object)
+], Invoice.prototype, "lines", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'simple-json', nullable: true }),
+    __metadata("design:type", Object)
+], Invoice.prototype, "totals", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], Invoice.prototype, "invoiceNo", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
     __metadata("design:type", Object)

@@ -16,6 +16,8 @@ export declare class InvoiceTitleService {
     private connection;
     constructor(connection: TransactionalConnection);
     private findOwned;
+    /** 供发票创建复用：按 id 取抬头（管理员可为客户代取）。不强制归属当前 activeUser。 */
+    getOwned(ctx: RequestContext, id: ID): Promise<InvoiceTitle>;
     listMine(ctx: RequestContext): Promise<InvoiceTitle[]>;
     create(ctx: RequestContext, input: CreateInvoiceTitleInput): Promise<InvoiceTitle>;
     update(ctx: RequestContext, id: ID, input: UpdateInvoiceTitleInput): Promise<InvoiceTitle>;
