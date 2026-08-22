@@ -75,6 +75,12 @@ const adminSchema = () => gql `
         issuedAt: DateTime
         reversedAt: DateTime
         reverseReason: String
+        voidedAt: DateTime
+        voidReason: String
+        parentInvoiceId: ID
+        isRed: Boolean!
+        partiallyReversed: Boolean!
+        reversedAmount: Int
         providerInvoiceNo: String
         lastError: String
         createdAt: DateTime!
@@ -86,16 +92,49 @@ const adminSchema = () => gql `
         totalItems: Int!
     }
 
-    input InvoiceListOptions
+    input InvoiceSortParameter {
+        id: SortOrder
+        title: SortOrder
+        invoiceType: SortOrder
+        status: SortOrder
+        amount: SortOrder
+        customerId: SortOrder
+        createdAt: SortOrder
+        issuedAt: SortOrder
+        updatedAt: SortOrder
+    }
+
+    input InvoiceFilterParameter {
+        id: IDOperators
+        title: StringOperators
+        invoiceNo: StringOperators
+        taxNumber: StringOperators
+        status: StringOperators
+        invoiceType: StringOperators
+        amount: NumberOperators
+        customerId: IDOperators
+        createdAt: DateOperators
+        updatedAt: DateOperators
+        issuedAt: DateOperators
+    }
+
+    input InvoiceListOptions {
+        skip: Int
+        take: Int
+        sort: InvoiceSortParameter
+        filter: InvoiceFilterParameter
+    }
 
     extend type Query {
         invoices(options: InvoiceListOptions): InvoiceList!
         invoice(id: ID!): Invoice
+        exportInvoicesCsv(options: InvoiceListOptions): String!
     }
 
     extend type Mutation {
         issueInvoice(id: ID!): Invoice!
-        reverseInvoice(id: ID!, reason: String!): Invoice!
+        reverseInvoice(id: ID!, reason: String!, reverseAmount: Int): Invoice!
+        voidInvoice(id: ID!, reason: String!): Invoice!
         bulkIssueInvoices(ids: [ID!]!): [Invoice!]!
     }
 `;
@@ -142,6 +181,12 @@ const shopSchema = () => gql `
         issuedAt: DateTime
         reversedAt: DateTime
         reverseReason: String
+        voidedAt: DateTime
+        voidReason: String
+        parentInvoiceId: ID
+        isRed: Boolean!
+        partiallyReversed: Boolean!
+        reversedAmount: Int
         providerInvoiceNo: String
         lastError: String
         createdAt: DateTime!

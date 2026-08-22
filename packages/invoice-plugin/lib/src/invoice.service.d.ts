@@ -42,6 +42,20 @@ export declare class InvoiceService {
     private taxRateOf;
     /** 发票合规校验（轻量）：专票必填三要素+税号；税号格式（提示，不阻止 mock 开票） */
     private assertCompliant;
-    reverseInvoice(ctx: RequestContext, id: ID, reason: string): Promise<Invoice>;
+    /**
+     * 红冲发票：
+     * - 不传 reverseAmount 或金额 ≥ 剩余可红冲金额 → 全量红冲：状态 → REVERSED。
+     * - 0 < reverseAmount < 剩余可红冲金额 → 部分红冲：生成一条红字票（isRed，amount 为负，parentInvoiceId=原票），
+     *   原票状态 → PARTIALLY_REVERSED 并累计 reversedAmount（原票保留，可继续补红）。
+     * 说明：未接真实税控服务商，红字票仅作记录/留痕，不产生第三方红字文件。
+     */
+    reverseInvoice(ctx: RequestContext, id: ID, reason: string, reverseAmount?: number): Promise<Invoice>;
+    /** 部分红冲：生成红字票，原票保持可继续补红 */
+    private partialReverse;
+    /** 作废（留痕）：仅 PENDING/FAILED 的票可作废；作废后可重开同一订单 */
+    voidInvoice(ctx: RequestContext, id: ID, reason: string): Promise<Invoice>;
+    /** 导出发票为 CSV（UTF-8 BOM，兼容 Excel 中文）；options 复用列表查询过滤 */
+    exportInvoicesCsv(ctx: RequestContext, options?: ListQueryOptions<Invoice>): Promise<string>;
+    private notifyInvoiceEvent;
     downloadPdf(ctx: RequestContext, id: ID): Promise<Invoice>;
 }

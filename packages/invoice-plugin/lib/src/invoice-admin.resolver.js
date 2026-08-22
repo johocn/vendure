@@ -32,8 +32,14 @@ let InvoiceAdminResolver = class InvoiceAdminResolver {
     async bulkIssueInvoices(ctx, ids) {
         return this.invoiceService.bulkIssueInvoices(ctx, ids);
     }
-    async reverseInvoice(ctx, id, reason) {
-        return this.invoiceService.reverseInvoice(ctx, id, reason);
+    async reverseInvoice(ctx, id, reason, reverseAmount) {
+        return this.invoiceService.reverseInvoice(ctx, id, reason, reverseAmount);
+    }
+    async voidInvoice(ctx, id, reason) {
+        return this.invoiceService.voidInvoice(ctx, id, reason);
+    }
+    async exportInvoicesCsv(ctx, options) {
+        return this.invoiceService.exportInvoicesCsv(ctx, options);
     }
 };
 exports.InvoiceAdminResolver = InvoiceAdminResolver;
@@ -79,10 +85,30 @@ __decorate([
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __param(2, (0, graphql_1.Args)('reason')),
+    __param(3, (0, graphql_1.Args)('reverseAmount', { type: () => Number, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String, Number]),
+    __metadata("design:returntype", Promise)
+], InvoiceAdminResolver.prototype, "reverseInvoice", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('reason')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
     __metadata("design:returntype", Promise)
-], InvoiceAdminResolver.prototype, "reverseInvoice", null);
+], InvoiceAdminResolver.prototype, "voidInvoice", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.ReadOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('options', { nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], InvoiceAdminResolver.prototype, "exportInvoicesCsv", null);
 exports.InvoiceAdminResolver = InvoiceAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [invoice_service_1.InvoiceService])

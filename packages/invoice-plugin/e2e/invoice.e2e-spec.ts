@@ -5,6 +5,7 @@ import gql from 'graphql-tag';
 import { initialData } from '../../../e2e-common/e2e-initial-data';
 import { TEST_SETUP_TIMEOUT_MS, testConfig } from '../../../e2e-common/test-config';
 import { InvoicePlugin } from '../src/plugin';
+import { MessagePlugin } from '../../message-plugin/src/plugin';
 import { mergeConfig } from '@vendure/core';
 import { testSuccessfulPaymentMethod } from '../../core/e2e/fixtures/test-payment-methods';
 import {
@@ -17,7 +18,7 @@ registerInitializer('sqljs', new SqljsInitializer(path.join(__dirname, '__data__
 describe('InvoicePlugin', () => {
     const { server, adminClient, shopClient } = createTestEnvironment(
         mergeConfig(testConfig(), {
-            plugins: [InvoicePlugin.init()],
+            plugins: [InvoicePlugin.init(), MessagePlugin.init()],
             paymentOptions: {
                 paymentMethodHandlers: [testSuccessfulPaymentMethod],
             },
@@ -134,6 +135,12 @@ describe('InvoicePlugin', () => {
         expect(fieldNames).toContain('lines');
         expect(fieldNames).toContain('totals');
         expect(fieldNames).toContain('invoiceNo');
+        expect(fieldNames).toContain('voidedAt');
+        expect(fieldNames).toContain('voidReason');
+        expect(fieldNames).toContain('parentInvoiceId');
+        expect(fieldNames).toContain('isRed');
+        expect(fieldNames).toContain('partiallyReversed');
+        expect(fieldNames).toContain('reversedAmount');
 
         const mutations = await adminClient.query(gql`
             query {
@@ -142,6 +149,15 @@ describe('InvoicePlugin', () => {
         `);
         const mutationNames = mutations.__schema.mutationType.fields.map((f: any) => f.name);
         expect(mutationNames).toContain('bulkIssueInvoices');
+        expect(mutationNames).toContain('voidInvoice');
+
+        const queries = await adminClient.query(gql`
+            query {
+                __schema { queryType { fields { name } } }
+            }
+        `);
+        const queryNames = queries.__schema.queryType.fields.map((f: any) => f.name);
+        expect(queryNames).toContain('exportInvoicesCsv');
     });
 
     it('compliance: 专票缺必填字段被拒绝（无需有效订单即可验证）', async () => {
@@ -279,5 +295,127 @@ describe('InvoicePlugin', () => {
         const issuedOne = items.find((x: any) => String(x.id) === String(pendingId));
         expect(issuedOne).toBeDefined();
         expect(issuedOne.status).toBe('issued');
+    });
+
+    it('D. 作废留痕：PENDING 可作废，作废后可重开同一订单', async () => {
+        const orderId = await createAndDeliverOrder(1);
+        const created = await shopClient.query(gql`
+            mutation { createInvoice(input: { orderIds: ["${orderId}"], invoiceType: "ordinary", title: "VoidCo" }) { id status } }
+        `);
+        const pendingId = (created as any).createInvoice.id;
+
+        const voided = await adminClient.query(gql`
+            mutation { voidInvoice(id: "${pendingId}", reason: "误填，作废重开") { id status voidReason voidedAt } }
+        `);
+        expect((voided as any).voidInvoice.status).toBe('voided');
+        expect((voided as any).voidInvoice.voidReason).toBe('误填，作废重开');
+        expect((voided as any).voidInvoice.voidedAt).toBeDefined();
+
+        // 作废后同一订单允许重开
+        const reopened = await shopClient.query(gql`
+            mutation { createInvoice(input: { orderIds: ["${orderId}"], invoiceType: "ordinary", title: "VoidCo Reopen" }) { id status } }
+        `);
+        expect((reopened as any).createInvoice.status).toBe('pending');
+    });
+
+    it('D. 全量红冲后可重开同一订单', async () => {
+        const orderId = await createAndDeliverOrder(1);
+        const created = await shopClient.query(gql`
+            mutation { createInvoice(input: { orderIds: ["${orderId}"], invoiceType: "ordinary", title: "FullReverse" }) { id } }
+        `);
+        const id = (created as any).createInvoice.id;
+        await adminClient.query(gql` mutation { issueInvoice(id: "${id}") { id status } } `);
+
+        const reversed = await adminClient.query(gql`
+            mutation { reverseInvoice(id: "${id}", reason: "退货全量红冲") { id status reversedAt reversedAmount } }
+        `);
+        expect((reversed as any).reverseInvoice.status).toBe('reversed');
+        expect((reversed as any).reverseInvoice.reversedAmount).toBeGreaterThan(0);
+
+        // 红冲后可重开
+        const reopened = await shopClient.query(gql`
+            mutation { createInvoice(input: { orderIds: ["${orderId}"], invoiceType: "ordinary", title: "Reopen" }) { id status } }
+        `);
+        expect((reopened as any).createInvoice.status).toBe('pending');
+    });
+
+    it('D. 部分红冲：生成红字票（金额为负、关联原票），原票保留为部分红冲', async () => {
+        const orderId = await createAndDeliverOrder(2);
+        const created = await shopClient.query(gql`
+            mutation { createInvoice(input: { orderIds: ["${orderId}"], invoiceType: "ordinary", title: "PartialCo" }) { id amount } }
+        `);
+        const id = (created as any).createInvoice.id;
+        const fullAmount = (created as any).createInvoice.amount;
+        await adminClient.query(gql` mutation { issueInvoice(id: "${id}") { id status } } `);
+
+        const half = Math.floor(fullAmount / 2);
+        const res = await adminClient.query(gql`
+            mutation { reverseInvoice(id: "${id}", reason: "部分退货红冲", reverseAmount: ${half}) { id status reversedAmount partiallyReversed } }
+        `);
+        const inv = (res as any).reverseInvoice;
+        expect(inv.status).toBe('partially_reversed');
+        expect(inv.partiallyReversed).toBe(true);
+        expect(inv.reversedAmount).toBe(half);
+
+        // 关联的红字票存在（isRed=true, amount=-half, parentInvoiceId=原票）
+        const list = await adminClient.query(gql`
+            query { invoices { items { id isRed amount parentInvoiceId status } } }
+        `);
+        const red = (list as any).invoices.items.find(
+            (x: any) => x.isRed === true && String(x.parentInvoiceId) === String(id),
+        );
+        expect(red).toBeDefined();
+        expect(red.amount).toBe(-half);
+        expect(red.status).toBe('reversed');
+    });
+
+    it('D. 通知触达：开票/红冲/作废写入消息中心（myMessages）', async () => {
+        const orderId = await createAndDeliverOrder(1);
+        const created = await shopClient.query(gql`
+            mutation { createInvoice(input: { orderIds: ["${orderId}"], invoiceType: "ordinary", title: "NotifyCo" }) { id } }
+        `);
+        const id = (created as any).createInvoice.id;
+        await adminClient.query(gql` mutation { issueInvoice(id: "${id}") { id status invoiceNo } } `);
+
+        const msgs = await shopClient.query(gql`
+            query { myMessages { items { title body } } }
+        `);
+        const items = (msgs as any).myMessages.items;
+        expect(items.some((m: any) => m.title.includes('发票已开具'))).toBe(true);
+    });
+
+    it('D. 后台筛选/排序：invoices 支持 filter + sort（发票中心列表依赖）', async () => {
+        const res = await adminClient.query(gql`
+            query {
+                invoices(
+                    options: {
+                        take: 10
+                        sort: { status: ASC, createdAt: DESC }
+                        filter: { status: { eq: "issued" } }
+                    }
+                ) {
+                    items { id status invoiceNo }
+                    totalItems
+                }
+            }
+        `);
+        const result = (res as any).invoices;
+        expect(result.totalItems).toBeGreaterThanOrEqual(0);
+        if (result.items.length) {
+            expect(result.items.every((x: any) => x.status === 'issued')).toBe(true);
+        }
+    });
+
+    it('D. 后台导出 CSV：exportInvoicesCsv 返回带 BOM 的 CSV（含表头与数据行）', async () => {
+        const res = await adminClient.query(gql`
+            query { exportInvoicesCsv }
+        `);
+        const csv = (res as any).exportInvoicesCsv;
+        expect(csv.startsWith('\uFEFF')).toBe(true);
+        const body = csv.slice(1);
+        const lines = body.split('\r\n');
+        expect(lines[0]).toContain('发票号');
+        // 至少包含一条数据行
+        expect(lines.length).toBeGreaterThan(1);
     });
 });

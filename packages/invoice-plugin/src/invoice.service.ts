@@ -173,7 +173,7 @@ export class InvoiceService {
         const existing = await repo.find({
             where: {
                 customerId: ctx.activeUserId as any,
-                status: Not(In([InvoiceStatus.REVERSED, InvoiceStatus.FAILED])),
+                status: Not(In([InvoiceStatus.REVERSED, InvoiceStatus.FAILED, InvoiceStatus.VOIDED])),
             },
         });
         const orderIdSet = new Set(input.orderIds.map(id => String(id)));
@@ -265,6 +265,7 @@ export class InvoiceService {
                 invoice.pdfUrl = result.pdfUrl ?? null;
                 invoice.issuedAt = new Date();
                 invoice.lastError = null;
+                await this.notifyInvoiceEvent(ctx, invoice, 'issued');
             } else {
                 invoice.status = InvoiceStatus.FAILED;
                 invoice.lastError = result.error ?? 'Unknown error';
@@ -298,7 +299,7 @@ export class InvoiceService {
         const existing = await repo.find({
             where: {
                 customerId: (order.customer as any)?.user?.id as any,
-                status: Not(In([InvoiceStatus.REVERSED, InvoiceStatus.FAILED])),
+                status: Not(In([InvoiceStatus.REVERSED, InvoiceStatus.FAILED, InvoiceStatus.VOIDED])),
             },
         });
         if (existing.some(inv => (inv.orderIds || []).includes(Number(orderId)))) {
@@ -447,7 +448,14 @@ export class InvoiceService {
         }
     }
 
-    async reverseInvoice(ctx: RequestContext, id: ID, reason: string): Promise<Invoice> {
+    /**
+     * 红冲发票：
+     * - 不传 reverseAmount 或金额 ≥ 剩余可红冲金额 → 全量红冲：状态 → REVERSED。
+     * - 0 < reverseAmount < 剩余可红冲金额 → 部分红冲：生成一条红字票（isRed，amount 为负，parentInvoiceId=原票），
+     *   原票状态 → PARTIALLY_REVERSED 并累计 reversedAmount（原票保留，可继续补红）。
+     * 说明：未接真实税控服务商，红字票仅作记录/留痕，不产生第三方红字文件。
+     */
+    async reverseInvoice(ctx: RequestContext, id: ID, reason: string, reverseAmount?: number): Promise<Invoice> {
         const repo = this.connection.getRepository(ctx, Invoice);
         const invoice = await repo.findOne({ where: { id: id as any } });
         if (!invoice) {
@@ -459,12 +467,25 @@ export class InvoiceService {
         if (!invoice.providerInvoiceNo) {
             throw new UserInputError('Invoice has no providerInvoiceNo to reverse');
         }
+        const total = invoice.amount ?? 0;
+        const already = invoice.reversedAmount ?? 0;
+        const remaining = total - already;
+        const amt = reverseAmount ?? remaining;
+        if (!(amt > 0)) {
+            throw new UserInputError('reverseAmount must be a positive number');
+        }
+        if (amt < remaining) {
+            // 部分红冲
+            return this.partialReverse(ctx, invoice, reason, amt);
+        }
+        // 全量红冲
         try {
             const result = await this.provider.reverse(ctx, invoice.providerInvoiceNo, reason);
             if (result.success) {
                 invoice.status = InvoiceStatus.REVERSED;
                 invoice.reverseReason = reason;
                 invoice.reversedAt = new Date();
+                invoice.reversedAmount = total;
                 invoice.lastError = null;
             } else {
                 invoice.lastError = result.error ?? 'Unknown error';
@@ -476,7 +497,139 @@ export class InvoiceService {
             Logger.error(`Reverse invoice ${id} failed: ${e.message}`, loggerCtx);
             throw e;
         }
+        await this.notifyInvoiceEvent(ctx, invoice, 'reversed');
         return invoice;
+    }
+
+    /** 部分红冲：生成红字票，原票保持可继续补红 */
+    private async partialReverse(ctx: RequestContext, invoice: Invoice, reason: string, amount: number): Promise<Invoice> {
+        const repo = this.connection.getRepository(ctx, Invoice);
+        const red = new Invoice({
+            invoiceType: invoice.invoiceType,
+            status: InvoiceStatus.REVERSED,
+            title: invoice.title,
+            taxNumber: invoice.taxNumber ?? null,
+            email: invoice.email ?? null,
+            companyAddress: invoice.companyAddress ?? null,
+            companyPhone: invoice.companyPhone ?? null,
+            bankName: invoice.bankName ?? null,
+            bankAccount: invoice.bankAccount ?? null,
+            amount: -amount,
+            customerId: invoice.customerId,
+            channelId: invoice.channelId,
+            orderIds: invoice.orderIds ? invoice.orderIds.slice() : [],
+            parentInvoiceId: Number(invoice.id),
+            isRed: true,
+            reverseReason: reason,
+            reversedAt: new Date(),
+        } as any);
+        red.channels = [ctx.channel];
+        await repo.save(red);
+        invoice.status = InvoiceStatus.PARTIALLY_REVERSED;
+        invoice.partiallyReversed = true;
+        invoice.reversedAmount = (invoice.reversedAmount ?? 0) + amount;
+        invoice.lastError = null;
+        await repo.save(invoice);
+        await this.notifyInvoiceEvent(ctx, invoice, 'partially_reversed');
+        return invoice;
+    }
+
+    /** 作废（留痕）：仅 PENDING/FAILED 的票可作废；作废后可重开同一订单 */
+    async voidInvoice(ctx: RequestContext, id: ID, reason: string): Promise<Invoice> {
+        const repo = this.connection.getRepository(ctx, Invoice);
+        const invoice = await repo.findOne({ where: { id: id as any } });
+        if (!invoice) {
+            throw new EntityNotFoundError('Invoice', id);
+        }
+        if (invoice.status !== InvoiceStatus.PENDING && invoice.status !== InvoiceStatus.FAILED) {
+            throw new UserInputError(`Invoice status must be PENDING or FAILED to void, got ${invoice.status}`);
+        }
+        if (!reason) {
+            throw new UserInputError('reason must not be empty');
+        }
+        invoice.status = InvoiceStatus.VOIDED;
+        invoice.voidReason = reason;
+        invoice.voidedAt = new Date();
+        invoice.lastError = null;
+        await repo.save(invoice);
+        await this.notifyInvoiceEvent(ctx, invoice, 'voided');
+        return invoice;
+    }
+
+    /** 导出发票为 CSV（UTF-8 BOM，兼容 Excel 中文）；options 复用列表查询过滤 */
+    async exportInvoicesCsv(ctx: RequestContext, options?: ListQueryOptions<Invoice>): Promise<string> {
+        const { items } = await this.getInvoices(ctx, options);
+        const header = ['ID', '发票号', '类型', '状态', '抬头', '纳税人识别号', '金额(分)', '客户ID', '订单ID', '红冲/作废原因', '创建时间', '开票时间', '红冲时间'];
+        const rows = items.map(i => [
+            i.id,
+            i.invoiceNo ?? '',
+            i.invoiceType,
+            i.status,
+            i.title,
+            i.taxNumber ?? '',
+            i.amount,
+            i.customerId,
+            Array.isArray(i.orderIds) ? i.orderIds.join(';') : '',
+            i.reverseReason ?? i.voidReason ?? '',
+            i.createdAt ? i.createdAt.toISOString() : '',
+            i.issuedAt ? i.issuedAt.toISOString() : '',
+            i.reversedAt ? i.reversedAt.toISOString() : '',
+        ]);
+        const esc = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+        const csv = [header, ...rows].map(r => r.map(esc).join(',')).join('\r\n');
+        return '\uFEFF' + csv;
+    }
+
+    private async notifyInvoiceEvent(ctx: RequestContext, invoice: Invoice, action: 'issued' | 'reversed' | 'partially_reversed' | 'voided'): Promise<void> {
+        const labels: Record<string, string> = {
+            issued: '发票已开具',
+            reversed: '发票已红冲',
+            partially_reversed: '发票已部分红冲',
+            voided: '发票已作废',
+        };
+        const label = labels[action] ?? '发票状态变更';
+        const title = `开票通知：${label}`;
+        const parts = [`状态：${label}`];
+        if (invoice.invoiceNo) parts.push(`发票号：${invoice.invoiceNo}`);
+        if (invoice.amount) parts.push(`金额（分）：${invoice.amount}`);
+        parts.push(`发票类型：${invoice.invoiceType}`);
+        const body = parts.join('\n');
+        try {
+            // 复用 message-plugin 的消息中心表（Message/MessageDelivery）；未装 message-plugin 时 entity 不存在，静默跳过。
+            const msgRepo = this.connection.getRepository(ctx, 'Message' as any);
+            const deliveryRepo = this.connection.getRepository(ctx, 'MessageDelivery' as any);
+            const customerRepo = this.connection.getRepository(ctx, 'Customer' as any);
+            const customer = await customerRepo
+                .createQueryBuilder('c')
+                .innerJoin('c.user', 'user')
+                .where('user.id = :userId', { userId: invoice.customerId })
+                .getOne();
+            if (!customer) return;
+            const message = await msgRepo.save(
+                msgRepo.create({
+                    title,
+                    body,
+                    deliveryChannel: 'inapp',
+                    audienceType: 'all',
+                    status: 'sent',
+                    totalTarget: 1,
+                    totalSent: 1,
+                    channels: [ctx.channel],
+                }),
+            );
+            await deliveryRepo.save(
+                deliveryRepo.create({
+                    messageId: message.id,
+                    customerId: Number(customer.id),
+                    deliveryStatus: 'sent',
+                    channels: [ctx.channel],
+                }),
+            );
+            Logger.info(`Notified invoice ${invoice.id} (${action}) to customer ${customer.id}`, loggerCtx);
+        } catch (e: any) {
+            // 通知失败不阻塞发票主流程
+            Logger.warn(`Notify invoice ${invoice.id} (${action}) skipped: ${e.message}`, loggerCtx);
+        }
     }
 
     async downloadPdf(ctx: RequestContext, id: ID): Promise<Invoice> {

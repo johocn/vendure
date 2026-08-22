@@ -37,7 +37,20 @@ export class InvoiceAdminResolver {
         @Ctx() ctx: RequestContext,
         @Args('id') id: ID,
         @Args('reason') reason: string,
+        @Args('reverseAmount', { type: () => Number, nullable: true }) reverseAmount?: number,
     ): Promise<any> {
-        return this.invoiceService.reverseInvoice(ctx, id, reason);
+        return this.invoiceService.reverseInvoice(ctx, id, reason, reverseAmount);
+    }
+
+    @Mutation()
+    @Allow(Permission.UpdateOrder)
+    async voidInvoice(@Ctx() ctx: RequestContext, @Args('id') id: ID, @Args('reason') reason: string): Promise<any> {
+        return this.invoiceService.voidInvoice(ctx, id, reason);
+    }
+
+    @Query()
+    @Allow(Permission.ReadOrder)
+    async exportInvoicesCsv(@Ctx() ctx: RequestContext, @Args('options', { nullable: true }) options: any): Promise<string> {
+        return this.invoiceService.exportInvoicesCsv(ctx, options);
     }
 }

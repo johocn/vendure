@@ -24,6 +24,10 @@ var InvoiceStatus;
     InvoiceStatus["ISSUED"] = "issued";
     InvoiceStatus["REVERSED"] = "reversed";
     InvoiceStatus["FAILED"] = "failed";
+    /** 已作废（未开/失败的票，作废留痕），作废后可重开同一订单 */
+    InvoiceStatus["VOIDED"] = "voided";
+    /** 已部分红冲（原票保留，存在关联红字票） */
+    InvoiceStatus["PARTIALLY_REVERSED"] = "partially_reversed";
 })(InvoiceStatus || (exports.InvoiceStatus = InvoiceStatus = {}));
 let Invoice = class Invoice extends core_1.VendureEntity {
     constructor(input) {
@@ -111,6 +115,30 @@ __decorate([
     (0, typeorm_1.Column)({ type: 'text', nullable: true }),
     __metadata("design:type", Object)
 ], Invoice.prototype, "reverseReason", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Date)
+], Invoice.prototype, "voidedAt", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'text', nullable: true }),
+    __metadata("design:type", Object)
+], Invoice.prototype, "voidReason", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Number)
+], Invoice.prototype, "parentInvoiceId", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ default: false }),
+    __metadata("design:type", Boolean)
+], Invoice.prototype, "isRed", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ default: false }),
+    __metadata("design:type", Boolean)
+], Invoice.prototype, "partiallyReversed", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', nullable: true }),
+    __metadata("design:type", Number)
+], Invoice.prototype, "reversedAmount", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
     __metadata("design:type", Object)
