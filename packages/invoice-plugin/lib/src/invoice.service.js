@@ -176,7 +176,7 @@ let InvoiceService = class InvoiceService {
         return saved;
     }
     async issueInvoice(ctx, id) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p;
         const repo = this.connection.getRepository(ctx, invoice_entity_1.Invoice);
         const invoice = await repo.findOne({ where: { id: id } });
         if (!invoice) {
@@ -225,14 +225,14 @@ let InvoiceService = class InvoiceService {
             if (result.success) {
                 invoice.status = invoice_entity_1.InvoiceStatus.ISSUED;
                 invoice.providerInvoiceNo = (_m = result.invoiceNo) !== null && _m !== void 0 ? _m : null;
-                invoice.invoiceNo = (_o = result.invoiceNo) !== null && _o !== void 0 ? _o : null;
-                invoice.pdfUrl = (_p = result.pdfUrl) !== null && _p !== void 0 ? _p : null;
+                invoice.invoiceNo = invoiceNo;
+                invoice.pdfUrl = (_o = result.pdfUrl) !== null && _o !== void 0 ? _o : null;
                 invoice.issuedAt = new Date();
                 invoice.lastError = null;
             }
             else {
                 invoice.status = invoice_entity_1.InvoiceStatus.FAILED;
-                invoice.lastError = (_q = result.error) !== null && _q !== void 0 ? _q : 'Unknown error';
+                invoice.lastError = (_p = result.error) !== null && _p !== void 0 ? _p : 'Unknown error';
             }
             await repo.save(invoice);
         }

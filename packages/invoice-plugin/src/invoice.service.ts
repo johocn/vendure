@@ -261,7 +261,7 @@ export class InvoiceService {
             if (result.success) {
                 invoice.status = InvoiceStatus.ISSUED;
                 invoice.providerInvoiceNo = result.invoiceNo ?? null;
-                invoice.invoiceNo = result.invoiceNo ?? null;
+                invoice.invoiceNo = invoiceNo;
                 invoice.pdfUrl = result.pdfUrl ?? null;
                 invoice.issuedAt = new Date();
                 invoice.lastError = null;

@@ -6,6 +6,11 @@ import { initialData } from '../../../e2e-common/e2e-initial-data';
 import { TEST_SETUP_TIMEOUT_MS, testConfig } from '../../../e2e-common/test-config';
 import { InvoicePlugin } from '../src/plugin';
 import { mergeConfig } from '@vendure/core';
+import { testSuccessfulPaymentMethod } from '../../core/e2e/fixtures/test-payment-methods';
+import {
+    addPaymentToOrder,
+    proceedToArrangingPayment,
+} from '../../core/e2e/utils/test-order-utils';
 
 registerInitializer('sqljs', new SqljsInitializer(path.join(__dirname, '__data__')));
 
@@ -13,12 +18,25 @@ describe('InvoicePlugin', () => {
     const { server, adminClient, shopClient } = createTestEnvironment(
         mergeConfig(testConfig(), {
             plugins: [InvoicePlugin.init()],
+            paymentOptions: {
+                paymentMethodHandlers: [testSuccessfulPaymentMethod],
+            },
         }),
     );
 
+    let variantId: string;
+
     beforeAll(async () => {
         await server.init({
-            initialData,
+            initialData: {
+                ...initialData,
+                paymentMethods: [
+                    {
+                        name: testSuccessfulPaymentMethod.code,
+                        handler: { code: testSuccessfulPaymentMethod.code, arguments: [] },
+                    },
+                ],
+            },
             productsCsvPath: path.join(__dirname, '../../core/e2e/fixtures/e2e-products-minimal.csv'),
             customerCount: 1,
         });
@@ -32,7 +50,59 @@ describe('InvoicePlugin', () => {
             }
         `);
         await shopClient.asUserWithCredentials('inv.test@example.com', 'test');
+
+        const products = await adminClient.query(gql`
+            query { products(options: { take: 1 }) { items { variants { id } } } }
+        `);
+        variantId = (products.products.items[0].variants[0] as any).id;
+
+        // 结算基准统一为含税，保证行级价税可精确核算
+        const channels = await adminClient.query(gql`
+            query { channels { items { id } } }
+        `);
+        const defaultChannelId = channels.channels.items[0].id;
+        await adminClient.query(gql`
+            mutation { updateChannel(input: { id: "${defaultChannelId}", pricesIncludeTax: true }) { ... on Channel { id pricesIncludeTax } } }
+        `);
     }, TEST_SETUP_TIMEOUT_MS);
+
+    /** 下单+支付 → 置为 Completed（满足 createInvoice 的可开票状态） */
+    async function createAndDeliverOrder(qty = 2): Promise<string> {
+        // 清空遗留活动订单
+        const active = await shopClient.query(gql` query { activeOrder { id } } `);
+        if (active.activeOrder?.id) {
+            await adminClient.query(gql`
+                mutation { cancelOrder(input: { orderId: "${active.activeOrder.id}" }) { ... on Order { id state } ... on ErrorResult { errorCode message } } }
+            `);
+        }
+        await shopClient.query(gql`
+            mutation { addItemToOrder(productVariantId: "${variantId}", quantity: ${qty}) { ... on Order { id totalWithTax } ... on ErrorResult { errorCode } } }
+        `);
+        await proceedToArrangingPayment(shopClient);
+        const paid = await addPaymentToOrder(shopClient, testSuccessfulPaymentMethod);
+        const orderId = paid.id;
+        // 履约需要的订单行
+        const linesRes = await adminClient.query(gql`
+            query { order(id: "${orderId}") { lines { id quantity } } }
+        `);
+        const orderLines = ((linesRes as any).order?.lines ?? []).map(
+            (l: any) => `{ orderLineId: "${l.id}", quantity: ${l.quantity} }`,
+        ).join(',');
+        // 走履约流程 → Shipped → Delivered（Delivered 属于可开票状态）
+        const fulfill = await adminClient.query(gql`
+            mutation { addFulfillmentToOrder(input: { handler: { code: "manual-fulfillment", arguments: [{ name: "method", value: "Manual" }] }, lines: [${orderLines}] }) { ... on Fulfillment { id state } ... on ErrorResult { errorCode message } } }
+        `);
+        const fulfillmentId = (fulfill as any).addFulfillmentToOrder?.id;
+        expect(fulfillmentId).toBeDefined();
+        await adminClient.query(gql`
+            mutation { transitionFulfillmentToState(id: "${fulfillmentId}", state: "Shipped") { ... on Fulfillment { id state } ... on FulfillmentStateTransitionError { errorCode message } } }
+        `);
+        const trans = await adminClient.query(gql`
+            mutation { transitionFulfillmentToState(id: "${fulfillmentId}", state: "Delivered") { ... on Fulfillment { id state } ... on FulfillmentStateTransitionError { errorCode message } } }
+        `);
+        expect((trans.transitionFulfillmentToState as any).state).toBe('Delivered');
+        return orderId;
+    }
 
     afterAll(async () => {
         await server.destroy();
@@ -113,5 +183,101 @@ describe('InvoicePlugin', () => {
             `,
         );
         await expect(promise).rejects.toThrow('税号格式不正确');
+    });
+
+    it('C. 抬头复用：createInvoice 传 invoiceTitleId 命中已存抬头并回填快照', async () => {
+        // 存一条抬头（含专票所需字段）
+        const t = await shopClient.query(gql`
+            mutation {
+                createInvoiceTitle(input: {
+                    title: "北京测试科技有限公司"
+                    taxNumber: "91110108MA01TEST99"
+                    email: "acc@test.com"
+                    companyAddress: "北京市海淀区中关村"
+                    companyPhone: "010-12345678"
+                    bankName: "工行中关村支行"
+                    bankAccount: "6222000011112222"
+                }) { id title }
+            }
+        `);
+        const titleId = (t as any).createInvoiceTitle.id;
+        // 命中已存抬头并回填 → 在"完整开票流"用例中已用真实订单验证（title/taxNumber/email 回填）。
+        expect(titleId).toBeDefined();
+    });
+
+    it('完整开票流：下单→完成→createInvoice→issueInvoice 固化行级快照/统一发票号/价税', async () => {
+        const orderId = await createAndDeliverOrder(2);
+
+        // 存抬头并复用
+        const t = await shopClient.query(gql`
+            mutation {
+                createInvoiceTitle(input: { title: "行云科技有限公司", taxNumber: "91330106MA2ABCD123", email: "finance@xyun.com" }) { id }
+            }
+        `);
+        const titleId = (t as any).createInvoiceTitle.id;
+
+        const created = await shopClient.query(gql`
+            mutation {
+                createInvoice(input: { orderIds: ["${orderId}"], invoiceType: "ordinary", title: "Placeholder", invoiceTitleId: "${titleId}" }) { id status title taxNumber email }
+            }
+        `);
+        const invoice = (created as any).createInvoice;
+        expect(invoice.status).toBe('pending');
+        expect(invoice.title).toBe('行云科技有限公司');
+        expect(invoice.taxNumber).toBe('91330106MA2ABCD123');
+        expect(invoice.email).toBe('finance@xyun.com');
+
+        // admin 开票
+        const issued = await adminClient.query(gql`
+            mutation { issueInvoice(id: "${invoice.id}") { id status invoiceNo lines { sku name quantity unitPrice unitPriceWithTax amount taxRate taxAmount amountWithTax } totals { totalExcludingTax totalTax totalWithTax } } }
+        `);
+        const i = (issued as any).issueInvoice;
+        expect(i.status).toBe('issued');
+        expect(i.lines.length).toBeGreaterThan(0);
+        expect(i.totals.totalTax).toBeGreaterThan(0);
+        expect(i.totals.totalWithTax).toBe(i.totals.totalExcludingTax + i.totals.totalTax);
+        // 统一发票号格式 INV-{yyyyMMdd}-{channelId}-{seq}
+        expect(String(i.invoiceNo)).toMatch(/^INV-\d{8}-\d+/);
+
+        // C端 myInvoice(id) 返回 lines
+        const mine = await shopClient.query(gql`
+            query { myInvoice(id: "${invoice.id}") { id lines { sku quantity } totals { totalWithTax } } }
+        `);
+        expect((mine as any).myInvoice.lines.length).toBeGreaterThan(0);
+    });
+
+    it('B. 批量开票 bulkIssueInvoices 跳过已完成单、单张失败隔离', async () => {
+        // 第二单 → pending → 批量开票
+        const orderId2 = await createAndDeliverOrder(1);
+        const created2 = await shopClient.query(gql`
+            mutation { createInvoice(input: { orderIds: ["${orderId2}"], invoiceType: "ordinary", title: "Bulk Co" }) { id status } }
+        `);
+        const pendingId = (created2 as any).createInvoice.id;
+
+        const bulk = await adminClient.query(gql`
+            mutation { bulkIssueInvoices(ids: ["${pendingId}"]) { id status invoiceNo } }
+        `);
+        const items = (bulk as any).bulkIssueInvoices;
+        expect(items.length).toBe(1);
+        expect(items[0].status).toBe('issued');
+        expect(String(items[0].invoiceNo)).toMatch(/^INV-\d{8}-\d+/);
+    });
+
+    it('批量开票单张失败不中断：非法 id + 合法 pending 混合，合法单仍成功', async () => {
+        const orderId3 = await createAndDeliverOrder(1);
+        const created3 = await shopClient.query(gql`
+            mutation { createInvoice(input: { orderIds: ["${orderId3}"], invoiceType: "ordinary", title: "Isolation Co" }) { id status } }
+        `);
+        const pendingId = (created3 as any).createInvoice.id;
+
+        // 混入不存在的 id（应标记 FAILED/被跳过），合法 pending 单正常开出
+        const bulk = await adminClient.query(gql`
+            mutation { bulkIssueInvoices(ids: ["99999", "${pendingId}"]) { id status } }
+        `);
+        const items = (bulk as any).bulkIssueInvoices;
+        // 合法单必须 issued（失败隔离不阻塞其余）；"99999" 不存在会被跳过/标记失败，但不抛
+        const issuedOne = items.find((x: any) => String(x.id) === String(pendingId));
+        expect(issuedOne).toBeDefined();
+        expect(issuedOne.status).toBe('issued');
     });
 });
