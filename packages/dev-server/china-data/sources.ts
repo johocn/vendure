@@ -872,6 +872,20 @@ export interface PromotionSource {
     customFields?: { stackable?: boolean; stackableGroup?: string | null; maxStackableWith?: number | null };
 }
 
+// ===== 会员等级专属折扣（阶段39，复用 tier_eligible 条件 + tier_discount 动作）=====
+// specialDiscountRate 为单档位千分比（非递增累计）：金950/白900/钻850，普通/银1000(无折扣)。
+// 金卡条 minLevel:3 使金/白/钻均获得 ≥95折专属折扣，银卡及以下由免运费/积分倍率承担权益。
+export const TIER_DISCOUNT_PROMOTIONS: PromotionSource[] = [
+    {
+        name: '金卡及以上专属95折',
+        couponCode: '', // 无券码，结算自动按等级适用
+        channel: 'default',
+        conditions: [{ code: 'tier_eligible', arguments: [{ name: 'minLevel', value: '3' }] }],
+        actions: [{ code: 'tier_discount', arguments: [] }],
+        customFields: { stackable: true, stackableGroup: null, maxStackableWith: null },
+    },
+];
+
 export const PROMOTIONS: PromotionSource[] = [
     {
         name: '满100减10',

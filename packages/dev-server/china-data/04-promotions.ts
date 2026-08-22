@@ -2,7 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { ChannelService, LanguageCode, PromotionService, RequestContext } from '@vendure/core';
 
 import { withCtx, createAdminCtx } from './shared';
-import { PROMOTIONS } from './sources';
+import { PROMOTIONS, TIER_DISCOUNT_PROMOTIONS } from './sources';
 
 export async function populatePromotions(app: INestApplication): Promise<void> {
     const channelService = app.get(ChannelService);
@@ -15,7 +15,8 @@ export async function populatePromotions(app: INestApplication): Promise<void> {
     const shopAChannel = allChannels.items.find(c => c.code === 'shop-a');
     if (!shopAChannel) throw new Error('shop-a channel not found');
 
-    for (const promo of PROMOTIONS) {
+    const allPromos = [...PROMOTIONS, ...TIER_DISCOUNT_PROMOTIONS];
+    for (const promo of allPromos) {
         const targetChannel = promo.channel === 'default' ? defaultChannel : shopAChannel;
         await withCtx(app, targetChannel, async (ctx: RequestContext) => {
             const promotionService = app.get(PromotionService);

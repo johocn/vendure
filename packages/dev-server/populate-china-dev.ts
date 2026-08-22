@@ -14,6 +14,7 @@ import {
     populateFloors,
     populateShippingTemplates,
     populateCoupons,
+    populateMemberTiers,
     runStage,
     logStage,
     StageResult,
@@ -101,7 +102,7 @@ if (require.main === module) {
         .then(async app => {
             await app.get(JobQueueService).start();
             const results: StageResult[] = [];
-            const total = 9;
+            const total = 10;
 
             results.push(await runStage('基础设置: superadmin + Zone/Country/TaxRate/Facet/Collection', () => populateBase(app)));
             logStage(1, total, results[0]);
@@ -129,6 +130,9 @@ if (require.main === module) {
 
             results.push(await runStage('全局优惠券: 10 个', () => populateCoupons(app)));
             logStage(9, total, results[8]);
+
+            results.push(await runStage('会员档位权益: 5 档 (金卡专属折扣率 50/白金100/钻石150)', () => populateMemberTiers(app)));
+            logStage(10, total, results[9]);
 
             const okCount = results.filter(r => r.ok).length;
             const totalMs = results.reduce((sum, r) => sum + r.durationMs, 0);
