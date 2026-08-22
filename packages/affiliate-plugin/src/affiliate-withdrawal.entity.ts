@@ -27,7 +27,7 @@ export class AffiliateWithdrawal extends VendureEntity implements ChannelAware {
     @Column({ type: 'varchar', default: 'pending' })
     status: WithdrawalStatus;
 
-    @Column({ type: 'datetime', nullable: true })
+    @Column({ type: 'timestamp', nullable: true })
     paidAt?: Date | null;
 
     @Column({ type: 'varchar', nullable: true })

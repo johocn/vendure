@@ -45,12 +45,12 @@ export class ServiceVoucher extends VendureEntity implements ChannelAware {
     @Column({ type: 'int' })
     effectiveDays: number;
 
-    @Column({ type: 'datetime', nullable: true })
+    @Column({ type: 'timestamp', nullable: true })
     expiresAt?: Date;
 
-    @Column({ type: 'datetime', nullable: true })
+    @Column({ type: 'timestamp', nullable: true })
     usedAt?: Date;
 
-    @Column({ type: 'datetime', nullable: true })
+    @Column({ type: 'timestamp', nullable: true })
     refundedAt?: Date;
 }

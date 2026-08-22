@@ -27,7 +27,7 @@ export class RechargeOrder extends VendureEntity {
     @Column({ type: 'varchar', nullable: true })
     externalRef: string | null;
 
-    @Column({ type: 'datetime', nullable: true })
+    @Column({ type: 'timestamp', nullable: true })
     paidAt: Date | null;
 
     @Column({ type: 'text', nullable: true })

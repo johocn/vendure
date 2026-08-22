@@ -28,7 +28,7 @@ export class PickupRedemption extends VendureEntity implements ChannelAware {
     @Column({ type: 'varchar', default: 'generated' })
     status: PickupRedemptionStatus;
 
-    @Column({ type: 'datetime', nullable: true })
+    @Column({ type: 'timestamp', nullable: true })
     claimedAt?: Date | null;
 
     @Column({ type: 'int', nullable: true })

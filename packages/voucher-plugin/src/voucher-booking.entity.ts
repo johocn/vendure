@@ -28,7 +28,7 @@ export class VoucherBooking extends VendureEntity implements ChannelAware {
     @Column({ type: 'int' })
     shopId: number;
 
-    @Column({ type: 'datetime' })
+    @Column({ type: 'timestamp' })
     slotAt: Date;
 
     @Column({ type: 'int' })

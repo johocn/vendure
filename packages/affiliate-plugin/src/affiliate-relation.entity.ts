@@ -28,6 +28,6 @@ export class AffiliateRelation extends VendureEntity implements ChannelAware {
     @Column({ type: 'varchar', default: 'click' })
     bindSource: BindSource;
 
-    @Column({ type: 'datetime' })
+    @Column({ type: 'timestamp' })
     boundAt: Date;
 }

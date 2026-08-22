@@ -31,15 +31,15 @@ export class PreSaleActivity extends VendureEntity implements ChannelAware {
     endAt: Date;
 
     /** 到货/开售时间（尾款开启或全款发货 latch） */
-    @Column({ type: 'datetime', nullable: true })
+    @Column({ type: 'timestamp', nullable: true })
     releaseAt?: Date;
 
     /** 尾款支付窗口开启时间（deposit 模式） */
-    @Column({ type: 'datetime', nullable: true })
+    @Column({ type: 'timestamp', nullable: true })
     tailStartAt?: Date;
 
     /** 尾款支付窗口截止时间（deposit 模式） */
-    @Column({ type: 'datetime', nullable: true })
+    @Column({ type: 'timestamp', nullable: true })
     tailEndAt?: Date;
 
     /** 预售价（分）；<=0 表示无价格分档，用原价 */
