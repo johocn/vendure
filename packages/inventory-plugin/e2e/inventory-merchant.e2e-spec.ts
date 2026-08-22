@@ -68,6 +68,9 @@ describe('InventoryPlugin · 阶段47 店主自营库存（只读水位 + 归属
     const ADMIN_FULFILLMENTS = gql`
         query ($id: ID!) { order(id: $id) { id state lines { id quantity } fulfillments { id state method trackingCode createdAt } } }
     `;
+    const STOCKLEDGER = gql`
+        query ($vid: ID!) { stockLedger(productVariantId: $vid, page: 1, pageSize: 80) { items { id bizType bizCode orderLineId direction quantity beforeOnHand afterOnHand } } }
+    `;
 
     async function createShop(name: string, slug: string): Promise<string> {
         const res = (await adminClient.query(gql`
@@ -359,5 +362,44 @@ describe('InventoryPlugin · 阶段47 店主自营库存（只读水位 + 归属
         const orderRow = (await ownerA.query(MYORDERS)) as any;
         const o = orderRow.myShopOrders.find((x: any) => String(x.orderId) === String(orderId));
         expect(o.items[0].fulfilledQuantity).toBe(3);
+    });
+
+    it('13 发货即出库：店主发货后本店水位扣减 + order:out 账本落库', async () => {
+        const before = (await adminClient.query(gql`
+            query { stockLevels(page: 1, pageSize: 100) { items { productVariantId stockLocationId stockOnHand } } }
+        `)) as any;
+        const beforeRow = before.stockLevels.items.find(
+            (r: any) => String(r.productVariantId) === String(variantAId),
+        );
+        expect(beforeRow).toBeDefined();
+        const beforeOnHand = beforeRow.stockOnHand;
+
+        const orderId = await createPaidOrder(variantAId, 3);
+        const afterOrder = (await adminClient.query(gql`
+            query ($id: ID!) { order(id: $id) { lines { id } } }
+        `, { id: orderId })) as any;
+        const lineId = String(afterOrder.order.lines[0].id);
+
+        // 下单已占货（Allocation），未发货前 onHand 不变、available 减少
+        const ownerA = await asOwner('ownerA.stock@test.com');
+        await ownerA.query(FULFILL, { orderId });
+
+        // 发货后：本仓 onHand 较下单前扣减 qty=3（core createSalesForOrder 真实减 onHand）
+        const after = (await adminClient.query(gql`
+            query { stockLevels(page: 1, pageSize: 100) { items { productVariantId stockLocationId stockOnHand } } }
+        `)) as any;
+        const afterRow = after.stockLevels.items.find(
+            (r: any) => String(r.productVariantId) === String(variantAId),
+        );
+        expect(afterRow.stockOnHand).toBe(beforeOnHand - 3);
+
+        // order:out 账本：同一事务随 SALE 写入向该订单行
+        const ledger = (await adminClient.query(STOCKLEDGER, { vid: variantAId })) as any;
+        const out = ledger.stockLedger.items.find(
+            (e: any) => e.bizType === 'order' && e.direction === 'out' && String(e.orderLineId) === lineId,
+        );
+        expect(out).toBeDefined();
+        expect(out.quantity).toBe(3);
+        expect((out.beforeOnHand ?? 0) - (out.afterOnHand ?? 0)).toBe(3);
     });
 });
