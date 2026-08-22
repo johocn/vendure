@@ -323,4 +323,14 @@ export declare class InventoryService {
      * 归属：先校验 variant 所属商品属于本人店铺，避免越权调他人店铺商品。
      */
     adjustMyShopStock(ctx: RequestContext, variantId: ID, stockLocationId: ID, stockOnHand: number): Promise<boolean>;
+    /**
+     * 店主商品库存聚合查看：本人店铺某商品的变体数 + 全仓全变体合计 inHand / available。
+     * 归属：先校验商品属于本人店铺。作为 myShopStock（逐仓逐变体明细）的列表级聚合汇总。
+     */
+    myShopProductStock(ctx: RequestContext, productId: ID): Promise<{
+        productId: ID;
+        variantCount: number;
+        totalOnHand: number;
+        totalAvailable: number;
+    }>;
 }

@@ -22,6 +22,15 @@ export class InventoryMerchantResolver {
         return this.inventoryService.getMyShopStock(ctx, productId);
     }
 
+    @Query()
+    @Allow(manageOwnShop.Permission)
+    async myShopProductStock(
+        @Ctx() ctx: RequestContext,
+        @Args('productId') productId: ID,
+    ): Promise<{ productId: ID; variantCount: number; totalOnHand: number; totalAvailable: number }> {
+        return this.inventoryService.myShopProductStock(ctx, productId);
+    }
+
     @Mutation()
     @Allow(manageOwnShop.Permission)
     async myShopStockAdjust(

@@ -279,6 +279,12 @@ const { gql } = require('graphql-tag');
                 sku: String
                 locations: [MerchantVariantStockLocation!]!
             }
+            type MerchantProductStock {
+                productId: ID!
+                variantCount: Int!
+                totalOnHand: Int!
+                totalAvailable: Int!
+            }
 
             type Supplier {
                 id: ID!
@@ -402,6 +408,7 @@ const { gql } = require('graphql-tag');
                 purchaseOrder(id: ID!): PurchaseOrder
 
                 myShopStock(productId: ID!): [MerchantVariantStock!]!
+                myShopProductStock(productId: ID!): MerchantProductStock!
             }
 
             extend type Mutation {

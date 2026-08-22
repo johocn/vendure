@@ -1472,4 +1472,47 @@ export class InventoryService {
         });
         return true;
     }
+
+    /**
+     * 店主商品库存聚合查看：本人店铺某商品的变体数 + 全仓全变体合计 inHand / available。
+     * 归属：先校验商品属于本人店铺。作为 myShopStock（逐仓逐变体明细）的列表级聚合汇总。
+     */
+    async myShopProductStock(
+        ctx: RequestContext,
+        productId: ID,
+    ): Promise<{ productId: ID; variantCount: number; totalOnHand: number; totalAvailable: number }> {
+        const shop = await this.requireMyShop(ctx);
+        await this.assertMyProduct(ctx, productId, shop.id as number);
+
+        const variants = await this.connection.getRepository(ctx, ProductVariant).find({
+            where: { product: { id: productId as any as number } } as any,
+        });
+
+        // 分页拉取全部仓库（单次列表查询有上限）
+        const pageSize = 100;
+        const locations: StockLocation[] = [];
+        let page = 1;
+        while (true) {
+            const result = await this.stockLocationService.findAll(ctx, {
+                skip: (page - 1) * pageSize,
+                take: pageSize,
+            });
+            locations.push(...result.items);
+            if (result.items.length < pageSize || result.totalItems <= locations.length) {
+                break;
+            }
+            page++;
+        }
+
+        let totalOnHand = 0;
+        let totalAvailable = 0;
+        for (const v of variants) {
+            for (const loc of locations) {
+                const level = await this.stockLevelService.getStockLevel(ctx, v.id, loc.id);
+                totalOnHand += level.stockOnHand;
+                totalAvailable += level.stockOnHand - level.stockAllocated;
+            }
+        }
+        return { productId, variantCount: variants.length, totalOnHand, totalAvailable };
+    }
 }

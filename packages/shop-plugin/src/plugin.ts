@@ -160,6 +160,7 @@ const adminSchema = () => gql`
         addProductToMyShop(productId: ID!): Boolean!
         removeProductFromMyShop(productId: ID!): Boolean!
         updateMyShopProduct(productId: ID!, input: UpdateMyShopProductInput!): Product
+        setMyShopProductEnabled(productId: ID!, enabled: Boolean!): Boolean!
         approveMerchantReview(id: ID!): Boolean!
         rejectMerchantReview(id: ID!): Boolean!
     }

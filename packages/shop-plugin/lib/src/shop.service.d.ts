@@ -39,6 +39,11 @@ export declare class ShopService {
     addProductToMyShop(ctx: RequestContext, productId: ID): Promise<boolean>;
     removeProductFromMyShop(ctx: RequestContext, productId: ID): Promise<boolean>;
     updateMyShopProduct(ctx: RequestContext, productId: ID, input: UpdateMyShopProductInput): Promise<Product>;
+    /**
+     * 上下架：切换本人店铺商品的 Product.enabled 并同步其全部变体 ProductVariant.enabled。
+     * 归属：getMyShopProductOrThrow 校验商品属于本人店铺。
+     */
+    setMyShopProductEnabled(ctx: RequestContext, productId: ID, enabled: boolean): Promise<boolean>;
     getMyShopOrders(ctx: RequestContext): Promise<MerchantOrder[]>;
     getMyShopOrder(ctx: RequestContext, orderId: ID): Promise<MerchantOrder | undefined>;
     getMyShopReviews(ctx: RequestContext): Promise<MerchantReview[]>;

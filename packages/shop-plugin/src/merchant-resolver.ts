@@ -88,6 +88,16 @@ export class MerchantResolver {
 
     @Mutation()
     @Allow(manageOwnShop.Permission)
+    async setMyShopProductEnabled(
+        @Ctx() ctx: RequestContext,
+        @Args('productId') productId: ID,
+        @Args('enabled') enabled: boolean,
+    ): Promise<boolean> {
+        return this.shopService.setMyShopProductEnabled(ctx, productId, enabled);
+    }
+
+    @Mutation()
+    @Allow(manageOwnShop.Permission)
     async approveMerchantReview(@Ctx() ctx: RequestContext, @Args('id') id: ID): Promise<boolean> {
         return this.shopService.approveMerchantReview(ctx, id);
     }

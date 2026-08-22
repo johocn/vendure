@@ -56,6 +56,9 @@ let MerchantResolver = class MerchantResolver {
     async updateMyShopProduct(ctx, productId, input) {
         return this.shopService.updateMyShopProduct(ctx, productId, input);
     }
+    async setMyShopProductEnabled(ctx, productId, enabled) {
+        return this.shopService.setMyShopProductEnabled(ctx, productId, enabled);
+    }
     async approveMerchantReview(ctx, id) {
         return this.shopService.approveMerchantReview(ctx, id);
     }
@@ -153,6 +156,16 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object, Object]),
     __metadata("design:returntype", Promise)
 ], MerchantResolver.prototype, "updateMyShopProduct", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(merchant_permissions_1.manageOwnShop.Permission),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('productId')),
+    __param(2, (0, graphql_1.Args)('enabled')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Boolean]),
+    __metadata("design:returntype", Promise)
+], MerchantResolver.prototype, "setMyShopProductEnabled", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(merchant_permissions_1.manageOwnShop.Permission),

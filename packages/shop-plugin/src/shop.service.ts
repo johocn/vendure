@@ -13,6 +13,7 @@ import {
     Product,
     ProductService,
     ProductTranslation,
+    ProductVariant,
     RequestContext,
     Role,
     RoleService,
@@ -375,6 +376,29 @@ export class ShopService {
         return this.connection
             .getRepository(ctx, Product)
             .findOne({ where: { id: product.id as number } as any, relations: ['translations'] }) as any;
+    }
+
+    /**
+     * 上下架：切换本人店铺商品的 Product.enabled 并同步其全部变体 ProductVariant.enabled。
+     * 归属：getMyShopProductOrThrow 校验商品属于本人店铺。
+     */
+    async setMyShopProductEnabled(
+        ctx: RequestContext,
+        productId: ID,
+        enabled: boolean,
+    ): Promise<boolean> {
+        const shop = await this.requireMyShop(ctx);
+        const product = await this.getMyShopProductOrThrow(ctx, shop, productId);
+        product.enabled = enabled;
+        await this.connection.getRepository(ctx, Product).save(product);
+        const variants = await this.connection.getRepository(ctx, ProductVariant).find({
+            where: { product: { id: product.id as number } } as any,
+        });
+        for (const v of variants) {
+            v.enabled = enabled;
+            await this.connection.getRepository(ctx, ProductVariant).save(v);
+        }
+        return true;
     }
 
     async getMyShopOrders(ctx: RequestContext): Promise<MerchantOrder[]> {

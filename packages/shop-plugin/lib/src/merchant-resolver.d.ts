@@ -20,6 +20,7 @@ export declare class MerchantResolver {
     addProductToMyShop(ctx: RequestContext, productId: ID): Promise<boolean>;
     removeProductFromMyShop(ctx: RequestContext, productId: ID): Promise<boolean>;
     updateMyShopProduct(ctx: RequestContext, productId: ID, input: UpdateMyShopProductInput): Promise<any>;
+    setMyShopProductEnabled(ctx: RequestContext, productId: ID, enabled: boolean): Promise<boolean>;
     approveMerchantReview(ctx: RequestContext, id: ID): Promise<boolean>;
     rejectMerchantReview(ctx: RequestContext, id: ID): Promise<boolean>;
 }

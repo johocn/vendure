@@ -29,6 +29,9 @@ let InventoryMerchantResolver = class InventoryMerchantResolver {
     async myShopStock(ctx, productId) {
         return this.inventoryService.getMyShopStock(ctx, productId);
     }
+    async myShopProductStock(ctx, productId) {
+        return this.inventoryService.myShopProductStock(ctx, productId);
+    }
     async myShopStockAdjust(ctx, variantId, stockLocationId, stockOnHand) {
         return this.inventoryService.adjustMyShopStock(ctx, variantId, stockLocationId, stockOnHand);
     }
@@ -43,6 +46,15 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], InventoryMerchantResolver.prototype, "myShopStock", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(shop_plugin_1.manageOwnShop.Permission),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('productId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], InventoryMerchantResolver.prototype, "myShopProductStock", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(shop_plugin_1.manageOwnShop.Permission),

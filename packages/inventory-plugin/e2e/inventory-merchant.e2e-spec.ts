@@ -38,6 +38,15 @@ describe('InventoryPlugin · 阶段47 店主自营库存（只读水位 + 归属
     const LEDGER = gql`
         query ($vid: ID!, $biz: String) { stockLedger(productVariantId: $vid, bizType: $biz) { items { id bizType bizCode quantity beforeOnHand afterOnHand reason } totalItems } }
     `;
+    const TOGGLE = gql`
+        mutation ($pid: ID!, $on: Boolean!) { setMyShopProductEnabled(productId: $pid, enabled: $on) }
+    `;
+    const PROD = gql`
+        query ($id: ID!) { product(id: $id) { ... on Product { enabled id variants { id enabled } } } }
+    `;
+    const PRODSTOCK = gql`
+        query ($pid: ID!) { myShopProductStock(productId: $pid) { productId variantCount totalOnHand totalAvailable } }
+    `;
 
     async function createShop(name: string, slug: string): Promise<string> {
         const res = (await adminClient.query(gql`
@@ -168,5 +177,33 @@ describe('InventoryPlugin · 阶段47 店主自营库存（只读水位 + 归属
         const row = level.stockLevels.items.find((x: any) => String(x.productVariantId) === String(variantBId));
         expect(row).toBeDefined();
         expect(row.stockOnHand).toBe(5);
+    });
+
+    it('6 上下架：店主A切换本人商品 enabled 并同步变体；对他人商品被拒', async () => {
+        const ownerA = await asOwner('ownerA.stock@test.com');
+        // 下架 A 商品 → Product.enabled=false 且变体全 false
+        expect((await ownerA.query(TOGGLE, { pid: productAId, on: false })) as any).toEqual({ setMyShopProductEnabled: true });
+        const p1 = (await adminClient.query(PROD, { id: productAId })) as any;
+        expect(p1.product.enabled).toBe(false);
+        expect(p1.product.variants.length).toBeGreaterThan(0);
+        expect(p1.product.variants.every((v: any) => v.enabled === false)).toBe(true);
+        // 重新上架 → enabled 恢复
+        expect((await ownerA.query(TOGGLE, { pid: productAId, on: true })) as any).toEqual({ setMyShopProductEnabled: true });
+        const p2 = (await adminClient.query(PROD, { id: productAId })) as any;
+        expect(p2.product.enabled).toBe(true);
+        expect(p2.product.variants.every((v: any) => v.enabled === true)).toBe(true);
+        // 越权：对 B 店商品上下架被拒
+        await expect(ownerA.query(TOGGLE, { pid: productBId, on: false })).rejects.toThrow();
+    });
+
+    it('7 库存聚合查看：myShopProductStock 汇总本人商品库存；对他人商品被拒', async () => {
+        const ownerA = await asOwner('ownerA.stock@test.com');
+        const r = (await ownerA.query(PRODSTOCK, { pid: productAId })) as any;
+        expect(String(r.myShopProductStock.productId)).toBe(String(productAId));
+        expect(r.myShopProductStock.variantCount).toBe(1);
+        expect(r.myShopProductStock.totalOnHand).toBe(80); // 阶段47 test4 校准到 80
+        expect(r.myShopProductStock.totalAvailable).toBe(80);
+        // 越权：聚合他人店铺商品被拒
+        await expect(ownerA.query(PRODSTOCK, { pid: productBId })).rejects.toThrow();
     });
 });

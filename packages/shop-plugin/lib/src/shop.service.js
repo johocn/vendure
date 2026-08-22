@@ -321,6 +321,24 @@ let ShopService = class ShopService {
             .getRepository(ctx, core_1.Product)
             .findOne({ where: { id: product.id }, relations: ['translations'] });
     }
+    /**
+     * 上下架：切换本人店铺商品的 Product.enabled 并同步其全部变体 ProductVariant.enabled。
+     * 归属：getMyShopProductOrThrow 校验商品属于本人店铺。
+     */
+    async setMyShopProductEnabled(ctx, productId, enabled) {
+        const shop = await this.requireMyShop(ctx);
+        const product = await this.getMyShopProductOrThrow(ctx, shop, productId);
+        product.enabled = enabled;
+        await this.connection.getRepository(ctx, core_1.Product).save(product);
+        const variants = await this.connection.getRepository(ctx, core_1.ProductVariant).find({
+            where: { product: { id: product.id } },
+        });
+        for (const v of variants) {
+            v.enabled = enabled;
+            await this.connection.getRepository(ctx, core_1.ProductVariant).save(v);
+        }
+        return true;
+    }
     async getMyShopOrders(ctx) {
         const shop = await this.requireMyShop(ctx);
         return this.aggregateMerchantOrders(ctx, shop);

@@ -14,5 +14,11 @@ export declare class InventoryMerchantResolver {
         sku: string | null;
         locations: any[];
     }>>;
+    myShopProductStock(ctx: RequestContext, productId: ID): Promise<{
+        productId: ID;
+        variantCount: number;
+        totalOnHand: number;
+        totalAvailable: number;
+    }>;
     myShopStockAdjust(ctx: RequestContext, variantId: ID, stockLocationId: ID, stockOnHand: number): Promise<boolean>;
 }
