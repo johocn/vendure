@@ -438,7 +438,7 @@ const { gql } = require('graphql-tag');
         if (!config.customFields.Channel.some(cf => cf.name === 'themeId')) {
             config.customFields.Channel.push({
                 name: 'themeId',
-                type: 'localeString',
+                type: 'string',
                 defaultValue: 'taobao-orange',
                 list: false,
                 ui: {

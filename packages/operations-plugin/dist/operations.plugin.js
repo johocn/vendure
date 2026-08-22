@@ -470,7 +470,7 @@ exports.OperationsPlugin = OperationsPlugin = OperationsPlugin_1 = __decorate([
             if (!config.customFields.Channel.some(cf => cf.name === 'themeId')) {
                 config.customFields.Channel.push({
                     name: 'themeId',
-                    type: 'localeString',
+                    type: 'string',
                     defaultValue: 'taobao-orange',
                     list: false,
                     ui: {
