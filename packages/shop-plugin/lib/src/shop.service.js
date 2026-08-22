@@ -24,11 +24,12 @@ const ALLOWED_TRANSITIONS = {
     closed: ['active', 'applicant'],
 };
 let ShopService = class ShopService {
-    constructor(connection, productService, administratorService, roleService) {
+    constructor(connection, productService, administratorService, roleService, orderService) {
         this.connection = connection;
         this.productService = productService;
         this.administratorService = administratorService;
         this.roleService = roleService;
+        this.orderService = orderService;
     }
     // ---------- 管理端 ----------
     async createShop(ctx, input) {
@@ -349,6 +350,137 @@ let ShopService = class ShopService {
         const all = await this.aggregateMerchantOrders(ctx, shop);
         return (_a = all.find(m => String(m.orderId) === String(orderId))) !== null && _a !== void 0 ? _a : undefined;
     }
+    /**
+     * 店主发货：对该订单中归属本店、且尚未履约的行创建 manual Fulfillment 并流转至 Shipped。
+     * 已履约完的行跳过；全部已履约则直接返回摘要不发重复货。
+     */
+    async fulfillMyShopOrder(ctx, orderId, method, trackingCode) {
+        var _a, _b;
+        const shop = await this.requireMyShop(ctx);
+        const { myLines } = await this.resolveMyShopOrder(ctx, orderId, shop);
+        const toFulfill = myLines.filter(l => l.remaining > 0);
+        const fulfillmentIds = [];
+        if (toFulfill.length > 0) {
+            const fulfillment = await this.orderService.createFulfillment(ctx, {
+                handler: {
+                    code: 'manual-fulfillment',
+                    arguments: [
+                        { name: 'method', value: method !== null && method !== void 0 ? method : '' },
+                        { name: 'trackingCode', value: trackingCode !== null && trackingCode !== void 0 ? trackingCode : '' },
+                    ],
+                },
+                lines: toFulfill.map(l => ({ orderLineId: l.line.id, quantity: l.remaining })),
+            });
+            if (!fulfillment || 'errorCode' in fulfillment) {
+                throw new core_1.UserInputError((_a = fulfillment === null || fulfillment === void 0 ? void 0 : fulfillment.message) !== null && _a !== void 0 ? _a : '创建发货单失败');
+            }
+            const promoted = await this.orderService.transitionFulfillmentToState(ctx, fulfillment.id, 'Shipped');
+            if (!promoted || 'errorCode' in promoted) {
+                throw new core_1.UserInputError((_b = promoted === null || promoted === void 0 ? void 0 : promoted.message) !== null && _b !== void 0 ? _b : '发货单流转失败');
+            }
+            fulfillmentIds.push(String(fulfillment.id));
+        }
+        return {
+            orderId: String(orderId),
+            totalItemCount: myLines.reduce((acc, l) => acc + l.line.quantity, 0),
+            // 本调用将全部剩余行一次履约，故履约后 shipped=total、remaining=0
+            shippedItemCount: myLines.reduce((acc, l) => acc + l.line.quantity, 0),
+            remainingItemCount: 0,
+            fulfillmentIds,
+        };
+    }
+    /** 店主查看该订单本店行的发货单列表（state!=Cancelled）。 */
+    async getMyShopOrderFulfillments(ctx, orderId) {
+        var _a, _b;
+        const shop = await this.requireMyShop(ctx);
+        const { myLines, nameByLine } = await this.resolveMyShopOrder(ctx, orderId, shop);
+        const ids = myLines.map(l => l.line.id);
+        if (ids.length === 0) {
+            return [];
+        }
+        const fls = await this.connection
+            .getRepository(ctx, core_1.FulfillmentLine)
+            .createQueryBuilder('fl')
+            .leftJoinAndSelect('fl.fulfillment', 'fulfillment')
+            .where('fl.orderLineId IN (:...ids)', { ids })
+            .andWhere('fulfillment.state != :state', { state: 'Cancelled' })
+            .orderBy('fulfillment.createdAt', 'ASC')
+            .getMany();
+        const grouped = new Map();
+        for (const fl of fls) {
+            const fid = fl.fulfillment.id;
+            const f = grouped.get(fid);
+            if (f) {
+                f.items.push(Object.assign(Object.assign({ orderLineId: String(fl.orderLineId) }, nameByLine.get(fl.orderLineId)), { quantity: fl.quantity }));
+                continue;
+            }
+            grouped.set(fid, {
+                fulfillmentId: String(fid),
+                state: fl.fulfillment.state,
+                method: (_a = fl.fulfillment.method) !== null && _a !== void 0 ? _a : null,
+                trackingCode: (_b = fl.fulfillment.trackingCode) !== null && _b !== void 0 ? _b : null,
+                createdAt: fl.fulfillment.createdAt,
+                items: [
+                    Object.assign(Object.assign({ orderLineId: String(fl.orderLineId) }, nameByLine.get(fl.orderLineId)), { quantity: fl.quantity }),
+                ],
+            });
+        }
+        return [...grouped.values()];
+    }
+    /**
+     * 解析指定订单中归属本店的行及其履约量。
+     * 返回：myLines（line + fulfilled + remaining）、总产量、nameByLine（orderLineId→商品/变体名）。
+     */
+    async resolveMyShopOrder(ctx, orderId, shop) {
+        var _a, _b, _c, _d, _e;
+        const order = await this.connection.getRepository(ctx, core_1.Order).findOne({
+            where: { id: Number(orderId) },
+            relations: [
+                'lines',
+                'lines.productVariant',
+                'lines.productVariant.product',
+                'lines.productVariant.translations',
+                'lines.productVariant.product.translations',
+            ],
+        });
+        if (!order) {
+            throw new core_1.EntityNotFoundError('Order', orderId);
+        }
+        const myLines = ((_a = order.lines) !== null && _a !== void 0 ? _a : []).filter(l => {
+            var _a, _b, _c;
+            const cf = ((_c = (_b = (_a = l.productVariant) === null || _a === void 0 ? void 0 : _a.product) === null || _b === void 0 ? void 0 : _b.customFields) !== null && _c !== void 0 ? _c : {});
+            return Number(cf.shopId) === shop.id;
+        });
+        const ids = myLines.map(l => l.id);
+        const fulfilledMap = new Map();
+        if (ids.length > 0) {
+            const fls = await this.connection
+                .getRepository(ctx, core_1.FulfillmentLine)
+                .createQueryBuilder('fl')
+                .leftJoinAndSelect('fl.fulfillment', 'fulfillment')
+                .where('fl.orderLineId IN (:...ids)', { ids })
+                .andWhere('fulfillment.state != :state', { state: 'Cancelled' })
+                .getMany();
+            for (const fl of fls) {
+                fulfilledMap.set(fl.orderLineId, ((_b = fulfilledMap.get(fl.orderLineId)) !== null && _b !== void 0 ? _b : 0) + fl.quantity);
+            }
+        }
+        const nameByLine = new Map();
+        for (const l of myLines) {
+            const pvName = this.pickName((_c = l.productVariant) === null || _c === void 0 ? void 0 : _c.translations, ctx.languageCode, 'name');
+            const pName = this.pickName((_e = (_d = l.productVariant) === null || _d === void 0 ? void 0 : _d.product) === null || _e === void 0 ? void 0 : _e.translations, ctx.languageCode, 'name');
+            nameByLine.set(l.id, { productName: pName, variantName: pvName });
+        }
+        return {
+            myLines: myLines.map(l => {
+                var _a;
+                const total = l.quantity;
+                const fulfilled = (_a = fulfilledMap.get(l.id)) !== null && _a !== void 0 ? _a : 0;
+                return { line: l, remaining: total - fulfilled };
+            }),
+            nameByLine,
+        };
+    }
     async getMyShopReviews(ctx) {
         var _a;
         const shop = await this.requireMyShop(ctx);
@@ -474,7 +606,7 @@ let ShopService = class ShopService {
     }
     /** 聚合我店商品行 → MerchantOrder 投影（items 仅含我店行，不泄露他人店铺行）。e2e 规模用内存聚合。 */
     async aggregateMerchantOrders(ctx, shop) {
-        var _a;
+        var _a, _b, _c, _d;
         const lines = await this.connection.getRepository(ctx, core_1.OrderLine).find({
             relations: [
                 'order',
@@ -490,6 +622,23 @@ let ShopService = class ShopService {
             const cf = ((_c = (_b = (_a = l.productVariant) === null || _a === void 0 ? void 0 : _a.product) === null || _b === void 0 ? void 0 : _b.customFields) !== null && _c !== void 0 ? _c : {});
             return Number(cf.shopId) === shop.id;
         });
+        // 逐行已履约量（非 Cancelled FulfillmentLine 求和），供店主列表显示已发/待发。
+        const fulfilledByLine = new Map();
+        if (myLines.length > 0) {
+            const fls = await this.connection
+                .getRepository(ctx, core_1.FulfillmentLine)
+                .createQueryBuilder('fulfillmentLine')
+                .leftJoinAndSelect('fulfillmentLine.fulfillment', 'fulfillment')
+                .where('fulfillmentLine.orderLineId IN (:...ids)', {
+                ids: myLines.map(l => l.id),
+            })
+                .andWhere('fulfillment.state != :state', { state: 'Cancelled' })
+                .getMany();
+            for (const fl of fls) {
+                const cur = (_a = fulfilledByLine.get(fl.orderLineId)) !== null && _a !== void 0 ? _a : 0;
+                fulfilledByLine.set(fl.orderLineId, cur + fl.quantity);
+            }
+        }
         const orderMap = new Map();
         for (const line of myLines) {
             const order = line.order;
@@ -509,6 +658,7 @@ let ShopService = class ShopService {
                     productName: pName,
                     variantName: pvName,
                     quantity: line.quantity,
+                    fulfilledQuantity: (_b = fulfilledByLine.get(line.id)) !== null && _b !== void 0 ? _b : 0,
                     unitPriceWithTax: line.unitPriceWithTax,
                     lineTotalWithTax: line.linePriceWithTax,
                 });
@@ -525,7 +675,7 @@ let ShopService = class ShopService {
                     ? [order.customer.firstName, order.customer.lastName].filter(Boolean).join(' ') ||
                         order.customer.emailAddress
                     : null,
-                placedAt: (_a = order.orderPlacedAt) !== null && _a !== void 0 ? _a : null,
+                placedAt: (_c = order.orderPlacedAt) !== null && _c !== void 0 ? _c : null,
                 items: [
                     {
                         orderLineId: String(line.id),
@@ -533,6 +683,7 @@ let ShopService = class ShopService {
                         productName: pName,
                         variantName: pvName,
                         quantity: line.quantity,
+                        fulfilledQuantity: (_d = fulfilledByLine.get(line.id)) !== null && _d !== void 0 ? _d : 0,
                         unitPriceWithTax: line.unitPriceWithTax,
                         lineTotalWithTax: line.linePriceWithTax,
                     },
@@ -564,6 +715,7 @@ exports.ShopService = ShopService = __decorate([
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
         core_1.ProductService,
         core_1.AdministratorService,
-        core_1.RoleService])
+        core_1.RoleService,
+        core_1.OrderService])
 ], ShopService);
 //# sourceMappingURL=shop.service.js.map

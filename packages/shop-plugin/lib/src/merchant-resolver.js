@@ -38,6 +38,12 @@ let MerchantResolver = class MerchantResolver {
     async myShopOrder(ctx, orderId) {
         return this.shopService.getMyShopOrder(ctx, orderId);
     }
+    async myShopOrderFulfillments(ctx, orderId) {
+        return this.shopService.getMyShopOrderFulfillments(ctx, orderId);
+    }
+    async fulfillMyShopOrder(ctx, orderId, method, trackingCode) {
+        return this.shopService.fulfillMyShopOrder(ctx, orderId, method, trackingCode);
+    }
     async myShopReviews(ctx) {
         return this.shopService.getMyShopReviews(ctx);
     }
@@ -101,6 +107,26 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], MerchantResolver.prototype, "myShopOrder", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(merchant_permissions_1.manageOwnShop.Permission),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantResolver.prototype, "myShopOrderFulfillments", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(merchant_permissions_1.manageOwnShop.Permission),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __param(2, (0, graphql_1.Args)('method', { type: () => String, nullable: true })),
+    __param(3, (0, graphql_1.Args)('trackingCode', { type: () => String, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String, String]),
+    __metadata("design:returntype", Promise)
+], MerchantResolver.prototype, "fulfillMyShopOrder", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(merchant_permissions_1.manageOwnShop.Permission),

@@ -120,6 +120,7 @@ const adminSchema = () => gql`
         productName: String!
         variantName: String!
         quantity: Int!
+        fulfilledQuantity: Int!
         unitPriceWithTax: Int!
         lineTotalWithTax: Int!
     }
@@ -133,6 +134,30 @@ const adminSchema = () => gql`
         customerName: String
         placedAt: DateTime
         items: [MerchantOrderLine!]!
+    }
+
+    type MerchantFulfillmentLine {
+        orderLineId: ID!
+        productName: String!
+        variantName: String!
+        quantity: Int!
+    }
+
+    type MerchantFulfillment {
+        fulfillmentId: ID!
+        state: String!
+        method: String
+        trackingCode: String
+        createdAt: DateTime!
+        items: [MerchantFulfillmentLine!]!
+    }
+
+    type FulfillMyShopOrderResult {
+        orderId: ID!
+        totalItemCount: Int!
+        shippedItemCount: Int!
+        remainingItemCount: Int!
+        fulfillmentIds: [ID!]!
     }
 
     type MerchantReview {
@@ -151,6 +176,7 @@ const adminSchema = () => gql`
         myShopProducts(options: ShopListOptions): ProductList!
         myShopOrder(orderId: ID!): MerchantOrder
         myShopOrders: [MerchantOrder!]!
+        myShopOrderFulfillments(orderId: ID!): [MerchantFulfillment!]!
         myShopReviews: [MerchantReview!]!
     }
 
@@ -161,6 +187,7 @@ const adminSchema = () => gql`
         removeProductFromMyShop(productId: ID!): Boolean!
         updateMyShopProduct(productId: ID!, input: UpdateMyShopProductInput!): Product
         setMyShopProductEnabled(productId: ID!, enabled: Boolean!): Boolean!
+        fulfillMyShopOrder(orderId: ID!, method: String, trackingCode: String): FulfillMyShopOrderResult!
         approveMerchantReview(id: ID!): Boolean!
         rejectMerchantReview(id: ID!): Boolean!
     }

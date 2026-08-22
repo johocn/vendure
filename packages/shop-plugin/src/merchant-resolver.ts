@@ -4,7 +4,7 @@ import { Administrator, Allow, Ctx, ID, Permission, RequestContext } from '@vend
 import { manageOwnShop } from './merchant-permissions';
 import { Shop } from './shop.entity';
 import { ShopService } from './shop.service';
-import { CreateOwnerInput, MerchantOrder, MerchantReview, ShopListOptions, UpdateMyShopInput, UpdateMyShopProductInput } from './types';
+import { CreateOwnerInput, FulfillMyShopOrderResult, MerchantFulfillment, MerchantOrder, MerchantReview, ShopListOptions, UpdateMyShopInput, UpdateMyShopProductInput } from './types';
 
 /**
  * 店主自营后台（ADMIN API）。全部能力 @Allow(manageOwnShop.Permission) 把关「店主管理员」，
@@ -40,6 +40,26 @@ export class MerchantResolver {
     @Allow(manageOwnShop.Permission)
     async myShopOrder(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID): Promise<MerchantOrder | undefined> {
         return this.shopService.getMyShopOrder(ctx, orderId);
+    }
+
+    @Query()
+    @Allow(manageOwnShop.Permission)
+    async myShopOrderFulfillments(
+        @Ctx() ctx: RequestContext,
+        @Args('orderId') orderId: ID,
+    ): Promise<MerchantFulfillment[]> {
+        return this.shopService.getMyShopOrderFulfillments(ctx, orderId);
+    }
+
+    @Mutation()
+    @Allow(manageOwnShop.Permission)
+    async fulfillMyShopOrder(
+        @Ctx() ctx: RequestContext,
+        @Args('orderId') orderId: ID,
+        @Args('method', { type: () => String, nullable: true }) method?: string,
+        @Args('trackingCode', { type: () => String, nullable: true }) trackingCode?: string,
+    ): Promise<FulfillMyShopOrderResult> {
+        return this.shopService.fulfillMyShopOrder(ctx, orderId, method, trackingCode);
     }
 
     @Query()

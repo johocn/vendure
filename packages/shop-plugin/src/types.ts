@@ -64,8 +64,34 @@ export interface MerchantOrderLine {
     productName: string;
     variantName: string;
     quantity: number;
+    /** 该行已履约（非 Cancelled FulfillmentLine 求和）数量。 */
+    fulfilledQuantity: number;
     unitPriceWithTax: number;
     lineTotalWithTax: number;
+}
+
+export interface MerchantFulfillmentLine {
+    orderLineId: string;
+    productName: string;
+    variantName: string;
+    quantity: number;
+}
+
+export interface MerchantFulfillment {
+    fulfillmentId: string;
+    state: string;
+    method: string | null;
+    trackingCode: string | null;
+    createdAt: Date;
+    items: MerchantFulfillmentLine[];
+}
+
+export interface FulfillMyShopOrderResult {
+    orderId: string;
+    totalItemCount: number;
+    shippedItemCount: number;
+    remainingItemCount: number;
+    fulfillmentIds: string[];
 }
 
 export interface MerchantOrder {

@@ -5,10 +5,12 @@ import {
     Customer,
     EntityNotFoundError,
     ForbiddenError,
+    FulfillmentLine,
     ID,
     LanguageCode,
     Order,
     OrderLine,
+    OrderService,
     PaginatedList,
     Product,
     ProductService,
@@ -30,6 +32,8 @@ import {
     AssignProductsInput,
     CreateOwnerInput,
     CreateShopInput,
+    FulfillMyShopOrderResult,
+    MerchantFulfillment,
     MerchantOrder,
     MerchantOrderLine,
     MerchantReview,
@@ -55,6 +59,7 @@ export class ShopService {
         private productService: ProductService,
         private administratorService: AdministratorService,
         private roleService: RoleService,
+        private orderService: OrderService,
     ) {}
 
     // ---------- 管理端 ----------
@@ -412,6 +417,159 @@ export class ShopService {
         return all.find(m => String(m.orderId) === String(orderId)) ?? undefined;
     }
 
+    /**
+     * 店主发货：对该订单中归属本店、且尚未履约的行创建 manual Fulfillment 并流转至 Shipped。
+     * 已履约完的行跳过；全部已履约则直接返回摘要不发重复货。
+     */
+    async fulfillMyShopOrder(
+        ctx: RequestContext,
+        orderId: ID,
+        method?: string,
+        trackingCode?: string,
+    ): Promise<FulfillMyShopOrderResult> {
+        const shop = await this.requireMyShop(ctx);
+        const { myLines } = await this.resolveMyShopOrder(ctx, orderId, shop);
+        const toFulfill = myLines.filter(l => l.remaining > 0);
+        const fulfillmentIds: string[] = [];
+        if (toFulfill.length > 0) {
+            const fulfillment = await this.orderService.createFulfillment(ctx, {
+                handler: {
+                    code: 'manual-fulfillment',
+                    arguments: [
+                        { name: 'method', value: method ?? '' },
+                        { name: 'trackingCode', value: trackingCode ?? '' },
+                    ],
+                },
+                lines: toFulfill.map(l => ({ orderLineId: l.line.id as string as any, quantity: l.remaining })),
+            });
+            if (!fulfillment || 'errorCode' in (fulfillment as any)) {
+                throw new UserInputError((fulfillment as any)?.message ?? '创建发货单失败');
+            }
+            const promoted = await this.orderService.transitionFulfillmentToState(
+                ctx,
+                (fulfillment as any).id,
+                'Shipped' as any,
+            );
+            if (!promoted || 'errorCode' in (promoted as any)) {
+                throw new UserInputError((promoted as any)?.message ?? '发货单流转失败');
+            }
+            fulfillmentIds.push(String((fulfillment as any).id));
+        }
+        return {
+            orderId: String(orderId),
+            totalItemCount: myLines.reduce((acc, l) => acc + l.line.quantity, 0),
+            // 本调用将全部剩余行一次履约，故履约后 shipped=total、remaining=0
+            shippedItemCount: myLines.reduce((acc, l) => acc + l.line.quantity, 0),
+            remainingItemCount: 0,
+            fulfillmentIds,
+        };
+    }
+
+    /** 店主查看该订单本店行的发货单列表（state!=Cancelled）。 */
+    async getMyShopOrderFulfillments(ctx: RequestContext, orderId: ID): Promise<MerchantFulfillment[]> {
+        const shop = await this.requireMyShop(ctx);
+        const { myLines, nameByLine } = await this.resolveMyShopOrder(ctx, orderId, shop);
+        const ids = myLines.map(l => l.line.id as number);
+        if (ids.length === 0) {
+            return [];
+        }
+        const fls = await this.connection
+            .getRepository(ctx, FulfillmentLine)
+            .createQueryBuilder('fl')
+            .leftJoinAndSelect('fl.fulfillment', 'fulfillment')
+            .where('fl.orderLineId IN (:...ids)', { ids })
+            .andWhere('fulfillment.state != :state', { state: 'Cancelled' })
+            .orderBy('fulfillment.createdAt', 'ASC')
+            .getMany();
+        const grouped = new Map<number, MerchantFulfillment>();
+        for (const fl of fls) {
+            const fid = fl.fulfillment.id as number;
+            const f = grouped.get(fid);
+            if (f) {
+                f.items.push({
+                    orderLineId: String(fl.orderLineId),
+                    ...nameByLine.get(fl.orderLineId as number)!,
+                    quantity: fl.quantity,
+                });
+                continue;
+            }
+            grouped.set(fid, {
+                fulfillmentId: String(fid),
+                state: fl.fulfillment.state as string,
+                method: fl.fulfillment.method ?? null,
+                trackingCode: fl.fulfillment.trackingCode ?? null,
+                createdAt: fl.fulfillment.createdAt,
+                items: [
+                    {
+                        orderLineId: String(fl.orderLineId),
+                        ...nameByLine.get(fl.orderLineId as number)!,
+                        quantity: fl.quantity,
+                    },
+                ],
+            });
+        }
+        return [...grouped.values()];
+    }
+
+    /**
+     * 解析指定订单中归属本店的行及其履约量。
+     * 返回：myLines（line + fulfilled + remaining）、总产量、nameByLine（orderLineId→商品/变体名）。
+     */
+    private async resolveMyShopOrder(
+        ctx: RequestContext,
+        orderId: ID,
+        shop: Shop,
+    ): Promise<{
+        myLines: Array<{ line: OrderLine; remaining: number }>;
+        nameByLine: Map<number, { productName: string; variantName: string }>;
+    }> {
+        const order = await this.connection.getRepository(ctx, Order).findOne({
+            where: { id: Number(orderId) } as any,
+            relations: [
+                'lines',
+                'lines.productVariant',
+                'lines.productVariant.product',
+                'lines.productVariant.translations',
+                'lines.productVariant.product.translations',
+            ],
+        });
+        if (!order) {
+            throw new EntityNotFoundError('Order', orderId);
+        }
+        const myLines = (order.lines ?? []).filter(l => {
+            const cf = (l.productVariant?.product?.customFields ?? {}) as any;
+            return Number(cf.shopId) === shop.id;
+        });
+        const ids = myLines.map(l => l.id as number);
+        const fulfilledMap = new Map<number, number>();
+        if (ids.length > 0) {
+            const fls = await this.connection
+                .getRepository(ctx, FulfillmentLine)
+                .createQueryBuilder('fl')
+                .leftJoinAndSelect('fl.fulfillment', 'fulfillment')
+                .where('fl.orderLineId IN (:...ids)', { ids })
+                .andWhere('fulfillment.state != :state', { state: 'Cancelled' })
+                .getMany();
+            for (const fl of fls) {
+                fulfilledMap.set(fl.orderLineId as number, (fulfilledMap.get(fl.orderLineId as number) ?? 0) + fl.quantity);
+            }
+        }
+        const nameByLine = new Map<number, { productName: string; variantName: string }>();
+        for (const l of myLines) {
+            const pvName = this.pickName(l.productVariant?.translations, ctx.languageCode, 'name');
+            const pName = this.pickName(l.productVariant?.product?.translations, ctx.languageCode, 'name');
+            nameByLine.set(l.id as number, { productName: pName, variantName: pvName });
+        }
+        return {
+            myLines: myLines.map(l => {
+                const total = l.quantity;
+                const fulfilled = fulfilledMap.get(l.id as number) ?? 0;
+                return { line: l, remaining: total - fulfilled };
+            }),
+            nameByLine,
+        };
+    }
+
     async getMyShopReviews(ctx: RequestContext): Promise<MerchantReview[]> {
         const shop = await this.requireMyShop(ctx);
         const productIds = await this.getMyShopProductIds(ctx, shop);
@@ -563,6 +721,23 @@ export class ShopService {
             const cf = (l.productVariant?.product?.customFields ?? {}) as any;
             return Number(cf.shopId) === shop.id;
         });
+        // 逐行已履约量（非 Cancelled FulfillmentLine 求和），供店主列表显示已发/待发。
+        const fulfilledByLine = new Map<number, number>();
+        if (myLines.length > 0) {
+            const fls = await this.connection
+                .getRepository(ctx, FulfillmentLine)
+                .createQueryBuilder('fulfillmentLine')
+                .leftJoinAndSelect('fulfillmentLine.fulfillment', 'fulfillment')
+                .where('fulfillmentLine.orderLineId IN (:...ids)', {
+                    ids: myLines.map(l => l.id as number),
+                })
+                .andWhere('fulfillment.state != :state', { state: 'Cancelled' })
+                .getMany();
+            for (const fl of fls) {
+                const cur = fulfilledByLine.get(fl.orderLineId as number) ?? 0;
+                fulfilledByLine.set(fl.orderLineId as number, cur + fl.quantity);
+            }
+        }
         const orderMap = new Map<number, MerchantOrder>();
         for (const line of myLines) {
             const order = line.order;
@@ -582,6 +757,7 @@ export class ShopService {
                     productName: pName,
                     variantName: pvName,
                     quantity: line.quantity,
+                    fulfilledQuantity: fulfilledByLine.get(line.id as number) ?? 0,
                     unitPriceWithTax: line.unitPriceWithTax,
                     lineTotalWithTax: line.linePriceWithTax,
                 });
@@ -606,6 +782,7 @@ export class ShopService {
                         productName: pName,
                         variantName: pvName,
                         quantity: line.quantity,
+                        fulfilledQuantity: fulfilledByLine.get(line.id as number) ?? 0,
                         unitPriceWithTax: line.unitPriceWithTax,
                         lineTotalWithTax: line.linePriceWithTax,
                     },

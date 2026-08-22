@@ -1,12 +1,13 @@
-import { Administrator, AdministratorService, ID, PaginatedList, Product, ProductService, RequestContext, RoleService, TransactionalConnection } from '@vendure/core';
+import { Administrator, AdministratorService, ID, OrderService, PaginatedList, Product, ProductService, RequestContext, RoleService, TransactionalConnection } from '@vendure/core';
 import { Shop } from './shop.entity';
-import { AssignProductsInput, CreateOwnerInput, CreateShopInput, MerchantOrder, MerchantReview, ShopListOptions, ShopRating, ShopStatus, UpdateMyShopInput, UpdateMyShopProductInput, UpdateShopInput } from './types';
+import { AssignProductsInput, CreateOwnerInput, CreateShopInput, FulfillMyShopOrderResult, MerchantFulfillment, MerchantOrder, MerchantReview, ShopListOptions, ShopRating, ShopStatus, UpdateMyShopInput, UpdateMyShopProductInput, UpdateShopInput } from './types';
 export declare class ShopService {
     private connection;
     private productService;
     private administratorService;
     private roleService;
-    constructor(connection: TransactionalConnection, productService: ProductService, administratorService: AdministratorService, roleService: RoleService);
+    private orderService;
+    constructor(connection: TransactionalConnection, productService: ProductService, administratorService: AdministratorService, roleService: RoleService, orderService: OrderService);
     createShop(ctx: RequestContext, input: CreateShopInput): Promise<Shop>;
     updateShop(ctx: RequestContext, id: ID, input: UpdateShopInput): Promise<Shop>;
     setShopStatus(ctx: RequestContext, id: ID, status: ShopStatus): Promise<Shop>;
@@ -46,6 +47,18 @@ export declare class ShopService {
     setMyShopProductEnabled(ctx: RequestContext, productId: ID, enabled: boolean): Promise<boolean>;
     getMyShopOrders(ctx: RequestContext): Promise<MerchantOrder[]>;
     getMyShopOrder(ctx: RequestContext, orderId: ID): Promise<MerchantOrder | undefined>;
+    /**
+     * 店主发货：对该订单中归属本店、且尚未履约的行创建 manual Fulfillment 并流转至 Shipped。
+     * 已履约完的行跳过；全部已履约则直接返回摘要不发重复货。
+     */
+    fulfillMyShopOrder(ctx: RequestContext, orderId: ID, method?: string, trackingCode?: string): Promise<FulfillMyShopOrderResult>;
+    /** 店主查看该订单本店行的发货单列表（state!=Cancelled）。 */
+    getMyShopOrderFulfillments(ctx: RequestContext, orderId: ID): Promise<MerchantFulfillment[]>;
+    /**
+     * 解析指定订单中归属本店的行及其履约量。
+     * 返回：myLines（line + fulfilled + remaining）、总产量、nameByLine（orderLineId→商品/变体名）。
+     */
+    private resolveMyShopOrder;
     getMyShopReviews(ctx: RequestContext): Promise<MerchantReview[]>;
     approveMerchantReview(ctx: RequestContext, id: ID): Promise<boolean>;
     rejectMerchantReview(ctx: RequestContext, id: ID): Promise<boolean>;
