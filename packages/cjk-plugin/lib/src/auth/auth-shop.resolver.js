@@ -16,6 +16,7 @@ exports.AuthShopResolver = void 0;
 const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
 const crypto_1 = require("./crypto");
+const sso_authentication_strategy_1 = require("./sso-authentication-strategy");
 let AuthShopResolver = class AuthShopResolver {
     authMethods(ctx) {
         var _a;
@@ -47,6 +48,22 @@ let AuthShopResolver = class AuthShopResolver {
             channelCode: p.channelCode,
         }));
     }
+    /**
+     * 方向B：已登录本地账号绑定 SSO 身份（SSO↔本地账号互认）。
+     * 校验 code → 得外部身份 → 挂到当前已登录 User。
+     */
+    async bindSsoIdentity(ctx, providerKey, code, redirectUri) {
+        var _a;
+        if (!ctx.activeUserId) {
+            throw new core_1.ForbiddenError();
+        }
+        const config = (0, crypto_1.readChannelAuthConfig)(ctx);
+        const provider = (_a = config === null || config === void 0 ? void 0 : config.ssoProviders) === null || _a === void 0 ? void 0 : _a.find((p) => p.providerKey === providerKey);
+        if (!provider) {
+            return { bound: false, userId: String(ctx.activeUserId), reason: 'sso provider not configured' };
+        }
+        return sso_authentication_strategy_1.ssoAuthenticationStrategy.bindIdentityToUser(ctx, provider, code, String(ctx.activeUserId), redirectUri);
+    }
 };
 exports.AuthShopResolver = AuthShopResolver;
 __decorate([
@@ -63,6 +80,17 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext]),
     __metadata("design:returntype", Array)
 ], AuthShopResolver.prototype, "ssoProviders", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('providerKey')),
+    __param(2, (0, graphql_1.Args)('code')),
+    __param(3, (0, graphql_1.Args)('redirectUri', { nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, String, String]),
+    __metadata("design:returntype", Promise)
+], AuthShopResolver.prototype, "bindSsoIdentity", null);
 exports.AuthShopResolver = AuthShopResolver = __decorate([
     (0, graphql_1.Resolver)()
 ], AuthShopResolver);

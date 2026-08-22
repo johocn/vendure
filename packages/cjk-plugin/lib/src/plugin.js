@@ -352,7 +352,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                 }
 
                 extend type Mutation {
-                    updateChannelAuthConfig(channelId: ID!, input: JSON!): Boolean!
+                    updateChannelAuthConfig(channelId: ID!, input: JSON!): TenantAuthConfigMasked!
                 }
 
                 type TenantAuthConfigMasked {
@@ -666,6 +666,16 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     channelCode: String
                 }
 
+                type SsoBindResult {
+                    bound: Boolean!
+                    userId: ID!
+                    identifier: String
+                    reason: String
+                }
+                extend type Mutation {
+                    bindSsoIdentity(providerKey: String!, code: String!, redirectUri: String): SsoBindResult!
+                }
+
                 type DomainResolveResult {
                     token: String!
                     code: String!
@@ -732,7 +742,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             config.authOptions = config.authOptions || {};
             config.authOptions.shopAuthenticationStrategy = [
                 ...(config.authOptions.shopAuthenticationStrategy || []),
-                new sso_authentication_strategy_1.SsoAuthenticationStrategy(),
+                sso_authentication_strategy_1.ssoAuthenticationStrategy, // 使用单例：resolver 经 export 访问 bindIdentityToUser
             ];
             if ((_a = CjkPlugin.options.cod) === null || _a === void 0 ? void 0 : _a.enabled) {
                 config.paymentOptions.paymentMethodHandlers = [

@@ -1,7 +1,8 @@
-import { Resolver, Query } from '@nestjs/graphql';
-import { RequestContext, Ctx } from '@vendure/core';
+import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Allow, Ctx, ForbiddenError, Permission, RequestContext } from '@vendure/core';
 import { readChannelAuthConfig } from './crypto';
-import type { SsoProviderInfo } from './auth-config.types';
+import { ssoAuthenticationStrategy } from './sso-authentication-strategy';
+import type { SsoProvider, SsoProviderInfo } from './auth-config.types';
 
 @Resolver()
 export class AuthShopResolver {
@@ -35,5 +36,28 @@ export class AuthShopResolver {
             scopes: p.scopes || [],
             channelCode: p.channelCode,
         }));
+    }
+
+    /**
+     * 方向B：已登录本地账号绑定 SSO 身份（SSO↔本地账号互认）。
+     * 校验 code → 得外部身份 → 挂到当前已登录 User。
+     */
+    @Mutation()
+    @Allow(Permission.Authenticated)
+    async bindSsoIdentity(
+        @Ctx() ctx: RequestContext,
+        @Args('providerKey') providerKey: string,
+        @Args('code') code: string,
+        @Args('redirectUri', { nullable: true }) redirectUri?: string,
+    ): Promise<{ bound: boolean; userId: string; identifier?: string; reason?: string }> {
+        if (!ctx.activeUserId) {
+            throw new ForbiddenError();
+        }
+        const config = readChannelAuthConfig(ctx);
+        const provider = config?.ssoProviders?.find((p) => p.providerKey === providerKey) as SsoProvider | undefined;
+        if (!provider) {
+            return { bound: false, userId: String(ctx.activeUserId), reason: 'sso provider not configured' };
+        }
+        return ssoAuthenticationStrategy.bindIdentityToUser(ctx, provider, code, String(ctx.activeUserId), redirectUri);
     }
 }

@@ -45,7 +45,7 @@ import { CjkPluginOptions } from './types';
 import { AuthShopResolver } from './auth/auth-shop.resolver';
 import { AuthAdminResolver } from './auth/auth-admin.resolver';
 import { AuthMethodGuard } from './auth/auth-method-guard';
-import { SsoAuthenticationStrategy } from './auth/sso-authentication-strategy';
+import { ssoAuthenticationStrategy } from './auth/sso-authentication-strategy';
 import { setAuthSecret } from './auth/crypto';
 import { DomainResolverService } from './tenant/domain-resolver.service';
 import { DomainShopResolver } from './tenant/domain-shop.resolver';
@@ -223,7 +223,7 @@ import { DefaultDataService } from './seed/default-data.service';
                 }
 
                 extend type Mutation {
-                    updateChannelAuthConfig(channelId: ID!, input: JSON!): Boolean!
+                    updateChannelAuthConfig(channelId: ID!, input: JSON!): TenantAuthConfigMasked!
                 }
 
                 type TenantAuthConfigMasked {
@@ -537,6 +537,16 @@ import { DefaultDataService } from './seed/default-data.service';
                     channelCode: String
                 }
 
+                type SsoBindResult {
+                    bound: Boolean!
+                    userId: ID!
+                    identifier: String
+                    reason: String
+                }
+                extend type Mutation {
+                    bindSsoIdentity(providerKey: String!, code: String!, redirectUri: String): SsoBindResult!
+                }
+
                 type DomainResolveResult {
                     token: String!
                     code: String!
@@ -603,7 +613,7 @@ import { DefaultDataService } from './seed/default-data.service';
         config.authOptions = config.authOptions || {};
         config.authOptions.shopAuthenticationStrategy = [
             ...(config.authOptions.shopAuthenticationStrategy || []),
-            new SsoAuthenticationStrategy(),
+            ssoAuthenticationStrategy, // 使用单例：resolver 经 export 访问 bindIdentityToUser
         ];
 
         if (CjkPlugin.options.cod?.enabled) {
