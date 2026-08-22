@@ -245,7 +245,17 @@ export const devConfig: VendureConfig = {
                 ],
             },
         ],
-        Channel: [],
+        Channel: [
+            // 店铺装修字段（对齐生产 + 装修需要，Task 6）
+            { name: 'displayTemplate', type: 'string', defaultValue: 'standard', public: true },
+            { name: 'themeId', type: 'string', defaultValue: 'taobao-orange', public: true },
+            { name: 'shopName', type: 'string', public: true },
+            { name: 'shopLogo', type: 'string', public: true },
+            { name: 'shopIntro', type: 'string', public: true },
+            { name: 'servicePhone', type: 'string', public: true },
+            // shopContent 存装修 JSON 字符串（Vendure 3.6.4 无 type:'json'，用 text 承载序列化 JSON）
+            { name: 'shopContent', type: 'text', public: true },
+        ],
         Customer: [],
         Fulfillment: [],
         Order: [],
