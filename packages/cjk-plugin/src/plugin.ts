@@ -555,6 +555,24 @@ import { DefaultDataService } from './seed/default-data.service';
                     resolveChannelByDomain(host: String!): DomainResolveResult
                 }
 
+                type ChannelResolveResult {
+                    token: String!
+                    code: String!
+                    customFields: ChannelResolveCustomFields
+                }
+                type ChannelResolveCustomFields {
+                    shopName: String
+                    shopLogo: String
+                    shopIntro: String
+                    servicePhone: String
+                    shopContent: String
+                    displayTemplate: String
+                    themeId: String
+                }
+                extend type Query {
+                    resolveChannelByCode(code: String!): ChannelResolveResult
+                }
+
                 type DistrictNode {
                     adcode: String!
                     name: String!

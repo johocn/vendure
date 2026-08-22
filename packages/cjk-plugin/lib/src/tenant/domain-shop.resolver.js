@@ -23,6 +23,9 @@ let DomainShopResolver = class DomainShopResolver {
     async resolveChannelByDomain(ctx, host) {
         return this.domainResolverService.resolveByDomain(ctx, host);
     }
+    async resolveChannelByCode(ctx, code) {
+        return this.domainResolverService.resolveByCode(ctx, code);
+    }
 };
 exports.DomainShopResolver = DomainShopResolver;
 __decorate([
@@ -34,6 +37,15 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, String]),
     __metadata("design:returntype", Promise)
 ], DomainShopResolver.prototype, "resolveChannelByDomain", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Public),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('code')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String]),
+    __metadata("design:returntype", Promise)
+], DomainShopResolver.prototype, "resolveChannelByCode", null);
 exports.DomainShopResolver = DomainShopResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [domain_resolver_service_1.DomainResolverService])
