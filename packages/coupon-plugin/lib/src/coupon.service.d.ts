@@ -7,6 +7,7 @@ export declare class CouponService {
     constructor(connection: TransactionalConnection, listQueryBuilder: ListQueryBuilder);
     private orderService;
     private customerService;
+    private memberLevelService;
     private codePrefix;
     init(injector: Injector): void;
     findAllTemplates(ctx: RequestContext, options?: ListQueryOptions<CouponTemplate>): Promise<{
@@ -22,6 +23,11 @@ export declare class CouponService {
     listAllCoupons(ctx: RequestContext, options?: ListQueryOptions<CustomerCoupon>): Promise<{
         items: CustomerCoupon[];
         totalItems: number;
+    }>;
+    pointsMallTemplates(ctx: RequestContext): Promise<CouponTemplate[]>;
+    exchangeWithPoints(ctx: RequestContext, templateId: ID): Promise<{
+        coupon: CustomerCoupon;
+        spentPoints: number;
     }>;
     claimCoupon(ctx: RequestContext, templateId: ID): Promise<CustomerCoupon>;
     grantCoupon(ctx: RequestContext, templateId: ID, customerIds: ID[]): Promise<string[]>;

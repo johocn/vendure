@@ -27,6 +27,9 @@ let CouponShopResolver = class CouponShopResolver {
     async myCoupons(ctx, status) {
         return this.couponService.listMyCoupons(ctx, status);
     }
+    async pointsMallTemplates(ctx) {
+        return this.couponService.pointsMallTemplates(ctx);
+    }
     async claimCoupon(ctx, templateId) {
         return this.couponService.claimCoupon(ctx, templateId);
     }
@@ -43,6 +46,9 @@ let CouponShopResolver = class CouponShopResolver {
             throw new core_1.UserInputError('No active order to clear coupon');
         }
         return this.couponService.clearCouponFromOrder(ctx, order.id);
+    }
+    async exchangeCouponWithPoints(ctx, templateId) {
+        return this.couponService.exchangeWithPoints(ctx, templateId);
     }
 };
 exports.CouponShopResolver = CouponShopResolver;
@@ -61,6 +67,13 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, String]),
     __metadata("design:returntype", Promise)
 ], CouponShopResolver.prototype, "myCoupons", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], CouponShopResolver.prototype, "pointsMallTemplates", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
@@ -87,6 +100,15 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext]),
     __metadata("design:returntype", Promise)
 ], CouponShopResolver.prototype, "clearCouponFromOrder", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Transaction)(),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('templateId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], CouponShopResolver.prototype, "exchangeCouponWithPoints", null);
 exports.CouponShopResolver = CouponShopResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [coupon_service_1.CouponService,

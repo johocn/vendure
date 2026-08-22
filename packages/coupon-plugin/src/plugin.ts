@@ -44,6 +44,7 @@ type CouponTemplate implements Node {
     endsAt: DateTime
     totalCount: Int!
     claimedCount: Int!
+    pointsPrice: Int!
     perUserLimit: Int!
     scope: String!
     categoryId: ID
@@ -83,7 +84,7 @@ type CustomerCoupon implements Node {
         schema: () => gql`
             enum CouponType { FIXED PERCENT FULL }
             enum CouponStatus { UNUSED USED RETURNED EXPIRED INVALID }
-            enum CouponIssuedBy { CENTRE ADMIN }
+            enum CouponIssuedBy { CENTRE ADMIN EXCHANGE }
 
             ${couponTemplateType}
             ${customerCouponType}
@@ -106,6 +107,7 @@ type CustomerCoupon implements Node {
                 startsAt: DateTime
                 endsAt: DateTime
                 totalCount: Int
+                pointsPrice: Int
                 perUserLimit: Int
                 scope: String
                 categoryId: ID
@@ -122,6 +124,7 @@ type CustomerCoupon implements Node {
                 startsAt: DateTime
                 endsAt: DateTime
                 totalCount: Int
+                pointsPrice: Int
                 perUserLimit: Int
                 scope: String
                 categoryId: ID
@@ -153,20 +156,27 @@ type CustomerCoupon implements Node {
         schema: () => gql`
             enum CouponType { FIXED PERCENT FULL }
             enum CouponStatus { UNUSED USED RETURNED EXPIRED INVALID }
-            enum CouponIssuedBy { CENTRE ADMIN }
+            enum CouponIssuedBy { CENTRE ADMIN EXCHANGE }
 
             ${couponTemplateType}
             ${customerCouponType}
 
+            type ExchangeCouponResult {
+                coupon: CustomerCoupon!
+                spentPoints: Int!
+            }
+
             extend type Query {
                 couponCentre: [CouponTemplate!]!
                 myCoupons(status: CouponStatus): [CustomerCoupon!]!
+                pointsMallTemplates: [CouponTemplate!]!
             }
 
             extend type Mutation {
                 claimCoupon(templateId: ID!): CustomerCoupon!
                 applyCouponToOrder(code: String!): Order!
                 clearCouponFromOrder: Order!
+                exchangeCouponWithPoints(templateId: ID!): ExchangeCouponResult!
             }
         `,
         resolvers: [CouponShopResolver],

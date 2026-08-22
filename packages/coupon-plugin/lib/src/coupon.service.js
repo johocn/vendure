@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CouponService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
+const member_level_plugin_1 = require("@vendure/member-level-plugin");
 const constants_1 = require("./constants");
 const coupon_template_entity_1 = require("./coupon-template.entity");
 const customer_coupon_entity_1 = require("./customer-coupon.entity");
@@ -24,6 +25,7 @@ const TEMPLATE_UPDATE_ALLOWED = [
     'startsAt',
     'endsAt',
     'totalCount',
+    'pointsPrice',
     'perUserLimit',
     'scope',
     'categoryId',
@@ -45,12 +47,19 @@ let CouponService = class CouponService {
         this.orderService = injector.get(core_1.OrderService);
         this.customerService = injector.get(core_1.CustomerService);
         try {
+            this.memberLevelService = injector.get(member_level_plugin_1.MemberLevelService);
+        }
+        catch (_a) {
+            // member-level-plugin 未注册则禁用积分兑换
+            this.memberLevelService = null;
+        }
+        try {
             const opts = injector.get('COUPON_PLUGIN_OPTIONS');
             if (opts === null || opts === void 0 ? void 0 : opts.codePrefix) {
                 this.codePrefix = opts.codePrefix;
             }
         }
-        catch (_a) {
+        catch (_b) {
             // options not injected
         }
     }
@@ -130,6 +139,62 @@ let CouponService = class CouponService {
         })
             .getManyAndCount()
             .then(([items, totalItems]) => ({ items, totalItems }));
+    }
+    /* ------------------------- 积分兑换商城 ------------------------- */
+    async pointsMallTemplates(ctx) {
+        const repo = this.connection.getRepository(ctx, coupon_template_entity_1.CouponTemplate);
+        const now = new Date();
+        return repo
+            .createQueryBuilder('tpl')
+            .innerJoin('tpl.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId })
+            .where('tpl.enabled = :enabled', { enabled: true })
+            .andWhere('tpl.pointsPrice > 0')
+            .andWhere('(tpl.startsAt IS NULL OR tpl.startsAt <= :now)', { now })
+            .andWhere('(tpl.endsAt IS NULL OR tpl.endsAt >= :now)', { now })
+            .orderBy('tpl.pointsPrice', 'ASC')
+            .getMany();
+    }
+    async exchangeWithPoints(ctx, templateId) {
+        if (!this.memberLevelService) {
+            throw new core_1.UserInputError('Points service is not enabled');
+        }
+        const customerId = await this.currentCustomerId(ctx);
+        if (!customerId) {
+            throw new core_1.UserInputError('No customer for the current user');
+        }
+        const tpl = await this.findOneTemplate(ctx, templateId);
+        if (!tpl) {
+            throw new core_1.UserInputError(`CouponTemplate ${templateId} not found`);
+        }
+        if (tpl.pointsPrice <= 0) {
+            throw new core_1.UserInputError('This coupon is not exchangeable with points');
+        }
+        const now = new Date();
+        if (!tpl.enabled) {
+            throw new core_1.UserInputError('Coupon template is disabled');
+        }
+        if (tpl.startsAt && now < tpl.startsAt) {
+            throw new core_1.UserInputError('Not yet started');
+        }
+        if (tpl.endsAt && now > tpl.endsAt) {
+            throw new core_1.UserInputError('Coupon redeemed');
+        }
+        // 限兑校验
+        if (tpl.perUserLimit > 0) {
+            const owned = await this.countHeld(customerId, tpl.id);
+            if (owned >= tpl.perUserLimit) {
+                throw new core_1.UserInputError('Per-user redemption limit reached');
+            }
+        }
+        // 扣积分（原子 + SPEND 流水；不足抛 Insufficient；Transaction 保证与发券同回滚）
+        await this.memberLevelService.spendPoints(ctx, customerId, tpl.pointsPrice, null, `积分兑换优惠券:${tpl.name}`);
+        // 原子扣发行余量（防超发）
+        const ok = await this.atomicIncrementClaimed(ctx, tpl.id, tpl);
+        if (!ok) {
+            throw new core_1.UserInputError('Coupon sold out');
+        }
+        const coupon = await this.createUserCoupon(ctx, customerId, tpl, 'EXCHANGE');
+        return { coupon, spentPoints: tpl.pointsPrice };
     }
     /* ------------------------- 领券 / 定向发券 ------------------------- */
     async claimCoupon(ctx, templateId) {

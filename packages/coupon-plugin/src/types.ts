@@ -17,7 +17,7 @@ export type CouponType = 'FIXED' | 'PERCENT' | 'FULL';
 export type CouponStatus = 'UNUSED' | 'USED' | 'RETURNED' | 'EXPIRED' | 'INVALID';
 
 /** 发券来源 */
-export type CouponIssuedBy = 'CENTRE' | 'ADMIN';
+export type CouponIssuedBy = 'CENTRE' | 'ADMIN' | 'EXCHANGE';
 
 /** 券适用范围 */
 export type CouponScope = 'ALL' | 'CATEGORY' | 'SKU';

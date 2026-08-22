@@ -20,6 +20,11 @@ export class CouponShopResolver {
         return this.couponService.listMyCoupons(ctx, status);
     }
 
+    @Query()
+    async pointsMallTemplates(@Ctx() ctx: RequestContext) {
+        return this.couponService.pointsMallTemplates(ctx);
+    }
+
     @Mutation()
     @Transaction()
     async claimCoupon(@Ctx() ctx: RequestContext, @Args('templateId') templateId: ID) {
@@ -44,5 +49,11 @@ export class CouponShopResolver {
             throw new UserInputError('No active order to clear coupon');
         }
         return this.couponService.clearCouponFromOrder(ctx, order.id);
+    }
+
+    @Mutation()
+    @Transaction()
+    async exchangeCouponWithPoints(@Ctx() ctx: RequestContext, @Args('templateId') templateId: ID) {
+        return this.couponService.exchangeWithPoints(ctx, templateId);
     }
 }

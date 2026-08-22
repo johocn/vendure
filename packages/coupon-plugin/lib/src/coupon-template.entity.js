@@ -56,6 +56,10 @@ __decorate([
 __decorate([
     (0, typeorm_1.Column)({ default: 0 }),
     __metadata("design:type", Number)
+], CouponTemplate.prototype, "pointsPrice", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ default: 0 }),
+    __metadata("design:type", Number)
 ], CouponTemplate.prototype, "perUserLimit", void 0);
 __decorate([
     (0, typeorm_1.Column)('varchar', { default: 'ALL' }),

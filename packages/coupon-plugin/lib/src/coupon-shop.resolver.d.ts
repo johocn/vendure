@@ -6,7 +6,12 @@ export declare class CouponShopResolver {
     constructor(couponService: CouponService, orderService: OrderService);
     couponCentre(ctx: RequestContext): Promise<import("./coupon-template.entity").CouponTemplate[]>;
     myCoupons(ctx: RequestContext, status?: string): Promise<import("./customer-coupon.entity").CustomerCoupon[]>;
+    pointsMallTemplates(ctx: RequestContext): Promise<import("./coupon-template.entity").CouponTemplate[]>;
     claimCoupon(ctx: RequestContext, templateId: ID): Promise<import("./customer-coupon.entity").CustomerCoupon>;
     applyCouponToOrder(ctx: RequestContext, code: string): Promise<any>;
     clearCouponFromOrder(ctx: RequestContext): Promise<any>;
+    exchangeCouponWithPoints(ctx: RequestContext, templateId: ID): Promise<{
+        coupon: import("./customer-coupon.entity").CustomerCoupon;
+        spentPoints: number;
+    }>;
 }

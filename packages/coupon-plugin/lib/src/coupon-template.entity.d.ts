@@ -21,6 +21,8 @@ export declare class CouponTemplate extends VendureEntity implements ChannelAwar
     totalCount: number;
     /** 已领取/已发放计数 */
     claimedCount: number;
+    /** 积分兑换价（0=不可积分兑换，仅普通领取） */
+    pointsPrice: number;
     /** 每人限领（0=不限） */
     perUserLimit: number;
     /** 适用范围 ALL|CATEGORY|SKU */

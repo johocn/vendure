@@ -11,6 +11,7 @@ import {
     TransactionalConnection,
     UserInputError,
 } from '@vendure/core';
+import { MemberLevelService } from '@vendure/member-level-plugin';
 
 import { loggerCtx } from './constants';
 import { CouponTemplate } from './coupon-template.entity';
@@ -25,6 +26,7 @@ const TEMPLATE_UPDATE_ALLOWED: ReadonlyArray<keyof CouponTemplate> = [
     'startsAt',
     'endsAt',
     'totalCount',
+    'pointsPrice',
     'perUserLimit',
     'scope',
     'categoryId',
@@ -49,11 +51,18 @@ export class CouponService {
 
     private orderService!: OrderService;
     private customerService!: CustomerService;
+    private memberLevelService!: MemberLevelService;
     private codePrefix = 'C';
 
     init(injector: Injector): void {
         this.orderService = injector.get(OrderService);
         this.customerService = injector.get(CustomerService);
+        try {
+            this.memberLevelService = injector.get(MemberLevelService);
+        } catch {
+            // member-level-plugin 未注册则禁用积分兑换
+            this.memberLevelService = null as any;
+        }
         try {
             const opts = injector.get('COUPON_PLUGIN_OPTIONS' as any) as { codePrefix?: string } | undefined;
             if (opts?.codePrefix) {
@@ -155,6 +164,74 @@ export class CouponService {
             })
             .getManyAndCount()
             .then(([items, totalItems]) => ({ items, totalItems }));
+    }
+
+    /* ------------------------- 积分兑换商城 ------------------------- */
+
+    async pointsMallTemplates(ctx: RequestContext): Promise<CouponTemplate[]> {
+        const repo = this.connection.getRepository(ctx, CouponTemplate);
+        const now = new Date();
+        return repo
+            .createQueryBuilder('tpl')
+            .innerJoin('tpl.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId })
+            .where('tpl.enabled = :enabled', { enabled: true })
+            .andWhere('tpl.pointsPrice > 0')
+            .andWhere('(tpl.startsAt IS NULL OR tpl.startsAt <= :now)', { now })
+            .andWhere('(tpl.endsAt IS NULL OR tpl.endsAt >= :now)', { now })
+            .orderBy('tpl.pointsPrice', 'ASC')
+            .getMany();
+    }
+
+    async exchangeWithPoints(
+        ctx: RequestContext,
+        templateId: ID,
+    ): Promise<{ coupon: CustomerCoupon; spentPoints: number }> {
+        if (!this.memberLevelService) {
+            throw new UserInputError('Points service is not enabled');
+        }
+        const customerId = await this.currentCustomerId(ctx);
+        if (!customerId) {
+            throw new UserInputError('No customer for the current user');
+        }
+        const tpl = await this.findOneTemplate(ctx, templateId);
+        if (!tpl) {
+            throw new UserInputError(`CouponTemplate ${templateId} not found`);
+        }
+        if (tpl.pointsPrice <= 0) {
+            throw new UserInputError('This coupon is not exchangeable with points');
+        }
+        const now = new Date();
+        if (!tpl.enabled) {
+            throw new UserInputError('Coupon template is disabled');
+        }
+        if (tpl.startsAt && now < tpl.startsAt) {
+            throw new UserInputError('Not yet started');
+        }
+        if (tpl.endsAt && now > tpl.endsAt) {
+            throw new UserInputError('Coupon redeemed');
+        }
+        // 限兑校验
+        if (tpl.perUserLimit > 0) {
+            const owned = await this.countHeld(customerId, tpl.id);
+            if (owned >= tpl.perUserLimit) {
+                throw new UserInputError('Per-user redemption limit reached');
+            }
+        }
+        // 扣积分（原子 + SPEND 流水；不足抛 Insufficient；Transaction 保证与发券同回滚）
+        await this.memberLevelService.spendPoints(
+            ctx,
+            customerId,
+            tpl.pointsPrice,
+            null,
+            `积分兑换优惠券:${tpl.name}`,
+        );
+        // 原子扣发行余量（防超发）
+        const ok = await this.atomicIncrementClaimed(ctx, tpl.id, tpl);
+        if (!ok) {
+            throw new UserInputError('Coupon sold out');
+        }
+        const coupon = await this.createUserCoupon(ctx, customerId, tpl, 'EXCHANGE');
+        return { coupon, spentPoints: tpl.pointsPrice };
     }
 
     /* ------------------------- 领券 / 定向发券 ------------------------- */
@@ -378,7 +455,7 @@ export class CouponService {
         ctx: RequestContext,
         customerId: number,
         tpl: CouponTemplate,
-        issuedBy: 'CENTRE' | 'ADMIN',
+        issuedBy: 'CENTRE' | 'ADMIN' | 'EXCHANGE',
     ): Promise<CustomerCoupon> {
         const repo = this.connection.getRepository(ctx, CustomerCoupon);
         // 重试兜底唯一码冲突（碰撞概率极低）

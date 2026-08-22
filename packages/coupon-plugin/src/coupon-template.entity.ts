@@ -36,6 +36,9 @@ export class CouponTemplate extends VendureEntity implements ChannelAware {
     /** 已领取/已发放计数 */
     @Column({ default: 0 }) claimedCount: number;
 
+    /** 积分兑换价（0=不可积分兑换，仅普通领取） */
+    @Column({ default: 0 }) pointsPrice: number;
+
     /** 每人限领（0=不限） */
     @Column({ default: 0 }) perUserLimit: number;
 
