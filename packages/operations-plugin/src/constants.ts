@@ -26,6 +26,8 @@ export enum ContentType {
     Recommendation = 'Recommendation',
     Notice = 'Notice',
     Floor = 'Floor',
+    IconGrid = 'IconGrid',
+    CategoryNav = 'CategoryNav',
 }
 
 /**
