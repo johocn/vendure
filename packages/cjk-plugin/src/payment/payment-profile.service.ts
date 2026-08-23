@@ -10,6 +10,7 @@ import {
     UserInputError,
 } from '@vendure/core';
 import { PaymentProfile } from './payment-profile.entity';
+import { PaymentProfileMethod } from './payment-profile-method.entity';
 
 @Injectable()
 export class PaymentProfileService {
@@ -41,6 +42,12 @@ export class PaymentProfileService {
         const result = await this.connection
             .getRepository(ctx, PaymentProfile)
             .findOne({ where: { id: id as any }, relations: ['paymentMethods'] });
+        if (result) {
+            const methodConfigs = await this.connection
+                .getRepository(ctx, PaymentProfileMethod)
+                .find({ where: { profileId: String(result.id) } as any });
+            (result as any).methodConfigs = methodConfigs;
+        }
         return result ?? undefined;
     }
 
@@ -48,6 +55,12 @@ export class PaymentProfileService {
         const result = await this.connection
             .getRepository(ctx, PaymentProfile)
             .findOne({ where: { code }, relations: ['paymentMethods'] });
+        if (result) {
+            const methodConfigs = await this.connection
+                .getRepository(ctx, PaymentProfileMethod)
+                .find({ where: { profileId: String(result.id) } as any });
+            (result as any).methodConfigs = methodConfigs;
+        }
         return result ?? undefined;
     }
 
@@ -63,7 +76,12 @@ export class PaymentProfileService {
         if (input.paymentMethodIds?.length) {
             profile.paymentMethods = input.paymentMethodIds.map((id: ID) => ({ id } as any));
         }
-        return repo.save(profile);
+        await repo.save(profile);
+        if (input.methodConfigs?.length) {
+            await this.replaceMethodConfigs(ctx, profile.id, input.methodConfigs);
+        }
+        // reload 以填充关联实体完整字段并挂 methodConfigs
+        return (await this.findOne(ctx, profile.id)) as PaymentProfile;
     }
 
     async update(ctx: RequestContext, input: any): Promise<PaymentProfile> {
@@ -84,7 +102,11 @@ export class PaymentProfileService {
         }
         const { id, paymentMethodIds, ...updateData } = input;
         Object.assign(profile, updateData);
-        return repo.save(profile);
+        await repo.save(profile);
+        if (input.methodConfigs !== undefined) {
+            await this.replaceMethodConfigs(ctx, profile.id, input.methodConfigs);
+        }
+        return (await this.findOne(ctx, profile.id)) as PaymentProfile;
     }
 
     async delete(ctx: RequestContext, id: ID): Promise<void> {
@@ -99,6 +121,8 @@ export class PaymentProfileService {
         }
         const profile = await repo.findOne({ where: { id: id as any } });
         if (!profile) throw new EntityNotFoundError('PaymentProfile', id);
+        const jmRepo = this.connection.getRepository(ctx, PaymentProfileMethod);
+        await jmRepo.delete({ profileId: String(id) } as any);
         await repo.remove(profile);
     }
 
@@ -177,5 +201,51 @@ export class PaymentProfileService {
             }
         }
         return Object.keys(result).length > 0 ? result : null;
+    }
+
+    private async replaceMethodConfigs(
+        ctx: RequestContext,
+        profileId: any,
+        configs: Array<{ paymentMethodId: any; mode?: string; options?: any }>,
+    ): Promise<void> {
+        const jmRepo = this.connection.getRepository(ctx, PaymentProfileMethod);
+        await jmRepo.delete({ profileId: String(profileId) } as any);
+        for (const cfg of configs) {
+            await jmRepo.save(new PaymentProfileMethod({
+                profileId: String(profileId),
+                paymentMethodId: String(cfg.paymentMethodId),
+                mode: cfg.mode ?? 'installment',
+                options: cfg.options ?? null,
+            } as any));
+        }
+    }
+
+    async setTenantDefault(ctx: RequestContext, id: any): Promise<void> {
+        const repo = this.connection.getRepository(ctx, PaymentProfile);
+        const profile = await repo.findOne({ where: { id: id as any } });
+        if (!profile) throw new UserInputError('档案不存在');
+        if (profile.isGlobal) throw new UserInputError('全局档案不能设为租户默认');
+        await this.connection
+            .getRepository(ctx, PaymentProfile)
+            .createQueryBuilder()
+            .update()
+            .set({ isTenantDefault: false })
+            .where('"ownerChannelId" = :channelId AND "isGlobal" = false', { channelId: ctx.channelId })
+            .execute();
+        profile.isTenantDefault = true;
+        await repo.save(profile);
+    }
+
+    async getTenantDefault(ctx: RequestContext): Promise<PaymentProfile | undefined> {
+        const profile = await this.connection
+            .getRepository(ctx, PaymentProfile)
+            .findOne({ where: { isGlobal: false, ownerChannelId: ctx.channelId as any, isTenantDefault: true } });
+        return profile ?? undefined;
+    }
+
+    async getMethodConfigsByProfile(ctx: RequestContext, profileId: any): Promise<any[]> {
+        return this.connection
+            .getRepository(ctx, PaymentProfileMethod)
+            .find({ where: { profileId: String(profileId) } as any });
     }
 }

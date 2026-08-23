@@ -20,4 +20,8 @@ export declare class PaymentProfileService {
      */
     findPaymentMethodsByIds(ctx: RequestContext, ids: ID[]): Promise<any[]>;
     getIntersectedInstallmentOptions(ctx: RequestContext, profileIds: ID[]): Promise<Record<string, any> | null>;
+    private replaceMethodConfigs;
+    setTenantDefault(ctx: RequestContext, id: any): Promise<void>;
+    getTenantDefault(ctx: RequestContext): Promise<PaymentProfile | undefined>;
+    getMethodConfigsByProfile(ctx: RequestContext, profileId: any): Promise<any[]>;
 }
