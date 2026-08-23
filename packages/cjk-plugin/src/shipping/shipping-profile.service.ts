@@ -337,10 +337,33 @@ export class ShippingProfileService {
         const profile = await this.connection
             .getRepository(ctx, ShippingProfile)
             .findOne({
-                where: { isGlobal: false, ownerChannelId: ctx.channelId as any, isTenantDefault: true },
+                where: { isGlobal: false, ownerChannelId: ctx.channelId as any, isTenantDefault: true, enabled: true },
                 relations: ['shippingMethods', 'pickupLocations'],
             });
         return profile ?? undefined;
+    }
+
+    /**
+     * 解析变体绑定的档案集合（含默认回退）：
+     * - 变体绑定的档案若已停用（enabled=false），视为未绑定，回退到租户默认档案；
+     * - 回退命中（含租户默认）同样排除停用档案（见 getTenantDefault）；
+     * - 返回去重后的有效档案 id 列表，供交集/匹配使用，保证停用档案不参与变体绑定匹配。
+     */
+    async resolveEffectiveProfileIds(ctx: RequestContext, profileIds: ID[]): Promise<ID[]> {
+        const seen = new Set<string>();
+        const result: ID[] = [];
+        for (const pid of profileIds) {
+            const profile = await this.findOne(ctx, pid as any);
+            let effective: ID | undefined = profile?.enabled === false
+                ? (await this.getTenantDefault(ctx))?.id as ID | undefined
+                : pid;
+            if (effective == null) continue;
+            const key = String(effective);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            result.push(effective);
+        }
+        return result;
     }
 
     async getMethodConfigsByProfile(ctx: RequestContext, profileId: any): Promise<any[]> {

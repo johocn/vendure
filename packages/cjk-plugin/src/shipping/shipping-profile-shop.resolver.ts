@@ -12,6 +12,7 @@ export class ShippingProfileShopResolver {
         @Ctx() ctx: RequestContext,
         @Args('profileIds') profileIds: ID[],
     ) {
+        profileIds = await this.service.resolveEffectiveProfileIds(ctx, profileIds);
         const intersected = await this.service.getIntersectedShippingMethods(ctx, profileIds);
         if (intersected.length === 0) return [];
         return (await this.service.findShippingMethodsByIds(ctx, intersected.map(m => m.id)))
@@ -23,6 +24,7 @@ export class ShippingProfileShopResolver {
         @Ctx() ctx: RequestContext,
         @Args('profileIds') profileIds: ID[],
     ) {
+        profileIds = await this.service.resolveEffectiveProfileIds(ctx, profileIds);
         const methods = await this.service.getIntersectedShippingMethods(ctx, profileIds);
         return {
             compatible: methods.length > 0,
@@ -35,6 +37,7 @@ export class ShippingProfileShopResolver {
         @Ctx() ctx: RequestContext,
         @Args('profileIds') profileIds: ID[],
     ) {
+        profileIds = await this.service.resolveEffectiveProfileIds(ctx, profileIds);
         const intersected = await this.service.getIntersectedShippingMethods(ctx, profileIds);
         if (intersected.length === 0) return [];
         const configs = new Map<ID, any>();
@@ -88,6 +91,7 @@ export class ShippingProfileShopResolver {
         @Ctx() ctx: RequestContext,
         @Args('profileIds') profileIds: ID[],
     ): Promise<PickupLocation[]> {
+        profileIds = await this.service.resolveEffectiveProfileIds(ctx, profileIds);
         const ids = await this.service.getIntersectedPickupLocationsWithConfig(ctx, profileIds);
         if (ids === null || ids.length === 0) return [];
         return await this.service.findPickupLocationsByIds(ctx, ids);
@@ -98,6 +102,7 @@ export class ShippingProfileShopResolver {
         @Ctx() ctx: RequestContext,
         @Args('profileIds') profileIds: ID[],
     ): Promise<boolean> {
+        profileIds = await this.service.resolveEffectiveProfileIds(ctx, profileIds);
         return this.service.hasPickupLocationConstraint(ctx, profileIds);
     }
 }

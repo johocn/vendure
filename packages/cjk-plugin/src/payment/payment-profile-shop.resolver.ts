@@ -11,6 +11,7 @@ export class PaymentProfileShopResolver {
         @Ctx() ctx: RequestContext,
         @Args('profileIds') profileIds: ID[],
     ) {
+        profileIds = await this.service.resolveEffectiveProfileIds(ctx, profileIds);
         const intersected = await this.service.getIntersectedPaymentMethods(ctx, profileIds);
         if (intersected.length === 0) return [];
         return this.service.findPaymentMethodsByIds(ctx, intersected.map(m => m.id));
@@ -21,6 +22,7 @@ export class PaymentProfileShopResolver {
         @Ctx() ctx: RequestContext,
         @Args('profileIds') profileIds: ID[],
     ) {
+        profileIds = await this.service.resolveEffectiveProfileIds(ctx, profileIds);
         return this.service.getIntersectedInstallmentOptions(ctx, profileIds);
     }
 
@@ -29,6 +31,7 @@ export class PaymentProfileShopResolver {
         @Ctx() ctx: RequestContext,
         @Args('profileIds') profileIds: ID[],
     ) {
+        profileIds = await this.service.resolveEffectiveProfileIds(ctx, profileIds);
         const methods = await this.service.getIntersectedPaymentMethods(ctx, profileIds);
         return {
             compatible: methods.length > 0,
@@ -41,6 +44,7 @@ export class PaymentProfileShopResolver {
         @Ctx() ctx: RequestContext,
         @Args('profileIds') profileIds: ID[],
     ) {
+        profileIds = await this.service.resolveEffectiveProfileIds(ctx, profileIds);
         const intersected = await this.service.getIntersectedPaymentMethods(ctx, profileIds);
         if (intersected.length === 0) return [];
         const configs = new Map<ID, any>();

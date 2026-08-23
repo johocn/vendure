@@ -21,15 +21,18 @@ let PaymentProfileShopResolver = class PaymentProfileShopResolver {
         this.service = service;
     }
     async eligiblePaymentMethodsByProfile(ctx, profileIds) {
+        profileIds = await this.service.resolveEffectiveProfileIds(ctx, profileIds);
         const intersected = await this.service.getIntersectedPaymentMethods(ctx, profileIds);
         if (intersected.length === 0)
             return [];
         return this.service.findPaymentMethodsByIds(ctx, intersected.map(m => m.id));
     }
     async eligibleInstallmentOptions(ctx, profileIds) {
+        profileIds = await this.service.resolveEffectiveProfileIds(ctx, profileIds);
         return this.service.getIntersectedInstallmentOptions(ctx, profileIds);
     }
     async checkPaymentProfileCompatibility(ctx, profileIds) {
+        profileIds = await this.service.resolveEffectiveProfileIds(ctx, profileIds);
         const methods = await this.service.getIntersectedPaymentMethods(ctx, profileIds);
         return {
             compatible: methods.length > 0,
@@ -37,6 +40,7 @@ let PaymentProfileShopResolver = class PaymentProfileShopResolver {
         };
     }
     async eligiblePaymentMethodsWithConfig(ctx, profileIds) {
+        profileIds = await this.service.resolveEffectiveProfileIds(ctx, profileIds);
         const intersected = await this.service.getIntersectedPaymentMethods(ctx, profileIds);
         if (intersected.length === 0)
             return [];

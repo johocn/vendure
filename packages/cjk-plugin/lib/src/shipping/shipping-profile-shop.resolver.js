@@ -21,6 +21,7 @@ let ShippingProfileShopResolver = class ShippingProfileShopResolver {
         this.service = service;
     }
     async eligibleShippingMethodsByProfile(ctx, profileIds) {
+        profileIds = await this.service.resolveEffectiveProfileIds(ctx, profileIds);
         const intersected = await this.service.getIntersectedShippingMethods(ctx, profileIds);
         if (intersected.length === 0)
             return [];
@@ -28,6 +29,7 @@ let ShippingProfileShopResolver = class ShippingProfileShopResolver {
             .filter((m) => { var _a; return ((_a = m.customFields) === null || _a === void 0 ? void 0 : _a.enabled) !== false; });
     }
     async checkShippingProfileCompatibility(ctx, profileIds) {
+        profileIds = await this.service.resolveEffectiveProfileIds(ctx, profileIds);
         const methods = await this.service.getIntersectedShippingMethods(ctx, profileIds);
         return {
             compatible: methods.length > 0,
@@ -35,6 +37,7 @@ let ShippingProfileShopResolver = class ShippingProfileShopResolver {
         };
     }
     async eligibleShippingMethodsWithConfig(ctx, profileIds) {
+        profileIds = await this.service.resolveEffectiveProfileIds(ctx, profileIds);
         const intersected = await this.service.getIntersectedShippingMethods(ctx, profileIds);
         if (intersected.length === 0)
             return [];
@@ -88,12 +91,14 @@ let ShippingProfileShopResolver = class ShippingProfileShopResolver {
      * 前端需配合 checkPickupLocationConstraint 查询区分两种 [] 情况
      */
     async eligiblePickupLocationsByProfile(ctx, profileIds) {
+        profileIds = await this.service.resolveEffectiveProfileIds(ctx, profileIds);
         const ids = await this.service.getIntersectedPickupLocationsWithConfig(ctx, profileIds);
         if (ids === null || ids.length === 0)
             return [];
         return await this.service.findPickupLocationsByIds(ctx, ids);
     }
     async checkPickupLocationConstraint(ctx, profileIds) {
+        profileIds = await this.service.resolveEffectiveProfileIds(ctx, profileIds);
         return this.service.hasPickupLocationConstraint(ctx, profileIds);
     }
 };
