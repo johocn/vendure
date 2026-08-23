@@ -40,4 +40,5 @@ export * from './src/payment/payment-profile.service';
 export * from './src/payment/payment-profile-admin.resolver';
 export * from './src/payment/payment-profile-permissions';
 export * from './src/shipping/shipping-profile-shop.resolver';
+export * from './src/payment/payment-profile-method.entity';
 export * from './src/payment/payment-profile-shop.resolver';
