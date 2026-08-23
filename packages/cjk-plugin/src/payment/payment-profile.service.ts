@@ -239,7 +239,10 @@ export class PaymentProfileService {
     async getTenantDefault(ctx: RequestContext): Promise<PaymentProfile | undefined> {
         const profile = await this.connection
             .getRepository(ctx, PaymentProfile)
-            .findOne({ where: { isGlobal: false, ownerChannelId: ctx.channelId as any, isTenantDefault: true } });
+            .findOne({
+                where: { isGlobal: false, ownerChannelId: ctx.channelId as any, isTenantDefault: true },
+                relations: ['paymentMethods'],
+            });
         return profile ?? undefined;
     }
 

@@ -29,6 +29,46 @@ export class ShippingProfileShopResolver {
         };
     }
 
+    @Query()
+    async eligibleShippingMethodsWithConfig(
+        @Ctx() ctx: RequestContext,
+        @Args('profileIds') profileIds: ID[],
+    ) {
+        const intersected = await this.service.getIntersectedShippingMethods(ctx, profileIds);
+        if (intersected.length === 0) return [];
+        const configs = new Map<ID, any>();
+        for (const pid of profileIds) {
+            const rows = await this.service.getMethodConfigsByProfile(ctx, pid);
+            for (const r of rows) configs.set(r.shippingMethodId as any, r);
+        }
+        const full = await this.service.findShippingMethodsByIds(ctx, intersected.map(m => m.id));
+        return full.map((m: any) => {
+            const cfg = configs.get(m.id);
+            const pickupIds = cfg && cfg.mode === 'pickup' ? cfg.options?.pickupLocationIds ?? [] : null;
+            return { id: m.id, code: m.code, mode: cfg?.mode ?? null, pickupLocationIds: pickupIds, name: m.translations?.[0]?.name ?? m.code };
+        });
+    }
+
+    @Query()
+    async resolveShippingMethodsForChannel(@Ctx() ctx: RequestContext) {
+        const def = await this.service.getTenantDefault(ctx);
+        if (def) {
+            const ids = (def.shippingMethods ?? []).map(m => m.id);
+            const full = await this.service.findShippingMethodsByIds(ctx, ids);
+            const configs = await this.service.getMethodConfigsByProfile(ctx, def.id as any);
+            const cm = new Map(configs.map(c => [String(c.shippingMethodId), c]));
+            return full.map((m: any) => ({
+                id: m.id, code: m.code,
+                mode: cm.get(String(m.id))?.mode ?? null,
+                pickupLocationIds: cm.get(String(m.id))?.options?.pickupLocationIds ?? null,
+                name: m.translations?.[0]?.name ?? m.code,
+            }));
+        }
+        // 无默认档案 → 返回当前可见的全部配送方式（沿用 service 既有 findAll 的租户可见过滤）
+        const all = await this.service.findShippingMethodsByIds(ctx, (await this.service.findAll(ctx)).items.flatMap(s => s.shippingMethods?.map(sm => sm.id) ?? []));
+        return all.map((m: any) => ({ id: m.id, code: m.code, mode: null, pickupLocationIds: null, name: m.translations?.[0]?.name ?? m.code }));
+    }
+
     /**
      * 按 Profile 交集查询允许的自提点。
      * 返回值语义：
@@ -41,7 +81,7 @@ export class ShippingProfileShopResolver {
         @Ctx() ctx: RequestContext,
         @Args('profileIds') profileIds: ID[],
     ): Promise<PickupLocation[]> {
-        const ids = await this.service.getIntersectedPickupLocations(ctx, profileIds);
+        const ids = await this.service.getIntersectedPickupLocationsWithConfig(ctx, profileIds);
         if (ids === null || ids.length === 0) return [];
         return await this.service.findPickupLocationsByIds(ctx, ids);
     }

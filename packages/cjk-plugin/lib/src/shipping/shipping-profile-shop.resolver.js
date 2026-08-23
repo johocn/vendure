@@ -33,6 +33,46 @@ let ShippingProfileShopResolver = class ShippingProfileShopResolver {
             intersectedCount: methods.length,
         };
     }
+    async eligibleShippingMethodsWithConfig(ctx, profileIds) {
+        const intersected = await this.service.getIntersectedShippingMethods(ctx, profileIds);
+        if (intersected.length === 0)
+            return [];
+        const configs = new Map();
+        for (const pid of profileIds) {
+            const rows = await this.service.getMethodConfigsByProfile(ctx, pid);
+            for (const r of rows)
+                configs.set(r.shippingMethodId, r);
+        }
+        const full = await this.service.findShippingMethodsByIds(ctx, intersected.map(m => m.id));
+        return full.map((m) => {
+            var _a, _b, _c, _d, _e, _f;
+            const cfg = configs.get(m.id);
+            const pickupIds = cfg && cfg.mode === 'pickup' ? (_b = (_a = cfg.options) === null || _a === void 0 ? void 0 : _a.pickupLocationIds) !== null && _b !== void 0 ? _b : [] : null;
+            return { id: m.id, code: m.code, mode: (_c = cfg === null || cfg === void 0 ? void 0 : cfg.mode) !== null && _c !== void 0 ? _c : null, pickupLocationIds: pickupIds, name: (_f = (_e = (_d = m.translations) === null || _d === void 0 ? void 0 : _d[0]) === null || _e === void 0 ? void 0 : _e.name) !== null && _f !== void 0 ? _f : m.code };
+        });
+    }
+    async resolveShippingMethodsForChannel(ctx) {
+        var _a;
+        const def = await this.service.getTenantDefault(ctx);
+        if (def) {
+            const ids = ((_a = def.shippingMethods) !== null && _a !== void 0 ? _a : []).map(m => m.id);
+            const full = await this.service.findShippingMethodsByIds(ctx, ids);
+            const configs = await this.service.getMethodConfigsByProfile(ctx, def.id);
+            const cm = new Map(configs.map(c => [String(c.shippingMethodId), c]));
+            return full.map((m) => {
+                var _a, _b, _c, _d, _e, _f, _g, _h;
+                return ({
+                    id: m.id, code: m.code,
+                    mode: (_b = (_a = cm.get(String(m.id))) === null || _a === void 0 ? void 0 : _a.mode) !== null && _b !== void 0 ? _b : null,
+                    pickupLocationIds: (_e = (_d = (_c = cm.get(String(m.id))) === null || _c === void 0 ? void 0 : _c.options) === null || _d === void 0 ? void 0 : _d.pickupLocationIds) !== null && _e !== void 0 ? _e : null,
+                    name: (_h = (_g = (_f = m.translations) === null || _f === void 0 ? void 0 : _f[0]) === null || _g === void 0 ? void 0 : _g.name) !== null && _h !== void 0 ? _h : m.code,
+                });
+            });
+        }
+        // 无默认档案 → 返回当前可见的全部配送方式（沿用 service 既有 findAll 的租户可见过滤）
+        const all = await this.service.findShippingMethodsByIds(ctx, (await this.service.findAll(ctx)).items.flatMap(s => { var _a, _b; return (_b = (_a = s.shippingMethods) === null || _a === void 0 ? void 0 : _a.map(sm => sm.id)) !== null && _b !== void 0 ? _b : []; }));
+        return all.map((m) => { var _a, _b, _c; return ({ id: m.id, code: m.code, mode: null, pickupLocationIds: null, name: (_c = (_b = (_a = m.translations) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.name) !== null && _c !== void 0 ? _c : m.code }); });
+    }
     /**
      * 按 Profile 交集查询允许的自提点。
      * 返回值语义：
@@ -41,7 +81,7 @@ let ShippingProfileShopResolver = class ShippingProfileShopResolver {
      * 前端需配合 checkPickupLocationConstraint 查询区分两种 [] 情况
      */
     async eligiblePickupLocationsByProfile(ctx, profileIds) {
-        const ids = await this.service.getIntersectedPickupLocations(ctx, profileIds);
+        const ids = await this.service.getIntersectedPickupLocationsWithConfig(ctx, profileIds);
         if (ids === null || ids.length === 0)
             return [];
         return await this.service.findPickupLocationsByIds(ctx, ids);
@@ -67,6 +107,21 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Array]),
     __metadata("design:returntype", Promise)
 ], ShippingProfileShopResolver.prototype, "checkShippingProfileCompatibility", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('profileIds')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Array]),
+    __metadata("design:returntype", Promise)
+], ShippingProfileShopResolver.prototype, "eligibleShippingMethodsWithConfig", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], ShippingProfileShopResolver.prototype, "resolveShippingMethodsForChannel", null);
 __decorate([
     (0, graphql_1.Query)(),
     __param(0, (0, core_1.Ctx)()),

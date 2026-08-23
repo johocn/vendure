@@ -649,6 +649,14 @@ import { DefaultDataService } from './seed/default-data.service';
                     name: String
                 }
 
+                type EligiblePaymentMethod {
+                    id: ID!
+                    code: String!
+                    mode: String
+                    options: JSON
+                    name: String
+                }
+
                 extend type Query {
                     eligibleShippingMethodsByProfile(profileIds: [ID!]!): [ShippingMethod!]!
                     eligiblePaymentMethodsByProfile(profileIds: [ID!]!): [PaymentMethod!]!
@@ -659,7 +667,8 @@ import { DefaultDataService } from './seed/default-data.service';
                     checkPickupLocationConstraint(profileIds: [ID!]!): Boolean!
                     eligibleShippingMethodsWithConfig(profileIds: [ID!]!): [EligibleShippingMethod!]!
                     resolveShippingMethodsForChannel: [EligibleShippingMethod!]!
-                    resolvePaymentMethodsForChannel: [PaymentMethod!]!
+                    eligiblePaymentMethodsWithConfig(profileIds: [ID!]!): [EligiblePaymentMethod!]!
+                    resolvePaymentMethodsForChannel: [EligiblePaymentMethod!]!
                 }
 
                 type ProfileCompatibilityResult {

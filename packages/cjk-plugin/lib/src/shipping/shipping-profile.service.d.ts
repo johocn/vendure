@@ -30,6 +30,14 @@ export declare class ShippingProfileService {
      */
     getIntersectedPickupLocations(ctx: RequestContext, profileIds: ID[]): Promise<ID[] | null>;
     /**
+     * 结合 per-method config 的自提点取 Profile 交集。
+     * 规则：Profile 的 methodConfigs 中有 mode==='pickup' 且带 pickupLocationIds 时，
+     * 以其 config 中的自提点作为该 Profile 的约束；否则回退到档案级 pickupLocations。
+     * 其余语义与 getIntersectedPickupLocations 一致：
+     * - 全部未约束 → null；有约束但交集为空 → []。
+     */
+    getIntersectedPickupLocationsWithConfig(ctx: RequestContext, profileIds: ID[]): Promise<ID[] | null>;
+    /**
      * 查询是否任一 Profile 约束了自提点。
      * 前端用此区分 eligiblePickupLocationsByProfile 返回 [] 的两种情况：
      * - false → 未约束，前端展示全部自提点

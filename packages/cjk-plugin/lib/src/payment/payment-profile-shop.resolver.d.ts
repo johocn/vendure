@@ -9,4 +9,18 @@ export declare class PaymentProfileShopResolver {
         compatible: boolean;
         intersectedCount: number;
     }>;
+    eligiblePaymentMethodsWithConfig(ctx: RequestContext, profileIds: ID[]): Promise<{
+        id: any;
+        code: any;
+        mode: any;
+        options: any;
+        name: any;
+    }[]>;
+    resolvePaymentMethodsForChannel(ctx: RequestContext): Promise<{
+        id: any;
+        code: any;
+        mode: any;
+        options: any;
+        name: any;
+    }[]>;
 }

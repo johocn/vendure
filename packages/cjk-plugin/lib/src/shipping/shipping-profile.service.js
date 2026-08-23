@@ -220,6 +220,44 @@ let ShippingProfileService = class ShippingProfileService {
         return [...intersection];
     }
     /**
+     * 结合 per-method config 的自提点取 Profile 交集。
+     * 规则：Profile 的 methodConfigs 中有 mode==='pickup' 且带 pickupLocationIds 时，
+     * 以其 config 中的自提点作为该 Profile 的约束；否则回退到档案级 pickupLocations。
+     * 其余语义与 getIntersectedPickupLocations 一致：
+     * - 全部未约束 → null；有约束但交集为空 → []。
+     */
+    async getIntersectedPickupLocationsWithConfig(ctx, profileIds) {
+        var _a;
+        if (profileIds.length === 0)
+            return null;
+        const profiles = await this.connection
+            .getRepository(ctx, shipping_profile_entity_1.ShippingProfile)
+            .createQueryBuilder('sp')
+            .leftJoinAndSelect('sp.pickupLocations', 'pl')
+            .where('sp.id IN (:...profileIds)', { profileIds })
+            .getMany();
+        const effectiveByProfile = [];
+        for (const profile of profiles) {
+            const configs = await this.getMethodConfigsByProfile(ctx, profile.id);
+            const pickupConfigIds = configs
+                .filter(c => { var _a, _b; return c.mode === 'pickup' && ((_b = (_a = c.options) === null || _a === void 0 ? void 0 : _a.pickupLocationIds) === null || _b === void 0 ? void 0 : _b.length); })
+                .flatMap(c => c.options.pickupLocationIds);
+            const effective = pickupConfigIds.length > 0
+                ? pickupConfigIds
+                : ((_a = profile.pickupLocations) !== null && _a !== void 0 ? _a : []).map(pl => pl.id);
+            effectiveByProfile.push(effective);
+        }
+        const constrained = effectiveByProfile.filter(ids => ids.length > 0);
+        if (constrained.length === 0)
+            return null; // 全部未约束
+        let intersection = new Set(constrained[0]);
+        for (let i = 1; i < constrained.length; i++) {
+            const current = new Set(constrained[i]);
+            intersection = new Set([...intersection].filter(x => current.has(x)));
+        }
+        return [...intersection];
+    }
+    /**
      * 查询是否任一 Profile 约束了自提点。
      * 前端用此区分 eligiblePickupLocationsByProfile 返回 [] 的两种情况：
      * - false → 未约束，前端展示全部自提点
@@ -276,7 +314,10 @@ let ShippingProfileService = class ShippingProfileService {
     async getTenantDefault(ctx) {
         const profile = await this.connection
             .getRepository(ctx, shipping_profile_entity_1.ShippingProfile)
-            .findOne({ where: { isGlobal: false, ownerChannelId: ctx.channelId, isTenantDefault: true } });
+            .findOne({
+            where: { isGlobal: false, ownerChannelId: ctx.channelId, isTenantDefault: true },
+            relations: ['shippingMethods', 'pickupLocations'],
+        });
         return profile !== null && profile !== void 0 ? profile : undefined;
     }
     async getMethodConfigsByProfile(ctx, profileId) {

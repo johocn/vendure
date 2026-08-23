@@ -227,6 +227,48 @@ export class ShippingProfileService {
     }
 
     /**
+     * 结合 per-method config 的自提点取 Profile 交集。
+     * 规则：Profile 的 methodConfigs 中有 mode==='pickup' 且带 pickupLocationIds 时，
+     * 以其 config 中的自提点作为该 Profile 的约束；否则回退到档案级 pickupLocations。
+     * 其余语义与 getIntersectedPickupLocations 一致：
+     * - 全部未约束 → null；有约束但交集为空 → []。
+     */
+    async getIntersectedPickupLocationsWithConfig(
+        ctx: RequestContext,
+        profileIds: ID[],
+    ): Promise<ID[] | null> {
+        if (profileIds.length === 0) return null;
+        const profiles = await this.connection
+            .getRepository(ctx, ShippingProfile)
+            .createQueryBuilder('sp')
+            .leftJoinAndSelect('sp.pickupLocations', 'pl')
+            .where('sp.id IN (:...profileIds)', { profileIds })
+            .getMany();
+
+        const effectiveByProfile: ID[][] = [];
+        for (const profile of profiles) {
+            const configs = await this.getMethodConfigsByProfile(ctx, profile.id);
+            const pickupConfigIds = configs
+                .filter(c => c.mode === 'pickup' && c.options?.pickupLocationIds?.length)
+                .flatMap(c => c.options.pickupLocationIds as ID[]);
+            const effective = pickupConfigIds.length > 0
+                ? pickupConfigIds
+                : (profile.pickupLocations ?? []).map(pl => pl.id);
+            effectiveByProfile.push(effective);
+        }
+
+        const constrained = effectiveByProfile.filter(ids => ids.length > 0);
+        if (constrained.length === 0) return null; // 全部未约束
+
+        let intersection = new Set(constrained[0]);
+        for (let i = 1; i < constrained.length; i++) {
+            const current = new Set(constrained[i]);
+            intersection = new Set([...intersection].filter(x => current.has(x as any)));
+        }
+        return [...intersection] as ID[];
+    }
+
+    /**
      * 查询是否任一 Profile 约束了自提点。
      * 前端用此区分 eligiblePickupLocationsByProfile 返回 [] 的两种情况：
      * - false → 未约束，前端展示全部自提点
@@ -292,7 +334,10 @@ export class ShippingProfileService {
     async getTenantDefault(ctx: RequestContext): Promise<ShippingProfile | undefined> {
         const profile = await this.connection
             .getRepository(ctx, ShippingProfile)
-            .findOne({ where: { isGlobal: false, ownerChannelId: ctx.channelId as any, isTenantDefault: true } });
+            .findOne({
+                where: { isGlobal: false, ownerChannelId: ctx.channelId as any, isTenantDefault: true },
+                relations: ['shippingMethods', 'pickupLocations'],
+            });
         return profile ?? undefined;
     }
 
