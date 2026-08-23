@@ -64,10 +64,12 @@ const invite_code_service_1 = require("./auth/invite-code.service");
 const tenant_config_permissions_1 = require("./admin/tenant-config-permissions");
 const tenant_config_admin_resolver_1 = require("./admin/tenant-config-admin.resolver");
 const shipping_profile_entity_1 = require("./shipping/shipping-profile.entity");
+const shipping_profile_method_entity_1 = require("./shipping/shipping-profile-method.entity");
 const shipping_profile_service_1 = require("./shipping/shipping-profile.service");
 const shipping_profile_admin_resolver_1 = require("./shipping/shipping-profile-admin.resolver");
 const shipping_profile_permissions_1 = require("./shipping/shipping-profile-permissions");
 const payment_profile_entity_1 = require("./payment/payment-profile.entity");
+const payment_profile_method_entity_1 = require("./payment/payment-profile-method.entity");
 const payment_profile_service_1 = require("./payment/payment-profile.service");
 const payment_profile_admin_resolver_1 = require("./payment/payment-profile-admin.resolver");
 const payment_profile_permissions_1 = require("./payment/payment-profile-permissions");
@@ -205,7 +207,7 @@ exports.CjkPlugin = CjkPlugin;
 exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile],
+        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_profile_method_entity_1.PaymentProfileMethod],
         providers: [
             { provide: constants_1.CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
             tenant_setup_service_1.TenantSetupService,
@@ -517,6 +519,20 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     freeShippingThreshold: Int
                     shippingMethods: [ShippingMethod!]!
                     pickupLocations: [PickupLocation!]!
+                    isTenantDefault: Boolean!
+                    methodConfigs: [ShippingProfileMethodConfig!]!
+                }
+
+                type ShippingProfileMethodConfig {
+                    shippingMethodId: ID!
+                    mode: String!
+                    options: JSON
+                }
+
+                input ShippingProfileMethodConfigInput {
+                    shippingMethodId: ID!
+                    mode: String!
+                    options: JSON
                 }
 
                 type ShippingProfileList implements PaginatedList {
@@ -532,6 +548,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     freeShippingThreshold: Int
                     shippingMethodIds: [ID!]!
                     pickupLocationIds: [ID!]
+                    methodConfigs: [ShippingProfileMethodConfigInput!]
                 }
 
                 input UpdateShippingProfileInput {
@@ -543,6 +560,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     freeShippingThreshold: Int
                     shippingMethodIds: [ID!]
                     pickupLocationIds: [ID!]
+                    methodConfigs: [ShippingProfileMethodConfigInput!]
                 }
 
                 input ShippingProfileListOptions {
@@ -562,6 +580,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     updateShippingProfile(input: UpdateShippingProfileInput!): ShippingProfile!
                     deleteShippingProfile(id: ID!): Boolean!
                     assignShippingProfile(variantIds: [ID!]!, profileId: ID!): Boolean!
+                    setTenantDefaultShippingProfile(id: ID!): Boolean!
                 }
 
                 # ===== Payment Profile =====
@@ -573,6 +592,20 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     isGlobal: Boolean!
                     installmentOptions: JSON
                     paymentMethods: [PaymentMethod!]!
+                    isTenantDefault: Boolean!
+                    methodConfigs: [PaymentProfileMethodConfig!]!
+                }
+
+                type PaymentProfileMethodConfig {
+                    paymentMethodId: ID!
+                    mode: String!
+                    options: JSON
+                }
+
+                input PaymentProfileMethodConfigInput {
+                    paymentMethodId: ID!
+                    mode: String!
+                    options: JSON
                 }
 
                 type PaymentProfileList implements PaginatedList {
@@ -587,6 +620,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     isGlobal: Boolean
                     installmentOptions: JSON
                     paymentMethodIds: [ID!]!
+                    methodConfigs: [PaymentProfileMethodConfigInput!]
                 }
 
                 input UpdatePaymentProfileInput {
@@ -597,6 +631,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     isGlobal: Boolean
                     installmentOptions: JSON
                     paymentMethodIds: [ID!]
+                    methodConfigs: [PaymentProfileMethodConfigInput!]
                 }
 
                 input PaymentProfileListOptions {
@@ -616,6 +651,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     updatePaymentProfile(input: UpdatePaymentProfileInput!): PaymentProfile!
                     deletePaymentProfile(id: ID!): Boolean!
                     assignPaymentProfile(variantIds: [ID!]!, profileId: ID!): Boolean!
+                    setTenantDefaultPaymentProfile(id: ID!): Boolean!
                 }
             `;
             },
@@ -734,6 +770,14 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     mapSdkConfig: MapSdkConfig!
                 }
 
+                type EligibleShippingMethod {
+                    id: ID!
+                    code: String!
+                    mode: String
+                    pickupLocationIds: [ID!]
+                    name: String
+                }
+
                 extend type Query {
                     eligibleShippingMethodsByProfile(profileIds: [ID!]!): [ShippingMethod!]!
                     eligiblePaymentMethodsByProfile(profileIds: [ID!]!): [PaymentMethod!]!
@@ -742,6 +786,9 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     checkPaymentProfileCompatibility(profileIds: [ID!]!): ProfileCompatibilityResult!
                     eligiblePickupLocationsByProfile(profileIds: [ID!]!): [PickupLocation!]!
                     checkPickupLocationConstraint(profileIds: [ID!]!): Boolean!
+                    eligibleShippingMethodsWithConfig(profileIds: [ID!]!): [EligibleShippingMethod!]!
+                    resolveShippingMethodsForChannel: [EligibleShippingMethod!]!
+                    resolvePaymentMethodsForChannel: [PaymentMethod!]!
                 }
 
                 type ProfileCompatibilityResult {

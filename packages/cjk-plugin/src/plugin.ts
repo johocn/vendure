@@ -62,10 +62,12 @@ import { InviteCodeService } from './auth/invite-code.service';
 import { tenantConfigPermission } from './admin/tenant-config-permissions';
 import { TenantConfigAdminResolver } from './admin/tenant-config-admin.resolver';
 import { ShippingProfile } from './shipping/shipping-profile.entity';
+import { ShippingProfileMethod } from './shipping/shipping-profile-method.entity';
 import { ShippingProfileService } from './shipping/shipping-profile.service';
 import { ShippingProfileAdminResolver } from './shipping/shipping-profile-admin.resolver';
 import { shippingProfilePermission, shippingProfilePermissionDefinitions } from './shipping/shipping-profile-permissions';
 import { PaymentProfile } from './payment/payment-profile.entity';
+import { PaymentProfileMethod } from './payment/payment-profile-method.entity';
 import { PaymentProfileService } from './payment/payment-profile.service';
 import { PaymentProfileAdminResolver } from './payment/payment-profile-admin.resolver';
 import { paymentProfilePermission, paymentProfilePermissionDefinitions } from './payment/payment-profile-permissions';
@@ -76,7 +78,7 @@ import { DefaultDataService } from './seed/default-data.service';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile],
+    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod],
     providers: [
         { provide: CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
         TenantSetupService,
@@ -388,6 +390,20 @@ import { DefaultDataService } from './seed/default-data.service';
                     freeShippingThreshold: Int
                     shippingMethods: [ShippingMethod!]!
                     pickupLocations: [PickupLocation!]!
+                    isTenantDefault: Boolean!
+                    methodConfigs: [ShippingProfileMethodConfig!]!
+                }
+
+                type ShippingProfileMethodConfig {
+                    shippingMethodId: ID!
+                    mode: String!
+                    options: JSON
+                }
+
+                input ShippingProfileMethodConfigInput {
+                    shippingMethodId: ID!
+                    mode: String!
+                    options: JSON
                 }
 
                 type ShippingProfileList implements PaginatedList {
@@ -403,6 +419,7 @@ import { DefaultDataService } from './seed/default-data.service';
                     freeShippingThreshold: Int
                     shippingMethodIds: [ID!]!
                     pickupLocationIds: [ID!]
+                    methodConfigs: [ShippingProfileMethodConfigInput!]
                 }
 
                 input UpdateShippingProfileInput {
@@ -414,6 +431,7 @@ import { DefaultDataService } from './seed/default-data.service';
                     freeShippingThreshold: Int
                     shippingMethodIds: [ID!]
                     pickupLocationIds: [ID!]
+                    methodConfigs: [ShippingProfileMethodConfigInput!]
                 }
 
                 input ShippingProfileListOptions {
@@ -433,6 +451,7 @@ import { DefaultDataService } from './seed/default-data.service';
                     updateShippingProfile(input: UpdateShippingProfileInput!): ShippingProfile!
                     deleteShippingProfile(id: ID!): Boolean!
                     assignShippingProfile(variantIds: [ID!]!, profileId: ID!): Boolean!
+                    setTenantDefaultShippingProfile(id: ID!): Boolean!
                 }
 
                 # ===== Payment Profile =====
@@ -444,6 +463,20 @@ import { DefaultDataService } from './seed/default-data.service';
                     isGlobal: Boolean!
                     installmentOptions: JSON
                     paymentMethods: [PaymentMethod!]!
+                    isTenantDefault: Boolean!
+                    methodConfigs: [PaymentProfileMethodConfig!]!
+                }
+
+                type PaymentProfileMethodConfig {
+                    paymentMethodId: ID!
+                    mode: String!
+                    options: JSON
+                }
+
+                input PaymentProfileMethodConfigInput {
+                    paymentMethodId: ID!
+                    mode: String!
+                    options: JSON
                 }
 
                 type PaymentProfileList implements PaginatedList {
@@ -458,6 +491,7 @@ import { DefaultDataService } from './seed/default-data.service';
                     isGlobal: Boolean
                     installmentOptions: JSON
                     paymentMethodIds: [ID!]!
+                    methodConfigs: [PaymentProfileMethodConfigInput!]
                 }
 
                 input UpdatePaymentProfileInput {
@@ -468,6 +502,7 @@ import { DefaultDataService } from './seed/default-data.service';
                     isGlobal: Boolean
                     installmentOptions: JSON
                     paymentMethodIds: [ID!]
+                    methodConfigs: [PaymentProfileMethodConfigInput!]
                 }
 
                 input PaymentProfileListOptions {
@@ -487,6 +522,7 @@ import { DefaultDataService } from './seed/default-data.service';
                     updatePaymentProfile(input: UpdatePaymentProfileInput!): PaymentProfile!
                     deletePaymentProfile(id: ID!): Boolean!
                     assignPaymentProfile(variantIds: [ID!]!, profileId: ID!): Boolean!
+                    setTenantDefaultPaymentProfile(id: ID!): Boolean!
                 }
             `;
         },
@@ -605,6 +641,14 @@ import { DefaultDataService } from './seed/default-data.service';
                     mapSdkConfig: MapSdkConfig!
                 }
 
+                type EligibleShippingMethod {
+                    id: ID!
+                    code: String!
+                    mode: String
+                    pickupLocationIds: [ID!]
+                    name: String
+                }
+
                 extend type Query {
                     eligibleShippingMethodsByProfile(profileIds: [ID!]!): [ShippingMethod!]!
                     eligiblePaymentMethodsByProfile(profileIds: [ID!]!): [PaymentMethod!]!
@@ -613,6 +657,9 @@ import { DefaultDataService } from './seed/default-data.service';
                     checkPaymentProfileCompatibility(profileIds: [ID!]!): ProfileCompatibilityResult!
                     eligiblePickupLocationsByProfile(profileIds: [ID!]!): [PickupLocation!]!
                     checkPickupLocationConstraint(profileIds: [ID!]!): Boolean!
+                    eligibleShippingMethodsWithConfig(profileIds: [ID!]!): [EligibleShippingMethod!]!
+                    resolveShippingMethodsForChannel: [EligibleShippingMethod!]!
+                    resolvePaymentMethodsForChannel: [PaymentMethod!]!
                 }
 
                 type ProfileCompatibilityResult {
