@@ -3,6 +3,7 @@ import { Allow, Ctx, EntityNotFoundError, ID, ListQueryOptions, PaginatedList, P
 import { PickupLocation } from './pickup-location.entity';
 import { PickupLocationService } from './pickup-location.service';
 import { PickupPermissions } from './pickup-permissions';
+import { SetGlobalPickupLocation } from './pickup-location-permissions';
 
 @Resolver()
 export class PickupLocationAdminResolver {
@@ -54,7 +55,7 @@ export class PickupLocationAdminResolver {
 
     @Mutation()
     @Transaction()
-    @Allow(Permission.SuperAdmin)
+    @Allow(SetGlobalPickupLocation.Permission, Permission.SuperAdmin)
     async promotePickupLocationToPublic(
         @Ctx() ctx: RequestContext,
         @Args('id') id: ID,

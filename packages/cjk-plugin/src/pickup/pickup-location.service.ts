@@ -3,6 +3,7 @@ import { In } from 'typeorm';
 import {
     Channel,
     EntityNotFoundError,
+    ForbiddenError,
     ID,
     PaginatedList,
     ListQueryOptions,
@@ -10,6 +11,7 @@ import {
     TransactionalConnection,
 } from '@vendure/core';
 import { PickupLocation } from './pickup-location.entity';
+import { SetGlobalPickupLocation } from './pickup-location-permissions';
 
 @Injectable()
 export class PickupLocationService {
@@ -29,6 +31,9 @@ export class PickupLocationService {
         }
         if (options?.filter?.type) {
             qb.andWhere('pl.type = :type', { type: options.filter.type });
+        }
+        if (options?.filter?.isPublic !== undefined) {
+            qb.andWhere('pl.isPublic = :isPublic', { isPublic: options.filter.isPublic });
         }
 
         const skip = options?.skip || 0;
@@ -95,7 +100,13 @@ export class PickupLocationService {
         const location = new PickupLocation(input);
         location.channels = [ctx.channel];
         location.ownerChannelId = ctx.channelId;
-        location.isPublic = input.isPublic ?? false;
+        // 归属权限判定：仅持有 SetGlobalPickupLocation 权限者可建全局点，否则强制租户级
+        const wantGlobal = input.isPublic === true || input.isGlobal === true;
+        location.isPublic = wantGlobal && ctx.userHasPermissions([SetGlobalPickupLocation.Permission]) ? true : false;
+        if (location.isPublic) {
+            // 全局点归属平台，不限定某租户
+            location.ownerChannelId = null;
+        }
         return repo.save(location);
     }
 
@@ -104,6 +115,10 @@ export class PickupLocationService {
         const location = await repo.findOne({ where: { id: input.id } });
         if (!location) {
             throw new EntityNotFoundError('PickupLocation', input.id);
+        }
+        // 全局点仅超管(持 SetGlobalPickupLocation)可编辑，租户只读
+        if (location.isPublic && !ctx.userHasPermissions([SetGlobalPickupLocation.Permission])) {
+            throw new ForbiddenError();
         }
         Object.assign(location, input);
         return repo.save(location);

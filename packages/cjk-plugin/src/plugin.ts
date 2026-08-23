@@ -27,6 +27,7 @@ import { PickupLocationShopResolver } from './pickup/pickup-location-shop.resolv
 import { PickupShopResolver } from './pickup/pickup-shop.resolver';
 import { PickupLocationService } from './pickup/pickup-location.service';
 import { pickupPermissionDefinitions } from './pickup/pickup-permissions';
+import { pickupLocationPermissionDefinitions } from './pickup/pickup-location-permissions';
 import { EmployeeCustomer } from './pickup/enterprise-customer/enterprise-customer.entity';
 import { EmployeeCustomerService } from './pickup/enterprise-customer/enterprise-customer.service';
 import { EmployeeCustomerAdminResolver } from './pickup/enterprise-customer/enterprise-customer-admin.resolver';
@@ -908,6 +909,12 @@ import { DefaultDataService } from './seed/default-data.service';
         config.authOptions.customPermissions = [
             ...(config.authOptions.customPermissions || []),
             ...pickupPermissionDefinitions,
+        ];
+
+        // 注册 PickupLocation 全局归属权限（SetGlobalPickupLocation）
+        config.authOptions.customPermissions = [
+            ...(config.authOptions.customPermissions || []),
+            ...pickupLocationPermissionDefinitions,
         ];
 
         config.authOptions.customPermissions = [
