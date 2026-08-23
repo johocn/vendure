@@ -39,6 +39,9 @@ export class PaymentProfile extends VendureEntity implements ChannelAware {
     @Column({ type: 'simple-json', nullable: true })
     installmentOptions: Record<string, any> | null;
 
+    @Column({ default: false })
+    isTenantDefault: boolean;
+
     @ManyToMany(() => PaymentMethod)
     @JoinTable()
     paymentMethods: PaymentMethod[];

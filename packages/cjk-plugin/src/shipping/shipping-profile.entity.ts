@@ -40,6 +40,9 @@ export class ShippingProfile extends VendureEntity implements ChannelAware {
     @Column({ type: 'int', nullable: true })
     freeShippingThreshold: number | null;
 
+    @Column({ default: false })
+    isTenantDefault: boolean;
+
     @ManyToMany(() => ShippingMethod)
     @JoinTable()
     shippingMethods: ShippingMethod[];

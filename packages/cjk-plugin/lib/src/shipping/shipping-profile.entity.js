@@ -53,6 +53,10 @@ __decorate([
     __metadata("design:type", Object)
 ], ShippingProfile.prototype, "freeShippingThreshold", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ default: false }),
+    __metadata("design:type", Boolean)
+], ShippingProfile.prototype, "isTenantDefault", void 0);
+__decorate([
     (0, typeorm_1.ManyToMany)(() => core_1.ShippingMethod),
     (0, typeorm_1.JoinTable)(),
     __metadata("design:type", Array)
