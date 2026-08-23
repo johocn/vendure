@@ -19,6 +19,9 @@ import { ShippingProfileService } from '../shipping/shipping-profile.service';
 import { ShippingTemplate } from '../shipping/shipping-template.entity';
 import { ShippingTemplateService } from '../shipping/shipping-template.service';
 
+import { PaymentTemplate } from '../payment/payment-template.entity';
+import { PaymentTemplateService } from '../payment/payment-template.service';
+
 /**
  * 插件默认数据初始化
  *
@@ -41,6 +44,7 @@ export class DefaultDataService {
         private shippingTemplateService: ShippingTemplateService,
         private shippingProfileService: ShippingProfileService,
         private paymentProfileService: PaymentProfileService,
+        private paymentTemplateService: PaymentTemplateService,
     ) {}
 
     /**
@@ -56,6 +60,7 @@ export class DefaultDataService {
             await this.seedStorePickupProfile(ctx);
             await this.seedCashierPaymentMethod(ctx);
             await this.seedCashierPaymentProfile(ctx);
+            await this.seedAggregatePaymentTemplate(ctx);
             Logger.info('购物配送/支付默认数据初始化完成', loggerCtx);
         } catch (e: any) {
             Logger.error(`默认数据初始化失败: ${e.message}`, loggerCtx);
@@ -179,6 +184,22 @@ export class DefaultDataService {
         } as any);
         Logger.info(`已创建默认支付档案: ${CASHIER_PAYMENT_PROFILE_CODE}`, loggerCtx);
     }
+
+    /** 聚合码支付全局模板（租户可在全局方案池「引用到本店」） */
+    private async seedAggregatePaymentTemplate(ctx: RequestContext): Promise<void> {
+        const existing = await this.connection
+            .getRepository(ctx, PaymentTemplate)
+            .findOne({ where: { code: AGGREGATE_PAYMENT_TEMPLATE_CODE } });
+        if (existing) return;
+        await this.paymentTemplateService.create(ctx, {
+            name: '聚合码',
+            description: '顾客扫描商家聚合收款码后确认，到账后发货',
+            code: AGGREGATE_PAYMENT_TEMPLATE_CODE,
+            handler: { code: 'aggregate-pay', arguments: [] },
+            isGlobal: true,
+        } as any);
+        Logger.info(`已创建默认支付模板: ${AGGREGATE_PAYMENT_TEMPLATE_CODE}`, loggerCtx);
+    }
 }
 
 export const DEFAULT_STORE = {
@@ -194,3 +215,4 @@ export const STORE_PICKUP_TEMPLATE_CODE = 'store-pickup-template';
 export const STORE_PICKUP_PROFILE_CODE = 'store-pickup-profile';
 export const CASHIER_PAYMENT_METHOD_CODE = 'cash-on-delivery';
 export const CASHIER_PAYMENT_PROFILE_CODE = 'store-cashier-profile';
+export const AGGREGATE_PAYMENT_TEMPLATE_CODE = 'aggregate-pay';

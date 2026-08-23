@@ -2,6 +2,7 @@ import { PaymentMethodService, RequestContextService, ShippingMethodService, Tra
 import { PaymentProfileService } from '../payment/payment-profile.service';
 import { ShippingProfileService } from '../shipping/shipping-profile.service';
 import { ShippingTemplateService } from '../shipping/shipping-template.service';
+import { PaymentTemplateService } from '../payment/payment-template.service';
 /**
  * 插件默认数据初始化
  *
@@ -22,7 +23,8 @@ export declare class DefaultDataService {
     private shippingTemplateService;
     private shippingProfileService;
     private paymentProfileService;
-    constructor(connection: TransactionalConnection, requestContextService: RequestContextService, shippingMethodService: ShippingMethodService, paymentMethodService: PaymentMethodService, shippingTemplateService: ShippingTemplateService, shippingProfileService: ShippingProfileService, paymentProfileService: PaymentProfileService);
+    private paymentTemplateService;
+    constructor(connection: TransactionalConnection, requestContextService: RequestContextService, shippingMethodService: ShippingMethodService, paymentMethodService: PaymentMethodService, shippingTemplateService: ShippingTemplateService, shippingProfileService: ShippingProfileService, paymentProfileService: PaymentProfileService, paymentTemplateService: PaymentTemplateService);
     /**
      * 幂等创建默认数据。任何单项失败仅记日志，不阻塞应用启动。
      */
@@ -39,6 +41,8 @@ export declare class DefaultDataService {
     private seedCashierPaymentMethod;
     /** 门店收银支付档案 */
     private seedCashierPaymentProfile;
+    /** 聚合码支付全局模板（租户可在全局方案池「引用到本店」） */
+    private seedAggregatePaymentTemplate;
 }
 export declare const DEFAULT_STORE: {
     name: string;
@@ -52,3 +56,4 @@ export declare const STORE_PICKUP_TEMPLATE_CODE = "store-pickup-template";
 export declare const STORE_PICKUP_PROFILE_CODE = "store-pickup-profile";
 export declare const CASHIER_PAYMENT_METHOD_CODE = "cash-on-delivery";
 export declare const CASHIER_PAYMENT_PROFILE_CODE = "store-cashier-profile";
+export declare const AGGREGATE_PAYMENT_TEMPLATE_CODE = "aggregate-pay";

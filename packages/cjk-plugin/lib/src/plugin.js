@@ -19,6 +19,7 @@ const core_1 = require("@vendure/core");
 const core_2 = require("@nestjs/core");
 const constants_1 = require("./constants");
 const cod_handler_1 = require("./payment/cod-handler");
+const aggregate_payment_handler_1 = require("./payment/aggregate-payment-handler");
 const coupon_stackable_condition_1 = require("./promotion/coupon-stackable-condition");
 const promotion_custom_fields_1 = require("./promotion/promotion-custom-fields");
 const pickup_calculator_1 = require("./pickup/pickup-calculator");
@@ -536,6 +537,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     updateShippingTemplate(input: UpdateShippingTemplateInput!): ShippingTemplate!
                     deleteShippingTemplate(id: ID!): Boolean!
                     createShippingMethodFromTemplate(templateId: ID!, name: String, code: String): ShippingMethod!
+                    updateShippingMethodShippingPrice(id: ID!, shippingPrice: Int!): ShippingMethod!
                 }
 
                 # ===== Shipping Profile =====
@@ -900,7 +902,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver, shipping_profile_shop_resolver_1.ShippingProfileShopResolver, payment_profile_shop_resolver_1.PaymentProfileShopResolver],
         },
         configuration: config => {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t;
             // 注入 authSecret 到 crypto 模块（configuration 在 bootstrap 早期执行，此时 options 已可用）
             (0, crypto_1.setAuthSecret)(CjkPlugin.options.authSecret);
             // 注册 SSO 策略到 shop 端（init 钩子由 Vendure 自动调用）
@@ -915,9 +917,16 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     cod_handler_1.codPaymentHandler,
                 ];
             }
-            const hasPickup = ((_b = CjkPlugin.options.storePickup) === null || _b === void 0 ? void 0 : _b.enabled)
-                || ((_c = CjkPlugin.options.pickupPoint) === null || _c === void 0 ? void 0 : _c.enabled)
-                || ((_d = CjkPlugin.options.employeePickup) === null || _d === void 0 ? void 0 : _d.enabled);
+            // 聚合码支付（线下扫码 + 自确认），默认启用
+            if (((_b = CjkPlugin.options.aggregate) === null || _b === void 0 ? void 0 : _b.enabled) !== false) {
+                config.paymentOptions.paymentMethodHandlers = [
+                    ...(config.paymentOptions.paymentMethodHandlers || []),
+                    aggregate_payment_handler_1.aggregatePaymentHandler,
+                ];
+            }
+            const hasPickup = ((_c = CjkPlugin.options.storePickup) === null || _c === void 0 ? void 0 : _c.enabled)
+                || ((_d = CjkPlugin.options.pickupPoint) === null || _d === void 0 ? void 0 : _d.enabled)
+                || ((_e = CjkPlugin.options.employeePickup) === null || _e === void 0 ? void 0 : _e.enabled);
             if (hasPickup) {
                 config.shippingOptions = config.shippingOptions || {};
                 config.shippingOptions.shippingEligibilityCheckers = [
@@ -929,17 +938,17 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                 config.shippingOptions.fulfillmentHandlers = [
                     ...(config.shippingOptions.fulfillmentHandlers || []),
                 ];
-                if ((_e = CjkPlugin.options.storePickup) === null || _e === void 0 ? void 0 : _e.enabled) {
+                if ((_f = CjkPlugin.options.storePickup) === null || _f === void 0 ? void 0 : _f.enabled) {
                     config.shippingOptions.shippingEligibilityCheckers.push(pickup_eligibility_checker_1.storePickupEligibilityChecker);
                     config.shippingOptions.shippingCalculators.push(pickup_calculator_1.storePickupCalculator);
                     config.shippingOptions.fulfillmentHandlers.push(pickup_fulfillment_handler_1.storePickupFulfillmentHandler);
                 }
-                if ((_f = CjkPlugin.options.pickupPoint) === null || _f === void 0 ? void 0 : _f.enabled) {
+                if ((_g = CjkPlugin.options.pickupPoint) === null || _g === void 0 ? void 0 : _g.enabled) {
                     config.shippingOptions.shippingEligibilityCheckers.push(pickup_eligibility_checker_1.pickupPointEligibilityChecker);
                     config.shippingOptions.shippingCalculators.push(pickup_calculator_1.pickupPointCalculator);
                     config.shippingOptions.fulfillmentHandlers.push(pickup_fulfillment_handler_1.pickupPointFulfillmentHandler);
                 }
-                if ((_g = CjkPlugin.options.employeePickup) === null || _g === void 0 ? void 0 : _g.enabled) {
+                if ((_h = CjkPlugin.options.employeePickup) === null || _h === void 0 ? void 0 : _h.enabled) {
                     config.shippingOptions.shippingEligibilityCheckers.push(pickup_eligibility_checker_1.employeePickupEligibilityChecker);
                     config.shippingOptions.shippingCalculators.push(pickup_calculator_1.employeePickupCalculator);
                     config.shippingOptions.fulfillmentHandlers.push(pickup_fulfillment_handler_1.employeePickupFulfillmentHandler);
@@ -955,51 +964,52 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                 ...(config.shippingOptions.shippingCalculators || []),
                 tiered_shipping_calculator_1.tieredWeightShippingCalculator,
                 tiered_shipping_calculator_1.tieredQuantityShippingCalculator,
+                pickup_calculator_1.localDeliveryCalculator,
             ];
-            if ((_h = CjkPlugin.options.promotionPolicy) === null || _h === void 0 ? void 0 : _h.enabled) {
+            if ((_j = CjkPlugin.options.promotionPolicy) === null || _j === void 0 ? void 0 : _j.enabled) {
                 config.promotionOptions = config.promotionOptions || {};
                 config.promotionOptions.promotionConditions = [
                     ...(config.promotionOptions.promotionConditions || []),
                     coupon_stackable_condition_1.couponStackableCondition,
                 ];
                 config.customFields = Object.assign(Object.assign({}, config.customFields), { Promotion: [
-                        ...(((_j = config.customFields) === null || _j === void 0 ? void 0 : _j.Promotion) || []),
+                        ...(((_k = config.customFields) === null || _k === void 0 ? void 0 : _k.Promotion) || []),
                         ...promotion_custom_fields_1.promotionCustomFields.Promotion,
                     ] });
             }
-            if ((_k = CjkPlugin.options.tenant) === null || _k === void 0 ? void 0 : _k.enabled) {
+            if ((_l = CjkPlugin.options.tenant) === null || _l === void 0 ? void 0 : _l.enabled) {
                 config.customFields = Object.assign(Object.assign({}, config.customFields), { Channel: [
-                        ...(((_l = config.customFields) === null || _l === void 0 ? void 0 : _l.Channel) || []),
+                        ...(((_m = config.customFields) === null || _m === void 0 ? void 0 : _m.Channel) || []),
                         ...tenant_channel_custom_fields_1.tenantChannelCustomFields.Channel,
                     ] });
             }
             // 注册 Order customFields（selectedPickupLocationId、pickupType）
             config.customFields = Object.assign(Object.assign({}, config.customFields), { Order: [
-                    ...(((_m = config.customFields) === null || _m === void 0 ? void 0 : _m.Order) || []),
+                    ...(((_o = config.customFields) === null || _o === void 0 ? void 0 : _o.Order) || []),
                     ...order_custom_fields_1.orderCustomFields.Order,
                 ] });
             config.customFields = Object.assign(Object.assign({}, config.customFields), { Customer: [
-                    ...(((_o = config.customFields) === null || _o === void 0 ? void 0 : _o.Customer) || []),
+                    ...(((_p = config.customFields) === null || _p === void 0 ? void 0 : _p.Customer) || []),
                     ...customer_custom_fields_1.customerCustomFields.Customer,
                 ] });
             // 注册 ProductVariant customFields（weight/dimensions）—— 去重防止重复注册
             {
-                const existingPvFields = (((_p = config.customFields) === null || _p === void 0 ? void 0 : _p.ProductVariant) || []).map(f => f.name);
+                const existingPvFields = (((_q = config.customFields) === null || _q === void 0 ? void 0 : _q.ProductVariant) || []).map(f => f.name);
                 const newPvFields = (product_variant_custom_fields_1.productVariantCustomFields.ProductVariant || []).filter(f => !existingPvFields.includes(f.name));
                 if (newPvFields.length > 0) {
                     config.customFields = Object.assign(Object.assign({}, config.customFields), { ProductVariant: [
-                            ...(((_q = config.customFields) === null || _q === void 0 ? void 0 : _q.ProductVariant) || []),
+                            ...(((_r = config.customFields) === null || _r === void 0 ? void 0 : _r.ProductVariant) || []),
                             ...newPvFields,
                         ] });
                 }
             }
             // 注册 ShippingMethod customFields（enabled 启停）—— 去重防止重复注册
             {
-                const existingSmFields = (((_r = config.customFields) === null || _r === void 0 ? void 0 : _r.ShippingMethod) || []).map(f => f.name);
+                const existingSmFields = (((_s = config.customFields) === null || _s === void 0 ? void 0 : _s.ShippingMethod) || []).map(f => f.name);
                 const newSmFields = (shipping_method_custom_fields_1.customShippingMethodFields.ShippingMethod || []).filter(f => !existingSmFields.includes(f.name));
                 if (newSmFields.length > 0) {
                     config.customFields = Object.assign(Object.assign({}, config.customFields), { ShippingMethod: [
-                            ...(((_s = config.customFields) === null || _s === void 0 ? void 0 : _s.ShippingMethod) || []),
+                            ...(((_t = config.customFields) === null || _t === void 0 ? void 0 : _t.ShippingMethod) || []),
                             ...newSmFields,
                         ] });
                 }

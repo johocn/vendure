@@ -4,12 +4,14 @@ import { APP_GUARD, ModuleRef } from '@nestjs/core';
 
 import { CJK_PLUGIN_OPTIONS, loggerCtx } from './constants';
 import { codPaymentHandler } from './payment/cod-handler';
+import { aggregatePaymentHandler } from './payment/aggregate-payment-handler';
 import { couponStackableCondition } from './promotion/coupon-stackable-condition';
 import { promotionCustomFields } from './promotion/promotion-custom-fields';
 import {
     storePickupCalculator,
     pickupPointCalculator,
     employeePickupCalculator,
+    localDeliveryCalculator,
 } from './pickup/pickup-calculator';
 import {
     storePickupEligibilityChecker,
@@ -407,6 +409,7 @@ import { DefaultDataService } from './seed/default-data.service';
                     updateShippingTemplate(input: UpdateShippingTemplateInput!): ShippingTemplate!
                     deleteShippingTemplate(id: ID!): Boolean!
                     createShippingMethodFromTemplate(templateId: ID!, name: String, code: String): ShippingMethod!
+                    updateShippingMethodShippingPrice(id: ID!, shippingPrice: Int!): ShippingMethod!
                 }
 
                 # ===== Shipping Profile =====
@@ -788,6 +791,14 @@ import { DefaultDataService } from './seed/default-data.service';
             ];
         }
 
+        // 聚合码支付（线下扫码 + 自确认），默认启用
+        if (CjkPlugin.options.aggregate?.enabled !== false) {
+            config.paymentOptions.paymentMethodHandlers = [
+                ...(config.paymentOptions.paymentMethodHandlers || []),
+                aggregatePaymentHandler,
+            ];
+        }
+
         const hasPickup = CjkPlugin.options.storePickup?.enabled
             || CjkPlugin.options.pickupPoint?.enabled
             || CjkPlugin.options.employeePickup?.enabled;
@@ -832,6 +843,7 @@ import { DefaultDataService } from './seed/default-data.service';
             ...(config.shippingOptions.shippingCalculators || []),
             tieredWeightShippingCalculator,
             tieredQuantityShippingCalculator,
+            localDeliveryCalculator,
         ];
 
         if (CjkPlugin.options.promotionPolicy?.enabled) {

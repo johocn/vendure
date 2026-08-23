@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CASHIER_PAYMENT_PROFILE_CODE = exports.CASHIER_PAYMENT_METHOD_CODE = exports.STORE_PICKUP_PROFILE_CODE = exports.STORE_PICKUP_TEMPLATE_CODE = exports.STORE_PICKUP_METHOD_CODE = exports.DEFAULT_STORE = exports.DefaultDataService = void 0;
+exports.AGGREGATE_PAYMENT_TEMPLATE_CODE = exports.CASHIER_PAYMENT_PROFILE_CODE = exports.CASHIER_PAYMENT_METHOD_CODE = exports.STORE_PICKUP_PROFILE_CODE = exports.STORE_PICKUP_TEMPLATE_CODE = exports.STORE_PICKUP_METHOD_CODE = exports.DEFAULT_STORE = exports.DefaultDataService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const constants_1 = require("../constants");
@@ -18,6 +18,8 @@ const pickup_location_entity_1 = require("../pickup/pickup-location.entity");
 const shipping_profile_service_1 = require("../shipping/shipping-profile.service");
 const shipping_template_entity_1 = require("../shipping/shipping-template.entity");
 const shipping_template_service_1 = require("../shipping/shipping-template.service");
+const payment_template_entity_1 = require("../payment/payment-template.entity");
+const payment_template_service_1 = require("../payment/payment-template.service");
 /**
  * 插件默认数据初始化
  *
@@ -31,7 +33,7 @@ const shipping_template_service_1 = require("../shipping/shipping-template.servi
  * 通过 CjkPlugin.options.seedDefaultData = false 可禁用。
  */
 let DefaultDataService = class DefaultDataService {
-    constructor(connection, requestContextService, shippingMethodService, paymentMethodService, shippingTemplateService, shippingProfileService, paymentProfileService) {
+    constructor(connection, requestContextService, shippingMethodService, paymentMethodService, shippingTemplateService, shippingProfileService, paymentProfileService, paymentTemplateService) {
         this.connection = connection;
         this.requestContextService = requestContextService;
         this.shippingMethodService = shippingMethodService;
@@ -39,6 +41,7 @@ let DefaultDataService = class DefaultDataService {
         this.shippingTemplateService = shippingTemplateService;
         this.shippingProfileService = shippingProfileService;
         this.paymentProfileService = paymentProfileService;
+        this.paymentTemplateService = paymentTemplateService;
     }
     /**
      * 幂等创建默认数据。任何单项失败仅记日志，不阻塞应用启动。
@@ -53,6 +56,7 @@ let DefaultDataService = class DefaultDataService {
             await this.seedStorePickupProfile(ctx);
             await this.seedCashierPaymentMethod(ctx);
             await this.seedCashierPaymentProfile(ctx);
+            await this.seedAggregatePaymentTemplate(ctx);
             core_1.Logger.info('购物配送/支付默认数据初始化完成', constants_1.loggerCtx);
         }
         catch (e) {
@@ -173,6 +177,22 @@ let DefaultDataService = class DefaultDataService {
         });
         core_1.Logger.info(`已创建默认支付档案: ${exports.CASHIER_PAYMENT_PROFILE_CODE}`, constants_1.loggerCtx);
     }
+    /** 聚合码支付全局模板（租户可在全局方案池「引用到本店」） */
+    async seedAggregatePaymentTemplate(ctx) {
+        const existing = await this.connection
+            .getRepository(ctx, payment_template_entity_1.PaymentTemplate)
+            .findOne({ where: { code: exports.AGGREGATE_PAYMENT_TEMPLATE_CODE } });
+        if (existing)
+            return;
+        await this.paymentTemplateService.create(ctx, {
+            name: '聚合码',
+            description: '顾客扫描商家聚合收款码后确认，到账后发货',
+            code: exports.AGGREGATE_PAYMENT_TEMPLATE_CODE,
+            handler: { code: 'aggregate-pay', arguments: [] },
+            isGlobal: true,
+        });
+        core_1.Logger.info(`已创建默认支付模板: ${exports.AGGREGATE_PAYMENT_TEMPLATE_CODE}`, constants_1.loggerCtx);
+    }
 };
 exports.DefaultDataService = DefaultDataService;
 exports.DefaultDataService = DefaultDataService = __decorate([
@@ -183,7 +203,8 @@ exports.DefaultDataService = DefaultDataService = __decorate([
         core_1.PaymentMethodService,
         shipping_template_service_1.ShippingTemplateService,
         shipping_profile_service_1.ShippingProfileService,
-        payment_profile_service_1.PaymentProfileService])
+        payment_profile_service_1.PaymentProfileService,
+        payment_template_service_1.PaymentTemplateService])
 ], DefaultDataService);
 exports.DEFAULT_STORE = {
     name: '自由大路店',
@@ -197,4 +218,5 @@ exports.STORE_PICKUP_TEMPLATE_CODE = 'store-pickup-template';
 exports.STORE_PICKUP_PROFILE_CODE = 'store-pickup-profile';
 exports.CASHIER_PAYMENT_METHOD_CODE = 'cash-on-delivery';
 exports.CASHIER_PAYMENT_PROFILE_CODE = 'store-cashier-profile';
+exports.AGGREGATE_PAYMENT_TEMPLATE_CODE = 'aggregate-pay';
 //# sourceMappingURL=default-data.service.js.map
