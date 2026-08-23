@@ -47,6 +47,7 @@ __exportStar(require("./src/shipping/shipping-template.service"), exports);
 __exportStar(require("./src/shipping/shipping-template-admin.resolver"), exports);
 __exportStar(require("./src/shipping/shipping-template-permissions"), exports);
 __exportStar(require("./src/shipping/shipping-profile.entity"), exports);
+__exportStar(require("./src/shipping/shipping-profile-method.entity"), exports);
 __exportStar(require("./src/shipping/shipping-profile.service"), exports);
 __exportStar(require("./src/shipping/shipping-profile-admin.resolver"), exports);
 __exportStar(require("./src/shipping/shipping-profile-permissions"), exports);

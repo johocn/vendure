@@ -31,6 +31,7 @@ export * from './src/shipping/shipping-template.service';
 export * from './src/shipping/shipping-template-admin.resolver';
 export * from './src/shipping/shipping-template-permissions';
 export * from './src/shipping/shipping-profile.entity';
+export * from './src/shipping/shipping-profile-method.entity';
 export * from './src/shipping/shipping-profile.service';
 export * from './src/shipping/shipping-profile-admin.resolver';
 export * from './src/shipping/shipping-profile-permissions';
