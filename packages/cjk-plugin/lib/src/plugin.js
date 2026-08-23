@@ -476,14 +476,21 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                 }
 
                 # ===== Shipping Template =====
+                # checker/calculator 为 ConfigurableOperation 形态（code + arguments），
+                # 与 Vendure 内置 ConfigArg（仅 name/value）不同，故定义独立只读类型
+                type TemplateOperation {
+                    code: String!
+                    arguments: [ConfigArg!]!
+                }
+
                 type ShippingTemplate {
                     id: ID!
                     name: String!
                     description: String!
                     code: String!
                     fulfillmentHandler: String!
-                    checker: ConfigArg!
-                    calculator: ConfigArg!
+                    checker: TemplateOperation
+                    calculator: TemplateOperation
                     isGlobal: Boolean!
                 }
 
