@@ -40,6 +40,9 @@ let ShippingTemplateAdminResolver = class ShippingTemplateAdminResolver {
     async createShippingMethodFromTemplate(ctx, templateId, name, code) {
         return this.shippingTemplateService.createShippingMethodFromTemplate(ctx, templateId, name, code);
     }
+    async updateShippingMethodShippingPrice(ctx, id, shippingPrice) {
+        return this.shippingTemplateService.updateShippingMethodShippingPrice(ctx, id, shippingPrice);
+    }
 };
 exports.ShippingTemplateAdminResolver = ShippingTemplateAdminResolver;
 __decorate([
@@ -100,6 +103,17 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object, String, String]),
     __metadata("design:returntype", Promise)
 ], ShippingTemplateAdminResolver.prototype, "createShippingMethodFromTemplate", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Transaction)(),
+    (0, core_1.Allow)(shipping_template_permissions_1.ShippingTemplatePermissions.CreateShippingMethodFromTemplate),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('shippingPrice')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Number]),
+    __metadata("design:returntype", Promise)
+], ShippingTemplateAdminResolver.prototype, "updateShippingMethodShippingPrice", null);
 exports.ShippingTemplateAdminResolver = ShippingTemplateAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [shipping_template_service_1.ShippingTemplateService])

@@ -39,6 +39,10 @@ export interface CjkPluginOptions {
     i18n?: CjkPluginI18nOptions;
     regions?: CjkPluginRegionsOptions;
     cod?: CjkPluginCodOptions;
+    /** 聚合码支付（线下扫码 + 自确认），默认启用，传 { enabled: false } 关闭 */
+    aggregate?: {
+        enabled?: boolean;
+    };
     storePickup?: CjkPluginStorePickupOptions;
     pickupPoint?: CjkPluginPickupPointOptions;
     employeePickup?: CjkPluginEmployeePickupOptions;

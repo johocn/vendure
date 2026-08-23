@@ -143,4 +143,32 @@ export class ShippingTemplateService {
 
         return shippingMethod;
     }
+
+    /**
+     * 更新配送方式实例的固定运费（shippingPrice，分）。
+     * 租户级计费：引用自提/同城模板后，租户在自己配送方式实例上配置固定运费。
+     * 仅更新 calculator 的 shippingPrice 参数，其余参数与 checker 保持不变。
+     */
+    async updateShippingMethodShippingPrice(
+        ctx: RequestContext,
+        id: ID,
+        shippingPrice: number,
+    ): Promise<any> {
+        const fee = Math.max(0, Math.round(Number(shippingPrice) || 0));
+        const method = await this.shippingMethodService.findOne(ctx, id);
+        if (!method) throw new EntityNotFoundError('ShippingMethod', id);
+        const calculator = (method as any).calculator ?? {};
+        const args = (calculator.args ?? []).map((a: { name: string; value: string }) => ({ ...a }));
+        const existing = args.find((a: { name: string }) => a.name === 'shippingPrice');
+        if (existing) {
+            existing.value = String(fee);
+        } else {
+            args.push({ name: 'shippingPrice', value: String(fee) });
+        }
+        const updated = await this.shippingMethodService.update(ctx, {
+            id,
+            calculator: { code: calculator.code, arguments: args },
+        } as any);
+        return updated;
+    }
 }

@@ -72,4 +72,15 @@ export class ShippingTemplateAdminResolver {
     ): Promise<any> {
         return this.shippingTemplateService.createShippingMethodFromTemplate(ctx, templateId, name, code);
     }
+
+    @Mutation()
+    @Transaction()
+    @Allow(ShippingTemplatePermissions.CreateShippingMethodFromTemplate as Permission)
+    async updateShippingMethodShippingPrice(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args('shippingPrice') shippingPrice: number,
+    ): Promise<any> {
+        return this.shippingTemplateService.updateShippingMethodShippingPrice(ctx, id, shippingPrice);
+    }
 }

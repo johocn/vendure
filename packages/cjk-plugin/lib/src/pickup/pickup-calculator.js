@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.employeePickupCalculator = exports.pickupPointCalculator = exports.storePickupCalculator = void 0;
+exports.employeePickupCalculator = exports.localDeliveryCalculator = exports.pickupPointCalculator = exports.storePickupCalculator = void 0;
 const core_1 = require("@vendure/core");
 exports.storePickupCalculator = new core_1.ShippingCalculator({
     code: 'store-pickup-calculator',
@@ -40,6 +40,36 @@ exports.pickupPointCalculator = new core_1.ShippingCalculator({
             taxRate: 0,
             priceIncludesTax: true,
             metadata: { pickupType: 'point' },
+        };
+    },
+});
+/**
+ * 同城快递固定运费计算器
+ * 与自提一样归属「租户级配送方式固定运费」计费：运费在配送方式实例的
+ * shippingPrice（分）中配置（0=免费），整单统一收取。
+ */
+exports.localDeliveryCalculator = new core_1.ShippingCalculator({
+    code: 'local-delivery-calculator',
+    description: [
+        { languageCode: core_1.LanguageCode.zh_Hans, value: '同城快递运费计算（固定）' },
+        { languageCode: core_1.LanguageCode.en, value: 'Local Delivery Shipping Calculator (Fixed)' },
+    ],
+    args: {
+        shippingPrice: {
+            type: 'int',
+            defaultValue: 0,
+            label: [
+                { languageCode: core_1.LanguageCode.zh_Hans, value: '运费（分）' },
+                { languageCode: core_1.LanguageCode.en, value: 'Shipping Price (cents)' },
+            ],
+        },
+    },
+    calculate: (ctx, order, args) => {
+        return {
+            price: args.shippingPrice || 0,
+            taxRate: 0,
+            priceIncludesTax: true,
+            metadata: { pickupType: 'local' },
         };
     },
 });

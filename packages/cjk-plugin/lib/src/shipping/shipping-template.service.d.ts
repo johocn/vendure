@@ -31,4 +31,10 @@ export declare class ShippingTemplateService {
      * 租户可覆盖名称，否则使用模板名称
      */
     createShippingMethodFromTemplate(ctx: RequestContext, templateId: ID, nameOverride?: string, codeOverride?: string): Promise<any>;
+    /**
+     * 更新配送方式实例的固定运费（shippingPrice，分）。
+     * 租户级计费：引用自提/同城模板后，租户在自己配送方式实例上配置固定运费。
+     * 仅更新 calculator 的 shippingPrice 参数，其余参数与 checker 保持不变。
+     */
+    updateShippingMethodShippingPrice(ctx: RequestContext, id: ID, shippingPrice: number): Promise<any>;
 }

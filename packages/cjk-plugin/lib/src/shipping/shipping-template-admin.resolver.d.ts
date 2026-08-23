@@ -10,4 +10,5 @@ export declare class ShippingTemplateAdminResolver {
     updateShippingTemplate(ctx: RequestContext, input: any): Promise<ShippingTemplate>;
     deleteShippingTemplate(ctx: RequestContext, id: ID): Promise<boolean>;
     createShippingMethodFromTemplate(ctx: RequestContext, templateId: ID, name?: string, code?: string): Promise<any>;
+    updateShippingMethodShippingPrice(ctx: RequestContext, id: ID, shippingPrice: number): Promise<any>;
 }
