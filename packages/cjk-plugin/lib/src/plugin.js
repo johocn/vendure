@@ -37,6 +37,7 @@ const order_custom_fields_1 = require("./order/order-custom-fields");
 const customer_custom_fields_1 = require("./customer/customer-custom-fields");
 const tenant_channel_custom_fields_1 = require("./tenant/tenant-channel-custom-fields");
 const product_variant_custom_fields_1 = require("./shipping/product-variant-custom-fields");
+const shipping_method_custom_fields_1 = require("./shipping/shipping-method-custom-fields");
 const tiered_shipping_calculator_1 = require("./shipping/tiered-shipping-calculator");
 const tiered_shipping_eligibility_checker_1 = require("./shipping/tiered-shipping-eligibility-checker");
 const shipping_template_entity_1 = require("./shipping/shipping-template.entity");
@@ -535,6 +536,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     shippingMethods: [ShippingMethod!]!
                     pickupLocations: [PickupLocation!]!
                     isTenantDefault: Boolean!
+                    enabled: Boolean!
                     methodConfigs: [ShippingProfileMethodConfig!]!
                 }
 
@@ -560,6 +562,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     code: String!
                     description: String
                     isGlobal: Boolean
+                    enabled: Boolean
                     freeShippingThreshold: Int
                     shippingMethodIds: [ID!]!
                     pickupLocationIds: [ID!]
@@ -572,6 +575,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     code: String
                     description: String
                     isGlobal: Boolean
+                    enabled: Boolean
                     freeShippingThreshold: Int
                     shippingMethodIds: [ID!]
                     pickupLocationIds: [ID!]
@@ -608,6 +612,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     installmentOptions: JSON
                     paymentMethods: [PaymentMethod!]!
                     isTenantDefault: Boolean!
+                    enabled: Boolean!
                     methodConfigs: [PaymentProfileMethodConfig!]!
                 }
 
@@ -633,6 +638,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     code: String!
                     description: String
                     isGlobal: Boolean
+                    enabled: Boolean
                     installmentOptions: JSON
                     paymentMethodIds: [ID!]!
                     methodConfigs: [PaymentProfileMethodConfigInput!]
@@ -644,6 +650,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     code: String
                     description: String
                     isGlobal: Boolean
+                    enabled: Boolean
                     installmentOptions: JSON
                     paymentMethodIds: [ID!]
                     methodConfigs: [PaymentProfileMethodConfigInput!]
@@ -827,7 +834,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver, shipping_profile_shop_resolver_1.ShippingProfileShopResolver, payment_profile_shop_resolver_1.PaymentProfileShopResolver],
         },
         configuration: config => {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s;
             // 注入 authSecret 到 crypto 模块（configuration 在 bootstrap 早期执行，此时 options 已可用）
             (0, crypto_1.setAuthSecret)(CjkPlugin.options.authSecret);
             // 注册 SSO 策略到 shop 端（init 钩子由 Vendure 自动调用）
@@ -917,6 +924,17 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     config.customFields = Object.assign(Object.assign({}, config.customFields), { ProductVariant: [
                             ...(((_q = config.customFields) === null || _q === void 0 ? void 0 : _q.ProductVariant) || []),
                             ...newPvFields,
+                        ] });
+                }
+            }
+            // 注册 ShippingMethod customFields（enabled 启停）—— 去重防止重复注册
+            {
+                const existingSmFields = (((_r = config.customFields) === null || _r === void 0 ? void 0 : _r.ShippingMethod) || []).map(f => f.name);
+                const newSmFields = (shipping_method_custom_fields_1.customShippingMethodFields.ShippingMethod || []).filter(f => !existingSmFields.includes(f.name));
+                if (newSmFields.length > 0) {
+                    config.customFields = Object.assign(Object.assign({}, config.customFields), { ShippingMethod: [
+                            ...(((_s = config.customFields) === null || _s === void 0 ? void 0 : _s.ShippingMethod) || []),
+                            ...newSmFields,
                         ] });
                 }
             }

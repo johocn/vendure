@@ -56,6 +56,10 @@ __decorate([
     __metadata("design:type", Boolean)
 ], PaymentProfile.prototype, "isTenantDefault", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ default: true }),
+    __metadata("design:type", Boolean)
+], PaymentProfile.prototype, "enabled", void 0);
+__decorate([
     (0, typeorm_1.ManyToMany)(() => core_1.PaymentMethod),
     (0, typeorm_1.JoinTable)(),
     __metadata("design:type", Array)

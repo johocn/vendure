@@ -57,6 +57,10 @@ __decorate([
     __metadata("design:type", Boolean)
 ], ShippingProfile.prototype, "isTenantDefault", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ default: true }),
+    __metadata("design:type", Boolean)
+], ShippingProfile.prototype, "enabled", void 0);
+__decorate([
     (0, typeorm_1.ManyToMany)(() => core_1.ShippingMethod),
     (0, typeorm_1.JoinTable)(),
     __metadata("design:type", Array)

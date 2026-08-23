@@ -17,6 +17,7 @@ export declare class PaymentProfile extends VendureEntity implements ChannelAwar
     ownerChannelId: ID | null;
     installmentOptions: Record<string, any> | null;
     isTenantDefault: boolean;
+    enabled: boolean;
     paymentMethods: PaymentMethod[];
     channels: Channel[];
 }

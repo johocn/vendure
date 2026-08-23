@@ -407,6 +407,7 @@ import { DefaultDataService } from './seed/default-data.service';
                     shippingMethods: [ShippingMethod!]!
                     pickupLocations: [PickupLocation!]!
                     isTenantDefault: Boolean!
+                    enabled: Boolean!
                     methodConfigs: [ShippingProfileMethodConfig!]!
                 }
 
@@ -432,6 +433,7 @@ import { DefaultDataService } from './seed/default-data.service';
                     code: String!
                     description: String
                     isGlobal: Boolean
+                    enabled: Boolean
                     freeShippingThreshold: Int
                     shippingMethodIds: [ID!]!
                     pickupLocationIds: [ID!]
@@ -444,6 +446,7 @@ import { DefaultDataService } from './seed/default-data.service';
                     code: String
                     description: String
                     isGlobal: Boolean
+                    enabled: Boolean
                     freeShippingThreshold: Int
                     shippingMethodIds: [ID!]
                     pickupLocationIds: [ID!]
@@ -480,6 +483,7 @@ import { DefaultDataService } from './seed/default-data.service';
                     installmentOptions: JSON
                     paymentMethods: [PaymentMethod!]!
                     isTenantDefault: Boolean!
+                    enabled: Boolean!
                     methodConfigs: [PaymentProfileMethodConfig!]!
                 }
 
@@ -505,6 +509,7 @@ import { DefaultDataService } from './seed/default-data.service';
                     code: String!
                     description: String
                     isGlobal: Boolean
+                    enabled: Boolean
                     installmentOptions: JSON
                     paymentMethodIds: [ID!]!
                     methodConfigs: [PaymentProfileMethodConfigInput!]
@@ -516,6 +521,7 @@ import { DefaultDataService } from './seed/default-data.service';
                     code: String
                     description: String
                     isGlobal: Boolean
+                    enabled: Boolean
                     installmentOptions: JSON
                     paymentMethodIds: [ID!]
                     methodConfigs: [PaymentProfileMethodConfigInput!]

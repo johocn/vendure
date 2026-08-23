@@ -42,6 +42,9 @@ export class PaymentProfile extends VendureEntity implements ChannelAware {
     @Column({ default: false })
     isTenantDefault: boolean;
 
+    @Column({ default: true })
+    enabled: boolean;
+
     @ManyToMany(() => PaymentMethod)
     @JoinTable()
     paymentMethods: PaymentMethod[];
