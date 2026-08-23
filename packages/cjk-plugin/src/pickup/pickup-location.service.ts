@@ -58,6 +58,26 @@ export class PickupLocationService {
         return qb.getMany();
     }
 
+    /**
+     * 按城市动态聚合当前渠道可见的启用自提点（rangeMode='all' 用）。
+     * 语义：可见规则(公共点+本租户自建点) + 类型匹配 + enabled=true + 同 city + channels 关联当前渠道。
+     * city 可为空 → 聚合当前渠道全部可见且启用的同类型自提点。
+     */
+    async findByCityForChannel(ctx: RequestContext, city: string | null, type: string): Promise<PickupLocation[]> {
+        const qb = this.connection.getRepository(ctx, PickupLocation).createQueryBuilder('pl');
+        qb.where(
+            '(pl.isPublic = :isPublic OR pl.ownerChannelId = :channelId)',
+            { isPublic: true, channelId: ctx.channelId }
+        );
+        qb.andWhere('pl.type = :type', { type });
+        qb.andWhere('pl.enabled = :enabled', { enabled: true });
+        if (city) {
+            qb.andWhere('pl.city = :city', { city });
+        }
+        qb.innerJoin('pl.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId });
+        return qb.getMany();
+    }
+
     async findByIds(ctx: RequestContext, ids: ID[]): Promise<PickupLocation[]> {
         if (ids.length === 0) return [];
         const qb = this.connection.getRepository(ctx, PickupLocation).createQueryBuilder('pl');

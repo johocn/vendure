@@ -13,10 +13,14 @@ import {
 import { ShippingProfile } from './shipping-profile.entity';
 import { ShippingProfileMethod } from './shipping-profile-method.entity';
 import { PickupLocation } from '../pickup/pickup-location.entity';
+import { PickupLocationService } from '../pickup/pickup-location.service';
 
 @Injectable()
 export class ShippingProfileService {
-    constructor(private connection: TransactionalConnection) {}
+    constructor(
+        private connection: TransactionalConnection,
+        private pickupLocationService: PickupLocationService,
+    ) {}
 
     async findAll(
         ctx: RequestContext,
@@ -250,11 +254,14 @@ export class ShippingProfileService {
         const effectiveByProfile: ID[][] = [];
         for (const profile of profiles) {
             const configs = await this.getMethodConfigsByProfile(ctx, profile.id);
-            const pickupConfigIds = configs
-                .filter(c => c.mode === 'pickup' && c.options?.pickupLocationIds?.length)
-                .flatMap(c => c.options.pickupLocationIds as ID[]);
-            const effective = pickupConfigIds.length > 0
-                ? pickupConfigIds
+            const pickupEffective: ID[] = [];
+            for (const c of configs) {
+                if (c.mode !== 'pickup') continue;
+                const ids = await this.getEffectivePickupIdsForConfig(ctx, c);
+                pickupEffective.push(...ids);
+            }
+            const effective = pickupEffective.length > 0
+                ? pickupEffective
                 : (profile.pickupLocations ?? []).map(pl => pl.id);
             effectiveByProfile.push(effective);
         }
@@ -281,13 +288,57 @@ export class ShippingProfileService {
         profileIds: ID[],
     ): Promise<boolean> {
         if (profileIds.length === 0) return false;
+        // 任一 Profile 级 pickupLocations 非空即为约束
         const count = await this.connection
             .getRepository(ctx, ShippingProfile)
             .createQueryBuilder('sp')
             .innerJoin('sp.pickupLocations', 'pl')
             .where('sp.id IN (:...profileIds)', { profileIds })
             .getCount();
-        return count > 0;
+        if (count > 0) return true;
+        // 任一 pickup 方式 config 携带自提点范围（rangeMode='all' 或 pickupLocationIds）亦为约束
+        for (const pid of profileIds) {
+            const configs = await this.getMethodConfigsByProfile(ctx, pid);
+            const constrained = configs.some(c => c.mode === 'pickup' &&
+                (c.options?.rangeMode === 'all' || (c.options?.pickupLocationIds?.length ?? 0) > 0));
+            if (constrained) return true;
+        }
+        return false;
+    }
+
+    /**
+     * 方式 mode → 自提点实体类型映射：
+     * - pickup → point
+     * - store  → store
+     * - employee → employee
+     */
+    private pickupTypeByMode(mode: string): string {
+        switch (mode) {
+            case 'store': return 'store';
+            case 'employee': return 'employee';
+            case 'pickup':
+            default:
+                return 'point';
+        }
+    }
+
+    /**
+     * 计算某一方式 config 的有效自提点 id 集合（shop 端透传 & 交集用）。
+     * - options.rangeMode === 'all' → 动态聚合当前渠道可见的启用自提点，且仅取该方式对应类型
+     *   （pickup→point）。city 来源不明确，采用"同 channel 的全部可见启用 point"聚合。
+     * - 否则 → options.pickupLocationIds，并限定在对应类型内（pickup→point / store→store / employee→employee）。
+     */
+    async getEffectivePickupIdsForConfig(ctx: RequestContext, cfg: any): Promise<ID[]> {
+        if (!cfg || cfg.mode !== 'pickup') return [];
+        const type = this.pickupTypeByMode(cfg.mode);
+        const options = cfg.options ?? {};
+        if (options.rangeMode === 'all') {
+            return (await this.pickupLocationService.findByCityForChannel(ctx, null, type)).map(l => l.id);
+        }
+        const ids: ID[] = options.pickupLocationIds ?? [];
+        if (ids.length === 0) return [];
+        const locs = await this.pickupLocationService.findByIds(ctx, ids);
+        return locs.filter(l => l.type === type).map(l => l.id);
     }
 
     async findPickupLocationsByIds(
