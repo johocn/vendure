@@ -115,10 +115,15 @@ import { DefaultDataService } from './seed/default-data.service';
                     name: String!
                     type: PickupLocationType!
                     address: String!
+                    contactPerson: String
                     phoneNumber: String
                     businessHours: String
                     coordinates: JSON
                     partner: String
+                    photos: JSON
+                    remark: String
+                    sortOrder: Int!
+                    enabled: Boolean!
                     isPublic: Boolean!
                     ownerChannelId: ID
                     province: String
@@ -136,10 +141,15 @@ import { DefaultDataService } from './seed/default-data.service';
                     name: String!
                     type: PickupLocationType!
                     address: String!
+                    contactPerson: String
                     phoneNumber: String
                     businessHours: String
                     coordinates: JSON
                     partner: String
+                    photos: JSON
+                    remark: String
+                    sortOrder: Int
+                    enabled: Boolean
                     isPublic: Boolean
                     province: String
                     city: String
@@ -152,10 +162,15 @@ import { DefaultDataService } from './seed/default-data.service';
                     name: String
                     type: PickupLocationType
                     address: String
+                    contactPerson: String
                     phoneNumber: String
                     businessHours: String
                     coordinates: JSON
                     partner: String
+                    photos: JSON
+                    remark: String
+                    sortOrder: Int
+                    enabled: Boolean
                     isPublic: Boolean
                     province: String
                     city: String
@@ -546,10 +561,13 @@ import { DefaultDataService } from './seed/default-data.service';
                     name: String!
                     type: String!
                     address: String!
+                    contactPerson: String
                     phoneNumber: String
                     businessHours: String
                     coordinates: JSON
                     partner: String
+                    photos: JSON
+                    remark: String
                     isPublic: Boolean!
                 }
 

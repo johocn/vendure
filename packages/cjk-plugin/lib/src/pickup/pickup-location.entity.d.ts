@@ -6,6 +6,7 @@ export declare class PickupLocation extends VendureEntity implements ChannelAwar
     name: string;
     type: 'store' | 'point' | 'employee';
     address: string;
+    contactPerson: string;
     phoneNumber: string;
     businessHours: string;
     coordinates: {
@@ -13,6 +14,10 @@ export declare class PickupLocation extends VendureEntity implements ChannelAwar
         lng: number;
     } | null;
     partner: string;
+    photos: string[] | null;
+    remark: string | null;
+    sortOrder: number;
+    enabled: boolean;
     province: string | null;
     city: string | null;
     district: string | null;

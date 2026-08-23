@@ -244,10 +244,15 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     name: String!
                     type: PickupLocationType!
                     address: String!
+                    contactPerson: String
                     phoneNumber: String
                     businessHours: String
                     coordinates: JSON
                     partner: String
+                    photos: JSON
+                    remark: String
+                    sortOrder: Int!
+                    enabled: Boolean!
                     isPublic: Boolean!
                     ownerChannelId: ID
                     province: String
@@ -265,10 +270,15 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     name: String!
                     type: PickupLocationType!
                     address: String!
+                    contactPerson: String
                     phoneNumber: String
                     businessHours: String
                     coordinates: JSON
                     partner: String
+                    photos: JSON
+                    remark: String
+                    sortOrder: Int
+                    enabled: Boolean
                     isPublic: Boolean
                     province: String
                     city: String
@@ -281,10 +291,15 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     name: String
                     type: PickupLocationType
                     address: String
+                    contactPerson: String
                     phoneNumber: String
                     businessHours: String
                     coordinates: JSON
                     partner: String
+                    photos: JSON
+                    remark: String
+                    sortOrder: Int
+                    enabled: Boolean
                     isPublic: Boolean
                     province: String
                     city: String
@@ -675,10 +690,13 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     name: String!
                     type: String!
                     address: String!
+                    contactPerson: String
                     phoneNumber: String
                     businessHours: String
                     coordinates: JSON
                     partner: String
+                    photos: JSON
+                    remark: String
                     isPublic: Boolean!
                 }
 

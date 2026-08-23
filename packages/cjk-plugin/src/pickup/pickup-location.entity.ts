@@ -16,6 +16,8 @@ export class PickupLocation extends VendureEntity implements ChannelAware, HasCu
 
     @Column() address: string;
 
+    @Column({ nullable: true }) contactPerson: string;
+
     @Column({ nullable: true }) phoneNumber: string;
 
     @Column({ nullable: true }) businessHours: string;
@@ -24,6 +26,15 @@ export class PickupLocation extends VendureEntity implements ChannelAware, HasCu
     coordinates: { lat: number; lng: number } | null;
 
     @Column({ nullable: true }) partner: string;
+
+    @Column({ type: 'simple-json', nullable: true })
+    photos: string[] | null;
+
+    @Column({ type: 'text', nullable: true }) remark: string | null;
+
+    @Column({ default: 0 }) sortOrder: number;
+
+    @Column({ default: true }) enabled: boolean;
 
     @Column({ type: 'varchar', nullable: true }) province: string | null;
     @Column({ type: 'varchar', nullable: true }) city: string | null;
