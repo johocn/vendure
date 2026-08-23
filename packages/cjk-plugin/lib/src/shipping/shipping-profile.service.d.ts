@@ -1,9 +1,11 @@
 import { ID, ListQueryOptions, PaginatedList, RequestContext, TransactionalConnection } from '@vendure/core';
 import { ShippingProfile } from './shipping-profile.entity';
 import { PickupLocation } from '../pickup/pickup-location.entity';
+import { PickupLocationService } from '../pickup/pickup-location.service';
 export declare class ShippingProfileService {
     private connection;
-    constructor(connection: TransactionalConnection);
+    private pickupLocationService;
+    constructor(connection: TransactionalConnection, pickupLocationService: PickupLocationService);
     findAll(ctx: RequestContext, options?: ListQueryOptions<ShippingProfile>): Promise<PaginatedList<ShippingProfile>>;
     findOne(ctx: RequestContext, id: any): Promise<ShippingProfile | undefined>;
     findByCode(ctx: RequestContext, code: string): Promise<ShippingProfile | undefined>;
@@ -44,6 +46,20 @@ export declare class ShippingProfileService {
      * - true  → 约束了但交集为空，前端展示"无可用自提点"
      */
     hasPickupLocationConstraint(ctx: RequestContext, profileIds: ID[]): Promise<boolean>;
+    /**
+     * 方式 mode → 自提点实体类型映射：
+     * - pickup → point
+     * - store  → store
+     * - employee → employee
+     */
+    private pickupTypeByMode;
+    /**
+     * 计算某一方式 config 的有效自提点 id 集合（shop 端透传 & 交集用）。
+     * - options.rangeMode === 'all' → 动态聚合当前渠道可见的启用自提点，且仅取该方式对应类型
+     *   （pickup→point）。city 来源不明确，采用"同 channel 的全部可见启用 point"聚合。
+     * - 否则 → options.pickupLocationIds，并限定在对应类型内（pickup→point / store→store / employee→employee）。
+     */
+    getEffectivePickupIdsForConfig(ctx: RequestContext, cfg: any): Promise<ID[]>;
     findPickupLocationsByIds(ctx: RequestContext, ids: ID[]): Promise<PickupLocation[]>;
     private replaceMethodConfigs;
     setTenantDefault(ctx: RequestContext, id: any): Promise<void>;

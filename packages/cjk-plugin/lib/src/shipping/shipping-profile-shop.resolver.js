@@ -37,6 +37,7 @@ let ShippingProfileShopResolver = class ShippingProfileShopResolver {
         };
     }
     async eligibleShippingMethodsWithConfig(ctx, profileIds) {
+        var _a, _b, _c, _d;
         profileIds = await this.service.resolveEffectiveProfileIds(ctx, profileIds);
         const intersected = await this.service.getIntersectedShippingMethods(ctx, profileIds);
         if (intersected.length === 0)
@@ -48,34 +49,38 @@ let ShippingProfileShopResolver = class ShippingProfileShopResolver {
                 configs.set(r.shippingMethodId, r);
         }
         const full = await this.service.findShippingMethodsByIds(ctx, intersected.map(m => m.id));
-        return full
-            .filter((m) => { var _a; return ((_a = m.customFields) === null || _a === void 0 ? void 0 : _a.enabled) !== false; })
-            .map((m) => {
-            var _a, _b, _c, _d, _e, _f;
+        const enriched = [];
+        for (const m of full.filter((m) => { var _a; return ((_a = m.customFields) === null || _a === void 0 ? void 0 : _a.enabled) !== false; })) {
             const cfg = configs.get(m.id);
-            const pickupIds = cfg && cfg.mode === 'pickup' ? (_b = (_a = cfg.options) === null || _a === void 0 ? void 0 : _a.pickupLocationIds) !== null && _b !== void 0 ? _b : [] : null;
-            return { id: m.id, code: m.code, mode: (_c = cfg === null || cfg === void 0 ? void 0 : cfg.mode) !== null && _c !== void 0 ? _c : null, pickupLocationIds: pickupIds, name: (_f = (_e = (_d = m.translations) === null || _d === void 0 ? void 0 : _d[0]) === null || _e === void 0 ? void 0 : _e.name) !== null && _f !== void 0 ? _f : m.code };
-        });
+            const pickupIds = cfg && cfg.mode === 'pickup'
+                ? await this.service.getEffectivePickupIdsForConfig(ctx, cfg)
+                : null;
+            enriched.push({ id: m.id, code: m.code, mode: (_a = cfg === null || cfg === void 0 ? void 0 : cfg.mode) !== null && _a !== void 0 ? _a : null, pickupLocationIds: pickupIds, name: (_d = (_c = (_b = m.translations) === null || _b === void 0 ? void 0 : _b[0]) === null || _c === void 0 ? void 0 : _c.name) !== null && _d !== void 0 ? _d : m.code });
+        }
+        return enriched;
     }
     async resolveShippingMethodsForChannel(ctx) {
-        var _a;
+        var _a, _b, _c, _d, _e;
         const def = await this.service.getTenantDefault(ctx);
         if (def) {
             const ids = ((_a = def.shippingMethods) !== null && _a !== void 0 ? _a : []).map(m => m.id);
             const full = await this.service.findShippingMethodsByIds(ctx, ids);
             const configs = await this.service.getMethodConfigsByProfile(ctx, def.id);
             const cm = new Map(configs.map(c => [String(c.shippingMethodId), c]));
-            return full
-                .filter((m) => { var _a; return ((_a = m.customFields) === null || _a === void 0 ? void 0 : _a.enabled) !== false; })
-                .map((m) => {
-                var _a, _b, _c, _d, _e, _f, _g, _h;
-                return ({
+            const result = [];
+            for (const m of full.filter((m) => { var _a; return ((_a = m.customFields) === null || _a === void 0 ? void 0 : _a.enabled) !== false; })) {
+                const cfg = cm.get(String(m.id));
+                const pickupIds = cfg && cfg.mode === 'pickup'
+                    ? await this.service.getEffectivePickupIdsForConfig(ctx, cfg)
+                    : null;
+                result.push({
                     id: m.id, code: m.code,
-                    mode: (_b = (_a = cm.get(String(m.id))) === null || _a === void 0 ? void 0 : _a.mode) !== null && _b !== void 0 ? _b : null,
-                    pickupLocationIds: (_e = (_d = (_c = cm.get(String(m.id))) === null || _c === void 0 ? void 0 : _c.options) === null || _d === void 0 ? void 0 : _d.pickupLocationIds) !== null && _e !== void 0 ? _e : null,
-                    name: (_h = (_g = (_f = m.translations) === null || _f === void 0 ? void 0 : _f[0]) === null || _g === void 0 ? void 0 : _g.name) !== null && _h !== void 0 ? _h : m.code,
+                    mode: (_b = cfg === null || cfg === void 0 ? void 0 : cfg.mode) !== null && _b !== void 0 ? _b : null,
+                    pickupLocationIds: pickupIds,
+                    name: (_e = (_d = (_c = m.translations) === null || _c === void 0 ? void 0 : _c[0]) === null || _d === void 0 ? void 0 : _d.name) !== null && _e !== void 0 ? _e : m.code,
                 });
-            });
+            }
+            return result;
         }
         // 无默认档案 → 返回当前可见的全部配送方式（沿用 service 既有 findAll 的租户可见过滤）
         const all = await this.service.findShippingMethodsByIds(ctx, (await this.service.findAll(ctx)).items.flatMap(s => { var _a, _b; return (_b = (_a = s.shippingMethods) === null || _a === void 0 ? void 0 : _a.map(sm => sm.id)) !== null && _b !== void 0 ? _b : []; }));

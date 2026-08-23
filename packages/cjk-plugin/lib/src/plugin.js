@@ -30,6 +30,7 @@ const pickup_location_shop_resolver_1 = require("./pickup/pickup-location-shop.r
 const pickup_shop_resolver_1 = require("./pickup/pickup-shop.resolver");
 const pickup_location_service_1 = require("./pickup/pickup-location.service");
 const pickup_permissions_1 = require("./pickup/pickup-permissions");
+const pickup_location_permissions_1 = require("./pickup/pickup-location-permissions");
 const enterprise_customer_entity_1 = require("./pickup/enterprise-customer/enterprise-customer.entity");
 const enterprise_customer_service_1 = require("./pickup/enterprise-customer/enterprise-customer.service");
 const enterprise_customer_admin_resolver_1 = require("./pickup/enterprise-customer/enterprise-customer-admin.resolver");
@@ -74,6 +75,10 @@ const payment_profile_method_entity_1 = require("./payment/payment-profile-metho
 const payment_profile_service_1 = require("./payment/payment-profile.service");
 const payment_profile_admin_resolver_1 = require("./payment/payment-profile-admin.resolver");
 const payment_profile_permissions_1 = require("./payment/payment-profile-permissions");
+const payment_template_entity_1 = require("./payment/payment-template.entity");
+const payment_template_service_1 = require("./payment/payment-template.service");
+const payment_template_admin_resolver_1 = require("./payment/payment-template-admin.resolver");
+const payment_template_permissions_1 = require("./payment/payment-template-permissions");
 const shipping_profile_shop_resolver_1 = require("./shipping/shipping-profile-shop.resolver");
 const payment_profile_shop_resolver_1 = require("./payment/payment-profile-shop.resolver");
 const core_3 = require("@vendure/core");
@@ -208,7 +213,7 @@ exports.CjkPlugin = CjkPlugin;
 exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_profile_method_entity_1.PaymentProfileMethod],
+        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_profile_method_entity_1.PaymentProfileMethod, payment_template_entity_1.PaymentTemplate],
         providers: [
             { provide: constants_1.CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
             tenant_setup_service_1.TenantSetupService,
@@ -228,6 +233,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             shipping_template_service_1.ShippingTemplateService,
             shipping_profile_service_1.ShippingProfileService,
             payment_profile_service_1.PaymentProfileService,
+            payment_template_service_1.PaymentTemplateService,
             default_data_service_1.DefaultDataService,
         ],
         adminApiExtensions: {
@@ -675,9 +681,62 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     assignPaymentProfile(variantIds: [ID!]!, profileId: ID!): Boolean!
                     setTenantDefaultPaymentProfile(id: ID!): Boolean!
                 }
+
+                # ===== Payment Template =====
+                type PaymentTemplate {
+                    id: ID!
+                    name: String!
+                    description: String!
+                    code: String!
+                    handler: ConfigArg!
+                    checker: ConfigArg
+                    isGlobal: Boolean!
+                }
+
+                type PaymentTemplateList {
+                    items: [PaymentTemplate!]!
+                    totalItems: Int!
+                }
+
+                input PaymentTemplateListOptions {
+                    skip: Int
+                    take: Int
+                    sort: JSON
+                    filter: JSON
+                }
+
+                input CreatePaymentTemplateInput {
+                    name: String!
+                    description: String!
+                    code: String!
+                    handler: ConfigArgInput!
+                    checker: ConfigArgInput
+                    isGlobal: Boolean
+                }
+
+                input UpdatePaymentTemplateInput {
+                    id: ID!
+                    name: String
+                    description: String
+                    code: String
+                    handler: ConfigArgInput
+                    checker: ConfigArgInput
+                }
+
+                extend type Query {
+                    paymentTemplates(options: PaymentTemplateListOptions): PaymentTemplateList!
+                    paymentTemplate(id: ID!): PaymentTemplate
+                }
+
+                extend type Mutation {
+                    createPaymentTemplate(input: CreatePaymentTemplateInput!): PaymentTemplate!
+                    updatePaymentTemplate(input: UpdatePaymentTemplateInput!): PaymentTemplate!
+                    deletePaymentTemplate(id: ID!): Boolean!
+                    createPaymentMethodFromTemplate(templateId: ID!, name: String, code: String): PaymentMethod!
+                }
             `;
             },
-            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver],
+            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver],
         },
         shopApiExtensions: {
             schema: () => {
@@ -944,6 +1003,11 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                 ...(config.authOptions.customPermissions || []),
                 ...pickup_permissions_1.pickupPermissionDefinitions,
             ];
+            // 注册 PickupLocation 全局归属权限（SetGlobalPickupLocation）
+            config.authOptions.customPermissions = [
+                ...(config.authOptions.customPermissions || []),
+                ...pickup_location_permissions_1.pickupLocationPermissionDefinitions,
+            ];
             config.authOptions.customPermissions = [
                 ...(config.authOptions.customPermissions || []),
                 tenant_config_permissions_1.tenantConfigPermission,
@@ -962,6 +1026,11 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             config.authOptions.customPermissions = [
                 ...(config.authOptions.customPermissions || []),
                 ...payment_profile_permissions_1.paymentProfilePermissionDefinitions,
+            ];
+            // 注册 PaymentTemplate 权限
+            config.authOptions.customPermissions = [
+                ...(config.authOptions.customPermissions || []),
+                ...payment_template_permissions_1.paymentTemplatePermissionDefinitions,
             ];
             return config;
         },

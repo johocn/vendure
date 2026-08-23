@@ -14,12 +14,13 @@ const common_1 = require("@nestjs/common");
 const typeorm_1 = require("typeorm");
 const core_1 = require("@vendure/core");
 const pickup_location_entity_1 = require("./pickup-location.entity");
+const pickup_location_permissions_1 = require("./pickup-location-permissions");
 let PickupLocationService = class PickupLocationService {
     constructor(connection) {
         this.connection = connection;
     }
     async findAll(ctx, options) {
-        var _a, _b;
+        var _a, _b, _c;
         const qb = this.connection.getRepository(ctx, pickup_location_entity_1.PickupLocation).createQueryBuilder('pl');
         // 可见规则：公共点 + 本租户自建点
         qb.where('(pl.isPublic = :isPublic OR pl.ownerChannelId = :channelId)', { isPublic: true, channelId: ctx.channelId });
@@ -29,6 +30,9 @@ let PickupLocationService = class PickupLocationService {
         }
         if ((_b = options === null || options === void 0 ? void 0 : options.filter) === null || _b === void 0 ? void 0 : _b.type) {
             qb.andWhere('pl.type = :type', { type: options.filter.type });
+        }
+        if (((_c = options === null || options === void 0 ? void 0 : options.filter) === null || _c === void 0 ? void 0 : _c.isPublic) !== undefined) {
+            qb.andWhere('pl.isPublic = :isPublic', { isPublic: options.filter.isPublic });
         }
         const skip = (options === null || options === void 0 ? void 0 : options.skip) || 0;
         const take = (options === null || options === void 0 ? void 0 : options.take) || 10;
@@ -50,6 +54,22 @@ let PickupLocationService = class PickupLocationService {
         qb.innerJoin('pl.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId });
         return qb.getMany();
     }
+    /**
+     * 按城市动态聚合当前渠道可见的启用自提点（rangeMode='all' 用）。
+     * 语义：可见规则(公共点+本租户自建点) + 类型匹配 + enabled=true + 同 city + channels 关联当前渠道。
+     * city 可为空 → 聚合当前渠道全部可见且启用的同类型自提点。
+     */
+    async findByCityForChannel(ctx, city, type) {
+        const qb = this.connection.getRepository(ctx, pickup_location_entity_1.PickupLocation).createQueryBuilder('pl');
+        qb.where('(pl.isPublic = :isPublic OR pl.ownerChannelId = :channelId)', { isPublic: true, channelId: ctx.channelId });
+        qb.andWhere('pl.type = :type', { type });
+        qb.andWhere('pl.enabled = :enabled', { enabled: true });
+        if (city) {
+            qb.andWhere('pl.city = :city', { city });
+        }
+        qb.innerJoin('pl.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId });
+        return qb.getMany();
+    }
     async findByIds(ctx, ids) {
         if (ids.length === 0)
             return [];
@@ -60,12 +80,17 @@ let PickupLocationService = class PickupLocationService {
         return qb.getMany();
     }
     async create(ctx, input) {
-        var _a;
         const repo = this.connection.getRepository(ctx, pickup_location_entity_1.PickupLocation);
         const location = new pickup_location_entity_1.PickupLocation(input);
         location.channels = [ctx.channel];
         location.ownerChannelId = ctx.channelId;
-        location.isPublic = (_a = input.isPublic) !== null && _a !== void 0 ? _a : false;
+        // 归属权限判定：仅持有 SetGlobalPickupLocation 权限者可建全局点，否则强制租户级
+        const wantGlobal = input.isPublic === true || input.isGlobal === true;
+        location.isPublic = wantGlobal && ctx.userHasPermissions([pickup_location_permissions_1.SetGlobalPickupLocation.Permission]) ? true : false;
+        if (location.isPublic) {
+            // 全局点归属平台，不限定某租户
+            location.ownerChannelId = null;
+        }
         return repo.save(location);
     }
     async update(ctx, input) {
@@ -73,6 +98,10 @@ let PickupLocationService = class PickupLocationService {
         const location = await repo.findOne({ where: { id: input.id } });
         if (!location) {
             throw new core_1.EntityNotFoundError('PickupLocation', input.id);
+        }
+        // 全局点仅超管(持 SetGlobalPickupLocation)可编辑，租户只读
+        if (location.isPublic && !ctx.userHasPermissions([pickup_location_permissions_1.SetGlobalPickupLocation.Permission])) {
+            throw new core_1.ForbiddenError();
         }
         Object.assign(location, input);
         return repo.save(location);

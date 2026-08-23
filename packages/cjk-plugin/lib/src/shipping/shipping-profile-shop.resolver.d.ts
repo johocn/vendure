@@ -9,20 +9,8 @@ export declare class ShippingProfileShopResolver {
         compatible: boolean;
         intersectedCount: number;
     }>;
-    eligibleShippingMethodsWithConfig(ctx: RequestContext, profileIds: ID[]): Promise<{
-        id: any;
-        code: any;
-        mode: any;
-        pickupLocationIds: any;
-        name: any;
-    }[]>;
-    resolveShippingMethodsForChannel(ctx: RequestContext): Promise<{
-        id: any;
-        code: any;
-        mode: any;
-        pickupLocationIds: any;
-        name: any;
-    }[]>;
+    eligibleShippingMethodsWithConfig(ctx: RequestContext, profileIds: ID[]): Promise<any[]>;
+    resolveShippingMethodsForChannel(ctx: RequestContext): Promise<any[]>;
     /**
      * 按 Profile 交集查询允许的自提点。
      * 返回值语义：

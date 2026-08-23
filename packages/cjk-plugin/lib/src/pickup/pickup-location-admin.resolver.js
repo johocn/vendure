@@ -17,6 +17,7 @@ const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
 const pickup_location_service_1 = require("./pickup-location.service");
 const pickup_permissions_1 = require("./pickup-permissions");
+const pickup_location_permissions_1 = require("./pickup-location-permissions");
 let PickupLocationAdminResolver = class PickupLocationAdminResolver {
     constructor(pickupLocationService) {
         this.pickupLocationService = pickupLocationService;
@@ -96,7 +97,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
-    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
+    (0, core_1.Allow)(pickup_location_permissions_1.SetGlobalPickupLocation.Permission, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __metadata("design:type", Function),
