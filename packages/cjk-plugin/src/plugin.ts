@@ -72,6 +72,10 @@ import { PaymentProfileMethod } from './payment/payment-profile-method.entity';
 import { PaymentProfileService } from './payment/payment-profile.service';
 import { PaymentProfileAdminResolver } from './payment/payment-profile-admin.resolver';
 import { paymentProfilePermission, paymentProfilePermissionDefinitions } from './payment/payment-profile-permissions';
+import { PaymentTemplate } from './payment/payment-template.entity';
+import { PaymentTemplateService } from './payment/payment-template.service';
+import { PaymentTemplateAdminResolver } from './payment/payment-template-admin.resolver';
+import { paymentTemplatePermissionDefinitions } from './payment/payment-template-permissions';
 import { ShippingProfileShopResolver } from './shipping/shipping-profile-shop.resolver';
 import { PaymentProfileShopResolver } from './payment/payment-profile-shop.resolver';
 import { EventBus, OrderEvent, OrderService, TransactionalConnection } from '@vendure/core';
@@ -79,7 +83,7 @@ import { DefaultDataService } from './seed/default-data.service';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod],
+    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod, PaymentTemplate],
     providers: [
         { provide: CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
         TenantSetupService,
@@ -99,6 +103,7 @@ import { DefaultDataService } from './seed/default-data.service';
         ShippingTemplateService,
         ShippingProfileService,
         PaymentProfileService,
+        PaymentTemplateService,
         DefaultDataService,
     ],
     adminApiExtensions: {
@@ -546,9 +551,62 @@ import { DefaultDataService } from './seed/default-data.service';
                     assignPaymentProfile(variantIds: [ID!]!, profileId: ID!): Boolean!
                     setTenantDefaultPaymentProfile(id: ID!): Boolean!
                 }
+
+                # ===== Payment Template =====
+                type PaymentTemplate {
+                    id: ID!
+                    name: String!
+                    description: String!
+                    code: String!
+                    handler: ConfigArg!
+                    checker: ConfigArg
+                    isGlobal: Boolean!
+                }
+
+                type PaymentTemplateList {
+                    items: [PaymentTemplate!]!
+                    totalItems: Int!
+                }
+
+                input PaymentTemplateListOptions {
+                    skip: Int
+                    take: Int
+                    sort: JSON
+                    filter: JSON
+                }
+
+                input CreatePaymentTemplateInput {
+                    name: String!
+                    description: String!
+                    code: String!
+                    handler: ConfigArgInput!
+                    checker: ConfigArgInput
+                    isGlobal: Boolean
+                }
+
+                input UpdatePaymentTemplateInput {
+                    id: ID!
+                    name: String
+                    description: String
+                    code: String
+                    handler: ConfigArgInput
+                    checker: ConfigArgInput
+                }
+
+                extend type Query {
+                    paymentTemplates(options: PaymentTemplateListOptions): PaymentTemplateList!
+                    paymentTemplate(id: ID!): PaymentTemplate
+                }
+
+                extend type Mutation {
+                    createPaymentTemplate(input: CreatePaymentTemplateInput!): PaymentTemplate!
+                    updatePaymentTemplate(input: UpdatePaymentTemplateInput!): PaymentTemplate!
+                    deletePaymentTemplate(id: ID!): Boolean!
+                    createPaymentMethodFromTemplate(templateId: ID!, name: String, code: String): PaymentMethod!
+                }
             `;
         },
-        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver],
+        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {
@@ -873,6 +931,12 @@ import { DefaultDataService } from './seed/default-data.service';
         config.authOptions.customPermissions = [
             ...(config.authOptions.customPermissions || []),
             ...paymentProfilePermissionDefinitions,
+        ];
+
+        // 注册 PaymentTemplate 权限
+        config.authOptions.customPermissions = [
+            ...(config.authOptions.customPermissions || []),
+            ...paymentTemplatePermissionDefinitions,
         ];
 
         return config;
