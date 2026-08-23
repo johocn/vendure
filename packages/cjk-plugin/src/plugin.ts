@@ -34,6 +34,7 @@ import { orderCustomFields } from './order/order-custom-fields';
 import { customerCustomFields } from './customer/customer-custom-fields';
 import { tenantChannelCustomFields } from './tenant/tenant-channel-custom-fields';
 import { productVariantCustomFields } from './shipping/product-variant-custom-fields';
+import { customShippingMethodFields } from './shipping/shipping-method-custom-fields';
 import { tieredWeightShippingCalculator, tieredQuantityShippingCalculator } from './shipping/tiered-shipping-calculator';
 import { tieredShippingEligibilityChecker } from './shipping/tiered-shipping-eligibility-checker';
 import { ShippingTemplate } from './shipping/shipping-template.entity';
@@ -816,6 +817,23 @@ import { DefaultDataService } from './seed/default-data.service';
                     ProductVariant: [
                         ...(config.customFields?.ProductVariant || []),
                         ...newPvFields,
+                    ],
+                };
+            }
+        }
+
+        // 注册 ShippingMethod customFields（enabled 启停）—— 去重防止重复注册
+        {
+            const existingSmFields = (config.customFields?.ShippingMethod || []).map(f => f.name);
+            const newSmFields = (customShippingMethodFields.ShippingMethod || []).filter(
+                f => !existingSmFields.includes(f.name),
+            );
+            if (newSmFields.length > 0) {
+                config.customFields = {
+                    ...config.customFields,
+                    ShippingMethod: [
+                        ...(config.customFields?.ShippingMethod || []),
+                        ...newSmFields,
                     ],
                 };
             }
