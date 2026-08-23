@@ -61,4 +61,12 @@ export class ShippingProfileAdminResolver {
         await this.service.assignToVariants(ctx, variantIds, profileId);
         return true;
     }
+
+    @Mutation()
+    @Transaction()
+    @Allow(shippingProfilePermission.Permission)
+    async setTenantDefaultShippingProfile(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
+        await this.service.setTenantDefault(ctx, id);
+        return true;
+    }
 }

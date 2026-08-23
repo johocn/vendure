@@ -9,4 +9,5 @@ export declare class PaymentProfileAdminResolver {
     updatePaymentProfile(ctx: RequestContext, input: any): Promise<import("./payment-profile.entity").PaymentProfile>;
     deletePaymentProfile(ctx: RequestContext, id: ID): Promise<boolean>;
     assignPaymentProfile(ctx: RequestContext, variantIds: ID[], profileId: ID): Promise<boolean>;
+    setTenantDefaultPaymentProfile(ctx: RequestContext, id: ID): Promise<boolean>;
 }

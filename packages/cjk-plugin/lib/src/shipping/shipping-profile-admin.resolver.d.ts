@@ -9,4 +9,5 @@ export declare class ShippingProfileAdminResolver {
     updateShippingProfile(ctx: RequestContext, input: any): Promise<import("./shipping-profile.entity").ShippingProfile>;
     deleteShippingProfile(ctx: RequestContext, id: ID): Promise<boolean>;
     assignShippingProfile(ctx: RequestContext, variantIds: ID[], profileId: ID): Promise<boolean>;
+    setTenantDefaultShippingProfile(ctx: RequestContext, id: ID): Promise<boolean>;
 }

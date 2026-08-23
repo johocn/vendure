@@ -61,4 +61,12 @@ export class PaymentProfileAdminResolver {
         await this.service.assignToVariants(ctx, variantIds, profileId);
         return true;
     }
+
+    @Mutation()
+    @Transaction()
+    @Allow(paymentProfilePermission.Permission)
+    async setTenantDefaultPaymentProfile(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
+        await this.service.setTenantDefault(ctx, id);
+        return true;
+    }
 }

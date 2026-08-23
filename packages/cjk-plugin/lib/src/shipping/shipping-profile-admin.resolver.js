@@ -41,6 +41,10 @@ let ShippingProfileAdminResolver = class ShippingProfileAdminResolver {
         await this.service.assignToVariants(ctx, variantIds, profileId);
         return true;
     }
+    async setTenantDefaultShippingProfile(ctx, id) {
+        await this.service.setTenantDefault(ctx, id);
+        return true;
+    }
 };
 exports.ShippingProfileAdminResolver = ShippingProfileAdminResolver;
 __decorate([
@@ -102,6 +106,16 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Array, Object]),
     __metadata("design:returntype", Promise)
 ], ShippingProfileAdminResolver.prototype, "assignShippingProfile", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Transaction)(),
+    (0, core_1.Allow)(shipping_profile_permissions_1.shippingProfilePermission.Permission),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], ShippingProfileAdminResolver.prototype, "setTenantDefaultShippingProfile", null);
 exports.ShippingProfileAdminResolver = ShippingProfileAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [shipping_profile_service_1.ShippingProfileService])

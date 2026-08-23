@@ -41,6 +41,10 @@ let PaymentProfileAdminResolver = class PaymentProfileAdminResolver {
         await this.service.assignToVariants(ctx, variantIds, profileId);
         return true;
     }
+    async setTenantDefaultPaymentProfile(ctx, id) {
+        await this.service.setTenantDefault(ctx, id);
+        return true;
+    }
 };
 exports.PaymentProfileAdminResolver = PaymentProfileAdminResolver;
 __decorate([
@@ -102,6 +106,16 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Array, Object]),
     __metadata("design:returntype", Promise)
 ], PaymentProfileAdminResolver.prototype, "assignPaymentProfile", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Transaction)(),
+    (0, core_1.Allow)(payment_profile_permissions_1.paymentProfilePermission.Permission),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], PaymentProfileAdminResolver.prototype, "setTenantDefaultPaymentProfile", null);
 exports.PaymentProfileAdminResolver = PaymentProfileAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [payment_profile_service_1.PaymentProfileService])
