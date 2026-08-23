@@ -41,6 +41,20 @@ export declare class DefaultDataService {
     private seedCashierPaymentMethod;
     /** 门店收银支付档案 */
     private seedCashierPaymentProfile;
+    /** 自提点配送全局模板（固定运费，租户引用后在实例上配 shippingPrice） */
+    private seedPickupPointTemplate;
+    /** 职工单位自提配送全局模板（固定运费） */
+    private seedEmployeePickupTemplate;
+    /** 同城快递配送全局模板（固定运费） */
+    private seedLocalDeliveryTemplate;
+    /** 邮寄配送全局模板（阶梯重量/件数计费） */
+    private seedMailTemplate;
+    private shippingTemplateExists;
+    /** 货到付款支付全局模板 */
+    private seedCashOnDeliveryPaymentTemplate;
+    /** 余额支付全局模板 */
+    private seedBalancePayPaymentTemplate;
+    private paymentTemplateExists;
     /** 聚合码支付全局模板（租户可在全局方案池「引用到本店」） */
     private seedAggregatePaymentTemplate;
 }
@@ -53,7 +67,13 @@ export declare const DEFAULT_STORE: {
 };
 export declare const STORE_PICKUP_METHOD_CODE = "store-pickup";
 export declare const STORE_PICKUP_TEMPLATE_CODE = "store-pickup-template";
+export declare const PICKUP_POINT_TEMPLATE_CODE = "pickup-point-template";
+export declare const EMPLOYEE_PICKUP_TEMPLATE_CODE = "employee-pickup-template";
+export declare const LOCAL_DELIVERY_TEMPLATE_CODE = "local-delivery-template";
+export declare const MAIL_TEMPLATE_CODE = "mail-template";
 export declare const STORE_PICKUP_PROFILE_CODE = "store-pickup-profile";
 export declare const CASHIER_PAYMENT_METHOD_CODE = "cash-on-delivery";
 export declare const CASHIER_PAYMENT_PROFILE_CODE = "store-cashier-profile";
+export declare const COD_PAYMENT_TEMPLATE_CODE = "cod-payment-template";
+export declare const BALANCE_PAY_TEMPLATE_CODE = "balance-pay-template";
 export declare const AGGREGATE_PAYMENT_TEMPLATE_CODE = "aggregate-pay";

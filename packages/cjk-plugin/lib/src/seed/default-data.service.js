@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.AGGREGATE_PAYMENT_TEMPLATE_CODE = exports.CASHIER_PAYMENT_PROFILE_CODE = exports.CASHIER_PAYMENT_METHOD_CODE = exports.STORE_PICKUP_PROFILE_CODE = exports.STORE_PICKUP_TEMPLATE_CODE = exports.STORE_PICKUP_METHOD_CODE = exports.DEFAULT_STORE = exports.DefaultDataService = void 0;
+exports.AGGREGATE_PAYMENT_TEMPLATE_CODE = exports.BALANCE_PAY_TEMPLATE_CODE = exports.COD_PAYMENT_TEMPLATE_CODE = exports.CASHIER_PAYMENT_PROFILE_CODE = exports.CASHIER_PAYMENT_METHOD_CODE = exports.STORE_PICKUP_PROFILE_CODE = exports.MAIL_TEMPLATE_CODE = exports.LOCAL_DELIVERY_TEMPLATE_CODE = exports.EMPLOYEE_PICKUP_TEMPLATE_CODE = exports.PICKUP_POINT_TEMPLATE_CODE = exports.STORE_PICKUP_TEMPLATE_CODE = exports.STORE_PICKUP_METHOD_CODE = exports.DEFAULT_STORE = exports.DefaultDataService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const constants_1 = require("../constants");
@@ -56,6 +56,15 @@ let DefaultDataService = class DefaultDataService {
             await this.seedStorePickupProfile(ctx);
             await this.seedCashierPaymentMethod(ctx);
             await this.seedCashierPaymentProfile(ctx);
+            // 全局方案池：配送模板（自提点/职工自提/同城/邮寄）
+            await this.seedStorePickupTemplate(ctx);
+            await this.seedPickupPointTemplate(ctx);
+            await this.seedEmployeePickupTemplate(ctx);
+            await this.seedLocalDeliveryTemplate(ctx);
+            await this.seedMailTemplate(ctx);
+            // 全局方案池：支付模板（货到付款/余额支付/聚合码）
+            await this.seedCashOnDeliveryPaymentTemplate(ctx);
+            await this.seedBalancePayPaymentTemplate(ctx);
             await this.seedAggregatePaymentTemplate(ctx);
             core_1.Logger.info('购物配送/支付默认数据初始化完成', constants_1.loggerCtx);
         }
@@ -177,6 +186,104 @@ let DefaultDataService = class DefaultDataService {
         });
         core_1.Logger.info(`已创建默认支付档案: ${exports.CASHIER_PAYMENT_PROFILE_CODE}`, constants_1.loggerCtx);
     }
+    /** 自提点配送全局模板（固定运费，租户引用后在实例上配 shippingPrice） */
+    async seedPickupPointTemplate(ctx) {
+        if (await this.shippingTemplateExists(ctx, exports.PICKUP_POINT_TEMPLATE_CODE))
+            return;
+        await this.shippingTemplateService.create(ctx, {
+            name: '自提点配送',
+            description: '到指定自提点取货，固定运费',
+            code: exports.PICKUP_POINT_TEMPLATE_CODE,
+            fulfillmentHandler: 'pickup-point',
+            checker: { code: 'pickup-point-eligibility', arguments: [] },
+            calculator: { code: 'pickup-point-calculator', arguments: [] },
+            isGlobal: true,
+        });
+        core_1.Logger.info(`已创建默认配送模板: ${exports.PICKUP_POINT_TEMPLATE_CODE}`, constants_1.loggerCtx);
+    }
+    /** 职工单位自提配送全局模板（固定运费） */
+    async seedEmployeePickupTemplate(ctx) {
+        if (await this.shippingTemplateExists(ctx, exports.EMPLOYEE_PICKUP_TEMPLATE_CODE))
+            return;
+        await this.shippingTemplateService.create(ctx, {
+            name: '职工单位自提',
+            description: '送达职工单位自提点，固定运费',
+            code: exports.EMPLOYEE_PICKUP_TEMPLATE_CODE,
+            fulfillmentHandler: 'employee-pickup',
+            checker: { code: 'employee-pickup-eligibility', arguments: [] },
+            calculator: { code: 'employee-pickup-calculator', arguments: [] },
+            isGlobal: true,
+        });
+        core_1.Logger.info(`已创建默认配送模板: ${exports.EMPLOYEE_PICKUP_TEMPLATE_CODE}`, constants_1.loggerCtx);
+    }
+    /** 同城快递配送全局模板（固定运费） */
+    async seedLocalDeliveryTemplate(ctx) {
+        if (await this.shippingTemplateExists(ctx, exports.LOCAL_DELIVERY_TEMPLATE_CODE))
+            return;
+        await this.shippingTemplateService.create(ctx, {
+            name: '同城快递',
+            description: '同城当日/次日达，固定运费',
+            code: exports.LOCAL_DELIVERY_TEMPLATE_CODE,
+            fulfillmentHandler: 'manual-fulfillment',
+            checker: { code: 'tiered-shipping-eligibility-checker', arguments: [] },
+            calculator: { code: 'local-delivery-calculator', arguments: [] },
+            isGlobal: true,
+        });
+        core_1.Logger.info(`已创建默认配送模板: ${exports.LOCAL_DELIVERY_TEMPLATE_CODE}`, constants_1.loggerCtx);
+    }
+    /** 邮寄配送全局模板（阶梯重量/件数计费） */
+    async seedMailTemplate(ctx) {
+        if (await this.shippingTemplateExists(ctx, exports.MAIL_TEMPLATE_CODE))
+            return;
+        await this.shippingTemplateService.create(ctx, {
+            name: '邮寄配送',
+            description: '全国邮寄，按重量/件数阶梯计费',
+            code: exports.MAIL_TEMPLATE_CODE,
+            fulfillmentHandler: 'manual-fulfillment',
+            checker: { code: 'tiered-shipping-eligibility-checker', arguments: [] },
+            calculator: { code: 'tiered-weight-shipping-calculator', arguments: [] },
+            isGlobal: true,
+        });
+        core_1.Logger.info(`已创建默认配送模板: ${exports.MAIL_TEMPLATE_CODE}`, constants_1.loggerCtx);
+    }
+    async shippingTemplateExists(ctx, code) {
+        const t = await this.connection
+            .getRepository(ctx, shipping_template_entity_1.ShippingTemplate)
+            .findOne({ where: { code } });
+        return !!t;
+    }
+    /** 货到付款支付全局模板 */
+    async seedCashOnDeliveryPaymentTemplate(ctx) {
+        if (await this.paymentTemplateExists(ctx, exports.COD_PAYMENT_TEMPLATE_CODE))
+            return;
+        await this.paymentTemplateService.create(ctx, {
+            name: '货到付款',
+            description: '货到验货后付款',
+            code: exports.COD_PAYMENT_TEMPLATE_CODE,
+            handler: { code: 'cash-on-delivery', arguments: [] },
+            isGlobal: true,
+        });
+        core_1.Logger.info(`已创建默认支付模板: ${exports.COD_PAYMENT_TEMPLATE_CODE}`, constants_1.loggerCtx);
+    }
+    /** 余额支付全局模板 */
+    async seedBalancePayPaymentTemplate(ctx) {
+        if (await this.paymentTemplateExists(ctx, exports.BALANCE_PAY_TEMPLATE_CODE))
+            return;
+        await this.paymentTemplateService.create(ctx, {
+            name: '余额支付',
+            description: '使用账户余额支付',
+            code: exports.BALANCE_PAY_TEMPLATE_CODE,
+            handler: { code: 'balance-pay', arguments: [] },
+            isGlobal: true,
+        });
+        core_1.Logger.info(`已创建默认支付模板: ${exports.BALANCE_PAY_TEMPLATE_CODE}`, constants_1.loggerCtx);
+    }
+    async paymentTemplateExists(ctx, code) {
+        const t = await this.connection
+            .getRepository(ctx, payment_template_entity_1.PaymentTemplate)
+            .findOne({ where: { code } });
+        return !!t;
+    }
     /** 聚合码支付全局模板（租户可在全局方案池「引用到本店」） */
     async seedAggregatePaymentTemplate(ctx) {
         const existing = await this.connection
@@ -215,8 +322,14 @@ exports.DEFAULT_STORE = {
 };
 exports.STORE_PICKUP_METHOD_CODE = 'store-pickup';
 exports.STORE_PICKUP_TEMPLATE_CODE = 'store-pickup-template';
+exports.PICKUP_POINT_TEMPLATE_CODE = 'pickup-point-template';
+exports.EMPLOYEE_PICKUP_TEMPLATE_CODE = 'employee-pickup-template';
+exports.LOCAL_DELIVERY_TEMPLATE_CODE = 'local-delivery-template';
+exports.MAIL_TEMPLATE_CODE = 'mail-template';
 exports.STORE_PICKUP_PROFILE_CODE = 'store-pickup-profile';
 exports.CASHIER_PAYMENT_METHOD_CODE = 'cash-on-delivery';
 exports.CASHIER_PAYMENT_PROFILE_CODE = 'store-cashier-profile';
+exports.COD_PAYMENT_TEMPLATE_CODE = 'cod-payment-template';
+exports.BALANCE_PAY_TEMPLATE_CODE = 'balance-pay-template';
 exports.AGGREGATE_PAYMENT_TEMPLATE_CODE = 'aggregate-pay';
 //# sourceMappingURL=default-data.service.js.map
