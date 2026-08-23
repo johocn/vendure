@@ -5,7 +5,7 @@ export declare class ShippingProfileService {
     private connection;
     constructor(connection: TransactionalConnection);
     findAll(ctx: RequestContext, options?: ListQueryOptions<ShippingProfile>): Promise<PaginatedList<ShippingProfile>>;
-    findOne(ctx: RequestContext, id: ID): Promise<ShippingProfile | undefined>;
+    findOne(ctx: RequestContext, id: any): Promise<ShippingProfile | undefined>;
     findByCode(ctx: RequestContext, code: string): Promise<ShippingProfile | undefined>;
     create(ctx: RequestContext, input: any): Promise<ShippingProfile>;
     update(ctx: RequestContext, input: any): Promise<ShippingProfile>;
@@ -37,4 +37,8 @@ export declare class ShippingProfileService {
      */
     hasPickupLocationConstraint(ctx: RequestContext, profileIds: ID[]): Promise<boolean>;
     findPickupLocationsByIds(ctx: RequestContext, ids: ID[]): Promise<PickupLocation[]>;
+    private replaceMethodConfigs;
+    setTenantDefault(ctx: RequestContext, id: any): Promise<void>;
+    getTenantDefault(ctx: RequestContext): Promise<ShippingProfile | undefined>;
+    getMethodConfigsByProfile(ctx: RequestContext, profileId: any): Promise<any[]>;
 }

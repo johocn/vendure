@@ -24,6 +24,7 @@ exports.ShippingProfileService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const shipping_profile_entity_1 = require("./shipping-profile.entity");
+const shipping_profile_method_entity_1 = require("./shipping-profile-method.entity");
 const pickup_location_entity_1 = require("../pickup/pickup-location.entity");
 let ShippingProfileService = class ShippingProfileService {
     constructor(connection) {
@@ -53,16 +54,28 @@ let ShippingProfileService = class ShippingProfileService {
         const result = await this.connection
             .getRepository(ctx, shipping_profile_entity_1.ShippingProfile)
             .findOne({ where: { id: id }, relations: ['shippingMethods', 'pickupLocations'] });
+        if (result) {
+            const methodConfigs = await this.connection
+                .getRepository(ctx, shipping_profile_method_entity_1.ShippingProfileMethod)
+                .find({ where: { profileId: String(result.id) } });
+            result.methodConfigs = methodConfigs;
+        }
         return result !== null && result !== void 0 ? result : undefined;
     }
     async findByCode(ctx, code) {
         const result = await this.connection
             .getRepository(ctx, shipping_profile_entity_1.ShippingProfile)
             .findOne({ where: { code }, relations: ['shippingMethods', 'pickupLocations'] });
+        if (result) {
+            const methodConfigs = await this.connection
+                .getRepository(ctx, shipping_profile_method_entity_1.ShippingProfileMethod)
+                .find({ where: { profileId: String(result.id) } });
+            result.methodConfigs = methodConfigs;
+        }
         return result !== null && result !== void 0 ? result : undefined;
     }
     async create(ctx, input) {
-        var _a, _b, _c;
+        var _a, _b, _c, _d;
         if (!((_a = input.shippingMethodIds) === null || _a === void 0 ? void 0 : _a.length)) {
             throw new core_1.UserInputError('配送档案至少需要选择一种配送方式');
         }
@@ -79,6 +92,9 @@ let ShippingProfileService = class ShippingProfileService {
             profile.pickupLocations = input.pickupLocationIds.map((id) => ({ id }));
         }
         await repo.save(profile);
+        if ((_d = input.methodConfigs) === null || _d === void 0 ? void 0 : _d.length) {
+            await this.replaceMethodConfigs(ctx, profile.id, input.methodConfigs);
+        }
         // reload 以填充关联实体的完整字段
         return (await repo.findOne({
             where: { id: profile.id },
@@ -108,6 +124,9 @@ let ShippingProfileService = class ShippingProfileService {
         const { id, shippingMethodIds, pickupLocationIds } = input, updateData = __rest(input, ["id", "shippingMethodIds", "pickupLocationIds"]);
         Object.assign(profile, updateData);
         await repo.save(profile);
+        if (input.methodConfigs !== undefined) {
+            await this.replaceMethodConfigs(ctx, profile.id, input.methodConfigs);
+        }
         return (await repo.findOne({
             where: { id: input.id },
             relations: ['shippingMethods', 'pickupLocations'],
@@ -124,6 +143,8 @@ let ShippingProfileService = class ShippingProfileService {
         const profile = await repo.findOne({ where: { id: id } });
         if (!profile)
             throw new core_1.EntityNotFoundError('ShippingProfile', id);
+        const jmRepo = this.connection.getRepository(ctx, shipping_profile_method_entity_1.ShippingProfileMethod);
+        await jmRepo.delete({ profileId: String(id) });
         await repo.remove(profile);
     }
     async assignToVariants(ctx, variantIds, profileId) {
@@ -221,6 +242,47 @@ let ShippingProfileService = class ShippingProfileService {
         return this.connection
             .getRepository(ctx, pickup_location_entity_1.PickupLocation)
             .findByIds(ids);
+    }
+    async replaceMethodConfigs(ctx, profileId, configs) {
+        var _a, _b;
+        const jmRepo = this.connection.getRepository(ctx, shipping_profile_method_entity_1.ShippingProfileMethod);
+        await jmRepo.delete({ profileId: String(profileId) });
+        for (const cfg of configs) {
+            await jmRepo.save(new shipping_profile_method_entity_1.ShippingProfileMethod({
+                profileId: String(profileId),
+                shippingMethodId: String(cfg.shippingMethodId),
+                mode: (_a = cfg.mode) !== null && _a !== void 0 ? _a : 'mail',
+                options: (_b = cfg.options) !== null && _b !== void 0 ? _b : null,
+            }));
+        }
+    }
+    async setTenantDefault(ctx, id) {
+        const repo = this.connection.getRepository(ctx, shipping_profile_entity_1.ShippingProfile);
+        const profile = await repo.findOne({ where: { id: id } });
+        if (!profile)
+            throw new core_1.UserInputError('档案不存在');
+        if (profile.isGlobal)
+            throw new core_1.UserInputError('全局档案不能设为租户默认');
+        await this.connection
+            .getRepository(ctx, shipping_profile_entity_1.ShippingProfile)
+            .createQueryBuilder()
+            .update()
+            .set({ isTenantDefault: false })
+            .where('"ownerChannelId" = :channelId AND "isGlobal" = false', { channelId: ctx.channelId })
+            .execute();
+        profile.isTenantDefault = true;
+        await repo.save(profile);
+    }
+    async getTenantDefault(ctx) {
+        const profile = await this.connection
+            .getRepository(ctx, shipping_profile_entity_1.ShippingProfile)
+            .findOne({ where: { isGlobal: false, ownerChannelId: ctx.channelId, isTenantDefault: true } });
+        return profile !== null && profile !== void 0 ? profile : undefined;
+    }
+    async getMethodConfigsByProfile(ctx, profileId) {
+        return this.connection
+            .getRepository(ctx, shipping_profile_method_entity_1.ShippingProfileMethod)
+            .find({ where: { profileId: String(profileId) } });
     }
 };
 exports.ShippingProfileService = ShippingProfileService;

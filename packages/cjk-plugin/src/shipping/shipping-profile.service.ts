@@ -10,6 +10,7 @@ import {
     UserInputError,
 } from '@vendure/core';
 import { ShippingProfile } from './shipping-profile.entity';
+import { ShippingProfileMethod } from './shipping-profile-method.entity';
 import { PickupLocation } from '../pickup/pickup-location.entity';
 
 @Injectable()
@@ -39,10 +40,16 @@ export class ShippingProfileService {
         return { items, totalItems };
     }
 
-    async findOne(ctx: RequestContext, id: ID): Promise<ShippingProfile | undefined> {
+    async findOne(ctx: RequestContext, id: any): Promise<ShippingProfile | undefined> {
         const result = await this.connection
             .getRepository(ctx, ShippingProfile)
             .findOne({ where: { id: id as any }, relations: ['shippingMethods', 'pickupLocations'] });
+        if (result) {
+            const methodConfigs = await this.connection
+                .getRepository(ctx, ShippingProfileMethod)
+                .find({ where: { profileId: String(result.id) } as any });
+            (result as any).methodConfigs = methodConfigs;
+        }
         return result ?? undefined;
     }
 
@@ -50,6 +57,12 @@ export class ShippingProfileService {
         const result = await this.connection
             .getRepository(ctx, ShippingProfile)
             .findOne({ where: { code }, relations: ['shippingMethods', 'pickupLocations'] });
+        if (result) {
+            const methodConfigs = await this.connection
+                .getRepository(ctx, ShippingProfileMethod)
+                .find({ where: { profileId: String(result.id) } as any });
+            (result as any).methodConfigs = methodConfigs;
+        }
         return result ?? undefined;
     }
 
@@ -70,6 +83,9 @@ export class ShippingProfileService {
             profile.pickupLocations = input.pickupLocationIds.map((id: ID) => ({ id } as any));
         }
         await repo.save(profile);
+        if (input.methodConfigs?.length) {
+            await this.replaceMethodConfigs(ctx, profile.id, input.methodConfigs);
+        }
         // reload 以填充关联实体的完整字段
         return (await repo.findOne({
             where: { id: profile.id as any },
@@ -99,6 +115,9 @@ export class ShippingProfileService {
         const { id, shippingMethodIds, pickupLocationIds, ...updateData } = input;
         Object.assign(profile, updateData);
         await repo.save(profile);
+        if (input.methodConfigs !== undefined) {
+            await this.replaceMethodConfigs(ctx, profile.id, input.methodConfigs);
+        }
         return (await repo.findOne({
             where: { id: input.id as any },
             relations: ['shippingMethods', 'pickupLocations'],
@@ -117,6 +136,8 @@ export class ShippingProfileService {
         }
         const profile = await repo.findOne({ where: { id: id as any } });
         if (!profile) throw new EntityNotFoundError('ShippingProfile', id);
+        const jmRepo = this.connection.getRepository(ctx, ShippingProfileMethod);
+        await jmRepo.delete({ profileId: String(id) } as any);
         await repo.remove(profile);
     }
 
@@ -233,5 +254,51 @@ export class ShippingProfileService {
         return this.connection
             .getRepository(ctx, PickupLocation)
             .findByIds(ids as any);
+    }
+
+    private async replaceMethodConfigs(
+        ctx: RequestContext,
+        profileId: any,
+        configs: Array<{ shippingMethodId: any; mode?: string; options?: any }>,
+    ): Promise<void> {
+        const jmRepo = this.connection.getRepository(ctx, ShippingProfileMethod);
+        await jmRepo.delete({ profileId: String(profileId) } as any);
+        for (const cfg of configs) {
+            await jmRepo.save(new ShippingProfileMethod({
+                profileId: String(profileId),
+                shippingMethodId: String(cfg.shippingMethodId),
+                mode: cfg.mode ?? 'mail',
+                options: cfg.options ?? null,
+            } as any));
+        }
+    }
+
+    async setTenantDefault(ctx: RequestContext, id: any): Promise<void> {
+        const repo = this.connection.getRepository(ctx, ShippingProfile);
+        const profile = await repo.findOne({ where: { id: id as any } });
+        if (!profile) throw new UserInputError('档案不存在');
+        if (profile.isGlobal) throw new UserInputError('全局档案不能设为租户默认');
+        await this.connection
+            .getRepository(ctx, ShippingProfile)
+            .createQueryBuilder()
+            .update()
+            .set({ isTenantDefault: false })
+            .where('"ownerChannelId" = :channelId AND "isGlobal" = false', { channelId: ctx.channelId })
+            .execute();
+        profile.isTenantDefault = true;
+        await repo.save(profile);
+    }
+
+    async getTenantDefault(ctx: RequestContext): Promise<ShippingProfile | undefined> {
+        const profile = await this.connection
+            .getRepository(ctx, ShippingProfile)
+            .findOne({ where: { isGlobal: false, ownerChannelId: ctx.channelId as any, isTenantDefault: true } });
+        return profile ?? undefined;
+    }
+
+    async getMethodConfigsByProfile(ctx: RequestContext, profileId: any): Promise<any[]> {
+        return this.connection
+            .getRepository(ctx, ShippingProfileMethod)
+            .find({ where: { profileId: String(profileId) } as any });
     }
 }
