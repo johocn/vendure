@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { In } from 'typeorm';
 import {
     EntityNotFoundError,
     ID,
@@ -35,6 +36,7 @@ export class PaymentProfileService {
         const take = options?.take || 10;
         qb.skip(skip).take(take);
         const [items, totalItems] = await qb.getManyAndCount();
+        await this.attachMethodConfigs(ctx, items);
         return { items, totalItems };
     }
 
@@ -250,5 +252,25 @@ export class PaymentProfileService {
         return this.connection
             .getRepository(ctx, PaymentProfileMethod)
             .find({ where: { profileId: String(profileId) } as any });
+    }
+
+    /**
+     * 为列表查询批量填充 methodConfigs，避免 schema 非空字段返回 null 导致查询整体失败。
+     */
+    private async attachMethodConfigs(ctx: RequestContext, items: PaymentProfile[]): Promise<void> {
+        if (!items.length) return;
+        const ids = items.map(i => String(i.id));
+        const rows = await this.connection
+            .getRepository(ctx, PaymentProfileMethod)
+            .find({ where: { profileId: In(ids) } as any });
+        const byProfile = new Map<string, PaymentProfileMethod[]>();
+        for (const r of rows) {
+            const k = r.profileId;
+            if (!byProfile.has(k)) byProfile.set(k, []);
+            byProfile.get(k)!.push(r);
+        }
+        for (const item of items) {
+            (item as any).methodConfigs = byProfile.get(String(item.id)) ?? [];
+        }
     }
 }

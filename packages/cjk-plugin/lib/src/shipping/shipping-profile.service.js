@@ -22,6 +22,7 @@ var __rest = (this && this.__rest) || function (s, e) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ShippingProfileService = void 0;
 const common_1 = require("@nestjs/common");
+const typeorm_1 = require("typeorm");
 const core_1 = require("@vendure/core");
 const shipping_profile_entity_1 = require("./shipping-profile.entity");
 const shipping_profile_method_entity_1 = require("./shipping-profile-method.entity");
@@ -48,6 +49,7 @@ let ShippingProfileService = class ShippingProfileService {
         const take = (options === null || options === void 0 ? void 0 : options.take) || 10;
         qb.skip(skip).take(take);
         const [items, totalItems] = await qb.getManyAndCount();
+        await this.attachMethodConfigs(ctx, items);
         return { items, totalItems };
     }
     async findOne(ctx, id) {
@@ -324,6 +326,28 @@ let ShippingProfileService = class ShippingProfileService {
         return this.connection
             .getRepository(ctx, shipping_profile_method_entity_1.ShippingProfileMethod)
             .find({ where: { profileId: String(profileId) } });
+    }
+    /**
+     * 为列表查询批量填充 methodConfigs，避免 schema 非空字段返回 null 导致查询整体失败。
+     */
+    async attachMethodConfigs(ctx, items) {
+        var _a;
+        if (!items.length)
+            return;
+        const ids = items.map(i => String(i.id));
+        const rows = await this.connection
+            .getRepository(ctx, shipping_profile_method_entity_1.ShippingProfileMethod)
+            .find({ where: { profileId: (0, typeorm_1.In)(ids) } });
+        const byProfile = new Map();
+        for (const r of rows) {
+            const k = r.profileId;
+            if (!byProfile.has(k))
+                byProfile.set(k, []);
+            byProfile.get(k).push(r);
+        }
+        for (const item of items) {
+            item.methodConfigs = (_a = byProfile.get(String(item.id))) !== null && _a !== void 0 ? _a : [];
+        }
     }
 };
 exports.ShippingProfileService = ShippingProfileService;

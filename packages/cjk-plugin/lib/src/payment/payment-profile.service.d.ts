@@ -24,4 +24,8 @@ export declare class PaymentProfileService {
     setTenantDefault(ctx: RequestContext, id: any): Promise<void>;
     getTenantDefault(ctx: RequestContext): Promise<PaymentProfile | undefined>;
     getMethodConfigsByProfile(ctx: RequestContext, profileId: any): Promise<any[]>;
+    /**
+     * 为列表查询批量填充 methodConfigs，避免 schema 非空字段返回 null 导致查询整体失败。
+     */
+    private attachMethodConfigs;
 }
