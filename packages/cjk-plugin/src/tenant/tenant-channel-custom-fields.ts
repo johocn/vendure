@@ -112,5 +112,23 @@ export const tenantChannelCustomFields: CustomFields = {
                 { name: 'securityJsCode', type: 'text' },
             ],
         },
+        {
+            name: 'enabled',
+            type: 'boolean',
+            defaultValue: true,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '租户启停' }],
+        },
+        {
+            name: 'tenantNo',
+            type: 'int',
+            nullable: true,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '租户序号' }],
+        },
+        {
+            name: 'isOfficial',
+            type: 'boolean',
+            defaultValue: false,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '官方自营' }],
+        },
     ],
 };
