@@ -727,6 +727,16 @@ import { DefaultDataService } from './seed/default-data.service';
                     items: [PermissionCatalogItem!]!
                 }
 
+                # 关联已有账号：平台账号搜索候选
+                type TenantAdminCandidate {
+                    id: ID!
+                    emailAddress: String!
+                    displayName: String
+                    linkedCount: Int!
+                    linkedChannelIds: [ID!]!
+                    alreadyLinked: Boolean!
+                }
+
                 extend type Query {
                     permissionCatalog: [PermissionCatalogGroup!]
                     tenants(options: TenantListOptions): ChannelList!
@@ -736,6 +746,8 @@ import { DefaultDataService } from './seed/default-data.service';
                     tenantMembers: [TenantMember!]!
                     myTenantRoles: [Role!]!
                     myTenantAccess(channelId: ID): MyTenantAccess!
+                    tenantSearchAdmins(channelId: ID!, keyword: String!): [TenantAdminCandidate!]!
+                    mySearchAdmins(keyword: String!): [TenantAdminCandidate!]!
                 }
 
                 extend type Mutation {
@@ -757,6 +769,8 @@ import { DefaultDataService } from './seed/default-data.service';
                     myDeleteTenantRole(roleId: ID!): Boolean!
                     updateTenantMemberRoles(id: ID!, channelId: ID!, roleIds: [ID!]!): Boolean!
                     myUpdateTenantMemberRoles(id: ID!, roleIds: [ID!]!): Boolean!
+                    tenantLinkMember(channelId: ID!, administratorId: ID!, roleIds: [ID!]!, displayName: String, phone: String, remark: String): TenantMember!
+                    myLinkMember(administratorId: ID!, roleIds: [ID!]!, displayName: String, phone: String, remark: String): TenantMember!
                     tenantChangeMyPassword(newPassword: String!): Boolean!
                     myUpdateChannelCustomFields(input: JSON!): JSON!
                 }
