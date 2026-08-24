@@ -4,6 +4,18 @@ import { ShippingProfileService } from '../shipping/shipping-profile.service';
 import { ShippingTemplateService } from '../shipping/shipping-template.service';
 import { PaymentTemplateService } from '../payment/payment-template.service';
 /**
+ * 租户内置角色模板（单一来源）。前 20 官方租户 seed 与后续新建租户均从模板生成角色，
+ * 避免权限清单多处漂移。数据仍落成每租户独立的 Role（符合 Vendure 按 channel 授权），
+ * 仅角色「定义」收敛为一处，改一处全局生效。
+ */
+export interface RoleTemplate {
+    key: 'tenant-admin' | 'sales' | 'stock';
+    busiPrefix: string;
+    description: string;
+    permissions: string[];
+}
+export declare const OFFICIAL_ROLE_TEMPLATES: RoleTemplate[];
+/**
  * 插件默认数据初始化
  *
  * 商品级配送/支付方案（ShippingProfile/PaymentProfile）建表后为空。
@@ -57,6 +69,17 @@ export declare class DefaultDataService {
     private paymentTemplateExists;
     /** 聚合码支付全局模板（租户可在全局方案池「引用到本店」） */
     private seedAggregatePaymentTemplate;
+    /**
+     * 幂等创建前 20 个官方自营租户（tenantNo 1-20，isOfficial=true）。
+     * 每个租户：3 个内置角色（租户管理员/销售/库存）+ 默认管理员 admin
+     *            + 门店自提配送方式 + 门店收银支付方式（复用全局 handler）。
+     * 已存在（按 channel.code 判重）则跳过。
+     */
+    private seedOfficialTenants;
+    /** 延迟加载 Vendure 核心实体，避免 seed 阶段循环依赖 */
+    private ensureCoreEntities;
+    private createTenantRoleRecord;
+    private hashPassword;
 }
 export declare const DEFAULT_STORE: {
     name: string;

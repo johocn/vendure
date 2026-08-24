@@ -47,6 +47,12 @@ const shipping_template_service_1 = require("./shipping/shipping-template.servic
 const shipping_template_admin_resolver_1 = require("./shipping/shipping-template-admin.resolver");
 const shipping_template_permissions_1 = require("./shipping/shipping-template-permissions");
 const tenant_setup_service_1 = require("./tenant/tenant-setup.service");
+const tenant_member_entity_1 = require("./tenant/tenant-member.entity");
+const tenant_permissions_1 = require("./tenant/tenant-permissions");
+const tenant_member_service_1 = require("./tenant/tenant-member.service");
+const tenant_admin_resolver_1 = require("./tenant/tenant-admin.resolver");
+const tenant_member_resolver_1 = require("./tenant/tenant-member.resolver");
+const my_access_resolver_1 = require("./tenant/my-access.resolver");
 const auth_shop_resolver_1 = require("./auth/auth-shop.resolver");
 const auth_admin_resolver_1 = require("./auth/auth-admin.resolver");
 const auth_method_guard_1 = require("./auth/auth-method-guard");
@@ -214,7 +220,7 @@ exports.CjkPlugin = CjkPlugin;
 exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_profile_method_entity_1.PaymentProfileMethod, payment_template_entity_1.PaymentTemplate],
+        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_profile_method_entity_1.PaymentProfileMethod, payment_template_entity_1.PaymentTemplate, tenant_member_entity_1.TenantMember],
         providers: [
             { provide: constants_1.CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
             tenant_setup_service_1.TenantSetupService,
@@ -236,6 +242,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             payment_profile_service_1.PaymentProfileService,
             payment_template_service_1.PaymentTemplateService,
             default_data_service_1.DefaultDataService,
+            tenant_member_service_1.TenantMemberService,
         ],
         adminApiExtensions: {
             schema: () => {
@@ -743,9 +750,120 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     deletePaymentTemplate(id: ID!): Boolean!
                     createPaymentMethodFromTemplate(templateId: ID!, name: String, code: String): PaymentMethod!
                 }
+
+                # ===== 租户 / 角色 / 权限体系 =====
+                type TenantMember implements Node {
+                    id: ID!
+                    administratorId: ID!
+                    channelId: ID!
+                    enabled: Boolean!
+                    displayName: String
+                    remark: String
+                    createdAt: DateTime!
+                }
+
+                input CreateTenantInput {
+                    code: String!
+                    token: String
+                    name: String!
+                    tenantNo: Int
+                    isOfficial: Boolean
+                }
+
+                input UpdateTenantInput {
+                    name: String
+                    tenantNo: Int
+                    isOfficial: Boolean
+                }
+
+                input TenantListOptions {
+                    skip: Int
+                    take: Int
+                    filter: JSON
+                }
+
+                input CreateTenantAdministratorInput {
+                    firstName: String
+                    lastName: String
+                    emailAddress: String!
+                    password: String
+                    roleIds: [ID!]!
+                    displayName: String
+                    remark: String
+                    enabled: Boolean
+                }
+
+                input CreateTenantRoleInput {
+                    code: String!
+                    description: String!
+                    permissions: [String!]!
+                }
+
+                input UpdateTenantRoleInput {
+                    code: String
+                    description: String
+                    permissions: [String!]
+                }
+
+                input CreateTenantMemberInput {
+                    firstName: String
+                    lastName: String
+                    emailAddress: String!
+                    password: String
+                    roleIds: [ID!]!
+                    displayName: String
+                    remark: String
+                    enabled: Boolean
+                }
+
+                type MyTenantChannel {
+                    id: ID!
+                    code: String!
+                    token: String!
+                    name: String!
+                    enabled: Boolean!
+                    tenantNo: Int
+                    isOfficial: Boolean!
+                    memberEnabled: Boolean!
+                }
+
+                type MyTenantAccess {
+                    isSuperAdmin: Boolean!
+                    channels: [MyTenantChannel!]!
+                    permissions: [String!]!
+                }
+
+                extend type Query {
+                    tenants(options: TenantListOptions): ChannelList!
+                    tenant(id: ID!): Channel
+                    tenantAdministrators(channelId: ID!): [TenantMember!]!
+                    tenantRoles(channelId: ID!): [Role!]!
+                    tenantMembers: [TenantMember!]!
+                    myTenantRoles: [Role!]!
+                    myTenantAccess: MyTenantAccess!
+                }
+
+                extend type Mutation {
+                    createTenant(input: CreateTenantInput!): Channel!
+                    updateTenant(id: ID!, input: UpdateTenantInput!): Channel!
+                    setTenantEnabled(id: ID!, enabled: Boolean!): Channel!
+                    deleteTenant(id: ID!): Boolean!
+                    createTenantAdministrator(channelId: ID!, input: CreateTenantAdministratorInput!): TenantMember!
+                    setTenantAdministratorEnabled(id: ID!, enabled: Boolean!): TenantMember!
+                    deleteTenantAdministrator(id: ID!): Boolean!
+                    createTenantRole(channelId: ID!, input: CreateTenantRoleInput!): Role!
+                    updateTenantRole(roleId: ID!, input: UpdateTenantRoleInput!): Role!
+                    deleteTenantRole(roleId: ID!): Boolean!
+                    createTenantMember(input: CreateTenantMemberInput!): TenantMember!
+                    setTenantMemberEnabled(id: ID!, enabled: Boolean!): TenantMember!
+                    deleteTenantMember(id: ID!): Boolean!
+                    myCreateTenantRole(input: CreateTenantRoleInput!): Role!
+                    myUpdateTenantRole(roleId: ID!, input: UpdateTenantRoleInput!): Role!
+                    myDeleteTenantRole(roleId: ID!): Boolean!
+                }
             `;
             },
-            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver],
+            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver],
         },
         shopApiExtensions: {
             schema: () => {
@@ -1048,6 +1166,11 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             config.authOptions.customPermissions = [
                 ...(config.authOptions.customPermissions || []),
                 ...payment_template_permissions_1.paymentTemplatePermissionDefinitions,
+            ];
+            // 注册租户管理/角色/人员/核销自定义权限
+            config.authOptions.customPermissions = [
+                ...(config.authOptions.customPermissions || []),
+                ...tenant_permissions_1.tenantPermissionDefinitions,
             ];
             return config;
         },

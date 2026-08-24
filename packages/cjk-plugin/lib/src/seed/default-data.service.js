@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.AGGREGATE_PAYMENT_TEMPLATE_CODE = exports.BALANCE_PAY_TEMPLATE_CODE = exports.COD_PAYMENT_TEMPLATE_CODE = exports.CASHIER_PAYMENT_PROFILE_CODE = exports.CASHIER_PAYMENT_METHOD_CODE = exports.STORE_PICKUP_PROFILE_CODE = exports.MAIL_TEMPLATE_CODE = exports.LOCAL_DELIVERY_TEMPLATE_CODE = exports.EMPLOYEE_PICKUP_TEMPLATE_CODE = exports.PICKUP_POINT_TEMPLATE_CODE = exports.STORE_PICKUP_TEMPLATE_CODE = exports.STORE_PICKUP_METHOD_CODE = exports.DEFAULT_STORE = exports.DefaultDataService = void 0;
+exports.AGGREGATE_PAYMENT_TEMPLATE_CODE = exports.BALANCE_PAY_TEMPLATE_CODE = exports.COD_PAYMENT_TEMPLATE_CODE = exports.CASHIER_PAYMENT_PROFILE_CODE = exports.CASHIER_PAYMENT_METHOD_CODE = exports.STORE_PICKUP_PROFILE_CODE = exports.MAIL_TEMPLATE_CODE = exports.LOCAL_DELIVERY_TEMPLATE_CODE = exports.EMPLOYEE_PICKUP_TEMPLATE_CODE = exports.PICKUP_POINT_TEMPLATE_CODE = exports.STORE_PICKUP_TEMPLATE_CODE = exports.STORE_PICKUP_METHOD_CODE = exports.DEFAULT_STORE = exports.DefaultDataService = exports.OFFICIAL_ROLE_TEMPLATES = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const constants_1 = require("../constants");
@@ -20,6 +20,49 @@ const shipping_template_entity_1 = require("../shipping/shipping-template.entity
 const shipping_template_service_1 = require("../shipping/shipping-template.service");
 const payment_template_entity_1 = require("../payment/payment-template.entity");
 const payment_template_service_1 = require("../payment/payment-template.service");
+const tenant_member_entity_1 = require("../tenant/tenant-member.entity");
+exports.OFFICIAL_ROLE_TEMPLATES = [
+    {
+        key: 'tenant-admin',
+        busiPrefix: 'tenant-admin',
+        description: '租户管理员',
+        permissions: [
+            core_1.Permission.ReadCatalog, core_1.Permission.CreateCatalog, core_1.Permission.UpdateCatalog, core_1.Permission.DeleteCatalog,
+            core_1.Permission.ReadProduct, core_1.Permission.CreateProduct, core_1.Permission.UpdateProduct, core_1.Permission.DeleteProduct,
+            core_1.Permission.ReadOrder, core_1.Permission.UpdateOrder, core_1.Permission.CreateOrder,
+            core_1.Permission.ReadAsset, core_1.Permission.CreateAsset, core_1.Permission.UpdateAsset, core_1.Permission.DeleteAsset,
+            core_1.Permission.ReadCollection, core_1.Permission.CreateCollection, core_1.Permission.UpdateCollection, core_1.Permission.DeleteCollection,
+            core_1.Permission.ReadShippingMethod, core_1.Permission.CreateShippingMethod, core_1.Permission.UpdateShippingMethod, core_1.Permission.DeleteShippingMethod,
+            core_1.Permission.ReadPaymentMethod, core_1.Permission.CreatePaymentMethod, core_1.Permission.UpdatePaymentMethod, core_1.Permission.DeletePaymentMethod,
+            core_1.Permission.ReadChannel, core_1.Permission.UpdateChannel,
+            core_1.Permission.ReadAdministrator, core_1.Permission.UpdateAdministrator,
+            'TenantRoleManage', 'TenantMemberManage',
+        ],
+    },
+    {
+        key: 'sales',
+        busiPrefix: 'sales',
+        description: '销售',
+        permissions: [
+            core_1.Permission.ReadCatalog,
+            core_1.Permission.ReadProduct, core_1.Permission.CreateProduct, core_1.Permission.UpdateProduct,
+            core_1.Permission.ReadOrder, core_1.Permission.UpdateOrder, core_1.Permission.CreateOrder,
+            core_1.Permission.ReadAsset, core_1.Permission.CreateAsset,
+            core_1.Permission.ReadCollection,
+        ],
+    },
+    {
+        key: 'stock',
+        busiPrefix: 'stock',
+        description: '库存',
+        permissions: [
+            core_1.Permission.ReadCatalog,
+            core_1.Permission.ReadProduct,
+            core_1.Permission.UpdateProduct,
+            core_1.Permission.ReadOrder,
+        ],
+    },
+];
 /**
  * 插件默认数据初始化
  *
@@ -57,7 +100,6 @@ let DefaultDataService = class DefaultDataService {
             await this.seedCashierPaymentMethod(ctx);
             await this.seedCashierPaymentProfile(ctx);
             // 全局方案池：配送模板（自提点/职工自提/同城/邮寄）
-            await this.seedStorePickupTemplate(ctx);
             await this.seedPickupPointTemplate(ctx);
             await this.seedEmployeePickupTemplate(ctx);
             await this.seedLocalDeliveryTemplate(ctx);
@@ -66,6 +108,8 @@ let DefaultDataService = class DefaultDataService {
             await this.seedCashOnDeliveryPaymentTemplate(ctx);
             await this.seedBalancePayPaymentTemplate(ctx);
             await this.seedAggregatePaymentTemplate(ctx);
+            // 前 20 个官方自营租户（幂等）
+            await this.seedOfficialTenants(ctx);
             core_1.Logger.info('购物配送/支付默认数据初始化完成', constants_1.loggerCtx);
         }
         catch (e) {
@@ -299,6 +343,97 @@ let DefaultDataService = class DefaultDataService {
             isGlobal: true,
         });
         core_1.Logger.info(`已创建默认支付模板: ${exports.AGGREGATE_PAYMENT_TEMPLATE_CODE}`, constants_1.loggerCtx);
+    }
+    /**
+     * 幂等创建前 20 个官方自营租户（tenantNo 1-20，isOfficial=true）。
+     * 每个租户：3 个内置角色（租户管理员/销售/库存）+ 默认管理员 admin
+     *            + 门店自提配送方式 + 门店收银支付方式（复用全局 handler）。
+     * 已存在（按 channel.code 判重）则跳过。
+     */
+    async seedOfficialTenants(ctx) {
+        const { Channel, Role, Administrator } = await this.ensureCoreEntities(['Channel', 'Role', 'Administrator']);
+        const channelRepo = this.connection.getRepository(ctx, Channel);
+        const roleRepo = this.connection.getRepository(ctx, Role);
+        const adminRepo = this.connection.getRepository(ctx, Administrator);
+        const memberRepo = this.connection.getRepository(ctx, tenant_member_entity_1.TenantMember);
+        for (let i = 1; i <= 20; i++) {
+            const code = `official-${String(i).padStart(2, '0')}`;
+            const exists = await channelRepo.findOne({ where: { code } });
+            if (exists) {
+                core_1.Logger.info(`官方自营租户 ${code} 已存在，跳过`, constants_1.loggerCtx);
+                continue;
+            }
+            const channel = await channelRepo.save(new Channel({
+                code,
+                token: `official-${i}`,
+                defaultLanguageCode: core_1.LanguageCode.zh_Hans,
+                currencyCode: 'CNY',
+                pricesIncludeTax: true,
+                customFields: {
+                    enabled: true,
+                    tenantNo: i,
+                    isOfficial: true,
+                    shopName: `官方自营${String(i).padStart(2, '0')}`,
+                },
+            }));
+            core_1.Logger.info(`已创建官方自营租户 ${code}`, constants_1.loggerCtx);
+            // 3 个内置角色（限定该 channel；权限清单来自单一模板）
+            const [tenantAdminRole, salesRole, stockRole] = await Promise.all(exports.OFFICIAL_ROLE_TEMPLATES.map((tpl) => this.createTenantRoleRecord(ctx, roleRepo, channel, `official-${tpl.busiPrefix}-${i}`, tpl.description, tpl.permissions)));
+            // 默认管理员 admin（绑定租户管理员角色）
+            const admin = await adminRepo.save(new Administrator({
+                firstName: '官方自营',
+                lastName: `自营${String(i).padStart(2, '0')}`,
+                emailAddress: `admin-official-${i}@local.dev`,
+                passwordHash: await this.hashPassword('Admin@123456'),
+                roles: [tenantAdminRole],
+            }));
+            await memberRepo.save(new tenant_member_entity_1.TenantMember({
+                administratorId: String(admin.id),
+                channelId: String(channel.id),
+                enabled: true,
+                displayName: `官方自营${String(i).padStart(2, '0')}管理员`,
+                remark: 'seed 默认管理员',
+            }));
+            // 门店自提配送方式 + 门店收银支付方式（复用全局 handler，限定该 channel）
+            try {
+                await this.shippingMethodService.create(ctx, {
+                    code: `store-pickup-${code}`,
+                    fulfillmentHandler: 'store-pickup',
+                    checker: { code: 'store-pickup-eligibility', arguments: [] },
+                    calculator: { code: 'store-pickup-calculator', arguments: [] },
+                    translations: [{ languageCode: core_1.LanguageCode.zh_Hans, name: '门店自提', description: '到指定门店自提商品' }],
+                    channels: [channel],
+                });
+                await this.paymentMethodService.create(ctx, {
+                    code: `cashier-${code}`,
+                    enabled: true,
+                    handler: { code: 'cash-on-delivery', arguments: [] },
+                    translations: [{ languageCode: core_1.LanguageCode.zh_Hans, name: '门店收银', description: '到店收银台支付' }],
+                    channels: [channel],
+                });
+            }
+            catch (e) {
+                core_1.Logger.warn(`官方租户 ${code} 履约初始化失败: ${e.message}`, constants_1.loggerCtx);
+            }
+        }
+    }
+    /** 延迟加载 Vendure 核心实体，避免 seed 阶段循环依赖 */
+    async ensureCoreEntities(names) {
+        const core = await import('@vendure/core');
+        const result = {};
+        for (const name of names)
+            result[name] = core[name];
+        return result;
+    }
+    async createTenantRoleRecord(ctx, roleRepo, channel, code, description, permissions) {
+        const { Role } = await this.ensureCoreEntities(['Role']);
+        const role = new Role({ code, description, permissions, channels: [channel] });
+        return roleRepo.save(role);
+    }
+    async hashPassword(plain) {
+        const { BcryptPasswordHashingStrategy } = await import('@vendure/core');
+        const s = new BcryptPasswordHashingStrategy();
+        return s.hash(plain);
     }
 };
 exports.DefaultDataService = DefaultDataService;

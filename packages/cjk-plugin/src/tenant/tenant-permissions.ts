@@ -9,9 +9,26 @@ export const TenantMemberManagePermission = 'TenantMemberManage';
 /** 订单核销（预留，本轮仅定义不实现） */
 export const VerifyOrderPermission = 'VerifyOrder';
 
+export const tenantManagePermission = new PermissionDefinition({
+    name: TenantManagePermission,
+    description: '管理租户（超管）',
+});
+export const tenantRoleManagePermission = new PermissionDefinition({
+    name: TenantRoleManagePermission,
+    description: '管理租户角色',
+});
+export const tenantMemberManagePermission = new PermissionDefinition({
+    name: TenantMemberManagePermission,
+    description: '管理租户内部人员',
+});
+export const verifyOrderPermission = new PermissionDefinition({
+    name: VerifyOrderPermission,
+    description: '核销订单（预留）',
+});
+
 export const tenantPermissionDefinitions: PermissionDefinition[] = [
-    new PermissionDefinition({ name: TenantManagePermission, description: '管理租户（超管）' }),
-    new PermissionDefinition({ name: TenantRoleManagePermission, description: '管理租户角色' }),
-    new PermissionDefinition({ name: TenantMemberManagePermission, description: '管理租户内部人员' }),
-    new PermissionDefinition({ name: VerifyOrderPermission, description: '核销订单（预留）' }),
+    tenantManagePermission,
+    tenantRoleManagePermission,
+    tenantMemberManagePermission,
+    verifyOrderPermission,
 ];

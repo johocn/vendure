@@ -47,6 +47,10 @@ import { shippingTemplatePermissionDefinitions } from './shipping/shipping-templ
 import { TenantSetupService } from './tenant/tenant-setup.service';
 import { TenantMember } from './tenant/tenant-member.entity';
 import { tenantPermissionDefinitions } from './tenant/tenant-permissions';
+import { TenantMemberService } from './tenant/tenant-member.service';
+import { TenantAdminResolver } from './tenant/tenant-admin.resolver';
+import { TenantMemberResolver } from './tenant/tenant-member.resolver';
+import { MyAccessResolver } from './tenant/my-access.resolver';
 import { CjkPluginOptions } from './types';
 import { AuthShopResolver } from './auth/auth-shop.resolver';
 import { AuthAdminResolver } from './auth/auth-admin.resolver';
@@ -110,6 +114,7 @@ import { DefaultDataService } from './seed/default-data.service';
         PaymentProfileService,
         PaymentTemplateService,
         DefaultDataService,
+        TenantMemberService,
     ],
     adminApiExtensions: {
         schema: () => {
@@ -617,9 +622,120 @@ import { DefaultDataService } from './seed/default-data.service';
                     deletePaymentTemplate(id: ID!): Boolean!
                     createPaymentMethodFromTemplate(templateId: ID!, name: String, code: String): PaymentMethod!
                 }
+
+                # ===== 租户 / 角色 / 权限体系 =====
+                type TenantMember implements Node {
+                    id: ID!
+                    administratorId: ID!
+                    channelId: ID!
+                    enabled: Boolean!
+                    displayName: String
+                    remark: String
+                    createdAt: DateTime!
+                }
+
+                input CreateTenantInput {
+                    code: String!
+                    token: String
+                    name: String!
+                    tenantNo: Int
+                    isOfficial: Boolean
+                }
+
+                input UpdateTenantInput {
+                    name: String
+                    tenantNo: Int
+                    isOfficial: Boolean
+                }
+
+                input TenantListOptions {
+                    skip: Int
+                    take: Int
+                    filter: JSON
+                }
+
+                input CreateTenantAdministratorInput {
+                    firstName: String
+                    lastName: String
+                    emailAddress: String!
+                    password: String
+                    roleIds: [ID!]!
+                    displayName: String
+                    remark: String
+                    enabled: Boolean
+                }
+
+                input CreateTenantRoleInput {
+                    code: String!
+                    description: String!
+                    permissions: [String!]!
+                }
+
+                input UpdateTenantRoleInput {
+                    code: String
+                    description: String
+                    permissions: [String!]
+                }
+
+                input CreateTenantMemberInput {
+                    firstName: String
+                    lastName: String
+                    emailAddress: String!
+                    password: String
+                    roleIds: [ID!]!
+                    displayName: String
+                    remark: String
+                    enabled: Boolean
+                }
+
+                type MyTenantChannel {
+                    id: ID!
+                    code: String!
+                    token: String!
+                    name: String!
+                    enabled: Boolean!
+                    tenantNo: Int
+                    isOfficial: Boolean!
+                    memberEnabled: Boolean!
+                }
+
+                type MyTenantAccess {
+                    isSuperAdmin: Boolean!
+                    channels: [MyTenantChannel!]!
+                    permissions: [String!]!
+                }
+
+                extend type Query {
+                    tenants(options: TenantListOptions): ChannelList!
+                    tenant(id: ID!): Channel
+                    tenantAdministrators(channelId: ID!): [TenantMember!]!
+                    tenantRoles(channelId: ID!): [Role!]!
+                    tenantMembers: [TenantMember!]!
+                    myTenantRoles: [Role!]!
+                    myTenantAccess: MyTenantAccess!
+                }
+
+                extend type Mutation {
+                    createTenant(input: CreateTenantInput!): Channel!
+                    updateTenant(id: ID!, input: UpdateTenantInput!): Channel!
+                    setTenantEnabled(id: ID!, enabled: Boolean!): Channel!
+                    deleteTenant(id: ID!): Boolean!
+                    createTenantAdministrator(channelId: ID!, input: CreateTenantAdministratorInput!): TenantMember!
+                    setTenantAdministratorEnabled(id: ID!, enabled: Boolean!): TenantMember!
+                    deleteTenantAdministrator(id: ID!): Boolean!
+                    createTenantRole(channelId: ID!, input: CreateTenantRoleInput!): Role!
+                    updateTenantRole(roleId: ID!, input: UpdateTenantRoleInput!): Role!
+                    deleteTenantRole(roleId: ID!): Boolean!
+                    createTenantMember(input: CreateTenantMemberInput!): TenantMember!
+                    setTenantMemberEnabled(id: ID!, enabled: Boolean!): TenantMember!
+                    deleteTenantMember(id: ID!): Boolean!
+                    myCreateTenantRole(input: CreateTenantRoleInput!): Role!
+                    myUpdateTenantRole(roleId: ID!, input: UpdateTenantRoleInput!): Role!
+                    myDeleteTenantRole(roleId: ID!): Boolean!
+                }
             `;
         },
-        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver],
+        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver],
     },
     shopApiExtensions: {
         schema: () => {

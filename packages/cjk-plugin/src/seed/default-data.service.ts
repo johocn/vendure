@@ -4,6 +4,7 @@ import {
     LanguageCode,
     Logger,
     PaymentMethodService,
+    Permission,
     RequestContext,
     RequestContextService,
     ShippingMethodService,
@@ -21,6 +22,62 @@ import { ShippingTemplateService } from '../shipping/shipping-template.service';
 
 import { PaymentTemplate } from '../payment/payment-template.entity';
 import { PaymentTemplateService } from '../payment/payment-template.service';
+import { TenantMember } from '../tenant/tenant-member.entity';
+
+/**
+ * 租户内置角色模板（单一来源）。前 20 官方租户 seed 与后续新建租户均从模板生成角色，
+ * 避免权限清单多处漂移。数据仍落成每租户独立的 Role（符合 Vendure 按 channel 授权），
+ * 仅角色「定义」收敛为一处，改一处全局生效。
+ */
+export interface RoleTemplate {
+    key: 'tenant-admin' | 'sales' | 'stock';
+    busiPrefix: string;
+    description: string;
+    permissions: string[];
+}
+
+export const OFFICIAL_ROLE_TEMPLATES: RoleTemplate[] = [
+    {
+        key: 'tenant-admin',
+        busiPrefix: 'tenant-admin',
+        description: '租户管理员',
+        permissions: [
+            Permission.ReadCatalog, Permission.CreateCatalog, Permission.UpdateCatalog, Permission.DeleteCatalog,
+            Permission.ReadProduct, Permission.CreateProduct, Permission.UpdateProduct, Permission.DeleteProduct,
+            Permission.ReadOrder, Permission.UpdateOrder, Permission.CreateOrder,
+            Permission.ReadAsset, Permission.CreateAsset, Permission.UpdateAsset, Permission.DeleteAsset,
+            Permission.ReadCollection, Permission.CreateCollection, Permission.UpdateCollection, Permission.DeleteCollection,
+            Permission.ReadShippingMethod, Permission.CreateShippingMethod, Permission.UpdateShippingMethod, Permission.DeleteShippingMethod,
+            Permission.ReadPaymentMethod, Permission.CreatePaymentMethod, Permission.UpdatePaymentMethod, Permission.DeletePaymentMethod,
+            Permission.ReadChannel, Permission.UpdateChannel,
+            Permission.ReadAdministrator, Permission.UpdateAdministrator,
+            'TenantRoleManage', 'TenantMemberManage',
+        ],
+    },
+    {
+        key: 'sales',
+        busiPrefix: 'sales',
+        description: '销售',
+        permissions: [
+            Permission.ReadCatalog,
+            Permission.ReadProduct, Permission.CreateProduct, Permission.UpdateProduct,
+            Permission.ReadOrder, Permission.UpdateOrder, Permission.CreateOrder,
+            Permission.ReadAsset, Permission.CreateAsset,
+            Permission.ReadCollection,
+        ],
+    },
+    {
+        key: 'stock',
+        busiPrefix: 'stock',
+        description: '库存',
+        permissions: [
+            Permission.ReadCatalog,
+            Permission.ReadProduct,
+            Permission.UpdateProduct,
+            Permission.ReadOrder,
+        ],
+    },
+];
 
 /**
  * 插件默认数据初始化
@@ -69,6 +126,8 @@ export class DefaultDataService {
             await this.seedCashOnDeliveryPaymentTemplate(ctx);
             await this.seedBalancePayPaymentTemplate(ctx);
             await this.seedAggregatePaymentTemplate(ctx);
+            // 前 20 个官方自营租户（幂等）
+            await this.seedOfficialTenants(ctx);
             Logger.info('购物配送/支付默认数据初始化完成', loggerCtx);
         } catch (e: any) {
             Logger.error(`默认数据初始化失败: ${e.message}`, loggerCtx);
@@ -307,6 +366,121 @@ export class DefaultDataService {
             isGlobal: true,
         } as any);
         Logger.info(`已创建默认支付模板: ${AGGREGATE_PAYMENT_TEMPLATE_CODE}`, loggerCtx);
+    }
+
+    /**
+     * 幂等创建前 20 个官方自营租户（tenantNo 1-20，isOfficial=true）。
+     * 每个租户：3 个内置角色（租户管理员/销售/库存）+ 默认管理员 admin
+     *            + 门店自提配送方式 + 门店收银支付方式（复用全局 handler）。
+     * 已存在（按 channel.code 判重）则跳过。
+     */
+    private async seedOfficialTenants(ctx: RequestContext): Promise<void> {
+        const { Channel, Role, Administrator } = await this.ensureCoreEntities(['Channel', 'Role', 'Administrator']);
+        const channelRepo = this.connection.getRepository(ctx, Channel);
+        const roleRepo = this.connection.getRepository(ctx, Role);
+        const adminRepo = this.connection.getRepository(ctx, Administrator);
+        const memberRepo = this.connection.getRepository(ctx, TenantMember);
+
+        for (let i = 1; i <= 20; i++) {
+            const code = `official-${String(i).padStart(2, '0')}`;
+            const exists = await channelRepo.findOne({ where: { code } } as any);
+            if (exists) {
+                Logger.info(`官方自营租户 ${code} 已存在，跳过`, loggerCtx);
+                continue;
+            }
+
+            const channel = await channelRepo.save(
+                new Channel({
+                    code,
+                    token: `official-${i}`,
+                    defaultLanguageCode: LanguageCode.zh_Hans,
+                    currencyCode: 'CNY',
+                    pricesIncludeTax: true,
+                    customFields: {
+                        enabled: true,
+                        tenantNo: i,
+                        isOfficial: true,
+                        shopName: `官方自营${String(i).padStart(2, '0')}`,
+                    },
+                } as any),
+            );
+            Logger.info(`已创建官方自营租户 ${code}`, loggerCtx);
+
+            // 3 个内置角色（限定该 channel；权限清单来自单一模板）
+            const [tenantAdminRole, salesRole, stockRole] = await Promise.all(
+                OFFICIAL_ROLE_TEMPLATES.map((tpl) =>
+                    this.createTenantRoleRecord(ctx, roleRepo, channel, `official-${tpl.busiPrefix}-${i}`, tpl.description, tpl.permissions),
+                ),
+            );
+
+            // 默认管理员 admin（绑定租户管理员角色）
+            const admin = await adminRepo.save(
+                new Administrator({
+                    firstName: '官方自营',
+                    lastName: `自营${String(i).padStart(2, '0')}`,
+                    emailAddress: `admin-official-${i}@local.dev`,
+                    passwordHash: await this.hashPassword('Admin@123456'),
+                    roles: [tenantAdminRole],
+                } as any),
+            );
+            await memberRepo.save(
+                new TenantMember({
+                    administratorId: String(admin.id),
+                    channelId: String(channel.id),
+                    enabled: true,
+                    displayName: `官方自营${String(i).padStart(2, '0')}管理员`,
+                    remark: 'seed 默认管理员',
+                } as any),
+            );
+
+            // 门店自提配送方式 + 门店收银支付方式（复用全局 handler，限定该 channel）
+            try {
+                await this.shippingMethodService.create(ctx, {
+                    code: `store-pickup-${code}`,
+                    fulfillmentHandler: 'store-pickup',
+                    checker: { code: 'store-pickup-eligibility', arguments: [] },
+                    calculator: { code: 'store-pickup-calculator', arguments: [] },
+                    translations: [{ languageCode: LanguageCode.zh_Hans, name: '门店自提', description: '到指定门店自提商品' }],
+                    channels: [channel],
+                } as any);
+                await this.paymentMethodService.create(ctx, {
+                    code: `cashier-${code}`,
+                    enabled: true,
+                    handler: { code: 'cash-on-delivery', arguments: [] },
+                    translations: [{ languageCode: LanguageCode.zh_Hans, name: '门店收银', description: '到店收银台支付' }],
+                    channels: [channel],
+                } as any);
+            } catch (e: any) {
+                Logger.warn(`官方租户 ${code} 履约初始化失败: ${e.message}`, loggerCtx);
+            }
+        }
+    }
+
+    /** 延迟加载 Vendure 核心实体，避免 seed 阶段循环依赖 */
+    private async ensureCoreEntities(names: string[]): Promise<Record<string, any>> {
+        const core = await import('@vendure/core');
+        const result: Record<string, any> = {};
+        for (const name of names) result[name] = (core as any)[name];
+        return result;
+    }
+
+    private async createTenantRoleRecord(
+        ctx: RequestContext,
+        roleRepo: any,
+        channel: any,
+        code: string,
+        description: string,
+        permissions: string[],
+    ): Promise<any> {
+        const { Role } = await this.ensureCoreEntities(['Role']);
+        const role = new Role({ code, description, permissions, channels: [channel] } as any);
+        return roleRepo.save(role);
+    }
+
+    private async hashPassword(plain: string): Promise<string> {
+        const { BcryptPasswordHashingStrategy } = await import('@vendure/core');
+        const s = new BcryptPasswordHashingStrategy();
+        return s.hash(plain);
     }
 }
 
