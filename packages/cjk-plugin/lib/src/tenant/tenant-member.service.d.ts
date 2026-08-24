@@ -52,7 +52,8 @@ export declare class TenantMemberService {
         token?: string;
         isOfficial?: boolean;
     }): Promise<any>;
-    /** 取当前最大 tenantNo，自增 1；无数据时从 0 开始（第 1 个租户得到 1） */
+    /** 取当前最大 tenantNo，自增 1；无数据时从 0 开始（第 1 个租户得到 1）。
+     *  用 TypeORM 原生 read 绕开 channelService.findAll 的 take≤1000 限制（否则新建租户必报「查询结果大于1000」）。 */
     private nextTenantNo;
     /** 租户启停（仅超管） */
     setChannelEnabled(ctx: RequestContext, channelId: ID, enabled: boolean): Promise<void>;
@@ -80,6 +81,8 @@ export declare class TenantMemberService {
     updateTenantMemberRoles(ctx: RequestContext, channelId: ID, memberId: ID, roleIds: ID[]): Promise<void>;
     /** 返回人员在当前租户内的角色 id（用于改角色弹层回显勾选） */
     memberRoleIdsInChannel(ctx: RequestContext, member: TenantMember): Promise<ID[]>;
+    /** 将 TenantMember 组装为含 roleIds 的视图对象（供列表查询直接返回，避免依赖 @ResolveField 子解析造成非空字段 null 报错） */
+    memberToView(ctx: RequestContext, member: TenantMember): Promise<any>;
     /** 超管为租户建管理员账号并绑定角色，同时写入 TenantMember */
     createTenantAdministrator(ctx: RequestContext, channelId: ID, input: CreateTenantAdminInput): Promise<TenantMember>;
     /** 当前登录者修改自身密码：更新 Administrator 密码，并清除其所有租户关联的首登强改密标志 */

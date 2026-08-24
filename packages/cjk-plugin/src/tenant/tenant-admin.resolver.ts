@@ -76,7 +76,8 @@ export class TenantAdminResolver {
         @Args('channelId') channelId: string,
     ): Promise<TenantMember[]> {
         const repo = this.connection.getRepository(ctx, TenantMember);
-        return repo.find({ where: { channelId }, order: { createdAt: 'ASC' } });
+        const members = await repo.find({ where: { channelId }, order: { createdAt: 'ASC' } });
+        return Promise.all(members.map((m) => this.tenantMemberService.memberToView(ctx, m))) as Promise<any[]>;
     }
 
     @Mutation()

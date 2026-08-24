@@ -31,7 +31,8 @@ let TenantMemberResolver = class TenantMemberResolver {
     async tenantMembers(ctx) {
         this.tenantMemberService.assertChannelMember(ctx);
         const repo = this.connection.getRepository(ctx, tenant_member_entity_1.TenantMember);
-        return repo.find({ where: { channelId: String(ctx.channelId) }, order: { createdAt: 'ASC' } });
+        const members = await repo.find({ where: { channelId: String(ctx.channelId) }, order: { createdAt: 'ASC' } });
+        return Promise.all(members.map((m) => this.tenantMemberService.memberToView(ctx, m)));
     }
     async createTenantMember(ctx, args) {
         this.tenantMemberService.assertChannelMember(ctx);

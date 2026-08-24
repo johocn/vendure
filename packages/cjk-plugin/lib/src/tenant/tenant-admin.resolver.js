@@ -54,7 +54,8 @@ let TenantAdminResolver = class TenantAdminResolver {
     }
     async tenantAdministrators(ctx, channelId) {
         const repo = this.connection.getRepository(ctx, tenant_member_entity_1.TenantMember);
-        return repo.find({ where: { channelId }, order: { createdAt: 'ASC' } });
+        const members = await repo.find({ where: { channelId }, order: { createdAt: 'ASC' } });
+        return Promise.all(members.map((m) => this.tenantMemberService.memberToView(ctx, m)));
     }
     async createTenantAdministrator(ctx, args) {
         return this.tenantMemberService.createTenantAdministrator(ctx, args.channelId, args.input);

@@ -21,46 +21,8 @@ const shipping_template_service_1 = require("../shipping/shipping-template.servi
 const payment_template_entity_1 = require("../payment/payment-template.entity");
 const payment_template_service_1 = require("../payment/payment-template.service");
 const tenant_member_entity_1 = require("../tenant/tenant-member.entity");
-exports.OFFICIAL_ROLE_TEMPLATES = [
-    {
-        key: 'tenant-admin',
-        busiPrefix: 'tenant-admin',
-        description: '租户管理员',
-        permissions: [
-            core_1.Permission.ReadCatalog, core_1.Permission.CreateCatalog, core_1.Permission.UpdateCatalog, core_1.Permission.DeleteCatalog,
-            core_1.Permission.ReadProduct, core_1.Permission.CreateProduct, core_1.Permission.UpdateProduct, core_1.Permission.DeleteProduct,
-            core_1.Permission.ReadOrder, core_1.Permission.UpdateOrder, core_1.Permission.CreateOrder,
-            core_1.Permission.ReadAsset, core_1.Permission.CreateAsset, core_1.Permission.UpdateAsset, core_1.Permission.DeleteAsset,
-            core_1.Permission.ReadCollection, core_1.Permission.CreateCollection, core_1.Permission.UpdateCollection, core_1.Permission.DeleteCollection,
-            core_1.Permission.ReadShippingMethod, core_1.Permission.CreateShippingMethod, core_1.Permission.UpdateShippingMethod, core_1.Permission.DeleteShippingMethod,
-            core_1.Permission.ReadPaymentMethod, core_1.Permission.CreatePaymentMethod, core_1.Permission.UpdatePaymentMethod, core_1.Permission.DeletePaymentMethod,
-            'TenantRoleManage', 'TenantMemberManage',
-        ],
-    },
-    {
-        key: 'sales',
-        busiPrefix: 'sales',
-        description: '销售',
-        permissions: [
-            core_1.Permission.ReadCatalog,
-            core_1.Permission.ReadProduct, core_1.Permission.CreateProduct, core_1.Permission.UpdateProduct,
-            core_1.Permission.ReadOrder, core_1.Permission.UpdateOrder, core_1.Permission.CreateOrder,
-            core_1.Permission.ReadAsset, core_1.Permission.CreateAsset,
-            core_1.Permission.ReadCollection,
-        ],
-    },
-    {
-        key: 'stock',
-        busiPrefix: 'stock',
-        description: '库存',
-        permissions: [
-            core_1.Permission.ReadCatalog,
-            core_1.Permission.ReadProduct,
-            core_1.Permission.UpdateProduct,
-            core_1.Permission.ReadOrder,
-        ],
-    },
-];
+const role_templates_1 = require("../tenant/role-templates");
+Object.defineProperty(exports, "OFFICIAL_ROLE_TEMPLATES", { enumerable: true, get: function () { return role_templates_1.OFFICIAL_ROLE_TEMPLATES; } });
 /**
  * 插件默认数据初始化
  *
@@ -376,7 +338,7 @@ let DefaultDataService = class DefaultDataService {
             }));
             core_1.Logger.info(`已创建官方自营租户 ${code}`, constants_1.loggerCtx);
             // 3 个内置角色（限定该 channel；权限清单来自单一模板）
-            const [tenantAdminRole, salesRole, stockRole] = await Promise.all(exports.OFFICIAL_ROLE_TEMPLATES.map((tpl) => this.createTenantRoleRecord(ctx, roleRepo, channel, `official-${tpl.busiPrefix}-${i}`, tpl.description, tpl.permissions)));
+            const [tenantAdminRole, salesRole, stockRole] = await Promise.all(role_templates_1.OFFICIAL_ROLE_TEMPLATES.map((tpl) => this.createTenantRoleRecord(ctx, roleRepo, channel, `official-${tpl.busiPrefix}-${i}`, tpl.description, tpl.permissions)));
             // 默认管理员 admin（绑定租户管理员角色）
             const admin = await adminRepo.save(new Administrator({
                 firstName: '官方自营',

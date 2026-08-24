@@ -21,7 +21,8 @@ export class TenantMemberResolver {
     async tenantMembers(@Ctx() ctx: RequestContext): Promise<TenantMember[]> {
         this.tenantMemberService.assertChannelMember(ctx);
         const repo = this.connection.getRepository(ctx, TenantMember);
-        return repo.find({ where: { channelId: String(ctx.channelId) }, order: { createdAt: 'ASC' } });
+        const members = await repo.find({ where: { channelId: String(ctx.channelId) }, order: { createdAt: 'ASC' } });
+        return Promise.all(members.map((m) => this.tenantMemberService.memberToView(ctx, m))) as Promise<any[]>;
     }
 
     @Mutation()

@@ -15,6 +15,7 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const constants_1 = require("../constants");
 const tenant_member_entity_1 = require("./tenant-member.entity");
+const role_templates_1 = require("./role-templates");
 /**
  * 租户级业务权限目录（单一来源，前后端共用，避免双份硬编码）。
  * 不含超管专属权限；Vendure v3 已将 Variant/Fulfillment 等合并进 catalog/product/order 权限。
@@ -177,13 +178,27 @@ let TenantMemberService = class TenantMemberService {
                 shopName: input.name,
             },
         });
+        // 自动创建 3 个默认角色（租户管理员/销售/库存），保证人员可即时绑定角色
+        const channelId = String(channel.id);
+        try {
+            await Promise.all(role_templates_1.OFFICIAL_ROLE_TEMPLATES.map((tpl) => this.createTenantRole(ctx, channelId, {
+                code: `t${tenantNo}-${tpl.busiPrefix}`,
+                description: tpl.description,
+                permissions: tpl.permissions,
+            })));
+        }
+        catch (e) {
+            core_1.Logger.warn(`租户 ${code} 默认角色创建失败（可手动补建）: ${e.message}`, constants_1.loggerCtx);
+        }
         core_1.Logger.info(`已创建租户 ${code}（tenantNo=${tenantNo}）`, constants_1.loggerCtx);
         return channel;
     }
-    /** 取当前最大 tenantNo，自增 1；无数据时从 0 开始（第 1 个租户得到 1） */
+    /** 取当前最大 tenantNo，自增 1；无数据时从 0 开始（第 1 个租户得到 1）。
+     *  用 TypeORM 原生 read 绕开 channelService.findAll 的 take≤1000 限制（否则新建租户必报「查询结果大于1000」）。 */
     async nextTenantNo(ctx) {
-        const result = await this.channelService.findAll(ctx, { skip: 0, take: 10000 });
-        const nos = result.items
+        const repo = this.connection.getRepository(ctx, core_1.Channel);
+        const channels = await repo.find();
+        const nos = channels
             .map((c) => { var _a; return Number((_a = c === null || c === void 0 ? void 0 : c.customFields) === null || _a === void 0 ? void 0 : _a.tenantNo); })
             .filter((n) => Number.isFinite(n));
         return (nos.length ? Math.max(...nos) : 0) + 1;
@@ -270,6 +285,10 @@ let TenantMemberService = class TenantMemberService {
         return admin.user.roles
             .filter((r) => (r.channels || []).some((c) => String(c.id) === channelId))
             .map((r) => String(r.id));
+    }
+    /** 将 TenantMember 组装为含 roleIds 的视图对象（供列表查询直接返回，避免依赖 @ResolveField 子解析造成非空字段 null 报错） */
+    async memberToView(ctx, member) {
+        return Object.assign(Object.assign({}, member), { roleIds: await this.memberRoleIdsInChannel(ctx, member) });
     }
     /** 超管为租户建管理员账号并绑定角色，同时写入 TenantMember */
     async createTenantAdministrator(ctx, channelId, input) {
