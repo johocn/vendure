@@ -274,6 +274,58 @@ export class TenantMemberService {
         });
     }
 
+    /** 判断指定 channel 是否已存在该 code 的关联角色（幂等判定）。 */
+    private async roleExistsInChannel(ctx: RequestContext, channelId: string, code: string): Promise<boolean> {
+        const repo = this.connection.getRepository(ctx, Role);
+        const rows = await repo
+            .createQueryBuilder('role')
+            .leftJoinAndSelect('role.channels', 'ch')
+            .where('role.code = :code', { code })
+            .getMany();
+        return (rows as any[]).some((r) => (r.channels || []).some((c: any) => String(c.id) === channelId));
+    }
+
+    /** 单租户一键导入默认三角色（幂等）。已初始化则返回空数组，不重复建。 */
+    async importDefaultRoles(ctx: RequestContext, channelId: ID): Promise<any[]> {
+        const channel = await this.connection
+            .getRepository(ctx, Channel)
+            .findOne({ where: { id: String(channelId) } } as any);
+        if (!channel) throw new Error('CHANNEL_NOT_FOUND');
+        const tenantNo = Number((channel as any).customFields?.tenantNo);
+        if (!Number.isFinite(tenantNo)) throw new Error('TENANT_NO_MISSING');
+        const chId = String(channelId);
+        const adminCode = `t${tenantNo}-tenant-admin`;
+        if (await this.roleExistsInChannel(ctx, chId, adminCode)) return [];
+        const created: any[] = [];
+        for (const tpl of OFFICIAL_ROLE_TEMPLATES) {
+            created.push(
+                await this.createTenantRole(ctx, channelId, {
+                    code: `t${tenantNo}-${tpl.busiPrefix}`,
+                    description: tpl.description,
+                    permissions: tpl.permissions,
+                }),
+            );
+        }
+        return created;
+    }
+
+    /** 启动补种子：扫描所有 Channel，缺默认角色则幂等补建；异常仅打日志不阻塞启动。 */
+    async ensureDefaultRolesForAllChannels(ctx: RequestContext): Promise<void> {
+        const channelRepo = this.connection.getRepository(ctx, Channel);
+        const channels = await channelRepo.find();
+        let added = 0;
+        for (const c of channels as any[]) {
+            const tenantNo = Number(c?.customFields?.tenantNo);
+            if (!Number.isFinite(tenantNo)) continue;
+            try {
+                added += (await this.importDefaultRoles(ctx, String(c.id))).length;
+            } catch (e: any) {
+                Logger.warn(`租户 ${String(c.id)} 默认角色补种失败: ${e.message}`, loggerCtx);
+            }
+        }
+        Logger.info(`默认角色补种完成，共补建 ${added} 个角色`, loggerCtx);
+    }
+
     /** 租户级角色更新（权限白名单校验；channelId 非空时校验角色归属，防横向越权） */
     async updateTenantRole(
         ctx: RequestContext,

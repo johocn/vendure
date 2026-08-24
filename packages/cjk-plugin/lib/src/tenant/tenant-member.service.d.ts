@@ -69,6 +69,12 @@ export declare class TenantMemberService {
         description: string;
         permissions: string[];
     }): Promise<any>;
+    /** 判断指定 channel 是否已存在该 code 的关联角色（幂等判定）。 */
+    private roleExistsInChannel;
+    /** 单租户一键导入默认三角色（幂等）。已初始化则返回空数组，不重复建。 */
+    importDefaultRoles(ctx: RequestContext, channelId: ID): Promise<any[]>;
+    /** 启动补种子：扫描所有 Channel，缺默认角色则幂等补建；异常仅打日志不阻塞启动。 */
+    ensureDefaultRolesForAllChannels(ctx: RequestContext): Promise<void>;
     /** 租户级角色更新（权限白名单校验；channelId 非空时校验角色归属，防横向越权） */
     updateTenantRole(ctx: RequestContext, roleId: ID, input: {
         code?: string;
