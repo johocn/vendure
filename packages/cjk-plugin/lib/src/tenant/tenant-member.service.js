@@ -380,6 +380,62 @@ let TenantMemberService = class TenantMemberService {
             throw new Error('MEMBER_NOT_FOUND');
         await repo.remove(member);
     }
+    /** 搜索后台账号（按邮箱/姓氏模糊匹配），返回各账号在租户内的关联统计，供「关联已有账号进租户」选择 */
+    async searchAdmins(ctx, channelId, keyword, take = 10) {
+        const adminRepo = this.connection.getRepository(ctx, core_1.Administrator);
+        const admins = await adminRepo.find({ take: 500 });
+        const kw = (keyword || '').toString().toLowerCase().trim();
+        const memberRepo = this.connection.getRepository(ctx, tenant_member_entity_1.TenantMember);
+        const members = await memberRepo.find();
+        const chId = channelId != null ? String(channelId) : null;
+        return admins
+            .filter((a) => {
+            if (!kw)
+                return true;
+            const email = String(a.emailAddress || '').toLowerCase();
+            const lastName = String(a.lastName || '').toLowerCase();
+            return email.includes(kw) || lastName.includes(kw);
+        })
+            .slice(0, take)
+            .map((a) => {
+            var _a;
+            const linked = members.filter((m) => String(m.administratorId) === String(a.id));
+            return {
+                id: String(a.id),
+                emailAddress: a.emailAddress,
+                displayName: (_a = a.lastName) !== null && _a !== void 0 ? _a : a.emailAddress,
+                linkedCount: linked.length,
+                linkedChannelIds: linked.map((m) => String(m.channelId)),
+                alreadyLinked: chId != null ? linked.some((m) => String(m.channelId) === chId) : false,
+            };
+        });
+    }
+    /** 将既有后台账号关联进某租户（写入 TenantMember 并合并绑定本租户角色）；若已在该租户则报错 */
+    async linkMember(ctx, channelId, input) {
+        var _a, _b, _c, _d, _e;
+        const adminRepo = this.connection.getRepository(ctx, core_1.Administrator);
+        const admin = await adminRepo.findOne({ where: { id: String(input.administratorId) } });
+        if (!admin)
+            throw new Error('ADMIN_NOT_FOUND');
+        const repo = this.connection.getRepository(ctx, tenant_member_entity_1.TenantMember);
+        const chId = String(channelId);
+        const existing = await repo.findOne({
+            where: { administratorId: String(input.administratorId), channelId: chId },
+        });
+        if (existing)
+            throw new Error('ALREADY_IN_CHANNEL');
+        const member = new tenant_member_entity_1.TenantMember();
+        member.administratorId = String(input.administratorId);
+        member.channelId = chId;
+        member.enabled = (_a = input.enabled) !== null && _a !== void 0 ? _a : true;
+        member.mustChangePassword = false;
+        member.displayName = (_c = (_b = input.displayName) !== null && _b !== void 0 ? _b : admin === null || admin === void 0 ? void 0 : admin.lastName) !== null && _c !== void 0 ? _c : admin === null || admin === void 0 ? void 0 : admin.emailAddress;
+        member.phone = (_d = input.phone) !== null && _d !== void 0 ? _d : null;
+        member.remark = (_e = input.remark) !== null && _e !== void 0 ? _e : null;
+        await repo.save(member);
+        await this.syncMemberRolesInChannel(ctx, member.administratorId, chId, input.roleIds || []);
+        return this.memberToView(ctx, member);
+    }
     /** 租户管理员更新「本 channel」装修类 customFields（仅覆盖传入字段，禁止触碰安全字段） */
     async updateMyChannelCustomFields(ctx, input = {}) {
         const channelId = String(ctx.channelId);

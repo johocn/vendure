@@ -93,6 +93,17 @@ export declare class TenantMemberService {
     setMemberEnabled(ctx: RequestContext, channelId: ID, memberId: ID, enabled: boolean): Promise<void>;
     /** 租户人员移除（仅删 TenantMember 关联，Administrator 本体保留） */
     removeMember(ctx: RequestContext, channelId: ID, memberId: ID): Promise<void>;
+    /** 搜索后台账号（按邮箱/姓氏模糊匹配），返回各账号在租户内的关联统计，供「关联已有账号进租户」选择 */
+    searchAdmins(ctx: RequestContext, channelId: ID, keyword?: string, take?: number): Promise<any[]>;
+    /** 将既有后台账号关联进某租户（写入 TenantMember 并合并绑定本租户角色）；若已在该租户则报错 */
+    linkMember(ctx: RequestContext, channelId: ID, input: {
+        administratorId: ID;
+        roleIds?: ID[];
+        enabled?: boolean;
+        displayName?: string;
+        phone?: string;
+        remark?: string;
+    }): Promise<any>;
     /** 租户管理员更新「本 channel」装修类 customFields（仅覆盖传入字段，禁止触碰安全字段） */
     updateMyChannelCustomFields(ctx: RequestContext, input?: Record<string, any>): Promise<any>;
 }
