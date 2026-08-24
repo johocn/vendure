@@ -80,6 +80,20 @@ let TenantMemberResolver = class TenantMemberResolver {
         await this.tenantMemberService.updateTenantMemberRoles(ctx, ctx.channelId, args.id, args.roleIds);
         return true;
     }
+    async mySearchAdmins(ctx, keyword) {
+        this.tenantMemberService.assertChannelMember(ctx);
+        return this.tenantMemberService.searchAdmins(ctx, ctx.channelId, keyword, 10);
+    }
+    async myLinkMember(ctx, args) {
+        this.tenantMemberService.assertChannelMember(ctx);
+        return this.tenantMemberService.linkMember(ctx, ctx.channelId, {
+            administratorId: args.administratorId,
+            roleIds: args.roleIds,
+            displayName: args.displayName,
+            phone: args.phone,
+            remark: args.remark,
+        });
+    }
     async roleIds(member, ctx) {
         return this.tenantMemberService.memberRoleIdsInChannel(ctx, member);
     }
@@ -185,6 +199,24 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], TenantMemberResolver.prototype, "myUpdateTenantMemberRoles", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('keyword')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String]),
+    __metadata("design:returntype", Promise)
+], TenantMemberResolver.prototype, "mySearchAdmins", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(tenant_permissions_1.tenantMemberManagePermission.Permission),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], TenantMemberResolver.prototype, "myLinkMember", null);
 __decorate([
     (0, graphql_1.ResolveField)('roleIds'),
     __param(0, (0, graphql_1.Parent)()),

@@ -72,4 +72,16 @@ export declare class TenantAdminResolver {
         channelId: string;
         roleIds: string[];
     }): Promise<boolean>;
+    tenantSearchAdmins(ctx: RequestContext, args: {
+        channelId: string;
+        keyword?: string;
+    }): Promise<any[]>;
+    tenantLinkMember(ctx: RequestContext, args: {
+        channelId: string;
+        administratorId: string;
+        roleIds?: string[];
+        displayName?: string;
+        phone?: string;
+        remark?: string;
+    }): Promise<any>;
 }

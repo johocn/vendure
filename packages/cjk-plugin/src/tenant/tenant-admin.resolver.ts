@@ -154,4 +154,35 @@ export class TenantAdminResolver {
         await this.tenantMemberService.updateTenantMemberRoles(ctx, args.channelId, args.id, args.roleIds);
         return true;
     }
+
+    @Query()
+    @Allow(Permission.SuperAdmin)
+    async tenantSearchAdmins(
+        @Ctx() ctx: RequestContext,
+        @Args() args: { channelId: string; keyword?: string },
+    ): Promise<any[]> {
+        return this.tenantMemberService.searchAdmins(ctx, args.channelId, args.keyword, 10);
+    }
+
+    @Mutation()
+    @Allow(Permission.SuperAdmin)
+    async tenantLinkMember(
+        @Ctx() ctx: RequestContext,
+        @Args() args: {
+            channelId: string;
+            administratorId: string;
+            roleIds?: string[];
+            displayName?: string;
+            phone?: string;
+            remark?: string;
+        },
+    ): Promise<any> {
+        return this.tenantMemberService.linkMember(ctx, args.channelId, {
+            administratorId: args.administratorId,
+            roleIds: args.roleIds,
+            displayName: args.displayName,
+            phone: args.phone,
+            remark: args.remark,
+        });
+    }
 }

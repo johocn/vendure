@@ -38,6 +38,14 @@ export declare class TenantMemberResolver {
         id: string;
         roleIds: string[];
     }): Promise<boolean>;
+    mySearchAdmins(ctx: RequestContext, keyword?: string): Promise<any[]>;
+    myLinkMember(ctx: RequestContext, args: {
+        administratorId: string;
+        roleIds?: string[];
+        displayName?: string;
+        phone?: string;
+        remark?: string;
+    }): Promise<any>;
     roleIds(member: TenantMember, ctx: RequestContext): Promise<ID[]>;
     /** 当前登录者修改自身密码（首登强改密时清标志） */
     tenantChangeMyPassword(ctx: RequestContext, newPassword: string): Promise<boolean>;

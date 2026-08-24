@@ -119,6 +119,32 @@ export class TenantMemberResolver {
         return true;
     }
 
+    @Query()
+    @Allow(Permission.Authenticated)
+    async mySearchAdmins(
+        @Ctx() ctx: RequestContext,
+        @Args('keyword') keyword?: string,
+    ): Promise<any[]> {
+        this.tenantMemberService.assertChannelMember(ctx);
+        return this.tenantMemberService.searchAdmins(ctx, ctx.channelId, keyword, 10);
+    }
+
+    @Mutation()
+    @Allow(tenantMemberManagePermission.Permission)
+    async myLinkMember(
+        @Ctx() ctx: RequestContext,
+        @Args() args: { administratorId: string; roleIds?: string[]; displayName?: string; phone?: string; remark?: string },
+    ): Promise<any> {
+        this.tenantMemberService.assertChannelMember(ctx);
+        return this.tenantMemberService.linkMember(ctx, ctx.channelId, {
+            administratorId: args.administratorId,
+            roleIds: args.roleIds,
+            displayName: args.displayName,
+            phone: args.phone,
+            remark: args.remark,
+        });
+    }
+
     @ResolveField('roleIds')
     async roleIds(@Parent() member: TenantMember, @Ctx() ctx: RequestContext): Promise<ID[]> {
         return this.tenantMemberService.memberRoleIdsInChannel(ctx, member);
