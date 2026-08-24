@@ -881,6 +881,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     myUpdateTenantRole(roleId: ID!, input: UpdateTenantRoleInput!): Role!
                     myDeleteTenantRole(roleId: ID!): Boolean!
                     tenantChangeMyPassword(newPassword: String!): Boolean!
+                    myUpdateChannelCustomFields(input: JSON!): JSON!
                 }
             `;
             },

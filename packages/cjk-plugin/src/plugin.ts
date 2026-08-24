@@ -753,6 +753,7 @@ import { DefaultDataService } from './seed/default-data.service';
                     myUpdateTenantRole(roleId: ID!, input: UpdateTenantRoleInput!): Role!
                     myDeleteTenantRole(roleId: ID!): Boolean!
                     tenantChangeMyPassword(newPassword: String!): Boolean!
+                    myUpdateChannelCustomFields(input: JSON!): JSON!
                 }
             `;
         },
