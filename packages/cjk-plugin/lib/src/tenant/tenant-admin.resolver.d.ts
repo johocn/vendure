@@ -84,4 +84,21 @@ export declare class TenantAdminResolver {
         remark?: string;
     }): Promise<any>;
     importDefaultRoles(ctx: RequestContext, channelId: string): Promise<any[]>;
+    globalRoles(ctx: RequestContext): Promise<any[]>;
+    createGlobalRole(ctx: RequestContext, args: {
+        channelIds: string[];
+        input: {
+            code: string;
+            description: string;
+            permissions: string[];
+        };
+    }): Promise<any[]>;
+    referGlobalRoleToChannel(ctx: RequestContext, args: {
+        roleId: string;
+        channelId: string;
+    }): Promise<boolean>;
+    unreferGlobalRoleFromChannel(ctx: RequestContext, args: {
+        roleId: string;
+        channelId: string;
+    }): Promise<boolean>;
 }

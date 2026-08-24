@@ -107,6 +107,20 @@ let TenantAdminResolver = class TenantAdminResolver {
     async importDefaultRoles(ctx, channelId) {
         return this.tenantMemberService.importDefaultRoles(ctx, channelId);
     }
+    async globalRoles(ctx) {
+        return this.tenantMemberService.globalRoles(ctx);
+    }
+    async createGlobalRole(ctx, args) {
+        return this.tenantMemberService.createGlobalRoleWithChannels(ctx, args.channelIds, args.input);
+    }
+    async referGlobalRoleToChannel(ctx, args) {
+        await this.tenantMemberService.referGlobalRoleToChannel(ctx, args.roleId, args.channelId);
+        return true;
+    }
+    async unreferGlobalRoleFromChannel(ctx, args) {
+        await this.tenantMemberService.unreferGlobalRoleFromChannel(ctx, args.roleId, args.channelId);
+        return true;
+    }
 };
 exports.TenantAdminResolver = TenantAdminResolver;
 __decorate([
@@ -271,6 +285,41 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, String]),
     __metadata("design:returntype", Promise)
 ], TenantAdminResolver.prototype, "importDefaultRoles", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], TenantAdminResolver.prototype, "globalRoles", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], TenantAdminResolver.prototype, "createGlobalRole", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], TenantAdminResolver.prototype, "referGlobalRoleToChannel", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], TenantAdminResolver.prototype, "unreferGlobalRoleFromChannel", null);
 exports.TenantAdminResolver = TenantAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __param(0, (0, common_1.Inject)(core_1.ChannelService)),

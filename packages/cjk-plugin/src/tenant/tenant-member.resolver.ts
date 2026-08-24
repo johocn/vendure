@@ -67,6 +67,29 @@ export class TenantMemberResolver {
         return this.tenantMemberService.rolesForChannel(ctx, ctx.channelId);
     }
 
+    @Query()
+    @Allow(Permission.Authenticated)
+    async myGlobalRolesAvailable(@Ctx() ctx: RequestContext): Promise<any[]> {
+        this.tenantMemberService.assertChannelMember(ctx);
+        return this.tenantMemberService.globalRoles(ctx);
+    }
+
+    @Mutation()
+    @Allow(tenantRoleManagePermission.Permission)
+    async myReferGlobalRole(@Ctx() ctx: RequestContext, @Args('roleId') roleId: ID): Promise<boolean> {
+        this.tenantMemberService.assertChannelMember(ctx);
+        await this.tenantMemberService.myReferGlobalRole(ctx, roleId);
+        return true;
+    }
+
+    @Mutation()
+    @Allow(tenantRoleManagePermission.Permission)
+    async myUnreferGlobalRole(@Ctx() ctx: RequestContext, @Args('roleId') roleId: ID): Promise<boolean> {
+        this.tenantMemberService.assertChannelMember(ctx);
+        await this.tenantMemberService.myUnreferGlobalRole(ctx, roleId);
+        return true;
+    }
+
     @Mutation()
     @Allow(Permission.Authenticated)
     async myUpdateChannelCustomFields(

@@ -191,4 +191,39 @@ export class TenantAdminResolver {
     ): Promise<any[]> {
         return this.tenantMemberService.importDefaultRoles(ctx, channelId);
     }
+
+    @Query()
+    @Allow(Permission.SuperAdmin)
+    async globalRoles(@Ctx() ctx: RequestContext): Promise<any[]> {
+        return this.tenantMemberService.globalRoles(ctx);
+    }
+
+    @Mutation()
+    @Allow(Permission.SuperAdmin)
+    async createGlobalRole(
+        @Ctx() ctx: RequestContext,
+        @Args() args: { channelIds: string[]; input: { code: string; description: string; permissions: string[] } },
+    ): Promise<any[]> {
+        return this.tenantMemberService.createGlobalRoleWithChannels(ctx, args.channelIds, args.input);
+    }
+
+    @Mutation()
+    @Allow(Permission.SuperAdmin)
+    async referGlobalRoleToChannel(
+        @Ctx() ctx: RequestContext,
+        @Args() args: { roleId: string; channelId: string },
+    ): Promise<boolean> {
+        await this.tenantMemberService.referGlobalRoleToChannel(ctx, args.roleId, args.channelId);
+        return true;
+    }
+
+    @Mutation()
+    @Allow(Permission.SuperAdmin)
+    async unreferGlobalRoleFromChannel(
+        @Ctx() ctx: RequestContext,
+        @Args() args: { roleId: string; channelId: string },
+    ): Promise<boolean> {
+        await this.tenantMemberService.unreferGlobalRoleFromChannel(ctx, args.roleId, args.channelId);
+        return true;
+    }
 }

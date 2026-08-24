@@ -746,6 +746,8 @@ import { DefaultDataService } from './seed/default-data.service';
                     tenantMembers: [TenantMember!]!
                     myTenantRoles: [Role!]!
                     myTenantAccess(channelId: ID): MyTenantAccess!
+                    globalRoles: [Role!]!
+                    myGlobalRolesAvailable: [Role!]!
                     tenantSearchAdmins(channelId: ID!, keyword: String!): [TenantAdminCandidate!]!
                     mySearchAdmins(keyword: String!): [TenantAdminCandidate!]!
                 }
@@ -762,6 +764,11 @@ import { DefaultDataService } from './seed/default-data.service';
                     updateTenantRole(roleId: ID!, input: UpdateTenantRoleInput!): Role!
                     deleteTenantRole(roleId: ID!): Boolean!
                     importDefaultRoles(channelId: ID!): [Role!]!
+                    createGlobalRole(channelIds: [ID!]!, input: CreateTenantRoleInput!): [Role!]!
+                    referGlobalRoleToChannel(roleId: ID!, channelId: ID!): Boolean!
+                    unreferGlobalRoleFromChannel(roleId: ID!, channelId: ID!): Boolean!
+                    myReferGlobalRole(roleId: ID!): Boolean!
+                    myUnreferGlobalRole(roleId: ID!): Boolean!
                     createTenantMember(input: CreateTenantMemberInput!): TenantMember!
                     setTenantMemberEnabled(id: ID!, enabled: Boolean!): TenantMember!
                     deleteTenantMember(id: ID!): Boolean!

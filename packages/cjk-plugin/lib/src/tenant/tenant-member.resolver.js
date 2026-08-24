@@ -55,6 +55,20 @@ let TenantMemberResolver = class TenantMemberResolver {
         this.tenantMemberService.assertChannelMember(ctx);
         return this.tenantMemberService.rolesForChannel(ctx, ctx.channelId);
     }
+    async myGlobalRolesAvailable(ctx) {
+        this.tenantMemberService.assertChannelMember(ctx);
+        return this.tenantMemberService.globalRoles(ctx);
+    }
+    async myReferGlobalRole(ctx, roleId) {
+        this.tenantMemberService.assertChannelMember(ctx);
+        await this.tenantMemberService.myReferGlobalRole(ctx, roleId);
+        return true;
+    }
+    async myUnreferGlobalRole(ctx, roleId) {
+        this.tenantMemberService.assertChannelMember(ctx);
+        await this.tenantMemberService.myUnreferGlobalRole(ctx, roleId);
+        return true;
+    }
     async myUpdateChannelCustomFields(ctx, input) {
         this.tenantMemberService.assertChannelMember(ctx);
         return this.tenantMemberService.updateMyChannelCustomFields(ctx, input);
@@ -151,6 +165,32 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext]),
     __metadata("design:returntype", Promise)
 ], TenantMemberResolver.prototype, "myTenantRoles", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], TenantMemberResolver.prototype, "myGlobalRolesAvailable", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(tenant_permissions_1.tenantRoleManagePermission.Permission),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('roleId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], TenantMemberResolver.prototype, "myReferGlobalRole", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(tenant_permissions_1.tenantRoleManagePermission.Permission),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('roleId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], TenantMemberResolver.prototype, "myUnreferGlobalRole", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(core_1.Permission.Authenticated),

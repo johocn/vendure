@@ -19,6 +19,9 @@ export declare class TenantMemberResolver {
     deleteTenantMember(ctx: RequestContext, id: string): Promise<boolean>;
     permissionCatalog(): Promise<PermissionCatalogGroup[]>;
     myTenantRoles(ctx: RequestContext): Promise<any[]>;
+    myGlobalRolesAvailable(ctx: RequestContext): Promise<any[]>;
+    myReferGlobalRole(ctx: RequestContext, roleId: ID): Promise<boolean>;
+    myUnreferGlobalRole(ctx: RequestContext, roleId: ID): Promise<boolean>;
     myUpdateChannelCustomFields(ctx: RequestContext, input: Record<string, any>): Promise<any>;
     myCreateTenantRole(ctx: RequestContext, args: {
         input: {
