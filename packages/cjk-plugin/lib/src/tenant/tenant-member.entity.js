@@ -56,6 +56,10 @@ __decorate([
     (0, typeorm_1.Column)({ type: 'text', nullable: true }),
     __metadata("design:type", Object)
 ], TenantMember.prototype, "remark", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', length: 32, nullable: true }),
+    __metadata("design:type", Object)
+], TenantMember.prototype, "phone", void 0);
 exports.TenantMember = TenantMember = __decorate([
     (0, typeorm_1.Entity)(),
     __metadata("design:paramtypes", [Object])

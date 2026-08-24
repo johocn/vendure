@@ -763,15 +763,15 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     mustChangePassword: Boolean!
                     displayName: String
                     remark: String
+                    phone: String
+                    roleIds: [ID!]!
                     createdAt: DateTime!
                     initialPassword: String
                 }
 
                 input CreateTenantInput {
-                    code: String!
-                    token: String
                     name: String!
-                    tenantNo: Int
+                    token: String
                     isOfficial: Boolean
                 }
 
@@ -795,6 +795,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     roleIds: [ID!]!
                     displayName: String
                     remark: String
+                    phone: String
                     enabled: Boolean
                     forcePasswordChange: Boolean
                 }
@@ -819,6 +820,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     roleIds: [ID!]!
                     displayName: String
                     remark: String
+                    phone: String
                     enabled: Boolean
                     forcePasswordChange: Boolean
                 }
@@ -880,6 +882,8 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     myCreateTenantRole(input: CreateTenantRoleInput!): Role!
                     myUpdateTenantRole(roleId: ID!, input: UpdateTenantRoleInput!): Role!
                     myDeleteTenantRole(roleId: ID!): Boolean!
+                    updateTenantMemberRoles(id: ID!, channelId: ID!, roleIds: [ID!]!): Boolean!
+                    myUpdateTenantMemberRoles(id: ID!, roleIds: [ID!]!): Boolean!
                     tenantChangeMyPassword(newPassword: String!): Boolean!
                     myUpdateChannelCustomFields(input: JSON!): JSON!
                 }

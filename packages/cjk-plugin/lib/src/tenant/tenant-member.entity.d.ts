@@ -14,4 +14,6 @@ export declare class TenantMember extends VendureEntity {
     mustChangePassword: boolean;
     displayName: string | null;
     remark: string | null;
+    /** 手机号（选填） */
+    phone: string | null;
 }

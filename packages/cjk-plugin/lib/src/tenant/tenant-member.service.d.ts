@@ -25,6 +25,7 @@ export interface CreateTenantAdminInput {
     roleIds: ID[];
     displayName?: string;
     remark?: string;
+    phone?: string;
     enabled?: boolean;
     /** 强制首登改密（默认：未显式传 password 时为 true；显式传 password 时为 false） */
     forcePasswordChange?: boolean;
@@ -45,17 +46,17 @@ export declare class TenantMemberService {
     assertRoleInChannel(ctx: RequestContext, roleId: ID, channelId: ID): Promise<void>;
     /** 安全加固：校验待绑定角色全部属于指定 channel，防止租户管理员绑定别店角色提权 */
     assertRolesInChannel(ctx: RequestContext, roleIds: ID[], channelId: ID): Promise<void>;
-    /** 建租户（Channel）——仅超管调用 */
+    /** 新建租户：自动分配 tenantNo（当前最大+1），code 由 tenantNo 派生 `t{tenantNo}`，避免手输冲突 */
     createChannel(ctx: RequestContext, input: {
-        code: string;
-        token?: string;
         name: string;
-        tenantNo?: number;
+        token?: string;
         isOfficial?: boolean;
     }): Promise<any>;
+    /** 取当前最大 tenantNo，自增 1；无数据时从 0 开始（第 1 个租户得到 1） */
+    private nextTenantNo;
     /** 租户启停（仅超管） */
     setChannelEnabled(ctx: RequestContext, channelId: ID, enabled: boolean): Promise<void>;
-    /** 更新租户基础信息（仅超管） */
+    /** 更新租户基础信息（仅超管）：name → shopName 一并写入 */
     updateChannel(ctx: RequestContext, channelId: ID, input: {
         name?: string;
         tenantNo?: number;
@@ -75,6 +76,10 @@ export declare class TenantMemberService {
     }, channelId?: ID): Promise<any>;
     /** 租户级角色删除（channelId 非空时校验角色归属，防横向越权） */
     deleteTenantRole(ctx: RequestContext, roleId: ID, channelId?: ID): Promise<void>;
+    /** 更换某人员在该租户内的角色：归属 + 白名单 + 横向越权三重校验 */
+    updateTenantMemberRoles(ctx: RequestContext, channelId: ID, memberId: ID, roleIds: ID[]): Promise<void>;
+    /** 返回人员在当前租户内的角色 id（用于改角色弹层回显勾选） */
+    memberRoleIdsInChannel(ctx: RequestContext, member: TenantMember): Promise<ID[]>;
     /** 超管为租户建管理员账号并绑定角色，同时写入 TenantMember */
     createTenantAdministrator(ctx: RequestContext, channelId: ID, input: CreateTenantAdminInput): Promise<TenantMember>;
     /** 当前登录者修改自身密码：更新 Administrator 密码，并清除其所有租户关联的首登强改密标志 */

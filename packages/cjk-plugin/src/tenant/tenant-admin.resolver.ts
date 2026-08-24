@@ -36,7 +36,7 @@ export class TenantAdminResolver {
     @Allow(Permission.SuperAdmin)
     async createTenant(
         @Ctx() ctx: RequestContext,
-        @Args() args: { input: { code: string; token?: string; name: string; tenantNo?: number; isOfficial?: boolean } },
+        @Args() args: { input: { name: string; token?: string; isOfficial?: boolean } },
     ): Promise<any> {
         return this.tenantMemberService.createChannel(ctx, args.input);
     }
@@ -141,6 +141,16 @@ export class TenantAdminResolver {
     @Allow(Permission.SuperAdmin)
     async deleteTenantRole(@Ctx() ctx: RequestContext, @Args('roleId') roleId: string): Promise<boolean> {
         await this.tenantMemberService.deleteTenantRole(ctx, roleId);
+        return true;
+    }
+
+    @Mutation()
+    @Allow(Permission.SuperAdmin)
+    async updateTenantMemberRoles(
+        @Ctx() ctx: RequestContext,
+        @Args() args: { id: string; channelId: string; roleIds: string[] },
+    ): Promise<boolean> {
+        await this.tenantMemberService.updateTenantMemberRoles(ctx, args.channelId, args.id, args.roleIds);
         return true;
     }
 }

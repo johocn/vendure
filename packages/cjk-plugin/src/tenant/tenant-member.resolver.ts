@@ -1,5 +1,5 @@
-import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { Allow, Ctx, Permission, RequestContext, RoleService, TransactionalConnection } from '@vendure/core';
+import { Args, Mutation, Query, Resolver, ResolveField, Parent } from '@nestjs/graphql';
+import { Allow, Ctx, Permission, RequestContext, RoleService, TransactionalConnection, Administrator, ID } from '@vendure/core';
 import { Inject } from '@nestjs/common';
 import { TenantMemberService, PERMISSION_CATALOG, PermissionCatalogGroup } from './tenant-member.service';
 import { TenantMember } from './tenant-member.entity';
@@ -105,6 +105,22 @@ export class TenantMemberResolver {
         this.tenantMemberService.assertChannelMember(ctx);
         await this.tenantMemberService.deleteTenantRole(ctx, roleId, ctx.channelId);
         return true;
+    }
+
+    /** 更换当前租户某人员的角色 */
+    @Mutation()
+    @Allow(tenantMemberManagePermission.Permission)
+    async myUpdateTenantMemberRoles(
+        @Ctx() ctx: RequestContext,
+        @Args() args: { id: string; roleIds: string[] },
+    ): Promise<boolean> {
+        await this.tenantMemberService.updateTenantMemberRoles(ctx, ctx.channelId, args.id, args.roleIds);
+        return true;
+    }
+
+    @ResolveField('roleIds')
+    async roleIds(@Parent() member: TenantMember, @Ctx() ctx: RequestContext): Promise<ID[]> {
+        return this.tenantMemberService.memberRoleIdsInChannel(ctx, member);
     }
 
     /** 当前登录者修改自身密码（首登强改密时清标志） */

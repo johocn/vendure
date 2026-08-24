@@ -20,10 +20,8 @@ export declare class TenantAdminResolver {
     tenant(ctx: RequestContext, id: string): Promise<any>;
     createTenant(ctx: RequestContext, args: {
         input: {
-            code: string;
-            token?: string;
             name: string;
-            tenantNo?: number;
+            token?: string;
             isOfficial?: boolean;
         };
     }): Promise<any>;
@@ -69,4 +67,9 @@ export declare class TenantAdminResolver {
         };
     }): Promise<any>;
     deleteTenantRole(ctx: RequestContext, roleId: string): Promise<boolean>;
+    updateTenantMemberRoles(ctx: RequestContext, args: {
+        id: string;
+        channelId: string;
+        roleIds: string[];
+    }): Promise<boolean>;
 }

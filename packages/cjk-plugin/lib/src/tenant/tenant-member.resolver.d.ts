@@ -1,4 +1,4 @@
-import { RequestContext, RoleService, TransactionalConnection } from '@vendure/core';
+import { RequestContext, RoleService, TransactionalConnection, ID } from '@vendure/core';
 import { TenantMemberService, PermissionCatalogGroup } from './tenant-member.service';
 import { TenantMember } from './tenant-member.entity';
 /**
@@ -33,6 +33,12 @@ export declare class TenantMemberResolver {
         input: any;
     }): Promise<any>;
     myDeleteTenantRole(ctx: RequestContext, roleId: string): Promise<boolean>;
+    /** 更换当前租户某人员的角色 */
+    myUpdateTenantMemberRoles(ctx: RequestContext, args: {
+        id: string;
+        roleIds: string[];
+    }): Promise<boolean>;
+    roleIds(member: TenantMember, ctx: RequestContext): Promise<ID[]>;
     /** 当前登录者修改自身密码（首登强改密时清标志） */
     tenantChangeMyPassword(ctx: RequestContext, newPassword: string): Promise<boolean>;
 }

@@ -118,6 +118,7 @@ export interface CreateTenantAdminInput {
     roleIds: ID[];
     displayName?: string;
     remark?: string;
+    phone?: string;
     enabled?: boolean;
     /** 强制首登改密（默认：未显式传 password 时为 true；显式传 password 时为 false） */
     forcePasswordChange?: boolean;
@@ -187,26 +188,37 @@ export class TenantMemberService {
         }
     }
 
-    /** 建租户（Channel）——仅超管调用 */
+    /** 新建租户：自动分配 tenantNo（当前最大+1），code 由 tenantNo 派生 `t{tenantNo}`，避免手输冲突 */
     async createChannel(
         ctx: RequestContext,
-        input: { code: string; token?: string; name: string; tenantNo?: number; isOfficial?: boolean },
+        input: { name: string; token?: string; isOfficial?: boolean },
     ): Promise<any> {
+        const tenantNo = await this.nextTenantNo(ctx);
+        const code = `t${tenantNo}`;
         const channel = await this.channelService.create(ctx, {
-            code: input.code,
+            code,
             token: input.token,
             defaultLanguageCode: 'zh_Hans' as any,
             currencyCode: 'CNY' as any,
             pricesIncludeTax: true,
             customFields: {
-                tenantNo: input.tenantNo ?? null,
+                tenantNo,
                 isOfficial: input.isOfficial ?? false,
                 enabled: true,
                 shopName: input.name,
             },
         } as any);
-        Logger.info(`已创建租户 ${input.code}`, loggerCtx);
+        Logger.info(`已创建租户 ${code}（tenantNo=${tenantNo}）`, loggerCtx);
         return channel;
+    }
+
+    /** 取当前最大 tenantNo，自增 1；无数据时从 0 开始（第 1 个租户得到 1） */
+    private async nextTenantNo(ctx: RequestContext): Promise<number> {
+        const result = await this.channelService.findAll(ctx, { skip: 0, take: 10000 });
+        const nos = (result.items as any[])
+            .map((c: any) => Number(c?.customFields?.tenantNo))
+            .filter((n: number) => Number.isFinite(n));
+        return (nos.length ? Math.max(...nos) : 0) + 1;
     }
 
     /** 租户启停（仅超管） */
@@ -217,7 +229,7 @@ export class TenantMemberService {
         } as any);
     }
 
-    /** 更新租户基础信息（仅超管） */
+    /** 更新租户基础信息（仅超管）：name → shopName 一并写入 */
     async updateChannel(
         ctx: RequestContext,
         channelId: ID,
@@ -228,6 +240,7 @@ export class TenantMemberService {
             customFields: {
                 tenantNo: input.tenantNo,
                 isOfficial: input.isOfficial,
+                shopName: input.name,
             },
         } as any);
     }
@@ -266,6 +279,44 @@ export class TenantMemberService {
         await this.roleService.delete(ctx, roleId);
     }
 
+    /** 更换某人员在该租户内的角色：归属 + 白名单 + 横向越权三重校验 */
+    async updateTenantMemberRoles(
+        ctx: RequestContext,
+        channelId: ID,
+        memberId: ID,
+        roleIds: ID[],
+    ): Promise<void> {
+        await this.assertChannelMember(ctx);
+        if (roleIds && roleIds.length > 0) {
+            await this.assertRolesInChannel(ctx, roleIds, channelId);
+        }
+        const repo = this.connection.getRepository(ctx, TenantMember);
+        const member = await repo.findOne({ where: { id: String(memberId) } });
+        if (!member) throw new Error('MEMBER_NOT_FOUND');
+        const memberChannelId = String(member.channelId);
+        const targetChannelId = String(channelId);
+        if (memberChannelId !== targetChannelId) throw new Error('MEMBER_NOT_IN_CHANNEL');
+        await this.administratorService.update(ctx, {
+            id: member.administratorId as any,
+            roleIds: roleIds || [],
+        } as any);
+    }
+
+    /** 返回人员在当前租户内的角色 id（用于改角色弹层回显勾选） */
+    async memberRoleIdsInChannel(ctx: RequestContext, member: TenantMember): Promise<ID[]> {
+        if (!member?.administratorId) return [];
+        const repo = this.connection.getRepository(ctx, Administrator);
+        const admin = await repo.findOne({
+            where: { id: member.administratorId },
+            relations: ['user', 'user.roles'],
+        });
+        if (!admin?.user?.roles) return [];
+        const channelId = String(member.channelId);
+        return (admin.user.roles as any[])
+            .filter((r: any) => (r.channels || []).some((c: any) => String(c.id) === channelId))
+            .map((r: any) => String(r.id));
+    }
+
     /** 超管为租户建管理员账号并绑定角色，同时写入 TenantMember */
     async createTenantAdministrator(ctx: RequestContext, channelId: ID, input: CreateTenantAdminInput): Promise<TenantMember> {
         if (input.roleIds && input.roleIds.length > 0) {
@@ -290,6 +341,7 @@ export class TenantMemberService {
         member.mustChangePassword = mustChangePassword;
         member.displayName = input.displayName ?? input.emailAddress;
         member.remark = input.remark ?? null;
+        member.phone = input.phone ?? null;
         await repo.save(member);
         if (generated) {
             // 一次性初始口令：仅本属性运行时回传展示，不落库

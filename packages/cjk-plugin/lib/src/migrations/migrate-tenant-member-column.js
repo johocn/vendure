@@ -28,24 +28,27 @@ let TenantMemberColumnMigration = class TenantMemberColumnMigration {
             const tableName = metadata.tableName;
             const queryRunner = this.connection.createQueryRunner();
             try {
-                if (!(await queryRunner.hasColumn(tableName, 'must_change_password'))) {
-                    // 布尔列默认 false：既有人员无需强改密，仅新建未传密码人员置 true
-                    await queryRunner.addColumn(tableName, new typeorm_2.TableColumn({
-                        name: 'must_change_password',
-                        type: 'boolean',
-                        isNullable: false,
-                        default: false,
-                    }));
-                }
+                const ensure = async (name, type, nullable, defaultVal) => {
+                    if (!(await queryRunner.hasColumn(tableName, name))) {
+                        await queryRunner.addColumn(tableName, new typeorm_2.TableColumn({
+                            name,
+                            type,
+                            isNullable: nullable,
+                            default: defaultVal,
+                        }));
+                    }
+                };
+                await ensure('must_change_password', 'boolean', false, false);
+                await ensure('phone', 'varchar(32)', true, undefined);
             }
             finally {
                 await queryRunner.release();
             }
         }
         catch (e) {
-            // 补列失败不阻塞启动，等待下次启动重试；不影响已存在列的场景
+            // 补列失败不阻塞启动，等待下次启动重试
             // eslint-disable-next-line no-console
-            console.error('[TenantMemberColumnMigration] failed to ensure mustChangePassword column:', e === null || e === void 0 ? void 0 : e.message);
+            console.error('[TenantMemberColumnMigration] failed to ensure columns:', e === null || e === void 0 ? void 0 : e.message);
         }
     }
 };

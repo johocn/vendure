@@ -74,6 +74,14 @@ let TenantMemberResolver = class TenantMemberResolver {
         await this.tenantMemberService.deleteTenantRole(ctx, roleId, ctx.channelId);
         return true;
     }
+    /** 更换当前租户某人员的角色 */
+    async myUpdateTenantMemberRoles(ctx, args) {
+        await this.tenantMemberService.updateTenantMemberRoles(ctx, ctx.channelId, args.id, args.roleIds);
+        return true;
+    }
+    async roleIds(member, ctx) {
+        return this.tenantMemberService.memberRoleIdsInChannel(ctx, member);
+    }
     /** 当前登录者修改自身密码（首登强改密时清标志） */
     async tenantChangeMyPassword(ctx, newPassword) {
         await this.tenantMemberService.changeMyPassword(ctx, newPassword);
@@ -167,6 +175,23 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, String]),
     __metadata("design:returntype", Promise)
 ], TenantMemberResolver.prototype, "myDeleteTenantRole", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(tenant_permissions_1.tenantMemberManagePermission.Permission),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], TenantMemberResolver.prototype, "myUpdateTenantMemberRoles", null);
+__decorate([
+    (0, graphql_1.ResolveField)('roleIds'),
+    __param(0, (0, graphql_1.Parent)()),
+    __param(1, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [tenant_member_entity_1.TenantMember, core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], TenantMemberResolver.prototype, "roleIds", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(core_1.Permission.Authenticated),

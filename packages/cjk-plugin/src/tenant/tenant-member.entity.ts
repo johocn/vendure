@@ -37,4 +37,8 @@ export class TenantMember extends VendureEntity {
 
     @Column({ type: 'text', nullable: true })
     remark!: string | null;
+
+    /** 手机号（选填） */
+    @Column({ type: 'varchar', length: 32, nullable: true })
+    phone!: string | null;
 }

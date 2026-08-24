@@ -159,24 +159,34 @@ let TenantMemberService = class TenantMemberService {
             await this.assertRoleInChannel(ctx, roleId, channelId);
         }
     }
-    /** 建租户（Channel）——仅超管调用 */
+    /** 新建租户：自动分配 tenantNo（当前最大+1），code 由 tenantNo 派生 `t{tenantNo}`，避免手输冲突 */
     async createChannel(ctx, input) {
-        var _a, _b;
+        var _a;
+        const tenantNo = await this.nextTenantNo(ctx);
+        const code = `t${tenantNo}`;
         const channel = await this.channelService.create(ctx, {
-            code: input.code,
+            code,
             token: input.token,
             defaultLanguageCode: 'zh_Hans',
             currencyCode: 'CNY',
             pricesIncludeTax: true,
             customFields: {
-                tenantNo: (_a = input.tenantNo) !== null && _a !== void 0 ? _a : null,
-                isOfficial: (_b = input.isOfficial) !== null && _b !== void 0 ? _b : false,
+                tenantNo,
+                isOfficial: (_a = input.isOfficial) !== null && _a !== void 0 ? _a : false,
                 enabled: true,
                 shopName: input.name,
             },
         });
-        core_1.Logger.info(`已创建租户 ${input.code}`, constants_1.loggerCtx);
+        core_1.Logger.info(`已创建租户 ${code}（tenantNo=${tenantNo}）`, constants_1.loggerCtx);
         return channel;
+    }
+    /** 取当前最大 tenantNo，自增 1；无数据时从 0 开始（第 1 个租户得到 1） */
+    async nextTenantNo(ctx) {
+        const result = await this.channelService.findAll(ctx, { skip: 0, take: 10000 });
+        const nos = result.items
+            .map((c) => { var _a; return Number((_a = c === null || c === void 0 ? void 0 : c.customFields) === null || _a === void 0 ? void 0 : _a.tenantNo); })
+            .filter((n) => Number.isFinite(n));
+        return (nos.length ? Math.max(...nos) : 0) + 1;
     }
     /** 租户启停（仅超管） */
     async setChannelEnabled(ctx, channelId, enabled) {
@@ -185,13 +195,14 @@ let TenantMemberService = class TenantMemberService {
             customFields: { enabled },
         });
     }
-    /** 更新租户基础信息（仅超管） */
+    /** 更新租户基础信息（仅超管）：name → shopName 一并写入 */
     async updateChannel(ctx, channelId, input) {
         await this.channelService.update(ctx, {
             id: channelId,
             customFields: {
                 tenantNo: input.tenantNo,
                 isOfficial: input.isOfficial,
+                shopName: input.name,
             },
         });
     }
@@ -224,9 +235,45 @@ let TenantMemberService = class TenantMemberService {
             await this.assertRoleInChannel(ctx, roleId, channelId);
         await this.roleService.delete(ctx, roleId);
     }
+    /** 更换某人员在该租户内的角色：归属 + 白名单 + 横向越权三重校验 */
+    async updateTenantMemberRoles(ctx, channelId, memberId, roleIds) {
+        await this.assertChannelMember(ctx);
+        if (roleIds && roleIds.length > 0) {
+            await this.assertRolesInChannel(ctx, roleIds, channelId);
+        }
+        const repo = this.connection.getRepository(ctx, tenant_member_entity_1.TenantMember);
+        const member = await repo.findOne({ where: { id: String(memberId) } });
+        if (!member)
+            throw new Error('MEMBER_NOT_FOUND');
+        const memberChannelId = String(member.channelId);
+        const targetChannelId = String(channelId);
+        if (memberChannelId !== targetChannelId)
+            throw new Error('MEMBER_NOT_IN_CHANNEL');
+        await this.administratorService.update(ctx, {
+            id: member.administratorId,
+            roleIds: roleIds || [],
+        });
+    }
+    /** 返回人员在当前租户内的角色 id（用于改角色弹层回显勾选） */
+    async memberRoleIdsInChannel(ctx, member) {
+        var _a;
+        if (!(member === null || member === void 0 ? void 0 : member.administratorId))
+            return [];
+        const repo = this.connection.getRepository(ctx, core_1.Administrator);
+        const admin = await repo.findOne({
+            where: { id: member.administratorId },
+            relations: ['user', 'user.roles'],
+        });
+        if (!((_a = admin === null || admin === void 0 ? void 0 : admin.user) === null || _a === void 0 ? void 0 : _a.roles))
+            return [];
+        const channelId = String(member.channelId);
+        return admin.user.roles
+            .filter((r) => (r.channels || []).some((c) => String(c.id) === channelId))
+            .map((r) => String(r.id));
+    }
     /** 超管为租户建管理员账号并绑定角色，同时写入 TenantMember */
     async createTenantAdministrator(ctx, channelId, input) {
-        var _a, _b, _c, _d, _e, _f;
+        var _a, _b, _c, _d, _e, _f, _g;
         if (input.roleIds && input.roleIds.length > 0) {
             await this.assertRolesInChannel(ctx, input.roleIds, channelId);
         }
@@ -249,6 +296,7 @@ let TenantMemberService = class TenantMemberService {
         member.mustChangePassword = mustChangePassword;
         member.displayName = (_e = input.displayName) !== null && _e !== void 0 ? _e : input.emailAddress;
         member.remark = (_f = input.remark) !== null && _f !== void 0 ? _f : null;
+        member.phone = (_g = input.phone) !== null && _g !== void 0 ? _g : null;
         await repo.save(member);
         if (generated) {
             // 一次性初始口令：仅本属性运行时回传展示，不落库
