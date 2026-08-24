@@ -130,5 +130,11 @@ export const tenantChannelCustomFields: CustomFields = {
             defaultValue: false,
             label: [{ languageCode: LanguageCode.zh_Hans, value: '官方自营' }],
         },
+        {
+            name: 'shopName',
+            type: 'string',
+            nullable: true,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '店铺名' }],
+        },
     ],
 };

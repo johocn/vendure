@@ -132,6 +132,12 @@ exports.tenantChannelCustomFields = {
             defaultValue: false,
             label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '官方自营' }],
         },
+        {
+            name: 'shopName',
+            type: 'string',
+            nullable: true,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '店铺名' }],
+        },
     ],
 };
 //# sourceMappingURL=tenant-channel-custom-fields.js.map

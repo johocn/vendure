@@ -64,7 +64,7 @@ import { MapProviderRegistry } from './map/map-provider-registry';
 import { MapService } from './map/map.service';
 import { MapAdminResolver } from './map/map-admin.resolver';
 import { MapShopResolver } from './map/map-shop.resolver';
-import { MapConfigEncryptionMigration, PayConfigEncryptionMigration, TenantMemberColumnMigration } from './migrations';
+import { MapConfigEncryptionMigration, PayConfigEncryptionMigration, TenantMemberColumnMigration, ChannelCustomColumnMigration } from './migrations';
 import { AuthConfigService } from './auth/auth-config.service';
 import { PayConfigService } from './payment/pay-config.service';
 import { MapConfigService } from './map/map-config.service';
@@ -107,6 +107,7 @@ import { DefaultDataService } from './seed/default-data.service';
         MapConfigEncryptionMigration,
         PayConfigEncryptionMigration,
         TenantMemberColumnMigration,
+        ChannelCustomColumnMigration,
         AuthConfigService,
         PayConfigService,
         MapConfigService,

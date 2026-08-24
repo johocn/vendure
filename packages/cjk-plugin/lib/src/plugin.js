@@ -235,6 +235,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             migrations_1.MapConfigEncryptionMigration,
             migrations_1.PayConfigEncryptionMigration,
             migrations_1.TenantMemberColumnMigration,
+            migrations_1.ChannelCustomColumnMigration,
             auth_config_service_1.AuthConfigService,
             pay_config_service_1.PayConfigService,
             map_config_service_1.MapConfigService,
