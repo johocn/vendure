@@ -84,4 +84,5 @@ export declare class TenantAdminResolver {
         phone?: string;
         remark?: string;
     }): Promise<any>;
+    importDefaultRoles(ctx: RequestContext, channelId: string): Promise<any[]>;
 }

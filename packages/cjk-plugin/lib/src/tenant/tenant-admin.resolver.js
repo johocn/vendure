@@ -107,6 +107,9 @@ let TenantAdminResolver = class TenantAdminResolver {
             remark: args.remark,
         });
     }
+    async importDefaultRoles(ctx, channelId) {
+        return this.tenantMemberService.importDefaultRoles(ctx, channelId);
+    }
 };
 exports.TenantAdminResolver = TenantAdminResolver;
 __decorate([
@@ -262,6 +265,15 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], TenantAdminResolver.prototype, "tenantLinkMember", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('channelId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String]),
+    __metadata("design:returntype", Promise)
+], TenantAdminResolver.prototype, "importDefaultRoles", null);
 exports.TenantAdminResolver = TenantAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __param(0, (0, common_1.Inject)(core_1.ChannelService)),

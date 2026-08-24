@@ -185,4 +185,13 @@ export class TenantAdminResolver {
             remark: args.remark,
         });
     }
+
+    @Mutation()
+    @Allow(Permission.SuperAdmin)
+    async importDefaultRoles(
+        @Ctx() ctx: RequestContext,
+        @Args('channelId') channelId: string,
+    ): Promise<any[]> {
+        return this.tenantMemberService.importDefaultRoles(ctx, channelId);
+    }
 }

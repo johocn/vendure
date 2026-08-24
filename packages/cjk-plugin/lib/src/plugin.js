@@ -101,7 +101,7 @@ let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
         return CjkPlugin_1;
     }
     async onApplicationBootstrap() {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
         const injector = new core_1.Injector(this.moduleRef);
         // 幂等创建默认配送/支付数据（自提点、门店自提配送档案、门店收银支付档案）
         if (this.options.seedDefaultData !== false && ((_a = this.options.profiles) === null || _a === void 0 ? void 0 : _a.enabled) !== false) {
@@ -145,8 +145,17 @@ let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
         if ((_k = this.options.tenant) === null || _k === void 0 ? void 0 : _k.enabled) {
             core_1.Logger.info('Tenant (multi-channel) module enabled', constants_1.loggerCtx);
         }
+        // 存量租户默认角色补种子（幂等，仅补缺失；失败不阻塞启动）
+        if ((_l = this.options.tenant) === null || _l === void 0 ? void 0 : _l.enabled) {
+            try {
+                await injector.get(tenant_member_service_1.TenantMemberService).ensureDefaultRolesForAllChannels(core_1.RequestContext.empty());
+            }
+            catch (e) {
+                core_1.Logger.warn(`默认角色补种子失败（可后台手动触发 importDefaultRoles）: ${e.message}`, constants_1.loggerCtx);
+            }
+        }
         // 注册 Profile 事件订阅
-        if (((_l = this.options.profiles) === null || _l === void 0 ? void 0 : _l.enabled) !== false) {
+        if (((_m = this.options.profiles) === null || _m === void 0 ? void 0 : _m.enabled) !== false) {
             const eventBus = injector.get(core_3.EventBus);
             const shippingSvc = injector.get(shipping_profile_service_1.ShippingProfileService);
             const paymentSvc = injector.get(payment_profile_service_1.PaymentProfileService);
@@ -889,6 +898,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     createTenantRole(channelId: ID!, input: CreateTenantRoleInput!): Role!
                     updateTenantRole(roleId: ID!, input: UpdateTenantRoleInput!): Role!
                     deleteTenantRole(roleId: ID!): Boolean!
+                    importDefaultRoles(channelId: ID!): [Role!]!
                     createTenantMember(input: CreateTenantMemberInput!): TenantMember!
                     setTenantMemberEnabled(id: ID!, enabled: Boolean!): TenantMember!
                     deleteTenantMember(id: ID!): Boolean!

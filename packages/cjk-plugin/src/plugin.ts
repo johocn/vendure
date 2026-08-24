@@ -1,5 +1,5 @@
 import { Inject, MiddlewareConsumer, NestModule, OnApplicationBootstrap, Type } from '@nestjs/common';
-import { I18nService, Injector, Logger, PluginCommonModule, VendurePlugin } from '@vendure/core';
+import { I18nService, Injector, Logger, PluginCommonModule, RequestContext, VendurePlugin } from '@vendure/core';
 import { APP_GUARD, ModuleRef } from '@nestjs/core';
 
 import { CJK_PLUGIN_OPTIONS, loggerCtx } from './constants';
@@ -761,6 +761,7 @@ import { DefaultDataService } from './seed/default-data.service';
                     createTenantRole(channelId: ID!, input: CreateTenantRoleInput!): Role!
                     updateTenantRole(roleId: ID!, input: UpdateTenantRoleInput!): Role!
                     deleteTenantRole(roleId: ID!): Boolean!
+                    importDefaultRoles(channelId: ID!): [Role!]!
                     createTenantMember(input: CreateTenantMemberInput!): TenantMember!
                     setTenantMemberEnabled(id: ID!, enabled: Boolean!): TenantMember!
                     deleteTenantMember(id: ID!): Boolean!
@@ -1200,6 +1201,15 @@ export class CjkPlugin implements OnApplicationBootstrap, NestModule {
 
         if (this.options.tenant?.enabled) {
             Logger.info('Tenant (multi-channel) module enabled', loggerCtx);
+        }
+
+        // 存量租户默认角色补种子（幂等，仅补缺失；失败不阻塞启动）
+        if (this.options.tenant?.enabled) {
+            try {
+                await injector.get(TenantMemberService).ensureDefaultRolesForAllChannels(RequestContext.empty());
+            } catch (e: any) {
+                Logger.warn(`默认角色补种子失败（可后台手动触发 importDefaultRoles）: ${e.message}`, loggerCtx);
+            }
         }
 
         // 注册 Profile 事件订阅
