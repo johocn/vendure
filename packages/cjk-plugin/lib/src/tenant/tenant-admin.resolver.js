@@ -19,9 +19,8 @@ const common_1 = require("@nestjs/common");
 const tenant_member_service_1 = require("./tenant-member.service");
 const tenant_member_entity_1 = require("./tenant-member.entity");
 let TenantAdminResolver = class TenantAdminResolver {
-    constructor(channelService, roleService, connection, tenantMemberService) {
+    constructor(channelService, connection, tenantMemberService) {
         this.channelService = channelService;
-        this.roleService = roleService;
         this.connection = connection;
         this.tenantMemberService = tenantMemberService;
     }
@@ -77,9 +76,7 @@ let TenantAdminResolver = class TenantAdminResolver {
         return true;
     }
     async tenantRoles(ctx, channelId) {
-        const result = await this.roleService.findAll(ctx);
-        const chId = String(channelId);
-        return result.items.filter((r) => (r.channels || []).some((c) => String(c.id) === chId));
+        return this.tenantMemberService.rolesForChannel(ctx, channelId);
     }
     async createTenantRole(ctx, args) {
         return this.tenantMemberService.createTenantRole(ctx, args.channelId, args.input);
@@ -277,11 +274,9 @@ __decorate([
 exports.TenantAdminResolver = TenantAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __param(0, (0, common_1.Inject)(core_1.ChannelService)),
-    __param(1, (0, common_1.Inject)(core_1.RoleService)),
-    __param(2, (0, common_1.Inject)(core_1.TransactionalConnection)),
-    __param(3, (0, common_1.Inject)(tenant_member_service_1.TenantMemberService)),
+    __param(1, (0, common_1.Inject)(core_1.TransactionalConnection)),
+    __param(2, (0, common_1.Inject)(tenant_member_service_1.TenantMemberService)),
     __metadata("design:paramtypes", [core_1.ChannelService,
-        core_1.RoleService,
         core_1.TransactionalConnection,
         tenant_member_service_1.TenantMemberService])
 ], TenantAdminResolver);

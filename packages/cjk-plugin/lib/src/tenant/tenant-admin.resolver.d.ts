@@ -1,12 +1,11 @@
-import { RequestContext, ChannelService, RoleService, TransactionalConnection } from '@vendure/core';
+import { RequestContext, ChannelService, TransactionalConnection } from '@vendure/core';
 import { TenantMemberService } from './tenant-member.service';
 import { TenantMember } from './tenant-member.entity';
 export declare class TenantAdminResolver {
     private channelService;
-    private roleService;
     private connection;
     private tenantMemberService;
-    constructor(channelService: ChannelService, roleService: RoleService, connection: TransactionalConnection, tenantMemberService: TenantMemberService);
+    constructor(channelService: ChannelService, connection: TransactionalConnection, tenantMemberService: TenantMemberService);
     tenants(ctx: RequestContext, args: {
         options: {
             skip?: number;

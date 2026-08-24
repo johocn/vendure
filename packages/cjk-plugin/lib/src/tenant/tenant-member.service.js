@@ -241,6 +241,14 @@ let TenantMemberService = class TenantMemberService {
             .getMany();
         return rows.some((r) => (r.channels || []).some((c) => String(c.id) === channelId));
     }
+    /** 按 channelId 直查该租户全部角色（绕过 roleService.findAll 的「当前用户在目标 channel 需拥有全部权限」过滤，
+     *  否则超管在未绑定的 channerl 上会读不到该租户任何角色）。 */
+    async rolesForChannel(ctx, channelId) {
+        const repo = this.connection.getRepository(ctx, core_1.Role);
+        const all = await repo.find({ relations: ['channels'] });
+        const chId = String(channelId);
+        return all.filter((r) => (r.channels || []).some((c) => String(c.id) === chId));
+    }
     /** 系统直建租户级角色（绕过 roleService.create 的权限校验，仅用于启动补种子/一键导入这类系统操作）。
      *  幂等：仅当该 code 在本 channel 不存在时才创建。 */
     async createTenantRoleDirect(ctx, channelId, input) {

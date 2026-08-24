@@ -23,8 +23,7 @@ const tenant_permissions_1 = require("./tenant-permissions");
  * 租户管理员 API：所有操作强制限定在 ctx.channelId（当前请求租户）。
  */
 let TenantMemberResolver = class TenantMemberResolver {
-    constructor(roleService, connection, tenantMemberService) {
-        this.roleService = roleService;
+    constructor(connection, tenantMemberService) {
         this.connection = connection;
         this.tenantMemberService = tenantMemberService;
     }
@@ -54,9 +53,7 @@ let TenantMemberResolver = class TenantMemberResolver {
     }
     async myTenantRoles(ctx) {
         this.tenantMemberService.assertChannelMember(ctx);
-        const result = await this.roleService.findAll(ctx);
-        const chId = String(ctx.channelId);
-        return result.items.filter((r) => (r.channels || []).some((c) => String(c.id) === chId));
+        return this.tenantMemberService.rolesForChannel(ctx, ctx.channelId);
     }
     async myUpdateChannelCustomFields(ctx, input) {
         this.tenantMemberService.assertChannelMember(ctx);
@@ -236,11 +233,9 @@ __decorate([
 ], TenantMemberResolver.prototype, "tenantChangeMyPassword", null);
 exports.TenantMemberResolver = TenantMemberResolver = __decorate([
     (0, graphql_1.Resolver)(),
-    __param(0, (0, common_1.Inject)(core_1.RoleService)),
-    __param(1, (0, common_1.Inject)(core_1.TransactionalConnection)),
-    __param(2, (0, common_1.Inject)(tenant_member_service_1.TenantMemberService)),
-    __metadata("design:paramtypes", [core_1.RoleService,
-        core_1.TransactionalConnection,
+    __param(0, (0, common_1.Inject)(core_1.TransactionalConnection)),
+    __param(1, (0, common_1.Inject)(tenant_member_service_1.TenantMemberService)),
+    __metadata("design:paramtypes", [core_1.TransactionalConnection,
         tenant_member_service_1.TenantMemberService])
 ], TenantMemberResolver);
 //# sourceMappingURL=tenant-member.resolver.js.map

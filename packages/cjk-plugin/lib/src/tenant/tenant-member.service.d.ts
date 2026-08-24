@@ -71,6 +71,9 @@ export declare class TenantMemberService {
     }): Promise<any>;
     /** 判断指定 channel 是否已存在该 code 的关联角色（幂等判定）。 */
     private roleExistsInChannel;
+    /** 按 channelId 直查该租户全部角色（绕过 roleService.findAll 的「当前用户在目标 channel 需拥有全部权限」过滤，
+     *  否则超管在未绑定的 channerl 上会读不到该租户任何角色）。 */
+    rolesForChannel(ctx: RequestContext, channelId: ID): Promise<any[]>;
     /** 系统直建租户级角色（绕过 roleService.create 的权限校验，仅用于启动补种子/一键导入这类系统操作）。
      *  幂等：仅当该 code 在本 channel 不存在时才创建。 */
     private createTenantRoleDirect;

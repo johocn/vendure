@@ -1,5 +1,5 @@
 import { Args, Mutation, Query, Resolver, ResolveField, Parent } from '@nestjs/graphql';
-import { Allow, Ctx, Permission, RequestContext, RoleService, TransactionalConnection, Administrator, ID } from '@vendure/core';
+import { Allow, Ctx, Permission, RequestContext, TransactionalConnection, Administrator, ID } from '@vendure/core';
 import { Inject } from '@nestjs/common';
 import { TenantMemberService, PERMISSION_CATALOG, PermissionCatalogGroup } from './tenant-member.service';
 import { TenantMember } from './tenant-member.entity';
@@ -11,7 +11,6 @@ import { tenantMemberManagePermission, tenantRoleManagePermission } from './tena
 @Resolver()
 export class TenantMemberResolver {
     constructor(
-        @Inject(RoleService) private roleService: RoleService,
         @Inject(TransactionalConnection) private connection: TransactionalConnection,
         @Inject(TenantMemberService) private tenantMemberService: TenantMemberService,
     ) {}
@@ -65,9 +64,7 @@ export class TenantMemberResolver {
     @Allow(Permission.Authenticated)
     async myTenantRoles(@Ctx() ctx: RequestContext): Promise<any[]> {
         this.tenantMemberService.assertChannelMember(ctx);
-        const result = await this.roleService.findAll(ctx);
-        const chId = String(ctx.channelId);
-        return (result as any).items.filter((r: any) => (r.channels || []).some((c: any) => String(c.id) === chId));
+        return this.tenantMemberService.rolesForChannel(ctx, ctx.channelId);
     }
 
     @Mutation()
