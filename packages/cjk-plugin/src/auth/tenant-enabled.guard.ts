@@ -50,6 +50,21 @@ export class TenantEnabledGuard implements CanActivate {
             throw new ForbiddenError();
         }
 
+        // 首登强改密：mustChangePassword=true 时，在完成改密前仅放行基础/改密操作，其余一律拒绝
+        if (member && member.mustChangePassword === true) {
+            const field = parsed.info.fieldName;
+            const allowedAtForcedChange = new Set([
+                'tenantChangeMyPassword', // 改密本身
+                'myTenantAccess', // 登录后判断是否需要跳改密
+                'me',
+                'logout',
+                'activeChannel',
+            ]);
+            if (!field || !allowedAtForcedChange.has(field)) {
+                throw new ForbiddenError();
+            }
+        }
+
         return true;
     }
 }

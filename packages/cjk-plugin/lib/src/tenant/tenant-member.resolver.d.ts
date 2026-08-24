@@ -1,5 +1,5 @@
 import { RequestContext, RoleService, TransactionalConnection } from '@vendure/core';
-import { TenantMemberService } from './tenant-member.service';
+import { TenantMemberService, PermissionCatalogGroup } from './tenant-member.service';
 import { TenantMember } from './tenant-member.entity';
 /**
  * 租户管理员 API：所有操作强制限定在 ctx.channelId（当前请求租户）。
@@ -18,7 +18,9 @@ export declare class TenantMemberResolver {
         enabled: boolean;
     }): Promise<TenantMember>;
     deleteTenantMember(ctx: RequestContext, id: string): Promise<boolean>;
+    permissionCatalog(): Promise<PermissionCatalogGroup[]>;
     myTenantRoles(ctx: RequestContext): Promise<any[]>;
+    myUpdateChannelCustomFields(ctx: RequestContext, input: Record<string, any>): Promise<any>;
     myCreateTenantRole(ctx: RequestContext, args: {
         input: {
             code: string;
@@ -31,4 +33,6 @@ export declare class TenantMemberResolver {
         input: any;
     }): Promise<any>;
     myDeleteTenantRole(ctx: RequestContext, roleId: string): Promise<boolean>;
+    /** 当前登录者修改自身密码（首登强改密时清标志） */
+    tenantChangeMyPassword(ctx: RequestContext, newPassword: string): Promise<boolean>;
 }

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
     Administrator,
     AdministratorService,
+    Channel,
     ChannelService,
     ID,
     Logger,
@@ -14,43 +15,100 @@ import {
 import { loggerCtx } from '../constants';
 import { TenantMember } from './tenant-member.entity';
 
-/** 租户级角色可用的业务权限白名单（不含超管专属权限；Vendure v3 已将 Variant/Fulfillment 等合并进 catalog/product/order 权限） */
-export const BUSINESS_PERMISSIONS: string[] = [
-    Permission.ReadCatalog,
-    Permission.CreateCatalog,
-    Permission.UpdateCatalog,
-    Permission.DeleteCatalog,
-    Permission.ReadProduct,
-    Permission.CreateProduct,
-    Permission.UpdateProduct,
-    Permission.DeleteProduct,
-    Permission.ReadCollection,
-    Permission.CreateCollection,
-    Permission.UpdateCollection,
-    Permission.DeleteCollection,
-    Permission.ReadOrder,
-    Permission.UpdateOrder,
-    Permission.CreateOrder,
-    Permission.ReadAsset,
-    Permission.CreateAsset,
-    Permission.UpdateAsset,
-    Permission.DeleteAsset,
-    Permission.ReadShippingMethod,
-    Permission.CreateShippingMethod,
-    Permission.UpdateShippingMethod,
-    Permission.DeleteShippingMethod,
-    Permission.ReadPaymentMethod,
-    Permission.CreatePaymentMethod,
-    Permission.UpdatePaymentMethod,
-    Permission.DeletePaymentMethod,
-    Permission.ReadChannel,
-    Permission.UpdateChannel,
-    Permission.ReadAdministrator,
-    Permission.UpdateAdministrator,
-    'TenantRoleManage',
-    'TenantMemberManage',
-    'VerifyOrder',
-].map(String);
+export interface PermissionCatalogItem {
+    code: string;
+    label: string;
+}
+export interface PermissionCatalogGroup {
+    key: string;
+    label: string;
+    items: PermissionCatalogItem[];
+}
+
+/**
+ * 租户级业务权限目录（单一来源，前后端共用，避免双份硬编码）。
+ * 不含超管专属权限；Vendure v3 已将 Variant/Fulfillment 等合并进 catalog/product/order 权限。
+ * 前端角色管理页通过 permissionCatalog 查询动态渲染，BUSINESS_PERMISSIONS 由此扁平派生。
+ */
+export const PERMISSION_CATALOG: PermissionCatalogGroup[] = [
+    {
+        key: 'catalog',
+        label: '商品/目录',
+        items: [
+            { code: Permission.ReadCatalog, label: '目录·读' },
+            { code: Permission.CreateCatalog, label: '目录·增' },
+            { code: Permission.UpdateCatalog, label: '目录·改' },
+            { code: Permission.DeleteCatalog, label: '目录·删' },
+            { code: Permission.ReadProduct, label: '商品·读' },
+            { code: Permission.CreateProduct, label: '商品·增' },
+            { code: Permission.UpdateProduct, label: '商品·改' },
+            { code: Permission.DeleteProduct, label: '商品·删' },
+        ],
+    },
+    {
+        key: 'collection',
+        label: '分类',
+        items: [
+            { code: Permission.ReadCollection, label: '分类·读' },
+            { code: Permission.CreateCollection, label: '分类·增' },
+            { code: Permission.UpdateCollection, label: '分类·改' },
+            { code: Permission.DeleteCollection, label: '分类·删' },
+        ],
+    },
+    {
+        key: 'order',
+        label: '订单',
+        items: [
+            { code: Permission.ReadOrder, label: '订单·读' },
+            { code: Permission.UpdateOrder, label: '订单·改' },
+            { code: Permission.CreateOrder, label: '订单·建' },
+        ],
+    },
+    {
+        key: 'asset',
+        label: '图片',
+        items: [
+            { code: Permission.ReadAsset, label: '图片·读' },
+            { code: Permission.CreateAsset, label: '图片·传' },
+            { code: Permission.UpdateAsset, label: '图片·改' },
+            { code: Permission.DeleteAsset, label: '图片·删' },
+        ],
+    },
+    {
+        key: 'shipping',
+        label: '配送',
+        items: [
+            { code: Permission.ReadShippingMethod, label: '配送·读' },
+            { code: Permission.CreateShippingMethod, label: '配送·增' },
+            { code: Permission.UpdateShippingMethod, label: '配送·改' },
+            { code: Permission.DeleteShippingMethod, label: '配送·删' },
+        ],
+    },
+    {
+        key: 'payment',
+        label: '支付',
+        items: [
+            { code: Permission.ReadPaymentMethod, label: '支付·读' },
+            { code: Permission.CreatePaymentMethod, label: '支付·增' },
+            { code: Permission.UpdatePaymentMethod, label: '支付·改' },
+            { code: Permission.DeletePaymentMethod, label: '支付·删' },
+        ],
+    },
+    {
+        key: 'tenant',
+        label: '租户管理',
+        items: [
+            { code: 'TenantRoleManage', label: '角色·管理' },
+            { code: 'TenantMemberManage', label: '人员·管理' },
+            { code: 'VerifyOrder', label: '核销·预留' },
+        ],
+    },
+];
+
+/** 租户级角色可用的业务权限白名单（由 PERMISSION_CATALOG 扁平派生，建模/校验统一使用） */
+export const BUSINESS_PERMISSIONS: string[] = PERMISSION_CATALOG.flatMap((g) =>
+    g.items.map((i) => i.code),
+);
 
 export interface CreateTenantAdminInput {
     firstName?: string;
@@ -61,6 +119,30 @@ export interface CreateTenantAdminInput {
     displayName?: string;
     remark?: string;
     enabled?: boolean;
+    /** 强制首登改密（默认：未显式传 password 时为 true；显式传 password 时为 false） */
+    forcePasswordChange?: boolean;
+}
+
+/** 生成随机强口令：≥10 位，保证大小写/数字/符号各类至少一个 */
+export function randomStrongPassword(length = 12): string {
+    const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    const lower = 'abcdefghijkmnopqrstuvwxyz';
+    const digits = '23456789';
+    const symbols = '!@#$%^&*_-+';
+    const all = upper + lower + digits + symbols;
+    const rand = (n: number) => Math.floor(Math.random() * n);
+    const parts = [
+        upper[rand(upper.length)],
+        lower[rand(lower.length)],
+        digits[rand(digits.length)],
+        symbols[rand(symbols.length)],
+    ];
+    for (let i = parts.length; i < length; i++) parts.push(all[rand(all.length)]);
+    for (let i = parts.length - 1; i > 0; i--) {
+        const j = rand(i + 1);
+        [parts[i], parts[j]] = [parts[j], parts[i]];
+    }
+    return parts.join('');
 }
 
 @Injectable()
@@ -189,11 +271,15 @@ export class TenantMemberService {
         if (input.roleIds && input.roleIds.length > 0) {
             await this.assertRolesInChannel(ctx, input.roleIds, channelId);
         }
+        // 未显式提供密码 → 生成随机强口令，并默认标记首登强改密
+        const generated = !input.password;
+        const password = input.password ?? randomStrongPassword();
+        const mustChangePassword = input.forcePasswordChange === true || generated;
         const admin = await this.administratorService.create(ctx, {
             firstName: input.firstName ?? '',
             lastName: input.lastName ?? input.emailAddress,
             emailAddress: input.emailAddress,
-            password: input.password,
+            password,
             roleIds: input.roleIds,
         } as any);
         const repo = this.connection.getRepository(ctx, TenantMember);
@@ -201,10 +287,32 @@ export class TenantMemberService {
         member.administratorId = String(admin.id);
         member.channelId = String(channelId);
         member.enabled = input.enabled ?? true;
+        member.mustChangePassword = mustChangePassword;
         member.displayName = input.displayName ?? input.emailAddress;
         member.remark = input.remark ?? null;
         await repo.save(member);
+        if (generated) {
+            // 一次性初始口令：仅本属性运行时回传展示，不落库
+            (member as any).initialPassword = password;
+        }
         return member;
+    }
+
+    /** 当前登录者修改自身密码：更新 Administrator 密码，并清除其所有租户关联的首登强改密标志 */
+    async changeMyPassword(ctx: RequestContext, newPassword: string): Promise<void> {
+        if (!newPassword || newPassword.length < 8) throw new Error('WEAK_PASSWORD');
+        const user = (ctx as any).session?.user;
+        if (!user?.id) throw new Error('NOT_AUTHENTICATED');
+        const adminId = String(user.id);
+        await this.administratorService.update(ctx, { id: adminId as any, password: newPassword } as any);
+        const repo = this.connection.getRepository(ctx, TenantMember);
+        const members = await repo.find({ where: { administratorId: adminId } });
+        for (const m of members) {
+            if (m.mustChangePassword) {
+                m.mustChangePassword = false;
+                await repo.save(m);
+            }
+        }
     }
 
     /** 租户人员启停 */
@@ -222,5 +330,21 @@ export class TenantMemberService {
         const member = await repo.findOne({ where: { id: memberId, channelId: String(channelId) } });
         if (!member) throw new Error('MEMBER_NOT_FOUND');
         await repo.remove(member);
+    }
+
+    /** 租户管理员更新「本 channel」装修类 customFields（仅覆盖传入字段，禁止触碰安全字段） */
+    async updateMyChannelCustomFields(ctx: RequestContext, input: Record<string, any> = {}): Promise<any> {
+        const channelId = String(ctx.channelId);
+        const channelRepo = this.connection.getRepository(ctx, Channel);
+        const channel = await channelRepo.findOne({ where: { id: channelId } as any });
+        if (!channel) throw new Error('CHANNEL_NOT_FOUND');
+        // 安全字段禁止租户端越权修改（启停/租户号/官营标记仅超管可改）
+        const protectedKeys = ['enabled', 'tenantNo', 'isOfficial'];
+        const merged = {
+            ...((channel as any).customFields || {}),
+            ...Object.fromEntries(Object.entries(input).filter(([k]) => !protectedKeys.includes(k))),
+        };
+        await this.channelService.update(ctx, { id: channelId, customFields: merged } as any);
+        return this.channelService.findOne(ctx, channelId as any);
     }
 }

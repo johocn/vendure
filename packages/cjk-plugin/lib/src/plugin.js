@@ -234,6 +234,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             { provide: core_2.APP_GUARD, useClass: tenant_enabled_guard_1.TenantEnabledGuard },
             migrations_1.MapConfigEncryptionMigration,
             migrations_1.PayConfigEncryptionMigration,
+            migrations_1.TenantMemberColumnMigration,
             auth_config_service_1.AuthConfigService,
             pay_config_service_1.PayConfigService,
             map_config_service_1.MapConfigService,
@@ -759,9 +760,11 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     administratorId: ID!
                     channelId: ID!
                     enabled: Boolean!
+                    mustChangePassword: Boolean!
                     displayName: String
                     remark: String
                     createdAt: DateTime!
+                    initialPassword: String
                 }
 
                 input CreateTenantInput {
@@ -793,6 +796,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     displayName: String
                     remark: String
                     enabled: Boolean
+                    forcePasswordChange: Boolean
                 }
 
                 input CreateTenantRoleInput {
@@ -816,6 +820,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     displayName: String
                     remark: String
                     enabled: Boolean
+                    forcePasswordChange: Boolean
                 }
 
                 type MyTenantChannel {
@@ -827,22 +832,35 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     tenantNo: Int
                     isOfficial: Boolean!
                     memberEnabled: Boolean!
+                    mustChangePassword: Boolean!
                 }
 
                 type MyTenantAccess {
                     isSuperAdmin: Boolean!
                     channels: [MyTenantChannel!]!
                     permissions: [String!]!
+                    mustChangePassword: Boolean!
+                }
+
+                type PermissionCatalogItem {
+                    code: String!
+                    label: String!
+                }
+                type PermissionCatalogGroup {
+                    key: String!
+                    label: String!
+                    items: [PermissionCatalogItem!]!
                 }
 
                 extend type Query {
+                    permissionCatalog: [PermissionCatalogGroup!]
                     tenants(options: TenantListOptions): ChannelList!
                     tenant(id: ID!): Channel
                     tenantAdministrators(channelId: ID!): [TenantMember!]!
                     tenantRoles(channelId: ID!): [Role!]!
                     tenantMembers: [TenantMember!]!
                     myTenantRoles: [Role!]!
-                    myTenantAccess: MyTenantAccess!
+                    myTenantAccess(channelId: ID): MyTenantAccess!
                 }
 
                 extend type Mutation {
@@ -862,6 +880,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     myCreateTenantRole(input: CreateTenantRoleInput!): Role!
                     myUpdateTenantRole(roleId: ID!, input: UpdateTenantRoleInput!): Role!
                     myDeleteTenantRole(roleId: ID!): Boolean!
+                    tenantChangeMyPassword(newPassword: String!): Boolean!
                 }
             `;
             },

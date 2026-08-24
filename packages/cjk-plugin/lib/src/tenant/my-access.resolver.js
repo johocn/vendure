@@ -20,14 +20,17 @@ const tenant_member_entity_1 = require("./tenant-member.entity");
 /**
  * 登录后返回当前后台用户的租户访问信息：
  * - channels：每个有权限的租户的启停状态（enabled）与该用户在该租户的人员启停（memberEnabled）
- * - permissions：当前用户在所有角色中累积的业务权限码（供前端菜单渲染）
+ * - permissions：当前用户在角色中累积的业务权限码（供前端菜单渲染）
+ *   - 传入 channelId 时仅返回该 channel 对应角色限定的权限（按当前激活店铺渲染菜单），
+ *     不传则返回跨 channel 并集（登录/选店阶段）。后端 API 授权由 ctx.userHasPermissions
+ *     已按激活 channel 校验，此处仅影响前端菜单展示。
  */
 let MyAccessResolver = class MyAccessResolver {
     constructor(channelService, connection) {
         this.channelService = channelService;
         this.connection = connection;
     }
-    async myTenantAccess(ctx) {
+    async myTenantAccess(ctx, channelId) {
         var _a, _b;
         const user = (_a = ctx.session) === null || _a === void 0 ? void 0 : _a.user;
         const isSuperAdmin = ctx.userHasPermissions([core_1.Permission.SuperAdmin]);
@@ -63,21 +66,29 @@ let MyAccessResolver = class MyAccessResolver {
                 tenantNo: (_a = ccf.tenantNo) !== null && _a !== void 0 ? _a : null,
                 isOfficial: ccf.isOfficial === true,
                 memberEnabled: isSuperAdmin ? true : (member ? member.enabled : true),
+                mustChangePassword: isSuperAdmin ? false : (member ? member.mustChangePassword === true : false),
             };
         });
-        // 权限码集合（前端菜单渲染用）
+        // 权限码集合（前端菜单渲染用）：传 channelId 时仅取该 channel 对应角色的权限
         const permissions = new Set();
         if (isSuperAdmin) {
             permissions.add(core_1.Permission.SuperAdmin);
         }
         for (const r of (user === null || user === void 0 ? void 0 : user.roles) || []) {
-            for (const p of r.permissions || [])
-                permissions.add(p);
+            // 角色是否覆盖指定 channel（未指定 channelId 时视为全部，即跨 channel 并集）
+            const coversChannel = channelId === undefined || channelId === null || channelId === ''
+                ? true
+                : (r.channels || []).some((c) => String(c.id) === String(channelId));
+            if (coversChannel) {
+                for (const p of r.permissions || [])
+                    permissions.add(p);
+            }
         }
         return {
             isSuperAdmin,
             channels: result,
             permissions: [...permissions],
+            mustChangePassword: !isSuperAdmin && result.some((c) => c.mustChangePassword),
         };
     }
 };
@@ -86,8 +97,9 @@ __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('channelId', { type: () => graphql_1.ID, nullable: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:paramtypes", [core_1.RequestContext, String]),
     __metadata("design:returntype", Promise)
 ], MyAccessResolver.prototype, "myTenantAccess", null);
 exports.MyAccessResolver = MyAccessResolver = __decorate([

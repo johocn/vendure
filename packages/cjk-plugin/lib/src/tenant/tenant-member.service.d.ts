@@ -1,6 +1,21 @@
 import { AdministratorService, ChannelService, ID, RequestContext, RoleService, TransactionalConnection } from '@vendure/core';
 import { TenantMember } from './tenant-member.entity';
-/** 租户级角色可用的业务权限白名单（不含超管专属权限；Vendure v3 已将 Variant/Fulfillment 等合并进 catalog/product/order 权限） */
+export interface PermissionCatalogItem {
+    code: string;
+    label: string;
+}
+export interface PermissionCatalogGroup {
+    key: string;
+    label: string;
+    items: PermissionCatalogItem[];
+}
+/**
+ * 租户级业务权限目录（单一来源，前后端共用，避免双份硬编码）。
+ * 不含超管专属权限；Vendure v3 已将 Variant/Fulfillment 等合并进 catalog/product/order 权限。
+ * 前端角色管理页通过 permissionCatalog 查询动态渲染，BUSINESS_PERMISSIONS 由此扁平派生。
+ */
+export declare const PERMISSION_CATALOG: PermissionCatalogGroup[];
+/** 租户级角色可用的业务权限白名单（由 PERMISSION_CATALOG 扁平派生，建模/校验统一使用） */
 export declare const BUSINESS_PERMISSIONS: string[];
 export interface CreateTenantAdminInput {
     firstName?: string;
@@ -11,7 +26,11 @@ export interface CreateTenantAdminInput {
     displayName?: string;
     remark?: string;
     enabled?: boolean;
+    /** 强制首登改密（默认：未显式传 password 时为 true；显式传 password 时为 false） */
+    forcePasswordChange?: boolean;
 }
+/** 生成随机强口令：≥10 位，保证大小写/数字/符号各类至少一个 */
+export declare function randomStrongPassword(length?: number): string;
 export declare class TenantMemberService {
     private connection;
     private administratorService;
@@ -58,8 +77,12 @@ export declare class TenantMemberService {
     deleteTenantRole(ctx: RequestContext, roleId: ID, channelId?: ID): Promise<void>;
     /** 超管为租户建管理员账号并绑定角色，同时写入 TenantMember */
     createTenantAdministrator(ctx: RequestContext, channelId: ID, input: CreateTenantAdminInput): Promise<TenantMember>;
+    /** 当前登录者修改自身密码：更新 Administrator 密码，并清除其所有租户关联的首登强改密标志 */
+    changeMyPassword(ctx: RequestContext, newPassword: string): Promise<void>;
     /** 租户人员启停 */
     setMemberEnabled(ctx: RequestContext, channelId: ID, memberId: ID, enabled: boolean): Promise<void>;
     /** 租户人员移除（仅删 TenantMember 关联，Administrator 本体保留） */
     removeMember(ctx: RequestContext, channelId: ID, memberId: ID): Promise<void>;
+    /** 租户管理员更新「本 channel」装修类 customFields（仅覆盖传入字段，禁止触碰安全字段） */
+    updateMyChannelCustomFields(ctx: RequestContext, input?: Record<string, any>): Promise<any>;
 }

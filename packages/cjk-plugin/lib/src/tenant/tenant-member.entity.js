@@ -45,6 +45,10 @@ __decorate([
     __metadata("design:type", Boolean)
 ], TenantMember.prototype, "enabled", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ type: 'boolean', default: false }),
+    __metadata("design:type", Boolean)
+], TenantMember.prototype, "mustChangePassword", void 0);
+__decorate([
     (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
     __metadata("design:type", Object)
 ], TenantMember.prototype, "displayName", void 0);

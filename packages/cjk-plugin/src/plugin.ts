@@ -64,7 +64,7 @@ import { MapProviderRegistry } from './map/map-provider-registry';
 import { MapService } from './map/map.service';
 import { MapAdminResolver } from './map/map-admin.resolver';
 import { MapShopResolver } from './map/map-shop.resolver';
-import { MapConfigEncryptionMigration, PayConfigEncryptionMigration } from './migrations';
+import { MapConfigEncryptionMigration, PayConfigEncryptionMigration, TenantMemberColumnMigration } from './migrations';
 import { AuthConfigService } from './auth/auth-config.service';
 import { PayConfigService } from './payment/pay-config.service';
 import { MapConfigService } from './map/map-config.service';
@@ -106,6 +106,7 @@ import { DefaultDataService } from './seed/default-data.service';
         { provide: APP_GUARD, useClass: TenantEnabledGuard },
         MapConfigEncryptionMigration,
         PayConfigEncryptionMigration,
+        TenantMemberColumnMigration,
         AuthConfigService,
         PayConfigService,
         MapConfigService,
@@ -631,9 +632,11 @@ import { DefaultDataService } from './seed/default-data.service';
                     administratorId: ID!
                     channelId: ID!
                     enabled: Boolean!
+                    mustChangePassword: Boolean!
                     displayName: String
                     remark: String
                     createdAt: DateTime!
+                    initialPassword: String
                 }
 
                 input CreateTenantInput {
@@ -665,6 +668,7 @@ import { DefaultDataService } from './seed/default-data.service';
                     displayName: String
                     remark: String
                     enabled: Boolean
+                    forcePasswordChange: Boolean
                 }
 
                 input CreateTenantRoleInput {
@@ -688,6 +692,7 @@ import { DefaultDataService } from './seed/default-data.service';
                     displayName: String
                     remark: String
                     enabled: Boolean
+                    forcePasswordChange: Boolean
                 }
 
                 type MyTenantChannel {
@@ -699,22 +704,35 @@ import { DefaultDataService } from './seed/default-data.service';
                     tenantNo: Int
                     isOfficial: Boolean!
                     memberEnabled: Boolean!
+                    mustChangePassword: Boolean!
                 }
 
                 type MyTenantAccess {
                     isSuperAdmin: Boolean!
                     channels: [MyTenantChannel!]!
                     permissions: [String!]!
+                    mustChangePassword: Boolean!
+                }
+
+                type PermissionCatalogItem {
+                    code: String!
+                    label: String!
+                }
+                type PermissionCatalogGroup {
+                    key: String!
+                    label: String!
+                    items: [PermissionCatalogItem!]!
                 }
 
                 extend type Query {
+                    permissionCatalog: [PermissionCatalogGroup!]
                     tenants(options: TenantListOptions): ChannelList!
                     tenant(id: ID!): Channel
                     tenantAdministrators(channelId: ID!): [TenantMember!]!
                     tenantRoles(channelId: ID!): [Role!]!
                     tenantMembers: [TenantMember!]!
                     myTenantRoles: [Role!]!
-                    myTenantAccess: MyTenantAccess!
+                    myTenantAccess(channelId: ID): MyTenantAccess!
                 }
 
                 extend type Mutation {
@@ -734,6 +752,7 @@ import { DefaultDataService } from './seed/default-data.service';
                     myCreateTenantRole(input: CreateTenantRoleInput!): Role!
                     myUpdateTenantRole(roleId: ID!, input: UpdateTenantRoleInput!): Role!
                     myDeleteTenantRole(roleId: ID!): Boolean!
+                    tenantChangeMyPassword(newPassword: String!): Boolean!
                 }
             `;
         },

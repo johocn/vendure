@@ -48,11 +48,18 @@ let TenantMemberResolver = class TenantMemberResolver {
         await this.tenantMemberService.removeMember(ctx, ctx.channelId, id);
         return true;
     }
+    async permissionCatalog() {
+        return tenant_member_service_1.PERMISSION_CATALOG;
+    }
     async myTenantRoles(ctx) {
         this.tenantMemberService.assertChannelMember(ctx);
         const result = await this.roleService.findAll(ctx);
         const chId = String(ctx.channelId);
         return result.items.filter((r) => (r.channels || []).some((c) => String(c.id) === chId));
+    }
+    async myUpdateChannelCustomFields(ctx, input) {
+        this.tenantMemberService.assertChannelMember(ctx);
+        return this.tenantMemberService.updateMyChannelCustomFields(ctx, input);
     }
     async myCreateTenantRole(ctx, args) {
         this.tenantMemberService.assertChannelMember(ctx);
@@ -65,6 +72,11 @@ let TenantMemberResolver = class TenantMemberResolver {
     async myDeleteTenantRole(ctx, roleId) {
         this.tenantMemberService.assertChannelMember(ctx);
         await this.tenantMemberService.deleteTenantRole(ctx, roleId, ctx.channelId);
+        return true;
+    }
+    /** 当前登录者修改自身密码（首登强改密时清标志） */
+    async tenantChangeMyPassword(ctx, newPassword) {
+        await this.tenantMemberService.changeMyPassword(ctx, newPassword);
         return true;
     }
 };
@@ -107,11 +119,27 @@ __decorate([
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], TenantMemberResolver.prototype, "permissionCatalog", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext]),
     __metadata("design:returntype", Promise)
 ], TenantMemberResolver.prototype, "myTenantRoles", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('input')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], TenantMemberResolver.prototype, "myUpdateChannelCustomFields", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(tenant_permissions_1.tenantRoleManagePermission.Permission),
@@ -139,6 +167,15 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, String]),
     __metadata("design:returntype", Promise)
 ], TenantMemberResolver.prototype, "myDeleteTenantRole", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('newPassword')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String]),
+    __metadata("design:returntype", Promise)
+], TenantMemberResolver.prototype, "tenantChangeMyPassword", null);
 exports.TenantMemberResolver = TenantMemberResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __param(0, (0, common_1.Inject)(core_1.RoleService)),

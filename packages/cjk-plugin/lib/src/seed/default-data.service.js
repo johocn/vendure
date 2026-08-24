@@ -34,8 +34,6 @@ exports.OFFICIAL_ROLE_TEMPLATES = [
             core_1.Permission.ReadCollection, core_1.Permission.CreateCollection, core_1.Permission.UpdateCollection, core_1.Permission.DeleteCollection,
             core_1.Permission.ReadShippingMethod, core_1.Permission.CreateShippingMethod, core_1.Permission.UpdateShippingMethod, core_1.Permission.DeleteShippingMethod,
             core_1.Permission.ReadPaymentMethod, core_1.Permission.CreatePaymentMethod, core_1.Permission.UpdatePaymentMethod, core_1.Permission.DeletePaymentMethod,
-            core_1.Permission.ReadChannel, core_1.Permission.UpdateChannel,
-            core_1.Permission.ReadAdministrator, core_1.Permission.UpdateAdministrator,
             'TenantRoleManage', 'TenantMemberManage',
         ],
     },

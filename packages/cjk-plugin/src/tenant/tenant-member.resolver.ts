@@ -1,7 +1,7 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { Allow, Ctx, Permission, RequestContext, RoleService, TransactionalConnection } from '@vendure/core';
 import { Inject } from '@nestjs/common';
-import { TenantMemberService } from './tenant-member.service';
+import { TenantMemberService, PERMISSION_CATALOG, PermissionCatalogGroup } from './tenant-member.service';
 import { TenantMember } from './tenant-member.entity';
 import { tenantMemberManagePermission, tenantRoleManagePermission } from './tenant-permissions';
 
@@ -56,11 +56,27 @@ export class TenantMemberResolver {
 
     @Query()
     @Allow(Permission.Authenticated)
+    async permissionCatalog(): Promise<PermissionCatalogGroup[]> {
+        return PERMISSION_CATALOG;
+    }
+
+    @Query()
+    @Allow(Permission.Authenticated)
     async myTenantRoles(@Ctx() ctx: RequestContext): Promise<any[]> {
         this.tenantMemberService.assertChannelMember(ctx);
         const result = await this.roleService.findAll(ctx);
         const chId = String(ctx.channelId);
         return (result as any).items.filter((r: any) => (r.channels || []).some((c: any) => String(c.id) === chId));
+    }
+
+    @Mutation()
+    @Allow(Permission.Authenticated)
+    async myUpdateChannelCustomFields(
+        @Ctx() ctx: RequestContext,
+        @Args('input') input: Record<string, any>,
+    ): Promise<any> {
+        this.tenantMemberService.assertChannelMember(ctx);
+        return this.tenantMemberService.updateMyChannelCustomFields(ctx, input);
     }
 
     @Mutation()
@@ -88,6 +104,17 @@ export class TenantMemberResolver {
     async myDeleteTenantRole(@Ctx() ctx: RequestContext, @Args('roleId') roleId: string): Promise<boolean> {
         this.tenantMemberService.assertChannelMember(ctx);
         await this.tenantMemberService.deleteTenantRole(ctx, roleId, ctx.channelId);
+        return true;
+    }
+
+    /** 当前登录者修改自身密码（首登强改密时清标志） */
+    @Mutation()
+    @Allow(Permission.Authenticated)
+    async tenantChangeMyPassword(
+        @Ctx() ctx: RequestContext,
+        @Args('newPassword') newPassword: string,
+    ): Promise<boolean> {
+        await this.tenantMemberService.changeMyPassword(ctx, newPassword);
         return true;
     }
 }

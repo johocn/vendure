@@ -28,6 +28,10 @@ export class TenantMember extends VendureEntity {
     @Column({ type: 'boolean', default: true })
     enabled!: boolean;
 
+    /** 首登强改密：为 true 时该人员在更改密码前只能执行基础/改密操作 */
+    @Column({ type: 'boolean', default: false })
+    mustChangePassword!: boolean;
+
     @Column({ type: 'varchar', nullable: true })
     displayName!: string | null;
 
