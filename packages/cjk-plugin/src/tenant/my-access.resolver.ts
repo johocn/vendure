@@ -25,7 +25,15 @@ export class MyAccessResolver {
         @Args('channelId', { type: () => GqlID, nullable: true }) channelId?: string,
     ): Promise<any> {
         const user = (ctx as any).session?.user;
-        const isSuperAdmin = ctx.userHasPermissions([Permission.SuperAdmin]);
+        // 超管判定不能依赖 ctx.userHasPermissions（按激活 channel 校验，superadmin 角色仅绑定 default
+        // channel 时在其它租户下会误判为 false）。改用 User.superAdmin 原生标记 + 角色权限兜底，跨 channel 恒生效。
+        const isSuperAdmin =
+            user?.superAdmin === true ||
+            (user?.roles || []).some(
+                (r: any) =>
+                    r.code === 'superadmin' ||
+                    (r.permissions || []).includes(Permission.SuperAdmin),
+            );
 
         // 当前用户可访问的 channel（Vendure 依据其角色）
         const me = await this.channelService.findAll(ctx, { take: 1000 });

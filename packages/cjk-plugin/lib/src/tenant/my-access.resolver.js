@@ -33,7 +33,11 @@ let MyAccessResolver = class MyAccessResolver {
     async myTenantAccess(ctx, channelId) {
         var _a, _b;
         const user = (_a = ctx.session) === null || _a === void 0 ? void 0 : _a.user;
-        const isSuperAdmin = ctx.userHasPermissions([core_1.Permission.SuperAdmin]);
+        // 超管判定不能依赖 ctx.userHasPermissions（按激活 channel 校验，superadmin 角色仅绑定 default
+        // channel 时在其它租户下会误判为 false）。改用 User.superAdmin 原生标记 + 角色权限兜底，跨 channel 恒生效。
+        const isSuperAdmin = (user === null || user === void 0 ? void 0 : user.superAdmin) === true ||
+            ((user === null || user === void 0 ? void 0 : user.roles) || []).some((r) => r.code === 'superadmin' ||
+                (r.permissions || []).includes(core_1.Permission.SuperAdmin));
         // 当前用户可访问的 channel（Vendure 依据其角色）
         const me = await this.channelService.findAll(ctx, { take: 1000 });
         let channels = me.items;
