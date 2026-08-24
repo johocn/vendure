@@ -45,6 +45,8 @@ import { ShippingTemplateService } from './shipping/shipping-template.service';
 import { ShippingTemplateAdminResolver } from './shipping/shipping-template-admin.resolver';
 import { shippingTemplatePermissionDefinitions } from './shipping/shipping-template-permissions';
 import { TenantSetupService } from './tenant/tenant-setup.service';
+import { TenantMember } from './tenant/tenant-member.entity';
+import { tenantPermissionDefinitions } from './tenant/tenant-permissions';
 import { CjkPluginOptions } from './types';
 import { AuthShopResolver } from './auth/auth-shop.resolver';
 import { AuthAdminResolver } from './auth/auth-admin.resolver';
@@ -86,7 +88,7 @@ import { DefaultDataService } from './seed/default-data.service';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod, PaymentTemplate],
+    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod, PaymentTemplate, TenantMember],
     providers: [
         { provide: CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
         TenantSetupService,
@@ -963,6 +965,12 @@ import { DefaultDataService } from './seed/default-data.service';
         config.authOptions.customPermissions = [
             ...(config.authOptions.customPermissions || []),
             ...paymentTemplatePermissionDefinitions,
+        ];
+
+        // 注册租户管理/角色/人员/核销自定义权限
+        config.authOptions.customPermissions = [
+            ...(config.authOptions.customPermissions || []),
+            ...tenantPermissionDefinitions,
         ];
 
         return config;
