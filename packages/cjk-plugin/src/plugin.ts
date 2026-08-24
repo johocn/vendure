@@ -55,6 +55,7 @@ import { CjkPluginOptions } from './types';
 import { AuthShopResolver } from './auth/auth-shop.resolver';
 import { AuthAdminResolver } from './auth/auth-admin.resolver';
 import { AuthMethodGuard } from './auth/auth-method-guard';
+import { TenantEnabledGuard } from './auth/tenant-enabled.guard';
 import { ssoAuthenticationStrategy } from './auth/sso-authentication-strategy';
 import { setAuthSecret } from './auth/crypto';
 import { DomainResolverService } from './tenant/domain-resolver.service';
@@ -102,6 +103,7 @@ import { DefaultDataService } from './seed/default-data.service';
         MapProviderRegistry,
         MapService,
         { provide: APP_GUARD, useClass: AuthMethodGuard },
+        { provide: APP_GUARD, useClass: TenantEnabledGuard },
         MapConfigEncryptionMigration,
         PayConfigEncryptionMigration,
         AuthConfigService,

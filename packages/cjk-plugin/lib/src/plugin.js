@@ -56,6 +56,7 @@ const my_access_resolver_1 = require("./tenant/my-access.resolver");
 const auth_shop_resolver_1 = require("./auth/auth-shop.resolver");
 const auth_admin_resolver_1 = require("./auth/auth-admin.resolver");
 const auth_method_guard_1 = require("./auth/auth-method-guard");
+const tenant_enabled_guard_1 = require("./auth/tenant-enabled.guard");
 const sso_authentication_strategy_1 = require("./auth/sso-authentication-strategy");
 const crypto_1 = require("./auth/crypto");
 const domain_resolver_service_1 = require("./tenant/domain-resolver.service");
@@ -230,6 +231,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             map_provider_registry_1.MapProviderRegistry,
             map_service_1.MapService,
             { provide: core_2.APP_GUARD, useClass: auth_method_guard_1.AuthMethodGuard },
+            { provide: core_2.APP_GUARD, useClass: tenant_enabled_guard_1.TenantEnabledGuard },
             migrations_1.MapConfigEncryptionMigration,
             migrations_1.PayConfigEncryptionMigration,
             auth_config_service_1.AuthConfigService,
