@@ -1,5 +1,6 @@
-// 确保 channel 表存在 shopname 列（店铺名 customField）
-// 生产（PostgreSQL）与本地开发（SQLite）都可能关闭 synchronize，故此 migration 幂等地补列。
+// 确保 channel 表存在 shopName 自定义字段列（Vendure 命名规则：customFields + 首字母大写字段名）
+// 生产（PostgreSQL）与本地开发（SQLite）都可能关闭 synchronize，故此 migration 幂等地补列；
+// 同时清理历史上误建的无前缀 shopname 列。
 import { Injectable, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectConnection } from '@nestjs/typeorm';
 import { Connection, TableColumn } from 'typeorm';
@@ -14,20 +15,24 @@ export class ChannelCustomColumnMigration implements OnApplicationBootstrap {
             const tableName = metadata.tableName;
             const queryRunner = this.connection.createQueryRunner();
             try {
-                const ensure = async (name: string, type: string, nullable: boolean, defaultVal?: unknown) => {
-                    if (!(await queryRunner.hasColumn(tableName, name))) {
-                        await queryRunner.addColumn(
-                            tableName,
-                            new TableColumn({
-                                name,
-                                type,
-                                isNullable: nullable,
-                                default: defaultVal,
-                            }),
-                        );
-                    }
-                };
-                await ensure('shopname', 'varchar(255)', true, undefined);
+                // 目标列：Vendure 自定义字段列名 = customFields + 首字母大写字段名，例如 shopName → customFieldsShopname
+                const COL = 'customFieldsShopname';
+                const cleanup = 'shopname';
+                if (await queryRunner.hasColumn(tableName, cleanup)) {
+                    await queryRunner.dropColumn(tableName, cleanup);
+                    // eslint-disable-next-line no-console
+                    console.log('[ChannelCustomColumnMigration] dropped stray column', cleanup);
+                }
+                if (!(await queryRunner.hasColumn(tableName, COL))) {
+                    await queryRunner.addColumn(
+                        tableName,
+                        new TableColumn({
+                            name: COL,
+                            type: 'varchar(255)',
+                            isNullable: true,
+                        }),
+                    );
+                }
             } finally {
                 await queryRunner.release();
             }
