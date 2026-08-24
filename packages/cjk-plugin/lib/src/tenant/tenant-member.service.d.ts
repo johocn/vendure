@@ -79,6 +79,8 @@ export declare class TenantMemberService {
     deleteTenantRole(ctx: RequestContext, roleId: ID, channelId?: ID): Promise<void>;
     /** 更换某人员在该租户内的角色：归属 + 白名单 + 横向越权三重校验 */
     updateTenantMemberRoles(ctx: RequestContext, channelId: ID, memberId: ID, roleIds: ID[]): Promise<void>;
+    /** 以「合并」语义同步某管理员在本 channel 的角色：仅替换本租户角色，保留其在其它租户的角色（跨店任职互不影响） */
+    syncMemberRolesInChannel(ctx: RequestContext, administratorId: ID, channelId: ID, roleIds: ID[]): Promise<void>;
     /** 返回人员在当前租户内的角色 id（用于改角色弹层回显勾选） */
     memberRoleIdsInChannel(ctx: RequestContext, member: TenantMember): Promise<ID[]>;
     /** 将 TenantMember 组装为含 roleIds 的视图对象（供列表查询直接返回，避免依赖 @ResolveField 子解析造成非空字段 null 报错） */

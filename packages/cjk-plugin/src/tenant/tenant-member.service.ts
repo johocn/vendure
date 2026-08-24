@@ -314,9 +314,34 @@ export class TenantMemberService {
         const memberChannelId = String(member.channelId);
         const targetChannelId = String(channelId);
         if (memberChannelId !== targetChannelId) throw new Error('MEMBER_NOT_IN_CHANNEL');
+        await this.syncMemberRolesInChannel(ctx, member.administratorId as any, channelId, roleIds || []);
+    }
+
+    /** 以「合并」语义同步某管理员在本 channel 的角色：仅替换本租户角色，保留其在其它租户的角色（跨店任职互不影响） */
+    async syncMemberRolesInChannel(
+        ctx: RequestContext,
+        administratorId: ID,
+        channelId: ID,
+        roleIds: ID[],
+    ): Promise<void> {
+        if (roleIds && roleIds.length > 0) {
+            await this.assertRolesInChannel(ctx, roleIds, channelId);
+        }
+        const adminRepo = this.connection.getRepository(ctx, Administrator);
+        const admin = await adminRepo.findOne({
+            where: { id: String(administratorId) },
+            relations: ['user', 'user.roles'],
+        });
+        if (!admin) throw new Error('ADMIN_NOT_FOUND');
+        const chId = String(channelId);
+        const own = ((admin.user?.roles as any[] | undefined) ?? []);
+        const keep = own
+            .filter((r: any) => !(r.channels || []).some((c: any) => String(c.id) === chId))
+            .map((r: any) => String(r.id));
+        const merged = Array.from(new Set([...keep, ...(roleIds || []).map(String)]));
         await this.administratorService.update(ctx, {
-            id: member.administratorId as any,
-            roleIds: roleIds || [],
+            id: String(administratorId),
+            roleIds: merged,
         } as any);
     }
 
