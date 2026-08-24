@@ -271,6 +271,108 @@ let TenantMemberService = class TenantMemberService {
         await roleRepo.save(role);
         return role;
     }
+    /** 全局唯一 code 幂等判定（全局角色不绑店，只看 code 是否已存在）。 */
+    async roleExistsGlobal(ctx, code) {
+        const repo = this.connection.getRepository(ctx, core_1.Role);
+        const count = await repo.count({ where: { code } });
+        return count > 0;
+    }
+    /** 直建全局角色（channels=[]）。幂等：code 已存在则返回 null。 */
+    async createGlobalRoleDirect(ctx, input) {
+        this.assertBusinessPermissions(input.permissions);
+        if (await this.roleExistsGlobal(ctx, input.code))
+            return null;
+        const roleRepo = this.connection.getRepository(ctx, core_1.Role);
+        const role = new core_1.Role({
+            code: input.code,
+            description: input.description,
+            permissions: [`Authenticated`, ...input.permissions],
+        });
+        role.channels = [];
+        await roleRepo.save(role);
+        return role;
+    }
+    /** 建全局角色并批量分发到多店：建 channels=[] 角色，再把勾选店加入 channels（幂等：code 已存在则 no-op）。 */
+    async createGlobalRoleWithChannels(ctx, channelIds, input) {
+        this.assertBusinessPermissions(input.permissions);
+        const targetChannels = [];
+        for (const id of channelIds) {
+            const ch = await this.connection
+                .getRepository(ctx, core_1.Channel)
+                .findOne({ where: { id: String(id) } });
+            if (ch)
+                targetChannels.push(ch);
+        }
+        const roleRepo = this.connection.getRepository(ctx, core_1.Role);
+        const existing = await roleRepo.findOne({ where: { code: input.code } });
+        if (existing) {
+            // 已存在：仅追加缺少的分发店（幂等）
+            const curIds = (existing.channels || []).map((c) => String(c.id));
+            existing.channels = [...(existing.channels || [])];
+            for (const ch of targetChannels) {
+                if (!curIds.includes(String(ch.id)))
+                    existing.channels.push(ch);
+            }
+            await roleRepo.save(existing);
+            return [existing];
+        }
+        const role = new core_1.Role({
+            code: input.code,
+            description: input.description,
+            permissions: [`Authenticated`, ...input.permissions],
+        });
+        role.channels = targetChannels;
+        await roleRepo.save(role);
+        return [role];
+    }
+    /** 把全局角色引用到某店（幂等：已含该店则 no-op；仅当是全局角色（channels 为空）才允许普通引用）。 */
+    async referGlobalRoleToChannel(ctx, roleId, channelId) {
+        const roleRepo = this.connection.getRepository(ctx, core_1.Role);
+        const role = await roleRepo.findOne({
+            where: { id: String(roleId) },
+            relations: ['channels'],
+        });
+        if (!role)
+            throw new Error('ROLE_NOT_FOUND');
+        const chId = String(channelId);
+        const curIds = (role.channels || []).map((c) => String(c.id));
+        if (!curIds.includes(chId) && (role.channels || []).length === 0) {
+            const ch = await this.connection
+                .getRepository(ctx, core_1.Channel)
+                .findOne({ where: { id: chId } });
+            if (!ch)
+                throw new Error('CHANNEL_NOT_FOUND');
+            role.channels = [...(role.channels || []), ch];
+            await roleRepo.save(role);
+        }
+    }
+    /** 取消某店对该全局角色的引用（移除该店；channels 变空则回到全局池）。 */
+    async unreferGlobalRoleFromChannel(ctx, roleId, channelId) {
+        const roleRepo = this.connection.getRepository(ctx, core_1.Role);
+        const role = await roleRepo.findOne({
+            where: { id: String(roleId) },
+            relations: ['channels'],
+        });
+        if (!role)
+            throw new Error('ROLE_NOT_FOUND');
+        const chId = String(channelId);
+        role.channels = (role.channels || []).filter((c) => String(c.id) !== chId);
+        await roleRepo.save(role);
+    }
+    /** 租户自助：引用全局角色到当前 ctx.channelId。 */
+    async myReferGlobalRole(ctx, roleId) {
+        await this.referGlobalRoleToChannel(ctx, roleId, ctx.channelId);
+    }
+    /** 租户自助：从当前 ctx.channelId 取消引用。 */
+    async myUnreferGlobalRole(ctx, roleId) {
+        await this.unreferGlobalRoleFromChannel(ctx, roleId, ctx.channelId);
+    }
+    /** 查全部全局角色（channels=[]）。 */
+    async globalRoles(ctx) {
+        const repo = this.connection.getRepository(ctx, core_1.Role);
+        const all = await repo.find({ relations: ['channels'] });
+        return all.filter((r) => !(r.channels || []).length);
+    }
     /** 单租户一键导入默认三角色（幂等）。已初始化则返回空数组，不重复建。 */
     async importDefaultRoles(ctx, channelId) {
         var _a;

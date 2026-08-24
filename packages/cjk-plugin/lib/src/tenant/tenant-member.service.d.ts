@@ -77,6 +77,30 @@ export declare class TenantMemberService {
     /** 系统直建租户级角色（绕过 roleService.create 的权限校验，仅用于启动补种子/一键导入这类系统操作）。
      *  幂等：仅当该 code 在本 channel 不存在时才创建。 */
     private createTenantRoleDirect;
+    /** 全局唯一 code 幂等判定（全局角色不绑店，只看 code 是否已存在）。 */
+    private roleExistsGlobal;
+    /** 直建全局角色（channels=[]）。幂等：code 已存在则返回 null。 */
+    createGlobalRoleDirect(ctx: RequestContext, input: {
+        code: string;
+        description: string;
+        permissions: string[];
+    }): Promise<any>;
+    /** 建全局角色并批量分发到多店：建 channels=[] 角色，再把勾选店加入 channels（幂等：code 已存在则 no-op）。 */
+    createGlobalRoleWithChannels(ctx: RequestContext, channelIds: ID[], input: {
+        code: string;
+        description: string;
+        permissions: string[];
+    }): Promise<any[]>;
+    /** 把全局角色引用到某店（幂等：已含该店则 no-op；仅当是全局角色（channels 为空）才允许普通引用）。 */
+    referGlobalRoleToChannel(ctx: RequestContext, roleId: ID, channelId: ID): Promise<void>;
+    /** 取消某店对该全局角色的引用（移除该店；channels 变空则回到全局池）。 */
+    unreferGlobalRoleFromChannel(ctx: RequestContext, roleId: ID, channelId: ID): Promise<void>;
+    /** 租户自助：引用全局角色到当前 ctx.channelId。 */
+    myReferGlobalRole(ctx: RequestContext, roleId: ID): Promise<void>;
+    /** 租户自助：从当前 ctx.channelId 取消引用。 */
+    myUnreferGlobalRole(ctx: RequestContext, roleId: ID): Promise<void>;
+    /** 查全部全局角色（channels=[]）。 */
+    globalRoles(ctx: RequestContext): Promise<any[]>;
     /** 单租户一键导入默认三角色（幂等）。已初始化则返回空数组，不重复建。 */
     importDefaultRoles(ctx: RequestContext, channelId: ID): Promise<any[]>;
     /** 启动补种子：扫描所有 Channel，缺默认角色则幂等补建；异常仅打日志不阻塞启动。 */
