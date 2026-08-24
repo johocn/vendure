@@ -241,6 +241,28 @@ let TenantMemberService = class TenantMemberService {
             .getMany();
         return rows.some((r) => (r.channels || []).some((c) => String(c.id) === channelId));
     }
+    /** 系统直建租户级角色（绕过 roleService.create 的权限校验，仅用于启动补种子/一键导入这类系统操作）。
+     *  幂等：仅当该 code 在本 channel 不存在时才创建。 */
+    async createTenantRoleDirect(ctx, channelId, input) {
+        this.assertBusinessPermissions(input.permissions);
+        const chId = String(channelId);
+        if (await this.roleExistsInChannel(ctx, chId, input.code))
+            return null;
+        const channel = await this.connection
+            .getRepository(ctx, core_1.Channel)
+            .findOne({ where: { id: chId } });
+        if (!channel)
+            throw new Error('CHANNEL_NOT_FOUND');
+        const roleRepo = this.connection.getRepository(ctx, core_1.Role);
+        const role = new core_1.Role({
+            code: input.code,
+            description: input.description,
+            permissions: [`Authenticated`, ...input.permissions],
+        });
+        role.channels = [channel];
+        await roleRepo.save(role);
+        return role;
+    }
     /** 单租户一键导入默认三角色（幂等）。已初始化则返回空数组，不重复建。 */
     async importDefaultRoles(ctx, channelId) {
         var _a;
@@ -258,11 +280,13 @@ let TenantMemberService = class TenantMemberService {
             return [];
         const created = [];
         for (const tpl of role_templates_1.OFFICIAL_ROLE_TEMPLATES) {
-            created.push(await this.createTenantRole(ctx, channelId, {
+            const role = await this.createTenantRoleDirect(ctx, channelId, {
                 code: `t${tenantNo}-${tpl.busiPrefix}`,
                 description: tpl.description,
                 permissions: tpl.permissions,
-            }));
+            });
+            if (role)
+                created.push(role);
         }
         return created;
     }

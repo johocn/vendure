@@ -285,6 +285,31 @@ export class TenantMemberService {
         return (rows as any[]).some((r) => (r.channels || []).some((c: any) => String(c.id) === channelId));
     }
 
+    /** 系统直建租户级角色（绕过 roleService.create 的权限校验，仅用于启动补种子/一键导入这类系统操作）。
+     *  幂等：仅当该 code 在本 channel 不存在时才创建。 */
+    private async createTenantRoleDirect(
+        ctx: RequestContext,
+        channelId: ID,
+        input: { code: string; description: string; permissions: string[] },
+    ): Promise<any> {
+        this.assertBusinessPermissions(input.permissions);
+        const chId = String(channelId);
+        if (await this.roleExistsInChannel(ctx, chId, input.code)) return null;
+        const channel = await this.connection
+            .getRepository(ctx, Channel)
+            .findOne({ where: { id: chId } } as any);
+        if (!channel) throw new Error('CHANNEL_NOT_FOUND');
+        const roleRepo = this.connection.getRepository(ctx, Role);
+        const role = new Role({
+            code: input.code,
+            description: input.description,
+            permissions: [`Authenticated`, ...input.permissions] as any,
+        });
+        role.channels = [channel];
+        await roleRepo.save(role);
+        return role;
+    }
+
     /** 单租户一键导入默认三角色（幂等）。已初始化则返回空数组，不重复建。 */
     async importDefaultRoles(ctx: RequestContext, channelId: ID): Promise<any[]> {
         const channel = await this.connection
@@ -298,13 +323,12 @@ export class TenantMemberService {
         if (await this.roleExistsInChannel(ctx, chId, adminCode)) return [];
         const created: any[] = [];
         for (const tpl of OFFICIAL_ROLE_TEMPLATES) {
-            created.push(
-                await this.createTenantRole(ctx, channelId, {
-                    code: `t${tenantNo}-${tpl.busiPrefix}`,
-                    description: tpl.description,
-                    permissions: tpl.permissions,
-                }),
-            );
+            const role = await this.createTenantRoleDirect(ctx, channelId, {
+                code: `t${tenantNo}-${tpl.busiPrefix}`,
+                description: tpl.description,
+                permissions: tpl.permissions,
+            });
+            if (role) created.push(role);
         }
         return created;
     }
