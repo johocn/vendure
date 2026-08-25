@@ -116,6 +116,14 @@ export declare class TenantMemberService {
     myImportDefaultRoles(ctx: RequestContext): Promise<any[]>;
     /** 启动补种子：扫描所有 Channel，缺默认角色则幂等补建；异常仅打日志不阻塞启动。 */
     ensureDefaultRolesForAllChannels(ctx: RequestContext): Promise<void>;
+    /** 把指定渠道关联到超管角色（幂等）——超管全局豁免渠道校验的核心：superadmin 角色须覆盖所有渠道，
+     *  否则超管切到未绑定角色渠道时 Vendure 权限守卫无任何权限，无法在租户内发商品/提审等操作。 */
+    ensureSuperAdminRoleCoversChannel(ctx: RequestContext, channelId: ID): Promise<void>;
+    /** 把所有存量渠道补关联到超管角色（幂等；失败仅打日志不阻塞启动） */
+    ensureSuperAdminRoleCoversAllChannels(ctx: RequestContext): Promise<void>;
+    /** 把指定渠道列表关联到超管角色（幂等：已含则 no-op）。superadmin 角色自带 SuperAdmin 权限，
+     *  一旦覆盖某渠道，userHasPermissions(Permission.SuperAdmin) 在该渠道即返回 true，实现超管全局豁免。 */
+    private ensureSuperAdminRoleCoversChannels;
     /** 租户级角色更新（权限白名单校验；channelId 非空时校验角色归属，防横向越权） */
     updateTenantRole(ctx: RequestContext, roleId: ID, input: {
         code?: string;

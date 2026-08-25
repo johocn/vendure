@@ -450,6 +450,46 @@ let TenantMemberService = class TenantMemberService {
         }
         core_1.Logger.info(`默认角色补种完成，共补建 ${added} 个角色`, constants_1.loggerCtx);
     }
+    /** 把指定渠道关联到超管角色（幂等）——超管全局豁免渠道校验的核心：superadmin 角色须覆盖所有渠道，
+     *  否则超管切到未绑定角色渠道时 Vendure 权限守卫无任何权限，无法在租户内发商品/提审等操作。 */
+    async ensureSuperAdminRoleCoversChannel(ctx, channelId) {
+        await this.ensureSuperAdminRoleCoversChannels(ctx, [String(channelId)]);
+    }
+    /** 把所有存量渠道补关联到超管角色（幂等；失败仅打日志不阻塞启动） */
+    async ensureSuperAdminRoleCoversAllChannels(ctx) {
+        const channelRepo = this.connection.getRepository(ctx, core_1.Channel);
+        const channels = await channelRepo.find();
+        await this.ensureSuperAdminRoleCoversChannels(ctx, channels.map((c) => String(c.id)));
+    }
+    /** 把指定渠道列表关联到超管角色（幂等：已含则 no-op）。superadmin 角色自带 SuperAdmin 权限，
+     *  一旦覆盖某渠道，userHasPermissions(Permission.SuperAdmin) 在该渠道即返回 true，实现超管全局豁免。 */
+    async ensureSuperAdminRoleCoversChannels(ctx, channelIds) {
+        const roleRepo = this.connection.getRepository(ctx, core_1.Role);
+        const superAdminRole = await roleRepo
+            .createQueryBuilder('role')
+            .leftJoinAndSelect('role.channels', 'ch')
+            .where('role.code = :code', { code: '__super_admin_role__' })
+            .getOne();
+        if (!superAdminRole) {
+            core_1.Logger.warn('超管角色 __super_admin_role__ 不存在，跳过渠道覆盖', constants_1.loggerCtx);
+            return;
+        }
+        let changed = false;
+        const curIds = (superAdminRole.channels || []).map((c) => String(c.id));
+        for (const chId of channelIds) {
+            if (curIds.includes(String(chId)))
+                continue;
+            const ch = await this.connection.getRepository(ctx, core_1.Channel).findOne({ where: { id: String(chId) } });
+            if (ch) {
+                superAdminRole.channels = [...(superAdminRole.channels || []), ch];
+                changed = true;
+            }
+        }
+        if (changed) {
+            await roleRepo.save(superAdminRole);
+            core_1.Logger.info(`超管角色渠道覆盖完成：新增渠道 ${channelIds.filter((id) => !curIds.includes(String(id))).join(', ')}`, constants_1.loggerCtx);
+        }
+    }
     /** 租户级角色更新（权限白名单校验；channelId 非空时校验角色归属，防横向越权） */
     async updateTenantRole(ctx, roleId, input, channelId) {
         if (channelId != null)

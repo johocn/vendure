@@ -88,7 +88,7 @@ import { PaymentTemplateAdminResolver } from './payment/payment-template-admin.r
 import { paymentTemplatePermissionDefinitions } from './payment/payment-template-permissions';
 import { ShippingProfileShopResolver } from './shipping/shipping-profile-shop.resolver';
 import { PaymentProfileShopResolver } from './payment/payment-profile-shop.resolver';
-import { EventBus, OrderEvent, OrderService, TransactionalConnection } from '@vendure/core';
+import { ChannelEvent, EventBus, OrderEvent, OrderService, TransactionalConnection } from '@vendure/core';
 import { DefaultDataService } from './seed/default-data.service';
 
 @VendurePlugin({
@@ -1226,6 +1226,31 @@ export class CjkPlugin implements OnApplicationBootstrap, NestModule {
             } catch (e: any) {
                 Logger.warn(`默认角色补种子失败（可后台手动触发 importDefaultRoles）: ${e.message}`, loggerCtx);
             }
+        }
+
+        // 超管全局豁免渠道校验：把存量渠道补关联到超管角色（幂等；失败不阻塞启动）
+        if (this.options.tenant?.enabled) {
+            try {
+                const tenantSvc = injector.get(TenantMemberService);
+                await tenantSvc.ensureSuperAdminRoleCoversAllChannels(RequestContext.empty());
+            } catch (e: any) {
+                Logger.warn(`超管角色渠道覆盖（存量）失败: ${e.message}`, loggerCtx);
+            }
+        }
+
+        // 将来新建渠道自动关联到超管角色，保证超管在新租户内同样全局豁免
+        {
+            const eventBus = injector.get(EventBus);
+            eventBus.ofType(ChannelEvent).subscribe(async (event) => {
+                if (event.type !== 'created') return;
+                try {
+                    await injector
+                        .get(TenantMemberService)
+                        .ensureSuperAdminRoleCoversChannel(event.ctx, (event.entity as any).id);
+                } catch (e: any) {
+                    Logger.warn(`新渠道关联超管角色失败: ${e.message}`, loggerCtx);
+                }
+            });
         }
 
         // 注册 Profile 事件订阅

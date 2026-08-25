@@ -101,7 +101,7 @@ let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
         return CjkPlugin_1;
     }
     async onApplicationBootstrap() {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o;
         const injector = new core_1.Injector(this.moduleRef);
         // 幂等创建默认配送/支付数据（自提点、门店自提配送档案、门店收银支付档案）
         if (this.options.seedDefaultData !== false && ((_a = this.options.profiles) === null || _a === void 0 ? void 0 : _a.enabled) !== false) {
@@ -154,8 +154,34 @@ let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
                 core_1.Logger.warn(`默认角色补种子失败（可后台手动触发 importDefaultRoles）: ${e.message}`, constants_1.loggerCtx);
             }
         }
+        // 超管全局豁免渠道校验：把存量渠道补关联到超管角色（幂等；失败不阻塞启动）
+        if ((_m = this.options.tenant) === null || _m === void 0 ? void 0 : _m.enabled) {
+            try {
+                const tenantSvc = injector.get(tenant_member_service_1.TenantMemberService);
+                await tenantSvc.ensureSuperAdminRoleCoversAllChannels(core_1.RequestContext.empty());
+            }
+            catch (e) {
+                core_1.Logger.warn(`超管角色渠道覆盖（存量）失败: ${e.message}`, constants_1.loggerCtx);
+            }
+        }
+        // 将来新建渠道自动关联到超管角色，保证超管在新租户内同样全局豁免
+        {
+            const eventBus = injector.get(core_3.EventBus);
+            eventBus.ofType(core_3.ChannelEvent).subscribe(async (event) => {
+                if (event.type !== 'created')
+                    return;
+                try {
+                    await injector
+                        .get(tenant_member_service_1.TenantMemberService)
+                        .ensureSuperAdminRoleCoversChannel(event.ctx, event.entity.id);
+                }
+                catch (e) {
+                    core_1.Logger.warn(`新渠道关联超管角色失败: ${e.message}`, constants_1.loggerCtx);
+                }
+            });
+        }
         // 注册 Profile 事件订阅
-        if (((_m = this.options.profiles) === null || _m === void 0 ? void 0 : _m.enabled) !== false) {
+        if (((_o = this.options.profiles) === null || _o === void 0 ? void 0 : _o.enabled) !== false) {
             const eventBus = injector.get(core_3.EventBus);
             const shippingSvc = injector.get(shipping_profile_service_1.ShippingProfileService);
             const paymentSvc = injector.get(payment_profile_service_1.PaymentProfileService);
