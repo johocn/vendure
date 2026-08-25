@@ -59,6 +59,8 @@ export declare class DefaultDataService {
     private paymentTemplateExists;
     /** 聚合码支付全局模板（租户可在全局方案池「引用到本店」） */
     private seedAggregatePaymentTemplate;
+    /** 固定聚合码收款支付全局模板（门店到店收银，租户可在全局方案池「引用到本店」） */
+    private seedFixedAggregatePaymentTemplate;
     /**
      * 幂等创建前 20 个官方自营租户（tenantNo 1-20，isOfficial=true）。
      * 每个租户：3 个内置角色（租户管理员/销售/库存）+ 默认管理员 admin
@@ -90,3 +92,4 @@ export declare const CASHIER_PAYMENT_PROFILE_CODE = "store-cashier-profile";
 export declare const COD_PAYMENT_TEMPLATE_CODE = "cod-payment-template";
 export declare const BALANCE_PAY_TEMPLATE_CODE = "balance-pay-template";
 export declare const AGGREGATE_PAYMENT_TEMPLATE_CODE = "aggregate-pay";
+export declare const FIXED_AGGREGATE_COLLECTION_TEMPLATE_CODE = "fixed-aggregate-collection";

@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.AGGREGATE_PAYMENT_TEMPLATE_CODE = exports.BALANCE_PAY_TEMPLATE_CODE = exports.COD_PAYMENT_TEMPLATE_CODE = exports.CASHIER_PAYMENT_PROFILE_CODE = exports.CASHIER_PAYMENT_METHOD_CODE = exports.STORE_PICKUP_PROFILE_CODE = exports.MAIL_TEMPLATE_CODE = exports.LOCAL_DELIVERY_TEMPLATE_CODE = exports.EMPLOYEE_PICKUP_TEMPLATE_CODE = exports.PICKUP_POINT_TEMPLATE_CODE = exports.STORE_PICKUP_TEMPLATE_CODE = exports.STORE_PICKUP_METHOD_CODE = exports.DEFAULT_STORE = exports.DefaultDataService = exports.OFFICIAL_ROLE_TEMPLATES = void 0;
+exports.FIXED_AGGREGATE_COLLECTION_TEMPLATE_CODE = exports.AGGREGATE_PAYMENT_TEMPLATE_CODE = exports.BALANCE_PAY_TEMPLATE_CODE = exports.COD_PAYMENT_TEMPLATE_CODE = exports.CASHIER_PAYMENT_PROFILE_CODE = exports.CASHIER_PAYMENT_METHOD_CODE = exports.STORE_PICKUP_PROFILE_CODE = exports.MAIL_TEMPLATE_CODE = exports.LOCAL_DELIVERY_TEMPLATE_CODE = exports.EMPLOYEE_PICKUP_TEMPLATE_CODE = exports.PICKUP_POINT_TEMPLATE_CODE = exports.STORE_PICKUP_TEMPLATE_CODE = exports.STORE_PICKUP_METHOD_CODE = exports.DEFAULT_STORE = exports.DefaultDataService = exports.OFFICIAL_ROLE_TEMPLATES = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const constants_1 = require("../constants");
@@ -68,6 +68,7 @@ let DefaultDataService = class DefaultDataService {
             await this.seedCashOnDeliveryPaymentTemplate(ctx);
             await this.seedBalancePayPaymentTemplate(ctx);
             await this.seedAggregatePaymentTemplate(ctx);
+            await this.seedFixedAggregatePaymentTemplate(ctx);
             // 前 20 个官方自营租户（幂等）
             await this.seedOfficialTenants(ctx);
             core_1.Logger.info('购物配送/支付默认数据初始化完成', constants_1.loggerCtx);
@@ -304,6 +305,22 @@ let DefaultDataService = class DefaultDataService {
         });
         core_1.Logger.info(`已创建默认支付模板: ${exports.AGGREGATE_PAYMENT_TEMPLATE_CODE}`, constants_1.loggerCtx);
     }
+    /** 固定聚合码收款支付全局模板（门店到店收银，租户可在全局方案池「引用到本店」） */
+    async seedFixedAggregatePaymentTemplate(ctx) {
+        const existing = await this.connection
+            .getRepository(ctx, payment_template_entity_1.PaymentTemplate)
+            .findOne({ where: { code: exports.FIXED_AGGREGATE_COLLECTION_TEMPLATE_CODE } });
+        if (existing)
+            return;
+        await this.paymentTemplateService.create(ctx, {
+            name: '固定聚合码收款',
+            description: '门店到店收银：顾客扫门店固定聚合收款码付款到商户，店员确认到账后完成订单',
+            code: exports.FIXED_AGGREGATE_COLLECTION_TEMPLATE_CODE,
+            handler: { code: 'fixed-aggregate-collection', arguments: [] },
+            isGlobal: true,
+        });
+        core_1.Logger.info(`已创建默认支付模板: ${exports.FIXED_AGGREGATE_COLLECTION_TEMPLATE_CODE}`, constants_1.loggerCtx);
+    }
     /**
      * 幂等创建前 20 个官方自营租户（tenantNo 1-20，isOfficial=true）。
      * 每个租户：3 个内置角色（租户管理员/销售/库存）+ 默认管理员 admin
@@ -427,4 +444,5 @@ exports.CASHIER_PAYMENT_PROFILE_CODE = 'store-cashier-profile';
 exports.COD_PAYMENT_TEMPLATE_CODE = 'cod-payment-template';
 exports.BALANCE_PAY_TEMPLATE_CODE = 'balance-pay-template';
 exports.AGGREGATE_PAYMENT_TEMPLATE_CODE = 'aggregate-pay';
+exports.FIXED_AGGREGATE_COLLECTION_TEMPLATE_CODE = 'fixed-aggregate-collection';
 //# sourceMappingURL=default-data.service.js.map

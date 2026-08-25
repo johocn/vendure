@@ -5,6 +5,7 @@ import { APP_GUARD, ModuleRef } from '@nestjs/core';
 import { CJK_PLUGIN_OPTIONS, loggerCtx } from './constants';
 import { codPaymentHandler } from './payment/cod-handler';
 import { aggregatePaymentHandler } from './payment/aggregate-payment-handler';
+import { fixedAggregateCollectionHandler } from './payment/fixed-aggregate-collection-handler';
 import { couponStackableCondition } from './promotion/coupon-stackable-condition';
 import { promotionCustomFields } from './promotion/promotion-custom-fields';
 import {
@@ -972,6 +973,14 @@ import { DefaultDataService } from './seed/default-data.service';
             config.paymentOptions.paymentMethodHandlers = [
                 ...(config.paymentOptions.paymentMethodHandlers || []),
                 aggregatePaymentHandler,
+            ];
+        }
+
+        // 固定聚合码收款（门店到店收银，自确认），默认启用
+        if (CjkPlugin.options.aggregate?.enabled !== false) {
+            config.paymentOptions.paymentMethodHandlers = [
+                ...(config.paymentOptions.paymentMethodHandlers || []),
+                fixedAggregateCollectionHandler,
             ];
         }
 

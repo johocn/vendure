@@ -73,6 +73,7 @@ export class DefaultDataService {
             await this.seedCashOnDeliveryPaymentTemplate(ctx);
             await this.seedBalancePayPaymentTemplate(ctx);
             await this.seedAggregatePaymentTemplate(ctx);
+            await this.seedFixedAggregatePaymentTemplate(ctx);
             // 前 20 个官方自营租户（幂等）
             await this.seedOfficialTenants(ctx);
             Logger.info('购物配送/支付默认数据初始化完成', loggerCtx);
@@ -315,6 +316,22 @@ export class DefaultDataService {
         Logger.info(`已创建默认支付模板: ${AGGREGATE_PAYMENT_TEMPLATE_CODE}`, loggerCtx);
     }
 
+    /** 固定聚合码收款支付全局模板（门店到店收银，租户可在全局方案池「引用到本店」） */
+    private async seedFixedAggregatePaymentTemplate(ctx: RequestContext): Promise<void> {
+        const existing = await this.connection
+            .getRepository(ctx, PaymentTemplate)
+            .findOne({ where: { code: FIXED_AGGREGATE_COLLECTION_TEMPLATE_CODE } });
+        if (existing) return;
+        await this.paymentTemplateService.create(ctx, {
+            name: '固定聚合码收款',
+            description: '门店到店收银：顾客扫门店固定聚合收款码付款到商户，店员确认到账后完成订单',
+            code: FIXED_AGGREGATE_COLLECTION_TEMPLATE_CODE,
+            handler: { code: 'fixed-aggregate-collection', arguments: [] },
+            isGlobal: true,
+        } as any);
+        Logger.info(`已创建默认支付模板: ${FIXED_AGGREGATE_COLLECTION_TEMPLATE_CODE}`, loggerCtx);
+    }
+
     /**
      * 幂等创建前 20 个官方自营租户（tenantNo 1-20，isOfficial=true）。
      * 每个租户：3 个内置角色（租户管理员/销售/库存）+ 默认管理员 admin
@@ -451,3 +468,4 @@ export const CASHIER_PAYMENT_PROFILE_CODE = 'store-cashier-profile';
 export const COD_PAYMENT_TEMPLATE_CODE = 'cod-payment-template';
 export const BALANCE_PAY_TEMPLATE_CODE = 'balance-pay-template';
 export const AGGREGATE_PAYMENT_TEMPLATE_CODE = 'aggregate-pay';
+export const FIXED_AGGREGATE_COLLECTION_TEMPLATE_CODE = 'fixed-aggregate-collection';
