@@ -138,6 +138,20 @@ exports.tenantChannelCustomFields = {
             nullable: true,
             label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '店铺名' }],
         },
+        {
+            name: 'merchantStatus',
+            type: 'string',
+            nullable: true,
+            defaultValue: 'active',
+            public: true,
+            label: [
+                { languageCode: core_1.LanguageCode.zh_Hans, value: '商户入驻状态' },
+                { languageCode: core_1.LanguageCode.en, value: 'Merchant status' },
+            ],
+            description: [
+                { languageCode: core_1.LanguageCode.zh_Hans, value: 'pending/active/disabled，第三方商户标识' },
+            ],
+        },
     ],
 };
 //# sourceMappingURL=tenant-channel-custom-fields.js.map

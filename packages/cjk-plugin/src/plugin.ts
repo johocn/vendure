@@ -38,6 +38,10 @@ import { customerCustomFields } from './customer/customer-custom-fields';
 import { tenantChannelCustomFields } from './tenant/tenant-channel-custom-fields';
 import { productVariantCustomFields } from './shipping/product-variant-custom-fields';
 import { customShippingMethodFields } from './shipping/shipping-method-custom-fields';
+import { marketplaceProductCustomFields } from './product/marketplace-custom-fields';
+import { MarketplaceProductService } from './product/marketplace-product.service';
+import { MarketplaceProductResolver } from './product/marketplace-product.resolver';
+import { platformProductReviewPermission } from './product/marketplace-permissions';
 import { tieredWeightShippingCalculator, tieredQuantityShippingCalculator } from './shipping/tiered-shipping-calculator';
 import { tieredShippingEligibilityChecker } from './shipping/tiered-shipping-eligibility-checker';
 import { ShippingTemplate } from './shipping/shipping-template.entity';
@@ -64,7 +68,7 @@ import { MapProviderRegistry } from './map/map-provider-registry';
 import { MapService } from './map/map.service';
 import { MapAdminResolver } from './map/map-admin.resolver';
 import { MapShopResolver } from './map/map-shop.resolver';
-import { MapConfigEncryptionMigration, PayConfigEncryptionMigration, TenantMemberColumnMigration, ChannelCustomColumnMigration } from './migrations';
+import { MapConfigEncryptionMigration, PayConfigEncryptionMigration, TenantMemberColumnMigration, ChannelCustomColumnMigration, MarketplaceCustomColumnMigration } from './migrations';
 import { AuthConfigService } from './auth/auth-config.service';
 import { PayConfigService } from './payment/pay-config.service';
 import { MapConfigService } from './map/map-config.service';
@@ -119,6 +123,8 @@ import { DefaultDataService } from './seed/default-data.service';
         PaymentTemplateService,
         DefaultDataService,
         TenantMemberService,
+        MarketplaceProductService,
+        MarketplaceCustomColumnMigration,
     ],
     adminApiExtensions: {
         schema: () => {
@@ -790,9 +796,28 @@ import { DefaultDataService } from './seed/default-data.service';
                     tenantChangeMyPassword(newPassword: String!): Boolean!
                     myUpdateChannelCustomFields(input: JSON!): JSON!
                 }
+
+                # ===== Marketplace Product =====
+                type MarketplaceProductView {
+                    id: ID!
+                    name: String!
+                    listedInMarketplace: Boolean!
+                    marketplaceStatus: String
+                    merchantRef: String
+                    rejectReason: String
+                }
+
+                extend type Query {
+                    marketplaceProducts(status: String): [MarketplaceProductView!]!
+                }
+
+                extend type Mutation {
+                    submitProductToMarketplace(id: ID!): MarketplaceProductView!
+                    reviewMarketplaceProduct(id: ID!, approve: Boolean!, rejectReason: String): MarketplaceProductView!
+                }
             `;
         },
-        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver],
+        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, MarketplaceProductResolver],
     },
     shopApiExtensions: {
         schema: () => {
@@ -1081,6 +1106,20 @@ import { DefaultDataService } from './seed/default-data.service';
             }
         }
 
+        // 注册 Product customFields（marketplace 审核字段）—— 去重防止重复注册
+        {
+            const existingPFields = (config.customFields?.Product || []).map((f: any) => f.name);
+            const newPFields = (marketplaceProductCustomFields.Product || []).filter(
+                (f: any) => !existingPFields.includes(f.name),
+            );
+            if (newPFields.length > 0) {
+                config.customFields = {
+                    ...config.customFields,
+                    Product: [...(config.customFields?.Product || []), ...newPFields],
+                };
+            }
+        }
+
         // 注册 ShippingMethod customFields（enabled 启停）—— 去重防止重复注册
         {
             const existingSmFields = (config.customFields?.ShippingMethod || []).map(f => f.name);
@@ -1144,6 +1183,12 @@ import { DefaultDataService } from './seed/default-data.service';
         config.authOptions.customPermissions = [
             ...(config.authOptions.customPermissions || []),
             ...tenantPermissionDefinitions,
+        ];
+
+        // 注册平台商品审核权限（PlatformProductReview）
+        config.authOptions.customPermissions = [
+            ...(config.authOptions.customPermissions || []),
+            platformProductReviewPermission,
         ];
 
         return config;
