@@ -63,6 +63,8 @@ import { MessagePlugin } from '@vendure/message-plugin';
 import { OperationsPlugin } from '@vendure/operations-plugin';
 import { PreSalePlugin } from '@vendure/pre-sale-plugin';
 import { LiveStreamingPlugin } from '@vendure/live-streaming-plugin';
+import { ShopPlugin } from '@vendure/shop-plugin';
+import { PickupPlugin } from '@vendure/pickup-plugin';
 // 生产模式（dist/）跳过开发演示插件，避免静态 import require 缺失的 test-plugins 产物
 // IS_PROD=true 环境变量：dashboard vite 构建时 config-loader 编译到临时目录，
 // __dirname 非 dist，需用环境变量显式标记生产，跳过 test-plugins
@@ -328,6 +330,8 @@ export const devConfig: VendureConfig = {
             promotionPolicy: { enabled: true },
             authSecret: process.env.AUTH_SECRET || 'dev-auth-secret-key',
         }),
+        ShopPlugin.init({}),
+        PickupPlugin.init({}),
         ...((process.env.ALIPAY_NOTIFY_URL || process.env.DEV_BYPASS_ALIPAY === 'true') ? [AlipayPlugin.init({
             notifyUrl: process.env.ALIPAY_NOTIFY_URL || '',
             alipayPublicKey: process.env.ALIPAY_PUBLIC_KEY ?? '',

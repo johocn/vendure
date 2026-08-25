@@ -34,6 +34,7 @@ const douyin_auth_plugin_1 = require("@vendure/douyin-auth-plugin");
 const order_timeout_plugin_1 = require("@vendure/order-timeout-plugin");
 const invoice_plugin_1 = require("@vendure/invoice-plugin");
 const logistics_plugin_1 = require("@vendure/logistics-plugin");
+const delivery_gateway_plugin_1 = require("@vendure/delivery-gateway-plugin");
 const group_buy_plugin_1 = require("@vendure/group-buy-plugin");
 const flash_sale_plugin_1 = require("@vendure/flash-sale-plugin");
 const distribution_plugin_1 = require("@vendure/distribution-plugin");
@@ -43,6 +44,7 @@ const invoice_pdf_plugin_1 = require("@vendure/invoice-pdf-plugin");
 const recharge_card_plugin_1 = require("@vendure/recharge-card-plugin");
 const after_sales_plugin_1 = require("@vendure/after-sales-plugin");
 const member_level_plugin_1 = require("@vendure/member-level-plugin");
+const checkin_plugin_1 = require("@vendure/checkin-plugin");
 const review_plugin_1 = require("@vendure/review-plugin");
 const wechat_subscribe_message_plugin_1 = require("@vendure/wechat-subscribe-message-plugin");
 const coupon_plugin_1 = require("@vendure/coupon-plugin");
@@ -54,6 +56,10 @@ const customer_service_plugin_1 = require("@vendure/customer-service-plugin");
 const inventory_plugin_1 = require("@vendure/inventory-plugin");
 const message_plugin_1 = require("@vendure/message-plugin");
 const operations_plugin_1 = require("@vendure/operations-plugin");
+const pre_sale_plugin_1 = require("@vendure/pre-sale-plugin");
+const live_streaming_plugin_1 = require("@vendure/live-streaming-plugin");
+const shop_plugin_1 = require("@vendure/shop-plugin");
+const pickup_plugin_1 = require("@vendure/pickup-plugin");
 const IS_PROD = path_1.default.basename(__dirname) === 'dist' || process.env.IS_PROD === 'true';
 const devOnlyPlugins = IS_PROD
     ? []
@@ -216,7 +222,15 @@ exports.devConfig = {
                 ],
             },
         ],
-        Channel: [],
+        Channel: [
+            { name: 'displayTemplate', type: 'string', defaultValue: 'standard', public: true },
+            { name: 'themeId', type: 'string', defaultValue: 'taobao-orange', public: true },
+            { name: 'shopName', type: 'string', public: true },
+            { name: 'shopLogo', type: 'string', public: true },
+            { name: 'shopIntro', type: 'string', public: true },
+            { name: 'servicePhone', type: 'string', public: true },
+            { name: 'shopContent', type: 'text', public: true },
+        ],
         Customer: [],
         Fulfillment: [],
         Order: [],
@@ -275,6 +289,8 @@ exports.devConfig = {
             promotionPolicy: { enabled: true },
             authSecret: process.env.AUTH_SECRET || 'dev-auth-secret-key',
         }),
+        shop_plugin_1.ShopPlugin.init({}),
+        pickup_plugin_1.PickupPlugin.init({}),
         ...((process.env.ALIPAY_NOTIFY_URL || process.env.DEV_BYPASS_ALIPAY === 'true') ? [alipay_plugin_1.AlipayPlugin.init({
                 notifyUrl: process.env.ALIPAY_NOTIFY_URL || '',
                 alipayPublicKey: (_a = process.env.ALIPAY_PUBLIC_KEY) !== null && _a !== void 0 ? _a : '',
@@ -318,8 +334,7 @@ exports.devConfig = {
                 devBypassOpenid: 'dev_test_openid',
             })] : []),
         order_timeout_plugin_1.OrderTimeoutPlugin.init({ defaultPaymentTimeoutMinutes: 30 }),
-        invoice_plugin_1.InvoicePlugin.init(),
-        logistics_plugin_1.LogisticsPlugin.init(),
+        invoice_plugin_1.InvoicePlugin.init({ provider: new invoice_pdf_plugin_1.PdfInvoiceProvider() }),
         group_buy_plugin_1.GroupBuyPlugin.init({ defaultTimeoutMinutes: 60 }),
         flash_sale_plugin_1.FlashSalePlugin.init({ defaultTimeoutMinutes: 15 }),
         distribution_plugin_1.DistributionPlugin.init({
@@ -339,16 +354,36 @@ exports.devConfig = {
         recharge_card_plugin_1.RechargeCardPlugin.init({ defaultExpiresMonths: 12 }),
         after_sales_plugin_1.AfterSalesPlugin.init(),
         member_level_plugin_1.MemberLevelPlugin.init(),
+        checkin_plugin_1.CheckinPlugin.init(),
         review_plugin_1.ReviewPlugin.init(),
         wechat_subscribe_message_plugin_1.WechatSubscribeMessagePlugin.init(),
         coupon_plugin_1.CouponPlugin.init(),
+        live_streaming_plugin_1.LiveStreamingPlugin.init({
+            pushDomain: process.env.LIVE_PUSH_DOMAIN || 'rtmp://push.test.com/live/',
+            playDomain: process.env.LIVE_PLAY_DOMAIN || 'https://play.test.com/live/',
+            liveCommissionRate: Number(process.env.LIVE_COMMISSION_RATE || 1000),
+            wsUrl: process.env.LIVE_WS_URL || 'ws://localhost:3003',
+            wsSecret: process.env.LIVE_WS_SECRET || 'dev-live-secret',
+        }),
         delivery_plugin_1.DeliveryPlugin.init(),
         sales_plugin_1.SalesPlugin.init(),
         marketplace_plugin_1.MarketplacePlugin.init({}),
+        logistics_plugin_1.LogisticsPlugin.init({ defaultCompleteDays: 3 }),
+        delivery_gateway_plugin_1.DeliveryGatewayPlugin.init({
+            dada: {
+                appKey: process.env.DADA_APP_KEY || 'dev-dada-app-key',
+                appSecret: process.env.DADA_APP_SECRET || 'dev-dada-app-secret',
+                shopNo: process.env.DADA_SHOP_NO || 'dev-dada-shop-no',
+                sourceId: process.env.DADA_SOURCE_ID || 'dev-dada-source',
+                environment: process.env.DADA_ENV || 'sandbox',
+                callbackUrl: process.env.DADA_CALLBACK_URL || 'http://127.0.0.1:3000/delivery-gateway/dada/webhook',
+            },
+        }),
         customer_service_plugin_1.CustomerServicePlugin.init(),
         inventory_plugin_1.InventoryPlugin.init(),
         operations_plugin_1.OperationsPlugin.init(),
         message_plugin_1.MessagePlugin.init(),
+        pre_sale_plugin_1.PreSalePlugin.init({}),
     ],
 };
 function getDbConfig() {
