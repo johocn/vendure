@@ -9,7 +9,8 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.TenantMemberService = exports.BUSINESS_PERMISSIONS = exports.PERMISSION_CATALOG = void 0;
+exports.TenantMemberService = exports.GLOBAL_ROLE_PREFIX = exports.BUSINESS_PERMISSIONS = exports.PERMISSION_CATALOG = void 0;
+exports.normalizeGlobalRoleCode = normalizeGlobalRoleCode;
 exports.randomStrongPassword = randomStrongPassword;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
@@ -97,6 +98,13 @@ exports.PERMISSION_CATALOG = [
 ];
 /** 租户级角色可用的业务权限白名单（由 PERMISSION_CATALOG 扁平派生，建模/校验统一使用） */
 exports.BUSINESS_PERMISSIONS = exports.PERMISSION_CATALOG.flatMap((g) => g.items.map((i) => i.code));
+/** 全局角色 code 前缀：超管建的全局角色统一加此前缀，用于池查询与全局/本地判定（Vendure Role 无 customFields，用前缀区分） */
+exports.GLOBAL_ROLE_PREFIX = 'g-';
+/** 全局角色 code 规范化：输入 code 自动统一为 `g-{code}`，避免手动误输入前缀产生重复 */
+function normalizeGlobalRoleCode(code) {
+    const c = code.trim();
+    return c.startsWith(exports.GLOBAL_ROLE_PREFIX) ? c : exports.GLOBAL_ROLE_PREFIX + c;
+}
 /** 生成随机强口令：≥10 位，保证大小写/数字/符号各类至少一个 */
 function randomStrongPassword(length = 12) {
     const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -271,32 +279,13 @@ let TenantMemberService = class TenantMemberService {
         await roleRepo.save(role);
         return role;
     }
-    /** 全局唯一 code 幂等判定（全局角色不绑店，只看 code 是否已存在）。 */
-    async roleExistsGlobal(ctx, code) {
-        const repo = this.connection.getRepository(ctx, core_1.Role);
-        const count = await repo.count({ where: { code } });
-        return count > 0;
-    }
-    /** 直建全局角色（channels=[]）。幂等：code 已存在则返回 null。 */
-    async createGlobalRoleDirect(ctx, input) {
-        this.assertBusinessPermissions(input.permissions);
-        if (await this.roleExistsGlobal(ctx, input.code))
-            return null;
-        const roleRepo = this.connection.getRepository(ctx, core_1.Role);
-        const role = new core_1.Role({
-            code: input.code,
-            description: input.description,
-            permissions: [`Authenticated`, ...input.permissions],
-        });
-        role.channels = [];
-        await roleRepo.save(role);
-        return role;
-    }
-    /** 建全局角色并批量分发到多店：建 channels=[] 角色，再把勾选店加入 channels（幂等：code 已存在则 no-op）。 */
+    /** 建全局角色并批量分发到店：code 自动加 `g-` 前缀；channelIds 为空 → channels=[]（全局可用），非空 → channels=[勾选店]（全局默认）。
+     *  统一幂等：code 已存在则仅追加缺失店，绝不重复关联同一店。所有加店路径（创建时勾选/分发/引用）均应收敛到此核心语义。 */
     async createGlobalRoleWithChannels(ctx, channelIds, input) {
         this.assertBusinessPermissions(input.permissions);
+        const code = normalizeGlobalRoleCode(input.code);
         const targetChannels = [];
-        for (const id of channelIds) {
+        for (const id of channelIds || []) {
             const ch = await this.connection
                 .getRepository(ctx, core_1.Channel)
                 .findOne({ where: { id: String(id) } });
@@ -304,7 +293,10 @@ let TenantMemberService = class TenantMemberService {
                 targetChannels.push(ch);
         }
         const roleRepo = this.connection.getRepository(ctx, core_1.Role);
-        const existing = await roleRepo.findOne({ where: { code: input.code } });
+        const existing = await roleRepo.findOne({
+            where: { code },
+            relations: ['channels'],
+        });
         if (existing) {
             // 已存在：仅追加缺少的分发店（幂等）
             const curIds = (existing.channels || []).map((c) => String(c.id));
@@ -317,7 +309,7 @@ let TenantMemberService = class TenantMemberService {
             return [existing];
         }
         const role = new core_1.Role({
-            code: input.code,
+            code,
             description: input.description,
             permissions: [`Authenticated`, ...input.permissions],
         });
@@ -325,7 +317,13 @@ let TenantMemberService = class TenantMemberService {
         await roleRepo.save(role);
         return [role];
     }
-    /** 把全局角色引用到某店（幂等：已含该店则 no-op；仅当是全局角色（channels 为空）才允许普通引用）。 */
+    /** 直建全局可用角色（channels=[]）。空 channelIds 走 createGlobalRoleWithChannels；保持幂等语义。 */
+    async createGlobalRoleDirect(ctx, input) {
+        const [role] = await this.createGlobalRoleWithChannels(ctx, [], input);
+        return role;
+    }
+    /** 把全局角色引用到某店（幂等：已含该店则 no-op；仅 g- 前缀全局角色允许被引用，租户本地角色不可引）。
+     *  超管从池继续分发也已含本方法，故去掉原「channels 必须为空」限制，允许多店分发。 */
     async referGlobalRoleToChannel(ctx, roleId, channelId) {
         const roleRepo = this.connection.getRepository(ctx, core_1.Role);
         const role = await roleRepo.findOne({
@@ -334,9 +332,11 @@ let TenantMemberService = class TenantMemberService {
         });
         if (!role)
             throw new Error('ROLE_NOT_FOUND');
+        if (!String(role.code).startsWith(exports.GLOBAL_ROLE_PREFIX))
+            throw new Error('NOT_GLOBAL_ROLE');
         const chId = String(channelId);
         const curIds = (role.channels || []).map((c) => String(c.id));
-        if (!curIds.includes(chId) && (role.channels || []).length === 0) {
+        if (!curIds.includes(chId)) {
             const ch = await this.connection
                 .getRepository(ctx, core_1.Channel)
                 .findOne({ where: { id: chId } });
@@ -367,11 +367,20 @@ let TenantMemberService = class TenantMemberService {
     async myUnreferGlobalRole(ctx, roleId) {
         await this.unreferGlobalRoleFromChannel(ctx, roleId, ctx.channelId);
     }
-    /** 查全部全局角色（channels=[]）。 */
+    /** 查全部全局角色（code 以 g- 开头；channels 可为空=全局可用，非空=已分发到店）。 */
     async globalRoles(ctx) {
         const repo = this.connection.getRepository(ctx, core_1.Role);
         const all = await repo.find({ relations: ['channels'] });
-        return all.filter((r) => !(r.channels || []).length);
+        return all.filter((r) => String(r.code).startsWith(exports.GLOBAL_ROLE_PREFIX));
+    }
+    /** 全局默认角色模板（不落库为 Role）：租户"导入到本店"时复制独立副本，各租户权限互不影响 */
+    async globalRoleTemplates(ctx) {
+        return role_templates_1.OFFICIAL_ROLE_TEMPLATES.map((tpl) => ({
+            key: tpl.key,
+            busiPrefix: tpl.busiPrefix,
+            description: tpl.description,
+            permissions: tpl.permissions,
+        }));
     }
     /** 单租户一键导入默认三角色（幂等）。已初始化则返回空数组，不重复建。 */
     async importDefaultRoles(ctx, channelId) {
@@ -399,6 +408,10 @@ let TenantMemberService = class TenantMemberService {
                 created.push(role);
         }
         return created;
+    }
+    /** 租户自助：从全局默认模板复制独立副本到当前 ctx.channelId（幂等，复用 importDefaultRoles） */
+    async myImportDefaultRoles(ctx) {
+        return this.importDefaultRoles(ctx, ctx.channelId);
     }
     /** 启动补种子：扫描所有 Channel，缺默认角色则幂等补建；异常仅打日志不阻塞启动。 */
     async ensureDefaultRolesForAllChannels(ctx) {

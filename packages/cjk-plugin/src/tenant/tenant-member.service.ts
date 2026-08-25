@@ -111,6 +111,14 @@ export const BUSINESS_PERMISSIONS: string[] = PERMISSION_CATALOG.flatMap((g) =>
     g.items.map((i) => i.code),
 );
 
+/** 全局角色 code 前缀：超管建的全局角色统一加此前缀，用于池查询与全局/本地判定（Vendure Role 无 customFields，用前缀区分） */
+export const GLOBAL_ROLE_PREFIX = 'g-';
+/** 全局角色 code 规范化：输入 code 自动统一为 `g-{code}`，避免手动误输入前缀产生重复 */
+export function normalizeGlobalRoleCode(code: string): string {
+    const c = code.trim();
+    return c.startsWith(GLOBAL_ROLE_PREFIX) ? c : GLOBAL_ROLE_PREFIX + c;
+}
+
 export interface CreateTenantAdminInput {
     firstName?: string;
     lastName?: string;
@@ -319,47 +327,27 @@ export class TenantMemberService {
         return role;
     }
 
-    /** 全局唯一 code 幂等判定（全局角色不绑店，只看 code 是否已存在）。 */
-    private async roleExistsGlobal(ctx: RequestContext, code: string): Promise<boolean> {
-        const repo = this.connection.getRepository(ctx, Role);
-        const count = await repo.count({ where: { code } } as any);
-        return count > 0;
-    }
-
-    /** 直建全局角色（channels=[]）。幂等：code 已存在则返回 null。 */
-    async createGlobalRoleDirect(
-        ctx: RequestContext,
-        input: { code: string; description: string; permissions: string[] },
-    ): Promise<any> {
-        this.assertBusinessPermissions(input.permissions);
-        if (await this.roleExistsGlobal(ctx, input.code)) return null;
-        const roleRepo = this.connection.getRepository(ctx, Role);
-        const role = new Role({
-            code: input.code,
-            description: input.description,
-            permissions: [`Authenticated`, ...input.permissions] as any,
-        });
-        role.channels = [];
-        await roleRepo.save(role);
-        return role;
-    }
-
-    /** 建全局角色并批量分发到多店：建 channels=[] 角色，再把勾选店加入 channels（幂等：code 已存在则 no-op）。 */
+    /** 建全局角色并批量分发到店：code 自动加 `g-` 前缀；channelIds 为空 → channels=[]（全局可用），非空 → channels=[勾选店]（全局默认）。
+     *  统一幂等：code 已存在则仅追加缺失店，绝不重复关联同一店。所有加店路径（创建时勾选/分发/引用）均应收敛到此核心语义。 */
     async createGlobalRoleWithChannels(
         ctx: RequestContext,
         channelIds: ID[],
         input: { code: string; description: string; permissions: string[] },
     ): Promise<any[]> {
         this.assertBusinessPermissions(input.permissions);
+        const code = normalizeGlobalRoleCode(input.code);
         const targetChannels: Channel[] = [];
-        for (const id of channelIds) {
+        for (const id of channelIds || []) {
             const ch = await this.connection
                 .getRepository(ctx, Channel)
                 .findOne({ where: { id: String(id) } } as any);
             if (ch) targetChannels.push(ch);
         }
         const roleRepo = this.connection.getRepository(ctx, Role);
-        const existing = await roleRepo.findOne({ where: { code: input.code } } as any);
+        const existing = await roleRepo.findOne({
+            where: { code } as any,
+            relations: ['channels'],
+        });
         if (existing) {
             // 已存在：仅追加缺少的分发店（幂等）
             const curIds = (existing.channels || []).map((c: any) => String(c.id));
@@ -371,7 +359,7 @@ export class TenantMemberService {
             return [existing];
         }
         const role = new Role({
-            code: input.code,
+            code,
             description: input.description,
             permissions: [`Authenticated`, ...input.permissions] as any,
         });
@@ -380,7 +368,17 @@ export class TenantMemberService {
         return [role];
     }
 
-    /** 把全局角色引用到某店（幂等：已含该店则 no-op；仅当是全局角色（channels 为空）才允许普通引用）。 */
+    /** 直建全局可用角色（channels=[]）。空 channelIds 走 createGlobalRoleWithChannels；保持幂等语义。 */
+    async createGlobalRoleDirect(
+        ctx: RequestContext,
+        input: { code: string; description: string; permissions: string[] },
+    ): Promise<any> {
+        const [role] = await this.createGlobalRoleWithChannels(ctx, [], input);
+        return role;
+    }
+
+    /** 把全局角色引用到某店（幂等：已含该店则 no-op；仅 g- 前缀全局角色允许被引用，租户本地角色不可引）。
+     *  超管从池继续分发也已含本方法，故去掉原「channels 必须为空」限制，允许多店分发。 */
     async referGlobalRoleToChannel(ctx: RequestContext, roleId: ID, channelId: ID): Promise<void> {
         const roleRepo = this.connection.getRepository(ctx, Role);
         const role = await roleRepo.findOne({
@@ -388,9 +386,10 @@ export class TenantMemberService {
             relations: ['channels'],
         } as any);
         if (!role) throw new Error('ROLE_NOT_FOUND');
+        if (!String(role.code).startsWith(GLOBAL_ROLE_PREFIX)) throw new Error('NOT_GLOBAL_ROLE');
         const chId = String(channelId);
         const curIds = (role.channels || []).map((c: any) => String(c.id));
-        if (!curIds.includes(chId) && (role.channels || []).length === 0) {
+        if (!curIds.includes(chId)) {
             const ch = await this.connection
                 .getRepository(ctx, Channel)
                 .findOne({ where: { id: chId } } as any);
@@ -423,11 +422,21 @@ export class TenantMemberService {
         await this.unreferGlobalRoleFromChannel(ctx, roleId, ctx.channelId);
     }
 
-    /** 查全部全局角色（channels=[]）。 */
+    /** 查全部全局角色（code 以 g- 开头；channels 可为空=全局可用，非空=已分发到店）。 */
     async globalRoles(ctx: RequestContext): Promise<any[]> {
         const repo = this.connection.getRepository(ctx, Role);
         const all = await repo.find({ relations: ['channels'] });
-        return (all as any[]).filter((r) => !(r.channels || []).length);
+        return (all as any[]).filter((r) => String(r.code).startsWith(GLOBAL_ROLE_PREFIX));
+    }
+
+    /** 全局默认角色模板（不落库为 Role）：租户"导入到本店"时复制独立副本，各租户权限互不影响 */
+    async globalRoleTemplates(ctx: RequestContext): Promise<any[]> {
+        return OFFICIAL_ROLE_TEMPLATES.map((tpl) => ({
+            key: tpl.key,
+            busiPrefix: tpl.busiPrefix,
+            description: tpl.description,
+            permissions: tpl.permissions,
+        }));
     }
 
     /** 单租户一键导入默认三角色（幂等）。已初始化则返回空数组，不重复建。 */
@@ -451,6 +460,11 @@ export class TenantMemberService {
             if (role) created.push(role);
         }
         return created;
+    }
+
+    /** 租户自助：从全局默认模板复制独立副本到当前 ctx.channelId（幂等，复用 importDefaultRoles） */
+    async myImportDefaultRoles(ctx: RequestContext): Promise<any[]> {
+        return this.importDefaultRoles(ctx, ctx.channelId);
     }
 
     /** 启动补种子：扫描所有 Channel，缺默认角色则幂等补建；异常仅打日志不阻塞启动。 */
