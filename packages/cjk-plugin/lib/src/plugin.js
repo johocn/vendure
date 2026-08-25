@@ -870,11 +870,6 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     permissions: [String!]!
                 }
 
-                # 扩展标准 Role：暴露 channels 关联，供全局池标注「已入本地/可引用」
-                extend type Role {
-                    channels: [Channel!]!
-                }
-
                 # 关联已有账号：平台账号搜索候选
                 type TenantAdminCandidate {
                     id: ID!
