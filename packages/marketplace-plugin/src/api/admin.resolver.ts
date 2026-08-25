@@ -33,6 +33,17 @@ export class AdminMarketplaceResolver {
         return true;
     }
 
+    @Mutation('submitForMarketplaceAdmin')
+    @Transaction()
+    @Allow(Permission.UpdateProduct, Permission.SuperAdmin)
+    async submitForMarketplaceAdmin(
+        @Ctx() ctx: RequestContext,
+        @Args() args: { productId: string },
+    ): Promise<boolean> {
+        await this.marketplaceService.submitForMarketplaceOwnedByChannel(ctx, args.productId, ctx.channelId);
+        return true;
+    }
+
     @Query('marketplacePendingProducts')
     @Allow(Permission.ReadProduct, Permission.SuperAdmin)
     async marketplacePendingProducts(@Ctx() ctx: RequestContext) {

@@ -29,6 +29,10 @@ let AdminMarketplaceResolver = class AdminMarketplaceResolver {
         await this.marketplaceService.rejectMarketplaceProduct(ctx, args.productId, args.reason);
         return true;
     }
+    async submitForMarketplaceAdmin(ctx, args) {
+        await this.marketplaceService.submitForMarketplaceOwnedByChannel(ctx, args.productId, ctx.channelId);
+        return true;
+    }
     async marketplacePendingProducts(ctx) {
         const products = await this.marketplaceService.getPendingProducts(ctx);
         return products;
@@ -76,6 +80,16 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], AdminMarketplaceResolver.prototype, "rejectMarketplaceProduct", null);
+__decorate([
+    (0, graphql_1.Mutation)('submitForMarketplaceAdmin'),
+    (0, core_1.Transaction)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateProduct, core_1.Permission.SuperAdmin),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], AdminMarketplaceResolver.prototype, "submitForMarketplaceAdmin", null);
 __decorate([
     (0, graphql_1.Query)('marketplacePendingProducts'),
     (0, core_1.Allow)(core_1.Permission.ReadProduct, core_1.Permission.SuperAdmin),

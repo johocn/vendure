@@ -60,6 +60,21 @@ export class MarketplaceService {
         return product;
     }
 
+    /** 校验商品归属指定渠道后可提交上架（供 admin API，防止商户提审他人商品） */
+    async submitForMarketplaceOwnedByChannel(
+        ctx: RequestContext,
+        productId: ID,
+        channelId: ID,
+    ): Promise<void> {
+        const product = await this.getProductOrThrow(ctx, productId);
+        await this.entityHydrator.hydrate(ctx, product, { relations: ['channels'] } as any);
+        const owned = (product.channels || []).some(c => idsAreEqual(c.id, channelId));
+        if (!owned && channelId != null) {
+            throw new UserInputError('只能对当前店铺的商品提交上架');
+        }
+        await this.submitForMarketplace(ctx, productId);
+    }
+
     /** 商家提交商品上架 marketplace（置审批中，不对外展示） */
     async submitForMarketplace(ctx: RequestContext, productId: ID): Promise<void> {
         const product = await this.getProductOrThrow(ctx, productId);

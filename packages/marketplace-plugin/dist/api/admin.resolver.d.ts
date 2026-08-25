@@ -12,6 +12,9 @@ export declare class AdminMarketplaceResolver {
         productId: string;
         reason: string;
     }): Promise<boolean>;
+    submitForMarketplaceAdmin(ctx: RequestContext, args: {
+        productId: string;
+    }): Promise<boolean>;
     marketplacePendingProducts(ctx: RequestContext): Promise<any>;
     marketplaceMerchantChannel(ctx: RequestContext): import("@vendure/core").Channel;
     merchantOrders(ctx: RequestContext, args: {
