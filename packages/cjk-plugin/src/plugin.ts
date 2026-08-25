@@ -1048,13 +1048,21 @@ import { DefaultDataService } from './seed/default-data.service';
         }
 
         if (CjkPlugin.options.tenant?.enabled) {
-            config.customFields = {
-                ...config.customFields,
-                Channel: [
-                    ...(config.customFields?.Channel || []),
-                    ...tenantChannelCustomFields.Channel!,
-                ],
-            };
+            // 合并租户 Channel 自定义字段，按 name 去重：dev-config 或其它插件已定义的同名字段以既有为准
+            // （与下方 ProductVariant 合并去重、ShopPlugin.mergeCustomFields 保持一致，避免复制 app 崩溃报 duplicated custom field）。
+            const existingChannelNames = (config.customFields?.Channel || []).map(f => f.name);
+            const newChannelFields = (tenantChannelCustomFields.Channel || []).filter(
+                f => !existingChannelNames.includes(f.name),
+            );
+            if (newChannelFields.length > 0) {
+                config.customFields = {
+                    ...config.customFields,
+                    Channel: [
+                        ...(config.customFields?.Channel || []),
+                        ...newChannelFields,
+                    ],
+                };
+            }
         }
 
         // 注册 Order customFields（selectedPickupLocationId、pickupType）

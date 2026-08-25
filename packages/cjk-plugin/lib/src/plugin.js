@@ -1114,7 +1114,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver, shipping_profile_shop_resolver_1.ShippingProfileShopResolver, payment_profile_shop_resolver_1.PaymentProfileShopResolver],
         },
         configuration: config => {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v;
             // 注入 authSecret 到 crypto 模块（configuration 在 bootstrap 早期执行，此时 options 已可用）
             (0, crypto_1.setAuthSecret)(CjkPlugin.options.authSecret);
             // 注册 SSO 策略到 shop 端（init 钩子由 Vendure 自动调用）
@@ -1197,38 +1197,44 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     ] });
             }
             if ((_m = CjkPlugin.options.tenant) === null || _m === void 0 ? void 0 : _m.enabled) {
-                config.customFields = Object.assign(Object.assign({}, config.customFields), { Channel: [
-                        ...(((_o = config.customFields) === null || _o === void 0 ? void 0 : _o.Channel) || []),
-                        ...tenant_channel_custom_fields_1.tenantChannelCustomFields.Channel,
-                    ] });
+                // 合并租户 Channel 自定义字段，按 name 去重：dev-config 或其它插件已定义的同名字段以既有为准
+                // （与下方 ProductVariant 合并去重、ShopPlugin.mergeCustomFields 保持一致，避免复制 app 崩溃报 duplicated custom field）。
+                const existingChannelNames = (((_o = config.customFields) === null || _o === void 0 ? void 0 : _o.Channel) || []).map(f => f.name);
+                const newChannelFields = (tenant_channel_custom_fields_1.tenantChannelCustomFields.Channel || []).filter(f => !existingChannelNames.includes(f.name));
+                if (newChannelFields.length > 0) {
+                    config.customFields = Object.assign(Object.assign({}, config.customFields), { Channel: [
+                            ...(((_p = config.customFields) === null || _p === void 0 ? void 0 : _p.Channel) || []),
+                            ...newChannelFields,
+                        ] });
+                }
             }
             // 注册 Order customFields（selectedPickupLocationId、pickupType）
             config.customFields = Object.assign(Object.assign({}, config.customFields), { Order: [
-                    ...(((_p = config.customFields) === null || _p === void 0 ? void 0 : _p.Order) || []),
+                    ...(((_q = config.customFields) === null || _q === void 0 ? void 0 : _q.Order) || []),
                     ...order_custom_fields_1.orderCustomFields.Order,
                 ] });
             config.customFields = Object.assign(Object.assign({}, config.customFields), { Customer: [
-                    ...(((_q = config.customFields) === null || _q === void 0 ? void 0 : _q.Customer) || []),
+                    ...(((_r = config.customFields) === null || _r === void 0 ? void 0 : _r.Customer) || []),
                     ...customer_custom_fields_1.customerCustomFields.Customer,
                 ] });
             // 注册 ProductVariant customFields（weight/dimensions）—— 去重防止重复注册
             {
-                const existingPvFields = (((_r = config.customFields) === null || _r === void 0 ? void 0 : _r.ProductVariant) || []).map(f => f.name);
+                const existingPvFields = (((_s = config.customFields) === null || _s === void 0 ? void 0 : _s.ProductVariant) || []).map(f => f.name);
                 const newPvFields = (product_variant_custom_fields_1.productVariantCustomFields.ProductVariant || []).filter(f => !existingPvFields.includes(f.name));
                 if (newPvFields.length > 0) {
                     config.customFields = Object.assign(Object.assign({}, config.customFields), { ProductVariant: [
-                            ...(((_s = config.customFields) === null || _s === void 0 ? void 0 : _s.ProductVariant) || []),
+                            ...(((_t = config.customFields) === null || _t === void 0 ? void 0 : _t.ProductVariant) || []),
                             ...newPvFields,
                         ] });
                 }
             }
             // 注册 ShippingMethod customFields（enabled 启停）—— 去重防止重复注册
             {
-                const existingSmFields = (((_t = config.customFields) === null || _t === void 0 ? void 0 : _t.ShippingMethod) || []).map(f => f.name);
+                const existingSmFields = (((_u = config.customFields) === null || _u === void 0 ? void 0 : _u.ShippingMethod) || []).map(f => f.name);
                 const newSmFields = (shipping_method_custom_fields_1.customShippingMethodFields.ShippingMethod || []).filter(f => !existingSmFields.includes(f.name));
                 if (newSmFields.length > 0) {
                     config.customFields = Object.assign(Object.assign({}, config.customFields), { ShippingMethod: [
-                            ...(((_u = config.customFields) === null || _u === void 0 ? void 0 : _u.ShippingMethod) || []),
+                            ...(((_v = config.customFields) === null || _v === void 0 ? void 0 : _v.ShippingMethod) || []),
                             ...newSmFields,
                         ] });
                 }
