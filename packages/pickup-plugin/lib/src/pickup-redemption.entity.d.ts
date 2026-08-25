@@ -7,7 +7,7 @@ export declare class PickupRedemption extends VendureEntity implements ChannelAw
     orderId: number;
     code: string;
     status: PickupRedemptionStatus;
-    claimedAt?: Date | null;
+    claimedAt?: Date;
     claimedByUserId?: number | null;
     claimChannel?: 'customer' | 'shop' | null;
 }

@@ -28,8 +28,9 @@ export class PickupRedemption extends VendureEntity implements ChannelAware {
     @Column({ type: 'varchar', default: 'generated' })
     status: PickupRedemptionStatus;
 
-    @Column({ type: 'timestamp', nullable: true })
-    claimedAt?: Date | null;
+    // 跨库安全（sqljs/SQLite→datetime，PostgreSQL→timestamp）：仅声明可选 Date，TypeORM 按驱动映射
+    @Column({ nullable: true })
+    claimedAt?: Date;
 
     @Column({ type: 'int', nullable: true })
     claimedByUserId?: number | null;
