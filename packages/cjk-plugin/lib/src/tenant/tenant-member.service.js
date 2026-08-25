@@ -359,9 +359,27 @@ let TenantMemberService = class TenantMemberService {
         role.channels = (role.channels || []).filter((c) => String(c.id) !== chId);
         await roleRepo.save(role);
     }
-    /** 租户自助：引用全局角色到当前 ctx.channelId。 */
+    /** 租户自助：引用全局角色到当前 ctx.channelId。仅允许引用「未绑定任何店」的 g- 角色（channels=[]），
+     *  防止租户引用已被他店绑定（channels 非空）的角色造成跨店共享越权。 */
     async myReferGlobalRole(ctx, roleId) {
+        const roleRepo = this.connection.getRepository(ctx, core_1.Role);
+        const role = await roleRepo.findOne({
+            where: { id: String(roleId) },
+            relations: ['channels'],
+        });
+        if (!role)
+            throw new Error('ROLE_NOT_FOUND');
+        if (!String(role.code).startsWith(exports.GLOBAL_ROLE_PREFIX))
+            throw new Error('NOT_GLOBAL_ROLE');
+        if ((role.channels || []).length > 0)
+            throw new Error('ROLE_ALREADY_REFERENCED');
         await this.referGlobalRoleToChannel(ctx, roleId, ctx.channelId);
+    }
+    /** 租户自助可引用列表：仅返回「未绑定任何店」的 g- 角色（channels=[]，可引用）。 */
+    async globalRolesAvailable(ctx) {
+        const repo = this.connection.getRepository(ctx, core_1.Role);
+        const all = await repo.find({ relations: ['channels'] });
+        return all.filter((r) => String(r.code).startsWith(exports.GLOBAL_ROLE_PREFIX) && !(r.channels || []).length);
     }
     /** 租户自助：从当前 ctx.channelId 取消引用。 */
     async myUnreferGlobalRole(ctx, roleId) {

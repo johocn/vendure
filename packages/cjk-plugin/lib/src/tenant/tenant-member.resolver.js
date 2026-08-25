@@ -57,7 +57,11 @@ let TenantMemberResolver = class TenantMemberResolver {
     }
     async myGlobalRolesAvailable(ctx) {
         this.tenantMemberService.assertChannelMember(ctx);
-        return this.tenantMemberService.globalRoles(ctx);
+        return this.tenantMemberService.globalRolesAvailable(ctx);
+    }
+    async myImportDefaultRoles(ctx) {
+        this.tenantMemberService.assertChannelMember(ctx);
+        return this.tenantMemberService.myImportDefaultRoles(ctx);
     }
     async myReferGlobalRole(ctx, roleId) {
         this.tenantMemberService.assertChannelMember(ctx);
@@ -173,6 +177,14 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext]),
     __metadata("design:returntype", Promise)
 ], TenantMemberResolver.prototype, "myGlobalRolesAvailable", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(tenant_permissions_1.tenantRoleManagePermission.Permission),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], TenantMemberResolver.prototype, "myImportDefaultRoles", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(tenant_permissions_1.tenantRoleManagePermission.Permission),

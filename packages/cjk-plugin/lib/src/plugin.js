@@ -863,6 +863,17 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     label: String!
                     items: [PermissionCatalogItem!]!
                 }
+                type RoleTemplate {
+                    key: String!
+                    busiPrefix: String!
+                    description: String!
+                    permissions: [String!]!
+                }
+
+                # 扩展标准 Role：暴露 channels 关联，供全局池标注「已入本地/可引用」
+                extend type Role {
+                    channels: [Channel!]!
+                }
 
                 # 关联已有账号：平台账号搜索候选
                 type TenantAdminCandidate {
@@ -884,6 +895,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     myTenantRoles: [Role!]!
                     myTenantAccess(channelId: ID): MyTenantAccess!
                     globalRoles: [Role!]!
+                    globalRoleTemplates: [RoleTemplate!]!
                     myGlobalRolesAvailable: [Role!]!
                     tenantSearchAdmins(channelId: ID!, keyword: String!): [TenantAdminCandidate!]!
                     mySearchAdmins(keyword: String!): [TenantAdminCandidate!]!
@@ -906,6 +918,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     unreferGlobalRoleFromChannel(roleId: ID!, channelId: ID!): Boolean!
                     myReferGlobalRole(roleId: ID!): Boolean!
                     myUnreferGlobalRole(roleId: ID!): Boolean!
+                    myImportDefaultRoles: [Role!]!
                     createTenantMember(input: CreateTenantMemberInput!): TenantMember!
                     setTenantMemberEnabled(id: ID!, enabled: Boolean!): TenantMember!
                     deleteTenantMember(id: ID!): Boolean!

@@ -17,6 +17,10 @@ export interface PermissionCatalogGroup {
 export declare const PERMISSION_CATALOG: PermissionCatalogGroup[];
 /** 租户级角色可用的业务权限白名单（由 PERMISSION_CATALOG 扁平派生，建模/校验统一使用） */
 export declare const BUSINESS_PERMISSIONS: string[];
+/** 全局角色 code 前缀：超管建的全局角色统一加此前缀，用于池查询与全局/本地判定（Vendure Role 无 customFields，用前缀区分） */
+export declare const GLOBAL_ROLE_PREFIX = "g-";
+/** 全局角色 code 规范化：输入 code 自动统一为 `g-{code}`，避免手动误输入前缀产生重复 */
+export declare function normalizeGlobalRoleCode(code: string): string;
 export interface CreateTenantAdminInput {
     firstName?: string;
     lastName?: string;
@@ -77,32 +81,39 @@ export declare class TenantMemberService {
     /** 系统直建租户级角色（绕过 roleService.create 的权限校验，仅用于启动补种子/一键导入这类系统操作）。
      *  幂等：仅当该 code 在本 channel 不存在时才创建。 */
     private createTenantRoleDirect;
-    /** 全局唯一 code 幂等判定（全局角色不绑店，只看 code 是否已存在）。 */
-    private roleExistsGlobal;
-    /** 直建全局角色（channels=[]）。幂等：code 已存在则返回 null。 */
-    createGlobalRoleDirect(ctx: RequestContext, input: {
-        code: string;
-        description: string;
-        permissions: string[];
-    }): Promise<any>;
-    /** 建全局角色并批量分发到多店：建 channels=[] 角色，再把勾选店加入 channels（幂等：code 已存在则 no-op）。 */
+    /** 建全局角色并批量分发到店：code 自动加 `g-` 前缀；channelIds 为空 → channels=[]（全局可用），非空 → channels=[勾选店]（全局默认）。
+     *  统一幂等：code 已存在则仅追加缺失店，绝不重复关联同一店。所有加店路径（创建时勾选/分发/引用）均应收敛到此核心语义。 */
     createGlobalRoleWithChannels(ctx: RequestContext, channelIds: ID[], input: {
         code: string;
         description: string;
         permissions: string[];
     }): Promise<any[]>;
-    /** 把全局角色引用到某店（幂等：已含该店则 no-op；仅当是全局角色（channels 为空）才允许普通引用）。 */
+    /** 直建全局可用角色（channels=[]）。空 channelIds 走 createGlobalRoleWithChannels；保持幂等语义。 */
+    createGlobalRoleDirect(ctx: RequestContext, input: {
+        code: string;
+        description: string;
+        permissions: string[];
+    }): Promise<any>;
+    /** 把全局角色引用到某店（幂等：已含该店则 no-op；仅 g- 前缀全局角色允许被引用，租户本地角色不可引）。
+     *  超管从池继续分发也已含本方法，故去掉原「channels 必须为空」限制，允许多店分发。 */
     referGlobalRoleToChannel(ctx: RequestContext, roleId: ID, channelId: ID): Promise<void>;
     /** 取消某店对该全局角色的引用（移除该店；channels 变空则回到全局池）。 */
     unreferGlobalRoleFromChannel(ctx: RequestContext, roleId: ID, channelId: ID): Promise<void>;
-    /** 租户自助：引用全局角色到当前 ctx.channelId。 */
+    /** 租户自助：引用全局角色到当前 ctx.channelId。仅允许引用「未绑定任何店」的 g- 角色（channels=[]），
+     *  防止租户引用已被他店绑定（channels 非空）的角色造成跨店共享越权。 */
     myReferGlobalRole(ctx: RequestContext, roleId: ID): Promise<void>;
+    /** 租户自助可引用列表：仅返回「未绑定任何店」的 g- 角色（channels=[]，可引用）。 */
+    globalRolesAvailable(ctx: RequestContext): Promise<any[]>;
     /** 租户自助：从当前 ctx.channelId 取消引用。 */
     myUnreferGlobalRole(ctx: RequestContext, roleId: ID): Promise<void>;
-    /** 查全部全局角色（channels=[]）。 */
+    /** 查全部全局角色（code 以 g- 开头；channels 可为空=全局可用，非空=已分发到店）。 */
     globalRoles(ctx: RequestContext): Promise<any[]>;
+    /** 全局默认角色模板（不落库为 Role）：租户"导入到本店"时复制独立副本，各租户权限互不影响 */
+    globalRoleTemplates(ctx: RequestContext): Promise<any[]>;
     /** 单租户一键导入默认三角色（幂等）。已初始化则返回空数组，不重复建。 */
     importDefaultRoles(ctx: RequestContext, channelId: ID): Promise<any[]>;
+    /** 租户自助：从全局默认模板复制独立副本到当前 ctx.channelId（幂等，复用 importDefaultRoles） */
+    myImportDefaultRoles(ctx: RequestContext): Promise<any[]>;
     /** 启动补种子：扫描所有 Channel，缺默认角色则幂等补建；异常仅打日志不阻塞启动。 */
     ensureDefaultRolesForAllChannels(ctx: RequestContext): Promise<void>;
     /** 租户级角色更新（权限白名单校验；channelId 非空时校验角色归属，防横向越权） */

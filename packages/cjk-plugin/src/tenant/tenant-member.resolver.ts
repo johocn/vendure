@@ -71,7 +71,14 @@ export class TenantMemberResolver {
     @Allow(Permission.Authenticated)
     async myGlobalRolesAvailable(@Ctx() ctx: RequestContext): Promise<any[]> {
         this.tenantMemberService.assertChannelMember(ctx);
-        return this.tenantMemberService.globalRoles(ctx);
+        return this.tenantMemberService.globalRolesAvailable(ctx);
+    }
+
+    @Mutation()
+    @Allow(tenantRoleManagePermission.Permission)
+    async myImportDefaultRoles(@Ctx() ctx: RequestContext): Promise<any[]> {
+        this.tenantMemberService.assertChannelMember(ctx);
+        return this.tenantMemberService.myImportDefaultRoles(ctx);
     }
 
     @Mutation()

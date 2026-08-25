@@ -110,6 +110,9 @@ let TenantAdminResolver = class TenantAdminResolver {
     async globalRoles(ctx) {
         return this.tenantMemberService.globalRoles(ctx);
     }
+    async globalRoleTemplates(ctx) {
+        return this.tenantMemberService.globalRoleTemplates(ctx);
+    }
     async createGlobalRole(ctx, args) {
         return this.tenantMemberService.createGlobalRoleWithChannels(ctx, args.channelIds, args.input);
     }
@@ -293,6 +296,14 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext]),
     __metadata("design:returntype", Promise)
 ], TenantAdminResolver.prototype, "globalRoles", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], TenantAdminResolver.prototype, "globalRoleTemplates", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(core_1.Permission.SuperAdmin),

@@ -198,6 +198,12 @@ export class TenantAdminResolver {
         return this.tenantMemberService.globalRoles(ctx);
     }
 
+    @Query()
+    @Allow(Permission.SuperAdmin)
+    async globalRoleTemplates(@Ctx() ctx: RequestContext): Promise<any[]> {
+        return this.tenantMemberService.globalRoleTemplates(ctx);
+    }
+
     @Mutation()
     @Allow(Permission.SuperAdmin)
     async createGlobalRole(
