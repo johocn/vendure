@@ -95,13 +95,6 @@ exports.PERMISSION_CATALOG = [
             { code: 'VerifyOrder', label: '核销·预留' },
         ],
     },
-    {
-        key: 'platform',
-        label: '平台管理',
-        items: [
-            { code: 'PlatformProductReview', label: '平台商品审批' },
-        ],
-    },
 ];
 /** 租户级角色可用的业务权限白名单（由 PERMISSION_CATALOG 扁平派生，建模/校验统一使用） */
 exports.BUSINESS_PERMISSIONS = exports.PERMISSION_CATALOG.flatMap((g) => g.items.map((i) => i.code));

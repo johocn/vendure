@@ -40,10 +40,6 @@ const customer_custom_fields_1 = require("./customer/customer-custom-fields");
 const tenant_channel_custom_fields_1 = require("./tenant/tenant-channel-custom-fields");
 const product_variant_custom_fields_1 = require("./shipping/product-variant-custom-fields");
 const shipping_method_custom_fields_1 = require("./shipping/shipping-method-custom-fields");
-const marketplace_custom_fields_1 = require("./product/marketplace-custom-fields");
-const marketplace_product_service_1 = require("./product/marketplace-product.service");
-const marketplace_product_resolver_1 = require("./product/marketplace-product.resolver");
-const marketplace_permissions_1 = require("./product/marketplace-permissions");
 const tiered_shipping_calculator_1 = require("./shipping/tiered-shipping-calculator");
 const tiered_shipping_eligibility_checker_1 = require("./shipping/tiered-shipping-eligibility-checker");
 const shipping_template_entity_1 = require("./shipping/shipping-template.entity");
@@ -260,8 +256,6 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             payment_template_service_1.PaymentTemplateService,
             default_data_service_1.DefaultDataService,
             tenant_member_service_1.TenantMemberService,
-            marketplace_product_service_1.MarketplaceProductService,
-            migrations_1.MarketplaceCustomColumnMigration,
         ],
         adminApiExtensions: {
             schema: () => {
@@ -934,27 +928,9 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     myUpdateChannelCustomFields(input: JSON!): JSON!
                 }
 
-                # ===== Marketplace Product =====
-                type MarketplaceProductView {
-                    id: ID!
-                    name: String!
-                    listedInMarketplace: Boolean!
-                    marketplaceStatus: String
-                    merchantRef: String
-                    rejectReason: String
-                }
-
-                extend type Query {
-                    marketplaceProducts(status: String): [MarketplaceProductView!]!
-                }
-
-                extend type Mutation {
-                    submitProductToMarketplace(id: ID!): MarketplaceProductView!
-                    reviewMarketplaceProduct(id: ID!, approve: Boolean!, rejectReason: String): MarketplaceProductView!
-                }
-            `;
+                `;
             },
-            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, marketplace_product_resolver_1.MarketplaceProductResolver],
+            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver],
         },
         shopApiExtensions: {
             schema: () => {
@@ -1111,7 +1087,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver, shipping_profile_shop_resolver_1.ShippingProfileShopResolver, payment_profile_shop_resolver_1.PaymentProfileShopResolver],
         },
         configuration: config => {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t;
             // 注入 authSecret 到 crypto 模块（configuration 在 bootstrap 早期执行，此时 options 已可用）
             (0, crypto_1.setAuthSecret)(CjkPlugin.options.authSecret);
             // 注册 SSO 策略到 shop 端（init 钩子由 Vendure 自动调用）
@@ -1212,21 +1188,13 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                         ] });
                 }
             }
-            // 注册 Product customFields（marketplace 审核字段）—— 去重防止重复注册
-            {
-                const existingPFields = (((_s = config.customFields) === null || _s === void 0 ? void 0 : _s.Product) || []).map((f) => f.name);
-                const newPFields = (marketplace_custom_fields_1.marketplaceProductCustomFields.Product || []).filter((f) => !existingPFields.includes(f.name));
-                if (newPFields.length > 0) {
-                    config.customFields = Object.assign(Object.assign({}, config.customFields), { Product: [...(((_t = config.customFields) === null || _t === void 0 ? void 0 : _t.Product) || []), ...newPFields] });
-                }
-            }
             // 注册 ShippingMethod customFields（enabled 启停）—— 去重防止重复注册
             {
-                const existingSmFields = (((_u = config.customFields) === null || _u === void 0 ? void 0 : _u.ShippingMethod) || []).map(f => f.name);
+                const existingSmFields = (((_s = config.customFields) === null || _s === void 0 ? void 0 : _s.ShippingMethod) || []).map(f => f.name);
                 const newSmFields = (shipping_method_custom_fields_1.customShippingMethodFields.ShippingMethod || []).filter(f => !existingSmFields.includes(f.name));
                 if (newSmFields.length > 0) {
                     config.customFields = Object.assign(Object.assign({}, config.customFields), { ShippingMethod: [
-                            ...(((_v = config.customFields) === null || _v === void 0 ? void 0 : _v.ShippingMethod) || []),
+                            ...(((_t = config.customFields) === null || _t === void 0 ? void 0 : _t.ShippingMethod) || []),
                             ...newSmFields,
                         ] });
                 }
@@ -1270,11 +1238,6 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             config.authOptions.customPermissions = [
                 ...(config.authOptions.customPermissions || []),
                 ...tenant_permissions_1.tenantPermissionDefinitions,
-            ];
-            // 注册平台商品审核权限（PlatformProductReview）
-            config.authOptions.customPermissions = [
-                ...(config.authOptions.customPermissions || []),
-                marketplace_permissions_1.platformProductReviewPermission,
             ];
             return config;
         },
