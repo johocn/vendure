@@ -33,23 +33,20 @@ let MyAccessResolver = class MyAccessResolver {
     async myTenantAccess(ctx, channelId) {
         var _a, _b;
         const user = (_a = ctx.session) === null || _a === void 0 ? void 0 : _a.user;
-        // 超管判定不能依赖 ctx.userHasPermissions（按激活 channel 校验，superadmin 角色仅绑定 default
-        // channel 时在其它租户下会误判为 false）。改用 User.superAdmin 原生标记 + 角色权限兜底，跨 channel 恒生效。
+        // CachedSessionUser 仅含 id/identifier/verified/channelPermissions，其中 channelPermissions
+        // 由角色派生并跨渠道累积权限。超管判定不能依赖 ctx.userHasPermissions（按激活 channel 校验，
+        // superadmin 角色仅绑定 default channel 时在其它租户下会误判为 false），改用 channelPermissions
+        // 中任一渠道包含 Permission.SuperAdmin 判定，跨 channel 恒生效。
+        const channelPerms = (user === null || user === void 0 ? void 0 : user.channelPermissions) || [];
         const isSuperAdmin = (user === null || user === void 0 ? void 0 : user.superAdmin) === true ||
-            ((user === null || user === void 0 ? void 0 : user.roles) || []).some((r) => r.code === 'superadmin' ||
-                (r.permissions || []).includes(core_1.Permission.SuperAdmin));
+            channelPerms.some((cp) => (cp.permissions || []).includes(core_1.Permission.SuperAdmin));
         // 当前用户可访问的 channel（Vendure 依据其角色）
         const me = await this.channelService.findAll(ctx, { take: 1000 });
         let channels = me.items;
         if (!isSuperAdmin) {
-            // 非超管：过滤到用户角色限定的 channel
-            const userRoles = (user === null || user === void 0 ? void 0 : user.roles) || [];
-            const roleChannelIds = new Set();
-            for (const r of userRoles) {
-                for (const c of r.channels || [])
-                    roleChannelIds.add(String(c.id));
-            }
-            channels = channels.filter((c) => roleChannelIds.has(String(c.id)));
+            // 非超管：过滤到用户角色限定的 channel（channelPermissions 即用户角色覆盖的渠道集合）
+            const idSet = new Set(channelPerms.map((cp) => String(cp.id)));
+            channels = channels.filter((c) => idSet.has(String(c.id)));
         }
         // 查询每个 channel 的启停 + 当前用户在其中的 TenantMember 启停
         const memberRepo = this.connection.getRepository(ctx, tenant_member_entity_1.TenantMember);
@@ -78,13 +75,13 @@ let MyAccessResolver = class MyAccessResolver {
         if (isSuperAdmin) {
             permissions.add(core_1.Permission.SuperAdmin);
         }
-        for (const r of (user === null || user === void 0 ? void 0 : user.roles) || []) {
-            // 角色是否覆盖指定 channel（未指定 channelId 时视为全部，即跨 channel 并集）
+        for (const cp of channelPerms) {
+            // 渠道是否覆盖指定 channel（未指定 channelId 时视为全部，即跨 channel 并集）
             const coversChannel = channelId === undefined || channelId === null || channelId === ''
                 ? true
-                : (r.channels || []).some((c) => String(c.id) === String(channelId));
+                : String(cp.id) === String(channelId);
             if (coversChannel) {
-                for (const p of r.permissions || [])
+                for (const p of cp.permissions || [])
                     permissions.add(p);
             }
         }

@@ -25,28 +25,23 @@ export class MyAccessResolver {
         @Args('channelId', { type: () => GqlID, nullable: true }) channelId?: string,
     ): Promise<any> {
         const user = (ctx as any).session?.user;
-        // 超管判定不能依赖 ctx.userHasPermissions（按激活 channel 校验，superadmin 角色仅绑定 default
-        // channel 时在其它租户下会误判为 false）。改用 User.superAdmin 原生标记 + 角色权限兜底，跨 channel 恒生效。
+        // CachedSessionUser 仅含 id/identifier/verified/channelPermissions，其中 channelPermissions
+        // 由角色派生并跨渠道累积权限。超管判定不能依赖 ctx.userHasPermissions（按激活 channel 校验，
+        // superadmin 角色仅绑定 default channel 时在其它租户下会误判为 false），改用 channelPermissions
+        // 中任一渠道包含 Permission.SuperAdmin 判定，跨 channel 恒生效。
+        const channelPerms: any[] = user?.channelPermissions || [];
         const isSuperAdmin =
             user?.superAdmin === true ||
-            (user?.roles || []).some(
-                (r: any) =>
-                    r.code === 'superadmin' ||
-                    (r.permissions || []).includes(Permission.SuperAdmin),
-            );
+            channelPerms.some((cp: any) => (cp.permissions || []).includes(Permission.SuperAdmin));
 
         // 当前用户可访问的 channel（Vendure 依据其角色）
         const me = await this.channelService.findAll(ctx, { take: 1000 });
         let channels: any[] = (me as any).items;
 
         if (!isSuperAdmin) {
-            // 非超管：过滤到用户角色限定的 channel
-            const userRoles = user?.roles || [];
-            const roleChannelIds = new Set<string>();
-            for (const r of userRoles) {
-                for (const c of r.channels || []) roleChannelIds.add(String(c.id));
-            }
-            channels = channels.filter((c) => roleChannelIds.has(String(c.id)));
+            // 非超管：过滤到用户角色限定的 channel（channelPermissions 即用户角色覆盖的渠道集合）
+            const idSet = new Set<string>(channelPerms.map((cp) => String(cp.id)));
+            channels = channels.filter((c) => idSet.has(String(c.id)));
         }
 
         // 查询每个 channel 的启停 + 当前用户在其中的 TenantMember 启停
@@ -76,14 +71,14 @@ export class MyAccessResolver {
         if (isSuperAdmin) {
             permissions.add(Permission.SuperAdmin);
         }
-        for (const r of user?.roles || []) {
-            // 角色是否覆盖指定 channel（未指定 channelId 时视为全部，即跨 channel 并集）
+        for (const cp of channelPerms) {
+            // 渠道是否覆盖指定 channel（未指定 channelId 时视为全部，即跨 channel 并集）
             const coversChannel =
                 channelId === undefined || channelId === null || channelId === ''
                     ? true
-                    : (r.channels || []).some((c: any) => String(c.id) === String(channelId));
+                    : String(cp.id) === String(channelId);
             if (coversChannel) {
-                for (const p of r.permissions || []) permissions.add(p);
+                for (const p of cp.permissions || []) permissions.add(p);
             }
         }
         
