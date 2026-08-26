@@ -54,6 +54,7 @@ type ProductVariant implements Node {
     currencyCode: CurrencyCode!
     priceWithTax: Money!
     stockLevel: String!
+    availableStock: Int
     taxRateApplied: TaxRate!
     taxCategory: TaxCategory!
     options: [ProductOption!]!

@@ -151,6 +151,11 @@ export class ProductVariantEntityResolver {
     async stockLevel(@Ctx() ctx: RequestContext, @Parent() productVariant: ProductVariant): Promise<string> {
         return this.productVariantService.getDisplayStockLevel(ctx, productVariant);
     }
+
+    @ResolveField()
+    async availableStock(@Ctx() ctx: RequestContext, @Parent() productVariant: ProductVariant): Promise<number> {
+        return this.productVariantService.getSaleableStockLevel(ctx, productVariant);
+    }
 }
 
 @Resolver('ProductVariant')
