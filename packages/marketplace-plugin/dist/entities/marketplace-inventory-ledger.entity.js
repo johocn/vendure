@@ -62,12 +62,12 @@ __decorate([
     __metadata("design:type", String)
 ], MarketplaceInventoryLedger.prototype, "actionType", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamp' }),
+    (0, typeorm_1.Column)({ nullable: true }),
     __metadata("design:type", Date)
 ], MarketplaceInventoryLedger.prototype, "validFrom", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
-    __metadata("design:type", Object)
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Date)
 ], MarketplaceInventoryLedger.prototype, "validTo", void 0);
 __decorate([
     (0, typeorm_1.Index)(),

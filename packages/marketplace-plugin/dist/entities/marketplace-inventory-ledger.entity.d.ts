@@ -18,7 +18,7 @@ export declare class MarketplaceInventoryLedger extends VendureEntity {
     stockAfter: number;
     stockDelta: number;
     actionType: string;
-    validFrom: Date;
-    validTo: Date | null;
+    validFrom?: Date;
+    validTo?: Date;
     orderId: string | null;
 }
