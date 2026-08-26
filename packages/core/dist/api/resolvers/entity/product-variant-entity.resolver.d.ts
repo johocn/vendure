@@ -30,6 +30,7 @@ export declare class ProductVariantEntityResolver {
     options(ctx: RequestContext, productVariant: ProductVariant): Promise<Array<Translated<ProductOption>>>;
     facetValues(ctx: RequestContext, productVariant: ProductVariant, apiType: ApiType): Promise<Array<Translated<FacetValue>>>;
     stockLevel(ctx: RequestContext, productVariant: ProductVariant): Promise<string>;
+    availableStock(ctx: RequestContext, productVariant: ProductVariant): Promise<number>;
 }
 export declare class ProductVariantAdminEntityResolver {
     private productVariantService;

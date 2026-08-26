@@ -98,6 +98,9 @@ let ProductVariantEntityResolver = class ProductVariantEntityResolver {
     async stockLevel(ctx, productVariant) {
         return this.productVariantService.getDisplayStockLevel(ctx, productVariant);
     }
+    async availableStock(ctx, productVariant) {
+        return this.productVariantService.getSaleableStockLevel(ctx, productVariant);
+    }
 };
 exports.ProductVariantEntityResolver = ProductVariantEntityResolver;
 __decorate([
@@ -206,6 +209,14 @@ __decorate([
     __metadata("design:paramtypes", [request_context_1.RequestContext, product_variant_entity_1.ProductVariant]),
     __metadata("design:returntype", Promise)
 ], ProductVariantEntityResolver.prototype, "stockLevel", null);
+__decorate([
+    (0, graphql_1.ResolveField)(),
+    __param(0, (0, request_context_decorator_1.Ctx)()),
+    __param(1, (0, graphql_1.Parent)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [request_context_1.RequestContext, product_variant_entity_1.ProductVariant]),
+    __metadata("design:returntype", Promise)
+], ProductVariantEntityResolver.prototype, "availableStock", null);
 exports.ProductVariantEntityResolver = ProductVariantEntityResolver = __decorate([
     (0, graphql_1.Resolver)('ProductVariant'),
     __metadata("design:paramtypes", [product_variant_service_1.ProductVariantService,
