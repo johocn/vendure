@@ -513,7 +513,13 @@ export class InventoryService {
         if (!Array.isArray(serviceCities) || serviceCities.length === 0) {
             return true;
         }
-        return serviceCities.includes(city);
+        const norm = (s: string) => s.trim().toLowerCase();
+        return serviceCities.some((s: unknown) => {
+            if (typeof s !== 'string') return false;
+            const a = norm(city);
+            const b = norm(s);
+            return a === b || a.startsWith(b) || b.startsWith(a);
+        });
     }
 
     private locationDistanceKm(loc: StockLocation, origin: { lat: number; lng: number } | null): number {
