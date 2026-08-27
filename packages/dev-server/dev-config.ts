@@ -257,6 +257,8 @@ export const devConfig: VendureConfig = {
             { name: 'servicePhone', type: 'string', public: true },
             // shopContent 存装修 JSON 字符串（Vendure 3.6.4 无 type:'json'，用 text 承载序列化 JSON）
             { name: 'shopContent', type: 'text', public: true },
+            // detailConfig 存商品详情页装修 JSON 字符串（结构化 schema 见 nshop layers/base/app/utils/detail-config.ts）
+            { name: 'detailConfig', type: 'text', public: true },
         ],
         Customer: [],
         Fulfillment: [],

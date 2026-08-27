@@ -230,6 +230,7 @@ exports.devConfig = {
             { name: 'shopIntro', type: 'string', public: true },
             { name: 'servicePhone', type: 'string', public: true },
             { name: 'shopContent', type: 'text', public: true },
+            { name: 'detailConfig', type: 'text', public: true },
         ],
         Customer: [],
         Fulfillment: [],
