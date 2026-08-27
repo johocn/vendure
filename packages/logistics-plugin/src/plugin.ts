@@ -220,6 +220,7 @@ const shopSchema = () => gql`
         config.customFields.Fulfillment = mergeCustomFields(config.customFields.Fulfillment, logisticsFulfillmentCustomFields.Fulfillment);
         config.customFields.Channel = mergeCustomFields(config.customFields.Channel, logisticsChannelCustomFields.Channel);
         config.customFields.Product = mergeCustomFields(config.customFields.Product, catalogCustomFields.Product);
+        config.customFields.ProductVariant = mergeCustomFields(config.customFields.ProductVariant, catalogCustomFields.ProductVariant);
         config.customFields.StockLocation = mergeCustomFields(config.customFields.StockLocation, catalogCustomFields.StockLocation);
         config.customFields.Order = mergeCustomFields(config.customFields.Order, catalogCustomFields.Order);
         config.customFields.OrderLine = mergeCustomFields(config.customFields.OrderLine, catalogCustomFields.OrderLine);

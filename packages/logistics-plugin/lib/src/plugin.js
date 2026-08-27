@@ -286,6 +286,7 @@ exports.LogisticsPlugin = LogisticsPlugin = LogisticsPlugin_1 = __decorate([
             config.customFields.Fulfillment = mergeCustomFields(config.customFields.Fulfillment, fulfillment_custom_fields_1.logisticsFulfillmentCustomFields.Fulfillment);
             config.customFields.Channel = mergeCustomFields(config.customFields.Channel, channel_custom_fields_1.logisticsChannelCustomFields.Channel);
             config.customFields.Product = mergeCustomFields(config.customFields.Product, catalog_custom_fields_1.catalogCustomFields.Product);
+            config.customFields.ProductVariant = mergeCustomFields(config.customFields.ProductVariant, catalog_custom_fields_1.catalogCustomFields.ProductVariant);
             config.customFields.StockLocation = mergeCustomFields(config.customFields.StockLocation, catalog_custom_fields_1.catalogCustomFields.StockLocation);
             config.customFields.Order = mergeCustomFields(config.customFields.Order, catalog_custom_fields_1.catalogCustomFields.Order);
             config.customFields.OrderLine = mergeCustomFields(config.customFields.OrderLine, catalog_custom_fields_1.catalogCustomFields.OrderLine);
