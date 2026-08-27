@@ -24,6 +24,22 @@ export const catalogCustomFields: CustomFields = {
             public: true, // Shop API 需要读取，前端超区提示
             label: [{ languageCode: LanguageCode.zh_Hans, value: '服务城市列表' }],
         },
+        {
+            name: 'videoUrl',
+            type: 'string',
+            nullable: true,
+            public: true,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '商品视频直链' }],
+        },
+    ],
+    ProductVariant: [
+        {
+            name: 'videoUrl',
+            type: 'string',
+            nullable: true,
+            public: true,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '变体视频直链' }],
+        },
     ],
     StockLocation: [
         {
