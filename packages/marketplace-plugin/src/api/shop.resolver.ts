@@ -70,7 +70,9 @@ export class ShopResolver {
                 ? {
                       id: (product.customFields.merchantRef as any).id,
                       code: (product.customFields.merchantRef as any).code,
-                      name: (product.customFields.merchantRef as any).name,
+                      name:
+                          (product.customFields.merchantRef as any).seller?.name ??
+                          (product.customFields.merchantRef as any).code,
                   }
                 : null,
         }));

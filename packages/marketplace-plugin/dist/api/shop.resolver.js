@@ -50,7 +50,7 @@ let ShopResolver = class ShopResolver {
     async marketplaceProducts(ctx) {
         const products = await this.marketplaceService.getMarketplaceProducts(ctx);
         return products.map(product => {
-            var _a, _b, _c, _d;
+            var _a, _b, _c, _d, _e, _f;
             return ({
                 id: product.id,
                 name: (_a = this.translate(product).name) !== null && _a !== void 0 ? _a : '',
@@ -61,7 +61,7 @@ let ShopResolver = class ShopResolver {
                     ? {
                         id: product.customFields.merchantRef.id,
                         code: product.customFields.merchantRef.code,
-                        name: product.customFields.merchantRef.name,
+                        name: (_f = (_e = product.customFields.merchantRef.seller) === null || _e === void 0 ? void 0 : _e.name) !== null && _f !== void 0 ? _f : product.customFields.merchantRef.code,
                     }
                     : null,
             });

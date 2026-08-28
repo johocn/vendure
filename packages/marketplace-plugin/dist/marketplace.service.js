@@ -118,7 +118,7 @@ let MarketplaceService = class MarketplaceService {
         });
         for (const product of products) {
             await this.entityHydrator.hydrate(ctx, product, {
-                relations: ['customFields.merchantRef', 'featuredAsset'],
+                relations: ['customFields.merchantRef.seller', 'featuredAsset'],
             });
         }
         return products;
