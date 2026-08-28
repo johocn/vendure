@@ -83,7 +83,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)('submitForMarketplaceAdmin'),
     (0, core_1.Transaction)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateProduct, core_1.Permission.SuperAdmin),
+    (0, core_1.Allow)(core_1.Permission.UpdateCatalog, core_1.Permission.UpdateProduct, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)()),
     __metadata("design:type", Function),

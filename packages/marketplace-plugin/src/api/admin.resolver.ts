@@ -35,7 +35,7 @@ export class AdminMarketplaceResolver {
 
     @Mutation('submitForMarketplaceAdmin')
     @Transaction()
-    @Allow(Permission.UpdateProduct, Permission.SuperAdmin)
+    @Allow(Permission.UpdateCatalog, Permission.UpdateProduct, Permission.SuperAdmin)
     async submitForMarketplaceAdmin(
         @Ctx() ctx: RequestContext,
         @Args() args: { productId: string },
