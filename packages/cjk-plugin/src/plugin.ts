@@ -89,6 +89,9 @@ import { PaymentTemplateAdminResolver } from './payment/payment-template-admin.r
 import { paymentTemplatePermissionDefinitions } from './payment/payment-template-permissions';
 import { ShippingProfileShopResolver } from './shipping/shipping-profile-shop.resolver';
 import { PaymentProfileShopResolver } from './payment/payment-profile-shop.resolver';
+import { OrderBoxService } from './order/order-box.service';
+import { OrderBoxShopResolver } from './order/order-box-shop.resolver';
+import { BoxShippingLineAssignmentStrategy } from './shipping/box-shipping-line-assignment-strategy';
 import { ChannelEvent, EventBus, OrderEvent, OrderService, TransactionalConnection } from '@vendure/core';
 import { DefaultDataService } from './seed/default-data.service';
 
@@ -120,6 +123,7 @@ import { DefaultDataService } from './seed/default-data.service';
         PaymentTemplateService,
         DefaultDataService,
         TenantMemberService,
+        OrderBoxService,
     ],
     adminApiExtensions: {
         schema: () => {
@@ -949,9 +953,29 @@ import { DefaultDataService } from './seed/default-data.service';
                     compatible: Boolean!
                     intersectedCount: Int!
                 }
+
+                type OrderBox {
+                    boxKey: String!
+                    profileId: ID
+                    profileName: String!
+                    lineIds: [ID!]!
+                    tenantChannelId: ID
+                    shippingProfileIds: [ID!]!
+                    availableShippingMethodIds: [ID!]!
+                    defaultShippingMethodId: ID
+                    pickupLocations: [PickupLocation!]!
+                }
+
+                extend type Query {
+                    orderBoxes: [OrderBox!]!
+                }
+
+                extend type Mutation {
+                    setOrderBoxShippingMethod(boxKey: String!, shippingMethodId: ID!, pickupLocationId: ID): Order!
+                }
             `;
         },
-        resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver, DomainShopResolver, MapShopResolver, ShippingProfileShopResolver, PaymentProfileShopResolver],
+        resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver, DomainShopResolver, MapShopResolver, ShippingProfileShopResolver, PaymentProfileShopResolver, OrderBoxShopResolver],
     },
     configuration: config => {
         // 注入 authSecret 到 crypto 模块（configuration 在 bootstrap 早期执行，此时 options 已可用）
@@ -1033,6 +1057,10 @@ import { DefaultDataService } from './seed/default-data.service';
             tieredQuantityShippingCalculator,
             localDeliveryCalculator,
         ];
+
+        // 按配送档案分箱：多配送方式时每个 ShippingLine 只挂其箱内 OrderLine，
+        // 支撑「单订单内多配送组 / 多 fulfillment」。单箱场景退化为默认全量分配。
+        config.shippingOptions.shippingLineAssignmentStrategy = new BoxShippingLineAssignmentStrategy();
 
         if (CjkPlugin.options.promotionPolicy?.enabled) {
             config.promotionOptions = config.promotionOptions || {};
