@@ -3,6 +3,7 @@ import {
     Allow,
     Ctx,
     InternalServerError,
+    LanguageCode,
     Permission,
     RequestContext,
     Transaction,
@@ -21,6 +22,16 @@ export class ShopResolver {
         private marketplaceService: MarketplaceService,
         private connection: TransactionalConnection,
     ) {}
+
+    /** Product.name/slug 为非实体列，需从 translations 取（优先当前语言，回退首个） */
+    private translate(product: Product): { name?: string; slug?: string } {
+        const translations = (product.translations ?? []) as Array<{
+            languageCode: LanguageCode;
+            name?: string;
+            slug?: string;
+        }>;
+        return translations.find(t => t.languageCode === LanguageCode.zh_Hans) ?? translations[0] ?? {};
+    }
 
     @Mutation('registerMarketplaceSeller')
     @Transaction()
@@ -51,8 +62,8 @@ export class ShopResolver {
         const products = await this.marketplaceService.getMarketplaceProducts(ctx);
         return products.map(product => ({
             id: product.id,
-            name: product.name,
-            slug: product.slug,
+            name: this.translate(product).name ?? '',
+            slug: this.translate(product).slug ?? '',
             barcode: product.customFields.barcode ?? null,
             internalCode: product.customFields.internalCode ?? null,
             merchantChannel: product.customFields.merchantRef
@@ -84,8 +95,8 @@ export class ShopResolver {
         });
         return products.map(product => ({
             id: product.id,
-            name: product.name,
-            slug: product.slug,
+            name: this.translate(product).name ?? '',
+            slug: this.translate(product).slug ?? '',
             barcode: product.customFields.barcode ?? null,
             internalCode: product.customFields.internalCode ?? null,
             marketplaceStatus: product.customFields.marketplaceStatus ?? 'pending',
@@ -100,8 +111,8 @@ export class ShopResolver {
         const products = await this.marketplaceService.getPendingProducts(ctx);
         return products.map(product => ({
             id: product.id,
-            name: product.name,
-            slug: product.slug,
+            name: this.translate(product).name ?? '',
+            slug: this.translate(product).slug ?? '',
             barcode: product.customFields.barcode ?? null,
             internalCode: product.customFields.internalCode ?? null,
             marketplaceStatus: product.customFields.marketplaceStatus ?? 'pending',

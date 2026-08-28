@@ -7,6 +7,8 @@ export declare class ShopResolver {
     private marketplaceService;
     private connection;
     constructor(marketplaceSellerService: MarketplaceSellerService, marketplaceService: MarketplaceService, connection: TransactionalConnection);
+    /** Product.name/slug 为非实体列，需从 translations 取（优先当前语言，回退首个） */
+    private translate;
     registerMarketplaceSeller(ctx: RequestContext, args: {
         input: {
             shopName: string;
@@ -29,8 +31,8 @@ export declare class ShopResolver {
     }>;
     marketplaceProducts(ctx: RequestContext): Promise<{
         id: import("@vendure/core").ID;
-        name: import("@vendure/core").LocaleString;
-        slug: import("@vendure/core").LocaleString;
+        name: string;
+        slug: string;
         barcode: string | null;
         internalCode: string | null;
         merchantChannel: {
@@ -44,8 +46,8 @@ export declare class ShopResolver {
     }): Promise<boolean>;
     myMerchantProducts(ctx: RequestContext): Promise<{
         id: import("@vendure/core").ID;
-        name: import("@vendure/core").LocaleString;
-        slug: import("@vendure/core").LocaleString;
+        name: string;
+        slug: string;
         barcode: string | null;
         internalCode: string | null;
         marketplaceStatus: string;
@@ -54,8 +56,8 @@ export declare class ShopResolver {
     }[]>;
     marketplacePendingProducts(ctx: RequestContext): Promise<{
         id: import("@vendure/core").ID;
-        name: import("@vendure/core").LocaleString;
-        slug: import("@vendure/core").LocaleString;
+        name: string;
+        slug: string;
         barcode: string | null;
         internalCode: string | null;
         marketplaceStatus: string;

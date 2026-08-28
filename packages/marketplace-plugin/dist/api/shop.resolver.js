@@ -24,6 +24,12 @@ let ShopResolver = class ShopResolver {
         this.marketplaceService = marketplaceService;
         this.connection = connection;
     }
+    /** Product.name/slug 为非实体列，需从 translations 取（优先当前语言，回退首个） */
+    translate(product) {
+        var _a, _b, _c;
+        const translations = ((_a = product.translations) !== null && _a !== void 0 ? _a : []);
+        return (_c = (_b = translations.find(t => t.languageCode === core_1.LanguageCode.zh_Hans)) !== null && _b !== void 0 ? _b : translations[0]) !== null && _c !== void 0 ? _c : {};
+    }
     async registerMarketplaceSeller(ctx, args) {
         try {
             const channel = await this.marketplaceSellerService.registerMarketplaceSeller(ctx, args.input);
@@ -44,13 +50,13 @@ let ShopResolver = class ShopResolver {
     async marketplaceProducts(ctx) {
         const products = await this.marketplaceService.getMarketplaceProducts(ctx);
         return products.map(product => {
-            var _a, _b;
+            var _a, _b, _c, _d;
             return ({
                 id: product.id,
-                name: product.name,
-                slug: product.slug,
-                barcode: (_a = product.customFields.barcode) !== null && _a !== void 0 ? _a : null,
-                internalCode: (_b = product.customFields.internalCode) !== null && _b !== void 0 ? _b : null,
+                name: (_a = this.translate(product).name) !== null && _a !== void 0 ? _a : '',
+                slug: (_b = this.translate(product).slug) !== null && _b !== void 0 ? _b : '',
+                barcode: (_c = product.customFields.barcode) !== null && _c !== void 0 ? _c : null,
+                internalCode: (_d = product.customFields.internalCode) !== null && _d !== void 0 ? _d : null,
                 merchantChannel: product.customFields.merchantRef
                     ? {
                         id: product.customFields.merchantRef.id,
@@ -70,32 +76,32 @@ let ShopResolver = class ShopResolver {
             where: { channels: { id: ctx.channelId } },
         });
         return products.map(product => {
-            var _a, _b, _c, _d, _e;
+            var _a, _b, _c, _d, _e, _f, _g;
             return ({
                 id: product.id,
-                name: product.name,
-                slug: product.slug,
-                barcode: (_a = product.customFields.barcode) !== null && _a !== void 0 ? _a : null,
-                internalCode: (_b = product.customFields.internalCode) !== null && _b !== void 0 ? _b : null,
-                marketplaceStatus: (_c = product.customFields.marketplaceStatus) !== null && _c !== void 0 ? _c : 'pending',
-                rejectReason: (_d = product.customFields.rejectReason) !== null && _d !== void 0 ? _d : null,
-                listedInMarketplace: (_e = product.customFields.listedInMarketplace) !== null && _e !== void 0 ? _e : false,
+                name: (_a = this.translate(product).name) !== null && _a !== void 0 ? _a : '',
+                slug: (_b = this.translate(product).slug) !== null && _b !== void 0 ? _b : '',
+                barcode: (_c = product.customFields.barcode) !== null && _c !== void 0 ? _c : null,
+                internalCode: (_d = product.customFields.internalCode) !== null && _d !== void 0 ? _d : null,
+                marketplaceStatus: (_e = product.customFields.marketplaceStatus) !== null && _e !== void 0 ? _e : 'pending',
+                rejectReason: (_f = product.customFields.rejectReason) !== null && _f !== void 0 ? _f : null,
+                listedInMarketplace: (_g = product.customFields.listedInMarketplace) !== null && _g !== void 0 ? _g : false,
             });
         });
     }
     async marketplacePendingProducts(ctx) {
         const products = await this.marketplaceService.getPendingProducts(ctx);
         return products.map(product => {
-            var _a, _b, _c, _d, _e;
+            var _a, _b, _c, _d, _e, _f, _g;
             return ({
                 id: product.id,
-                name: product.name,
-                slug: product.slug,
-                barcode: (_a = product.customFields.barcode) !== null && _a !== void 0 ? _a : null,
-                internalCode: (_b = product.customFields.internalCode) !== null && _b !== void 0 ? _b : null,
-                marketplaceStatus: (_c = product.customFields.marketplaceStatus) !== null && _c !== void 0 ? _c : 'pending',
-                rejectReason: (_d = product.customFields.rejectReason) !== null && _d !== void 0 ? _d : null,
-                listedInMarketplace: (_e = product.customFields.listedInMarketplace) !== null && _e !== void 0 ? _e : false,
+                name: (_a = this.translate(product).name) !== null && _a !== void 0 ? _a : '',
+                slug: (_b = this.translate(product).slug) !== null && _b !== void 0 ? _b : '',
+                barcode: (_c = product.customFields.barcode) !== null && _c !== void 0 ? _c : null,
+                internalCode: (_d = product.customFields.internalCode) !== null && _d !== void 0 ? _d : null,
+                marketplaceStatus: (_e = product.customFields.marketplaceStatus) !== null && _e !== void 0 ? _e : 'pending',
+                rejectReason: (_f = product.customFields.rejectReason) !== null && _f !== void 0 ? _f : null,
+                listedInMarketplace: (_g = product.customFields.listedInMarketplace) !== null && _g !== void 0 ? _g : false,
             });
         });
     }
