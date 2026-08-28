@@ -413,3 +413,8 @@ __admin-ui/
 # E2E test temp files
 cookies.txt
 e2e-*.json
+
+# cjk-plugin lib 编译产物中的测试文件（仅忽略测试产物，其余 lib 产物需提交）
+packages/cjk-plugin/lib/**/*.spec.js
+packages/cjk-plugin/lib/**/*.spec.js.map
+packages/cjk-plugin/lib/**/*.spec.d.ts

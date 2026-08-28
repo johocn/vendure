@@ -28,10 +28,12 @@ const shipping_profile_entity_1 = require("./shipping-profile.entity");
 const shipping_profile_method_entity_1 = require("./shipping-profile-method.entity");
 const pickup_location_entity_1 = require("../pickup/pickup-location.entity");
 const pickup_location_service_1 = require("../pickup/pickup-location.service");
+const payment_profile_service_1 = require("../payment/payment-profile.service");
 let ShippingProfileService = class ShippingProfileService {
-    constructor(connection, pickupLocationService) {
+    constructor(connection, pickupLocationService, paymentProfileService) {
         this.connection = connection;
         this.pickupLocationService = pickupLocationService;
+        this.paymentProfileService = paymentProfileService;
     }
     async findAll(ctx, options) {
         var _a, _b;
@@ -79,7 +81,7 @@ let ShippingProfileService = class ShippingProfileService {
         return result !== null && result !== void 0 ? result : undefined;
     }
     async create(ctx, input) {
-        var _a, _b, _c, _d;
+        var _a, _b, _c, _d, _e;
         if (!((_a = input.shippingMethodIds) === null || _a === void 0 ? void 0 : _a.length)) {
             throw new core_1.UserInputError('配送档案至少需要选择一种配送方式');
         }
@@ -95,8 +97,12 @@ let ShippingProfileService = class ShippingProfileService {
         if (input.pickupLocationIds !== undefined) {
             profile.pickupLocations = input.pickupLocationIds.map((id) => ({ id }));
         }
+        // paymentProfileId: 可为空，允许不绑定（回退租户默认支付档案）
+        if (input.paymentProfileId !== undefined) {
+            profile.paymentProfileId = (_d = input.paymentProfileId) !== null && _d !== void 0 ? _d : null;
+        }
         await repo.save(profile);
-        if ((_d = input.methodConfigs) === null || _d === void 0 ? void 0 : _d.length) {
+        if ((_e = input.methodConfigs) === null || _e === void 0 ? void 0 : _e.length) {
             await this.replaceMethodConfigs(ctx, profile.id, input.methodConfigs);
         }
         // reload 以填充关联实体的完整字段
@@ -379,6 +385,18 @@ let ShippingProfileService = class ShippingProfileService {
         return profile !== null && profile !== void 0 ? profile : undefined;
     }
     /**
+     * 取配送档案绑定的支付档案；
+     * 未绑定时回退到对应租户的默认支付档案（复用 PaymentProfileService.getTenantDefault）。
+     */
+    async getPaymentProfileForShippingProfile(ctx, shippingProfileId) {
+        const profile = await this.connection
+            .getRepository(ctx, shipping_profile_entity_1.ShippingProfile)
+            .findOne({ where: { id: shippingProfileId }, relations: ['paymentProfile'] });
+        if (profile === null || profile === void 0 ? void 0 : profile.paymentProfile)
+            return profile.paymentProfile;
+        return this.paymentProfileService.getTenantDefault(ctx);
+    }
+    /**
      * 解析变体绑定的档案集合（含默认回退）：
      * - 变体绑定的档案若已停用（enabled=false），视为未绑定，回退到租户默认档案；
      * - 回退命中（含租户默认）同样排除停用档案（见 getTenantDefault）；
@@ -435,6 +453,7 @@ exports.ShippingProfileService = ShippingProfileService;
 exports.ShippingProfileService = ShippingProfileService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
-        pickup_location_service_1.PickupLocationService])
+        pickup_location_service_1.PickupLocationService,
+        payment_profile_service_1.PaymentProfileService])
 ], ShippingProfileService);
 //# sourceMappingURL=shipping-profile.service.js.map

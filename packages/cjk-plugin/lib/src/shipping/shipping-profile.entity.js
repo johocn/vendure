@@ -13,6 +13,7 @@ exports.ShippingProfile = void 0;
 const typeorm_1 = require("typeorm");
 const core_1 = require("@vendure/core");
 const pickup_location_entity_1 = require("../pickup/pickup-location.entity");
+const payment_profile_entity_1 = require("../payment/payment-profile.entity");
 /**
  * 配送方案档案
  *
@@ -70,6 +71,14 @@ __decorate([
     (0, typeorm_1.JoinTable)(),
     __metadata("design:type", Array)
 ], ShippingProfile.prototype, "pickupLocations", void 0);
+__decorate([
+    (0, typeorm_1.ManyToOne)(() => payment_profile_entity_1.PaymentProfile, { onDelete: 'SET NULL', nullable: true }),
+    __metadata("design:type", payment_profile_entity_1.PaymentProfile)
+], ShippingProfile.prototype, "paymentProfile", void 0);
+__decorate([
+    (0, core_1.EntityId)({ nullable: true }),
+    __metadata("design:type", Object)
+], ShippingProfile.prototype, "paymentProfileId", void 0);
 __decorate([
     (0, typeorm_1.ManyToMany)(() => core_1.Channel),
     (0, typeorm_1.JoinTable)(),

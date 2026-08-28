@@ -276,9 +276,9 @@ let DefaultDataService = class DefaultDataService {
             return;
         await this.paymentTemplateService.create(ctx, {
             name: '余额支付',
-            description: '使用账户余额支付',
+            description: '使用账户余额支付（全局共享钱包）',
             code: exports.BALANCE_PAY_TEMPLATE_CODE,
-            handler: { code: 'balance-pay', arguments: [] },
+            handler: { code: 'balance-wallet', arguments: [] },
             isGlobal: true,
         });
         core_1.Logger.info(`已创建默认支付模板: ${exports.BALANCE_PAY_TEMPLATE_CODE}`, constants_1.loggerCtx);

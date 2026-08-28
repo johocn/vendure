@@ -1,5 +1,6 @@
 import { Channel, ChannelAware, DeepPartial, ID, ShippingMethod, VendureEntity } from '@vendure/core';
 import { PickupLocation } from '../pickup/pickup-location.entity';
+import { PaymentProfile } from '../payment/payment-profile.entity';
 /**
  * 配送方案档案
  *
@@ -25,5 +26,11 @@ export declare class ShippingProfile extends VendureEntity implements ChannelAwa
      * 为空表示不约束，所有自提点可选
      */
     pickupLocations: PickupLocation[];
+    /**
+     * 绑定的支付档案（可为空）。
+     * 为空时取每箱支付方式白名单回退到租户默认支付档案。
+     */
+    paymentProfile?: PaymentProfile;
+    paymentProfileId: ID | null;
     channels: Channel[];
 }

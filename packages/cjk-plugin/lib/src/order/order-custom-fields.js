@@ -75,6 +75,17 @@ exports.orderCustomFields = {
                 { languageCode: core_1.LanguageCode.zh_Hans, value: '支付档案快照' },
             ],
         },
+        {
+            // 分箱配送选择快照：{ [boxKey]: { shippingMethodId, pickupLocationId } }
+            // 供 setOrderBoxShippingMethod 保存每箱的配送方式/自提点选择。
+            name: 'boxShippingSelections',
+            type: 'text',
+            nullable: true,
+            public: true,
+            label: [
+                { languageCode: core_1.LanguageCode.zh_Hans, value: '分箱配送选择快照' },
+            ],
+        },
     ],
 };
 //# sourceMappingURL=order-custom-fields.js.map

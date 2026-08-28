@@ -2,10 +2,13 @@ import { ID, ListQueryOptions, PaginatedList, RequestContext, TransactionalConne
 import { ShippingProfile } from './shipping-profile.entity';
 import { PickupLocation } from '../pickup/pickup-location.entity';
 import { PickupLocationService } from '../pickup/pickup-location.service';
+import { PaymentProfile } from '../payment/payment-profile.entity';
+import { PaymentProfileService } from '../payment/payment-profile.service';
 export declare class ShippingProfileService {
     private connection;
     private pickupLocationService;
-    constructor(connection: TransactionalConnection, pickupLocationService: PickupLocationService);
+    private paymentProfileService;
+    constructor(connection: TransactionalConnection, pickupLocationService: PickupLocationService, paymentProfileService: PaymentProfileService);
     findAll(ctx: RequestContext, options?: ListQueryOptions<ShippingProfile>): Promise<PaginatedList<ShippingProfile>>;
     findOne(ctx: RequestContext, id: any): Promise<ShippingProfile | undefined>;
     findByCode(ctx: RequestContext, code: string): Promise<ShippingProfile | undefined>;
@@ -64,6 +67,11 @@ export declare class ShippingProfileService {
     private replaceMethodConfigs;
     setTenantDefault(ctx: RequestContext, id: any): Promise<void>;
     getTenantDefault(ctx: RequestContext): Promise<ShippingProfile | undefined>;
+    /**
+     * 取配送档案绑定的支付档案；
+     * 未绑定时回退到对应租户的默认支付档案（复用 PaymentProfileService.getTenantDefault）。
+     */
+    getPaymentProfileForShippingProfile(ctx: RequestContext, shippingProfileId: ID): Promise<PaymentProfile | undefined>;
     /**
      * 解析变体绑定的档案集合（含默认回退）：
      * - 变体绑定的档案若已停用（enabled=false），视为未绑定，回退到租户默认档案；

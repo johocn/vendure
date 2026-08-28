@@ -90,8 +90,16 @@ const payment_template_admin_resolver_1 = require("./payment/payment-template-ad
 const payment_template_permissions_1 = require("./payment/payment-template-permissions");
 const shipping_profile_shop_resolver_1 = require("./shipping/shipping-profile-shop.resolver");
 const payment_profile_shop_resolver_1 = require("./payment/payment-profile-shop.resolver");
+const order_box_service_1 = require("./order/order-box.service");
+const order_box_shop_resolver_1 = require("./order/order-box-shop.resolver");
+const box_shipping_line_assignment_strategy_1 = require("./shipping/box-shipping-line-assignment-strategy");
 const core_3 = require("@vendure/core");
 const default_data_service_1 = require("./seed/default-data.service");
+const wallet_entity_1 = require("./wallet/wallet.entity");
+const wallet_service_1 = require("./wallet/wallet.service");
+const wallet_admin_resolver_1 = require("./wallet/wallet-admin.resolver");
+const wallet_shop_resolver_1 = require("./wallet/wallet-shop.resolver");
+const balance_wallet_payment_handler_1 = require("./wallet/balance-wallet-payment-handler");
 let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
     constructor(options, moduleRef) {
         this.options = options;
@@ -104,6 +112,8 @@ let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
     async onApplicationBootstrap() {
         var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o;
         const injector = new core_1.Injector(this.moduleRef);
+        // 注入全局共享余额钱包服务到支付 handler（与现有一致：支付处理器经静态 setter 接收服务）
+        (0, balance_wallet_payment_handler_1.setWalletService)(injector.get(wallet_service_1.WalletService));
         // 幂等创建默认配送/支付数据（自提点、门店自提配送档案、门店收银支付档案）
         if (this.options.seedDefaultData !== false && ((_a = this.options.profiles) === null || _a === void 0 ? void 0 : _a.enabled) !== false) {
             const seedService = injector.get(default_data_service_1.DefaultDataService);
@@ -257,7 +267,7 @@ exports.CjkPlugin = CjkPlugin;
 exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_profile_method_entity_1.PaymentProfileMethod, payment_template_entity_1.PaymentTemplate, tenant_member_entity_1.TenantMember],
+        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_profile_method_entity_1.PaymentProfileMethod, payment_template_entity_1.PaymentTemplate, tenant_member_entity_1.TenantMember, wallet_entity_1.Wallet],
         providers: [
             { provide: constants_1.CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
             tenant_setup_service_1.TenantSetupService,
@@ -283,6 +293,8 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             payment_template_service_1.PaymentTemplateService,
             default_data_service_1.DefaultDataService,
             tenant_member_service_1.TenantMemberService,
+            order_box_service_1.OrderBoxService,
+            wallet_service_1.WalletService,
         ],
         adminApiExtensions: {
             schema: () => {
@@ -600,6 +612,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     isTenantDefault: Boolean!
                     enabled: Boolean!
                     methodConfigs: [ShippingProfileMethodConfig!]!
+                    paymentProfileId: ID
                 }
 
                 type ShippingProfileMethodConfig {
@@ -629,6 +642,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     shippingMethodIds: [ID!]!
                     pickupLocationIds: [ID!]
                     methodConfigs: [ShippingProfileMethodConfigInput!]
+                    paymentProfileId: ID
                 }
 
                 input UpdateShippingProfileInput {
@@ -642,6 +656,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     shippingMethodIds: [ID!]
                     pickupLocationIds: [ID!]
                     methodConfigs: [ShippingProfileMethodConfigInput!]
+                    paymentProfileId: ID
                 }
 
                 input ShippingProfileListOptions {
@@ -955,9 +970,27 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     myUpdateChannelCustomFields(input: JSON!): JSON!
                 }
 
+                # ===== 全局共享余额钱包 =====
+                type Wallet implements Node {
+                    id: ID!
+                    balance: Int!
+                    currencyCode: String
+                    createdAt: DateTime
+                    updatedAt: DateTime
+                }
+
+                extend type Query {
+                    wallet: Wallet!
+                }
+
+                extend type Mutation {
+                    adminCreditWallet(amount: Int!): Wallet!
+                    adminDebitWallet(amount: Int!): Wallet!
+                }
+
                 `;
             },
-            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver],
+            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver],
         },
         shopApiExtensions: {
             schema: () => {
@@ -1109,9 +1142,34 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     compatible: Boolean!
                     intersectedCount: Int!
                 }
+
+                type OrderBox {
+                    boxKey: String!
+                    profileId: ID
+                    profileName: String!
+                    lineIds: [ID!]!
+                    tenantChannelId: ID
+                    shippingProfileIds: [ID!]!
+                    availableShippingMethodIds: [ID!]!
+                    defaultShippingMethodId: ID
+                    pickupLocations: [PickupLocation!]!
+                }
+
+                extend type Query {
+                    orderBoxes: [OrderBox!]!
+                }
+
+                extend type Mutation {
+                    setOrderBoxShippingMethod(boxKey: String!, shippingMethodId: ID!, pickupLocationId: ID): Order!
+                }
+
+                # ===== 全局共享余额钱包 =====
+                extend type Query {
+                    walletBalance: Int!
+                }
             `;
             },
-            resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver, shipping_profile_shop_resolver_1.ShippingProfileShopResolver, payment_profile_shop_resolver_1.PaymentProfileShopResolver],
+            resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver, shipping_profile_shop_resolver_1.ShippingProfileShopResolver, payment_profile_shop_resolver_1.PaymentProfileShopResolver, order_box_shop_resolver_1.OrderBoxShopResolver, wallet_shop_resolver_1.WalletShopResolver],
         },
         configuration: config => {
             var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v;
@@ -1143,6 +1201,11 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     fixed_aggregate_collection_handler_1.fixedAggregateCollectionHandler,
                 ];
             }
+            // 全局共享余额钱包支付（跨租户/跨档案合单），默认启用
+            config.paymentOptions.paymentMethodHandlers = [
+                ...(config.paymentOptions.paymentMethodHandlers || []),
+                balance_wallet_payment_handler_1.balanceWalletPaymentHandler,
+            ];
             const hasPickup = ((_d = CjkPlugin.options.storePickup) === null || _d === void 0 ? void 0 : _d.enabled)
                 || ((_e = CjkPlugin.options.pickupPoint) === null || _e === void 0 ? void 0 : _e.enabled)
                 || ((_f = CjkPlugin.options.employeePickup) === null || _f === void 0 ? void 0 : _f.enabled);
@@ -1185,6 +1248,9 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                 tiered_shipping_calculator_1.tieredQuantityShippingCalculator,
                 pickup_calculator_1.localDeliveryCalculator,
             ];
+            // 按配送档案分箱：多配送方式时每个 ShippingLine 只挂其箱内 OrderLine，
+            // 支撑「单订单内多配送组 / 多 fulfillment」。单箱场景退化为默认全量分配。
+            config.shippingOptions.shippingLineAssignmentStrategy = new box_shipping_line_assignment_strategy_1.BoxShippingLineAssignmentStrategy();
             if ((_k = CjkPlugin.options.promotionPolicy) === null || _k === void 0 ? void 0 : _k.enabled) {
                 config.promotionOptions = config.promotionOptions || {};
                 config.promotionOptions.promotionConditions = [

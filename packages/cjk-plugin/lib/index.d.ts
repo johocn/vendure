@@ -6,6 +6,7 @@ export * from './src/promotion/coupon-stackable-condition';
 export * from './src/tenant/tenant-channel-custom-fields';
 export * from './src/tenant/tenant-setup.service';
 export * from './src/order/order-custom-fields';
+export * from './src/order/order-box-aggregation';
 export * from './src/pickup/pickup-location.entity';
 export * from './src/pickup/pickup-location.service';
 export * from './src/pickup/pickup-location-admin.resolver';

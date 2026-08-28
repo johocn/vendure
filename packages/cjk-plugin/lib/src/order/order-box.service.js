@@ -1,0 +1,147 @@
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.OrderBoxService = void 0;
+const common_1 = require("@nestjs/common");
+const core_1 = require("@vendure/core");
+const shipping_profile_service_1 = require("../shipping/shipping-profile.service");
+let OrderBoxService = class OrderBoxService {
+    constructor(shippingProfileService, orderService) {
+        this.shippingProfileService = shippingProfileService;
+        this.orderService = orderService;
+    }
+    /**
+     * 将一个订单的 order lines 按「已生效配送档案」分组为若干箱。
+     *
+     * 规则（对齐 spec §2.3 / resolveEffectiveProfileIds）：
+     * - 变体绑定档案若停用（enabled=false）→ 视为未绑定，回退到租户默认档案；
+     * - 变体未绑定任何档案 → 直接回退到租户默认档案；
+     * - 同一生效档案的 line 合并为同一箱（跨租户/跨档案自动分箱）。
+     */
+    async computeOrderBoxes(ctx, order) {
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+        const lines = (_a = order.lines) !== null && _a !== void 0 ? _a : [];
+        if (lines.length === 0)
+            return [];
+        const tenantDefault = await this.shippingProfileService.getTenantDefault(ctx);
+        const defaultId = (_b = tenantDefault === null || tenantDefault === void 0 ? void 0 : tenantDefault.id) !== null && _b !== void 0 ? _b : null;
+        // 组：lineIds + 原始 raw profile ids
+        const groups = new Map();
+        const orderByProfile = [];
+        for (const line of lines) {
+            const variant = line.productVariant;
+            const rawPid = (_c = variant === null || variant === void 0 ? void 0 : variant.customFields) === null || _c === void 0 ? void 0 : _c.shippingProfileId;
+            let effectivePid = null;
+            if (rawPid) {
+                const resolved = await this.shippingProfileService.resolveEffectiveProfileIds(ctx, [rawPid]);
+                effectivePid = resolved.length > 0 ? resolved[0] : null;
+            }
+            if (effectivePid == null) {
+                effectivePid = defaultId;
+            }
+            if (effectivePid == null)
+                continue;
+            const key = String(effectivePid);
+            if (!groups.has(key)) {
+                groups.set(key, { lineIds: [], rawIds: new Set() });
+                orderByProfile.push(key);
+            }
+            const group = groups.get(key);
+            group.lineIds.push(line.id);
+            if (rawPid)
+                group.rawIds.add(String(rawPid));
+        }
+        const boxes = [];
+        for (const key of orderByProfile) {
+            const group = groups.get(key);
+            const profile = await this.shippingProfileService.findOne(ctx, key);
+            const enabledMethods = ((_d = profile === null || profile === void 0 ? void 0 : profile.shippingMethods) === null || _d === void 0 ? void 0 : _d.length)
+                ? (await this.shippingProfileService.findShippingMethodsByIds(ctx, profile.shippingMethods.map(m => m.id))).filter((m) => { var _a; return ((_a = m.customFields) === null || _a === void 0 ? void 0 : _a.enabled) !== false; })
+                : [];
+            boxes.push({
+                boxKey: `box:${key}`,
+                profileId: key,
+                profileName: (_e = profile === null || profile === void 0 ? void 0 : profile.name) !== null && _e !== void 0 ? _e : key,
+                lineIds: group.lineIds,
+                tenantChannelId: (_h = (_g = (_f = order.channels) === null || _f === void 0 ? void 0 : _f[0]) === null || _g === void 0 ? void 0 : _g.id) !== null && _h !== void 0 ? _h : ctx.channelId,
+                shippingProfileIds: [...group.rawIds],
+                availableShippingMethodIds: enabledMethods.map((m) => m.id),
+                defaultShippingMethodId: enabledMethods.length > 0 ? enabledMethods[0].id : null,
+                pickupLocations: (_j = profile === null || profile === void 0 ? void 0 : profile.pickupLocations) !== null && _j !== void 0 ? _j : [],
+            });
+        }
+        return boxes;
+    }
+    /**
+     * 读取订单已保存的分箱选择（boxShippingSelections customField 中的 JSON）。
+     * 结构：{ [boxKey]: { shippingMethodId, pickupLocationId } }
+     */
+    readSelections(order) {
+        var _a;
+        const raw = (_a = order.customFields) === null || _a === void 0 ? void 0 : _a.boxShippingSelections;
+        if (!raw)
+            return {};
+        try {
+            const parsed = JSON.parse(raw);
+            return parsed && typeof parsed === 'object' ? parsed : {};
+        }
+        catch (_b) {
+            return {};
+        }
+    }
+    /**
+     * 为某一箱设置配送方式（并把该箱的 lines 通过核心 setShippingMethod 关联到对应 ShippingLine）。
+     *
+     * 实现了「单订单内多配送组」的统一骨架：
+     * - 依据各箱当前选择 + 默认兜底，构造整单配送方式 id 数组，一次调用核心
+     *   setShippingMethod（配合 BoxShippingLineAssignmentStrategy，每个 ShippingLine 只挂其箱内 lines）。
+     * - pickupLocationId 仅供自提类方式使用，写入该箱选择快照。
+     *
+     * 注意：核心结算入口是整单级的（eligibility/price 针对整单计算，非该箱 line 子集），
+     * 自提（免费/固定价）方式不受影响；阶梯重量/件数等按整单计费的方式无法按箱独立计价，见报告。
+     */
+    async setBoxShippingMethod(ctx, order, boxKey, shippingMethodId, pickupLocationId) {
+        var _a;
+        const boxes = await this.computeOrderBoxes(ctx, order);
+        const box = boxes.find(b => b.boxKey === boxKey);
+        if (!box) {
+            throw new core_1.UserInputError(`BOX_NOT_FOUND:${boxKey}`);
+        }
+        const sid = String(shippingMethodId);
+        if (!box.availableShippingMethodIds.some(id => String(id) === sid)) {
+            throw new core_1.UserInputError('BOX_SHIPPING_METHOD_INVALID');
+        }
+        const selections = this.readSelections(order);
+        selections[boxKey] = {
+            shippingMethodId: sid,
+            pickupLocationId: pickupLocationId ? String(pickupLocationId) : null,
+        };
+        // 构造整单有序配送方式：各箱先用已保存选择，未选择则用该箱默认配送方式
+        const orderedMethodIds = boxes
+            .map(b => { var _a, _b; return (_b = (_a = selections[b.boxKey]) === null || _a === void 0 ? void 0 : _a.shippingMethodId) !== null && _b !== void 0 ? _b : b.defaultShippingMethodId; })
+            .filter((id) => !!id);
+        const result = await this.orderService.setShippingMethod(ctx, order.id, orderedMethodIds);
+        if ((0, core_1.isGraphQlErrorResult)(result)) {
+            throw new core_1.UserInputError((_a = result.message) !== null && _a !== void 0 ? _a : 'SET_SHIPPING_METHOD_FAILED');
+        }
+        await this.orderService.updateCustomFields(ctx, order.id, {
+            boxShippingSelections: JSON.stringify(selections),
+        });
+        return this.orderService.findOne(ctx, order.id);
+    }
+};
+exports.OrderBoxService = OrderBoxService;
+exports.OrderBoxService = OrderBoxService = __decorate([
+    (0, common_1.Injectable)(),
+    __metadata("design:paramtypes", [shipping_profile_service_1.ShippingProfileService,
+        core_1.OrderService])
+], OrderBoxService);
+//# sourceMappingURL=order-box.service.js.map
