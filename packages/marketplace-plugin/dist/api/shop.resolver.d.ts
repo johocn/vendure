@@ -13,12 +13,14 @@ export declare class ShopResolver {
             seller: CreateSellerInput;
         };
     }): Promise<{
+        __typename: string;
         id: import("@vendure/core").ID;
         code: string;
         token: string;
         errorCode?: undefined;
         message?: undefined;
     } | {
+        __typename: string;
         errorCode: string;
         message: string;
         id?: undefined;

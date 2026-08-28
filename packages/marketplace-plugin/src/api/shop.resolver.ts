@@ -32,13 +32,14 @@ export class ShopResolver {
         try {
             const channel = await this.marketplaceSellerService.registerMarketplaceSeller(ctx, args.input);
             return {
+                __typename: 'RegisterMarketplaceSellerSuccess',
                 id: channel.id,
                 code: channel.code,
                 token: channel.token,
             };
         } catch (e) {
             if (e instanceof InternalServerError) {
-                return { errorCode: 'INTERNAL_SERVER_ERROR', message: e.message };
+                return { __typename: 'RegisterMarketplaceSellerError', errorCode: 'INTERNAL_SERVER_ERROR', message: e.message };
             }
             throw e;
         }
