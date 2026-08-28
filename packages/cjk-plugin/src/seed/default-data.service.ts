@@ -285,9 +285,9 @@ export class DefaultDataService {
         if (await this.paymentTemplateExists(ctx, BALANCE_PAY_TEMPLATE_CODE)) return;
         await this.paymentTemplateService.create(ctx, {
             name: '余额支付',
-            description: '使用账户余额支付',
+            description: '使用账户余额支付（全局共享钱包）',
             code: BALANCE_PAY_TEMPLATE_CODE,
-            handler: { code: 'balance-pay', arguments: [] },
+            handler: { code: 'balance-wallet', arguments: [] },
             isGlobal: true,
         } as any);
         Logger.info(`已创建默认支付模板: ${BALANCE_PAY_TEMPLATE_CODE}`, loggerCtx);

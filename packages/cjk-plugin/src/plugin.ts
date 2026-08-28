@@ -94,10 +94,15 @@ import { OrderBoxShopResolver } from './order/order-box-shop.resolver';
 import { BoxShippingLineAssignmentStrategy } from './shipping/box-shipping-line-assignment-strategy';
 import { ChannelEvent, EventBus, OrderEvent, OrderService, TransactionalConnection } from '@vendure/core';
 import { DefaultDataService } from './seed/default-data.service';
+import { Wallet } from './wallet/wallet.entity';
+import { WalletService } from './wallet/wallet.service';
+import { WalletAdminResolver } from './wallet/wallet-admin.resolver';
+import { WalletShopResolver } from './wallet/wallet-shop.resolver';
+import { balanceWalletPaymentHandler, setWalletService } from './wallet/balance-wallet-payment-handler';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod, PaymentTemplate, TenantMember],
+    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod, PaymentTemplate, TenantMember, Wallet],
     providers: [
         { provide: CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
         TenantSetupService,
@@ -124,6 +129,7 @@ import { DefaultDataService } from './seed/default-data.service';
         DefaultDataService,
         TenantMemberService,
         OrderBoxService,
+        WalletService,
     ],
     adminApiExtensions: {
         schema: () => {
@@ -799,9 +805,27 @@ import { DefaultDataService } from './seed/default-data.service';
                     myUpdateChannelCustomFields(input: JSON!): JSON!
                 }
 
+                # ===== 全局共享余额钱包 =====
+                type Wallet implements Node {
+                    id: ID!
+                    balance: Int!
+                    currencyCode: String
+                    createdAt: DateTime
+                    updatedAt: DateTime
+                }
+
+                extend type Query {
+                    wallet: Wallet!
+                }
+
+                extend type Mutation {
+                    adminCreditWallet(amount: Int!): Wallet!
+                    adminDebitWallet(amount: Int!): Wallet!
+                }
+
                 `;
         },
-        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver],
+        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {
@@ -973,9 +997,14 @@ import { DefaultDataService } from './seed/default-data.service';
                 extend type Mutation {
                     setOrderBoxShippingMethod(boxKey: String!, shippingMethodId: ID!, pickupLocationId: ID): Order!
                 }
+
+                # ===== 全局共享余额钱包 =====
+                extend type Query {
+                    walletBalance: Int!
+                }
             `;
         },
-        resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver, DomainShopResolver, MapShopResolver, ShippingProfileShopResolver, PaymentProfileShopResolver, OrderBoxShopResolver],
+        resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver, DomainShopResolver, MapShopResolver, ShippingProfileShopResolver, PaymentProfileShopResolver, OrderBoxShopResolver, WalletShopResolver],
     },
     configuration: config => {
         // 注入 authSecret 到 crypto 模块（configuration 在 bootstrap 早期执行，此时 options 已可用）
@@ -1010,6 +1039,12 @@ import { DefaultDataService } from './seed/default-data.service';
                 fixedAggregateCollectionHandler,
             ];
         }
+
+        // 全局共享余额钱包支付（跨租户/跨档案合单），默认启用
+        config.paymentOptions.paymentMethodHandlers = [
+            ...(config.paymentOptions.paymentMethodHandlers || []),
+            balanceWalletPaymentHandler,
+        ];
 
         const hasPickup = CjkPlugin.options.storePickup?.enabled
             || CjkPlugin.options.pickupPoint?.enabled
@@ -1215,6 +1250,9 @@ export class CjkPlugin implements OnApplicationBootstrap, NestModule {
 
     async onApplicationBootstrap(): Promise<void> {
         const injector = new Injector(this.moduleRef);
+
+        // 注入全局共享余额钱包服务到支付 handler（与现有一致：支付处理器经静态 setter 接收服务）
+        setWalletService(injector.get(WalletService));
 
         // 幂等创建默认配送/支付数据（自提点、门店自提配送档案、门店收银支付档案）
         if (this.options.seedDefaultData !== false && this.options.profiles?.enabled !== false) {
