@@ -14,12 +14,15 @@ import { ShippingProfile } from './shipping-profile.entity';
 import { ShippingProfileMethod } from './shipping-profile-method.entity';
 import { PickupLocation } from '../pickup/pickup-location.entity';
 import { PickupLocationService } from '../pickup/pickup-location.service';
+import { PaymentProfile } from '../payment/payment-profile.entity';
+import { PaymentProfileService } from '../payment/payment-profile.service';
 
 @Injectable()
 export class ShippingProfileService {
     constructor(
         private connection: TransactionalConnection,
         private pickupLocationService: PickupLocationService,
+        private paymentProfileService: PaymentProfileService,
     ) {}
 
     async findAll(
@@ -87,6 +90,10 @@ export class ShippingProfileService {
         // pickupLocations: undefined=不变, []=清空, [ids]=设置
         if (input.pickupLocationIds !== undefined) {
             profile.pickupLocations = input.pickupLocationIds.map((id: ID) => ({ id } as any));
+        }
+        // paymentProfileId: 可为空，允许不绑定（回退租户默认支付档案）
+        if (input.paymentProfileId !== undefined) {
+            profile.paymentProfileId = input.paymentProfileId ?? null;
         }
         await repo.save(profile);
         if (input.methodConfigs?.length) {
@@ -392,6 +399,21 @@ export class ShippingProfileService {
                 relations: ['shippingMethods', 'pickupLocations'],
             });
         return profile ?? undefined;
+    }
+
+    /**
+     * 取配送档案绑定的支付档案；
+     * 未绑定时回退到对应租户的默认支付档案（复用 PaymentProfileService.getTenantDefault）。
+     */
+    async getPaymentProfileForShippingProfile(
+        ctx: RequestContext,
+        shippingProfileId: ID,
+    ): Promise<PaymentProfile | undefined> {
+        const profile = await this.connection
+            .getRepository(ctx, ShippingProfile)
+            .findOne({ where: { id: shippingProfileId as any }, relations: ['paymentProfile'] });
+        if (profile?.paymentProfile) return profile.paymentProfile;
+        return this.paymentProfileService.getTenantDefault(ctx);
     }
 
     /**

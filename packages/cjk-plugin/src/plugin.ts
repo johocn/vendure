@@ -437,6 +437,7 @@ import { DefaultDataService } from './seed/default-data.service';
                     isTenantDefault: Boolean!
                     enabled: Boolean!
                     methodConfigs: [ShippingProfileMethodConfig!]!
+                    paymentProfileId: ID
                 }
 
                 type ShippingProfileMethodConfig {
@@ -466,6 +467,7 @@ import { DefaultDataService } from './seed/default-data.service';
                     shippingMethodIds: [ID!]!
                     pickupLocationIds: [ID!]
                     methodConfigs: [ShippingProfileMethodConfigInput!]
+                    paymentProfileId: ID
                 }
 
                 input UpdateShippingProfileInput {
@@ -479,6 +481,7 @@ import { DefaultDataService } from './seed/default-data.service';
                     shippingMethodIds: [ID!]
                     pickupLocationIds: [ID!]
                     methodConfigs: [ShippingProfileMethodConfigInput!]
+                    paymentProfileId: ID
                 }
 
                 input ShippingProfileListOptions {

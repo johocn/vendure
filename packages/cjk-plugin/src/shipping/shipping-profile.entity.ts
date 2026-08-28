@@ -1,4 +1,4 @@
-import { Column, Entity, JoinTable, ManyToMany } from 'typeorm';
+import { Column, Entity, JoinTable, ManyToMany, ManyToOne } from 'typeorm';
 import {
     Channel,
     ChannelAware,
@@ -9,6 +9,7 @@ import {
     VendureEntity,
 } from '@vendure/core';
 import { PickupLocation } from '../pickup/pickup-location.entity';
+import { PaymentProfile } from '../payment/payment-profile.entity';
 
 /**
  * 配送方案档案
@@ -57,6 +58,16 @@ export class ShippingProfile extends VendureEntity implements ChannelAware {
     @ManyToMany(() => PickupLocation)
     @JoinTable()
     pickupLocations: PickupLocation[];
+
+    /**
+     * 绑定的支付档案（可为空）。
+     * 为空时取每箱支付方式白名单回退到租户默认支付档案。
+     */
+    @ManyToOne(() => PaymentProfile, { onDelete: 'SET NULL', nullable: true })
+    paymentProfile?: PaymentProfile;
+
+    @EntityId({ nullable: true })
+    paymentProfileId: ID | null;
 
     @ManyToMany(() => Channel)
     @JoinTable()
