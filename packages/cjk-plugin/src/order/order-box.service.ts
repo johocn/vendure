@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ID, Order, OrderService, RequestContext, UserInputError, isGraphQlErrorResult } from '@vendure/core';
 import { ShippingProfileService } from '../shipping/shipping-profile.service';
+import { PaymentProfileService } from '../payment/payment-profile.service';
 import { PickupLocation } from '../pickup/pickup-location.entity';
 
 /**
@@ -28,12 +29,15 @@ export interface OrderBox {
     defaultShippingMethodId: ID | null;
     /** 该箱允许的自提点集合 */
     pickupLocations: PickupLocation[];
+    /** 该箱可用支付方式 code 集合（来自配送档案绑定的支付档案，供聚合拆合引擎用） */
+    availablePaymentMethodCodes: string[];
 }
 
 @Injectable()
 export class OrderBoxService {
     constructor(
         private shippingProfileService: ShippingProfileService,
+        private paymentProfileService: PaymentProfileService,
         private orderService: OrderService,
     ) {}
 
@@ -102,6 +106,7 @@ export class OrderBoxService {
                 availableShippingMethodIds: enabledMethods.map((m: any) => m.id as ID),
                 defaultShippingMethodId: enabledMethods.length > 0 ? (enabledMethods[0].id as ID) : null,
                 pickupLocations: profile?.pickupLocations ?? [],
+                availablePaymentMethodCodes: await this.resolvePaymentCodesForProfile(ctx, key as ID),
             });
         }
         return boxes;
@@ -111,6 +116,10 @@ export class OrderBoxService {
      * 读取订单已保存的分箱选择（boxShippingSelections customField 中的 JSON）。
      * 结构：{ [boxKey]: { shippingMethodId, pickupLocationId } }
      */
+    getBoxSelections(order: Order): Record<string, { shippingMethodId?: ID; pickupLocationId?: ID | null }> {
+        return this.readSelections(order);
+    }
+
     private readSelections(order: Order): Record<string, { shippingMethodId?: ID; pickupLocationId?: ID | null }> {
         const raw = (order as any).customFields?.boxShippingSelections;
         if (!raw) return {};
@@ -120,6 +129,54 @@ export class OrderBoxService {
         } catch {
             return {};
         }
+    }
+
+    /**
+     * 解析某配送档案可用的支付方式 code 集合（供聚合拆合引擎判定每箱支付白名单）。
+     * - 配送档案绑定支付档案 → 用其全部支付方式 code；
+     * - 未绑定 → 回退租户默认支付档案。
+     */
+    async resolvePaymentCodesForProfile(ctx: RequestContext, shippingProfileId: ID): Promise<string[]> {
+        const payProfile = await this.shippingProfileService.getPaymentProfileForShippingProfile(ctx, shippingProfileId);
+        if (!payProfile) return [];
+        const methods = await this.paymentProfileService.getIntersectedPaymentMethods(ctx, [payProfile.id]);
+        return methods.map(m => m.code);
+    }
+
+    /** 兼容单箱传入的支付方式白名单解析。 */
+    async resolvePaymentCodesForBox(ctx: RequestContext, box: Pick<OrderBox, 'profileId'>): Promise<string[]> {
+        if (!box.profileId) return [];
+        return this.resolvePaymentCodesForProfile(ctx, box.profileId);
+    }
+
+    /**
+     * 为订单内一组箱设置配送方式（一次性调核心 setShippingMethod，多 fulfillment）。
+     *
+     * selections 可选：传入则为各箱配送方式选择快照（用于拆单时把源订单的选择带给新订单）；
+     * 未传则读取 order.customFields.boxShippingSelections。每箱未显式选择时用该箱默认配送方式兜底。
+     */
+    async setShippingForOrder(
+        ctx: RequestContext,
+        order: Order,
+        boxKeys: string[],
+        selections?: Record<string, { shippingMethodId?: ID; pickupLocationId?: ID | null }>,
+    ): Promise<Order> {
+        const boxes = await this.computeOrderBoxes(ctx, order);
+        const effectiveKeys = boxes.filter(b => boxKeys.includes(b.boxKey)).map(b => b.boxKey);
+        if (effectiveKeys.length === 0) return order;
+        const selectionsMap = selections ?? this.readSelections(order);
+
+        const orderedMethodIds = boxes
+            .filter(b => effectiveKeys.includes(b.boxKey))
+            .map(b => selectionsMap[b.boxKey]?.shippingMethodId ?? b.defaultShippingMethodId)
+            .filter((id): id is ID => !!id);
+        if (orderedMethodIds.length === 0) return order;
+
+        const result = await this.orderService.setShippingMethod(ctx, order.id, orderedMethodIds);
+        if (isGraphQlErrorResult(result)) {
+            throw new UserInputError((result as any).message ?? 'SET_SHIPPING_METHOD_FAILED');
+        }
+        return this.orderService.findOne(ctx, order.id) as Promise<Order>;
     }
 
     /**
@@ -156,15 +213,7 @@ export class OrderBoxService {
             pickupLocationId: pickupLocationId ? (String(pickupLocationId) as ID) : null,
         };
 
-        // 构造整单有序配送方式：各箱先用已保存选择，未选择则用该箱默认配送方式
-        const orderedMethodIds = boxes
-            .map(b => selections[b.boxKey]?.shippingMethodId ?? b.defaultShippingMethodId)
-            .filter((id): id is ID => !!id);
-
-        const result = await this.orderService.setShippingMethod(ctx, order.id, orderedMethodIds);
-        if (isGraphQlErrorResult(result)) {
-            throw new UserInputError((result as any).message ?? 'SET_SHIPPING_METHOD_FAILED');
-        }
+        await this.setShippingForOrder(ctx, order, boxes.map(b => b.boxKey), selections);
 
         await this.orderService.updateCustomFields(ctx, order.id, {
             boxShippingSelections: JSON.stringify(selections),

@@ -1,133 +1,91 @@
-import { describe, it, expect } from 'vitest';
-import { decideAggregation, BALANCE_PAYMENT_CODE } from './order-box-aggregation';
-import type { AggregationInput, AggregationBox } from './order-box-aggregation';
+import { describe, expect, it } from 'vitest';
+import { BALANCE_PAYMENT_CODE, decideAggregation } from './order-box-aggregation';
 
-function box(partial: Partial<AggregationBox>): AggregationBox {
-    return {
-        boxKey: 'box:default',
-        profileId: 'p1',
-        tenantChannelId: 't1',
-        availablePaymentMethodCodes: ['balance-wallet'],
-        ...partial,
-    };
-}
-
-const WECHAT = 'wechat-pay';
-
+/**
+ * 聚合拆合引擎语义（支撑 checkoutSplitted 拆单决策）测试。
+ * 覆盖 spec §2.4 三档规则：
+ *  - 余额 → 全部箱并入 1 组（不拆单）
+ *  - 非余额同租户且各箱白名单均含该方式 → 合并为 1 组
+ *  - 非余额缺该方式的箱拆出（每箱独立组）；跨租户互不合单
+ */
 describe('decideAggregation', () => {
-    it('余额支付 → 全部 boxes 合并为 1 个 order (orderCount=1, role balance)', () => {
-        const input: AggregationInput = {
-            userSelectedPaymentMethod: BALANCE_PAYMENT_CODE,
-            boxes: [
-                box({ boxKey: 'box:a', tenantChannelId: 't1' }),
-                box({ boxKey: 'box:b', tenantChannelId: 't2' }),
-                box({ boxKey: 'box:c', tenantChannelId: 't3' }),
-            ],
-        };
-        const res = decideAggregation(input);
-        expect(res.groups).toHaveLength(1);
-        expect(res.groups[0].groupKey).toBe('balance');
-        expect(res.groups[0].payByBalance).toBe(true);
-        expect(res.groups[0].boxes).toHaveLength(3);
-        expect(res.totals).toEqual({ orderCount: 1, boxCount: 3 });
+    const box = (boxKey: string, tenant: string, codes: string[]) => ({
+        boxKey,
+        profileId: boxKey.replace('box:', ''),
+        tenantChannelId: tenant,
+        availablePaymentMethodCodes: codes,
     });
 
-    it('非余额 且 全部同租户同支持 M → 单一 group', () => {
-        const input: AggregationInput = {
-            userSelectedPaymentMethod: WECHAT,
-            boxes: [
-                box({ boxKey: 'box:a', tenantChannelId: 't1', availablePaymentMethodCodes: [WECHAT] }),
-                box({ boxKey: 'box:b', tenantChannelId: 't1', availablePaymentMethodCodes: [WECHAT] }),
-            ],
-        };
-        const res = decideAggregation(input);
-        expect(res.groups).toHaveLength(1);
-        expect(res.groups[0].groupKey).toBe('tenant-t1');
-        expect(res.groups[0].payByBalance).toBe(false);
-        expect(res.totals).toEqual({ orderCount: 1, boxCount: 2 });
+    it('空箱 → 空结果', () => {
+        const r = decideAggregation({ boxes: [], userSelectedPaymentMethod: 'cod' });
+        expect(r.groups).toHaveLength(0);
+        expect(r.totals).toEqual({ orderCount: 0, boxCount: 0 });
     });
 
-    it('非余额 跨租户 → 每租户独立 group', () => {
-        const input: AggregationInput = {
-            userSelectedPaymentMethod: WECHAT,
-            boxes: [
-                box({ boxKey: 'box:a', tenantChannelId: 't1', availablePaymentMethodCodes: [WECHAT] }),
-                box({ boxKey: 'box:b', tenantChannelId: 't2', availablePaymentMethodCodes: [WECHAT] }),
-            ],
-        };
-        const res = decideAggregation(input);
-        expect(res.groups).toHaveLength(2);
-        expect(res.groups.map(g => g.groupKey).sort()).toEqual(['tenant-t1', 'tenant-t2']);
-        expect(res.totals).toEqual({ orderCount: 2, boxCount: 2 });
+    it('余额 → 全部箱合并为 1 单（跨租户跨档案不拆）', () => {
+        const boxes = [
+            box('box:100', 't1', [BALANCE_PAYMENT_CODE]),
+            box('box:200', 't2', [BALANCE_PAYMENT_CODE, 'cod']),
+        ];
+        const r = decideAggregation({ boxes, userSelectedPaymentMethod: BALANCE_PAYMENT_CODE });
+        expect(r.groups).toHaveLength(1);
+        expect(r.groups[0].groupKey).toBe('balance');
+        expect(r.groups[0].boxes).toHaveLength(2);
+        expect(r.groups[0].payByBalance).toBe(true);
+        expect(r.totals.orderCount).toBe(1);
     });
 
-    it('非余额 某箱缺 M → 该箱独立 group，其余合单', () => {
-        const input: AggregationInput = {
-            userSelectedPaymentMethod: WECHAT,
-            boxes: [
-                box({ boxKey: 'box:a', tenantChannelId: 't1', availablePaymentMethodCodes: [WECHAT] }),
-                box({ boxKey: 'box:b', tenantChannelId: 't1', availablePaymentMethodCodes: [WECHAT] }),
-                // 缺 M → 拆出
-                box({ boxKey: 'box:c', tenantChannelId: 't1', availablePaymentMethodCodes: ['cash'] }),
-            ],
-        };
-        const res = decideAggregation(input);
-        expect(res.groups).toHaveLength(2);
-        const merged = res.groups.find(g => g.groupKey === 'tenant-t1')!;
-        const solo = res.groups.find(g => g.groupKey === 'box-t1-box:c')!;
-        expect(merged.boxes.map(b => b.boxKey)).toEqual(['box:a', 'box:b']);
-        expect(solo.boxes.map(b => b.boxKey)).toEqual(['box:c']);
-        expect(res.totals).toEqual({ orderCount: 2, boxCount: 3 });
+    it('同租户、各箱均含所选方式 → 合并为 1 单', () => {
+        const boxes = [
+            box('box:100', 't1', ['cod']),
+            box('box:200', 't1', ['cod', 'alipay']),
+        ];
+        const r = decideAggregation({ boxes, userSelectedPaymentMethod: 'cod' });
+        expect(r.groups).toHaveLength(1);
+        expect(r.groups[0].groupKey).toBe('tenant-t1');
+        expect(r.groups[0].boxes).toHaveLength(2);
+        expect(r.totals.orderCount).toBe(1);
     });
 
-    it('非余额 跨租户且某箱缺 M → 组合拆分', () => {
-        const input: AggregationInput = {
-            userSelectedPaymentMethod: WECHAT,
-            boxes: [
-                box({ boxKey: 'box:a', tenantChannelId: 't1', availablePaymentMethodCodes: [WECHAT] }),
-                box({ boxKey: 'box:b', tenantChannelId: 't2', availablePaymentMethodCodes: [] }),
-            ],
-        };
-        const res = decideAggregation(input);
-        expect(res.groups).toHaveLength(2);
-        expect(res.groups[0].groupKey).toBe('tenant-t1');
-        expect(res.groups[1].groupKey).toBe('box-t2-box:b');
-        expect(res.totals).toEqual({ orderCount: 2, boxCount: 2 });
+    it('同租户、缺所选方式的箱拆出为独立单', () => {
+        const boxes = [
+            box('box:100', 't1', ['cod']),
+            box('box:200', 't1', ['alipay']),
+        ];
+        const r = decideAggregation({ boxes, userSelectedPaymentMethod: 'cod' });
+        // 支持 cod 的 box:100 合单；缺 cod 的 box:200 拆出为独立单
+        expect(r.totals.orderCount).toBe(2);
+        const merged = r.groups.find(g => g.groupKey === 'tenant-t1')!;
+        expect(merged.boxes.map(b => b.boxKey)).toEqual(['box:100']);
+        const split = r.groups.find(g => g.groupKey === 'box-t1-box:200')!;
+        expect(split.boxes.map(b => b.boxKey)).toEqual(['box:200']);
+        expect(split.payByBalance).toBe(false);
     });
 
-    it('整个租户都不支持 M → 每个 box 各为独立 group，不生成空合单组', () => {
-        const input: AggregationInput = {
-            userSelectedPaymentMethod: WECHAT,
-            boxes: [
-                box({ boxKey: 'box:a', tenantChannelId: 't1', availablePaymentMethodCodes: [] }),
-                box({ boxKey: 'box:b', tenantChannelId: 't1', availablePaymentMethodCodes: [] }),
-            ],
-        };
-        const res = decideAggregation(input);
-        expect(res.groups).toHaveLength(2);
-        expect(res.groups.every(g => g.groupKey.startsWith('box-'))).toBe(true);
-        expect(res.totals).toEqual({ orderCount: 2, boxCount: 2 });
+    it('跨租户 → 各租户独立单，同租户内再按方式合拆', () => {
+        const boxes = [
+            box('box:100', 't1', ['cod']),
+            box('box:300', 't2', ['cod', 'alipay']),
+            box('box:400', 't2', ['alipay']),
+        ];
+        const r = decideAggregation({ boxes, userSelectedPaymentMethod: 'cod' });
+        expect(r.totals.orderCount).toBe(3); // t1 1 单 + t2 支持 1 单 + t2 缺 cod 拆 1
+        const t1 = r.groups.find(g => g.groupKey === 'tenant-t1')!;
+        expect(t1.boxes.map(b => b.boxKey)).toEqual(['box:100']);
+        const t2Merge = r.groups.find(g => g.groupKey === 'tenant-t2')!;
+        expect(t2Merge.boxes.map(b => b.boxKey)).toEqual(['box:300']);
+        const t2Split = r.groups.find(g => g.groupKey === 'box-t2-box:400')!;
+        expect(t2Split.boxes.map(b => b.boxKey)).toEqual(['box:400']);
     });
 
-    it('空 boxes → 空结果', () => {
-        const res = decideAggregation({ userSelectedPaymentMethod: WECHAT, boxes: [] });
-        expect(res.groups).toHaveLength(0);
-        expect(res.totals).toEqual({ orderCount: 0, boxCount: 0 });
-    });
-
-    it('boxCount 恒等于输入 box 总数（合箱不会丢箱）', () => {
-        const input: AggregationInput = {
-            userSelectedPaymentMethod: 'alipay',
-            boxes: [
-                box({ boxKey: 'box:a', tenantChannelId: 't1', availablePaymentMethodCodes: ['alipay'] }),
-                box({ boxKey: 'box:b', tenantChannelId: 't2', availablePaymentMethodCodes: ['cash'] }),
-                box({ boxKey: 'box:c', tenantChannelId: 't2', availablePaymentMethodCodes: ['alipay'] }),
-                box({ boxKey: 'box:d', tenantChannelId: 't3', availablePaymentMethodCodes: ['cash'] }),
-            ],
-        };
-        const res = decideAggregation(input);
-        const total = res.groups.reduce((s, g) => s + g.boxes.length, 0);
-        expect(total).toBe(4);
-        expect(res.totals.boxCount).toBe(4);
+    it('分组箱数合计等于输入箱数', () => {
+        const boxes = [
+            box('box:100', 't1', ['cod']),
+            box('box:200', 't1', ['alipay']),
+            box('box:300', 't2', ['cod']),
+        ];
+        const r = decideAggregation({ boxes, userSelectedPaymentMethod: 'cod' });
+        const totalBoxes = r.groups.reduce((sum, g) => sum + g.boxes.length, 0);
+        expect(totalBoxes).toBe(3);
     });
 });

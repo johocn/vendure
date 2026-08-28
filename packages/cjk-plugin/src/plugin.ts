@@ -91,6 +91,8 @@ import { ShippingProfileShopResolver } from './shipping/shipping-profile-shop.re
 import { PaymentProfileShopResolver } from './payment/payment-profile-shop.resolver';
 import { OrderBoxService } from './order/order-box.service';
 import { OrderBoxShopResolver } from './order/order-box-shop.resolver';
+import { OrderSplitService } from './order/order-split.service';
+import { OrderSplitShopResolver } from './order/order-split-shop.resolver';
 import { BoxShippingLineAssignmentStrategy } from './shipping/box-shipping-line-assignment-strategy';
 import { ChannelEvent, EventBus, OrderEvent, OrderService, TransactionalConnection } from '@vendure/core';
 import { DefaultDataService } from './seed/default-data.service';
@@ -129,6 +131,7 @@ import { balanceWalletPaymentHandler, setWalletService } from './wallet/balance-
         DefaultDataService,
         TenantMemberService,
         OrderBoxService,
+        OrderSplitService,
         WalletService,
     ],
     adminApiExtensions: {
@@ -988,6 +991,7 @@ import { balanceWalletPaymentHandler, setWalletService } from './wallet/balance-
                     availableShippingMethodIds: [ID!]!
                     defaultShippingMethodId: ID
                     pickupLocations: [PickupLocation!]!
+                    availablePaymentMethodCodes: [String!]!
                 }
 
                 extend type Query {
@@ -996,6 +1000,9 @@ import { balanceWalletPaymentHandler, setWalletService } from './wallet/balance-
 
                 extend type Mutation {
                     setOrderBoxShippingMethod(boxKey: String!, shippingMethodId: ID!, pickupLocationId: ID): Order!
+                    # 一次性拆单结算：内部完成拆单 + 逐单过渡 ArrangingPayment + addPaymentToOrder，
+                    # 返回已结算订单列表。metadata 为支付方式透传 json 字符串。
+                    checkoutSplitted(method: String!, metadata: String): [Order!]!
                 }
 
                 # ===== 全局共享余额钱包 =====
@@ -1004,7 +1011,7 @@ import { balanceWalletPaymentHandler, setWalletService } from './wallet/balance-
                 }
             `;
         },
-        resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver, DomainShopResolver, MapShopResolver, ShippingProfileShopResolver, PaymentProfileShopResolver, OrderBoxShopResolver, WalletShopResolver],
+        resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver, DomainShopResolver, MapShopResolver, ShippingProfileShopResolver, PaymentProfileShopResolver, OrderBoxShopResolver, OrderSplitShopResolver, WalletShopResolver],
     },
     configuration: config => {
         // 注入 authSecret 到 crypto 模块（configuration 在 bootstrap 早期执行，此时 options 已可用）

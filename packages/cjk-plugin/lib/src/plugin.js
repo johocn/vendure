@@ -92,6 +92,8 @@ const shipping_profile_shop_resolver_1 = require("./shipping/shipping-profile-sh
 const payment_profile_shop_resolver_1 = require("./payment/payment-profile-shop.resolver");
 const order_box_service_1 = require("./order/order-box.service");
 const order_box_shop_resolver_1 = require("./order/order-box-shop.resolver");
+const order_split_service_1 = require("./order/order-split.service");
+const order_split_shop_resolver_1 = require("./order/order-split-shop.resolver");
 const box_shipping_line_assignment_strategy_1 = require("./shipping/box-shipping-line-assignment-strategy");
 const core_3 = require("@vendure/core");
 const default_data_service_1 = require("./seed/default-data.service");
@@ -294,6 +296,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             default_data_service_1.DefaultDataService,
             tenant_member_service_1.TenantMemberService,
             order_box_service_1.OrderBoxService,
+            order_split_service_1.OrderSplitService,
             wallet_service_1.WalletService,
         ],
         adminApiExtensions: {
@@ -1153,6 +1156,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     availableShippingMethodIds: [ID!]!
                     defaultShippingMethodId: ID
                     pickupLocations: [PickupLocation!]!
+                    availablePaymentMethodCodes: [String!]!
                 }
 
                 extend type Query {
@@ -1161,6 +1165,9 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
 
                 extend type Mutation {
                     setOrderBoxShippingMethod(boxKey: String!, shippingMethodId: ID!, pickupLocationId: ID): Order!
+                    # 一次性拆单结算：内部完成拆单 + 逐单过渡 ArrangingPayment + addPaymentToOrder，
+                    # 返回已结算订单列表。metadata 为支付方式透传 json 字符串。
+                    checkoutSplitted(method: String!, metadata: String): [Order!]!
                 }
 
                 # ===== 全局共享余额钱包 =====
@@ -1169,7 +1176,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                 }
             `;
             },
-            resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver, shipping_profile_shop_resolver_1.ShippingProfileShopResolver, payment_profile_shop_resolver_1.PaymentProfileShopResolver, order_box_shop_resolver_1.OrderBoxShopResolver, wallet_shop_resolver_1.WalletShopResolver],
+            resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver, shipping_profile_shop_resolver_1.ShippingProfileShopResolver, payment_profile_shop_resolver_1.PaymentProfileShopResolver, order_box_shop_resolver_1.OrderBoxShopResolver, order_split_shop_resolver_1.OrderSplitShopResolver, wallet_shop_resolver_1.WalletShopResolver],
         },
         configuration: config => {
             var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v;

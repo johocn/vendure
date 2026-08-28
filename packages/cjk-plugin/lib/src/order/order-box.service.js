@@ -13,9 +13,11 @@ exports.OrderBoxService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const shipping_profile_service_1 = require("../shipping/shipping-profile.service");
+const payment_profile_service_1 = require("../payment/payment-profile.service");
 let OrderBoxService = class OrderBoxService {
-    constructor(shippingProfileService, orderService) {
+    constructor(shippingProfileService, paymentProfileService, orderService) {
         this.shippingProfileService = shippingProfileService;
+        this.paymentProfileService = paymentProfileService;
         this.orderService = orderService;
     }
     /**
@@ -76,6 +78,7 @@ let OrderBoxService = class OrderBoxService {
                 availableShippingMethodIds: enabledMethods.map((m) => m.id),
                 defaultShippingMethodId: enabledMethods.length > 0 ? enabledMethods[0].id : null,
                 pickupLocations: (_j = profile === null || profile === void 0 ? void 0 : profile.pickupLocations) !== null && _j !== void 0 ? _j : [],
+                availablePaymentMethodCodes: await this.resolvePaymentCodesForProfile(ctx, key),
             });
         }
         return boxes;
@@ -84,6 +87,9 @@ let OrderBoxService = class OrderBoxService {
      * 读取订单已保存的分箱选择（boxShippingSelections customField 中的 JSON）。
      * 结构：{ [boxKey]: { shippingMethodId, pickupLocationId } }
      */
+    getBoxSelections(order) {
+        return this.readSelections(order);
+    }
     readSelections(order) {
         var _a;
         const raw = (_a = order.customFields) === null || _a === void 0 ? void 0 : _a.boxShippingSelections;
@@ -98,6 +104,49 @@ let OrderBoxService = class OrderBoxService {
         }
     }
     /**
+     * 解析某配送档案可用的支付方式 code 集合（供聚合拆合引擎判定每箱支付白名单）。
+     * - 配送档案绑定支付档案 → 用其全部支付方式 code；
+     * - 未绑定 → 回退租户默认支付档案。
+     */
+    async resolvePaymentCodesForProfile(ctx, shippingProfileId) {
+        const payProfile = await this.shippingProfileService.getPaymentProfileForShippingProfile(ctx, shippingProfileId);
+        if (!payProfile)
+            return [];
+        const methods = await this.paymentProfileService.getIntersectedPaymentMethods(ctx, [payProfile.id]);
+        return methods.map(m => m.code);
+    }
+    /** 兼容单箱传入的支付方式白名单解析。 */
+    async resolvePaymentCodesForBox(ctx, box) {
+        if (!box.profileId)
+            return [];
+        return this.resolvePaymentCodesForProfile(ctx, box.profileId);
+    }
+    /**
+     * 为订单内一组箱设置配送方式（一次性调核心 setShippingMethod，多 fulfillment）。
+     *
+     * selections 可选：传入则为各箱配送方式选择快照（用于拆单时把源订单的选择带给新订单）；
+     * 未传则读取 order.customFields.boxShippingSelections。每箱未显式选择时用该箱默认配送方式兜底。
+     */
+    async setShippingForOrder(ctx, order, boxKeys, selections) {
+        var _a;
+        const boxes = await this.computeOrderBoxes(ctx, order);
+        const effectiveKeys = boxes.filter(b => boxKeys.includes(b.boxKey)).map(b => b.boxKey);
+        if (effectiveKeys.length === 0)
+            return order;
+        const selectionsMap = selections !== null && selections !== void 0 ? selections : this.readSelections(order);
+        const orderedMethodIds = boxes
+            .filter(b => effectiveKeys.includes(b.boxKey))
+            .map(b => { var _a, _b; return (_b = (_a = selectionsMap[b.boxKey]) === null || _a === void 0 ? void 0 : _a.shippingMethodId) !== null && _b !== void 0 ? _b : b.defaultShippingMethodId; })
+            .filter((id) => !!id);
+        if (orderedMethodIds.length === 0)
+            return order;
+        const result = await this.orderService.setShippingMethod(ctx, order.id, orderedMethodIds);
+        if ((0, core_1.isGraphQlErrorResult)(result)) {
+            throw new core_1.UserInputError((_a = result.message) !== null && _a !== void 0 ? _a : 'SET_SHIPPING_METHOD_FAILED');
+        }
+        return this.orderService.findOne(ctx, order.id);
+    }
+    /**
      * 为某一箱设置配送方式（并把该箱的 lines 通过核心 setShippingMethod 关联到对应 ShippingLine）。
      *
      * 实现了「单订单内多配送组」的统一骨架：
@@ -109,7 +158,6 @@ let OrderBoxService = class OrderBoxService {
      * 自提（免费/固定价）方式不受影响；阶梯重量/件数等按整单计费的方式无法按箱独立计价，见报告。
      */
     async setBoxShippingMethod(ctx, order, boxKey, shippingMethodId, pickupLocationId) {
-        var _a;
         const boxes = await this.computeOrderBoxes(ctx, order);
         const box = boxes.find(b => b.boxKey === boxKey);
         if (!box) {
@@ -124,14 +172,7 @@ let OrderBoxService = class OrderBoxService {
             shippingMethodId: sid,
             pickupLocationId: pickupLocationId ? String(pickupLocationId) : null,
         };
-        // 构造整单有序配送方式：各箱先用已保存选择，未选择则用该箱默认配送方式
-        const orderedMethodIds = boxes
-            .map(b => { var _a, _b; return (_b = (_a = selections[b.boxKey]) === null || _a === void 0 ? void 0 : _a.shippingMethodId) !== null && _b !== void 0 ? _b : b.defaultShippingMethodId; })
-            .filter((id) => !!id);
-        const result = await this.orderService.setShippingMethod(ctx, order.id, orderedMethodIds);
-        if ((0, core_1.isGraphQlErrorResult)(result)) {
-            throw new core_1.UserInputError((_a = result.message) !== null && _a !== void 0 ? _a : 'SET_SHIPPING_METHOD_FAILED');
-        }
+        await this.setShippingForOrder(ctx, order, boxes.map(b => b.boxKey), selections);
         await this.orderService.updateCustomFields(ctx, order.id, {
             boxShippingSelections: JSON.stringify(selections),
         });
@@ -142,6 +183,7 @@ exports.OrderBoxService = OrderBoxService;
 exports.OrderBoxService = OrderBoxService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [shipping_profile_service_1.ShippingProfileService,
+        payment_profile_service_1.PaymentProfileService,
         core_1.OrderService])
 ], OrderBoxService);
 //# sourceMappingURL=order-box.service.js.map
