@@ -30,11 +30,11 @@ export class DirectPaymentResolver {
         @Args() args: { orderId: string; method: string; metadata?: any },
     ): Promise<any> {
         if (!ctx.activeUserId) {
-            return { errorCode: 'NO_ACTIVE_ORDER', message: '未登录' };
+            return { __typename: 'NoActiveOrderError', errorCode: 'NO_ACTIVE_ORDER', message: '未登录' };
         }
         const customer = await this.customerService.findOneByUserId(ctx, ctx.activeUserId, false);
         if (!customer) {
-            return { errorCode: 'NO_ACTIVE_ORDER', message: '未找到顾客' };
+            return { __typename: 'NoActiveOrderError', errorCode: 'NO_ACTIVE_ORDER', message: '未找到顾客' };
         }
 
         const order = await this.orderService.findOne(ctx, args.orderId, ['customer', 'channels']);
@@ -47,7 +47,11 @@ export class DirectPaymentResolver {
         }
         // 仅允许 marketplace 商家子单通过此入口支付
         if (order.customFields.saleSource !== SALE_SOURCE_MARKETPLACE) {
-            return { errorCode: 'ORDER_PAYMENT_STATE', message: '非 marketplace 商家子单，不可在此支付' };
+            return {
+                __typename: 'OrderPaymentStateError',
+                errorCode: 'ORDER_PAYMENT_STATE',
+                message: '非 marketplace 商家子单，不可在此支付',
+            };
         }
 
         const result = await this.orderService.addPaymentToOrder(ctx, order.id, {
@@ -55,9 +59,9 @@ export class DirectPaymentResolver {
             metadata: args.metadata ?? {},
         });
         if (isGraphQlErrorResult(result)) {
-            return result;
+            return { ...result, __typename: 'OrderPaymentStateError' as const, errorCode: (result as any).errorCode };
         }
-        return result;
+        return { ...result, __typename: 'Order' as const };
     }
 
     @Query('myMarketplaceSellerOrders')

@@ -188,6 +188,27 @@ async function main() {
     const mkVariant = variant.createProductVariants[0];
     ok(!!mkVariant?.id, `变体已创建: sku=${mkVariant?.sku} price=${mkVariant?.priceWithTax}`);
 
+    // 2.1 商家为变体补库存（setVariantStock 到商家仓，避免 INSUFFICIENT_STOCK）
+    console.log('\n[2.1] 商家变体补库存');
+    const slR = await gql(
+        ADMIN,
+        `query{ stockLocations(options:{take:50}){ items{ id name } } }`,
+        {},
+        merch.auth,
+        merchantToken,
+    );
+    const merchantLoc =
+        slR.stockLocations.items.find(l => l.name.includes(SHOP_NAME)) || slR.stockLocations.items[0];
+    ok(!!merchantLoc, `商家仓: ${merchantLoc?.name} (id=${merchantLoc?.id})`);
+    const stk = await gql(
+        ADMIN,
+        `mutation($productVariantId:ID!,$stockLocationId:ID!,$stockOnHand:Int!){ setVariantStock(productVariantId:$productVariantId, stockLocationId:$stockLocationId, stockOnHand:$stockOnHand) }`,
+        { productVariantId: mkVariant.id, stockLocationId: merchantLoc.id, stockOnHand: 100 },
+        sup.auth,
+        merchantToken,
+    );
+    ok(stk.setVariantStock === true, `商家变体库存=100: ${stk.setVariantStock}`);
+
     // ===== 3. 平台把商家商品同步到 default 渠道（变体恰好 2 渠道 = 分单前提） =====
     console.log('\n[3] 平台同步商品到 default 渠道');
     await gql(
@@ -259,7 +280,7 @@ async function main() {
     // 6.1 清理 activeOrder（若有则清空行，避免残留商品）
     let ao = await gql(SHOP, `query{ activeOrder{ id code state lines{ id productVariant{ id } } } }`, {}, cust.auth);
     if (ao.activeOrder?.lines?.length) {
-        await gql(SHOP, `mutation{ removeAllOrderLines{ id state } }`, {}, cust.auth);
+        await gql(SHOP, `mutation{ removeAllOrderLines{ ...on Order{ id state } } }`, {}, cust.auth);
         console.log('  已清空 activeOrder 残留行');
     }
 
@@ -293,10 +314,10 @@ async function main() {
         console.error('    addItemToOrder 失败详情:', JSON.stringify(add2.addItemToOrder));
     }
 
-    // 6.4 设置配送地址 + 配送方式（store-pickup 覆盖全订单）
+    // 6.4 设置配送地址 + 配送方式（store-pickup 覆盖全订单）(生产 schema: CreateAddressInput)
     const addr = await gql(
         SHOP,
-        `mutation($input:OrderAddressInput!){ setOrderShippingAddress(input:$input){ ...on Order{ id } ...on ErrorResult{ errorCode message } } }`,
+        `mutation($input:CreateAddressInput!){ setOrderShippingAddress(input:$input){ ...on Order{ id } ...on ErrorResult{ errorCode message } } }`,
         {
             input: {
                 fullName: '测试顾客',
