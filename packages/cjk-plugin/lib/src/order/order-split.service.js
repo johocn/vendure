@@ -15,11 +15,12 @@ const core_1 = require("@vendure/core");
 const order_box_service_1 = require("./order-box.service");
 const order_box_aggregation_1 = require("./order-box-aggregation");
 /**
- * 后端「一次性拆单」服务（Path B 非余额拆多单）。
+ * 后端「一次性拆单结算」服务（统一入口，由 checkoutSplitted 调用）。
  *
- * 语义：源活动订单内所有 box 在一个 Order（AddingItems 态）。用户选定非余额支付方式 M 时，
- * 聚合引擎（decideAggregation）返回 groups[]；groups 头 1 组保留在源订单，其余各组各建新订单，
- * 并把对应箱的订单行从源订单迁移到新订单，最后逐单过渡到 ArrangingPayment 并 addPaymentToOrder。
+ * 语义：源活动订单内所有 box 在一个 Order（AddingItems 态）。聚合引擎（decideAggregation）
+ * 按所选支付方式决定分组：余额 → 全部箱并 1 组（不拆）；非余额 → 每箱独立成组。
+ * groups 头 1 组保留在源订单，其余各组各建新订单，并把对应箱的订单行从源订单迁移到新订单，
+ * 最后逐单过渡到 ArrangingPayment 并 addPaymentToOrder。
  *
  * 设计约束：
  * - 由调用方 mutation 保证 @Transaction() 整体原子；任一步失败整体回滚。

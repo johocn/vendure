@@ -4,12 +4,10 @@
  * 输入：分箱结果（每箱含租户渠道 + 可用支付方式 codes）+ 用户所选支付方式；
  * 输出：一组合单「订单组」（每个 orderGroup 即一个独立订单，含若干可合箱）。
  *
- * 聚合规则（设计 spec §2.4）：
+ * 聚合规则（设计 spec §2.4 用户定稿）：
  * - 用户选余额（BALANCE_PAYMENT_CODE，全局共享钱包、跨租户跨档案可合单）→ 全部 boxes 合并为 1 个订单；
- * - 用户选非余额方式 M：
- *   - 按 tenantChannelId 分组，每租户内再判断该租户每个 box 是否支持 M；
- *   - 某箱缺 M → 该箱从合单组拆出，构成独立 orderGroup；
- *   - 跨租户 → 各租户独立 orderGroup（互不合单）。
+ * - 用户选非余额方式 → 一律按箱全拆，每个 box 各构成一个独立 orderGroup（每配送档案一单、各自独立支付）；
+ *   不做「同租户且各箱白名单都含该方式就合单」的合并（该合并逻辑已废除）。
  *
  * 说明：金额计算在此只做汇总占位，不计算配送；具体配送明细/金额由调用方处理。
  */
@@ -70,26 +68,13 @@ export function decideAggregation(input: AggregationInput): AggregationResult {
         return { groups, totals: { orderCount: 1, boxCount: boxes.length } };
     }
 
-    // 非余额方式：按租户分组，租户内再按「是否支持该方式」决定合箱/拆箱
-    const method = userSelectedPaymentMethod;
-    const byTenant = new Map<string, AggregationBox[]>();
+    // 非余额方式：一律按箱全拆，每箱一个独立订单（每配送档案一单、各自结算）
     for (const box of boxes) {
-        const tenantKey = String(box.tenantChannelId);
-        const arr = byTenant.get(tenantKey) ?? [];
-        arr.push(box);
-        byTenant.set(tenantKey, arr);
-    }
-
-    for (const [tenantKey, tenantBoxes] of byTenant) {
-        const supporting = tenantBoxes.filter(b => b.availablePaymentMethodCodes.includes(method));
-        // 该租户内支持 M 的箱 → 合入同一订单组
-        if (supporting.length > 0) {
-            groups.push({ groupKey: `tenant-${tenantKey}`, boxes: supporting, payByBalance: false });
-        }
-        // 该租户内缺 M 的箱 → 从合单组拆出，每箱独立 orderGroup
-        for (const box of tenantBoxes.filter(b => !b.availablePaymentMethodCodes.includes(method))) {
-            groups.push({ groupKey: `box-${tenantKey}-${box.boxKey}`, boxes: [box], payByBalance: false });
-        }
+        groups.push({
+            groupKey: `box-${box.tenantChannelId}-${box.boxKey}`,
+            boxes: [box],
+            payByBalance: false,
+        });
     }
 
     const orderCount = groups.length;
