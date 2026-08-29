@@ -95,6 +95,39 @@ exports.productVariantCustomFields = {
                 { languageCode: core_1.LanguageCode.zh_Hans, value: '限时促销结束' },
             ],
         },
+        {
+            name: 'costPrice',
+            type: 'int',
+            nullable: true,
+            public: true,
+            label: [
+                { languageCode: core_1.LanguageCode.zh_Hans, value: '成本价（分）' },
+                { languageCode: core_1.LanguageCode.en, value: 'Cost price (cents)' },
+            ],
+            description: [
+                { languageCode: core_1.LanguageCode.zh_Hans, value: '进货成本，仅后台可见，用于利润核算；为 null 表示未填写' },
+            ],
+        },
+        {
+            name: 'barcode',
+            type: 'string',
+            nullable: true,
+            public: true,
+            label: [
+                { languageCode: core_1.LanguageCode.zh_Hans, value: '条形码' },
+                { languageCode: core_1.LanguageCode.en, value: 'Barcode' },
+            ],
+        },
+        {
+            name: 'internalCode',
+            type: 'string',
+            nullable: true,
+            public: true,
+            label: [
+                { languageCode: core_1.LanguageCode.zh_Hans, value: '内部编码' },
+                { languageCode: core_1.LanguageCode.en, value: 'Internal code' },
+            ],
+        },
     ],
 };
 //# sourceMappingURL=product-variant-custom-fields.js.map
