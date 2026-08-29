@@ -40,6 +40,22 @@ export const marketplaceCustomFields: CustomFields = {
             nullable: true,
             label: [{ languageCode: LanguageCode.zh_Hans, value: '内部编码' }],
         },
+        {
+            name: 'marketingTags',
+            type: 'text',
+            nullable: true,
+            public: true,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '营销标签（JSON 数组）' }],
+            description: [{ languageCode: LanguageCode.zh_Hans, value: '存 JSON 字符串数组，如 ["new","hot"]；仅存 code，前端按语言映射 label' }],
+        },
+        {
+            name: 'sellingPoint',
+            type: 'localeString',
+            nullable: true,
+            public: true,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '卖点/促销语' }],
+            description: [{ languageCode: LanguageCode.zh_Hans, value: '多语言卖点，本期仅维护 zh_Hans，其余语言槽位预留' }],
+        },
     ],
     Order: [
         {
