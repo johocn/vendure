@@ -14,6 +14,7 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const shipping_profile_service_1 = require("../shipping/shipping-profile.service");
 const payment_profile_service_1 = require("../payment/payment-profile.service");
+const order_box_aggregation_1 = require("./order-box-aggregation");
 let OrderBoxService = class OrderBoxService {
     constructor(shippingProfileService, paymentProfileService, orderService) {
         this.shippingProfileService = shippingProfileService;
@@ -110,10 +111,14 @@ let OrderBoxService = class OrderBoxService {
      */
     async resolvePaymentCodesForProfile(ctx, shippingProfileId) {
         const payProfile = await this.shippingProfileService.getPaymentProfileForShippingProfile(ctx, shippingProfileId);
-        if (!payProfile)
-            return [];
-        const methods = await this.paymentProfileService.getIntersectedPaymentMethods(ctx, [payProfile.id]);
-        return methods.map(m => m.code);
+        const codes = payProfile
+            ? (await this.paymentProfileService.getIntersectedPaymentMethods(ctx, [payProfile.id])).map(m => m.code)
+            : [];
+        // 余额为所有配送档案的内建基础方式（全局共享钱包），始终并入白名单，供前端/聚合引擎启用「余额合单」路径。
+        if (!codes.includes(order_box_aggregation_1.BALANCE_PAYMENT_CODE)) {
+            codes.push(order_box_aggregation_1.BALANCE_PAYMENT_CODE);
+        }
+        return codes;
     }
     /** 兼容单箱传入的支付方式白名单解析。 */
     async resolvePaymentCodesForBox(ctx, box) {

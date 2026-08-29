@@ -3,6 +3,7 @@ import { ID, Order, OrderService, RequestContext, UserInputError, isGraphQlError
 import { ShippingProfileService } from '../shipping/shipping-profile.service';
 import { PaymentProfileService } from '../payment/payment-profile.service';
 import { PickupLocation } from '../pickup/pickup-location.entity';
+import { BALANCE_PAYMENT_CODE } from './order-box-aggregation';
 
 /**
  * 订单分箱结果（Box）。
@@ -138,9 +139,14 @@ export class OrderBoxService {
      */
     async resolvePaymentCodesForProfile(ctx: RequestContext, shippingProfileId: ID): Promise<string[]> {
         const payProfile = await this.shippingProfileService.getPaymentProfileForShippingProfile(ctx, shippingProfileId);
-        if (!payProfile) return [];
-        const methods = await this.paymentProfileService.getIntersectedPaymentMethods(ctx, [payProfile.id]);
-        return methods.map(m => m.code);
+        const codes = payProfile
+            ? (await this.paymentProfileService.getIntersectedPaymentMethods(ctx, [payProfile.id])).map(m => m.code)
+            : [];
+        // 余额为所有配送档案的内建基础方式（全局共享钱包），始终并入白名单，供前端/聚合引擎启用「余额合单」路径。
+        if (!codes.includes(BALANCE_PAYMENT_CODE)) {
+            codes.push(BALANCE_PAYMENT_CODE);
+        }
+        return codes;
     }
 
     /** 兼容单箱传入的支付方式白名单解析。 */
