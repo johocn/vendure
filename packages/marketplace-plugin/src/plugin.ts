@@ -43,22 +43,22 @@ import { SettlementService } from './settlement.service';
     imports: [PluginCommonModule],
     entities: [MarketplaceInventoryLedger],
     configuration: config => {
-        config.customFields.Product = [
-            ...(config.customFields.Product || []),
-            ...marketplaceCustomFields.Product!,
-        ];
-        config.customFields.Order = [
-            ...(config.customFields.Order || []),
-            ...marketplaceCustomFields.Order!,
-        ];
-        config.customFields.Channel = [
-            ...(config.customFields.Channel || []),
-            ...marketplaceCustomFields.Channel!,
-        ];
-        config.customFields.Seller = [
-            ...(config.customFields.Seller || []),
-            ...marketplaceCustomFields.Seller!,
-        ];
+        // 幂等追加：本 fork 的 preBootstrapConfig 会多次应用插件 configuration（setConfig + runPluginConfigurations），
+        // 若直接用 `[...(config.customFields.X || []), ...marketplaceCustomFields.X]` 会导致重复自定义字段，
+        // 触发 core 的 validateCustomFieldsConfig 硬校验（duplicated custom field name）。改为按 name 去重。
+        const mergeFields = (target: any[], source: any[]) => {
+            const existing = new Set(target.map(f => f.name));
+            for (const f of source) {
+                if (!existing.has(f.name)) {
+                    target.push(f);
+                    existing.add(f.name);
+                }
+            }
+        };
+        mergeFields(config.customFields.Product, marketplaceCustomFields.Product!);
+        mergeFields(config.customFields.Order, marketplaceCustomFields.Order!);
+        mergeFields(config.customFields.Channel, marketplaceCustomFields.Channel!);
+        mergeFields(config.customFields.Seller, marketplaceCustomFields.Seller!);
         config.shippingOptions.shippingEligibilityCheckers.push(multivendorShippingEligibilityChecker);
 
         const customDefaultOrderProcess = configureDefaultOrderProcess({ checkFulfillmentStates: false });

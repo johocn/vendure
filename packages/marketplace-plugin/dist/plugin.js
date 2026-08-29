@@ -171,22 +171,22 @@ exports.MarketplacePlugin = MarketplacePlugin = MarketplacePlugin_1 = __decorate
         imports: [core_1.PluginCommonModule],
         entities: [marketplace_inventory_ledger_entity_1.MarketplaceInventoryLedger],
         configuration: config => {
-            config.customFields.Product = [
-                ...(config.customFields.Product || []),
-                ...custom_fields_1.marketplaceCustomFields.Product,
-            ];
-            config.customFields.Order = [
-                ...(config.customFields.Order || []),
-                ...custom_fields_1.marketplaceCustomFields.Order,
-            ];
-            config.customFields.Channel = [
-                ...(config.customFields.Channel || []),
-                ...custom_fields_1.marketplaceCustomFields.Channel,
-            ];
-            config.customFields.Seller = [
-                ...(config.customFields.Seller || []),
-                ...custom_fields_1.marketplaceCustomFields.Seller,
-            ];
+            // 幂等追加：本 fork 的 preBootstrapConfig 会多次应用插件 configuration（setConfig + runPluginConfigurations），
+            // 若直接用 `[...(config.customFields.X || []), ...marketplaceCustomFields.X]` 会导致重复自定义字段，
+            // 触发 core 的 validateCustomFieldsConfig 硬校验（duplicated custom field name）。改为按 name 去重。
+            const mergeFields = (target, source) => {
+                const existing = new Set(target.map(f => f.name));
+                for (const f of source) {
+                    if (!existing.has(f.name)) {
+                        target.push(f);
+                        existing.add(f.name);
+                    }
+                }
+            };
+            mergeFields(config.customFields.Product, custom_fields_1.marketplaceCustomFields.Product);
+            mergeFields(config.customFields.Order, custom_fields_1.marketplaceCustomFields.Order);
+            mergeFields(config.customFields.Channel, custom_fields_1.marketplaceCustomFields.Channel);
+            mergeFields(config.customFields.Seller, custom_fields_1.marketplaceCustomFields.Seller);
             config.shippingOptions.shippingEligibilityCheckers.push(mv_shipping_eligibility_checker_1.multivendorShippingEligibilityChecker);
             const customDefaultOrderProcess = (0, core_1.configureDefaultOrderProcess)({ checkFulfillmentStates: false });
             config.orderOptions.process = [customDefaultOrderProcess, marketplace_order_process_1.marketplaceOrderProcess];
