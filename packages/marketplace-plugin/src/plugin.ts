@@ -7,6 +7,8 @@ import {
     DefaultProductVariantPriceUpdateStrategy,
     EntityHydrator,
     EventBus,
+    FacetService,
+    LanguageCode,
     OrderStateTransitionEvent,
     Permission,
     PluginCommonModule,
@@ -98,6 +100,7 @@ export class MarketplacePlugin implements OnApplicationBootstrap {
         private channelService: ChannelService,
         private configService: ConfigService,
         private requestContextService: RequestContextService,
+        private facetService: FacetService,
     ) {}
 
     static init(options: MarketplacePluginOptions) {
@@ -106,6 +109,7 @@ export class MarketplacePlugin implements OnApplicationBootstrap {
     }
 
     async onApplicationBootstrap(): Promise<void> {
+        await this.ensureBrandFacet();
         await this.ensurePlatformOpsRole();
 
         this.eventBus.ofType(OrderStateTransitionEvent).subscribe(async event => {
@@ -180,6 +184,33 @@ export class MarketplacePlugin implements OnApplicationBootstrap {
                 });
             }
         });
+    }
+
+    /**
+     * 幂等初始化「品牌库」Facet（code = brand）。若已存在则跳过，否则创建并翻译为 zh_Hans「品牌」。
+     * 整个方法用 try/catch 包裹：失败仅告警，绝不抛错阻塞启动。
+     */
+    private async ensureBrandFacet(): Promise<void> {
+        try {
+            const ctx = await this.getSuperAdminContext();
+            const existing = await this.facetService.findByCode(ctx, 'brand', LanguageCode.zh_Hans);
+            if (existing) {
+                return;
+            }
+            await this.facetService.create(ctx, {
+                code: 'brand',
+                isPrivate: false,
+                translations: [{ languageCode: LanguageCode.zh_Hans, name: '品牌' }],
+                values: [],
+            });
+            console.warn('[MarketplacePlugin] 品牌库 Facet(brand) 已创建');
+        } catch (e) {
+            console.error(
+                `[MarketplacePlugin] 初始化品牌库 Facet(brand) 失败（已忽略，不阻塞启动）: ${
+                    e instanceof Error ? e.message : String(e)
+                }`,
+            );
+        }
     }
 
     /**

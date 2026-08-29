@@ -32,7 +32,7 @@ const admin_resolver_1 = require("./api/admin.resolver");
 const merchant_api_controller_1 = require("./api/merchant-api.controller");
 const settlement_service_1 = require("./settlement.service");
 let MarketplacePlugin = MarketplacePlugin_1 = class MarketplacePlugin {
-    constructor(eventBus, connection, entityHydrator, ledgerService, roleService, channelService, configService, requestContextService) {
+    constructor(eventBus, connection, entityHydrator, ledgerService, roleService, channelService, configService, requestContextService, facetService) {
         this.eventBus = eventBus;
         this.connection = connection;
         this.entityHydrator = entityHydrator;
@@ -41,12 +41,14 @@ let MarketplacePlugin = MarketplacePlugin_1 = class MarketplacePlugin {
         this.channelService = channelService;
         this.configService = configService;
         this.requestContextService = requestContextService;
+        this.facetService = facetService;
     }
     static init(options) {
         MarketplacePlugin_1.options = options;
         return MarketplacePlugin_1;
     }
     async onApplicationBootstrap() {
+        await this.ensureBrandFacet();
         await this.ensurePlatformOpsRole();
         this.eventBus.ofType(core_1.OrderStateTransitionEvent).subscribe(async (event) => {
             var _a;
@@ -121,6 +123,29 @@ let MarketplacePlugin = MarketplacePlugin_1 = class MarketplacePlugin {
                 });
             }
         });
+    }
+    /**
+     * 幂等初始化「品牌库」Facet（code = brand）。若已存在则跳过，否则创建并翻译为 zh_Hans「品牌」。
+     * 整个方法用 try/catch 包裹：失败仅告警，绝不抛错阻塞启动。
+     */
+    async ensureBrandFacet() {
+        try {
+            const ctx = await this.getSuperAdminContext();
+            const existing = await this.facetService.findByCode(ctx, 'brand', core_1.LanguageCode.zh_Hans);
+            if (existing) {
+                return;
+            }
+            await this.facetService.create(ctx, {
+                code: 'brand',
+                isPrivate: false,
+                translations: [{ languageCode: core_1.LanguageCode.zh_Hans, name: '品牌' }],
+                values: [],
+            });
+            console.warn('[MarketplacePlugin] 品牌库 Facet(brand) 已创建');
+        }
+        catch (e) {
+            console.error(`[MarketplacePlugin] 初始化品牌库 Facet(brand) 失败（已忽略，不阻塞启动）: ${e instanceof Error ? e.message : String(e)}`);
+        }
     }
     /**
      * 幂等创建「平台运营」角色（code = platform-ops），用于接入 marketplace 审批等平台运营能力。
@@ -220,5 +245,6 @@ exports.MarketplacePlugin = MarketplacePlugin = MarketplacePlugin_1 = __decorate
         core_1.RoleService,
         core_1.ChannelService,
         core_1.ConfigService,
-        core_1.RequestContextService])
+        core_1.RequestContextService,
+        core_1.FacetService])
 ], MarketplacePlugin);
