@@ -94,15 +94,15 @@ export async function populateShopAChannel(app: INestApplication): Promise<void>
         throw new Error(`[step2 findAll shop-a] ${e.message}`);
     }
 
-    // 将 shop-a 添加到 superadmin role 的 channels（否则 assignProductsToChannel 会 forbidden）
-    // 同时把 customer role 关联到 shop-a：ChannelService.create 不会自动给新渠道分配客户角色，
+    // 仅补 customer role：ChannelService.create 不会自动给新渠道分配客户角色，
     // 缺失会导致 shop-a 渠道客户会话 channelPermissions 缺 Authenticated，
     // 所有 @Allow(Authenticated) 的 Shop 查询（me/myOrderPackages）均被 Forbidden 拦截。
+    // superadmin 角色已由 CJKPlugin 在 ChannelEvent('created') 时自动覆盖新渠道
+    // （plugin.ts 订阅 + OnModuleInit 存量覆盖），此处不再手动 assignRoleToChannel 超管角色，
+    // 否则与自动分配竞争会重复插入 role_channels_channel（复合主键）触发冲突。
     try {
         const roleService = app.get(RoleService);
         const adminCtx = await createAdminCtx(app, defaultChannel);
-        const superAdminRole = await roleService.getSuperAdminRole(adminCtx);
-        await roleService.assignRoleToChannel(adminCtx, superAdminRole.id, shopAChannel.id);
         const customerRole = await roleService.getCustomerRole(adminCtx);
         await roleService.assignRoleToChannel(adminCtx, customerRole.id, shopAChannel.id);
     } catch (e: any) {

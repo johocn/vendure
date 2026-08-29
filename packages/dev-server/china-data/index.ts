@@ -11,3 +11,4 @@ export { populateFloors } from './07-floors';
 export { populateShippingTemplates } from './08-shipping-templates';
 export { populateCoupons } from './09-coupons';
 export { populateMemberTiers } from './10-member-tiers';
+export { populateShippingSplit } from './11-shipping-split';
