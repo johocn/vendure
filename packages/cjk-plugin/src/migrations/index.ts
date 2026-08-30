@@ -3,3 +3,4 @@ export { MapConfigEncryptionMigration, MAP_CONFIG_MIGRATION_DONE } from './migra
 export { PayConfigEncryptionMigration, PAY_CONFIG_MIGRATION_DONE } from './migrate-payconfig-encryption';
 export { TenantMemberColumnMigration } from './migrate-tenant-member-column';
 export { ChannelCustomColumnMigration } from './migrate-channel-custom-column';
+export { ShippingContactFlagMigration } from './migrate-shipping-contact-flags';
