@@ -30,7 +30,7 @@ let OrderBoxService = class OrderBoxService {
      * - 同一生效档案的 line 合并为同一箱（跨租户/跨档案自动分箱）。
      */
     async computeOrderBoxes(ctx, order) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
         const lines = (_a = order.lines) !== null && _a !== void 0 ? _a : [];
         if (lines.length === 0)
             return [];
@@ -80,6 +80,8 @@ let OrderBoxService = class OrderBoxService {
                 defaultShippingMethodId: enabledMethods.length > 0 ? enabledMethods[0].id : null,
                 pickupLocations: (_j = profile === null || profile === void 0 ? void 0 : profile.pickupLocations) !== null && _j !== void 0 ? _j : [],
                 availablePaymentMethodCodes: await this.resolvePaymentCodesForProfile(ctx, key),
+                requiresAddress: (_k = profile === null || profile === void 0 ? void 0 : profile.requiresAddress) !== null && _k !== void 0 ? _k : true,
+                requiresContact: (_l = profile === null || profile === void 0 ? void 0 : profile.requiresContact) !== null && _l !== void 0 ? _l : false,
             });
         }
         return boxes;

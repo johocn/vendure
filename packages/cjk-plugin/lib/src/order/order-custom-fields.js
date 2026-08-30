@@ -86,6 +86,36 @@ exports.orderCustomFields = {
                 { languageCode: core_1.LanguageCode.zh_Hans, value: '分箱配送选择快照' },
             ],
         },
+        {
+            // 自提需联系方式场景的联系人（name）
+            name: 'contactName',
+            type: 'string',
+            nullable: true,
+            public: true,
+            label: [
+                { languageCode: core_1.LanguageCode.zh_Hans, value: '领取人' },
+            ],
+        },
+        {
+            // 自提需联系方式场景的联系电话
+            name: 'contactPhone',
+            type: 'string',
+            nullable: true,
+            public: true,
+            label: [
+                { languageCode: core_1.LanguageCode.zh_Hans, value: '领取人电话' },
+            ],
+        },
+        {
+            // 结算备注
+            name: 'remark',
+            type: 'text',
+            nullable: true,
+            public: true,
+            label: [
+                { languageCode: core_1.LanguageCode.zh_Hans, value: '备注' },
+            ],
+        },
     ],
 };
 //# sourceMappingURL=order-custom-fields.js.map

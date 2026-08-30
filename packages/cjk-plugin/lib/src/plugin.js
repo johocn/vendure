@@ -289,6 +289,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             migrations_1.PayConfigEncryptionMigration,
             migrations_1.TenantMemberColumnMigration,
             migrations_1.ChannelCustomColumnMigration,
+            migrations_1.ShippingContactFlagMigration,
             auth_config_service_1.AuthConfigService,
             pay_config_service_1.PayConfigService,
             map_config_service_1.MapConfigService,
@@ -1215,6 +1216,8 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     defaultShippingMethodId: ID
                     pickupLocations: [PickupLocation!]!
                     availablePaymentMethodCodes: [String!]!
+                    requiresAddress: Boolean!
+                    requiresContact: Boolean!
                 }
 
                 extend type Query {

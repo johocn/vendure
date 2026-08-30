@@ -20,6 +20,8 @@ export declare class ShippingProfile extends VendureEntity implements ChannelAwa
     freeShippingThreshold: number | null;
     isTenantDefault: boolean;
     enabled: boolean;
+    requiresAddress: boolean;
+    requiresContact: boolean;
     shippingMethods: ShippingMethod[];
     /**
      * 允许的自提点列表（仅当 shippingMethods 含 store-pickup/pickup-point 时生效）
