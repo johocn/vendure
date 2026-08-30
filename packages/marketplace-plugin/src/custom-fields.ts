@@ -74,6 +74,14 @@ export const marketplaceCustomFields: CustomFields = {
             defaultValue: false,
             label: [{ languageCode: LanguageCode.zh_Hans, value: '待归类' }],
         },
+        {
+            name: 'videoAssetId',
+            type: 'string',
+            nullable: true,
+            public: true,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '商品主视频' }],
+            description: [{ languageCode: LanguageCode.zh_Hans, value: '存视频 asset id，C 端松取 source 渲染播放' }],
+        },
     ],
     Order: [
         {
