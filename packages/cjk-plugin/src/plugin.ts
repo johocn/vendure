@@ -39,6 +39,8 @@ import { customerCustomFields } from './customer/customer-custom-fields';
 import { tenantChannelCustomFields } from './tenant/tenant-channel-custom-fields';
 import { productVariantCustomFields } from './shipping/product-variant-custom-fields';
 import { customShippingMethodFields } from './shipping/shipping-method-custom-fields';
+import { assetCustomFields } from './asset/asset-custom-fields';
+import { AssetLibraryAdminResolver } from './asset/asset-library-admin.resolver';
 import { tieredWeightShippingCalculator, tieredQuantityShippingCalculator } from './shipping/tiered-shipping-calculator';
 import { tieredShippingEligibilityChecker } from './shipping/tiered-shipping-eligibility-checker';
 import { ShippingTemplate } from './shipping/shipping-template.entity';
@@ -852,9 +854,28 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                     reuseOptionGroupForProduct(productId: ID!, optionGroupId: ID!): Boolean!
                 }
 
+                type AssetLibraryItem {
+                    id: ID!
+                    name: String
+                    preview: String
+                    source: String
+                    mimeType: String
+                    width: Int
+                    height: Int
+                }
+
+                type AssetLibraryResult {
+                    items: [AssetLibraryItem!]!
+                    totalItems: Int!
+                }
+
+                extend type Query {
+                    assetLibrary(take: Int, skip: Int): AssetLibraryResult!
+                }
+
                 `;
         },
-        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver],
+        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {
@@ -1210,6 +1231,23 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                     ShippingMethod: [
                         ...(config.customFields?.ShippingMethod || []),
                         ...newSmFields,
+                    ],
+                };
+            }
+        }
+
+        // 注册 Asset customFields（uploadedBy 记录上传者，供图库按用户过滤）—— 去重防止重复注册
+        {
+            const existingAssetFields = (config.customFields?.Asset || []).map(f => f.name);
+            const newAssetFields = (assetCustomFields.Asset || []).filter(
+                f => !existingAssetFields.includes(f.name),
+            );
+            if (newAssetFields.length > 0) {
+                config.customFields = {
+                    ...config.customFields,
+                    Asset: [
+                        ...(config.customFields?.Asset || []),
+                        ...newAssetFields,
                     ],
                 };
             }

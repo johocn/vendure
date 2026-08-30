@@ -41,6 +41,8 @@ const customer_custom_fields_1 = require("./customer/customer-custom-fields");
 const tenant_channel_custom_fields_1 = require("./tenant/tenant-channel-custom-fields");
 const product_variant_custom_fields_1 = require("./shipping/product-variant-custom-fields");
 const shipping_method_custom_fields_1 = require("./shipping/shipping-method-custom-fields");
+const asset_custom_fields_1 = require("./asset/asset-custom-fields");
+const asset_library_admin_resolver_1 = require("./asset/asset-library-admin.resolver");
 const tiered_shipping_calculator_1 = require("./shipping/tiered-shipping-calculator");
 const tiered_shipping_eligibility_checker_1 = require("./shipping/tiered-shipping-eligibility-checker");
 const shipping_template_entity_1 = require("./shipping/shipping-template.entity");
@@ -1017,9 +1019,28 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     reuseOptionGroupForProduct(productId: ID!, optionGroupId: ID!): Boolean!
                 }
 
+                type AssetLibraryItem {
+                    id: ID!
+                    name: String
+                    preview: String
+                    source: String
+                    mimeType: String
+                    width: Int
+                    height: Int
+                }
+
+                type AssetLibraryResult {
+                    items: [AssetLibraryItem!]!
+                    totalItems: Int!
+                }
+
+                extend type Query {
+                    assetLibrary(take: Int, skip: Int): AssetLibraryResult!
+                }
+
                 `;
             },
-            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver, tenant_catalog_admin_resolver_1.TenantCatalogAdminResolver],
+            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver, tenant_catalog_admin_resolver_1.TenantCatalogAdminResolver, asset_library_admin_resolver_1.AssetLibraryAdminResolver],
         },
         shopApiExtensions: {
             schema: () => {
@@ -1205,7 +1226,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver, shipping_profile_shop_resolver_1.ShippingProfileShopResolver, payment_profile_shop_resolver_1.PaymentProfileShopResolver, order_box_shop_resolver_1.OrderBoxShopResolver, order_split_shop_resolver_1.OrderSplitShopResolver, wallet_shop_resolver_1.WalletShopResolver],
         },
         configuration: config => {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x;
             // 注入 authSecret 到 crypto 模块（configuration 在 bootstrap 早期执行，此时 options 已可用）
             (0, crypto_1.setAuthSecret)(CjkPlugin.options.authSecret);
             // 注册 SSO 策略到 shop 端（init 钩子由 Vendure 自动调用）
@@ -1335,6 +1356,17 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     config.customFields = Object.assign(Object.assign({}, config.customFields), { ShippingMethod: [
                             ...(((_v = config.customFields) === null || _v === void 0 ? void 0 : _v.ShippingMethod) || []),
                             ...newSmFields,
+                        ] });
+                }
+            }
+            // 注册 Asset customFields（uploadedBy 记录上传者，供图库按用户过滤）—— 去重防止重复注册
+            {
+                const existingAssetFields = (((_w = config.customFields) === null || _w === void 0 ? void 0 : _w.Asset) || []).map(f => f.name);
+                const newAssetFields = (asset_custom_fields_1.assetCustomFields.Asset || []).filter(f => !existingAssetFields.includes(f.name));
+                if (newAssetFields.length > 0) {
+                    config.customFields = Object.assign(Object.assign({}, config.customFields), { Asset: [
+                            ...(((_x = config.customFields) === null || _x === void 0 ? void 0 : _x.Asset) || []),
+                            ...newAssetFields,
                         ] });
                 }
             }
