@@ -1,10 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import {
+    Channel,
     ChannelService,
     EntityHydrator,
     ID,
     idsAreEqual,
+    Logger,
     Product,
+    ProductService,
     RequestContext,
     TransactionalConnection,
     UserInputError,
@@ -26,6 +29,7 @@ export class MarketplaceService {
         private connection: TransactionalConnection,
         private entityHydrator: EntityHydrator,
         private channelService: ChannelService,
+        private productService: ProductService,
     ) {}
 
     /** 校验条形码在平台内唯一（跨所有 Channel）。返回所属 ProductId 与首个 VariantId；空则无冲突。 */
@@ -99,7 +103,49 @@ export class MarketplaceService {
         product.customFields.marketplaceStatus = MARKETPLACE_STATUS_APPROVED;
         product.customFields.listedInMarketplace = true;
         product.customFields.rejectReason = undefined;
+        // —— 内置轻量归位：按租户分类名 → 平台分类映射，补挂默认渠道并标记待归类 ——
+        try {
+            await this.placeIntoTenantCategory(ctx, product);
+        } catch (e: any) {
+            Logger.warn(`产品 ${String(productId)} 归位失败: ${(e as Error)?.message ?? e}`, 'Marketplace');
+            (product.customFields as any).needsCategorization = true;
+        }
         await this.connection.getRepository(ctx, Product).save(product);
+    }
+
+    /**
+     * 内置轻量归位：根据商品在租户侧的分类名（tenantCategoryRef）+ 该租户渠道上的 categoryMapping，
+     * 映射到默认商城平台分类；未命中则标记待归类。同时把商品补挂默认渠道
+     * （assignProductsToChannel 一并迁移变体/资产/规格组）。
+     */
+    private async placeIntoTenantCategory(ctx: RequestContext, product: any): Promise<void> {
+        await this.entityHydrator.hydrate(ctx, product, { relations: ['channels'] } as any);
+        const defaultChannel = await this.channelService.getDefaultChannel(ctx);
+        const tenantChannel = (product.channels ?? []).find((c: any) => !idsAreEqual(c.id, defaultChannel.id));
+        const tenantCategoryRef = product.customFields?.tenantCategoryRef;
+        let mapping: Array<{ tenantCategory: string; collectionId: string }> = [];
+        if (tenantChannel) {
+            const channelRepo = this.connection.rawConnection.getRepository(Channel);
+            const tenant = await channelRepo.findOne({ where: { id: String((tenantChannel as any).id) } } as any);
+            const rawMap = (tenant as any)?.customFields?.categoryMapping;
+            if (Array.isArray(rawMap)) mapping = rawMap;
+        }
+        const hit = tenantCategoryRef ? mapping.find(m => m.tenantCategory === tenantCategoryRef) : undefined;
+        const alreadyOnDefault = (product.channels ?? []).some((c: any) => idsAreEqual(c.id, defaultChannel.id));
+        if (!alreadyOnDefault) {
+            await this.productService.assignProductsToChannel(ctx, {
+                channelId: defaultChannel.id,
+                productIds: [String(product.id)],
+                priceFactor: 1,
+            } as any);
+        }
+        if (hit?.collectionId) {
+            product.customFields.needsCategorization = false;
+            product.customFields.platformCategoryId = hit.collectionId;
+        } else {
+            product.customFields.needsCategorization = true;
+            product.customFields.platformCategoryId = null;
+        }
     }
 
     /** 平台运营/超管驳回：不展示，记录原因 */

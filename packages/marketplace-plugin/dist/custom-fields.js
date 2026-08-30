@@ -58,6 +58,24 @@ exports.marketplaceCustomFields = {
             label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '卖点/促销语' }],
             description: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '多语言卖点，本期仅维护 zh_Hans，其余语言槽位预留' }],
         },
+        {
+            name: 'tenantCategoryRef',
+            type: 'string',
+            nullable: true,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '商品所属租户分类名（归位依据）' }],
+        },
+        {
+            name: 'platformCategoryId',
+            type: 'string',
+            nullable: true,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '已归位的平台分类' }],
+        },
+        {
+            name: 'needsCategorization',
+            type: 'boolean',
+            defaultValue: false,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '待归类' }],
+        },
     ],
     Order: [
         {

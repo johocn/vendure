@@ -14,10 +14,11 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const constants_1 = require("./constants");
 let MarketplaceService = class MarketplaceService {
-    constructor(connection, entityHydrator, channelService) {
+    constructor(connection, entityHydrator, channelService, productService) {
         this.connection = connection;
         this.entityHydrator = entityHydrator;
         this.channelService = channelService;
+        this.productService = productService;
     }
     /** 校验条形码在平台内唯一（跨所有 Channel）。返回所属 ProductId 与首个 VariantId；空则无冲突。 */
     async findBarcodeOwner(barcode) {
@@ -72,7 +73,7 @@ let MarketplaceService = class MarketplaceService {
     }
     /** 平台运营/超管审批通过：对外展示 */
     async approveMarketplaceProduct(ctx, productId) {
-        var _a;
+        var _a, _b;
         const product = await this.getProductOrThrow(ctx, productId);
         // 商家商品归属于 default + 商家渠道：merchantRef 指向非默认渠道（与分单策略一致）。
         // 仅属于 default 的自营商品则 merchantRef 保持 null。
@@ -83,7 +84,52 @@ let MarketplaceService = class MarketplaceService {
         product.customFields.marketplaceStatus = constants_1.MARKETPLACE_STATUS_APPROVED;
         product.customFields.listedInMarketplace = true;
         product.customFields.rejectReason = undefined;
+        // —— 内置轻量归位：按租户分类名 → 平台分类映射，补挂默认渠道并标记待归类 ——
+        try {
+            await this.placeIntoTenantCategory(ctx, product);
+        }
+        catch (e) {
+            core_1.Logger.warn(`产品 ${String(productId)} 归位失败: ${(_b = e === null || e === void 0 ? void 0 : e.message) !== null && _b !== void 0 ? _b : e}`, 'Marketplace');
+            product.customFields.needsCategorization = true;
+        }
         await this.connection.getRepository(ctx, core_1.Product).save(product);
+    }
+    /**
+     * 内置轻量归位：根据商品在租户侧的分类名（tenantCategoryRef）+ 该租户渠道上的 categoryMapping，
+     * 映射到默认商城平台分类；未命中则标记待归类。同时把商品补挂默认渠道
+     * （assignProductsToChannel 一并迁移变体/资产/规格组）。
+     */
+    async placeIntoTenantCategory(ctx, product) {
+        var _a, _b, _c, _d;
+        await this.entityHydrator.hydrate(ctx, product, { relations: ['channels'] });
+        const defaultChannel = await this.channelService.getDefaultChannel(ctx);
+        const tenantChannel = ((_a = product.channels) !== null && _a !== void 0 ? _a : []).find((c) => !(0, core_1.idsAreEqual)(c.id, defaultChannel.id));
+        const tenantCategoryRef = (_b = product.customFields) === null || _b === void 0 ? void 0 : _b.tenantCategoryRef;
+        let mapping = [];
+        if (tenantChannel) {
+            const channelRepo = this.connection.rawConnection.getRepository(core_1.Channel);
+            const tenant = await channelRepo.findOne({ where: { id: String(tenantChannel.id) } });
+            const rawMap = (_c = tenant === null || tenant === void 0 ? void 0 : tenant.customFields) === null || _c === void 0 ? void 0 : _c.categoryMapping;
+            if (Array.isArray(rawMap))
+                mapping = rawMap;
+        }
+        const hit = tenantCategoryRef ? mapping.find(m => m.tenantCategory === tenantCategoryRef) : undefined;
+        const alreadyOnDefault = ((_d = product.channels) !== null && _d !== void 0 ? _d : []).some((c) => (0, core_1.idsAreEqual)(c.id, defaultChannel.id));
+        if (!alreadyOnDefault) {
+            await this.productService.assignProductsToChannel(ctx, {
+                channelId: defaultChannel.id,
+                productIds: [String(product.id)],
+                priceFactor: 1,
+            });
+        }
+        if (hit === null || hit === void 0 ? void 0 : hit.collectionId) {
+            product.customFields.needsCategorization = false;
+            product.customFields.platformCategoryId = hit.collectionId;
+        }
+        else {
+            product.customFields.needsCategorization = true;
+            product.customFields.platformCategoryId = null;
+        }
     }
     /** 平台运营/超管驳回：不展示，记录原因 */
     async rejectMarketplaceProduct(ctx, productId, reason) {
@@ -129,5 +175,6 @@ exports.MarketplaceService = MarketplaceService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
         core_1.EntityHydrator,
-        core_1.ChannelService])
+        core_1.ChannelService,
+        core_1.ProductService])
 ], MarketplaceService);
