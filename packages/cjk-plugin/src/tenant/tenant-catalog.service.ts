@@ -47,7 +47,7 @@ export class TenantCatalogService {
         } as any);
         if (!collection) return;
         const filters: any[] = (collection as any).filters ?? [];
-        const productIdFilter = filters.find((f: any) => f.code === 'productId');
+        const productIdFilter = filters.find((f: any) => f.code === 'product-id-filter');
         if (productIdFilter) {
             const arg = productIdFilter.arguments?.find((a: any) => a.name === 'productIds');
             const existing: string[] = arg ? (JSON.parse(arg.value || '[]') as string[]) : [];
@@ -62,7 +62,7 @@ export class TenantCatalogService {
             }
         } else {
             filters.push({
-                code: 'productId',
+                code: 'product-id-filter',
                 arguments: [
                     { name: 'productIds', value: JSON.stringify([String(productId)]) },
                     { name: 'combineWithAnd', value: 'false' },

@@ -43,7 +43,7 @@ let TenantCatalogService = class TenantCatalogService {
         if (!collection)
             return;
         const filters = (_a = collection.filters) !== null && _a !== void 0 ? _a : [];
-        const productIdFilter = filters.find((f) => f.code === 'productId');
+        const productIdFilter = filters.find((f) => f.code === 'product-id-filter');
         if (productIdFilter) {
             const arg = (_b = productIdFilter.arguments) === null || _b === void 0 ? void 0 : _b.find((a) => a.name === 'productIds');
             const existing = arg ? JSON.parse(arg.value || '[]') : [];
@@ -60,7 +60,7 @@ let TenantCatalogService = class TenantCatalogService {
         }
         else {
             filters.push({
-                code: 'productId',
+                code: 'product-id-filter',
                 arguments: [
                     { name: 'productIds', value: JSON.stringify([String(productId)]) },
                     { name: 'combineWithAnd', value: 'false' },
