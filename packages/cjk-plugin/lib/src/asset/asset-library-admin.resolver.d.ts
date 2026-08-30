@@ -10,7 +10,7 @@ export declare class AssetLibraryAdminResolver {
     private assetService;
     private connection;
     constructor(assetService: AssetService, connection: TransactionalConnection);
-    assetLibrary(ctx: RequestContext, take?: number, skip?: number, tag?: string): Promise<{
+    assetLibrary(ctx: RequestContext, take?: number, skip?: number, tags?: string[]): Promise<{
         items: any[];
         totalItems: number;
     }>;

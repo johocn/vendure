@@ -28,11 +28,15 @@ let AssetLibraryAdminResolver = class AssetLibraryAdminResolver {
         this.assetService = assetService;
         this.connection = connection;
     }
-    async assetLibrary(ctx, take = 30, skip = 0, tag) {
+    async assetLibrary(ctx, take = 30, skip = 0, tags) {
         const filtered = await this.loadFiltered(ctx);
-        const byTag = (tag || '').trim();
-        const finalList = byTag
-            ? filtered.filter((a) => { var _a; return (((_a = a.customFields) === null || _a === void 0 ? void 0 : _a.assetTags) || []).some((t) => t === byTag); })
+        const cleanTags = (tags || []).map((t) => String(t).trim()).filter(Boolean);
+        const finalList = cleanTags.length
+            ? filtered.filter((a) => {
+                var _a;
+                const assetTags = ((_a = a.customFields) === null || _a === void 0 ? void 0 : _a.assetTags) || [];
+                return assetTags.some((t) => cleanTags.includes(t));
+            })
             : filtered;
         const total = finalList.length;
         const slice = finalList.slice(skip, skip + take);
@@ -125,9 +129,9 @@ __decorate([
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('take', { type: () => Number, nullable: true })),
     __param(2, (0, graphql_1.Args)('skip', { type: () => Number, nullable: true })),
-    __param(3, (0, graphql_1.Args)('tag', { type: () => String, nullable: true })),
+    __param(3, (0, graphql_1.Args)('tags', { type: () => [String], nullable: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, String]),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, Array]),
     __metadata("design:returntype", Promise)
 ], AssetLibraryAdminResolver.prototype, "assetLibrary", null);
 __decorate([

@@ -22,14 +22,15 @@ export class AssetLibraryAdminResolver {
         @Ctx() ctx: RequestContext,
         @Args('take', { type: () => Number, nullable: true }) take = 30,
         @Args('skip', { type: () => Number, nullable: true }) skip = 0,
-        @Args('tag', { type: () => String, nullable: true }) tag?: string,
+        @Args('tags', { type: () => [String], nullable: true }) tags?: string[],
     ): Promise<{ items: any[]; totalItems: number }> {
         const filtered = await this.loadFiltered(ctx);
-        const byTag = (tag || '').trim();
-        const finalList = byTag
-            ? filtered.filter((a: any) =>
-                  ((a.customFields as any)?.assetTags || []).some((t: string) => t === byTag),
-              )
+        const cleanTags = (tags || []).map((t) => String(t).trim()).filter(Boolean);
+        const finalList = cleanTags.length
+            ? filtered.filter((a: any) => {
+                  const assetTags: string[] = (a.customFields as any)?.assetTags || [];
+                  return assetTags.some((t) => cleanTags.includes(t));
+              })
             : filtered;
 
         const total = finalList.length;
