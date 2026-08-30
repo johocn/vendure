@@ -47,6 +47,12 @@ export class ShippingProfile extends VendureEntity implements ChannelAware {
     @Column({ default: true })
     enabled: boolean;
 
+    @Column({ default: true })
+    requiresAddress: boolean;
+
+    @Column({ default: false })
+    requiresContact: boolean;
+
     @ManyToMany(() => ShippingMethod)
     @JoinTable()
     shippingMethods: ShippingMethod[];
