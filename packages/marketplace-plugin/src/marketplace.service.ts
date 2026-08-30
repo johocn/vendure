@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
     Channel,
     ChannelService,
+    Collection,
     EntityHydrator,
     ID,
     idsAreEqual,
@@ -169,6 +170,27 @@ export class MarketplaceService {
         return this.connection.getRepository(ctx, Product).find({
             where: { customFields: { marketplaceStatus: MARKETPLACE_STATUS_APPROVED } as any },
         });
+    }
+
+    /**
+     * 平台（默认租户）分类列表：审批手动归类 / 租户归位映射下拉用。
+     * 始终基于 default channel，而不是登录运营/商户所在租户渠道的分类。
+     */
+    async getPlatformCollections(
+        ctx: RequestContext,
+    ): Promise<Array<{ id: string; name: string; parentId: string | null }>> {
+        const defaultChannel = await this.channelService.getDefaultChannel(ctx);
+        const repo = this.connection.rawConnection.getRepository(Collection);
+        const all = await repo.find({ relations: ['translations', 'channels', 'parent'] });
+        return all
+            .filter((c: any) => (c.channels || []).some((ch: any) => idsAreEqual(ch.id, defaultChannel.id)))
+            .map((c: any) => ({
+                id: String(c.id),
+                name: (c.translations?.find?.((t: any) => t.languageCode === 'zh_Hans')?.name) ||
+                    c.translations?.[0]?.name ||
+                    String(c.id),
+                parentId: c.parent ? String(c.parent.id) : null,
+            }));
     }
 
     /** 运营手动归类已过审商品：collectionId 为空 → 置待归类；否则写入平台分类并清标记 */

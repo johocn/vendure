@@ -35,6 +35,15 @@ export declare class MarketplaceService {
     getPendingProducts(ctx: RequestContext): Promise<Product[]>;
     /** 已过审（approved）商品列表：供运营查看分类归属 / 手动归类 */
     getApprovedProducts(ctx: RequestContext): Promise<Product[]>;
+    /**
+     * 平台（默认租户）分类列表：审批手动归类 / 租户归位映射下拉用。
+     * 始终基于 default channel，而不是登录运营/商户所在租户渠道的分类。
+     */
+    getPlatformCollections(ctx: RequestContext): Promise<Array<{
+        id: string;
+        name: string;
+        parentId: string | null;
+    }>>;
     /** 运营手动归类已过审商品：collectionId 为空 → 置待归类；否则写入平台分类并清标记 */
     setProductPlatformCategory(ctx: RequestContext, productId: ID, collectionId: string): Promise<void>;
     /**

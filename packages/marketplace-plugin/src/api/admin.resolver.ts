@@ -58,6 +58,12 @@ export class AdminMarketplaceResolver {
         return products as any;
     }
 
+    @Query('platformCollections')
+    @Allow(Permission.ReadProduct, Permission.SuperAdmin)
+    async platformCollections(@Ctx() ctx: RequestContext) {
+        return this.marketplaceService.getPlatformCollections(ctx);
+    }
+
     @Mutation('setProductPlatformCategory')
     @Transaction()
     @Allow(Permission.UpdateProduct, Permission.SuperAdmin)

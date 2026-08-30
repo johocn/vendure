@@ -151,6 +151,27 @@ let MarketplaceService = class MarketplaceService {
             where: { customFields: { marketplaceStatus: constants_1.MARKETPLACE_STATUS_APPROVED } },
         });
     }
+    /**
+     * 平台（默认租户）分类列表：审批手动归类 / 租户归位映射下拉用。
+     * 始终基于 default channel，而不是登录运营/商户所在租户渠道的分类。
+     */
+    async getPlatformCollections(ctx) {
+        const defaultChannel = await this.channelService.getDefaultChannel(ctx);
+        const repo = this.connection.rawConnection.getRepository(core_1.Collection);
+        const all = await repo.find({ relations: ['translations', 'channels', 'parent'] });
+        return all
+            .filter((c) => (c.channels || []).some((ch) => (0, core_1.idsAreEqual)(ch.id, defaultChannel.id)))
+            .map((c) => {
+            var _a, _b, _c, _d, _e;
+            return ({
+                id: String(c.id),
+                name: ((_c = (_b = (_a = c.translations) === null || _a === void 0 ? void 0 : _a.find) === null || _b === void 0 ? void 0 : _b.call(_a, (t) => t.languageCode === 'zh_Hans')) === null || _c === void 0 ? void 0 : _c.name) ||
+                    ((_e = (_d = c.translations) === null || _d === void 0 ? void 0 : _d[0]) === null || _e === void 0 ? void 0 : _e.name) ||
+                    String(c.id),
+                parentId: c.parent ? String(c.parent.id) : null,
+            });
+        });
+    }
     /** 运营手动归类已过审商品：collectionId 为空 → 置待归类；否则写入平台分类并清标记 */
     async setProductPlatformCategory(ctx, productId, collectionId) {
         const product = await this.getProductOrThrow(ctx, productId);

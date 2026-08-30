@@ -11,7 +11,13 @@ exports.adminApiExtensions = `
     extend type Query {
         marketplacePendingProducts: [Product!]!
         approvedMarketplaceProducts: [Product!]!
+        platformCollections: [PlatformCollectionNode!]!
         marketplaceMerchantChannel: Channel!
         merchantOrders(saleSource: String, options: OrderListOptions): OrderList!
+    }
+    type PlatformCollectionNode {
+        id: ID!
+        name: String!
+        parentId: ID
     }
 `;

@@ -17,6 +17,11 @@ export declare class AdminMarketplaceResolver {
     }): Promise<boolean>;
     marketplacePendingProducts(ctx: RequestContext): Promise<any>;
     approvedMarketplaceProducts(ctx: RequestContext): Promise<any>;
+    platformCollections(ctx: RequestContext): Promise<{
+        id: string;
+        name: string;
+        parentId: string | null;
+    }[]>;
     setProductPlatformCategory(ctx: RequestContext, args: {
         productId: string;
         collectionId?: string;
