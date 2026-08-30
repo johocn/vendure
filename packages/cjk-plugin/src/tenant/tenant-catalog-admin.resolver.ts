@@ -1,11 +1,15 @@
-import { Args, Mutation, Resolver } from '@nestjs/graphql';
+import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { Allow, Ctx, Permission, RequestContext } from '@vendure/core';
 import { CreateCollectionInput } from '@vendure/common/lib/generated-types';
 import { TenantCatalogService } from './tenant-catalog.service';
+import { TenantOptionGroupService } from './tenant-option-group.service';
 
 @Resolver()
 export class TenantCatalogAdminResolver {
-    constructor(private tenantCatalogService: TenantCatalogService) {}
+    constructor(
+        private tenantCatalogService: TenantCatalogService,
+        private optionGroupService: TenantOptionGroupService,
+    ) {}
 
     @Mutation()
     @Allow(Permission.CreateCatalog, Permission.CreateCollection)
@@ -25,5 +29,20 @@ export class TenantCatalogAdminResolver {
     ): Promise<boolean> {
         await this.tenantCatalogService.addProductToCollection(ctx, productId, collectionId);
         return true;
+    }
+
+    @Query()
+    @Allow(Permission.ReadCatalog, Permission.ReadProduct)
+    async reusableOptionGroups(@Ctx() ctx: RequestContext): Promise<any> {
+        return this.optionGroupService.reusableOptionGroups(ctx);
+    }
+
+    @Mutation()
+    @Allow(Permission.UpdateCatalog, Permission.UpdateProduct)
+    async reuseOptionGroupForProduct(
+        @Args('productId') productId: string,
+        @Args('optionGroupId') optionGroupId: string,
+    ): Promise<boolean> {
+        return this.optionGroupService.reuseOptionGroupForProduct(productId, optionGroupId);
     }
 }

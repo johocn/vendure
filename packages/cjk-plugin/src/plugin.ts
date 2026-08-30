@@ -103,6 +103,7 @@ import { WalletShopResolver } from './wallet/wallet-shop.resolver';
 import { balanceWalletPaymentHandler, setWalletService } from './wallet/balance-wallet-payment-handler';
 import { TenantCatalogService } from './tenant/tenant-catalog.service';
 import { TenantCatalogAdminResolver } from './tenant/tenant-catalog-admin.resolver';
+import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
@@ -136,6 +137,7 @@ import { TenantCatalogAdminResolver } from './tenant/tenant-catalog-admin.resolv
         OrderSplitService,
         WalletService,
         TenantCatalogService,
+        TenantOptionGroupService,
     ],
     adminApiExtensions: {
         schema: () => {
@@ -832,6 +834,22 @@ import { TenantCatalogAdminResolver } from './tenant/tenant-catalog-admin.resolv
                 extend type Mutation {
                     createTenantCollection(input: CreateCollectionInput!): Collection!
                     mapProductToPlatformCollection(productId: ID!, collectionId: ID!): Boolean!
+                }
+
+                type ReusableOptionValue {
+                    id: ID!
+                    name: String!
+                }
+                type ReusableOptionGroup {
+                    id: ID!
+                    name: String!
+                    options: [ReusableOptionValue!]!
+                }
+                extend type Query {
+                    reusableOptionGroups: [ReusableOptionGroup!]!
+                }
+                extend type Mutation {
+                    reuseOptionGroupForProduct(productId: ID!, optionGroupId: ID!): Boolean!
                 }
 
                 `;

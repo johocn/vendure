@@ -104,6 +104,7 @@ const wallet_shop_resolver_1 = require("./wallet/wallet-shop.resolver");
 const balance_wallet_payment_handler_1 = require("./wallet/balance-wallet-payment-handler");
 const tenant_catalog_service_1 = require("./tenant/tenant-catalog.service");
 const tenant_catalog_admin_resolver_1 = require("./tenant/tenant-catalog-admin.resolver");
+const tenant_option_group_service_1 = require("./tenant/tenant-option-group.service");
 let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
     constructor(options, moduleRef) {
         this.options = options;
@@ -301,6 +302,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             order_split_service_1.OrderSplitService,
             wallet_service_1.WalletService,
             tenant_catalog_service_1.TenantCatalogService,
+            tenant_option_group_service_1.TenantOptionGroupService,
         ],
         adminApiExtensions: {
             schema: () => {
@@ -997,6 +999,22 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                 extend type Mutation {
                     createTenantCollection(input: CreateCollectionInput!): Collection!
                     mapProductToPlatformCollection(productId: ID!, collectionId: ID!): Boolean!
+                }
+
+                type ReusableOptionValue {
+                    id: ID!
+                    name: String!
+                }
+                type ReusableOptionGroup {
+                    id: ID!
+                    name: String!
+                    options: [ReusableOptionValue!]!
+                }
+                extend type Query {
+                    reusableOptionGroups: [ReusableOptionGroup!]!
+                }
+                extend type Mutation {
+                    reuseOptionGroupForProduct(productId: ID!, optionGroupId: ID!): Boolean!
                 }
 
                 `;
