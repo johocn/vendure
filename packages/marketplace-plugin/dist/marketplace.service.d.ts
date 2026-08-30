@@ -33,6 +33,10 @@ export declare class MarketplaceService {
     rejectMarketplaceProduct(ctx: RequestContext, productId: ID, reason: string): Promise<void>;
     /** 待审批商品列表 */
     getPendingProducts(ctx: RequestContext): Promise<Product[]>;
+    /** 已过审（approved）商品列表：供运营查看分类归属 / 手动归类 */
+    getApprovedProducts(ctx: RequestContext): Promise<Product[]>;
+    /** 运营手动归类已过审商品：collectionId 为空 → 置待归类；否则写入平台分类并清标记 */
+    setProductPlatformCategory(ctx: RequestContext, productId: ID, collectionId: string): Promise<void>;
     /**
      * 聚合 marketplace 对外展示的商品（自营 + 各商家）。
      * 仅返回 marketplaceStatus='approved' 且 listedInMarketplace=true 的商品，

@@ -164,6 +164,25 @@ export class MarketplaceService {
         });
     }
 
+    /** 已过审（approved）商品列表：供运营查看分类归属 / 手动归类 */
+    async getApprovedProducts(ctx: RequestContext): Promise<Product[]> {
+        return this.connection.getRepository(ctx, Product).find({
+            where: { customFields: { marketplaceStatus: MARKETPLACE_STATUS_APPROVED } as any },
+        });
+    }
+
+    /** 运营手动归类已过审商品：collectionId 为空 → 置待归类；否则写入平台分类并清标记 */
+    async setProductPlatformCategory(
+        ctx: RequestContext,
+        productId: ID,
+        collectionId: string,
+    ): Promise<void> {
+        const product = await this.getProductOrThrow(ctx, productId);
+        (product.customFields as any).platformCategoryId = collectionId || null;
+        (product.customFields as any).needsCategorization = !collectionId;
+        await this.connection.getRepository(ctx, Product).save(product);
+    }
+
     /**
      * 聚合 marketplace 对外展示的商品（自营 + 各商家）。
      * 仅返回 marketplaceStatus='approved' 且 listedInMarketplace=true 的商品，

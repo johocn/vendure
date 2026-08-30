@@ -3,9 +3,11 @@ export const adminApiExtensions = `
         approveMarketplaceProduct(productId: ID!): Boolean!
         rejectMarketplaceProduct(productId: ID!, reason: String!): Boolean!
         submitForMarketplaceAdmin(productId: ID!): Boolean!
+        setProductPlatformCategory(productId: ID!, collectionId: String): Boolean!
     }
     extend type Query {
         marketplacePendingProducts: [Product!]!
+        approvedMarketplaceProducts: [Product!]!
         marketplaceMerchantChannel: Channel!
         merchantOrders(saleSource: String, options: OrderListOptions): OrderList!
     }

@@ -37,6 +37,15 @@ let AdminMarketplaceResolver = class AdminMarketplaceResolver {
         const products = await this.marketplaceService.getPendingProducts(ctx);
         return products;
     }
+    async approvedMarketplaceProducts(ctx) {
+        const products = await this.marketplaceService.getApprovedProducts(ctx);
+        return products;
+    }
+    async setProductPlatformCategory(ctx, args) {
+        var _a;
+        await this.marketplaceService.setProductPlatformCategory(ctx, args.productId, (_a = args.collectionId) !== null && _a !== void 0 ? _a : '');
+        return true;
+    }
     marketplaceMerchantChannel(ctx) {
         return ctx.channel;
     }
@@ -98,6 +107,24 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext]),
     __metadata("design:returntype", Promise)
 ], AdminMarketplaceResolver.prototype, "marketplacePendingProducts", null);
+__decorate([
+    (0, graphql_1.Query)('approvedMarketplaceProducts'),
+    (0, core_1.Allow)(core_1.Permission.ReadProduct, core_1.Permission.SuperAdmin),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], AdminMarketplaceResolver.prototype, "approvedMarketplaceProducts", null);
+__decorate([
+    (0, graphql_1.Mutation)('setProductPlatformCategory'),
+    (0, core_1.Transaction)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateProduct, core_1.Permission.SuperAdmin),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], AdminMarketplaceResolver.prototype, "setProductPlatformCategory", null);
 __decorate([
     (0, graphql_1.Query)('marketplaceMerchantChannel'),
     (0, core_1.Allow)(core_1.Permission.ReadOrder),

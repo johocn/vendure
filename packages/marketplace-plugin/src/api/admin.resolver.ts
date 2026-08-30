@@ -51,6 +51,24 @@ export class AdminMarketplaceResolver {
         return products as any;
     }
 
+    @Query('approvedMarketplaceProducts')
+    @Allow(Permission.ReadProduct, Permission.SuperAdmin)
+    async approvedMarketplaceProducts(@Ctx() ctx: RequestContext) {
+        const products = await this.marketplaceService.getApprovedProducts(ctx);
+        return products as any;
+    }
+
+    @Mutation('setProductPlatformCategory')
+    @Transaction()
+    @Allow(Permission.UpdateProduct, Permission.SuperAdmin)
+    async setProductPlatformCategory(
+        @Ctx() ctx: RequestContext,
+        @Args() args: { productId: string; collectionId?: string },
+    ): Promise<boolean> {
+        await this.marketplaceService.setProductPlatformCategory(ctx, args.productId, args.collectionId ?? '');
+        return true;
+    }
+
     @Query('marketplaceMerchantChannel')
     @Allow(Permission.ReadOrder)
     marketplaceMerchantChannel(@Ctx() ctx: RequestContext) {
