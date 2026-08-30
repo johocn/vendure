@@ -876,7 +876,7 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                 }
 
                 extend type Query {
-                    assetLibrary(take: Int, skip: Int, tag: String): AssetLibraryResult!
+                    assetLibrary(take: Int, skip: Int, tags: [String]): AssetLibraryResult!
                     assetTags(take: Int): [AssetTagSummary!]!
                 }
 
