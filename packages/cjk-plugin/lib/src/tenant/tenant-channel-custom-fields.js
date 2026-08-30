@@ -152,6 +152,17 @@ exports.tenantChannelCustomFields = {
                 { languageCode: core_1.LanguageCode.zh_Hans, value: 'pending/active/disabled，第三方商户标识' },
             ],
         },
+        {
+            name: 'categoryMapping',
+            type: 'struct',
+            list: true,
+            nullable: true,
+            fields: [
+                { name: 'tenantCategory', type: 'string' },
+                { name: 'collectionId', type: 'string' },
+            ],
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '租户分类→平台分类映射表' }],
+        },
     ],
 };
 //# sourceMappingURL=tenant-channel-custom-fields.js.map
