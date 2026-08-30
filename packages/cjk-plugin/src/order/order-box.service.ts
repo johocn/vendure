@@ -32,6 +32,10 @@ export interface OrderBox {
     pickupLocations: PickupLocation[];
     /** 该箱可用支付方式 code 集合（来自配送档案绑定的支付档案，供聚合拆合引擎用） */
     availablePaymentMethodCodes: string[];
+    /** 该箱是否需要收货地址（物流档案=true） */
+    requiresAddress: boolean;
+    /** 该箱是否需要联系方式（到店需联系方式档案=true） */
+    requiresContact: boolean;
 }
 
 @Injectable()
@@ -108,6 +112,8 @@ export class OrderBoxService {
                 defaultShippingMethodId: enabledMethods.length > 0 ? (enabledMethods[0].id as ID) : null,
                 pickupLocations: profile?.pickupLocations ?? [],
                 availablePaymentMethodCodes: await this.resolvePaymentCodesForProfile(ctx, key as ID),
+                requiresAddress: profile?.requiresAddress ?? true,
+                requiresContact: profile?.requiresContact ?? false,
             });
         }
         return boxes;

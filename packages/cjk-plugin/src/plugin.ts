@@ -67,7 +67,7 @@ import { MapProviderRegistry } from './map/map-provider-registry';
 import { MapService } from './map/map.service';
 import { MapAdminResolver } from './map/map-admin.resolver';
 import { MapShopResolver } from './map/map-shop.resolver';
-import { MapConfigEncryptionMigration, PayConfigEncryptionMigration, TenantMemberColumnMigration, ChannelCustomColumnMigration } from './migrations';
+import { MapConfigEncryptionMigration, PayConfigEncryptionMigration, TenantMemberColumnMigration, ChannelCustomColumnMigration, ShippingContactFlagMigration } from './migrations';
 import { AuthConfigService } from './auth/auth-config.service';
 import { PayConfigService } from './payment/pay-config.service';
 import { MapConfigService } from './map/map-config.service';
@@ -124,6 +124,7 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
         PayConfigEncryptionMigration,
         TenantMemberColumnMigration,
         ChannelCustomColumnMigration,
+        ShippingContactFlagMigration,
         AuthConfigService,
         PayConfigService,
         MapConfigService,
@@ -1050,6 +1051,8 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                     defaultShippingMethodId: ID
                     pickupLocations: [PickupLocation!]!
                     availablePaymentMethodCodes: [String!]!
+                    requiresAddress: Boolean!
+                    requiresContact: Boolean!
                 }
 
                 extend type Query {
