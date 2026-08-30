@@ -1027,6 +1027,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     mimeType: String
                     width: Int
                     height: Int
+                    assetTags: [String!]!
                 }
 
                 type AssetLibraryResult {
@@ -1034,8 +1035,18 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     totalItems: Int!
                 }
 
+                type AssetTagSummary {
+                    name: String!
+                    count: Int!
+                }
+
                 extend type Query {
-                    assetLibrary(take: Int, skip: Int): AssetLibraryResult!
+                    assetLibrary(take: Int, skip: Int, tag: String): AssetLibraryResult!
+                    assetTags(take: Int): [AssetTagSummary!]!
+                }
+
+                extend type Mutation {
+                    setAssetTags(assetIds: [String!]!, tags: [String!]): Boolean!
                 }
 
                 `;

@@ -862,6 +862,7 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                     mimeType: String
                     width: Int
                     height: Int
+                    assetTags: [String!]!
                 }
 
                 type AssetLibraryResult {
@@ -869,8 +870,18 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                     totalItems: Int!
                 }
 
+                type AssetTagSummary {
+                    name: String!
+                    count: Int!
+                }
+
                 extend type Query {
-                    assetLibrary(take: Int, skip: Int): AssetLibraryResult!
+                    assetLibrary(take: Int, skip: Int, tag: String): AssetLibraryResult!
+                    assetTags(take: Int): [AssetTagSummary!]!
+                }
+
+                extend type Mutation {
+                    setAssetTags(assetIds: [String!]!, tags: [String!]): Boolean!
                 }
 
                 `;
