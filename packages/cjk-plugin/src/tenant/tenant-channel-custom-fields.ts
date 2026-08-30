@@ -161,5 +161,14 @@ export const tenantChannelCustomFields: CustomFields = {
             ],
             label: [{ languageCode: LanguageCode.zh_Hans, value: '租户分类→平台分类映射表' }],
         },
+        {
+            name: 'multilingualEnabled',
+            type: 'boolean',
+            defaultValue: false,
+            label: [
+                { languageCode: LanguageCode.zh_Hans, value: '商品多语言支持' },
+                { languageCode: LanguageCode.en, value: 'Product Multilingual' },
+            ],
+        },
     ],
 };

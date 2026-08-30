@@ -163,6 +163,15 @@ exports.tenantChannelCustomFields = {
             ],
             label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '租户分类→平台分类映射表' }],
         },
+        {
+            name: 'multilingualEnabled',
+            type: 'boolean',
+            defaultValue: false,
+            label: [
+                { languageCode: core_1.LanguageCode.zh_Hans, value: '商品多语言支持' },
+                { languageCode: core_1.LanguageCode.en, value: 'Product Multilingual' },
+            ],
+        },
     ],
 };
 //# sourceMappingURL=tenant-channel-custom-fields.js.map
