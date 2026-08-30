@@ -102,6 +102,8 @@ const wallet_service_1 = require("./wallet/wallet.service");
 const wallet_admin_resolver_1 = require("./wallet/wallet-admin.resolver");
 const wallet_shop_resolver_1 = require("./wallet/wallet-shop.resolver");
 const balance_wallet_payment_handler_1 = require("./wallet/balance-wallet-payment-handler");
+const tenant_catalog_service_1 = require("./tenant/tenant-catalog.service");
+const tenant_catalog_admin_resolver_1 = require("./tenant/tenant-catalog-admin.resolver");
 let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
     constructor(options, moduleRef) {
         this.options = options;
@@ -298,6 +300,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             order_box_service_1.OrderBoxService,
             order_split_service_1.OrderSplitService,
             wallet_service_1.WalletService,
+            tenant_catalog_service_1.TenantCatalogService,
         ],
         adminApiExtensions: {
             schema: () => {
@@ -991,9 +994,14 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     adminDebitWallet(amount: Int!): Wallet!
                 }
 
+                extend type Mutation {
+                    createTenantCollection(input: CreateCollectionInput!): Collection!
+                    mapProductToPlatformCollection(productId: ID!, collectionId: ID!): Boolean!
+                }
+
                 `;
             },
-            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver],
+            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver, tenant_catalog_admin_resolver_1.TenantCatalogAdminResolver],
         },
         shopApiExtensions: {
             schema: () => {

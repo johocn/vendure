@@ -101,6 +101,8 @@ import { WalletService } from './wallet/wallet.service';
 import { WalletAdminResolver } from './wallet/wallet-admin.resolver';
 import { WalletShopResolver } from './wallet/wallet-shop.resolver';
 import { balanceWalletPaymentHandler, setWalletService } from './wallet/balance-wallet-payment-handler';
+import { TenantCatalogService } from './tenant/tenant-catalog.service';
+import { TenantCatalogAdminResolver } from './tenant/tenant-catalog-admin.resolver';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
@@ -133,6 +135,7 @@ import { balanceWalletPaymentHandler, setWalletService } from './wallet/balance-
         OrderBoxService,
         OrderSplitService,
         WalletService,
+        TenantCatalogService,
     ],
     adminApiExtensions: {
         schema: () => {
@@ -826,9 +829,14 @@ import { balanceWalletPaymentHandler, setWalletService } from './wallet/balance-
                     adminDebitWallet(amount: Int!): Wallet!
                 }
 
+                extend type Mutation {
+                    createTenantCollection(input: CreateCollectionInput!): Collection!
+                    mapProductToPlatformCollection(productId: ID!, collectionId: ID!): Boolean!
+                }
+
                 `;
         },
-        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver],
+        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {
