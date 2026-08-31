@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
     Channel,
+    ConfigService,
     EntityNotFoundError,
     ID,
     PaginatedList,
@@ -12,12 +13,14 @@ import {
     UserInputError,
 } from '@vendure/core';
 import { PaymentTemplate } from './payment-template.entity';
+import { fillDefaultArgs } from '../common/fill-default-args';
 
 @Injectable()
 export class PaymentTemplateService {
     constructor(
         private connection: TransactionalConnection,
         private paymentMethodService: PaymentMethodService,
+        private configService: ConfigService,
     ) {}
 
     /**
@@ -130,8 +133,16 @@ export class PaymentTemplateService {
         const paymentMethod = await this.paymentMethodService.create(ctx, {
             code,
             enabled: true,
-            handler: template.handler,
-            checker: template.checker ?? undefined,
+            handler:
+                (fillDefaultArgs(
+                    template.handler,
+                    this.configService.paymentOptions.paymentMethodHandlers as any,
+                ) ?? template.handler) as any,
+            checker:
+                (fillDefaultArgs(
+                    template.checker,
+                    this.configService.paymentOptions.paymentMethodEligibilityCheckers as any,
+                ) ?? undefined) as any,
             translations: [
                 {
                     languageCode: ctx.languageCode,
