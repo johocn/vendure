@@ -1,9 +1,10 @@
-import { ID, PaginatedList, ListQueryOptions, PaymentMethodService, RequestContext, TransactionalConnection } from '@vendure/core';
+import { ConfigService, ID, PaginatedList, ListQueryOptions, PaymentMethodService, RequestContext, TransactionalConnection } from '@vendure/core';
 import { PaymentTemplate } from './payment-template.entity';
 export declare class PaymentTemplateService {
     private connection;
     private paymentMethodService;
-    constructor(connection: TransactionalConnection, paymentMethodService: PaymentMethodService);
+    private configService;
+    constructor(connection: TransactionalConnection, paymentMethodService: PaymentMethodService, configService: ConfigService);
     /**
      * 查询模板列表（可见规则：全局模板 + 本租户模板）
      */

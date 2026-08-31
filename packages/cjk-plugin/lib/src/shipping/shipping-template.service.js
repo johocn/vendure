@@ -24,10 +24,12 @@ exports.ShippingTemplateService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const shipping_template_entity_1 = require("./shipping-template.entity");
+const fill_default_args_1 = require("../common/fill-default-args");
 let ShippingTemplateService = class ShippingTemplateService {
-    constructor(connection, shippingMethodService) {
+    constructor(connection, shippingMethodService, configService) {
         this.connection = connection;
         this.shippingMethodService = shippingMethodService;
+        this.configService = configService;
     }
     /**
      * 查询模板列表（可见规则：全局模板 + 本租户模板）
@@ -113,6 +115,7 @@ let ShippingTemplateService = class ShippingTemplateService {
      * 租户可覆盖名称，否则使用模板名称
      */
     async createShippingMethodFromTemplate(ctx, templateId, nameOverride, codeOverride) {
+        var _a;
         const template = await this.findOne(ctx, templateId);
         if (!template) {
             throw new core_1.EntityNotFoundError('ShippingTemplate', templateId);
@@ -130,7 +133,7 @@ let ShippingTemplateService = class ShippingTemplateService {
                 },
             ],
             fulfillmentHandler: template.fulfillmentHandler,
-            checker: template.checker,
+            checker: ((_a = (0, fill_default_args_1.fillDefaultArgs)(template.checker, this.configService.shippingOptions.shippingEligibilityCheckers)) !== null && _a !== void 0 ? _a : undefined),
             calculator: template.calculator,
         });
         return shippingMethod;
@@ -166,6 +169,7 @@ exports.ShippingTemplateService = ShippingTemplateService;
 exports.ShippingTemplateService = ShippingTemplateService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
-        core_1.ShippingMethodService])
+        core_1.ShippingMethodService,
+        core_1.ConfigService])
 ], ShippingTemplateService);
 //# sourceMappingURL=shipping-template.service.js.map

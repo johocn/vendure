@@ -31,8 +31,10 @@ exports.tieredShippingEligibilityChecker = new core_1.ShippingEligibilityChecker
         },
     },
     check: (ctx, order, args) => {
-        // 1. 金额门槛检查
-        if (args.orderMinimum > 0 && order.subTotalWithTax < args.orderMinimum) {
+        var _a;
+        // 1. 金额门槛检查（缺参按 0 处理，避免与默认无门槛期望不一致）
+        const orderMinimum = (_a = args.orderMinimum) !== null && _a !== void 0 ? _a : 0;
+        if (orderMinimum > 0 && order.subTotalWithTax < orderMinimum) {
             return false;
         }
         // 2. 区域排除检查

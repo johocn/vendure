@@ -1,9 +1,10 @@
-import { ID, PaginatedList, ListQueryOptions, RequestContext, TransactionalConnection, ShippingMethodService } from '@vendure/core';
+import { ConfigService, ID, PaginatedList, ListQueryOptions, RequestContext, TransactionalConnection, ShippingMethodService } from '@vendure/core';
 import { ShippingTemplate } from './shipping-template.entity';
 export declare class ShippingTemplateService {
     private connection;
     private shippingMethodService;
-    constructor(connection: TransactionalConnection, shippingMethodService: ShippingMethodService);
+    private configService;
+    constructor(connection: TransactionalConnection, shippingMethodService: ShippingMethodService, configService: ConfigService);
     /**
      * 查询模板列表（可见规则：全局模板 + 本租户模板）
      */

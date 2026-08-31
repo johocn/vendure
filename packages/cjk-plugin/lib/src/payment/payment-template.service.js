@@ -24,10 +24,12 @@ exports.PaymentTemplateService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const payment_template_entity_1 = require("./payment-template.entity");
+const fill_default_args_1 = require("../common/fill-default-args");
 let PaymentTemplateService = class PaymentTemplateService {
-    constructor(connection, paymentMethodService) {
+    constructor(connection, paymentMethodService, configService) {
         this.connection = connection;
         this.paymentMethodService = paymentMethodService;
+        this.configService = configService;
     }
     /**
      * 查询模板列表（可见规则：全局模板 + 本租户模板）
@@ -113,7 +115,7 @@ let PaymentTemplateService = class PaymentTemplateService {
      * 租户可覆盖名称，否则使用模板名称
      */
     async createPaymentMethodFromTemplate(ctx, templateId, nameOverride, codeOverride) {
-        var _a;
+        var _a, _b;
         const template = await this.findOne(ctx, templateId);
         if (!template) {
             throw new core_1.EntityNotFoundError('PaymentTemplate', templateId);
@@ -124,8 +126,8 @@ let PaymentTemplateService = class PaymentTemplateService {
         const paymentMethod = await this.paymentMethodService.create(ctx, {
             code,
             enabled: true,
-            handler: template.handler,
-            checker: (_a = template.checker) !== null && _a !== void 0 ? _a : undefined,
+            handler: ((_a = (0, fill_default_args_1.fillDefaultArgs)(template.handler, this.configService.paymentOptions.paymentMethodHandlers)) !== null && _a !== void 0 ? _a : template.handler),
+            checker: ((_b = (0, fill_default_args_1.fillDefaultArgs)(template.checker, this.configService.paymentOptions.paymentMethodEligibilityCheckers)) !== null && _b !== void 0 ? _b : undefined),
             translations: [
                 {
                     languageCode: ctx.languageCode,
@@ -141,6 +143,7 @@ exports.PaymentTemplateService = PaymentTemplateService;
 exports.PaymentTemplateService = PaymentTemplateService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
-        core_1.PaymentMethodService])
+        core_1.PaymentMethodService,
+        core_1.ConfigService])
 ], PaymentTemplateService);
 //# sourceMappingURL=payment-template.service.js.map
