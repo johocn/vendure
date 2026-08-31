@@ -29,8 +29,9 @@ export const tieredShippingEligibilityChecker = new ShippingEligibilityChecker({
         },
     },
     check: (ctx, order, args) => {
-        // 1. 金额门槛检查
-        if (args.orderMinimum > 0 && order.subTotalWithTax < args.orderMinimum) {
+        // 1. 金额门槛检查（缺参按 0 处理，避免与默认无门槛期望不一致）
+        const orderMinimum = args.orderMinimum ?? 0;
+        if (orderMinimum > 0 && order.subTotalWithTax < orderMinimum) {
             return false;
         }
 
