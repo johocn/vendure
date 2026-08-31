@@ -20,6 +20,7 @@ export const defaultShippingEligibilityChecker = new ShippingEligibilityChecker(
         },
     },
     check: (ctx, order, args) => {
-        return order.subTotalWithTax >= args.orderMinimum;
+        // args.orderMinimum 缺失（创建配送方式未填该参数）时按 0 处理，避免与 defaultValue 不一致导致恒不合格
+        return order.subTotalWithTax >= (args.orderMinimum ?? 0);
     },
 });

@@ -21,7 +21,9 @@ exports.defaultShippingEligibilityChecker = new shipping_eligibility_checker_1.S
         },
     },
     check: (ctx, order, args) => {
-        return order.subTotalWithTax >= args.orderMinimum;
+        var _a;
+        // args.orderMinimum 缺失（创建配送方式未填该参数）时按 0 处理，避免与 defaultValue 不一致导致恒不合格
+        return order.subTotalWithTax >= ((_a = args.orderMinimum) !== null && _a !== void 0 ? _a : 0);
     },
 });
 //# sourceMappingURL=default-shipping-eligibility-checker.js.map
