@@ -22,6 +22,11 @@ export declare class PickupService {
     /** 懒生成/取回固定提货码（幂等：一生对一单）。 */
     resolveMyPickupCode(ctx: RequestContext, orderId: ID): Promise<PickupRedemption>;
     private getOrCreateRedemption;
+    /**
+     * 为「已付款的 pickup 订单」幂等生成提货码（自动生码；供事件订阅与游客查询兜底调用）。
+     * 非 pickup 或未过支付闸门（isPickupPaid 排除 PaymentAuthorized 之前的状态）则不生成。
+     */
+    ensurePickupRedemptionForOrder(ctx: RequestContext, orderId: ID): Promise<void>;
     /** 核销闸门：校验凭据存在且 generated。 */
     private findGeneratable;
     /** 顾客自核销。 */

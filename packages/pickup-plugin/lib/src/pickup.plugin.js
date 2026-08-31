@@ -23,6 +23,7 @@ const pickup_service_1 = require("./pickup.service");
 const pickup_customer_resolver_1 = require("./pickup-customer.resolver");
 const pickup_owner_resolver_1 = require("./pickup-owner.resolver");
 const pickup_admin_resolver_1 = require("./pickup-admin.resolver");
+const pickup_guest_order_resolver_1 = require("./pickup-guest-order.resolver");
 const { gql } = require('graphql-tag');
 /** 自提闭环所需的 Order 自定义字段（自含，避免依赖外部插件装配顺序）。 */
 const pickupOrderCustomFields = {
@@ -78,6 +79,49 @@ const shopSchema = gql `
     extend type Mutation {
         claimMyPickup(orderId: ID!, code: String!): PickupRedemption!
     }
+    type GuestOrderOverview {
+        orderCode: String!
+        orderPlacedAt: DateTime
+        state: String!
+        currencyCode: String!
+        totalQuantity: Int!
+        subTotal: Int!
+        shippingWithTax: Int!
+        totalWithTax: Int!
+        isPickup: Boolean!
+        pickupClaimed: Boolean!
+        pickupCode: String
+        pickupClaimable: Boolean!
+        pickupLocation: GuestPickupLocation
+        lines: [GuestOrderLine!]!
+        hasPhone: Boolean!
+    }
+    type GuestPickupLocation {
+        name: String!
+        address: String!
+        businessHours: String
+    }
+    type GuestOrderLine {
+        productName: String!
+        sku: String!
+        quantity: Int!
+        linePriceWithTax: Int!
+    }
+    input GuestOrderLookupInput {
+        orderCode: String!
+        phone: String
+    }
+    input GuestSetOrderCustomFieldsInput {
+        orderCode: String!
+        phone: String!
+        name: String
+    }
+    extend type Query {
+        guestOrderLookup(input: GuestOrderLookupInput!): GuestOrderOverview!
+    }
+    extend type Mutation {
+        guestSetOrderCustomFields(input: GuestSetOrderCustomFieldsInput!): GuestOrderOverview!
+    }
     `;
 let PickupPlugin = PickupPlugin_1 = class PickupPlugin {
     constructor(options, service, eventBus) {
@@ -100,6 +144,16 @@ let PickupPlugin = PickupPlugin_1 = class PickupPlugin {
                 this.service.onOrderCancelled(Number(orderId)).catch(err => { var _a; return console.error((_a = err === null || err === void 0 ? void 0 : err.message) !== null && _a !== void 0 ? _a : err, 'pickup-plugin'); });
             }
         });
+        this.eventBus
+            .ofType(core_1.OrderStateTransitionEvent)
+            .pipe((0, operators_1.filter)(event => !['AddingItems', 'ArrangingPayment', 'Draft', 'Cancelled', 'PaymentAuthorized'].includes(event.toState)))
+            .subscribe(event => {
+            var _a, _b, _c;
+            const orderId = (_b = (_a = event.ctx) === null || _a === void 0 ? void 0 : _a.orderId) !== null && _b !== void 0 ? _b : (_c = event.order) === null || _c === void 0 ? void 0 : _c.id;
+            if (orderId != null) {
+                this.service.ensurePickupRedemptionForOrder(event.ctx, orderId).catch(err => { var _a; return console.error((_a = err === null || err === void 0 ? void 0 : err.message) !== null && _a !== void 0 ? _a : err, 'pickup-plugin auto-redeem'); });
+            }
+        });
     }
 };
 exports.PickupPlugin = PickupPlugin;
@@ -118,7 +172,7 @@ exports.PickupPlugin = PickupPlugin = PickupPlugin_1 = __decorate([
         },
         shopApiExtensions: {
             schema: shopSchema,
-            resolvers: [pickup_customer_resolver_1.PickupCustomerResolver],
+            resolvers: [pickup_customer_resolver_1.PickupCustomerResolver, pickup_guest_order_resolver_1.PickupGuestOrderResolver],
         },
         configuration: (config) => {
             // 注册 Order 自定义字段：deliveryType（履约方式）+ pickupClaimed（自提已核销）

@@ -162,6 +162,7 @@ exports.devConfig = {
     },
     orderOptions: {
         orderItemPriceCalculationStrategy: new sales_plugin_2.SalesOrderItemPriceCalculationStrategy(),
+        orderByCodeAccessStrategy: new core_1.DefaultOrderByCodeAccessStrategy('7d'),
     },
     settingsStoreFields: {
         MyPlugin: [
