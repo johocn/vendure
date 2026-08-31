@@ -20,10 +20,11 @@ const pickup_redemption_entity_1 = require("./pickup-redemption.entity");
 const pickup_guest_order_1 = require("./pickup-guest-order");
 const ERR_NOT_FOUND = 'GUEST_ORDER_NOT_FOUND';
 let PickupGuestOrderResolver = class PickupGuestOrderResolver {
-    constructor(orderService, configService, entityHydrator, connection, service) {
+    constructor(orderService, configService, entityHydrator, productVariantService, connection, service) {
         this.orderService = orderService;
         this.configService = configService;
         this.entityHydrator = entityHydrator;
+        this.productVariantService = productVariantService;
         this.connection = connection;
         this.service = service;
     }
@@ -56,19 +57,32 @@ let PickupGuestOrderResolver = class PickupGuestOrderResolver {
         return (0, pickup_guest_order_1.buildGuestOverview)(refreshed, redemption);
     }
     async loadOrder(ctx, code) {
+        var _a;
         // 先预载 lines 与 productVariant，EntityHydrator 才能沿 lines→productVariant→product 逐层落到 product
         const order = await this.orderService.findOneByCode(ctx, code, ['customer', 'customer.user', 'lines', 'lines.productVariant']);
         if (!order)
             return null;
         // relation 类型自定义字段与商品嵌套关系在 service 层默认不加载，
-        // 用 EntityHydrator 显式灌注，供 buildGuestOverview 取取货点与商品名。
+        // 用 EntityHydrator 显式灌注，供 buildGuestOverview 取取货点；商品名再用已翻译的 Product 确定性回填。
         await this.entityHydrator.hydrate(ctx, order, {
             relations: [
-                'lines.productVariant.product',
                 'customFields.selectedPickupLocationId',
                 'fulfillments',
             ],
         });
+        for (const line of ((_a = order.lines) !== null && _a !== void 0 ? _a : [])) {
+            const variant = line === null || line === void 0 ? void 0 : line.productVariant;
+            if (variant && (variant.productId != null || variant.product)) {
+                try {
+                    const product = await this.productVariantService.getProductForVariant(ctx, variant);
+                    if (product)
+                        variant.product = product;
+                }
+                catch (_b) {
+                    // 单个商品解析失败不阻塞概览构建
+                }
+            }
+        }
         return order;
     }
     async findRedemption(ctx, orderId) {
@@ -101,6 +115,7 @@ exports.PickupGuestOrderResolver = PickupGuestOrderResolver = __decorate([
     __metadata("design:paramtypes", [core_1.OrderService,
         core_1.ConfigService,
         core_1.EntityHydrator,
+        core_1.ProductVariantService,
         core_1.TransactionalConnection,
         pickup_service_1.PickupService])
 ], PickupGuestOrderResolver);

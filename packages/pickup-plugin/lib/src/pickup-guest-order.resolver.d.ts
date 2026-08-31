@@ -1,13 +1,14 @@
-import { ConfigService, EntityHydrator, OrderService, RequestContext, TransactionalConnection } from '@vendure/core';
+import { ConfigService, EntityHydrator, OrderService, ProductVariantService, RequestContext, TransactionalConnection } from '@vendure/core';
 import { PickupService } from './pickup.service';
 import { GuestOrderOverview } from './pickup-guest-order';
 export declare class PickupGuestOrderResolver {
     private orderService;
     private configService;
     private entityHydrator;
+    private productVariantService;
     private connection;
     private service;
-    constructor(orderService: OrderService, configService: ConfigService, entityHydrator: EntityHydrator, connection: TransactionalConnection, service: PickupService);
+    constructor(orderService: OrderService, configService: ConfigService, entityHydrator: EntityHydrator, productVariantService: ProductVariantService, connection: TransactionalConnection, service: PickupService);
     guestOrderLookup(ctx: RequestContext, input: {
         orderCode: string;
         phone?: string;

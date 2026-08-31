@@ -1,7 +1,7 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 import {
-    Allow, ConfigService, Ctx, EntityHydrator, ID, Order, OrderService, Permission, RequestContext,
-    TransactionalConnection, UserInputError,
+    Allow, ConfigService, Ctx, EntityHydrator, ID, Order, OrderService, Permission,
+    ProductVariantService, RequestContext, TransactionalConnection, UserInputError,
 } from '@vendure/core';
 
 import { PickupService } from './pickup.service';
@@ -16,6 +16,7 @@ export class PickupGuestOrderResolver {
         private orderService: OrderService,
         private configService: ConfigService,
         private entityHydrator: EntityHydrator,
+        private productVariantService: ProductVariantService,
         private connection: TransactionalConnection,
         private service: PickupService,
     ) {}
@@ -70,14 +71,24 @@ export class PickupGuestOrderResolver {
         );
         if (!order) return null;
         // relation 类型自定义字段与商品嵌套关系在 service 层默认不加载，
-        // 用 EntityHydrator 显式灌注，供 buildGuestOverview 取取货点与商品名。
+        // 用 EntityHydrator 显式灌注，供 buildGuestOverview 取取货点；商品名再用已翻译的 Product 确定性回填。
         await this.entityHydrator.hydrate(ctx, order, {
             relations: [
-                'lines.productVariant.product',
                 'customFields.selectedPickupLocationId',
                 'fulfillments',
             ],
         } as any);
+        for (const line of (order.lines ?? []) as any[]) {
+            const variant = line?.productVariant;
+            if (variant && (variant.productId != null || variant.product)) {
+                try {
+                    const product = await this.productVariantService.getProductForVariant(ctx, variant);
+                    if (product) variant.product = product;
+                } catch {
+                    // 单个商品解析失败不阻塞概览构建
+                }
+            }
+        }
         return order;
     }
 
