@@ -95,8 +95,12 @@ import { OrderBoxService } from './order/order-box.service';
 import { OrderBoxShopResolver } from './order/order-box-shop.resolver';
 import { OrderSplitService } from './order/order-split.service';
 import { OrderSplitShopResolver } from './order/order-split-shop.resolver';
+import { RedemptionCodeService } from './redemption/redemption-code.service';
+import { RedemptionShopResolver, RedemptionAdminResolver } from './redemption/redemption.resolver';
+import { redemptionShopSchema, redemptionAdminSchema } from './redemption/redemption.schema';
 import { BoxShippingLineAssignmentStrategy } from './shipping/box-shipping-line-assignment-strategy';
-import { ChannelEvent, EventBus, OrderEvent, OrderService, TransactionalConnection } from '@vendure/core';
+import { ChannelEvent, EventBus, OrderEvent, OrderService, OrderStateTransitionEvent, TransactionalConnection } from '@vendure/core';
+import { filter } from 'rxjs';
 import { DefaultDataService } from './seed/default-data.service';
 import { Wallet } from './wallet/wallet.entity';
 import { WalletService } from './wallet/wallet.service';
@@ -141,6 +145,7 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
         WalletService,
         TenantCatalogService,
         TenantOptionGroupService,
+        RedemptionCodeService,
     ],
     adminApiExtensions: {
         schema: () => {
@@ -885,9 +890,10 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                     setAssetTags(assetIds: [String!]!, tags: [String!]): Boolean!
                 }
 
+                ${redemptionAdminSchema}
                 `;
         },
-        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver],
+        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {
@@ -1079,9 +1085,11 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                 extend type Query {
                     walletBalance: Int!
                 }
+
+                ${redemptionShopSchema}
             `;
         },
-        resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver, DomainShopResolver, MapShopResolver, ShippingProfileShopResolver, PaymentProfileShopResolver, OrderBoxShopResolver, OrderSplitShopResolver, WalletShopResolver],
+        resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver, DomainShopResolver, MapShopResolver, ShippingProfileShopResolver, PaymentProfileShopResolver, OrderBoxShopResolver, OrderSplitShopResolver, WalletShopResolver, RedemptionShopResolver],
     },
     configuration: config => {
         // 注入 authSecret 到 crypto 模块（configuration 在 bootstrap 早期执行，此时 options 已可用）
@@ -1499,6 +1507,18 @@ export class CjkPlugin implements OnApplicationBootstrap, NestModule {
                     );
                 }
             });
+        }
+
+        // 下单即生成核销码：订单进入 ArrangingPayment 时幂等生成（失败不阻塞支付流程）
+        {
+            const eventBus = injector.get(EventBus);
+            const redemptionCodeService = injector.get(RedemptionCodeService);
+            eventBus.ofType(OrderStateTransitionEvent)
+                .pipe(filter(e => e.toState === 'ArrangingPayment'))
+                .subscribe(event => {
+                    redemptionCodeService.ensure(event.ctx, event.order.id)
+                        .catch(err => Logger.error(`redemption ensure: ${err?.message ?? err}`, loggerCtx));
+                });
         }
     }
 
