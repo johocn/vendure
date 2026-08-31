@@ -9,12 +9,14 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.OrderBoxService = void 0;
+exports.OrderBoxService = exports.LOGIN_REQUIRED_PAYMENT_CODES = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const shipping_profile_service_1 = require("../shipping/shipping-profile.service");
 const payment_profile_service_1 = require("../payment/payment-profile.service");
 const order_box_aggregation_1 = require("./order-box-aggregation");
+/** 需要登录才能使用的支付方式 code 集合（余额钱包依赖账户身份，游客结算时应被过滤）。 */
+exports.LOGIN_REQUIRED_PAYMENT_CODES = new Set([order_box_aggregation_1.BALANCE_PAYMENT_CODE]);
 let OrderBoxService = class OrderBoxService {
     constructor(shippingProfileService, paymentProfileService, orderService) {
         this.shippingProfileService = shippingProfileService;
@@ -90,6 +92,7 @@ let OrderBoxService = class OrderBoxService {
                 defaultShippingMethodId: enabledMethods.length > 0 ? enabledMethods[0].id : null,
                 pickupLocations: (_k = profile === null || profile === void 0 ? void 0 : profile.pickupLocations) !== null && _k !== void 0 ? _k : [],
                 availablePaymentMethodCodes: await this.resolvePaymentCodesForProfile(ctx, key),
+                loginRequiredPaymentCodes: (await this.resolvePaymentCodesForProfile(ctx, key)).filter(code => exports.LOGIN_REQUIRED_PAYMENT_CODES.has(code)),
                 requiresAddress: (_l = profile === null || profile === void 0 ? void 0 : profile.requiresAddress) !== null && _l !== void 0 ? _l : true,
                 requiresContact: (_m = profile === null || profile === void 0 ? void 0 : profile.requiresContact) !== null && _m !== void 0 ? _m : false,
             });

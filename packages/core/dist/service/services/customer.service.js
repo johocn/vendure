@@ -298,8 +298,15 @@ let CustomerService = class CustomerService {
         const hasNativeAuthMethod = !!(user === null || user === void 0 ? void 0 : user.authenticationMethods.find(m => m instanceof native_authentication_method_entity_1.NativeAuthenticationMethod));
         if (user && user.verified) {
             if (hasNativeAuthMethod) {
-                // If the user has already been verified and has already
-                // registered with the native authentication strategy, do nothing.
+                // 已存在已验证的 native 账号：若本次带密码，则幂等设定为该密码（注册即设定密码），
+                // 避免「注册成功后却无法用本次密码登录」；否则维持原密码。
+                if (input.password) {
+                    const setResult = await this.userService.setNativePassword(ctx, user, input.password);
+                    if ((0, error_result_1.isGraphQlErrorResult)(setResult)) {
+                        return setResult;
+                    }
+                    await this.connection.getRepository(ctx, user_entity_1.User).save(user, { reload: false });
+                }
                 return { success: true };
             }
         }

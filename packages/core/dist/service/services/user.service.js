@@ -134,6 +134,24 @@ let UserService = class UserService {
     }
     /**
      * @description
+     * 覆盖该用户 native 认证方式的密码（幂等覆盖，用于「注册即设定密码」语义）。
+     * 若用户无 native 认证方式则原样返回；密码强度校验失败返回 PasswordValidationError。
+     */
+    async setNativePassword(ctx, user, password) {
+        const authMethod = user.authenticationMethods.find((m) => m instanceof native_authentication_method_entity_1.NativeAuthenticationMethod);
+        if (!authMethod) {
+            return user;
+        }
+        const passwordValidationResult = await this.validatePassword(ctx, password);
+        if (passwordValidationResult !== true) {
+            return passwordValidationResult;
+        }
+        authMethod.passwordHash = await this.passwordCipher.hash(password);
+        await this.connection.getRepository(ctx, native_authentication_method_entity_1.NativeAuthenticationMethod).save(authMethod);
+        return user;
+    }
+    /**
+     * @description
      * Creates a new verified User using the {@link NativeAuthenticationStrategy}.
      */
     async createAdminUser(ctx, identifier, password) {

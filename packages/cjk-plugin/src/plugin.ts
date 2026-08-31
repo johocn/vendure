@@ -1051,6 +1051,7 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                     defaultShippingMethodId: ID
                     pickupLocations: [PickupLocation!]!
                     availablePaymentMethodCodes: [String!]!
+                    loginRequiredPaymentCodes: [String!]!
                     requiresAddress: Boolean!
                     requiresContact: Boolean!
                     type: String!

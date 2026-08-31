@@ -41,6 +41,12 @@ export declare class UserService {
     addNativeAuthenticationMethod(ctx: RequestContext, user: User, identifier: string, password?: string): Promise<User | PasswordValidationError>;
     /**
      * @description
+     * 覆盖该用户 native 认证方式的密码（幂等覆盖，用于「注册即设定密码」语义）。
+     * 若用户无 native 认证方式则原样返回；密码强度校验失败返回 PasswordValidationError。
+     */
+    setNativePassword(ctx: RequestContext, user: User, password: string): Promise<User | PasswordValidationError>;
+    /**
+     * @description
      * Creates a new verified User using the {@link NativeAuthenticationStrategy}.
      */
     createAdminUser(ctx: RequestContext, identifier: string, password: string): Promise<User>;

@@ -2,6 +2,8 @@ import { ID, Order, OrderService, RequestContext } from '@vendure/core';
 import { ShippingProfileService } from '../shipping/shipping-profile.service';
 import { PaymentProfileService } from '../payment/payment-profile.service';
 import { PickupLocation } from '../pickup/pickup-location.entity';
+/** 需要登录才能使用的支付方式 code 集合（余额钱包依赖账户身份，游客结算时应被过滤）。 */
+export declare const LOGIN_REQUIRED_PAYMENT_CODES: ReadonlySet<string>;
 /**
  * 订单分箱结果（Box）。
  * 分箱键 = 变体 customFields.shippingProfileId（配送档案）：
@@ -37,6 +39,8 @@ export interface OrderBox {
     pickupLocations: PickupLocation[];
     /** 该箱可用支付方式 code 集合（来自配送档案绑定的支付档案，供聚合拆合引擎用） */
     availablePaymentMethodCodes: string[];
+    /** 该箱可用支付方式中需要登录才能使用的 code 集合（如余额钱包），供前端游客结算过滤 */
+    loginRequiredPaymentCodes: string[];
     /** 该箱是否需要收货地址（物流档案=true） */
     requiresAddress: boolean;
     /** 该箱是否需要联系方式（到店需联系方式档案=true） */

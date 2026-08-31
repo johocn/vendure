@@ -1216,6 +1216,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     defaultShippingMethodId: ID
                     pickupLocations: [PickupLocation!]!
                     availablePaymentMethodCodes: [String!]!
+                    loginRequiredPaymentCodes: [String!]!
                     requiresAddress: Boolean!
                     requiresContact: Boolean!
                     type: String!
