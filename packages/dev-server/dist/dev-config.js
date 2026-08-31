@@ -60,6 +60,9 @@ const pre_sale_plugin_1 = require("@vendure/pre-sale-plugin");
 const live_streaming_plugin_1 = require("@vendure/live-streaming-plugin");
 const shop_plugin_1 = require("@vendure/shop-plugin");
 const pickup_plugin_1 = require("@vendure/pickup-plugin");
+if (!process.env.REDEMPTION_KEY) {
+    process.env.REDEMPTION_KEY = 'd'.repeat(64);
+}
 const IS_PROD = path_1.default.basename(__dirname) === 'dist' || process.env.IS_PROD === 'true';
 const devOnlyPlugins = IS_PROD
     ? []

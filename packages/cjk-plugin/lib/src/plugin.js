@@ -96,8 +96,12 @@ const order_box_service_1 = require("./order/order-box.service");
 const order_box_shop_resolver_1 = require("./order/order-box-shop.resolver");
 const order_split_service_1 = require("./order/order-split.service");
 const order_split_shop_resolver_1 = require("./order/order-split-shop.resolver");
+const redemption_code_service_1 = require("./redemption/redemption-code.service");
+const redemption_resolver_1 = require("./redemption/redemption.resolver");
+const redemption_schema_1 = require("./redemption/redemption.schema");
 const box_shipping_line_assignment_strategy_1 = require("./shipping/box-shipping-line-assignment-strategy");
 const core_3 = require("@vendure/core");
+const rxjs_1 = require("rxjs");
 const default_data_service_1 = require("./seed/default-data.service");
 const wallet_entity_1 = require("./wallet/wallet.entity");
 const wallet_service_1 = require("./wallet/wallet.service");
@@ -267,6 +271,17 @@ let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
                 }
             });
         }
+        // 下单即生成核销码：订单进入 ArrangingPayment 时幂等生成（失败不阻塞支付流程）
+        {
+            const eventBus = injector.get(core_3.EventBus);
+            const redemptionCodeService = injector.get(redemption_code_service_1.RedemptionCodeService);
+            eventBus.ofType(core_3.OrderStateTransitionEvent)
+                .pipe((0, rxjs_1.filter)(e => e.toState === 'ArrangingPayment'))
+                .subscribe(event => {
+                redemptionCodeService.ensure(event.ctx, event.order.id)
+                    .catch(err => { var _a; return core_1.Logger.error(`redemption ensure: ${(_a = err === null || err === void 0 ? void 0 : err.message) !== null && _a !== void 0 ? _a : err}`, constants_1.loggerCtx); });
+            });
+        }
     }
     configure(consumer) { }
 };
@@ -306,6 +321,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             wallet_service_1.WalletService,
             tenant_catalog_service_1.TenantCatalogService,
             tenant_option_group_service_1.TenantOptionGroupService,
+            redemption_code_service_1.RedemptionCodeService,
         ],
         adminApiExtensions: {
             schema: () => {
@@ -1050,9 +1066,10 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     setAssetTags(assetIds: [String!]!, tags: [String!]): Boolean!
                 }
 
+                ${redemption_schema_1.redemptionAdminSchema}
                 `;
             },
-            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver, tenant_catalog_admin_resolver_1.TenantCatalogAdminResolver, asset_library_admin_resolver_1.AssetLibraryAdminResolver],
+            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver, tenant_catalog_admin_resolver_1.TenantCatalogAdminResolver, asset_library_admin_resolver_1.AssetLibraryAdminResolver, redemption_resolver_1.RedemptionAdminResolver],
         },
         shopApiExtensions: {
             schema: () => {
@@ -1244,9 +1261,11 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                 extend type Query {
                     walletBalance: Int!
                 }
+
+                ${redemption_schema_1.redemptionShopSchema}
             `;
             },
-            resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver, shipping_profile_shop_resolver_1.ShippingProfileShopResolver, payment_profile_shop_resolver_1.PaymentProfileShopResolver, order_box_shop_resolver_1.OrderBoxShopResolver, order_split_shop_resolver_1.OrderSplitShopResolver, wallet_shop_resolver_1.WalletShopResolver],
+            resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver, shipping_profile_shop_resolver_1.ShippingProfileShopResolver, payment_profile_shop_resolver_1.PaymentProfileShopResolver, order_box_shop_resolver_1.OrderBoxShopResolver, order_split_shop_resolver_1.OrderSplitShopResolver, wallet_shop_resolver_1.WalletShopResolver, redemption_resolver_1.RedemptionShopResolver],
         },
         configuration: config => {
             var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x;

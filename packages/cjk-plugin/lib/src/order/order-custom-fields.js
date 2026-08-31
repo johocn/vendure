@@ -116,6 +116,42 @@ exports.orderCustomFields = {
                 { languageCode: core_1.LanguageCode.zh_Hans, value: '备注' },
             ],
         },
+        {
+            name: 'redeemCodeCipher',
+            type: 'text',
+            nullable: true,
+            public: true,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '核销码密文' }],
+        },
+        {
+            name: 'redeemCodeIv',
+            type: 'string',
+            nullable: true,
+            public: false,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '核销码IV' }],
+        },
+        {
+            name: 'redeemCodeHash',
+            type: 'string',
+            nullable: true,
+            public: false,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '核销码检索指纹' }],
+        },
+        {
+            name: 'redeemClaimed',
+            type: 'boolean',
+            nullable: true,
+            defaultValue: false,
+            public: true,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '已核销' }],
+        },
+        {
+            name: 'redeemClaimedAt',
+            type: 'datetime',
+            nullable: true,
+            public: true,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '核销时间' }],
+        },
     ],
 };
 //# sourceMappingURL=order-custom-fields.js.map
