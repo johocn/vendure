@@ -62,7 +62,12 @@ export class PickupGuestOrderResolver {
     }
 
     private async loadOrder(ctx: RequestContext, code: string): Promise<Order | null> {
-        const order = await this.orderService.findOneByCode(ctx, code, ['customer', 'customer.user'] as any);
+        // 先预载 lines 与 productVariant，EntityHydrator 才能沿 lines→productVariant→product 逐层落到 product
+        const order = await this.orderService.findOneByCode(
+            ctx,
+            code,
+            ['customer', 'customer.user', 'lines', 'lines.productVariant'] as any,
+        );
         if (!order) return null;
         // relation 类型自定义字段与商品嵌套关系在 service 层默认不加载，
         // 用 EntityHydrator 显式灌注，供 buildGuestOverview 取取货点与商品名。
