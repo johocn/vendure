@@ -25,6 +25,12 @@ export interface OrderBox {
     shippingProfileIds: ID[];
     /** 该箱配送档案允许的可用配送方式 id（已过滤停用） */
     availableShippingMethodIds: ID[];
+    /** 该箱可用配送方式详情（含译名），供前端渲染方法名称，不依赖 eligibleShippingMethods */
+    availableShippingMethods: Array<{
+        id: ID;
+        code: string;
+        name: string;
+    }>;
     /** 该箱默认配送方式 id（可用集合中第一个），用于未显式选择时的兜底 */
     defaultShippingMethodId: ID | null;
     /** 该箱允许的自提点集合 */

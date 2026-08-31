@@ -28,6 +28,8 @@ export interface OrderBox {
     shippingProfileIds: ID[];
     /** 该箱配送档案允许的可用配送方式 id（已过滤停用） */
     availableShippingMethodIds: ID[];
+    /** 该箱可用配送方式详情（含译名），供前端渲染方法名称，不依赖 eligibleShippingMethods */
+    availableShippingMethods: Array<{ id: ID; code: string; name: string }>;
     /** 该箱默认配送方式 id（可用集合中第一个），用于未显式选择时的兜底 */
     defaultShippingMethodId: ID | null;
     /** 该箱允许的自提点集合 */
@@ -112,6 +114,15 @@ export class OrderBoxService {
                 tenantChannelId: order.channels?.[0]?.id ?? ctx.channelId,
                 shippingProfileIds: [...group.rawIds] as ID[],
                 availableShippingMethodIds: enabledMethods.map((m: any) => m.id as ID),
+                availableShippingMethods: enabledMethods.map((m: any) => ({
+                    id: m.id as ID,
+                    code: m.code,
+                    name: Array.isArray(m.translations) && m.translations.length
+                        ? (m.translations.find((t: any) => t.languageCode === ctx.languageCode)
+                            || m.translations.find((t: any) => String(t.languageCode).toLowerCase().startsWith('zh'))
+                            || m.translations[0]).name || m.code
+                        : m.code,
+                })),
                 defaultShippingMethodId: enabledMethods.length > 0 ? (enabledMethods[0].id as ID) : null,
                 pickupLocations: profile?.pickupLocations ?? [],
                 availablePaymentMethodCodes: await this.resolvePaymentCodesForProfile(ctx, key as ID),

@@ -1054,6 +1054,13 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                     requiresAddress: Boolean!
                     requiresContact: Boolean!
                     type: String!
+                    availableShippingMethods: [ShippingMethodBrief!]!
+                }
+
+                type ShippingMethodBrief {
+                    id: ID!
+                    code: String!
+                    name: String!
                 }
 
                 extend type Query {

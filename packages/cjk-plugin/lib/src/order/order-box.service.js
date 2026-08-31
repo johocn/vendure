@@ -78,6 +78,15 @@ let OrderBoxService = class OrderBoxService {
                 tenantChannelId: (_j = (_h = (_g = order.channels) === null || _g === void 0 ? void 0 : _g[0]) === null || _h === void 0 ? void 0 : _h.id) !== null && _j !== void 0 ? _j : ctx.channelId,
                 shippingProfileIds: [...group.rawIds],
                 availableShippingMethodIds: enabledMethods.map((m) => m.id),
+                availableShippingMethods: enabledMethods.map((m) => ({
+                    id: m.id,
+                    code: m.code,
+                    name: Array.isArray(m.translations) && m.translations.length
+                        ? (m.translations.find((t) => t.languageCode === ctx.languageCode)
+                            || m.translations.find((t) => String(t.languageCode).toLowerCase().startsWith('zh'))
+                            || m.translations[0]).name || m.code
+                        : m.code,
+                })),
                 defaultShippingMethodId: enabledMethods.length > 0 ? enabledMethods[0].id : null,
                 pickupLocations: (_k = profile === null || profile === void 0 ? void 0 : profile.pickupLocations) !== null && _k !== void 0 ? _k : [],
                 availablePaymentMethodCodes: await this.resolvePaymentCodesForProfile(ctx, key),
