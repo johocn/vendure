@@ -35,7 +35,8 @@ export class PickupGuestOrderResolver {
         }
         await this.service.ensurePickupRedemptionForOrder(ctx, order.id).catch(() => undefined);
         const redemption = await this.findRedemption(ctx, order.id);
-        return buildGuestOverview(order, redemption);
+        const pickupLocation = await this.resolvePickupLocation(ctx, order);
+        return buildGuestOverview(order, redemption, pickupLocation);
     }
 
     @Mutation()
@@ -57,7 +58,43 @@ export class PickupGuestOrderResolver {
         const refreshed = (await this.loadOrder(ctx, input.orderCode))!;
         await this.service.ensurePickupRedemptionForOrder(ctx, refreshed.id).catch(() => undefined);
         const redemption = await this.findRedemption(ctx, refreshed.id);
-        return buildGuestOverview(refreshed, redemption);
+        const pickupLocation = await this.resolvePickupLocation(ctx, refreshed);
+        return buildGuestOverview(refreshed, redemption, pickupLocation);
+    }
+
+    /**
+     * relation 类型自定义字段在 service 层未加载时只回传标量 id；
+     * 从订单自定义字段配置取到 PickupLocation 实体类，按 id 解析为脱敏取货点信息。
+     */
+    private async resolvePickupLocation(
+        ctx: RequestContext,
+        order: Order,
+    ): Promise<{ name: string; address: string; businessHours: string } | null> {
+        const raw = ((order.customFields ?? {}) as any).selectedPickupLocationId as any;
+        if (raw == null) return null;
+        if (typeof raw === 'object' && raw.name != null) {
+            return {
+                name: String(raw.name ?? ''),
+                address: String(raw.address ?? ''),
+                businessHours: String(raw.businessHours ?? ''),
+            };
+        }
+        const field = Array.isArray((this.configService.customFields as any)?.Order)
+            ? (this.configService.customFields as any).Order.find(
+                  (f: any) => f?.name === 'selectedPickupLocationId',
+              )
+            : null;
+        const entityCls = field?.entity;
+        if (!entityCls) return null;
+        const id = typeof raw === 'number' ? raw : Number(raw);
+        if (!id) return null;
+        const loc = await this.connection.getRepository(ctx, entityCls).findOne({ where: { id } as any });
+        if (!loc) return null;
+        return {
+            name: String(loc.name ?? ''),
+            address: String(loc.address ?? ''),
+            businessHours: String(loc.businessHours ?? ''),
+        };
     }
 
     private async loadOrder(ctx: RequestContext, code: string): Promise<Order | null> {

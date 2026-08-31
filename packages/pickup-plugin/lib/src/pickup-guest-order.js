@@ -23,14 +23,15 @@ function guestLookupAllowed(order, input, windowAccess) {
         return { allowed: true };
     return { allowed: false, reason: 'window' };
 }
-function buildGuestOverview(order, redemption) {
+function buildGuestOverview(order, redemption, resolvedPickupLocation) {
     var _a, _b, _c, _d, _e, _f, _g, _h;
     const cf = ((_a = order.customFields) !== null && _a !== void 0 ? _a : {});
     const isPickup = cf.deliveryType === 'pickup';
     const loc = cf.selectedPickupLocationId;
-    const pickupLocation = loc && typeof loc === 'object'
+    // 关系自定义字段在 service 层可能只回传标量 id（未加载），此时用 resolver 预解析的取货点兜底
+    const pickupLocation = loc && typeof loc === 'object' && (loc === null || loc === void 0 ? void 0 : loc.name) != null
         ? { name: (_b = loc.name) !== null && _b !== void 0 ? _b : '', address: (_c = loc.address) !== null && _c !== void 0 ? _c : '', businessHours: (_d = loc.businessHours) !== null && _d !== void 0 ? _d : '' }
-        : null;
+        : (resolvedPickupLocation !== null && resolvedPickupLocation !== void 0 ? resolvedPickupLocation : null);
     const shipped = ((_e = order.fulfillments) !== null && _e !== void 0 ? _e : []).some(f => f.state === 'Shipped');
     const lines = ((_f = order.lines) !== null && _f !== void 0 ? _f : []).map(l => {
         var _a, _b, _c, _d, _e, _f, _g;

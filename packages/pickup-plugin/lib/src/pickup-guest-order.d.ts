@@ -38,4 +38,8 @@ export type GuestAccessOutcome = {
 };
 export declare function isGuestOrder(order: Order): boolean;
 export declare function guestLookupAllowed(order: Order | null, input: GuestLookupInputLike, windowAccess: boolean): GuestAccessOutcome;
-export declare function buildGuestOverview(order: Order, redemption: PickupRedemption | null): GuestOrderOverview;
+export declare function buildGuestOverview(order: Order, redemption: PickupRedemption | null, resolvedPickupLocation?: {
+    name: string;
+    address: string;
+    businessHours: string;
+} | null): GuestOrderOverview;

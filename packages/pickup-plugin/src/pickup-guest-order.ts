@@ -50,14 +50,16 @@ export function guestLookupAllowed(
 export function buildGuestOverview(
     order: Order,
     redemption: PickupRedemption | null,
+    resolvedPickupLocation?: { name: string; address: string; businessHours: string } | null,
 ): GuestOrderOverview {
     const cf = (order.customFields ?? {}) as any;
     const isPickup = cf.deliveryType === 'pickup';
     const loc = cf.selectedPickupLocationId as any;
+    // 关系自定义字段在 service 层可能只回传标量 id（未加载），此时用 resolver 预解析的取货点兜底
     const pickupLocation =
-        loc && typeof loc === 'object'
+        loc && typeof loc === 'object' && (loc as any)?.name != null
             ? { name: loc.name ?? '', address: loc.address ?? '', businessHours: loc.businessHours ?? '' }
-            : null;
+            : (resolvedPickupLocation ?? null);
     const shipped = (order.fulfillments ?? []).some(f => f.state === 'Shipped');
     const lines = (order.lines ?? []).map(l => ({
         productName: l?.productVariant?.product?.name ?? '',
