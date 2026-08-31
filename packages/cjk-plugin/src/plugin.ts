@@ -1053,6 +1053,7 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                     availablePaymentMethodCodes: [String!]!
                     requiresAddress: Boolean!
                     requiresContact: Boolean!
+                    type: String!
                 }
 
                 extend type Query {

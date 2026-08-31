@@ -30,7 +30,7 @@ let OrderBoxService = class OrderBoxService {
      * - 同一生效档案的 line 合并为同一箱（跨租户/跨档案自动分箱）。
      */
     async computeOrderBoxes(ctx, order) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
         const lines = (_a = order.lines) !== null && _a !== void 0 ? _a : [];
         if (lines.length === 0)
             return [];
@@ -74,14 +74,15 @@ let OrderBoxService = class OrderBoxService {
                 profileId: key,
                 profileName: (_e = profile === null || profile === void 0 ? void 0 : profile.name) !== null && _e !== void 0 ? _e : key,
                 lineIds: group.lineIds,
-                tenantChannelId: (_h = (_g = (_f = order.channels) === null || _f === void 0 ? void 0 : _f[0]) === null || _g === void 0 ? void 0 : _g.id) !== null && _h !== void 0 ? _h : ctx.channelId,
+                type: ((_f = profile === null || profile === void 0 ? void 0 : profile.pickupLocations) === null || _f === void 0 ? void 0 : _f.length) ? 'pickup' : 'delivery',
+                tenantChannelId: (_j = (_h = (_g = order.channels) === null || _g === void 0 ? void 0 : _g[0]) === null || _h === void 0 ? void 0 : _h.id) !== null && _j !== void 0 ? _j : ctx.channelId,
                 shippingProfileIds: [...group.rawIds],
                 availableShippingMethodIds: enabledMethods.map((m) => m.id),
                 defaultShippingMethodId: enabledMethods.length > 0 ? enabledMethods[0].id : null,
-                pickupLocations: (_j = profile === null || profile === void 0 ? void 0 : profile.pickupLocations) !== null && _j !== void 0 ? _j : [],
+                pickupLocations: (_k = profile === null || profile === void 0 ? void 0 : profile.pickupLocations) !== null && _k !== void 0 ? _k : [],
                 availablePaymentMethodCodes: await this.resolvePaymentCodesForProfile(ctx, key),
-                requiresAddress: (_k = profile === null || profile === void 0 ? void 0 : profile.requiresAddress) !== null && _k !== void 0 ? _k : true,
-                requiresContact: (_l = profile === null || profile === void 0 ? void 0 : profile.requiresContact) !== null && _l !== void 0 ? _l : false,
+                requiresAddress: (_l = profile === null || profile === void 0 ? void 0 : profile.requiresAddress) !== null && _l !== void 0 ? _l : true,
+                requiresContact: (_m = profile === null || profile === void 0 ? void 0 : profile.requiresContact) !== null && _m !== void 0 ? _m : false,
             });
         }
         return boxes;

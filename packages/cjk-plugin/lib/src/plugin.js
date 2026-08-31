@@ -1218,6 +1218,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     availablePaymentMethodCodes: [String!]!
                     requiresAddress: Boolean!
                     requiresContact: Boolean!
+                    type: String!
                 }
 
                 extend type Query {

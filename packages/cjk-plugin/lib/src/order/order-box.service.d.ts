@@ -17,6 +17,8 @@ export interface OrderBox {
     profileName: string;
     /** 落入该箱的 OrderLine id 列表 */
     lineIds: ID[];
+    /** 箱型：pickup=自提类，delivery=物流类 */
+    type: 'delivery' | 'pickup';
     /** 该箱所在租户渠道 id */
     tenantChannelId: ID;
     /** 落入该箱的原始变体配送档案 id（去重，含回退前的原始绑定） */
