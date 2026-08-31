@@ -66,6 +66,12 @@ import { PreSalePlugin } from '@vendure/pre-sale-plugin';
 import { LiveStreamingPlugin } from '@vendure/live-streaming-plugin';
 import { ShopPlugin } from '@vendure/shop-plugin';
 import { PickupPlugin } from '@vendure/pickup-plugin';
+
+// 本地联调默认注入 REDEMPTION_KEY（AES-GCM/HMAC 密钥，64 hex chars）
+if (!process.env.REDEMPTION_KEY) {
+    process.env.REDEMPTION_KEY = 'd'.repeat(64); // dev only：生产由运维注入
+}
+
 // 生产模式（dist/）跳过开发演示插件，避免静态 import require 缺失的 test-plugins 产物
 // IS_PROD=true 环境变量：dashboard vite 构建时 config-loader 编译到临时目录，
 // __dirname 非 dist，需用环境变量显式标记生产，跳过 test-plugins
