@@ -296,19 +296,21 @@ let CustomerService = class CustomerService {
         }
         let user = await this.userService.getUserByEmailAddress(ctx, input.emailAddress);
         const hasNativeAuthMethod = !!(user === null || user === void 0 ? void 0 : user.authenticationMethods.find(m => m instanceof native_authentication_method_entity_1.NativeAuthenticationMethod));
-        if (user && user.verified) {
-            if (hasNativeAuthMethod) {
-                // 已存在已验证的 native 账号：若本次带密码，则幂等设定为该密码（注册即设定密码），
-                // 避免「注册成功后却无法用本次密码登录」；否则维持原密码。
-                if (input.password) {
-                    const setResult = await this.userService.setNativePassword(ctx, user, input.password);
-                    if ((0, error_result_1.isGraphQlErrorResult)(setResult)) {
-                        return setResult;
-                    }
-                    await this.connection.getRepository(ctx, user_entity_1.User).save(user, { reload: false });
+        if (user && hasNativeAuthMethod) {
+            // 已存在 native 账号：register 即把该账号密码幂等设定为本次提交值（注册即设定密码），
+            // 避免「注册成功却无法用本次密码登录」。requireVerification=false 时同时确保账号为已验证，
+            // 覆盖历史遗留的「已存在但未验证」账号（旧逻辑只处理已验证分支导致密码写不进去）。
+            if (input.password) {
+                const setResult = await this.userService.setNativePassword(ctx, user, input.password);
+                if ((0, error_result_1.isGraphQlErrorResult)(setResult)) {
+                    return setResult;
                 }
-                return { success: true };
+                if (!this.configService.authOptions.requireVerification && !user.verified) {
+                    user.verified = true;
+                }
+                await this.connection.getRepository(ctx, user_entity_1.User).save(user, { reload: false });
             }
+            return { success: true };
         }
         const customFields = input.customFields;
         const customer = await this.createOrUpdate(ctx, Object.assign({ emailAddress: input.emailAddress, title: input.title || '', firstName: input.firstName || '', lastName: input.lastName || '', phoneNumber: input.phoneNumber || '' }, (customFields ? { customFields } : {})));
