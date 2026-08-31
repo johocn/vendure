@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
     Channel,
+    ConfigService,
     EntityNotFoundError,
     ID,
     PaginatedList,
@@ -12,12 +13,14 @@ import {
     UserInputError,
 } from '@vendure/core';
 import { ShippingTemplate } from './shipping-template.entity';
+import { fillDefaultArgs } from '../common/fill-default-args';
 
 @Injectable()
 export class ShippingTemplateService {
     constructor(
         private connection: TransactionalConnection,
         private shippingMethodService: ShippingMethodService,
+        private configService: ConfigService,
     ) {}
 
     /**
@@ -137,7 +140,11 @@ export class ShippingTemplateService {
                 },
             ],
             fulfillmentHandler: template.fulfillmentHandler,
-            checker: template.checker,
+            checker:
+                (fillDefaultArgs(
+                    template.checker,
+                    this.configService.shippingOptions.shippingEligibilityCheckers as any,
+                ) ?? undefined) as any,
             calculator: template.calculator,
         });
 
