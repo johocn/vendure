@@ -1,6 +1,6 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 import {
-    Allow, ConfigService, Ctx, ID, Order, OrderService, Permission, RequestContext,
+    Allow, ConfigService, Ctx, EntityHydrator, ID, Order, OrderService, Permission, RequestContext,
     TransactionalConnection, UserInputError,
 } from '@vendure/core';
 
@@ -15,6 +15,7 @@ export class PickupGuestOrderResolver {
     constructor(
         private orderService: OrderService,
         private configService: ConfigService,
+        private entityHydrator: EntityHydrator,
         private connection: TransactionalConnection,
         private service: PickupService,
     ) {}
@@ -35,8 +36,7 @@ export class PickupGuestOrderResolver {
         }
         await this.service.ensurePickupRedemptionForOrder(ctx, order.id).catch(() => undefined);
         const redemption = await this.findRedemption(ctx, order.id);
-        const pickupLocation = await this.resolvePickupLocation(ctx, order);
-        return buildGuestOverview(order, redemption, pickupLocation);
+        return buildGuestOverview(order, redemption);
     }
 
     @Mutation()
@@ -58,55 +58,22 @@ export class PickupGuestOrderResolver {
         const refreshed = (await this.loadOrder(ctx, input.orderCode))!;
         await this.service.ensurePickupRedemptionForOrder(ctx, refreshed.id).catch(() => undefined);
         const redemption = await this.findRedemption(ctx, refreshed.id);
-        const pickupLocation = await this.resolvePickupLocation(ctx, refreshed);
-        return buildGuestOverview(refreshed, redemption, pickupLocation);
-    }
-
-    /**
-     * relation 类型自定义字段在 service 层未加载时只回传标量 id；
-     * 从订单自定义字段配置取到 PickupLocation 实体类，按 id 解析为脱敏取货点信息。
-     */
-    private async resolvePickupLocation(
-        ctx: RequestContext,
-        order: Order,
-    ): Promise<{ name: string; address: string; businessHours: string } | null> {
-        const raw = ((order.customFields ?? {}) as any).selectedPickupLocationId as any;
-        if (raw == null) return null;
-        if (typeof raw === 'object' && raw.name != null) {
-            return {
-                name: String(raw.name ?? ''),
-                address: String(raw.address ?? ''),
-                businessHours: String(raw.businessHours ?? ''),
-            };
-        }
-        const field = Array.isArray((this.configService.customFields as any)?.Order)
-            ? (this.configService.customFields as any).Order.find(
-                  (f: any) => f?.name === 'selectedPickupLocationId',
-              )
-            : null;
-        const entityCls = field?.entity;
-        if (!entityCls) return null;
-        const id = typeof raw === 'number' ? raw : Number(raw);
-        if (!id) return null;
-        const loc = await this.connection.getRepository(ctx, entityCls).findOne({ where: { id } as any });
-        if (!loc) return null;
-        return {
-            name: String(loc.name ?? ''),
-            address: String(loc.address ?? ''),
-            businessHours: String(loc.businessHours ?? ''),
-        };
+        return buildGuestOverview(refreshed, redemption);
     }
 
     private async loadOrder(ctx: RequestContext, code: string): Promise<Order | null> {
-        const order = await this.orderService.findOneByCode(ctx, code, [
-            'customer',
-            'customer.user',
-            'lines',
-            'lines.productVariant',
-            'lines.productVariant.product',
-            'fulfillments',
-        ] as any);
-        return order ?? null;
+        const order = await this.orderService.findOneByCode(ctx, code, ['customer', 'customer.user'] as any);
+        if (!order) return null;
+        // relation 类型自定义字段与商品嵌套关系在 service 层默认不加载，
+        // 用 EntityHydrator 显式灌注，供 buildGuestOverview 取取货点与商品名。
+        await this.entityHydrator.hydrate(ctx, order, {
+            relations: [
+                'lines.productVariant.product',
+                'customFields.selectedPickupLocationId',
+                'fulfillments',
+            ],
+        } as any);
+        return order;
     }
 
     private async findRedemption(ctx: RequestContext, orderId: ID): Promise<PickupRedemption | null> {
