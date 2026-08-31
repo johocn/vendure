@@ -8,6 +8,7 @@ import {
     cleanSessionsTask,
     DefaultJobQueuePlugin,
     DefaultLogger,
+    DefaultOrderByCodeAccessStrategy,
     DefaultSchedulerPlugin,
     DefaultSearchPlugin,
     dummyPaymentHandler,
@@ -187,6 +188,7 @@ export const devConfig: VendureConfig = {
     },
     orderOptions: {
         orderItemPriceCalculationStrategy: new SalesOrderItemPriceCalculationStrategy(),
+        orderByCodeAccessStrategy: new DefaultOrderByCodeAccessStrategy('7d'),
     },
     settingsStoreFields: {
         MyPlugin: [

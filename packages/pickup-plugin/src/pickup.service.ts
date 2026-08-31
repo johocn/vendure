@@ -126,6 +126,19 @@ export class PickupService {
         return saved;
     }
 
+    /**
+     * 为「已付款的 pickup 订单」幂等生成提货码（自动生码；供事件订阅与游客查询兜底调用）。
+     * 非 pickup 或未过支付闸门（isPickupPaid 排除 PaymentAuthorized 之前的状态）则不生成。
+     */
+    async ensurePickupRedemptionForOrder(ctx: RequestContext, orderId: ID): Promise<void> {
+        const order = await this.orderService.findOne(ctx, orderId, ['customer', 'customer.user'] as any);
+        if (!order) return;
+        const cf = (order.customFields ?? {}) as any;
+        if (cf.deliveryType !== 'pickup') return;
+        if (!this.isPickupPaid(ctx, order)) return;
+        await this.getOrCreateRedemption(ctx, order);
+    }
+
     /** 核销闸门：校验凭据存在且 generated。 */
     private async findGeneratable(
         ctx: RequestContext,

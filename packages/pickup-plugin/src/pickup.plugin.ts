@@ -8,6 +8,7 @@ import { PickupService } from './pickup.service';
 import { PickupCustomerResolver } from './pickup-customer.resolver';
 import { PickupOwnerResolver } from './pickup-owner.resolver';
 import { PickupAdminResolver } from './pickup-admin.resolver';
+import { PickupGuestOrderResolver } from './pickup-guest-order.resolver';
 
 const { gql } = require('graphql-tag');
 
@@ -71,6 +72,49 @@ const shopSchema = gql`
     extend type Mutation {
         claimMyPickup(orderId: ID!, code: String!): PickupRedemption!
     }
+    type GuestOrderOverview {
+        orderCode: String!
+        orderPlacedAt: DateTime
+        state: String!
+        currencyCode: String!
+        totalQuantity: Int!
+        subTotal: Int!
+        shippingWithTax: Int!
+        totalWithTax: Int!
+        isPickup: Boolean!
+        pickupClaimed: Boolean!
+        pickupCode: String
+        pickupClaimable: Boolean!
+        pickupLocation: GuestPickupLocation
+        lines: [GuestOrderLine!]!
+        hasPhone: Boolean!
+    }
+    type GuestPickupLocation {
+        name: String!
+        address: String!
+        businessHours: String
+    }
+    type GuestOrderLine {
+        productName: String!
+        sku: String!
+        quantity: Int!
+        linePriceWithTax: Int!
+    }
+    input GuestOrderLookupInput {
+        orderCode: String!
+        phone: String
+    }
+    input GuestSetOrderCustomFieldsInput {
+        orderCode: String!
+        phone: String!
+        name: String
+    }
+    extend type Query {
+        guestOrderLookup(input: GuestOrderLookupInput!): GuestOrderOverview!
+    }
+    extend type Mutation {
+        guestSetOrderCustomFields(input: GuestSetOrderCustomFieldsInput!): GuestOrderOverview!
+    }
     `;
 
 @VendurePlugin({
@@ -86,7 +130,7 @@ const shopSchema = gql`
     },
     shopApiExtensions: {
         schema: shopSchema,
-        resolvers: [PickupCustomerResolver],
+        resolvers: [PickupCustomerResolver, PickupGuestOrderResolver],
     },
     configuration: (config) => {
         // 注册 Order 自定义字段：deliveryType（履约方式）+ pickupClaimed（自提已核销）
@@ -122,6 +166,20 @@ export class PickupPlugin implements OnApplicationBootstrap {
                 if (orderId != null) {
                     this.service.onOrderCancelled(Number(orderId)).catch(err =>
                         console.error(err?.message ?? err, 'pickup-plugin'),
+                    );
+                }
+            });
+
+        this.eventBus
+            .ofType(OrderStateTransitionEvent)
+            .pipe(
+                filter(event => !['AddingItems', 'ArrangingPayment', 'Draft', 'Cancelled', 'PaymentAuthorized'].includes(event.toState)),
+            )
+            .subscribe(event => {
+                const orderId = (event.ctx as any)?.orderId ?? event.order?.id;
+                if (orderId != null) {
+                    this.service.ensurePickupRedemptionForOrder(event.ctx, orderId).catch(err =>
+                        console.error(err?.message ?? err, 'pickup-plugin auto-redeem'),
                     );
                 }
             });
