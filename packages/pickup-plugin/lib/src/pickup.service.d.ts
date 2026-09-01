@@ -13,7 +13,14 @@ export declare class PickupService {
     private genUniqueCode;
     requireMyOrder(ctx: RequestContext, orderId: ID): Promise<Order>;
     requireMyShop(ctx: RequestContext): Promise<Shop>;
-    private isPickupPaid;
+    /** 收款判定（唯一真源）：online 恒已收；cod 看人工 confirmation。 */
+    effectiveCollected(redemption: PickupRedemption): boolean;
+    /**
+     * 核销码生成资格：deliveryType=pickup 且已过「加购/付款中」阶段。
+     * online → 需已结算（PaymentSettled 及之后）；cod（到店付款/货到付款）→ 授权即视为可核销，
+     * 收款在核销完成时由店员确认（解决 PaymentAuthorized 不生成码的问题）。
+     */
+    private isPickupEligible;
     /**
      * 店归属强校验：被核销订单主商品的 Product.customFields.shopId 归店（与 settlement-plugin 阶段24
      * 按店拆账同一判据）。订单任一行商品归属本店即视为本店单，否则不归属。
@@ -24,15 +31,16 @@ export declare class PickupService {
     private getOrCreateRedemption;
     /**
      * 为「已付款的 pickup 订单」幂等生成提货码（自动生码；供事件订阅与游客查询兜底调用）。
-     * 非 pickup 或未过支付闸门（isPickupPaid 排除 PaymentAuthorized 之前的状态）则不生成。
+     * 非 pickup 或未过支付闸门（isPickupEligible：cod 授权即过）则不生成。
      */
     ensurePickupRedemptionForOrder(ctx: RequestContext, orderId: ID): Promise<void>;
     /** 核销闸门：校验凭据存在且 generated。 */
     private findGeneratable;
-    /** 顾客自核销。 */
+    /** 顾客自核销：仅线上已收款单可自助核销；到店付款单必须到店由店员收款核销（防漏收）。 */
     claimMyPickup(ctx: RequestContext, orderId: ID, code: string): Promise<PickupRedemption>;
-    /** 店员核销（仅本店订单，跨店抛 Forbidden）。 */
-    claimPickupByShop(ctx: RequestContext, code: string): Promise<PickupRedemption>;
+    /** 店员核销（仅本店订单，跨店抛 Forbidden）。到店付款单必须确认收款（collect=true）后才放行，防漏收。 */
+    claimPickupByShop(ctx: RequestContext, code: string, collect?: boolean): Promise<PickupRedemption>;
+    /** 店员核销凭据（到店或线上单通用）。仅设置 order.collected 与 redemption.collected。 */
     private commitRedeem;
     onOrderCancelled(orderId: number): Promise<void>;
     myPickupOrders(ctx: RequestContext, options?: any): Promise<[PickupRedemption[], number]>;
@@ -41,4 +49,13 @@ export declare class PickupService {
         items: PickupRedemption[];
         totalItems: number;
     }>;
+    /**
+     * 本店商品订单：跨渠道归集「订单任一行商品 Product.customFields.shopId === 本店 id」的订单
+     * （与核销/结算同判据）。商户商品在默认商城售出的订单归属默认渠道，此处必须跨渠道查询。
+     */
+    myShopOrders(ctx: RequestContext, options?: any): Promise<{
+        items: Order[];
+        totalItems: number;
+    }>;
+    private orderLineHasShop;
 }

@@ -17,10 +17,17 @@ const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
 const pickup_redemption_entity_1 = require("./pickup-redemption.entity");
 const pickup_service_1 = require("./pickup.service");
+const shop_plugin_1 = require("@vendure/shop-plugin");
 let PickupAdminResolver = class PickupAdminResolver {
     constructor(service, orderService) {
         this.service = service;
         this.orderService = orderService;
+    }
+    collected(r) {
+        return this.service.effectiveCollected(r);
+    }
+    async myShopOrders(ctx, args) {
+        return this.service.myShopOrders(ctx, args.options);
     }
     async pickupRedemptions(ctx, args) {
         return this.service.allRedemptions(ctx, args.options);
@@ -33,6 +40,22 @@ let PickupAdminResolver = class PickupAdminResolver {
     }
 };
 exports.PickupAdminResolver = PickupAdminResolver;
+__decorate([
+    (0, graphql_1.ResolveProperty)('collected'),
+    __param(0, (0, graphql_1.Parent)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [pickup_redemption_entity_1.PickupRedemption]),
+    __metadata("design:returntype", Boolean)
+], PickupAdminResolver.prototype, "collected", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(shop_plugin_1.manageOwnShop.Permission),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], PickupAdminResolver.prototype, "myShopOrders", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(core_1.Permission.UpdateSettings),

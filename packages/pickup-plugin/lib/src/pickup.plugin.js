@@ -30,6 +30,8 @@ const pickupOrderCustomFields = {
     Order: [
         { name: 'deliveryType', type: 'string', nullable: true, defaultValue: 'delivery', public: true },
         { name: 'pickupClaimed', type: 'boolean', nullable: true, public: true },
+        { name: 'collected', type: 'boolean', nullable: true, public: true },
+        { name: 'paymentType', type: 'string', nullable: true, public: true },
     ],
 };
 /** 幂等合并 Order 自定义字段（avoid duplicate definition on re-run). */
@@ -46,6 +48,8 @@ const adminSchema = gql `
         status: String!
         claimedAt: DateTime
         claimChannel: String
+        paymentType: String
+        collected: Boolean!
     }
     type PickupRedemptionList {
         items: [PickupRedemption!]!
@@ -58,9 +62,10 @@ const adminSchema = gql `
     extend type Query {
         myPickupOrders(options: PickupListOptions): PickupRedemptionList!
         pickupRedemptions(options: PickupListOptions): PickupRedemptionList!
+        myShopOrders(options: PickupListOptions): OrderList!
     }
     extend type Mutation {
-        claimPickupByShop(code: String!): PickupRedemption!
+        claimPickupByShop(code: String!, collect: Boolean): PickupRedemption!
     }
     `;
 const shopSchema = gql `
@@ -72,6 +77,8 @@ const shopSchema = gql `
         status: String!
         claimedAt: DateTime
         claimChannel: String
+        paymentType: String
+        collected: Boolean!
     }
     extend type Query {
         myPickupCode(orderId: ID!): PickupRedemption!
@@ -90,6 +97,8 @@ const shopSchema = gql `
         totalWithTax: Int!
         isPickup: Boolean!
         pickupClaimed: Boolean!
+        paymentType: String
+        collected: Boolean!
         pickupCode: String
         pickupClaimable: Boolean!
         pickupLocation: GuestPickupLocation

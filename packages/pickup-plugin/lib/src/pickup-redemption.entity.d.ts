@@ -10,4 +10,6 @@ export declare class PickupRedemption extends VendureEntity implements ChannelAw
     claimedAt?: Date;
     claimedByUserId?: number | null;
     claimChannel?: 'customer' | 'shop' | null;
+    paymentType?: 'online' | 'cod' | null;
+    collected: boolean;
 }

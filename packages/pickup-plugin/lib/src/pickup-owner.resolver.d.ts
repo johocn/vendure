@@ -4,9 +4,10 @@ import { PickupService } from './pickup.service';
 export declare class PickupOwnerResolver {
     private service;
     constructor(service: PickupService);
+    collected(r: PickupRedemption): boolean;
     myPickupOrders(ctx: RequestContext, args: any): Promise<{
         items: PickupRedemption[];
         totalItems: number;
     }>;
-    claimPickupByShop(ctx: RequestContext, code: string): Promise<PickupRedemption>;
+    claimPickupByShop(ctx: RequestContext, code: string, collect?: boolean): Promise<PickupRedemption>;
 }

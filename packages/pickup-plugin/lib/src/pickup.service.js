@@ -67,19 +67,32 @@ let PickupService = class PickupService {
             throw new core_1.ForbiddenError();
         return shop;
     }
-    isPickupPaid(ctx, order) {
-        var _a, _b;
+    /** 收款判定（唯一真源）：online 恒已收；cod 看人工 confirmation。 */
+    effectiveCollected(redemption) {
+        return redemption.paymentType === 'online' || redemption.collected === true;
+    }
+    /**
+     * 核销码生成资格：deliveryType=pickup 且已过「加购/付款中」阶段。
+     * online → 需已结算（PaymentSettled 及之后）；cod（到店付款/货到付款）→ 授权即视为可核销，
+     * 收款在核销完成时由店员确认（解决 PaymentAuthorized 不生成码的问题）。
+     */
+    isPickupEligible(ctx, order) {
+        var _a, _b, _c;
         const cf = ((_a = order.customFields) !== null && _a !== void 0 ? _a : {});
-        // 「已付款 pickup 单」：履约方式为 pickup，且订单已完成支付（授权/结算及之后的物流各态均算）。
-        return (cf.deliveryType === 'pickup' &&
-            ![
-                'AddingItems',
-                'ArrangingPayment',
-                'Draft',
-                'Cancelled',
-                'PaymentAuthorized',
-            ].includes(order.state) &&
-            ((_b = order.totalWithTax) !== null && _b !== void 0 ? _b : 0) > 0);
+        if (cf.deliveryType !== 'pickup')
+            return false;
+        if (((_b = order.totalWithTax) !== null && _b !== void 0 ? _b : 0) <= 0)
+            return false;
+        const ordering = ['AddingItems', 'ArrangingPayment', 'Draft', 'Cancelled'];
+        if (ordering.includes(order.state))
+            return false;
+        const payments = ((_c = order.payments) !== null && _c !== void 0 ? _c : []);
+        const cod = payments.some(p => (p === null || p === void 0 ? void 0 : p.method) === 'cash-on-delivery');
+        if (cod)
+            return true; // 到店付款：授权即有资格，收款后核销
+        // online：需已结算
+        const notPaid = [...ordering, 'PaymentAuthorized'];
+        return !notPaid.includes(order.state);
     }
     /**
      * 店归属强校验：被核销订单主商品的 Product.customFields.shopId 归店（与 settlement-plugin 阶段24
@@ -105,29 +118,39 @@ let PickupService = class PickupService {
     /** 懒生成/取回固定提货码（幂等：一生对一单）。 */
     async resolveMyPickupCode(ctx, orderId) {
         const order = await this.requireMyOrder(ctx, orderId);
-        if (!this.isPickupPaid(ctx, order)) {
+        if (!this.isPickupEligible(ctx, order)) {
             throw new core_1.UserInputError('Order is not a paid pickup order');
         }
         return this.getOrCreateRedemption(ctx, order);
     }
     async getOrCreateRedemption(ctx, order) {
+        var _a;
         const repo = this.connection.getRepository(ctx, pickup_redemption_entity_1.PickupRedemption);
         const existing = await repo.findOne({ where: { orderId: order.id } });
         if (existing)
             return existing;
         const code = await this.genUniqueCode(ctx);
+        const payments = ((_a = order.payments) !== null && _a !== void 0 ? _a : []);
+        const paymentType = payments.some(p => (p === null || p === void 0 ? void 0 : p.method) === 'cash-on-delivery') ? 'cod' : 'online';
         const entity = repo.create({
             channelId: ctx.channelId,
             orderId: order.id,
             code,
             status: 'generated',
+            paymentType,
+            collected: false,
         });
         const saved = await repo.save(entity);
+        // 同步 Order.collected / paymentType（online 恒置已收；COD 收款在核销时再置）
+        await this.orderService.updateCustomFields(ctx, order.id, {
+            paymentType,
+            collected: paymentType === 'online',
+        });
         return saved;
     }
     /**
      * 为「已付款的 pickup 订单」幂等生成提货码（自动生码；供事件订阅与游客查询兜底调用）。
-     * 非 pickup 或未过支付闸门（isPickupPaid 排除 PaymentAuthorized 之前的状态）则不生成。
+     * 非 pickup 或未过支付闸门（isPickupEligible：cod 授权即过）则不生成。
      */
     async ensurePickupRedemptionForOrder(ctx, orderId) {
         var _a;
@@ -137,7 +160,7 @@ let PickupService = class PickupService {
         const cf = ((_a = order.customFields) !== null && _a !== void 0 ? _a : {});
         if (cf.deliveryType !== 'pickup')
             return;
-        if (!this.isPickupPaid(ctx, order))
+        if (!this.isPickupEligible(ctx, order))
             return;
         await this.getOrCreateRedemption(ctx, order);
     }
@@ -160,13 +183,20 @@ let PickupService = class PickupService {
             throw new core_1.UserInputError('Order not ready for pickup (not Shipped)');
         return [order, redemption];
     }
-    /** 顾客自核销。 */
+    /** 顾客自核销：仅线上已收款单可自助核销；到店付款单必须到店由店员收款核销（防漏收）。 */
     async claimMyPickup(ctx, orderId, code) {
+        var _a;
         await this.requireMyOrder(ctx, orderId);
+        const order = await this.orderService.findOne(ctx, orderId, ['payments']);
+        const payments = ((_a = order === null || order === void 0 ? void 0 : order.payments) !== null && _a !== void 0 ? _a : []);
+        if (payments.some(p => (p === null || p === void 0 ? void 0 : p.method) === 'cash-on-delivery')) {
+            throw new core_1.UserInputError('该单为到店付款，请在到店时由店员核销');
+        }
         return this.commitRedeem(ctx, orderId, code, 'customer');
     }
-    /** 店员核销（仅本店订单，跨店抛 Forbidden）。 */
-    async claimPickupByShop(ctx, code) {
+    /** 店员核销（仅本店订单，跨店抛 Forbidden）。到店付款单必须确认收款（collect=true）后才放行，防漏收。 */
+    async claimPickupByShop(ctx, code, collect) {
+        var _a;
         // 先取店主所属店作为归属上下文
         const shop = await this.requireMyShop(ctx);
         const repo = this.connection.getRepository(ctx, pickup_redemption_entity_1.PickupRedemption);
@@ -181,19 +211,31 @@ let PickupService = class PickupService {
         if (redemption.status !== 'generated') {
             throw new core_1.UserInputError('Pickup code already used / voided');
         }
-        return this.commitRedeem(ctx, redemption.orderId, code, 'shop');
+        const order = await this.orderService.findOne(ctx, redemption.orderId, ['payments']);
+        const payments = ((_a = order === null || order === void 0 ? void 0 : order.payments) !== null && _a !== void 0 ? _a : []);
+        const cod = payments.some(p => (p === null || p === void 0 ? void 0 : p.method) === 'cash-on-delivery');
+        if (cod && collect !== true) {
+            throw new core_1.UserInputError('该单为到店付款，请先确认收款后再核销');
+        }
+        return this.commitRedeem(ctx, redemption.orderId, code, 'shop', cod ? true : undefined);
     }
-    async commitRedeem(ctx, orderId, code, claimChannel) {
+    /** 店员核销凭据（到店或线上单通用）。仅设置 order.collected 与 redemption.collected。 */
+    async commitRedeem(ctx, orderId, code, claimChannel, collected) {
         const [order, redemption] = await this.findGeneratable(ctx, orderId, code);
         const repo = this.connection.getRepository(ctx, pickup_redemption_entity_1.PickupRedemption);
         redemption.status = 'redeemed';
         redemption.claimedAt = new Date();
         redemption.claimedByUserId = ctx.activeUserId ? ctx.activeUserId : null;
         redemption.claimChannel = claimChannel;
+        if (collected === true)
+            redemption.collected = true;
         const saved = await repo.save(redemption);
         await this.connection.withTransaction(ctx, async (txCtx) => {
             var _a;
-            await this.orderService.updateCustomFields(txCtx, orderId, { pickupClaimed: true });
+            await this.orderService.updateCustomFields(txCtx, orderId, {
+                pickupClaimed: true,
+                collected: collected === true ? true : undefined,
+            });
             const withF = await this.orderService.findOne(txCtx, orderId, ['fulfillments']);
             for (const f of (_a = withF === null || withF === void 0 ? void 0 : withF.fulfillments) !== null && _a !== void 0 ? _a : []) {
                 if (f.state === 'Shipped') {
@@ -230,6 +272,35 @@ let PickupService = class PickupService {
     async allRedemptions(ctx, options) {
         const [items, totalItems] = await this.listRedemptions(ctx, options);
         return { items, totalItems };
+    }
+    /**
+     * 本店商品订单：跨渠道归集「订单任一行商品 Product.customFields.shopId === 本店 id」的订单
+     * （与核销/结算同判据）。商户商品在默认商城售出的订单归属默认渠道，此处必须跨渠道查询。
+     */
+    async myShopOrders(ctx, options = {}) {
+        var _a, _b;
+        const shop = await this.requireMyShop(ctx);
+        const take = Math.min((_a = options === null || options === void 0 ? void 0 : options.take) !== null && _a !== void 0 ? _a : 20, 100);
+        const skip = (_b = options === null || options === void 0 ? void 0 : options.skip) !== null && _b !== void 0 ? _b : 0;
+        const repo = this.connection.rawConnection.getRepository(core_1.Order);
+        // 关联加载 lines→variant→product 以读取 Product.customFields.shopId；跨渠道取最近订单再在内存归集。
+        const recent = await repo.find({
+            relations: ['lines', 'lines.productVariant', 'lines.productVariant.product', 'customer', 'payments', 'channels'],
+            order: { id: 'DESC' },
+            take: 1000,
+        });
+        const matched = recent.filter(o => { var _a; return this.orderLineHasShop((_a = o === null || o === void 0 ? void 0 : o.lines) !== null && _a !== void 0 ? _a : [], shop.id); });
+        return {
+            items: matched.slice(skip, skip + take),
+            totalItems: matched.length,
+        };
+    }
+    orderLineHasShop(lines, shopId) {
+        return lines.some(l => {
+            var _a, _b, _c;
+            const sid = (_c = (_b = (_a = l === null || l === void 0 ? void 0 : l.productVariant) === null || _a === void 0 ? void 0 : _a.product) === null || _b === void 0 ? void 0 : _b.customFields) === null || _c === void 0 ? void 0 : _c.shopId;
+            return sid != null && Number(sid) === shopId;
+        });
     }
 };
 exports.PickupService = PickupService;

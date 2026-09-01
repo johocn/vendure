@@ -54,6 +54,14 @@ __decorate([
     (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
     __metadata("design:type", Object)
 ], PickupRedemption.prototype, "claimChannel", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], PickupRedemption.prototype, "paymentType", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'boolean', nullable: false, default: false }),
+    __metadata("design:type", Boolean)
+], PickupRedemption.prototype, "collected", void 0);
 exports.PickupRedemption = PickupRedemption = __decorate([
     (0, typeorm_1.Entity)(),
     __metadata("design:paramtypes", [Object])

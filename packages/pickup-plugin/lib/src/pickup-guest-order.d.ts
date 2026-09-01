@@ -11,6 +11,8 @@ export interface GuestOrderOverview {
     totalWithTax: number;
     isPickup: boolean;
     pickupClaimed: boolean;
+    paymentType: string | null;
+    collected: boolean;
     pickupCode: string | null;
     pickupClaimable: boolean;
     pickupLocation: {

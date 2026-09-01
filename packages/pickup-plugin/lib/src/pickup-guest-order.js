@@ -24,7 +24,7 @@ function guestLookupAllowed(order, input, windowAccess) {
     return { allowed: false, reason: 'window' };
 }
 function buildGuestOverview(order, redemption, resolvedPickupLocation) {
-    var _a, _b, _c, _d, _e, _f, _g, _h;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j;
     const cf = ((_a = order.customFields) !== null && _a !== void 0 ? _a : {});
     const isPickup = cf.deliveryType === 'pickup';
     const loc = cf.selectedPickupLocationId;
@@ -53,7 +53,9 @@ function buildGuestOverview(order, redemption, resolvedPickupLocation) {
         totalWithTax: order.totalWithTax,
         isPickup,
         pickupClaimed: isPickup && !!cf.pickupClaimed,
-        pickupCode: (_h = redemption === null || redemption === void 0 ? void 0 : redemption.code) !== null && _h !== void 0 ? _h : null,
+        paymentType: (_h = redemption === null || redemption === void 0 ? void 0 : redemption.paymentType) !== null && _h !== void 0 ? _h : null,
+        collected: !!redemption && (redemption.paymentType === 'online' || redemption.collected === true),
+        pickupCode: (_j = redemption === null || redemption === void 0 ? void 0 : redemption.code) !== null && _j !== void 0 ? _j : null,
         pickupClaimable: isPickup && !cf.pickupClaimed && shipped,
         pickupLocation,
         lines,
