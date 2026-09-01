@@ -235,6 +235,8 @@ exports.devConfig = {
             { name: 'servicePhone', type: 'string', public: true },
             { name: 'shopContent', type: 'text', public: true },
             { name: 'detailConfig', type: 'text', public: true },
+            { name: 'orderDetailConfig', type: 'text', public: true },
+            { name: 'orderListConfig', type: 'text', public: true },
         ],
         Customer: [],
         Fulfillment: [],

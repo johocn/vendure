@@ -267,6 +267,10 @@ export const devConfig: VendureConfig = {
             { name: 'shopContent', type: 'text', public: true },
             // detailConfig 存商品详情页装修 JSON 字符串（结构化 schema 见 nshop layers/base/app/utils/detail-config.ts）
             { name: 'detailConfig', type: 'text', public: true },
+            // orderDetailConfig 存订单详情页装修 JSON（结构化 schema 见 nshop layers/base/app/utils/order-config.ts）
+            { name: 'orderDetailConfig', type: 'text', public: true },
+            // orderListConfig 存订单列表版式 JSON（本期仅 card）
+            { name: 'orderListConfig', type: 'text', public: true },
         ],
         Customer: [],
         Fulfillment: [],
