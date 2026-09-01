@@ -50,6 +50,13 @@ exports.couponAppliedCondition = new core_1.PromotionCondition({
             const rate = (100 - template.discountValue) / 100;
             discountAmount = Math.round(upperBound * rate);
         }
+        else if (template.type === 'FREE_SHIPPING') {
+            // 免邮券：折扣额 = 符合条件的配送线小计；无配送线则 0
+            // Vendure 3.x 的 ShippingLine 用 price/priceWithTax 表达配送金额（无 shippingPrice 字段）
+            discountAmount = (order.shippingLines || [])
+                .filter((l) => { var _a, _b; return ((_b = (_a = l.customFields) === null || _a === void 0 ? void 0 : _a.eligibleForCoupon) !== null && _b !== void 0 ? _b : true); })
+                .reduce((s, l) => s + (pricesIncludeTax ? l.priceWithTax : l.price), 0);
+        }
         else {
             // FIXED / FULL：直减 discountValue，且不超过订单小计
             discountAmount = Math.max(0, Math.min(template.discountValue, upperBound));

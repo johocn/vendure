@@ -3,8 +3,9 @@
  * - FIXED ：满 minSpend 减 discountValue（满减）
  * - PERCENT ：满 minSpend 打 discountValue 折（1-99 整数，如 8.5折 → 85）
  * - FULL ：无门槛直减 discountValue（minSpend 强制 0）
+ * - FREE_SHIPPING ：免邮券，折扣额 = 订单配送线小计（加购后需有配送线才生效）
  */
-export type CouponType = 'FIXED' | 'PERCENT' | 'FULL';
+export type CouponType = 'FIXED' | 'PERCENT' | 'FULL' | 'FREE_SHIPPING';
 /**
  * 用户券状态：
  * - UNUSED  ：已领取未使用（可结算选券）

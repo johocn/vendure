@@ -82,7 +82,7 @@ type CustomerCoupon implements Node {
     exports: [CouponService],
     adminApiExtensions: {
         schema: () => gql`
-            enum CouponType { FIXED PERCENT FULL }
+            enum CouponType { FIXED PERCENT FULL FREE_SHIPPING }
             enum CouponStatus { UNUSED USED RETURNED EXPIRED INVALID }
             enum CouponIssuedBy { CENTRE ADMIN EXCHANGE }
 
@@ -154,7 +154,7 @@ type CustomerCoupon implements Node {
     },
     shopApiExtensions: {
         schema: () => gql`
-            enum CouponType { FIXED PERCENT FULL }
+            enum CouponType { FIXED PERCENT FULL FREE_SHIPPING }
             enum CouponStatus { UNUSED USED RETURNED EXPIRED INVALID }
             enum CouponIssuedBy { CENTRE ADMIN EXCHANGE }
 
@@ -215,7 +215,7 @@ export class CouponPlugin implements OnApplicationBootstrap {
     }
 
     async onApplicationBootstrap(): Promise<void> {
-        this.injector = new Injector(this.moduleRef);
+        this.injector = new Injector(this.moduleRef as any);
         this.couponService.init(this.injector);
         setCouponConnection(this.injector.get(TransactionalConnection));
 

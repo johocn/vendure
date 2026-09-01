@@ -124,7 +124,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
         exports: [coupon_service_1.CouponService],
         adminApiExtensions: {
             schema: () => (0, graphql_tag_1.default) `
-            enum CouponType { FIXED PERCENT FULL }
+            enum CouponType { FIXED PERCENT FULL FREE_SHIPPING }
             enum CouponStatus { UNUSED USED RETURNED EXPIRED INVALID }
             enum CouponIssuedBy { CENTRE ADMIN EXCHANGE }
 
@@ -196,7 +196,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
         },
         shopApiExtensions: {
             schema: () => (0, graphql_tag_1.default) `
-            enum CouponType { FIXED PERCENT FULL }
+            enum CouponType { FIXED PERCENT FULL FREE_SHIPPING }
             enum CouponStatus { UNUSED USED RETURNED EXPIRED INVALID }
             enum CouponIssuedBy { CENTRE ADMIN EXCHANGE }
 

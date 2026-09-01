@@ -22,12 +22,14 @@ describe('CouponPlugin · 营销促销闭环（优惠券体系）', () => {
             paymentOptions: {
                 paymentMethodHandlers: [testSuccessfulPaymentMethod],
             },
+            dbConnectionOptions: { logging: ['query', 'error'] } as any,
         }),
     );
 
     let variantId: string;
     let myCustomerId: string;
     let otherCustomerId: string;
+    let shippingMethodId: string;
 
     async function createTemplate(input: Record<string, unknown>): Promise<string> {
         const res = await adminClient.query(gql`
@@ -109,6 +111,12 @@ describe('CouponPlugin · 营销促销闭环（优惠券体系）', () => {
             query { products(options: { take: 1 }) { items { id variants { id } } } }
         `);
         variantId = (products.products.items[0].variants[0] as any).id;
+
+        // 取一个可用配送方式 id，供免邮券用例设置订单配送线
+        const shippingMet = await adminClient.query(gql`
+            query { shippingMethods { items { id } } }
+        `) as any;
+        shippingMethodId = shippingMet.shippingMethods.items[0].id;
 
         // 让结算基准统一为「含税小计」，使折扣额可精确推算
         const channels = await adminClient.query(gql`
@@ -344,4 +352,40 @@ describe('CouponPlugin · 营销促销闭环（优惠券体系）', () => {
         await addToCart(1);
         await assertThrowsWithMessage(async () => apply(ccUsed.code), 'not in a usable state');
     }, TEST_SETUP_TIMEOUT_MS);
+
+    it('免邮券：订单选中后折扣额=配送费', async () => {
+        const tplId = await createTemplate({
+            name: '免邮券',
+            type: 'FREE_SHIPPING',
+            discountValue: 0,
+        });
+        const cc = await claim(tplId);
+
+        await resetActiveOrder();
+        await addToCart(1);
+        // 设置配送方式 → 订单产生 shippingLines（含配送小计），免邮券据此折算折扣额
+        const setRes = await shopClient.query(gql`
+            mutation {
+                setOrderShippingMethod(shippingMethodId: "${shippingMethodId}") {
+                    ... on Order { id }
+                }
+            }
+        `);
+        expect((setRes.setOrderShippingMethod as any).id).toBeDefined();
+
+        // 读取订单配送线，得到免邮应免掉的配送费
+        const sl = await shopClient.query(gql`
+            query { activeOrder { shippingLines { priceWithTax } } }
+        `) as any;
+        const shippingFee = sl.activeOrder.shippingLines.reduce(
+            (s: number, l: any) => s + l.priceWithTax, 0,
+        );
+        expect(shippingFee).toBeGreaterThan(0);
+
+        const applied = await apply(cc.code);
+        // 免邮券应存在一条负值 discount（amountWithTax < 0），且金额 = 配送费
+        const freeShipDisc = applied.discounts.find((d: any) => d.amountWithTax < 0);
+        expect(freeShipDisc).toBeDefined();
+        expect(freeShipDisc.amountWithTax).toBe(-shippingFee);
+    });
 });

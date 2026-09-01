@@ -4,7 +4,9 @@
     "license": "GPL-3.0-or-later",
     "main": "lib/index.js",
     "types": "lib/index.d.ts",
-    "files": ["lib/**/*"],
+    "files": [
+        "lib/**/*"
+    ],
     "scripts": {
         "watch": "tsc -p ./tsconfig.build.json --watch",
         "build": "rimraf lib && tsc -p ./tsconfig.build.json",
@@ -12,7 +14,6 @@
         "test": "vitest --config vitest.config.mts --run",
         "e2e": "cross-env PACKAGE=coupon-plugin vitest --config vitest.config.mts --run"
     },
-    "dependencies": {},
     "peerDependencies": {
         "@vendure/common": "^3.6.0",
         "@vendure/core": "^3.6.0"
