@@ -53,7 +53,7 @@ let PickupService = class PickupService {
     }
     async requireMyOrder(ctx, orderId) {
         var _a, _b;
-        const order = await this.orderService.findOne(ctx, orderId, ['customer', 'customer.user']);
+        const order = await this.orderService.findOne(ctx, orderId, ['customer', 'customer.user', 'payments']);
         const uid = (_b = (_a = order === null || order === void 0 ? void 0 : order.customer) === null || _a === void 0 ? void 0 : _a.user) === null || _b === void 0 ? void 0 : _b.id;
         if (!order || !uid || uid !== ctx.activeUserId) {
             throw new core_1.ForbiddenError();
@@ -164,7 +164,7 @@ let PickupService = class PickupService {
      */
     async ensurePickupRedemptionForOrder(ctx, orderId) {
         var _a;
-        const order = await this.orderService.findOne(ctx, orderId, ['customer', 'customer.user']);
+        const order = await this.orderService.findOne(ctx, orderId, ['customer', 'customer.user', 'payments']);
         if (!order)
             return;
         const cf = ((_a = order.customFields) !== null && _a !== void 0 ? _a : {});

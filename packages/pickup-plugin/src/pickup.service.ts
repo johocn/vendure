@@ -54,7 +54,7 @@ export class PickupService {
     }
 
     async requireMyOrder(ctx: RequestContext, orderId: ID): Promise<Order> {
-        const order = await this.orderService.findOne(ctx, orderId, ['customer', 'customer.user']);
+        const order = await this.orderService.findOne(ctx, orderId, ['customer', 'customer.user', 'payments']);
         const uid = order?.customer?.user?.id;
         if (!order || !uid || uid !== ctx.activeUserId) {
             throw new ForbiddenError();
@@ -160,7 +160,7 @@ export class PickupService {
      * 非 pickup 或未过支付闸门（isPickupEligible：cod 授权即过）则不生成。
      */
     async ensurePickupRedemptionForOrder(ctx: RequestContext, orderId: ID): Promise<void> {
-        const order = await this.orderService.findOne(ctx, orderId, ['customer', 'customer.user'] as any);
+        const order = await this.orderService.findOne(ctx, orderId, ['customer', 'customer.user', 'payments'] as any);
         if (!order) return;
         const cf = (order.customFields ?? {}) as any;
         if (cf.deliveryType !== 'pickup') return;
