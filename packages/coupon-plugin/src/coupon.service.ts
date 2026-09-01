@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+    Administrator,
     CustomerService,
     ID,
     Injector,
@@ -7,6 +8,7 @@ import {
     ListQueryOptions,
     Logger,
     OrderService,
+    Product,
     RequestContext,
     TransactionalConnection,
     UserInputError,
@@ -14,6 +16,7 @@ import {
 import { MemberLevelService } from '@vendure/member-level-plugin';
 
 import { loggerCtx } from './constants';
+import { isDefaultMallChannel, lineHasShopId } from './coupon-scope';
 import { CouponTemplate } from './coupon-template.entity';
 import { CustomerCoupon } from './customer-coupon.entity';
 
@@ -103,6 +106,16 @@ export class CouponService {
         }
         tpl.channels = [ctx.channel];
         tpl.claimedCount = 0;
+        // 发行归属店铺（跨渠道范围用）：优先采用显式传入的 shopId，否则从当前管理员的店解析。
+        // 若 Shop / Administrator 依赖插件未注册或无法解析，则保持 undefined（不阻断）。
+        if (input.shopId != null) {
+            (tpl as any).shopId = Number(input.shopId);
+        } else if (tpl.shopId == null) {
+            const shopId = await this.resolveShopIdFromActiveUser(ctx, ctx.activeUserId);
+            if (shopId != null) {
+                (tpl as any).shopId = Number(shopId);
+            }
+        }
         return repo.save(tpl);
     }
 
@@ -130,13 +143,51 @@ export class CouponService {
     async couponCentre(ctx: RequestContext): Promise<CouponTemplate[]> {
         const repo = this.connection.getRepository(ctx, CouponTemplate);
         const now = new Date();
-        return repo
+        const own = await repo
             .createQueryBuilder('tpl')
             .innerJoin('tpl.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId })
             .where('tpl.enabled = :enabled', { enabled: true })
             .andWhere('(tpl.startsAt IS NULL OR tpl.startsAt <= :now)', { now })
             .andWhere('(tpl.endsAt IS NULL OR tpl.endsAt >= :now)', { now })
             .getMany();
+        // 非默认商城维持现状：仅列出本渠道券。
+        if (!isDefaultMallChannel(ctx)) {
+            return own;
+        }
+        // 默认商城：除本渠道券外，追加列出「其 shopId 对应商品出现在本商城」的租户券。
+        const shopIds = await this.shopIdsPresentInChannel(ctx);
+        if (shopIds.size === 0) {
+            return own;
+        }
+        const extra = await repo
+            .createQueryBuilder('tpl')
+            .where('tpl.shopId IN (:...shopIds)', { shopIds: [...shopIds] })
+            .andWhere('tpl.enabled = :enabled', { enabled: true })
+            .andWhere('(tpl.startsAt IS NULL OR tpl.startsAt <= :now)', { now })
+            .andWhere('(tpl.endsAt IS NULL OR tpl.endsAt >= :now)', { now })
+            .getMany();
+        const ownIds = new Set(own.map(t => String(t.id)));
+        return [...own, ...extra.filter(t => !ownIds.has(String(t.id)))];
+    }
+
+    /** 默认商城渠道下，本商城商品（Product.customFields.shopId）中出现过的店铺 id 集合。 */
+    private async shopIdsPresentInChannel(ctx: RequestContext): Promise<Set<number>> {
+        const set = new Set<number>();
+        try {
+            const productRepo = this.connection.getRepository(ctx, Product);
+            const products = await productRepo.find({ relations: { channels: true } });
+            for (const p of products) {
+                const inChannel = ((p as any).channels ?? []).some(
+                    (c: any) => String(c.id) === String(ctx.channelId),
+                );
+                if (!inChannel) continue;
+                const sid = Number(((p.customFields as any) ?? {}).shopId);
+                if (sid && !Number.isNaN(sid)) set.add(sid);
+            }
+        } catch {
+            // Product 不可用等场景忽略，仅返回本渠道券
+        }
+        return set;
     }
 
     async listMyCoupons(ctx: RequestContext, status?: string): Promise<CustomerCoupon[]> {
@@ -307,7 +358,13 @@ export class CouponService {
     /* ------------------------- 结算选券 / 清券 ------------------------- */
 
     async applyCouponToOrder(ctx: RequestContext, orderId: ID, code: string): Promise<any> {
-        const order = await this.orderService.findOne(ctx, orderId, ['customer', 'customer.user']);
+        const order = await this.orderService.findOne(ctx, orderId, [
+            'customer',
+            'customer.user',
+            'lines',
+            'lines.productVariant',
+            'lines.productVariant.product',
+        ] as any);
         if (!order) {
             throw new UserInputError(`Order ${orderId} not found`);
         }
@@ -346,7 +403,18 @@ export class CouponService {
         if (tpl.endsAt && now > tpl.endsAt) {
             throw new UserInputError('Coupon has expired');
         }
-        const base = ctx.channel.pricesIncludeTax ? order.subTotalWithTax : order.subTotal;
+        // 跨渠道范围校验 + 本店商品行基数（默认商城：仅本店行参与门槛/折扣；非默认商城整单）。
+        const tplShopId = tpl.shopId as number | undefined;
+        const lines = ((order as any)?.lines ?? []) as any[];
+        const eligibleLines = isDefaultMallChannel(ctx)
+            ? lines.filter(l => lineHasShopId(l, tplShopId))
+            : lines;
+        if (isDefaultMallChannel(ctx) && eligibleLines.length === 0) {
+            throw new UserInputError('COUPON_SCOPE_MISMATCH');
+        }
+        const base = (ctx.channel.pricesIncludeTax
+            ? eligibleLines.reduce((s: number, l: any) => s + (l.linePriceWithTax ?? 0), 0)
+            : eligibleLines.reduce((s: number, l: any) => s + (l.linePrice ?? 0), 0));
         if (tpl.minSpend > base) {
             throw new UserInputError(
                 `Order total below minimum spend of ${tpl.minSpend} for this coupon`,
@@ -358,6 +426,14 @@ export class CouponService {
             couponCode: cc.code,
             couponId: cc.id,
         });
+        // 确保传给 promotions 重算的订单在其 OrderLine 上带 productVariant.product，
+        // 以便 coupon_applied 条件读取 Product.customFields.shopId 做行级范围判定。
+        for (const line of (updatedOrder as any)?.lines ?? []) {
+            const matched = (lines ?? []).find(l => String(l.id) === String(line.id));
+            if (matched && (line.productVariant == null || !line.productVariant.product)) {
+                line.productVariant = matched.productVariant;
+            }
+        }
         return this.orderService.applyPriceAdjustments(ctx, updatedOrder);
     }
 
@@ -409,6 +485,40 @@ export class CouponService {
     }
 
     /* ------------------------- 私有工具 ------------------------- */
+
+    /**
+     * 归属解析：activeUserId → Administrator.user → Shop.administratorId（与 shop-plugin 同法，不依赖 ctx.channelId）。
+     * 若连接未注册 Shop 实体（shop-plugin 未加载）或 admin 无法解析，则回退为 undefined（不阻断）。
+     */
+    private async resolveShopIdFromActiveUser(ctx: RequestContext, userId?: ID): Promise<number | undefined> {
+        try {
+            if (userId == null) return undefined;
+            const adminRepo = this.connection.getRepository(ctx, Administrator);
+            const admin = await adminRepo.findOne({
+                where: { user: { id: userId } } as any,
+                select: { id: true },
+            });
+            if (!admin || admin.id == null) return undefined;
+            const ShopClass = this.findEntityClass('Shop');
+            if (!ShopClass) return undefined;
+            const shopRepo = (this.connection.getRepository(ctx, ShopClass) as any);
+            const shop = await shopRepo.findOne({ where: { administratorId: admin.id } });
+            return shop?.id as number | undefined;
+        } catch {
+            // Shop / Administrator 等可选依赖未注册或查询失败 → 保持未设 shopId
+            return undefined;
+        }
+    }
+
+    /** 按实体名称从连接元数据中取回实体类（用于在插件未直接依赖 Shop 时安全解析）。 */
+    private findEntityClass(name: string): any | undefined {
+        try {
+            const meta = this.connection.rawConnection.entityMetadatas.find(m => m.name === name);
+            return meta ? meta.target : undefined;
+        } catch {
+            return undefined;
+        }
+    }
 
     private async orderCode(_ctx: RequestContext, orderId: ID): Promise<string | undefined> {
         // 用户券销核/回退时，从订单 customFields 读券码

@@ -19,6 +19,8 @@ export declare class CouponService {
     updateTemplate(ctx: RequestContext, input: any): Promise<CouponTemplate>;
     deleteTemplate(ctx: RequestContext, id: ID): Promise<void>;
     couponCentre(ctx: RequestContext): Promise<CouponTemplate[]>;
+    /** 默认商城渠道下，本商城商品（Product.customFields.shopId）中出现过的店铺 id 集合。 */
+    private shopIdsPresentInChannel;
     listMyCoupons(ctx: RequestContext, status?: string): Promise<CustomerCoupon[]>;
     listAllCoupons(ctx: RequestContext, options?: ListQueryOptions<CustomerCoupon>): Promise<{
         items: CustomerCoupon[];
@@ -38,6 +40,13 @@ export declare class CouponService {
     bindAsUsed(ctx: RequestContext, orderId: ID): Promise<void>;
     /** 订单取消回退券（可复用） */
     returnCoupon(ctx: RequestContext, orderId: ID): Promise<void>;
+    /**
+     * 归属解析：activeUserId → Administrator.user → Shop.administratorId（与 shop-plugin 同法，不依赖 ctx.channelId）。
+     * 若连接未注册 Shop 实体（shop-plugin 未加载）或 admin 无法解析，则回退为 undefined（不阻断）。
+     */
+    private resolveShopIdFromActiveUser;
+    /** 按实体名称从连接元数据中取回实体类（用于在插件未直接依赖 Shop 时安全解析）。 */
+    private findEntityClass;
     private orderCode;
     private currentCustomerId;
     private countHeld;

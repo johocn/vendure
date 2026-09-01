@@ -6,6 +6,7 @@ import { LanguageCode, mergeConfig } from '@vendure/core';
 import { initialData } from '../../../e2e-common/e2e-initial-data';
 import { TEST_SETUP_TIMEOUT_MS, testConfig } from '../../../e2e-common/test-config';
 import { CouponPlugin } from '../src/plugin';
+import { ShopPlugin } from '../../shop-plugin/src/plugin';
 import { testSuccessfulPaymentMethod } from '../../core/e2e/fixtures/test-payment-methods';
 import {
     addPaymentToOrder,
@@ -18,7 +19,8 @@ registerInitializer('sqljs', new SqljsInitializer(path.join(__dirname, '__data__
 describe('CouponPlugin · 营销促销闭环（优惠券体系）', () => {
     const { server, adminClient, shopClient } = createTestEnvironment(
         mergeConfig(testConfig(), {
-            plugins: [CouponPlugin.init()],
+            // ShopPlugin 注册 Shop 实体/Product.shopId 自定义字段/建店鉴权，供跨渠道范围用例构造「本店商品」
+            plugins: [CouponPlugin.init(), ShopPlugin.init()],
             paymentOptions: {
                 paymentMethodHandlers: [testSuccessfulPaymentMethod],
             },
@@ -27,9 +29,11 @@ describe('CouponPlugin · 营销促销闭环（优惠券体系）', () => {
     );
 
     let variantId: string;
+    let productAId: string;
     let myCustomerId: string;
     let otherCustomerId: string;
     let shippingMethodId: string;
+    let taxCategoryId: string;
 
     async function createTemplate(input: Record<string, unknown>): Promise<string> {
         const res = await adminClient.query(gql`
@@ -40,6 +44,7 @@ describe('CouponPlugin · 营销促销闭环（优惠券体系）', () => {
                     discountValue: ${input.discountValue}
                     minSpend: ${input.minSpend ?? 0}
                     ${input.endsAt ? `endsAt: "${input.endsAt}"` : ''}
+                    ${input.shopId ? `shopId: "${input.shopId}"` : ''}
                     totalCount: ${input.totalCount ?? 0}
                     perUserLimit: ${input.perUserLimit ?? 0}
                     enabled: ${input.enabled ?? true}
@@ -60,6 +65,18 @@ describe('CouponPlugin · 营销促销闭环（优惠券体系）', () => {
         const res = await shopClient.query(gql`
             mutation {
                 addItemToOrder(productVariantId: "${variantId}", quantity: ${qty}) {
+                    ... on Order { id subTotalWithTax }
+                    ... on ErrorResult { errorCode message }
+                }
+            }
+        `);
+        return res.addItemToOrder;
+    }
+
+    async function addVariant(variantId_: string, qty = 1): Promise<any> {
+        const res = await shopClient.query(gql`
+            mutation {
+                addItemToOrder(productVariantId: "${variantId_}", quantity: ${qty}) {
                     ... on Order { id subTotalWithTax }
                     ... on ErrorResult { errorCode message }
                 }
@@ -110,7 +127,13 @@ describe('CouponPlugin · 营销促销闭环（优惠券体系）', () => {
         const products = await adminClient.query(gql`
             query { products(options: { take: 1 }) { items { id variants { id } } } }
         `);
+        productAId = (products.products.items[0] as any).id;
         variantId = (products.products.items[0].variants[0] as any).id;
+
+        const taxCats = await adminClient.query(gql`
+            query { taxCategories { items { id } } }
+        `) as any;
+        taxCategoryId = taxCats.taxCategories.items[0].id;
 
         // 取一个可用配送方式 id，供免邮券用例设置订单配送线
         const shippingMet = await adminClient.query(gql`
@@ -387,5 +410,71 @@ describe('CouponPlugin · 营销促销闭环（优惠券体系）', () => {
         const freeShipDisc = applied.discounts.find((d: any) => d.amountWithTax < 0);
         expect(freeShipDisc).toBeDefined();
         expect(freeShipDisc.amountWithTax).toBe(-shippingFee);
+    });
+
+    it('跨渠道本店商品券：默认商城无本店行→SCOPE_MISMATCH；含本店行→按本店行小计打折', async () => {
+        // 建一个本店 Shop
+        const shopRes = await adminClient.query(gql`
+            mutation { createShop(input: { name: "本店", slug: "ben-dian-cross-channel", description: "shop" }) { id } }
+        `) as any;
+        const shopAId = shopRes.createShop.id;
+        // productA（既有主商品）归属本店 → product.customFields.shopId = shopAId
+        await adminClient.query(gql`
+            mutation { assignProductsToShop(input: { shopId: "${shopAId}", productIds: ["${productAId}"] }) }
+        `);
+        // 造一个不属于本店的低价商品 productB（price 100 → 10000 分），作为「别家行」
+        const pb = await adminClient.query(gql`
+            mutation {
+                createProduct(input: {
+                    translations: [{ languageCode: en, name: "OtherGoods", slug: "other-goods-x", description: "x" }]
+                }) { ... on Product { id } }
+            }
+        `) as any;
+        const pbId = pb.createProduct.id;
+        const varRes = await adminClient.query(gql`
+            mutation {
+                createProductVariants(input: [{
+                    productId: "${pbId}"
+                    sku: "OTHER-G-1"
+                    price: 100
+                    taxCategoryId: "${taxCategoryId}"
+                    translations: [{ languageCode: en, name: "OtherGoods v" }]
+                }]) { ... on ProductVariant { id } }
+            }
+        `) as any;
+        const pbVariantId = varRes.createProductVariants[0].id;
+
+        // 本店券：FIXED 面额 135000，界于「本店行小计(129900)」与「整单(139900)」之间，
+        // 用于区分折扣基数究竟是本店行小计还是整单。
+        const tplId = await createTemplate({
+            name: '默认商城本店券',
+            type: 'FIXED',
+            discountValue: 135000,
+            shopId: shopAId,
+        });
+        const cc = await claim(tplId);
+
+        // 场景1：订单仅含非本店商品行 → 无本店行 → applyCouponToOrder 抛 COUPON_SCOPE_MISMATCH
+        await resetActiveOrder();
+        await addVariant(pbVariantId, 1);
+        await assertThrowsWithMessage(async () => apply(cc.code), 'COUPON_SCOPE_MISMATCH');
+
+        // 场景2：订单含本店行 + 别家行 → 选券成功，折扣基数 = 本店行小计（非整单）
+        await resetActiveOrder();
+        await addToCart(1);                       // productA 本店行 129900
+        await addVariant(pbVariantId, 1);         // productB 别家行 10000
+        const active = await shopClient.query(gql`
+            query { activeOrder { lines { id productVariant { id } unitPriceWithTax quantity } } }
+        `) as any;
+        const shopLineTotal = active.activeOrder.lines.find(
+            (l: any) => String(l.productVariant.id) === String(variantId),
+        ).unitPriceWithTax;
+        expect(shopLineTotal).toBe(129900);
+
+        const applied = await apply(cc.code);
+        const disc = applied.discounts.find((d: any) => d.amountWithTax < 0);
+        expect(disc).toBeDefined();
+        // 折扣 = 本店行小计(129900)，而非整单(139900→若按整单则为 135000 面额)
+        expect(disc.amountWithTax).toBe(-129900);
     });
 });

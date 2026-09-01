@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.couponAppliedCondition = void 0;
 const core_1 = require("@vendure/core");
 const coupon_runtime_1 = require("./coupon-runtime");
+const coupon_scope_1 = require("./coupon-scope");
 const customer_coupon_entity_1 = require("./customer-coupon.entity");
 /**
  * 券结算条件：读取 order.customFields.couponCode，
@@ -19,7 +20,7 @@ exports.couponAppliedCondition = new core_1.PromotionCondition({
     ],
     args: {},
     async check(ctx, order, _args) {
-        var _a;
+        var _a, _b;
         const code = (_a = order === null || order === void 0 ? void 0 : order.customFields) === null || _a === void 0 ? void 0 : _a.couponCode;
         if (!code)
             return false;
@@ -40,10 +41,20 @@ exports.couponAppliedCondition = new core_1.PromotionCondition({
         if (template.endsAt && now > template.endsAt)
             return false;
         const pricesIncludeTax = ctx.channel.pricesIncludeTax;
-        const base = pricesIncludeTax ? order.subTotalWithTax : order.subTotal;
+        // 跨渠道范围：默认商城下折扣/门槛基数只算「本店商品行」；无本店行 → 范围不符（B3 的 applyCouponToOrder 会抛 SCOPE_MISMATCH）。
+        const tplShopId = template.shopId;
+        let eligibleLines = ((_b = order.lines) !== null && _b !== void 0 ? _b : []);
+        if ((0, coupon_scope_1.isDefaultMallChannel)(ctx)) {
+            eligibleLines = eligibleLines.filter(l => (0, coupon_scope_1.lineHasShopId)(l, tplShopId));
+            if (eligibleLines.length === 0)
+                return false;
+        }
+        const base = pricesIncludeTax
+            ? eligibleLines.reduce((s, l) => { var _a; return s + ((_a = l.linePriceWithTax) !== null && _a !== void 0 ? _a : 0); }, 0)
+            : eligibleLines.reduce((s, l) => { var _a; return s + ((_a = l.linePrice) !== null && _a !== void 0 ? _a : 0); }, 0);
         if (template.minSpend > base)
             return false;
-        const upperBound = pricesIncludeTax ? order.subTotalWithTax : order.subTotal;
+        const upperBound = base;
         let discountAmount;
         if (template.type === 'PERCENT') {
             // discountValue 为折数（8.5折=85），折扣 = (100-85)% = 15%

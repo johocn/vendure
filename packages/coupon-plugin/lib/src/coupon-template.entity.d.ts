@@ -33,5 +33,7 @@ export declare class CouponTemplate extends VendureEntity implements ChannelAwar
     variantId?: number;
     /** 上下架 */
     enabled: boolean;
+    /** 发行归属店铺 id（跨渠道范围用）：默认商城下仅对「本店商品行」核销。 */
+    shopId?: number;
     channels: Channel[];
 }

@@ -50,6 +50,7 @@ type CouponTemplate implements Node {
     categoryId: ID
     variantId: ID
     enabled: Boolean!
+    shopId: ID
     createdAt: DateTime!
     updatedAt: DateTime!
 }`;
@@ -113,6 +114,7 @@ type CustomerCoupon implements Node {
                 categoryId: ID
                 variantId: ID
                 enabled: Boolean
+                shopId: ID
             }
 
             input UpdateCouponTemplateInput {

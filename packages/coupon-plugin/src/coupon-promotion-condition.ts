@@ -1,6 +1,7 @@
 import { LanguageCode, PromotionCondition, RequestContext } from '@vendure/core';
 
 import { getCouponConnection } from './coupon-runtime';
+import { isDefaultMallChannel, lineHasShopId } from './coupon-scope';
 import { CustomerCoupon } from './customer-coupon.entity';
 
 /**
@@ -35,10 +36,19 @@ export const couponAppliedCondition = new PromotionCondition({
         if (template.endsAt && now > template.endsAt) return false;
 
         const pricesIncludeTax = ctx.channel.pricesIncludeTax;
-        const base = pricesIncludeTax ? order.subTotalWithTax : order.subTotal;
+        // 跨渠道范围：默认商城下折扣/门槛基数只算「本店商品行」；无本店行 → 范围不符（B3 的 applyCouponToOrder 会抛 SCOPE_MISMATCH）。
+        const tplShopId = template.shopId as number | undefined;
+        let eligibleLines: any[] = (order.lines ?? []) as any[];
+        if (isDefaultMallChannel(ctx)) {
+            eligibleLines = eligibleLines.filter(l => lineHasShopId(l, tplShopId));
+            if (eligibleLines.length === 0) return false;
+        }
+        const base = pricesIncludeTax
+            ? eligibleLines.reduce((s: number, l: any) => s + (l.linePriceWithTax ?? 0), 0)
+            : eligibleLines.reduce((s: number, l: any) => s + (l.linePrice ?? 0), 0);
         if (template.minSpend > base) return false;
 
-        const upperBound = pricesIncludeTax ? order.subTotalWithTax : order.subTotal;
+        const upperBound = base;
         let discountAmount: number;
         if (template.type === 'PERCENT') {
             // discountValue 为折数（8.5折=85），折扣 = (100-85)% = 15%

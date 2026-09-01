@@ -54,6 +54,9 @@ export class CouponTemplate extends VendureEntity implements ChannelAware {
     /** 上下架 */
     @Column({ default: true }) enabled: boolean;
 
+    /** 发行归属店铺 id（跨渠道范围用）：默认商城下仅对「本店商品行」核销。 */
+    @Column('bigint', { nullable: true }) shopId?: number;
+
     @ManyToMany(() => Channel)
     @JoinTable()
     channels: Channel[];

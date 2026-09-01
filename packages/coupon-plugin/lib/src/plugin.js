@@ -53,6 +53,7 @@ type CouponTemplate implements Node {
     categoryId: ID
     variantId: ID
     enabled: Boolean!
+    shopId: ID
     createdAt: DateTime!
     updatedAt: DateTime!
 }`;
@@ -155,6 +156,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 categoryId: ID
                 variantId: ID
                 enabled: Boolean
+                shopId: ID
             }
 
             input UpdateCouponTemplateInput {
