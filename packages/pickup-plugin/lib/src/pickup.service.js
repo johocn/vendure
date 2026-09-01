@@ -14,6 +14,7 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PickupService = void 0;
 const core_1 = require("@vendure/core");
+const typeorm_1 = require("typeorm");
 const common_1 = require("@nestjs/common");
 const shop_plugin_1 = require("@vendure/shop-plugin");
 const constants_1 = require("./constants");
@@ -264,10 +265,39 @@ let PickupService = class PickupService {
             await repo.save(r);
         }
     }
+    /** 店主域：本店待核销 pickup 凭据（generated，且订单主商品归本店）。返回 [items, totalItems] 供 resolver 解构。 */
     async myPickupOrders(ctx, options) {
-        // 店主域：本店待核销 pickup 订单 → 反查 PickupRedemption（generated）
-        // 简化：返回其属店由 resolver 依 Order.customFields → 自提点 shop 过滤；缺省返回全部 generated
-        return this.listRedemptions(ctx, options, 'generated');
+        var _a, _b, _c;
+        // 店主域：本店待核销 pickup 凭据（generated），且订单主商品归本店（判据与 claimPickupByShop /
+        // myShopOrders 一致：任一订单行商品 Product.customFields.shopId 归本店）。跨渠道单（默认商城）同样可核销。
+        const shop = await this.requireMyShop(ctx);
+        const repo = this.connection.getRepository(ctx, pickup_redemption_entity_1.PickupRedemption);
+        const [all] = await repo.findAndCount({ where: { status: 'generated' } });
+        if (all.length === 0)
+            return [[], 0];
+        const shopId = shop.id;
+        // 批量反查订单行商品归属，避免 N+1
+        const orderIds = [...new Set(all.map(r => r.orderId))];
+        const orders = await this.connection
+            .getRepository(ctx, core_1.Order)
+            .find({
+            where: { id: (0, typeorm_1.In)(orderIds) },
+            relations: ['lines', 'lines.productVariant', 'lines.productVariant.product'],
+        });
+        const owned = new Set();
+        for (const o of orders) {
+            const mine = ((_a = o === null || o === void 0 ? void 0 : o.lines) !== null && _a !== void 0 ? _a : []).some((l) => {
+                var _a, _b, _c, _d;
+                const sid = (_d = ((_c = (_b = (_a = l === null || l === void 0 ? void 0 : l.productVariant) === null || _a === void 0 ? void 0 : _a.product) === null || _b === void 0 ? void 0 : _b.customFields) !== null && _c !== void 0 ? _c : {})) === null || _d === void 0 ? void 0 : _d.shopId;
+                return sid != null && Number(sid) === shopId;
+            });
+            if (mine)
+                owned.add(o.id);
+        }
+        const items = all.filter(r => owned.has(r.orderId));
+        const skip = (_b = options === null || options === void 0 ? void 0 : options.skip) !== null && _b !== void 0 ? _b : 0;
+        const take = (_c = options === null || options === void 0 ? void 0 : options.take) !== null && _c !== void 0 ? _c : 20;
+        return [items.slice(skip, skip + take), items.length];
     }
     async listRedemptions(ctx, options = {}, status) {
         var _a, _b;

@@ -45,6 +45,7 @@ export declare class PickupService {
     /** 店员核销凭据（到店或线上单通用）。仅设置 order.collected 与 redemption.collected。 */
     private commitRedeem;
     onOrderCancelled(orderId: number): Promise<void>;
+    /** 店主域：本店待核销 pickup 凭据（generated，且订单主商品归本店）。返回 [items, totalItems] 供 resolver 解构。 */
     myPickupOrders(ctx: RequestContext, options?: any): Promise<[PickupRedemption[], number]>;
     private listRedemptions;
     allRedemptions(ctx: RequestContext, options?: any): Promise<{

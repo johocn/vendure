@@ -9,6 +9,7 @@ import {
     TransactionalConnection,
     UserInputError,
 } from '@vendure/core';
+import { In } from 'typeorm';
 import { Inject, Injectable } from '@nestjs/common';
 import { Shop } from '@vendure/shop-plugin';
 
@@ -264,10 +265,36 @@ export class PickupService {
         }
     }
 
-    async myPickupOrders(ctx: RequestContext, options?: any) {
-        // 店主域：本店待核销 pickup 订单 → 反查 PickupRedemption（generated）
-        // 简化：返回其属店由 resolver 依 Order.customFields → 自提点 shop 过滤；缺省返回全部 generated
-        return this.listRedemptions(ctx, options, 'generated');
+    /** 店主域：本店待核销 pickup 凭据（generated，且订单主商品归本店）。返回 [items, totalItems] 供 resolver 解构。 */
+    async myPickupOrders(ctx: RequestContext, options?: any): Promise<[PickupRedemption[], number]> {
+        // 店主域：本店待核销 pickup 凭据（generated），且订单主商品归本店（判据与 claimPickupByShop /
+        // myShopOrders 一致：任一订单行商品 Product.customFields.shopId 归本店）。跨渠道单（默认商城）同样可核销。
+        const shop = await this.requireMyShop(ctx);
+        const repo = this.connection.getRepository(ctx, PickupRedemption);
+        const [all] = await repo.findAndCount({ where: { status: 'generated' } });
+        if (all.length === 0) return [[], 0];
+        const shopId = shop.id as number;
+
+        // 批量反查订单行商品归属，避免 N+1
+        const orderIds: number[] = [...new Set(all.map(r => r.orderId))];
+        const orders = await this.connection
+            .getRepository(ctx, Order)
+            .find({
+                where: { id: In(orderIds) } as any,
+                relations: ['lines', 'lines.productVariant', 'lines.productVariant.product'],
+            } as any);
+        const owned = new Set<number>();
+        for (const o of orders) {
+            const mine = ((o as any)?.lines ?? []).some((l: any) => {
+                const sid = (l?.productVariant?.product?.customFields ?? {})?.shopId;
+                return sid != null && Number(sid) === shopId;
+            });
+            if (mine) owned.add(o.id as number);
+        }
+        const items = all.filter(r => owned.has(r.orderId));
+        const skip = options?.skip ?? 0;
+        const take = options?.take ?? 20;
+        return [items.slice(skip, skip + take), items.length];
     }
 
     private async listRedemptions(
