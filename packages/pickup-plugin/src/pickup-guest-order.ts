@@ -12,6 +12,8 @@ export interface GuestOrderOverview {
     totalWithTax: number;
     isPickup: boolean;
     pickupClaimed: boolean;
+    paymentType: string | null;
+    collected: boolean;
     pickupCode: string | null;
     pickupClaimable: boolean;
     pickupLocation: { name: string; address: string; businessHours: string } | null;
@@ -78,6 +80,8 @@ export function buildGuestOverview(
         totalWithTax: order.totalWithTax,
         isPickup,
         pickupClaimed: isPickup && !!cf.pickupClaimed,
+        paymentType: redemption?.paymentType ?? null,
+        collected: !!redemption && (redemption.paymentType === 'online' || redemption.collected === true),
         pickupCode: redemption?.code ?? null,
         pickupClaimable: isPickup && !cf.pickupClaimed && shipped,
         pickupLocation,

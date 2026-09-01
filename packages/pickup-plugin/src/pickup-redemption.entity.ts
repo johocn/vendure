@@ -37,4 +37,10 @@ export class PickupRedemption extends VendureEntity implements ChannelAware {
 
     @Column({ type: 'varchar', nullable: true })
     claimChannel?: 'customer' | 'shop' | null;
+
+    @Column({ type: 'varchar', nullable: true })
+    paymentType?: 'online' | 'cod' | null;
+
+    @Column({ type: 'boolean', nullable: false, default: false })
+    collected: boolean;
 }

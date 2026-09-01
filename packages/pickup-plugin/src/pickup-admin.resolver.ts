@@ -11,6 +11,11 @@ export class PickupAdminResolver {
         private orderService: OrderService,
     ) {}
 
+    @ResolveProperty('collected')
+    collected(@Parent() r: PickupRedemption): boolean {
+        return this.service.effectiveCollected(r);
+    }
+
     @Query()
     @Allow(Permission.UpdateSettings)
     async pickupRedemptions(@Ctx() ctx: RequestContext, @Args() args: any): Promise<{

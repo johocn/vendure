@@ -66,20 +66,28 @@ export class PickupService {
         return shop;
     }
 
-    private isPickupPaid(ctx: RequestContext, order: Order): boolean {
+    /** 收款判定（唯一真源）：online 恒已收；cod 看人工 confirmation。 */
+    public effectiveCollected(redemption: PickupRedemption): boolean {
+        return redemption.paymentType === 'online' || redemption.collected === true;
+    }
+
+    /**
+     * 核销码生成资格：deliveryType=pickup 且已过「加购/付款中」阶段。
+     * online → 需已结算（PaymentSettled 及之后）；cod（到店付款/货到付款）→ 授权即视为可核销，
+     * 收款在核销完成时由店员确认（解决 PaymentAuthorized 不生成码的问题）。
+     */
+    private isPickupEligible(ctx: RequestContext, order: Order): boolean {
         const cf = (order.customFields ?? {}) as any;
-        // 「已付款 pickup 单」：履约方式为 pickup，且订单已完成支付（授权/结算及之后的物流各态均算）。
-        return (
-            cf.deliveryType === 'pickup' &&
-            ![
-                'AddingItems',
-                'ArrangingPayment',
-                'Draft',
-                'Cancelled',
-                'PaymentAuthorized',
-            ].includes(order.state as string) &&
-            (order.totalWithTax ?? 0) > 0
-        );
+        if (cf.deliveryType !== 'pickup') return false;
+        if ((order.totalWithTax ?? 0) <= 0) return false;
+        const ordering = ['AddingItems', 'ArrangingPayment', 'Draft', 'Cancelled'];
+        if (ordering.includes(order.state as string)) return false;
+        const payments = ((order as any).payments ?? []) as any[];
+        const cod = payments.some(p => p?.method === 'cash-on-delivery');
+        if (cod) return true; // 到店付款：授权即有资格，收款后核销
+        // online：需已结算
+        const notPaid = [...ordering, 'PaymentAuthorized'];
+        return !notPaid.includes(order.state as string);
     }
 
     /**
@@ -105,7 +113,7 @@ export class PickupService {
     /** 懒生成/取回固定提货码（幂等：一生对一单）。 */
     async resolveMyPickupCode(ctx: RequestContext, orderId: ID): Promise<PickupRedemption> {
         const order = await this.requireMyOrder(ctx, orderId);
-        if (!this.isPickupPaid(ctx, order)) {
+        if (!this.isPickupEligible(ctx, order)) {
             throw new UserInputError('Order is not a paid pickup order');
         }
         return this.getOrCreateRedemption(ctx, order);
@@ -116,26 +124,34 @@ export class PickupService {
         const existing = await repo.findOne({ where: { orderId: order.id as number } });
         if (existing) return existing;
         const code = await this.genUniqueCode(ctx);
+        const payments = ((order as any).payments ?? []) as any[];
+        const paymentType: 'online' | 'cod' = payments.some(p => p?.method === 'cash-on-delivery') ? 'cod' : 'online';
         const entity = repo.create({
             channelId: ctx.channelId as number,
             orderId: order.id as number,
             code,
             status: 'generated',
+            paymentType,
+            collected: false,
         });
         const saved = await repo.save(entity);
+        // 同步 Order.collected（online 置 true）
+        if (paymentType === 'online') {
+            await this.orderService.updateCustomFields(ctx, order.id as ID, { collected: true });
+        }
         return saved;
     }
 
     /**
      * 为「已付款的 pickup 订单」幂等生成提货码（自动生码；供事件订阅与游客查询兜底调用）。
-     * 非 pickup 或未过支付闸门（isPickupPaid 排除 PaymentAuthorized 之前的状态）则不生成。
+     * 非 pickup 或未过支付闸门（isPickupEligible：cod 授权即过）则不生成。
      */
     async ensurePickupRedemptionForOrder(ctx: RequestContext, orderId: ID): Promise<void> {
         const order = await this.orderService.findOne(ctx, orderId, ['customer', 'customer.user'] as any);
         if (!order) return;
         const cf = (order.customFields ?? {}) as any;
         if (cf.deliveryType !== 'pickup') return;
-        if (!this.isPickupPaid(ctx, order)) return;
+        if (!this.isPickupEligible(ctx, order)) return;
         await this.getOrCreateRedemption(ctx, order);
     }
 
@@ -158,14 +174,19 @@ export class PickupService {
         return [order!, redemption];
     }
 
-    /** 顾客自核销。 */
+    /** 顾客自核销：仅线上已收款单可自助核销；到店付款单必须到店由店员收款核销（防漏收）。 */
     async claimMyPickup(ctx: RequestContext, orderId: ID, code: string): Promise<PickupRedemption> {
         await this.requireMyOrder(ctx, orderId);
+        const order = await this.orderService.findOne(ctx, orderId, ['payments'] as any);
+        const payments = ((order as any)?.payments ?? []) as any[];
+        if (payments.some(p => p?.method === 'cash-on-delivery')) {
+            throw new UserInputError('该单为到店付款，请在到店时由店员核销');
+        }
         return this.commitRedeem(ctx, orderId, code, 'customer');
     }
 
-    /** 店员核销（仅本店订单，跨店抛 Forbidden）。 */
-    async claimPickupByShop(ctx: RequestContext, code: string): Promise<PickupRedemption> {
+    /** 店员核销（仅本店订单，跨店抛 Forbidden）。到店付款单必须确认收款（collect=true）后才放行，防漏收。 */
+    async claimPickupByShop(ctx: RequestContext, code: string, collect?: boolean): Promise<PickupRedemption> {
         // 先取店主所属店作为归属上下文
         const shop = await this.requireMyShop(ctx);
         const repo = this.connection.getRepository(ctx, PickupRedemption);
@@ -179,14 +200,22 @@ export class PickupService {
         if (redemption.status !== 'generated') {
             throw new UserInputError('Pickup code already used / voided');
         }
-        return this.commitRedeem(ctx, redemption.orderId, code, 'shop');
+        const order = await this.orderService.findOne(ctx, redemption.orderId, ['payments'] as any);
+        const payments = ((order as any)?.payments ?? []) as any[];
+        const cod = payments.some(p => p?.method === 'cash-on-delivery');
+        if (cod && collect !== true) {
+            throw new UserInputError('该单为到店付款，请先确认收款后再核销');
+        }
+        return this.commitRedeem(ctx, redemption.orderId, code, 'shop', cod ? true : undefined);
     }
 
+    /** 店员核销凭据（到店或线上单通用）。仅设置 order.collected 与 redemption.collected。 */
     private async commitRedeem(
         ctx: RequestContext,
         orderId: ID,
         code: string,
         claimChannel: 'customer' | 'shop',
+        collected?: boolean,
     ): Promise<PickupRedemption> {
         const [order, redemption] = await this.findGeneratable(ctx, orderId, code);
         const repo = this.connection.getRepository(ctx, PickupRedemption);
@@ -194,10 +223,14 @@ export class PickupService {
         redemption.claimedAt = new Date();
         redemption.claimedByUserId = ctx.activeUserId ? (ctx.activeUserId as number) : null;
         redemption.claimChannel = claimChannel;
+        if (collected === true) redemption.collected = true;
         const saved = await repo.save(redemption);
 
         await this.connection.withTransaction(ctx, async txCtx => {
-            await this.orderService.updateCustomFields(txCtx, orderId, { pickupClaimed: true });
+            await this.orderService.updateCustomFields(txCtx, orderId, {
+                pickupClaimed: true,
+                collected: collected === true ? true : undefined,
+            });
             const withF = await this.orderService.findOne(txCtx, orderId, ['fulfillments']);
             for (const f of withF?.fulfillments ?? []) {
                 if (f.state === 'Shipped') {
