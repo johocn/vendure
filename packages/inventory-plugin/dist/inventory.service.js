@@ -354,6 +354,10 @@ let InventoryService = class InventoryService {
             if (options.city && !this.locationServesCity(loc, options.city)) {
                 continue;
             }
+            // 带定位时跳过无坐标仓库：无法计算“就近”距离，避免 9e15/INF 干扰结果与前端展示
+            if (origin && !this.locationHasCoords(loc)) {
+                continue;
+            }
             const distanceKm = this.locationDistanceKm(loc, origin);
             const perLocation = [];
             for (const v of variants) {
@@ -379,7 +383,21 @@ let InventoryService = class InventoryService {
         if (!Array.isArray(serviceCities) || serviceCities.length === 0) {
             return true;
         }
-        return serviceCities.includes(city);
+        const norm = (s) => s.trim().toLowerCase();
+        return serviceCities.some((s) => {
+            if (typeof s !== 'string')
+                return false;
+            const a = norm(city);
+            const b = norm(s);
+            return a === b || a.startsWith(b) || b.startsWith(a);
+        });
+    }
+    locationHasCoords(loc) {
+        var _a;
+        const cf = (_a = loc.customFields) !== null && _a !== void 0 ? _a : {};
+        const lat = cf.lat != null ? Number(cf.lat) : NaN;
+        const lng = cf.lng != null ? Number(cf.lng) : NaN;
+        return isFinite(lat) && isFinite(lng);
     }
     locationDistanceKm(loc, origin) {
         var _a;

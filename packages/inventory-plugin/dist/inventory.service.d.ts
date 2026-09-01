@@ -132,6 +132,7 @@ export declare class InventoryService {
         }>;
     }>>;
     private locationServesCity;
+    private locationHasCoords;
     private locationDistanceKm;
     private haversineKm;
     createStockInOrder(ctx: RequestContext, input: {

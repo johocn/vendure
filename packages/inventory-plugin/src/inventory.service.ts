@@ -487,6 +487,10 @@ export class InventoryService {
             if (options.city && !this.locationServesCity(loc, options.city)) {
                 continue;
             }
+            // 带定位时跳过无坐标仓库：无法计算“就近”距离，避免 9e15/INF 干扰结果与前端展示
+            if (origin && !this.locationHasCoords(loc)) {
+                continue;
+            }
             const distanceKm = this.locationDistanceKm(loc, origin);
             const perLocation: VariantStock[] = [];
             for (const v of variants) {
@@ -520,6 +524,13 @@ export class InventoryService {
             const b = norm(s);
             return a === b || a.startsWith(b) || b.startsWith(a);
         });
+    }
+
+    private locationHasCoords(loc: StockLocation): boolean {
+        const cf = (loc.customFields as any) ?? {};
+        const lat = cf.lat != null ? Number(cf.lat) : NaN;
+        const lng = cf.lng != null ? Number(cf.lng) : NaN;
+        return isFinite(lat) && isFinite(lng);
     }
 
     private locationDistanceKm(loc: StockLocation, origin: { lat: number; lng: number } | null): number {
