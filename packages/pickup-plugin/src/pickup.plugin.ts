@@ -18,6 +18,7 @@ const pickupOrderCustomFields: CustomFields = {
         { name: 'deliveryType', type: 'string', nullable: true, defaultValue: 'delivery', public: true },
         { name: 'pickupClaimed', type: 'boolean', nullable: true, public: true },
         { name: 'collected', type: 'boolean', nullable: true, public: true },
+        { name: 'paymentType', type: 'string', nullable: true, public: true },
     ],
 };
 

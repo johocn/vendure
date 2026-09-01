@@ -135,10 +135,11 @@ export class PickupService {
             collected: false,
         });
         const saved = await repo.save(entity);
-        // 同步 Order.collected（online 置 true）
-        if (paymentType === 'online') {
-            await this.orderService.updateCustomFields(ctx, order.id as ID, { collected: true });
-        }
+        // 同步 Order.collected / paymentType（online 恒置已收；COD 收款在核销时再置）
+        await this.orderService.updateCustomFields(ctx, order.id as ID, {
+            paymentType,
+            collected: paymentType === 'online',
+        });
         return saved;
     }
 
