@@ -19,6 +19,12 @@ const shop_plugin_1 = require("@vendure/shop-plugin");
 const constants_1 = require("./constants");
 const pickup_redemption_entity_1 = require("./pickup-redemption.entity");
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // 去易混淆 0/O1/I/L
+// 到店收银（需人工确认收款）支付方式集合：下单时尚未收款，收款在提货当刻由店员确认。
+// CO 到店付款/货到付款、固定聚合码收款均为到店收银；余额/线上等支付则视为已在线收款。
+const ARRIVE_STORE_PAYMENT_METHODS = [
+    'cash-on-delivery', // 货到付款/门店收银
+    'fixed-aggregate-collection', // 固定聚合码收款（顾客扫门店固定码，店员确认到账）
+];
 let PickupService = class PickupService {
     constructor(options, connection, orderService, fulfillmentService, administratorService) {
         this.options = options;
@@ -71,6 +77,10 @@ let PickupService = class PickupService {
     effectiveCollected(redemption) {
         return redemption.paymentType === 'online' || redemption.collected === true;
     }
+    /** 是否到店收银单（下单时未收款，需店员提货时确认收款）。 */
+    isArriveStorePayment(payments) {
+        return payments.some(p => ARRIVE_STORE_PAYMENT_METHODS.includes(p === null || p === void 0 ? void 0 : p.method));
+    }
     /**
      * 核销码生成资格：deliveryType=pickup 且已过「加购/付款中」阶段。
      * online → 需已结算（PaymentSettled 及之后）；cod（到店付款/货到付款）→ 授权即视为可核销，
@@ -87,7 +97,7 @@ let PickupService = class PickupService {
         if (ordering.includes(order.state))
             return false;
         const payments = ((_c = order.payments) !== null && _c !== void 0 ? _c : []);
-        const cod = payments.some(p => (p === null || p === void 0 ? void 0 : p.method) === 'cash-on-delivery');
+        const cod = this.isArriveStorePayment(payments);
         if (cod)
             return true; // 到店付款：授权即有资格，收款后核销
         // online：需已结算
@@ -131,7 +141,7 @@ let PickupService = class PickupService {
             return existing;
         const code = await this.genUniqueCode(ctx);
         const payments = ((_a = order.payments) !== null && _a !== void 0 ? _a : []);
-        const paymentType = payments.some(p => (p === null || p === void 0 ? void 0 : p.method) === 'cash-on-delivery') ? 'cod' : 'online';
+        const paymentType = this.isArriveStorePayment(payments) ? 'cod' : 'online';
         const entity = repo.create({
             channelId: ctx.channelId,
             orderId: order.id,
@@ -189,7 +199,7 @@ let PickupService = class PickupService {
         await this.requireMyOrder(ctx, orderId);
         const order = await this.orderService.findOne(ctx, orderId, ['payments']);
         const payments = ((_a = order === null || order === void 0 ? void 0 : order.payments) !== null && _a !== void 0 ? _a : []);
-        if (payments.some(p => (p === null || p === void 0 ? void 0 : p.method) === 'cash-on-delivery')) {
+        if (this.isArriveStorePayment(payments)) {
             throw new core_1.UserInputError('该单为到店付款，请在到店时由店员核销');
         }
         return this.commitRedeem(ctx, orderId, code, 'customer');
@@ -213,7 +223,7 @@ let PickupService = class PickupService {
         }
         const order = await this.orderService.findOne(ctx, redemption.orderId, ['payments']);
         const payments = ((_a = order === null || order === void 0 ? void 0 : order.payments) !== null && _a !== void 0 ? _a : []);
-        const cod = payments.some(p => (p === null || p === void 0 ? void 0 : p.method) === 'cash-on-delivery');
+        const cod = this.isArriveStorePayment(payments);
         if (cod && collect !== true) {
             throw new core_1.UserInputError('该单为到店付款，请先确认收款后再核销');
         }

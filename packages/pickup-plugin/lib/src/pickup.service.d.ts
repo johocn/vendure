@@ -15,6 +15,8 @@ export declare class PickupService {
     requireMyShop(ctx: RequestContext): Promise<Shop>;
     /** 收款判定（唯一真源）：online 恒已收；cod 看人工 confirmation。 */
     effectiveCollected(redemption: PickupRedemption): boolean;
+    /** 是否到店收银单（下单时未收款，需店员提货时确认收款）。 */
+    private isArriveStorePayment;
     /**
      * 核销码生成资格：deliveryType=pickup 且已过「加购/付款中」阶段。
      * online → 需已结算（PaymentSettled 及之后）；cod（到店付款/货到付款）→ 授权即视为可核销，
