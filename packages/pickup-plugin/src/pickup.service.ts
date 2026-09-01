@@ -275,4 +275,35 @@ export class PickupService {
         const [items, totalItems] = await this.listRedemptions(ctx, options);
         return { items, totalItems };
     }
+
+    /**
+     * 本店商品订单：跨渠道归集「订单任一行商品 Product.customFields.shopId === 本店 id」的订单
+     * （与核销/结算同判据）。商户商品在默认商城售出的订单归属默认渠道，此处必须跨渠道查询。
+     */
+    async myShopOrders(ctx: RequestContext, options: any = {}): Promise<{ items: Order[]; totalItems: number }> {
+        const shop = await this.requireMyShop(ctx);
+        const take = Math.min(options?.take ?? 20, 100);
+        const skip = options?.skip ?? 0;
+        const repo = this.connection.rawConnection.getRepository(Order);
+        // 关联加载 lines→variant→product 以读取 Product.customFields.shopId；跨渠道取最近订单再在内存归集。
+        const recent = await repo.find({
+            relations: ['lines', 'lines.productVariant', 'lines.productVariant.product', 'customer', 'payments', 'channels'] as any,
+            order: { id: 'DESC' },
+            take: 1000,
+        } as any);
+        const matched = (recent as any[]).filter(o =>
+            this.orderLineHasShop(o?.lines ?? [], shop.id as number),
+        );
+        return {
+            items: matched.slice(skip, skip + take),
+            totalItems: matched.length,
+        };
+    }
+
+    private orderLineHasShop(lines: any[], shopId: number): boolean {
+        return lines.some(l => {
+            const sid = l?.productVariant?.product?.customFields?.shopId;
+            return sid != null && Number(sid) === shopId;
+        });
+    }
 }

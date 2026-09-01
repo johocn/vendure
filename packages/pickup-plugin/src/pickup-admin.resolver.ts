@@ -1,8 +1,9 @@
 import { Args, Parent, Query, Resolver, ResolveProperty } from '@nestjs/graphql';
-import { Allow, Ctx, OrderService, Permission, RequestContext } from '@vendure/core';
+import { Allow, Ctx, Order, OrderService, Permission, RequestContext } from '@vendure/core';
 
 import { PickupRedemption } from './pickup-redemption.entity';
 import { PickupService } from './pickup.service';
+import { manageOwnShop } from '@vendure/shop-plugin';
 
 @Resolver('PickupRedemption')
 export class PickupAdminResolver {
@@ -14,6 +15,15 @@ export class PickupAdminResolver {
     @ResolveProperty('collected')
     collected(@Parent() r: PickupRedemption): boolean {
         return this.service.effectiveCollected(r);
+    }
+
+    @Query()
+    @Allow(manageOwnShop.Permission)
+    async myShopOrders(@Ctx() ctx: RequestContext, @Args() args: any): Promise<{
+        items: Order[];
+        totalItems: number;
+    }> {
+        return this.service.myShopOrders(ctx, args.options);
     }
 
     @Query()
