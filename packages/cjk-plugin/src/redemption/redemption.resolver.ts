@@ -1,6 +1,6 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 import {
-    Allow, ConfigService, Ctx, Order, OrderService, Permission, RequestContext, UserInputError,
+    Allow, ConfigService, Ctx, EntityHydrator, Order, OrderService, Permission, RequestContext, UserInputError,
 } from '@vendure/core';
 import { RedemptionCodeService } from './redemption-code.service';
 
@@ -49,6 +49,7 @@ export class RedemptionAdminResolver {
     constructor(
         private redemptionCodeService: RedemptionCodeService,
         private orderService: OrderService,
+        private entityHydrator: EntityHydrator,
     ) {}
 
     @Query()
@@ -58,6 +59,9 @@ export class RedemptionAdminResolver {
         if (!order) {
             return { order: null, claimed: false, claimedAt: null };
         }
+        // lookupByCode 经 queryBuilder 取 order 未加载 lines，Vendure hydrator 对
+        // 未加载 relation 字段访问 totalQuantity 会抛错，故先灌注 lines 再读 totalQuantity。
+        await this.entityHydrator.hydrate(ctx, order, { relations: ['lines'] } as any);
         const cf = order.customFields ?? {};
         return {
             order: {
@@ -78,6 +82,8 @@ export class RedemptionAdminResolver {
     async redemptionClaim(@Ctx() ctx: RequestContext, @Args('code') code: string) {
         const order = await this.redemptionCodeService.lookupByCode(ctx, code);
         if (!order) throw new UserInputError(ERR_NOT_FOUND);
+        // 同 redemptionLookup：先灌注 lines 再读 totalQuantity，避免未加载 relation 访问抛错。
+        await this.entityHydrator.hydrate(ctx, order, { relations: ['lines'] } as any);
         // lookupByCode 已限当前租户 Channel，核销复用同一检索保持租户隔离
         const result = await this.redemptionCodeService.claim(ctx, order.id);
         const cf = order.customFields ?? {};

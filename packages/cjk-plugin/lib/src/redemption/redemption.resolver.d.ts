@@ -1,4 +1,4 @@
-import { ConfigService, OrderService, RequestContext } from '@vendure/core';
+import { ConfigService, EntityHydrator, OrderService, RequestContext } from '@vendure/core';
 import { RedemptionCodeService } from './redemption-code.service';
 export declare class RedemptionShopResolver {
     private redemptionCodeService;
@@ -13,7 +13,8 @@ export declare class RedemptionShopResolver {
 export declare class RedemptionAdminResolver {
     private redemptionCodeService;
     private orderService;
-    constructor(redemptionCodeService: RedemptionCodeService, orderService: OrderService);
+    private entityHydrator;
+    constructor(redemptionCodeService: RedemptionCodeService, orderService: OrderService, entityHydrator: EntityHydrator);
     redemptionLookup(ctx: RequestContext, code: string): Promise<{
         order: null;
         claimed: boolean;

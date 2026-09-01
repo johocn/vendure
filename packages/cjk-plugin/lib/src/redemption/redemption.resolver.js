@@ -66,9 +66,10 @@ exports.RedemptionShopResolver = RedemptionShopResolver = __decorate([
         core_1.ConfigService])
 ], RedemptionShopResolver);
 let RedemptionAdminResolver = class RedemptionAdminResolver {
-    constructor(redemptionCodeService, orderService) {
+    constructor(redemptionCodeService, orderService, entityHydrator) {
         this.redemptionCodeService = redemptionCodeService;
         this.orderService = orderService;
+        this.entityHydrator = entityHydrator;
     }
     async redemptionLookup(ctx, code) {
         var _a, _b;
@@ -76,6 +77,9 @@ let RedemptionAdminResolver = class RedemptionAdminResolver {
         if (!order) {
             return { order: null, claimed: false, claimedAt: null };
         }
+        // lookupByCode 经 queryBuilder 取 order 未加载 lines，Vendure hydrator 对
+        // 未加载 relation 字段访问 totalQuantity 会抛错，故先灌注 lines 再读 totalQuantity。
+        await this.entityHydrator.hydrate(ctx, order, { relations: ['lines'] });
         const cf = (_a = order.customFields) !== null && _a !== void 0 ? _a : {};
         return {
             order: {
@@ -95,6 +99,8 @@ let RedemptionAdminResolver = class RedemptionAdminResolver {
         const order = await this.redemptionCodeService.lookupByCode(ctx, code);
         if (!order)
             throw new core_1.UserInputError(ERR_NOT_FOUND);
+        // 同 redemptionLookup：先灌注 lines 再读 totalQuantity，避免未加载 relation 访问抛错。
+        await this.entityHydrator.hydrate(ctx, order, { relations: ['lines'] });
         // lookupByCode 已限当前租户 Channel，核销复用同一检索保持租户隔离
         const result = await this.redemptionCodeService.claim(ctx, order.id);
         const cf = (_a = order.customFields) !== null && _a !== void 0 ? _a : {};
@@ -135,6 +141,7 @@ __decorate([
 exports.RedemptionAdminResolver = RedemptionAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [redemption_code_service_1.RedemptionCodeService,
-        core_1.OrderService])
+        core_1.OrderService,
+        core_1.EntityHydrator])
 ], RedemptionAdminResolver);
 //# sourceMappingURL=redemption.resolver.js.map
