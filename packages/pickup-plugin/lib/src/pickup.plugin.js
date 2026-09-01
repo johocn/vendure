@@ -62,7 +62,6 @@ const adminSchema = gql `
     extend type Query {
         myPickupOrders(options: PickupListOptions): PickupRedemptionList!
         pickupRedemptions(options: PickupListOptions): PickupRedemptionList!
-        myShopOrders(options: PickupListOptions): OrderList!
     }
     extend type Mutation {
         claimPickupByShop(code: String!, collect: Boolean): PickupRedemption!

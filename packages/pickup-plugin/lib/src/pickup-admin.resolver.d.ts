@@ -1,4 +1,4 @@
-import { Order, OrderService, RequestContext } from '@vendure/core';
+import { OrderService, RequestContext } from '@vendure/core';
 import { PickupRedemption } from './pickup-redemption.entity';
 import { PickupService } from './pickup.service';
 export declare class PickupAdminResolver {
@@ -6,10 +6,6 @@ export declare class PickupAdminResolver {
     private orderService;
     constructor(service: PickupService, orderService: OrderService);
     collected(r: PickupRedemption): boolean;
-    myShopOrders(ctx: RequestContext, args: any): Promise<{
-        items: Order[];
-        totalItems: number;
-    }>;
     pickupRedemptions(ctx: RequestContext, args: any): Promise<{
         items: PickupRedemption[];
         totalItems: number;

@@ -49,13 +49,4 @@ export declare class PickupService {
         items: PickupRedemption[];
         totalItems: number;
     }>;
-    /**
-     * 本店商品订单：跨渠道归集「订单任一行商品 Product.customFields.shopId === 本店 id」的订单
-     * （与核销/结算同判据）。商户商品在默认商城售出的订单归属默认渠道，此处必须跨渠道查询。
-     */
-    myShopOrders(ctx: RequestContext, options?: any): Promise<{
-        items: Order[];
-        totalItems: number;
-    }>;
-    private orderLineHasShop;
 }

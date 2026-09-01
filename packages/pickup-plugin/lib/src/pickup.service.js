@@ -273,35 +273,6 @@ let PickupService = class PickupService {
         const [items, totalItems] = await this.listRedemptions(ctx, options);
         return { items, totalItems };
     }
-    /**
-     * 本店商品订单：跨渠道归集「订单任一行商品 Product.customFields.shopId === 本店 id」的订单
-     * （与核销/结算同判据）。商户商品在默认商城售出的订单归属默认渠道，此处必须跨渠道查询。
-     */
-    async myShopOrders(ctx, options = {}) {
-        var _a, _b;
-        const shop = await this.requireMyShop(ctx);
-        const take = Math.min((_a = options === null || options === void 0 ? void 0 : options.take) !== null && _a !== void 0 ? _a : 20, 100);
-        const skip = (_b = options === null || options === void 0 ? void 0 : options.skip) !== null && _b !== void 0 ? _b : 0;
-        const repo = this.connection.rawConnection.getRepository(core_1.Order);
-        // 关联加载 lines→variant→product 以读取 Product.customFields.shopId；跨渠道取最近订单再在内存归集。
-        const recent = await repo.find({
-            relations: ['lines', 'lines.productVariant', 'lines.productVariant.product', 'customer', 'payments', 'channels'],
-            order: { id: 'DESC' },
-            take: 1000,
-        });
-        const matched = recent.filter(o => { var _a; return this.orderLineHasShop((_a = o === null || o === void 0 ? void 0 : o.lines) !== null && _a !== void 0 ? _a : [], shop.id); });
-        return {
-            items: matched.slice(skip, skip + take),
-            totalItems: matched.length,
-        };
-    }
-    orderLineHasShop(lines, shopId) {
-        return lines.some(l => {
-            var _a, _b, _c;
-            const sid = (_c = (_b = (_a = l === null || l === void 0 ? void 0 : l.productVariant) === null || _a === void 0 ? void 0 : _a.product) === null || _b === void 0 ? void 0 : _b.customFields) === null || _c === void 0 ? void 0 : _c.shopId;
-            return sid != null && Number(sid) === shopId;
-        });
-    }
 };
 exports.PickupService = PickupService;
 exports.PickupService = PickupService = __decorate([
