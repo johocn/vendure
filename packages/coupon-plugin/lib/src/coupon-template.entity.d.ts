@@ -1,12 +1,19 @@
 import { Channel, ChannelAware, DeepPartial, VendureEntity } from '@vendure/core';
+import { LocalizedText } from './localize';
 import { CouponScope, CouponType } from './types';
 /**
  * 券模板：后台可配置的券规则。
  */
 export declare class CouponTemplate extends VendureEntity implements ChannelAware {
     constructor(input?: DeepPartial<CouponTemplate>);
-    /** 券名 */
-    name: string;
+    /**
+     * 券名（LocalizedText：纯字符串或按 LanguageCode 键的多语言映射，兼容既有 `string`）。
+     * 为了兼容既有以 varchar/text 存储的历史明文，列类型保持文本型而非 `json`，
+     * 并通过 transformer 在保存时对对象做序列化落库。
+     */
+    name: LocalizedText;
+    /** 券说明（LocalizedText，可空）。 */
+    description?: LocalizedText;
     /** FIXED | PERCENT | FULL */
     type: CouponType;
     /** 面额（FIXED/FULL）或折扣折数（PERCENT，1-99，如 8.5折=85） */

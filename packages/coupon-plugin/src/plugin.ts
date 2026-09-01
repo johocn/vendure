@@ -14,6 +14,7 @@ import gql from 'graphql-tag';
 
 import { COUPON_PLUGIN_OPTIONS, loggerCtx } from './constants';
 import { CouponAdminResolver } from './coupon-admin.resolver';
+import { CouponTemplateResolver } from './coupon-template.resolver';
 import { couponDiscountAction } from './coupon-promotion-action';
 import { couponAppliedCondition } from './coupon-promotion-condition';
 import { setCouponConnection } from './coupon-runtime';
@@ -37,6 +38,7 @@ const couponTemplateType = `
 type CouponTemplate implements Node {
     id: ID!
     name: String!
+    description: String
     type: CouponType!
     discountValue: Int!
     minSpend: Int!
@@ -102,6 +104,7 @@ type CustomerCoupon implements Node {
 
             input CreateCouponTemplateInput {
                 name: String!
+                description: String
                 type: CouponType!
                 discountValue: Int!
                 minSpend: Int
@@ -120,6 +123,7 @@ type CustomerCoupon implements Node {
             input UpdateCouponTemplateInput {
                 id: ID!
                 name: String
+                description: String
                 type: CouponType
                 discountValue: Int
                 minSpend: Int
@@ -152,7 +156,7 @@ type CustomerCoupon implements Node {
                 revokeCustomerCoupon(id: ID!): CustomerCoupon!
             }
         `,
-        resolvers: [CouponAdminResolver],
+        resolvers: [CouponAdminResolver, CouponTemplateResolver],
     },
     shopApiExtensions: {
         schema: () => gql`
@@ -181,7 +185,7 @@ type CustomerCoupon implements Node {
                 exchangeCouponWithPoints(templateId: ID!): ExchangeCouponResult!
             }
         `,
-        resolvers: [CouponShopResolver],
+        resolvers: [CouponShopResolver, CouponTemplateResolver],
     },
     configuration: (config) => {
         config.customFields.Order = mergeCustomFields(config.customFields.Order, couponOrderCustomFields.Order);

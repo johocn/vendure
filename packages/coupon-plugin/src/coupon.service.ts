@@ -16,6 +16,7 @@ import {
 import { MemberLevelService } from '@vendure/member-level-plugin';
 
 import { loggerCtx } from './constants';
+import { localizeText } from './localize';
 import { isDefaultMallChannel, lineHasShopId } from './coupon-scope';
 import { CouponTemplate } from './coupon-template.entity';
 import { CustomerCoupon } from './customer-coupon.entity';
@@ -23,6 +24,7 @@ import { CustomerCoupon } from './customer-coupon.entity';
 /** 模板 update() 允许写入的字段白名单 */
 const TEMPLATE_UPDATE_ALLOWED: ReadonlyArray<keyof CouponTemplate> = [
     'name',
+    'description',
     'type',
     'discountValue',
     'minSpend',
@@ -274,7 +276,7 @@ export class CouponService {
             customerId,
             tpl.pointsPrice,
             null,
-            `积分兑换优惠券:${tpl.name}`,
+            `积分兑换优惠券:${localizeText(tpl.name as any, ctx.languageCode, '')}`,
         );
         // 原子扣发行余量（防超发）
         const ok = await this.atomicIncrementClaimed(ctx, tpl.id, tpl);

@@ -14,12 +14,14 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const member_level_plugin_1 = require("@vendure/member-level-plugin");
 const constants_1 = require("./constants");
+const localize_1 = require("./localize");
 const coupon_scope_1 = require("./coupon-scope");
 const coupon_template_entity_1 = require("./coupon-template.entity");
 const customer_coupon_entity_1 = require("./customer-coupon.entity");
 /** 模板 update() 允许写入的字段白名单 */
 const TEMPLATE_UPDATE_ALLOWED = [
     'name',
+    'description',
     'type',
     'discountValue',
     'minSpend',
@@ -238,7 +240,7 @@ let CouponService = class CouponService {
             }
         }
         // 扣积分（原子 + SPEND 流水；不足抛 Insufficient；Transaction 保证与发券同回滚）
-        await this.memberLevelService.spendPoints(ctx, customerId, tpl.pointsPrice, null, `积分兑换优惠券:${tpl.name}`);
+        await this.memberLevelService.spendPoints(ctx, customerId, tpl.pointsPrice, null, `积分兑换优惠券:${(0, localize_1.localizeText)(tpl.name, ctx.languageCode, '')}`);
         // 原子扣发行余量（防超发）
         const ok = await this.atomicIncrementClaimed(ctx, tpl.id, tpl);
         if (!ok) {

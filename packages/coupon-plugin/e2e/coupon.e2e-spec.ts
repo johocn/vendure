@@ -6,6 +6,7 @@ import { LanguageCode, mergeConfig } from '@vendure/core';
 import { initialData } from '../../../e2e-common/e2e-initial-data';
 import { TEST_SETUP_TIMEOUT_MS, testConfig } from '../../../e2e-common/test-config';
 import { CouponPlugin } from '../src/plugin';
+import { localizeText } from '../src/localize';
 import { ShopPlugin } from '../../shop-plugin/src/plugin';
 import { testSuccessfulPaymentMethod } from '../../core/e2e/fixtures/test-payment-methods';
 import {
@@ -15,6 +16,30 @@ import {
 import { assertThrowsWithMessage } from '../../core/e2e/utils/assert-throws-with-message';
 
 registerInitializer('sqljs', new SqljsInitializer(path.join(__dirname, '__data__')));
+
+/* 纯单元：localizeText 回退链（不依赖服务，TDD 先红后绿） */
+describe('localizeText fallback chain', () => {
+    it('纯字符串原样返回（向后兼容既有 name: string）', () => {
+        expect(localizeText('满100减20', LanguageCode.zh_Hans)).toBe('满100减20');
+    });
+    it('locale 命中优先于 en；未命中 locale 时回退 en', () => {
+        const localized = { zh_Hans: '满100减20', en: '20 off 100' };
+        expect(localizeText(localized, LanguageCode.zh_Hans)).toBe('满100减20');
+        expect(localizeText(localized, LanguageCode.fr)).toBe('20 off 100');
+        expect(localizeText(localized, LanguageCode.en)).toBe('20 off 100');
+    });
+    it('无 en 取首值；空记录回退 fallback；undefined 回退空串', () => {
+        expect(localizeText({ zh_Hans: '仅中文' }, LanguageCode.en)).toBe('仅中文');
+        expect(localizeText({}, LanguageCode.en, 'fb')).toBe('fb');
+        expect(localizeText(undefined, LanguageCode.en)).toBe('');
+        expect(localizeText({} as any, LanguageCode.en)).toBe('');
+    });
+    it('以 JSON 字符串形态提供的本地化记录可被解析', () => {
+        const json = JSON.stringify({ zh_Hans: '满100减20', en: '20 off 100' });
+        expect(localizeText(json as any, LanguageCode.zh_Hans)).toBe('满100减20');
+        expect(localizeText(json as any, LanguageCode.en)).toBe('20 off 100');
+    });
+});
 
 describe('CouponPlugin · 营销促销闭环（优惠券体系）', () => {
     const { server, adminClient, shopClient } = createTestEnvironment(
@@ -476,5 +501,39 @@ describe('CouponPlugin · 营销促销闭环（优惠券体系）', () => {
         expect(disc).toBeDefined();
         // 折扣 = 本店行小计(129900)，而非整单(139900→若按整单则为 135000 面额)
         expect(disc.amountWithTax).toBe(-129900);
+    });
+
+    it('券多语言：zh_Hans/en 会话下 couponCentre 返回本地化 name/description', async () => {
+        // 以 GraphQL String 标量承载 LocalizedText（JSON 字符串形态）创建多语言券
+        const nameJson = JSON.stringify({ zh_Hans: '满100减20', en: '20 off 100' });
+        const descJson = JSON.stringify({ zh_Hans: '满100减20优惠券', en: '20 off 100 coupon' });
+        const res = await adminClient.query(gql`
+            mutation {
+                createCouponTemplate(input: {
+                    name: "${nameJson.replace(/"/g, '\\"')}"
+                    description: "${descJson.replace(/"/g, '\\"')}"
+                    type: FIXED
+                    discountValue: 1000
+                }) { id }
+            }
+        `) as any;
+        const tplId = res.createCouponTemplate.id;
+
+        const query = gql`
+            query { couponCentre { id name description } }
+        `;
+        // zh_Hans 会话
+        const zh = await shopClient.query(query, undefined, { languageCode: 'zh_Hans' }) as any;
+        const zhTpl = zh.couponCentre.find((t: any) => String(t.id) === String(tplId));
+        expect(zhTpl).toBeDefined();
+        expect(zhTpl.name).toBe('满100减20');
+        expect(zhTpl.description).toBe('满100减20优惠券');
+
+        // en 会话
+        const en = await shopClient.query(query, undefined, { languageCode: 'en' }) as any;
+        const enTpl = en.couponCentre.find((t: any) => String(t.id) === String(tplId));
+        expect(enTpl).toBeDefined();
+        expect(enTpl.name).toBe('20 off 100');
+        expect(enTpl.description).toBe('20 off 100 coupon');
     });
 });

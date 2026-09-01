@@ -23,6 +23,7 @@ const core_2 = require("@vendure/core");
 const graphql_tag_1 = __importDefault(require("graphql-tag"));
 const constants_1 = require("./constants");
 const coupon_admin_resolver_1 = require("./coupon-admin.resolver");
+const coupon_template_resolver_1 = require("./coupon-template.resolver");
 const coupon_promotion_action_1 = require("./coupon-promotion-action");
 const coupon_promotion_condition_1 = require("./coupon-promotion-condition");
 const coupon_runtime_1 = require("./coupon-runtime");
@@ -40,6 +41,7 @@ const couponTemplateType = `
 type CouponTemplate implements Node {
     id: ID!
     name: String!
+    description: String
     type: CouponType!
     discountValue: Int!
     minSpend: Int!
@@ -144,6 +146,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
 
             input CreateCouponTemplateInput {
                 name: String!
+                description: String
                 type: CouponType!
                 discountValue: Int!
                 minSpend: Int
@@ -162,6 +165,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
             input UpdateCouponTemplateInput {
                 id: ID!
                 name: String
+                description: String
                 type: CouponType
                 discountValue: Int
                 minSpend: Int
@@ -194,7 +198,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 revokeCustomerCoupon(id: ID!): CustomerCoupon!
             }
         `,
-            resolvers: [coupon_admin_resolver_1.CouponAdminResolver],
+            resolvers: [coupon_admin_resolver_1.CouponAdminResolver, coupon_template_resolver_1.CouponTemplateResolver],
         },
         shopApiExtensions: {
             schema: () => (0, graphql_tag_1.default) `
@@ -223,7 +227,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 exchangeCouponWithPoints(templateId: ID!): ExchangeCouponResult!
             }
         `,
-            resolvers: [coupon_shop_resolver_1.CouponShopResolver],
+            resolvers: [coupon_shop_resolver_1.CouponShopResolver, coupon_template_resolver_1.CouponTemplateResolver],
         },
         configuration: (config) => {
             var _a, _b;
