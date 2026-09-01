@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CouponService = void 0;
+exports.CouponService = exports.CouponNotOwnedError = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const member_level_plugin_1 = require("@vendure/member-level-plugin");
@@ -40,6 +40,16 @@ function generateCode(prefix) {
     const seg = (n) => Array.from({ length: n }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
     return `${prefix}-${seg(4)}-${seg(4)}`;
 }
+/**
+ * 属店权限不足错误。本版本 Vendure 的 ForbiddenError 构造器固定 message='error.forbidden'（code='FORBIDDEN'），
+ * 无法注入自定义文案；故继承 I18nError，沿用 FORBIDDEN 错误码，以显式携带 COUPON_NOT_OWNED 语义消息。
+ */
+class CouponNotOwnedError extends core_1.I18nError {
+    constructor() {
+        super(constants_1.COUPON_NOT_OWNED, {}, 'FORBIDDEN', core_1.LogLevel.Warn);
+    }
+}
+exports.CouponNotOwnedError = CouponNotOwnedError;
 let CouponService = class CouponService {
     constructor(connection, listQueryBuilder) {
         this.connection = connection;
@@ -68,18 +78,33 @@ let CouponService = class CouponService {
     }
     /* ------------------------- 模板管理 ------------------------- */
     async findAllTemplates(ctx, options) {
-        return this.listQueryBuilder
-            .build(coupon_template_entity_1.CouponTemplate, options, { ctx, channelId: ctx.channelId, relations: ['channels'] })
+        const qb = this.listQueryBuilder.build(coupon_template_entity_1.CouponTemplate, options, {
+            ctx,
+            channelId: ctx.channelId,
+            relations: ['channels'],
+        });
+        // 属店隔离：店主管理员只能看到「平台级券（shopId 为空）」+「本店发的券」；
+        // 超级管理员（无属店）→ 全量。
+        const adminShopId = await this.resolveShopIdFromActiveUser(ctx, ctx.activeUserId);
+        if (adminShopId != null) {
+            qb.andWhere('(coupontemplate.shopId IS NULL OR coupontemplate.shopId = :adminShopId)', {
+                adminShopId,
+            });
+        }
+        return qb
             .getManyAndCount()
             .then(([items, totalItems]) => ({ items, totalItems }));
     }
     async findOneTemplate(ctx, id) {
-        var _a;
         const repo = this.connection.getRepository(ctx, coupon_template_entity_1.CouponTemplate);
-        return ((_a = (await repo.findOne({
+        const tpl = await repo.findOne({
             where: { id: id },
             relations: { channels: true },
-        }))) !== null && _a !== void 0 ? _a : undefined);
+        });
+        if (tpl) {
+            await this.assertManagedByShop(ctx, tpl.shopId);
+        }
+        return tpl !== null && tpl !== void 0 ? tpl : undefined;
     }
     async createTemplate(ctx, input) {
         const repo = this.connection.getRepository(ctx, coupon_template_entity_1.CouponTemplate);
@@ -108,6 +133,7 @@ let CouponService = class CouponService {
         if (!tpl) {
             throw new core_1.UserInputError(`CouponTemplate with id ${input.id} not found`);
         }
+        await this.assertManagedByShop(ctx, tpl.shopId);
         for (const key of TEMPLATE_UPDATE_ALLOWED) {
             if (key in input) {
                 tpl[key] = input[key];
@@ -117,6 +143,10 @@ let CouponService = class CouponService {
     }
     async deleteTemplate(ctx, id) {
         const repo = this.connection.getRepository(ctx, coupon_template_entity_1.CouponTemplate);
+        const tpl = await repo.findOne({ where: { id: id } });
+        if (tpl) {
+            await this.assertManagedByShop(ctx, tpl.shopId);
+        }
         await repo.delete(id);
     }
     /* ------------------------- 领券中心 / 券包 ------------------------- */
@@ -304,11 +334,14 @@ let CouponService = class CouponService {
         return codes;
     }
     async revokeCoupon(ctx, id) {
+        var _a;
         const repo = this.connection.getRepository(ctx, customer_coupon_entity_1.CustomerCoupon);
-        const cc = await repo.findOne({ where: { id: id } });
+        const cc = await repo.findOne({ where: { id: id }, relations: { template: true } });
         if (!cc) {
             throw new core_1.UserInputError(`CustomerCoupon ${id} not found`);
         }
+        // 属店隔离：revoke 针对券实例，按其所关联券模板的发行店校验归属。
+        await this.assertManagedByShop(ctx, (_a = cc.template) === null || _a === void 0 ? void 0 : _a.shopId);
         if (cc.status === 'UNUSED') {
             cc.status = 'INVALID';
             await repo.save(cc);
@@ -445,6 +478,9 @@ let CouponService = class CouponService {
     /**
      * 归属解析：activeUserId → Administrator.user → Shop.administratorId（与 shop-plugin 同法，不依赖 ctx.channelId）。
      * 若连接未注册 Shop 实体（shop-plugin 未加载）或 admin 无法解析，则回退为 undefined（不阻断）。
+     *
+     * 公开（public）：供 CouponAdminResolver 等鉴权调用点复用，避免在 service 内重复实现。
+     * 保持签名兼容，Task B 既有的私有调用不受影响。
      */
     async resolveShopIdFromActiveUser(ctx, userId) {
         try {
@@ -467,6 +503,22 @@ let CouponService = class CouponService {
         catch (_a) {
             // Shop / Administrator 等可选依赖未注册或查询失败 → 保持未设 shopId
             return undefined;
+        }
+    }
+    /**
+     * 原则：超级管理员（无属店 Shop）可管理全部券；属店管理员只能管理「平台级券（shopId 为空）
+     * + 本店发行的券」，其余一率抛 ForbiddenError(COUPON_NOT_OWNED)。
+     * 供 resolver 与列表过滤复用。
+     */
+    async assertManagedByShop(ctx, targetShopId) {
+        const adminShopId = await this.resolveShopIdFromActiveUser(ctx, ctx.activeUserId);
+        // 当前管理员无属店（超级管理员）→ 全量允许
+        if (adminShopId == null)
+            return;
+        const target = targetShopId != null ? Number(targetShopId) : undefined;
+        // 目标券无属店（平台级券）→ 允许本地化运营管理；本店券 → 允许；他店券 → 拒绝。
+        if (target != null && target !== adminShopId) {
+            throw new CouponNotOwnedError();
         }
     }
     /** 按实体名称从连接元数据中取回实体类（用于在插件未直接依赖 Shop 时安全解析）。 */

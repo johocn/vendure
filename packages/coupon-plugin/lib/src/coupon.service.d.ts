@@ -1,6 +1,13 @@
-import { ID, Injector, ListQueryBuilder, ListQueryOptions, RequestContext, TransactionalConnection } from '@vendure/core';
+import { I18nError, ID, Injector, ListQueryBuilder, ListQueryOptions, RequestContext, TransactionalConnection } from '@vendure/core';
 import { CouponTemplate } from './coupon-template.entity';
 import { CustomerCoupon } from './customer-coupon.entity';
+/**
+ * 属店权限不足错误。本版本 Vendure 的 ForbiddenError 构造器固定 message='error.forbidden'（code='FORBIDDEN'），
+ * 无法注入自定义文案；故继承 I18nError，沿用 FORBIDDEN 错误码，以显式携带 COUPON_NOT_OWNED 语义消息。
+ */
+export declare class CouponNotOwnedError extends I18nError {
+    constructor();
+}
 export declare class CouponService {
     private connection;
     private listQueryBuilder;
@@ -43,10 +50,19 @@ export declare class CouponService {
     /**
      * 归属解析：activeUserId → Administrator.user → Shop.administratorId（与 shop-plugin 同法，不依赖 ctx.channelId）。
      * 若连接未注册 Shop 实体（shop-plugin 未加载）或 admin 无法解析，则回退为 undefined（不阻断）。
+     *
+     * 公开（public）：供 CouponAdminResolver 等鉴权调用点复用，避免在 service 内重复实现。
+     * 保持签名兼容，Task B 既有的私有调用不受影响。
      */
-    private resolveShopIdFromActiveUser;
+    resolveShopIdFromActiveUser(ctx: RequestContext, userId?: ID): Promise<number | undefined>;
+    /**
+     * 原则：超级管理员（无属店 Shop）可管理全部券；属店管理员只能管理「平台级券（shopId 为空）
+     * + 本店发行的券」，其余一率抛 ForbiddenError(COUPON_NOT_OWNED)。
+     * 供 resolver 与列表过滤复用。
+     */
+    assertManagedByShop(ctx: RequestContext, targetShopId?: number): Promise<void>;
     /** 按实体名称从连接元数据中取回实体类（用于在插件未直接依赖 Shop 时安全解析）。 */
-    private findEntityClass;
+    findEntityClass(name: string): any | undefined;
     private orderCode;
     private currentCustomerId;
     private countHeld;

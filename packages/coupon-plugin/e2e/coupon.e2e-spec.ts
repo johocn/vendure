@@ -536,4 +536,59 @@ describe('CouponPlugin · 营销促销闭环（优惠券体系）', () => {
         expect(enTpl.name).toBe('20 off 100');
         expect(enTpl.description).toBe('20 off 100 coupon');
     });
+
+    it('属店权限隔离：店主只能管理本店券（含平台券），不能动别店券', async () => {
+        // 建两个 Shop 并各自开通店主管理员
+        await adminClient.asSuperAdmin();
+        const mkShop = async (name: string, slug: string): Promise<string> => {
+            const res = await adminClient.query(gql`
+                mutation { createShop(input: { name: "${name}", slug: "${slug}", description: "authz" }) { id } }
+            `) as any;
+            return res.createShop.id;
+        };
+        const shopAId = await mkShop('店A-权限', 'shop-a-authz');
+        const shopBId = await mkShop('店B-权限', 'shop-b-authz');
+        await adminClient.query(gql`
+            mutation { provisionShopOwner(shopId: "${shopAId}", input: { emailAddress: "owner-a-authz@test.com", password: "test", firstName: "A", lastName: "Owner" }) { id } }
+        `);
+        await adminClient.query(gql`
+            mutation { provisionShopOwner(shopId: "${shopBId}", input: { emailAddress: "owner-b-authz@test.com", password: "test", firstName: "B", lastName: "Owner" }) { id } }
+        `);
+
+        // 店主 A 建自己的券（shopId 自动落为其属店 shopA）
+        await adminClient.asUserWithCredentials('owner-a-authz@test.com', 'test');
+        const tplA = await createTemplate({ name: '店A券', type: 'FIXED', discountValue: 1000 });
+
+        // 店主 B 建自己的券（shopId = shopB）
+        await adminClient.asUserWithCredentials('owner-b-authz@test.com', 'test');
+        const tplB = await createTemplate({ name: '店B券', type: 'FIXED', discountValue: 2000 });
+
+        // 回到店主 A
+        await adminClient.asUserWithCredentials('owner-a-authz@test.com', 'test');
+
+        // 断言1：A 不能更新 B 的券 → ForbiddenError(COUPON_NOT_OWNED)
+        await assertThrowsWithMessage(
+            async () => adminClient.query(gql`
+                mutation {
+                    updateCouponTemplate(input: { id: "${tplB}", name: "篡改" }) { id name }
+                }
+            `),
+            'COUPON_NOT_OWNED',
+        );
+
+        // 断言2：A 的 couponTemplates 不含 B 的券，但含 A 自己的券
+        const list = await adminClient.query(gql`
+            query { couponTemplates { items { id name } } }
+        `) as any;
+        const ids = list.couponTemplates.items.map((t: any) => String(t.id));
+        expect(ids).not.toContain(String(tplB));
+        expect(ids).toContain(String(tplA));
+
+        // 断言3：A 能正常管理自己的券（更新成功）
+        const upd = await adminClient.query(gql`
+            mutation { updateCouponTemplate(input: { id: "${tplA}", name: "店A券-已改" }) { id name } }
+        `) as any;
+        expect(String(upd.updateCouponTemplate.id)).toBe(String(tplA));
+        expect(upd.updateCouponTemplate.name).toBe('店A券-已改');
+    });
 });

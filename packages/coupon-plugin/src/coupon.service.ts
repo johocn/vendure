@@ -2,10 +2,12 @@ import { Injectable } from '@nestjs/common';
 import {
     Administrator,
     CustomerService,
+    I18nError,
     ID,
     Injector,
     ListQueryBuilder,
     ListQueryOptions,
+    LogLevel,
     Logger,
     OrderService,
     Product,
@@ -15,7 +17,7 @@ import {
 } from '@vendure/core';
 import { MemberLevelService } from '@vendure/member-level-plugin';
 
-import { loggerCtx } from './constants';
+import { COUPON_NOT_OWNED, loggerCtx } from './constants';
 import { localizeText } from './localize';
 import { isDefaultMallChannel, lineHasShopId } from './coupon-scope';
 import { CouponTemplate } from './coupon-template.entity';
@@ -45,6 +47,16 @@ function generateCode(prefix: string): string {
     const seg = (n: number) =>
         Array.from({ length: n }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
     return `${prefix}-${seg(4)}-${seg(4)}`;
+}
+
+/**
+ * 属店权限不足错误。本版本 Vendure 的 ForbiddenError 构造器固定 message='error.forbidden'（code='FORBIDDEN'），
+ * 无法注入自定义文案；故继承 I18nError，沿用 FORBIDDEN 错误码，以显式携带 COUPON_NOT_OWNED 语义消息。
+ */
+export class CouponNotOwnedError extends I18nError {
+    constructor() {
+        super(COUPON_NOT_OWNED, {}, 'FORBIDDEN', LogLevel.Warn);
+    }
 }
 
 @Injectable()
@@ -84,20 +96,34 @@ export class CouponService {
         ctx: RequestContext,
         options?: ListQueryOptions<CouponTemplate>,
     ): Promise<{ items: CouponTemplate[]; totalItems: number }> {
-        return this.listQueryBuilder
-            .build(CouponTemplate, options, { ctx, channelId: ctx.channelId, relations: ['channels'] })
+        const qb = this.listQueryBuilder.build(CouponTemplate, options, {
+            ctx,
+            channelId: ctx.channelId,
+            relations: ['channels'],
+        });
+        // 属店隔离：店主管理员只能看到「平台级券（shopId 为空）」+「本店发的券」；
+        // 超级管理员（无属店）→ 全量。
+        const adminShopId = await this.resolveShopIdFromActiveUser(ctx, ctx.activeUserId);
+        if (adminShopId != null) {
+            qb.andWhere('(coupontemplate.shopId IS NULL OR coupontemplate.shopId = :adminShopId)', {
+                adminShopId,
+            });
+        }
+        return qb
             .getManyAndCount()
             .then(([items, totalItems]) => ({ items, totalItems }));
     }
 
     async findOneTemplate(ctx: RequestContext, id: ID): Promise<CouponTemplate | undefined> {
         const repo = this.connection.getRepository(ctx, CouponTemplate);
-        return (
-            (await repo.findOne({
-                where: { id: id as any },
-                relations: { channels: true },
-            })) ?? undefined
-        );
+        const tpl = await repo.findOne({
+            where: { id: id as any },
+            relations: { channels: true },
+        });
+        if (tpl) {
+            await this.assertManagedByShop(ctx, tpl.shopId);
+        }
+        return tpl ?? undefined;
     }
 
     async createTemplate(ctx: RequestContext, input: any): Promise<CouponTemplate> {
@@ -127,6 +153,7 @@ export class CouponService {
         if (!tpl) {
             throw new UserInputError(`CouponTemplate with id ${input.id} not found`);
         }
+        await this.assertManagedByShop(ctx, tpl.shopId);
         for (const key of TEMPLATE_UPDATE_ALLOWED) {
             if (key in input) {
                 (tpl as any)[key] = input[key];
@@ -137,6 +164,10 @@ export class CouponService {
 
     async deleteTemplate(ctx: RequestContext, id: ID): Promise<void> {
         const repo = this.connection.getRepository(ctx, CouponTemplate);
+        const tpl = await repo.findOne({ where: { id: id as any } });
+        if (tpl) {
+            await this.assertManagedByShop(ctx, tpl.shopId);
+        }
         await repo.delete(id);
     }
 
@@ -346,10 +377,12 @@ export class CouponService {
 
     async revokeCoupon(ctx: RequestContext, id: ID): Promise<CustomerCoupon> {
         const repo = this.connection.getRepository(ctx, CustomerCoupon);
-        const cc = await repo.findOne({ where: { id: id as any } });
+        const cc = await repo.findOne({ where: { id: id as any }, relations: { template: true } });
         if (!cc) {
             throw new UserInputError(`CustomerCoupon ${id} not found`);
         }
+        // 属店隔离：revoke 针对券实例，按其所关联券模板的发行店校验归属。
+        await this.assertManagedByShop(ctx, cc.template?.shopId);
         if (cc.status === 'UNUSED') {
             cc.status = 'INVALID';
             await repo.save(cc);
@@ -491,8 +524,14 @@ export class CouponService {
     /**
      * 归属解析：activeUserId → Administrator.user → Shop.administratorId（与 shop-plugin 同法，不依赖 ctx.channelId）。
      * 若连接未注册 Shop 实体（shop-plugin 未加载）或 admin 无法解析，则回退为 undefined（不阻断）。
+     *
+     * 公开（public）：供 CouponAdminResolver 等鉴权调用点复用，避免在 service 内重复实现。
+     * 保持签名兼容，Task B 既有的私有调用不受影响。
      */
-    private async resolveShopIdFromActiveUser(ctx: RequestContext, userId?: ID): Promise<number | undefined> {
+    public async resolveShopIdFromActiveUser(
+        ctx: RequestContext,
+        userId?: ID,
+    ): Promise<number | undefined> {
         try {
             if (userId == null) return undefined;
             const adminRepo = this.connection.getRepository(ctx, Administrator);
@@ -512,8 +551,24 @@ export class CouponService {
         }
     }
 
+    /**
+     * 原则：超级管理员（无属店 Shop）可管理全部券；属店管理员只能管理「平台级券（shopId 为空）
+     * + 本店发行的券」，其余一率抛 ForbiddenError(COUPON_NOT_OWNED)。
+     * 供 resolver 与列表过滤复用。
+     */
+    public async assertManagedByShop(ctx: RequestContext, targetShopId?: number): Promise<void> {
+        const adminShopId = await this.resolveShopIdFromActiveUser(ctx, ctx.activeUserId);
+        // 当前管理员无属店（超级管理员）→ 全量允许
+        if (adminShopId == null) return;
+        const target = targetShopId != null ? Number(targetShopId) : undefined;
+        // 目标券无属店（平台级券）→ 允许本地化运营管理；本店券 → 允许；他店券 → 拒绝。
+        if (target != null && target !== adminShopId) {
+            throw new CouponNotOwnedError();
+        }
+    }
+
     /** 按实体名称从连接元数据中取回实体类（用于在插件未直接依赖 Shop 时安全解析）。 */
-    private findEntityClass(name: string): any | undefined {
+    public findEntityClass(name: string): any | undefined {
         try {
             const meta = this.connection.rawConnection.entityMetadatas.find(m => m.name === name);
             return meta ? meta.target : undefined;
