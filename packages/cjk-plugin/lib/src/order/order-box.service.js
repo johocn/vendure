@@ -219,14 +219,13 @@ let OrderBoxService = class OrderBoxService {
             const boxLineIdSet = new Set(group.lineIds.map(String));
             const boxLines = lines.filter(l => boxLineIdSet.has(String(l.id)));
             const boxLineInfo = boxLines.map((barrel) => {
-                var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+                var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
                 const id = String(barrel.id);
                 const qty = Number((_a = barrel.quantity) !== null && _a !== void 0 ? _a : 0);
-                const priceWithTax = Number((_b = barrel.priceWithTax) !== null && _b !== void 0 ? _b : 0);
-                const variantId = String((_d = (_c = barrel.productVariant) === null || _c === void 0 ? void 0 : _c.id) !== null && _d !== void 0 ? _d : '');
-                const productName = (_j = (_f = (_e = barrel.productVariant) === null || _e === void 0 ? void 0 : _e.name) !== null && _f !== void 0 ? _f : (_h = (_g = barrel.productVariant) === null || _g === void 0 ? void 0 : _g.product) === null || _h === void 0 ? void 0 : _h.name) !== null && _j !== void 0 ? _j : `Item ${id}`;
-                const lineTotal = Math.max(0, Math.round(priceWithTax));
-                const unitPrice = qty > 0 ? Math.round(priceWithTax / qty) : 0;
+                const lineTotal = Math.max(0, Math.round(Number((_b = barrel.linePriceWithTax) !== null && _b !== void 0 ? _b : 0)));
+                const unitPrice = Math.max(0, Math.round(Number((_c = barrel.unitPriceWithTax) !== null && _c !== void 0 ? _c : 0)));
+                const variantId = String((_e = (_d = barrel.productVariant) === null || _d === void 0 ? void 0 : _d.id) !== null && _e !== void 0 ? _e : '');
+                const productName = (_k = (_g = (_f = barrel.productVariant) === null || _f === void 0 ? void 0 : _f.name) !== null && _g !== void 0 ? _g : (_j = (_h = barrel.productVariant) === null || _h === void 0 ? void 0 : _h.product) === null || _j === void 0 ? void 0 : _j.name) !== null && _k !== void 0 ? _k : `Item ${id}`;
                 return {
                     orderLineId: id,
                     productVariantId: variantId,

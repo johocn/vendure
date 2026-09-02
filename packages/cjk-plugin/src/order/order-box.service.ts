@@ -321,14 +321,13 @@ export class OrderBoxService {
             const boxLineInfo: OrderBoxLine[] = boxLines.map((barrel: any) => {
                 const id = String((barrel as any).id);
                 const qty = Number((barrel as any).quantity ?? 0);
-                const priceWithTax = Number((barrel as any).priceWithTax ?? 0);
+                const lineTotal = Math.max(0, Math.round(Number((barrel as any).linePriceWithTax ?? 0)));
+                const unitPrice = Math.max(0, Math.round(Number((barrel as any).unitPriceWithTax ?? 0)));
                 const variantId = String((barrel as any).productVariant?.id ?? '');
                 const productName =
                     (barrel as any).productVariant?.name
                     ?? (barrel as any).productVariant?.product?.name
                     ?? `Item ${id}`;
-                const lineTotal = Math.max(0, Math.round(priceWithTax));
-                const unitPrice = qty > 0 ? Math.round(priceWithTax / qty) : 0;
                 return {
                     orderLineId: id,
                     productVariantId: variantId,
