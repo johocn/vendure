@@ -80,6 +80,12 @@ export interface OrderBoxLine {
     quantity: number;
     /** 含税行小计 >= 0 */
     lineTotal: number;
+    /** 商品主图（asset.source；前端按动态 origin 拼全 URL）。缺失时可空。 */
+    featureAssetSource: string | null;
+    /** 规格名（优先取 variant.options 名称拼接；无 options 时取 variant.name 去重后）。缺失时可空。 */
+    variantName: string | null;
+    /** 规格 SKU。缺失时可空。 */
+    sku: string | null;
 }
 
 /** 某箱可用优惠券摘要（Additive，新增字段） */
@@ -325,9 +331,18 @@ export class OrderBoxService {
                 const unitPrice = Math.max(0, Math.round(Number((barrel as any).unitPriceWithTax ?? 0)));
                 const variantId = String((barrel as any).productVariant?.id ?? '');
                 const productName =
-                    (barrel as any).productVariant?.name
-                    ?? (barrel as any).productVariant?.product?.name
+                    (barrel as any).productVariant?.product?.name
+                    ?? (barrel as any).productVariant?.name
                     ?? `Item ${id}`;
+                const variant = (barrel as any).productVariant;
+                const options = Array.isArray(variant?.options) ? variant.options : [];
+                const variantName = options.length
+                    ? options.map((o: any) => o.name).join(' · ')
+                    : (variant?.name && variant?.name !== productName ? variant.name : null);
+                const feat =
+                    (barrel as any).featuredAsset
+                    ?? variant?.featuredAsset
+                    ?? (barrel as any).product?.featuredAsset;
                 return {
                     orderLineId: id,
                     productVariantId: variantId,
@@ -335,6 +350,9 @@ export class OrderBoxService {
                     unitPrice,
                     quantity: qty,
                     lineTotal,
+                    featureAssetSource: feat?.source ?? null,
+                    variantName,
+                    sku: variant?.sku ?? null,
                 };
             });
             const goodsTotal = boxLineInfo.reduce((s, l) => s + l.lineTotal, 0);

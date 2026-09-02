@@ -68,6 +68,12 @@ export interface OrderBoxLine {
     quantity: number;
     /** 含税行小计 >= 0 */
     lineTotal: number;
+    /** 商品主图（asset.source；前端按动态 origin 拼全 URL）。缺失时可空。 */
+    featureAssetSource: string | null;
+    /** 规格名（优先取 variant.options 名称拼接；无 options 时取 variant.name 去重后）。缺失时可空。 */
+    variantName: string | null;
+    /** 规格 SKU。缺失时可空。 */
+    sku: string | null;
 }
 /** 某箱可用优惠券摘要（Additive，新增字段） */
 export interface BoxCouponInfo {

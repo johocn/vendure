@@ -1269,6 +1269,9 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     unitPrice: Int!
                     quantity: Int!
                     lineTotal: Int!
+                    featureAssetSource: String
+                    variantName: String
+                    sku: String
                 }
 
                 type BoxCouponInfo {

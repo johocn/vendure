@@ -219,13 +219,19 @@ let OrderBoxService = class OrderBoxService {
             const boxLineIdSet = new Set(group.lineIds.map(String));
             const boxLines = lines.filter(l => boxLineIdSet.has(String(l.id)));
             const boxLineInfo = boxLines.map((barrel) => {
-                var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+                var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q;
                 const id = String(barrel.id);
                 const qty = Number((_a = barrel.quantity) !== null && _a !== void 0 ? _a : 0);
                 const lineTotal = Math.max(0, Math.round(Number((_b = barrel.linePriceWithTax) !== null && _b !== void 0 ? _b : 0)));
                 const unitPrice = Math.max(0, Math.round(Number((_c = barrel.unitPriceWithTax) !== null && _c !== void 0 ? _c : 0)));
                 const variantId = String((_e = (_d = barrel.productVariant) === null || _d === void 0 ? void 0 : _d.id) !== null && _e !== void 0 ? _e : '');
-                const productName = (_k = (_g = (_f = barrel.productVariant) === null || _f === void 0 ? void 0 : _f.name) !== null && _g !== void 0 ? _g : (_j = (_h = barrel.productVariant) === null || _h === void 0 ? void 0 : _h.product) === null || _j === void 0 ? void 0 : _j.name) !== null && _k !== void 0 ? _k : `Item ${id}`;
+                const productName = (_k = (_h = (_g = (_f = barrel.productVariant) === null || _f === void 0 ? void 0 : _f.product) === null || _g === void 0 ? void 0 : _g.name) !== null && _h !== void 0 ? _h : (_j = barrel.productVariant) === null || _j === void 0 ? void 0 : _j.name) !== null && _k !== void 0 ? _k : `Item ${id}`;
+                const variant = barrel.productVariant;
+                const options = Array.isArray(variant === null || variant === void 0 ? void 0 : variant.options) ? variant.options : [];
+                const variantName = options.length
+                    ? options.map((o) => o.name).join(' · ')
+                    : ((variant === null || variant === void 0 ? void 0 : variant.name) && (variant === null || variant === void 0 ? void 0 : variant.name) !== productName ? variant.name : null);
+                const feat = (_m = (_l = barrel.featuredAsset) !== null && _l !== void 0 ? _l : variant === null || variant === void 0 ? void 0 : variant.featuredAsset) !== null && _m !== void 0 ? _m : (_o = barrel.product) === null || _o === void 0 ? void 0 : _o.featuredAsset;
                 return {
                     orderLineId: id,
                     productVariantId: variantId,
@@ -233,6 +239,9 @@ let OrderBoxService = class OrderBoxService {
                     unitPrice,
                     quantity: qty,
                     lineTotal,
+                    featureAssetSource: (_p = feat === null || feat === void 0 ? void 0 : feat.source) !== null && _p !== void 0 ? _p : null,
+                    variantName,
+                    sku: (_q = variant === null || variant === void 0 ? void 0 : variant.sku) !== null && _q !== void 0 ? _q : null,
                 };
             });
             const goodsTotal = boxLineInfo.reduce((s, l) => s + l.lineTotal, 0);
