@@ -1,4 +1,4 @@
-import { ID, Order, RequestContext } from '@vendure/core';
+import { Order, RequestContext } from '@vendure/core';
 import { OrderService } from '@vendure/core';
 import { OrderSplitService } from './order-split.service';
 /**
@@ -15,6 +15,6 @@ export declare class OrderSplitShopResolver {
     private orderSplitService;
     constructor(orderService: OrderService, orderSplitService: OrderSplitService);
     private resolveActiveOrder;
-    checkoutSplitted(ctx: RequestContext, method: string, metadata?: string, boxKeys?: ID[], lineIds?: ID[]): Promise<Order[]>;
+    checkoutSplitted(ctx: RequestContext, method: string, metadata?: string, boxKeys?: string[], lineIds?: string[]): Promise<Order[]>;
     private parseMetadata;
 }

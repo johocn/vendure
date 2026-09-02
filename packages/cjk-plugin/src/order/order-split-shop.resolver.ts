@@ -37,8 +37,8 @@ export class OrderSplitShopResolver {
         @Ctx() ctx: RequestContext,
         @Args('method') method: string,
         @Args('metadata', { nullable: true, type: () => String }) metadata?: string,
-        @Args('boxKeys') boxKeys?: ID[],
-        @Args('lineIds') lineIds?: ID[],
+        @Args('boxKeys', { type: () => [String] }) boxKeys?: string[],
+        @Args('lineIds', { type: () => [String] }) lineIds?: string[],
     ): Promise<Order[]> {
         const order = await this.resolveActiveOrder(ctx);
         const parsedMetadata = metadata ? this.parseMetadata(metadata) : undefined;

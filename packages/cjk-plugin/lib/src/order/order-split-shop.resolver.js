@@ -72,8 +72,8 @@ __decorate([
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('method')),
     __param(2, (0, graphql_1.Args)('metadata', { nullable: true, type: () => String })),
-    __param(3, (0, graphql_1.Args)('boxKeys')),
-    __param(4, (0, graphql_1.Args)('lineIds')),
+    __param(3, (0, graphql_1.Args)('boxKeys', { type: () => [String] })),
+    __param(4, (0, graphql_1.Args)('lineIds', { type: () => [String] })),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext, String, String, Array, Array]),
     __metadata("design:returntype", Promise)
