@@ -72,6 +72,12 @@ export class OrderSplitService {
             selectedBoxKeys.push(box.boxKey);
             for (const lid of chosen) selectedLineIdSet.add(lid);
         }
+        // eslint-disable-next-line no-console
+        console.log(`[DBG split] opts.boxKeys=${JSON.stringify(opts.boxKeys)} opts.lineIds=${JSON.stringify(opts.lineIds)}`);
+        // eslint-disable-next-line no-console
+        console.log(`[DBG split] recomputed boxes=${JSON.stringify(boxes.map(b => ({ key: b.boxKey, pid: String(b.profileId), lineIds: b.lineIds, raw: b.shippingProfileIds })))}`);
+        // eslint-disable-next-line no-console
+        console.log(`[DBG split] boxKeyOpts=${JSON.stringify([...boxKeyOpts])} selectedLineIdSet=${JSON.stringify([...selectedLineIdSet])}`);
         if (selectedLineIdSet.size === 0) throw new UserInputError('NO_ITEMS_TO_CHECKOUT');
 
         // 未选中的行（回流购物车）必须留在源活动订单，不得迁入任何结算单
