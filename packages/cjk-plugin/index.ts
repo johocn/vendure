@@ -43,3 +43,6 @@ export * from './src/payment/payment-profile-permissions';
 export * from './src/shipping/shipping-profile-shop.resolver';
 export * from './src/payment/payment-profile-method.entity';
 export * from './src/payment/payment-profile-shop.resolver';
+export * from './src/order/merchant-settlement-ledger.entity';
+export * from './src/order/merchant-settlement.service';
+export * from './src/order/merchant-settlement-admin.resolver';

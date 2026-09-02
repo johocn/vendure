@@ -46,6 +46,11 @@ export interface AggregationResult {
     };
 }
 /**
+ * 计算所有输入箱「可用支付方式」的交集（各箱都支持的方式）。
+ * 余额方式是各箱内建基础方式，通常都在交集中。空箱族返回空数组。
+ */
+export declare function computeIntersection(boxes: AggregationBox[]): string[];
+/**
  * 聚合拆合引擎（纯函数）。
  *
  * @returns 一组 orderGroup；每个 orderGroup 对应一个独立订单。orderCount = groups.length；

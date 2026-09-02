@@ -49,6 +49,17 @@ export interface AggregationResult {
 }
 
 /**
+ * 计算所有输入箱「可用支付方式」的交集（各箱都支持的方式）。
+ * 余额方式是各箱内建基础方式，通常都在交集中。空箱族返回空数组。
+ */
+export function computeIntersection(boxes: AggregationBox[]): string[] {
+    if (boxes.length === 0) return [];
+    const sets = boxes.map(b => new Set(b.availablePaymentMethodCodes ?? []));
+    const first = boxes[0].availablePaymentMethodCodes ?? [];
+    return first.filter(code => sets.every(set => set.has(code)));
+}
+
+/**
  * 聚合拆合引擎（纯函数）。
  *
  * @returns 一组 orderGroup；每个 orderGroup 对应一个独立订单。orderCount = groups.length；
@@ -68,7 +79,15 @@ export function decideAggregation(input: AggregationInput): AggregationResult {
         return { groups, totals: { orderCount: 1, boxCount: boxes.length } };
     }
 
-    // 非余额方式：一律按箱全拆，每箱一个独立订单（每配送档案一单、各自结算）
+    // 所选方式位于各箱可用支付方式「交集」中（如各箱都支持的同一种在线方式/COD）→ 同样可合并为 1 个订单；
+    // 每商户账目划分由收款台账（ledger）另行处理，不在此引擎内。
+    const intersection = computeIntersection(boxes);
+    if (intersection.includes(userSelectedPaymentMethod)) {
+        groups.push({ groupKey: 'shared', boxes: [...boxes], payByBalance: false });
+        return { groups, totals: { orderCount: 1, boxCount: boxes.length } };
+    }
+
+    // 所选方式不在共同交集（或各箱方式互不相交）→ 一律按箱全拆，每箱一个独立订单（各自结算）
     for (const box of boxes) {
         groups.push({
             groupKey: `box-${box.tenantChannelId}-${box.boxKey}`,

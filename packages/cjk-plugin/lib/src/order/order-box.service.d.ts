@@ -1,4 +1,4 @@
-import { ID, Order, OrderService, RequestContext } from '@vendure/core';
+import { ChannelService, CustomerService, ID, Order, OrderService, RequestContext, TransactionalConnection } from '@vendure/core';
 import { ShippingProfileService } from '../shipping/shipping-profile.service';
 import { PaymentProfileService } from '../payment/payment-profile.service';
 import { PickupLocation } from '../pickup/pickup-location.entity';
@@ -45,12 +45,55 @@ export interface OrderBox {
     requiresAddress: boolean;
     /** 该箱是否需要联系方式（到店需联系方式档案=true） */
     requiresContact: boolean;
+    /** 该箱落入的 OrderLine 明细（含商品名、含税单价、含税行小计），供前端按箱展示商品 */
+    lines: OrderBoxLine[];
+    /** 该箱当前可用（未使用/回退）且满足该箱范围的优惠券，供前端按箱选券 */
+    availableCoupons: BoxCouponInfo[];
+    /** 本箱配送费（含税），非免邮时 > 0 */
+    shippingCost: number;
+    /** 本箱免邮券等折扣额（正值） */
+    shippingDiscount: number;
+    /** 本箱小计 = max(0, 商品合计(含税) - 券抵扣 + shippingCost - shippingDiscount) */
+    subtotal: number;
+    /** 租户名，由 tenantChannelId 解析 Channel.name（兜底 Channel.code / id） */
+    tenantName: string;
+}
+/** 装箱明细行（Additive，新增字段） */
+export interface OrderBoxLine {
+    orderLineId: string;
+    productVariantId: string;
+    productName: string;
+    /** 含税单价 */
+    unitPrice: number;
+    quantity: number;
+    /** 含税行小计 >= 0 */
+    lineTotal: number;
+}
+/** 某箱可用优惠券摘要（Additive，新增字段） */
+export interface BoxCouponInfo {
+    /** 券码 */
+    code: string;
+    /** 券名（多语言按 ctx 语言取，无则原值） */
+    name: string;
+    /** 展示条件文案（简短） */
+    condition: string;
+    /** 对「本箱」的最大可抵扣金额（正值）；免邮券则近似为可抵扣的运费 */
+    amount: number;
+}
+/** 商户（租户）结算拆分结果（新增 Top-level Query orderMerchantSplit） */
+export interface MerchantSplit {
+    tenantChannelId: ID;
+    tenantName: string;
+    amount: number;
 }
 export declare class OrderBoxService {
     private shippingProfileService;
     private paymentProfileService;
     private orderService;
-    constructor(shippingProfileService: ShippingProfileService, paymentProfileService: PaymentProfileService, orderService: OrderService);
+    private channelService;
+    private customerService;
+    private connection;
+    constructor(shippingProfileService: ShippingProfileService, paymentProfileService: PaymentProfileService, orderService: OrderService, channelService: ChannelService, customerService: CustomerService, connection: TransactionalConnection);
     /**
      * 将一个订单的 order lines 按「已生效配送档案」分组为若干箱。
      *
@@ -60,6 +103,19 @@ export declare class OrderBoxService {
      * - 同一生效档案的 line 合并为同一箱（跨租户/跨档案自动分箱）。
      */
     computeOrderBoxes(ctx: RequestContext, order: Order): Promise<OrderBox[]>;
+    /**
+     * 商户（租户）结算拆分：按 tenantChannelId 聚合各箱 subtotal，
+     * 返回每租户应结算金额。可复用 computeOrderBoxes（含已算好的 subtotal / tenantName）。
+     */
+    computeMerchantSplit(ctx: RequestContext, order: Order): Promise<MerchantSplit[]>;
+    /** 预加载订单内所有 Channel 的 name/code（跨所有箱共用的租户名解析，均以 id 为 key），失败时返回空 Map。 */
+    private loadChannelsNameMap;
+    /** 解析当前订单的客户 id（优先 order.customer，否则由 activeUserId 查 Customer）。 */
+    private resolveCustomerId;
+    /** 加载某客户的全部券（含 template），失败（coupon-plugin 未注册等）时返回空数组，不影响订单分箱主流程。 */
+    private loadCustomerCoupons;
+    /** 加载订单当前应用（customFields.couponCode）的券实例，失败时返回 undefined。 */
+    private loadAppliedCoupon;
     /**
      * 读取订单已保存的分箱选择（boxShippingSelections customField 中的 JSON）。
      * 结构：{ [boxKey]: { shippingMethodId, pickupLocationId } }

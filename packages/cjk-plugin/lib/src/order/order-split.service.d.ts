@@ -1,5 +1,6 @@
-import { Order, OrderService, RequestContext } from '@vendure/core';
+import { ID, Order, OrderService, RequestContext } from '@vendure/core';
 import { OrderBoxService } from './order-box.service';
+import { MerchantSettlementService } from './merchant-settlement.service';
 /**
  * 后端「一次性拆单结算」服务（统一入口，由 checkoutSplitted 调用）。
  *
@@ -17,16 +18,26 @@ import { OrderBoxService } from './order-box.service';
 export declare class OrderSplitService {
     private orderService;
     private orderBoxService;
-    constructor(orderService: OrderService, orderBoxService: OrderBoxService);
+    private merchantSettlementService;
+    constructor(orderService: OrderService, orderBoxService: OrderBoxService, merchantSettlementService: MerchantSettlementService);
     /**
      * 一次性拆单并逐单完成支付，返回需各自结算的订单列表（均已付款结算）。
+     *
+     * 支持部分结算（return-to-cart）：
+     * - 不传 opts（或传了但覆盖全部箱/行）→ 全选，走与旧版完全一致的路径；
+     * - 传 boxKeys/lineIds 限定 → 仅结算所选箱/行，未选中的行留在源活动订单（购物车）不结算。
      *
      * @param order 源活动订单（含全部 box 的 lines）
      * @param method 所选支付方式 code（同时驱动聚合判定）
      * @param metadata 支付方式透传 metadata
+     * @param options.boxKeys 可选：限定要结算的箱（boxKey）集合
+     * @param options.lineIds 可选：在选定箱内进一步限定要结算的行（orderLineId）
      */
-    performSplitCheckout(ctx: RequestContext, order: Order, method: string, metadata?: Record<string, any>): Promise<Order[]>;
-    /** 聚合一个 group 的箱，得到其 order lines 的 variant+qty 列表。 */
+    performSplitCheckout(ctx: RequestContext, order: Order, method: string, metadata?: Record<string, any>, options?: {
+        boxKeys?: ID[];
+        lineIds?: ID[];
+    }): Promise<Order[]>;
+    /** 聚合一个 group 的箱，得到其「被选中」的 order lines 的 variant+qty 列表。 */
     private buildItemsForGroup;
     /** 将 OrderAddress 简单 JSON 映射为 CreateAddressInput（缺省字段省略，交由核心兜底）。 */
     private mapAddress;

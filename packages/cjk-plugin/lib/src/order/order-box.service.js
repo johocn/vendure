@@ -12,16 +12,149 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.OrderBoxService = exports.LOGIN_REQUIRED_PAYMENT_CODES = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
+const coupon_plugin_1 = require("@vendure/coupon-plugin");
 const shipping_profile_service_1 = require("../shipping/shipping-profile.service");
 const payment_profile_service_1 = require("../payment/payment-profile.service");
 const order_box_aggregation_1 = require("./order-box-aggregation");
 /** 需要登录才能使用的支付方式 code 集合（余额钱包依赖账户身份，游客结算时应被过滤）。 */
 exports.LOGIN_REQUIRED_PAYMENT_CODES = new Set([order_box_aggregation_1.BALANCE_PAYMENT_CODE]);
+/**
+ * —— 以下为「按箱金额/优惠券」辅助纯函数 ——
+ * coupon 判定/折扣数学镜像 coupon-plugin/coupon-scope（lineHasShopId、isDefaultMallChannel）
+ * 与 coupon-promotion-condition（FIXED/PERCENT/FULL/FREE_SHIPPING 折扣算法），避免跨包深层导入；
+ * 语义与 coupon-plugin 保持一致，后续若将其收敛为共享包可无损替换。
+ */
+/** 行商品是否属于指定 shopId（平台级券 shopId 为空则不限范围）——镜像 coupon-plugin `lineHasShopId`。 */
+function lineMatchesShop(line, shopId) {
+    var _a, _b, _c;
+    if (shopId == null)
+        return true;
+    const sid = (_c = (_b = (_a = line === null || line === void 0 ? void 0 : line.productVariant) === null || _a === void 0 ? void 0 : _a.product) === null || _b === void 0 ? void 0 : _b.customFields) === null || _c === void 0 ? void 0 : _c.shopId;
+    return sid != null && Number(sid) === shopId;
+}
+/** 默认商城判定——镜像 coupon-plugin `isDefaultMallChannel`。 */
+function isMallContext(ctx) {
+    var _a, _b, _c, _d;
+    const token = String((_b = (_a = ctx.channel) === null || _a === void 0 ? void 0 : _a.token) !== null && _b !== void 0 ? _b : '');
+    const code = String((_d = (_c = ctx.channel) === null || _c === void 0 ? void 0 : _c.code) !== null && _d !== void 0 ? _d : '');
+    return token === '__default__' || code === '__default_channel__';
+}
+/** 某券模板对本箱 lines 的抵扣额：goodsDeduct=商品抵扣、shippingDeduct=免邮券的运费抵扣——镜像 coupon-promotion-condition。 */
+function couponDeductForBox(tpl, boxLines, shippingCost) {
+    const base = boxLines.reduce((s, l) => { var _a; return s + ((_a = l.linePriceWithTax) !== null && _a !== void 0 ? _a : 0); }, 0);
+    if (tpl.type === 'PERCENT') {
+        const rate = (100 - tpl.discountValue) / 100;
+        return { goodsDeduct: Math.round(base * rate), shippingDeduct: 0 };
+    }
+    if (tpl.type === 'FREE_SHIPPING') {
+        return { goodsDeduct: 0, shippingDeduct: Math.max(0, shippingCost) };
+    }
+    // FIXED / FULL：直减 discountValue，且不超过本箱商品小计
+    return { goodsDeduct: Math.max(0, Math.min(tpl.discountValue, base)), shippingDeduct: 0 };
+}
+/**
+ * 已应用券在本箱的抵扣。默认商城下先按 shopId 过滤本箱行；无匹配行则该箱不享受该券抵扣
+ * （与该券归属于其它 shop 箱时一致）。
+ */
+function appliedDeductForBox(tpl, mall, boxLines, shippingCost) {
+    const shopId = tpl.shopId;
+    const matching = mall ? boxLines.filter(l => lineMatchesShop(l, shopId)) : boxLines;
+    const effective = matching.length > 0 ? matching : boxLines;
+    // 无匹配行 → 本箱不享受该券抵扣（该券属于其它箱）
+    if (mall && matching.length === 0) {
+        return { goodsDeduct: 0, shippingDeduct: 0 };
+    }
+    return couponDeductForBox(tpl, effective, shippingCost);
+}
+/** 券是否对该箱可用：状态（UNUSED/RETURNED）+ 模板启用 + 时间有效 + 本箱至少一行匹配范围 + 门槛满足。 */
+function couponUsableForBox(cc, mall, boxLines, boxBase) {
+    const tpl = cc.template;
+    if (!tpl)
+        return false;
+    if (cc.status !== 'UNUSED' && cc.status !== 'RETURNED')
+        return false;
+    if (!tpl.enabled)
+        return false;
+    const now = new Date();
+    if (tpl.startsAt && now < tpl.startsAt)
+        return false;
+    if (tpl.endsAt && now > tpl.endsAt)
+        return false;
+    if (mall && !boxLines.some(l => lineMatchesShop(l, tpl.shopId)))
+        return false;
+    if (tpl.minSpend > boxBase)
+        return false;
+    return true;
+}
+/** 券面额对应的简短条件文案。 */
+function couponConditionText(tpl) {
+    switch (tpl.type) {
+        case 'PERCENT':
+            return `满${tpl.minSpend}打${tpl.discountValue}折`;
+        case 'FREE_SHIPPING':
+            return '免运费';
+        case 'FULL':
+            return `直减${tpl.discountValue}`;
+        default:
+            return `满${tpl.minSpend}减${tpl.discountValue}`;
+    }
+}
+/** 券名多语言求值——镜像 coupon-plugin/localize.localizeText（兼容纯字符串 / LocalizedText / JSON 字符串）。 */
+function localizeCouponName(tpl, locale) {
+    var _a;
+    const v = tpl.name;
+    if (v == null)
+        return '优惠券';
+    if (typeof v === 'string')
+        return unwrapLocalizedString(v, locale);
+    if (typeof v === 'object') {
+        const rec = v;
+        if (rec[locale] != null && typeof rec[locale] === 'string')
+            return rec[locale];
+        if (rec['en'] != null && typeof rec['en'] === 'string')
+            return rec['en'];
+        return (_a = Object.values(rec).find(x => typeof x === 'string')) !== null && _a !== void 0 ? _a : '优惠券';
+    }
+    return unwrapLocalizedString(v, locale);
+}
+function unwrapLocalizedString(v, locale) {
+    var _a;
+    const trimmed = v.trim();
+    if (trimmed.startsWith('{') || trimmed.startsWith('"')) {
+        try {
+            const parsed = JSON.parse(v);
+            if (parsed != null && typeof parsed === 'object') {
+                const rec = parsed;
+                if (rec[locale] != null)
+                    return rec[locale];
+                if (rec['en'] != null)
+                    return rec['en'];
+                return (_a = Object.values(rec).find(x => typeof x === 'string')) !== null && _a !== void 0 ? _a : '优惠券';
+            }
+        }
+        catch (_b) {
+            /* 非合法 JSON，按纯字符串处理 */
+        }
+    }
+    return v;
+}
+/** 本箱取名（tenantChannelId → Channel.name，兜底 Channel.code / id）。 */
+function resolveTenantName(channelsNameMap, tenantChannelId) {
+    const ch = channelsNameMap.get(String(tenantChannelId));
+    if (ch === null || ch === void 0 ? void 0 : ch.name)
+        return ch.name;
+    if (ch === null || ch === void 0 ? void 0 : ch.code)
+        return ch.code;
+    return String(tenantChannelId);
+}
 let OrderBoxService = class OrderBoxService {
-    constructor(shippingProfileService, paymentProfileService, orderService) {
+    constructor(shippingProfileService, paymentProfileService, orderService, channelService, customerService, connection) {
         this.shippingProfileService = shippingProfileService;
         this.paymentProfileService = paymentProfileService;
         this.orderService = orderService;
+        this.channelService = channelService;
+        this.customerService = customerService;
+        this.connection = connection;
     }
     /**
      * 将一个订单的 order lines 按「已生效配送档案」分组为若干箱。
@@ -32,7 +165,7 @@ let OrderBoxService = class OrderBoxService {
      * - 同一生效档案的 line 合并为同一箱（跨租户/跨档案自动分箱）。
      */
     async computeOrderBoxes(ctx, order) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p;
         const lines = (_a = order.lines) !== null && _a !== void 0 ? _a : [];
         if (lines.length === 0)
             return [];
@@ -64,20 +197,98 @@ let OrderBoxService = class OrderBoxService {
             if (rawPid)
                 group.rawIds.add(String(rawPid));
         }
+        // —— 新增（Additive）：跨箱共享数据，供下方按箱填充明细/金额/优惠券 ——
+        const mall = isMallContext(ctx);
+        const [channelsNameMap, customerId] = await Promise.all([
+            this.loadChannelsNameMap(),
+            this.resolveCustomerId(ctx, order),
+        ]);
+        const customerCoupons = customerId != null ? await this.loadCustomerCoupons(ctx, customerId) : [];
+        const appliedCoupon = await this.loadAppliedCoupon(ctx, order);
+        const shippingLines = (_d = order.shippingLines) !== null && _d !== void 0 ? _d : [];
         const boxes = [];
         for (const key of orderByProfile) {
             const group = groups.get(key);
             const profile = await this.shippingProfileService.findOne(ctx, key);
-            const enabledMethods = ((_d = profile === null || profile === void 0 ? void 0 : profile.shippingMethods) === null || _d === void 0 ? void 0 : _d.length)
+            const enabledMethods = ((_e = profile === null || profile === void 0 ? void 0 : profile.shippingMethods) === null || _e === void 0 ? void 0 : _e.length)
                 ? (await this.shippingProfileService.findShippingMethodsByIds(ctx, profile.shippingMethods.map(m => m.id))).filter((m) => { var _a; return ((_a = m.customFields) === null || _a === void 0 ? void 0 : _a.enabled) !== false; })
                 : [];
+            const tenantChannelId = (_h = (_g = (_f = order.channels) === null || _f === void 0 ? void 0 : _f[0]) === null || _g === void 0 ? void 0 : _g.id) !== null && _h !== void 0 ? _h : ctx.channelId;
+            const isDelivery = !((profile === null || profile === void 0 ? void 0 : profile.pickupLocations) && profile.pickupLocations.length > 0);
+            // —— 本箱行明细（Additive）——
+            const boxLineIdSet = new Set(group.lineIds.map(String));
+            const boxLines = lines.filter(l => boxLineIdSet.has(String(l.id)));
+            const boxLineInfo = boxLines.map((barrel) => {
+                var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+                const id = String(barrel.id);
+                const qty = Number((_a = barrel.quantity) !== null && _a !== void 0 ? _a : 0);
+                const priceWithTax = Number((_b = barrel.priceWithTax) !== null && _b !== void 0 ? _b : 0);
+                const variantId = String((_d = (_c = barrel.productVariant) === null || _c === void 0 ? void 0 : _c.id) !== null && _d !== void 0 ? _d : '');
+                const productName = (_j = (_f = (_e = barrel.productVariant) === null || _e === void 0 ? void 0 : _e.name) !== null && _f !== void 0 ? _f : (_h = (_g = barrel.productVariant) === null || _g === void 0 ? void 0 : _g.product) === null || _h === void 0 ? void 0 : _h.name) !== null && _j !== void 0 ? _j : `Item ${id}`;
+                const lineTotal = Math.max(0, Math.round(priceWithTax));
+                const unitPrice = qty > 0 ? Math.round(priceWithTax / qty) : 0;
+                return {
+                    orderLineId: id,
+                    productVariantId: variantId,
+                    productName,
+                    unitPrice,
+                    quantity: qty,
+                    lineTotal,
+                };
+            });
+            const goodsTotal = boxLineInfo.reduce((s, l) => s + l.lineTotal, 0);
+            // —— 本箱配送费（Additive）——
+            // 规则：取 order.shippingLines 中「配送方式 id 落在本箱可用集合」的配送线价格（含税）之和；
+            // 无按箱匹配且整单仅一条配送线时，将该单条配送线归属给唯一 delivery 箱（未多箱结算的兜底）；
+            // 其余（无/多条导致归属不明确）→ 0。
+            let shippingCost = 0;
+            if (isDelivery) {
+                const shippingMethodIdSet = new Set(enabledMethods.map((m) => String(m.id)));
+                const matched = shippingLines.filter((sl) => sl.shippingMethodId != null && shippingMethodIdSet.has(String(sl.shippingMethodId)));
+                if (matched.length > 0) {
+                    shippingCost = matched.reduce((s, sl) => { var _a; return s + ((_a = sl.priceWithTax) !== null && _a !== void 0 ? _a : 0); }, 0);
+                }
+                else if (shippingLines.length === 1) {
+                    shippingCost = (_j = shippingLines[0].priceWithTax) !== null && _j !== void 0 ? _j : 0;
+                }
+            }
+            // —— 本箱免邮券/已应用券抵扣（Additive）——
+            let couponDeduct = 0;
+            let shippingDiscount = 0;
+            if (appliedCoupon === null || appliedCoupon === void 0 ? void 0 : appliedCoupon.template) {
+                const applied = appliedDeductForBox(appliedCoupon.template, mall, boxLines, shippingCost);
+                couponDeduct = applied.goodsDeduct;
+                shippingDiscount = applied.shippingDeduct;
+            }
+            // —— 本箱可用优惠券（Additive）——
+            const boxBase = boxLines.reduce((s, l) => { var _a; return s + ((_a = l.linePriceWithTax) !== null && _a !== void 0 ? _a : 0); }, 0);
+            const availableCoupons = [];
+            for (const cc of customerCoupons) {
+                const tpl = cc.template;
+                if (!tpl)
+                    continue;
+                if (!couponUsableForBox(cc, mall, boxLines, boxBase))
+                    continue;
+                const ded = couponDeductForBox(tpl, boxLines, isDelivery ? shippingCost : 0);
+                const amount = tpl.type === 'FREE_SHIPPING' ? ded.shippingDeduct : ded.goodsDeduct;
+                if (amount <= 0)
+                    continue; // 本箱无可抵扣额度则不列出（保持紧凑）
+                availableCoupons.push({
+                    code: cc.code,
+                    name: localizeCouponName(tpl, String(ctx.languageCode)),
+                    condition: couponConditionText(tpl),
+                    amount: Math.max(0, amount),
+                });
+            }
+            // —— 本箱小计（Additive）：max(0, 商品合计 - 券抵扣 + 配送费 - 免邮折扣) ——
+            const subtotal = Math.max(0, goodsTotal - couponDeduct + shippingCost - shippingDiscount);
             boxes.push({
                 boxKey: `box:${key}`,
                 profileId: key,
-                profileName: (_e = profile === null || profile === void 0 ? void 0 : profile.name) !== null && _e !== void 0 ? _e : key,
+                profileName: (_k = profile === null || profile === void 0 ? void 0 : profile.name) !== null && _k !== void 0 ? _k : key,
                 lineIds: group.lineIds,
-                type: ((_f = profile === null || profile === void 0 ? void 0 : profile.pickupLocations) === null || _f === void 0 ? void 0 : _f.length) ? 'pickup' : 'delivery',
-                tenantChannelId: (_j = (_h = (_g = order.channels) === null || _g === void 0 ? void 0 : _g[0]) === null || _h === void 0 ? void 0 : _h.id) !== null && _j !== void 0 ? _j : ctx.channelId,
+                type: ((_l = profile === null || profile === void 0 ? void 0 : profile.pickupLocations) === null || _l === void 0 ? void 0 : _l.length) ? 'pickup' : 'delivery',
+                tenantChannelId,
                 shippingProfileIds: [...group.rawIds],
                 availableShippingMethodIds: enabledMethods.map((m) => m.id),
                 availableShippingMethods: enabledMethods.map((m) => ({
@@ -90,14 +301,106 @@ let OrderBoxService = class OrderBoxService {
                         : m.code,
                 })),
                 defaultShippingMethodId: enabledMethods.length > 0 ? enabledMethods[0].id : null,
-                pickupLocations: (_k = profile === null || profile === void 0 ? void 0 : profile.pickupLocations) !== null && _k !== void 0 ? _k : [],
+                pickupLocations: (_m = profile === null || profile === void 0 ? void 0 : profile.pickupLocations) !== null && _m !== void 0 ? _m : [],
                 availablePaymentMethodCodes: await this.resolvePaymentCodesForProfile(ctx, key),
                 loginRequiredPaymentCodes: (await this.resolvePaymentCodesForProfile(ctx, key)).filter(code => exports.LOGIN_REQUIRED_PAYMENT_CODES.has(code)),
-                requiresAddress: (_l = profile === null || profile === void 0 ? void 0 : profile.requiresAddress) !== null && _l !== void 0 ? _l : true,
-                requiresContact: (_m = profile === null || profile === void 0 ? void 0 : profile.requiresContact) !== null && _m !== void 0 ? _m : false,
+                requiresAddress: (_o = profile === null || profile === void 0 ? void 0 : profile.requiresAddress) !== null && _o !== void 0 ? _o : true,
+                requiresContact: (_p = profile === null || profile === void 0 ? void 0 : profile.requiresContact) !== null && _p !== void 0 ? _p : false,
+                lines: boxLineInfo,
+                availableCoupons,
+                shippingCost,
+                shippingDiscount,
+                subtotal,
+                tenantName: resolveTenantName(channelsNameMap, tenantChannelId),
             });
         }
         return boxes;
+    }
+    /**
+     * 商户（租户）结算拆分：按 tenantChannelId 聚合各箱 subtotal，
+     * 返回每租户应结算金额。可复用 computeOrderBoxes（含已算好的 subtotal / tenantName）。
+     */
+    async computeMerchantSplit(ctx, order) {
+        var _a;
+        const boxes = await this.computeOrderBoxes(ctx, order);
+        const map = new Map();
+        for (const box of boxes) {
+            const key = String(box.tenantChannelId);
+            const existing = (_a = map.get(key)) !== null && _a !== void 0 ? _a : {
+                tenantChannelId: box.tenantChannelId,
+                tenantName: box.tenantName,
+                amount: 0,
+            };
+            existing.amount += box.subtotal;
+            map.set(key, existing);
+        }
+        return [...map.values()];
+    }
+    /** 预加载订单内所有 Channel 的 name/code（跨所有箱共用的租户名解析，均以 id 为 key），失败时返回空 Map。 */
+    async loadChannelsNameMap() {
+        var _a, _b;
+        const result = new Map();
+        try {
+            const all = await this.channelService.findAll(core_1.RequestContext.empty());
+            for (const c of all.items) {
+                result.set(String(c.id), {
+                    // 本版本 Channel 实体无 `.name`，租户展示名取自 customFields.shopName，兜底 code
+                    name: (_b = (_a = c.customFields) === null || _a === void 0 ? void 0 : _a.shopName) !== null && _b !== void 0 ? _b : undefined,
+                    code: c.code,
+                });
+            }
+        }
+        catch (_c) {
+            /* 渠道解析不可用时，tenantName 兜底为 id */
+        }
+        return result;
+    }
+    /** 解析当前订单的客户 id（优先 order.customer，否则由 activeUserId 查 Customer）。 */
+    async resolveCustomerId(ctx, order) {
+        var _a;
+        const orderCustomerId = (_a = order === null || order === void 0 ? void 0 : order.customer) === null || _a === void 0 ? void 0 : _a.id;
+        if (orderCustomerId != null)
+            return orderCustomerId;
+        const userId = ctx.activeUserId;
+        if (userId == null)
+            return undefined;
+        try {
+            const customer = await this.customerService.findOneByUserId(ctx, userId);
+            return customer === null || customer === void 0 ? void 0 : customer.id;
+        }
+        catch (_b) {
+            return undefined;
+        }
+    }
+    /** 加载某客户的全部券（含 template），失败（coupon-plugin 未注册等）时返回空数组，不影响订单分箱主流程。 */
+    async loadCustomerCoupons(ctx, customerId) {
+        try {
+            const repo = this.connection.getRepository(ctx, coupon_plugin_1.CustomerCoupon);
+            return await repo.find({
+                where: { customerId },
+                relations: { template: true },
+            });
+        }
+        catch (_a) {
+            return [];
+        }
+    }
+    /** 加载订单当前应用（customFields.couponCode）的券实例，失败时返回 undefined。 */
+    async loadAppliedCoupon(ctx, order) {
+        var _a, _b;
+        const code = (_a = order === null || order === void 0 ? void 0 : order.customFields) === null || _a === void 0 ? void 0 : _a.couponCode;
+        if (!code)
+            return undefined;
+        try {
+            const repo = this.connection.getRepository(ctx, coupon_plugin_1.CustomerCoupon);
+            return ((_b = (await repo.findOne({
+                where: { code },
+                relations: { template: true },
+            }))) !== null && _b !== void 0 ? _b : undefined);
+        }
+        catch (_c) {
+            return undefined;
+        }
     }
     /**
      * 读取订单已保存的分箱选择（boxShippingSelections customField 中的 JSON）。
@@ -204,6 +507,9 @@ exports.OrderBoxService = OrderBoxService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [shipping_profile_service_1.ShippingProfileService,
         payment_profile_service_1.PaymentProfileService,
-        core_1.OrderService])
+        core_1.OrderService,
+        core_1.ChannelService,
+        core_1.CustomerService,
+        core_1.TransactionalConnection])
 ], OrderBoxService);
 //# sourceMappingURL=order-box.service.js.map

@@ -96,6 +96,9 @@ const order_box_service_1 = require("./order/order-box.service");
 const order_box_shop_resolver_1 = require("./order/order-box-shop.resolver");
 const order_split_service_1 = require("./order/order-split.service");
 const order_split_shop_resolver_1 = require("./order/order-split-shop.resolver");
+const merchant_settlement_ledger_entity_1 = require("./order/merchant-settlement-ledger.entity");
+const merchant_settlement_service_1 = require("./order/merchant-settlement.service");
+const merchant_settlement_admin_resolver_1 = require("./order/merchant-settlement-admin.resolver");
 const redemption_code_service_1 = require("./redemption/redemption-code.service");
 const redemption_resolver_1 = require("./redemption/redemption.resolver");
 const redemption_schema_1 = require("./redemption/redemption.schema");
@@ -289,7 +292,7 @@ exports.CjkPlugin = CjkPlugin;
 exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_profile_method_entity_1.PaymentProfileMethod, payment_template_entity_1.PaymentTemplate, tenant_member_entity_1.TenantMember, wallet_entity_1.Wallet],
+        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_profile_method_entity_1.PaymentProfileMethod, payment_template_entity_1.PaymentTemplate, tenant_member_entity_1.TenantMember, wallet_entity_1.Wallet, merchant_settlement_ledger_entity_1.MerchantSettlementLedger],
         providers: [
             { provide: constants_1.CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
             tenant_setup_service_1.TenantSetupService,
@@ -318,6 +321,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             tenant_member_service_1.TenantMemberService,
             order_box_service_1.OrderBoxService,
             order_split_service_1.OrderSplitService,
+            merchant_settlement_service_1.MerchantSettlementService,
             wallet_service_1.WalletService,
             tenant_catalog_service_1.TenantCatalogService,
             tenant_option_group_service_1.TenantOptionGroupService,
@@ -1057,9 +1061,21 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     count: Int!
                 }
 
+                type MerchantSettlementLedgerItem {
+                    id: ID!
+                    orderId: String
+                    tenantChannelId: String
+                    tenantName: String
+                    amount: Int!
+                    settleMethod: String
+                    status: String
+                    occurredAt: String
+                }
+
                 extend type Query {
                     assetLibrary(take: Int, skip: Int, tags: [String]): AssetLibraryResult!
                     assetTags(take: Int): [AssetTagSummary!]!
+                    merchantSettlementLedgers(orderId: String): [MerchantSettlementLedgerItem!]!
                 }
 
                 extend type Mutation {
@@ -1069,7 +1085,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                 ${redemption_schema_1.redemptionAdminSchema}
                 `;
             },
-            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver, tenant_catalog_admin_resolver_1.TenantCatalogAdminResolver, asset_library_admin_resolver_1.AssetLibraryAdminResolver, redemption_resolver_1.RedemptionAdminResolver],
+            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver, tenant_catalog_admin_resolver_1.TenantCatalogAdminResolver, asset_library_admin_resolver_1.AssetLibraryAdminResolver, redemption_resolver_1.RedemptionAdminResolver, merchant_settlement_admin_resolver_1.MerchantSettlementAdminResolver],
         },
         shopApiExtensions: {
             schema: () => {
@@ -1238,6 +1254,28 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     requiresContact: Boolean!
                     type: String!
                     availableShippingMethods: [ShippingMethodBrief!]!
+                    tenantName: String!
+                    lines: [OrderBoxLine!]!
+                    availableCoupons: [BoxCouponInfo!]!
+                    shippingCost: Int!
+                    shippingDiscount: Int!
+                    subtotal: Int!
+                }
+
+                type OrderBoxLine {
+                    orderLineId: ID!
+                    productVariantId: ID!
+                    productName: String!
+                    unitPrice: Int!
+                    quantity: Int!
+                    lineTotal: Int!
+                }
+
+                type BoxCouponInfo {
+                    code: String!
+                    name: String!
+                    condition: String!
+                    amount: Int!
                 }
 
                 type ShippingMethodBrief {
@@ -1246,15 +1284,29 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     name: String!
                 }
 
+                type MerchantSplit {
+                    tenantChannelId: ID!
+                    tenantName: String!
+                    amount: Int!
+                }
+
                 extend type Query {
                     orderBoxes: [OrderBox!]!
+                    orderMerchantSplit: [MerchantSplit!]!
                 }
 
                 extend type Mutation {
                     setOrderBoxShippingMethod(boxKey: String!, shippingMethodId: ID!, pickupLocationId: ID): Order!
                     # 一次性拆单结算：内部完成拆单 + 逐单过渡 ArrangingPayment + addPaymentToOrder，
                     # 返回已结算订单列表。metadata 为支付方式透传 json 字符串。
-                    checkoutSplitted(method: String!, metadata: String): [Order!]!
+                    # boxKeys/lineIds 可选：限定只结算部分箱 / 箱内部分行；未传则结算全部箱与行，
+                    # 未选中的行回流购物车留在源活动订单。
+                    checkoutSplitted(
+                        method: String!
+                        metadata: String
+                        boxKeys: [ID!]
+                        lineIds: [ID!]
+                    ): [Order!]!
                 }
 
                 # ===== 全局共享余额钱包 =====

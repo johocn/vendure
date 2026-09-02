@@ -95,6 +95,11 @@ import { OrderBoxService } from './order/order-box.service';
 import { OrderBoxShopResolver } from './order/order-box-shop.resolver';
 import { OrderSplitService } from './order/order-split.service';
 import { OrderSplitShopResolver } from './order/order-split-shop.resolver';
+import {
+    MerchantSettlementLedger,
+} from './order/merchant-settlement-ledger.entity';
+import { MerchantSettlementService } from './order/merchant-settlement.service';
+import { MerchantSettlementAdminResolver } from './order/merchant-settlement-admin.resolver';
 import { RedemptionCodeService } from './redemption/redemption-code.service';
 import { RedemptionShopResolver, RedemptionAdminResolver } from './redemption/redemption.resolver';
 import { redemptionShopSchema, redemptionAdminSchema } from './redemption/redemption.schema';
@@ -113,7 +118,7 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod, PaymentTemplate, TenantMember, Wallet],
+    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod, PaymentTemplate, TenantMember, Wallet, MerchantSettlementLedger],
     providers: [
         { provide: CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
         TenantSetupService,
@@ -142,6 +147,7 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
         TenantMemberService,
         OrderBoxService,
         OrderSplitService,
+        MerchantSettlementService,
         WalletService,
         TenantCatalogService,
         TenantOptionGroupService,
@@ -881,9 +887,21 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                     count: Int!
                 }
 
+                type MerchantSettlementLedgerItem {
+                    id: ID!
+                    orderId: String
+                    tenantChannelId: String
+                    tenantName: String
+                    amount: Int!
+                    settleMethod: String
+                    status: String
+                    occurredAt: String
+                }
+
                 extend type Query {
                     assetLibrary(take: Int, skip: Int, tags: [String]): AssetLibraryResult!
                     assetTags(take: Int): [AssetTagSummary!]!
+                    merchantSettlementLedgers(orderId: String): [MerchantSettlementLedgerItem!]!
                 }
 
                 extend type Mutation {
@@ -893,7 +911,7 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                 ${redemptionAdminSchema}
                 `;
         },
-        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver],
+        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver, MerchantSettlementAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {
@@ -1062,6 +1080,28 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                     requiresContact: Boolean!
                     type: String!
                     availableShippingMethods: [ShippingMethodBrief!]!
+                    tenantName: String!
+                    lines: [OrderBoxLine!]!
+                    availableCoupons: [BoxCouponInfo!]!
+                    shippingCost: Int!
+                    shippingDiscount: Int!
+                    subtotal: Int!
+                }
+
+                type OrderBoxLine {
+                    orderLineId: ID!
+                    productVariantId: ID!
+                    productName: String!
+                    unitPrice: Int!
+                    quantity: Int!
+                    lineTotal: Int!
+                }
+
+                type BoxCouponInfo {
+                    code: String!
+                    name: String!
+                    condition: String!
+                    amount: Int!
                 }
 
                 type ShippingMethodBrief {
@@ -1070,15 +1110,29 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                     name: String!
                 }
 
+                type MerchantSplit {
+                    tenantChannelId: ID!
+                    tenantName: String!
+                    amount: Int!
+                }
+
                 extend type Query {
                     orderBoxes: [OrderBox!]!
+                    orderMerchantSplit: [MerchantSplit!]!
                 }
 
                 extend type Mutation {
                     setOrderBoxShippingMethod(boxKey: String!, shippingMethodId: ID!, pickupLocationId: ID): Order!
                     # 一次性拆单结算：内部完成拆单 + 逐单过渡 ArrangingPayment + addPaymentToOrder，
                     # 返回已结算订单列表。metadata 为支付方式透传 json 字符串。
-                    checkoutSplitted(method: String!, metadata: String): [Order!]!
+                    # boxKeys/lineIds 可选：限定只结算部分箱 / 箱内部分行；未传则结算全部箱与行，
+                    # 未选中的行回流购物车留在源活动订单。
+                    checkoutSplitted(
+                        method: String!
+                        metadata: String
+                        boxKeys: [ID!]
+                        lineIds: [ID!]
+                    ): [Order!]!
                 }
 
                 # ===== 全局共享余额钱包 =====

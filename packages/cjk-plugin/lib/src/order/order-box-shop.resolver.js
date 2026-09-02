@@ -39,11 +39,37 @@ let OrderBoxShopResolver = class OrderBoxShopResolver {
     }
     /**
      * 返回当前订单的分箱结果，供前端「按箱展示配送」使用。
-     * 每箱含：生效配送档案、落入 lineIds、可用配送方式、可用自提点。
+     * 每箱含：生效配送档案、落入 lineIds、可用配送方式、可用自提点，
+     * 以及（新增）每箱行明细 lines、可用优惠券、配送费/免邮折扣、箱小计、租户名。
+     * 通过关系装载补充 shippingLines / customer / productVariant.product（供按箱金额与券范围判定）。
      */
     async orderBoxes(ctx) {
         const order = await this.resolveActiveOrder(ctx);
-        return this.orderBoxService.computeOrderBoxes(ctx, order);
+        const loaded = await this.orderService.findOne(ctx, order.id, [
+            'channels',
+            'lines',
+            'lines.productVariant',
+            'lines.productVariant.product',
+            'shippingLines',
+            'customer',
+        ]);
+        return this.orderBoxService.computeOrderBoxes(ctx, (loaded !== null && loaded !== void 0 ? loaded : order));
+    }
+    /**
+     * 返回当前订单按租户（商户）拆分的结算金额（各箱 subtotal 之和）。
+     * 新增 Top-level Query，不改动 orderBoxes 现有结构。
+     */
+    async orderMerchantSplit(ctx) {
+        const order = await this.resolveActiveOrder(ctx);
+        const loaded = await this.orderService.findOne(ctx, order.id, [
+            'channels',
+            'lines',
+            'lines.productVariant',
+            'lines.productVariant.product',
+            'shippingLines',
+            'customer',
+        ]);
+        return this.orderBoxService.computeMerchantSplit(ctx, (loaded !== null && loaded !== void 0 ? loaded : order));
     }
     /**
      * 为某一箱设置配送方式（自提类可同时传 pickupLocationId）。
@@ -63,6 +89,14 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext]),
     __metadata("design:returntype", Promise)
 ], OrderBoxShopResolver.prototype, "orderBoxes", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Owner),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], OrderBoxShopResolver.prototype, "orderMerchantSplit", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(core_1.Permission.Owner),

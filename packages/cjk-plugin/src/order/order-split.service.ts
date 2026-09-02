@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ID, Order, OrderService, RequestContext, UserInputError, isGraphQlErrorResult } from '@vendure/core';
 import { OrderBoxService } from './order-box.service';
 import { AggregationBox, decideAggregation } from './order-box-aggregation';
+import { COD_PAYMENT_CODES, MerchantSettlementService } from './merchant-settlement.service';
 
 /**
  * 后端「一次性拆单结算」服务（统一入口，由 checkoutSplitted 调用）。
@@ -22,21 +23,30 @@ export class OrderSplitService {
     constructor(
         private orderService: OrderService,
         private orderBoxService: OrderBoxService,
+        private merchantSettlementService: MerchantSettlementService,
     ) {}
 
     /**
      * 一次性拆单并逐单完成支付，返回需各自结算的订单列表（均已付款结算）。
      *
+     * 支持部分结算（return-to-cart）：
+     * - 不传 opts（或传了但覆盖全部箱/行）→ 全选，走与旧版完全一致的路径；
+     * - 传 boxKeys/lineIds 限定 → 仅结算所选箱/行，未选中的行留在源活动订单（购物车）不结算。
+     *
      * @param order 源活动订单（含全部 box 的 lines）
      * @param method 所选支付方式 code（同时驱动聚合判定）
      * @param metadata 支付方式透传 metadata
+     * @param options.boxKeys 可选：限定要结算的箱（boxKey）集合
+     * @param options.lineIds 可选：在选定箱内进一步限定要结算的行（orderLineId）
      */
     async performSplitCheckout(
         ctx: RequestContext,
         order: Order,
         method: string,
         metadata?: Record<string, any>,
+        options?: { boxKeys?: ID[]; lineIds?: ID[] },
     ): Promise<Order[]> {
+        const opts = options ?? {};
         // 显式带 lines.productVariant 重新加载，保证分箱与行迁移数据准确
         const source = (await this.orderService.findOne(ctx, order.id, ['lines.productVariant', 'customer'])) as Order;
         if (!source) throw new UserInputError('NO_ACTIVE_ORDER');
@@ -44,7 +54,36 @@ export class OrderSplitService {
         const boxes = await this.orderBoxService.computeOrderBoxes(ctx, source);
         if (boxes.length === 0) throw new UserInputError('NO_BOXES');
 
-        const aggBoxes: AggregationBox[] = boxes.map(b => ({
+        // —— 1) 依据 boxKeys/lineIds 计算「参与结算」的箱与行 ——
+        const hasBoxRestriction = (opts.boxKeys?.length ?? 0) > 0;
+        const hasLineRestriction = (opts.lineIds?.length ?? 0) > 0;
+        const boxKeyOpts = new Set((opts.boxKeys ?? []).map(k => String(k)));
+        const lineIdOpts = new Set((opts.lineIds ?? []).map(k => String(k)));
+
+        const selectedBoxKeys: string[] = [];
+        const selectedLineIdSet = new Set<string>();
+        for (const box of boxes) {
+            const boxSelected = !hasBoxRestriction || boxKeyOpts.has(box.boxKey);
+            if (!boxSelected) continue;
+            const boxLineIds = box.lineIds.map(l => String(l));
+            const chosen = hasLineRestriction ? boxLineIds.filter(lid => lineIdOpts.has(lid)) : boxLineIds;
+            // 该箱被选但其行全部被 lineIds 排除 → 视为未选中
+            if (chosen.length === 0) continue;
+            selectedBoxKeys.push(box.boxKey);
+            for (const lid of chosen) selectedLineIdSet.add(lid);
+        }
+        if (selectedLineIdSet.size === 0) throw new UserInputError('NO_ITEMS_TO_CHECKOUT');
+
+        // 未选中的行（回流购物车）必须留在源活动订单，不得迁入任何结算单
+        const allLineIds = new Set<string>((source.lines ?? []).map(l => String((l as any).id)));
+        const excludedLineIds = (opts.boxKeys?.length || opts.lineIds?.length)
+            ? [...allLineIds].filter(lid => !selectedLineIdSet.has(lid))
+            : [];
+        const isFullSelection = excludedLineIds.length === 0;
+
+        // —— 2) 聚合判定仅针对「所选箱」（含同箱内部分行过滤） ——
+        const selectedBoxes = boxes.filter(b => selectedBoxKeys.includes(b.boxKey));
+        const aggBoxes: AggregationBox[] = selectedBoxes.map(b => ({
             boxKey: b.boxKey,
             profileId: String(b.profileId),
             tenantChannelId: String(b.tenantChannelId),
@@ -64,15 +103,25 @@ export class OrderSplitService {
             lineInfo.set(String(line.id), { variantId: String(vid), qty: (line as any).quantity ?? 0 });
         }
 
-        // 需要迁移到新订单的箱 = groups[1..n]
-        const moveBoxKeys: string[] = [];
-        for (let i = 1; i < groups.length; i++) {
-            for (const ab of groups[i].boxes) moveBoxKeys.push(ab.boxKey);
-        }
-        const moveLineIds: ID[] = [];
-        for (const bk of moveBoxKeys) {
-            const box = boxByKey.get(bk);
-            if (box) moveLineIds.push(...box.lineIds);
+        // 全选：group[0] 保留在源订单（维持旧逻辑）；部分选：每个 group 均需新建独立订单迁出
+        const newGroupStart = isFullSelection ? 1 : 0;
+
+        // 待从源订单移除、迁往新订单的行
+        let moveLineIds: ID[];
+        if (isFullSelection) {
+            moveLineIds = [];
+            for (let i = newGroupStart; i < groups.length; i++) {
+                for (const ab of groups[i].boxes) {
+                    const box = boxByKey.get(ab.boxKey);
+                    if (!box) continue;
+                    for (const lid of box.lineIds as ID[]) {
+                        if (selectedLineIdSet.has(String(lid))) moveLineIds.push(lid);
+                    }
+                }
+            }
+        } else {
+            // 部分选：把所有选中行全部迁出，源订单仅保留回流行
+            moveLineIds = [...selectedLineIdSet] as ID[];
         }
 
         // 一次性从源订单移除待迁移行
@@ -85,8 +134,13 @@ export class OrderSplitService {
 
         // 各新订单：建单 → 迁移行 → 复制客户/配送地址 → 设置该组箱配送方式
         const newOrders: Order[] = [];
-        for (let i = 1; i < groups.length; i++) {
-            const items = this.buildItemsForGroup(groups[i].boxes.map(ab => ab.boxKey), boxByKey, lineInfo);
+        for (let i = newGroupStart; i < groups.length; i++) {
+            const items = this.buildItemsForGroup(
+                groups[i].boxes.map(ab => ab.boxKey),
+                boxByKey,
+                lineInfo,
+                selectedLineIdSet,
+            );
             if (items.length === 0) continue;
             const newOrder = (await this.orderService.create(ctx)) as Order;
             if ((source as any).customerId != null) {
@@ -112,19 +166,23 @@ export class OrderSplitService {
             newOrders.push(freshNew);
         }
 
-        // 源订单只保留 groups[0] 的箱；重新加载后设置其配送方式
-        const remaining = (await this.orderService.findOne(ctx, source.id, ['lines.productVariant'])) as Order;
-        await this.orderBoxService.setShippingForOrder(
-            ctx,
-            remaining,
-            groups[0].boxes.map(ab => ab.boxKey),
-            selections,
-        );
+        // 需要「逐步结算」的订单：全选 = 源订单(group[0]) + 各新订单；部分选 = 仅各新订单（源订单留作购物车）
+        const toSettle: Order[] = [];
+        if (isFullSelection) {
+            const remaining = (await this.orderService.findOne(ctx, source.id, ['lines.productVariant'])) as Order;
+            await this.orderBoxService.setShippingForOrder(
+                ctx,
+                remaining,
+                groups[0].boxes.map(ab => ab.boxKey),
+                selections,
+            );
+            toSettle.push(remaining);
+        }
+        toSettle.push(...newOrders);
 
         // 逐单过渡到 ArrangingPayment 并支付
-        const ids = [remaining.id, ...newOrders.map(o => o.id)];
         const settled: Order[] = [];
-        for (const id of ids) {
+        for (const id of toSettle.map(o => o.id)) {
             const t = await this.orderService.transitionToState(ctx, id, 'ArrangingPayment');
             if (isGraphQlErrorResult(t)) {
                 throw new UserInputError((t as any).transitionError ?? 'TRANSITION_FAILED');
@@ -133,22 +191,43 @@ export class OrderSplitService {
             if (isGraphQlErrorResult(paid)) {
                 throw new UserInputError((paid as any).paymentErrorMessage ?? 'PAYMENT_FAILED');
             }
+            // 台账级分账：为已结算订单按「商户（租户）」记录应付金额（每商户一行）；
+            // 在同一 @Transaction 内写入，与订单结算原子一致。COD/门店收银记为 PENDING_SIGN，在线方式记为 PAID。
+            await this.merchantSettlementService.recordOrderSettlement(ctx, paid as Order, {
+                method,
+                codPaymentCodes: [...COD_PAYMENT_CODES],
+            });
             settled.push(paid as Order);
         }
+
+        // —— 部分选：回流行的源订单保持 AddingItems（购物车态）；若已迁空且有结算单 → best-effort 取消 ——
+        if (!isFullSelection) {
+            const after = (await this.orderService.findOne(ctx, source.id, ['lines.productVariant'])) as Order;
+            if (after && (after.lines ?? []).length === 0 && newOrders.length > 0) {
+                try {
+                    await this.orderService.transitionToState(ctx, source.id, 'Cancelled');
+                } catch {
+                    /* 取消失败不抛，任其闲置，避免留下陈旧的空活动订单（best-effort） */
+                }
+            }
+        }
+
         return settled;
     }
 
-    /** 聚合一个 group 的箱，得到其 order lines 的 variant+qty 列表。 */
+    /** 聚合一个 group 的箱，得到其「被选中」的 order lines 的 variant+qty 列表。 */
     private buildItemsForGroup(
         boxKeys: string[],
         boxByKey: Map<string, any>,
         lineInfo: Map<string, { variantId: string; qty: number }>,
+        selectedLineIdSet: Set<string>,
     ): Array<{ productVariantId: ID; quantity: number }> {
         const items: Array<{ productVariantId: ID; quantity: number }> = [];
         for (const bk of boxKeys) {
             const box = boxByKey.get(bk);
             if (!box) continue;
             for (const lineId of box.lineIds as ID[]) {
+                if (!selectedLineIdSet.has(String(lineId))) continue;
                 const info = lineInfo.get(String(lineId));
                 if (info && info.qty > 0) {
                     items.push({ productVariantId: info.variantId as ID, quantity: info.qty });
