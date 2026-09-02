@@ -1130,8 +1130,8 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                     checkoutSplitted(
                         method: String!
                         metadata: String
-                        boxKeys: [ID!]
-                        lineIds: [ID!]
+                        boxKeys: [String!]
+                        lineIds: [String!]
                     ): [Order!]!
                 }
 

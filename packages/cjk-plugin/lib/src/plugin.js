@@ -1304,8 +1304,8 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     checkoutSplitted(
                         method: String!
                         metadata: String
-                        boxKeys: [ID!]
-                        lineIds: [ID!]
+                        boxKeys: [String!]
+                        lineIds: [String!]
                     ): [Order!]!
                 }
 
