@@ -597,6 +597,28 @@ export class OrderBoxService {
         if (isGraphQlErrorResult(result)) {
             throw new UserInputError((result as any).message ?? 'SET_SHIPPING_METHOD_FAILED');
         }
+
+        // —— 订单级履约标记（治本）：按本次涉及箱型写入 deliveryType ——
+        // 纯自提箱（仅 pickup）→ 'pickup'；含任意配送箱 → 'delivery'。
+        // 前端确认页/详情页/列表均以 deliveryType==='pickup' 判定自提与核销码，
+        // 故分箱自提流程必须在此同步订单级标记（历史 bug：store-pickup 但 deliveryType=delivery）。
+        const effBoxes = boxes.filter(b => effectiveKeys.includes(b.boxKey));
+        const hasDelivery = effBoxes.some(b => b.type !== 'pickup');
+        const cfPatch: Record<string, any> = {
+            deliveryType: effBoxes.length > 0 && !hasDelivery ? 'pickup' : 'delivery',
+        };
+        if (cfPatch.deliveryType === 'pickup') {
+            // 订单级 selectedPickupLocationId 若缺失，从该箱选择快照补首选自提点（确认页/核销锚点用）
+            for (const b of effBoxes) {
+                const pid = selectionsMap[b.boxKey]?.pickupLocationId;
+                if (pid != null) {
+                    cfPatch.selectedPickupLocationIdId = String(pid);
+                    break;
+                }
+            }
+        }
+        await this.orderService.updateCustomFields(ctx, order.id, cfPatch as any);
+
         return this.orderService.findOne(ctx, order.id) as Promise<Order>;
     }
 

@@ -459,7 +459,7 @@ let OrderBoxService = class OrderBoxService {
      * 未传则读取 order.customFields.boxShippingSelections。每箱未显式选择时用该箱默认配送方式兜底。
      */
     async setShippingForOrder(ctx, order, boxKeys, selections) {
-        var _a;
+        var _a, _b;
         const boxes = await this.computeOrderBoxes(ctx, order);
         const effectiveKeys = boxes.filter(b => boxKeys.includes(b.boxKey)).map(b => b.boxKey);
         if (effectiveKeys.length === 0)
@@ -475,6 +475,26 @@ let OrderBoxService = class OrderBoxService {
         if ((0, core_1.isGraphQlErrorResult)(result)) {
             throw new core_1.UserInputError((_a = result.message) !== null && _a !== void 0 ? _a : 'SET_SHIPPING_METHOD_FAILED');
         }
+        // —— 订单级履约标记（治本）：按本次涉及箱型写入 deliveryType ——
+        // 纯自提箱（仅 pickup）→ 'pickup'；含任意配送箱 → 'delivery'。
+        // 前端确认页/详情页/列表均以 deliveryType==='pickup' 判定自提与核销码，
+        // 故分箱自提流程必须在此同步订单级标记（历史 bug：store-pickup 但 deliveryType=delivery）。
+        const effBoxes = boxes.filter(b => effectiveKeys.includes(b.boxKey));
+        const hasDelivery = effBoxes.some(b => b.type !== 'pickup');
+        const cfPatch = {
+            deliveryType: effBoxes.length > 0 && !hasDelivery ? 'pickup' : 'delivery',
+        };
+        if (cfPatch.deliveryType === 'pickup') {
+            // 订单级 selectedPickupLocationId 若缺失，从该箱选择快照补首选自提点（确认页/核销锚点用）
+            for (const b of effBoxes) {
+                const pid = (_b = selectionsMap[b.boxKey]) === null || _b === void 0 ? void 0 : _b.pickupLocationId;
+                if (pid != null) {
+                    cfPatch.selectedPickupLocationIdId = String(pid);
+                    break;
+                }
+            }
+        }
+        await this.orderService.updateCustomFields(ctx, order.id, cfPatch);
         return this.orderService.findOne(ctx, order.id);
     }
     /**
