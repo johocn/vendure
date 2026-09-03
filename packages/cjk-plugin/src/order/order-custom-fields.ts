@@ -150,5 +150,27 @@ export const orderCustomFields: CustomFields = {
             public: true,
             label: [{ languageCode: LanguageCode.zh_Hans, value: '核销时间' }],
         },
+        {
+            name: 'redeemExpiresAt',
+            type: 'datetime',
+            nullable: true,
+            public: true,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '核销码有效期' }],
+        },
+        {
+            name: 'redeemVersion',
+            type: 'int',
+            nullable: true,
+            defaultValue: 1,
+            public: true,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '核销码版本' }],
+        },
+        {
+            name: 'redeemReissuedAt',
+            type: 'datetime',
+            nullable: true,
+            public: true,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '重发时间' }],
+        },
     ],
 };
