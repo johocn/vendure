@@ -19,6 +19,10 @@ export declare class RedemptionAdminResolver {
         order: null;
         claimed: boolean;
         claimedAt: null;
+        status: string;
+        expiresAt: null;
+        version: number;
+        reissueable: boolean;
     } | {
         order: {
             id: import("@vendure/core").ID;
@@ -30,6 +34,10 @@ export declare class RedemptionAdminResolver {
         };
         claimed: boolean;
         claimedAt: any;
+        status: import("./redemption-crypto").RedemptionStatus;
+        expiresAt: any;
+        version: number;
+        reissueable: boolean;
     }>;
     redemptionClaim(ctx: RequestContext, code: string): Promise<{
         order: {
@@ -43,5 +51,21 @@ export declare class RedemptionAdminResolver {
         claimed: boolean;
         claimedAt: Date;
         message: string;
+    }>;
+    redemptionReissue(ctx: RequestContext, code: string): Promise<{
+        order: {
+            id: import("@vendure/core").ID;
+            code: string;
+            state: import("@vendure/core").OrderState;
+            totalWithTax: number;
+            currencyCode: import("@vendure/core").CurrencyCode;
+            totalQuantity: number;
+        };
+        claimed: boolean;
+        claimedAt: null;
+        message: string;
+        status: import("./redemption-crypto").RedemptionStatus;
+        expiresAt: string;
+        version: number;
     }>;
 }

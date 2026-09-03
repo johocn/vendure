@@ -1,10 +1,14 @@
-import { ID, RequestContext, OrderService, TransactionalConnection, Order } from '@vendure/core';
+import { ConfigService, ID, RequestContext, OrderService, TransactionalConnection, Order } from '@vendure/core';
+import { RedemptionStatus } from './redemption-crypto';
 export declare class RedemptionCodeService {
     private orderService;
     private connection;
     private readonly keyHex;
-    constructor(orderService: OrderService, connection: TransactionalConnection);
+    private readonly graceDays;
+    private readonly expireRemindHours;
+    constructor(orderService: OrderService, connection: TransactionalConnection, configService: ConfigService);
     private cf;
+    private writeExpiry;
     /**
      * 幂等确保订单已生成核销码。返回解密的明文核销码。
      */
@@ -14,6 +18,10 @@ export declare class RedemptionCodeService {
         qrPayload: string;
         barcode: string;
         claimed: boolean;
+        status: RedemptionStatus;
+        expiresAt: string | null;
+        version: number;
+        reissueable: boolean;
     }>;
     /**
      * 管理端按输入码定位（限当前租户 Channel）。返回订单指针或 null。
@@ -24,5 +32,18 @@ export declare class RedemptionCodeService {
     claim(ctx: RequestContext, orderId: ID): Promise<{
         already: boolean;
         claimedAt: Date;
+    }>;
+    /**
+     * 作废重发：已核销单禁止重发（一次性闭环）。新码重算密文/指纹并覆盖 → lookupByCode 命中激活码，旧码自然失效。
+     */
+    reissue(ctx: RequestContext, orderId: ID): Promise<{
+        code: string;
+        qrPayload: string;
+        barcode: string;
+        claimed: boolean;
+        status: RedemptionStatus;
+        expiresAt: string;
+        version: number;
+        reissueable: boolean;
     }>;
 }

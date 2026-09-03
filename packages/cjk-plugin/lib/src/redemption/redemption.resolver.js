@@ -16,6 +16,7 @@ exports.RedemptionAdminResolver = exports.RedemptionShopResolver = void 0;
 const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
 const redemption_code_service_1 = require("./redemption-code.service");
+const redemption_crypto_1 = require("./redemption-crypto");
 const ERR_NOT_FOUND = 'redemption.error.not_found';
 let RedemptionShopResolver = class RedemptionShopResolver {
     constructor(redemptionCodeService, orderService, configService) {
@@ -46,6 +47,10 @@ let RedemptionShopResolver = class RedemptionShopResolver {
             barcodePayload: r.barcode,
             claimed: r.claimed,
             canAccess: true,
+            status: r.status,
+            expiresAt: r.expiresAt,
+            reissueable: r.reissueable,
+            version: r.version,
         };
     }
 };
@@ -72,15 +77,19 @@ let RedemptionAdminResolver = class RedemptionAdminResolver {
         this.entityHydrator = entityHydrator;
     }
     async redemptionLookup(ctx, code) {
-        var _a, _b;
+        var _a, _b, _c, _d;
         const order = await this.redemptionCodeService.lookupByCode(ctx, code);
         if (!order) {
-            return { order: null, claimed: false, claimedAt: null };
+            return { order: null, claimed: false, claimedAt: null, status: 'active', expiresAt: null, version: 1, reissueable: false };
         }
         // lookupByCode 经 queryBuilder 取 order 未加载 lines，Vendure hydrator 对
         // 未加载 relation 字段访问 totalQuantity 会抛错，故先灌注 lines 再读 totalQuantity。
         await this.entityHydrator.hydrate(ctx, order, { relations: ['lines'] });
         const cf = (_a = order.customFields) !== null && _a !== void 0 ? _a : {};
+        const claimed = !!cf.redeemClaimed;
+        const expiresAt = (_b = cf.redeemExpiresAt) !== null && _b !== void 0 ? _b : null;
+        const version = Number(cf.redeemVersion) || 1;
+        const status = (0, redemption_crypto_1.computeRedemptionStatus)(claimed, expiresAt, new Date(), 24);
         return {
             order: {
                 id: order.id,
@@ -90,8 +99,12 @@ let RedemptionAdminResolver = class RedemptionAdminResolver {
                 currencyCode: order.currencyCode,
                 totalQuantity: order.totalQuantity,
             },
-            claimed: !!cf.redeemClaimed,
-            claimedAt: (_b = cf.redeemClaimedAt) !== null && _b !== void 0 ? _b : null,
+            claimed,
+            claimedAt: (_c = cf.redeemClaimedAt) !== null && _c !== void 0 ? _c : null,
+            status,
+            expiresAt: (_d = expiresAt !== null && expiresAt !== void 0 ? expiresAt : cf.redeemExpiresAt) !== null && _d !== void 0 ? _d : null,
+            version,
+            reissueable: !claimed,
         };
     }
     async redemptionClaim(ctx, code) {
@@ -118,6 +131,28 @@ let RedemptionAdminResolver = class RedemptionAdminResolver {
             message: result.already ? 'already' : 'ok',
         };
     }
+    async redemptionReissue(ctx, code) {
+        const order = await this.redemptionCodeService.lookupByCode(ctx, code);
+        if (!order)
+            throw new core_1.UserInputError(ERR_NOT_FOUND);
+        const result = await this.redemptionCodeService.reissue(ctx, order.id);
+        return {
+            order: {
+                id: order.id,
+                code: order.code,
+                state: order.state,
+                totalWithTax: order.totalWithTax,
+                currencyCode: order.currencyCode,
+                totalQuantity: order.totalQuantity,
+            },
+            claimed: result.claimed,
+            claimedAt: null,
+            message: 'reissued',
+            status: result.status,
+            expiresAt: result.expiresAt,
+            version: result.version,
+        };
+    }
 };
 exports.RedemptionAdminResolver = RedemptionAdminResolver;
 __decorate([
@@ -138,6 +173,15 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, String]),
     __metadata("design:returntype", Promise)
 ], RedemptionAdminResolver.prototype, "redemptionClaim", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('code')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String]),
+    __metadata("design:returntype", Promise)
+], RedemptionAdminResolver.prototype, "redemptionReissue", null);
 exports.RedemptionAdminResolver = RedemptionAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [redemption_code_service_1.RedemptionCodeService,

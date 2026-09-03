@@ -8,6 +8,7 @@ exports.redemptionFingerprint = redemptionFingerprint;
 exports.redemptionBarcodePayload = redemptionBarcodePayload;
 exports.redemptionQrPayload = redemptionQrPayload;
 exports.verifyRedemptionQr = verifyRedemptionQr;
+exports.computeRedemptionStatus = computeRedemptionStatus;
 const node_crypto_1 = require("node:crypto");
 // 6 位大写字母+数字，去掉易混 O/I/0/1。校验位 = 前 5 位映射和 mod(31) 对应的字符，避免误输。
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // 32 chars
@@ -76,5 +77,17 @@ function verifyRedemptionQr(payloadStr, keyHex, maxAgeMs = 5 * 60000) {
     catch (_a) {
         return false;
     }
+}
+/** 状态推导为纯函数（服务/resolver 共用，TDD 友好）。阈值=剩余毫秒 <= remindHours 判断「即将过期」。 */
+function computeRedemptionStatus(claimed, expiresAtIso, now, expireRemindHours) {
+    if (claimed)
+        return 'claimed';
+    if (!expiresAtIso)
+        return 'active';
+    const expiresMs = new Date(expiresAtIso).getTime();
+    if (now.getTime() >= expiresMs)
+        return 'expired';
+    const remainingMs = expiresMs - now.getTime();
+    return remainingMs <= expireRemindHours * 3600000 ? 'expiring_soon' : 'active';
 }
 //# sourceMappingURL=redemption-crypto.js.map

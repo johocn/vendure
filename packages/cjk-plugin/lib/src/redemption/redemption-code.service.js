@@ -14,7 +14,7 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const redemption_crypto_1 = require("./redemption-crypto");
 let RedemptionCodeService = class RedemptionCodeService {
-    constructor(orderService, connection) {
+    constructor(orderService, connection, configService) {
         var _a;
         this.orderService = orderService;
         this.connection = connection;
@@ -22,21 +22,35 @@ let RedemptionCodeService = class RedemptionCodeService {
         if (process.env.REDEMPTION_KEY === undefined && process.env.NODE_ENV === 'production') {
             throw new Error('REDEMPTION_KEY 必须在生产环境注入（32 字节 hex）');
         }
+        this.graceDays = Number(configService.get('pickup.redeemGraceDays')) || 7;
+        this.expireRemindHours = Number(configService.get('pickup.redeemExpireRemindHours')) || 24;
     }
     cf(order) {
         var _a;
         return ((_a = order.customFields) !== null && _a !== void 0 ? _a : {});
     }
+    async writeExpiry(ctx, orderId, placedAt) {
+        const base = placedAt !== null && placedAt !== void 0 ? placedAt : new Date();
+        const expiresAt = new Date(base.getTime() + this.graceDays * 24 * 3600000);
+        // 多次调用的保持一致：字段级写 expiresAt，version 不在此递增（重发才 +1）
+        await this.orderService.updateCustomFields(ctx, orderId, {
+            redeemExpiresAt: expiresAt.toISOString(),
+        });
+    }
     /**
      * 幂等确保订单已生成核销码。返回解密的明文核销码。
      */
     async ensure(ctx, orderId) {
-        var _a, _b, _c;
+        var _a, _b, _c, _d;
         const order = (await this.orderService.findOne(ctx, orderId, []));
         if (!order)
             throw new Error('order not found');
         const cf = this.cf(order);
         if (cf.redeemCodeCipher && cf.redeemCodeIv) {
+            // 历史单缺有效期：补算（幂等；已在生产跑过的单补上 graceDays 起算）
+            if (!cf.redeemExpiresAt) {
+                await this.writeExpiry(ctx, orderId, order.orderPlacedAt);
+            }
             return (0, redemption_crypto_1.decryptRedemptionCode)(cf.redeemCodeCipher, cf.redeemCodeIv, this.keyHex);
         }
         const code = (0, redemption_crypto_1.generateRedemptionCode)();
@@ -47,10 +61,14 @@ let RedemptionCodeService = class RedemptionCodeService {
             redeemCodeCipher: cipher,
             redeemCodeIv: iv,
             redeemCodeHash: hash,
+            redeemExpiresAt: new Date(((_d = order.orderPlacedAt) !== null && _d !== void 0 ? _d : new Date()).getTime() + this.graceDays * 24 * 3600000).toISOString(),
+            redeemVersion: 1,
+            redeemReissuedAt: new Date().toISOString(),
         });
         return code;
     }
     async getWithQr(ctx, orderId, orderCode) {
+        var _a;
         const order = (await this.orderService.findOne(ctx, orderId, []));
         if (!order)
             throw new Error('order not found');
@@ -59,11 +77,19 @@ let RedemptionCodeService = class RedemptionCodeService {
             ? (0, redemption_crypto_1.decryptRedemptionCode)(cf.redeemCodeCipher, cf.redeemCodeIv, this.keyHex)
             : await this.ensure(ctx, orderId);
         const claimed = !!cf.redeemClaimed;
+        const expiresAt = (_a = cf.redeemExpiresAt) !== null && _a !== void 0 ? _a : null;
+        const version = Number(cf.redeemVersion) || 1;
+        const now = new Date();
+        const status = (0, redemption_crypto_1.computeRedemptionStatus)(claimed, expiresAt, now, this.expireRemindHours);
         return {
             code,
             qrPayload: (0, redemption_crypto_1.redemptionQrPayload)(orderCode, code, this.keyHex),
             barcode: (0, redemption_crypto_1.redemptionBarcodePayload)(orderCode, code),
             claimed,
+            status,
+            expiresAt,
+            version,
+            reissueable: !claimed,
         };
     }
     /**
@@ -96,11 +122,50 @@ let RedemptionCodeService = class RedemptionCodeService {
         });
         return { already: false, claimedAt: new Date() };
     }
+    /**
+     * 作废重发：已核销单禁止重发（一次性闭环）。新码重算密文/指纹并覆盖 → lookupByCode 命中激活码，旧码自然失效。
+     */
+    async reissue(ctx, orderId) {
+        var _a, _b, _c;
+        const order = (await this.orderService.findOne(ctx, orderId, []));
+        if (!order)
+            throw new Error('order not found');
+        const cf = this.cf(order);
+        if (cf.redeemClaimed) {
+            throw new Error('redemption.already_claimed');
+        }
+        const orderCode = order.code;
+        const code = (0, redemption_crypto_1.generateRedemptionCode)();
+        const { cipher, iv } = (0, redemption_crypto_1.encryptRedemptionCode)(code, this.keyHex);
+        const channelToken = (_b = (_a = ctx.channel) === null || _a === void 0 ? void 0 : _a.token) !== null && _b !== void 0 ? _b : String((_c = ctx.channelId) !== null && _c !== void 0 ? _c : '');
+        const hash = (0, redemption_crypto_1.redemptionFingerprint)(code, this.keyHex, channelToken);
+        const version = (Number(cf.redeemVersion) || 1) + 1;
+        const expiresAt = new Date(new Date().getTime() + this.graceDays * 24 * 3600000).toISOString();
+        await this.orderService.updateCustomFields(ctx, orderId, {
+            redeemCodeCipher: cipher,
+            redeemCodeIv: iv,
+            redeemCodeHash: hash,
+            redeemVersion: version,
+            redeemReissuedAt: new Date(),
+            redeemExpiresAt: expiresAt,
+        });
+        return {
+            code,
+            qrPayload: (0, redemption_crypto_1.redemptionQrPayload)(orderCode, code, this.keyHex),
+            barcode: (0, redemption_crypto_1.redemptionBarcodePayload)(orderCode, code),
+            claimed: false,
+            status: 'active',
+            expiresAt,
+            version,
+            reissueable: true,
+        };
+    }
 };
 exports.RedemptionCodeService = RedemptionCodeService;
 exports.RedemptionCodeService = RedemptionCodeService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [core_1.OrderService,
-        core_1.TransactionalConnection])
+        core_1.TransactionalConnection,
+        core_1.ConfigService])
 ], RedemptionCodeService);
 //# sourceMappingURL=redemption-code.service.js.map

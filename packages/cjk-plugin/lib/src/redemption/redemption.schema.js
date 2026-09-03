@@ -24,6 +24,10 @@ exports.redemptionShopSchema = (0, graphql_tag_1.default) `
         barcodePayload: String
         claimed: Boolean!
         canAccess: Boolean!
+        status: String!        # active | expiring_soon | expired | claimed
+        expiresAt: DateTime
+        reissueable: Boolean!
+        version: Int
     }
 `;
 /**
@@ -35,6 +39,7 @@ exports.redemptionAdminSchema = (0, graphql_tag_1.default) `
     }
     extend type Mutation {
         redemptionClaim(code: String!): RedemptionClaimResult
+        redemptionReissue(code: String!): RedemptionClaimResult
     }
 
     type RedemptionOrder {
@@ -50,6 +55,10 @@ exports.redemptionAdminSchema = (0, graphql_tag_1.default) `
         order: RedemptionOrder
         claimed: Boolean!
         claimedAt: DateTime
+        status: String!
+        expiresAt: DateTime
+        version: Int
+        reissueable: Boolean!
     }
 
     type RedemptionClaimResult {
@@ -57,6 +66,9 @@ exports.redemptionAdminSchema = (0, graphql_tag_1.default) `
         claimed: Boolean!
         claimedAt: DateTime
         message: String
+        status: String!
+        expiresAt: DateTime
+        version: Int
     }
 `;
 //# sourceMappingURL=redemption.schema.js.map
