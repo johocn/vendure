@@ -25,15 +25,15 @@ export class RedemptionCodeService {
         if (process.env.REDEMPTION_KEY === undefined && process.env.NODE_ENV === 'production') {
             throw new Error('REDEMPTION_KEY 必须在生产环境注入（32 字节 hex）');
         }
-        this.graceDays = Number(configService.get('pickup.redeemGraceDays')) || 7;
-        this.expireRemindHours = Number(configService.get('pickup.redeemExpireRemindHours')) || 24;
+        this.graceDays = Number((configService as any).get('pickup.redeemGraceDays')) || 7;
+        this.expireRemindHours = Number((configService as any).get('pickup.redeemExpireRemindHours')) || 24;
     }
 
     private cf(order: Order): Record<string, any> {
         return (order.customFields ?? {}) as Record<string, any>;
     }
 
-    private async writeExpiry(ctx: RequestContext, orderId: ID, placedAt: Date | null): Promise<void> {
+    private async writeExpiry(ctx: RequestContext, orderId: ID, placedAt: Date | null | undefined): Promise<void> {
         const base = placedAt ?? new Date();
         const expiresAt = new Date(base.getTime() + this.graceDays * 24 * 3600_000);
         // 多次调用的保持一致：字段级写 expiresAt，version 不在此递增（重发才 +1）

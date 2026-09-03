@@ -3,6 +3,7 @@ import {
     Allow, ConfigService, Ctx, EntityHydrator, Order, OrderService, Permission, RequestContext, UserInputError,
 } from '@vendure/core';
 import { RedemptionCodeService } from './redemption-code.service';
+import { computeRedemptionStatus } from './redemption-crypto';
 
 const ERR_NOT_FOUND = 'redemption.error.not_found';
 
@@ -40,6 +41,10 @@ export class RedemptionShopResolver {
             barcodePayload: r.barcode,
             claimed: r.claimed,
             canAccess: true,
+            status: r.status,
+            expiresAt: r.expiresAt,
+            reissueable: r.reissueable,
+            version: r.version,
         };
     }
 }
@@ -57,12 +62,16 @@ export class RedemptionAdminResolver {
     async redemptionLookup(@Ctx() ctx: RequestContext, @Args('code') code: string) {
         const order = await this.redemptionCodeService.lookupByCode(ctx, code);
         if (!order) {
-            return { order: null, claimed: false, claimedAt: null };
+            return { order: null, claimed: false, claimedAt: null, status: 'active', expiresAt: null, version: 1, reissueable: false };
         }
         // lookupByCode 经 queryBuilder 取 order 未加载 lines，Vendure hydrator 对
         // 未加载 relation 字段访问 totalQuantity 会抛错，故先灌注 lines 再读 totalQuantity。
         await this.entityHydrator.hydrate(ctx, order, { relations: ['lines'] } as any);
         const cf = order.customFields ?? {};
+        const claimed = !!(cf as any).redeemClaimed;
+        const expiresAt: string | null = (cf as any).redeemExpiresAt ?? null;
+        const version = Number((cf as any).redeemVersion) || 1;
+        const status = computeRedemptionStatus(claimed, expiresAt, new Date(), 24);
         return {
             order: {
                 id: order.id,
@@ -72,8 +81,12 @@ export class RedemptionAdminResolver {
                 currencyCode: order.currencyCode,
                 totalQuantity: order.totalQuantity,
             },
-            claimed: !!(cf as any).redeemClaimed,
+            claimed,
             claimedAt: (cf as any).redeemClaimedAt ?? null,
+            status,
+            expiresAt: expiresAt ?? (cf as any).redeemExpiresAt ?? null,
+            version,
+            reissueable: !claimed,
         };
     }
 
@@ -99,6 +112,30 @@ export class RedemptionAdminResolver {
             claimed: true,
             claimedAt: result.claimedAt ?? (cf as any).redeemClaimedAt ?? null,
             message: result.already ? 'already' : 'ok',
+        };
+    }
+
+    @Mutation()
+    @Allow(Permission.UpdateOrder)
+    async redemptionReissue(@Ctx() ctx: RequestContext, @Args('code') code: string) {
+        const order = await this.redemptionCodeService.lookupByCode(ctx, code);
+        if (!order) throw new UserInputError(ERR_NOT_FOUND);
+        const result = await this.redemptionCodeService.reissue(ctx, order.id);
+        return {
+            order: {
+                id: order.id,
+                code: order.code,
+                state: order.state,
+                totalWithTax: order.totalWithTax,
+                currencyCode: order.currencyCode,
+                totalQuantity: order.totalQuantity,
+            },
+            claimed: result.claimed,
+            claimedAt: null,
+            message: 'reissued',
+            status: result.status,
+            expiresAt: result.expiresAt,
+            version: result.version,
         };
     }
 }
