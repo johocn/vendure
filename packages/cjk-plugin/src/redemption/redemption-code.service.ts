@@ -1,5 +1,5 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { ConfigService, ID, RequestContext, OrderService, TransactionalConnection, Order } from '@vendure/core';
+import { Injectable } from '@nestjs/common';
+import { ID, RequestContext, OrderService, TransactionalConnection, Order } from '@vendure/core';
 import {
     generateRedemptionCode,
     encryptRedemptionCode,
@@ -19,14 +19,14 @@ export class RedemptionCodeService {
     constructor(
         private orderService: OrderService,
         private connection: TransactionalConnection,
-        configService: ConfigService,
     ) {
         this.keyHex = process.env.REDEMPTION_KEY ?? '7'.repeat(64); // dev 默认；生产必由运维注入
         if (process.env.REDEMPTION_KEY === undefined && process.env.NODE_ENV === 'production') {
             throw new Error('REDEMPTION_KEY 必须在生产环境注入（32 字节 hex）');
         }
-        this.graceDays = Number((configService as any).get('pickup.redeemGraceDays')) || 7;
-        this.expireRemindHours = Number((configService as any).get('pickup.redeemExpireRemindHours')) || 24;
+        // 核销有效期：下单后 7 天宽限期；距过期 24 小时起前端进入「即将过期」，可选环境变量覆盖
+        this.graceDays = 7;
+        this.expireRemindHours = 24;
     }
 
     private cf(order: Order): Record<string, any> {

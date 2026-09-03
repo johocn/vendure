@@ -1,4 +1,4 @@
-import { ConfigService, ID, RequestContext, OrderService, TransactionalConnection, Order } from '@vendure/core';
+import { ID, RequestContext, OrderService, TransactionalConnection, Order } from '@vendure/core';
 import { RedemptionStatus } from './redemption-crypto';
 export declare class RedemptionCodeService {
     private orderService;
@@ -6,7 +6,7 @@ export declare class RedemptionCodeService {
     private readonly keyHex;
     private readonly graceDays;
     private readonly expireRemindHours;
-    constructor(orderService: OrderService, connection: TransactionalConnection, configService: ConfigService);
+    constructor(orderService: OrderService, connection: TransactionalConnection);
     private cf;
     private writeExpiry;
     /**

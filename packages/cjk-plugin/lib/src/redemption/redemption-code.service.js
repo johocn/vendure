@@ -14,7 +14,7 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const redemption_crypto_1 = require("./redemption-crypto");
 let RedemptionCodeService = class RedemptionCodeService {
-    constructor(orderService, connection, configService) {
+    constructor(orderService, connection) {
         var _a;
         this.orderService = orderService;
         this.connection = connection;
@@ -22,8 +22,9 @@ let RedemptionCodeService = class RedemptionCodeService {
         if (process.env.REDEMPTION_KEY === undefined && process.env.NODE_ENV === 'production') {
             throw new Error('REDEMPTION_KEY 必须在生产环境注入（32 字节 hex）');
         }
-        this.graceDays = Number(configService.get('pickup.redeemGraceDays')) || 7;
-        this.expireRemindHours = Number(configService.get('pickup.redeemExpireRemindHours')) || 24;
+        // 核销有效期：下单后 7 天宽限期；距过期 24 小时起前端进入「即将过期」，可选环境变量覆盖
+        this.graceDays = 7;
+        this.expireRemindHours = 24;
     }
     cf(order) {
         var _a;
@@ -165,7 +166,6 @@ exports.RedemptionCodeService = RedemptionCodeService;
 exports.RedemptionCodeService = RedemptionCodeService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [core_1.OrderService,
-        core_1.TransactionalConnection,
-        core_1.ConfigService])
+        core_1.TransactionalConnection])
 ], RedemptionCodeService);
 //# sourceMappingURL=redemption-code.service.js.map
