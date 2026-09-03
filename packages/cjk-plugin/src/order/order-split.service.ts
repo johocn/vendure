@@ -93,14 +93,35 @@ export class OrderSplitService {
         if (groups.length === 0) throw new UserInputError('NO_AGGREGATION_GROUP');
 
         const boxByKey = new Map(boxes.map(b => [b.boxKey, b]));
+        // —— 行归属唯一性校验：任一被选中行只允许归入「一个」结算组 ——
+        // 引擎的分组本是 boxes 的划分，正常不会重叠；但若上游分箱把同一 orderLine 派到多个 box/组，
+        // 重构行时会在多个订单里各建一份 → 数量翻倍计费。此处显式拦截并抛错（事务回滚）。
+        const allocLineIds = new Set<string>();
+        for (const g of groups) {
+            for (const ab of g.boxes) {
+                const box = boxByKey.get(ab.boxKey);
+                if (!box) continue;
+                for (const lid of box.lineIds as ID[]) {
+                    if (!selectedLineIdSet.has(String(lid))) continue;
+                    if (allocLineIds.has(String(lid))) {
+                        throw new UserInputError(`LINE_IN_MULTIPLE_GROUPS lineId=${lid}`);
+                    }
+                    allocLineIds.add(String(lid));
+                }
+            }
+        }
         const selections = this.orderBoxService.getBoxSelections(source);
 
         // 每行 variantId+qty 快照（迁移用）
         const lineInfo = new Map<string, { variantId: string; qty: number }>();
+        // 结算前各变体数量基准（数量守恒校验用）。基于订单 order_id 聚合计算避免同变体合并。
+        const sourceQtyByVariant = new Map<string, number>();
         for (const line of source.lines ?? []) {
             const vid = (line as any).productVariantId ?? (line as any).productVariant?.id;
             if (vid == null) continue;
-            lineInfo.set(String(line.id), { variantId: String(vid), qty: (line as any).quantity ?? 0 });
+            const q = (line as any).quantity ?? 0;
+            lineInfo.set(String(line.id), { variantId: String(vid), qty: q });
+            sourceQtyByVariant.set(String(vid), (sourceQtyByVariant.get(String(vid)) ?? 0) + q);
         }
 
         // 全选：group[0] 保留在源订单（维持旧逻辑）；部分选：每个 group 均需新建独立订单迁出
@@ -212,7 +233,42 @@ export class OrderSplitService {
             }
         }
 
+        // —— 数量守恒校验（兜底）：结算后「各结算单 + 源回流行」同变体数量总和 = 源订单结算前数量 ——
+        // 若某行在分组/迁移中被复制到多个订单（如同一个变体被错误复刻进自提+配送两单），
+        // 此校验不通过并抛错（在 @Transaction 内整体回滚），杜绝数量/金额翻倍落地。
+        await this.verifyQuantityConservation(ctx, source, settled, sourceQtyByVariant);
+
         return settled;
+    }
+
+    /** 校验拆单结算后数量守恒；不等即抛错（依赖调用方 @Transaction 原子回滚）。 */
+    private async verifyQuantityConservation(
+        ctx: RequestContext,
+        source: Order,
+        settled: Order[],
+        sourceQtyByVariant: Map<string, number>,
+    ): Promise<void> {
+        if (sourceQtyByVariant.size === 0) return;
+        const tally = new Map<string, number>();
+        const addLines = (o: any) => {
+            for (const l of o?.lines ?? []) {
+                const vid = String((l as any).productVariantId ?? (l as any).productVariant?.id);
+                if (vid === 'null' || vid === 'undefined') continue;
+                tally.set(vid, (tally.get(vid) ?? 0) + Number((l as any).quantity ?? 0));
+            }
+        };
+        for (const o of settled) addLines(o);
+        // 部分选时，源订单保留未结算回流行，也计入总数
+        if (!settled.some(o => o.id === source.id)) {
+            const after = (await this.orderService.findOne(ctx, source.id, ['lines.productVariant'])) as Order;
+            addLines(after);
+        }
+        for (const [vid, want] of sourceQtyByVariant) {
+            const got = tally.get(vid) ?? 0;
+            if (got !== want) {
+                throw new UserInputError(`QUANTITY_MISMATCH variant=${vid} expect=${want} actual=${got}`);
+            }
+        }
     }
 
     /** 聚合一个 group 的箱，得到其「被选中」的 order lines 的 variant+qty 列表。 */

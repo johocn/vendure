@@ -37,6 +37,8 @@ export declare class OrderSplitService {
         boxKeys?: ID[];
         lineIds?: ID[];
     }): Promise<Order[]>;
+    /** 校验拆单结算后数量守恒；不等即抛错（依赖调用方 @Transaction 原子回滚）。 */
+    private verifyQuantityConservation;
     /** 聚合一个 group 的箱，得到其「被选中」的 order lines 的 variant+qty 列表。 */
     private buildItemsForGroup;
     /** 将 OrderAddress 简单 JSON 映射为 CreateAddressInput（缺省字段省略，交由核心兜底）。 */
