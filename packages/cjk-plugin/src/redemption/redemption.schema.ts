@@ -19,6 +19,10 @@ export const redemptionShopSchema = gql`
         barcodePayload: String
         claimed: Boolean!
         canAccess: Boolean!
+        status: String!        # active | expiring_soon | expired | claimed
+        expiresAt: DateTime
+        reissueable: Boolean!
+        version: Int
     }
 `;
 
@@ -31,6 +35,7 @@ export const redemptionAdminSchema = gql`
     }
     extend type Mutation {
         redemptionClaim(code: String!): RedemptionClaimResult
+        redemptionReissue(code: String!): RedemptionClaimResult
     }
 
     type RedemptionOrder {
@@ -46,6 +51,10 @@ export const redemptionAdminSchema = gql`
         order: RedemptionOrder
         claimed: Boolean!
         claimedAt: DateTime
+        status: String!
+        expiresAt: DateTime
+        version: Int
+        reissueable: Boolean!
     }
 
     type RedemptionClaimResult {
@@ -53,5 +62,8 @@ export const redemptionAdminSchema = gql`
         claimed: Boolean!
         claimedAt: DateTime
         message: String
+        status: String!
+        expiresAt: DateTime
+        version: Int
     }
 `;
