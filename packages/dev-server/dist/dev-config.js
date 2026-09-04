@@ -103,6 +103,16 @@ ReadonlySettingsTestPlugin = __decorate([
     __metadata("design:paramtypes", [core_1.SettingsStoreService,
         core_1.RequestContextService])
 ], ReadonlySettingsTestPlugin);
+let DisableSellerSplitPlugin = class DisableSellerSplitPlugin {
+};
+DisableSellerSplitPlugin = __decorate([
+    (0, core_1.VendurePlugin)({
+        configuration: config => {
+            config.orderOptions.orderSellerStrategy = new core_1.DefaultOrderSellerStrategy();
+            return config;
+        },
+    })
+], DisableSellerSplitPlugin);
 exports.devConfig = {
     apiOptions: {
         port: Number(process.env.API_PORT) || shared_constants_1.API_PORT,
@@ -391,6 +401,7 @@ exports.devConfig = {
         operations_plugin_1.OperationsPlugin.init(),
         message_plugin_1.MessagePlugin.init(),
         pre_sale_plugin_1.PreSalePlugin.init({}),
+        DisableSellerSplitPlugin,
     ],
 };
 function getDbConfig() {

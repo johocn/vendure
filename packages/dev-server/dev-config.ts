@@ -9,6 +9,7 @@ import {
     DefaultJobQueuePlugin,
     DefaultLogger,
     DefaultOrderByCodeAccessStrategy,
+    DefaultOrderSellerStrategy,
     DefaultSchedulerPlugin,
     DefaultSearchPlugin,
     dummyPaymentHandler,
@@ -118,6 +119,22 @@ class ReadonlySettingsTestPlugin implements OnApplicationBootstrap {
         });
     }
 }
+
+/**
+ * 源头修复（2026-09-04）：本项目为多租户（cjk 租户渠道），非 Vendure marketplace 多商户。
+ * MarketplacePlugin 会把挂租户渠道的商品通过 MarketplaceSellerStrategy 拆出 Seller「配送子单」
+ * （aggregateOrderId 幽灵子单，类型 delivery、state ArrangingPayment、数量与聚合单一致），
+ * 造成客户侧"一单变两单"与数量/金额翻倍。
+ * 本插件强制把 orderSellerStrategy 恢复为 DefaultOrderSellerStrategy（不拆分、不再赋 sellerChannel），
+ * 从根本上不再生成 Seller 子单。必须置于 plugins 数组最末，使本 configuration 钩子覆盖 MarketplacePlugin 的赋值。
+ */
+@VendurePlugin({
+    configuration: config => {
+        config.orderOptions.orderSellerStrategy = new DefaultOrderSellerStrategy();
+        return config;
+    },
+})
+class DisableSellerSplitPlugin {}
 
 /**
  * Config settings used during development
@@ -446,6 +463,8 @@ export const devConfig: VendureConfig = {
         MessagePlugin.init(),
         // 预售/定金预售：两阶段支付（定金→尾款）+ 全款预售 + 分档定价 + 到货释放库存
         PreSalePlugin.init({}),
+        // 必须最后注册：覆盖 MarketplacePlugin 的 Seller 拆分，根治租户渠道商品的幽灵配送子单
+        DisableSellerSplitPlugin,
     ],
 };
 // SYNTAX_ERROR_TEST: const x: = ;
