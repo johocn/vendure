@@ -233,15 +233,15 @@ function unwrapLocalizedString(v: string, locale: string): string {
     return v;
 }
 
-/** 本箱取名（tenantChannelId → Channel.name，兜底 Channel.code / id）。 */
+/** 租户展示名（tenantChannelId → Channel.customFields.shopName，兜底 code / id），默认渠道无店铺名时显示「默认租户」。 */
 function resolveTenantName(
     channelsNameMap: ReadonlyMap<string, { name?: string | null; code?: string | null }>,
     tenantChannelId: ID,
 ): string {
     const ch = channelsNameMap.get(String(tenantChannelId));
     if (ch?.name) return ch.name;
-    if (ch?.code) return ch.code;
-    return String(tenantChannelId);
+    if (ch?.code && ch.code !== '__default_channel__' && ch.code !== 'default') return ch.code;
+    return '默认租户';
 }
 
 @Injectable()
@@ -329,7 +329,12 @@ export class OrderBoxService {
                 : [];
             Logger.info(`[timing] computeOrderBoxes#profile key=${key} methods=${enabledMethods.length} = ${perf(tProfile)}ms`, loggerCtx);
 
-            const tenantChannelId: ID = order.channels?.[0]?.id ?? ctx.channelId;
+            // 租户渠道：优先取本箱配送档案归属租户（非全局档案 ownerChannelId），
+            // 避免全部箱都归到订单渠道（默认租户）——订单可能混装多个租户的商品。
+            const tenantChannelId: ID =
+                profile?.ownerChannelId != null
+                    ? (profile.ownerChannelId as ID)
+                    : (order.channels?.[0]?.id ?? ctx.channelId);
             const isDelivery = !(profile?.pickupLocations && profile.pickupLocations.length > 0);
 
             // —— 本箱行明细（Additive）——

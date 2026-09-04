@@ -140,14 +140,14 @@ function unwrapLocalizedString(v, locale) {
     }
     return v;
 }
-/** 本箱取名（tenantChannelId → Channel.name，兜底 Channel.code / id）。 */
+/** 租户展示名（tenantChannelId → Channel.customFields.shopName，兜底 code / id），默认渠道无店铺名时显示「默认租户」。 */
 function resolveTenantName(channelsNameMap, tenantChannelId) {
     const ch = channelsNameMap.get(String(tenantChannelId));
     if (ch === null || ch === void 0 ? void 0 : ch.name)
         return ch.name;
-    if (ch === null || ch === void 0 ? void 0 : ch.code)
+    if ((ch === null || ch === void 0 ? void 0 : ch.code) && ch.code !== '__default_channel__' && ch.code !== 'default')
         return ch.code;
-    return String(tenantChannelId);
+    return '默认租户';
 }
 let OrderBoxService = class OrderBoxService {
     constructor(shippingProfileService, paymentProfileService, orderService, channelService, customerService, connection) {
@@ -223,7 +223,11 @@ let OrderBoxService = class OrderBoxService {
                 ? (await this.shippingProfileService.findShippingMethodsByIds(ctx, profile.shippingMethods.map(m => m.id))).filter((m) => { var _a; return ((_a = m.customFields) === null || _a === void 0 ? void 0 : _a.enabled) !== false; })
                 : [];
             core_1.Logger.info(`[timing] computeOrderBoxes#profile key=${key} methods=${enabledMethods.length} = ${(0, timing_util_1.perf)(tProfile)}ms`, constants_1.loggerCtx);
-            const tenantChannelId = (_h = (_g = (_f = order.channels) === null || _f === void 0 ? void 0 : _f[0]) === null || _g === void 0 ? void 0 : _g.id) !== null && _h !== void 0 ? _h : ctx.channelId;
+            // 租户渠道：优先取本箱配送档案归属租户（非全局档案 ownerChannelId），
+            // 避免全部箱都归到订单渠道（默认租户）——订单可能混装多个租户的商品。
+            const tenantChannelId = (profile === null || profile === void 0 ? void 0 : profile.ownerChannelId) != null
+                ? profile.ownerChannelId
+                : ((_h = (_g = (_f = order.channels) === null || _f === void 0 ? void 0 : _f[0]) === null || _g === void 0 ? void 0 : _g.id) !== null && _h !== void 0 ? _h : ctx.channelId);
             const isDelivery = !((profile === null || profile === void 0 ? void 0 : profile.pickupLocations) && profile.pickupLocations.length > 0);
             // —— 本箱行明细（Additive）——
             const boxLineIdSet = new Set(group.lineIds.map(String));
