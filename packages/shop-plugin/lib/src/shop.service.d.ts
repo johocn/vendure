@@ -28,7 +28,12 @@ export declare class ShopService {
     recomputeShopRating(ctx: RequestContext, shopId: ID): Promise<Shop>;
     /** 读店铺缓存评分（供 ResolveField）；无缓存时回退实时计算。 */
     getShopRatingCachedOrCompute(ctx: RequestContext, shop: Shop): Promise<ShopRating>;
-    /** 归属解析：activeUserId → Administrator.user → Shop.administratorId。不依赖 ctx.channelId。 */
+    /**
+     * 归属解析：activeUserId → Administrator.user → Shop.administratorId（优先）。
+     * 渠道回退：管理员无绑定店铺（平台/superadmin 按城市选店场景）时，按当前经营渠道
+     * ctx.channelId 解析该渠道 active 店铺，使 web-admin 的「本店商品单/统计」可用。
+     * 多店并存渠道取首个，语义为「本渠道本店」（当前为单店/渠道模型）。
+     */
     resolveMyShopFromActiveUser(ctx: RequestContext): Promise<Shop | undefined>;
     /** 店主后台入口守卫：无归属店铺或店铺非 active → Forbidden（关闭店铺即冻结）。 */
     requireMyShop(ctx: RequestContext): Promise<Shop>;
