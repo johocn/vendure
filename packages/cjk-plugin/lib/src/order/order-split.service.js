@@ -15,6 +15,8 @@ const core_1 = require("@vendure/core");
 const order_box_service_1 = require("./order-box.service");
 const order_box_aggregation_1 = require("./order-box-aggregation");
 const merchant_settlement_service_1 = require("./merchant-settlement.service");
+const constants_1 = require("../constants");
+const timing_util_1 = require("./timing.util");
 /**
  * 后端「一次性拆单结算」服务（统一入口，由 checkoutSplitted 调用）。
  *
@@ -51,11 +53,14 @@ let OrderSplitService = class OrderSplitService {
     async performSplitCheckout(ctx, order, method, metadata, options) {
         var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v;
         const opts = options !== null && options !== void 0 ? options : {};
+        const t0 = (0, timing_util_1.perf)();
+        const boxT0 = (0, timing_util_1.perf)();
         // 显式带 lines.productVariant 重新加载，保证分箱与行迁移数据准确
         const source = (await this.orderService.findOne(ctx, order.id, ['lines.productVariant', 'customer']));
         if (!source)
             throw new core_1.UserInputError('NO_ACTIVE_ORDER');
         const boxes = await this.orderBoxService.computeOrderBoxes(ctx, source);
+        core_1.Logger.info(`[timing] performSplitCheckout#findOne+computeOrderBoxes order=${order.id} = ${(0, timing_util_1.perf)(boxT0)}ms`, constants_1.loggerCtx);
         if (boxes.length === 0)
             throw new core_1.UserInputError('NO_BOXES');
         // —— 1) 依据 boxKeys/lineIds 计算「参与结算」的箱与行 ——
@@ -193,7 +198,9 @@ let OrderSplitService = class OrderSplitService {
         toSettle.push(...newOrders);
         // 逐单过渡到 ArrangingPayment 并支付
         const settled = [];
+        const settleT0 = (0, timing_util_1.perf)();
         for (const id of toSettle.map(o => o.id)) {
+            const tOrder = (0, timing_util_1.perf)();
             const t = await this.orderService.transitionToState(ctx, id, 'ArrangingPayment');
             if ((0, core_1.isGraphQlErrorResult)(t)) {
                 throw new core_1.UserInputError((_t = t.transitionError) !== null && _t !== void 0 ? _t : 'TRANSITION_FAILED');
@@ -204,12 +211,15 @@ let OrderSplitService = class OrderSplitService {
             }
             // 台账级分账：为已结算订单按「商户（租户）」记录应付金额（每商户一行）；
             // 在同一 @Transaction 内写入，与订单结算原子一致。COD/门店收银记为 PENDING_SIGN，在线方式记为 PAID。
+            const settleRecT0 = (0, timing_util_1.perf)();
             await this.merchantSettlementService.recordOrderSettlement(ctx, paid, {
                 method,
                 codPaymentCodes: [...merchant_settlement_service_1.COD_PAYMENT_CODES],
             });
+            core_1.Logger.info(`[timing] performSplitCheckout#settleOne order=${id} settle=${(0, timing_util_1.perf)(tOrder)}ms recordLedger=${(0, timing_util_1.perf)(settleRecT0)}ms`, constants_1.loggerCtx);
             settled.push(paid);
         }
+        core_1.Logger.info(`[timing] performSplitCheckout#settleLoop orders=${settled.length} = ${(0, timing_util_1.perf)(settleT0)}ms`, constants_1.loggerCtx);
         // —— 部分选：回流行的源订单保持 AddingItems（购物车态）；若已迁空且有结算单 → best-effort 取消 ——
         if (!isFullSelection) {
             const after = (await this.orderService.findOne(ctx, source.id, ['lines.productVariant']));
@@ -226,6 +236,7 @@ let OrderSplitService = class OrderSplitService {
         // 若某行在分组/迁移中被复制到多个订单（如同一个变体被错误复刻进自提+配送两单），
         // 此校验不通过并抛错（在 @Transaction 内整体回滚），杜绝数量/金额翻倍落地。
         await this.verifyQuantityConservation(ctx, source, settled, sourceQtyByVariant);
+        core_1.Logger.info(`[timing] performSplitCheckout END order=${order.id} = ${(0, timing_util_1.perf)(t0)}ms -> ${settled.length} orders`, constants_1.loggerCtx);
         return settled;
     }
     /** 校验拆单结算后数量守恒；不等即抛错（依赖调用方 @Transaction 原子回滚）。 */

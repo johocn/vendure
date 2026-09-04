@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { ID, Order, OrderService, RequestContext, UserInputError, isGraphQlErrorResult } from '@vendure/core';
+import { ID, Logger, Order, OrderService, RequestContext, UserInputError, isGraphQlErrorResult } from '@vendure/core';
 import { OrderBoxService } from './order-box.service';
 import { AggregationBox, decideAggregation } from './order-box-aggregation';
 import { COD_PAYMENT_CODES, MerchantSettlementService } from './merchant-settlement.service';
+import { loggerCtx } from '../constants';
+import { perf } from './timing.util';
 
 /**
  * 后端「一次性拆单结算」服务（统一入口，由 checkoutSplitted 调用）。
@@ -47,11 +49,14 @@ export class OrderSplitService {
         options?: { boxKeys?: ID[]; lineIds?: ID[] },
     ): Promise<Order[]> {
         const opts = options ?? {};
+        const t0 = perf();
+        const boxT0 = perf();
         // 显式带 lines.productVariant 重新加载，保证分箱与行迁移数据准确
         const source = (await this.orderService.findOne(ctx, order.id, ['lines.productVariant', 'customer'])) as Order;
         if (!source) throw new UserInputError('NO_ACTIVE_ORDER');
 
         const boxes = await this.orderBoxService.computeOrderBoxes(ctx, source);
+        Logger.info(`[timing] performSplitCheckout#findOne+computeOrderBoxes order=${order.id} = ${perf(boxT0)}ms`, loggerCtx);
         if (boxes.length === 0) throw new UserInputError('NO_BOXES');
 
         // —— 1) 依据 boxKeys/lineIds 计算「参与结算」的箱与行 ——
@@ -203,7 +208,9 @@ export class OrderSplitService {
 
         // 逐单过渡到 ArrangingPayment 并支付
         const settled: Order[] = [];
+        const settleT0 = perf();
         for (const id of toSettle.map(o => o.id)) {
+            const tOrder = perf();
             const t = await this.orderService.transitionToState(ctx, id, 'ArrangingPayment');
             if (isGraphQlErrorResult(t)) {
                 throw new UserInputError((t as any).transitionError ?? 'TRANSITION_FAILED');
@@ -214,12 +221,15 @@ export class OrderSplitService {
             }
             // 台账级分账：为已结算订单按「商户（租户）」记录应付金额（每商户一行）；
             // 在同一 @Transaction 内写入，与订单结算原子一致。COD/门店收银记为 PENDING_SIGN，在线方式记为 PAID。
+            const settleRecT0 = perf();
             await this.merchantSettlementService.recordOrderSettlement(ctx, paid as Order, {
                 method,
                 codPaymentCodes: [...COD_PAYMENT_CODES],
             });
+            Logger.info(`[timing] performSplitCheckout#settleOne order=${id} settle=${perf(tOrder)}ms recordLedger=${perf(settleRecT0)}ms`, loggerCtx);
             settled.push(paid as Order);
         }
+        Logger.info(`[timing] performSplitCheckout#settleLoop orders=${settled.length} = ${perf(settleT0)}ms`, loggerCtx);
 
         // —— 部分选：回流行的源订单保持 AddingItems（购物车态）；若已迁空且有结算单 → best-effort 取消 ——
         if (!isFullSelection) {
@@ -238,6 +248,7 @@ export class OrderSplitService {
         // 此校验不通过并抛错（在 @Transaction 内整体回滚），杜绝数量/金额翻倍落地。
         await this.verifyQuantityConservation(ctx, source, settled, sourceQtyByVariant);
 
+        Logger.info(`[timing] performSplitCheckout END order=${order.id} = ${perf(t0)}ms -> ${settled.length} orders`, loggerCtx);
         return settled;
     }
 

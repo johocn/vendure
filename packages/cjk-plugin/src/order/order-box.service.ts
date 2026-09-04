@@ -3,6 +3,7 @@ import {
     ChannelService,
     CustomerService,
     ID,
+    Logger,
     Order,
     OrderService,
     RequestContext,
@@ -14,7 +15,9 @@ import { CouponTemplate, CustomerCoupon } from '@vendure/coupon-plugin';
 import { ShippingProfileService } from '../shipping/shipping-profile.service';
 import { PaymentProfileService } from '../payment/payment-profile.service';
 import { PickupLocation } from '../pickup/pickup-location.entity';
+import { loggerCtx } from '../constants';
 import { BALANCE_PAYMENT_CODE } from './order-box-aggregation';
+import { perf } from './timing.util';
 
 /** 需要登录才能使用的支付方式 code 集合（余额钱包依赖账户身份，游客结算时应被过滤）。 */
 export const LOGIN_REQUIRED_PAYMENT_CODES: ReadonlySet<string> = new Set([BALANCE_PAYMENT_CODE]);
@@ -261,6 +264,7 @@ export class OrderBoxService {
      * - 同一生效档案的 line 合并为同一箱（跨租户/跨档案自动分箱）。
      */
     async computeOrderBoxes(ctx: RequestContext, order: Order): Promise<OrderBox[]> {
+        const t0 = perf();
         const lines = order.lines ?? [];
         if (lines.length === 0) return [];
 
@@ -297,18 +301,24 @@ export class OrderBoxService {
 
         // —— 新增（Additive）：跨箱共享数据，供下方按箱填充明细/金额/优惠券 ——
         const mall = isMallContext(ctx);
+        const tShared = perf();
         const [channelsNameMap, customerId] = await Promise.all([
             this.loadChannelsNameMap(),
             this.resolveCustomerId(ctx, order),
         ]);
+        Logger.info(`[timing] computeOrderBoxes#sharedChannels order=${order.id} = ${perf(tShared)}ms`, loggerCtx);
+        const tCoupons = perf();
         const customerCoupons: CustomerCoupon[] =
             customerId != null ? await this.loadCustomerCoupons(ctx, customerId) : [];
         const appliedCoupon: CustomerCoupon | undefined = await this.loadAppliedCoupon(ctx, order);
+        Logger.info(`[timing] computeOrderBoxes#coupons order=${order.id} cust=${customerId} coups=${customerCoupons.length} = ${perf(tCoupons)}ms`, loggerCtx);
         const shippingLines: any[] = (order as any).shippingLines ?? [];
 
         const boxes: OrderBox[] = [];
+        const tBoxLoop = perf();
         for (const key of orderByProfile) {
             const group = groups.get(key)!;
+            const tProfile = perf();
             const profile = await this.shippingProfileService.findOne(ctx, key as any);
 
             const enabledMethods = profile?.shippingMethods?.length
@@ -317,6 +327,7 @@ export class OrderBoxService {
                       profile.shippingMethods.map(m => m.id as ID),
                   )).filter((m: any) => m.customFields?.enabled !== false)
                 : [];
+            Logger.info(`[timing] computeOrderBoxes#profile key=${key} methods=${enabledMethods.length} = ${perf(tProfile)}ms`, loggerCtx);
 
             const tenantChannelId: ID = order.channels?.[0]?.id ?? ctx.channelId;
             const isDelivery = !(profile?.pickupLocations && profile.pickupLocations.length > 0);
@@ -443,6 +454,7 @@ export class OrderBoxService {
                 tenantName: resolveTenantName(channelsNameMap, tenantChannelId),
             });
         }
+        Logger.info(`[timing] computeOrderBoxes END order=${order.id} boxes=${boxes.length} loop=${perf(tBoxLoop)}ms total=${perf(t0)}ms`, loggerCtx);
         return boxes;
     }
 
@@ -553,6 +565,7 @@ export class OrderBoxService {
      * - 未绑定 → 回退租户默认支付档案。
      */
     async resolvePaymentCodesForProfile(ctx: RequestContext, shippingProfileId: ID): Promise<string[]> {
+        const t0 = perf();
         const payProfile = await this.shippingProfileService.getPaymentProfileForShippingProfile(ctx, shippingProfileId);
         const codes = payProfile
             ? (await this.paymentProfileService.getIntersectedPaymentMethods(ctx, [payProfile.id])).map(m => m.code)
@@ -561,6 +574,7 @@ export class OrderBoxService {
         if (!codes.includes(BALANCE_PAYMENT_CODE)) {
             codes.push(BALANCE_PAYMENT_CODE);
         }
+        Logger.info(`[timing] resolvePaymentCodesForProfile profile=${shippingProfileId} = ${perf(t0)}ms`, loggerCtx);
         return codes;
     }
 

@@ -15,7 +15,9 @@ const core_1 = require("@vendure/core");
 const coupon_plugin_1 = require("@vendure/coupon-plugin");
 const shipping_profile_service_1 = require("../shipping/shipping-profile.service");
 const payment_profile_service_1 = require("../payment/payment-profile.service");
+const constants_1 = require("../constants");
 const order_box_aggregation_1 = require("./order-box-aggregation");
+const timing_util_1 = require("./timing.util");
 /** 需要登录才能使用的支付方式 code 集合（余额钱包依赖账户身份，游客结算时应被过滤）。 */
 exports.LOGIN_REQUIRED_PAYMENT_CODES = new Set([order_box_aggregation_1.BALANCE_PAYMENT_CODE]);
 /**
@@ -166,6 +168,7 @@ let OrderBoxService = class OrderBoxService {
      */
     async computeOrderBoxes(ctx, order) {
         var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p;
+        const t0 = (0, timing_util_1.perf)();
         const lines = (_a = order.lines) !== null && _a !== void 0 ? _a : [];
         if (lines.length === 0)
             return [];
@@ -199,20 +202,27 @@ let OrderBoxService = class OrderBoxService {
         }
         // —— 新增（Additive）：跨箱共享数据，供下方按箱填充明细/金额/优惠券 ——
         const mall = isMallContext(ctx);
+        const tShared = (0, timing_util_1.perf)();
         const [channelsNameMap, customerId] = await Promise.all([
             this.loadChannelsNameMap(),
             this.resolveCustomerId(ctx, order),
         ]);
+        core_1.Logger.info(`[timing] computeOrderBoxes#sharedChannels order=${order.id} = ${(0, timing_util_1.perf)(tShared)}ms`, constants_1.loggerCtx);
+        const tCoupons = (0, timing_util_1.perf)();
         const customerCoupons = customerId != null ? await this.loadCustomerCoupons(ctx, customerId) : [];
         const appliedCoupon = await this.loadAppliedCoupon(ctx, order);
+        core_1.Logger.info(`[timing] computeOrderBoxes#coupons order=${order.id} cust=${customerId} coups=${customerCoupons.length} = ${(0, timing_util_1.perf)(tCoupons)}ms`, constants_1.loggerCtx);
         const shippingLines = (_d = order.shippingLines) !== null && _d !== void 0 ? _d : [];
         const boxes = [];
+        const tBoxLoop = (0, timing_util_1.perf)();
         for (const key of orderByProfile) {
             const group = groups.get(key);
+            const tProfile = (0, timing_util_1.perf)();
             const profile = await this.shippingProfileService.findOne(ctx, key);
             const enabledMethods = ((_e = profile === null || profile === void 0 ? void 0 : profile.shippingMethods) === null || _e === void 0 ? void 0 : _e.length)
                 ? (await this.shippingProfileService.findShippingMethodsByIds(ctx, profile.shippingMethods.map(m => m.id))).filter((m) => { var _a; return ((_a = m.customFields) === null || _a === void 0 ? void 0 : _a.enabled) !== false; })
                 : [];
+            core_1.Logger.info(`[timing] computeOrderBoxes#profile key=${key} methods=${enabledMethods.length} = ${(0, timing_util_1.perf)(tProfile)}ms`, constants_1.loggerCtx);
             const tenantChannelId = (_h = (_g = (_f = order.channels) === null || _f === void 0 ? void 0 : _f[0]) === null || _g === void 0 ? void 0 : _g.id) !== null && _h !== void 0 ? _h : ctx.channelId;
             const isDelivery = !((profile === null || profile === void 0 ? void 0 : profile.pickupLocations) && profile.pickupLocations.length > 0);
             // —— 本箱行明细（Additive）——
@@ -322,6 +332,7 @@ let OrderBoxService = class OrderBoxService {
                 tenantName: resolveTenantName(channelsNameMap, tenantChannelId),
             });
         }
+        core_1.Logger.info(`[timing] computeOrderBoxes END order=${order.id} boxes=${boxes.length} loop=${(0, timing_util_1.perf)(tBoxLoop)}ms total=${(0, timing_util_1.perf)(t0)}ms`, constants_1.loggerCtx);
         return boxes;
     }
     /**
@@ -436,6 +447,7 @@ let OrderBoxService = class OrderBoxService {
      * - 未绑定 → 回退租户默认支付档案。
      */
     async resolvePaymentCodesForProfile(ctx, shippingProfileId) {
+        const t0 = (0, timing_util_1.perf)();
         const payProfile = await this.shippingProfileService.getPaymentProfileForShippingProfile(ctx, shippingProfileId);
         const codes = payProfile
             ? (await this.paymentProfileService.getIntersectedPaymentMethods(ctx, [payProfile.id])).map(m => m.code)
@@ -444,6 +456,7 @@ let OrderBoxService = class OrderBoxService {
         if (!codes.includes(order_box_aggregation_1.BALANCE_PAYMENT_CODE)) {
             codes.push(order_box_aggregation_1.BALANCE_PAYMENT_CODE);
         }
+        core_1.Logger.info(`[timing] resolvePaymentCodesForProfile profile=${shippingProfileId} = ${(0, timing_util_1.perf)(t0)}ms`, constants_1.loggerCtx);
         return codes;
     }
     /** 兼容单箱传入的支付方式白名单解析。 */

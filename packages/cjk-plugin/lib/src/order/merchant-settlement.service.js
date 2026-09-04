@@ -13,6 +13,8 @@ exports.MerchantSettlementService = exports.COD_PAYMENT_CODES = void 0;
 exports.merchantSettlementStatus = merchantSettlementStatus;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
+const constants_1 = require("../constants");
+const timing_util_1 = require("./timing.util");
 const order_box_service_1 = require("./order-box.service");
 const merchant_settlement_ledger_entity_1 = require("./merchant-settlement-ledger.entity");
 /**
@@ -51,7 +53,10 @@ let MerchantSettlementService = class MerchantSettlementService {
      */
     async recordOrderSettlement(ctx, order, opts) {
         var _a;
+        const t0 = (0, timing_util_1.perf)();
         const splits = await this.orderBoxService.computeMerchantSplit(ctx, order);
+        core_1.Logger.info(`[timing] recordOrderSettlement#computeMerchantSplit order=${order.id} = ${(0, timing_util_1.perf)(t0)}ms`, constants_1.loggerCtx);
+        const t1 = (0, timing_util_1.perf)();
         const repo = this.connection.getRepository(ctx, merchant_settlement_ledger_entity_1.MerchantSettlementLedger);
         for (const split of splits) {
             const status = merchantSettlementStatus(opts.method, opts.codPaymentCodes);
@@ -66,6 +71,7 @@ let MerchantSettlementService = class MerchantSettlementService {
             });
             await repo.save(row);
         }
+        core_1.Logger.info(`[timing] recordOrderSettlement#saveLedger order=${order.id} rows=${splits.length} = ${(0, timing_util_1.perf)(t1)}ms`, constants_1.loggerCtx);
     }
 };
 exports.MerchantSettlementService = MerchantSettlementService;

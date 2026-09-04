@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { ID, Order, RequestContext, TransactionalConnection } from '@vendure/core';
+import { ID, Logger, Order, RequestContext, TransactionalConnection } from '@vendure/core';
+import { loggerCtx } from '../constants';
+import { perf } from './timing.util';
 import { OrderBoxService } from './order-box.service';
 import { MerchantSettlementLedger } from './merchant-settlement-ledger.entity';
 
@@ -52,8 +54,10 @@ export class MerchantSettlementService {
         order: Order,
         opts: { method: string; codPaymentCodes: string[] },
     ): Promise<void> {
+        const t0 = perf();
         const splits = await this.orderBoxService.computeMerchantSplit(ctx, order);
-
+        Logger.info(`[timing] recordOrderSettlement#computeMerchantSplit order=${order.id} = ${perf(t0)}ms`, loggerCtx);
+        const t1 = perf();
         const repo = this.connection.getRepository(ctx, MerchantSettlementLedger);
         for (const split of splits) {
             const status: MerchantSettlementStatus = merchantSettlementStatus(opts.method, opts.codPaymentCodes);
@@ -68,5 +72,6 @@ export class MerchantSettlementService {
             });
             await repo.save(row);
         }
+        Logger.info(`[timing] recordOrderSettlement#saveLedger order=${order.id} rows=${splits.length} = ${perf(t1)}ms`, loggerCtx);
     }
 }
