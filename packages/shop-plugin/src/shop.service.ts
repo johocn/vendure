@@ -246,7 +246,12 @@ export class ShopService {
 
     // ---------- 店主自营后台（阶段18） ----------
 
-    /** 归属解析：activeUserId → Administrator.user → Shop.administratorId。不依赖 ctx.channelId。 */
+    /**
+     * 归属解析：activeUserId → Administrator.user → Shop.administratorId（优先）。
+     * 渠道回退：管理员无绑定店铺（平台/superadmin 按城市选店场景）时，按当前经营渠道
+     * ctx.channelId 解析该渠道 active 店铺，使 web-admin 的「本店商品单/统计」可用。
+     * 多店并存渠道取首个，语义为「本渠道本店」（当前为单店/渠道模型）。
+     */
     async resolveMyShopFromActiveUser(ctx: RequestContext): Promise<Shop | undefined> {
         if (!ctx.activeUserId) {
             return undefined;
@@ -255,10 +260,16 @@ export class ShopService {
         if (!admin || admin.id == null) {
             return undefined;
         }
-        const shop = await this.connection
+        const bound = await this.connection
             .getRepository(ctx, Shop)
             .findOne({ where: { administratorId: admin.id as number } as any });
-        return shop ?? undefined;
+        if (bound) {
+            return bound;
+        }
+        const byChannel = await this.connection
+            .getRepository(ctx, Shop)
+            .findOne({ where: { channelId: ctx.channelId as number, status: 'active' } as any, order: { id: 'ASC' } as any });
+        return byChannel ?? undefined;
     }
 
     /** 店主后台入口守卫：无归属店铺或店铺非 active → Forbidden（关闭店铺即冻结）。 */
