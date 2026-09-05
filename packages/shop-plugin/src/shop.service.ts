@@ -759,7 +759,6 @@ export class ShopService {
         const lines = await this.connection.getRepository(ctx, OrderLine).find({
             relations: [
                 'order',
-                'order.shippingAddress',
                 'order.shippingLines',
                 'order.shippingLines.shippingMethod',
                 'order.customer',

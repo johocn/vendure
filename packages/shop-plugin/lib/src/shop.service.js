@@ -653,7 +653,6 @@ let ShopService = class ShopService {
         const lines = await this.connection.getRepository(ctx, core_1.OrderLine).find({
             relations: [
                 'order',
-                'order.shippingAddress',
                 'order.shippingLines',
                 'order.shippingLines.shippingMethod',
                 'order.customer',
