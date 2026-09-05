@@ -358,7 +358,7 @@ export class DefaultDataService {
                     code,
                     token: `official-${i}`,
                     defaultLanguageCode: LanguageCode.zh_Hans,
-                    currencyCode: 'CNY',
+                    defaultCurrencyCode: 'CNY' as any,
                     pricesIncludeTax: true,
                     customFields: {
                         enabled: true,

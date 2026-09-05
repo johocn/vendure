@@ -344,7 +344,7 @@ let DefaultDataService = class DefaultDataService {
                 code,
                 token: `official-${i}`,
                 defaultLanguageCode: core_1.LanguageCode.zh_Hans,
-                currencyCode: 'CNY',
+                defaultCurrencyCode: 'CNY',
                 pricesIncludeTax: true,
                 customFields: {
                     enabled: true,
