@@ -759,6 +759,9 @@ export class ShopService {
         const lines = await this.connection.getRepository(ctx, OrderLine).find({
             relations: [
                 'order',
+                'order.shippingAddress',
+                'order.shippingLines',
+                'order.shippingLines.shippingMethod',
                 'order.customer',
                 'productVariant',
                 'productVariant.product',
@@ -824,6 +827,21 @@ export class ShopService {
                       order.customer.emailAddress
                     : null,
                 placedAt: order.orderPlacedAt ?? null,
+                shippingAddress: order.shippingAddress
+                    ? {
+                          fullName: order.shippingAddress.fullName ?? null,
+                          streetLine1: order.shippingAddress.streetLine1 ?? null,
+                          city: order.shippingAddress.city ?? null,
+                          province: order.shippingAddress.province ?? null,
+                          countryCode: order.shippingAddress.countryCode ?? null,
+                          postalCode: order.shippingAddress.postalCode ?? null,
+                      }
+                    : null,
+                shippingLines: (order.shippingLines ?? []).map(sl => ({
+                    id: String((sl as any).id),
+                    code: sl.shippingMethod?.code ?? null,
+                    name: sl.shippingMethod?.name ?? null,
+                })),
                 items: [
                     {
                         orderLineId: String(line.id),
