@@ -1039,6 +1039,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                 extend type Mutation {
                     createTenantCollection(input: CreateCollectionInput!): Collection!
                     mapProductToPlatformCollection(productId: ID!, collectionId: ID!): Boolean!
+                    moveProductsToTenantChannel(productIds: [ID!]!, channelId: ID!): Int!
                 }
 
                 type ReusableOptionValue {
