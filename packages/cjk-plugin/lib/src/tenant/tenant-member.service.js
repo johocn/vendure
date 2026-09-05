@@ -8,6 +8,9 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TenantMemberService = exports.DEFAULT_ADMIN_PASSWORD = exports.GLOBAL_ROLE_PREFIX = exports.BUSINESS_PERMISSIONS = exports.PERMISSION_CATALOG = void 0;
 exports.normalizeGlobalRoleCode = normalizeGlobalRoleCode;
@@ -130,11 +133,12 @@ function randomStrongPassword(length = 12) {
 /** 租户管理人密码重置的默认口令（超管在租户详情页「重置密码」时写回此值） */
 exports.DEFAULT_ADMIN_PASSWORD = 'you123123';
 let TenantMemberService = class TenantMemberService {
-    constructor(connection, administratorService, roleService, channelService) {
+    constructor(connection, administratorService, roleService, channelService, pluginOptions) {
         this.connection = connection;
         this.administratorService = administratorService;
         this.roleService = roleService;
         this.channelService = channelService;
+        this.pluginOptions = pluginOptions;
     }
     /** 校验角色权限全部在业务权限白名单内（超管专属权限不入租户角色） */
     assertBusinessPermissions(permissions) {
@@ -172,21 +176,17 @@ let TenantMemberService = class TenantMemberService {
     }
     /** 新建租户：自动分配 tenantNo（当前最大+1），code 由 tenantNo 派生 `t{tenantNo}`，避免手输冲突 */
     async createChannel(ctx, input) {
-        var _a;
+        var _a, _b, _c;
         const tenantNo = await this.nextTenantNo(ctx);
         const code = `t${tenantNo}`;
+        const defaultDomain = (_b = (_a = this.pluginOptions) === null || _a === void 0 ? void 0 : _a.tenant) === null || _b === void 0 ? void 0 : _b.defaultPublicDomain;
         const channel = await this.channelService.create(ctx, {
             code,
             token: input.token,
             defaultLanguageCode: 'zh_Hans',
             currencyCode: 'CNY',
             pricesIncludeTax: true,
-            customFields: {
-                tenantNo,
-                isOfficial: (_a = input.isOfficial) !== null && _a !== void 0 ? _a : false,
-                enabled: true,
-                shopName: input.name,
-            },
+            customFields: Object.assign({ tenantNo, isOfficial: (_c = input.isOfficial) !== null && _c !== void 0 ? _c : false, enabled: true, shopName: input.name }, (defaultDomain ? { domain: `${defaultDomain}/${code}` } : {})),
         });
         // 自动创建 3 个默认角色（租户管理员/销售/库存），保证人员可即时绑定角色
         const channelId = String(channel.id);
@@ -737,9 +737,11 @@ let TenantMemberService = class TenantMemberService {
 exports.TenantMemberService = TenantMemberService;
 exports.TenantMemberService = TenantMemberService = __decorate([
     (0, common_1.Injectable)(),
+    __param(4, (0, common_1.Optional)()),
+    __param(4, (0, common_1.Inject)(constants_1.CJK_PLUGIN_OPTIONS)),
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
         core_1.AdministratorService,
         core_1.RoleService,
-        core_1.ChannelService])
+        core_1.ChannelService, Object])
 ], TenantMemberService);
 //# sourceMappingURL=tenant-member.service.js.map

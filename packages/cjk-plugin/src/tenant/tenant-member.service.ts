@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
     Administrator,
     AdministratorService,
@@ -12,7 +12,8 @@ import {
     RoleService,
     TransactionalConnection,
 } from '@vendure/core';
-import { loggerCtx } from '../constants';
+import { CJK_PLUGIN_OPTIONS, loggerCtx } from '../constants';
+import type { CjkPluginOptions } from '../types';
 import { TenantMember } from './tenant-member.entity';
 import { OFFICIAL_ROLE_TEMPLATES } from './role-templates';
 
@@ -165,6 +166,7 @@ export class TenantMemberService {
         private administratorService: AdministratorService,
         private roleService: RoleService,
         private channelService: ChannelService,
+        @Optional() @Inject(CJK_PLUGIN_OPTIONS) private pluginOptions?: CjkPluginOptions,
     ) {}
 
     /** 校验角色权限全部在业务权限白名单内（超管专属权限不入租户角色） */
@@ -207,6 +209,7 @@ export class TenantMemberService {
     ): Promise<any> {
         const tenantNo = await this.nextTenantNo(ctx);
         const code = `t${tenantNo}`;
+        const defaultDomain = this.pluginOptions?.tenant?.defaultPublicDomain;
         const channel = await this.channelService.create(ctx, {
             code,
             token: input.token,
@@ -218,6 +221,8 @@ export class TenantMemberService {
                 isOfficial: input.isOfficial ?? false,
                 enabled: true,
                 shopName: input.name,
+                // 默认对外访问地址：主域 + 路径后缀（如 www.youshop.cn/t1），不占用子域
+                ...(defaultDomain ? { domain: `${defaultDomain}/${code}` } : {}),
             },
         } as any);
         // 自动创建 3 个默认角色（租户管理员/销售/库存），保证人员可即时绑定角色

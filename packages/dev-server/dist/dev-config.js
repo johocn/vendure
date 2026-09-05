@@ -298,7 +298,7 @@ exports.devConfig = {
         cjk_plugin_1.CjkPlugin.init({
             i18n: { enabled: true },
             regions: { enabled: true },
-            tenant: { enabled: true },
+            tenant: { enabled: true, defaultPublicDomain: process.env.DEFAULT_PUBLIC_DOMAIN || 'www.youshop.cn' },
             cod: { enabled: true },
             storePickup: { enabled: true },
             pickupPoint: { enabled: true },

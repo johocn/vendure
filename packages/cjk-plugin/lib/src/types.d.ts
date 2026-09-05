@@ -23,6 +23,8 @@ export interface TenantPromotionPolicy {
 }
 export interface CjkPluginTenantOptions {
     enabled?: boolean;
+    /** 租户默认对外访问主域（不含协议与路径），新建租户时自动生成默认外网地址 `${domain}/${code}` */
+    defaultPublicDomain?: string;
     defaultPaymentMethods?: string[];
     defaultShippingMethods?: string[];
     defaultPromotionPolicies?: TenantPromotionPolicy;
