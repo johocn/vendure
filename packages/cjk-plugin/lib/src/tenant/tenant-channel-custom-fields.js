@@ -103,6 +103,15 @@ exports.tenantChannelCustomFields = {
             label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '自定义域名' }],
         },
         {
+            name: 'domain',
+            type: 'string',
+            nullable: true,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '默认外网访问域名' }],
+            description: [
+                { languageCode: core_1.LanguageCode.zh_Hans, value: '租户默认对外访问域名（不含协议头），前端据此回源' },
+            ],
+        },
+        {
             name: 'mapConfig',
             type: 'struct',
             nullable: true,

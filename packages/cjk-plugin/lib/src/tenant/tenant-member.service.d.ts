@@ -36,6 +36,8 @@ export interface CreateTenantAdminInput {
 }
 /** 生成随机强口令：≥10 位，保证大小写/数字/符号各类至少一个 */
 export declare function randomStrongPassword(length?: number): string;
+/** 租户管理人密码重置的默认口令（超管在租户详情页「重置密码」时写回此值） */
+export declare const DEFAULT_ADMIN_PASSWORD = "you123123";
 export declare class TenantMemberService {
     private connection;
     private administratorService;
@@ -61,11 +63,12 @@ export declare class TenantMemberService {
     private nextTenantNo;
     /** 租户启停（仅超管） */
     setChannelEnabled(ctx: RequestContext, channelId: ID, enabled: boolean): Promise<void>;
-    /** 更新租户基础信息（仅超管）：name → shopName 一并写入 */
+    /** 更新租户基础信息（仅超管）：name → shopName；domain → 默认外网域名。合并既有 customFields，仅覆盖传入字段。 */
     updateChannel(ctx: RequestContext, channelId: ID, input: {
         name?: string;
         tenantNo?: number;
         isOfficial?: boolean;
+        domain?: string;
     }): Promise<void>;
     /** 租户级角色创建（限定 channelIds=[channelId]；权限白名单校验） */
     createTenantRole(ctx: RequestContext, channelId: ID, input: {
@@ -148,6 +151,8 @@ export declare class TenantMemberService {
     setMemberEnabled(ctx: RequestContext, channelId: ID, memberId: ID, enabled: boolean): Promise<void>;
     /** 租户人员移除（仅删 TenantMember 关联，Administrator 本体保留） */
     removeMember(ctx: RequestContext, channelId: ID, memberId: ID): Promise<void>;
+    /** 超管重置租户管理人密码为默认口令 you123123，并清除该人员的首登强改密标志（可用默认口令直接登录） */
+    resetAdminPassword(ctx: RequestContext, memberId: ID): Promise<TenantMember>;
     /** 搜索后台账号（按邮箱/姓氏模糊匹配），返回各账号在租户内的关联统计，供「关联已有账号进租户」选择 */
     searchAdmins(ctx: RequestContext, channelId: ID, keyword?: string, take?: number): Promise<any[]>;
     /** 将既有后台账号关联进某租户（写入 TenantMember 并合并绑定本租户角色）；若已在该租户则报错 */

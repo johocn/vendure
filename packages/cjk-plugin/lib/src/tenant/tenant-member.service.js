@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.TenantMemberService = exports.GLOBAL_ROLE_PREFIX = exports.BUSINESS_PERMISSIONS = exports.PERMISSION_CATALOG = void 0;
+exports.TenantMemberService = exports.DEFAULT_ADMIN_PASSWORD = exports.GLOBAL_ROLE_PREFIX = exports.BUSINESS_PERMISSIONS = exports.PERMISSION_CATALOG = void 0;
 exports.normalizeGlobalRoleCode = normalizeGlobalRoleCode;
 exports.randomStrongPassword = randomStrongPassword;
 const common_1 = require("@nestjs/common");
@@ -127,6 +127,8 @@ function randomStrongPassword(length = 12) {
     }
     return parts.join('');
 }
+/** 租户管理人密码重置的默认口令（超管在租户详情页「重置密码」时写回此值） */
+exports.DEFAULT_ADMIN_PASSWORD = 'you123123';
 let TenantMemberService = class TenantMemberService {
     constructor(connection, administratorService, roleService, channelService) {
         this.connection = connection;
@@ -218,15 +220,22 @@ let TenantMemberService = class TenantMemberService {
             customFields: { enabled },
         });
     }
-    /** 更新租户基础信息（仅超管）：name → shopName 一并写入 */
+    /** 更新租户基础信息（仅超管）：name → shopName；domain → 默认外网域名。合并既有 customFields，仅覆盖传入字段。 */
     async updateChannel(ctx, channelId, input) {
+        const repo = this.connection.getRepository(ctx, core_1.Channel);
+        const existing = await repo.findOne({ where: { id: String(channelId) } });
+        const cf = new Map(Object.entries(((existing === null || existing === void 0 ? void 0 : existing.customFields) || {})));
+        if (input.tenantNo !== undefined)
+            cf.set('tenantNo', input.tenantNo);
+        if (input.isOfficial !== undefined)
+            cf.set('isOfficial', input.isOfficial);
+        if (input.name !== undefined && input.name !== null)
+            cf.set('shopName', input.name);
+        if (input.domain !== undefined && input.domain !== null)
+            cf.set('domain', input.domain);
         await this.channelService.update(ctx, {
             id: channelId,
-            customFields: {
-                tenantNo: input.tenantNo,
-                isOfficial: input.isOfficial,
-                shopName: input.name,
-            },
+            customFields: Object.fromEntries(cf),
         });
     }
     /** 租户级角色创建（限定 channelIds=[channelId]；权限白名单校验） */
@@ -638,6 +647,22 @@ let TenantMemberService = class TenantMemberService {
         if (!member)
             throw new Error('MEMBER_NOT_FOUND');
         await repo.remove(member);
+    }
+    /** 超管重置租户管理人密码为默认口令 you123123，并清除该人员的首登强改密标志（可用默认口令直接登录） */
+    async resetAdminPassword(ctx, memberId) {
+        const repo = this.connection.getRepository(ctx, tenant_member_entity_1.TenantMember);
+        const member = await repo.findOne({ where: { id: String(memberId) } });
+        if (!member)
+            throw new Error('MEMBER_NOT_FOUND');
+        await this.administratorService.update(ctx, {
+            id: String(member.administratorId),
+            password: exports.DEFAULT_ADMIN_PASSWORD,
+        });
+        if (member.mustChangePassword) {
+            member.mustChangePassword = false;
+            await repo.save(member);
+        }
+        return member;
     }
     /** 搜索后台账号（按邮箱/姓氏模糊匹配），返回各账号在租户内的关联统计，供「关联已有账号进租户」选择 */
     async searchAdmins(ctx, channelId, keyword, take = 10) {

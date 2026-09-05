@@ -44,6 +44,15 @@ let ChannelCustomColumnMigration = class ChannelCustomColumnMigration {
                         isNullable: true,
                     }));
                 }
+                // domain 默认外网访问域名（同上，含首字母大写转换）
+                const DOMAIN_COL = 'customFieldsDomain';
+                if (!(await queryRunner.hasColumn(tableName, DOMAIN_COL))) {
+                    await queryRunner.addColumn(tableName, new typeorm_2.TableColumn({
+                        name: DOMAIN_COL,
+                        type: 'varchar(255)',
+                        isNullable: true,
+                    }));
+                }
             }
             finally {
                 await queryRunner.release();

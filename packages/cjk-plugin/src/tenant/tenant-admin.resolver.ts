@@ -96,7 +96,7 @@ export class TenantAdminResolver {
     @Allow(Permission.SuperAdmin)
     async updateTenant(
         @Ctx() ctx: RequestContext,
-        @Args() args: { id: string; input: { name?: string; tenantNo?: number; isOfficial?: boolean } },
+        @Args() args: { id: string; input: { name?: string; tenantNo?: number; isOfficial?: boolean; domain?: string } },
     ): Promise<any> {
         await this.tenantMemberService.updateChannel(ctx, args.id, args.input);
         return this.channelService.findOne(ctx, args.id as any);
@@ -160,6 +160,14 @@ export class TenantAdminResolver {
         const member = await repo.findOne({ where: { id } });
         if (!member) throw new Error('MEMBER_NOT_FOUND');
         await this.tenantMemberService.removeMember(ctx, member.channelId, id);
+        return true;
+    }
+
+    /** 重置租户管理人密码（管理员 Tab 某成员）为默认口令 you123123（仅超管） */
+    @Mutation()
+    @Allow(Permission.SuperAdmin)
+    async resetTenantAdministratorPassword(@Ctx() ctx: RequestContext, @Args('memberId') memberId: string): Promise<boolean> {
+        await this.tenantMemberService.resetAdminPassword(ctx, memberId);
         return true;
     }
 

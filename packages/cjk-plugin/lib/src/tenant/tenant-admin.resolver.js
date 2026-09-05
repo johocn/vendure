@@ -124,6 +124,11 @@ let TenantAdminResolver = class TenantAdminResolver {
         await this.tenantMemberService.removeMember(ctx, member.channelId, id);
         return true;
     }
+    /** 重置租户管理人密码（管理员 Tab 某成员）为默认口令 you123123（仅超管） */
+    async resetTenantAdministratorPassword(ctx, memberId) {
+        await this.tenantMemberService.resetAdminPassword(ctx, memberId);
+        return true;
+    }
     async tenantRoles(ctx, channelId) {
         return this.tenantMemberService.rolesForChannel(ctx, channelId);
     }
@@ -282,6 +287,15 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, String]),
     __metadata("design:returntype", Promise)
 ], TenantAdminResolver.prototype, "deleteTenantAdministrator", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('memberId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String]),
+    __metadata("design:returntype", Promise)
+], TenantAdminResolver.prototype, "resetTenantAdministratorPassword", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(core_1.Permission.SuperAdmin),

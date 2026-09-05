@@ -41,6 +41,7 @@ export declare class TenantAdminResolver {
             name?: string;
             tenantNo?: number;
             isOfficial?: boolean;
+            domain?: string;
         };
     }): Promise<any>;
     setTenantEnabled(ctx: RequestContext, args: {
@@ -59,6 +60,8 @@ export declare class TenantAdminResolver {
         enabled: boolean;
     }): Promise<TenantMember>;
     deleteTenantAdministrator(ctx: RequestContext, id: string): Promise<boolean>;
+    /** 重置租户管理人密码（管理员 Tab 某成员）为默认口令 you123123（仅超管） */
+    resetTenantAdministratorPassword(ctx: RequestContext, memberId: string): Promise<boolean>;
     tenantRoles(ctx: RequestContext, channelId: string): Promise<any[]>;
     createTenantRole(ctx: RequestContext, args: {
         channelId: string;

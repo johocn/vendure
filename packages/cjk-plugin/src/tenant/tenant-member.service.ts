@@ -155,6 +155,9 @@ export function randomStrongPassword(length = 12): string {
     return parts.join('');
 }
 
+/** 租户管理人密码重置的默认口令（超管在租户详情页「重置密码」时写回此值） */
+export const DEFAULT_ADMIN_PASSWORD = 'you123123';
+
 @Injectable()
 export class TenantMemberService {
     constructor(
@@ -255,19 +258,22 @@ export class TenantMemberService {
         } as any);
     }
 
-    /** 更新租户基础信息（仅超管）：name → shopName 一并写入 */
+    /** 更新租户基础信息（仅超管）：name → shopName；domain → 默认外网域名。合并既有 customFields，仅覆盖传入字段。 */
     async updateChannel(
         ctx: RequestContext,
         channelId: ID,
-        input: { name?: string; tenantNo?: number; isOfficial?: boolean },
+        input: { name?: string; tenantNo?: number; isOfficial?: boolean; domain?: string },
     ): Promise<void> {
+        const repo = this.connection.getRepository(ctx, Channel);
+        const existing = await repo.findOne({ where: { id: String(channelId) } } as any);
+        const cf = new Map(Object.entries(((existing as any)?.customFields || {})));
+        if (input.tenantNo !== undefined) cf.set('tenantNo', input.tenantNo);
+        if (input.isOfficial !== undefined) cf.set('isOfficial', input.isOfficial);
+        if (input.name !== undefined && input.name !== null) cf.set('shopName', input.name);
+        if (input.domain !== undefined && input.domain !== null) cf.set('domain', input.domain);
         await this.channelService.update(ctx, {
             id: channelId,
-            customFields: {
-                tenantNo: input.tenantNo,
-                isOfficial: input.isOfficial,
-                shopName: input.name,
-            },
+            customFields: Object.fromEntries(cf),
         } as any);
     }
 
@@ -703,6 +709,22 @@ export class TenantMemberService {
         const member = await repo.findOne({ where: { id: memberId, channelId: String(channelId) } });
         if (!member) throw new Error('MEMBER_NOT_FOUND');
         await repo.remove(member);
+    }
+
+    /** 超管重置租户管理人密码为默认口令 you123123，并清除该人员的首登强改密标志（可用默认口令直接登录） */
+    async resetAdminPassword(ctx: RequestContext, memberId: ID): Promise<TenantMember> {
+        const repo = this.connection.getRepository(ctx, TenantMember);
+        const member = await repo.findOne({ where: { id: String(memberId) } });
+        if (!member) throw new Error('MEMBER_NOT_FOUND');
+        await this.administratorService.update(ctx, {
+            id: String(member.administratorId) as any,
+            password: DEFAULT_ADMIN_PASSWORD,
+        } as any);
+        if (member.mustChangePassword) {
+            member.mustChangePassword = false;
+            await repo.save(member);
+        }
+        return member;
     }
 
     /** 搜索后台账号（按邮箱/姓氏模糊匹配），返回各账号在租户内的关联统计，供「关联已有账号进租户」选择 */
