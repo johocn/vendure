@@ -83,15 +83,15 @@ let AssetLibraryAdminResolver = class AssetLibraryAdminResolver {
         const channelPerms = (user === null || user === void 0 ? void 0 : user.channelPermissions) || [];
         const isSuperAdmin = (user === null || user === void 0 ? void 0 : user.superAdmin) === true ||
             channelPerms.some((cp) => (cp.permissions || []).includes(core_1.Permission.SuperAdmin));
-        // 拉取该渠道全部资产，再按上传者过滤 —— 避免跨库 JSON 过滤副作用
-        const all = await this.assetService.findAll(ctx, {
-            take: 100000,
-            sort: { createdAt: 'DESC' },
-        });
-        let filtered = all.items;
+        // 直接用仓库拖取该渠道全部资产（绕开 ListQueryBuilder 的 adminListQueryLimit 上限——
+        // 之前用 assetService.findAll(take:100000) 会因超过默认 1000 上限抛
+        // "Cannot take more than 1000 results" 导致图片库整体打不开），再按上传者过滤。
+        const repo = this.connection.getRepository(ctx, core_2.Asset);
+        const all = await repo.find({ order: { createdAt: 'DESC' } });
+        let filtered = all;
         if (!isSuperAdmin) {
             const mine = String((_b = user === null || user === void 0 ? void 0 : user.id) !== null && _b !== void 0 ? _b : '');
-            filtered = all.items.filter((a) => { var _a, _b; return String((_b = (_a = a.customFields) === null || _a === void 0 ? void 0 : _a.uploadedBy) !== null && _b !== void 0 ? _b : '') === mine; });
+            filtered = all.filter((a) => { var _a, _b; return String((_b = (_a = a.customFields) === null || _a === void 0 ? void 0 : _a.uploadedBy) !== null && _b !== void 0 ? _b : '') === mine; });
         }
         return filtered;
     }

@@ -90,15 +90,15 @@ export class AssetLibraryAdminResolver {
             user?.superAdmin === true ||
             channelPerms.some((cp: any) => (cp.permissions || []).includes(Permission.SuperAdmin));
 
-        // 拉取该渠道全部资产，再按上传者过滤 —— 避免跨库 JSON 过滤副作用
-        const all = await this.assetService.findAll(ctx, {
-            take: 100000,
-            sort: { createdAt: 'DESC' as any },
-        });
-        let filtered = all.items;
+        // 直接用仓库拖取该渠道全部资产（绕开 ListQueryBuilder 的 adminListQueryLimit 上限——
+        // 之前用 assetService.findAll(take:100000) 会因超过默认 1000 上限抛
+        // "Cannot take more than 1000 results" 导致图片库整体打不开），再按上传者过滤。
+        const repo = this.connection.getRepository(ctx, Asset);
+        const all = await repo.find({ order: { createdAt: 'DESC' } as any });
+        let filtered = all;
         if (!isSuperAdmin) {
             const mine = String(user?.id ?? '');
-            filtered = all.items.filter((a: any) => String(a.customFields?.uploadedBy ?? '') === mine);
+            filtered = all.filter((a: any) => String(a.customFields?.uploadedBy ?? '') === mine);
         }
         return filtered;
     }
