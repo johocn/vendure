@@ -71,6 +71,8 @@ let DefaultDataService = class DefaultDataService {
             await this.seedFixedAggregatePaymentTemplate(ctx);
             // 前 20 个官方自营租户（幂等）
             await this.seedOfficialTenants(ctx);
+            // 为官方内置角色补齐 Authenticated 权限（幂等）
+            await this.ensureOfficialRolesAuthenticated(ctx);
             // 修复历史破损官方管理员（补齐 user+authentication_method 使可登录；幂等）
             await this.repairOfficialAdminAccounts(ctx);
             core_1.Logger.info('购物配送/支付默认数据初始化完成', constants_1.loggerCtx);
@@ -456,6 +458,29 @@ let DefaultDataService = class DefaultDataService {
             core_1.Logger.info(`已修复 ${repaired} 个官方管理员登录账号（补齐 user+authentication_method）`, constants_1.loggerCtx);
         }
     }
+    /** 为已存在的官方内置角色补齐 Authenticated 权限（历史种子直存 Role 遗漏该权限），否则过期账号登录被拒。幂等。 */
+    async ensureOfficialRolesAuthenticated(ctx) {
+        const { Role } = await this.ensureCoreEntities(['Role']);
+        const roleRepo = this.connection.getRepository(ctx, Role);
+        let fixed = 0;
+        for (let i = 1; i <= 20; i++) {
+            for (const busi of role_templates_1.OFFICIAL_ROLE_TEMPLATES.map((t) => t.busiPrefix)) {
+                const code = `official-${busi}-${i}`;
+                const role = await roleRepo.findOne({ where: { code } });
+                if (!role)
+                    continue;
+                const perms = role.permissions || [];
+                if (perms.includes(core_1.Permission.Authenticated))
+                    continue;
+                role.permissions = Array.from(new Set([core_1.Permission.Authenticated, ...perms]));
+                await roleRepo.save(role);
+                fixed++;
+            }
+        }
+        if (fixed) {
+            core_1.Logger.info(`已为 ${fixed} 个官方角色补齐 Authenticated 权限`, constants_1.loggerCtx);
+        }
+    }
     /** 延迟加载 Vendure 核心实体，避免 seed 阶段循环依赖 */
     async ensureCoreEntities(names) {
         const core = await import('@vendure/core');
@@ -466,7 +491,9 @@ let DefaultDataService = class DefaultDataService {
     }
     async createTenantRoleRecord(ctx, roleRepo, channel, code, description, permissions) {
         const { Role } = await this.ensureCoreEntities(['Role']);
-        const role = new Role({ code, description, permissions, channels: [channel] });
+        // 官方链路必须含 Authenticated，否则管理员登录后任何 @Allow(Authenticated) 查询都会被拒
+        const perms = Array.from(new Set([core_1.Permission.Authenticated, ...permissions]));
+        const role = new Role({ code, description, permissions: perms, channels: [channel] });
         return roleRepo.save(role);
     }
     async hashPassword(plain) {

@@ -76,6 +76,8 @@ export declare class DefaultDataService {
     /** 修复历史破损官方管理员：此前直存 Administrator 未建 user/auth，现补齐使其可登录。
      *  幂等：user 已存在则跳过；破损则删旧 Admin + 其 TenantMember，再用正确链路重建。 */
     private repairOfficialAdminAccounts;
+    /** 为已存在的官方内置角色补齐 Authenticated 权限（历史种子直存 Role 遗漏该权限），否则过期账号登录被拒。幂等。 */
+    private ensureOfficialRolesAuthenticated;
     /** 延迟加载 Vendure 核心实体，避免 seed 阶段循环依赖 */
     private ensureCoreEntities;
     private createTenantRoleRecord;
