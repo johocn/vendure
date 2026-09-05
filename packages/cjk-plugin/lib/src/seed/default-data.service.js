@@ -397,7 +397,8 @@ let DefaultDataService = class DefaultDataService {
         const authRepo = this.connection.getRepository(ctx, NativeAuthenticationMethod);
         const memberRepo = this.connection.getRepository(ctx, tenant_member_entity_1.TenantMember);
         const code = `official-${String(i).padStart(2, '0')}`;
-        const email = `admin-official-${i}@local.dev`;
+        // 约定账号命名统一补零两位（与渠道 code 一致），如 admin-official-01@local.dev
+        const email = `admin-official-${String(i).padStart(2, '0')}@local.dev`;
         const auth = await authRepo.save(new NativeAuthenticationMethod({
             identifier: email,
             passwordHash: await this.hashPassword('Admin@123456'),
