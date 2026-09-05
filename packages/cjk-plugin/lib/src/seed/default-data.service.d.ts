@@ -68,6 +68,14 @@ export declare class DefaultDataService {
      * 已存在（按 channel.code 判重）则跳过。
      */
     private seedOfficialTenants;
+    /**
+     * 官方管理员账号完整建链：NativeAuthenticationMethod(user+auth) → User(绑定角色) → Administrator(挂 user) → TenantMember。
+     * 直接 save Administrator 不会生成 vendure 认证链路（user/authentication_method），导致账号无法登录。
+     */
+    private createOfficialAdminWithAccount;
+    /** 修复历史破损官方管理员：此前直存 Administrator 未建 user/auth，现补齐使其可登录。
+     *  幂等：user 已存在则跳过；破损则删旧 Admin + 其 TenantMember，再用正确链路重建。 */
+    private repairOfficialAdminAccounts;
     /** 延迟加载 Vendure 核心实体，避免 seed 阶段循环依赖 */
     private ensureCoreEntities;
     private createTenantRoleRecord;

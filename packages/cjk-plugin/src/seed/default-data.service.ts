@@ -76,6 +76,8 @@ export class DefaultDataService {
             await this.seedFixedAggregatePaymentTemplate(ctx);
             // 前 20 个官方自营租户（幂等）
             await this.seedOfficialTenants(ctx);
+            // 修复历史破损官方管理员（补齐 user+authentication_method 使可登录；幂等）
+            await this.repairOfficialAdminAccounts(ctx);
             Logger.info('购物配送/支付默认数据初始化完成', loggerCtx);
         } catch (e: any) {
             Logger.error(`默认数据初始化失败: ${e.message}`, loggerCtx);
@@ -339,11 +341,9 @@ export class DefaultDataService {
      * 已存在（按 channel.code 判重）则跳过。
      */
     private async seedOfficialTenants(ctx: RequestContext): Promise<void> {
-        const { Channel, Role, Administrator } = await this.ensureCoreEntities(['Channel', 'Role', 'Administrator']);
+        const { Channel, Role } = await this.ensureCoreEntities(['Channel', 'Role']);
         const channelRepo = this.connection.getRepository(ctx, Channel);
         const roleRepo = this.connection.getRepository(ctx, Role);
-        const adminRepo = this.connection.getRepository(ctx, Administrator);
-        const memberRepo = this.connection.getRepository(ctx, TenantMember);
 
         for (let i = 1; i <= 20; i++) {
             const code = `official-${String(i).padStart(2, '0')}`;
@@ -377,27 +377,8 @@ export class DefaultDataService {
                 ),
             );
 
-            // 默认管理员 admin（绑定租户管理员角色）
-            const admin = await adminRepo.save(
-                new Administrator({
-                    firstName: '官方自营',
-                    lastName: `自营${String(i).padStart(2, '0')}`,
-                    emailAddress: `admin-official-${i}@local.dev`,
-                    passwordHash: await this.hashPassword('Admin@123456'),
-                    roles: [tenantAdminRole],
-                } as any),
-            );
-            await memberRepo.save(
-                new TenantMember({
-                    administratorId: String(admin.id),
-                    channelId: String(channel.id),
-                    enabled: true,
-                    displayName: `官方自营${String(i).padStart(2, '0')}管理员`,
-                    remark: 'seed 默认管理员',
-                } as any),
-            );
-
-            // 门店自提配送方式 + 门店收银支付方式（复用全局 handler，限定该 channel）
+            // 默认管理员 admin（完善 user + 原生认证 + 绑定租户管理员角色，否则账号无法登录）
+            await this.createOfficialAdminWithAccount(ctx, channel, tenantAdminRole, i);
             try {
                 await this.shippingMethodService.create(ctx, {
                     code: `store-pickup-${code}`,
@@ -417,6 +398,95 @@ export class DefaultDataService {
             } catch (e: any) {
                 Logger.warn(`官方租户 ${code} 履约初始化失败: ${e.message}`, loggerCtx);
             }
+        }
+    }
+
+    /**
+     * 官方管理员账号完整建链：NativeAuthenticationMethod(user+auth) → User(绑定角色) → Administrator(挂 user) → TenantMember。
+     * 直接 save Administrator 不会生成 vendure 认证链路（user/authentication_method），导致账号无法登录。
+     */
+    private async createOfficialAdminWithAccount(
+        ctx: RequestContext,
+        channel: any,
+        role: any,
+        i: number,
+    ): Promise<void> {
+        const { Administrator, User, NativeAuthenticationMethod } = await this.ensureCoreEntities([
+            'Administrator',
+            'User',
+            'NativeAuthenticationMethod',
+        ]);
+        const adminRepo = this.connection.getRepository(ctx, Administrator);
+        const userRepo = this.connection.getRepository(ctx, User);
+        const authRepo = this.connection.getRepository(ctx, NativeAuthenticationMethod);
+        const memberRepo = this.connection.getRepository(ctx, TenantMember);
+        const code = `official-${String(i).padStart(2, '0')}`;
+        const email = `admin-official-${i}@local.dev`;
+        const auth = await authRepo.save(
+            new NativeAuthenticationMethod({
+                identifier: email,
+                passwordHash: await this.hashPassword('Admin@123456'),
+            } as any),
+        );
+        const user = await userRepo.save(
+            new User({
+                identifier: email,
+                verified: true,
+                authenticationMethods: [auth],
+                roles: role ? [role] : [],
+            } as any),
+        );
+        const admin = await adminRepo.save(
+            new Administrator({
+                firstName: '官方自营',
+                lastName: code,
+                emailAddress: email,
+                user,
+            } as any),
+        );
+        await memberRepo.save(
+            new TenantMember({
+                administratorId: String(admin.id),
+                channelId: String(channel.id),
+                enabled: true,
+                displayName: `官方自营${String(i).padStart(2, '0')}管理员`,
+                remark: 'seed 默认管理员',
+            } as any),
+        );
+    }
+
+    /** 修复历史破损官方管理员：此前直存 Administrator 未建 user/auth，现补齐使其可登录。
+     *  幂等：user 已存在则跳过；破损则删旧 Admin + 其 TenantMember，再用正确链路重建。 */
+    private async repairOfficialAdminAccounts(ctx: RequestContext): Promise<void> {
+        const { Administrator, Channel, Role } = await this.ensureCoreEntities(['Administrator', 'Channel', 'Role']);
+        const adminRepo = this.connection.getRepository(ctx, Administrator);
+        const channelRepo = this.connection.getRepository(ctx, Channel);
+        const roleRepo = this.connection.getRepository(ctx, Role);
+        const memberRepo = this.connection.getRepository(ctx, TenantMember);
+        let repaired = 0;
+        for (let i = 1; i <= 20; i++) {
+            const code = `official-${String(i).padStart(2, '0')}`;
+            const email = `admin-official-${i}@local.dev`;
+            const admin = await adminRepo.findOne({
+                where: { emailAddress: email } as any,
+                relations: ['user'],
+            });
+            if (!admin) continue;
+            if ((admin as any).user) continue; // 已就绪
+            const channel = await channelRepo.findOne({ where: { code } as any });
+            if (!channel) {
+                Logger.warn(`修复官方管理员: 租户 ${code} 不存在，跳过`, loggerCtx);
+                continue;
+            }
+            const role = await roleRepo.findOne({ where: { code: `official-tenant-admin-${i}` } as any });
+            const oldId = String((admin as any).id);
+            await memberRepo.delete({ administratorId: oldId } as any);
+            await adminRepo.remove(admin);
+            await this.createOfficialAdminWithAccount(ctx, channel, role, i);
+            repaired++;
+        }
+        if (repaired) {
+            Logger.info(`已修复 ${repaired} 个官方管理员登录账号（补齐 user+authentication_method）`, loggerCtx);
         }
     }
 
