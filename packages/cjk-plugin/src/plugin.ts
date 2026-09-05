@@ -688,6 +688,7 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                     name: String
                     tenantNo: Int
                     isOfficial: Boolean
+                    domain: String
                 }
 
                 input TenantListOptions {
@@ -818,6 +819,7 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                     createTenantAdministrator(channelId: ID!, input: CreateTenantAdministratorInput!): TenantMember!
                     setTenantAdministratorEnabled(id: ID!, enabled: Boolean!): TenantMember!
                     deleteTenantAdministrator(id: ID!): Boolean!
+                    resetTenantAdministratorPassword(memberId: ID!): Boolean!
                     createTenantRole(channelId: ID!, input: CreateTenantRoleInput!): Role!
                     updateTenantRole(roleId: ID!, input: UpdateTenantRoleInput!): Role!
                     deleteTenantRole(roleId: ID!): Boolean!

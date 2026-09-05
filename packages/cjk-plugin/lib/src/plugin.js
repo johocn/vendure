@@ -862,6 +862,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     name: String
                     tenantNo: Int
                     isOfficial: Boolean
+                    domain: String
                 }
 
                 input TenantListOptions {
@@ -992,6 +993,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     createTenantAdministrator(channelId: ID!, input: CreateTenantAdministratorInput!): TenantMember!
                     setTenantAdministratorEnabled(id: ID!, enabled: Boolean!): TenantMember!
                     deleteTenantAdministrator(id: ID!): Boolean!
+                    resetTenantAdministratorPassword(memberId: ID!): Boolean!
                     createTenantRole(channelId: ID!, input: CreateTenantRoleInput!): Role!
                     updateTenantRole(roleId: ID!, input: UpdateTenantRoleInput!): Role!
                     deleteTenantRole(roleId: ID!): Boolean!
