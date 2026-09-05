@@ -865,6 +865,7 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                 extend type Mutation {
                     createTenantCollection(input: CreateCollectionInput!): Collection!
                     mapProductToPlatformCollection(productId: ID!, collectionId: ID!): Boolean!
+                    moveProductsToTenantChannel(productIds: [ID!]!, channelId: ID!): Int!
                 }
 
                 type ReusableOptionValue {
