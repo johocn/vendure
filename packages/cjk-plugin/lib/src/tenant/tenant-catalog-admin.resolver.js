@@ -29,6 +29,10 @@ let TenantCatalogAdminResolver = class TenantCatalogAdminResolver {
         await this.tenantCatalogService.addProductToCollection(ctx, productId, collectionId);
         return true;
     }
+    async moveProductsToTenantChannel(ctx, productIds, channelId) {
+        const moved = await this.tenantCatalogService.moveProductsToTenantChannel(ctx, productIds, channelId);
+        return moved.length;
+    }
     async reusableOptionGroups(ctx) {
         return this.optionGroupService.reusableOptionGroups(ctx);
     }
@@ -56,6 +60,16 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, String, String]),
     __metadata("design:returntype", Promise)
 ], TenantCatalogAdminResolver.prototype, "mapProductToPlatformCollection", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateCatalog, core_1.Permission.UpdateProduct),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('productIds')),
+    __param(2, (0, graphql_1.Args)('channelId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Array, String]),
+    __metadata("design:returntype", Promise)
+], TenantCatalogAdminResolver.prototype, "moveProductsToTenantChannel", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(core_1.Permission.ReadCatalog, core_1.Permission.ReadProduct),

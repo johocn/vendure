@@ -8,6 +8,7 @@ export declare class TenantCatalogAdminResolver {
     constructor(tenantCatalogService: TenantCatalogService, optionGroupService: TenantOptionGroupService);
     createTenantCollection(ctx: RequestContext, input: CreateCollectionInput): Promise<any>;
     mapProductToPlatformCollection(ctx: RequestContext, productId: string, collectionId: string): Promise<boolean>;
+    moveProductsToTenantChannel(ctx: RequestContext, productIds: string[], channelId: string): Promise<number>;
     reusableOptionGroups(ctx: RequestContext): Promise<any>;
     reuseOptionGroupForProduct(productId: string, optionGroupId: string): Promise<boolean>;
 }

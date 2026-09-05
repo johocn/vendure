@@ -6,6 +6,8 @@ import {
     CollectionService,
     ID,
     idsAreEqual,
+    InternalServerError,
+    Product,
     RequestContext,
     TransactionalConnection,
     Translated,
@@ -71,5 +73,31 @@ export class TenantCatalogService {
         }
         collection.filters = filters;
         await repo.save(collection);
+    }
+
+    /**
+     * 把商品挂到租户渠道并从默认渠道摘除（双轨隔离）。
+     * 不能走 removeProductsFromChannel（会被「默认渠道不可摘除」守卫拦），须直接 channelService.removeFromChannels。
+     */
+    async moveProductsToTenantChannel(
+        ctx: RequestContext,
+        productIds: ID[],
+        channelId: ID,
+    ): Promise<Product[]> {
+        const defaultChannel = await this.channelService.getDefaultChannel(ctx);
+        const channel = await this.channelService.findOne(ctx, channelId);
+        if (!channel) throw new InternalServerError(`Channel not found: ${channelId}`);
+        const result: Product[] = [];
+        for (const id of productIds) {
+            if (!idsAreEqual(channel.id, defaultChannel.id)) {
+                await this.channelService.assignToChannels(ctx, Product, id, [channel.id]);
+            }
+            await this.channelService.removeFromChannels(ctx, Product, id, [defaultChannel.id]);
+            const p = await this.connection
+                .getRepository(ctx, Product)
+                .findOne({ where: { id: String(id) } } as any);
+            if (p) result.push(p);
+        }
+        return result;
     }
 }

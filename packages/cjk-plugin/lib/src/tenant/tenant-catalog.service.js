@@ -70,6 +70,29 @@ let TenantCatalogService = class TenantCatalogService {
         collection.filters = filters;
         await repo.save(collection);
     }
+    /**
+     * 把商品挂到租户渠道并从默认渠道摘除（双轨隔离）。
+     * 不能走 removeProductsFromChannel（会被「默认渠道不可摘除」守卫拦），须直接 channelService.removeFromChannels。
+     */
+    async moveProductsToTenantChannel(ctx, productIds, channelId) {
+        const defaultChannel = await this.channelService.getDefaultChannel(ctx);
+        const channel = await this.channelService.findOne(ctx, channelId);
+        if (!channel)
+            throw new core_1.InternalServerError(`Channel not found: ${channelId}`);
+        const result = [];
+        for (const id of productIds) {
+            if (!(0, core_1.idsAreEqual)(channel.id, defaultChannel.id)) {
+                await this.channelService.assignToChannels(ctx, core_1.Product, id, [channel.id]);
+            }
+            await this.channelService.removeFromChannels(ctx, core_1.Product, id, [defaultChannel.id]);
+            const p = await this.connection
+                .getRepository(ctx, core_1.Product)
+                .findOne({ where: { id: String(id) } });
+            if (p)
+                result.push(p);
+        }
+        return result;
+    }
 };
 exports.TenantCatalogService = TenantCatalogService;
 exports.TenantCatalogService = TenantCatalogService = __decorate([

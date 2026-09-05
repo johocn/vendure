@@ -31,6 +31,21 @@ export class TenantCatalogAdminResolver {
         return true;
     }
 
+    @Mutation()
+    @Allow(Permission.UpdateCatalog, Permission.UpdateProduct)
+    async moveProductsToTenantChannel(
+        @Ctx() ctx: RequestContext,
+        @Args('productIds') productIds: string[],
+        @Args('channelId') channelId: string,
+    ): Promise<number> {
+        const moved = await this.tenantCatalogService.moveProductsToTenantChannel(
+            ctx,
+            productIds,
+            channelId,
+        );
+        return moved.length;
+    }
+
     @Query()
     @Allow(Permission.ReadCatalog, Permission.ReadProduct)
     async reusableOptionGroups(@Ctx() ctx: RequestContext): Promise<any> {
