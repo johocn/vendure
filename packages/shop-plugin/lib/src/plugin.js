@@ -129,6 +129,21 @@ const adminSchema = () => gql `
         lineTotalWithTax: Int!
     }
 
+    type MerchantShippingAddress {
+        fullName: String
+        streetLine1: String
+        city: String
+        province: String
+        countryCode: String
+        postalCode: String
+    }
+
+    type MerchantShippingLine {
+        id: ID!
+        code: String
+        name: String
+    }
+
     type MerchantOrder {
         orderId: ID!
         code: String!
@@ -137,6 +152,8 @@ const adminSchema = () => gql `
         currencyCode: String!
         customerName: String
         placedAt: DateTime
+        shippingAddress: MerchantShippingAddress
+        shippingLines: [MerchantShippingLine!]!
         items: [MerchantOrderLine!]!
     }
 

@@ -82,6 +82,19 @@ export interface FulfillMyShopOrderResult {
     remainingItemCount: number;
     fulfillmentIds: string[];
 }
+export interface MerchantShippingAddress {
+    fullName: string | null;
+    streetLine1: string | null;
+    city: string | null;
+    province: string | null;
+    countryCode: string | null;
+    postalCode: string | null;
+}
+export interface MerchantShippingLine {
+    id: string;
+    code: string | null;
+    name: string | null;
+}
 export interface MerchantOrder {
     orderId: string;
     code: string;
@@ -90,6 +103,8 @@ export interface MerchantOrder {
     currencyCode: string;
     customerName: string | null;
     placedAt: Date | null;
+    shippingAddress: MerchantShippingAddress | null;
+    shippingLines: MerchantShippingLine[];
     items: MerchantOrderLine[];
 }
 export interface MerchantReview {

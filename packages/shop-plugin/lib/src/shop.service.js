@@ -649,10 +649,13 @@ let ShopService = class ShopService {
     }
     /** 聚合我店商品行 → MerchantOrder 投影（items 仅含我店行，不泄露他人店铺行）。e2e 规模用内存聚合。 */
     async aggregateMerchantOrders(ctx, shop) {
-        var _a, _b, _c, _d;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
         const lines = await this.connection.getRepository(ctx, core_1.OrderLine).find({
             relations: [
                 'order',
+                'order.shippingAddress',
+                'order.shippingLines',
+                'order.shippingLines.shippingMethod',
                 'order.customer',
                 'productVariant',
                 'productVariant.product',
@@ -719,6 +722,24 @@ let ShopService = class ShopService {
                         order.customer.emailAddress
                     : null,
                 placedAt: (_c = order.orderPlacedAt) !== null && _c !== void 0 ? _c : null,
+                shippingAddress: order.shippingAddress
+                    ? {
+                        fullName: (_d = order.shippingAddress.fullName) !== null && _d !== void 0 ? _d : null,
+                        streetLine1: (_e = order.shippingAddress.streetLine1) !== null && _e !== void 0 ? _e : null,
+                        city: (_f = order.shippingAddress.city) !== null && _f !== void 0 ? _f : null,
+                        province: (_g = order.shippingAddress.province) !== null && _g !== void 0 ? _g : null,
+                        countryCode: (_h = order.shippingAddress.countryCode) !== null && _h !== void 0 ? _h : null,
+                        postalCode: (_j = order.shippingAddress.postalCode) !== null && _j !== void 0 ? _j : null,
+                    }
+                    : null,
+                shippingLines: ((_k = order.shippingLines) !== null && _k !== void 0 ? _k : []).map(sl => {
+                    var _a, _b, _c, _d;
+                    return ({
+                        id: String(sl.id),
+                        code: (_b = (_a = sl.shippingMethod) === null || _a === void 0 ? void 0 : _a.code) !== null && _b !== void 0 ? _b : null,
+                        name: (_d = (_c = sl.shippingMethod) === null || _c === void 0 ? void 0 : _c.name) !== null && _d !== void 0 ? _d : null,
+                    });
+                }),
                 items: [
                     {
                         orderLineId: String(line.id),
@@ -726,7 +747,7 @@ let ShopService = class ShopService {
                         productName: pName,
                         variantName: pvName,
                         quantity: line.quantity,
-                        fulfilledQuantity: (_d = fulfilledByLine.get(line.id)) !== null && _d !== void 0 ? _d : 0,
+                        fulfilledQuantity: (_l = fulfilledByLine.get(line.id)) !== null && _l !== void 0 ? _l : 0,
                         unitPriceWithTax: line.unitPriceWithTax,
                         lineTotalWithTax: line.linePriceWithTax,
                     },
