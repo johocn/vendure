@@ -36,7 +36,7 @@ export class AssetLibraryAdminResolver {
         const total = finalList.length;
         const slice = finalList.slice(skip, skip + take);
         return {
-            items: slice.map((a) => this.toAssetItem(a)),
+            items: slice.map((a) => this.toAssetItem(ctx, a)),
             totalItems: total,
         };
     }
@@ -118,16 +118,32 @@ export class AssetLibraryAdminResolver {
         }
     }
 
-    private toAssetItem(a: Asset): any {
+    private toAssetItem(ctx: RequestContext, a: Asset): any {
+        const origin = this.requestOrigin(ctx);
+        // Asset 实体存储的是相对路径(preview/… 无 assets 前缀)；媒体库模板直接 <image :src="preview">
+        // 用裸相对路径会解析成 /guanli/preview/… → 命中 SPA 返回 index.html 而非图片，缩略图全破。
+        // 这里统一拼成绝对 URL(origin + /assets/ + path)，所有消费媒体库的组件无需再做前缀处理。
+        const prefix = origin ? `${origin}/assets/` : 'assets/';
         return {
             id: String(a.id),
             name: a.name || '',
-            preview: a.preview,
-            source: a.source,
+            preview: prefix + a.preview,
+            source: prefix + a.source,
             mimeType: a.mimeType,
             width: a.width,
             height: a.height,
             assetTags: (a.customFields as any)?.assetTags || [],
         };
+    }
+
+    private requestOrigin(ctx: RequestContext): string {
+        const req: any = ctx.req;
+        const host: string = req?.headers?.host || '';
+        if (!host) return '';
+        const proto: string =
+            (req?.headers?.['x-forwarded-proto'] as string)?.split(',')[0]?.trim() ||
+            req?.protocol ||
+            (host.includes('localhost') ? 'http' : 'https');
+        return `${proto}://${host}`;
     }
 }

@@ -24,4 +24,5 @@ export declare class AssetLibraryAdminResolver {
     private loadFiltered;
     private assertOwned;
     private toAssetItem;
+    private requestOrigin;
 }

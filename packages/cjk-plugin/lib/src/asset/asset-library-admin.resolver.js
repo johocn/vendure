@@ -41,7 +41,7 @@ let AssetLibraryAdminResolver = class AssetLibraryAdminResolver {
         const total = finalList.length;
         const slice = finalList.slice(skip, skip + take);
         return {
-            items: slice.map((a) => this.toAssetItem(a)),
+            items: slice.map((a) => this.toAssetItem(ctx, a)),
             totalItems: total,
         };
     }
@@ -108,18 +108,34 @@ let AssetLibraryAdminResolver = class AssetLibraryAdminResolver {
             throw new core_1.UserInputError('不能操作不属于当前店铺的图片');
         }
     }
-    toAssetItem(a) {
+    toAssetItem(ctx, a) {
         var _a;
+        const origin = this.requestOrigin(ctx);
+        // Asset 实体存储的是相对路径(preview/… 无 assets 前缀)；媒体库模板直接 <image :src="preview">
+        // 用裸相对路径会解析成 /guanli/preview/… → 命中 SPA 返回 index.html 而非图片，缩略图全破。
+        // 这里统一拼成绝对 URL(origin + /assets/ + path)，所有消费媒体库的组件无需再做前缀处理。
+        const prefix = origin ? `${origin}/assets/` : 'assets/';
         return {
             id: String(a.id),
             name: a.name || '',
-            preview: a.preview,
-            source: a.source,
+            preview: prefix + a.preview,
+            source: prefix + a.source,
             mimeType: a.mimeType,
             width: a.width,
             height: a.height,
             assetTags: ((_a = a.customFields) === null || _a === void 0 ? void 0 : _a.assetTags) || [],
         };
+    }
+    requestOrigin(ctx) {
+        var _a, _b, _c, _d;
+        const req = ctx.req;
+        const host = ((_a = req === null || req === void 0 ? void 0 : req.headers) === null || _a === void 0 ? void 0 : _a.host) || '';
+        if (!host)
+            return '';
+        const proto = ((_d = (_c = (_b = req === null || req === void 0 ? void 0 : req.headers) === null || _b === void 0 ? void 0 : _b['x-forwarded-proto']) === null || _c === void 0 ? void 0 : _c.split(',')[0]) === null || _d === void 0 ? void 0 : _d.trim()) ||
+            (req === null || req === void 0 ? void 0 : req.protocol) ||
+            (host.includes('localhost') ? 'http' : 'https');
+        return `${proto}://${host}`;
     }
 };
 exports.AssetLibraryAdminResolver = AssetLibraryAdminResolver;
