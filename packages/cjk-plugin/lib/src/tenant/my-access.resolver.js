@@ -95,8 +95,12 @@ let MyAccessResolver = class MyAccessResolver {
 };
 exports.MyAccessResolver = MyAccessResolver;
 __decorate([
-    (0, graphql_1.Query)(),
-    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    (0, graphql_1.Query)()
+    // 关键：Authenticated 权限按「激活渠道」判定（见 RequestContext.userHasPermissions），租户管理员在未选店
+    // （请求落在默认渠道，其角色只在自家店铺渠道）时会被拒。故此处用 Public 绕过渠道判定，由本 resolver 依据
+    // 当前 session 用户自身 channelPermissions 过滤返回其可用店铺；匿名访问恒返回空列表，无信息泄露。
+    ,
+    (0, core_1.Allow)(core_1.Permission.Public),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('channelId', { type: () => graphql_1.ID, nullable: true })),
     __metadata("design:type", Function),
