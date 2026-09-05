@@ -1,8 +1,11 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { Allow, Ctx, Permission, RequestContext, ChannelService, TransactionalConnection } from '@vendure/core';
+import { Allow, Ctx, Permission, RequestContext, ChannelService, TransactionalConnection, ProductService } from '@vendure/core';
 import { Inject } from '@nestjs/common';
 import { TenantMemberService } from './tenant-member.service';
 import { TenantMember } from './tenant-member.entity';
+
+/** 租户位容量：预留前 20 个官方租户位（tenantNo 1-20，见 seedOfficialTenants） */
+export const TENANT_SLOT_CAPACITY = 20;
 
 @Resolver()
 export class TenantAdminResolver {
@@ -10,7 +13,56 @@ export class TenantAdminResolver {
         @Inject(ChannelService) private channelService: ChannelService,
         @Inject(TransactionalConnection) private connection: TransactionalConnection,
         @Inject(TenantMemberService) private tenantMemberService: TenantMemberService,
+        @Inject(ProductService) private productService: ProductService,
     ) {}
+
+    /** 租户位总览：capacity=20，slots 按 tenantNo 1-20 列出每格的占用情况 */
+    @Query()
+    @Allow(Permission.SuperAdmin)
+    async tenantSlots(@Ctx() ctx: RequestContext): Promise<{ capacity: number; used: number; slots: any[] }> {
+        const { Channel } = await import('@vendure/core');
+        const channels: any[] = await this.connection.getRepository(ctx, Channel).find({ take: 200000 } as any) as any[];
+        const byNo = new Map<number, any>();
+        for (const c of channels) {
+            const no = Number(c.customFields?.tenantNo);
+            if (Number.isFinite(no)) byNo.set(no, c);
+        }
+        const capacity = TENANT_SLOT_CAPACITY;
+        const slots = Array.from({ length: capacity }, (_, i) => {
+            const no = i + 1;
+            const c = byNo.get(no);
+            return {
+                no,
+                occupied: !!c,
+                tenantId: c ? String(c.id) : null,
+                name: c ? (c.customFields?.shopName || c.code || null) : null,
+            };
+        });
+        return { capacity, used: slots.filter((s) => s.occupied).length, slots };
+    }
+
+    /** 清空指定租户名下全部商品（从零开始）：对该租户 channel 关联的每个商品做软删（softDelete）。不触碰配送/支付/账户等。 */
+    @Mutation()
+    @Allow(Permission.SuperAdmin)
+    async clearTenantProducts(@Ctx() ctx: RequestContext, @Args('channelId') channelId: string): Promise<number> {
+        const { Product } = await import('@vendure/core');
+        const repo = this.connection.getRepository(ctx, Product);
+        const products: any[] = await repo
+            .createQueryBuilder('p')
+            .innerJoin('p.channels', 'ch')
+            .where('ch.id = :id', { id: channelId })
+            .getMany() as any[];
+        let done = 0;
+        for (const p of products) {
+            try {
+                await this.productService.softDelete(ctx, (p as any).id);
+                done++;
+            } catch {
+                // 该商品被订单等引用时跳过，逐个尽力清理
+            }
+        }
+        return done;
+    }
 
     @Query()
     @Allow(Permission.SuperAdmin)

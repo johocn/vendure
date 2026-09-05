@@ -12,17 +12,66 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.TenantAdminResolver = void 0;
+exports.TenantAdminResolver = exports.TENANT_SLOT_CAPACITY = void 0;
 const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
 const common_1 = require("@nestjs/common");
 const tenant_member_service_1 = require("./tenant-member.service");
 const tenant_member_entity_1 = require("./tenant-member.entity");
+/** 租户位容量：预留前 20 个官方租户位（tenantNo 1-20，见 seedOfficialTenants） */
+exports.TENANT_SLOT_CAPACITY = 20;
 let TenantAdminResolver = class TenantAdminResolver {
-    constructor(channelService, connection, tenantMemberService) {
+    constructor(channelService, connection, tenantMemberService, productService) {
         this.channelService = channelService;
         this.connection = connection;
         this.tenantMemberService = tenantMemberService;
+        this.productService = productService;
+    }
+    /** 租户位总览：capacity=20，slots 按 tenantNo 1-20 列出每格的占用情况 */
+    async tenantSlots(ctx) {
+        var _a;
+        const { Channel } = await import('@vendure/core');
+        const channels = await this.connection.getRepository(ctx, Channel).find({ take: 200000 });
+        const byNo = new Map();
+        for (const c of channels) {
+            const no = Number((_a = c.customFields) === null || _a === void 0 ? void 0 : _a.tenantNo);
+            if (Number.isFinite(no))
+                byNo.set(no, c);
+        }
+        const capacity = exports.TENANT_SLOT_CAPACITY;
+        const slots = Array.from({ length: capacity }, (_, i) => {
+            var _a;
+            const no = i + 1;
+            const c = byNo.get(no);
+            return {
+                no,
+                occupied: !!c,
+                tenantId: c ? String(c.id) : null,
+                name: c ? (((_a = c.customFields) === null || _a === void 0 ? void 0 : _a.shopName) || c.code || null) : null,
+            };
+        });
+        return { capacity, used: slots.filter((s) => s.occupied).length, slots };
+    }
+    /** 清空指定租户名下全部商品（从零开始）：对该租户 channel 关联的每个商品做软删（softDelete）。不触碰配送/支付/账户等。 */
+    async clearTenantProducts(ctx, channelId) {
+        const { Product } = await import('@vendure/core');
+        const repo = this.connection.getRepository(ctx, Product);
+        const products = await repo
+            .createQueryBuilder('p')
+            .innerJoin('p.channels', 'ch')
+            .where('ch.id = :id', { id: channelId })
+            .getMany();
+        let done = 0;
+        for (const p of products) {
+            try {
+                await this.productService.softDelete(ctx, p.id);
+                done++;
+            }
+            catch (_a) {
+                // 该商品被订单等引用时跳过，逐个尽力清理
+            }
+        }
+        return done;
     }
     async tenants(ctx, args) {
         var _a, _b, _c, _d;
@@ -126,6 +175,23 @@ let TenantAdminResolver = class TenantAdminResolver {
     }
 };
 exports.TenantAdminResolver = TenantAdminResolver;
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], TenantAdminResolver.prototype, "tenantSlots", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('channelId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String]),
+    __metadata("design:returntype", Promise)
+], TenantAdminResolver.prototype, "clearTenantProducts", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(core_1.Permission.SuperAdmin),
@@ -336,8 +402,10 @@ exports.TenantAdminResolver = TenantAdminResolver = __decorate([
     __param(0, (0, common_1.Inject)(core_1.ChannelService)),
     __param(1, (0, common_1.Inject)(core_1.TransactionalConnection)),
     __param(2, (0, common_1.Inject)(tenant_member_service_1.TenantMemberService)),
+    __param(3, (0, common_1.Inject)(core_1.ProductService)),
     __metadata("design:paramtypes", [core_1.ChannelService,
         core_1.TransactionalConnection,
-        tenant_member_service_1.TenantMemberService])
+        tenant_member_service_1.TenantMemberService,
+        core_1.ProductService])
 ], TenantAdminResolver);
 //# sourceMappingURL=tenant-admin.resolver.js.map

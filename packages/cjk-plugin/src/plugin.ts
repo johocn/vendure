@@ -769,6 +769,19 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                     permissions: [String!]!
                 }
 
+                # 租户位：预留容量（capacity）与第 n 个位置的占用情况
+                type TenantSlot {
+                    no: Int!
+                    occupied: Boolean!
+                    tenantId: ID
+                    name: String
+                }
+                type TenantSlots {
+                    capacity: Int!
+                    used: Int!
+                    slots: [TenantSlot!]!
+                }
+
                 # 关联已有账号：平台账号搜索候选
                 type TenantAdminCandidate {
                     id: ID!
@@ -783,6 +796,7 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                     permissionCatalog: [PermissionCatalogGroup!]
                     tenants(options: TenantListOptions): ChannelList!
                     tenant(id: ID!): Channel
+                    tenantSlots: TenantSlots!
                     tenantAdministrators(channelId: ID!): [TenantMember!]!
                     tenantRoles(channelId: ID!): [Role!]!
                     tenantMembers: [TenantMember!]!
@@ -800,6 +814,7 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                     updateTenant(id: ID!, input: UpdateTenantInput!): Channel!
                     setTenantEnabled(id: ID!, enabled: Boolean!): Channel!
                     deleteTenant(id: ID!): Boolean!
+                    clearTenantProducts(channelId: ID!): Int!
                     createTenantAdministrator(channelId: ID!, input: CreateTenantAdministratorInput!): TenantMember!
                     setTenantAdministratorEnabled(id: ID!, enabled: Boolean!): TenantMember!
                     deleteTenantAdministrator(id: ID!): Boolean!

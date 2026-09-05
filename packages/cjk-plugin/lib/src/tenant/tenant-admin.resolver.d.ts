@@ -1,11 +1,22 @@
-import { RequestContext, ChannelService, TransactionalConnection } from '@vendure/core';
+import { RequestContext, ChannelService, TransactionalConnection, ProductService } from '@vendure/core';
 import { TenantMemberService } from './tenant-member.service';
 import { TenantMember } from './tenant-member.entity';
+/** 租户位容量：预留前 20 个官方租户位（tenantNo 1-20，见 seedOfficialTenants） */
+export declare const TENANT_SLOT_CAPACITY = 20;
 export declare class TenantAdminResolver {
     private channelService;
     private connection;
     private tenantMemberService;
-    constructor(channelService: ChannelService, connection: TransactionalConnection, tenantMemberService: TenantMemberService);
+    private productService;
+    constructor(channelService: ChannelService, connection: TransactionalConnection, tenantMemberService: TenantMemberService, productService: ProductService);
+    /** 租户位总览：capacity=20，slots 按 tenantNo 1-20 列出每格的占用情况 */
+    tenantSlots(ctx: RequestContext): Promise<{
+        capacity: number;
+        used: number;
+        slots: any[];
+    }>;
+    /** 清空指定租户名下全部商品（从零开始）：对该租户 channel 关联的每个商品做软删（softDelete）。不触碰配送/支付/账户等。 */
+    clearTenantProducts(ctx: RequestContext, channelId: string): Promise<number>;
     tenants(ctx: RequestContext, args: {
         options: {
             skip?: number;
