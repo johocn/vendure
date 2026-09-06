@@ -106,6 +106,8 @@ export class RedemptionAdminResolver {
         // lookupByCode 已限当前租户 Channel，核销复用同一检索保持租户隔离
         const result = await this.redemptionCodeService.claim(ctx, order.id);
         const cf = order.customFields ?? {};
+        const expiresAt: string | null = (cf as any).redeemExpiresAt ?? null;
+        const version = Number((cf as any).redeemVersion) || 1;
         return {
             order: {
                 id: order.id,
@@ -118,6 +120,9 @@ export class RedemptionAdminResolver {
             claimed: true,
             claimedAt: result.claimedAt ?? (cf as any).redeemClaimedAt ?? null,
             message: result.already ? 'already' : 'ok',
+            status: computeRedemptionStatus(true, expiresAt, new Date(), 24),
+            expiresAt,
+            version,
         };
     }
 

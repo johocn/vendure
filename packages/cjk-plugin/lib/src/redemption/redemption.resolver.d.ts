@@ -55,6 +55,9 @@ export declare class RedemptionAdminResolver {
         claimed: boolean;
         claimedAt: Date;
         message: string;
+        status: import("./redemption-crypto").RedemptionStatus;
+        expiresAt: string | null;
+        version: number;
     }>;
     redemptionReissue(ctx: RequestContext, code: string): Promise<{
         order: {

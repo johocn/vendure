@@ -111,7 +111,7 @@ let RedemptionAdminResolver = class RedemptionAdminResolver {
         };
     }
     async redemptionClaim(ctx, code) {
-        var _a, _b, _c;
+        var _a, _b, _c, _d;
         const order = await this.redemptionCodeService.lookupByCode(ctx, code);
         if (!order)
             throw new core_1.UserInputError(ERR_NOT_FOUND);
@@ -120,6 +120,8 @@ let RedemptionAdminResolver = class RedemptionAdminResolver {
         // lookupByCode 已限当前租户 Channel，核销复用同一检索保持租户隔离
         const result = await this.redemptionCodeService.claim(ctx, order.id);
         const cf = (_a = order.customFields) !== null && _a !== void 0 ? _a : {};
+        const expiresAt = (_b = cf.redeemExpiresAt) !== null && _b !== void 0 ? _b : null;
+        const version = Number(cf.redeemVersion) || 1;
         return {
             order: {
                 id: order.id,
@@ -130,8 +132,11 @@ let RedemptionAdminResolver = class RedemptionAdminResolver {
                 totalQuantity: order.totalQuantity,
             },
             claimed: true,
-            claimedAt: (_c = (_b = result.claimedAt) !== null && _b !== void 0 ? _b : cf.redeemClaimedAt) !== null && _c !== void 0 ? _c : null,
+            claimedAt: (_d = (_c = result.claimedAt) !== null && _c !== void 0 ? _c : cf.redeemClaimedAt) !== null && _d !== void 0 ? _d : null,
             message: result.already ? 'already' : 'ok',
+            status: (0, redemption_crypto_1.computeRedemptionStatus)(true, expiresAt, new Date(), 24),
+            expiresAt,
+            version,
         };
     }
     async redemptionReissue(ctx, code) {
