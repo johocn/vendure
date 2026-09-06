@@ -468,6 +468,8 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                     pickupLocations: [PickupLocation!]!
                     isTenantDefault: Boolean!
                     enabled: Boolean!
+                    requiresAddress: Boolean!
+                    requiresContact: Boolean!
                     methodConfigs: [ShippingProfileMethodConfig!]!
                     paymentProfileId: ID
                 }
@@ -496,6 +498,8 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                     isGlobal: Boolean
                     enabled: Boolean
                     freeShippingThreshold: Int
+                    requiresAddress: Boolean
+                    requiresContact: Boolean
                     shippingMethodIds: [ID!]!
                     pickupLocationIds: [ID!]
                     methodConfigs: [ShippingProfileMethodConfigInput!]
@@ -510,6 +514,8 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                     isGlobal: Boolean
                     enabled: Boolean
                     freeShippingThreshold: Int
+                    requiresAddress: Boolean
+                    requiresContact: Boolean
                     shippingMethodIds: [ID!]
                     pickupLocationIds: [ID!]
                     methodConfigs: [ShippingProfileMethodConfigInput!]

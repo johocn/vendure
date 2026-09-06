@@ -642,6 +642,8 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     pickupLocations: [PickupLocation!]!
                     isTenantDefault: Boolean!
                     enabled: Boolean!
+                    requiresAddress: Boolean!
+                    requiresContact: Boolean!
                     methodConfigs: [ShippingProfileMethodConfig!]!
                     paymentProfileId: ID
                 }
@@ -670,6 +672,8 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     isGlobal: Boolean
                     enabled: Boolean
                     freeShippingThreshold: Int
+                    requiresAddress: Boolean
+                    requiresContact: Boolean
                     shippingMethodIds: [ID!]!
                     pickupLocationIds: [ID!]
                     methodConfigs: [ShippingProfileMethodConfigInput!]
@@ -684,6 +688,8 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     isGlobal: Boolean
                     enabled: Boolean
                     freeShippingThreshold: Int
+                    requiresAddress: Boolean
+                    requiresContact: Boolean
                     shippingMethodIds: [ID!]
                     pickupLocationIds: [ID!]
                     methodConfigs: [ShippingProfileMethodConfigInput!]
