@@ -1,4 +1,4 @@
-import { ID, RequestContext, OrderService, TransactionalConnection, Order } from '@vendure/core';
+import { FulfillmentService, ID, Order, OrderService, RequestContext, TransactionalConnection } from '@vendure/core';
 import { RedemptionStatus } from './redemption-crypto';
 /** 到店/货到付款（COD）支付方式 code，命中即需收银确认；与 nshop 确认页 & 旧 pickup 收银一致 */
 export declare const COD_PAYMENT_CODES: string[];
@@ -23,10 +23,11 @@ export type CollectMode = 'optional' | 'force';
 export declare class RedemptionCodeService {
     private orderService;
     private connection;
+    private fulfillmentService;
     private readonly keyHex;
     private readonly graceDays;
     private readonly expireRemindHours;
-    constructor(orderService: OrderService, connection: TransactionalConnection);
+    constructor(orderService: OrderService, connection: TransactionalConnection, fulfillmentService: FulfillmentService);
     private cf;
     private isCodOrder;
     /**
@@ -36,6 +37,17 @@ export declare class RedemptionCodeService {
     collectMode(ctx: RequestContext): CollectMode;
     /** COD 收款后把该订单的分账台账 PENDING_SIGN → PAID（在线支付结算时即 PAID，无需翻转） */
     private flipLedgerToPaid;
+    /**
+     * 收款确认后推进订单状态至「已提货（Delivered）」：
+     *  - COD（到店/货到付款）先结算 Authorized 支付 → 订单自动 PaymentAuthorized → PaymentSettled；
+     *  - 确保存在已送达的 Fulfillment（无则创建）→ 默认履约流程自动把订单推进至 Shipped → Delivered。
+     *
+     * 幂等：Authorized 才结算、未覆盖行才补建履约、非送达履约才推进；already-created 的履约复用。
+     * best-effort：任一步失败只记日志不抛错，不阻塞核销本身（核销已成功）。
+     */
+    private settleAndDeliver;
+    /** 订单行中尚未被「Delivered」履约完全覆盖的部分；已有送达履约的行不重复履约 */
+    private pendingFulfillmentLines;
     private writeExpiry;
     /**
      * 幂等确保订单已生成核销码。返回解密的明文核销码。

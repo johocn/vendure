@@ -14,6 +14,7 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const redemption_crypto_1 = require("./redemption-crypto");
 const merchant_settlement_ledger_entity_1 = require("../order/merchant-settlement-ledger.entity");
+const loggerCtx = 'RedemptionCodeService';
 /** 到店/货到付款（COD）支付方式 code，命中即需收银确认；与 nshop 确认页 & 旧 pickup 收银一致 */
 exports.COD_PAYMENT_CODES = [
     'cash-on-delivery',
@@ -23,10 +24,11 @@ exports.COD_PAYMENT_CODES = [
     'fixed-aggregate-collection',
 ];
 let RedemptionCodeService = class RedemptionCodeService {
-    constructor(orderService, connection) {
+    constructor(orderService, connection, fulfillmentService) {
         var _a;
         this.orderService = orderService;
         this.connection = connection;
+        this.fulfillmentService = fulfillmentService;
         this.keyHex = (_a = process.env.REDEMPTION_KEY) !== null && _a !== void 0 ? _a : '7'.repeat(64); // dev 默认；生产必由运维注入
         if (process.env.REDEMPTION_KEY === undefined && process.env.NODE_ENV === 'production') {
             throw new Error('REDEMPTION_KEY 必须在生产环境注入（32 字节 hex）');
@@ -68,6 +70,105 @@ let RedemptionCodeService = class RedemptionCodeService {
             .where('orderId = :oid', { oid: String(orderId) })
             .andWhere("status = 'PENDING_SIGN'")
             .execute();
+    }
+    /**
+     * 收款确认后推进订单状态至「已提货（Delivered）」：
+     *  - COD（到店/货到付款）先结算 Authorized 支付 → 订单自动 PaymentAuthorized → PaymentSettled；
+     *  - 确保存在已送达的 Fulfillment（无则创建）→ 默认履约流程自动把订单推进至 Shipped → Delivered。
+     *
+     * 幂等：Authorized 才结算、未覆盖行才补建履约、非送达履约才推进；already-created 的履约复用。
+     * best-effort：任一步失败只记日志不抛错，不阻塞核销本身（核销已成功）。
+     */
+    async settleAndDeliver(ctx, order) {
+        var _a, _b, _c, _d, _e, _f, _g, _h;
+        try {
+            // 1) 结算 COD Authorized 支付 → 订单 PaymentAuthorized → PaymentSettled（经支付流程自动流转）
+            if (order.state === 'PaymentAuthorized' && ((_a = order.payments) !== null && _a !== void 0 ? _a : []).length) {
+                for (const p of (_b = order.payments) !== null && _b !== void 0 ? _b : []) {
+                    if (p.state === 'Authorized') {
+                        const res = await this.orderService.settlePayment(ctx, p.id);
+                        if ((0, core_1.isGraphQlErrorResult)(res)) {
+                            core_1.Logger.warn(`settleAndDeliver: settle payment ${p.id} failed: ${(_c = res.paymentErrorMessage) !== null && _c !== void 0 ? _c : ''}`, loggerCtx);
+                        }
+                    }
+                }
+                order = (await this.orderService.findOne(ctx, order.id, ['payments', 'lines', 'fulfillments', 'fulfillments.lines']));
+            }
+            if (order.state !== 'PaymentSettled' && order.state !== 'Shipped' && order.state !== 'Delivered') {
+                core_1.Logger.warn(`settleAndDeliver: order ${order.code} state=${order.state} not advanceable`, loggerCtx);
+                return;
+            }
+            // 2) 推进既有未送达履约（Shipped → Delivered）
+            const withF = (await this.orderService.findOne(ctx, order.id, ['lines', 'fulfillments', 'fulfillments.lines']));
+            for (const f of (_d = withF === null || withF === void 0 ? void 0 : withF.fulfillments) !== null && _d !== void 0 ? _d : []) {
+                if (f.state === 'Shipped') {
+                    await this.fulfillmentService.transitionToState(ctx, f.id, 'Delivered');
+                }
+                else if (f.state === 'Created' || f.state === 'Pending') {
+                    const r1 = await this.fulfillmentService.transitionToState(ctx, f.id, 'Shipped');
+                    if (r1 && !r1.transitionError) {
+                        await this.fulfillmentService.transitionToState(ctx, f.id, 'Delivered');
+                    }
+                }
+            }
+            // 3) 对未被送达履约覆盖的行补建履约 → 送抵
+            const fresh = (await this.orderService.findOne(ctx, order.id, ['lines', 'fulfillments', 'fulfillments.lines']));
+            const remaining = this.pendingFulfillmentLines(fresh);
+            if (remaining.length) {
+                const handlerCode = 'store-pickup';
+                const handler = {
+                    code: handlerCode,
+                    arguments: [
+                        { name: 'storeId', value: String((_f = (_e = order.customFields) === null || _e === void 0 ? void 0 : _e.selectedPickupLocationId) !== null && _f !== void 0 ? _f : '') },
+                        { name: 'storeName', value: '门店自提（核销交付）' },
+                    ],
+                };
+                const created = await this.fulfillmentService.create(ctx, [fresh], remaining, handler);
+                if (created instanceof core_1.Fulfillment) {
+                    const r1 = await this.fulfillmentService.transitionToState(ctx, created.id, 'Shipped');
+                    if (!r1 || r1.transitionError) {
+                        core_1.Logger.warn(`settleAndDeliver: fulfillment ${created.id} 无法转 Shipped`, loggerCtx);
+                    }
+                    else {
+                        await this.fulfillmentService.transitionToState(ctx, created.id, 'Delivered');
+                    }
+                }
+                else {
+                    core_1.Logger.warn(`settleAndDeliver: create fulfillment failed (${handlerCode})`, loggerCtx);
+                }
+            }
+            // 4) 兜底：确保订单落到 Delivered（若因 guard 失败则留待下次 claim 重试，已是 PaymentSettled/Shipped 也算推进）
+            const finalOrder = (await this.orderService.findOne(ctx, order.id, []));
+            if (finalOrder.state !== 'Delivered') {
+                const t = await this.orderService.transitionToState(ctx, order.id, 'Delivered');
+                if ((0, core_1.isGraphQlErrorResult)(t)) {
+                    core_1.Logger.warn(`settleAndDeliver: order ${order.code} 未能到 Delivered: ${(_g = t.transitionError) !== null && _g !== void 0 ? _g : ''}`, loggerCtx);
+                }
+            }
+        }
+        catch (e) {
+            core_1.Logger.error(`settleAndDeliver: ${(_h = e === null || e === void 0 ? void 0 : e.message) !== null && _h !== void 0 ? _h : e}`, loggerCtx);
+        }
+    }
+    /** 订单行中尚未被「Delivered」履约完全覆盖的部分；已有送达履约的行不重复履约 */
+    pendingFulfillmentLines(order) {
+        var _a, _b, _c, _d, _e;
+        const covered = new Map();
+        for (const f of (_a = order === null || order === void 0 ? void 0 : order.fulfillments) !== null && _a !== void 0 ? _a : []) {
+            if (f.state !== 'Delivered')
+                continue;
+            for (const fLine of (_b = f.lines) !== null && _b !== void 0 ? _b : []) {
+                covered.set(String(fLine.orderLineId), ((_c = covered.get(String(fLine.orderLineId))) !== null && _c !== void 0 ? _c : 0) + fLine.quantity);
+            }
+        }
+        const pending = [];
+        for (const line of (_d = order === null || order === void 0 ? void 0 : order.lines) !== null && _d !== void 0 ? _d : []) {
+            const done = (_e = covered.get(String(line.id))) !== null && _e !== void 0 ? _e : 0;
+            const qty = line.quantity - done;
+            if (qty > 0)
+                pending.push({ orderLineId: line.id, quantity: qty });
+        }
+        return pending;
     }
     async writeExpiry(ctx, orderId, placedAt) {
         const base = placedAt !== null && placedAt !== void 0 ? placedAt : new Date();
@@ -242,6 +343,11 @@ let RedemptionCodeService = class RedemptionCodeService {
             });
             claimedAt = new Date();
         }
+        // 核销后推进订单状态至「已提货」：在线单直接推进；COD 单需已确认收款（collected）才推进，
+        // 未收款的强制/可选单保持 PaymentAuthorized 待收款。已有核销（存量卡单）也在下次 claim 幂等修复。
+        if (!isCod || collected) {
+            await this.settleAndDeliver(ctx, order);
+        }
         return { already, claimedAt, collected, collectRequired: false };
     }
     /**
@@ -287,6 +393,7 @@ exports.RedemptionCodeService = RedemptionCodeService;
 exports.RedemptionCodeService = RedemptionCodeService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [core_1.OrderService,
-        core_1.TransactionalConnection])
+        core_1.TransactionalConnection,
+        core_1.FulfillmentService])
 ], RedemptionCodeService);
 //# sourceMappingURL=redemption-code.service.js.map

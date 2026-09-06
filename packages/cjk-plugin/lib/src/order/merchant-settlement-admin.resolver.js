@@ -26,16 +26,22 @@ let MerchantSettlementAdminResolver = class MerchantSettlementAdminResolver {
     }
     async merchantSettlementLedgers(ctx, orderId) {
         const repo = this.connection.getRepository(ctx, merchant_settlement_ledger_entity_1.MerchantSettlementLedger);
-        if (orderId) {
-            return repo.find({ where: { orderId } });
+        const qb = repo.createQueryBuilder('l');
+        // 全局渠道（superadmin）看全部；租户/门店管理按当前渠道隔离，只看本店台账
+        if (Number(ctx.channelId) !== 1) {
+            qb.where('l.tenantChannelId = :cid', { cid: String(ctx.channelId) });
         }
-        return repo.find({ order: { id: 'DESC' } });
+        if (orderId) {
+            qb.andWhere('l.orderId = :oid', { oid: String(orderId) });
+        }
+        qb.orderBy('l.occurredAt', 'DESC').addOrderBy('l.id', 'DESC');
+        return qb.getMany();
     }
 };
 exports.MerchantSettlementAdminResolver = MerchantSettlementAdminResolver;
 __decorate([
     (0, graphql_1.Query)(),
-    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder, core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('orderId', { nullable: true })),
     __metadata("design:type", Function),

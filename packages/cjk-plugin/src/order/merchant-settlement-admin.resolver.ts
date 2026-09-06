@@ -11,15 +11,21 @@ export class MerchantSettlementAdminResolver {
     constructor(private connection: TransactionalConnection) {}
 
     @Query()
-    @Allow(Permission.SuperAdmin)
+    @Allow(Permission.UpdateOrder, Permission.SuperAdmin)
     async merchantSettlementLedgers(
         @Ctx() ctx: RequestContext,
         @Args('orderId', { nullable: true }) orderId?: string,
     ): Promise<MerchantSettlementLedger[]> {
         const repo = this.connection.getRepository(ctx, MerchantSettlementLedger);
-        if (orderId) {
-            return repo.find({ where: { orderId } });
+        const qb = repo.createQueryBuilder('l');
+        // 全局渠道（superadmin）看全部；租户/门店管理按当前渠道隔离，只看本店台账
+        if (Number(ctx.channelId) !== 1) {
+            qb.where('l.tenantChannelId = :cid', { cid: String(ctx.channelId) });
         }
-        return repo.find({ order: { id: 'DESC' } as any });
+        if (orderId) {
+            qb.andWhere('l.orderId = :oid', { oid: String(orderId) });
+        }
+        qb.orderBy('l.occurredAt', 'DESC').addOrderBy('l.id', 'DESC');
+        return qb.getMany();
     }
 }
