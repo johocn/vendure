@@ -3,6 +3,7 @@ import { ID, Logger, Order, OrderService, RequestContext, UserInputError, isGrap
 import { OrderBoxService } from './order-box.service';
 import { AggregationBox, decideAggregation } from './order-box-aggregation';
 import { COD_PAYMENT_CODES, MerchantSettlementService } from './merchant-settlement.service';
+import { RedemptionCodeService } from '../redemption/redemption-code.service';
 import { loggerCtx } from '../constants';
 import { perf } from './timing.util';
 
@@ -26,6 +27,7 @@ export class OrderSplitService {
         private orderService: OrderService,
         private orderBoxService: OrderBoxService,
         private merchantSettlementService: MerchantSettlementService,
+        private redemptionCodeService: RedemptionCodeService,
     ) {}
 
     /**
@@ -226,6 +228,13 @@ export class OrderSplitService {
                 method,
                 codPaymentCodes: [...COD_PAYMENT_CODES],
             });
+            // 下单同步生成核销码：best-effort、并入本结单事务单一写者，避免与 C端 orderRedemptionCode 并发生成不同码
+            // （旧实现为 OrderStateTransitionEvent 异步后台 ensure，会产生 check-then-act 竞态、码被覆盖后 lookup 查不到）。
+            try {
+                await this.redemptionCodeService.ensure(ctx, (paid as Order).id);
+            } catch (e: any) {
+                Logger.error(`checkout ensure redemption code failed: ${e?.message ?? e}`, loggerCtx);
+            }
             Logger.info(`[timing] performSplitCheckout#settleOne order=${id} settle=${perf(tOrder)}ms recordLedger=${perf(settleRecT0)}ms`, loggerCtx);
             settled.push(paid as Order);
         }

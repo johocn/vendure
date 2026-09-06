@@ -104,7 +104,6 @@ const redemption_resolver_1 = require("./redemption/redemption.resolver");
 const redemption_schema_1 = require("./redemption/redemption.schema");
 const box_shipping_line_assignment_strategy_1 = require("./shipping/box-shipping-line-assignment-strategy");
 const core_3 = require("@vendure/core");
-const rxjs_1 = require("rxjs");
 const default_data_service_1 = require("./seed/default-data.service");
 const wallet_entity_1 = require("./wallet/wallet.entity");
 const wallet_service_1 = require("./wallet/wallet.service");
@@ -274,17 +273,9 @@ let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
                 }
             });
         }
-        // 下单即生成核销码：订单进入 ArrangingPayment 时幂等生成（失败不阻塞支付流程）
-        {
-            const eventBus = injector.get(core_3.EventBus);
-            const redemptionCodeService = injector.get(redemption_code_service_1.RedemptionCodeService);
-            eventBus.ofType(core_3.OrderStateTransitionEvent)
-                .pipe((0, rxjs_1.filter)(e => e.toState === 'ArrangingPayment'))
-                .subscribe(event => {
-                redemptionCodeService.ensure(event.ctx, event.order.id)
-                    .catch(err => { var _a; return core_1.Logger.error(`redemption ensure: ${(_a = err === null || err === void 0 ? void 0 : err.message) !== null && _a !== void 0 ? _a : err}`, constants_1.loggerCtx); });
-            });
-        }
+        // 核销码改由 checkoutSplitted（performSplitCheckout）同步 best-effort 生成，并在 C端
+        // orderRedemptionCode（ensure 写后重读对账）兜底。原 OrderStateTransitionEvent 异步后台 ensure
+        // 会与同步 ensure 并发生成不同码、后写覆盖导致 lookupByCode 查不到（spurious not_found），已移除。
     }
     configure(consumer) { }
 };

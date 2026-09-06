@@ -15,6 +15,7 @@ const core_1 = require("@vendure/core");
 const order_box_service_1 = require("./order-box.service");
 const order_box_aggregation_1 = require("./order-box-aggregation");
 const merchant_settlement_service_1 = require("./merchant-settlement.service");
+const redemption_code_service_1 = require("../redemption/redemption-code.service");
 const constants_1 = require("../constants");
 const timing_util_1 = require("./timing.util");
 /**
@@ -32,10 +33,11 @@ const timing_util_1 = require("./timing.util");
  * - 每单配送方式沿用源订单的箱选择快照，缺失时用该箱默认配送方式兜底。
  */
 let OrderSplitService = class OrderSplitService {
-    constructor(orderService, orderBoxService, merchantSettlementService) {
+    constructor(orderService, orderBoxService, merchantSettlementService, redemptionCodeService) {
         this.orderService = orderService;
         this.orderBoxService = orderBoxService;
         this.merchantSettlementService = merchantSettlementService;
+        this.redemptionCodeService = redemptionCodeService;
     }
     /**
      * 一次性拆单并逐单完成支付，返回需各自结算的订单列表（均已付款结算）。
@@ -51,7 +53,7 @@ let OrderSplitService = class OrderSplitService {
      * @param options.lineIds 可选：在选定箱内进一步限定要结算的行（orderLineId）
      */
     async performSplitCheckout(ctx, order, method, metadata, options) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w;
         const opts = options !== null && options !== void 0 ? options : {};
         const t0 = (0, timing_util_1.perf)();
         const boxT0 = (0, timing_util_1.perf)();
@@ -216,6 +218,14 @@ let OrderSplitService = class OrderSplitService {
                 method,
                 codPaymentCodes: [...merchant_settlement_service_1.COD_PAYMENT_CODES],
             });
+            // 下单同步生成核销码：best-effort、并入本结单事务单一写者，避免与 C端 orderRedemptionCode 并发生成不同码
+            // （旧实现为 OrderStateTransitionEvent 异步后台 ensure，会产生 check-then-act 竞态、码被覆盖后 lookup 查不到）。
+            try {
+                await this.redemptionCodeService.ensure(ctx, paid.id);
+            }
+            catch (e) {
+                core_1.Logger.error(`checkout ensure redemption code failed: ${(_v = e === null || e === void 0 ? void 0 : e.message) !== null && _v !== void 0 ? _v : e}`, constants_1.loggerCtx);
+            }
             core_1.Logger.info(`[timing] performSplitCheckout#settleOne order=${id} settle=${(0, timing_util_1.perf)(tOrder)}ms recordLedger=${(0, timing_util_1.perf)(settleRecT0)}ms`, constants_1.loggerCtx);
             settled.push(paid);
         }
@@ -223,11 +233,11 @@ let OrderSplitService = class OrderSplitService {
         // —— 部分选：回流行的源订单保持 AddingItems（购物车态）；若已迁空且有结算单 → best-effort 取消 ——
         if (!isFullSelection) {
             const after = (await this.orderService.findOne(ctx, source.id, ['lines.productVariant']));
-            if (after && ((_v = after.lines) !== null && _v !== void 0 ? _v : []).length === 0 && newOrders.length > 0) {
+            if (after && ((_w = after.lines) !== null && _w !== void 0 ? _w : []).length === 0 && newOrders.length > 0) {
                 try {
                     await this.orderService.transitionToState(ctx, source.id, 'Cancelled');
                 }
-                catch (_w) {
+                catch (_x) {
                     /* 取消失败不抛，任其闲置，避免留下陈旧的空活动订单（best-effort） */
                 }
             }
@@ -301,6 +311,7 @@ exports.OrderSplitService = OrderSplitService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [core_1.OrderService,
         order_box_service_1.OrderBoxService,
-        merchant_settlement_service_1.MerchantSettlementService])
+        merchant_settlement_service_1.MerchantSettlementService,
+        redemption_code_service_1.RedemptionCodeService])
 ], OrderSplitService);
 //# sourceMappingURL=order-split.service.js.map

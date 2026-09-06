@@ -233,6 +233,17 @@ export class RedemptionCodeService {
             redeemVersion: 1,
             redeemReissuedAt: new Date().toISOString(),
         } as any);
+        // 并发对账：若存在另一并发 ensure 已写入不同密文，以落库值为准返回，保证返回码与 redeemCodeHash 一致，
+        // 避免「C端返回码 ≠ 落库 hash」导致管理端 lookupByCode 查不到。
+        try {
+            const fresh = (await this.orderService.findOne(ctx, orderId, [])) as Order | undefined;
+            const cfr = fresh ? this.cf(fresh) : null;
+            if (cfr && cfr.redeemCodeCipher && cfr.redeemCodeIv) {
+                return decryptRedemptionCode(cfr.redeemCodeCipher, cfr.redeemCodeIv, this.keyHex);
+            }
+        } catch {
+            /* 重读失败则回退返回本地生成的 code */
+        }
         return code;
     }
 

@@ -104,8 +104,7 @@ import { RedemptionCodeService } from './redemption/redemption-code.service';
 import { RedemptionShopResolver, RedemptionAdminResolver } from './redemption/redemption.resolver';
 import { redemptionShopSchema, redemptionAdminSchema } from './redemption/redemption.schema';
 import { BoxShippingLineAssignmentStrategy } from './shipping/box-shipping-line-assignment-strategy';
-import { ChannelEvent, EventBus, OrderEvent, OrderService, OrderStateTransitionEvent, TransactionalConnection } from '@vendure/core';
-import { filter } from 'rxjs';
+import { ChannelEvent, EventBus, OrderEvent, OrderService, TransactionalConnection } from '@vendure/core';
 import { DefaultDataService } from './seed/default-data.service';
 import { Wallet } from './wallet/wallet.entity';
 import { WalletService } from './wallet/wallet.service';
@@ -1590,17 +1589,9 @@ export class CjkPlugin implements OnApplicationBootstrap, NestModule {
             });
         }
 
-        // 下单即生成核销码：订单进入 ArrangingPayment 时幂等生成（失败不阻塞支付流程）
-        {
-            const eventBus = injector.get(EventBus);
-            const redemptionCodeService = injector.get(RedemptionCodeService);
-            eventBus.ofType(OrderStateTransitionEvent)
-                .pipe(filter(e => e.toState === 'ArrangingPayment'))
-                .subscribe(event => {
-                    redemptionCodeService.ensure(event.ctx, event.order.id)
-                        .catch(err => Logger.error(`redemption ensure: ${err?.message ?? err}`, loggerCtx));
-                });
-        }
+        // 核销码改由 checkoutSplitted（performSplitCheckout）同步 best-effort 生成，并在 C端
+        // orderRedemptionCode（ensure 写后重读对账）兜底。原 OrderStateTransitionEvent 异步后台 ensure
+        // 会与同步 ensure 并发生成不同码、后写覆盖导致 lookupByCode 查不到（spurious not_found），已移除。
     }
 
     configure(consumer: MiddlewareConsumer): void {}

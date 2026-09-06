@@ -1,6 +1,7 @@
 import { ID, Order, OrderService, RequestContext } from '@vendure/core';
 import { OrderBoxService } from './order-box.service';
 import { MerchantSettlementService } from './merchant-settlement.service';
+import { RedemptionCodeService } from '../redemption/redemption-code.service';
 /**
  * 后端「一次性拆单结算」服务（统一入口，由 checkoutSplitted 调用）。
  *
@@ -19,7 +20,8 @@ export declare class OrderSplitService {
     private orderService;
     private orderBoxService;
     private merchantSettlementService;
-    constructor(orderService: OrderService, orderBoxService: OrderBoxService, merchantSettlementService: MerchantSettlementService);
+    private redemptionCodeService;
+    constructor(orderService: OrderService, orderBoxService: OrderBoxService, merchantSettlementService: MerchantSettlementService, redemptionCodeService: RedemptionCodeService);
     /**
      * 一次性拆单并逐单完成支付，返回需各自结算的订单列表（均已付款结算）。
      *
