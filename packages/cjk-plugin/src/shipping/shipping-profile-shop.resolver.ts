@@ -40,15 +40,17 @@ export class ShippingProfileShopResolver {
         profileIds = await this.service.resolveEffectiveProfileIds(ctx, profileIds);
         const intersected = await this.service.getIntersectedShippingMethods(ctx, profileIds);
         if (intersected.length === 0) return [];
-        const configs = new Map<ID, any>();
+        const configs = new Map<string, any>();
         for (const pid of profileIds) {
             const rows = await this.service.getMethodConfigsByProfile(ctx, pid);
-            for (const r of rows) configs.set(r.shippingMethodId as any, r);
+            // shippingMethodId 是整数 FK，而 m.id 是 Vendure 字符串 ID，必须双端 String() 化，
+            // 否则 Map 键类型不一致导致 mode/pickupLocationIds 恒为 null。
+            for (const r of rows) configs.set(String(r.shippingMethodId), r);
         }
         const full = await this.service.findShippingMethodsByIds(ctx, intersected.map(m => m.id));
         const enriched: any[] = [];
         for (const m of full.filter((m: any) => m.customFields?.enabled !== false)) {
-            const cfg = configs.get(m.id);
+            const cfg = configs.get(String(m.id));
             const pickupIds = cfg && ['pickup', 'store', 'employee'].includes(cfg.mode)
                 ? await this.service.getEffectivePickupIdsForConfig(ctx, cfg)
                 : null;
