@@ -62,11 +62,11 @@ let RedemptionCodeService = class RedemptionCodeService {
     async flipLedgerToPaid(ctx, orderId) {
         await this.connection
             .getRepository(ctx, merchant_settlement_ledger_entity_1.MerchantSettlementLedger)
-            .createQueryBuilder('l')
+            .createQueryBuilder()
             .update(merchant_settlement_ledger_entity_1.MerchantSettlementLedger)
             .set({ status: 'PAID', occurredAt: new Date() })
-            .where('l.orderId = :oid', { oid: String(orderId) })
-            .andWhere("l.status = 'PENDING_SIGN'")
+            .where('orderId = :oid', { oid: String(orderId) })
+            .andWhere("status = 'PENDING_SIGN'")
             .execute();
     }
     async writeExpiry(ctx, orderId, placedAt) {

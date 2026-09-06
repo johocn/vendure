@@ -85,11 +85,11 @@ export class RedemptionCodeService {
     private async flipLedgerToPaid(ctx: RequestContext, orderId: ID): Promise<void> {
         await this.connection
             .getRepository(ctx, MerchantSettlementLedger)
-            .createQueryBuilder('l')
+            .createQueryBuilder()
             .update(MerchantSettlementLedger)
             .set({ status: 'PAID', occurredAt: new Date() })
-            .where('l.orderId = :oid', { oid: String(orderId) })
-            .andWhere("l.status = 'PENDING_SIGN'")
+            .where('orderId = :oid', { oid: String(orderId) })
+            .andWhere("status = 'PENDING_SIGN'")
             .execute();
     }
 
