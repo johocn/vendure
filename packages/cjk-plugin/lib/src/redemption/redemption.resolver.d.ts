@@ -27,6 +27,8 @@ export declare class RedemptionAdminResolver {
         expiresAt: null;
         version: number;
         reissueable: boolean;
+        paymentType?: undefined;
+        collected?: undefined;
     } | {
         order: {
             id: import("@vendure/core").ID;
@@ -42,8 +44,20 @@ export declare class RedemptionAdminResolver {
         expiresAt: any;
         version: number;
         reissueable: boolean;
+        paymentType: any;
+        collected: boolean;
     }>;
-    redemptionClaim(ctx: RequestContext, code: string): Promise<{
+    redemptionClaim(ctx: RequestContext, code: string, collect?: boolean): Promise<{
+        order: null;
+        claimed: boolean;
+        claimedAt: null;
+        message: string;
+        status: string;
+        expiresAt: null;
+        version: number;
+        collectRequired: boolean;
+        collected: boolean;
+    } | {
         order: {
             id: import("@vendure/core").ID;
             code: string;
@@ -53,11 +67,13 @@ export declare class RedemptionAdminResolver {
             totalQuantity: number;
         };
         claimed: boolean;
-        claimedAt: Date;
+        claimedAt: any;
         message: string;
         status: import("./redemption-crypto").RedemptionStatus;
         expiresAt: string | null;
         version: number;
+        collectRequired: boolean;
+        collected: boolean;
     }>;
     redemptionReissue(ctx: RequestContext, code: string): Promise<{
         order: {
@@ -74,5 +90,7 @@ export declare class RedemptionAdminResolver {
         status: import("./redemption-crypto").RedemptionStatus;
         expiresAt: string;
         version: number;
+        collectRequired: boolean;
+        collected: boolean;
     }>;
 }

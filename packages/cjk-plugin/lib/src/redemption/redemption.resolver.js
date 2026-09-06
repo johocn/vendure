@@ -80,19 +80,20 @@ let RedemptionAdminResolver = class RedemptionAdminResolver {
         return this.redemptionCodeService.listPending(ctx, options !== null && options !== void 0 ? options : {});
     }
     async redemptionLookup(ctx, code) {
-        var _a, _b, _c, _d;
+        var _a, _b, _c, _d, _e, _f, _g;
         const order = await this.redemptionCodeService.lookupByCode(ctx, code);
         if (!order) {
             return { order: null, claimed: false, claimedAt: null, status: 'active', expiresAt: null, version: 1, reissueable: false };
         }
         // lookupByCode 经 queryBuilder 取 order 未加载 lines，Vendure hydrator 对
         // 未加载 relation 字段访问 totalQuantity 会抛错，故先灌注 lines 再读 totalQuantity。
-        await this.entityHydrator.hydrate(ctx, order, { relations: ['lines'] });
+        await this.entityHydrator.hydrate(ctx, order, { relations: ['lines', 'payments'] });
         const cf = (_a = order.customFields) !== null && _a !== void 0 ? _a : {};
         const claimed = !!cf.redeemClaimed;
         const expiresAt = (_b = cf.redeemExpiresAt) !== null && _b !== void 0 ? _b : null;
         const version = Number(cf.redeemVersion) || 1;
         const status = (0, redemption_crypto_1.computeRedemptionStatus)(claimed, expiresAt, new Date(), 24);
+        const collected = !!(cf.collected || cf.redeemCollected);
         return {
             order: {
                 id: order.id,
@@ -108,9 +109,11 @@ let RedemptionAdminResolver = class RedemptionAdminResolver {
             expiresAt: (_d = expiresAt !== null && expiresAt !== void 0 ? expiresAt : cf.redeemExpiresAt) !== null && _d !== void 0 ? _d : null,
             version,
             reissueable: !claimed,
+            paymentType: (_g = (_f = (_e = order.payments) === null || _e === void 0 ? void 0 : _e[0]) === null || _f === void 0 ? void 0 : _f.method) !== null && _g !== void 0 ? _g : null,
+            collected,
         };
     }
-    async redemptionClaim(ctx, code) {
+    async redemptionClaim(ctx, code, collect) {
         var _a, _b, _c, _d;
         const order = await this.redemptionCodeService.lookupByCode(ctx, code);
         if (!order)
@@ -118,10 +121,24 @@ let RedemptionAdminResolver = class RedemptionAdminResolver {
         // 同 redemptionLookup：先灌注 lines 再读 totalQuantity，避免未加载 relation 访问抛错。
         await this.entityHydrator.hydrate(ctx, order, { relations: ['lines'] });
         // lookupByCode 已限当前租户 Channel，核销复用同一检索保持租户隔离
-        const result = await this.redemptionCodeService.claim(ctx, order.id);
+        const result = await this.redemptionCodeService.claim(ctx, order.id, collect === true);
         const cf = (_a = order.customFields) !== null && _a !== void 0 ? _a : {};
         const expiresAt = (_b = cf.redeemExpiresAt) !== null && _b !== void 0 ? _b : null;
         const version = Number(cf.redeemVersion) || 1;
+        if (result.collectRequired) {
+            // 强制收款：COD 未收款且未确认收款，阻止核销 → 前端弹「确认收款」后携 collect=true 重试
+            return {
+                order: null,
+                claimed: false,
+                claimedAt: null,
+                message: 'REDEMPTION_COLLECT_REQUIRED',
+                status: 'requires_collection',
+                expiresAt: null,
+                version: 0,
+                collectRequired: true,
+                collected: false,
+            };
+        }
         return {
             order: {
                 id: order.id,
@@ -132,18 +149,22 @@ let RedemptionAdminResolver = class RedemptionAdminResolver {
                 totalQuantity: order.totalQuantity,
             },
             claimed: true,
-            claimedAt: (_d = (_c = result.claimedAt) !== null && _c !== void 0 ? _c : cf.redeemClaimedAt) !== null && _d !== void 0 ? _d : null,
+            claimedAt: (_d = (_c = result.claimedAt) !== null && _c !== void 0 ? _c : cf.redeemClaimedAt) !== null && _d !== void 0 ? _d : new Date(),
             message: result.already ? 'already' : 'ok',
             status: (0, redemption_crypto_1.computeRedemptionStatus)(true, expiresAt, new Date(), 24),
             expiresAt,
             version,
+            collectRequired: false,
+            collected: result.collected,
         };
     }
     async redemptionReissue(ctx, code) {
+        var _a;
         const order = await this.redemptionCodeService.lookupByCode(ctx, code);
         if (!order)
             throw new core_1.UserInputError(ERR_NOT_FOUND);
         const result = await this.redemptionCodeService.reissue(ctx, order.id);
+        const cfr = ((_a = order.customFields) !== null && _a !== void 0 ? _a : {});
         return {
             order: {
                 id: order.id,
@@ -159,6 +180,8 @@ let RedemptionAdminResolver = class RedemptionAdminResolver {
             status: result.status,
             expiresAt: result.expiresAt,
             version: result.version,
+            collectRequired: false,
+            collected: !!(cfr.collected || cfr.redeemCollected),
         };
     }
 };
@@ -186,8 +209,9 @@ __decorate([
     (0, core_1.Allow)(core_1.Permission.UpdateOrder),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('code')),
+    __param(2, (0, graphql_1.Args)('collect', { type: () => Boolean, nullable: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, String]),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, Boolean]),
     __metadata("design:returntype", Promise)
 ], RedemptionAdminResolver.prototype, "redemptionClaim", null);
 __decorate([

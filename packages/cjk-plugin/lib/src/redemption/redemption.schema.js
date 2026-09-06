@@ -38,7 +38,7 @@ exports.redemptionAdminSchema = (0, graphql_tag_1.default) `
         redemptionLookup(code: String!): RedemptionLookupResult
     }
     extend type Mutation {
-        redemptionClaim(code: String!): RedemptionClaimResult
+        redemptionClaim(code: String!, collect: Boolean): RedemptionClaimResult
         redemptionReissue(code: String!): RedemptionClaimResult
     }
 
@@ -51,6 +51,7 @@ exports.redemptionAdminSchema = (0, graphql_tag_1.default) `
         totalQuantity: Int!
     }
 
+    "到店收款分账后台（台账 merchant_settlement_ledger）——本类型仅承载核销收款相关判定字段"
     type RedemptionLookupResult {
         order: RedemptionOrder
         claimed: Boolean!
@@ -59,6 +60,10 @@ exports.redemptionAdminSchema = (0, graphql_tag_1.default) `
         expiresAt: DateTime
         version: Int
         reissueable: Boolean!
+        "支付方式 code；命中 COD_PAYMENT_CODES 即到店/货到付款"
+        paymentType: String
+        "是否已确认收款（order.customFields.collected）"
+        collected: Boolean!
     }
 
     type RedemptionClaimResult {
@@ -69,6 +74,10 @@ exports.redemptionAdminSchema = (0, graphql_tag_1.default) `
         status: String!
         expiresAt: DateTime
         version: Int
+        "true 表示该 COD 单未收款且当前为强制模式，必须先确认收款才能核销"
+        collectRequired: Boolean!
+        "核销是否已（同步）确认到店收款"
+        collected: Boolean!
     }
 
     "租户域：本渠道待核销自提单（deliveryType=pickup 且未核销）"
@@ -80,6 +89,10 @@ exports.redemptionAdminSchema = (0, graphql_tag_1.default) `
         expiresAt: DateTime
         version: Int
         claimed: Boolean!
+        "支付方式 code；命中到店/货到付款集合时为 COD"
+        paymentType: String
+        "是否已确认收款（到店付款单据此高亮待收款）"
+        collected: Boolean!
     }
     type PendingRedemptionList {
         items: [PendingRedemption!]!

@@ -179,5 +179,31 @@ export const tenantChannelCustomFields: CustomFields = {
                 { languageCode: LanguageCode.en, value: 'Product Multilingual' },
             ],
         },
+        {
+            name: 'redeemCollectMode',
+            type: 'string',
+            defaultValue: 'optional',
+            public: true,
+            label: [
+                { languageCode: LanguageCode.zh_Hans, value: '到店/货到付款收款确认模式（核销）' },
+                { languageCode: LanguageCode.en, value: 'Pickup COD Collection Mode' },
+            ],
+            options: [
+                {
+                    value: 'optional',
+                    label: [
+                        { languageCode: LanguageCode.zh_Hans, value: '不强制（高亮提示待收款）' },
+                        { languageCode: LanguageCode.en, value: 'Optional (highlight unpaid)' },
+                    ],
+                },
+                {
+                    value: 'force',
+                    label: [
+                        { languageCode: LanguageCode.zh_Hans, value: '强制（未确认收款不可核销）' },
+                        { languageCode: LanguageCode.en, value: 'Force (require collect to claim)' },
+                    ],
+                },
+            ],
+        },
     ],
 };

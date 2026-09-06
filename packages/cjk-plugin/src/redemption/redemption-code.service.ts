@@ -9,6 +9,16 @@ import {
     redemptionBarcodePayload,
     computeRedemptionStatus, RedemptionStatus,
 } from './redemption-crypto';
+import { MerchantSettlementLedger } from '../order/merchant-settlement-ledger.entity';
+
+/** 到店/货到付款（COD）支付方式 code，命中即需收银确认；与 nshop 确认页 & 旧 pickup 收银一致 */
+export const COD_PAYMENT_CODES = [
+    'cash-on-delivery',
+    'cod',
+    'cod-payment-template',
+    'cloud-payment-template',
+    'fixed-aggregate-collection',
+];
 
 export interface PendingRedemptionItem {
     orderId: string;
@@ -18,7 +28,18 @@ export interface PendingRedemptionItem {
     expiresAt: string | null;
     version: number;
     claimed: boolean;
+    paymentType: string | null;
+    collected: boolean;
 }
+
+export interface ClaimResult {
+    already: boolean;
+    claimedAt: Date | null;
+    collected: boolean;
+    collectRequired: boolean;
+}
+
+export type CollectMode = 'optional' | 'force';
 
 @Injectable()
 export class RedemptionCodeService {
@@ -41,6 +62,35 @@ export class RedemptionCodeService {
 
     private cf(order: Order): Record<string, any> {
         return (order.customFields ?? {}) as Record<string, any>;
+    }
+
+    private isCodOrder(order: Order): boolean {
+        const cf = this.cf(order);
+        const method = (order.payments ?? [])[0]?.method;
+        return !!COD_PAYMENT_CODES.includes(method) || cf.paymentType === 'cod';
+    }
+
+    /**
+     * 到店/货到付款收款确认模式：Channel 自定义字段 redeemCollectMode（force/optional）优先，
+     * 未配置时回退环境变量 REDEMPTION_COLLECT_MODE=force，默认 optional（只高亮不强制）。
+     */
+    collectMode(ctx: RequestContext): CollectMode {
+        const chan = (ctx.channel?.customFields as any)?.redeemCollectMode ?? null;
+        if (chan === 'force' || chan === 'optional') return chan;
+        if (process.env.REDEMPTION_COLLECT_MODE === 'force') return 'force';
+        return 'optional';
+    }
+
+    /** COD 收款后把该订单的分账台账 PENDING_SIGN → PAID（在线支付结算时即 PAID，无需翻转） */
+    private async flipLedgerToPaid(ctx: RequestContext, orderId: ID): Promise<void> {
+        await this.connection
+            .getRepository(ctx, MerchantSettlementLedger)
+            .createQueryBuilder('l')
+            .update(MerchantSettlementLedger)
+            .set({ status: 'PAID', occurredAt: new Date() })
+            .where('l.orderId = :oid', { oid: String(orderId) })
+            .andWhere("l.status = 'PENDING_SIGN'")
+            .execute();
     }
 
     private async writeExpiry(ctx: RequestContext, orderId: ID, placedAt: Date | null | undefined): Promise<void> {
@@ -88,8 +138,9 @@ export class RedemptionCodeService {
     ): Promise<{
         code: string; qrPayload: string; barcode: string; claimed: boolean;
         status: RedemptionStatus; expiresAt: string | null; version: number; reissueable: boolean;
+        collected: boolean; isCod: boolean; paymentType: string | null;
     }> {
-        const order = (await this.orderService.findOne(ctx, orderId, [])) as Order | undefined;
+        const order = (await this.orderService.findOne(ctx, orderId, ['payments'])) as Order | undefined;
         if (!order) throw new Error('order not found');
         const cf = this.cf(order);
         const code =
@@ -101,6 +152,7 @@ export class RedemptionCodeService {
         const version = Number(cf.redeemVersion) || 1;
         const now = new Date();
         const status = computeRedemptionStatus(claimed, expiresAt, now, this.expireRemindHours);
+        const collected = !!cf.collected || !!cf.redeemCollected;
         return {
             code,
             qrPayload: redemptionQrPayload(orderCode, code, this.keyHex),
@@ -110,6 +162,9 @@ export class RedemptionCodeService {
             expiresAt,
             version,
             reissueable: !claimed,
+            collected,
+            isCod: this.isCodOrder(order),
+            paymentType: order.payments?.[0]?.method ?? null,
         };
     }
 
@@ -125,6 +180,7 @@ export class RedemptionCodeService {
         const qb = this.connection
             .getRepository(ctx, Order)
             .createQueryBuilder('order')
+            .leftJoinAndSelect('order.payments', 'payment')
             .innerJoin('order.channels', 'ch', 'ch.id = :cid', { cid: ctx.channelId })
             .where('order.customFields.deliveryType = :deliveryType', { deliveryType: 'pickup' })
             .orderBy('order.orderPlacedAt', 'DESC')
@@ -152,6 +208,8 @@ export class RedemptionCodeService {
                     expiresAt,
                     version: Number(cf.redeemVersion) || 1,
                     claimed,
+                    paymentType: (o.payments ?? [])[0]?.method ?? null,
+                    collected: !!cf.collected || !!cf.redeemCollected,
                 } as PendingRedemptionItem;
             })
             .filter((it) => it.code && !it.claimed);
@@ -177,16 +235,45 @@ export class RedemptionCodeService {
         return qb.getOne();
     }
 
-    async claim(ctx: RequestContext, orderId: ID): Promise<{ already: boolean; claimedAt: Date }> {
-        const order = (await this.orderService.findOne(ctx, orderId, [])) as Order | undefined;
+    /**
+     * 到店/货到付款（COD）单核销收款闭环：
+     *  - 非 COD 直接核销；
+     *  - COD 且未收款：force 模式必须传 collect=true 才放行，否则返回 collectRequired（阻止核销）；
+     *    optional 模式允许不收款核销（前端高亮待收款），传 collect=true 时同步确认收款。
+     *  - 确认收款后写 order.customFields.collected，并把分账台账 PENDING_SIGN → PAID。
+     */
+    async claim(ctx: RequestContext, orderId: ID, collect?: boolean): Promise<ClaimResult> {
+        const order = (await this.orderService.findOne(ctx, orderId, ['payments'])) as Order | undefined;
         if (!order) throw new Error('order not found');
         const cf = this.cf(order);
-        if (cf.redeemClaimed) return { already: true, claimedAt: cf.redeemClaimedAt };
-        await this.orderService.updateCustomFields(ctx, orderId, {
-            redeemClaimed: true,
-            redeemClaimedAt: new Date(),
-        } as any);
-        return { already: false, claimedAt: new Date() };
+        const already = !!cf.redeemClaimed;
+        const isCod = this.isCodOrder(order);
+        let collected = !!cf.collected || !!cf.redeemCollected;
+        let collectRequired = false;
+        if (isCod && !collected) {
+            const force = this.collectMode(ctx) === 'force';
+            if (force && !collect) {
+                // 强制：未确认收款不可核销，前端据此弹「确认收款」对话框
+                return { already, claimedAt: cf.redeemClaimedAt ?? null, collected: false, collectRequired: true };
+            }
+            if (collect) {
+                await this.orderService.updateCustomFields(ctx, orderId, {
+                    collected: true,
+                    redeemCollectedAt: new Date().toISOString(),
+                } as any);
+                await this.flipLedgerToPaid(ctx, orderId);
+                collected = true;
+            }
+        }
+        let claimedAt: Date | null = cf.redeemClaimedAt ?? null;
+        if (!already) {
+            await this.orderService.updateCustomFields(ctx, orderId, {
+                redeemClaimed: true,
+                redeemClaimedAt: new Date(),
+            } as any);
+            claimedAt = new Date();
+        }
+        return { already, claimedAt, collected, collectRequired: false };
     }
 
     /**
