@@ -259,7 +259,17 @@ export class MessageService {
 
     async markRead(ctx: RequestContext, deliveryId: ID): Promise<boolean> {
         if (!ctx.activeUserId) return false;
-        const delivery = await this.deliveryRepo.findOne({ where: { id: deliveryId as any } });
+        const customerRepo = this.connection.getRepository(ctx, 'Customer' as any);
+        const customer = await customerRepo
+            .createQueryBuilder('c')
+            .select('c.id')
+            .innerJoin('c.user', 'user')
+            .where('user.id = :userId', { userId: ctx.activeUserId })
+            .getOne();
+        if (!customer) return false;
+        const delivery = await this.deliveryRepo.findOne({
+            where: { id: deliveryId as any, customerId: customer.id },
+        });
         if (!delivery) return false;
         delivery.readAt = new Date();
         await this.deliveryRepo.save(delivery);

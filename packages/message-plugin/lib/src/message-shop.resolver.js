@@ -16,6 +16,10 @@ exports.MessageShopResolver = void 0;
 const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
 const message_service_1 = require("./message.service");
+// 注意：C 端 shop 查询不带 @Allow（默认 Public）。
+// 多租户体系下客户角色（__customer_role__）仅关联默认渠道，非默认渠道上
+// Permission.Authenticated 判定恒失败（userHasPermissions 无渠道权限记录），
+// 故统一改为 Public + service 层 activeUserId/归属校验（与 coupon-plugin myCoupons 一致）。
 let MessageShopResolver = class MessageShopResolver {
     constructor(messageService) {
         this.messageService = messageService;
@@ -33,7 +37,6 @@ let MessageShopResolver = class MessageShopResolver {
 exports.MessageShopResolver = MessageShopResolver;
 __decorate([
     (0, graphql_1.Query)(),
-    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('options', { nullable: true })),
     __metadata("design:type", Function),
@@ -42,7 +45,6 @@ __decorate([
 ], MessageShopResolver.prototype, "myMessages", null);
 __decorate([
     (0, graphql_1.Query)(),
-    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext]),
@@ -50,7 +52,7 @@ __decorate([
 ], MessageShopResolver.prototype, "myUnreadMessageCount", null);
 __decorate([
     (0, graphql_1.Mutation)(),
-    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    (0, core_1.Allow)(core_1.Permission.Owner),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __metadata("design:type", Function),

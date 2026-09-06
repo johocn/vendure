@@ -238,7 +238,18 @@ let MessageService = class MessageService {
     async markRead(ctx, deliveryId) {
         if (!ctx.activeUserId)
             return false;
-        const delivery = await this.deliveryRepo.findOne({ where: { id: deliveryId } });
+        const customerRepo = this.connection.getRepository(ctx, 'Customer');
+        const customer = await customerRepo
+            .createQueryBuilder('c')
+            .select('c.id')
+            .innerJoin('c.user', 'user')
+            .where('user.id = :userId', { userId: ctx.activeUserId })
+            .getOne();
+        if (!customer)
+            return false;
+        const delivery = await this.deliveryRepo.findOne({
+            where: { id: deliveryId, customerId: customer.id },
+        });
         if (!delivery)
             return false;
         delivery.readAt = new Date();
