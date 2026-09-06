@@ -10,6 +10,16 @@ import {
     computeRedemptionStatus, RedemptionStatus,
 } from './redemption-crypto';
 
+export interface PendingRedemptionItem {
+    orderId: string;
+    orderCode: string;
+    code: string;
+    status: string;
+    expiresAt: string | null;
+    version: number;
+    claimed: boolean;
+}
+
 @Injectable()
 export class RedemptionCodeService {
     private readonly keyHex: string;
@@ -101,6 +111,53 @@ export class RedemptionCodeService {
             version,
             reissueable: !claimed,
         };
+    }
+
+    /**
+     * 租户域：本渠道「待核销自提单」列表（含已过期；claimed 者不列出）。
+     * 仅 deliveryType=pickup 的订单（cjk 对所有 ArrangingPayment 单生成码，故必须按自提筛选）。
+     * Order 按 channelId 归属多租户隔离；码密文解密后回填 code，状态由 computeRedemptionStatus 推导。
+     */
+    async listPending(
+        ctx: RequestContext,
+        options: { skip?: number; take?: number } = {},
+    ): Promise<{ items: PendingRedemptionItem[]; totalItems: number }> {
+        const qb = this.connection
+            .getRepository(ctx, Order)
+            .createQueryBuilder('order')
+            .innerJoin('order.channels', 'ch', 'ch.id = :cid', { cid: ctx.channelId })
+            .where('order.customFields.deliveryType = :deliveryType', { deliveryType: 'pickup' })
+            .orderBy('order.orderPlacedAt', 'DESC')
+            .addOrderBy('order.id', 'DESC');
+        const all = await qb.getMany();
+        const now = new Date();
+        const pending = all
+            .map((o) => {
+                const cf = (o.customFields ?? {}) as Record<string, any>;
+                let code = '';
+                if (cf.redeemCodeCipher && cf.redeemCodeIv) {
+                    try {
+                        code = decryptRedemptionCode(cf.redeemCodeCipher, cf.redeemCodeIv, this.keyHex);
+                    } catch {
+                        /* 坏密文 → 无有效码，跳过 */
+                    }
+                }
+                const claimed = !!cf.redeemClaimed;
+                const expiresAt: string | null = cf.redeemExpiresAt ?? null;
+                return {
+                    orderId: String(o.id),
+                    orderCode: o.code,
+                    code,
+                    status: computeRedemptionStatus(claimed, expiresAt, now, this.expireRemindHours),
+                    expiresAt,
+                    version: Number(cf.redeemVersion) || 1,
+                    claimed,
+                } as PendingRedemptionItem;
+            })
+            .filter((it) => it.code && !it.claimed);
+        const skip = options.skip ?? 0;
+        const take = options.take ?? 20;
+        return { items: pending.slice(skip, skip + take), totalItems: pending.length };
     }
 
     /**

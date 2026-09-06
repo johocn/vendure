@@ -59,6 +59,12 @@ export class RedemptionAdminResolver {
 
     @Query()
     @Allow(Permission.UpdateOrder)
+    async myPendingRedemptions(@Ctx() ctx: RequestContext, @Args('options', { nullable: true }) options?: any) {
+        return this.redemptionCodeService.listPending(ctx, options ?? {});
+    }
+
+    @Query()
+    @Allow(Permission.UpdateOrder)
     async redemptionLookup(@Ctx() ctx: RequestContext, @Args('code') code: string) {
         const order = await this.redemptionCodeService.lookupByCode(ctx, code);
         if (!order) {

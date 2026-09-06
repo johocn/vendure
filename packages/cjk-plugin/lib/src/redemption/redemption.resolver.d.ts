@@ -15,6 +15,10 @@ export declare class RedemptionAdminResolver {
     private orderService;
     private entityHydrator;
     constructor(redemptionCodeService: RedemptionCodeService, orderService: OrderService, entityHydrator: EntityHydrator);
+    myPendingRedemptions(ctx: RequestContext, options?: any): Promise<{
+        items: import("./redemption-code.service").PendingRedemptionItem[];
+        totalItems: number;
+    }>;
     redemptionLookup(ctx: RequestContext, code: string): Promise<{
         order: null;
         claimed: boolean;

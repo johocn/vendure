@@ -66,4 +66,26 @@ export const redemptionAdminSchema = gql`
         expiresAt: DateTime
         version: Int
     }
+
+    "租户域：本渠道待核销自提单（deliveryType=pickup 且未核销）"
+    type PendingRedemption {
+        orderId: ID!
+        orderCode: String!
+        code: String!
+        status: String!        # active | expiring_soon | expired
+        expiresAt: DateTime
+        version: Int
+        claimed: Boolean!
+    }
+    type PendingRedemptionList {
+        items: [PendingRedemption!]!
+        totalItems: Int!
+    }
+    input RedemptionListOptions {
+        skip: Int
+        take: Int
+    }
+    extend type Query {
+        myPendingRedemptions(options: RedemptionListOptions): PendingRedemptionList!
+    }
 `;

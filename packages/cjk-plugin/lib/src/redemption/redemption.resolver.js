@@ -76,6 +76,9 @@ let RedemptionAdminResolver = class RedemptionAdminResolver {
         this.orderService = orderService;
         this.entityHydrator = entityHydrator;
     }
+    async myPendingRedemptions(ctx, options) {
+        return this.redemptionCodeService.listPending(ctx, options !== null && options !== void 0 ? options : {});
+    }
     async redemptionLookup(ctx, code) {
         var _a, _b, _c, _d;
         const order = await this.redemptionCodeService.lookupByCode(ctx, code);
@@ -155,6 +158,15 @@ let RedemptionAdminResolver = class RedemptionAdminResolver {
     }
 };
 exports.RedemptionAdminResolver = RedemptionAdminResolver;
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('options', { nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], RedemptionAdminResolver.prototype, "myPendingRedemptions", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(core_1.Permission.UpdateOrder),

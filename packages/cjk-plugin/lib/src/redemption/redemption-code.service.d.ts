@@ -1,5 +1,14 @@
 import { ID, RequestContext, OrderService, TransactionalConnection, Order } from '@vendure/core';
 import { RedemptionStatus } from './redemption-crypto';
+export interface PendingRedemptionItem {
+    orderId: string;
+    orderCode: string;
+    code: string;
+    status: string;
+    expiresAt: string | null;
+    version: number;
+    claimed: boolean;
+}
 export declare class RedemptionCodeService {
     private orderService;
     private connection;
@@ -22,6 +31,18 @@ export declare class RedemptionCodeService {
         expiresAt: string | null;
         version: number;
         reissueable: boolean;
+    }>;
+    /**
+     * 租户域：本渠道「待核销自提单」列表（含已过期；claimed 者不列出）。
+     * 仅 deliveryType=pickup 的订单（cjk 对所有 ArrangingPayment 单生成码，故必须按自提筛选）。
+     * Order 按 channelId 归属多租户隔离；码密文解密后回填 code，状态由 computeRedemptionStatus 推导。
+     */
+    listPending(ctx: RequestContext, options?: {
+        skip?: number;
+        take?: number;
+    }): Promise<{
+        items: PendingRedemptionItem[];
+        totalItems: number;
     }>;
     /**
      * 管理端按输入码定位（限当前租户 Channel）。返回订单指针或 null。
