@@ -45,10 +45,17 @@ let CouponAdminResolver = class CouponAdminResolver {
     async revokeCustomerCoupon(ctx, id) {
         return this.couponService.revokeCoupon(ctx, id);
     }
+    async couponChannelCustomers(ctx, query, take, skip) {
+        return this.couponService.listChannelCustomers(ctx, query !== null && query !== void 0 ? query : undefined, take !== null && take !== void 0 ? take : 20, skip !== null && skip !== void 0 ? skip : 0);
+    }
+    async grantCouponIssue(ctx, templateId, customerIds, notify) {
+        return this.couponService.grantCouponIssue(ctx, templateId, customerIds, notify);
+    }
 };
 exports.CouponAdminResolver = CouponAdminResolver;
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)()),
     __metadata("design:type", Function),
@@ -57,6 +64,7 @@ __decorate([
 ], CouponAdminResolver.prototype, "couponTemplates", null);
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __metadata("design:type", Function),
@@ -65,6 +73,7 @@ __decorate([
 ], CouponAdminResolver.prototype, "couponTemplate", null);
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)()),
     __metadata("design:type", Function),
@@ -74,6 +83,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('input')),
     __metadata("design:type", Function),
@@ -83,6 +93,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('input')),
     __metadata("design:type", Function),
@@ -92,6 +103,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __metadata("design:type", Function),
@@ -101,6 +113,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('templateId')),
     __param(2, (0, graphql_1.Args)('customerIds')),
@@ -111,12 +124,36 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], CouponAdminResolver.prototype, "revokeCustomerCoupon", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('query', { nullable: true })),
+    __param(2, (0, graphql_1.Args)('take', { nullable: true, type: () => Number })),
+    __param(3, (0, graphql_1.Args)('skip', { nullable: true, type: () => Number })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, Number, Number]),
+    __metadata("design:returntype", Promise)
+], CouponAdminResolver.prototype, "couponChannelCustomers", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Transaction)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('templateId')),
+    __param(2, (0, graphql_1.Args)('customerIds', { type: () => [String] })),
+    __param(3, (0, graphql_1.Args)('notify')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Array, Boolean]),
+    __metadata("design:returntype", Promise)
+], CouponAdminResolver.prototype, "grantCouponIssue", null);
 exports.CouponAdminResolver = CouponAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [coupon_service_1.CouponService])

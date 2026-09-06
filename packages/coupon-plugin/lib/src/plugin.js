@@ -23,6 +23,7 @@ const core_2 = require("@vendure/core");
 const graphql_tag_1 = __importDefault(require("graphql-tag"));
 const constants_1 = require("./constants");
 const coupon_admin_resolver_1 = require("./coupon-admin.resolver");
+const coupon_customer_coupon_resolver_1 = require("./coupon-customer-coupon.resolver");
 const coupon_template_resolver_1 = require("./coupon-template.resolver");
 const coupon_promotion_action_1 = require("./coupon-promotion-action");
 const coupon_promotion_condition_1 = require("./coupon-promotion-condition");
@@ -144,6 +145,26 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 totalItems: Int!
             }
 
+            type CouponIssueCustomer implements Node {
+                id: ID!
+                emailAddress: String!
+                firstName: String
+                lastName: String
+                phoneNumber: String
+            }
+
+            type CouponIssueCustomerList implements PaginatedList {
+                items: [CouponIssueCustomer!]!
+                totalItems: Int!
+            }
+
+            type CouponIssueResult {
+                customerId: ID!
+                ok: Boolean!
+                code: String
+                reason: String
+            }
+
             input CreateCouponTemplateInput {
                 name: String!
                 description: String
@@ -188,6 +209,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 couponTemplates(options: CouponTemplateListOptions): CouponTemplateList!
                 couponTemplate(id: ID!): CouponTemplate
                 customerCoupons(options: CustomerCouponListOptions): CustomerCouponList!
+                couponChannelCustomers(query: String, take: Int, skip: Int): CouponIssueCustomerList!
             }
 
             extend type Mutation {
@@ -196,9 +218,10 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 deleteCouponTemplate(id: ID!): Boolean!
                 grantCoupon(templateId: ID!, customerIds: [ID!]!): [String!]!
                 revokeCustomerCoupon(id: ID!): CustomerCoupon!
+                grantCouponIssue(templateId: ID!, customerIds: [ID!]!, notify: Boolean!): [CouponIssueResult!]!
             }
         `,
-            resolvers: [coupon_admin_resolver_1.CouponAdminResolver, coupon_template_resolver_1.CouponTemplateResolver],
+            resolvers: [coupon_admin_resolver_1.CouponAdminResolver, coupon_template_resolver_1.CouponTemplateResolver, coupon_customer_coupon_resolver_1.CustomerCouponResolver],
         },
         shopApiExtensions: {
             schema: () => (0, graphql_tag_1.default) `
@@ -227,7 +250,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 exchangeCouponWithPoints(templateId: ID!): ExchangeCouponResult!
             }
         `,
-            resolvers: [coupon_shop_resolver_1.CouponShopResolver, coupon_template_resolver_1.CouponTemplateResolver],
+            resolvers: [coupon_shop_resolver_1.CouponShopResolver, coupon_template_resolver_1.CouponTemplateResolver, coupon_customer_coupon_resolver_1.CustomerCouponResolver],
         },
         configuration: (config) => {
             var _a, _b;

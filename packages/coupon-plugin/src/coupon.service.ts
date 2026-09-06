@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
     Administrator,
+    Customer,
     CustomerService,
     I18nError,
     ID,
@@ -373,6 +374,140 @@ export class CouponService {
             codes.push(cc.code);
         }
         return codes;
+    }
+
+    /* ------------------------- 定向发券（批量 + 通知） ------------------------- */
+
+    public async listChannelCustomers(
+        ctx: RequestContext,
+        query?: string,
+        take = 20,
+        skip = 0,
+    ): Promise<{ items: Customer[]; totalItems: number }> {
+        const repo = this.connection.getRepository(ctx, Customer);
+        const qb = repo
+            .createQueryBuilder('c')
+            .select([
+                'c.id',
+                'c.emailAddress',
+                'c.firstName',
+                'c.lastName',
+                'c.phoneNumber',
+                'c.createdAt',
+            ])
+            .innerJoin('c.channels', 'channel', 'channel.id = :cid', { cid: ctx.channelId });
+        if (query) {
+            const q = `%${query.trim().toLowerCase()}%`;
+            qb.andWhere(
+                '(LOWER(c.emailAddress) LIKE :q OR LOWER(c.firstName) LIKE :q OR LOWER(c.lastName) LIKE :q OR LOWER(c.phoneNumber) LIKE :q)',
+                { q },
+            );
+        }
+        qb.orderBy('c.id', 'DESC').skip(skip).take(take);
+        const [items, totalItems] = await qb.getManyAndCount();
+        return { items, totalItems };
+    }
+
+    private async customerInChannel(ctx: RequestContext, customerId: ID): Promise<boolean> {
+        const repo = this.connection.getRepository(ctx, Customer);
+        const count = await repo
+            .createQueryBuilder('c')
+            .innerJoin('c.channels', 'channel', 'channel.id = :cid', { cid: ctx.channelId })
+            .where('c.id = :id', { id: customerId })
+            .getCount();
+        return count > 0;
+    }
+
+    private async notifyCouponIssued(
+        ctx: RequestContext,
+        customerId: ID,
+        tpl: CouponTemplate,
+        code: string,
+    ): Promise<void> {
+        // 复用 message-plugin 的 Message/MessageDelivery（invoice-plugin 已落地范式）；
+        // 未装 message-plugin 时实体不存在，抛错由调用方捕获、不阻塞发券。
+        const msgRepo = this.connection.getRepository(ctx, 'Message' as any);
+        const delRepo = this.connection.getRepository(ctx, 'MessageDelivery' as any);
+        const name = localizeText((tpl as any).name, ctx.languageCode, '优惠券');
+        const title = `优惠券到账：${name}`;
+        const body = `您获得本店定向赠送优惠券，券码 ${code}，可在结算时抵扣。`;
+        const message = await msgRepo.save(
+            msgRepo.create({
+                title,
+                body,
+                deliveryChannel: 'inapp',
+                audienceType: 'all',
+                status: 'sent',
+                totalTarget: 1,
+                totalSent: 1,
+                channels: [ctx.channel],
+            }),
+        );
+        await delRepo.save(
+            delRepo.create({
+                messageId: message.id,
+                customerId: Number(customerId),
+                deliveryStatus: 'sent',
+                channels: [ctx.channel],
+            }),
+        );
+    }
+
+    public async grantCouponIssue(
+        ctx: RequestContext,
+        templateId: ID,
+        customerIds: ID[],
+        notify: boolean,
+    ): Promise<Array<{ customerId: ID; ok: boolean; code: string | null; reason: string | null }>> {
+        const tpl = await this.findOneTemplate(ctx, templateId);
+        if (!tpl) {
+            throw new UserInputError(`CouponTemplate ${templateId} not found`);
+        }
+        const customerRepo = this.connection.getRepository(ctx, Customer);
+        const results: Array<{ customerId: ID; ok: boolean; code: string | null; reason: string | null }> = [];
+        for (const customerId of customerIds) {
+            try {
+                const cust = await customerRepo.findOne({
+                    where: { id: customerId as any },
+                    relations: { user: true },
+                });
+                if (!cust) {
+                    results.push({ customerId, ok: false, code: null, reason: 'CUSTOMER_NOT_FOUND' });
+                    continue;
+                }
+                if (!(await this.customerInChannel(ctx, customerId))) {
+                    results.push({ customerId, ok: false, code: null, reason: 'CUSTOMER_NOT_IN_CHANNEL' });
+                    continue;
+                }
+                if (tpl.perUserLimit > 0) {
+                    const owned = await this.countHeld(Number(customerId), tpl.id);
+                    if (owned >= tpl.perUserLimit) {
+                        results.push({ customerId, ok: false, code: null, reason: 'PER_USER_LIMIT' });
+                        continue;
+                    }
+                }
+                const ok = await this.atomicIncrementClaimed(ctx, tpl.id, tpl);
+                if (!ok) {
+                    results.push({ customerId, ok: false, code: null, reason: 'SOLD_OUT' });
+                    continue;
+                }
+                const cc = await this.createUserCoupon(ctx, Number(customerId), tpl, 'ADMIN');
+                results.push({ customerId, ok: true, code: cc.code, reason: null });
+                if (notify) {
+                    try {
+                        await this.notifyCouponIssued(ctx, customerId, tpl, cc.code);
+                    } catch (e: any) {
+                        Logger.warn(
+                            `notifyCouponIssued failed for ${customerId}: ${e?.message ?? e}`,
+                            loggerCtx,
+                        );
+                    }
+                }
+            } catch (e: any) {
+                results.push({ customerId, ok: false, code: null, reason: 'ERROR' });
+            }
+        }
+        return results;
     }
 
     async revokeCoupon(ctx: RequestContext, id: ID): Promise<CustomerCoupon> {

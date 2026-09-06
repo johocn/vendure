@@ -1,4 +1,4 @@
-import { I18nError, ID, Injector, ListQueryBuilder, ListQueryOptions, RequestContext, TransactionalConnection } from '@vendure/core';
+import { Customer, I18nError, ID, Injector, ListQueryBuilder, ListQueryOptions, RequestContext, TransactionalConnection } from '@vendure/core';
 import { CouponTemplate } from './coupon-template.entity';
 import { CustomerCoupon } from './customer-coupon.entity';
 /**
@@ -40,6 +40,18 @@ export declare class CouponService {
     }>;
     claimCoupon(ctx: RequestContext, templateId: ID): Promise<CustomerCoupon>;
     grantCoupon(ctx: RequestContext, templateId: ID, customerIds: ID[]): Promise<string[]>;
+    listChannelCustomers(ctx: RequestContext, query?: string, take?: number, skip?: number): Promise<{
+        items: Customer[];
+        totalItems: number;
+    }>;
+    private customerInChannel;
+    private notifyCouponIssued;
+    grantCouponIssue(ctx: RequestContext, templateId: ID, customerIds: ID[], notify: boolean): Promise<Array<{
+        customerId: ID;
+        ok: boolean;
+        code: string | null;
+        reason: string | null;
+    }>>;
     revokeCoupon(ctx: RequestContext, id: ID): Promise<CustomerCoupon>;
     applyCouponToOrder(ctx: RequestContext, orderId: ID, code: string): Promise<any>;
     clearCouponFromOrder(ctx: RequestContext, orderId: ID): Promise<any>;

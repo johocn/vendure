@@ -333,6 +333,113 @@ let CouponService = class CouponService {
         }
         return codes;
     }
+    /* ------------------------- 定向发券（批量 + 通知） ------------------------- */
+    async listChannelCustomers(ctx, query, take = 20, skip = 0) {
+        const repo = this.connection.getRepository(ctx, core_1.Customer);
+        const qb = repo
+            .createQueryBuilder('c')
+            .select([
+            'c.id',
+            'c.emailAddress',
+            'c.firstName',
+            'c.lastName',
+            'c.phoneNumber',
+            'c.createdAt',
+        ])
+            .innerJoin('c.channels', 'channel', 'channel.id = :cid', { cid: ctx.channelId });
+        if (query) {
+            const q = `%${query.trim().toLowerCase()}%`;
+            qb.andWhere('(LOWER(c.emailAddress) LIKE :q OR LOWER(c.firstName) LIKE :q OR LOWER(c.lastName) LIKE :q OR LOWER(c.phoneNumber) LIKE :q)', { q });
+        }
+        qb.orderBy('c.id', 'DESC').skip(skip).take(take);
+        const [items, totalItems] = await qb.getManyAndCount();
+        return { items, totalItems };
+    }
+    async customerInChannel(ctx, customerId) {
+        const repo = this.connection.getRepository(ctx, core_1.Customer);
+        const count = await repo
+            .createQueryBuilder('c')
+            .innerJoin('c.channels', 'channel', 'channel.id = :cid', { cid: ctx.channelId })
+            .where('c.id = :id', { id: customerId })
+            .getCount();
+        return count > 0;
+    }
+    async notifyCouponIssued(ctx, customerId, tpl, code) {
+        // 复用 message-plugin 的 Message/MessageDelivery（invoice-plugin 已落地范式）；
+        // 未装 message-plugin 时实体不存在，抛错由调用方捕获、不阻塞发券。
+        const msgRepo = this.connection.getRepository(ctx, 'Message');
+        const delRepo = this.connection.getRepository(ctx, 'MessageDelivery');
+        const name = (0, localize_1.localizeText)(tpl.name, ctx.languageCode, '优惠券');
+        const title = `优惠券到账：${name}`;
+        const body = `您获得本店定向赠送优惠券，券码 ${code}，可在结算时抵扣。`;
+        const message = await msgRepo.save(msgRepo.create({
+            title,
+            body,
+            deliveryChannel: 'inapp',
+            audienceType: 'all',
+            status: 'sent',
+            totalTarget: 1,
+            totalSent: 1,
+            channels: [ctx.channel],
+        }));
+        await delRepo.save(delRepo.create({
+            messageId: message.id,
+            customerId: Number(customerId),
+            deliveryStatus: 'sent',
+            channels: [ctx.channel],
+        }));
+    }
+    async grantCouponIssue(ctx, templateId, customerIds, notify) {
+        var _a;
+        const tpl = await this.findOneTemplate(ctx, templateId);
+        if (!tpl) {
+            throw new core_1.UserInputError(`CouponTemplate ${templateId} not found`);
+        }
+        const customerRepo = this.connection.getRepository(ctx, core_1.Customer);
+        const results = [];
+        for (const customerId of customerIds) {
+            try {
+                const cust = await customerRepo.findOne({
+                    where: { id: customerId },
+                    relations: { user: true },
+                });
+                if (!cust) {
+                    results.push({ customerId, ok: false, code: null, reason: 'CUSTOMER_NOT_FOUND' });
+                    continue;
+                }
+                if (!(await this.customerInChannel(ctx, customerId))) {
+                    results.push({ customerId, ok: false, code: null, reason: 'CUSTOMER_NOT_IN_CHANNEL' });
+                    continue;
+                }
+                if (tpl.perUserLimit > 0) {
+                    const owned = await this.countHeld(Number(customerId), tpl.id);
+                    if (owned >= tpl.perUserLimit) {
+                        results.push({ customerId, ok: false, code: null, reason: 'PER_USER_LIMIT' });
+                        continue;
+                    }
+                }
+                const ok = await this.atomicIncrementClaimed(ctx, tpl.id, tpl);
+                if (!ok) {
+                    results.push({ customerId, ok: false, code: null, reason: 'SOLD_OUT' });
+                    continue;
+                }
+                const cc = await this.createUserCoupon(ctx, Number(customerId), tpl, 'ADMIN');
+                results.push({ customerId, ok: true, code: cc.code, reason: null });
+                if (notify) {
+                    try {
+                        await this.notifyCouponIssued(ctx, customerId, tpl, cc.code);
+                    }
+                    catch (e) {
+                        core_1.Logger.warn(`notifyCouponIssued failed for ${customerId}: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, constants_1.loggerCtx);
+                    }
+                }
+            }
+            catch (e) {
+                results.push({ customerId, ok: false, code: null, reason: 'ERROR' });
+            }
+        }
+        return results;
+    }
     async revokeCoupon(ctx, id) {
         var _a;
         const repo = this.connection.getRepository(ctx, customer_coupon_entity_1.CustomerCoupon);

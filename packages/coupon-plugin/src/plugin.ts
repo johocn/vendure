@@ -14,6 +14,7 @@ import gql from 'graphql-tag';
 
 import { COUPON_PLUGIN_OPTIONS, loggerCtx } from './constants';
 import { CouponAdminResolver } from './coupon-admin.resolver';
+import { CustomerCouponResolver } from './coupon-customer-coupon.resolver';
 import { CouponTemplateResolver } from './coupon-template.resolver';
 import { couponDiscountAction } from './coupon-promotion-action';
 import { couponAppliedCondition } from './coupon-promotion-condition';
@@ -102,6 +103,26 @@ type CustomerCoupon implements Node {
                 totalItems: Int!
             }
 
+            type CouponIssueCustomer implements Node {
+                id: ID!
+                emailAddress: String!
+                firstName: String
+                lastName: String
+                phoneNumber: String
+            }
+
+            type CouponIssueCustomerList implements PaginatedList {
+                items: [CouponIssueCustomer!]!
+                totalItems: Int!
+            }
+
+            type CouponIssueResult {
+                customerId: ID!
+                ok: Boolean!
+                code: String
+                reason: String
+            }
+
             input CreateCouponTemplateInput {
                 name: String!
                 description: String
@@ -146,6 +167,7 @@ type CustomerCoupon implements Node {
                 couponTemplates(options: CouponTemplateListOptions): CouponTemplateList!
                 couponTemplate(id: ID!): CouponTemplate
                 customerCoupons(options: CustomerCouponListOptions): CustomerCouponList!
+                couponChannelCustomers(query: String, take: Int, skip: Int): CouponIssueCustomerList!
             }
 
             extend type Mutation {
@@ -154,9 +176,10 @@ type CustomerCoupon implements Node {
                 deleteCouponTemplate(id: ID!): Boolean!
                 grantCoupon(templateId: ID!, customerIds: [ID!]!): [String!]!
                 revokeCustomerCoupon(id: ID!): CustomerCoupon!
+                grantCouponIssue(templateId: ID!, customerIds: [ID!]!, notify: Boolean!): [CouponIssueResult!]!
             }
         `,
-        resolvers: [CouponAdminResolver, CouponTemplateResolver],
+        resolvers: [CouponAdminResolver, CouponTemplateResolver, CustomerCouponResolver],
     },
     shopApiExtensions: {
         schema: () => gql`
@@ -185,7 +208,7 @@ type CustomerCoupon implements Node {
                 exchangeCouponWithPoints(templateId: ID!): ExchangeCouponResult!
             }
         `,
-        resolvers: [CouponShopResolver, CouponTemplateResolver],
+        resolvers: [CouponShopResolver, CouponTemplateResolver, CustomerCouponResolver],
     },
     configuration: (config) => {
         config.customFields.Order = mergeCustomFields(config.customFields.Order, couponOrderCustomFields.Order);

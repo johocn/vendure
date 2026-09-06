@@ -19,4 +19,14 @@ export declare class CouponAdminResolver {
     deleteCouponTemplate(ctx: RequestContext, id: ID): Promise<boolean>;
     grantCoupon(ctx: RequestContext, templateId: ID, customerIds: ID[]): Promise<string[]>;
     revokeCustomerCoupon(ctx: RequestContext, id: ID): Promise<CustomerCoupon>;
+    couponChannelCustomers(ctx: RequestContext, query?: string, take?: number, skip?: number): Promise<{
+        items: import("@vendure/core").Customer[];
+        totalItems: number;
+    }>;
+    grantCouponIssue(ctx: RequestContext, templateId: ID, customerIds: ID[], notify: boolean): Promise<{
+        customerId: ID;
+        ok: boolean;
+        code: string | null;
+        reason: string | null;
+    }[]>;
 }
