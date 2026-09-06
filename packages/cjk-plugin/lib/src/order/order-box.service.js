@@ -167,7 +167,7 @@ let OrderBoxService = class OrderBoxService {
      * - 同一生效档案的 line 合并为同一箱（跨租户/跨档案自动分箱）。
      */
     async computeOrderBoxes(ctx, order) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
         const t0 = (0, timing_util_1.perf)();
         const lines = (_a = order.lines) !== null && _a !== void 0 ? _a : [];
         if (lines.length === 0)
@@ -228,7 +228,9 @@ let OrderBoxService = class OrderBoxService {
             const tenantChannelId = (profile === null || profile === void 0 ? void 0 : profile.ownerChannelId) != null
                 ? profile.ownerChannelId
                 : ((_h = (_g = (_f = order.channels) === null || _f === void 0 ? void 0 : _f[0]) === null || _g === void 0 ? void 0 : _g.id) !== null && _h !== void 0 ? _h : ctx.channelId);
-            const isDelivery = !((profile === null || profile === void 0 ? void 0 : profile.pickupLocations) && profile.pickupLocations.length > 0);
+            // 箱型唯一真源：按档案可用配送方式判定（门店自提/自提点/职工单位→pickup，避免方式级自提点被误判成 delivery）
+            const fulfilment = await this.shippingProfileService.resolveBoxFulfilment(ctx, profile);
+            const isDelivery = fulfilment.type === 'delivery';
             // —— 本箱行明细（Additive）——
             const boxLineIdSet = new Set(group.lineIds.map(String));
             const boxLines = lines.filter(l => boxLineIdSet.has(String(l.id)));
@@ -309,7 +311,7 @@ let OrderBoxService = class OrderBoxService {
                 profileId: key,
                 profileName: (_k = profile === null || profile === void 0 ? void 0 : profile.name) !== null && _k !== void 0 ? _k : key,
                 lineIds: group.lineIds,
-                type: ((_l = profile === null || profile === void 0 ? void 0 : profile.pickupLocations) === null || _l === void 0 ? void 0 : _l.length) ? 'pickup' : 'delivery',
+                type: fulfilment.type,
                 tenantChannelId,
                 shippingProfileIds: [...group.rawIds],
                 availableShippingMethodIds: enabledMethods.map((m) => m.id),
@@ -323,11 +325,11 @@ let OrderBoxService = class OrderBoxService {
                         : m.code,
                 })),
                 defaultShippingMethodId: enabledMethods.length > 0 ? enabledMethods[0].id : null,
-                pickupLocations: (_m = profile === null || profile === void 0 ? void 0 : profile.pickupLocations) !== null && _m !== void 0 ? _m : [],
+                pickupLocations: fulfilment.pickupLocations,
                 availablePaymentMethodCodes: await this.resolvePaymentCodesForProfile(ctx, key),
                 loginRequiredPaymentCodes: (await this.resolvePaymentCodesForProfile(ctx, key)).filter(code => exports.LOGIN_REQUIRED_PAYMENT_CODES.has(code)),
-                requiresAddress: (_o = profile === null || profile === void 0 ? void 0 : profile.requiresAddress) !== null && _o !== void 0 ? _o : true,
-                requiresContact: (_p = profile === null || profile === void 0 ? void 0 : profile.requiresContact) !== null && _p !== void 0 ? _p : false,
+                requiresAddress: (_l = profile === null || profile === void 0 ? void 0 : profile.requiresAddress) !== null && _l !== void 0 ? _l : true,
+                requiresContact: (_m = profile === null || profile === void 0 ? void 0 : profile.requiresContact) !== null && _m !== void 0 ? _m : false,
                 lines: boxLineInfo,
                 availableCoupons,
                 shippingCost,

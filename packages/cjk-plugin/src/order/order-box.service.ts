@@ -335,7 +335,9 @@ export class OrderBoxService {
                 profile?.ownerChannelId != null
                     ? (profile.ownerChannelId as ID)
                     : (order.channels?.[0]?.id ?? ctx.channelId);
-            const isDelivery = !(profile?.pickupLocations && profile.pickupLocations.length > 0);
+            // 箱型唯一真源：按档案可用配送方式判定（门店自提/自提点/职工单位→pickup，避免方式级自提点被误判成 delivery）
+            const fulfilment = await this.shippingProfileService.resolveBoxFulfilment(ctx, profile);
+            const isDelivery = fulfilment.type === 'delivery';
 
             // —— 本箱行明细（Additive）——
             const boxLineIdSet = new Set(group.lineIds.map(String));
@@ -430,7 +432,7 @@ export class OrderBoxService {
                 profileId: key as ID,
                 profileName: profile?.name ?? key,
                 lineIds: group.lineIds,
-                type: profile?.pickupLocations?.length ? 'pickup' : 'delivery',
+                type: fulfilment.type,
                 tenantChannelId,
                 shippingProfileIds: [...group.rawIds] as ID[],
                 availableShippingMethodIds: enabledMethods.map((m: any) => m.id as ID),
@@ -444,7 +446,7 @@ export class OrderBoxService {
                         : m.code,
                 })),
                 defaultShippingMethodId: enabledMethods.length > 0 ? (enabledMethods[0].id as ID) : null,
-                pickupLocations: profile?.pickupLocations ?? [],
+                pickupLocations: fulfilment.pickupLocations,
                 availablePaymentMethodCodes: await this.resolvePaymentCodesForProfile(ctx, key as ID),
                 loginRequiredPaymentCodes: (await this.resolvePaymentCodesForProfile(ctx, key as ID)).filter(
                     code => LOGIN_REQUIRED_PAYMENT_CODES.has(code),

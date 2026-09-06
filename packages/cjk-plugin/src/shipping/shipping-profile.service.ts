@@ -339,7 +339,14 @@ export class ShippingProfileService {
     }
 
     /**
-     * 按配送方式的真实「计费计算器」判定其自提点实体类型。
+     * 自提类计算器判定（门店自提/自提点/职工单位）。
+     */
+    private isPickupCalculator(code?: string): boolean {
+        return code === 'store-pickup-calculator' || code === 'pickup-point-calculator' || code === 'employee-pickup-calculator';
+    }
+
+    /**
+     * 按配送方式计算器判定其自提点实体类型。
      * 门店自提/自提点/职工单位共用 mode='pickup' 之场景（历史前端默认值），
      * 必须以 calculator 为准，否则 store-pickup-calculator 会被误判成 'point'。
      * 非自提计算器返回 null（交由 pickupTypeByMode 回退）。
@@ -359,6 +366,52 @@ export class ShippingProfileService {
             case 'employee-pickup-calculator': return 'employee';
             default: return null;
         }
+    }
+
+    /**
+     * 计算箱的履约类型与候选自提点。
+     * 箱型不能只看 profile.pickupLocations（新版前端把自提点放在方式级 methodConfig 里，
+     * profile.pickupLocations 常为空），须按「档案可用配送方式是否为自提类」判定，
+     * 否则门店自提/自提点/职工单位箱会被判成 delivery → C 端误显物理地址块。
+     * pickupLocations = 档案级点 ∪ 各自提方式有效点（同城全部→渠道可见启用点，指定→方式限定点）。
+     */
+    async resolveBoxFulfilment(
+        ctx: RequestContext,
+        profile?: ShippingProfile,
+    ): Promise<{ type: 'pickup' | 'delivery'; pickupLocations: PickupLocation[] }> {
+        const legacy = profile?.pickupLocations ?? [];
+        const methods = profile?.shippingMethods ?? [];
+        const cfgById = new Map<string, any>();
+        for (const c of ((profile as any)?.methodConfigs ?? [])) cfgById.set(String(c.shippingMethodId), c);
+        const allPickup =
+            methods.length > 0 &&
+            methods.every((m: any) => {
+                const cfg = cfgById.get(String(m.id));
+                return (cfg && this.isPickupMode(cfg.mode)) || this.isPickupCalculator(m.calculator?.code);
+            });
+        const isPickup = legacy.length > 0 || allPickup;
+        if (!isPickup) return { type: 'delivery', pickupLocations: [] };
+
+        const idSet = new Set<ID>();
+        for (const p of legacy) idSet.add(p.id as ID);
+        for (const m of methods as any[]) {
+            const cfg = cfgById.get(String(m.id));
+            if (!cfg) continue;
+            if (this.isPickupMode(cfg.mode) || this.isPickupCalculator(m.calculator?.code)) {
+                const eff = await this.getEffectivePickupIdsForConfig(ctx, cfg);
+                eff.forEach(id => idSet.add(id));
+            }
+        }
+        const out: PickupLocation[] = [...legacy];
+        if (idSet.size > 0) {
+            const found = await this.pickupLocationService.findByIds(ctx, [...idSet]);
+            const map = new Map(found.map(p => [String(p.id), p]));
+            for (const id of idSet) {
+                const p = map.get(String(id));
+                if (p && !out.some(x => String(x.id) === String(p.id))) out.push(p);
+            }
+        }
+        return { type: 'pickup', pickupLocations: out };
     }
 
     /**
