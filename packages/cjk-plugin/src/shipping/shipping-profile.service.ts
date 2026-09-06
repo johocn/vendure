@@ -241,7 +241,7 @@ export class ShippingProfileService {
 
     /**
      * 结合 per-method config 的自提点取 Profile 交集。
-     * 规则：Profile 的 methodConfigs 中有 mode==='pickup' 且带 pickupLocationIds 时，
+     * 规则：Profile 的 methodConfigs 中有 pickup 类 mode（pickup/store/employee）且带自提点范围时，
      * 以其 config 中的自提点作为该 Profile 的约束；否则回退到档案级 pickupLocations。
      * 其余语义与 getIntersectedPickupLocations 一致：
      * - 全部未约束 → null；有约束但交集为空 → []。
@@ -263,7 +263,7 @@ export class ShippingProfileService {
             const configs = await this.getMethodConfigsByProfile(ctx, profile.id);
             const pickupEffective: ID[] = [];
             for (const c of configs) {
-                if (c.mode !== 'pickup') continue;
+                if (!this.isPickupMode(c.mode)) continue;
                 const ids = await this.getEffectivePickupIdsForConfig(ctx, c);
                 pickupEffective.push(...ids);
             }
@@ -306,7 +306,7 @@ export class ShippingProfileService {
         // 任一 pickup 方式 config 携带自提点范围（rangeMode='all' 或 pickupLocationIds）亦为约束
         for (const pid of profileIds) {
             const configs = await this.getMethodConfigsByProfile(ctx, pid);
-            const constrained = configs.some(c => c.mode === 'pickup' &&
+            const constrained = configs.some(c => this.isPickupMode(c.mode) &&
                 (c.options?.rangeMode === 'all' || (c.options?.pickupLocationIds?.length ?? 0) > 0));
             if (constrained) return true;
         }
@@ -330,14 +330,47 @@ export class ShippingProfileService {
     }
 
     /**
+     * pickup 类 mode 判定（C 端解析/交集门控用）：
+     * 'pickup'(自提点) / 'store'(门店自提) / 'employee'(职工单位) 均视为自提方式，
+     * 仅 'mail' 为邮寄。
+     */
+    private isPickupMode(mode: string | null | undefined): boolean {
+        return mode === 'pickup' || mode === 'store' || mode === 'employee';
+    }
+
+    /**
+     * 按配送方式的真实「计费计算器」判定其自提点实体类型。
+     * 门店自提/自提点/职工单位共用 mode='pickup' 之场景（历史前端默认值），
+     * 必须以 calculator 为准，否则 store-pickup-calculator 会被误判成 'point'。
+     * 非自提计算器返回 null（交由 pickupTypeByMode 回退）。
+     */
+    private async pickupTypeForMethod(
+        ctx: RequestContext,
+        shippingMethodId: any,
+    ): Promise<string | null> {
+        if (shippingMethodId == null) return null;
+        const sm = await this.connection
+            .getRepository(ctx, 'ShippingMethod')
+            .findOne({ where: { id: shippingMethodId as any } as any });
+        const code = (sm as any)?.calculator?.code;
+        switch (code) {
+            case 'store-pickup-calculator': return 'store';
+            case 'pickup-point-calculator': return 'point';
+            case 'employee-pickup-calculator': return 'employee';
+            default: return null;
+        }
+    }
+
+    /**
      * 计算某一方式 config 的有效自提点 id 集合（shop 端透传 & 交集用）。
      * - options.rangeMode === 'all' → 动态聚合当前渠道可见的启用自提点，且仅取该方式对应类型
      *   （pickup→point）。city 来源不明确，采用"同 channel 的全部可见启用 point"聚合。
      * - 否则 → options.pickupLocationIds，并限定在对应类型内（pickup→point / store→store / employee→employee）。
      */
     async getEffectivePickupIdsForConfig(ctx: RequestContext, cfg: any): Promise<ID[]> {
-        if (!cfg || cfg.mode !== 'pickup') return [];
-        const type = this.pickupTypeByMode(cfg.mode);
+        if (!cfg || !this.isPickupMode(cfg.mode)) return [];
+        // 类型优先取配送方式计算器（门店自提/自提点/职工单位），历史 mode='pickup' 共用时以 calculator 为准
+        const type = (await this.pickupTypeForMethod(ctx, cfg.shippingMethodId)) ?? this.pickupTypeByMode(cfg.mode);
         const options = cfg.options ?? {};
         if (options.rangeMode === 'all') {
             return (await this.pickupLocationService.findByCityForChannel(ctx, null, type)).map(l => l.id);

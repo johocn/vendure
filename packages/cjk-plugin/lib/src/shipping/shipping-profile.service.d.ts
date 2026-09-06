@@ -36,7 +36,7 @@ export declare class ShippingProfileService {
     getIntersectedPickupLocations(ctx: RequestContext, profileIds: ID[]): Promise<ID[] | null>;
     /**
      * 结合 per-method config 的自提点取 Profile 交集。
-     * 规则：Profile 的 methodConfigs 中有 mode==='pickup' 且带 pickupLocationIds 时，
+     * 规则：Profile 的 methodConfigs 中有 pickup 类 mode（pickup/store/employee）且带自提点范围时，
      * 以其 config 中的自提点作为该 Profile 的约束；否则回退到档案级 pickupLocations。
      * 其余语义与 getIntersectedPickupLocations 一致：
      * - 全部未约束 → null；有约束但交集为空 → []。
@@ -56,6 +56,19 @@ export declare class ShippingProfileService {
      * - employee → employee
      */
     private pickupTypeByMode;
+    /**
+     * pickup 类 mode 判定（C 端解析/交集门控用）：
+     * 'pickup'(自提点) / 'store'(门店自提) / 'employee'(职工单位) 均视为自提方式，
+     * 仅 'mail' 为邮寄。
+     */
+    private isPickupMode;
+    /**
+     * 按配送方式的真实「计费计算器」判定其自提点实体类型。
+     * 门店自提/自提点/职工单位共用 mode='pickup' 之场景（历史前端默认值），
+     * 必须以 calculator 为准，否则 store-pickup-calculator 会被误判成 'point'。
+     * 非自提计算器返回 null（交由 pickupTypeByMode 回退）。
+     */
+    private pickupTypeForMethod;
     /**
      * 计算某一方式 config 的有效自提点 id 集合（shop 端透传 & 交集用）。
      * - options.rangeMode === 'all' → 动态聚合当前渠道可见的启用自提点，且仅取该方式对应类型

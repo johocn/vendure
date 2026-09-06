@@ -231,7 +231,7 @@ let ShippingProfileService = class ShippingProfileService {
     }
     /**
      * 结合 per-method config 的自提点取 Profile 交集。
-     * 规则：Profile 的 methodConfigs 中有 mode==='pickup' 且带 pickupLocationIds 时，
+     * 规则：Profile 的 methodConfigs 中有 pickup 类 mode（pickup/store/employee）且带自提点范围时，
      * 以其 config 中的自提点作为该 Profile 的约束；否则回退到档案级 pickupLocations。
      * 其余语义与 getIntersectedPickupLocations 一致：
      * - 全部未约束 → null；有约束但交集为空 → []。
@@ -251,7 +251,7 @@ let ShippingProfileService = class ShippingProfileService {
             const configs = await this.getMethodConfigsByProfile(ctx, profile.id);
             const pickupEffective = [];
             for (const c of configs) {
-                if (c.mode !== 'pickup')
+                if (!this.isPickupMode(c.mode))
                     continue;
                 const ids = await this.getEffectivePickupIdsForConfig(ctx, c);
                 pickupEffective.push(...ids);
@@ -294,7 +294,7 @@ let ShippingProfileService = class ShippingProfileService {
             const configs = await this.getMethodConfigsByProfile(ctx, pid);
             const constrained = configs.some(c => {
                 var _a, _b, _c, _d;
-                return c.mode === 'pickup' &&
+                return this.isPickupMode(c.mode) &&
                     (((_a = c.options) === null || _a === void 0 ? void 0 : _a.rangeMode) === 'all' || ((_d = (_c = (_b = c.options) === null || _b === void 0 ? void 0 : _b.pickupLocationIds) === null || _c === void 0 ? void 0 : _c.length) !== null && _d !== void 0 ? _d : 0) > 0);
             });
             if (constrained)
@@ -318,21 +318,51 @@ let ShippingProfileService = class ShippingProfileService {
         }
     }
     /**
+     * pickup 类 mode 判定（C 端解析/交集门控用）：
+     * 'pickup'(自提点) / 'store'(门店自提) / 'employee'(职工单位) 均视为自提方式，
+     * 仅 'mail' 为邮寄。
+     */
+    isPickupMode(mode) {
+        return mode === 'pickup' || mode === 'store' || mode === 'employee';
+    }
+    /**
+     * 按配送方式的真实「计费计算器」判定其自提点实体类型。
+     * 门店自提/自提点/职工单位共用 mode='pickup' 之场景（历史前端默认值），
+     * 必须以 calculator 为准，否则 store-pickup-calculator 会被误判成 'point'。
+     * 非自提计算器返回 null（交由 pickupTypeByMode 回退）。
+     */
+    async pickupTypeForMethod(ctx, shippingMethodId) {
+        var _a;
+        if (shippingMethodId == null)
+            return null;
+        const sm = await this.connection
+            .getRepository(ctx, 'ShippingMethod')
+            .findOne({ where: { id: shippingMethodId } });
+        const code = (_a = sm === null || sm === void 0 ? void 0 : sm.calculator) === null || _a === void 0 ? void 0 : _a.code;
+        switch (code) {
+            case 'store-pickup-calculator': return 'store';
+            case 'pickup-point-calculator': return 'point';
+            case 'employee-pickup-calculator': return 'employee';
+            default: return null;
+        }
+    }
+    /**
      * 计算某一方式 config 的有效自提点 id 集合（shop 端透传 & 交集用）。
      * - options.rangeMode === 'all' → 动态聚合当前渠道可见的启用自提点，且仅取该方式对应类型
      *   （pickup→point）。city 来源不明确，采用"同 channel 的全部可见启用 point"聚合。
      * - 否则 → options.pickupLocationIds，并限定在对应类型内（pickup→point / store→store / employee→employee）。
      */
     async getEffectivePickupIdsForConfig(ctx, cfg) {
-        var _a, _b;
-        if (!cfg || cfg.mode !== 'pickup')
+        var _a, _b, _c;
+        if (!cfg || !this.isPickupMode(cfg.mode))
             return [];
-        const type = this.pickupTypeByMode(cfg.mode);
-        const options = (_a = cfg.options) !== null && _a !== void 0 ? _a : {};
+        // 类型优先取配送方式计算器（门店自提/自提点/职工单位），历史 mode='pickup' 共用时以 calculator 为准
+        const type = (_a = (await this.pickupTypeForMethod(ctx, cfg.shippingMethodId))) !== null && _a !== void 0 ? _a : this.pickupTypeByMode(cfg.mode);
+        const options = (_b = cfg.options) !== null && _b !== void 0 ? _b : {};
         if (options.rangeMode === 'all') {
             return (await this.pickupLocationService.findByCityForChannel(ctx, null, type)).map(l => l.id);
         }
-        const ids = (_b = options.pickupLocationIds) !== null && _b !== void 0 ? _b : [];
+        const ids = (_c = options.pickupLocationIds) !== null && _c !== void 0 ? _c : [];
         if (ids.length === 0)
             return [];
         const locs = await this.pickupLocationService.findByIds(ctx, ids);

@@ -52,7 +52,7 @@ let ShippingProfileShopResolver = class ShippingProfileShopResolver {
         const enriched = [];
         for (const m of full.filter((m) => { var _a; return ((_a = m.customFields) === null || _a === void 0 ? void 0 : _a.enabled) !== false; })) {
             const cfg = configs.get(m.id);
-            const pickupIds = cfg && cfg.mode === 'pickup'
+            const pickupIds = cfg && ['pickup', 'store', 'employee'].includes(cfg.mode)
                 ? await this.service.getEffectivePickupIdsForConfig(ctx, cfg)
                 : null;
             enriched.push({ id: m.id, code: m.code, mode: (_a = cfg === null || cfg === void 0 ? void 0 : cfg.mode) !== null && _a !== void 0 ? _a : null, pickupLocationIds: pickupIds, name: (_d = (_c = (_b = m.translations) === null || _b === void 0 ? void 0 : _b[0]) === null || _c === void 0 ? void 0 : _c.name) !== null && _d !== void 0 ? _d : m.code });
@@ -70,7 +70,7 @@ let ShippingProfileShopResolver = class ShippingProfileShopResolver {
             const result = [];
             for (const m of full.filter((m) => { var _a; return ((_a = m.customFields) === null || _a === void 0 ? void 0 : _a.enabled) !== false; })) {
                 const cfg = cm.get(String(m.id));
-                const pickupIds = cfg && cfg.mode === 'pickup'
+                const pickupIds = cfg && ['pickup', 'store', 'employee'].includes(cfg.mode)
                     ? await this.service.getEffectivePickupIdsForConfig(ctx, cfg)
                     : null;
                 result.push({
