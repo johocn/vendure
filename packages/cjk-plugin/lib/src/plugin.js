@@ -1089,7 +1089,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                 }
 
                 extend type Query {
-                    assetLibrary(take: Int, skip: Int, tags: [String]): AssetLibraryResult!
+                    assetLibrary(take: Int, skip: Int, tags: [String], ids: [String]): AssetLibraryResult!
                     assetTags(take: Int): [AssetTagSummary!]!
                     merchantSettlementLedgers(orderId: String): [MerchantSettlementLedgerItem!]!
                 }

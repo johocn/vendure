@@ -923,7 +923,7 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                 }
 
                 extend type Query {
-                    assetLibrary(take: Int, skip: Int, tags: [String]): AssetLibraryResult!
+                    assetLibrary(take: Int, skip: Int, tags: [String], ids: [String]): AssetLibraryResult!
                     assetTags(take: Int): [AssetTagSummary!]!
                     merchantSettlementLedgers(orderId: String): [MerchantSettlementLedgerItem!]!
                 }
