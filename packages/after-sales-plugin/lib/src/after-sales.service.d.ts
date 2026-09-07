@@ -4,13 +4,20 @@ export declare class AfterSalesService {
     private connection;
     private listQueryBuilder;
     private orderService;
+    private customerService;
     private inventoryService;
     private options;
     constructor(connection: TransactionalConnection, listQueryBuilder: ListQueryBuilder);
     init(injector: Injector): void;
+    /**
+     * 当前登录用户对应的 Customer 主键。
+     * 说明：ctx.activeUserId 是 User 表主键，而售后单 customerId 存的是 Customer 表主键，
+     * 两者是不同实体，必须经 CustomerService.findOneByUserId 桥接，否则过滤永远匹配不到。
+     */
+    private resolveCustomerId;
     findOne(ctx: RequestContext, id: ID): Promise<AfterSalesRequest | undefined>;
     /**
-     * Shop API 专用：按 customerId 过滤，防止越权枚举他人售后单。
+     * Shop API 专用：按 customer 过滤，防止越权枚举他人售后单。
      */
     findOneForCustomer(ctx: RequestContext, id: ID): Promise<AfterSalesRequest | undefined>;
     findMyRequests(ctx: RequestContext, options?: ListQueryOptions<AfterSalesRequest>): Promise<PaginatedList<AfterSalesRequest>>;

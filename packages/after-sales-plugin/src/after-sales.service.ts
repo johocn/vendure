@@ -7,6 +7,7 @@ import {
     ListQueryBuilder,
     ListQueryOptions,
     OrderService,
+    CustomerService,
     PaginatedList,
     RequestContext,
     Logger,
@@ -25,6 +26,7 @@ import { InventoryService } from '@vendure/inventory-plugin';
 @Injectable()
 export class AfterSalesService {
     private orderService: OrderService | null = null;
+    private customerService: CustomerService | null = null;
     private inventoryService: InventoryService | null = null;
     private options: AfterSalesPluginOptions = {};
 
@@ -35,6 +37,7 @@ export class AfterSalesService {
 
     init(injector: Injector): void {
         this.orderService = injector.get(OrderService);
+        this.customerService = injector.get(CustomerService);
         try {
             this.inventoryService = injector.get(InventoryService);
         } catch (e: any) {
@@ -48,6 +51,17 @@ export class AfterSalesService {
         }
     }
 
+    /**
+     * 当前登录用户对应的 Customer 主键。
+     * 说明：ctx.activeUserId 是 User 表主键，而售后单 customerId 存的是 Customer 表主键，
+     * 两者是不同实体，必须经 CustomerService.findOneByUserId 桥接，否则过滤永远匹配不到。
+     */
+    private async resolveCustomerId(ctx: RequestContext): Promise<number | null> {
+        if (!ctx.activeUserId || !this.customerService) return null;
+        const customer = await this.customerService.findOneByUserId(ctx, ctx.activeUserId);
+        return customer ? Number(customer.id) : null;
+    }
+
     async findOne(ctx: RequestContext, id: ID): Promise<AfterSalesRequest | undefined> {
         const repo = this.connection.getRepository(ctx, AfterSalesRequest);
         const result = await repo.findOne({
@@ -58,16 +72,16 @@ export class AfterSalesService {
     }
 
     /**
-     * Shop API 专用：按 customerId 过滤，防止越权枚举他人售后单。
+     * Shop API 专用：按 customer 过滤，防止越权枚举他人售后单。
      */
     async findOneForCustomer(ctx: RequestContext, id: ID): Promise<AfterSalesRequest | undefined> {
-        const customerId = ctx.activeUserId;
+        const customerId = await this.resolveCustomerId(ctx);
         if (!customerId) {
             throw new UnauthorizedError();
         }
         const repo = this.connection.getRepository(ctx, AfterSalesRequest);
         const result = await repo.findOne({
-            where: { id: id as any, customerId: customerId as any },
+            where: { id: id as any, customerId },
             relations: { order: true, orderLine: true, channels: true },
         });
         return result ?? undefined;
@@ -77,13 +91,17 @@ export class AfterSalesService {
         ctx: RequestContext,
         options?: ListQueryOptions<AfterSalesRequest>,
     ): Promise<PaginatedList<AfterSalesRequest>> {
+        const customerId = await this.resolveCustomerId(ctx);
+        if (!customerId) {
+            return { items: [], totalItems: 0 };
+        }
         return this.listQueryBuilder
             .build(AfterSalesRequest, options, {
                 ctx,
                 relations: ['order', 'orderLine', 'channels'],
                 channelId: ctx.channelId,
             })
-            .andWhere('aftersalesrequest."customerId" = :customerId', { customerId: ctx.activeUserId })
+            .andWhere('aftersalesrequest."customerId" = :customerId', { customerId })
             .getManyAndCount()
             .then(([items, totalItems]) => ({ items, totalItems }));
     }

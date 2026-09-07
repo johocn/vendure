@@ -22,12 +22,14 @@ let AfterSalesService = class AfterSalesService {
         this.connection = connection;
         this.listQueryBuilder = listQueryBuilder;
         this.orderService = null;
+        this.customerService = null;
         this.inventoryService = null;
         this.options = {};
     }
     init(injector) {
         var _a, _b;
         this.orderService = injector.get(core_1.OrderService);
+        this.customerService = injector.get(core_1.CustomerService);
         try {
             this.inventoryService = injector.get(inventory_plugin_1.InventoryService);
         }
@@ -42,6 +44,17 @@ let AfterSalesService = class AfterSalesService {
             this.options = {};
         }
     }
+    /**
+     * 当前登录用户对应的 Customer 主键。
+     * 说明：ctx.activeUserId 是 User 表主键，而售后单 customerId 存的是 Customer 表主键，
+     * 两者是不同实体，必须经 CustomerService.findOneByUserId 桥接，否则过滤永远匹配不到。
+     */
+    async resolveCustomerId(ctx) {
+        if (!ctx.activeUserId || !this.customerService)
+            return null;
+        const customer = await this.customerService.findOneByUserId(ctx, ctx.activeUserId);
+        return customer ? Number(customer.id) : null;
+    }
     async findOne(ctx, id) {
         const repo = this.connection.getRepository(ctx, after_sales_request_entity_1.AfterSalesRequest);
         const result = await repo.findOne({
@@ -51,28 +64,32 @@ let AfterSalesService = class AfterSalesService {
         return result !== null && result !== void 0 ? result : undefined;
     }
     /**
-     * Shop API 专用：按 customerId 过滤，防止越权枚举他人售后单。
+     * Shop API 专用：按 customer 过滤，防止越权枚举他人售后单。
      */
     async findOneForCustomer(ctx, id) {
-        const customerId = ctx.activeUserId;
+        const customerId = await this.resolveCustomerId(ctx);
         if (!customerId) {
             throw new core_1.UnauthorizedError();
         }
         const repo = this.connection.getRepository(ctx, after_sales_request_entity_1.AfterSalesRequest);
         const result = await repo.findOne({
-            where: { id: id, customerId: customerId },
+            where: { id: id, customerId },
             relations: { order: true, orderLine: true, channels: true },
         });
         return result !== null && result !== void 0 ? result : undefined;
     }
     async findMyRequests(ctx, options) {
+        const customerId = await this.resolveCustomerId(ctx);
+        if (!customerId) {
+            return { items: [], totalItems: 0 };
+        }
         return this.listQueryBuilder
             .build(after_sales_request_entity_1.AfterSalesRequest, options, {
             ctx,
             relations: ['order', 'orderLine', 'channels'],
             channelId: ctx.channelId,
         })
-            .andWhere('aftersalesrequest."customerId" = :customerId', { customerId: ctx.activeUserId })
+            .andWhere('aftersalesrequest."customerId" = :customerId', { customerId })
             .getManyAndCount()
             .then(([items, totalItems]) => ({ items, totalItems }));
     }
