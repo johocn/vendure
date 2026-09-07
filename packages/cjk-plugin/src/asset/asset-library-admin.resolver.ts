@@ -23,18 +23,27 @@ export class AssetLibraryAdminResolver {
         @Args('take', { type: () => Number, nullable: true }) take = 30,
         @Args('skip', { type: () => Number, nullable: true }) skip = 0,
         @Args('tags', { type: () => [String], nullable: true }) tags?: string[],
+        @Args('ids', { type: () => [String], nullable: true }) ids?: string[],
     ): Promise<{ items: any[]; totalItems: number }> {
         const filtered = await this.loadFiltered(ctx);
         const cleanTags = (tags || []).map((t) => String(t).trim()).filter(Boolean);
-        const finalList = cleanTags.length
+        const cleanIds = (ids || []).map((i) => String(i).trim()).filter(Boolean);
+        let finalList = cleanTags.length
             ? filtered.filter((a: any) => {
                   const assetTags: string[] = (a.customFields as any)?.assetTags || [];
                   return assetTags.some((t) => cleanTags.includes(t));
               })
             : filtered;
 
+        // 按 id 精确预取：商品/自提点已选图可能不在最近 take 条内（多租户/历史图），
+        // 编辑回填时必须能看到并保住这些已选资源。ids 模式下忽略分页，返回全部匹配项。
+        if (cleanIds.length) {
+            const idSet = new Set(cleanIds);
+            finalList = filtered.filter((a: any) => idSet.has(String(a.id)));
+        }
+
         const total = finalList.length;
-        const slice = finalList.slice(skip, skip + take);
+        const slice = cleanIds.length ? finalList : finalList.slice(skip, skip + take);
         return {
             items: slice.map((a) => this.toAssetItem(ctx, a)),
             totalItems: total,

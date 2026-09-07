@@ -104,6 +104,7 @@ import { RedemptionCodeService } from './redemption/redemption-code.service';
 import { RedemptionShopResolver, RedemptionAdminResolver } from './redemption/redemption.resolver';
 import { redemptionShopSchema, redemptionAdminSchema } from './redemption/redemption.schema';
 import { BoxShippingLineAssignmentStrategy } from './shipping/box-shipping-line-assignment-strategy';
+import { ChannelTaxLineCalculationStrategy } from './tax/channel-tax-line-calculation-strategy';
 import { ChannelEvent, EventBus, OrderEvent, OrderService, TransactionalConnection } from '@vendure/core';
 import { DefaultDataService } from './seed/default-data.service';
 import { Wallet } from './wallet/wallet.entity';
@@ -1174,6 +1175,11 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
     configuration: config => {
         // 注入 authSecret 到 crypto 模块（configuration 在 bootstrap 早期执行，此时 options 已可用）
         setAuthSecret(CjkPlugin.options.authSecret);
+
+        // 租户级税率开关：Channel.customFields.taxEnabled=false 时订单行零税率（净价结算），
+        // 否则回退 Vendure 默认单税率。默认开启，存量租户行为不变。
+        config.taxOptions = config.taxOptions || {};
+        config.taxOptions.taxLineCalculationStrategy = new ChannelTaxLineCalculationStrategy();
 
         // 注册 SSO 策略到 shop 端（init 钩子由 Vendure 自动调用）
         config.authOptions = config.authOptions || {};

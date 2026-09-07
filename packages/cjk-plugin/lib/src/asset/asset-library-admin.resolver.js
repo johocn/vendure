@@ -28,18 +28,25 @@ let AssetLibraryAdminResolver = class AssetLibraryAdminResolver {
         this.assetService = assetService;
         this.connection = connection;
     }
-    async assetLibrary(ctx, take = 30, skip = 0, tags) {
+    async assetLibrary(ctx, take = 30, skip = 0, tags, ids) {
         const filtered = await this.loadFiltered(ctx);
         const cleanTags = (tags || []).map((t) => String(t).trim()).filter(Boolean);
-        const finalList = cleanTags.length
+        const cleanIds = (ids || []).map((i) => String(i).trim()).filter(Boolean);
+        let finalList = cleanTags.length
             ? filtered.filter((a) => {
                 var _a;
                 const assetTags = ((_a = a.customFields) === null || _a === void 0 ? void 0 : _a.assetTags) || [];
                 return assetTags.some((t) => cleanTags.includes(t));
             })
             : filtered;
+        // 按 id 精确预取：商品/自提点已选图可能不在最近 take 条内（多租户/历史图），
+        // 编辑回填时必须能看到并保住这些已选资源。ids 模式下忽略分页，返回全部匹配项。
+        if (cleanIds.length) {
+            const idSet = new Set(cleanIds);
+            finalList = filtered.filter((a) => idSet.has(String(a.id)));
+        }
         const total = finalList.length;
-        const slice = finalList.slice(skip, skip + take);
+        const slice = cleanIds.length ? finalList : finalList.slice(skip, skip + take);
         return {
             items: slice.map((a) => this.toAssetItem(ctx, a)),
             totalItems: total,
@@ -146,8 +153,9 @@ __decorate([
     __param(1, (0, graphql_1.Args)('take', { type: () => Number, nullable: true })),
     __param(2, (0, graphql_1.Args)('skip', { type: () => Number, nullable: true })),
     __param(3, (0, graphql_1.Args)('tags', { type: () => [String], nullable: true })),
+    __param(4, (0, graphql_1.Args)('ids', { type: () => [String], nullable: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, Array]),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, Array, Array]),
     __metadata("design:returntype", Promise)
 ], AssetLibraryAdminResolver.prototype, "assetLibrary", null);
 __decorate([

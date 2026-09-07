@@ -205,5 +205,19 @@ export const tenantChannelCustomFields: CustomFields = {
                 },
             ],
         },
+        {
+            name: 'taxEnabled',
+            type: 'boolean',
+            defaultValue: true,
+            public: true,
+            label: [
+                { languageCode: LanguageCode.zh_Hans, value: '启用含税价' },
+                { languageCode: LanguageCode.en, value: 'Enable tax-inclusive pricing' },
+            ],
+            description: [
+                { languageCode: LanguageCode.zh_Hans, value: '默认开启。关闭后：商品展示价与购物车结算价直接使用后台录入的净价，不再加税率。' },
+                { languageCode: LanguageCode.en, value: 'Enabled by default. When off, the product display price and the cart settlement price use the entered net price without tax.' },
+            ],
+        },
     ],
 };
