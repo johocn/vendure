@@ -375,6 +375,14 @@ export class OrderBoxService {
             });
             const goodsTotal = boxLineInfo.reduce((s, l) => s + l.lineTotal, 0);
 
+            // —— 按箱内子集过滤配送方式资格（治本：INELIGIBLE_SHIPPING_METHOD_ERROR）——
+            // enabledMethods 仅是「启用」集合，可能含 orderMinimum 门槛方式（如满99包邮）。
+            // 拆单后子单只含本箱行，金额门槛可能不达标 → 用本箱 goodsTotal/地址过滤，
+            // 使可用方式与默认方式对子单与合并单均恒合格。
+            const eligibleMethods = enabledMethods.filter(m =>
+                this.isShippingMethodEligibleForBox(ctx, m, goodsTotal, (order as any).shippingAddress),
+            );
+
             // —— 本箱配送费（Additive）——
             // 规则：取 order.shippingLines 中「配送方式 id 落在本箱可用集合」的配送线价格（含税）之和；
             // 无按箱匹配且整单仅一条配送线时，将该单条配送线归属给唯一 delivery 箱（未多箱结算的兜底）；
@@ -435,8 +443,8 @@ export class OrderBoxService {
                 type: fulfilment.type,
                 tenantChannelId,
                 shippingProfileIds: [...group.rawIds] as ID[],
-                availableShippingMethodIds: enabledMethods.map((m: any) => m.id as ID),
-                availableShippingMethods: enabledMethods.map((m: any) => ({
+                availableShippingMethodIds: eligibleMethods.map((m: any) => m.id as ID),
+                availableShippingMethods: eligibleMethods.map((m: any) => ({
                     id: m.id as ID,
                     code: m.code,
                     name: Array.isArray(m.translations) && m.translations.length
@@ -445,7 +453,7 @@ export class OrderBoxService {
                             || m.translations[0]).name || m.code
                         : m.code,
                 })),
-                defaultShippingMethodId: enabledMethods.length > 0 ? (enabledMethods[0].id as ID) : null,
+                defaultShippingMethodId: eligibleMethods.length > 0 ? (eligibleMethods[0].id as ID) : null,
                 pickupLocations: fulfilment.pickupLocations,
                 availablePaymentMethodCodes: await this.resolvePaymentCodesForProfile(ctx, key as ID),
                 loginRequiredPaymentCodes: (await this.resolvePaymentCodesForProfile(ctx, key as ID)).filter(
@@ -585,6 +593,43 @@ export class OrderBoxService {
         return codes;
     }
 
+    /**
+     * 按「箱内子集」过滤配送方式资格（治本：INELIGIBLE_SHIPPING_METHOD_ERROR）。
+     *
+     * 资格校验器（core default / 本插件 tiered）均以整单 subTotalWithTax 门槛（orderMinimum）判定。
+     * checkoutSplitted 会把源订单拆成各箱子集订单，某箱子集金额可能 < 门槛，
+     * 若仍把不达标方式列为可用/默认，对子单 setShippingMethod 会抛 INELIGIBLE_SHIPPING_METHOD_ERROR。
+     * 子集合格等价于所有合并/更大整单也合格（subtotal 单调），故按箱过滤不会丢失合法合并场景。
+     */
+    private isShippingMethodEligibleForBox(
+        _ctx: RequestContext,
+        method: any,
+        goodsTotal: number,
+        shippingAddress?: { province?: string } | null,
+    ): boolean {
+        const checker = method?.checker as
+            | { code?: string; arguments?: Array<{ name: string; value: string }> }
+            | undefined;
+        const args = checker?.arguments ?? [];
+        const arg = (name: string): string | undefined => args.find(a => a.name === name)?.value;
+
+        const orderMinimum = Number(arg('orderMinimum') ?? 0);
+        if (orderMinimum > 0 && goodsTotal < orderMinimum) return false;
+
+        const excludedAreas = arg('excludedAreas');
+        if (excludedAreas) {
+            const province = shippingAddress?.province ?? '';
+            if (province) {
+                const excluded = String(excludedAreas)
+                    .split(',')
+                    .map(s => s.trim())
+                    .filter(Boolean);
+                if (excluded.some(area => province.includes(area))) return false;
+            }
+        }
+        return true;
+    }
+
     /** 兼容单箱传入的支付方式白名单解析。 */
     async resolvePaymentCodesForBox(ctx: RequestContext, box: Pick<OrderBox, 'profileId'>): Promise<string[]> {
         if (!box.profileId) return [];
@@ -610,7 +655,14 @@ export class OrderBoxService {
 
         const orderedMethodIds = boxes
             .filter(b => effectiveKeys.includes(b.boxKey))
-            .map(b => selectionsMap[b.boxKey]?.shippingMethodId ?? b.defaultShippingMethodId)
+            .map(b => {
+                const chosen = selectionsMap[b.boxKey]?.shippingMethodId ?? b.defaultShippingMethodId;
+                // 所选方式若已不在该箱「合格可用集」（如金额/地址达标后旧选择失效），回退到首个合格方式，
+                // 防止 checkoutSplitted 对子单 setShippingMethod 抛 INELIGIBLE_SHIPPING_METHOD_ERROR。
+                const avail = (b.availableShippingMethodIds ?? []).map((id: ID) => String(id));
+                if (chosen != null && avail.includes(String(chosen))) return chosen;
+                return b.defaultShippingMethodId;
+            })
             .filter((id): id is ID => !!id);
         if (orderedMethodIds.length === 0) return order;
 

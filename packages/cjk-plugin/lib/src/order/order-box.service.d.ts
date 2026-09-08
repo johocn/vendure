@@ -137,6 +137,15 @@ export declare class OrderBoxService {
      * - 未绑定 → 回退租户默认支付档案。
      */
     resolvePaymentCodesForProfile(ctx: RequestContext, shippingProfileId: ID): Promise<string[]>;
+    /**
+     * 按「箱内子集」过滤配送方式资格（治本：INELIGIBLE_SHIPPING_METHOD_ERROR）。
+     *
+     * 资格校验器（core default / 本插件 tiered）均以整单 subTotalWithTax 门槛（orderMinimum）判定。
+     * checkoutSplitted 会把源订单拆成各箱子集订单，某箱子集金额可能 < 门槛，
+     * 若仍把不达标方式列为可用/默认，对子单 setShippingMethod 会抛 INELIGIBLE_SHIPPING_METHOD_ERROR。
+     * 子集合格等价于所有合并/更大整单也合格（subtotal 单调），故按箱过滤不会丢失合法合并场景。
+     */
+    private isShippingMethodEligibleForBox;
     /** 兼容单箱传入的支付方式白名单解析。 */
     resolvePaymentCodesForBox(ctx: RequestContext, box: Pick<OrderBox, 'profileId'>): Promise<string[]>;
     /**
