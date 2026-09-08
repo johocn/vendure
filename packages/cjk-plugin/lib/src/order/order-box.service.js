@@ -513,7 +513,7 @@ let OrderBoxService = class OrderBoxService {
      * 未传则读取 order.customFields.boxShippingSelections。每箱未显式选择时用该箱默认配送方式兜底。
      */
     async setShippingForOrder(ctx, order, boxKeys, selections) {
-        var _a, _b;
+        var _a, _b, _c;
         const boxes = await this.computeOrderBoxes(ctx, order);
         const effectiveKeys = boxes.filter(b => boxKeys.includes(b.boxKey)).map(b => b.boxKey);
         if (effectiveKeys.length === 0)
@@ -534,9 +534,22 @@ let OrderBoxService = class OrderBoxService {
             .filter((id) => !!id);
         if (orderedMethodIds.length === 0)
             return order;
+        // —— 渠道绑定修复（治本：INELIGIBLE_SHIPPING_METHOD_ERROR）——
+        // 箱的可用配送方式来自配送档案绑定（findShippingMethodsByIds，渠道无关），
+        // 而核心 setShippingMethod 按订单渠道隔离（findOneInChannel）。store-pickup 等全局
+        // 自提方式若未显式绑定到本租户渠道（如 t2=channel 37），会被判为不合格而结算失败。
+        // 这里在调用核心前把本箱将使用的配送方式幂等绑定到订单所在渠道，任意租户渠道均可结算。
+        for (const mid of orderedMethodIds) {
+            try {
+                await this.channelService.assignToChannels(ctx, core_1.ShippingMethod, mid, [ctx.channelId]);
+            }
+            catch (e) {
+                core_1.Logger.warn(`ensureShippingMethodInChannel skipped method=${mid} channel=${ctx.channelId}: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, constants_1.loggerCtx);
+            }
+        }
         const result = await this.orderService.setShippingMethod(ctx, order.id, orderedMethodIds);
         if ((0, core_1.isGraphQlErrorResult)(result)) {
-            throw new core_1.UserInputError((_a = result.message) !== null && _a !== void 0 ? _a : 'SET_SHIPPING_METHOD_FAILED');
+            throw new core_1.UserInputError((_b = result.message) !== null && _b !== void 0 ? _b : 'SET_SHIPPING_METHOD_FAILED');
         }
         // —— 订单级履约标记（治本）：按本次涉及箱型写入 deliveryType ——
         // 纯自提箱（仅 pickup）→ 'pickup'；含任意配送箱 → 'delivery'。
@@ -550,7 +563,7 @@ let OrderBoxService = class OrderBoxService {
         if (cfPatch.deliveryType === 'pickup') {
             // 订单级 selectedPickupLocationId 若缺失，从该箱选择快照补首选自提点（确认页/核销锚点用）
             for (const b of effBoxes) {
-                const pid = (_b = selectionsMap[b.boxKey]) === null || _b === void 0 ? void 0 : _b.pickupLocationId;
+                const pid = (_c = selectionsMap[b.boxKey]) === null || _c === void 0 ? void 0 : _c.pickupLocationId;
                 if (pid != null) {
                     cfPatch.selectedPickupLocationIdId = String(pid);
                     break;

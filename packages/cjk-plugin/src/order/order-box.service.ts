@@ -7,6 +7,7 @@ import {
     Order,
     OrderService,
     RequestContext,
+    ShippingMethod,
     TransactionalConnection,
     UserInputError,
     isGraphQlErrorResult,
@@ -665,6 +666,22 @@ export class OrderBoxService {
             })
             .filter((id): id is ID => !!id);
         if (orderedMethodIds.length === 0) return order;
+
+        // —— 渠道绑定修复（治本：INELIGIBLE_SHIPPING_METHOD_ERROR）——
+        // 箱的可用配送方式来自配送档案绑定（findShippingMethodsByIds，渠道无关），
+        // 而核心 setShippingMethod 按订单渠道隔离（findOneInChannel）。store-pickup 等全局
+        // 自提方式若未显式绑定到本租户渠道（如 t2=channel 37），会被判为不合格而结算失败。
+        // 这里在调用核心前把本箱将使用的配送方式幂等绑定到订单所在渠道，任意租户渠道均可结算。
+        for (const mid of orderedMethodIds) {
+            try {
+                await this.channelService.assignToChannels(ctx, ShippingMethod, mid, [ctx.channelId]);
+            } catch (e: any) {
+                Logger.warn(
+                    `ensureShippingMethodInChannel skipped method=${mid} channel=${ctx.channelId}: ${e?.message ?? e}`,
+                    loggerCtx,
+                );
+            }
+        }
 
         const result = await this.orderService.setShippingMethod(ctx, order.id, orderedMethodIds);
         if (isGraphQlErrorResult(result)) {
