@@ -22,6 +22,20 @@ export class TenantCatalogService {
         private connection: TransactionalConnection,
     ) {}
 
+    /** product-id-filter 的 productIds 参数解析：兼容历史遗留的 JSON 字符串与规范的 ID[] 数组两种存法。 */
+    private normalizeProductIds(value: unknown): ID[] {
+        if (Array.isArray(value)) return value.map(String);
+        if (typeof value === 'string') {
+            try {
+                const parsed = JSON.parse(value);
+                return Array.isArray(parsed) ? parsed.map(String) : [];
+            } catch {
+                return value ? [value] : [];
+            }
+        }
+        return [];
+    }
+
     /**
      * 创建租户分类后，主动从默认渠道摘除，实现「租户分类只挂租户渠道、进默认商城」双轨隔离。
      * 不能走 removeCollectionsFromChannel（会对默认渠道抛错），须直接 channelService.removeFromChannels。
@@ -45,34 +59,38 @@ export class TenantCatalogService {
         const repo = this.connection.getRepository(ctx, Collection);
         const collection = await repo.findOne({
             where: { id: String(collectionId) },
-            relations: ['channels'],
         } as any);
         if (!collection) return;
-        const filters: any[] = (collection as any).filters ?? [];
+        const filters: any[] = collection.filters ?? [];
         const productIdFilter = filters.find((f: any) => f.code === 'product-id-filter');
         if (productIdFilter) {
             const arg = productIdFilter.arguments?.find((a: any) => a.name === 'productIds');
-            const existing: string[] = arg ? (JSON.parse(arg.value || '[]') as string[]) : [];
+            const existing = this.normalizeProductIds(arg?.value);
             if (!existing.includes(String(productId))) {
-                const target: any = arg ?? { name: 'productIds', value: '[]' };
-                target.value = JSON.stringify([...existing, String(productId)]);
-                if (!productIdFilter.arguments) {
-                    productIdFilter.arguments = [target];
-                } else if (!productIdFilter.arguments.includes(target)) {
-                    productIdFilter.arguments.push(target);
+                if (arg) {
+                    arg.value = [...existing, String(productId)];
+                } else {
+                    productIdFilter.arguments.push({
+                        name: 'productIds',
+                        value: [String(productId)],
+                    } as any);
                 }
             }
         } else {
             filters.push({
                 code: 'product-id-filter',
                 arguments: [
-                    { name: 'productIds', value: JSON.stringify([String(productId)]) },
-                    { name: 'combineWithAnd', value: 'false' },
+                    { name: 'productIds', value: [String(productId)] },
+                    { name: 'combineWithAnd', value: false },
                 ],
             });
         }
-        collection.filters = filters;
-        await repo.save(collection);
+        // 用 repo.update 显式只更新 filters 列（无条件发 UPDATE，绕开 TypeORM save() 对 simple-json 的引用级脏检测，确保真正持久化）。
+        await repo.update(collection.id, { filters } as any);
+        // 重新计算该分类的变体成员，使商品立即出现在分类列表页（等价 updateCollection 的 applyCollectionFilters）。
+        await this.collectionService.triggerApplyFiltersJob(ctx, {
+            collectionIds: [collection.id],
+        });
     }
 
     /**

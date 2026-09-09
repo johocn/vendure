@@ -1342,8 +1342,8 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x;
             // 注入 authSecret 到 crypto 模块（configuration 在 bootstrap 早期执行，此时 options 已可用）
             (0, crypto_1.setAuthSecret)(CjkPlugin.options.authSecret);
-            // 租户级税率开关：Channel.customFields.taxEnabled=false 时订单行零税率（净价结算），
-            // 否则回退 Vendure 默认单税率。默认开启，存量租户行为不变。
+            // 租户级税率方式（三态 taxMode：inclusive 含税价含拆税 / zero 零税价净价结算 / exclusive 不含税价价税分离）。
+            // resolveTaxMode 兼容旧 taxEnabled（true→inclusive，false→zero），存量租户行为不回退。
             config.taxOptions = config.taxOptions || {};
             config.taxOptions.taxLineCalculationStrategy = new channel_tax_line_calculation_strategy_1.ChannelTaxLineCalculationStrategy();
             // 注册 SSO 策略到 shop 端（init 钩子由 Vendure 自动调用）
