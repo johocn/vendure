@@ -50,6 +50,10 @@ let OrderBoxShopResolver = class OrderBoxShopResolver {
             'lines',
             'lines.productVariant',
             'lines.productVariant.product',
+            // 商品行主图 & 变体/商品主图（featureAssetSource 取值来源，缺漏则行图空白）
+            'lines.featuredAsset',
+            'lines.productVariant.featuredAsset',
+            'lines.productVariant.product.featuredAsset',
             'shippingLines',
             'customer',
         ]);
@@ -66,6 +70,9 @@ let OrderBoxShopResolver = class OrderBoxShopResolver {
             'lines',
             'lines.productVariant',
             'lines.productVariant.product',
+            'lines.featuredAsset',
+            'lines.productVariant.featuredAsset',
+            'lines.productVariant.product.featuredAsset',
             'shippingLines',
             'customer',
         ]);
