@@ -5,8 +5,8 @@ export declare class TenantCatalogService {
     private channelService;
     private connection;
     constructor(collectionService: CollectionService, channelService: ChannelService, connection: TransactionalConnection);
-    /** product-id-filter 的 productIds 参数解析：兼容历史遗留的 JSON 字符串与规范的 ID[] 数组两种存法。 */
-    private normalizeProductIds;
+    /** 解析 productIds 参数值：Vendure ConfigArg 中 list 型参数以 JSON 字符串存储（如 '[60]' / '["60"]'），兼容数组。 */
+    private parseIdList;
     /**
      * 创建租户分类后，主动从默认渠道摘除，实现「租户分类只挂租户渠道、进默认商城」双轨隔离。
      * 不能走 removeCollectionsFromChannel（会对默认渠道抛错），须直接 channelService.removeFromChannels。

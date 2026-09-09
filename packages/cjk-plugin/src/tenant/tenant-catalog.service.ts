@@ -22,8 +22,8 @@ export class TenantCatalogService {
         private connection: TransactionalConnection,
     ) {}
 
-    /** product-id-filter 的 productIds 参数解析：兼容历史遗留的 JSON 字符串与规范的 ID[] 数组两种存法。 */
-    private normalizeProductIds(value: unknown): ID[] {
+    /** 解析 productIds 参数值：Vendure ConfigArg 中 list 型参数以 JSON 字符串存储（如 '[60]' / '["60"]'），兼容数组。 */
+    private parseIdList(value: unknown): ID[] {
         if (Array.isArray(value)) return value.map(String);
         if (typeof value === 'string') {
             try {
@@ -61,27 +61,30 @@ export class TenantCatalogService {
             where: { id: String(collectionId) },
         } as any);
         if (!collection) return;
-        const filters: any[] = collection.filters ?? [];
-        const productIdFilter = filters.find((f: any) => f.code === 'product-id-filter');
+        // Vendure ConfigurableOperation 标准形态：{ code, args: [{name, value}] }，list 参数值存 JSON 字符串。
+        const filters: Array<{ code: string; args: Array<{ name: string; value: unknown }> }> =
+            collection.filters ?? [];
+        const productIdFilter = filters.find(f => f.code === 'product-id-filter');
         if (productIdFilter) {
-            const arg = productIdFilter.arguments?.find((a: any) => a.name === 'productIds');
-            const existing = this.normalizeProductIds(arg?.value);
+            const idsArg = productIdFilter.args?.find(a => a.name === 'productIds');
+            const existing = this.parseIdList(idsArg?.value);
             if (!existing.includes(String(productId))) {
-                if (arg) {
-                    arg.value = [...existing, String(productId)];
+                const newValue = JSON.stringify([...existing, String(productId)]);
+                if (idsArg) {
+                    idsArg.value = newValue;
                 } else {
-                    productIdFilter.arguments.push({
+                    (productIdFilter.args = productIdFilter.args ?? []).push({
                         name: 'productIds',
-                        value: [String(productId)],
-                    } as any);
+                        value: newValue,
+                    });
                 }
             }
         } else {
             filters.push({
                 code: 'product-id-filter',
-                arguments: [
-                    { name: 'productIds', value: [String(productId)] },
-                    { name: 'combineWithAnd', value: false },
+                args: [
+                    { name: 'productIds', value: JSON.stringify([String(productId)]) },
+                    { name: 'combineWithAnd', value: 'false' },
                 ],
             });
         }

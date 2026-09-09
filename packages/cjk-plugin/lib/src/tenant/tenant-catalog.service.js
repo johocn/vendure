@@ -18,8 +18,8 @@ let TenantCatalogService = class TenantCatalogService {
         this.channelService = channelService;
         this.connection = connection;
     }
-    /** product-id-filter 的 productIds 参数解析：兼容历史遗留的 JSON 字符串与规范的 ID[] 数组两种存法。 */
-    normalizeProductIds(value) {
+    /** 解析 productIds 参数值：Vendure ConfigArg 中 list 型参数以 JSON 字符串存储（如 '[60]' / '["60"]'），兼容数组。 */
+    parseIdList(value) {
         if (Array.isArray(value))
             return value.map(String);
         if (typeof value === 'string') {
@@ -49,26 +49,28 @@ let TenantCatalogService = class TenantCatalogService {
     }
     /** 把商品 ID 追加进平台分类的 productId 过滤器（只增；非 productId 独过滤器则新建一条 productId 过滤器，不改其它过滤器）。 */
     async addProductToCollection(ctx, productId, collectionId) {
-        var _a, _b;
+        var _a, _b, _c;
         const repo = this.connection.getRepository(ctx, core_1.Collection);
         const collection = await repo.findOne({
             where: { id: String(collectionId) },
         });
         if (!collection)
             return;
+        // Vendure ConfigurableOperation 标准形态：{ code, args: [{name, value}] }，list 参数值存 JSON 字符串。
         const filters = (_a = collection.filters) !== null && _a !== void 0 ? _a : [];
-        const productIdFilter = filters.find((f) => f.code === 'product-id-filter');
+        const productIdFilter = filters.find(f => f.code === 'product-id-filter');
         if (productIdFilter) {
-            const arg = (_b = productIdFilter.arguments) === null || _b === void 0 ? void 0 : _b.find((a) => a.name === 'productIds');
-            const existing = this.normalizeProductIds(arg === null || arg === void 0 ? void 0 : arg.value);
+            const idsArg = (_b = productIdFilter.args) === null || _b === void 0 ? void 0 : _b.find(a => a.name === 'productIds');
+            const existing = this.parseIdList(idsArg === null || idsArg === void 0 ? void 0 : idsArg.value);
             if (!existing.includes(String(productId))) {
-                if (arg) {
-                    arg.value = [...existing, String(productId)];
+                const newValue = JSON.stringify([...existing, String(productId)]);
+                if (idsArg) {
+                    idsArg.value = newValue;
                 }
                 else {
-                    productIdFilter.arguments.push({
+                    (productIdFilter.args = (_c = productIdFilter.args) !== null && _c !== void 0 ? _c : []).push({
                         name: 'productIds',
-                        value: [String(productId)],
+                        value: newValue,
                     });
                 }
             }
@@ -76,9 +78,9 @@ let TenantCatalogService = class TenantCatalogService {
         else {
             filters.push({
                 code: 'product-id-filter',
-                arguments: [
-                    { name: 'productIds', value: [String(productId)] },
-                    { name: 'combineWithAnd', value: false },
+                args: [
+                    { name: 'productIds', value: JSON.stringify([String(productId)]) },
+                    { name: 'combineWithAnd', value: 'false' },
                 ],
             });
         }
