@@ -44,6 +44,8 @@ export interface SsoProvider {
     channelCode?: string;
     userInfoMapping?: {
         externalIdField?: string;
+        /** SSO 用户表的自增数字主键字段名（默认 'id'，用于复建本地 ssoId，原样写入不补位） */
+        idField?: string;
         emailField?: string;
         nicknameField?: string;
         mobileField?: string;

@@ -14,5 +14,11 @@ export const customerCustomFields: CustomFields = {
             nullable: true,
             public: false,
         },
+        {
+            name: 'ssoUid',
+            type: 'string',
+            nullable: true,
+            public: false,
+        },
     ],
 };

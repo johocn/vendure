@@ -90,6 +90,8 @@ class SsoAuthenticationStrategy {
             const nickname = this.getField(userInfo, provider, 'nicknameField', provider.protocol === 'zhao-sso' ? 'nickname' : 'name');
             const mobile = this.getField(userInfo, provider, 'mobileField', 'mobile');
             const avatar = this.getField(userInfo, provider, 'avatarField', 'avatar_url');
+            // sso 数字 id 号（如 zhao-sso 的自增主键 id，短小好记）；本地 ssoId 字段按此原样复建，不补位
+            const ssoNumericId = this.getField(userInfo, provider, 'idField', 'id');
             // 4. 统一映射 / 本地互认 / 建档（落 ExternalAuthenticationMethod 映射表）
             const result = await this.resolveSsoUser(ctx, provider, externalId, email, nickname, mobile, avatar);
             // ssoId / inviteCode / 自动分销均挂在 Customer 维度：先把 User.id 解析成真实 Customer.id，
@@ -98,14 +100,16 @@ class SsoAuthenticationStrategy {
             if (result && typeof result === 'object') {
                 const customer = await this.customerService.findOneByUserId(ctx, result.id, false);
                 if (customer) {
-                    // ssoId 复建到本地顾客字段（幂等：仅当未写入时补齐 SSO uuid）
+                    // ssoId：直接复建 SSO 的数字 id（自增主键，短小好记），原样写入、不补位；
+                    // 幂等：仅当字段为空时写入，避免覆盖后续可能被手动修正的值。
                     const cid = String(customer.id);
                     const cf = customer.customFields || {};
-                    if (externalId && !cf.ssoId) {
+                    const numericId = String(ssoNumericId !== null && ssoNumericId !== void 0 ? ssoNumericId : '');
+                    if (numericId && !cf.ssoId) {
                         try {
                             await this.customerService.update(ctx, {
                                 id: customer.id,
-                                customFields: { ssoId: externalId },
+                                customFields: { ssoId: numericId },
                             });
                         }
                         catch (e) {
