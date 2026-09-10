@@ -29,4 +29,12 @@ export declare class MerchantSettlementLedger extends VendureEntity {
     status: string | null;
     /** 记账 / 收款时点 */
     occurredAt: Date;
+    /** 核销/收款渠道 id：到店收款归属的收款方（门店/租户）渠道；在线分账行为空 */
+    collectorChannelId: string | null;
+    /** 核销人 / 收款人显示名（核销并确认收款时的经手人；核销人即收款人） */
+    collectorName: string | null;
+    /** 订单单号冗余快照（展示用，避免每次 join 订单） */
+    orderCode: string | null;
+    /** 到店核销收款确认时点（区别于 occurredAt 记账时点） */
+    collectedAt: Date | null;
 }

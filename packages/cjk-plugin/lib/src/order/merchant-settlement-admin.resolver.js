@@ -27,14 +27,17 @@ let MerchantSettlementAdminResolver = class MerchantSettlementAdminResolver {
     async merchantSettlementLedgers(ctx, orderId) {
         const repo = this.connection.getRepository(ctx, merchant_settlement_ledger_entity_1.MerchantSettlementLedger);
         const qb = repo.createQueryBuilder('l');
-        // 全局渠道（superadmin）看全部；租户/门店管理按当前渠道隔离，只看本店台账
+        // 全局渠道（superadmin）看全部；租户/门店管理按当前渠道隔离：既看本渠道作为商品归属商户的
+        // 分账（tenantChannelId），也看本渠道经手到店核销收款的记录（collectorChannelId，核销人即收款人）。
         if (Number(ctx.channelId) !== 1) {
-            qb.where('l.tenantChannelId = :cid', { cid: String(ctx.channelId) });
+            const cid = String(ctx.channelId);
+            qb.andWhere('(l.tenantChannelId = :cid OR l.collectorChannelId = :cid)', { cid });
         }
         if (orderId) {
             qb.andWhere('l.orderId = :oid', { oid: String(orderId) });
         }
-        qb.orderBy('l.occurredAt', 'DESC').addOrderBy('l.id', 'DESC');
+        qb.orderBy('COALESCE(l.collectedAt, l.occurredAt)', 'DESC');
+        qb.addOrderBy('l.id', 'DESC');
         return qb.getMany();
     }
 };

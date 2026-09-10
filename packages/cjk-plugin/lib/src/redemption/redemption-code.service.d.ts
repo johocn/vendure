@@ -35,8 +35,24 @@ export declare class RedemptionCodeService {
      * 未配置时回退环境变量 REDEMPTION_COLLECT_MODE=force，默认 optional（只高亮不强制）。
      */
     collectMode(ctx: RequestContext): CollectMode;
-    /** COD 收款后把该订单的分账台账 PENDING_SIGN → PAID（在线支付结算时即 PAID，无需翻转） */
-    private flipLedgerToPaid;
+    /**
+     * 解析核销人（收款人）显示名：优先按当前后台用户在「当前收款渠道」下的
+     * TenantMember.displayName → Administrator.lastName → 账号标识 逐级兜底。
+     * best-effort：任一步失败回退下一级，最终兜底为空串（前端显示「—」）。
+     */
+    private resolveCollectorName;
+    /**
+     * 到店/货到付款确认收款后，登记/翻转「收款台账」为 PAID，并把该收款归属到当前
+     * 核销（收款）渠道（核销人即收款人）。
+     *
+     * 确保按 (orderId, collectorChannelId) 幂等地存在一条 PAID 收款行：
+     *  - 该订单在该收款渠道已存在台账行（如结算拆单时写过的 PENDING_SIGN 行）→ 补写收款信息；
+     *  - 否则新建一行收款记录（金额 = 该单应付总额，归属当前收款渠道）。
+     * 关键：不再仅按 orderId 翻转（旧 flipLedgerToPaid 只对既有行 UPDATE，且 row.tenantChannelId
+     * 是商品归属商户渠道，与核销渠道可能不同 → 渠道过滤时被隐藏）。这里把收款归属到核销渠道本身，
+     * 保证「核销后金额在收款台账可见」。
+     */
+    private recordCollection;
     /**
      * 收款确认后推进订单状态至「已提货（Delivered）」：
      *  - COD（到店/货到付款）先结算 Authorized 支付 → 订单自动 PaymentAuthorized → PaymentSettled；

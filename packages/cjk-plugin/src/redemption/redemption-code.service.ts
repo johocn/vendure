@@ -13,6 +13,8 @@ import {
     computeRedemptionStatus, RedemptionStatus,
 } from './redemption-crypto';
 import { MerchantSettlementLedger } from '../order/merchant-settlement-ledger.entity';
+import { TenantMember } from '../tenant/tenant-member.entity';
+import { Administrator } from '@vendure/core';
 
 const loggerCtx = 'RedemptionCodeService';
 
@@ -87,16 +89,98 @@ export class RedemptionCodeService {
         return 'optional';
     }
 
-    /** COD 收款后把该订单的分账台账 PENDING_SIGN → PAID（在线支付结算时即 PAID，无需翻转） */
-    private async flipLedgerToPaid(ctx: RequestContext, orderId: ID): Promise<void> {
-        await this.connection
-            .getRepository(ctx, MerchantSettlementLedger)
-            .createQueryBuilder()
-            .update(MerchantSettlementLedger)
-            .set({ status: 'PAID', occurredAt: new Date() })
-            .where('orderId = :oid', { oid: String(orderId) })
-            .andWhere("status = 'PENDING_SIGN'")
-            .execute();
+    /**
+     * 解析核销人（收款人）显示名：优先按当前后台用户在「当前收款渠道」下的
+     * TenantMember.displayName → Administrator.lastName → 账号标识 逐级兜底。
+     * best-effort：任一步失败回退下一级，最终兜底为空串（前端显示「—」）。
+     */
+    private async resolveCollectorName(ctx: RequestContext): Promise<string> {
+        const uid = (ctx as any).activeUserId ?? (ctx as any).session?.user?.id;
+        if (!uid) return '';
+        try {
+            const m = await this.connection
+                .getRepository(ctx, TenantMember)
+                .createQueryBuilder('m')
+                .leftJoinAndSelect('m.administrator', 'a')
+                .where('a.userId = :uid', { uid: String(uid) })
+                .andWhere('m.channelId = :cid', { cid: String(ctx.channelId) })
+                .getOne();
+            if (m?.displayName) return m.displayName;
+            if (m?.administrator?.lastName) return m.administrator.lastName;
+        } catch {
+            /* fall through */
+        }
+        try {
+            const admin = await this.connection
+                .getRepository(ctx, Administrator)
+                .createQueryBuilder('a')
+                .where('a.userId = :uid', { uid: String(uid) })
+                .getOne();
+            if (admin?.lastName) return admin.lastName;
+        } catch {
+            /* fall through */
+        }
+        return ((ctx as any).session?.user?.identifier ?? '') || '';
+    }
+
+    /**
+     * 到店/货到付款确认收款后，登记/翻转「收款台账」为 PAID，并把该收款归属到当前
+     * 核销（收款）渠道（核销人即收款人）。
+     *
+     * 确保按 (orderId, collectorChannelId) 幂等地存在一条 PAID 收款行：
+     *  - 该订单在该收款渠道已存在台账行（如结算拆单时写过的 PENDING_SIGN 行）→ 补写收款信息；
+     *  - 否则新建一行收款记录（金额 = 该单应付总额，归属当前收款渠道）。
+     * 关键：不再仅按 orderId 翻转（旧 flipLedgerToPaid 只对既有行 UPDATE，且 row.tenantChannelId
+     * 是商品归属商户渠道，与核销渠道可能不同 → 渠道过滤时被隐藏）。这里把收款归属到核销渠道本身，
+     * 保证「核销后金额在收款台账可见」。
+     */
+    private async recordCollection(ctx: RequestContext, order: Order, collectorName: string): Promise<void> {
+        const cid = String(ctx.channelId);
+        const repo = this.connection.getRepository(ctx, MerchantSettlementLedger);
+        const amount = Math.round(order.totalWithTax ?? 0);
+        const method = (order.payments ?? [])[0]?.method ?? null;
+        const patch: Partial<MerchantSettlementLedger> = {
+            status: 'PAID',
+            collectorChannelId: cid,
+            collectorName: collectorName || null,
+            orderCode: order.code,
+            collectedAt: new Date(),
+            occurredAt: new Date(),
+        };
+        const existing = await repo
+            .createQueryBuilder('l')
+            .where('l.orderId = :oid', { oid: String(order.id) })
+            .andWhere('l.collectorChannelId = :cid', { cid })
+            .getOne();
+        if (existing) {
+            await repo.update(existing.id, patch);
+            return;
+        }
+        // 当前收款渠道下无采集行 → 若有该渠道的既有行（tenantChannelId=本渠道）复用补全；
+        // 否则新建一行收款记录（金额 = 单应付总额，归属当前收款渠道）
+        const byTenant = await repo
+            .createQueryBuilder('l')
+            .where('l.orderId = :oid', { oid: String(order.id) })
+            .andWhere('l.tenantChannelId = :cid', { cid })
+            .getOne();
+        if (byTenant) {
+            await repo.update(byTenant.id, patch);
+            return;
+        }
+        const row = repo.create({
+            orderId: String(order.id),
+            tenantChannelId: cid,
+            tenantName: ctx.channel?.code ?? null,
+            amount,
+            settleMethod: method,
+            status: 'PAID',
+            collectorChannelId: cid,
+            collectorName: collectorName || null,
+            orderCode: order.code,
+            occurredAt: new Date(),
+            collectedAt: new Date(),
+        });
+        await repo.save(row);
     }
 
     /**
@@ -377,7 +461,8 @@ export class RedemptionCodeService {
                     collected: true,
                     redeemCollectedAt: new Date().toISOString(),
                 } as any);
-                await this.flipLedgerToPaid(ctx, orderId);
+                // 核销人即收款人：登记归属当前收款渠道的 PAID 台账行（幂等）
+                await this.recordCollection(ctx, order, await this.resolveCollectorName(ctx));
                 collected = true;
             }
         }

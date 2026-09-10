@@ -914,12 +914,16 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                 type MerchantSettlementLedgerItem {
                     id: ID!
                     orderId: String
+                    orderCode: String
                     tenantChannelId: String
                     tenantName: String
                     amount: Int!
                     settleMethod: String
                     status: String
                     occurredAt: String
+                    collectorChannelId: String
+                    collectorName: String
+                    collectedAt: String
                 }
 
                 extend type Query {

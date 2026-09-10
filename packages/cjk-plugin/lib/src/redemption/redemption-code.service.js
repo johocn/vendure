@@ -14,6 +14,8 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const redemption_crypto_1 = require("./redemption-crypto");
 const merchant_settlement_ledger_entity_1 = require("../order/merchant-settlement-ledger.entity");
+const tenant_member_entity_1 = require("../tenant/tenant-member.entity");
+const core_2 = require("@vendure/core");
 const loggerCtx = 'RedemptionCodeService';
 /** 到店/货到付款（COD）支付方式 code，命中即需收银确认；与 nshop 确认页 & 旧 pickup 收银一致 */
 exports.COD_PAYMENT_CODES = [
@@ -60,16 +62,105 @@ let RedemptionCodeService = class RedemptionCodeService {
             return 'force';
         return 'optional';
     }
-    /** COD 收款后把该订单的分账台账 PENDING_SIGN → PAID（在线支付结算时即 PAID，无需翻转） */
-    async flipLedgerToPaid(ctx, orderId) {
-        await this.connection
-            .getRepository(ctx, merchant_settlement_ledger_entity_1.MerchantSettlementLedger)
-            .createQueryBuilder()
-            .update(merchant_settlement_ledger_entity_1.MerchantSettlementLedger)
-            .set({ status: 'PAID', occurredAt: new Date() })
-            .where('orderId = :oid', { oid: String(orderId) })
-            .andWhere("status = 'PENDING_SIGN'")
-            .execute();
+    /**
+     * 解析核销人（收款人）显示名：优先按当前后台用户在「当前收款渠道」下的
+     * TenantMember.displayName → Administrator.lastName → 账号标识 逐级兜底。
+     * best-effort：任一步失败回退下一级，最终兜底为空串（前端显示「—」）。
+     */
+    async resolveCollectorName(ctx) {
+        var _a, _b, _c, _d, _e, _f, _g;
+        const uid = (_a = ctx.activeUserId) !== null && _a !== void 0 ? _a : (_c = (_b = ctx.session) === null || _b === void 0 ? void 0 : _b.user) === null || _c === void 0 ? void 0 : _c.id;
+        if (!uid)
+            return '';
+        try {
+            const m = await this.connection
+                .getRepository(ctx, tenant_member_entity_1.TenantMember)
+                .createQueryBuilder('m')
+                .leftJoinAndSelect('m.administrator', 'a')
+                .where('a.userId = :uid', { uid: String(uid) })
+                .andWhere('m.channelId = :cid', { cid: String(ctx.channelId) })
+                .getOne();
+            if (m === null || m === void 0 ? void 0 : m.displayName)
+                return m.displayName;
+            if ((_d = m === null || m === void 0 ? void 0 : m.administrator) === null || _d === void 0 ? void 0 : _d.lastName)
+                return m.administrator.lastName;
+        }
+        catch (_h) {
+            /* fall through */
+        }
+        try {
+            const admin = await this.connection
+                .getRepository(ctx, core_2.Administrator)
+                .createQueryBuilder('a')
+                .where('a.userId = :uid', { uid: String(uid) })
+                .getOne();
+            if (admin === null || admin === void 0 ? void 0 : admin.lastName)
+                return admin.lastName;
+        }
+        catch (_j) {
+            /* fall through */
+        }
+        return ((_g = (_f = (_e = ctx.session) === null || _e === void 0 ? void 0 : _e.user) === null || _f === void 0 ? void 0 : _f.identifier) !== null && _g !== void 0 ? _g : '') || '';
+    }
+    /**
+     * 到店/货到付款确认收款后，登记/翻转「收款台账」为 PAID，并把该收款归属到当前
+     * 核销（收款）渠道（核销人即收款人）。
+     *
+     * 确保按 (orderId, collectorChannelId) 幂等地存在一条 PAID 收款行：
+     *  - 该订单在该收款渠道已存在台账行（如结算拆单时写过的 PENDING_SIGN 行）→ 补写收款信息；
+     *  - 否则新建一行收款记录（金额 = 该单应付总额，归属当前收款渠道）。
+     * 关键：不再仅按 orderId 翻转（旧 flipLedgerToPaid 只对既有行 UPDATE，且 row.tenantChannelId
+     * 是商品归属商户渠道，与核销渠道可能不同 → 渠道过滤时被隐藏）。这里把收款归属到核销渠道本身，
+     * 保证「核销后金额在收款台账可见」。
+     */
+    async recordCollection(ctx, order, collectorName) {
+        var _a, _b, _c, _d, _e, _f;
+        const cid = String(ctx.channelId);
+        const repo = this.connection.getRepository(ctx, merchant_settlement_ledger_entity_1.MerchantSettlementLedger);
+        const amount = Math.round((_a = order.totalWithTax) !== null && _a !== void 0 ? _a : 0);
+        const method = (_d = (_c = ((_b = order.payments) !== null && _b !== void 0 ? _b : [])[0]) === null || _c === void 0 ? void 0 : _c.method) !== null && _d !== void 0 ? _d : null;
+        const patch = {
+            status: 'PAID',
+            collectorChannelId: cid,
+            collectorName: collectorName || null,
+            orderCode: order.code,
+            collectedAt: new Date(),
+            occurredAt: new Date(),
+        };
+        const existing = await repo
+            .createQueryBuilder('l')
+            .where('l.orderId = :oid', { oid: String(order.id) })
+            .andWhere('l.collectorChannelId = :cid', { cid })
+            .getOne();
+        if (existing) {
+            await repo.update(existing.id, patch);
+            return;
+        }
+        // 当前收款渠道下无采集行 → 若有该渠道的既有行（tenantChannelId=本渠道）复用补全；
+        // 否则新建一行收款记录（金额 = 单应付总额，归属当前收款渠道）
+        const byTenant = await repo
+            .createQueryBuilder('l')
+            .where('l.orderId = :oid', { oid: String(order.id) })
+            .andWhere('l.tenantChannelId = :cid', { cid })
+            .getOne();
+        if (byTenant) {
+            await repo.update(byTenant.id, patch);
+            return;
+        }
+        const row = repo.create({
+            orderId: String(order.id),
+            tenantChannelId: cid,
+            tenantName: (_f = (_e = ctx.channel) === null || _e === void 0 ? void 0 : _e.code) !== null && _f !== void 0 ? _f : null,
+            amount,
+            settleMethod: method,
+            status: 'PAID',
+            collectorChannelId: cid,
+            collectorName: collectorName || null,
+            orderCode: order.code,
+            occurredAt: new Date(),
+            collectedAt: new Date(),
+        });
+        await repo.save(row);
     }
     /**
      * 收款确认后推进订单状态至「已提货（Delivered）」：
@@ -343,7 +434,8 @@ let RedemptionCodeService = class RedemptionCodeService {
                     collected: true,
                     redeemCollectedAt: new Date().toISOString(),
                 });
-                await this.flipLedgerToPaid(ctx, orderId);
+                // 核销人即收款人：登记归属当前收款渠道的 PAID 台账行（幂等）
+                await this.recordCollection(ctx, order, await this.resolveCollectorName(ctx));
                 collected = true;
             }
         }

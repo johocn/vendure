@@ -62,6 +62,23 @@ __decorate([
     (0, typeorm_1.Column)({ type: 'timestamp' }),
     __metadata("design:type", Date)
 ], MerchantSettlementLedger.prototype, "occurredAt", void 0);
+__decorate([
+    (0, typeorm_1.Index)(),
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], MerchantSettlementLedger.prototype, "collectorChannelId", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], MerchantSettlementLedger.prototype, "collectorName", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], MerchantSettlementLedger.prototype, "orderCode", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
+    __metadata("design:type", Object)
+], MerchantSettlementLedger.prototype, "collectedAt", void 0);
 exports.MerchantSettlementLedger = MerchantSettlementLedger = __decorate([
     (0, typeorm_1.Entity)('merchant_settlement_ledger'),
     __metadata("design:paramtypes", [Object])
