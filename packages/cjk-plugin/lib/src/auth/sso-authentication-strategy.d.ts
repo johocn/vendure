@@ -37,6 +37,8 @@ export declare class SsoAuthenticationStrategy implements AuthenticationStrategy
     private resolveSsoUser;
     /** 按手机号查已有 Customer → 其关联 User（仅查未删除） */
     private findUserByPhone;
+    /** 按邮箱跨渠道查已有 Customer → 其关联 User（与 Vendure createCustomerAndUser 的邮箱合并同语义，避免跨渠道重复建档） */
+    private findUserByEmailAnyChannel;
     /** 让某个已存在 User 的 Customer 在当前渠道可用：customer 缺失则建档，存在则挂到当前渠道。
      *  避免为同一 user 在多个渠道重复创建 Customer（撞 customer.userId 唯一约束）。 */
     private ensureCustomerInChannel;

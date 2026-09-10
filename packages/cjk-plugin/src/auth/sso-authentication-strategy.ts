@@ -242,18 +242,22 @@ export class SsoAuthenticationStrategy implements AuthenticationStrategy<SsoAuth
         // 2) 至少同时校验 email+mobile 语义：避免仅凭空值误合并
         const hasIdentity = (email && email.trim()) || (mobile && mobile.trim());
 
-        // 3) 优先按手机号合并已有本地账号（Customer.phoneNumber 是独立列）
+        // 3) 优先按手机号合并已有本地账号（Customer.phoneNumber 是独立列，跨渠道查）
         let localUser: User | undefined;
         if (mobile) {
             localUser = await this.findUserByPhone(ctx, mobile);
         }
-        // 其次按邮箱（createCustomerAndUser 内部也会按邮箱合并，这里提前解析以复用同引用）
+        // 其次按邮箱合并。必须用与 Vendure createCustomerAndUser 同语义的跨渠道查询
+        // （findUserByEmailAnyChannel），不能用 userService.getUserByEmailAddress——
+        // 它按当前渠道过滤，会漏掉其他渠道已建档的顾客，放行下方 createCustomerAndUser；
+        // 而后者又按渠道过滤 findOneByUserId 判「是否已有 customer」，造成跨渠道下
+        // 对同一 user 再建 Customer，撞 customer.userId 唯一约束。
         if (!localUser && hasIdentity && email) {
-            const local = await this.userService.getUserByEmailAddress(ctx, email);
-            if (local) localUser = local;
+            localUser = await this.findUserByEmailAnyChannel(ctx, email);
         }
 
         if (localUser) {
+            await this.ensureCustomerInChannel(ctx, localUser);
             await this.bindSsoIdentity(ctx, localUser, externalKey);
             await this.syncCustomerProfile(ctx, localUser, email, nickname, mobile);
             return localUser;
@@ -275,6 +279,16 @@ export class SsoAuthenticationStrategy implements AuthenticationStrategy<SsoAuth
         const customer = await this.connection.getRepository(ctx, Customer).createQueryBuilder('c')
             .leftJoinAndSelect('c.user', 'user')
             .where('c.phoneNumber = :phone', { phone })
+            .andWhere('user.deletedAt IS NULL')
+            .getOne();
+        return customer?.user ?? undefined;
+    }
+
+    /** 按邮箱跨渠道查已有 Customer → 其关联 User（与 Vendure createCustomerAndUser 的邮箱合并同语义，避免跨渠道重复建档） */
+    private async findUserByEmailAnyChannel(ctx: RequestContext, email: string): Promise<User | undefined> {
+        const customer = await this.connection.getRepository(ctx, Customer).createQueryBuilder('c')
+            .leftJoinAndSelect('c.user', 'user')
+            .where('c.emailAddress = :email', { email })
             .andWhere('user.deletedAt IS NULL')
             .getOne();
         return customer?.user ?? undefined;
