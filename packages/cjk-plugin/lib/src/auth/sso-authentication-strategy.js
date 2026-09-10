@@ -32,14 +32,15 @@ class SsoAuthenticationStrategy {
         return (0, graphql_tag_1.gql) `
             input SsoAuthInput {
                 providerKey: String!
-                code: String!
+                code: String
+                accessToken: String
                 inviteCode: String
                 redirectUri: String
             }
         `;
     }
     async authenticate(ctx, data) {
-        var _a;
+        var _a, _b;
         const config = (0, crypto_1.readChannelAuthConfig)(ctx);
         if (!(config === null || config === void 0 ? void 0 : config.ssoProviders) || config.ssoProviders.length === 0) {
             core_1.Logger.warn('No SSO providers configured for channel', loggerCtx);
@@ -51,16 +52,22 @@ class SsoAuthenticationStrategy {
             return false;
         }
         try {
-            // 1/2. 获取用户信息：mock 模式下按 code 前缀直接构造（e2e 用，生产走真实换取）
+            // 1/2. 获取用户信息：
+            //   - accessToken 直验模式（统一页已登录回跳携带 token）：直接 call /v1/user/me 取号
+            //   - 授权码模式：先用 code 换 access_token，再取号
+            //   - mock 模式（e2e/本地）：按 code 前缀直接构造 userInfo
             let userInfo = null;
-            if (this.mockMode && data.code.startsWith('mock-')) {
+            if (data.accessToken && !this.mockMode) {
+                userInfo = await this.getUserInfo(provider, data.accessToken);
+            }
+            else if (this.mockMode && ((_a = data.code) === null || _a === void 0 ? void 0 : _a.startsWith('mock-'))) {
                 const payload = data.code.slice('mock-'.length);
                 const [kind, ident] = payload.split('__');
                 userInfo = kind === 'loc'
                     ? { uuid: `u_${ident}`, phone_number: ident, mobile: ident, nickname: 'mocked', email: '' }
                     : { uuid: `u_${ident}`, nickname: 'mocked', email: `${ident}@mock.test` };
             }
-            else {
+            else if (data.code) {
                 const tokenRes = await this.exchangeCodeForToken(provider, data.code, data.redirectUri);
                 if (!(tokenRes === null || tokenRes === void 0 ? void 0 : tokenRes.access_token)) {
                     core_1.Logger.warn('SSO token exchange failed', loggerCtx);
@@ -69,6 +76,7 @@ class SsoAuthenticationStrategy {
                 userInfo = await this.getUserInfo(provider, tokenRes.access_token);
             }
             if (!userInfo) {
+                core_1.Logger.warn('SSO userInfo is empty (no valid accessToken or code)', loggerCtx);
                 return false;
             }
             // 3. 映射字段
@@ -95,7 +103,7 @@ class SsoAuthenticationStrategy {
                     }
                     // 方案A：自动开通分销商（幂等，已存在则直接返回），并把邀请码写入 referredBy（推荐人码）
                     try {
-                        await ((_a = this.distributionService) === null || _a === void 0 ? void 0 : _a.apply(ctx, result.id, String(finalInviteCode)));
+                        await ((_b = this.distributionService) === null || _b === void 0 ? void 0 : _b.apply(ctx, result.id, String(finalInviteCode)));
                     }
                     catch (e) {
                         core_1.Logger.warn(`Failed to auto-apply distributor: ${e.message}`, loggerCtx);

@@ -23,7 +23,8 @@ const loggerCtx = 'SsoAuthenticationStrategy';
 
 interface SsoAuthData {
     providerKey: string;
-    code: string;
+    code?: string;
+    accessToken?: string;
     inviteCode?: string;
     redirectUri?: string;
 }
@@ -58,7 +59,8 @@ export class SsoAuthenticationStrategy implements AuthenticationStrategy<SsoAuth
         return gql`
             input SsoAuthInput {
                 providerKey: String!
-                code: String!
+                code: String
+                accessToken: String
                 inviteCode: String
                 redirectUri: String
             }
@@ -79,15 +81,20 @@ export class SsoAuthenticationStrategy implements AuthenticationStrategy<SsoAuth
         }
 
         try {
-            // 1/2. 获取用户信息：mock 模式下按 code 前缀直接构造（e2e 用，生产走真实换取）
+            // 1/2. 获取用户信息：
+            //   - accessToken 直验模式（统一页已登录回跳携带 token）：直接 call /v1/user/me 取号
+            //   - 授权码模式：先用 code 换 access_token，再取号
+            //   - mock 模式（e2e/本地）：按 code 前缀直接构造 userInfo
             let userInfo: any | null = null;
-            if (this.mockMode && data.code.startsWith('mock-')) {
+            if (data.accessToken && !this.mockMode) {
+                userInfo = await this.getUserInfo(provider, data.accessToken);
+            } else if (this.mockMode && data.code?.startsWith('mock-')) {
                 const payload = data.code.slice('mock-'.length);
                 const [kind, ident] = payload.split('__');
                 userInfo = kind === 'loc'
                     ? { uuid: `u_${ident}`, phone_number: ident, mobile: ident, nickname: 'mocked', email: '' }
                     : { uuid: `u_${ident}`, nickname: 'mocked', email: `${ident}@mock.test` };
-            } else {
+            } else if (data.code) {
                 const tokenRes = await this.exchangeCodeForToken(provider, data.code, data.redirectUri);
                 if (!tokenRes?.access_token) {
                     Logger.warn('SSO token exchange failed', loggerCtx);
@@ -96,6 +103,7 @@ export class SsoAuthenticationStrategy implements AuthenticationStrategy<SsoAuth
                 userInfo = await this.getUserInfo(provider, tokenRes.access_token);
             }
             if (!userInfo) {
+                Logger.warn('SSO userInfo is empty (no valid accessToken or code)', loggerCtx);
                 return false;
             }
 

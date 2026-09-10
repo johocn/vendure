@@ -3,7 +3,8 @@ import { DocumentNode } from 'graphql';
 import type { SsoProvider } from './auth-config.types';
 interface SsoAuthData {
     providerKey: string;
-    code: string;
+    code?: string;
+    accessToken?: string;
     inviteCode?: string;
     redirectUri?: string;
 }

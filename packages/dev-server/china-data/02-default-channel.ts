@@ -64,11 +64,11 @@ export async function populateDefaultChannel(app: INestApplication): Promise<voi
                     ssoProvidersJson: JSON.stringify([
                         {
                             name: '企业 SSO (h.joho.cn)',
-                            providerKey: 'zhao-sso-hjoho',
+                            providerKey: 'zhao-sso-youshop-default',
                             protocol: 'zhao-sso',
                             baseUrl: 'https://h.joho.cn/api/zhao-sso',
-                            clientId: 'vendure-default',
-                            clientSecret: 'default-app-secret',
+                            clientId: 'vendure-youshop',
+                            clientSecret: 'youshop-app-secret',
                             channelCode: 'default',
                         }
                     ]),
