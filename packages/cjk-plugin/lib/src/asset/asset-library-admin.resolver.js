@@ -29,9 +29,13 @@ let AssetLibraryAdminResolver = class AssetLibraryAdminResolver {
         this.connection = connection;
     }
     async assetLibrary(ctx, take = 30, skip = 0, tags, ids) {
-        const filtered = await this.loadFiltered(ctx);
         const cleanTags = (tags || []).map((t) => String(t).trim()).filter(Boolean);
         const cleanIds = (ids || []).map((i) => String(i).trim()).filter(Boolean);
+        // 按 id 精确预取（编辑回填）：商品已选图可能由其他运营上传、也可能不在最近 take 条内。
+        // 回填时必须忽略「仅本人上传」的过滤，否则非本人上传的图在编辑页不显示、媒体库确认时又
+        // 因看不到而被丢掉 → 商品多图"保存后消失"。prefill=true 仍要求 Authenticated，且 ids 均来自
+        // 用户当前正在编辑、已有权限查看的商品，属合理可见范围。
+        const filtered = await this.loadFiltered(ctx, cleanIds.length > 0);
         let finalList = cleanTags.length
             ? filtered.filter((a) => {
                 var _a;
@@ -39,8 +43,7 @@ let AssetLibraryAdminResolver = class AssetLibraryAdminResolver {
                 return assetTags.some((t) => cleanTags.includes(t));
             })
             : filtered;
-        // 按 id 精确预取：商品/自提点已选图可能不在最近 take 条内（多租户/历史图），
-        // 编辑回填时必须能看到并保住这些已选资源。ids 模式下忽略分页，返回全部匹配项。
+        // ids 模式下忽略分页，返回全部匹配项（编辑回填必须保住这些已选资源）。
         if (cleanIds.length) {
             const idSet = new Set(cleanIds);
             finalList = filtered.filter((a) => idSet.has(String(a.id)));
@@ -84,7 +87,7 @@ let AssetLibraryAdminResolver = class AssetLibraryAdminResolver {
         }
         return true;
     }
-    async loadFiltered(ctx) {
+    async loadFiltered(ctx, prefill = false) {
         var _a, _b;
         const user = (_a = ctx.session) === null || _a === void 0 ? void 0 : _a.user;
         const channelPerms = (user === null || user === void 0 ? void 0 : user.channelPermissions) || [];
@@ -96,7 +99,8 @@ let AssetLibraryAdminResolver = class AssetLibraryAdminResolver {
         const repo = this.connection.getRepository(ctx, core_2.Asset);
         const all = await repo.find({ order: { createdAt: 'DESC' } });
         let filtered = all;
-        if (!isSuperAdmin) {
+        // prefill（按 id 编辑回填）：跳过「仅本人上传」过滤，保证商品已挂接图片可见、媒体库确认不丢图。
+        if (!isSuperAdmin && !prefill) {
             const mine = String((_b = user === null || user === void 0 ? void 0 : user.id) !== null && _b !== void 0 ? _b : '');
             filtered = all.filter((a) => { var _a, _b; return String((_b = (_a = a.customFields) === null || _a === void 0 ? void 0 : _a.uploadedBy) !== null && _b !== void 0 ? _b : '') === mine; });
         }
