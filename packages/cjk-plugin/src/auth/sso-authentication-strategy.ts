@@ -150,8 +150,11 @@ export class SsoAuthenticationStrategy implements AuthenticationStrategy<SsoAuth
                             Logger.warn(`Failed to persist ssoId: ${e.message}`, loggerCtx);
                         }
                     }
-                    // inviteCode 衔接：优先用 data.inviteCode，否则尝试从 userInfo.invite_code 取
-                    const finalInviteCode = data.inviteCode || (userInfo as any)?.invite_code;
+                    // inviteCode 衔接：优先用 data.inviteCode，否则取 SSO 用户注册时使用的邀请码
+                    // （sso_users.invite_code_used，zhao-sso /v1/user/me 返回 sanitize 全字段，此字段名即 invite_code_used）
+                    const finalInviteCode = data.inviteCode
+                        || (userInfo as any)?.invite_code_used
+                        || (userInfo as any)?.invite_code;
                     if (finalInviteCode) {
                         try {
                             await this.inviteCodeService.bindIfPresent(ctx, cid, String(finalInviteCode));
