@@ -20,6 +20,7 @@ class SsoAuthenticationStrategy {
         this.inviteCodeService = injector.get(invite_code_service_1.InviteCodeService);
         this.externalAuthenticationService = injector.get(core_1.ExternalAuthenticationService);
         this.connection = injector.get(core_1.TransactionalConnection);
+        this.channelService = injector.get(core_1.ChannelService);
         // DistributionService 由 distribution-plugin 提供，缺失时优雅降级（不自动开通分销商）
         try {
             this.distributionService = injector.get(distribution_plugin_1.DistributionService);
@@ -183,10 +184,15 @@ class SsoAuthenticationStrategy {
     async resolveSsoUser(ctx, provider, externalId, email, nickname, mobile, avatar) {
         const externalKey = this.buildExternalKey(provider.providerKey, externalId);
         const strategyName = 'sso';
-        // 1) 统一映射表命中 → 直接返回（同一 SSO 用户稳定归一同账号）
-        const mapped = await this.externalAuthenticationService.findCustomerUser(ctx, strategyName, externalKey);
-        if (mapped)
-            return mapped;
+        // 1) 统一映射表命中（跨渠道）→ 复用同一顾客。务必用跨渠道 findUser 而非
+        //    findCustomerUser（后者默认仅当前渠道）：否则用户已在其他渠道建档后，
+        //    在本渠道登录会再为其创建 Customer，撞 customer.userId 唯一约束 → 报
+        //    "the provided credentials are invalid"（策略 catch → return false）。
+        const mappedUser = await this.externalAuthenticationService.findUser(ctx, strategyName, externalKey);
+        if (mappedUser) {
+            await this.ensureCustomerInChannel(ctx, mappedUser);
+            return mappedUser;
+        }
         // 2) 至少同时校验 email+mobile 语义：避免仅凭空值误合并
         const hasIdentity = (email && email.trim()) || (mobile && mobile.trim());
         // 3) 优先按手机号合并已有本地账号（Customer.phoneNumber 是独立列）
@@ -224,6 +230,18 @@ class SsoAuthenticationStrategy {
             .andWhere('user.deletedAt IS NULL')
             .getOne();
         return (_a = customer === null || customer === void 0 ? void 0 : customer.user) !== null && _a !== void 0 ? _a : undefined;
+    }
+    /** 让某个已存在 User 的 Customer 在当前渠道可用：customer 缺失则建档，存在则挂到当前渠道。
+     *  避免为同一 user 在多个渠道重复创建 Customer（撞 customer.userId 唯一约束）。 */
+    async ensureCustomerInChannel(ctx, user) {
+        let customer = await this.customerService.findOneByUserId(ctx, user.id, false);
+        if (!customer) {
+            customer = await this.connection.getRepository(ctx, core_1.Customer).save(new core_1.Customer({ emailAddress: '', firstName: '', lastName: '', user: user }));
+        }
+        if (ctx.channelId) {
+            // assignToChannels 幂等：重复挂载已有渠道不会重复或报错
+            await this.channelService.assignToChannels(ctx, core_1.Customer, customer.id, [ctx.channelId]);
+        }
     }
     /** 给已存在 User 挂一个 SSO 外部认证方法（幂等） */
     async bindSsoIdentity(ctx, user, externalKey) {

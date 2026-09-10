@@ -16,6 +16,7 @@ export declare class SsoAuthenticationStrategy implements AuthenticationStrategy
     private externalAuthenticationService;
     private connection;
     private distributionService?;
+    private channelService;
     /** e2e/本地联调用：跳过真实 zhao-sso 换取/取号，按 mock code 直接构造 userInfo（生产默认 false） */
     private mockMode;
     init(injector: Injector): Promise<void>;
@@ -36,6 +37,9 @@ export declare class SsoAuthenticationStrategy implements AuthenticationStrategy
     private resolveSsoUser;
     /** 按手机号查已有 Customer → 其关联 User（仅查未删除） */
     private findUserByPhone;
+    /** 让某个已存在 User 的 Customer 在当前渠道可用：customer 缺失则建档，存在则挂到当前渠道。
+     *  避免为同一 user 在多个渠道重复创建 Customer（撞 customer.userId 唯一约束）。 */
+    private ensureCustomerInChannel;
     /** 给已存在 User 挂一个 SSO 外部认证方法（幂等） */
     private bindSsoIdentity;
     /** 同步 SSO 资料到 Customer（邮箱/昵称/手机；已有值不覆盖） */
