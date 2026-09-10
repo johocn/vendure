@@ -92,22 +92,42 @@ class SsoAuthenticationStrategy {
             const avatar = this.getField(userInfo, provider, 'avatarField', 'avatar_url');
             // 4. 统一映射 / 本地互认 / 建档（落 ExternalAuthenticationMethod 映射表）
             const result = await this.resolveSsoUser(ctx, provider, externalId, email, nickname, mobile, avatar);
-            // inviteCode 衔接:优先用 data.inviteCode,否则尝试从 userInfo.invite_code 取
+            // ssoId / inviteCode / 自动分销均挂在 Customer 维度：先把 User.id 解析成真实 Customer.id，
+            // 避免此前的 User.id 与 Customer.id 错位（customerService.findOne 按 customer 主键查，
+            // 传入 user.id 会导致查不到 → 邀请码/分销/ssoId 永远落不到正确的本地顾客）。
             if (result && typeof result === 'object') {
-                const finalInviteCode = data.inviteCode || (userInfo === null || userInfo === void 0 ? void 0 : userInfo.invite_code);
-                if (finalInviteCode) {
-                    try {
-                        await this.inviteCodeService.bindIfPresent(ctx, String(result.id), String(finalInviteCode));
+                const customer = await this.customerService.findOneByUserId(ctx, result.id, false);
+                if (customer) {
+                    // ssoId 复建到本地顾客字段（幂等：仅当未写入时补齐 SSO uuid）
+                    const cid = String(customer.id);
+                    const cf = customer.customFields || {};
+                    if (externalId && !cf.ssoId) {
+                        try {
+                            await this.customerService.update(ctx, {
+                                id: customer.id,
+                                customFields: { ssoId: externalId },
+                            });
+                        }
+                        catch (e) {
+                            core_1.Logger.warn(`Failed to persist ssoId: ${e.message}`, loggerCtx);
+                        }
                     }
-                    catch (e) {
-                        core_1.Logger.warn(`Failed to bind invite code: ${e.message}`, loggerCtx);
-                    }
-                    // 方案A：自动开通分销商（幂等，已存在则直接返回），并把邀请码写入 referredBy（推荐人码）
-                    try {
-                        await ((_b = this.distributionService) === null || _b === void 0 ? void 0 : _b.apply(ctx, result.id, String(finalInviteCode)));
-                    }
-                    catch (e) {
-                        core_1.Logger.warn(`Failed to auto-apply distributor: ${e.message}`, loggerCtx);
+                    // inviteCode 衔接：优先用 data.inviteCode，否则尝试从 userInfo.invite_code 取
+                    const finalInviteCode = data.inviteCode || (userInfo === null || userInfo === void 0 ? void 0 : userInfo.invite_code);
+                    if (finalInviteCode) {
+                        try {
+                            await this.inviteCodeService.bindIfPresent(ctx, cid, String(finalInviteCode));
+                        }
+                        catch (e) {
+                            core_1.Logger.warn(`Failed to bind invite code: ${e.message}`, loggerCtx);
+                        }
+                        // 方案A：自动开通分销商（幂等，已存在则直接返回），并把邀请码写入 referredBy（推荐人码）
+                        try {
+                            await ((_b = this.distributionService) === null || _b === void 0 ? void 0 : _b.apply(ctx, customer.id, String(finalInviteCode)));
+                        }
+                        catch (e) {
+                            core_1.Logger.warn(`Failed to auto-apply distributor: ${e.message}`, loggerCtx);
+                        }
                     }
                 }
             }

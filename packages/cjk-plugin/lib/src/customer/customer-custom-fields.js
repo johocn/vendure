@@ -9,6 +9,12 @@ exports.customerCustomFields = {
             nullable: true,
             public: false,
         },
+        {
+            name: 'ssoId',
+            type: 'string',
+            nullable: true,
+            public: false,
+        },
     ],
 };
 //# sourceMappingURL=customer-custom-fields.js.map
