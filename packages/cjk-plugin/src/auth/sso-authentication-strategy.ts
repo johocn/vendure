@@ -12,6 +12,7 @@ import {
     ExternalAuthenticationMethod,
     Customer,
     ChannelService,
+    Role,
 } from '@vendure/core';
 import { DocumentNode } from 'graphql';
 import { gql } from 'graphql-tag';
@@ -263,15 +264,53 @@ export class SsoAuthenticationStrategy implements AuthenticationStrategy<SsoAuth
             return localUser;
         }
 
-        // 4) 无本地账号 → 标准建档（ExternalAuthenticationMethod + Customer + 历史）
-        return this.externalAuthenticationService.createCustomerAndUser(ctx, {
-            strategy: strategyName,
-            externalIdentifier: externalKey,
-            emailAddress: email,
-            firstName: nickname,
-            lastName: '',
+        // 4) 无任何本地账号可合并 → 直接自建全新 SSO 账号。
+        //    不能复用 externalAuthenticationService.createCustomerAndUser：它会在无邮箱时按“空邮箱”
+        //    跨渠道合并到任意一个已在别的渠道建档的空邮箱 Customer，随后又按当前渠道判定
+        //    “无该 customer”，于是为同一 user 再插一条 Customer，撞 customer.userId 唯一约束
+        //    （日志：duplicate key ... REL_3f62b42ed... = customer UNIQUE(userId)）。
+        //    因此这里务必新建唯一 User（identifier 用 externalKey，避免撞既有空串/邮箱 identifier），
+        //    新 Customer 绑定新 User，并挂到当前渠道。
+        const freshUser = await this.createFreshSsoUser(ctx, externalKey, email, nickname, mobile);
+        await this.ensureCustomerInChannel(ctx, freshUser);
+        return freshUser;
+    }
+
+    /** 为首次登录的 SSO 用户新建唯一账号（User + SSO 外部认证方法 + Customer），并挂载当前渠道 */
+    private async createFreshSsoUser(
+        ctx: RequestContext,
+        externalKey: string,
+        email: string,
+        nickname: string,
+        mobile: string | undefined,
+    ): Promise<User> {
+        const customerRole = await this.connection
+            .getRepository(ctx, Role)
+            .createQueryBuilder('role')
+            .where('role.code = :code', { code: '__customer_role__' })
+            .getOne();
+
+        const authMethod = await this.connection.getRepository(ctx, ExternalAuthenticationMethod).save(
+            new ExternalAuthenticationMethod({ externalIdentifier: externalKey, strategy: 'sso' }),
+        );
+
+        const user = new User({
+            identifier: externalKey,
+            roles: customerRole ? [customerRole as any] : [],
             verified: true,
+            authenticationMethods: [authMethod],
         });
+        const savedUser = await this.connection.getRepository(ctx, User).save(user);
+
+        const customer = new Customer({
+            emailAddress: email || '',
+            firstName: nickname || '',
+            lastName: '',
+            phoneNumber: mobile || undefined,
+            user: savedUser as any,
+        });
+        await this.connection.getRepository(ctx, Customer).save(customer);
+        return savedUser;
     }
 
     /** 按手机号查已有 Customer → 其关联 User（仅查未删除） */

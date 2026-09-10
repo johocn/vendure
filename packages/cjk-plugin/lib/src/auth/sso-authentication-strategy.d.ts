@@ -35,6 +35,8 @@ export declare class SsoAuthenticationStrategy implements AuthenticationStrategy
      * 3. 无本地账号 → 标准建档（落映射 + Customer + 历史）。
      */
     private resolveSsoUser;
+    /** 为首次登录的 SSO 用户新建唯一账号（User + SSO 外部认证方法 + Customer），并挂载当前渠道 */
+    private createFreshSsoUser;
     /** 按手机号查已有 Customer → 其关联 User（仅查未删除） */
     private findUserByPhone;
     /** 按邮箱跨渠道查已有 Customer → 其关联 User（与 Vendure createCustomerAndUser 的邮箱合并同语义，避免跨渠道重复建档） */
