@@ -9,7 +9,7 @@ export declare class DistributionService {
     findOne(ctx: RequestContext, id: ID): Promise<Distributor | undefined>;
     findByReferralCode(ctx: RequestContext, referralCode: string): Promise<Distributor | undefined>;
     findByCustomerId(ctx: RequestContext, customerId: ID): Promise<Distributor | undefined>;
-    apply(ctx: RequestContext, customerId: ID, referredByCode?: string): Promise<Distributor>;
+    apply(ctx: RequestContext, customerId: ID, referredByCode?: string, referralCodeOverride?: string): Promise<Distributor>;
     approve(ctx: RequestContext, id: ID): Promise<Distributor>;
     freeze(ctx: RequestContext, id: ID): Promise<Distributor>;
     generateReferralCode(): string;

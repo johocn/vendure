@@ -116,6 +116,8 @@ class SsoAuthenticationStrategy {
                             core_1.Logger.warn(`Failed to persist ssoId: ${e.message}`, loggerCtx);
                         }
                     }
+                    // 本人自有邀请码（/v1/user/me 返回 ownInviteCode，四层同码的 SSO 源）
+                    const ownInviteCode = (userInfo === null || userInfo === void 0 ? void 0 : userInfo.ownInviteCode) || '';
                     // inviteCode 衔接：优先用 data.inviteCode，否则取 SSO 用户注册时使用的邀请码
                     // （sso_users.invite_code_used，zhao-sso /v1/user/me 返回 sanitize 全字段，此字段名即 invite_code_used）
                     const finalInviteCode = data.inviteCode
@@ -128,12 +130,29 @@ class SsoAuthenticationStrategy {
                         catch (e) {
                             core_1.Logger.warn(`Failed to bind invite code: ${e.message}`, loggerCtx);
                         }
-                        // 方案A：自动开通分销商（幂等，已存在则直接返回），并把邀请码写入 referredBy（推荐人码）
+                        // 方案A：自动开通分销商（幂等，已存在则直接返回），并把邀请码写入 referredBy（推荐人码）。
+                        // 四层同码：把 SSO 自有码 ownInviteCode 作为 referralCodeOverride 传入 apply，
+                        // 使分销商本地 referralCode 与此码一致（而非随机生成），保证 sso_invite_codes /
+                        // customer.referralCode 可对账。
                         try {
-                            await ((_b = this.distributionService) === null || _b === void 0 ? void 0 : _b.apply(ctx, customer.id, String(finalInviteCode)));
+                            await ((_b = this.distributionService) === null || _b === void 0 ? void 0 : _b.apply(ctx, customer.id, String(finalInviteCode), ownInviteCode ? String(ownInviteCode) : undefined));
                         }
                         catch (e) {
                             core_1.Logger.warn(`Failed to auto-apply distributor: ${e.message}`, loggerCtx);
+                        }
+                    }
+                    // 本人自有邀请码对齐兜底（四层同码）：apply 已把 referralCode 写为 ownInviteCode；
+                    // 此处仅在极端情况（如未走 finalInviteCode 分支或 apply 未执行）下补写，
+                    // 仅当为空时写，已有值不覆盖。
+                    if (ownInviteCode && !cf.referralCode) {
+                        try {
+                            await this.customerService.update(ctx, {
+                                id: customer.id,
+                                customFields: { referralCode: String(ownInviteCode) },
+                            });
+                        }
+                        catch (e) {
+                            core_1.Logger.warn(`Failed to persist own referralCode: ${e.message}`, loggerCtx);
                         }
                     }
                 }

@@ -52,13 +52,15 @@ export class DistributionService {
         return result ?? undefined;
     }
 
-    async apply(ctx: RequestContext, customerId: ID, referredByCode?: string): Promise<Distributor> {
+    async apply(ctx: RequestContext, customerId: ID, referredByCode?: string, referralCodeOverride?: string): Promise<Distributor> {
         const existing = await this.findByCustomerId(ctx, customerId);
         if (existing) {
             return existing;
         }
 
-        const referralCode = this.generateReferralCode();
+        // 允许外部（如 sso 认证链）传入既有邀请码，使本地 referralCode 与 SSO 自有码对齐（四层同码）。
+        // 传入则不再自行随机生成，保证同码可对账。
+        const referralCode = referralCodeOverride || this.generateReferralCode();
         let parentId: ID | undefined;
         let level = 1;
 
