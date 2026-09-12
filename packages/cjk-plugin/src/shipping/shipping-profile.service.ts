@@ -82,6 +82,7 @@ export class ShippingProfileService {
         if (!input.shippingMethodIds?.length) {
             throw new UserInputError('配送档案至少需要选择一种配送方式');
         }
+        assertProfileGlobalPermissions(ctx, 'create', undefined, input, { isGlobal: input.isGlobal === true });
         const repo = this.connection.getRepository(ctx, ShippingProfile);
         const profile = new ShippingProfile(input);
         profile.channels = [ctx.channel];
@@ -116,6 +117,7 @@ export class ShippingProfileService {
             relations: ['shippingMethods', 'pickupLocations'],
         });
         if (!profile) throw new EntityNotFoundError('ShippingProfile', input.id);
+        assertProfileGlobalPermissions(ctx, 'update', profile, input, profile);
         if (profile.isGlobal && !ctx.userHasPermissions([Permission.SuperAdmin])) {
             throw new UserInputError('不能修改全局档案');
         }
@@ -129,6 +131,13 @@ export class ShippingProfileService {
             profile.pickupLocations = input.pickupLocationIds.map((id: ID) => ({ id } as any));
         }
         const { id, shippingMethodIds, pickupLocationIds, ...updateData } = input;
+        // 超管切换 isGlobal 时维护归属与租户默认一致性
+        if (input.isGlobal === true) {
+            profile.ownerChannelId = null;
+            profile.isTenantDefault = false;
+        } else if (input.isGlobal === false) {
+            profile.ownerChannelId = (ctx.channelId as any) ?? null;
+        }
         Object.assign(profile, updateData);
         await repo.save(profile);
         if (input.methodConfigs !== undefined) {
@@ -152,6 +161,7 @@ export class ShippingProfileService {
         }
         const profile = await repo.findOne({ where: { id: id as any } });
         if (!profile) throw new EntityNotFoundError('ShippingProfile', id);
+        assertProfileGlobalPermissions(ctx, 'delete', profile, undefined, profile);
         const jmRepo = this.connection.getRepository(ctx, ShippingProfileMethod);
         await jmRepo.delete({ profileId: String(id) } as any);
         await repo.remove(profile);
@@ -597,6 +607,41 @@ export class ShippingProfileService {
                 if (loc) list.push(loc);
             }
             (item as any).boundPickupLocations = list;
+        }
+    }
+}
+
+/**
+ * 配送档案「全局属性」权限校验（纯函数，便于单测）。
+ * action: 'create' | 'update' | 'delete'
+ */
+export function assertProfileGlobalPermissions(
+    ctx: RequestContext,
+    action: 'create' | 'update' | 'delete',
+    profile: { isGlobal: boolean } | undefined,
+    input: Partial<any> | undefined,
+    target: { isGlobal: boolean } | undefined,
+): void {
+    const isSuper = ctx.userHasPermissions([Permission.SuperAdmin]);
+    const toGlobal = input?.isGlobal === true;
+
+    if (action === 'create') {
+        if (toGlobal && !isSuper) {
+            throw new UserInputError('仅超级管理员可创建全局档案');
+        }
+        return;
+    }
+
+    if (action === 'update') {
+        if (input?.isGlobal !== undefined && input?.isGlobal !== target?.isGlobal && !isSuper) {
+            throw new UserInputError('仅超级管理员可修改全局属性');
+        }
+        return;
+    }
+
+    if (action === 'delete') {
+        if (target?.isGlobal === true && !isSuper) {
+            throw new UserInputError('仅超级管理员可删除全局档案');
         }
     }
 }
