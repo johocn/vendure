@@ -70,7 +70,7 @@ let PickupLocationService = class PickupLocationService {
         const qb = this.connection.getRepository(ctx, pickup_location_entity_1.PickupLocation).createQueryBuilder('pl');
         this.applyVisibility(qb, ctx);
         qb.andWhere('pl.type = :type', { type });
-        qb.innerJoin('pl.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId });
+        qb.andWhere('pl.enabled = :enabled', { enabled: true });
         return qb.getMany();
     }
     /**
