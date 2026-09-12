@@ -466,6 +466,8 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                     freeShippingThreshold: Int
                     shippingMethods: [ShippingMethod!]!
                     pickupLocations: [PickupLocation!]!
+                    # 档案真实绑定的自提点（档案级 + 方式级，不受租户可见性过滤；管理端展示用）
+                    boundPickupLocations: [PickupLocation!]!
                     isTenantDefault: Boolean!
                     enabled: Boolean!
                     requiresAddress: Boolean!

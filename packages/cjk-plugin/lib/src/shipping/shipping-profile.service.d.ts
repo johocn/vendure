@@ -112,4 +112,12 @@ export declare class ShippingProfileService {
      * 为列表查询批量填充 methodConfigs，避免 schema 非空字段返回 null 导致查询整体失败。
      */
     private attachMethodConfigs;
+    /**
+     * 附加 boundPickupLocations：档案真实绑定的自提点完整对象
+     * = 档案级 pickupLocations ∪ 方式级 methodConfigs(pickup 类 mode) 的 options.pickupLocationIds。
+     * 管理端展示档案自提点时必须看到真实绑定（即使该点当前渠道不可选/不可见），
+     * 否则跨租户引用的自提点（如全局档案绑定某租户私有点）会从编辑面板消失。
+     * 可选列表仍由 pickupLocations 查询按租户可见性单独返回。
+     */
+    private attachBoundPickupLocations;
 }

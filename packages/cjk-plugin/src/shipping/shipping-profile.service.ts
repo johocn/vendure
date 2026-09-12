@@ -46,6 +46,7 @@ export class ShippingProfileService {
         qb.skip(skip).take(take);
         const [items, totalItems] = await qb.getManyAndCount();
         await this.attachMethodConfigs(ctx, items);
+        await this.attachBoundPickupLocations(ctx, items);
         return { items, totalItems };
     }
 
@@ -58,6 +59,7 @@ export class ShippingProfileService {
                 .getRepository(ctx, ShippingProfileMethod)
                 .find({ where: { profileId: String(result.id) } as any });
             (result as any).methodConfigs = methodConfigs;
+            await this.attachBoundPickupLocations(ctx, [result]);
         }
         return result ?? undefined;
     }
@@ -71,6 +73,7 @@ export class ShippingProfileService {
                 .getRepository(ctx, ShippingProfileMethod)
                 .find({ where: { profileId: String(result.id) } as any });
             (result as any).methodConfigs = methodConfigs;
+            await this.attachBoundPickupLocations(ctx, [result]);
         }
         return result ?? undefined;
     }
@@ -553,6 +556,47 @@ export class ShippingProfileService {
         }
         for (const item of items) {
             (item as any).methodConfigs = byProfile.get(String(item.id)) ?? [];
+        }
+    }
+
+    /**
+     * 附加 boundPickupLocations：档案真实绑定的自提点完整对象
+     * = 档案级 pickupLocations ∪ 方式级 methodConfigs(pickup 类 mode) 的 options.pickupLocationIds。
+     * 管理端展示档案自提点时必须看到真实绑定（即使该点当前渠道不可选/不可见），
+     * 否则跨租户引用的自提点（如全局档案绑定某租户私有点）会从编辑面板消失。
+     * 可选列表仍由 pickupLocations 查询按租户可见性单独返回。
+     */
+    private async attachBoundPickupLocations(ctx: RequestContext, items: ShippingProfile[]): Promise<void> {
+        if (!items.length) return;
+        const idSet = new Set<ID>();
+        for (const item of items) {
+            for (const p of (item.pickupLocations ?? [])) idSet.add(p.id as ID);
+            for (const c of ((item as any).methodConfigs ?? [])) {
+                if (this.isPickupMode(c.mode)) {
+                    for (const id of (c.options?.pickupLocationIds ?? [])) idSet.add(id as ID);
+                }
+            }
+        }
+        const map = new Map<string, PickupLocation>();
+        if (idSet.size > 0) {
+            for (const loc of await this.findPickupLocationsByIds(ctx, [...idSet])) {
+                map.set(String(loc.id), loc);
+            }
+        }
+        for (const item of items) {
+            const own = new Set<ID>();
+            for (const p of (item.pickupLocations ?? [])) own.add(p.id as ID);
+            for (const c of ((item as any).methodConfigs ?? [])) {
+                if (this.isPickupMode(c.mode)) {
+                    for (const id of (c.options?.pickupLocationIds ?? [])) own.add(id as ID);
+                }
+            }
+            const list: PickupLocation[] = [];
+            for (const id of own) {
+                const loc = map.get(String(id));
+                if (loc) list.push(loc);
+            }
+            (item as any).boundPickupLocations = list;
         }
     }
 }
