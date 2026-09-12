@@ -387,10 +387,16 @@ let ShippingProfileService = class ShippingProfileService {
                 eff.forEach(id => idSet.add(id));
             }
         }
-        const out = [...legacy];
+        const out = [];
         if (idSet.size > 0) {
             const found = await this.pickupLocationService.findByIds(ctx, [...idSet]);
             const map = new Map(found.map(p => [String(p.id), p]));
+            // 档案级绑定点同样过可见性/启用过滤（平台可见全量，租户仅公共+本租户）
+            for (const p of legacy) {
+                const f = map.get(String(p.id));
+                if (f)
+                    out.push(f);
+            }
             for (const id of idSet) {
                 const p = map.get(String(id));
                 if (p && !out.some(x => String(x.id) === String(p.id)))

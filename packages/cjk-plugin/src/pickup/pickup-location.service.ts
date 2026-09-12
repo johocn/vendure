@@ -17,14 +17,33 @@ import { SetGlobalPickupLocation } from './pickup-location-permissions';
 export class PickupLocationService {
     constructor(private connection: TransactionalConnection) {}
 
-    async findAll(ctx: RequestContext, options?: ListQueryOptions<PickupLocation>): Promise<PaginatedList<PickupLocation>> {
-        const qb = this.connection.getRepository(ctx, PickupLocation).createQueryBuilder('pl');
-        // 可见规则：公共点 + 本租户自建点
+    /**
+     * 平台渠道判定（默认商城/平台）：code === '__default_channel__'。
+     * 语义镜像 order-box.service.ts 的 isMallContext。
+     */
+    private isPlatformContext(ctx: RequestContext): boolean {
+        const code = String((ctx.channel as any)?.code ?? '');
+        return code === '__default_channel__';
+    }
+
+    /**
+     * 自提点可见规则（平台/租户分层）：
+     * - 平台（默认渠道）：可见所有渠道自提点（平台运营全量自提点，含各租户自建点）。
+     * - 租户：仅可见全局公共点（isPublic=true）与本租户自建点（ownerChannelId=本渠道），
+     *   且需该点 channels 关联当前渠道。
+     */
+    private applyVisibility(qb: any, ctx: RequestContext): void {
+        if (this.isPlatformContext(ctx)) return;
         qb.where(
             '(pl.isPublic = :isPublic OR pl.ownerChannelId = :channelId)',
             { isPublic: true, channelId: ctx.channelId }
         );
         qb.innerJoin('pl.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId });
+    }
+
+    async findAll(ctx: RequestContext, options?: ListQueryOptions<PickupLocation>): Promise<PaginatedList<PickupLocation>> {
+        const qb = this.connection.getRepository(ctx, PickupLocation).createQueryBuilder('pl');
+        this.applyVisibility(qb, ctx);
 
         if (options?.filter?.name) {
             qb.andWhere('pl.name LIKE :name', { name: `%${options.filter.name}%` });
@@ -54,10 +73,7 @@ export class PickupLocationService {
 
     async findByType(ctx: RequestContext, type: string): Promise<PickupLocation[]> {
         const qb = this.connection.getRepository(ctx, PickupLocation).createQueryBuilder('pl');
-        qb.where(
-            '(pl.isPublic = :isPublic OR pl.ownerChannelId = :channelId)',
-            { isPublic: true, channelId: ctx.channelId }
-        );
+        this.applyVisibility(qb, ctx);
         qb.andWhere('pl.type = :type', { type });
         qb.innerJoin('pl.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId });
         return qb.getMany();
@@ -70,28 +86,21 @@ export class PickupLocationService {
      */
     async findByCityForChannel(ctx: RequestContext, city: string | null, type: string): Promise<PickupLocation[]> {
         const qb = this.connection.getRepository(ctx, PickupLocation).createQueryBuilder('pl');
-        qb.where(
-            '(pl.isPublic = :isPublic OR pl.ownerChannelId = :channelId)',
-            { isPublic: true, channelId: ctx.channelId }
-        );
+        this.applyVisibility(qb, ctx);
         qb.andWhere('pl.type = :type', { type });
         qb.andWhere('pl.enabled = :enabled', { enabled: true });
         if (city) {
             qb.andWhere('pl.city = :city', { city });
         }
-        qb.innerJoin('pl.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId });
         return qb.getMany();
     }
 
     async findByIds(ctx: RequestContext, ids: ID[]): Promise<PickupLocation[]> {
         if (ids.length === 0) return [];
         const qb = this.connection.getRepository(ctx, PickupLocation).createQueryBuilder('pl');
-        qb.where(
-            '(pl.isPublic = :isPublic OR pl.ownerChannelId = :channelId)',
-            { isPublic: true, channelId: ctx.channelId }
-        );
+        this.applyVisibility(qb, ctx);
         qb.andWhere('pl.id IN (:...ids)', { ids });
-        qb.innerJoin('pl.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId });
+        qb.andWhere('pl.enabled = :enabled', { enabled: true });
         return qb.getMany();
     }
 
