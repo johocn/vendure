@@ -84,6 +84,7 @@ export const PERMISSION_CATALOG: PermissionCatalogGroup[] = [
             { code: Permission.CreateShippingMethod, label: '配送·增' },
             { code: Permission.UpdateShippingMethod, label: '配送·改' },
             { code: Permission.DeleteShippingMethod, label: '配送·删' },
+            { code: 'ShippingProfile', label: '配送·档案' },
         ],
     },
     {

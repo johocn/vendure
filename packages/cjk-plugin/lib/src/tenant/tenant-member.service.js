@@ -77,6 +77,7 @@ exports.PERMISSION_CATALOG = [
             { code: core_1.Permission.CreateShippingMethod, label: '配送·增' },
             { code: core_1.Permission.UpdateShippingMethod, label: '配送·改' },
             { code: core_1.Permission.DeleteShippingMethod, label: '配送·删' },
+            { code: 'ShippingProfile', label: '配送·档案' },
         ],
     },
     {

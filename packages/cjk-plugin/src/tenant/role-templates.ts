@@ -25,6 +25,7 @@ export const OFFICIAL_ROLE_TEMPLATES: RoleTemplate[] = [
             Permission.ReadAsset, Permission.CreateAsset, Permission.UpdateAsset, Permission.DeleteAsset,
             Permission.ReadCollection, Permission.CreateCollection, Permission.UpdateCollection, Permission.DeleteCollection,
             Permission.ReadShippingMethod, Permission.CreateShippingMethod, Permission.UpdateShippingMethod, Permission.DeleteShippingMethod,
+            'ShippingProfile',
             Permission.ReadPaymentMethod, Permission.CreatePaymentMethod, Permission.UpdatePaymentMethod, Permission.DeletePaymentMethod,
             'TenantRoleManage', 'TenantMemberManage',
         ],
