@@ -21,6 +21,7 @@ var __rest = (this && this.__rest) || function (s, e) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ShippingProfileService = void 0;
+exports.assertProfileGlobalPermissions = assertProfileGlobalPermissions;
 const common_1 = require("@nestjs/common");
 const typeorm_1 = require("typeorm");
 const core_1 = require("@vendure/core");
@@ -88,6 +89,7 @@ let ShippingProfileService = class ShippingProfileService {
         if (!((_a = input.shippingMethodIds) === null || _a === void 0 ? void 0 : _a.length)) {
             throw new core_1.UserInputError('配送档案至少需要选择一种配送方式');
         }
+        assertProfileGlobalPermissions(ctx, 'create', undefined, input, { isGlobal: input.isGlobal === true });
         const repo = this.connection.getRepository(ctx, shipping_profile_entity_1.ShippingProfile);
         const profile = new shipping_profile_entity_1.ShippingProfile(input);
         profile.channels = [ctx.channel];
@@ -115,6 +117,7 @@ let ShippingProfileService = class ShippingProfileService {
         }));
     }
     async update(ctx, input) {
+        var _a;
         const repo = this.connection.getRepository(ctx, shipping_profile_entity_1.ShippingProfile);
         const profile = await repo.findOne({
             where: { id: input.id },
@@ -122,6 +125,7 @@ let ShippingProfileService = class ShippingProfileService {
         });
         if (!profile)
             throw new core_1.EntityNotFoundError('ShippingProfile', input.id);
+        assertProfileGlobalPermissions(ctx, 'update', profile, input, profile);
         if (profile.isGlobal && !ctx.userHasPermissions([core_1.Permission.SuperAdmin])) {
             throw new core_1.UserInputError('不能修改全局档案');
         }
@@ -135,6 +139,14 @@ let ShippingProfileService = class ShippingProfileService {
             profile.pickupLocations = input.pickupLocationIds.map((id) => ({ id }));
         }
         const { id, shippingMethodIds, pickupLocationIds } = input, updateData = __rest(input, ["id", "shippingMethodIds", "pickupLocationIds"]);
+        // 超管切换 isGlobal 时维护归属与租户默认一致性
+        if (input.isGlobal === true) {
+            profile.ownerChannelId = null;
+            profile.isTenantDefault = false;
+        }
+        else if (input.isGlobal === false) {
+            profile.ownerChannelId = (_a = ctx.channelId) !== null && _a !== void 0 ? _a : null;
+        }
         Object.assign(profile, updateData);
         await repo.save(profile);
         if (input.methodConfigs !== undefined) {
@@ -156,6 +168,7 @@ let ShippingProfileService = class ShippingProfileService {
         const profile = await repo.findOne({ where: { id: id } });
         if (!profile)
             throw new core_1.EntityNotFoundError('ShippingProfile', id);
+        assertProfileGlobalPermissions(ctx, 'delete', profile, undefined, profile);
         const jmRepo = this.connection.getRepository(ctx, shipping_profile_method_entity_1.ShippingProfileMethod);
         await jmRepo.delete({ profileId: String(id) });
         await repo.remove(profile);
@@ -595,4 +608,29 @@ exports.ShippingProfileService = ShippingProfileService = __decorate([
         pickup_location_service_1.PickupLocationService,
         payment_profile_service_1.PaymentProfileService])
 ], ShippingProfileService);
+/**
+ * 配送档案「全局属性」权限校验（纯函数，便于单测）。
+ * action: 'create' | 'update' | 'delete'
+ */
+function assertProfileGlobalPermissions(ctx, action, profile, input, target) {
+    const isSuper = ctx.userHasPermissions([core_1.Permission.SuperAdmin]);
+    const toGlobal = (input === null || input === void 0 ? void 0 : input.isGlobal) === true;
+    if (action === 'create') {
+        if (toGlobal && !isSuper) {
+            throw new core_1.UserInputError('仅超级管理员可创建全局档案');
+        }
+        return;
+    }
+    if (action === 'update') {
+        if ((input === null || input === void 0 ? void 0 : input.isGlobal) !== undefined && (input === null || input === void 0 ? void 0 : input.isGlobal) !== (target === null || target === void 0 ? void 0 : target.isGlobal) && !isSuper) {
+            throw new core_1.UserInputError('仅超级管理员可修改全局属性');
+        }
+        return;
+    }
+    if (action === 'delete') {
+        if ((target === null || target === void 0 ? void 0 : target.isGlobal) === true && !isSuper) {
+            throw new core_1.UserInputError('仅超级管理员可删除全局档案');
+        }
+    }
+}
 //# sourceMappingURL=shipping-profile.service.js.map

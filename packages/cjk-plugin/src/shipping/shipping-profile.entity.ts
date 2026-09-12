@@ -28,7 +28,7 @@ export class ShippingProfile extends VendureEntity implements ChannelAware {
 
     @Column() name: string;
 
-    @Column({ type: 'text' }) description: string;
+    @Column({ type: 'text', nullable: true }) description: string | null;
 
     @Column() code: string;
 

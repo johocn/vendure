@@ -13,7 +13,7 @@ import { PaymentProfile } from '../payment/payment-profile.entity';
 export declare class ShippingProfile extends VendureEntity implements ChannelAware {
     constructor(input?: DeepPartial<ShippingProfile>);
     name: string;
-    description: string;
+    description: string | null;
     code: string;
     isGlobal: boolean;
     ownerChannelId: ID | null;

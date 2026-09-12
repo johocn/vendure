@@ -121,3 +121,12 @@ export declare class ShippingProfileService {
      */
     private attachBoundPickupLocations;
 }
+/**
+ * 配送档案「全局属性」权限校验（纯函数，便于单测）。
+ * action: 'create' | 'update' | 'delete'
+ */
+export declare function assertProfileGlobalPermissions(ctx: RequestContext, action: 'create' | 'update' | 'delete', profile: {
+    isGlobal: boolean;
+} | undefined, input: Partial<any> | undefined, target: {
+    isGlobal: boolean;
+} | undefined): void;
