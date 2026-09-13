@@ -359,7 +359,12 @@ let AssetService = class AssetService {
         if (!hasPermission) {
             throw new errors_1.ForbiddenError();
         }
-        const assets = await this.connection.findByIdsInChannel(ctx, asset_entity_1.Asset, input.assetIds, ctx.channelId, {});
+        // 按 id 直取全部资产（Asset 为全局实体，可跨渠道分配）：
+        // 若用 findByIdsInChannel(ctx, Asset, ids, ctx.channelId) 会按当前渠道过滤，
+        // 未入当前渠道的资产永远分配不进去，导致 web-admin 跨渠道选图保存后资产丢失
+        const assets = await this.connection.getRepository(ctx, asset_entity_1.Asset).find({
+            where: { id: (0, typeorm_1.In)(input.assetIds) },
+        });
         await Promise.all(assets.map(async (asset) => {
             await this.channelService.assignToChannels(ctx, asset_entity_1.Asset, asset.id, [input.channelId]);
             return await this.eventBus.publish(new asset_channel_event_1.AssetChannelEvent(ctx, asset, input.channelId, 'assigned'));

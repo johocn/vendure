@@ -22,7 +22,7 @@ import { imageSize } from 'image-size';
 import mime from 'mime-types';
 import path from 'path';
 import { Readable, Stream } from 'stream';
-import { IsNull } from 'typeorm';
+import { In, IsNull } from 'typeorm';
 import { FindOneOptions } from 'typeorm/find-options/FindOneOptions';
 import { camelCase } from 'typeorm/util/StringUtils';
 
@@ -449,13 +449,12 @@ export class AssetService {
         if (!hasPermission) {
             throw new ForbiddenError();
         }
-        const assets = await this.connection.findByIdsInChannel(
-            ctx,
-            Asset,
-            input.assetIds,
-            ctx.channelId,
-            {},
-        );
+        // 按 id 直取全部资产（Asset 为全局实体，可跨渠道分配）：
+        // 若用 findByIdsInChannel(ctx, Asset, ids, ctx.channelId) 会按当前渠道过滤，
+        // 未入当前渠道的资产永远分配不进去，导致 web-admin 跨渠道选图保存后资产丢失
+        const assets = await this.connection.getRepository(ctx, Asset).find({
+            where: { id: In(input.assetIds) },
+        });
         await Promise.all(
             assets.map(async asset => {
                 await this.channelService.assignToChannels(ctx, Asset, asset.id, [input.channelId]);
