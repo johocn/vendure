@@ -2,6 +2,7 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
     Administrator,
     AdministratorService,
+    AuthService,
     Channel,
     ChannelService,
     ID,
@@ -197,6 +198,7 @@ export class TenantMemberService {
         private administratorService: AdministratorService,
         private roleService: RoleService,
         private channelService: ChannelService,
+        private authService: AuthService,
         @Optional() @Inject(CJK_PLUGIN_OPTIONS) private pluginOptions?: CjkPluginOptions,
     ) {}
 
@@ -758,19 +760,26 @@ export class TenantMemberService {
         return member;
     }
 
-    /** 当前登录者修改自身密码：更新 Administrator 密码，并清除其所有租户关联的首登强改密标志 */
-    async changeMyPassword(ctx: RequestContext, newPassword: string): Promise<void> {
+    /** 当前登录者修改自身密码：主动改密校验旧密码；首登强改密（未传旧密码或存在 mustChangePassword）跳过校验。更新后清除本租户首登强改密标志 */
+    async changeMyPassword(ctx: RequestContext, oldPassword: string | null, newPassword: string): Promise<void> {
         if (!newPassword || newPassword.length < 8) throw new Error('WEAK_PASSWORD');
-        const user = (ctx as any).session?.user;
-        if (!user?.id) throw new Error('NOT_AUTHENTICATED');
-        const adminId = String(user.id);
+        const adminId = String((ctx as any).session?.user?.id);
+        if (!adminId) throw new Error('NOT_AUTHENTICATED');
+        const adminRepo = this.connection.getRepository(ctx, Administrator);
+        const admin = await adminRepo.findOne({ where: { id: adminId }, relations: ['user'] });
+        if (!admin) throw new Error('ADMIN_NOT_FOUND');
+        const memberRepo = this.connection.getRepository(ctx, TenantMember);
+        const members = await memberRepo.find({ where: { administratorId: adminId } });
+        const mustChange = members.some((m) => m.mustChangePassword);
+        if (oldPassword && !mustChange) {
+            const ok = await this.authService.verifyUserPassword(ctx, (admin as any).user?.id, oldPassword);
+            if (ok !== true) throw new Error('WRONG_OLD_PASSWORD');
+        }
         await this.administratorService.update(ctx, { id: adminId as any, password: newPassword } as any);
-        const repo = this.connection.getRepository(ctx, TenantMember);
-        const members = await repo.find({ where: { administratorId: adminId } });
         for (const m of members) {
             if (m.mustChangePassword) {
                 m.mustChangePassword = false;
-                await repo.save(m);
+                await memberRepo.save(m);
             }
         }
     }

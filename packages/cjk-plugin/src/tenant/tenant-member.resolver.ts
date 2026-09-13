@@ -186,14 +186,15 @@ export class TenantMemberResolver {
         return true;
     }
 
-    /** 当前登录者修改自身密码（首登强改密时清标志） */
+    /** 当前登录者修改自身密码（主动改密传旧密码校验；首登强改密 oldPassword 传 null 跳过校验） */
     @Mutation()
     @Allow(Permission.Authenticated)
     async tenantChangeMyPassword(
         @Ctx() ctx: RequestContext,
+        @Args('oldPassword') oldPassword: string | null,
         @Args('newPassword') newPassword: string,
     ): Promise<boolean> {
-        await this.tenantMemberService.changeMyPassword(ctx, newPassword);
+        await this.tenantMemberService.changeMyPassword(ctx, oldPassword, newPassword);
         return true;
     }
 }
