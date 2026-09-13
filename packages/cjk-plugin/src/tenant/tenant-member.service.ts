@@ -236,9 +236,9 @@ export class TenantMemberService {
     }
 
     /** 当前登录者在本租户（ctx.channelId）的业务权限并集。
-     *  Vendure 缓存 session 用户用短键 n：CachedSessionUser.channels = { id, token, code, permissions }[]。 */
+     *  Vendure 缓存 session 用户用 channelPermissions（UserChannelPermissions[] = { id, token, code, permissions }）。 */
     private channelOperatorPerms(ctx: RequestContext): Set<string> {
-        const channels: any[] = (ctx as any).session?.user?.n || [];
+        const channels: any[] = (ctx as any).session?.user?.channelPermissions || [];
         const cur = channels.find((c: any) => String(c.id) === String(ctx.channelId));
         const perms: string[] = cur?.permissions || [];
         return new Set(perms.filter((p) => p !== 'Authenticated' && p !== Permission.SuperAdmin));
@@ -711,9 +711,17 @@ export class TenantMemberService {
     async memberToView(ctx: RequestContext, member: TenantMember): Promise<any> {
         const roleIds = await this.memberRoleIdsInChannel(ctx, member);
         const view: any = { ...member, roleIds };
-        if (String((ctx as any).session?.user?.id) === String(member.administratorId)) {
-            view.canResetPassword = false; // 不允许重置自己的密码
-        } else if (ctx.userHasPermissions([Permission.SuperAdmin])) {
+        const activeUserId = ctx.activeUserId;
+        if (activeUserId != null) {
+            const myAdmin = await this.administratorService
+                .findOneByUserId(ctx, activeUserId)
+                .catch(() => null);
+            if (myAdmin && String(myAdmin.id) === String(member.administratorId)) {
+                view.canResetPassword = false; // 不允许重置自己的密码
+                return view;
+            }
+        }
+        if ((ctx as any).session?.user?.superAdmin === true || ctx.userHasPermissions([Permission.SuperAdmin])) {
             view.canResetPassword = true;
         } else {
             const roleRepo = this.connection.getRepository(ctx, Role);
@@ -763,11 +771,12 @@ export class TenantMemberService {
     /** 当前登录者修改自身密码：主动改密校验旧密码；首登强改密（未传旧密码或存在 mustChangePassword）跳过校验。更新后清除本租户首登强改密标志 */
     async changeMyPassword(ctx: RequestContext, oldPassword: string | null, newPassword: string): Promise<void> {
         if (!newPassword || newPassword.length < 8) throw new Error('WEAK_PASSWORD');
-        const adminId = String((ctx as any).session?.user?.id);
-        if (!adminId) throw new Error('NOT_AUTHENTICATED');
+        const activeUserId = ctx.activeUserId;
+        if (!activeUserId) throw new Error('NOT_AUTHENTICATED');
         const adminRepo = this.connection.getRepository(ctx, Administrator);
-        const admin = await adminRepo.findOne({ where: { id: adminId }, relations: ['user'] });
+        const admin = await adminRepo.findOne({ where: { user: { id: String(activeUserId) } }, relations: ['user'] });
         if (!admin) throw new Error('ADMIN_NOT_FOUND');
+        const adminId = String(admin.id);
         const memberRepo = this.connection.getRepository(ctx, TenantMember);
         const members = await memberRepo.find({ where: { administratorId: adminId } });
         const mustChange = members.some((m) => m.mustChangePassword);

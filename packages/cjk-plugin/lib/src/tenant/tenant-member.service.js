@@ -206,10 +206,10 @@ let TenantMemberService = class TenantMemberService {
         }
     }
     /** 当前登录者在本租户（ctx.channelId）的业务权限并集。
-     *  Vendure 缓存 session 用户用短键 n：CachedSessionUser.channels = { id, token, code, permissions }[]。 */
+     *  Vendure 缓存 session 用户用 channelPermissions（UserChannelPermissions[] = { id, token, code, permissions }）。 */
     channelOperatorPerms(ctx) {
         var _a, _b;
-        const channels = ((_b = (_a = ctx.session) === null || _a === void 0 ? void 0 : _a.user) === null || _b === void 0 ? void 0 : _b.n) || [];
+        const channels = ((_b = (_a = ctx.session) === null || _a === void 0 ? void 0 : _a.user) === null || _b === void 0 ? void 0 : _b.channelPermissions) || [];
         const cur = channels.find((c) => String(c.id) === String(ctx.channelId));
         const perms = (cur === null || cur === void 0 ? void 0 : cur.permissions) || [];
         return new Set(perms.filter((p) => p !== 'Authenticated' && p !== core_1.Permission.SuperAdmin));
@@ -643,10 +643,17 @@ let TenantMemberService = class TenantMemberService {
         var _a, _b;
         const roleIds = await this.memberRoleIdsInChannel(ctx, member);
         const view = Object.assign(Object.assign({}, member), { roleIds });
-        if (String((_b = (_a = ctx.session) === null || _a === void 0 ? void 0 : _a.user) === null || _b === void 0 ? void 0 : _b.id) === String(member.administratorId)) {
-            view.canResetPassword = false; // 不允许重置自己的密码
+        const activeUserId = ctx.activeUserId;
+        if (activeUserId != null) {
+            const myAdmin = await this.administratorService
+                .findOneByUserId(ctx, activeUserId)
+                .catch(() => null);
+            if (myAdmin && String(myAdmin.id) === String(member.administratorId)) {
+                view.canResetPassword = false; // 不允许重置自己的密码
+                return view;
+            }
         }
-        else if (ctx.userHasPermissions([core_1.Permission.SuperAdmin])) {
+        if (((_b = (_a = ctx.session) === null || _a === void 0 ? void 0 : _a.user) === null || _b === void 0 ? void 0 : _b.superAdmin) === true || ctx.userHasPermissions([core_1.Permission.SuperAdmin])) {
             view.canResetPassword = true;
         }
         else {
@@ -695,21 +702,22 @@ let TenantMemberService = class TenantMemberService {
     }
     /** 当前登录者修改自身密码：主动改密校验旧密码；首登强改密（未传旧密码或存在 mustChangePassword）跳过校验。更新后清除本租户首登强改密标志 */
     async changeMyPassword(ctx, oldPassword, newPassword) {
-        var _a, _b, _c;
+        var _a;
         if (!newPassword || newPassword.length < 8)
             throw new Error('WEAK_PASSWORD');
-        const adminId = String((_b = (_a = ctx.session) === null || _a === void 0 ? void 0 : _a.user) === null || _b === void 0 ? void 0 : _b.id);
-        if (!adminId)
+        const activeUserId = ctx.activeUserId;
+        if (!activeUserId)
             throw new Error('NOT_AUTHENTICATED');
         const adminRepo = this.connection.getRepository(ctx, core_1.Administrator);
-        const admin = await adminRepo.findOne({ where: { id: adminId }, relations: ['user'] });
+        const admin = await adminRepo.findOne({ where: { user: { id: String(activeUserId) } }, relations: ['user'] });
         if (!admin)
             throw new Error('ADMIN_NOT_FOUND');
+        const adminId = String(admin.id);
         const memberRepo = this.connection.getRepository(ctx, tenant_member_entity_1.TenantMember);
         const members = await memberRepo.find({ where: { administratorId: adminId } });
         const mustChange = members.some((m) => m.mustChangePassword);
         if (oldPassword && !mustChange) {
-            const ok = await this.authService.verifyUserPassword(ctx, (_c = admin.user) === null || _c === void 0 ? void 0 : _c.id, oldPassword);
+            const ok = await this.authService.verifyUserPassword(ctx, (_a = admin.user) === null || _a === void 0 ? void 0 : _a.id, oldPassword);
             if (ok !== true)
                 throw new Error('WRONG_OLD_PASSWORD');
         }
