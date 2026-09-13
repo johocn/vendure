@@ -177,6 +177,15 @@ export class TenantMemberResolver {
         return this.tenantMemberService.memberRoleIdsInChannel(ctx, member);
     }
 
+    /** 租户自助重置本租户成员密码为默认口令（权限门禁见 service） */
+    @Mutation()
+    @Allow(tenantMemberManagePermission.Permission)
+    async myResetTenantMemberPassword(@Ctx() ctx: RequestContext, @Args('id') id: string): Promise<boolean> {
+        this.tenantMemberService.assertChannelMember(ctx);
+        await this.tenantMemberService.resetMyMemberPassword(ctx, id);
+        return true;
+    }
+
     /** 当前登录者修改自身密码（首登强改密时清标志） */
     @Mutation()
     @Allow(Permission.Authenticated)
