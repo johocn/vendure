@@ -288,6 +288,9 @@ export const devConfig: VendureConfig = {
             { name: 'orderDetailConfig', type: 'text', public: true },
             // orderListConfig 存订单列表版式 JSON（本期仅 card）
             { name: 'orderListConfig', type: 'text', public: true },
+            // promoSchemes/serviceSchemes 存频道促销/服务方案库 JSON（[{code,text:{zh_Hans,en}}]，勾选启用即入列）
+            { name: 'promoSchemes', type: 'text', public: true },
+            { name: 'serviceSchemes', type: 'text', public: true },
         ],
         Customer: [],
         Fulfillment: [],
