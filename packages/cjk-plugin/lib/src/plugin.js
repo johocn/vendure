@@ -848,8 +848,13 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     remark: String
                     phone: String
                     roleIds: [ID!]!
+                    canResetPassword: Boolean!
                     createdAt: DateTime!
                     initialPassword: String
+                }
+
+                extend type Role {
+                    grantable: Boolean
                 }
 
                 input CreateTenantInput {

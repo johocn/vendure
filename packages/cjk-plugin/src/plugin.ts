@@ -682,8 +682,13 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                     remark: String
                     phone: String
                     roleIds: [ID!]!
+                    canResetPassword: Boolean!
                     createdAt: DateTime!
                     initialPassword: String
+                }
+
+                extend type Role {
+                    grantable: Boolean
                 }
 
                 input CreateTenantInput {
