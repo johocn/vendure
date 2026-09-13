@@ -61,7 +61,7 @@ export declare class TenantMemberService {
     /** 安全加固：校验待绑定角色全部属于指定 channel，防止租户管理员绑定别店角色提权 */
     assertRolesInChannel(ctx: RequestContext, roleIds: ID[], channelId: ID): Promise<void>;
     /** 当前登录者在本租户（ctx.channelId）的业务权限并集。
-     *  Vendure 缓存 session 用户用短键 n：CachedSessionUser.channels = { id, token, code, permissions }[]。 */
+     *  Vendure 缓存 session 用户用 channelPermissions（UserChannelPermissions[] = { id, token, code, permissions }）。 */
     private channelOperatorPerms;
     /** 权限门禁（权威）：非超管授予的角色必须 canGrantRole 通过，否则抛错。调用点须已过 assertRolesInChannel。 */
     assertCanGrant(ctx: RequestContext, roleIds: ID[]): Promise<void>;
