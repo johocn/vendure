@@ -30,7 +30,7 @@ describe('validateHotelConfig', () => {
   it('capacity 非法报错', () => {
     const r = validateHotelConfig({
       basePriceCent: 88800,
-      specs: { capacity: 0, maxCapacity: 1 },
+      specs: { bedType: '大床', area: 20, capacity: 0, maxCapacity: 1 },
     });
     expect(r.valid).toBe(false);
   });
