@@ -1,0 +1,1 @@
+{"version":3,"file":"hotel-custom-fields.js","sourceRoot":"","sources":["../../../src/hotel/hotel-custom-fields.ts"],"names":[],"mappings":";;;AAEA,wCAAwC;AACxC,6DAA6D;AAC7D,qCAAqC;AACxB,QAAA,qBAAqB,GAAiB;IAC/C,cAAc,EAAE;QACZ;YACI,IAAI,EAAE,iBAAiB;YACvB,IAAI,EAAE,MAAM;YACZ,MAAM,EAAE,IAAI;YACZ,QAAQ,EAAE,IAAI;SACjB;KACJ;CACJ,CAAC"}

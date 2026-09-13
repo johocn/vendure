@@ -89,6 +89,10 @@ import { PaymentTemplate } from './payment/payment-template.entity';
 import { PaymentTemplateService } from './payment/payment-template.service';
 import { PaymentTemplateAdminResolver } from './payment/payment-template-admin.resolver';
 import { paymentTemplatePermissionDefinitions } from './payment/payment-template-permissions';
+import { RoomTemplate } from './hotel/room-template.entity';
+import { RoomTemplateService } from './hotel/room-template.service';
+import { RoomTemplateAdminResolver } from './hotel/room-template-admin.resolver';
+import { hotelRoomCustomFields } from './hotel/hotel-custom-fields';
 import { ShippingProfileShopResolver } from './shipping/shipping-profile-shop.resolver';
 import { PaymentProfileShopResolver } from './payment/payment-profile-shop.resolver';
 import { OrderBoxService } from './order/order-box.service';
@@ -118,7 +122,7 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod, PaymentTemplate, TenantMember, Wallet, MerchantSettlementLedger],
+    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod, PaymentTemplate, RoomTemplate, TenantMember, Wallet, MerchantSettlementLedger],
     providers: [
         { provide: CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
         TenantSetupService,
@@ -143,6 +147,7 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
         ShippingProfileService,
         PaymentProfileService,
         PaymentTemplateService,
+        RoomTemplateService,
         DefaultDataService,
         TenantMemberService,
         OrderBoxService,
@@ -671,6 +676,62 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                     createPaymentMethodFromTemplate(templateId: ID!, name: String, code: String): PaymentMethod!
                 }
 
+                # ===== Room Template =====
+                type RoomTemplate {
+                    id: ID!
+                    createdAt: DateTime!
+                    updatedAt: DateTime!
+                    code: String!
+                    name: String!
+                    enabled: Boolean!
+                    sortOrder: Int!
+                    coverAssetId: ID
+                    specs: JSON
+                    defaultRooms: JSON
+                    basePriceCent: Int!
+                    priceCalendar: JSON
+                    longStayDiscount: JSON
+                    minNights: Int!
+                    maxNights: Int!
+                    advanceDays: Int!
+                    checkInTime: String!
+                    checkOutTime: String!
+                    cancelPolicy: JSON!
+                    depositType: String!
+                }
+
+                input RoomTemplateInput {
+                    code: String!
+                    name: String!
+                    enabled: Boolean!
+                    sortOrder: Int!
+                    coverAssetId: ID
+                    specs: JSON
+                    defaultRooms: JSON
+                    basePriceCent: Int!
+                    priceCalendar: JSON
+                    longStayDiscount: JSON
+                    minNights: Int!
+                    maxNights: Int!
+                    advanceDays: Int!
+                    checkInTime: String!
+                    checkOutTime: String!
+                    cancelPolicy: JSON!
+                    depositType: String!
+                }
+
+                extend type Query {
+                    roomTemplates: [RoomTemplate!]!
+                    roomTemplate(id: ID!): RoomTemplate
+                }
+
+                extend type Mutation {
+                    createRoomTemplate(input: RoomTemplateInput!): RoomTemplate!
+                    updateRoomTemplate(id: ID!, input: RoomTemplateInput!): RoomTemplate!
+                    deleteRoomTemplate(id: ID!): Boolean!
+                    applyRoomTemplate(variantId: ID!, templateId: ID!): Boolean!
+                }
+
                 # ===== 租户 / 角色 / 权限体系 =====
                 type TenantMember implements Node {
                     id: ID!
@@ -948,7 +1009,7 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                 ${redemptionAdminSchema}
                 `;
         },
-        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver, MerchantSettlementAdminResolver],
+        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, RoomTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver, MerchantSettlementAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {
@@ -1345,6 +1406,20 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                         ...(config.customFields?.ProductVariant || []),
                         ...newPvFields,
                     ],
+                };
+            }
+        }
+
+        // 注册 ProductVariant customFields（hotelRoomConfig）—— 与上方 weight/dimensions 同款去重
+        {
+            const existingHotelPvFields = (config.customFields?.ProductVariant || []).map(f => f.name);
+            const newHotelPvFields = (hotelRoomCustomFields.ProductVariant || []).filter(
+                f => !existingHotelPvFields.includes(f.name),
+            );
+            if (newHotelPvFields.length > 0) {
+                config.customFields = {
+                    ...config.customFields,
+                    ProductVariant: [...(config.customFields?.ProductVariant || []), ...newHotelPvFields],
                 };
             }
         }

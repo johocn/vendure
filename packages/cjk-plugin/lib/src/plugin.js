@@ -90,6 +90,10 @@ const payment_template_entity_1 = require("./payment/payment-template.entity");
 const payment_template_service_1 = require("./payment/payment-template.service");
 const payment_template_admin_resolver_1 = require("./payment/payment-template-admin.resolver");
 const payment_template_permissions_1 = require("./payment/payment-template-permissions");
+const room_template_entity_1 = require("./hotel/room-template.entity");
+const room_template_service_1 = require("./hotel/room-template.service");
+const room_template_admin_resolver_1 = require("./hotel/room-template-admin.resolver");
+const hotel_custom_fields_1 = require("./hotel/hotel-custom-fields");
 const shipping_profile_shop_resolver_1 = require("./shipping/shipping-profile-shop.resolver");
 const payment_profile_shop_resolver_1 = require("./payment/payment-profile-shop.resolver");
 const order_box_service_1 = require("./order/order-box.service");
@@ -284,7 +288,7 @@ exports.CjkPlugin = CjkPlugin;
 exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_profile_method_entity_1.PaymentProfileMethod, payment_template_entity_1.PaymentTemplate, tenant_member_entity_1.TenantMember, wallet_entity_1.Wallet, merchant_settlement_ledger_entity_1.MerchantSettlementLedger],
+        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_profile_method_entity_1.PaymentProfileMethod, payment_template_entity_1.PaymentTemplate, room_template_entity_1.RoomTemplate, tenant_member_entity_1.TenantMember, wallet_entity_1.Wallet, merchant_settlement_ledger_entity_1.MerchantSettlementLedger],
         providers: [
             { provide: constants_1.CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
             tenant_setup_service_1.TenantSetupService,
@@ -309,6 +313,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             shipping_profile_service_1.ShippingProfileService,
             payment_profile_service_1.PaymentProfileService,
             payment_template_service_1.PaymentTemplateService,
+            room_template_service_1.RoomTemplateService,
             default_data_service_1.DefaultDataService,
             tenant_member_service_1.TenantMemberService,
             order_box_service_1.OrderBoxService,
@@ -837,6 +842,62 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     createPaymentMethodFromTemplate(templateId: ID!, name: String, code: String): PaymentMethod!
                 }
 
+                # ===== Room Template =====
+                type RoomTemplate {
+                    id: ID!
+                    createdAt: DateTime!
+                    updatedAt: DateTime!
+                    code: String!
+                    name: String!
+                    enabled: Boolean!
+                    sortOrder: Int!
+                    coverAssetId: ID
+                    specs: JSON
+                    defaultRooms: JSON
+                    basePriceCent: Int!
+                    priceCalendar: JSON
+                    longStayDiscount: JSON
+                    minNights: Int!
+                    maxNights: Int!
+                    advanceDays: Int!
+                    checkInTime: String!
+                    checkOutTime: String!
+                    cancelPolicy: JSON!
+                    depositType: String!
+                }
+
+                input RoomTemplateInput {
+                    code: String!
+                    name: String!
+                    enabled: Boolean!
+                    sortOrder: Int!
+                    coverAssetId: ID
+                    specs: JSON
+                    defaultRooms: JSON
+                    basePriceCent: Int!
+                    priceCalendar: JSON
+                    longStayDiscount: JSON
+                    minNights: Int!
+                    maxNights: Int!
+                    advanceDays: Int!
+                    checkInTime: String!
+                    checkOutTime: String!
+                    cancelPolicy: JSON!
+                    depositType: String!
+                }
+
+                extend type Query {
+                    roomTemplates: [RoomTemplate!]!
+                    roomTemplate(id: ID!): RoomTemplate
+                }
+
+                extend type Mutation {
+                    createRoomTemplate(input: RoomTemplateInput!): RoomTemplate!
+                    updateRoomTemplate(id: ID!, input: RoomTemplateInput!): RoomTemplate!
+                    deleteRoomTemplate(id: ID!): Boolean!
+                    applyRoomTemplate(variantId: ID!, templateId: ID!): Boolean!
+                }
+
                 # ===== 租户 / 角色 / 权限体系 =====
                 type TenantMember implements Node {
                     id: ID!
@@ -1114,7 +1175,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                 ${redemption_schema_1.redemptionAdminSchema}
                 `;
             },
-            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver, tenant_catalog_admin_resolver_1.TenantCatalogAdminResolver, asset_library_admin_resolver_1.AssetLibraryAdminResolver, redemption_resolver_1.RedemptionAdminResolver, merchant_settlement_admin_resolver_1.MerchantSettlementAdminResolver],
+            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, room_template_admin_resolver_1.RoomTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver, tenant_catalog_admin_resolver_1.TenantCatalogAdminResolver, asset_library_admin_resolver_1.AssetLibraryAdminResolver, redemption_resolver_1.RedemptionAdminResolver, merchant_settlement_admin_resolver_1.MerchantSettlementAdminResolver],
         },
         shopApiExtensions: {
             schema: () => {
@@ -1352,7 +1413,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver, shipping_profile_shop_resolver_1.ShippingProfileShopResolver, payment_profile_shop_resolver_1.PaymentProfileShopResolver, order_box_shop_resolver_1.OrderBoxShopResolver, order_split_shop_resolver_1.OrderSplitShopResolver, wallet_shop_resolver_1.WalletShopResolver, redemption_resolver_1.RedemptionShopResolver],
         },
         configuration: config => {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z;
             // 注入 authSecret 到 crypto 模块（configuration 在 bootstrap 早期执行，此时 options 已可用）
             (0, crypto_1.setAuthSecret)(CjkPlugin.options.authSecret);
             // 租户级税率方式（三态 taxMode：inclusive 含税价含拆税 / zero 零税价净价结算 / exclusive 不含税价价税分离）。
@@ -1478,24 +1539,32 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                         ] });
                 }
             }
+            // 注册 ProductVariant customFields（hotelRoomConfig）—— 与上方 weight/dimensions 同款去重
+            {
+                const existingHotelPvFields = (((_u = config.customFields) === null || _u === void 0 ? void 0 : _u.ProductVariant) || []).map(f => f.name);
+                const newHotelPvFields = (hotel_custom_fields_1.hotelRoomCustomFields.ProductVariant || []).filter(f => !existingHotelPvFields.includes(f.name));
+                if (newHotelPvFields.length > 0) {
+                    config.customFields = Object.assign(Object.assign({}, config.customFields), { ProductVariant: [...(((_v = config.customFields) === null || _v === void 0 ? void 0 : _v.ProductVariant) || []), ...newHotelPvFields] });
+                }
+            }
             // 注册 ShippingMethod customFields（enabled 启停）—— 去重防止重复注册
             {
-                const existingSmFields = (((_u = config.customFields) === null || _u === void 0 ? void 0 : _u.ShippingMethod) || []).map(f => f.name);
+                const existingSmFields = (((_w = config.customFields) === null || _w === void 0 ? void 0 : _w.ShippingMethod) || []).map(f => f.name);
                 const newSmFields = (shipping_method_custom_fields_1.customShippingMethodFields.ShippingMethod || []).filter(f => !existingSmFields.includes(f.name));
                 if (newSmFields.length > 0) {
                     config.customFields = Object.assign(Object.assign({}, config.customFields), { ShippingMethod: [
-                            ...(((_v = config.customFields) === null || _v === void 0 ? void 0 : _v.ShippingMethod) || []),
+                            ...(((_x = config.customFields) === null || _x === void 0 ? void 0 : _x.ShippingMethod) || []),
                             ...newSmFields,
                         ] });
                 }
             }
             // 注册 Asset customFields（uploadedBy 记录上传者，供图库按用户过滤）—— 去重防止重复注册
             {
-                const existingAssetFields = (((_w = config.customFields) === null || _w === void 0 ? void 0 : _w.Asset) || []).map(f => f.name);
+                const existingAssetFields = (((_y = config.customFields) === null || _y === void 0 ? void 0 : _y.Asset) || []).map(f => f.name);
                 const newAssetFields = (asset_custom_fields_1.assetCustomFields.Asset || []).filter(f => !existingAssetFields.includes(f.name));
                 if (newAssetFields.length > 0) {
                     config.customFields = Object.assign(Object.assign({}, config.customFields), { Asset: [
-                            ...(((_x = config.customFields) === null || _x === void 0 ? void 0 : _x.Asset) || []),
+                            ...(((_z = config.customFields) === null || _z === void 0 ? void 0 : _z.Asset) || []),
                             ...newAssetFields,
                         ] });
                 }

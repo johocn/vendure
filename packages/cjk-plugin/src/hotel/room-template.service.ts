@@ -88,7 +88,8 @@ export class RoomTemplateService {
         const vRepo = this.connection.getRepository(ctx, ProductVariant);
         const v = await vRepo.findOne({ where: { id: variantId } as any });
         if (!v) throw new Error(`ProductVariant ${variantId} 不存在`);
-        (v as any).customFields = { ...((v as any).customFields ?? {}), hotelRoomConfig: snapshot };
+        // hotelRoomConfig 为 text 类型（Vendure 3.6 无 json 自定义字段类型），存 JSON 字符串，读取端 JSON.parse
+        (v as any).customFields = { ...((v as any).customFields ?? {}), hotelRoomConfig: JSON.stringify(snapshot) };
         await vRepo.save(v);
         return true;
     }
