@@ -322,24 +322,13 @@ let InventoryService = class InventoryService {
     /**
      * 多库库存展示（就近门店库存）：返回某商品在各仓库/门店的逐仓可售库存 + 距离。
      * - productId 必填；variantId 省略时返回该商品全部 variant。
-     * - 带 lat/lng 时按距离升序排序（无坐标为 -1 排末尾）；带 city 时仅保留服务该城市的仓。
+     * - 带 lat/lng 时按距离升序排序（无坐标为 MAX_SAFE_INTEGER 排末尾）；无定位时距离为 -1（前端显示「距离未知」）。
+     * - 仓库拉取用 rawConnection（不经渠道过滤），保证展示全部仓库；stockLocationService.findAll(ctx)
+     *   会按渠道隔离（如 t2 渠道仅关联默认仓），导致长春仓等不可见。
      */
     async findNearbyStock(ctx, options) {
-        // 分页拉取全部仓库（单次列表查询有上限，避免 take 超限报错）
-        const pageSize = 100;
-        const locations = [];
-        let page = 1;
-        while (true) {
-            const result = await this.stockLocationService.findAll(ctx, {
-                skip: (page - 1) * pageSize,
-                take: pageSize,
-            });
-            locations.push(...result.items);
-            if (result.items.length < pageSize || result.totalItems <= locations.length) {
-                break;
-            }
-            page++;
-        }
+        const locRepo = this.connection.rawConnection.getRepository(core_1.StockLocation);
+        const locations = await locRepo.find();
         const variantRepo = this.connection.getRepository(ctx, core_1.ProductVariant);
         const rawVariants = await variantRepo.find({
             where: options.variantId
@@ -354,13 +343,6 @@ let InventoryService = class InventoryService {
             : null;
         const rows = [];
         for (const loc of locations) {
-            if (options.city && !this.locationServesCity(loc, options.city)) {
-                continue;
-            }
-            // 带定位时跳过无坐标仓库：无法计算“就近”距离，避免 9e15/INF 干扰结果与前端展示
-            if (origin && !this.locationHasCoords(loc)) {
-                continue;
-            }
             const distanceKm = this.locationDistanceKm(loc, origin);
             const perLocation = [];
             for (const v of variants) {
@@ -394,13 +376,6 @@ let InventoryService = class InventoryService {
             const b = norm(s);
             return a === b || a.startsWith(b) || b.startsWith(a);
         });
-    }
-    locationHasCoords(loc) {
-        var _a;
-        const cf = (_a = loc.customFields) !== null && _a !== void 0 ? _a : {};
-        const lat = cf.lat != null ? Number(cf.lat) : NaN;
-        const lng = cf.lng != null ? Number(cf.lng) : NaN;
-        return isFinite(lat) && isFinite(lng);
     }
     locationDistanceKm(loc, origin) {
         var _a;

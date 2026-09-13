@@ -112,7 +112,9 @@ export declare class InventoryService {
     /**
      * 多库库存展示（就近门店库存）：返回某商品在各仓库/门店的逐仓可售库存 + 距离。
      * - productId 必填；variantId 省略时返回该商品全部 variant。
-     * - 带 lat/lng 时按距离升序排序（无坐标为 -1 排末尾）；带 city 时仅保留服务该城市的仓。
+     * - 带 lat/lng 时按距离升序排序（无坐标为 MAX_SAFE_INTEGER 排末尾）；无定位时距离为 -1（前端显示「距离未知」）。
+     * - 仓库拉取用 rawConnection（不经渠道过滤），保证展示全部仓库；stockLocationService.findAll(ctx)
+     *   会按渠道隔离（如 t2 渠道仅关联默认仓），导致长春仓等不可见。
      */
     findNearbyStock(ctx: RequestContext, options: {
         productId: ID;
@@ -133,7 +135,6 @@ export declare class InventoryService {
         }>;
     }>>;
     private locationServesCity;
-    private locationHasCoords;
     private locationDistanceKm;
     private haversineKm;
     createStockInOrder(ctx: RequestContext, input: {

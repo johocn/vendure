@@ -443,27 +443,16 @@ export class InventoryService {
     /**
      * 多库库存展示（就近门店库存）：返回某商品在各仓库/门店的逐仓可售库存 + 距离。
      * - productId 必填；variantId 省略时返回该商品全部 variant。
-     * - 带 lat/lng 时按距离升序排序（无坐标为 -1 排末尾）；带 city 时仅保留服务该城市的仓。
+     * - 带 lat/lng 时按距离升序排序（无坐标为 MAX_SAFE_INTEGER 排末尾）；无定位时距离为 -1（前端显示「距离未知」）。
+     * - 仓库拉取用 rawConnection（不经渠道过滤），保证展示全部仓库；stockLocationService.findAll(ctx)
+     *   会按渠道隔离（如 t2 渠道仅关联默认仓），导致长春仓等不可见。
      */
     async findNearbyStock(
         ctx: RequestContext,
         options: { productId: ID; variantId?: ID; lat?: number; lng?: number; city?: string },
     ): Promise<Array<{ location: StockLocation; distanceKm: number; variants: Array<{ variantId: ID; variantName: string; sku: string; stockOnHand: number; stockAllocated: number; stockAvailable: number }> }>> {
-        // 分页拉取全部仓库（单次列表查询有上限，避免 take 超限报错）
-        const pageSize = 100;
-        const locations: StockLocation[] = [];
-        let page = 1;
-        while (true) {
-            const result = await this.stockLocationService.findAll(ctx, {
-                skip: (page - 1) * pageSize,
-                take: pageSize,
-            });
-            locations.push(...result.items);
-            if (result.items.length < pageSize || result.totalItems <= locations.length) {
-                break;
-            }
-            page++;
-        }
+        const locRepo = this.connection.rawConnection.getRepository(StockLocation);
+        const locations = await locRepo.find();
         const variantRepo = this.connection.getRepository(ctx, ProductVariant);
         const rawVariants = await variantRepo.find({
             where: options.variantId
