@@ -18,6 +18,7 @@ import {
     StockMovementService,
     StockLocation,
     TransactionalConnection,
+    TranslatorService,
     UserInputError,
     idsAreEqual,
 } from '@vendure/core';
@@ -62,6 +63,7 @@ export class InventoryService {
         private stockLocationService: StockLocationService,
         private stockLedgerService: StockLedgerService,
         private administratorService: AdministratorService,
+        private translatorService: TranslatorService,
     ) {}
 
     // ===== 内部辅助方法 =====
@@ -463,12 +465,14 @@ export class InventoryService {
             page++;
         }
         const variantRepo = this.connection.getRepository(ctx, ProductVariant);
-        const variants = await variantRepo.find({
+        const rawVariants = await variantRepo.find({
             where: options.variantId
                 ? { id: options.variantId as any }
                 : { product: { id: options.productId as any } } as any,
             relations: ['product'],
         });
+        // 直查实体未走 Vendure translate，name 等多语言字段为 null；用 TranslatorService 转译后再用
+        const variants = rawVariants.map(v => this.translatorService.translate(v, ctx));
 
         const origin = options.lat != null && options.lng != null
             ? { lat: options.lat, lng: options.lng }

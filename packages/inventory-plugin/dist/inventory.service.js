@@ -24,13 +24,14 @@ const purchase_order_entity_1 = require("./entities/purchase-order.entity");
 const stock_ledger_service_1 = require("./stock-ledger.service");
 const loggerCtx = 'InventoryService';
 let InventoryService = class InventoryService {
-    constructor(connection, stockMovementService, stockLevelService, stockLocationService, stockLedgerService, administratorService) {
+    constructor(connection, stockMovementService, stockLevelService, stockLocationService, stockLedgerService, administratorService, translatorService) {
         this.connection = connection;
         this.stockMovementService = stockMovementService;
         this.stockLevelService = stockLevelService;
         this.stockLocationService = stockLocationService;
         this.stockLedgerService = stockLedgerService;
         this.administratorService = administratorService;
+        this.translatorService = translatorService;
     }
     // ===== 内部辅助方法 =====
     /**
@@ -340,12 +341,14 @@ let InventoryService = class InventoryService {
             page++;
         }
         const variantRepo = this.connection.getRepository(ctx, core_1.ProductVariant);
-        const variants = await variantRepo.find({
+        const rawVariants = await variantRepo.find({
             where: options.variantId
                 ? { id: options.variantId }
                 : { product: { id: options.productId } },
             relations: ['product'],
         });
+        // 直查实体未走 Vendure translate，name 等多语言字段为 null；用 TranslatorService 转译后再用
+        const variants = rawVariants.map(v => this.translatorService.translate(v, ctx));
         const origin = options.lat != null && options.lng != null
             ? { lat: options.lat, lng: options.lng }
             : null;
@@ -1218,5 +1221,6 @@ exports.InventoryService = InventoryService = __decorate([
         core_1.StockLevelService,
         core_1.StockLocationService,
         stock_ledger_service_1.StockLedgerService,
-        core_1.AdministratorService])
+        core_1.AdministratorService,
+        core_1.TranslatorService])
 ], InventoryService);

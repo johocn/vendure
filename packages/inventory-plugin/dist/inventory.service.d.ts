@@ -1,5 +1,5 @@
 import { ID } from '@vendure/common/lib/shared-types';
-import { AdministratorService, RequestContext, Sale, StockLevel, StockLevelService, StockLocationService, StockMovementService, StockLocation, TransactionalConnection } from '@vendure/core';
+import { AdministratorService, RequestContext, Sale, StockLevel, StockLevelService, StockLocationService, StockMovementService, StockLocation, TransactionalConnection, TranslatorService } from '@vendure/core';
 import { StockInOrder } from './entities/stock-in-order.entity';
 import { StockOutOrder } from './entities/stock-out-order.entity';
 import { StockMoveOrder } from './entities/stock-move-order.entity';
@@ -21,7 +21,8 @@ export declare class InventoryService {
     private stockLocationService;
     private stockLedgerService;
     private administratorService;
-    constructor(connection: TransactionalConnection, stockMovementService: StockMovementService, stockLevelService: StockLevelService, stockLocationService: StockLocationService, stockLedgerService: StockLedgerService, administratorService: AdministratorService);
+    private translatorService;
+    constructor(connection: TransactionalConnection, stockMovementService: StockMovementService, stockLevelService: StockLevelService, stockLocationService: StockLocationService, stockLedgerService: StockLedgerService, administratorService: AdministratorService, translatorService: TranslatorService);
     /**
      * 调整某仓库的库存（delta 为正数表示增加，负数表示减少）
      * 通过 adjustProductVariantStock 写入 StockAdjustment 流水
