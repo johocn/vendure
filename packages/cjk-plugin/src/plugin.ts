@@ -848,7 +848,8 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                     myUpdateTenantMemberRoles(id: ID!, roleIds: [ID!]!): Boolean!
                     tenantLinkMember(channelId: ID!, administratorId: ID!, roleIds: [ID!]!, displayName: String, phone: String, remark: String): TenantMember!
                     myLinkMember(administratorId: ID!, roleIds: [ID!]!, displayName: String, phone: String, remark: String): TenantMember!
-                    tenantChangeMyPassword(newPassword: String!): Boolean!
+                    myResetTenantMemberPassword(id: ID!): Boolean!
+                    tenantChangeMyPassword(oldPassword: String, newPassword: String!): Boolean!
                     myUpdateChannelCustomFields(input: JSON!): JSON!
                 }
 
