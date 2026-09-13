@@ -15,11 +15,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.TenantMemberService = exports.DEFAULT_ADMIN_PASSWORD = exports.GLOBAL_ROLE_PREFIX = exports.BUSINESS_PERMISSIONS = exports.PERMISSION_CATALOG = void 0;
 exports.normalizeGlobalRoleCode = normalizeGlobalRoleCode;
 exports.randomStrongPassword = randomStrongPassword;
+exports.canGrantRole = canGrantRole;
+exports.dedupeRolesByLabel = dedupeRolesByLabel;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const constants_1 = require("../constants");
 const tenant_member_entity_1 = require("./tenant-member.entity");
 const role_templates_1 = require("./role-templates");
+const tenant_permissions_1 = require("./tenant-permissions");
 /**
  * 租户级业务权限目录（单一来源，前后端共用，避免双份硬编码）。
  * 不含超管专属权限；Vendure v3 已将 Variant/Fulfillment 等合并进 catalog/product/order 权限。
@@ -133,12 +136,39 @@ function randomStrongPassword(length = 12) {
 }
 /** 租户管理人密码重置的默认口令（超管在租户详情页「重置密码」时写回此值） */
 exports.DEFAULT_ADMIN_PASSWORD = 'you123123';
+/** 可授判定：目标角色权限 ⊆ 操作者权限，且不含租户管理类权限（防链式提权）。
+ *  Authenticated 为所有角色基础权限，不计入比较。 */
+function canGrantRole(operatorPerms, rolePermissions) {
+    const perms = rolePermissions.filter((p) => p !== 'Authenticated');
+    return (perms.every((p) => operatorPerms.has(p)) &&
+        !perms.some((p) => p === tenant_permissions_1.TenantMemberManagePermission || p === tenant_permissions_1.TenantRoleManagePermission));
+}
+/** 角色去重：按展示名（description || code）合并，同名时本地角色（code 非 g- 前缀）优先于全局角色 */
+function dedupeRolesByLabel(roles) {
+    const seen = new Map();
+    for (const r of roles) {
+        // 展示名：description 非空用之；为空退回 code（去掉 g-/t{no}- 常规前缀后再比较，
+        // 使 t1-sales 与 g-sales 视为同名业务角色，避免因前缀不同而漏去重）
+        const key = String(r.description || r.code).replace(/^(g-|t\d+-)/, '');
+        const cur = seen.get(key);
+        if (!cur) {
+            seen.set(key, r);
+            continue;
+        }
+        const curGlobal = String(cur.code).startsWith(exports.GLOBAL_ROLE_PREFIX);
+        const rGlobal = String(r.code).startsWith(exports.GLOBAL_ROLE_PREFIX);
+        if (curGlobal && !rGlobal)
+            seen.set(key, r);
+    }
+    return [...seen.values()];
+}
 let TenantMemberService = class TenantMemberService {
-    constructor(connection, administratorService, roleService, channelService, pluginOptions) {
+    constructor(connection, administratorService, roleService, channelService, authService, pluginOptions) {
         this.connection = connection;
         this.administratorService = administratorService;
         this.roleService = roleService;
         this.channelService = channelService;
+        this.authService = authService;
         this.pluginOptions = pluginOptions;
     }
     /** 校验角色权限全部在业务权限白名单内（超管专属权限不入租户角色） */
@@ -173,6 +203,32 @@ let TenantMemberService = class TenantMemberService {
     async assertRolesInChannel(ctx, roleIds, channelId) {
         for (const roleId of roleIds) {
             await this.assertRoleInChannel(ctx, roleId, channelId);
+        }
+    }
+    /** 当前登录者在本租户（ctx.channelId）的业务权限并集。
+     *  Vendure 缓存 session 用户用短键 n：CachedSessionUser.channels = { id, token, code, permissions }[]。 */
+    channelOperatorPerms(ctx) {
+        var _a, _b;
+        const channels = ((_b = (_a = ctx.session) === null || _a === void 0 ? void 0 : _a.user) === null || _b === void 0 ? void 0 : _b.n) || [];
+        const cur = channels.find((c) => String(c.id) === String(ctx.channelId));
+        const perms = (cur === null || cur === void 0 ? void 0 : cur.permissions) || [];
+        return new Set(perms.filter((p) => p !== 'Authenticated' && p !== core_1.Permission.SuperAdmin));
+    }
+    /** 权限门禁（权威）：非超管授予的角色必须 canGrantRole 通过，否则抛错。调用点须已过 assertRolesInChannel。 */
+    async assertCanGrant(ctx, roleIds) {
+        if (ctx.userHasPermissions([core_1.Permission.SuperAdmin]))
+            return;
+        if (!roleIds || roleIds.length === 0)
+            return;
+        const operatorPerms = this.channelOperatorPerms(ctx);
+        const roleRepo = this.connection.getRepository(ctx, core_1.Role);
+        for (const roleId of roleIds) {
+            const role = await roleRepo.findOne({ where: { id: String(roleId) } });
+            if (!role)
+                throw new Error('ROLE_NOT_FOUND');
+            if (!canGrantRole(operatorPerms, (role.permissions || []))) {
+                throw new Error('PERMISSION_EXCEEDS_OPERATOR');
+            }
         }
     }
     /** 新建租户：自动分配 tenantNo（当前最大+1），code 由 tenantNo 派生 `t{tenantNo}`，避免手输冲突 */
@@ -259,13 +315,18 @@ let TenantMemberService = class TenantMemberService {
             .getMany();
         return rows.some((r) => (r.channels || []).some((c) => String(c.id) === channelId));
     }
-    /** 按 channelId 直查该租户全部角色（绕过 roleService.findAll 的「当前用户在目标 channel 需拥有全部权限」过滤，
-     *  否则超管在未绑定的 channerl 上会读不到该租户任何角色）。 */
+    /** 按 channelId 直查该租户全部角色：同名去重（本地优先全局），并按操作者权限标注 grantable（超管全 true）。 */
     async rolesForChannel(ctx, channelId) {
         const repo = this.connection.getRepository(ctx, core_1.Role);
         const all = await repo.find({ relations: ['channels'] });
         const chId = String(channelId);
-        return all.filter((r) => (r.channels || []).some((c) => String(c.id) === chId));
+        const roles = all.filter((r) => (r.channels || []).some((c) => String(c.id) === chId));
+        const deduped = dedupeRolesByLabel(roles);
+        if (ctx.userHasPermissions([core_1.Permission.SuperAdmin])) {
+            return deduped.map((r) => (Object.assign(Object.assign({}, r), { grantable: true })));
+        }
+        const operatorPerms = this.channelOperatorPerms(ctx);
+        return deduped.map((r) => (Object.assign(Object.assign({}, r), { grantable: canGrantRole(operatorPerms, (r.permissions || [])) })));
     }
     /** 系统直建租户级角色（绕过 roleService.create 的权限校验，仅用于启动补种子/一键导入这类系统操作）。
      *  幂等：仅当该 code 在本 channel 不存在时才创建。 */
@@ -541,6 +602,7 @@ let TenantMemberService = class TenantMemberService {
         if (roleIds && roleIds.length > 0) {
             await this.assertRolesInChannel(ctx, roleIds, channelId);
         }
+        await this.assertCanGrant(ctx, roleIds);
         const adminRepo = this.connection.getRepository(ctx, core_1.Administrator);
         const admin = await adminRepo.findOne({
             where: { id: String(administratorId) },
@@ -576,9 +638,26 @@ let TenantMemberService = class TenantMemberService {
             .filter((r) => (r.channels || []).some((c) => String(c.id) === channelId))
             .map((r) => String(r.id));
     }
-    /** 将 TenantMember 组装为含 roleIds 的视图对象（供列表查询直接返回，避免依赖 @ResolveField 子解析造成非空字段 null 报错） */
+    /** 将 TenantMember 组装为含 roleIds / canResetPassword 的视图对象 */
     async memberToView(ctx, member) {
-        return Object.assign(Object.assign({}, member), { roleIds: await this.memberRoleIdsInChannel(ctx, member) });
+        var _a, _b;
+        const roleIds = await this.memberRoleIdsInChannel(ctx, member);
+        const view = Object.assign(Object.assign({}, member), { roleIds });
+        if (String((_b = (_a = ctx.session) === null || _a === void 0 ? void 0 : _a.user) === null || _b === void 0 ? void 0 : _b.id) === String(member.administratorId)) {
+            view.canResetPassword = false; // 不允许重置自己的密码
+        }
+        else if (ctx.userHasPermissions([core_1.Permission.SuperAdmin])) {
+            view.canResetPassword = true;
+        }
+        else {
+            const roleRepo = this.connection.getRepository(ctx, core_1.Role);
+            const roles = roleIds.length
+                ? await roleRepo.findByIds(roleIds.map(String))
+                : [];
+            const perms = roles.flatMap((r) => (r.permissions || []));
+            view.canResetPassword = canGrantRole(this.channelOperatorPerms(ctx), perms);
+        }
+        return view;
     }
     /** 超管为租户建管理员账号并绑定角色，同时写入 TenantMember */
     async createTenantAdministrator(ctx, channelId, input) {
@@ -586,6 +665,7 @@ let TenantMemberService = class TenantMemberService {
         if (input.roleIds && input.roleIds.length > 0) {
             await this.assertRolesInChannel(ctx, input.roleIds, channelId);
         }
+        await this.assertCanGrant(ctx, input.roleIds);
         // 未显式提供密码 → 生成随机强口令，并默认标记首登强改密
         const generated = !input.password;
         const password = (_a = input.password) !== null && _a !== void 0 ? _a : randomStrongPassword();
@@ -613,22 +693,31 @@ let TenantMemberService = class TenantMemberService {
         }
         return member;
     }
-    /** 当前登录者修改自身密码：更新 Administrator 密码，并清除其所有租户关联的首登强改密标志 */
-    async changeMyPassword(ctx, newPassword) {
-        var _a;
+    /** 当前登录者修改自身密码：主动改密校验旧密码；首登强改密（未传旧密码或存在 mustChangePassword）跳过校验。更新后清除本租户首登强改密标志 */
+    async changeMyPassword(ctx, oldPassword, newPassword) {
+        var _a, _b, _c;
         if (!newPassword || newPassword.length < 8)
             throw new Error('WEAK_PASSWORD');
-        const user = (_a = ctx.session) === null || _a === void 0 ? void 0 : _a.user;
-        if (!(user === null || user === void 0 ? void 0 : user.id))
+        const adminId = String((_b = (_a = ctx.session) === null || _a === void 0 ? void 0 : _a.user) === null || _b === void 0 ? void 0 : _b.id);
+        if (!adminId)
             throw new Error('NOT_AUTHENTICATED');
-        const adminId = String(user.id);
+        const adminRepo = this.connection.getRepository(ctx, core_1.Administrator);
+        const admin = await adminRepo.findOne({ where: { id: adminId }, relations: ['user'] });
+        if (!admin)
+            throw new Error('ADMIN_NOT_FOUND');
+        const memberRepo = this.connection.getRepository(ctx, tenant_member_entity_1.TenantMember);
+        const members = await memberRepo.find({ where: { administratorId: adminId } });
+        const mustChange = members.some((m) => m.mustChangePassword);
+        if (oldPassword && !mustChange) {
+            const ok = await this.authService.verifyUserPassword(ctx, (_c = admin.user) === null || _c === void 0 ? void 0 : _c.id, oldPassword);
+            if (ok !== true)
+                throw new Error('WRONG_OLD_PASSWORD');
+        }
         await this.administratorService.update(ctx, { id: adminId, password: newPassword });
-        const repo = this.connection.getRepository(ctx, tenant_member_entity_1.TenantMember);
-        const members = await repo.find({ where: { administratorId: adminId } });
         for (const m of members) {
             if (m.mustChangePassword) {
                 m.mustChangePassword = false;
-                await repo.save(m);
+                await memberRepo.save(m);
             }
         }
     }
@@ -655,6 +744,27 @@ let TenantMemberService = class TenantMemberService {
         const member = await repo.findOne({ where: { id: String(memberId) } });
         if (!member)
             throw new Error('MEMBER_NOT_FOUND');
+        await this.administratorService.update(ctx, {
+            id: String(member.administratorId),
+            password: exports.DEFAULT_ADMIN_PASSWORD,
+        });
+        if (member.mustChangePassword) {
+            member.mustChangePassword = false;
+            await repo.save(member);
+        }
+        return member;
+    }
+    /** 租户自助：重置本租户成员密码为默认口令 you123123（目标权限必须低于操作者） */
+    async resetMyMemberPassword(ctx, memberId) {
+        const repo = this.connection.getRepository(ctx, tenant_member_entity_1.TenantMember);
+        const member = await repo.findOne({ where: { id: String(memberId) } });
+        if (!member)
+            throw new Error('MEMBER_NOT_FOUND');
+        if (String(member.channelId) !== String(ctx.channelId))
+            throw new Error('MEMBER_NOT_IN_CHANNEL');
+        const view = await this.memberToView(ctx, member);
+        if (!view.canResetPassword)
+            throw new Error('PERMISSION_EXCEEDS_OPERATOR');
         await this.administratorService.update(ctx, {
             id: String(member.administratorId),
             password: exports.DEFAULT_ADMIN_PASSWORD,
@@ -738,11 +848,12 @@ let TenantMemberService = class TenantMemberService {
 exports.TenantMemberService = TenantMemberService;
 exports.TenantMemberService = TenantMemberService = __decorate([
     (0, common_1.Injectable)(),
-    __param(4, (0, common_1.Optional)()),
-    __param(4, (0, common_1.Inject)(constants_1.CJK_PLUGIN_OPTIONS)),
+    __param(5, (0, common_1.Optional)()),
+    __param(5, (0, common_1.Inject)(constants_1.CJK_PLUGIN_OPTIONS)),
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
         core_1.AdministratorService,
         core_1.RoleService,
-        core_1.ChannelService, Object])
+        core_1.ChannelService,
+        core_1.AuthService, Object])
 ], TenantMemberService);
 //# sourceMappingURL=tenant-member.service.js.map

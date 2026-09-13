@@ -112,9 +112,15 @@ let TenantMemberResolver = class TenantMemberResolver {
     async roleIds(member, ctx) {
         return this.tenantMemberService.memberRoleIdsInChannel(ctx, member);
     }
-    /** 当前登录者修改自身密码（首登强改密时清标志） */
-    async tenantChangeMyPassword(ctx, newPassword) {
-        await this.tenantMemberService.changeMyPassword(ctx, newPassword);
+    /** 租户自助重置本租户成员密码为默认口令（权限门禁见 service） */
+    async myResetTenantMemberPassword(ctx, id) {
+        this.tenantMemberService.assertChannelMember(ctx);
+        await this.tenantMemberService.resetMyMemberPassword(ctx, id);
+        return true;
+    }
+    /** 当前登录者修改自身密码（主动改密传旧密码校验；首登强改密 oldPassword 传 null 跳过校验） */
+    async tenantChangeMyPassword(ctx, oldPassword, newPassword) {
+        await this.tenantMemberService.changeMyPassword(ctx, oldPassword, newPassword);
         return true;
     }
 };
@@ -276,11 +282,21 @@ __decorate([
 ], TenantMemberResolver.prototype, "roleIds", null);
 __decorate([
     (0, graphql_1.Mutation)(),
-    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    (0, core_1.Allow)(tenant_permissions_1.tenantMemberManagePermission.Permission),
     __param(0, (0, core_1.Ctx)()),
-    __param(1, (0, graphql_1.Args)('newPassword')),
+    __param(1, (0, graphql_1.Args)('id')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext, String]),
+    __metadata("design:returntype", Promise)
+], TenantMemberResolver.prototype, "myResetTenantMemberPassword", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('oldPassword')),
+    __param(2, (0, graphql_1.Args)('newPassword')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
     __metadata("design:returntype", Promise)
 ], TenantMemberResolver.prototype, "tenantChangeMyPassword", null);
 exports.TenantMemberResolver = TenantMemberResolver = __decorate([

@@ -1,4 +1,4 @@
-import { AdministratorService, ChannelService, ID, RequestContext, RoleService, TransactionalConnection } from '@vendure/core';
+import { AdministratorService, AuthService, ChannelService, ID, RequestContext, RoleService, TransactionalConnection } from '@vendure/core';
 import type { CjkPluginOptions } from '../types';
 import { TenantMember } from './tenant-member.entity';
 export interface PermissionCatalogItem {
@@ -39,13 +39,19 @@ export interface CreateTenantAdminInput {
 export declare function randomStrongPassword(length?: number): string;
 /** 租户管理人密码重置的默认口令（超管在租户详情页「重置密码」时写回此值） */
 export declare const DEFAULT_ADMIN_PASSWORD = "you123123";
+/** 可授判定：目标角色权限 ⊆ 操作者权限，且不含租户管理类权限（防链式提权）。
+ *  Authenticated 为所有角色基础权限，不计入比较。 */
+export declare function canGrantRole(operatorPerms: Set<string>, rolePermissions: string[]): boolean;
+/** 角色去重：按展示名（description || code）合并，同名时本地角色（code 非 g- 前缀）优先于全局角色 */
+export declare function dedupeRolesByLabel(roles: any[]): any[];
 export declare class TenantMemberService {
     private connection;
     private administratorService;
     private roleService;
     private channelService;
+    private authService;
     private pluginOptions?;
-    constructor(connection: TransactionalConnection, administratorService: AdministratorService, roleService: RoleService, channelService: ChannelService, pluginOptions?: CjkPluginOptions | undefined);
+    constructor(connection: TransactionalConnection, administratorService: AdministratorService, roleService: RoleService, channelService: ChannelService, authService: AuthService, pluginOptions?: CjkPluginOptions | undefined);
     /** 校验角色权限全部在业务权限白名单内（超管专属权限不入租户角色） */
     assertBusinessPermissions(permissions: string[]): void;
     /** 校验请求方是该 channel 的租户管理员（或超管） */
@@ -54,6 +60,11 @@ export declare class TenantMemberService {
     assertRoleInChannel(ctx: RequestContext, roleId: ID, channelId: ID): Promise<void>;
     /** 安全加固：校验待绑定角色全部属于指定 channel，防止租户管理员绑定别店角色提权 */
     assertRolesInChannel(ctx: RequestContext, roleIds: ID[], channelId: ID): Promise<void>;
+    /** 当前登录者在本租户（ctx.channelId）的业务权限并集。
+     *  Vendure 缓存 session 用户用短键 n：CachedSessionUser.channels = { id, token, code, permissions }[]。 */
+    private channelOperatorPerms;
+    /** 权限门禁（权威）：非超管授予的角色必须 canGrantRole 通过，否则抛错。调用点须已过 assertRolesInChannel。 */
+    assertCanGrant(ctx: RequestContext, roleIds: ID[]): Promise<void>;
     /** 新建租户：自动分配 tenantNo（当前最大+1），code 由 tenantNo 派生 `t{tenantNo}`，避免手输冲突 */
     createChannel(ctx: RequestContext, input: {
         name: string;
@@ -80,8 +91,7 @@ export declare class TenantMemberService {
     }): Promise<any>;
     /** 判断指定 channel 是否已存在该 code 的关联角色（幂等判定）。 */
     private roleExistsInChannel;
-    /** 按 channelId 直查该租户全部角色（绕过 roleService.findAll 的「当前用户在目标 channel 需拥有全部权限」过滤，
-     *  否则超管在未绑定的 channerl 上会读不到该租户任何角色）。 */
+    /** 按 channelId 直查该租户全部角色：同名去重（本地优先全局），并按操作者权限标注 grantable（超管全 true）。 */
     rolesForChannel(ctx: RequestContext, channelId: ID): Promise<any[]>;
     /** 系统直建租户级角色（绕过 roleService.create 的权限校验，仅用于启动补种子/一键导入这类系统操作）。
      *  幂等：仅当该 code 在本 channel 不存在时才创建。 */
@@ -143,18 +153,20 @@ export declare class TenantMemberService {
     syncMemberRolesInChannel(ctx: RequestContext, administratorId: ID, channelId: ID, roleIds: ID[]): Promise<void>;
     /** 返回人员在当前租户内的角色 id（用于改角色弹层回显勾选） */
     memberRoleIdsInChannel(ctx: RequestContext, member: TenantMember): Promise<ID[]>;
-    /** 将 TenantMember 组装为含 roleIds 的视图对象（供列表查询直接返回，避免依赖 @ResolveField 子解析造成非空字段 null 报错） */
+    /** 将 TenantMember 组装为含 roleIds / canResetPassword 的视图对象 */
     memberToView(ctx: RequestContext, member: TenantMember): Promise<any>;
     /** 超管为租户建管理员账号并绑定角色，同时写入 TenantMember */
     createTenantAdministrator(ctx: RequestContext, channelId: ID, input: CreateTenantAdminInput): Promise<TenantMember>;
-    /** 当前登录者修改自身密码：更新 Administrator 密码，并清除其所有租户关联的首登强改密标志 */
-    changeMyPassword(ctx: RequestContext, newPassword: string): Promise<void>;
+    /** 当前登录者修改自身密码：主动改密校验旧密码；首登强改密（未传旧密码或存在 mustChangePassword）跳过校验。更新后清除本租户首登强改密标志 */
+    changeMyPassword(ctx: RequestContext, oldPassword: string | null, newPassword: string): Promise<void>;
     /** 租户人员启停 */
     setMemberEnabled(ctx: RequestContext, channelId: ID, memberId: ID, enabled: boolean): Promise<void>;
     /** 租户人员移除（仅删 TenantMember 关联，Administrator 本体保留） */
     removeMember(ctx: RequestContext, channelId: ID, memberId: ID): Promise<void>;
     /** 超管重置租户管理人密码为默认口令 you123123，并清除该人员的首登强改密标志（可用默认口令直接登录） */
     resetAdminPassword(ctx: RequestContext, memberId: ID): Promise<TenantMember>;
+    /** 租户自助：重置本租户成员密码为默认口令 you123123（目标权限必须低于操作者） */
+    resetMyMemberPassword(ctx: RequestContext, memberId: ID): Promise<TenantMember>;
     /** 搜索后台账号（按邮箱/姓氏模糊匹配），返回各账号在租户内的关联统计，供「关联已有账号进租户」选择 */
     searchAdmins(ctx: RequestContext, channelId: ID, keyword?: string, take?: number): Promise<any[]>;
     /** 将既有后台账号关联进某租户（写入 TenantMember 并合并绑定本租户角色）；若已在该租户则报错 */
