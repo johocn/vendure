@@ -16,6 +16,7 @@ import { CJK_PLUGIN_OPTIONS, loggerCtx } from '../constants';
 import type { CjkPluginOptions } from '../types';
 import { TenantMember } from './tenant-member.entity';
 import { OFFICIAL_ROLE_TEMPLATES } from './role-templates';
+import { TenantMemberManagePermission, TenantRoleManagePermission } from './tenant-permissions';
 
 export interface PermissionCatalogItem {
     code: string;
@@ -159,6 +160,35 @@ export function randomStrongPassword(length = 12): string {
 
 /** 租户管理人密码重置的默认口令（超管在租户详情页「重置密码」时写回此值） */
 export const DEFAULT_ADMIN_PASSWORD = 'you123123';
+
+/** 可授判定：目标角色权限 ⊆ 操作者权限，且不含租户管理类权限（防链式提权）。
+ *  Authenticated 为所有角色基础权限，不计入比较。 */
+export function canGrantRole(operatorPerms: Set<string>, rolePermissions: string[]): boolean {
+    const perms = rolePermissions.filter((p) => p !== 'Authenticated');
+    return (
+        perms.every((p) => operatorPerms.has(p)) &&
+        !perms.some((p) => p === TenantMemberManagePermission || p === TenantRoleManagePermission)
+    );
+}
+
+/** 角色去重：按展示名（description || code）合并，同名时本地角色（code 非 g- 前缀）优先于全局角色 */
+export function dedupeRolesByLabel(roles: any[]): any[] {
+    const seen = new Map<string, any>();
+    for (const r of roles) {
+        // 展示名：description 非空用之；为空退回 code（去掉 g-/t{no}- 常规前缀后再比较，
+        // 使 t1-sales 与 g-sales 视为同名业务角色，避免因前缀不同而漏去重）
+        const key = String(r.description || r.code).replace(/^(g-|t\d+-)/, '');
+        const cur = seen.get(key);
+        if (!cur) {
+            seen.set(key, r);
+            continue;
+        }
+        const curGlobal = String(cur.code).startsWith(GLOBAL_ROLE_PREFIX);
+        const rGlobal = String(r.code).startsWith(GLOBAL_ROLE_PREFIX);
+        if (curGlobal && !rGlobal) seen.set(key, r);
+    }
+    return [...seen.values()];
+}
 
 @Injectable()
 export class TenantMemberService {
