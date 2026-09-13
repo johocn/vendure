@@ -247,6 +247,8 @@ exports.devConfig = {
             { name: 'detailConfig', type: 'text', public: true },
             { name: 'orderDetailConfig', type: 'text', public: true },
             { name: 'orderListConfig', type: 'text', public: true },
+            { name: 'promoSchemes', type: 'text', public: true },
+            { name: 'serviceSchemes', type: 'text', public: true },
         ],
         Customer: [],
         Fulfillment: [],

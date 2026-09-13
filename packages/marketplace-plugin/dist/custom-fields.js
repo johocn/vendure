@@ -84,6 +84,22 @@ exports.marketplaceCustomFields = {
             label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '商品主视频' }],
             description: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '存视频 asset id，C 端松取 source 渲染播放' }],
         },
+        {
+            name: 'promos',
+            type: 'text',
+            nullable: true,
+            public: true,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '促销方案（JSON 数组）' }],
+            description: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '存 JSON 字符串数组，如 ["freeShip99","refund7"]；code 对应频道方案库 promoSchemes' }],
+        },
+        {
+            name: 'services',
+            type: 'text',
+            nullable: true,
+            public: true,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '服务保障（JSON 数组）' }],
+            description: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '存 JSON 字符串数组，如 ["genuine","fastShip"]；code 对应频道方案库 serviceSchemes' }],
+        },
     ],
     Order: [
         {
