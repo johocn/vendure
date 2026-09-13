@@ -638,22 +638,36 @@ let TenantMemberService = class TenantMemberService {
             .filter((r) => (r.channels || []).some((c) => String(c.id) === channelId))
             .map((r) => String(r.id));
     }
-    /** 将 TenantMember 组装为含 roleIds / canResetPassword 的视图对象 */
+    /** 将 TenantMember 组装为含 roleIds / canResetPassword / emailAddress 的视图对象 */
     async memberToView(ctx, member) {
-        var _a, _b;
+        var _a, _b, _c;
         const roleIds = await this.memberRoleIdsInChannel(ctx, member);
         const view = Object.assign(Object.assign({}, member), { roleIds });
         const activeUserId = ctx.activeUserId;
+        let emailAddress = null;
+        let myAdmin = null;
         if (activeUserId != null) {
-            const myAdmin = await this.administratorService
+            myAdmin = await this.administratorService
                 .findOneByUserId(ctx, activeUserId)
                 .catch(() => null);
+            if (myAdmin && String(myAdmin.id) === String(member.administratorId)) {
+                emailAddress = myAdmin.emailAddress;
+            }
+        }
+        if (emailAddress == null) {
+            const admin = await this.administratorService
+                .findOne(ctx, String(member.administratorId))
+                .catch(() => null);
+            emailAddress = (_a = admin === null || admin === void 0 ? void 0 : admin.emailAddress) !== null && _a !== void 0 ? _a : null;
+        }
+        view.emailAddress = emailAddress;
+        if (activeUserId != null) {
             if (myAdmin && String(myAdmin.id) === String(member.administratorId)) {
                 view.canResetPassword = false; // 不允许重置自己的密码
                 return view;
             }
         }
-        if (((_b = (_a = ctx.session) === null || _a === void 0 ? void 0 : _a.user) === null || _b === void 0 ? void 0 : _b.superAdmin) === true || ctx.userHasPermissions([core_1.Permission.SuperAdmin])) {
+        if (((_c = (_b = ctx.session) === null || _b === void 0 ? void 0 : _b.user) === null || _c === void 0 ? void 0 : _c.superAdmin) === true || ctx.userHasPermissions([core_1.Permission.SuperAdmin])) {
             view.canResetPassword = true;
         }
         else {

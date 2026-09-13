@@ -681,6 +681,7 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                     displayName: String
                     remark: String
                     phone: String
+                    emailAddress: String
                     roleIds: [ID!]!
                     canResetPassword: Boolean!
                     createdAt: DateTime!

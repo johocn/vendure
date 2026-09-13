@@ -707,15 +707,29 @@ export class TenantMemberService {
             .map((r: any) => String(r.id));
     }
 
-    /** 将 TenantMember 组装为含 roleIds / canResetPassword 的视图对象 */
+    /** 将 TenantMember 组装为含 roleIds / canResetPassword / emailAddress 的视图对象 */
     async memberToView(ctx: RequestContext, member: TenantMember): Promise<any> {
         const roleIds = await this.memberRoleIdsInChannel(ctx, member);
         const view: any = { ...member, roleIds };
         const activeUserId = ctx.activeUserId;
+        let emailAddress: string | null = null;
+        let myAdmin: Administrator | null | undefined = null;
         if (activeUserId != null) {
-            const myAdmin = await this.administratorService
+            myAdmin = await this.administratorService
                 .findOneByUserId(ctx, activeUserId)
                 .catch(() => null);
+            if (myAdmin && String(myAdmin.id) === String(member.administratorId)) {
+                emailAddress = myAdmin.emailAddress;
+            }
+        }
+        if (emailAddress == null) {
+            const admin = await this.administratorService
+                .findOne(ctx, String(member.administratorId))
+                .catch(() => null);
+            emailAddress = admin?.emailAddress ?? null;
+        }
+        view.emailAddress = emailAddress;
+        if (activeUserId != null) {
             if (myAdmin && String(myAdmin.id) === String(member.administratorId)) {
                 view.canResetPassword = false; // 不允许重置自己的密码
                 return view;

@@ -847,6 +847,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     displayName: String
                     remark: String
                     phone: String
+                    emailAddress: String
                     roleIds: [ID!]!
                     canResetPassword: Boolean!
                     createdAt: DateTime!

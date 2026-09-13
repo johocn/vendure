@@ -153,7 +153,7 @@ export declare class TenantMemberService {
     syncMemberRolesInChannel(ctx: RequestContext, administratorId: ID, channelId: ID, roleIds: ID[]): Promise<void>;
     /** 返回人员在当前租户内的角色 id（用于改角色弹层回显勾选） */
     memberRoleIdsInChannel(ctx: RequestContext, member: TenantMember): Promise<ID[]>;
-    /** 将 TenantMember 组装为含 roleIds / canResetPassword 的视图对象 */
+    /** 将 TenantMember 组装为含 roleIds / canResetPassword / emailAddress 的视图对象 */
     memberToView(ctx: RequestContext, member: TenantMember): Promise<any>;
     /** 超管为租户建管理员账号并绑定角色，同时写入 TenantMember */
     createTenantAdministrator(ctx: RequestContext, channelId: ID, input: CreateTenantAdminInput): Promise<TenantMember>;
