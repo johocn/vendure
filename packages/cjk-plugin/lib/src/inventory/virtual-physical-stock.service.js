@@ -16,14 +16,16 @@ const inventory_plugin_1 = require("@vendure/inventory-plugin");
 const typeorm_1 = require("typeorm");
 const variant_location_binding_entity_1 = require("./variant-location-binding.entity");
 const mirror_math_1 = require("./mirror-math");
+const delivery_record_service_1 = require("../delivery/delivery-record.service");
 const loggerCtx = 'VirtualPhysicalStockService';
 let VirtualPhysicalStockService = class VirtualPhysicalStockService {
-    constructor(connection, stockLocationService, stockLevelService, inventoryService, eventBus) {
+    constructor(connection, stockLocationService, stockLevelService, inventoryService, eventBus, deliveryRecordService) {
         this.connection = connection;
         this.stockLocationService = stockLocationService;
         this.stockLevelService = stockLevelService;
         this.inventoryService = inventoryService;
         this.eventBus = eventBus;
+        this.deliveryRecordService = deliveryRecordService;
     }
     virtualCode(channelCode) {
         return `${channelCode}-virtual`;
@@ -115,18 +117,41 @@ let VirtualPhysicalStockService = class VirtualPhysicalStockService {
             core_1.Logger.info(`镜像同步: variant=${variantId} 虚拟仓 ${currentVirtual} -> ${boundTotal}`, loggerCtx);
         }
     }
-    /** 注册 SALE 阻塞处理器（镜像必须在 core 扣库同一事务内执行） */
+    /** 注册 SALE 阻塞处理器（镜像必须在 core 扣库同一事务内执行；配送记录同步同事务防漏单） */
     registerMirrorHandler() {
         this.eventBus.registerBlockingEventHandler({
             event: core_1.StockMovementEvent,
             id: 'cjk-plugin.sync-virtual-mirror',
             handler: event => {
                 if (event.type === 'SALE') {
-                    return this.syncVirtualMirror(event.ctx, event.stockMovements);
+                    const sales = event.stockMovements;
+                    return this.syncVirtualMirror(event.ctx, sales).then(async () => {
+                        await this.syncDeliveryRecords(event.ctx, sales);
+                    });
                 }
                 return undefined;
             },
         });
+    }
+    /** SALE 后生成顾客配送记录（方案2-B）；pickup 订单标记自提模式 */
+    async syncDeliveryRecords(ctx, sales) {
+        var _a;
+        const records = await this.deliveryRecordService.createFromSales(ctx, sales);
+        if (!records.length) {
+            return;
+        }
+        // pickup 订单：按订单级配送方式重设模式
+        const orderIds = [...new Set(records.map(r => String(r.orderId)))];
+        const orderRepo = this.connection.getRepository(ctx, core_1.Order);
+        const orders = await orderRepo.find({ where: { id: (0, typeorm_1.In)(orderIds) } });
+        for (const order of orders) {
+            const c = (_a = order.customFields) !== null && _a !== void 0 ? _a : {};
+            if (c.deliveryType === 'pickup' && c.selectedPickupLocationId) {
+                for (const rec of records.filter(r => String(r.orderId) === String(order.id))) {
+                    await this.deliveryRecordService.markAsPickup(ctx, rec.id, c.selectedPickupLocationId);
+                }
+            }
+        }
     }
     /** 店铺端：saleableStock（虚拟仓可售）+ 物理驱动时的绑定仓明细（距离就近排序） */
     async getSaleableAndDetail(ctx, variantId, lat, lng) {
@@ -185,6 +210,7 @@ exports.VirtualPhysicalStockService = VirtualPhysicalStockService = __decorate([
         core_1.StockLocationService,
         core_1.StockLevelService,
         inventory_plugin_1.InventoryService,
-        core_1.EventBus])
+        core_1.EventBus,
+        delivery_record_service_1.DeliveryRecordService])
 ], VirtualPhysicalStockService);
 //# sourceMappingURL=virtual-physical-stock.service.js.map

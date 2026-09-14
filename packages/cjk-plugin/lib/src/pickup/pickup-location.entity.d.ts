@@ -5,6 +5,8 @@ export declare class PickupLocation extends VendureEntity implements ChannelAwar
     constructor(input?: DeepPartial<PickupLocation>);
     name: string;
     type: 'store' | 'point' | 'employee';
+    /** own=门店自提（自带库存，取件即扣）；remote=远程自提（需仓→自提点配送） */
+    stockType: string;
     address: string;
     contactPerson: string;
     phoneNumber: string;

@@ -125,6 +125,9 @@ const variant_location_binding_service_1 = require("./inventory/variant-location
 const virtual_physical_stock_service_1 = require("./inventory/virtual-physical-stock.service");
 const inventory_shop_resolver_1 = require("./inventory/inventory-shop.resolver");
 const inventory_plugin_1 = require("@vendure/inventory-plugin");
+const delivery_record_service_1 = require("./delivery/delivery-record.service");
+const delivery_record_entity_1 = require("./delivery/delivery-record.entity");
+const delivery_admin_resolver_1 = require("./delivery/delivery-admin.resolver");
 let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
     constructor(options, moduleRef) {
         this.options = options;
@@ -302,7 +305,7 @@ exports.CjkPlugin = CjkPlugin;
 exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_profile_method_entity_1.PaymentProfileMethod, payment_template_entity_1.PaymentTemplate, room_template_entity_1.RoomTemplate, room_template_control_entity_1.RoomTemplateControl, tenant_member_entity_1.TenantMember, wallet_entity_1.Wallet, merchant_settlement_ledger_entity_1.MerchantSettlementLedger, variant_location_binding_entity_1.VariantLocationBinding],
+        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_profile_method_entity_1.PaymentProfileMethod, payment_template_entity_1.PaymentTemplate, room_template_entity_1.RoomTemplate, room_template_control_entity_1.RoomTemplateControl, tenant_member_entity_1.TenantMember, wallet_entity_1.Wallet, merchant_settlement_ledger_entity_1.MerchantSettlementLedger, variant_location_binding_entity_1.VariantLocationBinding, delivery_record_entity_1.DeliveryRecord],
         providers: [
             { provide: constants_1.CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
             tenant_setup_service_1.TenantSetupService,
@@ -341,6 +344,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             inventory_plugin_1.StockLedgerService,
             inventory_plugin_1.InventoryService,
             virtual_physical_stock_service_1.VirtualPhysicalStockService,
+            delivery_record_service_1.DeliveryRecordService,
         ],
         adminApiExtensions: {
             schema: () => {
@@ -1191,9 +1195,50 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                 }
 
                 ${redemption_schema_1.redemptionAdminSchema}
+
+                type DeliveryRecord {
+                    id: ID!
+                    orderId: ID!
+                    fulfillmentId: ID
+                    sourceLocationId: ID
+                    mode: String!
+                    status: String!
+                    expressCompany: String
+                    trackingNo: String
+                    staffId: String
+                    staffName: String
+                    receiverName: String
+                    receiverPhone: String
+                    receiverAddress: String
+                    lat: Float
+                    lng: Float
+                    pickupLocationId: ID
+                    fromLocationId: ID
+                    toLocationId: ID
+                    itemsJson: String
+                    sentAt: DateTime
+                    deliveredAt: DateTime
+                    returnedAt: DateTime
+                    exceptionAt: DateTime
+                    photos: String
+                    remark: String
+                    orderBoxId: String
+                }
+
+                extend type Query {
+                    deliveryRecords(orderId: ID): [DeliveryRecord!]!
+                }
+
+                extend type Mutation {
+                    deliveryTransition(id: ID!, to: String!): DeliveryRecord!
+                    deliverySetExpress(id: ID!, expressCompany: String!, trackingNo: String!): DeliveryRecord!
+                    deliveryAssignStaff(id: ID!, staffId: String!, staffName: String): DeliveryRecord!
+                    deliveryCreateTransfer(orderId: ID!, fromLocationId: ID!, toLocationId: ID!, itemsJson: String!): DeliveryRecord!
+                    deliveryTransferArrived(id: ID!): DeliveryRecord!
+                }
                 `;
             },
-            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, room_template_admin_resolver_1.RoomTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver, tenant_catalog_admin_resolver_1.TenantCatalogAdminResolver, asset_library_admin_resolver_1.AssetLibraryAdminResolver, redemption_resolver_1.RedemptionAdminResolver, merchant_settlement_admin_resolver_1.MerchantSettlementAdminResolver],
+            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, room_template_admin_resolver_1.RoomTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver, tenant_catalog_admin_resolver_1.TenantCatalogAdminResolver, asset_library_admin_resolver_1.AssetLibraryAdminResolver, redemption_resolver_1.RedemptionAdminResolver, merchant_settlement_admin_resolver_1.MerchantSettlementAdminResolver, delivery_admin_resolver_1.DeliveryAdminResolver],
         },
         shopApiExtensions: {
             schema: () => {

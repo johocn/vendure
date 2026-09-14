@@ -127,10 +127,12 @@ import { VirtualPhysicalStockService } from './inventory/virtual-physical-stock.
 import { InventoryShopResolver } from './inventory/inventory-shop.resolver';
 import { InventoryService, StockLedgerService } from '@vendure/inventory-plugin';
 import { DeliveryRecordService } from './delivery/delivery-record.service';
+import { DeliveryRecord } from './delivery/delivery-record.entity';
+import { DeliveryAdminResolver } from './delivery/delivery-admin.resolver';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod, PaymentTemplate, RoomTemplate, RoomTemplateControl, TenantMember, Wallet, MerchantSettlementLedger, VariantLocationBinding],
+    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod, PaymentTemplate, RoomTemplate, RoomTemplateControl, TenantMember, Wallet, MerchantSettlementLedger, VariantLocationBinding, DeliveryRecord],
     providers: [
         { provide: CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
         TenantSetupService,
@@ -1020,9 +1022,50 @@ import { DeliveryRecordService } from './delivery/delivery-record.service';
                 }
 
                 ${redemptionAdminSchema}
+
+                type DeliveryRecord {
+                    id: ID!
+                    orderId: ID!
+                    fulfillmentId: ID
+                    sourceLocationId: ID
+                    mode: String!
+                    status: String!
+                    expressCompany: String
+                    trackingNo: String
+                    staffId: String
+                    staffName: String
+                    receiverName: String
+                    receiverPhone: String
+                    receiverAddress: String
+                    lat: Float
+                    lng: Float
+                    pickupLocationId: ID
+                    fromLocationId: ID
+                    toLocationId: ID
+                    itemsJson: String
+                    sentAt: DateTime
+                    deliveredAt: DateTime
+                    returnedAt: DateTime
+                    exceptionAt: DateTime
+                    photos: String
+                    remark: String
+                    orderBoxId: String
+                }
+
+                extend type Query {
+                    deliveryRecords(orderId: ID): [DeliveryRecord!]!
+                }
+
+                extend type Mutation {
+                    deliveryTransition(id: ID!, to: String!): DeliveryRecord!
+                    deliverySetExpress(id: ID!, expressCompany: String!, trackingNo: String!): DeliveryRecord!
+                    deliveryAssignStaff(id: ID!, staffId: String!, staffName: String): DeliveryRecord!
+                    deliveryCreateTransfer(orderId: ID!, fromLocationId: ID!, toLocationId: ID!, itemsJson: String!): DeliveryRecord!
+                    deliveryTransferArrived(id: ID!): DeliveryRecord!
+                }
                 `;
         },
-        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, RoomTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver, MerchantSettlementAdminResolver],
+        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, RoomTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver, MerchantSettlementAdminResolver, DeliveryAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {
