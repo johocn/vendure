@@ -115,6 +115,20 @@ export class InventoryService {
     }
 
     /**
+     * 公共入口：跨插件调整某仓库存（镜像同步等用），语义与 adjustStockForLocation 一致。
+     */
+    async adjustStockPublic(
+        ctx: RequestContext,
+        variantId: ID,
+        locationId: ID,
+        delta: number,
+        reason: string,
+        meta?: LedgerMeta,
+    ): Promise<void> {
+        return this.adjustStockForLocation(ctx, variantId, locationId, delta, reason, meta);
+    }
+
+    /**
      * 手工校准某仓可变体库存为指定绝对数量（delta = 目标 - 当前，写 manual 账本便于追溯）。
      * delta 为 0 时不写任何流水。
      */

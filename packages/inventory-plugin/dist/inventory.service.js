@@ -70,6 +70,12 @@ let InventoryService = class InventoryService {
         core_1.Logger.info(`Stock adjusted: variant=${variantId} location=${locationId} delta=${delta} reason=${reason}`, loggerCtx);
     }
     /**
+     * 公共入口：跨插件调整某仓库存（镜像同步等用），语义与 adjustStockForLocation 一致。
+     */
+    async adjustStockPublic(ctx, variantId, locationId, delta, reason, meta) {
+        return this.adjustStockForLocation(ctx, variantId, locationId, delta, reason, meta);
+    }
+    /**
      * 手工校准某仓可变体库存为指定绝对数量（delta = 目标 - 当前，写 manual 账本便于追溯）。
      * delta 为 0 时不写任何流水。
      */

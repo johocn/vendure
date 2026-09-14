@@ -13,7 +13,8 @@ export type LedgerBizType =
     | 'stockMove'
     | 'stocktake'
     | 'purchase'
-    | 'manual';
+    | 'manual'
+    | 'mirror';
 
 export interface StockLedgerInput {
     productVariantId: ID;

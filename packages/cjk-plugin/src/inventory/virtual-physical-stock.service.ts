@@ -1,0 +1,205 @@
+import { Injectable } from '@nestjs/common';
+import {
+    EventBus,
+    ID,
+    Logger,
+    RequestContext,
+    StockLevelService,
+    StockLocation,
+    StockLocationService,
+    StockMovementEvent,
+    TransactionalConnection,
+} from '@vendure/core';
+import { Sale } from '@vendure/core';
+import { InventoryService } from '@vendure/inventory-plugin';
+import { In } from 'typeorm';
+import { VariantLocationBinding } from './variant-location-binding.entity';
+import { calcMirrorDelta, haversineKm, sumBoundOnHand } from './mirror-math';
+
+const loggerCtx = 'VirtualPhysicalStockService';
+
+@Injectable()
+export class VirtualPhysicalStockService {
+    constructor(
+        private connection: TransactionalConnection,
+        private stockLocationService: StockLocationService,
+        private stockLevelService: StockLevelService,
+        private inventoryService: InventoryService,
+        private eventBus: EventBus,
+    ) {}
+
+    virtualCode(channelCode: string): string {
+        return `${channelCode}-virtual`;
+    }
+
+    async ensureVirtualLocation(ctx: RequestContext): Promise<StockLocation> {
+        const code = this.virtualCode(ctx.channel.code);
+        const repo = this.connection.getRepository(ctx, StockLocation);
+        const existing = await repo
+            .createQueryBuilder('loc')
+            .where('loc.customFields.code = :code', { code })
+            .getOne();
+        if (existing) {
+            return existing;
+        }
+        const loc = await this.stockLocationService.create(ctx, {
+            name: `${ctx.channel.code} 虚拟仓`,
+            description: '网络销售可售源（系统自动创建）',
+        });
+        loc.customFields = { ...((loc.customFields as any) ?? {}), kind: 'virtual', code } as any;
+        await repo.save(loc);
+        Logger.info(`虚拟仓已创建: ${code}`, loggerCtx);
+        return loc;
+    }
+
+    async ensureDefaultPhysicalLocation(ctx: RequestContext): Promise<StockLocation> {
+        const code = ctx.channel.code;
+        const repo = this.connection.getRepository(ctx, StockLocation);
+        const existing = await repo
+            .createQueryBuilder('loc')
+            .where('loc.customFields.code = :code', { code })
+            .getOne();
+        if (existing) {
+            return existing;
+        }
+        const loc = await this.stockLocationService.create(ctx, {
+            name: `${ctx.channel.code} 默认仓`,
+            description: '物理库存默认仓（开启物理库存时自动创建）',
+        });
+        loc.customFields = { ...((loc.customFields as any) ?? {}), kind: 'physical', code } as any;
+        await repo.save(loc);
+        Logger.info(`默认物理仓已创建: ${code}`, loggerCtx);
+        return loc;
+    }
+
+    /** 替换式写入变体绑定；校验每个仓为物理仓且归属当前租户 */
+    async setVariantBindings(
+        ctx: RequestContext,
+        variantId: ID,
+        bindings: Array<{ locationId: ID; isDefault: boolean }>,
+    ): Promise<VariantLocationBinding[]> {
+        const repo = this.connection.getRepository(ctx, VariantLocationBinding);
+        await repo.delete({ variantId: variantId as any });
+        const saved: VariantLocationBinding[] = [];
+        for (const b of bindings) {
+            const loc = await this.connection.getEntityOrThrow(ctx, StockLocation, b.locationId);
+            const kind = (loc.customFields as any)?.kind;
+            if (kind !== 'physical') {
+                throw new Error(`仓库 ${b.locationId} 非物理仓，无法绑定`);
+            }
+            const ownerCode = String((loc.customFields as any)?.code ?? '');
+            if (ownerCode !== ctx.channel.code && !ownerCode.startsWith(`${ctx.channel.code}-`)) {
+                throw new Error(`仓库 ${b.locationId} 不属于当前租户`);
+            }
+            const savedBinding = await repo.save(
+                new VariantLocationBinding({ variantId, locationId: b.locationId, isDefault: b.isDefault }),
+            );
+            saved.push(savedBinding);
+        }
+        return saved;
+    }
+
+    /** SALE 后镜像：物理驱动变体的虚拟仓 onHand 同步为 Σ 绑定物理仓 onHand（同事务） */
+    async syncVirtualMirror(ctx: RequestContext, sales: Sale[]): Promise<void> {
+        if (!sales?.length) {
+            return;
+        }
+        const virtual = await this.ensureVirtualLocation(ctx);
+        const variantIds = [...new Set(sales.map(s => String((s as any).productVariantId ?? (s as any).productVariant?.id)))];
+        const bindingRepo = this.connection.getRepository(ctx, VariantLocationBinding);
+        for (const variantId of variantIds) {
+            const bindings = await bindingRepo.find({ where: { variantId: variantId as any } });
+            if (!bindings.length) {
+                continue;
+            }
+            const boundIds = bindings.map(b => b.locationId);
+            const levels = await this.stockLevelService.getStockLevelsForVariant(ctx, variantId as ID);
+            const boundTotal = sumBoundOnHand(
+                levels.map(l => ({ locationId: l.stockLocationId, onHand: l.stockOnHand })),
+                boundIds,
+            );
+            const currentVirtual =
+                levels.find(l => String(l.stockLocationId) === String(virtual.id))?.stockOnHand ?? 0;
+            const delta = calcMirrorDelta(currentVirtual, boundTotal);
+            if (delta === 0) {
+                continue;
+            }
+            await this.inventoryService.adjustStockPublic(
+                ctx,
+                variantId as ID,
+                virtual.id,
+                delta,
+                `虚拟镜像同步(variant=${variantId})`,
+                { bizType: 'mirror', bizCode: `mirror-${variantId}` },
+            );
+            Logger.info(`镜像同步: variant=${variantId} 虚拟仓 ${currentVirtual} -> ${boundTotal}`, loggerCtx);
+        }
+    }
+
+    /** 注册 SALE 阻塞处理器（镜像必须在 core 扣库同一事务内执行） */
+    registerMirrorHandler(): void {
+        this.eventBus.registerBlockingEventHandler({
+            event: StockMovementEvent,
+            id: 'cjk-plugin.sync-virtual-mirror',
+            handler: event => {
+                if (event.type === 'SALE') {
+                    return this.syncVirtualMirror(event.ctx, event.stockMovements as Sale[]);
+                }
+                return undefined;
+            },
+        });
+    }
+
+    /** 店铺端：saleableStock（虚拟仓可售）+ 物理驱动时的绑定仓明细（距离就近排序） */
+    async getSaleableAndDetail(
+        ctx: RequestContext,
+        variantId: ID,
+        lat?: number | null,
+        lng?: number | null,
+    ) {
+        const virtual = await this.ensureVirtualLocation(ctx);
+        const levels = await this.stockLevelService.getStockLevelsForVariant(ctx, variantId);
+        const physicalStockEnabled = Boolean((ctx.channel.customFields as any)?.physicalStockEnabled);
+        const bindings = await this.connection
+            .getRepository(ctx, VariantLocationBinding)
+            .find({ where: { variantId: variantId as any } });
+        const virtualOnHand =
+            levels.find(l => String(l.stockLocationId) === String(virtual.id))?.stockOnHand ?? 0;
+
+        let stockDetail: any[] = [];
+        if (physicalStockEnabled && bindings.length) {
+            const boundIds = bindings.map(b => b.locationId);
+            const locs = await this.connection
+                .getRepository(ctx, StockLocation)
+                .find({ where: { id: In(boundIds) }, loadEagerRelations: false });
+            const origin = lat != null && lng != null ? { lat, lng } : null;
+            stockDetail = locs
+                .map(loc => {
+                    const level = levels.find(l => String(l.stockLocationId) === String(loc.id));
+                    const c = (loc.customFields as any) ?? {};
+                    const distanceKm = origin
+                        ? haversineKm(origin.lat, origin.lng, c.lat ?? 0, c.lng ?? 0)
+                        : null;
+                    return {
+                        locationId: loc.id,
+                        name: loc.name,
+                        lat: c.lat ?? null,
+                        lng: c.lng ?? null,
+                        onHand: level?.stockOnHand ?? 0,
+                        distanceKm,
+                    };
+                })
+                .sort((a, b) => {
+                    if (a.distanceKm == null) return 1;
+                    if (b.distanceKm == null) return -1;
+                    return a.distanceKm - b.distanceKm;
+                });
+        }
+        return {
+            variantId,
+            saleableStock: virtualOnHand,
+            physicalStockEnabled,
+            stockDetail,
+        };
+    }
+}

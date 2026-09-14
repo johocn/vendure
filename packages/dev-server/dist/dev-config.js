@@ -387,7 +387,10 @@ exports.devConfig = {
         delivery_plugin_1.DeliveryPlugin.init(),
         sales_plugin_1.SalesPlugin.init(),
         marketplace_plugin_1.MarketplacePlugin.init({}),
-        logistics_plugin_1.LogisticsPlugin.init({ defaultCompleteDays: 3 }),
+        logistics_plugin_1.LogisticsPlugin.init({
+            defaultCompleteDays: 3,
+            stockLocationStrategy: new cjk_plugin_1.PhysicalAwareStockLocationStrategy(),
+        }),
         delivery_gateway_plugin_1.DeliveryGatewayPlugin.init({
             dada: {
                 appKey: process.env.DADA_APP_KEY || 'dev-dada-app-key',

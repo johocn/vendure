@@ -119,6 +119,11 @@ const balance_wallet_payment_handler_1 = require("./wallet/balance-wallet-paymen
 const tenant_catalog_service_1 = require("./tenant/tenant-catalog.service");
 const tenant_catalog_admin_resolver_1 = require("./tenant/tenant-catalog-admin.resolver");
 const tenant_option_group_service_1 = require("./tenant/tenant-option-group.service");
+const stock_location_custom_fields_1 = require("./inventory/stock-location-custom-fields");
+const variant_location_binding_entity_1 = require("./inventory/variant-location-binding.entity");
+const variant_location_binding_service_1 = require("./inventory/variant-location-binding.service");
+const virtual_physical_stock_service_1 = require("./inventory/virtual-physical-stock.service");
+const inventory_shop_resolver_1 = require("./inventory/inventory-shop.resolver");
 let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
     constructor(options, moduleRef) {
         this.options = options;
@@ -138,6 +143,8 @@ let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
             const rtService = injector.get(room_template_service_1.RoomTemplateService);
             await rtService.seedDefaultTemplates();
         }
+        // 虚拟×物理库存：SALE 同事务镜像虚拟仓（物理驱动变体）
+        injector.get(virtual_physical_stock_service_1.VirtualPhysicalStockService).registerMirrorHandler();
         // 幂等创建默认配送/支付数据（自提点、门店自提配送档案、门店收银支付档案）
         if (this.options.seedDefaultData !== false && ((_a = this.options.profiles) === null || _a === void 0 ? void 0 : _a.enabled) !== false) {
             const seedService = injector.get(default_data_service_1.DefaultDataService);
@@ -294,7 +301,7 @@ exports.CjkPlugin = CjkPlugin;
 exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_profile_method_entity_1.PaymentProfileMethod, payment_template_entity_1.PaymentTemplate, room_template_entity_1.RoomTemplate, room_template_control_entity_1.RoomTemplateControl, tenant_member_entity_1.TenantMember, wallet_entity_1.Wallet, merchant_settlement_ledger_entity_1.MerchantSettlementLedger],
+        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_profile_method_entity_1.PaymentProfileMethod, payment_template_entity_1.PaymentTemplate, room_template_entity_1.RoomTemplate, room_template_control_entity_1.RoomTemplateControl, tenant_member_entity_1.TenantMember, wallet_entity_1.Wallet, merchant_settlement_ledger_entity_1.MerchantSettlementLedger, variant_location_binding_entity_1.VariantLocationBinding],
         providers: [
             { provide: constants_1.CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
             tenant_setup_service_1.TenantSetupService,
@@ -329,6 +336,9 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             tenant_catalog_service_1.TenantCatalogService,
             tenant_option_group_service_1.TenantOptionGroupService,
             redemption_code_service_1.RedemptionCodeService,
+            variant_location_binding_service_1.VariantLocationBindingService,
+            virtual_physical_stock_service_1.VirtualPhysicalStockService,
+            inventory_shop_resolver_1.InventoryShopResolver,
         ],
         adminApiExtensions: {
             schema: () => {
@@ -1413,13 +1423,34 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     walletBalance: Int!
                 }
 
+                # ===== 虚拟×物理库存 =====
+                type VariantStockDetail {
+                    locationId: ID!
+                    name: String!
+                    lat: Float
+                    lng: Float
+                    onHand: Int!
+                    distanceKm: Float
+                }
+
+                type VariantStockInfo {
+                    variantId: ID!
+                    saleableStock: Int!
+                    physicalStockEnabled: Boolean!
+                    stockDetail: [VariantStockDetail!]!
+                }
+
+                extend type Query {
+                    variantStockInfo(variantId: ID!, lat: Float, lng: Float): VariantStockInfo!
+                }
+
                 ${redemption_schema_1.redemptionShopSchema}
             `;
             },
-            resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver, shipping_profile_shop_resolver_1.ShippingProfileShopResolver, payment_profile_shop_resolver_1.PaymentProfileShopResolver, order_box_shop_resolver_1.OrderBoxShopResolver, order_split_shop_resolver_1.OrderSplitShopResolver, wallet_shop_resolver_1.WalletShopResolver, redemption_resolver_1.RedemptionShopResolver],
+            resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver, shipping_profile_shop_resolver_1.ShippingProfileShopResolver, payment_profile_shop_resolver_1.PaymentProfileShopResolver, order_box_shop_resolver_1.OrderBoxShopResolver, order_split_shop_resolver_1.OrderSplitShopResolver, wallet_shop_resolver_1.WalletShopResolver, redemption_resolver_1.RedemptionShopResolver, inventory_shop_resolver_1.InventoryShopResolver],
         },
         configuration: config => {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1;
             // 注入 authSecret 到 crypto 模块（configuration 在 bootstrap 早期执行，此时 options 已可用）
             (0, crypto_1.setAuthSecret)(CjkPlugin.options.authSecret);
             // 租户级税率方式（三态 taxMode：inclusive 含税价含拆税 / zero 零税价净价结算 / exclusive 不含税价价税分离）。
@@ -1572,6 +1603,17 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     config.customFields = Object.assign(Object.assign({}, config.customFields), { Asset: [
                             ...(((_z = config.customFields) === null || _z === void 0 ? void 0 : _z.Asset) || []),
                             ...newAssetFields,
+                        ] });
+                }
+            }
+            // 注册 StockLocation customFields（kind/code）—— 去重防止重复注册
+            {
+                const existingSlFields = (((_0 = config.customFields) === null || _0 === void 0 ? void 0 : _0.StockLocation) || []).map(f => f.name);
+                const newSlFields = (stock_location_custom_fields_1.stockLocationCustomFields.StockLocation || []).filter(f => !existingSlFields.includes(f.name));
+                if (newSlFields.length > 0) {
+                    config.customFields = Object.assign(Object.assign({}, config.customFields), { StockLocation: [
+                            ...(((_1 = config.customFields) === null || _1 === void 0 ? void 0 : _1.StockLocation) || []),
+                            ...newSlFields,
                         ] });
                 }
             }

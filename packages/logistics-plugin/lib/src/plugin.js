@@ -282,7 +282,7 @@ exports.LogisticsPlugin = LogisticsPlugin = LogisticsPlugin_1 = __decorate([
             resolvers: [logistics_shop_resolver_1.LogisticsShopResolver, order_package_shop_resolver_1.OrderPackageShopResolver],
         },
         configuration: (config) => {
-            var _a;
+            var _a, _b;
             config.customFields.Fulfillment = mergeCustomFields(config.customFields.Fulfillment, fulfillment_custom_fields_1.logisticsFulfillmentCustomFields.Fulfillment);
             config.customFields.Channel = mergeCustomFields(config.customFields.Channel, channel_custom_fields_1.logisticsChannelCustomFields.Channel);
             config.customFields.Product = mergeCustomFields(config.customFields.Product, catalog_custom_fields_1.catalogCustomFields.Product);
@@ -292,14 +292,16 @@ exports.LogisticsPlugin = LogisticsPlugin = LogisticsPlugin_1 = __decorate([
             config.customFields.OrderLine = mergeCustomFields(config.customFields.OrderLine, catalog_custom_fields_1.catalogCustomFields.OrderLine);
             config.orderOptions.stockAllocationStrategy = new channel_stock_allocation_strategy_1.ChannelStockAllocationStrategy();
             // 库存策略矩阵：单一全局入口（就近/优先级/库存优先/会员专属），余量天然拆单
-            config.catalogOptions.stockLocationStrategy = new matrix_stock_location_strategy_1.MatrixStockLocationStrategy();
+            // 可经 init 选项注入绑定感知策略（物理驱动变体只从绑定物理仓分配）
+            config.catalogOptions.stockLocationStrategy =
+                (_a = LogisticsPlugin.options.stockLocationStrategy) !== null && _a !== void 0 ? _a : new matrix_stock_location_strategy_1.MatrixStockLocationStrategy();
             // 每包裹独立计费：读 stockLocationsJson 逐包计费合计（channel.packageShippingRule）
             config.shippingOptions.shippingCalculators = [
                 ...(config.shippingOptions.shippingCalculators || []),
                 split_shipping_calculator_1.splitShippingCalculator,
             ];
             // 履约闭环：包裹聚合驱动订单状态机（禁用 checkFulfillmentStates，city 包无 fulfillment 不拦截）
-            if (!((_a = config.orderOptions.process) !== null && _a !== void 0 ? _a : []).some(p => p.__logisticsClosure)) {
+            if (!((_b = config.orderOptions.process) !== null && _b !== void 0 ? _b : []).some(p => p.__logisticsClosure)) {
                 config.orderOptions.process = [
                     (0, core_2.configureDefaultOrderProcess)({ checkFulfillmentStates: false }),
                     Object.assign(Object.assign({}, order_completion_process_1.orderCompletionProcess), { __logisticsClosure: true }),

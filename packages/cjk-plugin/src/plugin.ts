@@ -120,10 +120,15 @@ import { balanceWalletPaymentHandler, setWalletService } from './wallet/balance-
 import { TenantCatalogService } from './tenant/tenant-catalog.service';
 import { TenantCatalogAdminResolver } from './tenant/tenant-catalog-admin.resolver';
 import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
+import { stockLocationCustomFields } from './inventory/stock-location-custom-fields';
+import { VariantLocationBinding } from './inventory/variant-location-binding.entity';
+import { VariantLocationBindingService } from './inventory/variant-location-binding.service';
+import { VirtualPhysicalStockService } from './inventory/virtual-physical-stock.service';
+import { InventoryShopResolver } from './inventory/inventory-shop.resolver';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod, PaymentTemplate, RoomTemplate, RoomTemplateControl, TenantMember, Wallet, MerchantSettlementLedger],
+    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod, PaymentTemplate, RoomTemplate, RoomTemplateControl, TenantMember, Wallet, MerchantSettlementLedger, VariantLocationBinding],
     providers: [
         { provide: CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
         TenantSetupService,
@@ -158,6 +163,9 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
         TenantCatalogService,
         TenantOptionGroupService,
         RedemptionCodeService,
+        VariantLocationBindingService,
+        VirtualPhysicalStockService,
+        InventoryShopResolver,
     ],
     adminApiExtensions: {
         schema: () => {
@@ -1242,10 +1250,31 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
                     walletBalance: Int!
                 }
 
+                # ===== 虚拟×物理库存 =====
+                type VariantStockDetail {
+                    locationId: ID!
+                    name: String!
+                    lat: Float
+                    lng: Float
+                    onHand: Int!
+                    distanceKm: Float
+                }
+
+                type VariantStockInfo {
+                    variantId: ID!
+                    saleableStock: Int!
+                    physicalStockEnabled: Boolean!
+                    stockDetail: [VariantStockDetail!]!
+                }
+
+                extend type Query {
+                    variantStockInfo(variantId: ID!, lat: Float, lng: Float): VariantStockInfo!
+                }
+
                 ${redemptionShopSchema}
             `;
         },
-        resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver, DomainShopResolver, MapShopResolver, ShippingProfileShopResolver, PaymentProfileShopResolver, OrderBoxShopResolver, OrderSplitShopResolver, WalletShopResolver, RedemptionShopResolver],
+        resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver, DomainShopResolver, MapShopResolver, ShippingProfileShopResolver, PaymentProfileShopResolver, OrderBoxShopResolver, OrderSplitShopResolver, WalletShopResolver, RedemptionShopResolver, InventoryShopResolver],
     },
     configuration: config => {
         // 注入 authSecret 到 crypto 模块（configuration 在 bootstrap 早期执行，此时 options 已可用）
@@ -1459,6 +1488,23 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
             }
         }
 
+        // 注册 StockLocation customFields（kind/code）—— 去重防止重复注册
+        {
+            const existingSlFields = (config.customFields?.StockLocation || []).map(f => f.name);
+            const newSlFields = (stockLocationCustomFields.StockLocation || []).filter(
+                f => !existingSlFields.includes(f.name),
+            );
+            if (newSlFields.length > 0) {
+                config.customFields = {
+                    ...config.customFields,
+                    StockLocation: [
+                        ...(config.customFields?.StockLocation || []),
+                        ...newSlFields,
+                    ],
+                };
+            }
+        }
+
         // 注册自定义权限（PickupPermissions）
         config.authOptions = config.authOptions || {};
         config.authOptions.customPermissions = [
@@ -1536,6 +1582,9 @@ export class CjkPlugin implements OnApplicationBootstrap, NestModule {
             const rtService = injector.get(RoomTemplateService);
             await rtService.seedDefaultTemplates();
         }
+
+        // 虚拟×物理库存：SALE 同事务镜像虚拟仓（物理驱动变体）
+        injector.get(VirtualPhysicalStockService).registerMirrorHandler();
 
         // 幂等创建默认配送/支付数据（自提点、门店自提配送档案、门店收银支付档案）
         if (this.options.seedDefaultData !== false && this.options.profiles?.enabled !== false) {

@@ -224,5 +224,14 @@ export const tenantChannelCustomFields: CustomFields = {
                 { languageCode: LanguageCode.en, value: 'inclusive=tax-inclusive display & settlement; zero=tax-free; exclusive=net price with 1.13 tax separation.' },
             ],
         },
+        {
+            name: 'physicalStockEnabled',
+            type: 'boolean',
+            defaultValue: false,
+            label: [
+                { languageCode: LanguageCode.zh_Hans, value: '开启物理库存' },
+                { languageCode: LanguageCode.en, value: 'Enable Physical Stock' },
+            ],
+        },
     ],
 };

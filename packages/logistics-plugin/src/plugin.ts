@@ -226,7 +226,9 @@ const shopSchema = () => gql`
         config.customFields.OrderLine = mergeCustomFields(config.customFields.OrderLine, catalogCustomFields.OrderLine);
         config.orderOptions.stockAllocationStrategy = new ChannelStockAllocationStrategy();
         // 库存策略矩阵：单一全局入口（就近/优先级/库存优先/会员专属），余量天然拆单
-        config.catalogOptions.stockLocationStrategy = new MatrixStockLocationStrategy();
+        // 可经 init 选项注入绑定感知策略（物理驱动变体只从绑定物理仓分配）
+        config.catalogOptions.stockLocationStrategy =
+            LogisticsPlugin.options.stockLocationStrategy ?? new MatrixStockLocationStrategy();
         // 每包裹独立计费：读 stockLocationsJson 逐包计费合计（channel.packageShippingRule）
         config.shippingOptions.shippingCalculators = [
             ...(config.shippingOptions.shippingCalculators || []),

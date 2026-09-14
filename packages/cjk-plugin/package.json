@@ -17,7 +17,8 @@
     "dependencies": {
         "@nestjs/event-emitter": "^3.1.0",
         "@vendure/coupon-plugin": "0.0.1",
-        "@vendure/distribution-plugin": "0.0.1"
+        "@vendure/distribution-plugin": "0.0.1",
+        "@vendure/logistics-plugin": "0.0.1"
     },
     "peerDependencies": {
         "@vendure/common": "^3.6.0",
