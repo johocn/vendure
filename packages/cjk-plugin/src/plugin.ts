@@ -168,7 +168,6 @@ import { InventoryService, StockLedgerService } from '@vendure/inventory-plugin'
         StockLedgerService,
         InventoryService,
         VirtualPhysicalStockService,
-        InventoryShopResolver,
     ],
     adminApiExtensions: {
         schema: () => {

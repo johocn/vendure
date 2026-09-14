@@ -341,7 +341,6 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             inventory_plugin_1.StockLedgerService,
             inventory_plugin_1.InventoryService,
             virtual_physical_stock_service_1.VirtualPhysicalStockService,
-            inventory_shop_resolver_1.InventoryShopResolver,
         ],
         adminApiExtensions: {
             schema: () => {
