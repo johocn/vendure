@@ -125,6 +125,7 @@ import { VariantLocationBinding } from './inventory/variant-location-binding.ent
 import { VariantLocationBindingService } from './inventory/variant-location-binding.service';
 import { VirtualPhysicalStockService } from './inventory/virtual-physical-stock.service';
 import { InventoryShopResolver } from './inventory/inventory-shop.resolver';
+import { InventoryService, StockLedgerService } from '@vendure/inventory-plugin';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
@@ -164,6 +165,8 @@ import { InventoryShopResolver } from './inventory/inventory-shop.resolver';
         TenantOptionGroupService,
         RedemptionCodeService,
         VariantLocationBindingService,
+        StockLedgerService,
+        InventoryService,
         VirtualPhysicalStockService,
         InventoryShopResolver,
     ],

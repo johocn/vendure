@@ -124,6 +124,7 @@ const variant_location_binding_entity_1 = require("./inventory/variant-location-
 const variant_location_binding_service_1 = require("./inventory/variant-location-binding.service");
 const virtual_physical_stock_service_1 = require("./inventory/virtual-physical-stock.service");
 const inventory_shop_resolver_1 = require("./inventory/inventory-shop.resolver");
+const inventory_plugin_1 = require("@vendure/inventory-plugin");
 let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
     constructor(options, moduleRef) {
         this.options = options;
@@ -337,6 +338,8 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             tenant_option_group_service_1.TenantOptionGroupService,
             redemption_code_service_1.RedemptionCodeService,
             variant_location_binding_service_1.VariantLocationBindingService,
+            inventory_plugin_1.StockLedgerService,
+            inventory_plugin_1.InventoryService,
             virtual_physical_stock_service_1.VirtualPhysicalStockService,
             inventory_shop_resolver_1.InventoryShopResolver,
         ],
