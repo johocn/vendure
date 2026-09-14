@@ -22,7 +22,7 @@ export class DeliveryRecordService {
         }
         const repo = this.connection.getRepository(ctx, DeliveryRecord);
         // orderLine -> orderId
-        const lineIds = [...new Set(sales.map(s => String((s.orderLine as any)?.id ?? s.orderLineId)))].filter(Boolean);
+        const lineIds = [...new Set(sales.map(s => String((s.orderLine as any)?.id ?? (s as any).orderLineId)))].filter(Boolean);
         const orderLines = lineIds.length
             ? await this.connection.getRepository(ctx, 'OrderLine' as any).find({ where: { id: In(lineIds) } })
             : [];
@@ -30,7 +30,7 @@ export class DeliveryRecordService {
 
         const groups = new Map<string, { orderId: string; sourceLocationId: ID | null; quantity: number; lineIds: string[] }>();
         for (const sale of sales) {
-            const lineId = String((sale.orderLine as any)?.id ?? sale.orderLineId);
+            const lineId = String((sale.orderLine as any)?.id ?? (sale as any).orderLineId);
             const orderId = lineOrderMap.get(lineId) ?? String((sale as any).orderId ?? '');
             if (!orderId) {
                 continue;

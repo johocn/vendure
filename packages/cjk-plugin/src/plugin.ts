@@ -126,6 +126,7 @@ import { VariantLocationBindingService } from './inventory/variant-location-bind
 import { VirtualPhysicalStockService } from './inventory/virtual-physical-stock.service';
 import { InventoryShopResolver } from './inventory/inventory-shop.resolver';
 import { InventoryService, StockLedgerService } from '@vendure/inventory-plugin';
+import { DeliveryRecordService } from './delivery/delivery-record.service';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
@@ -168,6 +169,7 @@ import { InventoryService, StockLedgerService } from '@vendure/inventory-plugin'
         StockLedgerService,
         InventoryService,
         VirtualPhysicalStockService,
+        DeliveryRecordService,
     ],
     adminApiExtensions: {
         schema: () => {

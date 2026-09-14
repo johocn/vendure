@@ -3,7 +3,7 @@ import { VirtualPhysicalStockService } from './virtual-physical-stock.service';
 
 function makeService(overrides: Record<string, any> = {}) {
     const svc: any = new VirtualPhysicalStockService(
-        {} as any, { create: vi.fn() } as any, {} as any, {} as any, {} as any,
+        {} as any, { create: vi.fn() } as any, {} as any, {} as any, {} as any, {} as any,
     );
     Object.assign(svc, {
         ensureVirtualLocation: vi.fn().mockResolvedValue({ id: 'v1' }),

@@ -3,6 +3,7 @@ import {
     EventBus,
     ID,
     Logger,
+    Order,
     RequestContext,
     StockLevelService,
     StockLocation,
@@ -15,6 +16,7 @@ import { InventoryService } from '@vendure/inventory-plugin';
 import { In } from 'typeorm';
 import { VariantLocationBinding } from './variant-location-binding.entity';
 import { calcMirrorDelta, haversineKm, sumBoundOnHand } from './mirror-math';
+import { DeliveryRecordService } from '../delivery/delivery-record.service';
 
 const loggerCtx = 'VirtualPhysicalStockService';
 
@@ -26,6 +28,7 @@ export class VirtualPhysicalStockService {
         private stockLevelService: StockLevelService,
         private inventoryService: InventoryService,
         private eventBus: EventBus,
+        private deliveryRecordService: DeliveryRecordService,
     ) {}
 
     virtualCode(channelCode: string): string {
@@ -136,18 +139,41 @@ export class VirtualPhysicalStockService {
         }
     }
 
-    /** 注册 SALE 阻塞处理器（镜像必须在 core 扣库同一事务内执行） */
+    /** 注册 SALE 阻塞处理器（镜像必须在 core 扣库同一事务内执行；配送记录同步同事务防漏单） */
     registerMirrorHandler(): void {
         this.eventBus.registerBlockingEventHandler({
             event: StockMovementEvent,
             id: 'cjk-plugin.sync-virtual-mirror',
             handler: event => {
                 if (event.type === 'SALE') {
-                    return this.syncVirtualMirror(event.ctx, event.stockMovements as Sale[]);
+                    const sales = event.stockMovements as Sale[];
+                    return this.syncVirtualMirror(event.ctx, sales).then(async () => {
+                        await this.syncDeliveryRecords(event.ctx, sales);
+                    });
                 }
                 return undefined;
             },
         });
+    }
+
+    /** SALE 后生成顾客配送记录（方案2-B）；pickup 订单标记自提模式 */
+    async syncDeliveryRecords(ctx: RequestContext, sales: Sale[]): Promise<void> {
+        const records = await this.deliveryRecordService.createFromSales(ctx, sales);
+        if (!records.length) {
+            return;
+        }
+        // pickup 订单：按订单级配送方式重设模式
+        const orderIds = [...new Set(records.map(r => String(r.orderId)))];
+        const orderRepo = this.connection.getRepository(ctx, Order);
+        const orders = await orderRepo.find({ where: { id: In(orderIds) } });
+        for (const order of orders) {
+            const c = (order.customFields as any) ?? {};
+            if (c.deliveryType === 'pickup' && c.selectedPickupLocationId) {
+                for (const rec of records.filter(r => String(r.orderId) === String(order.id))) {
+                    await this.deliveryRecordService.markAsPickup(ctx, rec.id, c.selectedPickupLocationId);
+                }
+            }
+        }
     }
 
     /** 店铺端：saleableStock（虚拟仓可售）+ 物理驱动时的绑定仓明细（距离就近排序） */
