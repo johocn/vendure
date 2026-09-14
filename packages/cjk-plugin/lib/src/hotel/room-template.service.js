@@ -13,6 +13,9 @@ exports.RoomTemplateService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const room_template_entity_1 = require("./room-template.entity");
+const room_template_control_entity_1 = require("./room-template-control.entity");
+const room_template_seed_logic_1 = require("./room-template-seed-logic");
+const room_template_seeds_1 = require("./room-template-seeds");
 const hotel_config_1 = require("./hotel-config");
 let RoomTemplateService = class RoomTemplateService {
     constructor(connection) {
@@ -62,7 +65,40 @@ let RoomTemplateService = class RoomTemplateService {
     async delete(id) {
         const repo = this.connection.getRepository(room_template_entity_1.RoomTemplate);
         const entity = await repo.findOneOrFail({ where: { id } });
+        // 删除前先在 control 表记录 deleted，保证 seed 幂等：删除过的 code 重启不再补回
+        const controlRepo = this.connection.getRepository(room_template_control_entity_1.RoomTemplateControl);
+        const existing = await controlRepo.findOne({ where: { code: entity.code } });
+        if (existing) {
+            existing.deleted = true;
+            await controlRepo.save(existing);
+        }
+        else {
+            await controlRepo.save(new room_template_control_entity_1.RoomTemplateControl({ code: entity.code, deleted: true }));
+        }
         await repo.remove(entity);
+    }
+    /** 幂等补种默认房型：已存在或已删除的 code 跳过；插入前通过 validateHotelConfig 校验，单条异常跳过不阻断整体。 */
+    async seedDefaultTemplates() {
+        var _a, _b;
+        const rtRepo = this.connection.getRepository(room_template_entity_1.RoomTemplate);
+        const controlRepo = this.connection.getRepository(room_template_control_entity_1.RoomTemplateControl);
+        const existing = new Set((await rtRepo.find({ select: ['code'] })).map((r) => r.code));
+        const deleted = new Set((await controlRepo.find({ select: ['code'] })).map((c) => c.code));
+        const toInsert = (0, room_template_seed_logic_1.resolveSeedActions)(existing, deleted);
+        let inserted = 0;
+        for (const seed of toInsert) {
+            const input = (0, room_template_seeds_1.buildSeedTemplate)(seed);
+            const check = (0, hotel_config_1.validateHotelConfig)({
+                basePriceCent: input.basePriceCent,
+                priceCalendar: (_a = input.priceCalendar) !== null && _a !== void 0 ? _a : undefined,
+                specs: (_b = input.specs) !== null && _b !== void 0 ? _b : undefined,
+            });
+            if (!check.valid)
+                continue; // 单条异常不阻断整体
+            await rtRepo.save(rtRepo.create(input));
+            inserted++;
+        }
+        return inserted;
     }
     /**
      * 套用模板 → 深拷贝快照进变体 customFields hotelRoomConfig。

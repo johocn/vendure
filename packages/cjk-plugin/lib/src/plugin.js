@@ -91,6 +91,7 @@ const payment_template_service_1 = require("./payment/payment-template.service")
 const payment_template_admin_resolver_1 = require("./payment/payment-template-admin.resolver");
 const payment_template_permissions_1 = require("./payment/payment-template-permissions");
 const room_template_entity_1 = require("./hotel/room-template.entity");
+const room_template_control_entity_1 = require("./hotel/room-template-control.entity");
 const room_template_service_1 = require("./hotel/room-template.service");
 const room_template_admin_resolver_1 = require("./hotel/room-template-admin.resolver");
 const hotel_custom_fields_1 = require("./hotel/hotel-custom-fields");
@@ -132,6 +133,11 @@ let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
         const injector = new core_1.Injector(this.moduleRef);
         // 注入全局共享余额钱包服务到支付 handler（与现有一致：支付处理器经静态 setter 接收服务）
         (0, balance_wallet_payment_handler_1.setWalletService)(injector.get(wallet_service_1.WalletService));
+        // 幂等补种默认房型模板（不覆盖客户改动；删除过的 code 不补回）
+        if (this.options.seedDefaultData !== false) {
+            const rtService = injector.get(room_template_service_1.RoomTemplateService);
+            await rtService.seedDefaultTemplates();
+        }
         // 幂等创建默认配送/支付数据（自提点、门店自提配送档案、门店收银支付档案）
         if (this.options.seedDefaultData !== false && ((_a = this.options.profiles) === null || _a === void 0 ? void 0 : _a.enabled) !== false) {
             const seedService = injector.get(default_data_service_1.DefaultDataService);
@@ -288,7 +294,7 @@ exports.CjkPlugin = CjkPlugin;
 exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_profile_method_entity_1.PaymentProfileMethod, payment_template_entity_1.PaymentTemplate, room_template_entity_1.RoomTemplate, tenant_member_entity_1.TenantMember, wallet_entity_1.Wallet, merchant_settlement_ledger_entity_1.MerchantSettlementLedger],
+        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_profile_method_entity_1.PaymentProfileMethod, payment_template_entity_1.PaymentTemplate, room_template_entity_1.RoomTemplate, room_template_control_entity_1.RoomTemplateControl, tenant_member_entity_1.TenantMember, wallet_entity_1.Wallet, merchant_settlement_ledger_entity_1.MerchantSettlementLedger],
         providers: [
             { provide: constants_1.CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
             tenant_setup_service_1.TenantSetupService,
