@@ -90,6 +90,7 @@ import { PaymentTemplateService } from './payment/payment-template.service';
 import { PaymentTemplateAdminResolver } from './payment/payment-template-admin.resolver';
 import { paymentTemplatePermissionDefinitions } from './payment/payment-template-permissions';
 import { RoomTemplate } from './hotel/room-template.entity';
+import { RoomTemplateControl } from './hotel/room-template-control.entity';
 import { RoomTemplateService } from './hotel/room-template.service';
 import { RoomTemplateAdminResolver } from './hotel/room-template-admin.resolver';
 import { hotelRoomCustomFields } from './hotel/hotel-custom-fields';
@@ -122,7 +123,7 @@ import { TenantOptionGroupService } from './tenant/tenant-option-group.service';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod, PaymentTemplate, RoomTemplate, TenantMember, Wallet, MerchantSettlementLedger],
+    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod, PaymentTemplate, RoomTemplate, RoomTemplateControl, TenantMember, Wallet, MerchantSettlementLedger],
     providers: [
         { provide: CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
         TenantSetupService,
@@ -1529,6 +1530,12 @@ export class CjkPlugin implements OnApplicationBootstrap, NestModule {
 
         // 注入全局共享余额钱包服务到支付 handler（与现有一致：支付处理器经静态 setter 接收服务）
         setWalletService(injector.get(WalletService));
+
+        // 幂等补种默认房型模板（不覆盖客户改动；删除过的 code 不补回）
+        if (this.options.seedDefaultData !== false) {
+            const rtService = injector.get(RoomTemplateService);
+            await rtService.seedDefaultTemplates();
+        }
 
         // 幂等创建默认配送/支付数据（自提点、门店自提配送档案、门店收银支付档案）
         if (this.options.seedDefaultData !== false && this.options.profiles?.enabled !== false) {
