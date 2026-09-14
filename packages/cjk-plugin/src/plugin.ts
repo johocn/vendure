@@ -173,7 +173,6 @@ import { InventoryAdminResolver } from './inventory/inventory-admin.resolver';
         InventoryService,
         VirtualPhysicalStockService,
         DeliveryRecordService,
-        InventoryAdminResolver,
     ],
     adminApiExtensions: {
         schema: () => {
