@@ -11,6 +11,6 @@ export function resolveSeedActions(existingCodes: Set<string>, deletedCodes: Set
 }
 
 /** 由待插入种子生成完整模板实体输入。 */
-export function seedsToInsertInputs(seeds: RoomTemplateSeed[]): Array<Omit<RoomTemplate, 'id'>> {
+export function seedsToInsertInputs(seeds: RoomTemplateSeed[]): Array<Omit<RoomTemplate, 'id' | 'createdAt' | 'updatedAt'>> {
     return seeds.map(buildSeedTemplate);
 }

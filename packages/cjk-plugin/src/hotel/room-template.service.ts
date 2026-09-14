@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { ID, ProductVariant, RequestContext, TransactionalConnection } from '@vendure/core';
 import { RoomTemplate } from './room-template.entity';
+import { RoomTemplateControl } from './room-template-control.entity';
+import { resolveSeedActions } from './room-template-seed-logic';
+import { buildSeedTemplate } from './room-template-seeds';
 import { HotelConfig, validateHotelConfig } from './hotel-config';
 
 @Injectable()
@@ -56,7 +59,34 @@ export class RoomTemplateService {
     async delete(id: ID): Promise<void> {
         const repo = this.connection.getRepository(RoomTemplate);
         const entity = await repo.findOneOrFail({ where: { id } as any });
+        // 删除前先在 control 表记录 deleted，保证 seed 幂等：删除过的 code 重启不再补回
+        const controlRepo = this.connection.getRepository(RoomTemplateControl);
+        const existing = await controlRepo.findOne({ where: { code: entity.code } as any });
+        if (existing) { existing.deleted = true; await controlRepo.save(existing); }
+        else { await controlRepo.save(new RoomTemplateControl({ code: entity.code, deleted: true })); }
         await repo.remove(entity);
+    }
+
+    /** 幂等补种默认房型：已存在或已删除的 code 跳过；插入前通过 validateHotelConfig 校验，单条异常跳过不阻断整体。 */
+    async seedDefaultTemplates(): Promise<number> {
+        const rtRepo = this.connection.getRepository(RoomTemplate);
+        const controlRepo = this.connection.getRepository(RoomTemplateControl);
+        const existing = new Set((await rtRepo.find({ select: ['code'] as any })).map((r) => r.code));
+        const deleted = new Set((await controlRepo.find({ select: ['code'] as any })).map((c) => c.code));
+        const toInsert = resolveSeedActions(existing, deleted);
+        let inserted = 0;
+        for (const seed of toInsert) {
+            const input = buildSeedTemplate(seed);
+            const check = validateHotelConfig({
+                basePriceCent: input.basePriceCent,
+                priceCalendar: input.priceCalendar ?? undefined,
+                specs: input.specs ?? undefined,
+            });
+            if (!check.valid) continue; // 单条异常不阻断整体
+            await rtRepo.save(rtRepo.create(input as any));
+            inserted++;
+        }
+        return inserted;
     }
 
     /**

@@ -26,8 +26,8 @@ export interface RoomTemplateSeed {
 
 export const ROOM_TEMPLATE_SEEDS: RoomTemplateSeed[] = [
     { code: 'standard-twin', name: '标准双床房', sortOrder: 10, override: { basePriceCent: 28800, specs: { bedType: 'twin', bedDesc: '双床 1.2m×2', area: 28, tags: ['安静', '禁烟'] } } },
-    { code: 'standard-king', name: '标准大床房', sortOrder: 20, override: { basePriceCent: 28800, area: 28, tags: ['安静', '禁烟'] } },
-    { code: 'superior-king', name: '高级大床房', sortOrder: 30, override: { basePriceCent: 35800, area: 35, amenities: ['空调', '液晶电视', '独立卫浴', '无线网络', '房内躺椅'], tags: ['城景'] } },
+    { code: 'standard-king', name: '标准大床房', sortOrder: 20, override: { basePriceCent: 28800, specs: { area: 28, tags: ['安静', '禁烟'] } } },
+    { code: 'superior-king', name: '高级大床房', sortOrder: 30, override: { basePriceCent: 35800, specs: { area: 35, amenities: ['空调', '液晶电视', '独立卫浴', '无线网络', '房内躺椅'], tags: ['城景'] } } },
     { code: 'superior-twin', name: '高级双床房', sortOrder: 40, override: { basePriceCent: 35800, specs: { bedType: 'twin', bedDesc: '双床 1.35m×2', area: 35, amenities: ['空调', '液晶电视', '独立卫浴', '无线网络', '房内躺椅'], tags: ['城景'] } } },
     { code: 'deluxe-king', name: '豪华大床房', sortOrder: 50, override: { basePriceCent: 45800, specs: { bedDesc: '大床 2.0m', area: 42, amenities: ['空调', '液晶电视', '独立卫浴', '无线网络', '浴缸', '小吧台'], tags: ['湖景', '高层'] } } },
     { code: 'deluxe-twin', name: '豪华双床房', sortOrder: 60, override: { basePriceCent: 45800, specs: { bedType: 'twin', bedDesc: '双床 1.5m×2', area: 42, capacity: 3, maxCapacity: 3, amenities: ['空调', '液晶电视', '独立卫浴', '无线网络', '浴缸', '小吧台'], tags: ['湖景'] } } },
@@ -58,7 +58,7 @@ export const DEFAULT_LONG_STAY: LongStayDiscount[] = [
 ];
 
 /** 由种子 + base 生成完整模板输入（DOMAIN 即 RoomTemplate 字段）。 */
-export function buildSeedTemplate(seed: RoomTemplateSeed): Omit<RoomTemplate, 'id'> {
+export function buildSeedTemplate(seed: RoomTemplateSeed): Omit<RoomTemplate, 'id' | 'createdAt' | 'updatedAt'> {
     const s = seed.override ?? {};
     const specs = {
         bedType: s.specs?.bedType ?? 'king',

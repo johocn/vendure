@@ -20,7 +20,7 @@ describe('RoomTemplate seeds', () => {
 
     it('默认 6 间房间、房间号/楼层/景观合法', () => {
         const tpl = buildSeedTemplate(ROOM_TEMPLATE_SEEDS[0]);
-        expect(tpl.defaultRooms.length).toBe(6);
+        expect(tpl.defaultRooms!.length).toBe(6);
         for (const r of tpl.defaultRooms!) {
             expect(r.no).toMatch(/^\d+$/);
             expect(r.floor).toBeGreaterThan(0);
