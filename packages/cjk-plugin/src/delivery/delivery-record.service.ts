@@ -152,6 +152,42 @@ export class DeliveryRecordService {
         return repo.save(record);
     }
 
+    /** 按订单查询配送记录（不传订单则返回全部） */
+    async findByOrder(ctx: RequestContext, orderId?: ID): Promise<DeliveryRecord[]> {
+        const repo = this.connection.getRepository(ctx, DeliveryRecord);
+        if (orderId) {
+            return repo.find({ where: { orderId: orderId as any } });
+        }
+        return repo.find({});
+    }
+
+    /** 创建内部配送（transfer）：主仓 -> 自提点仓 */
+    async createTransfer(
+        ctx: RequestContext,
+        input: {
+            orderId: ID;
+            fromLocationId: ID;
+            toLocationId: ID;
+            items: Array<{ variantId: ID; quantity: number }>;
+            expressCompany?: string;
+            trackingNo?: string;
+        },
+    ): Promise<DeliveryRecord> {
+        const repo = this.connection.getRepository(ctx, DeliveryRecord);
+        return repo.save(
+            new DeliveryRecord({
+                orderId: input.orderId,
+                mode: 'transfer',
+                status: 'TransferPending',
+                fromLocationId: input.fromLocationId,
+                toLocationId: input.toLocationId,
+                itemsJson: JSON.stringify(input.items),
+                expressCompany: input.expressCompany ?? null,
+                trackingNo: input.trackingNo ?? null,
+            }),
+        );
+    }
+
     /** transfer 到达：入自提点仓（toLocationId），触发 A 镜像 */
     async markTransferArrived(
         ctx: RequestContext,

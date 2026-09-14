@@ -14,6 +14,10 @@ export class PickupLocation extends VendureEntity implements ChannelAware, HasCu
     @Column({ type: 'varchar', default: 'store' })
     type: 'store' | 'point' | 'employee';
 
+    /** own=门店自提（自带库存，取件即扣）；remote=远程自提（需仓→自提点配送） */
+    @Column({ type: 'varchar', default: 'own' })
+    stockType: string;
+
     @Column() address: string;
 
     @Column({ nullable: true }) contactPerson: string;
