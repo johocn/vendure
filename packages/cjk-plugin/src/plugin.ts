@@ -1030,6 +1030,23 @@ import { InventoryService, StockLedgerService } from '@vendure/inventory-plugin'
                 extend type Query {
                     pickupLocations(type: String, lat: Float, lng: Float): [PickupLocation!]!
                     employeePickupLocations(lat: Float, lng: Float): [PickupLocation!]!
+                    variantStockInfo(variantId: ID!, lat: Float, lng: Float): VariantStockInfo!
+                }
+
+                type VariantStockDetail {
+                    locationId: ID!
+                    name: String!
+                    lat: Float
+                    lng: Float
+                    onHand: Int!
+                    distanceKm: Float
+                }
+
+                type VariantStockInfo {
+                    variantId: ID!
+                    saleableStock: Int!
+                    physicalStockEnabled: Boolean!
+                    stockDetail: [VariantStockDetail!]!
                 }
 
                 extend type Mutation {
