@@ -129,6 +129,7 @@ import { InventoryService, StockLedgerService } from '@vendure/inventory-plugin'
 import { DeliveryRecordService } from './delivery/delivery-record.service';
 import { DeliveryRecord } from './delivery/delivery-record.entity';
 import { DeliveryAdminResolver } from './delivery/delivery-admin.resolver';
+import { InventoryAdminResolver } from './inventory/inventory-admin.resolver';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
@@ -172,6 +173,7 @@ import { DeliveryAdminResolver } from './delivery/delivery-admin.resolver';
         InventoryService,
         VirtualPhysicalStockService,
         DeliveryRecordService,
+        InventoryAdminResolver,
     ],
     adminApiExtensions: {
         schema: () => {
@@ -1062,10 +1064,23 @@ import { DeliveryAdminResolver } from './delivery/delivery-admin.resolver';
                     deliveryAssignStaff(id: ID!, staffId: String!, staffName: String): DeliveryRecord!
                     deliveryCreateTransfer(orderId: ID!, fromLocationId: ID!, toLocationId: ID!, itemsJson: String!): DeliveryRecord!
                     deliveryTransferArrived(id: ID!): DeliveryRecord!
+                    setVariantBindings(variantId: ID!, bindings: [VariantBindingInput!]!): [VariantLocationBinding!]!
+                }
+
+                type VariantLocationBinding {
+                    id: ID!
+                    variantId: ID!
+                    locationId: ID!
+                    isDefault: Boolean!
+                }
+
+                input VariantBindingInput {
+                    locationId: ID!
+                    isDefault: Boolean!
                 }
                 `;
         },
-        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, RoomTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver, MerchantSettlementAdminResolver, DeliveryAdminResolver],
+        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, RoomTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver, MerchantSettlementAdminResolver, DeliveryAdminResolver, InventoryAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {
