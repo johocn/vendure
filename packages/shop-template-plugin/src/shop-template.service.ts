@@ -87,11 +87,14 @@ export class ShopTemplateService {
         return this.connection.getRepository(ctx, ShopTemplate).save(copy);
     }
 
-    /** C 端：优先按 id 取（店铺 templateId 引用），否则回退本 app 已启用模板中最新一条 */
+    /** C 端：优先取店铺引用模板（显式 id → 当前渠道 channel.customFields.templateId），
+     *  引用无效/未引用时回退本 app 已启用模板中最新一条 */
     async shopTemplate(ctx: RequestContext, app: TemplateApp, id?: ID): Promise<ShopTemplate | null> {
         const repo = this.connection.getRepository(ctx, ShopTemplate);
-        if (id) {
-            const tpl = await repo.findOne({ where: { id: id as any } });
+        const refId: ID | undefined =
+            id ?? ((ctx.channel?.customFields as Record<string, any> | undefined)?.templateId ?? undefined);
+        if (refId) {
+            const tpl = await repo.findOne({ where: { id: refId as any } });
             // 引用跨端/已停用模板时回退，避免 C 端拿到不可用配置
             if (!tpl || tpl.app !== app || !tpl.enabled) {
                 return null;
