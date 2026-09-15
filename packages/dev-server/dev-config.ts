@@ -67,6 +67,7 @@ import { PreSalePlugin } from '@vendure/pre-sale-plugin';
 import { LiveStreamingPlugin } from '@vendure/live-streaming-plugin';
 import { ShopPlugin } from '@vendure/shop-plugin';
 import { PickupPlugin } from '@vendure/pickup-plugin';
+import { ShopTemplatePlugin } from '@vendure/shop-template-plugin';
 
 // 本地联调默认注入 REDEMPTION_KEY（AES-GCM/HMAC 密钥，64 hex chars）
 if (!process.env.REDEMPTION_KEY) {
@@ -291,6 +292,10 @@ export const devConfig: VendureConfig = {
             // promoSchemes/serviceSchemes 存频道促销/服务方案库 JSON（[{code,text:{zh_Hans,en}}]，勾选启用即入列）
             { name: 'promoSchemes', type: 'text', public: true },
             { name: 'serviceSchemes', type: 'text', public: true },
+            // 分类/购物车/我的 页面装修 JSON（web-admin 装修表单写入，C 端按页合并）
+            { name: 'pageCategoryConfig', type: 'text', public: true },
+            { name: 'pageCartConfig', type: 'text', public: true },
+            { name: 'pageProfileConfig', type: 'text', public: true },
         ],
         Customer: [],
         Fulfillment: [],
@@ -365,6 +370,8 @@ export const devConfig: VendureConfig = {
             authSecret: process.env.AUTH_SECRET || 'dev-auth-secret-key',
         }),
         ShopPlugin.init({}),
+        // 风格模板库与全局配置（四层风格体系后台配置）。app 决定本实例模板库端：nshop/vshop，缺省 nshop
+        ShopTemplatePlugin.init({ app: (process.env.APP as 'nshop' | 'vshop') ?? 'nshop' }),
         PickupPlugin.init({}),
         ...((process.env.ALIPAY_NOTIFY_URL || process.env.DEV_BYPASS_ALIPAY === 'true') ? [AlipayPlugin.init({
             notifyUrl: process.env.ALIPAY_NOTIFY_URL || '',
