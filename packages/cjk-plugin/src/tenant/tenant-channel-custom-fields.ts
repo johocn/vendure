@@ -233,5 +233,14 @@ export const tenantChannelCustomFields: CustomFields = {
                 { languageCode: LanguageCode.en, value: 'Enable Physical Stock' },
             ],
         },
+        {
+            name: 'shareImageUrl',
+            type: 'string',
+            nullable: true,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '默认分享图 URL' }],
+            description: [
+                { languageCode: LanguageCode.zh_Hans, value: '商品无主图时微信转发使用此图；留空则前端回退内置默认图' },
+            ],
+        },
     ],
 };

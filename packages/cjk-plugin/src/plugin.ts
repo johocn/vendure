@@ -1195,6 +1195,7 @@ import { ReconciliationAdminResolver } from './reconcile/reconciliation-admin.re
                 type ChannelResolveCustomFields {
                     shopName: String
                     shopLogo: String
+                    shareImageUrl: String
                     shopIntro: String
                     servicePhone: String
                     shopContent: String
