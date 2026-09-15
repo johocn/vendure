@@ -1,5 +1,5 @@
 import { Inject, MiddlewareConsumer, NestModule, OnApplicationBootstrap, Type } from '@nestjs/common';
-import { I18nService, Injector, Logger, PluginCommonModule, RequestContext, VendurePlugin } from '@vendure/core';
+import { I18nService, Injector, Logger, PluginCommonModule, RequestContext, VendurePlugin, ChannelService } from '@vendure/core';
 import { APP_GUARD, ModuleRef } from '@nestjs/core';
 
 import { CJK_PLUGIN_OPTIONS, loggerCtx } from './constants';
@@ -130,10 +130,13 @@ import { DeliveryRecordService } from './delivery/delivery-record.service';
 import { DeliveryRecord } from './delivery/delivery-record.entity';
 import { DeliveryAdminResolver } from './delivery/delivery-admin.resolver';
 import { InventoryAdminResolver } from './inventory/inventory-admin.resolver';
+import { ReconciliationBatch, ReconciliationOrderLine } from './reconcile/reconciliation.entity';
+import { ReconciliationService } from './reconcile/reconciliation.service';
+import { ReconciliationAdminResolver } from './reconcile/reconciliation-admin.resolver';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod, PaymentTemplate, RoomTemplate, RoomTemplateControl, TenantMember, Wallet, MerchantSettlementLedger, VariantLocationBinding, DeliveryRecord],
+    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod, PaymentTemplate, RoomTemplate, RoomTemplateControl, TenantMember, Wallet, MerchantSettlementLedger, VariantLocationBinding, DeliveryRecord, ReconciliationBatch, ReconciliationOrderLine],
     providers: [
         { provide: CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
         TenantSetupService,
@@ -173,6 +176,7 @@ import { InventoryAdminResolver } from './inventory/inventory-admin.resolver';
         InventoryService,
         VirtualPhysicalStockService,
         DeliveryRecordService,
+        ReconciliationService,
     ],
     adminApiExtensions: {
         schema: () => {
@@ -1077,9 +1081,45 @@ import { InventoryAdminResolver } from './inventory/inventory-admin.resolver';
                     locationId: ID!
                     isDefault: Boolean!
                 }
+
+                type ReconciliationBatch {
+                    id: ID!
+                    tenantChannelId: ID!
+                    date: String!
+                    status: String!
+                    d1Count: Int!
+                    d2Count: Int!
+                    d3Count: Int!
+                    d4Count: Int!
+                    orderTotal: Int!
+                    trigger: String!
+                    startedAt: String
+                    finishedAt: String
+                }
+
+                type ReconciliationOrderLine {
+                    id: ID!
+                    batchId: ID!
+                    orderId: ID!
+                    diffTypes: String!
+                    status: String!
+                    remark: String
+                    fixedAt: String
+                    fixerId: String
+                }
+
+                extend type Query {
+                    reconciliationBatches: [ReconciliationBatch!]!
+                    reconciliationLines(batchId: ID!): [ReconciliationOrderLine!]!
+                }
+
+                extend type Mutation {
+                    runReconciliation(date: String!, trigger: String): ReconciliationBatch
+                    rerunReconciliationOrder(lineId: ID!): ReconciliationOrderLine!
+                }
                 `;
         },
-        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, RoomTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver, MerchantSettlementAdminResolver, DeliveryAdminResolver, InventoryAdminResolver],
+        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, RoomTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver, MerchantSettlementAdminResolver, DeliveryAdminResolver, InventoryAdminResolver, ReconciliationAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {
@@ -1803,6 +1843,43 @@ export class CjkPlugin implements OnApplicationBootstrap, NestModule {
         // 核销码改由 checkoutSplitted（performSplitCheckout）同步 best-effort 生成，并在 C端
         // orderRedemptionCode（ensure 写后重读对账）兜底。原 OrderStateTransitionEvent 异步后台 ensure
         // 会与同步 ensure 并发生成不同码、后写覆盖导致 lookupByCode 查不到（spurious not_found），已移除。
+
+        // 方案2-C 日批：每 5 分钟检查，若当日批未跑则执行（每日 2:00 后首查触发；仅物理库存租户）
+        {
+            const svc = injector.get(ReconciliationService);
+            const channelSvc = injector.get(ChannelService);
+            let lastDate = '';
+            setInterval(async () => {
+                try {
+                    const now = new Date();
+                    const date = now.toISOString().slice(0, 10);
+                    if (date === lastDate) {
+                        return;
+                    }
+                    if (now.getHours() < 2) {
+                        return;
+                    }
+                    const page = await channelSvc.findAll(RequestContext.empty(), { take: 200 } as any);
+                    for (const ch of page.items) {
+                        const enabled = Boolean((ch.customFields as any)?.physicalStockEnabled);
+                        if (!enabled) {
+                            continue;
+                        }
+                        const ctx = new RequestContext({
+                            apiType: 'admin',
+                            isAuthorized: true,
+                            authorizedAsOwnerOnly: false,
+                            channel: ch as any,
+                            session: undefined as any,
+                        });
+                        await svc.runBatch(ctx, date, 'cron');
+                    }
+                    lastDate = date;
+                } catch (e: any) {
+                    Logger.error(`日批对账失败: ${e?.message}`, 'ReconciliationCron');
+                }
+            }, 5 * 60 * 1000);
+        }
     }
 
     configure(consumer: MiddlewareConsumer): void {}

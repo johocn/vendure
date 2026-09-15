@@ -3,7 +3,7 @@ import { ReconciliationService } from './reconciliation.service';
 
 describe('ReconciliationService', () => {
     function makeService(overrides: Record<string, any> = {}) {
-        const svc: any = new ReconciliationService({} as any, {} as any, {} as any, {} as any);
+        const svc: any = new ReconciliationService({} as any);
         Object.assign(svc, {
             connection: {
                 getRepository: vi.fn(),
