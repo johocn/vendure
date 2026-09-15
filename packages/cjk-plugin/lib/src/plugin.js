@@ -129,6 +129,9 @@ const delivery_record_service_1 = require("./delivery/delivery-record.service");
 const delivery_record_entity_1 = require("./delivery/delivery-record.entity");
 const delivery_admin_resolver_1 = require("./delivery/delivery-admin.resolver");
 const inventory_admin_resolver_1 = require("./inventory/inventory-admin.resolver");
+const reconciliation_entity_1 = require("./reconcile/reconciliation.entity");
+const reconciliation_service_1 = require("./reconcile/reconciliation.service");
+const reconciliation_admin_resolver_1 = require("./reconcile/reconciliation-admin.resolver");
 let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
     constructor(options, moduleRef) {
         this.options = options;
@@ -299,6 +302,44 @@ let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
         // 核销码改由 checkoutSplitted（performSplitCheckout）同步 best-effort 生成，并在 C端
         // orderRedemptionCode（ensure 写后重读对账）兜底。原 OrderStateTransitionEvent 异步后台 ensure
         // 会与同步 ensure 并发生成不同码、后写覆盖导致 lookupByCode 查不到（spurious not_found），已移除。
+        // 方案2-C 日批：每 5 分钟检查，若当日批未跑则执行（每日 2:00 后首查触发；仅物理库存租户）
+        {
+            const svc = injector.get(reconciliation_service_1.ReconciliationService);
+            const channelSvc = injector.get(core_1.ChannelService);
+            let lastDate = '';
+            setInterval(async () => {
+                var _a;
+                try {
+                    const now = new Date();
+                    const date = now.toISOString().slice(0, 10);
+                    if (date === lastDate) {
+                        return;
+                    }
+                    if (now.getHours() < 2) {
+                        return;
+                    }
+                    const page = await channelSvc.findAll(core_1.RequestContext.empty(), { take: 200 });
+                    for (const ch of page.items) {
+                        const enabled = Boolean((_a = ch.customFields) === null || _a === void 0 ? void 0 : _a.physicalStockEnabled);
+                        if (!enabled) {
+                            continue;
+                        }
+                        const ctx = new core_1.RequestContext({
+                            apiType: 'admin',
+                            isAuthorized: true,
+                            authorizedAsOwnerOnly: false,
+                            channel: ch,
+                            session: undefined,
+                        });
+                        await svc.runBatch(ctx, date, 'cron');
+                    }
+                    lastDate = date;
+                }
+                catch (e) {
+                    core_1.Logger.error(`日批对账失败: ${e === null || e === void 0 ? void 0 : e.message}`, 'ReconciliationCron');
+                }
+            }, 5 * 60 * 1000);
+        }
     }
     configure(consumer) { }
 };
@@ -306,7 +347,7 @@ exports.CjkPlugin = CjkPlugin;
 exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_profile_method_entity_1.PaymentProfileMethod, payment_template_entity_1.PaymentTemplate, room_template_entity_1.RoomTemplate, room_template_control_entity_1.RoomTemplateControl, tenant_member_entity_1.TenantMember, wallet_entity_1.Wallet, merchant_settlement_ledger_entity_1.MerchantSettlementLedger, variant_location_binding_entity_1.VariantLocationBinding, delivery_record_entity_1.DeliveryRecord],
+        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_profile_method_entity_1.PaymentProfileMethod, payment_template_entity_1.PaymentTemplate, room_template_entity_1.RoomTemplate, room_template_control_entity_1.RoomTemplateControl, tenant_member_entity_1.TenantMember, wallet_entity_1.Wallet, merchant_settlement_ledger_entity_1.MerchantSettlementLedger, variant_location_binding_entity_1.VariantLocationBinding, delivery_record_entity_1.DeliveryRecord, reconciliation_entity_1.ReconciliationBatch, reconciliation_entity_1.ReconciliationOrderLine],
         providers: [
             { provide: constants_1.CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
             tenant_setup_service_1.TenantSetupService,
@@ -346,6 +387,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             inventory_plugin_1.InventoryService,
             virtual_physical_stock_service_1.VirtualPhysicalStockService,
             delivery_record_service_1.DeliveryRecordService,
+            reconciliation_service_1.ReconciliationService,
         ],
         adminApiExtensions: {
             schema: () => {
@@ -1250,9 +1292,45 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     locationId: ID!
                     isDefault: Boolean!
                 }
+
+                type ReconciliationBatch {
+                    id: ID!
+                    tenantChannelId: ID!
+                    date: String!
+                    status: String!
+                    d1Count: Int!
+                    d2Count: Int!
+                    d3Count: Int!
+                    d4Count: Int!
+                    orderTotal: Int!
+                    trigger: String!
+                    startedAt: String
+                    finishedAt: String
+                }
+
+                type ReconciliationOrderLine {
+                    id: ID!
+                    batchId: ID!
+                    orderId: ID!
+                    diffTypes: String!
+                    status: String!
+                    remark: String
+                    fixedAt: String
+                    fixerId: String
+                }
+
+                extend type Query {
+                    reconciliationBatches: [ReconciliationBatch!]!
+                    reconciliationLines(batchId: ID!): [ReconciliationOrderLine!]!
+                }
+
+                extend type Mutation {
+                    runReconciliation(date: String!, trigger: String): ReconciliationBatch
+                    rerunReconciliationOrder(lineId: ID!): ReconciliationOrderLine!
+                }
                 `;
             },
-            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, room_template_admin_resolver_1.RoomTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver, tenant_catalog_admin_resolver_1.TenantCatalogAdminResolver, asset_library_admin_resolver_1.AssetLibraryAdminResolver, redemption_resolver_1.RedemptionAdminResolver, merchant_settlement_admin_resolver_1.MerchantSettlementAdminResolver, delivery_admin_resolver_1.DeliveryAdminResolver, inventory_admin_resolver_1.InventoryAdminResolver],
+            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, room_template_admin_resolver_1.RoomTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver, tenant_catalog_admin_resolver_1.TenantCatalogAdminResolver, asset_library_admin_resolver_1.AssetLibraryAdminResolver, redemption_resolver_1.RedemptionAdminResolver, merchant_settlement_admin_resolver_1.MerchantSettlementAdminResolver, delivery_admin_resolver_1.DeliveryAdminResolver, inventory_admin_resolver_1.InventoryAdminResolver, reconciliation_admin_resolver_1.ReconciliationAdminResolver],
         },
         shopApiExtensions: {
             schema: () => {
