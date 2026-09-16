@@ -13,7 +13,8 @@ export class InventoryShopResolver {
         @Args('variantId') variantId: ID,
         @Args('lat', { nullable: true }) lat?: number,
         @Args('lng', { nullable: true }) lng?: number,
+        @Args('city', { nullable: true }) city?: string,
     ) {
-        return this.virtualPhysicalStockService.getSaleableAndDetail(ctx, variantId, lat, lng);
+        return this.virtualPhysicalStockService.getSaleableAndDetail(ctx, variantId, lat, lng, city);
     }
 }

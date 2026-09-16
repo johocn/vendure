@@ -16,6 +16,7 @@ import { InventoryService } from '@vendure/inventory-plugin';
 import { In } from 'typeorm';
 import { VariantLocationBinding } from './variant-location-binding.entity';
 import { calcMirrorDelta, haversineKm, sumBoundOnHand } from './mirror-math';
+import { pinByCity } from './stock-city-filter';
 import { DeliveryRecordService } from '../delivery/delivery-record.service';
 
 const loggerCtx = 'VirtualPhysicalStockService';
@@ -182,6 +183,7 @@ export class VirtualPhysicalStockService {
         variantId: ID,
         lat?: number | null,
         lng?: number | null,
+        city?: string | null,
     ) {
         const virtual = await this.ensureVirtualLocation(ctx);
         const levels = await this.stockLevelService.getStockLevelsForVariant(ctx, variantId);
@@ -193,13 +195,29 @@ export class VirtualPhysicalStockService {
             levels.find(l => String(l.stockLocationId) === String(virtual.id))?.stockOnHand ?? 0;
 
         let stockDetail: any[] = [];
+        let saleableStock = virtualOnHand;
         if (physicalStockEnabled && bindings.length) {
             const boundIds = bindings.map(b => b.locationId);
             const locs = await this.connection
                 .getRepository(ctx, StockLocation)
                 .find({ where: { id: In(boundIds) }, loadEagerRelations: false });
             const origin = lat != null && lng != null ? { lat, lng } : null;
-            stockDetail = locs
+
+            // 按城市聚合：city 为空 → 全部绑定仓；否则仅服务该城市的绑定仓
+            const cities = new Map<string, unknown>();
+            for (const loc of locs) {
+                cities.set(String(loc.id), (loc.customFields as any)?.serviceCities);
+            }
+            const { servedLocations, servedOnHand } = pinByCity(
+                levels.map(l => ({ stockLocationId: l.stockLocationId, stockOnHand: l.stockOnHand })),
+                bindings,
+                cities,
+                city,
+            );
+
+            const servedLocs = servedLocations.length ? locs.filter(l =>
+                servedLocations.some(id => String(id) === String(l.id))) : [];
+            stockDetail = servedLocs
                 .map(loc => {
                     const level = levels.find(l => String(l.stockLocationId) === String(loc.id));
                     const c = (loc.customFields as any) ?? {};
@@ -220,12 +238,11 @@ export class VirtualPhysicalStockService {
                     if (b.distanceKm == null) return -1;
                     return a.distanceKm - b.distanceKm;
                 });
+            // 提供 city 时主库存取城市仓合计；城市无仓可服务或未提供 city 回退全局虚拟仓
+            if (city) {
+                saleableStock = servedOnHand > 0 ? servedOnHand : virtualOnHand;
+            }
         }
-        return {
-            variantId,
-            saleableStock: virtualOnHand,
-            physicalStockEnabled,
-            stockDetail,
-        };
+        return { variantId, saleableStock, physicalStockEnabled, stockDetail };
     }
 }
