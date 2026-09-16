@@ -92,7 +92,7 @@ let ShopTemplateService = class ShopTemplateService {
         return this.connection.getRepository(ctx, shop_template_entity_1.ShopTemplate).save(copy);
     }
     /** C 端：优先取店铺引用模板（显式 id → 当前渠道 channel.customFields.templateId），
-     *  引用无效/未引用时回退本 app 已启用模板中最新一条 */
+     *  未引用/引用无效（跨端、已停用）时返回 null，C 端回退 L1 全局默认（手册「不使用模板 = 全局默认」） */
     async shopTemplate(ctx, app, id) {
         var _a, _b, _c;
         const repo = this.connection.getRepository(ctx, shop_template_entity_1.ShopTemplate);
@@ -105,12 +105,7 @@ let ShopTemplateService = class ShopTemplateService {
             }
             return tpl;
         }
-        return repo
-            .createQueryBuilder('tpl')
-            .where('tpl.app = :app', { app })
-            .andWhere('tpl.enabled = :enabled', { enabled: true })
-            .orderBy('tpl.updatedAt', 'DESC')
-            .getOne();
+        return null;
     }
     /* --------------------- 全局配置 --------------------- */
     async findGlobalConfig(ctx, app) {

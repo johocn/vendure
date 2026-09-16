@@ -18,7 +18,7 @@ export declare class ShopTemplateService {
     /** 管理端：复制为新模板（name 加「副本」，version+1，enabled 继承） */
     copy(ctx: RequestContext, id: ID): Promise<ShopTemplate>;
     /** C 端：优先取店铺引用模板（显式 id → 当前渠道 channel.customFields.templateId），
-     *  引用无效/未引用时回退本 app 已启用模板中最新一条 */
+     *  未引用/引用无效（跨端、已停用）时返回 null，C 端回退 L1 全局默认（手册「不使用模板 = 全局默认」） */
     shopTemplate(ctx: RequestContext, app: TemplateApp, id?: ID): Promise<ShopTemplate | null>;
     findGlobalConfig(ctx: RequestContext, app: TemplateApp): Promise<ShopGlobalConfig | null>;
     /** 管理端：更新全局配置（upsert：无记录则创建） */
