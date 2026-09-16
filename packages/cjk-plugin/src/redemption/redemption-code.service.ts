@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
-    Fulfillment, FulfillmentService, ID, isGraphQlErrorResult, Logger,
+    EntityHydrator, Fulfillment, FulfillmentService, ID, isGraphQlErrorResult, Logger,
     Order, OrderService, RequestContext, TransactionalConnection,
 } from '@vendure/core';
 import {
@@ -27,6 +27,12 @@ export const COD_PAYMENT_CODES = [
     'fixed-aggregate-collection',
 ];
 
+export interface PendingRedemptionLine {
+    name: string;
+    quantity: number;
+    lineTotalWithTax: number;
+}
+
 export interface PendingRedemptionItem {
     orderId: string;
     orderCode: string;
@@ -37,6 +43,7 @@ export interface PendingRedemptionItem {
     claimed: boolean;
     paymentType: string | null;
     collected: boolean;
+    lines: PendingRedemptionLine[];
 }
 
 export interface ClaimResult {
@@ -58,6 +65,7 @@ export class RedemptionCodeService {
         private orderService: OrderService,
         private connection: TransactionalConnection,
         private fulfillmentService: FulfillmentService,
+        private entityHydrator: EntityHydrator,
     ) {
         this.keyHex = process.env.REDEMPTION_KEY ?? '7'.repeat(64); // dev 默认；生产必由运维注入
         if (process.env.REDEMPTION_KEY === undefined && process.env.NODE_ENV === 'production') {
@@ -387,20 +395,22 @@ export class RedemptionCodeService {
             .addOrderBy('order.id', 'DESC');
         const all = await qb.getMany();
         const now = new Date();
-        const pending = all
-            .map((o) => {
-                const cf = (o.customFields ?? {}) as Record<string, any>;
-                let code = '';
-                if (cf.redeemCodeCipher && cf.redeemCodeIv) {
-                    try {
-                        code = decryptRedemptionCode(cf.redeemCodeCipher, cf.redeemCodeIv, this.keyHex);
-                    } catch {
-                        /* 坏密文 → 无有效码，跳过 */
-                    }
+        const pending: { item: PendingRedemptionItem; orderId: string }[] = [];
+        for (const o of all) {
+            const cf = (o.customFields ?? {}) as Record<string, any>;
+            let code = '';
+            if (cf.redeemCodeCipher && cf.redeemCodeIv) {
+                try {
+                    code = decryptRedemptionCode(cf.redeemCodeCipher, cf.redeemCodeIv, this.keyHex);
+                } catch {
+                    /* 坏密文 → 无有效码，跳过 */
                 }
-                const claimed = !!cf.redeemClaimed;
-                const expiresAt: string | null = cf.redeemExpiresAt ?? null;
-                return {
+            }
+            const claimed = !!cf.redeemClaimed;
+            if (!code || claimed) continue;
+            const expiresAt: string | null = cf.redeemExpiresAt ?? null;
+            pending.push({
+                item: {
                     orderId: String(o.id),
                     orderCode: o.code,
                     code,
@@ -410,12 +420,48 @@ export class RedemptionCodeService {
                     claimed,
                     paymentType: (o.payments ?? [])[0]?.method ?? null,
                     collected: !!cf.collected || !!cf.redeemCollected,
-                } as PendingRedemptionItem;
-            })
-            .filter((it) => it.code && !it.claimed);
+                    lines: [],
+                },
+                orderId: String(o.id),
+            });
+        }
         const skip = options.skip ?? 0;
         const take = options.take ?? 20;
-        return { items: pending.slice(skip, skip + take), totalItems: pending.length };
+        const page = pending.slice(skip, skip + take);
+        // 灌注本页订单的商品行（本版本 EntityHydrator.hydrate 仅支持单实体，逐单灌注）
+        const pageOrders = all.filter((o) => page.some((p) => String(o.id) === p.orderId));
+        if (pageOrders.length) {
+            const lineMap = new Map<string, PendingRedemptionLine[]>();
+            for (const o of pageOrders) {
+                await this.entityHydrator.hydrate(ctx, o, {
+                    relations: [
+                        'lines',
+                        'lines.productVariant',
+                        'lines.productVariant.product',
+                        'lines.productVariant.options',
+                    ],
+                } as any);
+                const rows = (o.lines ?? []).map((l: any): PendingRedemptionLine => {
+                    const base = l.productVariant?.product?.name ?? l.productVariant?.name ?? `Item ${l.id}`;
+                    const options = Array.isArray(l.productVariant?.options) ? l.productVariant.options : [];
+                    const spec = options.length
+                        ? options.map((op: any) => op.name).join(' · ')
+                        : l.productVariant?.name && l.productVariant.name !== base
+                            ? l.productVariant.name
+                            : null;
+                    return {
+                        name: spec ? `${base} ${spec}` : base,
+                        quantity: Number(l.quantity ?? 0),
+                        lineTotalWithTax: Math.round(Number(l.lineTotalWithTax ?? 0)),
+                    };
+                });
+                lineMap.set(String(o.id), rows);
+            }
+            for (const p of page) {
+                p.item.lines = lineMap.get(p.orderId) ?? [];
+            }
+        }
+        return { items: page.map((p) => p.item), totalItems: pending.length };
     }
 
     /**

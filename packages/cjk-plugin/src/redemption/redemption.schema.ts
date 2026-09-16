@@ -89,6 +89,13 @@ export const redemptionAdminSchema = gql`
         paymentType: String
         "是否已确认收款（到店付款单据此高亮待收款）"
         collected: Boolean!
+        "本单交付商品清单（名称 ×数量 + 行金额）"
+        lines: [RedemptionLine!]!
+    }
+    type RedemptionLine {
+        name: String!
+        quantity: Int!
+        lineTotalWithTax: Int!
     }
     type PendingRedemptionList {
         items: [PendingRedemption!]!

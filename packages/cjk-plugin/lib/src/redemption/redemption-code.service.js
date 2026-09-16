@@ -26,11 +26,12 @@ exports.COD_PAYMENT_CODES = [
     'fixed-aggregate-collection',
 ];
 let RedemptionCodeService = class RedemptionCodeService {
-    constructor(orderService, connection, fulfillmentService) {
+    constructor(orderService, connection, fulfillmentService, entityHydrator) {
         var _a;
         this.orderService = orderService;
         this.connection = connection;
         this.fulfillmentService = fulfillmentService;
+        this.entityHydrator = entityHydrator;
         this.keyHex = (_a = process.env.REDEMPTION_KEY) !== null && _a !== void 0 ? _a : '7'.repeat(64); // dev 默认；生产必由运维注入
         if (process.env.REDEMPTION_KEY === undefined && process.env.NODE_ENV === 'production') {
             throw new Error('REDEMPTION_KEY 必须在生产环境注入（32 字节 hex）');
@@ -346,7 +347,7 @@ let RedemptionCodeService = class RedemptionCodeService {
      * Order 按 channelId 归属多租户隔离；码密文解密后回填 code，状态由 computeRedemptionStatus 推导。
      */
     async listPending(ctx, options = {}) {
-        var _a, _b;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j;
         const qb = this.connection
             .getRepository(ctx, core_1.Order)
             .createQueryBuilder('order')
@@ -357,37 +358,76 @@ let RedemptionCodeService = class RedemptionCodeService {
             .addOrderBy('order.id', 'DESC');
         const all = await qb.getMany();
         const now = new Date();
-        const pending = all
-            .map((o) => {
-            var _a, _b, _c, _d, _e;
+        const pending = [];
+        for (const o of all) {
             const cf = ((_a = o.customFields) !== null && _a !== void 0 ? _a : {});
             let code = '';
             if (cf.redeemCodeCipher && cf.redeemCodeIv) {
                 try {
                     code = (0, redemption_crypto_1.decryptRedemptionCode)(cf.redeemCodeCipher, cf.redeemCodeIv, this.keyHex);
                 }
-                catch (_f) {
+                catch (_k) {
                     /* 坏密文 → 无有效码，跳过 */
                 }
             }
             const claimed = !!cf.redeemClaimed;
+            if (!code || claimed)
+                continue;
             const expiresAt = (_b = cf.redeemExpiresAt) !== null && _b !== void 0 ? _b : null;
-            return {
+            pending.push({
+                item: {
+                    orderId: String(o.id),
+                    orderCode: o.code,
+                    code,
+                    status: (0, redemption_crypto_1.computeRedemptionStatus)(claimed, expiresAt, now, this.expireRemindHours),
+                    expiresAt,
+                    version: Number(cf.redeemVersion) || 1,
+                    claimed,
+                    paymentType: (_e = (_d = ((_c = o.payments) !== null && _c !== void 0 ? _c : [])[0]) === null || _d === void 0 ? void 0 : _d.method) !== null && _e !== void 0 ? _e : null,
+                    collected: !!cf.collected || !!cf.redeemCollected,
+                    lines: [],
+                },
                 orderId: String(o.id),
-                orderCode: o.code,
-                code,
-                status: (0, redemption_crypto_1.computeRedemptionStatus)(claimed, expiresAt, now, this.expireRemindHours),
-                expiresAt,
-                version: Number(cf.redeemVersion) || 1,
-                claimed,
-                paymentType: (_e = (_d = ((_c = o.payments) !== null && _c !== void 0 ? _c : [])[0]) === null || _d === void 0 ? void 0 : _d.method) !== null && _e !== void 0 ? _e : null,
-                collected: !!cf.collected || !!cf.redeemCollected,
-            };
-        })
-            .filter((it) => it.code && !it.claimed);
-        const skip = (_a = options.skip) !== null && _a !== void 0 ? _a : 0;
-        const take = (_b = options.take) !== null && _b !== void 0 ? _b : 20;
-        return { items: pending.slice(skip, skip + take), totalItems: pending.length };
+            });
+        }
+        const skip = (_f = options.skip) !== null && _f !== void 0 ? _f : 0;
+        const take = (_g = options.take) !== null && _g !== void 0 ? _g : 20;
+        const page = pending.slice(skip, skip + take);
+        // 灌注本页订单的商品行（本版本 EntityHydrator.hydrate 仅支持单实体，逐单灌注）
+        const pageOrders = all.filter((o) => page.some((p) => String(o.id) === p.orderId));
+        if (pageOrders.length) {
+            const lineMap = new Map();
+            for (const o of pageOrders) {
+                await this.entityHydrator.hydrate(ctx, o, {
+                    relations: [
+                        'lines',
+                        'lines.productVariant',
+                        'lines.productVariant.product',
+                        'lines.productVariant.options',
+                    ],
+                });
+                const rows = ((_h = o.lines) !== null && _h !== void 0 ? _h : []).map((l) => {
+                    var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+                    const base = (_e = (_c = (_b = (_a = l.productVariant) === null || _a === void 0 ? void 0 : _a.product) === null || _b === void 0 ? void 0 : _b.name) !== null && _c !== void 0 ? _c : (_d = l.productVariant) === null || _d === void 0 ? void 0 : _d.name) !== null && _e !== void 0 ? _e : `Item ${l.id}`;
+                    const options = Array.isArray((_f = l.productVariant) === null || _f === void 0 ? void 0 : _f.options) ? l.productVariant.options : [];
+                    const spec = options.length
+                        ? options.map((op) => op.name).join(' · ')
+                        : ((_g = l.productVariant) === null || _g === void 0 ? void 0 : _g.name) && l.productVariant.name !== base
+                            ? l.productVariant.name
+                            : null;
+                    return {
+                        name: spec ? `${base} ${spec}` : base,
+                        quantity: Number((_h = l.quantity) !== null && _h !== void 0 ? _h : 0),
+                        lineTotalWithTax: Math.round(Number((_j = l.lineTotalWithTax) !== null && _j !== void 0 ? _j : 0)),
+                    };
+                });
+                lineMap.set(String(o.id), rows);
+            }
+            for (const p of page) {
+                p.item.lines = (_j = lineMap.get(p.orderId)) !== null && _j !== void 0 ? _j : [];
+            }
+        }
+        return { items: page.map((p) => p.item), totalItems: pending.length };
     }
     /**
      * 管理端按输入码定位（限当前租户 Channel）。返回订单指针或 null。
@@ -498,6 +538,7 @@ exports.RedemptionCodeService = RedemptionCodeService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [core_1.OrderService,
         core_1.TransactionalConnection,
-        core_1.FulfillmentService])
+        core_1.FulfillmentService,
+        core_1.EntityHydrator])
 ], RedemptionCodeService);
 //# sourceMappingURL=redemption-code.service.js.map

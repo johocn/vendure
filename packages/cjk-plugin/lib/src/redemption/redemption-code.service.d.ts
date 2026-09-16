@@ -1,7 +1,12 @@
-import { FulfillmentService, ID, Order, OrderService, RequestContext, TransactionalConnection } from '@vendure/core';
+import { EntityHydrator, FulfillmentService, ID, Order, OrderService, RequestContext, TransactionalConnection } from '@vendure/core';
 import { RedemptionStatus } from './redemption-crypto';
 /** 到店/货到付款（COD）支付方式 code，命中即需收银确认；与 nshop 确认页 & 旧 pickup 收银一致 */
 export declare const COD_PAYMENT_CODES: string[];
+export interface PendingRedemptionLine {
+    name: string;
+    quantity: number;
+    lineTotalWithTax: number;
+}
 export interface PendingRedemptionItem {
     orderId: string;
     orderCode: string;
@@ -12,6 +17,7 @@ export interface PendingRedemptionItem {
     claimed: boolean;
     paymentType: string | null;
     collected: boolean;
+    lines: PendingRedemptionLine[];
 }
 export interface ClaimResult {
     already: boolean;
@@ -24,10 +30,11 @@ export declare class RedemptionCodeService {
     private orderService;
     private connection;
     private fulfillmentService;
+    private entityHydrator;
     private readonly keyHex;
     private readonly graceDays;
     private readonly expireRemindHours;
-    constructor(orderService: OrderService, connection: TransactionalConnection, fulfillmentService: FulfillmentService);
+    constructor(orderService: OrderService, connection: TransactionalConnection, fulfillmentService: FulfillmentService, entityHydrator: EntityHydrator);
     private cf;
     private isCodOrder;
     /**
