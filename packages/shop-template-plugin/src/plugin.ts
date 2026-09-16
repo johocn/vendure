@@ -69,21 +69,14 @@ input UpdateShopGlobalConfigInput {
 `;
 
 const SEED_TEMPLATES = [
-    {
-        name: '橙色经典',
-        theme: { primaryColor: '#ff6600', accentColor: '#fff3e6', radius: 8 } as Record<string, any>,
-        pages: {},
-    },
-    {
-        name: '生鲜绿',
-        theme: { primaryColor: '#07c160', accentColor: '#e6f7ee', radius: 8 } as Record<string, any>,
-        pages: {},
-    },
-    {
-        name: '深色科技',
-        theme: { primaryColor: '#1a1a1a', accentColor: '#333333', radius: 8 } as Record<string, any>,
-        pages: {},
-    },
+    { name: '晨曦金(默认)', theme: { palette: { scheme: 'dawn-gold', name: '晨曦金' } } as Record<string, any>, pages: {} },
+    { name: '京东红', theme: { palette: { scheme: 'jd-red', name: '京东红' } } as Record<string, any>, pages: {} },
+    { name: '淘宝橙', theme: { palette: { scheme: 'taobao-orange', name: '淘宝橙' } } as Record<string, any>, pages: {} },
+    { name: '拼多多红', theme: { palette: { scheme: 'pdd-red', name: '拼多多红' } } as Record<string, any>, pages: {} },
+    { name: '唯品会蓝紫', theme: { palette: { scheme: 'vip-blue', name: '唯品会蓝紫' } } as Record<string, any>, pages: {} },
+    { name: '科技蓝', theme: { palette: { scheme: 'tech-blue', name: '科技蓝' } } as Record<string, any>, pages: {} },
+    { name: '清雅绿', theme: { palette: { scheme: 'fresh-green', name: '清雅绿' } } as Record<string, any>, pages: {} },
+    { name: '极夜黑', theme: { palette: { scheme: 'midnight', name: '极夜黑' } } as Record<string, any>, pages: {} },
 ];
 
 @VendurePlugin({

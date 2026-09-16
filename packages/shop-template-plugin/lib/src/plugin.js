@@ -72,21 +72,14 @@ input UpdateShopGlobalConfigInput {
 }
 `;
 const SEED_TEMPLATES = [
-    {
-        name: '橙色经典',
-        theme: { primaryColor: '#ff6600', accentColor: '#fff3e6', radius: 8 },
-        pages: {},
-    },
-    {
-        name: '生鲜绿',
-        theme: { primaryColor: '#07c160', accentColor: '#e6f7ee', radius: 8 },
-        pages: {},
-    },
-    {
-        name: '深色科技',
-        theme: { primaryColor: '#1a1a1a', accentColor: '#333333', radius: 8 },
-        pages: {},
-    },
+    { name: '晨曦金(默认)', theme: { palette: { scheme: 'dawn-gold', name: '晨曦金' } }, pages: {} },
+    { name: '京东红', theme: { palette: { scheme: 'jd-red', name: '京东红' } }, pages: {} },
+    { name: '淘宝橙', theme: { palette: { scheme: 'taobao-orange', name: '淘宝橙' } }, pages: {} },
+    { name: '拼多多红', theme: { palette: { scheme: 'pdd-red', name: '拼多多红' } }, pages: {} },
+    { name: '唯品会蓝紫', theme: { palette: { scheme: 'vip-blue', name: '唯品会蓝紫' } }, pages: {} },
+    { name: '科技蓝', theme: { palette: { scheme: 'tech-blue', name: '科技蓝' } }, pages: {} },
+    { name: '清雅绿', theme: { palette: { scheme: 'fresh-green', name: '清雅绿' } }, pages: {} },
+    { name: '极夜黑', theme: { palette: { scheme: 'midnight', name: '极夜黑' } }, pages: {} },
 ];
 let ShopTemplatePlugin = ShopTemplatePlugin_1 = class ShopTemplatePlugin {
     constructor(options, moduleRef) {
