@@ -1581,7 +1581,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                 }
 
                 extend type Query {
-                    variantStockInfo(variantId: ID!, lat: Float, lng: Float): VariantStockInfo!
+                    variantStockInfo(variantId: ID!, lat: Float, lng: Float, city: String): VariantStockInfo!
                 }
 
                 ${redemption_schema_1.redemptionShopSchema}

@@ -1370,7 +1370,7 @@ import { ReconciliationAdminResolver } from './reconcile/reconciliation-admin.re
                 }
 
                 extend type Query {
-                    variantStockInfo(variantId: ID!, lat: Float, lng: Float): VariantStockInfo!
+                    variantStockInfo(variantId: ID!, lat: Float, lng: Float, city: String): VariantStockInfo!
                 }
 
                 ${redemptionShopSchema}
