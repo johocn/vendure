@@ -16,6 +16,7 @@ const inventory_plugin_1 = require("@vendure/inventory-plugin");
 const typeorm_1 = require("typeorm");
 const variant_location_binding_entity_1 = require("./variant-location-binding.entity");
 const mirror_math_1 = require("./mirror-math");
+const stock_city_filter_1 = require("./stock-city-filter");
 const delivery_record_service_1 = require("../delivery/delivery-record.service");
 const loggerCtx = 'VirtualPhysicalStockService';
 let VirtualPhysicalStockService = class VirtualPhysicalStockService {
@@ -154,8 +155,8 @@ let VirtualPhysicalStockService = class VirtualPhysicalStockService {
         }
     }
     /** 店铺端：saleableStock（虚拟仓可售）+ 物理驱动时的绑定仓明细（距离就近排序） */
-    async getSaleableAndDetail(ctx, variantId, lat, lng) {
-        var _a, _b, _c;
+    async getSaleableAndDetail(ctx, variantId, lat, lng, city) {
+        var _a, _b, _c, _d;
         const virtual = await this.ensureVirtualLocation(ctx);
         const levels = await this.stockLevelService.getStockLevelsForVariant(ctx, variantId);
         const physicalStockEnabled = Boolean((_a = ctx.channel.customFields) === null || _a === void 0 ? void 0 : _a.physicalStockEnabled);
@@ -164,13 +165,21 @@ let VirtualPhysicalStockService = class VirtualPhysicalStockService {
             .find({ where: { variantId: variantId } });
         const virtualOnHand = (_c = (_b = levels.find(l => String(l.stockLocationId) === String(virtual.id))) === null || _b === void 0 ? void 0 : _b.stockOnHand) !== null && _c !== void 0 ? _c : 0;
         let stockDetail = [];
+        let saleableStock = virtualOnHand;
         if (physicalStockEnabled && bindings.length) {
             const boundIds = bindings.map(b => b.locationId);
             const locs = await this.connection
                 .getRepository(ctx, core_1.StockLocation)
                 .find({ where: { id: (0, typeorm_1.In)(boundIds) }, loadEagerRelations: false });
             const origin = lat != null && lng != null ? { lat, lng } : null;
-            stockDetail = locs
+            // 按城市聚合：city 为空 → 全部绑定仓；否则仅服务该城市的绑定仓
+            const cities = new Map();
+            for (const loc of locs) {
+                cities.set(String(loc.id), (_d = loc.customFields) === null || _d === void 0 ? void 0 : _d.serviceCities);
+            }
+            const { servedLocations, servedOnHand } = (0, stock_city_filter_1.pinByCity)(levels.map(l => ({ stockLocationId: l.stockLocationId, stockOnHand: l.stockOnHand })), bindings, cities, city);
+            const servedLocs = servedLocations.length ? locs.filter(l => servedLocations.some(id => String(id) === String(l.id))) : [];
+            stockDetail = servedLocs
                 .map(loc => {
                 var _a, _b, _c, _d, _e, _f;
                 const level = levels.find(l => String(l.stockLocationId) === String(loc.id));
@@ -194,13 +203,12 @@ let VirtualPhysicalStockService = class VirtualPhysicalStockService {
                     return -1;
                 return a.distanceKm - b.distanceKm;
             });
+            // 提供 city 时主库存取城市仓合计；城市无仓可服务或未提供 city 回退全局虚拟仓
+            if (city) {
+                saleableStock = servedOnHand > 0 ? servedOnHand : virtualOnHand;
+            }
         }
-        return {
-            variantId,
-            saleableStock: virtualOnHand,
-            physicalStockEnabled,
-            stockDetail,
-        };
+        return { variantId, saleableStock, physicalStockEnabled, stockDetail };
     }
 };
 exports.VirtualPhysicalStockService = VirtualPhysicalStockService;
