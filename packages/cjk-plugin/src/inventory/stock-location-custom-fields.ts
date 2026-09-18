@@ -23,5 +23,25 @@ export const stockLocationCustomFields: CustomFields = {
             nullable: true,
             label: [{ languageCode: LanguageCode.zh_Hans, value: '仓库编码' }],
         },
+        {
+            name: 'channelCode',
+            type: 'string',
+            nullable: true,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '归属租户编码' }],
+        },
+        {
+            name: 'deliveryMethods',
+            type: 'string',
+            list: true,
+            nullable: true,
+            label: [{ languageCode: LanguageCode.zh_Hans, value: '配送方式（空=邮寄与自提都支持）' }],
+            ui: {
+                component: 'multiple-select-form-input',
+                options: [
+                    { value: 'MAIL', label: [{ languageCode: LanguageCode.zh_Hans, value: '邮寄' }] },
+                    { value: 'SELF_PICKUP', label: [{ languageCode: LanguageCode.zh_Hans, value: '自提' }] },
+                ],
+            },
+        },
     ],
 };
