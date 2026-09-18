@@ -23,8 +23,9 @@ import { CouponService } from './coupon.service';
 import { CouponShopResolver } from './coupon-shop.resolver';
 import { CouponTemplate } from './coupon-template.entity';
 import { CustomerCoupon } from './customer-coupon.entity';
-import { AddCouponFieldsMigration } from './migrations';
+import { AddCouponFieldsMigration, CreateProductCouponBindingMigration } from './migrations';
 import { couponOrderCustomFields } from './order-custom-fields';
+import { ProductCouponBinding } from './product-coupon-binding.entity';
 import { CouponPluginOptions } from './types';
 
 /** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations several times). */
@@ -84,11 +85,12 @@ type CustomerCoupon implements Node {
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [CouponTemplate, CustomerCoupon],
+    entities: [CouponTemplate, CustomerCoupon, ProductCouponBinding],
     providers: [
         { provide: COUPON_PLUGIN_OPTIONS, useFactory: () => CouponPlugin.options },
         CouponService,
         AddCouponFieldsMigration,
+        CreateProductCouponBindingMigration,
     ],
     exports: [CouponService],
     adminApiExtensions: {
