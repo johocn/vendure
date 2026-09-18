@@ -3,7 +3,6 @@ export type DeliveryMethod = 'MAIL' | 'SELF_PICKUP';
 export interface LocationLike {
   customFields?: {
     deliveryMethods?: Array<string | null> | null;
-    [key: string]: unknown;
   } | null;
 }
 

@@ -1,8 +1,9 @@
-import { Injector, ID, RequestContext, StockLevel, StockLocation } from '@vendure/core';
+import { Injector, ID, ProductVariant, RequestContext, StockLevel, StockLocation } from '@vendure/core';
 import { MatrixStockLocationStrategy } from '@vendure/logistics-plugin';
 import { In } from 'typeorm';
 import { VariantLocationBindingService } from './variant-location-binding.service';
 import { pickLocationsByIds } from './mirror-math';
+import { filterLocationsByDelivery, type DeliveryMethod } from './delivery-methods';
 
 /**
  * 绑定感知库存策略：在 MatrixStockLocationStrategy（就近+门禁+矩阵）之上，
@@ -68,10 +69,24 @@ export class PhysicalAwareStockLocationStrategy extends MatrixStockLocationStrat
         quantity: number,
     ) {
         const bound = await this.boundLocations(ctx, orderLine.productVariantId);
-        if (!bound) {
-            return super.forAllocation(ctx, stockLocations, orderLine, quantity);
+        const candidates = bound ?? stockLocations;
+        // deliveryMethods：商品仅支持自提 → 只从自提点分配；仅支持邮寄 → 只从可发仓分配；空=不过滤（兼容旧数据）
+        const productMethods = await this.productDeliveryMethods(ctx, orderLine.productVariantId);
+        const filtered = productMethods.length ? filterLocationsByDelivery(candidates, productMethods) : candidates;
+        return super.forAllocation(ctx, filtered, orderLine, quantity);
+    }
+
+    private async productDeliveryMethods(ctx: RequestContext, productVariantId: ID): Promise<DeliveryMethod[]> {
+        try {
+            const variant = await this.connection.getRepository(ctx, ProductVariant).findOne({
+                where: { id: productVariantId as any },
+                relations: ['product'],
+            });
+            const methods = (variant?.product?.customFields as any)?.deliveryMethods;
+            return (Array.isArray(methods) ? methods : []).filter((m: unknown): m is string => !!m) as DeliveryMethod[];
+        } catch {
+            return [];
         }
-        return super.forAllocation(ctx, bound, orderLine, quantity);
     }
 
     override async forSale(
