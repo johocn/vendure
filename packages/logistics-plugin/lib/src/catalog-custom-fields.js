@@ -27,6 +27,21 @@ exports.catalogCustomFields = {
             label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '服务城市列表' }],
         },
         {
+            name: 'deliveryMethods',
+            type: 'string',
+            list: true,
+            nullable: true,
+            public: true, // Shop API 需要读取，前端按配送方式过滤
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '配送方式（MAIL/SELF_PICKUP）' }],
+            ui: {
+                component: 'multiple-select-form-input',
+                options: [
+                    { value: 'MAIL', label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '邮寄' }] },
+                    { value: 'SELF_PICKUP', label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '到店自提' }] },
+                ],
+            },
+        },
+        {
             name: 'videoUrl',
             type: 'string',
             nullable: true,
