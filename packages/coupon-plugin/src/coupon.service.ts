@@ -173,6 +173,13 @@ export class CouponService {
         if (tpl) {
             await this.assertManagedByShop(ctx, tpl.shopId);
         }
+        // 模板删除保护：已被商品绑定（ProductCouponBinding）引用时禁止删除，须先解绑
+        const bindingCount = await this.connection
+            .getRepository(ctx, ProductCouponBinding)
+            .count({ where: { couponTemplateId: id as any } });
+        if (bindingCount > 0) {
+            throw new UserInputError('Template has product bindings, unbind them first');
+        }
         await repo.delete(id);
     }
 

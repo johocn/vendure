@@ -48,6 +48,17 @@ export class CouponBindingService {
         return bindings.filter(b => this.visibleBinding(b, ctx));
     }
 
+    /** 后台管理用：商品下全部绑定（含停用、含非 claimable），按渠道隔离 */
+    async listByProductAdmin(ctx: RequestContext, productId: number): Promise<ProductCouponBinding[]> {
+        const repo = this.connection.getRepository(ctx, ProductCouponBinding);
+        const bindings = await repo.find({
+            where: { productId },
+            relations: { template: true },
+            order: { displayOrder: 'ASC' },
+        });
+        return bindings.filter(b => !b.channelId || b.channelId === ctx.channel?.id);
+    }
+
     /** 创建绑定：同渠道同商品同模板去重；save 后单向同步模板 scope=SKU */
     async create(
         ctx: RequestContext,

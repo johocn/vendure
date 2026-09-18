@@ -14,6 +14,7 @@ import gql from 'graphql-tag';
 
 import { COUPON_PLUGIN_OPTIONS, loggerCtx } from './constants';
 import { CouponAdminResolver } from './coupon-admin.resolver';
+import { CouponBindingAdminResolver } from './coupon-binding-admin.resolver';
 import { CouponBindingService } from './coupon-binding.service';
 import { CustomerCouponResolver } from './coupon-customer-coupon.resolver';
 import { CouponTemplateResolver } from './coupon-template.resolver';
@@ -105,6 +106,40 @@ type CustomerCoupon implements Node {
             ${couponTemplateType}
             ${customerCouponType}
 
+            type ProductCouponBinding implements Node {
+                id: ID!
+                productId: ID!
+                variantIds: [ID!]
+                couponTemplateId: ID!
+                enabled: Boolean!
+                displayOrder: Int!
+                badgeText: String
+                promoTitle: String
+                remark: String
+                template: CouponTemplate
+            }
+
+            input CreateProductCouponBindingInput {
+                productId: ID!
+                variantIds: [ID!]
+                couponTemplateId: ID!
+                enabled: Boolean
+                displayOrder: Int
+                badgeText: String
+                promoTitle: String
+                remark: String
+            }
+
+            input UpdateProductCouponBindingInput {
+                id: ID!
+                variantIds: [ID!]
+                enabled: Boolean
+                displayOrder: Int
+                badgeText: String
+                promoTitle: String
+                remark: String
+            }
+
             type CouponTemplateList implements PaginatedList {
                 items: [CouponTemplate!]!
                 totalItems: Int!
@@ -190,6 +225,7 @@ type CustomerCoupon implements Node {
                 couponTemplate(id: ID!): CouponTemplate
                 customerCoupons(options: CustomerCouponListOptions): CustomerCouponList!
                 couponChannelCustomers(query: String, take: Int, skip: Int): CouponIssueCustomerList!
+                productCouponBindings(productId: ID!): [ProductCouponBinding!]!
             }
 
             extend type Mutation {
@@ -199,9 +235,12 @@ type CustomerCoupon implements Node {
                 grantCoupon(templateId: ID!, customerIds: [ID!]!): [String!]!
                 revokeCustomerCoupon(id: ID!): CustomerCoupon!
                 grantCouponIssue(templateId: ID!, customerIds: [ID!]!, notify: Boolean!): [CouponIssueResult!]!
+                createProductCouponBinding(input: CreateProductCouponBindingInput!): ProductCouponBinding!
+                updateProductCouponBinding(input: UpdateProductCouponBindingInput!): ProductCouponBinding!
+                deleteProductCouponBinding(id: ID!): Boolean!
             }
         `,
-        resolvers: [CouponAdminResolver, CouponTemplateResolver, CustomerCouponResolver],
+        resolvers: [CouponAdminResolver, CouponTemplateResolver, CustomerCouponResolver, CouponBindingAdminResolver],
     },
     shopApiExtensions: {
         schema: () => gql`
