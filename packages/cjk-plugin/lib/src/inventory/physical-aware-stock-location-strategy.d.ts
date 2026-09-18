@@ -17,6 +17,7 @@ export declare class PhysicalAwareStockLocationStrategy extends MatrixStockLocat
     }>;
     private locationKindOf;
     forAllocation(ctx: RequestContext, stockLocations: StockLocation[], orderLine: any, quantity: number): Promise<import("@vendure/core").LocationWithQuantity[]>;
+    private productDeliveryMethods;
     forSale(ctx: RequestContext, stockLocations: StockLocation[], orderLine: any, quantity: number): Promise<import("@vendure/core").LocationWithQuantity[]>;
     forRelease(ctx: RequestContext, stockLocations: StockLocation[], orderLine: any, quantity: number): Promise<import("@vendure/core").LocationWithQuantity[]>;
     forCancellation(ctx: RequestContext, stockLocations: StockLocation[], orderLine: any, quantity: number): Promise<import("@vendure/core").LocationWithQuantity[]>;

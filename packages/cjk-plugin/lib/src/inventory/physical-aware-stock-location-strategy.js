@@ -6,6 +6,7 @@ const logistics_plugin_1 = require("@vendure/logistics-plugin");
 const typeorm_1 = require("typeorm");
 const variant_location_binding_service_1 = require("./variant-location-binding.service");
 const mirror_math_1 = require("./mirror-math");
+const delivery_methods_1 = require("./delivery-methods");
 /**
  * 绑定感知库存策略：在 MatrixStockLocationStrategy（就近+门禁+矩阵）之上，
  * 物理驱动变体（有 VariantLocationBinding）只从绑定物理仓分配/发货；
@@ -56,10 +57,25 @@ class PhysicalAwareStockLocationStrategy extends logistics_plugin_1.MatrixStockL
     }
     async forAllocation(ctx, stockLocations, orderLine, quantity) {
         const bound = await this.boundLocations(ctx, orderLine.productVariantId);
-        if (!bound) {
-            return super.forAllocation(ctx, stockLocations, orderLine, quantity);
+        const candidates = bound !== null && bound !== void 0 ? bound : stockLocations;
+        // deliveryMethods：商品仅支持自提 → 只从自提点分配；仅支持邮寄 → 只从可发仓分配；空=不过滤（兼容旧数据）
+        const productMethods = await this.productDeliveryMethods(ctx, orderLine.productVariantId);
+        const filtered = productMethods.length ? (0, delivery_methods_1.filterLocationsByDelivery)(candidates, productMethods) : candidates;
+        return super.forAllocation(ctx, filtered, orderLine, quantity);
+    }
+    async productDeliveryMethods(ctx, productVariantId) {
+        var _a, _b;
+        try {
+            const variant = await this.connection.getRepository(ctx, core_1.ProductVariant).findOne({
+                where: { id: productVariantId },
+                relations: ['product'],
+            });
+            const methods = (_b = (_a = variant === null || variant === void 0 ? void 0 : variant.product) === null || _a === void 0 ? void 0 : _a.customFields) === null || _b === void 0 ? void 0 : _b.deliveryMethods;
+            return (Array.isArray(methods) ? methods : []).filter((m) => !!m);
         }
-        return super.forAllocation(ctx, bound, orderLine, quantity);
+        catch (_c) {
+            return [];
+        }
     }
     async forSale(ctx, stockLocations, orderLine, quantity) {
         const bound = await this.boundLocations(ctx, orderLine.productVariantId);

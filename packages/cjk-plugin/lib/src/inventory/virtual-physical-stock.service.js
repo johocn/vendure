@@ -17,6 +17,7 @@ const typeorm_1 = require("typeorm");
 const variant_location_binding_entity_1 = require("./variant-location-binding.entity");
 const mirror_math_1 = require("./mirror-math");
 const stock_city_filter_1 = require("./stock-city-filter");
+const delivery_methods_1 = require("./delivery-methods");
 const delivery_record_service_1 = require("../delivery/delivery-record.service");
 const loggerCtx = 'VirtualPhysicalStockService';
 let VirtualPhysicalStockService = class VirtualPhysicalStockService {
@@ -155,15 +156,31 @@ let VirtualPhysicalStockService = class VirtualPhysicalStockService {
         }
     }
     /** 店铺端：saleableStock（虚拟仓可售）+ 物理驱动时的绑定仓明细（距离就近排序） */
-    async getSaleableAndDetail(ctx, variantId, lat, lng, city) {
-        var _a, _b, _c, _d;
-        const virtual = await this.ensureVirtualLocation(ctx);
+    async getSaleableAndDetail(ctx, variantId, lat, lng, city, deliveryMethod) {
+        var _a, _b;
         const levels = await this.stockLevelService.getStockLevelsForVariant(ctx, variantId);
         const physicalStockEnabled = Boolean((_a = ctx.channel.customFields) === null || _a === void 0 ? void 0 : _a.physicalStockEnabled);
         const bindings = await this.connection
             .getRepository(ctx, variant_location_binding_entity_1.VariantLocationBinding)
             .find({ where: { variantId: variantId } });
-        const virtualOnHand = (_c = (_b = levels.find(l => String(l.stockLocationId) === String(virtual.id))) === null || _b === void 0 ? void 0 : _b.stockOnHand) !== null && _c !== void 0 ? _c : 0;
+        // 虚拟可售源：汇总该变体在本渠道下所有 kind=virtual 仓的 onHand。
+        // 旧实现只取 code=<channel>-virtual 的单一自动仓，会漏掉无 customFields.code 的「默认仓」类
+        // 虚拟仓里的真实库存，导致无物理绑定时 saleableStock 恒为 0、线上显示「无货」（回归）。
+        // 绑定物理仓的变体仍走下方物理路径不受影响。
+        const vc = this.virtualCode(ctx.channel.code);
+        const virtualIds = new Set((await this.connection.getRepository(ctx, core_1.StockLocation).find({ loadEagerRelations: false }))
+            .filter(l => {
+            var _a, _b;
+            const cf = (_a = l.customFields) !== null && _a !== void 0 ? _a : {};
+            if (cf.kind !== 'virtual')
+                return false;
+            const code = String((_b = cf.code) !== null && _b !== void 0 ? _b : '');
+            return !code || code === vc;
+        })
+            .map(l => String(l.id)));
+        const virtualOnHand = levels
+            .filter(l => virtualIds.has(String(l.stockLocationId)))
+            .reduce((s, l) => { var _a; return s + ((_a = l.stockOnHand) !== null && _a !== void 0 ? _a : 0); }, 0);
         let stockDetail = [];
         let saleableStock = virtualOnHand;
         if (physicalStockEnabled && bindings.length) {
@@ -172,13 +189,16 @@ let VirtualPhysicalStockService = class VirtualPhysicalStockService {
                 .getRepository(ctx, core_1.StockLocation)
                 .find({ where: { id: (0, typeorm_1.In)(boundIds) }, loadEagerRelations: false });
             const origin = lat != null && lng != null ? { lat, lng } : null;
-            // 按城市聚合：city 为空 → 全部绑定仓；否则仅服务该城市的绑定仓
+            // 配送口径：自提=可自提点、邮寄=可发仓、空=全部（兼容旧数据）
+            const requested = deliveryMethod ? [deliveryMethod] : [];
+            const eligibleLocs = requested.length ? (0, delivery_methods_1.filterLocationsByDelivery)(locs, requested) : locs;
+            // 按城市聚合：city 为空 → 全部 eligible 仓；否则仅服务该城市的 eligible 仓
             const cities = new Map();
-            for (const loc of locs) {
-                cities.set(String(loc.id), (_d = loc.customFields) === null || _d === void 0 ? void 0 : _d.serviceCities);
+            for (const loc of eligibleLocs) {
+                cities.set(String(loc.id), (_b = loc.customFields) === null || _b === void 0 ? void 0 : _b.serviceCities);
             }
             const { servedLocations, servedOnHand } = (0, stock_city_filter_1.pinByCity)(levels.map(l => ({ stockLocationId: l.stockLocationId, stockOnHand: l.stockOnHand })), bindings, cities, city);
-            const servedLocs = servedLocations.length ? locs.filter(l => servedLocations.some(id => String(id) === String(l.id))) : [];
+            const servedLocs = servedLocations.length ? eligibleLocs.filter(l => servedLocations.some(id => String(id) === String(l.id))) : [];
             stockDetail = servedLocs
                 .map(loc => {
                 var _a, _b, _c, _d, _e, _f;

@@ -187,14 +187,29 @@ export class VirtualPhysicalStockService {
         city?: string | null,
         deliveryMethod?: 'MAIL' | 'SELF_PICKUP' | null,
     ) {
-        const virtual = await this.ensureVirtualLocation(ctx);
         const levels = await this.stockLevelService.getStockLevelsForVariant(ctx, variantId);
         const physicalStockEnabled = Boolean((ctx.channel.customFields as any)?.physicalStockEnabled);
         const bindings = await this.connection
             .getRepository(ctx, VariantLocationBinding)
             .find({ where: { variantId: variantId as any } });
-        const virtualOnHand =
-            levels.find(l => String(l.stockLocationId) === String(virtual.id))?.stockOnHand ?? 0;
+        // 虚拟可售源：汇总该变体在本渠道下所有 kind=virtual 仓的 onHand。
+        // 旧实现只取 code=<channel>-virtual 的单一自动仓，会漏掉无 customFields.code 的「默认仓」类
+        // 虚拟仓里的真实库存，导致无物理绑定时 saleableStock 恒为 0、线上显示「无货」（回归）。
+        // 绑定物理仓的变体仍走下方物理路径不受影响。
+        const vc = this.virtualCode(ctx.channel.code);
+        const virtualIds = new Set(
+            (await this.connection.getRepository(ctx, StockLocation).find({ loadEagerRelations: false }))
+                .filter(l => {
+                    const cf = (l.customFields as any) ?? {};
+                    if (cf.kind !== 'virtual') return false;
+                    const code = String(cf.code ?? '');
+                    return !code || code === vc;
+                })
+                .map(l => String(l.id)),
+        );
+        const virtualOnHand = levels
+            .filter(l => virtualIds.has(String(l.stockLocationId)))
+            .reduce((s, l) => s + (l.stockOnHand ?? 0), 0);
 
         let stockDetail: any[] = [];
         let saleableStock = virtualOnHand;

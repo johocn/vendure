@@ -3,7 +3,7 @@ import { VirtualPhysicalStockService } from './virtual-physical-stock.service';
 export declare class InventoryShopResolver {
     private virtualPhysicalStockService;
     constructor(virtualPhysicalStockService: VirtualPhysicalStockService);
-    variantStockInfo(ctx: RequestContext, variantId: ID, lat?: number, lng?: number, city?: string): Promise<{
+    variantStockInfo(ctx: RequestContext, variantId: ID, lat?: number, lng?: number, city?: string, deliveryMethod?: 'MAIL' | 'SELF_PICKUP'): Promise<{
         variantId: ID;
         saleableStock: number;
         physicalStockEnabled: boolean;

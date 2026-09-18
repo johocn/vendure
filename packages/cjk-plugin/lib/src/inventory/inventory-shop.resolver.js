@@ -20,8 +20,8 @@ let InventoryShopResolver = class InventoryShopResolver {
     constructor(virtualPhysicalStockService) {
         this.virtualPhysicalStockService = virtualPhysicalStockService;
     }
-    async variantStockInfo(ctx, variantId, lat, lng, city) {
-        return this.virtualPhysicalStockService.getSaleableAndDetail(ctx, variantId, lat, lng, city);
+    async variantStockInfo(ctx, variantId, lat, lng, city, deliveryMethod) {
+        return this.virtualPhysicalStockService.getSaleableAndDetail(ctx, variantId, lat, lng, city, deliveryMethod);
     }
 };
 exports.InventoryShopResolver = InventoryShopResolver;
@@ -33,8 +33,9 @@ __decorate([
     __param(2, (0, graphql_1.Args)('lat', { nullable: true })),
     __param(3, (0, graphql_1.Args)('lng', { nullable: true })),
     __param(4, (0, graphql_1.Args)('city', { nullable: true })),
+    __param(5, (0, graphql_1.Args)('deliveryMethod', { nullable: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, Object, Number, Number, String]),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Number, Number, String, String]),
     __metadata("design:returntype", Promise)
 ], InventoryShopResolver.prototype, "variantStockInfo", null);
 exports.InventoryShopResolver = InventoryShopResolver = __decorate([

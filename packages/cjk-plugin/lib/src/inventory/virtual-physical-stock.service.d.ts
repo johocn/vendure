@@ -26,7 +26,7 @@ export declare class VirtualPhysicalStockService {
     /** SALE 后生成顾客配送记录（方案2-B）；pickup 订单标记自提模式 */
     syncDeliveryRecords(ctx: RequestContext, sales: Sale[]): Promise<void>;
     /** 店铺端：saleableStock（虚拟仓可售）+ 物理驱动时的绑定仓明细（距离就近排序） */
-    getSaleableAndDetail(ctx: RequestContext, variantId: ID, lat?: number | null, lng?: number | null, city?: string | null): Promise<{
+    getSaleableAndDetail(ctx: RequestContext, variantId: ID, lat?: number | null, lng?: number | null, city?: string | null, deliveryMethod?: 'MAIL' | 'SELF_PICKUP' | null): Promise<{
         variantId: ID;
         saleableStock: number;
         physicalStockEnabled: boolean;
