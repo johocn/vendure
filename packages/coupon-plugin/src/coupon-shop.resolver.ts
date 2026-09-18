@@ -25,6 +25,23 @@ export class CouponShopResolver {
         return this.couponService.pointsMallTemplates(ctx);
     }
 
+    @Query()
+    async productCoupons(@Ctx() ctx: RequestContext, @Args('productId') productId: ID) {
+        return this.couponService.listProductCoupons(ctx, productId);
+    }
+
+    @Mutation()
+    @Transaction()
+    async claimProductCoupon(@Ctx() ctx: RequestContext, @Args('bindingId') bindingId: ID) {
+        return this.couponService.claimProductCoupon(ctx, bindingId);
+    }
+
+    @Mutation()
+    @Transaction()
+    async redeemCouponByCode(@Ctx() ctx: RequestContext, @Args('claimCode') claimCode: string) {
+        return this.couponService.redeemByClaimCode(ctx, claimCode);
+    }
+
     @Mutation()
     @Transaction()
     async claimCoupon(@Ctx() ctx: RequestContext, @Args('templateId') templateId: ID) {

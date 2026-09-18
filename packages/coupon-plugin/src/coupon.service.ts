@@ -22,8 +22,10 @@ import { MemberLevelService } from '@vendure/member-level-plugin';
 import { COUPON_NOT_OWNED, loggerCtx } from './constants';
 import { localizeText } from './localize';
 import { isDefaultMallChannel, lineHasShopId } from './coupon-scope';
+import { CouponBindingService } from './coupon-binding.service';
 import { CouponTemplate } from './coupon-template.entity';
 import { CustomerCoupon } from './customer-coupon.entity';
+import { ProductCouponBinding } from './product-coupon-binding.entity';
 
 /** 模板 update() 允许写入的字段白名单 */
 const TEMPLATE_UPDATE_ALLOWED: ReadonlyArray<keyof CouponTemplate> = [
@@ -66,6 +68,7 @@ export class CouponService {
     constructor(
         private connection: TransactionalConnection,
         private listQueryBuilder: ListQueryBuilder,
+        private bindingService: CouponBindingService,
     ) {}
 
     private orderService!: OrderService;
@@ -363,6 +366,49 @@ export class CouponService {
             throw new UserInputError('Coupon sold out');
         }
         return this.createUserCoupon(ctx, customerId, tpl, 'CENTRE');
+    }
+
+    /* ------------------------- 商品详情页领券 / 凭码兑换（租户指定商品优惠券） ------------------------- */
+
+    /** 详情页可领券：binding.enabled && 模板 enabled && claimable + 渠道匹配（listByProduct 已过滤） */
+    async listProductCoupons(ctx: RequestContext, productId: ID): Promise<ProductCouponBinding[]> {
+        return this.bindingService.listByProduct(ctx, Number(productId));
+    }
+
+    /** 详情页领券：按 bindingId 找到模板后复用 claimCoupon（限领/余量/newCustomerOnly 校验都在其中） */
+    async claimProductCoupon(ctx: RequestContext, bindingId: ID): Promise<CustomerCoupon> {
+        const binding = await this.connection
+            .getRepository(ctx, ProductCouponBinding)
+            .findOne({ where: { id: bindingId as any }, relations: { template: true } });
+        if (!binding || !binding.enabled) {
+            throw new UserInputError('Binding not found');
+        }
+        if (!binding.template || !binding.template.claimable) {
+            throw new UserInputError('Coupon is not claimable');
+        }
+        return this.claimCoupon(ctx, binding.couponTemplateId);
+    }
+
+    /** 凭码兑换：同租户内 claimCode 唯一匹配模板 → 复用 claimCoupon */
+    async redeemByClaimCode(ctx: RequestContext, claimCode: string): Promise<CustomerCoupon> {
+        const tpl = await this.connection
+            .getRepository(ctx, CouponTemplate)
+            .findOne({ where: { claimCode } as any, relations: { channels: true } });
+        if (!tpl || !tpl.claimCode) {
+            throw new UserInputError('Invalid claim code');
+        }
+        if (!this.templateBelongsToChannel(ctx, tpl)) {
+            throw new UserInputError('Claim code not available in this shop');
+        }
+        return this.claimCoupon(ctx, tpl.id);
+    }
+
+    /** 模板渠道归属校验：channels 为空（不限渠道）→ true；否则要求包含当前渠道 */
+    private templateBelongsToChannel(ctx: RequestContext, tpl: CouponTemplate): boolean {
+        if (!tpl.channels || tpl.channels.length === 0) {
+            return true;
+        }
+        return tpl.channels.some(c => String(c.id) === String(ctx.channelId));
     }
 
     async grantCoupon(ctx: RequestContext, templateId: ID, customerIds: ID[]): Promise<string[]> {

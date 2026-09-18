@@ -212,6 +212,18 @@ type CustomerCoupon implements Node {
             ${couponTemplateType}
             ${customerCouponType}
 
+            type ProductCouponBinding implements Node {
+                id: ID!
+                productId: ID!
+                variantIds: [ID!]
+                couponTemplateId: ID!
+                enabled: Boolean!
+                displayOrder: Int!
+                badgeText: String
+                promoTitle: String
+                template: CouponTemplate
+            }
+
             type ExchangeCouponResult {
                 coupon: CustomerCoupon!
                 spentPoints: Int!
@@ -221,10 +233,13 @@ type CustomerCoupon implements Node {
                 couponCentre: [CouponTemplate!]!
                 myCoupons(status: CouponStatus): [CustomerCoupon!]!
                 pointsMallTemplates: [CouponTemplate!]!
+                productCoupons(productId: ID!): [ProductCouponBinding!]!
             }
 
             extend type Mutation {
                 claimCoupon(templateId: ID!): CustomerCoupon!
+                claimProductCoupon(bindingId: ID!): CustomerCoupon!
+                redeemCouponByCode(claimCode: String!): CustomerCoupon!
                 applyCouponToOrder(code: String!): Order!
                 clearCouponFromOrder: Order!
                 exchangeCouponWithPoints(templateId: ID!): ExchangeCouponResult!
