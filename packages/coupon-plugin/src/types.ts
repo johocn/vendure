@@ -32,3 +32,35 @@ export interface CouponPluginOptions {
 export interface CouponAppliedConditionState {
     discountAmount: number;
 }
+
+/** 创建商品绑券入参 */
+export interface CreateProductCouponBindingInput {
+    productId: number;
+    variantIds?: number[] | null;
+    couponTemplateId: number;
+    enabled?: boolean;
+    displayOrder?: number;
+    badgeText?: string;
+    promoTitle?: string;
+    remark?: string;
+    perUserClaimLimit?: number | null;
+    claimWindowStart?: Date | null;
+    claimWindowEnd?: Date | null;
+    claimStock?: number | null;
+    channelId?: number | null;
+}
+
+/** 更新商品绑券入参（不含 productId / couponTemplateId / channelId，绑定归属不可改） */
+export interface UpdateProductCouponBindingInput {
+    id: number;
+    variantIds?: number[] | null;
+    enabled?: boolean;
+    displayOrder?: number;
+    badgeText?: string;
+    promoTitle?: string;
+    remark?: string;
+    perUserClaimLimit?: number | null;
+    claimWindowStart?: Date | null;
+    claimWindowEnd?: Date | null;
+    claimStock?: number | null;
+}

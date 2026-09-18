@@ -14,6 +14,7 @@ import gql from 'graphql-tag';
 
 import { COUPON_PLUGIN_OPTIONS, loggerCtx } from './constants';
 import { CouponAdminResolver } from './coupon-admin.resolver';
+import { CouponBindingService } from './coupon-binding.service';
 import { CustomerCouponResolver } from './coupon-customer-coupon.resolver';
 import { CouponTemplateResolver } from './coupon-template.resolver';
 import { couponDiscountAction } from './coupon-promotion-action';
@@ -89,10 +90,11 @@ type CustomerCoupon implements Node {
     providers: [
         { provide: COUPON_PLUGIN_OPTIONS, useFactory: () => CouponPlugin.options },
         CouponService,
+        CouponBindingService,
         AddCouponFieldsMigration,
         CreateProductCouponBindingMigration,
     ],
-    exports: [CouponService],
+    exports: [CouponService, CouponBindingService],
     adminApiExtensions: {
         schema: () => gql`
             enum CouponType { FIXED PERCENT FULL FREE_SHIPPING }
