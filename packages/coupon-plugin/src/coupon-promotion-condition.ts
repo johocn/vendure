@@ -2,6 +2,7 @@ import { LanguageCode, PromotionCondition, RequestContext } from '@vendure/core'
 
 import { getCouponConnection } from './coupon-runtime';
 import { isDefaultMallChannel, lineHasShopId } from './coupon-scope';
+import { getBindingService, isNewCustomer } from './coupon-settlement';
 import { CustomerCoupon } from './customer-coupon.entity';
 
 /**
@@ -43,6 +44,19 @@ export const couponAppliedCondition = new PromotionCondition({
             eligibleLines = eligibleLines.filter(l => lineHasShopId(l, tplShopId));
             if (eligibleLines.length === 0) return false;
         }
+        // 商品限定：模板存在 binding 时，以 binding 集合为唯一权威过滤订单行
+        const bindings = await getBindingService().listByTemplate(ctx, template.id);
+        if (bindings.length) {
+            const hit = (l: any) => bindings.some(b =>
+                Number(b.productId) === Number(l?.productVariant?.product?.id) &&
+                (!b.variantIds?.length || (l?.productVariant?.id != null && b.variantIds.includes(Number(l.productVariant.id)))));
+            eligibleLines = eligibleLines.filter(hit);
+            if (eligibleLines.length === 0) return false;
+        }
+        // 仅限新客：本租户有历史有效订单则不可用
+        if (template.newCustomerOnly && !(await isNewCustomer(ctx, order))) return false;
+        // 有效期内判定（validDays 生成的 expiredAt 或固定 endsAt 快照）
+        if (coupon.expiredAt && now > new Date(coupon.expiredAt as any)) return false;
         const base = pricesIncludeTax
             ? eligibleLines.reduce((s: number, l: any) => s + (l.linePriceWithTax ?? 0), 0)
             : eligibleLines.reduce((s: number, l: any) => s + (l.linePrice ?? 0), 0);

@@ -10,6 +10,7 @@ import {
     ListQueryOptions,
     LogLevel,
     Logger,
+    Order,
     OrderService,
     Product,
     RequestContext,
@@ -350,6 +351,11 @@ export class CouponService {
             if (owned >= tpl.perUserLimit) {
                 throw new UserInputError('Per-user coupon limit reached');
             }
+        }
+        // 仅限新客：本租户历史有效订单数 > 0 则不可领
+        if (tpl.newCustomerOnly) {
+            const placed = await this.hasPlacedOrder(ctx, customerId);
+            if (placed) throw new UserInputError('Coupon is for new customers only');
         }
         // 原子扣减发行余量（防超发）
         const claim = await this.atomicIncrementClaimed(ctx, tpl.id, tpl);
@@ -753,6 +759,17 @@ export class CouponService {
         return (result.affected ?? 0) > 0;
     }
 
+    /** 新客判定：本租户是否已有历史有效订单（排除创建/购物车/待支付/修改/取消等未完成态） */
+    private async hasPlacedOrder(ctx: RequestContext, customerId: number): Promise<boolean> {
+        const count = await this.connection
+            .getRepository(ctx, Order)
+            .createQueryBuilder('o')
+            .where('o.customerId = :customerId', { customerId })
+            .andWhere("o.state NOT IN ('Created','AddingItems','ArrangingPayment','Modifying','Cancelled')")
+            .getCount();
+        return count > 0;
+    }
+
     private async createUserCoupon(
         ctx: RequestContext,
         customerId: number,
@@ -770,7 +787,8 @@ export class CouponService {
                 status: 'UNUSED',
                 issuedBy,
                 issuedAt: new Date(),
-                expiredAt: tpl.endsAt ?? undefined,
+                // validDays 券按领取时刻起算过期时间；否则快照模板固定 endsAt
+                expiredAt: tpl.validDays ? new Date(Date.now() + tpl.validDays * 86400000) : (tpl.endsAt ?? undefined),
             });
             try {
                 return await repo.save(cc);

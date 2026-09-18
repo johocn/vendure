@@ -20,6 +20,7 @@ import { CouponTemplateResolver } from './coupon-template.resolver';
 import { couponDiscountAction } from './coupon-promotion-action';
 import { couponAppliedCondition } from './coupon-promotion-condition';
 import { setCouponConnection } from './coupon-runtime';
+import { setBindingService } from './coupon-settlement';
 import { CouponService } from './coupon.service';
 import { CouponShopResolver } from './coupon-shop.resolver';
 import { CouponTemplate } from './coupon-template.entity';
@@ -268,6 +269,7 @@ export class CouponPlugin implements OnApplicationBootstrap {
         this.injector = new Injector(this.moduleRef as any);
         this.couponService.init(this.injector);
         setCouponConnection(this.injector.get(TransactionalConnection));
+        setBindingService(this.injector.get(CouponBindingService));
 
         // 支付成功（订单下单成功）核销券
         this.eventBus.ofType(OrderPlacedEvent).subscribe(async (event) => {
