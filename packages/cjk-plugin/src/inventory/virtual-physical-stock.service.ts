@@ -17,6 +17,7 @@ import { In } from 'typeorm';
 import { VariantLocationBinding } from './variant-location-binding.entity';
 import { calcMirrorDelta, haversineKm, sumBoundOnHand } from './mirror-math';
 import { pinByCity } from './stock-city-filter';
+import { filterLocationsByDelivery } from './delivery-methods';
 import { DeliveryRecordService } from '../delivery/delivery-record.service';
 
 const loggerCtx = 'VirtualPhysicalStockService';
@@ -184,6 +185,7 @@ export class VirtualPhysicalStockService {
         lat?: number | null,
         lng?: number | null,
         city?: string | null,
+        deliveryMethod?: 'MAIL' | 'SELF_PICKUP' | null,
     ) {
         const virtual = await this.ensureVirtualLocation(ctx);
         const levels = await this.stockLevelService.getStockLevelsForVariant(ctx, variantId);
@@ -203,9 +205,13 @@ export class VirtualPhysicalStockService {
                 .find({ where: { id: In(boundIds) }, loadEagerRelations: false });
             const origin = lat != null && lng != null ? { lat, lng } : null;
 
-            // 按城市聚合：city 为空 → 全部绑定仓；否则仅服务该城市的绑定仓
+            // 配送口径：自提=可自提点、邮寄=可发仓、空=全部（兼容旧数据）
+            const requested: ('MAIL' | 'SELF_PICKUP')[] = deliveryMethod ? [deliveryMethod] : [];
+            const eligibleLocs = requested.length ? filterLocationsByDelivery(locs, requested) : locs;
+
+            // 按城市聚合：city 为空 → 全部 eligible 仓；否则仅服务该城市的 eligible 仓
             const cities = new Map<string, unknown>();
-            for (const loc of locs) {
+            for (const loc of eligibleLocs) {
                 cities.set(String(loc.id), (loc.customFields as any)?.serviceCities);
             }
             const { servedLocations, servedOnHand } = pinByCity(
@@ -215,7 +221,7 @@ export class VirtualPhysicalStockService {
                 city,
             );
 
-            const servedLocs = servedLocations.length ? locs.filter(l =>
+            const servedLocs = servedLocations.length ? eligibleLocs.filter(l =>
                 servedLocations.some(id => String(id) === String(l.id))) : [];
             stockDetail = servedLocs
                 .map(loc => {

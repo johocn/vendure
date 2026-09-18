@@ -14,7 +14,8 @@ export class InventoryShopResolver {
         @Args('lat', { nullable: true }) lat?: number,
         @Args('lng', { nullable: true }) lng?: number,
         @Args('city', { nullable: true }) city?: string,
+        @Args('deliveryMethod', { nullable: true }) deliveryMethod?: 'MAIL' | 'SELF_PICKUP',
     ) {
-        return this.virtualPhysicalStockService.getSaleableAndDetail(ctx, variantId, lat, lng, city);
+        return this.virtualPhysicalStockService.getSaleableAndDetail(ctx, variantId, lat, lng, city, deliveryMethod);
     }
 }
