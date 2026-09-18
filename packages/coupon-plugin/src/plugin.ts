@@ -23,6 +23,7 @@ import { CouponService } from './coupon.service';
 import { CouponShopResolver } from './coupon-shop.resolver';
 import { CouponTemplate } from './coupon-template.entity';
 import { CustomerCoupon } from './customer-coupon.entity';
+import { AddCouponFieldsMigration } from './migrations';
 import { couponOrderCustomFields } from './order-custom-fields';
 import { CouponPluginOptions } from './types';
 
@@ -53,6 +54,11 @@ type CouponTemplate implements Node {
     categoryId: ID
     variantId: ID
     enabled: Boolean!
+    claimable: Boolean!
+    claimCode: String
+    validDays: Int
+    newCustomerOnly: Boolean!
+    memberLevel: String
     shopId: ID
     createdAt: DateTime!
     updatedAt: DateTime!
@@ -82,6 +88,7 @@ type CustomerCoupon implements Node {
     providers: [
         { provide: COUPON_PLUGIN_OPTIONS, useFactory: () => CouponPlugin.options },
         CouponService,
+        AddCouponFieldsMigration,
     ],
     exports: [CouponService],
     adminApiExtensions: {
@@ -138,6 +145,11 @@ type CustomerCoupon implements Node {
                 categoryId: ID
                 variantId: ID
                 enabled: Boolean
+                claimable: Boolean
+                claimCode: String
+                validDays: Int
+                newCustomerOnly: Boolean
+                memberLevel: String
                 shopId: ID
             }
 
@@ -157,6 +169,11 @@ type CustomerCoupon implements Node {
                 categoryId: ID
                 variantId: ID
                 enabled: Boolean
+                claimable: Boolean
+                claimCode: String
+                validDays: Int
+                newCustomerOnly: Boolean
+                memberLevel: String
             }
 
             input CouponTemplateListOptions

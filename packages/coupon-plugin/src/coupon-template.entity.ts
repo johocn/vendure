@@ -75,6 +75,21 @@ export class CouponTemplate extends VendureEntity implements ChannelAware {
     /** 上下架 */
     @Column({ default: true }) enabled: boolean;
 
+    /** 详情页领券入口开关（binding.enabled && claimable 才展示领券入口） */
+    @Column({ default: true }) claimable: boolean;
+
+    /** 兑换码（非空=支持凭码兑换；同租户内唯一由 service 层保证） */
+    @Column('varchar', { nullable: true }) claimCode?: string;
+
+    /** 领取后 N 天有效（空=走固定 startsAt/endsAt） */
+    @Column({ nullable: true }) validDays?: number;
+
+    /** 仅限新客（本租户无历史有效订单）可领可用 */
+    @Column({ default: false }) newCustomerOnly: boolean;
+
+    /** 会员等级限定（预留，本期只建字段不开发逻辑） */
+    @Column('varchar', { nullable: true }) memberLevel?: string;
+
     /** 发行归属店铺 id（跨渠道范围用）：默认商城下仅对「本店商品行」核销。 */
     @Column('bigint', { nullable: true }) shopId?: number;
 
