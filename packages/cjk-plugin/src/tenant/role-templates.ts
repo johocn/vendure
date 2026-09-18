@@ -27,6 +27,8 @@ export const OFFICIAL_ROLE_TEMPLATES: RoleTemplate[] = [
             Permission.ReadShippingMethod, Permission.CreateShippingMethod, Permission.UpdateShippingMethod, Permission.DeleteShippingMethod,
             'ShippingProfile',
             Permission.ReadPaymentMethod, Permission.CreatePaymentMethod, Permission.UpdatePaymentMethod, Permission.DeletePaymentMethod,
+            // 租户物理网点管理（方案3）：仓库/网点增删改
+            Permission.CreateStockLocation, Permission.UpdateStockLocation, Permission.DeleteStockLocation,
             'TenantRoleManage', 'TenantMemberManage',
         ],
     },

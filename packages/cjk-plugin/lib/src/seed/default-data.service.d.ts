@@ -78,6 +78,12 @@ export declare class DefaultDataService {
     private repairOfficialAdminAccounts;
     /** 为已存在的官方内置角色补齐 Authenticated 权限（历史种子直存 Role 遗漏该权限），否则过期账号登录被拒。幂等。 */
     private ensureOfficialRolesAuthenticated;
+    /**
+     * 按角色模板补齐存量角色权限：模板新增权限（如租户网点管理所需的 CreateStockLocation 等）时，
+     * 已存在的租户角色自动同步。幂等且只增不减（不删除角色现有权限），避免覆盖租户定制。
+     * 匹配范围：official-tenant-admin-N（官方 seed 角色）与 tN-tenant-admin / tN-sales / tN-stock（租户角色）。
+     */
+    private syncRolePermissionsFromTemplates;
     /** 延迟加载 Vendure 核心实体，避免 seed 阶段循环依赖 */
     private ensureCoreEntities;
     private createTenantRoleRecord;

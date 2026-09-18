@@ -79,6 +79,8 @@ export class DefaultDataService {
             await this.seedOfficialTenants(ctx);
             // 为官方内置角色补齐 Authenticated 权限（幂等）
             await this.ensureOfficialRolesAuthenticated(ctx);
+            // 按角色模板补齐存量角色权限（模板新增权限时同步到存量角色，幂等、只增不减）
+            await this.syncRolePermissionsFromTemplates(ctx);
             // 修复历史破损官方管理员（补齐 user+authentication_method 使可登录；幂等）
             await this.repairOfficialAdminAccounts(ctx);
             Logger.info('购物配送/支付默认数据初始化完成', loggerCtx);
@@ -513,6 +515,39 @@ export class DefaultDataService {
         }
         if (fixed) {
             Logger.info(`已为 ${fixed} 个官方角色补齐 Authenticated 权限`, loggerCtx);
+        }
+    }
+
+    /**
+     * 按角色模板补齐存量角色权限：模板新增权限（如租户网点管理所需的 CreateStockLocation 等）时，
+     * 已存在的租户角色自动同步。幂等且只增不减（不删除角色现有权限），避免覆盖租户定制。
+     * 匹配范围：official-tenant-admin-N（官方 seed 角色）与 tN-tenant-admin / tN-sales / tN-stock（租户角色）。
+     */
+    private async syncRolePermissionsFromTemplates(ctx: RequestContext): Promise<void> {
+        const { Role } = await this.ensureCoreEntities(['Role']);
+        const roleRepo = this.connection.getRepository(ctx, Role);
+        const all: any[] = await roleRepo.find({} as any);
+        let fixed = 0;
+        for (const role of all) {
+            const code: string = role.code || '';
+            const tpl = OFFICIAL_ROLE_TEMPLATES.find((t) => {
+                const reT = `(?:official-)?(?:\\d+-)?${t.busiPrefix}`;
+                return (
+                    code === `official-${t.busiPrefix}` ||
+                    new RegExp(`^${reT}$`).test(code) ||
+                    new RegExp(`^official-${t.busiPrefix}-\\d+$`).test(code)
+                );
+            });
+            if (!tpl) continue;
+            const cur: string[] = (role as any).permissions || [];
+            const missing = tpl.permissions.filter((p) => !cur.includes(p));
+            if (!missing.length) continue;
+            (role as any).permissions = Array.from(new Set([...cur, ...tpl.permissions]));
+            await roleRepo.save(role);
+            fixed++;
+        }
+        if (fixed) {
+            Logger.info(`已为 ${fixed} 个租户角色按模板补齐权限（含 StockLocation 网点管理）`, loggerCtx);
         }
     }
 
