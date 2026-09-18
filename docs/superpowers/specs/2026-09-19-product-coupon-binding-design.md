@@ -71,11 +71,11 @@
 ### 3.2 CouponBindingService
 - `listByProduct(productId, channelId)`：商品可领券列表（详情页）。
 - `create/update/delete/toggleEnabled`：后台 CRUD。
-- **单向同步**：创建/更新 binding 时同步写 `template.scope='SKU' + variantId`（融合机制，结算链路兼容）。
+- **单向同步**：创建/更新 binding 时同步写 `template.scope='SKU'`；若 variantIds 长度为 1 则写 `template.variantId`，多 variant 留空（模板字段仅为历史模板兼容，**结算判定以 binding 集合为唯一权威**）。
 
 ### 3.3 结算校验改造（coupon-promotion-condition）
 - 现有：shopId 本店行 + minSpend。
-- 新增：模板有 binding 记录时，按 binding 集合判定订单行（productId 匹配行.product，variantIds 匹配行.variantId），不命中行从 eligibleLines 剔除。
+- 新增：模板存在 binding 记录时，按 binding 集合判定订单行（productId 匹配行.product，variantIds 匹配行.variantId，variantIds 为空=该商品全 SKU 命中），不命中行从 eligibleLines 剔除；模板 variantId 字段不再参与判定（仅兼容无 binding 的历史模板）。
 - newCustomerOnly：该客户本租户历史有效订单数 > 0 则不可用（领券与结算两处校验）。
 - validDays：领取时 expiresAt = claimedAt + validDays，结算校验未过期。
 
