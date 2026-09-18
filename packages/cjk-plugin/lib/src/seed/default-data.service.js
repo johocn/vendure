@@ -497,10 +497,15 @@ let DefaultDataService = class DefaultDataService {
         for (const role of all) {
             const code = role.code || '';
             const tpl = role_templates_1.OFFICIAL_ROLE_TEMPLATES.find((t) => {
-                const reT = `(?:official-)?(?:\\d+-)?${t.busiPrefix}`;
-                return (code === `official-${t.busiPrefix}` ||
-                    new RegExp(`^${reT}$`).test(code) ||
-                    new RegExp(`^official-${t.busiPrefix}-\\d+$`).test(code));
+                if (code === t.busiPrefix || code === `official-${t.busiPrefix}`)
+                    return true;
+                // 官方 seed 角色：official-tenant-admin-N
+                if (new RegExp(`^official-${t.busiPrefix}-\\d+$`).test(code))
+                    return true;
+                // 租户角色：tN-tenant-admin / tN-sales / tN-stock
+                if (new RegExp(`^t\\d+-${t.busiPrefix}$`).test(code))
+                    return true;
+                return false;
             });
             if (!tpl)
                 continue;
