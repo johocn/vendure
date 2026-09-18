@@ -45,6 +45,18 @@ export class ChannelCustomColumnMigration implements OnApplicationBootstrap {
                         }),
                     );
                 }
+                // shopIntro 店铺简介/分享描述
+                const SHOP_INTRO_COL = 'customFieldsShopintro';
+                if (!(await queryRunner.hasColumn(tableName, SHOP_INTRO_COL))) {
+                    await queryRunner.addColumn(
+                        tableName,
+                        new TableColumn({
+                            name: SHOP_INTRO_COL,
+                            type: 'varchar(1000)',
+                            isNullable: true,
+                        }),
+                    );
+                }
             } finally {
                 await queryRunner.release();
             }

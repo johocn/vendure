@@ -53,6 +53,15 @@ let ChannelCustomColumnMigration = class ChannelCustomColumnMigration {
                         isNullable: true,
                     }));
                 }
+                // shopIntro 店铺简介/分享描述
+                const SHOP_INTRO_COL = 'customFieldsShopintro';
+                if (!(await queryRunner.hasColumn(tableName, SHOP_INTRO_COL))) {
+                    await queryRunner.addColumn(tableName, new typeorm_2.TableColumn({
+                        name: SHOP_INTRO_COL,
+                        type: 'varchar(1000)',
+                        isNullable: true,
+                    }));
+                }
             }
             finally {
                 await queryRunner.release();

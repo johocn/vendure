@@ -148,6 +148,16 @@ exports.tenantChannelCustomFields = {
             label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '店铺名' }],
         },
         {
+            name: 'shopIntro',
+            type: 'string',
+            nullable: true,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '店铺简介/分享描述' }],
+            description: [
+                { languageCode: core_1.LanguageCode.zh_Hans, value: '首页/分享卡默认描述，未设置时前端回退默认话术' },
+                { languageCode: core_1.LanguageCode.en, value: 'Default share description text' },
+            ],
+        },
+        {
             name: 'merchantStatus',
             type: 'string',
             nullable: true,
