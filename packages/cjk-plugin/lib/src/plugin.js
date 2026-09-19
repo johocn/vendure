@@ -136,6 +136,7 @@ const stock_doc_entity_1 = require("./inventory/stock-doc.entity");
 const stock_doc_item_entity_1 = require("./inventory/stock-doc-item.entity");
 const stock_doc_service_1 = require("./inventory/stock-doc.service");
 const stock_doc_admin_resolver_1 = require("./inventory/stock-doc.admin.resolver");
+const stock_reservation_admin_resolver_1 = require("./inventory/stock-reservation.admin.resolver");
 const stock_reservation_entity_1 = require("./inventory/stock-reservation.entity");
 const stock_reservation_item_entity_1 = require("./inventory/stock-reservation-item.entity");
 const stock_reservation_service_1 = require("./inventory/stock-reservation.service");
@@ -1406,9 +1407,56 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                 extend type Query {
                     stockMovementLedger(productVariantId: ID, locationId: ID, bizCode: String, orderLineId: ID, page: Int, pageSize: Int): StockDocLedgerList!
                 }
+
+                # 预留单 admin 输出类型（独立命名，定义在本插件 SDL 内）
+                type ReservationItem {
+                    id: ID!
+                    reservationId: ID!
+                    stockLocationId: ID!
+                    qty: Int!
+                    fulfillType: String!
+                    status: String!
+                }
+                type Reservation {
+                    id: ID!
+                    orderId: ID!
+                    orderLineId: ID!
+                    variantId: ID!
+                    totalQty: Int!
+                    status: String!
+                    tenantChannelId: String
+                    createdAt: DateTime!
+                    items: [ReservationItem!]!
+                }
+                type ReservationList {
+                    items: [Reservation!]!
+                    totalItems: Int!
+                }
+                type ReservationReconcileRow {
+                    variantId: ID!
+                    physicalSum: Int!
+                    virtualSum: Int!
+                    pendingQty: Int!
+                    diff: Int!
+                }
+                input ReservationSplitInput {
+                    locationId: ID!
+                    fulfillType: String!
+                    qty: Int!
+                }
+                extend type Query {
+                    reservations(status: String, variantId: ID, orderId: ID, page: Int, pageSize: Int): ReservationList!
+                    reservation(id: ID!): Reservation!
+                    reservationReconcile: [ReservationReconcileRow!]!
+                }
+                extend type Mutation {
+                    allocateReservation(id: ID!, splits: [ReservationSplitInput!]!): Reservation!
+                    fulfillReservationItem(id: ID!, quantity: Int): ReservationItem!
+                    releaseReservation(id: ID!): Reservation!
+                }
                 `;
             },
-            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, room_template_admin_resolver_1.RoomTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver, tenant_catalog_admin_resolver_1.TenantCatalogAdminResolver, asset_library_admin_resolver_1.AssetLibraryAdminResolver, redemption_resolver_1.RedemptionAdminResolver, merchant_settlement_admin_resolver_1.MerchantSettlementAdminResolver, delivery_admin_resolver_1.DeliveryAdminResolver, inventory_admin_resolver_1.InventoryAdminResolver, reconciliation_admin_resolver_1.ReconciliationAdminResolver, stock_doc_admin_resolver_1.StockDocAdminResolver],
+            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, room_template_admin_resolver_1.RoomTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver, tenant_catalog_admin_resolver_1.TenantCatalogAdminResolver, asset_library_admin_resolver_1.AssetLibraryAdminResolver, redemption_resolver_1.RedemptionAdminResolver, merchant_settlement_admin_resolver_1.MerchantSettlementAdminResolver, delivery_admin_resolver_1.DeliveryAdminResolver, inventory_admin_resolver_1.InventoryAdminResolver, reconciliation_admin_resolver_1.ReconciliationAdminResolver, stock_doc_admin_resolver_1.StockDocAdminResolver, stock_reservation_admin_resolver_1.StockReservationAdminResolver],
         },
         shopApiExtensions: {
             schema: () => {

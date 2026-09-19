@@ -11,7 +11,7 @@ export interface ReservationSplit {
  * 多仓拆分发货预留单：
  * - reserveOnOrder：下单预占（Order/DeliveryType 归一），建头单 PENDING_ALLOC
  * - allocate：逐仓拆分 item，守恒校验 + 单仓物理 onHand 校验，头→ALLOCATED
- * - fulfill：核销/发货（扣物理仓由 Vendure core 在 SALE 时完成），item→DONE，全 DONE→头 DONE
+ * - fulfillItem：核销/发货（扣物理仓由 Vendure core 在 SALE 时完成），item→DONE，全 DONE→头 DONE
  * - release：取消/退款对称释放，头→RELEASED
  * - reconcileScan：对账 Σ物理 − 虚拟 == ΣPENDING item qty
  *
@@ -29,12 +29,22 @@ export declare class StockReservationService {
     get(ctx: RequestContext, id: number): Promise<StockReservationEntity>;
     findByOrderLine(ctx: RequestContext, orderLineId: ID): Promise<StockReservationEntity | null>;
     items(ctx: RequestContext, reservationId: number): Promise<StockReservationItemEntity[]>;
+    list(ctx: RequestContext, filters?: {
+        status?: string;
+        variantId?: ID;
+        orderId?: ID;
+        page?: number;
+        pageSize?: number;
+    }): Promise<{
+        items: StockReservationEntity[];
+        totalItems: number;
+    }>;
     /** 下单预占：建头单 PENDING_ALLOC（幂等：同一 orderLine+variant 复用）。虚拟 allocation 由 core 下单流程完成，此处仅记账。 */
     reserveOnOrder(ctx: RequestContext, orderId: ID, orderLineId: ID, variantId: ID, totalQty: number): Promise<StockReservationEntity>;
     /** 备货拆分：重建 item（幂等），守恒校验 Σqty==totalQty、每仓 qty≤物理 onHand，头→ALLOCATED */
     allocate(ctx: RequestContext, reservationId: number, splits: ReservationSplit[]): Promise<StockReservationEntity>;
     /** 出库核销：按核销数量递减 item.qty，清零→DONE；全部 DONE→头 DONE。物理扣减由 core 在 SALE 完成。 */
-    fulfill(ctx: RequestContext, reservationId: number, itemId: number, quantity?: number): Promise<StockReservationItemEntity>;
+    fulfillItem(ctx: RequestContext, itemId: number, quantity?: number): Promise<StockReservationItemEntity>;
     /** 取消/退款：对称释放。returnPhysical=true 时对已出库 DONE 明细回补物理仓（默认 false，core 的 CANCELLATION/RELEASE 已回补）。 */
     release(ctx: RequestContext, reservationId: number, options?: {
         returnPhysical?: boolean;
