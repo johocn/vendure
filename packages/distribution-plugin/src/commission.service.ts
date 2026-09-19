@@ -1,10 +1,25 @@
 import { Injectable } from '@nestjs/common';
-import { Channel, CustomerService, EventBus, ID, ListQueryBuilder, ListQueryOptions, Logger, OrderService, PaginatedList, PaymentStateTransitionEvent, RequestContext, RefundStateTransitionEvent, TransactionalConnection } from '@vendure/core';
+import {
+    Channel,
+    CustomerService,
+    EventBus,
+    ID,
+    ListQueryBuilder,
+    ListQueryOptions,
+    Logger,
+    OrderService,
+    PaginatedList,
+    PaymentStateTransitionEvent,
+    RefundStateTransitionEvent,
+    RequestContext,
+    TransactionalConnection,
+} from '@vendure/core';
 
+import { CommissionRecordCreatedEvent } from './commission-record-created.event';
 import { CommissionRecord } from './commission-record.entity';
-import { Distributor } from './distributor.entity';
-import { DistributionService } from './distribution.service';
 import { loggerCtx } from './constants';
+import { DistributionService } from './distribution.service';
+import { Distributor } from './distributor.entity';
 
 @Injectable()
 export class CommissionService {
@@ -23,22 +38,28 @@ export class CommissionService {
         if (this.initialized) return;
         this.initialized = true;
 
-        this.eventBus.ofType(PaymentStateTransitionEvent).subscribe(async (event) => {
+        this.eventBus.ofType(PaymentStateTransitionEvent).subscribe(async event => {
             if (event.toState === 'Settled') {
                 try {
                     await this.calculateCommission(event);
                 } catch (e: any) {
-                    Logger.error(`Failed to calculate commission for order ${event.order.id}: ${e.message}`, loggerCtx);
+                    Logger.error(
+                        `Failed to calculate commission for order ${event.order.id}: ${(e as Error).message}`,
+                        loggerCtx,
+                    );
                 }
             }
         });
 
-        this.eventBus.ofType(RefundStateTransitionEvent).subscribe(async (event) => {
+        this.eventBus.ofType(RefundStateTransitionEvent).subscribe(async event => {
             if (event.toState === 'Settled') {
                 try {
                     await this.cancelCommissionByOrder(event.ctx, String(event.order.id));
                 } catch (e: any) {
-                    Logger.error(`Failed to cancel commission for order ${event.order.id} on refund: ${e.message}`, loggerCtx);
+                    Logger.error(
+                        `Failed to cancel commission for order ${event.order.id} on refund: ${(e as Error).message}`,
+                        loggerCtx,
+                    );
                 }
             }
         });
@@ -77,7 +98,7 @@ export class CommissionService {
         // 佣金基数 = 扣券后实际应付（含税金额），与阶段37券体系一致：券不影响佣金率，只影响应付额。
         const orderTotal = order.totalWithTax ?? rawOrder.totalWithTax ?? 0;
 
-        const directAmount = Math.floor(orderTotal * directRate / 10000);
+        const directAmount = Math.floor((orderTotal * directRate) / 10000);
 
         // 事务包装：保证多条 CommissionRecord 原子写入
         await this.connection.startTransaction(ctx);
@@ -97,11 +118,14 @@ export class CommissionService {
             directRecord.channels = [channel];
             await this.connection.getRepository(ctx, CommissionRecord).save(directRecord);
 
-            Logger.info(`Created direct commission ${directAmount} for distributor ${directDistributor.id}`, loggerCtx);
+            Logger.info(
+                `Created direct commission ${directAmount} for distributor ${directDistributor.id}`,
+                loggerCtx,
+            );
 
             if (directDistributor.parentId) {
                 const indirectRate = (ctx.channel as any).customFields?.indirectCommissionRate ?? 500;
-                const indirectAmount = Math.floor(orderTotal * indirectRate / 10000);
+                const indirectAmount = Math.floor((orderTotal * indirectRate) / 10000);
 
                 const indirectRecord = new CommissionRecord({
                     distributorId: String(directDistributor.parentId),
@@ -117,17 +141,42 @@ export class CommissionService {
                 indirectRecord.channels = [channel];
                 await this.connection.getRepository(ctx, CommissionRecord).save(indirectRecord);
 
-                Logger.info(`Created indirect commission ${indirectAmount} for distributor ${directDistributor.parentId}`, loggerCtx);
+                Logger.info(
+                    `Created indirect commission ${indirectAmount} for distributor ${directDistributor.parentId}`,
+                    loggerCtx,
+                );
             }
 
             await this.connection.commitOpenTransaction(ctx);
+
+            // 生态钩子：直接佣金落库后发布事件，供 eco-plugin 等订阅上报 distribute；
+            // 发布失败仅告警，绝不影响佣金主流程
+            try {
+                await this.eventBus.publish(
+                    new CommissionRecordCreatedEvent(
+                        ctx,
+                        String(order.id),
+                        order.code,
+                        String(directDistributor.customerId),
+                        'direct',
+                    ),
+                );
+            } catch (e: any) {
+                Logger.warn(
+                    `Failed to publish CommissionRecordCreatedEvent: ${(e as Error).message}`,
+                    loggerCtx,
+                );
+            }
         } catch (e) {
             await this.connection.rollBackTransaction(ctx);
             throw e;
         }
     }
 
-    findAll(ctx: RequestContext, options?: ListQueryOptions<CommissionRecord>): Promise<PaginatedList<CommissionRecord>> {
+    findAll(
+        ctx: RequestContext,
+        options?: ListQueryOptions<CommissionRecord>,
+    ): Promise<PaginatedList<CommissionRecord>> {
         return this.listQueryBuilder
             .build(CommissionRecord, options, {
                 ctx,
@@ -138,7 +187,11 @@ export class CommissionService {
             .then(([items, totalItems]) => ({ items, totalItems }));
     }
 
-    findByDistributor(ctx: RequestContext, distributorId: ID, options?: ListQueryOptions<CommissionRecord>): Promise<PaginatedList<CommissionRecord>> {
+    findByDistributor(
+        ctx: RequestContext,
+        distributorId: ID,
+        options?: ListQueryOptions<CommissionRecord>,
+    ): Promise<PaginatedList<CommissionRecord>> {
         return this.listQueryBuilder
             .build(CommissionRecord, options, {
                 ctx,
@@ -170,7 +223,11 @@ export class CommissionService {
             record.settledAt = new Date();
             await repo.save(record);
 
-            const distributor = await this.connection.getEntityOrThrow(ctx, Distributor, record.distributorId);
+            const distributor = await this.connection.getEntityOrThrow(
+                ctx,
+                Distributor,
+                record.distributorId,
+            );
             distributor.availableBalance += record.commissionAmount;
             distributor.totalEarnings += record.commissionAmount;
             await this.connection.getRepository(ctx, Distributor).save(distributor);
@@ -203,7 +260,11 @@ export class CommissionService {
             await repo.save(record);
 
             if (wasConfirmed) {
-                const distributor = await this.connection.getEntityOrThrow(ctx, Distributor, record.distributorId);
+                const distributor = await this.connection.getEntityOrThrow(
+                    ctx,
+                    Distributor,
+                    record.distributorId,
+                );
                 distributor.availableBalance -= record.commissionAmount;
                 if (distributor.availableBalance < 0) {
                     distributor.availableBalance = 0;

@@ -15,5 +15,5 @@ export declare class EcoPlugin implements OnApplicationBootstrap {
     private static options;
     constructor(options: EcoPluginOptions, listener: EcoEventsListener);
     static init(options?: EcoPluginOptions): Type<EcoPlugin>;
-    onApplicationBootstrap(): Promise<void>;
+    onApplicationBootstrap(): void;
 }

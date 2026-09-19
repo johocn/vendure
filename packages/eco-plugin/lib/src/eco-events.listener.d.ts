@@ -11,7 +11,12 @@ export declare class EcoEventsListener {
     private orderService;
     private customerService;
     private reporter;
-    constructor(eventBus: EventBus, orderService: OrderService, customerService: CustomerService, reporter: EcoReporter);
+    constructor(
+        eventBus: EventBus,
+        orderService: OrderService,
+        customerService: CustomerService,
+        reporter: EcoReporter,
+    );
     /** 由 EcoPlugin.onApplicationBootstrap 调用，避免 Nest 生命周期重复触发 */
     init(): void;
     private reportPurchase;

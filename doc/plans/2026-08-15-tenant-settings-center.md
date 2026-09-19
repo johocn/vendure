@@ -22,10 +22,11 @@
 - 修改 `packages/cjk-plugin/src/tenant/tenant-config.types.ts`（新建）— 各段类型定义
 - 修改 `packages/cjk-plugin/src/plugin.ts` — 注册 3 个新 service + 扩展 schema
 
-**前端（dashboard）**
-- 新建 `packages/dashboard/src/app/routes/_authenticated/_tenant-settings/tenant-settings.tsx`
-- 新建 `packages/dashboard/src/app/routes/_authenticated/_tenant-settings/tenant-settings.graphql.ts`
+**前端（dashboard，Vendure 新一代 admin-ui）**
+- 新建 `packages/dashboard/src/app/routes/_authenticated/_tenant-settings/tenant-settings.tsx`（`createFileRoute('/_authenticated/_tenant-settings/tenant-settings')`，文件式路由，Vite 插件自动写入 routeTree.gen.ts，**不要手动改 routeTree.gen.ts**）
+- 新建 `packages/dashboard/src/app/routes/_authenticated/_tenant-settings/tenant-settings.graphql.ts`（纯字符串文档，插件自定义字段不在 codegen 类型内，用 `api.query(stringDoc, vars)`）
 - 新建 `packages/dashboard/src/app/routes/_authenticated/_tenant-settings/section-registry.ts`
+- 新建 `packages/dashboard/src/app/routes/_authenticated/_tenant-settings/settings-form.tsx`（共享字段表单渲染器，用 `@/vdb/components/ui/*`）
 - 新建 `packages/dashboard/src/app/routes/_authenticated/_tenant-settings/sections/basic.tsx`
 - 新建 `packages/dashboard/src/app/routes/_authenticated/_tenant-settings/sections/multi-language.tsx`
 - 新建 `packages/dashboard/src/app/routes/_authenticated/_tenant-settings/sections/auth.tsx`
@@ -34,8 +35,8 @@
 - 新建 `packages/dashboard/src/app/routes/_authenticated/_tenant-settings/sections/pickup.tsx`
 - 新建 `packages/dashboard/src/app/routes/_authenticated/_tenant-settings/sections/map.tsx`
 - 新建 `packages/dashboard/src/app/routes/_authenticated/_tenant-settings/sections/service-notify.tsx`
-- 新建 `packages/dashboard/src/app/routes/_authenticated/_tenant-settings/settings-form.tsx`（共享字段表单渲染器）
-- 修改 `packages/dashboard/src/app/routeTree.gen.ts`（TanStack Router 路由注册）
+
+> **前端技术栈（已核实）**：数据层用 `api.query`/`api.mutate`（`@/vdb/graphql/api.js`，awesome-graphql-client 封装）+ `@tanstack/react-query` 的 `useQuery`/`useMutation`；路由用 `@tanstack/react-router` 的 `createFileRoute`（文件式，自动注册）；当前渠道用 `useChannel()`（`@/vdb/hooks/use-channel.js`）取 `activeChannel.id`；UI 用 `@/vdb/components/ui/*`。**不用** Apollo、`@vendure/admin-ui/react`的 Form。
 
 ---
 
@@ -245,10 +246,6 @@ export interface ServiceNotifyConfig {
 export class ServiceNotifyConfigService {
     constructor(private channelService: ChannelService) {}
 
-    private readRaw(ctx: RequestContext, channelId: string): ServiceNotifyConfig | null {
-        return null; // 占位：实际取 channel.customFields.serviceNotifyConfig
-    }
-
     async getMasked(ctx: RequestContext, channelId: string): Promise<ServiceNotifyConfig | null> {
         const channel = await this.channelService.findOne(ctx, channelId as any);
         if (!channel) return null;
@@ -281,7 +278,7 @@ export class ServiceNotifyConfigService {
 }
 ```
 
-> 说明：`readRaw` 为占位，实际业务可能打通企业微信/微信推送时需解密读取 `wecomCorpSecret`（用 `decrypt`）。本期仅存储，不消费。
+> 说明：本期仅存储 `wecomCorpSecret` 加密值，不消费。后续打通企业微信/微信推送时，直接对 `channel.customFields.serviceNotifyConfig.wecomCorpSecret` 调用 `decrypt` 读取明文。
 
 - [ ] **Step 2: 新建单测 `service-notify-config.service.spec.ts`**
 
@@ -601,93 +598,113 @@ git commit --no-verify -m "feat: 注册租户设置 schema 与新配置服务"
 
 - [ ] **Step 1: 新建共享字段表单渲染器**
 
+> ESM：`@/vdb/components/ui/*.js` 必须带 `.js` 后缀。
+
 ```tsx
-import { useState } from 'react';
-import { Form } from '@vendure/admin-ui/react';
+import { Checkbox } from '@/vdb/components/ui/checkbox.js';
+import { Input } from '@/vdb/components/ui/input.js';
+import { Label } from '@/vdb/components/ui/label.js';
+import { Textarea } from '@/vdb/components/ui/textarea.js';
 
 export interface FieldSpec {
     name: string;
     label: string;
     type: 'text' | 'textarea' | 'boolean' | 'stringList' | 'password';
-    secret?: boolean;
-    placeholder?: string;
+}
+export interface FieldSection {
+    group: string;
+    fields: FieldSpec[];
+}
+export type Fields = Array<FieldSpec | FieldSection>;
+
+// 点路径读写嵌套对象（如 "invoiceHeader.companyName"）
+export function deepGet(obj: any, path: string): any {
+    return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
+}
+export function deepSet(obj: any, path: string, value: any): any {
+    const keys = path.split('.');
+    const out = { ...(obj ?? {}) };
+    let cur = out;
+    for (let i = 0; i < keys.length - 1; i++) {
+        cur[keys[i]] = cur[keys[i]] ?? {};
+        cur = cur[keys[i]];
+    }
+    cur[keys[keys.length - 1]] = value;
+    return out;
 }
 
-export interface SettingsFormProps {
-    fields: Array<FieldSpec | { group: string; fields: FieldSpec[] }>;
+export function SettingsForm({ fields, values, onChange }: {
+    fields: Fields;
     values: Record<string, any>;
-    onChange: (values: Record<string, any>) => void;
-}
+    onChange: (v: Record<string, any>) => void;
+}) {
+    const set = (name: string, value: any) => onChange(deepSet(values, name, value));
 
-function flattenFields(fields: SettingsFormProps['fields']): FieldSpec[] {
-    return fields.flatMap((f) => ('group' in f ? f.fields : [f]));
-}
+    const renderField = (f: FieldSpec) => {
+        const id = f.name;
+        const value = deepGet(values, f.name);
+        switch (f.type) {
+            case 'boolean':
+                return (
+                    <div key={id} className="flex items-center gap-2 py-1">
+                        <Checkbox id={id} checked={!!value} onCheckedChange={(v) => set(f.name, !!v)} />
+                        <Label htmlFor={id}>{f.label}</Label>
+                    </div>
+                );
+            case 'textarea':
+                return (
+                    <div key={id} className="grid gap-1 py-1">
+                        <Label htmlFor={id}>{f.label}</Label>
+                        <Textarea id={id} value={value ?? ''} onChange={(e) => set(f.name, e.target.value)} />
+                    </div>
+                );
+            case 'stringList':
+                return (
+                    <div key={id} className="grid gap-1 py-1">
+                        <Label htmlFor={id}>{f.label}</Label>
+                        <Textarea
+                            id={id}
+                            value={(value ?? []).join('\n')}
+                            onChange={(e) => set(f.name, e.target.value.split('\n').filter(Boolean))}
+                        />
+                        <p className="text-xs text-muted-foreground">每行一项</p>
+                    </div>
+                );
+            case 'password':
+                return (
+                    <div key={id} className="grid gap-1 py-1">
+                        <Label htmlFor={id}>{f.label}</Label>
+                        <Input id={id} type="password" value={value ?? ''} onChange={(e) => set(f.name, e.target.value)} />
+                    </div>
+                );
+            default:
+                return (
+                    <div key={id} className="grid gap-1 py-1">
+                        <Label htmlFor={id}>{f.label}</Label>
+                        <Input id={id} value={value ?? ''} onChange={(e) => set(f.name, e.target.value)} />
+                    </div>
+                );
+        }
+    };
 
-export function SettingsForm({ fields, values, onChange }: SettingsFormProps) {
     return (
-        <Form>
+        <div>
             {fields.map((entry) =>
                 'group' in entry ? (
-                    <div key={entry.group} className="settings-field-group">
-                        <h4>{entry.group}</h4>
-                        {entry.fields.map((f) => renderField(f))}
-                    </div>
+                    <fieldset key={entry.group} className="mb-4">
+                        <legend className="font-semibold">{entry.group}</legend>
+                        {entry.fields.map(renderField)}
+                    </fieldset>
                 ) : (
                     renderField(entry)
                 ),
             )}
-        </Form>
+        </div>
     );
-
-    function renderField(f: FieldSpec) {
-        const value = values[f.name];
-        const set = (v: any) => onChange({ ...values, [f.name]: v });
-        switch (f.type) {
-            case 'boolean':
-                return (
-                    <label key={f.name} className="settings-field">
-                        <input type="checkbox" checked={!!value} onChange={(e) => set(e.target.checked)} />
-                        {f.label}
-                    </label>
-                );
-            case 'textarea':
-                return (
-                    <label key={f.name} className="settings-field">
-                        {f.label}
-                        <textarea value={value ?? ''} onChange={(e) => set(e.target.value)} />
-                    </label>
-                );
-            case 'stringList':
-                return (
-                    <label key={f.name} className="settings-field">
-                        {f.label}
-                        <input
-                            value={(value ?? []).join('\n')}
-                            onChange={(e) => set(e.target.value.split('\n').filter(Boolean))}
-                        />
-                        <small>每行一项</small>
-                    </label>
-                );
-            case 'password':
-                return (
-                    <label key={f.name} className="settings-field">
-                        {f.label}
-                        <input type="password" value={value ?? ''} onChange={(e) => set(e.target.value)} />
-                    </label>
-                );
-            default:
-                return (
-                    <label key={f.name} className="settings-field">
-                        {f.label}
-                        <input value={value ?? ''} onChange={(e) => set(e.target.value)} />
-                    </label>
-                );
-        }
-    }
 }
 ```
 
-> 说明：`Form` 与 `@vendure/admin-ui/react` 导入路径以 Dashboard 现有代码为准；若现有组件用其它路径，替换为当前实际使用的 Form 组件名。
+> 确认路径：`@/vdb/components/ui/checkbox.js`、`input.js`、`label.js`、`textarea.js` 均已在 `lib/index.ts` 导出列表中存在（见 `components/ui/checkbox.js`、`input.js`、`label.js`、`textarea.js`）。若组件 props 与当前版本有出入（如 `onCheckedChange`），以现有使用处为准。
 
 - [ ] **Step 2: Commit**
 
@@ -706,73 +723,94 @@ git commit --no-verify -m "feat: 租户设置中心共享字段表单渲染器"
 
 - [ ] **Step 1: 新建 section-registry.ts**
 
-```ts
+> 注意：项目 ESM，所有相对/别名导入必须带 `.js` 后缀（与 `api.ts`、`channels.tsx` 一致）。
+
+```tsx
+import { lazy } from 'react';
+
 export interface SectionDef {
     key: string;
     label: string;
-    component: React.ComponentType;
+    component: React.ComponentType<{ channelId: string }>;
 }
 
 // 懒加载各 Tab，配置驱动；新增租户能力 = 在此追加一项
 export const sections: SectionDef[] = [
-    { key: 'basic', label: '基本设置', component: lazy(() => import('./sections/basic')) },
-    { key: 'multi-language', label: '多语言', component: lazy(() => import('./sections/multi-language')) },
-    { key: 'auth', label: '登录认证 & SSO', component: lazy(() => import('./sections/auth')) },
-    { key: 'payment', label: '支付方式', component: lazy(() => import('./sections/payment')) },
-    { key: 'shipping', label: '配送方式', component: lazy(() => import('./sections/shipping')) },
-    { key: 'pickup', label: '自提点', component: lazy(() => import('./sections/pickup')) },
-    { key: 'map', label: '地图服务', component: lazy(() => import('./sections/map')) },
-    { key: 'service-notify', label: '客服与通知', component: lazy(() => import('./sections/service-notify')) },
+    { key: 'basic', label: '基本设置', component: lazy(() => import('./sections/basic.js')) },
+    { key: 'multi-language', label: '多语言', component: lazy(() => import('./sections/multi-language.js')) },
+    { key: 'auth', label: '登录认证 & SSO', component: lazy(() => import('./sections/auth.js')) },
+    { key: 'payment', label: '支付方式', component: lazy(() => import('./sections/payment.js')) },
+    { key: 'shipping', label: '配送方式', component: lazy(() => import('./sections/shipping.js')) },
+    { key: 'pickup', label: '自提点', component: lazy(() => import('./sections/pickup.js')) },
+    { key: 'map', label: '地图服务', component: lazy(() => import('./sections/map.js')) },
+    { key: 'service-notify', label: '客服与通知', component: lazy(() => import('./sections/service-notify.js')) },
 ];
 ```
-
-> 顶部追加 `import { lazy } from 'react';` 与 `import React from 'react';`。
 
 - [ ] **Step 2: 新建路由壳 tenant-settings.tsx**
 
 ```tsx
 import { Suspense, useState } from 'react';
-import { useParams } from '@tanstack/react-router';
-import { ChannelSwitcher } from '../../../lib/components/layout/channel-switcher';
-import { sections } from './section-registry';
+import { createFileRoute } from '@tanstack/react-router';
+import { useChannel } from '@/vdb/hooks/use-channel.js';
+import { sections } from './section-registry.js';
 
-export default function TenantSettingsPage() {
-    const { channelId } = useParams({ from: '/_authenticated/_tenant-settings' });
+export const Route = createFileRoute('/_authenticated/_tenant-settings/tenant-settings')({
+    component: TenantSettingsPage,
+});
+
+function TenantSettingsPage() {
+    const { activeChannel } = useChannel();
+    const channelId = activeChannel?.id;
     const [active, setActive] = useState(sections[0].key);
-    const Active = sections.find((s) => s.key === active)!.component;
+    const ActiveComponent = sections.find((s) => s.key === active)!.component;
 
     return (
-        <div className="tenant-settings">
-            <div className="tenant-settings__header">
-                <h1>租户设置中心</h1>
-                <ChannelSwitcher />
-            </div>
-            <div className="tenant-settings__tabs">
-                {sections.map((s) => (
-                    <button
-                        key={s.key}
-                        className={s.key === active ? 'tab tab--active' : 'tab'}
-                        onClick={() => setActive(s.key)}
-                    >
-                        {s.label}
-                    </button>
-                ))}
-            </div>
-            <div className="tenant-settings__body">
-                <Suspense fallback={<div>加载中…</div>}>
-                    <Active channelId={channelId} />
-                </Suspense>
-            </div>
+        <div className="p-4">
+            <h1 className="text-xl font-semibold">租户设置中心</h1>
+            {channelId ? (
+                <>
+                    <div className="my-2 flex flex-wrap gap-1">
+                        {sections.map((s) => (
+                            <button
+                                key={s.key}
+                                className={s.key === active ? 'rounded bg-primary px-3 py-1 text-primary-foreground' : 'rounded px-3 py-1 hover:bg-muted'}
+                                onClick={() => setActive(s.key)}
+                            >
+                                {s.label}
+                            </button>
+                        ))}
+                    </div>
+                    <Suspense fallback={<div>加载中…</div>}>
+                        <ActiveComponent channelId={channelId} />
+                    </Suspense>
+                </>
+            ) : (
+                <p className="text-muted-foreground">请先在右上角渠道切换器选择一个渠道。</p>
+            )}
         </div>
     );
 }
 ```
 
-> 说明：`ChannelSwitcher` 路径以 Dashboard 现有 `channel-switcher.tsx` 为准；`useParams` 泛型以当前 TanStack Router 版本为准。若渠道切换器返回的 channelId 不在路由参数中，改为从共享 store 读取。
+> 路由注册：这是文件式路由（`_tenant-settings/tenant-settings.tsx`），TanStack Router Vite 插件在 dev/build 时**自动**写入 `routeTree.gen.ts`，**无需也不能手动编辑**该文件。URL 为 `/_authenticated/tenant-settings`（`_` 前缀文件夹为布局组，不占 URL 段）。若 `useChannel()` 尚未提供 `activeChannel.id`（返回类型以 `channel-provider.tsx` 的 `ActiveChannel` 为准），改用 `activeChannel.token` 之外的可用标识；若 `activeChannel` 为 `undefined` 时门店切换到默认渠道后再渲染。
 
-- [ ] **Step 3: 注册路由（routeTree.gen.ts）**
+- [ ] **Step 3: 注册导航菜单项（关键，否则页面无法从侧边栏进入）**
 
-在 `packages/dashboard/src/app/routeTree.gen.ts` 的 `_authenticated` 分支下注册 `_tenant-settings` 路由，指向 `tenant-settings.tsx`，并配置 `channelId` 路由参数。参照现有 `_channels` 路由的注册方式。
+在 `packages/dashboard/src/lib/framework/defaults.ts` 的 `setNavMenuConfig` 中，`settings` section 的 `items` 数组追加一项（`/tenant-settings`）：
+
+```ts
+// 在 settings section 的 items 数组内追加（如 channels 之前）
+{
+    id: 'tenant-settings',
+    title: /* i18n*/ 'Tenant Settings',
+    url: '/tenant-settings',
+    order: 150,
+    requiresPermission: ['Authenticated'],
+},
+```
+
+> `requiresPermission` 用 `['Authenticated']`（与 `tenantSettings` resolver 的 `@Allow(Permission.Authenticated)` 对齐）。若该权限名在 `usePermissions` 中不可用，则省略该字段使所有登录用户可见。
 
 - [ ] **Step 4: 新增最小可渲染的 basic.tsx 占位，验证路由可访问**
 
@@ -781,8 +819,8 @@ export default function TenantSettingsPage() {
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/dashboard/src/app/routes/_authenticated/_tenant-settings/section-registry.ts packages/dashboard/src/app/routes/_authenticated/_tenant-settings/tenant-settings.tsx packages/dashboard/src/app/routes/_authenticated/_tenant-settings/sections/basic.tsx packages/dashboard/src/app/routeTree.gen.ts
-git commit --no-verify -m "feat: 租户设置中心路由壳与 section-registry"
+git add packages/dashboard/src/app/routes/_authenticated/_tenant-settings/section-registry.ts packages/dashboard/src/app/routes/_authenticated/_tenant-settings/tenant-settings.tsx packages/dashboard/src/app/routes/_authenticated/_tenant-settings/sections/basic.tsx packages/dashboard/src/lib/framework/defaults.ts
+git commit --no-verify -m "feat: 租户设置中心路由壳、section-registry 与导航注册"
 ```
 
 ---
@@ -792,12 +830,12 @@ git commit --no-verify -m "feat: 租户设置中心路由壳与 section-registry
 **Files:**
 - Create: `packages/dashboard/src/app/routes/_authenticated/_tenant-settings/tenant-settings.graphql.ts`
 
-- [ ] **Step 1: 新建 GraphQL 文档**
+- [ ] **Step 1: 新建 GraphQL 文档（纯字符串，插件字段不在 codegen 类型内）**
 
 ```ts
-import { gql } from '@apollo/client';
-
-export const GET_TENANT_SETTINGS = gql`
+// 插件新增的 tenantSettings/updateTenantBasic 等不在 GraphQL Codegen 生成类型里，
+// 因此这里用纯字符串文档，配合 api.query(stringDoc, vars) / api.mutate(stringDoc, vars) 调用。
+export const tenantSettingsDocument = `
     query GetTenantSettings($channelId: ID!) {
         tenantSettings(channelId: $channelId) {
             channelId
@@ -812,7 +850,7 @@ export const GET_TENANT_SETTINGS = gql`
     }
 `;
 
-export const UPDATE_TENANT_BASIC = gql`
+export const updateTenantBasicDocument = `
     mutation UpdateTenantBasic($input: TenantSectionPatchInput!) {
         updateTenantBasic(input: $input) {
             channelId
@@ -821,7 +859,7 @@ export const UPDATE_TENANT_BASIC = gql`
     }
 `;
 
-export const UPDATE_TENANT_MULTI_LANGUAGE = gql`
+export const updateTenantMultiLanguageDocument = `
     mutation UpdateTenantMultiLanguage($input: TenantSectionPatchInput!) {
         updateTenantMultiLanguage(input: $input) {
             channelId
@@ -830,7 +868,7 @@ export const UPDATE_TENANT_MULTI_LANGUAGE = gql`
     }
 `;
 
-export const UPDATE_TENANT_SERVICE_NOTIFY = gql`
+export const updateTenantServiceNotifyDocument = `
     mutation UpdateTenantServiceNotify($input: TenantSectionPatchInput!) {
         updateTenantServiceNotify(input: $input) {
             channelId
@@ -858,11 +896,13 @@ git commit --no-verify -m "feat: 租户设置中心 GraphQL 文档"
 
 ```tsx
 import { useEffect, useState } from 'react';
-import { useQuery, useMutation } from '@apollo/client';
-import { SettingsForm, FieldSpec } from '../settings-form';
-import { GET_TENANT_SETTINGS, UPDATE_TENANT_BASIC } from '../tenant-settings.graphql';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { api } from '@/vdb/graphql/api.js';
+import { Button } from '@/vdb/components/ui/button.js';
+import { SettingsForm, Fields } from '../settings-form.js';
+import { tenantSettingsDocument, updateTenantBasicDocument } from '../tenant-settings.graphql.js';
 
-const fields: Array<FieldSpec | { group: string; fields: FieldSpec[] }> = [
+const fields: Fields = [
     { name: 'tenantName', label: '租户名称', type: 'text' },
     { name: 'contactPhone', label: '联系电话', type: 'text' },
     { name: 'address', label: '地址', type: 'textarea' },
@@ -889,49 +929,37 @@ const fields: Array<FieldSpec | { group: string; fields: FieldSpec[] }> = [
     },
 ];
 
-function deepGet(obj: any, path: string): any {
-    return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
-}
-
-function deepSet(obj: any, path: string, value: any): any {
-    const keys = path.split('.');
-    const out = { ...obj };
-    let cur = out;
-    for (let i = 0; i < keys.length - 1; i++) {
-        cur[keys[i]] = cur[keys[i]] ?? {};
-        cur = cur[keys[i]];
-    }
-    cur[keys[keys.length - 1]] = value;
-    return out;
-}
-
 export default function BasicSection({ channelId }: { channelId: string }) {
-    const { data, refetch } = useQuery(GET_TENANT_SETTINGS, { variables: { channelId } });
-    const [updateBasic] = useMutation(UPDATE_TENANT_BASIC);
+    const { data, refetch } = useQuery({
+        queryKey: ['tenantSettings', channelId],
+        queryFn: () => api.query(tenantSettingsDocument, { channelId }),
+    });
     const [values, setValues] = useState<Record<string, any>>({});
 
+    // data 就绪时用服务端 basic 段初始化本地 state（仅首次）
+    const basic = (data as any)?.tenantSettings?.basic;
     useEffect(() => {
-        const basic = data?.tenantSettings?.basic || {};
-        setValues(basic);
-    }, [data]);
+        if (basic) setValues(basic);
+    }, [basic]);
 
-    const onChange = (v: Record<string, any>) => setValues(v);
-
-    const save = async () => {
-        await updateBasic({ variables: { input: { channelId, patch: values } } });
-        await refetch();
-    };
+    const mutation = useMutation({
+        mutationFn: (patch: Record<string, any>) =>
+            api.mutate(updateTenantBasicDocument, { input: { channelId, patch } }),
+        onSuccess: () => refetch(),
+    });
 
     return (
         <div>
-            <SettingsForm fields={fields} values={values} onChange={onChange} />
-            <button onClick={save}>保存基本设置</button>
+            <SettingsForm fields={fields} values={values} onChange={setValues} />
+            <Button className="mt-4" disabled={mutation.isPending} onClick={() => mutation.mutate(values)}>
+                保存基本设置
+            </Button>
         </div>
     );
 }
 ```
 
-> 说明：`deepGet`/`deepSet` 用于把 `invoiceHeader.companyName` 这类点路径映射到嵌套对象；`SettingsForm` 内部 `onChange` 已按扁平 name 处理，此处需在 `SettingsForm` 中把点路径解析为嵌套值（见 Task 7 的 `renderField` 中 `value` 用 `deepGet(values, f.name)`、`set` 用 `deepSet`）。实现时让 `SettingsForm` 统一处理点路径，本 Tab 的 `values` 直接传嵌套对象即可。
+> 说明：`api.query`/`api.mutate` 来自 `@/vdb/graphql/api.js`（awesome-graphql-client 封装）；`useQuery`/`useMutation` 来自 `@tanstack/react-query`。`SettingsForm` 内部用 `deepGet`/`deepSet` 处理点路径，`values` 直接保存为嵌套对象，作为 patch 传给 mutation。实际运行确认 `Button` props（`disabled`/`onClick`）与当前版本一致；若 `useChannel` 已在更高层保证 channelId 存在，`channelId` 由路由壳传入。
 
 - [ ] **Step 2: 本地运行 Dashboard 验证**
 
@@ -949,7 +977,7 @@ git commit --no-verify -m "feat: 基本设置 Tab"
 
 ### Task 11-17: 其余 7 个 Tab
 
-> 所有 Tab 复用 Task 7 的 `SettingsForm` 与 Task 8 的 section-registry，结构与 basic.tsx 完全一致（useQuery 对应段 → useState 本地编辑 → mutation 保存 → refetch）。以下每步给出该 Tab 独有的字段配置与 mutation，其余模板代码照抄 basic.tsx。
+> 所有 Tab 复用 Task 7 的 `SettingsForm` 与 Task 8 的 section-registry，结构与 basic.tsx 完全一致：`useQuery`（`@tanstack/react-query` + `api.query`）读对应段 → `useState` 本地编辑 → `useMutation`（`api.mutate`）保存 → refetch。以下每步给出该 Tab 独有的字段配置与 mutation 文档名，其余模板代码照抄 basic.tsx。
 
 **Files:** 每个 Tab 新建 `packages/dashboard/src/app/routes/_authenticated/_tenant-settings/sections/<name>.tsx`
 
@@ -972,6 +1000,8 @@ const fields = [
 // 保存后 refetch GET_TENANT_SETTINGS
 ```
 
+> `operationalCopy` 各 `stringList` 的**数组下标与语言 code 一一对应**，顺序与 `availableLanguageCodes` 一致（如 `availableLanguageCodes=[zh_Hans,en]`，则 `operationalCopy.tenantName[0]=中文名、[1]=英文名`）。前端输入框按语言 code 数量渲染对应行，并在 label 上标注语言 code。
+
 - [ ] **Task 12: auth.tsx — 登录认证 & SSO**
 
 读取段：`auth`。该段结构沿用现有 `TenantAuthConfigMasked`（enabledMethods / overrides / ssoProviders）。字段配置（简）：
@@ -990,6 +1020,7 @@ const fields = [
         { name: 'overrides.wechat.appSecret', label: 'AppSecret', type: 'password', secret: true },
     ]},
     { group: 'SSO', fields: [
+        { name: 'ssoProviders[*].providerKey', label: 'ProviderKey（唯一标识，必填）', type: 'text' },
         { name: 'ssoProviders[*].name', label: 'SSO 名称', type: 'text' },
         { name: 'ssoProviders[*].baseUrl', label: 'BaseUrl', type: 'text' },
         { name: 'ssoProviders[*].clientId', label: 'ClientId', type: 'text' },
@@ -998,7 +1029,23 @@ const fields = [
 ];
 ```
 
-> 说明：auth 段更新沿用现有 `updateTenantAuth`（或复用 `updateTenantConfig` 的 `authPatch`）。本期实现可先复用 `updateTenantConfig` 走 `authPatch`，SSO 列表用现有 `testSsoConnection` 做连接测试按钮。SSO 数组的编辑（`ssoProviders[*]`）为列表编辑，需在表单内做增删行的行级渲染，属本 Tab 的复杂点，实现时按数组行编辑完成。
+> **保存方式（无独立 mutation）**：auth 段复用现有 `updateTenantConfig`，patch 直接作为 `authPatch` 传入：
+> ```ts
+> api.mutate(updateTenantConfigDocument, { input: { channelId, authPatch: values } })
+> ```
+> 其中 `updateTenantConfigDocument` 需在 `tenant-settings.graphql.ts` 补一个（若尚未存在）：
+> ```ts
+> export const updateTenantConfigDocument = `
+>     mutation UpdateTenantConfig($input: UpdateTenantConfigInput!) {
+>         updateTenantConfig(input: $input) {
+>             channelId
+>             auth
+>             canEdit
+>         }
+>     }
+> `;
+> ```
+> 保存后 refetch `GET_TENANT_SETTINGS`。断言：`assertCanWrite` 已校验；`mergeAuthConfig` 按 `providerKey` 匹配保 `clientSecret`（前端传 `***` 保留原值）。SSO 数组的编辑（`ssoProviders[*]`）为列表编辑，需在表单内做增删行的行级渲染，属本 Tab 的复杂点，实现时按数组行编辑完成；新增行必须带唯一 `providerKey`。
 
 - [ ] **Task 13: payment.tsx — 支付方式**
 
@@ -1119,6 +1166,12 @@ git commit --no-verify -m "chore: 租户设置中心端到端走查"
 - 权限 canEdit 复用 → Task 5（assertCanWrite）✅
 - 审计复用 → Task 5（writeAudit）✅
 
-**占位扫描：** 无 TBD/TODO；Task 11-17 给了各 Tab 独有的字段 config 与 mutation，模板复用 basic.tsx 并显式说明。
+**占位扫描：** 无 TBD/TODO；Task 3 已删除 `readRaw` 占位；Task 11-17 给了各 Tab 独有的字段 config 与 mutation，模板复用 basic.tsx 并显式说明。
+
+**遗漏修正：**
+- 导航注册 → Task 8 Step 3（`defaults.ts` 追加 `/tenant-settings` 菜单项）✅
+- 前端 ESM `.js` 后缀 → Task 7/8/10 已统一补 `.js` ✅
+- auth 段保存方式（复用 `updateTenantConfig`+`authPatch`）+ `providerKey` 必填 → Task 12 已补 ✅
+- 多语言 `operationalCopy` index↔语言 code 映射约定 → Task 11 已注明 ✅
 
 **类型一致性：** backend service 方法名 `get`/`getMasked`/`update` 与 resolver 调用一致；GraphQL 端 `tenantSettings`/`updateTenantBasic`/`updateTenantMultiLanguage`/`updateTenantServiceNotify` 在 schema（Task 6）、graphql.ts（Task 9）、resolver（Task 5）三处一致。前端 `SettingsForm` 的 `FieldSpec` 与各 Tab 字段配置一致。

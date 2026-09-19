@@ -22,5 +22,6 @@ __exportStar(require("./src/commission.service"), exports);
 __exportStar(require("./src/withdrawal.service"), exports);
 __exportStar(require("./src/distributor.entity"), exports);
 __exportStar(require("./src/commission-record.entity"), exports);
+__exportStar(require("./src/commission-record-created.event"), exports);
 __exportStar(require("./src/withdrawal-request.entity"), exports);
 //# sourceMappingURL=index.js.map

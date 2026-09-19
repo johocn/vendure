@@ -13,6 +13,7 @@ exports.CommissionService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const commission_record_entity_1 = require("./commission-record.entity");
+const commission_record_created_event_1 = require("./commission-record-created.event");
 const distributor_entity_1 = require("./distributor.entity");
 const distribution_service_1 = require("./distribution.service");
 const constants_1 = require("./constants");
@@ -118,6 +119,14 @@ let CommissionService = class CommissionService {
                 core_1.Logger.info(`Created indirect commission ${indirectAmount} for distributor ${directDistributor.parentId}`, constants_1.loggerCtx);
             }
             await this.connection.commitOpenTransaction(ctx);
+            // 生态钩子：直接佣金落库后发布事件，供 eco-plugin 等订阅上报 distribute；
+            // 发布失败仅告警，绝不影响佣金主流程
+            try {
+                await this.eventBus.publish(new commission_record_created_event_1.CommissionRecordCreatedEvent(ctx, String(order.id), order.code, String(directDistributor.customerId), 'direct'));
+            }
+            catch (e) {
+                core_1.Logger.warn(`Failed to publish CommissionRecordCreatedEvent: ${e.message}`, constants_1.loggerCtx);
+            }
         }
         catch (e) {
             await this.connection.rollBackTransaction(ctx);

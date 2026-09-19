@@ -37,7 +37,7 @@ let EcoPlugin = EcoPlugin_1 = class EcoPlugin {
         EcoPlugin_1.options = options !== null && options !== void 0 ? options : {};
         return EcoPlugin_1;
     }
-    async onApplicationBootstrap() {
+    onApplicationBootstrap() {
         this.listener.init();
         const configured = !!(EcoPlugin_1.options.gameUrl || process.env.GAME_ECO_URL) &&
             !!(EcoPlugin_1.options.secret || process.env.GAME_ECO_SECRET);
