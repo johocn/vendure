@@ -3,7 +3,11 @@ import { ID, RequestContext, TransactionalConnection, UserInputError } from '@ve
 
 import { CouponTemplate } from './coupon-template.entity';
 import { ProductCouponBinding } from './product-coupon-binding.entity';
+import { CouponBindingCache } from './coupon-binding-cache';
 import { CreateProductCouponBindingInput, UpdateProductCouponBindingInput } from './types';
+
+/** 进程内共享的 binding 集合缓存实例（结算侧经 listByTemplate 走此缓存） */
+export const couponBindingCache = new CouponBindingCache();
 
 /**
  * 商品绑券（运营层）：维护 ProductCouponBinding，并把「绑定到某商品」这一事实
@@ -26,6 +30,7 @@ export class CouponBindingService {
         tpl.scope = 'SKU' as any;
         tpl.variantId = binding.variantIds?.length === 1 ? binding.variantIds[0] : (null as any);
         await this.connection.getRepository(ctx, CouponTemplate).save(tpl);
+        couponBindingCache.invalidate(tpl.id as any);
     }
 
     /** 商品下的可见绑定：enabled && 模板 enabled && claimable && 渠道匹配（详情页领券入口用） */
@@ -39,14 +44,17 @@ export class CouponBindingService {
         return bindings.filter(b => this.visibleBinding(b, ctx));
     }
 
-    /** 模板下的可见绑定（模板编辑页展示，过滤规则同上） */
+    /** 模板下的可见绑定（模板编辑页展示，过滤规则同上）——经进程内 TTL 缓存，CRUD 时主动失效 */
     async listByTemplate(ctx: RequestContext, templateId: ID): Promise<ProductCouponBinding[]> {
-        const repo = this.connection.getRepository(ctx, ProductCouponBinding);
-        const bindings = await repo.find({
-            where: { couponTemplateId: templateId as any, enabled: true },
-            relations: { template: true },
-        });
-        return bindings.filter(b => this.visibleBinding(b, ctx));
+        const key = `${ctx.channel?.id ?? 0}:${templateId}`;
+        return couponBindingCache.get(key, async () => {
+            const repo = this.connection.getRepository(ctx, ProductCouponBinding);
+            const bindings = await repo.find({
+                where: { couponTemplateId: templateId as any, enabled: true },
+                relations: { template: true },
+            });
+            return bindings.filter(b => this.visibleBinding(b, ctx));
+        }) as Promise<ProductCouponBinding[]>;
     }
 
     /** 后台管理用：商品下全部绑定（含停用、含非 claimable），按渠道隔离 */
@@ -85,6 +93,7 @@ export class CouponBindingService {
         if (tpl) {
             await this.syncTemplateScope(ctx, tpl, saved);
         }
+        couponBindingCache.invalidate(input.couponTemplateId as any);
         return saved;
     }
 
@@ -125,6 +134,7 @@ export class CouponBindingService {
         if (input.enabled === false && saved.couponTemplateId != null) {
             await this.syncTemplateScopeAfterMutation(ctx, saved.couponTemplateId);
         }
+        couponBindingCache.invalidate(saved.couponTemplateId as any);
         return saved;
     }
 
@@ -162,6 +172,7 @@ export class CouponBindingService {
         await repo.delete(id);
         if (binding?.couponTemplateId != null) {
             await this.syncTemplateScopeAfterMutation(ctx, binding.couponTemplateId);
+            couponBindingCache.invalidate(binding.couponTemplateId as any);
         }
     }
 
@@ -177,6 +188,7 @@ export class CouponBindingService {
         if (!saved.enabled && saved.couponTemplateId != null) {
             await this.syncTemplateScopeAfterMutation(ctx, saved.couponTemplateId);
         }
+        couponBindingCache.invalidate(saved.couponTemplateId as any);
         return saved;
     }
 

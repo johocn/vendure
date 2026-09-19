@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { CouponBindingService } from './coupon-binding.service';
+import { CouponBindingService, couponBindingCache } from './coupon-binding.service';
 import { CouponTemplate } from './coupon-template.entity';
 import { ProductCouponBinding } from './product-coupon-binding.entity';
 
@@ -36,6 +36,8 @@ describe('CouponBindingService', () => {
             }),
         };
         service = new CouponBindingService(connection as any);
+        // 清理模块级共享缓存，避免跨用例串状态
+        couponBindingCache.clear();
     });
 
     it('create 后单向同步模板 scope=SKU（单 variant 写 variantId）', async () => {
@@ -139,5 +141,37 @@ describe('CouponBindingService', () => {
         const savedTpl = templateRepo.save.mock.calls[0][0];
         expect(savedTpl.variantId).toBeNull();
         expect(savedTpl.scope).toBe('SKU');
+    });
+
+    it('listByTemplate 走缓存：同 ctx/templateId 重复调用底层 repo.find 仅一次', async () => {
+        bindingRepo.find.mockResolvedValue([
+            { id: 3, enabled: true, channelId: 1, template: { enabled: true, claimable: true } },
+        ]);
+
+        const r1 = await service.listByTemplate(ctx, 42);
+        const r2 = await service.listByTemplate(ctx, 42);
+        const r3 = await service.listByTemplate(ctx, 42);
+
+        expect(bindingRepo.find).toHaveBeenCalledTimes(1);
+        expect(r1.map((b: any) => b.id)).toEqual([3]);
+        expect(r2.map((b: any) => b.id)).toEqual([3]);
+        expect(r3.map((b: any) => b.id)).toEqual([3]);
+    });
+
+    it('listByTemplate 命中缓存后，CRUD 主动失效使缓存重算', async () => {
+        bindingRepo.find.mockResolvedValue([
+            { id: 3, enabled: true, channelId: 1, template: { enabled: true, claimable: true } },
+        ]);
+        await service.listByTemplate(ctx, 42); // 首次结果入缓存
+
+        // 触发一次 create（同模板），应失效对应 key
+        bindingRepo.findOne.mockResolvedValue(undefined);
+        bindingRepo.save.mockImplementation(async (b: any) => b);
+        templateRepo.findOne.mockResolvedValue({ id: 42, scope: 'ALL', variantId: null });
+        await service.create(ctx, { productId: 11, variantIds: [1], couponTemplateId: 42 });
+
+        const r = await service.listByTemplate(ctx, 42);
+        expect(bindingRepo.find).toHaveBeenCalledTimes(2); // 失效后重新查库一次
+        expect(r.map((b: any) => b.id)).toEqual([3]);
     });
 });
