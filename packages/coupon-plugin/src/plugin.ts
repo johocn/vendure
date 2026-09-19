@@ -26,7 +26,7 @@ import { CouponService } from './coupon.service';
 import { CouponShopResolver } from './coupon-shop.resolver';
 import { CouponTemplate } from './coupon-template.entity';
 import { CustomerCoupon } from './customer-coupon.entity';
-import { AddCouponFieldsMigration, CreateProductCouponBindingMigration } from './migrations';
+import { AddCouponFieldsMigration, AddCouponIndexes20260919, CreateProductCouponBindingMigration } from './migrations';
 import { couponOrderCustomFields } from './order-custom-fields';
 import { ProductCouponBinding } from './product-coupon-binding.entity';
 import { CouponPluginOptions } from './types';
@@ -95,6 +95,7 @@ type CustomerCoupon implements Node {
         CouponBindingService,
         AddCouponFieldsMigration,
         CreateProductCouponBindingMigration,
+        AddCouponIndexes20260919,
     ],
     exports: [CouponService, CouponBindingService],
     adminApiExtensions: {

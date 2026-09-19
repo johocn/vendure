@@ -38,22 +38,22 @@ export class ProductCouponBinding extends VendureEntity {
     /** 展示排序（升序） */
     @Column({ default: 0 }) displayOrder: number;
 
-    /** 预留：每人限领覆盖 */
+    /* 预留字段：本期仅建字段不开发行为；结算/领取均忽略，勿误以为已生效。 */
     @Column({ nullable: true }) perUserClaimLimit?: number;
 
-    /** 预留：专属领券时间窗 */
+    /* 预留字段：本期仅建字段不开发行为；结算/领取均忽略，勿误以为已生效。 */
     @Column({ nullable: true }) claimWindowStart?: Date;
     @Column({ nullable: true }) claimWindowEnd?: Date;
 
-    /** 预留：独立领券库存 */
+    /* 预留字段：本期仅建字段不开发行为；结算/领取均忽略，勿误以为已生效。 */
     @Column({ nullable: true }) claimStock?: number;
 
-    /** 角标文案 */
+    /* 预留字段：本期仅建字段不开发行为；结算/领取均忽略，勿误以为已生效。 */
     @Column('varchar', { nullable: true }) badgeText?: string;
 
-    /** 主文案 */
+    /* 预留字段：本期仅建字段不开发行为；结算/领取均忽略，勿误以为已生效。 */
     @Column('varchar', { nullable: true }) promoTitle?: string;
 
-    /** 备注 */
+    /* 预留字段：本期仅建字段不开发行为；结算/领取均忽略，勿误以为已生效。 */
     @Column('varchar', { nullable: true }) remark?: string;
 }
