@@ -19,7 +19,7 @@
 - 无法批量、幂等地执行种子数据
 
 ### 1.2 目标
-提供一个**本地一键 Node CLI 工具** `dbtool`，将上述四类操作封装为简单命令，自动走 `ssh qing` + `docker exec psql` 完成，彻底规避 PowerShell 引号陷阱，提升运维效率。
+提供一个**本地一键 Node CLI 工具** `dbtool`，将上述四类操作封装为简单命令，自动走 `ssh joho` + `docker exec psql` 完成，彻底规避 PowerShell 引号陷阱，提升运维效率。
 
 ## 2. 已确认的关键决策
 
@@ -69,7 +69,7 @@ d:\zhao\vendure\tools\
 ### 4.2 组件职责
 - **dbtool.mjs**：解析 argv，分发到对应命令处理函数，统一错误处理与退出码。
 - **dbtool.config.mjs**：导出连接配置对象 `{ host, user, container, db, sshCmd }`，改一处即可变更目标。
-- **lib/ssh.mjs**：封装 `ssh qing "..."`、`scp 本地 远程`、`docker cp`、`docker exec ... psql`。所有远程命令通过**临时文件**传递，绝不内联拼接 SQL。
+- **lib/ssh.mjs**：封装 `ssh joho "..."`、`scp 本地 远程`、`docker cp`、`docker exec ... psql`。所有远程命令通过**临时文件**传递，绝不内联拼接 SQL。
 - **lib/db.mjs**：提供 `runSqlFile(file)`、`runQuery(sql)`、`runSeedDir(dir)`、`backupTable(table)`、`addColumn(...)`、`listTables()` 等核心函数。
 
 ## 5. 核心机制设计

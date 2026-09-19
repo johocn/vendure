@@ -3,8 +3,8 @@
  * 修改此处即可切换目标服务器/数据库
  */
 export const config = {
-    // ssh 别名（~/.ssh/config 中定义，如 qing）
-    sshAlias: 'qing',
+    // ssh 别名（~/.ssh/config 中定义，如 joho）
+    sshAlias: 'joho',
     // 数据库 Docker 容器名
     container: '1Panel-postgresql-pIe0',
     // 数据库名 / 用户
