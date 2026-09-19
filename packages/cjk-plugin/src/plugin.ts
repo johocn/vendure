@@ -135,6 +135,8 @@ import { ReconciliationService } from './reconcile/reconciliation.service';
 import { ReconciliationAdminResolver } from './reconcile/reconciliation-admin.resolver';
 import { StockDocEntity } from './inventory/stock-doc.entity';
 import { StockDocItemEntity } from './inventory/stock-doc-item.entity';
+import { StockDocService } from './inventory/stock-doc.service';
+import { StockDocAdminResolver } from './inventory/stock-doc.admin.resolver';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
@@ -177,6 +179,7 @@ import { StockDocItemEntity } from './inventory/stock-doc-item.entity';
         StockLedgerService,
         InventoryService,
         VirtualPhysicalStockService,
+        StockDocService,
         DeliveryRecordService,
         ReconciliationService,
     ],
@@ -1119,9 +1122,64 @@ import { StockDocItemEntity } from './inventory/stock-doc-item.entity';
                     runReconciliation(date: String!, trigger: String): ReconciliationBatch
                     rerunReconciliationOrder(lineId: ID!): ReconciliationOrderLine!
                 }
+
+                type StockDoc {
+                    id: ID!
+                    code: String!
+                    type: String!
+                    remark: String
+                    operator: String
+                    createdAt: String!
+                }
+
+                input StockDocItemInput {
+                    variantId: ID!
+                    fromStockLocationId: ID
+                    toStockLocationId: ID
+                    qty: Int!
+                    realQty: Int
+                    costPrice: Int
+                }
+
+                input StockDocCreateInput {
+                    type: String!
+                    remark: String
+                    operator: String
+                    items: [StockDocItemInput!]!
+                }
+
+                type StockLedgerEntry {
+                    id: ID!
+                    code: String!
+                    productVariantId: ID!
+                    stockLocationId: ID!
+                    bizType: String!
+                    bizCode: String
+                    orderLineId: ID
+                    direction: String!
+                    quantity: Int!
+                    beforeOnHand: Int
+                    afterOnHand: Int
+                    otherLocationId: ID
+                    reason: String
+                    createdAt: String!
+                }
+
+                type StockLedgerList {
+                    items: [StockLedgerEntry!]!
+                    totalItems: Int!
+                }
+
+                extend type Mutation {
+                    createStockDoc(input: StockDocCreateInput!): StockDoc!
+                }
+
+                extend type Query {
+                    stockMovementLedger(productVariantId: ID, locationId: ID, bizCode: String, orderLineId: ID, page: Int, pageSize: Int): StockLedgerList!
+                }
                 `;
         },
-        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, RoomTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver, MerchantSettlementAdminResolver, DeliveryAdminResolver, InventoryAdminResolver, ReconciliationAdminResolver],
+        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, RoomTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver, MerchantSettlementAdminResolver, DeliveryAdminResolver, InventoryAdminResolver, ReconciliationAdminResolver, StockDocAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {

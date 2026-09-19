@@ -10,9 +10,10 @@ import {
     StockLocationService,
     StockMovementEvent,
     TransactionalConnection,
+    UserInputError,
 } from '@vendure/core';
 import { Sale } from '@vendure/core';
-import { InventoryService } from '@vendure/inventory-plugin';
+import { InventoryService, LedgerMeta } from '@vendure/inventory-plugin';
 import { In } from 'typeorm';
 import { VariantLocationBinding } from './variant-location-binding.entity';
 import { calcMirrorDelta, haversineKm, sumBoundOnHand } from './mirror-math';
@@ -265,5 +266,52 @@ export class VirtualPhysicalStockService {
             }
         }
         return { variantId, saleableStock, physicalStockEnabled, stockDetail };
+    }
+
+    /**
+     * 统一物理仓调库原语（单据/预留单/订单钩子共用）：
+     * delta>0 入库、delta<0 出库。负 delta 校验物理仓 onHand 充足，不足抛「物理库存不足」。
+     * 复用 inventory-plugin 的 adjustStockPublic：写 StockAdjustment 流水 + 可选 OrderStockLedger 账本。
+     */
+    async adjustPhysicalStock(
+        ctx: RequestContext,
+        variantId: ID,
+        locationId: ID,
+        delta: number,
+        reason: string,
+        meta?: LedgerMeta,
+    ): Promise<void> {
+        if (delta === 0) {
+            return;
+        }
+        if (delta < 0) {
+            const current = await this.stockLevelService.getStockLevel(ctx, variantId, locationId);
+            if (current.stockOnHand + delta < 0) {
+                throw new UserInputError(
+                    `物理库存不足：variant=${variantId} 仓库=${locationId} 需${-delta} 现有${current.stockOnHand}`,
+                );
+            }
+        }
+        await this.inventoryService.adjustStockPublic(ctx, variantId, locationId, delta, reason, meta);
+    }
+
+    /**
+     * 物理仓盘点覆盖语义：将某仓 onHand 置为绝对值 targetOnHand。
+     * 返回实际差异 delta（目标-当前），写 stocktake 账本流水（meta.bizCode=单据号）。
+     */
+    async setPhysicalStock(
+        ctx: RequestContext,
+        variantId: ID,
+        locationId: ID,
+        targetOnHand: number,
+        reason: string,
+        meta?: LedgerMeta,
+    ): Promise<number> {
+        const current = await this.stockLevelService.getStockLevel(ctx, variantId, locationId);
+        const delta = targetOnHand - current.stockOnHand;
+        if (delta !== 0) {
+            await this.inventoryService.adjustStockPublic(ctx, variantId, locationId, delta, reason, meta);
+        }
+        return delta;
     }
 }
