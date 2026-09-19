@@ -1161,7 +1161,10 @@ import { inventoryModeChannelFields } from './inventory/inventory-mode.custom-fi
                     items: [StockDocItemInput!]!
                 }
 
-                type StockLedgerEntry {
+                # 库存流水输出类型必须在本插件 SDL 内独立命名定义：
+                # 复用 inventory-plugin 的 StockLedgerEntry/StockLedgerList 会因两插件重复同名注册而
+                # schema 崩溃（"Type already exists"）；只引用不定义则报 Unknown type。
+                type StockDocLedgerEntry {
                     id: ID!
                     code: String!
                     productVariantId: ID!
@@ -1175,11 +1178,11 @@ import { inventoryModeChannelFields } from './inventory/inventory-mode.custom-fi
                     afterOnHand: Int
                     otherLocationId: ID
                     reason: String
-                    createdAt: String!
+                    createdAt: DateTime!
                 }
 
-                type StockLedgerList {
-                    items: [StockLedgerEntry!]!
+                type StockDocLedgerList {
+                    items: [StockDocLedgerEntry!]!
                     totalItems: Int!
                 }
 
@@ -1188,7 +1191,7 @@ import { inventoryModeChannelFields } from './inventory/inventory-mode.custom-fi
                 }
 
                 extend type Query {
-                    stockMovementLedger(productVariantId: ID, locationId: ID, bizCode: String, orderLineId: ID, page: Int, pageSize: Int): StockLedgerList!
+                    stockMovementLedger(productVariantId: ID, locationId: ID, bizCode: String, orderLineId: ID, page: Int, pageSize: Int): StockDocLedgerList!
                 }
                 `;
         },

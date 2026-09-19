@@ -132,6 +132,17 @@ const inventory_admin_resolver_1 = require("./inventory/inventory-admin.resolver
 const reconciliation_entity_1 = require("./reconcile/reconciliation.entity");
 const reconciliation_service_1 = require("./reconcile/reconciliation.service");
 const reconciliation_admin_resolver_1 = require("./reconcile/reconciliation-admin.resolver");
+const stock_doc_entity_1 = require("./inventory/stock-doc.entity");
+const stock_doc_item_entity_1 = require("./inventory/stock-doc-item.entity");
+const stock_doc_service_1 = require("./inventory/stock-doc.service");
+const stock_doc_admin_resolver_1 = require("./inventory/stock-doc.admin.resolver");
+const stock_reservation_entity_1 = require("./inventory/stock-reservation.entity");
+const stock_reservation_item_entity_1 = require("./inventory/stock-reservation-item.entity");
+const stock_reservation_service_1 = require("./inventory/stock-reservation.service");
+const inventory_mode_service_1 = require("./inventory/inventory-mode.service");
+const simple_inventory_adapter_1 = require("./inventory/simple-inventory.adapter");
+const odoo_inventory_adapter_1 = require("./inventory/odoo-inventory.adapter");
+const inventory_mode_custom_fields_1 = require("./inventory/inventory-mode.custom-fields");
 let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
     constructor(options, moduleRef) {
         this.options = options;
@@ -153,6 +164,8 @@ let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
         }
         // 虚拟×物理库存：SALE 同事务镜像虚拟仓（物理驱动变体）
         injector.get(virtual_physical_stock_service_1.VirtualPhysicalStockService).registerMirrorHandler();
+        // 多仓拆分发货预留单：ALLOCATION/SALE/CANCELLATION/RELEASE 事件接线（下单/发货/取消）
+        injector.get(stock_reservation_service_1.StockReservationService).registerOrderHandlers();
         // 幂等创建默认配送/支付数据（自提点、门店自提配送档案、门店收银支付档案）
         if (this.options.seedDefaultData !== false && ((_a = this.options.profiles) === null || _a === void 0 ? void 0 : _a.enabled) !== false) {
             const seedService = injector.get(default_data_service_1.DefaultDataService);
@@ -347,7 +360,7 @@ exports.CjkPlugin = CjkPlugin;
 exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_profile_method_entity_1.PaymentProfileMethod, payment_template_entity_1.PaymentTemplate, room_template_entity_1.RoomTemplate, room_template_control_entity_1.RoomTemplateControl, tenant_member_entity_1.TenantMember, wallet_entity_1.Wallet, merchant_settlement_ledger_entity_1.MerchantSettlementLedger, variant_location_binding_entity_1.VariantLocationBinding, delivery_record_entity_1.DeliveryRecord, reconciliation_entity_1.ReconciliationBatch, reconciliation_entity_1.ReconciliationOrderLine],
+        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_profile_method_entity_1.PaymentProfileMethod, payment_template_entity_1.PaymentTemplate, room_template_entity_1.RoomTemplate, room_template_control_entity_1.RoomTemplateControl, tenant_member_entity_1.TenantMember, wallet_entity_1.Wallet, merchant_settlement_ledger_entity_1.MerchantSettlementLedger, variant_location_binding_entity_1.VariantLocationBinding, delivery_record_entity_1.DeliveryRecord, reconciliation_entity_1.ReconciliationBatch, reconciliation_entity_1.ReconciliationOrderLine, stock_doc_entity_1.StockDocEntity, stock_doc_item_entity_1.StockDocItemEntity, stock_reservation_entity_1.StockReservationEntity, stock_reservation_item_entity_1.StockReservationItemEntity],
         providers: [
             { provide: constants_1.CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
             tenant_setup_service_1.TenantSetupService,
@@ -363,6 +376,8 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             migrations_1.TenantMemberColumnMigration,
             migrations_1.ChannelCustomColumnMigration,
             migrations_1.ShippingContactFlagMigration,
+            migrations_1.StockTableMigration,
+            migrations_1.ChannelInventoryModeColumnMigration,
             auth_config_service_1.AuthConfigService,
             pay_config_service_1.PayConfigService,
             map_config_service_1.MapConfigService,
@@ -386,6 +401,11 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             inventory_plugin_1.StockLedgerService,
             inventory_plugin_1.InventoryService,
             virtual_physical_stock_service_1.VirtualPhysicalStockService,
+            stock_doc_service_1.StockDocService,
+            stock_reservation_service_1.StockReservationService,
+            inventory_mode_service_1.InventoryModeService,
+            simple_inventory_adapter_1.SimpleInventoryAdapter,
+            odoo_inventory_adapter_1.OdooInventoryAdapter,
             delivery_record_service_1.DeliveryRecordService,
             reconciliation_service_1.ReconciliationService,
         ],
@@ -1328,9 +1348,67 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     runReconciliation(date: String!, trigger: String): ReconciliationBatch
                     rerunReconciliationOrder(lineId: ID!): ReconciliationOrderLine!
                 }
+
+                type StockDoc {
+                    id: ID!
+                    code: String!
+                    type: String!
+                    remark: String
+                    operator: String
+                    createdAt: String!
+                }
+
+                input StockDocItemInput {
+                    variantId: ID!
+                    fromStockLocationId: ID
+                    toStockLocationId: ID
+                    qty: Int!
+                    realQty: Int
+                    costPrice: Int
+                }
+
+                input StockDocCreateInput {
+                    type: String!
+                    remark: String
+                    operator: String
+                    items: [StockDocItemInput!]!
+                }
+
+                # 库存流水输出类型必须在本插件 SDL 内独立命名定义：
+                # 复用 inventory-plugin 的 StockLedgerEntry/StockLedgerList 会因两插件重复同名注册而
+                # schema 崩溃（"Type already exists"）；只引用不定义则报 Unknown type。
+                type StockDocLedgerEntry {
+                    id: ID!
+                    code: String!
+                    productVariantId: ID!
+                    stockLocationId: ID!
+                    bizType: String!
+                    bizCode: String
+                    orderLineId: ID
+                    direction: String!
+                    quantity: Int!
+                    beforeOnHand: Int
+                    afterOnHand: Int
+                    otherLocationId: ID
+                    reason: String
+                    createdAt: DateTime!
+                }
+
+                type StockDocLedgerList {
+                    items: [StockDocLedgerEntry!]!
+                    totalItems: Int!
+                }
+
+                extend type Mutation {
+                    createStockDoc(input: StockDocCreateInput!): StockDoc!
+                }
+
+                extend type Query {
+                    stockMovementLedger(productVariantId: ID, locationId: ID, bizCode: String, orderLineId: ID, page: Int, pageSize: Int): StockDocLedgerList!
+                }
                 `;
             },
-            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, room_template_admin_resolver_1.RoomTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver, tenant_catalog_admin_resolver_1.TenantCatalogAdminResolver, asset_library_admin_resolver_1.AssetLibraryAdminResolver, redemption_resolver_1.RedemptionAdminResolver, merchant_settlement_admin_resolver_1.MerchantSettlementAdminResolver, delivery_admin_resolver_1.DeliveryAdminResolver, inventory_admin_resolver_1.InventoryAdminResolver, reconciliation_admin_resolver_1.ReconciliationAdminResolver],
+            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, room_template_admin_resolver_1.RoomTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver, tenant_catalog_admin_resolver_1.TenantCatalogAdminResolver, asset_library_admin_resolver_1.AssetLibraryAdminResolver, redemption_resolver_1.RedemptionAdminResolver, merchant_settlement_admin_resolver_1.MerchantSettlementAdminResolver, delivery_admin_resolver_1.DeliveryAdminResolver, inventory_admin_resolver_1.InventoryAdminResolver, reconciliation_admin_resolver_1.ReconciliationAdminResolver, stock_doc_admin_resolver_1.StockDocAdminResolver],
         },
         shopApiExtensions: {
             schema: () => {
@@ -1688,7 +1766,10 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                 // 合并租户 Channel 自定义字段，按 name 去重：dev-config 或其它插件已定义的同名字段以既有为准
                 // （与下方 ProductVariant 合并去重、ShopPlugin.mergeCustomFields 保持一致，避免复制 app 崩溃报 duplicated custom field）。
                 const existingChannelNames = (((_o = config.customFields) === null || _o === void 0 ? void 0 : _o.Channel) || []).map(f => f.name);
-                const newChannelFields = (tenant_channel_custom_fields_1.tenantChannelCustomFields.Channel || []).filter(f => !existingChannelNames.includes(f.name));
+                const newChannelFields = [
+                    ...(tenant_channel_custom_fields_1.tenantChannelCustomFields.Channel || []),
+                    ...inventory_mode_custom_fields_1.inventoryModeChannelFields,
+                ].filter(f => !existingChannelNames.includes(f.name));
                 if (newChannelFields.length > 0) {
                     config.customFields = Object.assign(Object.assign({}, config.customFields), { Channel: [
                             ...(((_p = config.customFields) === null || _p === void 0 ? void 0 : _p.Channel) || []),

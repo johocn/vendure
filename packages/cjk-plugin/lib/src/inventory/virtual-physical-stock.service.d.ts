@@ -1,6 +1,6 @@
 import { EventBus, ID, RequestContext, StockLevelService, StockLocation, StockLocationService, TransactionalConnection } from '@vendure/core';
 import { Sale } from '@vendure/core';
-import { InventoryService } from '@vendure/inventory-plugin';
+import { InventoryService, LedgerMeta } from '@vendure/inventory-plugin';
 import { VariantLocationBinding } from './variant-location-binding.entity';
 import { DeliveryRecordService } from '../delivery/delivery-record.service';
 export declare class VirtualPhysicalStockService {
@@ -32,4 +32,15 @@ export declare class VirtualPhysicalStockService {
         physicalStockEnabled: boolean;
         stockDetail: any[];
     }>;
+    /**
+     * 统一物理仓调库原语（单据/预留单/订单钩子共用）：
+     * delta>0 入库、delta<0 出库。负 delta 校验物理仓 onHand 充足，不足抛「物理库存不足」。
+     * 复用 inventory-plugin 的 adjustStockPublic：写 StockAdjustment 流水 + 可选 OrderStockLedger 账本。
+     */
+    adjustPhysicalStock(ctx: RequestContext, variantId: ID, locationId: ID, delta: number, reason: string, meta?: LedgerMeta): Promise<void>;
+    /**
+     * 物理仓盘点覆盖语义：将某仓 onHand 置为绝对值 targetOnHand。
+     * 返回实际差异 delta（目标-当前），写 stocktake 账本流水（meta.bizCode=单据号）。
+     */
+    setPhysicalStock(ctx: RequestContext, variantId: ID, locationId: ID, targetOnHand: number, reason: string, meta?: LedgerMeta): Promise<number>;
 }
