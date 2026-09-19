@@ -24,6 +24,7 @@ export function getBindingService(): CouponBindingService {
 /**
  * 新客判定（统一口径）：本租户（channelId）无历史有效订单。
  * 有效订单排除未完成/取消态；跨渠道订单不计入。
+ * 注意：Order 无 channelId 列，渠道归属经 `o.channels` ManyToMany 关联表过滤。
  */
 export async function isNewCustomerWithinChannel(
     ctx: RequestContext,
@@ -33,8 +34,9 @@ export async function isNewCustomerWithinChannel(
     const count = await getCouponConnection()
         .getRepository(ctx, Order)
         .createQueryBuilder('o')
+        .innerJoin('o.channels', 'ch')
         .where('o.customerId = :cid', { cid: customerId })
-        .andWhere('o.channelId = :chan', { chan: ctx.channelId })
+        .andWhere('ch.id = :chan', { chan: ctx.channelId })
         .andWhere("o.state NOT IN ('Created','AddingItems','ArrangingPayment','Modifying','Cancelled')")
         .getCount();
     return count === 0;

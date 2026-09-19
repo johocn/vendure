@@ -19,6 +19,7 @@ describe('isNewCustomerWithinChannel 统一口径', () => {
 
     beforeEach(() => {
         qb = {
+            innerJoin: vi.fn().mockReturnThis(),
             where: vi.fn().mockReturnThis(),
             andWhere: vi.fn().mockReturnThis(),
             getCount: vi.fn().mockResolvedValue(0),
@@ -51,11 +52,10 @@ describe('isNewCustomerWithinChannel 统一口径', () => {
         expect(await isNewCustomerWithinChannel(ctx, 5)).toBe(false);
     });
 
-    it('渠道过滤：必须 andWhere o.channelId = :chan（chan=ctx.channelId）', async () => {
+    it('渠道过滤：innerJoin o.channels 并按 ch.id = ctx.channelId 过滤', async () => {
         await isNewCustomerWithinChannel(ctx, 5);
-        expect(
-            qb.andWhere,
-        ).toHaveBeenCalledWith('o.channelId = :chan', { chan: ctx.channelId });
+        expect(qb.innerJoin).toHaveBeenCalledWith('o.channels', 'ch');
+        expect(qb.andWhere).toHaveBeenCalledWith('ch.id = :chan', { chan: ctx.channelId });
     });
 
     it('isNewCustomer 委托：解析 customerId 后走统一口径，null 时短路 true', async () => {

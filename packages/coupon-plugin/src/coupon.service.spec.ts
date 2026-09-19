@@ -189,6 +189,7 @@ describe('CouponService.hasPlacedOrder 委托', () => {
 
     beforeEach(() => {
         qb = {
+            innerJoin: vi.fn().mockReturnThis(),
             where: vi.fn().mockReturnThis(),
             andWhere: vi.fn().mockReturnThis(),
             getCount: vi.fn().mockResolvedValue(1),
@@ -206,9 +207,10 @@ describe('CouponService.hasPlacedOrder 委托', () => {
 
     const ctx: any = { channelId: 37 };
 
-    it('本渠道已有有效订单（count=1）→ hasPlacedOrder 返回 true，且走 channelId 过滤', async () => {
+    it('本渠道已有有效订单（count=1）→ hasPlacedOrder 返回 true，且 innerJoin 渠道过滤', async () => {
         expect(await (service as any).hasPlacedOrder(ctx, 5)).toBe(true);
-        expect(qb.andWhere).toHaveBeenCalledWith('o.channelId = :chan', { chan: ctx.channelId });
+        expect(qb.innerJoin).toHaveBeenCalledWith('o.channels', 'ch');
+        expect(qb.andWhere).toHaveBeenCalledWith('ch.id = :chan', { chan: ctx.channelId });
     });
 
     it('本渠道无有效订单（count=0）→ hasPlacedOrder 返回 false', async () => {
