@@ -4,6 +4,7 @@ import { StockLedgerService } from '@vendure/inventory-plugin';
 import { StockDocEntity, StockDocType } from './stock-doc.entity';
 import { StockDocItemEntity } from './stock-doc-item.entity';
 import { VirtualPhysicalStockService } from './virtual-physical-stock.service';
+import { InventoryModeService } from './inventory-mode.service';
 
 const loggerCtx = 'StockDocService';
 
@@ -43,17 +44,12 @@ export class StockDocService {
         private conn: TransactionalConnection,
         private virtualPhysicalStockService: VirtualPhysicalStockService,
         private stockLedgerService: StockLedgerService,
+        private inventoryModeService: InventoryModeService,
     ) {}
 
-    /**
-     * inventoryMode gate：odoo 模式只读，禁止直接落库。Task 8 会抽出独立 service，
-     * 本轮先在此内联判断（读渠道自定义字段），便于后期平滑替换。
-     */
+    /** inventoryMode gate 委托独立服务：odoo 模式只读，禁止直接落库 */
     private assertSimple(ctx: RequestContext): void {
-        const mode = String((ctx.channel.customFields as any)?.inventoryMode ?? 'simple');
-        if (mode === 'odoo') {
-            throw new Error('Odoo 库存模式为只读，禁止直接落库单据');
-        }
+        this.inventoryModeService.assertSimple(ctx);
     }
 
     /** 生成租户内唯一单号（前缀+时间戳+随机，冲突重试） */

@@ -140,6 +140,8 @@ import { StockDocAdminResolver } from './inventory/stock-doc.admin.resolver';
 import { StockReservationEntity } from './inventory/stock-reservation.entity';
 import { StockReservationItemEntity } from './inventory/stock-reservation-item.entity';
 import { StockReservationService } from './inventory/stock-reservation.service';
+import { InventoryModeService } from './inventory/inventory-mode.service';
+import { inventoryModeChannelFields } from './inventory/inventory-mode.custom-fields';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
@@ -184,6 +186,7 @@ import { StockReservationService } from './inventory/stock-reservation.service';
         VirtualPhysicalStockService,
         StockDocService,
         StockReservationService,
+        InventoryModeService,
         DeliveryRecordService,
         ReconciliationService,
     ],
@@ -1558,9 +1561,10 @@ import { StockReservationService } from './inventory/stock-reservation.service';
             // 合并租户 Channel 自定义字段，按 name 去重：dev-config 或其它插件已定义的同名字段以既有为准
             // （与下方 ProductVariant 合并去重、ShopPlugin.mergeCustomFields 保持一致，避免复制 app 崩溃报 duplicated custom field）。
             const existingChannelNames = (config.customFields?.Channel || []).map(f => f.name);
-            const newChannelFields = (tenantChannelCustomFields.Channel || []).filter(
-                f => !existingChannelNames.includes(f.name),
-            );
+            const newChannelFields = [
+                ...(tenantChannelCustomFields.Channel || []),
+                ...inventoryModeChannelFields,
+            ].filter(f => !existingChannelNames.includes(f.name));
             if (newChannelFields.length > 0) {
                 config.customFields = {
                     ...config.customFields,
