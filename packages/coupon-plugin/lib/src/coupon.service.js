@@ -305,6 +305,8 @@ let CouponService = class CouponService {
         const customerId = await this.currentCustomerId(ctx);
         if (!customerId)
             return [];
+        // 先收敛过期券：把本用户已越界的 UNUSED/RETURNED 落为 EXPIRED，其后 status 过滤即命中
+        await this.expireDueCoupons(ctx, customerId);
         const repo = this.connection.getRepository(ctx, customer_coupon_entity_1.CustomerCoupon);
         const qb = repo
             .createQueryBuilder('cc')
@@ -346,6 +348,8 @@ let CouponService = class CouponService {
         if (!customerId) {
             throw new core_1.UserInputError('No customer for the current user');
         }
+        // 兑换前收敛过期券（与限兑/计数语义一致）
+        await this.expireDueCoupons(ctx, customerId);
         const tpl = await this.findOneTemplate(ctx, templateId);
         if (!tpl) {
             throw new core_1.UserInputError(`CouponTemplate ${templateId} not found`);
@@ -386,6 +390,8 @@ let CouponService = class CouponService {
         if (!customerId) {
             throw new core_1.UserInputError('No customer for the current user');
         }
+        // 领券前收敛过期券（与限领/计数语义一致：过期券不计持有）
+        await this.expireDueCoupons(ctx, customerId);
         const repo = this.connection.getRepository(ctx, coupon_template_entity_1.CouponTemplate);
         const tpl = await repo.findOne({
             where: { id: templateId },
@@ -614,6 +620,43 @@ let CouponService = class CouponService {
         }
         return cc;
     }
+    /* ------------------------- 过期落库（EXPIRED） ------------------------- */
+    /**
+     * 惰性 EXPIRED 落库：把已越界（expiredAt <= now）但仍为 UNUSED/RETURNED 的券置为 EXPIRED。
+     * 单语句条件 UPDATE，原子且幂等：条件含 `status IN ('UNUSED','RETURNED')` → 天然不会覆盖
+     * USED/INVALID；已 EXPIRED 不在条件内 → 多次执行不受影响。返回受影响行数（便于观测/测试）。
+     * customerId 省略时全量（供定时清扫），否则仅转化该用户（用户路径）。
+     */
+    async expireDueCoupons(ctx, customerId) {
+        var _a;
+        const repo = this.connection.getRepository(ctx, customer_coupon_entity_1.CustomerCoupon);
+        const qb = repo
+            .createQueryBuilder()
+            .update()
+            .set({ status: 'EXPIRED' })
+            .where("status IN ('UNUSED','RETURNED')")
+            .andWhere('expiredAt IS NOT NULL')
+            .andWhere('expiredAt <= :now', { now: new Date() });
+        if (customerId != null) {
+            qb.andWhere('customerId = :customerId', { customerId });
+        }
+        const result = await qb.execute();
+        return (_a = result.affected) !== null && _a !== void 0 ? _a : 0;
+    }
+    /** 全量清扫（定时任务用）：rawConnection + 无 ctx，Replica 直连；幂等。 */
+    async expireDueCouponsAll() {
+        var _a;
+        const repo = this.connection.rawConnection.getRepository(customer_coupon_entity_1.CustomerCoupon);
+        const result = await repo
+            .createQueryBuilder()
+            .update()
+            .set({ status: 'EXPIRED' })
+            .where("status IN ('UNUSED','RETURNED')")
+            .andWhere('expiredAt IS NOT NULL')
+            .andWhere('expiredAt <= :now', { now: new Date() })
+            .execute();
+        return (_a = result.affected) !== null && _a !== void 0 ? _a : 0;
+    }
     /* ------------------------- 结算选券 / 清券 ------------------------- */
     async applyCouponToOrder(ctx, orderId, code) {
         var _a, _b, _c, _d, _e;
@@ -642,6 +685,16 @@ let CouponService = class CouponService {
         });
         if (!cc || cc.customerId !== customerId) {
             throw new core_1.UserInputError('Coupon not found or does not belong to you');
+        }
+        // 实例级过期：过期（expiredAt）先落库 EXPIRED 再拒绝。
+        // 注意：模板 endsAt 可能晚于实例 expiredAt（validDays 券），故须单独校验实例快照。
+        const nowCc = new Date();
+        if (cc.expiredAt && nowCc > cc.expiredAt) {
+            if (cc.status === 'UNUSED' || cc.status === 'RETURNED') {
+                cc.status = 'EXPIRED';
+                await ccRepo.save(cc);
+            }
+            throw new core_1.UserInputError('Coupon has expired');
         }
         // UNUSED / RETURNED（取消回退后可复用）可被选定
         if (cc.status !== 'UNUSED' && cc.status !== 'RETURNED') {

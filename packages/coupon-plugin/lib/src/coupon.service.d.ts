@@ -84,6 +84,15 @@ export declare class CouponService {
         reason: string | null;
     }>>;
     revokeCoupon(ctx: RequestContext, id: ID): Promise<CustomerCoupon>;
+    /**
+     * 惰性 EXPIRED 落库：把已越界（expiredAt <= now）但仍为 UNUSED/RETURNED 的券置为 EXPIRED。
+     * 单语句条件 UPDATE，原子且幂等：条件含 `status IN ('UNUSED','RETURNED')` → 天然不会覆盖
+     * USED/INVALID；已 EXPIRED 不在条件内 → 多次执行不受影响。返回受影响行数（便于观测/测试）。
+     * customerId 省略时全量（供定时清扫），否则仅转化该用户（用户路径）。
+     */
+    expireDueCoupons(ctx: RequestContext, customerId?: number): Promise<number>;
+    /** 全量清扫（定时任务用）：rawConnection + 无 ctx，Replica 直连；幂等。 */
+    expireDueCouponsAll(): Promise<number>;
     applyCouponToOrder(ctx: RequestContext, orderId: ID, code: string): Promise<any>;
     clearCouponFromOrder(ctx: RequestContext, orderId: ID): Promise<any>;
     /** 支付成功后核销券 */

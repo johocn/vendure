@@ -103,10 +103,28 @@ let CouponPlugin = CouponPlugin_1 = class CouponPlugin {
         return CouponPlugin_1;
     }
     async onApplicationBootstrap() {
+        var _a;
         this.injector = new core_2.Injector(this.moduleRef);
         this.couponService.init(this.injector);
         (0, coupon_runtime_1.setCouponConnection)(this.injector.get(core_2.TransactionalConnection));
         (0, coupon_settlement_1.setBindingService)(this.injector.get(coupon_binding_service_1.CouponBindingService));
+        // 可选定时清扫：收敛无人访问的存量过期券（惰性 on-read 已覆盖用户路径，此为长线兜底）。
+        // 显式 set COUPON_EXPIRE_SWEEP_MS 才启动；默认关闭避免生产意外全量 UPDATE。
+        const sweepMs = Number((_a = process.env.COUPON_EXPIRE_SWEEP_MS) !== null && _a !== void 0 ? _a : 0);
+        if (sweepMs > 0) {
+            const sweep = () => {
+                this.couponService
+                    .expireDueCouponsAll()
+                    .then((n) => {
+                    if (n > 0)
+                        core_2.Logger.info(`Expired ${n} coupon(s) via sweep`, constants_1.loggerCtx);
+                })
+                    .catch((e) => core_2.Logger.error(`Coupon expire sweep failed: ${e.message}`, constants_1.loggerCtx));
+            };
+            sweep();
+            setInterval(sweep, sweepMs);
+            core_2.Logger.info(`Coupon expire sweep enabled (every ${sweepMs}ms)`, constants_1.loggerCtx);
+        }
         // 支付成功（订单下单成功）核销券
         this.eventBus.ofType(core_2.OrderPlacedEvent).subscribe(async (event) => {
             try {

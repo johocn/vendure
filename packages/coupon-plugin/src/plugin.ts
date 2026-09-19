@@ -338,6 +338,23 @@ export class CouponPlugin implements OnApplicationBootstrap {
         setCouponConnection(this.injector.get(TransactionalConnection));
         setBindingService(this.injector.get(CouponBindingService));
 
+        // 可选定时清扫：收敛无人访问的存量过期券（惰性 on-read 已覆盖用户路径，此为长线兜底）。
+        // 显式 set COUPON_EXPIRE_SWEEP_MS 才启动；默认关闭避免生产意外全量 UPDATE。
+        const sweepMs = Number(process.env.COUPON_EXPIRE_SWEEP_MS ?? 0);
+        if (sweepMs > 0) {
+            const sweep = () => {
+                this.couponService
+                    .expireDueCouponsAll()
+                    .then((n) => {
+                        if (n > 0) Logger.info(`Expired ${n} coupon(s) via sweep`, loggerCtx);
+                    })
+                    .catch((e) => Logger.error(`Coupon expire sweep failed: ${e.message}`, loggerCtx));
+            };
+            sweep();
+            setInterval(sweep, sweepMs);
+            Logger.info(`Coupon expire sweep enabled (every ${sweepMs}ms)`, loggerCtx);
+        }
+
         // 支付成功（订单下单成功）核销券
         this.eventBus.ofType(OrderPlacedEvent).subscribe(async (event) => {
             try {
