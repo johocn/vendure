@@ -133,10 +133,12 @@ import { InventoryAdminResolver } from './inventory/inventory-admin.resolver';
 import { ReconciliationBatch, ReconciliationOrderLine } from './reconcile/reconciliation.entity';
 import { ReconciliationService } from './reconcile/reconciliation.service';
 import { ReconciliationAdminResolver } from './reconcile/reconciliation-admin.resolver';
+import { StockDocEntity } from './inventory/stock-doc.entity';
+import { StockDocItemEntity } from './inventory/stock-doc-item.entity';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod, PaymentTemplate, RoomTemplate, RoomTemplateControl, TenantMember, Wallet, MerchantSettlementLedger, VariantLocationBinding, DeliveryRecord, ReconciliationBatch, ReconciliationOrderLine],
+    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod, PaymentTemplate, RoomTemplate, RoomTemplateControl, TenantMember, Wallet, MerchantSettlementLedger, VariantLocationBinding, DeliveryRecord, ReconciliationBatch, ReconciliationOrderLine, StockDocEntity, StockDocItemEntity],
     providers: [
         { provide: CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
         TenantSetupService,
