@@ -137,10 +137,13 @@ import { StockDocEntity } from './inventory/stock-doc.entity';
 import { StockDocItemEntity } from './inventory/stock-doc-item.entity';
 import { StockDocService } from './inventory/stock-doc.service';
 import { StockDocAdminResolver } from './inventory/stock-doc.admin.resolver';
+import { StockReservationEntity } from './inventory/stock-reservation.entity';
+import { StockReservationItemEntity } from './inventory/stock-reservation-item.entity';
+import { StockReservationService } from './inventory/stock-reservation.service';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod, PaymentTemplate, RoomTemplate, RoomTemplateControl, TenantMember, Wallet, MerchantSettlementLedger, VariantLocationBinding, DeliveryRecord, ReconciliationBatch, ReconciliationOrderLine, StockDocEntity, StockDocItemEntity],
+    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod, PaymentTemplate, RoomTemplate, RoomTemplateControl, TenantMember, Wallet, MerchantSettlementLedger, VariantLocationBinding, DeliveryRecord, ReconciliationBatch, ReconciliationOrderLine, StockDocEntity, StockDocItemEntity, StockReservationEntity, StockReservationItemEntity],
     providers: [
         { provide: CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
         TenantSetupService,
@@ -180,6 +183,7 @@ import { StockDocAdminResolver } from './inventory/stock-doc.admin.resolver';
         InventoryService,
         VirtualPhysicalStockService,
         StockDocService,
+        StockReservationService,
         DeliveryRecordService,
         ReconciliationService,
     ],
@@ -1747,6 +1751,9 @@ export class CjkPlugin implements OnApplicationBootstrap, NestModule {
 
         // 虚拟×物理库存：SALE 同事务镜像虚拟仓（物理驱动变体）
         injector.get(VirtualPhysicalStockService).registerMirrorHandler();
+
+        // 多仓拆分发货预留单：ALLOCATION/SALE/CANCELLATION/RELEASE 事件接线（下单/发货/取消）
+        injector.get(StockReservationService).registerOrderHandlers();
 
         // 幂等创建默认配送/支付数据（自提点、门店自提配送档案、门店收银支付档案）
         if (this.options.seedDefaultData !== false && this.options.profiles?.enabled !== false) {
