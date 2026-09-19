@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { ID, RequestContext, TransactionalConnection, UserInputError } from '@vendure/core';
+import { Channel, ID, RequestContext, TransactionalConnection, UserInputError } from '@vendure/core';
 import { ShopTemplate } from './shop-template.entity';
 import { ShopGlobalConfig } from './shop-global-config.entity';
+import { ShopTemplateVersion } from './shop-template-version.entity';
+import { deepMerge, mergePreview } from './merge-config';
 import {
     CreateShopTemplateInput,
     TemplateApp,
@@ -52,6 +54,8 @@ export class ShopTemplateService {
         if (!tpl) {
             throw new UserInputError('模板不存在');
         }
+        // 保存前写快照（此时 tpl 仍为旧值）
+        await this.snapshot(ctx, tpl, '更新前快照');
         if (input.name !== undefined) tpl.name = input.name;
         if (input.theme !== undefined) tpl.theme = input.theme;
         if (input.pages !== undefined) tpl.pages = input.pages;
@@ -123,5 +127,74 @@ export class ShopTemplateService {
         if (input.themeTokens !== undefined) cfg.themeTokens = input.themeTokens;
         if (input.defaults !== undefined) cfg.defaults = input.defaults;
         return repo.save(cfg);
+    }
+
+    /* --------------------- 版本快照 / 回滚 / 引用 / 合并预览 --------------------- */
+
+    private versionRepo(ctx: RequestContext) {
+        return this.connection.getRepository(ctx, ShopTemplateVersion);
+    }
+
+    /** 写快照（保存前调用：把旧值入版本表） */
+    async snapshot(ctx: RequestContext, tpl: ShopTemplate, note?: string): Promise<void> {
+        const v = new ShopTemplateVersion({
+            templateId: Number(tpl.id),
+            version: tpl.version ?? 1,
+            name: tpl.name,
+            theme: tpl.theme ?? {},
+            pages: tpl.pages ?? {},
+            enabled: tpl.enabled ?? true,
+            note,
+        });
+        await this.versionRepo(ctx).save(v);
+    }
+
+    /** 版本历史 */
+    async versions(ctx: RequestContext, id: ID): Promise<ShopTemplateVersion[]> {
+        return this.versionRepo(ctx).find({ where: { templateId: Number(id) as any }, order: { version: 'DESC' } });
+    }
+
+    /** 回滚：当前值入快照 → 目标版本写回 → version+1 */
+    async restore(ctx: RequestContext, id: ID, version: number): Promise<ShopTemplate> {
+        const repo = this.connection.getRepository(ctx, ShopTemplate);
+        const tpl = await repo.findOne({ where: { id: id as any } });
+        if (!tpl) throw new UserInputError('模板不存在');
+        const snap = await this.versionRepo(ctx).findOne({ where: { templateId: Number(id) as any, version } });
+        if (!snap) throw new UserInputError(`版本 ${version} 不存在`);
+        await this.snapshot(ctx, tpl, `回滚前备份 v${tpl.version}`);
+        tpl.name = snap.name ?? tpl.name;
+        tpl.theme = snap.theme ?? {};
+        tpl.pages = snap.pages ?? {};
+        tpl.enabled = snap.enabled ?? true;
+        tpl.version = (tpl.version ?? 1) + 1;
+        return repo.save(tpl);
+    }
+
+    /** 引用查询：哪些渠道引用了该模板（channel.customFields.templateId == id） */
+    async references(ctx: RequestContext, id: ID): Promise<Array<{ channelId: string; channelCode: string; channelName: string; app: string }>> {
+        const channels = await this.connection.getRepository(ctx, Channel).find({ loadEagerRelations: false });
+        const idStr = String(id);
+        return channels
+            .filter((c: any) => String((c as any).customFields?.templateId ?? '') === idStr)
+            .map((c: any) => ({
+                channelId: String(c.id),
+                channelCode: c.code,
+                channelName: (c as any).customFields?.name ?? c.code,
+                app: (c as any).customFields?.app ?? '',
+            }));
+    }
+
+    /** 合并预览：L1 → L2 → L3 深合并，返回 merged + sourceByKey */
+    async mergedPreview(
+        ctx: RequestContext,
+        app: TemplateApp,
+        templateId?: ID,
+        overrides?: any,
+    ): Promise<{ merged: any; sourceByKey: Record<string, string> }> {
+        const cfg = await this.findGlobalConfig(ctx, app);
+        const tpl = templateId ? await this.findOne(ctx, templateId) : null;
+        const l1 = { ...(cfg?.themeTokens ?? {}), ...(cfg?.defaults ?? {}) };
+        const l2 = tpl ? { ...(tpl.theme ?? {}), ...(tpl.pages ?? {}) } : {};
+        return mergePreview(l1, l2, overrides ?? {});
     }
 }
