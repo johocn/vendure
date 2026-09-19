@@ -1,5 +1,5 @@
 import { Parent, ResolveField, Resolver } from '@nestjs/graphql';
-import { Ctx, RequestContext } from '@vendure/core';
+import { CustomerService, Ctx, RequestContext } from '@vendure/core';
 
 import { CouponService } from './coupon.service';
 
@@ -11,12 +11,22 @@ import { CouponService } from './coupon.service';
  */
 @Resolver('CustomerCoupon')
 export class CustomerCouponResolver {
-    constructor(private couponService: CouponService) {}
+    constructor(
+        private couponService: CouponService,
+        private customerService: CustomerService,
+    ) {}
 
     @ResolveField('template')
     async template(@Parent() cc: any, @Ctx() ctx: RequestContext) {
         if (cc.template) return cc.template;
         if (cc.templateId == null) return null;
         return this.couponService.findOneTemplate(ctx, cc.templateId);
+    }
+
+    /** 领取/核销明细需要客户名/手机号（管理后台展示用），未命中返回 null */
+    @ResolveField('customer')
+    async customer(@Parent() cc: any, @Ctx() ctx: RequestContext) {
+        if (cc.customerId == null) return null;
+        return this.customerService.findOne(ctx, cc.customerId);
     }
 }
