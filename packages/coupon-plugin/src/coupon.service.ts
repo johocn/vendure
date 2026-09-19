@@ -788,14 +788,20 @@ export class CouponService {
         return customer?.id as number | undefined;
     }
 
-    private async countHeld(customerId: number, templateId: ID): Promise<number> {
+    private async countHeld(
+        customerId: number,
+        templateId: ID,
+        now: Date = new Date(),
+    ): Promise<number> {
         // 未跑在具体 ctx 内，用原始连接
+        const nowISO = now.toISOString();
         const countRepo = this.connection.rawConnection.getRepository(CustomerCoupon);
         return countRepo
             .createQueryBuilder('cc')
             .where('cc.customerId = :customerId', { customerId })
             .andWhere('cc.templateId = :templateId', { templateId: templateId as any })
-            .andWhere("cc.status NOT IN ('RETURNED','INVALID','EXPIRED')")
+            .andWhere("cc.status IN ('UNUSED','RETURNED')")
+            .andWhere('(cc.expiredAt IS NULL OR cc.expiredAt > :now)', { now: nowISO })
             .getCount();
     }
 

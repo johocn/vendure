@@ -4,6 +4,7 @@ import { Order } from '@vendure/core';
 import { CouponService } from './coupon.service';
 import { CouponTemplate } from './coupon-template.entity';
 import { ProductCouponBinding } from './product-coupon-binding.entity';
+import { CustomerCoupon } from './customer-coupon.entity';
 import { setCouponConnection } from './coupon-runtime';
 
 /**
@@ -213,5 +214,73 @@ describe('CouponService.hasPlacedOrder 委托', () => {
     it('本渠道无有效订单（count=0）→ hasPlacedOrder 返回 false', async () => {
         qb.getCount.mockResolvedValueOnce(0);
         expect(await (service as any).hasPlacedOrder(ctx, 5)).toBe(false);
+    });
+});
+
+/**
+ * CouponService 私有 countHeld 行为断言：mock TransactionalConnection.rawConnection，
+ * 验证「当前可取用券」计数口径 —— 仅 status IN ('UNUSED','RETURNED') 且未过期才占用领用名额。
+ */
+describe('CouponService.countHeld', () => {
+    let ccRepo: any;
+    let qb: any;
+    let connection: any;
+    let service: CouponService;
+
+    beforeEach(() => {
+        qb = {
+            where: vi.fn().mockReturnThis(),
+            andWhere: vi.fn().mockReturnThis(),
+            getCount: vi.fn().mockResolvedValue(0),
+        };
+        ccRepo = { createQueryBuilder: vi.fn().mockReturnValue(qb) };
+        connection = {
+            getRepository: vi.fn(),
+            rawConnection: {
+                getRepository: vi.fn((_entity: any) => ccRepo),
+            },
+        };
+        service = new CouponService(connection as any, {} as any, {} as any);
+    });
+
+    it('status=USED（已用）不计入 → countHeld 返回 0', async () => {
+        qb.getCount.mockResolvedValueOnce(0);
+        expect(await (service as any).countHeld(5, 10, new Date('2026-01-01'))).toBe(0);
+        expect(ccRepo.createQueryBuilder).toHaveBeenCalledWith('cc');
+    });
+
+    it('status=RETURNED 仍计入 → countHeld 返回 1', async () => {
+        qb.getCount.mockResolvedValueOnce(1);
+        expect(await (service as any).countHeld(5, 10, new Date('2026-01-01'))).toBe(1);
+    });
+
+    it('status=UNUSED 且 expiredAt < now → 不计入', async () => {
+        qb.getCount.mockResolvedValueOnce(0);
+        expect(await (service as any).countHeld(5, 10, new Date('2026-01-01'))).toBe(0);
+    });
+
+    it('status=UNUSED 且 expiredAt IS NULL → 计入', async () => {
+        qb.getCount.mockResolvedValueOnce(1);
+        expect(await (service as any).countHeld(5, 10, new Date('2026-01-01'))).toBe(1);
+    });
+
+    it('status=UNUSED 且 expiredAt > now → 计入', async () => {
+        qb.getCount.mockResolvedValueOnce(1);
+        expect(await (service as any).countHeld(5, 10, new Date('2026-01-01'))).toBe(1);
+    });
+
+    it('过滤条件包含 status IN (UNUSED,RETURNED) 与未过期判定（含 IS NULL 与 now 参数）', async () => {
+        const now = new Date('2026-03-05T10:00:00.000Z');
+        await (service as any).countHeld(7, 20, now);
+
+        expect(qb.andWhere).toHaveBeenCalledWith("cc.status IN ('UNUSED','RETURNED')");
+        expect(qb.andWhere).toHaveBeenCalledWith(
+            '(cc.expiredAt IS NULL OR cc.expiredAt > :now)',
+            { now: now.toISOString() },
+        );
+        expect(qb.andWhere).not.toHaveBeenCalledWith(
+            "cc.status NOT IN ('RETURNED','INVALID','EXPIRED')",
+        );
+        expect(ccRepo.createQueryBuilder).toHaveBeenCalledWith('cc');
     });
 });
