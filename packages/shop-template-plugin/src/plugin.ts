@@ -15,6 +15,8 @@ import { ShopTemplateShopResolver } from './shop-template-shop.resolver';
 import { ShopTemplateService } from './shop-template.service';
 import { ShopTemplate } from './shop-template.entity';
 import { ShopGlobalConfig } from './shop-global-config.entity';
+import { ShopTemplateVersion } from './shop-template-version.entity';
+import { ensureVersionTable } from './migrate';
 import { ShopTemplatePluginOptions, TemplateApp } from './types';
 import {
     shopTemplatesCreate,
@@ -81,7 +83,7 @@ const SEED_TEMPLATES = [
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [ShopTemplate, ShopGlobalConfig],
+    entities: [ShopTemplate, ShopGlobalConfig, ShopTemplateVersion],
     providers: [
         { provide: PLUGIN_INIT_OPTIONS, useFactory: () => ShopTemplatePlugin.options },
         ShopTemplateService,
@@ -148,6 +150,8 @@ export class ShopTemplatePlugin implements OnApplicationBootstrap {
     async onApplicationBootstrap(): Promise<void> {
         const injector = new Injector(this.moduleRef as any);
         this.connection = injector.get(TransactionalConnection);
+        // 生产关闭 synchronize 时显式建 shop_template_version 表（幂等，失败仅告警）
+        await ensureVersionTable(this.connection.rawConnection);
         await this.seed();
         Logger.info('ShopTemplatePlugin initialized', loggerCtx);
     }
