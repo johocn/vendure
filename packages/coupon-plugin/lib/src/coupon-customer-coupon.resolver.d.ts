@@ -1,4 +1,4 @@
-import { RequestContext } from '@vendure/core';
+import { CustomerService, RequestContext } from '@vendure/core';
 import { CouponService } from './coupon.service';
 /**
  * CustomerCoupon.template 关系字段解析。
@@ -8,6 +8,9 @@ import { CouponService } from './coupon.service';
  */
 export declare class CustomerCouponResolver {
     private couponService;
-    constructor(couponService: CouponService);
+    private customerService;
+    constructor(couponService: CouponService, customerService: CustomerService);
     template(cc: any, ctx: RequestContext): Promise<any>;
+    /** 领取/核销明细需要客户名/手机号（管理后台展示用），未命中返回 null */
+    customer(cc: any, ctx: RequestContext): Promise<import("@vendure/core").Customer | null | undefined>;
 }

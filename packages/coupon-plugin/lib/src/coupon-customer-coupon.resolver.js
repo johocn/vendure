@@ -23,8 +23,9 @@ const coupon_service_1 = require("./coupon.service");
  * findOneTemplate（顺带应用本地化与属店隔离，shop 会话下 adminShopId 为 undefined 不拦截）。
  */
 let CustomerCouponResolver = class CustomerCouponResolver {
-    constructor(couponService) {
+    constructor(couponService, customerService) {
         this.couponService = couponService;
+        this.customerService = customerService;
     }
     async template(cc, ctx) {
         if (cc.template)
@@ -32,6 +33,12 @@ let CustomerCouponResolver = class CustomerCouponResolver {
         if (cc.templateId == null)
             return null;
         return this.couponService.findOneTemplate(ctx, cc.templateId);
+    }
+    /** 领取/核销明细需要客户名/手机号（管理后台展示用），未命中返回 null */
+    async customer(cc, ctx) {
+        if (cc.customerId == null)
+            return null;
+        return this.customerService.findOne(ctx, cc.customerId);
     }
 };
 exports.CustomerCouponResolver = CustomerCouponResolver;
@@ -43,8 +50,17 @@ __decorate([
     __metadata("design:paramtypes", [Object, core_1.RequestContext]),
     __metadata("design:returntype", Promise)
 ], CustomerCouponResolver.prototype, "template", null);
+__decorate([
+    (0, graphql_1.ResolveField)('customer'),
+    __param(0, (0, graphql_1.Parent)()),
+    __param(1, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], CustomerCouponResolver.prototype, "customer", null);
 exports.CustomerCouponResolver = CustomerCouponResolver = __decorate([
     (0, graphql_1.Resolver)('CustomerCoupon'),
-    __metadata("design:paramtypes", [coupon_service_1.CouponService])
+    __metadata("design:paramtypes", [coupon_service_1.CouponService,
+        core_1.CustomerService])
 ], CustomerCouponResolver);
 //# sourceMappingURL=coupon-customer-coupon.resolver.js.map

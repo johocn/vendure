@@ -88,6 +88,7 @@ type CustomerCoupon implements Node {
     usedAt: DateTime
     expiredAt: DateTime
     template: CouponTemplate
+    customer: Customer
     createdAt: DateTime!
     updatedAt: DateTime!
 }`;
