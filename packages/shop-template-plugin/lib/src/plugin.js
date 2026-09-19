@@ -27,6 +27,8 @@ const shop_template_shop_resolver_1 = require("./shop-template-shop.resolver");
 const shop_template_service_1 = require("./shop-template.service");
 const shop_template_entity_1 = require("./shop-template.entity");
 const shop_global_config_entity_1 = require("./shop-global-config.entity");
+const shop_template_version_entity_1 = require("./shop-template-version.entity");
+const migrate_1 = require("./migrate");
 const permissions_1 = require("./permissions");
 /** 幂等合并 customFields（预构建钩子可能多次执行） */
 function mergeCustomFields(existing, additions) {
@@ -71,6 +73,33 @@ input UpdateShopGlobalConfigInput {
     defaults: JSON
 }
 `;
+// 管理增强 SDL：版本快照/引用/合并预览（独立命名，避免跨插件重名）
+const templateAdminType = `
+# 模板版本快照（update/restore 时写入旧值）
+type ShopTemplateVersionType {
+    id: ID!
+    templateId: ID!
+    version: Int!
+    name: String
+    theme: JSON
+    pages: JSON
+    enabled: Boolean!
+    note: String
+    createdAt: DateTime!
+}
+# 引用该模板的渠道
+type TemplateReference {
+    channelId: ID!
+    channelCode: String!
+    channelName: String!
+    app: String!
+}
+# 合并预览：L1 全局配置 → L2 模板 → L3 店铺覆盖
+type MergedPreview {
+    merged: JSON!
+    sourceByKey: JSON!
+}
+`;
 const SEED_TEMPLATES = [
     { name: '晨曦金(默认)', theme: { palette: { scheme: 'dawn-gold', name: '晨曦金' } }, pages: {} },
     { name: '京东红', theme: { palette: { scheme: 'jd-red', name: '京东红' } }, pages: {} },
@@ -93,6 +122,8 @@ let ShopTemplatePlugin = ShopTemplatePlugin_1 = class ShopTemplatePlugin {
     async onApplicationBootstrap() {
         const injector = new core_2.Injector(this.moduleRef);
         this.connection = injector.get(core_2.TransactionalConnection);
+        // 生产关闭 synchronize 时显式建 shop_template_version 表（幂等，失败仅告警）
+        await (0, migrate_1.ensureVersionTable)(this.connection.rawConnection);
         await this.seed();
         core_2.Logger.info('ShopTemplatePlugin initialized', constants_1.loggerCtx);
     }
@@ -134,7 +165,7 @@ ShopTemplatePlugin.options = {};
 exports.ShopTemplatePlugin = ShopTemplatePlugin = ShopTemplatePlugin_1 = __decorate([
     (0, core_2.VendurePlugin)({
         imports: [core_2.PluginCommonModule],
-        entities: [shop_template_entity_1.ShopTemplate, shop_global_config_entity_1.ShopGlobalConfig],
+        entities: [shop_template_entity_1.ShopTemplate, shop_global_config_entity_1.ShopGlobalConfig, shop_template_version_entity_1.ShopTemplateVersion],
         providers: [
             { provide: constants_1.PLUGIN_INIT_OPTIONS, useFactory: () => ShopTemplatePlugin.options },
             shop_template_service_1.ShopTemplateService,
@@ -143,10 +174,14 @@ exports.ShopTemplatePlugin = ShopTemplatePlugin = ShopTemplatePlugin_1 = __decor
         adminApiExtensions: {
             schema: () => (0, graphql_tag_1.default) `
             ${templateType}
+            ${templateAdminType}
             extend type Query {
                 shopTemplates(app: String): [ShopTemplate!]!
                 shopTemplate(id: ID!): ShopTemplate
                 shopGlobalConfig(app: String!): ShopGlobalConfig
+                templateVersions(id: ID!): [ShopTemplateVersionType!]!
+                templateReferences(id: ID!): [TemplateReference!]!
+                templateMergedPreview(app: String!, templateId: ID, overrides: JSON): MergedPreview!
             }
             extend type Mutation {
                 createShopTemplate(input: CreateShopTemplateInput!): ShopTemplate!
@@ -154,6 +189,7 @@ exports.ShopTemplatePlugin = ShopTemplatePlugin = ShopTemplatePlugin_1 = __decor
                 deleteShopTemplate(id: ID!): Boolean!
                 copyShopTemplate(id: ID!): ShopTemplate!
                 updateShopGlobalConfig(input: UpdateShopGlobalConfigInput!): ShopGlobalConfig!
+                restoreTemplateVersion(id: ID!, version: Int!): ShopTemplate!
             }
         `,
             resolvers: [shop_template_admin_resolver_1.ShopTemplateAdminResolver],

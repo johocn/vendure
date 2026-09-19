@@ -70,6 +70,34 @@ input UpdateShopGlobalConfigInput {
 }
 `;
 
+// 管理增强 SDL：版本快照/引用/合并预览（独立命名，避免跨插件重名）
+const templateAdminType = `
+# 模板版本快照（update/restore 时写入旧值）
+type ShopTemplateVersionType {
+    id: ID!
+    templateId: ID!
+    version: Int!
+    name: String
+    theme: JSON
+    pages: JSON
+    enabled: Boolean!
+    note: String
+    createdAt: DateTime!
+}
+# 引用该模板的渠道
+type TemplateReference {
+    channelId: ID!
+    channelCode: String!
+    channelName: String!
+    app: String!
+}
+# 合并预览：L1 全局配置 → L2 模板 → L3 店铺覆盖
+type MergedPreview {
+    merged: JSON!
+    sourceByKey: JSON!
+}
+`;
+
 const SEED_TEMPLATES = [
     { name: '晨曦金(默认)', theme: { palette: { scheme: 'dawn-gold', name: '晨曦金' } } as Record<string, any>, pages: {} },
     { name: '京东红', theme: { palette: { scheme: 'jd-red', name: '京东红' } } as Record<string, any>, pages: {} },
@@ -92,10 +120,14 @@ const SEED_TEMPLATES = [
     adminApiExtensions: {
         schema: () => gql`
             ${templateType}
+            ${templateAdminType}
             extend type Query {
                 shopTemplates(app: String): [ShopTemplate!]!
                 shopTemplate(id: ID!): ShopTemplate
                 shopGlobalConfig(app: String!): ShopGlobalConfig
+                templateVersions(id: ID!): [ShopTemplateVersionType!]!
+                templateReferences(id: ID!): [TemplateReference!]!
+                templateMergedPreview(app: String!, templateId: ID, overrides: JSON): MergedPreview!
             }
             extend type Mutation {
                 createShopTemplate(input: CreateShopTemplateInput!): ShopTemplate!
@@ -103,6 +135,7 @@ const SEED_TEMPLATES = [
                 deleteShopTemplate(id: ID!): Boolean!
                 copyShopTemplate(id: ID!): ShopTemplate!
                 updateShopGlobalConfig(input: UpdateShopGlobalConfigInput!): ShopGlobalConfig!
+                restoreTemplateVersion(id: ID!, version: Int!): ShopTemplate!
             }
         `,
         resolvers: [ShopTemplateAdminResolver],

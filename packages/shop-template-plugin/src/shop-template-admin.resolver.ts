@@ -9,6 +9,21 @@ import {
 } from './permissions';
 import { ShopTemplate } from './shop-template.entity';
 import { ShopGlobalConfig } from './shop-global-config.entity';
+import { ShopTemplateVersion } from './shop-template-version.entity';
+
+/** 引用该模板的渠道（与 SDL TemplateReference 对应） */
+interface TemplateReferenceResult {
+    channelId: string;
+    channelCode: string;
+    channelName: string;
+    app: string;
+}
+
+/** 合并预览（与 SDL MergedPreview 对应） */
+interface MergedPreviewResult {
+    merged: any;
+    sourceByKey: Record<string, string>;
+}
 
 @Resolver()
 export class ShopTemplateAdminResolver {
@@ -71,5 +86,44 @@ export class ShopTemplateAdminResolver {
         @Args('input') input: any,
     ): Promise<ShopGlobalConfig> {
         return this.service.upsertGlobalConfig(ctx, input);
+    }
+
+    /* --------------------- 版本快照 / 回滚 / 引用 / 合并预览 --------------------- */
+
+    @Query()
+    @Allow(shopTemplatesRead.Permission)
+    async templateVersions(@Ctx() ctx: RequestContext, @Args('id') id: ID): Promise<ShopTemplateVersion[]> {
+        return this.service.versions(ctx, id);
+    }
+
+    @Mutation()
+    @Transaction()
+    @Allow(shopTemplatesUpdate.Permission)
+    async restoreTemplateVersion(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args('version') version: number,
+    ): Promise<ShopTemplate> {
+        return this.service.restore(ctx, id, version);
+    }
+
+    @Query()
+    @Allow(shopTemplatesRead.Permission)
+    async templateReferences(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+    ): Promise<TemplateReferenceResult[]> {
+        return this.service.references(ctx, id);
+    }
+
+    @Query()
+    @Allow(shopTemplatesRead.Permission)
+    async templateMergedPreview(
+        @Ctx() ctx: RequestContext,
+        @Args('app') app: string,
+        @Args('templateId', { nullable: true }) templateId?: ID,
+        @Args({ name: 'overrides', type: () => Object, nullable: true }) overrides?: any,
+    ): Promise<MergedPreviewResult> {
+        return this.service.mergedPreview(ctx, app as any, templateId, overrides);
     }
 }

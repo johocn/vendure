@@ -45,6 +45,19 @@ let ShopTemplateAdminResolver = class ShopTemplateAdminResolver {
     async updateShopGlobalConfig(ctx, input) {
         return this.service.upsertGlobalConfig(ctx, input);
     }
+    /* --------------------- 版本快照 / 回滚 / 引用 / 合并预览 --------------------- */
+    async templateVersions(ctx, id) {
+        return this.service.versions(ctx, id);
+    }
+    async restoreTemplateVersion(ctx, id, version) {
+        return this.service.restore(ctx, id, version);
+    }
+    async templateReferences(ctx, id) {
+        return this.service.references(ctx, id);
+    }
+    async templateMergedPreview(ctx, app, templateId, overrides) {
+        return this.service.mergedPreview(ctx, app, templateId, overrides);
+    }
 };
 exports.ShopTemplateAdminResolver = ShopTemplateAdminResolver;
 __decorate([
@@ -124,6 +137,46 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], ShopTemplateAdminResolver.prototype, "updateShopGlobalConfig", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.shopTemplatesRead.Permission),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], ShopTemplateAdminResolver.prototype, "templateVersions", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Transaction)(),
+    (0, core_1.Allow)(permissions_1.shopTemplatesUpdate.Permission),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('version')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Number]),
+    __metadata("design:returntype", Promise)
+], ShopTemplateAdminResolver.prototype, "restoreTemplateVersion", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.shopTemplatesRead.Permission),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], ShopTemplateAdminResolver.prototype, "templateReferences", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.shopTemplatesRead.Permission),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('app')),
+    __param(2, (0, graphql_1.Args)('templateId', { nullable: true })),
+    __param(3, (0, graphql_1.Args)({ name: 'overrides', type: () => Object, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, Object, Object]),
+    __metadata("design:returntype", Promise)
+], ShopTemplateAdminResolver.prototype, "templateMergedPreview", null);
 exports.ShopTemplateAdminResolver = ShopTemplateAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [shop_template_service_1.ShopTemplateService])
