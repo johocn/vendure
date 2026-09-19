@@ -141,6 +141,8 @@ import { StockReservationEntity } from './inventory/stock-reservation.entity';
 import { StockReservationItemEntity } from './inventory/stock-reservation-item.entity';
 import { StockReservationService } from './inventory/stock-reservation.service';
 import { InventoryModeService } from './inventory/inventory-mode.service';
+import { SimpleInventoryAdapter } from './inventory/simple-inventory.adapter';
+import { OdooInventoryAdapter } from './inventory/odoo-inventory.adapter';
 import { inventoryModeChannelFields } from './inventory/inventory-mode.custom-fields';
 
 @VendurePlugin({
@@ -187,6 +189,8 @@ import { inventoryModeChannelFields } from './inventory/inventory-mode.custom-fi
         StockDocService,
         StockReservationService,
         InventoryModeService,
+        SimpleInventoryAdapter,
+        OdooInventoryAdapter,
         DeliveryRecordService,
         ReconciliationService,
     ],
