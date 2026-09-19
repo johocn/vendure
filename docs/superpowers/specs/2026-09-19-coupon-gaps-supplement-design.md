@@ -177,3 +177,172 @@
 
 - 本补充文档仅深化 4 个缺口的现状/方案/接口/边界/测试设计，**不新增实体与字段**（全部实体/字段已在方案1 第 2 节定义）。
 - 实施按方案1 计划执行；本补充文档的测试点与边界将作为方案1 计划 A3/A4/A5/B2/B3 各任务的验收补充。
+
+---
+
+# 深挖深化：既有 G1–G4 边界修补 + 性能健壮性（2026-09-19 续）
+
+> 状态：brainstorming 产出，用户确认（范围=P0+P1+P2 全量，@渠道过滤/限领口径/末绑定回退语义 三点已定稿）。
+> 关系：本补充文档已实现的 G1–G4 在线上暴露出的边界缺陷与性能点。**不改实体结构、不新增字段**（⑧除外为文档标注），纯行为修正 + 查询/缓存优化，改动集中于 vendure `coupon-plugin` 单仓库。
+
+## 分级与范围
+
+| 级别 | 编号 | 描述 |
+|---|---|---|
+| P0 真缺陷 | ① | 删除/停用最后一个 enabled binding 后，模板悬空为 SKU，结算回退「全店可用」，与 G2 语义相悖 |
+| P0 真缺陷 | ② | `claimProductCoupon(bindingId)` 未校验 binding 归属当前渠道，跨租户可绕过隔离 |
+| P1 健壮性 | ③ | `newCustomerOnly` 领取侧 `hasPlacedOrder` 与结算侧 `isNewCustomer` 双口径不一致且不过滤渠道 |
+| P1 健壮性 | ④ | `redeemByClaimCode` 按 claimCode 全局 `findOne` 无渠道过滤，同码可能领错券，缺索引 |
+| P1 健壮性 | ⑤ | `perUserLimit`（countHeld）口径含已用/已过期券，占用限领名额 |
+| P2 性能 | ⑥ | 结算 Promotion `check()` 每次全量查库，无缓存，per-promotion×per-line 重复查询 |
+| P2 性能 | ⑦ | `countHeld` / `claimCode` / `listByTemplate` 相关查询缺索引 |
+| P2 预留 | ⑧ | binding 预留字段（claimStock/claimWindow/perUserClaimLimit/badgeText）本期未落地行为，文档标注 |
+
+## P0-① 末绑定回退（只清关联，不改回 scope）
+
+### 现状
+- `coupon-binding.service.ts` 的 `syncTemplateScope` 单向写 `template.scope='SKU'/variantId`；`delete`/`toggleEnabled(false)`/`update` 移除最后 enabled binding 后**不回退**。结算时 `listByTemplate` 空 → 回退全店可用。
+
+### 方案（已定稿语义）
+- **不自动把 template.scope 改回 `ALL`**（避免运营误改历史行为）。改为：当模板被任一 enabled binding 引用数降为 0 时，仅做两件事——
+  1. 同步清理 `template.variantId = null`（释放残留的单 SKU 指向，避免结算侧读到陈旧 variantId 干扰历史判定）；
+  2. 日志/返回提示「该券已无启用绑定，结算按模板自身范围（scope）恢复原判定」。
+- 判定时机：`delete`、`toggleEnabled`（关→off）、`update`（enabled 从 true→false）三处，均调用新增私有 `syncTemplateScopeAfterMutation(ctx, templateId)`。
+
+### 边界
+- 模板仍有任一 enabled binding → 不动（scope/variantId 保持由最新 binding 同步）。
+- 模板从未绑定 → 不触发。
+- 回退仅影响「无绑定时走 scope/variantId 历史判定」这一既有回退路径，不改结算主逻辑。
+
+### 测试点（TDD）
+1. 一个 binding：delete 后 `listByTemplate` 空、`template.variantId` 被清空、`template.scope` 保持 `SKU`。
+2. 两个 binding 不同 product：toggleEnabled 关掉其中一个 → 另一 binding 仍 enabled，模板不动。
+3. 全部 enabled binding 关闭 → variantId 清空、scope 保持、返回「无启用绑定」提示。
+4. 模板从未绑定 → 无副作用。
+
+## P0-② claimProductCoupon 渠道隔离
+
+### 现状
+- `coupon.service.ts:386` `claimProductCoupon` 仅 `findOne({id})` + `binding.enabled` 校验，未校验 `binding.channelId` 归属当前渠道；跨租户只要知道 bindingId 即可领（`visibleBinding` 只在查询路径过滤）。
+
+### 方案
+- 在 `claimProductCoupon` 内、`binding.enabled` 校验之后，增补渠道归属校验：
+  ```ts
+  const channelMatch = !binding.channelId || Number(binding.channelId) === Number(ctx.channel?.id);
+  if (!channelMatch) throw new UserInputError('Binding not found');  // 不泄露存在性
+  ```
+  - 复用 `visibleBinding` 的渠道匹配逻辑（`!channelId || Number(channelId)===Number(ctx.channelId)`），keep 错误与「Binding not found」一致防探测。
+- 一致性：`listProductCoupons`（详情页）已通过 `listByProduct→visibleBinding` 过滤，天然隔离；补 `claimProductCoupon` 后整链路隔离闭环。
+
+### 测试点（TDD）
+1. 跨渠道 bindingId → `UserInputError('Binding not found')`（不泄露存在）。
+2. 同渠道 bindingId → 正常领券。
+3. binding.disable → 仍报 'Binding not found'。
+4. 模板非 claimable → 报 'Coupon is not claimable'。
+
+## P1-③ newCustomerOnly 口径统一 + 渠道过滤
+
+### 现状
+- 领取侧 `hasPlacedOrder`（coupon.service）与结算侧 `isNewCustomer`（coupon-settlement.ts）为**两套独立查询**；`isNewCustomer` 的 Order 统计**只 by customerId、不过滤 ctx.channelId**，跨门店订单会破坏「本租户新客」语义。
+
+### 方案
+- 抽取公共判定 `isNewCustomerWithinChannel(ctx, customerId): Promise<boolean>`，放 `coupon-settlement.ts`（或新 `coupon-customer.ts` 工具模块），**领取侧与结算侧共用**：
+  ```ts
+  export async function isNewCustomerWithinChannel(ctx, customerId): Promise<boolean> {
+      if (customerId == null) return true;
+      const count = await getCouponConnection()
+          .getRepository(ctx, Order)
+          .createQueryBuilder('o')
+          .where('o.customerId = :cid', { cid: customerId })
+          .andWhere('o.channelId = :chan', { chan: ctx.channelId })  // 租户/门店维度隔离
+          .andWhere("o.state NOT IN ('Created','AddingItems','ArrangingPayment','Modifying','Cancelled')")
+          .getCount();
+      return count === 0;
+  }
+  ```
+- margin 说明：`isNewCustomer` 的 `order.customer.id`/`ctx.activeUserId` 解析逻辑保留在结算侧入口，取到 customerId 后调用公共判定；领取侧 `hasPlacedOrder` 改为 `!isNewCustomerWithinChannel(...)`，消除漂移。
+- 状态集合：统一 `NOT IN ('Created','AddingItems','ArrangingPayment','Modifying','Cancelled')`（含 Delivered/Completed 等完成态视为有效历史订单）。
+
+### 测试点（TDD）
+1. 同渠道有历史有效订单 → 非新客（领取拒绝 + 结算拦截）。
+2. 不同渠道（另一 channelId）有订单 → 当前渠道仍视为新客。
+3. 历史订单为 Cancelled → 不计数，仍新客。
+4. 领取与结算调用同一函数（无独立重复实现）。
+
+## P1-④ redeemByClaimCode 渠道过滤 + 索引
+
+### 现状
+- `coupon.service.ts:400` 按 `claimCode` 全局 `findOne`（不带渠道过滤），仅靠 `templateBelongsToChannel` 后验；模板 `channels` 为空（不限渠道）时跨租户同码会匹配第一条 → 可能领错券。
+
+### 方案
+- 查询层直接加渠道过滤：加载 `template.channels` 后，先按 `templateBelongsToChannel` 判定（现有），但改为「候选集中当前渠道不可用时**继续尝试其他候选同码模板**而非直接取第一条」——若同码仅一条但渠道不匹配 → 报 `Claim code not available in this shop`。
+  - 简化方案（定稿）：`claimCode` 加**业务唯一约束建议**，但为兼容遗留重复码，查询改为 `findMany({where:{claimCode}})` 遍历，命中「渠道归属」的第一个模板；无一命中 → 按渠道不匹配报错。
+- 索引：`coupon_template("claim_code")`（唯一索引，若存量有重复则先清理后建唯一，或在 service 层保证唯一并建普通索引）。
+- C 端错误码保持 `Invalid claim code` / `Claim code not available in this shop`。
+
+### 测试点（TDD）
+1. 当前渠道有该码 → 领券成功。
+2. 有码但当前渠道无归属 → `Claim code not available in this shop`。
+3. 两租户同码，各自渠道领各自的 → 各中一条。
+4. 无码 → `Invalid claim code`。
+
+## P1-⑤ perUserLimit 口径（排除已用/已过期）
+
+### 现状
+- `countHeld(customerId, tplId)` 统计口径含已用（status!=UNUSED/RETURNED）与已过期券，占用限领名额。
+
+### 方案
+- 调整 `countHeld` 仅统计「当前可取用」券：`status IN ('UNUSED','RETURNED')`（可视作未来可履约）+ `expiredAt > now 或 expiredAt IS NULL` 且未达模板 endsAt 快照。
+- 已用（USED）与已过期券**不再占用限领名额**；RETURNED（取消回退）仍占用（可复用，防刷）。
+- 文案 `Per-user coupon limit reached` 不变。
+
+### 测试点（TDD）
+1. 上限=1：领 1 张且使用 → 可再领 1 张。
+2. 上限=1：领 1 张未用 → 再领报 'Per-user coupon limit reached'。
+3. 领 1 张已过期 → 可再领（过期不占名额）。
+4. RETURNED 券 → 仍占用名额。
+
+## P2-⑥ 结算 TTL 缓存（进程内 + 主动失效）
+
+### 现状
+- `coupon-promotion-condition.ts` 每次 `check()`（每 promotion×每 line）都 `getCouponConnection().findOne(coupon)` + `listByTemplate` 全表，无缓存，高并发/促销叠加时 DB 往返放大。
+
+### 方案
+- 进程内短 TTL 缓存 `CouponBindingCache`（新模块，注入 `getBindingService().listByTemplate` 返回结果）：
+  - `key = \`${channelId}:${templateId}\``
+  - `value = enabled binding[]`；`TTL ≈ 3–5s`
+  - 缓存只兜底读、不承担一致性主责；主动失效点 = binding `create/update/delete/toggleEnabled`、template 更新（凡 `syncTemplateScope`/模板字段变更处）同名 key `del()`。
+- 仅缓存 **binding 集合**（供结算判定），**不缓存 coupon 状态**（涉及领取实时性，保持直查）。
+- 多实例部署留白：进程内缓存各实例独立，TTL 短（3–5s）可接受最终一致；如需强一致后续接 Redis（本期不做，文档标注）。
+
+### 测试点（TDD）
+1. 首次结算查询 DB 一次，TTL 内重复 check 命中缓存不查 DB。
+2. 超过 TTL 后重新查 DB。
+3. binding update 后同进程 key 立即失效，下次 check 拿新集合。
+4. `channelId` 不同 key 隔离。
+
+## P2-⑦ 索引补全
+
+- `product_coupon_binding("couponTemplateId")`（当前无条件索引，`listByTemplate` 全扫）
+- `coupon_template("claim_code")`（P1-④ 用）
+- `customer_coupon` 按 (customerId, templateId) 查询走既有索引（若缺补）——`countHeld` 用。
+- 迁移：对齐仓库既有迁移机制新建幂等索引迁移（非变更数据结构字段）。
+
+## P2-⑧ 预留字段行为标注（仅文档）
+
+- binding `claimStock / claimWindowStart / claimWindowEnd / perUserClaimLimit / badgeText / promoTitle / remark` 本期已建字段但不落地行为；结算/领取均忽略。文档在此明确「预留、未开发」，避免后续误以为已生效。
+
+---
+
+## 测试组与实施顺序建议
+
+- 建议分两批：
+  - **批次 1（P0+P1）**：语义与隔离正确性，TDD 覆盖 ①–⑤。
+  - **批次 2（P2）**：缓存 + 索引，TDD 覆盖 ⑥–⑦ (+性能断言)。缓存改造有并发风险，独立提交。
+
+## 相关代码点
+- `packages/coupon-plugin/src/coupon-promotion-condition.ts`（结算判定：缓存接入点）
+- `packages/coupon-plugin/src/coupon-settlement.ts`（isNewCustomer→公共判定）
+- `packages/coupon-plugin/src/coupon-binding.service.ts`（末绑定回退、缓存失效、CRUD）
+- `packages/coupon-plugin/src/coupon.service.ts`（claimProductCoupon 渠道校验、redeem 渠道过滤、countHeld 口径）
+- `packages/coupon-plugin/src/coupon-runtime.ts`（单例注入模式参考）
