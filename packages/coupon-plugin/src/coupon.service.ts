@@ -10,7 +10,6 @@ import {
     ListQueryOptions,
     LogLevel,
     Logger,
-    Order,
     OrderService,
     Product,
     RequestContext,
@@ -23,6 +22,7 @@ import { COUPON_NOT_OWNED, loggerCtx } from './constants';
 import { localizeText } from './localize';
 import { isDefaultMallChannel, lineHasShopId } from './coupon-scope';
 import { CouponBindingService } from './coupon-binding.service';
+import { isNewCustomerWithinChannel } from './coupon-settlement';
 import { CouponTemplate } from './coupon-template.entity';
 import { CustomerCoupon } from './customer-coupon.entity';
 import { ProductCouponBinding } from './product-coupon-binding.entity';
@@ -401,16 +401,19 @@ export class CouponService {
 
     /** 凭码兑换：同租户内 claimCode 唯一匹配模板 → 复用 claimCoupon */
     async redeemByClaimCode(ctx: RequestContext, claimCode: string): Promise<CustomerCoupon> {
-        const tpl = await this.connection
-            .getRepository(ctx, CouponTemplate)
-            .findOne({ where: { claimCode } as any, relations: { channels: true } });
-        if (!tpl || !tpl.claimCode) {
-            throw new UserInputError('Invalid claim code');
-        }
-        if (!this.templateBelongsToChannel(ctx, tpl)) {
+        const repo = this.connection.getRepository(ctx, CouponTemplate);
+        const candidates = await repo.find({
+            where: { claimCode } as any,
+            relations: { channels: true },
+        });
+        const hit = candidates.find(t => t.claimCode && this.templateBelongsToChannel(ctx, t));
+        if (!hit) {
+            if (candidates.length === 0) {
+                throw new UserInputError('Invalid claim code');
+            }
             throw new UserInputError('Claim code not available in this shop');
         }
-        return this.claimCoupon(ctx, tpl.id);
+        return this.claimCoupon(ctx, hit.id);
     }
 
     /** 模板渠道归属校验：channels 为空（不限渠道）→ true；否则要求包含当前渠道 */
@@ -817,13 +820,7 @@ export class CouponService {
 
     /** 新客判定：本租户是否已有历史有效订单（排除创建/购物车/待支付/修改/取消等未完成态） */
     private async hasPlacedOrder(ctx: RequestContext, customerId: number): Promise<boolean> {
-        const count = await this.connection
-            .getRepository(ctx, Order)
-            .createQueryBuilder('o')
-            .where('o.customerId = :customerId', { customerId })
-            .andWhere("o.state NOT IN ('Created','AddingItems','ArrangingPayment','Modifying','Cancelled')")
-            .getCount();
-        return count > 0;
+        return !(await isNewCustomerWithinChannel(ctx, customerId));
     }
 
     private async createUserCoupon(
