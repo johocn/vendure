@@ -121,13 +121,48 @@ export class CouponBindingService {
         if (tpl) {
             await this.syncTemplateScope(ctx, tpl, saved);
         }
+        // explicit enabled=false → 可能触达末绑定回退（syncTemplateScope 之上再兜底一次）
+        if (input.enabled === false && saved.couponTemplateId != null) {
+            await this.syncTemplateScopeAfterMutation(ctx, saved.couponTemplateId);
+        }
         return saved;
+    }
+
+    /**
+     * 末绑定回退：模板不再有任何 enabled binding 时，仅清空模板 variantId（释放单 SKU 指向），
+     * 保持 template.scope 不变（不回退 ALL，不破坏历史）。判定时机：delete / toggleEnabled(off) / update(enabled=false)。
+     */
+    private async syncTemplateScopeAfterMutation(
+        ctx: RequestContext,
+        templateId: number | null,
+    ): Promise<void> {
+        if (templateId == null) {
+            return;
+        }
+        const bindingRepo = this.connection.getRepository(ctx, ProductCouponBinding);
+        const remaining = await bindingRepo.count({
+            where: { couponTemplateId: templateId as any, enabled: true },
+        });
+        if (remaining > 0) {
+            // 还有启用绑定，模板 scope 不变
+            return;
+        }
+        const tplRepo = this.connection.getRepository(ctx, CouponTemplate);
+        const tpl = await tplRepo.findOne({ where: { id: templateId as any } });
+        if (tpl && tpl.variantId != null) {
+            tpl.variantId = null as any;
+            await tplRepo.save(tpl);
+        }
     }
 
     /** 删除绑定 */
     async delete(ctx: RequestContext, id: ID): Promise<void> {
         const repo = this.connection.getRepository(ctx, ProductCouponBinding);
+        const binding = await repo.findOne({ where: { id: id as any } });
         await repo.delete(id);
+        if (binding?.couponTemplateId != null) {
+            await this.syncTemplateScopeAfterMutation(ctx, binding.couponTemplateId);
+        }
     }
 
     /** 启停翻转 */
@@ -138,7 +173,11 @@ export class CouponBindingService {
             throw new UserInputError(`ProductCouponBinding with id ${id} not found`);
         }
         binding.enabled = !binding.enabled;
-        return repo.save(binding);
+        const saved = await repo.save(binding);
+        if (!saved.enabled && saved.couponTemplateId != null) {
+            await this.syncTemplateScopeAfterMutation(ctx, saved.couponTemplateId);
+        }
+        return saved;
     }
 
     /** 可见性过滤：binding.enabled（查询已含，双保险）&& 模板 enabled && claimable && 渠道匹配 */

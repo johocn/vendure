@@ -95,4 +95,49 @@ describe('CouponBindingService', () => {
         const saved = bindingRepo.save.mock.calls[0][0];
         expect(saved.enabled).toBe(false);
     });
+
+    it('删除最后一个 enabled binding 后：模板 variantId 清空、scope 保持 SKU', async () => {
+        // 删除前先 findOne 取到绑定所属模板 id
+        bindingRepo.findOne.mockResolvedValue({ id: 1, couponTemplateId: 7, enabled: true });
+        bindingRepo.count.mockResolvedValue(0); // 该模板下已无剩余启用绑定
+        templateRepo.findOne.mockResolvedValue({ id: 7, scope: 'SKU', variantId: 999 });
+
+        await service.delete(ctx, 1);
+
+        expect(bindingRepo.delete).toHaveBeenCalledWith(1);
+        expect(bindingRepo.count).toHaveBeenCalledWith({
+            where: { couponTemplateId: 7, enabled: true },
+        });
+        const savedTpl = templateRepo.save.mock.calls[0][0];
+        expect(savedTpl.variantId).toBeNull();
+        expect(savedTpl.scope).toBe('SKU'); // scope 保持，不回退 ALL
+    });
+
+    it('toggleEnabled 关掉其中一个，另一 binding 仍 enabled：模板不动', async () => {
+        bindingRepo.findOne.mockResolvedValue({ id: 5, enabled: true, couponTemplateId: 7 });
+        bindingRepo.save.mockImplementation(async (b: any) => b);
+        bindingRepo.count.mockResolvedValue(1); // 仍有其他启用绑定
+        templateRepo.findOne.mockResolvedValue({ id: 7, scope: 'SKU', variantId: 999 });
+
+        await service.toggleEnabled(ctx, 5);
+
+        const saved = bindingRepo.save.mock.calls[0][0];
+        expect(saved.enabled).toBe(false);
+        // 还有启用绑定 → 不加回退，模板不入库
+        expect(bindingRepo.count).toHaveBeenCalled();
+        expect(templateRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('全部 enabled binding 关闭：variantId 清空、scope 保持', async () => {
+        bindingRepo.findOne.mockResolvedValue({ id: 5, enabled: true, couponTemplateId: 7 });
+        bindingRepo.save.mockImplementation(async (b: any) => b);
+        bindingRepo.count.mockResolvedValue(0); // 已无剩余启用绑定
+        templateRepo.findOne.mockResolvedValue({ id: 7, scope: 'SKU', variantId: 999 });
+
+        await service.toggleEnabled(ctx, 5);
+
+        const savedTpl = templateRepo.save.mock.calls[0][0];
+        expect(savedTpl.variantId).toBeNull();
+        expect(savedTpl.scope).toBe('SKU');
+    });
 });
