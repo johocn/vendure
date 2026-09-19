@@ -108,6 +108,13 @@ export const PERMISSION_CATALOG: PermissionCatalogGroup[] = [
             { code: 'VerifyOrder', label: '核销·预留' },
         ],
     },
+    {
+        key: 'dashboard',
+        label: '数据看板',
+        items: [
+            { code: 'ViewDashboard', label: '数据看板·查看' },
+        ],
+    },
     ];
 
 /** 租户级角色可用的业务权限白名单（由 PERMISSION_CATALOG 扁平派生，建模/校验统一使用） */
