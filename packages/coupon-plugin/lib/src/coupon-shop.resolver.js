@@ -30,6 +30,15 @@ let CouponShopResolver = class CouponShopResolver {
     async pointsMallTemplates(ctx) {
         return this.couponService.pointsMallTemplates(ctx);
     }
+    async productCoupons(ctx, productId) {
+        return this.couponService.listProductCoupons(ctx, productId);
+    }
+    async claimProductCoupon(ctx, bindingId) {
+        return this.couponService.claimProductCoupon(ctx, bindingId);
+    }
+    async redeemCouponByCode(ctx, claimCode) {
+        return this.couponService.redeemByClaimCode(ctx, claimCode);
+    }
     async claimCoupon(ctx, templateId) {
         return this.couponService.claimCoupon(ctx, templateId);
     }
@@ -74,6 +83,32 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext]),
     __metadata("design:returntype", Promise)
 ], CouponShopResolver.prototype, "pointsMallTemplates", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('productId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], CouponShopResolver.prototype, "productCoupons", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Transaction)(),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('bindingId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], CouponShopResolver.prototype, "claimProductCoupon", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Transaction)(),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('claimCode')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String]),
+    __metadata("design:returntype", Promise)
+], CouponShopResolver.prototype, "redeemCouponByCode", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),

@@ -91,6 +91,26 @@ __decorate([
     __metadata("design:type", Boolean)
 ], CouponTemplate.prototype, "enabled", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ default: true }),
+    __metadata("design:type", Boolean)
+], CouponTemplate.prototype, "claimable", void 0);
+__decorate([
+    (0, typeorm_1.Column)('varchar', { nullable: true }),
+    __metadata("design:type", String)
+], CouponTemplate.prototype, "claimCode", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Number)
+], CouponTemplate.prototype, "validDays", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ default: false }),
+    __metadata("design:type", Boolean)
+], CouponTemplate.prototype, "newCustomerOnly", void 0);
+__decorate([
+    (0, typeorm_1.Column)('varchar', { nullable: true }),
+    __metadata("design:type", String)
+], CouponTemplate.prototype, "memberLevel", void 0);
+__decorate([
     (0, typeorm_1.Column)('bigint', { nullable: true }),
     __metadata("design:type", Number)
 ], CouponTemplate.prototype, "shopId", void 0);

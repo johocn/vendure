@@ -40,6 +40,16 @@ export declare class CouponTemplate extends VendureEntity implements ChannelAwar
     variantId?: number;
     /** 上下架 */
     enabled: boolean;
+    /** 详情页领券入口开关（binding.enabled && claimable 才展示领券入口） */
+    claimable: boolean;
+    /** 兑换码（非空=支持凭码兑换；同租户内唯一由 service 层保证） */
+    claimCode?: string;
+    /** 领取后 N 天有效（空=走固定 startsAt/endsAt） */
+    validDays?: number;
+    /** 仅限新客（本租户无历史有效订单）可领可用 */
+    newCustomerOnly: boolean;
+    /** 会员等级限定（预留，本期只建字段不开发逻辑） */
+    memberLevel?: string;
     /** 发行归属店铺 id（跨渠道范围用）：默认商城下仅对「本店商品行」核销。 */
     shopId?: number;
     channels: Channel[];

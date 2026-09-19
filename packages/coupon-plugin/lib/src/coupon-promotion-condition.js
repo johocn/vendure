@@ -4,6 +4,7 @@ exports.couponAppliedCondition = void 0;
 const core_1 = require("@vendure/core");
 const coupon_runtime_1 = require("./coupon-runtime");
 const coupon_scope_1 = require("./coupon-scope");
+const coupon_settlement_1 = require("./coupon-settlement");
 const customer_coupon_entity_1 = require("./customer-coupon.entity");
 /**
  * 券结算条件：读取 order.customFields.couponCode，
@@ -49,6 +50,24 @@ exports.couponAppliedCondition = new core_1.PromotionCondition({
             if (eligibleLines.length === 0)
                 return false;
         }
+        // 商品限定：模板存在 binding 时，以 binding 集合为唯一权威过滤订单行
+        const bindings = await (0, coupon_settlement_1.getBindingService)().listByTemplate(ctx, template.id);
+        if (bindings.length) {
+            const hit = (l) => bindings.some(b => {
+                var _a, _b, _c, _d;
+                return Number(b.productId) === Number((_b = (_a = l === null || l === void 0 ? void 0 : l.productVariant) === null || _a === void 0 ? void 0 : _a.product) === null || _b === void 0 ? void 0 : _b.id) &&
+                    (!((_c = b.variantIds) === null || _c === void 0 ? void 0 : _c.length) || (((_d = l === null || l === void 0 ? void 0 : l.productVariant) === null || _d === void 0 ? void 0 : _d.id) != null && b.variantIds.includes(Number(l.productVariant.id))));
+            });
+            eligibleLines = eligibleLines.filter(hit);
+            if (eligibleLines.length === 0)
+                return false;
+        }
+        // 仅限新客：本租户有历史有效订单则不可用
+        if (template.newCustomerOnly && !(await (0, coupon_settlement_1.isNewCustomer)(ctx, order)))
+            return false;
+        // 有效期内判定（validDays 生成的 expiredAt 或固定 endsAt 快照）
+        if (coupon.expiredAt && now > new Date(coupon.expiredAt))
+            return false;
         const base = pricesIncludeTax
             ? eligibleLines.reduce((s, l) => { var _a; return s + ((_a = l.linePriceWithTax) !== null && _a !== void 0 ? _a : 0); }, 0)
             : eligibleLines.reduce((s, l) => { var _a; return s + ((_a = l.linePrice) !== null && _a !== void 0 ? _a : 0); }, 0);

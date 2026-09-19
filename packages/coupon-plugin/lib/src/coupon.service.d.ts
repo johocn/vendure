@@ -1,6 +1,8 @@
 import { Customer, I18nError, ID, Injector, ListQueryBuilder, ListQueryOptions, RequestContext, TransactionalConnection } from '@vendure/core';
+import { CouponBindingService } from './coupon-binding.service';
 import { CouponTemplate } from './coupon-template.entity';
 import { CustomerCoupon } from './customer-coupon.entity';
+import { ProductCouponBinding } from './product-coupon-binding.entity';
 /**
  * 属店权限不足错误。本版本 Vendure 的 ForbiddenError 构造器固定 message='error.forbidden'（code='FORBIDDEN'），
  * 无法注入自定义文案；故继承 I18nError，沿用 FORBIDDEN 错误码，以显式携带 COUPON_NOT_OWNED 语义消息。
@@ -11,7 +13,8 @@ export declare class CouponNotOwnedError extends I18nError {
 export declare class CouponService {
     private connection;
     private listQueryBuilder;
-    constructor(connection: TransactionalConnection, listQueryBuilder: ListQueryBuilder);
+    private bindingService;
+    constructor(connection: TransactionalConnection, listQueryBuilder: ListQueryBuilder, bindingService: CouponBindingService);
     private orderService;
     private customerService;
     private memberLevelService;
@@ -39,6 +42,14 @@ export declare class CouponService {
         spentPoints: number;
     }>;
     claimCoupon(ctx: RequestContext, templateId: ID): Promise<CustomerCoupon>;
+    /** 详情页可领券：binding.enabled && 模板 enabled && claimable + 渠道匹配（listByProduct 已过滤） */
+    listProductCoupons(ctx: RequestContext, productId: ID): Promise<ProductCouponBinding[]>;
+    /** 详情页领券：按 bindingId 找到模板后复用 claimCoupon（限领/余量/newCustomerOnly 校验都在其中） */
+    claimProductCoupon(ctx: RequestContext, bindingId: ID): Promise<CustomerCoupon>;
+    /** 凭码兑换：同租户内 claimCode 唯一匹配模板 → 复用 claimCoupon */
+    redeemByClaimCode(ctx: RequestContext, claimCode: string): Promise<CustomerCoupon>;
+    /** 模板渠道归属校验：channels 为空（不限渠道）→ true；否则要求包含当前渠道 */
+    private templateBelongsToChannel;
     grantCoupon(ctx: RequestContext, templateId: ID, customerIds: ID[]): Promise<string[]>;
     listChannelCustomers(ctx: RequestContext, query?: string, take?: number, skip?: number): Promise<{
         items: Customer[];
@@ -80,5 +91,7 @@ export declare class CouponService {
     private countHeld;
     /** 原子扣减发行余量；受影响数大于 0 表示成功 */
     private atomicIncrementClaimed;
+    /** 新客判定：本租户是否已有历史有效订单（排除创建/购物车/待支付/修改/取消等未完成态） */
+    private hasPlacedOrder;
     private createUserCoupon;
 }

@@ -23,16 +23,21 @@ const core_2 = require("@vendure/core");
 const graphql_tag_1 = __importDefault(require("graphql-tag"));
 const constants_1 = require("./constants");
 const coupon_admin_resolver_1 = require("./coupon-admin.resolver");
+const coupon_binding_admin_resolver_1 = require("./coupon-binding-admin.resolver");
+const coupon_binding_service_1 = require("./coupon-binding.service");
 const coupon_customer_coupon_resolver_1 = require("./coupon-customer-coupon.resolver");
 const coupon_template_resolver_1 = require("./coupon-template.resolver");
 const coupon_promotion_action_1 = require("./coupon-promotion-action");
 const coupon_promotion_condition_1 = require("./coupon-promotion-condition");
 const coupon_runtime_1 = require("./coupon-runtime");
+const coupon_settlement_1 = require("./coupon-settlement");
 const coupon_service_1 = require("./coupon.service");
 const coupon_shop_resolver_1 = require("./coupon-shop.resolver");
 const coupon_template_entity_1 = require("./coupon-template.entity");
 const customer_coupon_entity_1 = require("./customer-coupon.entity");
+const migrations_1 = require("./migrations");
 const order_custom_fields_1 = require("./order-custom-fields");
+const product_coupon_binding_entity_1 = require("./product-coupon-binding.entity");
 /** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations several times). */
 function mergeCustomFields(existingFields, additions) {
     const names = new Set((existingFields !== null && existingFields !== void 0 ? existingFields : []).map(f => f.name));
@@ -56,6 +61,11 @@ type CouponTemplate implements Node {
     categoryId: ID
     variantId: ID
     enabled: Boolean!
+    claimable: Boolean!
+    claimCode: String
+    validDays: Int
+    newCustomerOnly: Boolean!
+    memberLevel: String
     shopId: ID
     createdAt: DateTime!
     updatedAt: DateTime!
@@ -92,6 +102,7 @@ let CouponPlugin = CouponPlugin_1 = class CouponPlugin {
         this.injector = new core_2.Injector(this.moduleRef);
         this.couponService.init(this.injector);
         (0, coupon_runtime_1.setCouponConnection)(this.injector.get(core_2.TransactionalConnection));
+        (0, coupon_settlement_1.setBindingService)(this.injector.get(coupon_binding_service_1.CouponBindingService));
         // 支付成功（订单下单成功）核销券
         this.eventBus.ofType(core_2.OrderPlacedEvent).subscribe(async (event) => {
             try {
@@ -120,12 +131,15 @@ CouponPlugin.options = {};
 exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
     (0, core_2.VendurePlugin)({
         imports: [core_2.PluginCommonModule],
-        entities: [coupon_template_entity_1.CouponTemplate, customer_coupon_entity_1.CustomerCoupon],
+        entities: [coupon_template_entity_1.CouponTemplate, customer_coupon_entity_1.CustomerCoupon, product_coupon_binding_entity_1.ProductCouponBinding],
         providers: [
             { provide: constants_1.COUPON_PLUGIN_OPTIONS, useFactory: () => CouponPlugin.options },
             coupon_service_1.CouponService,
+            coupon_binding_service_1.CouponBindingService,
+            migrations_1.AddCouponFieldsMigration,
+            migrations_1.CreateProductCouponBindingMigration,
         ],
-        exports: [coupon_service_1.CouponService],
+        exports: [coupon_service_1.CouponService, coupon_binding_service_1.CouponBindingService],
         adminApiExtensions: {
             schema: () => (0, graphql_tag_1.default) `
             enum CouponType { FIXED PERCENT FULL FREE_SHIPPING }
@@ -134,6 +148,40 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
 
             ${couponTemplateType}
             ${customerCouponType}
+
+            type ProductCouponBinding implements Node {
+                id: ID!
+                productId: ID!
+                variantIds: [ID!]
+                couponTemplateId: ID!
+                enabled: Boolean!
+                displayOrder: Int!
+                badgeText: String
+                promoTitle: String
+                remark: String
+                template: CouponTemplate
+            }
+
+            input CreateProductCouponBindingInput {
+                productId: ID!
+                variantIds: [ID!]
+                couponTemplateId: ID!
+                enabled: Boolean
+                displayOrder: Int
+                badgeText: String
+                promoTitle: String
+                remark: String
+            }
+
+            input UpdateProductCouponBindingInput {
+                id: ID!
+                variantIds: [ID!]
+                enabled: Boolean
+                displayOrder: Int
+                badgeText: String
+                promoTitle: String
+                remark: String
+            }
 
             type CouponTemplateList implements PaginatedList {
                 items: [CouponTemplate!]!
@@ -180,6 +228,11 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 categoryId: ID
                 variantId: ID
                 enabled: Boolean
+                claimable: Boolean
+                claimCode: String
+                validDays: Int
+                newCustomerOnly: Boolean
+                memberLevel: String
                 shopId: ID
             }
 
@@ -199,6 +252,11 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 categoryId: ID
                 variantId: ID
                 enabled: Boolean
+                claimable: Boolean
+                claimCode: String
+                validDays: Int
+                newCustomerOnly: Boolean
+                memberLevel: String
             }
 
             input CouponTemplateListOptions
@@ -210,6 +268,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 couponTemplate(id: ID!): CouponTemplate
                 customerCoupons(options: CustomerCouponListOptions): CustomerCouponList!
                 couponChannelCustomers(query: String, take: Int, skip: Int): CouponIssueCustomerList!
+                productCouponBindings(productId: ID!): [ProductCouponBinding!]!
             }
 
             extend type Mutation {
@@ -219,9 +278,12 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 grantCoupon(templateId: ID!, customerIds: [ID!]!): [String!]!
                 revokeCustomerCoupon(id: ID!): CustomerCoupon!
                 grantCouponIssue(templateId: ID!, customerIds: [ID!]!, notify: Boolean!): [CouponIssueResult!]!
+                createProductCouponBinding(input: CreateProductCouponBindingInput!): ProductCouponBinding!
+                updateProductCouponBinding(input: UpdateProductCouponBindingInput!): ProductCouponBinding!
+                deleteProductCouponBinding(id: ID!): Boolean!
             }
         `,
-            resolvers: [coupon_admin_resolver_1.CouponAdminResolver, coupon_template_resolver_1.CouponTemplateResolver, coupon_customer_coupon_resolver_1.CustomerCouponResolver],
+            resolvers: [coupon_admin_resolver_1.CouponAdminResolver, coupon_template_resolver_1.CouponTemplateResolver, coupon_customer_coupon_resolver_1.CustomerCouponResolver, coupon_binding_admin_resolver_1.CouponBindingAdminResolver],
         },
         shopApiExtensions: {
             schema: () => (0, graphql_tag_1.default) `
@@ -232,6 +294,18 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
             ${couponTemplateType}
             ${customerCouponType}
 
+            type ProductCouponBinding implements Node {
+                id: ID!
+                productId: ID!
+                variantIds: [ID!]
+                couponTemplateId: ID!
+                enabled: Boolean!
+                displayOrder: Int!
+                badgeText: String
+                promoTitle: String
+                template: CouponTemplate
+            }
+
             type ExchangeCouponResult {
                 coupon: CustomerCoupon!
                 spentPoints: Int!
@@ -241,10 +315,13 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 couponCentre: [CouponTemplate!]!
                 myCoupons(status: CouponStatus): [CustomerCoupon!]!
                 pointsMallTemplates: [CouponTemplate!]!
+                productCoupons(productId: ID!): [ProductCouponBinding!]!
             }
 
             extend type Mutation {
                 claimCoupon(templateId: ID!): CustomerCoupon!
+                claimProductCoupon(bindingId: ID!): CustomerCoupon!
+                redeemCouponByCode(claimCode: String!): CustomerCoupon!
                 applyCouponToOrder(code: String!): Order!
                 clearCouponFromOrder: Order!
                 exchangeCouponWithPoints(templateId: ID!): ExchangeCouponResult!

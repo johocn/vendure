@@ -16,8 +16,10 @@ const member_level_plugin_1 = require("@vendure/member-level-plugin");
 const constants_1 = require("./constants");
 const localize_1 = require("./localize");
 const coupon_scope_1 = require("./coupon-scope");
+const coupon_binding_service_1 = require("./coupon-binding.service");
 const coupon_template_entity_1 = require("./coupon-template.entity");
 const customer_coupon_entity_1 = require("./customer-coupon.entity");
+const product_coupon_binding_entity_1 = require("./product-coupon-binding.entity");
 /** 模板 update() 允许写入的字段白名单 */
 const TEMPLATE_UPDATE_ALLOWED = [
     'name',
@@ -51,9 +53,10 @@ class CouponNotOwnedError extends core_1.I18nError {
 }
 exports.CouponNotOwnedError = CouponNotOwnedError;
 let CouponService = class CouponService {
-    constructor(connection, listQueryBuilder) {
+    constructor(connection, listQueryBuilder, bindingService) {
         this.connection = connection;
         this.listQueryBuilder = listQueryBuilder;
+        this.bindingService = bindingService;
         this.codePrefix = 'C';
     }
     init(injector) {
@@ -146,6 +149,13 @@ let CouponService = class CouponService {
         const tpl = await repo.findOne({ where: { id: id } });
         if (tpl) {
             await this.assertManagedByShop(ctx, tpl.shopId);
+        }
+        // 模板删除保护：已被商品绑定（ProductCouponBinding）引用时禁止删除，须先解绑
+        const bindingCount = await this.connection
+            .getRepository(ctx, product_coupon_binding_entity_1.ProductCouponBinding)
+            .count({ where: { couponTemplateId: id } });
+        if (bindingCount > 0) {
+            throw new core_1.UserInputError('Template has product bindings, unbind them first');
         }
         await repo.delete(id);
     }
@@ -310,12 +320,56 @@ let CouponService = class CouponService {
                 throw new core_1.UserInputError('Per-user coupon limit reached');
             }
         }
+        // 仅限新客：本租户历史有效订单数 > 0 则不可领
+        if (tpl.newCustomerOnly) {
+            const placed = await this.hasPlacedOrder(ctx, customerId);
+            if (placed)
+                throw new core_1.UserInputError('Coupon is for new customers only');
+        }
         // 原子扣减发行余量（防超发）
         const claim = await this.atomicIncrementClaimed(ctx, tpl.id, tpl);
         if (!claim) {
             throw new core_1.UserInputError('Coupon sold out');
         }
         return this.createUserCoupon(ctx, customerId, tpl, 'CENTRE');
+    }
+    /* ------------------------- 商品详情页领券 / 凭码兑换（租户指定商品优惠券） ------------------------- */
+    /** 详情页可领券：binding.enabled && 模板 enabled && claimable + 渠道匹配（listByProduct 已过滤） */
+    async listProductCoupons(ctx, productId) {
+        return this.bindingService.listByProduct(ctx, Number(productId));
+    }
+    /** 详情页领券：按 bindingId 找到模板后复用 claimCoupon（限领/余量/newCustomerOnly 校验都在其中） */
+    async claimProductCoupon(ctx, bindingId) {
+        const binding = await this.connection
+            .getRepository(ctx, product_coupon_binding_entity_1.ProductCouponBinding)
+            .findOne({ where: { id: bindingId }, relations: { template: true } });
+        if (!binding || !binding.enabled) {
+            throw new core_1.UserInputError('Binding not found');
+        }
+        if (!binding.template || !binding.template.claimable) {
+            throw new core_1.UserInputError('Coupon is not claimable');
+        }
+        return this.claimCoupon(ctx, binding.couponTemplateId);
+    }
+    /** 凭码兑换：同租户内 claimCode 唯一匹配模板 → 复用 claimCoupon */
+    async redeemByClaimCode(ctx, claimCode) {
+        const tpl = await this.connection
+            .getRepository(ctx, coupon_template_entity_1.CouponTemplate)
+            .findOne({ where: { claimCode }, relations: { channels: true } });
+        if (!tpl || !tpl.claimCode) {
+            throw new core_1.UserInputError('Invalid claim code');
+        }
+        if (!this.templateBelongsToChannel(ctx, tpl)) {
+            throw new core_1.UserInputError('Claim code not available in this shop');
+        }
+        return this.claimCoupon(ctx, tpl.id);
+    }
+    /** 模板渠道归属校验：channels 为空（不限渠道）→ true；否则要求包含当前渠道 */
+    templateBelongsToChannel(ctx, tpl) {
+        if (!tpl.channels || tpl.channels.length === 0) {
+            return true;
+        }
+        return tpl.channels.some(c => String(c.id) === String(ctx.channelId));
     }
     async grantCoupon(ctx, templateId, customerIds) {
         const tpl = await this.findOneTemplate(ctx, templateId);
@@ -670,6 +724,16 @@ let CouponService = class CouponService {
             .execute();
         return ((_a = result.affected) !== null && _a !== void 0 ? _a : 0) > 0;
     }
+    /** 新客判定：本租户是否已有历史有效订单（排除创建/购物车/待支付/修改/取消等未完成态） */
+    async hasPlacedOrder(ctx, customerId) {
+        const count = await this.connection
+            .getRepository(ctx, core_1.Order)
+            .createQueryBuilder('o')
+            .where('o.customerId = :customerId', { customerId })
+            .andWhere("o.state NOT IN ('Created','AddingItems','ArrangingPayment','Modifying','Cancelled')")
+            .getCount();
+        return count > 0;
+    }
     async createUserCoupon(ctx, customerId, tpl, issuedBy) {
         var _a, _b;
         const repo = this.connection.getRepository(ctx, customer_coupon_entity_1.CustomerCoupon);
@@ -683,7 +747,8 @@ let CouponService = class CouponService {
                 status: 'UNUSED',
                 issuedBy,
                 issuedAt: new Date(),
-                expiredAt: (_a = tpl.endsAt) !== null && _a !== void 0 ? _a : undefined,
+                // validDays 券按领取时刻起算过期时间；否则快照模板固定 endsAt
+                expiredAt: tpl.validDays ? new Date(Date.now() + tpl.validDays * 86400000) : ((_a = tpl.endsAt) !== null && _a !== void 0 ? _a : undefined),
             });
             try {
                 return await repo.save(cc);
@@ -701,6 +766,7 @@ exports.CouponService = CouponService;
 exports.CouponService = CouponService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
-        core_1.ListQueryBuilder])
+        core_1.ListQueryBuilder,
+        coupon_binding_service_1.CouponBindingService])
 ], CouponService);
 //# sourceMappingURL=coupon.service.js.map
