@@ -59,7 +59,7 @@ let CouponBindingService = class CouponBindingService {
             relations: { template: true },
             order: { displayOrder: 'ASC' },
         });
-        return bindings.filter(b => { var _a; return !b.channelId || b.channelId === ((_a = ctx.channel) === null || _a === void 0 ? void 0 : _a.id); });
+        return bindings.filter(b => { var _a; return !b.channelId || Number(b.channelId) === Number((_a = ctx.channel) === null || _a === void 0 ? void 0 : _a.id); });
     }
     /** 创建绑定：同渠道同商品同模板去重；save 后单向同步模板 scope=SKU */
     async create(ctx, input) {
@@ -136,7 +136,8 @@ let CouponBindingService = class CouponBindingService {
     /** 可见性过滤：binding.enabled（查询已含，双保险）&& 模板 enabled && claimable && 渠道匹配 */
     visibleBinding(b, ctx) {
         var _a, _b;
-        const channelMatch = !b.channelId || b.channelId === ((_a = ctx.channel) === null || _a === void 0 ? void 0 : _a.id);
+        // channelId 为 number 大整数列，ctx.channel.id 为 string，需统一转 number 比较
+        const channelMatch = !b.channelId || Number(b.channelId) === Number((_a = ctx.channel) === null || _a === void 0 ? void 0 : _a.id);
         return !!b.enabled && !!((_b = b.template) === null || _b === void 0 ? void 0 : _b.enabled) && !!b.template.claimable && channelMatch;
     }
 };

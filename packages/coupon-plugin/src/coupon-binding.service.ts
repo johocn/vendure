@@ -56,7 +56,7 @@ export class CouponBindingService {
             relations: { template: true },
             order: { displayOrder: 'ASC' },
         });
-        return bindings.filter(b => !b.channelId || b.channelId === ctx.channel?.id);
+        return bindings.filter(b => !b.channelId || Number(b.channelId) === Number(ctx.channel?.id));
     }
 
     /** 创建绑定：同渠道同商品同模板去重；save 后单向同步模板 scope=SKU */
@@ -142,7 +142,8 @@ export class CouponBindingService {
 
     /** 可见性过滤：binding.enabled（查询已含，双保险）&& 模板 enabled && claimable && 渠道匹配 */
     private visibleBinding(b: ProductCouponBinding, ctx: RequestContext): boolean {
-        const channelMatch = !b.channelId || b.channelId === ctx.channel?.id;
+        // channelId 为 number 大整数列，ctx.channel.id 为 string，需统一转 number 比较
+        const channelMatch = !b.channelId || Number(b.channelId) === Number(ctx.channel?.id);
         return !!b.enabled && !!b.template?.enabled && !!b.template.claimable && channelMatch;
     }
 }
