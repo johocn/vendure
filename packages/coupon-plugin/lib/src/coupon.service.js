@@ -17,6 +17,7 @@ const constants_1 = require("./constants");
 const localize_1 = require("./localize");
 const coupon_scope_1 = require("./coupon-scope");
 const coupon_binding_service_1 = require("./coupon-binding.service");
+const coupon_settlement_1 = require("./coupon-settlement");
 const coupon_template_entity_1 = require("./coupon-template.entity");
 const customer_coupon_entity_1 = require("./customer-coupon.entity");
 const product_coupon_binding_entity_1 = require("./product-coupon-binding.entity");
@@ -340,10 +341,14 @@ let CouponService = class CouponService {
     }
     /** 详情页领券：按 bindingId 找到模板后复用 claimCoupon（限领/余量/newCustomerOnly 校验都在其中） */
     async claimProductCoupon(ctx, bindingId) {
+        var _a;
         const binding = await this.connection
             .getRepository(ctx, product_coupon_binding_entity_1.ProductCouponBinding)
             .findOne({ where: { id: bindingId }, relations: { template: true } });
         if (!binding || !binding.enabled) {
+            throw new core_1.UserInputError('Binding not found');
+        }
+        if (binding.channelId != null && Number(binding.channelId) !== Number((_a = ctx.channel) === null || _a === void 0 ? void 0 : _a.id)) {
             throw new core_1.UserInputError('Binding not found');
         }
         if (!binding.template || !binding.template.claimable) {
@@ -353,16 +358,19 @@ let CouponService = class CouponService {
     }
     /** 凭码兑换：同租户内 claimCode 唯一匹配模板 → 复用 claimCoupon */
     async redeemByClaimCode(ctx, claimCode) {
-        const tpl = await this.connection
-            .getRepository(ctx, coupon_template_entity_1.CouponTemplate)
-            .findOne({ where: { claimCode }, relations: { channels: true } });
-        if (!tpl || !tpl.claimCode) {
-            throw new core_1.UserInputError('Invalid claim code');
-        }
-        if (!this.templateBelongsToChannel(ctx, tpl)) {
+        const repo = this.connection.getRepository(ctx, coupon_template_entity_1.CouponTemplate);
+        const candidates = await repo.find({
+            where: { claimCode },
+            relations: { channels: true },
+        });
+        const hit = candidates.find(t => t.claimCode && this.templateBelongsToChannel(ctx, t));
+        if (!hit) {
+            if (candidates.length === 0) {
+                throw new core_1.UserInputError('Invalid claim code');
+            }
             throw new core_1.UserInputError('Claim code not available in this shop');
         }
-        return this.claimCoupon(ctx, tpl.id);
+        return this.claimCoupon(ctx, hit.id);
     }
     /** 模板渠道归属校验：channels 为空（不限渠道）→ true；否则要求包含当前渠道 */
     templateBelongsToChannel(ctx, tpl) {
@@ -702,14 +710,16 @@ let CouponService = class CouponService {
         const customer = await this.customerService.findOneByUserId(ctx, ctx.activeUserId);
         return customer === null || customer === void 0 ? void 0 : customer.id;
     }
-    async countHeld(customerId, templateId) {
+    async countHeld(customerId, templateId, now = new Date()) {
         // 未跑在具体 ctx 内，用原始连接
+        const nowISO = now.toISOString();
         const countRepo = this.connection.rawConnection.getRepository(customer_coupon_entity_1.CustomerCoupon);
         return countRepo
             .createQueryBuilder('cc')
             .where('cc.customerId = :customerId', { customerId })
             .andWhere('cc.templateId = :templateId', { templateId: templateId })
-            .andWhere("cc.status NOT IN ('RETURNED','INVALID','EXPIRED')")
+            .andWhere("cc.status IN ('UNUSED','RETURNED')")
+            .andWhere('(cc.expiredAt IS NULL OR cc.expiredAt > :now)', { now: nowISO })
             .getCount();
     }
     /** 原子扣减发行余量；受影响数大于 0 表示成功 */
@@ -726,13 +736,7 @@ let CouponService = class CouponService {
     }
     /** 新客判定：本租户是否已有历史有效订单（排除创建/购物车/待支付/修改/取消等未完成态） */
     async hasPlacedOrder(ctx, customerId) {
-        const count = await this.connection
-            .getRepository(ctx, core_1.Order)
-            .createQueryBuilder('o')
-            .where('o.customerId = :customerId', { customerId })
-            .andWhere("o.state NOT IN ('Created','AddingItems','ArrangingPayment','Modifying','Cancelled')")
-            .getCount();
-        return count > 0;
+        return !(await (0, coupon_settlement_1.isNewCustomerWithinChannel)(ctx, customerId));
     }
     async createUserCoupon(ctx, customerId, tpl, issuedBy) {
         var _a, _b;

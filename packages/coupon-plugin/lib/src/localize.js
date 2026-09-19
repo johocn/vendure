@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.localizeText = localizeText;
+exports.localizedParts = localizedParts;
 const core_1 = require("@vendure/core");
 /**
  * 将文本解析为真正的对象形态。历史 / 旧版数据可能直接存了 JSON 字符串
@@ -55,5 +56,25 @@ function localizeText(v, locale, fallback = '') {
     }
     const first = Object.values(rec).find(x => typeof x === 'string');
     return first !== null && first !== void 0 ? first : fallback;
+}
+/**
+ * 将 LocalizedText 拆分为各语言的挂数字典（供后台编辑回显）。
+ * 纯字符串视作唯一文案（同时作为 zh_Hans / en 的兜底）；JSON 对象则按 key 展开。
+ */
+function localizedParts(v) {
+    const value = unwrapLocalized(v);
+    if (value == null) {
+        return {};
+    }
+    if (typeof value === 'string') {
+        return { zh_Hans: value, en: value };
+    }
+    const parts = {};
+    for (const [k, val] of Object.entries(value)) {
+        if (typeof val === 'string') {
+            parts[k] = val;
+        }
+    }
+    return parts;
 }
 //# sourceMappingURL=localize.js.map

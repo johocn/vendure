@@ -14,3 +14,8 @@ export type LocalizedText = string | Partial<Record<LanguageCode, string>>;
  *  5. `fallback`（默认空串）。
  */
 export declare function localizeText(v: LocalizedText | undefined, locale: LanguageCode, fallback?: string): string;
+/**
+ * 将 LocalizedText 拆分为各语言的挂数字典（供后台编辑回显）。
+ * 纯字符串视作唯一文案（同时作为 zh_Hans / en 的兜底）；JSON 对象则按 key 展开。
+ */
+export declare function localizedParts(v: LocalizedText | undefined): Record<string, string | undefined>;

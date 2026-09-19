@@ -47,7 +47,11 @@ const couponTemplateType = `
 type CouponTemplate implements Node {
     id: ID!
     name: String!
+    nameZh: String
+    nameEn: String
     description: String
+    descZh: String
+    descEn: String
     type: CouponType!
     discountValue: Int!
     minSpend: Int!
@@ -138,6 +142,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
             coupon_binding_service_1.CouponBindingService,
             migrations_1.AddCouponFieldsMigration,
             migrations_1.CreateProductCouponBindingMigration,
+            migrations_1.AddCouponIndexes20260919,
         ],
         exports: [coupon_service_1.CouponService, coupon_binding_service_1.CouponBindingService],
         adminApiExtensions: {

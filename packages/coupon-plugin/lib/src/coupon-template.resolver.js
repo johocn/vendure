@@ -36,6 +36,22 @@ let CouponTemplateResolver = class CouponTemplateResolver {
         }
         return (0, localize_1.localizeText)(v, ctx.languageCode, '') || null;
     }
+    nameZh(template) {
+        var _a;
+        return (_a = (0, localize_1.localizedParts)(template.name).zh_Hans) !== null && _a !== void 0 ? _a : null;
+    }
+    nameEn(template) {
+        var _a;
+        return (_a = (0, localize_1.localizedParts)(template.name).en) !== null && _a !== void 0 ? _a : null;
+    }
+    descZh(template) {
+        var _a, _b;
+        return (_b = (_a = (0, localize_1.localizedParts)(template.description)) === null || _a === void 0 ? void 0 : _a.zh_Hans) !== null && _b !== void 0 ? _b : null;
+    }
+    descEn(template) {
+        var _a, _b;
+        return (_b = (_a = (0, localize_1.localizedParts)(template.description)) === null || _a === void 0 ? void 0 : _a.en) !== null && _b !== void 0 ? _b : null;
+    }
 };
 exports.CouponTemplateResolver = CouponTemplateResolver;
 __decorate([
@@ -54,6 +70,34 @@ __decorate([
     __metadata("design:paramtypes", [coupon_template_entity_1.CouponTemplate, core_1.RequestContext]),
     __metadata("design:returntype", Object)
 ], CouponTemplateResolver.prototype, "description", null);
+__decorate([
+    (0, graphql_1.ResolveField)('nameZh'),
+    __param(0, (0, graphql_1.Parent)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [coupon_template_entity_1.CouponTemplate]),
+    __metadata("design:returntype", Object)
+], CouponTemplateResolver.prototype, "nameZh", null);
+__decorate([
+    (0, graphql_1.ResolveField)('nameEn'),
+    __param(0, (0, graphql_1.Parent)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [coupon_template_entity_1.CouponTemplate]),
+    __metadata("design:returntype", Object)
+], CouponTemplateResolver.prototype, "nameEn", null);
+__decorate([
+    (0, graphql_1.ResolveField)('descZh'),
+    __param(0, (0, graphql_1.Parent)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [coupon_template_entity_1.CouponTemplate]),
+    __metadata("design:returntype", Object)
+], CouponTemplateResolver.prototype, "descZh", null);
+__decorate([
+    (0, graphql_1.ResolveField)('descEn'),
+    __param(0, (0, graphql_1.Parent)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [coupon_template_entity_1.CouponTemplate]),
+    __metadata("design:returntype", Object)
+], CouponTemplateResolver.prototype, "descEn", null);
 exports.CouponTemplateResolver = CouponTemplateResolver = __decorate([
     (0, graphql_1.Resolver)('CouponTemplate')
 ], CouponTemplateResolver);

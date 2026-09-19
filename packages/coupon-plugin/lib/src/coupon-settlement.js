@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.setBindingService = setBindingService;
 exports.getBindingService = getBindingService;
+exports.isNewCustomerWithinChannel = isNewCustomerWithinChannel;
 exports.isNewCustomer = isNewCustomer;
 const core_1 = require("@vendure/core");
 const coupon_runtime_1 = require("./coupon-runtime");
@@ -21,6 +22,24 @@ function getBindingService() {
     return bindingService;
 }
 /**
+ * 新客判定（统一口径）：本租户（channelId）无历史有效订单。
+ * 有效订单排除未完成/取消态；跨渠道订单不计入。
+ * 注意：Order 无 channelId 列，渠道归属经 `o.channels` ManyToMany 关联表过滤。
+ */
+async function isNewCustomerWithinChannel(ctx, customerId) {
+    if (customerId == null)
+        return true;
+    const count = await (0, coupon_runtime_1.getCouponConnection)()
+        .getRepository(ctx, core_1.Order)
+        .createQueryBuilder('o')
+        .innerJoin('o.channels', 'ch')
+        .where('o.customerId = :cid', { cid: customerId })
+        .andWhere('ch.id = :chan', { chan: ctx.channelId })
+        .andWhere("o.state NOT IN ('Created','AddingItems','ArrangingPayment','Modifying','Cancelled')")
+        .getCount();
+    return count === 0;
+}
+/**
  * 新客判定：本租户无历史有效订单（排除创建/购物车/待支付/修改/取消等未完成态）视为新客。
  * customerId 解析顺序：order.customer.id 优先，其次按 activeUserId 反查 Customer；
  * 均解析不到时视为新客。
@@ -34,14 +53,6 @@ async function isNewCustomer(ctx, order) {
             .findOne({ where: { user: { id: ctx.activeUserId } } });
         customerId = cust === null || cust === void 0 ? void 0 : cust.id;
     }
-    if (customerId == null)
-        return true;
-    const count = await (0, coupon_runtime_1.getCouponConnection)()
-        .getRepository(ctx, core_1.Order)
-        .createQueryBuilder('o')
-        .where('o.customerId = :cid', { cid: customerId })
-        .andWhere("o.state NOT IN ('Created','AddingItems','ArrangingPayment','Modifying','Cancelled')")
-        .getCount();
-    return count === 0;
+    return isNewCustomerWithinChannel(ctx, customerId);
 }
 //# sourceMappingURL=coupon-settlement.js.map

@@ -20,17 +20,11 @@ export declare class ProductCouponBinding extends VendureEntity {
     channelId?: number;
     /** 展示排序（升序） */
     displayOrder: number;
-    /** 预留：每人限领覆盖 */
     perUserClaimLimit?: number;
-    /** 预留：专属领券时间窗 */
     claimWindowStart?: Date;
     claimWindowEnd?: Date;
-    /** 预留：独立领券库存 */
     claimStock?: number;
-    /** 角标文案 */
     badgeText?: string;
-    /** 主文案 */
     promoTitle?: string;
-    /** 备注 */
     remark?: string;
 }

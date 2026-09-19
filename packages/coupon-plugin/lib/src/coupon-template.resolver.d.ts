@@ -11,4 +11,8 @@ import { CouponTemplate } from './coupon-template.entity';
 export declare class CouponTemplateResolver {
     name(template: CouponTemplate, ctx: RequestContext): string;
     description(template: CouponTemplate, ctx: RequestContext): string | null;
+    nameZh(template: CouponTemplate): string | null;
+    nameEn(template: CouponTemplate): string | null;
+    descZh(template: CouponTemplate): string | null;
+    descEn(template: CouponTemplate): string | null;
 }
