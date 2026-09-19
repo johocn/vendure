@@ -42,7 +42,7 @@ function makeCtx(channelCode = 't1') {
  * 用内存 Map 实现两套假 repo + 假 stockLevelService + 假 virtualPhysicalStockService，
  * 在服务层验证预留生命周期，而不依赖真实 DB。
  */
-function makeService(ctx: any, opts: { locations?: Array<{ id: number; kind?: string }> } = {}) {
+function makeService(ctx: any, opts: { locations?: Array<{ id: number; customFields?: { kind?: string } }> } = {}) {
     const locations = opts.locations ?? [
         { id: 1, customFields: { kind: 'physical' } },
         { id: 2, customFields: { kind: 'virtual' } },
