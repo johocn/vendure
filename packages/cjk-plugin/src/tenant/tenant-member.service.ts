@@ -109,13 +109,22 @@ export const PERMISSION_CATALOG: PermissionCatalogGroup[] = [
         ],
     },
     {
+        key: 'inventory',
+        label: '库存/网点',
+        items: [
+            { code: Permission.CreateStockLocation, label: '网点·增' },
+            { code: Permission.UpdateStockLocation, label: '网点·改' },
+            { code: Permission.DeleteStockLocation, label: '网点·删' },
+        ],
+    },
+    {
         key: 'dashboard',
         label: '数据看板',
         items: [
             { code: 'ViewDashboard', label: '数据看板·查看' },
         ],
     },
-    ];
+];
 
 /** 租户级角色可用的业务权限白名单（由 PERMISSION_CATALOG 扁平派生，建模/校验统一使用） */
 export const BUSINESS_PERMISSIONS: string[] = PERMISSION_CATALOG.flatMap((g) =>
@@ -209,9 +218,9 @@ export class TenantMemberService {
         @Optional() @Inject(CJK_PLUGIN_OPTIONS) private pluginOptions?: CjkPluginOptions,
     ) {}
 
-    /** 校验角色权限全部在业务权限白名单内（超管专属权限不入租户角色） */
+    /** 校验角色权限全部在业务权限白名单内（超管专属权限不入租户角色）。Authenticated 为基础权限不计入 */
     assertBusinessPermissions(permissions: string[]): void {
-        const invalid = permissions.filter((p) => !BUSINESS_PERMISSIONS.includes(p));
+        const invalid = permissions.filter((p) => p !== 'Authenticated' && !BUSINESS_PERMISSIONS.includes(p));
         if (invalid.length > 0) {
             throw new Error(`FORBIDDEN_PERMISSION: ${invalid.join(',')} 为超管专属权限`);
         }

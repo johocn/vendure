@@ -103,6 +103,15 @@ exports.PERMISSION_CATALOG = [
         ],
     },
     {
+        key: 'inventory',
+        label: '库存/网点',
+        items: [
+            { code: core_1.Permission.CreateStockLocation, label: '网点·增' },
+            { code: core_1.Permission.UpdateStockLocation, label: '网点·改' },
+            { code: core_1.Permission.DeleteStockLocation, label: '网点·删' },
+        ],
+    },
+    {
         key: 'dashboard',
         label: '数据看板',
         items: [
@@ -178,9 +187,9 @@ let TenantMemberService = class TenantMemberService {
         this.authService = authService;
         this.pluginOptions = pluginOptions;
     }
-    /** 校验角色权限全部在业务权限白名单内（超管专属权限不入租户角色） */
+    /** 校验角色权限全部在业务权限白名单内（超管专属权限不入租户角色）。Authenticated 为基础权限不计入 */
     assertBusinessPermissions(permissions) {
-        const invalid = permissions.filter((p) => !exports.BUSINESS_PERMISSIONS.includes(p));
+        const invalid = permissions.filter((p) => p !== 'Authenticated' && !exports.BUSINESS_PERMISSIONS.includes(p));
         if (invalid.length > 0) {
             throw new Error(`FORBIDDEN_PERMISSION: ${invalid.join(',')} 为超管专属权限`);
         }
