@@ -145,6 +145,17 @@ let CouponPlugin = CouponPlugin_1 = class CouponPlugin {
                 core_2.Logger.error(`Failed to return coupon on order ${event.order.id} cancel: ${e.message}`, constants_1.loggerCtx);
             }
         });
+        // 整单全额退款回退券（A3）：累计已退金额达应付 → 回退；部分退不触发（返回由 returnCoupon 保证幂等）
+        this.eventBus.ofType(core_2.RefundStateTransitionEvent).subscribe(async (event) => {
+            if (event.toState !== 'Settled')
+                return;
+            try {
+                await this.couponService.returnCouponOnFullRefund(event.ctx, event.refund.id);
+            }
+            catch (e) {
+                core_2.Logger.error(`Failed to return coupon on refund ${event.refund.id}: ${e.message}`, constants_1.loggerCtx);
+            }
+        });
         core_2.Logger.info('CouponPlugin initialized', constants_1.loggerCtx);
     }
 };

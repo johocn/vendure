@@ -161,7 +161,15 @@ let CouponService = class CouponService {
         }
         return tpl !== null && tpl !== void 0 ? tpl : undefined;
     }
+    /** 下线 CATEGORY scope（coupon.md §8 A1）：结算无分类匹配逻辑、无 UI/实体关系指向，
+     *  使管理员误配「分类券」时静默全场可抵。create/update 一律拒绝该值。 */
+    assertScopeSupported(scope) {
+        if (scope === 'CATEGORY') {
+            throw new core_1.UserInputError('Scope CATEGORY is not supported; use ALL or product binding (SKU) instead');
+        }
+    }
     async createTemplate(ctx, input) {
+        this.assertScopeSupported(input === null || input === void 0 ? void 0 : input.scope);
         const repo = this.connection.getRepository(ctx, coupon_template_entity_1.CouponTemplate);
         const tpl = new coupon_template_entity_1.CouponTemplate(input);
         if (tpl.type === 'FULL') {
@@ -194,6 +202,8 @@ let CouponService = class CouponService {
             throw new core_1.UserInputError(`CouponTemplate with id ${input.id} not found`);
         }
         await this.assertManagedByShop(ctx, tpl.shopId);
+        if (input.scope != null)
+            this.assertScopeSupported(input.scope);
         for (const key of TEMPLATE_UPDATE_ALLOWED) {
             if (key in input) {
                 tpl[key] = input[key];
@@ -245,6 +255,15 @@ let CouponService = class CouponService {
             .count({ where: { couponTemplateId: id } });
         if (bindingCount > 0) {
             throw new core_1.UserInputError('Template has product bindings, unbind them first');
+        }
+        // A2：已发放券（customer_coupon 引用）保护——存在则抛可读错误，避免底层裸外键报错
+        const issued = await this.connection
+            .getRepository(ctx, customer_coupon_entity_1.CustomerCoupon)
+            .createQueryBuilder('cc')
+            .where('cc.template = :id', { id: String(id) })
+            .getCount();
+        if (issued > 0) {
+            throw new core_1.UserInputError(`Template has ${issued} issued coupon(s); revoke or delete the customer coupons first`);
         }
         await repo.delete(id);
     }
@@ -794,6 +813,37 @@ let CouponService = class CouponService {
         cc.usedAt = null;
         await repo.save(cc);
         core_1.Logger.info(`Coupon ${code} returned on order ${orderId} cancellation`, constants_1.loggerCtx);
+    }
+    /**
+     * A3（coupon.md §8 A1/A3）：整单全额退款后回退券。
+     * Vendure 订单无 "Refunded" 态，退款由 Refund 实体走独立状态机到 "Settled"；
+     * 故按「该订单累计已 Settled 的退款额 >= 应付总额（totalWithTax）」判定为整单退完，
+     * 触发 returnCoupon 回退。部分退（未达全额）不触发。幂等由 returnCoupon 保证。
+     */
+    async returnCouponOnFullRefund(ctx, refundId) {
+        var _a, _b;
+        const repo = this.connection.getRepository(ctx, core_1.Refund);
+        // Refund 仅关联 Payment，订单经 Payment.order 中转
+        const refund = await repo
+            .createQueryBuilder('r')
+            .leftJoinAndSelect('r.payment', 'p')
+            .leftJoinAndSelect('p.order', 'o')
+            .where('r.id = :id', { id: String(refundId) })
+            .getOne();
+        const order = (_a = refund === null || refund === void 0 ? void 0 : refund.payment) === null || _a === void 0 ? void 0 : _a.order;
+        if (!order)
+            return;
+        const settled = await repo
+            .createQueryBuilder('r')
+            .innerJoin('r.payment', 'p')
+            .innerJoin('p.order', 'o')
+            .where('o.id = :oid', { oid: String(order.id) })
+            .andWhere('r.state = :st', { st: 'Settled' })
+            .getMany();
+        const totalRefunded = (settled !== null && settled !== void 0 ? settled : []).reduce((s, r) => { var _a; return s + Number((_a = r.total) !== null && _a !== void 0 ? _a : 0); }, 0);
+        if (Number((_b = order.totalWithTax) !== null && _b !== void 0 ? _b : 0) <= totalRefunded) {
+            await this.returnCoupon(ctx, order.id);
+        }
     }
     /* ------------------------- 私有工具 ------------------------- */
     /**

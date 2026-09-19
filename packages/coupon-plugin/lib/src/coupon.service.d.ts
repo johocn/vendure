@@ -38,6 +38,9 @@ export declare class CouponService {
         totalItems: number;
     }>;
     findOneTemplate(ctx: RequestContext, id: ID): Promise<CouponTemplate | undefined>;
+    /** 下线 CATEGORY scope（coupon.md §8 A1）：结算无分类匹配逻辑、无 UI/实体关系指向，
+     *  使管理员误配「分类券」时静默全场可抵。create/update 一律拒绝该值。 */
+    private assertScopeSupported;
     createTemplate(ctx: RequestContext, input: any): Promise<CouponTemplate>;
     updateTemplate(ctx: RequestContext, input: any): Promise<CouponTemplate>;
     /**
@@ -99,6 +102,13 @@ export declare class CouponService {
     bindAsUsed(ctx: RequestContext, orderId: ID): Promise<void>;
     /** 订单取消回退券（可复用） */
     returnCoupon(ctx: RequestContext, orderId: ID): Promise<void>;
+    /**
+     * A3（coupon.md §8 A1/A3）：整单全额退款后回退券。
+     * Vendure 订单无 "Refunded" 态，退款由 Refund 实体走独立状态机到 "Settled"；
+     * 故按「该订单累计已 Settled 的退款额 >= 应付总额（totalWithTax）」判定为整单退完，
+     * 触发 returnCoupon 回退。部分退（未达全额）不触发。幂等由 returnCoupon 保证。
+     */
+    returnCouponOnFullRefund(ctx: RequestContext, refundId: ID): Promise<void>;
     /**
      * 归属解析：activeUserId → Administrator.user → Shop.administratorId（与 shop-plugin 同法，不依赖 ctx.channelId）。
      * 若连接未注册 Shop 实体（shop-plugin 未加载）或 admin 无法解析，则回退为 undefined（不阻断）。

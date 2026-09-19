@@ -6,6 +6,7 @@ import {
     Logger,
     OrderPlacedEvent,
     OrderStateTransitionEvent,
+    RefundStateTransitionEvent,
     PluginCommonModule,
     TransactionalConnection,
     VendurePlugin,
@@ -371,6 +372,16 @@ export class CouponPlugin implements OnApplicationBootstrap {
                 await this.couponService.returnCoupon(event.ctx, event.order.id);
             } catch (e: any) {
                 Logger.error(`Failed to return coupon on order ${event.order.id} cancel: ${e.message}`, loggerCtx);
+            }
+        });
+
+        // 整单全额退款回退券（A3）：累计已退金额达应付 → 回退；部分退不触发（返回由 returnCoupon 保证幂等）
+        this.eventBus.ofType(RefundStateTransitionEvent).subscribe(async (event) => {
+            if (event.toState !== 'Settled') return;
+            try {
+                await this.couponService.returnCouponOnFullRefund(event.ctx, event.refund.id as any);
+            } catch (e: any) {
+                Logger.error(`Failed to return coupon on refund ${event.refund.id}: ${e.message}`, loggerCtx);
             }
         });
 
