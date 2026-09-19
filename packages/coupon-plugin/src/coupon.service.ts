@@ -390,6 +390,9 @@ export class CouponService {
         if (!binding || !binding.enabled) {
             throw new UserInputError('Binding not found');
         }
+        if (binding.channelId != null && Number(binding.channelId) !== Number(ctx.channel?.id)) {
+            throw new UserInputError('Binding not found');
+        }
         if (!binding.template || !binding.template.claimable) {
             throw new UserInputError('Coupon is not claimable');
         }
