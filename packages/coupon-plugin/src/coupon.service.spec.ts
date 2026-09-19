@@ -286,3 +286,142 @@ describe('CouponService.countHeld', () => {
         expect(ccRepo.createQueryBuilder).toHaveBeenCalledWith('cc');
     });
 });
+
+/**
+ * P2：memberLevel 门槛解析与会员档位判定。
+ */
+describe('CouponService.resolveRequiredMemberLevel / couponMeetsMemberLevel', () => {
+    let service: CouponService;
+
+    beforeEach(() => {
+        service = new CouponService({} as any, {} as any, {} as any);
+    });
+
+    it('解析：纯数字、英文码、中文档位名 → 对应 1-5', async () => {
+        expect(await service.resolveRequiredMemberLevel('3')).toBe(3);
+        expect(await service.resolveRequiredMemberLevel('gold')).toBe(3);
+        expect(await service.resolveRequiredMemberLevel('GOLD')).toBe(3);
+        expect(await service.resolveRequiredMemberLevel('金卡会员')).toBe(3);
+        expect(await service.resolveRequiredMemberLevel('普通')).toBe(1);
+        expect(await service.resolveRequiredMemberLevel('钻石')).toBe(5);
+    });
+
+    it('解析：空 / undefined / 未知文案 → null（不设限，fail-open）', async () => {
+        expect(await service.resolveRequiredMemberLevel('')).toBe(null);
+        expect(await service.resolveRequiredMemberLevel('  ')).toBe(null);
+        expect(await service.resolveRequiredMemberLevel(undefined)).toBe(null);
+        expect(await service.resolveRequiredMemberLevel(null)).toBe(null);
+        expect(await service.resolveRequiredMemberLevel('VIP')).toBe(null);
+    });
+
+    it('couponMeetsMemberLevel：顾客档位 >= 要求 → true', async () => {
+        (service as any).memberLevelService = {
+            resolveTierForCustomer: vi.fn().mockResolvedValue({ tierLevel: 3 }),
+        };
+        const tpl = { memberLevel: '3' } as any;
+        expect(await service.couponMeetsMemberLevel({} as any, 1, tpl)).toBe(true);
+    });
+
+    it('couponMeetsMemberLevel：顾客档位 < 要求 → false', async () => {
+        (service as any).memberLevelService = {
+            resolveTierForCustomer: vi.fn().mockResolvedValue({ tierLevel: 1 }),
+        };
+        const tpl = { memberLevel: 'gold' } as any;
+        expect(await service.couponMeetsMemberLevel({} as any, 1, tpl)).toBe(false);
+    });
+
+    it('couponMeetsMemberLevel：模板未设 memberLevel → true', async () => {
+        (service as any).memberLevelService = {
+            resolveTierForCustomer: vi.fn().mockResolvedValue({ tierLevel: 1 }),
+        };
+        expect(await service.couponMeetsMemberLevel({} as any, 1, {} as any)).toBe(true);
+    });
+});
+
+/**
+ * P3：couponCentre 领券中心应过滤不可自助领（claimable=false）的券。
+ */
+describe('CouponService.couponCentre 过滤 claimable', () => {
+    let templateRepo: any;
+    let qb: any;
+    let connection: any;
+    let service: CouponService;
+
+    beforeEach(() => {
+        qb = {
+            innerJoin: vi.fn().mockReturnThis(),
+            where: vi.fn().mockReturnThis(),
+            andWhere: vi.fn().mockReturnThis(),
+            getMany: vi.fn().mockResolvedValue([]),
+        };
+        templateRepo = { createQueryBuilder: vi.fn().mockReturnValue(qb) };
+        connection = {
+            getRepository: vi.fn((_ctx: any, entity: any) => {
+                if (entity === CouponTemplate) return templateRepo;
+                throw new Error(`unknown entity: ${entity}`);
+            }),
+        };
+        service = new CouponService(connection as any, {} as any, {} as any);
+    });
+
+    const ctx: any = {
+        channelId: 37,
+        channel: { token: 'official-01', code: 'official-01' }, // 非默认商城
+    };
+
+    it('领券中心查询包含 claimable=true 过滤，并返回本渠道券', async () => {
+        const own = [{ id: 1, claimable: true }];
+        qb.getMany.mockResolvedValue(own);
+        const result = await service.couponCentre(ctx);
+        expect(result).toEqual(own);
+        expect(qb.innerJoin).toHaveBeenCalledWith(
+            'tpl.channels',
+            'channel',
+            'channel.id = :channelId',
+            { channelId: 37 },
+        );
+        expect(qb.andWhere).toHaveBeenCalledWith('tpl.claimable = :claimable', { claimable: true });
+    });
+});
+
+/**
+ * P5：多语言入参合并（nameZh/nameEn/descZh/descEn → LocalizedText）。
+ */
+describe('CouponService 多语言合并 applyMultilingualInput', () => {
+    let service: CouponService;
+
+    beforeEach(() => {
+        service = new CouponService({} as any, {} as any, {} as any);
+    });
+
+    it('create 型：传 nameZh/nameEn → name 为 {zh_Hans,en} 对象', () => {
+        const tpl: any = { name: undefined, description: undefined };
+        (service as any).applyMultilingualInput(tpl, { nameZh: '满100减20', nameEn: '20 off 100' });
+        expect(tpl.name).toEqual({ zh_Hans: '满100减20', en: '20 off 100' });
+        expect(tpl.description).toBeUndefined();
+    });
+
+    it('create 型：纯字符串 name（无多语言）→ 不改动', () => {
+        const tpl: any = { name: '满100减20', description: undefined };
+        (service as any).applyMultilingualInput(tpl, { name: '满100减20' });
+        expect(tpl.name).toBe('满100减20');
+    });
+
+    it('update 型：已有 {zh_Hans,en}，仅盖 en → 保留 zh', () => {
+        const tpl: any = { name: { zh_Hans: '旧', en: 'Old' }, description: undefined };
+        (service as any).applyMultilingualInput(tpl, { nameEn: 'New' });
+        expect(tpl.name).toEqual({ zh_Hans: '旧', en: 'New' });
+    });
+
+    it('descZh/descEn → description 合并为对象', () => {
+        const tpl: any = { name: 'x', description: { zh_Hans: '旧说明' } };
+        (service as any).applyMultilingualInput(tpl, { nameEn: 'X', descEn: 'New desc' });
+        expect(tpl.description).toEqual({ zh_Hans: '旧说明', en: 'New desc' });
+    });
+
+    it('纯字符串既有 name 合并 en → 视为 zh_Hans 并叠加 en', () => {
+        const tpl: any = { name: '满100减20', description: undefined };
+        (service as any).applyMultilingualInput(tpl, { nameEn: '20 off 100' });
+        expect(tpl.name).toEqual({ zh_Hans: '满100减20', en: '20 off 100' });
+    });
+});

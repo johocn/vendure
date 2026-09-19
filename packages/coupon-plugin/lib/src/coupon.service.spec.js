@@ -242,4 +242,121 @@ const coupon_runtime_1 = require("./coupon-runtime");
         (0, vitest_1.expect)(ccRepo.createQueryBuilder).toHaveBeenCalledWith('cc');
     });
 });
+/**
+ * P2：memberLevel 门槛解析与会员档位判定。
+ */
+(0, vitest_1.describe)('CouponService.resolveRequiredMemberLevel / couponMeetsMemberLevel', () => {
+    let service;
+    (0, vitest_1.beforeEach)(() => {
+        service = new coupon_service_1.CouponService({}, {}, {});
+    });
+    (0, vitest_1.it)('解析：纯数字、英文码、中文档位名 → 对应 1-5', async () => {
+        (0, vitest_1.expect)(await service.resolveRequiredMemberLevel('3')).toBe(3);
+        (0, vitest_1.expect)(await service.resolveRequiredMemberLevel('gold')).toBe(3);
+        (0, vitest_1.expect)(await service.resolveRequiredMemberLevel('GOLD')).toBe(3);
+        (0, vitest_1.expect)(await service.resolveRequiredMemberLevel('金卡会员')).toBe(3);
+        (0, vitest_1.expect)(await service.resolveRequiredMemberLevel('普通')).toBe(1);
+        (0, vitest_1.expect)(await service.resolveRequiredMemberLevel('钻石')).toBe(5);
+    });
+    (0, vitest_1.it)('解析：空 / undefined / 未知文案 → null（不设限，fail-open）', async () => {
+        (0, vitest_1.expect)(await service.resolveRequiredMemberLevel('')).toBe(null);
+        (0, vitest_1.expect)(await service.resolveRequiredMemberLevel('  ')).toBe(null);
+        (0, vitest_1.expect)(await service.resolveRequiredMemberLevel(undefined)).toBe(null);
+        (0, vitest_1.expect)(await service.resolveRequiredMemberLevel(null)).toBe(null);
+        (0, vitest_1.expect)(await service.resolveRequiredMemberLevel('VIP')).toBe(null);
+    });
+    (0, vitest_1.it)('couponMeetsMemberLevel：顾客档位 >= 要求 → true', async () => {
+        service.memberLevelService = {
+            resolveTierForCustomer: vitest_1.vi.fn().mockResolvedValue({ tierLevel: 3 }),
+        };
+        const tpl = { memberLevel: '3' };
+        (0, vitest_1.expect)(await service.couponMeetsMemberLevel({}, 1, tpl)).toBe(true);
+    });
+    (0, vitest_1.it)('couponMeetsMemberLevel：顾客档位 < 要求 → false', async () => {
+        service.memberLevelService = {
+            resolveTierForCustomer: vitest_1.vi.fn().mockResolvedValue({ tierLevel: 1 }),
+        };
+        const tpl = { memberLevel: 'gold' };
+        (0, vitest_1.expect)(await service.couponMeetsMemberLevel({}, 1, tpl)).toBe(false);
+    });
+    (0, vitest_1.it)('couponMeetsMemberLevel：模板未设 memberLevel → true', async () => {
+        service.memberLevelService = {
+            resolveTierForCustomer: vitest_1.vi.fn().mockResolvedValue({ tierLevel: 1 }),
+        };
+        (0, vitest_1.expect)(await service.couponMeetsMemberLevel({}, 1, {})).toBe(true);
+    });
+});
+/**
+ * P3：couponCentre 领券中心应过滤不可自助领（claimable=false）的券。
+ */
+(0, vitest_1.describe)('CouponService.couponCentre 过滤 claimable', () => {
+    let templateRepo;
+    let qb;
+    let connection;
+    let service;
+    (0, vitest_1.beforeEach)(() => {
+        qb = {
+            innerJoin: vitest_1.vi.fn().mockReturnThis(),
+            where: vitest_1.vi.fn().mockReturnThis(),
+            andWhere: vitest_1.vi.fn().mockReturnThis(),
+            getMany: vitest_1.vi.fn().mockResolvedValue([]),
+        };
+        templateRepo = { createQueryBuilder: vitest_1.vi.fn().mockReturnValue(qb) };
+        connection = {
+            getRepository: vitest_1.vi.fn((_ctx, entity) => {
+                if (entity === coupon_template_entity_1.CouponTemplate)
+                    return templateRepo;
+                throw new Error(`unknown entity: ${entity}`);
+            }),
+        };
+        service = new coupon_service_1.CouponService(connection, {}, {});
+    });
+    const ctx = {
+        channelId: 37,
+        channel: { token: 'official-01', code: 'official-01' }, // 非默认商城
+    };
+    (0, vitest_1.it)('领券中心查询包含 claimable=true 过滤，并返回本渠道券', async () => {
+        const own = [{ id: 1, claimable: true }];
+        qb.getMany.mockResolvedValue(own);
+        const result = await service.couponCentre(ctx);
+        (0, vitest_1.expect)(result).toEqual(own);
+        (0, vitest_1.expect)(qb.innerJoin).toHaveBeenCalledWith('tpl.channels', 'channel', 'channel.id = :channelId', { channelId: 37 });
+        (0, vitest_1.expect)(qb.andWhere).toHaveBeenCalledWith('tpl.claimable = :claimable', { claimable: true });
+    });
+});
+/**
+ * P5：多语言入参合并（nameZh/nameEn/descZh/descEn → LocalizedText）。
+ */
+(0, vitest_1.describe)('CouponService 多语言合并 applyMultilingualInput', () => {
+    let service;
+    (0, vitest_1.beforeEach)(() => {
+        service = new coupon_service_1.CouponService({}, {}, {});
+    });
+    (0, vitest_1.it)('create 型：传 nameZh/nameEn → name 为 {zh_Hans,en} 对象', () => {
+        const tpl = { name: undefined, description: undefined };
+        service.applyMultilingualInput(tpl, { nameZh: '满100减20', nameEn: '20 off 100' });
+        (0, vitest_1.expect)(tpl.name).toEqual({ zh_Hans: '满100减20', en: '20 off 100' });
+        (0, vitest_1.expect)(tpl.description).toBeUndefined();
+    });
+    (0, vitest_1.it)('create 型：纯字符串 name（无多语言）→ 不改动', () => {
+        const tpl = { name: '满100减20', description: undefined };
+        service.applyMultilingualInput(tpl, { name: '满100减20' });
+        (0, vitest_1.expect)(tpl.name).toBe('满100减20');
+    });
+    (0, vitest_1.it)('update 型：已有 {zh_Hans,en}，仅盖 en → 保留 zh', () => {
+        const tpl = { name: { zh_Hans: '旧', en: 'Old' }, description: undefined };
+        service.applyMultilingualInput(tpl, { nameEn: 'New' });
+        (0, vitest_1.expect)(tpl.name).toEqual({ zh_Hans: '旧', en: 'New' });
+    });
+    (0, vitest_1.it)('descZh/descEn → description 合并为对象', () => {
+        const tpl = { name: 'x', description: { zh_Hans: '旧说明' } };
+        service.applyMultilingualInput(tpl, { nameEn: 'X', descEn: 'New desc' });
+        (0, vitest_1.expect)(tpl.description).toEqual({ zh_Hans: '旧说明', en: 'New desc' });
+    });
+    (0, vitest_1.it)('纯字符串既有 name 合并 en → 视为 zh_Hans 并叠加 en', () => {
+        const tpl = { name: '满100减20', description: undefined };
+        service.applyMultilingualInput(tpl, { nameEn: '20 off 100' });
+        (0, vitest_1.expect)(tpl.name).toEqual({ zh_Hans: '满100减20', en: '20 off 100' });
+    });
+});
 //# sourceMappingURL=coupon.service.spec.js.map

@@ -176,8 +176,12 @@ type CustomerCoupon implements Node {
             }
 
             input CreateCouponTemplateInput {
-                name: String!
+                name: String
                 description: String
+                nameZh: String
+                nameEn: String
+                descZh: String
+                descEn: String
                 type: CouponType!
                 discountValue: Int!
                 minSpend: Int
@@ -202,6 +206,10 @@ type CustomerCoupon implements Node {
                 id: ID!
                 name: String
                 description: String
+                nameZh: String
+                nameEn: String
+                descZh: String
+                descEn: String
                 type: CouponType
                 discountValue: Int
                 minSpend: Int

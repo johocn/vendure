@@ -51,6 +51,7 @@ const customer_coupon_entity_1 = require("./customer-coupon.entity");
     };
     (0, vitest_1.beforeEach)(() => {
         qb = {
+            innerJoin: vitest_1.vi.fn().mockReturnThis(),
             where: vitest_1.vi.fn().mockReturnThis(),
             andWhere: vitest_1.vi.fn().mockReturnThis(),
             getCount: vitest_1.vi.fn().mockResolvedValue(0),

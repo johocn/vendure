@@ -219,8 +219,12 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
             }
 
             input CreateCouponTemplateInput {
-                name: String!
+                name: String
                 description: String
+                nameZh: String
+                nameEn: String
+                descZh: String
+                descEn: String
                 type: CouponType!
                 discountValue: Int!
                 minSpend: Int
@@ -245,6 +249,10 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 id: ID!
                 name: String
                 description: String
+                nameZh: String
+                nameEn: String
+                descZh: String
+                descEn: String
                 type: CouponType
                 discountValue: Int
                 minSpend: Int

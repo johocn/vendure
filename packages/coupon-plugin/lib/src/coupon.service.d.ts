@@ -20,6 +20,19 @@ export declare class CouponService {
     private memberLevelService;
     private codePrefix;
     init(injector: Injector): void;
+    /**
+     * 将模板上的 memberLevel 字符串解析为所需最低档位（1-5）。
+     * 支持：纯数字（"3"→3）、英文档位码（gold→3）、中文档位名（金卡会员→3）。
+     * 无法解析或空 → 返回 null（不设限，fail-open）。对未知文案保持宽容，避免误伤。
+     */
+    resolveRequiredMemberLevel(memberLevel?: string | null): Promise<number | null>;
+    /**
+     * 会员等级门槛判定（非阻塞）。memberLevel 未设 / 解析失败 / 会员插件未注册 → 放行；
+     * 否则要求顾客当前档位 >= 所需档位。
+     */
+    couponMeetsMemberLevel(ctx: RequestContext, customerId: number, tpl: CouponTemplate): Promise<boolean>;
+    /** 会员等级门槛校验（抛错）。 */
+    assertCouponMemberLevel(ctx: RequestContext, customerId: number, tpl: CouponTemplate): Promise<void>;
     findAllTemplates(ctx: RequestContext, options?: ListQueryOptions<CouponTemplate>): Promise<{
         items: CouponTemplate[];
         totalItems: number;
@@ -27,6 +40,13 @@ export declare class CouponService {
     findOneTemplate(ctx: RequestContext, id: ID): Promise<CouponTemplate | undefined>;
     createTemplate(ctx: RequestContext, input: any): Promise<CouponTemplate>;
     updateTemplate(ctx: RequestContext, input: any): Promise<CouponTemplate>;
+    /**
+     * 多语言合并：nameZh/nameEn/descZh/descEn 按需写入，产出 LocalizedText 对象，
+     * 并保留既有的其它语言文案。任一多语言字段均未提供时不改动。
+     */
+    private applyMultilingualInput;
+    /** 合并单条 LocalizedText：当前值（对象取其已有键，纯字符串视为 zh）叠加 zh_Hans/en 覆盖。 */
+    private mergeLocalized;
     deleteTemplate(ctx: RequestContext, id: ID): Promise<void>;
     couponCentre(ctx: RequestContext): Promise<CouponTemplate[]>;
     /** 默认商城渠道下，本商城商品（Product.customFields.shopId）中出现过的店铺 id 集合。 */

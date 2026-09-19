@@ -55,6 +55,7 @@ describe('couponAppliedCondition 结算校验', () => {
 
     beforeEach(() => {
         qb = {
+            innerJoin: vi.fn().mockReturnThis(),
             where: vi.fn().mockReturnThis(),
             andWhere: vi.fn().mockReturnThis(),
             getCount: vi.fn().mockResolvedValue(0),

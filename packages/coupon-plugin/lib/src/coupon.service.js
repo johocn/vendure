@@ -80,6 +80,57 @@ let CouponService = class CouponService {
             // options not injected
         }
     }
+    /* ------------------------- 会员等级限制（P2） ------------------------- */
+    /**
+     * 将模板上的 memberLevel 字符串解析为所需最低档位（1-5）。
+     * 支持：纯数字（"3"→3）、英文档位码（gold→3）、中文档位名（金卡会员→3）。
+     * 无法解析或空 → 返回 null（不设限，fail-open）。对未知文案保持宽容，避免误伤。
+     */
+    async resolveRequiredMemberLevel(memberLevel) {
+        if (memberLevel == null)
+            return null;
+        const s = String(memberLevel).trim();
+        if (!s)
+            return null;
+        if (/^\d+$/.test(s)) {
+            const n = parseInt(s, 10);
+            return n >= 1 && n <= 5 ? n : null;
+        }
+        const tierAliases = [
+            { level: 1, keys: ['普通', '普通会员', 'bronze', 'bronze member'] },
+            { level: 2, keys: ['银', '银卡', '银卡会员', 'silver', 'silver member'] },
+            { level: 3, keys: ['金', '金卡', '金卡会员', 'gold', 'gold member'] },
+            { level: 4, keys: ['白金', '白金会员', 'platinum', 'platinum member'] },
+            { level: 5, keys: ['钻石', '钻石会员', 'diamond', 'diamond member'] },
+        ];
+        const lower = s.toLowerCase();
+        for (const tier of tierAliases) {
+            if (tier.keys.some(k => lower === k || lower.includes(k)))
+                return tier.level;
+        }
+        return null;
+    }
+    /**
+     * 会员等级门槛判定（非阻塞）。memberLevel 未设 / 解析失败 / 会员插件未注册 → 放行；
+     * 否则要求顾客当前档位 >= 所需档位。
+     */
+    async couponMeetsMemberLevel(ctx, customerId, tpl) {
+        var _a;
+        const required = await this.resolveRequiredMemberLevel(tpl.memberLevel);
+        if (required == null)
+            return true;
+        if (!this.memberLevelService)
+            return true; // 会员插件未注册，fail-open
+        const tier = await this.memberLevelService.resolveTierForCustomer(ctx, customerId);
+        const level = (_a = tier === null || tier === void 0 ? void 0 : tier.tierLevel) !== null && _a !== void 0 ? _a : 1;
+        return level >= required;
+    }
+    /** 会员等级门槛校验（抛错）。 */
+    async assertCouponMemberLevel(ctx, customerId, tpl) {
+        if (!(await this.couponMeetsMemberLevel(ctx, customerId, tpl))) {
+            throw new core_1.UserInputError('Coupon requires a higher member level');
+        }
+    }
     /* ------------------------- 模板管理 ------------------------- */
     async findAllTemplates(ctx, options) {
         const qb = this.listQueryBuilder.build(coupon_template_entity_1.CouponTemplate, options, {
@@ -118,6 +169,11 @@ let CouponService = class CouponService {
         }
         tpl.channels = [ctx.channel];
         tpl.claimedCount = 0;
+        // 多语言入参（P5）：nameZh/nameEn/descZh/descEn 合并为 LocalizedText 对象。
+        this.applyMultilingualInput(tpl, input);
+        if (tpl.name == null) {
+            throw new core_1.UserInputError('CouponTemplate name (or nameZh) is required');
+        }
         // 发行归属店铺（跨渠道范围用）：优先采用显式传入的 shopId，否则从当前管理员的店解析。
         // 若 Shop / Administrator 依赖插件未注册或无法解析，则保持 undefined（不阻断）。
         if (input.shopId != null) {
@@ -143,7 +199,39 @@ let CouponService = class CouponService {
                 tpl[key] = input[key];
             }
         }
+        // 多语言入参（P5）：合并 nameZh/nameEn/descZh/descEn（保留既有其它语言文案）。
+        this.applyMultilingualInput(tpl, input);
         return repo.save(tpl);
+    }
+    /**
+     * 多语言合并：nameZh/nameEn/descZh/descEn 按需写入，产出 LocalizedText 对象，
+     * 并保留既有的其它语言文案。任一多语言字段均未提供时不改动。
+     */
+    applyMultilingualInput(tpl, input) {
+        var _a, _b, _c, _d, _e;
+        const hasName = input.nameZh != null || input.nameEn != null;
+        const hasDesc = input.descZh != null || input.descEn != null;
+        if (hasName) {
+            tpl.name = this.mergeLocalized(tpl.name, (_a = input.nameZh) !== null && _a !== void 0 ? _a : null, (_b = input.nameEn) !== null && _b !== void 0 ? _b : null);
+        }
+        if (hasDesc) {
+            tpl.description = this.mergeLocalized((_c = tpl.description) !== null && _c !== void 0 ? _c : null, (_d = input.descZh) !== null && _d !== void 0 ? _d : null, (_e = input.descEn) !== null && _e !== void 0 ? _e : null);
+        }
+    }
+    /** 合并单条 LocalizedText：当前值（对象取其已有键，纯字符串视为 zh）叠加 zh_Hans/en 覆盖。 */
+    mergeLocalized(current, zh, en) {
+        const obj = {};
+        if (typeof current === 'object' && current != null) {
+            Object.assign(obj, current);
+        }
+        else if (typeof current === 'string' && current) {
+            obj.zh_Hans = current;
+        }
+        if (zh != null)
+            obj.zh_Hans = zh;
+        if (en != null)
+            obj.en = en;
+        return obj;
     }
     async deleteTemplate(ctx, id) {
         const repo = this.connection.getRepository(ctx, coupon_template_entity_1.CouponTemplate);
@@ -168,6 +256,7 @@ let CouponService = class CouponService {
             .createQueryBuilder('tpl')
             .innerJoin('tpl.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId })
             .where('tpl.enabled = :enabled', { enabled: true })
+            .andWhere('tpl.claimable = :claimable', { claimable: true })
             .andWhere('(tpl.startsAt IS NULL OR tpl.startsAt <= :now)', { now })
             .andWhere('(tpl.endsAt IS NULL OR tpl.endsAt >= :now)', { now })
             .getMany();
@@ -184,6 +273,7 @@ let CouponService = class CouponService {
             .createQueryBuilder('tpl')
             .where('tpl.shopId IN (:...shopIds)', { shopIds: [...shopIds] })
             .andWhere('tpl.enabled = :enabled', { enabled: true })
+            .andWhere('tpl.claimable = :claimable', { claimable: true })
             .andWhere('(tpl.startsAt IS NULL OR tpl.startsAt <= :now)', { now })
             .andWhere('(tpl.endsAt IS NULL OR tpl.endsAt >= :now)', { now })
             .getMany();
@@ -327,6 +417,8 @@ let CouponService = class CouponService {
             if (placed)
                 throw new core_1.UserInputError('Coupon is for new customers only');
         }
+        // 会员等级门槛（P2）
+        await this.assertCouponMemberLevel(ctx, customerId, tpl);
         // 原子扣减发行余量（防超发）
         const claim = await this.atomicIncrementClaimed(ctx, tpl.id, tpl);
         if (!claim) {
@@ -480,6 +572,11 @@ let CouponService = class CouponService {
                         continue;
                     }
                 }
+                // 会员等级门槛（P2）：不满足则本单不发券，单结果标记拦截，不抛错中断整批
+                if (!(await this.couponMeetsMemberLevel(ctx, Number(customerId), tpl))) {
+                    results.push({ customerId, ok: false, code: null, reason: 'MEMBER_LEVEL_BLOCKED' });
+                    continue;
+                }
                 const ok = await this.atomicIncrementClaimed(ctx, tpl.id, tpl);
                 if (!ok) {
                     results.push({ customerId, ok: false, code: null, reason: 'SOLD_OUT' });
@@ -566,6 +663,8 @@ let CouponService = class CouponService {
         }
         // 跨渠道范围校验 + 本店商品行基数（默认商城：仅本店行参与门槛/折扣；非默认商城整单）。
         const tplShopId = tpl.shopId;
+        // 会员等级门槛（P2）
+        await this.assertCouponMemberLevel(ctx, customerId, tpl);
         const lines = ((_d = order === null || order === void 0 ? void 0 : order.lines) !== null && _d !== void 0 ? _d : []);
         const eligibleLines = (0, coupon_scope_1.isDefaultMallChannel)(ctx)
             ? lines.filter(l => (0, coupon_scope_1.lineHasShopId)(l, tplShopId))
