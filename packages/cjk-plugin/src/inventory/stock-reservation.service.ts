@@ -27,7 +27,7 @@ export interface ReservationSplit {
  * 多仓拆分发货预留单：
  * - reserveOnOrder：下单预占（Order/DeliveryType 归一），建头单 PENDING_ALLOC
  * - allocate：逐仓拆分 item，守恒校验 + 单仓物理 onHand 校验，头→ALLOCATED
- * - fulfill：核销/发货（扣物理仓由 Vendure core 在 SALE 时完成），item→DONE，全 DONE→头 DONE
+ * - fulfillItem：核销/发货（扣物理仓由 Vendure core 在 SALE 时完成），item→DONE，全 DONE→头 DONE
  * - release：取消/退款对称释放，头→RELEASED
  * - reconcileScan：对账 Σ物理 − 虚拟 == ΣPENDING item qty
  *
@@ -67,6 +67,25 @@ export class StockReservationService {
 
     async items(ctx: RequestContext, reservationId: number): Promise<StockReservationItemEntity[]> {
         return this.itemRepo(ctx).find({ where: { reservationId } });
+    }
+
+    async list(
+        ctx: RequestContext,
+        filters: { status?: string; variantId?: ID; orderId?: ID; page?: number; pageSize?: number } = {},
+    ): Promise<{ items: StockReservationEntity[]; totalItems: number }> {
+        const qb = this.repo(ctx).createQueryBuilder('r')
+            .where('r.tenantChannelId = :tenant OR r.tenantChannelId IS NULL', { tenant: ctx.channel.code });
+        if (filters.status) qb.andWhere('r.status = :status', { status: filters.status });
+        if (filters.variantId) qb.andWhere('r.variantId = :variantId', { variantId: Number(filters.variantId) });
+        if (filters.orderId) qb.andWhere('r.orderId = :orderId', { orderId: Number(filters.orderId) });
+        const page = filters.page ?? 1;
+        const pageSize = filters.pageSize ?? 20;
+        const [items, totalItems] = await qb
+            .orderBy('r.createdAt', 'DESC')
+            .skip((page - 1) * pageSize)
+            .take(pageSize)
+            .getManyAndCount();
+        return { items, totalItems };
     }
 
     // ---- 生命周期 ----
@@ -124,7 +143,7 @@ export class StockReservationService {
     }
 
     /** 出库核销：按核销数量递减 item.qty，清零→DONE；全部 DONE→头 DONE。物理扣减由 core 在 SALE 完成。 */
-    async fulfill(ctx: RequestContext, reservationId: number, itemId: number, quantity?: number): Promise<StockReservationItemEntity> {
+    async fulfillItem(ctx: RequestContext, itemId: number, quantity?: number): Promise<StockReservationItemEntity> {
         const item = await this.itemRepo(ctx).findOne({ where: { id: itemId } });
         if (!item) {
             throw new Error(`预留明细不存在: ${itemId}`);
@@ -137,9 +156,9 @@ export class StockReservationService {
         }
         const saved = await this.itemRepo(ctx).save(item);
 
-        const pending = await this.itemRepo(ctx).count({ where: { reservationId, status: 'PENDING' } });
+        const pending = await this.itemRepo(ctx).count({ where: { reservationId: item.reservationId, status: 'PENDING' } });
         if (pending === 0) {
-            const res = await this.get(ctx, reservationId);
+            const res = await this.get(ctx, item.reservationId);
             if (res.status !== 'RELEASED') {
                 res.status = 'DONE';
                 await this.repo(ctx).save(res);
@@ -318,7 +337,7 @@ export class StockReservationService {
                 if (!item) {
                     continue;
                 }
-                await this.fulfill(ctx, res.id, item.id, qty);
+                await this.fulfillItem(ctx, item.id, qty);
             } catch (e: any) {
                 Logger.warn(`发货核销预留失败: ${e.message}`, loggerCtx);
             }

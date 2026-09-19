@@ -137,6 +137,7 @@ import { StockDocEntity } from './inventory/stock-doc.entity';
 import { StockDocItemEntity } from './inventory/stock-doc-item.entity';
 import { StockDocService } from './inventory/stock-doc.service';
 import { StockDocAdminResolver } from './inventory/stock-doc.admin.resolver';
+import { StockReservationAdminResolver } from './inventory/stock-reservation.admin.resolver';
 import { StockReservationEntity } from './inventory/stock-reservation.entity';
 import { StockReservationItemEntity } from './inventory/stock-reservation-item.entity';
 import { StockReservationService } from './inventory/stock-reservation.service';
@@ -1193,9 +1194,56 @@ import { inventoryModeChannelFields } from './inventory/inventory-mode.custom-fi
                 extend type Query {
                     stockMovementLedger(productVariantId: ID, locationId: ID, bizCode: String, orderLineId: ID, page: Int, pageSize: Int): StockDocLedgerList!
                 }
+
+                # 预留单 admin 输出类型（独立命名，定义在本插件 SDL 内）
+                type ReservationItem {
+                    id: ID!
+                    reservationId: ID!
+                    stockLocationId: ID!
+                    qty: Int!
+                    fulfillType: String!
+                    status: String!
+                }
+                type Reservation {
+                    id: ID!
+                    orderId: ID!
+                    orderLineId: ID!
+                    variantId: ID!
+                    totalQty: Int!
+                    status: String!
+                    tenantChannelId: String
+                    createdAt: DateTime!
+                    items: [ReservationItem!]!
+                }
+                type ReservationList {
+                    items: [Reservation!]!
+                    totalItems: Int!
+                }
+                type ReservationReconcileRow {
+                    variantId: ID!
+                    physicalSum: Int!
+                    virtualSum: Int!
+                    pendingQty: Int!
+                    diff: Int!
+                }
+                input ReservationSplitInput {
+                    locationId: ID!
+                    fulfillType: String!
+                    qty: Int!
+                }
+                extend type Query {
+                    reservations(status: String, variantId: ID, orderId: ID, page: Int, pageSize: Int): ReservationList!
+                    reservation(id: ID!): Reservation!
+                    reservationReconcile: [ReservationReconcileRow!]!
+                }
+                extend type Mutation {
+                    allocateReservation(id: ID!, splits: [ReservationSplitInput!]!): Reservation!
+                    fulfillReservationItem(id: ID!, quantity: Int): ReservationItem!
+                    releaseReservation(id: ID!): Reservation!
+                }
                 `;
         },
-        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, RoomTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver, MerchantSettlementAdminResolver, DeliveryAdminResolver, InventoryAdminResolver, ReconciliationAdminResolver, StockDocAdminResolver],
+        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, RoomTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver, MerchantSettlementAdminResolver, DeliveryAdminResolver, InventoryAdminResolver, ReconciliationAdminResolver, StockDocAdminResolver, StockReservationAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {

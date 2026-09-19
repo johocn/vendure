@@ -207,12 +207,12 @@ describe('StockReservationService 预留生命周期', () => {
         ]);
         const [i1, i2] = items;
 
-        const done1 = await svc.fulfill(ctx, r.id!, i1.id!, 6);
+        const done1 = await svc.fulfillItem(ctx, i1.id!, 6);
         expect(done1.status).toBe('DONE');
         // 仍有 i2 PENDING → 头仍是 ALLOCATED
         expect((await svc.get(ctx, r.id!)).status).toBe('ALLOCATED');
 
-        await svc.fulfill(ctx, r.id!, i2.id!, 4);
+        await svc.fulfillItem(ctx, i2.id!, 4);
         // 全部 DONE → 头 DONE
         expect((await svc.get(ctx, r.id!)).status).toBe('DONE');
     });
@@ -228,7 +228,7 @@ describe('StockReservationService 预留生命周期', () => {
             { locationId: 2, fulfillType: 'SHIP', qty: 4 },
         ]);
         const [i1, i2] = items;
-        await svc.fulfill(ctx, r.id!, i1.id!, 6); // i1 DONE、i2 PENDING → 头仍 ALLOCATED
+        await svc.fulfillItem(ctx, i1.id!, 6); // i1 DONE、i2 PENDING → 头仍 ALLOCATED
 
         await svc.release(ctx, r.id!, { returnPhysical: true });
         expect((await svc.get(ctx, r.id!)).status).toBe('RELEASED');
