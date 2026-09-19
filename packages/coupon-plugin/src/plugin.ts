@@ -44,7 +44,11 @@ const couponTemplateType = `
 type CouponTemplate implements Node {
     id: ID!
     name: String!
+    nameZh: String
+    nameEn: String
     description: String
+    descZh: String
+    descEn: String
     type: CouponType!
     discountValue: Int!
     minSpend: Int!

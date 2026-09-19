@@ -65,3 +65,24 @@ export function localizeText(
     const first = Object.values(rec).find(x => typeof x === 'string');
     return first ?? fallback;
 }
+
+/**
+ * 将 LocalizedText 拆分为各语言的挂数字典（供后台编辑回显）。
+ * 纯字符串视作唯一文案（同时作为 zh_Hans / en 的兜底）；JSON 对象则按 key 展开。
+ */
+export function localizedParts(v: LocalizedText | undefined): Record<string, string | undefined> {
+    const value = unwrapLocalized(v);
+    if (value == null) {
+        return {};
+    }
+    if (typeof value === 'string') {
+        return { zh_Hans: value, en: value };
+    }
+    const parts: Record<string, string | undefined> = {};
+    for (const [k, val] of Object.entries(value)) {
+        if (typeof val === 'string') {
+            parts[k] = val;
+        }
+    }
+    return parts;
+}

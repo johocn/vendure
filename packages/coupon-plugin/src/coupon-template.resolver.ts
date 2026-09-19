@@ -2,7 +2,7 @@ import { Parent, ResolveField, Resolver } from '@nestjs/graphql';
 import { Ctx, RequestContext } from '@vendure/core';
 
 import { CouponTemplate } from './coupon-template.entity';
-import { localizeText } from './localize';
+import { localizeText, localizedParts } from './localize';
 
 /**
  * CouponTemplate 输出字段的本地化解析。
@@ -26,5 +26,25 @@ export class CouponTemplateResolver {
             return null;
         }
         return localizeText(v, ctx.languageCode, '') || null;
+    }
+
+    @ResolveField('nameZh')
+    nameZh(@Parent() template: CouponTemplate): string | null {
+        return localizedParts(template.name as any).zh_Hans ?? null;
+    }
+
+    @ResolveField('nameEn')
+    nameEn(@Parent() template: CouponTemplate): string | null {
+        return localizedParts(template.name as any).en ?? null;
+    }
+
+    @ResolveField('descZh')
+    descZh(@Parent() template: CouponTemplate): string | null {
+        return localizedParts((template as any).description)?.zh_Hans ?? null;
+    }
+
+    @ResolveField('descEn')
+    descEn(@Parent() template: CouponTemplate): string | null {
+        return localizedParts((template as any).description)?.en ?? null;
     }
 }
