@@ -44,6 +44,7 @@ export class CouponBindingService {
         const repo = this.connection.getRepository(ctx, ProductCouponBinding);
         const bindings = await repo.find({
             where: { couponTemplateId: templateId as any, enabled: true },
+            relations: { template: true },
         });
         return bindings.filter(b => this.visibleBinding(b, ctx));
     }
