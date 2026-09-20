@@ -1,0 +1,33 @@
+{
+  "name": "@vendure/vcash-offline-plugin",
+  "version": "0.0.1",
+  "license": "GPL-3.0-or-later",
+  "private": true,
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "files": ["lib/**/*"],
+  "scripts": {
+    "watch": "tsc -p ./tsconfig.json --watch",
+    "build": "rimraf lib && tsc -p ./tsconfig.json",
+    "lint": "eslint --fix .",
+    "test": "vitest --config vitest.config.mts --run"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/graphql": "^13.0.0",
+    "@nestjs/typeorm": "^11.0.0",
+    "@vendure/vcash-pos-plugin": "0.0.1",
+    "graphql-tag": "2.12.6",
+    "typeorm": "0.3.21"
+  },
+  "peerDependencies": {
+    "@vendure/common": "^3.6.0",
+    "@vendure/core": "^3.6.0"
+  },
+  "devDependencies": {
+    "@vendure/common": "3.6.4",
+    "@vendure/core": "3.6.4",
+    "rimraf": "^5.0.5",
+    "typescript": "5.8.2"
+  }
+}

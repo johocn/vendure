@@ -51,6 +51,8 @@ import { InvoicePdfPlugin, PdfInvoiceProvider } from '@vendure/invoice-pdf-plugi
 import { RechargeCardPlugin } from '@vendure/recharge-card-plugin';
 import { AfterSalesPlugin } from '@vendure/after-sales-plugin';
 import { MemberLevelPlugin } from '@vendure/member-level-plugin';
+import { VcashPosPlugin } from '@vendure/vcash-pos-plugin';
+import { VcashOfflinePlugin } from '@vendure/vcash-offline-plugin';
 import { CheckinPlugin } from '@vendure/checkin-plugin';
 import { ReviewPlugin } from '@vendure/review-plugin';
 import { WechatSubscribeMessagePlugin } from '@vendure/wechat-subscribe-message-plugin';
@@ -436,6 +438,9 @@ export const devConfig: VendureConfig = {
         RechargeCardPlugin.init({ defaultExpiresMonths: 12 }),
         AfterSalesPlugin.init(),
         MemberLevelPlugin.init(),
+        // 门店收银 POS：会员价依赖 MemberLevelPlugin；离线同步插件内部复用 VcashPosPlugin（同库/同渠道）
+        VcashPosPlugin,
+        VcashOfflinePlugin,
         CheckinPlugin.init(),
         ReviewPlugin.init(),
         WechatSubscribeMessagePlugin.init(),
