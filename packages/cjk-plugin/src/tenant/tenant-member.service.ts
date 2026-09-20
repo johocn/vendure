@@ -124,6 +124,13 @@ export const PERMISSION_CATALOG: PermissionCatalogGroup[] = [
             { code: 'ViewDashboard', label: '数据看板·查看' },
         ],
     },
+    {
+        key: 'pos',
+        label: '收银/POS',
+        items: [
+            { code: 'ManageOwnShop', label: 'POS 收银·操作' },
+        ],
+    },
 ];
 
 /** 租户级角色可用的业务权限白名单（由 PERMISSION_CATALOG 扁平派生，建模/校验统一使用） */
@@ -585,13 +592,41 @@ export class TenantMemberService {
         for (const c of channels as any[]) {
             const tenantNo = Number(c?.customFields?.tenantNo);
             if (!Number.isFinite(tenantNo)) continue;
+            const chId = String(c.id);
             try {
-                added += (await this.importDefaultRoles(ctx, String(c.id))).length;
+                added += (await this.importDefaultRoles(ctx, chId)).length;
+                await this.ensurePOSRolesForChannel(ctx, chId, tenantNo);
             } catch (e: any) {
-                Logger.warn(`租户 ${String(c.id)} 默认角色补种失败: ${e.message}`, loggerCtx);
+                Logger.warn(`租户 ${chId} 默认角色补种失败: ${e.message}`, loggerCtx);
             }
         }
         Logger.info(`默认角色补种完成，共补建 ${added} 个角色`, loggerCtx);
+    }
+
+    /** 收银/POS 启动补种（幂等）：① 确保已存在租户「收银员」角色；② 补齐租户管理员角色的 ManageOwnShop（可收银 + 可授收银员）。 */
+    private async ensurePOSRolesForChannel(ctx: RequestContext, channelId: ID, tenantNo: number): Promise<void> {
+        const chId = String(channelId);
+        const roleRepo = this.connection.getRepository(ctx, Role);
+        // ① 租户管理员补 POS 收银权限（使管理员可用收银功能，且可向下授权收银员）
+        const adminRole = await roleRepo
+            .createQueryBuilder('role')
+            .leftJoinAndSelect('role.channels', 'ch')
+            .where('role.code = :code', { code: `t${tenantNo}-tenant-admin` })
+            .andWhere('ch.id = :chId', { chId })
+            .getOne();
+        if (adminRole && !(adminRole.permissions as any[]).includes('ManageOwnShop')) {
+            adminRole.permissions = [...(adminRole.permissions || []), 'ManageOwnShop'] as any;
+            await roleRepo.save(adminRole);
+        }
+        // ② 补建「收银员」角色（createTenantRoleDirect 幂等；权限在白名单内由 assertBusinessPermissions 把关）
+        const tpl = OFFICIAL_ROLE_TEMPLATES.find((t) => t.key === 'cashier');
+        if (tpl) {
+            await this.createTenantRoleDirect(ctx, channelId, {
+                code: `t${tenantNo}-cashier`,
+                description: tpl.description,
+                permissions: tpl.permissions,
+            });
+        }
     }
 
     /** 把指定渠道关联到超管角色（幂等）——超管全局豁免渠道校验的核心：superadmin 角色须覆盖所有渠道，

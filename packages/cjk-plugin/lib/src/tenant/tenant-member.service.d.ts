@@ -131,6 +131,8 @@ export declare class TenantMemberService {
     myImportDefaultRoles(ctx: RequestContext): Promise<any[]>;
     /** 启动补种子：扫描所有 Channel，缺默认角色则幂等补建；异常仅打日志不阻塞启动。 */
     ensureDefaultRolesForAllChannels(ctx: RequestContext): Promise<void>;
+    /** 收银/POS 启动补种（幂等）：① 确保已存在租户「收银员」角色；② 补齐租户管理员角色的 ManageOwnShop（可收银 + 可授收银员）。 */
+    private ensurePOSRolesForChannel;
     /** 把指定渠道关联到超管角色（幂等）——超管全局豁免渠道校验的核心：superadmin 角色须覆盖所有渠道，
      *  否则超管切到未绑定角色渠道时 Vendure 权限守卫无任何权限，无法在租户内发商品/提审等操作。 */
     ensureSuperAdminRoleCoversChannel(ctx: RequestContext, channelId: ID): Promise<void>;

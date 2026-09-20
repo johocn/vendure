@@ -7,7 +7,7 @@ import { Permission } from '@vendure/core';
  * 仅角色「定义」收敛为一处，改一处全局生效。
  */
 export interface RoleTemplate {
-    key: 'tenant-admin' | 'sales' | 'stock';
+    key: 'tenant-admin' | 'sales' | 'stock' | 'cashier';
     busiPrefix: string;
     description: string;
     permissions: string[];
@@ -29,6 +29,8 @@ export const OFFICIAL_ROLE_TEMPLATES: RoleTemplate[] = [
             Permission.ReadPaymentMethod, Permission.CreatePaymentMethod, Permission.UpdatePaymentMethod, Permission.DeletePaymentMethod,
             // 租户物理网点管理（方案3）：仓库/网点增删改
             Permission.CreateStockLocation, Permission.UpdateStockLocation, Permission.DeleteStockLocation,
+            // 收银/POS：租户管理员可操作到店自提核销收款，且可向下授权「收银员」角色
+            'ManageOwnShop',
             'TenantRoleManage', 'TenantMemberManage',
         ],
     },
@@ -53,6 +55,15 @@ export const OFFICIAL_ROLE_TEMPLATES: RoleTemplate[] = [
             Permission.ReadProduct,
             Permission.UpdateProduct,
             Permission.ReadOrder,
+        ],
+    },
+    {
+        key: 'cashier',
+        busiPrefix: 'cashier',
+        description: '收银员',
+        permissions: [
+            Permission.ReadOrder, Permission.UpdateOrder,
+            'ManageOwnShop',
         ],
     },
 ];
