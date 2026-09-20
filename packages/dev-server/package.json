@@ -29,6 +29,7 @@
         "typescript": "5.8.2",
         "@vendure/recharge-card-plugin": "0.0.1",
         "@vendure/after-sales-plugin": "0.0.1",
+        "@vendure/eco-plugin": "0.0.1",
         "@vendure/member-level-plugin": "0.0.1",
         "@vendure/vcash-pos-plugin": "0.0.1",
         "@vendure/vcash-offline-plugin": "0.0.1",
