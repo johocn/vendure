@@ -16,7 +16,9 @@ exports.orderLineCustomFields = [
     {
         name: 'originalPrice',
         type: 'int',
-        nullable: false,
+        // nullable: true —— 与 sales-plugin 声明的同名 OrderLine originalPrice 保持一致，
+        // 避免 schema 漂移导致 synchronize 尝试对含 NULL 的存量列加 NOT NULL 而启动失败
+        nullable: true,
         defaultValue: 0,
         public: false,
         label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '原价(分)' }],
