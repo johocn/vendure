@@ -452,7 +452,7 @@ export class RedemptionCodeService {
                     return {
                         name: spec ? `${base} ${spec}` : base,
                         quantity: Number(l.quantity ?? 0),
-                        lineTotalWithTax: Math.round(Number(l.lineTotalWithTax ?? 0)),
+                        lineTotalWithTax: Math.round(Number(l.linePriceWithTax ?? 0)),
                     };
                 });
                 lineMap.set(String(o.id), rows);
