@@ -44,6 +44,8 @@ const invoice_pdf_plugin_1 = require("@vendure/invoice-pdf-plugin");
 const recharge_card_plugin_1 = require("@vendure/recharge-card-plugin");
 const after_sales_plugin_1 = require("@vendure/after-sales-plugin");
 const member_level_plugin_1 = require("@vendure/member-level-plugin");
+const vcash_pos_plugin_1 = require("@vendure/vcash-pos-plugin");
+const vcash_offline_plugin_1 = require("@vendure/vcash-offline-plugin");
 const checkin_plugin_1 = require("@vendure/checkin-plugin");
 const review_plugin_1 = require("@vendure/review-plugin");
 const wechat_subscribe_message_plugin_1 = require("@vendure/wechat-subscribe-message-plugin");
@@ -378,6 +380,8 @@ exports.devConfig = {
         recharge_card_plugin_1.RechargeCardPlugin.init({ defaultExpiresMonths: 12 }),
         after_sales_plugin_1.AfterSalesPlugin.init(),
         member_level_plugin_1.MemberLevelPlugin.init(),
+        vcash_pos_plugin_1.VcashPosPlugin,
+        vcash_offline_plugin_1.VcashOfflinePlugin,
         checkin_plugin_1.CheckinPlugin.init(),
         review_plugin_1.ReviewPlugin.init(),
         wechat_subscribe_message_plugin_1.WechatSubscribeMessagePlugin.init(),
