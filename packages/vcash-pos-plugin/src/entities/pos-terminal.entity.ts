@@ -36,9 +36,9 @@ export class PosTerminal {
 
   @Column({ type: 'boolean', default: true }) active!: boolean;
 
-  @CreateDateColumn({ type: 'datetime' }) createdAt!: Date;
+  @CreateDateColumn({ type: 'timestamp' }) createdAt!: Date;
 
-  @UpdateDateColumn({ type: 'datetime' }) updatedAt!: Date;
+  @UpdateDateColumn({ type: 'timestamp' }) updatedAt!: Date;
 
   @Column({ type: 'json', nullable: true })
   deviceConfig: PosDeviceConfig | null = null;

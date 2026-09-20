@@ -56,9 +56,9 @@ export class PosSession {
   @Column({ type: 'varchar', default: 'open' })
   state: PosSessionState = 'open';
 
-  @CreateDateColumn({ type: 'datetime' }) openedAt!: Date;
+  @CreateDateColumn({ type: 'timestamp' }) openedAt!: Date;
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ type: 'timestamp', nullable: true })
   closedAt: Date | null = null;
 
   @Column({ type: 'json', nullable: true })
@@ -85,5 +85,5 @@ export class PosSession {
   @ManyToOne(() => Customer, { nullable: true })
   customer: Customer | null = null;
 
-  @UpdateDateColumn({ type: 'datetime' }) updatedAt!: Date;
+  @UpdateDateColumn({ type: 'timestamp' }) updatedAt!: Date;
 }

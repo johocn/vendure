@@ -65,11 +65,11 @@ __decorate([
     __metadata("design:type", String)
 ], PosSession.prototype, "state", void 0);
 __decorate([
-    (0, typeorm_1.CreateDateColumn)({ type: 'datetime' }),
+    (0, typeorm_1.CreateDateColumn)({ type: 'timestamp' }),
     __metadata("design:type", Date)
 ], PosSession.prototype, "openedAt", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
+    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
     __metadata("design:type", Object)
 ], PosSession.prototype, "closedAt", void 0);
 __decorate([
@@ -98,7 +98,7 @@ __decorate([
     __metadata("design:type", Object)
 ], PosSession.prototype, "customer", void 0);
 __decorate([
-    (0, typeorm_1.UpdateDateColumn)({ type: 'datetime' }),
+    (0, typeorm_1.UpdateDateColumn)({ type: 'timestamp' }),
     __metadata("design:type", Date)
 ], PosSession.prototype, "updatedAt", void 0);
 exports.PosSession = PosSession = __decorate([

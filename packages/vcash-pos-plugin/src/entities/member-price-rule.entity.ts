@@ -45,7 +45,7 @@ export class MemberPriceRule {
    */
   @Column({ type: 'int', default: 10 }) priority: number = 10;
 
-  @CreateDateColumn({ type: 'datetime' }) createdAt!: Date;
+  @CreateDateColumn({ type: 'timestamp' }) createdAt!: Date;
 
-  @UpdateDateColumn({ type: 'datetime' }) updatedAt!: Date;
+  @UpdateDateColumn({ type: 'timestamp' }) updatedAt!: Date;
 }

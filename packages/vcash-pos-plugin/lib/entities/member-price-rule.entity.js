@@ -59,11 +59,11 @@ __decorate([
     __metadata("design:type", Number)
 ], MemberPriceRule.prototype, "priority", void 0);
 __decorate([
-    (0, typeorm_1.CreateDateColumn)({ type: 'datetime' }),
+    (0, typeorm_1.CreateDateColumn)({ type: 'timestamp' }),
     __metadata("design:type", Date)
 ], MemberPriceRule.prototype, "createdAt", void 0);
 __decorate([
-    (0, typeorm_1.UpdateDateColumn)({ type: 'datetime' }),
+    (0, typeorm_1.UpdateDateColumn)({ type: 'timestamp' }),
     __metadata("design:type", Date)
 ], MemberPriceRule.prototype, "updatedAt", void 0);
 exports.MemberPriceRule = MemberPriceRule = __decorate([

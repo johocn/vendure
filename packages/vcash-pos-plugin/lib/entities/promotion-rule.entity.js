@@ -77,11 +77,11 @@ __decorate([
     __metadata("design:type", Boolean)
 ], PromotionRule.prototype, "active", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
+    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
     __metadata("design:type", Object)
 ], PromotionRule.prototype, "startTime", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
+    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
     __metadata("design:type", Object)
 ], PromotionRule.prototype, "endTime", void 0);
 __decorate([
@@ -93,11 +93,11 @@ __decorate([
     __metadata("design:type", Object)
 ], PromotionRule.prototype, "actions", void 0);
 __decorate([
-    (0, typeorm_1.CreateDateColumn)({ type: 'datetime' }),
+    (0, typeorm_1.CreateDateColumn)({ type: 'timestamp' }),
     __metadata("design:type", Date)
 ], PromotionRule.prototype, "createdAt", void 0);
 __decorate([
-    (0, typeorm_1.UpdateDateColumn)({ type: 'datetime' }),
+    (0, typeorm_1.UpdateDateColumn)({ type: 'timestamp' }),
     __metadata("design:type", Date)
 ], PromotionRule.prototype, "updatedAt", void 0);
 exports.PromotionRule = PromotionRule = __decorate([

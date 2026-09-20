@@ -44,11 +44,11 @@ __decorate([
     __metadata("design:type", Boolean)
 ], PosTerminal.prototype, "active", void 0);
 __decorate([
-    (0, typeorm_1.CreateDateColumn)({ type: 'datetime' }),
+    (0, typeorm_1.CreateDateColumn)({ type: 'timestamp' }),
     __metadata("design:type", Date)
 ], PosTerminal.prototype, "createdAt", void 0);
 __decorate([
-    (0, typeorm_1.UpdateDateColumn)({ type: 'datetime' }),
+    (0, typeorm_1.UpdateDateColumn)({ type: 'timestamp' }),
     __metadata("design:type", Date)
 ], PosTerminal.prototype, "updatedAt", void 0);
 __decorate([

@@ -46,9 +46,9 @@ export class PromotionRule {
 
   @Column({ type: 'boolean', default: true }) active: boolean = true;
 
-  @Column({ type: 'datetime', nullable: true }) startTime: Date | null = null;
+  @Column({ type: 'timestamp', nullable: true }) startTime: Date | null = null;
 
-  @Column({ type: 'datetime', nullable: true }) endTime: Date | null = null;
+  @Column({ type: 'timestamp', nullable: true }) endTime: Date | null = null;
 
   /**
    * 按 type 不同（JSON 字符串）：
@@ -66,7 +66,7 @@ export class PromotionRule {
    */
   @Column({ type: 'json', nullable: true }) actions: any | null = null;
 
-  @CreateDateColumn({ type: 'datetime' }) createdAt!: Date;
+  @CreateDateColumn({ type: 'timestamp' }) createdAt!: Date;
 
-  @UpdateDateColumn({ type: 'datetime' }) updatedAt!: Date;
+  @UpdateDateColumn({ type: 'timestamp' }) updatedAt!: Date;
 }
