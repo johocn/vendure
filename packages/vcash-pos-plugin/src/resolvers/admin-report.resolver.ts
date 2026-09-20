@@ -12,7 +12,7 @@ import { ReportService } from '../services/report.service';
  *
  * 四类报表对应四个 Query：
  * - todayOverview: 今日概览（实时）
- * - salesReport: 日/区间报表（按天趋势）
+ * - posSalesReport: 日/区间报表（按天趋势）—— 命名为 pos 前缀，避免与 sales-plugin 的 salesReport 重名冲突
  * - monthlyReport: 月度报表（含环比）
  * - topProducts: 商品销量 TOP
  */
@@ -28,7 +28,7 @@ export class AdminReportResolver {
 
   @Query()
   @Allow(Permission.ReadOrder)
-  async salesReport(
+  async posSalesReport(
     @Ctx() ctx: RequestContext,
     @Args('startDate') startDate: string,
     @Args('endDate') endDate: string,

@@ -406,7 +406,7 @@ const adminSchema = (0, graphql_tag_1.default) `
 
   extend type Query {
     todayOverview: TodayOverview!
-    salesReport(startDate: String!, endDate: String!): SalesReport!
+    posSalesReport(startDate: String!, endDate: String!): SalesReport!
     monthlyReport(year: Int!, month: Int!): MonthlyReport!
     topProducts(
       startDate: String!

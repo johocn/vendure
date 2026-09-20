@@ -396,7 +396,7 @@ const adminSchema = gql`
 
   extend type Query {
     todayOverview: TodayOverview!
-    salesReport(startDate: String!, endDate: String!): SalesReport!
+    posSalesReport(startDate: String!, endDate: String!): SalesReport!
     monthlyReport(year: Int!, month: Int!): MonthlyReport!
     topProducts(
       startDate: String!

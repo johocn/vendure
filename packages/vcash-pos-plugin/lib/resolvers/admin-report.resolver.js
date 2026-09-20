@@ -25,7 +25,7 @@ const report_service_1 = require("../services/report.service");
  *
  * 四类报表对应四个 Query：
  * - todayOverview: 今日概览（实时）
- * - salesReport: 日/区间报表（按天趋势）
+ * - posSalesReport: 日/区间报表（按天趋势）—— 命名为 pos 前缀，避免与 sales-plugin 的 salesReport 重名冲突
  * - monthlyReport: 月度报表（含环比）
  * - topProducts: 商品销量 TOP
  */
@@ -36,7 +36,7 @@ let AdminReportResolver = class AdminReportResolver {
     async todayOverview(ctx) {
         return this.reportService.todayOverview(ctx);
     }
-    async salesReport(ctx, startDate, endDate) {
+    async posSalesReport(ctx, startDate, endDate) {
         return this.reportService.salesReport(ctx, startDate, endDate);
     }
     async monthlyReport(ctx, year, month) {
@@ -64,7 +64,7 @@ __decorate([
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext, String, String]),
     __metadata("design:returntype", Promise)
-], AdminReportResolver.prototype, "salesReport", null);
+], AdminReportResolver.prototype, "posSalesReport", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(core_1.Permission.ReadOrder),

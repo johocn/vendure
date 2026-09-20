@@ -8,7 +8,7 @@ import { ReportService } from '../services/report.service';
  *
  * 四类报表对应四个 Query：
  * - todayOverview: 今日概览（实时）
- * - salesReport: 日/区间报表（按天趋势）
+ * - posSalesReport: 日/区间报表（按天趋势）—— 命名为 pos 前缀，避免与 sales-plugin 的 salesReport 重名冲突
  * - monthlyReport: 月度报表（含环比）
  * - topProducts: 商品销量 TOP
  */
@@ -16,7 +16,7 @@ export declare class AdminReportResolver {
     private reportService;
     constructor(reportService: ReportService);
     todayOverview(ctx: RequestContext): Promise<import("../services/report.service").TodayOverview>;
-    salesReport(ctx: RequestContext, startDate: string, endDate: string): Promise<import("../services/report.service").SalesReport>;
+    posSalesReport(ctx: RequestContext, startDate: string, endDate: string): Promise<import("../services/report.service").SalesReport>;
     monthlyReport(ctx: RequestContext, year: number, month: number): Promise<import("../services/report.service").MonthlyReport>;
     topProducts(ctx: RequestContext, startDate: string, endDate: string, limit?: number, sortBy?: 'quantity' | 'amount'): Promise<import("../services/report.service").TopProductReport>;
 }
