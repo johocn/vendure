@@ -52,7 +52,7 @@ export declare class TenantMemberService {
     private authService;
     private pluginOptions?;
     constructor(connection: TransactionalConnection, administratorService: AdministratorService, roleService: RoleService, channelService: ChannelService, authService: AuthService, pluginOptions?: CjkPluginOptions | undefined);
-    /** 校验角色权限全部在业务权限白名单内（超管专属权限不入租户角色） */
+    /** 校验角色权限全部在业务权限白名单内（超管专属权限不入租户角色）。Authenticated 为基础权限不计入 */
     assertBusinessPermissions(permissions: string[]): void;
     /** 校验请求方是该 channel 的租户管理员（或超管） */
     assertChannelMember(ctx: RequestContext, channelId?: ID): void;

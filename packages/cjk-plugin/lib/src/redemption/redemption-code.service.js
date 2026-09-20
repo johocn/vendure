@@ -418,7 +418,7 @@ let RedemptionCodeService = class RedemptionCodeService {
                     return {
                         name: spec ? `${base} ${spec}` : base,
                         quantity: Number((_h = l.quantity) !== null && _h !== void 0 ? _h : 0),
-                        lineTotalWithTax: Math.round(Number((_j = l.lineTotalWithTax) !== null && _j !== void 0 ? _j : 0)),
+                        lineTotalWithTax: Math.round(Number((_j = l.linePriceWithTax) !== null && _j !== void 0 ? _j : 0)),
                     };
                 });
                 lineMap.set(String(o.id), rows);
