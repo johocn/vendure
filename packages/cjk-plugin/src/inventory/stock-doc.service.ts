@@ -313,7 +313,9 @@ export class StockDocService {
             ? await this.conn
                   .getRepository(ctx, StockDocItemEntity)
                   .createQueryBuilder('i')
-                  .select(['i.docId AS docId', 'COUNT(i.id) AS itemCount', 'COALESCE(SUM(i.qty), 0) AS totalQty'])
+                  .select('i.docId', 'docId')
+                  .addSelect('COUNT(i.id)', 'itemCount')
+                  .addSelect('COALESCE(SUM(i.qty), 0)', 'totalQty')
                   .where('i.docId IN (:...ids)', { ids })
                   .groupBy('i.docId')
                   .getRawMany()

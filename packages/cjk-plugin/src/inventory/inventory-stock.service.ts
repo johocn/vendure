@@ -143,7 +143,10 @@ export class InventoryStockService {
             .andWhere('i.variantId IN (:...ids)', { ids })
             .andWhere('d.type IN (:...types)', { types: ['PURCHASE', 'TRANSFER'] })
             .orderBy('i.id', 'DESC')
-            .select(['i.variantId AS variantId', 'i.costPrice AS costPrice'])
+            // 别名必须走 select(expr, alias) 两参形式：TypeORM 会加引号；写成 `expr AS x` 的裸串时
+            // PostgreSQL 会把未加引号的别名折成小写（x → x 全小写），取 raw 字段拿不到值（本地 SQLite 不复现）。
+            .select('i.variantId', 'variantId')
+            .addSelect('i.costPrice', 'costPrice')
             .getRawMany();
         for (const r of rows) {
             const vid = String(r.variantId);
@@ -178,12 +181,11 @@ export class InventoryStockService {
         const rows = await base()
             .orderBy('l.createdAt', 'DESC')
             .addOrderBy('l.id', 'DESC')
-            .select([
-                'l.productVariantId AS variantId',
-                'l.createdAt AS createdAt',
-                'l.direction AS direction',
-                'l.bizType AS bizType',
-            ])
+            // 同 loadLatestCost：别名走两参形式，避免 PostgreSQL 折小写导致 raw 字段取不到
+            .select('l.productVariantId', 'variantId')
+            .addSelect('l.createdAt', 'createdAt')
+            .addSelect('l.direction', 'direction')
+            .addSelect('l.bizType', 'bizType')
             .getRawMany();
         for (const r of rows) {
             const vid = String(r.variantId);
