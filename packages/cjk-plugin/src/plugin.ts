@@ -1161,6 +1161,8 @@ import { inventoryModeChannelFields } from './inventory/inventory-mode.custom-fi
                     qty: Int!
                     realQty: Int
                     costPrice: Int
+                    binId: ID
+                    zoneId: ID
                 }
 
                 input StockDocCreateInput {

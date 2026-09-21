@@ -65,12 +65,17 @@ function makeService(ctx: any) {
         },
     );
     const inventoryModeService = { assertSimple: vi.fn(), currentMode: vi.fn().mockReturnValue('simple') } as any;
+    const storageBinService = {
+        bind: vi.fn().mockResolvedValue({}),
+        binZoneId: vi.fn().mockResolvedValue(11),
+    } as any;
     const svc = new StockDocService(
         conn as any,
         { adjustPhysicalStock, setPhysicalStock } as any,
         inventoryModeService,
+        storageBinService,
     );
-    return { svc, physicalStock, key };
+    return { svc, physicalStock, key, storageBinService };
 }
 
 describe('StockDocService.create 单据引擎行为', () => {

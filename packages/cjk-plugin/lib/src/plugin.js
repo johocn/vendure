@@ -1374,6 +1374,8 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     qty: Int!
                     realQty: Int
                     costPrice: Int
+                    binId: ID
+                    zoneId: ID
                 }
 
                 input StockDocCreateInput {

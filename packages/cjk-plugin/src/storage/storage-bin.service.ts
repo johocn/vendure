@@ -115,6 +115,14 @@ export class StorageBinService {
         return { zonesCreated, binsCreated };
     }
 
+    /** 由库位反查库区（入库只传 binId 时用） */
+    async binZoneId(ctx: RequestContext, binId: number): Promise<number | null> {
+        const bin = await this.connection
+            .getRepository(ctx, StorageBin)
+            .findOne({ where: { id: binId } });
+        return bin?.zoneId ?? null;
+    }
+
     async variantBin(ctx: RequestContext, variantId: number, stockLocationId: number) {
         const row = await this.connection.getRepository(ctx, VariantStorageBin).findOne({
             where: { tenantChannelId: this.tenantOf(ctx), variantId, stockLocationId },

@@ -3,6 +3,7 @@ import { OrderStockLedger } from '@vendure/inventory-plugin';
 import { StockDocEntity, StockDocType } from './stock-doc.entity';
 import { VirtualPhysicalStockService } from './virtual-physical-stock.service';
 import { InventoryModeService } from './inventory-mode.service';
+import { StorageBinService } from '../storage/storage-bin.service';
 export interface StockDocItemInput {
     variantId: ID;
     fromStockLocationId?: ID;
@@ -10,6 +11,10 @@ export interface StockDocItemInput {
     qty: number;
     realQty?: number;
     costPrice?: number;
+    /** 库位归位（可选）：填写则入库后把该 SKU 归位到该库位 */
+    binId?: ID;
+    /** 库区归位（可选）：zone 档只填库区 */
+    zoneId?: ID;
 }
 export interface StockDocCreateInput {
     type: StockDocType;
@@ -50,13 +55,19 @@ export declare class StockDocService {
     private conn;
     private virtualPhysicalStockService;
     private inventoryModeService;
-    constructor(conn: TransactionalConnection, virtualPhysicalStockService: VirtualPhysicalStockService, inventoryModeService: InventoryModeService);
+    private storageBinService;
+    constructor(conn: TransactionalConnection, virtualPhysicalStockService: VirtualPhysicalStockService, inventoryModeService: InventoryModeService, storageBinService: StorageBinService);
     /** inventoryMode gate 委托独立服务：odoo 模式只读，禁止直接落库 */
     private assertSimple;
     /** 生成租户内唯一单号（前缀+时间戳+随机，冲突重试） */
     nextCode(ctx: RequestContext, type: StockDocType): Promise<string>;
     /** 直接生效：PURCHASE 加目标仓、TRANSFER 源-目标+、STOCKTAKE 按 realQty 覆盖 */
     create(ctx: RequestContext, input: StockDocCreateInput): Promise<StockDocEntity>;
+    /**
+     * 库位归位（可选）：仅在显式传了 binId / zoneId 时写入，
+     * 不传 = 与改造前完全一致（向后兼容，现网无感）。
+     */
+    private applyBinBinding;
     private applyMovement;
     /**
      * 流水查询：按当前渠道查 OrderStockLedger。

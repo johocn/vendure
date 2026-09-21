@@ -17,6 +17,7 @@ const stock_doc_entity_1 = require("./stock-doc.entity");
 const stock_doc_item_entity_1 = require("./stock-doc-item.entity");
 const virtual_physical_stock_service_1 = require("./virtual-physical-stock.service");
 const inventory_mode_service_1 = require("./inventory-mode.service");
+const storage_bin_service_1 = require("../storage/storage-bin.service");
 const loggerCtx = 'StockDocService';
 const CODE_PREFIX = {
     PURCHASE: 'PO',
@@ -47,10 +48,11 @@ function clampPageSize(v) {
     return Number.isFinite(n) && n >= 1 ? Math.min(100, Math.trunc(n)) : 20;
 }
 let StockDocService = class StockDocService {
-    constructor(conn, virtualPhysicalStockService, inventoryModeService) {
+    constructor(conn, virtualPhysicalStockService, inventoryModeService, storageBinService) {
         this.conn = conn;
         this.virtualPhysicalStockService = virtualPhysicalStockService;
         this.inventoryModeService = inventoryModeService;
+        this.storageBinService = storageBinService;
     }
     /** inventoryMode gate 委托独立服务：odoo 模式只读，禁止直接落库 */
     assertSimple(ctx) {
@@ -98,10 +100,35 @@ let StockDocService = class StockDocService {
                 ei.realQty = it.realQty != null ? Number(it.realQty) : null;
                 ei.costPrice = it.costPrice != null ? Number(it.costPrice) : null;
                 await this.applyMovement(txCtx, doc, ei);
+                await this.applyBinBinding(txCtx, doc, it, ei);
                 await itemRepo.save(ei);
             }
             core_1.Logger.info(`库存单据 ${doc.code}(${doc.type}) 已生效 items=${input.items.length}`, loggerCtx);
             return doc;
+        });
+    }
+    /**
+     * 库位归位（可选）：仅在显式传了 binId / zoneId 时写入，
+     * 不传 = 与改造前完全一致（向后兼容，现网无感）。
+     */
+    async applyBinBinding(ctx, doc, input, item) {
+        const binId = input.binId != null ? Number(input.binId) : null;
+        const zoneIdInput = input.zoneId != null ? Number(input.zoneId) : null;
+        if (!binId && !zoneIdInput)
+            return;
+        const stockLocationId = item.toStockLocationId != null ? Number(item.toStockLocationId) : null;
+        if (stockLocationId == null) {
+            throw new core_1.UserInputError(`${doc.code} 库位归位需指定目标仓`);
+        }
+        const zoneId = zoneIdInput !== null && zoneIdInput !== void 0 ? zoneIdInput : (binId ? await this.storageBinService.binZoneId(ctx, binId) : null);
+        if (!zoneId) {
+            throw new core_1.UserInputError('库位与库区必须至少指定一个');
+        }
+        await this.storageBinService.bind(ctx, {
+            variantId: Number(item.variantId),
+            stockLocationId,
+            zoneId,
+            binId,
         });
     }
     async applyMovement(ctx, doc, item) {
@@ -279,6 +306,7 @@ exports.StockDocService = StockDocService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
         virtual_physical_stock_service_1.VirtualPhysicalStockService,
-        inventory_mode_service_1.InventoryModeService])
+        inventory_mode_service_1.InventoryModeService,
+        storage_bin_service_1.StorageBinService])
 ], StockDocService);
 //# sourceMappingURL=stock-doc.service.js.map

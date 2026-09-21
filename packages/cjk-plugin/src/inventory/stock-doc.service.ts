@@ -1,10 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { ID, Logger, RequestContext, TransactionalConnection } from '@vendure/core';
+import { ID, Logger, RequestContext, TransactionalConnection, UserInputError } from '@vendure/core';
 import { OrderStockLedger } from '@vendure/inventory-plugin';
 import { StockDocEntity, StockDocType } from './stock-doc.entity';
 import { StockDocItemEntity } from './stock-doc-item.entity';
 import { VirtualPhysicalStockService } from './virtual-physical-stock.service';
 import { InventoryModeService } from './inventory-mode.service';
+import { StorageBinService } from '../storage/storage-bin.service';
 
 const loggerCtx = 'StockDocService';
 
@@ -15,6 +16,10 @@ export interface StockDocItemInput {
     qty: number;
     realQty?: number;
     costPrice?: number;
+    /** 库位归位（可选）：填写则入库后把该 SKU 归位到该库位 */
+    binId?: ID;
+    /** 库区归位（可选）：zone 档只填库区 */
+    zoneId?: ID;
 }
 
 export interface StockDocCreateInput {
@@ -96,6 +101,7 @@ export class StockDocService {
         private conn: TransactionalConnection,
         private virtualPhysicalStockService: VirtualPhysicalStockService,
         private inventoryModeService: InventoryModeService,
+        private storageBinService: StorageBinService,
     ) {}
 
     /** inventoryMode gate 委托独立服务：odoo 模式只读，禁止直接落库 */
@@ -146,10 +152,41 @@ export class StockDocService {
                 ei.realQty = it.realQty != null ? Number(it.realQty) : (null as any);
                 ei.costPrice = it.costPrice != null ? Number(it.costPrice) : (null as any);
                 await this.applyMovement(txCtx, doc, ei);
+                await this.applyBinBinding(txCtx, doc, it, ei);
                 await itemRepo.save(ei);
             }
             Logger.info(`库存单据 ${doc.code}(${doc.type}) 已生效 items=${input.items.length}`, loggerCtx);
             return doc;
+        });
+    }
+
+    /**
+     * 库位归位（可选）：仅在显式传了 binId / zoneId 时写入，
+     * 不传 = 与改造前完全一致（向后兼容，现网无感）。
+     */
+    private async applyBinBinding(
+        ctx: RequestContext,
+        doc: StockDocEntity,
+        input: StockDocItemInput,
+        item: StockDocItemEntity,
+    ): Promise<void> {
+        const binId = input.binId != null ? Number(input.binId) : null;
+        const zoneIdInput = input.zoneId != null ? Number(input.zoneId) : null;
+        if (!binId && !zoneIdInput) return;
+
+        const stockLocationId = item.toStockLocationId != null ? Number(item.toStockLocationId) : null;
+        if (stockLocationId == null) {
+            throw new UserInputError(`${doc.code} 库位归位需指定目标仓`);
+        }
+        const zoneId = zoneIdInput ?? (binId ? await this.storageBinService.binZoneId(ctx, binId) : null);
+        if (!zoneId) {
+            throw new UserInputError('库位与库区必须至少指定一个');
+        }
+        await this.storageBinService.bind(ctx, {
+            variantId: Number(item.variantId),
+            stockLocationId,
+            zoneId,
+            binId,
         });
     }
 
