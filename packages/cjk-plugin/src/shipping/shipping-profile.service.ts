@@ -12,6 +12,7 @@ import {
 } from '@vendure/core';
 import { ShippingProfile } from './shipping-profile.entity';
 import { ShippingProfileMethod } from './shipping-profile-method.entity';
+import { DeliveryCapability, capabilityFromMethodConfigs, unionCapability } from './delivery-capability';
 import { PickupLocation } from '../pickup/pickup-location.entity';
 import { PickupLocationService } from '../pickup/pickup-location.service';
 import { PaymentProfile } from '../payment/payment-profile.entity';
@@ -103,11 +104,9 @@ export class ShippingProfileService {
         if (input.methodConfigs?.length) {
             await this.replaceMethodConfigs(ctx, profile.id, input.methodConfigs);
         }
-        // reload 以填充关联实体的完整字段
-        return (await repo.findOne({
-            where: { id: profile.id as any },
-            relations: ['shippingMethods', 'pickupLocations'],
-        })) as ShippingProfile;
+        // 走 findOne 返回：它只额外挂 methodConfigs / boundPickupLocations，
+        // 这两个字段在 SDL 是非空，直接返回裸实体会让整个 mutation 报错（data: null）
+        return (await this.findOne(ctx, profile.id)) as ShippingProfile;
     }
 
     async update(ctx: RequestContext, input: any): Promise<ShippingProfile> {
@@ -143,10 +142,9 @@ export class ShippingProfileService {
         if (input.methodConfigs !== undefined) {
             await this.replaceMethodConfigs(ctx, profile.id, input.methodConfigs);
         }
-        return (await repo.findOne({
-            where: { id: input.id as any },
-            relations: ['shippingMethods', 'pickupLocations'],
-        })) as ShippingProfile;
+        // 走 findOne 返回：它只额外挂 methodConfigs / boundPickupLocations，
+        // 这两个字段在 SDL 是非空，直接返回裸实体会让整个 mutation 报错（data: null）
+        return (await this.findOne(ctx, input.id)) as ShippingProfile;
     }
 
     async delete(ctx: RequestContext, id: ID): Promise<void> {
@@ -547,6 +545,101 @@ export class ShippingProfileService {
         return this.connection
             .getRepository(ctx, ShippingProfileMethod)
             .find({ where: { profileId: String(profileId) } as any });
+    }
+
+    /** 批量取多个档案的方法行（一次查询，避免逐档案查） */
+    async getMethodConfigsByProfiles(
+        ctx: RequestContext,
+        profileIds: Array<ID | string>,
+    ): Promise<Map<string, ShippingProfileMethod[]>> {
+        const out = new Map<string, ShippingProfileMethod[]>();
+        const ids = [...new Set(profileIds.map(id => String(id)))];
+        if (ids.length === 0) return out;
+        const rows = await this.connection
+            .getRepository(ctx, ShippingProfileMethod)
+            .find({ where: { profileId: In(ids) } as any });
+        for (const r of rows) {
+            if (!out.has(r.profileId)) out.set(r.profileId, []);
+            out.get(r.profileId)!.push(r);
+        }
+        return out;
+    }
+
+    /** 本渠道内参与履约的全部生效档案（租户自有 + 全局），供渠道级能力并集使用 */
+    async listEffectiveProfilesForChannel(ctx: RequestContext): Promise<ShippingProfile[]> {
+        const qb = this.connection
+            .getRepository(ctx, ShippingProfile)
+            .createQueryBuilder('sp')
+            .leftJoinAndSelect('sp.shippingMethods', 'sm')
+            .where('sp.enabled = :on', { on: true })
+            .andWhere(
+                '(sp.isGlobal = :isGlobal OR sp.ownerChannelId = :channelId)',
+                { isGlobal: true, channelId: ctx.channelId },
+            );
+        return qb.getMany();
+    }
+
+    /**
+     * 渠道级配送能力（并集）。
+     * 若渠道内存在未绑定档案的变体，则并入租户默认档案的能力（与 computeOrderBoxes 的回退一致）。
+     * fallback：渠道内一个生效档案都没有 → 回退「两者都支持」，保持旧行为不误伤。
+     */
+    async getChannelDeliveryCapability(ctx: RequestContext): Promise<DeliveryCapability> {
+        const profiles = await this.listEffectiveProfilesForChannel(ctx);
+        if (profiles.length === 0) {
+            return { modes: ['MAIL', 'SELF_PICKUP'], bothSupported: true, source: 'fallback' };
+        }
+        const map = await this.getMethodConfigsByProfiles(ctx, profiles.map(p => p.id));
+        const perProfile = [...map.values()];
+        const tenantDefault = await this.getTenantDefault(ctx);
+        if (tenantDefault) {
+            perProfile.push(map.get(String(tenantDefault.id)) ?? []);
+        }
+        return unionCapability(perProfile);
+    }
+
+    /**
+     * 逐变体派生配送能力（含默认档案回退）。批量入参，档案方法行一次查出。
+     * 回退语义与 OrderBoxService.computeOrderBoxes 完全一致：
+     * 绑定档案停用 → 视为未绑定 → 回退租户默认档案；两者皆无 → fallback（两者都支持）。
+     */
+    async getVariantDeliveryCapabilities(
+        ctx: RequestContext,
+        variantIds: ID[],
+    ): Promise<Map<string, DeliveryCapability>> {
+        const out = new Map<string, DeliveryCapability>();
+        if (variantIds.length === 0) return out;
+        const variantRepo = this.connection.getRepository(ctx, 'ProductVariant');
+        const variants = await variantRepo
+            .createQueryBuilder('v')
+            .select(['v.id AS id', 'v."customFieldsShippingprofileid" AS pid'])
+            .where('v.id IN (:...ids)', { ids: variantIds.map(v => Number(v)) })
+            .getRawMany<{ id: number; pid: string | null }>();
+
+        const ids = new Set<string>();
+        for (const v of variants) if (v.pid) ids.add(String(v.pid));
+        const tenantDefault = await this.getTenantDefault(ctx);
+        if (tenantDefault) ids.add(String(tenantDefault.id));
+        const configMap = await this.getMethodConfigsByProfiles(ctx, [...ids]);
+
+        // 停用档案集合（一次性查出，避免逐个 findOne）
+        const rawIds = [...new Set(variants.map(v => String(v.pid ?? '')).filter(Boolean))];
+        const enabledMap = new Map<string, boolean>();
+        if (rawIds.length) {
+            const rows = await this.connection
+                .getRepository(ctx, ShippingProfile)
+                .find({ where: { id: In(rawIds) } as any, loadEagerRelations: false });
+            for (const p of rows) enabledMap.set(String(p.id), p.enabled !== false);
+        }
+
+        for (const v of variants) {
+            const rawPid = v.pid ? String(v.pid) : '';
+            let effective = rawPid && enabledMap.get(rawPid) === true ? rawPid : '';
+            if (!effective && tenantDefault) effective = String(tenantDefault.id);
+            const configs = effective ? configMap.get(effective) ?? [] : [];
+            out.set(String(v.id), capabilityFromMethodConfigs(configs));
+        }
+        return out;
     }
 
     /**

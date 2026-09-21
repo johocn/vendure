@@ -1,5 +1,7 @@
 import { ID, ListQueryOptions, PaginatedList, RequestContext, TransactionalConnection } from '@vendure/core';
 import { ShippingProfile } from './shipping-profile.entity';
+import { ShippingProfileMethod } from './shipping-profile-method.entity';
+import { DeliveryCapability } from './delivery-capability';
 import { PickupLocation } from '../pickup/pickup-location.entity';
 import { PickupLocationService } from '../pickup/pickup-location.service';
 import { PaymentProfile } from '../payment/payment-profile.entity';
@@ -108,6 +110,22 @@ export declare class ShippingProfileService {
      */
     resolveEffectiveProfileIds(ctx: RequestContext, profileIds: ID[]): Promise<ID[]>;
     getMethodConfigsByProfile(ctx: RequestContext, profileId: any): Promise<any[]>;
+    /** 批量取多个档案的方法行（一次查询，避免逐档案查） */
+    getMethodConfigsByProfiles(ctx: RequestContext, profileIds: Array<ID | string>): Promise<Map<string, ShippingProfileMethod[]>>;
+    /** 本渠道内参与履约的全部生效档案（租户自有 + 全局），供渠道级能力并集使用 */
+    listEffectiveProfilesForChannel(ctx: RequestContext): Promise<ShippingProfile[]>;
+    /**
+     * 渠道级配送能力（并集）。
+     * 若渠道内存在未绑定档案的变体，则并入租户默认档案的能力（与 computeOrderBoxes 的回退一致）。
+     * fallback：渠道内一个生效档案都没有 → 回退「两者都支持」，保持旧行为不误伤。
+     */
+    getChannelDeliveryCapability(ctx: RequestContext): Promise<DeliveryCapability>;
+    /**
+     * 逐变体派生配送能力（含默认档案回退）。批量入参，档案方法行一次查出。
+     * 回退语义与 OrderBoxService.computeOrderBoxes 完全一致：
+     * 绑定档案停用 → 视为未绑定 → 回退租户默认档案；两者皆无 → fallback（两者都支持）。
+     */
+    getVariantDeliveryCapabilities(ctx: RequestContext, variantIds: ID[]): Promise<Map<string, DeliveryCapability>>;
     /**
      * 为列表查询批量填充 methodConfigs，避免 schema 非空字段返回 null 导致查询整体失败。
      */

@@ -79,6 +79,7 @@ const tenant_config_admin_resolver_1 = require("./admin/tenant-config-admin.reso
 const shipping_profile_entity_1 = require("./shipping/shipping-profile.entity");
 const shipping_profile_method_entity_1 = require("./shipping/shipping-profile-method.entity");
 const shipping_profile_service_1 = require("./shipping/shipping-profile.service");
+const delivery_facet_service_1 = require("./shipping/delivery-facet.service");
 const shipping_profile_admin_resolver_1 = require("./shipping/shipping-profile-admin.resolver");
 const shipping_profile_permissions_1 = require("./shipping/shipping-profile-permissions");
 const payment_profile_entity_1 = require("./payment/payment-profile.entity");
@@ -96,6 +97,7 @@ const room_template_service_1 = require("./hotel/room-template.service");
 const room_template_admin_resolver_1 = require("./hotel/room-template-admin.resolver");
 const hotel_custom_fields_1 = require("./hotel/hotel-custom-fields");
 const shipping_profile_shop_resolver_1 = require("./shipping/shipping-profile-shop.resolver");
+const delivery_capability_resolver_1 = require("./shipping/delivery-capability.resolver");
 const payment_profile_shop_resolver_1 = require("./payment/payment-profile-shop.resolver");
 const order_box_service_1 = require("./order/order-box.service");
 const order_box_shop_resolver_1 = require("./order/order-box-shop.resolver");
@@ -386,6 +388,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             invite_code_service_1.InviteCodeService,
             shipping_template_service_1.ShippingTemplateService,
             shipping_profile_service_1.ShippingProfileService,
+            delivery_facet_service_1.DeliveryFacetService,
             payment_profile_service_1.PaymentProfileService,
             payment_template_service_1.PaymentTemplateService,
             room_template_service_1.RoomTemplateService,
@@ -1454,9 +1457,26 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     fulfillReservationItem(id: ID!, quantity: Int): ReservationItem!
                     releaseReservation(id: ID!): Reservation!
                 }
+
+                # ===== 配送能力派生（唯一真源：配送档案 mode） =====
+                # 与 shopApiExtensions 中的同名类型/字段保持一致（两套 SDL 独立，必须各自注册）
+                type ChannelDeliveryCapability {
+                    modes: [String!]!
+                    bothSupported: Boolean!
+                    source: String!
+                    facetValueIds: JSON
+                }
+                type VariantDeliveryModes {
+                    variantId: ID!
+                    modes: [String!]!
+                }
+                extend type Query {
+                    channelDeliveryCapability: ChannelDeliveryCapability!
+                    variantDeliveryModes(variantIds: [ID!]!): [VariantDeliveryModes!]!
+                }
                 `;
             },
-            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, room_template_admin_resolver_1.RoomTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver, tenant_catalog_admin_resolver_1.TenantCatalogAdminResolver, asset_library_admin_resolver_1.AssetLibraryAdminResolver, redemption_resolver_1.RedemptionAdminResolver, merchant_settlement_admin_resolver_1.MerchantSettlementAdminResolver, delivery_admin_resolver_1.DeliveryAdminResolver, inventory_admin_resolver_1.InventoryAdminResolver, reconciliation_admin_resolver_1.ReconciliationAdminResolver, stock_doc_admin_resolver_1.StockDocAdminResolver, stock_reservation_admin_resolver_1.StockReservationAdminResolver],
+            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, room_template_admin_resolver_1.RoomTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver, tenant_catalog_admin_resolver_1.TenantCatalogAdminResolver, asset_library_admin_resolver_1.AssetLibraryAdminResolver, redemption_resolver_1.RedemptionAdminResolver, merchant_settlement_admin_resolver_1.MerchantSettlementAdminResolver, delivery_admin_resolver_1.DeliveryAdminResolver, inventory_admin_resolver_1.InventoryAdminResolver, reconciliation_admin_resolver_1.ReconciliationAdminResolver, stock_doc_admin_resolver_1.StockDocAdminResolver, stock_reservation_admin_resolver_1.StockReservationAdminResolver, delivery_capability_resolver_1.DeliveryCapabilityResolver],
         },
         shopApiExtensions: {
             schema: () => {
@@ -1710,10 +1730,26 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     variantStockInfo(variantId: ID!, lat: Float, lng: Float, city: String, deliveryMethod: String): VariantStockInfo!
                 }
 
+                # ===== 配送能力派生（唯一真源：配送档案 mode） =====
+                type ChannelDeliveryCapability {
+                    modes: [String!]!
+                    bothSupported: Boolean!
+                    source: String!
+                    facetValueIds: JSON
+                }
+                type VariantDeliveryModes {
+                    variantId: ID!
+                    modes: [String!]!
+                }
+                extend type Query {
+                    channelDeliveryCapability: ChannelDeliveryCapability!
+                    variantDeliveryModes(variantIds: [ID!]!): [VariantDeliveryModes!]!
+                }
+
                 ${redemption_schema_1.redemptionShopSchema}
             `;
             },
-            resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver, shipping_profile_shop_resolver_1.ShippingProfileShopResolver, payment_profile_shop_resolver_1.PaymentProfileShopResolver, order_box_shop_resolver_1.OrderBoxShopResolver, order_split_shop_resolver_1.OrderSplitShopResolver, wallet_shop_resolver_1.WalletShopResolver, redemption_resolver_1.RedemptionShopResolver, inventory_shop_resolver_1.InventoryShopResolver],
+            resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver, shipping_profile_shop_resolver_1.ShippingProfileShopResolver, delivery_capability_resolver_1.DeliveryCapabilityResolver, payment_profile_shop_resolver_1.PaymentProfileShopResolver, order_box_shop_resolver_1.OrderBoxShopResolver, order_split_shop_resolver_1.OrderSplitShopResolver, wallet_shop_resolver_1.WalletShopResolver, redemption_resolver_1.RedemptionShopResolver, inventory_shop_resolver_1.InventoryShopResolver],
         },
         configuration: config => {
             var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1;

@@ -15,11 +15,27 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ShippingProfileAdminResolver = void 0;
 const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
+const constants_1 = require("../constants");
+const delivery_facet_service_1 = require("./delivery-facet.service");
 const shipping_profile_service_1 = require("./shipping-profile.service");
 const shipping_profile_permissions_1 = require("./shipping-profile-permissions");
 let ShippingProfileAdminResolver = class ShippingProfileAdminResolver {
-    constructor(service) {
+    constructor(service, deliveryFacetService) {
         this.service = service;
+        this.deliveryFacetService = deliveryFacetService;
+    }
+    /**
+     * facet 只是配送能力的「派生索引」，同步失败不应让档案写操作报错/回滚
+     * （否则商户改一次档案就整单失败）。失败只记日志，索引由下次档案变更重建。
+     */
+    async syncFacetSilently(action) {
+        var _a;
+        try {
+            await action();
+        }
+        catch (e) {
+            core_1.Logger.warn(`配送 facet 同步失败（不影响本次写入）：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, constants_1.loggerCtx);
+        }
     }
     async shippingProfiles(ctx, options) {
         return this.service.findAll(ctx, options);
@@ -28,21 +44,28 @@ let ShippingProfileAdminResolver = class ShippingProfileAdminResolver {
         return this.service.findOne(ctx, id);
     }
     async createShippingProfile(ctx, input) {
-        return this.service.create(ctx, input);
+        const profile = await this.service.create(ctx, input);
+        await this.syncFacetSilently(() => this.deliveryFacetService.rebuildChannel(ctx));
+        return profile;
     }
     async updateShippingProfile(ctx, input) {
-        return this.service.update(ctx, input);
+        const profile = await this.service.update(ctx, input);
+        await this.syncFacetSilently(() => this.deliveryFacetService.rebuildChannel(ctx));
+        return profile;
     }
     async deleteShippingProfile(ctx, id) {
         await this.service.delete(ctx, id);
+        await this.syncFacetSilently(() => this.deliveryFacetService.rebuildChannel(ctx));
         return true;
     }
     async assignShippingProfile(ctx, variantIds, profileId) {
         await this.service.assignToVariants(ctx, variantIds, profileId);
+        await this.syncFacetSilently(() => this.deliveryFacetService.syncVariants(ctx, variantIds));
         return true;
     }
     async setTenantDefaultShippingProfile(ctx, id) {
         await this.service.setTenantDefault(ctx, id);
+        await this.syncFacetSilently(() => this.deliveryFacetService.rebuildChannel(ctx));
         return true;
     }
 };
@@ -118,6 +141,7 @@ __decorate([
 ], ShippingProfileAdminResolver.prototype, "setTenantDefaultShippingProfile", null);
 exports.ShippingProfileAdminResolver = ShippingProfileAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
-    __metadata("design:paramtypes", [shipping_profile_service_1.ShippingProfileService])
+    __metadata("design:paramtypes", [shipping_profile_service_1.ShippingProfileService,
+        delivery_facet_service_1.DeliveryFacetService])
 ], ShippingProfileAdminResolver);
 //# sourceMappingURL=shipping-profile-admin.resolver.js.map

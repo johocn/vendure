@@ -78,6 +78,7 @@ import { TenantConfigAdminResolver } from './admin/tenant-config-admin.resolver'
 import { ShippingProfile } from './shipping/shipping-profile.entity';
 import { ShippingProfileMethod } from './shipping/shipping-profile-method.entity';
 import { ShippingProfileService } from './shipping/shipping-profile.service';
+import { DeliveryFacetService } from './shipping/delivery-facet.service';
 import { ShippingProfileAdminResolver } from './shipping/shipping-profile-admin.resolver';
 import { shippingProfilePermission, shippingProfilePermissionDefinitions } from './shipping/shipping-profile-permissions';
 import { PaymentProfile } from './payment/payment-profile.entity';
@@ -95,6 +96,7 @@ import { RoomTemplateService } from './hotel/room-template.service';
 import { RoomTemplateAdminResolver } from './hotel/room-template-admin.resolver';
 import { hotelRoomCustomFields } from './hotel/hotel-custom-fields';
 import { ShippingProfileShopResolver } from './shipping/shipping-profile-shop.resolver';
+import { DeliveryCapabilityResolver } from './shipping/delivery-capability.resolver';
 import { PaymentProfileShopResolver } from './payment/payment-profile-shop.resolver';
 import { OrderBoxService } from './order/order-box.service';
 import { OrderBoxShopResolver } from './order/order-box-shop.resolver';
@@ -173,6 +175,7 @@ import { inventoryModeChannelFields } from './inventory/inventory-mode.custom-fi
         InviteCodeService,
         ShippingTemplateService,
         ShippingProfileService,
+        DeliveryFacetService,
         PaymentProfileService,
         PaymentTemplateService,
         RoomTemplateService,
@@ -1241,9 +1244,26 @@ import { inventoryModeChannelFields } from './inventory/inventory-mode.custom-fi
                     fulfillReservationItem(id: ID!, quantity: Int): ReservationItem!
                     releaseReservation(id: ID!): Reservation!
                 }
+
+                # ===== 配送能力派生（唯一真源：配送档案 mode） =====
+                # 与 shopApiExtensions 中的同名类型/字段保持一致（两套 SDL 独立，必须各自注册）
+                type ChannelDeliveryCapability {
+                    modes: [String!]!
+                    bothSupported: Boolean!
+                    source: String!
+                    facetValueIds: JSON
+                }
+                type VariantDeliveryModes {
+                    variantId: ID!
+                    modes: [String!]!
+                }
+                extend type Query {
+                    channelDeliveryCapability: ChannelDeliveryCapability!
+                    variantDeliveryModes(variantIds: [ID!]!): [VariantDeliveryModes!]!
+                }
                 `;
         },
-        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, RoomTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver, MerchantSettlementAdminResolver, DeliveryAdminResolver, InventoryAdminResolver, ReconciliationAdminResolver, StockDocAdminResolver, StockReservationAdminResolver],
+        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, RoomTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver, MerchantSettlementAdminResolver, DeliveryAdminResolver, InventoryAdminResolver, ReconciliationAdminResolver, StockDocAdminResolver, StockReservationAdminResolver, DeliveryCapabilityResolver],
     },
     shopApiExtensions: {
         schema: () => {
@@ -1497,10 +1517,26 @@ import { inventoryModeChannelFields } from './inventory/inventory-mode.custom-fi
                     variantStockInfo(variantId: ID!, lat: Float, lng: Float, city: String, deliveryMethod: String): VariantStockInfo!
                 }
 
+                # ===== 配送能力派生（唯一真源：配送档案 mode） =====
+                type ChannelDeliveryCapability {
+                    modes: [String!]!
+                    bothSupported: Boolean!
+                    source: String!
+                    facetValueIds: JSON
+                }
+                type VariantDeliveryModes {
+                    variantId: ID!
+                    modes: [String!]!
+                }
+                extend type Query {
+                    channelDeliveryCapability: ChannelDeliveryCapability!
+                    variantDeliveryModes(variantIds: [ID!]!): [VariantDeliveryModes!]!
+                }
+
                 ${redemptionShopSchema}
             `;
         },
-        resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver, DomainShopResolver, MapShopResolver, ShippingProfileShopResolver, PaymentProfileShopResolver, OrderBoxShopResolver, OrderSplitShopResolver, WalletShopResolver, RedemptionShopResolver, InventoryShopResolver],
+        resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver, DomainShopResolver, MapShopResolver, ShippingProfileShopResolver, DeliveryCapabilityResolver, PaymentProfileShopResolver, OrderBoxShopResolver, OrderSplitShopResolver, WalletShopResolver, RedemptionShopResolver, InventoryShopResolver],
     },
     configuration: config => {
         // 注入 authSecret 到 crypto 模块（configuration 在 bootstrap 早期执行，此时 options 已可用）

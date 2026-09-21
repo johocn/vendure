@@ -27,6 +27,7 @@ const typeorm_1 = require("typeorm");
 const core_1 = require("@vendure/core");
 const shipping_profile_entity_1 = require("./shipping-profile.entity");
 const shipping_profile_method_entity_1 = require("./shipping-profile-method.entity");
+const delivery_capability_1 = require("./delivery-capability");
 const pickup_location_entity_1 = require("../pickup/pickup-location.entity");
 const pickup_location_service_1 = require("../pickup/pickup-location.service");
 const payment_profile_service_1 = require("../payment/payment-profile.service");
@@ -110,11 +111,9 @@ let ShippingProfileService = class ShippingProfileService {
         if ((_e = input.methodConfigs) === null || _e === void 0 ? void 0 : _e.length) {
             await this.replaceMethodConfigs(ctx, profile.id, input.methodConfigs);
         }
-        // reload 以填充关联实体的完整字段
-        return (await repo.findOne({
-            where: { id: profile.id },
-            relations: ['shippingMethods', 'pickupLocations'],
-        }));
+        // 走 findOne 返回：它只额外挂 methodConfigs / boundPickupLocations，
+        // 这两个字段在 SDL 是非空，直接返回裸实体会让整个 mutation 报错（data: null）
+        return (await this.findOne(ctx, profile.id));
     }
     async update(ctx, input) {
         var _a;
@@ -152,10 +151,9 @@ let ShippingProfileService = class ShippingProfileService {
         if (input.methodConfigs !== undefined) {
             await this.replaceMethodConfigs(ctx, profile.id, input.methodConfigs);
         }
-        return (await repo.findOne({
-            where: { id: input.id },
-            relations: ['shippingMethods', 'pickupLocations'],
-        }));
+        // 走 findOne 返回：它只额外挂 methodConfigs / boundPickupLocations，
+        // 这两个字段在 SDL 是非空，直接返回裸实体会让整个 mutation 报错（data: null）
+        return (await this.findOne(ctx, input.id));
     }
     async delete(ctx, id) {
         var _a;
@@ -530,6 +528,95 @@ let ShippingProfileService = class ShippingProfileService {
         return this.connection
             .getRepository(ctx, shipping_profile_method_entity_1.ShippingProfileMethod)
             .find({ where: { profileId: String(profileId) } });
+    }
+    /** 批量取多个档案的方法行（一次查询，避免逐档案查） */
+    async getMethodConfigsByProfiles(ctx, profileIds) {
+        const out = new Map();
+        const ids = [...new Set(profileIds.map(id => String(id)))];
+        if (ids.length === 0)
+            return out;
+        const rows = await this.connection
+            .getRepository(ctx, shipping_profile_method_entity_1.ShippingProfileMethod)
+            .find({ where: { profileId: (0, typeorm_1.In)(ids) } });
+        for (const r of rows) {
+            if (!out.has(r.profileId))
+                out.set(r.profileId, []);
+            out.get(r.profileId).push(r);
+        }
+        return out;
+    }
+    /** 本渠道内参与履约的全部生效档案（租户自有 + 全局），供渠道级能力并集使用 */
+    async listEffectiveProfilesForChannel(ctx) {
+        const qb = this.connection
+            .getRepository(ctx, shipping_profile_entity_1.ShippingProfile)
+            .createQueryBuilder('sp')
+            .leftJoinAndSelect('sp.shippingMethods', 'sm')
+            .where('sp.enabled = :on', { on: true })
+            .andWhere('(sp.isGlobal = :isGlobal OR sp.ownerChannelId = :channelId)', { isGlobal: true, channelId: ctx.channelId });
+        return qb.getMany();
+    }
+    /**
+     * 渠道级配送能力（并集）。
+     * 若渠道内存在未绑定档案的变体，则并入租户默认档案的能力（与 computeOrderBoxes 的回退一致）。
+     * fallback：渠道内一个生效档案都没有 → 回退「两者都支持」，保持旧行为不误伤。
+     */
+    async getChannelDeliveryCapability(ctx) {
+        var _a;
+        const profiles = await this.listEffectiveProfilesForChannel(ctx);
+        if (profiles.length === 0) {
+            return { modes: ['MAIL', 'SELF_PICKUP'], bothSupported: true, source: 'fallback' };
+        }
+        const map = await this.getMethodConfigsByProfiles(ctx, profiles.map(p => p.id));
+        const perProfile = [...map.values()];
+        const tenantDefault = await this.getTenantDefault(ctx);
+        if (tenantDefault) {
+            perProfile.push((_a = map.get(String(tenantDefault.id))) !== null && _a !== void 0 ? _a : []);
+        }
+        return (0, delivery_capability_1.unionCapability)(perProfile);
+    }
+    /**
+     * 逐变体派生配送能力（含默认档案回退）。批量入参，档案方法行一次查出。
+     * 回退语义与 OrderBoxService.computeOrderBoxes 完全一致：
+     * 绑定档案停用 → 视为未绑定 → 回退租户默认档案；两者皆无 → fallback（两者都支持）。
+     */
+    async getVariantDeliveryCapabilities(ctx, variantIds) {
+        var _a;
+        const out = new Map();
+        if (variantIds.length === 0)
+            return out;
+        const variantRepo = this.connection.getRepository(ctx, 'ProductVariant');
+        const variants = await variantRepo
+            .createQueryBuilder('v')
+            .select(['v.id AS id', 'v."customFieldsShippingprofileid" AS pid'])
+            .where('v.id IN (:...ids)', { ids: variantIds.map(v => Number(v)) })
+            .getRawMany();
+        const ids = new Set();
+        for (const v of variants)
+            if (v.pid)
+                ids.add(String(v.pid));
+        const tenantDefault = await this.getTenantDefault(ctx);
+        if (tenantDefault)
+            ids.add(String(tenantDefault.id));
+        const configMap = await this.getMethodConfigsByProfiles(ctx, [...ids]);
+        // 停用档案集合（一次性查出，避免逐个 findOne）
+        const rawIds = [...new Set(variants.map(v => { var _a; return String((_a = v.pid) !== null && _a !== void 0 ? _a : ''); }).filter(Boolean))];
+        const enabledMap = new Map();
+        if (rawIds.length) {
+            const rows = await this.connection
+                .getRepository(ctx, shipping_profile_entity_1.ShippingProfile)
+                .find({ where: { id: (0, typeorm_1.In)(rawIds) }, loadEagerRelations: false });
+            for (const p of rows)
+                enabledMap.set(String(p.id), p.enabled !== false);
+        }
+        for (const v of variants) {
+            const rawPid = v.pid ? String(v.pid) : '';
+            let effective = rawPid && enabledMap.get(rawPid) === true ? rawPid : '';
+            if (!effective && tenantDefault)
+                effective = String(tenantDefault.id);
+            const configs = effective ? (_a = configMap.get(effective)) !== null && _a !== void 0 ? _a : [] : [];
+            out.set(String(v.id), (0, delivery_capability_1.capabilityFromMethodConfigs)(configs));
+        }
+        return out;
     }
     /**
      * 为列表查询批量填充 methodConfigs，避免 schema 非空字段返回 null 导致查询整体失败。
