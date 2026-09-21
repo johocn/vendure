@@ -216,6 +216,46 @@ export const tenantChannelCustomFields: CustomFields = {
             ],
         },
         {
+            name: 'binMode',
+            type: 'string',
+            defaultValue: 'off',
+            public: true,
+            label: [
+                { languageCode: LanguageCode.zh_Hans, value: '库位模式' },
+                { languageCode: LanguageCode.en, value: 'Storage Bin Mode' },
+            ],
+            description: [
+                {
+                    languageCode: LanguageCode.zh_Hans,
+                    value: 'off=关闭库位；zone=只用库区；bin=完整库位',
+                },
+                { languageCode: LanguageCode.en, value: 'off / zone / bin' },
+            ],
+            options: [
+                {
+                    value: 'off',
+                    label: [
+                        { languageCode: LanguageCode.zh_Hans, value: '关闭（不使用库位）' },
+                        { languageCode: LanguageCode.en, value: 'Off' },
+                    ],
+                },
+                {
+                    value: 'zone',
+                    label: [
+                        { languageCode: LanguageCode.zh_Hans, value: '只用库区' },
+                        { languageCode: LanguageCode.en, value: 'Zone only' },
+                    ],
+                },
+                {
+                    value: 'bin',
+                    label: [
+                        { languageCode: LanguageCode.zh_Hans, value: '完整库位（库区+库位）' },
+                        { languageCode: LanguageCode.en, value: 'Full bins' },
+                    ],
+                },
+            ],
+        },
+        {
             name: 'taxMode',
             type: 'string',
             defaultValue: 'inclusive',
