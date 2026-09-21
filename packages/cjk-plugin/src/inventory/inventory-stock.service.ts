@@ -101,6 +101,9 @@ export class InventoryStockService {
             .getRepository(ctx, StockLevel)
             .createQueryBuilder('sl')
             .innerJoin(ProductVariant, 'v', 'v.id = sl.productVariantId')
+            // 变体必须属于当前渠道：仓是渠道可见的，但变体未必已分配给该渠道（本店不可售），
+            // 列表若带出来会让运营看到「点不动」的行——预警规则保存会以「变体不存在或不属于当前渠道」拒绝。
+            .innerJoin('v.channels', 'vch', 'vch.id = :vchId', { vchId: ctx.channelId })
             .select('sl.productVariantId', 'variantId')
             .addSelect('SUM(sl.stockOnHand)', 'onHand')
             .addSelect('SUM(sl.stockAllocated)', 'allocated')
