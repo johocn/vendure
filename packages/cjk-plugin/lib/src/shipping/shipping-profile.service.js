@@ -529,8 +529,14 @@ let ShippingProfileService = class ShippingProfileService {
             .getRepository(ctx, shipping_profile_method_entity_1.ShippingProfileMethod)
             .find({ where: { profileId: String(profileId) } });
     }
-    /** 批量取多个档案的方法行（一次查询，避免逐档案查） */
-    async getMethodConfigsByProfiles(ctx, profileIds) {
+    /**
+     * 批量取多个档案的「有效方法行」（一次查询，避免逐档案查）。
+     * 真实 ShippingProfileMethod 行优先；档案绑定了配送方式却缺行时按该方式的
+     * 计算器推断 mode 补齐——行只在 web-admin 保存档案时写入，存量档案恒为空，
+     * 不补则快递档案对能力派生完全不可见（口径同 resolveBoxFulfilment）。
+     */
+    async getEffectiveMethodConfigsByProfiles(ctx, profileIds) {
+        var _a, _b, _c;
         const out = new Map();
         const ids = [...new Set(profileIds.map(id => String(id)))];
         if (ids.length === 0)
@@ -542,6 +548,26 @@ let ShippingProfileService = class ShippingProfileService {
             if (!out.has(r.profileId))
                 out.set(r.profileId, []);
             out.get(r.profileId).push(r);
+        }
+        const profiles = await this.connection
+            .getRepository(ctx, shipping_profile_entity_1.ShippingProfile)
+            .find({ where: { id: (0, typeorm_1.In)(ids) }, relations: ['shippingMethods'] });
+        for (const p of profiles) {
+            const key = String(p.id);
+            const existing = (_a = out.get(key)) !== null && _a !== void 0 ? _a : [];
+            const covered = new Set(existing.map(c => String(c.shippingMethodId)));
+            const filled = [...existing];
+            for (const m of ((_b = p.shippingMethods) !== null && _b !== void 0 ? _b : [])) {
+                if (covered.has(String(m.id)))
+                    continue;
+                filled.push(new shipping_profile_method_entity_1.ShippingProfileMethod({
+                    profileId: key,
+                    shippingMethodId: String(m.id),
+                    mode: (0, delivery_capability_1.modeFromCalculatorCode)((_c = m.calculator) === null || _c === void 0 ? void 0 : _c.code),
+                    options: null,
+                }));
+            }
+            out.set(key, filled);
         }
         return out;
     }
@@ -558,6 +584,7 @@ let ShippingProfileService = class ShippingProfileService {
     /**
      * 渠道级配送能力（并集）。
      * 若渠道内存在未绑定档案的变体，则并入租户默认档案的能力（与 computeOrderBoxes 的回退一致）。
+     * 缺 method_configs 行的档案按绑定方式计算器推断补齐，否则快递档案不参与并集。
      * fallback：渠道内一个生效档案都没有 → 回退「两者都支持」，保持旧行为不误伤。
      */
     async getChannelDeliveryCapability(ctx) {
@@ -566,7 +593,7 @@ let ShippingProfileService = class ShippingProfileService {
         if (profiles.length === 0) {
             return { modes: ['MAIL', 'SELF_PICKUP'], bothSupported: true, source: 'fallback' };
         }
-        const map = await this.getMethodConfigsByProfiles(ctx, profiles.map(p => p.id));
+        const map = await this.getEffectiveMethodConfigsByProfiles(ctx, profiles.map(p => p.id));
         const perProfile = [...map.values()];
         const tenantDefault = await this.getTenantDefault(ctx);
         if (tenantDefault) {
@@ -597,7 +624,7 @@ let ShippingProfileService = class ShippingProfileService {
         const tenantDefault = await this.getTenantDefault(ctx);
         if (tenantDefault)
             ids.add(String(tenantDefault.id));
-        const configMap = await this.getMethodConfigsByProfiles(ctx, [...ids]);
+        const configMap = await this.getEffectiveMethodConfigsByProfiles(ctx, [...ids]);
         // 停用档案集合（一次性查出，避免逐个 findOne）
         const rawIds = [...new Set(variants.map(v => { var _a; return String((_a = v.pid) !== null && _a !== void 0 ? _a : ''); }).filter(Boolean))];
         const enabledMap = new Map();

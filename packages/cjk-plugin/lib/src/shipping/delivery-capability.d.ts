@@ -13,6 +13,14 @@ export interface DeliveryCapability {
     bothSupported: boolean;
     source: 'profile' | 'fallback';
 }
+/**
+ * 由配送方式的计算器推断 mode（存量数据兜底）。
+ * 档案绑定了配送方式却没有对应 ShippingProfileMethod 行时使用——行只在 web-admin
+ * 保存档案时写入，存量档案（如绑定快递方式的租户默认档案）恒为空。
+ * 口径与 ShippingProfileService.resolveBoxFulfilment 的 isPickupCalculator 一致，
+ * 保证「结算箱型判定 / 能力派生 / web-admin 展示」三处同源。
+ */
+export declare function modeFromCalculatorCode(code?: string | null): string;
 /** 档案的方法行 → 去重后的能力集合（MAIL 恒排在 SELF_PICKUP 之前，便于稳定比较） */
 export declare function modesFromMethodConfigs(configs: Array<{
     mode?: string | null;

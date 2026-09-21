@@ -110,13 +110,19 @@ export declare class ShippingProfileService {
      */
     resolveEffectiveProfileIds(ctx: RequestContext, profileIds: ID[]): Promise<ID[]>;
     getMethodConfigsByProfile(ctx: RequestContext, profileId: any): Promise<any[]>;
-    /** 批量取多个档案的方法行（一次查询，避免逐档案查） */
-    getMethodConfigsByProfiles(ctx: RequestContext, profileIds: Array<ID | string>): Promise<Map<string, ShippingProfileMethod[]>>;
+    /**
+     * 批量取多个档案的「有效方法行」（一次查询，避免逐档案查）。
+     * 真实 ShippingProfileMethod 行优先；档案绑定了配送方式却缺行时按该方式的
+     * 计算器推断 mode 补齐——行只在 web-admin 保存档案时写入，存量档案恒为空，
+     * 不补则快递档案对能力派生完全不可见（口径同 resolveBoxFulfilment）。
+     */
+    getEffectiveMethodConfigsByProfiles(ctx: RequestContext, profileIds: Array<ID | string>): Promise<Map<string, ShippingProfileMethod[]>>;
     /** 本渠道内参与履约的全部生效档案（租户自有 + 全局），供渠道级能力并集使用 */
     listEffectiveProfilesForChannel(ctx: RequestContext): Promise<ShippingProfile[]>;
     /**
      * 渠道级配送能力（并集）。
      * 若渠道内存在未绑定档案的变体，则并入租户默认档案的能力（与 computeOrderBoxes 的回退一致）。
+     * 缺 method_configs 行的档案按绑定方式计算器推断补齐，否则快递档案不参与并集。
      * fallback：渠道内一个生效档案都没有 → 回退「两者都支持」，保持旧行为不误伤。
      */
     getChannelDeliveryCapability(ctx: RequestContext): Promise<DeliveryCapability>;
