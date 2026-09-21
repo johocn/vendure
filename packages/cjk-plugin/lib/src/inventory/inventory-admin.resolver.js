@@ -118,7 +118,7 @@ __decorate([
 ], InventoryAdminResolver.prototype, "deleteTenantStockLocation", null);
 __decorate([
     (0, graphql_1.Query)(),
-    (0, core_1.Allow)(inventory_plugin_1.InventoryPermissions.ViewStock),
+    (0, core_1.Allow)(inventory_plugin_1.InventoryPermissions.ViewStock, core_1.Permission.ReadCatalog, core_1.Permission.ReadStockLocation),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('input', { nullable: true })),
     __metadata("design:type", Function),
@@ -127,7 +127,7 @@ __decorate([
 ], InventoryAdminResolver.prototype, "inventoryStockPage", null);
 __decorate([
     (0, graphql_1.Query)(),
-    (0, core_1.Allow)(inventory_plugin_1.InventoryPermissions.ViewStock),
+    (0, core_1.Allow)(inventory_plugin_1.InventoryPermissions.ViewStock, core_1.Permission.ReadCatalog, core_1.Permission.ReadStockLocation),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('locationId', { nullable: true })),
     __metadata("design:type", Function),

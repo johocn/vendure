@@ -45,8 +45,11 @@ let StockDocAdminResolver = class StockDocAdminResolver {
 };
 exports.StockDocAdminResolver = StockDocAdminResolver;
 __decorate([
-    (0, graphql_1.Mutation)(),
-    (0, core_1.Allow)(inventory_plugin_1.InventoryPermissions.ViewStock),
+    (0, graphql_1.Mutation)()
+    // 租户管理员角色由后台自行配置权限，通常持有 UpdateStockLocation 而未必有 ViewStock，
+    // 故与仓库管理保持同一口径（任一命中即可），避免租户侧单据功能被整体拦截。
+    ,
+    (0, core_1.Allow)(inventory_plugin_1.InventoryPermissions.ViewStock, core_1.Permission.UpdateStockLocation),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('input')),
     __metadata("design:type", Function),
@@ -55,7 +58,7 @@ __decorate([
 ], StockDocAdminResolver.prototype, "createStockDoc", null);
 __decorate([
     (0, graphql_1.Query)(),
-    (0, core_1.Allow)(inventory_plugin_1.InventoryPermissions.ViewStock),
+    (0, core_1.Allow)(inventory_plugin_1.InventoryPermissions.ViewStock, core_1.Permission.ReadCatalog, core_1.Permission.ReadStockLocation),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('productVariantId', { nullable: true })),
     __param(2, (0, graphql_1.Args)('locationId', { nullable: true })),
@@ -73,7 +76,7 @@ __decorate([
 ], StockDocAdminResolver.prototype, "stockMovementLedger", null);
 __decorate([
     (0, graphql_1.Query)(),
-    (0, core_1.Allow)(inventory_plugin_1.InventoryPermissions.ViewStock),
+    (0, core_1.Allow)(inventory_plugin_1.InventoryPermissions.ViewStock, core_1.Permission.ReadCatalog, core_1.Permission.ReadStockLocation),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('type', { nullable: true })),
     __param(2, (0, graphql_1.Args)('page', { nullable: true })),

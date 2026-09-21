@@ -70,7 +70,7 @@ export class InventoryAdminResolver {
 
     /** 库存明细聚合页：KPI + 分桶计数 + 明细行（服务端过滤/排序/分页） */
     @Query()
-    @Allow(InventoryPermissions.ViewStock as Permission)
+    @Allow(InventoryPermissions.ViewStock as Permission, Permission.ReadCatalog, Permission.ReadStockLocation)
     async inventoryStockPage(
         @Ctx() ctx: RequestContext,
         @Args('input', { nullable: true }) input?: InventoryStockPageInput,
@@ -80,7 +80,7 @@ export class InventoryAdminResolver {
 
     /** 预警规则列表（指定仓；缺省 → 该 SKU 全仓通用规则） */
     @Query()
-    @Allow(InventoryPermissions.ViewStock as Permission)
+    @Allow(InventoryPermissions.ViewStock as Permission, Permission.ReadCatalog, Permission.ReadStockLocation)
     async inventoryAlertRules(
         @Ctx() ctx: RequestContext,
         @Args('locationId', { nullable: true }) locationId?: ID,

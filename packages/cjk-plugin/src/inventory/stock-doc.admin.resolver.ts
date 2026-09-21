@@ -9,7 +9,9 @@ export class StockDocAdminResolver {
     constructor(private stockDocService: StockDocService) {}
 
     @Mutation()
-    @Allow(InventoryPermissions.ViewStock as Permission)
+    // 租户管理员角色由后台自行配置权限，通常持有 UpdateStockLocation 而未必有 ViewStock，
+    // 故与仓库管理保持同一口径（任一命中即可），避免租户侧单据功能被整体拦截。
+    @Allow(InventoryPermissions.ViewStock as Permission, Permission.UpdateStockLocation)
     async createStockDoc(
         @Ctx() ctx: RequestContext,
         @Args('input') input: StockDocCreateInput,
@@ -18,7 +20,7 @@ export class StockDocAdminResolver {
     }
 
     @Query()
-    @Allow(InventoryPermissions.ViewStock as Permission)
+    @Allow(InventoryPermissions.ViewStock as Permission, Permission.ReadCatalog, Permission.ReadStockLocation)
     async stockMovementLedger(
         @Ctx() ctx: RequestContext,
         @Args('productVariantId', { nullable: true }) productVariantId?: ID,
@@ -47,7 +49,7 @@ export class StockDocAdminResolver {
     }
 
     @Query()
-    @Allow(InventoryPermissions.ViewStock as Permission)
+    @Allow(InventoryPermissions.ViewStock as Permission, Permission.ReadCatalog, Permission.ReadStockLocation)
     async stockDocList(
         @Ctx() ctx: RequestContext,
         @Args('type', { nullable: true }) type?: string,
