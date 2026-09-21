@@ -1,9 +1,10 @@
 import { ID, RequestContext } from '@vendure/core';
-import { StockDocService, StockDocCreateInput } from './stock-doc.service';
-/** 管理端：库存单据（采购/移库/盘库/出库） + 库存流水查询 */
+import { StockDocCreateInput, StockDocService } from './stock-doc.service';
+/** 管理端：库存单据（采购/移库/盘库/出库） + 库存流水查询 + 单据中心列表 */
 export declare class StockDocAdminResolver {
     private stockDocService;
     constructor(stockDocService: StockDocService);
     createStockDoc(ctx: RequestContext, input: StockDocCreateInput): Promise<any>;
-    stockMovementLedger(ctx: RequestContext, productVariantId?: ID, locationId?: ID, bizCode?: string, orderLineId?: ID, page?: number, pageSize?: number): Promise<any>;
+    stockMovementLedger(ctx: RequestContext, productVariantId?: ID, locationId?: ID, bizCode?: string, orderLineId?: ID, bizType?: string, direction?: string, from?: string, to?: string, page?: number, pageSize?: number): Promise<any>;
+    stockDocList(ctx: RequestContext, type?: string, page?: number, pageSize?: number): Promise<any>;
 }

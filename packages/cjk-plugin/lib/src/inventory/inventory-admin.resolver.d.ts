@@ -1,9 +1,13 @@
 import { ID, RequestContext } from '@vendure/core';
 import { VirtualPhysicalStockService } from './virtual-physical-stock.service';
-/** 管理端库存配置：变体 × 物理仓绑定（物理驱动变体由此开启）+ 租户库存仓管理 */
+import { InventoryAlertRuleInput, InventoryAlertRuleService } from './inventory-alert-rule.service';
+import { InventoryStockPageInput, InventoryStockService } from './inventory-stock.service';
+/** 管理端库存配置：变体 × 物理仓绑定 + 租户库存仓管理 + 库存明细聚合页 + 预警规则 */
 export declare class InventoryAdminResolver {
     private virtualPhysicalStockService;
-    constructor(virtualPhysicalStockService: VirtualPhysicalStockService);
+    private inventoryStockService;
+    private inventoryAlertRuleService;
+    constructor(virtualPhysicalStockService: VirtualPhysicalStockService, inventoryStockService: InventoryStockService, inventoryAlertRuleService: InventoryAlertRuleService);
     setVariantBindings(ctx: RequestContext, variantId: ID, bindings: Array<{
         locationId: ID;
         isDefault: boolean;
@@ -22,4 +26,14 @@ export declare class InventoryAdminResolver {
     }): Promise<import("./virtual-physical-stock.service").TenantInventoryOverview>;
     /** 删除租户仓（系统仓不可删） */
     deleteTenantStockLocation(ctx: RequestContext, id: ID): Promise<import("./virtual-physical-stock.service").TenantInventoryOverview>;
+    /** 库存明细聚合页：KPI + 分桶计数 + 明细行（服务端过滤/排序/分页） */
+    inventoryStockPage(ctx: RequestContext, input?: InventoryStockPageInput): Promise<{
+        totalItems: number;
+        summary: import("./stock-page-math").StockSummary;
+        items: import("./stock-page-math").StockRowCore[];
+    }>;
+    /** 预警规则列表（指定仓；缺省 → 该 SKU 全仓通用规则） */
+    inventoryAlertRules(ctx: RequestContext, locationId?: ID): Promise<import("./inventory-alert-rule.entity").InventoryAlertRuleEntity[]>;
+    /** 预警规则保存（幂等 upsert；返回该仓最新规则列表） */
+    saveInventoryAlertRules(ctx: RequestContext, items: InventoryAlertRuleInput[], locationId?: ID): Promise<import("./inventory-alert-rule.entity").InventoryAlertRuleEntity[]>;
 }

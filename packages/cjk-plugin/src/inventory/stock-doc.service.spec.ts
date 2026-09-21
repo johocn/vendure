@@ -64,12 +64,10 @@ function makeService(ctx: any) {
             return diff;
         },
     );
-    const stockLedgerService = { list: vi.fn() };
     const inventoryModeService = { assertSimple: vi.fn(), currentMode: vi.fn().mockReturnValue('simple') } as any;
     const svc = new StockDocService(
         conn as any,
         { adjustPhysicalStock, setPhysicalStock } as any,
-        stockLedgerService as any,
         inventoryModeService,
     );
     return { svc, physicalStock, key };

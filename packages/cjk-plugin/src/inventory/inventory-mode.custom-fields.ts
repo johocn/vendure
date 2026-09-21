@@ -1,4 +1,4 @@
-import { type CustomFieldConfig } from '@vendure/core';
+import { LanguageCode, type CustomFieldConfig } from '@vendure/core';
 
 // 渠道自定义字段：库存管理模式开关（simple|odoo）+ Odoo 对接参数。
 // 供 plugin.ts 合并进 Channel customFields。
@@ -19,4 +19,11 @@ export const inventoryModeChannelFields: CustomFieldConfig[] = [
     },
     { name: 'odooBaseUrl', type: 'string', nullable: true },
     { name: 'odooApiKey', type: 'string', nullable: true },
+    {
+        name: 'inventoryDefaultSafetyStock',
+        type: 'int',
+        defaultValue: 10,
+        nullable: true,
+        label: [{ languageCode: LanguageCode.zh_Hans, value: '默认安全库存' }],
+    },
 ];

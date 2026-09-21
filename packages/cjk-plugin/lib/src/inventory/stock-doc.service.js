@@ -30,11 +30,26 @@ const BIZ_TYPE = {
     STOCKTAKE: 'stocktake',
     ISSUE: 'stockOut',
 };
+const DOC_TYPES = ['PURCHASE', 'TRANSFER', 'STOCKTAKE', 'ISSUE'];
+function parseIso(value) {
+    if (!value) {
+        return null;
+    }
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+}
+function clampPage(v) {
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 1 ? Math.trunc(n) : 1;
+}
+function clampPageSize(v) {
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 1 ? Math.min(100, Math.trunc(n)) : 20;
+}
 let StockDocService = class StockDocService {
-    constructor(conn, virtualPhysicalStockService, stockLedgerService, inventoryModeService) {
+    constructor(conn, virtualPhysicalStockService, inventoryModeService) {
         this.conn = conn;
         this.virtualPhysicalStockService = virtualPhysicalStockService;
-        this.stockLedgerService = stockLedgerService;
         this.inventoryModeService = inventoryModeService;
     }
     /** inventoryMode gate 委托独立服务：odoo 模式只读，禁止直接落库 */
@@ -144,9 +159,117 @@ let StockDocService = class StockDocService {
             }
         }
     }
-    /** 流水查询：按当前渠道查 OrderStockLedger（关联 variant/location/bizCode/orderLine），供流水页用 */
+    /**
+     * 流水查询：按当前渠道查 OrderStockLedger。
+     * 不复用 `@vendure/inventory-plugin` 的 `StockLedgerService.list()`（它不支持 direction/from/to/summary，
+     * 且不宜改动另一个包的 src 与 lib），改为在本服务内自建 QueryBuilder。
+     * 渠道 scoping 沿用既有写法（对齐 `pickup-location.service.ts:41` 的 innerJoin channels）。
+     */
     async ledger(ctx, options) {
-        return this.stockLedgerService.list(ctx, options);
+        var _a, _b;
+        const page = clampPage(options === null || options === void 0 ? void 0 : options.page);
+        const pageSize = clampPageSize(options === null || options === void 0 ? void 0 : options.pageSize);
+        const dir = (options === null || options === void 0 ? void 0 : options.direction) === 'in' || (options === null || options === void 0 ? void 0 : options.direction) === 'out' ? options.direction : null;
+        const bizType = (options === null || options === void 0 ? void 0 : options.bizType) ? String(options.bizType) : null;
+        const from = parseIso(options === null || options === void 0 ? void 0 : options.from);
+        const to = parseIso(options === null || options === void 0 ? void 0 : options.to);
+        const base = () => {
+            const qb = this.conn
+                .getRepository(ctx, inventory_plugin_1.OrderStockLedger)
+                .createQueryBuilder('l')
+                .innerJoin('l.channels', 'ch', 'ch.id = :cid', { cid: ctx.channelId });
+            if (options === null || options === void 0 ? void 0 : options.productVariantId) {
+                qb.andWhere('l.productVariantId = :vid', { vid: Number(options.productVariantId) });
+            }
+            if (options === null || options === void 0 ? void 0 : options.locationId) {
+                qb.andWhere('l.stockLocationId = :lid', { lid: Number(options.locationId) });
+            }
+            if (options === null || options === void 0 ? void 0 : options.bizCode) {
+                qb.andWhere('l.bizCode = :bc', { bc: String(options.bizCode) });
+            }
+            if (options === null || options === void 0 ? void 0 : options.orderLineId) {
+                qb.andWhere('l.orderLineId = :ol', { ol: Number(options.orderLineId) });
+            }
+            if (bizType) {
+                qb.andWhere('l.bizType = :bt', { bt: bizType });
+            }
+            if (dir) {
+                qb.andWhere('l.direction = :dir', { dir });
+            }
+            if (from) {
+                qb.andWhere('l.createdAt >= :from', { from });
+            }
+            if (to) {
+                qb.andWhere('l.createdAt <= :to', { to });
+            }
+            return qb;
+        };
+        const [items, totalItems] = await base()
+            .orderBy('l.createdAt', 'DESC')
+            .addOrderBy('l.id', 'DESC')
+            .skip((page - 1) * pageSize)
+            .take(pageSize)
+            .getManyAndCount();
+        // 同条件汇总（不带分页）：入/出合计；一条流水只挂一个渠道，故无需去重
+        const agg = await base()
+            .select("COALESCE(SUM(CASE WHEN l.direction = 'in' THEN l.quantity ELSE 0 END), 0)", 'inQty')
+            .addSelect("COALESCE(SUM(CASE WHEN l.direction = 'out' THEN l.quantity ELSE 0 END), 0)", 'outQty')
+            .getRawOne();
+        return {
+            items,
+            totalItems,
+            summary: { inQty: Number((_a = agg === null || agg === void 0 ? void 0 : agg.inQty) !== null && _a !== void 0 ? _a : 0), outQty: Number((_b = agg === null || agg === void 0 ? void 0 : agg.outQty) !== null && _b !== void 0 ? _b : 0) },
+        };
+    }
+    /** 单据中心列表：本租户单据（可按类型过滤）+ 每单条数/总数量 */
+    async listDocs(ctx, options) {
+        var _a, _b;
+        const type = (options === null || options === void 0 ? void 0 : options.type) && DOC_TYPES.includes(options.type) ? String(options.type) : null;
+        const page = clampPage(options === null || options === void 0 ? void 0 : options.page);
+        const pageSize = clampPageSize(options === null || options === void 0 ? void 0 : options.pageSize);
+        const qb = this.conn
+            .getRepository(ctx, stock_doc_entity_1.StockDocEntity)
+            .createQueryBuilder('d')
+            .where('d.tenantChannelId = :ch', { ch: ctx.channel.code });
+        if (type) {
+            qb.andWhere('d.type = :t', { t: type });
+        }
+        const [docs, totalItems] = await qb
+            .orderBy('d.createdAt', 'DESC')
+            .addOrderBy('d.id', 'DESC')
+            .skip((page - 1) * pageSize)
+            .take(pageSize)
+            .getManyAndCount();
+        const ids = docs.map(d => d.id);
+        const stats = ids.length
+            ? await this.conn
+                .getRepository(ctx, stock_doc_item_entity_1.StockDocItemEntity)
+                .createQueryBuilder('i')
+                .select(['i.docId AS docId', 'COUNT(i.id) AS itemCount', 'COALESCE(SUM(i.qty), 0) AS totalQty'])
+                .where('i.docId IN (:...ids)', { ids })
+                .groupBy('i.docId')
+                .getRawMany()
+            : [];
+        const map = {};
+        for (const s of stats) {
+            map[String(s.docId)] = { itemCount: Number((_a = s.itemCount) !== null && _a !== void 0 ? _a : 0), totalQty: Number((_b = s.totalQty) !== null && _b !== void 0 ? _b : 0) };
+        }
+        return {
+            totalItems,
+            items: docs.map(d => {
+                var _a, _b, _c, _d, _e, _f, _g;
+                return ({
+                    id: String(d.id),
+                    code: d.code,
+                    type: d.type,
+                    remark: (_a = d.remark) !== null && _a !== void 0 ? _a : null,
+                    operator: (_b = d.operator) !== null && _b !== void 0 ? _b : null,
+                    createdAt: d.createdAt instanceof Date ? d.createdAt.toISOString() : String((_c = d.createdAt) !== null && _c !== void 0 ? _c : ''),
+                    itemCount: (_e = (_d = map[String(d.id)]) === null || _d === void 0 ? void 0 : _d.itemCount) !== null && _e !== void 0 ? _e : 0,
+                    totalQty: (_g = (_f = map[String(d.id)]) === null || _f === void 0 ? void 0 : _f.totalQty) !== null && _g !== void 0 ? _g : 0,
+                });
+            }),
+        };
     }
 };
 exports.StockDocService = StockDocService;
@@ -154,7 +277,6 @@ exports.StockDocService = StockDocService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
         virtual_physical_stock_service_1.VirtualPhysicalStockService,
-        inventory_plugin_1.StockLedgerService,
         inventory_mode_service_1.InventoryModeService])
 ], StockDocService);
 //# sourceMappingURL=stock-doc.service.js.map

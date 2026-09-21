@@ -1,9 +1,9 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { Allow, Ctx, ID, Permission, RequestContext } from '@vendure/core';
 import { InventoryPermissions } from '@vendure/inventory-plugin';
-import { StockDocService, StockDocCreateInput } from './stock-doc.service';
+import { StockDocCreateInput, StockDocService } from './stock-doc.service';
 
-/** 管理端：库存单据（采购/移库/盘库/出库） + 库存流水查询 */
+/** 管理端：库存单据（采购/移库/盘库/出库） + 库存流水查询 + 单据中心列表 */
 @Resolver()
 export class StockDocAdminResolver {
     constructor(private stockDocService: StockDocService) {}
@@ -25,6 +25,10 @@ export class StockDocAdminResolver {
         @Args('locationId', { nullable: true }) locationId?: ID,
         @Args('bizCode', { nullable: true }) bizCode?: string,
         @Args('orderLineId', { nullable: true }) orderLineId?: ID,
+        @Args('bizType', { nullable: true }) bizType?: string,
+        @Args('direction', { nullable: true }) direction?: string,
+        @Args('from', { nullable: true }) from?: string,
+        @Args('to', { nullable: true }) to?: string,
         @Args('page', { nullable: true }) page?: number,
         @Args('pageSize', { nullable: true }) pageSize?: number,
     ): Promise<any> {
@@ -33,8 +37,23 @@ export class StockDocAdminResolver {
             locationId,
             bizCode,
             orderLineId,
+            bizType,
+            direction,
+            from,
+            to,
             page,
             pageSize,
         });
+    }
+
+    @Query()
+    @Allow(InventoryPermissions.ViewStock as Permission)
+    async stockDocList(
+        @Ctx() ctx: RequestContext,
+        @Args('type', { nullable: true }) type?: string,
+        @Args('page', { nullable: true }) page?: number,
+        @Args('pageSize', { nullable: true }) pageSize?: number,
+    ): Promise<any> {
+        return this.stockDocService.listDocs(ctx, { type, page, pageSize });
     }
 }

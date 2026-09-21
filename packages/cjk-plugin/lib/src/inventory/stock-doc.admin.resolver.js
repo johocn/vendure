@@ -17,7 +17,7 @@ const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
 const inventory_plugin_1 = require("@vendure/inventory-plugin");
 const stock_doc_service_1 = require("./stock-doc.service");
-/** 管理端：库存单据（采购/移库/盘库/出库） + 库存流水查询 */
+/** 管理端：库存单据（采购/移库/盘库/出库） + 库存流水查询 + 单据中心列表 */
 let StockDocAdminResolver = class StockDocAdminResolver {
     constructor(stockDocService) {
         this.stockDocService = stockDocService;
@@ -25,15 +25,22 @@ let StockDocAdminResolver = class StockDocAdminResolver {
     async createStockDoc(ctx, input) {
         return this.stockDocService.create(ctx, input);
     }
-    async stockMovementLedger(ctx, productVariantId, locationId, bizCode, orderLineId, page, pageSize) {
+    async stockMovementLedger(ctx, productVariantId, locationId, bizCode, orderLineId, bizType, direction, from, to, page, pageSize) {
         return this.stockDocService.ledger(ctx, {
             productVariantId,
             locationId,
             bizCode,
             orderLineId,
+            bizType,
+            direction,
+            from,
+            to,
             page,
             pageSize,
         });
+    }
+    async stockDocList(ctx, type, page, pageSize) {
+        return this.stockDocService.listDocs(ctx, { type, page, pageSize });
     }
 };
 exports.StockDocAdminResolver = StockDocAdminResolver;
@@ -54,12 +61,27 @@ __decorate([
     __param(2, (0, graphql_1.Args)('locationId', { nullable: true })),
     __param(3, (0, graphql_1.Args)('bizCode', { nullable: true })),
     __param(4, (0, graphql_1.Args)('orderLineId', { nullable: true })),
-    __param(5, (0, graphql_1.Args)('page', { nullable: true })),
-    __param(6, (0, graphql_1.Args)('pageSize', { nullable: true })),
+    __param(5, (0, graphql_1.Args)('bizType', { nullable: true })),
+    __param(6, (0, graphql_1.Args)('direction', { nullable: true })),
+    __param(7, (0, graphql_1.Args)('from', { nullable: true })),
+    __param(8, (0, graphql_1.Args)('to', { nullable: true })),
+    __param(9, (0, graphql_1.Args)('page', { nullable: true })),
+    __param(10, (0, graphql_1.Args)('pageSize', { nullable: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, String, Object, Number, Number]),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, String, Object, String, String, String, String, Number, Number]),
     __metadata("design:returntype", Promise)
 ], StockDocAdminResolver.prototype, "stockMovementLedger", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(inventory_plugin_1.InventoryPermissions.ViewStock),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('type', { nullable: true })),
+    __param(2, (0, graphql_1.Args)('page', { nullable: true })),
+    __param(3, (0, graphql_1.Args)('pageSize', { nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, Number, Number]),
+    __metadata("design:returntype", Promise)
+], StockDocAdminResolver.prototype, "stockDocList", null);
 exports.StockDocAdminResolver = StockDocAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [stock_doc_service_1.StockDocService])

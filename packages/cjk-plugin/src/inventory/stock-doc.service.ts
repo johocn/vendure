@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ID, Logger, RequestContext, TransactionalConnection } from '@vendure/core';
-import { StockLedgerService } from '@vendure/inventory-plugin';
+import { OrderStockLedger } from '@vendure/inventory-plugin';
 import { StockDocEntity, StockDocType } from './stock-doc.entity';
 import { StockDocItemEntity } from './stock-doc-item.entity';
 import { VirtualPhysicalStockService } from './virtual-physical-stock.service';
@@ -24,6 +24,38 @@ export interface StockDocCreateInput {
     items: StockDocItemInput[];
 }
 
+/** 流水查询入参（与 GraphQL `stockMovementLedger` 一一对应；新增项全部可选，向后兼容） */
+export interface StockDocLedgerQuery {
+    productVariantId?: ID;
+    locationId?: ID;
+    bizType?: string;
+    bizCode?: string;
+    orderLineId?: ID;
+    /** 'in' | 'out'；其它值视为不传 */
+    direction?: string;
+    /** ISO 时间字符串；非法值视为不传 */
+    from?: string;
+    to?: string;
+    page?: number;
+    pageSize?: number;
+}
+
+export interface StockDocLedgerSummary {
+    inQty: number;
+    outQty: number;
+}
+
+export interface StockDocSummaryRow {
+    id: string;
+    code: string;
+    type: string;
+    remark: string | null;
+    operator: string | null;
+    createdAt: string;
+    itemCount: number;
+    totalQty: number;
+}
+
 const CODE_PREFIX: Record<StockDocType, string> = {
     PURCHASE: 'PO',
     TRANSFER: 'TF',
@@ -38,12 +70,31 @@ const BIZ_TYPE: Record<StockDocType, string> = {
     ISSUE: 'stockOut',
 };
 
+const DOC_TYPES: StockDocType[] = ['PURCHASE', 'TRANSFER', 'STOCKTAKE', 'ISSUE'];
+
+function parseIso(value?: string | null): Date | null {
+    if (!value) {
+        return null;
+    }
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function clampPage(v?: number): number {
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 1 ? Math.trunc(n) : 1;
+}
+
+function clampPageSize(v?: number): number {
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 1 ? Math.min(100, Math.trunc(n)) : 20;
+}
+
 @Injectable()
 export class StockDocService {
     constructor(
         private conn: TransactionalConnection,
         private virtualPhysicalStockService: VirtualPhysicalStockService,
-        private stockLedgerService: StockLedgerService,
         private inventoryModeService: InventoryModeService,
     ) {}
 
@@ -165,18 +216,125 @@ export class StockDocService {
         }
     }
 
-    /** 流水查询：按当前渠道查 OrderStockLedger（关联 variant/location/bizCode/orderLine），供流水页用 */
+    /**
+     * 流水查询：按当前渠道查 OrderStockLedger。
+     * 不复用 `@vendure/inventory-plugin` 的 `StockLedgerService.list()`（它不支持 direction/from/to/summary，
+     * 且不宜改动另一个包的 src 与 lib），改为在本服务内自建 QueryBuilder。
+     * 渠道 scoping 沿用既有写法（对齐 `pickup-location.service.ts:41` 的 innerJoin channels）。
+     */
     async ledger(
         ctx: RequestContext,
-        options?: {
-            productVariantId?: ID;
-            locationId?: ID;
-            bizCode?: string;
-            orderLineId?: ID;
-            page?: number;
-            pageSize?: number;
-        },
-    ): Promise<{ items: any[]; totalItems: number }> {
-        return this.stockLedgerService.list(ctx, options);
+        options?: StockDocLedgerQuery,
+    ): Promise<{ items: OrderStockLedger[]; totalItems: number; summary: StockDocLedgerSummary }> {
+        const page = clampPage(options?.page);
+        const pageSize = clampPageSize(options?.pageSize);
+        const dir = options?.direction === 'in' || options?.direction === 'out' ? options.direction : null;
+        const bizType = options?.bizType ? String(options.bizType) : null;
+        const from = parseIso(options?.from);
+        const to = parseIso(options?.to);
+
+        const base = () => {
+            const qb = this.conn
+                .getRepository(ctx, OrderStockLedger)
+                .createQueryBuilder('l')
+                .innerJoin('l.channels', 'ch', 'ch.id = :cid', { cid: ctx.channelId });
+            if (options?.productVariantId) {
+                qb.andWhere('l.productVariantId = :vid', { vid: Number(options.productVariantId) });
+            }
+            if (options?.locationId) {
+                qb.andWhere('l.stockLocationId = :lid', { lid: Number(options.locationId) });
+            }
+            if (options?.bizCode) {
+                qb.andWhere('l.bizCode = :bc', { bc: String(options.bizCode) });
+            }
+            if (options?.orderLineId) {
+                qb.andWhere('l.orderLineId = :ol', { ol: Number(options.orderLineId) });
+            }
+            if (bizType) {
+                qb.andWhere('l.bizType = :bt', { bt: bizType });
+            }
+            if (dir) {
+                qb.andWhere('l.direction = :dir', { dir });
+            }
+            if (from) {
+                qb.andWhere('l.createdAt >= :from', { from });
+            }
+            if (to) {
+                qb.andWhere('l.createdAt <= :to', { to });
+            }
+            return qb;
+        };
+
+        const [items, totalItems] = await base()
+            .orderBy('l.createdAt', 'DESC')
+            .addOrderBy('l.id', 'DESC')
+            .skip((page - 1) * pageSize)
+            .take(pageSize)
+            .getManyAndCount();
+
+        // 同条件汇总（不带分页）：入/出合计；一条流水只挂一个渠道，故无需去重
+        const agg = await base()
+            .select("COALESCE(SUM(CASE WHEN l.direction = 'in' THEN l.quantity ELSE 0 END), 0)", 'inQty')
+            .addSelect("COALESCE(SUM(CASE WHEN l.direction = 'out' THEN l.quantity ELSE 0 END), 0)", 'outQty')
+            .getRawOne();
+
+        return {
+            items,
+            totalItems,
+            summary: { inQty: Number(agg?.inQty ?? 0), outQty: Number(agg?.outQty ?? 0) },
+        };
+    }
+
+    /** 单据中心列表：本租户单据（可按类型过滤）+ 每单条数/总数量 */
+    async listDocs(
+        ctx: RequestContext,
+        options?: { type?: string; page?: number; pageSize?: number },
+    ): Promise<{ totalItems: number; items: StockDocSummaryRow[] }> {
+        const type = options?.type && DOC_TYPES.includes(options.type as StockDocType) ? String(options.type) : null;
+        const page = clampPage(options?.page);
+        const pageSize = clampPageSize(options?.pageSize);
+
+        const qb = this.conn
+            .getRepository(ctx, StockDocEntity)
+            .createQueryBuilder('d')
+            .where('d.tenantChannelId = :ch', { ch: ctx.channel.code });
+        if (type) {
+            qb.andWhere('d.type = :t', { t: type });
+        }
+        const [docs, totalItems] = await qb
+            .orderBy('d.createdAt', 'DESC')
+            .addOrderBy('d.id', 'DESC')
+            .skip((page - 1) * pageSize)
+            .take(pageSize)
+            .getManyAndCount();
+
+        const ids = docs.map(d => d.id);
+        const stats = ids.length
+            ? await this.conn
+                  .getRepository(ctx, StockDocItemEntity)
+                  .createQueryBuilder('i')
+                  .select(['i.docId AS docId', 'COUNT(i.id) AS itemCount', 'COALESCE(SUM(i.qty), 0) AS totalQty'])
+                  .where('i.docId IN (:...ids)', { ids })
+                  .groupBy('i.docId')
+                  .getRawMany()
+            : [];
+        const map: Record<string, { itemCount: number; totalQty: number }> = {};
+        for (const s of stats) {
+            map[String(s.docId)] = { itemCount: Number(s.itemCount ?? 0), totalQty: Number(s.totalQty ?? 0) };
+        }
+
+        return {
+            totalItems,
+            items: docs.map(d => ({
+                id: String(d.id),
+                code: d.code,
+                type: d.type,
+                remark: d.remark ?? null,
+                operator: d.operator ?? null,
+                createdAt: d.createdAt instanceof Date ? d.createdAt.toISOString() : String(d.createdAt ?? ''),
+                itemCount: map[String(d.id)]?.itemCount ?? 0,
+                totalQty: map[String(d.id)]?.totalQty ?? 0,
+            })),
+        };
     }
 }

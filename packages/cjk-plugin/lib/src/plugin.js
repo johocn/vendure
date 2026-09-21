@@ -143,6 +143,9 @@ const stock_reservation_entity_1 = require("./inventory/stock-reservation.entity
 const stock_reservation_item_entity_1 = require("./inventory/stock-reservation-item.entity");
 const stock_reservation_service_1 = require("./inventory/stock-reservation.service");
 const inventory_mode_service_1 = require("./inventory/inventory-mode.service");
+const inventory_alert_rule_entity_1 = require("./inventory/inventory-alert-rule.entity");
+const inventory_alert_rule_service_1 = require("./inventory/inventory-alert-rule.service");
+const inventory_stock_service_1 = require("./inventory/inventory-stock.service");
 const simple_inventory_adapter_1 = require("./inventory/simple-inventory.adapter");
 const odoo_inventory_adapter_1 = require("./inventory/odoo-inventory.adapter");
 const inventory_mode_custom_fields_1 = require("./inventory/inventory-mode.custom-fields");
@@ -363,7 +366,7 @@ exports.CjkPlugin = CjkPlugin;
 exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_profile_method_entity_1.PaymentProfileMethod, payment_template_entity_1.PaymentTemplate, room_template_entity_1.RoomTemplate, room_template_control_entity_1.RoomTemplateControl, tenant_member_entity_1.TenantMember, wallet_entity_1.Wallet, merchant_settlement_ledger_entity_1.MerchantSettlementLedger, variant_location_binding_entity_1.VariantLocationBinding, delivery_record_entity_1.DeliveryRecord, reconciliation_entity_1.ReconciliationBatch, reconciliation_entity_1.ReconciliationOrderLine, stock_doc_entity_1.StockDocEntity, stock_doc_item_entity_1.StockDocItemEntity, stock_reservation_entity_1.StockReservationEntity, stock_reservation_item_entity_1.StockReservationItemEntity],
+        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_profile_method_entity_1.PaymentProfileMethod, payment_template_entity_1.PaymentTemplate, room_template_entity_1.RoomTemplate, room_template_control_entity_1.RoomTemplateControl, tenant_member_entity_1.TenantMember, wallet_entity_1.Wallet, merchant_settlement_ledger_entity_1.MerchantSettlementLedger, variant_location_binding_entity_1.VariantLocationBinding, delivery_record_entity_1.DeliveryRecord, reconciliation_entity_1.ReconciliationBatch, reconciliation_entity_1.ReconciliationOrderLine, stock_doc_entity_1.StockDocEntity, stock_doc_item_entity_1.StockDocItemEntity, inventory_alert_rule_entity_1.InventoryAlertRuleEntity, stock_reservation_entity_1.StockReservationEntity, stock_reservation_item_entity_1.StockReservationItemEntity],
         providers: [
             { provide: constants_1.CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
             tenant_setup_service_1.TenantSetupService,
@@ -408,6 +411,8 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             stock_doc_service_1.StockDocService,
             stock_reservation_service_1.StockReservationService,
             inventory_mode_service_1.InventoryModeService,
+            inventory_alert_rule_service_1.InventoryAlertRuleService,
+            inventory_stock_service_1.InventoryStockService,
             simple_inventory_adapter_1.SimpleInventoryAdapter,
             odoo_inventory_adapter_1.OdooInventoryAdapter,
             delivery_record_service_1.DeliveryRecordService,
@@ -1398,9 +1403,16 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     createdAt: DateTime!
                 }
 
+                # 同条件入/出合计（Task 3 新增；分页不影响汇总口径）
+                type StockDocLedgerSummary {
+                    inQty: Int!
+                    outQty: Int!
+                }
+
                 type StockDocLedgerList {
                     items: [StockDocLedgerEntry!]!
                     totalItems: Int!
+                    summary: StockDocLedgerSummary!
                 }
 
                 extend type Mutation {
@@ -1408,7 +1420,8 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                 }
 
                 extend type Query {
-                    stockMovementLedger(productVariantId: ID, locationId: ID, bizCode: String, orderLineId: ID, page: Int, pageSize: Int): StockDocLedgerList!
+                    # Task 3：新增 bizType/direction/from/to 入参（全部可选，向后兼容）
+                    stockMovementLedger(productVariantId: ID, locationId: ID, bizCode: String, orderLineId: ID, bizType: String, direction: String, from: String, to: String, page: Int, pageSize: Int): StockDocLedgerList!
                 }
 
                 # 预留单 admin 输出类型（独立命名，定义在本插件 SDL 内）
@@ -1522,6 +1535,94 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     createTenantStockLocation(input: TenantStockLocationInput!): TenantInventoryOverview!
                     updateTenantStockLocation(input: UpdateTenantStockLocationInput!): TenantInventoryOverview!
                     deleteTenantStockLocation(id: ID!): TenantInventoryOverview!
+                }
+
+                # ===== 库存明细聚合页（Plan 2）：一次请求拿齐 KPI / 分桶计数 / 明细行 =====
+                input InventoryStockQueryInput {
+                    locationId: ID
+                    keyword: String
+                    bucket: String
+                    sort: String
+                    page: Int
+                    pageSize: Int
+                }
+                type InventoryStockSummary {
+                    skuCount: Int!
+                    onHandTotal: Int!
+                    allocatedTotal: Int!
+                    availableTotal: Int!
+                    valueTotal: Int!
+                    outCount: Int!
+                    lowCount: Int!
+                    okCount: Int!
+                    outbound7d: Int!
+                }
+                type InventoryStockRow {
+                    variantId: ID!
+                    productId: ID
+                    variantName: String!
+                    sku: String!
+                    optionText: String
+                    thumbnail: String
+                    stockLocationId: ID
+                    locationName: String
+                    onHand: Int!
+                    allocated: Int!
+                    available: Int!
+                    safetyStock: Int!
+                    value: Int!
+                    costPrice: Int
+                    bucket: String!
+                    lastMovementAt: String
+                    lastDirection: String
+                    lastBizType: String
+                }
+                type InventoryStockPage {
+                    totalItems: Int!
+                    summary: InventoryStockSummary!
+                    items: [InventoryStockRow!]!
+                }
+                extend type Query {
+                    inventoryStockPage(input: InventoryStockQueryInput): InventoryStockPage!
+                }
+
+                # ===== 库存预警规则（安全库存；Plan 2） =====
+                type InventoryAlertRule {
+                    variantId: ID!
+                    locationId: ID
+                    safetyStock: Int!
+                    enabled: Boolean!
+                }
+                input InventoryAlertRuleInput {
+                    variantId: ID!
+                    safetyStock: Int!
+                    enabled: Boolean
+                    locationId: ID
+                }
+                extend type Query {
+                    inventoryAlertRules(locationId: ID): [InventoryAlertRule!]!
+                }
+                extend type Mutation {
+                    saveInventoryAlertRules(locationId: ID, items: [InventoryAlertRuleInput!]!): [InventoryAlertRule!]!
+                }
+
+                # ===== 单据中心（单据列表；Plan 2） =====
+                type StockDocSummaryRow {
+                    id: ID!
+                    code: String!
+                    type: String!
+                    remark: String
+                    operator: String
+                    createdAt: String!
+                    itemCount: Int!
+                    totalQty: Int!
+                }
+                type StockDocList {
+                    totalItems: Int!
+                    items: [StockDocSummaryRow!]!
+                }
+                extend type Query {
+                    stockDocList(type: String, page: Int, pageSize: Int): StockDocList!
                 }
                 `;
             },

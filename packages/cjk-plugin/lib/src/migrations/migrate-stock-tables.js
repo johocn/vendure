@@ -15,8 +15,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ChannelInventoryModeColumnMigration = exports.StockTableMigration = void 0;
 // 生产（PostgreSQL）与本地开发（SQLite）均关闭 synchronize，不会自动建表/加列。
 // 此处按 cjk-plugin 既有的 OnApplicationBootstrap 幂等 migration 模式，
-// 显式补建 4 张库存表（stock_doc / stock_doc_item / stock_reservation / stock_reservation_item）
-// 与 Channel 的 inventoryMode / odooBaseUrl / odooApiKey 三个自定义字段列。
+// 显式补建 5 张库存表（含 inventory_alert_rule）
+// （stock_doc / stock_doc_item / stock_reservation / stock_reservation_item / inventory_alert_rule）
+// 与 Channel 的 inventoryMode / odooBaseUrl / odooApiKey / inventoryDefaultSafetyStock 自定义字段列。
 // 幂等由 IF NOT EXISTS / hasColumn 保证；失败仅 console.error，不阻塞启动。
 const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
@@ -28,7 +29,7 @@ function isPostgres(driver) {
     return driver === 'postgres' || driver === 'postgresql';
 }
 /**
- * 幂等补建 4 张库存表。列与实体 field 完全对齐（含 unique / 索引 / 默认值）。
+ * 幂等补建 5 张库存表。列与实体 field 完全对齐（含 unique / 索引 / 默认值）。
  */
 let StockTableMigration = class StockTableMigration {
     constructor(connection) {
@@ -82,6 +83,18 @@ let StockTableMigration = class StockTableMigration {
                 `${Q('qty')} integer NOT NULL, ` +
                 `${Q('fulfillType')} varchar(255) NOT NULL, ` +
                 `${Q('status')} varchar(255) NOT NULL)`);
+            // inventory_alert_rule（安全库存规则；唯一键 (tenantChannelId, variantId, locationId)）
+            // locationId=0 为哨兵 = 该 SKU 全仓通用；不用 nullable 以规避 NULL 唯一索引差异
+            statements.push(`CREATE TABLE IF NOT EXISTS ${'inventory_alert_rule'} (` +
+                `${Q('id')} ${pk}, ` +
+                `${Q('tenantChannelId')} varchar(255) NOT NULL, ` +
+                `${Q('variantId')} integer NOT NULL, ` +
+                `${Q('locationId')} integer NOT NULL DEFAULT 0, ` +
+                `${Q('safetyStock')} integer NOT NULL DEFAULT 10, ` +
+                `${Q('enabled')} boolean NOT NULL DEFAULT ${pg ? 'true' : '1'}, ` +
+                `${Q('updatedAt')} ${datetime} NULL)`);
+            statements.push(`CREATE UNIQUE INDEX IF NOT EXISTS ${'uq_inventory_alert_rule_scope'} ON ${'inventory_alert_rule'} ` +
+                `(${Q('tenantChannelId')}, ${Q('variantId')}, ${Q('locationId')})`);
             for (const stmt of statements) {
                 await queryRunner.query(stmt);
             }
@@ -103,7 +116,7 @@ exports.StockTableMigration = StockTableMigration = __decorate([
     __metadata("design:paramtypes", [typeorm_2.Connection])
 ], StockTableMigration);
 /**
- * 幂等补 Channel 的 3 个库存模式/odoo 自定义字段列。
+ * 幂等补 Channel 的 4 个库存模式/odoo/默认安全库存自定义字段列。
  */
 let ChannelInventoryModeColumnMigration = class ChannelInventoryModeColumnMigration {
     constructor(connection) {
@@ -124,6 +137,7 @@ let ChannelInventoryModeColumnMigration = class ChannelInventoryModeColumnMigrat
                 await ensure('customFieldsInventorymode', 'varchar(255)');
                 await ensure('customFieldsOdoobaseurl', 'varchar(255)');
                 await ensure('customFieldsOdooapikey', 'varchar(255)');
+                await ensure('customFieldsInventorydefaultsafetystock', 'integer');
             }
             finally {
                 await queryRunner.release();

@@ -144,13 +144,16 @@ import { StockReservationEntity } from './inventory/stock-reservation.entity';
 import { StockReservationItemEntity } from './inventory/stock-reservation-item.entity';
 import { StockReservationService } from './inventory/stock-reservation.service';
 import { InventoryModeService } from './inventory/inventory-mode.service';
+import { InventoryAlertRuleEntity } from './inventory/inventory-alert-rule.entity';
+import { InventoryAlertRuleService } from './inventory/inventory-alert-rule.service';
+import { InventoryStockService } from './inventory/inventory-stock.service';
 import { SimpleInventoryAdapter } from './inventory/simple-inventory.adapter';
 import { OdooInventoryAdapter } from './inventory/odoo-inventory.adapter';
 import { inventoryModeChannelFields } from './inventory/inventory-mode.custom-fields';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod, PaymentTemplate, RoomTemplate, RoomTemplateControl, TenantMember, Wallet, MerchantSettlementLedger, VariantLocationBinding, DeliveryRecord, ReconciliationBatch, ReconciliationOrderLine, StockDocEntity, StockDocItemEntity, StockReservationEntity, StockReservationItemEntity],
+    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod, PaymentTemplate, RoomTemplate, RoomTemplateControl, TenantMember, Wallet, MerchantSettlementLedger, VariantLocationBinding, DeliveryRecord, ReconciliationBatch, ReconciliationOrderLine, StockDocEntity, StockDocItemEntity, InventoryAlertRuleEntity, StockReservationEntity, StockReservationItemEntity],
     providers: [
         { provide: CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
         TenantSetupService,
@@ -195,6 +198,8 @@ import { inventoryModeChannelFields } from './inventory/inventory-mode.custom-fi
         StockDocService,
         StockReservationService,
         InventoryModeService,
+        InventoryAlertRuleService,
+        InventoryStockService,
         SimpleInventoryAdapter,
         OdooInventoryAdapter,
         DeliveryRecordService,
@@ -1185,9 +1190,16 @@ import { inventoryModeChannelFields } from './inventory/inventory-mode.custom-fi
                     createdAt: DateTime!
                 }
 
+                # 同条件入/出合计（Task 3 新增；分页不影响汇总口径）
+                type StockDocLedgerSummary {
+                    inQty: Int!
+                    outQty: Int!
+                }
+
                 type StockDocLedgerList {
                     items: [StockDocLedgerEntry!]!
                     totalItems: Int!
+                    summary: StockDocLedgerSummary!
                 }
 
                 extend type Mutation {
@@ -1195,7 +1207,8 @@ import { inventoryModeChannelFields } from './inventory/inventory-mode.custom-fi
                 }
 
                 extend type Query {
-                    stockMovementLedger(productVariantId: ID, locationId: ID, bizCode: String, orderLineId: ID, page: Int, pageSize: Int): StockDocLedgerList!
+                    # Task 3：新增 bizType/direction/from/to 入参（全部可选，向后兼容）
+                    stockMovementLedger(productVariantId: ID, locationId: ID, bizCode: String, orderLineId: ID, bizType: String, direction: String, from: String, to: String, page: Int, pageSize: Int): StockDocLedgerList!
                 }
 
                 # 预留单 admin 输出类型（独立命名，定义在本插件 SDL 内）
@@ -1309,6 +1322,94 @@ import { inventoryModeChannelFields } from './inventory/inventory-mode.custom-fi
                     createTenantStockLocation(input: TenantStockLocationInput!): TenantInventoryOverview!
                     updateTenantStockLocation(input: UpdateTenantStockLocationInput!): TenantInventoryOverview!
                     deleteTenantStockLocation(id: ID!): TenantInventoryOverview!
+                }
+
+                # ===== 库存明细聚合页（Plan 2）：一次请求拿齐 KPI / 分桶计数 / 明细行 =====
+                input InventoryStockQueryInput {
+                    locationId: ID
+                    keyword: String
+                    bucket: String
+                    sort: String
+                    page: Int
+                    pageSize: Int
+                }
+                type InventoryStockSummary {
+                    skuCount: Int!
+                    onHandTotal: Int!
+                    allocatedTotal: Int!
+                    availableTotal: Int!
+                    valueTotal: Int!
+                    outCount: Int!
+                    lowCount: Int!
+                    okCount: Int!
+                    outbound7d: Int!
+                }
+                type InventoryStockRow {
+                    variantId: ID!
+                    productId: ID
+                    variantName: String!
+                    sku: String!
+                    optionText: String
+                    thumbnail: String
+                    stockLocationId: ID
+                    locationName: String
+                    onHand: Int!
+                    allocated: Int!
+                    available: Int!
+                    safetyStock: Int!
+                    value: Int!
+                    costPrice: Int
+                    bucket: String!
+                    lastMovementAt: String
+                    lastDirection: String
+                    lastBizType: String
+                }
+                type InventoryStockPage {
+                    totalItems: Int!
+                    summary: InventoryStockSummary!
+                    items: [InventoryStockRow!]!
+                }
+                extend type Query {
+                    inventoryStockPage(input: InventoryStockQueryInput): InventoryStockPage!
+                }
+
+                # ===== 库存预警规则（安全库存；Plan 2） =====
+                type InventoryAlertRule {
+                    variantId: ID!
+                    locationId: ID
+                    safetyStock: Int!
+                    enabled: Boolean!
+                }
+                input InventoryAlertRuleInput {
+                    variantId: ID!
+                    safetyStock: Int!
+                    enabled: Boolean
+                    locationId: ID
+                }
+                extend type Query {
+                    inventoryAlertRules(locationId: ID): [InventoryAlertRule!]!
+                }
+                extend type Mutation {
+                    saveInventoryAlertRules(locationId: ID, items: [InventoryAlertRuleInput!]!): [InventoryAlertRule!]!
+                }
+
+                # ===== 单据中心（单据列表；Plan 2） =====
+                type StockDocSummaryRow {
+                    id: ID!
+                    code: String!
+                    type: String!
+                    remark: String
+                    operator: String
+                    createdAt: String!
+                    itemCount: Int!
+                    totalQty: Int!
+                }
+                type StockDocList {
+                    totalItems: Int!
+                    items: [StockDocSummaryRow!]!
+                }
+                extend type Query {
+                    stockDocList(type: String, page: Int, pageSize: Int): StockDocList!
                 }
                 `;
         },

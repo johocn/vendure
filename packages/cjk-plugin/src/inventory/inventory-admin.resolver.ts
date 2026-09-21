@@ -2,11 +2,17 @@ import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { Allow, Ctx, ID, Permission, RequestContext } from '@vendure/core';
 import { InventoryPermissions } from '@vendure/inventory-plugin';
 import { VirtualPhysicalStockService } from './virtual-physical-stock.service';
+import { InventoryAlertRuleInput, InventoryAlertRuleService } from './inventory-alert-rule.service';
+import { InventoryStockPageInput, InventoryStockService } from './inventory-stock.service';
 
-/** 管理端库存配置：变体 × 物理仓绑定（物理驱动变体由此开启）+ 租户库存仓管理 */
+/** 管理端库存配置：变体 × 物理仓绑定 + 租户库存仓管理 + 库存明细聚合页 + 预警规则 */
 @Resolver()
 export class InventoryAdminResolver {
-    constructor(private virtualPhysicalStockService: VirtualPhysicalStockService) {}
+    constructor(
+        private virtualPhysicalStockService: VirtualPhysicalStockService,
+        private inventoryStockService: InventoryStockService,
+        private inventoryAlertRuleService: InventoryAlertRuleService,
+    ) {}
 
     @Mutation()
     @Allow(InventoryPermissions.ViewStock as Permission)
@@ -60,5 +66,36 @@ export class InventoryAdminResolver {
         @Args('id') id: ID,
     ) {
         return this.virtualPhysicalStockService.deleteTenantPhysicalLocation(ctx, id);
+    }
+
+    /** 库存明细聚合页：KPI + 分桶计数 + 明细行（服务端过滤/排序/分页） */
+    @Query()
+    @Allow(InventoryPermissions.ViewStock as Permission)
+    async inventoryStockPage(
+        @Ctx() ctx: RequestContext,
+        @Args('input', { nullable: true }) input?: InventoryStockPageInput,
+    ) {
+        return this.inventoryStockService.page(ctx, input ?? null);
+    }
+
+    /** 预警规则列表（指定仓；缺省 → 该 SKU 全仓通用规则） */
+    @Query()
+    @Allow(InventoryPermissions.ViewStock as Permission)
+    async inventoryAlertRules(
+        @Ctx() ctx: RequestContext,
+        @Args('locationId', { nullable: true }) locationId?: ID,
+    ) {
+        return this.inventoryAlertRuleService.list(ctx, locationId ?? null);
+    }
+
+    /** 预警规则保存（幂等 upsert；返回该仓最新规则列表） */
+    @Mutation()
+    @Allow(Permission.UpdateStockLocation)
+    async saveInventoryAlertRules(
+        @Ctx() ctx: RequestContext,
+        @Args('items') items: InventoryAlertRuleInput[],
+        @Args('locationId', { nullable: true }) locationId?: ID,
+    ) {
+        return this.inventoryAlertRuleService.save(ctx, locationId ?? null, items ?? []);
     }
 }
