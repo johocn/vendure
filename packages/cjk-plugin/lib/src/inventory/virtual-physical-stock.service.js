@@ -10,16 +10,34 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.VirtualPhysicalStockService = void 0;
+exports.normalizeDeliveryMethods = normalizeDeliveryMethods;
+exports.normalizeCities = normalizeCities;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const inventory_plugin_1 = require("@vendure/inventory-plugin");
 const typeorm_1 = require("typeorm");
 const variant_location_binding_entity_1 = require("./variant-location-binding.entity");
+const stock_reservation_item_entity_1 = require("./stock-reservation-item.entity");
 const mirror_math_1 = require("./mirror-math");
 const stock_city_filter_1 = require("./stock-city-filter");
 const delivery_methods_1 = require("./delivery-methods");
 const delivery_record_service_1 = require("../delivery/delivery-record.service");
 const loggerCtx = 'VirtualPhysicalStockService';
+const DELIVERY_METHODS = ['MAIL', 'SELF_PICKUP'];
+/** 配送方式归一：只收白名单取值、去重；空数组 → null（null 语义 = 邮寄与自提都支持） */
+function normalizeDeliveryMethods(input) {
+    const out = [
+        ...new Set((input !== null && input !== void 0 ? input : [])
+            .map(v => String(v !== null && v !== void 0 ? v : '').trim().toUpperCase())
+            .filter(v => DELIVERY_METHODS.includes(v))),
+    ];
+    return out.length ? out : null;
+}
+/** 服务城市归一：去空去重；空 → null（null 语义 = 全国可达） */
+function normalizeCities(input) {
+    const out = [...new Set((input !== null && input !== void 0 ? input : []).map(v => String(v !== null && v !== void 0 ? v : '').trim()).filter(Boolean))];
+    return out.length ? out : null;
+}
 let VirtualPhysicalStockService = class VirtualPhysicalStockService {
     constructor(connection, stockLocationService, stockLevelService, inventoryService, eventBus, deliveryRecordService) {
         this.connection = connection;
@@ -32,45 +50,263 @@ let VirtualPhysicalStockService = class VirtualPhysicalStockService {
     virtualCode(channelCode) {
         return `${channelCode}-virtual`;
     }
-    async ensureVirtualLocation(ctx) {
-        var _a;
-        const code = this.virtualCode(ctx.channel.code);
-        const repo = this.connection.getRepository(ctx, core_1.StockLocation);
-        const existing = await repo
+    /** 系统仓：默认物理仓（code=租户编码）与虚拟仓（code=租户编码-virtual）——不可改码、不可删除 */
+    isSystemLocationCode(channelCode, code) {
+        return !!code && (code === channelCode || code === this.virtualCode(channelCode));
+    }
+    async findLocationByCode(ctx, code) {
+        return this.connection
+            .getRepository(ctx, core_1.StockLocation)
             .createQueryBuilder('loc')
             .where('loc.customFields.code = :code', { code })
             .getOne();
+    }
+    /**
+     * 仓归属校验：channelCode 命中、或 code 等于租户编码 / `{租户编码}-*` 前缀。
+     * 两者皆空的历史数据视为「当前渠道内未打标」，按可见即归属处理（否则旧网点会凭空消失）。
+     */
+    codeBelongsToTenant(channelCode, cf) {
+        var _a, _b;
+        const code = String((_a = cf === null || cf === void 0 ? void 0 : cf.code) !== null && _a !== void 0 ? _a : '');
+        const owner = String((_b = cf === null || cf === void 0 ? void 0 : cf.channelCode) !== null && _b !== void 0 ? _b : '');
+        if (owner && owner !== channelCode) {
+            return false;
+        }
+        if (!code) {
+            return true;
+        }
+        return code === channelCode || code === this.virtualCode(channelCode) || code.startsWith(`${channelCode}-`);
+    }
+    /** 当前渠道可见的仓（channel-aware，天然排除其它租户渠道的仓） */
+    async channelLocations(ctx) {
+        const { items } = await this.stockLocationService.findAll(ctx, { take: 500 });
+        return items;
+    }
+    /** 系统仓自愈：kind/code/channelCode 与规格不符时按规格回写（幂等，不触碰其它字段） */
+    async patchSystemLocation(ctx, loc, kind, code, channelCode) {
+        var _a;
+        const cf = (_a = loc.customFields) !== null && _a !== void 0 ? _a : {};
+        if (cf.kind === kind && cf.code === code && cf.channelCode === channelCode) {
+            return loc;
+        }
+        loc.customFields = Object.assign(Object.assign({}, cf), { kind, code, channelCode });
+        return this.connection.getRepository(ctx, core_1.StockLocation).save(loc);
+    }
+    async ensureVirtualLocation(ctx, channel = ctx.channel) {
+        const code = this.virtualCode(channel.code);
+        const existing = await this.findLocationByCode(ctx, code);
         if (existing) {
-            return existing;
+            return this.patchSystemLocation(ctx, existing, 'virtual', code, channel.code);
         }
         const loc = await this.stockLocationService.create(ctx, {
-            name: `${ctx.channel.code} 虚拟仓`,
+            name: `${channel.code} 虚拟仓`,
             description: '网络销售可售源（系统自动创建）',
+            customFields: { kind: 'virtual', code, channelCode: channel.code },
         });
-        loc.customFields = Object.assign(Object.assign({}, ((_a = loc.customFields) !== null && _a !== void 0 ? _a : {})), { kind: 'virtual', code });
-        await repo.save(loc);
         core_1.Logger.info(`虚拟仓已创建: ${code}`, loggerCtx);
         return loc;
     }
-    async ensureDefaultPhysicalLocation(ctx) {
-        var _a;
-        const code = ctx.channel.code;
-        const repo = this.connection.getRepository(ctx, core_1.StockLocation);
-        const existing = await repo
-            .createQueryBuilder('loc')
-            .where('loc.customFields.code = :code', { code })
-            .getOne();
+    async ensureDefaultPhysicalLocation(ctx, channel = ctx.channel) {
+        const code = channel.code;
+        const existing = await this.findLocationByCode(ctx, code);
         if (existing) {
-            return existing;
+            return this.patchSystemLocation(ctx, existing, 'physical', code, channel.code);
         }
         const loc = await this.stockLocationService.create(ctx, {
-            name: `${ctx.channel.code} 默认仓`,
+            name: `${channel.code} 默认仓`,
             description: '物理库存默认仓（开启物理库存时自动创建）',
+            customFields: { kind: 'physical', code, channelCode: channel.code },
         });
-        loc.customFields = Object.assign(Object.assign({}, ((_a = loc.customFields) !== null && _a !== void 0 ? _a : {})), { kind: 'physical', code });
-        await repo.save(loc);
         core_1.Logger.info(`默认物理仓已创建: ${code}`, loggerCtx);
         return loc;
+    }
+    /** 租户库存方案概览：开关口径 + 系统仓落点 + 本租户仓清单（web-admin「库存网点」唯一数据源） */
+    async getTenantInventoryOverview(ctx, channel = ctx.channel) {
+        var _a, _b, _c, _d, _e;
+        const prefix = channel.code;
+        const virtualCode = this.virtualCode(prefix);
+        const locations = (await this.channelLocations(ctx))
+            .filter(l => { var _a; return this.codeBelongsToTenant(prefix, (_a = l.customFields) !== null && _a !== void 0 ? _a : {}); })
+            .map(l => {
+            var _a, _b, _c, _d, _e, _f, _g, _h;
+            const cf = (_a = l.customFields) !== null && _a !== void 0 ? _a : {};
+            const code = String((_b = cf.code) !== null && _b !== void 0 ? _b : '');
+            return {
+                id: String(l.id),
+                name: (_c = l.name) !== null && _c !== void 0 ? _c : '',
+                code,
+                kind: String((_d = cf.kind) !== null && _d !== void 0 ? _d : 'virtual'),
+                isSystem: this.isSystemLocationCode(prefix, code),
+                deliveryMethods: ((_e = cf.deliveryMethods) !== null && _e !== void 0 ? _e : null),
+                serviceCities: ((_f = cf.serviceCities) !== null && _f !== void 0 ? _f : null),
+                lat: (_g = cf.lat) !== null && _g !== void 0 ? _g : null,
+                lng: (_h = cf.lng) !== null && _h !== void 0 ? _h : null,
+            };
+        })
+            // 默认物理仓置顶，其余按编码排序（空编码=历史数据排最后）
+            .sort((a, b) => {
+            const rank = (c) => (c === prefix ? 0 : c === virtualCode ? 1 : c ? 2 : 3);
+            const dr = rank(a.code) - rank(b.code);
+            return dr !== 0 ? dr : a.code.localeCompare(b.code);
+        });
+        return {
+            channelCode: prefix,
+            physicalStockEnabled: Boolean((_a = channel.customFields) === null || _a === void 0 ? void 0 : _a.physicalStockEnabled),
+            virtualCode,
+            virtualLocationId: (_c = (_b = locations.find(l => l.code === virtualCode)) === null || _b === void 0 ? void 0 : _b.id) !== null && _c !== void 0 ? _c : null,
+            defaultPhysicalCode: prefix,
+            defaultPhysicalLocationId: (_e = (_d = locations.find(l => l.code === prefix)) === null || _d === void 0 ? void 0 : _d.id) !== null && _e !== void 0 ? _e : null,
+            locations,
+        };
+    }
+    /** 幂等补建系统仓：虚拟仓恒在；开关开启时补默认物理仓。返回概览供前端直接刷新 */
+    async ensureTenantInventoryLocations(ctx, channel = ctx.channel) {
+        var _a;
+        await this.ensureVirtualLocation(ctx, channel);
+        if (Boolean((_a = channel.customFields) === null || _a === void 0 ? void 0 : _a.physicalStockEnabled)) {
+            await this.ensureDefaultPhysicalLocation(ctx, channel);
+        }
+        return this.getTenantInventoryOverview(ctx, channel);
+    }
+    /** 租户内下一个附加物理仓编码：`{租户编码}-{两位序号}`，占用则顺延 */
+    async nextTenantLocationCode(ctx, channelCode) {
+        var _a, _b;
+        const used = new Set();
+        for (const l of await this.channelLocations(ctx)) {
+            const code = String((_b = ((_a = l.customFields) !== null && _a !== void 0 ? _a : {}).code) !== null && _b !== void 0 ? _b : '');
+            if (code.startsWith(`${channelCode}-`)) {
+                used.add(code.slice(channelCode.length + 1));
+            }
+        }
+        for (let i = 1; i <= 999; i++) {
+            const seq = String(i).padStart(2, '0');
+            if (!used.has(seq)) {
+                return `${channelCode}-${seq}`;
+            }
+        }
+        throw new core_1.UserInputError(`租户 ${channelCode} 的仓库编码已达上限（999 个）`);
+    }
+    /** 取当前渠道可见且归属本租户的仓（越权/跨租户一律拒绝） */
+    async findTenantLocation(ctx, channelCode, id) {
+        var _a;
+        const loc = (await this.channelLocations(ctx)).find(l => String(l.id) === String(id));
+        if (!loc) {
+            throw new core_1.UserInputError('仓库不存在或不属于当前渠道');
+        }
+        if (!this.codeBelongsToTenant(channelCode, (_a = loc.customFields) !== null && _a !== void 0 ? _a : {})) {
+            throw new core_1.UserInputError('仓库不属于当前租户');
+        }
+        return loc;
+    }
+    /**
+     * 新建租户物理仓。编码与性质由服务端生成（`{租户编码}-{两位序号}` / physical），
+     * 归属强制落当前租户——前端不可指定，避免出现「无编码/非物理仓」而无法绑定变体的仓。
+     */
+    async createTenantPhysicalLocation(ctx, input, channel = ctx.channel) {
+        var _a, _b, _c;
+        const name = String((_a = input === null || input === void 0 ? void 0 : input.name) !== null && _a !== void 0 ? _a : '').trim();
+        if (!name) {
+            throw new core_1.UserInputError('仓库名称不能为空');
+        }
+        const code = await this.nextTenantLocationCode(ctx, channel.code);
+        await this.stockLocationService.create(ctx, {
+            name,
+            description: '租户物理仓（自动编码）',
+            customFields: {
+                kind: 'physical',
+                code,
+                channelCode: channel.code,
+                deliveryMethods: normalizeDeliveryMethods(input === null || input === void 0 ? void 0 : input.deliveryMethods),
+                serviceCities: normalizeCities(input === null || input === void 0 ? void 0 : input.serviceCities),
+                lat: (_b = input === null || input === void 0 ? void 0 : input.lat) !== null && _b !== void 0 ? _b : null,
+                lng: (_c = input === null || input === void 0 ? void 0 : input.lng) !== null && _c !== void 0 ? _c : null,
+            },
+        });
+        core_1.Logger.info(`租户物理仓已创建: ${code}`, loggerCtx);
+        return this.getTenantInventoryOverview(ctx, channel);
+    }
+    /**
+     * 更新租户仓（名称/配送方式/服务城市/坐标）。
+     * 编码与性质不可改：系统虚拟仓整体禁改；默认物理仓强制 kind=physical；
+     * 历史未打标数据仅补归属 channelCode，不改 kind/code（避免库存口径漂移）。
+     */
+    async updateTenantPhysicalLocation(ctx, input, channel = ctx.channel) {
+        var _a, _b, _c, _d, _e, _f;
+        const loc = await this.findTenantLocation(ctx, channel.code, input === null || input === void 0 ? void 0 : input.id);
+        const cf = (_a = loc.customFields) !== null && _a !== void 0 ? _a : {};
+        const code = String((_b = cf.code) !== null && _b !== void 0 ? _b : '');
+        if (code === this.virtualCode(channel.code)) {
+            throw new core_1.UserInputError('虚拟仓为系统仓，不可编辑');
+        }
+        const patch = { id: loc.id };
+        if (input.name !== undefined) {
+            const name = String((_c = input.name) !== null && _c !== void 0 ? _c : '').trim();
+            if (!name) {
+                throw new core_1.UserInputError('仓库名称不能为空');
+            }
+            patch.name = name;
+        }
+        const cfPatch = {};
+        if (!String((_d = cf.channelCode) !== null && _d !== void 0 ? _d : '')) {
+            cfPatch.channelCode = channel.code;
+        }
+        if (code === channel.code) {
+            cfPatch.kind = 'physical';
+        }
+        if (input.deliveryMethods !== undefined) {
+            cfPatch.deliveryMethods = normalizeDeliveryMethods(input.deliveryMethods);
+        }
+        if (input.serviceCities !== undefined) {
+            cfPatch.serviceCities = normalizeCities(input.serviceCities);
+        }
+        if (input.lat !== undefined) {
+            cfPatch.lat = (_e = input.lat) !== null && _e !== void 0 ? _e : null;
+        }
+        if (input.lng !== undefined) {
+            cfPatch.lng = (_f = input.lng) !== null && _f !== void 0 ? _f : null;
+        }
+        if (Object.keys(cfPatch).length) {
+            patch.customFields = cfPatch;
+        }
+        await this.stockLocationService.update(ctx, patch);
+        return this.getTenantInventoryOverview(ctx, channel);
+    }
+    /** 删除租户仓；系统仓（默认物理仓 / 虚拟仓）不可删除 */
+    async deleteTenantPhysicalLocation(ctx, id, channel = ctx.channel) {
+        var _a, _b;
+        const loc = await this.findTenantLocation(ctx, channel.code, id);
+        const code = String((_b = ((_a = loc.customFields) !== null && _a !== void 0 ? _a : {}).code) !== null && _b !== void 0 ? _b : '');
+        if (this.isSystemLocationCode(channel.code, code)) {
+            throw new core_1.UserInputError('系统仓（默认物理仓 / 虚拟仓）不可删除');
+        }
+        await this.assertLocationDeletable(ctx, loc);
+        await this.stockLocationService.delete(ctx, { id: loc.id });
+        return this.getTenantInventoryOverview(ctx, channel);
+    }
+    /**
+     * 删仓前置安全校验：core 的 delete 未传 transferToLocationId 时会级联删除该仓全部 StockLevel
+     * （库存静默蒸发），因此仍有库存 / 被变体绑定 / 有未完成出库预留时一律拒绝。
+     */
+    async assertLocationDeletable(ctx, loc) {
+        const levels = await this.connection
+            .getRepository(ctx, core_1.StockLevel)
+            .find({ where: { stockLocationId: loc.id } });
+        const held = levels.reduce((sum, l) => { var _a, _b; return sum + ((_a = l.stockOnHand) !== null && _a !== void 0 ? _a : 0) + ((_b = l.stockAllocated) !== null && _b !== void 0 ? _b : 0); }, 0);
+        if (held > 0) {
+            throw new core_1.UserInputError(`仓库「${loc.name}」仍有库存 ${held}，请先调拨或清零后再删除`);
+        }
+        const binding = await this.connection
+            .getRepository(ctx, variant_location_binding_entity_1.VariantLocationBinding)
+            .findOne({ where: { locationId: loc.id } });
+        if (binding) {
+            throw new core_1.UserInputError(`仓库「${loc.name}」仍被商品变体绑定，请先解绑后再删除`);
+        }
+        const reservation = await this.connection
+            .getRepository(ctx, stock_reservation_item_entity_1.StockReservationItemEntity)
+            .findOne({ where: { stockLocationId: loc.id, status: 'PENDING' } });
+        if (reservation) {
+            throw new core_1.UserInputError(`仓库「${loc.name}」仍有未完成的出库预留，暂不可删除`);
+        }
     }
     /** 替换式写入变体绑定；校验每个仓为物理仓且归属当前租户 */
     async setVariantBindings(ctx, variantId, bindings) {

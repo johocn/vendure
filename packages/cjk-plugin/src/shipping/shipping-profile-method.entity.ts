@@ -17,7 +17,7 @@ export class ShippingProfileMethod extends VendureEntity {
 
     @Column() shippingMethodId: string;
 
-    @Column({ default: 'pickup' }) mode: string;
+    @Column({ default: 'mail' }) mode: string;
 
     @Column({ type: 'simple-json', nullable: true })
     options: Record<string, any> | null;

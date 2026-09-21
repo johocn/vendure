@@ -1477,6 +1477,52 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                 extend type Mutation {
                     rebuildDeliveryFacetIndex: Boolean!
                 }
+
+                # ===== 租户库存仓管理（编码/性质由服务端生成，前端不可指定） =====
+                type TenantStockLocation {
+                    id: ID!
+                    name: String!
+                    code: String!
+                    kind: String!
+                    isSystem: Boolean!
+                    deliveryMethods: [String!]
+                    serviceCities: [String!]
+                    lat: Float
+                    lng: Float
+                }
+                type TenantInventoryOverview {
+                    channelCode: String!
+                    physicalStockEnabled: Boolean!
+                    virtualCode: String!
+                    virtualLocationId: ID
+                    defaultPhysicalCode: String!
+                    defaultPhysicalLocationId: ID
+                    locations: [TenantStockLocation!]!
+                }
+                input TenantStockLocationInput {
+                    name: String!
+                    deliveryMethods: [String!]
+                    serviceCities: [String!]
+                    lat: Float
+                    lng: Float
+                }
+                input UpdateTenantStockLocationInput {
+                    id: ID!
+                    name: String
+                    deliveryMethods: [String!]
+                    serviceCities: [String!]
+                    lat: Float
+                    lng: Float
+                }
+                extend type Query {
+                    tenantInventoryOverview: TenantInventoryOverview!
+                }
+                extend type Mutation {
+                    ensureTenantInventoryLocations: TenantInventoryOverview!
+                    createTenantStockLocation(input: TenantStockLocationInput!): TenantInventoryOverview!
+                    updateTenantStockLocation(input: UpdateTenantStockLocationInput!): TenantInventoryOverview!
+                    deleteTenantStockLocation(id: ID!): TenantInventoryOverview!
+                }
                 `;
             },
             resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, room_template_admin_resolver_1.RoomTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver, tenant_catalog_admin_resolver_1.TenantCatalogAdminResolver, asset_library_admin_resolver_1.AssetLibraryAdminResolver, redemption_resolver_1.RedemptionAdminResolver, merchant_settlement_admin_resolver_1.MerchantSettlementAdminResolver, delivery_admin_resolver_1.DeliveryAdminResolver, inventory_admin_resolver_1.InventoryAdminResolver, reconciliation_admin_resolver_1.ReconciliationAdminResolver, stock_doc_admin_resolver_1.StockDocAdminResolver, stock_reservation_admin_resolver_1.StockReservationAdminResolver, delivery_capability_resolver_1.DeliveryCapabilityResolver],

@@ -1264,6 +1264,52 @@ import { inventoryModeChannelFields } from './inventory/inventory-mode.custom-fi
                 extend type Mutation {
                     rebuildDeliveryFacetIndex: Boolean!
                 }
+
+                # ===== 租户库存仓管理（编码/性质由服务端生成，前端不可指定） =====
+                type TenantStockLocation {
+                    id: ID!
+                    name: String!
+                    code: String!
+                    kind: String!
+                    isSystem: Boolean!
+                    deliveryMethods: [String!]
+                    serviceCities: [String!]
+                    lat: Float
+                    lng: Float
+                }
+                type TenantInventoryOverview {
+                    channelCode: String!
+                    physicalStockEnabled: Boolean!
+                    virtualCode: String!
+                    virtualLocationId: ID
+                    defaultPhysicalCode: String!
+                    defaultPhysicalLocationId: ID
+                    locations: [TenantStockLocation!]!
+                }
+                input TenantStockLocationInput {
+                    name: String!
+                    deliveryMethods: [String!]
+                    serviceCities: [String!]
+                    lat: Float
+                    lng: Float
+                }
+                input UpdateTenantStockLocationInput {
+                    id: ID!
+                    name: String
+                    deliveryMethods: [String!]
+                    serviceCities: [String!]
+                    lat: Float
+                    lng: Float
+                }
+                extend type Query {
+                    tenantInventoryOverview: TenantInventoryOverview!
+                }
+                extend type Mutation {
+                    ensureTenantInventoryLocations: TenantInventoryOverview!
+                    createTenantStockLocation(input: TenantStockLocationInput!): TenantInventoryOverview!
+                    updateTenantStockLocation(input: UpdateTenantStockLocationInput!): TenantInventoryOverview!
+                    deleteTenantStockLocation(id: ID!): TenantInventoryOverview!
+                }
                 `;
         },
         resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, RoomTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver, MerchantSettlementAdminResolver, DeliveryAdminResolver, InventoryAdminResolver, ReconciliationAdminResolver, StockDocAdminResolver, StockReservationAdminResolver, DeliveryCapabilityResolver],

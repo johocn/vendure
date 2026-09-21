@@ -1,6 +1,7 @@
 import { AdministratorService, AuthService, ChannelService, ID, RequestContext, RoleService, TransactionalConnection } from '@vendure/core';
 import type { CjkPluginOptions } from '../types';
 import { TenantMember } from './tenant-member.entity';
+import { VirtualPhysicalStockService } from '../inventory/virtual-physical-stock.service';
 export interface PermissionCatalogItem {
     code: string;
     label: string;
@@ -50,8 +51,9 @@ export declare class TenantMemberService {
     private roleService;
     private channelService;
     private authService;
+    private virtualPhysicalStockService;
     private pluginOptions?;
-    constructor(connection: TransactionalConnection, administratorService: AdministratorService, roleService: RoleService, channelService: ChannelService, authService: AuthService, pluginOptions?: CjkPluginOptions | undefined);
+    constructor(connection: TransactionalConnection, administratorService: AdministratorService, roleService: RoleService, channelService: ChannelService, authService: AuthService, virtualPhysicalStockService: VirtualPhysicalStockService, pluginOptions?: CjkPluginOptions | undefined);
     /** 校验角色权限全部在业务权限白名单内（超管专属权限不入租户角色）。Authenticated 为基础权限不计入 */
     assertBusinessPermissions(permissions: string[]): void;
     /** 校验请求方是该 channel 的租户管理员（或超管） */

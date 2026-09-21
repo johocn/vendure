@@ -23,6 +23,7 @@ const constants_1 = require("../constants");
 const tenant_member_entity_1 = require("./tenant-member.entity");
 const role_templates_1 = require("./role-templates");
 const tenant_permissions_1 = require("./tenant-permissions");
+const virtual_physical_stock_service_1 = require("../inventory/virtual-physical-stock.service");
 /**
  * 租户级业务权限目录（单一来源，前后端共用，避免双份硬编码）。
  * 不含超管专属权限；Vendure v3 已将 Variant/Fulfillment 等合并进 catalog/product/order 权限。
@@ -186,12 +187,13 @@ function dedupeRolesByLabel(roles) {
     return [...seen.values()];
 }
 let TenantMemberService = class TenantMemberService {
-    constructor(connection, administratorService, roleService, channelService, authService, pluginOptions) {
+    constructor(connection, administratorService, roleService, channelService, authService, virtualPhysicalStockService, pluginOptions) {
         this.connection = connection;
         this.administratorService = administratorService;
         this.roleService = roleService;
         this.channelService = channelService;
         this.authService = authService;
+        this.virtualPhysicalStockService = virtualPhysicalStockService;
         this.pluginOptions = pluginOptions;
     }
     /** 校验角色权限全部在业务权限白名单内（超管专属权限不入租户角色）。Authenticated 为基础权限不计入 */
@@ -905,6 +907,7 @@ let TenantMemberService = class TenantMemberService {
     }
     /** 租户管理员更新「本 channel」装修类 customFields（仅覆盖传入字段，禁止触碰安全字段） */
     async updateMyChannelCustomFields(ctx, input = {}) {
+        var _a;
         const channelId = String(ctx.channelId);
         const channelRepo = this.connection.getRepository(ctx, core_1.Channel);
         const channel = await channelRepo.findOne({ where: { id: channelId } });
@@ -914,18 +917,30 @@ let TenantMemberService = class TenantMemberService {
         const protectedKeys = ['enabled', 'tenantNo', 'isOfficial'];
         const merged = Object.assign(Object.assign({}, (channel.customFields || {})), Object.fromEntries(Object.entries(input).filter(([k]) => !protectedKeys.includes(k))));
         await this.channelService.update(ctx, { id: channelId, customFields: merged });
-        return this.channelService.findOne(ctx, channelId);
+        const updated = await this.channelService.findOne(ctx, channelId);
+        // 开启物理库存即需落地默认物理仓：此处同步补建（幂等），避免出现「开关已开但无默认仓」
+        // 而商品无法绑定物理仓、物理库存口径失效。补建失败不阻断配置保存（仍可在库存网点页一键初始化）。
+        if (merged.physicalStockEnabled === true) {
+            try {
+                await this.virtualPhysicalStockService.ensureTenantInventoryLocations(ctx, updated);
+            }
+            catch (e) {
+                core_1.Logger.warn(`默认物理仓补建失败: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, constants_1.loggerCtx);
+            }
+        }
+        return updated;
     }
 };
 exports.TenantMemberService = TenantMemberService;
 exports.TenantMemberService = TenantMemberService = __decorate([
     (0, common_1.Injectable)(),
-    __param(5, (0, common_1.Optional)()),
-    __param(5, (0, common_1.Inject)(constants_1.CJK_PLUGIN_OPTIONS)),
+    __param(6, (0, common_1.Optional)()),
+    __param(6, (0, common_1.Inject)(constants_1.CJK_PLUGIN_OPTIONS)),
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
         core_1.AdministratorService,
         core_1.RoleService,
         core_1.ChannelService,
-        core_1.AuthService, Object])
+        core_1.AuthService,
+        virtual_physical_stock_service_1.VirtualPhysicalStockService, Object])
 ], TenantMemberService);
 //# sourceMappingURL=tenant-member.service.js.map

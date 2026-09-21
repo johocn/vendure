@@ -18,6 +18,7 @@ import type { CjkPluginOptions } from '../types';
 import { TenantMember } from './tenant-member.entity';
 import { OFFICIAL_ROLE_TEMPLATES } from './role-templates';
 import { TenantMemberManagePermission, TenantRoleManagePermission } from './tenant-permissions';
+import { VirtualPhysicalStockService } from '../inventory/virtual-physical-stock.service';
 
 export interface PermissionCatalogItem {
     code: string;
@@ -222,6 +223,7 @@ export class TenantMemberService {
         private roleService: RoleService,
         private channelService: ChannelService,
         private authService: AuthService,
+        private virtualPhysicalStockService: VirtualPhysicalStockService,
         @Optional() @Inject(CJK_PLUGIN_OPTIONS) private pluginOptions?: CjkPluginOptions,
     ) {}
 
@@ -987,6 +989,16 @@ export class TenantMemberService {
             ...Object.fromEntries(Object.entries(input).filter(([k]) => !protectedKeys.includes(k))),
         };
         await this.channelService.update(ctx, { id: channelId, customFields: merged } as any);
-        return this.channelService.findOne(ctx, channelId as any);
+        const updated = await this.channelService.findOne(ctx, channelId as any);
+        // 开启物理库存即需落地默认物理仓：此处同步补建（幂等），避免出现「开关已开但无默认仓」
+        // 而商品无法绑定物理仓、物理库存口径失效。补建失败不阻断配置保存（仍可在库存网点页一键初始化）。
+        if (merged.physicalStockEnabled === true) {
+            try {
+                await this.virtualPhysicalStockService.ensureTenantInventoryLocations(ctx, updated as any);
+            } catch (e: any) {
+                Logger.warn(`默认物理仓补建失败: ${e?.message ?? e}`, loggerCtx);
+            }
+        }
+        return updated;
     }
 }
