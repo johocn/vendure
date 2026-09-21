@@ -10,6 +10,7 @@ import {
 import { ShopTemplate } from './shop-template.entity';
 import { ShopGlobalConfig } from './shop-global-config.entity';
 import { ShopTemplateVersion } from './shop-template-version.entity';
+import { PALETTE_PRESETS } from './palette-presets';
 
 /** 引用该模板的渠道（与 SDL TemplateReference 对应） */
 interface TemplateReferenceResult {
@@ -125,5 +126,11 @@ export class ShopTemplateAdminResolver {
         @Args({ name: 'overrides', type: () => Object, nullable: true }) overrides?: any,
     ): Promise<MergedPreviewResult> {
         return this.service.mergedPreview(ctx, app as any, templateId, overrides);
+    }
+
+    @Query()
+    @Allow(shopTemplatesRead.Permission)
+    async palettePresets(): Promise<Record<string, any>> {
+        return PALETTE_PRESETS;
     }
 }

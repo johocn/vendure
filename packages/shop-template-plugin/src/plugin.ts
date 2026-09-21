@@ -128,6 +128,7 @@ const SEED_TEMPLATES = [
                 templateVersions(id: ID!): [ShopTemplateVersionType!]!
                 templateReferences(id: ID!): [TemplateReference!]!
                 templateMergedPreview(app: String!, templateId: ID, overrides: JSON): MergedPreview!
+                palettePresets: JSON!
             }
             extend type Mutation {
                 createShopTemplate(input: CreateShopTemplateInput!): ShopTemplate!
@@ -158,9 +159,10 @@ const SEED_TEMPLATES = [
             shopTemplatesUpdate,
             shopTemplatesDelete,
         );
-        // 店铺「选模板」引用字段（与既有店铺装修字段并存）
+        // 店铺「选模板」引用字段 + L3 令牌覆盖（与既有店铺装修字段并存）
         config.customFields.Channel = mergeCustomFields(config.customFields.Channel, [
             { name: 'templateId', type: 'string', public: true },
+            { name: 'themeTokensOverride', type: 'text', nullable: true, public: true },
         ]);
         return config;
     },

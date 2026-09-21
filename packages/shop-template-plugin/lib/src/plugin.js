@@ -182,6 +182,7 @@ exports.ShopTemplatePlugin = ShopTemplatePlugin = ShopTemplatePlugin_1 = __decor
                 templateVersions(id: ID!): [ShopTemplateVersionType!]!
                 templateReferences(id: ID!): [TemplateReference!]!
                 templateMergedPreview(app: String!, templateId: ID, overrides: JSON): MergedPreview!
+                palettePresets: JSON!
             }
             extend type Mutation {
                 createShopTemplate(input: CreateShopTemplateInput!): ShopTemplate!
@@ -207,9 +208,10 @@ exports.ShopTemplatePlugin = ShopTemplatePlugin = ShopTemplatePlugin_1 = __decor
         configuration: (config) => {
             // 注册自定义权限（必须 push 到 customPermissions，Permission 枚举才会包含）
             config.authOptions.customPermissions.push(permissions_1.shopTemplatesRead, permissions_1.shopTemplatesCreate, permissions_1.shopTemplatesUpdate, permissions_1.shopTemplatesDelete);
-            // 店铺「选模板」引用字段（与既有店铺装修字段并存）
+            // 店铺「选模板」引用字段 + L3 令牌覆盖（与既有店铺装修字段并存）
             config.customFields.Channel = mergeCustomFields(config.customFields.Channel, [
                 { name: 'templateId', type: 'string', public: true },
+                { name: 'themeTokensOverride', type: 'text', nullable: true, public: true },
             ]);
             return config;
         },

@@ -17,6 +17,7 @@ const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
 const shop_template_service_1 = require("./shop-template.service");
 const permissions_1 = require("./permissions");
+const palette_presets_1 = require("./palette-presets");
 let ShopTemplateAdminResolver = class ShopTemplateAdminResolver {
     constructor(service) {
         this.service = service;
@@ -57,6 +58,9 @@ let ShopTemplateAdminResolver = class ShopTemplateAdminResolver {
     }
     async templateMergedPreview(ctx, app, templateId, overrides) {
         return this.service.mergedPreview(ctx, app, templateId, overrides);
+    }
+    async palettePresets() {
+        return palette_presets_1.PALETTE_PRESETS;
     }
 };
 exports.ShopTemplateAdminResolver = ShopTemplateAdminResolver;
@@ -177,6 +181,13 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, String, Object, Object]),
     __metadata("design:returntype", Promise)
 ], ShopTemplateAdminResolver.prototype, "templateMergedPreview", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.shopTemplatesRead.Permission),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], ShopTemplateAdminResolver.prototype, "palettePresets", null);
 exports.ShopTemplateAdminResolver = ShopTemplateAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [shop_template_service_1.ShopTemplateService])

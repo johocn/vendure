@@ -30,5 +30,6 @@ export declare class ShopTemplateAdminResolver {
     restoreTemplateVersion(ctx: RequestContext, id: ID, version: number): Promise<ShopTemplate>;
     templateReferences(ctx: RequestContext, id: ID): Promise<TemplateReferenceResult[]>;
     templateMergedPreview(ctx: RequestContext, app: string, templateId?: ID, overrides?: any): Promise<MergedPreviewResult>;
+    palettePresets(): Promise<Record<string, any>>;
 }
 export {};
