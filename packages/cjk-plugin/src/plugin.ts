@@ -1261,6 +1261,9 @@ import { inventoryModeChannelFields } from './inventory/inventory-mode.custom-fi
                     channelDeliveryCapability: ChannelDeliveryCapability!
                     variantDeliveryModes(variantIds: [ID!]!): [VariantDeliveryModes!]!
                 }
+                extend type Mutation {
+                    rebuildDeliveryFacetIndex: Boolean!
+                }
                 `;
         },
         resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, RoomTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver, MerchantSettlementAdminResolver, DeliveryAdminResolver, InventoryAdminResolver, ReconciliationAdminResolver, StockDocAdminResolver, StockReservationAdminResolver, DeliveryCapabilityResolver],

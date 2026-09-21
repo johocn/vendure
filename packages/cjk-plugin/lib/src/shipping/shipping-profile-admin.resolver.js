@@ -68,6 +68,14 @@ let ShippingProfileAdminResolver = class ShippingProfileAdminResolver {
         await this.syncFacetSilently(() => this.deliveryFacetService.rebuildChannel(ctx));
         return true;
     }
+    /**
+     * 手动重建本渠道的配送筛选索引（facet 只在档案写操作时维护，存量渠道需要补一次）。
+     * 与档案变更时的静默同步不同，这里失败要抛错——用户是显式点「重建」。
+     */
+    async rebuildDeliveryFacetIndex(ctx) {
+        await this.deliveryFacetService.rebuildChannel(ctx);
+        return true;
+    }
 };
 exports.ShippingProfileAdminResolver = ShippingProfileAdminResolver;
 __decorate([
@@ -139,6 +147,15 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], ShippingProfileAdminResolver.prototype, "setTenantDefaultShippingProfile", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Transaction)(),
+    (0, core_1.Allow)(shipping_profile_permissions_1.shippingProfilePermission.Permission),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], ShippingProfileAdminResolver.prototype, "rebuildDeliveryFacetIndex", null);
 exports.ShippingProfileAdminResolver = ShippingProfileAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [shipping_profile_service_1.ShippingProfileService,

@@ -94,4 +94,16 @@ export class ShippingProfileAdminResolver {
         await this.syncFacetSilently(() => this.deliveryFacetService.rebuildChannel(ctx));
         return true;
     }
+
+    /**
+     * 手动重建本渠道的配送筛选索引（facet 只在档案写操作时维护，存量渠道需要补一次）。
+     * 与档案变更时的静默同步不同，这里失败要抛错——用户是显式点「重建」。
+     */
+    @Mutation()
+    @Transaction()
+    @Allow(shippingProfilePermission.Permission)
+    async rebuildDeliveryFacetIndex(@Ctx() ctx: RequestContext): Promise<boolean> {
+        await this.deliveryFacetService.rebuildChannel(ctx);
+        return true;
+    }
 }
