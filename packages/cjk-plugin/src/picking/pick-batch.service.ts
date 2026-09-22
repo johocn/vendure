@@ -1,5 +1,16 @@
 import { Injectable } from '@nestjs/common';
-import { ID, Order, RequestContext, TransactionalConnection, UserInputError } from '@vendure/core';
+import {
+    Fulfillment,
+    FulfillmentService,
+    ID,
+    Order,
+    OrderLine,
+    OrderService,
+    RequestContext,
+    StockLocationService,
+    TransactionalConnection,
+    UserInputError,
+} from '@vendure/core';
 import { In } from 'typeorm';
 
 import { PickBatch, PickBatchState } from './pick-batch.entity';
@@ -24,9 +35,34 @@ export interface PickBatchListOptions {
     stockLocationId?: number | null;
 }
 
+/** 候选订单 / 批次成员共用的订单快照（前端直接消费，字段名与 apis/picking.ts 对齐） */
+export interface PickOrderSnapshot {
+    id: string;
+    code: string;
+    state: string;
+    customerName: string | null;
+    phoneNumber: string | null;
+    province: string | null;
+    city: string | null;
+    streetLine1: string | null;
+    streetLine2: string | null;
+    postalCode: string | null;
+    address: string;
+    itemCount: number;
+    recommendedStockLocationId: string | null;
+    distanceKm: number | null;
+    inBatchId: string | null;
+    inBatchCode: string | null;
+}
+
 @Injectable()
 export class PickBatchService {
-    constructor(private connection: TransactionalConnection) {}
+    constructor(
+        private connection: TransactionalConnection,
+        private stockLocationService: StockLocationService,
+        private orderService: OrderService,
+        private fulfillmentService: FulfillmentService,
+    ) {}
 
     /** 该批次的渠道归属，所有读写都必须带 tenantChannelId 过滤 */
     private tenantOf(ctx: RequestContext): string {
@@ -75,7 +111,7 @@ export class PickBatchService {
         ctx: RequestContext,
         orderIds: number[],
         excludeBatchId?: number,
-    ): Promise<Map<number, string>> {
+    ): Promise<Map<number, { batchId: number; code: string }>> {
         if (orderIds.length === 0) return new Map();
         const qb = this.connection
             .getRepository(ctx, PickBatchOrder)
@@ -88,11 +124,13 @@ export class PickBatchService {
             qb.andWhere('b.id != :ex', { ex: excludeBatchId });
         }
         const rows = await qb
-            .select(['o.orderId AS orderId', 'b.code AS code'])
-            .getRawMany<{ orderId: number; code: string }>();
+            .select(['o.orderId AS orderId', 'b.id AS batchId', 'b.code AS code'])
+            .getRawMany<{ orderId: number; batchId: number; code: string }>();
 
-        const map = new Map<number, string>();
-        for (const r of rows) map.set(Number(r.orderId), r.code);
+        const map = new Map<number, { batchId: number; code: string }>();
+        for (const r of rows) {
+            map.set(Number(r.orderId), { batchId: Number(r.batchId), code: r.code });
+        }
         return map;
     }
 
@@ -120,8 +158,8 @@ export class PickBatchService {
         }
         const conflicts = await this.findConflicts(ctx, input.orderIds);
         if (conflicts.size > 0) {
-            const [orderId, code] = [...conflicts.entries()][0];
-            throw new UserInputError(`订单 #${orderId} 已在批次 ${code} 中，请先移出`);
+            const [orderId, hit] = [...conflicts.entries()][0];
+            throw new UserInputError(`订单 #${orderId} 已在批次 ${hit.code} 中，请先移出`);
         }
 
         const repo = this.connection.getRepository(ctx, PickBatch);
@@ -150,8 +188,8 @@ export class PickBatchService {
         this.assertState(batch, ['PENDING', 'PICKED'], '加单');
         const conflicts = await this.findConflicts(ctx, orderIds, batchId as number);
         if (conflicts.size > 0) {
-            const [orderId, code] = [...conflicts.entries()][0];
-            throw new UserInputError(`订单 #${orderId} 已在批次 ${code} 中，请先移出`);
+            const [orderId, hit] = [...conflicts.entries()][0];
+            throw new UserInputError(`订单 #${orderId} 已在批次 ${hit.code} 中，请先移出`);
         }
         const mRepo = this.connection.getRepository(ctx, PickBatchOrder);
         await mRepo.save(
@@ -290,6 +328,272 @@ export class PickBatchService {
             },
             warehouses,
         );
+    }
+
+    /** 批次列表视图：补 SDL 要求的 memberCount / itemCount */
+    private async warehouseCandidates(ctx: RequestContext): Promise<WarehouseCandidate[]> {
+        const { items } = await this.stockLocationService.findAll(ctx, { take: 500 } as any);
+        return items.map((l) => {
+            const cf: any = (l.customFields as any) ?? {};
+            return {
+                id: Number(l.id),
+                enabled: true,
+                serviceCities: (cf.serviceCities ?? null) as string[] | null,
+                lat: typeof cf.lat === 'number' ? cf.lat : null,
+                lng: typeof cf.lng === 'number' ? cf.lng : null,
+            };
+        });
+    }
+
+    /** 各批次成员数与件数 */
+    async counts(
+        ctx: RequestContext,
+        batchIds: number[],
+    ): Promise<Map<number, { memberCount: number; itemCount: number }>> {
+        const out = new Map<number, { memberCount: number; itemCount: number }>();
+        if (batchIds.length === 0) return out;
+
+        const memberRows = await this.connection
+            .getRepository(ctx, PickBatchOrder)
+            .createQueryBuilder('o')
+            .select('o.batchId', 'batchId')
+            .addSelect('COUNT(1)', 'n')
+            .where('o.batchId IN (:...ids)', { ids: batchIds })
+            .groupBy('o.batchId')
+            .getRawMany<{ batchId: number; n: string }>();
+
+        const allMembers = await this.connection.getRepository(ctx, PickBatchOrder).find({
+            where: { batchId: In(batchIds) },
+        });
+        const orderIds = allMembers.map((m) => m.orderId);
+        const lineRows = orderIds.length
+            ? await this.connection
+                  .getRepository(ctx, OrderLine)
+                  .createQueryBuilder('l')
+                  .select('l.orderId', 'orderId')
+                  .addSelect('COALESCE(SUM(l.quantity), 0)', 'n')
+                  .where('l.orderId IN (:...ids)', { ids: orderIds })
+                  .groupBy('l.orderId')
+                  .getRawMany<{ orderId: number; n: string }>()
+            : [];
+        const qtyByOrder = new Map(lineRows.map((r) => [Number(r.orderId), Number(r.n)]));
+
+        for (const id of batchIds) {
+            out.set(id, { memberCount: 0, itemCount: 0 });
+        }
+        for (const r of memberRows) {
+            const hit = out.get(Number(r.batchId));
+            if (hit) hit.memberCount = Number(r.n);
+        }
+        for (const m of allMembers) {
+            const hit = out.get(m.batchId);
+            if (hit) hit.itemCount += qtyByOrder.get(m.orderId) ?? 0;
+        }
+        return out;
+    }
+
+    /** 列表视图：批次字段 + memberCount / itemCount */
+    async findAllView(ctx: RequestContext, options: PickBatchListOptions) {
+        const { items, totalItems } = await this.findAll(ctx, options);
+        const counts = await this.counts(
+            ctx,
+            items.map((b) => Number(b.id)),
+        );
+        return {
+            totalItems,
+            items: items.map((b) => this.toView(b, counts.get(Number(b.id)))),
+        };
+    }
+
+    /** 详情视图：批次字段 + members（订单快照） */
+    async detail(ctx: RequestContext, id: ID) {
+        const batch = await this.findOne(ctx, id);
+        if (!batch) return null;
+        const counts = await this.counts(ctx, [Number(batch.id)]);
+        return {
+            ...this.toView(batch, counts.get(Number(batch.id))),
+            members: await this.membersSnapshot(ctx, batch.id),
+        };
+    }
+
+    private toView(
+        b: PickBatch,
+        counts?: { memberCount: number; itemCount: number },
+    ): Record<string, unknown> {
+        return {
+            id: String(b.id),
+            code: b.code,
+            stockLocationId: b.stockLocationId,
+            state: b.state,
+            note: b.note ?? null,
+            createdBy: b.createdBy ?? null,
+            memberCount: counts?.memberCount ?? 0,
+            itemCount: counts?.itemCount ?? 0,
+            pickedAt: b.pickedAt ?? null,
+            printedAt: b.printedAt ?? null,
+            shippedAt: b.shippedAt ?? null,
+            createdAt: b.createdAt ?? null,
+        };
+    }
+
+    /** 批次成员订单快照（含推荐仓与距离） */
+    async membersSnapshot(ctx: RequestContext, batchId: ID): Promise<PickOrderSnapshot[]> {
+        const members = await this.members(ctx, batchId);
+        if (members.length === 0) return [];
+        const orders = await this.connection.getRepository(ctx, Order).find({
+            where: { id: In(members.map((m) => m.orderId)) },
+            relations: { lines: true, customer: true },
+        });
+        const warehouses = await this.warehouseCandidates(ctx);
+        const byId = new Map(orders.map((o) => [Number(o.id), o]));
+        return members
+            .map((m) => byId.get(m.orderId))
+            .filter((o): o is Order => !!o)
+            .map((o) => this.snapshotOrder(o, warehouses));
+    }
+
+    /**
+     * 待发货候选订单：默认 PaymentAuthorized / WaitingForShipping，
+     * 带就近仓推荐与「已在某批次」标记（设计 §6.2）。
+     */
+    async candidates(ctx: RequestContext, options: PickBatchListOptions) {
+        const page = Math.max(1, options.page ?? 1);
+        const pageSize = Math.min(100, Math.max(1, options.pageSize ?? 20));
+        const repo = this.connection.getRepository(ctx, Order);
+        const [orders, totalItems] = await repo.findAndCount({
+            where: { state: In(['PaymentAuthorized', 'WaitingForShipping']) as any },
+            relations: { lines: true, customer: true },
+            order: { id: 'DESC' },
+            skip: (page - 1) * pageSize,
+            take: pageSize,
+        });
+        if (orders.length === 0) return { items: [], totalItems };
+
+        const warehouses = await this.warehouseCandidates(ctx);
+        const conflicts = await this.findConflicts(
+            ctx,
+            orders.map((o) => Number(o.id)),
+        );
+        return {
+            totalItems,
+            items: orders.map((o) => this.snapshotOrder(o, warehouses, conflicts.get(Number(o.id)))),
+        };
+    }
+
+    private snapshotOrder(
+        order: Order,
+        warehouses: WarehouseCandidate[],
+        conflict?: { batchId: number; code: string },
+    ): PickOrderSnapshot {
+        const a: any = order.shippingAddress ?? {};
+        const rec = this.recommend(order, warehouses);
+        const name = [order.customer?.firstName, order.customer?.lastName].filter(Boolean).join(' ');
+        const address = [a.province, a.city, a.streetLine1, a.streetLine2]
+            .filter((x: any) => !!x)
+            .join('');
+        return {
+            id: String(order.id),
+            code: order.code,
+            state: String(order.state),
+            customerName: a.fullName || name || null,
+            phoneNumber: a.phoneNumber ?? order.customer?.phoneNumber ?? null,
+            province: a.province ?? null,
+            city: a.city ?? null,
+            streetLine1: a.streetLine1 ?? null,
+            streetLine2: a.streetLine2 ?? null,
+            postalCode: a.postalCode ?? null,
+            address,
+            itemCount: (order.lines ?? []).reduce((n, l) => n + l.quantity, 0),
+            recommendedStockLocationId:
+                rec.recommendedStockLocationId === null ? null : String(rec.recommendedStockLocationId),
+            distanceKm: rec.distanceKm,
+            inBatchId: conflict ? String(conflict.batchId) : null,
+            inBatchCode: conflict?.code ?? null,
+        };
+    }
+
+    /** 订单行中尚未被任何履约覆盖的部分 */
+    private pendingFulfillmentLines(order: Order): { orderLineId: ID; quantity: number }[] {
+        const covered = new Map<string, number>();
+        for (const f of (order as any).fulfillments ?? []) {
+            for (const fl of (f as any).lines ?? []) {
+                const key = String(fl.orderLineId);
+                covered.set(key, (covered.get(key) ?? 0) + fl.quantity);
+            }
+        }
+        return (order.lines ?? [])
+            .map((l) => ({ orderLineId: l.id, quantity: l.quantity - (covered.get(String(l.id)) ?? 0) }))
+            .filter((l) => l.quantity > 0);
+    }
+
+    /**
+     * 批量发货：逐单生成独立 fulfillment（不合并包裹、不合并运单）。
+     * 全部成功才推进到 SHIPPED；有失败则保持原状态并返回失败清单（设计 §5）。
+     */
+    async ship(
+        ctx: RequestContext,
+        batchId: ID,
+        input: { method: string; trackingCode?: string | null },
+    ): Promise<{
+        succeeded: Array<{ orderId: string; code: string; fulfillmentId: string | null }>;
+        failed: Array<{ orderId: string; code: string; reason: string }>;
+    }> {
+        const batch = await this.requireBatch(ctx, batchId);
+        this.assertState(batch, ['PENDING', 'PICKED', 'PRINTED'], '发货');
+        const members = await this.members(ctx, batchId);
+
+        const args = [{ name: 'method', value: input.method || 'standard' }];
+        if (input.trackingCode) args.push({ name: 'trackingCode', value: input.trackingCode });
+        const handler = { code: 'manual-fulfillment', arguments: args };
+
+        const succeeded: Array<{ orderId: string; code: string; fulfillmentId: string | null }> = [];
+        const failed: Array<{ orderId: string; code: string; reason: string }> = [];
+
+        for (const m of members) {
+            const order = (await this.orderService.findOne(ctx, m.orderId, [
+                'lines',
+                'fulfillments',
+                'fulfillments.lines',
+            ])) as Order | undefined;
+            if (!order) {
+                failed.push({ orderId: String(m.orderId), code: '', reason: '订单不存在' });
+                continue;
+            }
+            try {
+                const remaining = this.pendingFulfillmentLines(order);
+                if (remaining.length === 0) {
+                    succeeded.push({ orderId: String(order.id), code: order.code, fulfillmentId: null });
+                    continue;
+                }
+                const created = await this.fulfillmentService.create(
+                    ctx,
+                    [order],
+                    remaining,
+                    handler as any,
+                );
+                if (!(created instanceof Fulfillment)) {
+                    throw new Error((created as any)?.message ?? '生成发货单失败');
+                }
+                succeeded.push({
+                    orderId: String(order.id),
+                    code: order.code,
+                    fulfillmentId: String(created.id),
+                });
+            } catch (e: any) {
+                failed.push({ orderId: String(order.id), code: order.code, reason: e?.message ?? '发货失败' });
+            }
+        }
+
+        // 全部成功才置 SHIPPED：状态机不允许跳级，按链条逐级推进
+        if (failed.length === 0 && succeeded.length > 0) {
+            let current = batch.state as PickBatchState;
+            for (const step of ['PICKED', 'PRINTED', 'SHIPPED'] as PickBatchState[]) {
+                if (current === 'SHIPPED') break;
+                await this.advance(ctx, batchId, step);
+                current = step;
+            }
+        }
+        return { succeeded, failed };
     }
 
     private async requireBatch(ctx: RequestContext, id: ID): Promise<PickBatch> {

@@ -149,6 +149,17 @@ const inventory_stock_service_1 = require("./inventory/inventory-stock.service")
 const simple_inventory_adapter_1 = require("./inventory/simple-inventory.adapter");
 const odoo_inventory_adapter_1 = require("./inventory/odoo-inventory.adapter");
 const inventory_mode_custom_fields_1 = require("./inventory/inventory-mode.custom-fields");
+const pick_batch_entity_1 = require("./picking/pick-batch.entity");
+const pick_batch_order_entity_1 = require("./picking/pick-batch-order.entity");
+const pick_batch_service_1 = require("./picking/pick-batch.service");
+const pick_batch_admin_resolver_1 = require("./picking/pick-batch.admin.resolver");
+const storage_zone_entity_1 = require("./storage/storage-zone.entity");
+const storage_bin_entity_1 = require("./storage/storage-bin.entity");
+const variant_storage_bin_entity_1 = require("./storage/variant-storage-bin.entity");
+const storage_bin_service_1 = require("./storage/storage-bin.service");
+const storage_bin_admin_resolver_1 = require("./storage/storage-bin.admin.resolver");
+const storage_bin_shop_resolver_1 = require("./storage/storage-bin.shop.resolver");
+const order_address_admin_resolver_1 = require("./order/order-address.admin.resolver");
 let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
     constructor(options, moduleRef) {
         this.options = options;
@@ -366,7 +377,7 @@ exports.CjkPlugin = CjkPlugin;
 exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_profile_method_entity_1.PaymentProfileMethod, payment_template_entity_1.PaymentTemplate, room_template_entity_1.RoomTemplate, room_template_control_entity_1.RoomTemplateControl, tenant_member_entity_1.TenantMember, wallet_entity_1.Wallet, merchant_settlement_ledger_entity_1.MerchantSettlementLedger, variant_location_binding_entity_1.VariantLocationBinding, delivery_record_entity_1.DeliveryRecord, reconciliation_entity_1.ReconciliationBatch, reconciliation_entity_1.ReconciliationOrderLine, stock_doc_entity_1.StockDocEntity, stock_doc_item_entity_1.StockDocItemEntity, inventory_alert_rule_entity_1.InventoryAlertRuleEntity, stock_reservation_entity_1.StockReservationEntity, stock_reservation_item_entity_1.StockReservationItemEntity],
+        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_profile_method_entity_1.PaymentProfileMethod, payment_template_entity_1.PaymentTemplate, room_template_entity_1.RoomTemplate, room_template_control_entity_1.RoomTemplateControl, tenant_member_entity_1.TenantMember, wallet_entity_1.Wallet, merchant_settlement_ledger_entity_1.MerchantSettlementLedger, variant_location_binding_entity_1.VariantLocationBinding, delivery_record_entity_1.DeliveryRecord, reconciliation_entity_1.ReconciliationBatch, reconciliation_entity_1.ReconciliationOrderLine, stock_doc_entity_1.StockDocEntity, stock_doc_item_entity_1.StockDocItemEntity, inventory_alert_rule_entity_1.InventoryAlertRuleEntity, stock_reservation_entity_1.StockReservationEntity, stock_reservation_item_entity_1.StockReservationItemEntity, pick_batch_entity_1.PickBatch, pick_batch_order_entity_1.PickBatchOrder, storage_zone_entity_1.StorageZone, storage_bin_entity_1.StorageBin, variant_storage_bin_entity_1.VariantStorageBin],
         providers: [
             { provide: constants_1.CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
             tenant_setup_service_1.TenantSetupService,
@@ -417,6 +428,8 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             odoo_inventory_adapter_1.OdooInventoryAdapter,
             delivery_record_service_1.DeliveryRecordService,
             reconciliation_service_1.ReconciliationService,
+            pick_batch_service_1.PickBatchService,
+            storage_bin_service_1.StorageBinService,
         ],
         adminApiExtensions: {
             schema: () => {
@@ -1626,9 +1639,131 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                 extend type Query {
                     stockDocList(type: String, page: Int, pageSize: Int): StockDocList!
                 }
+
+                # ===== 配货台（拣货批次） =====
+                type PickBatch implements Node {
+                    id: ID!
+                    code: String!
+                    stockLocationId: Int!
+                    state: String!
+                    note: String
+                    createdBy: String
+                    memberCount: Int!
+                    itemCount: Int!
+                    members: [JSON!]
+                    pickedAt: DateTime
+                    printedAt: DateTime
+                    shippedAt: DateTime
+                    createdAt: DateTime!
+                }
+
+                type PickBatchList {
+                    totalItems: Int!
+                    items: [PickBatch!]!
+                }
+
+                type PickBatchCandidateList {
+                    totalItems: Int!
+                    items: [JSON!]!
+                }
+
+                type PickBatchPickingRow {
+                    sku: String!
+                    name: String!
+                    qty: Int!
+                    orderCodes: [String!]!
+                    binCode: String
+                    zoneCode: String
+                    zoneName: String
+                    pathIndex: Int!
+                }
+
+                input PickBatchListOptions {
+                    page: Int
+                    pageSize: Int
+                    state: String
+                    stockLocationId: ID
+                }
+
+                input CreatePickBatchInput {
+                    stockLocationId: ID!
+                    orderIds: [ID!]!
+                    note: String
+                }
+
+                input ShipPickBatchInput {
+                    method: String!
+                    trackingCode: String
+                }
+
+                input OrderAddressInput {
+                    fullName: String
+                    phoneNumber: String
+                    province: String
+                    city: String
+                    streetLine1: String
+                    streetLine2: String
+                    postalCode: String
+                    countryCode: String
+                }
+
+                extend type Query {
+                    pickBatches(options: PickBatchListOptions): PickBatchList!
+                    pickBatch(id: ID!): PickBatch
+                    pickBatchPickingList(id: ID!): [PickBatchPickingRow!]!
+                    pickBatchCandidates(options: PickBatchListOptions): PickBatchCandidateList!
+                }
+
+                extend type Mutation {
+                    createPickBatch(input: CreatePickBatchInput!): PickBatch!
+                    addOrdersToPickBatch(batchId: ID!, orderIds: [ID!]!): PickBatch!
+                    removeOrdersFromPickBatch(batchId: ID!, orderIds: [ID!]!): PickBatch!
+                    advancePickBatchState(batchId: ID!, to: String!): PickBatch!
+                    cancelPickBatch(batchId: ID!): PickBatch!
+                    shipPickBatch(batchId: ID!, input: ShipPickBatchInput!): JSON!
+                    updateOrderShippingAddress(orderId: ID!, input: OrderAddressInput!): JSON!
+                }
+
+                # ===== 库区/库位（三档开关 off/zone/bin 共用同一套接口） =====
+                type StorageZone implements Node {
+                    id: ID!
+                    code: String!
+                    name: String!
+                    sortOrder: Int!
+                    enabled: Boolean!
+                }
+
+                type StorageBin implements Node {
+                    id: ID!
+                    zoneId: ID!
+                    code: String!
+                    rowNo: Int!
+                    levelNo: Int!
+                    enabled: Boolean!
+                }
+
+                input BindVariantBinInput {
+                    variantId: ID!
+                    stockLocationId: ID!
+                    zoneId: ID!
+                    binId: ID
+                }
+
+                extend type Query {
+                    storageZones(stockLocationId: ID!): [StorageZone!]!
+                    storageBins(stockLocationId: ID!, zoneId: ID): [StorageBin!]!
+                    variantBin(variantId: ID!, stockLocationId: ID!): JSON
+                }
+
+                extend type Mutation {
+                    generateStandardBins(stockLocationId: ID!): JSON!
+                    bindVariantToBin(input: BindVariantBinInput!): JSON!
+                    unbindVariantFromBin(variantId: ID!, stockLocationId: ID!): Boolean!
+                    deleteStorageBin(id: ID!): Boolean!
+                }
                 `;
             },
-            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, room_template_admin_resolver_1.RoomTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver, tenant_catalog_admin_resolver_1.TenantCatalogAdminResolver, asset_library_admin_resolver_1.AssetLibraryAdminResolver, redemption_resolver_1.RedemptionAdminResolver, merchant_settlement_admin_resolver_1.MerchantSettlementAdminResolver, delivery_admin_resolver_1.DeliveryAdminResolver, inventory_admin_resolver_1.InventoryAdminResolver, reconciliation_admin_resolver_1.ReconciliationAdminResolver, stock_doc_admin_resolver_1.StockDocAdminResolver, stock_reservation_admin_resolver_1.StockReservationAdminResolver, delivery_capability_resolver_1.DeliveryCapabilityResolver],
+            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, room_template_admin_resolver_1.RoomTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver, tenant_catalog_admin_resolver_1.TenantCatalogAdminResolver, asset_library_admin_resolver_1.AssetLibraryAdminResolver, redemption_resolver_1.RedemptionAdminResolver, merchant_settlement_admin_resolver_1.MerchantSettlementAdminResolver, delivery_admin_resolver_1.DeliveryAdminResolver, inventory_admin_resolver_1.InventoryAdminResolver, reconciliation_admin_resolver_1.ReconciliationAdminResolver, stock_doc_admin_resolver_1.StockDocAdminResolver, stock_reservation_admin_resolver_1.StockReservationAdminResolver, delivery_capability_resolver_1.DeliveryCapabilityResolver, pick_batch_admin_resolver_1.PickBatchAdminResolver, storage_bin_admin_resolver_1.StorageBinAdminResolver, order_address_admin_resolver_1.OrderAddressAdminResolver],
         },
         shopApiExtensions: {
             schema: () => {
@@ -1898,10 +2033,24 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     variantDeliveryModes(variantIds: [ID!]!): [VariantDeliveryModes!]!
                 }
 
+                # ===== 库区/库位（C 端只读，三档差异由前端门控） =====
+                type StorageZone implements Node {
+                    id: ID!
+                    code: String!
+                    name: String!
+                    sortOrder: Int!
+                    enabled: Boolean!
+                }
+
+                extend type Query {
+                    variantBin(variantId: ID!, stockLocationId: ID!): JSON
+                    storageZones(stockLocationId: ID!): [StorageZone!]!
+                }
+
                 ${redemption_schema_1.redemptionShopSchema}
             `;
             },
-            resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver, shipping_profile_shop_resolver_1.ShippingProfileShopResolver, delivery_capability_resolver_1.DeliveryCapabilityResolver, payment_profile_shop_resolver_1.PaymentProfileShopResolver, order_box_shop_resolver_1.OrderBoxShopResolver, order_split_shop_resolver_1.OrderSplitShopResolver, wallet_shop_resolver_1.WalletShopResolver, redemption_resolver_1.RedemptionShopResolver, inventory_shop_resolver_1.InventoryShopResolver],
+            resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver, shipping_profile_shop_resolver_1.ShippingProfileShopResolver, delivery_capability_resolver_1.DeliveryCapabilityResolver, payment_profile_shop_resolver_1.PaymentProfileShopResolver, order_box_shop_resolver_1.OrderBoxShopResolver, order_split_shop_resolver_1.OrderSplitShopResolver, wallet_shop_resolver_1.WalletShopResolver, redemption_resolver_1.RedemptionShopResolver, inventory_shop_resolver_1.InventoryShopResolver, storage_bin_shop_resolver_1.StorageBinShopResolver],
         },
         configuration: config => {
             var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1;

@@ -38,13 +38,13 @@ export class PickBatch extends VendureEntity {
     @Column({ type: 'varchar', nullable: true })
     createdBy!: string | null;
 
-    @Column({ type: 'datetime', nullable: true })
+    @Column({ type: 'timestamp', nullable: true })
     pickedAt!: Date | null;
 
-    @Column({ type: 'datetime', nullable: true })
+    @Column({ type: 'timestamp', nullable: true })
     printedAt!: Date | null;
 
-    @Column({ type: 'datetime', nullable: true })
+    @Column({ type: 'timestamp', nullable: true })
     shippedAt!: Date | null;
 
     @OneToMany(() => PickBatchOrder, (o) => o.batch)

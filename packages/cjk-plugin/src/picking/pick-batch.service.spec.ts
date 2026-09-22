@@ -35,7 +35,12 @@ describe('PickBatchService', () => {
 
     beforeEach(() => {
         m = makeConn();
-        svc = new PickBatchService(m.conn);
+        svc = new PickBatchService(
+            m.conn,
+            { findAll: vi.fn().mockResolvedValue({ items: [] }) } as any,
+            { findOne: vi.fn().mockResolvedValue(null) } as any,
+            { create: vi.fn().mockResolvedValue({ id: 1 }) } as any,
+        );
     });
 
     it('nextCode 无既有批次时为 -001', async () => {

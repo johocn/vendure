@@ -150,10 +150,21 @@ import { InventoryStockService } from './inventory/inventory-stock.service';
 import { SimpleInventoryAdapter } from './inventory/simple-inventory.adapter';
 import { OdooInventoryAdapter } from './inventory/odoo-inventory.adapter';
 import { inventoryModeChannelFields } from './inventory/inventory-mode.custom-fields';
+import { PickBatch } from './picking/pick-batch.entity';
+import { PickBatchOrder } from './picking/pick-batch-order.entity';
+import { PickBatchService } from './picking/pick-batch.service';
+import { PickBatchAdminResolver } from './picking/pick-batch.admin.resolver';
+import { StorageZone } from './storage/storage-zone.entity';
+import { StorageBin } from './storage/storage-bin.entity';
+import { VariantStorageBin } from './storage/variant-storage-bin.entity';
+import { StorageBinService } from './storage/storage-bin.service';
+import { StorageBinAdminResolver } from './storage/storage-bin.admin.resolver';
+import { StorageBinShopResolver } from './storage/storage-bin.shop.resolver';
+import { OrderAddressAdminResolver } from './order/order-address.admin.resolver';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod, PaymentTemplate, RoomTemplate, RoomTemplateControl, TenantMember, Wallet, MerchantSettlementLedger, VariantLocationBinding, DeliveryRecord, ReconciliationBatch, ReconciliationOrderLine, StockDocEntity, StockDocItemEntity, InventoryAlertRuleEntity, StockReservationEntity, StockReservationItemEntity],
+    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod, PaymentTemplate, RoomTemplate, RoomTemplateControl, TenantMember, Wallet, MerchantSettlementLedger, VariantLocationBinding, DeliveryRecord, ReconciliationBatch, ReconciliationOrderLine, StockDocEntity, StockDocItemEntity, InventoryAlertRuleEntity, StockReservationEntity, StockReservationItemEntity, PickBatch, PickBatchOrder, StorageZone, StorageBin, VariantStorageBin],
     providers: [
         { provide: CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
         TenantSetupService,
@@ -204,6 +215,8 @@ import { inventoryModeChannelFields } from './inventory/inventory-mode.custom-fi
         OdooInventoryAdapter,
         DeliveryRecordService,
         ReconciliationService,
+        PickBatchService,
+        StorageBinService,
     ],
     adminApiExtensions: {
         schema: () => {
@@ -1413,9 +1426,131 @@ import { inventoryModeChannelFields } from './inventory/inventory-mode.custom-fi
                 extend type Query {
                     stockDocList(type: String, page: Int, pageSize: Int): StockDocList!
                 }
+
+                # ===== 配货台（拣货批次） =====
+                type PickBatch implements Node {
+                    id: ID!
+                    code: String!
+                    stockLocationId: Int!
+                    state: String!
+                    note: String
+                    createdBy: String
+                    memberCount: Int!
+                    itemCount: Int!
+                    members: [JSON!]
+                    pickedAt: DateTime
+                    printedAt: DateTime
+                    shippedAt: DateTime
+                    createdAt: DateTime!
+                }
+
+                type PickBatchList {
+                    totalItems: Int!
+                    items: [PickBatch!]!
+                }
+
+                type PickBatchCandidateList {
+                    totalItems: Int!
+                    items: [JSON!]!
+                }
+
+                type PickBatchPickingRow {
+                    sku: String!
+                    name: String!
+                    qty: Int!
+                    orderCodes: [String!]!
+                    binCode: String
+                    zoneCode: String
+                    zoneName: String
+                    pathIndex: Int!
+                }
+
+                input PickBatchListOptions {
+                    page: Int
+                    pageSize: Int
+                    state: String
+                    stockLocationId: ID
+                }
+
+                input CreatePickBatchInput {
+                    stockLocationId: ID!
+                    orderIds: [ID!]!
+                    note: String
+                }
+
+                input ShipPickBatchInput {
+                    method: String!
+                    trackingCode: String
+                }
+
+                input OrderAddressInput {
+                    fullName: String
+                    phoneNumber: String
+                    province: String
+                    city: String
+                    streetLine1: String
+                    streetLine2: String
+                    postalCode: String
+                    countryCode: String
+                }
+
+                extend type Query {
+                    pickBatches(options: PickBatchListOptions): PickBatchList!
+                    pickBatch(id: ID!): PickBatch
+                    pickBatchPickingList(id: ID!): [PickBatchPickingRow!]!
+                    pickBatchCandidates(options: PickBatchListOptions): PickBatchCandidateList!
+                }
+
+                extend type Mutation {
+                    createPickBatch(input: CreatePickBatchInput!): PickBatch!
+                    addOrdersToPickBatch(batchId: ID!, orderIds: [ID!]!): PickBatch!
+                    removeOrdersFromPickBatch(batchId: ID!, orderIds: [ID!]!): PickBatch!
+                    advancePickBatchState(batchId: ID!, to: String!): PickBatch!
+                    cancelPickBatch(batchId: ID!): PickBatch!
+                    shipPickBatch(batchId: ID!, input: ShipPickBatchInput!): JSON!
+                    updateOrderShippingAddress(orderId: ID!, input: OrderAddressInput!): JSON!
+                }
+
+                # ===== 库区/库位（三档开关 off/zone/bin 共用同一套接口） =====
+                type StorageZone implements Node {
+                    id: ID!
+                    code: String!
+                    name: String!
+                    sortOrder: Int!
+                    enabled: Boolean!
+                }
+
+                type StorageBin implements Node {
+                    id: ID!
+                    zoneId: ID!
+                    code: String!
+                    rowNo: Int!
+                    levelNo: Int!
+                    enabled: Boolean!
+                }
+
+                input BindVariantBinInput {
+                    variantId: ID!
+                    stockLocationId: ID!
+                    zoneId: ID!
+                    binId: ID
+                }
+
+                extend type Query {
+                    storageZones(stockLocationId: ID!): [StorageZone!]!
+                    storageBins(stockLocationId: ID!, zoneId: ID): [StorageBin!]!
+                    variantBin(variantId: ID!, stockLocationId: ID!): JSON
+                }
+
+                extend type Mutation {
+                    generateStandardBins(stockLocationId: ID!): JSON!
+                    bindVariantToBin(input: BindVariantBinInput!): JSON!
+                    unbindVariantFromBin(variantId: ID!, stockLocationId: ID!): Boolean!
+                    deleteStorageBin(id: ID!): Boolean!
+                }
                 `;
         },
-        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, RoomTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver, MerchantSettlementAdminResolver, DeliveryAdminResolver, InventoryAdminResolver, ReconciliationAdminResolver, StockDocAdminResolver, StockReservationAdminResolver, DeliveryCapabilityResolver],
+        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, RoomTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver, MerchantSettlementAdminResolver, DeliveryAdminResolver, InventoryAdminResolver, ReconciliationAdminResolver, StockDocAdminResolver, StockReservationAdminResolver, DeliveryCapabilityResolver, PickBatchAdminResolver, StorageBinAdminResolver, OrderAddressAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {
@@ -1685,10 +1820,24 @@ import { inventoryModeChannelFields } from './inventory/inventory-mode.custom-fi
                     variantDeliveryModes(variantIds: [ID!]!): [VariantDeliveryModes!]!
                 }
 
+                # ===== 库区/库位（C 端只读，三档差异由前端门控） =====
+                type StorageZone implements Node {
+                    id: ID!
+                    code: String!
+                    name: String!
+                    sortOrder: Int!
+                    enabled: Boolean!
+                }
+
+                extend type Query {
+                    variantBin(variantId: ID!, stockLocationId: ID!): JSON
+                    storageZones(stockLocationId: ID!): [StorageZone!]!
+                }
+
                 ${redemptionShopSchema}
             `;
         },
-        resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver, DomainShopResolver, MapShopResolver, ShippingProfileShopResolver, DeliveryCapabilityResolver, PaymentProfileShopResolver, OrderBoxShopResolver, OrderSplitShopResolver, WalletShopResolver, RedemptionShopResolver, InventoryShopResolver],
+        resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver, DomainShopResolver, MapShopResolver, ShippingProfileShopResolver, DeliveryCapabilityResolver, PaymentProfileShopResolver, OrderBoxShopResolver, OrderSplitShopResolver, WalletShopResolver, RedemptionShopResolver, InventoryShopResolver, StorageBinShopResolver],
     },
     configuration: config => {
         // 注入 authSecret 到 crypto 模块（configuration 在 bootstrap 早期执行，此时 options 已可用）
