@@ -255,7 +255,10 @@ export class PickBatchService {
                 variantIds.add(line.productVariant.id as number);
                 const hit = bySku.get(sku) ?? {
                     sku,
-                    name: line.productVariant.name,
+                    // ProductVariant.name 列可为 null：SDL 里 name 是非空字段，
+                    // 直接透传会让整条 pickBatchPickingList 查询报错返回 null（前端表现为拣货汇总空白）。
+                    // 与前端 `r.name || r.sku` 一致，缺失时回退 SKU。
+                    name: line.productVariant.name || line.productVariant.sku || '',
                     qty: 0,
                     codes: new Set<string>(),
                 };
