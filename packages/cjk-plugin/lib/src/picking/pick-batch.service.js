@@ -377,17 +377,34 @@ let PickBatchService = class PickBatchService {
         const page = Math.max(1, (_a = options.page) !== null && _a !== void 0 ? _a : 1);
         const pageSize = Math.min(100, Math.max(1, (_b = options.pageSize) !== null && _b !== void 0 ? _b : 20));
         const repo = this.connection.getRepository(ctx, core_1.Order);
-        const [orders, totalItems] = await repo.findAndCount({
-            where: { state: (0, typeorm_1.In)(['PaymentAuthorized', 'WaitingForShipping']) },
+        // 候选订单必须属于**当前渠道**：Order 是 ChannelAware（多对多 order_channels_channel），
+        // 裸仓储查询不做渠道收口，会把其它渠道的订单串进本店配货台
+        // （实测 t2 渠道里出现了渠道 1 / official-01 的订单）。与 findAll 按 tenantChannelId 收口保持一致。
+        const base = repo
+            .createQueryBuilder('o')
+            .innerJoin('o.channels', 'pickChannel', 'pickChannel.id = :cid', { cid: ctx.channelId })
+            .where('o.state IN (:...states)', { states: ['PaymentAuthorized', 'WaitingForShipping'] });
+        const totalItems = await base.clone().getCount();
+        if (totalItems === 0)
+            return { items: [], totalItems };
+        // 先分页取 id 再按 id 取实体：避免多对多 join 与 skip/take 同用导致行重复
+        const idRows = await base
+            .clone()
+            .select('o.id', 'id')
+            .orderBy('o.id', 'DESC')
+            .offset((page - 1) * pageSize)
+            .limit(pageSize)
+            .getRawMany();
+        const idList = idRows.map((r) => Number(r.id));
+        if (idList.length === 0)
+            return { items: [], totalItems };
+        const orders = await repo.find({
+            where: { id: (0, typeorm_1.In)(idList) },
             relations: { lines: true, customer: true },
             order: { id: 'DESC' },
-            skip: (page - 1) * pageSize,
-            take: pageSize,
         });
-        if (orders.length === 0)
-            return { items: [], totalItems };
         const warehouses = await this.warehouseCandidates(ctx);
-        const conflicts = await this.findConflicts(ctx, orders.map((o) => Number(o.id)));
+        const conflicts = await this.findConflicts(ctx, idList);
         return {
             totalItems,
             items: orders.map((o) => this.snapshotOrder(o, warehouses, conflicts.get(Number(o.id)))),
