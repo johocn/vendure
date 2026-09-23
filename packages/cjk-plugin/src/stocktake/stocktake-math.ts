@@ -379,6 +379,38 @@ export function buildPostItems(input: { summary: VarianceSummary; stockLocationI
     return { items };
 }
 
+// ---------------------------------------------------------------- 状态派生与独占锁
+
+/** 录入后盘次状态：有实盘即 COUNTING；终态不回退（幂等保护） */
+export function resolveWaveStateAfterCount(current: StocktakeWaveState, countedCount: number): StocktakeWaveState {
+    if (current === 'SUBMITTED' || current === 'CANCELLED') return current;
+    return countedCount > 0 ? 'COUNTING' : current;
+}
+
+/** 盘次集合变化后任务状态：全部 SUBMITTED/CANCELLED → COUNTED；否则（已有盘次）COUNTING */
+export function resolveTaskStateAfterWaves(
+    current: StocktakeTaskState,
+    waves: { state: StocktakeWaveState }[],
+): StocktakeTaskState {
+    if (current === 'POSTED' || current === 'CANCELLED') return current;
+    if (!waves.length) return current === 'DRAFT' ? 'DRAFT' : current;
+    const allDone = waves.every((w) => w.state === 'SUBMITTED' || w.state === 'CANCELLED');
+    return allDone ? 'COUNTED' : 'COUNTING';
+}
+
+/** 盘次独占校验（规格 §3.6）：非负责人/未认领一律拒绝并回传原因 */
+export function waveOwnerError(
+    assigneeId: string | null | undefined,
+    operatorId: string | null | undefined,
+    assigneeName?: string | null,
+): string | null {
+    if (!assigneeId) return '该盘次尚未认领，请先认领后再操作';
+    if (String(assigneeId) !== String(operatorId)) {
+        return `该盘次已被 ${assigneeName || '其他人员'} 认领，无法操作`;
+    }
+    return null;
+}
+
 // ---------------------------------------------------------------- 扫码解析
 
 export interface ScanBin { binId: number; binCode: string; zoneId: number; }

@@ -2,7 +2,8 @@
 import { describe, expect, it } from 'vitest';
 import {
     buildExpected, buildPostItems, canTaskTransition, canWaveTransition,
-    formatTaskCode, nextTaskSeq, resolveScanCode, summarizeVariance, variantSnapBook,
+    formatTaskCode, nextTaskSeq, resolveScanCode, resolveTaskStateAfterWaves,
+    resolveWaveStateAfterCount, summarizeVariance, variantSnapBook, waveOwnerError,
 } from './stocktake-math';
 
 describe('任务/盘次状态机', () => {
@@ -244,6 +245,29 @@ describe('过账计划（规格 §6.3）', () => {
         expect(plan.items[0]).toEqual({
             variantId: 22, toStockLocationId: 5, realQty: 3, zoneId: 2, binId: 201,
         });
+    });
+});
+
+describe('状态派生与独占锁（规格 §5/§3.6）', () => {
+    it('盘次有录入即进入 COUNTING；已 SUBMITTED 不回退', () => {
+        expect(resolveWaveStateAfterCount('OPEN', 1)).toBe('COUNTING');
+        expect(resolveWaveStateAfterCount('CLAIMED', 2)).toBe('COUNTING');
+        expect(resolveWaveStateAfterCount('SUBMITTED', 2)).toBe('SUBMITTED');
+        expect(resolveWaveStateAfterCount('CANCELLED', 0)).toBe('CANCELLED');
+    });
+
+    it('全部盘次 SUBMITTED/CANCELLED → 任务 COUNTED；仍有未提交 → COUNTING', () => {
+        expect(resolveTaskStateAfterWaves('OPEN', [{ state: 'SUBMITTED' }, { state: 'CANCELLED' }])).toBe('COUNTED');
+        expect(resolveTaskStateAfterWaves('COUNTING', [{ state: 'SUBMITTED' }, { state: 'COUNTING' }])).toBe('COUNTING');
+        expect(resolveTaskStateAfterWaves('COUNTED', [{ state: 'SUBMITTED' }, { state: 'OPEN' }])).toBe('COUNTING');
+        expect(resolveTaskStateAfterWaves('POSTED', [{ state: 'SUBMITTED' }])).toBe('POSTED');
+        expect(resolveTaskStateAfterWaves('OPEN', [])).toBe('OPEN');
+    });
+
+    it('非负责人操作 → 回传含负责人姓名的原因；无人认领 → 要求先认领', () => {
+        expect(waveOwnerError(null, '12', '张三')).toContain('认领');
+        expect(waveOwnerError('12', '12', '张三')).toBeNull();
+        expect(waveOwnerError('12', '99', '张三')).toContain('张三');
     });
 });
 

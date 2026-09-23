@@ -164,6 +164,7 @@ import { OrderAddressAdminResolver } from './order/order-address.admin.resolver'
 import { StocktakeTask } from './stocktake/stocktake-task.entity';
 import { StocktakeWave } from './stocktake/stocktake-wave.entity';
 import { StocktakeLine } from './stocktake/stocktake-line.entity';
+import { StocktakeService } from './stocktake/stocktake.service';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
@@ -224,6 +225,7 @@ import { StocktakeLine } from './stocktake/stocktake-line.entity';
         ReconciliationService,
         PickBatchService,
         StorageBinService,
+        StocktakeService,
     ],
     adminApiExtensions: {
         schema: () => {

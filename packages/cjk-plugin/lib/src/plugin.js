@@ -163,6 +163,7 @@ const order_address_admin_resolver_1 = require("./order/order-address.admin.reso
 const stocktake_task_entity_1 = require("./stocktake/stocktake-task.entity");
 const stocktake_wave_entity_1 = require("./stocktake/stocktake-wave.entity");
 const stocktake_line_entity_1 = require("./stocktake/stocktake-line.entity");
+const stocktake_service_1 = require("./stocktake/stocktake.service");
 let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
     constructor(options, moduleRef) {
         this.options = options;
@@ -437,6 +438,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             reconciliation_service_1.ReconciliationService,
             pick_batch_service_1.PickBatchService,
             storage_bin_service_1.StorageBinService,
+            stocktake_service_1.StocktakeService,
         ],
         adminApiExtensions: {
             schema: () => {

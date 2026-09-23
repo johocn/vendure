@@ -142,6 +142,14 @@ export declare function buildPostItems(input: {
     summary: VarianceSummary;
     stockLocationId: number;
 }): PostPlan;
+/** 录入后盘次状态：有实盘即 COUNTING；终态不回退（幂等保护） */
+export declare function resolveWaveStateAfterCount(current: StocktakeWaveState, countedCount: number): StocktakeWaveState;
+/** 盘次集合变化后任务状态：全部 SUBMITTED/CANCELLED → COUNTED；否则（已有盘次）COUNTING */
+export declare function resolveTaskStateAfterWaves(current: StocktakeTaskState, waves: {
+    state: StocktakeWaveState;
+}[]): StocktakeTaskState;
+/** 盘次独占校验（规格 §3.6）：非负责人/未认领一律拒绝并回传原因 */
+export declare function waveOwnerError(assigneeId: string | null | undefined, operatorId: string | null | undefined, assigneeName?: string | null): string | null;
 export interface ScanBin {
     binId: number;
     binCode: string;

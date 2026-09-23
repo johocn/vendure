@@ -9,6 +9,9 @@ exports.buildExpected = buildExpected;
 exports.variantSnapBook = variantSnapBook;
 exports.summarizeVariance = summarizeVariance;
 exports.buildPostItems = buildPostItems;
+exports.resolveWaveStateAfterCount = resolveWaveStateAfterCount;
+exports.resolveTaskStateAfterWaves = resolveTaskStateAfterWaves;
+exports.waveOwnerError = waveOwnerError;
 exports.resolveScanCode = resolveScanCode;
 exports.TASK_STATES = ['DRAFT', 'OPEN', 'COUNTING', 'COUNTED', 'POSTED', 'CANCELLED'];
 exports.WAVE_STATES = ['OPEN', 'CLAIMED', 'COUNTING', 'SUBMITTED', 'CANCELLED'];
@@ -261,6 +264,31 @@ function buildPostItems(input) {
         });
     }
     return { items };
+}
+// ---------------------------------------------------------------- 状态派生与独占锁
+/** 录入后盘次状态：有实盘即 COUNTING；终态不回退（幂等保护） */
+function resolveWaveStateAfterCount(current, countedCount) {
+    if (current === 'SUBMITTED' || current === 'CANCELLED')
+        return current;
+    return countedCount > 0 ? 'COUNTING' : current;
+}
+/** 盘次集合变化后任务状态：全部 SUBMITTED/CANCELLED → COUNTED；否则（已有盘次）COUNTING */
+function resolveTaskStateAfterWaves(current, waves) {
+    if (current === 'POSTED' || current === 'CANCELLED')
+        return current;
+    if (!waves.length)
+        return current === 'DRAFT' ? 'DRAFT' : current;
+    const allDone = waves.every((w) => w.state === 'SUBMITTED' || w.state === 'CANCELLED');
+    return allDone ? 'COUNTED' : 'COUNTING';
+}
+/** 盘次独占校验（规格 §3.6）：非负责人/未认领一律拒绝并回传原因 */
+function waveOwnerError(assigneeId, operatorId, assigneeName) {
+    if (!assigneeId)
+        return '该盘次尚未认领，请先认领后再操作';
+    if (String(assigneeId) !== String(operatorId)) {
+        return `该盘次已被 ${assigneeName || '其他人员'} 认领，无法操作`;
+    }
+    return null;
 }
 /**
  * 扫码解析优先级（规格 §8.3）：库位码 → 内部码 → 条形码 → SKU → 未命中。
