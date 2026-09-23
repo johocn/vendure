@@ -444,6 +444,110 @@ let StocktakeService = class StocktakeService {
         await this.syncTaskState(ctx, wave.taskId);
         return saved;
     }
+    // ------------------------------------------------------------ 差异与过账
+    /** 读当前账面（StockLevel）+ 当前绑定（variant_storage_bin）→ 差异汇总 */
+    async loadCurrentState(ctx, task, variantIds) {
+        if (!variantIds.length)
+            return { currentBook: [], currentBind: [] };
+        const levels = await this.connection.getRepository(ctx, core_1.StockLevel).find({
+            where: { stockLocationId: task.stockLocationId, productVariantId: (0, typeorm_1.In)(variantIds) },
+        });
+        const currentBook = levels.map((l) => ({ variantId: Number(l.productVariantId), quantity: l.stockOnHand }));
+        const binds = await this.connection.getRepository(ctx, variant_storage_bin_entity_1.VariantStorageBin).find({
+            where: { tenantChannelId: task.tenantChannelId, stockLocationId: task.stockLocationId, variantId: (0, typeorm_1.In)(variantIds) },
+        });
+        const currentBind = binds.map((b) => ({
+            variantId: Number(b.variantId), zoneId: Number(b.zoneId), binId: b.binId ? Number(b.binId) : null,
+        }));
+        return { currentBook, currentBind };
+    }
+    async diffOf(ctx, taskId) {
+        const task = await this.assertTask(ctx, taskId, { allowPosted: true });
+        const lines = await this.connection.getRepository(ctx, stocktake_line_entity_1.StocktakeLine).find({ where: { taskId: Number(task.id) } });
+        const variantIds = Array.from(new Set(lines.map((l) => Number(l.variantId))));
+        const { currentBook, currentBind } = await this.loadCurrentState(ctx, task, variantIds);
+        const input = lines.map((l) => ({
+            id: l.id, variantId: Number(l.variantId), countedQty: l.countedQty,
+            isExtra: l.isExtra, bookQty: l.bookQty,
+            zoneId: l.zoneId, binId: l.binId,
+        }));
+        const summary = (0, stocktake_math_1.summarizeVariance)(input, currentBook, currentBind);
+        const skuOf = new Map(lines.map((l) => [Number(l.variantId), { sku: l.variantSku, name: l.variantName }]));
+        return {
+            summary,
+            rows: summary.byVariant.map((v) => {
+                var _a, _b, _c, _d;
+                return ({
+                    variantId: String(v.variantId),
+                    variantSku: (_b = (_a = skuOf.get(v.variantId)) === null || _a === void 0 ? void 0 : _a.sku) !== null && _b !== void 0 ? _b : `#${v.variantId}`,
+                    variantName: (_d = (_c = skuOf.get(v.variantId)) === null || _c === void 0 ? void 0 : _c.name) !== null && _d !== void 0 ? _d : '',
+                    countedTotal: v.countedTotal, bookQty: v.bookQty, diff: v.diff,
+                    isExtra: v.isExtra, binChanged: v.binChanged,
+                    targetZoneId: v.targetZoneId === null ? null : String(v.targetZoneId),
+                    targetBinId: v.targetBinId === null ? null : String(v.targetBinId),
+                    targetBinCode: null,
+                    snapBookQty: v.snapBookQty, currentBookQty: v.bookQty,
+                });
+            }),
+            uncountedLines: lines.filter((l) => !l.isExtra && l.countedQty === null),
+            changedVariants: summary.changedVariants.map((c) => {
+                var _a, _b;
+                return ({
+                    variantId: String(c.variantId),
+                    variantSku: (_b = (_a = skuOf.get(c.variantId)) === null || _a === void 0 ? void 0 : _a.sku) !== null && _b !== void 0 ? _b : `#${c.variantId}`,
+                    snapBookQty: c.snapBookQty, currentBookQty: c.currentBookQty,
+                });
+            }),
+        };
+    }
+    async post(ctx, taskId, confirm) {
+        const task = await this.assertTask(ctx, taskId, { allowPosted: true });
+        if (task.state === 'POSTED')
+            throw new core_1.UserInputError(`任务 ${task.code} 已过账，请勿重复操作`);
+        if (task.state !== 'COUNTED')
+            throw new core_1.UserInputError(`任务当前状态 ${task.state}，需全部盘次提交后才能过账`);
+        const waves = await this.connection.getRepository(ctx, stocktake_wave_entity_1.StocktakeWave).find({ where: { taskId: Number(task.id) } });
+        const pending = waves.filter((w) => w.state !== 'SUBMITTED' && w.state !== 'CANCELLED');
+        if (pending.length) {
+            throw new core_1.UserInputError(`还有 ${pending.length} 个盘次未提交（${pending.map((w) => w.id).join(', ')}），无法过账`);
+        }
+        const diff = await this.diffOf(ctx, task.id);
+        if (diff.summary.uncountedCount > 0 && !confirm) {
+            return {
+                ok: false, stockDocId: null, diff,
+                message: `有 ${diff.summary.uncountedCount} 项未盘，若确认跳过请勾选后重试`,
+            };
+        }
+        if (diff.summary.recheck && !confirm) {
+            return {
+                ok: false, stockDocId: null, diff,
+                message: `盘点期间账面发生变动（${diff.summary.changedVariants.length} 个商品），已按当前账面重算，请确认后继续`,
+            };
+        }
+        const plan = (0, stocktake_math_1.buildPostItems)({ summary: diff.summary, stockLocationId: task.stockLocationId });
+        if (!plan.items.length)
+            throw new core_1.UserInputError('没有需要过账的差异（数量与库位均无变化）');
+        return this.connection.withTransaction(ctx, async (txCtx) => {
+            const items = plan.items.map((i) => ({
+                variantId: String(i.variantId),
+                toStockLocationId: String(i.toStockLocationId),
+                qty: i.realQty,
+                realQty: i.realQty,
+                zoneId: i.zoneId === null ? undefined : String(i.zoneId),
+                binId: i.binId === null ? undefined : String(i.binId),
+            }));
+            const doc = await this.stockDocService.create(txCtx, {
+                type: 'STOCKTAKE',
+                items,
+                remark: `盘点任务 ${task.code}`,
+            });
+            task.state = 'POSTED';
+            task.postedStockDocId = Number(doc.id);
+            task.postedAt = new Date();
+            await this.connection.getRepository(txCtx, stocktake_task_entity_1.StocktakeTask).save(task);
+            return { ok: true, stockDocId: String(doc.id), diff, message: `已生成盘点单据 ${task.code}` };
+        });
+    }
 };
 exports.StocktakeService = StocktakeService;
 exports.StocktakeService = StocktakeService = __decorate([

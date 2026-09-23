@@ -6,6 +6,7 @@
  * 渠道收口：所有自建表查询一律按 String(ctx.channelId) 过滤（硬性 R10）。
  */
 import { ID, RequestContext, TransactionalConnection } from '@vendure/core';
+import { StocktakeLine } from './stocktake-line.entity';
 import { StocktakeTaskState } from './stocktake-task.entity';
 import { StocktakeWave } from './stocktake-wave.entity';
 import { StockDocService } from '../inventory/stock-doc.service';
@@ -66,4 +67,90 @@ export declare class StocktakeService {
     private syncTaskState;
     saveCounts(ctx: RequestContext, waveId: ID, inputs: any[]): Promise<StocktakeWave>;
     submitWave(ctx: RequestContext, waveId: ID): Promise<StocktakeWave>;
+    /** 读当前账面（StockLevel）+ 当前绑定（variant_storage_bin）→ 差异汇总 */
+    private loadCurrentState;
+    diffOf(ctx: RequestContext, taskId: ID): Promise<{
+        summary: import("./stocktake-math").VarianceSummary;
+        rows: {
+            variantId: string;
+            variantSku: string;
+            variantName: string;
+            countedTotal: number;
+            bookQty: number;
+            diff: number;
+            isExtra: boolean;
+            binChanged: boolean;
+            targetZoneId: string | null;
+            targetBinId: string | null;
+            targetBinCode: null;
+            snapBookQty: number;
+            currentBookQty: number;
+        }[];
+        uncountedLines: StocktakeLine[];
+        changedVariants: {
+            variantId: string;
+            variantSku: string;
+            snapBookQty: number;
+            currentBookQty: number;
+        }[];
+    }>;
+    post(ctx: RequestContext, taskId: ID, confirm?: boolean): Promise<{
+        ok: boolean;
+        stockDocId: string;
+        diff: {
+            summary: import("./stocktake-math").VarianceSummary;
+            rows: {
+                variantId: string;
+                variantSku: string;
+                variantName: string;
+                countedTotal: number;
+                bookQty: number;
+                diff: number;
+                isExtra: boolean;
+                binChanged: boolean;
+                targetZoneId: string | null;
+                targetBinId: string | null;
+                targetBinCode: null;
+                snapBookQty: number;
+                currentBookQty: number;
+            }[];
+            uncountedLines: StocktakeLine[];
+            changedVariants: {
+                variantId: string;
+                variantSku: string;
+                snapBookQty: number;
+                currentBookQty: number;
+            }[];
+        };
+        message: string;
+    } | {
+        ok: boolean;
+        stockDocId: null;
+        diff: {
+            summary: import("./stocktake-math").VarianceSummary;
+            rows: {
+                variantId: string;
+                variantSku: string;
+                variantName: string;
+                countedTotal: number;
+                bookQty: number;
+                diff: number;
+                isExtra: boolean;
+                binChanged: boolean;
+                targetZoneId: string | null;
+                targetBinId: string | null;
+                targetBinCode: null;
+                snapBookQty: number;
+                currentBookQty: number;
+            }[];
+            uncountedLines: StocktakeLine[];
+            changedVariants: {
+                variantId: string;
+                variantSku: string;
+                snapBookQty: number;
+                currentBookQty: number;
+            }[];
+        };
+        message: string;
+    }>;
 }
