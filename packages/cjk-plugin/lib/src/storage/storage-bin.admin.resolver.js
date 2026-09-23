@@ -30,6 +30,12 @@ let StorageBinAdminResolver = class StorageBinAdminResolver {
     async variantBin(ctx, args) {
         return this.storageBinService.variantBin(ctx, Number(args.variantId), Number(args.stockLocationId));
     }
+    async variantBinsByLocation(ctx, args) {
+        return this.storageBinService.variantBinsByLocation(ctx, args);
+    }
+    async binOccupancy(ctx, args) {
+        return this.storageBinService.binOccupancy(ctx, args.stockLocationId, args.zoneId);
+    }
     async generateStandardBins(ctx, stockLocationId) {
         return this.storageBinService.generateStandard(ctx, Number(stockLocationId));
     }
@@ -76,6 +82,24 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], StorageBinAdminResolver.prototype, "variantBin", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.ReadCatalog),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], StorageBinAdminResolver.prototype, "variantBinsByLocation", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.ReadCatalog),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], StorageBinAdminResolver.prototype, "binOccupancy", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(core_1.Permission.UpdateCatalog),

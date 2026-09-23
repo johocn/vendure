@@ -1,10 +1,15 @@
 import { Injectable } from '@nestjs/common';
-import { ID, RequestContext, TransactionalConnection, UserInputError } from '@vendure/core';
+import { ID, ProductVariant, RequestContext, TransactionalConnection, UserInputError } from '@vendure/core';
+import { In } from 'typeorm';
 
 import { StorageBin } from './storage-bin.entity';
 import { StorageZone } from './storage-zone.entity';
 import { VariantStorageBin } from './variant-storage-bin.entity';
 import { STANDARD_WAREHOUSE_ZONES, expandZone } from './standard-warehouse-template';
+import {
+    BIN_PAGE_DEFAULT, BinOccupancyRow, BinRowInput, VariantBinRow,
+    assertZoneBinMatch, buildOccupancyRows, filterVariantBins, paginate, sortVariantBins,
+} from './bin-query.math';
 
 export type BinMode = 'off' | 'zone' | 'bin';
 
@@ -210,5 +215,114 @@ export class StorageBinService {
         }
         await this.connection.getRepository(ctx, StorageBin).delete({ id: binId as number });
         return true;
+    }
+
+    /** 本仓全部绑定行 → 明细行（含商品字段），供 variantBinsByLocation 过滤/排序/分页 */
+    private async loadVariantBinRows(ctx: RequestContext, stockLocationId: ID, includeDisabled = false) {
+        const tenant = this.tenantOf(ctx);
+        const bindings = await this.connection.getRepository(ctx, VariantStorageBin).find({
+            where: { tenantChannelId: tenant, stockLocationId: Number(stockLocationId) },
+        });
+        const zones = await this.connection.getRepository(ctx, StorageZone).find({
+            where: { tenantChannelId: tenant, stockLocationId: Number(stockLocationId) },
+        });
+        const bins = await this.connection.getRepository(ctx, StorageBin).find({
+            where: { tenantChannelId: tenant, stockLocationId: Number(stockLocationId) },
+        });
+        const zoneById = new Map(zones.map((z) => [z.id as number, z]));
+        const binById = new Map(bins.map((b) => [b.id as number, b]));
+        const variantIds = Array.from(new Set(bindings.map((b) => Number(b.variantId))));
+        // ProductVariant 是 ChannelAware：必须显式 innerJoin channels 按渠道收口，
+        // 否则裸仓储查询不过滤渠道（配货台已有前车之鉴）。R10。
+        const variants = variantIds.length
+            ? await this.connection
+                .getRepository(ctx, ProductVariant)
+                .createQueryBuilder('v')
+                .innerJoin('v.channels', 'c', 'c.id = :cid', { cid: ctx.channelId })
+                .where('v.id IN (:...ids)', { ids: variantIds })
+                .getMany()
+            : [];
+        const variantById = new Map(variants.map((v) => [v.id as number, v]));
+
+        const rows: VariantBinRow[] = [];
+        for (const binding of bindings) {
+            const zone = zoneById.get(Number(binding.zoneId));
+            const bin = binding.binId ? binById.get(Number(binding.binId)) : undefined;
+            const variant = variantById.get(Number(binding.variantId));
+            if (!variant) continue;                              // 变体被删 → 该行不出现
+            if (!zone && !bin) continue;                         // 库区与库位都缺失 → 孤儿绑定，不出现
+            if (!includeDisabled && ((zone && !zone.enabled) || (bin && !bin.enabled))) continue;
+            const barcode = (variant.customFields as any)?.barcode ?? null;
+            const internalCode = (variant.customFields as any)?.internalCode ?? null;
+            rows.push({
+                bindingId: binding.id as number,
+                variantId: Number(binding.variantId),
+                sku: variant.sku,
+                variantName: variant.name || variant.sku,
+                barcode, internalCode,
+                zoneId: Number(binding.zoneId),
+                zoneCode: zone?.code ?? '',
+                zoneName: zone?.name ?? '',
+                zoneSortOrder: zone?.sortOrder ?? 0,
+                binId: bin ? (bin.id as number) : null,
+                binCode: bin ? bin.code : null,
+                rowNo: bin ? bin.rowNo : null,
+                levelNo: bin ? bin.levelNo : null,
+                isDefault: !!binding.isDefault,
+            });
+        }
+        return rows;
+    }
+
+    /** 库位/库区 → SKU 明细分页（规格 §7.1 接口 1） */
+    async variantBinsByLocation(
+        ctx: RequestContext,
+        args: { stockLocationId: ID; zoneId?: ID; binId?: ID; keyword?: string; includeDisabled?: boolean; page?: number; pageSize?: number },
+    ): Promise<{ totalItems: number; items: VariantBinRow[] }> {
+        const binId = args.binId ? Number(args.binId) : null;
+        if (binId !== null) {
+            const bin = await this.connection.getRepository(ctx, StorageBin).findOne({
+                where: { tenantChannelId: this.tenantOf(ctx), id: binId },
+            });
+            const err = assertZoneBinMatch(args.zoneId ? Number(args.zoneId) : null, binId, bin ? Number(bin.zoneId) : null);
+            if (err) throw new UserInputError(err);
+        }
+        const rows = await this.loadVariantBinRows(ctx, args.stockLocationId, !!args.includeDisabled);
+        const filtered = sortVariantBins(filterVariantBins(rows, {
+            zoneId: args.zoneId ? Number(args.zoneId) : null,
+            binId, keyword: args.keyword, includeDisabled: args.includeDisabled,
+        }));
+        return paginate(filtered, args.page ?? 1, args.pageSize ?? BIN_PAGE_DEFAULT);
+    }
+
+    /** 全部启用库位的占用概览（含空格，喂格子宫格；规格 §7.1 接口 2） */
+    async binOccupancy(ctx: RequestContext, stockLocationId: ID, zoneId?: ID): Promise<BinOccupancyRow[]> {
+        const tenant = this.tenantOf(ctx);
+        const zoneWhere: any = { tenantChannelId: tenant, stockLocationId: Number(stockLocationId) };
+        if (zoneId) zoneWhere.id = Number(zoneId);
+        const zones = await this.connection.getRepository(ctx, StorageZone).find({ where: { ...zoneWhere, enabled: true } });
+        const zoneIds = zones.map((z) => z.id as number);
+        if (!zoneIds.length) return [];
+        const bins = await this.connection.getRepository(ctx, StorageBin).find({
+            where: { tenantChannelId: tenant, stockLocationId: Number(stockLocationId), zoneId: In(zoneIds) } as any,
+        });
+        const zoneById = new Map(zones.map((z) => [z.id as number, z]));
+        const inputs: BinRowInput[] = bins
+            .filter((b) => b.enabled)
+            .map((b) => {
+                const z = zoneById.get(Number(b.zoneId));
+                return {
+                    zoneId: Number(b.zoneId),
+                    zoneCode: z?.code ?? '',
+                    zoneName: z?.name ?? '',
+                    zoneSortOrder: z?.sortOrder ?? 0,
+                    binId: b.id as number,
+                    binCode: b.code,
+                    rowNo: b.rowNo,
+                    levelNo: b.levelNo,
+                };
+            });
+        const counts = await this.binBindCounts(ctx, Number(stockLocationId));
+        return buildOccupancyRows(inputs, counts);
     }
 }

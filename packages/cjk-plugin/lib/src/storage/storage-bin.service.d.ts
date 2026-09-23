@@ -2,6 +2,7 @@ import { ID, RequestContext, TransactionalConnection } from '@vendure/core';
 import { StorageBin } from './storage-bin.entity';
 import { StorageZone } from './storage-zone.entity';
 import { VariantStorageBin } from './variant-storage-bin.entity';
+import { BinOccupancyRow, VariantBinRow } from './bin-query.math';
 export type BinMode = 'off' | 'zone' | 'bin';
 export declare class StorageBinService {
     private connection;
@@ -51,4 +52,21 @@ export declare class StorageBinService {
     unbind(ctx: RequestContext, variantId: number, stockLocationId: number): Promise<boolean>;
     /** 删除库位前校验：有 SKU 绑定则拒绝 */
     deleteBin(ctx: RequestContext, binId: ID): Promise<boolean>;
+    /** 本仓全部绑定行 → 明细行（含商品字段），供 variantBinsByLocation 过滤/排序/分页 */
+    private loadVariantBinRows;
+    /** 库位/库区 → SKU 明细分页（规格 §7.1 接口 1） */
+    variantBinsByLocation(ctx: RequestContext, args: {
+        stockLocationId: ID;
+        zoneId?: ID;
+        binId?: ID;
+        keyword?: string;
+        includeDisabled?: boolean;
+        page?: number;
+        pageSize?: number;
+    }): Promise<{
+        totalItems: number;
+        items: VariantBinRow[];
+    }>;
+    /** 全部启用库位的占用概览（含空格，喂格子宫格；规格 §7.1 接口 2） */
+    binOccupancy(ctx: RequestContext, stockLocationId: ID, zoneId?: ID): Promise<BinOccupancyRow[]>;
 }

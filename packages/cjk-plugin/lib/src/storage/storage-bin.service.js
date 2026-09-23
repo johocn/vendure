@@ -12,10 +12,12 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.StorageBinService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
+const typeorm_1 = require("typeorm");
 const storage_bin_entity_1 = require("./storage-bin.entity");
 const storage_zone_entity_1 = require("./storage-zone.entity");
 const variant_storage_bin_entity_1 = require("./variant-storage-bin.entity");
 const standard_warehouse_template_1 = require("./standard-warehouse-template");
+const bin_query_math_1 = require("./bin-query.math");
 let StorageBinService = class StorageBinService {
     constructor(connection) {
         this.connection = connection;
@@ -193,6 +195,117 @@ let StorageBinService = class StorageBinService {
         }
         await this.connection.getRepository(ctx, storage_bin_entity_1.StorageBin).delete({ id: binId });
         return true;
+    }
+    /** 本仓全部绑定行 → 明细行（含商品字段），供 variantBinsByLocation 过滤/排序/分页 */
+    async loadVariantBinRows(ctx, stockLocationId, includeDisabled = false) {
+        var _a, _b, _c, _d, _e, _f, _g;
+        const tenant = this.tenantOf(ctx);
+        const bindings = await this.connection.getRepository(ctx, variant_storage_bin_entity_1.VariantStorageBin).find({
+            where: { tenantChannelId: tenant, stockLocationId: Number(stockLocationId) },
+        });
+        const zones = await this.connection.getRepository(ctx, storage_zone_entity_1.StorageZone).find({
+            where: { tenantChannelId: tenant, stockLocationId: Number(stockLocationId) },
+        });
+        const bins = await this.connection.getRepository(ctx, storage_bin_entity_1.StorageBin).find({
+            where: { tenantChannelId: tenant, stockLocationId: Number(stockLocationId) },
+        });
+        const zoneById = new Map(zones.map((z) => [z.id, z]));
+        const binById = new Map(bins.map((b) => [b.id, b]));
+        const variantIds = Array.from(new Set(bindings.map((b) => Number(b.variantId))));
+        // ProductVariant 是 ChannelAware：必须显式 innerJoin channels 按渠道收口，
+        // 否则裸仓储查询不过滤渠道（配货台已有前车之鉴）。R10。
+        const variants = variantIds.length
+            ? await this.connection
+                .getRepository(ctx, core_1.ProductVariant)
+                .createQueryBuilder('v')
+                .innerJoin('v.channels', 'c', 'c.id = :cid', { cid: ctx.channelId })
+                .where('v.id IN (:...ids)', { ids: variantIds })
+                .getMany()
+            : [];
+        const variantById = new Map(variants.map((v) => [v.id, v]));
+        const rows = [];
+        for (const binding of bindings) {
+            const zone = zoneById.get(Number(binding.zoneId));
+            const bin = binding.binId ? binById.get(Number(binding.binId)) : undefined;
+            const variant = variantById.get(Number(binding.variantId));
+            if (!variant)
+                continue; // 变体被删 → 该行不出现
+            if (!zone && !bin)
+                continue; // 库区与库位都缺失 → 孤儿绑定，不出现
+            if (!includeDisabled && ((zone && !zone.enabled) || (bin && !bin.enabled)))
+                continue;
+            const barcode = (_b = (_a = variant.customFields) === null || _a === void 0 ? void 0 : _a.barcode) !== null && _b !== void 0 ? _b : null;
+            const internalCode = (_d = (_c = variant.customFields) === null || _c === void 0 ? void 0 : _c.internalCode) !== null && _d !== void 0 ? _d : null;
+            rows.push({
+                bindingId: binding.id,
+                variantId: Number(binding.variantId),
+                sku: variant.sku,
+                variantName: variant.name || variant.sku,
+                barcode, internalCode,
+                zoneId: Number(binding.zoneId),
+                zoneCode: (_e = zone === null || zone === void 0 ? void 0 : zone.code) !== null && _e !== void 0 ? _e : '',
+                zoneName: (_f = zone === null || zone === void 0 ? void 0 : zone.name) !== null && _f !== void 0 ? _f : '',
+                zoneSortOrder: (_g = zone === null || zone === void 0 ? void 0 : zone.sortOrder) !== null && _g !== void 0 ? _g : 0,
+                binId: bin ? bin.id : null,
+                binCode: bin ? bin.code : null,
+                rowNo: bin ? bin.rowNo : null,
+                levelNo: bin ? bin.levelNo : null,
+                isDefault: !!binding.isDefault,
+            });
+        }
+        return rows;
+    }
+    /** 库位/库区 → SKU 明细分页（规格 §7.1 接口 1） */
+    async variantBinsByLocation(ctx, args) {
+        var _a, _b;
+        const binId = args.binId ? Number(args.binId) : null;
+        if (binId !== null) {
+            const bin = await this.connection.getRepository(ctx, storage_bin_entity_1.StorageBin).findOne({
+                where: { tenantChannelId: this.tenantOf(ctx), id: binId },
+            });
+            const err = (0, bin_query_math_1.assertZoneBinMatch)(args.zoneId ? Number(args.zoneId) : null, binId, bin ? Number(bin.zoneId) : null);
+            if (err)
+                throw new core_1.UserInputError(err);
+        }
+        const rows = await this.loadVariantBinRows(ctx, args.stockLocationId, !!args.includeDisabled);
+        const filtered = (0, bin_query_math_1.sortVariantBins)((0, bin_query_math_1.filterVariantBins)(rows, {
+            zoneId: args.zoneId ? Number(args.zoneId) : null,
+            binId, keyword: args.keyword, includeDisabled: args.includeDisabled,
+        }));
+        return (0, bin_query_math_1.paginate)(filtered, (_a = args.page) !== null && _a !== void 0 ? _a : 1, (_b = args.pageSize) !== null && _b !== void 0 ? _b : bin_query_math_1.BIN_PAGE_DEFAULT);
+    }
+    /** 全部启用库位的占用概览（含空格，喂格子宫格；规格 §7.1 接口 2） */
+    async binOccupancy(ctx, stockLocationId, zoneId) {
+        const tenant = this.tenantOf(ctx);
+        const zoneWhere = { tenantChannelId: tenant, stockLocationId: Number(stockLocationId) };
+        if (zoneId)
+            zoneWhere.id = Number(zoneId);
+        const zones = await this.connection.getRepository(ctx, storage_zone_entity_1.StorageZone).find({ where: Object.assign(Object.assign({}, zoneWhere), { enabled: true }) });
+        const zoneIds = zones.map((z) => z.id);
+        if (!zoneIds.length)
+            return [];
+        const bins = await this.connection.getRepository(ctx, storage_bin_entity_1.StorageBin).find({
+            where: { tenantChannelId: tenant, stockLocationId: Number(stockLocationId), zoneId: (0, typeorm_1.In)(zoneIds) },
+        });
+        const zoneById = new Map(zones.map((z) => [z.id, z]));
+        const inputs = bins
+            .filter((b) => b.enabled)
+            .map((b) => {
+            var _a, _b, _c;
+            const z = zoneById.get(Number(b.zoneId));
+            return {
+                zoneId: Number(b.zoneId),
+                zoneCode: (_a = z === null || z === void 0 ? void 0 : z.code) !== null && _a !== void 0 ? _a : '',
+                zoneName: (_b = z === null || z === void 0 ? void 0 : z.name) !== null && _b !== void 0 ? _b : '',
+                zoneSortOrder: (_c = z === null || z === void 0 ? void 0 : z.sortOrder) !== null && _c !== void 0 ? _c : 0,
+                binId: b.id,
+                binCode: b.code,
+                rowNo: b.rowNo,
+                levelNo: b.levelNo,
+            };
+        });
+        const counts = await this.binBindCounts(ctx, Number(stockLocationId));
+        return (0, bin_query_math_1.buildOccupancyRows)(inputs, counts);
     }
 };
 exports.StorageBinService = StorageBinService;

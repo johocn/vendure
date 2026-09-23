@@ -1762,6 +1762,38 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     variantBin(variantId: ID!, stockLocationId: ID!): JSON
                 }
 
+                type VariantBinPage { totalItems: Int!, items: [VariantBinItem!]! }
+                type VariantBinItem {
+                    bindingId: ID!
+                    variantId: ID!
+                    sku: String!
+                    variantName: String!
+                    barcode: String
+                    internalCode: String
+                    zoneId: ID!
+                    zoneCode: String!
+                    zoneName: String!
+                    binId: ID
+                    binCode: String
+                    rowNo: Int
+                    levelNo: Int
+                    isDefault: Boolean!
+                }
+                type BinOccupancy {
+                    zoneId: ID!
+                    zoneCode: String!
+                    zoneName: String!
+                    binId: ID!
+                    binCode: String!
+                    rowNo: Int
+                    levelNo: Int
+                    skuCount: Int!
+                }
+                extend type Query {
+                    variantBinsByLocation(stockLocationId: ID!, zoneId: ID, binId: ID, keyword: String, includeDisabled: Boolean, page: Int, pageSize: Int): VariantBinPage!
+                    binOccupancy(stockLocationId: ID!, zoneId: ID): [BinOccupancy!]!
+                }
+
                 extend type Mutation {
                     generateStandardBins(stockLocationId: ID!): JSON!
                     bindVariantToBin(input: BindVariantBinInput!): JSON!

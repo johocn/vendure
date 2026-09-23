@@ -34,6 +34,18 @@ export class StorageBinAdminResolver {
         );
     }
 
+    @Query()
+    @Allow(Permission.ReadCatalog)
+    async variantBinsByLocation(@Ctx() ctx: RequestContext, @Args() args: any) {
+        return this.storageBinService.variantBinsByLocation(ctx, args);
+    }
+
+    @Query()
+    @Allow(Permission.ReadCatalog)
+    async binOccupancy(@Ctx() ctx: RequestContext, @Args() args: any) {
+        return this.storageBinService.binOccupancy(ctx, args.stockLocationId, args.zoneId);
+    }
+
     @Mutation()
     @Allow(Permission.UpdateCatalog)
     async generateStandardBins(

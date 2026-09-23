@@ -19,6 +19,11 @@ export declare class StorageBinAdminResolver {
         createdAt: Date;
         updatedAt: Date;
     } | null>;
+    variantBinsByLocation(ctx: RequestContext, args: any): Promise<{
+        totalItems: number;
+        items: import("./bin-query.math").VariantBinRow[];
+    }>;
+    binOccupancy(ctx: RequestContext, args: any): Promise<import("./bin-query.math").BinOccupancyRow[]>;
     generateStandardBins(ctx: RequestContext, stockLocationId: ID): Promise<{
         zonesCreated: number;
         binsCreated: number;
