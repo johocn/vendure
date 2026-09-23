@@ -180,6 +180,8 @@ function variantSnapBook(lines) {
 /**
  * 差异汇总（规格 §6.2）：**以变体为最小比对单位**。
  * 实盘合计 = SUM(countedQty)（含盘盈行，未盘行不计入）；盈亏 = 实盘合计 - 当前账面。
+ * **整变体未盘（该变体所有行 countedQty 均为 null）→ 不进 byVariant（过账时账面保持不变）；
+ * 未盘行仍由 uncountedLineIds / uncountedCount 列出。**
  */
 function summarizeVariance(lines, currentBook, currentBind) {
     var _a, _b, _c, _d, _e, _f;
@@ -220,7 +222,9 @@ function summarizeVariance(lines, currentBook, currentBind) {
             ((_a = cur.zoneId) !== null && _a !== void 0 ? _a : null) !== ((_b = target.zoneId) !== null && _b !== void 0 ? _b : null) ||
             ((_c = cur.binId) !== null && _c !== void 0 ? _c : null) !== ((_d = target.binId) !== null && _d !== void 0 ? _d : null));
         const isExtra = rows.every((l) => l.isExtra);
-        if (diff !== 0 || binChanged || isExtra) {
+        // 整变体未盘 → 真跳过（不生成差异/过账项，账面保持不变）；有盘盈行即 hasCounted=true
+        const hasCounted = rows.some((l) => l.countedQty !== null);
+        if (hasCounted && (diff !== 0 || binChanged || isExtra)) {
             byVariant.push({
                 variantId, countedTotal, bookQty: currentBookQty, snapBookQty, diff, isExtra, binChanged,
                 targetZoneId: target ? (_e = target.zoneId) !== null && _e !== void 0 ? _e : null : null,
@@ -248,6 +252,7 @@ function summarizeVariance(lines, currentBook, currentBind) {
  * - 有差异 → realQty = 实盘合计
  * - 无差异但库位变更 → realQty = 当前账面（仅触发原地归位，不动数量）
  * - 两者都不是 → 不生成项
+ * 未盘变体不出现在 summary.byVariant 中，因此天然不会进入过账计划（过账只覆盖有差异 / 仅库位变更的变体）。
  */
 function buildPostItems(input) {
     const { summary, stockLocationId } = input;

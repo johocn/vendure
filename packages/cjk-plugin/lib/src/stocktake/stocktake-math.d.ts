@@ -120,6 +120,8 @@ export declare function variantSnapBook(lines: VarianceInputLine[]): Map<number,
 /**
  * 差异汇总（规格 §6.2）：**以变体为最小比对单位**。
  * 实盘合计 = SUM(countedQty)（含盘盈行，未盘行不计入）；盈亏 = 实盘合计 - 当前账面。
+ * **整变体未盘（该变体所有行 countedQty 均为 null）→ 不进 byVariant（过账时账面保持不变）；
+ * 未盘行仍由 uncountedLineIds / uncountedCount 列出。**
  */
 export declare function summarizeVariance(lines: VarianceInputLine[], currentBook: BookRow[], currentBind: BindRow[]): VarianceSummary;
 export interface PostPlanItem {
@@ -137,6 +139,7 @@ export interface PostPlan {
  * - 有差异 → realQty = 实盘合计
  * - 无差异但库位变更 → realQty = 当前账面（仅触发原地归位，不动数量）
  * - 两者都不是 → 不生成项
+ * 未盘变体不出现在 summary.byVariant 中，因此天然不会进入过账计划（过账只覆盖有差异 / 仅库位变更的变体）。
  */
 export declare function buildPostItems(input: {
     summary: VarianceSummary;

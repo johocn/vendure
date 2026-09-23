@@ -166,7 +166,7 @@ describe('差异汇总（规格 §6.2，R11 按变体汇总）', () => {
         expect(r.byVariant[0].diff).toBe(1); // 5 - 4，不是 (3-4)+(2-4)
     });
 
-    it('盘盈行计入实盘、账面按 0；未盘行不计入实盘但必须列出', () => {
+    it('盘盈行计入实盘、账面按 0；整变体未盘不进差异（账面不变）', () => {
         const r = summarizeVariance(
             [
                 { id: 1, variantId: 11, countedQty: null, isExtra: false, bookQty: 4, zoneId: 1, binId: 101 },
@@ -177,11 +177,24 @@ describe('差异汇总（规格 §6.2，R11 按变体汇总）', () => {
         );
         expect(r.uncountedLineIds).toEqual([1]);
         expect(r.extraLineIds).toEqual([2]);
+        expect(r.byVariant.map((v) => v.variantId)).toEqual([22]);
         const v22 = r.byVariant.find((v) => v.variantId === 22)!;
         expect(v22.diff).toBe(2);
-        const v11 = r.byVariant.find((v) => v.variantId === 11)!;
-        expect(v11.countedTotal).toBe(0);
-        expect(v11.diff).toBe(-4); // 未盘行不计实盘，但差异仍按 0-4 体现（过账前需 confirm 跳过）
+    });
+
+    it('同一变体部分行未盘 → 仍按已盘行过账（未盘行不参与合计）', () => {
+        const r = summarizeVariance(
+            [
+                { id: 1, variantId: 11, countedQty: 3, isExtra: false, bookQty: 4, zoneId: 1, binId: 101 },
+                { id: 2, variantId: 11, countedQty: null, isExtra: false, bookQty: 4, zoneId: 1, binId: 102 },
+            ],
+            currentBook,
+            [],
+        );
+        expect(r.byVariant.map((v) => v.variantId)).toEqual([11]);
+        expect(r.byVariant[0].countedTotal).toBe(3);
+        expect(r.byVariant[0].diff).toBe(-1);
+        expect(r.uncountedCount).toBe(1);
     });
 
     it('账面快照与当前账面不一致 → recheck 并列出变动变体', () => {

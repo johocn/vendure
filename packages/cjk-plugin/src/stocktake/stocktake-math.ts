@@ -273,6 +273,8 @@ export function variantSnapBook(lines: VarianceInputLine[]): Map<number, number>
 /**
  * 差异汇总（规格 §6.2）：**以变体为最小比对单位**。
  * 实盘合计 = SUM(countedQty)（含盘盈行，未盘行不计入）；盈亏 = 实盘合计 - 当前账面。
+ * **整变体未盘（该变体所有行 countedQty 均为 null）→ 不进 byVariant（过账时账面保持不变）；
+ * 未盘行仍由 uncountedLineIds / uncountedCount 列出。**
  */
 export function summarizeVariance(
     lines: VarianceInputLine[],
@@ -320,7 +322,9 @@ export function summarizeVariance(
         );
 
         const isExtra = rows.every((l) => l.isExtra);
-        if (diff !== 0 || binChanged || isExtra) {
+        // 整变体未盘 → 真跳过（不生成差异/过账项，账面保持不变）；有盘盈行即 hasCounted=true
+        const hasCounted = rows.some((l) => l.countedQty !== null);
+        if (hasCounted && (diff !== 0 || binChanged || isExtra)) {
             byVariant.push({
                 variantId, countedTotal, bookQty: currentBookQty, snapBookQty, diff, isExtra, binChanged,
                 targetZoneId: target ? target.zoneId ?? null : null,
@@ -362,6 +366,7 @@ export interface PostPlan { items: PostPlanItem[]; }
  * - 有差异 → realQty = 实盘合计
  * - 无差异但库位变更 → realQty = 当前账面（仅触发原地归位，不动数量）
  * - 两者都不是 → 不生成项
+ * 未盘变体不出现在 summary.byVariant 中，因此天然不会进入过账计划（过账只覆盖有差异 / 仅库位变更的变体）。
  */
 export function buildPostItems(input: { summary: VarianceSummary; stockLocationId: number }): PostPlan {
     const { summary, stockLocationId } = input;
