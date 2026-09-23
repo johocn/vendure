@@ -160,6 +160,9 @@ const storage_bin_service_1 = require("./storage/storage-bin.service");
 const storage_bin_admin_resolver_1 = require("./storage/storage-bin.admin.resolver");
 const storage_bin_shop_resolver_1 = require("./storage/storage-bin.shop.resolver");
 const order_address_admin_resolver_1 = require("./order/order-address.admin.resolver");
+const stocktake_task_entity_1 = require("./stocktake/stocktake-task.entity");
+const stocktake_wave_entity_1 = require("./stocktake/stocktake-wave.entity");
+const stocktake_line_entity_1 = require("./stocktake/stocktake-line.entity");
 let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
     constructor(options, moduleRef) {
         this.options = options;
@@ -377,7 +380,11 @@ exports.CjkPlugin = CjkPlugin;
 exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_profile_method_entity_1.PaymentProfileMethod, payment_template_entity_1.PaymentTemplate, room_template_entity_1.RoomTemplate, room_template_control_entity_1.RoomTemplateControl, tenant_member_entity_1.TenantMember, wallet_entity_1.Wallet, merchant_settlement_ledger_entity_1.MerchantSettlementLedger, variant_location_binding_entity_1.VariantLocationBinding, delivery_record_entity_1.DeliveryRecord, reconciliation_entity_1.ReconciliationBatch, reconciliation_entity_1.ReconciliationOrderLine, stock_doc_entity_1.StockDocEntity, stock_doc_item_entity_1.StockDocItemEntity, inventory_alert_rule_entity_1.InventoryAlertRuleEntity, stock_reservation_entity_1.StockReservationEntity, stock_reservation_item_entity_1.StockReservationItemEntity, pick_batch_entity_1.PickBatch, pick_batch_order_entity_1.PickBatchOrder, storage_zone_entity_1.StorageZone, storage_bin_entity_1.StorageBin, variant_storage_bin_entity_1.VariantStorageBin],
+        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_profile_method_entity_1.PaymentProfileMethod, payment_template_entity_1.PaymentTemplate, room_template_entity_1.RoomTemplate, room_template_control_entity_1.RoomTemplateControl, tenant_member_entity_1.TenantMember, wallet_entity_1.Wallet, merchant_settlement_ledger_entity_1.MerchantSettlementLedger, variant_location_binding_entity_1.VariantLocationBinding, delivery_record_entity_1.DeliveryRecord, reconciliation_entity_1.ReconciliationBatch, reconciliation_entity_1.ReconciliationOrderLine, stock_doc_entity_1.StockDocEntity, stock_doc_item_entity_1.StockDocItemEntity, inventory_alert_rule_entity_1.InventoryAlertRuleEntity, stock_reservation_entity_1.StockReservationEntity, stock_reservation_item_entity_1.StockReservationItemEntity, pick_batch_entity_1.PickBatch, pick_batch_order_entity_1.PickBatchOrder, storage_zone_entity_1.StorageZone, storage_bin_entity_1.StorageBin, variant_storage_bin_entity_1.VariantStorageBin,
+            stocktake_task_entity_1.StocktakeTask,
+            stocktake_wave_entity_1.StocktakeWave,
+            stocktake_line_entity_1.StocktakeLine,
+        ],
         providers: [
             { provide: constants_1.CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
             tenant_setup_service_1.TenantSetupService,

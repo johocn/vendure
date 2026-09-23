@@ -161,10 +161,17 @@ import { StorageBinService } from './storage/storage-bin.service';
 import { StorageBinAdminResolver } from './storage/storage-bin.admin.resolver';
 import { StorageBinShopResolver } from './storage/storage-bin.shop.resolver';
 import { OrderAddressAdminResolver } from './order/order-address.admin.resolver';
+import { StocktakeTask } from './stocktake/stocktake-task.entity';
+import { StocktakeWave } from './stocktake/stocktake-wave.entity';
+import { StocktakeLine } from './stocktake/stocktake-line.entity';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod, PaymentTemplate, RoomTemplate, RoomTemplateControl, TenantMember, Wallet, MerchantSettlementLedger, VariantLocationBinding, DeliveryRecord, ReconciliationBatch, ReconciliationOrderLine, StockDocEntity, StockDocItemEntity, InventoryAlertRuleEntity, StockReservationEntity, StockReservationItemEntity, PickBatch, PickBatchOrder, StorageZone, StorageBin, VariantStorageBin],
+    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod, PaymentTemplate, RoomTemplate, RoomTemplateControl, TenantMember, Wallet, MerchantSettlementLedger, VariantLocationBinding, DeliveryRecord, ReconciliationBatch, ReconciliationOrderLine, StockDocEntity, StockDocItemEntity, InventoryAlertRuleEntity, StockReservationEntity, StockReservationItemEntity, PickBatch, PickBatchOrder, StorageZone, StorageBin, VariantStorageBin,
+        StocktakeTask,
+        StocktakeWave,
+        StocktakeLine,
+    ],
     providers: [
         { provide: CJK_PLUGIN_OPTIONS, useFactory: () => CjkPlugin.options },
         TenantSetupService,
