@@ -165,6 +165,8 @@ import { StocktakeTask } from './stocktake/stocktake-task.entity';
 import { StocktakeWave } from './stocktake/stocktake-wave.entity';
 import { StocktakeLine } from './stocktake/stocktake-line.entity';
 import { StocktakeService } from './stocktake/stocktake.service';
+import { StocktakeAdminResolver } from './stocktake/stocktake.admin.resolver';
+import { stocktakePermissionDefinitions } from './stocktake/stocktake-permissions';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
@@ -1589,9 +1591,139 @@ import { StocktakeService } from './stocktake/stocktake.service';
                     unbindVariantFromBin(variantId: ID!, stockLocationId: ID!): Boolean!
                     deleteStorageBin(id: ID!): Boolean!
                 }
+
+                type StocktakeTask {
+                    id: ID!
+                    code: String!
+                    stockLocationId: ID!
+                    locationName: String
+                    activityCode: String
+                    name: String!
+                    scopeJson: String!
+                    binModeAtCreate: String!
+                    state: String!
+                    createdById: String
+                    createdByName: String
+                    postedStockDocId: ID
+                    postedAt: DateTime
+                    note: String
+                    createdAt: DateTime!
+                    expectedTotal: Int!
+                    countedTotal: Int!
+                    waveCount: Int!
+                    submittedWaveCount: Int!
+                }
+                type StocktakeTaskList { totalItems: Int!, items: [StocktakeTask!]! }
+                type StocktakeWave {
+                    id: ID!
+                    taskId: ID!
+                    scopeType: String!
+                    zoneId: ID
+                    zoneCode: String
+                    zoneName: String
+                    assigneeId: String
+                    assigneeName: String
+                    state: String!
+                    expectedCount: Int!
+                    countedCount: Int!
+                    claimedAt: DateTime
+                    submittedAt: DateTime
+                }
+                type StocktakeLine {
+                    id: ID!
+                    taskId: ID!
+                    waveId: ID!
+                    variantId: ID!
+                    variantSku: String!
+                    variantName: String!
+                    zoneId: ID
+                    binId: ID
+                    zoneCode: String
+                    binCode: String
+                    bookQty: Int!
+                    countedQty: Int
+                    isExtra: Boolean!
+                    countedById: String
+                    countedByName: String
+                    countedAt: DateTime
+                    note: String
+                }
+                type StocktakeLinePage { totalItems: Int!, items: [StocktakeLine!]! }
+                type StocktakeVarianceRow {
+                    variantId: ID!
+                    variantSku: String!
+                    variantName: String!
+                    countedTotal: Int!
+                    bookQty: Int!
+                    diff: Int!
+                    isExtra: Boolean!
+                    binChanged: Boolean!
+                    targetZoneId: ID
+                    targetBinId: ID
+                    targetBinCode: String
+                    snapBookQty: Int!
+                    currentBookQty: Int!
+                }
+                type StocktakeBookChange { variantId: ID!, variantSku: String!, snapBookQty: Int!, currentBookQty: Int! }
+                type StocktakeDiff {
+                    expectedTotal: Int!
+                    countedTotal: Int!
+                    uncountedCount: Int!
+                    extraCount: Int!
+                    diffCount: Int!
+                    rows: [StocktakeVarianceRow!]!
+                    uncountedLines: [StocktakeLine!]!
+                    recheck: Boolean!
+                    changedVariants: [StocktakeBookChange!]!
+                }
+                type StocktakeScanHit {
+                    kind: String!
+                    binId: ID
+                    binCode: String
+                    zoneId: ID
+                    lineId: ID
+                    variantId: ID
+                    variantSku: String
+                    variantName: String
+                    message: String
+                }
+                type StocktakePostResult { ok: Boolean!, stockDocId: ID, diff: StocktakeDiff, message: String }
+                input StocktakeScopeInput { zones: [Int!], categoryIds: [Int!], variantIds: [Int!], includeZeroBook: Boolean }
+                input StocktakeTaskInput {
+                    stockLocationId: ID!
+                    name: String!
+                    activityCode: String
+                    scope: StocktakeScopeInput
+                    autoSplitByZone: Boolean
+                    note: String
+                }
+                input StocktakeWaveInput { scopeType: String!, zoneId: ID }
+                input StocktakeCountEntryInput { lineId: ID, variantId: ID, countedQty: Int!, zoneId: ID, binId: ID, note: String }
+                input StocktakeLineFilterInput { onlyCounted: Boolean, onlyUncounted: Boolean, onlyDiff: Boolean, onlyExtra: Boolean }
+                input StocktakeTaskOptionsInput { page: Int, pageSize: Int, state: String, activityCode: String, stockLocationId: ID }
+                extend type Query {
+                    stocktakeTasks(options: StocktakeTaskOptionsInput): StocktakeTaskList!
+                    stocktakeTask(id: ID!): StocktakeTask
+                    stocktakeWaves(taskId: ID!): [StocktakeWave!]!
+                    stocktakeExpectedLines(taskId: ID!, waveId: ID, filter: StocktakeLineFilterInput, keyword: String, page: Int, pageSize: Int): StocktakeLinePage!
+                    stocktakeDiff(taskId: ID!): StocktakeDiff!
+                    stocktakeResolveCode(taskId: ID!, code: String!): StocktakeScanHit!
+                }
+                extend type Mutation {
+                    createStocktakeTask(input: StocktakeTaskInput!): StocktakeTask!
+                    addStocktakeWave(taskId: ID!, input: StocktakeWaveInput!): StocktakeWave!
+                    assignStocktakeWave(waveId: ID!, assigneeId: String): StocktakeWave!
+                    claimStocktakeWave(waveId: ID!): StocktakeWave!
+                    releaseStocktakeWave(waveId: ID!): StocktakeWave!
+                    saveStocktakeCounts(waveId: ID!, inputs: [StocktakeCountEntryInput!]!): StocktakeWave!
+                    submitStocktakeWave(waveId: ID!): StocktakeWave!
+                    postStocktake(taskId: ID!, confirm: Boolean): StocktakePostResult!
+                    cancelStocktakeTask(taskId: ID!): StocktakeTask!
+                    cancelStocktakeWave(waveId: ID!): StocktakeWave!
+                }
                 `;
         },
-        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, RoomTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver, MerchantSettlementAdminResolver, DeliveryAdminResolver, InventoryAdminResolver, ReconciliationAdminResolver, StockDocAdminResolver, StockReservationAdminResolver, DeliveryCapabilityResolver, PickBatchAdminResolver, StorageBinAdminResolver, OrderAddressAdminResolver],
+        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, RoomTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver, MerchantSettlementAdminResolver, DeliveryAdminResolver, InventoryAdminResolver, ReconciliationAdminResolver, StockDocAdminResolver, StockReservationAdminResolver, DeliveryCapabilityResolver, PickBatchAdminResolver, StorageBinAdminResolver, OrderAddressAdminResolver, StocktakeAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {
@@ -2156,6 +2288,12 @@ import { StocktakeService } from './stocktake/stocktake.service';
         config.authOptions.customPermissions = [
             ...(config.authOptions.customPermissions || []),
             ...tenantPermissionDefinitions,
+        ];
+
+        // 注册多人协同盘库权限（StocktakeCount / StocktakePost）
+        config.authOptions.customPermissions = [
+            ...(config.authOptions.customPermissions || []),
+            ...stocktakePermissionDefinitions,
         ];
 
         return config;

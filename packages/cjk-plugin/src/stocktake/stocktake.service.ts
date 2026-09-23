@@ -36,10 +36,12 @@ import {
     formatTaskCode,
     nextTaskSeq,
     resolveTaskStateAfterWaves,
+    resolveScanCode,
     resolveWaveStateAfterCount,
     summarizeVariance,
     type BindRow,
     type BookRow,
+    type ScanLine,
     type StocktakeScope,
     type VarianceInputLine,
     waveOwnerError,
@@ -560,5 +562,97 @@ export class StocktakeService {
             await this.connection.getRepository(txCtx, StocktakeTask).save(task);
             return { ok: true, stockDocId: String(doc.id), diff, message: `已生成盘点单据 ${task.code}` };
         });
+    }
+
+    // ------------------------------------------------------------ 应盘行与扫码
+
+    /** 应盘行分页 + 已盘/未盘/差异/盘盈筛选 */
+    async listLines(ctx: RequestContext, args: any): Promise<{ totalItems: number; items: StocktakeLine[] }> {
+        const task = await this.assertTask(ctx, args.taskId, { allowPosted: true });
+        const where: any = { taskId: Number(task.id) };
+        if (args.waveId) where.waveId = Number(args.waveId);
+        let lines = await this.connection.getRepository(ctx, StocktakeLine).find({ where, order: { id: 'ASC' } });
+        const f = args.filter || {};
+        if (f.onlyCounted) lines = lines.filter((l) => l.countedQty !== null);
+        if (f.onlyUncounted) lines = lines.filter((l) => !l.isExtra && l.countedQty === null);
+        if (f.onlyExtra) lines = lines.filter((l) => l.isExtra);
+        if (f.onlyDiff) {
+            const diff = await this.diffOf(ctx, task.id);
+            const diffIds = new Set(diff.rows.filter((r: any) => r.diff !== 0).map((r: any) => String(r.variantId)));
+            lines = lines.filter((l) => diffIds.has(String(l.variantId)));
+        }
+        const kw = String(args.keyword || '').trim().toLowerCase();
+        if (kw) lines = lines.filter((l) => l.variantSku.toLowerCase().includes(kw) || l.variantName.toLowerCase().includes(kw));
+        const page = Number(args.page) > 0 ? Number(args.page) : 1;
+        const pageSize = Math.min(Number(args.pageSize) > 0 ? Number(args.pageSize) : 50, 200);
+        return { totalItems: lines.length, items: lines.slice((page - 1) * pageSize, page * pageSize) };
+    }
+
+    /** 扫码解析：库位码 / 任务内应盘行 / 清单外变体（规格 §7/§8.3） */
+    async resolveCode(ctx: RequestContext, taskId: ID, code: string) {
+        const task = await this.assertTask(ctx, taskId, { allowPosted: true });
+        const tenant = task.tenantChannelId;
+        const bins = await this.connection.getRepository(ctx, StorageBin).find({
+            where: { tenantChannelId: tenant, stockLocationId: task.stockLocationId },
+        });
+        const lines = await this.connection.getRepository(ctx, StocktakeLine).find({ where: { taskId: Number(task.id) } });
+        const variants = await this.connection.getRepository(ctx, ProductVariant).find({
+            where: { id: In(lines.map((l) => Number(l.variantId))) },
+        });
+        const scanLines: ScanLine[] = lines.map((l) => {
+            const v = variants.find((x) => Number(x.id) === Number(l.variantId));
+            return {
+                lineId: l.id as number, variantId: Number(l.variantId), sku: l.variantSku,
+                barcode: ((v?.customFields as any)?.barcode ?? null),
+                internalCode: ((v?.customFields as any)?.internalCode ?? null),
+            };
+        });
+        // 第一轮只在「库位码 + 任务内应盘行」里解析（variants 传空），避免把清单内变体误判为盘盈
+        const hit = resolveScanCode(String(code || ''), {
+            bins: bins.map((b) => ({ binId: b.id as number, binCode: b.code, zoneId: Number(b.zoneId) })),
+            lines: scanLines,
+            variants: [],
+        });
+        if (hit.kind !== 'none') {
+            const line = hit.kind === 'line' ? lines.find((l) => l.id === hit.lineId) : undefined;
+            return {
+                kind: hit.kind,
+                binId: hit.kind === 'bin' ? String(hit.binId) : null,
+                binCode: hit.kind === 'bin' ? hit.binCode : null,
+                zoneId: hit.kind === 'bin' ? String(hit.zoneId) : null,
+                lineId: hit.kind === 'line' ? String(hit.lineId) : null,
+                variantId: line ? String(line.variantId) : null,
+                variantSku: line?.variantSku ?? null,
+                variantName: line?.variantName ?? null,
+                message: null,
+            };
+        }
+        // 清单外：按 SKU / 内部码 / 条形码反查商品（规格 §8.3「CM 时序」）。
+        // 取舍（相对计划初稿的 take:5000 拉全表）：改为 3 次带索引的**精确查询**，避免大库全表扫描，
+        //   ① sku 精确匹配（Vendure 原生列，唯一索引）
+        //   ② customFields.barcode 精确匹配
+        //   ③ customFields.internalCode 精确匹配
+        // 三次都未命中才判 none；任一命中即取首个结果。注意 ProductVariant 为 Vendure 核心表，
+        // 不走自建表的渠道收口（R10），与既有 storage-bin 对变体的处理口径一致。
+        const raw = String(code || '').trim();
+        let found: ProductVariant | null = null;
+        if (raw) {
+            const variantRepo = this.connection.getRepository(ctx, ProductVariant);
+            found = await variantRepo.findOne({ where: { sku: raw } });
+            if (!found) found = await variantRepo.findOne({ where: { customFields: { barcode: raw } } as any });
+            if (!found) found = await variantRepo.findOne({ where: { customFields: { internalCode: raw } } as any });
+        }
+        if (found) {
+            return {
+                kind: 'extra', binId: null, binCode: null, zoneId: null, lineId: null,
+                variantId: String(found.id), variantSku: found.sku, variantName: found.name || found.sku,
+                message: '该商品不在应盘清单内，可登记为盘盈',
+            };
+        }
+        return {
+            kind: 'none', binId: null, binCode: null, zoneId: null, lineId: null,
+            variantId: null, variantSku: null, variantName: null,
+            message: '未匹配到商品或库位，请手动输入',
+        };
     }
 }

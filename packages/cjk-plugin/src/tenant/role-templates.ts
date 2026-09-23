@@ -32,6 +32,8 @@ export const OFFICIAL_ROLE_TEMPLATES: RoleTemplate[] = [
             // 收银/POS：租户管理员可操作到店自提核销收款，且可向下授权「收银员」角色
             'ManageOwnShop',
             'TenantRoleManage', 'TenantMemberManage',
+            // 多人协同盘库（规格 §9）：仓管主管「能盘」+「能过账」
+            'StocktakeCount', 'StocktakePost',
         ],
     },
     {
@@ -55,6 +57,8 @@ export const OFFICIAL_ROLE_TEMPLATES: RoleTemplate[] = [
             Permission.ReadProduct,
             Permission.UpdateProduct,
             Permission.ReadOrder,
+            // 多人协同盘库（规格 §9）：仓管/盘点员只「能盘」，不过账
+            'StocktakeCount',
         ],
     },
     {

@@ -153,4 +153,41 @@ export declare class StocktakeService {
         };
         message: string;
     }>;
+    /** 应盘行分页 + 已盘/未盘/差异/盘盈筛选 */
+    listLines(ctx: RequestContext, args: any): Promise<{
+        totalItems: number;
+        items: StocktakeLine[];
+    }>;
+    /** 扫码解析：库位码 / 任务内应盘行 / 清单外变体（规格 §7/§8.3） */
+    resolveCode(ctx: RequestContext, taskId: ID, code: string): Promise<{
+        kind: "line" | "bin" | "extra";
+        binId: string | null;
+        binCode: string | null;
+        zoneId: string | null;
+        lineId: string | null;
+        variantId: string | null;
+        variantSku: string | null;
+        variantName: string | null;
+        message: null;
+    } | {
+        kind: string;
+        binId: null;
+        binCode: null;
+        zoneId: null;
+        lineId: null;
+        variantId: string;
+        variantSku: string;
+        variantName: string;
+        message: string;
+    } | {
+        kind: string;
+        binId: null;
+        binCode: null;
+        zoneId: null;
+        lineId: null;
+        variantId: null;
+        variantSku: null;
+        variantName: null;
+        message: string;
+    }>;
 }
