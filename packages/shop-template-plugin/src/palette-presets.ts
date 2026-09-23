@@ -29,4 +29,5 @@ export const PALETTE_PRESETS: Record<string, ThemePaletteDef> = {
     'tech-blue': { scheme: 'tech-blue', name: '科技蓝', tokens: { primaryColor: '#0066ff', accentColor: '#e6f0ff', radius: 10 } },
     'fresh-green': { scheme: 'fresh-green', name: '清雅绿', tokens: { primaryColor: '#07b873', accentColor: '#e6f9f0', radius: 10 } },
     'midnight': { scheme: 'midnight', name: '极夜黑', tokens: { primaryColor: '#1c1c1e', accentColor: '#333333', radius: 8 } },
+    'usemall-coral': { scheme: 'usemall-coral', name: '珊瑚粉点缀', tokens: { primaryColor: '#e0433f', accentColor: '#ff6a6c', radius: 8 } },
 };
