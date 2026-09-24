@@ -245,7 +245,11 @@ export class StocktakeService {
         const variantMeta = new Map(variants.map((v) => [v.id as number, { sku: v.sku, name: v.name || v.sku }]));
         const zoneMeta = new Map(zones.map((z) => [z.id as number, { code: z.code, name: z.name }]));
 
-        const expected = buildExpected({ binMode, bookRows, bindRows, variantMeta, zoneMeta, scope });
+        const expected = buildExpected({
+            binMode, bookRows, bindRows, variantMeta, zoneMeta, scope,
+            // 建任务开关：关闭时整仓只出一个盘次（缺省 / true = 按库区拆）
+            autoSplitByZone: input.autoSplitByZone !== false,
+        });
         if (!expected.waves.some((w) => w.expectedCount > 0)) {
             throw new UserInputError('该范围下没有可盘的商品（既无账面也无归位记录），请检查圈选条件或仓库');
         }

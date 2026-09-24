@@ -147,6 +147,44 @@ describe('应盘清单生成（规格 §6.1）', () => {
         expect(r.waves[0].zoneCode).toBe('A');
         expect(r.linesByWave[0][0].binId).toBeNull();
     });
+
+    it('autoSplitByZone=false：不按库区拆盘次，整仓一个 whole 盘次且行保留库位归属', () => {
+        const r = buildExpected({
+            binMode: 'bin',
+            bookRows: [{ variantId: 11, quantity: 5 }, { variantId: 22, quantity: 3 }],
+            bindRows: [
+                { variantId: 11, zoneId: 1, binId: 101, zoneCode: 'A', binCode: 'A-01-01' },
+                { variantId: 33, zoneId: 2, binId: 201, zoneCode: 'B', binCode: 'B-01-01' },
+            ],
+            variantMeta, zoneMeta, scope,
+            autoSplitByZone: false,
+        });
+        expect(r.waves).toHaveLength(1);
+        expect(r.waves[0].scopeType).toBe('whole');
+        expect(r.waves[0].zoneId).toBeNull();
+        // 三个变体（含只有账面的 22）全在同一个盘次里，无 unassigned 桶
+        expect(r.waves[0].expectedCount).toBe(3);
+        expect(r.linesByWave[0].map((l) => l.variantId)).toEqual([11, 22, 33]);
+        // 行仍带库位：变体 11 在 A 区 A-01-01、33 在 B 区 B-01-01、22 未归位
+        const line11 = r.linesByWave[0].find((l) => l.variantId === 11)!;
+        const line22 = r.linesByWave[0].find((l) => l.variantId === 22)!;
+        expect([line11.zoneCode, line11.binCode]).toEqual(['A', 'A-01-01']);
+        expect([line22.zoneId, line22.binId]).toEqual([null, null]);
+    });
+
+    it('autoSplitByZone 缺省 / true：仍按库区拆（与 autoSplitByZone=false 同为 2 库区时的对照）', () => {
+        const input = {
+            binMode: 'bin' as const,
+            bookRows: [{ variantId: 11, quantity: 5 }, { variantId: 22, quantity: 3 }],
+            bindRows: [
+                { variantId: 11, zoneId: 1, binId: 101, zoneCode: 'A', binCode: 'A-01-01' },
+                { variantId: 33, zoneId: 2, binId: 201, zoneCode: 'B', binCode: 'B-01-01' },
+            ],
+            variantMeta, zoneMeta, scope,
+        };
+        expect(buildExpected(input).waves.map((w) => w.scopeType)).toEqual(['zone', 'zone', 'unassigned']);
+        expect(buildExpected({ ...input, autoSplitByZone: true }).waves).toHaveLength(3);
+    });
 });
 
 describe('差异汇总（规格 §6.2，R11 按变体汇总）', () => {

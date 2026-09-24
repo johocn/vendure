@@ -103,6 +103,12 @@ export interface BuildExpectedInput {
     variantMeta: Map<number, VariantMeta>;
     zoneMeta: Map<number, ZoneMeta>;
     scope: StocktakeScope;
+    /**
+     * 建任务开关（`createStocktakeTask.autoSplitByZone`）：false = **不按库区拆盘次**，
+     * 整仓只出一个 `whole` 盘次（行仍保留库位归属，录入页网格照常可用）。
+     * 缺省 / true = 按库区拆（zone 档/bin 档各库区一个盘次 + 未归位桶）。
+     */
+    autoSplitByZone?: boolean;
 }
 
 export interface BuildExpectedResult {
@@ -117,9 +123,11 @@ export interface BuildExpectedResult {
  * - 有绑定 → 每个 (zoneId, binId) 一行；无绑定 → 未归位桶
  * - scope.zones 之外的绑定 → 也退入未归位桶（**不丢行**）
  * - binMode=off → 只建一个 whole 盘次，库位一律为空
+ * - autoSplitByZone=false（且 binMode≠off）→ 只建一个 whole 盘次，行保留库位归属
  */
 export function buildExpected(input: BuildExpectedInput): BuildExpectedResult {
     const { binMode, bookRows, bindRows, variantMeta, zoneMeta, scope } = input;
+    const autoSplit = input.autoSplitByZone !== false;
 
     const book = new Map<number, number>();
     for (const r of bookRows) {
@@ -171,6 +179,29 @@ export function buildExpected(input: BuildExpectedInput): BuildExpectedResult {
                 variantId, variantSku: m.sku, variantName: m.name,
                 zoneId: null, binId: null, zoneCode: null, binCode: null, bookQty,
             });
+            continue;
+        }
+
+        // 不按库区拆盘次：整仓一个盘次；行仍按绑定保留库位（含未绑定行），供录入页网格/未归位桶使用
+        if (!autoSplit) {
+            const g = ensureGroup('whole', () => ({
+                scopeType: 'whole', zoneId: null, zoneCode: null, zoneName: null, expectedCount: 0,
+            }));
+            if (!binds.length) {
+                g.lines.push({
+                    variantId, variantSku: m.sku, variantName: m.name,
+                    zoneId: null, binId: null, zoneCode: null, binCode: null, bookQty,
+                });
+                continue;
+            }
+            for (const b of binds) {
+                const zm = zoneMeta.get(b.zoneId);
+                g.lines.push({
+                    variantId, variantSku: m.sku, variantName: m.name,
+                    zoneId: b.zoneId, binId: b.binId,
+                    zoneCode: b.zoneCode ?? zm?.code ?? null, binCode: b.binCode ?? null, bookQty,
+                });
+            }
             continue;
         }
 

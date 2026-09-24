@@ -65,10 +65,12 @@ function nextTaskSeq(codes, now) {
  * - 有绑定 → 每个 (zoneId, binId) 一行；无绑定 → 未归位桶
  * - scope.zones 之外的绑定 → 也退入未归位桶（**不丢行**）
  * - binMode=off → 只建一个 whole 盘次，库位一律为空
+ * - autoSplitByZone=false（且 binMode≠off）→ 只建一个 whole 盘次，行保留库位归属
  */
 function buildExpected(input) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d, _e, _f;
     const { binMode, bookRows, bindRows, variantMeta, zoneMeta, scope } = input;
+    const autoSplit = input.autoSplitByZone !== false;
     const book = new Map();
     for (const r of bookRows) {
         book.set(r.variantId, (book.get(r.variantId) || 0) + (r.quantity || 0));
@@ -116,6 +118,28 @@ function buildExpected(input) {
             });
             continue;
         }
+        // 不按库区拆盘次：整仓一个盘次；行仍按绑定保留库位（含未绑定行），供录入页网格/未归位桶使用
+        if (!autoSplit) {
+            const g = ensureGroup('whole', () => ({
+                scopeType: 'whole', zoneId: null, zoneCode: null, zoneName: null, expectedCount: 0,
+            }));
+            if (!binds.length) {
+                g.lines.push({
+                    variantId, variantSku: m.sku, variantName: m.name,
+                    zoneId: null, binId: null, zoneCode: null, binCode: null, bookQty,
+                });
+                continue;
+            }
+            for (const b of binds) {
+                const zm = zoneMeta.get(b.zoneId);
+                g.lines.push({
+                    variantId, variantSku: m.sku, variantName: m.name,
+                    zoneId: b.zoneId, binId: b.binId,
+                    zoneCode: (_b = (_a = b.zoneCode) !== null && _a !== void 0 ? _a : zm === null || zm === void 0 ? void 0 : zm.code) !== null && _b !== void 0 ? _b : null, binCode: (_c = b.binCode) !== null && _c !== void 0 ? _c : null, bookQty,
+                });
+            }
+            continue;
+        }
         if (!binds.length) {
             const g = ensureGroup('unassigned', () => ({
                 scopeType: 'unassigned', zoneId: null, zoneCode: null, zoneName: null, expectedCount: 0,
@@ -141,7 +165,7 @@ function buildExpected(input) {
             g.lines.push({
                 variantId, variantSku: m.sku, variantName: m.name,
                 zoneId: b.zoneId, binId: b.binId,
-                zoneCode: (_b = (_a = b.zoneCode) !== null && _a !== void 0 ? _a : zm === null || zm === void 0 ? void 0 : zm.code) !== null && _b !== void 0 ? _b : null, binCode: (_c = b.binCode) !== null && _c !== void 0 ? _c : null,
+                zoneCode: (_e = (_d = b.zoneCode) !== null && _d !== void 0 ? _d : zm === null || zm === void 0 ? void 0 : zm.code) !== null && _e !== void 0 ? _e : null, binCode: (_f = b.binCode) !== null && _f !== void 0 ? _f : null,
                 bookQty,
             });
         }
