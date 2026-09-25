@@ -1874,6 +1874,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     targetZoneId: ID
                     targetBinId: ID
                     targetBinCode: String
+                    targetZoneCode: String
                     snapBookQty: Int!
                     currentBookQty: Int!
                 }

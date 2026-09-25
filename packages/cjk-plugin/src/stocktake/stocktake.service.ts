@@ -500,6 +500,20 @@ export class StocktakeService {
             zoneId: l.zoneId, binId: l.binId,
         }));
         const summary = summarizeVariance(input, currentBook, currentBind);
+        // 规格 §7.5/§7.4：差异表与 variance CSV 的「库位编码 / 库位」列需要真实编码。
+        // 汇总只带 targetZoneId/targetBinId，这里按 id 反查编码（空集合不发查询）。
+        const targetZoneIds = Array.from(new Set(summary.byVariant.map((v) => v.targetZoneId).filter((x): x is number => x !== null)));
+        const targetBinIds = Array.from(new Set(summary.byVariant.map((v) => v.targetBinId).filter((x): x is number => x !== null)));
+        const zoneCodeById = new Map<number, string>();
+        const binCodeById = new Map<number, string>();
+        if (targetZoneIds.length) {
+            const zs = await this.connection.getRepository(ctx, StorageZone).find({ where: { id: In(targetZoneIds) } as any });
+            for (const z of zs) zoneCodeById.set(Number(z.id), z.code);
+        }
+        if (targetBinIds.length) {
+            const bs = await this.connection.getRepository(ctx, StorageBin).find({ where: { id: In(targetBinIds) } as any });
+            for (const b of bs) binCodeById.set(Number(b.id), b.code);
+        }
         const skuOf = new Map(lines.map((l) => [Number(l.variantId), { sku: l.variantSku, name: l.variantName }]));
         return {
             summary,
@@ -511,7 +525,8 @@ export class StocktakeService {
                 isExtra: v.isExtra, binChanged: v.binChanged,
                 targetZoneId: v.targetZoneId === null ? null : String(v.targetZoneId),
                 targetBinId: v.targetBinId === null ? null : String(v.targetBinId),
-                targetBinCode: null,
+                targetBinCode: v.targetBinId === null ? null : (binCodeById.get(v.targetBinId) ?? null),
+                targetZoneCode: v.targetZoneId === null ? null : (zoneCodeById.get(v.targetZoneId) ?? null),
                 snapBookQty: v.snapBookQty, currentBookQty: v.bookQty,
             })),
             uncountedLines: lines.filter((l) => !l.isExtra && l.countedQty === null),

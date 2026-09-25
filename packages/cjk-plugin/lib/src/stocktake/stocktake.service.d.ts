@@ -82,7 +82,8 @@ export declare class StocktakeService {
             binChanged: boolean;
             targetZoneId: string | null;
             targetBinId: string | null;
-            targetBinCode: null;
+            targetBinCode: string | null;
+            targetZoneCode: string | null;
             snapBookQty: number;
             currentBookQty: number;
         }[];
@@ -110,7 +111,8 @@ export declare class StocktakeService {
                 binChanged: boolean;
                 targetZoneId: string | null;
                 targetBinId: string | null;
-                targetBinCode: null;
+                targetBinCode: string | null;
+                targetZoneCode: string | null;
                 snapBookQty: number;
                 currentBookQty: number;
             }[];
@@ -139,7 +141,8 @@ export declare class StocktakeService {
                 binChanged: boolean;
                 targetZoneId: string | null;
                 targetBinId: string | null;
-                targetBinCode: null;
+                targetBinCode: string | null;
+                targetZoneCode: string | null;
                 snapBookQty: number;
                 currentBookQty: number;
             }[];

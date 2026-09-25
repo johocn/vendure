@@ -481,11 +481,27 @@ let StocktakeService = class StocktakeService {
             zoneId: l.zoneId, binId: l.binId,
         }));
         const summary = (0, stocktake_math_1.summarizeVariance)(input, currentBook, currentBind);
+        // 规格 §7.5/§7.4：差异表与 variance CSV 的「库位编码 / 库位」列需要真实编码。
+        // 汇总只带 targetZoneId/targetBinId，这里按 id 反查编码（空集合不发查询）。
+        const targetZoneIds = Array.from(new Set(summary.byVariant.map((v) => v.targetZoneId).filter((x) => x !== null)));
+        const targetBinIds = Array.from(new Set(summary.byVariant.map((v) => v.targetBinId).filter((x) => x !== null)));
+        const zoneCodeById = new Map();
+        const binCodeById = new Map();
+        if (targetZoneIds.length) {
+            const zs = await this.connection.getRepository(ctx, storage_zone_entity_1.StorageZone).find({ where: { id: (0, typeorm_1.In)(targetZoneIds) } });
+            for (const z of zs)
+                zoneCodeById.set(Number(z.id), z.code);
+        }
+        if (targetBinIds.length) {
+            const bs = await this.connection.getRepository(ctx, storage_bin_entity_1.StorageBin).find({ where: { id: (0, typeorm_1.In)(targetBinIds) } });
+            for (const b of bs)
+                binCodeById.set(Number(b.id), b.code);
+        }
         const skuOf = new Map(lines.map((l) => [Number(l.variantId), { sku: l.variantSku, name: l.variantName }]));
         return {
             summary,
             rows: summary.byVariant.map((v) => {
-                var _a, _b, _c, _d;
+                var _a, _b, _c, _d, _e, _f;
                 return ({
                     variantId: String(v.variantId),
                     variantSku: (_b = (_a = skuOf.get(v.variantId)) === null || _a === void 0 ? void 0 : _a.sku) !== null && _b !== void 0 ? _b : `#${v.variantId}`,
@@ -494,7 +510,8 @@ let StocktakeService = class StocktakeService {
                     isExtra: v.isExtra, binChanged: v.binChanged,
                     targetZoneId: v.targetZoneId === null ? null : String(v.targetZoneId),
                     targetBinId: v.targetBinId === null ? null : String(v.targetBinId),
-                    targetBinCode: null,
+                    targetBinCode: v.targetBinId === null ? null : ((_e = binCodeById.get(v.targetBinId)) !== null && _e !== void 0 ? _e : null),
+                    targetZoneCode: v.targetZoneId === null ? null : ((_f = zoneCodeById.get(v.targetZoneId)) !== null && _f !== void 0 ? _f : null),
                     snapBookQty: v.snapBookQty, currentBookQty: v.bookQty,
                 });
             }),

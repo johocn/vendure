@@ -1661,6 +1661,7 @@ import { stocktakePermissionDefinitions } from './stocktake/stocktake-permission
                     targetZoneId: ID
                     targetBinId: ID
                     targetBinCode: String
+                    targetZoneCode: String
                     snapBookQty: Int!
                     currentBookQty: Int!
                 }
