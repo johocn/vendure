@@ -17,6 +17,7 @@ export declare class StockReservationAdminResolver {
         status: import("./stock-reservation.entity").ReservationStatus;
         tenantChannelId: string;
         createdAt: Date;
+        expiresAt: Date | null;
     }>;
     reservationReconcile(ctx: RequestContext): Promise<{
         variantId: number;
@@ -35,6 +36,7 @@ export declare class StockReservationAdminResolver {
         status: import("./stock-reservation.entity").ReservationStatus;
         tenantChannelId: string;
         createdAt: Date;
+        expiresAt: Date | null;
     }>;
     fulfillReservationItem(ctx: RequestContext, id: ID, quantity?: number): Promise<import("./stock-reservation-item.entity").StockReservationItemEntity>;
     releaseReservation(ctx: RequestContext, id: ID): Promise<import("./stock-reservation.entity").StockReservationEntity>;

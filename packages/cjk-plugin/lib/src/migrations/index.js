@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CollectionIconMigration = exports.ChannelInventoryModeColumnMigration = exports.StockTableMigration = exports.ShippingContactFlagMigration = exports.ChannelCustomColumnMigration = exports.TenantMemberColumnMigration = exports.PAY_CONFIG_MIGRATION_DONE = exports.PayConfigEncryptionMigration = exports.MAP_CONFIG_MIGRATION_DONE = exports.MapConfigEncryptionMigration = void 0;
+exports.ReservationExpiresAtMigration = exports.CollectionIconMigration = exports.ChannelInventoryModeColumnMigration = exports.StockTableMigration = exports.ShippingContactFlagMigration = exports.ChannelCustomColumnMigration = exports.TenantMemberColumnMigration = exports.PAY_CONFIG_MIGRATION_DONE = exports.PayConfigEncryptionMigration = exports.MAP_CONFIG_MIGRATION_DONE = exports.MapConfigEncryptionMigration = void 0;
 // packages/cjk-plugin/src/migrations/index.ts
 var migrate_mapconfig_encryption_1 = require("./migrate-mapconfig-encryption");
 Object.defineProperty(exports, "MapConfigEncryptionMigration", { enumerable: true, get: function () { return migrate_mapconfig_encryption_1.MapConfigEncryptionMigration; } });
@@ -19,4 +19,6 @@ Object.defineProperty(exports, "StockTableMigration", { enumerable: true, get: f
 Object.defineProperty(exports, "ChannelInventoryModeColumnMigration", { enumerable: true, get: function () { return migrate_stock_tables_1.ChannelInventoryModeColumnMigration; } });
 var migrate_collection_icon_1 = require("./migrate-collection-icon");
 Object.defineProperty(exports, "CollectionIconMigration", { enumerable: true, get: function () { return migrate_collection_icon_1.CollectionIconMigration; } });
+var migrate_reservation_expires_at_1 = require("./migrate-reservation-expires-at");
+Object.defineProperty(exports, "ReservationExpiresAtMigration", { enumerable: true, get: function () { return migrate_reservation_expires_at_1.ReservationExpiresAtMigration; } });
 //# sourceMappingURL=index.js.map

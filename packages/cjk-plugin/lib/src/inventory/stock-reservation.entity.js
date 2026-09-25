@@ -47,6 +47,11 @@ __decorate([
     (0, typeorm_1.Column)(),
     __metadata("design:type", Date)
 ], StockReservationEntity.prototype, "createdAt", void 0);
+__decorate([
+    (0, typeorm_1.Index)(),
+    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
+    __metadata("design:type", Object)
+], StockReservationEntity.prototype, "expiresAt", void 0);
 exports.StockReservationEntity = StockReservationEntity = __decorate([
     (0, typeorm_1.Entity)('stock_reservation')
 ], StockReservationEntity);

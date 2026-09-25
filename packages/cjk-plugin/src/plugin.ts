@@ -67,7 +67,7 @@ import { MapProviderRegistry } from './map/map-provider-registry';
 import { MapService } from './map/map.service';
 import { MapAdminResolver } from './map/map-admin.resolver';
 import { MapShopResolver } from './map/map-shop.resolver';
-import { MapConfigEncryptionMigration, PayConfigEncryptionMigration, TenantMemberColumnMigration, ChannelCustomColumnMigration, ShippingContactFlagMigration, StockTableMigration, ChannelInventoryModeColumnMigration, CollectionIconMigration } from './migrations';
+import { MapConfigEncryptionMigration, PayConfigEncryptionMigration, TenantMemberColumnMigration, ChannelCustomColumnMigration, ShippingContactFlagMigration, StockTableMigration, ChannelInventoryModeColumnMigration, CollectionIconMigration, ReservationExpiresAtMigration } from './migrations';
 import { AuthConfigService } from './auth/auth-config.service';
 import { PayConfigService } from './payment/pay-config.service';
 import { MapConfigService } from './map/map-config.service';
@@ -189,6 +189,7 @@ import { stocktakePermissionDefinitions } from './stocktake/stocktake-permission
         PayConfigEncryptionMigration,
         TenantMemberColumnMigration,
         ChannelCustomColumnMigration,
+        ReservationExpiresAtMigration,
         ShippingContactFlagMigration,
         StockTableMigration,
         ChannelInventoryModeColumnMigration,
