@@ -29,6 +29,8 @@ import { StorageZone } from '../storage/storage-zone.entity';
 import { VariantStorageBin } from '../storage/variant-storage-bin.entity';
 import { TenantMember } from '../tenant/tenant-member.entity';
 import {
+    aggregateByBin,
+    aggregateByCounter,
     buildExpected,
     buildPostItems,
     canTaskTransition,
@@ -40,9 +42,13 @@ import {
     resolveScanCode,
     resolveWaveStateAfterCount,
     summarizeVariance,
+    toCsv,
+    CSV_MAX_ROWS,
     type BindRow,
     type BookRow,
+    type CsvCell,
     type ScanLine,
+    type StatLine,
     type StocktakeScope,
     type VarianceInputLine,
     waveOwnerError,
@@ -547,6 +553,77 @@ export class StocktakeService {
         const saved = await this.connection.getRepository(ctx, StocktakeWave).save(wave);
         await this.syncTaskState(ctx, wave.taskId);
         return saved;
+    }
+
+    // ------------------------------------------------------------ 统计与导出
+
+    /** 统计输入行投影（纯函数入参，规格 §7.3） */
+    private async statLinesOf(ctx: RequestContext, taskId: ID): Promise<StatLine[]> {
+        const lines = await this.connection.getRepository(ctx, StocktakeLine).find({ where: { taskId: Number(taskId) } });
+        return lines.map((l) => ({
+            waveId: Number(l.waveId), zoneId: l.zoneId, zoneCode: l.zoneCode, binId: l.binId, binCode: l.binCode,
+            isExtra: l.isExtra, countedQty: l.countedQty, countedById: l.countedById, countedByName: l.countedByName,
+            countedAt: l.countedAt,
+        }));
+    }
+
+    /** 作业量统计（规格 §6.3）：DRAFT / 零行任务返回空结构，不报错 */
+    async statsOf(ctx: RequestContext, taskId: ID) {
+        await this.assertTask(ctx, taskId, { allowPosted: true });
+        const lines = await this.statLinesOf(ctx, taskId);
+        return {
+            expectedLines: lines.filter((l) => !l.isExtra).length,
+            countedLines: lines.filter((l) => l.countedQty !== null).length,
+            byBin: aggregateByBin(lines),
+            byCounter: aggregateByCounter(lines),
+        };
+    }
+
+    /**
+     * 全量导出（规格 §6.4 / §7.4）：后端只出 CSV（不引 exceljs/xlsx，守部署铁律）。
+     * 四个 kind 与前端「当前视图导出」共用同一份列定义；行数超上限即截断并标记。
+     */
+    async exportOf(ctx: RequestContext, taskId: ID, kind: string) {
+        const task = await this.assertTask(ctx, taskId, { allowPosted: true });
+        const lines = await this.statLinesOf(ctx, taskId);
+        const ALL = ['variance', 'lines', 'by_bin', 'by_counter'];
+        if (!ALL.includes(kind)) throw new UserInputError(`不支持的导出类型 ${kind}（可选：${ALL.join(' / ')}）`);
+
+        let header: string[] = [];
+        let body: CsvCell[][] = [];
+
+        if (kind === 'lines') {
+            header = ['库位编码', '库位', '变体 SKU', '变体名称', '账面数', '实盘数', '是否盘盈', '盘点人', '盘点时间', '备注'];
+            const detail = await this.connection.getRepository(ctx, StocktakeLine).find({ where: { taskId: Number(task.id) }, order: { id: 'ASC' } });
+            body = detail.map((l) => [
+                l.binCode ?? '', l.zoneCode ?? '', l.variantSku, l.variantName, l.bookQty,
+                l.countedQty, l.isExtra, l.countedByName ?? '', l.countedAt, l.note ?? '',
+            ]);
+        } else if (kind === 'by_bin') {
+            header = ['库区', '库位', '应盘', '已盘', '未盘', '盘盈'];
+            body = aggregateByBin(lines).map((r) => [r.zoneCode ?? '', r.binCode ?? '', r.expectedLines, r.countedLines, r.uncountedLines, r.extraLines]);
+        } else if (kind === 'by_counter') {
+            header = ['盘点人', '已盘', '盘盈', '涉及盘次', '最后活动时间'];
+            body = aggregateByCounter(lines).map((r) => [r.countedByName ?? '', r.countedLines, r.extraLines, r.waveCount, r.lastCountedAt]);
+        } else {
+            header = ['库位编码', '库位', '变体 SKU', '变体名称', '盘点数', '快照账面', '过账账面', '差异', '盘盈', '账面变动'];
+            const d = await this.diffOf(ctx, task.id);
+            body = d.rows.map((r) => [
+                r.targetBinCode ?? '', r.targetZoneCode ?? '', r.variantSku, r.variantName, r.countedTotal,
+                r.snapBookQty, r.currentBookQty, r.diff, r.isExtra, r.snapBookQty !== r.currentBookQty,
+            ]);
+        }
+
+        const truncated = body.length > CSV_MAX_ROWS;
+        const content = toCsv([header, ...body.slice(0, CSV_MAX_ROWS)]);
+        const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
+        return {
+            filename: `stocktake-${task.code}-${kind}-${stamp}.csv`,
+            mimeType: 'text/csv;charset=utf-8',
+            content,
+            totalRows: body.length,
+            truncated,
+        };
     }
 
     // ------------------------------------------------------------ 差异与过账

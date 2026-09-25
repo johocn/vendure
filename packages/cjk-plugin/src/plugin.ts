@@ -1689,6 +1689,31 @@ import { stocktakePermissionDefinitions } from './stocktake/stocktake-permission
                     message: String
                 }
                 type StocktakePostResult { ok: Boolean!, stockDocId: ID, diff: StocktakeDiff, message: String }
+                type StocktakeBinStat {
+                    zoneId: ID
+                    zoneCode: String
+                    binId: ID
+                    binCode: String
+                    expectedLines: Int!
+                    countedLines: Int!
+                    uncountedLines: Int!
+                    extraLines: Int!
+                }
+                type StocktakeCounterStat {
+                    countedById: String
+                    countedByName: String
+                    countedLines: Int!
+                    extraLines: Int!
+                    waveCount: Int!
+                    lastCountedAt: DateTime
+                }
+                type StocktakeStats {
+                    expectedLines: Int!
+                    countedLines: Int!
+                    byBin: [StocktakeBinStat!]!
+                    byCounter: [StocktakeCounterStat!]!
+                }
+                type StocktakeExportFile { filename: String!, mimeType: String!, content: String!, totalRows: Int!, truncated: Boolean! }
                 input StocktakeScopeInput { zones: [Int!], categoryIds: [Int!], variantIds: [Int!], includeZeroBook: Boolean }
                 input StocktakeTaskInput {
                     stockLocationId: ID!
@@ -1711,6 +1736,8 @@ import { stocktakePermissionDefinitions } from './stocktake/stocktake-permission
                     stocktakeExpectedLines(taskId: ID!, waveId: ID, filter: StocktakeLineFilterInput, keyword: String, page: Int, pageSize: Int): StocktakeLinePage!
                     stocktakeDiff(taskId: ID!): StocktakeDiff!
                     stocktakeResolveCode(taskId: ID!, code: String!): StocktakeScanHit!
+                    stocktakeStats(taskId: ID!): StocktakeStats!
+                    stocktakeExport(taskId: ID!, kind: String!): StocktakeExportFile!
                 }
                 extend type Mutation {
                     createStocktakeTask(input: StocktakeTaskInput!): StocktakeTask!

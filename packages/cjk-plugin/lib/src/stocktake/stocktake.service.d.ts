@@ -80,6 +80,26 @@ export declare class StocktakeService {
     private syncTaskState;
     saveCounts(ctx: RequestContext, waveId: ID, inputs: any[]): Promise<StocktakeWave>;
     submitWave(ctx: RequestContext, waveId: ID): Promise<StocktakeWave>;
+    /** 统计输入行投影（纯函数入参，规格 §7.3） */
+    private statLinesOf;
+    /** 作业量统计（规格 §6.3）：DRAFT / 零行任务返回空结构，不报错 */
+    statsOf(ctx: RequestContext, taskId: ID): Promise<{
+        expectedLines: number;
+        countedLines: number;
+        byBin: import("./stocktake-math").BinStat[];
+        byCounter: import("./stocktake-math").CounterStat[];
+    }>;
+    /**
+     * 全量导出（规格 §6.4 / §7.4）：后端只出 CSV（不引 exceljs/xlsx，守部署铁律）。
+     * 四个 kind 与前端「当前视图导出」共用同一份列定义；行数超上限即截断并标记。
+     */
+    exportOf(ctx: RequestContext, taskId: ID, kind: string): Promise<{
+        filename: string;
+        mimeType: string;
+        content: string;
+        totalRows: number;
+        truncated: boolean;
+    }>;
     /** 读当前账面（StockLevel）+ 当前绑定（variant_storage_bin）→ 差异汇总 */
     private loadCurrentState;
     diffOf(ctx: RequestContext, taskId: ID): Promise<{

@@ -56,6 +56,19 @@ export declare class StocktakeAdminResolver {
         variantName: null;
         message: string;
     }>;
+    stocktakeStats(ctx: RequestContext, args: any): Promise<{
+        expectedLines: number;
+        countedLines: number;
+        byBin: import("./stocktake-math").BinStat[];
+        byCounter: import("./stocktake-math").CounterStat[];
+    }>;
+    stocktakeExport(ctx: RequestContext, args: any): Promise<{
+        filename: string;
+        mimeType: string;
+        content: string;
+        totalRows: number;
+        truncated: boolean;
+    }>;
     createStocktakeTask(ctx: RequestContext, args: any): Promise<import("./stocktake.service").StocktakeTaskView>;
     openStocktakeTask(ctx: RequestContext, args: any): Promise<import("./stocktake.service").StocktakeTaskView>;
     updateStocktakeTask(ctx: RequestContext, args: any): Promise<import("./stocktake.service").StocktakeTaskView>;

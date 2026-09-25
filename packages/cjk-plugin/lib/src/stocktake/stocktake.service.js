@@ -533,6 +533,87 @@ let StocktakeService = class StocktakeService {
         await this.syncTaskState(ctx, wave.taskId);
         return saved;
     }
+    // ------------------------------------------------------------ 统计与导出
+    /** 统计输入行投影（纯函数入参，规格 §7.3） */
+    async statLinesOf(ctx, taskId) {
+        const lines = await this.connection.getRepository(ctx, stocktake_line_entity_1.StocktakeLine).find({ where: { taskId: Number(taskId) } });
+        return lines.map((l) => ({
+            waveId: Number(l.waveId), zoneId: l.zoneId, zoneCode: l.zoneCode, binId: l.binId, binCode: l.binCode,
+            isExtra: l.isExtra, countedQty: l.countedQty, countedById: l.countedById, countedByName: l.countedByName,
+            countedAt: l.countedAt,
+        }));
+    }
+    /** 作业量统计（规格 §6.3）：DRAFT / 零行任务返回空结构，不报错 */
+    async statsOf(ctx, taskId) {
+        await this.assertTask(ctx, taskId, { allowPosted: true });
+        const lines = await this.statLinesOf(ctx, taskId);
+        return {
+            expectedLines: lines.filter((l) => !l.isExtra).length,
+            countedLines: lines.filter((l) => l.countedQty !== null).length,
+            byBin: (0, stocktake_math_1.aggregateByBin)(lines),
+            byCounter: (0, stocktake_math_1.aggregateByCounter)(lines),
+        };
+    }
+    /**
+     * 全量导出（规格 §6.4 / §7.4）：后端只出 CSV（不引 exceljs/xlsx，守部署铁律）。
+     * 四个 kind 与前端「当前视图导出」共用同一份列定义；行数超上限即截断并标记。
+     */
+    async exportOf(ctx, taskId, kind) {
+        const task = await this.assertTask(ctx, taskId, { allowPosted: true });
+        const lines = await this.statLinesOf(ctx, taskId);
+        const ALL = ['variance', 'lines', 'by_bin', 'by_counter'];
+        if (!ALL.includes(kind))
+            throw new core_1.UserInputError(`不支持的导出类型 ${kind}（可选：${ALL.join(' / ')}）`);
+        let header = [];
+        let body = [];
+        if (kind === 'lines') {
+            header = ['库位编码', '库位', '变体 SKU', '变体名称', '账面数', '实盘数', '是否盘盈', '盘点人', '盘点时间', '备注'];
+            const detail = await this.connection.getRepository(ctx, stocktake_line_entity_1.StocktakeLine).find({ where: { taskId: Number(task.id) }, order: { id: 'ASC' } });
+            body = detail.map((l) => {
+                var _a, _b, _c, _d;
+                return [
+                    (_a = l.binCode) !== null && _a !== void 0 ? _a : '',
+                    (_b = l.zoneCode) !== null && _b !== void 0 ? _b : '',
+                    l.variantSku, l.variantName, l.bookQty,
+                    l.countedQty, l.isExtra,
+                    (_c = l.countedByName) !== null && _c !== void 0 ? _c : '',
+                    l.countedAt,
+                    (_d = l.note) !== null && _d !== void 0 ? _d : '',
+                ];
+            });
+        }
+        else if (kind === 'by_bin') {
+            header = ['库区', '库位', '应盘', '已盘', '未盘', '盘盈'];
+            body = (0, stocktake_math_1.aggregateByBin)(lines).map((r) => { var _a, _b; return [(_a = r.zoneCode) !== null && _a !== void 0 ? _a : '', (_b = r.binCode) !== null && _b !== void 0 ? _b : '', r.expectedLines, r.countedLines, r.uncountedLines, r.extraLines]; });
+        }
+        else if (kind === 'by_counter') {
+            header = ['盘点人', '已盘', '盘盈', '涉及盘次', '最后活动时间'];
+            body = (0, stocktake_math_1.aggregateByCounter)(lines).map((r) => { var _a; return [(_a = r.countedByName) !== null && _a !== void 0 ? _a : '', r.countedLines, r.extraLines, r.waveCount, r.lastCountedAt]; });
+        }
+        else {
+            header = ['库位编码', '库位', '变体 SKU', '变体名称', '盘点数', '快照账面', '过账账面', '差异', '盘盈', '账面变动'];
+            const d = await this.diffOf(ctx, task.id);
+            body = d.rows.map((r) => {
+                var _a, _b;
+                return [
+                    (_a = r.targetBinCode) !== null && _a !== void 0 ? _a : '',
+                    (_b = r.targetZoneCode) !== null && _b !== void 0 ? _b : '',
+                    r.variantSku, r.variantName, r.countedTotal,
+                    r.snapBookQty, r.currentBookQty, r.diff, r.isExtra, r.snapBookQty !== r.currentBookQty,
+                ];
+            });
+        }
+        const truncated = body.length > stocktake_math_1.CSV_MAX_ROWS;
+        const content = (0, stocktake_math_1.toCsv)([header, ...body.slice(0, stocktake_math_1.CSV_MAX_ROWS)]);
+        const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
+        return {
+            filename: `stocktake-${task.code}-${kind}-${stamp}.csv`,
+            mimeType: 'text/csv;charset=utf-8',
+            content,
+            totalRows: body.length,
+            truncated,
+        };
+    }
     // ------------------------------------------------------------ 差异与过账
     /** 读当前账面（StockLevel）+ 当前绑定（variant_storage_bin）→ 差异汇总 */
     async loadCurrentState(ctx, task, variantIds) {

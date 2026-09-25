@@ -54,6 +54,12 @@ let StocktakeAdminResolver = class StocktakeAdminResolver {
     async stocktakeResolveCode(ctx, args) {
         return this.stocktakeService.resolveCode(ctx, args.taskId, args.code);
     }
+    async stocktakeStats(ctx, args) {
+        return this.stocktakeService.statsOf(ctx, args.taskId);
+    }
+    async stocktakeExport(ctx, args) {
+        return this.stocktakeService.exportOf(ctx, args.taskId, String(args.kind));
+    }
     // ---------------------------------------------------------- 变更
     async createStocktakeTask(ctx, args) {
         return this.stocktakeService.createTask(ctx, args.input);
@@ -148,6 +154,24 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], StocktakeAdminResolver.prototype, "stocktakeResolveCode", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.ReadCatalog),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], StocktakeAdminResolver.prototype, "stocktakeStats", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.ReadCatalog),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], StocktakeAdminResolver.prototype, "stocktakeExport", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)('StocktakeCount'),

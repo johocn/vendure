@@ -63,6 +63,18 @@ export class StocktakeAdminResolver {
         return this.stocktakeService.resolveCode(ctx, args.taskId, args.code);
     }
 
+    @Query()
+    @Allow(Permission.ReadCatalog)
+    async stocktakeStats(@Ctx() ctx: RequestContext, @Args() args: any) {
+        return this.stocktakeService.statsOf(ctx, args.taskId);
+    }
+
+    @Query()
+    @Allow(Permission.ReadCatalog)
+    async stocktakeExport(@Ctx() ctx: RequestContext, @Args() args: any) {
+        return this.stocktakeService.exportOf(ctx, args.taskId, String(args.kind));
+    }
+
     // ---------------------------------------------------------- 变更
 
     @Mutation()
