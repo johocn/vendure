@@ -480,3 +480,22 @@ export function resolveScanCode(raw: string, ctx: { bins: ScanBin[]; lines: Scan
 
     return { kind: 'none', raw: code };
 }
+
+export type StateFilterMode = 'none' | 'one' | 'many';
+
+export interface StateFilter {
+    mode: StateFilterMode;
+    values: string[];
+}
+
+/**
+ * 列表状态过滤解析（规格 §7.1）：state（单值）优先 → states（多值）→ 都为空则不过滤。
+ * 优先级必须写单测锁住：前端「已结束」页签只下发 states，历史调用方只下发 state。
+ */
+export function parseStateFilter(options?: { state?: string | null; states?: string[] | null }): StateFilter {
+    const one = options?.state ? String(options.state).trim() : '';
+    if (one) return { mode: 'one', values: [one] };
+    const many = (options?.states || []).map((s) => String(s || '').trim()).filter(Boolean);
+    if (many.length) return { mode: 'many', values: many };
+    return { mode: 'none', values: [] };
+}
