@@ -124,7 +124,11 @@ export class PickBatchService {
             qb.andWhere('b.id != :ex', { ex: excludeBatchId });
         }
         const rows = await qb
-            .select(['o.orderId AS orderId', 'b.id AS batchId', 'b.code AS code'])
+            // 必须用 addSelect(列, 别名) 两参数形式：数组 + `AS` 写法在 join 查询下别名不生效，
+            // getRawMany 取到的 r.orderId 恒为 undefined → 冲突提示变成「订单 #NaN 已在批次 X 中」（实测）。
+            .select('o.orderId', 'orderId')
+            .addSelect('b.id', 'batchId')
+            .addSelect('b.code', 'code')
             .getRawMany<{ orderId: number; batchId: number; code: string }>();
 
         const map = new Map<number, { batchId: number; code: string }>();
@@ -239,6 +243,9 @@ export class PickBatchService {
             throw new UserInputError(`批次 ${batch.code} 不能从 ${batch.state} 交接`);
         }
         batch.handoverTo = handoverTo;
+        // 必须先落库再 advance：advance 内部会重新 requireBatch 取一个**新实体**，
+        // 若只改内存对象再委托 advance，handoverTo 会被新实体覆盖丢失（实测 handoverTo 恒为 null）。
+        await this.connection.getRepository(ctx, PickBatch).save(batch);
         return this.advance(ctx, batchId, 'HANDOVER');
     }
 
@@ -631,13 +638,14 @@ export class PickBatchService {
             }
         }
 
-        // 全部成功才置 SHIPPED：状态机不允许跳级，按链条逐级推进
+        // 全部成功才置 SHIPPED：状态机不允许跳级，按链条逐级推进。
+        // 只跑当前状态**之后**的级：印刷态批次（PRINTED）若从 PICKED 起步会被状态机拒绝
+        // （PRINTED→PICKED 非法），导致「已打单」批次整批发货恒失败。
         if (failed.length === 0 && succeeded.length > 0) {
-            let current = batch.state as PickBatchState;
-            for (const step of ['PICKED', 'PRINTED', 'SHIPPED'] as PickBatchState[]) {
-                if (current === 'SHIPPED') break;
+            const chain: PickBatchState[] = ['PENDING', 'PICKED', 'PRINTED', 'SHIPPED'];
+            const from = chain.indexOf(batch.state as PickBatchState);
+            for (const step of chain.slice(from + 1)) {
                 await this.advance(ctx, batchId, step);
-                current = step;
             }
         }
         return { succeeded, failed };

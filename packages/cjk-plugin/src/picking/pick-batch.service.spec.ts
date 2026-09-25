@@ -1,3 +1,4 @@
+import { Fulfillment } from '@vendure/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PickBatchService } from './pick-batch.service';
@@ -11,6 +12,7 @@ function makeConn(overrides: Record<string, any> = {}) {
         skip: vi.fn().mockReturnThis(),
         take: vi.fn().mockReturnThis(),
         select: vi.fn().mockReturnThis(),
+        addSelect: vi.fn().mockReturnThis(),
         getManyAndCount: vi.fn().mockResolvedValue([[], 0]),
         getCount: vi.fn().mockResolvedValue(0),
         getRawMany: vi.fn().mockResolvedValue([]),
@@ -85,5 +87,31 @@ describe('PickBatchService', () => {
     it('removeOrders 在 SHIPPED 批次上被拒绝', async () => {
         m.repo.findOne.mockResolvedValue({ id: 1, code: 'PB-X', state: 'SHIPPED' });
         await expect(svc.removeOrders({ channelId: 2 } as any, 1, [5])).rejects.toThrow('不可移出订单');
+    });
+
+    it('ship 在 PRINTED 批次上只推进 SHIPPED（不回溯 PICKED 而被状态机拒绝）', async () => {
+        const batch: any = { id: 1, code: 'PB-X', state: 'PRINTED' };
+        m.repo.findOne.mockImplementation(async () => batch);
+        m.repo.find.mockResolvedValue([{ orderId: 1023 }] as any);
+        svc = new PickBatchService(
+            m.conn,
+            { findAll: vi.fn().mockResolvedValue({ items: [] }) } as any,
+            {
+                findOne: vi.fn().mockResolvedValue({
+                    id: 1023,
+                    code: 'O1',
+                    lines: [{ id: 7, quantity: 1 }],
+                    fulfillments: [],
+                }),
+            } as any,
+            { create: vi.fn().mockResolvedValue(Object.create(Fulfillment.prototype)) } as any,
+        );
+
+        const res = await svc.ship({ channelId: 2 } as any, 1, { method: 'standard' });
+
+        expect(res.failed).toEqual([]);
+        expect(batch.state).toBe('SHIPPED');
+        expect(batch.shippedAt).toBeInstanceOf(Date);
+        expect(batch.pickedAt).toBeUndefined();
     });
 });
