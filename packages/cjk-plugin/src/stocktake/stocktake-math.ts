@@ -499,3 +499,100 @@ export function parseStateFilter(options?: { state?: string | null; states?: str
     if (many.length) return { mode: 'many', values: many };
     return { mode: 'none', values: [] };
 }
+
+// ---------------------------------------------------------------- 作业量统计聚合
+
+/** 统计输入行：StocktakeLine 的纯函数投影（不引入实体依赖） */
+export interface StatLine {
+    waveId: number;
+    zoneId: number | null;
+    zoneCode: string | null;
+    binId: number | null;
+    binCode: string | null;
+    isExtra: boolean;
+    countedQty: number | null;
+    countedById: string | null;
+    countedByName: string | null;
+    countedAt: Date | null;
+}
+
+export interface BinStat {
+    zoneId: number | null;
+    zoneCode: string | null;
+    binId: number | null;
+    binCode: string | null;
+    expectedLines: number;
+    countedLines: number;
+    uncountedLines: number;
+    extraLines: number;
+}
+
+export interface CounterStat {
+    countedById: string | null;
+    countedByName: string | null;
+    countedLines: number;
+    extraLines: number;
+    waveCount: number;
+    lastCountedAt: Date | null;
+}
+
+/**
+ * 按库位聚合（规格 §7.3）：只出作业量，不出任何差异数量/金额
+ * （差异是变体口径，摊到库位会重复计数 —— 规格 §3.3）。
+ */
+export function aggregateByBin(lines: StatLine[]): BinStat[] {
+    const groups = new Map<string, BinStat>();
+    for (const l of lines) {
+        const key = `${l.zoneId ?? ''}|${l.binId ?? ''}`;
+        let g = groups.get(key);
+        if (!g) {
+            g = {
+                zoneId: l.zoneId, zoneCode: l.zoneCode, binId: l.binId, binCode: l.binCode,
+                expectedLines: 0, countedLines: 0, uncountedLines: 0, extraLines: 0,
+            };
+            groups.set(key, g);
+        }
+        if (l.zoneCode && !g.zoneCode) g.zoneCode = l.zoneCode;
+        if (l.binCode && !g.binCode) g.binCode = l.binCode;
+        if (l.isExtra) {
+            g.extraLines += 1;
+            continue;
+        }
+        g.expectedLines += 1;
+        if (l.countedQty !== null) g.countedLines += 1;
+        else g.uncountedLines += 1;
+    }
+    const byName = (a: string | null, b: string | null) => String(a ?? '~').localeCompare(String(b ?? '~'));
+    return Array.from(groups.values()).sort((a, b) => {
+        // 未归位组（zoneId/binId 皆空）置末，其余按 zoneCode → binCode 升序
+        const aOrphan = a.zoneId === null && a.binId === null ? 1 : 0;
+        const bOrphan = b.zoneId === null && b.binId === null ? 1 : 0;
+        if (aOrphan !== bOrphan) return aOrphan - bOrphan;
+        return byName(a.zoneCode, b.zoneCode) || byName(a.binCode, b.binCode);
+    });
+}
+
+/** 按盘点人聚合（规格 §7.3）：只统计「确实被盘过」的行（含盘盈行）。 */
+export function aggregateByCounter(lines: StatLine[]): CounterStat[] {
+    const groups = new Map<string, CounterStat & { waves: Set<number> }>();
+    for (const l of lines) {
+        if (l.countedQty === null) continue;
+        const key = l.countedById ?? '';
+        let g = groups.get(key);
+        if (!g) {
+            g = {
+                countedById: l.countedById, countedByName: l.countedByName,
+                countedLines: 0, extraLines: 0, waveCount: 0, lastCountedAt: null, waves: new Set<number>(),
+            };
+            groups.set(key, g);
+        }
+        if (l.countedByName && !g.countedByName) g.countedByName = l.countedByName;
+        g.countedLines += 1;
+        if (l.isExtra) g.extraLines += 1;
+        g.waves.add(l.waveId);
+        if (l.countedAt && (!g.lastCountedAt || l.countedAt > g.lastCountedAt)) g.lastCountedAt = l.countedAt;
+    }
+    return Array.from(groups.values())
+        .map(({ waves, ...rest }) => ({ ...rest, waveCount: waves.size }))
+        .sort((a, b) => b.countedLines - a.countedLines || String(a.countedByName ?? '').localeCompare(String(b.countedByName ?? '')));
+}
