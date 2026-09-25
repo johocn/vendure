@@ -2372,7 +2372,10 @@ function mergeCustomFields<T extends { name: string }>(
         config.customFields.Channel = mergeCustomFields(config.customFields.Channel, [
             {
                 name: 'reservationTtlMinutes',
-                type: 'number',
+                // 注意：不能写 'number' —— Vendure 的 getColumnType 白名单只有
+                // string/localeString/text/localeText/boolean/int/float/datetime/struct，
+                // 非白名单值会在 preBootstrapConfig 里 assertNever 抛错导致服务起不来。
+                type: 'int',
                 label: [{ languageCode: LanguageCode.zh_Hans, value: '预留单有效期（分钟）' }],
                 description: [
                     {
