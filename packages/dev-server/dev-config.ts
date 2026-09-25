@@ -307,9 +307,11 @@ export const devConfig: VendureConfig = {
         Promotion: [],
     },
     schedulerOptions: {
-        // 生产环境只运行主进程（无 worker），必须允许主进程执行调度任务，
-        // 否则 OrderTimeoutPlugin 的补偿扫描等 ScheduledTask 永不触发。
-        runTasksInWorkerOnly: false,
+        // 任务只在 worker 进程执行：验收要求「停掉 worker 时预留单不被释放」以证明是真定时任务。
+        // 代价：只用 `npm run dev:server` 时不会有任何 ScheduledTask（含 OrderTimeoutPlugin 补偿扫描、
+        // 秒杀状态转换）在跑 —— 本地必须用 `npm run dev`（concurrently 同时起 server + worker），
+        // 生产必须常驻一个 worker 进程（见 Task 4.9 手册章节）。
+        runTasksInWorkerOnly: true,
         tasks: [cleanSessionsTask, cleanOrphanedSettingsStoreTask],
     },
     logger: new DefaultLogger({ level: LogLevel.Verbose }),

@@ -142,6 +142,7 @@ const stock_reservation_admin_resolver_1 = require("./inventory/stock-reservatio
 const stock_reservation_entity_1 = require("./inventory/stock-reservation.entity");
 const stock_reservation_item_entity_1 = require("./inventory/stock-reservation-item.entity");
 const stock_reservation_service_1 = require("./inventory/stock-reservation.service");
+const reservation_expiry_task_1 = require("./inventory/reservation-expiry.task");
 const inventory_mode_service_1 = require("./inventory/inventory-mode.service");
 const inventory_alert_rule_entity_1 = require("./inventory/inventory-alert-rule.entity");
 const inventory_alert_rule_service_1 = require("./inventory/inventory-alert-rule.service");
@@ -166,6 +167,11 @@ const stocktake_line_entity_1 = require("./stocktake/stocktake-line.entity");
 const stocktake_service_1 = require("./stocktake/stocktake.service");
 const stocktake_admin_resolver_1 = require("./stocktake/stocktake.admin.resolver");
 const stocktake_permissions_1 = require("./stocktake/stocktake-permissions");
+/** 幂等合并自定义字段（plugin configuration 可能被调用多次，按 name 去重） */
+function mergeCustomFields(existingFields, additions) {
+    const names = new Set((existingFields !== null && existingFields !== void 0 ? existingFields : []).map(f => f.name));
+    return [...(existingFields !== null && existingFields !== void 0 ? existingFields : []), ...(additions !== null && additions !== void 0 ? additions : []).filter(f => !names.has(f.name))];
+}
 let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
     constructor(options, moduleRef) {
         this.options = options;
@@ -403,6 +409,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             migrations_1.TenantMemberColumnMigration,
             migrations_1.ChannelCustomColumnMigration,
             migrations_1.ReservationExpiresAtMigration,
+            migrations_1.ReservationTtlColumnMigration,
             migrations_1.ShippingContactFlagMigration,
             migrations_1.StockTableMigration,
             migrations_1.ChannelInventoryModeColumnMigration,
@@ -2498,6 +2505,30 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                 ...(config.authOptions.customPermissions || []),
                 ...stocktake_permissions_1.stocktakePermissionDefinitions,
             ];
+            // 注册 Channel customFields（预留单有效期 reservationTtlMinutes）—— 按 name 去重合并
+            config.customFields.Channel = mergeCustomFields(config.customFields.Channel, [
+                {
+                    name: 'reservationTtlMinutes',
+                    type: 'number',
+                    label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '预留单有效期（分钟）' }],
+                    description: [
+                        {
+                            languageCode: core_1.LanguageCode.zh_Hans,
+                            value: '预留单超时自动释放时长，默认 30；仅对未完成备货拆分的预留单生效',
+                        },
+                    ],
+                },
+            ]);
+            // 注册预留单超时释放 ScheduledTask（由 DefaultSchedulerPlugin 在 worker 上周期执行）
+            if (!config.schedulerOptions) {
+                config.schedulerOptions = { tasks: [] };
+            }
+            if (!config.schedulerOptions.tasks) {
+                config.schedulerOptions.tasks = [];
+            }
+            if (!config.schedulerOptions.tasks.some(t => t.id === reservation_expiry_task_1.RELEASE_EXPIRED_RESERVATIONS_TASK_ID)) {
+                config.schedulerOptions.tasks.push(reservation_expiry_task_1.releaseExpiredReservationsTask);
+            }
             return config;
         },
         dashboard: '../dashboard/index.tsx',

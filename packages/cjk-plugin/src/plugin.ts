@@ -67,7 +67,7 @@ import { MapProviderRegistry } from './map/map-provider-registry';
 import { MapService } from './map/map.service';
 import { MapAdminResolver } from './map/map-admin.resolver';
 import { MapShopResolver } from './map/map-shop.resolver';
-import { MapConfigEncryptionMigration, PayConfigEncryptionMigration, TenantMemberColumnMigration, ChannelCustomColumnMigration, ShippingContactFlagMigration, StockTableMigration, ChannelInventoryModeColumnMigration, CollectionIconMigration, ReservationExpiresAtMigration } from './migrations';
+import { MapConfigEncryptionMigration, PayConfigEncryptionMigration, TenantMemberColumnMigration, ChannelCustomColumnMigration, ShippingContactFlagMigration, StockTableMigration, ChannelInventoryModeColumnMigration, CollectionIconMigration, ReservationExpiresAtMigration, ReservationTtlColumnMigration } from './migrations';
 import { AuthConfigService } from './auth/auth-config.service';
 import { PayConfigService } from './payment/pay-config.service';
 import { MapConfigService } from './map/map-config.service';
@@ -143,6 +143,7 @@ import { StockReservationAdminResolver } from './inventory/stock-reservation.adm
 import { StockReservationEntity } from './inventory/stock-reservation.entity';
 import { StockReservationItemEntity } from './inventory/stock-reservation-item.entity';
 import { StockReservationService } from './inventory/stock-reservation.service';
+import { releaseExpiredReservationsTask, RELEASE_EXPIRED_RESERVATIONS_TASK_ID } from './inventory/reservation-expiry.task';
 import { InventoryModeService } from './inventory/inventory-mode.service';
 import { InventoryAlertRuleEntity } from './inventory/inventory-alert-rule.entity';
 import { InventoryAlertRuleService } from './inventory/inventory-alert-rule.service';
@@ -168,6 +169,15 @@ import { StocktakeService } from './stocktake/stocktake.service';
 import { StocktakeAdminResolver } from './stocktake/stocktake.admin.resolver';
 import { stocktakePermissionDefinitions } from './stocktake/stocktake-permissions';
 
+/** 幂等合并自定义字段（plugin configuration 可能被调用多次，按 name 去重） */
+function mergeCustomFields<T extends { name: string }>(
+    existingFields: T[] | undefined,
+    additions: T[] | undefined,
+): T[] {
+    const names = new Set((existingFields ?? []).map(f => f.name));
+    return [...(existingFields ?? []), ...(additions ?? []).filter(f => !names.has(f.name))];
+}
+
 @VendurePlugin({
     imports: [PluginCommonModule],
     entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod, PaymentTemplate, RoomTemplate, RoomTemplateControl, TenantMember, Wallet, MerchantSettlementLedger, VariantLocationBinding, DeliveryRecord, ReconciliationBatch, ReconciliationOrderLine, StockDocEntity, StockDocItemEntity, InventoryAlertRuleEntity, StockReservationEntity, StockReservationItemEntity, PickBatch, PickBatchOrder, StorageZone, StorageBin, VariantStorageBin,
@@ -190,6 +200,7 @@ import { stocktakePermissionDefinitions } from './stocktake/stocktake-permission
         TenantMemberColumnMigration,
         ChannelCustomColumnMigration,
         ReservationExpiresAtMigration,
+        ReservationTtlColumnMigration,
         ShippingContactFlagMigration,
         StockTableMigration,
         ChannelInventoryModeColumnMigration,
@@ -2356,6 +2367,32 @@ import { stocktakePermissionDefinitions } from './stocktake/stocktake-permission
             ...(config.authOptions.customPermissions || []),
             ...stocktakePermissionDefinitions,
         ];
+
+        // 注册 Channel customFields（预留单有效期 reservationTtlMinutes）—— 按 name 去重合并
+        config.customFields.Channel = mergeCustomFields(config.customFields.Channel, [
+            {
+                name: 'reservationTtlMinutes',
+                type: 'number',
+                label: [{ languageCode: LanguageCode.zh_Hans, value: '预留单有效期（分钟）' }],
+                description: [
+                    {
+                        languageCode: LanguageCode.zh_Hans,
+                        value: '预留单超时自动释放时长，默认 30；仅对未完成备货拆分的预留单生效',
+                    },
+                ],
+            } as any,
+        ]);
+
+        // 注册预留单超时释放 ScheduledTask（由 DefaultSchedulerPlugin 在 worker 上周期执行）
+        if (!config.schedulerOptions) {
+            config.schedulerOptions = { tasks: [] } as any;
+        }
+        if (!config.schedulerOptions.tasks) {
+            config.schedulerOptions.tasks = [];
+        }
+        if (!config.schedulerOptions.tasks.some(t => t.id === RELEASE_EXPIRED_RESERVATIONS_TASK_ID)) {
+            config.schedulerOptions.tasks.push(releaseExpiredReservationsTask);
+        }
 
         return config;
     },
