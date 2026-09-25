@@ -61,7 +61,9 @@ let StockReservationService = class StockReservationService {
     async list(ctx, filters = {}) {
         var _a, _b;
         const qb = this.repo(ctx).createQueryBuilder('r')
-            .where('r.tenantChannelId = :tenant OR r.tenantChannelId IS NULL', { tenant: ctx.channel.code });
+            // 括号必需：AND 优先级高于 OR，若不加括号，后续 andWhere 的过滤条件只会作用于
+            // 「tenantChannelId IS NULL」那一支，导致本渠道的行永远命中第一个分支、过滤器整体失效。
+            .where('(r.tenantChannelId = :tenant OR r.tenantChannelId IS NULL)', { tenant: ctx.channel.code });
         if (filters.status)
             qb.andWhere('r.status = :status', { status: filters.status });
         if (filters.variantId)

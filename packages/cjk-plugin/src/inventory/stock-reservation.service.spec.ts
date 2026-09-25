@@ -307,6 +307,43 @@ describe('StockReservationService 预留生命周期', () => {
     });
 });
 
+describe('StockReservationService.list', () => {
+    it('租户条件必须整体括号包裹，否则 andWhere 过滤器被 OR 优先级吃掉', async () => {
+        const ctx = makeCtx('shop-a');
+        const { svc, reservationRepo } = makeService(ctx);
+
+        await svc.list(ctx, { status: 'PENDING_ALLOC', orderId: '999901', page: 2, pageSize: 5 });
+
+        const qb: any = reservationRepo.createQueryBuilder.mock.results[0].value;
+        const whereSql = qb.where.mock.calls[0][0] as string;
+        // AND 优先级高于 OR：「a = $1 OR a IS NULL AND b = $2」会解析成
+        // 「a = $1 OR (a IS NULL AND b = $2)」，本渠道行永远命中第一支 → status/orderId 过滤器整体失效。
+        expect(whereSql).toBe('(r.tenantChannelId = :tenant OR r.tenantChannelId IS NULL)');
+
+        // 过滤器按值透传（收窄而非全量）
+        const andWheres: Array<[string, Record<string, unknown>]> = qb.andWhere.mock.calls;
+        expect(andWheres.map(c => c[0])).toEqual(['r.status = :status', 'r.orderId = :orderId']);
+        expect(andWheres[0][1]).toEqual({ status: 'PENDING_ALLOC' });
+        expect(andWheres[1][1]).toEqual({ orderId: 999901 });
+
+        // 分页照旧生效
+        expect(qb.skip).toHaveBeenCalledWith(5);
+        expect(qb.take).toHaveBeenCalledWith(5);
+    });
+
+    it('不传过滤器时 only 租户条件、不分页收窄', async () => {
+        const ctx = makeCtx('shop-a');
+        const { svc, reservationRepo } = makeService(ctx);
+
+        await svc.list(ctx, {});
+
+        const qb: any = reservationRepo.createQueryBuilder.mock.results[0].value;
+        expect(qb.andWhere).not.toHaveBeenCalled();
+        expect(qb.skip).toHaveBeenCalledWith(0);
+        expect(qb.take).toHaveBeenCalledWith(20);
+    });
+});
+
 describe('StockReservationService.releaseExpired', () => {
     it('只释放 PENDING_ALLOC 且已过期的单，ALLOCATED 不动', async () => {
         const ctx = makeCtx();
