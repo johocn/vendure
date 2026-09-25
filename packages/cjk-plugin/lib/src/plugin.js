@@ -405,6 +405,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             migrations_1.ShippingContactFlagMigration,
             migrations_1.StockTableMigration,
             migrations_1.ChannelInventoryModeColumnMigration,
+            migrations_1.CollectionIconMigration,
             auth_config_service_1.AuthConfigService,
             pay_config_service_1.PayConfigService,
             map_config_service_1.MapConfigService,
@@ -2258,7 +2259,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver, shipping_profile_shop_resolver_1.ShippingProfileShopResolver, delivery_capability_resolver_1.DeliveryCapabilityResolver, payment_profile_shop_resolver_1.PaymentProfileShopResolver, order_box_shop_resolver_1.OrderBoxShopResolver, order_split_shop_resolver_1.OrderSplitShopResolver, wallet_shop_resolver_1.WalletShopResolver, redemption_resolver_1.RedemptionShopResolver, inventory_shop_resolver_1.InventoryShopResolver, storage_bin_shop_resolver_1.StorageBinShopResolver],
         },
         configuration: config => {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3;
             // 注入 authSecret 到 crypto 模块（configuration 在 bootstrap 早期执行，此时 options 已可用）
             (0, crypto_1.setAuthSecret)(CjkPlugin.options.authSecret);
             // 租户级税率方式（三态 taxMode：inclusive 含税价含拆税 / zero 零税价净价结算 / exclusive 不含税价价税分离）。
@@ -2425,6 +2426,28 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     config.customFields = Object.assign(Object.assign({}, config.customFields), { StockLocation: [
                             ...(((_1 = config.customFields) === null || _1 === void 0 ? void 0 : _1.StockLocation) || []),
                             ...newSlFields,
+                        ] });
+                }
+            }
+            // 注册 Collection customFields（icon 分类图标）—— 去重防止重复注册
+            {
+                const existingCollectionFields = (((_2 = config.customFields) === null || _2 === void 0 ? void 0 : _2.Collection) || []).map(f => f.name);
+                const newCollectionFields = [
+                    {
+                        name: 'icon',
+                        type: 'string',
+                        label: [
+                            { languageCode: core_1.LanguageCode.zh_Hans, value: '分类图标' },
+                            { languageCode: core_1.LanguageCode.en, value: 'Category icon' },
+                        ],
+                        nullable: true,
+                        public: true,
+                    },
+                ].filter(f => !existingCollectionFields.includes(f.name));
+                if (newCollectionFields.length > 0) {
+                    config.customFields = Object.assign(Object.assign({}, config.customFields), { Collection: [
+                            ...(((_3 = config.customFields) === null || _3 === void 0 ? void 0 : _3.Collection) || []),
+                            ...newCollectionFields,
                         ] });
                 }
             }
