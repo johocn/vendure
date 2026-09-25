@@ -8,7 +8,11 @@ const TRANSITIONS: Record<PickBatchState, PickBatchState[]> = {
     PENDING: ['PICKED', 'CANCELLED'],
     PICKED: ['PRINTED', 'CANCELLED'],
     PRINTED: ['SHIPPED', 'CANCELLED'],
-    SHIPPED: [],
+    SHIPPED: ['HANDOVER', 'EXCEPTION'],
+    // 异常件处理完回交接（不回到 SHIPPED，避免重复发货语义）
+    EXCEPTION: ['HANDOVER'],
+    HANDOVER: ['REVIEWED', 'EXCEPTION'],
+    REVIEWED: [],
     CANCELLED: [],
 };
 

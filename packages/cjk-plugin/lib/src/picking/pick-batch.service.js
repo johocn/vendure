@@ -158,10 +158,35 @@ let PickBatchService = class PickBatchService {
             batch.printedAt = now;
         if (to === 'SHIPPED')
             batch.shippedAt = now;
+        if (to === 'HANDOVER')
+            batch.handoverAt = now;
+        if (to === 'REVIEWED')
+            batch.reviewedAt = now;
+        if (to === 'EXCEPTION')
+            batch.exceptionAt = now;
         return this.connection.getRepository(ctx, pick_batch_entity_1.PickBatch).save(batch);
     }
     async cancel(ctx, batchId) {
         return this.advance(ctx, batchId, 'CANCELLED');
+    }
+    /** 交接登记：写交接对象 + 推进到 HANDOVER（状态机仍由 advance 把关） */
+    async handover(ctx, batchId, handoverTo) {
+        const batch = await this.requireBatch(ctx, batchId);
+        if (!(0, pick_batch_math_1.canTransition)(batch.state, 'HANDOVER')) {
+            throw new core_1.UserInputError(`批次 ${batch.code} 不能从 ${batch.state} 交接`);
+        }
+        batch.handoverTo = handoverTo;
+        return this.advance(ctx, batchId, 'HANDOVER');
+    }
+    /** 异常件登记：写原因 + 推进到 EXCEPTION */
+    async registerException(ctx, batchId, reason) {
+        const batch = await this.requireBatch(ctx, batchId);
+        if (!(0, pick_batch_math_1.canTransition)(batch.state, 'EXCEPTION')) {
+            throw new core_1.UserInputError(`批次 ${batch.code} 当前状态 ${batch.state} 不能登记异常`);
+        }
+        batch.exceptionNote = reason;
+        await this.connection.getRepository(ctx, pick_batch_entity_1.PickBatch).save(batch);
+        return this.advance(ctx, batchId, 'EXCEPTION');
     }
     /**
      * 拣货汇总：按 SKU 合并数量、收集涉及订单号，并按库位排序出拣货路径。
@@ -336,7 +361,7 @@ let PickBatchService = class PickBatchService {
         return Object.assign(Object.assign({}, this.toView(batch, counts.get(Number(batch.id)))), { members: await this.membersSnapshot(ctx, batch.id) });
     }
     toView(b, counts) {
-        var _a, _b, _c, _d, _e, _f, _g, _h;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o;
         return {
             id: String(b.id),
             code: b.code,
@@ -349,7 +374,12 @@ let PickBatchService = class PickBatchService {
             pickedAt: (_e = b.pickedAt) !== null && _e !== void 0 ? _e : null,
             printedAt: (_f = b.printedAt) !== null && _f !== void 0 ? _f : null,
             shippedAt: (_g = b.shippedAt) !== null && _g !== void 0 ? _g : null,
-            createdAt: (_h = b.createdAt) !== null && _h !== void 0 ? _h : null,
+            handoverAt: (_h = b.handoverAt) !== null && _h !== void 0 ? _h : null,
+            handoverTo: (_j = b.handoverTo) !== null && _j !== void 0 ? _j : null,
+            reviewedAt: (_k = b.reviewedAt) !== null && _k !== void 0 ? _k : null,
+            exceptionAt: (_l = b.exceptionAt) !== null && _l !== void 0 ? _l : null,
+            exceptionNote: (_m = b.exceptionNote) !== null && _m !== void 0 ? _m : null,
+            createdAt: (_o = b.createdAt) !== null && _o !== void 0 ? _o : null,
         };
     }
     /** 批次成员订单快照（含推荐仓与距离） */

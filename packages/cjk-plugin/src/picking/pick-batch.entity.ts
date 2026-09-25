@@ -4,8 +4,13 @@ import { Column, Entity, Index, OneToMany } from 'typeorm';
 
 import { PickBatchOrder } from './pick-batch-order.entity';
 
-/** 拣货批次状态。SHIPPED / CANCELLED 为终态。 */
-export type PickBatchState = 'PENDING' | 'PICKED' | 'PRINTED' | 'SHIPPED' | 'CANCELLED';
+/** 拣货批次状态。REVIEWED / CANCELLED 为终态。 */
+export type PickBatchState =
+    | 'PENDING' | 'PICKED' | 'PRINTED' | 'SHIPPED'
+    | 'HANDOVER'   // 已交接（仓内发出、交接给承运/下一环节）
+    | 'REVIEWED'   // 已复核（终态）
+    | 'EXCEPTION'  // 异常件待处理
+    | 'CANCELLED';
 
 @Entity('pick_batch')
 export class PickBatch extends VendureEntity {
@@ -46,6 +51,23 @@ export class PickBatch extends VendureEntity {
 
     @Column({ type: 'timestamp', nullable: true })
     shippedAt!: Date | null;
+
+    @Column({ type: 'timestamp', nullable: true })
+    handoverAt!: Date | null;
+
+    /** 交接对象（承运商 / 接收人） */
+    @Column({ type: 'varchar', nullable: true })
+    handoverTo!: string | null;
+
+    @Column({ type: 'timestamp', nullable: true })
+    reviewedAt!: Date | null;
+
+    @Column({ type: 'timestamp', nullable: true })
+    exceptionAt!: Date | null;
+
+    /** 异常件原因（登记时必填，处理完保留） */
+    @Column({ type: 'varchar', length: 1000, nullable: true })
+    exceptionNote!: string | null;
 
     @OneToMany(() => PickBatchOrder, (o) => o.batch)
     orders!: PickBatchOrder[];

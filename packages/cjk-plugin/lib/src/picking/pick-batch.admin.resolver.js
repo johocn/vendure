@@ -67,6 +67,14 @@ let PickBatchAdminResolver = class PickBatchAdminResolver {
         var _a;
         return this.pickBatchService.ship(ctx, args.batchId, (_a = args.input) !== null && _a !== void 0 ? _a : {});
     }
+    async handoverPickBatch(ctx, batchId, handoverTo) {
+        await this.pickBatchService.handover(ctx, batchId, handoverTo);
+        return this.pickBatchService.detail(ctx, batchId);
+    }
+    async registerPickBatchException(ctx, batchId, reason) {
+        await this.pickBatchService.registerException(ctx, batchId, reason);
+        return this.pickBatchService.detail(ctx, batchId);
+    }
     /** 操作人：优先 TenantMember.displayName，回退 Administrator 名字 */
     async currentOperator(ctx) {
         const userId = ctx.activeUserId;
@@ -180,6 +188,26 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], PickBatchAdminResolver.prototype, "shipPickBatch", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('batchId')),
+    __param(2, (0, graphql_1.Args)('handoverTo')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
+    __metadata("design:returntype", Promise)
+], PickBatchAdminResolver.prototype, "handoverPickBatch", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('batchId')),
+    __param(2, (0, graphql_1.Args)('reason')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
+    __metadata("design:returntype", Promise)
+], PickBatchAdminResolver.prototype, "registerPickBatchException", null);
 exports.PickBatchAdminResolver = PickBatchAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [pick_batch_service_1.PickBatchService,

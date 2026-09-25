@@ -222,11 +222,35 @@ export class PickBatchService {
         if (to === 'PICKED') batch.pickedAt = now;
         if (to === 'PRINTED') batch.printedAt = now;
         if (to === 'SHIPPED') batch.shippedAt = now;
+        if (to === 'HANDOVER') batch.handoverAt = now;
+        if (to === 'REVIEWED') batch.reviewedAt = now;
+        if (to === 'EXCEPTION') batch.exceptionAt = now;
         return this.connection.getRepository(ctx, PickBatch).save(batch);
     }
 
     async cancel(ctx: RequestContext, batchId: ID): Promise<PickBatch> {
         return this.advance(ctx, batchId, 'CANCELLED');
+    }
+
+    /** 交接登记：写交接对象 + 推进到 HANDOVER（状态机仍由 advance 把关） */
+    async handover(ctx: RequestContext, batchId: ID, handoverTo: string): Promise<PickBatch> {
+        const batch = await this.requireBatch(ctx, batchId);
+        if (!canTransition(batch.state, 'HANDOVER')) {
+            throw new UserInputError(`批次 ${batch.code} 不能从 ${batch.state} 交接`);
+        }
+        batch.handoverTo = handoverTo;
+        return this.advance(ctx, batchId, 'HANDOVER');
+    }
+
+    /** 异常件登记：写原因 + 推进到 EXCEPTION */
+    async registerException(ctx: RequestContext, batchId: ID, reason: string): Promise<PickBatch> {
+        const batch = await this.requireBatch(ctx, batchId);
+        if (!canTransition(batch.state, 'EXCEPTION')) {
+            throw new UserInputError(`批次 ${batch.code} 当前状态 ${batch.state} 不能登记异常`);
+        }
+        batch.exceptionNote = reason;
+        await this.connection.getRepository(ctx, PickBatch).save(batch);
+        return this.advance(ctx, batchId, 'EXCEPTION');
     }
 
     /**
@@ -435,6 +459,11 @@ export class PickBatchService {
             pickedAt: b.pickedAt ?? null,
             printedAt: b.printedAt ?? null,
             shippedAt: b.shippedAt ?? null,
+            handoverAt: b.handoverAt ?? null,
+            handoverTo: b.handoverTo ?? null,
+            reviewedAt: b.reviewedAt ?? null,
+            exceptionAt: b.exceptionAt ?? null,
+            exceptionNote: b.exceptionNote ?? null,
             createdAt: b.createdAt ?? null,
         };
     }

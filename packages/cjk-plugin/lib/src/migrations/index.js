@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ReservationTtlColumnMigration = exports.ReservationExpiresAtMigration = exports.CollectionIconMigration = exports.ChannelInventoryModeColumnMigration = exports.StockTableMigration = exports.ShippingContactFlagMigration = exports.ChannelCustomColumnMigration = exports.TenantMemberColumnMigration = exports.PAY_CONFIG_MIGRATION_DONE = exports.PayConfigEncryptionMigration = exports.MAP_CONFIG_MIGRATION_DONE = exports.MapConfigEncryptionMigration = void 0;
+exports.PickBatchHandoverColumnMigration = exports.ReservationTtlColumnMigration = exports.ReservationExpiresAtMigration = exports.CollectionIconMigration = exports.ChannelInventoryModeColumnMigration = exports.StockTableMigration = exports.ShippingContactFlagMigration = exports.ChannelCustomColumnMigration = exports.TenantMemberColumnMigration = exports.PAY_CONFIG_MIGRATION_DONE = exports.PayConfigEncryptionMigration = exports.MAP_CONFIG_MIGRATION_DONE = exports.MapConfigEncryptionMigration = void 0;
 // packages/cjk-plugin/src/migrations/index.ts
 var migrate_mapconfig_encryption_1 = require("./migrate-mapconfig-encryption");
 Object.defineProperty(exports, "MapConfigEncryptionMigration", { enumerable: true, get: function () { return migrate_mapconfig_encryption_1.MapConfigEncryptionMigration; } });
@@ -23,4 +23,6 @@ var migrate_reservation_expires_at_1 = require("./migrate-reservation-expires-at
 Object.defineProperty(exports, "ReservationExpiresAtMigration", { enumerable: true, get: function () { return migrate_reservation_expires_at_1.ReservationExpiresAtMigration; } });
 var migrate_reservation_ttl_column_1 = require("./migrate-reservation-ttl-column");
 Object.defineProperty(exports, "ReservationTtlColumnMigration", { enumerable: true, get: function () { return migrate_reservation_ttl_column_1.ReservationTtlColumnMigration; } });
+var migrate_pick_batch_handover_columns_1 = require("./migrate-pick-batch-handover-columns");
+Object.defineProperty(exports, "PickBatchHandoverColumnMigration", { enumerable: true, get: function () { return migrate_pick_batch_handover_columns_1.PickBatchHandoverColumnMigration; } });
 //# sourceMappingURL=index.js.map

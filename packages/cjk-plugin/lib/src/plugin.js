@@ -410,6 +410,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             migrations_1.ChannelCustomColumnMigration,
             migrations_1.ReservationExpiresAtMigration,
             migrations_1.ReservationTtlColumnMigration,
+            migrations_1.PickBatchHandoverColumnMigration,
             migrations_1.ShippingContactFlagMigration,
             migrations_1.StockTableMigration,
             migrations_1.ChannelInventoryModeColumnMigration,
@@ -1675,6 +1676,11 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     pickedAt: DateTime
                     printedAt: DateTime
                     shippedAt: DateTime
+                    handoverAt: DateTime
+                    handoverTo: String
+                    reviewedAt: DateTime
+                    exceptionAt: DateTime
+                    exceptionNote: String
                     createdAt: DateTime!
                 }
 
@@ -1742,6 +1748,8 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     advancePickBatchState(batchId: ID!, to: String!): PickBatch!
                     cancelPickBatch(batchId: ID!): PickBatch!
                     shipPickBatch(batchId: ID!, input: ShipPickBatchInput!): JSON!
+                    handoverPickBatch(batchId: ID!, handoverTo: String!): PickBatch!
+                    registerPickBatchException(batchId: ID!, reason: String!): PickBatch!
                     updateOrderShippingAddress(orderId: ID!, input: OrderAddressInput!): JSON!
                 }
 

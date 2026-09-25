@@ -59,6 +59,26 @@ __decorate([
     __metadata("design:type", Object)
 ], PickBatch.prototype, "shippedAt", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
+    __metadata("design:type", Object)
+], PickBatch.prototype, "handoverAt", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], PickBatch.prototype, "handoverTo", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
+    __metadata("design:type", Object)
+], PickBatch.prototype, "reviewedAt", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
+    __metadata("design:type", Object)
+], PickBatch.prototype, "exceptionAt", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', length: 1000, nullable: true }),
+    __metadata("design:type", Object)
+], PickBatch.prototype, "exceptionNote", void 0);
+__decorate([
     (0, typeorm_1.OneToMany)(() => pick_batch_order_entity_1.PickBatchOrder, (o) => o.batch),
     __metadata("design:type", Array)
 ], PickBatch.prototype, "orders", void 0);

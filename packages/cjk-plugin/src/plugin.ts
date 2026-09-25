@@ -67,7 +67,7 @@ import { MapProviderRegistry } from './map/map-provider-registry';
 import { MapService } from './map/map.service';
 import { MapAdminResolver } from './map/map-admin.resolver';
 import { MapShopResolver } from './map/map-shop.resolver';
-import { MapConfigEncryptionMigration, PayConfigEncryptionMigration, TenantMemberColumnMigration, ChannelCustomColumnMigration, ShippingContactFlagMigration, StockTableMigration, ChannelInventoryModeColumnMigration, CollectionIconMigration, ReservationExpiresAtMigration, ReservationTtlColumnMigration } from './migrations';
+import { MapConfigEncryptionMigration, PayConfigEncryptionMigration, TenantMemberColumnMigration, ChannelCustomColumnMigration, ShippingContactFlagMigration, StockTableMigration, ChannelInventoryModeColumnMigration, CollectionIconMigration, ReservationExpiresAtMigration, ReservationTtlColumnMigration, PickBatchHandoverColumnMigration } from './migrations';
 import { AuthConfigService } from './auth/auth-config.service';
 import { PayConfigService } from './payment/pay-config.service';
 import { MapConfigService } from './map/map-config.service';
@@ -201,6 +201,7 @@ function mergeCustomFields<T extends { name: string }>(
         ChannelCustomColumnMigration,
         ReservationExpiresAtMigration,
         ReservationTtlColumnMigration,
+        PickBatchHandoverColumnMigration,
         ShippingContactFlagMigration,
         StockTableMigration,
         ChannelInventoryModeColumnMigration,
@@ -1466,6 +1467,11 @@ function mergeCustomFields<T extends { name: string }>(
                     pickedAt: DateTime
                     printedAt: DateTime
                     shippedAt: DateTime
+                    handoverAt: DateTime
+                    handoverTo: String
+                    reviewedAt: DateTime
+                    exceptionAt: DateTime
+                    exceptionNote: String
                     createdAt: DateTime!
                 }
 
@@ -1533,6 +1539,8 @@ function mergeCustomFields<T extends { name: string }>(
                     advancePickBatchState(batchId: ID!, to: String!): PickBatch!
                     cancelPickBatch(batchId: ID!): PickBatch!
                     shipPickBatch(batchId: ID!, input: ShipPickBatchInput!): JSON!
+                    handoverPickBatch(batchId: ID!, handoverTo: String!): PickBatch!
+                    registerPickBatchException(batchId: ID!, reason: String!): PickBatch!
                     updateOrderShippingAddress(orderId: ID!, input: OrderAddressInput!): JSON!
                 }
 

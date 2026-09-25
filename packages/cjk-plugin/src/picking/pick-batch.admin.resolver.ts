@@ -107,6 +107,28 @@ export class PickBatchAdminResolver {
         return this.pickBatchService.ship(ctx, args.batchId, args.input ?? {});
     }
 
+    @Mutation()
+    @Allow(Permission.UpdateOrder)
+    async handoverPickBatch(
+        @Ctx() ctx: RequestContext,
+        @Args('batchId') batchId: ID,
+        @Args('handoverTo') handoverTo: string,
+    ) {
+        await this.pickBatchService.handover(ctx, batchId, handoverTo);
+        return this.pickBatchService.detail(ctx, batchId);
+    }
+
+    @Mutation()
+    @Allow(Permission.UpdateOrder)
+    async registerPickBatchException(
+        @Ctx() ctx: RequestContext,
+        @Args('batchId') batchId: ID,
+        @Args('reason') reason: string,
+    ) {
+        await this.pickBatchService.registerException(ctx, batchId, reason);
+        return this.pickBatchService.detail(ctx, batchId);
+    }
+
     /** 操作人：优先 TenantMember.displayName，回退 Administrator 名字 */
     private async currentOperator(ctx: RequestContext): Promise<string | null> {
         const userId = ctx.activeUserId;

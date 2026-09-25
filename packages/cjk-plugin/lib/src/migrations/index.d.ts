@@ -7,3 +7,4 @@ export { StockTableMigration, ChannelInventoryModeColumnMigration } from './migr
 export { CollectionIconMigration } from './migrate-collection-icon';
 export { ReservationExpiresAtMigration } from './migrate-reservation-expires-at';
 export { ReservationTtlColumnMigration } from './migrate-reservation-ttl-column';
+export { PickBatchHandoverColumnMigration } from './migrate-pick-batch-handover-columns';

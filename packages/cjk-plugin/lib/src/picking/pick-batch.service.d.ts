@@ -60,6 +60,10 @@ export declare class PickBatchService {
     removeOrders(ctx: RequestContext, batchId: ID, orderIds: number[]): Promise<PickBatch>;
     advance(ctx: RequestContext, batchId: ID, to: PickBatchState): Promise<PickBatch>;
     cancel(ctx: RequestContext, batchId: ID): Promise<PickBatch>;
+    /** 交接登记：写交接对象 + 推进到 HANDOVER（状态机仍由 advance 把关） */
+    handover(ctx: RequestContext, batchId: ID, handoverTo: string): Promise<PickBatch>;
+    /** 异常件登记：写原因 + 推进到 EXCEPTION */
+    registerException(ctx: RequestContext, batchId: ID, reason: string): Promise<PickBatch>;
     /**
      * 拣货汇总：按 SKU 合并数量、收集涉及订单号，并按库位排序出拣货路径。
      * 三档共用：zone 档下 rowNo / levelNo 为 null，排序自动退化为按库区。

@@ -45,6 +45,12 @@ export declare class PickBatchAdminResolver {
             reason: string;
         }>;
     }>;
+    handoverPickBatch(ctx: RequestContext, batchId: ID, handoverTo: string): Promise<{
+        members: import("./pick-batch.service").PickOrderSnapshot[];
+    } | null>;
+    registerPickBatchException(ctx: RequestContext, batchId: ID, reason: string): Promise<{
+        members: import("./pick-batch.service").PickOrderSnapshot[];
+    } | null>;
     /** 操作人：优先 TenantMember.displayName，回退 Administrator 名字 */
     private currentOperator;
 }
