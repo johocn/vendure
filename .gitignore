@@ -418,3 +418,15 @@ e2e-*.json
 packages/cjk-plugin/lib/**/*.spec.js
 packages/cjk-plugin/lib/**/*.spec.js.map
 packages/cjk-plugin/lib/**/*.spec.d.ts
+
+# pnpm 本地安装残留（备份目录与子包锁文件，勿提交；依赖统一以根 pnpm-lock.yaml 为准）
+node_modules.pnpm-bak/
+packages/*/pnpm-lock.yaml
+
+# E2E 截图与临时产物（本地产物，不进仓库）
+e2e-shots/
+
+# shop-template-plugin lib 编译产物中的测试文件（与 cjk-plugin 同规则；其余 lib 产物需提交）
+packages/shop-template-plugin/lib/**/*.spec.js
+packages/shop-template-plugin/lib/**/*.spec.js.map
+packages/shop-template-plugin/lib/**/*.spec.d.ts
