@@ -206,3 +206,16 @@ export declare function resolveScanCode(raw: string, ctx: {
     lines: ScanLine[];
     variants: ScanVariant[];
 }): ScanHit;
+export type StateFilterMode = 'none' | 'one' | 'many';
+export interface StateFilter {
+    mode: StateFilterMode;
+    values: string[];
+}
+/**
+ * 列表状态过滤解析（规格 §7.1）：state（单值）优先 → states（多值）→ 都为空则不过滤。
+ * 优先级必须写单测锁住：前端「已结束」页签只下发 states，历史调用方只下发 state。
+ */
+export declare function parseStateFilter(options?: {
+    state?: string | null;
+    states?: string[] | null;
+}): StateFilter;

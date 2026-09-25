@@ -90,8 +90,13 @@ let StocktakeService = class StocktakeService {
     }
     async listTasks(ctx, options) {
         const where = { tenantChannelId: this.tenantOf(ctx) };
-        if (options === null || options === void 0 ? void 0 : options.state)
-            where.state = options.state;
+        // 规格 §3.1：state 单值优先，其次 states 多值（In），两者皆空则不过滤。
+        // 「已结束」页签必须走多值，否则前端本地过滤 + 分页会串页（第 2 页看起来缺人）。
+        const stateFilter = (0, stocktake_math_1.parseStateFilter)(options);
+        if (stateFilter.mode === 'one')
+            where.state = stateFilter.values[0];
+        else if (stateFilter.mode === 'many')
+            where.state = (0, typeorm_1.In)(stateFilter.values);
         if (options === null || options === void 0 ? void 0 : options.activityCode)
             where.activityCode = options.activityCode;
         if (options === null || options === void 0 ? void 0 : options.stockLocationId)

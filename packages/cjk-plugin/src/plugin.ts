@@ -1700,7 +1700,7 @@ import { stocktakePermissionDefinitions } from './stocktake/stocktake-permission
                 input StocktakeWaveInput { scopeType: String!, zoneId: ID }
                 input StocktakeCountEntryInput { lineId: ID, variantId: ID, countedQty: Int!, zoneId: ID, binId: ID, note: String }
                 input StocktakeLineFilterInput { onlyCounted: Boolean, onlyUncounted: Boolean, onlyDiff: Boolean, onlyExtra: Boolean }
-                input StocktakeTaskOptionsInput { page: Int, pageSize: Int, state: String, activityCode: String, stockLocationId: ID }
+                input StocktakeTaskOptionsInput { page: Int, pageSize: Int, state: String, states: [String!], activityCode: String, stockLocationId: ID }
                 extend type Query {
                     stocktakeTasks(options: StocktakeTaskOptionsInput): StocktakeTaskList!
                     stocktakeTask(id: ID!): StocktakeTask

@@ -13,6 +13,7 @@ exports.resolveWaveStateAfterCount = resolveWaveStateAfterCount;
 exports.resolveTaskStateAfterWaves = resolveTaskStateAfterWaves;
 exports.waveOwnerError = waveOwnerError;
 exports.resolveScanCode = resolveScanCode;
+exports.parseStateFilter = parseStateFilter;
 exports.TASK_STATES = ['DRAFT', 'OPEN', 'COUNTING', 'COUNTED', 'POSTED', 'CANCELLED'];
 exports.WAVE_STATES = ['OPEN', 'CLAIMED', 'COUNTING', 'SUBMITTED', 'CANCELLED'];
 const TASK_EDGES = {
@@ -338,5 +339,18 @@ function resolveScanCode(raw, ctx) {
     if (variant)
         return { kind: 'extra', variantId: variant.variantId, sku: variant.sku, name: variant.name };
     return { kind: 'none', raw: code };
+}
+/**
+ * 列表状态过滤解析（规格 §7.1）：state（单值）优先 → states（多值）→ 都为空则不过滤。
+ * 优先级必须写单测锁住：前端「已结束」页签只下发 states，历史调用方只下发 state。
+ */
+function parseStateFilter(options) {
+    const one = (options === null || options === void 0 ? void 0 : options.state) ? String(options.state).trim() : '';
+    if (one)
+        return { mode: 'one', values: [one] };
+    const many = ((options === null || options === void 0 ? void 0 : options.states) || []).map((s) => String(s || '').trim()).filter(Boolean);
+    if (many.length)
+        return { mode: 'many', values: many };
+    return { mode: 'none', values: [] };
 }
 //# sourceMappingURL=stocktake-math.js.map

@@ -35,6 +35,7 @@ import {
     canWaveTransition,
     formatTaskCode,
     nextTaskSeq,
+    parseStateFilter,
     resolveTaskStateAfterWaves,
     resolveScanCode,
     resolveWaveStateAfterCount,
@@ -122,7 +123,11 @@ export class StocktakeService {
 
     async listTasks(ctx: RequestContext, options?: any): Promise<{ totalItems: number; items: StocktakeTaskView[] }> {
         const where: any = { tenantChannelId: this.tenantOf(ctx) };
-        if (options?.state) where.state = options.state;
+        // 规格 §3.1：state 单值优先，其次 states 多值（In），两者皆空则不过滤。
+        // 「已结束」页签必须走多值，否则前端本地过滤 + 分页会串页（第 2 页看起来缺人）。
+        const stateFilter = parseStateFilter(options);
+        if (stateFilter.mode === 'one') where.state = stateFilter.values[0];
+        else if (stateFilter.mode === 'many') where.state = In(stateFilter.values);
         if (options?.activityCode) where.activityCode = options.activityCode;
         if (options?.stockLocationId) where.stockLocationId = Number(options.stockLocationId);
         const page = Number(options?.page) > 0 ? Number(options.page) : 1;
