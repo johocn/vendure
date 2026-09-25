@@ -338,6 +338,8 @@ export class StockDocService {
         const type = options?.type && DOC_TYPES.includes(options.type as StockDocType) ? String(options.type) : null;
         const page = clampPage(options?.page);
         const pageSize = clampPageSize(options?.pageSize);
+        const from = parseIso(options?.from);
+        const to = parseIso(options?.to);
 
         const qb = this.conn
             .getRepository(ctx, StockDocEntity)
@@ -355,11 +357,13 @@ export class StockDocService {
                 { loc: Number(options.locationId) },
             );
         }
-        if (options?.from) {
-            qb.andWhere('d.createdAt >= :from', { from: options.from });
+        // 日期区间：必须绑定 Date 实例。`stock_doc.createdAt` 是 timestamp（无时区），
+        // 若直接把带 Z 的 ISO 串交给 Postgres，文本→timestamp 转换会丢掉偏移量，口径偏 8 小时。
+        if (from) {
+            qb.andWhere('d.createdAt >= :from', { from });
         }
-        if (options?.to) {
-            qb.andWhere('d.createdAt <= :to', { to: options.to });
+        if (to) {
+            qb.andWhere('d.createdAt <= :to', { to });
         }
         if (options?.operator) {
             qb.andWhere('d.operator = :op', { op: options.operator });

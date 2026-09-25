@@ -254,6 +254,8 @@ let StockDocService = class StockDocService {
         const type = (options === null || options === void 0 ? void 0 : options.type) && DOC_TYPES.includes(options.type) ? String(options.type) : null;
         const page = clampPage(options === null || options === void 0 ? void 0 : options.page);
         const pageSize = clampPageSize(options === null || options === void 0 ? void 0 : options.pageSize);
+        const from = parseIso(options === null || options === void 0 ? void 0 : options.from);
+        const to = parseIso(options === null || options === void 0 ? void 0 : options.to);
         const qb = this.conn
             .getRepository(ctx, stock_doc_entity_1.StockDocEntity)
             .createQueryBuilder('d')
@@ -267,11 +269,13 @@ let StockDocService = class StockDocService {
             qb.andWhere(`EXISTS (SELECT 1 FROM stock_doc_item i WHERE i."docId" = d.id
                          AND (i."fromStockLocationId" = :loc OR i."toStockLocationId" = :loc))`, { loc: Number(options.locationId) });
         }
-        if (options === null || options === void 0 ? void 0 : options.from) {
-            qb.andWhere('d.createdAt >= :from', { from: options.from });
+        // 日期区间：必须绑定 Date 实例。`stock_doc.createdAt` 是 timestamp（无时区），
+        // 若直接把带 Z 的 ISO 串交给 Postgres，文本→timestamp 转换会丢掉偏移量，口径偏 8 小时。
+        if (from) {
+            qb.andWhere('d.createdAt >= :from', { from });
         }
-        if (options === null || options === void 0 ? void 0 : options.to) {
-            qb.andWhere('d.createdAt <= :to', { to: options.to });
+        if (to) {
+            qb.andWhere('d.createdAt <= :to', { to });
         }
         if (options === null || options === void 0 ? void 0 : options.operator) {
             qb.andWhere('d.operator = :op', { op: options.operator });
