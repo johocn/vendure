@@ -5,3 +5,4 @@ export { TenantMemberColumnMigration } from './migrate-tenant-member-column';
 export { ChannelCustomColumnMigration } from './migrate-channel-custom-column';
 export { ShippingContactFlagMigration } from './migrate-shipping-contact-flags';
 export { StockTableMigration, ChannelInventoryModeColumnMigration } from './migrate-stock-tables';
+export { CollectionIconMigration } from './migrate-collection-icon';

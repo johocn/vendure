@@ -1,5 +1,5 @@
 import { Inject, MiddlewareConsumer, NestModule, OnApplicationBootstrap, Type } from '@nestjs/common';
-import { I18nService, Injector, Logger, PluginCommonModule, RequestContext, VendurePlugin, ChannelService } from '@vendure/core';
+import { I18nService, Injector, LanguageCode, Logger, PluginCommonModule, RequestContext, VendurePlugin, ChannelService } from '@vendure/core';
 import { APP_GUARD, ModuleRef } from '@nestjs/core';
 
 import { CJK_PLUGIN_OPTIONS, loggerCtx } from './constants';
@@ -67,7 +67,7 @@ import { MapProviderRegistry } from './map/map-provider-registry';
 import { MapService } from './map/map.service';
 import { MapAdminResolver } from './map/map-admin.resolver';
 import { MapShopResolver } from './map/map-shop.resolver';
-import { MapConfigEncryptionMigration, PayConfigEncryptionMigration, TenantMemberColumnMigration, ChannelCustomColumnMigration, ShippingContactFlagMigration, StockTableMigration, ChannelInventoryModeColumnMigration } from './migrations';
+import { MapConfigEncryptionMigration, PayConfigEncryptionMigration, TenantMemberColumnMigration, ChannelCustomColumnMigration, ShippingContactFlagMigration, StockTableMigration, ChannelInventoryModeColumnMigration, CollectionIconMigration } from './migrations';
 import { AuthConfigService } from './auth/auth-config.service';
 import { PayConfigService } from './payment/pay-config.service';
 import { MapConfigService } from './map/map-config.service';
@@ -192,6 +192,7 @@ import { stocktakePermissionDefinitions } from './stocktake/stocktake-permission
         ShippingContactFlagMigration,
         StockTableMigration,
         ChannelInventoryModeColumnMigration,
+        CollectionIconMigration,
         AuthConfigService,
         PayConfigService,
         MapConfigService,
@@ -2269,6 +2270,32 @@ import { stocktakePermissionDefinitions } from './stocktake/stocktake-permission
                     StockLocation: [
                         ...(config.customFields?.StockLocation || []),
                         ...newSlFields,
+                    ],
+                };
+            }
+        }
+
+        // 注册 Collection customFields（icon 分类图标）—— 去重防止重复注册
+        {
+            const existingCollectionFields = (config.customFields?.Collection || []).map(f => f.name);
+            const newCollectionFields = [
+                {
+                    name: 'icon',
+                    type: 'string' as const,
+                    label: [
+                        { languageCode: LanguageCode.zh_Hans, value: '分类图标' },
+                        { languageCode: LanguageCode.en, value: 'Category icon' },
+                    ],
+                    nullable: true,
+                    public: true,
+                },
+            ].filter(f => !existingCollectionFields.includes(f.name));
+            if (newCollectionFields.length > 0) {
+                config.customFields = {
+                    ...config.customFields,
+                    Collection: [
+                        ...(config.customFields?.Collection || []),
+                        ...newCollectionFields,
                     ],
                 };
             }
