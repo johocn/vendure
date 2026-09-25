@@ -1910,7 +1910,9 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     scope: StocktakeScopeInput
                     autoSplitByZone: Boolean
                     note: String
+                    state: String
                 }
+                input StocktakeTaskUpdateInput { name: String, activityCode: String, note: String, stockLocationId: ID, scope: StocktakeScopeInput, autoSplitByZone: Boolean }
                 input StocktakeWaveInput { scopeType: String!, zoneId: ID }
                 input StocktakeCountEntryInput { lineId: ID, variantId: ID, countedQty: Int!, zoneId: ID, binId: ID, note: String }
                 input StocktakeLineFilterInput { onlyCounted: Boolean, onlyUncounted: Boolean, onlyDiff: Boolean, onlyExtra: Boolean }
@@ -1925,6 +1927,8 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                 }
                 extend type Mutation {
                     createStocktakeTask(input: StocktakeTaskInput!): StocktakeTask!
+                    openStocktakeTask(taskId: ID!): StocktakeTask!
+                    updateStocktakeTask(taskId: ID!, input: StocktakeTaskUpdateInput!): StocktakeTask!
                     addStocktakeWave(taskId: ID!, input: StocktakeWaveInput!): StocktakeWave!
                     assignStocktakeWave(waveId: ID!, assigneeId: String): StocktakeWave!
                     claimStocktakeWave(waveId: ID!): StocktakeWave!

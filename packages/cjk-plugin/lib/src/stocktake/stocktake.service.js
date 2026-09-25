@@ -166,27 +166,50 @@ let StocktakeService = class StocktakeService {
         }
         return Array.from(variantIds);
     }
-    async createTask(ctx, input) {
-        var _a, _b, _c, _d, _e, _f;
+    /** 任务头落库（草稿与直接创建共用；DRAFT 不物化盘次与应盘行） */
+    async buildTaskHead(ctx, input, opts) {
+        var _a;
         const tenant = this.tenantOf(ctx);
         const operator = await this.currentOperator(ctx);
-        const stockLocationId = Number(input.stockLocationId);
-        if (!stockLocationId)
-            throw new core_1.UserInputError('请选择盘点仓库');
-        if (!input.name || !String(input.name).trim())
-            throw new core_1.UserInputError('请填写任务名称');
+        const codeList = await this.connection.getRepository(ctx, stocktake_task_entity_1.StocktakeTask).find({
+            where: { tenantChannelId: tenant }, select: ['code'],
+        });
+        const seq = (0, stocktake_math_1.nextTaskSeq)(codeList.map((t) => t.code), new Date());
+        return this.connection.getRepository(ctx, stocktake_task_entity_1.StocktakeTask).save(new stocktake_task_entity_1.StocktakeTask({
+            code: (0, stocktake_math_1.formatTaskCode)(new Date(), seq), tenantChannelId: tenant,
+            stockLocationId: Number(input.stockLocationId),
+            activityCode: input.activityCode ? String(input.activityCode).trim() : null,
+            name: String(input.name).trim(),
+            scopeJson: opts.scopeJson,
+            binModeAtCreate: opts.binModeAtCreate,
+            state: opts.state,
+            createdById: operator.id, createdByName: operator.name,
+            note: (_a = input.note) !== null && _a !== void 0 ? _a : null,
+        }));
+    }
+    /** 默认档位（渠道 customFields.binMode；缺省 off） */
+    async currentBinMode(ctx) {
+        var _a;
         const channel = await this.connection.getRepository(ctx, core_1.Channel).findOne({ where: { id: ctx.channelId } });
-        const binMode = (((_a = channel === null || channel === void 0 ? void 0 : channel.customFields) === null || _a === void 0 ? void 0 : _a.binMode) || 'off');
+        return (((_a = channel === null || channel === void 0 ? void 0 : channel.customFields) === null || _a === void 0 ? void 0 : _a.binMode) || 'off');
+    }
+    /**
+     * 物化：解析范围 → 双源合并 → 建盘次与应盘行（规格 §7.2）。
+     * 直接创建与「草稿发布」共用；必须在一个事务内调用（txCtx）。
+     */
+    async materializeTask(ctx, txCtx, task, binMode) {
+        const tenant = task.tenantChannelId;
+        const stockLocationId = Number(task.stockLocationId);
+        const raw = JSON.parse(task.scopeJson || '{}');
         const scope = {
-            zones: (((_b = input.scope) === null || _b === void 0 ? void 0 : _b.zones) || []).map(Number),
-            categoryIds: (((_c = input.scope) === null || _c === void 0 ? void 0 : _c.categoryIds) || []).map(Number),
+            zones: (raw.zones || []).map(Number),
+            categoryIds: (raw.categoryIds || []).map(Number),
             variantIds: await this.resolveScopeVariants(ctx, {
-                zones: [], categoryIds: ((_d = input.scope) === null || _d === void 0 ? void 0 : _d.categoryIds) || [], variantIds: ((_e = input.scope) === null || _e === void 0 ? void 0 : _e.variantIds) || [],
-                includeZeroBook: false,
+                zones: [], categoryIds: raw.categoryIds || [], variantIds: raw.variantIds || [], includeZeroBook: false,
             }),
-            includeZeroBook: !!((_f = input.scope) === null || _f === void 0 ? void 0 : _f.includeZeroBook),
+            includeZeroBook: !!raw.includeZeroBook,
         };
-        // 双源：有账面（stockLevels）+ 已归位（variant_storage_bin）
+        const autoSplitByZone = raw.autoSplitByZone !== false;
         const levels = await this.connection.getRepository(ctx, core_1.StockLevel).find({
             where: { stockLocationId: stockLocationId },
         });
@@ -224,50 +247,107 @@ let StocktakeService = class StocktakeService {
             : [];
         const variantMeta = new Map(variants.map((v) => [v.id, { sku: v.sku, name: v.name || v.sku }]));
         const zoneMeta = new Map(zones.map((z) => [z.id, { code: z.code, name: z.name }]));
-        const expected = (0, stocktake_math_1.buildExpected)({
-            binMode, bookRows, bindRows, variantMeta, zoneMeta, scope,
-            // 建任务开关：关闭时整仓只出一个盘次（缺省 / true = 按库区拆）
-            autoSplitByZone: input.autoSplitByZone !== false,
-        });
+        const expected = (0, stocktake_math_1.buildExpected)({ binMode, bookRows, bindRows, variantMeta, zoneMeta, scope, autoSplitByZone });
         if (!expected.waves.some((w) => w.expectedCount > 0)) {
             throw new core_1.UserInputError('该范围下没有可盘的商品（既无账面也无归位记录），请检查圈选条件或仓库');
         }
-        return this.connection.withTransaction(ctx, async (txCtx) => {
-            var _a;
-            const codeList = await this.connection.getRepository(txCtx, stocktake_task_entity_1.StocktakeTask).find({
-                where: { tenantChannelId: tenant }, select: ['code'],
-            });
-            const seq = (0, stocktake_math_1.nextTaskSeq)(codeList.map((t) => t.code), new Date());
-            const code = (0, stocktake_math_1.formatTaskCode)(new Date(), seq);
-            const task = await this.connection.getRepository(txCtx, stocktake_task_entity_1.StocktakeTask).save(new stocktake_task_entity_1.StocktakeTask({
-                code, tenantChannelId: tenant, stockLocationId,
-                activityCode: input.activityCode ? String(input.activityCode).trim() : null,
-                name: String(input.name).trim(),
-                scopeJson: JSON.stringify(scope),
-                binModeAtCreate: binMode,
-                state: 'OPEN',
-                createdById: operator.id, createdByName: operator.name,
-                note: (_a = input.note) !== null && _a !== void 0 ? _a : null,
+        for (let i = 0; i < expected.waves.length; i++) {
+            const w = expected.waves[i];
+            const wave = await this.connection.getRepository(txCtx, stocktake_wave_entity_1.StocktakeWave).save(new stocktake_wave_entity_1.StocktakeWave({
+                tenantChannelId: tenant, taskId: Number(task.id), scopeType: w.scopeType,
+                zoneId: w.zoneId, zoneCode: w.zoneCode, zoneName: w.zoneName,
+                state: 'OPEN', expectedCount: w.expectedCount, countedCount: 0,
+                assigneeId: null, assigneeName: null, claimedAt: null, submittedAt: null,
             }));
-            for (let i = 0; i < expected.waves.length; i++) {
-                const w = expected.waves[i];
-                const wave = await this.connection.getRepository(txCtx, stocktake_wave_entity_1.StocktakeWave).save(new stocktake_wave_entity_1.StocktakeWave({
-                    tenantChannelId: tenant, taskId: Number(task.id), scopeType: w.scopeType,
-                    zoneId: w.zoneId, zoneCode: w.zoneCode, zoneName: w.zoneName,
-                    state: 'OPEN', expectedCount: w.expectedCount, countedCount: 0,
-                    assigneeId: null, assigneeName: null, claimedAt: null, submittedAt: null,
-                }));
-                const rows = expected.linesByWave[i].map((l) => new stocktake_line_entity_1.StocktakeLine({
-                    tenantChannelId: tenant, taskId: Number(task.id), waveId: Number(wave.id),
-                    variantId: l.variantId, variantSku: l.variantSku, variantName: l.variantName,
-                    zoneId: l.zoneId, binId: l.binId, zoneCode: l.zoneCode, binCode: l.binCode,
-                    bookQty: l.bookQty, countedQty: null, isExtra: false,
-                }));
-                if (rows.length)
-                    await this.connection.getRepository(txCtx, stocktake_line_entity_1.StocktakeLine).save(rows);
+            const rows = expected.linesByWave[i].map((l) => new stocktake_line_entity_1.StocktakeLine({
+                tenantChannelId: tenant, taskId: Number(task.id), waveId: Number(wave.id),
+                variantId: l.variantId, variantSku: l.variantSku, variantName: l.variantName,
+                zoneId: l.zoneId, binId: l.binId, zoneCode: l.zoneCode, binCode: l.binCode,
+                bookQty: l.bookQty, countedQty: null, isExtra: false,
+            }));
+            if (rows.length)
+                await this.connection.getRepository(txCtx, stocktake_line_entity_1.StocktakeLine).save(rows);
+        }
+    }
+    async createTask(ctx, input) {
+        const stockLocationId = Number(input.stockLocationId);
+        if (!stockLocationId)
+            throw new core_1.UserInputError('请选择盘点仓库');
+        if (!input.name || !String(input.name).trim())
+            throw new core_1.UserInputError('请填写任务名称');
+        const state = String(input.state || 'OPEN').toUpperCase() === 'DRAFT' ? 'DRAFT' : 'OPEN';
+        if (input.state && !['DRAFT', 'OPEN'].includes(String(input.state).toUpperCase())) {
+            throw new core_1.UserInputError(`任务状态只能是 DRAFT 或 OPEN（收到 ${input.state}）`);
+        }
+        // SDL 兼容：老前端把拆盘开关传在顶层（不在 scope 内），scope 未带时归并进来，
+        // 保持「直接创建」的既有语义（autoSplitByZone=false = 整仓单盘次）。
+        const scope = Object.assign({}, (input.scope || {}));
+        if (scope.autoSplitByZone === undefined && input.autoSplitByZone !== undefined) {
+            scope.autoSplitByZone = input.autoSplitByZone !== false;
+        }
+        const scopeJson = JSON.stringify(scope);
+        return this.connection.withTransaction(ctx, async (txCtx) => {
+            if (state === 'DRAFT') {
+                // 草稿只写任务头（规格 §3.2）：不解析 categoryIds → variantIds、不物化；
+                // 档位留空串（列非空），发布时按当时渠道档位写入。
+                const head = await this.buildTaskHead(txCtx, input, {
+                    binModeAtCreate: '', state: 'DRAFT', scopeJson,
+                });
+                return this.buildTaskView(txCtx, head);
             }
-            return this.buildTaskView(txCtx, task);
+            const binMode = await this.currentBinMode(ctx);
+            const head = await this.buildTaskHead(txCtx, input, {
+                binModeAtCreate: binMode, state: 'OPEN', scopeJson,
+            });
+            await this.materializeTask(ctx, txCtx, head, binMode);
+            head.state = 'OPEN';
+            await this.connection.getRepository(txCtx, stocktake_task_entity_1.StocktakeTask).save(head);
+            return this.buildTaskView(txCtx, head);
         });
+    }
+    /** 草稿发布（规格 §3.2 / §5）：仅 DRAFT 可发；发布时才物化盘次与应盘行 */
+    async openTask(ctx, taskId) {
+        const task = await this.assertTask(ctx, taskId);
+        if (task.state !== 'DRAFT')
+            throw new core_1.UserInputError(`任务 ${task.code} 已发布（当前状态 ${task.state}），不能重复发布`);
+        return this.connection.withTransaction(ctx, async (txCtx) => {
+            const binMode = await this.currentBinMode(ctx);
+            task.binModeAtCreate = binMode; // 规格 §3.2：以发布时档位为准
+            await this.connection.getRepository(txCtx, stocktake_task_entity_1.StocktakeTask).save(task);
+            await this.materializeTask(ctx, txCtx, task, binMode);
+            task.state = 'OPEN';
+            const saved = await this.connection.getRepository(txCtx, stocktake_task_entity_1.StocktakeTask).save(task);
+            return this.buildTaskView(txCtx, saved);
+        });
+    }
+    /** 草稿编辑（规格 §5）：仅 DRAFT 可改；状态不经此路径变更 */
+    async updateTask(ctx, taskId, input) {
+        var _a;
+        const task = await this.assertTask(ctx, taskId);
+        if (task.state !== 'DRAFT')
+            throw new core_1.UserInputError(`任务 ${task.code} 已发布，范围不可再改（起草稿后再编辑）`);
+        if (input.name !== undefined && input.name !== null) {
+            if (!String(input.name).trim())
+                throw new core_1.UserInputError('请填写任务名称');
+            task.name = String(input.name).trim();
+        }
+        if (input.activityCode !== undefined)
+            task.activityCode = input.activityCode ? String(input.activityCode).trim() : null;
+        if (input.note !== undefined)
+            task.note = (_a = input.note) !== null && _a !== void 0 ? _a : null;
+        if (input.stockLocationId !== undefined && input.stockLocationId !== null) {
+            const loc = Number(input.stockLocationId);
+            if (!loc)
+                throw new core_1.UserInputError('盘点仓库不合法');
+            task.stockLocationId = loc;
+        }
+        if (input.scope !== undefined) {
+            const scope = Object.assign({}, (input.scope || {}));
+            if (input.autoSplitByZone !== undefined)
+                scope.autoSplitByZone = input.autoSplitByZone !== false;
+            task.scopeJson = JSON.stringify(scope);
+        }
+        return this.buildTaskView(ctx, await this.connection.getRepository(ctx, stocktake_task_entity_1.StocktakeTask).save(task));
     }
     // ------------------------------------------------------------ 盘次动作
     async addWave(ctx, taskId, input) {

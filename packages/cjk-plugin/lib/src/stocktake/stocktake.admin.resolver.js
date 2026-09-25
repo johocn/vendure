@@ -58,6 +58,12 @@ let StocktakeAdminResolver = class StocktakeAdminResolver {
     async createStocktakeTask(ctx, args) {
         return this.stocktakeService.createTask(ctx, args.input);
     }
+    async openStocktakeTask(ctx, args) {
+        return this.stocktakeService.openTask(ctx, args.taskId);
+    }
+    async updateStocktakeTask(ctx, args) {
+        return this.stocktakeService.updateTask(ctx, args.taskId, args.input);
+    }
     async addStocktakeWave(ctx, args) {
         return this.stocktakeService.addWave(ctx, args.taskId, args.input);
     }
@@ -151,6 +157,24 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], StocktakeAdminResolver.prototype, "createStocktakeTask", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)('StocktakeCount'),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], StocktakeAdminResolver.prototype, "openStocktakeTask", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)('StocktakeCount'),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], StocktakeAdminResolver.prototype, "updateStocktakeTask", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)('StocktakeCount'),

@@ -56,7 +56,20 @@ export declare class StocktakeService {
     private assertWave;
     /** scope.categoryIds → variantIds（商品数据不在纯函数里碰） */
     private resolveScopeVariants;
+    /** 任务头落库（草稿与直接创建共用；DRAFT 不物化盘次与应盘行） */
+    private buildTaskHead;
+    /** 默认档位（渠道 customFields.binMode；缺省 off） */
+    private currentBinMode;
+    /**
+     * 物化：解析范围 → 双源合并 → 建盘次与应盘行（规格 §7.2）。
+     * 直接创建与「草稿发布」共用；必须在一个事务内调用（txCtx）。
+     */
+    private materializeTask;
     createTask(ctx: RequestContext, input: any): Promise<StocktakeTaskView>;
+    /** 草稿发布（规格 §3.2 / §5）：仅 DRAFT 可发；发布时才物化盘次与应盘行 */
+    openTask(ctx: RequestContext, taskId: ID): Promise<StocktakeTaskView>;
+    /** 草稿编辑（规格 §5）：仅 DRAFT 可改；状态不经此路径变更 */
+    updateTask(ctx: RequestContext, taskId: ID, input: any): Promise<StocktakeTaskView>;
     addWave(ctx: RequestContext, taskId: ID, input: any): Promise<StocktakeWave>;
     assignWave(ctx: RequestContext, waveId: ID, assigneeId?: string | null): Promise<StocktakeWave>;
     claimWave(ctx: RequestContext, waveId: ID): Promise<StocktakeWave>;

@@ -219,3 +219,50 @@ export declare function parseStateFilter(options?: {
     state?: string | null;
     states?: string[] | null;
 }): StateFilter;
+/** 统计输入行：StocktakeLine 的纯函数投影（不引入实体依赖） */
+export interface StatLine {
+    waveId: number;
+    zoneId: number | null;
+    zoneCode: string | null;
+    binId: number | null;
+    binCode: string | null;
+    isExtra: boolean;
+    countedQty: number | null;
+    countedById: string | null;
+    countedByName: string | null;
+    countedAt: Date | null;
+}
+export interface BinStat {
+    zoneId: number | null;
+    zoneCode: string | null;
+    binId: number | null;
+    binCode: string | null;
+    expectedLines: number;
+    countedLines: number;
+    uncountedLines: number;
+    extraLines: number;
+}
+export interface CounterStat {
+    countedById: string | null;
+    countedByName: string | null;
+    countedLines: number;
+    extraLines: number;
+    waveCount: number;
+    lastCountedAt: Date | null;
+}
+/**
+ * 按库位聚合（规格 §7.3）：只出作业量，不出任何差异数量/金额
+ * （差异是变体口径，摊到库位会重复计数 —— 规格 §3.3）。
+ */
+export declare function aggregateByBin(lines: StatLine[]): BinStat[];
+/** 按盘点人聚合（规格 §7.3）：只统计「确实被盘过」的行（含盘盈行）。 */
+export declare function aggregateByCounter(lines: StatLine[]): CounterStat[];
+export type CsvCell = string | number | boolean | Date | null | undefined;
+/** 导出行数上限（规格 §7.4）：超出即截断并置 truncated=true */
+export declare const CSV_MAX_ROWS = 20000;
+/**
+ * CSV 序列化（规格 §7.4，前后端同一规则）：
+ * ① 首字符 BOM（Excel 中文不乱码）② 行尾 CRLF ③ 含 , " \n \r 时整体引号包裹、内部 " 翻倍
+ * ④ null/undefined → 空字段；boolean → 是/否；Date → ISO ⑤ 行数上限截断。
+ */
+export declare function toCsv(rows: CsvCell[][], maxRows?: number): string;

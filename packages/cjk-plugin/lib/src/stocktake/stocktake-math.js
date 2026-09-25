@@ -1,6 +1,17 @@
 "use strict";
+var __rest = (this && this.__rest) || function (s, e) {
+    var t = {};
+    for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
+        t[p] = s[p];
+    if (s != null && typeof Object.getOwnPropertySymbols === "function")
+        for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
+            if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
+                t[p[i]] = s[p[i]];
+        }
+    return t;
+};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.WAVE_STATES = exports.TASK_STATES = void 0;
+exports.CSV_MAX_ROWS = exports.WAVE_STATES = exports.TASK_STATES = void 0;
 exports.canTaskTransition = canTaskTransition;
 exports.canWaveTransition = canWaveTransition;
 exports.formatTaskCode = formatTaskCode;
@@ -14,6 +25,9 @@ exports.resolveTaskStateAfterWaves = resolveTaskStateAfterWaves;
 exports.waveOwnerError = waveOwnerError;
 exports.resolveScanCode = resolveScanCode;
 exports.parseStateFilter = parseStateFilter;
+exports.aggregateByBin = aggregateByBin;
+exports.aggregateByCounter = aggregateByCounter;
+exports.toCsv = toCsv;
 exports.TASK_STATES = ['DRAFT', 'OPEN', 'COUNTING', 'COUNTED', 'POSTED', 'CANCELLED'];
 exports.WAVE_STATES = ['OPEN', 'CLAIMED', 'COUNTING', 'SUBMITTED', 'CANCELLED'];
 const TASK_EDGES = {
@@ -352,5 +366,98 @@ function parseStateFilter(options) {
     if (many.length)
         return { mode: 'many', values: many };
     return { mode: 'none', values: [] };
+}
+/**
+ * 按库位聚合（规格 §7.3）：只出作业量，不出任何差异数量/金额
+ * （差异是变体口径，摊到库位会重复计数 —— 规格 §3.3）。
+ */
+function aggregateByBin(lines) {
+    var _a, _b;
+    const groups = new Map();
+    for (const l of lines) {
+        const key = `${(_a = l.zoneId) !== null && _a !== void 0 ? _a : ''}|${(_b = l.binId) !== null && _b !== void 0 ? _b : ''}`;
+        let g = groups.get(key);
+        if (!g) {
+            g = {
+                zoneId: l.zoneId, zoneCode: l.zoneCode, binId: l.binId, binCode: l.binCode,
+                expectedLines: 0, countedLines: 0, uncountedLines: 0, extraLines: 0,
+            };
+            groups.set(key, g);
+        }
+        if (l.zoneCode && !g.zoneCode)
+            g.zoneCode = l.zoneCode;
+        if (l.binCode && !g.binCode)
+            g.binCode = l.binCode;
+        if (l.isExtra) {
+            g.extraLines += 1;
+            continue;
+        }
+        g.expectedLines += 1;
+        if (l.countedQty !== null)
+            g.countedLines += 1;
+        else
+            g.uncountedLines += 1;
+    }
+    const byName = (a, b) => String(a !== null && a !== void 0 ? a : '~').localeCompare(String(b !== null && b !== void 0 ? b : '~'));
+    return Array.from(groups.values()).sort((a, b) => {
+        // 未归位组（zoneId/binId 皆空）置末，其余按 zoneCode → binCode 升序
+        const aOrphan = a.zoneId === null && a.binId === null ? 1 : 0;
+        const bOrphan = b.zoneId === null && b.binId === null ? 1 : 0;
+        if (aOrphan !== bOrphan)
+            return aOrphan - bOrphan;
+        return byName(a.zoneCode, b.zoneCode) || byName(a.binCode, b.binCode);
+    });
+}
+/** 按盘点人聚合（规格 §7.3）：只统计「确实被盘过」的行（含盘盈行）。 */
+function aggregateByCounter(lines) {
+    var _a;
+    const groups = new Map();
+    for (const l of lines) {
+        if (l.countedQty === null)
+            continue;
+        const key = (_a = l.countedById) !== null && _a !== void 0 ? _a : '';
+        let g = groups.get(key);
+        if (!g) {
+            g = {
+                countedById: l.countedById, countedByName: l.countedByName,
+                countedLines: 0, extraLines: 0, waveCount: 0, lastCountedAt: null, waves: new Set(),
+            };
+            groups.set(key, g);
+        }
+        if (l.countedByName && !g.countedByName)
+            g.countedByName = l.countedByName;
+        g.countedLines += 1;
+        if (l.isExtra)
+            g.extraLines += 1;
+        g.waves.add(l.waveId);
+        if (l.countedAt && (!g.lastCountedAt || l.countedAt > g.lastCountedAt))
+            g.lastCountedAt = l.countedAt;
+    }
+    return Array.from(groups.values())
+        .map((_a) => {
+        var { waves } = _a, rest = __rest(_a, ["waves"]);
+        return (Object.assign(Object.assign({}, rest), { waveCount: waves.size }));
+    })
+        .sort((a, b) => { var _a, _b; return b.countedLines - a.countedLines || String((_a = a.countedByName) !== null && _a !== void 0 ? _a : '').localeCompare(String((_b = b.countedByName) !== null && _b !== void 0 ? _b : '')); });
+}
+/** 导出行数上限（规格 §7.4）：超出即截断并置 truncated=true */
+exports.CSV_MAX_ROWS = 20000;
+/**
+ * CSV 序列化（规格 §7.4，前后端同一规则）：
+ * ① 首字符 BOM（Excel 中文不乱码）② 行尾 CRLF ③ 含 , " \n \r 时整体引号包裹、内部 " 翻倍
+ * ④ null/undefined → 空字段；boolean → 是/否；Date → ISO ⑤ 行数上限截断。
+ */
+function toCsv(rows, maxRows = exports.CSV_MAX_ROWS) {
+    const cell = (v) => {
+        if (v === null || v === undefined)
+            return '';
+        if (typeof v === 'boolean')
+            return v ? '是' : '否';
+        if (v instanceof Date)
+            return v.toISOString();
+        const s = String(v);
+        return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    return '\uFEFF' + rows.slice(0, maxRows).map((r) => r.map(cell).join(',')).join('\r\n') + '\r\n';
 }
 //# sourceMappingURL=stocktake-math.js.map

@@ -73,6 +73,18 @@ export class StocktakeAdminResolver {
 
     @Mutation()
     @Allow('StocktakeCount' as Permission)
+    async openStocktakeTask(@Ctx() ctx: RequestContext, @Args() args: any) {
+        return this.stocktakeService.openTask(ctx, args.taskId);
+    }
+
+    @Mutation()
+    @Allow('StocktakeCount' as Permission)
+    async updateStocktakeTask(@Ctx() ctx: RequestContext, @Args() args: any) {
+        return this.stocktakeService.updateTask(ctx, args.taskId, args.input);
+    }
+
+    @Mutation()
+    @Allow('StocktakeCount' as Permission)
     async addStocktakeWave(@Ctx() ctx: RequestContext, @Args() args: any) {
         return this.stocktakeService.addWave(ctx, args.taskId, args.input);
     }

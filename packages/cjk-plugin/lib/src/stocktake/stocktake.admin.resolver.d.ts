@@ -57,6 +57,8 @@ export declare class StocktakeAdminResolver {
         message: string;
     }>;
     createStocktakeTask(ctx: RequestContext, args: any): Promise<import("./stocktake.service").StocktakeTaskView>;
+    openStocktakeTask(ctx: RequestContext, args: any): Promise<import("./stocktake.service").StocktakeTaskView>;
+    updateStocktakeTask(ctx: RequestContext, args: any): Promise<import("./stocktake.service").StocktakeTaskView>;
     addStocktakeWave(ctx: RequestContext, args: any): Promise<import("./stocktake-wave.entity").StocktakeWave>;
     assignStocktakeWave(ctx: RequestContext, args: any): Promise<import("./stocktake-wave.entity").StocktakeWave>;
     claimStocktakeWave(ctx: RequestContext, args: any): Promise<import("./stocktake-wave.entity").StocktakeWave>;
