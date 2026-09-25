@@ -1,7 +1,9 @@
 import { EventBus, ID, RequestContext, StockLevelService, TransactionalConnection } from '@vendure/core';
+import { StockLedgerService } from '@vendure/inventory-plugin';
 import { StockReservationEntity } from './stock-reservation.entity';
 import { FulfillType, StockReservationItemEntity } from './stock-reservation-item.entity';
 import { VirtualPhysicalStockService } from './virtual-physical-stock.service';
+export declare const DEFAULT_RESERVATION_TTL_MINUTES = 30;
 export interface ReservationSplit {
     locationId: ID;
     fulfillType: FulfillType;
@@ -22,8 +24,9 @@ export declare class StockReservationService {
     private conn;
     private stockLevelService;
     private virtualPhysicalStockService;
+    private stockLedgerService;
     private eventBus;
-    constructor(conn: TransactionalConnection, stockLevelService: StockLevelService, virtualPhysicalStockService: VirtualPhysicalStockService, eventBus: EventBus);
+    constructor(conn: TransactionalConnection, stockLevelService: StockLevelService, virtualPhysicalStockService: VirtualPhysicalStockService, stockLedgerService: StockLedgerService, eventBus: EventBus);
     private repo;
     private itemRepo;
     get(ctx: RequestContext, id: number): Promise<StockReservationEntity>;
@@ -49,6 +52,26 @@ export declare class StockReservationService {
     release(ctx: RequestContext, reservationId: number, options?: {
         returnPhysical?: boolean;
     }): Promise<StockReservationEntity>;
+    /** 预留有效期（分钟）：channel customFields.reservationTtlMinutes，非法/缺失 → 30 */
+    ttlMinutes(ctx: RequestContext): Promise<number>;
+    /**
+     * 超时释放：只处理 PENDING_ALLOC（下单预占成功但自动拆分未完成的滞留单）。
+     * ALLOCATED 不释放 —— 货已按仓拆好等发货，释放会打断履约。
+     * expiresAt 为 NULL 的历史单不处理（不回溯）。
+     */
+    releaseExpired(ctx: RequestContext, options?: {
+        now?: Date;
+        limit?: number;
+    }): Promise<{
+        scanned: number;
+        released: number;
+    }>;
+    /**
+     * 释放留痕：写一条 OrderStockLedger 事件行。
+     * 注意语义：PENDING_ALLOC 无 item、无物理占用，释放**不改变实物 onHand**，
+     * 故 reason 显式标注「不改实物库存」；quantity 记的是被释放的占用量，便于对账检索。
+     */
+    private recordReleaseLedger;
     /** 对账恒等式：Σ物理 − 虚拟 == ΣPENDING item qty（按变体，渠道内） */
     reconcileScan(ctx: RequestContext): Promise<Array<{
         variantId: number;

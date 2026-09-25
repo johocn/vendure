@@ -65,8 +65,20 @@ function makeService(ctx: any, opts: { locations?: Array<{ id: number; customFie
         });
     }
 
-    function makeRepo(store: any[], getId: () => number) {
+    function makeRepo(store: any[], getId: () => number, qbRows: any[] = []) {
         return {
+            // 最小 QueryBuilder fake：链式调用返回自身，getMany() 返回预设行
+            createQueryBuilder: vi.fn().mockImplementation(() => {
+                const qb: any = {};
+                qb.where = vi.fn(() => qb);
+                qb.andWhere = vi.fn(() => qb);
+                qb.orderBy = vi.fn(() => qb);
+                qb.skip = vi.fn(() => qb);
+                qb.take = vi.fn(() => qb);
+                qb.getMany = vi.fn(async () => qbRows);
+                qb.getManyAndCount = vi.fn(async () => [qbRows, qbRows.length]);
+                return qb;
+            }),
             findOne: vi.fn().mockImplementation(async ({ where }: any = {}) => store.find(r => matching(r, where)),
             ),
             find: vi.fn().mockImplementation(async ({ where }: any = {}) => store.filter(r => matching(r, where))),
@@ -90,7 +102,9 @@ function makeService(ctx: any, opts: { locations?: Array<{ id: number; customFie
         };
     }
 
-    const reservationRepo = makeRepo(reservations, () => ++resId);
+    // 供 releaseExpired 用例预设 createQueryBuilder().getMany() 的返回行
+    const qbRows: any[] = [];
+    const reservationRepo = makeRepo(reservations, () => ++resId, qbRows);
     const itemRepo = makeRepo(items, () => ++itemId);
 
     const conn = {
@@ -124,10 +138,37 @@ function makeService(ctx: any, opts: { locations?: Array<{ id: number; customFie
     const virtualPhysicalStockService = {
         adjustPhysicalStock,
         adjustVirtualStock,
+        getTenantInventoryOverview: vi.fn().mockResolvedValue({
+            virtualLocationId: '2',
+            defaultPhysicalLocationId: '3',
+        }),
     } as any;
 
-    const svc = new StockReservationService(conn as any, stockLevelService as any, virtualPhysicalStockService, {} as any);
-    return { svc, reservationRepo, itemRepo, reservations, items, conn, stockLevelService, adjustPhysicalStock, levelOnHand };
+    // 假 stockLedgerService：releaseExpired 释放留痕走 record()
+    const stockLedgerService = {
+        record: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const svc = new StockReservationService(
+        conn as any,
+        stockLevelService as any,
+        virtualPhysicalStockService,
+        stockLedgerService as any,
+        {} as any,
+    );
+    return {
+        svc,
+        reservationRepo,
+        itemRepo,
+        reservations,
+        items,
+        conn,
+        stockLevelService,
+        adjustPhysicalStock,
+        levelOnHand,
+        qbRows,
+        stockLedgerService,
+    };
 }
 
 describe('StockReservationService 预留生命周期', () => {
@@ -263,5 +304,33 @@ describe('StockReservationService 预留生命周期', () => {
         expect(diffs).toHaveLength(1);
         expect(diffs[0]).toMatchObject({ variantId: 7, physicalSum: 10, virtualSum: 2, pendingQty: 8 });
         expect(diffs[0].diff).toBe(0);
+    });
+});
+
+describe('StockReservationService.releaseExpired', () => {
+    it('只释放 PENDING_ALLOC 且已过期的单，ALLOCATED 不动', async () => {
+        const ctx = makeCtx();
+        const { svc, reservations, qbRows, stockLedgerService } = makeService(ctx);
+        reservations.push(
+            { id: 1, status: 'PENDING_ALLOC', expiresAt: new Date(Date.now() - 60_000), totalQty: 2, variantId: 9, tenantChannelId: 't1' },
+            { id: 2, status: 'PENDING_ALLOC', expiresAt: new Date(Date.now() + 60_000), totalQty: 1, variantId: 9, tenantChannelId: 't1' },
+        );
+        // createQueryBuilder().where().andWhere()...getMany() → 仅返回已过期行（id=1）
+        qbRows.push(reservations[0]);
+
+        const r = await svc.releaseExpired(ctx as any);
+        expect(r.released).toBe(1);
+        expect(stockLedgerService.record).toHaveBeenCalledTimes(1);
+        expect(stockLedgerService.record.mock.calls[0][1]).toMatchObject({
+            bizType: 'manual', direction: 'out', quantity: 2, bizCode: 'RES-1',
+        });
+    });
+
+    it('expiresAt 为 NULL 的单不释放（历史数据不回溯）', async () => {
+        const ctx = makeCtx();
+        const { svc, qbRows } = makeService(ctx);
+        // getMany() → []（NULL 被 andWhere('r.expiresAt IS NOT NULL') 挡掉）
+        qbRows.length = 0;
+        expect((await svc.releaseExpired(ctx as any)).released).toBe(0);
     });
 });

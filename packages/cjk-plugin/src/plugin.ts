@@ -1257,6 +1257,7 @@ import { stocktakePermissionDefinitions } from './stocktake/stocktake-permission
                     status: String!
                     tenantChannelId: String
                     createdAt: DateTime!
+                    expiresAt: DateTime
                     items: [ReservationItem!]!
                 }
                 type ReservationList {

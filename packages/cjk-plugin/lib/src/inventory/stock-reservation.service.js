@@ -9,14 +9,16 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.StockReservationService = void 0;
+exports.StockReservationService = exports.DEFAULT_RESERVATION_TTL_MINUTES = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const typeorm_1 = require("typeorm");
+const inventory_plugin_1 = require("@vendure/inventory-plugin");
 const stock_reservation_entity_1 = require("./stock-reservation.entity");
 const stock_reservation_item_entity_1 = require("./stock-reservation-item.entity");
 const virtual_physical_stock_service_1 = require("./virtual-physical-stock.service");
 const loggerCtx = 'StockReservationService';
+exports.DEFAULT_RESERVATION_TTL_MINUTES = 30;
 /**
  * 多仓拆分发货预留单：
  * - reserveOnOrder：下单预占（Order/DeliveryType 归一），建头单 PENDING_ALLOC
@@ -29,10 +31,11 @@ const loggerCtx = 'StockReservationService';
  * ALLOCATION=下单预占、SALE=发货/自提核销、CANCELLATION/RELEASE=取消/退款。
  */
 let StockReservationService = class StockReservationService {
-    constructor(conn, stockLevelService, virtualPhysicalStockService, eventBus) {
+    constructor(conn, stockLevelService, virtualPhysicalStockService, stockLedgerService, eventBus) {
         this.conn = conn;
         this.stockLevelService = stockLevelService;
         this.virtualPhysicalStockService = virtualPhysicalStockService;
+        this.stockLedgerService = stockLedgerService;
         this.eventBus = eventBus;
     }
     // ---- 基础读写 ----
@@ -83,6 +86,7 @@ let StockReservationService = class StockReservationService {
         if (existing) {
             existing.totalQty = totalQty;
             existing.status = 'PENDING_ALLOC';
+            existing.expiresAt = new Date(Date.now() + (await this.ttlMinutes(ctx)) * 60000);
             return this.repo(ctx).save(existing);
         }
         const res = new stock_reservation_entity_1.StockReservationEntity();
@@ -93,6 +97,8 @@ let StockReservationService = class StockReservationService {
         res.status = 'PENDING_ALLOC';
         res.tenantChannelId = ctx.channel.code;
         res.createdAt = new Date();
+        // 到期时间在「建头单」时一次算定，不随后续改配置回溯；TTL 非法/缺失 → 30 分钟
+        res.expiresAt = new Date(res.createdAt.getTime() + (await this.ttlMinutes(ctx)) * 60000);
         return this.repo(ctx).save(res);
     }
     /** 备货拆分：重建 item（幂等），守恒校验 Σqty==totalQty、每仓 qty≤物理 onHand，头→ALLOCATED */
@@ -156,6 +162,65 @@ let StockReservationService = class StockReservationService {
         }
         res.status = 'RELEASED';
         return this.repo(ctx).save(res);
+    }
+    /** 预留有效期（分钟）：channel customFields.reservationTtlMinutes，非法/缺失 → 30 */
+    async ttlMinutes(ctx) {
+        var _a, _b;
+        const raw = (_b = (_a = ctx.channel) === null || _a === void 0 ? void 0 : _a.customFields) === null || _b === void 0 ? void 0 : _b.reservationTtlMinutes;
+        const n = Number(raw);
+        return Number.isFinite(n) && n > 0 ? Math.trunc(n) : exports.DEFAULT_RESERVATION_TTL_MINUTES;
+    }
+    /**
+     * 超时释放：只处理 PENDING_ALLOC（下单预占成功但自动拆分未完成的滞留单）。
+     * ALLOCATED 不释放 —— 货已按仓拆好等发货，释放会打断履约。
+     * expiresAt 为 NULL 的历史单不处理（不回溯）。
+     */
+    async releaseExpired(ctx, options = {}) {
+        var _a, _b;
+        const now = (_a = options.now) !== null && _a !== void 0 ? _a : new Date();
+        const limit = (_b = options.limit) !== null && _b !== void 0 ? _b : 200;
+        const expired = await this.repo(ctx)
+            .createQueryBuilder('r')
+            .where('r.status = :status', { status: 'PENDING_ALLOC' })
+            .andWhere('r.expiresAt IS NOT NULL')
+            .andWhere('r.expiresAt < :now', { now })
+            .andWhere('(r.tenantChannelId = :tenant OR r.tenantChannelId IS NULL)', { tenant: ctx.channel.code })
+            .orderBy('r.expiresAt', 'ASC')
+            .take(limit)
+            .getMany();
+        if (!expired.length) {
+            return { scanned: 0, released: 0 };
+        }
+        for (const res of expired) {
+            await this.release(ctx, res.id, { returnPhysical: false });
+            await this.recordReleaseLedger(ctx, res);
+        }
+        core_1.Logger.info(`预留单超时释放 ${expired.length} 单`, loggerCtx);
+        return { scanned: expired.length, released: expired.length };
+    }
+    /**
+     * 释放留痕：写一条 OrderStockLedger 事件行。
+     * 注意语义：PENDING_ALLOC 无 item、无物理占用，释放**不改变实物 onHand**，
+     * 故 reason 显式标注「不改实物库存」；quantity 记的是被释放的占用量，便于对账检索。
+     */
+    async recordReleaseLedger(ctx, res) {
+        var _a;
+        const ov = await this.virtualPhysicalStockService.getTenantInventoryOverview(ctx);
+        const locationId = (_a = ov.defaultPhysicalLocationId) !== null && _a !== void 0 ? _a : ov.virtualLocationId;
+        if (!locationId) {
+            core_1.Logger.warn(`预留单 #${res.id} 释放时无可用仓，跳过流水留痕`, loggerCtx);
+            return;
+        }
+        await this.stockLedgerService.record(ctx, {
+            productVariantId: res.variantId,
+            stockLocationId: locationId,
+            bizType: 'manual',
+            bizCode: `RES-${res.id}`,
+            orderLineId: res.orderLineId,
+            direction: 'out',
+            quantity: res.totalQty,
+            reason: `预留单超时释放:#${res.id}（不改实物库存）`,
+        });
     }
     // ---- 对账 ----
     /** 对账恒等式：Σ物理 − 虚拟 == ΣPENDING item qty（按变体，渠道内） */
@@ -335,6 +400,7 @@ exports.StockReservationService = StockReservationService = __decorate([
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
         core_1.StockLevelService,
         virtual_physical_stock_service_1.VirtualPhysicalStockService,
+        inventory_plugin_1.StockLedgerService,
         core_1.EventBus])
 ], StockReservationService);
 //# sourceMappingURL=stock-reservation.service.js.map

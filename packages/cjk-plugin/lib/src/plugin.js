@@ -1470,6 +1470,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     status: String!
                     tenantChannelId: String
                     createdAt: DateTime!
+                    expiresAt: DateTime
                     items: [ReservationItem!]!
                 }
                 type ReservationList {
