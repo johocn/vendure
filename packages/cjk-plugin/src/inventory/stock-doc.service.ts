@@ -322,10 +322,18 @@ export class StockDocService {
         };
     }
 
-    /** 单据中心列表：本租户单据（可按类型过滤）+ 每单条数/总数量 */
+    /** 单据中心列表：本租户单据（可按类型/仓库/日期/操作人过滤）+ 每单条数/总数量 */
     async listDocs(
         ctx: RequestContext,
-        options?: { type?: string; page?: number; pageSize?: number },
+        options?: {
+            type?: string;
+            locationId?: ID;
+            from?: string;
+            to?: string;
+            operator?: string;
+            page?: number;
+            pageSize?: number;
+        },
     ): Promise<{ totalItems: number; items: StockDocSummaryRow[] }> {
         const type = options?.type && DOC_TYPES.includes(options.type as StockDocType) ? String(options.type) : null;
         const page = clampPage(options?.page);
@@ -337,6 +345,24 @@ export class StockDocService {
             .where('d.tenantChannelId = :ch', { ch: ctx.channel.code });
         if (type) {
             qb.andWhere('d.type = :t', { t: type });
+        }
+        if (options?.locationId) {
+            // 单据头无仓库字段：按明细的源/目标仓匹配（EXISTS，避免 join 造成行重复）。
+            // 子查询是裸 SQL，Postgres 会把未加引号的标识符折成小写，故 camelCase 列必须加双引号。
+            qb.andWhere(
+                `EXISTS (SELECT 1 FROM stock_doc_item i WHERE i."docId" = d.id
+                         AND (i."fromStockLocationId" = :loc OR i."toStockLocationId" = :loc))`,
+                { loc: Number(options.locationId) },
+            );
+        }
+        if (options?.from) {
+            qb.andWhere('d.createdAt >= :from', { from: options.from });
+        }
+        if (options?.to) {
+            qb.andWhere('d.createdAt <= :to', { to: options.to });
+        }
+        if (options?.operator) {
+            qb.andWhere('d.operator = :op', { op: options.operator });
         }
         const [docs, totalItems] = await qb
             .orderBy('d.createdAt', 'DESC')

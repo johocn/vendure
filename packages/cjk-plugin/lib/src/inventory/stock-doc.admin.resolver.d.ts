@@ -6,5 +6,5 @@ export declare class StockDocAdminResolver {
     constructor(stockDocService: StockDocService);
     createStockDoc(ctx: RequestContext, input: StockDocCreateInput): Promise<any>;
     stockMovementLedger(ctx: RequestContext, productVariantId?: ID, locationId?: ID, bizCode?: string, orderLineId?: ID, bizType?: string, direction?: string, from?: string, to?: string, page?: number, pageSize?: number): Promise<any>;
-    stockDocList(ctx: RequestContext, type?: string, page?: number, pageSize?: number): Promise<any>;
+    stockDocList(ctx: RequestContext, type?: string, locationId?: ID, from?: string, to?: string, operator?: string, page?: number, pageSize?: number): Promise<any>;
 }

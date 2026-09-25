@@ -1436,7 +1436,7 @@ import { stocktakePermissionDefinitions } from './stocktake/stocktake-permission
                     items: [StockDocSummaryRow!]!
                 }
                 extend type Query {
-                    stockDocList(type: String, page: Int, pageSize: Int): StockDocList!
+                    stockDocList(type: String, locationId: ID, from: String, to: String, operator: String, page: Int, pageSize: Int): StockDocList!
                 }
 
                 # ===== 配货台（拣货批次） =====

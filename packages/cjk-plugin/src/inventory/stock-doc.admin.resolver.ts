@@ -53,9 +53,13 @@ export class StockDocAdminResolver {
     async stockDocList(
         @Ctx() ctx: RequestContext,
         @Args('type', { nullable: true }) type?: string,
+        @Args('locationId', { nullable: true }) locationId?: ID,
+        @Args('from', { nullable: true }) from?: string,
+        @Args('to', { nullable: true }) to?: string,
+        @Args('operator', { nullable: true }) operator?: string,
         @Args('page', { nullable: true }) page?: number,
         @Args('pageSize', { nullable: true }) pageSize?: number,
     ): Promise<any> {
-        return this.stockDocService.listDocs(ctx, { type, page, pageSize });
+        return this.stockDocService.listDocs(ctx, { type, locationId, from, to, operator, page, pageSize });
     }
 }

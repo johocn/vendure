@@ -80,9 +80,13 @@ export declare class StockDocService {
         totalItems: number;
         summary: StockDocLedgerSummary;
     }>;
-    /** 单据中心列表：本租户单据（可按类型过滤）+ 每单条数/总数量 */
+    /** 单据中心列表：本租户单据（可按类型/仓库/日期/操作人过滤）+ 每单条数/总数量 */
     listDocs(ctx: RequestContext, options?: {
         type?: string;
+        locationId?: ID;
+        from?: string;
+        to?: string;
+        operator?: string;
         page?: number;
         pageSize?: number;
     }): Promise<{

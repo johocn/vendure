@@ -39,8 +39,8 @@ let StockDocAdminResolver = class StockDocAdminResolver {
             pageSize,
         });
     }
-    async stockDocList(ctx, type, page, pageSize) {
-        return this.stockDocService.listDocs(ctx, { type, page, pageSize });
+    async stockDocList(ctx, type, locationId, from, to, operator, page, pageSize) {
+        return this.stockDocService.listDocs(ctx, { type, locationId, from, to, operator, page, pageSize });
     }
 };
 exports.StockDocAdminResolver = StockDocAdminResolver;
@@ -79,10 +79,14 @@ __decorate([
     (0, core_1.Allow)(inventory_plugin_1.InventoryPermissions.ViewStock, core_1.Permission.ReadCatalog, core_1.Permission.ReadStockLocation),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('type', { nullable: true })),
-    __param(2, (0, graphql_1.Args)('page', { nullable: true })),
-    __param(3, (0, graphql_1.Args)('pageSize', { nullable: true })),
+    __param(2, (0, graphql_1.Args)('locationId', { nullable: true })),
+    __param(3, (0, graphql_1.Args)('from', { nullable: true })),
+    __param(4, (0, graphql_1.Args)('to', { nullable: true })),
+    __param(5, (0, graphql_1.Args)('operator', { nullable: true })),
+    __param(6, (0, graphql_1.Args)('page', { nullable: true })),
+    __param(7, (0, graphql_1.Args)('pageSize', { nullable: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, String, Number, Number]),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, Object, String, String, String, Number, Number]),
     __metadata("design:returntype", Promise)
 ], StockDocAdminResolver.prototype, "stockDocList", null);
 exports.StockDocAdminResolver = StockDocAdminResolver = __decorate([
