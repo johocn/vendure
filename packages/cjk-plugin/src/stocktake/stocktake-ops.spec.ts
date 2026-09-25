@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { aggregateByBin, aggregateByCounter, parseStateFilter, type StatLine } from './stocktake-math';
+import { aggregateByBin, aggregateByCounter, CSV_MAX_ROWS, parseStateFilter, toCsv, type StatLine } from './stocktake-math';
 
 describe('parseStateFilter（规格 §7.1）', () => {
     it('state 单值优先于 states', () => {
@@ -75,5 +75,28 @@ describe('aggregateByCounter（规格 §7.3）', () => {
     it('零行（DRAFT / 空任务）返回空数组而不是抛错（规格 §9）', () => {
         expect(aggregateByBin([])).toEqual([]);
         expect(aggregateByCounter([])).toEqual([]);
+    });
+});
+
+describe('toCsv（规格 §7.4）', () => {
+    it('BOM 前置 + CRLF 行尾', () => {
+        expect(toCsv([['a', 1], ['b', 2]])).toBe('\uFEFFa,1\r\nb,2\r\n');
+    });
+
+    it('逗号 / 引号 / 换行转义：整体引号包裹，内部引号翻倍', () => {
+        expect(toCsv([['x,y', 'he said "hi"', 'l1\nl2']])).toBe('\uFEFF"x,y","he said ""hi""","l1\nl2"\r\n');
+    });
+
+    it('null/undefined → 空字段；boolean → 是/否；Date → ISO', () => {
+        expect(toCsv([[null, undefined, true, false, new Date('2026-09-25T02:00:00.000Z')]]))
+            .toBe('\uFEFF,,是,否,2026-09-25T02:00:00.000Z\r\n');
+    });
+
+    it('行数上限：超出截断且倍数正确', () => {
+        const rows = Array.from({ length: CSV_MAX_ROWS + 5 }, (_, i) => [i]);
+        const csv = toCsv(rows);
+        expect(csv.trimEnd().split('\r\n')).toHaveLength(CSV_MAX_ROWS);
+        const capped = toCsv(rows, 3);
+        expect(capped.trimEnd().split('\r\n')).toHaveLength(3);
     });
 });

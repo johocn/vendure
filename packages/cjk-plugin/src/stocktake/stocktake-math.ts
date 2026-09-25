@@ -596,3 +596,26 @@ export function aggregateByCounter(lines: StatLine[]): CounterStat[] {
         .map(({ waves, ...rest }) => ({ ...rest, waveCount: waves.size }))
         .sort((a, b) => b.countedLines - a.countedLines || String(a.countedByName ?? '').localeCompare(String(b.countedByName ?? '')));
 }
+
+// ---------------------------------------------------------------- CSV 序列化
+
+export type CsvCell = string | number | boolean | Date | null | undefined;
+
+/** 导出行数上限（规格 §7.4）：超出即截断并置 truncated=true */
+export const CSV_MAX_ROWS = 20000;
+
+/**
+ * CSV 序列化（规格 §7.4，前后端同一规则）：
+ * ① 首字符 BOM（Excel 中文不乱码）② 行尾 CRLF ③ 含 , " \n \r 时整体引号包裹、内部 " 翻倍
+ * ④ null/undefined → 空字段；boolean → 是/否；Date → ISO ⑤ 行数上限截断。
+ */
+export function toCsv(rows: CsvCell[][], maxRows: number = CSV_MAX_ROWS): string {
+    const cell = (v: CsvCell): string => {
+        if (v === null || v === undefined) return '';
+        if (typeof v === 'boolean') return v ? '是' : '否';
+        if (v instanceof Date) return v.toISOString();
+        const s = String(v);
+        return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    return '\uFEFF' + rows.slice(0, maxRows).map((r) => r.map(cell).join(',')).join('\r\n') + '\r\n';
+}
