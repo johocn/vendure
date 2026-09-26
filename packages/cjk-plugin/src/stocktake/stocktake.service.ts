@@ -82,21 +82,25 @@ export class StocktakeService {
         return String(ctx.channelId);
     }
 
-    /** 当前操作人：优先 TenantMember.displayName，回退 Administrator 姓名（照 pick-batch.admin.resolver 的实现） */
+    /** 当前操作人：优先 TenantMember.displayName，回退 Administrator 姓名
+     *  （D45 修正键错位：ctx.activeUserId 是 User.id，而 TenantMember.administratorId 存的是
+     *    Administrator.id —— 必须先经 Administrator.userId 换键，与 tenant-member.service.memberToView
+     *    的 canonical 写法同源；否则 Administrator.id ≠ User.id 的账号恒回 {id:null}，
+     *    认领盘次直接报「当前账号不是本店人员」，整条录入→提交→过账链路不可用。） */
     async currentOperator(ctx: RequestContext): Promise<StocktakeOperator> {
         if (!ctx.activeUserId) return { id: null, name: null };
         try {
+            const admin = await this.connection.getRepository(ctx, Administrator).findOne({
+                where: { user: { id: ctx.activeUserId } } as any,
+            });
+            if (!admin) return { id: null, name: null };
+            // 按本渠道收口：操作人必须是**本店**人员（与 assignWave 的 member.channelId 校验同口径）
             const member = await this.connection.getRepository(ctx, TenantMember).findOne({
-                where: { administratorId: String(ctx.activeUserId) },
+                where: { administratorId: String(admin.id), channelId: this.tenantOf(ctx) } as any,
             });
             if (member) return { id: String(member.id), name: member.displayName || null };
-            const admin = await this.connection.getRepository(ctx, Administrator).findOne({
-                where: { id: ctx.activeUserId as any },
-            });
-            if (admin) {
-                const name = [admin.firstName, admin.lastName].filter(Boolean).join(' ');
-                return { id: null, name: name || null };
-            }
+            const name = [admin.firstName, admin.lastName].filter(Boolean).join(' ');
+            return { id: null, name: name || null };
         } catch (e) {
             Logger.warn(`盘库：解析操作人失败 ${(e as Error).message}`, 'Stocktake');
         }

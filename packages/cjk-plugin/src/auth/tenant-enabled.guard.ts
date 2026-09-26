@@ -2,7 +2,7 @@
 // 把「停用租户(customFields.enabled)」和「停用人员(TenantMember.enabled)」从前端 UI 语义升级为 API 强授权语义：
 // 每个 admin 请求实时读库校验当前 channel 与当前人员是否启用，任一关闭即拒绝，绕开前端直接调 /admin-api 同样无效。
 import { Injectable, ExecutionContext, CanActivate } from '@nestjs/common';
-import { RequestContext, ForbiddenError, parseContext, internal_getRequestContext, Channel, TransactionalConnection, Permission } from '@vendure/core';
+import { RequestContext, ForbiddenError, parseContext, internal_getRequestContext, Channel, TransactionalConnection, Permission, Administrator } from '@vendure/core';
 import { TenantMember } from '../tenant/tenant-member.entity';
 
 @Injectable()
@@ -39,13 +39,19 @@ export class TenantEnabledGuard implements CanActivate {
         }
 
         // 实时读库校验当前人员在该租户是否启用（无关联记录视为放行，如 default 渠道的普通后台账号）
+        // D45 修正键错位：session.user.id 是 User.id，而 TenantMember.administratorId 存的是 Administrator.id。
+        // 直接按 user.id 查恒空 → 匹配不到 member → 下面「停用人员」与「首登强改密」两道闸门被静默绕过（fail-open）。
+        // 先经 Administrator.userId 换键，与 tenant-member.service.memberToView 的 canonical 写法同源。
         const memberRepo = this.connection.getRepository(ctx, TenantMember);
-        const member = await memberRepo.findOne({
+        const admin = await this.connection.getRepository(ctx, Administrator).findOne({
+            where: { user: { id: user.id } } as any,
+        });
+        const member = admin ? await memberRepo.findOne({
             where: {
-                administratorId: String(user.id),
+                administratorId: String(admin.id),
                 channelId: String(channelId),
             } as any,
-        });
+        }) : null;
         if (member && member.enabled === false) {
             throw new ForbiddenError();
         }

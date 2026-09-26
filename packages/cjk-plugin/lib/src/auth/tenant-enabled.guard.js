@@ -54,13 +54,19 @@ let TenantEnabledGuard = class TenantEnabledGuard {
             throw new core_1.ForbiddenError();
         }
         // 实时读库校验当前人员在该租户是否启用（无关联记录视为放行，如 default 渠道的普通后台账号）
+        // D45 修正键错位：session.user.id 是 User.id，而 TenantMember.administratorId 存的是 Administrator.id。
+        // 直接按 user.id 查恒空 → 匹配不到 member → 下面「停用人员」与「首登强改密」两道闸门被静默绕过（fail-open）。
+        // 先经 Administrator.userId 换键，与 tenant-member.service.memberToView 的 canonical 写法同源。
         const memberRepo = this.connection.getRepository(ctx, tenant_member_entity_1.TenantMember);
-        const member = await memberRepo.findOne({
+        const admin = await this.connection.getRepository(ctx, core_1.Administrator).findOne({
+            where: { user: { id: user.id } },
+        });
+        const member = admin ? await memberRepo.findOne({
             where: {
-                administratorId: String(user.id),
+                administratorId: String(admin.id),
                 channelId: String(channelId),
             },
-        });
+        }) : null;
         if (member && member.enabled === false) {
             throw new core_1.ForbiddenError();
         }

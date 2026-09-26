@@ -42,7 +42,11 @@ export declare class StocktakeService {
     private get repo();
     /** 渠道收口键（硬性 R10）：与既有 storage-bin.service.ts 的 tenantOf 同源 */
     private tenantOf;
-    /** 当前操作人：优先 TenantMember.displayName，回退 Administrator 姓名（照 pick-batch.admin.resolver 的实现） */
+    /** 当前操作人：优先 TenantMember.displayName，回退 Administrator 姓名
+     *  （D45 修正键错位：ctx.activeUserId 是 User.id，而 TenantMember.administratorId 存的是
+     *    Administrator.id —— 必须先经 Administrator.userId 换键，与 tenant-member.service.memberToView
+     *    的 canonical 写法同源；否则 Administrator.id ≠ User.id 的账号恒回 {id:null}，
+     *    认领盘次直接报「当前账号不是本店人员」，整条录入→提交→过账链路不可用。） */
     currentOperator(ctx: RequestContext): Promise<StocktakeOperator>;
     private buildTaskView;
     listTasks(ctx: RequestContext, options?: any): Promise<{
