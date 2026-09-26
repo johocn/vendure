@@ -77,7 +77,10 @@ exports.StocktakeTask = StocktakeTask = __decorate([
     (0, typeorm_1.Entity)(),
     (0, typeorm_1.Unique)(['tenantChannelId', 'code']),
     (0, typeorm_1.Index)(['tenantChannelId', 'state']),
-    (0, typeorm_1.Index)(['tenantChannelId', 'activityCode']),
+    (0, typeorm_1.Index)(['tenantChannelId', 'activityCode'])
+    // 单据中心按 postedStockDocId 反查任务号（D44）：复合索引，避免单据列表每页全表扫
+    ,
+    (0, typeorm_1.Index)(['tenantChannelId', 'postedStockDocId']),
     __metadata("design:paramtypes", [Object])
 ], StocktakeTask);
 //# sourceMappingURL=stocktake-task.entity.js.map

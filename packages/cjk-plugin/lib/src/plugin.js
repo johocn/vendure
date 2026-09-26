@@ -411,6 +411,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             migrations_1.ReservationExpiresAtMigration,
             migrations_1.ReservationTtlColumnMigration,
             migrations_1.PickBatchHandoverColumnMigration,
+            migrations_1.StocktakePostedDocIndexMigration,
             migrations_1.ShippingContactFlagMigration,
             migrations_1.StockTableMigration,
             migrations_1.ChannelInventoryModeColumnMigration,
@@ -1653,6 +1654,10 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     createdAt: String!
                     itemCount: Int!
                     totalQty: Int!
+                    # 盘点任务反查（D44）：type='STOCKTAKE' 时，由盘点任务过账生成的单据回填任务 id/任务号；
+                    # 库存明细页「调整」产生的手工调数单同 type 但无任务引用，两字段为 null
+                    taskId: ID
+                    taskCode: String
                 }
                 type StockDocList {
                     totalItems: Int!

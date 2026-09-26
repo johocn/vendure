@@ -67,7 +67,7 @@ import { MapProviderRegistry } from './map/map-provider-registry';
 import { MapService } from './map/map.service';
 import { MapAdminResolver } from './map/map-admin.resolver';
 import { MapShopResolver } from './map/map-shop.resolver';
-import { MapConfigEncryptionMigration, PayConfigEncryptionMigration, TenantMemberColumnMigration, ChannelCustomColumnMigration, ShippingContactFlagMigration, StockTableMigration, ChannelInventoryModeColumnMigration, CollectionIconMigration, ReservationExpiresAtMigration, ReservationTtlColumnMigration, PickBatchHandoverColumnMigration } from './migrations';
+import { MapConfigEncryptionMigration, PayConfigEncryptionMigration, TenantMemberColumnMigration, ChannelCustomColumnMigration, ShippingContactFlagMigration, StockTableMigration, ChannelInventoryModeColumnMigration, CollectionIconMigration, ReservationExpiresAtMigration, ReservationTtlColumnMigration, PickBatchHandoverColumnMigration, StocktakePostedDocIndexMigration } from './migrations';
 import { AuthConfigService } from './auth/auth-config.service';
 import { PayConfigService } from './payment/pay-config.service';
 import { MapConfigService } from './map/map-config.service';
@@ -202,6 +202,7 @@ function mergeCustomFields<T extends { name: string }>(
         ReservationExpiresAtMigration,
         ReservationTtlColumnMigration,
         PickBatchHandoverColumnMigration,
+        StocktakePostedDocIndexMigration,
         ShippingContactFlagMigration,
         StockTableMigration,
         ChannelInventoryModeColumnMigration,
@@ -1444,6 +1445,10 @@ function mergeCustomFields<T extends { name: string }>(
                     createdAt: String!
                     itemCount: Int!
                     totalQty: Int!
+                    # 盘点任务反查（D44）：type='STOCKTAKE' 时，由盘点任务过账生成的单据回填任务 id/任务号；
+                    # 库存明细页「调整」产生的手工调数单同 type 但无任务引用，两字段为 null
+                    taskId: ID
+                    taskCode: String
                 }
                 type StockDocList {
                     totalItems: Int!

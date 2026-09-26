@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { ID, Logger, RequestContext, TransactionalConnection, UserInputError } from '@vendure/core';
+import { In } from 'typeorm';
 import { OrderStockLedger } from '@vendure/inventory-plugin';
 import { StockDocEntity, StockDocType } from './stock-doc.entity';
 import { StockDocItemEntity } from './stock-doc-item.entity';
+import { StocktakeTask } from '../stocktake/stocktake-task.entity';
 import { VirtualPhysicalStockService } from './virtual-physical-stock.service';
 import { InventoryModeService } from './inventory-mode.service';
 import { StorageBinService } from '../storage/storage-bin.service';
@@ -59,6 +61,9 @@ export interface StockDocSummaryRow {
     createdAt: string;
     itemCount: number;
     totalQty: number;
+    /** 盘点任务反查（D44）：仅盘点任务过账生成的单据有值，手工调数单为 null */
+    taskId?: string | null;
+    taskCode?: string | null;
 }
 
 const CODE_PREFIX: Record<StockDocType, string> = {
@@ -392,18 +397,39 @@ export class StockDocService {
             map[String(s.docId)] = { itemCount: Number(s.itemCount ?? 0), totalQty: Number(s.totalQty ?? 0) };
         }
 
+        // 反查「盘点任务过账单」（D44）：stock_doc 侧无任务字段，唯一指针是 stocktake_task.postedStockDocId。
+        // 仅当本页确有盘库单时才查一次（其余类型不可能被任务引用）；空数组必须短路，否则 TypeORM 会生成 `IN ()` 报错。
+        // 租户键不对称：stock_doc 存渠道 code，stocktake_task 存 String(ctx.channelId)，故不能 join 租户键，只按指针反查 + 租户过滤。
+        const taskOfDoc: Record<string, { id: string; code: string }> = {};
+        const stocktakeIds = docs.filter(d => d.type === 'STOCKTAKE').map(d => Number(d.id));
+        if (stocktakeIds.length) {
+            const tasks = await this.conn.getRepository(ctx, StocktakeTask).find({
+                where: { tenantChannelId: String(ctx.channelId), postedStockDocId: In(stocktakeIds) },
+                select: ['id', 'code', 'postedStockDocId'],
+            });
+            for (const t of tasks) {
+                if (t.postedStockDocId == null) continue;
+                taskOfDoc[String(t.postedStockDocId)] = { id: String(t.id), code: t.code };
+            }
+        }
+
         return {
             totalItems,
-            items: docs.map(d => ({
-                id: String(d.id),
-                code: d.code,
-                type: d.type,
-                remark: d.remark ?? null,
-                operator: d.operator ?? null,
-                createdAt: d.createdAt instanceof Date ? d.createdAt.toISOString() : String(d.createdAt ?? ''),
-                itemCount: map[String(d.id)]?.itemCount ?? 0,
-                totalQty: map[String(d.id)]?.totalQty ?? 0,
-            })),
+            items: docs.map(d => {
+                const task = taskOfDoc[String(d.id)];
+                return {
+                    id: String(d.id),
+                    code: d.code,
+                    type: d.type,
+                    remark: d.remark ?? null,
+                    operator: d.operator ?? null,
+                    createdAt: d.createdAt instanceof Date ? d.createdAt.toISOString() : String(d.createdAt ?? ''),
+                    itemCount: map[String(d.id)]?.itemCount ?? 0,
+                    totalQty: map[String(d.id)]?.totalQty ?? 0,
+                    taskId: task?.id ?? null,
+                    taskCode: task?.code ?? null,
+                };
+            }),
         };
     }
 }

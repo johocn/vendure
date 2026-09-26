@@ -50,6 +50,9 @@ export interface StockDocSummaryRow {
     createdAt: string;
     itemCount: number;
     totalQty: number;
+    /** 盘点任务反查（D44）：仅盘点任务过账生成的单据有值，手工调数单为 null */
+    taskId?: string | null;
+    taskCode?: string | null;
 }
 export declare class StockDocService {
     private conn;

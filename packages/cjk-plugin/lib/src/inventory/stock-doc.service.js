@@ -12,9 +12,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.StockDocService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
+const typeorm_1 = require("typeorm");
 const inventory_plugin_1 = require("@vendure/inventory-plugin");
 const stock_doc_entity_1 = require("./stock-doc.entity");
 const stock_doc_item_entity_1 = require("./stock-doc-item.entity");
+const stocktake_task_entity_1 = require("../stocktake/stocktake-task.entity");
 const virtual_physical_stock_service_1 = require("./virtual-physical-stock.service");
 const inventory_mode_service_1 = require("./inventory-mode.service");
 const storage_bin_service_1 = require("../storage/storage-bin.service");
@@ -302,11 +304,28 @@ let StockDocService = class StockDocService {
         for (const s of stats) {
             map[String(s.docId)] = { itemCount: Number((_a = s.itemCount) !== null && _a !== void 0 ? _a : 0), totalQty: Number((_b = s.totalQty) !== null && _b !== void 0 ? _b : 0) };
         }
+        // 反查「盘点任务过账单」（D44）：stock_doc 侧无任务字段，唯一指针是 stocktake_task.postedStockDocId。
+        // 仅当本页确有盘库单时才查一次（其余类型不可能被任务引用）；空数组必须短路，否则 TypeORM 会生成 `IN ()` 报错。
+        // 租户键不对称：stock_doc 存渠道 code，stocktake_task 存 String(ctx.channelId)，故不能 join 租户键，只按指针反查 + 租户过滤。
+        const taskOfDoc = {};
+        const stocktakeIds = docs.filter(d => d.type === 'STOCKTAKE').map(d => Number(d.id));
+        if (stocktakeIds.length) {
+            const tasks = await this.conn.getRepository(ctx, stocktake_task_entity_1.StocktakeTask).find({
+                where: { tenantChannelId: String(ctx.channelId), postedStockDocId: (0, typeorm_1.In)(stocktakeIds) },
+                select: ['id', 'code', 'postedStockDocId'],
+            });
+            for (const t of tasks) {
+                if (t.postedStockDocId == null)
+                    continue;
+                taskOfDoc[String(t.postedStockDocId)] = { id: String(t.id), code: t.code };
+            }
+        }
         return {
             totalItems,
             items: docs.map(d => {
-                var _a, _b, _c, _d, _e, _f, _g;
-                return ({
+                var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+                const task = taskOfDoc[String(d.id)];
+                return {
                     id: String(d.id),
                     code: d.code,
                     type: d.type,
@@ -315,7 +334,9 @@ let StockDocService = class StockDocService {
                     createdAt: d.createdAt instanceof Date ? d.createdAt.toISOString() : String((_c = d.createdAt) !== null && _c !== void 0 ? _c : ''),
                     itemCount: (_e = (_d = map[String(d.id)]) === null || _d === void 0 ? void 0 : _d.itemCount) !== null && _e !== void 0 ? _e : 0,
                     totalQty: (_g = (_f = map[String(d.id)]) === null || _f === void 0 ? void 0 : _f.totalQty) !== null && _g !== void 0 ? _g : 0,
-                });
+                    taskId: (_h = task === null || task === void 0 ? void 0 : task.id) !== null && _h !== void 0 ? _h : null,
+                    taskCode: (_j = task === null || task === void 0 ? void 0 : task.code) !== null && _j !== void 0 ? _j : null,
+                };
             }),
         };
     }

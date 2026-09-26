@@ -11,6 +11,8 @@ export type StocktakeTaskState = 'DRAFT' | 'OPEN' | 'COUNTING' | 'COUNTED' | 'PO
 @Unique(['tenantChannelId', 'code'])
 @Index(['tenantChannelId', 'state'])
 @Index(['tenantChannelId', 'activityCode'])
+// 单据中心按 postedStockDocId 反查任务号（D44）：复合索引，避免单据列表每页全表扫
+@Index(['tenantChannelId', 'postedStockDocId'])
 export class StocktakeTask extends VendureEntity {
     constructor(input?: DeepPartial<StocktakeTask>) {
         super(input);
