@@ -58,10 +58,15 @@ export declare class StockReservationService {
      * 超时释放：只处理 PENDING_ALLOC（下单预占成功但自动拆分未完成的滞留单）。
      * ALLOCATED 不释放 —— 货已按仓拆好等发货，释放会打断履约。
      * expiresAt 为 NULL 的历史单不处理（不回溯）。
+     *
+     * options.tenantChannelId：显式指定释放范围（按 tenantChannelId 精确收窄），**默认取 ctx 自身渠道**。
+     * 调用方（worker 任务）按分组 code 逐个传入，故「渠道已被删除/改名」的存量单也仍能按其原 code 释放，
+     * 不会因为反查不到渠道而永久占用库存。
      */
     releaseExpired(ctx: RequestContext, options?: {
         now?: Date;
         limit?: number;
+        tenantChannelId?: string | null;
     }): Promise<{
         scanned: number;
         released: number;

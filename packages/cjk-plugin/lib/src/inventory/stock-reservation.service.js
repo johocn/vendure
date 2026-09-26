@@ -176,20 +176,28 @@ let StockReservationService = class StockReservationService {
      * 超时释放：只处理 PENDING_ALLOC（下单预占成功但自动拆分未完成的滞留单）。
      * ALLOCATED 不释放 —— 货已按仓拆好等发货，释放会打断履约。
      * expiresAt 为 NULL 的历史单不处理（不回溯）。
+     *
+     * options.tenantChannelId：显式指定释放范围（按 tenantChannelId 精确收窄），**默认取 ctx 自身渠道**。
+     * 调用方（worker 任务）按分组 code 逐个传入，故「渠道已被删除/改名」的存量单也仍能按其原 code 释放，
+     * 不会因为反查不到渠道而永久占用库存。
      */
     async releaseExpired(ctx, options = {}) {
         var _a, _b;
         const now = (_a = options.now) !== null && _a !== void 0 ? _a : new Date();
         const limit = (_b = options.limit) !== null && _b !== void 0 ? _b : 200;
-        const expired = await this.repo(ctx)
+        const tenant = options.tenantChannelId === undefined ? ctx.channel.code : options.tenantChannelId;
+        const qb = this.repo(ctx)
             .createQueryBuilder('r')
             .where('r.status = :status', { status: 'PENDING_ALLOC' })
             .andWhere('r.expiresAt IS NOT NULL')
-            .andWhere('r.expiresAt < :now', { now })
-            .andWhere('(r.tenantChannelId = :tenant OR r.tenantChannelId IS NULL)', { tenant: ctx.channel.code })
-            .orderBy('r.expiresAt', 'ASC')
-            .take(limit)
-            .getMany();
+            .andWhere('r.expiresAt < :now', { now });
+        if (tenant === null) {
+            qb.andWhere('r.tenantChannelId IS NULL');
+        }
+        else {
+            qb.andWhere('(r.tenantChannelId = :tenant OR r.tenantChannelId IS NULL)', { tenant });
+        }
+        const expired = await qb.orderBy('r.expiresAt', 'ASC').take(limit).getMany();
         if (!expired.length) {
             return { scanned: 0, released: 0 };
         }
@@ -207,6 +215,13 @@ let StockReservationService = class StockReservationService {
      */
     async recordReleaseLedger(ctx, res) {
         var _a;
+        // 留痕必须落在该预留单**自己渠道**的账上：渠道被删除/改名后，释放只能借默认渠道 ctx 执行，
+        // 此时写流水会把别的渠道的释放记到默认渠道账上（污染对账）→ 跳过并告警。
+        // 口径同「无可用仓跳过留痕」：状态照常释放，只跳过流水。
+        if (res.tenantChannelId && res.tenantChannelId !== ctx.channel.code) {
+            core_1.Logger.warn(`预留单 #${res.id} 属于渠道 ${res.tenantChannelId}（该渠道已不存在），无渠道上下文，跳过流水留痕`, loggerCtx);
+            return;
+        }
         const ov = await this.virtualPhysicalStockService.getTenantInventoryOverview(ctx);
         const locationId = (_a = ov.defaultPhysicalLocationId) !== null && _a !== void 0 ? _a : ov.virtualLocationId;
         if (!locationId) {

@@ -370,4 +370,36 @@ describe('StockReservationService.releaseExpired', () => {
         qbRows.length = 0;
         expect((await svc.releaseExpired(ctx as any)).released).toBe(0);
     });
+
+    it('渠道已被删除/改名：显式 tenantChannelId 仍按其原 code 收窄并可释放，但不写别的渠道的账', async () => {
+        const ctx = makeCtx('__default_channel__');
+        const { svc, reservationRepo, reservations, qbRows, stockLedgerService } = makeService(ctx);
+        reservations.push({
+            id: 19, status: 'PENDING_ALLOC', expiresAt: new Date(Date.now() - 60_000),
+            totalQty: 1, variantId: 9, tenantChannelId: 'shop-a',
+        });
+        qbRows.push(reservations[0]);
+
+        const r = await svc.releaseExpired(ctx as any, { tenantChannelId: 'shop-a' });
+
+        const qb: any = reservationRepo.createQueryBuilder.mock.results[0].value;
+        const andWheres: Array<[string, Record<string, unknown>?]> = qb.andWhere.mock.calls;
+        // 关键：收窄用入参 code（"shop-a"），而不是 ctx 的默认渠道 code —— 否则该行永远命不中、永不释放
+        expect(andWheres[andWheres.length - 1]).toEqual([
+            '(r.tenantChannelId = :tenant OR r.tenantChannelId IS NULL)', { tenant: 'shop-a' },
+        ]);
+        expect(r.released).toBe(1);
+        // 释放借了默认渠道 ctx：状态照常释放，但留痕必须跳过（否则把 shop-a 的释放记到默认渠道账上）
+        expect(stockLedgerService.record).not.toHaveBeenCalled();
+    });
+
+    it('tenantChannelId 为 null 的分组只收窄 IS NULL（不再套 ctx 渠道）', async () => {
+        const ctx = makeCtx('__default_channel__');
+        const { svc, reservationRepo } = makeService(ctx);
+
+        await svc.releaseExpired(ctx as any, { tenantChannelId: null });
+
+        const qb: any = reservationRepo.createQueryBuilder.mock.results[0].value;
+        expect(qb.andWhere.mock.calls[2]).toEqual(['r.tenantChannelId IS NULL']);
+    });
 });

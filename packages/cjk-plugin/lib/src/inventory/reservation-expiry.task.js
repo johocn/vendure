@@ -31,20 +31,28 @@ exports.releaseExpiredReservationsTask = new core_1.ScheduledTask({
             .getRawMany();
         const channelRepo = connection.rawConnection.getRepository(core_1.Channel);
         let released = 0;
+        let orphan = 0;
         for (const c of candidates) {
             const code = c.tenant;
             const channel = code ? await channelRepo.findOne({ where: { code } }) : null;
-            // 渠道查不到 / tenantChannelId 为 NULL：退回默认渠道 ctx（与 core ScheduledTask 口径一致）
+            if (code && !channel) {
+                // 渠道已被删除/改名：仍按其 tenantChannelId 释放（否则这些单会永久占用库存，静默泄漏）。
+                // 因无渠道上下文，流水留痕会被 service 跳过并告警。
+                orphan++;
+                core_1.Logger.warn(`渠道 "${code}" 已不存在（预留单 tenantChannelId 仍指向它），仍按其原值释放到期预留单`, loggerCtx);
+            }
+            // 渠道查不到 / tenantChannelId 为 NULL：退回默认渠道 ctx（与 core ScheduledTask 口径一致）。
+            // 释放范围始终以该分组的 tenantChannelId 为准，ctx 只影响留痕等渠道相关副作用。
             const ctx = channel
                 ? await requestContextService.create({ apiType: 'admin', channelOrToken: channel })
                 : scheduledContext;
-            const r = await service.releaseExpired(ctx);
+            const r = await service.releaseExpired(ctx, { tenantChannelId: code });
             released += r.released;
         }
         if (released) {
-            core_1.Logger.info(`释放到期预留单 ${released} 条（涉及 ${candidates.length} 个渠道）`, loggerCtx);
+            core_1.Logger.info(`释放到期预留单 ${released} 条（涉及 ${candidates.length} 个渠道${orphan ? `，其中 ${orphan} 个渠道已不存在` : ''}）`, loggerCtx);
         }
-        return { channels: candidates.length, released };
+        return { channels: candidates.length, orphanChannels: orphan, released };
     },
 });
 //# sourceMappingURL=reservation-expiry.task.js.map
