@@ -15,7 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PickBatchAdminResolver = void 0;
 const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
-const tenant_member_entity_1 = require("../tenant/tenant-member.entity");
+const resolve_tenant_member_1 = require("../tenant/resolve-tenant-member");
 const pick_batch_service_1 = require("./pick-batch.service");
 /** 配货台（拣货批次）admin 接口 */
 let PickBatchAdminResolver = class PickBatchAdminResolver {
@@ -75,19 +75,17 @@ let PickBatchAdminResolver = class PickBatchAdminResolver {
         await this.pickBatchService.registerException(ctx, batchId, reason);
         return this.pickBatchService.detail(ctx, batchId);
     }
-    /** 操作人：优先 TenantMember.displayName，回退 Administrator 名字 */
+    /** 操作人：优先 TenantMember.displayName，回退 Administrator 名字
+     *  （D47 修正键错位：ctx.activeUserId 是 User.id，而 TenantMember.administratorId 存的是 Administrator.id，
+     *    旧写法两步都用 User.id 去匹配 → 恒返回 null，"创建人" 永远为空。换键统一走共享 helper。） */
     async currentOperator(ctx) {
         const userId = ctx.activeUserId;
         if (!userId)
             return null;
-        const member = await this.connection.getRepository(ctx, tenant_member_entity_1.TenantMember).findOne({
-            where: { administratorId: String(userId) },
-        });
+        const member = await (0, resolve_tenant_member_1.resolveTenantMember)(ctx, this.connection, userId, ctx.channelId);
         if (member === null || member === void 0 ? void 0 : member.displayName)
             return member.displayName;
-        const admin = await this.connection.getRepository(ctx, core_1.Administrator).findOne({
-            where: { id: userId },
-        });
+        const admin = await (0, resolve_tenant_member_1.findAdministratorByUserId)(ctx, this.connection, userId);
         if (!admin)
             return null;
         const name = [admin.firstName, admin.lastName].filter(Boolean).join(' ');

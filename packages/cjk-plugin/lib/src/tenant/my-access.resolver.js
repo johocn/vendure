@@ -16,7 +16,7 @@ exports.MyAccessResolver = void 0;
 const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
 const common_1 = require("@nestjs/common");
-const tenant_member_entity_1 = require("./tenant-member.entity");
+const resolve_tenant_member_1 = require("./resolve-tenant-member");
 /**
  * 登录后返回当前后台用户的租户访问信息：
  * - channels：每个有权限的租户的启停状态（enabled）与该用户在该租户的人员启停（memberEnabled）
@@ -31,7 +31,7 @@ let MyAccessResolver = class MyAccessResolver {
         this.connection = connection;
     }
     async myTenantAccess(ctx, channelId) {
-        var _a, _b;
+        var _a;
         const user = (_a = ctx.session) === null || _a === void 0 ? void 0 : _a.user;
         // CachedSessionUser 仅含 id/identifier/verified/channelPermissions，其中 channelPermissions
         // 由角色派生并跨渠道累积权限。超管判定不能依赖 ctx.userHasPermissions（按激活 channel 校验，
@@ -49,8 +49,10 @@ let MyAccessResolver = class MyAccessResolver {
             channels = channels.filter((c) => idSet.has(String(c.id)));
         }
         // 查询每个 channel 的启停 + 当前用户在其中的 TenantMember 启停
-        const memberRepo = this.connection.getRepository(ctx, tenant_member_entity_1.TenantMember);
-        const memberRows = await memberRepo.find({ where: { administratorId: String((_b = user === null || user === void 0 ? void 0 : user.id) !== null && _b !== void 0 ? _b : '') } });
+        // D47：换键走共享 helper（session.user.id 是 User.id，而 TenantMember.administratorId 是 Administrator.id）。
+        // 旧写法直接用 User.id 匹配 administratorId 恒空 → memberEnabled 恒 true、mustChangePassword 恒 false，
+        // 导致「停用人员」与「首登强改密」在登录后的前端判断中被静默绕过。
+        const memberRows = await (0, resolve_tenant_member_1.resolveTenantMembers)(ctx, this.connection, user === null || user === void 0 ? void 0 : user.id);
         const memberByChannel = new Map();
         for (const m of memberRows)
             memberByChannel.set(String(m.channelId), m);

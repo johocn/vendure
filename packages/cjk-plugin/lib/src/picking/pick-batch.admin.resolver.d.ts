@@ -51,6 +51,8 @@ export declare class PickBatchAdminResolver {
     registerPickBatchException(ctx: RequestContext, batchId: ID, reason: string): Promise<{
         members: import("./pick-batch.service").PickOrderSnapshot[];
     } | null>;
-    /** 操作人：优先 TenantMember.displayName，回退 Administrator 名字 */
+    /** 操作人：优先 TenantMember.displayName，回退 Administrator 名字
+     *  （D47 修正键错位：ctx.activeUserId 是 User.id，而 TenantMember.administratorId 存的是 Administrator.id，
+     *    旧写法两步都用 User.id 去匹配 → 恒返回 null，"创建人" 永远为空。换键统一走共享 helper。） */
     private currentOperator;
 }

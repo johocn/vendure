@@ -1,6 +1,5 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 import {
-    Administrator,
     Allow,
     Ctx,
     ID,
@@ -9,7 +8,7 @@ import {
     TransactionalConnection,
 } from '@vendure/core';
 
-import { TenantMember } from '../tenant/tenant-member.entity';
+import { findAdministratorByUserId, resolveTenantMember } from '../tenant/resolve-tenant-member';
 import { PickBatchState } from './pick-batch.entity';
 import { PickBatchService } from './pick-batch.service';
 
@@ -129,17 +128,15 @@ export class PickBatchAdminResolver {
         return this.pickBatchService.detail(ctx, batchId);
     }
 
-    /** 操作人：优先 TenantMember.displayName，回退 Administrator 名字 */
+    /** 操作人：优先 TenantMember.displayName，回退 Administrator 名字
+     *  （D47 修正键错位：ctx.activeUserId 是 User.id，而 TenantMember.administratorId 存的是 Administrator.id，
+     *    旧写法两步都用 User.id 去匹配 → 恒返回 null，"创建人" 永远为空。换键统一走共享 helper。） */
     private async currentOperator(ctx: RequestContext): Promise<string | null> {
         const userId = ctx.activeUserId;
         if (!userId) return null;
-        const member = await this.connection.getRepository(ctx, TenantMember).findOne({
-            where: { administratorId: String(userId) },
-        });
+        const member = await resolveTenantMember(ctx, this.connection, userId, ctx.channelId);
         if (member?.displayName) return member.displayName;
-        const admin = await this.connection.getRepository(ctx, Administrator).findOne({
-            where: { id: userId },
-        });
+        const admin = await findAdministratorByUserId(ctx, this.connection, userId);
         if (!admin) return null;
         const name = [admin.firstName, admin.lastName].filter(Boolean).join(' ');
         return name || null;

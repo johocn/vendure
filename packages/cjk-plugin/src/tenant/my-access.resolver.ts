@@ -2,6 +2,7 @@ import { Args, Query, Resolver, ID as GqlID } from '@nestjs/graphql';
 import { Allow, Ctx, Permission, RequestContext, ChannelService, TransactionalConnection } from '@vendure/core';
 import { Inject } from '@nestjs/common';
 import { TenantMember } from './tenant-member.entity';
+import { resolveTenantMembers } from './resolve-tenant-member';
 
 /**
  * 登录后返回当前后台用户的租户访问信息：
@@ -48,8 +49,10 @@ export class MyAccessResolver {
         }
 
         // 查询每个 channel 的启停 + 当前用户在其中的 TenantMember 启停
-        const memberRepo = this.connection.getRepository(ctx, TenantMember);
-        const memberRows = await memberRepo.find({ where: { administratorId: String(user?.id ?? '') } });
+        // D47：换键走共享 helper（session.user.id 是 User.id，而 TenantMember.administratorId 是 Administrator.id）。
+        // 旧写法直接用 User.id 匹配 administratorId 恒空 → memberEnabled 恒 true、mustChangePassword 恒 false，
+        // 导致「停用人员」与「首登强改密」在登录后的前端判断中被静默绕过。
+        const memberRows = await resolveTenantMembers(ctx, this.connection, user?.id);
         const memberByChannel = new Map<string, TenantMember>();
         for (const m of memberRows) memberByChannel.set(String(m.channelId), m);
 
