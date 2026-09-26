@@ -9,6 +9,8 @@ export declare class StocktakeAdminResolver {
         items: import("./stocktake.service").StocktakeTaskView[];
     }>;
     stocktakeTask(ctx: RequestContext, args: any): Promise<import("./stocktake.service").StocktakeTaskView | null>;
+    /** 看板盘库 KPI 聚合（D48）：窗口判定与差异聚合都在服务端，绕开 listTasks 的 pageSize ≤ 100 硬上限 */
+    stocktakeKpi(ctx: RequestContext, from?: string, to?: string): Promise<import("./stocktake.service").StocktakeKpi>;
     stocktakeWaves(ctx: RequestContext, args: any): Promise<import("./stocktake-wave.entity").StocktakeWave[]>;
     stocktakeExpectedLines(ctx: RequestContext, args: any): Promise<{
         totalItems: number;

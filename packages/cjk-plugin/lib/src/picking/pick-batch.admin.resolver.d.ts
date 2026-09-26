@@ -13,6 +13,8 @@ export declare class PickBatchAdminResolver {
     pickBatch(ctx: RequestContext, id: ID): Promise<{
         members: import("./pick-batch.service").PickOrderSnapshot[];
     } | null>;
+    /** 看板「拣货单数」KPI（D48）：服务端按窗口 COUNT，绕开 findAll 的 pageSize ≤ 100 硬上限 */
+    pickBatchShippedCount(ctx: RequestContext, from?: string, to?: string): Promise<number>;
     pickBatchPickingList(ctx: RequestContext, id: ID): Promise<import("./pick-batch-math").PickingRow[]>;
     pickBatchCandidates(ctx: RequestContext, args: any): Promise<{
         totalItems: number;

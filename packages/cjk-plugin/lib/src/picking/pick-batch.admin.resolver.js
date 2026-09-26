@@ -30,6 +30,10 @@ let PickBatchAdminResolver = class PickBatchAdminResolver {
     async pickBatch(ctx, id) {
         return this.pickBatchService.detail(ctx, id);
     }
+    /** 看板「拣货单数」KPI（D48）：服务端按窗口 COUNT，绕开 findAll 的 pageSize ≤ 100 硬上限 */
+    async pickBatchShippedCount(ctx, from, to) {
+        return this.pickBatchService.countShipped(ctx, { from, to });
+    }
     async pickBatchPickingList(ctx, id) {
         return this.pickBatchService.pickingList(ctx, id);
     }
@@ -111,6 +115,16 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], PickBatchAdminResolver.prototype, "pickBatch", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.ReadOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('from', { nullable: true })),
+    __param(2, (0, graphql_1.Args)('to', { nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, String]),
+    __metadata("design:returntype", Promise)
+], PickBatchAdminResolver.prototype, "pickBatchShippedCount", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(core_1.Permission.ReadOrder),

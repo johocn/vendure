@@ -40,6 +40,18 @@ export declare class PickBatchService {
         totalItems: number;
     }>;
     findOne(ctx: RequestContext, id: ID): Promise<PickBatch | null>;
+    /**
+     * 看板「拣货单数」聚合（D48）：窗口内已完成批次数。
+     * 为什么放在服务端：前端原先取 `pickBatches({ pageSize: 100 })`（`findAll` 把 pageSize 硬顶 100）
+     * 再在浏览器内按窗口过滤 → 窗口内批次超过 100 条时，按 id DESC 截掉的都是**较老**批次，
+     * KPI 静默低估。这里在 SQL 侧 COUNT，无上限且只发 1 次请求（与 D46 `stockDocOperatorStats` 同型）。
+     * 区间口径：列值 createdAt 是 timestamp（无时区），读出来给前端展示的是什么值，这里就按什么值比较——
+     * 绑定 Date 由驱动按进程本地时区序列化，与列表读出的显示值同源，故不引入时区偏移。
+     */
+    countShipped(ctx: RequestContext, options?: {
+        from?: string;
+        to?: string;
+    }): Promise<number>;
     members(ctx: RequestContext, batchId: ID): Promise<PickBatchOrder[]>;
     /**
      * 同一订单不得同时存在于两个非终态批次中。

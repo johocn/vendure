@@ -1551,6 +1551,14 @@ function mergeCustomFields<T extends { name: string }>(
                     pickBatchCandidates(options: PickBatchListOptions): PickBatchCandidateList!
                 }
 
+                # ===== 看板「拣货单数」KPI 聚合（D48）=====
+                # 为什么单独一条：pickBatches 的 pageSize 被服务端硬顶 100，
+                # 前端「取最近 100 条 + 客户端按窗口过滤」在窗口内批次 > 100 时静默低估。
+                # 口径 = SHIPPED / HANDOVER / REVIEWED 且 createdAt 落在 [from, to]。
+                extend type Query {
+                    pickBatchShippedCount(from: String, to: String): Int!
+                }
+
                 extend type Mutation {
                     createPickBatch(input: CreatePickBatchInput!): PickBatch!
                     addOrdersToPickBatch(batchId: ID!, orderIds: [ID!]!): PickBatch!
@@ -1770,6 +1778,21 @@ function mergeCustomFields<T extends { name: string }>(
                 input StocktakeCountEntryInput { lineId: ID, variantId: ID, countedQty: Int!, zoneId: ID, binId: ID, note: String }
                 input StocktakeLineFilterInput { onlyCounted: Boolean, onlyUncounted: Boolean, onlyDiff: Boolean, onlyExtra: Boolean }
                 input StocktakeTaskOptionsInput { page: Int, pageSize: Int, state: String, states: [String!], activityCode: String, stockLocationId: ID }
+
+                # ===== 看板盘库 KPI 聚合（D48）=====
+                # 为什么单独一条：stocktakeTasks 的 pageSize 被服务端硬顶 100，旧前端「取最近 100 条 +
+                # 客户端按窗口过滤 + 逐任务取 stocktakeDiff」在窗口内任务 > 100 时让「盘库次数 / 差异率 /
+                # 差异趋势」同源同步失真。服务端先判定窗口内任务（无上限）再聚合；days 覆盖窗口每一天。
+                type StocktakeKpiDay { day: String! expected: Int! diff: Int! }
+                type StocktakeKpi {
+                    taskCount: Int!
+                    expectedTotal: Int!
+                    diffTotal: Int!
+                    days: [StocktakeKpiDay!]!
+                }
+                extend type Query {
+                    stocktakeKpi(from: String, to: String): StocktakeKpi!
+                }
                 extend type Query {
                     stocktakeTasks(options: StocktakeTaskOptionsInput): StocktakeTaskList!
                     stocktakeTask(id: ID!): StocktakeTask

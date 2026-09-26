@@ -14,6 +14,21 @@ export interface StocktakeOperator {
     id: string | null;
     name: string | null;
 }
+export interface StocktakeKpiDay {
+    day: string;
+    expected: number;
+    diff: number;
+}
+export interface StocktakeKpi {
+    /** 窗口内「已提交/已过账」任务数 */
+    taskCount: number;
+    /** 窗口内应盘行合计 */
+    expectedTotal: number;
+    /** 窗口内差异变体数合计（|差异|，与差异率分子同源） */
+    diffTotal: number;
+    /** 窗口内每一天一行（无数据日为 0），与前端差异趋势同口径 */
+    days: StocktakeKpiDay[];
+}
 export interface StocktakeTaskView {
     id: number;
     code: string;
@@ -54,6 +69,18 @@ export declare class StocktakeService {
         items: StocktakeTaskView[];
     }>;
     getTask(ctx: RequestContext, id: ID): Promise<StocktakeTaskView | null>;
+    /**
+     * 看板盘库 KPI 聚合（D48）：窗口内「已提交/已过账」任务数 + 差异合计 + 按日差异趋势。
+     * 为什么放在服务端：旧前端取 `stocktakeTasks({ pageSize: 100 })`（`listTasks` 把 pageSize 硬顶 100）
+     * 再在浏览器内按窗口过滤并逐任务取 `stocktakeDiff` → 窗口内任务超过 100 条时，按 id DESC 截掉的都是
+     * **较老**任务，「盘库次数 / 差异率 / 差异趋势」三项同源同步失真。这里由服务端先按 createdAt 判定
+     * 窗口内任务（无上限），再聚合，且只发 1 次请求（差异仍复用 diffOf，保证与任务详情页同源同值）。
+     * days 覆盖窗口内每一天（无数据日为 0），与前端原 `varianceTrend` 口径逐字对齐；无区间时只返回有数据的日。
+     */
+    kpiOf(ctx: RequestContext, options?: {
+        from?: string;
+        to?: string;
+    }): Promise<StocktakeKpi>;
     listWaves(ctx: RequestContext, taskId: ID): Promise<StocktakeWave[]>;
     /** 任务取回 + 渠道收口 + 状态校验（所有写路径共用；越权一律 UserInputError） */
     private assertTask;

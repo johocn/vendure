@@ -42,6 +42,10 @@ let StocktakeAdminResolver = class StocktakeAdminResolver {
     async stocktakeTask(ctx, args) {
         return this.stocktakeService.getTask(ctx, args.id);
     }
+    /** 看板盘库 KPI 聚合（D48）：窗口判定与差异聚合都在服务端，绕开 listTasks 的 pageSize ≤ 100 硬上限 */
+    async stocktakeKpi(ctx, from, to) {
+        return this.stocktakeService.kpiOf(ctx, { from, to });
+    }
     async stocktakeWaves(ctx, args) {
         return this.stocktakeService.listWaves(ctx, args.taskId);
     }
@@ -118,6 +122,16 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], StocktakeAdminResolver.prototype, "stocktakeTask", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.ReadCatalog),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('from', { nullable: true })),
+    __param(2, (0, graphql_1.Args)('to', { nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, String]),
+    __metadata("design:returntype", Promise)
+], StocktakeAdminResolver.prototype, "stocktakeKpi", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(core_1.Permission.ReadCatalog),

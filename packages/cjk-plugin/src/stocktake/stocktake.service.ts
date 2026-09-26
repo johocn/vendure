@@ -57,6 +57,40 @@ import { StockDocService } from '../inventory/stock-doc.service';
 
 export interface StocktakeOperator { id: string | null; name: string | null; }
 
+/** 看板「盘库次数 / 差异率」计入的任务状态：COUNTED = 全部盘次已提交待过账，POSTED = 已过账。
+ *  注：任务状态枚举里**没有** SUBMITTED（那是盘次状态），旧前端把盘次状态误当任务状态用，
+ *  导致「待过账（COUNTED）」的任务一直没被计入，D48 一并纠正。 */
+const DONE_TASK_STATES: StocktakeTaskState[] = ['COUNTED', 'POSTED'];
+
+/** 'YYYY-MM-DD'（本地时区，与前端 ops-report.ymd 同口径） */
+function dayKey(d: Date): string {
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+function parseIsoDate(value?: string | null): Date | null {
+    if (!value) return null;
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+}
+
+export interface StocktakeKpiDay {
+    day: string;
+    expected: number;
+    diff: number;
+}
+
+export interface StocktakeKpi {
+    /** 窗口内「已提交/已过账」任务数 */
+    taskCount: number;
+    /** 窗口内应盘行合计 */
+    expectedTotal: number;
+    /** 窗口内差异变体数合计（|差异|，与差异率分子同源） */
+    diffTotal: number;
+    /** 窗口内每一天一行（无数据日为 0），与前端差异趋势同口径 */
+    days: StocktakeKpiDay[];
+}
+
 export interface StocktakeTaskView {
     id: number; code: string; stockLocationId: number; locationName: string | null;
     activityCode: string | null; name: string; scopeJson: string; binModeAtCreate: string;
@@ -153,6 +187,59 @@ export class StocktakeService {
     async getTask(ctx: RequestContext, id: ID): Promise<StocktakeTaskView | null> {
         const task = await this.assertTask(ctx, id, { allowPosted: true });
         return this.buildTaskView(ctx, task);
+    }
+
+    /**
+     * 看板盘库 KPI 聚合（D48）：窗口内「已提交/已过账」任务数 + 差异合计 + 按日差异趋势。
+     * 为什么放在服务端：旧前端取 `stocktakeTasks({ pageSize: 100 })`（`listTasks` 把 pageSize 硬顶 100）
+     * 再在浏览器内按窗口过滤并逐任务取 `stocktakeDiff` → 窗口内任务超过 100 条时，按 id DESC 截掉的都是
+     * **较老**任务，「盘库次数 / 差异率 / 差异趋势」三项同源同步失真。这里由服务端先按 createdAt 判定
+     * 窗口内任务（无上限），再聚合，且只发 1 次请求（差异仍复用 diffOf，保证与任务详情页同源同值）。
+     * days 覆盖窗口内每一天（无数据日为 0），与前端原 `varianceTrend` 口径逐字对齐；无区间时只返回有数据的日。
+     */
+    async kpiOf(ctx: RequestContext, options?: { from?: string; to?: string }): Promise<StocktakeKpi> {
+        const from = parseIsoDate(options?.from);
+        const to = parseIsoDate(options?.to);
+        const qb = this.connection
+            .getRepository(ctx, StocktakeTask)
+            .createQueryBuilder('t')
+            .where('t.tenantChannelId = :ch', { ch: this.tenantOf(ctx) })
+            .andWhere('t.state IN (:...states)', { states: DONE_TASK_STATES });
+        if (from) qb.andWhere('t.createdAt >= :from', { from });
+        if (to) qb.andWhere('t.createdAt <= :to', { to });
+        const tasks = await qb.orderBy('t.id', 'ASC').getMany();
+
+        let expectedTotal = 0;
+        let diffTotal = 0;
+        const byDay = new Map<string, StocktakeKpiDay>();
+        for (const task of tasks) {
+            const d = await this.diffOf(ctx, task.id);
+            const expected = d.summary.expectedTotal;
+            const diff = d.summary.byVariant.filter((v) => v.diff !== 0).length;
+            expectedTotal += expected;
+            diffTotal += diff;
+            const key = dayKey(task.createdAt);
+            const cell = byDay.get(key) ?? { day: key, expected: 0, diff: 0 };
+            cell.expected += expected;
+            cell.diff += diff;
+            byDay.set(key, cell);
+        }
+
+        const days: StocktakeKpiDay[] = [];
+        if (from && to) {
+            const cur = new Date(from);
+            cur.setHours(0, 0, 0, 0);
+            const end = new Date(to);
+            end.setHours(0, 0, 0, 0);
+            while (cur.getTime() <= end.getTime()) {
+                const key = dayKey(cur);
+                days.push(byDay.get(key) ?? { day: key, expected: 0, diff: 0 });
+                cur.setDate(cur.getDate() + 1);
+            }
+        } else {
+            days.push(...[...byDay.values()].sort((a, b) => a.day.localeCompare(b.day)));
+        }
+        return { taskCount: tasks.length, expectedTotal, diffTotal, days };
     }
 
     async listWaves(ctx: RequestContext, taskId: ID): Promise<StocktakeWave[]> {

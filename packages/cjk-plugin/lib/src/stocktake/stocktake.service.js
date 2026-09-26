@@ -29,6 +29,21 @@ const variant_storage_bin_entity_1 = require("../storage/variant-storage-bin.ent
 const tenant_member_entity_1 = require("../tenant/tenant-member.entity");
 const stocktake_math_1 = require("./stocktake-math");
 const stock_doc_service_1 = require("../inventory/stock-doc.service");
+/** 看板「盘库次数 / 差异率」计入的任务状态：COUNTED = 全部盘次已提交待过账，POSTED = 已过账。
+ *  注：任务状态枚举里**没有** SUBMITTED（那是盘次状态），旧前端把盘次状态误当任务状态用，
+ *  导致「待过账（COUNTED）」的任务一直没被计入，D48 一并纠正。 */
+const DONE_TASK_STATES = ['COUNTED', 'POSTED'];
+/** 'YYYY-MM-DD'（本地时区，与前端 ops-report.ymd 同口径） */
+function dayKey(d) {
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+function parseIsoDate(value) {
+    if (!value)
+        return null;
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+}
 let StocktakeService = class StocktakeService {
     constructor(connection, stockDocService) {
         this.connection = connection;
@@ -119,6 +134,60 @@ let StocktakeService = class StocktakeService {
     async getTask(ctx, id) {
         const task = await this.assertTask(ctx, id, { allowPosted: true });
         return this.buildTaskView(ctx, task);
+    }
+    /**
+     * 看板盘库 KPI 聚合（D48）：窗口内「已提交/已过账」任务数 + 差异合计 + 按日差异趋势。
+     * 为什么放在服务端：旧前端取 `stocktakeTasks({ pageSize: 100 })`（`listTasks` 把 pageSize 硬顶 100）
+     * 再在浏览器内按窗口过滤并逐任务取 `stocktakeDiff` → 窗口内任务超过 100 条时，按 id DESC 截掉的都是
+     * **较老**任务，「盘库次数 / 差异率 / 差异趋势」三项同源同步失真。这里由服务端先按 createdAt 判定
+     * 窗口内任务（无上限），再聚合，且只发 1 次请求（差异仍复用 diffOf，保证与任务详情页同源同值）。
+     * days 覆盖窗口内每一天（无数据日为 0），与前端原 `varianceTrend` 口径逐字对齐；无区间时只返回有数据的日。
+     */
+    async kpiOf(ctx, options) {
+        var _a, _b;
+        const from = parseIsoDate(options === null || options === void 0 ? void 0 : options.from);
+        const to = parseIsoDate(options === null || options === void 0 ? void 0 : options.to);
+        const qb = this.connection
+            .getRepository(ctx, stocktake_task_entity_1.StocktakeTask)
+            .createQueryBuilder('t')
+            .where('t.tenantChannelId = :ch', { ch: this.tenantOf(ctx) })
+            .andWhere('t.state IN (:...states)', { states: DONE_TASK_STATES });
+        if (from)
+            qb.andWhere('t.createdAt >= :from', { from });
+        if (to)
+            qb.andWhere('t.createdAt <= :to', { to });
+        const tasks = await qb.orderBy('t.id', 'ASC').getMany();
+        let expectedTotal = 0;
+        let diffTotal = 0;
+        const byDay = new Map();
+        for (const task of tasks) {
+            const d = await this.diffOf(ctx, task.id);
+            const expected = d.summary.expectedTotal;
+            const diff = d.summary.byVariant.filter((v) => v.diff !== 0).length;
+            expectedTotal += expected;
+            diffTotal += diff;
+            const key = dayKey(task.createdAt);
+            const cell = (_a = byDay.get(key)) !== null && _a !== void 0 ? _a : { day: key, expected: 0, diff: 0 };
+            cell.expected += expected;
+            cell.diff += diff;
+            byDay.set(key, cell);
+        }
+        const days = [];
+        if (from && to) {
+            const cur = new Date(from);
+            cur.setHours(0, 0, 0, 0);
+            const end = new Date(to);
+            end.setHours(0, 0, 0, 0);
+            while (cur.getTime() <= end.getTime()) {
+                const key = dayKey(cur);
+                days.push((_b = byDay.get(key)) !== null && _b !== void 0 ? _b : { day: key, expected: 0, diff: 0 });
+                cur.setDate(cur.getDate() + 1);
+            }
+        }
+        else {
+            days.push(...[...byDay.values()].sort((a, b) => a.day.localeCompare(b.day)));
+        }
+        return { taskCount: tasks.length, expectedTotal, diffTotal, days };
     }
     async listWaves(ctx, taskId) {
         await this.assertTask(ctx, taskId, { allowPosted: true });

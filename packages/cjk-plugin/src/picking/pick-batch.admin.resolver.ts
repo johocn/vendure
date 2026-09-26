@@ -32,6 +32,17 @@ export class PickBatchAdminResolver {
         return this.pickBatchService.detail(ctx, id);
     }
 
+    /** 看板「拣货单数」KPI（D48）：服务端按窗口 COUNT，绕开 findAll 的 pageSize ≤ 100 硬上限 */
+    @Query()
+    @Allow(Permission.ReadOrder)
+    async pickBatchShippedCount(
+        @Ctx() ctx: RequestContext,
+        @Args('from', { nullable: true }) from?: string,
+        @Args('to', { nullable: true }) to?: string,
+    ) {
+        return this.pickBatchService.countShipped(ctx, { from, to });
+    }
+
     @Query()
     @Allow(Permission.ReadOrder)
     async pickBatchPickingList(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
