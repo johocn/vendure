@@ -62,4 +62,15 @@ export class StockDocAdminResolver {
     ): Promise<any> {
         return this.stockDocService.listDocs(ctx, { type, locationId, from, to, operator, page, pageSize });
     }
+
+    /** 作业员明细聚合（D46）：服务端 GROUP BY 操作人，绕开 listDocs 的 pageSize ≤ 100 硬上限 */
+    @Query()
+    @Allow(InventoryPermissions.ViewStock as Permission, Permission.ReadCatalog, Permission.ReadStockLocation)
+    async stockDocOperatorStats(
+        @Ctx() ctx: RequestContext,
+        @Args('from', { nullable: true }) from?: string,
+        @Args('to', { nullable: true }) to?: string,
+    ): Promise<any> {
+        return this.stockDocService.operatorStats(ctx, { from, to });
+    }
 }

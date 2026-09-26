@@ -1667,6 +1667,20 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     stockDocList(type: String, locationId: ID, from: String, to: String, operator: String, page: Int, pageSize: Int): StockDocList!
                 }
 
+                # ===== 作业员明细聚合（D46）=====
+                # 为什么要单独一条：stockDocList 的 pageSize 被服务端 clamp 到 ≤100，
+                # 窗口内单据超过 100 条时较老单据被截断、低频作业员整行消失（看板 KPI 系统性低估）。
+                # 聚合在 SQL 侧完成，返回行数 = 操作人数，无上限；口径 = 排除 STOCKTAKE（见 service 注释）。
+                type StockDocOperatorStat {
+                    # 空串 = 未记录操作人（前端渲染为「未记录」占位）
+                    operator: String!
+                    count: Int!
+                    qty: Int!
+                }
+                extend type Query {
+                    stockDocOperatorStats(from: String, to: String): [StockDocOperatorStat!]!
+                }
+
                 # ===== 配货台（拣货批次） =====
                 type PickBatch implements Node {
                     id: ID!

@@ -96,4 +96,24 @@ export declare class StockDocService {
         totalItems: number;
         items: StockDocSummaryRow[];
     }>;
+    /**
+     * 作业员明细聚合（D46）：按操作人合计「人手执行的库存单据」的单据数与件数。
+     * 为什么放在服务端：原先前端取 `listDocs({ pageSize: 100 })` 再在浏览器里过滤 + 聚合，而
+     * `clampPageSize` 把 pageSize 硬顶在 100 → 窗口内单据超过 100 条时，按 createdAt DESC 截掉的
+     * 是**较老**单据，低频作业员会整行消失、合计系统性偏低。SQL 侧聚合后返回行数 = 操作人数，天然无上限。
+     * 口径（与前端 `ops-report` 一致，避免两处各写一套）：排除 `STOCKTAKE` —— 真盘库过账单的人工作业量
+     * 已由 `stocktakeStats(taskId)` 的盘次/应盘行口径覆盖；D42 起「库存明细页调整」产生的手工调数单
+     * 复用该类型，属数据修正而非作业量。
+     * count 用 `COUNT(DISTINCT d.id)`：left join 明细后行数会按明细条数膨胀；**无明细的单据仍计 1 单**
+     * （与旧前端口径一致：旧实现按单据逐条累加，totalQty 取明细合计、缺失按 0）。
+     * operator 用 COALESCE 折成空串：空串即「未记录操作人」，前端渲染为「未记录」占位，且排序时自然排在最前。
+     */
+    operatorStats(ctx: RequestContext, options?: {
+        from?: string;
+        to?: string;
+    }): Promise<Array<{
+        operator: string;
+        count: number;
+        qty: number;
+    }>>;
 }

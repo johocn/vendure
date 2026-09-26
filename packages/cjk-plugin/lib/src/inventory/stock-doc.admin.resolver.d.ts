@@ -7,4 +7,6 @@ export declare class StockDocAdminResolver {
     createStockDoc(ctx: RequestContext, input: StockDocCreateInput): Promise<any>;
     stockMovementLedger(ctx: RequestContext, productVariantId?: ID, locationId?: ID, bizCode?: string, orderLineId?: ID, bizType?: string, direction?: string, from?: string, to?: string, page?: number, pageSize?: number): Promise<any>;
     stockDocList(ctx: RequestContext, type?: string, locationId?: ID, from?: string, to?: string, operator?: string, page?: number, pageSize?: number): Promise<any>;
+    /** 作业员明细聚合（D46）：服务端 GROUP BY 操作人，绕开 listDocs 的 pageSize ≤ 100 硬上限 */
+    stockDocOperatorStats(ctx: RequestContext, from?: string, to?: string): Promise<any>;
 }

@@ -340,6 +340,52 @@ let StockDocService = class StockDocService {
             }),
         };
     }
+    /**
+     * 作业员明细聚合（D46）：按操作人合计「人手执行的库存单据」的单据数与件数。
+     * 为什么放在服务端：原先前端取 `listDocs({ pageSize: 100 })` 再在浏览器里过滤 + 聚合，而
+     * `clampPageSize` 把 pageSize 硬顶在 100 → 窗口内单据超过 100 条时，按 createdAt DESC 截掉的
+     * 是**较老**单据，低频作业员会整行消失、合计系统性偏低。SQL 侧聚合后返回行数 = 操作人数，天然无上限。
+     * 口径（与前端 `ops-report` 一致，避免两处各写一套）：排除 `STOCKTAKE` —— 真盘库过账单的人工作业量
+     * 已由 `stocktakeStats(taskId)` 的盘次/应盘行口径覆盖；D42 起「库存明细页调整」产生的手工调数单
+     * 复用该类型，属数据修正而非作业量。
+     * count 用 `COUNT(DISTINCT d.id)`：left join 明细后行数会按明细条数膨胀；**无明细的单据仍计 1 单**
+     * （与旧前端口径一致：旧实现按单据逐条累加，totalQty 取明细合计、缺失按 0）。
+     * operator 用 COALESCE 折成空串：空串即「未记录操作人」，前端渲染为「未记录」占位，且排序时自然排在最前。
+     */
+    async operatorStats(ctx, options) {
+        const from = parseIso(options === null || options === void 0 ? void 0 : options.from);
+        const to = parseIso(options === null || options === void 0 ? void 0 : options.to);
+        const qb = this.conn
+            .getRepository(ctx, stock_doc_entity_1.StockDocEntity)
+            .createQueryBuilder('d')
+            .leftJoin(stock_doc_item_entity_1.StockDocItemEntity, 'i', 'i."docId" = d.id')
+            .select(`COALESCE(d.operator, '')`, 'operator')
+            .addSelect('COUNT(DISTINCT d.id)', 'count')
+            .addSelect('COALESCE(SUM(i.qty), 0)', 'qty')
+            .where('d.tenantChannelId = :ch', { ch: ctx.channel.code })
+            .andWhere('d.type <> :excluded', { excluded: 'STOCKTAKE' });
+        // 日期区间：与 listDocs 同口径，必须绑定 Date 实例（timestamp 无时区，ISO 串直传会丢偏移量）
+        if (from) {
+            qb.andWhere('d.createdAt >= :from', { from });
+        }
+        if (to) {
+            qb.andWhere('d.createdAt <= :to', { to });
+        }
+        const rows = await qb
+            .groupBy(`COALESCE(d.operator, '')`)
+            // 排序与前端渲染口径一致：单据数降序，同数按操作人升序（顺序稳定，不随接口返回抖动）
+            .orderBy('COUNT(DISTINCT d.id)', 'DESC')
+            .addOrderBy(`COALESCE(d.operator, '')`, 'ASC')
+            .getRawMany();
+        return rows.map((r) => {
+            var _a, _b, _c;
+            return ({
+                operator: String((_a = r.operator) !== null && _a !== void 0 ? _a : ''),
+                count: Number((_b = r.count) !== null && _b !== void 0 ? _b : 0),
+                qty: Number((_c = r.qty) !== null && _c !== void 0 ? _c : 0),
+            });
+        });
+    }
 };
 exports.StockDocService = StockDocService;
 exports.StockDocService = StockDocService = __decorate([

@@ -42,6 +42,10 @@ let StockDocAdminResolver = class StockDocAdminResolver {
     async stockDocList(ctx, type, locationId, from, to, operator, page, pageSize) {
         return this.stockDocService.listDocs(ctx, { type, locationId, from, to, operator, page, pageSize });
     }
+    /** 作业员明细聚合（D46）：服务端 GROUP BY 操作人，绕开 listDocs 的 pageSize ≤ 100 硬上限 */
+    async stockDocOperatorStats(ctx, from, to) {
+        return this.stockDocService.operatorStats(ctx, { from, to });
+    }
 };
 exports.StockDocAdminResolver = StockDocAdminResolver;
 __decorate([
@@ -89,6 +93,16 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, String, Object, String, String, String, Number, Number]),
     __metadata("design:returntype", Promise)
 ], StockDocAdminResolver.prototype, "stockDocList", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(inventory_plugin_1.InventoryPermissions.ViewStock, core_1.Permission.ReadCatalog, core_1.Permission.ReadStockLocation),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('from', { nullable: true })),
+    __param(2, (0, graphql_1.Args)('to', { nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, String]),
+    __metadata("design:returntype", Promise)
+], StockDocAdminResolver.prototype, "stockDocOperatorStats", null);
 exports.StockDocAdminResolver = StockDocAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [stock_doc_service_1.StockDocService])
