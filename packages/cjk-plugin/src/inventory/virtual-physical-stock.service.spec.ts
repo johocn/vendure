@@ -148,3 +148,54 @@ describe('VirtualPhysicalStockService 物理仓写入补镜像', () => {
         expect(svc.inventoryService.adjustStockPublic).toHaveBeenCalledTimes(1);
     });
 });
+
+/**
+ * D52：盘库目标仓守卫（D51 定稿口径的唯一实现，协同盘库任务与库存单据 STOCKTAKE 共用）。
+ * 规则跟渠道 physicalStockEnabled 走，不跟仓的 kind 硬绑。
+ */
+describe('VirtualPhysicalStockService.assertStocktakeLocationAllowed', () => {
+    /** 按实体名分流 getRepository：StockLocation → 目标仓，Channel → 渠道（读 customFields.physicalStockEnabled） */
+    function makeGateService(opts: {
+        kind?: string | null;
+        physicalStockEnabled?: boolean;
+        channelId?: number;
+    }) {
+        const locRepo = {
+            findOne: vi.fn().mockResolvedValue(
+                opts.kind === null ? null : { id: 5, name: '目标仓', customFields: { kind: opts.kind ?? 'physical' } },
+            ),
+        };
+        const channelRepo = {
+            findOne: vi.fn().mockResolvedValue({ id: opts.channelId ?? 37, customFields: { physicalStockEnabled: !!opts.physicalStockEnabled } }),
+        };
+        const svc = makeService({
+            connection: {
+                getRepository: vi.fn((_ctx: any, entity: any) =>
+                    (entity?.name === 'Channel' ? channelRepo : locRepo)),
+            },
+        });
+        return svc;
+    }
+
+    const ctx = { channelId: 37, channel: { code: 't1' } } as any;
+
+    it('物理仓模式（开关 t）+ 虚拟仓 → 拒绝，文案含「必须选物理仓」', async () => {
+        const svc = makeGateService({ kind: 'virtual', physicalStockEnabled: true });
+        await expect(svc.assertStocktakeLocationAllowed(ctx, 5)).rejects.toThrow(/必须选物理仓/);
+    });
+
+    it('物理仓模式 + 物理仓 → 放行', async () => {
+        const svc = makeGateService({ kind: 'physical', physicalStockEnabled: true });
+        await expect(svc.assertStocktakeLocationAllowed(ctx, 5)).resolves.toBeUndefined();
+    });
+
+    it('纯虚拟库存模式（开关 f）+ 虚拟仓 → 放行（存量 24 个盘点任务的形态，不得被废）', async () => {
+        const svc = makeGateService({ kind: 'virtual', physicalStockEnabled: false });
+        await expect(svc.assertStocktakeLocationAllowed(ctx, 5)).resolves.toBeUndefined();
+    });
+
+    it('仓库不存在 → 报「盘点仓库不存在」', async () => {
+        const svc = makeGateService({ kind: null, physicalStockEnabled: true });
+        await expect(svc.assertStocktakeLocationAllowed(ctx, 999)).rejects.toThrow(/盘点仓库不存在/);
+    });
+});

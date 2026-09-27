@@ -47,6 +47,20 @@ export declare class VirtualPhysicalStockService {
     virtualCode(channelCode: string): string;
     /** 系统仓：默认物理仓（code=租户编码）与虚拟仓（code=租户编码-virtual）——不可改码、不可删除 */
     isSystemLocationCode(channelCode: string, code: string): boolean;
+    /**
+     * 盘库目标仓守卫（2026-09-27 D51 定稿口径，D52 起为唯一实现）：
+     * 校验规则跟**渠道库存模式**走，不跟仓的 kind 硬绑。
+     * - `physicalStockEnabled = true`：账面权威在物理仓，虚拟仓只是 Σ 绑定物理仓的镜像。
+     *   允许写虚拟仓会让同一 SKU 出现「盘点账面（虚拟仓）」与「可售账面（物理仓）」两个口径，
+     *   且下一次任何镜像触发就把刚写的数冲掉 → 必须要求物理仓。
+     * - `physicalStockEnabled = false`（纯虚拟库存店）：店内没有物理仓维度，虚拟仓就是唯一账面 → 放行。
+     *   生产 t1/t2/t3 等店的开关都是关的，一刀切拒虚拟仓会直接废掉在用处法。
+     *
+     * 调用方（必须共用这一份，避免口径漂移）：
+     * - `stocktake/stocktake.service.ts` 的 `createTask` / `updateTask`（协同盘库任务绑仓）；
+     * - `inventory/stock-doc.service.ts` 的 STOCKTAKE 分支（库存明细页「调整」「快捷盘点」入口）。
+     */
+    assertStocktakeLocationAllowed(ctx: RequestContext, stockLocationId: number): Promise<void>;
     private findLocationByCode;
     /**
      * 仓归属校验：channelCode 命中、或 code 等于租户编码 / `{租户编码}-*` 前缀。

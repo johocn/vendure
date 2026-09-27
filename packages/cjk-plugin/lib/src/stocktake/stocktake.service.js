@@ -29,6 +29,7 @@ const variant_storage_bin_entity_1 = require("../storage/variant-storage-bin.ent
 const tenant_member_entity_1 = require("../tenant/tenant-member.entity");
 const stocktake_math_1 = require("./stocktake-math");
 const stock_doc_service_1 = require("../inventory/stock-doc.service");
+const virtual_physical_stock_service_1 = require("../inventory/virtual-physical-stock.service");
 /** 看板「盘库次数 / 差异率」计入的任务状态：COUNTED = 全部盘次已提交待过账，POSTED = 已过账。
  *  注：任务状态枚举里**没有** SUBMITTED（那是盘次状态），旧前端把盘次状态误当任务状态用，
  *  导致「待过账（COUNTED）」的任务一直没被计入，D48 一并纠正。 */
@@ -45,9 +46,10 @@ function parseIsoDate(value) {
     return Number.isNaN(d.getTime()) ? null : d;
 }
 let StocktakeService = class StocktakeService {
-    constructor(connection, stockDocService) {
+    constructor(connection, stockDocService, virtualPhysicalStockService) {
         this.connection = connection;
         this.stockDocService = stockDocService;
+        this.virtualPhysicalStockService = virtualPhysicalStockService;
     }
     get repo() {
         return this.connection.rawConnection.getRepository(stocktake_task_entity_1.StocktakeTask);
@@ -268,26 +270,14 @@ let StocktakeService = class StocktakeService {
         return (((_a = channel === null || channel === void 0 ? void 0 : channel.customFields) === null || _a === void 0 ? void 0 : _a.binMode) || 'off');
     }
     /**
-     * 盘点仓「库存模式」守卫（2026-09-27 口径修正：跟渠道库存模式走，不跟仓的 kind 走）。
+     * 盘点仓「库存模式」守卫（D51 口径；D52 起实现抽到 `VirtualPhysicalStockService`，
+     * 与库存单据 STOCKTAKE 分支共用同一份，避免两处口径漂移）：
      * - `physicalStockEnabled = true`：账面权威在物理仓 → 必须选物理仓；
-     *   选虚拟仓会让同一 SKU 同时存在「盘点账面」与「可售账面」两个口径（二义）。
-     * - `physicalStockEnabled = false`（纯虚拟库存店）：店内无物理仓，虚拟仓即唯一账面 → 必须允许。
+     * - `physicalStockEnabled = false`（纯虚拟库存店）：店内无物理仓，虚拟仓即唯一账面 → 放行。
      *   生产存量 24 个盘点任务全部指向虚拟仓（t1/t2/t3 等开关为 f 的店），一刀切拒虚拟仓会废掉在用处法。
      */
     async assertStockLocationAllowed(ctx, stockLocationId) {
-        var _a, _b;
-        const loc = await this.connection
-            .getRepository(ctx, core_1.StockLocation)
-            .findOne({ where: { id: stockLocationId }, loadEagerRelations: false });
-        if (!loc)
-            throw new core_1.UserInputError(`盘点仓库不存在：${stockLocationId}`);
-        const channel = await this.connection.getRepository(ctx, core_1.Channel).findOne({ where: { id: ctx.channelId } });
-        if (!Boolean((_a = channel === null || channel === void 0 ? void 0 : channel.customFields) === null || _a === void 0 ? void 0 : _a.physicalStockEnabled)) {
-            return;
-        }
-        if (((_b = loc.customFields) === null || _b === void 0 ? void 0 : _b.kind) !== 'physical') {
-            throw new core_1.UserInputError(`本店已启用物理仓库存（physicalStockEnabled），盘点仓库必须选物理仓；「${loc.name}」不是物理仓`);
-        }
+        return this.virtualPhysicalStockService.assertStocktakeLocationAllowed(ctx, stockLocationId);
     }
     /**
      * 物化：解析范围 → 双源合并 → 建盘次与应盘行（规格 §7.2）。
@@ -936,6 +926,7 @@ exports.StocktakeService = StocktakeService;
 exports.StocktakeService = StocktakeService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
-        stock_doc_service_1.StockDocService])
+        stock_doc_service_1.StockDocService,
+        virtual_physical_stock_service_1.VirtualPhysicalStockService])
 ], StocktakeService);
 //# sourceMappingURL=stocktake.service.js.map

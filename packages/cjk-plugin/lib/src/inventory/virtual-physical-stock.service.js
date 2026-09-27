@@ -54,6 +54,35 @@ let VirtualPhysicalStockService = class VirtualPhysicalStockService {
     isSystemLocationCode(channelCode, code) {
         return !!code && (code === channelCode || code === this.virtualCode(channelCode));
     }
+    /**
+     * 盘库目标仓守卫（2026-09-27 D51 定稿口径，D52 起为唯一实现）：
+     * 校验规则跟**渠道库存模式**走，不跟仓的 kind 硬绑。
+     * - `physicalStockEnabled = true`：账面权威在物理仓，虚拟仓只是 Σ 绑定物理仓的镜像。
+     *   允许写虚拟仓会让同一 SKU 出现「盘点账面（虚拟仓）」与「可售账面（物理仓）」两个口径，
+     *   且下一次任何镜像触发就把刚写的数冲掉 → 必须要求物理仓。
+     * - `physicalStockEnabled = false`（纯虚拟库存店）：店内没有物理仓维度，虚拟仓就是唯一账面 → 放行。
+     *   生产 t1/t2/t3 等店的开关都是关的，一刀切拒虚拟仓会直接废掉在用处法。
+     *
+     * 调用方（必须共用这一份，避免口径漂移）：
+     * - `stocktake/stocktake.service.ts` 的 `createTask` / `updateTask`（协同盘库任务绑仓）；
+     * - `inventory/stock-doc.service.ts` 的 STOCKTAKE 分支（库存明细页「调整」「快捷盘点」入口）。
+     */
+    async assertStocktakeLocationAllowed(ctx, stockLocationId) {
+        var _a, _b;
+        const loc = await this.connection
+            .getRepository(ctx, core_1.StockLocation)
+            .findOne({ where: { id: stockLocationId }, loadEagerRelations: false });
+        if (!loc) {
+            throw new core_1.UserInputError(`盘点仓库不存在：${stockLocationId}`);
+        }
+        const channel = await this.connection.getRepository(ctx, core_1.Channel).findOne({ where: { id: ctx.channelId } });
+        if (!Boolean((_a = channel === null || channel === void 0 ? void 0 : channel.customFields) === null || _a === void 0 ? void 0 : _a.physicalStockEnabled)) {
+            return;
+        }
+        if (((_b = loc.customFields) === null || _b === void 0 ? void 0 : _b.kind) !== 'physical') {
+            throw new core_1.UserInputError(`本店已启用物理仓库存（physicalStockEnabled），盘点仓库必须选物理仓；「${loc.name}」不是物理仓`);
+        }
+    }
     async findLocationByCode(ctx, code) {
         return this.connection
             .getRepository(ctx, core_1.StockLocation)

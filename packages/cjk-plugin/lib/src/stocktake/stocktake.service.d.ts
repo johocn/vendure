@@ -10,6 +10,7 @@ import { StocktakeLine } from './stocktake-line.entity';
 import { StocktakeTaskState } from './stocktake-task.entity';
 import { StocktakeWave } from './stocktake-wave.entity';
 import { StockDocService } from '../inventory/stock-doc.service';
+import { VirtualPhysicalStockService } from '../inventory/virtual-physical-stock.service';
 export interface StocktakeOperator {
     id: string | null;
     name: string | null;
@@ -53,7 +54,8 @@ export interface StocktakeTaskView {
 export declare class StocktakeService {
     private connection;
     private stockDocService;
-    constructor(connection: TransactionalConnection, stockDocService: StockDocService);
+    private virtualPhysicalStockService;
+    constructor(connection: TransactionalConnection, stockDocService: StockDocService, virtualPhysicalStockService: VirtualPhysicalStockService);
     private get repo();
     /** 渠道收口键（硬性 R10）：与既有 storage-bin.service.ts 的 tenantOf 同源 */
     private tenantOf;
@@ -92,10 +94,10 @@ export declare class StocktakeService {
     /** 默认档位（渠道 customFields.binMode；缺省 off） */
     private currentBinMode;
     /**
-     * 盘点仓「库存模式」守卫（2026-09-27 口径修正：跟渠道库存模式走，不跟仓的 kind 走）。
+     * 盘点仓「库存模式」守卫（D51 口径；D52 起实现抽到 `VirtualPhysicalStockService`，
+     * 与库存单据 STOCKTAKE 分支共用同一份，避免两处口径漂移）：
      * - `physicalStockEnabled = true`：账面权威在物理仓 → 必须选物理仓；
-     *   选虚拟仓会让同一 SKU 同时存在「盘点账面」与「可售账面」两个口径（二义）。
-     * - `physicalStockEnabled = false`（纯虚拟库存店）：店内无物理仓，虚拟仓即唯一账面 → 必须允许。
+     * - `physicalStockEnabled = false`（纯虚拟库存店）：店内无物理仓，虚拟仓即唯一账面 → 放行。
      *   生产存量 24 个盘点任务全部指向虚拟仓（t1/t2/t3 等开关为 f 的店），一刀切拒虚拟仓会废掉在用处法。
      */
     private assertStockLocationAllowed;

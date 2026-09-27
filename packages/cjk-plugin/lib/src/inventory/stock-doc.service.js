@@ -171,6 +171,11 @@ let StockDocService = class StockDocService {
                 if (item.toStockLocationId == null) {
                     throw new Error(`${doc.code} 盘库需指定目标仓`);
                 }
+                // D52：盘库目标仓性质校验，与协同盘库任务（stocktake.service）共用同一份口径 ——
+                // 渠道启用物理仓库存（physicalStockEnabled）时禁止把盘库/调数写到虚拟仓
+                //（虚拟仓只是 Σ 绑定物理仓的镜像，写它会让同一 SKU 出现「盘点账面 vs 可售账面」二义）。
+                // 本方法在事务内调用，抛出即整单回滚，不留残单/残流水。
+                await adjust.assertStocktakeLocationAllowed(ctx, Number(item.toStockLocationId));
                 const target = (_a = item.realQty) !== null && _a !== void 0 ? _a : item.qty;
                 const diff = await adjust.setPhysicalStock(ctx, variantId, item.toStockLocationId, target, `${reason}:reconcile`, { bizType: bizType, bizCode });
                 item.difference = diff;

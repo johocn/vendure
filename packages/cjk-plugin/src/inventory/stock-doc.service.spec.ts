@@ -17,10 +17,11 @@ const h = vi.hoisted(() => {
 vi.mock('./stock-doc.entity', () => ({ StockDocEntity: h.MockStockDocEntity }));
 vi.mock('./stock-doc-item.entity', () => ({ StockDocItemEntity: h.MockStockDocItemEntity }));
 
-function makeCtx() {
+function makeCtx(overrides: Record<string, any> = {}) {
     return {
         channel: { code: 't1', customFields: { inventoryMode: 'simple' } },
         activeUserId: 'u1',
+        ...overrides,
     } as any;
 }
 
@@ -28,9 +29,10 @@ function makeCtx() {
  * 用与 real VirtualPhysicalStockService 一致的语义做假实现：
  * - adjustPhysicalStock: 负 delta 当物理仓 onHand 不足抛「物理库存不足」
  * - setPhysicalStock: 覆盖为绝对值 target，返回差值
- * 借此在单据引擎层验证三条行为，而不依赖真实 DB。
+ * - assertStocktakeLocationAllowed: D52 守卫的假实现（跟渠道 physicalStockEnabled 走 + 仓性质表）
+ * 借此在单据引擎层验证行为，而不依赖真实 DB。
  */
-function makeService(ctx: any) {
+function makeService(ctx: any, opts: { locationKinds?: Record<number, string> } = {}) {
     let seq = 0;
     const repo = {
         findOne: vi.fn().mockResolvedValue(undefined),
@@ -69,13 +71,22 @@ function makeService(ctx: any) {
         bind: vi.fn().mockResolvedValue({}),
         binZoneId: vi.fn().mockResolvedValue(11),
     } as any;
+    // D52 守卫假实现：开关为假 → 直接放行（与 real 一致）；为真 → 目标仓必须是物理仓
+    const assertStocktakeLocationAllowed = vi.fn().mockImplementation(async (c: any, locationId: number) => {
+        if (!Boolean(c?.channel?.customFields?.physicalStockEnabled)) return;
+        if ((opts.locationKinds ?? {})[Number(locationId)] !== 'physical') {
+            throw new Error(
+                `本店已启用物理仓库存（physicalStockEnabled），盘点仓库必须选物理仓；「仓${locationId}」不是物理仓`,
+            );
+        }
+    });
     const svc = new StockDocService(
         conn as any,
-        { adjustPhysicalStock, setPhysicalStock } as any,
+        { adjustPhysicalStock, setPhysicalStock, assertStocktakeLocationAllowed } as any,
         inventoryModeService,
         storageBinService,
     );
-    return { svc, physicalStock, key, storageBinService };
+    return { svc, physicalStock, key, storageBinService, assertStocktakeLocationAllowed };
 }
 
 describe('StockDocService.create 单据引擎行为', () => {
@@ -112,5 +123,41 @@ describe('StockDocService.create 单据引擎行为', () => {
                 items: [{ variantId: 1, fromStockLocationId: 2, toStockLocationId: 3, qty: 9999000 }],
             }),
         ).rejects.toThrow(/物理库存不足/);
+    });
+});
+
+/**
+ * D52：库存明细页「调整」/「快捷盘点」都走 `createStockDoc(type:'STOCKTAKE')`，
+ * 若渠道启用物理仓库存而目标仓是虚拟仓，同一 SKU 会出现「盘点账面 vs 可售账面」二义 → 必须拒绝。
+ * 与协同盘库任务共用 VirtualPhysicalStockService 的同一份守卫。
+ */
+describe('StockDocService STOCKTAKE 目标仓守卫（D52）', () => {
+    const physCtx = () => makeCtx({ channel: { code: 't1', customFields: { inventoryMode: 'simple', physicalStockEnabled: true } } });
+
+    it('物理仓模式 + 虚拟仓 → 拒绝，且账面未被写入', async () => {
+        const ctx = physCtx();
+        const { svc, physicalStock, key } = makeService(ctx, { locationKinds: { 2: 'virtual' } });
+        await expect(
+            svc.create(ctx, {
+                type: 'STOCKTAKE',
+                remark: 'MANUAL-ADJUST | 手工调整',
+                items: [{ variantId: 1, toStockLocationId: 2, qty: 3, realQty: 3 }],
+            }),
+        ).rejects.toThrow(/必须选物理仓/);
+        expect(physicalStock.has(key(1, 2))).toBe(false);
+    });
+
+    it('物理仓模式 + 物理仓 → 放行，账面覆盖为 realQty', async () => {
+        const ctx = physCtx();
+        const { svc, physicalStock, key } = makeService(ctx, { locationKinds: { 5: 'physical' } });
+        await svc.create(ctx, { type: 'STOCKTAKE', items: [{ variantId: 1, toStockLocationId: 5, qty: 7, realQty: 7 }] });
+        expect(physicalStock.get(key(1, 5))).toBe(7);
+    });
+
+    it('纯虚拟库存模式（开关 f）+ 虚拟仓 → 放行（生产 t2 手工调整的形态）', async () => {
+        const ctx = makeCtx();
+        const { svc, physicalStock, key } = makeService(ctx, { locationKinds: { 6: 'virtual' } });
+        await svc.create(ctx, { type: 'STOCKTAKE', items: [{ variantId: 1, toStockLocationId: 6, qty: 4, realQty: 4 }] });
+        expect(physicalStock.get(key(1, 6))).toBe(4);
     });
 });

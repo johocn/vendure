@@ -54,6 +54,7 @@ import {
     waveOwnerError,
 } from './stocktake-math';
 import { StockDocService } from '../inventory/stock-doc.service';
+import { VirtualPhysicalStockService } from '../inventory/virtual-physical-stock.service';
 
 export interface StocktakeOperator { id: string | null; name: string | null; }
 
@@ -105,6 +106,7 @@ export class StocktakeService {
     constructor(
         private connection: TransactionalConnection,
         private stockDocService: StockDocService,
+        private virtualPhysicalStockService: VirtualPhysicalStockService,
     ) {}
 
     private get repo() {
@@ -323,26 +325,14 @@ export class StocktakeService {
     }
 
     /**
-     * 盘点仓「库存模式」守卫（2026-09-27 口径修正：跟渠道库存模式走，不跟仓的 kind 走）。
+     * 盘点仓「库存模式」守卫（D51 口径；D52 起实现抽到 `VirtualPhysicalStockService`，
+     * 与库存单据 STOCKTAKE 分支共用同一份，避免两处口径漂移）：
      * - `physicalStockEnabled = true`：账面权威在物理仓 → 必须选物理仓；
-     *   选虚拟仓会让同一 SKU 同时存在「盘点账面」与「可售账面」两个口径（二义）。
-     * - `physicalStockEnabled = false`（纯虚拟库存店）：店内无物理仓，虚拟仓即唯一账面 → 必须允许。
+     * - `physicalStockEnabled = false`（纯虚拟库存店）：店内无物理仓，虚拟仓即唯一账面 → 放行。
      *   生产存量 24 个盘点任务全部指向虚拟仓（t1/t2/t3 等开关为 f 的店），一刀切拒虚拟仓会废掉在用处法。
      */
     private async assertStockLocationAllowed(ctx: RequestContext, stockLocationId: number): Promise<void> {
-        const loc = await this.connection
-            .getRepository(ctx, StockLocation)
-            .findOne({ where: { id: stockLocationId as any }, loadEagerRelations: false });
-        if (!loc) throw new UserInputError(`盘点仓库不存在：${stockLocationId}`);
-        const channel = await this.connection.getRepository(ctx, Channel).findOne({ where: { id: ctx.channelId as any } });
-        if (!Boolean((channel?.customFields as any)?.physicalStockEnabled)) {
-            return;
-        }
-        if (((loc.customFields as any)?.kind) !== 'physical') {
-            throw new UserInputError(
-                `本店已启用物理仓库存（physicalStockEnabled），盘点仓库必须选物理仓；「${loc.name}」不是物理仓`,
-            );
-        }
+        return this.virtualPhysicalStockService.assertStocktakeLocationAllowed(ctx, stockLocationId);
     }
 
     /**
