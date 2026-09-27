@@ -91,6 +91,12 @@ let StocktakeService = class StocktakeService {
         var _a;
         const waves = await this.connection.getRepository(ctx, stocktake_wave_entity_1.StocktakeWave).find({ where: { taskId: Number(task.id) } });
         const lines = await this.connection.getRepository(ctx, stocktake_line_entity_1.StocktakeLine).find({ where: { taskId: Number(task.id) } });
+        // D53 进度口径：任务级「已盘 / 应盘」与「已提交盘次 / 盘次」都只统计**未取消**的盘次
+        //（任务自身已取消时保留全部，见 progressWaves 注释）——否则取消一个盘次后，
+        // 永远盘不到的那些行仍占着分母，任务哪怕已 COUNTED 也显示不满。
+        const liveWaves = (0, stocktake_math_1.progressWaves)(waves, task.state);
+        const liveWaveIds = new Set(liveWaves.map((w) => Number(w.id)));
+        const scopedLines = lines.filter((l) => liveWaveIds.has(Number(l.waveId)));
         let locationName = null;
         try {
             const loc = await this.connection.getRepository(ctx, core_1.StockLocation).findOne({ where: { id: task.stockLocationId } });
@@ -104,10 +110,10 @@ let StocktakeService = class StocktakeService {
             createdById: task.createdById, createdByName: task.createdByName,
             postedStockDocId: task.postedStockDocId, postedAt: task.postedAt, note: task.note,
             createdAt: task.createdAt,
-            expectedTotal: lines.filter((l) => !l.isExtra).length,
-            countedTotal: lines.filter((l) => !l.isExtra && l.countedQty !== null).length,
-            waveCount: waves.length,
-            submittedWaveCount: waves.filter((w) => w.state === 'SUBMITTED').length,
+            expectedTotal: scopedLines.filter((l) => !l.isExtra).length,
+            countedTotal: scopedLines.filter((l) => !l.isExtra && l.countedQty !== null).length,
+            waveCount: liveWaves.length,
+            submittedWaveCount: liveWaves.filter((w) => w.state === 'SUBMITTED').length,
         };
     }
     async listTasks(ctx, options) {

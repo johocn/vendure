@@ -22,6 +22,7 @@ exports.summarizeVariance = summarizeVariance;
 exports.buildPostItems = buildPostItems;
 exports.resolveWaveStateAfterCount = resolveWaveStateAfterCount;
 exports.resolveTaskStateAfterWaves = resolveTaskStateAfterWaves;
+exports.progressWaves = progressWaves;
 exports.waveOwnerError = waveOwnerError;
 exports.resolveScanCode = resolveScanCode;
 exports.parseStateFilter = parseStateFilter;
@@ -324,6 +325,23 @@ function resolveTaskStateAfterWaves(current, waves) {
         return current === 'DRAFT' ? 'DRAFT' : current;
     const allDone = waves.every((w) => w.state === 'SUBMITTED' || w.state === 'CANCELLED');
     return allDone ? 'COUNTED' : 'COUNTING';
+}
+/**
+ * 任务级进度口径（D53）：排除「已取消盘次」。
+ *
+ * 取消盘次 = 放弃这一批盘点：`resolveTaskStateAfterWaves` 与 `post()` 都已把 CANCELLED 当「不再要求」
+ * （前者让它不阻塞 COUNTED，后者把它从「未提交盘次」里剔除）。但 `buildTaskView` 原先按**全量**行/盘次
+ * 统计，导致任务明明已 COUNTED，看板却永远停在「已盘 3/10」「盘次 1/2 已提交」——分母含了永远盘不到的行。
+ *
+ * 任务自身已取消（CANCELLED）时保留全部：整个任务已作废，卡片上这个数是「当初盘到哪」的历史信息，
+ * 若一并归零成 0/0，前端 `pct()` 会把它显示成 100%，反而失真。
+ */
+function progressWaves(waves, taskState) {
+    if (taskState === 'CANCELLED')
+        return waves;
+    if (!waves.some((w) => w.state === 'CANCELLED'))
+        return waves;
+    return waves.filter((w) => w.state !== 'CANCELLED');
 }
 /** 盘次独占校验（规格 §3.6）：非负责人/未认领一律拒绝并回传原因 */
 function waveOwnerError(assigneeId, operatorId, assigneeName) {

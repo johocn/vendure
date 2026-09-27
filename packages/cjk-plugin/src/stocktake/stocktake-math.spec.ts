@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     buildExpected, buildPostItems, canTaskTransition, canWaveTransition,
-    formatTaskCode, nextTaskSeq, resolveScanCode, resolveTaskStateAfterWaves,
+    formatTaskCode, nextTaskSeq, progressWaves, resolveScanCode, resolveTaskStateAfterWaves,
     resolveWaveStateAfterCount, summarizeVariance, variantSnapBook, waveOwnerError,
 } from './stocktake-math';
 
@@ -319,6 +319,33 @@ describe('状态派生与独占锁（规格 §5/§3.6）', () => {
         expect(waveOwnerError(null, '12', '张三')).toContain('认领');
         expect(waveOwnerError('12', '12', '张三')).toBeNull();
         expect(waveOwnerError('12', '99', '张三')).toContain('张三');
+    });
+});
+
+describe('任务级进度口径（D53：分母排除已取消盘次）', () => {
+    const w = (state: string) => ({ state } as any);
+
+    it('进行中的任务：已取消盘次不占分母（其余盘次保留原序）', () => {
+        const out = progressWaves([w('SUBMITTED'), w('CANCELLED'), w('COUNTING')], 'COUNTING');
+        expect(out.map((x) => x.state)).toEqual(['SUBMITTED', 'COUNTING']);
+    });
+
+    it('无取消盘次 → 原样返回（不改变既有任务的口径）', () => {
+        const waves = [w('SUBMITTED'), w('OPEN')];
+        expect(progressWaves(waves, 'COUNTING')).toBe(waves);
+    });
+
+    it('全部盘次已取消 → 空数组（任务已 COUNTED，应盘归零到 100% 而非永远不满）', () => {
+        expect(progressWaves([w('CANCELLED'), w('CANCELLED')], 'COUNTED')).toEqual([]);
+    });
+
+    it('任务自身已取消 → 保留全部盘次（展示「当初盘到哪」，不归零成 0/0）', () => {
+        const waves = [w('CANCELLED'), w('SUBMITTED')];
+        expect(progressWaves(waves, 'CANCELLED')).toBe(waves);
+    });
+
+    it('POSTED 任务同样只统计未取消盘次', () => {
+        expect(progressWaves([w('SUBMITTED'), w('CANCELLED')], 'POSTED').map((x) => x.state)).toEqual(['SUBMITTED']);
     });
 });
 
