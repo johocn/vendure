@@ -92,6 +92,24 @@ export declare class VirtualPhysicalStockService {
         locationId: ID;
         isDefault: boolean;
     }>): Promise<VariantLocationBinding[]>;
+    /**
+     * 租户侧读取：该变体在本店的物理仓绑定（变体必须属于当前渠道；只回本租户仓）。
+     * 与平台侧 `setVariantBindings` 同一张表，仅入口权限不同。
+     */
+    getTenantVariantBindings(ctx: RequestContext, variantId: ID): Promise<VariantLocationBinding[]>;
+    /**
+     * 租户侧写入：替换式写入该变体的物理仓绑定。
+     * 为什么单开一个租户级入口：平台侧 `setVariantBindings` 的
+     * `@Allow(InventoryPermissions.ViewStock)` 是 inventory-plugin 的超管语义全局库存权限，
+     * 不在租户角色白名单内 → 租户账号调用恒 403（与 D41/D42 同病根）。
+     * 归属校验沿用 `setVariantBindings`（物理仓 + code 前缀属于当前租户），不放宽核心 @Allow。
+     */
+    setTenantVariantBindings(ctx: RequestContext, variantId: ID, bindings: Array<{
+        locationId: ID;
+        isDefault: boolean;
+    }>): Promise<VariantLocationBinding[]>;
+    /** 变体必须存在且已分配给当前渠道（避免租户越权读写他店变体） */
+    private assertVariantInChannel;
     /** SALE 后镜像：物理驱动变体的虚拟仓 onHand 同步为 Σ 绑定物理仓 onHand（同事务） */
     syncVirtualMirror(ctx: RequestContext, sales: Sale[]): Promise<void>;
     /** 注册 SALE 阻塞处理器（镜像必须在 core 扣库同一事务内执行；配送记录同步同事务防漏单） */

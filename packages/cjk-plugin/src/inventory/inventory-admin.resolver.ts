@@ -31,6 +31,27 @@ export class InventoryAdminResolver {
         return this.virtualPhysicalStockService.getTenantInventoryOverview(ctx);
     }
 
+    /** 租户级：读取该变体在本店的物理仓绑定（库存页「绑定物理仓」弹层初始值） */
+    @Query()
+    @Allow(Permission.ReadCatalog, Permission.ReadStockLocation)
+    async tenantVariantBindings(@Ctx() ctx: RequestContext, @Args('variantId') variantId: ID) {
+        return this.virtualPhysicalStockService.getTenantVariantBindings(ctx, variantId);
+    }
+
+    /**
+     * 租户级：替换式写入该变体的物理仓绑定。
+     * 同 D42：租户 403 类问题一律新开租户级入口，不放宽核心 @Allow(ViewStock)。
+     */
+    @Mutation()
+    @Allow(Permission.UpdateStockLocation)
+    async setTenantVariantBindings(
+        @Ctx() ctx: RequestContext,
+        @Args('variantId') variantId: ID,
+        @Args('bindings') bindings: Array<{ locationId: ID; isDefault: boolean }>,
+    ) {
+        return this.virtualPhysicalStockService.setTenantVariantBindings(ctx, variantId, bindings);
+    }
+
     /** 幂等补建系统仓（虚拟仓恒在；开关开启时补默认物理仓），供后台「一键初始化」与自愈 */
     @Mutation()
     @Allow(Permission.CreateStockLocation, Permission.UpdateStockLocation)

@@ -1358,12 +1358,17 @@ function mergeCustomFields<T extends { name: string }>(
                 }
                 extend type Query {
                     tenantInventoryOverview: TenantInventoryOverview!
+                    # 租户级变体绑定读：平台侧 setVariantBindings 走 ViewStock（超管语义、租户恒 403），
+                    # 本店改用租户白名单权限（ReadCatalog / ReadStockLocation）的独立入口。
+                    tenantVariantBindings(variantId: ID!): [VariantLocationBinding!]!
                 }
                 extend type Mutation {
                     ensureTenantInventoryLocations: TenantInventoryOverview!
                     createTenantStockLocation(input: TenantStockLocationInput!): TenantInventoryOverview!
                     updateTenantStockLocation(input: UpdateTenantStockLocationInput!): TenantInventoryOverview!
                     deleteTenantStockLocation(id: ID!): TenantInventoryOverview!
+                    # 租户级变体绑定写（@Allow(UpdateStockLocation)，非 ViewStock），归属校验同平台侧
+                    setTenantVariantBindings(variantId: ID!, bindings: [VariantBindingInput!]!): [VariantLocationBinding!]!
                 }
 
                 # ===== 库存明细聚合页（Plan 2）：一次请求拿齐 KPI / 分桶计数 / 明细行 =====

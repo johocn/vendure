@@ -33,6 +33,17 @@ let InventoryAdminResolver = class InventoryAdminResolver {
     async tenantInventoryOverview(ctx) {
         return this.virtualPhysicalStockService.getTenantInventoryOverview(ctx);
     }
+    /** 租户级：读取该变体在本店的物理仓绑定（库存页「绑定物理仓」弹层初始值） */
+    async tenantVariantBindings(ctx, variantId) {
+        return this.virtualPhysicalStockService.getTenantVariantBindings(ctx, variantId);
+    }
+    /**
+     * 租户级：替换式写入该变体的物理仓绑定。
+     * 同 D42：租户 403 类问题一律新开租户级入口，不放宽核心 @Allow(ViewStock)。
+     */
+    async setTenantVariantBindings(ctx, variantId, bindings) {
+        return this.virtualPhysicalStockService.setTenantVariantBindings(ctx, variantId, bindings);
+    }
     /** 幂等补建系统仓（虚拟仓恒在；开关开启时补默认物理仓），供后台「一键初始化」与自愈 */
     async ensureTenantInventoryLocations(ctx) {
         return this.virtualPhysicalStockService.ensureTenantInventoryLocations(ctx);
@@ -81,6 +92,25 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext]),
     __metadata("design:returntype", Promise)
 ], InventoryAdminResolver.prototype, "tenantInventoryOverview", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.ReadCatalog, core_1.Permission.ReadStockLocation),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('variantId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], InventoryAdminResolver.prototype, "tenantVariantBindings", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateStockLocation),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('variantId')),
+    __param(2, (0, graphql_1.Args)('bindings')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Array]),
+    __metadata("design:returntype", Promise)
+], InventoryAdminResolver.prototype, "setTenantVariantBindings", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(core_1.Permission.CreateStockLocation, core_1.Permission.UpdateStockLocation),

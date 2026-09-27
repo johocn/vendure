@@ -14,6 +14,16 @@ export declare class InventoryAdminResolver {
     }>): Promise<import("./variant-location-binding.entity").VariantLocationBinding[]>;
     /** 租户库存方案概览（开关口径 + 系统仓落点 + 仓清单） */
     tenantInventoryOverview(ctx: RequestContext): Promise<import("./virtual-physical-stock.service").TenantInventoryOverview>;
+    /** 租户级：读取该变体在本店的物理仓绑定（库存页「绑定物理仓」弹层初始值） */
+    tenantVariantBindings(ctx: RequestContext, variantId: ID): Promise<import("./variant-location-binding.entity").VariantLocationBinding[]>;
+    /**
+     * 租户级：替换式写入该变体的物理仓绑定。
+     * 同 D42：租户 403 类问题一律新开租户级入口，不放宽核心 @Allow(ViewStock)。
+     */
+    setTenantVariantBindings(ctx: RequestContext, variantId: ID, bindings: Array<{
+        locationId: ID;
+        isDefault: boolean;
+    }>): Promise<import("./variant-location-binding.entity").VariantLocationBinding[]>;
     /** 幂等补建系统仓（虚拟仓恒在；开关开启时补默认物理仓），供后台「一键初始化」与自愈 */
     ensureTenantInventoryLocations(ctx: RequestContext): Promise<import("./virtual-physical-stock.service").TenantInventoryOverview>;
     /** 新建租户物理仓（服务端自动编码 + 归属校验 + 强制 physical） */

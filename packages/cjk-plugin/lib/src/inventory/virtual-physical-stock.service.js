@@ -329,6 +329,47 @@ let VirtualPhysicalStockService = class VirtualPhysicalStockService {
         }
         return saved;
     }
+    /**
+     * 租户侧读取：该变体在本店的物理仓绑定（变体必须属于当前渠道；只回本租户仓）。
+     * 与平台侧 `setVariantBindings` 同一张表，仅入口权限不同。
+     */
+    async getTenantVariantBindings(ctx, variantId) {
+        await this.assertVariantInChannel(ctx, variantId);
+        const bindings = await this.connection
+            .getRepository(ctx, variant_location_binding_entity_1.VariantLocationBinding)
+            .find({ where: { variantId: variantId } });
+        if (!bindings.length) {
+            return [];
+        }
+        const overview = await this.getTenantInventoryOverview(ctx);
+        const ownIds = new Set(overview.locations.map(l => String(l.id)));
+        return bindings.filter(b => ownIds.has(String(b.locationId)));
+    }
+    /**
+     * 租户侧写入：替换式写入该变体的物理仓绑定。
+     * 为什么单开一个租户级入口：平台侧 `setVariantBindings` 的
+     * `@Allow(InventoryPermissions.ViewStock)` 是 inventory-plugin 的超管语义全局库存权限，
+     * 不在租户角色白名单内 → 租户账号调用恒 403（与 D41/D42 同病根）。
+     * 归属校验沿用 `setVariantBindings`（物理仓 + code 前缀属于当前租户），不放宽核心 @Allow。
+     */
+    async setTenantVariantBindings(ctx, variantId, bindings) {
+        await this.assertVariantInChannel(ctx, variantId);
+        return this.setVariantBindings(ctx, variantId, bindings);
+    }
+    /** 变体必须存在且已分配给当前渠道（避免租户越权读写他店变体） */
+    async assertVariantInChannel(ctx, variantId) {
+        const found = await this.connection
+            .getRepository(ctx, core_1.ProductVariant)
+            .createQueryBuilder('v')
+            .innerJoin('v.channels', 'ch', 'ch.id = :cid', { cid: ctx.channelId })
+            .where('v.id = :id', { id: Number(variantId) })
+            .andWhere('v.deletedAt IS NULL')
+            .select('v.id', 'id')
+            .getRawOne();
+        if (!found) {
+            throw new core_1.UserInputError(`变体不存在或不属于当前渠道：${String(variantId)}`);
+        }
+    }
     /** SALE 后镜像：物理驱动变体的虚拟仓 onHand 同步为 Σ 绑定物理仓 onHand（同事务） */
     async syncVirtualMirror(ctx, sales) {
         var _a, _b;
