@@ -155,16 +155,19 @@ let StockDocService = class StockDocService {
                 if (item.fromStockLocationId == null || item.toStockLocationId == null) {
                     throw new Error(`${doc.code} 移库需指定源仓与目标仓`);
                 }
+                // D54：移库两段写入**合并补镜像**——逐段补会在「源仓出 / 目标仓入」之间产出中间态镜像流水
+                //（两仓皆绑定时为净零的两条，见设计稿 §4 第 4 项），故两段都推迟到写完再按 Σ 绑定仓补一次。
                 await adjust.adjustPhysicalStock(ctx, variantId, item.fromStockLocationId, -item.qty, `${reason}:source-out`, {
                     bizType: bizType,
                     bizCode,
                     otherLocationId: item.toStockLocationId,
-                });
+                }, { deferMirror: true });
                 await adjust.adjustPhysicalStock(ctx, variantId, item.toStockLocationId, item.qty, `${reason}:target-in`, {
                     bizType: bizType,
                     bizCode,
                     otherLocationId: item.fromStockLocationId,
-                });
+                }, { deferMirror: true });
+                await adjust.syncMirrorAfterWrites(ctx, variantId, [item.fromStockLocationId, item.toStockLocationId]);
                 break;
             }
             case 'STOCKTAKE': {

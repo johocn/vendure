@@ -67,6 +67,8 @@ function makeService(ctx: any, opts: { locationKinds?: Record<number, string> } 
         },
     );
     const inventoryModeService = { assertSimple: vi.fn(), currentMode: vi.fn().mockReturnValue('simple') } as any;
+    // D54：移库两段写入合并补镜像的协作者
+    const syncMirrorAfterWrites = vi.fn().mockResolvedValue(undefined);
     const storageBinService = {
         bind: vi.fn().mockResolvedValue({}),
         binZoneId: vi.fn().mockResolvedValue(11),
@@ -82,11 +84,11 @@ function makeService(ctx: any, opts: { locationKinds?: Record<number, string> } 
     });
     const svc = new StockDocService(
         conn as any,
-        { adjustPhysicalStock, setPhysicalStock, assertStocktakeLocationAllowed } as any,
+        { adjustPhysicalStock, setPhysicalStock, assertStocktakeLocationAllowed, syncMirrorAfterWrites } as any,
         inventoryModeService,
         storageBinService,
     );
-    return { svc, physicalStock, key, storageBinService, assertStocktakeLocationAllowed };
+    return { svc, physicalStock, key, storageBinService, assertStocktakeLocationAllowed, adjustPhysicalStock, syncMirrorAfterWrites };
 }
 
 describe('StockDocService.create 单据引擎行为', () => {
@@ -123,6 +125,35 @@ describe('StockDocService.create 单据引擎行为', () => {
                 items: [{ variantId: 1, fromStockLocationId: 2, toStockLocationId: 3, qty: 9999000 }],
             }),
         ).rejects.toThrow(/物理库存不足/);
+    });
+});
+
+/**
+ * D54：移库两段写入**合并补镜像**。逐段补会在「源仓出 / 目标仓入」之间产出中间态镜像流水
+ *（两仓皆绑定时为净零的两条），故两段均声明 `deferMirror`，写完再按 [源仓, 目标仓] 合并补一次。
+ */
+describe('StockDocService TRANSFER 合并补镜像（D54）', () => {
+    it('两段写入均 deferMirror，写完按 [源仓, 目标仓] 合并补一次', async () => {
+        const ctx = makeCtx();
+        const { svc, physicalStock, key, adjustPhysicalStock, syncMirrorAfterWrites } = makeService(ctx);
+        await svc.create(ctx, { type: 'PURCHASE', items: [{ variantId: 1, toStockLocationId: 2, qty: 5 }] });
+        await svc.create(ctx, {
+            type: 'TRANSFER',
+            items: [{ variantId: 1, fromStockLocationId: 2, toStockLocationId: 3, qty: 5 }],
+        });
+        // 账面净搬运仍成立
+        expect(physicalStock.get(key(1, 2))).toBe(0);
+        expect(physicalStock.get(key(1, 3))).toBe(5);
+        // 两段都推迟补镜像（不含 PURCHASE 那次）
+        expect(adjustPhysicalStock).toHaveBeenCalledWith(
+            expect.anything(), 1, 2, -5, expect.stringContaining('source-out'), expect.anything(), { deferMirror: true },
+        );
+        expect(adjustPhysicalStock).toHaveBeenCalledWith(
+            expect.anything(), 1, 3, 5, expect.stringContaining('target-in'), expect.anything(), { deferMirror: true },
+        );
+        // 合并补一次（不是逐段两次）
+        expect(syncMirrorAfterWrites).toHaveBeenCalledTimes(1);
+        expect(syncMirrorAfterWrites).toHaveBeenCalledWith(expect.anything(), 1, [2, 3]);
     });
 });
 

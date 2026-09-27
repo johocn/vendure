@@ -150,6 +150,95 @@ describe('VirtualPhysicalStockService 物理仓写入补镜像', () => {
 });
 
 /**
+ * D54：同一单据内多处物理仓写入**合并补镜像**（移库两段不再产出中间态净零流水）。
+ * 合并语义与逐段补等价（每次现算 Σ 绑定仓、幂等），只是「写 N 次 → 补 1 次」。
+ */
+describe('VirtualPhysicalStockService 事务内合并补镜像（D54）', () => {
+    /** 按 where.id 动态返回仓性质；绑定表与库存分别注入 */
+    function makeMergeService(opts: {
+        kinds: Record<string, string>;
+        bindings?: Array<{ variantId: string; locationId: string }>;
+        levels?: Array<{ stockLocationId: string; stockOnHand: number }>;
+    }) {
+        const locRepo = {
+            findOne: vi.fn(({ where }: any) =>
+                Promise.resolve({
+                    id: String(where.id),
+                    name: `仓${where.id}`,
+                    customFields: { kind: opts.kinds[String(where.id)] ?? 'physical' },
+                }),
+            ),
+        };
+        const bindingRepo = { find: vi.fn().mockResolvedValue(opts.bindings ?? []) };
+        const svc = makeService({
+            connection: {
+                getRepository: vi.fn((_ctx: any, entity: any) =>
+                    (entity?.name === 'StockLocation' ? locRepo : bindingRepo)),
+            },
+            stockLevelService: {
+                getStockLevel: vi.fn().mockResolvedValue({ stockOnHand: 100 }),
+                getStockLevelsForVariant: vi.fn().mockResolvedValue(opts.levels ?? []),
+            },
+        });
+        return svc;
+    }
+
+    const ctx = { channel: { code: 't1' } } as any;
+
+    it('deferMirror=true 时写入不补镜像（交给调用方统一补）', async () => {
+        const svc = makeMergeService({
+            kinds: { l1: 'physical' },
+            bindings: [{ variantId: 'p1', locationId: 'l1' }],
+            levels: [{ stockLocationId: 'v1', stockOnHand: 0 }, { stockLocationId: 'l1', stockOnHand: 5 }],
+        });
+        await svc.adjustPhysicalStock(ctx, 'p1', 'l1', 3, 'source-out', undefined, { deferMirror: true });
+        expect(svc.inventoryService.adjustStockPublic).toHaveBeenCalledTimes(1);
+    });
+
+    it('两段写入后合并补一次：两仓皆绑定时 Σ 不变 → 不产出中间态镜像流水', async () => {
+        const svc = makeMergeService({
+            kinds: { l1: 'physical', l2: 'physical' },
+            bindings: [{ variantId: 'p1', locationId: 'l1' }, { variantId: 'p1', locationId: 'l2' }],
+            // 写完后的实际库存：Σ 绑定仓 = 7 + 5 = 12 = 虚拟仓当前值
+            levels: [
+                { stockLocationId: 'v1', stockOnHand: 12 },
+                { stockLocationId: 'l1', stockOnHand: 7 },
+                { stockLocationId: 'l2', stockOnHand: 5 },
+            ],
+        });
+        await svc.adjustPhysicalStock(ctx, 'p1', 'l1', -3, 'source-out', undefined, { deferMirror: true });
+        await svc.adjustPhysicalStock(ctx, 'p1', 'l2', 3, 'target-in', undefined, { deferMirror: true });
+        await svc.syncMirrorAfterWrites(ctx, 'p1', ['l1', 'l2']);
+        // 仅 2 次账面写入、0 次镜像（合并后差额为 0）
+        expect(svc.inventoryService.adjustStockPublic).toHaveBeenCalledTimes(2);
+    });
+
+    it('合并补镜像：只要有一个非虚拟仓就补一次（混合仓）', async () => {
+        const svc = makeMergeService({
+            kinds: { l1: 'virtual', l2: 'physical' },
+            bindings: [{ variantId: 'p1', locationId: 'l2' }],
+            levels: [{ stockLocationId: 'v1', stockOnHand: 0 }, { stockLocationId: 'l2', stockOnHand: 3 }],
+        });
+        await svc.syncMirrorAfterWrites(ctx, 'p1', ['l1', 'l2']);
+        expect(svc.inventoryService.adjustStockPublic).toHaveBeenCalledTimes(1);
+        expect(svc.inventoryService.adjustStockPublic).toHaveBeenLastCalledWith(
+            expect.anything(), 'p1', 'v1', 3, expect.stringContaining('镜像'),
+            expect.objectContaining({ bizType: 'mirror' }),
+        );
+    });
+
+    it('传入仓全为虚拟仓 → 跳过（直接写账面语义，防 Σ 绑定仓覆盖）', async () => {
+        const svc = makeMergeService({
+            kinds: { l1: 'virtual', l2: 'virtual' },
+            bindings: [{ variantId: 'p1', locationId: 'l1' }],
+            levels: [{ stockLocationId: 'v1', stockOnHand: 9 }, { stockLocationId: 'l1', stockOnHand: 0 }],
+        });
+        await svc.syncMirrorAfterWrites(ctx, 'p1', ['l1', 'l2']);
+        expect(svc.inventoryService.adjustStockPublic).not.toHaveBeenCalled();
+    });
+});
+
+/**
  * D52：盘库目标仓守卫（D51 定稿口径的唯一实现，协同盘库任务与库存单据 STOCKTAKE 共用）。
  * 规则跟渠道 physicalStockEnabled 走，不跟仓的 kind 硬绑。
  */

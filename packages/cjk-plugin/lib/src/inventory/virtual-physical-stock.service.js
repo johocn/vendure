@@ -452,10 +452,21 @@ let VirtualPhysicalStockService = class VirtualPhysicalStockService {
      * 生产现存 t1/t2/t3 等纯虚拟库存店的盘点正是写虚拟仓（24 个存量任务全部指向虚拟仓），必须走这条早退。
      */
     async syncMirrorAfterWrite(ctx, variantId, locationId) {
-        if (await this.isVirtualLocation(ctx, locationId)) {
-            return;
+        await this.syncMirrorAfterWrites(ctx, variantId, [locationId]);
+    }
+    /**
+     * 事务内合并补镜像（2026-09-27 D54）：同一变体在一次单据内有多处物理仓写入时，
+     * 把「写一次补一次」合并为「全部写完补一次」——语义等价（每次现算 Σ 绑定仓、幂等），
+     * 但不再产出中间态镜像流水（如移库「源仓出 → 目标仓入」在两仓皆绑定时的两条净零流水）。
+     * 传入仓**全为虚拟仓**时跳过：那是「直接写账面」语义，再跑镜像会用 Σ 绑定仓覆盖刚写入的值。
+     */
+    async syncMirrorAfterWrites(ctx, variantId, locationIds) {
+        for (const locationId of locationIds !== null && locationIds !== void 0 ? locationIds : []) {
+            if (!(await this.isVirtualLocation(ctx, locationId))) {
+                await this.syncVirtualMirrorForVariants(ctx, [variantId]);
+                return;
+            }
         }
-        await this.syncVirtualMirrorForVariants(ctx, [variantId]);
     }
     /** 注册 SALE 阻塞处理器（镜像必须在 core 扣库同一事务内执行；配送记录同步同事务防漏单） */
     registerMirrorHandler() {
@@ -573,8 +584,9 @@ let VirtualPhysicalStockService = class VirtualPhysicalStockService {
      * delta>0 入库、delta<0 出库。负 delta 校验物理仓 onHand 充足，不足抛「物理库存不足」。
      * 复用 inventory-plugin 的 adjustStockPublic：写 StockAdjustment 流水 + 可选 OrderStockLedger 账本。
      * 写完即补虚拟镜像（2026-09-27）——否则物理仓已变、虚拟仓（可售口径）要等下次 SALE 才拉齐。
+     * `opts.deferMirror` 供同一单据内多处写入的调用方（如移库两段）推迟到写完统一补一次（D54）。
      */
-    async adjustPhysicalStock(ctx, variantId, locationId, delta, reason, meta) {
+    async adjustPhysicalStock(ctx, variantId, locationId, delta, reason, meta, opts) {
         if (delta === 0) {
             return;
         }
@@ -585,7 +597,9 @@ let VirtualPhysicalStockService = class VirtualPhysicalStockService {
             }
         }
         await this.inventoryService.adjustStockPublic(ctx, variantId, locationId, delta, reason, meta);
-        await this.syncMirrorAfterWrite(ctx, variantId, locationId);
+        if (!(opts === null || opts === void 0 ? void 0 : opts.deferMirror)) {
+            await this.syncMirrorAfterWrite(ctx, variantId, locationId);
+        }
     }
     /**
      * 物理仓盘点覆盖语义：将某仓 onHand 置为绝对值 targetOnHand。
