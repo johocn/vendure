@@ -1852,6 +1852,10 @@ function mergeCustomFields<T extends { name: string }>(
                     photos: JSON
                     remark: String
                     isPublic: Boolean!
+                    province: String
+                    city: String
+                    district: String
+                    street: String
                 }
 
                 type AuthMethodsResult {

@@ -2061,6 +2061,10 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     photos: JSON
                     remark: String
                     isPublic: Boolean!
+                    province: String
+                    city: String
+                    district: String
+                    street: String
                 }
 
                 type AuthMethodsResult {
