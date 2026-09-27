@@ -1,14 +1,14 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { Allow, Ctx, ID, Permission, RequestContext } from '@vendure/core';
-import { InventoryService } from '@vendure/inventory-plugin';
 import { DeliveryRecordService } from './delivery-record.service';
 import { DeliveryState } from './delivery-state';
+import { VirtualPhysicalStockService } from '../inventory/virtual-physical-stock.service';
 
 @Resolver()
 export class DeliveryAdminResolver {
     constructor(
         private deliveryRecordService: DeliveryRecordService,
-        private inventoryService: InventoryService,
+        private virtualPhysicalStockService: VirtualPhysicalStockService,
     ) {}
 
     @Query()
@@ -65,8 +65,9 @@ export class DeliveryAdminResolver {
     @Mutation()
     @Allow(Permission.UpdateOrder, Permission.SuperAdmin)
     async deliveryTransferArrived(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
+        // 走物理仓写入原语（2026-09-27）：收货物的同时补虚拟镜像；直连 adjustStockPublic 会漏镜像。
         return this.deliveryRecordService.markTransferArrived(ctx, id, (c, v, l, d, r, m) =>
-            this.inventoryService.adjustStockPublic(c, v, l, d, r, m),
+            this.virtualPhysicalStockService.adjustPhysicalStock(c, v, l, d, r, m),
         );
     }
 }

@@ -323,6 +323,29 @@ export class StocktakeService {
     }
 
     /**
+     * 盘点仓「库存模式」守卫（2026-09-27 口径修正：跟渠道库存模式走，不跟仓的 kind 走）。
+     * - `physicalStockEnabled = true`：账面权威在物理仓 → 必须选物理仓；
+     *   选虚拟仓会让同一 SKU 同时存在「盘点账面」与「可售账面」两个口径（二义）。
+     * - `physicalStockEnabled = false`（纯虚拟库存店）：店内无物理仓，虚拟仓即唯一账面 → 必须允许。
+     *   生产存量 24 个盘点任务全部指向虚拟仓（t1/t2/t3 等开关为 f 的店），一刀切拒虚拟仓会废掉在用处法。
+     */
+    private async assertStockLocationAllowed(ctx: RequestContext, stockLocationId: number): Promise<void> {
+        const loc = await this.connection
+            .getRepository(ctx, StockLocation)
+            .findOne({ where: { id: stockLocationId as any }, loadEagerRelations: false });
+        if (!loc) throw new UserInputError(`盘点仓库不存在：${stockLocationId}`);
+        const channel = await this.connection.getRepository(ctx, Channel).findOne({ where: { id: ctx.channelId as any } });
+        if (!Boolean((channel?.customFields as any)?.physicalStockEnabled)) {
+            return;
+        }
+        if (((loc.customFields as any)?.kind) !== 'physical') {
+            throw new UserInputError(
+                `本店已启用物理仓库存（physicalStockEnabled），盘点仓库必须选物理仓；「${loc.name}」不是物理仓`,
+            );
+        }
+    }
+
+    /**
      * 物化：解析范围 → 双源合并 → 建盘次与应盘行（规格 §7.2）。
      * 直接创建与「草稿发布」共用；必须在一个事务内调用（txCtx）。
      */
@@ -400,6 +423,7 @@ export class StocktakeService {
     async createTask(ctx: RequestContext, input: any): Promise<StocktakeTaskView> {
         const stockLocationId = Number(input.stockLocationId);
         if (!stockLocationId) throw new UserInputError('请选择盘点仓库');
+        await this.assertStockLocationAllowed(ctx, stockLocationId);
         if (!input.name || !String(input.name).trim()) throw new UserInputError('请填写任务名称');
         const state: 'DRAFT' | 'OPEN' = String(input.state || 'OPEN').toUpperCase() === 'DRAFT' ? 'DRAFT' : 'OPEN';
         if (input.state && !['DRAFT', 'OPEN'].includes(String(input.state).toUpperCase())) {
@@ -462,6 +486,7 @@ export class StocktakeService {
         if (input.stockLocationId !== undefined && input.stockLocationId !== null) {
             const loc = Number(input.stockLocationId);
             if (!loc) throw new UserInputError('盘点仓库不合法');
+            await this.assertStockLocationAllowed(ctx, loc);
             task.stockLocationId = loc;
         }
         if (input.scope !== undefined) {

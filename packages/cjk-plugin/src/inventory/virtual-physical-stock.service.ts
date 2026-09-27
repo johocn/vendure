@@ -461,10 +461,23 @@ export class VirtualPhysicalStockService {
         if (!sales?.length) {
             return;
         }
+        const variantIds = sales.map(s => String((s as any).productVariantId ?? (s as any).productVariant?.id));
+        await this.syncVirtualMirrorForVariants(ctx, variantIds);
+    }
+
+    /**
+     * 镜像同步（多变体版，2026-09-27 抽出）：把各变体虚拟仓 onHand 拉齐为 Σ 绑定物理仓 onHand。
+     * 与 SALE 处理器同源；「物理仓写入原语」写完后也调用它，避免可售口径滞后到下次销售才拉齐。
+     * 幂等：每次现算 Σ 绑定仓 onHand，delta=0 不写流水；只写虚拟仓，且不会触发 SALE 事件，不会递归。
+     */
+    async syncVirtualMirrorForVariants(ctx: RequestContext, variantIds: Array<ID | string>): Promise<void> {
+        const ids = [...new Set((variantIds ?? []).map(v => String(v ?? '')).filter(Boolean))];
+        if (!ids.length) {
+            return;
+        }
         const virtual = await this.ensureVirtualLocation(ctx);
-        const variantIds = [...new Set(sales.map(s => String((s as any).productVariantId ?? (s as any).productVariant?.id)))];
         const bindingRepo = this.connection.getRepository(ctx, VariantLocationBinding);
-        for (const variantId of variantIds) {
+        for (const variantId of ids) {
             const bindings = await bindingRepo.find({ where: { variantId: variantId as any } });
             if (!bindings.length) {
                 continue;
@@ -491,6 +504,27 @@ export class VirtualPhysicalStockService {
             );
             Logger.info(`镜像同步: variant=${variantId} 虚拟仓 ${currentVirtual} -> ${boundTotal}`, loggerCtx);
         }
+    }
+
+    /** 目标仓是否虚拟仓（kind=virtual）；读不到按「非虚拟」处理（保守：仍做镜像同步） */
+    private async isVirtualLocation(ctx: RequestContext, locationId: ID): Promise<boolean> {
+        const loc = await this.connection
+            .getRepository(ctx, StockLocation)
+            .findOne({ where: { id: locationId as any }, loadEagerRelations: false });
+        return ((loc?.customFields as any)?.kind) === 'virtual';
+    }
+
+    /**
+     * 写入原语「补镜像」守卫（2026-09-27 口径修正）：
+     * 只有写物理仓才需要拉齐虚拟镜像；写入目标本身就是虚拟仓时直接跳过——
+     * 那属于「直接写账面」，再跑镜像会用 Σ 绑定仓覆盖刚写入的值（无绑定时直接写成 0），把账面写坏。
+     * 生产现存 t1/t2/t3 等纯虚拟库存店的盘点正是写虚拟仓（24 个存量任务全部指向虚拟仓），必须走这条早退。
+     */
+    private async syncMirrorAfterWrite(ctx: RequestContext, variantId: ID, locationId: ID): Promise<void> {
+        if (await this.isVirtualLocation(ctx, locationId)) {
+            return;
+        }
+        await this.syncVirtualMirrorForVariants(ctx, [variantId]);
     }
 
     /** 注册 SALE 阻塞处理器（镜像必须在 core 扣库同一事务内执行；配送记录同步同事务防漏单） */
@@ -623,6 +657,7 @@ export class VirtualPhysicalStockService {
      * 统一物理仓调库原语（单据/预留单/订单钩子共用）：
      * delta>0 入库、delta<0 出库。负 delta 校验物理仓 onHand 充足，不足抛「物理库存不足」。
      * 复用 inventory-plugin 的 adjustStockPublic：写 StockAdjustment 流水 + 可选 OrderStockLedger 账本。
+     * 写完即补虚拟镜像（2026-09-27）——否则物理仓已变、虚拟仓（可售口径）要等下次 SALE 才拉齐。
      */
     async adjustPhysicalStock(
         ctx: RequestContext,
@@ -644,11 +679,13 @@ export class VirtualPhysicalStockService {
             }
         }
         await this.inventoryService.adjustStockPublic(ctx, variantId, locationId, delta, reason, meta);
+        await this.syncMirrorAfterWrite(ctx, variantId, locationId);
     }
 
     /**
      * 物理仓盘点覆盖语义：将某仓 onHand 置为绝对值 targetOnHand。
      * 返回实际差异 delta（目标-当前），写 stocktake 账本流水（meta.bizCode=单据号）。
+     * 写完即补虚拟镜像（2026-09-27）；目标仓为虚拟仓时由守卫自动跳过（纯虚拟库存店的盘点写虚拟仓）。
      */
     async setPhysicalStock(
         ctx: RequestContext,
@@ -662,6 +699,7 @@ export class VirtualPhysicalStockService {
         const delta = targetOnHand - current.stockOnHand;
         if (delta !== 0) {
             await this.inventoryService.adjustStockPublic(ctx, variantId, locationId, delta, reason, meta);
+            await this.syncMirrorAfterWrite(ctx, variantId, locationId);
         }
         return delta;
     }

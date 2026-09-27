@@ -268,6 +268,28 @@ let StocktakeService = class StocktakeService {
         return (((_a = channel === null || channel === void 0 ? void 0 : channel.customFields) === null || _a === void 0 ? void 0 : _a.binMode) || 'off');
     }
     /**
+     * 盘点仓「库存模式」守卫（2026-09-27 口径修正：跟渠道库存模式走，不跟仓的 kind 走）。
+     * - `physicalStockEnabled = true`：账面权威在物理仓 → 必须选物理仓；
+     *   选虚拟仓会让同一 SKU 同时存在「盘点账面」与「可售账面」两个口径（二义）。
+     * - `physicalStockEnabled = false`（纯虚拟库存店）：店内无物理仓，虚拟仓即唯一账面 → 必须允许。
+     *   生产存量 24 个盘点任务全部指向虚拟仓（t1/t2/t3 等开关为 f 的店），一刀切拒虚拟仓会废掉在用处法。
+     */
+    async assertStockLocationAllowed(ctx, stockLocationId) {
+        var _a, _b;
+        const loc = await this.connection
+            .getRepository(ctx, core_1.StockLocation)
+            .findOne({ where: { id: stockLocationId }, loadEagerRelations: false });
+        if (!loc)
+            throw new core_1.UserInputError(`盘点仓库不存在：${stockLocationId}`);
+        const channel = await this.connection.getRepository(ctx, core_1.Channel).findOne({ where: { id: ctx.channelId } });
+        if (!Boolean((_a = channel === null || channel === void 0 ? void 0 : channel.customFields) === null || _a === void 0 ? void 0 : _a.physicalStockEnabled)) {
+            return;
+        }
+        if (((_b = loc.customFields) === null || _b === void 0 ? void 0 : _b.kind) !== 'physical') {
+            throw new core_1.UserInputError(`本店已启用物理仓库存（physicalStockEnabled），盘点仓库必须选物理仓；「${loc.name}」不是物理仓`);
+        }
+    }
+    /**
      * 物化：解析范围 → 双源合并 → 建盘次与应盘行（规格 §7.2）。
      * 直接创建与「草稿发布」共用；必须在一个事务内调用（txCtx）。
      */
@@ -347,6 +369,7 @@ let StocktakeService = class StocktakeService {
         const stockLocationId = Number(input.stockLocationId);
         if (!stockLocationId)
             throw new core_1.UserInputError('请选择盘点仓库');
+        await this.assertStockLocationAllowed(ctx, stockLocationId);
         if (!input.name || !String(input.name).trim())
             throw new core_1.UserInputError('请填写任务名称');
         const state = String(input.state || 'OPEN').toUpperCase() === 'DRAFT' ? 'DRAFT' : 'OPEN';
@@ -413,6 +436,7 @@ let StocktakeService = class StocktakeService {
             const loc = Number(input.stockLocationId);
             if (!loc)
                 throw new core_1.UserInputError('盘点仓库不合法');
+            await this.assertStockLocationAllowed(ctx, loc);
             task.stockLocationId = loc;
         }
         if (input.scope !== undefined) {

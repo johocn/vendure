@@ -92,6 +92,14 @@ export declare class StocktakeService {
     /** 默认档位（渠道 customFields.binMode；缺省 off） */
     private currentBinMode;
     /**
+     * 盘点仓「库存模式」守卫（2026-09-27 口径修正：跟渠道库存模式走，不跟仓的 kind 走）。
+     * - `physicalStockEnabled = true`：账面权威在物理仓 → 必须选物理仓；
+     *   选虚拟仓会让同一 SKU 同时存在「盘点账面」与「可售账面」两个口径（二义）。
+     * - `physicalStockEnabled = false`（纯虚拟库存店）：店内无物理仓，虚拟仓即唯一账面 → 必须允许。
+     *   生产存量 24 个盘点任务全部指向虚拟仓（t1/t2/t3 等开关为 f 的店），一刀切拒虚拟仓会废掉在用处法。
+     */
+    private assertStockLocationAllowed;
+    /**
      * 物化：解析范围 → 双源合并 → 建盘次与应盘行（规格 §7.2）。
      * 直接创建与「草稿发布」共用；必须在一个事务内调用（txCtx）。
      */

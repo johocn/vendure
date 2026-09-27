@@ -15,12 +15,12 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.DeliveryAdminResolver = void 0;
 const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
-const inventory_plugin_1 = require("@vendure/inventory-plugin");
 const delivery_record_service_1 = require("./delivery-record.service");
+const virtual_physical_stock_service_1 = require("../inventory/virtual-physical-stock.service");
 let DeliveryAdminResolver = class DeliveryAdminResolver {
-    constructor(deliveryRecordService, inventoryService) {
+    constructor(deliveryRecordService, virtualPhysicalStockService) {
         this.deliveryRecordService = deliveryRecordService;
-        this.inventoryService = inventoryService;
+        this.virtualPhysicalStockService = virtualPhysicalStockService;
     }
     async deliveryRecords(ctx, orderId) {
         return this.deliveryRecordService.findByOrder(ctx, orderId);
@@ -43,7 +43,8 @@ let DeliveryAdminResolver = class DeliveryAdminResolver {
         });
     }
     async deliveryTransferArrived(ctx, id) {
-        return this.deliveryRecordService.markTransferArrived(ctx, id, (c, v, l, d, r, m) => this.inventoryService.adjustStockPublic(c, v, l, d, r, m));
+        // 走物理仓写入原语（2026-09-27）：收货物的同时补虚拟镜像；直连 adjustStockPublic 会漏镜像。
+        return this.deliveryRecordService.markTransferArrived(ctx, id, (c, v, l, d, r, m) => this.virtualPhysicalStockService.adjustPhysicalStock(c, v, l, d, r, m));
     }
 };
 exports.DeliveryAdminResolver = DeliveryAdminResolver;
@@ -112,6 +113,6 @@ __decorate([
 exports.DeliveryAdminResolver = DeliveryAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [delivery_record_service_1.DeliveryRecordService,
-        inventory_plugin_1.InventoryService])
+        virtual_physical_stock_service_1.VirtualPhysicalStockService])
 ], DeliveryAdminResolver);
 //# sourceMappingURL=delivery-admin.resolver.js.map

@@ -19,11 +19,11 @@ __decorate([
     __metadata("design:type", Number)
 ], StockReservationItemEntity.prototype, "id", void 0);
 __decorate([
-    (0, typeorm_1.Column)(),
+    (0, typeorm_1.Column)({ type: 'int' }),
     __metadata("design:type", Number)
 ], StockReservationItemEntity.prototype, "reservationId", void 0);
 __decorate([
-    (0, typeorm_1.Column)(),
+    (0, typeorm_1.Column)({ type: 'int' }),
     __metadata("design:type", Number)
 ], StockReservationItemEntity.prototype, "stockLocationId", void 0);
 __decorate([
@@ -31,11 +31,11 @@ __decorate([
     __metadata("design:type", Number)
 ], StockReservationItemEntity.prototype, "qty", void 0);
 __decorate([
-    (0, typeorm_1.Column)(),
+    (0, typeorm_1.Column)({ type: 'varchar' }),
     __metadata("design:type", String)
 ], StockReservationItemEntity.prototype, "fulfillType", void 0);
 __decorate([
-    (0, typeorm_1.Column)(),
+    (0, typeorm_1.Column)({ type: 'varchar' }),
     __metadata("design:type", String)
 ], StockReservationItemEntity.prototype, "status", void 0);
 exports.StockReservationItemEntity = StockReservationItemEntity = __decorate([
