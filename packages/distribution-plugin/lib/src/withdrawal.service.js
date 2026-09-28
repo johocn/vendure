@@ -71,15 +71,18 @@ let WithdrawalService = class WithdrawalService {
         }
         // 原子条件扣减：并发提现时只有余额仍充足的那笔能成功，
         // 避免「读余额 → 校验 → 写回」之间的竞态导致多开提现单而余额只扣一次。
+        // 列名为 camelCase（TypeORM 用双引号建列），Postgres 下必须显式加双引号，
+        // 否则未加引号的标识符会被折叠成小写而报「列不存在」。
         const claim = await this.connection
             .getRepository(ctx, distributor_entity_1.Distributor)
             .createQueryBuilder()
             .update(distributor_entity_1.Distributor)
             .set({
-            availableBalance: () => `availableBalance - ${amount}`,
-            frozenBalance: () => `frozenBalance + ${amount}`,
+            availableBalance: () => `"availableBalance" - ${amount}`,
+            frozenBalance: () => `"frozenBalance" + ${amount}`,
         })
-            .where('id = :id AND availableBalance >= :amount', { id: distributor.id, amount })
+            .where('id = :id', { id: distributor.id })
+            .andWhere(`"availableBalance" >= ${amount}`)
             .execute();
         if (claim.affected === 0) {
             throw new core_1.UserInputError('Insufficient available balance');
@@ -98,42 +101,47 @@ let WithdrawalService = class WithdrawalService {
         core_1.Logger.info(`Withdrawal request ${saved.id} created for distributor ${distributorId}, amount ${amount}`, constants_1.loggerCtx);
         return saved;
     }
-    async approve(ctx, id) {
+    /**
+     * 审核状态流转：pending → approved → paid，pending/approved → rejected。
+     * 用「带原状态条件的原子更新」完成流转，保证并发或重复调用时只有一次能成功——
+     * 否则重复 reject 会对同一笔提现二次回补余额，导致可用余额虚增、冻结余额变负。
+     * 调用方（resolver）已包 @Transaction()，此处与余额变更同事务。
+     */
+    async transition(ctx, id, from, patch) {
         const repo = this.connection.getRepository(ctx, withdrawal_request_entity_1.WithdrawalRequest);
+        const claim = await repo
+            .createQueryBuilder()
+            .update(withdrawal_request_entity_1.WithdrawalRequest)
+            .set(patch)
+            .where('id = :id', { id })
+            .andWhere('status IN (:...from)', { from })
+            .execute();
         const request = await repo.findOne({ where: { id } });
         if (!request) {
             throw new Error(`WithdrawalRequest ${id} not found`);
         }
-        request.status = 'approved';
-        request.reviewedAt = new Date();
-        const saved = await repo.save(request);
-        saved.accountInfo = (0, account_crypto_1.decryptAccount)(saved.accountInfo);
-        return saved;
+        if (!claim.affected) {
+            throw new core_1.UserInputError(`Withdrawal request ${id} is ${request.status}, cannot be marked as ${patch.status}`);
+        }
+        return request;
+    }
+    async approve(ctx, id) {
+        const request = await this.transition(ctx, id, ['pending'], { status: 'approved', reviewedAt: new Date() });
+        request.accountInfo = (0, account_crypto_1.decryptAccount)(request.accountInfo);
+        return request;
     }
     async reject(ctx, id) {
-        const repo = this.connection.getRepository(ctx, withdrawal_request_entity_1.WithdrawalRequest);
-        const request = await repo.findOne({ where: { id } });
-        if (!request) {
-            throw new Error(`WithdrawalRequest ${id} not found`);
-        }
-        request.status = 'rejected';
-        request.reviewedAt = new Date();
+        const request = await this.transition(ctx, id, ['pending', 'approved'], { status: 'rejected', reviewedAt: new Date() });
+        // 冻结额度退回可用余额。因上面的状态流转只会成功一次，此处不会重复回补。
         const distributor = await this.connection.getEntityOrThrow(ctx, distributor_entity_1.Distributor, request.distributorId);
         distributor.frozenBalance -= request.amount;
         distributor.availableBalance += request.amount;
         await this.connection.getRepository(ctx, distributor_entity_1.Distributor).save(distributor);
-        const saved = await repo.save(request);
-        saved.accountInfo = (0, account_crypto_1.decryptAccount)(saved.accountInfo);
-        return saved;
+        request.accountInfo = (0, account_crypto_1.decryptAccount)(request.accountInfo);
+        return request;
     }
     async markPaid(ctx, id) {
-        const repo = this.connection.getRepository(ctx, withdrawal_request_entity_1.WithdrawalRequest);
-        const request = await repo.findOne({ where: { id } });
-        if (!request) {
-            throw new Error(`WithdrawalRequest ${id} not found`);
-        }
-        request.status = 'paid';
-        request.paidAt = new Date();
+        const request = await this.transition(ctx, id, ['approved'], { status: 'paid', paidAt: new Date() });
         const distributor = await this.connection.getEntityOrThrow(ctx, distributor_entity_1.Distributor, request.distributorId);
         distributor.frozenBalance -= request.amount;
         await this.connection.getRepository(ctx, distributor_entity_1.Distributor).save(distributor);
@@ -152,9 +160,8 @@ let WithdrawalService = class WithdrawalService {
         if (pendingRecords.length > 0) {
             core_1.Logger.info(`Marked ${pendingRecords.length} commission records as paid for distributor ${request.distributorId}`, constants_1.loggerCtx);
         }
-        const saved = await repo.save(request);
-        saved.accountInfo = (0, account_crypto_1.decryptAccount)(saved.accountInfo);
-        return saved;
+        request.accountInfo = (0, account_crypto_1.decryptAccount)(request.accountInfo);
+        return request;
     }
 };
 exports.WithdrawalService = WithdrawalService;

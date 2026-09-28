@@ -105,46 +105,59 @@ export class WithdrawalService {
         return saved;
     }
 
-    async approve(ctx: RequestContext, id: ID): Promise<WithdrawalRequest> {
+    /**
+     * 审核状态流转：pending → approved → paid，pending/approved → rejected。
+     * 用「带原状态条件的原子更新」完成流转，保证并发或重复调用时只有一次能成功——
+     * 否则重复 reject 会对同一笔提现二次回补余额，导致可用余额虚增、冻结余额变负。
+     * 调用方（resolver）已包 @Transaction()，此处与余额变更同事务。
+     */
+    private async transition(
+        ctx: RequestContext,
+        id: ID,
+        from: Array<WithdrawalRequest['status']>,
+        patch: Partial<Pick<WithdrawalRequest, 'status' | 'reviewedAt' | 'paidAt'>>,
+    ): Promise<WithdrawalRequest> {
         const repo = this.connection.getRepository(ctx, WithdrawalRequest);
+        const claim = await repo
+            .createQueryBuilder()
+            .update(WithdrawalRequest)
+            .set(patch as any)
+            .where('id = :id', { id })
+            .andWhere('status IN (:...from)', { from })
+            .execute();
         const request = await repo.findOne({ where: { id } as any });
         if (!request) {
             throw new Error(`WithdrawalRequest ${id} not found`);
         }
-        request.status = 'approved';
-        request.reviewedAt = new Date();
-        const saved = await repo.save(request);
-        saved.accountInfo = decryptAccount(saved.accountInfo);
-        return saved;
+        if (!claim.affected) {
+            throw new UserInputError(
+                `Withdrawal request ${id} is ${request.status}, cannot be marked as ${patch.status}`,
+            );
+        }
+        return request;
+    }
+
+    async approve(ctx: RequestContext, id: ID): Promise<WithdrawalRequest> {
+        const request = await this.transition(ctx, id, ['pending'], { status: 'approved', reviewedAt: new Date() });
+        request.accountInfo = decryptAccount(request.accountInfo);
+        return request;
     }
 
     async reject(ctx: RequestContext, id: ID): Promise<WithdrawalRequest> {
-        const repo = this.connection.getRepository(ctx, WithdrawalRequest);
-        const request = await repo.findOne({ where: { id } as any });
-        if (!request) {
-            throw new Error(`WithdrawalRequest ${id} not found`);
-        }
-        request.status = 'rejected';
-        request.reviewedAt = new Date();
+        const request = await this.transition(ctx, id, ['pending', 'approved'], { status: 'rejected', reviewedAt: new Date() });
 
+        // 冻结额度退回可用余额。因上面的状态流转只会成功一次，此处不会重复回补。
         const distributor = await this.connection.getEntityOrThrow(ctx, Distributor, request.distributorId);
         distributor.frozenBalance -= request.amount;
         distributor.availableBalance += request.amount;
         await this.connection.getRepository(ctx, Distributor).save(distributor);
 
-        const saved = await repo.save(request);
-        saved.accountInfo = decryptAccount(saved.accountInfo);
-        return saved;
+        request.accountInfo = decryptAccount(request.accountInfo);
+        return request;
     }
 
     async markPaid(ctx: RequestContext, id: ID): Promise<WithdrawalRequest> {
-        const repo = this.connection.getRepository(ctx, WithdrawalRequest);
-        const request = await repo.findOne({ where: { id } as any });
-        if (!request) {
-            throw new Error(`WithdrawalRequest ${id} not found`);
-        }
-        request.status = 'paid';
-        request.paidAt = new Date();
+        const request = await this.transition(ctx, id, ['approved'], { status: 'paid', paidAt: new Date() });
 
         const distributor = await this.connection.getEntityOrThrow(ctx, Distributor, request.distributorId);
         distributor.frozenBalance -= request.amount;
@@ -166,8 +179,7 @@ export class WithdrawalService {
             Logger.info(`Marked ${pendingRecords.length} commission records as paid for distributor ${request.distributorId}`, loggerCtx);
         }
 
-        const saved = await repo.save(request);
-        saved.accountInfo = decryptAccount(saved.accountInfo);
-        return saved;
+        request.accountInfo = decryptAccount(request.accountInfo);
+        return request;
     }
 }

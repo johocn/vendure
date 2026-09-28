@@ -11,12 +11,7 @@ export declare class CommissionRecordCreatedEvent extends VendureEvent {
     /** 获得直接佣金的 inviter（分销商）对应的 customer id */
     readonly distributorCustomerId: string;
     readonly commissionType: 'direct' | 'indirect';
-    constructor(
-        ctx: RequestContext,
-        orderId: string,
-        orderCode: string,
-        /** 获得直接佣金的 inviter（分销商）对应的 customer id */
-        distributorCustomerId: string,
-        commissionType: 'direct' | 'indirect',
-    );
+    constructor(ctx: RequestContext, orderId: string, orderCode: string, 
+    /** 获得直接佣金的 inviter（分销商）对应的 customer id */
+    distributorCustomerId: string, commissionType: 'direct' | 'indirect');
 }

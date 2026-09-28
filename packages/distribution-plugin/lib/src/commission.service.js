@@ -12,11 +12,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CommissionService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
-const commission_record_entity_1 = require("./commission-record.entity");
 const commission_record_created_event_1 = require("./commission-record-created.event");
-const distributor_entity_1 = require("./distributor.entity");
-const distribution_service_1 = require("./distribution.service");
+const commission_record_entity_1 = require("./commission-record.entity");
 const constants_1 = require("./constants");
+const distribution_service_1 = require("./distribution.service");
+const distributor_entity_1 = require("./distributor.entity");
 let CommissionService = class CommissionService {
     constructor(connection, listQueryBuilder, distributionService, eventBus, customerService, orderService) {
         this.connection = connection;
@@ -82,7 +82,7 @@ let CommissionService = class CommissionService {
         const directRate = (_g = (_f = ctx.channel.customFields) === null || _f === void 0 ? void 0 : _f.directCommissionRate) !== null && _g !== void 0 ? _g : 1000;
         // 佣金基数 = 扣券后实际应付（含税金额），与阶段37券体系一致：券不影响佣金率，只影响应付额。
         const orderTotal = (_j = (_h = order.totalWithTax) !== null && _h !== void 0 ? _h : rawOrder.totalWithTax) !== null && _j !== void 0 ? _j : 0;
-        const directAmount = Math.floor(orderTotal * directRate / 10000);
+        const directAmount = Math.floor((orderTotal * directRate) / 10000);
         // 事务包装：保证多条 CommissionRecord 原子写入
         await this.connection.startTransaction(ctx);
         try {
@@ -102,7 +102,7 @@ let CommissionService = class CommissionService {
             core_1.Logger.info(`Created direct commission ${directAmount} for distributor ${directDistributor.id}`, constants_1.loggerCtx);
             if (directDistributor.parentId) {
                 const indirectRate = (_l = (_k = ctx.channel.customFields) === null || _k === void 0 ? void 0 : _k.indirectCommissionRate) !== null && _l !== void 0 ? _l : 500;
-                const indirectAmount = Math.floor(orderTotal * indirectRate / 10000);
+                const indirectAmount = Math.floor((orderTotal * indirectRate) / 10000);
                 const indirectRecord = new commission_record_entity_1.CommissionRecord({
                     distributorId: String(directDistributor.parentId),
                     orderId: String(order.id),

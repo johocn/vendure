@@ -236,6 +236,67 @@ async function main() {
             okCount === 2 && balanceAfter.avail === 0 && Number(balanceAfter.frozen) === 20000,
             `成功 ${okCount}/5，余额不足 ${insufficient} 笔；余额 ${balanceAfter.avail}，冻结 ${balanceAfter.frozen}，累计提现单 ${pendingCount}`,
         );
+
+        // ---------- T3b 提现审核状态机守卫：重复 reject 不得二次回补余额 ----------
+        const wdTable = (await pg.query(
+            `select table_name from information_schema.tables where table_name like 'withdrawal%'`,
+        )).rows[0]?.table_name;
+        const targetId = (await pg.query(
+            `select id from "${wdTable}" where "distributorId" = $1 and status = 'pending' order by id asc limit 1`,
+            [distributorId],
+        )).rows[0]?.id;
+        const readBalance = async () => (await pg.query(
+            `select "${availCol}" as avail, "${frozenCol}" as frozen from "${distTable}" where id = $1`,
+            [distributorId],
+        )).rows[0];
+
+        if (!targetId) {
+            record('提现审核 找到待审提现单', false, '并发提现未产生 pending 单据');
+        } else {
+            const rejQuery = `mutation R($id: ID!) { rejectWithdrawal(id: $id) { id status amount } }`;
+
+            const first = await admin.gql(rejQuery, { id: targetId });
+            const afterFirst = await readBalance();
+            record(
+                '提现审核 首次 reject 成功且余额回补一次',
+                first.data?.rejectWithdrawal?.status === 'rejected' &&
+                    Number(afterFirst.avail) === 10000 && Number(afterFirst.frozen) === 10000,
+                `${first.data?.rejectWithdrawal?.status ?? errText(first)}；余额 ${afterFirst.avail}，冻结 ${afterFirst.frozen}（期望 10000/10000）`,
+            );
+
+            for (let i = 0; i < 3; i++) {
+                await admin.gql(rejQuery, { id: targetId });
+            }
+            const again = await admin.gql(rejQuery, { id: targetId });
+            const afterAgain = await readBalance();
+            record(
+                '提现审核 重复 reject 被拒且余额不再变动',
+                !!errText(again) &&
+                    Number(afterAgain.avail) === Number(afterFirst.avail) &&
+                    Number(afterAgain.frozen) === Number(afterFirst.frozen),
+                `${errText(again) || '未报错'}；余额 ${afterAgain.avail}，冻结 ${afterAgain.frozen}`,
+            );
+
+            const paidAfterReject = await admin.gql(
+                `mutation P($id: ID!) { markWithdrawalPaid(id: $id) { id status } }`,
+                { id: targetId },
+            );
+            record(
+                '提现审核 已驳回单据不能再标记打款',
+                !!errText(paidAfterReject),
+                errText(paidAfterReject) || JSON.stringify(paidAfterReject.data),
+            );
+
+            const doubleApprove = await admin.gql(
+                `mutation A($id: ID!) { approveWithdrawal(id: $id) { id status } }`,
+                { id: targetId },
+            );
+            record(
+                '提现审核 已驳回单据不能再通过',
+                !!errText(doubleApprove),
+                errText(doubleApprove) || JSON.stringify(doubleApprove.data),
+            );
+        }
     }
 
     // ---------- T4 F-WA-08 后台改价 ----------
