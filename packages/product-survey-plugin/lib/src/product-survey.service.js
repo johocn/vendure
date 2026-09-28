@@ -46,7 +46,9 @@ let ProductSurveyService = class ProductSurveyService {
             throw new common_1.BadRequestException('必须提供 collection 或 onsale=1');
         }
         const requestedTake = Number.parseInt((_b = params.take) !== null && _b !== void 0 ? _b : '', 10);
-        const take = Number.isFinite(requestedTake) && requestedTake > 0 ? Math.min(requestedTake, this.maxTake) : this.defaultTake;
+        const take = Number.isFinite(requestedTake) && requestedTake > 0
+            ? Math.min(requestedTake, this.maxTake)
+            : this.defaultTake;
         const channel = await this.resolveChannel(token);
         // 只读 shop 上下文：默认语言取渠道默认语言
         const ctx = new core_1.RequestContext({
