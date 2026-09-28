@@ -46,6 +46,7 @@ import { GroupBuyPlugin } from '@vendure/group-buy-plugin';
 import { FlashSalePlugin } from '@vendure/flash-sale-plugin';
 import { DistributionPlugin } from '@vendure/distribution-plugin';
 import { EcoPlugin } from '@vendure/eco-plugin';
+import { ProductSurveyPlugin } from '@vendure/product-survey-plugin';
 import { RedisStockPlugin } from '@vendure/redis-stock-plugin';
 import { LogisticsApiPlugin } from '@vendure/logistics-api-plugin';
 import { InvoicePdfPlugin, PdfInvoiceProvider } from '@vendure/invoice-pdf-plugin';
@@ -431,6 +432,7 @@ export const devConfig: VendureConfig = {
             settlementDays: 7,
         }),
         EcoPlugin.init(),
+        ProductSurveyPlugin.init(),
         ...(process.env.REDIS_URL ? [RedisStockPlugin.init({
             redisUrl: process.env.REDIS_URL,
         })] : []),
