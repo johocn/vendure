@@ -6,6 +6,7 @@ import type { WechatpayCredentials } from '@vendure/cjk-plugin';
 
 import { loggerCtx } from './constants';
 import { WechatpayPluginOptions } from './types';
+import { resolveCustomerOpenid } from './wechatpay.service';
 
 export function createWechatpayHandler(options: WechatpayPluginOptions) {
     return new PaymentMethodHandler({
@@ -81,7 +82,14 @@ export function createWechatpayHandler(options: WechatpayPluginOptions) {
                 });
 
                 const tradeType = override?.tradeType || args.tradeType || 'JSAPI';
-                const openid = (metadata?.openid as string | undefined) || options?.devBypassOpenid;
+                // openid 三级回落（F-VS-08）：前端显式传入 → 由客户档案推导 → devBypass 兜底。
+                // 前端本地存储可能缺失/过期，服务端按客户档案推导可避免 JSAPI 支付失败。
+                const openid =
+                    (metadata?.openid as string | undefined) ||
+                    (await resolveCustomerOpenid(ctx, order.customerId, {
+                        preferMini: tradeType === 'JSAPI',
+                    })) ||
+                    options?.devBypassOpenid;
                 const baseParams = {
                     description: `Order ${order.code}`,
                     out_trade_no: order.code,

@@ -35,12 +35,15 @@ import { EmployeeCustomer } from './pickup/enterprise-customer/enterprise-custom
 import { EmployeeCustomerService } from './pickup/enterprise-customer/enterprise-customer.service';
 import { EmployeeCustomerAdminResolver } from './pickup/enterprise-customer/enterprise-customer-admin.resolver';
 import { orderCustomFields } from './order/order-custom-fields';
+import { orderPriceChannelCustomFields } from './order/order-price-custom-fields';
+import { OrderPriceAdminResolver } from './order/order-price-admin.resolver';
 import { customerCustomFields } from './customer/customer-custom-fields';
 import { tenantChannelCustomFields } from './tenant/tenant-channel-custom-fields';
 import { productVariantCustomFields } from './shipping/product-variant-custom-fields';
 import { customShippingMethodFields } from './shipping/shipping-method-custom-fields';
 import { assetCustomFields } from './asset/asset-custom-fields';
 import { AssetLibraryAdminResolver } from './asset/asset-library-admin.resolver';
+import { CustomerAssetShopResolver } from './asset/customer-asset-shop.resolver';
 import { tieredWeightShippingCalculator, tieredQuantityShippingCalculator } from './shipping/tiered-shipping-calculator';
 import { tieredShippingEligibilityChecker } from './shipping/tiered-shipping-eligibility-checker';
 import { ShippingTemplate } from './shipping/shipping-template.entity';
@@ -1854,9 +1857,20 @@ function mergeCustomFields<T extends { name: string }>(
                     cancelStocktakeTask(taskId: ID!): StocktakeTask!
                     cancelStocktakeWave(waveId: ID!): StocktakeWave!
                 }
+
+                # ===== 后台改价（F-WA-08） =====
+                input AdjustOrderPriceInput {
+                    orderId: ID!
+                    # 差额（分）：正数加价，负数降价；服务端按渠道上限强校验
+                    amount: Int!
+                    note: String
+                }
+                extend type Mutation {
+                    adjustOrderPrice(input: AdjustOrderPriceInput!): Order!
+                }
                 `;
         },
-        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, RoomTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver, MerchantSettlementAdminResolver, DeliveryAdminResolver, InventoryAdminResolver, ReconciliationAdminResolver, StockDocAdminResolver, StockReservationAdminResolver, DeliveryCapabilityResolver, PickBatchAdminResolver, StorageBinAdminResolver, OrderAddressAdminResolver, StocktakeAdminResolver],
+        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, RoomTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver, MerchantSettlementAdminResolver, DeliveryAdminResolver, InventoryAdminResolver, ReconciliationAdminResolver, StockDocAdminResolver, StockReservationAdminResolver, DeliveryCapabilityResolver, PickBatchAdminResolver, StorageBinAdminResolver, OrderAddressAdminResolver, StocktakeAdminResolver, OrderPriceAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {
@@ -2144,10 +2158,16 @@ function mergeCustomFields<T extends { name: string }>(
                     storageZones(stockLocationId: ID!): [StorageZone!]!
                 }
 
+                # ===== C 端资产上传（售后凭证等，F-VS-09） =====
+                # 走 GraphQL multipart 上传，返回的 Asset 由 AssetInterceptorPlugin 转为绝对 URL
+                extend type Mutation {
+                    uploadCustomerAsset(file: Upload!): Asset!
+                }
+
                 ${redemptionShopSchema}
             `;
         },
-        resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver, DomainShopResolver, MapShopResolver, ShippingProfileShopResolver, DeliveryCapabilityResolver, PaymentProfileShopResolver, OrderBoxShopResolver, OrderSplitShopResolver, WalletShopResolver, RedemptionShopResolver, InventoryShopResolver, StorageBinShopResolver],
+        resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver, DomainShopResolver, MapShopResolver, ShippingProfileShopResolver, DeliveryCapabilityResolver, PaymentProfileShopResolver, OrderBoxShopResolver, OrderSplitShopResolver, WalletShopResolver, RedemptionShopResolver, InventoryShopResolver, StorageBinShopResolver, CustomerAssetShopResolver],
     },
     configuration: config => {
         // 注入 authSecret 到 crypto 模块（configuration 在 bootstrap 早期执行，此时 options 已可用）
@@ -2288,6 +2308,23 @@ function mergeCustomFields<T extends { name: string }>(
                 ...orderCustomFields.Order!,
             ],
         };
+
+        // 注册 Channel customFields（后台改价幅度上限）—— 去重防止重复注册
+        {
+            const existingChannelNames = (config.customFields?.Channel || []).map(f => f.name);
+            const newChannelFields = (orderPriceChannelCustomFields.Channel || []).filter(
+                f => !existingChannelNames.includes(f.name),
+            );
+            if (newChannelFields.length > 0) {
+                config.customFields = {
+                    ...config.customFields,
+                    Channel: [
+                        ...(config.customFields?.Channel || []),
+                        ...newChannelFields,
+                    ],
+                };
+            }
+        }
 
         config.customFields = {
             ...config.customFields,

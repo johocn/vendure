@@ -23,6 +23,7 @@ const recharge_card_batch_entity_1 = require("./recharge-card-batch.entity");
 const customer_balance_entity_1 = require("./customer-balance.entity");
 const balance_transaction_entity_1 = require("./balance-transaction.entity");
 const recharge_order_entity_1 = require("./recharge-order.entity");
+const wechatpay_plugin_1 = require("@vendure/wechatpay-plugin");
 // 网关联接线（可选）：进程内未注册 WechatpayPlugin 时为 null，充值支付提示网关未配置
 let gatewayService = null;
 function setWechatpayGateway(gw) {
@@ -133,10 +134,18 @@ let RechargeCardService = class RechargeCardService {
     }
     // ===== Recharge Order Operations (Phase 33) =====
     async createRechargeOrder(ctx, amount, remark) {
+        var _a, _b;
         const cid = await this.resolveCustomerId(ctx);
         const amt = Math.floor(amount);
         if (!Number.isFinite(amt) || amt <= 0) {
             throw new core_1.UserInputError('Invalid amount');
+        }
+        // 面额强校验：金额不得由客户端任意决定（区间可按渠道配置）
+        const cf = (_b = (_a = ctx.channel) === null || _a === void 0 ? void 0 : _a.customFields) !== null && _b !== void 0 ? _b : {};
+        const min = Number.isFinite(cf.rechargeMinAmount) ? Number(cf.rechargeMinAmount) : 100;
+        const max = Number.isFinite(cf.rechargeMaxAmount) ? Number(cf.rechargeMaxAmount) : 5000000;
+        if (amt < min || amt > max) {
+            throw new core_1.UserInputError(`Recharge amount must be between ${min} and ${max} (cents)`);
         }
         const repo = this.connection.getRepository(ctx, recharge_order_entity_1.RechargeOrder);
         const order = new recharge_order_entity_1.RechargeOrder({
@@ -226,11 +235,17 @@ let RechargeCardService = class RechargeCardService {
             throw new core_1.UserInputError('Payment gateway not configured');
         }
         const outTradeNo = `RC-${order.id}`;
+        const effectiveTradeType = tradeType || 'JSAPI';
+        // openid 回落（F-VS-08）：前端未携带 openid 时由客户档案推导，避免 JSAPI 支付失败
+        const effectiveOpenid = openid ||
+            (await (0, wechatpay_plugin_1.resolveCustomerOpenid)(ctx, order.customerId, {
+                preferMini: effectiveTradeType === 'JSAPI',
+            }));
         const pay = await gatewayService.createBarePayment({
             outTradeNo,
             amount: order.amount,
-            tradeType: tradeType || 'JSAPI',
-            openid,
+            tradeType: effectiveTradeType,
+            openid: effectiveOpenid,
             description: `Recharge ${outTradeNo}`,
         });
         order.paymentMethod = 'wechatpay';

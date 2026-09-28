@@ -1,9 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
     ChannelService,
+    Customer,
+    CustomerService,
+    ID,
     Logger,
     PaymentMethodService,
     RequestContext,
+    TransactionalConnection,
 } from '@vendure/core';
 import crypto from 'crypto';
 import WxPay from 'wechatpay-node-v3';
@@ -34,13 +38,68 @@ export interface BarePaymentResult {
     payUrl?: string;
 }
 
+/**
+ * 进程内 WechatpayService 引用（沿用本项目 `setWechatpayGateway` / `getPaymentOverride`
+ * 的注册模式），供支付 handler 与其它插件在无 DI 上下文处推导 openid。
+ * 未注册（未装载 WechatpayPlugin）时为 null，推导一律返回 undefined。
+ */
+let wechatpayServiceRef: WechatpayService | null = null;
+
+export function setWechatpayServiceRef(service: WechatpayService | null): void {
+    wechatpayServiceRef = service;
+}
+
+/** 由客户档案推导 openid 的模块级入口（失败不阻断支付，仅记日志后返回 undefined） */
+export async function resolveCustomerOpenid(
+    ctx: RequestContext,
+    customerId?: ID | null,
+    opts?: { preferMini?: boolean },
+): Promise<string | undefined> {
+    if (!wechatpayServiceRef) return undefined;
+    try {
+        return await wechatpayServiceRef.resolveCustomerOpenid(ctx, customerId, opts);
+    } catch (e: any) {
+        Logger.warn(`resolveCustomerOpenid failed: ${e.message}`, loggerCtx);
+        return undefined;
+    }
+}
+
 @Injectable()
 export class WechatpayService {
     constructor(
         @Inject(WECHATPAY_PLUGIN_OPTIONS) private options: WechatpayPluginOptions,
         private channelService: ChannelService,
         private paymentMethodService: PaymentMethodService,
+        private connection: TransactionalConnection,
+        private customerService: CustomerService,
     ) {}
+
+    /**
+     * 由客户档案推导微信 openid（F-VS-08）。
+     * openid 由微信授权登录时写入 `Customer.customFields.wechatOpenid` / `wechatMiniOpenid`，
+     * 支付时无需（也不应）依赖前端本地存储。
+     * 仅存其一则用之；两者都有时按 `preferMini` 取舍（默认优先公众号 openid）。
+     */
+    async resolveCustomerOpenid(
+        ctx: RequestContext,
+        customerId?: ID | null,
+        opts?: { preferMini?: boolean },
+    ): Promise<string | undefined> {
+        let id = customerId;
+        if ((id === undefined || id === null) && ctx.activeUserId) {
+            const byUser = await this.customerService.findOneByUserId(ctx, ctx.activeUserId);
+            id = byUser?.id;
+        }
+        if (id === undefined || id === null) return undefined;
+        const customer = await this.connection.getRepository(ctx, Customer).findOne({
+            where: { id: id as any },
+        });
+        const cf = (customer?.customFields ?? {}) as any;
+        const official: string | undefined = cf.wechatOpenid || undefined;
+        const mini: string | undefined = cf.wechatMiniOpenid || undefined;
+        if (official && mini) return opts?.preferMini ? mini : official;
+        return mini || official;
+    }
 
     /** 集中构造配置好的 WxPay 实例 + 凭证（复用 getPaymentOverride） */
     private async buildWechatpay(): Promise<{

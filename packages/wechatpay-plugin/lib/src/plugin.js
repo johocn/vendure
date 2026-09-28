@@ -24,11 +24,12 @@ const wechatpay_shop_resolver_1 = require("./wechatpay-shop.resolver");
 const wechatpay_controller_1 = require("./wechatpay.controller");
 const { gql } = require('graphql-tag');
 let WechatpayPlugin = WechatpayPlugin_1 = class WechatpayPlugin {
-    constructor(options, paymentMethodService, channelService, requestContextService) {
+    constructor(options, paymentMethodService, channelService, requestContextService, wechatpayService) {
         this.options = options;
         this.paymentMethodService = paymentMethodService;
         this.channelService = channelService;
         this.requestContextService = requestContextService;
+        this.wechatpayService = wechatpayService;
     }
     static init(options) {
         WechatpayPlugin_1.options = options;
@@ -39,6 +40,9 @@ let WechatpayPlugin = WechatpayPlugin_1 = class WechatpayPlugin {
      */
     async onApplicationBootstrap() {
         var _a;
+        // 注册进程内服务引用（F-VS-08）：供支付 handler / 充值插件在无 DI 上下文处推导 openid。
+        // 必须放在 devBypass 早退之前，保证任何运行模式下都可用。
+        (0, wechatpay_service_1.setWechatpayServiceRef)(this.wechatpayService);
         if (!((_a = this.options) === null || _a === void 0 ? void 0 : _a.devBypass))
             return;
         try {
@@ -118,6 +122,7 @@ exports.WechatpayPlugin = WechatpayPlugin = WechatpayPlugin_1 = __decorate([
     __param(0, (0, common_1.Inject)(constants_1.WECHATPAY_PLUGIN_OPTIONS)),
     __metadata("design:paramtypes", [Object, core_1.PaymentMethodService,
         core_1.ChannelService,
-        core_1.RequestContextService])
+        core_1.RequestContextService,
+        wechatpay_service_1.WechatpayService])
 ], WechatpayPlugin);
 //# sourceMappingURL=plugin.js.map

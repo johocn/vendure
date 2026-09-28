@@ -12,7 +12,7 @@ import {
 
 import { WECHATPAY_PLUGIN_OPTIONS, loggerCtx } from './constants';
 import { createWechatpayHandler } from './wechatpay-handler';
-import { WechatpayService } from './wechatpay.service';
+import { setWechatpayServiceRef, WechatpayService } from './wechatpay.service';
 import { WechatpaySettlementRegistry } from './wechatpay-settlement';
 import { WechatpayShopResolver } from './wechatpay-shop.resolver';
 import { WechatpayController } from './wechatpay.controller';
@@ -72,6 +72,7 @@ export class WechatpayPlugin implements OnApplicationBootstrap {
         private paymentMethodService: PaymentMethodService,
         private channelService: ChannelService,
         private requestContextService: RequestContextService,
+        private wechatpayService: WechatpayService,
     ) {}
 
     static init(options: WechatpayPluginOptions): Type<WechatpayPlugin> {
@@ -83,6 +84,9 @@ export class WechatpayPlugin implements OnApplicationBootstrap {
      * Dev Bypass 模式下，启动时自动创建 wechatpay PaymentMethod（如果不存在）
      */
     async onApplicationBootstrap() {
+        // 注册进程内服务引用（F-VS-08）：供支付 handler / 充值插件在无 DI 上下文处推导 openid。
+        // 必须放在 devBypass 早退之前，保证任何运行模式下都可用。
+        setWechatpayServiceRef(this.wechatpayService);
         if (!this.options?.devBypass) return;
         try {
             const channel = await this.channelService.getDefaultChannel();

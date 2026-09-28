@@ -9,6 +9,7 @@ const wechatpay_node_v3_1 = __importDefault(require("wechatpay-node-v3"));
 const crypto_1 = __importDefault(require("crypto"));
 const cjk_plugin_1 = require("@vendure/cjk-plugin");
 const constants_1 = require("./constants");
+const wechatpay_service_1 = require("./wechatpay.service");
 function createWechatpayHandler(options) {
     return new core_1.PaymentMethodHandler({
         code: 'wechatpay',
@@ -82,7 +83,13 @@ function createWechatpayHandler(options) {
                     serial_no: (override === null || override === void 0 ? void 0 : override.serialNo) || args.serialNo,
                 });
                 const tradeType = (override === null || override === void 0 ? void 0 : override.tradeType) || args.tradeType || 'JSAPI';
-                const openid = (metadata === null || metadata === void 0 ? void 0 : metadata.openid) || (options === null || options === void 0 ? void 0 : options.devBypassOpenid);
+                // openid 三级回落（F-VS-08）：前端显式传入 → 由客户档案推导 → devBypass 兜底。
+                // 前端本地存储可能缺失/过期，服务端按客户档案推导可避免 JSAPI 支付失败。
+                const openid = (metadata === null || metadata === void 0 ? void 0 : metadata.openid) ||
+                    (await (0, wechatpay_service_1.resolveCustomerOpenid)(ctx, order.customerId, {
+                        preferMini: tradeType === 'JSAPI',
+                    })) ||
+                    (options === null || options === void 0 ? void 0 : options.devBypassOpenid);
                 const baseParams = {
                     description: `Order ${order.code}`,
                     out_trade_no: order.code,

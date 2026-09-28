@@ -18,7 +18,7 @@ import { RechargeCardBatch } from './recharge-card-batch.entity';
 import { CustomerBalance } from './customer-balance.entity';
 import { BalanceTransaction, BalanceTransactionType } from './balance-transaction.entity';
 import { RechargeOrder } from './recharge-order.entity';
-import { WechatpayService } from '@vendure/wechatpay-plugin';
+import { WechatpayService, resolveCustomerOpenid } from '@vendure/wechatpay-plugin';
 
 // 网关联接线（可选）：进程内未注册 WechatpayPlugin 时为 null，充值支付提示网关未配置
 let gatewayService: WechatpayService | null = null;
@@ -160,6 +160,13 @@ export class RechargeCardService {
         if (!Number.isFinite(amt) || amt <= 0) {
             throw new UserInputError('Invalid amount');
         }
+        // 面额强校验：金额不得由客户端任意决定（区间可按渠道配置）
+        const cf = (ctx.channel as any)?.customFields ?? {};
+        const min = Number.isFinite(cf.rechargeMinAmount) ? Number(cf.rechargeMinAmount) : 100;
+        const max = Number.isFinite(cf.rechargeMaxAmount) ? Number(cf.rechargeMaxAmount) : 5000000;
+        if (amt < min || amt > max) {
+            throw new UserInputError(`Recharge amount must be between ${min} and ${max} (cents)`);
+        }
         const repo = this.connection.getRepository(ctx, RechargeOrder);
         const order = new RechargeOrder({
             customerId: cid,
@@ -255,11 +262,18 @@ export class RechargeCardService {
             throw new UserInputError('Payment gateway not configured');
         }
         const outTradeNo = `RC-${order.id}`;
+        const effectiveTradeType = (tradeType as any) || 'JSAPI';
+        // openid 回落（F-VS-08）：前端未携带 openid 时由客户档案推导，避免 JSAPI 支付失败
+        const effectiveOpenid =
+            openid ||
+            (await resolveCustomerOpenid(ctx, order.customerId, {
+                preferMini: effectiveTradeType === 'JSAPI',
+            }));
         const pay = await gatewayService.createBarePayment({
             outTradeNo,
             amount: order.amount,
-            tradeType: (tradeType as any) || 'JSAPI',
-            openid,
+            tradeType: effectiveTradeType,
+            openid: effectiveOpenid,
             description: `Recharge ${outTradeNo}`,
         });
         order.paymentMethod = 'wechatpay';

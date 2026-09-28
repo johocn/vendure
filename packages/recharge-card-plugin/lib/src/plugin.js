@@ -24,6 +24,7 @@ const customer_balance_entity_1 = require("./customer-balance.entity");
 const balance_transaction_entity_1 = require("./balance-transaction.entity");
 const recharge_order_entity_1 = require("./recharge-order.entity");
 const recharge_card_service_1 = require("./recharge-card.service");
+const channel_custom_fields_1 = require("./channel-custom-fields");
 const recharge_order_resolver_1 = require("./recharge-order.resolver");
 const balance_payment_handler_1 = require("./balance-payment-handler");
 const recharge_card_shop_resolver_1 = require("./recharge-card-shop.resolver");
@@ -278,10 +279,15 @@ exports.RechargeCardPlugin = RechargeCardPlugin = RechargeCardPlugin_1 = __decor
             resolvers: [recharge_card_admin_resolver_1.RechargeCardAdminResolver],
         },
         configuration: (config) => {
+            var _a, _b;
             config.paymentOptions.paymentMethodHandlers = [
                 ...(config.paymentOptions.paymentMethodHandlers || []),
                 balance_payment_handler_1.balancePaymentHandler,
             ];
+            config.customFields = Object.assign(Object.assign({}, config.customFields), { Channel: [
+                    ...((_b = (_a = config.customFields) === null || _a === void 0 ? void 0 : _a.Channel) !== null && _b !== void 0 ? _b : []),
+                    ...channel_custom_fields_1.rechargeChannelCustomFields.Channel,
+                ] });
             return config;
         },
         compatibility: '^3.0.0',

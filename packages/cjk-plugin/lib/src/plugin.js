@@ -37,12 +37,15 @@ const enterprise_customer_entity_1 = require("./pickup/enterprise-customer/enter
 const enterprise_customer_service_1 = require("./pickup/enterprise-customer/enterprise-customer.service");
 const enterprise_customer_admin_resolver_1 = require("./pickup/enterprise-customer/enterprise-customer-admin.resolver");
 const order_custom_fields_1 = require("./order/order-custom-fields");
+const order_price_custom_fields_1 = require("./order/order-price-custom-fields");
+const order_price_admin_resolver_1 = require("./order/order-price-admin.resolver");
 const customer_custom_fields_1 = require("./customer/customer-custom-fields");
 const tenant_channel_custom_fields_1 = require("./tenant/tenant-channel-custom-fields");
 const product_variant_custom_fields_1 = require("./shipping/product-variant-custom-fields");
 const shipping_method_custom_fields_1 = require("./shipping/shipping-method-custom-fields");
 const asset_custom_fields_1 = require("./asset/asset-custom-fields");
 const asset_library_admin_resolver_1 = require("./asset/asset-library-admin.resolver");
+const customer_asset_shop_resolver_1 = require("./asset/customer-asset-shop.resolver");
 const tiered_shipping_calculator_1 = require("./shipping/tiered-shipping-calculator");
 const tiered_shipping_eligibility_checker_1 = require("./shipping/tiered-shipping-eligibility-checker");
 const shipping_template_entity_1 = require("./shipping/shipping-template.entity");
@@ -2031,9 +2034,20 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     cancelStocktakeTask(taskId: ID!): StocktakeTask!
                     cancelStocktakeWave(waveId: ID!): StocktakeWave!
                 }
+
+                # ===== 后台改价（F-WA-08） =====
+                input AdjustOrderPriceInput {
+                    orderId: ID!
+                    # 差额（分）：正数加价，负数降价；服务端按渠道上限强校验
+                    amount: Int!
+                    note: String
+                }
+                extend type Mutation {
+                    adjustOrderPrice(input: AdjustOrderPriceInput!): Order!
+                }
                 `;
             },
-            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, room_template_admin_resolver_1.RoomTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver, tenant_catalog_admin_resolver_1.TenantCatalogAdminResolver, asset_library_admin_resolver_1.AssetLibraryAdminResolver, redemption_resolver_1.RedemptionAdminResolver, merchant_settlement_admin_resolver_1.MerchantSettlementAdminResolver, delivery_admin_resolver_1.DeliveryAdminResolver, inventory_admin_resolver_1.InventoryAdminResolver, reconciliation_admin_resolver_1.ReconciliationAdminResolver, stock_doc_admin_resolver_1.StockDocAdminResolver, stock_reservation_admin_resolver_1.StockReservationAdminResolver, delivery_capability_resolver_1.DeliveryCapabilityResolver, pick_batch_admin_resolver_1.PickBatchAdminResolver, storage_bin_admin_resolver_1.StorageBinAdminResolver, order_address_admin_resolver_1.OrderAddressAdminResolver, stocktake_admin_resolver_1.StocktakeAdminResolver],
+            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, room_template_admin_resolver_1.RoomTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver, tenant_catalog_admin_resolver_1.TenantCatalogAdminResolver, asset_library_admin_resolver_1.AssetLibraryAdminResolver, redemption_resolver_1.RedemptionAdminResolver, merchant_settlement_admin_resolver_1.MerchantSettlementAdminResolver, delivery_admin_resolver_1.DeliveryAdminResolver, inventory_admin_resolver_1.InventoryAdminResolver, reconciliation_admin_resolver_1.ReconciliationAdminResolver, stock_doc_admin_resolver_1.StockDocAdminResolver, stock_reservation_admin_resolver_1.StockReservationAdminResolver, delivery_capability_resolver_1.DeliveryCapabilityResolver, pick_batch_admin_resolver_1.PickBatchAdminResolver, storage_bin_admin_resolver_1.StorageBinAdminResolver, order_address_admin_resolver_1.OrderAddressAdminResolver, stocktake_admin_resolver_1.StocktakeAdminResolver, order_price_admin_resolver_1.OrderPriceAdminResolver],
         },
         shopApiExtensions: {
             schema: () => {
@@ -2321,13 +2335,19 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     storageZones(stockLocationId: ID!): [StorageZone!]!
                 }
 
+                # ===== C 端资产上传（售后凭证等，F-VS-09） =====
+                # 走 GraphQL multipart 上传，返回的 Asset 由 AssetInterceptorPlugin 转为绝对 URL
+                extend type Mutation {
+                    uploadCustomerAsset(file: Upload!): Asset!
+                }
+
                 ${redemption_schema_1.redemptionShopSchema}
             `;
             },
-            resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver, shipping_profile_shop_resolver_1.ShippingProfileShopResolver, delivery_capability_resolver_1.DeliveryCapabilityResolver, payment_profile_shop_resolver_1.PaymentProfileShopResolver, order_box_shop_resolver_1.OrderBoxShopResolver, order_split_shop_resolver_1.OrderSplitShopResolver, wallet_shop_resolver_1.WalletShopResolver, redemption_resolver_1.RedemptionShopResolver, inventory_shop_resolver_1.InventoryShopResolver, storage_bin_shop_resolver_1.StorageBinShopResolver],
+            resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver, shipping_profile_shop_resolver_1.ShippingProfileShopResolver, delivery_capability_resolver_1.DeliveryCapabilityResolver, payment_profile_shop_resolver_1.PaymentProfileShopResolver, order_box_shop_resolver_1.OrderBoxShopResolver, order_split_shop_resolver_1.OrderSplitShopResolver, wallet_shop_resolver_1.WalletShopResolver, redemption_resolver_1.RedemptionShopResolver, inventory_shop_resolver_1.InventoryShopResolver, storage_bin_shop_resolver_1.StorageBinShopResolver, customer_asset_shop_resolver_1.CustomerAssetShopResolver],
         },
         configuration: config => {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5;
             // 注入 authSecret 到 crypto 模块（configuration 在 bootstrap 早期执行，此时 options 已可用）
             (0, crypto_1.setAuthSecret)(CjkPlugin.options.authSecret);
             // 租户级税率方式（三态 taxMode：inclusive 含税价含拆税 / zero 零税价净价结算 / exclusive 不含税价价税分离）。
@@ -2441,65 +2461,76 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     ...(((_q = config.customFields) === null || _q === void 0 ? void 0 : _q.Order) || []),
                     ...order_custom_fields_1.orderCustomFields.Order,
                 ] });
+            // 注册 Channel customFields（后台改价幅度上限）—— 去重防止重复注册
+            {
+                const existingChannelNames = (((_r = config.customFields) === null || _r === void 0 ? void 0 : _r.Channel) || []).map(f => f.name);
+                const newChannelFields = (order_price_custom_fields_1.orderPriceChannelCustomFields.Channel || []).filter(f => !existingChannelNames.includes(f.name));
+                if (newChannelFields.length > 0) {
+                    config.customFields = Object.assign(Object.assign({}, config.customFields), { Channel: [
+                            ...(((_s = config.customFields) === null || _s === void 0 ? void 0 : _s.Channel) || []),
+                            ...newChannelFields,
+                        ] });
+                }
+            }
             config.customFields = Object.assign(Object.assign({}, config.customFields), { Customer: [
-                    ...(((_r = config.customFields) === null || _r === void 0 ? void 0 : _r.Customer) || []),
+                    ...(((_t = config.customFields) === null || _t === void 0 ? void 0 : _t.Customer) || []),
                     ...customer_custom_fields_1.customerCustomFields.Customer,
                 ] });
             // 注册 ProductVariant customFields（weight/dimensions）—— 去重防止重复注册
             {
-                const existingPvFields = (((_s = config.customFields) === null || _s === void 0 ? void 0 : _s.ProductVariant) || []).map(f => f.name);
+                const existingPvFields = (((_u = config.customFields) === null || _u === void 0 ? void 0 : _u.ProductVariant) || []).map(f => f.name);
                 const newPvFields = (product_variant_custom_fields_1.productVariantCustomFields.ProductVariant || []).filter(f => !existingPvFields.includes(f.name));
                 if (newPvFields.length > 0) {
                     config.customFields = Object.assign(Object.assign({}, config.customFields), { ProductVariant: [
-                            ...(((_t = config.customFields) === null || _t === void 0 ? void 0 : _t.ProductVariant) || []),
+                            ...(((_v = config.customFields) === null || _v === void 0 ? void 0 : _v.ProductVariant) || []),
                             ...newPvFields,
                         ] });
                 }
             }
             // 注册 ProductVariant customFields（hotelRoomConfig）—— 与上方 weight/dimensions 同款去重
             {
-                const existingHotelPvFields = (((_u = config.customFields) === null || _u === void 0 ? void 0 : _u.ProductVariant) || []).map(f => f.name);
+                const existingHotelPvFields = (((_w = config.customFields) === null || _w === void 0 ? void 0 : _w.ProductVariant) || []).map(f => f.name);
                 const newHotelPvFields = (hotel_custom_fields_1.hotelRoomCustomFields.ProductVariant || []).filter(f => !existingHotelPvFields.includes(f.name));
                 if (newHotelPvFields.length > 0) {
-                    config.customFields = Object.assign(Object.assign({}, config.customFields), { ProductVariant: [...(((_v = config.customFields) === null || _v === void 0 ? void 0 : _v.ProductVariant) || []), ...newHotelPvFields] });
+                    config.customFields = Object.assign(Object.assign({}, config.customFields), { ProductVariant: [...(((_x = config.customFields) === null || _x === void 0 ? void 0 : _x.ProductVariant) || []), ...newHotelPvFields] });
                 }
             }
             // 注册 ShippingMethod customFields（enabled 启停）—— 去重防止重复注册
             {
-                const existingSmFields = (((_w = config.customFields) === null || _w === void 0 ? void 0 : _w.ShippingMethod) || []).map(f => f.name);
+                const existingSmFields = (((_y = config.customFields) === null || _y === void 0 ? void 0 : _y.ShippingMethod) || []).map(f => f.name);
                 const newSmFields = (shipping_method_custom_fields_1.customShippingMethodFields.ShippingMethod || []).filter(f => !existingSmFields.includes(f.name));
                 if (newSmFields.length > 0) {
                     config.customFields = Object.assign(Object.assign({}, config.customFields), { ShippingMethod: [
-                            ...(((_x = config.customFields) === null || _x === void 0 ? void 0 : _x.ShippingMethod) || []),
+                            ...(((_z = config.customFields) === null || _z === void 0 ? void 0 : _z.ShippingMethod) || []),
                             ...newSmFields,
                         ] });
                 }
             }
             // 注册 Asset customFields（uploadedBy 记录上传者，供图库按用户过滤）—— 去重防止重复注册
             {
-                const existingAssetFields = (((_y = config.customFields) === null || _y === void 0 ? void 0 : _y.Asset) || []).map(f => f.name);
+                const existingAssetFields = (((_0 = config.customFields) === null || _0 === void 0 ? void 0 : _0.Asset) || []).map(f => f.name);
                 const newAssetFields = (asset_custom_fields_1.assetCustomFields.Asset || []).filter(f => !existingAssetFields.includes(f.name));
                 if (newAssetFields.length > 0) {
                     config.customFields = Object.assign(Object.assign({}, config.customFields), { Asset: [
-                            ...(((_z = config.customFields) === null || _z === void 0 ? void 0 : _z.Asset) || []),
+                            ...(((_1 = config.customFields) === null || _1 === void 0 ? void 0 : _1.Asset) || []),
                             ...newAssetFields,
                         ] });
                 }
             }
             // 注册 StockLocation customFields（kind/code）—— 去重防止重复注册
             {
-                const existingSlFields = (((_0 = config.customFields) === null || _0 === void 0 ? void 0 : _0.StockLocation) || []).map(f => f.name);
+                const existingSlFields = (((_2 = config.customFields) === null || _2 === void 0 ? void 0 : _2.StockLocation) || []).map(f => f.name);
                 const newSlFields = (stock_location_custom_fields_1.stockLocationCustomFields.StockLocation || []).filter(f => !existingSlFields.includes(f.name));
                 if (newSlFields.length > 0) {
                     config.customFields = Object.assign(Object.assign({}, config.customFields), { StockLocation: [
-                            ...(((_1 = config.customFields) === null || _1 === void 0 ? void 0 : _1.StockLocation) || []),
+                            ...(((_3 = config.customFields) === null || _3 === void 0 ? void 0 : _3.StockLocation) || []),
                             ...newSlFields,
                         ] });
                 }
             }
             // 注册 Collection customFields（icon 分类图标）—— 去重防止重复注册
             {
-                const existingCollectionFields = (((_2 = config.customFields) === null || _2 === void 0 ? void 0 : _2.Collection) || []).map(f => f.name);
+                const existingCollectionFields = (((_4 = config.customFields) === null || _4 === void 0 ? void 0 : _4.Collection) || []).map(f => f.name);
                 const newCollectionFields = [
                     {
                         name: 'icon',
@@ -2514,7 +2545,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                 ].filter(f => !existingCollectionFields.includes(f.name));
                 if (newCollectionFields.length > 0) {
                     config.customFields = Object.assign(Object.assign({}, config.customFields), { Collection: [
-                            ...(((_3 = config.customFields) === null || _3 === void 0 ? void 0 : _3.Collection) || []),
+                            ...(((_5 = config.customFields) === null || _5 === void 0 ? void 0 : _5.Collection) || []),
                             ...newCollectionFields,
                         ] });
                 }

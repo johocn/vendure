@@ -59,19 +59,31 @@ let WithdrawalService = class WithdrawalService {
     async request(ctx, distributorId, amount, method, accountInfo) {
         var _a, _b;
         const minAmount = (_b = (_a = ctx.channel.customFields) === null || _a === void 0 ? void 0 : _a.minWithdrawalAmount) !== null && _b !== void 0 ? _b : 10000;
+        if (!Number.isFinite(amount) || !Number.isInteger(amount) || amount <= 0) {
+            throw new core_1.UserInputError('Invalid withdrawal amount');
+        }
         if (amount < minAmount) {
-            throw new Error(`Minimum withdrawal amount is ${minAmount}`);
+            throw new core_1.UserInputError(`Minimum withdrawal amount is ${minAmount} (cents)`);
         }
         const distributor = await this.distributionService.findOne(ctx, distributorId);
         if (!distributor) {
-            throw new Error(`Distributor ${distributorId} not found`);
+            throw new core_1.UserInputError(`Distributor ${distributorId} not found`);
         }
-        if (distributor.availableBalance < amount) {
-            throw new Error('Insufficient available balance');
+        // 原子条件扣减：并发提现时只有余额仍充足的那笔能成功，
+        // 避免「读余额 → 校验 → 写回」之间的竞态导致多开提现单而余额只扣一次。
+        const claim = await this.connection
+            .getRepository(ctx, distributor_entity_1.Distributor)
+            .createQueryBuilder()
+            .update(distributor_entity_1.Distributor)
+            .set({
+            availableBalance: () => `availableBalance - ${amount}`,
+            frozenBalance: () => `frozenBalance + ${amount}`,
+        })
+            .where('id = :id AND availableBalance >= :amount', { id: distributor.id, amount })
+            .execute();
+        if (claim.affected === 0) {
+            throw new core_1.UserInputError('Insufficient available balance');
         }
-        distributor.availableBalance -= amount;
-        distributor.frozenBalance += amount;
-        await this.connection.getRepository(ctx, distributor_entity_1.Distributor).save(distributor);
         const request = new withdrawal_request_entity_1.WithdrawalRequest({
             distributorId: String(distributorId),
             amount,

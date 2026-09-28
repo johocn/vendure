@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { ID, ListQueryBuilder, ListQueryOptions, Logger, PaginatedList, RequestContext, TransactionalConnection } from '@vendure/core';
+import { ID, ListQueryBuilder, ListQueryOptions, Logger, PaginatedList, RequestContext, TransactionalConnection, UserInputError } from '@vendure/core';
 import { In } from 'typeorm';
 
 import { decryptAccount, encryptAccount } from './account-crypto';
@@ -58,22 +58,36 @@ export class WithdrawalService {
         accountInfo: string,
     ): Promise<WithdrawalRequest> {
         const minAmount = (ctx.channel as any).customFields?.minWithdrawalAmount ?? 10000;
+        if (!Number.isFinite(amount) || !Number.isInteger(amount) || amount <= 0) {
+            throw new UserInputError('Invalid withdrawal amount');
+        }
         if (amount < minAmount) {
-            throw new Error(`Minimum withdrawal amount is ${minAmount}`);
+            throw new UserInputError(`Minimum withdrawal amount is ${minAmount} (cents)`);
         }
 
         const distributor = await this.distributionService.findOne(ctx, distributorId);
         if (!distributor) {
-            throw new Error(`Distributor ${distributorId} not found`);
+            throw new UserInputError(`Distributor ${distributorId} not found`);
         }
 
-        if (distributor.availableBalance < amount) {
-            throw new Error('Insufficient available balance');
+        // 原子条件扣减：并发提现时只有余额仍充足的那笔能成功，
+        // 避免「读余额 → 校验 → 写回」之间的竞态导致多开提现单而余额只扣一次。
+        // 列名为 camelCase（TypeORM 用双引号建列），Postgres 下必须显式加双引号，
+        // 否则未加引号的标识符会被折叠成小写而报「列不存在」。
+        const claim = await this.connection
+            .getRepository(ctx, Distributor)
+            .createQueryBuilder()
+            .update(Distributor)
+            .set({
+                availableBalance: () => `"availableBalance" - ${amount}`,
+                frozenBalance: () => `"frozenBalance" + ${amount}`,
+            })
+            .where('id = :id', { id: distributor.id })
+            .andWhere(`"availableBalance" >= ${amount}`)
+            .execute();
+        if (claim.affected === 0) {
+            throw new UserInputError('Insufficient available balance');
         }
-
-        distributor.availableBalance -= amount;
-        distributor.frozenBalance += amount;
-        await this.connection.getRepository(ctx, Distributor).save(distributor);
 
         const request = new WithdrawalRequest({
             distributorId: String(distributorId),

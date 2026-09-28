@@ -10,6 +10,7 @@ import { CustomerBalance } from './customer-balance.entity';
 import { BalanceTransaction } from './balance-transaction.entity';
 import { RechargeOrder } from './recharge-order.entity';
 import { RechargeCardService, setWechatpayGateway } from './recharge-card.service';
+import { rechargeChannelCustomFields } from './channel-custom-fields';
 import { RechargeOrderResolver } from './recharge-order.resolver';
 import { balancePaymentHandler, setOrderService, setRechargeService } from './balance-payment-handler';
 import { RechargeCardShopResolver } from './recharge-card-shop.resolver';
@@ -230,6 +231,13 @@ const { gql } = require('graphql-tag');
             ...(config.paymentOptions.paymentMethodHandlers || []),
             balancePaymentHandler,
         ];
+        config.customFields = {
+            ...config.customFields,
+            Channel: [
+                ...(config.customFields?.Channel ?? []),
+                ...rechargeChannelCustomFields.Channel!,
+            ],
+        };
         return config;
     },
     compatibility: '^3.0.0',
