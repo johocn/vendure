@@ -121,6 +121,8 @@ import { groupBuyCheckTask } from './group-buy-scheduled-task';
                 allowJoinAfterComplete: Boolean!
                 createdAt: DateTime!
                 updatedAt: DateTime!
+                productId: ID!
+                variantId: ID!
             }
 
             type GroupBuyOrderResult {

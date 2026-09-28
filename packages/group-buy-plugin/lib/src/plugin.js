@@ -178,6 +178,8 @@ exports.GroupBuyPlugin = GroupBuyPlugin = GroupBuyPlugin_1 = __decorate([
                 allowJoinAfterComplete: Boolean!
                 createdAt: DateTime!
                 updatedAt: DateTime!
+                productId: ID!
+                variantId: ID!
             }
 
             type GroupBuyOrderResult {
