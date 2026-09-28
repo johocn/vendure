@@ -39,6 +39,7 @@ const group_buy_plugin_1 = require("@vendure/group-buy-plugin");
 const flash_sale_plugin_1 = require("@vendure/flash-sale-plugin");
 const distribution_plugin_1 = require("@vendure/distribution-plugin");
 const eco_plugin_1 = require("@vendure/eco-plugin");
+const product_survey_plugin_1 = require("@vendure/product-survey-plugin");
 const redis_stock_plugin_1 = require("@vendure/redis-stock-plugin");
 const logistics_api_plugin_1 = require("@vendure/logistics-api-plugin");
 const invoice_pdf_plugin_1 = require("@vendure/invoice-pdf-plugin");
@@ -371,6 +372,7 @@ exports.devConfig = {
             settlementDays: 7,
         }),
         eco_plugin_1.EcoPlugin.init(),
+        product_survey_plugin_1.ProductSurveyPlugin.init(),
         ...(process.env.REDIS_URL ? [redis_stock_plugin_1.RedisStockPlugin.init({
                 redisUrl: process.env.REDIS_URL,
             })] : []),
