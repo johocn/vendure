@@ -294,6 +294,47 @@ exports.tenantChannelCustomFields = {
                 { languageCode: core_1.LanguageCode.zh_Hans, value: '商品无主图时微信转发使用此图；留空则前端回退内置默认图' },
             ],
         },
+        {
+            name: 'basicConfig',
+            type: 'struct',
+            nullable: true,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '租户基本配置' }],
+            fields: [
+                { name: 'tenantName', type: 'string' },
+                { name: 'contactPhone', type: 'string' },
+                { name: 'address', type: 'string' },
+                { name: 'invoiceHeaderJson', type: 'text' },
+                { name: 'serviceContactsJson', type: 'text' },
+                { name: 'timeZoneId', type: 'string' },
+            ],
+        },
+        {
+            name: 'serviceNotifyConfig',
+            type: 'struct',
+            nullable: true,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '租户客服与通知配置' }],
+            fields: [
+                { name: 'wecomEnabled', type: 'boolean' },
+                { name: 'wecomAgentId', type: 'string' },
+                { name: 'wecomCorpId', type: 'string' },
+                { name: 'wecomCorpSecret', type: 'string' },
+                { name: 'wechatPushEnabled', type: 'boolean' },
+                { name: 'wechatPushTemplateJson', type: 'text' },
+                { name: 'chatChannelEnabled', type: 'boolean' },
+            ],
+        },
+        {
+            name: 'multiLanguageConfig',
+            type: 'struct',
+            nullable: true,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '租户多语言配置' }],
+            fields: [
+                { name: 'availableLanguageCodes', type: 'string', list: true },
+                { name: 'defaultLanguageCode', type: 'string' },
+                { name: 'translationWorkflowEnabled', type: 'boolean' },
+                { name: 'operationalCopyJson', type: 'text' },
+            ],
+        },
     ],
 };
 //# sourceMappingURL=tenant-channel-custom-fields.js.map

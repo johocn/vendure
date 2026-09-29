@@ -7,6 +7,9 @@ const mockAuthConfigService = { getMasked: vitest_1.vi.fn().mockResolvedValue({ 
 const mockPayConfigService = { getMasked: vitest_1.vi.fn().mockResolvedValue(null) };
 const mockMapConfigService = { getMasked: vitest_1.vi.fn().mockResolvedValue(null) };
 const mockSsoProviderService = { testConnection: vitest_1.vi.fn() };
+const mockBasicConfigService = { get: vitest_1.vi.fn().mockResolvedValue(null), update: vitest_1.vi.fn().mockResolvedValue(null) };
+const mockMultiLanguageConfigService = { get: vitest_1.vi.fn().mockResolvedValue(null), update: vitest_1.vi.fn().mockResolvedValue(null) };
+const mockServiceNotifyConfigService = { getMasked: vitest_1.vi.fn().mockResolvedValue(null), update: vitest_1.vi.fn().mockResolvedValue(null) };
 const mockConnection = {
     createQueryBuilder: vitest_1.vi.fn().mockReturnValue({
         insert: vitest_1.vi.fn().mockReturnThis(),
@@ -28,7 +31,7 @@ function makeCtx(opts = {}) {
 (0, vitest_1.describe)('TenantConfigAdminResolver', () => {
     let resolver;
     (0, vitest_1.beforeEach)(() => {
-        resolver = new tenant_config_admin_resolver_1.TenantConfigAdminResolver(mockAuthConfigService, mockPayConfigService, mockMapConfigService, mockSsoProviderService, mockConnection);
+        resolver = new tenant_config_admin_resolver_1.TenantConfigAdminResolver(mockAuthConfigService, mockPayConfigService, mockMapConfigService, mockSsoProviderService, mockBasicConfigService, mockMultiLanguageConfigService, mockServiceNotifyConfigService, mockConnection);
     });
     (0, vitest_1.it)('allows super-admin to read any channel', async () => {
         const ctx = makeCtx({ isSuperAdmin: true });
@@ -48,6 +51,16 @@ function makeCtx(opts = {}) {
     (0, vitest_1.it)('updateTenantConfig rejects unassociated channel', async () => {
         const ctx = makeCtx({ isSuperAdmin: false, channelIds: ['1'] });
         await (0, vitest_1.expect)(resolver.updateTenantConfig(ctx, { input: { channelId: '99', payPatch: {} } })).rejects.toThrow(/TENANT_CONFIG_FORBIDDEN/);
+    });
+    (0, vitest_1.it)('tenantSettings rejects unassociated channel', async () => {
+        const ctx = makeCtx({ isSuperAdmin: false, channelIds: ['1'] });
+        await (0, vitest_1.expect)(resolver.tenantSettings(ctx, '99')).rejects.toThrow(/TENANT_CONFIG_FORBIDDEN/);
+    });
+    (0, vitest_1.it)('updateTenantBasic writes audit and returns settings', async () => {
+        const ctx = makeCtx({ isSuperAdmin: true });
+        const result = await resolver.updateTenantBasic(ctx, { input: { channelId: '1', patch: { tenantName: 'X' } } });
+        (0, vitest_1.expect)(result.channelId).toBe('1');
+        (0, vitest_1.expect)(mockConnection.createQueryBuilder).toHaveBeenCalled();
     });
 });
 //# sourceMappingURL=tenant-config-admin.resolver.spec.js.map

@@ -39,6 +39,7 @@ const enterprise_customer_admin_resolver_1 = require("./pickup/enterprise-custom
 const order_custom_fields_1 = require("./order/order-custom-fields");
 const order_price_custom_fields_1 = require("./order/order-price-custom-fields");
 const order_price_admin_resolver_1 = require("./order/order-price-admin.resolver");
+const my_orders_shop_resolver_1 = require("./order/my-orders-shop.resolver");
 const customer_custom_fields_1 = require("./customer/customer-custom-fields");
 const tenant_channel_custom_fields_1 = require("./tenant/tenant-channel-custom-fields");
 const product_variant_custom_fields_1 = require("./shipping/product-variant-custom-fields");
@@ -77,6 +78,9 @@ const pay_config_service_1 = require("./payment/pay-config.service");
 const map_config_service_1 = require("./map/map-config.service");
 const sso_provider_service_1 = require("./auth/sso-provider.service");
 const invite_code_service_1 = require("./auth/invite-code.service");
+const basic_config_service_1 = require("./tenant/basic-config.service");
+const service_notify_config_service_1 = require("./tenant/service-notify-config.service");
+const multi_language_config_service_1 = require("./tenant/multi-language-config.service");
 const tenant_config_permissions_1 = require("./admin/tenant-config-permissions");
 const tenant_config_admin_resolver_1 = require("./admin/tenant-config-admin.resolver");
 const shipping_profile_entity_1 = require("./shipping/shipping-profile.entity");
@@ -424,6 +428,9 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             map_config_service_1.MapConfigService,
             sso_provider_service_1.SsoProviderService,
             invite_code_service_1.InviteCodeService,
+            basic_config_service_1.BasicConfigService,
+            service_notify_config_service_1.ServiceNotifyConfigService,
+            multi_language_config_service_1.MultiLanguageConfigService,
             shipping_template_service_1.ShippingTemplateService,
             shipping_profile_service_1.ShippingProfileService,
             delivery_facet_service_1.DeliveryFacetService,
@@ -693,6 +700,32 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     success: Boolean!
                     latencyMs: Int!
                     error: String
+                }
+
+                extend type Query {
+                    tenantSettings(channelId: ID!): TenantSettingsPayload!
+                }
+
+                type TenantSettingsPayload {
+                    channelId: ID!
+                    basic: JSON
+                    auth: JSON
+                    pay: JSON
+                    map: JSON
+                    serviceNotify: JSON
+                    multiLanguage: JSON
+                    canEdit: Boolean!
+                }
+
+                extend type Mutation {
+                    updateTenantBasic(input: TenantSectionPatchInput!): TenantSettingsPayload!
+                    updateTenantMultiLanguage(input: TenantSectionPatchInput!): TenantSettingsPayload!
+                    updateTenantServiceNotify(input: TenantSectionPatchInput!): TenantSettingsPayload!
+                }
+
+                input TenantSectionPatchInput {
+                    channelId: ID!
+                    patch: JSON!
                 }
 
                 # ===== Shipping Template =====
@@ -2349,10 +2382,17 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     enabled: Boolean!
                 }
 
+                # ===== C 端「我的订单」列表 =====
+                # OrderList / OrderListOptions 已由 core 在 shop schema 中生成
+                # （Customer.orders(options: OrderListOptions): OrderList!），此处仅扩展 Query 字段，勿重复定义类型。
+                extend type Query {
+                    myOrders(options: OrderListOptions): OrderList!
+                }
+
                 ${redemption_schema_1.redemptionShopSchema}
             `;
             },
-            resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver, shipping_profile_shop_resolver_1.ShippingProfileShopResolver, delivery_capability_resolver_1.DeliveryCapabilityResolver, payment_profile_shop_resolver_1.PaymentProfileShopResolver, order_box_shop_resolver_1.OrderBoxShopResolver, order_split_shop_resolver_1.OrderSplitShopResolver, wallet_shop_resolver_1.WalletShopResolver, redemption_resolver_1.RedemptionShopResolver, inventory_shop_resolver_1.InventoryShopResolver, storage_bin_shop_resolver_1.StorageBinShopResolver, customer_asset_shop_resolver_1.CustomerAssetShopResolver],
+            resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver, shipping_profile_shop_resolver_1.ShippingProfileShopResolver, delivery_capability_resolver_1.DeliveryCapabilityResolver, payment_profile_shop_resolver_1.PaymentProfileShopResolver, order_box_shop_resolver_1.OrderBoxShopResolver, order_split_shop_resolver_1.OrderSplitShopResolver, wallet_shop_resolver_1.WalletShopResolver, redemption_resolver_1.RedemptionShopResolver, inventory_shop_resolver_1.InventoryShopResolver, storage_bin_shop_resolver_1.StorageBinShopResolver, customer_asset_shop_resolver_1.CustomerAssetShopResolver, my_orders_shop_resolver_1.MyOrdersShopResolver],
         },
         configuration: config => {
             var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5;

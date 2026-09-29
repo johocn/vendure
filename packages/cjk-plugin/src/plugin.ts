@@ -37,6 +37,7 @@ import { EmployeeCustomerAdminResolver } from './pickup/enterprise-customer/ente
 import { orderCustomFields } from './order/order-custom-fields';
 import { orderPriceChannelCustomFields } from './order/order-price-custom-fields';
 import { OrderPriceAdminResolver } from './order/order-price-admin.resolver';
+import { MyOrdersShopResolver } from './order/my-orders-shop.resolver';
 import { customerCustomFields } from './customer/customer-custom-fields';
 import { tenantChannelCustomFields } from './tenant/tenant-channel-custom-fields';
 import { productVariantCustomFields } from './shipping/product-variant-custom-fields';
@@ -2172,10 +2173,17 @@ function mergeCustomFields<T extends { name: string }>(
                     enabled: Boolean!
                 }
 
+                # ===== C 端「我的订单」列表 =====
+                # OrderList / OrderListOptions 已由 core 在 shop schema 中生成
+                # （Customer.orders(options: OrderListOptions): OrderList!），此处仅扩展 Query 字段，勿重复定义类型。
+                extend type Query {
+                    myOrders(options: OrderListOptions): OrderList!
+                }
+
                 ${redemptionShopSchema}
             `;
         },
-        resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver, DomainShopResolver, MapShopResolver, ShippingProfileShopResolver, DeliveryCapabilityResolver, PaymentProfileShopResolver, OrderBoxShopResolver, OrderSplitShopResolver, WalletShopResolver, RedemptionShopResolver, InventoryShopResolver, StorageBinShopResolver, CustomerAssetShopResolver],
+        resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver, DomainShopResolver, MapShopResolver, ShippingProfileShopResolver, DeliveryCapabilityResolver, PaymentProfileShopResolver, OrderBoxShopResolver, OrderSplitShopResolver, WalletShopResolver, RedemptionShopResolver, InventoryShopResolver, StorageBinShopResolver, CustomerAssetShopResolver, MyOrdersShopResolver],
     },
     configuration: config => {
         // 注入 authSecret 到 crypto 模块（configuration 在 bootstrap 早期执行，此时 options 已可用）
