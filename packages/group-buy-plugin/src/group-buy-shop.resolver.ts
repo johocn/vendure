@@ -3,7 +3,7 @@ import { Ctx, ID, RequestContext, Transaction } from '@vendure/core';
 
 import { GroupBuyActivity } from './group-buy-activity.entity';
 import { GroupBuyOrder } from './group-buy-order.entity';
-import { GroupBuyService } from './group-buy.service';
+import { GroupBuyService, MyGroupBuyOrder } from './group-buy.service';
 
 @Resolver()
 export class GroupBuyShopResolver {
@@ -14,6 +14,14 @@ export class GroupBuyShopResolver {
         @Ctx() ctx: RequestContext,
     ): Promise<GroupBuyActivity[]> {
         return this.groupBuyService.findActive(ctx);
+    }
+
+    @Query()
+    async myGroupBuyOrders(
+        @Ctx() ctx: RequestContext,
+        @Args('isLeader') isLeader: boolean,
+    ): Promise<MyGroupBuyOrder[]> {
+        return this.groupBuyService.findMyOrders(ctx, isLeader);
     }
 
     @Mutation()

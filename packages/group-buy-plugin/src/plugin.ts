@@ -132,9 +132,20 @@ import { groupBuyCheckTask } from './group-buy-scheduled-task';
                 status: String!
             }
 
+            type MyGroupBuyOrder {
+                id: ID!
+                orderId: ID!
+                orderCode: String
+                groupBuyActivityId: ID!
+                isLeader: Boolean!
+                status: String!
+                activity: GroupBuyActivity
+            }
+
             extend type Query {
                 activeGroupBuyActivities: [GroupBuyActivity!]!
                 groupBuyActivity(id: ID!): GroupBuyActivity
+                myGroupBuyOrders(isLeader: Boolean!): [MyGroupBuyOrder!]!
             }
 
             extend type Mutation {

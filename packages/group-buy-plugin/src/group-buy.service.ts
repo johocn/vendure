@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
     ChannelService,
+    CustomerService,
     ID,
     Injector,
     ListQueryBuilder,
@@ -14,6 +15,7 @@ import {
     TransactionalConnection,
     UserInputError,
 } from '@vendure/core';
+import { In } from 'typeorm';
 
 import { loggerCtx } from './constants';
 import { GroupBuyActivity } from './group-buy-activity.entity';
@@ -37,12 +39,23 @@ const ALLOWED_UPDATE_FIELDS = [
     'status',
 ] as const;
 
+export interface MyGroupBuyOrder {
+    id: string;
+    orderId: string;
+    orderCode?: string;
+    groupBuyActivityId: string;
+    isLeader: boolean;
+    status: string;
+    activity?: GroupBuyActivity;
+}
+
 @Injectable()
 export class GroupBuyService {
     constructor(
         private connection: TransactionalConnection,
         private listQueryBuilder: ListQueryBuilder,
         private channelService: ChannelService,
+        private customerService: CustomerService,
         private orderService: OrderService,
         private paymentService: PaymentService,
     ) {}
@@ -325,6 +338,57 @@ export class GroupBuyService {
             .andWhere('gba.startAt <= :now', { now })
             .andWhere('gba.endAt >= :now', { now })
             .getMany();
+    }
+
+    /**
+     * Shop API 专用：「我的开团 / 我的参团」。
+     * GroupBuyOrder 没有 customerId 列，归属只能经 orderId 关联 Order.customerId 反查
+     * （参考 after-sales-plugin 的 resolveCustomerId 桥接思路）。
+     * 渠道过滤走订单 channelId —— GroupBuyOrder.channels 在 joinGroupBuy 里从未写入，不能当过滤条件。
+     */
+    async findMyOrders(ctx: RequestContext, isLeader: boolean): Promise<MyGroupBuyOrder[]> {
+        if (!ctx.activeUserId) {
+            return [];
+        }
+        const customer = await this.customerService.findOneByUserId(ctx, ctx.activeUserId);
+        if (!customer) {
+            return [];
+        }
+
+        const rows = await this.connection
+            .getRepository(ctx, GroupBuyOrder)
+            .createQueryBuilder('gbo')
+            .innerJoin(Order, 'ord', 'ord.id = gbo.orderId')
+            .where('ord.customerId = :customerId', { customerId: Number(customer.id) })
+            .andWhere('ord.channelId = :channelId', { channelId: ctx.channelId })
+            .andWhere('gbo.isLeader = :isLeader', { isLeader })
+            .orderBy('gbo.createdAt', 'DESC')
+            .getMany();
+        if (rows.length === 0) {
+            return [];
+        }
+
+        // 二次批量取订单 code 与活动详情：GroupBuyOrder 与二者均无 ORM 关联
+        const orderRows = await this.connection.getRepository(ctx, Order).find({
+            where: { id: In(Array.from(new Set(rows.map(r => Number(r.orderId))))) as any },
+            select: ['id', 'code'],
+        });
+        const orderCodeMap = new Map(orderRows.map(o => [String(o.id), o.code]));
+
+        const activityRows = await this.connection
+            .getRepository(ctx, GroupBuyActivity)
+            .find({ where: { id: In(Array.from(new Set(rows.map(r => Number(r.groupBuyActivityId))))) as any } });
+        const activityMap = new Map(activityRows.map(a => [String(a.id), a]));
+
+        return rows.map(r => ({
+            id: String(r.id),
+            orderId: String(r.orderId),
+            orderCode: orderCodeMap.get(String(r.orderId)),
+            groupBuyActivityId: String(r.groupBuyActivityId),
+            isLeader: r.isLeader,
+            status: r.status,
+            activity: activityMap.get(String(r.groupBuyActivityId)),
+        }));
     }
 
     /* ------------------------- 私有工具 ------------------------- */

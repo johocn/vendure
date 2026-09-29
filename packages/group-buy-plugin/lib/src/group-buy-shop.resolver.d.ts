@@ -1,10 +1,11 @@
 import { ID, RequestContext } from '@vendure/core';
 import { GroupBuyActivity } from './group-buy-activity.entity';
 import { GroupBuyOrder } from './group-buy-order.entity';
-import { GroupBuyService } from './group-buy.service';
+import { GroupBuyService, MyGroupBuyOrder } from './group-buy.service';
 export declare class GroupBuyShopResolver {
     private groupBuyService;
     constructor(groupBuyService: GroupBuyService);
     activeGroupBuyActivities(ctx: RequestContext): Promise<GroupBuyActivity[]>;
+    myGroupBuyOrders(ctx: RequestContext, isLeader: boolean): Promise<MyGroupBuyOrder[]>;
     joinGroupBuy(ctx: RequestContext, activityId: ID, orderId: ID, isLeader: boolean): Promise<GroupBuyOrder>;
 }

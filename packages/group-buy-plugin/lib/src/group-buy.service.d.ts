@@ -1,13 +1,23 @@
-import { ChannelService, ID, Injector, ListQueryBuilder, ListQueryOptions, OrderService, PaginatedList, PaymentService, RequestContext, TransactionalConnection } from '@vendure/core';
+import { ChannelService, CustomerService, ID, Injector, ListQueryBuilder, ListQueryOptions, OrderService, PaginatedList, PaymentService, RequestContext, TransactionalConnection } from '@vendure/core';
 import { GroupBuyActivity } from './group-buy-activity.entity';
 import { GroupBuyOrder } from './group-buy-order.entity';
+export interface MyGroupBuyOrder {
+    id: string;
+    orderId: string;
+    orderCode?: string;
+    groupBuyActivityId: string;
+    isLeader: boolean;
+    status: string;
+    activity?: GroupBuyActivity;
+}
 export declare class GroupBuyService {
     private connection;
     private listQueryBuilder;
     private channelService;
+    private customerService;
     private orderService;
     private paymentService;
-    constructor(connection: TransactionalConnection, listQueryBuilder: ListQueryBuilder, channelService: ChannelService, orderService: OrderService, paymentService: PaymentService);
+    constructor(connection: TransactionalConnection, listQueryBuilder: ListQueryBuilder, channelService: ChannelService, customerService: CustomerService, orderService: OrderService, paymentService: PaymentService);
     private stockReserveService;
     private stockPrewarmService;
     init(injector: Injector): void;
@@ -36,6 +46,13 @@ export declare class GroupBuyService {
     processExpired(ctx: RequestContext): Promise<GroupBuyActivity[]>;
     findActiveByVariant(ctx: RequestContext, variantId: ID): Promise<GroupBuyActivity[]>;
     findActive(ctx: RequestContext): Promise<GroupBuyActivity[]>;
+    /**
+     * Shop API 专用：「我的开团 / 我的参团」。
+     * GroupBuyOrder 没有 customerId 列，归属只能经 orderId 关联 Order.customerId 反查
+     * （参考 after-sales-plugin 的 resolveCustomerId 桥接思路）。
+     * 渠道过滤走订单 channelId —— GroupBuyOrder.channels 在 joinGroupBuy 里从未写入，不能当过滤条件。
+     */
+    findMyOrders(ctx: RequestContext, isLeader: boolean): Promise<MyGroupBuyOrder[]>;
     /** 活动成团后，把该活动全部 pending 参团记录置 success */
     private markAllSuccess;
     /** 对订单的 Settled 支付逐个退款（拼团失败/过期） */

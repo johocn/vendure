@@ -189,9 +189,20 @@ exports.GroupBuyPlugin = GroupBuyPlugin = GroupBuyPlugin_1 = __decorate([
                 status: String!
             }
 
+            type MyGroupBuyOrder {
+                id: ID!
+                orderId: ID!
+                orderCode: String
+                groupBuyActivityId: ID!
+                isLeader: Boolean!
+                status: String!
+                activity: GroupBuyActivity
+            }
+
             extend type Query {
                 activeGroupBuyActivities: [GroupBuyActivity!]!
                 groupBuyActivity(id: ID!): GroupBuyActivity
+                myGroupBuyOrders(isLeader: Boolean!): [MyGroupBuyOrder!]!
             }
 
             extend type Mutation {
