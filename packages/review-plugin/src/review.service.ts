@@ -18,7 +18,7 @@ import {
 import { loggerCtx, REVIEW_PLUGIN_OPTIONS } from './constants';
 import { Review } from './review.entity';
 import { ReviewPluginOptions } from './types';
-import { IsNull } from 'typeorm';
+import { Between, FindOperator, IsNull, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
 import {
     CreateReviewInput,
     FollowUpReviewInput,
@@ -34,6 +34,20 @@ const ALLOWED_ORDER_STATES = ['Delivered', 'Completed'];
 /** 对外可见且计入评分聚合的状态。 */
 const VISIBLE_STATUS = 'approved';
 const DELETED_STATUS = 'deleted';
+
+/**
+ * 星级档筛选条件：TypeORM 的同一列不能挂两个 FindOperator，故按入参合并为单个。
+ * 入参越界（非 1-5 整数）或 min > max 时返回 undefined，即忽略该筛选（不抛错，避免拖垮 C 端列表）。
+ */
+function buildRatingFilter(min?: number, max?: number): FindOperator<number> | undefined {
+    const inRange = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 1 && (n as number) <= 5;
+    const hasMin = inRange(min);
+    const hasMax = inRange(max);
+    if (hasMin && hasMax) return min! > max! ? undefined : Between(min!, max!);
+    if (hasMin) return MoreThanOrEqual(min!);
+    if (hasMax) return LessThanOrEqual(max!);
+    return undefined;
+}
 
 @Injectable()
 export class ReviewService {
@@ -271,6 +285,7 @@ export class ReviewService {
         productId: ID,
         options?: ReviewListOptions,
     ): Promise<PaginatedList<Review>> {
+        const ratingFilter = buildRatingFilter(options?.ratingMin, options?.ratingMax);
         return this.listQueryBuilder
             .build(
                 Review,
@@ -283,6 +298,7 @@ export class ReviewService {
                         productId: Number(productId),
                         status: VISIBLE_STATUS,
                         parentId: IsNull(),
+                        ...(ratingFilter ? { rating: ratingFilter } : {}),
                     } as any,
                 },
             )

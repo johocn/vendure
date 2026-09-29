@@ -22,6 +22,22 @@ const ALLOWED_ORDER_STATES = ['Delivered', 'Completed'];
 /** 对外可见且计入评分聚合的状态。 */
 const VISIBLE_STATUS = 'approved';
 const DELETED_STATUS = 'deleted';
+/**
+ * 星级档筛选条件：TypeORM 的同一列不能挂两个 FindOperator，故按入参合并为单个。
+ * 入参越界（非 1-5 整数）或 min > max 时返回 undefined，即忽略该筛选（不抛错，避免拖垮 C 端列表）。
+ */
+function buildRatingFilter(min, max) {
+    const inRange = (n) => Number.isInteger(n) && n >= 1 && n <= 5;
+    const hasMin = inRange(min);
+    const hasMax = inRange(max);
+    if (hasMin && hasMax)
+        return min > max ? undefined : (0, typeorm_1.Between)(min, max);
+    if (hasMin)
+        return (0, typeorm_1.MoreThanOrEqual)(min);
+    if (hasMax)
+        return (0, typeorm_1.LessThanOrEqual)(max);
+    return undefined;
+}
 let ReviewService = class ReviewService {
     constructor(options = {}, connection, listQueryBuilder, customerService, productService) {
         this.options = options;
@@ -237,16 +253,13 @@ let ReviewService = class ReviewService {
     }
     /** C 端商品列表：仅对外可见（approved）的主评 + 追评（followUps 由 ResolveField 加载）。 */
     async getProductReviews(ctx, productId, options) {
+        const ratingFilter = buildRatingFilter(options === null || options === void 0 ? void 0 : options.ratingMin, options === null || options === void 0 ? void 0 : options.ratingMax);
         return this.listQueryBuilder
             .build(review_entity_1.Review, Object.assign({}, options), {
             ctx,
             relations: ['channels'],
             channelId: ctx.channelId,
-            where: {
-                productId: Number(productId),
-                status: VISIBLE_STATUS,
-                parentId: (0, typeorm_1.IsNull)(),
-            },
+            where: Object.assign({ productId: Number(productId), status: VISIBLE_STATUS, parentId: (0, typeorm_1.IsNull)() }, (ratingFilter ? { rating: ratingFilter } : {})),
         })
             .getManyAndCount()
             .then(([items, totalItems]) => ({ items, totalItems }));

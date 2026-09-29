@@ -37,6 +37,10 @@ export interface FollowUpReviewInput {
 export interface ReviewListOptions extends ListQueryOptions<Review> {
     productId?: ID;
     status?: string;
+    /** C 端星级档筛选下界（含）。与 ratingMax 可单用/组合；越界（<1 或 >5）与 min>max 由服务层忽略。 */
+    ratingMin?: number;
+    /** C 端星级档筛选上界（含）。 */
+    ratingMax?: number;
 }
 export interface RatingCount {
     rating: number;

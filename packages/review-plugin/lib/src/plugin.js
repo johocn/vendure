@@ -132,6 +132,8 @@ const shopSchema = () => gql `
     input ReviewListOptions {
         skip: Int
         take: Int
+        ratingMin: Int
+        ratingMax: Int
     }
 
     input CreateReviewInput {
