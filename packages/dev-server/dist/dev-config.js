@@ -65,6 +65,7 @@ const live_streaming_plugin_1 = require("@vendure/live-streaming-plugin");
 const shop_plugin_1 = require("@vendure/shop-plugin");
 const pickup_plugin_1 = require("@vendure/pickup-plugin");
 const shop_template_plugin_1 = require("@vendure/shop-template-plugin");
+const favorite_plugin_1 = require("@vendure/favorite-plugin");
 if (!process.env.REDEMPTION_KEY) {
     process.env.REDEMPTION_KEY = 'd'.repeat(64);
 }
@@ -388,6 +389,7 @@ exports.devConfig = {
         vcash_offline_plugin_1.VcashOfflinePlugin,
         checkin_plugin_1.CheckinPlugin.init(),
         review_plugin_1.ReviewPlugin.init(),
+        favorite_plugin_1.FavoritePlugin.init(),
         wechat_subscribe_message_plugin_1.WechatSubscribeMessagePlugin.init(),
         coupon_plugin_1.CouponPlugin.init(),
         live_streaming_plugin_1.LiveStreamingPlugin.init({

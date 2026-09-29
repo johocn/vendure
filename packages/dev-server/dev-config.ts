@@ -72,6 +72,7 @@ import { LiveStreamingPlugin } from '@vendure/live-streaming-plugin';
 import { ShopPlugin } from '@vendure/shop-plugin';
 import { PickupPlugin } from '@vendure/pickup-plugin';
 import { ShopTemplatePlugin } from '@vendure/shop-template-plugin';
+import { FavoritePlugin } from '@vendure/favorite-plugin';
 
 // 本地联调默认注入 REDEMPTION_KEY（AES-GCM/HMAC 密钥，64 hex chars）
 if (!process.env.REDEMPTION_KEY) {
@@ -449,6 +450,8 @@ export const devConfig: VendureConfig = {
         VcashOfflinePlugin,
         CheckinPlugin.init(),
         ReviewPlugin.init(),
+        // 商品收藏 / 店铺关注（toggle 语义，依赖 ShopPlugin 的 Shop 实体）
+        FavoritePlugin.init(),
         WechatSubscribeMessagePlugin.init(),
         CouponPlugin.init(),
         LiveStreamingPlugin.init({
