@@ -9,10 +9,16 @@ import { CustomerService, ListQueryBuilder, Order, PaginatedList, RequestContext
  *
  * 排除 Draft（草稿单）与 AddingItems（顾客正在编辑的购物车单），
  * 保留 ArrangingPayment 及之后所有已下单状态。
+ *
+ * 关系不用手写列表，而是走 core 的 `@Relations(Order)` 装饰器：它按本次 GraphQL 查询的
+ * 选择集推导所需关系，并带上 `@Calculated()` 属性（taxSummary / discounts / totalQuantity）
+ * 声明的关系依赖。手写列表一旦漏项（如漏 `surcharges`）就会整条查询报
+ * 「property "taxSummary" ... requires the Order.surcharges relation to be joined」，
+ * 前端只会表现为「暂无订单」，难以定位。
  */
 export declare class MyOrdersShopResolver {
     private customerService;
     private listQueryBuilder;
     constructor(customerService: CustomerService, listQueryBuilder: ListQueryBuilder);
-    myOrders(ctx: RequestContext, options?: any): Promise<PaginatedList<Order>>;
+    myOrders(ctx: RequestContext, options: any, relations: string[]): Promise<PaginatedList<Order>>;
 }

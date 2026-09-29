@@ -164,4 +164,83 @@ describe('CJK myOrders (shop)', () => {
         expect(res.myOrders.totalItems).toBe(0);
         expect(res.myOrders.items).toEqual([]);
     }, 30000);
+
+    // 回归：vshop 的 ORDER_FRAGMENT 依赖 taxSummary / discounts / shippingMethod / options 等
+    // 需要额外 join 的字段。只查 id/state 的用例无法发现「服务端关系漏 join」——
+    // 漏了 surcharges 会让整条查询返回 INTERNAL_SERVER_ERROR，前端只表现为「暂无订单」。
+    it('⑤ 前端 ORDER_FRAGMENT 的字段都能取到（taxSummary/discounts/shippingMethod/options）', async () => {
+        await shopClient.asUserWithCredentials(emailA, 'test');
+        const res = await shopClient.query(gql`
+            query {
+                myOrders(options: { take: 5 }) {
+                    totalItems
+                    items {
+                        id
+                        code
+                        state
+                        totalQuantity
+                        subTotalWithTax
+                        totalWithTax
+                        shippingWithTax
+                        taxSummary {
+                            description
+                            taxRate
+                            taxTotal
+                        }
+                        currencyCode
+                        createdAt
+                        lines {
+                            id
+                            quantity
+                            linePriceWithTax
+                            unitPriceWithTax
+                            featuredAsset {
+                                preview
+                            }
+                            productVariant {
+                                id
+                                productId
+                                name
+                                enabled
+                                stockLevel
+                                options {
+                                    name
+                                }
+                            }
+                        }
+                        shippingAddress {
+                            fullName
+                            streetLine1
+                        }
+                        shippingLines {
+                            priceWithTax
+                            shippingMethod {
+                                id
+                                name
+                                code
+                            }
+                        }
+                        payments {
+                            id
+                            method
+                            amount
+                            state
+                        }
+                        couponCodes
+                        discounts {
+                            description
+                            amountWithTax
+                        }
+                    }
+                }
+            }
+        `);
+        const order = res.myOrders.items[0];
+        expect(order).toBeDefined();
+        expect(Array.isArray(order.taxSummary)).toBe(true);
+        expect(Array.isArray(order.discounts)).toBe(true);
+        expect(Array.isArray(order.lines)).toBe(true);
+        expect(order.lines[0].productVariant.productId).toBeDefined();
+        expect(typeof order.lines[0].productVariant.enabled).toBe('boolean');
+    }, 30000);
 });

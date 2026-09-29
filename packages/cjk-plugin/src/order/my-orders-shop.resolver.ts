@@ -7,6 +7,7 @@ import {
     Order,
     PaginatedList,
     Permission,
+    Relations as GraphQLRelations,
     RequestContext,
 } from '@vendure/core';
 
@@ -20,6 +21,12 @@ import {
  *
  * 排除 Draft（草稿单）与 AddingItems（顾客正在编辑的购物车单），
  * 保留 ArrangingPayment 及之后所有已下单状态。
+ *
+ * 关系不用手写列表，而是走 core 的 `@Relations(Order)` 装饰器：它按本次 GraphQL 查询的
+ * 选择集推导所需关系，并带上 `@Calculated()` 属性（taxSummary / discounts / totalQuantity）
+ * 声明的关系依赖。手写列表一旦漏项（如漏 `surcharges`）就会整条查询报
+ * 「property "taxSummary" ... requires the Order.surcharges relation to be joined」，
+ * 前端只会表现为「暂无订单」，难以定位。
  */
 @Resolver()
 export class MyOrdersShopResolver {
@@ -32,7 +39,8 @@ export class MyOrdersShopResolver {
     @Allow(Permission.Authenticated)
     async myOrders(
         @Ctx() ctx: RequestContext,
-        @Args('options', { nullable: true }) options?: any,
+        @Args('options', { nullable: true }) options: any,
+        @GraphQLRelations(Order) relations: string[],
     ): Promise<PaginatedList<Order>> {
         if (!ctx.activeUserId) {
             return { items: [], totalItems: 0 };
@@ -43,19 +51,7 @@ export class MyOrdersShopResolver {
         }
         const effectiveOptions = options ?? { take: 10, sort: { createdAt: 'DESC' } };
         return this.listQueryBuilder
-            .build(Order, effectiveOptions, {
-                ctx,
-                channelId: ctx.channelId,
-                relations: [
-                    'lines',
-                    'lines.productVariant',
-                    'lines.featuredAsset',
-                    'lines.productVariant.featuredAsset',
-                    'shippingLines',
-                    'payments',
-                    'customer',
-                ],
-            })
+            .build(Order, effectiveOptions, { ctx, channelId: ctx.channelId, relations })
             .andWhere('order.customer.id = :customerId', { customerId: customer.id })
             .andWhere('order.state NOT IN (:...excludedStates)', {
                 excludedStates: ['Draft', 'AddingItems'],

@@ -25,13 +25,19 @@ const core_1 = require("@vendure/core");
  *
  * 排除 Draft（草稿单）与 AddingItems（顾客正在编辑的购物车单），
  * 保留 ArrangingPayment 及之后所有已下单状态。
+ *
+ * 关系不用手写列表，而是走 core 的 `@Relations(Order)` 装饰器：它按本次 GraphQL 查询的
+ * 选择集推导所需关系，并带上 `@Calculated()` 属性（taxSummary / discounts / totalQuantity）
+ * 声明的关系依赖。手写列表一旦漏项（如漏 `surcharges`）就会整条查询报
+ * 「property "taxSummary" ... requires the Order.surcharges relation to be joined」，
+ * 前端只会表现为「暂无订单」，难以定位。
  */
 let MyOrdersShopResolver = class MyOrdersShopResolver {
     constructor(customerService, listQueryBuilder) {
         this.customerService = customerService;
         this.listQueryBuilder = listQueryBuilder;
     }
-    async myOrders(ctx, options) {
+    async myOrders(ctx, options, relations) {
         if (!ctx.activeUserId) {
             return { items: [], totalItems: 0 };
         }
@@ -41,19 +47,7 @@ let MyOrdersShopResolver = class MyOrdersShopResolver {
         }
         const effectiveOptions = options !== null && options !== void 0 ? options : { take: 10, sort: { createdAt: 'DESC' } };
         return this.listQueryBuilder
-            .build(core_1.Order, effectiveOptions, {
-            ctx,
-            channelId: ctx.channelId,
-            relations: [
-                'lines',
-                'lines.productVariant',
-                'lines.featuredAsset',
-                'lines.productVariant.featuredAsset',
-                'shippingLines',
-                'payments',
-                'customer',
-            ],
-        })
+            .build(core_1.Order, effectiveOptions, { ctx, channelId: ctx.channelId, relations })
             .andWhere('order.customer.id = :customerId', { customerId: customer.id })
             .andWhere('order.state NOT IN (:...excludedStates)', {
             excludedStates: ['Draft', 'AddingItems'],
@@ -68,8 +62,9 @@ __decorate([
     (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('options', { nullable: true })),
+    __param(2, (0, core_1.Relations)(core_1.Order)),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Array]),
     __metadata("design:returntype", Promise)
 ], MyOrdersShopResolver.prototype, "myOrders", null);
 exports.MyOrdersShopResolver = MyOrdersShopResolver = __decorate([
