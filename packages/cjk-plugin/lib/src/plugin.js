@@ -2341,6 +2341,14 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     uploadCustomerAsset(file: Upload!): Asset!
                 }
 
+                # ===== C 端商品变体上架状态 =====
+                # Vendure 默认 shop SDL 的 ProductVariant 不含 enabled（仅 admin-api 有该字段），
+                # 导致 C 端购物车拿到 activeOrder 后无法判定「商品已下架」的行。
+                # 直读实体列 ProductVariant.enabled，走 GraphQL 默认 fieldResolver，无需自定义 resolver。
+                extend type ProductVariant {
+                    enabled: Boolean!
+                }
+
                 ${redemption_schema_1.redemptionShopSchema}
             `;
             },
