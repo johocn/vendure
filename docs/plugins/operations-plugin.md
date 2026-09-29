@@ -2,12 +2,12 @@
 
 ## 概述
 
-`OperationsPlugin` 为 Vendure 提供运营侧统一能力：经营看板聚合、CMS 内容管理（Banner / 推荐位 / 公告 / 楼层 / 图标宫格 / 分类导航，单表多态 + 软删除 + 定时上下线）、营销活动统一管理（秒杀 / 拼团 / 优惠券），以及商品展示值（销量 / 可得积分）重算。
+`OperationsPlugin` 为 Vendure 提供运营侧统一能力：经营看板聚合、CMS 内容管理（Banner / 推荐位 / 公告 / 楼层 / 图标宫格 / 分类导航，单表多态 + 软删除 + 定时上下线）、营销活动统一管理（秒杀 / 拼团，另含券的**只读统计**），以及商品展示值（销量 / 可得积分）重算。
 
 **核心特性：**
 - 经营看板：销售 / 配送 / 客户 / 库存 / 售后 / 营销六类指标，含销售趋势与分类 Top
 - CMS：`ContentItem` 单表多态，`startAt` / `endAt` 到点自动上下线（每日任务 + 每分钟任务）
-- 营销：秒杀 / 拼团 / 优惠券的活动 CRUD 与总览（统一走细分权限）
+- 营销：秒杀 / 拼团的活动 CRUD 与总览，以及券模板的**只读状态统计**（统一走细分权限）。券的 CRUD 由 `coupon-plugin` 自带 API 提供，不在本插件
 - 商品展示值：`Product.salesCount`（销量）与 `Product.pointsReward`（可得积分）由订单与价格派生并落库，C 端直读
 
 **包名：** `@vendure/operations-plugin`
@@ -149,7 +149,7 @@ mutation RecomputeOne($ids: [ID!]) {
 | `contentItem(id: ID!): ContentItem` | 按 `type` 动态判定 | CMS 详情 |
 | `createContentItem / updateContentItem / deleteContentItem` | 按 `type` 动态判定 | CMS 写操作 |
 | `triggerContentLifecycle: ContentLifecycleResult!` | `ManageContent` | 手动触发一次内容上下线检查 |
-| `marketingOverview` / `marketingFlashSale*` / `marketingGroupBuy*` / `marketingCoupon*` | 见 `MarketingAdminResolver` | 营销活动统一管理 |
+| `marketingOverview` / `marketingFlashSale*` / `marketingGroupBuy*` | 见 `MarketingAdminResolver` | 营销活动统一管理（**券不在此**：券的 CRUD 由 coupon-plugin 自带的 `couponTemplates*` / `couponTemplate` / `createCouponTemplate` / … 提供） |
 
 CMS 的 `type → 权限` 映射：`Banner → ManageBanner`、`Recommendation → ManageRecommendation`、`Notice → ManageNotice`、`Floor → ManageFloor`、`IconGrid` / `CategoryNav → ManageContent`。
 
