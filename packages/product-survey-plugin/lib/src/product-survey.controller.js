@@ -18,28 +18,35 @@ const product_survey_service_1 = require("./product-survey.service");
 /**
  * 只读候选商品端点：GET /product-survey/candidates
  * 免登录；渠道由请求头 vendure-token 解析（缺省为默认渠道）。
- * 参数：
+ * 参数（优先级 productIds > collection > onsale）：
+ *  - productIds：逗号分隔的商品 id，按传入顺序返回、查不到的丢弃；数量上限同 take 上限（默认 100），结果不受 take 截断
  *  - collection：Collection slug（选品调研必填）
- *  - onsale：值为 1 时返回该渠道全部上架在售商品；与 collection 同时传时以 collection 优先
+ *  - onsale：值为 1 时返回该渠道全部上架在售商品
  *  - take：默认 50，上限 100
  */
 let ProductSurveyController = class ProductSurveyController {
     constructor(productSurveyService) {
         this.productSurveyService = productSurveyService;
     }
-    getCandidates(vendureToken, collection, onsale, take) {
-        return this.productSurveyService.getCandidates(vendureToken, { collection, onsale, take });
+    getCandidates(vendureToken, productIds, collection, onsale, take) {
+        return this.productSurveyService.getCandidates(vendureToken, {
+            productIds,
+            collection,
+            onsale,
+            take,
+        });
     }
 };
 exports.ProductSurveyController = ProductSurveyController;
 __decorate([
     (0, common_1.Get)('candidates'),
     __param(0, (0, common_1.Headers)('vendure-token')),
-    __param(1, (0, common_1.Query)('collection')),
-    __param(2, (0, common_1.Query)('onsale')),
-    __param(3, (0, common_1.Query)('take')),
+    __param(1, (0, common_1.Query)('productIds')),
+    __param(2, (0, common_1.Query)('collection')),
+    __param(3, (0, common_1.Query)('onsale')),
+    __param(4, (0, common_1.Query)('take')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, String, String, String]),
+    __metadata("design:paramtypes", [Object, String, String, String, String]),
     __metadata("design:returntype", Promise)
 ], ProductSurveyController.prototype, "getCandidates", null);
 exports.ProductSurveyController = ProductSurveyController = __decorate([

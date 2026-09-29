@@ -23,13 +23,15 @@ import { PRODUCT_DETAIL_PATH, PRODUCT_SURVEY_PLUGIN_OPTIONS, SLUG_PATTERN, logge
 import { CandidatesResponse, ProductSurveyPluginOptions, SurveyProductCard, SurveyVariant } from './types';
 
 interface CandidatesParams {
+    productIds?: string;
     collection?: string;
     onsale?: string;
     take?: string;
 }
 
 /**
- * 只读候选商品服务：供 C 端活动页读取候选（含未上架）与上架在售商品。
+ * 只读候选商品服务：供 C 端活动页读取候选（含未上架）、上架在售商品，
+ * 以及运营端指定商品集合（productIds，按传入顺序返回）。
  * 所有价格/链接/图片加工都在服务端完成，C 端不拼不算。
  */
 @Injectable()
@@ -52,12 +54,13 @@ export class ProductSurveyService {
     }
 
     async getCandidates(token: string | undefined, params: CandidatesParams): Promise<CandidatesResponse> {
+        const productIdsRaw = params.productIds?.trim();
         const collectionSlug = params.collection?.trim();
         const onsale = params.onsale === '1';
 
-        // 两个筛选条件都缺省 → 400；同时存在时以 collection 优先
-        if (!collectionSlug && !onsale) {
-            throw new BadRequestException('必须提供 collection 或 onsale=1');
+        // 三个筛选条件都缺省 → 400；同时存在时优先级 productIds > collection > onsale
+        if (!productIdsRaw && !collectionSlug && !onsale) {
+            throw new BadRequestException('必须提供 productIds、collection 或 onsale=1');
         }
 
         const requestedTake = Number.parseInt(params.take ?? '', 10);
@@ -78,6 +81,9 @@ export class ProductSurveyService {
         const channelInfo = { id: String(channel.id), code: channel.code };
 
         try {
+            if (productIdsRaw) {
+                return await this.buildFromProductIds(ctx, channelInfo, productIdsRaw);
+            }
             return collectionSlug
                 ? await this.buildFromCollection(ctx, channelInfo, collectionSlug, take)
                 : await this.buildOnSale(ctx, channelInfo, take);
@@ -190,7 +196,59 @@ export class ProductSurveyService {
     }
 
     /**
-     * 商品卡片转换（两个分支共用）。
+     * productIds 分支：运营端指定商品集合，按传入顺序返回。
+     * - 解析：逗号分隔 → trim → 去空 → 去重保序；非整数 token 直接丢弃
+     * - 顺序：严格等于传入顺序；渠道内查不到的（不存在/不属于本渠道/已删除）丢弃
+     * - 数量：去重后超过 maxTake → 400；结果不按 take 截断（运营已显式定序选品）
+     */
+    private async buildFromProductIds(
+        ctx: RequestContext,
+        channelInfo: { id: string; code: string },
+        rawIds: string,
+    ): Promise<CandidatesResponse> {
+        const orderedIds = [
+            ...new Set(
+                rawIds
+                    .split(',')
+                    .map(s => s.trim())
+                    .filter(s => /^\d+$/.test(s)),
+            ),
+        ];
+        if (orderedIds.length > this.maxTake) {
+            throw new BadRequestException(`productIds 数量超出上限 ${this.maxTake}`);
+        }
+        if (orderedIds.length === 0) {
+            return { channel: channelInfo, collection: null, products: [] };
+        }
+
+        // findByIds：按渠道作用域取商品（不过滤 enabled，未上架亦可见），
+        // 默认关系已含 featuredAsset/assets/translations，且已翻译商品名，无需再传 relations
+        const found = await this.productService.findByIds(ctx, orderedIds);
+        const byId = new Map(found.map(p => [String(p.id), p]));
+        const maxVariants = this.options.maxVariantsPerProduct ?? 20;
+
+        const cards: SurveyProductCard[] = [];
+        for (const id of orderedIds) {
+            const product = byId.get(id);
+            if (!product) {
+                continue;
+            }
+            // findByIds 已翻译商品名；变体通过 getVariantsByProductId 单独取并已应用渠道价税
+            const { items: variants } = await this.productVariantService.getVariantsByProductId(
+                ctx,
+                product.id,
+                {
+                    take: maxVariants,
+                },
+            );
+            cards.push(this.toProductCard(product, variants));
+        }
+
+        return { channel: channelInfo, collection: null, products: cards };
+    }
+
+    /**
+     * 商品卡片转换（三个分支共用）。
      * - 链接：仅当 slug 匹配 ^[a-z0-9][a-z0-9-]*$ 时拼 /pkg-product/pages/detail?slug=<slug>
      * - 价格：统一用 variant.priceWithTax（整数，单位分）转元；<=0 视为未配价
      * - 图片：首个有 featuredAsset 的变体 → 商品 featuredAsset → null

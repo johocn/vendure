@@ -17,7 +17,8 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const constants_1 = require("./constants");
 /**
- * 只读候选商品服务：供 C 端活动页读取候选（含未上架）与上架在售商品。
+ * 只读候选商品服务：供 C 端活动页读取候选（含未上架）、上架在售商品，
+ * 以及运营端指定商品集合（productIds，按传入顺序返回）。
  * 所有价格/链接/图片加工都在服务端完成，C 端不拼不算。
  */
 let ProductSurveyService = class ProductSurveyService {
@@ -38,14 +39,15 @@ let ProductSurveyService = class ProductSurveyService {
         return (_a = this.options.maxTake) !== null && _a !== void 0 ? _a : 100;
     }
     async getCandidates(token, params) {
-        var _a, _b, _c;
-        const collectionSlug = (_a = params.collection) === null || _a === void 0 ? void 0 : _a.trim();
+        var _a, _b, _c, _d;
+        const productIdsRaw = (_a = params.productIds) === null || _a === void 0 ? void 0 : _a.trim();
+        const collectionSlug = (_b = params.collection) === null || _b === void 0 ? void 0 : _b.trim();
         const onsale = params.onsale === '1';
-        // 两个筛选条件都缺省 → 400；同时存在时以 collection 优先
-        if (!collectionSlug && !onsale) {
-            throw new common_1.BadRequestException('必须提供 collection 或 onsale=1');
+        // 三个筛选条件都缺省 → 400；同时存在时优先级 productIds > collection > onsale
+        if (!productIdsRaw && !collectionSlug && !onsale) {
+            throw new common_1.BadRequestException('必须提供 productIds、collection 或 onsale=1');
         }
-        const requestedTake = Number.parseInt((_b = params.take) !== null && _b !== void 0 ? _b : '', 10);
+        const requestedTake = Number.parseInt((_c = params.take) !== null && _c !== void 0 ? _c : '', 10);
         const take = Number.isFinite(requestedTake) && requestedTake > 0
             ? Math.min(requestedTake, this.maxTake)
             : this.defaultTake;
@@ -60,6 +62,9 @@ let ProductSurveyService = class ProductSurveyService {
         });
         const channelInfo = { id: String(channel.id), code: channel.code };
         try {
+            if (productIdsRaw) {
+                return await this.buildFromProductIds(ctx, channelInfo, productIdsRaw);
+            }
             return collectionSlug
                 ? await this.buildFromCollection(ctx, channelInfo, collectionSlug, take)
                 : await this.buildOnSale(ctx, channelInfo, take);
@@ -70,7 +75,7 @@ let ProductSurveyService = class ProductSurveyService {
             }
             // 不泄漏堆栈，仅回传简短 message
             core_1.Logger.error(`候选商品查询失败: ${e === null || e === void 0 ? void 0 : e.message}`, constants_1.loggerCtx);
-            throw new common_1.InternalServerErrorException((_c = e === null || e === void 0 ? void 0 : e.message) !== null && _c !== void 0 ? _c : '内部错误');
+            throw new common_1.InternalServerErrorException((_d = e === null || e === void 0 ? void 0 : e.message) !== null && _d !== void 0 ? _d : '内部错误');
         }
     }
     /** vendure-token 解析渠道；无 header 传 '' 返回默认渠道，非法 token → 400 */
@@ -142,7 +147,46 @@ let ProductSurveyService = class ProductSurveyService {
         return { channel: channelInfo, collection: null, products: cards };
     }
     /**
-     * 商品卡片转换（两个分支共用）。
+     * productIds 分支：运营端指定商品集合，按传入顺序返回。
+     * - 解析：逗号分隔 → trim → 去空 → 去重保序；非整数 token 直接丢弃
+     * - 顺序：严格等于传入顺序；渠道内查不到的（不存在/不属于本渠道/已删除）丢弃
+     * - 数量：去重后超过 maxTake → 400；结果不按 take 截断（运营已显式定序选品）
+     */
+    async buildFromProductIds(ctx, channelInfo, rawIds) {
+        var _a;
+        const orderedIds = [
+            ...new Set(rawIds
+                .split(',')
+                .map(s => s.trim())
+                .filter(s => /^\d+$/.test(s))),
+        ];
+        if (orderedIds.length > this.maxTake) {
+            throw new common_1.BadRequestException(`productIds 数量超出上限 ${this.maxTake}`);
+        }
+        if (orderedIds.length === 0) {
+            return { channel: channelInfo, collection: null, products: [] };
+        }
+        // findByIds：按渠道作用域取商品（不过滤 enabled，未上架亦可见），
+        // 默认关系已含 featuredAsset/assets/translations，且已翻译商品名，无需再传 relations
+        const found = await this.productService.findByIds(ctx, orderedIds);
+        const byId = new Map(found.map(p => [String(p.id), p]));
+        const maxVariants = (_a = this.options.maxVariantsPerProduct) !== null && _a !== void 0 ? _a : 20;
+        const cards = [];
+        for (const id of orderedIds) {
+            const product = byId.get(id);
+            if (!product) {
+                continue;
+            }
+            // findByIds 已翻译商品名；变体通过 getVariantsByProductId 单独取并已应用渠道价税
+            const { items: variants } = await this.productVariantService.getVariantsByProductId(ctx, product.id, {
+                take: maxVariants,
+            });
+            cards.push(this.toProductCard(product, variants));
+        }
+        return { channel: channelInfo, collection: null, products: cards };
+    }
+    /**
+     * 商品卡片转换（三个分支共用）。
      * - 链接：仅当 slug 匹配 ^[a-z0-9][a-z0-9-]*$ 时拼 /pkg-product/pages/detail?slug=<slug>
      * - 价格：统一用 variant.priceWithTax（整数，单位分）转元；<=0 视为未配价
      * - 图片：首个有 featuredAsset 的变体 → 商品 featuredAsset → null
