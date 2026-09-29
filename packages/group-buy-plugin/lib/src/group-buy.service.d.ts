@@ -50,7 +50,9 @@ export declare class GroupBuyService {
      * Shop API 专用：「我的开团 / 我的参团」。
      * GroupBuyOrder 没有 customerId 列，归属只能经 orderId 关联 Order.customerId 反查
      * （参考 after-sales-plugin 的 resolveCustomerId 桥接思路）。
-     * 渠道过滤走订单 channelId —— GroupBuyOrder.channels 在 joinGroupBuy 里从未写入，不能当过滤条件。
+     * 先取当前渠道下该客户的订单 id，再按 orderId 反查拼团记录 —— 不用原生 join 条件，
+     * 因为 orderId 是 varchar 而 Order.id 是 int，Postgres 下 `int = varchar` 会直接报错。
+     * 渠道过滤走订单的 channels 关联：GroupBuyOrder.channels 在 joinGroupBuy 里从未写入，不能当过滤条件。
      */
     findMyOrders(ctx: RequestContext, isLeader: boolean): Promise<MyGroupBuyOrder[]>;
     /** 活动成团后，把该活动全部 pending 参团记录置 success */

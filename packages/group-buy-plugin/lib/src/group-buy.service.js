@@ -281,7 +281,9 @@ let GroupBuyService = class GroupBuyService {
      * Shop API 专用：「我的开团 / 我的参团」。
      * GroupBuyOrder 没有 customerId 列，归属只能经 orderId 关联 Order.customerId 反查
      * （参考 after-sales-plugin 的 resolveCustomerId 桥接思路）。
-     * 渠道过滤走订单 channelId —— GroupBuyOrder.channels 在 joinGroupBuy 里从未写入，不能当过滤条件。
+     * 先取当前渠道下该客户的订单 id，再按 orderId 反查拼团记录 —— 不用原生 join 条件，
+     * 因为 orderId 是 varchar 而 Order.id 是 int，Postgres 下 `int = varchar` 会直接报错。
+     * 渠道过滤走订单的 channels 关联：GroupBuyOrder.channels 在 joinGroupBuy 里从未写入，不能当过滤条件。
      */
     async findMyOrders(ctx, isLeader) {
         if (!ctx.activeUserId) {
@@ -291,24 +293,25 @@ let GroupBuyService = class GroupBuyService {
         if (!customer) {
             return [];
         }
-        const rows = await this.connection
-            .getRepository(ctx, group_buy_order_entity_1.GroupBuyOrder)
-            .createQueryBuilder('gbo')
-            .innerJoin(core_1.Order, 'ord', 'ord.id = gbo.orderId')
+        const orders = await this.connection
+            .getRepository(ctx, core_1.Order)
+            .createQueryBuilder('ord')
+            .innerJoin('ord.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId })
             .where('ord.customerId = :customerId', { customerId: Number(customer.id) })
-            .andWhere('ord.channelId = :channelId', { channelId: ctx.channelId })
-            .andWhere('gbo.isLeader = :isLeader', { isLeader })
-            .orderBy('gbo.createdAt', 'DESC')
+            .select(['ord.id', 'ord.code'])
             .getMany();
+        if (orders.length === 0) {
+            return [];
+        }
+        const orderCodeMap = new Map(orders.map(o => [String(o.id), o.code]));
+        const rows = await this.connection.getRepository(ctx, group_buy_order_entity_1.GroupBuyOrder).find({
+            where: { orderId: (0, typeorm_1.In)(orders.map(o => String(o.id))), isLeader },
+            order: { createdAt: 'DESC' },
+        });
         if (rows.length === 0) {
             return [];
         }
-        // 二次批量取订单 code 与活动详情：GroupBuyOrder 与二者均无 ORM 关联
-        const orderRows = await this.connection.getRepository(ctx, core_1.Order).find({
-            where: { id: (0, typeorm_1.In)(Array.from(new Set(rows.map(r => Number(r.orderId))))) },
-            select: ['id', 'code'],
-        });
-        const orderCodeMap = new Map(orderRows.map(o => [String(o.id), o.code]));
+        // 二次批量取活动详情：GroupBuyOrder 与 GroupBuyActivity 之间没有 ORM 关联
         const activityRows = await this.connection
             .getRepository(ctx, group_buy_activity_entity_1.GroupBuyActivity)
             .find({ where: { id: (0, typeorm_1.In)(Array.from(new Set(rows.map(r => Number(r.groupBuyActivityId))))) } });
