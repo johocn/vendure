@@ -7,6 +7,8 @@ export declare class AfterSalesService {
     private customerService;
     private inventoryService;
     private options;
+    private assetService;
+    private configService;
     constructor(connection: TransactionalConnection, listQueryBuilder: ListQueryBuilder);
     init(injector: Injector): void;
     /**
@@ -33,6 +35,21 @@ export declare class AfterSalesService {
     }): Promise<AfterSalesRequest>;
     cancelRequest(ctx: RequestContext, id: ID): Promise<AfterSalesRequest>;
     updateReturnTracking(ctx: RequestContext, id: ID, trackingNo: string, carrier: string): Promise<AfterSalesRequest>;
+    /** 凭证图白名单 MIME 及其扩展名（扩展名用于 createFromFileStream 判定 MIME） */
+    private static readonly EVIDENCE_MIME_EXT;
+    /** 单张凭证图解码后大小上限（5MB），边界校验，非业务规则 */
+    private static readonly EVIDENCE_MAX_BYTES;
+    /**
+     * 顾客端上传售后凭证图。
+     * 仅做「边界校验 + 落 Asset」，不创建售后单、不写售后业务数据。
+     * 返回绝对值 URL：AssetInterceptorPlugin 只对 GraphQL 类型为 Asset 的字段补绝对前缀，
+     * 这里是 [String!]!，必须自行调用 storageStrategy.toAbsoluteUrl（与 Vendure 自身行为一致）。
+     */
+    uploadEvidence(ctx: RequestContext, images: string[]): Promise<string[]>;
+    /** 解析 `data:image/(png|jpeg|webp);base64,xxx`，非法返回 null */
+    private static parseImageDataUrl;
+    /** 与 AssetInterceptorPlugin 同源：用 assetStorageStrategy.toAbsoluteUrl 补绝对前缀 */
+    private toAbsoluteAssetUrl;
     /**
      * Mutation 保存后重新加载并返回带关系（order/orderLine）的实体。
      * 直接 repo.save() 返回的实体关系未加载，Shop SDL 中 `order: Order!` 非空字段会被自动关系解析取到 null，

@@ -108,6 +108,8 @@ exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
                 createAfterSalesRequest(input: CreateAfterSalesRequestInput!): AfterSalesRequest!
                 cancelAfterSalesRequest(id: ID!): AfterSalesRequest!
                 updateReturnTracking(id: ID!, trackingNo: String!, carrier: String!): AfterSalesRequest!
+                """顾客端上传售后凭证图：入参为 base64 data URL 数组，返回图片 URL 数组（不创建售后单）"""
+                uploadAfterSalesEvidence(images: [String!]!): [String!]!
             }
         `,
             resolvers: [after_sales_shop_resolver_1.AfterSalesShopResolver],
@@ -136,6 +138,9 @@ exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
                 customerId: ID!
                 createdAt: DateTime!
                 updatedAt: DateTime!
+                order: Order
+                orderLine: OrderLine
+                customer: Customer
             }
 
             type AfterSalesRequestAdminList implements PaginatedList {

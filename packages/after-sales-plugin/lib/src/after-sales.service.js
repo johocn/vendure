@@ -8,16 +8,18 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var AfterSalesService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AfterSalesService = void 0;
 const common_1 = require("@nestjs/common");
+const node_stream_1 = require("node:stream");
 const typeorm_1 = require("typeorm");
 const core_1 = require("@vendure/core");
 const constants_1 = require("./constants");
 const after_sales_request_entity_1 = require("./after-sales-request.entity");
 const types_1 = require("./types");
 const inventory_plugin_1 = require("@vendure/inventory-plugin");
-let AfterSalesService = class AfterSalesService {
+let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
     constructor(connection, listQueryBuilder) {
         this.connection = connection;
         this.listQueryBuilder = listQueryBuilder;
@@ -25,6 +27,8 @@ let AfterSalesService = class AfterSalesService {
         this.customerService = null;
         this.inventoryService = null;
         this.options = {};
+        this.assetService = null;
+        this.configService = null;
     }
     init(injector) {
         var _a, _b;
@@ -43,6 +47,8 @@ let AfterSalesService = class AfterSalesService {
         catch (_c) {
             this.options = {};
         }
+        this.assetService = injector.get(core_1.AssetService);
+        this.configService = injector.get(core_1.ConfigService);
     }
     /**
      * 当前登录用户对应的 Customer 主键。
@@ -213,6 +219,73 @@ let AfterSalesService = class AfterSalesService {
         request.state = 'Returning';
         const saved = await repo.save(request);
         return this.hydrate(ctx, saved.id);
+    }
+    /**
+     * 顾客端上传售后凭证图。
+     * 仅做「边界校验 + 落 Asset」，不创建售后单、不写售后业务数据。
+     * 返回绝对值 URL：AssetInterceptorPlugin 只对 GraphQL 类型为 Asset 的字段补绝对前缀，
+     * 这里是 [String!]!，必须自行调用 storageStrategy.toAbsoluteUrl（与 Vendure 自身行为一致）。
+     */
+    async uploadEvidence(ctx, images) {
+        if (!ctx.activeUserId) {
+            throw new core_1.UnauthorizedError();
+        }
+        if (!Array.isArray(images) || images.length === 0) {
+            throw new core_1.UserInputError('No evidence image provided');
+        }
+        if (!this.assetService || !this.configService) {
+            throw new Error('AssetService not initialized');
+        }
+        const urls = [];
+        for (const dataUrl of images) {
+            const parsed = AfterSalesService_1.parseImageDataUrl(dataUrl);
+            if (!parsed) {
+                throw new core_1.UserInputError('Invalid evidence image: only png/jpeg/webp data URL is allowed');
+            }
+            if (parsed.buffer.length > AfterSalesService_1.EVIDENCE_MAX_BYTES) {
+                throw new core_1.UserInputError(`Evidence image too large: ${parsed.buffer.length} bytes exceeds ${AfterSalesService_1.EVIDENCE_MAX_BYTES} bytes`);
+            }
+            const filename = `after-sales-evidence-${Date.now()}-${Math.floor(Math.random() * 1e6)}.${parsed.ext}`;
+            const asset = await this.assetService.createFromFileStream(node_stream_1.Readable.from(parsed.buffer), filename, ctx);
+            if ((0, core_1.isGraphQlErrorResult)(asset)) {
+                throw new core_1.UserInputError(`Failed to create asset: ${asset.message}`);
+            }
+            urls.push(this.toAbsoluteAssetUrl(ctx, asset.preview));
+        }
+        core_1.Logger.info(`Uploaded ${urls.length} after-sales evidence image(s) by user ${ctx.activeUserId}`, constants_1.loggerCtx);
+        return urls;
+    }
+    /** 解析 `data:image/(png|jpeg|webp);base64,xxx`，非法返回 null */
+    static parseImageDataUrl(dataUrl) {
+        if (typeof dataUrl !== 'string')
+            return null;
+        const match = /^data:(image\/[a-z+.-]+);base64,([\s\S]+)$/i.exec(dataUrl.trim());
+        if (!match)
+            return null;
+        const mime = match[1].toLowerCase();
+        const ext = AfterSalesService_1.EVIDENCE_MIME_EXT[mime];
+        if (!ext)
+            return null;
+        try {
+            const buffer = Buffer.from(match[2], 'base64');
+            if (buffer.length === 0)
+                return null;
+            return { buffer, ext };
+        }
+        catch (_a) {
+            return null;
+        }
+    }
+    /** 与 AssetInterceptorPlugin 同源：用 assetStorageStrategy.toAbsoluteUrl 补绝对前缀 */
+    toAbsoluteAssetUrl(ctx, preview) {
+        var _a;
+        if (!preview)
+            return '';
+        const strategy = (_a = this.configService) === null || _a === void 0 ? void 0 : _a.assetOptions.assetStorageStrategy;
+        if ((strategy === null || strategy === void 0 ? void 0 : strategy.toAbsoluteUrl) && ctx.req) {
+            return strategy.toAbsoluteUrl(ctx.req, preview);
+        }
+        return preview;
     }
     /**
      * Mutation 保存后重新加载并返回带关系（order/orderLine）的实体。
@@ -456,7 +529,15 @@ let AfterSalesService = class AfterSalesService {
     }
 };
 exports.AfterSalesService = AfterSalesService;
-exports.AfterSalesService = AfterSalesService = __decorate([
+/** 凭证图白名单 MIME 及其扩展名（扩展名用于 createFromFileStream 判定 MIME） */
+AfterSalesService.EVIDENCE_MIME_EXT = {
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/webp': 'webp',
+};
+/** 单张凭证图解码后大小上限（5MB），边界校验，非业务规则 */
+AfterSalesService.EVIDENCE_MAX_BYTES = 5 * 1024 * 1024;
+exports.AfterSalesService = AfterSalesService = AfterSalesService_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
         core_1.ListQueryBuilder])

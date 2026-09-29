@@ -8,4 +8,5 @@ export declare class AfterSalesShopResolver {
     createAfterSalesRequest(ctx: RequestContext, input: any): Promise<any>;
     cancelAfterSalesRequest(ctx: RequestContext, id: number): Promise<any>;
     updateReturnTracking(ctx: RequestContext, id: number, trackingNo: string, carrier: string): Promise<any>;
+    uploadAfterSalesEvidence(ctx: RequestContext, images: string[]): Promise<string[]>;
 }
