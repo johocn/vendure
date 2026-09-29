@@ -238,4 +238,24 @@ describe('OperationsPlugin · 商品销量/积分重算', () => {
         const stats = await readStats();
         expect(stats.salesCount).toBe(9); // realSalesCount 2 + bonusSales 7
     });
+
+    it('用例7 软删除商品不参与重算（全量不抛错、指定 id 返回 0）', async () => {
+        const doomed = await createProduct('stats-test-product-3', 'stats-v3', 500);
+        await settle();
+
+        const del = (await adminClient.query(gql`
+            mutation {
+                deleteProduct(id: "${doomed.productId}") { result message }
+            }
+        `)) as any;
+        expect(del.deleteProduct.result).toBe('DELETED');
+        await settle();
+
+        // `Product.deletedAt` 是普通 @Column，TypeORM 的 find() 不会自动过滤软删除行，
+        // 而 ProductService.update 会过滤 —— 不过滤就会抛 EntityNotFoundError（线上 id=1 的软删除行踩过）。
+        expect(await recompute()).toBe(0);
+
+        // 显式指定已软删除的商品 id：同样不得抛错，且不产生更新
+        expect(await recompute([doomed.productId])).toBe(0);
+    });
 });

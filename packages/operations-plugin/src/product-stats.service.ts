@@ -44,14 +44,13 @@ export class ProductStatsService {
         private productService: ProductService,
     ) {}
 
-    /** 全量重算（分页遍历所有商品）。返回本次实际被更新的商品数。 */
+    /** 全量重算（分页遍历所有**未软删除**的商品）。返回本次实际被更新的商品数。 */
     async recomputeAll(ctx: RequestContext): Promise<number> {
         let skip = 0;
         let updated = 0;
         // eslint-disable-next-line no-constant-condition
         while (true) {
-            const page: Product[] = await this.connection.getRepository(ctx, Product).find({
-                order: { id: 'ASC' },
+            const page: Product[] = await this.findAliveProducts(ctx, {
                 skip,
                 take: PRODUCT_PAGE_SIZE,
             });
@@ -83,7 +82,7 @@ export class ProductStatsService {
         const [salesMap, priceMap, products] = await Promise.all([
             this.aggregateSales(ctx, ids),
             this.aggregateMinPrices(ctx, ids),
-            this.connection.getRepository(ctx, Product).find({ where: ids.map(id => ({ id })) as any }),
+            this.findAliveProducts(ctx, { ids }),
         ]);
 
         let updated = 0;
@@ -110,6 +109,33 @@ export class ProductStatsService {
             updated++;
         }
         return updated;
+    }
+
+    /**
+     * 取**未软删除**的商品。
+     *
+     * 注意：`Product.deletedAt` 是普通 `@Column`（不是 `@DeleteDateColumn`，Vendure 用 `SoftDeletable`
+     * 自行管理软删除），因此 TypeORM 的 `find()` **不会**自动过滤软删除行；而 `ProductService.update`
+     * 内部会过滤。把软删除商品交给 `update` 就会抛 `EntityNotFoundError`（线上已被这个坑打到：
+     * `product` 表 83 行里仅 18 行存活，全量重算时第一个软删除行 id=1 直接报 `No Product with the id "1"`）。
+     * 这里显式排除 `deletedAt IS NOT NULL`。
+     */
+    private findAliveProducts(
+        ctx: RequestContext,
+        options: { ids?: number[]; skip?: number; take?: number },
+    ): Promise<Product[]> {
+        const qb = this.connection
+            .getRepository(ctx, Product)
+            .createQueryBuilder('product')
+            .where('product.deletedAt IS NULL');
+        if (options.ids) {
+            return qb.andWhere('product.id IN (:...ids)', { ids: options.ids }).getMany();
+        }
+        return qb
+            .orderBy('product.id', 'ASC')
+            .skip(options.skip ?? 0)
+            .take(options.take ?? PRODUCT_PAGE_SIZE)
+            .getMany();
     }
 
     /**
