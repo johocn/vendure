@@ -1,6 +1,7 @@
 import { ID, RequestContext } from '@vendure/core';
 import { ContentService } from './content.service';
 import { OperationsDashboardService } from './operations-dashboard.service';
+import { ProductStatsService } from './product-stats.service';
 /**
  * @description
  * Operations Admin API Resolver (schema-first mode).
@@ -13,7 +14,8 @@ import { OperationsDashboardService } from './operations-dashboard.service';
 export declare class OperationsAdminResolver {
     private dashboardService;
     private contentService;
-    constructor(dashboardService: OperationsDashboardService, contentService: ContentService);
+    private productStatsService;
+    constructor(dashboardService: OperationsDashboardService, contentService: ContentService, productStatsService: ProductStatsService);
     dashboardOverview(ctx: RequestContext, range: string): Promise<{
         sales: {
             orderCount: number;
@@ -77,6 +79,7 @@ export declare class OperationsAdminResolver {
         published: number;
         unpublished: number;
     }>;
+    recomputeProductStats(ctx: RequestContext, productIds?: ID[]): Promise<number>;
     private assertContentPermission;
     private getPermissionByType;
 }

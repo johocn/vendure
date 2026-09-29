@@ -19,6 +19,7 @@ const core_1 = require("@vendure/core");
 const constants_1 = require("./constants");
 const content_service_1 = require("./content.service");
 const operations_dashboard_service_1 = require("./operations-dashboard.service");
+const product_stats_service_1 = require("./product-stats.service");
 /**
  * @description
  * Operations Admin API Resolver (schema-first mode).
@@ -29,9 +30,10 @@ const operations_dashboard_service_1 = require("./operations-dashboard.service")
  * - createContentItem / updateContentItem / deleteContentItem → dynamic by type (manual auth)
  */
 let OperationsAdminResolver = class OperationsAdminResolver {
-    constructor(dashboardService, contentService) {
+    constructor(dashboardService, contentService, productStatsService) {
         this.dashboardService = dashboardService;
         this.contentService = contentService;
+        this.productStatsService = productStatsService;
     }
     // ===== Dashboard =====
     async dashboardOverview(ctx, range) {
@@ -92,6 +94,13 @@ let OperationsAdminResolver = class OperationsAdminResolver {
     // ===== Manual lifecycle trigger (admin/testing) =====
     async triggerContentLifecycle(ctx) {
         return this.contentService.runLifecycleCheck(ctx);
+    }
+    // ===== Product stats manual recompute (admin backfill / correction) =====
+    async recomputeProductStats(ctx, productIds) {
+        if (!productIds || productIds.length === 0) {
+            return this.productStatsService.recomputeAll(ctx);
+        }
+        return this.productStatsService.recomputeForProducts(ctx, productIds);
     }
     // ===== Dynamic permission check =====
     assertContentPermission(ctx, type) {
@@ -200,8 +209,18 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext]),
     __metadata("design:returntype", Promise)
 ], OperationsAdminResolver.prototype, "triggerContentLifecycle", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateProduct),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)({ name: 'productIds', type: () => [core_1.ID], nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Array]),
+    __metadata("design:returntype", Promise)
+], OperationsAdminResolver.prototype, "recomputeProductStats", null);
 exports.OperationsAdminResolver = OperationsAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [operations_dashboard_service_1.OperationsDashboardService,
-        content_service_1.ContentService])
+        content_service_1.ContentService,
+        product_stats_service_1.ProductStatsService])
 ], OperationsAdminResolver);

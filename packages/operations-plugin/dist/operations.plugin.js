@@ -28,6 +28,9 @@ const marketing_overview_service_1 = require("./marketing/marketing-overview.ser
 const operations_admin_resolver_1 = require("./operations-admin.resolver");
 const operations_dashboard_service_1 = require("./operations-dashboard.service");
 const operations_shop_resolver_1 = require("./operations-shop.resolver");
+const product_stats_service_1 = require("./product-stats.service");
+const product_stats_subscriber_1 = require("./product-stats.subscriber");
+const product_stats_task_1 = require("./product-stats.task");
 const role_sync_1 = require("./role-sync");
 const { gql } = require('graphql-tag');
 let OperationsPlugin = OperationsPlugin_1 = class OperationsPlugin {
@@ -64,6 +67,8 @@ exports.OperationsPlugin = OperationsPlugin = OperationsPlugin_1 = __decorate([
             group_buy_service_1.GroupBuyMarketingService,
             coupon_service_1.CouponMarketingService,
             marketing_overview_service_1.MarketingOverviewService,
+            product_stats_service_1.ProductStatsService,
+            product_stats_subscriber_1.ProductStatsSubscriber,
         ],
         adminApiExtensions: {
             schema: () => gql `
@@ -204,6 +209,9 @@ exports.OperationsPlugin = OperationsPlugin = OperationsPlugin_1 = __decorate([
                 updateContentItem(id: ID!, input: UpdateContentItemInput!): ContentItem!
                 deleteContentItem(id: ID!): Boolean!
                 triggerContentLifecycle: ContentLifecycleResult!
+
+                # 商品展示值（销量/可得积分）重算；省略 productIds = 全量重算。返回实际被更新的商品数。
+                recomputeProductStats(productIds: [ID!]): Int!
             }
 
             # ===== Marketing Overview =====
@@ -436,16 +444,17 @@ exports.OperationsPlugin = OperationsPlugin = OperationsPlugin_1 = __decorate([
         },
         configuration: (config) => {
             var _a, _b, _c;
-            // Register ScheduledTask for content lifecycle
+            // 注册 ScheduledTask：内容自动上下线 + 商品展示值每日重算
             if (!config.schedulerOptions) {
                 config.schedulerOptions = { tasks: [] };
             }
             if (!config.schedulerOptions.tasks) {
                 config.schedulerOptions.tasks = [];
             }
-            const exists = config.schedulerOptions.tasks.some(t => t.id === content_lifecycle_task_1.contentLifecycleTask.id);
-            if (!exists) {
-                config.schedulerOptions.tasks.push(content_lifecycle_task_1.contentLifecycleTask);
+            for (const task of [content_lifecycle_task_1.contentLifecycleTask, product_stats_task_1.productStatsTask]) {
+                if (!config.schedulerOptions.tasks.some(t => t.id === task.id)) {
+                    config.schedulerOptions.tasks.push(task);
+                }
             }
             // 合并自定义字段：Product.displayTemplate 与 Channel.themeId
             config.customFields = (_a = config.customFields) !== null && _a !== void 0 ? _a : {};

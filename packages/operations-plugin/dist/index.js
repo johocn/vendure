@@ -19,3 +19,4 @@ __exportStar(require("./constants"), exports);
 __exportStar(require("./operations-dashboard.service"), exports);
 __exportStar(require("./content.service"), exports);
 __exportStar(require("./entities/content-item.entity"), exports);
+__exportStar(require("./product-stats.service"), exports);

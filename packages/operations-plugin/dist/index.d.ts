@@ -3,3 +3,4 @@ export * from './constants';
 export * from './operations-dashboard.service';
 export * from './content.service';
 export * from './entities/content-item.entity';
+export * from './product-stats.service';
