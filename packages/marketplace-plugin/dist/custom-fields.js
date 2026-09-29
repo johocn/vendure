@@ -100,6 +100,43 @@ exports.marketplaceCustomFields = {
             label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '服务保障（JSON 数组）' }],
             description: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '存 JSON 字符串数组，如 ["genuine","fastShip"]；code 对应频道方案库 serviceSchemes' }],
         },
+        {
+            name: 'salesCount',
+            type: 'int',
+            defaultValue: 0,
+            public: true,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '展示销量' }],
+            description: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '由 ProductStatsService 重算写回：realSalesCount + bonusSales；C 端只读此字段' }],
+        },
+        {
+            name: 'realSalesCount',
+            type: 'int',
+            defaultValue: 0,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '真实销量（订单聚合）' }],
+            description: [{ languageCode: core_1.LanguageCode.zh_Hans, value: 'Σ orderLine.quantity，仅计已支付及之后状态的订单；全渠道合计；每日 03:05 重算' }],
+        },
+        {
+            name: 'bonusSales',
+            type: 'int',
+            defaultValue: 0,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '展示基数（运营手填）' }],
+            description: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '叠加在真实销量之上的展示基数；改动后展示值即时重算' }],
+        },
+        {
+            name: 'pointsReward',
+            type: 'int',
+            nullable: true,
+            public: true,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '可得积分（展示）' }],
+            description: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '由 ProductStatsService 重算写回：pointsRewardOverride ?? 最低变体不含税价' }],
+        },
+        {
+            name: 'pointsRewardOverride',
+            type: 'int',
+            nullable: true,
+            label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '可得积分覆盖值' }],
+            description: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '填了则直接作为展示积分，不再按价格派生' }],
+        },
     ],
     Order: [
         {
