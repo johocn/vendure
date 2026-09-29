@@ -391,4 +391,26 @@ describe('AfterSalesPlugin · 售后退款/回补入账本闭环', () => {
         `);
         expect(retried.retryAfterSalesRefund.state).toBe('Refunded');
     }, TEST_SETUP_TIMEOUT_MS);
+
+    it('Admin 类型暴露 order / orderLine / customer 只读嵌套字段', async () => {
+        // 复用第 1 个用例已创建的售后单：列表取一条即可（findAll 已预加载 relations）
+        const res = await adminClient.query(gql`
+            query {
+                afterSalesRequests(options: { take: 1 }) {
+                    items {
+                        id
+                        state
+                        order { id code }
+                        orderLine { id quantity }
+                        customer { id firstName lastName }
+                    }
+                }
+            }
+        `);
+        const row = res.afterSalesRequests.items[0];
+        expect(row).toBeDefined();
+        expect(row.order?.code).toBeTruthy();
+        expect(row.orderLine?.id).toBeTruthy();
+        expect(row.customer?.id).toBeTruthy();
+    }, TEST_SETUP_TIMEOUT_MS);
 });

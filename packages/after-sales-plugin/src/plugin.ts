@@ -105,6 +105,9 @@ const { gql } = require('graphql-tag');
                 customerId: ID!
                 createdAt: DateTime!
                 updatedAt: DateTime!
+                order: Order
+                orderLine: OrderLine
+                customer: Customer
             }
 
             type AfterSalesRequestAdminList implements PaginatedList {
