@@ -226,4 +226,16 @@ describe('OperationsPlugin · 商品销量/积分重算', () => {
         // 已收敛 → 全量重算不再写任何商品
         expect(await recompute()).toBe(0);
     });
+
+    it('用例6 后台改基数后无需手动重算即生效（事件订阅）', async () => {
+        await adminClient.query(gql`
+            mutation {
+                updateProduct(input: { id: "${productId}", customFields: { bonusSales: 7 } }) { id }
+            }
+        `);
+        await settle();
+
+        const stats = await readStats();
+        expect(stats.salesCount).toBe(9); // realSalesCount 2 + bonusSales 7
+    });
 });

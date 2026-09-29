@@ -19,6 +19,8 @@ import { OperationsAdminResolver } from './operations-admin.resolver';
 import { OperationsDashboardService } from './operations-dashboard.service';
 import { OperationsShopResolver } from './operations-shop.resolver';
 import { ProductStatsService } from './product-stats.service';
+import { ProductStatsSubscriber } from './product-stats.subscriber';
+import { productStatsTask } from './product-stats.task';
 import { RoleSyncService } from './role-sync';
 
 const { gql } = require('graphql-tag');
@@ -34,6 +36,7 @@ const { gql } = require('graphql-tag');
         CouponMarketingService,
         MarketingOverviewService,
         ProductStatsService,
+        ProductStatsSubscriber,
     ],
     adminApiExtensions: {
         schema: () => gql`
@@ -408,16 +411,17 @@ const { gql } = require('graphql-tag');
         resolvers: [OperationsShopResolver],
     },
     configuration: (config) => {
-        // Register ScheduledTask for content lifecycle
+        // 注册 ScheduledTask：内容自动上下线 + 商品展示值每日重算
         if (!config.schedulerOptions) {
             config.schedulerOptions = { tasks: [] } as any;
         }
         if (!config.schedulerOptions.tasks) {
             config.schedulerOptions.tasks = [];
         }
-        const exists = config.schedulerOptions.tasks.some(t => t.id === contentLifecycleTask.id);
-        if (!exists) {
-            config.schedulerOptions.tasks.push(contentLifecycleTask);
+        for (const task of [contentLifecycleTask, productStatsTask]) {
+            if (!config.schedulerOptions.tasks.some(t => t.id === task.id)) {
+                config.schedulerOptions.tasks.push(task);
+            }
         }
 
         // 合并自定义字段：Product.displayTemplate 与 Channel.themeId
