@@ -1,6 +1,6 @@
 # Vendure 中国本地化插件集 - 使用手册
 
-基于 Vendure v3.6.x 的中国电商本地化插件集，包含 16 个独立插件包，覆盖支付、物流、认证、营销等核心场景。
+基于 Vendure v3.6.x 的中国电商本地化插件集，包含 17 个独立插件包，覆盖支付、物流、认证、营销等核心场景。
 
 ## 插件列表
 
@@ -36,6 +36,7 @@
 | [物流查询](./logistics-api-plugin.md) | `@vendure/logistics-api-plugin` | 快递100 物流轨迹查询 |
 | [发票 PDF](./invoice-pdf-plugin.md) | `@vendure/invoice-pdf-plugin` | 生成中国税务发票 PDF |
 | [商品收藏](./favorite-plugin.md) | `@vendure/favorite-plugin` | 商品收藏 / 店铺关注（toggle 语义），收藏数快照 |
+| [运营中台](./operations-plugin.md) | `@vendure/operations-plugin` | 经营看板、CMS 内容管理、营销活动统一管理、商品销量/积分重算 |
 
 ### 营销
 
