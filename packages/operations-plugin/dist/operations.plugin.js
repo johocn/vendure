@@ -20,7 +20,6 @@ const content_lifecycle_task_1 = require("./content-lifecycle.task");
 const content_service_1 = require("./content.service");
 const constants_1 = require("./constants");
 const content_item_entity_1 = require("./entities/content-item.entity");
-const coupon_service_1 = require("./marketing/coupon.service");
 const flash_sale_service_1 = require("./marketing/flash-sale.service");
 const group_buy_service_1 = require("./marketing/group-buy.service");
 const marketing_admin_resolver_1 = require("./marketing/marketing-admin.resolver");
@@ -65,7 +64,6 @@ exports.OperationsPlugin = OperationsPlugin = OperationsPlugin_1 = __decorate([
             content_service_1.ContentService,
             flash_sale_service_1.FlashSaleMarketingService,
             group_buy_service_1.GroupBuyMarketingService,
-            coupon_service_1.CouponMarketingService,
             marketing_overview_service_1.MarketingOverviewService,
             product_stats_service_1.ProductStatsService,
             product_stats_subscriber_1.ProductStatsSubscriber,
@@ -331,68 +329,6 @@ exports.OperationsPlugin = OperationsPlugin = OperationsPlugin_1 = __decorate([
                 rewardRules: JSON
             }
 
-            # ===== Coupon (prefixed types/inputs to avoid clash with CouponPlugin) =====
-            type MarketingCoupon {
-                id: ID!
-                name: String!
-                description: String
-                couponType: String!
-                discountValue: Int!
-                minSpend: Int!
-                maxDiscount: Int!
-                startAt: DateTime!
-                endAt: DateTime!
-                totalQuantity: Int!
-                claimedCount: Int!
-                limitPerUser: Int!
-                isActive: Boolean!
-                applicableProductIds: JSON
-                applicableCategoryIds: JSON
-                isNewUserOnly: Boolean!
-                isGlobal: Boolean!
-                enabledInCurrentChannel: Boolean!
-                createdAt: DateTime!
-                updatedAt: DateTime!
-            }
-
-            type MarketingCouponList {
-                items: [MarketingCoupon!]!
-                totalItems: Int!
-            }
-
-            input MarketingCreateCouponInput {
-                name: String!
-                description: String
-                couponType: String!
-                discountValue: Int!
-                minSpend: Int
-                maxDiscount: Int
-                startAt: DateTime!
-                endAt: DateTime!
-                totalQuantity: Int!
-                limitPerUser: Int
-                isNewUserOnly: Boolean
-                isGlobal: Boolean
-                applicableProductIds: JSON
-                applicableCategoryIds: JSON
-            }
-
-            input MarketingUpdateCouponInput {
-                name: String
-                description: String
-                couponType: String
-                discountValue: Int
-                minSpend: Int
-                maxDiscount: Int
-                startAt: DateTime
-                endAt: DateTime
-                totalQuantity: Int
-                limitPerUser: Int
-                isNewUserOnly: Boolean
-                applicableProductIds: JSON
-                applicableCategoryIds: JSON
-            }
-
             # ===== Marketing Queries & Mutations =====
             extend type Query {
                 marketingOverview: MarketingOverview!
@@ -400,8 +336,6 @@ exports.OperationsPlugin = OperationsPlugin = OperationsPlugin_1 = __decorate([
                 marketingFlashSaleActivity(id: ID!): MarketingFlashSaleActivity
                 marketingGroupBuyActivities(options: JSON): MarketingGroupBuyActivityList!
                 marketingGroupBuyActivity(id: ID!): MarketingGroupBuyActivity
-                marketingCoupons(options: JSON): MarketingCouponList!
-                marketingCoupon(id: ID!): MarketingCoupon
             }
 
             extend type Mutation {
@@ -412,12 +346,6 @@ exports.OperationsPlugin = OperationsPlugin = OperationsPlugin_1 = __decorate([
                 createGroupBuy(input: CreateGroupBuyInput!): MarketingGroupBuyActivity!
                 updateGroupBuy(input: UpdateGroupBuyInput!): MarketingGroupBuyActivity!
                 deleteGroupBuy(id: ID!): Boolean!
-
-                marketingCreateCoupon(input: MarketingCreateCouponInput!): MarketingCoupon!
-                marketingUpdateCoupon(id: ID!, input: MarketingUpdateCouponInput!): MarketingCoupon!
-                marketingDeleteCoupon(id: ID!): Boolean!
-                marketingEnableCouponForChannel(id: ID!): MarketingCoupon!
-                marketingDisableCouponForChannel(id: ID!): MarketingCoupon!
             }
         `,
             resolvers: [operations_admin_resolver_1.OperationsAdminResolver, marketing_admin_resolver_1.MarketingAdminResolver],

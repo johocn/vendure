@@ -10,7 +10,6 @@ import { contentLifecycleTask } from './content-lifecycle.task';
 import { ContentService } from './content.service';
 import { loggerCtx } from './constants';
 import { ContentItem } from './entities/content-item.entity';
-import { CouponMarketingService } from './marketing/coupon.service';
 import { FlashSaleMarketingService } from './marketing/flash-sale.service';
 import { GroupBuyMarketingService } from './marketing/group-buy.service';
 import { MarketingAdminResolver } from './marketing/marketing-admin.resolver';
@@ -33,7 +32,6 @@ const { gql } = require('graphql-tag');
         ContentService,
         FlashSaleMarketingService,
         GroupBuyMarketingService,
-        CouponMarketingService,
         MarketingOverviewService,
         ProductStatsService,
         ProductStatsSubscriber,
@@ -299,68 +297,6 @@ const { gql } = require('graphql-tag');
                 rewardRules: JSON
             }
 
-            # ===== Coupon (prefixed types/inputs to avoid clash with CouponPlugin) =====
-            type MarketingCoupon {
-                id: ID!
-                name: String!
-                description: String
-                couponType: String!
-                discountValue: Int!
-                minSpend: Int!
-                maxDiscount: Int!
-                startAt: DateTime!
-                endAt: DateTime!
-                totalQuantity: Int!
-                claimedCount: Int!
-                limitPerUser: Int!
-                isActive: Boolean!
-                applicableProductIds: JSON
-                applicableCategoryIds: JSON
-                isNewUserOnly: Boolean!
-                isGlobal: Boolean!
-                enabledInCurrentChannel: Boolean!
-                createdAt: DateTime!
-                updatedAt: DateTime!
-            }
-
-            type MarketingCouponList {
-                items: [MarketingCoupon!]!
-                totalItems: Int!
-            }
-
-            input MarketingCreateCouponInput {
-                name: String!
-                description: String
-                couponType: String!
-                discountValue: Int!
-                minSpend: Int
-                maxDiscount: Int
-                startAt: DateTime!
-                endAt: DateTime!
-                totalQuantity: Int!
-                limitPerUser: Int
-                isNewUserOnly: Boolean
-                isGlobal: Boolean
-                applicableProductIds: JSON
-                applicableCategoryIds: JSON
-            }
-
-            input MarketingUpdateCouponInput {
-                name: String
-                description: String
-                couponType: String
-                discountValue: Int
-                minSpend: Int
-                maxDiscount: Int
-                startAt: DateTime
-                endAt: DateTime
-                totalQuantity: Int
-                limitPerUser: Int
-                isNewUserOnly: Boolean
-                applicableProductIds: JSON
-                applicableCategoryIds: JSON
-            }
-
             # ===== Marketing Queries & Mutations =====
             extend type Query {
                 marketingOverview: MarketingOverview!
@@ -368,8 +304,6 @@ const { gql } = require('graphql-tag');
                 marketingFlashSaleActivity(id: ID!): MarketingFlashSaleActivity
                 marketingGroupBuyActivities(options: JSON): MarketingGroupBuyActivityList!
                 marketingGroupBuyActivity(id: ID!): MarketingGroupBuyActivity
-                marketingCoupons(options: JSON): MarketingCouponList!
-                marketingCoupon(id: ID!): MarketingCoupon
             }
 
             extend type Mutation {
@@ -380,12 +314,6 @@ const { gql } = require('graphql-tag');
                 createGroupBuy(input: CreateGroupBuyInput!): MarketingGroupBuyActivity!
                 updateGroupBuy(input: UpdateGroupBuyInput!): MarketingGroupBuyActivity!
                 deleteGroupBuy(id: ID!): Boolean!
-
-                marketingCreateCoupon(input: MarketingCreateCouponInput!): MarketingCoupon!
-                marketingUpdateCoupon(id: ID!, input: MarketingUpdateCouponInput!): MarketingCoupon!
-                marketingDeleteCoupon(id: ID!): Boolean!
-                marketingEnableCouponForChannel(id: ID!): MarketingCoupon!
-                marketingDisableCouponForChannel(id: ID!): MarketingCoupon!
             }
         `,
         resolvers: [OperationsAdminResolver, MarketingAdminResolver],

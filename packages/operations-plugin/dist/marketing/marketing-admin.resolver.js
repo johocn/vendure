@@ -16,20 +16,22 @@ exports.MarketingAdminResolver = void 0;
 const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
 const constants_1 = require("../constants");
-const coupon_service_1 = require("./coupon.service");
 const flash_sale_service_1 = require("./flash-sale.service");
 const group_buy_service_1 = require("./group-buy.service");
 const marketing_overview_service_1 = require("./marketing-overview.service");
 /**
  * Marketing admin resolver. Field names are prefixed with `marketing` where they
- * would otherwise collide with the dedicated FlashSale/GroupBuy/Coupon plugins
+ * would otherwise collide with the dedicated FlashSale/GroupBuy plugins
  * (which also contribute to the admin API schema).
+ *
+ * 注：券（Coupon）部分已于 2026-09-30 移除 —— coupon-plugin 在 2026-09-19 重构为
+ * `CouponTemplate` + `CustomerCoupon` 后，这里的 `marketingCoupons*` 只是调用旧 API 的
+ * 死代码（无任何消费者，web-admin 直接用 coupon-plugin 自带的 `couponTemplates*`）。
  */
 let MarketingAdminResolver = class MarketingAdminResolver {
-    constructor(flashSaleMarketingService, groupBuyMarketingService, couponMarketingService, marketingOverviewService) {
+    constructor(flashSaleMarketingService, groupBuyMarketingService, marketingOverviewService) {
         this.flashSaleMarketingService = flashSaleMarketingService;
         this.groupBuyMarketingService = groupBuyMarketingService;
-        this.couponMarketingService = couponMarketingService;
         this.marketingOverviewService = marketingOverviewService;
     }
     // ===== Overview =====
@@ -67,28 +69,6 @@ let MarketingAdminResolver = class MarketingAdminResolver {
     }
     async deleteGroupBuy(ctx, id) {
         return this.groupBuyMarketingService.delete(ctx, id);
-    }
-    // ===== Coupon (prefixed to avoid clash with CouponPlugin) =====
-    async marketingCoupons(ctx, options) {
-        return this.couponMarketingService.findAll(ctx, options);
-    }
-    async marketingCoupon(ctx, id) {
-        return this.couponMarketingService.findOne(ctx, id);
-    }
-    async marketingCreateCoupon(ctx, input) {
-        return this.couponMarketingService.create(ctx, input);
-    }
-    async marketingUpdateCoupon(ctx, id, input) {
-        return this.couponMarketingService.update(ctx, id, input);
-    }
-    async marketingDeleteCoupon(ctx, id) {
-        return this.couponMarketingService.delete(ctx, id);
-    }
-    async marketingEnableCouponForChannel(ctx, id) {
-        return this.couponMarketingService.enableForChannel(ctx, id);
-    }
-    async marketingDisableCouponForChannel(ctx, id) {
-        return this.couponMarketingService.disableForChannel(ctx, id);
     }
 };
 exports.MarketingAdminResolver = MarketingAdminResolver;
@@ -186,72 +166,9 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], MarketingAdminResolver.prototype, "deleteGroupBuy", null);
-__decorate([
-    (0, graphql_1.Query)(),
-    __param(0, (0, core_1.Ctx)()),
-    __param(1, (0, graphql_1.Args)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
-    __metadata("design:returntype", Promise)
-], MarketingAdminResolver.prototype, "marketingCoupons", null);
-__decorate([
-    (0, graphql_1.Query)(),
-    __param(0, (0, core_1.Ctx)()),
-    __param(1, (0, graphql_1.Args)('id')),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
-    __metadata("design:returntype", Promise)
-], MarketingAdminResolver.prototype, "marketingCoupon", null);
-__decorate([
-    (0, graphql_1.Mutation)(),
-    (0, core_1.Transaction)(),
-    __param(0, (0, core_1.Ctx)()),
-    __param(1, (0, graphql_1.Args)('input')),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
-    __metadata("design:returntype", Promise)
-], MarketingAdminResolver.prototype, "marketingCreateCoupon", null);
-__decorate([
-    (0, graphql_1.Mutation)(),
-    (0, core_1.Transaction)(),
-    __param(0, (0, core_1.Ctx)()),
-    __param(1, (0, graphql_1.Args)('id')),
-    __param(2, (0, graphql_1.Args)('input')),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object]),
-    __metadata("design:returntype", Promise)
-], MarketingAdminResolver.prototype, "marketingUpdateCoupon", null);
-__decorate([
-    (0, graphql_1.Mutation)(),
-    (0, core_1.Transaction)(),
-    __param(0, (0, core_1.Ctx)()),
-    __param(1, (0, graphql_1.Args)('id')),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
-    __metadata("design:returntype", Promise)
-], MarketingAdminResolver.prototype, "marketingDeleteCoupon", null);
-__decorate([
-    (0, graphql_1.Mutation)(),
-    (0, core_1.Transaction)(),
-    __param(0, (0, core_1.Ctx)()),
-    __param(1, (0, graphql_1.Args)('id')),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
-    __metadata("design:returntype", Promise)
-], MarketingAdminResolver.prototype, "marketingEnableCouponForChannel", null);
-__decorate([
-    (0, graphql_1.Mutation)(),
-    (0, core_1.Transaction)(),
-    __param(0, (0, core_1.Ctx)()),
-    __param(1, (0, graphql_1.Args)('id')),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
-    __metadata("design:returntype", Promise)
-], MarketingAdminResolver.prototype, "marketingDisableCouponForChannel", null);
 exports.MarketingAdminResolver = MarketingAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [flash_sale_service_1.FlashSaleMarketingService,
         group_buy_service_1.GroupBuyMarketingService,
-        coupon_service_1.CouponMarketingService,
         marketing_overview_service_1.MarketingOverviewService])
 ], MarketingAdminResolver);

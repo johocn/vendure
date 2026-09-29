@@ -11,22 +11,24 @@ import {
 } from '@vendure/core';
 
 import { OperationsPermissions } from '../constants';
-import { CouponMarketingService } from './coupon.service';
 import { FlashSaleMarketingService } from './flash-sale.service';
 import { GroupBuyMarketingService } from './group-buy.service';
 import { MarketingOverviewService } from './marketing-overview.service';
 
 /**
  * Marketing admin resolver. Field names are prefixed with `marketing` where they
- * would otherwise collide with the dedicated FlashSale/GroupBuy/Coupon plugins
+ * would otherwise collide with the dedicated FlashSale/GroupBuy plugins
  * (which also contribute to the admin API schema).
+ *
+ * 注：券（Coupon）部分已于 2026-09-30 移除 —— coupon-plugin 在 2026-09-19 重构为
+ * `CouponTemplate` + `CustomerCoupon` 后，这里的 `marketingCoupons*` 只是调用旧 API 的
+ * 死代码（无任何消费者，web-admin 直接用 coupon-plugin 自带的 `couponTemplates*`）。
  */
 @Resolver()
 export class MarketingAdminResolver {
     constructor(
         private flashSaleMarketingService: FlashSaleMarketingService,
         private groupBuyMarketingService: GroupBuyMarketingService,
-        private couponMarketingService: CouponMarketingService,
         private marketingOverviewService: MarketingOverviewService,
     ) {}
 
@@ -108,57 +110,5 @@ export class MarketingAdminResolver {
     @Transaction()
     async deleteGroupBuy(@Ctx() ctx: RequestContext, @Args('id') id: ID): Promise<boolean> {
         return this.groupBuyMarketingService.delete(ctx, id);
-    }
-
-    // ===== Coupon (prefixed to avoid clash with CouponPlugin) =====
-
-    @Query()
-    async marketingCoupons(
-        @Ctx() ctx: RequestContext,
-        @Args() options: ListQueryOptions<any>,
-    ): Promise<PaginatedList<any>> {
-        return this.couponMarketingService.findAll(ctx, options);
-    }
-
-    @Query()
-    async marketingCoupon(
-        @Ctx() ctx: RequestContext,
-        @Args('id') id: ID,
-    ) {
-        return this.couponMarketingService.findOne(ctx, id);
-    }
-
-    @Mutation()
-    @Transaction()
-    async marketingCreateCoupon(@Ctx() ctx: RequestContext, @Args('input') input: any) {
-        return this.couponMarketingService.create(ctx, input);
-    }
-
-    @Mutation()
-    @Transaction()
-    async marketingUpdateCoupon(
-        @Ctx() ctx: RequestContext,
-        @Args('id') id: ID,
-        @Args('input') input: any,
-    ) {
-        return this.couponMarketingService.update(ctx, id, input);
-    }
-
-    @Mutation()
-    @Transaction()
-    async marketingDeleteCoupon(@Ctx() ctx: RequestContext, @Args('id') id: ID): Promise<boolean> {
-        return this.couponMarketingService.delete(ctx, id);
-    }
-
-    @Mutation()
-    @Transaction()
-    async marketingEnableCouponForChannel(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
-        return this.couponMarketingService.enableForChannel(ctx, id);
-    }
-
-    @Mutation()
-    @Transaction()
-    async marketingDisableCouponForChannel(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
-        return this.couponMarketingService.disableForChannel(ctx, id);
     }
 }

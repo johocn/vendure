@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.MarketingOverviewService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
+const coupon_plugin_1 = require("@vendure/coupon-plugin");
 const constants_1 = require("../constants");
 let MarketingOverviewService = class MarketingOverviewService {
     constructor(connection) {
@@ -55,28 +56,31 @@ let MarketingOverviewService = class MarketingOverviewService {
             return { active: 0, upcoming: 0, ended: 0 };
         }
     }
+    /**
+     * 券数量按状态统计。
+     *
+     * 注（2026-09-30）：coupon-plugin 在 2026-09-19 重构后**已不存在 `Coupon` 实体**
+     * （改为 `CouponTemplate` + `CustomerCoupon`），旧实现 `getRepository(ctx, 'Coupon')`
+     * 的报错被外层 try/catch 吞掉，导致券数量恒为 0/0/0。这里改用 `CouponTemplate`
+     * （字段 `enabled` / `startsAt` / `endsAt`，两者均可为空 = 长期有效）。
+     */
     async countCouponByStatus(ctx, now) {
-        try {
-            const repo = this.connection.getRepository(ctx, 'Coupon');
-            const active = await repo
-                .createQueryBuilder('e')
-                .where('e.isActive = :isActive', { isActive: true })
-                .andWhere('e.startAt <= :now', { now })
-                .andWhere('e.endAt >= :now', { now })
-                .getCount();
-            const upcoming = await repo
-                .createQueryBuilder('e')
-                .where('e.startAt > :now', { now })
-                .getCount();
-            const ended = await repo
-                .createQueryBuilder('e')
-                .where('e.endAt < :now', { now })
-                .getCount();
-            return { active, upcoming, ended };
-        }
-        catch (_a) {
-            return { active: 0, upcoming: 0, ended: 0 };
-        }
+        const repo = this.connection.getRepository(ctx, coupon_plugin_1.CouponTemplate);
+        const active = await repo
+            .createQueryBuilder('e')
+            .where('e.enabled = :enabled', { enabled: true })
+            .andWhere('(e.startsAt IS NULL OR e.startsAt <= :now)', { now })
+            .andWhere('(e.endsAt IS NULL OR e.endsAt >= :now)', { now })
+            .getCount();
+        const upcoming = await repo
+            .createQueryBuilder('e')
+            .where('e.startsAt > :now', { now })
+            .getCount();
+        const ended = await repo
+            .createQueryBuilder('e')
+            .where('e.endsAt < :now', { now })
+            .getCount();
+        return { active, upcoming, ended };
     }
 };
 exports.MarketingOverviewService = MarketingOverviewService;

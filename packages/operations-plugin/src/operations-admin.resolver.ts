@@ -145,7 +145,7 @@ export class OperationsAdminResolver {
     @Allow(Permission.UpdateProduct)
     async recomputeProductStats(
         @Ctx() ctx: RequestContext,
-        @Args({ name: 'productIds', type: () => [ID], nullable: true }) productIds?: ID[],
+        @Args({ name: 'productIds', type: () => [String], nullable: true }) productIds?: ID[],
     ) {
         if (!productIds || productIds.length === 0) {
             return this.productStatsService.recomputeAll(ctx);

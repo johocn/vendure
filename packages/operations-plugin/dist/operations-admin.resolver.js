@@ -213,7 +213,7 @@ __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(core_1.Permission.UpdateProduct),
     __param(0, (0, core_1.Ctx)()),
-    __param(1, (0, graphql_1.Args)({ name: 'productIds', type: () => [core_1.ID], nullable: true })),
+    __param(1, (0, graphql_1.Args)({ name: 'productIds', type: () => [String], nullable: true })),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext, Array]),
     __metadata("design:returntype", Promise)
