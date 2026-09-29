@@ -1962,6 +1962,18 @@ function mergeCustomFields<T extends { name: string }>(
                     resolveChannelByCode(code: String!): ChannelResolveResult
                 }
 
+                type ShopChannel {
+                    code: String!
+                    token: String!
+                    name: String
+                    tenantNo: Int
+                    isOfficial: Boolean!
+                    isDefault: Boolean!
+                }
+                extend type Query {
+                    shopChannels: [ShopChannel!]!
+                }
+
                 type DistrictNode {
                     adcode: String!
                     name: String!

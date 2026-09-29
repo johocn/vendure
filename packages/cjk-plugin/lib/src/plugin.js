@@ -78,6 +78,9 @@ const pay_config_service_1 = require("./payment/pay-config.service");
 const map_config_service_1 = require("./map/map-config.service");
 const sso_provider_service_1 = require("./auth/sso-provider.service");
 const invite_code_service_1 = require("./auth/invite-code.service");
+const basic_config_service_1 = require("./tenant/basic-config.service");
+const service_notify_config_service_1 = require("./tenant/service-notify-config.service");
+const multi_language_config_service_1 = require("./tenant/multi-language-config.service");
 const tenant_config_permissions_1 = require("./admin/tenant-config-permissions");
 const tenant_config_admin_resolver_1 = require("./admin/tenant-config-admin.resolver");
 const shipping_profile_entity_1 = require("./shipping/shipping-profile.entity");
@@ -425,6 +428,9 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             map_config_service_1.MapConfigService,
             sso_provider_service_1.SsoProviderService,
             invite_code_service_1.InviteCodeService,
+            basic_config_service_1.BasicConfigService,
+            service_notify_config_service_1.ServiceNotifyConfigService,
+            multi_language_config_service_1.MultiLanguageConfigService,
             shipping_template_service_1.ShippingTemplateService,
             shipping_profile_service_1.ShippingProfileService,
             delivery_facet_service_1.DeliveryFacetService,
@@ -694,6 +700,32 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     success: Boolean!
                     latencyMs: Int!
                     error: String
+                }
+
+                extend type Query {
+                    tenantSettings(channelId: ID!): TenantSettingsPayload!
+                }
+
+                type TenantSettingsPayload {
+                    channelId: ID!
+                    basic: JSON
+                    auth: JSON
+                    pay: JSON
+                    map: JSON
+                    serviceNotify: JSON
+                    multiLanguage: JSON
+                    canEdit: Boolean!
+                }
+
+                extend type Mutation {
+                    updateTenantBasic(input: TenantSectionPatchInput!): TenantSettingsPayload!
+                    updateTenantMultiLanguage(input: TenantSectionPatchInput!): TenantSettingsPayload!
+                    updateTenantServiceNotify(input: TenantSectionPatchInput!): TenantSettingsPayload!
+                }
+
+                input TenantSectionPatchInput {
+                    channelId: ID!
+                    patch: JSON!
                 }
 
                 # ===== Shipping Template =====
@@ -2137,6 +2169,18 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                 }
                 extend type Query {
                     resolveChannelByCode(code: String!): ChannelResolveResult
+                }
+
+                type ShopChannel {
+                    code: String!
+                    token: String!
+                    name: String
+                    tenantNo: Int
+                    isOfficial: Boolean!
+                    isDefault: Boolean!
+                }
+                extend type Query {
+                    shopChannels: [ShopChannel!]!
                 }
 
                 type DistrictNode {

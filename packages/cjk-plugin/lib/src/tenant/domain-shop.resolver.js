@@ -26,6 +26,10 @@ let DomainShopResolver = class DomainShopResolver {
     async resolveChannelByCode(ctx, code) {
         return this.domainResolverService.resolveByCode(ctx, code);
     }
+    /** 全部「可用店铺」列表（已停用渠道不返回）：多租户路由判定 + 店铺切换器的公开数据源 */
+    async shopChannels(ctx) {
+        return this.domainResolverService.listShopChannels();
+    }
 };
 exports.DomainShopResolver = DomainShopResolver;
 __decorate([
@@ -46,6 +50,14 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, String]),
     __metadata("design:returntype", Promise)
 ], DomainShopResolver.prototype, "resolveChannelByCode", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Public),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], DomainShopResolver.prototype, "shopChannels", null);
 exports.DomainShopResolver = DomainShopResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [domain_resolver_service_1.DomainResolverService])

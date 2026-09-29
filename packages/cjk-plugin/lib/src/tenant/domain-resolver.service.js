@@ -12,6 +12,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.DomainResolverService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
+/** Vendure 默认渠道的 code —— 标记 isDefault，便于前端提供「返回平台店」入口 */
+const DEFAULT_CHANNEL_CODE = '__default_channel__';
 let DomainResolverService = class DomainResolverService {
     constructor(channelService) {
         this.channelService = channelService;
@@ -31,29 +33,65 @@ let DomainResolverService = class DomainResolverService {
         }
         return null;
     }
-    async resolveByCode(ctx, code) {
+    /** Channel -> ChannelResolveResult 的统一映射（渠道 token 与装修 customFields） */
+    toResult(channel) {
         var _a, _b, _c, _d, _e, _f, _g;
+        const cf = channel.customFields || {};
+        return {
+            token: channel.token,
+            code: channel.code,
+            customFields: {
+                shopName: (_a = cf.shopName) !== null && _a !== void 0 ? _a : null,
+                shopLogo: (_b = cf.shopLogo) !== null && _b !== void 0 ? _b : null,
+                shopIntro: (_c = cf.shopIntro) !== null && _c !== void 0 ? _c : null,
+                servicePhone: (_d = cf.servicePhone) !== null && _d !== void 0 ? _d : null,
+                shopContent: (_e = cf.shopContent) !== null && _e !== void 0 ? _e : null,
+                displayTemplate: (_f = cf.displayTemplate) !== null && _f !== void 0 ? _f : null,
+                themeId: (_g = cf.themeId) !== null && _g !== void 0 ? _g : null,
+            },
+        };
+    }
+    async resolveByCode(ctx, code) {
         const emptyCtx = core_1.RequestContext.empty();
         const channels = await this.channelService.findAll(emptyCtx);
         for (const channel of channels.items) {
             if (channel.code === code) {
-                const cf = channel.customFields || {};
-                return {
-                    token: channel.token,
-                    code: channel.code,
-                    customFields: {
-                        shopName: (_a = cf.shopName) !== null && _a !== void 0 ? _a : null,
-                        shopLogo: (_b = cf.shopLogo) !== null && _b !== void 0 ? _b : null,
-                        shopIntro: (_c = cf.shopIntro) !== null && _c !== void 0 ? _c : null,
-                        servicePhone: (_d = cf.servicePhone) !== null && _d !== void 0 ? _d : null,
-                        shopContent: (_e = cf.shopContent) !== null && _e !== void 0 ? _e : null,
-                        displayTemplate: (_f = cf.displayTemplate) !== null && _f !== void 0 ? _f : null,
-                        themeId: (_g = cf.themeId) !== null && _g !== void 0 ? _g : null,
-                    },
-                };
+                return this.toResult(channel);
             }
         }
         return null;
+    }
+    /** 列出全部「可用店铺」（公开信息：code / token / 店铺名 / 序号 / 官方 / 是否默认渠道）。
+     *
+     *  这是多租户「永久可达」的数据源：前端据此判定 URL 首段的真伪、渲染店铺切换器，
+     *  无需把渠道清单烘焙进构建产物，新增/启用渠道后最长一个缓存周期（前端 SWR）即生效。
+     *
+     *  - 排除 customFields.enabled === false 的渠道（如临时验证渠道 t24）；
+     *  - 包含默认渠道并标记 isDefault，供前端提供「返回平台店」入口；
+     *  - 排序：默认渠道优先，其余按 code 升序（与历史 tenant-channels.json 口径一致）。 */
+    async listShopChannels() {
+        const emptyCtx = core_1.RequestContext.empty();
+        const channels = await this.channelService.findAll(emptyCtx);
+        return channels.items
+            .filter((channel) => { var _a; return ((_a = channel.customFields) === null || _a === void 0 ? void 0 : _a.enabled) !== false; })
+            .map((channel) => {
+            var _a, _b;
+            const cf = channel.customFields || {};
+            const isDefault = channel.code === DEFAULT_CHANNEL_CODE;
+            return {
+                code: channel.code,
+                token: channel.token,
+                name: (_a = cf.shopName) !== null && _a !== void 0 ? _a : null,
+                tenantNo: (_b = cf.tenantNo) !== null && _b !== void 0 ? _b : null,
+                isOfficial: isDefault || cf.isOfficial === true,
+                isDefault,
+            };
+        })
+            .sort((a, b) => {
+            if (a.isDefault !== b.isDefault)
+                return a.isDefault ? -1 : 1;
+            return a.code.localeCompare(b.code);
+        });
     }
 };
 exports.DomainResolverService = DomainResolverService;
