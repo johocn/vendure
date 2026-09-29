@@ -77,6 +77,8 @@ const { gql } = require('graphql-tag');
                 createAfterSalesRequest(input: CreateAfterSalesRequestInput!): AfterSalesRequest!
                 cancelAfterSalesRequest(id: ID!): AfterSalesRequest!
                 updateReturnTracking(id: ID!, trackingNo: String!, carrier: String!): AfterSalesRequest!
+                """顾客端上传售后凭证图：入参为 base64 data URL 数组，返回图片 URL 数组（不创建售后单）"""
+                uploadAfterSalesEvidence(images: [String!]!): [String!]!
             }
         `,
         resolvers: [AfterSalesShopResolver],

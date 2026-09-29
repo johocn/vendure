@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Readable } from 'node:stream';
 import { Not } from 'typeorm';
 import {
     ID,
@@ -8,6 +9,8 @@ import {
     ListQueryOptions,
     OrderService,
     CustomerService,
+    AssetService,
+    ConfigService,
     PaginatedList,
     RequestContext,
     Logger,
@@ -29,6 +32,8 @@ export class AfterSalesService {
     private customerService: CustomerService | null = null;
     private inventoryService: InventoryService | null = null;
     private options: AfterSalesPluginOptions = {};
+    private assetService: AssetService | null = null;
+    private configService: ConfigService | null = null;
 
     constructor(
         private connection: TransactionalConnection,
@@ -49,6 +54,8 @@ export class AfterSalesService {
         } catch {
             this.options = {};
         }
+        this.assetService = injector.get(AssetService);
+        this.configService = injector.get(ConfigService);
     }
 
     /**
@@ -245,6 +252,81 @@ export class AfterSalesService {
         request.state = 'Returning';
         const saved = await repo.save(request);
         return this.hydrate(ctx, saved.id);
+    }
+
+    /** 凭证图白名单 MIME 及其扩展名（扩展名用于 createFromFileStream 判定 MIME） */
+    private static readonly EVIDENCE_MIME_EXT: Record<string, string> = {
+        'image/png': 'png',
+        'image/jpeg': 'jpg',
+        'image/webp': 'webp',
+    };
+
+    /** 单张凭证图解码后大小上限（5MB），边界校验，非业务规则 */
+    private static readonly EVIDENCE_MAX_BYTES = 5 * 1024 * 1024;
+
+    /**
+     * 顾客端上传售后凭证图。
+     * 仅做「边界校验 + 落 Asset」，不创建售后单、不写售后业务数据。
+     * 返回绝对值 URL：AssetInterceptorPlugin 只对 GraphQL 类型为 Asset 的字段补绝对前缀，
+     * 这里是 [String!]!，必须自行调用 storageStrategy.toAbsoluteUrl（与 Vendure 自身行为一致）。
+     */
+    async uploadEvidence(ctx: RequestContext, images: string[]): Promise<string[]> {
+        if (!ctx.activeUserId) {
+            throw new UnauthorizedError();
+        }
+        if (!Array.isArray(images) || images.length === 0) {
+            throw new UserInputError('No evidence image provided');
+        }
+        if (!this.assetService || !this.configService) {
+            throw new Error('AssetService not initialized');
+        }
+        const urls: string[] = [];
+        for (const dataUrl of images) {
+            const parsed = AfterSalesService.parseImageDataUrl(dataUrl);
+            if (!parsed) {
+                throw new UserInputError('Invalid evidence image: only png/jpeg/webp data URL is allowed');
+            }
+            if (parsed.buffer.length > AfterSalesService.EVIDENCE_MAX_BYTES) {
+                throw new UserInputError(
+                    `Evidence image too large: ${parsed.buffer.length} bytes exceeds ${AfterSalesService.EVIDENCE_MAX_BYTES} bytes`,
+                );
+            }
+            const filename = `after-sales-evidence-${Date.now()}-${Math.floor(Math.random() * 1e6)}.${parsed.ext}`;
+            const asset = await this.assetService.createFromFileStream(Readable.from(parsed.buffer), filename, ctx);
+            if (isGraphQlErrorResult(asset)) {
+                throw new UserInputError(`Failed to create asset: ${asset.message}`);
+            }
+            urls.push(this.toAbsoluteAssetUrl(ctx, (asset as any).preview));
+        }
+        Logger.info(`Uploaded ${urls.length} after-sales evidence image(s) by user ${ctx.activeUserId}`, loggerCtx);
+        return urls;
+    }
+
+    /** 解析 `data:image/(png|jpeg|webp);base64,xxx`，非法返回 null */
+    private static parseImageDataUrl(dataUrl: string): { buffer: Buffer; ext: string } | null {
+        if (typeof dataUrl !== 'string') return null;
+        const match = /^data:(image\/[a-z+.-]+);base64,([\s\S]+)$/i.exec(dataUrl.trim());
+        if (!match) return null;
+        const mime = match[1].toLowerCase();
+        const ext = AfterSalesService.EVIDENCE_MIME_EXT[mime];
+        if (!ext) return null;
+        try {
+            const buffer = Buffer.from(match[2], 'base64');
+            if (buffer.length === 0) return null;
+            return { buffer, ext };
+        } catch {
+            return null;
+        }
+    }
+
+    /** 与 AssetInterceptorPlugin 同源：用 assetStorageStrategy.toAbsoluteUrl 补绝对前缀 */
+    private toAbsoluteAssetUrl(ctx: RequestContext, preview: string | null | undefined): string {
+        if (!preview) return '';
+        const strategy = this.configService?.assetOptions.assetStorageStrategy as any;
+        if (strategy?.toAbsoluteUrl && ctx.req) {
+            return strategy.toAbsoluteUrl(ctx.req, preview);
+        }
+        return preview;
     }
 
     /**

@@ -41,4 +41,10 @@ export class AfterSalesShopResolver {
     ): Promise<any> {
         return this.afterSalesService.updateReturnTracking(ctx, id, trackingNo, carrier);
     }
+
+    @Mutation()
+    @Allow(Permission.Authenticated)
+    async uploadAfterSalesEvidence(@Ctx() ctx: RequestContext, @Args('images') images: string[]): Promise<string[]> {
+        return this.afterSalesService.uploadEvidence(ctx, images);
+    }
 }

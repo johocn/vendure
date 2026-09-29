@@ -413,4 +413,50 @@ describe('AfterSalesPlugin · 售后退款/回补入账本闭环', () => {
         expect(row.orderLine?.id).toBeTruthy();
         expect(row.customer?.id).toBeTruthy();
     }, TEST_SETUP_TIMEOUT_MS);
+
+    const PNG_1PX =
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==';
+
+    it('uploadAfterSalesEvidence：未登录被拒 / 合法图片返回 URL / 非法类型与超大图片被拒', async () => {
+        // 1. 未登录（新开一个匿名 shopClient 状态）
+        await shopClient.asAnonymousUser();
+        await expect(
+            shopClient.query(gql`
+                mutation {
+                    uploadAfterSalesEvidence(images: ["${PNG_1PX}"])
+                }
+            `),
+        ).rejects.toThrow();
+
+        // 2. 登录后：合法图片 → 返回 1 条非空 URL
+        await shopClient.asUserWithCredentials('hayden.zieme12@hotmail.com', 'test');
+        const ok = await shopClient.query(gql`
+            mutation {
+                uploadAfterSalesEvidence(images: ["${PNG_1PX}"])
+            }
+        `);
+        expect(ok.uploadAfterSalesEvidence).toHaveLength(1);
+        expect(typeof ok.uploadAfterSalesEvidence[0]).toBe('string');
+        expect(ok.uploadAfterSalesEvidence[0].length).toBeGreaterThan(0);
+
+        // 3. 非法 MIME（gif 不在白名单）
+        const badMime = 'data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA=';
+        await expect(
+            shopClient.query(gql`
+                mutation {
+                    uploadAfterSalesEvidence(images: ["${badMime}"])
+                }
+            `),
+        ).rejects.toThrow();
+
+        // 4. 单张解码后 > 5MB
+        const huge = `data:image/png;base64,${Buffer.alloc(5 * 1024 * 1024 + 1024).toString('base64')}`;
+        await expect(
+            shopClient.query(gql`
+                mutation {
+                    uploadAfterSalesEvidence(images: ["${huge}"])
+                }
+            `),
+        ).rejects.toThrow();
+    }, TEST_SETUP_TIMEOUT_MS);
 });
