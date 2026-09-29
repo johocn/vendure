@@ -292,6 +292,52 @@ query GetGroupBuyActivityDetail($id: ID!) {
 }
 ```
 
+**查询我的拼团（我的开团 / 我的参团）**
+
+```graphql
+query MyGroupBuyOrders($isLeader: Boolean!) {
+  myGroupBuyOrders(isLeader: $isLeader) {
+    id
+    orderId
+    orderCode
+    groupBuyActivityId
+    isLeader
+    status
+    activity {
+      id
+      name
+      targetCount
+      currentCount
+      status
+    }
+  }
+}
+```
+
+变量示例：
+
+```json
+{
+  "isLeader": true
+}
+```
+
+`isLeader: true` 返回当前登录顾客作为**团长（开团）**的拼团记录，`false` 返回作为**参团人**的记录；两者均限定当前登录顾客在当前渠道的订单，按记录创建时间倒序。
+
+**MyGroupBuyOrder 字段说明：**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `ID` | 拼团记录 ID |
+| `orderId` | `ID` | 关联订单 ID |
+| `orderCode` | `String` | 关联订单号 |
+| `groupBuyActivityId` | `ID` | 关联的团购活动 ID |
+| `isLeader` | `Boolean` | 是否为团长（开团） |
+| `status` | `String` | 参团状态 |
+| `activity` | `GroupBuyActivity` | 关联活动详情（活动缺失时为 `null`） |
+
+> **未登录返回空数组**（不抛鉴权错误）：无 `activeUserId` 或无 Customer 记录时直接返回 `[]`，便于 C 端直接渲染「暂无拼团」空态。
+
 #### Mutation
 
 **参与团购**

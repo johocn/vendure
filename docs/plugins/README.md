@@ -1,6 +1,6 @@
 # Vendure 中国本地化插件集 - 使用手册
 
-基于 Vendure v3.6.x 的中国电商本地化插件集，包含 15 个独立插件包，覆盖支付、物流、认证、营销等核心场景。
+基于 Vendure v3.6.x 的中国电商本地化插件集，包含 16 个独立插件包，覆盖支付、物流、认证、营销等核心场景。
 
 ## 插件列表
 
@@ -35,6 +35,7 @@
 | [物流配送](./logistics-plugin.md) | `@vendure/logistics-plugin` | 多仓配送策略、库存分配 |
 | [物流查询](./logistics-api-plugin.md) | `@vendure/logistics-api-plugin` | 快递100 物流轨迹查询 |
 | [发票 PDF](./invoice-pdf-plugin.md) | `@vendure/invoice-pdf-plugin` | 生成中国税务发票 PDF |
+| [商品收藏](./favorite-plugin.md) | `@vendure/favorite-plugin` | 商品收藏 / 店铺关注（toggle 语义），收藏数快照 |
 
 ### 营销
 
@@ -75,6 +76,8 @@ import { GroupBuyPlugin } from '@vendure/group-buy-plugin';
 import { FlashSalePlugin } from '@vendure/flash-sale-plugin';
 import { DistributionPlugin } from '@vendure/distribution-plugin';
 import { RedisStockPlugin } from '@vendure/redis-stock-plugin';
+import { ShopPlugin } from '@vendure/shop-plugin';
+import { FavoritePlugin } from '@vendure/favorite-plugin';
 
 export const config = {
     // ...
@@ -128,6 +131,9 @@ export const config = {
             key: process.env.KUAIDI100_KEY!,
         }),
         InvoicePdfPlugin.init({ storagePath: './invoices' }),
+        // ShopPlugin 必须先于 FavoritePlugin（收藏的店铺关注依赖 Shop 实体）
+        ShopPlugin.init({}),
+        FavoritePlugin.init(),
 
         // 营销
         GroupBuyPlugin.init({ defaultTimeoutMinutes: 60 }),
@@ -173,7 +179,9 @@ CjkPlugin (核心，推荐首先安装)
 ├── InvoicePdfPlugin (依赖 InvoicePlugin)
 ├── GroupBuyPlugin (可选依赖 RedisStockPlugin)
 ├── FlashSalePlugin (可选依赖 RedisStockPlugin)
-└── DistributionPlugin (独立)
+├── DistributionPlugin (独立)
+├── FavoritePlugin (依赖 ShopPlugin 的 Shop 实体)
+└── ShopPlugin (独立)
 ```
 
 ## 环境变量参考
