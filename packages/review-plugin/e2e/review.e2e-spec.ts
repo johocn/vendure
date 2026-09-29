@@ -357,4 +357,59 @@ describe('ReviewPlugin · 商品评价体系（评价/追评/修改/删除/评�
         expect(pr.reviewCount).toBe(1);
         expect(pr.rating).toBe(4);
     });
+
+    it('分档筛选：ratingMin/ratingMax 单边与区间生效；越界与倒挂忽略', async () => {
+        // 造 3 条已审核评价：5 星 / 3 星 / 1 星
+        const created: string[] = [];
+        for (const rating of [5, 3, 1]) {
+            const { lineId } = await deliverOrder(shopClient);
+            const r = await createReview(shopClient, lineId, { rating, content: `分档用例 ${rating} 星` });
+            await approve(r.id);
+            created.push(r.id);
+        }
+
+        const q = async (extra: string) => {
+            const res = await shopClient.query(gql`
+                query {
+                    productReviews(productId: "${productId}", options: { take: 20${extra} }) {
+                        totalItems
+                        items { id rating }
+                    }
+                }
+            `) as any;
+            return res.productReviews;
+        };
+
+        // 基线：当前全部已审核主评
+        const all = await q('');
+        expect(all.totalItems).toBeGreaterThanOrEqual(3);
+
+        // 好评 4-5
+        const good = await q(', ratingMin: 4, ratingMax: 5');
+        expect(good.items.every((i: any) => i.rating >= 4 && i.rating <= 5)).toBe(true);
+        expect(good.totalItems).toBe(all.items.filter((i: any) => i.rating >= 4 && i.rating <= 5).length);
+        expect(good.items.some((i: any) => i.id === created[0])).toBe(true);   // 5 星在内
+        expect(good.items.some((i: any) => i.id === created[1])).toBe(false);  // 3 星不在内
+
+        // 中评 = 3
+        const middle = await q(', ratingMin: 3, ratingMax: 3');
+        expect(middle.items.every((i: any) => i.rating === 3)).toBe(true);
+        expect(middle.items.some((i: any) => i.id === created[1])).toBe(true);
+
+        // 差评 1-2
+        const bad = await q(', ratingMin: 1, ratingMax: 2');
+        expect(bad.items.every((i: any) => i.rating >= 1 && i.rating <= 2)).toBe(true);
+        expect(bad.items.some((i: any) => i.id === created[2])).toBe(true);
+
+        // 单边
+        const minOnly = await q(', ratingMin: 3');
+        expect(minOnly.totalItems).toBe(all.items.filter((i: any) => i.rating >= 3).length);
+        const maxOnly = await q(', ratingMax: 3');
+        expect(maxOnly.totalItems).toBe(all.items.filter((i: any) => i.rating <= 3).length);
+
+        // 越界 / 倒挂 → 忽略参数，退化为不筛选
+        expect((await q(', ratingMin: 9')).totalItems).toBe(all.totalItems);
+        expect((await q(', ratingMax: 0')).totalItems).toBe(all.totalItems);
+        expect((await q(', ratingMin: 5, ratingMax: 1')).totalItems).toBe(all.totalItems);
+    });
 });
