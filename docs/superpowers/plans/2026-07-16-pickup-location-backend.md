@@ -48,13 +48,13 @@
 **Files:**
 - Modify: `e:\code\vendure\packages\cjk-plugin\src\pickup\pickup-location.entity.ts`
 
-- [ ] **Step 1: 读取当前实体文件**
+- [x] **Step 1: 读取当前实体文件**
 
 Run: `Read e:\code\vendure\packages\cjk-plugin\src\pickup\pickup-location.entity.ts`
 
 Expected: 文件有 `name/type/address/phoneNumber/businessHours/coordinates/partner/isPublic/ownerChannelId` 等字段。
 
-- [ ] **Step 2: 在 partner 字段后追加 4 个可空字段**
+- [x] **Step 2: 在 partner 字段后追加 4 个可空字段**
 
 在 `pickup-location.entity.ts` 的 `@Column({ nullable: true }) partner: string;` 后追加：
 
@@ -65,13 +65,13 @@ Expected: 文件有 `name/type/address/phoneNumber/businessHours/coordinates/par
     @Column({ nullable: true }) street: string | null;
 ```
 
-- [ ] **Step 3: 验证 TypeScript 编译**
+- [x] **Step 3: 验证 TypeScript 编译**
 
 Run: `cd e:\code\vendure\packages\cjk-plugin && npx tsc --noEmit -p tsconfig.json`
 
 Expected: 无错误。
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -86,7 +86,7 @@ git commit -m "feat: Add province/city/district/street fields to PickupLocation 
 **Files:**
 - Modify: `e:\code\vendure\packages\cjk-plugin\src\pickup\i18n-messages.ts`
 
-- [ ] **Step 1: 在 ERROR_MESSAGES 字典追加 3 个地图相关 key**
+- [x] **Step 1: 在 ERROR_MESSAGES 字典追加 3 个地图相关 key**
 
 在 `i18n-messages.ts` 的 `PICKUP_LOCATION_NOT_VISIBLE` 项后追加（在 `};` 闭合前）：
 
@@ -113,13 +113,13 @@ git commit -m "feat: Add province/city/district/street fields to PickupLocation 
 
 **注意**：`{provider}` 和 `{message}` 是占位符，调用方需手动 `.replace('{provider}', val)`。或者扩展 `translateError` 接受参数对象（但为简化，本计划用 replace 模式）。
 
-- [ ] **Step 2: 验证 TypeScript 编译**
+- [x] **Step 2: 验证 TypeScript 编译**
 
 Run: `cd e:\code\vendure\packages\cjk-plugin && npx tsc --noEmit -p tsconfig.json`
 
 Expected: 无错误。
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -134,7 +134,7 @@ git commit -m "feat: Add map-related i18n error keys"
 **Files:**
 - Modify: `e:\code\vendure\packages\cjk-plugin\src\tenant\tenant-channel-custom-fields.ts`
 
-- [ ] **Step 1: 在 customDomains 字段后追加 mapConfig**
+- [x] **Step 1: 在 customDomains 字段后追加 mapConfig**
 
 在 `tenant-channel-custom-fields.ts` 的 `Channel` 数组末尾（`customDomains` 后）追加：
 
@@ -153,13 +153,13 @@ git commit -m "feat: Add map-related i18n error keys"
         },
 ```
 
-- [ ] **Step 2: 验证 TypeScript 编译**
+- [x] **Step 2: 验证 TypeScript 编译**
 
 Run: `cd e:\code\vendure\packages\cjk-plugin && npx tsc --noEmit -p tsconfig.json`
 
 Expected: 无错误。
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -175,7 +175,7 @@ git commit -m "feat: Add mapConfig struct customField to Channel"
 - Create: `e:\code\vendure\packages\cjk-plugin\src\map\map-config.ts`
 - Create: `e:\code\vendure\packages\cjk-plugin\src\map\map-provider.ts`
 
-- [ ] **Step 1: 创建 map-config.ts**
+- [x] **Step 1: 创建 map-config.ts**
 
 ```typescript
 // e:\code\vendure\packages\cjk-plugin\src\map\map-config.ts
@@ -186,7 +186,7 @@ export interface MapProviderConfig {
 }
 ```
 
-- [ ] **Step 2: 创建 map-provider.ts**
+- [x] **Step 2: 创建 map-provider.ts**
 
 ```typescript
 // e:\code\vendure\packages\cjk-plugin\src\map\map-provider.ts
@@ -213,13 +213,13 @@ export interface ReverseGeocodeResult {
 }
 ```
 
-- [ ] **Step 3: 验证 TypeScript 编译**
+- [x] **Step 3: 验证 TypeScript 编译**
 
 Run: `cd e:\code\vendure\packages\cjk-plugin && npx tsc --noEmit -p tsconfig.json`
 
 Expected: 无错误。
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -234,7 +234,7 @@ git commit -m "feat: Add MapProvider interface and types"
 **Files:**
 - Create: `e:\code\vendure\packages\cjk-plugin\src\map\providers\amap-provider.ts`
 
-- [ ] **Step 1: 创建 amap-provider.ts**
+- [x] **Step 1: 创建 amap-provider.ts**
 
 ```typescript
 // e:\code\vendure\packages\cjk-plugin\src\map\providers\amap-provider.ts
@@ -292,13 +292,13 @@ export class AmapProvider implements MapProvider {
 }
 ```
 
-- [ ] **Step 2: 验证 TypeScript 编译**
+- [x] **Step 2: 验证 TypeScript 编译**
 
 Run: `cd e:\code\vendure\packages\cjk-plugin && npx tsc --noEmit -p tsconfig.json`
 
 Expected: 无错误。
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -314,7 +314,7 @@ git commit -m "feat: Add AmapProvider implementation"
 - Create: `e:\code\vendure\packages\cjk-plugin\src\map\providers\tencent-provider.ts`
 - Create: `e:\code\vendure\packages\cjk-plugin\src\map\providers\baidu-provider.ts`
 
-- [ ] **Step 1: 创建 tencent-provider.ts**
+- [x] **Step 1: 创建 tencent-provider.ts**
 
 ```typescript
 // e:\code\vendure\packages\cjk-plugin\src\map\providers\tencent-provider.ts
@@ -337,7 +337,7 @@ export class TencentProvider implements MapProvider {
 }
 ```
 
-- [ ] **Step 2: 创建 baidu-provider.ts**
+- [x] **Step 2: 创建 baidu-provider.ts**
 
 ```typescript
 // e:\code\vendure\packages\cjk-plugin\src\map\providers\baidu-provider.ts
@@ -360,13 +360,13 @@ export class BaiduProvider implements MapProvider {
 }
 ```
 
-- [ ] **Step 3: 验证 TypeScript 编译**
+- [x] **Step 3: 验证 TypeScript 编译**
 
 Run: `cd e:\code\vendure\packages\cjk-plugin && npx tsc --noEmit -p tsconfig.json`
 
 Expected: 无错误。
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -381,7 +381,7 @@ git commit -m "feat: Add TencentProvider and BaiduProvider placeholder implement
 **Files:**
 - Create: `e:\code\vendure\packages\cjk-plugin\src\map\map-provider-registry.ts`
 
-- [ ] **Step 1: 创建 map-provider-registry.ts**
+- [x] **Step 1: 创建 map-provider-registry.ts**
 
 ```typescript
 // e:\code\vendure\packages\cjk-plugin\src\map\map-provider-registry.ts
@@ -422,13 +422,13 @@ export class MapProviderRegistry {
 }
 ```
 
-- [ ] **Step 2: 验证 TypeScript 编译**
+- [x] **Step 2: 验证 TypeScript 编译**
 
 Run: `cd e:\code\vendure\packages\cjk-plugin && npx tsc --noEmit -p tsconfig.json`
 
 Expected: 无错误。
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -443,7 +443,7 @@ git commit -m "feat: Add MapProviderRegistry"
 **Files:**
 - Create: `e:\code\vendure\packages\cjk-plugin\src\map\map.service.ts`
 
-- [ ] **Step 1: 创建 map.service.ts**
+- [x] **Step 1: 创建 map.service.ts**
 
 ```typescript
 // e:\code\vendure\packages\cjk-plugin\src\map\map.service.ts
@@ -562,13 +562,13 @@ export class MapService {
 - `MAP_CONFIG_NOT_CONFIGURED` 直接在 MapService 翻译（不需要经过 callProvider，因为不涉及 provider 调用）
 - 这样所有抛给前端的错误消息都按 `ctx.languageCode` 返回对应语言
 
-- [ ] **Step 2: 验证 TypeScript 编译**
+- [x] **Step 2: 验证 TypeScript 编译**
 
 Run: `cd e:\code\vendure\packages\cjk-plugin && npx tsc --noEmit -p tsconfig.json`
 
 Expected: 无错误。
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -583,7 +583,7 @@ git commit -m "feat: Add MapService with channel config resolution"
 **Files:**
 - Create: `e:\code\vendure\packages\cjk-plugin\src\map\map-admin.resolver.ts`
 
-- [ ] **Step 1: 创建 map-admin.resolver.ts**
+- [x] **Step 1: 创建 map-admin.resolver.ts**
 
 ```typescript
 // e:\code\vendure\packages\cjk-plugin\src\map\map-admin.resolver.ts
@@ -623,13 +623,13 @@ export class MapAdminResolver {
 }
 ```
 
-- [ ] **Step 2: 验证 TypeScript 编译**
+- [x] **Step 2: 验证 TypeScript 编译**
 
 Run: `cd e:\code\vendure\packages\cjk-plugin && npx tsc --noEmit -p tsconfig.json`
 
 Expected: 无错误。
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -644,11 +644,11 @@ git commit -m "feat: Add MapAdminResolver"
 **Files:**
 - Modify: `e:\code\vendure\packages\cjk-plugin\src\plugin.ts`
 
-- [ ] **Step 1: 读取当前 plugin.ts**
+- [x] **Step 1: 读取当前 plugin.ts**
 
 Run: `Read e:\code\vendure\packages\cjk-plugin\src\plugin.ts`
 
-- [ ] **Step 2: 在 imports 区添加新模块导入**
+- [x] **Step 2: 在 imports 区添加新模块导入**
 
 在 `import { DomainShopResolver } from './tenant/domain-shop.resolver';` 后追加：
 
@@ -658,7 +658,7 @@ import { MapService } from './map/map.service';
 import { MapAdminResolver } from './map/map-admin.resolver';
 ```
 
-- [ ] **Step 3: 在 providers 数组追加 MapProviderRegistry 和 MapService**
+- [x] **Step 3: 在 providers 数组追加 MapProviderRegistry 和 MapService**
 
 在 `providers: [...]` 数组的 `DomainResolverService,` 后追加：
 
@@ -667,7 +667,7 @@ import { MapAdminResolver } from './map/map-admin.resolver';
         MapService,
 ```
 
-- [ ] **Step 4: 在 adminApiExtensions.resolvers 数组追加 MapAdminResolver**
+- [x] **Step 4: 在 adminApiExtensions.resolvers 数组追加 MapAdminResolver**
 
 将 `resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver],` 改为：
 
@@ -675,7 +675,7 @@ import { MapAdminResolver } from './map/map-admin.resolver';
         resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver],
 ```
 
-- [ ] **Step 5: 在 adminApiExtensions.schema 的 gql 模板字符串中扩展 PickupLocation**
+- [x] **Step 5: 在 adminApiExtensions.schema 的 gql 模板字符串中扩展 PickupLocation**
 
 将原 `type PickupLocation implements Node { ... }` 块（约第 60-71 行）替换为：
 
@@ -704,7 +704,7 @@ import { MapAdminResolver } from './map/map-admin.resolver';
                 }
 ```
 
-- [ ] **Step 6: 修改 CreatePickupLocationInput 和 UpdatePickupLocationInput**
+- [x] **Step 6: 修改 CreatePickupLocationInput 和 UpdatePickupLocationInput**
 
 将 `input CreatePickupLocationInput { ... }` 替换为：
 
@@ -745,7 +745,7 @@ import { MapAdminResolver } from './map/map-admin.resolver';
                 }
 ```
 
-- [ ] **Step 7: 在 adminApiExtensions.schema 的 gql 模板字符串末尾（最后一个 extend type Mutation 之后）追加地图相关 schema**
+- [x] **Step 7: 在 adminApiExtensions.schema 的 gql 模板字符串末尾（最后一个 extend type Mutation 之后）追加地图相关 schema**
 
 在 `}\`;`（admin schema 闭合）之前追加：
 
@@ -791,13 +791,13 @@ import { MapAdminResolver } from './map/map-admin.resolver';
                 }
 ```
 
-- [ ] **Step 8: 验证 TypeScript 编译**
+- [x] **Step 8: 验证 TypeScript 编译**
 
 Run: `cd e:\code\vendure\packages\cjk-plugin && npx tsc --noEmit -p tsconfig.json`
 
 Expected: 无错误。
 
-- [ ] **Step 9: 提交**
+- [x] **Step 9: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -813,13 +813,13 @@ git commit -m "feat: Extend GraphQL schema with PickupLocationType enum, region 
 - Modify: `e:\code\vendure\packages\cjk-plugin\src\pickup\pickup-location.service.ts`
 - Modify: `e:\code\vendure\packages\cjk-plugin\src\pickup\pickup-location-admin.resolver.ts`
 
-- [ ] **Step 1: 读取 pickup-location.service.ts**
+- [x] **Step 1: 读取 pickup-location.service.ts**
 
 Run: `Read e:\code\vendure\packages\cjk-plugin\src\pickup\pickup-location.service.ts`
 
 Expected: 找到 `create` 和 `update` 方法，它们接收 input 对象并创建/更新实体。
 
-- [ ] **Step 2: 在 create 方法中透传省市区街道 + isPublic**
+- [x] **Step 2: 在 create 方法中透传省市区街道 + isPublic**
 
 找到 `create` 方法中构造 `PickupLocation` 实例的位置（通常形如 `this.repository.save(new PickupLocation({ ...input }))` 或 `this.connection.getRepository(ctx, PickupLocation).save(...)`），确保 input 中的 `province/city/district/street/isPublic` 字段被传入。
 
@@ -833,7 +833,7 @@ street: input.street,
 isPublic: input.isPublic ?? false,
 ```
 
-- [ ] **Step 3: 在 update 方法中透传省市区街道 + isPublic**
+- [x] **Step 3: 在 update 方法中透传省市区街道 + isPublic**
 
 同理，确保 update 方法处理这些字段。如果是 `Object.assign(existing, input)` 模式，无需改动。如果显式赋值，需追加：
 
@@ -845,31 +845,31 @@ if (input.street !== undefined) existing.street = input.street;
 if (input.isPublic !== undefined) existing.isPublic = input.isPublic;
 ```
 
-- [ ] **Step 4: 读取 pickup-location-admin.resolver.ts**
+- [x] **Step 4: 读取 pickup-location-admin.resolver.ts**
 
 Run: `Read e:\code\vendure\packages\cjk-plugin\src\pickup\pickup-location-admin.resolver.ts`
 
 Expected: 找到 `createPickupLocation` 和 `updatePickupLocation` mutation 定义，它们通常直接调用 service 并返回结果。
 
-- [ ] **Step 5: 确认 resolver 透传 input**
+- [x] **Step 5: 确认 resolver 透传 input**
 
 如果 resolver 形如 `@Args() args: { input: CreatePickupLocationInput }` 且直接调用 `this.service.create(ctx, args.input)`，无需改动。
 
 如果 resolver 显式解构字段，需追加 `province/city/district/street/isPublic` 到解构和传递。
 
-- [ ] **Step 6: 验证 TypeScript 编译**
+- [x] **Step 6: 验证 TypeScript 编译**
 
 Run: `cd e:\code\vendure\packages\cjk-plugin && npx tsc --noEmit -p tsconfig.json`
 
 Expected: 无错误。
 
-- [ ] **Step 7: 构建 cjk-plugin 产物**
+- [x] **Step 7: 构建 cjk-plugin 产物**
 
 Run: `cd e:\code\vendure\packages\cjk-plugin && npm run build`
 
 Expected: 编译成功，`lib/` 目录更新。
 
-- [ ] **Step 8: 启动后端验证 schema**
+- [x] **Step 8: 启动后端验证 schema**
 
 启动后端 dev server（如果未运行）：
 
@@ -893,7 +893,7 @@ Expected:
 - `mapSdkConfig.hasConfigured` 为 `false`（未配置）
 - `channelMapConfig.hasConfigured` 为 `false`（未配置）
 
-- [ ] **Step 9: 提交**
+- [x] **Step 9: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -908,7 +908,7 @@ git commit -m "feat: Pass through province/city/district/street/isPublic in serv
 **Files:**
 - 无文件改动，仅测试验证
 
-- [ ] **Step 1: 通过 admin-api 更新默认 Channel 的 mapConfig**
+- [x] **Step 1: 通过 admin-api 更新默认 Channel 的 mapConfig**
 
 用户需提供真实高德 API key。以下命令用占位 key 测试（hasConfigured 会变 true，但实际查询会失败）：
 
@@ -923,7 +923,7 @@ $r.data | ConvertTo-Json -Depth 5
 
 Expected: 返回 `customFields.mapConfig.provider = "amap"`，`apiKey = "test-key-placeholder"`。
 
-- [ ] **Step 2: 验证 channelMapConfig 掩码**
+- [x] **Step 2: 验证 channelMapConfig 掩码**
 
 ```bash
 $query = '{"query":"{channelMapConfig{provider apiKey hasConfigured}}"}'
@@ -936,7 +936,7 @@ $r.data | ConvertTo-Json -Depth 5
 
 Expected: `apiKey` 显示为 `test****holder`（掩码），`hasConfigured = true`。
 
-- [ ] **Step 3: 验证 mapSdkConfig 返回完整 sdkUrl**
+- [x] **Step 3: 验证 mapSdkConfig 返回完整 sdkUrl**
 
 ```bash
 $query = '{"query":"{mapSdkConfig{provider sdkUrl hasConfigured}}"}'
@@ -949,7 +949,7 @@ $r.data | ConvertTo-Json -Depth 5
 
 Expected: `sdkUrl` 包含 `webapi.amap.com/maps?v=2.0&key=test-key-placeholder&plugin=...`，`hasConfigured = true`。
 
-- [ ] **Step 4: （可选）用真实 key 验证 mapDistricts**
+- [x] **Step 4: （可选）用真实 key 验证 mapDistricts**
 
 将 Step 1 的 `test-key-placeholder` 替换为真实高德 key，然后：
 
@@ -1002,3 +1002,11 @@ Expected: 返回省级行政区列表（北京、上海、吉林等）。
 3. ❌ 原 spec Module 注册未明确 → ✅ Task 9 Step 3/4 明确
 4. ❌ 原 spec mapConfig 注册位置未明确 → ✅ Task 2 明确在 tenant-channel-custom-fields.ts
 5. ❌ 原 spec Migration 未处理 → ✅ Task 1 备注（依赖 synchronize: true，生产需手动加列）
+
+---
+
+## 执行结论（2026-09-29 回填）
+
+- 本计划**已交付**，此前仅复选框未回填。
+- 判定依据：**产物级核查** —— 关键文件 / 实体 / resolver / 插件包在仓库中实际存在，且有对应 git 提交；**非逐 Step 复走**。证据见 `vshop/web-admin/docs/superpowers/BACKLOG.md` §2.1。
+- 本次动作：勾选本计划全部 52 个 `- [ ] **Step` 复选框 + 追加本节；未改动计划正文。

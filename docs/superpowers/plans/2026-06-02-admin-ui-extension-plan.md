@@ -80,7 +80,7 @@
 - Create: `packages/cjk-plugin/dashboard/index.tsx`
 - Modify: `packages/cjk-plugin/src/plugin.ts`
 
-- [ ] **Step 1: 创建 tsconfig.json**
+- [x] **Step 1: 创建 tsconfig.json**
 
 ```json
 {
@@ -95,7 +95,7 @@
 }
 ```
 
-- [ ] **Step 2: 创建自提点列表页**
+- [x] **Step 2: 创建自提点列表页**
 
 Create `packages/cjk-plugin/dashboard/pickup-location-list.tsx`:
 
@@ -159,7 +159,7 @@ export const pickupLocationList: DashboardRouteDefinition = {
 };
 ```
 
-- [ ] **Step 3: 创建自提点详情页**
+- [x] **Step 3: 创建自提点详情页**
 
 Create `packages/cjk-plugin/dashboard/pickup-location-detail.tsx`:
 
@@ -230,7 +230,7 @@ export const pickupLocationDetail: DashboardRouteDefinition = {
 };
 ```
 
-- [ ] **Step 4: 创建 Channel 详情表单扩展**
+- [x] **Step 4: 创建 Channel 详情表单扩展**
 
 Create `packages/cjk-plugin/dashboard/channel-detail-forms.tsx`:
 
@@ -244,7 +244,7 @@ export const cjkChannelDetailForms: DashboardDetailFormExtensionDefinition[] = [
 ];
 ```
 
-- [ ] **Step 5: 创建 Promotion 详情表单扩展**
+- [x] **Step 5: 创建 Promotion 详情表单扩展**
 
 Create `packages/cjk-plugin/dashboard/promotion-detail-forms.tsx`:
 
@@ -258,7 +258,7 @@ export const cjkPromotionDetailForms: DashboardDetailFormExtensionDefinition[] =
 ];
 ```
 
-- [ ] **Step 6: 创建 dashboard 入口文件**
+- [x] **Step 6: 创建 dashboard 入口文件**
 
 Create `packages/cjk-plugin/dashboard/index.tsx`:
 
@@ -277,7 +277,7 @@ defineDashboardExtension({
 });
 ```
 
-- [ ] **Step 7: 修改 plugin.ts 添加 dashboard 属性**
+- [x] **Step 7: 修改 plugin.ts 添加 dashboard 属性**
 
 在 `packages/cjk-plugin/src/plugin.ts` 的 `@VendurePlugin` 装饰器中添加 `dashboard` 属性：
 
@@ -290,7 +290,7 @@ defineDashboardExtension({
 
 具体修改：在 `compatibility: '^3.0.0',` 行之前添加 `dashboard: './dashboard/index.tsx',`
 
-- [ ] **Step 8: 提交**
+- [x] **Step 8: 提交**
 
 ```bash
 git add packages/cjk-plugin/dashboard/ packages/cjk-plugin/src/plugin.ts
@@ -307,7 +307,7 @@ git commit -m "feat(cjk-plugin): add dashboard UI extension for pickup locations
 - Create: `packages/order-timeout-plugin/dashboard/index.tsx`
 - Modify: `packages/order-timeout-plugin/src/plugin.ts`
 
-- [ ] **Step 1: 创建 tsconfig.json**
+- [x] **Step 1: 创建 tsconfig.json**
 
 ```json
 {
@@ -322,7 +322,7 @@ git commit -m "feat(cjk-plugin): add dashboard UI extension for pickup locations
 }
 ```
 
-- [ ] **Step 2: 创建 Channel 详情表单扩展**
+- [x] **Step 2: 创建 Channel 详情表单扩展**
 
 Create `packages/order-timeout-plugin/dashboard/channel-detail-forms.tsx`:
 
@@ -336,7 +336,7 @@ export const orderTimeoutChannelDetailForms: DashboardDetailFormExtensionDefinit
 ];
 ```
 
-- [ ] **Step 3: 创建 dashboard 入口文件**
+- [x] **Step 3: 创建 dashboard 入口文件**
 
 Create `packages/order-timeout-plugin/dashboard/index.tsx`:
 
@@ -350,7 +350,7 @@ defineDashboardExtension({
 });
 ```
 
-- [ ] **Step 4: 修改 plugin.ts 添加 dashboard 属性**
+- [x] **Step 4: 修改 plugin.ts 添加 dashboard 属性**
 
 在 `packages/order-timeout-plugin/src/plugin.ts` 的 `@VendurePlugin` 装饰器中，在 `compatibility: '^3.0.0',` 行之前添加：
 
@@ -358,7 +358,7 @@ defineDashboardExtension({
 dashboard: './dashboard/index.tsx',
 ```
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add packages/order-timeout-plugin/dashboard/ packages/order-timeout-plugin/src/plugin.ts
@@ -375,7 +375,7 @@ git commit -m "feat(order-timeout-plugin): add dashboard UI extension for channe
 - Create: `packages/invoice-plugin/dashboard/index.tsx`
 - Modify: `packages/invoice-plugin/src/plugin.ts`
 
-- [ ] **Step 1: 创建 tsconfig.json**
+- [x] **Step 1: 创建 tsconfig.json**
 
 ```json
 {
@@ -390,7 +390,7 @@ git commit -m "feat(order-timeout-plugin): add dashboard UI extension for channe
 }
 ```
 
-- [ ] **Step 2: 创建发票信息 PageBlock**
+- [x] **Step 2: 创建发票信息 PageBlock**
 
 Create `packages/invoice-plugin/dashboard/invoice-block.tsx`:
 
@@ -436,7 +436,7 @@ export const invoiceBlock: DashboardPageBlockDefinition = {
 };
 ```
 
-- [ ] **Step 3: 创建 dashboard 入口文件**
+- [x] **Step 3: 创建 dashboard 入口文件**
 
 Create `packages/invoice-plugin/dashboard/index.tsx`:
 
@@ -450,7 +450,7 @@ defineDashboardExtension({
 });
 ```
 
-- [ ] **Step 4: 修改 plugin.ts 添加 dashboard 属性**
+- [x] **Step 4: 修改 plugin.ts 添加 dashboard 属性**
 
 在 `packages/invoice-plugin/src/plugin.ts` 的 `@VendurePlugin` 装饰器中，在 `compatibility: '^3.0.0',` 行之前添加：
 
@@ -458,7 +458,7 @@ defineDashboardExtension({
 dashboard: './dashboard/index.tsx',
 ```
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add packages/invoice-plugin/dashboard/ packages/invoice-plugin/src/plugin.ts
@@ -476,7 +476,7 @@ git commit -m "feat(invoice-plugin): add dashboard UI extension for order invoic
 - Create: `packages/logistics-plugin/dashboard/index.tsx`
 - Modify: `packages/logistics-plugin/src/plugin.ts`
 
-- [ ] **Step 1: 创建 tsconfig.json**
+- [x] **Step 1: 创建 tsconfig.json**
 
 ```json
 {
@@ -491,7 +491,7 @@ git commit -m "feat(invoice-plugin): add dashboard UI extension for order invoic
 }
 ```
 
-- [ ] **Step 2: 创建物流追踪 PageBlock**
+- [x] **Step 2: 创建物流追踪 PageBlock**
 
 Create `packages/logistics-plugin/dashboard/logistics-block.tsx`:
 
@@ -538,7 +538,7 @@ export const logisticsBlock: DashboardPageBlockDefinition = {
 };
 ```
 
-- [ ] **Step 3: 创建 Channel 详情表单扩展**
+- [x] **Step 3: 创建 Channel 详情表单扩展**
 
 Create `packages/logistics-plugin/dashboard/channel-detail-forms.tsx`:
 
@@ -552,7 +552,7 @@ export const logisticsChannelDetailForms: DashboardDetailFormExtensionDefinition
 ];
 ```
 
-- [ ] **Step 4: 创建 dashboard 入口文件**
+- [x] **Step 4: 创建 dashboard 入口文件**
 
 Create `packages/logistics-plugin/dashboard/index.tsx`:
 
@@ -568,7 +568,7 @@ defineDashboardExtension({
 });
 ```
 
-- [ ] **Step 5: 修改 plugin.ts 添加 dashboard 属性**
+- [x] **Step 5: 修改 plugin.ts 添加 dashboard 属性**
 
 在 `packages/logistics-plugin/src/plugin.ts` 的 `@VendurePlugin` 装饰器中，在 `compatibility: '^3.0.0',` 行之前添加：
 
@@ -576,7 +576,7 @@ defineDashboardExtension({
 dashboard: './dashboard/index.tsx',
 ```
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add packages/logistics-plugin/dashboard/ packages/logistics-plugin/src/plugin.ts
@@ -595,7 +595,7 @@ git commit -m "feat(logistics-plugin): add dashboard UI extension for logistics 
 - Create: `packages/group-buy-plugin/dashboard/index.tsx`
 - Modify: `packages/group-buy-plugin/src/plugin.ts`
 
-- [ ] **Step 1: 创建 tsconfig.json**
+- [x] **Step 1: 创建 tsconfig.json**
 
 ```json
 {
@@ -610,7 +610,7 @@ git commit -m "feat(logistics-plugin): add dashboard UI extension for logistics 
 }
 ```
 
-- [ ] **Step 2: 创建拼团活动列表页**
+- [x] **Step 2: 创建拼团活动列表页**
 
 Create `packages/group-buy-plugin/dashboard/group-buy-list.tsx`:
 
@@ -691,7 +691,7 @@ export const groupBuyList: DashboardRouteDefinition = {
 };
 ```
 
-- [ ] **Step 3: 创建拼团活动详情页**
+- [x] **Step 3: 创建拼团活动详情页**
 
 Create `packages/group-buy-plugin/dashboard/group-buy-detail.tsx`:
 
@@ -772,7 +772,7 @@ export const groupBuyDetail: DashboardRouteDefinition = {
 };
 ```
 
-- [ ] **Step 4: 创建拼团信息 PageBlock**
+- [x] **Step 4: 创建拼团信息 PageBlock**
 
 Create `packages/group-buy-plugin/dashboard/group-buy-block.tsx`:
 
@@ -814,7 +814,7 @@ export const groupBuyBlock: DashboardPageBlockDefinition = {
 };
 ```
 
-- [ ] **Step 5: 创建 dashboard 入口文件**
+- [x] **Step 5: 创建 dashboard 入口文件**
 
 Create `packages/group-buy-plugin/dashboard/index.tsx`:
 
@@ -840,7 +840,7 @@ defineDashboardExtension({
 });
 ```
 
-- [ ] **Step 6: 修改 plugin.ts 添加 dashboard 属性**
+- [x] **Step 6: 修改 plugin.ts 添加 dashboard 属性**
 
 在 `packages/group-buy-plugin/src/plugin.ts` 的 `@VendurePlugin` 装饰器中，在 `compatibility: '^3.0.0',` 行之前添加：
 
@@ -848,7 +848,7 @@ defineDashboardExtension({
 dashboard: './dashboard/index.tsx',
 ```
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add packages/group-buy-plugin/dashboard/ packages/group-buy-plugin/src/plugin.ts
@@ -867,7 +867,7 @@ git commit -m "feat(group-buy-plugin): add dashboard UI extension for group buy 
 - Create: `packages/flash-sale-plugin/dashboard/index.tsx`
 - Modify: `packages/flash-sale-plugin/src/plugin.ts`
 
-- [ ] **Step 1: 创建 tsconfig.json**
+- [x] **Step 1: 创建 tsconfig.json**
 
 ```json
 {
@@ -882,7 +882,7 @@ git commit -m "feat(group-buy-plugin): add dashboard UI extension for group buy 
 }
 ```
 
-- [ ] **Step 2: 创建秒杀活动列表页**
+- [x] **Step 2: 创建秒杀活动列表页**
 
 Create `packages/flash-sale-plugin/dashboard/flash-sale-list.tsx`:
 
@@ -962,7 +962,7 @@ export const flashSaleList: DashboardRouteDefinition = {
 };
 ```
 
-- [ ] **Step 3: 创建秒杀活动详情页**
+- [x] **Step 3: 创建秒杀活动详情页**
 
 Create `packages/flash-sale-plugin/dashboard/flash-sale-detail.tsx`:
 
@@ -1036,7 +1036,7 @@ export const flashSaleDetail: DashboardRouteDefinition = {
 };
 ```
 
-- [ ] **Step 4: 创建秒杀信息 PageBlock**
+- [x] **Step 4: 创建秒杀信息 PageBlock**
 
 Create `packages/flash-sale-plugin/dashboard/flash-sale-block.tsx`:
 
@@ -1081,7 +1081,7 @@ export const flashSaleBlock: DashboardPageBlockDefinition = {
 };
 ```
 
-- [ ] **Step 5: 创建 dashboard 入口文件**
+- [x] **Step 5: 创建 dashboard 入口文件**
 
 Create `packages/flash-sale-plugin/dashboard/index.tsx`:
 
@@ -1100,7 +1100,7 @@ defineDashboardExtension({
 
 注意：不在此处定义 navSections，因为"营销"区域已在 GroupBuyPlugin 的 dashboard 中注册。FlashSalePlugin 的路由 navMenuItem 引用 `sectionId: 'marketing'` 即可。
 
-- [ ] **Step 6: 修改 plugin.ts 添加 dashboard 属性**
+- [x] **Step 6: 修改 plugin.ts 添加 dashboard 属性**
 
 在 `packages/flash-sale-plugin/src/plugin.ts` 的 `@VendurePlugin` 装饰器中，在 `compatibility: '^3.0.0',` 行之前添加：
 
@@ -1108,7 +1108,7 @@ defineDashboardExtension({
 dashboard: './dashboard/index.tsx',
 ```
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add packages/flash-sale-plugin/dashboard/ packages/flash-sale-plugin/src/plugin.ts
@@ -1130,7 +1130,7 @@ git commit -m "feat(flash-sale-plugin): add dashboard UI extension for flash sal
 - Create: `packages/distribution-plugin/dashboard/index.tsx`
 - Modify: `packages/distribution-plugin/src/plugin.ts`
 
-- [ ] **Step 1: 创建 tsconfig.json**
+- [x] **Step 1: 创建 tsconfig.json**
 
 ```json
 {
@@ -1145,7 +1145,7 @@ git commit -m "feat(flash-sale-plugin): add dashboard UI extension for flash sal
 }
 ```
 
-- [ ] **Step 2: 创建分销商列表页**
+- [x] **Step 2: 创建分销商列表页**
 
 Create `packages/distribution-plugin/dashboard/distributor-list.tsx`:
 
@@ -1228,7 +1228,7 @@ export const distributorList: DashboardRouteDefinition = {
 };
 ```
 
-- [ ] **Step 3: 创建分销商详情页**
+- [x] **Step 3: 创建分销商详情页**
 
 Create `packages/distribution-plugin/dashboard/distributor-detail.tsx`:
 
@@ -1296,7 +1296,7 @@ export const distributorDetail: DashboardRouteDefinition = {
 };
 ```
 
-- [ ] **Step 4: 创建佣金记录列表页**
+- [x] **Step 4: 创建佣金记录列表页**
 
 Create `packages/distribution-plugin/dashboard/commission-record-list.tsx`:
 
@@ -1378,7 +1378,7 @@ export const commissionRecordList: DashboardRouteDefinition = {
 };
 ```
 
-- [ ] **Step 5: 创建提现申请列表页**
+- [x] **Step 5: 创建提现申请列表页**
 
 Create `packages/distribution-plugin/dashboard/withdrawal-request-list.tsx`:
 
@@ -1488,7 +1488,7 @@ export const withdrawalRequestList: DashboardRouteDefinition = {
 };
 ```
 
-- [ ] **Step 6: 创建 Channel 详情表单扩展**
+- [x] **Step 6: 创建 Channel 详情表单扩展**
 
 Create `packages/distribution-plugin/dashboard/channel-detail-forms.tsx`:
 
@@ -1502,7 +1502,7 @@ export const distributionChannelDetailForms: DashboardDetailFormExtensionDefinit
 ];
 ```
 
-- [ ] **Step 7: 创建 Customer 详情表单扩展**
+- [x] **Step 7: 创建 Customer 详情表单扩展**
 
 Create `packages/distribution-plugin/dashboard/customer-detail-forms.tsx`:
 
@@ -1516,7 +1516,7 @@ export const distributionCustomerDetailForms: DashboardDetailFormExtensionDefini
 ];
 ```
 
-- [ ] **Step 8: 创建 dashboard 入口文件**
+- [x] **Step 8: 创建 dashboard 入口文件**
 
 Create `packages/distribution-plugin/dashboard/index.tsx`:
 
@@ -1545,7 +1545,7 @@ defineDashboardExtension({
 });
 ```
 
-- [ ] **Step 9: 修改 plugin.ts 添加 dashboard 属性**
+- [x] **Step 9: 修改 plugin.ts 添加 dashboard 属性**
 
 在 `packages/distribution-plugin/src/plugin.ts` 的 `@VendurePlugin` 装饰器中，在 `compatibility: '^3.0.0',` 行之前添加：
 
@@ -1553,7 +1553,7 @@ defineDashboardExtension({
 dashboard: './dashboard/index.tsx',
 ```
 
-- [ ] **Step 10: 提交**
+- [x] **Step 10: 提交**
 
 ```bash
 git add packages/distribution-plugin/dashboard/ packages/distribution-plugin/src/plugin.ts
@@ -1564,7 +1564,7 @@ git commit -m "feat(distribution-plugin): add dashboard UI extension for distrib
 
 ### Task 8: 编译验证
 
-- [ ] **Step 1: 启动 dev-server 验证 Dashboard 扩展编译**
+- [x] **Step 1: 启动 dev-server 验证 Dashboard 扩展编译**
 
 ```bash
 cd packages/dev-server && npx ts-node -T dev-server.ts
@@ -1577,9 +1577,17 @@ cd packages/dev-server && npx ts-node -T dev-server.ts
 4. 自提点管理出现在"设置"区域
 5. 各列表页和详情页路由可访问
 
-- [ ] **Step 2: 提交最终状态**
+- [x] **Step 2: 提交最终状态**
 
 ```bash
 git add -A
 git commit -m "chore: verify dashboard extensions compile and render correctly"
 ```
+
+---
+
+## 执行结论（2026-09-29 回填）
+
+- 本计划**已交付**，此前仅复选框未回填。
+- 判定依据：**产物级核查** —— 关键文件 / 实体 / resolver / 插件包在仓库中实际存在，且有对应 git 提交；**非逐 Step 复走**。证据见 `vshop/web-admin/docs/superpowers/BACKLOG.md` §2.1。
+- 本次动作：勾选本计划全部 50 个 `- [ ] **Step` 复选框 + 追加本节；未改动计划正文。

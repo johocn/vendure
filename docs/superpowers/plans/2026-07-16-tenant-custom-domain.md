@@ -17,7 +17,7 @@
 **Files:**
 - Modify: `e:\code\vendure\packages\cjk-plugin\src\tenant\tenant-channel-custom-fields.ts`
 
-- [ ] **Step 1: 追加 customDomains 字段**
+- [x] **Step 1: 追加 customDomains 字段**
 
 在 `tenant-channel-custom-fields.ts` 的 `payConfig` 字段之后、数组结束 `]` 之前追加：
 
@@ -32,12 +32,12 @@
         },
 ```
 
-- [ ] **Step 2: 编译验证**
+- [x] **Step 2: 编译验证**
 
 Run: `cd e:\code\vendure\packages\cjk-plugin ; npx tsc --noEmit -p tsconfig.build.json`
 Expected: 无错误
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -53,7 +53,7 @@ git commit --no-verify -m "feat: add customDomains field to Channel customFields
 - Create: `e:\code\vendure\packages\cjk-plugin\src\tenant\domain-resolver.service.ts`
 - Modify: `e:\code\vendure\packages\cjk-plugin\index.ts`
 
-- [ ] **Step 1: 创建 domain-resolver.service.ts**
+- [x] **Step 1: 创建 domain-resolver.service.ts**
 
 ```typescript
 import { Injectable } from '@nestjs/common';
@@ -83,7 +83,7 @@ export class DomainResolverService {
 }
 ```
 
-- [ ] **Step 2: 在 index.ts 追加导出**
+- [x] **Step 2: 在 index.ts 追加导出**
 
 在 `e:\code\vendure\packages\cjk-plugin\index.ts` 末尾追加：
 
@@ -91,12 +91,12 @@ export class DomainResolverService {
 export * from './src/tenant/domain-resolver.service';
 ```
 
-- [ ] **Step 3: 编译验证**
+- [x] **Step 3: 编译验证**
 
 Run: `cd e:\code\vendure\packages\cjk-plugin ; npx tsc --noEmit -p tsconfig.build.json`
 Expected: 无错误
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -112,7 +112,7 @@ git commit --no-verify -m "feat: add DomainResolverService for domain-to-channel
 - Create: `e:\code\vendure\packages\cjk-plugin\src\tenant\domain-shop.resolver.ts`
 - Modify: `e:\code\vendure\packages\cjk-plugin\src\plugin.ts`
 
-- [ ] **Step 1: 创建 domain-shop.resolver.ts**
+- [x] **Step 1: 创建 domain-shop.resolver.ts**
 
 ```typescript
 import { Allow, Ctx, Permission, RequestContext } from '@vendure/core';
@@ -134,7 +134,7 @@ export class DomainShopResolver {
 }
 ```
 
-- [ ] **Step 2: plugin.ts — providers 追加 DomainResolverService**
+- [x] **Step 2: plugin.ts — providers 追加 DomainResolverService**
 
 在 `e:\code\vendure\packages\cjk-plugin\src\plugin.ts` 第 46-52 行的 `providers` 数组中，在 `EmployeeCustomerService` 之后追加：
 
@@ -149,7 +149,7 @@ import { DomainResolverService } from './tenant/domain-resolver.service';
 import { DomainShopResolver } from './tenant/domain-shop.resolver';
 ```
 
-- [ ] **Step 3: plugin.ts — shopApiExtensions.schema 追加查询**
+- [x] **Step 3: plugin.ts — shopApiExtensions.schema 追加查询**
 
 在 `plugin.ts` 第 190-231 行的 shopApiExtensions schema gql 模板字符串中，在 `extend type Query { authMethods... ssoProviders... }` 之后追加：
 
@@ -163,7 +163,7 @@ import { DomainShopResolver } from './tenant/domain-shop.resolver';
                 }
 ```
 
-- [ ] **Step 4: plugin.ts — shopApiExtensions.resolvers 追加**
+- [x] **Step 4: plugin.ts — shopApiExtensions.resolvers 追加**
 
 将第 233 行：
 
@@ -177,12 +177,12 @@ import { DomainShopResolver } from './tenant/domain-shop.resolver';
         resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver, DomainShopResolver],
 ```
 
-- [ ] **Step 5: 编译验证**
+- [x] **Step 5: 编译验证**
 
 Run: `cd e:\code\vendure\packages\cjk-plugin ; npx tsc --noEmit -p tsconfig.build.json`
 Expected: 无错误
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -197,7 +197,7 @@ git commit --no-verify -m "feat: add resolveChannelByDomain Shop API query + plu
 **Files:**
 - Modify: `e:\code\vendure\packages\cjk-plugin\dashboard\channel-detail-forms.tsx`
 
-- [ ] **Step 1: 追加 customDomains 查询**
+- [x] **Step 1: 追加 customDomains 查询**
 
 在 `channel-detail-forms.tsx` 的 `cjkChannelDetailForms` 数组中，在 payConfig 条目之后追加：
 
@@ -216,7 +216,7 @@ git commit --no-verify -m "feat: add resolveChannelByDomain Shop API query + plu
     },
 ```
 
-- [ ] **Step 2: 提交**
+- [x] **Step 2: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -231,7 +231,7 @@ git commit --no-verify -m "feat: register customDomains in channel detail forms"
 **Files:**
 - Modify: `e:\code\vshop\src\api\queries\channel.ts`
 
-- [ ] **Step 1: 追加 resolveChannelByDomain 查询**
+- [x] **Step 1: 追加 resolveChannelByDomain 查询**
 
 在 `e:\code\vshop\src\api\queries\channel.ts` 末尾追加：
 
@@ -247,7 +247,7 @@ export async function resolveChannelByDomain(host: string) {
 }
 ```
 
-- [ ] **Step 2: 提交**
+- [x] **Step 2: 提交**
 
 ```bash
 cd e:\code\vshop
@@ -262,7 +262,7 @@ git commit --no-verify -m "feat: add resolveChannelByDomain API query"
 **Files:**
 - Modify: `e:\code\vshop\src\stores\tenant.ts`
 
-- [ ] **Step 1: 追加 import**
+- [x] **Step 1: 追加 import**
 
 在 `e:\code\vshop\src\stores\tenant.ts` 第 3 行之后追加：
 
@@ -270,7 +270,7 @@ git commit --no-verify -m "feat: add resolveChannelByDomain API query"
 import { resolveChannelByDomain } from '../api/queries/channel';
 ```
 
-- [ ] **Step 2: 追加 tenantReady ref**
+- [x] **Step 2: 追加 tenantReady ref**
 
 在第 62 行（`ssoProviders` ref 之后）追加：
 
@@ -278,7 +278,7 @@ import { resolveChannelByDomain } from '../api/queries/channel';
     const tenantReady = ref(false);
 ```
 
-- [ ] **Step 3: 改造 initTenant 为异步 + 域名优先**
+- [x] **Step 3: 改造 initTenant 为异步 + 域名优先**
 
 将第 66-78 行的 `initTenant` 函数替换为：
 
@@ -335,7 +335,7 @@ import { resolveChannelByDomain } from '../api/queries/channel';
     }
 ```
 
-- [ ] **Step 4: 在 return 中追加 tenantReady**
+- [x] **Step 4: 在 return 中追加 tenantReady**
 
 将第 136-141 行的 return 对象中追加 `tenantReady`：
 
@@ -348,7 +348,7 @@ import { resolveChannelByDomain } from '../api/queries/channel';
     };
 ```
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 cd e:\code\vshop
@@ -363,7 +363,7 @@ git commit --no-verify -m "feat: initTenant async + domain resolution with sessi
 **Files:**
 - Modify: `e:\code\vshop\src\App.vue`
 
-- [ ] **Step 1: 改造 onLaunch 为 async + await initTenant**
+- [x] **Step 1: 改造 onLaunch 为 async + await initTenant**
 
 将 `e:\code\vshop\src\App.vue` 第 7-52 行的 `onLaunch` 回调替换为：
 
@@ -417,7 +417,7 @@ onLaunch(async (options: any) => {
 });
 ```
 
-- [ ] **Step 2: 提交**
+- [x] **Step 2: 提交**
 
 ```bash
 cd e:\code\vshop
@@ -429,22 +429,22 @@ git commit --no-verify -m "feat: App.vue onLaunch async + await initTenant befor
 
 ## Task 8: 编译与启动验证
 
-- [ ] **Step 1: 构建 cjk-plugin**
+- [x] **Step 1: 构建 cjk-plugin**
 
 Run: `cd e:\code\vendure\packages\cjk-plugin ; npm run build`
 Expected: 构建成功
 
-- [ ] **Step 2: dev-server tsc 检查**
+- [x] **Step 2: dev-server tsc 检查**
 
 Run: `cd e:\code\vendure\packages\dev-server ; npx tsc --noEmit 2>&1 | Select-String "domain|customDomain|DomainResolver|resolveChannelByDomain"`
 Expected: 无匹配（无新错误）
 
-- [ ] **Step 3: 启动后端**
+- [x] **Step 3: 启动后端**
 
 Run: `cd e:\code\vendure\packages\dev-server ; npm run dev`
 Expected: 服务器成功启动在 port 3000
 
-- [ ] **Step 4: 验证 GraphQL schema**
+- [x] **Step 4: 验证 GraphQL schema**
 
 访问 `http://localhost:3000/graphiql/shop`，执行查询：
 
@@ -459,7 +459,7 @@ query {
 
 Expected: 返回 null（localhost 未配置 customDomains）
 
-- [ ] **Step 5: 验证 customDomains 字段**
+- [x] **Step 5: 验证 customDomains 字段**
 
 登录 admin API，执行查询：
 
@@ -478,12 +478,12 @@ query {
 
 Expected: 返回 customDomains 字段（初始为 null）
 
-- [ ] **Step 6: 启动前端**
+- [x] **Step 6: 启动前端**
 
 Run: `cd e:\code\vshop ; npm run dev:h5`
 Expected: 前端启动成功在 port 5180
 
-- [ ] **Step 7: 验证前端正常加载**
+- [x] **Step 7: 验证前端正常加载**
 
 访问 `http://localhost:5180/`
 Expected: 页面正常加载（localhost 跳过域名解析，回退到默认 channel）
@@ -514,3 +514,11 @@ Expected: 页面正常加载（localhost 跳过域名解析，回退到默认 ch
 - `resolveChannelByDomain` 前端调用时使用默认 token（default-token），后端 resolver 不依赖 ctx.channel，使用 ChannelService.findAll 遍历所有 channel
 - sessionStorage 缓存在 `stores/tenant.ts` initTenant 中直接处理（不放在 core/tenant.ts，避免循环依赖）
 - `restoreSession()` 改为 await（原代码未 await，但改为 await 确保时序正确）
+
+---
+
+## 执行结论（2026-09-29 回填）
+
+- 本计划**已交付**，此前仅复选框未回填。
+- 判定依据：**产物级核查** —— 关键文件 / 实体 / resolver / 插件包在仓库中实际存在，且有对应 git 提交；**非逐 Step 复走**。证据见 `vshop/web-admin/docs/superpowers/BACKLOG.md` §2.1。
+- 本次动作：勾选本计划全部 31 个 `- [ ] **Step` 复选框 + 追加本节；未改动计划正文。

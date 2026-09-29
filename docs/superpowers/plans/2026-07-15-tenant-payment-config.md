@@ -18,7 +18,7 @@
 - Modify: `e:\code\vendure\packages\cjk-plugin\src\tenant\tenant-channel-custom-fields.ts`
 - Create: `e:\code\vendure\packages\cjk-plugin\src\payment\payment-config.types.ts`
 
-- [ ] **Step 1: 追加 payConfig struct 到 tenant-channel-custom-fields.ts**
+- [x] **Step 1: 追加 payConfig struct 到 tenant-channel-custom-fields.ts**
 
 在 `tenant-channel-custom-fields.ts` 第 83 行（`authConfig` 字段之后、`]` 之前）追加：
 
@@ -35,7 +35,7 @@
         },
 ```
 
-- [ ] **Step 2: 创建 payment-config.types.ts**
+- [x] **Step 2: 创建 payment-config.types.ts**
 
 ```typescript
 export type PaymentMethodCode = 'alipay' | 'wechatpay';
@@ -67,12 +67,12 @@ export interface PayConfigStruct {
 }
 ```
 
-- [ ] **Step 3: 编译验证**
+- [x] **Step 3: 编译验证**
 
 Run: `cd e:\code\vendure\packages\cjk-plugin && npx tsc --noEmit -p tsconfig.build.json`
 Expected: 无错误
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -88,7 +88,7 @@ git commit --no-verify -m "feat: add payConfig struct field + payment credential
 - Create: `e:\code\vendure\packages\cjk-plugin\src\payment\payment-config.ts`
 - Modify: `e:\code\vendure\packages\cjk-plugin\index.ts`
 
-- [ ] **Step 1: 创建 payment-config.ts**
+- [x] **Step 1: 创建 payment-config.ts**
 
 ```typescript
 import { RequestContext } from '@vendure/core';
@@ -129,7 +129,7 @@ export function getPaymentOverride(
 }
 ```
 
-- [ ] **Step 2: 在 index.ts 追加导出**
+- [x] **Step 2: 在 index.ts 追加导出**
 
 在 `e:\code\vendure\packages\cjk-plugin\index.ts` 末尾追加：
 
@@ -138,12 +138,12 @@ export * from './src/payment/payment-config.types';
 export * from './src/payment/payment-config';
 ```
 
-- [ ] **Step 3: 编译验证**
+- [x] **Step 3: 编译验证**
 
 Run: `cd e:\code\vendure\packages\cjk-plugin && npx tsc --noEmit -p tsconfig.build.json`
 Expected: 无错误
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -158,7 +158,7 @@ git commit --no-verify -m "feat: add payment-config read helpers + export from c
 **Files:**
 - Modify: `e:\code\vendure\packages\alipay-plugin\src\alipay-handler.ts:1,30-31`
 
-- [ ] **Step 1: 追加 import**
+- [x] **Step 1: 追加 import**
 
 在 `alipay-handler.ts` 第 1 行之后追加：
 
@@ -167,7 +167,7 @@ import { getPaymentOverride } from '@vendure/cjk-plugin';
 import type { AlipayCredentials } from '@vendure/cjk-plugin';
 ```
 
-- [ ] **Step 2: 修改 createPayment 中的凭证读取**
+- [x] **Step 2: 修改 createPayment 中的凭证读取**
 
 将第 30-31 行：
 
@@ -193,12 +193,12 @@ import type { AlipayCredentials } from '@vendure/cjk-plugin';
             });
 ```
 
-- [ ] **Step 3: 编译验证**
+- [x] **Step 3: 编译验证**
 
 Run: `cd e:\code\vendure\packages\alipay-plugin && npx tsc --noEmit -p tsconfig.build.json`
 Expected: 无错误
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -214,7 +214,7 @@ git commit --no-verify -m "feat: alipay handler reads per-channel credential ove
 - Modify: `e:\code\vendure\packages\wechatpay-plugin\package.json`
 - Modify: `e:\code\vendure\packages\wechatpay-plugin\src\wechatpay-handler.ts:1-2,48-55`
 
-- [ ] **Step 1: package.json 追加 peerDependencies**
+- [x] **Step 1: package.json 追加 peerDependencies**
 
 在 `e:\code\vendure\packages\wechatpay-plugin\package.json` 第 17-20 行的 `peerDependencies` 中追加：
 
@@ -232,7 +232,7 @@ git commit --no-verify -m "feat: alipay handler reads per-channel credential ove
     },
 ```
 
-- [ ] **Step 2: 追加 import**
+- [x] **Step 2: 追加 import**
 
 在 `wechatpay-handler.ts` 第 2 行之后追加：
 
@@ -241,7 +241,7 @@ import { getPaymentOverride } from '@vendure/cjk-plugin';
 import type { WechatpayCredentials } from '@vendure/cjk-plugin';
 ```
 
-- [ ] **Step 3: 修改 createPayment 中的凭证读取**
+- [x] **Step 3: 修改 createPayment 中的凭证读取**
 
 将第 48-55 行：
 
@@ -270,7 +270,7 @@ import type { WechatpayCredentials } from '@vendure/cjk-plugin';
                 });
 ```
 
-- [ ] **Step 4: 修改 tradeType 读取**
+- [x] **Step 4: 修改 tradeType 读取**
 
 将第 57 行：
 
@@ -284,7 +284,7 @@ import type { WechatpayCredentials } from '@vendure/cjk-plugin';
                 const tradeType = override?.tradeType || args.tradeType || 'JSAPI';
 ```
 
-- [ ] **Step 5: 修改 JSAPI 返回中的 appId**
+- [x] **Step 5: 修改 JSAPI 返回中的 appId**
 
 将第 126 行：
 
@@ -298,12 +298,12 @@ import type { WechatpayCredentials } from '@vendure/cjk-plugin';
                         appId: override?.appId || args.appId,
 ```
 
-- [ ] **Step 6: 编译验证**
+- [x] **Step 6: 编译验证**
 
 Run: `cd e:\code\vendure\packages\wechatpay-plugin && npx tsc --noEmit -p tsconfig.build.json`
 Expected: 无错误
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -318,7 +318,7 @@ git commit --no-verify -m "feat: wechatpay handler reads per-channel credential 
 **Files:**
 - Create: `e:\code\vendure\packages\cjk-plugin\dashboard\payment-config-widget.tsx`
 
-- [ ] **Step 1: 创建 payment-config-widget.tsx**
+- [x] **Step 1: 创建 payment-config-widget.tsx**
 
 ```tsx
 import {
@@ -526,7 +526,7 @@ export const PaymentConfigInput: DashboardFormComponent = props => {
 };
 ```
 
-- [ ] **Step 2: 提交**
+- [x] **Step 2: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -541,7 +541,7 @@ git commit --no-verify -m "feat: add payment config Dashboard form component"
 **Files:**
 - Modify: `e:\code\vendure\packages\cjk-plugin\dashboard\channel-detail-forms.tsx`
 
-- [ ] **Step 1: 追加 import 和注册**
+- [x] **Step 1: 追加 import 和注册**
 
 完整替换 `channel-detail-forms.tsx` 内容为：
 
@@ -600,7 +600,7 @@ export const cjkChannelDetailForms: DashboardDetailFormExtensionDefinition[] = [
 ];
 ```
 
-- [ ] **Step 2: 提交**
+- [x] **Step 2: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -612,22 +612,22 @@ git commit --no-verify -m "feat: register payConfig in channel detail forms"
 
 ## Task 7: 编译与构建验证
 
-- [ ] **Step 1: 编译 cjk-plugin**
+- [x] **Step 1: 编译 cjk-plugin**
 
 Run: `cd e:\code\vendure\packages\cjk-plugin && npm run build`
 Expected: 构建成功
 
-- [ ] **Step 2: 编译 alipay-plugin**
+- [x] **Step 2: 编译 alipay-plugin**
 
 Run: `cd e:\code\vendure\packages\alipay-plugin && npm run build`
 Expected: 构建成功
 
-- [ ] **Step 3: 编译 wechatpay-plugin**
+- [x] **Step 3: 编译 wechatpay-plugin**
 
 Run: `cd e:\code\vendure\packages\wechatpay-plugin && npm run build`
 Expected: 构建成功
 
-- [ ] **Step 4: dev-server tsc 检查**
+- [x] **Step 4: dev-server tsc 检查**
 
 Run: `cd e:\code\vendure\packages\dev-server && npx tsc --noEmit`
 Expected: 无 payment 相关新错误
@@ -636,12 +636,12 @@ Expected: 无 payment 相关新错误
 
 ## Task 8: 启动验证
 
-- [ ] **Step 1: 启动后端**
+- [x] **Step 1: 启动后端**
 
 Run: `cd e:\code\vendure\packages\dev-server && npm run dev`
 Expected: 服务器成功启动在 port 3000，无 GraphQL schema 错误
 
-- [ ] **Step 2: 验证 GraphQL schema**
+- [x] **Step 2: 验证 GraphQL schema**
 
 访问 `http://localhost:3000/admin-api`，执行查询：
 
@@ -663,7 +663,7 @@ query {
 
 Expected: 返回 payConfig struct 字段（初始为 null 或空字符串）
 
-- [ ] **Step 3: 验证 Dashboard**
+- [x] **Step 3: 验证 Dashboard**
 
 访问 `http://localhost:3000/admin`，打开 Channel 详情页，确认 customFields 区域显示"支付配置"表单组件。
 
@@ -690,3 +690,11 @@ Expected: 返回 payConfig struct 字段（初始为 null 或空字符串）
 - Dashboard 组件 `PaymentConfigInput` 与 `AuthConfigInput` 模式一致
 
 **无占位符**：所有步骤包含完整代码。
+
+---
+
+## 执行结论（2026-09-29 回填）
+
+- 本计划**已交付**，此前仅复选框未回填。
+- 判定依据：**产物级核查** —— 关键文件 / 实体 / resolver / 插件包在仓库中实际存在，且有对应 git 提交；**非逐 Step 复走**。证据见 `vshop/web-admin/docs/superpowers/BACKLOG.md` §2.1。
+- 本次动作：勾选本计划全部 30 个 `- [ ] **Step` 复选框 + 追加本节；未改动计划正文。

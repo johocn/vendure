@@ -20,7 +20,7 @@
 - Modify: `d:\zhao\vendure\packages\coupon-plugin\src\coupon-template.entity.ts:76`（enabled 之后加字段）
 - Modify: `d:\zhao\vendure\packages\coupon-plugin\src\plugin.ts`（couponTemplateType + Create/UpdateCouponTemplateInput）
 
-- [ ] **Step 1: 实体加字段**
+- [x] **Step 1: 实体加字段**
 
 在 `coupon-template.entity.ts` 的 `enabled` 后追加：
 
@@ -41,7 +41,7 @@
     @Column('varchar', { nullable: true }) memberLevel?: string;
 ```
 
-- [ ] **Step 2: plugin.ts 同步 schema**
+- [x] **Step 2: plugin.ts 同步 schema**
 
 `couponTemplateType`（L38-59）在 `enabled: Boolean!` 后加：
 
@@ -63,7 +63,7 @@
     memberLevel: String
 ```
 
-- [ ] **Step 3: 写 migration**
+- [x] **Step 3: 写 migration**
 
 新建 `packages/coupon-plugin/src/migrations/20260919-add-coupon-fields.ts`（对齐 cjk-plugin migrate 模式，幂等）：
 
@@ -81,12 +81,12 @@ export class AddCouponFields20260919 {
 
 （迁移注册方式遵循本仓库既有 migration 机制——查看 cjk-plugin 的 migration 注册后对齐。）
 
-- [ ] **Step 4: 运行 migration 验证**
+- [x] **Step 4: 运行 migration 验证**
 
 Run: `npx ts-node packages/coupon-plugin/src/migrations/run.ts`（或仓库既有方式）
 Expected: `coupon_template` 表含新列，无报错
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/coupon-plugin
@@ -102,7 +102,7 @@ git commit -m "feat(coupon): CouponTemplate 新增 claimable/claimCode/validDays
 - Modify: `d:\zhao\vendure\packages\coupon-plugin\src\plugin.ts:81`（entities 数组）
 - Create: `d:\zhao\vendure\packages\coupon-plugin\src\migrations/20260919-product-coupon-binding.ts`
 
-- [ ] **Step 1: 新建实体**
+- [x] **Step 1: 新建实体**
 
 ```ts
 @Entity()
@@ -130,11 +130,11 @@ export class ProductCouponBinding extends VendureEntity implements ChannelAware 
 }
 ```
 
-- [ ] **Step 2: plugin.ts 注册实体**
+- [x] **Step 2: plugin.ts 注册实体**
 
 `entities: [CouponTemplate, CustomerCoupon, ProductCouponBinding],`
 
-- [ ] **Step 3: 迁移建表**
+- [x] **Step 3: 迁移建表**
 
 ```ts
 CREATE TABLE IF NOT EXISTS "product_coupon_binding" (
@@ -159,7 +159,7 @@ CREATE INDEX IF NOT EXISTS idx_binding_product ON product_coupon_binding ("produ
 CREATE INDEX IF NOT EXISTS idx_binding_template ON product_coupon_binding ("couponTemplateId");
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add packages/coupon-plugin
@@ -175,7 +175,7 @@ git commit -m "feat(coupon): ProductCouponBinding 实体 + 迁移"
 - Test: `d:\zhao\vendure\packages\coupon-plugin\src\coupon-binding.service.spec.ts`（对齐仓库既有测试框架）
 - Modify: `d:\zhao\vendure\packages\coupon-plugin\src\plugin.ts`（providers + exports）
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```ts
 describe('CouponBindingService', () => {
@@ -200,12 +200,12 @@ describe('CouponBindingService', () => {
 });
 ```
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `npx vitest run src/coupon-binding.service.spec.ts`
 Expected: FAIL（service 不存在）
 
-- [ ] **Step 3: 实现 service**
+- [x] **Step 3: 实现 service**
 
 ```ts
 @Injectable()
@@ -252,19 +252,19 @@ export class CouponBindingService {
 }
 ```
 
-- [ ] **Step 4: 运行确认通过**
+- [x] **Step 4: 运行确认通过**
 
 Run: `npx vitest run src/coupon-binding.service.spec.ts`
 Expected: PASS
 
-- [ ] **Step 5: plugin.ts 注册 provider**
+- [x] **Step 5: plugin.ts 注册 provider**
 
 ```ts
 providers: [..., CouponService, CouponBindingService],
 exports: [CouponService, CouponBindingService],
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add packages/coupon-plugin
@@ -280,7 +280,7 @@ git commit -m "feat(coupon): CouponBindingService（CRUD + 单向同步 + listBy
 - Modify: `d:\zhao\vendure\packages\coupon-plugin\src\coupon.service.ts`（claimCoupon/兑换入口加 newCustomerOnly 校验 + validDays 计算）
 - Test: `d:\zhao\vendure\packages\coupon-plugin\src\coupon-promotion-condition.spec.ts`
 
-- [ ] **Step 1: 写失败测试（条件过滤）**
+- [x] **Step 1: 写失败测试（条件过滤）**
 
 ```ts
 describe('couponAppliedCondition binding 过滤', () => {
@@ -310,12 +310,12 @@ describe('couponAppliedCondition binding 过滤', () => {
 });
 ```
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `npx vitest run src/coupon-promotion-condition.spec.ts`
 Expected: FAIL
 
-- [ ] **Step 3: 改造条件（注入 binding 集合判定）**
+- [x] **Step 3: 改造条件（注入 binding 集合判定）**
 
 `coupon-promotion-condition.ts` 在 `lineHasShopId` 过滤后追加：
 
@@ -337,7 +337,7 @@ Expected: FAIL
 
 （`getBindingConnection` 与 `isNewCustomer` 在 coupon-runtime/coupon-scope 旁新增小模块，对齐现有 `getCouponConnection` 模式。）
 
-- [ ] **Step 4: claimCoupon 加 newCustomerOnly + validDays**
+- [x] **Step 4: claimCoupon 加 newCustomerOnly + validDays**
 
 `coupon.service.ts` claimCoupon（L324-360）在限领校验后追加：
 
@@ -351,12 +351,12 @@ Expected: FAIL
 
 并在 `createUserCoupon` 处计算 `expiredAt`：`tpl.validDays ? new Date(now.getTime() + tpl.validDays * 86400000) : tpl.endsAt`（检查 createUserCoupon 现有逻辑后合入）。
 
-- [ ] **Step 5: 运行确认通过**
+- [x] **Step 5: 运行确认通过**
 
 Run: `npx vitest run src/coupon-promotion-condition.spec.ts`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add packages/coupon-plugin
@@ -372,7 +372,7 @@ git commit -m "feat(coupon): 结算按 binding 商品限定 + newCustomerOnly + 
 - Modify: `d:\zhao\vendure\packages\coupon-plugin\src\coupon-shop.resolver.ts`
 - Modify: `d:\zhao\vendure\packages\coupon-plugin\src\coupon.service.ts`（listProductCoupons / redeemByClaimCode）
 
-- [ ] **Step 1: schema 加 query/mutation**
+- [x] **Step 1: schema 加 query/mutation**
 
 shopApiExtensions 的 Query 加：
 
@@ -387,7 +387,7 @@ Mutation 加：
     redeemCouponByCode(claimCode: String!): CustomerCoupon!
 ```
 
-- [ ] **Step 2: service 实现**
+- [x] **Step 2: service 实现**
 
 ```ts
     /** 详情页可领券：binding.enabled && template.enabled && claimable + 前置校验 */
@@ -413,16 +413,16 @@ Mutation 加：
 
 （`templateBelongsToChannel` 复用现有 channels 关系判定，对齐 couponCentre 的过滤方式。）
 
-- [ ] **Step 3: resolver 绑定**
+- [x] **Step 3: resolver 绑定**
 
 `coupon-shop.resolver.ts` 加三个方法（@Query/@Mutation + @Transaction，模式同 claimCoupon L28-32）。
 
-- [ ] **Step 4: 运行验证**
+- [x] **Step 4: 运行验证**
 
 Run: `npx tsc --noEmit -p packages/coupon-plugin/tsconfig.json`
 Expected: 无类型错误
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/coupon-plugin
@@ -437,7 +437,7 @@ git commit -m "feat(coupon): shop-api productCoupons/claimProductCoupon/redeemCo
 - Modify: `d:\zhao\vendure\packages\coupon-plugin\src\plugin.ts`（adminApiExtensions）
 - Create: `d:\zhao\vendure\packages\coupon-plugin\src\coupon-binding-admin.resolver.ts`
 
-- [ ] **Step 1: admin schema**
+- [x] **Step 1: admin schema**
 
 ```ts
             type ProductCouponBinding implements Node {
@@ -483,15 +483,15 @@ git commit -m "feat(coupon): shop-api productCoupons/claimProductCoupon/redeemCo
             }
 ```
 
-- [ ] **Step 2: admin resolver（@Transaction 委托 CouponBindingService）**
+- [x] **Step 2: admin resolver（@Transaction 委托 CouponBindingService）**
 
 模式对齐 `coupon-admin.resolver.ts` 的 grantCoupon 绑定。
 
-- [ ] **Step 3: plugin.ts 注册 resolver**
+- [x] **Step 3: plugin.ts 注册 resolver**
 
 `adminApiExtensions.resolvers` 数组加 `CouponBindingAdminResolver`。
 
-- [ ] **Step 4: 验证 + Commit**
+- [x] **Step 4: 验证 + Commit**
 
 Run: `npx tsc --noEmit -p packages/coupon-plugin/tsconfig.json`
 Expected: 无类型错误 → commit `feat(coupon): admin-api ProductCouponBinding CRUD`
@@ -515,34 +515,34 @@ Expected: 无类型错误 → commit `feat(coupon): admin-api ProductCouponBindi
 - Create: `d:\zhao\nshop\layers\base\gql\queries\product-coupons.ts`（productCoupons / claimProductCoupon / redeemCouponByCode 文档）
 - Modify: `d:\zhao\nshop\layers\base\gql\schema.graphql`（按既有 schema 同步流程刷新）
 
-- [ ] **Step 1: 写 gql 文档**（对齐 `layers/base/gql/queries` 既有风格）
-- [ ] **Step 2: 运行 codegen**（按仓库既有命令，如 `pnpm codegen`），确认生成 useProductCoupons 等 composable
-- [ ] **Step 3: Commit** `feat(nshop): productCoupons gql + codegen`
+- [x] **Step 1: 写 gql 文档**（对齐 `layers/base/gql/queries` 既有风格）
+- [x] **Step 2: 运行 codegen**（按仓库既有命令，如 `pnpm codegen`），确认生成 useProductCoupons 等 composable
+- [x] **Step 3: Commit** `feat(nshop): productCoupons gql + codegen`
 
 ### B2. 详情页领券积木块 ProductCouponBlock
 
 **Files:**
 - Create: `d:\zhao\nshop\layers\base\app\components\product-detail\ProductCouponBlock.vue`（积木块，遵循现有 product-detail 积木命名与注册规范——完整注册名，防止 SSR 空注释）
 
-- [ ] **Step 1: 组件实现**：`useAsyncData('productCoupons', ...)` 调 `productCoupons(productId)`；展示券卡片（面额/门槛/有效期/角标 badgeText）；「立即领取」→ `claimProductCoupon(bindingId)` → 成功 toast + 跳转我的优惠券；已领取状态由 myCoupons 比对 code 判定
-- [ ] **Step 2: 接入详情页渲染器**（DetailClassic/DetailFloor/DetailDualBuy 或 ProductDetailRenderer 按 layout 挂载该块，遵循积木式 UI 规范）
-- [ ] **Step 3: Commit** `feat(nshop): 详情页领券积木块`
+- [x] **Step 1: 组件实现**：`useAsyncData('productCoupons', ...)` 调 `productCoupons(productId)`；展示券卡片（面额/门槛/有效期/角标 badgeText）；「立即领取」→ `claimProductCoupon(bindingId)` → 成功 toast + 跳转我的优惠券；已领取状态由 myCoupons 比对 code 判定
+- [x] **Step 2: 接入详情页渲染器**（DetailClassic/DetailFloor/DetailDualBuy 或 ProductDetailRenderer 按 layout 挂载该块，遵循积木式 UI 规范）
+- [x] **Step 3: Commit** `feat(nshop): 详情页领券积木块`
 
 ### B3. 我的优惠券页兑换入口
 
 **Files:**
 - Modify: 我的优惠券页面（定位：`layers/base/app/pages` 下 coupon 相关 page）
 
-- [ ] **Step 1: 页面顶部加「兑换码」输入框 + 兑换按钮** → `redeemCouponByCode(claimCode)`；错误码文案映射（Invalid claim code / expired / limit / new customer only）
-- [ ] **Step 2: Commit** `feat(nshop): 优惠券兑换入口`
+- [x] **Step 1: 页面顶部加「兑换码」输入框 + 兑换按钮** → `redeemCouponByCode(claimCode)`；错误码文案映射（Invalid claim code / expired / limit / new customer only）
+- [x] **Step 2: Commit** `feat(nshop): 优惠券兑换入口`
 
 ### B4. i18n 四语言词条
 
 **Files:**
 - Modify: `d:\zhao\nshop\layers\base\i18n\locales\`（zh-CN / en-US 等四个语言包）
 
-- [ ] **Step 1: 补词条**（领券/立即领取/已领取/兑换码/兑换/仅限新客/领取后N天有效等，四语言同步，禁止单语言写死）
-- [ ] **Step 2: Commit** `feat(nshop): 优惠券 i18n 四语言`
+- [x] **Step 1: 补词条**（领券/立即领取/已领取/兑换码/兑换/仅限新客/领取后N天有效等，四语言同步，禁止单语言写死）
+- [x] **Step 2: Commit** `feat(nshop): 优惠券 i18n 四语言`
 
 ---
 
@@ -554,22 +554,22 @@ Expected: 无类型错误 → commit `feat(coupon): admin-api ProductCouponBindi
 - Modify: `d:\zhao\vshop\web-admin\src\apis\coupon.ts:38-53`（Create/Update 输入加 claimable/claimCode/validDays/newCustomerOnly）
 - Modify: 券模板表单页（定位 coupon 相关 pages/form）
 
-- [ ] **Step 1: API 层补字段**
-- [ ] **Step 2: 表单加「领取设置」区块**：可领取开关、兑换码、领取后有效天数、仅限新客；「指定商品」选择器（scope=SKU 时绑商品 → 保存后调 createProductCouponBinding）
-- [ ] **Step 3: Commit** `feat(web-admin): 券模板领取设置`
+- [x] **Step 1: API 层补字段**
+- [x] **Step 2: 表单加「领取设置」区块**：可领取开关、兑换码、领取后有效天数、仅限新客；「指定商品」选择器（scope=SKU 时绑商品 → 保存后调 createProductCouponBinding）
+- [x] **Step 3: Commit** `feat(web-admin): 券模板领取设置`
 
 ### C2. 商品页「商品专属券」区块
 
 **Files:**
 - Modify: 商品编辑页（product 相关 pages/form）
 
-- [ ] **Step 1: 内嵌「商品专属券」区块**：`productCouponBindings(productId)` 列表（券名/面额/状态/角标）+ 停用/删除按钮 + 「为此商品新建券」快捷入口（预填 SKU 跳转建券页，保存时建 Binding）
-- [ ] **Step 2: Commit** `feat(web-admin): 商品页绑券管理`
+- [x] **Step 1: 内嵌「商品专属券」区块**：`productCouponBindings(productId)` 列表（券名/面额/状态/角标）+ 停用/删除按钮 + 「为此商品新建券」快捷入口（预填 SKU 跳转建券页，保存时建 Binding）
+- [x] **Step 2: Commit** `feat(web-admin): 商品页绑券管理`
 
 ### C3. 券列表标签
 
-- [ ] **Step 1: 券列表显示**：可领取/兑换码/仅限新客 标签
-- [ ] **Step 2: Commit** `feat(web-admin): 券列表标签`
+- [x] **Step 1: 券列表显示**：可领取/兑换码/仅限新客 标签
+- [x] **Step 2: Commit** `feat(web-admin): 券列表标签`
 
 ---
 
@@ -603,3 +603,11 @@ Expected: 无类型错误 → commit `feat(coupon): admin-api ProductCouponBindi
 ## 完成标准（总）
 
 首页/详情页展示商品专属券可领；凭码兑换可用；结算仅对绑定商品行生效；newCustomerOnly/validDays 生效；后台可管理绑券；手机截图齐全；操作手册补丁完成；三端已部署。
+
+---
+
+## 执行结论（2026-09-29 回填）
+
+- 本计划**已交付**，此前仅复选框未回填。
+- 判定依据：**产物级核查** —— 关键文件 / 实体 / resolver / 插件包在仓库中实际存在，且有对应 git 提交；**非逐 Step 复走**。证据见 `vshop/web-admin/docs/superpowers/BACKLOG.md` §2.1。
+- 本次动作：勾选本计划全部 47 个 `- [ ] **Step` 复选框 + 追加本节；未改动计划正文。

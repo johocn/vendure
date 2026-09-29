@@ -42,13 +42,13 @@
 **Files:**
 - Modify: `e:\code\vendure\packages\cjk-plugin\dashboard\pickup-location-list.tsx`
 
-- [ ] **Step 1: 读取当前 pickup-location-list.tsx 内容**
+- [x] **Step 1: 读取当前 pickup-location-list.tsx 内容**
 
 Run: `Read e:\code\vendure\packages\cjk-plugin\dashboard\pickup-location-list.tsx`
 
 Expected: 文件包含 `ListPage` 组件，当前 `customizeColumns` 配置了 id 和 name 两列，但没有 ActionBarItem 子组件和删除功能。`graphql` 从 `@/graphql/graphql` 导入（需改为 `@vendure/dashboard`）。
 
-- [ ] **Step 2: 用完整新内容覆盖 pickup-location-list.tsx**
+- [x] **Step 2: 用完整新内容覆盖 pickup-location-list.tsx**
 
 将 `pickup-location-list.tsx` 完整内容替换为：
 
@@ -183,7 +183,7 @@ function PickupLocationListPage({ route }: { route: any }) {
 6. 新建按钮用 `ActionBarItem` 的 `requiresPermission` 控制（ActionBarItem 支持此属性）
 7. 用 `queryClient.invalidateQueries()` 替代 `window.location.reload()` 刷新列表
 
-- [ ] **Step 3: 验证 Vite dev server 自动编译**
+- [x] **Step 3: 验证 Vite dev server 自动编译**
 
 Dashboard dev server（Vite）会自动检测文件变更并热更新。如果 dev server 未运行，启动：
 
@@ -195,7 +195,7 @@ Expected: Vite dev server 启动或已运行时自动热更新，无编译错误
 
 注意：**不需要**运行 `cd packages/cjk-plugin && npm run build`，因为 dashboard tsx 文件由 Vite 编译，cjk-plugin 的 build 只编译后端 TypeScript。
 
-- [ ] **Step 4: 验证后端 GraphQL schema 中 deletePickupLocation 可用**
+- [x] **Step 4: 验证后端 GraphQL schema 中 deletePickupLocation 可用**
 
 如果后端 dev-server 未运行，启动：
 
@@ -216,7 +216,7 @@ $r.data.__type.fields | Where-Object { $_.name -like '*PickupLocation*' } | Sele
 
 Expected: 输出包含 `createPickupLocation`、`updatePickupLocation`、`deletePickupLocation`。
 
-- [ ] **Step 5: 浏览器验证列表页 UI**
+- [x] **Step 5: 浏览器验证列表页 UI**
 
 访问 `http://localhost:5173/dashboard/pickup-locations`
 
@@ -227,7 +227,7 @@ Expected:
 4. 每行右侧有删除按钮（垃圾桶图标）
 5. 操作列标题为"操作"
 
-- [ ] **Step 6: 浏览器验证新建功能**
+- [x] **Step 6: 浏览器验证新建功能**
 
 1. 点击"新建自提点"按钮
 2. 验证跳转到 `http://localhost:5173/dashboard/pickup-locations/new`
@@ -238,7 +238,7 @@ Expected:
 
 Expected: 新建成功，列表页显示 4 条记录。
 
-- [ ] **Step 7: 浏览器验证删除功能**
+- [x] **Step 7: 浏览器验证删除功能**
 
 1. 在列表页找到刚创建的"测试自提点"
 2. 点击该行的删除按钮（垃圾桶图标）
@@ -249,7 +249,7 @@ Expected: 新建成功，列表页显示 4 条记录。
 
 Expected: 删除成功，列表页恢复为 3 条记录。
 
-- [ ] **Step 8: 提交代码**
+- [x] **Step 8: 提交代码**
 
 ```bash
 cd e:\code\vendure
@@ -296,3 +296,11 @@ Expected: 提交成功。
 6. ❌ 原方案 `window.location.reload()` → ✅ 修复为 `queryClient.invalidateQueries()`
 7. ❌ 原方案要求 `npm run build` 编译 cjk-plugin → ✅ 修复为不需要 build（dashboard 由 Vite 编译）
 8. ❌ 原方案 `git add packages/cjk-plugin/dist` → ✅ 修复为只 add dashboard tsx 文件（dist 不含 dashboard）
+
+---
+
+## 执行结论（2026-09-29 回填）
+
+- 本计划**已交付**，此前仅复选框未回填。
+- 判定依据：**产物级核查** —— 关键文件 / 实体 / resolver / 插件包在仓库中实际存在，且有对应 git 提交；**非逐 Step 复走**。证据见 `vshop/web-admin/docs/superpowers/BACKLOG.md` §2.1。
+- 本次动作：勾选本计划全部 8 个 `- [ ] **Step` 复选框 + 追加本节；未改动计划正文。

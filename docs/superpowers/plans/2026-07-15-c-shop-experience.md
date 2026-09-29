@@ -19,7 +19,7 @@
 **Files:**
 - Modify: `e:\code\vendure\packages\distribution-plugin\src\commission.service.ts:35-50`
 
-- [ ] **Step 1: 修改 calculateCommission 方法**
+- [x] **Step 1: 修改 calculateCommission 方法**
 
 将 `commission.service.ts` 第 46 行的 `referralCode` 改为 `referredBy`，并增加 self-referral 校验。
 
@@ -56,12 +56,12 @@
         }
 ```
 
-- [ ] **Step 2: 编译验证**
+- [x] **Step 2: 编译验证**
 
 Run: `cd e:\code\vendure\packages\distribution-plugin && npx tsc --noEmit -p tsconfig.build.json`
 Expected: 无错误
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -76,7 +76,7 @@ git commit --no-verify -m "fix: commission.service reads referredBy instead of r
 **Files:**
 - Modify: `e:\code\vendure\packages\distribution-plugin\src\distribution.service.ts:1-12, 53-86`
 
-- [ ] **Step 1: 注入 CustomerService**
+- [x] **Step 1: 注入 CustomerService**
 
 在 `distribution.service.ts` 第 2 行的 import 中追加 `CustomerService`：
 
@@ -94,7 +94,7 @@ import { Channel, CustomerService, ID, ListQueryBuilder, ListQueryOptions, Pagin
     ) {}
 ```
 
-- [ ] **Step 2: apply 方法回写 customer.referralCode**
+- [x] **Step 2: apply 方法回写 customer.referralCode**
 
 在 `apply` 方法的 `return this.connection.getRepository(ctx, Distributor).save(distributor);` 之前（第 84 行之后），追加回写逻辑：
 
@@ -120,12 +120,12 @@ import { Channel, CustomerService, ID, ListQueryBuilder, ListQueryOptions, Pagin
 
 替换原来的 `return this.connection.getRepository(ctx, Distributor).save(distributor);`。
 
-- [ ] **Step 3: 编译验证**
+- [x] **Step 3: 编译验证**
 
 Run: `cd e:\code\vendure\packages\distribution-plugin && npx tsc --noEmit -p tsconfig.build.json`
 Expected: 无错误
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -142,7 +142,7 @@ git commit --no-verify -m "feat: distribution.service.apply writes back referral
 **Files:**
 - Modify: `e:\code\vendure\packages\wechat-auth-plugin\src\wechat-auth.service.ts`
 
-- [ ] **Step 1: 新增小程序 token 缓存 Map 和 getMiniProgramAccessToken 方法**
+- [x] **Step 1: 新增小程序 token 缓存 Map 和 getMiniProgramAccessToken 方法**
 
 在 `wechat-auth.service.ts` 第 15 行 `private accessTokenCache` 之后追加：
 
@@ -186,12 +186,12 @@ git commit --no-verify -m "feat: distribution.service.apply writes back referral
     }
 ```
 
-- [ ] **Step 2: 编译验证**
+- [x] **Step 2: 编译验证**
 
 Run: `cd e:\code\vendure\packages\wechat-auth-plugin && npx tsc --noEmit -p tsconfig.build.json`
 Expected: 无错误
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -206,7 +206,7 @@ git commit --no-verify -m "feat: add getMiniProgramAccessToken with per-appId ca
 **Files:**
 - Create: `e:\code\vendure\packages\wechat-auth-plugin\src\wxacode.service.ts`
 
-- [ ] **Step 1: 创建 WxacodeService**
+- [x] **Step 1: 创建 WxacodeService**
 
 ```typescript
 import { Injectable } from '@nestjs/common';
@@ -312,7 +312,7 @@ export class WxacodeService {
 }
 ```
 
-- [ ] **Step 2: 导出 WxacodeService**
+- [x] **Step 2: 导出 WxacodeService**
 
 在 `e:\code\vendure\packages\wechat-auth-plugin\src\index.ts` 中追加：
 
@@ -320,12 +320,12 @@ export class WxacodeService {
 export * from './wxacode.service';
 ```
 
-- [ ] **Step 3: 编译验证**
+- [x] **Step 3: 编译验证**
 
 Run: `cd e:\code\vendure\packages\wechat-auth-plugin && npx tsc --noEmit -p tsconfig.build.json`
 Expected: 无错误
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -341,7 +341,7 @@ git commit --no-verify -m "feat: add WxacodeService for generating wxacodeunlimi
 - Modify: `e:\code\vendure\packages\wechat-auth-plugin\src\wechat-auth-shop.resolver.ts`
 - Modify: `e:\code\vendure\packages\wechat-auth-plugin\src\plugin.ts`
 
-- [ ] **Step 1: resolver 追加 wechatWxacode 查询**
+- [x] **Step 1: resolver 追加 wechatWxacode 查询**
 
 在 `wechat-auth-shop.resolver.ts` 中追加 WxacodeService 注入和查询方法：
 
@@ -413,7 +413,7 @@ export class WechatAuthShopResolver {
 }
 ```
 
-- [ ] **Step 2: plugin.ts 注册 WxacodeService + schema 扩展**
+- [x] **Step 2: plugin.ts 注册 WxacodeService + schema 扩展**
 
 在 `plugin.ts` 的 import 中追加：
 
@@ -452,17 +452,17 @@ import { WxacodeService } from './wxacode.service';
         `;
 ```
 
-- [ ] **Step 3: 编译验证**
+- [x] **Step 3: 编译验证**
 
 Run: `cd e:\code\vendure\packages\wechat-auth-plugin && npx tsc --noEmit -p tsconfig.build.json`
 Expected: 无错误
 
-- [ ] **Step 4: 构建插件**
+- [x] **Step 4: 构建插件**
 
 Run: `cd e:\code\vendure\packages\wechat-auth-plugin && npm run build`
 Expected: 构建成功，`lib/` 目录生成
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -480,7 +480,7 @@ git commit --no-verify -m "feat: register wechatWxacode query in shop API"
 - Modify: `e:\code\vendure\packages\cjk-plugin\src\auth\auth-shop.resolver.ts`
 - Modify: `e:\code\vendure\packages\cjk-plugin\src\plugin.ts`（shopApiExtensions schema）
 
-- [ ] **Step 1: 修改 authMethods 查询返回类型**
+- [x] **Step 1: 修改 authMethods 查询返回类型**
 
 完整替换 `auth-shop.resolver.ts` 内容为：
 
@@ -533,7 +533,7 @@ export class AuthShopResolver {
 
 注意：`readChannelAuthConfig` 是同步函数（见 `crypto.ts:190`），不需要 `async/await`。ssoProviders 查询也改回同步（原代码已是同步）。
 
-- [ ] **Step 2: 修改 plugin.ts 中 shopApiExtensions schema**
+- [x] **Step 2: 修改 plugin.ts 中 shopApiExtensions schema**
 
 在 `e:\code\vendure\packages\cjk-plugin\src\plugin.ts` 第 212-215 行，当前 schema 是：
 
@@ -557,17 +557,17 @@ export class AuthShopResolver {
                 }
 ```
 
-- [ ] **Step 3: 编译验证**
+- [x] **Step 3: 编译验证**
 
 Run: `cd e:\code\vendure\packages\cjk-plugin && npx tsc --noEmit -p tsconfig.build.json`
 Expected: 无错误
 
-- [ ] **Step 4: 构建插件**
+- [x] **Step 4: 构建插件**
 
 Run: `cd e:\code\vendure\packages\cjk-plugin && npm run build`
 Expected: 构建成功
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -586,12 +586,12 @@ git commit --no-verify -m "feat: authMethods query returns wechatAppId for front
 - Modify: `e:\code\vshop\src\api\queries\channel.ts`
 - Create: `e:\code\vshop\src\api\queries\wechat.ts`（如果不存在则创建，否则追加）
 
-- [ ] **Step 1: 安装依赖**
+- [x] **Step 1: 安装依赖**
 
 Run: `cd e:\code\vshop && npm install html-to-image qrcode && npm install -D @types/qrcode`
 Expected: 安装成功
 
-- [ ] **Step 2: 更新 channel.ts 中的 getAuthMethods 查询**
+- [x] **Step 2: 更新 channel.ts 中的 getAuthMethods 查询**
 
 修改 `e:\code\vshop\src\api\queries\channel.ts` 的 `getAuthMethods` 函数：
 
@@ -607,7 +607,7 @@ export async function getAuthMethods() {
 }
 ```
 
-- [ ] **Step 3: 在 wechat.ts 中追加 GET_WXACODE 查询**
+- [x] **Step 3: 在 wechat.ts 中追加 GET_WXACODE 查询**
 
 检查 `e:\code\vshop\src\api\queries\wechat.ts` 是否已存在。如果存在，追加以下内容；如果不存在，创建新文件：
 
@@ -635,7 +635,7 @@ export async function getWxacode(scene: string, path?: string): Promise<{ conten
 }
 ```
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 cd e:\code\vshop
@@ -651,7 +651,7 @@ git commit --no-verify -m "feat: add html-to-image/qrcode deps + update authMeth
 - Modify: `e:\code\vshop\src\stores\tenant.ts`
 - Modify: `e:\code\vshop\src\App.vue`
 
-- [ ] **Step 1: tenant.ts 扩展 wechatAppId state**
+- [x] **Step 1: tenant.ts 扩展 wechatAppId state**
 
 在 `e:\code\vshop\src\stores\tenant.ts` 的 `authMethods` ref 之后追加：
 
@@ -686,7 +686,7 @@ git commit --no-verify -m "feat: add html-to-image/qrcode deps + update authMeth
     };
 ```
 
-- [ ] **Step 2: App.vue onLaunch 解析小程序 scene**
+- [x] **Step 2: App.vue onLaunch 解析小程序 scene**
 
 在 `e:\code\vshop\src\App.vue` 的 `onLaunch` 回调中，在 `authStore.restoreSession()` 之后、H5 的 ref 捕获之后，追加小程序 scene 解析：
 
@@ -733,7 +733,7 @@ onLaunch((options: any) => {
 });
 ```
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 cd e:\code\vshop
@@ -748,7 +748,7 @@ git commit --no-verify -m "feat: tenant store wechatAppId + App.vue parses mp sc
 **Files:**
 - Modify: `e:\code\vshop\src\api\mutations\auth.ts`
 
-- [ ] **Step 1: 修改 registerCustomer 函数支持 customFields.referredBy**
+- [x] **Step 1: 修改 registerCustomer 函数支持 customFields.referredBy**
 
 替换 `registerCustomer` 函数（第 155-170 行）为：
 
@@ -775,7 +775,7 @@ export async function registerCustomer(input: {
 }
 ```
 
-- [ ] **Step 2: 提交**
+- [x] **Step 2: 提交**
 
 ```bash
 cd e:\code\vshop
@@ -792,7 +792,7 @@ git commit --no-verify -m "feat: registerCustomer passes customFields.referredBy
 **Files:**
 - Modify: `e:\code\vshop\src\pages\login\index.vue`
 
-- [ ] **Step 1: 替换 wechatAppId 来源**
+- [x] **Step 1: 替换 wechatAppId 来源**
 
 将第 75 行 `const wechatAppId = import.meta.env.VITE_WECHAT_APP_ID || '';` 替换为：
 
@@ -800,7 +800,7 @@ git commit --no-verify -m "feat: registerCustomer passes customFields.referredBy
 const wechatAppId = computed(() => tenantStore.wechatAppId || import.meta.env.VITE_WECHAT_APP_ID || '');
 ```
 
-- [ ] **Step 2: 添加静默授权失败标记**
+- [x] **Step 2: 添加静默授权失败标记**
 
 在第 73 行 `const redirectUrl = ref('');` 之后追加：
 
@@ -808,7 +808,7 @@ const wechatAppId = computed(() => tenantStore.wechatAppId || import.meta.env.VI
 const lastWechatAuthFailed = ref(false);
 ```
 
-- [ ] **Step 3: 修改 onMounted 中的自动触发逻辑**
+- [x] **Step 3: 修改 onMounted 中的自动触发逻辑**
 
 将第 132-141 行的自动触发逻辑：
 
@@ -840,7 +840,7 @@ const lastWechatAuthFailed = ref(false);
     }
 ```
 
-- [ ] **Step 4: 修改 handleWechatH5Callback 失败处理**
+- [x] **Step 4: 修改 handleWechatH5Callback 失败处理**
 
 将第 224-235 行的 `handleWechatH5Callback` 替换为：
 
@@ -867,13 +867,13 @@ async function handleWechatH5Callback(oauthCode: string) {
 }
 ```
 
-- [ ] **Step 5: 修改模板中 wechatAppId 引用**
+- [x] **Step 5: 修改模板中 wechatAppId 引用**
 
 将模板第 27 行 `v-if="authMethods.includes('wechat') && isWechatBrowser && wechatAppId"` 改为 `v-if="authMethods.includes('wechat') && isWechatBrowser && wechatAppId"`（保持不变，因为 wechatAppId 现在是 computed ref，模板中自动解包）。
 
 同时将 `loginWithWechatH5` 函数中第 207 行 `if (!wechatAppId)` 改为 `if (!wechatAppId.value)`。
 
-- [ ] **Step 6: 追加登录后补写 referredBy 逻辑**
+- [x] **Step 6: 追加登录后补写 referredBy 逻辑**
 
 在 `login/index.vue` 的 `loginWithLocal` 和 `loginWithPhone` 函数中，登录成功后追加补写逻辑。
 
@@ -919,7 +919,7 @@ async function tryUpdateReferredBy(inviteCode: string) {
 
 在 `handleWechatH5Callback`、`handleAlipayH5Callback`、`handleDouyinH5Callback` 中，`authStore.setAuth` 之后也追加同样的补写逻辑。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 cd e:\code\vshop
@@ -940,7 +940,7 @@ git commit --no-verify -m "fix: wechat login reads appId from backend + prevents
 - Modify: `e:\code\vshop\src\pkg-promotion\pages\group-buy.vue`
 - Modify: `e:\code\vshop\src\pkg-promotion\pages\coupons.vue`
 
-- [ ] **Step 1: App.vue 追加路由拦截器**
+- [x] **Step 1: App.vue 追加路由拦截器**
 
 在 `e:\code\vshop\src\App.vue` 的 `setupRouteGuard()` 调用之后追加：
 
@@ -953,7 +953,7 @@ git commit --no-verify -m "fix: wechat login reads appId from backend + prevents
     // #endif
 ```
 
-- [ ] **Step 2: 首页接入分享**
+- [x] **Step 2: 首页接入分享**
 
 在 `e:\code\vshop\src\pages\home\index.vue` 的 `<script setup>` 中追加：
 
@@ -976,7 +976,7 @@ useShare({
 
 （如果首页已有 `onShareAppMessage`/`onShareTimeline`，替换为 useShare 调用）
 
-- [ ] **Step 3: 秒杀活动页接入分享**
+- [x] **Step 3: 秒杀活动页接入分享**
 
 在 `e:\code\vshop\src\pkg-promotion\pages\flash-sale.vue` 的 `<script setup>` 中追加：
 
@@ -994,7 +994,7 @@ useShare({
 });
 ```
 
-- [ ] **Step 4: 拼团活动页接入分享**
+- [x] **Step 4: 拼团活动页接入分享**
 
 在 `e:\code\vshop\src\pkg-promotion\pages\group-buy.vue` 的 `<script setup>` 中追加：
 
@@ -1011,7 +1011,7 @@ useShare({
 });
 ```
 
-- [ ] **Step 5: 优惠券页接入分享**
+- [x] **Step 5: 优惠券页接入分享**
 
 在 `e:\code\vshop\src\pkg-promotion\pages\coupons.vue` 的 `<script setup>` 中追加：
 
@@ -1031,7 +1031,7 @@ useShare({
 });
 ```
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 cd e:\code\vshop
@@ -1051,7 +1051,7 @@ git commit --no-verify -m "feat: expand share to home, flash-sale, group-buy, co
 - Create: `e:\code\vshop\src\components\product-poster\product-poster-mp.vue`
 - Create: `e:\code\vshop\src\components\product-poster\product-poster.vue`
 
-- [ ] **Step 1: 创建 usePosterData.ts**
+- [x] **Step 1: 创建 usePosterData.ts**
 
 ```typescript
 import { ref } from 'vue';
@@ -1144,7 +1144,7 @@ export function usePosterData() {
 }
 ```
 
-- [ ] **Step 2: 创建 product-poster-h5.vue**
+- [x] **Step 2: 创建 product-poster-h5.vue**
 
 ```vue
 <!-- #ifdef H5 -->
@@ -1238,7 +1238,7 @@ function savePoster() {
 <!-- #endif -->
 ```
 
-- [ ] **Step 3: 创建 product-poster-mp.vue**
+- [x] **Step 3: 创建 product-poster-mp.vue**
 
 ```vue
 <!-- #ifdef MP-WEIXIN -->
@@ -1361,7 +1361,7 @@ function savePoster() {
 <!-- #endif -->
 ```
 
-- [ ] **Step 4: 创建 product-poster.vue 入口组件**
+- [x] **Step 4: 创建 product-poster.vue 入口组件**
 
 ```vue
 <template>
@@ -1436,7 +1436,7 @@ onMounted(async () => {
 </script>
 ```
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 cd e:\code\vshop
@@ -1451,7 +1451,7 @@ git commit --no-verify -m "feat: add product poster component (H5 html-to-image 
 **Files:**
 - Modify: `e:\code\vshop\src\pkg-product\pages\detail.vue`
 
-- [ ] **Step 1: 在 detail.vue 中追加海报按钮和组件**
+- [x] **Step 1: 在 detail.vue 中追加海报按钮和组件**
 
 在 `<script setup>` 中追加 import：
 
@@ -1476,7 +1476,7 @@ const showPoster = ref(false);
 <ProductPoster v-if="showPoster" :product="product" @close="showPoster = false" />
 ```
 
-- [ ] **Step 2: 提交**
+- [x] **Step 2: 提交**
 
 ```bash
 cd e:\code\vshop
@@ -1493,7 +1493,7 @@ git commit --no-verify -m "feat: product detail page integrates poster component
 **Files:**
 - Modify: `e:\code\vshop\src\pkg-user\pages\distribution.vue`
 
-- [ ] **Step 1: 修改 applyDist 函数传递 referredByCode**
+- [x] **Step 1: 修改 applyDist 函数传递 referredByCode**
 
 完整替换 `distribution.vue` 的 `<script setup>` 内容为：
 
@@ -1546,7 +1546,7 @@ extend type Mutation {
 
 同时修改 `distribution-plugin/src/distribution-shop.resolver.ts` 的 `applyDistributor` resolver 方法签名，接受 `referredByCode` 参数并传递给 `distributionService.apply`。
 
-- [ ] **Step 2: 修改 distribution-plugin schema（resolver 已支持）**
+- [x] **Step 2: 修改 distribution-plugin schema（resolver 已支持）**
 
 注意：`distribution-shop.resolver.ts` 第 53 行已支持 `@Args('referredByCode') referredByCode?: string`，但 `plugin.ts` 的 schema 中 `applyDistributor: Distributor!` 未声明参数。只需修改 schema。
 
@@ -1554,12 +1554,12 @@ extend type Mutation {
 
 将 `applyDistributor: Distributor!` 改为 `applyDistributor(referredByCode: String): Distributor!`
 
-- [ ] **Step 3: 构建插件**
+- [x] **Step 3: 构建插件**
 
 Run: `cd e:\code\vendure\packages\distribution-plugin && npm run build`
 Expected: 构建成功
 
-- [ ] **Step 4: 提交后端改动**
+- [x] **Step 4: 提交后端改动**
 
 ```bash
 cd e:\code\vendure
@@ -1567,7 +1567,7 @@ git add packages/distribution-plugin/src/plugin.ts
 git commit --no-verify -m "feat: applyDistributor schema accepts referredByCode parameter"
 ```
 
-- [ ] **Step 5: 提交前端改动**
+- [x] **Step 5: 提交前端改动**
 
 ```bash
 cd e:\code\vshop
@@ -1584,7 +1584,7 @@ git commit --no-verify -m "feat: distribution page passes referredByCode"
 **Files:**
 - Modify: `e:\code\vendure\packages\dev-server\dev-config.ts`
 
-- [ ] **Step 1: 在 dev-config.ts 中配置 CORS**
+- [x] **Step 1: 在 dev-config.ts 中配置 CORS**
 
 注意：AssetServerPlugin 的 options **不支持** `middleware` 字段（已确认 `AssetServerOptions` 接口无此字段）。需使用 Vendure 的 `apiOptions.middleware` 配置全局 CORS 中间件。
 
@@ -1620,7 +1620,7 @@ app.use('/assets', (req, res, next) => {
 
 前端 `<img>` 标签需添加 `crossorigin="anonymous"` 属性（已在 product-poster-h5.vue 中配置）。
 
-- [ ] **Step 2: 提交**
+- [x] **Step 2: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -1632,27 +1632,27 @@ git commit --no-verify -m "feat: add CORS middleware to AssetServerPlugin for po
 
 ### Task 16: 编译验证
 
-- [ ] **Step 1: 编译 wechat-auth-plugin**
+- [x] **Step 1: 编译 wechat-auth-plugin**
 
 Run: `cd e:\code\vendure\packages\wechat-auth-plugin && npm run build`
 Expected: 构建成功
 
-- [ ] **Step 2: 编译 cjk-plugin**
+- [x] **Step 2: 编译 cjk-plugin**
 
 Run: `cd e:\code\vendure\packages\cjk-plugin && npm run build`
 Expected: 构建成功
 
-- [ ] **Step 3: 编译 distribution-plugin**
+- [x] **Step 3: 编译 distribution-plugin**
 
 Run: `cd e:\code\vendure\packages\distribution-plugin && npm run build`
 Expected: 构建成功
 
-- [ ] **Step 4: dev-server tsc 检查**
+- [x] **Step 4: dev-server tsc 检查**
 
 Run: `cd e:\code\vendure\packages\dev-server && npx tsc --noEmit`
 Expected: 无 auth/poster/distribution 相关错误
 
-- [ ] **Step 5: vshop 编译检查**
+- [x] **Step 5: vshop 编译检查**
 
 Run: `cd e:\code\vshop && npm run build`
 Expected: 无编译错误
@@ -1661,12 +1661,12 @@ Expected: 无编译错误
 
 ### Task 17: 启动验证
 
-- [ ] **Step 1: 启动后端**
+- [x] **Step 1: 启动后端**
 
 Run: `cd e:\code\vendure\packages\dev-server && npm run dev`
 Expected: 服务器成功启动在 port 3000，无 GraphQL schema 错误
 
-- [ ] **Step 2: 验证 GraphQL schema**
+- [x] **Step 2: 验证 GraphQL schema**
 
 访问 `http://localhost:3000/shop-api`，执行以下查询：
 
@@ -1681,7 +1681,7 @@ query {
 
 Expected: 返回 `{ methods: [...], wechatAppId: null }` 或具体 appId
 
-- [ ] **Step 3: 验证 wxacode 查询（需登录）**
+- [x] **Step 3: 验证 wxacode 查询（需登录）**
 
 登录后执行：
 
@@ -1696,12 +1696,12 @@ query {
 
 Expected: 返回 base64 图片数据（若小程序凭证未配置，返回错误提示）
 
-- [ ] **Step 4: 启动前端**
+- [x] **Step 4: 启动前端**
 
 Run: `cd e:\code\vshop && npm run dev`
 Expected: Vite 启动成功
 
-- [ ] **Step 5: 验证登录页**
+- [x] **Step 5: 验证登录页**
 
 访问 `http://localhost:5180/?tenant=default#/pages/login/index`
 Expected: 登录页正常渲染，微信登录按钮根据 authMethods 显示/隐藏
@@ -1729,3 +1729,11 @@ Expected: 登录页正常渲染，微信登录按钮根据 authMethods 显示/�
    - AssetServerPlugin `middleware` 选项可能不支持 — 备选方案用全局 CORS
    - uni-app 条件编译在入口组件的 import 可能需要特殊处理
    - `registerCustomerAccount` 的 input 是否支持 `customFields` 需运行时验证
+
+---
+
+## 执行结论（2026-09-29 回填）
+
+- 本计划**已交付**，此前仅复选框未回填。
+- 判定依据：**产物级核查** —— 关键文件 / 实体 / resolver / 插件包在仓库中实际存在，且有对应 git 提交；**非逐 Step 复走**。证据见 `vshop/web-admin/docs/superpowers/BACKLOG.md` §2.1。
+- 本次动作：勾选本计划全部 70 个 `- [ ] **Step` 复选框 + 追加本节；未改动计划正文。

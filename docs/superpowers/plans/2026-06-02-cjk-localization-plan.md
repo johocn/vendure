@@ -128,7 +128,7 @@ packages/
 - Create: `packages/cjk-plugin/src/i18n/ja.json`
 - Create: `packages/cjk-plugin/src/i18n/ko.json`
 
-- [ ] **Step 1: 创建 package.json**
+- [x] **Step 1: 创建 package.json**
 
 ```json
 {
@@ -158,7 +158,7 @@ packages/
 }
 ```
 
-- [ ] **Step 2: 创建 tsconfig.json 和 tsconfig.build.json**
+- [x] **Step 2: 创建 tsconfig.json 和 tsconfig.build.json**
 
 tsconfig.json:
 ```json
@@ -183,14 +183,14 @@ tsconfig.build.json:
 }
 ```
 
-- [ ] **Step 3: 创建 src/constants.ts**
+- [x] **Step 3: 创建 src/constants.ts**
 
 ```typescript
 export const loggerCtx = 'CJKPlugin';
 export const CJK_PLUGIN_OPTIONS = Symbol('CJK_PLUGIN_OPTIONS');
 ```
 
-- [ ] **Step 4: 创建 src/types.ts**
+- [x] **Step 4: 创建 src/types.ts**
 
 ```typescript
 import { LanguageCode } from '@vendure/common/lib/generated-types';
@@ -247,7 +247,7 @@ export interface CjkPluginOptions {
 }
 ```
 
-- [ ] **Step 5: 创建 src/plugin.ts**
+- [x] **Step 5: 创建 src/plugin.ts**
 
 ```typescript
 import { Inject, MiddlewareConsumer, Module, NestModule, OnApplicationBootstrap, Type } from '@nestjs/common';
@@ -298,11 +298,11 @@ export class CjkPlugin implements OnApplicationBootstrap, NestModule {
 }
 ```
 
-- [ ] **Step 6: 创建 i18n 翻译文件**
+- [x] **Step 6: 创建 i18n 翻译文件**
 
 基于 `packages/core/src/i18n/messages/en.json` 完整翻译为 zh_CN.json / zh_TW.json / ja.json / ko.json。结构包含 `error`、`errorResult`、`message` 三个命名空间。
 
-- [ ] **Step 7: 创建 index.ts**
+- [x] **Step 7: 创建 index.ts**
 
 ```typescript
 export * from './src/plugin';
@@ -310,11 +310,11 @@ export * from './src/types';
 export * from './src/constants';
 ```
 
-- [ ] **Step 8: 安装依赖并构建**
+- [x] **Step 8: 安装依赖并构建**
 
 Run: `cd e:\code\vendure\packages\cjk-plugin && npm install && npm run build`
 
-- [ ] **Step 9: 提交**
+- [x] **Step 9: 提交**
 
 ```bash
 git add packages/cjk-plugin/
@@ -333,7 +333,7 @@ git commit -m "feat(cjk-plugin): scaffold plugin with i18n translations"
 - Create: `packages/cjk-plugin/src/payment/cod-handler.ts`
 - Modify: `packages/cjk-plugin/src/plugin.ts`
 
-- [ ] **Step 1: 创建 china.ts（省/市/区三级）**
+- [x] **Step 1: 创建 china.ts（省/市/区三级）**
 
 包含 34 个省级行政区数据。市级和区级数据量大，初始版本提供省级 + 主要城市，后续通过 API 补充。
 
@@ -376,15 +376,15 @@ export const chinaProvinces = [
 ];
 ```
 
-- [ ] **Step 2: 创建 japan.ts 和 korea.ts**
+- [x] **Step 2: 创建 japan.ts 和 korea.ts**
 
 （同 v1 计划中的数据）
 
-- [ ] **Step 3: 创建 region-populator.ts**
+- [x] **Step 3: 创建 region-populator.ts**
 
 （同 v1 计划，通过 CountryService/ZoneService 导入）
 
-- [ ] **Step 4: 创建 cod-handler.ts**
+- [x] **Step 4: 创建 cod-handler.ts**
 
 ```typescript
 import { LanguageCode, PaymentMethodHandler } from '@vendure/core';
@@ -413,15 +413,15 @@ export const codPaymentHandler = new PaymentMethodHandler({
 });
 ```
 
-- [ ] **Step 5: 修改 plugin.ts 集成地区数据和货到付款**
+- [x] **Step 5: 修改 plugin.ts 集成地区数据和货到付款**
 
 在 `configuration` 中注册 codPaymentHandler，在 `onApplicationBootstrap` 中调用 RegionPopulator。
 
-- [ ] **Step 6: 构建验证**
+- [x] **Step 6: 构建验证**
 
 Run: `cd e:\code\vendure\packages\cjk-plugin && npm run build`
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add packages/cjk-plugin/
@@ -441,7 +441,7 @@ git commit -m "feat(cjk-plugin): add region data and COD payment handler"
 - Create: `packages/cjk-plugin/src/pickup/pickup-admin.resolver.ts`
 - Modify: `packages/cjk-plugin/src/plugin.ts`
 
-- [ ] **Step 1: 创建 pickup-location.entity.ts**
+- [x] **Step 1: 创建 pickup-location.entity.ts**
 
 ```typescript
 import { Column, Entity, JoinTable, ManyToMany } from 'typeorm';
@@ -475,7 +475,7 @@ export class PickupLocation extends VendureEntity implements ChannelAware, HasCu
 }
 ```
 
-- [ ] **Step 2: 创建 pickup-location-custom-fields.ts**
+- [x] **Step 2: 创建 pickup-location-custom-fields.ts**
 
 ```typescript
 import { CustomFields } from '@vendure/core';
@@ -485,23 +485,23 @@ export const pickupLocationCustomFields: CustomFields = {
 };
 ```
 
-- [ ] **Step 3: 创建 pickup-eligibility-checker.ts / pickup-calculator.ts / pickup-fulfillment-handler.ts**
+- [x] **Step 3: 创建 pickup-eligibility-checker.ts / pickup-calculator.ts / pickup-fulfillment-handler.ts**
 
 （同 v1 计划，但 FulfillmentHandler 的 args 中使用 pickupLocationId）
 
-- [ ] **Step 4: 创建 pickup-admin.resolver.ts**
+- [x] **Step 4: 创建 pickup-admin.resolver.ts**
 
 提供 Admin API 查询/创建/更新 PickupLocation 的 resolver。
 
-- [ ] **Step 5: 修改 plugin.ts**
+- [x] **Step 5: 修改 plugin.ts**
 
 在 `VendurePlugin` 装饰器中注册实体、adminApiExtensions、providers。
 
-- [ ] **Step 6: 构建验证**
+- [x] **Step 6: 构建验证**
 
 Run: `cd e:\code\vendure\packages\cjk-plugin && npm run build`
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add packages/cjk-plugin/
@@ -519,7 +519,7 @@ git commit -m "feat(cjk-plugin): add PickupLocation entity and store/pickup-poin
 - Create: `packages/cjk-plugin/src/tenant/tenant-setup.service.ts`
 - Modify: `packages/cjk-plugin/src/plugin.ts`
 
-- [ ] **Step 1: 创建 promotion-custom-fields.ts**
+- [x] **Step 1: 创建 promotion-custom-fields.ts**
 
 ```typescript
 import { CustomFields, LanguageCode } from '@vendure/core';
@@ -548,7 +548,7 @@ export const promotionCustomFields: CustomFields = {
 };
 ```
 
-- [ ] **Step 2: 创建 coupon-stackable-condition.ts**
+- [x] **Step 2: 创建 coupon-stackable-condition.ts**
 
 ```typescript
 import { LanguageCode, PromotionCondition } from '@vendure/core';
@@ -594,7 +594,7 @@ export const couponStackableCondition = new PromotionCondition({
 });
 ```
 
-- [ ] **Step 3: 创建 tenant-channel-custom-fields.ts**
+- [x] **Step 3: 创建 tenant-channel-custom-fields.ts**
 
 ```typescript
 import { CustomFields, LanguageCode } from '@vendure/core';
@@ -617,19 +617,19 @@ export const tenantChannelCustomFields: CustomFields = {
 };
 ```
 
-- [ ] **Step 4: 创建 tenant-setup.service.ts**
+- [x] **Step 4: 创建 tenant-setup.service.ts**
 
 （同 v1 计划，但删除冗余的 enabledPaymentMethods/enabledShippingMethods）
 
-- [ ] **Step 5: 修改 plugin.ts 集成**
+- [x] **Step 5: 修改 plugin.ts 集成**
 
 在 `configuration` 中注册 CustomFields 和 PromotionCondition。
 
-- [ ] **Step 6: 构建验证**
+- [x] **Step 6: 构建验证**
 
 Run: `cd e:\code\vendure\packages\cjk-plugin && npm run build`
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add packages/cjk-plugin/
@@ -644,25 +644,25 @@ git commit -m "feat(cjk-plugin): add coupon stacking condition and tenant channe
 - Create: `packages/alipay-plugin/` 完整骨架
 - 关键：alipay-handler.ts 中配置通过 `args` 传入
 
-- [ ] **Step 1: 创建插件骨架**
+- [x] **Step 1: 创建插件骨架**
 
 package.json / tsconfig / index.ts / constants.ts / types.ts / plugin.ts
 
-- [ ] **Step 2: 创建 alipay-handler.ts**
+- [x] **Step 2: 创建 alipay-handler.ts**
 
 配置通过 `PaymentMethodHandler.args` 传入（appId/privateKey/alipayPublicKey/tradeType），不使用 method.customFields。
 
 createPayment 返回 `metadata: { payForm: result, payType: 'page' | 'wap' }`。
 
-- [ ] **Step 3: 创建 alipay.controller.ts**
+- [x] **Step 3: 创建 alipay.controller.ts**
 
 异步通知 Controller，验证签名。
 
-- [ ] **Step 4: 构建验证**
+- [x] **Step 4: 构建验证**
 
 Run: `cd e:\code\vendure\packages\alipay-plugin && npm install && npm run build`
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add packages/alipay-plugin/
@@ -677,7 +677,7 @@ git commit -m "feat(alipay-plugin): add Alipay payment plugin"
 - Create: `packages/wechatpay-plugin/` 完整骨架
 - 关键：wechatpay-handler.ts 中配置通过 `args` 传入
 
-- [ ] **Step 1-5: 同 Task 5 结构**
+- [x] **Step 1-5: 同 Task 5 结构**
 
 wechatpay-handler.ts 配置通过 args 传入（appId/mchId/apiKey/tradeType）。
 
@@ -695,7 +695,7 @@ git commit -m "feat(wechatpay-plugin): add WeChat Pay plugin"
 **Files:**
 - Create: `packages/oss-plugin/` 完整骨架
 
-- [ ] **Step 1-5: 创建插件骨架 + oss-strategy.ts**
+- [x] **Step 1-5: 创建插件骨架 + oss-strategy.ts**
 
 标准 AssetStorageStrategy 实现。
 
@@ -713,7 +713,7 @@ git commit -m "feat(oss-plugin): add Aliyun OSS storage plugin"
 **Files:**
 - Create: `packages/phone-auth-plugin/` 完整骨架
 
-- [ ] **Step 1-5: 创建插件骨架 + PhoneAuthenticationStrategy + SmsService + AuthResolver**
+- [x] **Step 1-5: 创建插件骨架 + PhoneAuthenticationStrategy + SmsService + AuthResolver**
 
 - [ ] **提交**
 
@@ -729,7 +729,7 @@ git commit -m "feat(phone-auth-plugin): add phone authentication plugin"
 **Files:**
 - Create: `packages/wechat-auth-plugin/` 完整骨架
 
-- [ ] **Step 1: 创建插件骨架**
+- [x] **Step 1: 创建插件骨架**
 
 package.json / tsconfig / index.ts / constants.ts / types.ts / plugin.ts
 
@@ -742,7 +742,7 @@ interface WechatAuthPluginOptions {
 }
 ```
 
-- [ ] **Step 2: 创建 customer-custom-fields.ts**
+- [x] **Step 2: 创建 customer-custom-fields.ts**
 
 为 Customer 添加 `wechatOpenid` 字段，用于关联微信用户和 JSAPI 支付：
 
@@ -767,7 +767,7 @@ export const wechatCustomerCustomFields: CustomFields = {
 };
 ```
 
-- [ ] **Step 3: 创建 wechat-auth-strategy.ts**
+- [x] **Step 3: 创建 wechat-auth-strategy.ts**
 
 实现 `AuthenticationStrategy`，支持公众号扫码和小程序授权两种方式：
 
@@ -820,19 +820,19 @@ export class WechatAuthenticationStrategy implements AuthenticationStrategy {
 }
 ```
 
-- [ ] **Step 4: 创建 wechat-auth.controller.ts**
+- [x] **Step 4: 创建 wechat-auth.controller.ts**
 
 提供微信 OAuth 回调接口。
 
-- [ ] **Step 5: 修改 plugin.ts**
+- [x] **Step 5: 修改 plugin.ts**
 
 注册 AuthenticationStrategy、CustomFields、shopApiExtensions。
 
-- [ ] **Step 6: 构建验证**
+- [x] **Step 6: 构建验证**
 
 Run: `cd e:\code\vendure\packages\wechat-auth-plugin && npm install && npm run build`
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add packages/wechat-auth-plugin/
@@ -843,17 +843,25 @@ git commit -m "feat(wechat-auth-plugin): add WeChat OAuth and mini-program login
 
 ### Task 10: 最终集成验证
 
-- [ ] **Step 1: 全量构建**
+- [x] **Step 1: 全量构建**
 
 Run: `cd e:\code\vendure && npm run build`
 
-- [ ] **Step 2: 验证所有插件导出**
+- [x] **Step 2: 验证所有插件导出**
 
 确认每个插件的 index.ts 正确导出所有公共 API。
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 git add .
 git commit -m "feat: complete CJK plugin suite v2"
 ```
+
+---
+
+## 执行结论（2026-09-29 回填）
+
+- 本计划**已交付**，此前仅复选框未回填。
+- 判定依据：**产物级核查** —— 关键文件 / 实体 / resolver / 插件包在仓库中实际存在，且有对应 git 提交；**非逐 Step 复走**。证据见 `vshop/web-admin/docs/superpowers/BACKLOG.md` §2.1。
+- 本次动作：勾选本计划全部 48 个 `- [ ] **Step` 复选框 + 追加本节；未改动计划正文。

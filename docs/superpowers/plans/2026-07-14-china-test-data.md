@@ -38,7 +38,7 @@
 - Create: `packages/dev-server/china-data/shared.ts`
 - Modify: `packages/dev-server/package.json`
 
-- [ ] **Step 1: 在 package.json 添加 populate:china script**
+- [x] **Step 1: 在 package.json 添加 populate:china script**
 
 修改 [packages/dev-server/package.json](file:///e:/code/vendure/packages/dev-server/package.json) 的 `scripts` 节点，在 `"populate"` 行后添加：
 
@@ -46,7 +46,7 @@
 "populate:china": "node -r ts-node/register -r dotenv/config -r tsconfig-paths/register populate-china-dev.ts",
 ```
 
-- [ ] **Step 2: 创建 china-data/shared.ts 共享工具**
+- [x] **Step 2: 创建 china-data/shared.ts 共享工具**
 
 Create `packages/dev-server/china-data/shared.ts`:
 
@@ -96,7 +96,7 @@ export function yuanToCents(yuan: number): number {
 }
 ```
 
-- [ ] **Step 3: 创建 china-data/index.ts 导出空函数**
+- [x] **Step 3: 创建 china-data/index.ts 导出空函数**
 
 Create `packages/dev-server/china-data/index.ts`:
 
@@ -113,7 +113,7 @@ export { populateCustomers } from './05-customers';
 export { populateOrders } from './06-orders';
 ```
 
-- [ ] **Step 4: 创建各阶段 stub 文件**
+- [x] **Step 4: 创建各阶段 stub 文件**
 
 为 01-base.ts / 02-default-channel.ts / 03-shop-a-channel.ts / 04-promotions.ts / 05-customers.ts / 06-orders.ts 各创建一个最小 stub：
 
@@ -135,7 +135,7 @@ export async function populateBase(app: INestApplication): Promise<void> {
 - `05-customers.ts` → `populateCustomers`
 - `06-orders.ts` → `populateOrders`
 
-- [ ] **Step 5: 创建 populate-china-dev.ts 入口**
+- [x] **Step 5: 创建 populate-china-dev.ts 入口**
 
 Create `packages/dev-server/populate-china-dev.ts`:
 
@@ -202,13 +202,13 @@ if (require.main === module) {
 }
 ```
 
-- [ ] **Step 6: 验证脚本能启动（即使数据为空）**
+- [x] **Step 6: 验证脚本能启动（即使数据为空）**
 
 Run: `cd packages/dev-server && npm run populate:china`
 
 Expected: 脚本清库后 bootstrap，6 阶段全部 OK（但无实际数据），打印 `完成! 6/6 阶段成功`。如果 bootstrap 报错，检查 dev-config.ts 是否已启用 cjk-plugin tenant 模块。
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add packages/dev-server/populate-china-dev.ts packages/dev-server/china-data/ packages/dev-server/package.json
@@ -223,7 +223,7 @@ git commit -m "feat(dev-server): add china populate script skeleton"
 - Create: `packages/dev-server/china-data/sources.ts`（数据源片段）
 - Modify: `packages/dev-server/china-data/01-base.ts`
 
-- [ ] **Step 1: 在 sources.ts 添加基础数据源**
+- [x] **Step 1: 在 sources.ts 添加基础数据源**
 
 Create `packages/dev-server/china-data/sources.ts`:
 
@@ -288,7 +288,7 @@ export const COLLECTIONS = [
 ];
 ```
 
-- [ ] **Step 2: 实现 01-base.ts**
+- [x] **Step 2: 实现 01-base.ts**
 
 Replace `packages/dev-server/china-data/01-base.ts` 内容:
 
@@ -401,13 +401,13 @@ async function readFile(dir: string, filename: string): Promise<Buffer> {
 }
 ```
 
-- [ ] **Step 3: 验证阶段1执行**
+- [x] **Step 3: 验证阶段1执行**
 
 Run: `cd packages/dev-server && npm run populate:china`
 
 Expected: 阶段1 OK。检查日志无报错。如果有 `AssetService.create` API 不匹配错误，参考 vendure/packages/core/src/service/services/asset-service.ts 的签名调整。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add packages/dev-server/china-data/sources.ts packages/dev-server/china-data/01-base.ts
@@ -422,7 +422,7 @@ git commit -m "feat(dev-server): implement stage 1 base setup (admin/zone/countr
 - Modify: `packages/dev-server/china-data/sources.ts`（追加商品/配送/支付/自提点数据源）
 - Modify: `packages/dev-server/china-data/02-default-channel.ts`
 
-- [ ] **Step 1: 在 sources.ts 追加商品/配送/支付/自提点数据源**
+- [x] **Step 1: 在 sources.ts 追加商品/配送/支付/自提点数据源**
 
 在 `packages/dev-server/china-data/sources.ts` 末尾追加:
 
@@ -588,7 +588,7 @@ export const SHOP_A_PICKUP_LOCATIONS = [
 ];
 ```
 
-- [ ] **Step 2: 实现 02-default-channel.ts**
+- [x] **Step 2: 实现 02-default-channel.ts**
 
 Replace `packages/dev-server/china-data/02-default-channel.ts` 内容:
 
@@ -731,7 +731,7 @@ async function createPickupLocations(app: INestApplication, ctx: any): Promise<v
 }
 ```
 
-- [ ] **Step 3: 验证阶段2执行**
+- [x] **Step 3: 验证阶段2执行**
 
 Run: `cd packages/dev-server && npm run populate:china`
 
@@ -739,7 +739,7 @@ Expected: 阶段1+2 OK。8 SPU / 9 SKU 创建，4 配送 + 3 支付 + 3 自提�
 
 验证 Admin UI：启动 dev:server 后访问 `http://localhost:3000/admin`，用 `superadmin@china.test` / `superadmin` 登录，Catalog → Products 应显示 8 个中文商品。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add packages/dev-server/china-data/sources.ts packages/dev-server/china-data/02-default-channel.ts
@@ -753,7 +753,7 @@ git commit -m "feat(dev-server): implement stage 2 default channel (products/shi
 **Files:**
 - Modify: `packages/dev-server/china-data/03-shop-a-channel.ts`
 
-- [ ] **Step 1: 实现 03-shop-a-channel.ts**
+- [x] **Step 1: 实现 03-shop-a-channel.ts**
 
 Replace `packages/dev-server/china-data/03-shop-a-channel.ts` 内容:
 
@@ -895,7 +895,7 @@ async function createPickupLocations(app: INestApplication, ctx: any): Promise<v
 
 > **注意**：`assignProductsToChannel` 的参数签名可能因 Vendure 版本而异。如果报错，参考 `packages/core/src/service/services/product-service.ts` 的 `assignProductsToChannel` 方法签名调整。Channel 自定义字段（couponStackable）需在 create 时传入，如果 `channelService.create` 不支持 customFields，改用 `channelService.update`。
 
-- [ ] **Step 2: 验证阶段3执行**
+- [x] **Step 2: 验证阶段3执行**
 
 Run: `cd packages/dev-server && npm run populate:china`
 
@@ -903,7 +903,7 @@ Expected: 阶段1+2+3 OK。shop-a Channel 创建，8 SPU 分配到 shop-a，五�
 
 验证：Admin UI 右上角 Channel 选择器出现 shop-a，切换后商品列表与 default 一致，五常大米显示 ¥44。
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add packages/dev-server/china-data/03-shop-a-channel.ts
@@ -918,7 +918,7 @@ git commit -m "feat(dev-server): implement stage 3 shop-a channel (create/assign
 - Modify: `packages/dev-server/china-data/sources.ts`（追加优惠券数据源）
 - Modify: `packages/dev-server/china-data/04-promotions.ts`
 
-- [ ] **Step 1: 在 sources.ts 追加优惠券数据源**
+- [x] **Step 1: 在 sources.ts 追加优惠券数据源**
 
 在 `packages/dev-server/china-data/sources.ts` 末尾追加:
 
@@ -960,7 +960,7 @@ export const PROMOTIONS: PromotionSource[] = [
 ];
 ```
 
-- [ ] **Step 2: 实现 04-promotions.ts**
+- [x] **Step 2: 实现 04-promotions.ts**
 
 Replace `packages/dev-server/china-data/04-promotions.ts` 内容:
 
@@ -1004,7 +1004,7 @@ async function getDefaultCtx(app: INestApplication) {
 }
 ```
 
-- [ ] **Step 3: 验证阶段4执行**
+- [x] **Step 3: 验证阶段4执行**
 
 Run: `cd packages/dev-server && npm run populate:china`
 
@@ -1012,7 +1012,7 @@ Expected: 阶段1-4 OK。3 张优惠券创建，shop-a 的 2 张 stackable=true�
 
 验证：Admin UI → Promotions，default Channel 显示 1 张（SAVE10），shop-a Channel 显示 2 张（NEW90/SAVE5），shop-a 的优惠券自定义字段 stackable=true。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add packages/dev-server/china-data/sources.ts packages/dev-server/china-data/04-promotions.ts
@@ -1027,7 +1027,7 @@ git commit -m "feat(dev-server): implement stage 4 promotions (coupons with stac
 - Modify: `packages/dev-server/china-data/sources.ts`（追加客户数据源）
 - Modify: `packages/dev-server/china-data/05-customers.ts`
 
-- [ ] **Step 1: 在 sources.ts 追加客户数据源**
+- [x] **Step 1: 在 sources.ts 追加客户数据源**
 
 在 `packages/dev-server/china-data/sources.ts` 末尾追加:
 
@@ -1098,7 +1098,7 @@ export const CUSTOMERS: CustomerSource[] = [
 ];
 ```
 
-- [ ] **Step 2: 实现 05-customers.ts**
+- [x] **Step 2: 实现 05-customers.ts**
 
 Replace `packages/dev-server/china-data/05-customers.ts` 内容:
 
@@ -1179,7 +1179,7 @@ async function getDefaultCtx(app: INestApplication) {
 }
 ```
 
-- [ ] **Step 3: 验证阶段5执行**
+- [x] **Step 3: 验证阶段5执行**
 
 Run: `cd packages/dev-server && npm run populate:china`
 
@@ -1187,7 +1187,7 @@ Expected: 阶段1-5 OK。3 个客户创建，李四余额 500 元（50000 单位
 
 验证：Admin UI → Customers，default 显示 2 个（张三/李四），shop-a 显示 1 个（王五）。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add packages/dev-server/china-data/sources.ts packages/dev-server/china-data/05-customers.ts
@@ -1202,7 +1202,7 @@ git commit -m "feat(dev-server): implement stage 5 customers (with address and b
 - Modify: `packages/dev-server/china-data/sources.ts`（追加订单数据源）
 - Modify: `packages/dev-server/china-data/06-orders.ts`
 
-- [ ] **Step 1: 在 sources.ts 追加订单数据源**
+- [x] **Step 1: 在 sources.ts 追加订单数据源**
 
 在 `packages/dev-server/china-data/sources.ts` 末尾追加:
 
@@ -1284,7 +1284,7 @@ export const ORDERS: OrderSource[] = [
 ];
 ```
 
-- [ ] **Step 2: 实现 06-orders.ts**
+- [x] **Step 2: 实现 06-orders.ts**
 
 Replace `packages/dev-server/china-data/06-orders.ts` 内容:
 
@@ -1438,7 +1438,7 @@ async function getDefaultCtx(app: INestApplication) {
 }
 ```
 
-- [ ] **Step 3: 验证阶段6执行**
+- [x] **Step 3: 验证阶段6执行**
 
 Run: `cd packages/dev-server && npm run populate:china`
 
@@ -1446,7 +1446,7 @@ Expected: 阶段1-6 OK。8 笔订单创建（允许部分状态转换失败但�
 
 验证：Admin UI → Orders，default 显示 5 笔，shop-a 显示 3 笔，状态覆盖 ArrangingPayment / PaymentSettled / Shipped / Completed / Cancelled。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add packages/dev-server/china-data/sources.ts packages/dev-server/china-data/06-orders.ts
@@ -1460,13 +1460,13 @@ git commit -m "feat(dev-server): implement stage 6 historical orders (8 orders a
 **Files:**
 - 无新文件，仅验证
 
-- [ ] **Step 1: 完整运行脚本**
+- [x] **Step 1: 完整运行脚本**
 
 Run: `cd packages/dev-server && npm run populate:china`
 
 Expected: 6/6 阶段成功，总耗时约 10-20s。无关键阶段失败。
 
-- [ ] **Step 2: 启动 dev-server 验证 Admin UI**
+- [x] **Step 2: 启动 dev-server 验证 Admin UI**
 
 Run: `cd packages/dev-server && npm run dev:server`
 
@@ -1482,7 +1482,7 @@ Run: `cd packages/dev-server && npm run dev:server`
 - [ ] Customers：default 2 个，shop-a 1 个
 - [ ] Orders：default 5 笔，shop-a 3 笔
 
-- [ ] **Step 3: 启动 VShop 验证前端**
+- [x] **Step 3: 启动 VShop 验证前端**
 
 Run: `cd e:\code\vshop && npm run dev:h5`
 
@@ -1495,7 +1495,7 @@ Run: `cd e:\code\vshop && npm run dev:h5`
 - [ ] 支付方式显示"测试支付/货到付款/余额支付"
 - [ ] 应用 `NEW90` + `SAVE5` 优惠券，确认叠加成功
 
-- [ ] **Step 4: Shop API GraphiQL 验证**
+- [x] **Step 4: Shop API GraphiQL 验证**
 
 打开 `http://localhost:3000/shop-api`（GraphiQL），设置 HTTP Header `{"vendure-token":"shop-a-token"}`：
 
@@ -1515,7 +1515,7 @@ Expected:
 - 配送方式 = 2 个
 - 支付方式 = 3 个
 
-- [ ] **Step 5: Commit 最终版本**
+- [x] **Step 5: Commit 最终版本**
 
 ```bash
 git add -A
@@ -1552,3 +1552,11 @@ git commit -m "test(dev-server): verify china populate script end-to-end"
 3. `productService.assignProductsToChannel` 参数签名 — 可能是 `(ctx, { channelId, productIds })` 或 `(ctx, channelId, productIds)`
 4. `PickupLocationService` 通过 `app.get('PickupLocationService')` 获取 — 如失败尝试 import 类
 5. 订单状态转换链可能需要中间状态（如 ArrangingShipment）— 允许失败不中断
+
+---
+
+## 执行结论（2026-09-29 回填）
+
+- 本计划**已交付**，此前仅复选框未回填。
+- 判定依据：**产物级核查** —— 关键文件 / 实体 / resolver / 插件包在仓库中实际存在，且有对应 git 提交；**非逐 Step 复走**。证据见 `vshop/web-admin/docs/superpowers/BACKLOG.md` §2.1。
+- 本次动作：勾选本计划全部 35 个 `- [ ] **Step` 复选框 + 追加本节；未改动计划正文。

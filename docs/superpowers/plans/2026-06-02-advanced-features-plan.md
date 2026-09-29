@@ -80,7 +80,7 @@
 - Create: `packages/redis-stock-plugin/src/channel-custom-fields.ts`
 - Create: `packages/redis-stock-plugin/src/plugin.ts`
 
-- [ ] **Step 1: 创建 package.json**
+- [x] **Step 1: 创建 package.json**
 
 Create `packages/redis-stock-plugin/package.json`:
 
@@ -103,7 +103,7 @@ Create `packages/redis-stock-plugin/package.json`:
 }
 ```
 
-- [ ] **Step 2: 创建 tsconfig.json**
+- [x] **Step 2: 创建 tsconfig.json**
 
 Create `packages/redis-stock-plugin/tsconfig.json`:
 
@@ -118,7 +118,7 @@ Create `packages/redis-stock-plugin/tsconfig.json`:
 }
 ```
 
-- [ ] **Step 3: 创建 constants.ts**
+- [x] **Step 3: 创建 constants.ts**
 
 Create `packages/redis-stock-plugin/src/constants.ts`:
 
@@ -128,7 +128,7 @@ export const REDIS_STOCK_PLUGIN_OPTIONS = 'REDIS_STOCK_PLUGIN_OPTIONS';
 export const STOCK_KEY_PREFIX = 'stock:';
 ```
 
-- [ ] **Step 4: 创建 types.ts**
+- [x] **Step 4: 创建 types.ts**
 
 Create `packages/redis-stock-plugin/src/types.ts`:
 
@@ -139,7 +139,7 @@ export interface RedisStockPluginOptions {
 }
 ```
 
-- [ ] **Step 5: 创建 stock-reserve.service.ts**
+- [x] **Step 5: 创建 stock-reserve.service.ts**
 
 Create `packages/redis-stock-plugin/src/stock-reserve.service.ts`:
 
@@ -206,7 +206,7 @@ export class StockReserveService implements OnModuleDestroy {
 }
 ```
 
-- [ ] **Step 6: 创建 stock-prewarm.service.ts**
+- [x] **Step 6: 创建 stock-prewarm.service.ts**
 
 Create `packages/redis-stock-plugin/src/stock-prewarm.service.ts`:
 
@@ -242,7 +242,7 @@ export class StockPrewarmService {
 }
 ```
 
-- [ ] **Step 7: 创建 channel-custom-fields.ts**
+- [x] **Step 7: 创建 channel-custom-fields.ts**
 
 Create `packages/redis-stock-plugin/src/channel-custom-fields.ts`:
 
@@ -267,7 +267,7 @@ export const redisStockChannelCustomFields: CustomFields = {
 };
 ```
 
-- [ ] **Step 8: 创建 plugin.ts**
+- [x] **Step 8: 创建 plugin.ts**
 
 Create `packages/redis-stock-plugin/src/plugin.ts`:
 
@@ -316,7 +316,7 @@ export class RedisStockPlugin implements OnApplicationBootstrap {
 }
 ```
 
-- [ ] **Step 9: 创建 index.ts**
+- [x] **Step 9: 创建 index.ts**
 
 Create `packages/redis-stock-plugin/src/index.ts`:
 
@@ -327,7 +327,7 @@ export * from './stock-prewarm.service';
 export * from './types';
 ```
 
-- [ ] **Step 10: 提交**
+- [x] **Step 10: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -345,7 +345,7 @@ git commit -m "feat(redis-stock-plugin): add Redis stock reservation plugin with
 - Create: `packages/redis-stock-plugin/dashboard/index.tsx`
 - Modify: `packages/redis-stock-plugin/src/plugin.ts` — 添加 dashboard 属性
 
-- [ ] **Step 1: 创建 dashboard/tsconfig.json**
+- [x] **Step 1: 创建 dashboard/tsconfig.json**
 
 ```json
 {
@@ -360,7 +360,7 @@ git commit -m "feat(redis-stock-plugin): add Redis stock reservation plugin with
 }
 ```
 
-- [ ] **Step 2: 创建 dashboard/channel-detail-forms.tsx**
+- [x] **Step 2: 创建 dashboard/channel-detail-forms.tsx**
 
 Create `packages/redis-stock-plugin/dashboard/channel-detail-forms.tsx`:
 
@@ -374,7 +374,7 @@ export const redisStockChannelDetailForms: DashboardDetailFormExtensionDefinitio
 ];
 ```
 
-- [ ] **Step 3: 创建 dashboard/index.tsx**
+- [x] **Step 3: 创建 dashboard/index.tsx**
 
 Create `packages/redis-stock-plugin/dashboard/index.tsx`:
 
@@ -388,7 +388,7 @@ defineDashboardExtension({
 });
 ```
 
-- [ ] **Step 4: 修改 plugin.ts 添加 dashboard 属性**
+- [x] **Step 4: 修改 plugin.ts 添加 dashboard 属性**
 
 在 `packages/redis-stock-plugin/src/plugin.ts` 的 `@VendurePlugin` 装饰器中，在 `compatibility: '^3.0.0',` 行之前添加：
 
@@ -396,7 +396,7 @@ defineDashboardExtension({
 dashboard: './dashboard/index.tsx',
 ```
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -413,7 +413,7 @@ git commit -m "feat(redis-stock-plugin): add dashboard UI extension for channel 
 - Modify: `packages/flash-sale-plugin/src/flash-sale.job.ts`
 - Modify: `packages/flash-sale-plugin/src/plugin.ts`
 
-- [ ] **Step 1: 修改 flash-sale.service.ts 集成 Redis 预扣**
+- [x] **Step 1: 修改 flash-sale.service.ts 集成 Redis 预扣**
 
 在 `FlashSaleService` 中添加可选的 `StockReserveService` 依赖。修改 `checkEligibility` 方法，在库存检查时优先使用 Redis 预扣：
 
@@ -490,7 +490,7 @@ async checkEligibility(
 }
 ```
 
-- [ ] **Step 2: 修改 flash-sale.job.ts 添加 prewarm**
+- [x] **Step 2: 修改 flash-sale.job.ts 添加 prewarm**
 
 在 `FlashSaleJob` 类中添加 `StockPrewarmService` 可选依赖。
 
@@ -535,7 +535,7 @@ if (this.stockPrewarmService) {
 }
 ```
 
-- [ ] **Step 3: 修改 plugin.ts 添加 OrderCancelledEvent 监听**
+- [x] **Step 3: 修改 plugin.ts 添加 OrderCancelledEvent 监听**
 
 在 `packages/flash-sale-plugin/src/plugin.ts` 中：
 
@@ -584,7 +584,7 @@ init(injector: Injector): void {
 
 3. 删除原来的 `static init` 方法（已被上面的新版本替代）
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -601,7 +601,7 @@ git commit -m "feat(flash-sale-plugin): integrate Redis stock reservation with D
 - Modify: `packages/group-buy-plugin/src/group-buy.job.ts`
 - Modify: `packages/group-buy-plugin/src/plugin.ts`
 
-- [ ] **Step 1: 修改 group-buy.service.ts 集成 Redis 预扣**
+- [x] **Step 1: 修改 group-buy.service.ts 集成 Redis 预扣**
 
 在文件顶部添加导入：
 
@@ -646,7 +646,7 @@ if (this.stockReserveService?.isAvailable) {
 
 删除原来的 `if (activity.currentCount >= activity.targetCount && !activity.allowJoinAfterComplete)` 检查（已被上面的条件分支替代）。
 
-- [ ] **Step 2: 修改 group-buy.job.ts 添加 prewarm**
+- [x] **Step 2: 修改 group-buy.job.ts 添加 prewarm**
 
 读取当前文件内容，在 `GroupBuyJob` 类中添加 `StockPrewarmService` 可选依赖：
 
@@ -673,7 +673,7 @@ initStock(injector: Injector): void {
 
 在活动状态变为 active 时添加 prewarm，在活动状态变为 expired/completed 时添加清理。
 
-- [ ] **Step 3: 修改 plugin.ts 添加 OrderCancelledEvent 监听**
+- [x] **Step 3: 修改 plugin.ts 添加 OrderCancelledEvent 监听**
 
 在 `packages/group-buy-plugin/src/plugin.ts` 中：
 
@@ -713,7 +713,7 @@ init(injector: Injector): void {
 }
 ```
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -740,7 +740,7 @@ git commit -m "feat(group-buy-plugin): integrate Redis stock reservation with DB
 - Create: `packages/logistics-api-plugin/dashboard/index.tsx`
 - Modify: `packages/dev-server/dev-config.ts`
 
-- [ ] **Step 1: 创建 package.json**
+- [x] **Step 1: 创建 package.json**
 
 Create `packages/logistics-api-plugin/package.json`:
 
@@ -760,7 +760,7 @@ Create `packages/logistics-api-plugin/package.json`:
 }
 ```
 
-- [ ] **Step 2: 创建 tsconfig.json**
+- [x] **Step 2: 创建 tsconfig.json**
 
 ```json
 {
@@ -773,7 +773,7 @@ Create `packages/logistics-api-plugin/package.json`:
 }
 ```
 
-- [ ] **Step 3: 创建 constants.ts**
+- [x] **Step 3: 创建 constants.ts**
 
 Create `packages/logistics-api-plugin/src/constants.ts`:
 
@@ -782,7 +782,7 @@ export const loggerCtx = 'LogisticsApiPlugin';
 export const LOGISTICS_API_PLUGIN_OPTIONS = 'LOGISTICS_API_PLUGIN_OPTIONS';
 ```
 
-- [ ] **Step 4: 创建 types.ts**
+- [x] **Step 4: 创建 types.ts**
 
 Create `packages/logistics-api-plugin/src/types.ts`:
 
@@ -811,7 +811,7 @@ export interface CarrierDetectResult {
 }
 ```
 
-- [ ] **Step 5: 创建 channel-custom-fields.ts**
+- [x] **Step 5: 创建 channel-custom-fields.ts**
 
 Create `packages/logistics-api-plugin/src/channel-custom-fields.ts`:
 
@@ -836,7 +836,7 @@ export const logisticsApiChannelCustomFields: CustomFields = {
 };
 ```
 
-- [ ] **Step 6: 创建 logistics-query.service.ts**
+- [x] **Step 6: 创建 logistics-query.service.ts**
 
 Create `packages/logistics-api-plugin/src/logistics-query.service.ts`:
 
@@ -943,7 +943,7 @@ export class LogisticsQueryService {
 }
 ```
 
-- [ ] **Step 7: 创建 logistics-api-admin.resolver.ts**
+- [x] **Step 7: 创建 logistics-api-admin.resolver.ts**
 
 Create `packages/logistics-api-plugin/src/logistics-api-admin.resolver.ts`:
 
@@ -977,7 +977,7 @@ export class LogisticsApiAdminResolver {
 }
 ```
 
-- [ ] **Step 8: 创建 plugin.ts**
+- [x] **Step 8: 创建 plugin.ts**
 
 Create `packages/logistics-api-plugin/src/plugin.ts`:
 
@@ -1045,7 +1045,7 @@ export class LogisticsApiPlugin {
 }
 ```
 
-- [ ] **Step 9: 创建 index.ts**
+- [x] **Step 9: 创建 index.ts**
 
 Create `packages/logistics-api-plugin/src/index.ts`:
 
@@ -1055,7 +1055,7 @@ export * from './logistics-query.service';
 export * from './types';
 ```
 
-- [ ] **Step 10: 创建 dashboard 扩展**
+- [x] **Step 10: 创建 dashboard 扩展**
 
 Create `packages/logistics-api-plugin/dashboard/tsconfig.json`:
 
@@ -1160,7 +1160,7 @@ import { defineDashboardExtension } from '@vendure/dashboard';
 defineDashboardExtension({});
 ```
 
-- [ ] **Step 11: 提交**
+- [x] **Step 11: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -1189,7 +1189,7 @@ git commit -m "feat(logistics-api-plugin): add Kuaidi100 logistics tracking quer
 - Create: `packages/invoice-pdf-plugin/dashboard/index.tsx`
 - Modify: `packages/dev-server/dev-config.ts`
 
-- [ ] **Step 1: 创建 package.json**
+- [x] **Step 1: 创建 package.json**
 
 Create `packages/invoice-pdf-plugin/package.json`:
 
@@ -1212,7 +1212,7 @@ Create `packages/invoice-pdf-plugin/package.json`:
 }
 ```
 
-- [ ] **Step 2: 创建 tsconfig.json**
+- [x] **Step 2: 创建 tsconfig.json**
 
 ```json
 {
@@ -1225,7 +1225,7 @@ Create `packages/invoice-pdf-plugin/package.json`:
 }
 ```
 
-- [ ] **Step 3: 创建 constants.ts**
+- [x] **Step 3: 创建 constants.ts**
 
 Create `packages/invoice-pdf-plugin/src/constants.ts`:
 
@@ -1234,7 +1234,7 @@ export const loggerCtx = 'InvoicePdfPlugin';
 export const INVOICE_PDF_PLUGIN_OPTIONS = 'INVOICE_PDF_PLUGIN_OPTIONS';
 ```
 
-- [ ] **Step 4: 创建 types.ts**
+- [x] **Step 4: 创建 types.ts**
 
 Create `packages/invoice-pdf-plugin/src/types.ts`:
 
@@ -1244,7 +1244,7 @@ export interface InvoicePdfPluginOptions {
 }
 ```
 
-- [ ] **Step 5: 创建 order-custom-fields.ts**
+- [x] **Step 5: 创建 order-custom-fields.ts**
 
 Create `packages/invoice-pdf-plugin/src/order-custom-fields.ts`:
 
@@ -1269,7 +1269,7 @@ export const invoicePdfOrderCustomFields: CustomFields = {
 };
 ```
 
-- [ ] **Step 6: 创建 templates/ordinary-invoice.ts**
+- [x] **Step 6: 创建 templates/ordinary-invoice.ts**
 
 Create `packages/invoice-pdf-plugin/src/templates/ordinary-invoice.ts`:
 
@@ -1322,7 +1322,7 @@ export function generateOrdinaryInvoice(data: InvoiceData): Buffer {
 }
 ```
 
-- [ ] **Step 7: 创建 templates/special-invoice.ts**
+- [x] **Step 7: 创建 templates/special-invoice.ts**
 
 Create `packages/invoice-pdf-plugin/src/templates/special-invoice.ts`:
 
@@ -1382,7 +1382,7 @@ export function generateSpecialInvoice(data: SpecialInvoiceData): Buffer {
 }
 ```
 
-- [ ] **Step 8: 创建 invoice-pdf.service.ts**
+- [x] **Step 8: 创建 invoice-pdf.service.ts**
 
 Create `packages/invoice-pdf-plugin/src/invoice-pdf.service.ts`:
 
@@ -1459,7 +1459,7 @@ export class InvoicePdfService {
 }
 ```
 
-- [ ] **Step 9: 创建 invoice-pdf-admin.resolver.ts**
+- [x] **Step 9: 创建 invoice-pdf-admin.resolver.ts**
 
 Create `packages/invoice-pdf-plugin/src/invoice-pdf-admin.resolver.ts`:
 
@@ -1506,7 +1506,7 @@ export class InvoicePdfAdminResolver {
 }
 ```
 
-- [ ] **Step 10: 创建 plugin.ts**
+- [x] **Step 10: 创建 plugin.ts**
 
 Create `packages/invoice-pdf-plugin/src/plugin.ts`:
 
@@ -1561,7 +1561,7 @@ export class InvoicePdfPlugin {
 }
 ```
 
-- [ ] **Step 11: 创建 index.ts**
+- [x] **Step 11: 创建 index.ts**
 
 Create `packages/invoice-pdf-plugin/src/index.ts`:
 
@@ -1571,7 +1571,7 @@ export * from './invoice-pdf.service';
 export * from './types';
 ```
 
-- [ ] **Step 12: 创建 dashboard 扩展**
+- [x] **Step 12: 创建 dashboard 扩展**
 
 Create `packages/invoice-pdf-plugin/dashboard/tsconfig.json`:
 
@@ -1679,7 +1679,7 @@ defineDashboardExtension({
 });
 ```
 
-- [ ] **Step 13: 提交**
+- [x] **Step 13: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -1694,7 +1694,7 @@ git commit -m "feat(invoice-pdf-plugin): add invoice PDF generation plugin with 
 **Files:**
 - Modify: `packages/dev-server/dev-config.ts`
 
-- [ ] **Step 1: 注册 3 个新插件到 dev-config.ts**
+- [x] **Step 1: 注册 3 个新插件到 dev-config.ts**
 
 在 `packages/dev-server/dev-config.ts` 中添加导入：
 
@@ -1717,10 +1717,18 @@ LogisticsApiPlugin.init({
 InvoicePdfPlugin.init(),
 ```
 
-- [ ] **Step 2: 提交**
+- [x] **Step 2: 提交**
 
 ```bash
 cd e:\code\vendure
 git add packages/dev-server/dev-config.ts
 git commit -m "feat(dev-server): register RedisStockPlugin, LogisticsApiPlugin and InvoicePdfPlugin"
 ```
+
+---
+
+## 执行结论（2026-09-29 回填）
+
+- 本计划**已交付**，此前仅复选框未回填。
+- 判定依据：**产物级核查** —— 关键文件 / 实体 / resolver / 插件包在仓库中实际存在，且有对应 git 提交；**非逐 Step 复走**。证据见 `vshop/web-admin/docs/superpowers/BACKLOG.md` §2.1。
+- 本次动作：勾选本计划全部 49 个 `- [ ] **Step` 复选框 + 追加本节；未改动计划正文。

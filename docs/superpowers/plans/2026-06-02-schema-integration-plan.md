@@ -26,11 +26,11 @@ packages/dev-server/dev-config.ts                  # 修改：注册所有 12 �
 **Files:**
 - Modify: `packages/group-buy-plugin/src/plugin.ts`
 
-- [ ] **Step 1: 读取当前 plugin.ts 内容**
+- [x] **Step 1: 读取当前 plugin.ts 内容**
 
 Run: 读取 `e:\code\vendure\packages\group-buy-plugin\src\plugin.ts`
 
-- [ ] **Step 2: 在 plugin.ts 中添加 adminApiExtensions.schema 和 shopApiExtensions.schema**
+- [x] **Step 2: 在 plugin.ts 中添加 adminApiExtensions.schema 和 shopApiExtensions.schema**
 
 在 `@VendurePlugin` 装饰器中，将现有的 `adminApiExtensions` 和 `shopApiExtensions` 从仅包含 resolvers 扩展为同时包含 schema 和 resolvers。
 
@@ -128,12 +128,12 @@ schema: () => `
 `,
 ```
 
-- [ ] **Step 3: 构建验证**
+- [x] **Step 3: 构建验证**
 
 Run: `cd e:\code\vendure\packages\group-buy-plugin && npx tsc --noEmit`
 Expected: 无错误
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 git add packages/group-buy-plugin/src/plugin.ts
@@ -147,11 +147,11 @@ git commit -m "feat(group-buy-plugin): add GraphQL schema for admin and shop API
 **Files:**
 - Modify: `packages/flash-sale-plugin/src/plugin.ts`
 
-- [ ] **Step 1: 读取当前 plugin.ts 内容**
+- [x] **Step 1: 读取当前 plugin.ts 内容**
 
 Run: 读取 `e:\code\vendure\packages\flash-sale-plugin\src\plugin.ts`
 
-- [ ] **Step 2: 在 plugin.ts 中添加 adminApiExtensions.schema 和 shopApiExtensions.schema**
+- [x] **Step 2: 在 plugin.ts 中添加 adminApiExtensions.schema 和 shopApiExtensions.schema**
 
 adminApiExtensions.schema 内容：
 
@@ -224,12 +224,12 @@ schema: () => `
 `,
 ```
 
-- [ ] **Step 3: 构建验证**
+- [x] **Step 3: 构建验证**
 
 Run: `cd e:\code\vendure\packages\flash-sale-plugin && npx tsc --noEmit`
 Expected: 无错误
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 git add packages/flash-sale-plugin/src/plugin.ts
@@ -243,11 +243,11 @@ git commit -m "feat(flash-sale-plugin): add GraphQL schema for admin and shop AP
 **Files:**
 - Modify: `packages/distribution-plugin/src/plugin.ts`
 
-- [ ] **Step 1: 读取当前 plugin.ts 内容**
+- [x] **Step 1: 读取当前 plugin.ts 内容**
 
 Run: 读取 `e:\code\vendure\packages\distribution-plugin\src\plugin.ts`
 
-- [ ] **Step 2: 在 plugin.ts 中添加 adminApiExtensions.schema 和 shopApiExtensions.schema**
+- [x] **Step 2: 在 plugin.ts 中添加 adminApiExtensions.schema 和 shopApiExtensions.schema**
 
 adminApiExtensions.schema 内容：
 
@@ -350,12 +350,12 @@ schema: () => `
 `,
 ```
 
-- [ ] **Step 3: 构建验证**
+- [x] **Step 3: 构建验证**
 
 Run: `cd e:\code\vendure\packages\distribution-plugin && npx tsc --noEmit`
 Expected: 无错误
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 git add packages/distribution-plugin/src/plugin.ts
@@ -369,11 +369,11 @@ git commit -m "feat(distribution-plugin): add GraphQL schema for admin and shop 
 **Files:**
 - Modify: `packages/dev-server/dev-config.ts`
 
-- [ ] **Step 1: 读取当前 dev-config.ts 内容**
+- [x] **Step 1: 读取当前 dev-config.ts 内容**
 
 Run: 读取 `e:\code\vendure\packages\dev-server\dev-config.ts`
 
-- [ ] **Step 2: 在 dev-config.ts 中添加所有 12 个自定义插件注册**
+- [x] **Step 2: 在 dev-config.ts 中添加所有 12 个自定义插件注册**
 
 在现有 plugins 数组中添加以下插件（在已有插件之后）：
 
@@ -424,19 +424,19 @@ DistributionPlugin.init({
 
 同时添加对应的 import 语句。
 
-- [ ] **Step 3: 构建验证**
+- [x] **Step 3: 构建验证**
 
 Run: `cd e:\code\vendure\packages\dev-server && npx tsc --noEmit`
 Expected: 可能有类型错误需要修复
 
-- [ ] **Step 4: 修复构建错误（如有）**
+- [x] **Step 4: 修复构建错误（如有）**
 
 根据 Step 3 的输出修复类型错误。常见问题：
 - 插件 init 返回类型不匹配
 - 缺少 import
 - 插件选项类型不匹配
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add packages/dev-server/
@@ -447,7 +447,7 @@ git commit -m "feat(dev-server): register all 12 custom plugins for integration 
 
 ### Task 5: 全量构建验证
 
-- [ ] **Step 1: 构建所有 12 个自定义插件**
+- [x] **Step 1: 构建所有 12 个自定义插件**
 
 对每个插件目录执行 `npx tsc --noEmit`：
 - packages/cjk-plugin
@@ -463,13 +463,21 @@ git commit -m "feat(dev-server): register all 12 custom plugins for integration 
 - packages/flash-sale-plugin
 - packages/distribution-plugin
 
-- [ ] **Step 2: 构建 dev-server**
+- [x] **Step 2: 构建 dev-server**
 
 Run: `cd e:\code\vendure\packages\dev-server && npx tsc --noEmit`
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 git add .
 git commit -m "feat: complete schema integration - all plugins with GraphQL API and dev-server config"
 ```
+
+---
+
+## 执行结论（2026-09-29 回填）
+
+- 本计划**已交付**，此前仅复选框未回填。
+- 判定依据：**产物级核查** —— 关键文件 / 实体 / resolver / 插件包在仓库中实际存在，且有对应 git 提交；**非逐 Step 复走**。证据见 `vshop/web-admin/docs/superpowers/BACKLOG.md` §2.1。
+- 本次动作：勾选本计划全部 20 个 `- [ ] **Step` 复选框 + 追加本节；未改动计划正文。

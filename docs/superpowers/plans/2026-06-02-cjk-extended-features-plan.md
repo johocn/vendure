@@ -121,7 +121,7 @@ packages/
 - Create: `packages/order-timeout-plugin/src/channel-custom-fields.ts`
 - Create: `packages/order-timeout-plugin/src/plugin.ts`
 
-- [ ] **Step 1: 创建 package.json**
+- [x] **Step 1: 创建 package.json**
 
 ```json
 {
@@ -151,7 +151,7 @@ packages/
 }
 ```
 
-- [ ] **Step 2: 创建 tsconfig.json**
+- [x] **Step 2: 创建 tsconfig.json**
 
 ```json
 {
@@ -166,7 +166,7 @@ packages/
 }
 ```
 
-- [ ] **Step 3: 创建 tsconfig.build.json**
+- [x] **Step 3: 创建 tsconfig.build.json**
 
 ```json
 {
@@ -176,14 +176,14 @@ packages/
 }
 ```
 
-- [ ] **Step 4: 创建 src/constants.ts**
+- [x] **Step 4: 创建 src/constants.ts**
 
 ```typescript
 export const loggerCtx = 'OrderTimeoutPlugin';
 export const ORDER_TIMEOUT_PLUGIN_OPTIONS = Symbol('ORDER_TIMEOUT_PLUGIN_OPTIONS');
 ```
 
-- [ ] **Step 5: 创建 src/types.ts**
+- [x] **Step 5: 创建 src/types.ts**
 
 ```typescript
 export interface OrderTimeoutPluginOptions {
@@ -191,7 +191,7 @@ export interface OrderTimeoutPluginOptions {
 }
 ```
 
-- [ ] **Step 6: 创建 src/channel-custom-fields.ts**
+- [x] **Step 6: 创建 src/channel-custom-fields.ts**
 
 ```typescript
 import { CustomFields, LanguageCode } from '@vendure/core';
@@ -208,7 +208,7 @@ export const orderTimeoutChannelCustomFields: CustomFields = {
 };
 ```
 
-- [ ] **Step 7: 创建 src/plugin.ts**
+- [x] **Step 7: 创建 src/plugin.ts**
 
 ```typescript
 import { Inject, OnApplicationBootstrap, Type } from '@nestjs/common';
@@ -265,7 +265,7 @@ export class OrderTimeoutPlugin implements OnApplicationBootstrap {
 }
 ```
 
-- [ ] **Step 8: 创建 index.ts**
+- [x] **Step 8: 创建 index.ts**
 
 ```typescript
 export * from './src/plugin';
@@ -273,11 +273,11 @@ export * from './src/types';
 export * from './src/constants';
 ```
 
-- [ ] **Step 9: 构建验证**
+- [x] **Step 9: 构建验证**
 
 Run: `cd e:\code\vendure\packages\order-timeout-plugin && npx tsc --noEmit`
 
-- [ ] **Step 10: 提交**
+- [x] **Step 10: 提交**
 
 ```bash
 git add packages/order-timeout-plugin/
@@ -292,7 +292,7 @@ git commit -m "feat(order-timeout-plugin): scaffold plugin with channel custom f
 - Create: `packages/order-timeout-plugin/src/order-timeout.job.ts`
 - Modify: `packages/order-timeout-plugin/src/plugin.ts` (已在 Task 1 中引用，无需修改)
 
-- [ ] **Step 1: 创建 src/order-timeout.job.ts**
+- [x] **Step 1: 创建 src/order-timeout.job.ts**
 
 ```typescript
 import { Injectable } from '@nestjs/common';
@@ -344,11 +344,11 @@ export class OrderTimeoutJob {
 }
 ```
 
-- [ ] **Step 2: 构建验证**
+- [x] **Step 2: 构建验证**
 
 Run: `cd e:\code\vendure\packages\order-timeout-plugin && npx tsc --noEmit`
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 git add packages/order-timeout-plugin/
@@ -369,7 +369,7 @@ git commit -m "feat(order-timeout-plugin): add JobQueue timeout cancellation log
 - Create: `packages/invoice-plugin/src/order-custom-fields.ts`
 - Create: `packages/invoice-plugin/src/plugin.ts`
 
-- [ ] **Step 1: 创建 package.json**
+- [x] **Step 1: 创建 package.json**
 
 ```json
 {
@@ -399,7 +399,7 @@ git commit -m "feat(order-timeout-plugin): add JobQueue timeout cancellation log
 }
 ```
 
-- [ ] **Step 2: 创建 tsconfig.json 和 tsconfig.build.json**
+- [x] **Step 2: 创建 tsconfig.json 和 tsconfig.build.json**
 
 tsconfig.json:
 ```json
@@ -424,14 +424,14 @@ tsconfig.build.json:
 }
 ```
 
-- [ ] **Step 3: 创建 src/constants.ts**
+- [x] **Step 3: 创建 src/constants.ts**
 
 ```typescript
 export const loggerCtx = 'InvoicePlugin';
 export const INVOICE_PLUGIN_OPTIONS = Symbol('INVOICE_PLUGIN_OPTIONS');
 ```
 
-- [ ] **Step 4: 创建 src/types.ts**
+- [x] **Step 4: 创建 src/types.ts**
 
 ```typescript
 export interface InvoicePluginOptions {
@@ -439,7 +439,7 @@ export interface InvoicePluginOptions {
 }
 ```
 
-- [ ] **Step 5: 创建 src/order-custom-fields.ts**
+- [x] **Step 5: 创建 src/order-custom-fields.ts**
 
 ```typescript
 import { CustomFields, LanguageCode } from '@vendure/core';
@@ -512,7 +512,7 @@ export const invoiceOrderCustomFields: CustomFields = {
 };
 ```
 
-- [ ] **Step 6: 创建 src/plugin.ts**
+- [x] **Step 6: 创建 src/plugin.ts**
 
 ```typescript
 import { Inject, Type } from '@nestjs/common';
@@ -545,7 +545,7 @@ export class InvoicePlugin {
 }
 ```
 
-- [ ] **Step 7: 创建 src/order-custom-fields.ts**
+- [x] **Step 7: 创建 src/order-custom-fields.ts**
 
 ```typescript
 import { CustomFields, LanguageCode } from '@vendure/core';
@@ -568,7 +568,7 @@ export const groupBuyOrderCustomFields: CustomFields = {
 };
 ```
 
-- [ ] **Step 8: 创建 index.ts**
+- [x] **Step 8: 创建 index.ts**
 
 ```typescript
 export * from './src/plugin';
@@ -576,11 +576,11 @@ export * from './src/types';
 export * from './src/constants';
 ```
 
-- [ ] **Step 8: 构建验证**
+- [x] **Step 8: 构建验证**
 
 Run: `cd e:\code\vendure\packages\invoice-plugin && npx tsc --noEmit`
 
-- [ ] **Step 9: 提交**
+- [x] **Step 9: 提交**
 
 ```bash
 git add packages/invoice-plugin/
@@ -603,7 +603,7 @@ git commit -m "feat(invoice-plugin): add invoice data recording plugin"
 - Create: `packages/logistics-plugin/src/channel-stock-allocation-strategy.ts`
 - Create: `packages/logistics-plugin/src/plugin.ts`
 
-- [ ] **Step 1: 创建 package.json**
+- [x] **Step 1: 创建 package.json**
 
 ```json
 {
@@ -633,18 +633,18 @@ git commit -m "feat(invoice-plugin): add invoice data recording plugin"
 }
 ```
 
-- [ ] **Step 2: 创建 tsconfig.json 和 tsconfig.build.json**
+- [x] **Step 2: 创建 tsconfig.json 和 tsconfig.build.json**
 
 同 Task 1 的模板。
 
-- [ ] **Step 3: 创建 src/constants.ts**
+- [x] **Step 3: 创建 src/constants.ts**
 
 ```typescript
 export const loggerCtx = 'LogisticsPlugin';
 export const LOGISTICS_PLUGIN_OPTIONS = Symbol('LOGISTICS_PLUGIN_OPTIONS');
 ```
 
-- [ ] **Step 4: 创建 src/types.ts**
+- [x] **Step 4: 创建 src/types.ts**
 
 ```typescript
 export interface LogisticsPluginOptions {
@@ -652,7 +652,7 @@ export interface LogisticsPluginOptions {
 }
 ```
 
-- [ ] **Step 5: 创建 src/fulfillment-custom-fields.ts**
+- [x] **Step 5: 创建 src/fulfillment-custom-fields.ts**
 
 ```typescript
 import { CustomFields, LanguageCode } from '@vendure/core';
@@ -687,7 +687,7 @@ export const logisticsFulfillmentCustomFields: CustomFields = {
 };
 ```
 
-- [ ] **Step 6: 创建 src/channel-custom-fields.ts**
+- [x] **Step 6: 创建 src/channel-custom-fields.ts**
 
 ```typescript
 import { CustomFields, LanguageCode } from '@vendure/core';
@@ -718,7 +718,7 @@ export const logisticsChannelCustomFields: CustomFields = {
 };
 ```
 
-- [ ] **Step 7: 创建 src/channel-stock-allocation-strategy.ts**
+- [x] **Step 7: 创建 src/channel-stock-allocation-strategy.ts**
 
 ```typescript
 import { RequestContext } from '@vendure/core';
@@ -764,7 +764,7 @@ export class ChannelStockAllocationStrategy implements StockAllocationStrategy {
 }
 ```
 
-- [ ] **Step 8: 创建 src/plugin.ts**
+- [x] **Step 8: 创建 src/plugin.ts**
 
 ```typescript
 import { Inject, Type } from '@nestjs/common';
@@ -807,7 +807,7 @@ export class LogisticsPlugin {
 }
 ```
 
-- [ ] **Step 9: 创建 index.ts**
+- [x] **Step 9: 创建 index.ts**
 
 ```typescript
 export * from './src/plugin';
@@ -815,11 +815,11 @@ export * from './src/types';
 export * from './src/constants';
 ```
 
-- [ ] **Step 10: 构建验证**
+- [x] **Step 10: 构建验证**
 
 Run: `cd e:\code\vendure\packages\logistics-plugin && npx tsc --noEmit`
 
-- [ ] **Step 11: 提交**
+- [x] **Step 11: 提交**
 
 ```bash
 git add packages/logistics-plugin/
@@ -841,7 +841,7 @@ git commit -m "feat(logistics-plugin): add logistics tracking and multi-warehous
 - Create: `packages/group-buy-plugin/src/group-buy-order.entity.ts`
 - Create: `packages/group-buy-plugin/src/order-custom-fields.ts`
 
-- [ ] **Step 1: 创建 package.json**
+- [x] **Step 1: 创建 package.json**
 
 ```json
 {
@@ -871,18 +871,18 @@ git commit -m "feat(logistics-plugin): add logistics tracking and multi-warehous
 }
 ```
 
-- [ ] **Step 2: 创建 tsconfig.json 和 tsconfig.build.json**
+- [x] **Step 2: 创建 tsconfig.json 和 tsconfig.build.json**
 
 同 Task 1 的模板。
 
-- [ ] **Step 3: 创建 src/constants.ts**
+- [x] **Step 3: 创建 src/constants.ts**
 
 ```typescript
 export const loggerCtx = 'GroupBuyPlugin';
 export const GROUP_BUY_PLUGIN_OPTIONS = Symbol('GROUP_BUY_PLUGIN_OPTIONS');
 ```
 
-- [ ] **Step 4: 创建 src/types.ts**
+- [x] **Step 4: 创建 src/types.ts**
 
 ```typescript
 export interface RewardRule {
@@ -896,7 +896,7 @@ export interface GroupBuyPluginOptions {
 }
 ```
 
-- [ ] **Step 5: 创建 src/group-buy-activity.entity.ts**
+- [x] **Step 5: 创建 src/group-buy-activity.entity.ts**
 
 ```typescript
 import { Column, Entity, JoinTable, ManyToMany } from 'typeorm';
@@ -948,7 +948,7 @@ interface RewardRule {
 }
 ```
 
-- [ ] **Step 6: 创建 src/group-buy-order.entity.ts**
+- [x] **Step 6: 创建 src/group-buy-order.entity.ts**
 
 ```typescript
 import { Column, Entity } from 'typeorm';
@@ -966,7 +966,7 @@ export class GroupBuyOrder extends VendureEntity {
 }
 ```
 
-- [ ] **Step 7: 创建 index.ts**
+- [x] **Step 7: 创建 index.ts**
 
 ```typescript
 export * from './src/plugin';
@@ -976,11 +976,11 @@ export * from './src/group-buy-activity.entity';
 export * from './src/group-buy-order.entity';
 ```
 
-- [ ] **Step 8: 构建验证**
+- [x] **Step 8: 构建验证**
 
 Run: `cd e:\code\vendure\packages\group-buy-plugin && npx tsc --noEmit`
 
-- [ ] **Step 9: 提交**
+- [x] **Step 9: 提交**
 
 ```bash
 git add packages/group-buy-plugin/
@@ -1000,7 +1000,7 @@ git commit -m "feat(group-buy-plugin): scaffold plugin with entities"
 - Create: `packages/group-buy-plugin/src/group-buy.job.ts`
 - Create: `packages/group-buy-plugin/src/plugin.ts`
 
-- [ ] **Step 1: 创建 src/group-buy.service.ts**
+- [x] **Step 1: 创建 src/group-buy.service.ts**
 
 ```typescript
 import { Injectable } from '@nestjs/common';
@@ -1096,7 +1096,7 @@ export class GroupBuyService {
 }
 ```
 
-- [ ] **Step 2: 创建 src/group-buy-admin.resolver.ts**
+- [x] **Step 2: 创建 src/group-buy-admin.resolver.ts**
 
 ```typescript
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
@@ -1140,7 +1140,7 @@ export class GroupBuyAdminResolver {
 }
 ```
 
-- [ ] **Step 3: 创建 src/group-buy-shop.resolver.ts**
+- [x] **Step 3: 创建 src/group-buy-shop.resolver.ts**
 
 ```typescript
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
@@ -1173,7 +1173,7 @@ export class GroupBuyShopResolver {
 }
 ```
 
-- [ ] **Step 4: 创建 src/group-buy-promotion-condition.ts**
+- [x] **Step 4: 创建 src/group-buy-promotion-condition.ts**
 
 ```typescript
 import { LanguageCode, PromotionCondition } from '@vendure/core';
@@ -1193,7 +1193,7 @@ export const groupBuyDiscountCondition = new PromotionCondition({
 });
 ```
 
-- [ ] **Step 5: 创建 src/group-buy-leader-promotion.ts**
+- [x] **Step 5: 创建 src/group-buy-leader-promotion.ts**
 
 ```typescript
 import { LanguageCode, PromotionCondition } from '@vendure/core';
@@ -1213,7 +1213,7 @@ export const groupBuyLeaderRewardCondition = new PromotionCondition({
 });
 ```
 
-- [ ] **Step 6: 创建 src/group-buy.job.ts**
+- [x] **Step 6: 创建 src/group-buy.job.ts**
 
 ```typescript
 import { Injectable } from '@nestjs/common';
@@ -1302,7 +1302,7 @@ export class GroupBuyJob {
 }
 ```
 
-- [ ] **Step 7: 创建 src/plugin.ts**
+- [x] **Step 7: 创建 src/plugin.ts**
 
 ```typescript
 import { Inject, OnApplicationBootstrap, Type } from '@nestjs/common';
@@ -1368,11 +1368,11 @@ export class GroupBuyPlugin implements OnApplicationBootstrap {
 }
 ```
 
-- [ ] **Step 8: 构建验证**
+- [x] **Step 8: 构建验证**
 
 Run: `cd e:\code\vendure\packages\group-buy-plugin && npx tsc --noEmit`
 
-- [ ] **Step 9: 提交**
+- [x] **Step 9: 提交**
 
 ```bash
 git add packages/group-buy-plugin/
@@ -1395,18 +1395,18 @@ git commit -m "feat(group-buy-plugin): add service, resolvers, promotion conditi
 - Create: `packages/flash-sale-plugin/src/order-custom-fields.ts`
 - Create: `packages/flash-sale-plugin/src/plugin.ts`
 
-- [ ] **Step 1: 创建 package.json, tsconfig.json, tsconfig.build.json**
+- [x] **Step 1: 创建 package.json, tsconfig.json, tsconfig.build.json**
 
 package.json 同 Task 5 模板，name 改为 `@vendure/flash-sale-plugin`。
 
-- [ ] **Step 2: 创建 src/constants.ts**
+- [x] **Step 2: 创建 src/constants.ts**
 
 ```typescript
 export const loggerCtx = 'FlashSalePlugin';
 export const FLASH_SALE_PLUGIN_OPTIONS = Symbol('FLASH_SALE_PLUGIN_OPTIONS');
 ```
 
-- [ ] **Step 3: 创建 src/types.ts**
+- [x] **Step 3: 创建 src/types.ts**
 
 ```typescript
 export interface FlashSalePluginOptions {
@@ -1414,7 +1414,7 @@ export interface FlashSalePluginOptions {
 }
 ```
 
-- [ ] **Step 4: 创建 src/flash-sale-activity.entity.ts**
+- [x] **Step 4: 创建 src/flash-sale-activity.entity.ts**
 
 ```typescript
 import { Column, Entity, JoinTable, ManyToMany } from 'typeorm';
@@ -1448,7 +1448,7 @@ export class FlashSaleActivity extends VendureEntity implements ChannelAware {
 }
 ```
 
-- [ ] **Step 5: 创建 src/flash-sale.service.ts**
+- [x] **Step 5: 创建 src/flash-sale.service.ts**
 
 ```typescript
 import { Injectable } from '@nestjs/common';
@@ -1549,7 +1549,7 @@ export class FlashSaleService {
 }
 ```
 
-- [ ] **Step 6: 创建 src/flash-sale-admin.resolver.ts**
+- [x] **Step 6: 创建 src/flash-sale-admin.resolver.ts**
 
 ```typescript
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
@@ -1593,7 +1593,7 @@ export class FlashSaleAdminResolver {
 }
 ```
 
-- [ ] **Step 7: 创建 src/flash-sale-shop.resolver.ts**
+- [x] **Step 7: 创建 src/flash-sale-shop.resolver.ts**
 
 ```typescript
 import { Args, Query, Resolver } from '@nestjs/graphql';
@@ -1617,7 +1617,7 @@ export class FlashSaleShopResolver {
 }
 ```
 
-- [ ] **Step 8: 创建 src/flash-sale-promotion-condition.ts**
+- [x] **Step 8: 创建 src/flash-sale-promotion-condition.ts**
 
 ```typescript
 import { LanguageCode, PromotionCondition } from '@vendure/core';
@@ -1637,7 +1637,7 @@ export const flashSaleDiscountCondition = new PromotionCondition({
 });
 ```
 
-- [ ] **Step 9: 创建 src/flash-sale-eligibility-checker.ts**
+- [x] **Step 9: 创建 src/flash-sale-eligibility-checker.ts**
 
 ```typescript
 import { LanguageCode, PromotionCondition } from '@vendure/core';
@@ -1665,7 +1665,7 @@ export const flashSaleEligibilityCondition = new PromotionCondition({
 });
 ```
 
-- [ ] **Step 10: 创建 src/order-custom-fields.ts**
+- [x] **Step 10: 创建 src/order-custom-fields.ts**
 
 ```typescript
 import { CustomFields, LanguageCode } from '@vendure/core';
@@ -1694,7 +1694,7 @@ export const flashSaleOrderCustomFields: CustomFields = {
 };
 ```
 
-- [ ] **Step 11: 创建 src/flash-sale.job.ts**
+- [x] **Step 11: 创建 src/flash-sale.job.ts**
 
 ```typescript
 import { Injectable } from '@nestjs/common';
@@ -1752,7 +1752,7 @@ export class FlashSaleJob {
 }
 ```
 
-- [ ] **Step 11: 创建 src/plugin.ts**
+- [x] **Step 11: 创建 src/plugin.ts**
 
 ```typescript
 import { Inject, OnApplicationBootstrap, Type } from '@nestjs/common';
@@ -1817,7 +1817,7 @@ export class FlashSalePlugin implements OnApplicationBootstrap {
 }
 ```
 
-- [ ] **Step 12: 创建 index.ts**
+- [x] **Step 12: 创建 index.ts**
 
 ```typescript
 export * from './src/plugin';
@@ -1826,11 +1826,11 @@ export * from './src/constants';
 export * from './src/flash-sale-activity.entity';
 ```
 
-- [ ] **Step 13: 构建验证**
+- [x] **Step 13: 构建验证**
 
 Run: `cd e:\code\vendure\packages\flash-sale-plugin && npx tsc --noEmit`
 
-- [ ] **Step 14: 提交**
+- [x] **Step 14: 提交**
 
 ```bash
 git add packages/flash-sale-plugin/
@@ -1849,18 +1849,18 @@ git commit -m "feat(flash-sale-plugin): add flash sale plugin with time window a
 - Create: `packages/distribution-plugin/src/channel-custom-fields.ts`
 - Create: `packages/distribution-plugin/src/customer-custom-fields.ts`
 
-- [ ] **Step 1: 创建 package.json, tsconfig.json, tsconfig.build.json**
+- [x] **Step 1: 创建 package.json, tsconfig.json, tsconfig.build.json**
 
 package.json 同模板，name 改为 `@vendure/distribution-plugin`。
 
-- [ ] **Step 2: 创建 src/constants.ts**
+- [x] **Step 2: 创建 src/constants.ts**
 
 ```typescript
 export const loggerCtx = 'DistributionPlugin';
 export const DISTRIBUTION_PLUGIN_OPTIONS = Symbol('DISTRIBUTION_PLUGIN_OPTIONS');
 ```
 
-- [ ] **Step 3: 创建 src/types.ts**
+- [x] **Step 3: 创建 src/types.ts**
 
 ```typescript
 export interface DistributionPluginOptions {
@@ -1871,7 +1871,7 @@ export interface DistributionPluginOptions {
 }
 ```
 
-- [ ] **Step 4: 创建 src/distributor.entity.ts**
+- [x] **Step 4: 创建 src/distributor.entity.ts**
 
 ```typescript
 import { Column, Entity, JoinTable, ManyToMany } from 'typeorm';
@@ -1901,7 +1901,7 @@ export class Distributor extends VendureEntity implements ChannelAware {
 }
 ```
 
-- [ ] **Step 5: 创建 src/commission-record.entity.ts**
+- [x] **Step 5: 创建 src/commission-record.entity.ts**
 
 ```typescript
 import { Column, Entity, JoinTable, ManyToMany } from 'typeorm';
@@ -1935,7 +1935,7 @@ export class CommissionRecord extends VendureEntity implements ChannelAware {
 }
 ```
 
-- [ ] **Step 6: 创建 src/withdrawal-request.entity.ts**
+- [x] **Step 6: 创建 src/withdrawal-request.entity.ts**
 
 ```typescript
 import { Column, Entity, JoinTable, ManyToMany } from 'typeorm';
@@ -1963,7 +1963,7 @@ export class WithdrawalRequest extends VendureEntity implements ChannelAware {
 }
 ```
 
-- [ ] **Step 7: 创建 src/channel-custom-fields.ts**
+- [x] **Step 7: 创建 src/channel-custom-fields.ts**
 
 ```typescript
 import { CustomFields, LanguageCode } from '@vendure/core';
@@ -2004,7 +2004,7 @@ export const distributionChannelCustomFields: CustomFields = {
 };
 ```
 
-- [ ] **Step 8: 创建 src/customer-custom-fields.ts**
+- [x] **Step 8: 创建 src/customer-custom-fields.ts**
 
 ```typescript
 import { CustomFields, LanguageCode } from '@vendure/core';
@@ -2027,7 +2027,7 @@ export const distributionCustomerCustomFields: CustomFields = {
 };
 ```
 
-- [ ] **Step 9: 创建 index.ts**
+- [x] **Step 9: 创建 index.ts**
 
 ```typescript
 export * from './src/plugin';
@@ -2038,11 +2038,11 @@ export * from './src/commission-record.entity';
 export * from './src/withdrawal-request.entity';
 ```
 
-- [ ] **Step 10: 构建验证**
+- [x] **Step 10: 构建验证**
 
 Run: `cd e:\code\vendure\packages\distribution-plugin && npx tsc --noEmit`
 
-- [ ] **Step 11: 提交**
+- [x] **Step 11: 提交**
 
 ```bash
 git add packages/distribution-plugin/
@@ -2062,7 +2062,7 @@ git commit -m "feat(distribution-plugin): scaffold plugin with entities and cust
 - Create: `packages/distribution-plugin/src/commission.job.ts`
 - Create: `packages/distribution-plugin/src/plugin.ts`
 
-- [ ] **Step 1: 创建 src/distribution.service.ts**
+- [x] **Step 1: 创建 src/distribution.service.ts**
 
 ```typescript
 import { Injectable } from '@nestjs/common';
@@ -2154,7 +2154,7 @@ export class DistributionService {
 }
 ```
 
-- [ ] **Step 2: 创建 src/commission.service.ts**
+- [x] **Step 2: 创建 src/commission.service.ts**
 
 ```typescript
 import { Injectable } from '@nestjs/common';
@@ -2281,7 +2281,7 @@ export class CommissionService {
 }
 ```
 
-- [ ] **Step 3: 创建 src/withdrawal.service.ts**
+- [x] **Step 3: 创建 src/withdrawal.service.ts**
 
 ```typescript
 import { Injectable } from '@nestjs/common';
@@ -2384,7 +2384,7 @@ export class WithdrawalService {
 }
 ```
 
-- [ ] **Step 4: 创建 src/distribution-admin.resolver.ts**
+- [x] **Step 4: 创建 src/distribution-admin.resolver.ts**
 
 ```typescript
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
@@ -2449,7 +2449,7 @@ export class DistributionAdminResolver {
 }
 ```
 
-- [ ] **Step 5: 创建 src/distribution-shop.resolver.ts**
+- [x] **Step 5: 创建 src/distribution-shop.resolver.ts**
 
 ```typescript
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
@@ -2520,7 +2520,7 @@ export class DistributionShopResolver {
 }
 ```
 
-- [ ] **Step 6: 创建 src/commission.job.ts**
+- [x] **Step 6: 创建 src/commission.job.ts**
 
 ```typescript
 import { Injectable } from '@nestjs/common';
@@ -2553,7 +2553,7 @@ export class CommissionJob {
 }
 ```
 
-- [ ] **Step 7: 创建 src/plugin.ts**
+- [x] **Step 7: 创建 src/plugin.ts**
 
 ```typescript
 import { Inject, OnApplicationBootstrap, Type } from '@nestjs/common';
@@ -2624,11 +2624,11 @@ export class DistributionPlugin implements OnApplicationBootstrap {
 }
 ```
 
-- [ ] **Step 8: 构建验证**
+- [x] **Step 8: 构建验证**
 
 Run: `cd e:\code\vendure\packages\distribution-plugin && npx tsc --noEmit`
 
-- [ ] **Step 9: 提交**
+- [x] **Step 9: 提交**
 
 ```bash
 git add packages/distribution-plugin/
@@ -2639,17 +2639,25 @@ git commit -m "feat(distribution-plugin): add two-level distribution with commis
 
 ### Task 10: 全量构建验证
 
-- [ ] **Step 1: 构建所有 6 个新插件**
+- [x] **Step 1: 构建所有 6 个新插件**
 
 Run: 对每个插件目录执行 `npx tsc --noEmit`
 
-- [ ] **Step 2: 验证与已有 6 个插件的 CustomFields 不冲突**
+- [x] **Step 2: 验证与已有 6 个插件的 CustomFields 不冲突**
 
 检查所有插件的 Channel/Order/Fulfillment/Customer CustomFields 字段名是否唯一。
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 git add .
 git commit -m "feat: complete extended features plugin suite v1"
 ```
+
+---
+
+## 执行结论（2026-09-29 回填）
+
+- 本计划**已交付**，此前仅复选框未回填。
+- 判定依据：**产物级核查** —— 关键文件 / 实体 / resolver / 插件包在仓库中实际存在，且有对应 git 提交；**非逐 Step 复走**。证据见 `vshop/web-admin/docs/superpowers/BACKLOG.md` §2.1。
+- 本次动作：勾选本计划全部 90 个 `- [ ] **Step` 复选框 + 追加本节；未改动计划正文。

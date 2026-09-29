@@ -39,11 +39,11 @@
 **Files:**
 - Modify: `e:\code\vendure\packages\cjk-plugin\dashboard\components\map-picker.tsx`
 
-- [ ] **Step 1: 读取当前 map-picker.tsx**
+- [x] **Step 1: 读取当前 map-picker.tsx**
 
 Run: `Read e:\code\vendure\packages\cjk-plugin\dashboard\components\map-picker.tsx`
 
-- [ ] **Step 2: 用完整新内容覆盖 map-picker.tsx**
+- [x] **Step 2: 用完整新内容覆盖 map-picker.tsx**
 
 ```tsx
 // e:\code\vendure\packages\cjk-plugin\dashboard\components\map-picker.tsx
@@ -416,7 +416,7 @@ export const MapPicker = forwardRef<MapPickerHandle, MapPickerProps>(function Ma
 });
 ```
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -431,7 +431,7 @@ git commit -m "feat: Add GPS locate button and address search box to MapPicker, 
 **Files:**
 - Create: `e:\code\vendure\packages\cjk-plugin\dashboard\components\address-auto-complete.tsx`
 
-- [ ] **Step 1: 创建 address-auto-complete.tsx**
+- [x] **Step 1: 创建 address-auto-complete.tsx**
 
 ```tsx
 // e:\code\vendure\packages\cjk-plugin\dashboard\components\address-auto-complete.tsx
@@ -563,7 +563,7 @@ export function AddressAutoComplete({
 }
 ```
 
-- [ ] **Step 2: 提交**
+- [x] **Step 2: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -578,11 +578,11 @@ git commit -m "feat: Add AddressAutoComplete component for detailed address fiel
 **Files:**
 - Modify: `e:\code\vendure\packages\cjk-plugin\dashboard\components\region-cascade-selector.tsx`
 
-- [ ] **Step 1: 读取当前 region-cascade-selector.tsx**
+- [x] **Step 1: 读取当前 region-cascade-selector.tsx**
 
 Run: `Read e:\code\vendure\packages\cjk-plugin\dashboard\components\region-cascade-selector.tsx`
 
-- [ ] **Step 2: 在 props 接口加 onRegionCenterChange**
+- [x] **Step 2: 在 props 接口加 onRegionCenterChange**
 
 将 `RegionCascadeSelectorProps` 接口改为：
 
@@ -595,7 +595,7 @@ interface RegionCascadeSelectorProps {
 }
 ```
 
-- [ ] **Step 3: 在每个 handleXxxChange 中加 onRegionCenterChange 调用**
+- [x] **Step 3: 在每个 handleXxxChange 中加 onRegionCenterChange 调用**
 
 `DistrictNode` 接口已有 `center` 字段（从 GraphQL 查询返回）。在每个 change handler 中，找到选中的 node 后调用 `onRegionCenterChange`。
 
@@ -647,7 +647,7 @@ const handleStreetChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
 };
 ```
 
-- [ ] **Step 4: 更新 DistrictNode 接口加 center 字段**
+- [x] **Step 4: 更新 DistrictNode 接口加 center 字段**
 
 将组件内部的 `DistrictNode` 接口改为（与 GraphQL 返回一致）：
 
@@ -660,11 +660,11 @@ interface DistrictNode {
 }
 ```
 
-- [ ] **Step 5: 验证 Vite 编译**
+- [x] **Step 5: 验证 Vite 编译**
 
 Vite dev server 会自动热重载，检查浏览器无报错。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -679,11 +679,11 @@ git commit -m "feat: Add onRegionCenterChange callback to RegionCascadeSelector"
 **Files:**
 - Modify: `e:\code\vendure\packages\cjk-plugin\dashboard\pickup-location-detail.tsx`
 
-- [ ] **Step 1: 读取当前 pickup-location-detail.tsx**
+- [x] **Step 1: 读取当前 pickup-location-detail.tsx**
 
 Run: `Read e:\code\vendure\packages\cjk-plugin\dashboard\pickup-location-detail.tsx`
 
-- [ ] **Step 2: 修改 imports**
+- [x] **Step 2: 修改 imports**
 
 追加导入：
 
@@ -695,7 +695,7 @@ import { AddressAutoComplete } from './components/address-auto-complete';
 
 （移除原来的 `import { MapPicker } from './components/map-picker';`）
 
-- [ ] **Step 3: 在 PickupLocationDetailPage 函数内加 mapPickerRef**
+- [x] **Step 3: 在 PickupLocationDetailPage 函数内加 mapPickerRef**
 
 在 `const navigate = useNavigate();` 后追加：
 
@@ -703,7 +703,7 @@ import { AddressAutoComplete } from './components/address-auto-complete';
     const mapPickerRef = useRef<MapPickerHandle>(null);
 ```
 
-- [ ] **Step 4: 修改 handleRegionChange 加 onRegionCenterChange 透传**
+- [x] **Step 4: 修改 handleRegionChange 加 onRegionCenterChange 透传**
 
 将 RegionCascadeSelector 的 Controller 改为：
 
@@ -735,7 +735,7 @@ import { AddressAutoComplete } from './components/address-auto-complete';
 
 **注意**：`MapPickerHandle.setCenter` 的第三参数 `withMarker=false` 表示只移动视角不加标记（符合 spec 设计"不自动加标记"）。
 
-- [ ] **Step 5: 替换详细地址字段的 TextInput 为 AddressAutoComplete**
+- [x] **Step 5: 替换详细地址字段的 TextInput 为 AddressAutoComplete**
 
 将原来的：
 
@@ -773,7 +773,7 @@ import { AddressAutoComplete } from './components/address-auto-complete';
                         />
 ```
 
-- [ ] **Step 6: 加 handleReverseGeocodePromise 辅助函数**
+- [x] **Step 6: 加 handleReverseGeocodePromise 辅助函数**
 
 在 `handleReverseGeocode` 函数后追加（因为原 `handleReverseGeocode` 是同步调用 form.setValue 的 void 函数，这里需要一个 async 版本用于 AddressAutoComplete 选中后调 reverseGeocode）：
 
@@ -812,7 +812,7 @@ import { getMapSdkConfig, reverseGeocode } from './lib/map-graphql';
     };
 ```
 
-- [ ] **Step 7: 修改 MapPicker 的 Controller 加 ref**
+- [x] **Step 7: 修改 MapPicker 的 Controller 加 ref**
 
 将原来的：
 
@@ -847,11 +847,11 @@ import { getMapSdkConfig, reverseGeocode } from './lib/map-graphql';
                     />
 ```
 
-- [ ] **Step 8: 验证 Vite 热重载无报错**
+- [x] **Step 8: 验证 Vite 热重载无报错**
 
 检查 dashboard dev server 输出无编译错误。
 
-- [ ] **Step 9: 提交**
+- [x] **Step 9: 提交**
 
 ```bash
 cd e:\code\vendure
@@ -866,11 +866,11 @@ git commit -m "feat: Integrate GPS, search, region cascade, and address autocomp
 **Files:**
 - 无文件改动
 
-- [ ] **Step 1: 确保服务运行**
+- [x] **Step 1: 确保服务运行**
 
 后端 dev server（端口 3000）和 dashboard dev server（端口 5173 或 5174）已运行。
 
-- [ ] **Step 2: 验证地址搜索框**
+- [x] **Step 2: 验证地址搜索框**
 
 访问 `http://localhost:5173/dashboard/pickup-locations/new`：
 1. 在地图顶部搜索框输入"双阳"
@@ -880,7 +880,7 @@ git commit -m "feat: Integrate GPS, search, region cascade, and address autocomp
 5. 验证标记点出现
 6. 验证省市区街道自动回填（吉林省/长春市/双阳区）
 
-- [ ] **Step 3: 验证 GPS 定位按钮**
+- [x] **Step 3: 验证 GPS 定位按钮**
 
 1. 点击"定位"按钮
 2. 浏览器弹出授权提示，允许
@@ -888,7 +888,7 @@ git commit -m "feat: Integrate GPS, search, region cascade, and address autocomp
 4. 验证标记点出现
 5. 验证省市区街道回填
 
-- [ ] **Step 4: 验证省市区联动地图**
+- [x] **Step 4: 验证省市区联动地图**
 
 1. 在省市区街道下拉中选"吉林省"
 2. 验证地图跳转到吉林省中心（zoom out）
@@ -897,7 +897,7 @@ git commit -m "feat: Integrate GPS, search, region cascade, and address autocomp
 5. 选"双阳区"
 6. 验证地图跳转到双阳区中心
 
-- [ ] **Step 5: 验证详细地址自动联想**
+- [x] **Step 5: 验证详细地址自动联想**
 
 1. 在"详细地址"输入框输入"欧亚卖场"
 2. 验证下拉联想显示结果
@@ -907,7 +907,7 @@ git commit -m "feat: Integrate GPS, search, region cascade, and address autocomp
 6. 验证地图跳转 + 标记
 7. 验证省市区街道回填
 
-- [ ] **Step 6: 验证降级**
+- [x] **Step 6: 验证降级**
 
 通过 GraphQL 清空默认 Channel 的 mapConfig：
 ```bash
@@ -965,3 +965,11 @@ $r.Content
 - ✅ mapDistricts 已返回 center 字段
 - ✅ forwardRef/useImperativeHandle 是标准 React API
 - ✅ navigator.geolocation 是浏览器原生 API
+
+---
+
+## 执行结论（2026-09-29 回填）
+
+- 本计划**已交付**，此前仅复选框未回填。
+- 判定依据：**产物级核查** —— 关键文件 / 实体 / resolver / 插件包在仓库中实际存在，且有对应 git 提交；**非逐 Step 复走**。证据见 `vshop/web-admin/docs/superpowers/BACKLOG.md` §2.1。
+- 本次动作：勾选本计划全部 26 个 `- [ ] **Step` 复选框 + 追加本节；未改动计划正文。

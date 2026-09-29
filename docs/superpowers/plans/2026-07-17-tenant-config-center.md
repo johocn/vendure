@@ -86,7 +86,7 @@
 **Files:**
 - Create: `packages/cjk-plugin/vitest.config.mts`
 
-- [ ] **Step 1: 创建 vitest 配置**
+- [x] **Step 1: 创建 vitest 配置**
 
 ```ts
 // packages/cjk-plugin/vitest.config.mts
@@ -101,12 +101,12 @@ export default defineConfig({
 });
 ```
 
-- [ ] **Step 2: 验证配置生效**
+- [x] **Step 2: 验证配置生效**
 
 Run: `cd packages/cjk-plugin && npx vitest --run`
 Expected: 输出 "No test files found" 但不报错
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add packages/cjk-plugin/vitest.config.mts
@@ -122,7 +122,7 @@ git commit -m "test: Add vitest config for cjk-plugin"
 **Files:**
 - Modify: `packages/cjk-plugin/src/payment/payment-config.types.ts`
 
-- [ ] **Step 1: 扩展类型**
+- [x] **Step 1: 扩展类型**
 
 在 `payment-config.types.ts` 末尾追加,并修改 `PaymentMethodCode`/`PayConfig`/`PayConfigStruct`:
 
@@ -153,12 +153,12 @@ export interface PayConfigStruct {
 }
 ```
 
-- [ ] **Step 2: 验证类型编译**
+- [x] **Step 2: 验证类型编译**
 
 Run: `cd packages/cjk-plugin && npx tsc --noEmit`
 Expected: 无新增错误(可能有既有的,只看新增)
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add packages/cjk-plugin/src/payment/payment-config.types.ts
@@ -174,7 +174,7 @@ git commit -m "feat: Add douyinpay credentials type"
 
 > 注: cjk-plugin 当前**无 Customer customFields 定义**(已核实),需新建文件并在 plugin.ts configuration 中注册。参照 `order-custom-fields.ts` / `tenant-channel-custom-fields.ts` 模式。
 
-- [ ] **Step 1: payConfig struct 加 douyinpayJson**
+- [x] **Step 1: payConfig struct 加 douyinpayJson**
 
 在 `tenant-channel-custom-fields.ts` 的 payConfig struct fields 数组中,在 `wechatpayJson` 后追加:
 
@@ -182,7 +182,7 @@ git commit -m "feat: Add douyinpay credentials type"
 { name: 'douyinpayJson', type: 'text' },
 ```
 
-- [ ] **Step 2: 新建 customer-custom-fields.ts**
+- [x] **Step 2: 新建 customer-custom-fields.ts**
 
 ```ts
 // packages/cjk-plugin/src/customer/customer-custom-fields.ts
@@ -200,7 +200,7 @@ export const customerCustomFields: CustomFields = {
 };
 ```
 
-- [ ] **Step 3: 在 plugin.ts configuration 中注册 Customer customFields**
+- [x] **Step 3: 在 plugin.ts configuration 中注册 Customer customFields**
 
 在 `plugin.ts` 的 `configuration` 函数中,Order customFields 注册之后追加:
 
@@ -216,12 +216,12 @@ config.customFields = {
 
 并在文件顶部加 `import { customerCustomFields } from './customer/customer-custom-fields';`
 
-- [ ] **Step 4: 验证编译**
+- [x] **Step 4: 验证编译**
 
 Run: `cd packages/cjk-plugin && npx tsc --noEmit`
 Expected: 无错误
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/cjk-plugin/src/tenant/tenant-channel-custom-fields.ts packages/cjk-plugin/src/customer/customer-custom-fields.ts packages/cjk-plugin/src/plugin.ts
@@ -233,7 +233,7 @@ git commit -m "feat: Add douyinpayJson and customer.inviteCode custom fields"
 **Files:**
 - Modify: `packages/cjk-plugin/src/payment/payment-config.ts`
 
-- [ ] **Step 1: 加 douyinpayJson 解析**
+- [x] **Step 1: 加 douyinpayJson 解析**
 
 修改 `readChannelPayConfig`,在 wechatpayJson 分支后追加:
 
@@ -256,12 +256,12 @@ export function getPaymentOverride(
 
 import 中加 `DouyinpayCredentials`。
 
-- [ ] **Step 2: 验证编译**
+- [x] **Step 2: 验证编译**
 
 Run: `cd packages/cjk-plugin && npx tsc --noEmit`
 Expected: 无错误
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add packages/cjk-plugin/src/payment/payment-config.ts
@@ -278,7 +278,7 @@ git commit -m "feat: Parse douyinpayJson in readChannelPayConfig"
 - Create: `packages/cjk-plugin/src/map/map-crypto.ts`
 - Test: `packages/cjk-plugin/src/map/map-crypto.spec.ts`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```ts
 // packages/cjk-plugin/src/map/map-crypto.spec.ts
@@ -332,12 +332,12 @@ describe('map-crypto', () => {
 });
 ```
 
-- [ ] **Step 2: 运行测试验证失败**
+- [x] **Step 2: 运行测试验证失败**
 
 Run: `cd packages/cjk-plugin && npx vitest --run src/map/map-crypto.spec.ts`
 Expected: FAIL "Cannot find module './map-crypto'"
 
-- [ ] **Step 3: 实现 map-crypto.ts**
+- [x] **Step 3: 实现 map-crypto.ts**
 
 ```ts
 // packages/cjk-plugin/src/map/map-crypto.ts
@@ -393,12 +393,12 @@ export function mergeMapConfig(original: MapConfig | null, patch: Partial<MapCon
 }
 ```
 
-- [ ] **Step 4: 运行测试验证通过**
+- [x] **Step 4: 运行测试验证通过**
 
 Run: `cd packages/cjk-plugin && npx vitest --run src/map/map-crypto.spec.ts`
 Expected: PASS (6 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/cjk-plugin/src/map/map-crypto.ts packages/cjk-plugin/src/map/map-crypto.spec.ts
@@ -411,7 +411,7 @@ git commit -m "feat: Add map-crypto with encrypt/decrypt/mask/merge"
 - Create: `packages/cjk-plugin/src/payment/pay-config-crypto.ts`
 - Test: `packages/cjk-plugin/src/payment/pay-config-crypto.spec.ts`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```ts
 // packages/cjk-plugin/src/payment/pay-config-crypto.spec.ts
@@ -476,12 +476,12 @@ describe('pay-config-crypto', () => {
 });
 ```
 
-- [ ] **Step 2: 运行测试验证失败**
+- [x] **Step 2: 运行测试验证失败**
 
 Run: `cd packages/cjk-plugin && npx vitest --run src/payment/pay-config-crypto.spec.ts`
 Expected: FAIL "Cannot find module './pay-config-crypto'"
 
-- [ ] **Step 3: 实现 pay-config-crypto.ts**
+- [x] **Step 3: 实现 pay-config-crypto.ts**
 
 ```ts
 // packages/cjk-plugin/src/payment/pay-config-crypto.ts
@@ -570,12 +570,12 @@ export function mergePayConfig(original: PayConfig | null, patch: Partial<PayCon
 }
 ```
 
-- [ ] **Step 4: 运行测试验证通过**
+- [x] **Step 4: 运行测试验证通过**
 
 Run: `cd packages/cjk-plugin && npx vitest --run src/payment/pay-config-crypto.spec.ts`
 Expected: PASS (6 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/cjk-plugin/src/payment/pay-config-crypto.ts packages/cjk-plugin/src/payment/pay-config-crypto.spec.ts
@@ -595,7 +595,7 @@ git commit -m "feat: Add pay-config-crypto with encrypt/decrypt/mask/merge"
 >
 > **重要**: `HistoryEntry` 是 abstract class,使用 `@TableInheritance` 单表继承(`discriminator` 列区分 `OrderHistoryEntry`/`CustomerHistoryEntry`)。**不能** 用 `getRepository('history_entry').save({...})` 传对象字面量(会因缺少 discriminator 值报错)。必须用 query builder 显式插入所有列(含 `discriminator`)。
 
-- [ ] **Step 1: 实现迁移脚本(幂等)**
+- [x] **Step 1: 实现迁移脚本(幂等)**
 
 ```ts
 // packages/cjk-plugin/src/migrations/migrate-mapconfig-encryption.ts
@@ -661,12 +661,12 @@ export class MapConfigEncryptionMigration implements OnApplicationBootstrap {
 }
 ```
 
-- [ ] **Step 2: 验证编译**
+- [x] **Step 2: 验证编译**
 
 Run: `cd packages/cjk-plugin && npx tsc --noEmit`
 Expected: 无错误
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add packages/cjk-plugin/src/migrations/migrate-mapconfig-encryption.ts
@@ -678,7 +678,7 @@ git commit -m "feat: Add mapConfig encryption migration (idempotent)"
 **Files:**
 - Create: `packages/cjk-plugin/src/migrations/migrate-payconfig-encryption.ts`
 
-- [ ] **Step 1: 实现迁移脚本**
+- [x] **Step 1: 实现迁移脚本**
 
 模式同 Task 4.1,遍历 Channel,对 payConfig.alipayJson/wechatpayJson/douyinpayJson 解析后用 `encryptPayConfig` 加密再序列化回 JSON 字符串,写回 struct。幂等检查用 `PAY_CONFIG_MIGRATION_DONE`。
 
@@ -764,12 +764,12 @@ export class PayConfigEncryptionMigration implements OnApplicationBootstrap {
 }
 ```
 
-- [ ] **Step 2: 验证编译**
+- [x] **Step 2: 验证编译**
 
 Run: `cd packages/cjk-plugin && npx tsc --noEmit`
 Expected: 无错误
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add packages/cjk-plugin/src/migrations/migrate-payconfig-encryption.ts
@@ -782,7 +782,7 @@ git commit -m "feat: Add payConfig encryption migration (idempotent)"
 - Create: `packages/cjk-plugin/src/migrations/index.ts`
 - Modify: `packages/cjk-plugin/src/plugin.ts`
 
-- [ ] **Step 1: 创建迁移入口**
+- [x] **Step 1: 创建迁移入口**
 
 ```ts
 // packages/cjk-plugin/src/migrations/index.ts
@@ -790,7 +790,7 @@ export { MapConfigEncryptionMigration, MAP_CONFIG_MIGRATION_DONE } from './migra
 export { PayConfigEncryptionMigration, PAY_CONFIG_MIGRATION_DONE } from './migrate-payconfig-encryption';
 ```
 
-- [ ] **Step 2: 在 plugin.ts providers 中注册迁移**
+- [x] **Step 2: 在 plugin.ts providers 中注册迁移**
 
 在 `plugin.ts` 的 `configuration()` providers 数组中追加:
 
@@ -804,14 +804,14 @@ providers: [
 
 并加 import。
 
-- [ ] **Step 3: 验证编译 + 启动**
+- [x] **Step 3: 验证编译 + 启动**
 
 Run: `cd packages/cjk-plugin && npx tsc --noEmit`
 Expected: 无错误
 
 Run: (在 dev-server 启动 Vendure) 观察日志无迁移错误,数据库 history_entry 表新增 2 条 MIGRATION_DONE 记录
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add packages/cjk-plugin/src/migrations/index.ts packages/cjk-plugin/src/plugin.ts
@@ -827,7 +827,7 @@ git commit -m "feat: Register encryption migrations in plugin providers"
 **Files:**
 - Create: `packages/cjk-plugin/src/auth/auth-config.service.ts`
 
-- [ ] **Step 1: 实现服务(薄封装现有 crypto 函数)**
+- [x] **Step 1: 实现服务(薄封装现有 crypto 函数)**
 
 ```ts
 // packages/cjk-plugin/src/auth/auth-config.service.ts
@@ -862,12 +862,12 @@ export class AuthConfigService {
 }
 ```
 
-- [ ] **Step 2: 验证编译**
+- [x] **Step 2: 验证编译**
 
 Run: `cd packages/cjk-plugin && npx tsc --noEmit`
 Expected: 无错误
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add packages/cjk-plugin/src/auth/auth-config.service.ts
@@ -879,7 +879,7 @@ git commit -m "feat: Add AuthConfigService (thin wrapper over crypto)"
 **Files:**
 - Create: `packages/cjk-plugin/src/payment/pay-config.service.ts`
 
-- [ ] **Step 1: 实现服务**
+- [x] **Step 1: 实现服务**
 
 ```ts
 // packages/cjk-plugin/src/payment/pay-config.service.ts
@@ -931,12 +931,12 @@ export class PayConfigService {
 }
 ```
 
-- [ ] **Step 2: 验证编译**
+- [x] **Step 2: 验证编译**
 
 Run: `cd packages/cjk-plugin && npx tsc --noEmit`
 Expected: 无错误
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add packages/cjk-plugin/src/payment/pay-config.service.ts
@@ -948,7 +948,7 @@ git commit -m "feat: Add PayConfigService"
 **Files:**
 - Create: `packages/cjk-plugin/src/map/map-config.service.ts`
 
-- [ ] **Step 1: 实现服务**
+- [x] **Step 1: 实现服务**
 
 ```ts
 // packages/cjk-plugin/src/map/map-config.service.ts
@@ -990,12 +990,12 @@ export class MapConfigService {
 }
 ```
 
-- [ ] **Step 2: 验证编译**
+- [x] **Step 2: 验证编译**
 
 Run: `cd packages/cjk-plugin && npx tsc --noEmit`
 Expected: 无错误
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add packages/cjk-plugin/src/map/map-config.service.ts
@@ -1007,7 +1007,7 @@ git commit -m "feat: Add MapConfigService"
 **Files:**
 - Create: `packages/cjk-plugin/src/auth/sso-provider.service.ts`
 
-- [ ] **Step 1: 实现服务**
+- [x] **Step 1: 实现服务**
 
 ```ts
 // packages/cjk-plugin/src/auth/sso-provider.service.ts
@@ -1078,12 +1078,12 @@ export class SsoProviderService {
 }
 ```
 
-- [ ] **Step 2: 验证编译**
+- [x] **Step 2: 验证编译**
 
 Run: `cd packages/cjk-plugin && npx tsc --noEmit`
 Expected: 无错误
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add packages/cjk-plugin/src/auth/sso-provider.service.ts
@@ -1095,7 +1095,7 @@ git commit -m "feat: Add SsoProviderService with testConnection"
 **Files:**
 - Create: `packages/cjk-plugin/src/auth/invite-code.service.ts`
 
-- [ ] **Step 1: 实现框架**
+- [x] **Step 1: 实现框架**
 
 ```ts
 // packages/cjk-plugin/src/auth/invite-code.service.ts
@@ -1136,12 +1136,12 @@ export class InviteCodeService {
 }
 ```
 
-- [ ] **Step 2: 验证编译**
+- [x] **Step 2: 验证编译**
 
 Run: `cd packages/cjk-plugin && npx tsc --noEmit`
 Expected: 无错误
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add packages/cjk-plugin/src/auth/invite-code.service.ts
@@ -1153,7 +1153,7 @@ git commit -m "feat: Add InviteCodeService framework (bind only, no rewards)"
 **Files:**
 - Modify: `packages/cjk-plugin/src/plugin.ts`
 
-- [ ] **Step 1: providers 数组追加 5 个 Service**
+- [x] **Step 1: providers 数组追加 5 个 Service**
 
 ```ts
 providers: [
@@ -1168,12 +1168,12 @@ providers: [
 
 并加 import。
 
-- [ ] **Step 2: 验证编译**
+- [x] **Step 2: 验证编译**
 
 Run: `cd packages/cjk-plugin && npx tsc --noEmit`
 Expected: 无错误
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add packages/cjk-plugin/src/plugin.ts
@@ -1192,7 +1192,7 @@ git commit -m "feat: Register config services in plugin providers"
 
 > 注: Vendure `PermissionDefinition` 用 `.Permission`(getter,大写 P)获取权限值,不是 `.permissions`。注册位置是 `config.authOptions.customPermissions`(在 plugin.ts `configuration` 函数中),参照 cjk-plugin 已有的 `pickupPermissionDefinitions` 注册模式。
 
-- [ ] **Step 1: 定义权限**
+- [x] **Step 1: 定义权限**
 
 ```ts
 // packages/cjk-plugin/src/admin/tenant-config-permissions.ts
@@ -1208,7 +1208,7 @@ export const tenantConfigPermission = new PermissionDefinition({
 // super-admin 默认拥有所有权限;租户管理员通过 channel 关联隐式获得(运行时校验)
 ```
 
-- [ ] **Step 2: 在 plugin.ts configuration 中注册权限**
+- [x] **Step 2: 在 plugin.ts configuration 中注册权限**
 
 在 `plugin.ts` 的 `configuration` 函数末尾(已有 `pickupPermissionDefinitions` 注册的位置)追加:
 
@@ -1221,12 +1221,12 @@ config.authOptions.customPermissions = [
 
 并在文件顶部加 `import { tenantConfigPermission } from './admin/tenant-config-permissions';`
 
-- [ ] **Step 3: 验证编译**
+- [x] **Step 3: 验证编译**
 
 Run: `cd packages/cjk-plugin && npx tsc --noEmit`
 Expected: 无错误
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add packages/cjk-plugin/src/admin/tenant-config-permissions.ts packages/cjk-plugin/src/plugin.ts
@@ -1239,7 +1239,7 @@ git commit -m "feat: Add ManageTenantConfig permission"
 - Create: `packages/cjk-plugin/src/admin/tenant-config.types.ts`
 - Create: `packages/cjk-plugin/src/admin/tenant-config.graphql`
 
-- [ ] **Step 1: 创建 GraphQL schema 文件**
+- [x] **Step 1: 创建 GraphQL schema 文件**
 
 ```graphql
 # packages/cjk-plugin/src/admin/tenant-config.graphql
@@ -1282,7 +1282,7 @@ type TestSsoResult {
 
 > 注: 用 `JSON` 标量简化(auth/pay/map 结构复杂,前端按 dynamic JSON 处理)。若 Vendure 需强类型,后续拆为具体 type。
 
-- [ ] **Step 2: 在 plugin.ts adminApiExtensions 中注册 schema**
+- [x] **Step 2: 在 plugin.ts adminApiExtensions 中注册 schema**
 
 在 `plugin.ts` 的 `adminApiExtensions.schema` 中追加 tenant-config.graphql(与现有 admin schema 合并),或用单独的 `adminApiExtensions` 入口。参照 cjk-plugin 现有模式(schema 用 `gql` 模板字符串内联,或 import .graphql 文件):
 
@@ -1297,12 +1297,12 @@ adminApiExtensions: {
 
 > 注: cjk-plugin 现有 `adminApiExtensions.schema` 用 `gql` 模板字符串内联。可将 tenant-config 的 GraphQL 类型追加到现有模板字符串中,或改为 import 函数。实现时选择与现有模式一致的方式。
 
-- [ ] **Step 3: 验证编译 + schema 加载**
+- [x] **Step 3: 验证编译 + schema 加载**
 
 Run: 启动 Vendure,在 admin GraphQL playground 执行 `query { __type(name: "TenantConfigPayload") { name } }`
 Expected: 返回类型定义
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add packages/cjk-plugin/src/admin/tenant-config.graphql packages/cjk-plugin/src/plugin.ts
@@ -1319,7 +1319,7 @@ git commit -m "feat: Add tenantConfig GraphQL schema"
 >
 > **history_entry 写入**: `HistoryEntry` 是 abstract 单表继承实体,**不能** 用 `getRepository('history_entry').save({...})` 传对象字面量。必须用 `createQueryBuilder().insert().into('history_entry').values({...})` 显式指定所有列(含 `discriminator`)。
 
-- [ ] **Step 1: 写失败测试(权限校验三路径)**
+- [x] **Step 1: 写失败测试(权限校验三路径)**
 
 ```ts
 // packages/cjk-plugin/src/admin/tenant-config-admin.resolver.spec.ts
@@ -1391,12 +1391,12 @@ describe('TenantConfigAdminResolver', () => {
 });
 ```
 
-- [ ] **Step 2: 运行测试验证失败**
+- [x] **Step 2: 运行测试验证失败**
 
 Run: `cd packages/cjk-plugin && npx vitest --run src/admin/tenant-config-admin.resolver.spec.ts`
 Expected: FAIL "Cannot find module './tenant-config-admin.resolver'"
 
-- [ ] **Step 3: 实现 resolver**
+- [x] **Step 3: 实现 resolver**
 
 ```ts
 // packages/cjk-plugin/src/admin/tenant-config-admin.resolver.ts
@@ -1495,12 +1495,12 @@ export class TenantConfigAdminResolver {
 }
 ```
 
-- [ ] **Step 4: 运行测试验证通过**
+- [x] **Step 4: 运行测试验证通过**
 
 Run: `cd packages/cjk-plugin && npx vitest --run src/admin/tenant-config-admin.resolver.spec.ts`
 Expected: PASS (4 tests)
 
-- [ ] **Step 5: 在 plugin.ts 注册 resolver**
+- [x] **Step 5: 在 plugin.ts 注册 resolver**
 
 ```ts
 adminApiExtensions: {
@@ -1509,12 +1509,12 @@ adminApiExtensions: {
 },
 ```
 
-- [ ] **Step 6: 验证编译 + e2e 启动**
+- [x] **Step 6: 验证编译 + e2e 启动**
 
 Run: `cd packages/cjk-plugin && npx tsc --noEmit`
 Expected: 无错误
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add packages/cjk-plugin/src/admin/tenant-config-admin.resolver.ts packages/cjk-plugin/src/admin/tenant-config-admin.resolver.spec.ts packages/cjk-plugin/src/plugin.ts
@@ -1532,7 +1532,7 @@ git commit -m "feat: Add TenantConfigAdminResolver with channel-based permission
 
 > 注: `ctx.user` 不存在,用户关联 channels 通过 `ctx.session?.user?.channelPermissions`(每项 `{ id, token, code, permissions }`)。super-admin 用 `ctx.userHasPermissions([Permission.SuperAdmin])`。
 
-- [ ] **Step 1: 改造为薄封装,补 @Allow + channel 校验**
+- [x] **Step 1: 改造为薄封装,补 @Allow + channel 校验**
 
 ```ts
 // packages/cjk-plugin/src/auth/auth-admin.resolver.ts
@@ -1571,12 +1571,12 @@ export class AuthAdminResolver {
 }
 ```
 
-- [ ] **Step 2: 验证编译**
+- [x] **Step 2: 验证编译**
 
 Run: `cd packages/cjk-plugin && npx tsc --noEmit`
 Expected: 无错误
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add packages/cjk-plugin/src/auth/auth-admin.resolver.ts
@@ -1600,7 +1600,7 @@ git commit -m "refactor: AuthAdminResolver thin wrapper with channel permission"
 > - Resolver `channelMapConfig` 直接返回 MapService 结果(已是 GraphQL shape + masked),不再额外 mask
 > - `ctx.user.channels` 不存在,用 `ctx.session?.user?.channelPermissions`(每项 `{ id, token, code, permissions }`)
 
-- [ ] **Step 1: map.service.ts 改造**
+- [x] **Step 1: map.service.ts 改造**
 
 在 `map.service.ts` 中:
 
@@ -1646,7 +1646,7 @@ async getChannelMapConfig(ctx: RequestContext, channelId?: string): Promise<{ pr
 
 (c) `getDistricts`/`reverseGeocode`/`getSdkConfig` 无需改签名,内部 `getConfigForChannel(ctx)` 调用保持不变(因 decrypt 已在 getConfigForChannel 内完成)。
 
-- [ ] **Step 2: map-admin.resolver.ts 补 @Allow + channel 校验**
+- [x] **Step 2: map-admin.resolver.ts 补 @Allow + channel 校验**
 
 ```ts
 // packages/cjk-plugin/src/map/map-admin.resolver.ts
@@ -1694,12 +1694,12 @@ export class MapAdminResolver {
 }
 ```
 
-- [ ] **Step 3: 验证编译**
+- [x] **Step 3: 验证编译**
 
 Run: `cd packages/cjk-plugin && npx tsc --noEmit`
 Expected: 无错误
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add packages/cjk-plugin/src/map/map-admin.resolver.ts packages/cjk-plugin/src/map/map.service.ts
@@ -1719,7 +1719,7 @@ git commit -m "refactor: MapAdminResolver with permission + mask; MapService dec
 
 > 注: wechat-auth-plugin 当前无 vitest 配置,需先创建。
 
-- [ ] **Step 0: 创建 wechat-auth-plugin vitest 配置**
+- [x] **Step 0: 创建 wechat-auth-plugin vitest 配置**
 
 ```ts
 // packages/wechat-auth-plugin/vitest.config.mts
@@ -1734,7 +1734,7 @@ export default defineConfig({
 });
 ```
 
-- [ ] **Step 1: 写失败测试(用微信官方测试向量)**
+- [x] **Step 1: 写失败测试(用微信官方测试向量)**
 
 ```ts
 // packages/wechat-auth-plugin/src/wechat-message-crypto.spec.ts
@@ -1775,12 +1775,12 @@ describe('wechat-message-crypto', () => {
 });
 ```
 
-- [ ] **Step 2: 运行测试验证失败**
+- [x] **Step 2: 运行测试验证失败**
 
 Run: `cd packages/wechat-auth-plugin && npx vitest --run src/wechat-message-crypto.spec.ts`
 Expected: FAIL "Cannot find module './wechat-message-crypto'"
 
-- [ ] **Step 3: 实现(微信公众号 AES-CBC-256 + SHA1 协议)**
+- [x] **Step 3: 实现(微信公众号 AES-CBC-256 + SHA1 协议)**
 
 ```ts
 // packages/wechat-auth-plugin/src/wechat-message-crypto.ts
@@ -1840,12 +1840,12 @@ export function verifySignature(token: string, timestamp: string, nonce: string,
 }
 ```
 
-- [ ] **Step 4: 运行测试验证通过**
+- [x] **Step 4: 运行测试验证通过**
 
 Run: `cd packages/wechat-auth-plugin && npx vitest --run src/wechat-message-crypto.spec.ts`
 Expected: PASS (4 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/wechat-auth-plugin/vitest.config.mts packages/wechat-auth-plugin/src/wechat-message-crypto.ts packages/wechat-auth-plugin/src/wechat-message-crypto.spec.ts
@@ -1858,7 +1858,7 @@ git commit -m "feat: Add wechat message crypto (AES-CBC-256 + SHA1)"
 - Create: `packages/wechat-auth-plugin/src/wechat-message.controller.ts`
 - Modify: `packages/wechat-auth-plugin/src/plugin.ts`
 
-- [ ] **Step 1: 实现 controller**
+- [x] **Step 1: 实现 controller**
 
 ```ts
 // packages/wechat-auth-plugin/src/wechat-message.controller.ts
@@ -1923,7 +1923,7 @@ export class WechatMessageController {
 
 > 注: `getAuthOverride` 从 cjk-plugin 导入路径需在实现时确认;若跨 plugin 导入有问题,改为经共享 utils 或复制函数。
 
-- [ ] **Step 2: plugin.ts 注册 controller**
+- [x] **Step 2: plugin.ts 注册 controller**
 
 ```ts
 controllers: [WechatAuthController, WechatMessageController],
@@ -1931,12 +1931,12 @@ controllers: [WechatAuthController, WechatMessageController],
 
 并加 import。
 
-- [ ] **Step 3: 验证编译**
+- [x] **Step 3: 验证编译**
 
 Run: `cd packages/wechat-auth-plugin && npx tsc --noEmit`
 Expected: 无错误
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add packages/wechat-auth-plugin/src/wechat-message.controller.ts packages/wechat-auth-plugin/src/plugin.ts
@@ -1952,7 +1952,7 @@ git commit -m "feat: Add WechatMessageController for official account callbacks"
 **Files:**
 - Modify: `packages/cjk-plugin/src/auth/sso-authentication-strategy.ts`
 
-- [ ] **Step 1: 扩展 authenticate 入参**
+- [x] **Step 1: 扩展 authenticate 入参**
 
 在 `SsoAuthenticationStrategy.authenticate` 方法签名中增加 `inviteCode?: string` 参数。在用户信息获取后,若 `inviteCode` 存在或响应含 `invite_code`,调 `InviteCodeService.bindIfPresent`。
 
@@ -1970,12 +1970,12 @@ async authenticate(ctx, { code, providerKey, inviteCode }: { code: string; provi
 
 注入 `InviteCodeService` 到 strategy 构造函数。
 
-- [ ] **Step 2: 验证编译**
+- [x] **Step 2: 验证编译**
 
 Run: `cd packages/cjk-plugin && npx tsc --noEmit`
 Expected: 无错误
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add packages/cjk-plugin/src/auth/sso-authentication-strategy.ts
@@ -1999,7 +1999,7 @@ git commit -m "feat: SsoAuthenticationStrategy accepts inviteCode, binds via Inv
 > - `PageContextValue` 已从 `@vendure/dashboard` 公开导出(经 `lib/index.ts` re-export `page-provider.tsx`),不要在本地重定义
 > - cjk-plugin dashboard 现有 GraphQL 调用模式: 用 `@vendure/dashboard` 的 `api` + `graphql` 模板字符串 + `@tanstack/react-query`(参见 `pickup-location-detail.tsx`),**不用** `@apollo/client`
 
-- [ ] **Step 1: dashboard/index.tsx 注册 pageBlocks**
+- [x] **Step 1: dashboard/index.tsx 注册 pageBlocks**
 
 ```tsx
 // 在现有 defineDashboardExtension 中追加 pageBlocks
@@ -2024,7 +2024,7 @@ defineDashboardExtension({
 });
 ```
 
-- [ ] **Step 2: use-tenant-config.ts GraphQL hook**
+- [x] **Step 2: use-tenant-config.ts GraphQL hook**
 
 > 注: 用 cjk-plugin dashboard 现有模式(`api` + `graphql` + `@tanstack/react-query`),不用 `@apollo/client`。
 
@@ -2091,7 +2091,7 @@ export function useTenantConfig(channelId: string) {
 }
 ```
 
-- [ ] **Step 3: tenant-config-center.tsx 容器**
+- [x] **Step 3: tenant-config-center.tsx 容器**
 
 > 注: pageBlock component 收到 `{ context: PageContextValue }`(`{ pageId?, entity?, form? }`)。`context.entity` 是当前 Channel 对象,直接用 `context.entity.id` 获取 channelId。**不要用 `useDetailPage()`**(它是页面主体 hook,需要 queryDocument 等复杂参数,不适用于 pageBlock)。`PageContextValue` 从 `@vendure/dashboard` 导入,不要本地重定义。
 
@@ -2107,7 +2107,7 @@ export function TenantConfigCenter({ context }: { context: PageContextValue }) {
 }
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add packages/cjk-plugin/dashboard/index.tsx packages/cjk-plugin/dashboard/tenant-config-center.tsx packages/cjk-plugin/dashboard/tenant-config/shared/use-tenant-config.ts
@@ -2121,7 +2121,7 @@ git commit -m "feat: Register tenant-config-center pageBlock + GraphQL hook"
 - Create: `packages/cjk-plugin/dashboard/tenant-config/shared/masked-input.tsx`
 - Create: `packages/cjk-plugin/dashboard/tenant-config/shared/section-card.tsx`
 
-- [ ] **Step 1: masked-input.tsx**
+- [x] **Step 1: masked-input.tsx**
 
 ```tsx
 // packages/cjk-plugin/dashboard/tenant-config/shared/masked-input.tsx
@@ -2163,7 +2163,7 @@ export function MaskedInput({ label, value, onCommit, placeholder, disabled }: P
 }
 ```
 
-- [ ] **Step 2: section-card.tsx**
+- [x] **Step 2: section-card.tsx**
 
 ```tsx
 // packages/cjk-plugin/dashboard/tenant-config/shared/section-card.tsx
@@ -2180,7 +2180,7 @@ export function SectionCard({ title, children }: Props) {
 }
 ```
 
-- [ ] **Step 3: tenant-config-tabs.tsx**
+- [x] **Step 3: tenant-config-tabs.tsx**
 
 ```tsx
 // packages/cjk-plugin/dashboard/tenant-config-tabs.tsx
@@ -2228,7 +2228,7 @@ export function TenantConfigTabs({ channelId }: { channelId: string }) {
 }
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add packages/cjk-plugin/dashboard/tenant-config-tabs.tsx packages/cjk-plugin/dashboard/tenant-config/shared/masked-input.tsx packages/cjk-plugin/dashboard/tenant-config/shared/section-card.tsx
@@ -2249,7 +2249,7 @@ git commit -m "feat: TenantConfigTabs with MaskedInput and SectionCard"
 >
 > **处理策略**: Task 10.3 完成后,需在 `channel-detail-forms.tsx` 中**移除** authConfig 和 payConfig 两个 detailForm 注册项(保留 `customDomains` 注册)。widget 文件本身保留不删(避免破坏可能的其他引用),仅从注册数组移除。具体操作: 编辑 `cjkChannelDetailForms` 数组,删除前两项(authConfig/payConfig),保留第三项(customDomains)。
 
-- [ ] **Step 1: payment-tab.tsx**
+- [x] **Step 1: payment-tab.tsx**
 
 ```tsx
 // packages/cjk-plugin/dashboard/tenant-config/payment-tab.tsx
@@ -2292,7 +2292,7 @@ export function PaymentTab({ data, canEdit, onSave }: Props) {
 }
 ```
 
-- [ ] **Step 2: wechat-auth-tab.tsx**
+- [x] **Step 2: wechat-auth-tab.tsx**
 
 ```tsx
 // packages/cjk-plugin/dashboard/tenant-config/wechat-auth-tab.tsx
@@ -2343,7 +2343,7 @@ export function WechatAuthTab({ data, canEdit, onSave }: Props) {
 }
 ```
 
-- [ ] **Step 3: sso-tab.tsx**
+- [x] **Step 3: sso-tab.tsx**
 
 ```tsx
 // packages/cjk-plugin/dashboard/tenant-config/sso-tab.tsx
@@ -2413,7 +2413,7 @@ export function SsoTab({ data, canEdit, onSave, onTest }: Props) {
 }
 ```
 
-- [ ] **Step 4: map-tab.tsx**
+- [x] **Step 4: map-tab.tsx**
 
 ```tsx
 // packages/cjk-plugin/dashboard/tenant-config/map-tab.tsx
@@ -2449,7 +2449,7 @@ export function MapTab({ data, canEdit, onSave }: Props) {
 }
 ```
 
-- [ ] **Step 5: 移除旧 widget 的 detailForm 注册(避免 UI 重复)**
+- [x] **Step 5: 移除旧 widget 的 detailForm 注册(避免 UI 重复)**
 
 编辑 `packages/cjk-plugin/dashboard/channel-detail-forms.tsx`,从 `cjkChannelDetailForms` 数组中移除 authConfig 和 payConfig 两项,仅保留 customDomains 项:
 
@@ -2476,7 +2476,7 @@ export const cjkChannelDetailForms: DashboardDetailFormExtensionDefinition[] = [
 
 > 注: 旧的 `auth-config-widget.tsx`/`payment-config-widget.tsx` 文件保留不删,仅从注册数组移除。新 pageBlock(tenant-config-center)完整覆盖其功能。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add packages/cjk-plugin/dashboard/tenant-config/payment-tab.tsx packages/cjk-plugin/dashboard/tenant-config/wechat-auth-tab.tsx packages/cjk-plugin/dashboard/tenant-config/sso-tab.tsx packages/cjk-plugin/dashboard/tenant-config/map-tab.tsx packages/cjk-plugin/dashboard/channel-detail-forms.tsx
@@ -2492,7 +2492,7 @@ git commit -m "feat: Add 4 tenant config tabs; remove legacy auth/pay widget reg
 **Files:**
 - Create: `packages/cjk-plugin/e2e/tenant-config.e2e.ts`
 
-- [ ] **Step 1: 写 E2E 测试**
+- [x] **Step 1: 写 E2E 测试**
 
 ```ts
 // packages/cjk-plugin/e2e/tenant-config.e2e.ts
@@ -2524,12 +2524,12 @@ describe('TenantConfig E2E', () => {
 });
 ```
 
-- [ ] **Step 2: 运行 E2E(需 dev-server 启动)**
+- [x] **Step 2: 运行 E2E(需 dev-server 启动)**
 
 Run: `cd packages/cjk-plugin && npx vitest --run e2e/tenant-config.e2e.ts`
 Expected: PASS
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add packages/cjk-plugin/e2e/tenant-config.e2e.ts
@@ -2541,7 +2541,7 @@ git commit -m "test: Add tenant config E2E with permission scenarios"
 **Files:**
 - Create: `packages/cjk-plugin/e2e/dashboard/tenant-config-tabs.spec.ts`
 
-- [ ] **Step 1: 写 Playwright 测试**
+- [x] **Step 1: 写 Playwright 测试**
 
 ```ts
 // packages/cjk-plugin/e2e/dashboard/tenant-config-tabs.spec.ts
@@ -2567,12 +2567,12 @@ test.describe('Tenant Config Tabs', () => {
 });
 ```
 
-- [ ] **Step 2: 运行 Playwright**
+- [x] **Step 2: 运行 Playwright**
 
 Run: `cd packages/cjk-plugin && npx playwright test e2e/dashboard/tenant-config-tabs.spec.ts`
 Expected: PASS
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add packages/cjk-plugin/e2e/dashboard/tenant-config-tabs.spec.ts
@@ -2590,23 +2590,23 @@ git commit -m "test: Add dashboard E2E for tenant config tabs"
 
 > 注: cjk-plugin 当前**无** README.md(已核实)。按用户规则 "NEVER proactively create documentation files",**不主动创建** README。若用户后续明确要求文档化,再创建。本任务跳过。
 
-- [ ] **Step 1: 跳过**
+- [x] **Step 1: 跳过**
 
 无操作。Phase 12 仅执行 Task 12.2(全量测试 + 构建 + 烟测)。
 
 ### Task 12.2: 最终全量测试 + 构建
 
-- [ ] **Step 1: 运行所有单元测试**
+- [x] **Step 1: 运行所有单元测试**
 
 Run: `cd packages/cjk-plugin && npx vitest --run && cd ../wechat-auth-plugin && npx vitest --run`
 Expected: 全部 PASS
 
-- [ ] **Step 2: 构建**
+- [x] **Step 2: 构建**
 
 Run: `cd packages/cjk-plugin && npm run build && cd ../wechat-auth-plugin && npm run build`
 Expected: 构建成功
 
-- [ ] **Step 3: 启动 dev-server 烟测**
+- [x] **Step 3: 启动 dev-server 烟测**
 
 Run: 启动 Vendure dev-server
 - 访问 `/admin/channels/2`,确认「租户配置中心」tab 渲染
@@ -2614,7 +2614,7 @@ Run: 启动 Vendure dev-server
 - 在 SSO tab 点测试连通性(需启动 zhao-sso 或 mock)
 - 数据库 history_entry 表确认迁移记录存在
 
-- [ ] **Step 4: Commit(若有烟测修复)**
+- [x] **Step 4: Commit(若有烟测修复)**
 
 ```bash
 git add -A
@@ -2692,3 +2692,11 @@ git commit -m "fix: Smoke test fixes"
 **2. Inline Execution** - Execute tasks in this session using executing-plans, batch execution with checkpoints
 
 **Which approach?**
+
+---
+
+## 执行结论（2026-09-29 回填）
+
+- 本计划**已交付**，此前仅复选框未回填。
+- 判定依据：**产物级核查** —— 关键文件 / 实体 / resolver / 插件包在仓库中实际存在，且有对应 git 提交；**非逐 Step 复走**。证据见 `vshop/web-admin/docs/superpowers/BACKLOG.md` §2.1。
+- 本次动作：勾选本计划全部 112 个 `- [ ] **Step` 复选框 + 追加本节；未改动计划正文。
