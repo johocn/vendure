@@ -18,6 +18,7 @@ import { MarketingOverviewService } from './marketing/marketing-overview.service
 import { OperationsAdminResolver } from './operations-admin.resolver';
 import { OperationsDashboardService } from './operations-dashboard.service';
 import { OperationsShopResolver } from './operations-shop.resolver';
+import { ProductStatsService } from './product-stats.service';
 import { RoleSyncService } from './role-sync';
 
 const { gql } = require('graphql-tag');
@@ -32,6 +33,7 @@ const { gql } = require('graphql-tag');
         GroupBuyMarketingService,
         CouponMarketingService,
         MarketingOverviewService,
+        ProductStatsService,
     ],
     adminApiExtensions: {
         schema: () => gql`
@@ -172,6 +174,9 @@ const { gql } = require('graphql-tag');
                 updateContentItem(id: ID!, input: UpdateContentItemInput!): ContentItem!
                 deleteContentItem(id: ID!): Boolean!
                 triggerContentLifecycle: ContentLifecycleResult!
+
+                # 商品展示值（销量/可得积分）重算；省略 productIds = 全量重算。返回实际被更新的商品数。
+                recomputeProductStats(productIds: [ID!]): Int!
             }
 
             # ===== Marketing Overview =====

@@ -5,6 +5,7 @@ import { Allow, Ctx, ForbiddenError, ID, Permission, RequestContext } from '@ven
 import { OperationsPermissions } from './constants';
 import { ContentService } from './content.service';
 import { OperationsDashboardService, DashboardRange } from './operations-dashboard.service';
+import { ProductStatsService } from './product-stats.service';
 
 /**
  * @description
@@ -20,6 +21,7 @@ export class OperationsAdminResolver {
     constructor(
         private dashboardService: OperationsDashboardService,
         private contentService: ContentService,
+        private productStatsService: ProductStatsService,
     ) {}
 
     // ===== Dashboard =====
@@ -135,6 +137,20 @@ export class OperationsAdminResolver {
         @Ctx() ctx: RequestContext,
     ) {
         return this.contentService.runLifecycleCheck(ctx);
+    }
+
+    // ===== Product stats manual recompute (admin backfill / correction) =====
+
+    @Mutation()
+    @Allow(Permission.UpdateProduct)
+    async recomputeProductStats(
+        @Ctx() ctx: RequestContext,
+        @Args({ name: 'productIds', type: () => [ID], nullable: true }) productIds?: ID[],
+    ) {
+        if (!productIds || productIds.length === 0) {
+            return this.productStatsService.recomputeAll(ctx);
+        }
+        return this.productStatsService.recomputeForProducts(ctx, productIds);
     }
 
     // ===== Dynamic permission check =====
