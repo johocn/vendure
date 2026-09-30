@@ -15,6 +15,7 @@ const core_1 = require("@vendure/core");
 const coupon_plugin_1 = require("@vendure/coupon-plugin");
 const shipping_profile_service_1 = require("../shipping/shipping-profile.service");
 const payment_profile_service_1 = require("../payment/payment-profile.service");
+const hotel_nightly_pricing_1 = require("../hotel/hotel-nightly-pricing");
 const constants_1 = require("../constants");
 const order_box_aggregation_1 = require("./order-box-aggregation");
 const timing_util_1 = require("./timing.util");
@@ -150,13 +151,14 @@ function resolveTenantName(channelsNameMap, tenantChannelId) {
     return '默认租户';
 }
 let OrderBoxService = class OrderBoxService {
-    constructor(shippingProfileService, paymentProfileService, orderService, channelService, customerService, connection) {
+    constructor(shippingProfileService, paymentProfileService, orderService, channelService, customerService, connection, localeStringHydrator) {
         this.shippingProfileService = shippingProfileService;
         this.paymentProfileService = paymentProfileService;
         this.orderService = orderService;
         this.channelService = channelService;
         this.customerService = customerService;
         this.connection = connection;
+        this.localeStringHydrator = localeStringHydrator;
     }
     /**
      * 将一个订单的 order lines 按「已生效配送档案」分组为若干箱。
@@ -234,8 +236,8 @@ let OrderBoxService = class OrderBoxService {
             // —— 本箱行明细（Additive）——
             const boxLineIdSet = new Set(group.lineIds.map(String));
             const boxLines = lines.filter(l => boxLineIdSet.has(String(l.id)));
-            const boxLineInfo = boxLines.map((barrel) => {
-                var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q;
+            const boxLineInfo = await Promise.all(boxLines.map(async (barrel) => {
+                var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t;
                 const id = String(barrel.id);
                 const qty = Number((_a = barrel.quantity) !== null && _a !== void 0 ? _a : 0);
                 const lineTotal = Math.max(0, Math.round(Number((_b = barrel.linePriceWithTax) !== null && _b !== void 0 ? _b : 0)));
@@ -248,18 +250,25 @@ let OrderBoxService = class OrderBoxService {
                     ? options.map((o) => o.name).join(' · ')
                     : ((variant === null || variant === void 0 ? void 0 : variant.name) && (variant === null || variant === void 0 ? void 0 : variant.name) !== productName ? variant.name : null);
                 const feat = (_m = (_l = barrel.featuredAsset) !== null && _l !== void 0 ? _l : variant === null || variant === void 0 ? void 0 : variant.featuredAsset) !== null && _m !== void 0 ? _m : (_o = barrel.product) === null || _o === void 0 ? void 0 : _o.featuredAsset;
-                return {
-                    orderLineId: id,
-                    productVariantId: variantId,
-                    productName,
-                    unitPrice,
-                    quantity: qty,
-                    lineTotal,
-                    featureAssetSource: (_p = feat === null || feat === void 0 ? void 0 : feat.source) !== null && _p !== void 0 ? _p : null,
-                    variantName,
-                    sku: (_q = variant === null || variant === void 0 ? void 0 : variant.sku) !== null && _q !== void 0 ? _q : null,
-                };
-            });
+                const variantCf = ((_p = variant === null || variant === void 0 ? void 0 : variant.customFields) !== null && _p !== void 0 ? _p : {});
+                const lineCf = ((_q = barrel.customFields) !== null && _q !== void 0 ? _q : {});
+                const hotelInfo = (0, hotel_nightly_pricing_1.buildHotelLineInfo)(lineCf, variantCf.hotelRoomConfig);
+                // product.slug 不落 product 表（存于 product_translation），
+                // 真实实体上未翻译时该属性为 undefined → 经 LocaleStringHydrator 按 ctx 语言解析。
+                // 仅用于「修改日期」跳回链接，解析失败（商品已删/无翻译）时降级为 null，不阻断结算。
+                let productSlug = null;
+                if (((_r = variant === null || variant === void 0 ? void 0 : variant.product) === null || _r === void 0 ? void 0 : _r.id) != null) {
+                    try {
+                        const rawSlug = await this.localeStringHydrator.hydrateLocaleStringField(ctx, variant.product, 'slug');
+                        productSlug = typeof rawSlug === 'string' && rawSlug.length > 0 ? rawSlug : null;
+                    }
+                    catch (_u) {
+                        productSlug = null;
+                    }
+                }
+                return Object.assign(Object.assign({ orderLineId: id, productVariantId: variantId, productName,
+                    unitPrice, quantity: qty, lineTotal, featureAssetSource: (_s = feat === null || feat === void 0 ? void 0 : feat.source) !== null && _s !== void 0 ? _s : null, variantName, sku: (_t = variant === null || variant === void 0 ? void 0 : variant.sku) !== null && _t !== void 0 ? _t : null }, hotelInfo), { productSlug });
+            }));
             const goodsTotal = boxLineInfo.reduce((s, l) => s + l.lineTotal, 0);
             // —— 按箱内子集过滤配送方式资格（治本：INELIGIBLE_SHIPPING_METHOD_ERROR）——
             // enabledMethods 仅是「启用」集合，可能含 orderMinimum 门槛方式（如满99包邮）。
@@ -614,6 +623,7 @@ exports.OrderBoxService = OrderBoxService = __decorate([
         core_1.OrderService,
         core_1.ChannelService,
         core_1.CustomerService,
-        core_1.TransactionalConnection])
+        core_1.TransactionalConnection,
+        core_1.LocaleStringHydrator])
 ], OrderBoxService);
 //# sourceMappingURL=order-box.service.js.map

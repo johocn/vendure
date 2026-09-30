@@ -1,4 +1,4 @@
-import { ChannelService, CustomerService, ID, Order, OrderService, RequestContext, TransactionalConnection } from '@vendure/core';
+import { ChannelService, CustomerService, ID, LocaleStringHydrator, Order, OrderService, RequestContext, TransactionalConnection } from '@vendure/core';
 import { ShippingProfileService } from '../shipping/shipping-profile.service';
 import { PaymentProfileService } from '../payment/payment-profile.service';
 import { PickupLocation } from '../pickup/pickup-location.entity';
@@ -74,6 +74,22 @@ export interface OrderBoxLine {
     variantName: string | null;
     /** 规格 SKU。缺失时可空。 */
     sku: string | null;
+    /** 是否酒店房型行（有入住/离店日期即 true） */
+    isHotel: boolean;
+    /** 入住日 YYYY-MM-DD（非酒店行为 null） */
+    hotelCheckIn: string | null;
+    /** 离店日 YYYY-MM-DD（非酒店行为 null） */
+    hotelCheckOut: string | null;
+    /** 晚数（非酒店行为 null） */
+    hotelNights: number | null;
+    /** 逐晚明细（非酒店行或坏配置为 null） */
+    hotelNightly: Array<{
+        date: string;
+        priceCent: number;
+        type: string;
+    }> | null;
+    /** 商品 slug，供前端「修改日期」跳回详情页（缺失可为 null） */
+    productSlug: string | null;
 }
 /** 某箱可用优惠券摘要（Additive，新增字段） */
 export interface BoxCouponInfo {
@@ -99,7 +115,8 @@ export declare class OrderBoxService {
     private channelService;
     private customerService;
     private connection;
-    constructor(shippingProfileService: ShippingProfileService, paymentProfileService: PaymentProfileService, orderService: OrderService, channelService: ChannelService, customerService: CustomerService, connection: TransactionalConnection);
+    private localeStringHydrator;
+    constructor(shippingProfileService: ShippingProfileService, paymentProfileService: PaymentProfileService, orderService: OrderService, channelService: ChannelService, customerService: CustomerService, connection: TransactionalConnection, localeStringHydrator: LocaleStringHydrator);
     /**
      * 将一个订单的 order lines 按「已生效配送档案」分组为若干箱。
      *

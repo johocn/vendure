@@ -2078,6 +2078,18 @@ function mergeCustomFields<T extends { name: string }>(
                     featureAssetSource: String
                     variantName: String
                     sku: String
+                    isHotel: Boolean!
+                    hotelCheckIn: String
+                    hotelCheckOut: String
+                    hotelNights: Int
+                    hotelNightly: [HotelNightPrice!]
+                    productSlug: String
+                }
+
+                type HotelNightPrice {
+                    date: String!
+                    priceCent: Int!
+                    type: String!
                 }
 
                 type BoxCouponInfo {

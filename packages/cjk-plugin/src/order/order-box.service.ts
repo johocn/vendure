@@ -3,6 +3,7 @@ import {
     ChannelService,
     CustomerService,
     ID,
+    LocaleStringHydrator,
     Logger,
     Order,
     OrderService,
@@ -16,6 +17,7 @@ import { CouponTemplate, CustomerCoupon } from '@vendure/coupon-plugin';
 import { ShippingProfileService } from '../shipping/shipping-profile.service';
 import { PaymentProfileService } from '../payment/payment-profile.service';
 import { PickupLocation } from '../pickup/pickup-location.entity';
+import { buildHotelLineInfo } from '../hotel/hotel-nightly-pricing';
 import { loggerCtx } from '../constants';
 import { BALANCE_PAYMENT_CODE } from './order-box-aggregation';
 import { perf } from './timing.util';
@@ -90,6 +92,18 @@ export interface OrderBoxLine {
     variantName: string | null;
     /** 规格 SKU。缺失时可空。 */
     sku: string | null;
+    /** 是否酒店房型行（有入住/离店日期即 true） */
+    isHotel: boolean;
+    /** 入住日 YYYY-MM-DD（非酒店行为 null） */
+    hotelCheckIn: string | null;
+    /** 离店日 YYYY-MM-DD（非酒店行为 null） */
+    hotelCheckOut: string | null;
+    /** 晚数（非酒店行为 null） */
+    hotelNights: number | null;
+    /** 逐晚明细（非酒店行或坏配置为 null） */
+    hotelNightly: Array<{ date: string; priceCent: number; type: string }> | null;
+    /** 商品 slug，供前端「修改日期」跳回详情页（缺失可为 null） */
+    productSlug: string | null;
 }
 
 /** 某箱可用优惠券摘要（Additive，新增字段） */
@@ -254,6 +268,7 @@ export class OrderBoxService {
         private channelService: ChannelService,
         private customerService: CustomerService,
         private connection: TransactionalConnection,
+        private localeStringHydrator: LocaleStringHydrator,
     ) {}
 
     /**
@@ -343,7 +358,7 @@ export class OrderBoxService {
             // —— 本箱行明细（Additive）——
             const boxLineIdSet = new Set(group.lineIds.map(String));
             const boxLines: any[] = lines.filter(l => boxLineIdSet.has(String((l as any).id)));
-            const boxLineInfo: OrderBoxLine[] = boxLines.map((barrel: any) => {
+            const boxLineInfo: OrderBoxLine[] = await Promise.all(boxLines.map(async (barrel: any) => {
                 const id = String((barrel as any).id);
                 const qty = Number((barrel as any).quantity ?? 0);
                 const lineTotal = Math.max(0, Math.round(Number((barrel as any).linePriceWithTax ?? 0)));
@@ -362,6 +377,25 @@ export class OrderBoxService {
                     (barrel as any).featuredAsset
                     ?? variant?.featuredAsset
                     ?? (barrel as any).product?.featuredAsset;
+                const variantCf = (variant?.customFields ?? {}) as Record<string, any>;
+                const lineCf = ((barrel as any).customFields ?? {}) as Record<string, any>;
+                const hotelInfo = buildHotelLineInfo(lineCf, variantCf.hotelRoomConfig);
+                // product.slug 不落 product 表（存于 product_translation），
+                // 真实实体上未翻译时该属性为 undefined → 经 LocaleStringHydrator 按 ctx 语言解析。
+                // 仅用于「修改日期」跳回链接，解析失败（商品已删/无翻译）时降级为 null，不阻断结算。
+                let productSlug: string | null = null;
+                if (variant?.product?.id != null) {
+                    try {
+                        const rawSlug = await this.localeStringHydrator.hydrateLocaleStringField(
+                            ctx,
+                            variant.product,
+                            'slug',
+                        );
+                        productSlug = typeof rawSlug === 'string' && rawSlug.length > 0 ? rawSlug : null;
+                    } catch {
+                        productSlug = null;
+                    }
+                }
                 return {
                     orderLineId: id,
                     productVariantId: variantId,
@@ -372,8 +406,10 @@ export class OrderBoxService {
                     featureAssetSource: feat?.source ?? null,
                     variantName,
                     sku: variant?.sku ?? null,
+                    ...hotelInfo,
+                    productSlug,
                 };
-            });
+            }));
             const goodsTotal = boxLineInfo.reduce((s, l) => s + l.lineTotal, 0);
 
             // —— 按箱内子集过滤配送方式资格（治本：INELIGIBLE_SHIPPING_METHOD_ERROR）——
