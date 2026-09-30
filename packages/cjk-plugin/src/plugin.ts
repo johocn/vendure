@@ -103,6 +103,7 @@ import { RoomTemplateService } from './hotel/room-template.service';
 import { RoomTemplateAdminResolver } from './hotel/room-template-admin.resolver';
 import { hotelRoomCustomFields } from './hotel/hotel-custom-fields';
 import { hotelOrderLineCustomFields } from './hotel/hotel-order-line-custom-fields';
+import { HotelOrderItemPriceCalculationStrategy } from './hotel/hotel-order-item-price-strategy';
 import { ShippingProfileShopResolver } from './shipping/shipping-profile-shop.resolver';
 import { DeliveryCapabilityResolver } from './shipping/delivery-capability.resolver';
 import { PaymentProfileShopResolver } from './payment/payment-profile-shop.resolver';
@@ -2568,6 +2569,12 @@ function mergeCustomFields<T extends { name: string }>(
         if (!config.schedulerOptions.tasks.some(t => t.id === RELEASE_EXPIRED_RESERVATIONS_TASK_ID)) {
             config.schedulerOptions.tasks.push(releaseExpiredReservationsTask);
         }
+
+        // 注册订单行单价策略：酒店房型按入离日期逐晚计价，其它变体直通默认价
+        config.orderOptions = {
+            ...(config.orderOptions ?? {}),
+            orderItemPriceCalculationStrategy: new HotelOrderItemPriceCalculationStrategy(),
+        } as any;
 
         return config;
     },

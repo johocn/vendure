@@ -104,6 +104,7 @@ const room_template_service_1 = require("./hotel/room-template.service");
 const room_template_admin_resolver_1 = require("./hotel/room-template-admin.resolver");
 const hotel_custom_fields_1 = require("./hotel/hotel-custom-fields");
 const hotel_order_line_custom_fields_1 = require("./hotel/hotel-order-line-custom-fields");
+const hotel_order_item_price_strategy_1 = require("./hotel/hotel-order-item-price-strategy");
 const shipping_profile_shop_resolver_1 = require("./shipping/shipping-profile-shop.resolver");
 const delivery_capability_resolver_1 = require("./shipping/delivery-capability.resolver");
 const payment_profile_shop_resolver_1 = require("./payment/payment-profile-shop.resolver");
@@ -2409,7 +2410,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver, shipping_profile_shop_resolver_1.ShippingProfileShopResolver, delivery_capability_resolver_1.DeliveryCapabilityResolver, payment_profile_shop_resolver_1.PaymentProfileShopResolver, order_box_shop_resolver_1.OrderBoxShopResolver, order_split_shop_resolver_1.OrderSplitShopResolver, wallet_shop_resolver_1.WalletShopResolver, redemption_resolver_1.RedemptionShopResolver, inventory_shop_resolver_1.InventoryShopResolver, storage_bin_shop_resolver_1.StorageBinShopResolver, customer_asset_shop_resolver_1.CustomerAssetShopResolver, my_orders_shop_resolver_1.MyOrdersShopResolver],
         },
         configuration: config => {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8;
             // 注入 authSecret 到 crypto 模块（configuration 在 bootstrap 早期执行，此时 options 已可用）
             (0, crypto_1.setAuthSecret)(CjkPlugin.options.authSecret);
             // 租户级税率方式（三态 taxMode：inclusive 含税价含拆税 / zero 零税价净价结算 / exclusive 不含税价价税分离）。
@@ -2692,6 +2693,8 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             if (!config.schedulerOptions.tasks.some(t => t.id === reservation_expiry_task_1.RELEASE_EXPIRED_RESERVATIONS_TASK_ID)) {
                 config.schedulerOptions.tasks.push(reservation_expiry_task_1.releaseExpiredReservationsTask);
             }
+            // 注册订单行单价策略：酒店房型按入离日期逐晚计价，其它变体直通默认价
+            config.orderOptions = Object.assign(Object.assign({}, ((_8 = config.orderOptions) !== null && _8 !== void 0 ? _8 : {})), { orderItemPriceCalculationStrategy: new hotel_order_item_price_strategy_1.HotelOrderItemPriceCalculationStrategy() });
             return config;
         },
         dashboard: '../dashboard/index.tsx',
