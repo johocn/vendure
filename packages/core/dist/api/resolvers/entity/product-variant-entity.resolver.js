@@ -99,7 +99,11 @@ let ProductVariantEntityResolver = class ProductVariantEntityResolver {
         return this.productVariantService.getDisplayStockLevel(ctx, productVariant);
     }
     async availableStock(ctx, productVariant) {
-        return this.productVariantService.getSaleableStockLevel(ctx, productVariant);
+        // 未跟踪库存的变体，getSaleableStockLevel 返回 Number.MAX_SAFE_INTEGER，
+        // 超出 GraphQL Int 的 32 位有符号范围会导致整个查询序列化失败，
+        // 故在此钳制到 32 位上限（消费端本就按「极大值」再自行钳制）。
+        const stock = await this.productVariantService.getSaleableStockLevel(ctx, productVariant);
+        return Math.min(stock, 2147483647);
     }
 };
 exports.ProductVariantEntityResolver = ProductVariantEntityResolver;
