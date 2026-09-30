@@ -71,7 +71,7 @@ import { MapProviderRegistry } from './map/map-provider-registry';
 import { MapService } from './map/map.service';
 import { MapAdminResolver } from './map/map-admin.resolver';
 import { MapShopResolver } from './map/map-shop.resolver';
-import { MapConfigEncryptionMigration, PayConfigEncryptionMigration, TenantMemberColumnMigration, ChannelCustomColumnMigration, ShippingContactFlagMigration, StockTableMigration, ChannelInventoryModeColumnMigration, CollectionIconMigration, ReservationExpiresAtMigration, ReservationTtlColumnMigration, PickBatchHandoverColumnMigration, StocktakePostedDocIndexMigration } from './migrations';
+import { MapConfigEncryptionMigration, PayConfigEncryptionMigration, TenantMemberColumnMigration, ChannelCustomColumnMigration, ShippingContactFlagMigration, StockTableMigration, ChannelInventoryModeColumnMigration, CollectionIconMigration, ReservationExpiresAtMigration, ReservationTtlColumnMigration, PickBatchHandoverColumnMigration, StocktakePostedDocIndexMigration, HotelOrderLineColumnMigration } from './migrations';
 import { AuthConfigService } from './auth/auth-config.service';
 import { PayConfigService } from './payment/pay-config.service';
 import { MapConfigService } from './map/map-config.service';
@@ -102,6 +102,7 @@ import { RoomTemplateControl } from './hotel/room-template-control.entity';
 import { RoomTemplateService } from './hotel/room-template.service';
 import { RoomTemplateAdminResolver } from './hotel/room-template-admin.resolver';
 import { hotelRoomCustomFields } from './hotel/hotel-custom-fields';
+import { hotelOrderLineCustomFields } from './hotel/hotel-order-line-custom-fields';
 import { ShippingProfileShopResolver } from './shipping/shipping-profile-shop.resolver';
 import { DeliveryCapabilityResolver } from './shipping/delivery-capability.resolver';
 import { PaymentProfileShopResolver } from './payment/payment-profile-shop.resolver';
@@ -214,6 +215,7 @@ function mergeCustomFields<T extends { name: string }>(
         StockTableMigration,
         ChannelInventoryModeColumnMigration,
         CollectionIconMigration,
+        HotelOrderLineColumnMigration,
         AuthConfigService,
         PayConfigService,
         MapConfigService,
@@ -2389,6 +2391,20 @@ function mergeCustomFields<T extends { name: string }>(
                 config.customFields = {
                     ...config.customFields,
                     ProductVariant: [...(config.customFields?.ProductVariant || []), ...newHotelPvFields],
+                };
+            }
+        }
+
+        // 注册 OrderLine customFields（酒店入住日期/晚数）—— 去重防止重复注册
+        {
+            const existingHotelOlFields = (config.customFields?.OrderLine || []).map(f => f.name);
+            const newHotelOlFields = (hotelOrderLineCustomFields.OrderLine || []).filter(
+                f => !existingHotelOlFields.includes(f.name),
+            );
+            if (newHotelOlFields.length > 0) {
+                config.customFields = {
+                    ...config.customFields,
+                    OrderLine: [...(config.customFields?.OrderLine || []), ...newHotelOlFields],
                 };
             }
         }

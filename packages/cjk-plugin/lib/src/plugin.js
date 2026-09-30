@@ -103,6 +103,7 @@ const room_template_control_entity_1 = require("./hotel/room-template-control.en
 const room_template_service_1 = require("./hotel/room-template.service");
 const room_template_admin_resolver_1 = require("./hotel/room-template-admin.resolver");
 const hotel_custom_fields_1 = require("./hotel/hotel-custom-fields");
+const hotel_order_line_custom_fields_1 = require("./hotel/hotel-order-line-custom-fields");
 const shipping_profile_shop_resolver_1 = require("./shipping/shipping-profile-shop.resolver");
 const delivery_capability_resolver_1 = require("./shipping/delivery-capability.resolver");
 const payment_profile_shop_resolver_1 = require("./payment/payment-profile-shop.resolver");
@@ -423,6 +424,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             migrations_1.StockTableMigration,
             migrations_1.ChannelInventoryModeColumnMigration,
             migrations_1.CollectionIconMigration,
+            migrations_1.HotelOrderLineColumnMigration,
             auth_config_service_1.AuthConfigService,
             pay_config_service_1.PayConfigService,
             map_config_service_1.MapConfigService,
@@ -2407,7 +2409,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver, shipping_profile_shop_resolver_1.ShippingProfileShopResolver, delivery_capability_resolver_1.DeliveryCapabilityResolver, payment_profile_shop_resolver_1.PaymentProfileShopResolver, order_box_shop_resolver_1.OrderBoxShopResolver, order_split_shop_resolver_1.OrderSplitShopResolver, wallet_shop_resolver_1.WalletShopResolver, redemption_resolver_1.RedemptionShopResolver, inventory_shop_resolver_1.InventoryShopResolver, storage_bin_shop_resolver_1.StorageBinShopResolver, customer_asset_shop_resolver_1.CustomerAssetShopResolver, my_orders_shop_resolver_1.MyOrdersShopResolver],
         },
         configuration: config => {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7;
             // 注入 authSecret 到 crypto 模块（configuration 在 bootstrap 早期执行，此时 options 已可用）
             (0, crypto_1.setAuthSecret)(CjkPlugin.options.authSecret);
             // 租户级税率方式（三态 taxMode：inclusive 含税价含拆税 / zero 零税价净价结算 / exclusive 不含税价价税分离）。
@@ -2555,42 +2557,50 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     config.customFields = Object.assign(Object.assign({}, config.customFields), { ProductVariant: [...(((_x = config.customFields) === null || _x === void 0 ? void 0 : _x.ProductVariant) || []), ...newHotelPvFields] });
                 }
             }
+            // 注册 OrderLine customFields（酒店入住日期/晚数）—— 去重防止重复注册
+            {
+                const existingHotelOlFields = (((_y = config.customFields) === null || _y === void 0 ? void 0 : _y.OrderLine) || []).map(f => f.name);
+                const newHotelOlFields = (hotel_order_line_custom_fields_1.hotelOrderLineCustomFields.OrderLine || []).filter(f => !existingHotelOlFields.includes(f.name));
+                if (newHotelOlFields.length > 0) {
+                    config.customFields = Object.assign(Object.assign({}, config.customFields), { OrderLine: [...(((_z = config.customFields) === null || _z === void 0 ? void 0 : _z.OrderLine) || []), ...newHotelOlFields] });
+                }
+            }
             // 注册 ShippingMethod customFields（enabled 启停）—— 去重防止重复注册
             {
-                const existingSmFields = (((_y = config.customFields) === null || _y === void 0 ? void 0 : _y.ShippingMethod) || []).map(f => f.name);
+                const existingSmFields = (((_0 = config.customFields) === null || _0 === void 0 ? void 0 : _0.ShippingMethod) || []).map(f => f.name);
                 const newSmFields = (shipping_method_custom_fields_1.customShippingMethodFields.ShippingMethod || []).filter(f => !existingSmFields.includes(f.name));
                 if (newSmFields.length > 0) {
                     config.customFields = Object.assign(Object.assign({}, config.customFields), { ShippingMethod: [
-                            ...(((_z = config.customFields) === null || _z === void 0 ? void 0 : _z.ShippingMethod) || []),
+                            ...(((_1 = config.customFields) === null || _1 === void 0 ? void 0 : _1.ShippingMethod) || []),
                             ...newSmFields,
                         ] });
                 }
             }
             // 注册 Asset customFields（uploadedBy 记录上传者，供图库按用户过滤）—— 去重防止重复注册
             {
-                const existingAssetFields = (((_0 = config.customFields) === null || _0 === void 0 ? void 0 : _0.Asset) || []).map(f => f.name);
+                const existingAssetFields = (((_2 = config.customFields) === null || _2 === void 0 ? void 0 : _2.Asset) || []).map(f => f.name);
                 const newAssetFields = (asset_custom_fields_1.assetCustomFields.Asset || []).filter(f => !existingAssetFields.includes(f.name));
                 if (newAssetFields.length > 0) {
                     config.customFields = Object.assign(Object.assign({}, config.customFields), { Asset: [
-                            ...(((_1 = config.customFields) === null || _1 === void 0 ? void 0 : _1.Asset) || []),
+                            ...(((_3 = config.customFields) === null || _3 === void 0 ? void 0 : _3.Asset) || []),
                             ...newAssetFields,
                         ] });
                 }
             }
             // 注册 StockLocation customFields（kind/code）—— 去重防止重复注册
             {
-                const existingSlFields = (((_2 = config.customFields) === null || _2 === void 0 ? void 0 : _2.StockLocation) || []).map(f => f.name);
+                const existingSlFields = (((_4 = config.customFields) === null || _4 === void 0 ? void 0 : _4.StockLocation) || []).map(f => f.name);
                 const newSlFields = (stock_location_custom_fields_1.stockLocationCustomFields.StockLocation || []).filter(f => !existingSlFields.includes(f.name));
                 if (newSlFields.length > 0) {
                     config.customFields = Object.assign(Object.assign({}, config.customFields), { StockLocation: [
-                            ...(((_3 = config.customFields) === null || _3 === void 0 ? void 0 : _3.StockLocation) || []),
+                            ...(((_5 = config.customFields) === null || _5 === void 0 ? void 0 : _5.StockLocation) || []),
                             ...newSlFields,
                         ] });
                 }
             }
             // 注册 Collection customFields（icon 分类图标）—— 去重防止重复注册
             {
-                const existingCollectionFields = (((_4 = config.customFields) === null || _4 === void 0 ? void 0 : _4.Collection) || []).map(f => f.name);
+                const existingCollectionFields = (((_6 = config.customFields) === null || _6 === void 0 ? void 0 : _6.Collection) || []).map(f => f.name);
                 const newCollectionFields = [
                     {
                         name: 'icon',
@@ -2605,7 +2615,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                 ].filter(f => !existingCollectionFields.includes(f.name));
                 if (newCollectionFields.length > 0) {
                     config.customFields = Object.assign(Object.assign({}, config.customFields), { Collection: [
-                            ...(((_5 = config.customFields) === null || _5 === void 0 ? void 0 : _5.Collection) || []),
+                            ...(((_7 = config.customFields) === null || _7 === void 0 ? void 0 : _7.Collection) || []),
                             ...newCollectionFields,
                         ] });
                 }

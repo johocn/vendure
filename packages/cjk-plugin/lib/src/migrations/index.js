@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.StocktakePostedDocIndexMigration = exports.PickBatchHandoverColumnMigration = exports.ReservationTtlColumnMigration = exports.ReservationExpiresAtMigration = exports.CollectionIconMigration = exports.ChannelInventoryModeColumnMigration = exports.StockTableMigration = exports.ShippingContactFlagMigration = exports.ChannelCustomColumnMigration = exports.TenantMemberColumnMigration = exports.PAY_CONFIG_MIGRATION_DONE = exports.PayConfigEncryptionMigration = exports.MAP_CONFIG_MIGRATION_DONE = exports.MapConfigEncryptionMigration = void 0;
+exports.HotelOrderLineColumnMigration = exports.StocktakePostedDocIndexMigration = exports.PickBatchHandoverColumnMigration = exports.ReservationTtlColumnMigration = exports.ReservationExpiresAtMigration = exports.CollectionIconMigration = exports.ChannelInventoryModeColumnMigration = exports.StockTableMigration = exports.ShippingContactFlagMigration = exports.ChannelCustomColumnMigration = exports.TenantMemberColumnMigration = exports.PAY_CONFIG_MIGRATION_DONE = exports.PayConfigEncryptionMigration = exports.MAP_CONFIG_MIGRATION_DONE = exports.MapConfigEncryptionMigration = void 0;
 // packages/cjk-plugin/src/migrations/index.ts
 var migrate_mapconfig_encryption_1 = require("./migrate-mapconfig-encryption");
 Object.defineProperty(exports, "MapConfigEncryptionMigration", { enumerable: true, get: function () { return migrate_mapconfig_encryption_1.MapConfigEncryptionMigration; } });
@@ -27,4 +27,6 @@ var migrate_pick_batch_handover_columns_1 = require("./migrate-pick-batch-handov
 Object.defineProperty(exports, "PickBatchHandoverColumnMigration", { enumerable: true, get: function () { return migrate_pick_batch_handover_columns_1.PickBatchHandoverColumnMigration; } });
 var migrate_stocktake_posted_doc_index_1 = require("./migrate-stocktake-posted-doc-index");
 Object.defineProperty(exports, "StocktakePostedDocIndexMigration", { enumerable: true, get: function () { return migrate_stocktake_posted_doc_index_1.StocktakePostedDocIndexMigration; } });
+var migrate_hotel_order_line_columns_1 = require("./migrate-hotel-order-line-columns");
+Object.defineProperty(exports, "HotelOrderLineColumnMigration", { enumerable: true, get: function () { return migrate_hotel_order_line_columns_1.HotelOrderLineColumnMigration; } });
 //# sourceMappingURL=index.js.map
