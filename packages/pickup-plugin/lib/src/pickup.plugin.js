@@ -114,6 +114,9 @@ const shopSchema = gql `
         sku: String!
         quantity: Int!
         linePriceWithTax: Int!
+        hotelCheckIn: String
+        hotelCheckOut: String
+        hotelNights: Int
     }
     input GuestOrderLookupInput {
         orderCode: String!

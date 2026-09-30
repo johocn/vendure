@@ -33,14 +33,25 @@ function buildGuestOverview(order, redemption, resolvedPickupLocation) {
         ? { name: (_b = loc.name) !== null && _b !== void 0 ? _b : '', address: (_c = loc.address) !== null && _c !== void 0 ? _c : '', businessHours: (_d = loc.businessHours) !== null && _d !== void 0 ? _d : '' }
         : (resolvedPickupLocation !== null && resolvedPickupLocation !== void 0 ? resolvedPickupLocation : null);
     const shipped = ((_e = order.fulfillments) !== null && _e !== void 0 ? _e : []).some(f => f.state === 'Shipped');
+    // 酒店房型订单行的 customFields 未在 Order 类型上声明，按最小必要放宽读取
+    const toNights = (v) => {
+        if (v === null || v === undefined || v === '')
+            return null;
+        const n = Number(v);
+        return Number.isFinite(n) ? n : null;
+    };
     const lines = ((_f = order.lines) !== null && _f !== void 0 ? _f : []).map(l => {
-        var _a, _b, _c, _d, _e, _f, _g;
-        return ({
-            productName: (_c = (_b = (_a = l === null || l === void 0 ? void 0 : l.productVariant) === null || _a === void 0 ? void 0 : _a.product) === null || _b === void 0 ? void 0 : _b.name) !== null && _c !== void 0 ? _c : '',
-            sku: (_e = (_d = l === null || l === void 0 ? void 0 : l.productVariant) === null || _d === void 0 ? void 0 : _d.sku) !== null && _e !== void 0 ? _e : '',
-            quantity: (_f = l === null || l === void 0 ? void 0 : l.quantity) !== null && _f !== void 0 ? _f : 0,
-            linePriceWithTax: (_g = l === null || l === void 0 ? void 0 : l.linePriceWithTax) !== null && _g !== void 0 ? _g : 0,
-        });
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+        const lcf = ((_a = l === null || l === void 0 ? void 0 : l.customFields) !== null && _a !== void 0 ? _a : {});
+        return {
+            productName: (_d = (_c = (_b = l === null || l === void 0 ? void 0 : l.productVariant) === null || _b === void 0 ? void 0 : _b.product) === null || _c === void 0 ? void 0 : _c.name) !== null && _d !== void 0 ? _d : '',
+            sku: (_f = (_e = l === null || l === void 0 ? void 0 : l.productVariant) === null || _e === void 0 ? void 0 : _e.sku) !== null && _f !== void 0 ? _f : '',
+            quantity: (_g = l === null || l === void 0 ? void 0 : l.quantity) !== null && _g !== void 0 ? _g : 0,
+            linePriceWithTax: (_h = l === null || l === void 0 ? void 0 : l.linePriceWithTax) !== null && _h !== void 0 ? _h : 0,
+            hotelCheckIn: (_j = lcf.hotelCheckIn) !== null && _j !== void 0 ? _j : null,
+            hotelCheckOut: (_k = lcf.hotelCheckOut) !== null && _k !== void 0 ? _k : null,
+            hotelNights: toNights(lcf.hotelNights),
+        };
     });
     return {
         orderCode: order.code,

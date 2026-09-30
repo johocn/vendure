@@ -25,6 +25,9 @@ export interface GuestOrderOverview {
         sku: string;
         quantity: number;
         linePriceWithTax: number;
+        hotelCheckIn: string | null;
+        hotelCheckOut: string | null;
+        hotelNights: number | null;
     }[];
     hasPhone: boolean;
 }

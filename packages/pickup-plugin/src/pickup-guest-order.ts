@@ -17,7 +17,15 @@ export interface GuestOrderOverview {
     pickupCode: string | null;
     pickupClaimable: boolean;
     pickupLocation: { name: string; address: string; businessHours: string } | null;
-    lines: { productName: string; sku: string; quantity: number; linePriceWithTax: number }[];
+    lines: {
+        productName: string;
+        sku: string;
+        quantity: number;
+        linePriceWithTax: number;
+        hotelCheckIn: string | null;
+        hotelCheckOut: string | null;
+        hotelNights: number | null;
+    }[];
     hasPhone: boolean;
 }
 
@@ -63,12 +71,24 @@ export function buildGuestOverview(
             ? { name: loc.name ?? '', address: loc.address ?? '', businessHours: loc.businessHours ?? '' }
             : (resolvedPickupLocation ?? null);
     const shipped = (order.fulfillments ?? []).some(f => f.state === 'Shipped');
-    const lines = (order.lines ?? []).map(l => ({
-        productName: l?.productVariant?.product?.name ?? '',
-        sku: l?.productVariant?.sku ?? '',
-        quantity: l?.quantity ?? 0,
-        linePriceWithTax: l?.linePriceWithTax ?? 0,
-    }));
+    // 酒店房型订单行的 customFields 未在 Order 类型上声明，按最小必要放宽读取
+    const toNights = (v: unknown): number | null => {
+        if (v === null || v === undefined || v === '') return null;
+        const n = Number(v);
+        return Number.isFinite(n) ? n : null;
+    };
+    const lines = (order.lines ?? []).map(l => {
+        const lcf = ((l as any)?.customFields ?? {}) as any;
+        return {
+            productName: l?.productVariant?.product?.name ?? '',
+            sku: l?.productVariant?.sku ?? '',
+            quantity: l?.quantity ?? 0,
+            linePriceWithTax: l?.linePriceWithTax ?? 0,
+            hotelCheckIn: lcf.hotelCheckIn ?? null,
+            hotelCheckOut: lcf.hotelCheckOut ?? null,
+            hotelNights: toNights(lcf.hotelNights),
+        };
+    });
     return {
         orderCode: order.code,
         orderPlacedAt: order.orderPlacedAt ?? null,
