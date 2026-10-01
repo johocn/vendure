@@ -36,6 +36,7 @@ const coupon_shop_resolver_1 = require("./coupon-shop.resolver");
 const coupon_template_entity_1 = require("./coupon-template.entity");
 const customer_coupon_entity_1 = require("./customer-coupon.entity");
 const migrations_1 = require("./migrations");
+const in_store_bill_entity_1 = require("./in-store-bill.entity");
 const order_custom_fields_1 = require("./order-custom-fields");
 const product_coupon_binding_entity_1 = require("./product-coupon-binding.entity");
 /** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations several times). */
@@ -165,7 +166,7 @@ CouponPlugin.options = {};
 exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
     (0, core_2.VendurePlugin)({
         imports: [core_2.PluginCommonModule],
-        entities: [coupon_template_entity_1.CouponTemplate, customer_coupon_entity_1.CustomerCoupon, product_coupon_binding_entity_1.ProductCouponBinding],
+        entities: [coupon_template_entity_1.CouponTemplate, customer_coupon_entity_1.CustomerCoupon, product_coupon_binding_entity_1.ProductCouponBinding, in_store_bill_entity_1.InStoreBill],
         providers: [
             { provide: constants_1.COUPON_PLUGIN_OPTIONS, useFactory: () => CouponPlugin.options },
             coupon_service_1.CouponService,
@@ -174,6 +175,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
             migrations_1.CreateProductCouponBindingMigration,
             migrations_1.AddCouponIndexes20260919,
             migrations_1.AddCouponUsageSceneMigration,
+            migrations_1.CreateInStoreBillMigration,
         ],
         exports: [coupon_service_1.CouponService, coupon_binding_service_1.CouponBindingService],
         adminApiExtensions: {

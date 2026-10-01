@@ -31,8 +31,10 @@ import {
     AddCouponFieldsMigration,
     AddCouponIndexes20260919,
     AddCouponUsageSceneMigration,
+    CreateInStoreBillMigration,
     CreateProductCouponBindingMigration,
 } from './migrations';
+import { InStoreBill } from './in-store-bill.entity';
 import { couponOrderCustomFields } from './order-custom-fields';
 import { ProductCouponBinding } from './product-coupon-binding.entity';
 import { CouponPluginOptions } from './types';
@@ -99,7 +101,7 @@ type CustomerCoupon implements Node {
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [CouponTemplate, CustomerCoupon, ProductCouponBinding],
+    entities: [CouponTemplate, CustomerCoupon, ProductCouponBinding, InStoreBill],
     providers: [
         { provide: COUPON_PLUGIN_OPTIONS, useFactory: () => CouponPlugin.options },
         CouponService,
@@ -108,6 +110,7 @@ type CustomerCoupon implements Node {
         CreateProductCouponBindingMigration,
         AddCouponIndexes20260919,
         AddCouponUsageSceneMigration,
+        CreateInStoreBillMigration,
     ],
     exports: [CouponService, CouponBindingService],
     adminApiExtensions: {
