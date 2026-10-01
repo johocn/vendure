@@ -78,7 +78,7 @@ export class MultiLanguageConfigService {
         if (patch?.availableLanguageCodes || patch?.defaultLanguageCode) {
             const updateInput: any = {};
             if (patch.availableLanguageCodes?.length) {
-                updateInput.availableLanguages = patch.availableLanguageCodes as LanguageCode[];
+                updateInput.availableLanguageCodes = patch.availableLanguageCodes as LanguageCode[];
             }
             if (patch.defaultLanguageCode) {
                 updateInput.defaultLanguageCode = patch.defaultLanguageCode as LanguageCode;

@@ -73,7 +73,7 @@ let MultiLanguageConfigService = class MultiLanguageConfigService {
         if ((patch === null || patch === void 0 ? void 0 : patch.availableLanguageCodes) || (patch === null || patch === void 0 ? void 0 : patch.defaultLanguageCode)) {
             const updateInput = {};
             if ((_b = patch.availableLanguageCodes) === null || _b === void 0 ? void 0 : _b.length) {
-                updateInput.availableLanguages = patch.availableLanguageCodes;
+                updateInput.availableLanguageCodes = patch.availableLanguageCodes;
             }
             if (patch.defaultLanguageCode) {
                 updateInput.defaultLanguageCode = patch.defaultLanguageCode;
