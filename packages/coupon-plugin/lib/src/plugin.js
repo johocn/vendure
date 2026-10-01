@@ -173,6 +173,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
             migrations_1.AddCouponFieldsMigration,
             migrations_1.CreateProductCouponBindingMigration,
             migrations_1.AddCouponIndexes20260919,
+            migrations_1.AddCouponUsageSceneMigration,
         ],
         exports: [coupon_service_1.CouponService, coupon_binding_service_1.CouponBindingService],
         adminApiExtensions: {

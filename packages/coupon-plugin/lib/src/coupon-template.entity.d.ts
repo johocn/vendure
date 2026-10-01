@@ -1,6 +1,6 @@
 import { Channel, ChannelAware, DeepPartial, VendureEntity } from '@vendure/core';
 import { LocalizedText } from './localize';
-import { CouponScope, CouponType } from './types';
+import { CouponScope, CouponType, CouponUsageScene } from './types';
 /**
  * 券模板：后台可配置的券规则。
  */
@@ -52,5 +52,7 @@ export declare class CouponTemplate extends VendureEntity implements ChannelAwar
     memberLevel?: string;
     /** 发行归属店铺 id（跨渠道范围用）：默认商城下仅对「本店商品行」核销。 */
     shopId?: number;
+    /** 使用场景：ONLINE（仅线上，默认）| IN_STORE（仅到店买单）| ALL（两者皆可） */
+    usageScene: CouponUsageScene;
     channels: Channel[];
 }

@@ -115,6 +115,10 @@ __decorate([
     __metadata("design:type", Number)
 ], CouponTemplate.prototype, "shopId", void 0);
 __decorate([
+    (0, typeorm_1.Column)('varchar', { default: 'ONLINE' }),
+    __metadata("design:type", String)
+], CouponTemplate.prototype, "usageScene", void 0);
+__decorate([
     (0, typeorm_1.ManyToMany)(() => core_1.Channel),
     (0, typeorm_1.JoinTable)(),
     __metadata("design:type", Array)

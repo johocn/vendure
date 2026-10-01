@@ -2,7 +2,7 @@ import { Column, Entity, JoinTable, ManyToMany } from 'typeorm';
 import { Channel, ChannelAware, DeepPartial, VendureEntity } from '@vendure/core';
 
 import { LocalizedText } from './localize';
-import { CouponScope, CouponType } from './types';
+import { CouponScope, CouponType, CouponUsageScene } from './types';
 
 /**
  * 多语言文本的 DB 列转换：DB 内始终以字符串落库（纯字符串原样存；对象/JSON 字符串存
@@ -92,6 +92,9 @@ export class CouponTemplate extends VendureEntity implements ChannelAware {
 
     /** 发行归属店铺 id（跨渠道范围用）：默认商城下仅对「本店商品行」核销。 */
     @Column('bigint', { nullable: true }) shopId?: number;
+
+    /** 使用场景：ONLINE（仅线上，默认）| IN_STORE（仅到店买单）| ALL（两者皆可） */
+    @Column('varchar', { default: 'ONLINE' }) usageScene: CouponUsageScene;
 
     @ManyToMany(() => Channel)
     @JoinTable()

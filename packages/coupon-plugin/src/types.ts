@@ -23,6 +23,14 @@ export type CouponIssuedBy = 'CENTRE' | 'ADMIN' | 'EXCHANGE';
 /** 券适用范围 */
 export type CouponScope = 'ALL' | 'CATEGORY' | 'SKU';
 
+/**
+ * 券使用场景：
+ * - ONLINE   ：仅可用于线上订单（历史数据默认值，语义与改造前一致）
+ * - IN_STORE ：仅可用于到店买单核销
+ * - ALL      ：线上与到店皆可
+ */
+export type CouponUsageScene = 'ONLINE' | 'IN_STORE' | 'ALL';
+
 export interface CouponPluginOptions {
     /** 券码展示前缀，默认 'C' */
     codePrefix?: string;
