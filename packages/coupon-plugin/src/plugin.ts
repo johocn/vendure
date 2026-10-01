@@ -35,6 +35,7 @@ import {
     CreateProductCouponBindingMigration,
 } from './migrations';
 import { InStoreBill } from './in-store-bill.entity';
+import { InStoreBillAdminResolver } from './in-store-bill-admin.resolver';
 import { InStoreBillService } from './in-store-bill.service';
 import { couponOrderCustomFields } from './order-custom-fields';
 import { ProductCouponBinding } from './product-coupon-binding.entity';
@@ -77,6 +78,7 @@ type CouponTemplate implements Node {
     newCustomerOnly: Boolean!
     memberLevel: String
     shopId: ID
+    usageScene: CouponUsageScene!
     createdAt: DateTime!
     updatedAt: DateTime!
 }`;
@@ -120,6 +122,7 @@ type CustomerCoupon implements Node {
             enum CouponType { FIXED PERCENT FULL FREE_SHIPPING }
             enum CouponStatus { UNUSED USED RETURNED EXPIRED INVALID }
             enum CouponIssuedBy { CENTRE ADMIN EXCHANGE }
+            enum CouponUsageScene { ONLINE IN_STORE ALL }
 
             ${couponTemplateType}
             ${customerCouponType}
@@ -168,6 +171,68 @@ type CustomerCoupon implements Node {
                 totalItems: Int!
             }
 
+            type InStoreBillQuote {
+                ok: Boolean!
+                reason: String
+                couponCode: String
+                couponName: String
+                discountType: String
+                discountValue: Int
+                minSpend: Int
+                originalAmount: Int
+                discountAmount: Int
+                finalAmount: Int
+                customerName: String
+                customerPhone: String
+                expiresAt: DateTime
+            }
+
+            type InStoreBill implements Node {
+                id: ID!
+                channelId: ID!
+                couponCode: String!
+                couponTemplateId: ID!
+                couponName: String
+                customerId: ID!
+                customerName: String
+                customerPhone: String
+                discountType: String!
+                discountValue: Int!
+                originalAmount: Int!
+                discountAmount: Int!
+                finalAmount: Int!
+                operatorId: ID!
+                operatorName: String
+                remark: String
+                billedAt: DateTime!
+                createdAt: DateTime!
+            }
+
+            type InStoreBillList implements PaginatedList {
+                items: [InStoreBill!]!
+                totalItems: Int!
+            }
+
+            type InStoreBillSummary {
+                count: Int!
+                originalTotal: Int!
+                discountTotal: Int!
+                finalTotal: Int!
+            }
+
+            input InStoreBillListOptions {
+                skip: Int
+                take: Int
+                couponCode: String
+                from: DateTime
+                to: DateTime
+            }
+
+            input InStoreBillSummaryOptions {
+                from: DateTime
+                to: DateTime
+            }
+
             type CouponIssueCustomer implements Node {
                 id: ID!
                 emailAddress: String!
@@ -213,6 +278,7 @@ type CustomerCoupon implements Node {
                 newCustomerOnly: Boolean
                 memberLevel: String
                 shopId: ID
+                usageScene: CouponUsageScene
             }
 
             input UpdateCouponTemplateInput {
@@ -252,9 +318,13 @@ type CustomerCoupon implements Node {
                 customerCoupons(options: CustomerCouponListOptions): CustomerCouponList!
                 couponChannelCustomers(query: String, take: Int, skip: Int): CouponIssueCustomerList!
                 productCouponBindings(productId: ID!): [ProductCouponBinding!]!
+                inStoreBillQuote(code: String!, originalAmount: Int): InStoreBillQuote!
+                inStoreBills(options: InStoreBillListOptions): InStoreBillList!
+                inStoreBillSummary(options: InStoreBillSummaryOptions): InStoreBillSummary!
             }
 
             extend type Mutation {
+                inStoreBillRedeem(code: String!, originalAmount: Int!, remark: String): InStoreBill!
                 createCouponTemplate(input: CreateCouponTemplateInput!): CouponTemplate!
                 updateCouponTemplate(input: UpdateCouponTemplateInput!): CouponTemplate!
                 deleteCouponTemplate(id: ID!): Boolean!
@@ -266,13 +336,14 @@ type CustomerCoupon implements Node {
                 deleteProductCouponBinding(id: ID!): Boolean!
             }
         `,
-        resolvers: [CouponAdminResolver, CouponTemplateResolver, CustomerCouponResolver, CouponBindingAdminResolver],
+        resolvers: [CouponAdminResolver, CouponTemplateResolver, CustomerCouponResolver, CouponBindingAdminResolver, InStoreBillAdminResolver],
     },
     shopApiExtensions: {
         schema: () => gql`
             enum CouponType { FIXED PERCENT FULL FREE_SHIPPING }
             enum CouponStatus { UNUSED USED RETURNED EXPIRED INVALID }
             enum CouponIssuedBy { CENTRE ADMIN EXCHANGE }
+            enum CouponUsageScene { ONLINE IN_STORE ALL }
 
             ${couponTemplateType}
             ${customerCouponType}

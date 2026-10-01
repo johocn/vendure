@@ -37,6 +37,8 @@ const coupon_template_entity_1 = require("./coupon-template.entity");
 const customer_coupon_entity_1 = require("./customer-coupon.entity");
 const migrations_1 = require("./migrations");
 const in_store_bill_entity_1 = require("./in-store-bill.entity");
+const in_store_bill_admin_resolver_1 = require("./in-store-bill-admin.resolver");
+const in_store_bill_service_1 = require("./in-store-bill.service");
 const order_custom_fields_1 = require("./order-custom-fields");
 const product_coupon_binding_entity_1 = require("./product-coupon-binding.entity");
 /** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations several times). */
@@ -72,6 +74,7 @@ type CouponTemplate implements Node {
     newCustomerOnly: Boolean!
     memberLevel: String
     shopId: ID
+    usageScene: CouponUsageScene!
     createdAt: DateTime!
     updatedAt: DateTime!
 }`;
@@ -171,6 +174,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
             { provide: constants_1.COUPON_PLUGIN_OPTIONS, useFactory: () => CouponPlugin.options },
             coupon_service_1.CouponService,
             coupon_binding_service_1.CouponBindingService,
+            in_store_bill_service_1.InStoreBillService,
             migrations_1.AddCouponFieldsMigration,
             migrations_1.CreateProductCouponBindingMigration,
             migrations_1.AddCouponIndexes20260919,
@@ -183,6 +187,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
             enum CouponType { FIXED PERCENT FULL FREE_SHIPPING }
             enum CouponStatus { UNUSED USED RETURNED EXPIRED INVALID }
             enum CouponIssuedBy { CENTRE ADMIN EXCHANGE }
+            enum CouponUsageScene { ONLINE IN_STORE ALL }
 
             ${couponTemplateType}
             ${customerCouponType}
@@ -231,6 +236,68 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 totalItems: Int!
             }
 
+            type InStoreBillQuote {
+                ok: Boolean!
+                reason: String
+                couponCode: String
+                couponName: String
+                discountType: String
+                discountValue: Int
+                minSpend: Int
+                originalAmount: Int
+                discountAmount: Int
+                finalAmount: Int
+                customerName: String
+                customerPhone: String
+                expiresAt: DateTime
+            }
+
+            type InStoreBill implements Node {
+                id: ID!
+                channelId: ID!
+                couponCode: String!
+                couponTemplateId: ID!
+                couponName: String
+                customerId: ID!
+                customerName: String
+                customerPhone: String
+                discountType: String!
+                discountValue: Int!
+                originalAmount: Int!
+                discountAmount: Int!
+                finalAmount: Int!
+                operatorId: ID!
+                operatorName: String
+                remark: String
+                billedAt: DateTime!
+                createdAt: DateTime!
+            }
+
+            type InStoreBillList implements PaginatedList {
+                items: [InStoreBill!]!
+                totalItems: Int!
+            }
+
+            type InStoreBillSummary {
+                count: Int!
+                originalTotal: Int!
+                discountTotal: Int!
+                finalTotal: Int!
+            }
+
+            input InStoreBillListOptions {
+                skip: Int
+                take: Int
+                couponCode: String
+                from: DateTime
+                to: DateTime
+            }
+
+            input InStoreBillSummaryOptions {
+                from: DateTime
+                to: DateTime
+            }
+
             type CouponIssueCustomer implements Node {
                 id: ID!
                 emailAddress: String!
@@ -276,6 +343,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 newCustomerOnly: Boolean
                 memberLevel: String
                 shopId: ID
+                usageScene: CouponUsageScene
             }
 
             input UpdateCouponTemplateInput {
@@ -315,9 +383,13 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 customerCoupons(options: CustomerCouponListOptions): CustomerCouponList!
                 couponChannelCustomers(query: String, take: Int, skip: Int): CouponIssueCustomerList!
                 productCouponBindings(productId: ID!): [ProductCouponBinding!]!
+                inStoreBillQuote(code: String!, originalAmount: Int): InStoreBillQuote!
+                inStoreBills(options: InStoreBillListOptions): InStoreBillList!
+                inStoreBillSummary(options: InStoreBillSummaryOptions): InStoreBillSummary!
             }
 
             extend type Mutation {
+                inStoreBillRedeem(code: String!, originalAmount: Int!, remark: String): InStoreBill!
                 createCouponTemplate(input: CreateCouponTemplateInput!): CouponTemplate!
                 updateCouponTemplate(input: UpdateCouponTemplateInput!): CouponTemplate!
                 deleteCouponTemplate(id: ID!): Boolean!
@@ -329,13 +401,14 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 deleteProductCouponBinding(id: ID!): Boolean!
             }
         `,
-            resolvers: [coupon_admin_resolver_1.CouponAdminResolver, coupon_template_resolver_1.CouponTemplateResolver, coupon_customer_coupon_resolver_1.CustomerCouponResolver, coupon_binding_admin_resolver_1.CouponBindingAdminResolver],
+            resolvers: [coupon_admin_resolver_1.CouponAdminResolver, coupon_template_resolver_1.CouponTemplateResolver, coupon_customer_coupon_resolver_1.CustomerCouponResolver, coupon_binding_admin_resolver_1.CouponBindingAdminResolver, in_store_bill_admin_resolver_1.InStoreBillAdminResolver],
         },
         shopApiExtensions: {
             schema: () => (0, graphql_tag_1.default) `
             enum CouponType { FIXED PERCENT FULL FREE_SHIPPING }
             enum CouponStatus { UNUSED USED RETURNED EXPIRED INVALID }
             enum CouponIssuedBy { CENTRE ADMIN EXCHANGE }
+            enum CouponUsageScene { ONLINE IN_STORE ALL }
 
             ${couponTemplateType}
             ${customerCouponType}

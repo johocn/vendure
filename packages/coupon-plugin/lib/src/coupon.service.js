@@ -489,7 +489,7 @@ let CouponService = class CouponService {
         }
         return this.claimCoupon(ctx, hit.id);
     }
-    /** 模板渠道归属校验：channels 为空（不限渠道）→ true；否则要求包含当前渠道 */
+    /** 模板渠道归属校验：channels 为空（不限渠道）→ true；否则要求包含当前渠道（供到店买单复用） */
     templateBelongsToChannel(ctx, tpl) {
         if (!tpl.channels || tpl.channels.length === 0) {
             return true;

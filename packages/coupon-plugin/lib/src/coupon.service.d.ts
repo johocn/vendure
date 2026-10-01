@@ -71,8 +71,8 @@ export declare class CouponService {
     claimProductCoupon(ctx: RequestContext, bindingId: ID): Promise<CustomerCoupon>;
     /** 凭码兑换：同租户内 claimCode 唯一匹配模板 → 复用 claimCoupon */
     redeemByClaimCode(ctx: RequestContext, claimCode: string): Promise<CustomerCoupon>;
-    /** 模板渠道归属校验：channels 为空（不限渠道）→ true；否则要求包含当前渠道 */
-    private templateBelongsToChannel;
+    /** 模板渠道归属校验：channels 为空（不限渠道）→ true；否则要求包含当前渠道（供到店买单复用） */
+    templateBelongsToChannel(ctx: RequestContext, tpl: CouponTemplate): boolean;
     grantCoupon(ctx: RequestContext, templateId: ID, customerIds: ID[]): Promise<string[]>;
     listChannelCustomers(ctx: RequestContext, query?: string, take?: number, skip?: number): Promise<{
         items: Customer[];
