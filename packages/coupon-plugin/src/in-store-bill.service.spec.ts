@@ -265,3 +265,60 @@ describe('InStoreBillService.redeem', () => {
         await expect(service.redeem(ctx, 'C-ABCD-EFGH', 0)).rejects.toThrow('请输入有效的消费金额');
     });
 });
+
+describe('InStoreBillService.list / summary', () => {
+    const ctx: any = { channelId: 3, activeUserId: 99, languageCode: 'zh_Hans' };
+
+    let listQb: any;
+    let connection: any;
+    let service: InStoreBillService;
+
+    beforeEach(() => {
+        listQb = {
+            where: vi.fn().mockReturnThis(),
+            andWhere: vi.fn().mockReturnThis(),
+            orderBy: vi.fn().mockReturnThis(),
+            addOrderBy: vi.fn().mockReturnThis(),
+            skip: vi.fn().mockReturnThis(),
+            take: vi.fn().mockReturnThis(),
+            select: vi.fn().mockReturnThis(),
+            addSelect: vi.fn().mockReturnThis(),
+            getManyAndCount: vi.fn(async () => [[{ id: 1 }], 1]),
+            getRawOne: vi.fn(async () => ({ count: '3', originalTotal: '30000', discountTotal: '6000', finalTotal: '24000' })),
+        };
+        connection = {
+            getRepository: vi.fn(() => ({ createQueryBuilder: vi.fn(() => listQb) })),
+        };
+        service = new InStoreBillService(connection, {} as any);
+    });
+
+    it('list：强制按 ctx.channelId 过滤，默认时间倒序 + 分页上限 200', async () => {
+        await service.list(ctx, { skip: 0, take: 500 });
+        expect(listQb.where).toHaveBeenCalledWith('b.channelId = :channelId', { channelId: 3 });
+        expect(listQb.orderBy).toHaveBeenCalledWith('b.billedAt', 'DESC');
+        expect(listQb.addOrderBy).toHaveBeenCalledWith('b.id', 'DESC');
+        expect(listQb.take).toHaveBeenCalledWith(200);
+    });
+
+    it('list：券码 / 时间区间筛选生效', async () => {
+        const from = new Date('2026-10-01T00:00:00.000Z');
+        const to = new Date('2026-10-31T23:59:59.999Z');
+        await service.list(ctx, { couponCode: 'C-ABCD-EFGH', from, to });
+        expect(listQb.andWhere).toHaveBeenCalledWith('b.couponCode = :code', { code: 'C-ABCD-EFGH' });
+        expect(listQb.andWhere).toHaveBeenCalledWith('b.billedAt >= :from', { from });
+        expect(listQb.andWhere).toHaveBeenCalledWith('b.billedAt <= :to', { to });
+    });
+
+    it('summary：字符串聚合值转数字，并按渠道 isolate', async () => {
+        const s = await service.summary(ctx, {});
+        expect(listQb.where).toHaveBeenCalledWith('b.channelId = :channelId', { channelId: 3 });
+        expect(s).toEqual({ count: 3, originalTotal: 30000, discountTotal: 6000, finalTotal: 24000 });
+    });
+
+    it('summary：空结果回退 0', async () => {
+        listQb.getRawOne.mockResolvedValueOnce({ count: null, originalTotal: null, discountTotal: null, finalTotal: null });
+        expect(await service.summary(ctx, {})).toEqual({
+            count: 0, originalTotal: 0, discountTotal: 0, finalTotal: 0,
+        });
+    });
+});

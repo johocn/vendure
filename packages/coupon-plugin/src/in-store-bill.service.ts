@@ -196,6 +196,56 @@ export class InStoreBillService {
         return this.connection.getRepository(ctx, InStoreBill).save(bill);
     }
 
+    /** 流水列表：按当前渠道强制隔离 + 券码/时间筛选 + 时间倒序分页 */
+    async list(
+        ctx: RequestContext,
+        options?: InStoreBillListOptions,
+    ): Promise<{ items: InStoreBill[]; totalItems: number }> {
+        const qb = this.buildBillsQuery(ctx, options);
+        qb.orderBy('b.billedAt', 'DESC').addOrderBy('b.id', 'DESC');
+        qb.skip(Math.max(0, options?.skip ?? 0)).take(Math.min(options?.take ?? 20, 200));
+        const [items, totalItems] = await qb.getManyAndCount();
+        return { items, totalItems };
+    }
+
+    /** 流水汇总：笔数 / 原价合计 / 优惠合计 / 实收合计（金额单位：分） */
+    async summary(
+        ctx: RequestContext,
+        options?: { from?: Date; to?: Date },
+    ): Promise<{ count: number; originalTotal: number; discountTotal: number; finalTotal: number }> {
+        const qb = this.buildBillsQuery(ctx, options);
+        const raw = await qb
+            .select('COUNT(*)', 'count')
+            .addSelect('COALESCE(SUM(b.originalAmount), 0)', 'originalTotal')
+            .addSelect('COALESCE(SUM(b.discountAmount), 0)', 'discountTotal')
+            .addSelect('COALESCE(SUM(b.finalAmount), 0)', 'finalTotal')
+            .getRawOne();
+        return {
+            count: Number(raw?.count ?? 0),
+            originalTotal: Number(raw?.originalTotal ?? 0),
+            discountTotal: Number(raw?.discountTotal ?? 0),
+            finalTotal: Number(raw?.finalTotal ?? 0),
+        };
+    }
+
+    /** 流水查询基座：渠道隔离 + 可选筛选（list / summary 共用） */
+    private buildBillsQuery(ctx: RequestContext, options?: InStoreBillListOptions & { take?: number }) {
+        const qb = this.connection
+            .getRepository(ctx, InStoreBill)
+            .createQueryBuilder('b')
+            .where('b.channelId = :channelId', { channelId: Number(ctx.channelId) });
+        if (options?.couponCode) {
+            qb.andWhere('b.couponCode = :code', { code: options.couponCode.trim() });
+        }
+        if (options?.from) {
+            qb.andWhere('b.billedAt >= :from', { from: options.from });
+        }
+        if (options?.to) {
+            qb.andWhere('b.billedAt <= :to', { to: options.to });
+        }
+        return qb;
+    }
+
     /** 顾客姓名/手机号快照（查询失败不阻断核销） */
     private async loadCustomerInfo(
         ctx: RequestContext,
