@@ -20,7 +20,7 @@ export class PaymentTemplateAdminResolver {
     @Query()
     async paymentTemplates(
         @Ctx() ctx: RequestContext,
-        @Args() options: ListQueryOptions<PaymentTemplate>,
+        @Args('options', { nullable: true }) options: ListQueryOptions<PaymentTemplate>,
     ): Promise<PaginatedList<PaymentTemplate>> {
         return this.paymentTemplateService.findAll(ctx, options);
     }

@@ -45,7 +45,7 @@ export class MarketingAdminResolver {
     @Query()
     async marketingFlashSaleActivities(
         @Ctx() ctx: RequestContext,
-        @Args() options: ListQueryOptions<any>,
+        @Args('options', { nullable: true }) options: ListQueryOptions<any>,
     ): Promise<PaginatedList<any>> {
         return this.flashSaleMarketingService.findAll(ctx, options);
     }
@@ -81,7 +81,7 @@ export class MarketingAdminResolver {
     @Query()
     async marketingGroupBuyActivities(
         @Ctx() ctx: RequestContext,
-        @Args() options: ListQueryOptions<any>,
+        @Args('options', { nullable: true }) options: ListQueryOptions<any>,
     ): Promise<PaginatedList<any>> {
         return this.groupBuyMarketingService.findAll(ctx, options);
     }

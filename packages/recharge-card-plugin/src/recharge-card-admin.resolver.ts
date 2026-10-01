@@ -15,7 +15,7 @@ export class RechargeCardAdminResolver {
     @Allow(Permission.ReadSettings)
     async rechargeCards(
         @Ctx() ctx: RequestContext,
-        @Args() options: ListQueryOptions<RechargeCard>,
+        @Args('options', { nullable: true }) options: ListQueryOptions<RechargeCard>,
     ): Promise<PaginatedList<RechargeCard>> {
         return this.rechargeCardService.findAll(ctx, options);
     }
@@ -24,7 +24,7 @@ export class RechargeCardAdminResolver {
     @Allow(Permission.ReadSettings)
     async rechargeCardBatches(
         @Ctx() ctx: RequestContext,
-        @Args() options: ListQueryOptions<RechargeCardBatch>,
+        @Args('options', { nullable: true }) options: ListQueryOptions<RechargeCardBatch>,
     ): Promise<PaginatedList<RechargeCardBatch>> {
         return this.rechargeCardService.findAllBatches(ctx, options);
     }
@@ -54,7 +54,7 @@ export class RechargeCardAdminResolver {
     @Allow(Permission.ReadSettings)
     async customerBalances(
         @Ctx() ctx: RequestContext,
-        @Args() options: ListQueryOptions<CustomerBalance>,
+        @Args('options', { nullable: true }) options: ListQueryOptions<CustomerBalance>,
     ): Promise<PaginatedList<CustomerBalance>> {
         return this.rechargeCardService.customerBalances(ctx, options);
     }
@@ -64,7 +64,7 @@ export class RechargeCardAdminResolver {
     async customerBalanceTransactions(
         @Ctx() ctx: RequestContext,
         @Args('customerId') customerId: number,
-        @Args() options: ListQueryOptions<BalanceTransaction>,
+        @Args('options', { nullable: true }) options: ListQueryOptions<BalanceTransaction>,
     ): Promise<PaginatedList<BalanceTransaction>> {
         return this.rechargeCardService.customerBalanceTransactions(ctx, customerId, options);
     }

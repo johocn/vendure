@@ -21,7 +21,7 @@ export class CouponAdminResolver {
     @Allow(Permission.UpdateOrder)
     async couponTemplates(
         @Ctx() ctx: RequestContext,
-        @Args() options: ListQueryOptions<CouponTemplate>,
+        @Args('options', { nullable: true }) options: ListQueryOptions<CouponTemplate>,
     ) {
         return this.couponService.findAllTemplates(ctx, options);
     }
@@ -36,7 +36,7 @@ export class CouponAdminResolver {
     @Allow(Permission.UpdateOrder)
     async customerCoupons(
         @Ctx() ctx: RequestContext,
-        @Args() options: ListQueryOptions<CustomerCoupon>,
+        @Args('options', { nullable: true }) options: ListQueryOptions<CustomerCoupon>,
     ) {
         return this.couponService.listAllCoupons(ctx, options);
     }

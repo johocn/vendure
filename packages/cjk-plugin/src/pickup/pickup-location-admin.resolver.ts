@@ -12,7 +12,7 @@ export class PickupLocationAdminResolver {
     @Query()
     async pickupLocations(
         @Ctx() ctx: RequestContext,
-        @Args() options: ListQueryOptions<PickupLocation>,
+        @Args('options', { nullable: true }) options: ListQueryOptions<PickupLocation>,
     ): Promise<PaginatedList<PickupLocation>> {
         return this.pickupLocationService.findAll(ctx, options);
     }

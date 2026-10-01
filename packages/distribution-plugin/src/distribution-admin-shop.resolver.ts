@@ -25,7 +25,7 @@ export class DistributionAdminShopResolver {
     @Allow(Permission.SuperAdmin, Permission.ReadCustomer)
     async distributors(
         @Ctx() ctx: RequestContext,
-        @Args() options: ListQueryOptions<Distributor>,
+        @Args('options', { nullable: true }) options: ListQueryOptions<Distributor>,
     ): Promise<PaginatedList<Distributor & { customerEmail: string | null }>> {
         const list = await this.distributionService.findAll(ctx, options);
         const items = await Promise.all(
@@ -45,7 +45,7 @@ export class DistributionAdminShopResolver {
     @Allow(Permission.SuperAdmin, Permission.ReadCustomer)
     commissionRecords(
         @Ctx() ctx: RequestContext,
-        @Args() options: ListQueryOptions<CommissionRecord>,
+        @Args('options', { nullable: true }) options: ListQueryOptions<CommissionRecord>,
     ): Promise<PaginatedList<CommissionRecord>> {
         return this.commissionService.findAll(ctx, options);
     }
@@ -54,7 +54,7 @@ export class DistributionAdminShopResolver {
     @Allow(Permission.SuperAdmin, Permission.ReadCustomer)
     withdrawalRequests(
         @Ctx() ctx: RequestContext,
-        @Args() options: ListQueryOptions<WithdrawalRequest>,
+        @Args('options', { nullable: true }) options: ListQueryOptions<WithdrawalRequest>,
     ): Promise<PaginatedList<WithdrawalRequest>> {
         return this.withdrawalService.findAll(ctx, options);
     }

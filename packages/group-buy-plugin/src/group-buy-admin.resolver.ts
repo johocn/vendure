@@ -11,7 +11,7 @@ export class GroupBuyAdminResolver {
     @Query()
     async groupBuyActivities(
         @Ctx() ctx: RequestContext,
-        @Args() options: ListQueryOptions<GroupBuyActivity>,
+        @Args('options', { nullable: true }) options: ListQueryOptions<GroupBuyActivity>,
     ): Promise<PaginatedList<GroupBuyActivity>> {
         return this.groupBuyService.findAll(ctx, options);
     }

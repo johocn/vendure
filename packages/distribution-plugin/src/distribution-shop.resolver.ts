@@ -39,7 +39,7 @@ export class DistributionShopResolver {
     @Query()
     async myCommissionRecords(
         @Ctx() ctx: RequestContext,
-        @Args() options: ListQueryOptions<CommissionRecord>,
+        @Args('options', { nullable: true }) options: ListQueryOptions<CommissionRecord>,
     ): Promise<PaginatedList<CommissionRecord>> {
         const customerId = await this.resolveCustomerId(ctx);
         if (!customerId) return { items: [], totalItems: 0 };
@@ -51,7 +51,7 @@ export class DistributionShopResolver {
     @Query()
     async myWithdrawalRequests(
         @Ctx() ctx: RequestContext,
-        @Args() options: ListQueryOptions<WithdrawalRequest>,
+        @Args('options', { nullable: true }) options: ListQueryOptions<WithdrawalRequest>,
     ): Promise<PaginatedList<WithdrawalRequest>> {
         const customerId = await this.resolveCustomerId(ctx);
         if (!customerId) return { items: [], totalItems: 0 };

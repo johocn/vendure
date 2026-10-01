@@ -19,7 +19,7 @@ export class DistributionAdminResolver {
     @Query()
     async distributors(
         @Ctx() ctx: RequestContext,
-        @Args() options: ListQueryOptions<Distributor>,
+        @Args('options', { nullable: true }) options: ListQueryOptions<Distributor>,
     ): Promise<PaginatedList<Distributor>> {
         return this.distributionService.findAll(ctx, options);
     }
@@ -27,7 +27,7 @@ export class DistributionAdminResolver {
     @Query()
     async commissionRecords(
         @Ctx() ctx: RequestContext,
-        @Args() options: ListQueryOptions<CommissionRecord>,
+        @Args('options', { nullable: true }) options: ListQueryOptions<CommissionRecord>,
     ): Promise<PaginatedList<CommissionRecord>> {
         return this.commissionService.findAll(ctx, options);
     }
@@ -35,7 +35,7 @@ export class DistributionAdminResolver {
     @Query()
     async withdrawalRequests(
         @Ctx() ctx: RequestContext,
-        @Args() options: ListQueryOptions<WithdrawalRequest>,
+        @Args('options', { nullable: true }) options: ListQueryOptions<WithdrawalRequest>,
     ): Promise<PaginatedList<WithdrawalRequest>> {
         return this.withdrawalService.findAll(ctx, options);
     }

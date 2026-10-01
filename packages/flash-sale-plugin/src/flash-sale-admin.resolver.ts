@@ -11,7 +11,7 @@ export class FlashSaleAdminResolver {
     @Query()
     async flashSaleActivities(
         @Ctx() ctx: RequestContext,
-        @Args() options: ListQueryOptions<FlashSaleActivity>,
+        @Args('options', { nullable: true }) options: ListQueryOptions<FlashSaleActivity>,
     ): Promise<PaginatedList<FlashSaleActivity>> {
         return this.flashSaleService.findAll(ctx, options);
     }

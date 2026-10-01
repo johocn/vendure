@@ -18,7 +18,7 @@ export class RechargeOrderResolver {
     @Allow(Permission.Authenticated)
     async myBalanceTransactions(
         @Ctx() ctx: RequestContext,
-        @Args() options: ListQueryOptions<BalanceTransaction>,
+        @Args('options', { nullable: true }) options: ListQueryOptions<BalanceTransaction>,
     ): Promise<PaginatedList<BalanceTransaction>> {
         return this.rechargeCardService.myBalanceTransactions(ctx, options);
     }

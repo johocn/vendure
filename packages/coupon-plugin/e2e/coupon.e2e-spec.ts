@@ -537,6 +537,58 @@ describe('CouponPlugin · 营销促销闭环（优惠券体系）', () => {
         expect(enTpl.description).toBe('20 off 100 coupon');
     });
 
+    it('列表 options 生效：customerCoupons 按 templateId 过滤 + take 分页；couponTemplates 分页', async () => {
+        // 造两张券各自的领取记录：X 领 2 张、Y 领 1 张
+        const tplX = await createTemplate({ name: '过滤券X', type: 'FULL', discountValue: 100 });
+        const tplY = await createTemplate({ name: '过滤券Y', type: 'FULL', discountValue: 100 });
+        await claim(tplX);
+        await claim(tplX);
+        await claim(tplY);
+
+        const ccQuery = gql`
+            query($options: CustomerCouponListOptions) {
+                customerCoupons(options: $options) { totalItems items { id templateId status } }
+            }
+        `;
+
+        // 1) filter.templateId 生效：只返回该模板的券（不再返回全量）
+        const x = (await adminClient.query(ccQuery, {
+            options: { filter: { templateId: { eq: tplX } }, take: 100 },
+        })) as any;
+        expect(x.customerCoupons.totalItems).toBe(2);
+        expect(x.customerCoupons.items.length).toBe(2);
+        expect(x.customerCoupons.items.every((c: any) => String(c.templateId) === String(tplX))).toBe(true);
+
+        // 2) filter.templateId 不匹配 → 空
+        const none = (await adminClient.query(ccQuery, {
+            options: { filter: { templateId: { eq: '999999' } }, take: 10 },
+        })) as any;
+        expect(none.customerCoupons.totalItems).toBe(0);
+        expect(none.customerCoupons.items.length).toBe(0);
+
+        // 3) take 分页生效：totalItems 仍为全量、items 被截断
+        const paged = (await adminClient.query(ccQuery, {
+            options: { filter: { templateId: { eq: tplX } }, take: 1 },
+        })) as any;
+        expect(paged.customerCoupons.totalItems).toBe(2);
+        expect(paged.customerCoupons.items.length).toBe(1);
+
+        // 4) filter + status 组合生效（后台「已核销」tab）
+        const usedOnly = (await adminClient.query(ccQuery, {
+            options: { filter: { templateId: { eq: tplX }, status: { eq: 'USED' } }, take: 10 },
+        })) as any;
+        expect(usedOnly.customerCoupons.totalItems).toBe(0);
+
+        // 5) couponTemplates 的 take 分页同样生效
+        const tpls = (await adminClient.query(gql`
+            query($options: CouponTemplateListOptions) {
+                couponTemplates(options: $options) { totalItems items { id } }
+            }
+        `, { options: { take: 1 } })) as any;
+        expect(tpls.couponTemplates.totalItems).toBeGreaterThan(1);
+        expect(tpls.couponTemplates.items.length).toBe(1);
+    });
+
     it('属店权限隔离：店主只能管理本店券（含平台券），不能动别店券', async () => {
         // 建两个 Shop 并各自开通店主管理员
         await adminClient.asSuperAdmin();

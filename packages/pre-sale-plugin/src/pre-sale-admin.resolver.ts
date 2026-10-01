@@ -11,7 +11,7 @@ export class PreSaleAdminResolver {
     @Query()
     async preSaleActivities(
         @Ctx() ctx: RequestContext,
-        @Args() options: ListQueryOptions<PreSaleActivity>,
+        @Args('options', { nullable: true }) options: ListQueryOptions<PreSaleActivity>,
     ): Promise<PaginatedList<PreSaleActivity>> {
         return this.preSaleService.findAll(ctx, options);
     }

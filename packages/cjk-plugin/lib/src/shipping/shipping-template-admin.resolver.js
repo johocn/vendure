@@ -48,7 +48,7 @@ exports.ShippingTemplateAdminResolver = ShippingTemplateAdminResolver;
 __decorate([
     (0, graphql_1.Query)(),
     __param(0, (0, core_1.Ctx)()),
-    __param(1, (0, graphql_1.Args)()),
+    __param(1, (0, graphql_1.Args)('options', { nullable: true })),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)

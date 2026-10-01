@@ -20,7 +20,7 @@ export class ShippingTemplateAdminResolver {
     @Query()
     async shippingTemplates(
         @Ctx() ctx: RequestContext,
-        @Args() options: ListQueryOptions<ShippingTemplate>,
+        @Args('options', { nullable: true }) options: ListQueryOptions<ShippingTemplate>,
     ): Promise<PaginatedList<ShippingTemplate>> {
         return this.shippingTemplateService.findAll(ctx, options);
     }
