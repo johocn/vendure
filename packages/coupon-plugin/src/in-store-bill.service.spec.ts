@@ -163,3 +163,105 @@ describe('InStoreBillService.quote', () => {
         });
     });
 });
+
+describe('InStoreBillService.redeem', () => {
+    const ctx: any = { channelId: 3, activeUserId: 99, languageCode: 'zh_Hans' };
+
+    let ccRepo: any;
+    let billRepo: any;
+    let updateQb: any;
+    let connection: any;
+    let couponService: any;
+    let service: InStoreBillService;
+
+    beforeEach(() => {
+        updateQb = {
+            update: vi.fn().mockReturnThis(),
+            set: vi.fn().mockReturnThis(),
+            where: vi.fn().mockReturnThis(),
+            execute: vi.fn(async () => ({ affected: 1 })),
+        };
+        ccRepo = { findOne: vi.fn(), createQueryBuilder: vi.fn(() => updateQb) };
+        billRepo = { save: vi.fn(async (b: any) => ({ id: 21, ...b })) };
+        connection = {
+            getRepository: vi.fn((_c: any, entity: any) => {
+                if (entity === CustomerCoupon) return ccRepo;
+                if (entity === InStoreBill) return billRepo;
+                if (entity === Customer) return { findOne: vi.fn(async () => ({ firstName: '三', lastName: '张', phoneNumber: '13800000000' })) };
+                if (entity === Administrator) return { findOne: vi.fn(async () => ({ firstName: '掌', lastName: '柜' })) };
+                throw new Error(`unknown entity: ${entity?.name}`);
+            }),
+        };
+        couponService = {
+            templateBelongsToChannel: vi.fn(() => true),
+            assertManagedByShop: vi.fn(async () => undefined),
+        };
+        service = new InStoreBillService(connection, couponService);
+    });
+
+    it('成功核销：条件更新置 USED → 写流水（含券/顾客/核销人/金额快照）', async () => {
+        ccRepo.findOne.mockResolvedValueOnce(ccStub({ template: tplStub({ usageScene: 'IN_STORE' }) }));
+        const bill: any = await service.redeem(ctx, ' C-ABCD-EFGH ', 20000, '老客户');
+
+        expect(updateQb.set).toHaveBeenCalledWith(expect.objectContaining({ status: 'USED' }));
+        expect(updateQb.where).toHaveBeenCalledWith('id = :id AND status = :unused', {
+            id: 11,
+            unused: 'UNUSED',
+        });
+        expect(bill).toMatchObject({
+            id: 21,
+            channelId: 3,
+            customerCouponId: 11,
+            couponCode: 'C-ABCD-EFGH',
+            couponTemplateId: 7,
+            couponName: '到店 8 折',
+            customerId: 5,
+            customerName: '三 张',
+            customerPhone: '13800000000',
+            discountType: 'PERCENT',
+            discountValue: 80,
+            originalAmount: 20000,
+            discountAmount: 4000,
+            finalAmount: 16000,
+            operatorId: 99,
+            operatorName: '掌 柜',
+            remark: '老客户',
+        });
+        expect(bill.billedAt).toBeInstanceOf(Date);
+    });
+
+    it('券不存在 → 抛 UserInputError（优惠券不存在），不写流水', async () => {
+        ccRepo.findOne.mockResolvedValueOnce(null);
+        await expect(service.redeem(ctx, 'C-NOPE-0001', 20000)).rejects.toThrow('优惠券不存在');
+        expect(billRepo.save).not.toHaveBeenCalled();
+        expect(updateQb.execute).not.toHaveBeenCalled();
+    });
+
+    it('未达门槛 → 抛 UserInputError，不置 USED、不写流水', async () => {
+        ccRepo.findOne.mockResolvedValueOnce(
+            ccStub({ template: tplStub({ usageScene: 'IN_STORE', minSpend: 10000 }) }),
+        );
+        await expect(service.redeem(ctx, 'C-ABCD-EFGH', 5000)).rejects.toThrow('未达到该券使用门槛');
+        expect(updateQb.execute).not.toHaveBeenCalled();
+        expect(billRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('并发/重复核销（affectedRows=0）→ 抛 COUPON_NOT_UNUSED 文案，不写流水', async () => {
+        ccRepo.findOne.mockResolvedValueOnce(ccStub({ template: tplStub({ usageScene: 'IN_STORE' }) }));
+        updateQb.execute.mockResolvedValueOnce({ affected: 0 });
+        await expect(service.redeem(ctx, 'C-ABCD-EFGH', 20000)).rejects.toThrow('该优惠券已使用或当前不可用');
+        expect(billRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('FREE_SHIPPING 券 → 抛类型不支持文案', async () => {
+        ccRepo.findOne.mockResolvedValueOnce(
+            ccStub({ template: tplStub({ usageScene: 'IN_STORE', type: 'FREE_SHIPPING' }) }),
+        );
+        await expect(service.redeem(ctx, 'C-ABCD-EFGH', 20000)).rejects.toThrow('该券类型不支持到店买单');
+    });
+
+    it('非法原价（0）→ 抛金额文案', async () => {
+        ccRepo.findOne.mockResolvedValueOnce(ccStub({ template: tplStub({ usageScene: 'IN_STORE' }) }));
+        await expect(service.redeem(ctx, 'C-ABCD-EFGH', 0)).rejects.toThrow('请输入有效的消费金额');
+    });
+});

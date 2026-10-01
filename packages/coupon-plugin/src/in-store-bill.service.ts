@@ -141,6 +141,61 @@ export class InStoreBillService {
         };
     }
 
+    /**
+     * 到店买单核销：校验 → 原子占用（仅 UNUSED 可置 USED）→ 写流水。
+     * 需在 @Transaction() 内调用。
+     */
+    async redeem(
+        ctx: RequestContext,
+        code: string,
+        originalAmount: number,
+        remark?: string,
+    ): Promise<InStoreBill> {
+        const located = await this.locate(ctx, code);
+        if (!located.ok) {
+            throw new UserInputError(IN_STORE_REASON_MESSAGES[located.reason]);
+        }
+        const { cc, tpl } = located;
+        const computed = computeInStoreBill(tpl, originalAmount);
+        if (!computed.ok) {
+            throw new UserInputError(IN_STORE_REASON_MESSAGES[computed.reason]);
+        }
+        // 并发防护：状态条件更新，affectedRows=0 说明已被其它请求核销
+        const consume = await this.connection
+            .getRepository(ctx, CustomerCoupon)
+            .createQueryBuilder()
+            .update()
+            .set({ status: 'USED', usedAt: new Date() })
+            .where('id = :id AND status = :unused', { id: cc.id, unused: 'UNUSED' })
+            .execute();
+        if ((consume.affected ?? 0) === 0) {
+            throw new UserInputError(IN_STORE_REASON_MESSAGES[IN_STORE_REASON.COUPON_NOT_UNUSED]);
+        }
+
+        const info = await this.loadCustomerInfo(ctx, cc.customerId);
+        const operatorName = await this.resolveOperatorName(ctx);
+        const bill = new InStoreBill({
+            channelId: ctx.channelId,
+            customerCouponId: cc.id as number,
+            couponCode: cc.code,
+            couponTemplateId: tpl.id as number,
+            couponName: localizeText(tpl.name, ctx.languageCode),
+            customerId: cc.customerId,
+            customerName: info.name,
+            customerPhone: info.phone,
+            discountType: tpl.type,
+            discountValue: tpl.discountValue,
+            originalAmount: computed.originalAmount,
+            discountAmount: computed.discountAmount,
+            finalAmount: computed.finalAmount,
+            operatorId: ctx.activeUserId as number,
+            operatorName,
+            remark: remark?.trim() || undefined,
+            billedAt: new Date(),
+        });
+        return this.connection.getRepository(ctx, InStoreBill).save(bill);
+    }
+
     /** 顾客姓名/手机号快照（查询失败不阻断核销） */
     private async loadCustomerInfo(
         ctx: RequestContext,
