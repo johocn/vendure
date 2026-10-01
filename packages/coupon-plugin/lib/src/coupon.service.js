@@ -37,6 +37,7 @@ const TEMPLATE_UPDATE_ALLOWED = [
     'categoryId',
     'variantId',
     'enabled',
+    'usageScene',
 ];
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 function generateCode(prefix) {

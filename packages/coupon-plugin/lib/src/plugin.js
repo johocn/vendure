@@ -371,6 +371,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 validDays: Int
                 newCustomerOnly: Boolean
                 memberLevel: String
+                usageScene: CouponUsageScene
             }
 
             input CouponTemplateListOptions

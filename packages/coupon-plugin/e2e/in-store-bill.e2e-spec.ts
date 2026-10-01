@@ -182,4 +182,27 @@ describe('CouponPlugin · 到店买单（领券 → 试算 → 核销 → 流水
         `)) as any;
         expect(res.couponCentre.every((c: any) => typeof c.usageScene === 'string')).toBe(true);
     });
+
+    it('编辑已有券模板可更新 usageScene 并落库（ONLINE → IN_STORE）', async () => {
+        const tplId = await createTemplate({
+            name: '待改场景券',
+            type: 'FIXED',
+            discountValue: 1000,
+            usageScene: 'ONLINE',
+        });
+
+        const updated = (await adminClient.query(gql`
+            mutation {
+                updateCouponTemplate(input: { id: "${tplId}", usageScene: IN_STORE }) {
+                    id usageScene
+                }
+            }
+        `)) as any;
+        expect(updated.updateCouponTemplate.usageScene).toBe('IN_STORE');
+
+        const fetched = (await adminClient.query(gql`
+            query { couponTemplate(id: "${tplId}") { id usageScene } }
+        `)) as any;
+        expect(fetched.couponTemplate.usageScene).toBe('IN_STORE');
+    });
 });

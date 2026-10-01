@@ -306,6 +306,7 @@ type CustomerCoupon implements Node {
                 validDays: Int
                 newCustomerOnly: Boolean
                 memberLevel: String
+                usageScene: CouponUsageScene
             }
 
             input CouponTemplateListOptions
