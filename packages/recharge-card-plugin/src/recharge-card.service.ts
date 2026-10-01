@@ -9,6 +9,7 @@ import {
     RequestContext,
     TransactionalConnection,
     UserInputError,
+    VendureEntity,
 } from '@vendure/core';
 import crypto from 'crypto';
 
@@ -585,17 +586,14 @@ export class RechargeCardService {
     async myBalanceTransactions(ctx: RequestContext, options?: ListQueryOptions<BalanceTransaction>): Promise<PaginatedList<BalanceTransaction>> {
         const cid = await this.resolveCustomerId(ctx);
         return this.listQueryBuilder
-            .build(BalanceTransaction, options, { ctx })
-            .andWhere(`BalanceTransaction.customerId = :cid`, { cid })
-            .andWhere(`BalanceTransaction.channelId = :chid`, { chid: ctx.channelId })
+            .build(BalanceTransaction, this.scopedOptions(options, cid, ctx.channelId), { ctx })
             .getManyAndCount()
             .then(([items, totalItems]) => ({ items, totalItems }));
     }
 
     async customerBalances(ctx: RequestContext, options?: ListQueryOptions<CustomerBalance>): Promise<PaginatedList<CustomerBalance>> {
         return this.listQueryBuilder
-            .build(CustomerBalance, options, { ctx })
-            .andWhere(`CustomerBalance.channelId = :chid`, { chid: ctx.channelId })
+            .build(CustomerBalance, this.scopedOptions(options, undefined, ctx.channelId), { ctx })
             .getManyAndCount()
             .then(([items, totalItems]) => ({ items, totalItems }));
     }
@@ -603,11 +601,22 @@ export class RechargeCardService {
     async customerBalanceTransactions(ctx: RequestContext, customerId: ID, options?: ListQueryOptions<BalanceTransaction>): Promise<PaginatedList<BalanceTransaction>> {
         const cid = Number(customerId);
         return this.listQueryBuilder
-            .build(BalanceTransaction, options, { ctx })
-            .andWhere(`BalanceTransaction.customerId = :cid`, { cid })
-            .andWhere(`BalanceTransaction.channelId = :chid`, { chid: ctx.channelId })
+            .build(BalanceTransaction, this.scopedOptions(options, cid, ctx.channelId), { ctx })
             .getManyAndCount()
             .then(([items, totalItems]) => ({ items, totalItems }));
+    }
+
+    /**
+     * 把门店(渠道)与客户维度并入标准 filter，交给 ListQueryBuilder 统一转义。
+     * 不可用 andWhere(`CustomerBalance.channelId = :chid`) 这类手写别名——别名/列名未加引号时
+     * Postgres 会折叠为小写（customerbalance.channelid）而报「列不存在」，SQLite 大小写不敏感故 e2e 无法暴露。
+     */
+    private scopedOptions<T extends VendureEntity>(options: ListQueryOptions<T> | undefined, customerId: number | undefined, channelId: ID): ListQueryOptions<T> {
+        const filter: any = { ...(options?.filter ?? {}), channelId: { eq: channelId } };
+        if (customerId !== undefined) {
+            filter.customerId = { eq: customerId };
+        }
+        return { ...options, filter };
     }
 
     async isRechargeOrderPaid(ctx: RequestContext, id: ID): Promise<boolean> {

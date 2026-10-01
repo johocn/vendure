@@ -519,27 +519,35 @@ let RechargeCardService = class RechargeCardService {
     async myBalanceTransactions(ctx, options) {
         const cid = await this.resolveCustomerId(ctx);
         return this.listQueryBuilder
-            .build(balance_transaction_entity_1.BalanceTransaction, options, { ctx })
-            .andWhere(`BalanceTransaction.customerId = :cid`, { cid })
-            .andWhere(`BalanceTransaction.channelId = :chid`, { chid: ctx.channelId })
+            .build(balance_transaction_entity_1.BalanceTransaction, this.scopedOptions(options, cid, ctx.channelId), { ctx })
             .getManyAndCount()
             .then(([items, totalItems]) => ({ items, totalItems }));
     }
     async customerBalances(ctx, options) {
         return this.listQueryBuilder
-            .build(customer_balance_entity_1.CustomerBalance, options, { ctx })
-            .andWhere(`CustomerBalance.channelId = :chid`, { chid: ctx.channelId })
+            .build(customer_balance_entity_1.CustomerBalance, this.scopedOptions(options, undefined, ctx.channelId), { ctx })
             .getManyAndCount()
             .then(([items, totalItems]) => ({ items, totalItems }));
     }
     async customerBalanceTransactions(ctx, customerId, options) {
         const cid = Number(customerId);
         return this.listQueryBuilder
-            .build(balance_transaction_entity_1.BalanceTransaction, options, { ctx })
-            .andWhere(`BalanceTransaction.customerId = :cid`, { cid })
-            .andWhere(`BalanceTransaction.channelId = :chid`, { chid: ctx.channelId })
+            .build(balance_transaction_entity_1.BalanceTransaction, this.scopedOptions(options, cid, ctx.channelId), { ctx })
             .getManyAndCount()
             .then(([items, totalItems]) => ({ items, totalItems }));
+    }
+    /**
+     * 把门店(渠道)与客户维度并入标准 filter，交给 ListQueryBuilder 统一转义。
+     * 不可用 andWhere(`CustomerBalance.channelId = :chid`) 这类手写别名——别名/列名未加引号时
+     * Postgres 会折叠为小写（customerbalance.channelid）而报「列不存在」，SQLite 大小写不敏感故 e2e 无法暴露。
+     */
+    scopedOptions(options, customerId, channelId) {
+        var _a;
+        const filter = Object.assign(Object.assign({}, ((_a = options === null || options === void 0 ? void 0 : options.filter) !== null && _a !== void 0 ? _a : {})), { channelId: { eq: channelId } });
+        if (customerId !== undefined) {
+            filter.customerId = { eq: customerId };
+        }
+        return Object.assign(Object.assign({}, options), { filter });
     }
     async isRechargeOrderPaid(ctx, id) {
         const repo = this.connection.getRepository(ctx, recharge_order_entity_1.RechargeOrder);

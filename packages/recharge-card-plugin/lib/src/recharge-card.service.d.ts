@@ -59,6 +59,12 @@ export declare class RechargeCardService {
     myBalanceTransactions(ctx: RequestContext, options?: ListQueryOptions<BalanceTransaction>): Promise<PaginatedList<BalanceTransaction>>;
     customerBalances(ctx: RequestContext, options?: ListQueryOptions<CustomerBalance>): Promise<PaginatedList<CustomerBalance>>;
     customerBalanceTransactions(ctx: RequestContext, customerId: ID, options?: ListQueryOptions<BalanceTransaction>): Promise<PaginatedList<BalanceTransaction>>;
+    /**
+     * 把门店(渠道)与客户维度并入标准 filter，交给 ListQueryBuilder 统一转义。
+     * 不可用 andWhere(`CustomerBalance.channelId = :chid`) 这类手写别名——别名/列名未加引号时
+     * Postgres 会折叠为小写（customerbalance.channelid）而报「列不存在」，SQLite 大小写不敏感故 e2e 无法暴露。
+     */
+    private scopedOptions;
     isRechargeOrderPaid(ctx: RequestContext, id: ID): Promise<boolean>;
     /** 该订单是否已用余额 `balance-pay` 扣过款（Authorization 防重复扣减用） */
     isOrderBalancePaid(ctx: RequestContext, orderId: ID): Promise<boolean>;
