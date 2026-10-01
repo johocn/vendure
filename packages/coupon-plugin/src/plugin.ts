@@ -35,6 +35,7 @@ import {
     CreateProductCouponBindingMigration,
 } from './migrations';
 import { InStoreBill } from './in-store-bill.entity';
+import { InStoreBillService } from './in-store-bill.service';
 import { couponOrderCustomFields } from './order-custom-fields';
 import { ProductCouponBinding } from './product-coupon-binding.entity';
 import { CouponPluginOptions } from './types';
@@ -106,6 +107,7 @@ type CustomerCoupon implements Node {
         { provide: COUPON_PLUGIN_OPTIONS, useFactory: () => CouponPlugin.options },
         CouponService,
         CouponBindingService,
+        InStoreBillService,
         AddCouponFieldsMigration,
         CreateProductCouponBindingMigration,
         AddCouponIndexes20260919,
