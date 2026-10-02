@@ -659,5 +659,43 @@ describe('CouponPlugin · 营销促销闭环（优惠券体系）', () => {
         const instanceTplIds = ccs.customerCoupons.items.map((c: any) => String(c.templateId));
         expect(instanceTplIds).toContain(String(tplA));
         expect(instanceTplIds).not.toContain(String(tplB));
+
+        // 断言5：couponChannelCustomers 属店隔离 —— 店主只看到「在本店下过单」的顾客
+        // 平台把商品挂到店A（行商品 shopId = shopA；店主侧 addProductToMyShop 要求 shop 已 active，这里直接用平台接口）
+        await adminClient.asSuperAdmin();
+        await adminClient.query(gql`
+            mutation { assignProductsToShop(input: { shopId: "${shopAId}", productIds: ["${productAId}"] }) }
+        `);
+        // 顾客下单（含店A商品）→ 该顾客成为店A顾客
+        await shopClient.asUserWithCredentials('hayden.zieme12@hotmail.com', 'test');
+        await resetActiveOrder();
+        await addToCart(1);
+        await proceedToArrangingPayment(shopClient);
+
+        const custA = (await adminClient.query(gql`
+            query { couponChannelCustomers(take: 100) { items { id } totalItems } }
+        `)) as any;
+        const aIds = custA.couponChannelCustomers.items.map((c: any) => String(c.id));
+        expect(aIds).toContain(String(myCustomerId));
+        // 去重：同一顾客多张本店订单不得重复出现
+        expect(new Set(aIds).size).toBe(aIds.length);
+        expect(custA.couponChannelCustomers.totalItems).toBe(aIds.length);
+
+        // 店B 无本店商品、无本店订单 → 看不到该顾客（不串店）
+        await adminClient.asUserWithCredentials('owner-b-authz@test.com', 'test');
+        const custB = (await adminClient.query(gql`
+            query { couponChannelCustomers(take: 100) { items { id } } }
+        `)) as any;
+        const bIds = custB.couponChannelCustomers.items.map((c: any) => String(c.id));
+        expect(bIds).not.toContain(String(myCustomerId));
+
+        // 超管保持渠道全量
+        await adminClient.asSuperAdmin();
+        const custAll = (await adminClient.query(gql`
+            query { couponChannelCustomers(take: 100) { items { id } } }
+        `)) as any;
+        expect(custAll.couponChannelCustomers.items.map((c: any) => String(c.id))).toContain(
+            String(myCustomerId),
+        );
     });
 });

@@ -83,6 +83,8 @@ export declare class CouponService {
         items: Customer[];
         totalItems: number;
     }>;
+    /** 本店商品 id 列表（Product.customFields.shopId === shopId），供「本店顾客」归属过滤。 */
+    private findShopProductIds;
     private customerInChannel;
     private notifyCouponIssued;
     grantCouponIssue(ctx: RequestContext, templateId: ID, customerIds: ID[], notify: boolean): Promise<Array<{

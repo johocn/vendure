@@ -572,6 +572,7 @@ let CouponService = class CouponService {
         const repo = this.connection.getRepository(ctx, core_1.Customer);
         const qb = repo
             .createQueryBuilder('c')
+            .distinct(true)
             .select([
             'c.id',
             'c.emailAddress',
@@ -581,6 +582,22 @@ let CouponService = class CouponService {
             'c.createdAt',
         ])
             .innerJoin('c.channels', 'channel', 'channel.id = :cid', { cid: ctx.channelId });
+        // 属店隔离：店主管理员只看「本店顾客」——在本渠道内下过「含本店商品」订单（已下单，orderPlacedAt 非空）的顾客，
+        // 与 shop-plugin myShopOrders 的归属口径一致（行商品 Product.customFields.shopId === 本店）。
+        // 超级管理员（无属店）→ 渠道全量，行为不变。
+        const adminShopId = await this.resolveShopIdFromActiveUser(ctx, ctx.activeUserId);
+        if (adminShopId != null) {
+            const shopProductIds = await this.findShopProductIds(ctx, adminShopId);
+            if (shopProductIds.length === 0) {
+                return { items: [], totalItems: 0 };
+            }
+            qb.innerJoin('c.orders', 'o')
+                .innerJoin('o.channels', 'oChannel', 'oChannel.id = :cid')
+                .innerJoin('o.lines', 'ol')
+                .innerJoin('ol.productVariant', 'pv')
+                .andWhere('o.orderPlacedAt IS NOT NULL')
+                .andWhere('pv.productId IN (:...shopProductIds)', { shopProductIds });
+        }
         if (query) {
             const q = `%${query.trim().toLowerCase()}%`;
             qb.andWhere('(LOWER(c.emailAddress) LIKE :q OR LOWER(c.firstName) LIKE :q OR LOWER(c.lastName) LIKE :q OR LOWER(c.phoneNumber) LIKE :q)', { q });
@@ -588,6 +605,20 @@ let CouponService = class CouponService {
         qb.orderBy('c.id', 'DESC').skip(skip).take(take);
         const [items, totalItems] = await qb.getManyAndCount();
         return { items, totalItems };
+    }
+    /** 本店商品 id 列表（Product.customFields.shopId === shopId），供「本店顾客」归属过滤。 */
+    async findShopProductIds(ctx, shopId) {
+        try {
+            const products = await this.connection.getRepository(ctx, core_1.Product).find({
+                where: { customFields: { shopId } },
+                select: { id: true },
+            });
+            return products.map(p => Number(p.id));
+        }
+        catch (_a) {
+            // Product.customFields 不可用（shop-plugin 未加载）→ 无本店商品，返回空
+            return [];
+        }
     }
     async customerInChannel(ctx, customerId) {
         const repo = this.connection.getRepository(ctx, core_1.Customer);
