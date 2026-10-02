@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Order } from '@vendure/core';
+import { Brackets } from 'typeorm';
 
 import { CouponService } from './coupon.service';
 import { CouponTemplate } from './coupon-template.entity';
@@ -380,7 +381,7 @@ describe('CouponService.couponCentre 过滤 claimable', () => {
             'channel.id = :channelId',
             { channelId: 37 },
         );
-        expect(qb.andWhere).toHaveBeenCalledWith('tpl.claimable = :claimable', { claimable: true });
+        expect(qb.andWhere).toHaveBeenNthCalledWith(1, expect.any(Brackets));
     });
 });
 

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Brackets } from 'typeorm';
 import {
     Administrator,
     Customer,
@@ -22,6 +23,7 @@ import { MemberLevelService } from '@vendure/member-level-plugin';
 import { COUPON_NOT_OWNED, loggerCtx } from './constants';
 import { localizeText } from './localize';
 import { isDefaultMallChannel, lineHasShopId } from './coupon-scope';
+import { filterTemplatesByChannelAndScene } from './coupon-channel';
 import { CouponBindingService } from './coupon-binding.service';
 import { isNewCustomerWithinChannel } from './coupon-settlement';
 import { CouponTemplate } from './coupon-template.entity';
@@ -315,33 +317,50 @@ export class CouponService {
     async couponCentre(ctx: RequestContext): Promise<CouponTemplate[]> {
         const repo = this.connection.getRepository(ctx, CouponTemplate);
         const now = new Date();
+        // 粗筛：显式配置了渠道集合的券不再要求 claimable=true（显式优先）；
+        // 未配置的历史券仍按老字段 claimable 过滤，保证行为不变。
         const own = await repo
             .createQueryBuilder('tpl')
             .innerJoin('tpl.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId })
             .where('tpl.enabled = :enabled', { enabled: true })
-            .andWhere('tpl.claimable = :claimable', { claimable: true })
+            .andWhere(
+                new Brackets(qb =>
+                    qb
+                        .where('tpl.distributionChannels IS NOT NULL')
+                        .andWhere("tpl.distributionChannels <> ''")
+                        .orWhere('tpl.claimable = :claimable', { claimable: true }),
+                ),
+            )
             .andWhere('(tpl.startsAt IS NULL OR tpl.startsAt <= :now)', { now })
             .andWhere('(tpl.endsAt IS NULL OR tpl.endsAt >= :now)', { now })
             .getMany();
         // 非默认商城维持现状：仅列出本渠道券。
         if (!isDefaultMallChannel(ctx)) {
-            return own;
+            return filterTemplatesByChannelAndScene(own, 'CENTRE', 'ONLINE');
         }
         // 默认商城：除本渠道券外，追加列出「其 shopId 对应商品出现在本商城」的租户券。
         const shopIds = await this.shopIdsPresentInChannel(ctx);
         if (shopIds.size === 0) {
-            return own;
+            return filterTemplatesByChannelAndScene(own, 'CENTRE', 'ONLINE');
         }
         const extra = await repo
             .createQueryBuilder('tpl')
             .where('tpl.shopId IN (:...shopIds)', { shopIds: [...shopIds] })
             .andWhere('tpl.enabled = :enabled', { enabled: true })
-            .andWhere('tpl.claimable = :claimable', { claimable: true })
+            .andWhere(
+                new Brackets(qb =>
+                    qb
+                        .where('tpl.distributionChannels IS NOT NULL')
+                        .andWhere("tpl.distributionChannels <> ''")
+                        .orWhere('tpl.claimable = :claimable', { claimable: true }),
+                ),
+            )
             .andWhere('(tpl.startsAt IS NULL OR tpl.startsAt <= :now)', { now })
             .andWhere('(tpl.endsAt IS NULL OR tpl.endsAt >= :now)', { now })
             .getMany();
         const ownIds = new Set(own.map(t => String(t.id)));
-        return [...own, ...extra.filter(t => !ownIds.has(String(t.id)))];
+        const merged = [...own, ...extra.filter(t => !ownIds.has(String(t.id)))];
+        return filterTemplatesByChannelAndScene(merged, 'CENTRE', 'ONLINE');
     }
 
     /** 默认商城渠道下，本商城商品（Product.customFields.shopId）中出现过的店铺 id 集合。 */
@@ -398,15 +417,24 @@ export class CouponService {
     async pointsMallTemplates(ctx: RequestContext): Promise<CouponTemplate[]> {
         const repo = this.connection.getRepository(ctx, CouponTemplate);
         const now = new Date();
-        return repo
+        // 粗筛：显式配置渠道的券不再要求 pointsPrice>0；历史券仍按 pointsPrice>0 过滤。
+        const rows = await repo
             .createQueryBuilder('tpl')
             .innerJoin('tpl.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId })
             .where('tpl.enabled = :enabled', { enabled: true })
-            .andWhere('tpl.pointsPrice > 0')
+            .andWhere(
+                new Brackets(qb =>
+                    qb
+                        .where('tpl.distributionChannels IS NOT NULL')
+                        .andWhere("tpl.distributionChannels <> ''")
+                        .orWhere('tpl.pointsPrice > 0'),
+                ),
+            )
             .andWhere('(tpl.startsAt IS NULL OR tpl.startsAt <= :now)', { now })
             .andWhere('(tpl.endsAt IS NULL OR tpl.endsAt >= :now)', { now })
             .orderBy('tpl.pointsPrice', 'ASC')
             .getMany();
+        return filterTemplatesByChannelAndScene(rows, 'POINTS', 'ONLINE');
     }
 
     async exchangeWithPoints(
