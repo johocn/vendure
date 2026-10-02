@@ -426,3 +426,54 @@ describe('CouponService 多语言合并 applyMultilingualInput', () => {
         expect(tpl.name).toEqual({ zh_Hans: '满100减20', en: '20 off 100' });
     });
 });
+
+/**
+ * Task 4：到店收银可用券列表，仅保留到店/全场景、未使用（UNUSED/RETURNED）、未过期且渠道归属命中的券。
+ */
+describe('CouponService.listInStoreCoupons', () => {
+    let ccRepo: any;
+    let connection: any;
+    let service: CouponService;
+
+    const baseCc = (over: any = {}) => {
+        const { template, ...rest } = over;
+        return {
+            id: 1,
+            customerId: 5,
+            status: 'UNUSED',
+            expiredAt: null,
+            template: {
+                id: 9,
+                enabled: true,
+                usageScene: 'IN_STORE',
+                channels: [],
+                ...template,
+            },
+            ...rest,
+        };
+    };
+
+    beforeEach(() => {
+        ccRepo = { find: vi.fn() };
+        connection = {
+            getRepository: vi.fn((_ctx: any, entity: any) => {
+                if (entity === CustomerCoupon) return ccRepo;
+                throw new Error(`unknown entity: ${entity}`);
+            }),
+        };
+        service = new CouponService(connection as any, {} as any, {} as any);
+    });
+
+    it('仅返回到店/全场景且未使用未过期的券', async () => {
+        const rows = [
+            baseCc({ id: 1, template: { usageScene: 'IN_STORE' } }),
+            baseCc({ id: 2, template: { usageScene: 'ALL' } }),
+            baseCc({ id: 3, template: { usageScene: 'ONLINE' } }),
+            baseCc({ id: 4, status: 'USED', template: { usageScene: 'IN_STORE' } }),
+            baseCc({ id: 5, expiredAt: new Date(Date.now() - 1000), template: { usageScene: 'IN_STORE' } }),
+        ];
+        ccRepo.find.mockResolvedValue(rows);
+        const out = await service.listInStoreCoupons({ channelId: 1 } as any, 5);
+        expect(out.map((c: any) => c.id)).toEqual([1, 2]);
+    });
+});

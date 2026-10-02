@@ -399,6 +399,31 @@ export class CouponService {
         return qb.getMany();
     }
 
+    /**
+     * 到店收银：列出某顾客在当前渠道「可到店核销」的券（未使用 / 未过期 / 场景含 IN_STORE）。
+     * 仅到店场景过滤，不做渠道集合判定（券可由任意渠道获得，到店核销只看场景与归属）。
+     */
+    public async listInStoreCoupons(
+        ctx: RequestContext,
+        customerId: number,
+    ): Promise<CustomerCoupon[]> {
+        const repo = this.connection.getRepository(ctx, CustomerCoupon);
+        const list = await repo.find({
+            where: { customerId },
+            relations: { template: { channels: true } },
+            order: { id: 'DESC' },
+        });
+        const now = Date.now();
+        return list.filter(cc => {
+            const tpl = cc.template;
+            if (!tpl || !tpl.enabled) return false;
+            if (cc.status !== 'UNUSED' && cc.status !== 'RETURNED') return false;
+            if (cc.expiredAt && new Date(cc.expiredAt).getTime() <= now) return false;
+            if (!matchesScene(tpl.usageScene, 'IN_STORE')) return false;
+            return this.templateBelongsToChannel(ctx, tpl);
+        });
+    }
+
     async listAllCoupons(
         ctx: RequestContext,
         options?: ListQueryOptions<CustomerCoupon>,
@@ -702,6 +727,9 @@ export class CouponService {
         const tpl = await this.findOneTemplate(ctx, templateId);
         if (!tpl) {
             throw new UserInputError(`CouponTemplate ${templateId} not found`);
+        }
+        if (!hasChannel(tpl, false, 'GRANT')) {
+            throw new UserInputError('Coupon is not available for targeted grant');
         }
         const customerRepo = this.connection.getRepository(ctx, Customer);
         const results: Array<{ customerId: ID; ok: boolean; code: string | null; reason: string | null }> = [];
@@ -1089,11 +1117,29 @@ export class CouponService {
         return !(await isNewCustomerWithinChannel(ctx, customerId));
     }
 
+    /**
+     * 出售发券桥接：复用发券不变量（原子扣余量 → 建券并记录出售单溯源）。
+     * 券包逐张调用本方法，任一张售罄即抛错，由调用方事务回滚整包。
+     */
+    public async issueForSale(
+        ctx: RequestContext,
+        customerId: number,
+        tpl: CouponTemplate,
+        saleOrderId: number,
+    ): Promise<CustomerCoupon> {
+        const ok = await this.atomicIncrementClaimed(ctx, tpl.id, tpl);
+        if (!ok) {
+            throw new UserInputError('Coupon sold out');
+        }
+        return this.createUserCoupon(ctx, customerId, tpl, 'SALE', saleOrderId);
+    }
+
     private async createUserCoupon(
         ctx: RequestContext,
         customerId: number,
         tpl: CouponTemplate,
-        issuedBy: 'CENTRE' | 'ADMIN' | 'EXCHANGE',
+        issuedBy: 'CENTRE' | 'ADMIN' | 'EXCHANGE' | 'SALE',
+        saleOrderId?: number | null,
     ): Promise<CustomerCoupon> {
         const repo = this.connection.getRepository(ctx, CustomerCoupon);
         // 重试兜底唯一码冲突（碰撞概率极低）
@@ -1108,6 +1154,7 @@ export class CouponService {
                 issuedAt: new Date(),
                 // validDays 券按领取时刻起算过期时间；否则快照模板固定 endsAt
                 expiredAt: tpl.validDays ? new Date(Date.now() + tpl.validDays * 86400000) : (tpl.endsAt ?? undefined),
+                saleOrderId: saleOrderId ?? null,
             });
             try {
                 return await repo.save(cc);
