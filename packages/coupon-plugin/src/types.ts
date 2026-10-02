@@ -72,3 +72,14 @@ export interface UpdateProductCouponBindingInput {
     claimWindowEnd?: Date | null;
     claimStock?: number | null;
 }
+
+/**
+ * 券分发渠道（券模板可被分发/获取的入口）：
+ * - CENTRE  ：优惠券中心领取
+ * - SALE    ：出售（券商城 / 商品页加价购）
+ * - POINTS  ：积分换购
+ * - CODE    ：优惠码兑换
+ * - PRODUCT ：浏览指定商品领取
+ * - GRANT   ：定向发放
+ */
+export type CouponChannel = 'CENTRE' | 'SALE' | 'POINTS' | 'CODE' | 'PRODUCT' | 'GRANT';
