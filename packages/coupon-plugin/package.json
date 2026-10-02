@@ -14,6 +14,10 @@
         "test": "vitest --config vitest.config.mts --run",
         "e2e": "cross-env PACKAGE=coupon-plugin vitest --config vitest.config.mts --run"
     },
+    "dependencies": {
+        "@vendure/recharge-card-plugin": "^0.0.1",
+        "@vendure/wechatpay-plugin": "^0.0.1"
+    },
     "peerDependencies": {
         "@vendure/common": "^3.6.0",
         "@vendure/core": "^3.6.0"

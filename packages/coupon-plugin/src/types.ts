@@ -17,8 +17,8 @@ export type CouponType = 'FIXED' | 'PERCENT' | 'FULL' | 'FREE_SHIPPING';
  */
 export type CouponStatus = 'UNUSED' | 'USED' | 'RETURNED' | 'EXPIRED' | 'INVALID';
 
-/** 发券来源 */
-export type CouponIssuedBy = 'CENTRE' | 'ADMIN' | 'EXCHANGE';
+/** 发券来源（SALE = 出售渠道生成，计划 2 新增） */
+export type CouponIssuedBy = 'CENTRE' | 'ADMIN' | 'EXCHANGE' | 'SALE';
 
 /** 券适用范围 */
 export type CouponScope = 'ALL' | 'CATEGORY' | 'SKU';
@@ -83,3 +83,20 @@ export interface UpdateProductCouponBindingInput {
  * - GRANT   ：定向发放
  */
 export type CouponChannel = 'CENTRE' | 'SALE' | 'POINTS' | 'CODE' | 'PRODUCT' | 'GRANT';
+
+/**
+ * 出售单支付方式：
+ * - WECHAT            ：券商城独立微信支付（outTradeNo 前缀 CS-）
+ * - BALANCE           ：券商城余额支付（可选依赖 recharge-card 余额服务）
+ * - ORDER_SURCHARGE   ：商品页加价购，券价随主订单结算
+ */
+export type CouponSalePayMode = 'WECHAT' | 'BALANCE' | 'ORDER_SURCHARGE';
+
+/** 出售单状态 */
+export type CouponSaleStatus = 'PENDING' | 'PAID' | 'CANCELLED' | 'REFUNDED';
+
+/** 券包内单项入参 */
+export interface CouponBundleItemInput {
+    templateId: number;
+    quantity?: number | null;
+}
