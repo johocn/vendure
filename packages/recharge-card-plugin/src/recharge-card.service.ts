@@ -270,13 +270,16 @@ export class RechargeCardService {
             (await resolveCustomerOpenid(ctx, order.customerId, {
                 preferMini: effectiveTradeType === 'JSAPI',
             }));
-        const pay = await gatewayService.createBarePayment({
-            outTradeNo,
-            amount: order.amount,
-            tradeType: effectiveTradeType,
-            openid: effectiveOpenid,
-            description: `Recharge ${outTradeNo}`,
-        });
+        const pay = await gatewayService.createBarePayment(
+            {
+                outTradeNo,
+                amount: order.amount,
+                tradeType: effectiveTradeType,
+                openid: effectiveOpenid,
+                description: `Recharge ${outTradeNo}`,
+            },
+            ctx,
+        );
         order.paymentMethod = 'wechatpay';
         order.externalRef = outTradeNo;
         await repo.save(order);

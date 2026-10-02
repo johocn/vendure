@@ -388,12 +388,14 @@ export const devConfig: VendureConfig = {
                 devBypassOpenid: 'dev_test_openid',
             } : undefined,
         })] : []),
-        ...((process.env.WECHATPAY_NOTIFY_URL || process.env.DEV_BYPASS_WECHATPAY === 'true')
-            ? [WechatpayPlugin.init({
-                notifyUrl: process.env.WECHATPAY_NOTIFY_URL || '',
-                devBypass: process.env.DEV_BYPASS_WECHATPAY === 'true',
-                devBypassOpenid: 'dev_test_openid',
-            })] : []),
+        // 微信支付按租户配置（渠道 payConfig.wechatpay：商户凭证 + 回调地址），故插件无条件加载。
+        // 历史实现按 WECHATPAY_NOTIFY_URL 条件加载，导致生产未配该 env 时整个插件缺失：
+        // CS-/RC- 结算器注册失败、微信支付入口全部不可用。env 仅保留 devBypass 与 notifyUrl 兜底。
+        WechatpayPlugin.init({
+            notifyUrl: process.env.WECHATPAY_NOTIFY_URL || '',
+            devBypass: process.env.DEV_BYPASS_WECHATPAY === 'true',
+            devBypassOpenid: 'dev_test_openid',
+        }),
         ...(process.env.OSS_ACCESS_KEY_ID ? [OssPlugin.init({
             region: process.env.OSS_REGION ?? '',
             accessKeyId: process.env.OSS_ACCESS_KEY_ID ?? '',

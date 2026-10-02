@@ -136,7 +136,7 @@ let CouponSaleService = class CouponSaleService {
             tradeType: effectiveTradeType,
             openid: effectiveOpenid,
             description: `Coupon ${outTradeNo}`,
-        });
+        }, ctx);
         order.paymentMethod = 'wechatpay';
         order.externalRef = outTradeNo;
         await this.connection.getRepository(ctx, coupon_sale_order_entity_1.CouponSaleOrder).save(order);

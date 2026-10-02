@@ -9,7 +9,7 @@ import {
     RequestContext,
     RequestContextService,
 } from '@vendure/core';
-import { getPaymentOverride } from '@vendure/cjk-plugin';
+import { findChannelByDomain, getPaymentOverride } from '@vendure/cjk-plugin';
 import type { WechatpayCredentials } from '@vendure/cjk-plugin';
 
 import { WECHATPAY_PLUGIN_OPTIONS, loggerCtx } from './constants';
@@ -27,21 +27,34 @@ export class WechatpayController {
         private settlementRegistry: WechatpaySettlementRegistry,
     ) {}
 
+    /** 回调请求所属租户的 ctx：按请求域名（渠道 customFields.customDomains）解析，
+     *  解析不到回退默认渠道，兼容历史单店部署。
+     *  验签/解密/结算必须用「下单时那个租户」的商户凭证，否则 apiKey 不匹配解不开密。 */
+    private async callbackCtx(req: Request): Promise<RequestContext> {
+        const host = req.hostname || (req.headers.host as string) || '';
+        const channel =
+            (await findChannelByDomain(this.channelService, host)) ??
+            (await this.channelService.getDefaultChannel());
+        return new RequestContext({
+            apiType: 'admin',
+            channel,
+            isAuthorized: true,
+            authorizedAsOwnerOnly: false,
+        });
+    }
+
     /** 结算路由：非订单前缀（如 RC-）交给注册的结算器，否则默认结 Vendure Order */
-    private async routeSettlement(outTradeNo: string, transactionId: string): Promise<void> {
+    private async routeSettlement(
+        ctx: RequestContext,
+        outTradeNo: string,
+        transactionId: string,
+    ): Promise<void> {
         const settlement = this.settlementRegistry.find(outTradeNo);
         if (settlement) {
-            const channel = await this.channelService.getDefaultChannel();
-            const ctx = new RequestContext({
-                apiType: 'admin',
-                channel,
-                isAuthorized: true,
-                authorizedAsOwnerOnly: false,
-            });
             await settlement.settle(ctx, outTradeNo, transactionId);
             return;
         }
-        await this.settleOrderPayment(outTradeNo);
+        await this.settleOrderPayment(ctx, outTradeNo);
     }
 
     /**
@@ -49,14 +62,7 @@ export class WechatpayController {
      * 查询 Authorized 状态的支付并调用 settlePayment
      * 注意：订单到达 PaymentAuthorized 后 active=false，不能用 order.active 判断
      */
-    private async settleOrderPayment(orderCode: string): Promise<void> {
-        const channel = await this.channelService.getDefaultChannel();
-        const ctx = new RequestContext({
-            apiType: 'admin',
-            channel,
-            isAuthorized: true,
-            authorizedAsOwnerOnly: false,
-        });
+    private async settleOrderPayment(ctx: RequestContext, orderCode: string): Promise<void> {
         const order = await this.orderService.findOneByCode(ctx, orderCode, ['payments']);
         if (!order) {
             Logger.warn(`settleOrderPayment: order ${orderCode} not found`, loggerCtx);
@@ -76,20 +82,13 @@ export class WechatpayController {
     }
 
     /**
-     * 从默认 channel 的 PaymentMethod args + channel override 构造 WxPay 实例
+     * 从该租户渠道的 PaymentMethod args + channel override 构造 WxPay 实例
      * 用于通知回调中验签解密
      */
-    private async buildWxPayFromDefaultChannel(): Promise<{
+    private async buildWxPay(ctx: RequestContext): Promise<{
         pay: WxPay;
         apiKey: string;
     }> {
-        const channel = await this.channelService.getDefaultChannel();
-        const ctx = new RequestContext({
-            apiType: 'admin',
-            channel,
-            isAuthorized: true,
-            authorizedAsOwnerOnly: false,
-        });
         const override = getPaymentOverride(ctx, 'wechatpay') as WechatpayCredentials | null;
         const pms = await this.paymentMethodService.findAll(ctx);
         const pm = pms.items.find(p => p.code === 'wechatpay');
@@ -127,7 +126,8 @@ export class WechatpayController {
                 return res.status(400).json({ code: 'FAIL', message: 'missing resource' });
             }
 
-            const { pay, apiKey } = await this.buildWxPayFromDefaultChannel();
+            const ctx = await this.callbackCtx(req);
+            const { pay, apiKey } = await this.buildWxPay(ctx);
 
             // 1. 验签
             const bodyStr = JSON.stringify(body);
@@ -160,7 +160,7 @@ export class WechatpayController {
 
             // 3. 处理支付结果
             if (body?.event_type === 'TRANSACTION.SUCCESS' && outTradeNo) {
-                await this.routeSettlement(outTradeNo, transactionId || '');
+                await this.routeSettlement(ctx, outTradeNo, transactionId || '');
             }
 
             res.status(200).json({ code: 'SUCCESS', message: 'OK' });
@@ -226,7 +226,7 @@ export class WechatpayController {
             if (!outTradeNo) {
                 return res.status(400).json({ code: 'FAIL', message: 'missing outTradeNo' });
             }
-            await this.routeSettlement(outTradeNo, 'DEV-TX');
+            await this.routeSettlement(await this.callbackCtx(req), outTradeNo, 'DEV-TX');
             res.status(200).json({ code: 'SUCCESS', message: 'OK' });
         } catch (e: any) {
             Logger.error(`WeChat Pay dev-notify error: ${e.message}`, loggerCtx);

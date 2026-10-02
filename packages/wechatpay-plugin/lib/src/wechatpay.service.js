@@ -78,18 +78,23 @@ let WechatpayService = class WechatpayService {
             return (opts === null || opts === void 0 ? void 0 : opts.preferMini) ? mini : official;
         return mini || official;
     }
-    /** 集中构造配置好的 WxPay 实例 + 凭证（复用 getPaymentOverride） */
-    async buildWechatpay() {
-        var _a;
+    /** 默认渠道 ctx（未按租户指定渠道时的回退，兼容历史单店部署） */
+    async defaultChannelCtx() {
         const channel = await this.channelService.getDefaultChannel();
-        const ctx = new core_1.RequestContext({
+        return new core_1.RequestContext({
             apiType: 'admin',
             channel,
             isAuthorized: true,
             authorizedAsOwnerOnly: false,
         });
-        const override = (0, cjk_plugin_1.getPaymentOverride)(ctx, 'wechatpay');
-        const pms = await this.paymentMethodService.findAll(ctx);
+    }
+    /** 集中构造配置好的 WxPay 实例 + 凭证（复用 getPaymentOverride）。
+     *  传入 ctx 时使用「该 ctx 所属租户」的凭证与回调地址；缺省回退默认渠道。 */
+    async buildWechatpay(ctx) {
+        var _a, _b;
+        const effectiveCtx = ctx !== null && ctx !== void 0 ? ctx : (await this.defaultChannelCtx());
+        const override = (0, cjk_plugin_1.getPaymentOverride)(effectiveCtx, 'wechatpay');
+        const pms = await this.paymentMethodService.findAll(effectiveCtx);
         const pm = pms.items.find(p => p.code === 'wechatpay');
         const args = ((_a = pm === null || pm === void 0 ? void 0 : pm.handler) === null || _a === void 0 ? void 0 : _a.args) || [];
         const getArg = (name) => { var _a; return ((_a = args.find(a => a.name === name)) === null || _a === void 0 ? void 0 : _a.value) || ''; };
@@ -107,43 +112,45 @@ let WechatpayService = class WechatpayService {
             appId,
             privateKey,
             tradeType: (override === null || override === void 0 ? void 0 : override.tradeType) || getArg('tradeType') || 'JSAPI',
+            notifyUrl: (override === null || override === void 0 ? void 0 : override.notifyUrl) || ((_b = this.options) === null || _b === void 0 ? void 0 : _b.notifyUrl) || '',
         };
     }
-    /** devBypass 下返回模拟支付页；否则调真实微信 API 生成支付参数 */
-    async createBarePayment(input) {
-        var _a, _b, _c, _d, _e, _f;
+    /** devBypass 下返回模拟支付页；否则调真实微信 API 生成支付参数。
+     *  ctx 决定用哪个租户的商户凭证与回调地址（CS-/RC- 等代付单须传自身 ctx）。 */
+    async createBarePayment(input, ctx) {
+        var _a, _b, _c, _d, _e;
         if ((_a = this.options) === null || _a === void 0 ? void 0 : _a.devBypass) {
             return {
                 payType: 'dev-h5',
                 payUrl: `/wechatpay/dev-pay?outTradeNo=${encodeURIComponent(input.outTradeNo)}`,
             };
         }
-        const { pay, appId, privateKey, tradeType } = await this.buildWechatpay();
+        const { pay, appId, privateKey, tradeType, notifyUrl } = await this.buildWechatpay(ctx);
         const baseParams = {
             description: input.description || `Pay ${input.outTradeNo}`,
             out_trade_no: input.outTradeNo,
-            notify_url: ((_b = this.options) === null || _b === void 0 ? void 0 : _b.notifyUrl) || '',
+            notify_url: notifyUrl,
             amount: { total: Math.round(input.amount / 100), currency: 'CNY' },
         };
         const type = input.tradeType || tradeType;
         if (type === 'NATIVE') {
             const r = (await pay.transactions_native(baseParams));
-            return { payType: 'native', payUrl: (_c = r === null || r === void 0 ? void 0 : r.data) === null || _c === void 0 ? void 0 : _c.code_url };
+            return { payType: 'native', payUrl: (_b = r === null || r === void 0 ? void 0 : r.data) === null || _b === void 0 ? void 0 : _b.code_url };
         }
         if (type === 'H5') {
             const r = (await pay.transactions_h5(Object.assign(Object.assign({}, baseParams), { scene_info: {
                     payer_client_ip: '127.0.0.1',
                     h5_info: { type: 'Wap', app_name: 'Vendure' },
                 } })));
-            return { payType: 'h5', payUrl: (_d = r === null || r === void 0 ? void 0 : r.data) === null || _d === void 0 ? void 0 : _d.h5_url };
+            return { payType: 'h5', payUrl: (_c = r === null || r === void 0 ? void 0 : r.data) === null || _c === void 0 ? void 0 : _c.h5_url };
         }
         if (type === 'APP') {
             const r = (await pay.transactions_app(baseParams));
-            return { payType: 'app', prepayId: (_e = r === null || r === void 0 ? void 0 : r.data) === null || _e === void 0 ? void 0 : _e.prepay_id };
+            return { payType: 'app', prepayId: (_d = r === null || r === void 0 ? void 0 : r.data) === null || _d === void 0 ? void 0 : _d.prepay_id };
         }
         // JSAPI
         const r = (await pay.transactions_jsapi(Object.assign(Object.assign({}, baseParams), { payer: { openid: input.openid || '' } })));
-        const prepayId = (_f = r === null || r === void 0 ? void 0 : r.data) === null || _f === void 0 ? void 0 : _f.prepay_id;
+        const prepayId = (_e = r === null || r === void 0 ? void 0 : r.data) === null || _e === void 0 ? void 0 : _e.prepay_id;
         const timeStamp = String(Math.floor(Date.now() / 1000));
         const nonceStr = Math.random().toString(36).substring(2, 34);
         const pkg = `prepay_id=${prepayId}`;

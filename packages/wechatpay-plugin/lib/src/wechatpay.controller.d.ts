@@ -10,6 +10,10 @@ export declare class WechatpayController {
     private requestContextService;
     private settlementRegistry;
     constructor(options: WechatpayPluginOptions, orderService: OrderService, channelService: ChannelService, paymentMethodService: PaymentMethodService, requestContextService: RequestContextService, settlementRegistry: WechatpaySettlementRegistry);
+    /** 回调请求所属租户的 ctx：按请求域名（渠道 customFields.customDomains）解析，
+     *  解析不到回退默认渠道，兼容历史单店部署。
+     *  验签/解密/结算必须用「下单时那个租户」的商户凭证，否则 apiKey 不匹配解不开密。 */
+    private callbackCtx;
     /** 结算路由：非订单前缀（如 RC-）交给注册的结算器，否则默认结 Vendure Order */
     private routeSettlement;
     /**
@@ -19,10 +23,10 @@ export declare class WechatpayController {
      */
     private settleOrderPayment;
     /**
-     * 从默认 channel 的 PaymentMethod args + channel override 构造 WxPay 实例
+     * 从该租户渠道的 PaymentMethod args + channel override 构造 WxPay 实例
      * 用于通知回调中验签解密
      */
-    private buildWxPayFromDefaultChannel;
+    private buildWxPay;
     /**
      * 生产环境：V3 通知验签 + AES-GCM 解密
      */

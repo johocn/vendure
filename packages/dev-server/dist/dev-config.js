@@ -328,12 +328,11 @@ exports.devConfig = {
                     devBypassOpenid: 'dev_test_openid',
                 } : undefined,
             })] : []),
-        ...((process.env.WECHATPAY_NOTIFY_URL || process.env.DEV_BYPASS_WECHATPAY === 'true')
-            ? [wechatpay_plugin_1.WechatpayPlugin.init({
-                    notifyUrl: process.env.WECHATPAY_NOTIFY_URL || '',
-                    devBypass: process.env.DEV_BYPASS_WECHATPAY === 'true',
-                    devBypassOpenid: 'dev_test_openid',
-                })] : []),
+        wechatpay_plugin_1.WechatpayPlugin.init({
+            notifyUrl: process.env.WECHATPAY_NOTIFY_URL || '',
+            devBypass: process.env.DEV_BYPASS_WECHATPAY === 'true',
+            devBypassOpenid: 'dev_test_openid',
+        }),
         ...(process.env.OSS_ACCESS_KEY_ID ? [oss_plugin_1.OssPlugin.init({
                 region: (_c = process.env.OSS_REGION) !== null && _c !== void 0 ? _c : '',
                 accessKeyId: (_d = process.env.OSS_ACCESS_KEY_ID) !== null && _d !== void 0 ? _d : '',

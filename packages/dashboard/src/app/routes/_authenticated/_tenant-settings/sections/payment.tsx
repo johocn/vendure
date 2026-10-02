@@ -21,6 +21,11 @@ const fields: Fields = [
             { name: 'wechatpay.mchId', label: '商户号', type: 'text' },
             { name: 'wechatpay.apiKey', label: 'API Key', type: 'password' },
             { name: 'wechatpay.serialNo', label: '证书序列号', type: 'text' },
+            {
+                name: 'wechatpay.notifyUrl',
+                label: '回调地址',
+                type: 'text',
+            },
         ],
     },
     {

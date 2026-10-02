@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { ChannelService, RequestContext } from '@vendure/core';
+import { Channel, ChannelService, RequestContext } from '@vendure/core';
 
 export interface DomainResolveResult {
     token: string;
@@ -34,24 +34,41 @@ export interface ShopChannelEntry {
 /** Vendure 默认渠道的 code —— 标记 isDefault，便于前端提供「返回平台店」入口 */
 const DEFAULT_CHANNEL_CODE = '__default_channel__';
 
+/**
+ * 按请求 Host 解析渠道（多租户路由/回调共用）。
+ *
+ * 使用 emptyCtx 跨 channel 查询，避免公共请求 ctx 的潜在 channel 过滤
+ * （与 group-buy-plugin / distribution-plugin 的既定模式一致）。
+ * 返回完整 Channel 实体，调用方可直接用于构造 RequestContext。
+ */
+export async function findChannelByDomain(
+    channelService: ChannelService,
+    host: string,
+): Promise<Channel | undefined> {
+    const normalizedHost = host.split(':')[0].toLowerCase();
+    const emptyCtx = RequestContext.empty();
+    const channels = await channelService.findAll(emptyCtx);
+    return channels.items.find(channel =>
+        ((channel.customFields as any)?.customDomains as string[] | undefined)?.some(
+            d => d.toLowerCase() === normalizedHost,
+        ),
+    );
+}
+
+export async function resolveChannelByDomain(
+    channelService: ChannelService,
+    host: string,
+): Promise<DomainResolveResult | null> {
+    const channel = await findChannelByDomain(channelService, host);
+    return channel ? { token: channel.token, code: channel.code } : null;
+}
+
 @Injectable()
 export class DomainResolverService {
     constructor(private channelService: ChannelService) {}
 
     async resolveByDomain(ctx: RequestContext, host: string): Promise<DomainResolveResult | null> {
-        const normalizedHost = host.split(':')[0].toLowerCase();
-
-        // 使用 emptyCtx 跨 channel 查询，避免公共请求 ctx 的潜在 channel 过滤
-        // 与 group-buy-plugin / distribution-plugin 的既定模式一致
-        const emptyCtx = RequestContext.empty();
-        const channels = await this.channelService.findAll(emptyCtx);
-        for (const channel of channels.items) {
-            const domains = (channel.customFields as any)?.customDomains as string[] | undefined;
-            if (domains?.some(d => d.toLowerCase() === normalizedHost)) {
-                return { token: channel.token, code: channel.code };
-            }
-        }
-        return null;
+        return resolveChannelByDomain(this.channelService, host);
     }
 
     /** Channel -> ChannelResolveResult 的统一映射（渠道 token 与装修 customFields） */

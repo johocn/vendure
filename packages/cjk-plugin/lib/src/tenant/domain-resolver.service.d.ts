@@ -1,4 +1,4 @@
-import { ChannelService, RequestContext } from '@vendure/core';
+import { Channel, ChannelService, RequestContext } from '@vendure/core';
 export interface DomainResolveResult {
     token: string;
     code: string;
@@ -26,6 +26,15 @@ export interface ShopChannelEntry {
     isOfficial: boolean;
     isDefault: boolean;
 }
+/**
+ * 按请求 Host 解析渠道（多租户路由/回调共用）。
+ *
+ * 使用 emptyCtx 跨 channel 查询，避免公共请求 ctx 的潜在 channel 过滤
+ * （与 group-buy-plugin / distribution-plugin 的既定模式一致）。
+ * 返回完整 Channel 实体，调用方可直接用于构造 RequestContext。
+ */
+export declare function findChannelByDomain(channelService: ChannelService, host: string): Promise<Channel | undefined>;
+export declare function resolveChannelByDomain(channelService: ChannelService, host: string): Promise<DomainResolveResult | null>;
 export declare class DomainResolverService {
     private channelService;
     constructor(channelService: ChannelService);

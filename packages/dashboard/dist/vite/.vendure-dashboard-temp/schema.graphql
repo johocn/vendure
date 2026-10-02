@@ -133,17 +133,92 @@ type Query {
   mapSdkConfig: MapSdkConfig!
   channelMapConfig(channelId: ID!): ChannelMapConfig!
   tenantConfig(channelId: ID!): TenantConfigPayload!
+  tenantSettings(channelId: ID!): TenantSettingsPayload!
   shippingTemplates(options: ShippingTemplateListOptions): ShippingTemplateList!
   shippingTemplate(id: ID!): ShippingTemplate
   shippingProfiles(options: ShippingProfileListOptions): ShippingProfileList!
   shippingProfile(id: ID!): ShippingProfile
   paymentProfiles(options: PaymentProfileListOptions): PaymentProfileList!
   paymentProfile(id: ID!): PaymentProfile
+  paymentTemplates(options: PaymentTemplateListOptions): PaymentTemplateList!
+  paymentTemplate(id: ID!): PaymentTemplate
+  roomTemplates: [RoomTemplate!]!
+  roomTemplate(id: ID!): RoomTemplate
+  permissionCatalog: [PermissionCatalogGroup!]
+  tenants(options: ChannelListOptions = null): ChannelList!
+  tenant(id: ID!): Channel
+  tenantSlots: TenantSlots!
+  tenantAdministrators(channelId: ID!): [TenantMember!]!
+  tenantRoles(channelId: ID!): [Role!]!
+  tenantMembers: [TenantMember!]!
+  myTenantRoles: [Role!]!
+  myTenantAccess(channelId: ID): MyTenantAccess!
+  globalRoles: [Role!]!
+  globalRoleTemplates: [RoleTemplate!]!
+  myGlobalRolesAvailable: [Role!]!
+  tenantSearchAdmins(channelId: ID!, keyword: String!): [TenantAdminCandidate!]!
+  mySearchAdmins(keyword: String!): [TenantAdminCandidate!]!
+  wallet: Wallet!
+  reusableOptionGroups: [ReusableOptionGroup!]!
+  assetLibrary(take: Int, skip: Int, tags: [String], ids: [String]): AssetLibraryResult!
+  assetTags(take: Int): [AssetTagSummary!]!
+  merchantSettlementLedgers(orderId: String): [MerchantSettlementLedgerItem!]!
+  redemptionLookup(code: String!): RedemptionLookupResult
+  myPendingRedemptions(options: RedemptionListOptions): PendingRedemptionList!
+  deliveryRecords(orderId: ID): [DeliveryRecord!]!
+  reconciliationBatches: [ReconciliationBatch!]!
+  reconciliationLines(batchId: ID!): [ReconciliationOrderLine!]!
+  stockMovementLedger(productVariantId: ID, locationId: ID, bizCode: String, orderLineId: ID, bizType: String, direction: String, from: String, to: String, page: Int, pageSize: Int): StockDocLedgerList!
+  reservations(status: String, variantId: ID, orderId: ID, page: Int, pageSize: Int): ReservationList!
+  reservation(id: ID!): Reservation!
+  reservationReconcile: [ReservationReconcileRow!]!
+  channelDeliveryCapability: ChannelDeliveryCapability!
+  variantDeliveryModes(variantIds: [ID!]!): [VariantDeliveryModes!]!
+  tenantInventoryOverview: TenantInventoryOverview!
+  tenantVariantBindings(variantId: ID!): [VariantLocationBinding!]!
+  inventoryStockPage(input: InventoryStockQueryInput): InventoryStockPage!
+  inventoryAlertRules(locationId: ID): [InventoryAlertRule!]!
+  stockDocList(type: String, locationId: ID, from: String, to: String, operator: String, page: Int, pageSize: Int): StockDocList!
+  stockDocOperatorStats(from: String, to: String): [StockDocOperatorStat!]!
+  pickBatches(options: PickBatchListOptions): PickBatchList!
+  pickBatch(id: ID!): PickBatch
+  pickBatchPickingList(id: ID!): [PickBatchPickingRow!]!
+  pickBatchCandidates(options: PickBatchListOptions): PickBatchCandidateList!
+  pickBatchShippedCount(from: String, to: String): Int!
+  storageZones(stockLocationId: ID!): [StorageZone!]!
+  storageBins(stockLocationId: ID!, zoneId: ID): [StorageBin!]!
+  variantBin(variantId: ID!, stockLocationId: ID!): JSON
+  variantBinsByLocation(stockLocationId: ID!, zoneId: ID, binId: ID, keyword: String, includeDisabled: Boolean, page: Int, pageSize: Int): VariantBinPage!
+  binOccupancy(stockLocationId: ID!, zoneId: ID): [BinOccupancy!]!
+  stocktakeKpi(from: String, to: String): StocktakeKpi!
+  stocktakeTasks(options: StocktakeTaskOptionsInput): StocktakeTaskList!
+  stocktakeTask(id: ID!): StocktakeTask
+  stocktakeWaves(taskId: ID!): [StocktakeWave!]!
+  stocktakeExpectedLines(taskId: ID!, waveId: ID, filter: StocktakeLineFilterInput, keyword: String, page: Int, pageSize: Int): StocktakeLinePage!
+  stocktakeDiff(taskId: ID!): StocktakeDiff!
+  stocktakeResolveCode(taskId: ID!, code: String!): StocktakeScanHit!
+  stocktakeStats(taskId: ID!): StocktakeStats!
+  stocktakeExport(taskId: ID!, kind: String!): StocktakeExportFile!
+  shops(options: ShopListOptions): [Shop!]!
+  shopById(id: ID!): Shop
+  myShop: Shop!
+  myShopProducts(options: ProductListOptions = null): ProductList!
+  myShopOrder(orderId: ID!): MerchantOrder
+  myShopOrders: [MerchantOrder!]!
+  myShopOrderFulfillments(orderId: ID!): [MerchantFulfillment!]!
+  myShopReviews: [MerchantReview!]!
+  shopTemplates(app: String): [ShopTemplate!]!
+  shopTemplate(id: ID!): ShopTemplate
+  shopGlobalConfig(app: String!): ShopGlobalConfig
+  templateVersions(id: ID!): [ShopTemplateVersionType!]!
+  templateReferences(id: ID!): [TemplateReference!]!
+  templateMergedPreview(app: String!, templateId: ID, overrides: JSON): MergedPreview!
+  palettePresets: JSON!
+  myPickupOrders(options: PickupListOptions): PickupRedemptionList!
+  pickupRedemptions(options: PickupListOptions): PickupRedemptionList!
   invoices(options: InvoiceListOptions): InvoiceList!
   invoice(id: ID!): Invoice
-  logisticsTracks(orderId: ID!): [LogisticsTrack!]!
-  logisticsTrack(id: ID!): LogisticsTrack
-  carriers: [Carrier!]!
+  exportInvoicesCsv(options: InvoiceListOptions): String!
   groupBuyActivities(options: GroupBuyActivityListOptions): GroupBuyActivityList!
   groupBuyActivity(id: ID!): GroupBuyActivity
   flashSaleActivities(options: FlashSaleActivityListOptions): FlashSaleActivityList!
@@ -153,17 +228,57 @@ type Query {
   withdrawalRequests(options: WithdrawalRequestListOptions): WithdrawalRequestList!
   rechargeCards(options: RechargeCardAdminListOptions = null): RechargeCardAdminList!
   rechargeCardBatches(options: RechargeCardBatchAdminListOptions = null): RechargeCardBatchAdminList!
+  customerBalances(options: RechargeCardListOptions): CustomerBalanceList!
+  customerBalanceTransactions(customerId: ID!, options: BalanceTransactionListAdminListOptions = null): BalanceTransactionListAdmin!
   afterSalesRequests(options: AfterSalesRequestAdminListOptions): AfterSalesRequestAdminList!
   memberInfo(customerId: ID!): MemberInfo!
   pointsHistory(customerId: ID!, options: PointsHistoryListOptions): PointsHistoryList!
   members(options: JSON): MemberList!
   levelConfig: LevelConfig!
+  memberTiers: [MemberTier!]!
+  posTerminals(channelId: ID): [PosTerminal!]!
+  posTerminal(id: ID!): PosTerminal
+  myPosSession: PosSession
+  posSession(id: ID!): PosSession
+  findMemberByPhone(phoneNumber: String!): PosMemberInfo
+  findMemberByCode(code: String!): PosMemberInfo
+  memberPriceRules(channelId: ID): [MemberPriceRule!]!
+  memberPriceRule(id: ID!): MemberPriceRule
+  posActiveOrder: Order
+  shiftReportPreview(sessionId: ID!, closingCash: Int): JSON!
+  aggregatePayByCode(aggregatePayCode: String!): Payment
+  posRefunds(sessionId: ID!): [Refund!]!
+  heldOrders: [Order!]!
+  posOrderByCode(code: String!): Order
+  promotionRules(channelId: ID): [PromotionRule!]!
+  promotionRule(id: ID!): PromotionRule
+  todayOverview: TodayOverview!
+  posSalesReport(startDate: String!, endDate: String!): SalesReport!
+  monthlyReport(year: Int!, month: Int!): MonthlyReport!
+  topProducts(startDate: String!, endDate: String!, limit: Int, sortBy: String): TopProductReport!
+  syncProducts(since: DateTime!, limit: Int!): SyncProductsResult!
+  syncMembers(since: DateTime!, limit: Int!): SyncMembersResult!
   reviews(options: ReviewListOptions): ReviewList!
   review(id: ID!): Review
   reviewStats(productId: ID!): ReviewStats!
+  productRating(productId: ID!): ProductRating!
   subscribeMessageLogs(options: SubscribeMessageLogListOptions): SubscribeMessageLogList!
-  coupons(options: CouponListOptions): CouponList!
-  coupon(id: ID!): Coupon
+  couponTemplates(options: CouponTemplateListOptions): CouponTemplateList!
+  couponTemplate(id: ID!): CouponTemplate
+  customerCoupons(options: CustomerCouponListOptions): CustomerCouponList!
+  couponChannelCustomers(query: String, take: Int, skip: Int, options: CouponIssueCustomerListOptions = null): CouponIssueCustomerList!
+  productCouponBindings(productId: ID!): [ProductCouponBinding!]!
+  couponBoundProducts(templateId: ID!): [ProductCouponBinding!]!
+  inStoreBillQuote(code: String!, originalAmount: Int): InStoreBillQuote!
+  inStoreBills(options: InStoreBillListOptions): InStoreBillList!
+  inStoreBillSummary(options: InStoreBillSummaryOptions): InStoreBillSummary!
+  inStoreCustomerCoupons(customerId: ID!): [CustomerCoupon!]!
+  couponBundles(options: CouponBundleListOptions): CouponBundleList!
+  couponBundle(id: ID!): CouponBundle
+  couponSaleOrders(options: CouponSaleOrderListOptions): CouponSaleOrderList!
+  couponSaleOrder(id: ID!): CouponSaleOrder
+  liveRooms(options: LiveRoomListOptions): LiveRoomList!
+  liveRoom(id: ID!): LiveRoom
   myPermissions: MyPermissionsResult!
   myDeliveries(status: String): [Order!]!
   allDeliveries(status: String): [Order!]!
@@ -173,8 +288,16 @@ type Query {
   mySalesReport(start: String!, end: String!): SalesReportResult!
   salesReport(staffId: String, start: String!, end: String!): SalesReportResult!
   marketplacePendingProducts: [Product!]!
+  approvedMarketplaceProducts: [Product!]!
+  platformCollections: [PlatformCollectionNode!]!
   marketplaceMerchantChannel: Channel!
   merchantOrders(saleSource: String, options: OrderListOptions): OrderList!
+  logisticsTracks(orderId: ID!): [LogisticsTrack!]!
+  logisticsTrack(id: ID!): LogisticsTrack
+  carriers: [Carrier!]!
+  splitPlanPreview(orderId: ID!): OrderSplitPlan!
+  orderPackages(orderId: ID!): [OrderPackage!]!
+  deliveryOrders(orderId: ID!): [DeliveryOrderAdmin!]!
   csAllOrders(state: String, customerEmail: String, startDate: String, endDate: String, page: Int, pageSize: Int): CsOrderList!
   csOrderDetail(id: ID!): CsOrderDetail
   csAfterSalesRequests(state: String, page: Int, pageSize: Int): CsAfterSalesList!
@@ -182,6 +305,7 @@ type Query {
   csExceptionOrders(exceptionType: String, page: Int, pageSize: Int): CsExceptionOrderList!
   stockLevels(locationId: ID, page: Int, pageSize: Int): StockLevelList!
   stockMovements(productVariantId: ID, locationId: ID, type: String, page: Int, pageSize: Int): StockMovementList!
+  stockLedger(productVariantId: ID, locationId: ID, bizType: String, bizCode: String, orderLineId: ID, page: Int, pageSize: Int): StockLedgerList!
   stockInOrders(state: String, page: Int, pageSize: Int): StockInOrderList!
   stockInOrder(id: ID!): StockInOrder
   stockOutOrders(state: String, page: Int, pageSize: Int): StockOutOrderList!
@@ -190,6 +314,12 @@ type Query {
   stockMoveOrder(id: ID!): StockMoveOrder
   stocktakeOrders(state: String, page: Int, pageSize: Int): StocktakeOrderList!
   stocktakeOrder(id: ID!): StocktakeOrder
+  suppliers(keyword: String, options: SupplierListOptions): SupplierList!
+  supplier(id: ID!): Supplier
+  purchaseOrders(state: String, options: PurchaseOrderListOptions): PurchaseOrderList!
+  purchaseOrder(id: ID!): PurchaseOrder
+  myShopStock(productId: ID!): [MerchantVariantStock!]!
+  myShopProductStock(productId: ID!): MerchantProductStock!
   dashboardOverview(range: String!): DashboardMetrics!
   salesTrend(days: Int!): [SalesTrendPoint!]!
   categoryTop(days: Int!): [CategoryTopItem!]!
@@ -200,11 +330,11 @@ type Query {
   marketingFlashSaleActivity(id: ID!): MarketingFlashSaleActivity
   marketingGroupBuyActivities(options: JSON): MarketingGroupBuyActivityList!
   marketingGroupBuyActivity(id: ID!): MarketingGroupBuyActivity
-  marketingCoupons(options: JSON): MarketingCouponList!
-  marketingCoupon(id: ID!): MarketingCoupon
   messages(options: MessageListOptions = null): MessageList!
   message(id: ID!): Message
   messageDeliveryStats(id: ID!): MessageDeliveryStats!
+  preSaleActivities(options: PreSaleActivityListOptions): PreSaleActivityList!
+  preSaleActivity(id: ID!): PreSaleActivity
 }
 
 type Mutation {
@@ -737,28 +867,151 @@ type Mutation {
   deleteEmployeeCustomer(id: ID!): Boolean!
   bindEnterprisePickupLocations(id: ID!, pickupLocationIds: [ID!]!): EmployeeCustomer!
   verifyEmployeeCustomer(id: ID!): EmployeeCustomer!
-  updateChannelAuthConfig(channelId: ID!, input: JSON!): Boolean!
+  updateChannelAuthConfig(channelId: ID!, input: JSON!): TenantAuthConfigMasked!
   updateTenantConfig(input: UpdateTenantConfigInput!): TenantConfigPayload!
   testSsoConnection(input: TestSsoInput!): TestSsoResult!
+  updateTenantBasic(input: TenantSectionPatchInput!): TenantSettingsPayload!
+  updateTenantMultiLanguage(input: TenantSectionPatchInput!): TenantSettingsPayload!
+  updateTenantServiceNotify(input: TenantSectionPatchInput!): TenantSettingsPayload!
   createShippingTemplate(input: CreateShippingTemplateInput!): ShippingTemplate!
   updateShippingTemplate(input: UpdateShippingTemplateInput!): ShippingTemplate!
   deleteShippingTemplate(id: ID!): Boolean!
   createShippingMethodFromTemplate(templateId: ID!, name: String, code: String): ShippingMethod!
+  updateShippingMethodShippingPrice(id: ID!, shippingPrice: Int!): ShippingMethod!
   createShippingProfile(input: CreateShippingProfileInput!): ShippingProfile!
   updateShippingProfile(input: UpdateShippingProfileInput!): ShippingProfile!
   deleteShippingProfile(id: ID!): Boolean!
   assignShippingProfile(variantIds: [ID!]!, profileId: ID!): Boolean!
+  setTenantDefaultShippingProfile(id: ID!): Boolean!
   createPaymentProfile(input: CreatePaymentProfileInput!): PaymentProfile!
   updatePaymentProfile(input: UpdatePaymentProfileInput!): PaymentProfile!
   deletePaymentProfile(id: ID!): Boolean!
   assignPaymentProfile(variantIds: [ID!]!, profileId: ID!): Boolean!
+  setTenantDefaultPaymentProfile(id: ID!): Boolean!
+  createPaymentTemplate(input: CreatePaymentTemplateInput!): PaymentTemplate!
+  updatePaymentTemplate(input: UpdatePaymentTemplateInput!): PaymentTemplate!
+  deletePaymentTemplate(id: ID!): Boolean!
+  createPaymentMethodFromTemplate(templateId: ID!, name: String, code: String): PaymentMethod!
+  createRoomTemplate(input: RoomTemplateInput!): RoomTemplate!
+  updateRoomTemplate(id: ID!, input: RoomTemplateInput!): RoomTemplate!
+  deleteRoomTemplate(id: ID!): Boolean!
+  applyRoomTemplate(variantId: ID!, templateId: ID!): Boolean!
+  createTenant(input: CreateTenantInput!): Channel!
+  updateTenant(id: ID!, input: UpdateTenantInput!): Channel!
+  setTenantEnabled(id: ID!, enabled: Boolean!): Channel!
+  deleteTenant(id: ID!): Boolean!
+  clearTenantProducts(channelId: ID!): Int!
+  createTenantAdministrator(channelId: ID!, input: CreateTenantAdministratorInput!): TenantMember!
+  setTenantAdministratorEnabled(id: ID!, enabled: Boolean!): TenantMember!
+  deleteTenantAdministrator(id: ID!): Boolean!
+  resetTenantAdministratorPassword(memberId: ID!): Boolean!
+  createTenantRole(channelId: ID!, input: CreateTenantRoleInput!): Role!
+  updateTenantRole(roleId: ID!, input: UpdateTenantRoleInput!): Role!
+  deleteTenantRole(roleId: ID!): Boolean!
+  importDefaultRoles(channelId: ID!): [Role!]!
+  createGlobalRole(channelIds: [ID!]!, input: CreateTenantRoleInput!): [Role!]!
+  referGlobalRoleToChannel(roleId: ID!, channelId: ID!): Boolean!
+  unreferGlobalRoleFromChannel(roleId: ID!, channelId: ID!): Boolean!
+  myReferGlobalRole(roleId: ID!): Boolean!
+  myUnreferGlobalRole(roleId: ID!): Boolean!
+  myImportDefaultRoles: [Role!]!
+  createTenantMember(input: CreateTenantMemberInput!): TenantMember!
+  setTenantMemberEnabled(id: ID!, enabled: Boolean!): TenantMember!
+  deleteTenantMember(id: ID!): Boolean!
+  myCreateTenantRole(input: CreateTenantRoleInput!): Role!
+  myUpdateTenantRole(roleId: ID!, input: UpdateTenantRoleInput!): Role!
+  myDeleteTenantRole(roleId: ID!): Boolean!
+  updateTenantMemberRoles(id: ID!, channelId: ID!, roleIds: [ID!]!): Boolean!
+  myUpdateTenantMemberRoles(id: ID!, roleIds: [ID!]!): Boolean!
+  tenantLinkMember(channelId: ID!, administratorId: ID!, roleIds: [ID!]!, displayName: String, phone: String, remark: String): TenantMember!
+  myLinkMember(administratorId: ID!, roleIds: [ID!]!, displayName: String, phone: String, remark: String): TenantMember!
+  myResetTenantMemberPassword(id: ID!): Boolean!
+  tenantChangeMyPassword(oldPassword: String, newPassword: String!): Boolean!
+  myUpdateChannelCustomFields(input: JSON!): JSON!
+  adminCreditWallet(amount: Int!): Wallet!
+  adminDebitWallet(amount: Int!): Wallet!
+  createTenantCollection(input: CreateCollectionInput!): Collection!
+  mapProductToPlatformCollection(productId: ID!, collectionId: ID!): Boolean!
+  moveProductsToTenantChannel(productIds: [ID!]!, channelId: ID!): Int!
+  reuseOptionGroupForProduct(productId: ID!, optionGroupId: ID!): Boolean!
+  setAssetTags(assetIds: [String!]!, tags: [String!]): Boolean!
+  redemptionClaim(code: String!, collect: Boolean): RedemptionClaimResult
+  redemptionReissue(code: String!): RedemptionClaimResult
+  deliveryTransition(id: ID!, to: String!): DeliveryRecord!
+  deliverySetExpress(id: ID!, expressCompany: String!, trackingNo: String!): DeliveryRecord!
+  deliveryAssignStaff(id: ID!, staffId: String!, staffName: String): DeliveryRecord!
+  deliveryCreateTransfer(orderId: ID!, fromLocationId: ID!, toLocationId: ID!, itemsJson: String!): DeliveryRecord!
+  deliveryTransferArrived(id: ID!): DeliveryRecord!
+  setVariantBindings(variantId: ID!, bindings: [VariantBindingInput!]!): [VariantLocationBinding!]!
+  runReconciliation(date: String!, trigger: String): ReconciliationBatch
+  rerunReconciliationOrder(lineId: ID!): ReconciliationOrderLine!
+  createStockDoc(input: StockDocCreateInput!): StockDoc!
+  allocateReservation(id: ID!, splits: [ReservationSplitInput!]!): Reservation!
+  fulfillReservationItem(id: ID!, quantity: Int): ReservationItem!
+  releaseReservation(id: ID!): Reservation!
+  rebuildDeliveryFacetIndex: Boolean!
+  ensureTenantInventoryLocations: TenantInventoryOverview!
+  createTenantStockLocation(input: TenantStockLocationInput!): TenantInventoryOverview!
+  updateTenantStockLocation(input: UpdateTenantStockLocationInput!): TenantInventoryOverview!
+  deleteTenantStockLocation(id: ID!): TenantInventoryOverview!
+  setTenantVariantBindings(variantId: ID!, bindings: [VariantBindingInput!]!): [VariantLocationBinding!]!
+  saveInventoryAlertRules(locationId: ID, items: [InventoryAlertRuleInput!]!): [InventoryAlertRule!]!
+  createPickBatch(input: CreatePickBatchInput!): PickBatch!
+  addOrdersToPickBatch(batchId: ID!, orderIds: [ID!]!): PickBatch!
+  removeOrdersFromPickBatch(batchId: ID!, orderIds: [ID!]!): PickBatch!
+  advancePickBatchState(batchId: ID!, to: String!): PickBatch!
+  cancelPickBatch(batchId: ID!): PickBatch!
+  shipPickBatch(batchId: ID!, input: ShipPickBatchInput!): JSON!
+  handoverPickBatch(batchId: ID!, handoverTo: String!): PickBatch!
+  registerPickBatchException(batchId: ID!, reason: String!): PickBatch!
+  updateOrderShippingAddress(orderId: ID!, input: OrderAddressInput!): JSON!
+  generateStandardBins(stockLocationId: ID!): JSON!
+  bindVariantToBin(input: BindVariantBinInput!): JSON!
+  unbindVariantFromBin(variantId: ID!, stockLocationId: ID!): Boolean!
+  deleteStorageBin(id: ID!): Boolean!
+  createStocktakeTask(input: StocktakeTaskInput!): StocktakeTask!
+  openStocktakeTask(taskId: ID!): StocktakeTask!
+  updateStocktakeTask(taskId: ID!, input: StocktakeTaskUpdateInput!): StocktakeTask!
+  addStocktakeWave(taskId: ID!, input: StocktakeWaveInput!): StocktakeWave!
+  assignStocktakeWave(waveId: ID!, assigneeId: String): StocktakeWave!
+  claimStocktakeWave(waveId: ID!): StocktakeWave!
+  releaseStocktakeWave(waveId: ID!): StocktakeWave!
+  saveStocktakeCounts(waveId: ID!, inputs: [StocktakeCountEntryInput!]!): StocktakeWave!
+  submitStocktakeWave(waveId: ID!): StocktakeWave!
+  postStocktake(taskId: ID!, confirm: Boolean): StocktakePostResult!
+  cancelStocktakeTask(taskId: ID!): StocktakeTask!
+  cancelStocktakeWave(waveId: ID!): StocktakeWave!
+  adjustOrderPrice(input: AdjustOrderPriceInput!): Order!
+  createShop(input: CreateShopInput!): Shop!
+  updateShop(id: ID!, input: UpdateShopInput!): Shop!
+  setShopStatus(id: ID!, status: String!): Shop!
+  assignProductsToShop(input: AssignProductsInput!): Boolean!
+  unassignProductsFromShop(input: AssignProductsInput!): Boolean!
+  recomputeShopRating(id: ID!): Shop!
+  provisionShopOwner(shopId: ID!, input: CreateOwnerInput!): Administrator
+  updateMyShop(input: UpdateMyShopInput!): Shop!
+  addProductToMyShop(productId: ID!): Boolean!
+  removeProductFromMyShop(productId: ID!): Boolean!
+  updateMyShopProduct(productId: ID!, input: UpdateMyShopProductInput!): Product
+  setMyShopProductEnabled(productId: ID!, enabled: Boolean!): Boolean!
+  fulfillMyShopOrder(orderId: ID!, lines: [FulfillLineInput!], method: String, trackingCode: String): FulfillMyShopOrderResult!
+  approveMerchantReview(id: ID!): Boolean!
+  rejectMerchantReview(id: ID!): Boolean!
+  createShopTemplate(input: CreateShopTemplateInput!): ShopTemplate!
+  updateShopTemplate(input: UpdateShopTemplateInput!): ShopTemplate!
+  deleteShopTemplate(id: ID!): Boolean!
+  copyShopTemplate(id: ID!): ShopTemplate!
+  updateShopGlobalConfig(input: UpdateShopGlobalConfigInput!): ShopGlobalConfig!
+  restoreTemplateVersion(id: ID!, version: Int!): ShopTemplate!
+  claimPickupByShop(code: String!, collect: Boolean): PickupRedemption!
   issueInvoice(id: ID!): Invoice!
-  reverseInvoice(id: ID!, reason: String!): Invoice!
-  batchCreateFulfillment(items: [BatchFulfillmentItem!]!): BatchFulfillmentResult!
-  refreshTrack(id: ID!): LogisticsTrack!
+  reverseInvoice(id: ID!, reason: String!, reverseAmount: Int): Invoice!
+  voidInvoice(id: ID!, reason: String!): Invoice!
+  bulkIssueInvoices(ids: [ID!]!): [Invoice!]!
   createGroupBuyActivity(input: CreateGroupBuyActivityInput!): GroupBuyActivity!
   updateGroupBuyActivity(input: UpdateGroupBuyActivityInput!): GroupBuyActivity!
   deleteGroupBuyActivity(id: ID!): Boolean!
+  runGroupBuyExpiryCheck: Boolean!
   createFlashSaleActivity(input: CreateFlashSaleActivityInput!): FlashSaleActivity!
   updateFlashSaleActivity(input: UpdateFlashSaleActivityInput!): FlashSaleActivity!
   deleteFlashSaleActivity(id: ID!): Boolean!
@@ -771,23 +1024,75 @@ type Mutation {
   createRechargeCardBatch(input: CreateRechargeBatchInput!): RechargeCardBatchAdmin!
   freezeRechargeCard(id: ID!): RechargeCardAdmin!
   unfreezeRechargeCard(id: ID!): RechargeCardAdmin!
+  adminAdjustBalance(input: AdminAdjustBalanceInput!): CustomerBalanceItem!
   approveAfterSalesRequest(id: ID!): AfterSalesRequestAdmin!
   rejectAfterSalesRequest(id: ID!, reason: String!): AfterSalesRequestAdmin!
-  confirmReturnReceived(id: ID!): AfterSalesRequestAdmin!
+  confirmReturnReceived(id: ID!, receivedQuantity: Int): AfterSalesRequestAdmin!
   processAfterSalesRefund(id: ID!): AfterSalesRequestAdmin!
+  retryAfterSalesRefund(id: ID!): AfterSalesRequestAdmin!
   adjustPoints(customerId: ID!, amount: Int!, remark: String): MemberInfo!
   adjustMemberGrowth(customerId: ID!, amount: Int!, source: String): MemberInfo!
   updateLevelConfig(input: UpdateLevelConfigInput!): LevelConfig!
+  saveTiers(input: [MemberTierInput!]!): [MemberTier!]!
+  createPosTerminal(input: CreatePosTerminalInput!): PosTerminal!
+  updatePosTerminal(input: UpdatePosTerminalInput!): PosTerminal!
+  deletePosTerminal(id: ID!): Boolean!
+  openSession(input: OpenSessionInput!): PosSession!
+  closeSession(input: CloseSessionInput!): CloseSessionResult!
+  bindSessionMember(customerId: ID!): PosSession!
+  unbindSessionMember: PosSession!
+  createMemberPriceRule(input: CreateMemberPriceRuleInput!): MemberPriceRule!
+  updateMemberPriceRule(input: UpdateMemberPriceRuleInput!): MemberPriceRule!
+  deleteMemberPriceRule(id: ID!): Boolean!
+  addPosItem(input: AddPosItemInput!): Order!
+  updatePosItem(input: UpdatePosItemInput!): Order!
+  checkoutPosOrder(input: CheckoutInput!): PosCheckoutResult!
+  createAggregatePay(input: CreateAggregatePayInput!): Payment!
+  confirmAggregatePay(paymentId: ID!): Payment!
+  settleAggregatePay(paymentId: ID!): Payment!
+  failAggregatePay(paymentId: ID!): Payment!
+  settleSessionAggregatePays(sessionId: ID!): Int!
+  createPosRefund(input: CreatePosRefundInput!): Refund!
+  settleManualRefund(input: SettleManualRefundInput!): Refund!
+  holdOrder: Order!
+  resumeOrder(orderId: ID!): Order!
+  createRefundOrder(input: CreateRefundOrderInput!): CreateRefundOrderResult!
+  createPromotionRule(input: CreatePromotionRuleInput!): PromotionRule!
+  updatePromotionRule(input: UpdatePromotionRuleInput!): PromotionRule!
+  deletePromotionRule(id: ID!): Boolean!
+  reapplyPromotion(orderId: ID!): Order!
+  syncOrders(input: SyncOrdersInput!): SyncOrdersResult!
+  syncPayments(input: SyncPaymentsInput!): SyncPaymentsResult!
+  syncSessions(input: SyncSessionsInput!): SyncSessionsResult!
   replyReview(id: ID!, reply: String!): Review!
   approveReview(id: ID!): Review!
   rejectReview(id: ID!): Review!
-  createCoupon(input: CreateCouponInput!): Coupon!
-  updateCoupon(id: ID!, input: UpdateCouponInput!): Coupon!
-  deleteCoupon(id: ID!): Boolean!
-  enableCouponForChannel(id: ID!): Coupon!
-  disableCouponForChannel(id: ID!): Coupon!
+  inStoreBillRedeem(code: String!, originalAmount: Int!, remark: String): InStoreBill!
+  createCouponTemplate(input: CreateCouponTemplateInput!): CouponTemplate!
+  updateCouponTemplate(input: UpdateCouponTemplateInput!): CouponTemplate!
+  deleteCouponTemplate(id: ID!): Boolean!
+  grantCoupon(templateId: ID!, customerIds: [ID!]!): [String!]!
+  revokeCustomerCoupon(id: ID!): CustomerCoupon!
+  grantCouponIssue(templateId: ID!, customerIds: [ID!]!, notify: Boolean!): [CouponIssueResult!]!
+  createProductCouponBinding(input: CreateProductCouponBindingInput!): ProductCouponBinding!
+  updateProductCouponBinding(input: UpdateProductCouponBindingInput!): ProductCouponBinding!
+  deleteProductCouponBinding(id: ID!): Boolean!
+  bindProductsToCoupon(templateId: ID!, productIds: [ID!]!, variantIds: [ID!]): Int!
+  unbindProductFromCoupon(templateId: ID!, productId: ID!): Boolean!
+  createCouponBundle(input: CouponBundleInput!): CouponBundle!
+  updateCouponBundle(id: ID!, input: CouponBundleInput!): CouponBundle!
+  deleteCouponBundle(id: ID!): Boolean!
+  refundCouponSaleOrder(id: ID!, reason: String): CouponSaleOrder!
+  createLiveRoom(input: CreateLiveRoomInput!): LiveRoom!
+  updateLiveRoom(input: UpdateLiveRoomInput!): LiveRoom!
+  deleteLiveRoom(id: ID!): Boolean!
+  startLiveRoom(id: ID!): LiveRoom!
+  stopLiveRoom(id: ID!, replayUrl: String): LiveRoom!
+  addLiveRoomProduct(roomId: ID!, input: AddLiveRoomProductInput!): LiveRoom!
+  removeLiveRoomProduct(roomId: ID!, productId: ID!): LiveRoom!
   startDelivery(orderId: ID!): Order!
   markDelivered(orderId: ID!, photos: [String!]!, note: String): Order!
+  confirmPickupHandover(orderId: ID!): Order!
   reportException(orderId: ID!, type: String!, photos: [String!]!, note: String): Order!
   reassignDelivery(orderId: ID!, newStaffId: ID!): Order!
   salesCreateOrder(input: SalesCreateOrderInput!): Order!
@@ -795,11 +1100,22 @@ type Mutation {
   cancelSalesOrder(orderId: ID!, reason: String): Order!
   approveMarketplaceProduct(productId: ID!): Boolean!
   rejectMarketplaceProduct(productId: ID!, reason: String!): Boolean!
+  submitForMarketplaceAdmin(productId: ID!): Boolean!
+  setProductPlatformCategory(productId: ID!, collectionId: String): Boolean!
+  batchCreateFulfillment(items: [BatchFulfillmentItem!]!): BatchFulfillmentResult!
+  refreshTrack(id: ID!): LogisticsTrack!
+  confirmSplitPlan(orderId: ID!, packages: [SplitPackageInput!]!): OrderSplitPlan!
+  markPackageDelivered(orderId: ID!, packageId: String!): Boolean!
+  completeOrder(orderId: ID!): Boolean!
+  runAutoCompleteScan: Int!
+  mockDeliveryEvent(deliveryOrderNo: String!, status: String!, courierName: String, courierPhone: String, reason: String): Boolean!
+  createDelivery(input: DeliveryCreateInput!): DeliveryOrderAdmin!
   csApproveAfterSales(id: ID!): AfterSalesRequestAdmin!
   csRejectAfterSales(id: ID!, reason: String!): AfterSalesRequestAdmin!
   csConfirmReturnReceived(id: ID!): AfterSalesRequestAdmin!
   csProcessRefund(id: ID!): AfterSalesRequestAdmin!
   csAddExceptionNote(orderId: ID!, note: String!): CsExceptionOrder!
+  setVariantStock(productVariantId: ID!, stockLocationId: ID!, stockOnHand: Int!): Boolean!
   createStockInOrder(input: CreateStockInOrderInput!): StockInOrder!
   completeStockInOrder(id: ID!): StockInOrder!
   cancelStockInOrder(id: ID!): StockInOrder!
@@ -817,25 +1133,34 @@ type Mutation {
   reconcileStocktakeLine(orderId: ID!, lineId: ID!): StocktakeOrder!
   completeStocktakeOrder(id: ID!): StocktakeOrder!
   cancelStocktakeOrder(id: ID!): StocktakeOrder!
+  createSupplier(input: CreateSupplierInput!): Supplier!
+  updateSupplier(id: ID!, input: UpdateSupplierInput!): Supplier!
+  deleteSupplier(id: ID!): Boolean!
+  createPurchaseOrder(input: CreatePurchaseOrderInput!): PurchaseOrder!
+  placePurchaseOrder(id: ID!): PurchaseOrder!
+  receivePurchaseOrder(id: ID!, lines: [ReceivePurchaseOrderInput!]!): PurchaseOrder!
+  completePurchaseOrder(id: ID!): PurchaseOrder!
+  cancelPurchaseOrder(id: ID!): PurchaseOrder!
+  myShopStockAdjust(variantId: ID!, stockLocationId: ID!, stockOnHand: Int!): Boolean!
   createContentItem(input: CreateContentItemInput!): ContentItem!
   updateContentItem(id: ID!, input: UpdateContentItemInput!): ContentItem!
   deleteContentItem(id: ID!): Boolean!
   triggerContentLifecycle: ContentLifecycleResult!
+  recomputeProductStats(productIds: [ID!]): Int!
   createFlashSale(input: CreateFlashSaleInput!): MarketingFlashSaleActivity!
   updateFlashSale(input: UpdateFlashSaleInput!): MarketingFlashSaleActivity!
   deleteFlashSale(id: ID!): Boolean!
   createGroupBuy(input: CreateGroupBuyInput!): MarketingGroupBuyActivity!
   updateGroupBuy(input: UpdateGroupBuyInput!): MarketingGroupBuyActivity!
   deleteGroupBuy(id: ID!): Boolean!
-  marketingCreateCoupon(input: MarketingCreateCouponInput!): MarketingCoupon!
-  marketingUpdateCoupon(id: ID!, input: MarketingUpdateCouponInput!): MarketingCoupon!
-  marketingDeleteCoupon(id: ID!): Boolean!
-  marketingEnableCouponForChannel(id: ID!): MarketingCoupon!
-  marketingDisableCouponForChannel(id: ID!): MarketingCoupon!
   createMessage(input: CreateMessageInput!): Message!
   updateMessage(id: ID!, input: UpdateMessageInput!): Message!
   deleteMessage(id: ID!): Boolean!
   sendMessage(id: ID!): Message!
+  createPreSaleActivity(input: CreatePreSaleActivityInput!): PreSaleActivity!
+  updatePreSaleActivity(input: UpdatePreSaleActivityInput!): PreSaleActivity!
+  deletePreSaleActivity(id: ID!): Boolean!
+  deliverPreSale(id: ID!): PreSaleActivity!
 }
 
 input RechargeCardAdminListOptions {
@@ -922,6 +1247,72 @@ input RechargeCardBatchAdminFilterParameter {
   createdAt: DateOperators
   _and: [RechargeCardBatchAdminFilterParameter!]
   _or: [RechargeCardBatchAdminFilterParameter!]
+}
+
+input BalanceTransactionListAdminListOptions {
+  """Skips the first n results, for use in pagination"""
+  skip: Int
+
+  """Takes n results, for use in pagination"""
+  take: Int
+
+  """Specifies which properties to sort the results by"""
+  sort: BalanceTransactionListAdminSortParameter
+
+  """Allows the results to be filtered"""
+  filter: BalanceTransactionListAdminFilterParameter
+
+  """
+  Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND.
+  """
+  filterOperator: LogicalOperator
+}
+
+input BalanceTransactionListAdminSortParameter {
+  totalItems: SortOrder
+}
+
+input BalanceTransactionListAdminFilterParameter {
+  totalItems: NumberOperators
+  _and: [BalanceTransactionListAdminFilterParameter!]
+  _or: [BalanceTransactionListAdminFilterParameter!]
+}
+
+input CouponIssueCustomerListOptions {
+  """Skips the first n results, for use in pagination"""
+  skip: Int
+
+  """Takes n results, for use in pagination"""
+  take: Int
+
+  """Specifies which properties to sort the results by"""
+  sort: CouponIssueCustomerSortParameter
+
+  """Allows the results to be filtered"""
+  filter: CouponIssueCustomerFilterParameter
+
+  """
+  Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND.
+  """
+  filterOperator: LogicalOperator
+}
+
+input CouponIssueCustomerSortParameter {
+  id: SortOrder
+  emailAddress: SortOrder
+  firstName: SortOrder
+  lastName: SortOrder
+  phoneNumber: SortOrder
+}
+
+input CouponIssueCustomerFilterParameter {
+  id: IDOperators
+  emailAddress: StringOperators
+  firstName: StringOperators
+  lastName: StringOperators
+  phoneNumber: StringOperators
+  _and: [CouponIssueCustomerFilterParameter!]
+  _or: [CouponIssueCustomerFilterParameter!]
 }
 
 input MessageListOptions {
@@ -1209,7 +1600,7 @@ input CreateAssetInput {
   file: Upload!
   tags: [String!]
   translations: [AssetTranslationInput!]
-  customFields: JSON
+  customFields: CreateAssetCustomFieldsInput
 }
 
 input CoordinateInput {
@@ -1235,7 +1626,7 @@ input UpdateAssetInput {
   focalPoint: CoordinateInput
   tags: [String!]
   translations: [AssetTranslationInput!]
-  customFields: JSON
+  customFields: UpdateAssetCustomFieldsInput
 }
 
 input AssignAssetsToChannelInput {
@@ -1547,6 +1938,8 @@ input CustomerFilterParameter {
   _and: [CustomerFilterParameter!]
   _or: [CustomerFilterParameter!]
   inviteCode: StringOperators
+  ssoId: StringOperators
+  ssoUid: StringOperators
   alipayOpenid: StringOperators
   wechatOpenid: StringOperators
   wechatMiniOpenid: StringOperators
@@ -1974,7 +2367,8 @@ type Payment implements Node {
   errorMessage: String
   refunds: [Refund!]!
   metadata: JSON
-  customFields: JSON
+  order: Order!
+  customFields: PaymentCustomFields
 }
 
 type OrderModificationLine {
@@ -2021,8 +2415,26 @@ input OrderFilterParameter {
   _and: [OrderFilterParameter!]
   _or: [OrderFilterParameter!]
   pickupType: StringOperators
+  pickupLat: NumberOperators
+  pickupLng: NumberOperators
+  pickupClaimed: BooleanOperators
   shippingProfileSnapshot: StringOperators
   paymentProfileSnapshot: StringOperators
+  boxShippingSelections: StringOperators
+  contactName: StringOperators
+  contactPhone: StringOperators
+  remark: StringOperators
+  redeemCodeCipher: StringOperators
+  redeemCodeIv: StringOperators
+  redeemCodeHash: StringOperators
+  redeemClaimed: BooleanOperators
+  redeemClaimedAt: DateOperators
+  redeemExpiresAt: DateOperators
+  redeemVersion: NumberOperators
+  redeemReissuedAt: DateOperators
+  deliveryType: StringOperators
+  collected: BooleanOperators
+  paymentType: StringOperators
   invoiceRequired: BooleanOperators
   invoiceType: StringOperators
   invoiceTitle: StringOperators
@@ -2032,10 +2444,6 @@ input OrderFilterParameter {
   invoiceCompanyPhone: StringOperators
   invoiceBankName: StringOperators
   invoiceBankAccount: StringOperators
-  lat: NumberOperators
-  lng: NumberOperators
-  city: StringOperators
-  deliveryType: StringOperators
   groupBuyActivityId: NumberOperators
   groupBuyIsLeader: BooleanOperators
   flashSaleActivityId: NumberOperators
@@ -2044,7 +2452,20 @@ input OrderFilterParameter {
   invoicePdfUrl: StringOperators
   invoiceNumber: StringOperators
   afterSalesStatus: StringOperators
-  appliedCouponCode: StringOperators
+  pointsToRedeem: NumberOperators
+  pointsRedeemAmount: NumberOperators
+  posSessionId: NumberOperators
+  orderType: StringOperators
+  refundedOrderId: NumberOperators
+  shiftId: NumberOperators
+  terminalCode: StringOperators
+  aggregatePayStatus: StringOperators
+  promotionId: NumberOperators
+  promotionType: StringOperators
+  promotionDiscount: NumberOperators
+  couponCode: StringOperators
+  couponId: NumberOperators
+  liveRoomId: NumberOperators
   deliveryStaffId: StringOperators
   deliveryStatus: StringOperators
   assignedAt: DateOperators
@@ -2058,6 +2479,17 @@ input OrderFilterParameter {
   salesChannel: StringOperators
   salesNote: StringOperators
   saleSource: StringOperators
+  lat: NumberOperators
+  lng: NumberOperators
+  city: StringOperators
+  packageShippingJson: StringOperators
+  shippingAdjustment: NumberOperators
+  fulfillmentDeliveredAt: DateOperators
+  fulfillmentCompletedAt: DateOperators
+  preSaleActivityId: NumberOperators
+  preSaleMode: StringOperators
+  preSaleDepositTotal: NumberOperators
+  preSaleReleaseAt: DateOperators
 }
 
 input OrderSortParameter {
@@ -2079,8 +2511,26 @@ input OrderSortParameter {
   totalWithTax: SortOrder
   selectedPickupLocationId: SortOrder
   pickupType: SortOrder
+  pickupLat: SortOrder
+  pickupLng: SortOrder
+  pickupClaimed: SortOrder
   shippingProfileSnapshot: SortOrder
   paymentProfileSnapshot: SortOrder
+  boxShippingSelections: SortOrder
+  contactName: SortOrder
+  contactPhone: SortOrder
+  remark: SortOrder
+  redeemCodeCipher: SortOrder
+  redeemCodeIv: SortOrder
+  redeemCodeHash: SortOrder
+  redeemClaimed: SortOrder
+  redeemClaimedAt: SortOrder
+  redeemExpiresAt: SortOrder
+  redeemVersion: SortOrder
+  redeemReissuedAt: SortOrder
+  deliveryType: SortOrder
+  collected: SortOrder
+  paymentType: SortOrder
   invoiceRequired: SortOrder
   invoiceType: SortOrder
   invoiceTitle: SortOrder
@@ -2090,10 +2540,6 @@ input OrderSortParameter {
   invoiceCompanyPhone: SortOrder
   invoiceBankName: SortOrder
   invoiceBankAccount: SortOrder
-  lat: SortOrder
-  lng: SortOrder
-  city: SortOrder
-  deliveryType: SortOrder
   groupBuyActivityId: SortOrder
   groupBuyIsLeader: SortOrder
   flashSaleActivityId: SortOrder
@@ -2102,7 +2548,20 @@ input OrderSortParameter {
   invoicePdfUrl: SortOrder
   invoiceNumber: SortOrder
   afterSalesStatus: SortOrder
-  appliedCouponCode: SortOrder
+  pointsToRedeem: SortOrder
+  pointsRedeemAmount: SortOrder
+  posSessionId: SortOrder
+  orderType: SortOrder
+  refundedOrderId: SortOrder
+  shiftId: SortOrder
+  terminalCode: SortOrder
+  aggregatePayStatus: SortOrder
+  promotionId: SortOrder
+  promotionType: SortOrder
+  promotionDiscount: SortOrder
+  couponCode: SortOrder
+  couponId: SortOrder
+  liveRoomId: SortOrder
   deliveryStaffId: SortOrder
   deliveryStatus: SortOrder
   assignedAt: SortOrder
@@ -2114,6 +2573,17 @@ input OrderSortParameter {
   salesChannel: SortOrder
   salesNote: SortOrder
   saleSource: SortOrder
+  lat: SortOrder
+  lng: SortOrder
+  city: SortOrder
+  packageShippingJson: SortOrder
+  shippingAdjustment: SortOrder
+  fulfillmentDeliveredAt: SortOrder
+  fulfillmentCompletedAt: SortOrder
+  preSaleActivityId: SortOrder
+  preSaleMode: SortOrder
+  preSaleDepositTotal: SortOrder
+  preSaleReleaseAt: SortOrder
 }
 
 input OrderListOptions {
@@ -2625,6 +3095,7 @@ type ProductVariant implements Node {
   currencyCode: CurrencyCode!
   priceWithTax: Money!
   stockLevel: String!
+  availableStock: Int
   taxRateApplied: TaxRate!
   taxCategory: TaxCategory!
   options: [ProductOption!]!
@@ -2833,13 +3304,33 @@ input ProductFilterParameter {
   enabled: BooleanOperators
   _and: [ProductFilterParameter!]
   _or: [ProductFilterParameter!]
-  belongCity: StringOperators
-  serviceCities: StringListOperators
+  shopId: NumberOperators
+  reviewRating: NumberOperators
+  reviewCount: NumberOperators
+  favoriteCount: NumberOperators
   listedInMarketplace: BooleanOperators
   marketplaceStatus: StringOperators
   rejectReason: StringOperators
   barcode: StringOperators
   internalCode: StringOperators
+  marketingTags: StringOperators
+  sellingPoint: StringOperators
+  tenantCategoryRef: StringOperators
+  platformCategoryId: StringOperators
+  needsCategorization: BooleanOperators
+  videoAssetId: StringOperators
+  promos: StringOperators
+  services: StringOperators
+  salesCount: NumberOperators
+  realSalesCount: NumberOperators
+  bonusSales: NumberOperators
+  pointsReward: NumberOperators
+  pointsRewardOverride: NumberOperators
+  belongCity: StringOperators
+  serviceCities: StringListOperators
+  deliveryMethods: StringListOperators
+  videoUrl: StringOperators
+  displayTemplate: StringOperators
 }
 
 input ProductVariantListOptions {
@@ -2880,6 +3371,7 @@ input ProductVariantFilterParameter {
   currencyCode: StringOperators
   priceWithTax: NumberOperators
   stockLevel: StringOperators
+  availableStock: NumberOperators
   _and: [ProductVariantFilterParameter!]
   _or: [ProductVariantFilterParameter!]
   weight: NumberOperators
@@ -2888,6 +3380,14 @@ input ProductVariantFilterParameter {
   height: NumberOperators
   shippingProfileId: StringOperators
   paymentProfileId: StringOperators
+  listPrice: NumberOperators
+  saleStart: DateOperators
+  saleEnd: DateOperators
+  costPrice: NumberOperators
+  barcode: StringOperators
+  internalCode: StringOperators
+  hotelRoomConfig: StringOperators
+  videoUrl: StringOperators
 }
 
 input ProductTranslationInput {
@@ -2896,7 +3396,7 @@ input ProductTranslationInput {
   name: String
   slug: String
   description: String
-  customFields: JSON
+  customFields: ProductTranslationInputCustomFields
 }
 
 input CreateProductInput {
@@ -3294,7 +3794,7 @@ input CreateShippingMethodInput {
   checker: ConfigurableOperationInput!
   calculator: ConfigurableOperationInput!
   translations: [ShippingMethodTranslationInput!]!
-  customFields: JSON
+  customFields: CreateShippingMethodCustomFieldsInput
 }
 
 input UpdateShippingMethodInput {
@@ -3304,7 +3804,7 @@ input UpdateShippingMethodInput {
   checker: ConfigurableOperationInput
   calculator: ConfigurableOperationInput
   translations: [ShippingMethodTranslationInput!]!
-  customFields: JSON
+  customFields: UpdateShippingMethodCustomFieldsInput
 }
 
 input TestShippingMethodInput {
@@ -3699,7 +4199,7 @@ type Asset implements Node {
   focalPoint: Coordinate
   tags: [Tag!]!
   translations: [AssetTranslation!]!
-  customFields: JSON
+  customFields: AssetCustomFields
 }
 
 type AssetTranslation {
@@ -4181,6 +4681,9 @@ enum Permission {
   """Grants UpdateChannelPickupConfig permission"""
   UpdateChannelPickupConfig
 
+  """允许创建/提升/编辑全局自提点（超管专用）"""
+  SetGlobalPickupLocation
+
   """Manage tenant-level configuration (payment/auth/sso/map)"""
   ManageTenantConfig
 
@@ -4205,6 +4708,54 @@ enum Permission {
   """Grants permissions for PaymentProfile operations"""
   PaymentProfile
 
+  """Grants ReadPaymentTemplate permission"""
+  PaymentTemplateRead
+
+  """Grants CreatePaymentTemplate permission"""
+  PaymentTemplateCreate
+
+  """Grants UpdatePaymentTemplate permission"""
+  PaymentTemplateUpdate
+
+  """Grants DeletePaymentTemplate permission"""
+  PaymentTemplateDelete
+
+  """Grants CreatePaymentMethodFromTemplate permission"""
+  PaymentMethodFromTemplate
+
+  """管理租户（超管）"""
+  TenantManage
+
+  """管理租户角色"""
+  TenantRoleManage
+
+  """管理租户内部人员"""
+  TenantMemberManage
+
+  """核销订单（预留）"""
+  VerifyOrder
+
+  """多人协同盘库：建任务、拆盘次、认领、录入、提交"""
+  StocktakeCount
+
+  """多人协同盘库：差异复核与过账"""
+  StocktakePost
+
+  """Grants a merchant access to manage their own shop"""
+  ManageOwnShop
+
+  """Allows viewing the shop template library and global config"""
+  ShopTemplatesRead
+
+  """Allows creating and copying shop templates"""
+  ShopTemplatesCreate
+
+  """Allows updating shop templates and global config"""
+  ShopTemplatesUpdate
+
+  """Allows deleting shop templates"""
+  ShopTemplatesDelete
+
   """Grants permission to create MemberLevel"""
   CreateMemberLevel
 
@@ -4216,6 +4767,42 @@ enum Permission {
 
   """Grants permission to delete MemberLevel"""
   DeleteMemberLevel
+
+  """Grants permission to create PosTerminal"""
+  CreatePosTerminal
+
+  """Grants permission to read PosTerminal"""
+  ReadPosTerminal
+
+  """Grants permission to update PosTerminal"""
+  UpdatePosTerminal
+
+  """Grants permission to delete PosTerminal"""
+  DeletePosTerminal
+
+  """Grants permission to create PosSession"""
+  CreatePosSession
+
+  """Grants permission to read PosSession"""
+  ReadPosSession
+
+  """Grants permission to update PosSession"""
+  UpdatePosSession
+
+  """Grants permission to delete PosSession"""
+  DeletePosSession
+
+  """Grants permission to create OfflineSync"""
+  CreateOfflineSync
+
+  """Grants permission to read OfflineSync"""
+  ReadOfflineSync
+
+  """Grants permission to update OfflineSync"""
+  UpdateOfflineSync
+
+  """Grants permission to delete OfflineSync"""
+  DeleteOfflineSync
 
   """查看配送任务"""
   DeliverOrder
@@ -4244,16 +4831,16 @@ enum Permission {
   """库存查询"""
   ViewStock
 
-  """调拨单"""
+  """调拨单管理"""
   ManageStockMove
 
-  """盘点"""
+  """盘点单管理"""
   ManageStocktake
 
-  """入库"""
+  """入库单管理"""
   ManageStockIn
 
-  """出库"""
+  """出库单管理"""
   ManageStockOut
 
   """查看全部订单"""
@@ -4315,6 +4902,12 @@ enum Permission {
 
   """手动改价"""
   ModifyOrderPrice
+
+  """采购单管理"""
+  ManagePurchase
+
+  """供应商管理"""
+  ManageSupplier
 }
 
 enum SortOrder {
@@ -4769,7 +5362,7 @@ type ShippingMethodQuote {
   Any optional metadata returned by the ShippingCalculator in the ShippingCalculationResult
   """
   metadata: JSON
-  customFields: JSON
+  customFields: ShippingMethodCustomFields
 }
 
 type PaymentMethodQuote {
@@ -6324,6 +6917,7 @@ type Refund implements Node {
   lines: [RefundLine!]!
   paymentId: ID!
   metadata: JSON
+  payment: Payment!
   customFields: JSON
 }
 
@@ -6458,6 +7052,7 @@ type ProductTranslation {
   name: String!
   slug: String!
   description: String!
+  customFields: ProductTranslationCustomFields
 }
 
 type ProductList implements PaginatedList {
@@ -6586,6 +7181,7 @@ type Role implements Node {
   description: String!
   permissions: [Permission!]!
   channels: [Channel!]!
+  grantable: Boolean
 }
 
 type RoleList implements PaginatedList {
@@ -6613,7 +7209,7 @@ type ShippingMethod implements Node {
   checker: ConfigurableOperation!
   calculator: ConfigurableOperation!
   translations: [ShippingMethodTranslation!]!
-  customFields: JSON
+  customFields: ShippingMethodCustomFields
 }
 
 type ShippingMethodTranslation {
@@ -6760,10 +7356,15 @@ type PickupLocation implements Node {
   name: String!
   type: PickupLocationType!
   address: String!
+  contactPerson: String
   phoneNumber: String
   businessHours: String
   coordinates: JSON
   partner: String
+  photos: JSON
+  remark: String
+  sortOrder: Int!
+  enabled: Boolean!
   isPublic: Boolean!
   ownerChannelId: ID
   province: String
@@ -6781,10 +7382,15 @@ input CreatePickupLocationInput {
   name: String!
   type: PickupLocationType!
   address: String!
+  contactPerson: String
   phoneNumber: String
   businessHours: String
   coordinates: JSON
   partner: String
+  photos: JSON
+  remark: String
+  sortOrder: Int
+  enabled: Boolean
   isPublic: Boolean
   province: String
   city: String
@@ -6797,10 +7403,15 @@ input UpdatePickupLocationInput {
   name: String
   type: PickupLocationType
   address: String
+  contactPerson: String
   phoneNumber: String
   businessHours: String
   coordinates: JSON
   partner: String
+  photos: JSON
+  remark: String
+  sortOrder: Int
+  enabled: Boolean
   isPublic: Boolean
   province: String
   city: String
@@ -6934,14 +7545,35 @@ type TestSsoResult {
   error: String
 }
 
+type TenantSettingsPayload {
+  channelId: ID!
+  basic: JSON
+  auth: JSON
+  pay: JSON
+  map: JSON
+  serviceNotify: JSON
+  multiLanguage: JSON
+  canEdit: Boolean!
+}
+
+input TenantSectionPatchInput {
+  channelId: ID!
+  patch: JSON!
+}
+
+type TemplateOperation {
+  code: String!
+  arguments: [ConfigArg!]!
+}
+
 type ShippingTemplate {
   id: ID!
   name: String!
   description: String!
   code: String!
   fulfillmentHandler: String!
-  checker: ConfigArg!
-  calculator: ConfigArg!
+  checker: TemplateOperation
+  calculator: TemplateOperation
   isGlobal: Boolean!
 }
 
@@ -6986,6 +7618,25 @@ type ShippingProfile implements Node {
   freeShippingThreshold: Int
   shippingMethods: [ShippingMethod!]!
   pickupLocations: [PickupLocation!]!
+  boundPickupLocations: [PickupLocation!]!
+  isTenantDefault: Boolean!
+  enabled: Boolean!
+  requiresAddress: Boolean!
+  requiresContact: Boolean!
+  methodConfigs: [ShippingProfileMethodConfig!]!
+  paymentProfileId: ID
+}
+
+type ShippingProfileMethodConfig {
+  shippingMethodId: ID!
+  mode: String!
+  options: JSON
+}
+
+input ShippingProfileMethodConfigInput {
+  shippingMethodId: ID!
+  mode: String!
+  options: JSON
 }
 
 type ShippingProfileList implements PaginatedList {
@@ -6998,9 +7649,14 @@ input CreateShippingProfileInput {
   code: String!
   description: String
   isGlobal: Boolean
+  enabled: Boolean
   freeShippingThreshold: Int
+  requiresAddress: Boolean
+  requiresContact: Boolean
   shippingMethodIds: [ID!]!
   pickupLocationIds: [ID!]
+  methodConfigs: [ShippingProfileMethodConfigInput!]
+  paymentProfileId: ID
 }
 
 input UpdateShippingProfileInput {
@@ -7009,9 +7665,14 @@ input UpdateShippingProfileInput {
   code: String
   description: String
   isGlobal: Boolean
+  enabled: Boolean
   freeShippingThreshold: Int
+  requiresAddress: Boolean
+  requiresContact: Boolean
   shippingMethodIds: [ID!]
   pickupLocationIds: [ID!]
+  methodConfigs: [ShippingProfileMethodConfigInput!]
+  paymentProfileId: ID
 }
 
 input ShippingProfileListOptions {
@@ -7034,6 +7695,21 @@ type PaymentProfile implements Node {
   isGlobal: Boolean!
   installmentOptions: JSON
   paymentMethods: [PaymentMethod!]!
+  isTenantDefault: Boolean!
+  enabled: Boolean!
+  methodConfigs: [PaymentProfileMethodConfig!]!
+}
+
+type PaymentProfileMethodConfig {
+  paymentMethodId: ID!
+  mode: String!
+  options: JSON
+}
+
+input PaymentProfileMethodConfigInput {
+  paymentMethodId: ID!
+  mode: String!
+  options: JSON
 }
 
 type PaymentProfileList implements PaginatedList {
@@ -7046,8 +7722,10 @@ input CreatePaymentProfileInput {
   code: String!
   description: String
   isGlobal: Boolean
+  enabled: Boolean
   installmentOptions: JSON
   paymentMethodIds: [ID!]!
+  methodConfigs: [PaymentProfileMethodConfigInput!]
 }
 
 input UpdatePaymentProfileInput {
@@ -7056,8 +7734,10 @@ input UpdatePaymentProfileInput {
   code: String
   description: String
   isGlobal: Boolean
+  enabled: Boolean
   installmentOptions: JSON
   paymentMethodIds: [ID!]
+  methodConfigs: [PaymentProfileMethodConfigInput!]
 }
 
 input PaymentProfileListOptions {
@@ -7070,6 +7750,1267 @@ input PaymentProfileListOptions {
   Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND.
   """
   filterOperator: LogicalOperator
+}
+
+type PaymentTemplate {
+  id: ID!
+  name: String!
+  description: String!
+  code: String!
+  handler: ConfigArg!
+  checker: ConfigArg
+  isGlobal: Boolean!
+}
+
+type PaymentTemplateList {
+  items: [PaymentTemplate!]!
+  totalItems: Int!
+}
+
+input PaymentTemplateListOptions {
+  skip: Int
+  take: Int
+  sort: JSON
+  filter: JSON
+}
+
+input CreatePaymentTemplateInput {
+  name: String!
+  description: String!
+  code: String!
+  handler: ConfigArgInput!
+  checker: ConfigArgInput
+  isGlobal: Boolean
+}
+
+input UpdatePaymentTemplateInput {
+  id: ID!
+  name: String
+  description: String
+  code: String
+  handler: ConfigArgInput
+  checker: ConfigArgInput
+}
+
+type RoomTemplate {
+  id: ID!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  code: String!
+  name: String!
+  enabled: Boolean!
+  sortOrder: Int!
+  coverAssetId: ID
+  specs: JSON
+  defaultRooms: JSON
+  basePriceCent: Int!
+  priceCalendar: JSON
+  longStayDiscount: JSON
+  minNights: Int!
+  maxNights: Int!
+  advanceDays: Int!
+  checkInTime: String!
+  checkOutTime: String!
+  cancelPolicy: JSON!
+  depositType: String!
+}
+
+input RoomTemplateInput {
+  code: String!
+  name: String!
+  enabled: Boolean!
+  sortOrder: Int!
+  coverAssetId: ID
+  specs: JSON
+  defaultRooms: JSON
+  basePriceCent: Int!
+  priceCalendar: JSON
+  longStayDiscount: JSON
+  minNights: Int!
+  maxNights: Int!
+  advanceDays: Int!
+  checkInTime: String!
+  checkOutTime: String!
+  cancelPolicy: JSON!
+  depositType: String!
+}
+
+type TenantMember implements Node {
+  id: ID!
+  administratorId: ID!
+  channelId: ID!
+  enabled: Boolean!
+  mustChangePassword: Boolean!
+  displayName: String
+  remark: String
+  phone: String
+  emailAddress: String
+  roleIds: [ID!]!
+  canResetPassword: Boolean!
+  createdAt: DateTime!
+  initialPassword: String
+}
+
+input CreateTenantInput {
+  name: String!
+  token: String
+  isOfficial: Boolean
+}
+
+input UpdateTenantInput {
+  name: String
+  tenantNo: Int
+  isOfficial: Boolean
+  domain: String
+}
+
+input TenantListOptions {
+  skip: Int
+  take: Int
+  filter: JSON
+}
+
+input CreateTenantAdministratorInput {
+  firstName: String
+  lastName: String
+  emailAddress: String!
+  password: String
+  roleIds: [ID!]!
+  displayName: String
+  remark: String
+  phone: String
+  enabled: Boolean
+  forcePasswordChange: Boolean
+}
+
+input CreateTenantRoleInput {
+  code: String!
+  description: String!
+  permissions: [String!]!
+}
+
+input UpdateTenantRoleInput {
+  code: String
+  description: String
+  permissions: [String!]
+}
+
+input CreateTenantMemberInput {
+  firstName: String
+  lastName: String
+  emailAddress: String!
+  password: String
+  roleIds: [ID!]!
+  displayName: String
+  remark: String
+  phone: String
+  enabled: Boolean
+  forcePasswordChange: Boolean
+}
+
+type MyTenantChannel {
+  id: ID!
+  code: String!
+  token: String!
+  name: String!
+  enabled: Boolean!
+  tenantNo: Int
+  isOfficial: Boolean!
+  memberEnabled: Boolean!
+  mustChangePassword: Boolean!
+}
+
+type MyTenantAccess {
+  isSuperAdmin: Boolean!
+  channels: [MyTenantChannel!]!
+  permissions: [String!]!
+  mustChangePassword: Boolean!
+}
+
+type PermissionCatalogItem {
+  code: String!
+  label: String!
+}
+
+type PermissionCatalogGroup {
+  key: String!
+  label: String!
+  items: [PermissionCatalogItem!]!
+}
+
+type RoleTemplate {
+  key: String!
+  busiPrefix: String!
+  description: String!
+  permissions: [String!]!
+}
+
+type TenantSlot {
+  no: Int!
+  occupied: Boolean!
+  tenantId: ID
+  name: String
+}
+
+type TenantSlots {
+  capacity: Int!
+  used: Int!
+  slots: [TenantSlot!]!
+}
+
+type TenantAdminCandidate {
+  id: ID!
+  emailAddress: String!
+  displayName: String
+  linkedCount: Int!
+  linkedChannelIds: [ID!]!
+  alreadyLinked: Boolean!
+}
+
+type Wallet implements Node {
+  id: ID!
+  balance: Int!
+  currencyCode: String
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+type ReusableOptionValue {
+  id: ID!
+  name: String!
+}
+
+type ReusableOptionGroup {
+  id: ID!
+  name: String!
+  options: [ReusableOptionValue!]!
+}
+
+type AssetLibraryItem {
+  id: ID!
+  name: String
+  preview: String
+  source: String
+  mimeType: String
+  width: Int
+  height: Int
+  assetTags: [String!]!
+}
+
+type AssetLibraryResult {
+  items: [AssetLibraryItem!]!
+  totalItems: Int!
+}
+
+type AssetTagSummary {
+  name: String!
+  count: Int!
+}
+
+type MerchantSettlementLedgerItem {
+  id: ID!
+  orderId: String
+  orderCode: String
+  tenantChannelId: String
+  tenantName: String
+  amount: Int!
+  settleMethod: String
+  status: String
+  occurredAt: String
+  collectorChannelId: String
+  collectorName: String
+  collectedAt: String
+}
+
+type RedemptionOrder {
+  id: ID!
+  code: String!
+  state: String!
+  totalWithTax: Int!
+  currencyCode: String!
+  totalQuantity: Int!
+}
+
+"""到店收款分账后台（台账 merchant_settlement_ledger）——本类型仅承载核销收款相关判定字段"""
+type RedemptionLookupResult {
+  order: RedemptionOrder
+  claimed: Boolean!
+  claimedAt: DateTime
+  status: String!
+  expiresAt: DateTime
+  version: Int
+  reissueable: Boolean!
+
+  """支付方式 code；命中 COD_PAYMENT_CODES 即到店/货到付款"""
+  paymentType: String
+
+  """是否已确认收款（order.customFields.collected）"""
+  collected: Boolean!
+}
+
+type RedemptionClaimResult {
+  order: RedemptionOrder
+  claimed: Boolean!
+  claimedAt: DateTime
+  message: String
+  status: String!
+  expiresAt: DateTime
+  version: Int
+
+  """true 表示该 COD 单未收款且当前为强制模式，必须先确认收款才能核销"""
+  collectRequired: Boolean!
+
+  """核销是否已（同步）确认到店收款"""
+  collected: Boolean!
+}
+
+"""租户域：本渠道待核销自提单（deliveryType=pickup 且未核销）"""
+type PendingRedemption {
+  orderId: ID!
+  orderCode: String!
+  code: String!
+  status: String!
+  expiresAt: DateTime
+  version: Int
+  claimed: Boolean!
+
+  """支付方式 code；命中到店/货到付款集合时为 COD"""
+  paymentType: String
+
+  """是否已确认收款（到店付款单据此高亮待收款）"""
+  collected: Boolean!
+
+  """本单交付商品清单（名称 ×数量 + 行金额）"""
+  lines: [RedemptionLine!]!
+}
+
+type RedemptionLine {
+  name: String!
+  quantity: Int!
+  lineTotalWithTax: Int!
+}
+
+type PendingRedemptionList {
+  items: [PendingRedemption!]!
+  totalItems: Int!
+}
+
+input RedemptionListOptions {
+  skip: Int
+  take: Int
+}
+
+type DeliveryRecord {
+  id: ID!
+  orderId: ID!
+  fulfillmentId: ID
+  sourceLocationId: ID
+  mode: String!
+  status: String!
+  expressCompany: String
+  trackingNo: String
+  staffId: String
+  staffName: String
+  receiverName: String
+  receiverPhone: String
+  receiverAddress: String
+  lat: Float
+  lng: Float
+  pickupLocationId: ID
+  fromLocationId: ID
+  toLocationId: ID
+  itemsJson: String
+  sentAt: DateTime
+  deliveredAt: DateTime
+  returnedAt: DateTime
+  exceptionAt: DateTime
+  photos: String
+  remark: String
+  orderBoxId: String
+}
+
+type VariantLocationBinding {
+  id: ID!
+  variantId: ID!
+  locationId: ID!
+  isDefault: Boolean!
+}
+
+input VariantBindingInput {
+  locationId: ID!
+  isDefault: Boolean!
+}
+
+type ReconciliationBatch {
+  id: ID!
+  tenantChannelId: ID!
+  date: String!
+  status: String!
+  d1Count: Int!
+  d2Count: Int!
+  d3Count: Int!
+  d4Count: Int!
+  orderTotal: Int!
+  trigger: String!
+  startedAt: String
+  finishedAt: String
+}
+
+type ReconciliationOrderLine {
+  id: ID!
+  batchId: ID!
+  orderId: ID!
+  diffTypes: String!
+  status: String!
+  remark: String
+  fixedAt: String
+  fixerId: String
+}
+
+type StockDoc {
+  id: ID!
+  code: String!
+  type: String!
+  remark: String
+  operator: String
+  createdAt: String!
+}
+
+input StockDocItemInput {
+  variantId: ID!
+  fromStockLocationId: ID
+  toStockLocationId: ID
+  qty: Int!
+  realQty: Int
+  costPrice: Int
+  binId: ID
+  zoneId: ID
+}
+
+input StockDocCreateInput {
+  type: String!
+  remark: String
+  operator: String
+  items: [StockDocItemInput!]!
+}
+
+type StockDocLedgerEntry {
+  id: ID!
+  code: String!
+  productVariantId: ID!
+  stockLocationId: ID!
+  bizType: String!
+  bizCode: String
+  orderLineId: ID
+  direction: String!
+  quantity: Int!
+  beforeOnHand: Int
+  afterOnHand: Int
+  otherLocationId: ID
+  reason: String
+  createdAt: DateTime!
+}
+
+type StockDocLedgerSummary {
+  inQty: Int!
+  outQty: Int!
+}
+
+type StockDocLedgerList {
+  items: [StockDocLedgerEntry!]!
+  totalItems: Int!
+  summary: StockDocLedgerSummary!
+}
+
+type ReservationItem {
+  id: ID!
+  reservationId: ID!
+  stockLocationId: ID!
+  qty: Int!
+  fulfillType: String!
+  status: String!
+}
+
+type Reservation {
+  id: ID!
+  orderId: ID!
+  orderLineId: ID!
+  variantId: ID!
+  totalQty: Int!
+  status: String!
+  tenantChannelId: String
+  createdAt: DateTime!
+  expiresAt: DateTime
+  items: [ReservationItem!]!
+}
+
+type ReservationList {
+  items: [Reservation!]!
+  totalItems: Int!
+}
+
+type ReservationReconcileRow {
+  variantId: ID!
+  physicalSum: Int!
+  virtualSum: Int!
+  pendingQty: Int!
+  diff: Int!
+}
+
+input ReservationSplitInput {
+  locationId: ID!
+  fulfillType: String!
+  qty: Int!
+}
+
+type ChannelDeliveryCapability {
+  modes: [String!]!
+  bothSupported: Boolean!
+  source: String!
+  facetValueIds: JSON
+}
+
+type VariantDeliveryModes {
+  variantId: ID!
+  modes: [String!]!
+}
+
+type TenantStockLocation {
+  id: ID!
+  name: String!
+  code: String!
+  kind: String!
+  isSystem: Boolean!
+  deliveryMethods: [String!]
+  serviceCities: [String!]
+  lat: Float
+  lng: Float
+}
+
+type TenantInventoryOverview {
+  channelCode: String!
+  physicalStockEnabled: Boolean!
+  virtualCode: String!
+  virtualLocationId: ID
+  defaultPhysicalCode: String!
+  defaultPhysicalLocationId: ID
+  locations: [TenantStockLocation!]!
+}
+
+input TenantStockLocationInput {
+  name: String!
+  deliveryMethods: [String!]
+  serviceCities: [String!]
+  lat: Float
+  lng: Float
+}
+
+input UpdateTenantStockLocationInput {
+  id: ID!
+  name: String
+  deliveryMethods: [String!]
+  serviceCities: [String!]
+  lat: Float
+  lng: Float
+}
+
+input InventoryStockQueryInput {
+  locationId: ID
+  keyword: String
+  bucket: String
+  sort: String
+  page: Int
+  pageSize: Int
+}
+
+type InventoryStockSummary {
+  skuCount: Int!
+  onHandTotal: Int!
+  allocatedTotal: Int!
+  availableTotal: Int!
+  valueTotal: Int!
+  outCount: Int!
+  lowCount: Int!
+  okCount: Int!
+  outbound7d: Int!
+}
+
+type InventoryStockRow {
+  variantId: ID!
+  productId: ID
+  variantName: String!
+  sku: String!
+  optionText: String
+  thumbnail: String
+  stockLocationId: ID
+  locationName: String
+  onHand: Int!
+  allocated: Int!
+  available: Int!
+  safetyStock: Int!
+  value: Int!
+  costPrice: Int
+  bucket: String!
+  lastMovementAt: String
+  lastDirection: String
+  lastBizType: String
+}
+
+type InventoryStockPage {
+  totalItems: Int!
+  summary: InventoryStockSummary!
+  items: [InventoryStockRow!]!
+}
+
+type InventoryAlertRule {
+  variantId: ID!
+  locationId: ID
+  safetyStock: Int!
+  enabled: Boolean!
+}
+
+input InventoryAlertRuleInput {
+  variantId: ID!
+  safetyStock: Int!
+  enabled: Boolean
+  locationId: ID
+}
+
+type StockDocSummaryRow {
+  id: ID!
+  code: String!
+  type: String!
+  remark: String
+  operator: String
+  createdAt: String!
+  itemCount: Int!
+  totalQty: Int!
+  taskId: ID
+  taskCode: String
+}
+
+type StockDocList {
+  totalItems: Int!
+  items: [StockDocSummaryRow!]!
+}
+
+type StockDocOperatorStat {
+  operator: String!
+  count: Int!
+  qty: Int!
+}
+
+type PickBatch implements Node {
+  id: ID!
+  code: String!
+  stockLocationId: Int!
+  state: String!
+  note: String
+  createdBy: String
+  memberCount: Int!
+  itemCount: Int!
+  members: [JSON!]
+  pickedAt: DateTime
+  printedAt: DateTime
+  shippedAt: DateTime
+  handoverAt: DateTime
+  handoverTo: String
+  reviewedAt: DateTime
+  exceptionAt: DateTime
+  exceptionNote: String
+  createdAt: DateTime!
+}
+
+type PickBatchList {
+  totalItems: Int!
+  items: [PickBatch!]!
+}
+
+type PickBatchCandidateList {
+  totalItems: Int!
+  items: [JSON!]!
+}
+
+type PickBatchPickingRow {
+  sku: String!
+  name: String!
+  qty: Int!
+  orderCodes: [String!]!
+  binCode: String
+  zoneCode: String
+  zoneName: String
+  pathIndex: Int!
+}
+
+input PickBatchListOptions {
+  page: Int
+  pageSize: Int
+  state: String
+  stockLocationId: ID
+}
+
+input CreatePickBatchInput {
+  stockLocationId: ID!
+  orderIds: [ID!]!
+  note: String
+}
+
+input ShipPickBatchInput {
+  method: String!
+  trackingCode: String
+}
+
+input OrderAddressInput {
+  fullName: String
+  phoneNumber: String
+  province: String
+  city: String
+  streetLine1: String
+  streetLine2: String
+  postalCode: String
+  countryCode: String
+}
+
+type StorageZone implements Node {
+  id: ID!
+  code: String!
+  name: String!
+  sortOrder: Int!
+  enabled: Boolean!
+}
+
+type StorageBin implements Node {
+  id: ID!
+  zoneId: ID!
+  code: String!
+  rowNo: Int!
+  levelNo: Int!
+  enabled: Boolean!
+}
+
+input BindVariantBinInput {
+  variantId: ID!
+  stockLocationId: ID!
+  zoneId: ID!
+  binId: ID
+}
+
+type VariantBinPage {
+  totalItems: Int!
+  items: [VariantBinItem!]!
+}
+
+type VariantBinItem {
+  bindingId: ID!
+  variantId: ID!
+  sku: String!
+  variantName: String!
+  barcode: String
+  internalCode: String
+  zoneId: ID!
+  zoneCode: String!
+  zoneName: String!
+  binId: ID
+  binCode: String
+  rowNo: Int
+  levelNo: Int
+  isDefault: Boolean!
+}
+
+type BinOccupancy {
+  zoneId: ID!
+  zoneCode: String!
+  zoneName: String!
+  binId: ID!
+  binCode: String!
+  rowNo: Int
+  levelNo: Int
+  skuCount: Int!
+}
+
+type StocktakeTask {
+  id: ID!
+  code: String!
+  stockLocationId: ID!
+  locationName: String
+  activityCode: String
+  name: String!
+  scopeJson: String!
+  binModeAtCreate: String!
+  state: String!
+  createdById: String
+  createdByName: String
+  postedStockDocId: ID
+  postedAt: DateTime
+  note: String
+  createdAt: DateTime!
+  expectedTotal: Int!
+  countedTotal: Int!
+  waveCount: Int!
+  submittedWaveCount: Int!
+}
+
+type StocktakeTaskList {
+  totalItems: Int!
+  items: [StocktakeTask!]!
+}
+
+type StocktakeWave {
+  id: ID!
+  taskId: ID!
+  scopeType: String!
+  zoneId: ID
+  zoneCode: String
+  zoneName: String
+  assigneeId: String
+  assigneeName: String
+  state: String!
+  expectedCount: Int!
+  countedCount: Int!
+  claimedAt: DateTime
+  submittedAt: DateTime
+}
+
+type StocktakeLine {
+  id: ID!
+  taskId: ID!
+  waveId: ID!
+  variantId: ID!
+  variantSku: String!
+  variantName: String!
+  zoneId: ID
+  binId: ID
+  zoneCode: String
+  binCode: String
+  bookQty: Int!
+  countedQty: Int
+  isExtra: Boolean!
+  countedById: String
+  countedByName: String
+  countedAt: DateTime
+  note: String
+}
+
+type StocktakeLinePage {
+  totalItems: Int!
+  items: [StocktakeLine!]!
+}
+
+type StocktakeVarianceRow {
+  variantId: ID!
+  variantSku: String!
+  variantName: String!
+  countedTotal: Int!
+  bookQty: Int!
+  diff: Int!
+  isExtra: Boolean!
+  binChanged: Boolean!
+  targetZoneId: ID
+  targetBinId: ID
+  targetBinCode: String
+  targetZoneCode: String
+  snapBookQty: Int!
+  currentBookQty: Int!
+}
+
+type StocktakeBookChange {
+  variantId: ID!
+  variantSku: String!
+  snapBookQty: Int!
+  currentBookQty: Int!
+}
+
+type StocktakeDiff {
+  expectedTotal: Int!
+  countedTotal: Int!
+  uncountedCount: Int!
+  extraCount: Int!
+  diffCount: Int!
+  rows: [StocktakeVarianceRow!]!
+  uncountedLines: [StocktakeLine!]!
+  recheck: Boolean!
+  changedVariants: [StocktakeBookChange!]!
+}
+
+type StocktakeScanHit {
+  kind: String!
+  binId: ID
+  binCode: String
+  zoneId: ID
+  lineId: ID
+  variantId: ID
+  variantSku: String
+  variantName: String
+  message: String
+}
+
+type StocktakePostResult {
+  ok: Boolean!
+  stockDocId: ID
+  diff: StocktakeDiff
+  message: String
+}
+
+type StocktakeBinStat {
+  zoneId: ID
+  zoneCode: String
+  binId: ID
+  binCode: String
+  expectedLines: Int!
+  countedLines: Int!
+  uncountedLines: Int!
+  extraLines: Int!
+}
+
+type StocktakeCounterStat {
+  countedById: String
+  countedByName: String
+  countedLines: Int!
+  extraLines: Int!
+  waveCount: Int!
+  lastCountedAt: DateTime
+}
+
+type StocktakeStats {
+  expectedLines: Int!
+  countedLines: Int!
+  byBin: [StocktakeBinStat!]!
+  byCounter: [StocktakeCounterStat!]!
+}
+
+type StocktakeExportFile {
+  filename: String!
+  mimeType: String!
+  content: String!
+  totalRows: Int!
+  truncated: Boolean!
+}
+
+input StocktakeScopeInput {
+  zones: [Int!]
+  categoryIds: [Int!]
+  variantIds: [Int!]
+  includeZeroBook: Boolean
+}
+
+input StocktakeTaskInput {
+  stockLocationId: ID!
+  name: String!
+  activityCode: String
+  scope: StocktakeScopeInput
+  autoSplitByZone: Boolean
+  note: String
+  state: String
+}
+
+input StocktakeTaskUpdateInput {
+  name: String
+  activityCode: String
+  note: String
+  stockLocationId: ID
+  scope: StocktakeScopeInput
+  autoSplitByZone: Boolean
+}
+
+input StocktakeWaveInput {
+  scopeType: String!
+  zoneId: ID
+}
+
+input StocktakeCountEntryInput {
+  lineId: ID
+  variantId: ID
+  countedQty: Int!
+  zoneId: ID
+  binId: ID
+  note: String
+}
+
+input StocktakeLineFilterInput {
+  onlyCounted: Boolean
+  onlyUncounted: Boolean
+  onlyDiff: Boolean
+  onlyExtra: Boolean
+}
+
+input StocktakeTaskOptionsInput {
+  page: Int
+  pageSize: Int
+  state: String
+  states: [String!]
+  activityCode: String
+  stockLocationId: ID
+}
+
+type StocktakeKpiDay {
+  day: String!
+  expected: Int!
+  diff: Int!
+}
+
+type StocktakeKpi {
+  taskCount: Int!
+  expectedTotal: Int!
+  diffTotal: Int!
+  days: [StocktakeKpiDay!]!
+}
+
+input AdjustOrderPriceInput {
+  orderId: ID!
+  amount: Int!
+  note: String
+}
+
+type Shop implements Node {
+  id: ID!
+  name: String!
+  slug: String!
+  logoAssetId: ID
+  bannerAssetId: ID
+  description: String
+  status: String!
+  administratorId: ID
+  rating: ShopRating!
+  productCount: Int!
+  products(options: ProductListOptions = null): ProductList!
+}
+
+type ShopRating {
+  rating: Float!
+  reviewCount: Int!
+  productCount: Int!
+}
+
+input ShopListOptions {
+  skip: Int
+  take: Int
+}
+
+input CreateShopInput {
+  name: String!
+  slug: String!
+  logoAssetId: ID
+  bannerAssetId: ID
+  description: String
+}
+
+input UpdateShopInput {
+  name: String
+  slug: String
+  logoAssetId: ID
+  bannerAssetId: ID
+  description: String
+}
+
+input AssignProductsInput {
+  shopId: ID!
+  productIds: [ID!]!
+}
+
+input CreateOwnerInput {
+  emailAddress: String!
+  password: String!
+  firstName: String
+  lastName: String
+}
+
+input UpdateMyShopInput {
+  name: String
+  description: String
+  logoAssetId: ID
+  bannerAssetId: ID
+}
+
+input UpdateMyShopProductInput {
+  name: String
+  description: String
+}
+
+type MerchantOrderLine {
+  orderLineId: ID!
+  productId: ID!
+  productName: String!
+  variantName: String!
+  quantity: Int!
+  fulfilledQuantity: Int!
+  unitPriceWithTax: Int!
+  lineTotalWithTax: Int!
+}
+
+type MerchantShippingAddress {
+  fullName: String
+  streetLine1: String
+  city: String
+  province: String
+  countryCode: String
+  postalCode: String
+}
+
+type MerchantShippingLine {
+  id: ID!
+  code: String
+  name: String
+}
+
+type MerchantOrder {
+  orderId: ID!
+  code: String!
+  state: String!
+  totalWithTax: Int!
+  currencyCode: String!
+  customerName: String
+  placedAt: DateTime
+  shippingAddress: MerchantShippingAddress
+  shippingLines: [MerchantShippingLine!]!
+  items: [MerchantOrderLine!]!
+}
+
+input FulfillLineInput {
+  orderLineId: ID!
+  quantity: Int!
+}
+
+type MerchantFulfillmentLine {
+  orderLineId: ID!
+  productName: String!
+  variantName: String!
+  quantity: Int!
+}
+
+type MerchantFulfillment {
+  fulfillmentId: ID!
+  state: String!
+  method: String
+  trackingCode: String
+  createdAt: DateTime!
+  items: [MerchantFulfillmentLine!]!
+}
+
+type FulfillMyShopOrderResult {
+  orderId: ID!
+  totalItemCount: Int!
+  shippedItemCount: Int!
+  remainingItemCount: Int!
+  fulfillmentIds: [ID!]!
+}
+
+type MerchantReview {
+  reviewId: ID!
+  productId: ID!
+  productName: String!
+  rating: Int!
+  content: String!
+  status: String!
+  customerName: String
+  createdAt: DateTime!
+}
+
+type ShopTemplate implements Node {
+  id: ID!
+  name: String!
+  app: String!
+  theme: JSON
+  pages: JSON
+  version: Int!
+  enabled: Boolean!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type ShopGlobalConfig implements Node {
+  id: ID!
+  app: String!
+  themeTokens: JSON
+  defaults: JSON
+}
+
+input CreateShopTemplateInput {
+  name: String!
+  app: String!
+  theme: JSON
+  pages: JSON
+  enabled: Boolean
+}
+
+input UpdateShopTemplateInput {
+  id: ID!
+  name: String
+  theme: JSON
+  pages: JSON
+  enabled: Boolean
+}
+
+input UpdateShopGlobalConfigInput {
+  app: String!
+  themeTokens: JSON
+  defaults: JSON
+}
+
+type ShopTemplateVersionType {
+  id: ID!
+  templateId: ID!
+  version: Int!
+  name: String
+  theme: JSON
+  pages: JSON
+  enabled: Boolean!
+  note: String
+  createdAt: DateTime!
+}
+
+type TemplateReference {
+  channelId: ID!
+  channelCode: String!
+  channelName: String!
+  app: String!
+}
+
+type MergedPreview {
+  merged: JSON!
+  sourceByKey: JSON!
+}
+
+type PickupRedemption {
+  id: ID!
+  orderId: ID!
+  orderCode: String
+  code: String!
+  status: String!
+  claimedAt: DateTime
+  claimChannel: String
+  paymentType: String
+  collected: Boolean!
+}
+
+type PickupRedemptionList {
+  items: [PickupRedemption!]!
+  totalItems: Int!
+}
+
+input PickupListOptions {
+  skip: Int
+  take: Int
+}
+
+type InvoiceLine {
+  orderId: ID!
+  orderCode: String!
+  productVariantId: ID
+  sku: String
+  name: String!
+  quantity: Int!
+  unitPrice: Int!
+  unitPriceWithTax: Int!
+  amount: Int!
+  taxRate: Int!
+  taxAmount: Int!
+  amountWithTax: Int!
+}
+
+type InvoiceTotals {
+  totalExcludingTax: Int!
+  totalTax: Int!
+  totalWithTax: Int!
 }
 
 type Invoice implements Node {
@@ -7086,10 +9027,19 @@ type Invoice implements Node {
   amount: Int!
   customerId: ID!
   orderIds: [ID!]!
+  lines: [InvoiceLine!]
+  totals: InvoiceTotals
+  invoiceNo: String
   pdfUrl: String
   issuedAt: DateTime
   reversedAt: DateTime
   reverseReason: String
+  voidedAt: DateTime
+  voidReason: String
+  parentInvoiceId: ID
+  isRed: Boolean!
+  partiallyReversed: Boolean!
+  reversedAmount: Int
   providerInvoiceNo: String
   lastError: String
   createdAt: DateTime!
@@ -7101,60 +9051,76 @@ type InvoiceList implements PaginatedList {
   totalItems: Int!
 }
 
+input InvoiceSortParameter {
+  id: SortOrder
+  title: SortOrder
+  invoiceType: SortOrder
+  status: SortOrder
+  amount: SortOrder
+  customerId: SortOrder
+  createdAt: SortOrder
+  issuedAt: SortOrder
+  updatedAt: SortOrder
+  taxNumber: SortOrder
+  email: SortOrder
+  companyAddress: SortOrder
+  companyPhone: SortOrder
+  bankName: SortOrder
+  bankAccount: SortOrder
+  invoiceNo: SortOrder
+  pdfUrl: SortOrder
+  reversedAt: SortOrder
+  reverseReason: SortOrder
+  voidedAt: SortOrder
+  voidReason: SortOrder
+  parentInvoiceId: SortOrder
+  reversedAmount: SortOrder
+  providerInvoiceNo: SortOrder
+  lastError: SortOrder
+}
+
+input InvoiceFilterParameter {
+  id: IDOperators
+  title: StringOperators
+  invoiceNo: StringOperators
+  taxNumber: StringOperators
+  status: StringOperators
+  invoiceType: StringOperators
+  amount: NumberOperators
+  customerId: IDOperators
+  createdAt: DateOperators
+  updatedAt: DateOperators
+  issuedAt: DateOperators
+  email: StringOperators
+  companyAddress: StringOperators
+  companyPhone: StringOperators
+  bankName: StringOperators
+  bankAccount: StringOperators
+  pdfUrl: StringOperators
+  reversedAt: DateOperators
+  reverseReason: StringOperators
+  voidedAt: DateOperators
+  voidReason: StringOperators
+  parentInvoiceId: IDOperators
+  isRed: BooleanOperators
+  partiallyReversed: BooleanOperators
+  reversedAmount: NumberOperators
+  providerInvoiceNo: StringOperators
+  lastError: StringOperators
+  _and: [InvoiceFilterParameter!]
+  _or: [InvoiceFilterParameter!]
+}
+
 input InvoiceListOptions {
-  """Skips the first n results, for use in pagination"""
   skip: Int
-
-  """Takes n results, for use in pagination"""
   take: Int
-
-  """Specifies which properties to sort the results by"""
   sort: InvoiceSortParameter
-
-  """Allows the results to be filtered"""
   filter: InvoiceFilterParameter
 
   """
   Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND.
   """
   filterOperator: LogicalOperator
-}
-
-type LogisticsTrack implements Node {
-  id: ID!
-  fulfillmentId: ID!
-  trackingNo: String!
-  carrierCode: String!
-  carrierName: String!
-  status: String!
-  trackInfo: String
-  signedAt: DateTime
-  lastSyncedAt: DateTime
-  createdAt: DateTime!
-  updatedAt: DateTime!
-}
-
-type Carrier {
-  code: String!
-  name: String!
-  shortName: String!
-}
-
-input BatchFulfillmentItem {
-  orderId: ID!
-  trackingNo: String!
-  carrierCode: String!
-}
-
-type BatchFulfillmentItemResult {
-  orderId: ID!
-  success: Boolean!
-  trackId: ID
-  error: String
-}
-
-type BatchFulfillmentResult {
-  items: [BatchFulfillmentItemResult!]!
 }
 
 enum GroupBuyStatus {
@@ -7463,6 +9429,11 @@ type RechargeCardAdmin implements Node {
   createdAt: DateTime!
 }
 
+type RechargeCardPinOutput {
+  code: String!
+  pin: String!
+}
+
 type RechargeCardBatchAdmin implements Node {
   id: ID!
   name: String!
@@ -7472,6 +9443,7 @@ type RechargeCardBatchAdmin implements Node {
   generatedCount: Int!
   expiresAt: DateTime
   createdAt: DateTime!
+  plaintextPins: [RechargeCardPinOutput!]
 }
 
 type RechargeCardAdminList implements PaginatedList {
@@ -7503,6 +9475,45 @@ input RechargeCardBatchListOptions {
   take: Int
 }
 
+type CustomerBalanceItem implements Node {
+  id: ID!
+  customerId: Int!
+  channelId: Int!
+  balance: Int!
+  frozenBalance: Int!
+}
+
+type CustomerBalanceList implements PaginatedList {
+  items: [CustomerBalanceItem!]!
+  totalItems: Int!
+}
+
+type BalanceTransactionItemAdmin implements Node {
+  id: ID!
+  customerId: Int!
+  type: String!
+  amount: Int!
+  balanceBefore: Int!
+  balanceAfter: Int!
+  orderId: ID
+  paymentId: ID
+  rechargeCardId: ID
+  remark: String
+  createdAt: DateTime!
+}
+
+type BalanceTransactionListAdmin implements PaginatedList {
+  items: [BalanceTransactionItemAdmin!]!
+  totalItems: Int!
+}
+
+input AdminAdjustBalanceInput {
+  customerId: ID!
+  amount: Int!
+  type: String!
+  remark: String
+}
+
 type AfterSalesRequestAdmin implements Node {
   id: ID!
   orderId: ID!
@@ -7516,9 +9527,18 @@ type AfterSalesRequestAdmin implements Node {
   returnTrackingNo: String
   returnCarrier: String
   rejectReason: String
+  receivedQuantity: Int
+  restockJson: String
+  refundTransactionId: String
+  actualRefundAmount: Int
+  refundedAt: DateTime
+  refundError: String
   customerId: ID!
   createdAt: DateTime!
   updatedAt: DateTime!
+  order: Order
+  orderLine: OrderLine
+  customer: Customer
 }
 
 type AfterSalesRequestAdminList implements PaginatedList {
@@ -7553,6 +9573,31 @@ type MemberInfo {
   points: Int!
   nextLevelThreshold: Int
   nextLevelName: String
+  pointsMultiplier: Int!
+  redeemDiscountRate: Int!
+  redeemCapRatio: Int!
+  specialDiscountRate: Int!
+}
+
+type MemberTier {
+  id: ID!
+  tierLevel: Int!
+  threshold: Int!
+  name: String!
+  pointsMultiplier: Int!
+  redeemDiscountRate: Int!
+  redeemCapRatio: Int!
+  specialDiscountRate: Int!
+}
+
+input MemberTierInput {
+  tierLevel: Int!
+  threshold: Int!
+  name: String!
+  pointsMultiplier: Int
+  redeemDiscountRate: Int
+  redeemCapRatio: Int
+  specialDiscountRate: Int
 }
 
 type MemberPointsHistory implements Node {
@@ -7625,6 +9670,437 @@ input UpdateLevelConfigInput {
   pointsEarnOnShipping: Boolean
 }
 
+type PosTerminal {
+  id: ID!
+  code: String!
+  name: String!
+  channel: Channel!
+  stockLocation: StockLocation!
+  active: Boolean!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  deviceConfig: JSON
+}
+
+input CreatePosTerminalInput {
+  code: String!
+  name: String!
+  stockLocationId: ID!
+  deviceConfig: JSON
+}
+
+input UpdatePosTerminalInput {
+  id: ID!
+  name: String
+  stockLocationId: ID
+  active: Boolean
+  deviceConfig: JSON
+}
+
+type PosSession {
+  id: ID!
+  code: String!
+  terminal: PosTerminal!
+  stockLocation: StockLocation!
+  operator: Administrator!
+  approver: Administrator
+  state: String!
+  openedAt: DateTime!
+  closedAt: DateTime
+  closeSummary: JSON
+  openingFloat: Int!
+  closingCash: Int!
+  activeOrderId: Int
+  customerId: Int
+  customer: Customer
+  updatedAt: DateTime!
+}
+
+input OpenSessionInput {
+  terminalCode: String!
+  openingFloat: Int
+}
+
+input CloseSessionInput {
+  sessionId: ID!
+  closingCash: Int
+  approverId: ID
+}
+
+type CloseSessionResult {
+  session: PosSession!
+  summary: JSON
+}
+
+type PosMemberInfo {
+  customerId: ID!
+  firstName: String
+  lastName: String
+  emailAddress: String
+  phoneNumber: String
+  memberLevel: Int!
+  growthValue: Int!
+  points: Int!
+}
+
+type MemberPriceRule {
+  id: ID!
+  channelId: ID!
+  scope: String!
+  categoryId: Int
+  memberLevel: Int!
+  discountPercent: Int!
+  active: Boolean!
+  priority: Int!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+input CreateMemberPriceRuleInput {
+  scope: String!
+  categoryId: Int
+  memberLevel: Int!
+  discountPercent: Int!
+  active: Boolean
+  priority: Int
+}
+
+input UpdateMemberPriceRuleInput {
+  id: ID!
+  scope: String
+  categoryId: Int
+  memberLevel: Int
+  discountPercent: Int
+  active: Boolean
+  priority: Int
+}
+
+input AddPosItemInput {
+  productVariantId: ID!
+  quantity: Int!
+  discount: Int
+  isGift: Boolean
+  note: String
+  originalPrice: Int
+}
+
+input UpdatePosItemInput {
+  orderLineId: ID!
+  quantity: Int!
+}
+
+input CheckoutPaymentInput {
+  method: String!
+  transactionId: String
+  metadata: JSON
+}
+
+input CheckoutInput {
+  payments: [CheckoutPaymentInput!]!
+}
+
+type PosCheckoutResult {
+  order: Order!
+  payments: [Payment!]!
+}
+
+input CreateAggregatePayInput {
+  aggregatePayCode: String!
+}
+
+input CreatePosRefundInput {
+  originalOrderId: ID!
+  paymentId: ID!
+  amount: Int!
+  reason: String
+}
+
+input SettleManualRefundInput {
+  refundId: ID!
+  transactionId: String!
+}
+
+input RefundLineInput {
+  orderLineId: ID!
+  quantity: Int!
+  reason: String
+}
+
+input CreateRefundOrderInput {
+  originalOrderId: ID!
+  refundLines: [RefundLineInput!]!
+}
+
+type CreateRefundOrderResult {
+  refundOrder: Order!
+  originalOrder: Order!
+}
+
+type PromotionRule {
+  id: ID!
+  channelId: ID!
+  type: String!
+  name: String!
+  description: String
+  scope: String!
+  collectionId: Int
+  priority: Int!
+  active: Boolean!
+  startTime: DateTime
+  endTime: DateTime
+  conditions: JSON
+  actions: JSON
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+input CreatePromotionRuleInput {
+  type: String!
+  name: String!
+  description: String
+  scope: String
+  collectionId: Int
+  priority: Int
+  active: Boolean
+  startTime: DateTime
+  endTime: DateTime
+  conditions: JSON
+  actions: JSON
+}
+
+input UpdatePromotionRuleInput {
+  id: ID!
+  type: String
+  name: String
+  description: String
+  scope: String
+  collectionId: Int
+  priority: Int
+  active: Boolean
+  startTime: DateTime
+  endTime: DateTime
+  conditions: JSON
+  actions: JSON
+}
+
+type PaymentMethodSummary {
+  method: String!
+  count: Int!
+  amount: Int!
+}
+
+type TodayOverview {
+  date: String!
+  totalAmount: Int!
+  orderCount: Int!
+  avgOrderValue: Int!
+  refundAmount: Int!
+  refundCount: Int!
+  paymentsByMethod: [PaymentMethodSummary!]!
+}
+
+type DailySales {
+  date: String!
+  totalAmount: Int!
+  orderCount: Int!
+  avgOrderValue: Int!
+}
+
+type SalesReport {
+  startDate: String!
+  endDate: String!
+  totalAmount: Int!
+  totalOrders: Int!
+  avgOrderValue: Int!
+  daily: [DailySales!]!
+}
+
+type MonthlyReportPrev {
+  totalAmount: Int!
+  orderCount: Int!
+}
+
+type MonthlyReport {
+  year: Int!
+  month: Int!
+  totalAmount: Int!
+  orderCount: Int!
+  avgOrderValue: Int!
+  prevMonth: MonthlyReportPrev!
+  amountChangeRate: Float!
+  countChangeRate: Float!
+}
+
+type TopProductItem {
+  variantId: ID!
+  variantName: String!
+  productName: String!
+  sku: String!
+  totalQuantity: Int!
+  totalAmount: Int!
+}
+
+type TopProductReport {
+  startDate: String!
+  endDate: String!
+  items: [TopProductItem!]!
+}
+
+input SyncOrdersInput {
+  orders: [OfflineOrderInput!]!
+}
+
+input OfflineOrderInput {
+  idempotencyKey: String!
+  clientCreatedAt: DateTime!
+  clientUpdatedAt: DateTime!
+  sessionCode: String!
+  terminalCode: String!
+  orderType: String!
+  lines: [OfflineOrderLineInput!]!
+  payments: [OfflinePaymentInput!]!
+  totalAmount: Int!
+}
+
+input OfflineOrderLineInput {
+  productVariantId: ID!
+  quantity: Int!
+  discount: Int
+  isGift: Boolean
+  note: String
+  originalPrice: Int
+}
+
+input OfflinePaymentInput {
+  method: String!
+  transactionId: String
+  metadata: JSON
+}
+
+type SyncOrdersResult {
+  succeeded: [SyncedOrder!]!
+  failed: [SyncFailure!]!
+}
+
+type SyncedOrder {
+  idempotencyKey: String!
+  orderId: ID!
+  orderCode: String!
+  status: String!
+}
+
+type SyncFailure {
+  idempotencyKey: String!
+  error: String!
+  code: String!
+  status: String!
+}
+
+input SyncPaymentsInput {
+  payments: [OfflinePaymentSyncInput!]!
+}
+
+input OfflinePaymentSyncInput {
+  idempotencyKey: String!
+  clientCreatedAt: DateTime!
+  clientUpdatedAt: DateTime!
+  orderKey: String!
+  method: String!
+  amount: Int!
+  transactionId: String
+  metadata: JSON
+}
+
+type SyncPaymentsResult {
+  succeeded: [SyncedPayment!]!
+  failed: [SyncPaymentFailure!]!
+}
+
+type SyncedPayment {
+  idempotencyKey: String!
+  paymentId: ID!
+  orderId: ID!
+  status: String!
+}
+
+type SyncPaymentFailure {
+  idempotencyKey: String!
+  error: String!
+  code: String!
+  status: String!
+}
+
+input SyncSessionsInput {
+  sessions: [OfflineSessionInput!]!
+}
+
+input OfflineSessionInput {
+  idempotencyKey: String!
+  clientCreatedAt: DateTime!
+  clientUpdatedAt: DateTime!
+  sessionCode: String!
+  terminalCode: String!
+  operatorId: ID!
+  openingFloat: Int!
+  state: String!
+  closingCash: Int
+}
+
+type SyncSessionsResult {
+  succeeded: [SyncedSession!]!
+  failed: [SyncSessionFailure!]!
+}
+
+type SyncedSession {
+  idempotencyKey: String!
+  sessionId: ID!
+  sessionCode: String!
+  state: String!
+  status: String!
+}
+
+type SyncSessionFailure {
+  idempotencyKey: String!
+  error: String!
+  code: String!
+  status: String!
+}
+
+type SyncProductsResult {
+  items: [ProductSnapshot!]!
+  cursor: DateTime!
+}
+
+type ProductSnapshot {
+  variantId: ID!
+  sku: String!
+  name: String!
+  price: Int!
+  priceWithTax: Int!
+  barcode: String
+  categoryId: ID
+  updatedAt: DateTime!
+}
+
+type SyncMembersResult {
+  items: [MemberSnapshot!]!
+  cursor: DateTime!
+}
+
+type MemberSnapshot {
+  customerId: ID!
+  emailAddress: String!
+  firstName: String!
+  lastName: String!
+  customFields: MemberCustomFieldsSnapshot!
+  updatedAt: DateTime!
+}
+
+type MemberCustomFieldsSnapshot {
+  memberLevel: Int!
+  points: Int!
+}
+
 type Review implements Node {
   id: ID!
   customerId: ID!
@@ -7632,6 +10108,8 @@ type Review implements Node {
   productId: ID!
   variantId: ID
   orderLineId: ID
+  parentId: ID
+  followUps: [Review!]!
   rating: Int!
   content: String!
   images: [String!]
@@ -7685,6 +10163,11 @@ type ReviewStats {
   averageRating: Float!
   ratingDistribution: [RatingCount!]!
   topTags: [TagCount!]!
+}
+
+type ProductRating {
+  rating: Float!
+  reviewCount: Int!
 }
 
 type SubscribeMessageLog implements Node {
@@ -7748,76 +10231,491 @@ input SubscribeMessageLogFilterParameter {
   _or: [SubscribeMessageLogFilterParameter!]
 }
 
-type Coupon implements Node {
+enum CouponType {
+  FIXED
+  PERCENT
+  FULL
+  FREE_SHIPPING
+}
+
+enum CouponStatus {
+  UNUSED
+  USED
+  RETURNED
+  EXPIRED
+  INVALID
+}
+
+enum CouponIssuedBy {
+  CENTRE
+  ADMIN
+  EXCHANGE
+  SALE
+}
+
+enum CouponUsageScene {
+  ONLINE
+  IN_STORE
+  ALL
+}
+
+type CouponTemplate implements Node {
   id: ID!
   name: String!
+  nameZh: String
+  nameEn: String
   description: String
-  couponType: String!
+  descZh: String
+  descEn: String
+  type: CouponType!
   discountValue: Int!
   minSpend: Int!
-  maxDiscount: Int!
-  startAt: DateTime!
-  endAt: DateTime!
-  totalQuantity: Int!
+  startsAt: DateTime
+  endsAt: DateTime
+  totalCount: Int!
   claimedCount: Int!
-  limitPerUser: Int!
-  isActive: Boolean!
-  applicableProductIds: [ID!]
-  applicableCategoryIds: [ID!]
-  isNewUserOnly: Boolean!
-  isGlobal: Boolean!
-  ownerChannelId: ID
-  enabledInCurrentChannel: Boolean!
+  pointsPrice: Int!
+  perUserLimit: Int!
+  scope: String!
+  categoryId: ID
+  variantId: ID
+  enabled: Boolean!
+  claimable: Boolean!
+  claimCode: String
+  validDays: Int
+  newCustomerOnly: Boolean!
+  memberLevel: String
+  shopId: ID
+  usageScene: CouponUsageScene!
+  distributionChannels: String
+  salePrice: Int!
   createdAt: DateTime!
   updatedAt: DateTime!
 }
 
-type CouponList implements PaginatedList {
-  items: [Coupon!]!
+type CustomerCoupon implements Node {
+  id: ID!
+  customerId: ID!
+  templateId: ID!
+  code: String!
+  status: CouponStatus!
+  issuedBy: CouponIssuedBy!
+  reservedOrderId: ID
+  usedOrderId: ID
+  issuedAt: DateTime
+  usedAt: DateTime
+  expiredAt: DateTime
+  template: CouponTemplate
+  customer: Customer
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type ProductCouponBinding implements Node {
+  id: ID!
+  productId: ID!
+  variantIds: [ID!]
+  couponTemplateId: ID!
+  enabled: Boolean!
+  displayOrder: Int!
+  badgeText: String
+  promoTitle: String
+  remark: String
+  template: CouponTemplate
+}
+
+input CreateProductCouponBindingInput {
+  productId: ID!
+  variantIds: [ID!]
+  couponTemplateId: ID!
+  enabled: Boolean
+  displayOrder: Int
+  badgeText: String
+  promoTitle: String
+  remark: String
+}
+
+input UpdateProductCouponBindingInput {
+  id: ID!
+  variantIds: [ID!]
+  enabled: Boolean
+  displayOrder: Int
+  badgeText: String
+  promoTitle: String
+  remark: String
+}
+
+type CouponTemplateList implements PaginatedList {
+  items: [CouponTemplate!]!
   totalItems: Int!
 }
 
-input CreateCouponInput {
-  name: String!
-  description: String
-  couponType: String!
+type CustomerCouponList implements PaginatedList {
+  items: [CustomerCoupon!]!
+  totalItems: Int!
+}
+
+type InStoreBillQuote {
+  ok: Boolean!
+  reason: String
+  couponCode: String
+  couponName: String
+  discountType: String
+  discountValue: Int
+  minSpend: Int
+  originalAmount: Int
+  discountAmount: Int
+  finalAmount: Int
+  customerName: String
+  customerPhone: String
+  expiresAt: DateTime
+}
+
+type InStoreBill implements Node {
+  id: ID!
+  channelId: ID!
+  couponCode: String!
+  couponTemplateId: ID!
+  couponName: String
+  customerId: ID!
+  customerName: String
+  customerPhone: String
+  discountType: String!
   discountValue: Int!
-  minSpend: Int
-  maxDiscount: Int
-  startAt: DateTime!
-  endAt: DateTime!
-  totalQuantity: Int!
-  limitPerUser: Int
-  isActive: Boolean
-  applicableProductIds: [ID!]
-  applicableCategoryIds: [ID!]
-  isNewUserOnly: Boolean
-  isGlobal: Boolean
+  originalAmount: Int!
+  discountAmount: Int!
+  finalAmount: Int!
+  operatorId: ID!
+  operatorName: String
+  remark: String
+  billedAt: DateTime!
+  createdAt: DateTime!
 }
 
-input UpdateCouponInput {
-  name: String
-  description: String
-  startAt: DateTime
-  endAt: DateTime
-  totalQuantity: Int
-  limitPerUser: Int
-  isActive: Boolean
-  minSpend: Int
-  maxDiscount: Int
-  isNewUserOnly: Boolean
+type InStoreBillList implements PaginatedList {
+  items: [InStoreBill!]!
+  totalItems: Int!
 }
 
-input CouponListOptions {
+type InStoreBillSummary {
+  count: Int!
+  originalTotal: Int!
+  discountTotal: Int!
+  finalTotal: Int!
+}
+
+input InStoreBillListOptions {
   skip: Int
   take: Int
-  sort: JSON
-  filter: JSON
+  couponCode: String
+  from: DateTime
+  to: DateTime
+
+  """Specifies which properties to sort the results by"""
+  sort: InStoreBillSortParameter
+
+  """Allows the results to be filtered"""
+  filter: InStoreBillFilterParameter
 
   """
   Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND.
   """
   filterOperator: LogicalOperator
+}
+
+input InStoreBillSummaryOptions {
+  from: DateTime
+  to: DateTime
+}
+
+type CouponIssueCustomer implements Node {
+  id: ID!
+  emailAddress: String!
+  firstName: String
+  lastName: String
+  phoneNumber: String
+}
+
+type CouponIssueCustomerList implements PaginatedList {
+  items: [CouponIssueCustomer!]!
+  totalItems: Int!
+}
+
+type CouponIssueResult {
+  customerId: ID!
+  ok: Boolean!
+  code: String
+  reason: String
+}
+
+input CreateCouponTemplateInput {
+  name: String
+  description: String
+  nameZh: String
+  nameEn: String
+  descZh: String
+  descEn: String
+  type: CouponType!
+  discountValue: Int!
+  minSpend: Int
+  startsAt: DateTime
+  endsAt: DateTime
+  totalCount: Int
+  pointsPrice: Int
+  perUserLimit: Int
+  scope: String
+  categoryId: ID
+  variantId: ID
+  enabled: Boolean
+  claimable: Boolean
+  claimCode: String
+  validDays: Int
+  newCustomerOnly: Boolean
+  memberLevel: String
+  shopId: ID
+  usageScene: CouponUsageScene
+  distributionChannels: String
+  salePrice: Int
+}
+
+input UpdateCouponTemplateInput {
+  id: ID!
+  name: String
+  description: String
+  nameZh: String
+  nameEn: String
+  descZh: String
+  descEn: String
+  type: CouponType
+  discountValue: Int
+  minSpend: Int
+  startsAt: DateTime
+  endsAt: DateTime
+  totalCount: Int
+  pointsPrice: Int
+  perUserLimit: Int
+  scope: String
+  categoryId: ID
+  variantId: ID
+  enabled: Boolean
+  claimable: Boolean
+  claimCode: String
+  validDays: Int
+  newCustomerOnly: Boolean
+  memberLevel: String
+  usageScene: CouponUsageScene
+  distributionChannels: String
+  salePrice: Int
+}
+
+input CouponTemplateListOptions {
+  """Skips the first n results, for use in pagination"""
+  skip: Int
+
+  """Takes n results, for use in pagination"""
+  take: Int
+
+  """Specifies which properties to sort the results by"""
+  sort: CouponTemplateSortParameter
+
+  """Allows the results to be filtered"""
+  filter: CouponTemplateFilterParameter
+
+  """
+  Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND.
+  """
+  filterOperator: LogicalOperator
+}
+
+input CustomerCouponListOptions {
+  """Skips the first n results, for use in pagination"""
+  skip: Int
+
+  """Takes n results, for use in pagination"""
+  take: Int
+
+  """Specifies which properties to sort the results by"""
+  sort: CustomerCouponSortParameter
+
+  """Allows the results to be filtered"""
+  filter: CustomerCouponFilterParameter
+
+  """
+  Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND.
+  """
+  filterOperator: LogicalOperator
+}
+
+type CouponBundleItem {
+  id: ID!
+  bundleId: ID!
+  templateId: ID!
+  quantity: Int!
+}
+
+type CouponBundle implements Node {
+  id: ID!
+  name: String!
+  description: String
+  salePrice: Int!
+  enabled: Boolean!
+  shopId: ID
+  channelId: ID!
+  items: [CouponBundleItem!]!
+}
+
+type CouponBundleList implements PaginatedList {
+  items: [CouponBundle!]!
+  totalItems: Int!
+}
+
+input CouponBundleItemInput {
+  templateId: ID!
+  quantity: Int
+}
+
+input CouponBundleInput {
+  name: String
+  description: String
+  salePrice: Int!
+  enabled: Boolean
+  shopId: ID
+  items: [CouponBundleItemInput!]
+}
+
+input CouponBundleListOptions {
+  skip: Int
+  take: Int
+
+  """Specifies which properties to sort the results by"""
+  sort: CouponBundleSortParameter
+
+  """Allows the results to be filtered"""
+  filter: CouponBundleFilterParameter
+
+  """
+  Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND.
+  """
+  filterOperator: LogicalOperator
+}
+
+type CouponSaleOrder implements Node {
+  id: ID!
+  customerId: ID!
+  payMode: String!
+  templateId: ID
+  bundleId: ID
+  orderId: ID
+  amount: Int!
+  status: String!
+  paymentMethod: String
+  externalRef: String
+  paidAt: DateTime
+  refundedAt: DateTime
+  createdAt: DateTime!
+}
+
+type CouponSaleOrderList implements PaginatedList {
+  items: [CouponSaleOrder!]!
+  totalItems: Int!
+}
+
+input CouponSaleOrderListOptions {
+  skip: Int
+  take: Int
+  status: String
+
+  """Specifies which properties to sort the results by"""
+  sort: CouponSaleOrderSortParameter
+
+  """Allows the results to be filtered"""
+  filter: CouponSaleOrderFilterParameter
+
+  """
+  Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND.
+  """
+  filterOperator: LogicalOperator
+}
+
+type LiveRoom implements Node {
+  id: ID!
+  name: String!
+  coverUrl: String
+  description: String
+  streamerCustomerId: ID
+  streamerName: String
+  type: String!
+  status: String!
+  scheduledStartAt: DateTime
+  startedAt: DateTime
+  endedAt: DateTime
+  playUrl: String
+  replayUrl: String
+  likeCount: Int!
+  viewCount: Int!
+  pushUrl: String
+  products: [LiveRoomProduct!]!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type LiveRoomProduct implements Node {
+  id: ID!
+  variantId: ID!
+  name: String!
+  price: Int!
+  imageUrl: String
+  sortOrder: Int!
+}
+
+type LiveRoomList implements PaginatedList {
+  items: [LiveRoom!]!
+  totalItems: Int!
+}
+
+input LiveRoomListOptions {
+  take: Int
+  skip: Int
+
+  """Specifies which properties to sort the results by"""
+  sort: LiveRoomSortParameter
+
+  """Allows the results to be filtered"""
+  filter: LiveRoomFilterParameter
+
+  """
+  Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND.
+  """
+  filterOperator: LogicalOperator
+}
+
+input CreateLiveRoomInput {
+  name: String!
+  coverUrl: String
+  description: String
+  streamerCustomerId: ID
+  streamerName: String
+  type: String
+  scheduledStartAt: DateTime
+}
+
+input UpdateLiveRoomInput {
+  id: ID!
+  name: String
+  coverUrl: String
+  description: String
+  streamerCustomerId: ID
+  streamerName: String
+  type: String
+  scheduledStartAt: DateTime
+}
+
+input AddLiveRoomProductInput {
+  variantId: ID!
+  name: String!
+  price: Int!
+  imageUrl: String
+  sortOrder: Int
 }
 
 type PermissionModule {
@@ -7893,6 +10791,140 @@ type SalesReportDaily {
   revenue: Int!
 }
 
+type PlatformCollectionNode {
+  id: ID!
+  name: String!
+  parentId: ID
+}
+
+type LogisticsTrack implements Node {
+  id: ID!
+  fulfillmentId: ID!
+  trackingNo: String!
+  carrierCode: String!
+  carrierName: String!
+  status: String!
+  trackInfo: String
+  signedAt: DateTime
+  lastSyncedAt: DateTime
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type Carrier {
+  code: String!
+  name: String!
+  shortName: String!
+}
+
+input BatchFulfillmentItem {
+  orderId: ID!
+  trackingNo: String!
+  carrierCode: String!
+  packageId: String
+  shippingFee: Int
+}
+
+type BatchFulfillmentItemResult {
+  orderId: ID!
+  success: Boolean!
+  trackId: ID
+  error: String
+}
+
+type BatchFulfillmentResult {
+  items: [BatchFulfillmentItemResult!]!
+}
+
+input SplitLineInput {
+  orderLineId: ID!
+  quantity: Int!
+}
+
+input SplitPackageInput {
+  stockLocationId: ID!
+  lines: [SplitLineInput!]!
+}
+
+type SplitLine {
+  orderLineId: ID!
+  quantity: Int!
+}
+
+type SplitPackage {
+  packageId: String!
+  stockLocationId: ID!
+  lines: [SplitLine!]!
+  estimatedShippingFee: Float!
+  deliveryMode: String!
+}
+
+type OrderSplitPlan {
+  orderId: ID!
+  packages: [SplitPackage!]!
+}
+
+type OrderPackage implements Node {
+  id: ID!
+  code: String!
+  orderId: ID!
+  stockLocationId: ID!
+  lines: [SplitLine!]!
+  shippingFee: Int
+  deliveryMode: String!
+  fulfillmentId: ID
+  deliveryOrderId: ID
+  status: String!
+  shippedAt: DateTime
+  deliveredAt: DateTime
+  cancelledAt: DateTime
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type DeliveryOrderAdmin {
+  id: ID!
+  code: String!
+  orderId: ID!
+  packageId: String
+  fulfillmentId: ID
+  providerCode: String!
+  thirdPartyNo: String
+  status: String!
+  fee: Int
+  etaMinutes: Int
+  courierName: String
+  courierPhone: String
+  acceptedAt: DateTime
+  pickupAt: DateTime
+  deliveredAt: DateTime
+  cancelledAt: DateTime
+  reason: String
+}
+
+input DeliveryCreateInput {
+  orderId: ID!
+  packageId: String!
+  providerCode: String!
+  pickup: DeliveryGeoInput!
+  dropoff: DeliveryGeoInput!
+  items: [DeliveryItemInput!]!
+  remark: String
+}
+
+input DeliveryGeoInput {
+  name: String!
+  address: String
+  lat: Float!
+  lng: Float!
+  phone: String
+}
+
+input DeliveryItemInput {
+  name: String!
+  quantity: Int!
+}
+
 type CsOrderList {
   items: [Order!]!
   totalItems: Int!
@@ -7934,8 +10966,16 @@ type CsExceptionOrder {
   csNotes: [CsNote!]!
 }
 
+type StockLevelRow {
+  id: ID!
+  productVariantId: ID!
+  stockLocationId: ID!
+  stockOnHand: Int!
+  stockAllocated: Int!
+}
+
 type StockLevelList {
-  items: [StockLevel!]!
+  items: [StockLevelRow!]!
   totalItems: Int!
 }
 
@@ -8103,6 +11143,157 @@ input CreateStocktakeOrderInput {
 input StocktakeCountInput {
   lineId: ID!
   countedQuantity: Int!
+}
+
+type StockLedgerEntry {
+  id: ID!
+  code: String!
+  productVariantId: ID!
+  stockLocationId: ID!
+  bizType: String!
+  bizCode: String
+  orderLineId: ID
+  direction: String!
+  quantity: Int!
+  beforeOnHand: Int
+  afterOnHand: Int
+  otherLocationId: ID
+  reason: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type StockLedgerList {
+  items: [StockLedgerEntry!]!
+  totalItems: Int!
+}
+
+type MerchantVariantStockLocation {
+  locationId: ID!
+  locationName: String!
+  stockOnHand: Int!
+  stockAllocated: Int!
+  stockAvailable: Int!
+}
+
+type MerchantVariantStock {
+  variantId: ID!
+  variantName: String
+  sku: String
+  locations: [MerchantVariantStockLocation!]!
+}
+
+type MerchantProductStock {
+  productId: ID!
+  variantCount: Int!
+  totalOnHand: Int!
+  totalAvailable: Int!
+}
+
+type Supplier {
+  id: ID!
+  code: String!
+  name: String!
+  taxNumber: String
+  contactName: String
+  contactPhone: String
+  address: String
+  settlementDays: Int!
+  note: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type SupplierList {
+  items: [Supplier!]!
+  totalItems: Int!
+}
+
+type PurchaseOrderLine {
+  id: ID!
+  productVariantId: ID!
+  quantity: Int!
+  receivedQuantity: Int!
+  unitPrice: Int
+  amount: Int!
+}
+
+type PurchaseOrder {
+  id: ID!
+  code: String!
+  state: String!
+  supplierId: ID!
+  supplier: Supplier
+  targetLocationId: ID!
+  targetLocation: StockLocation
+  note: String
+  staffId: String
+  orderDate: DateTime
+  expectedArrivalDate: DateTime
+  totalAmount: Int!
+  lines: [PurchaseOrderLine!]!
+  orderedAt: DateTime
+  completedAt: DateTime
+  cancelledAt: DateTime
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type PurchaseOrderList {
+  items: [PurchaseOrder!]!
+  totalItems: Int!
+}
+
+input CreateSupplierInput {
+  code: String!
+  name: String!
+  taxNumber: String
+  contactName: String
+  contactPhone: String
+  address: String
+  settlementDays: Int
+  note: String
+}
+
+input UpdateSupplierInput {
+  code: String
+  name: String
+  taxNumber: String
+  contactName: String
+  contactPhone: String
+  address: String
+  settlementDays: Int
+  note: String
+}
+
+input PurchaseOrderLineInput {
+  productVariantId: ID!
+  quantity: Int!
+  unitPrice: Int
+}
+
+input CreatePurchaseOrderInput {
+  supplierId: ID!
+  targetLocationId: ID!
+  note: String
+  orderDate: DateTime
+  expectedArrivalDate: DateTime
+  lines: [PurchaseOrderLineInput!]!
+}
+
+input ReceivePurchaseOrderInput {
+  lineId: ID!
+  quantity: Int!
+}
+
+input SupplierListOptions {
+  skip: Int
+  take: Int
+}
+
+input PurchaseOrderListOptions {
+  skip: Int
+  take: Int
 }
 
 type DashboardMetrics {
@@ -8338,67 +11529,6 @@ input UpdateGroupBuyInput {
   rewardRules: JSON
 }
 
-type MarketingCoupon {
-  id: ID!
-  name: String!
-  description: String
-  couponType: String!
-  discountValue: Int!
-  minSpend: Int!
-  maxDiscount: Int!
-  startAt: DateTime!
-  endAt: DateTime!
-  totalQuantity: Int!
-  claimedCount: Int!
-  limitPerUser: Int!
-  isActive: Boolean!
-  applicableProductIds: JSON
-  applicableCategoryIds: JSON
-  isNewUserOnly: Boolean!
-  isGlobal: Boolean!
-  enabledInCurrentChannel: Boolean!
-  createdAt: DateTime!
-  updatedAt: DateTime!
-}
-
-type MarketingCouponList {
-  items: [MarketingCoupon!]!
-  totalItems: Int!
-}
-
-input MarketingCreateCouponInput {
-  name: String!
-  description: String
-  couponType: String!
-  discountValue: Int!
-  minSpend: Int
-  maxDiscount: Int
-  startAt: DateTime!
-  endAt: DateTime!
-  totalQuantity: Int!
-  limitPerUser: Int
-  isNewUserOnly: Boolean
-  isGlobal: Boolean
-  applicableProductIds: JSON
-  applicableCategoryIds: JSON
-}
-
-input MarketingUpdateCouponInput {
-  name: String
-  description: String
-  couponType: String
-  discountValue: Int
-  minSpend: Int
-  maxDiscount: Int
-  startAt: DateTime
-  endAt: DateTime
-  totalQuantity: Int
-  limitPerUser: Int
-  isNewUserOnly: Boolean
-  applicableProductIds: JSON
-  applicableCategoryIds: JSON
-}
-
 type Message implements Node {
   id: ID!
   title: String!
@@ -8440,6 +11570,96 @@ type MessageDeliveryStats {
   totalSent: Int!
   totalFailed: Int!
   totalRead: Int!
+}
+
+enum PreSaleMode {
+  deposit
+  full
+}
+
+enum PreSaleStatus {
+  upcoming
+  active
+  delivered
+  ended
+}
+
+type PreSaleActivity implements Node {
+  id: ID!
+  name: String!
+  mode: PreSaleMode!
+  startAt: DateTime!
+  endAt: DateTime!
+  releaseAt: DateTime
+  tailStartAt: DateTime
+  tailEndAt: DateTime
+  presalePrice: Int!
+  depositAmount: Int!
+  totalStock: Int!
+  soldCount: Int!
+  limitPerUser: Int!
+  productId: ID!
+  variantId: ID!
+  status: PreSaleStatus!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type PreSaleActivityList implements PaginatedList {
+  items: [PreSaleActivity!]!
+  totalItems: Int!
+}
+
+input CreatePreSaleActivityInput {
+  name: String!
+  mode: PreSaleMode!
+  startAt: DateTime!
+  endAt: DateTime!
+  releaseAt: DateTime
+  tailStartAt: DateTime
+  tailEndAt: DateTime
+  presalePrice: Int!
+  depositAmount: Int!
+  totalStock: Int!
+  limitPerUser: Int
+  productId: ID!
+  variantId: ID!
+}
+
+input UpdatePreSaleActivityInput {
+  id: ID!
+  name: String
+  mode: PreSaleMode
+  startAt: DateTime
+  endAt: DateTime
+  releaseAt: DateTime
+  tailStartAt: DateTime
+  tailEndAt: DateTime
+  presalePrice: Int
+  depositAmount: Int
+  totalStock: Int
+  limitPerUser: Int
+  productId: ID
+  variantId: ID
+}
+
+input PreSaleActivityListOptions {
+  """Skips the first n results, for use in pagination"""
+  skip: Int
+
+  """Takes n results, for use in pagination"""
+  take: Int
+
+  """Specifies which properties to sort the results by"""
+  sort: PreSaleActivitySortParameter
+
+  """Allows the results to be filtered"""
+  filter: PreSaleActivityFilterParameter
+
+  """
+  Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND.
+  """
+  filterOperator: LogicalOperator
 }
 
 input AdministratorFilterParameter {
@@ -8497,6 +11717,8 @@ input AssetFilterParameter {
   preview: StringOperators
   _and: [AssetFilterParameter!]
   _or: [AssetFilterParameter!]
+  uploadedBy: StringOperators
+  assetTags: StringListOperators
 }
 
 input AssetSortParameter {
@@ -8510,6 +11732,7 @@ input AssetSortParameter {
   height: SortOrder
   source: SortOrder
   preview: SortOrder
+  uploadedBy: SortOrder
 }
 
 input ChannelFilterParameter {
@@ -8526,21 +11749,56 @@ input ChannelFilterParameter {
   pricesIncludeTax: BooleanOperators
   _and: [ChannelFilterParameter!]
   _or: [ChannelFilterParameter!]
+  displayTemplate: StringOperators
+  themeId: StringOperators
+  shopName: StringOperators
+  shopLogo: StringOperators
+  shopIntro: StringOperators
+  servicePhone: StringOperators
+  shopContent: StringOperators
+  detailConfig: StringOperators
+  orderDetailConfig: StringOperators
+  orderListConfig: StringOperators
+  promoSchemes: StringOperators
+  serviceSchemes: StringOperators
+  pageCategoryConfig: StringOperators
+  pageCartConfig: StringOperators
+  pageProfileConfig: StringOperators
   couponStackable: BooleanOperators
   maxStackableCount: NumberOperators
   employeePickupMode: StringOperators
   customDomains: StringListOperators
+  domain: StringOperators
+  enabled: BooleanOperators
+  tenantNo: NumberOperators
+  isOfficial: BooleanOperators
+  merchantStatus: StringOperators
+  multilingualEnabled: BooleanOperators
+  redeemCollectMode: StringOperators
+  binMode: StringOperators
+  taxMode: StringOperators
+  physicalStockEnabled: BooleanOperators
+  shareImageUrl: StringOperators
+  inventoryMode: StringOperators
+  odooBaseUrl: StringOperators
+  odooApiKey: StringOperators
+  inventoryDefaultSafetyStock: NumberOperators
+  orderAdjustMaxRateBp: NumberOperators
+  orderAdjustMaxAmount: NumberOperators
+  reservationTtlMinutes: NumberOperators
+  templateId: StringOperators
+  themeTokensOverride: StringOperators
   orderPaymentTimeoutMinutes: NumberOperators
   orderFulfillmentTimeoutHours: NumberOperators
   orderReceiptTimeoutDays: NumberOperators
   orderReviewReminderDays: NumberOperators
-  stockLocationPriority: StringOperators
-  shippingStrategy: StringOperators
   directCommissionRate: NumberOperators
   indirectCommissionRate: NumberOperators
   minWithdrawalAmount: NumberOperators
   commissionSettlementDays: NumberOperators
   distributionEnabled: BooleanOperators
+  rechargeMinAmount: NumberOperators
+  rechargeMaxAmount: NumberOperators
   level1Threshold: NumberOperators
   level1Name: StringOperators
   level2Threshold: NumberOperators
@@ -8553,6 +11811,33 @@ input ChannelFilterParameter {
   level5Name: StringOperators
   pointsEarnRatio: NumberOperators
   pointsEarnOnShipping: BooleanOperators
+  pointsPerYuan: NumberOperators
+  pointsExpireDays: NumberOperators
+  freeShippingLevel: NumberOperators
+  checkinPoints: NumberOperators
+  checkinGrowth: NumberOperators
+  checkinStreakThreshold: NumberOperators
+  checkinStreakBonusPoints: NumberOperators
+  checkinStreakBonusGrowth: NumberOperators
+  taskSharePoints: NumberOperators
+  taskShareGrowth: NumberOperators
+  taskLoginPoints: NumberOperators
+  taskLoginGrowth: NumberOperators
+  taskProfilePoints: NumberOperators
+  taskProfileGrowth: NumberOperators
+  taskBindPhonePoints: NumberOperators
+  taskBindPhoneGrowth: NumberOperators
+  taskReachLevelThreshold: NumberOperators
+  taskReachLevelPoints: NumberOperators
+  taskReachLevelGrowth: NumberOperators
+  taskFirstOrderPoints: NumberOperators
+  taskFirstOrderGrowth: NumberOperators
+  taskOrderCountThreshold: NumberOperators
+  taskOrderCountPoints: NumberOperators
+  taskOrderCountGrowth: NumberOperators
+  taskOrderAmountThreshold: NumberOperators
+  taskOrderAmountPoints: NumberOperators
+  taskOrderAmountGrowth: NumberOperators
   orderPaidTemplateId: StringOperators
   orderShippedTemplateId: StringOperators
   orderDeliveredTemplateId: StringOperators
@@ -8560,6 +11845,11 @@ input ChannelFilterParameter {
   subscribeMessagePage: StringOperators
   subscribeMessageMiniprogramState: StringOperators
   settlementBasis: StringOperators
+  stockLocationPriority: StringOperators
+  shippingStrategy: StringOperators
+  memberStockStrategy: StringOperators
+  packageShippingRule: StringOperators
+  orderCompleteDays: NumberOperators
   uniPushAppKey: StringOperators
   uniPushMasterSecret: StringOperators
 }
@@ -8571,20 +11861,55 @@ input ChannelSortParameter {
   code: SortOrder
   token: SortOrder
   outOfStockThreshold: SortOrder
+  displayTemplate: SortOrder
+  themeId: SortOrder
+  shopName: SortOrder
+  shopLogo: SortOrder
+  shopIntro: SortOrder
+  servicePhone: SortOrder
+  shopContent: SortOrder
+  detailConfig: SortOrder
+  orderDetailConfig: SortOrder
+  orderListConfig: SortOrder
+  promoSchemes: SortOrder
+  serviceSchemes: SortOrder
+  pageCategoryConfig: SortOrder
+  pageCartConfig: SortOrder
+  pageProfileConfig: SortOrder
   couponStackable: SortOrder
   maxStackableCount: SortOrder
   employeePickupMode: SortOrder
+  domain: SortOrder
+  enabled: SortOrder
+  tenantNo: SortOrder
+  isOfficial: SortOrder
+  merchantStatus: SortOrder
+  multilingualEnabled: SortOrder
+  redeemCollectMode: SortOrder
+  binMode: SortOrder
+  taxMode: SortOrder
+  physicalStockEnabled: SortOrder
+  shareImageUrl: SortOrder
+  inventoryMode: SortOrder
+  odooBaseUrl: SortOrder
+  odooApiKey: SortOrder
+  inventoryDefaultSafetyStock: SortOrder
+  orderAdjustMaxRateBp: SortOrder
+  orderAdjustMaxAmount: SortOrder
+  reservationTtlMinutes: SortOrder
+  templateId: SortOrder
+  themeTokensOverride: SortOrder
   orderPaymentTimeoutMinutes: SortOrder
   orderFulfillmentTimeoutHours: SortOrder
   orderReceiptTimeoutDays: SortOrder
   orderReviewReminderDays: SortOrder
-  stockLocationPriority: SortOrder
-  shippingStrategy: SortOrder
   directCommissionRate: SortOrder
   indirectCommissionRate: SortOrder
   minWithdrawalAmount: SortOrder
   commissionSettlementDays: SortOrder
   distributionEnabled: SortOrder
+  rechargeMinAmount: SortOrder
+  rechargeMaxAmount: SortOrder
   level1Threshold: SortOrder
   level1Name: SortOrder
   level2Threshold: SortOrder
@@ -8597,6 +11922,33 @@ input ChannelSortParameter {
   level5Name: SortOrder
   pointsEarnRatio: SortOrder
   pointsEarnOnShipping: SortOrder
+  pointsPerYuan: SortOrder
+  pointsExpireDays: SortOrder
+  freeShippingLevel: SortOrder
+  checkinPoints: SortOrder
+  checkinGrowth: SortOrder
+  checkinStreakThreshold: SortOrder
+  checkinStreakBonusPoints: SortOrder
+  checkinStreakBonusGrowth: SortOrder
+  taskSharePoints: SortOrder
+  taskShareGrowth: SortOrder
+  taskLoginPoints: SortOrder
+  taskLoginGrowth: SortOrder
+  taskProfilePoints: SortOrder
+  taskProfileGrowth: SortOrder
+  taskBindPhonePoints: SortOrder
+  taskBindPhoneGrowth: SortOrder
+  taskReachLevelThreshold: SortOrder
+  taskReachLevelPoints: SortOrder
+  taskReachLevelGrowth: SortOrder
+  taskFirstOrderPoints: SortOrder
+  taskFirstOrderGrowth: SortOrder
+  taskOrderCountThreshold: SortOrder
+  taskOrderCountPoints: SortOrder
+  taskOrderCountGrowth: SortOrder
+  taskOrderAmountThreshold: SortOrder
+  taskOrderAmountPoints: SortOrder
+  taskOrderAmountGrowth: SortOrder
   orderPaidTemplateId: SortOrder
   orderShippedTemplateId: SortOrder
   orderDeliveredTemplateId: SortOrder
@@ -8604,6 +11956,11 @@ input ChannelSortParameter {
   subscribeMessagePage: SortOrder
   subscribeMessageMiniprogramState: SortOrder
   settlementBasis: SortOrder
+  stockLocationPriority: SortOrder
+  shippingStrategy: SortOrder
+  memberStockStrategy: SortOrder
+  packageShippingRule: SortOrder
+  orderCompleteDays: SortOrder
   uniPushAppKey: SortOrder
   uniPushMasterSecret: SortOrder
 }
@@ -8629,6 +11986,7 @@ input CollectionFilterParameter {
   floorLayout: StringOperators
   floorSortOrder: NumberOperators
   floorMaxScreens: NumberOperators
+  icon: StringOperators
 }
 
 input CollectionSortParameter {
@@ -8647,6 +12005,7 @@ input CollectionSortParameter {
   floorLayout: SortOrder
   floorSortOrder: SortOrder
   floorMaxScreens: SortOrder
+  icon: SortOrder
 }
 
 input ProductVariantSortParameter {
@@ -8662,12 +12021,21 @@ input ProductVariantSortParameter {
   price: SortOrder
   priceWithTax: SortOrder
   stockLevel: SortOrder
+  availableStock: SortOrder
   weight: SortOrder
   length: SortOrder
   width: SortOrder
   height: SortOrder
   shippingProfileId: SortOrder
   paymentProfileId: SortOrder
+  listPrice: SortOrder
+  saleStart: SortOrder
+  saleEnd: SortOrder
+  costPrice: SortOrder
+  barcode: SortOrder
+  internalCode: SortOrder
+  hotelRoomConfig: SortOrder
+  videoUrl: SortOrder
 }
 
 input CountryFilterParameter {
@@ -8720,6 +12088,8 @@ input CustomerSortParameter {
   phoneNumber: SortOrder
   emailAddress: SortOrder
   inviteCode: SortOrder
+  ssoId: SortOrder
+  ssoUid: SortOrder
   alipayOpenid: SortOrder
   wechatOpenid: SortOrder
   wechatMiniOpenid: SortOrder
@@ -8874,13 +12244,32 @@ input ProductSortParameter {
   name: SortOrder
   slug: SortOrder
   description: SortOrder
-  belongCity: SortOrder
+  shopId: SortOrder
+  reviewRating: SortOrder
+  reviewCount: SortOrder
+  favoriteCount: SortOrder
   listedInMarketplace: SortOrder
   marketplaceStatus: SortOrder
   rejectReason: SortOrder
   merchantRef: SortOrder
   barcode: SortOrder
   internalCode: SortOrder
+  marketingTags: SortOrder
+  sellingPoint: SortOrder
+  tenantCategoryRef: SortOrder
+  platformCategoryId: SortOrder
+  needsCategorization: SortOrder
+  videoAssetId: SortOrder
+  promos: SortOrder
+  services: SortOrder
+  salesCount: SortOrder
+  realSalesCount: SortOrder
+  bonusSales: SortOrder
+  pointsReward: SortOrder
+  pointsRewardOverride: SortOrder
+  belongCity: SortOrder
+  videoUrl: SortOrder
+  displayTemplate: SortOrder
 }
 
 input PromotionFilterParameter {
@@ -8948,6 +12337,7 @@ input RoleFilterParameter {
   updatedAt: DateOperators
   code: StringOperators
   description: StringOperators
+  grantable: BooleanOperators
   _and: [RoleFilterParameter!]
   _or: [RoleFilterParameter!]
 }
@@ -8989,6 +12379,7 @@ input ShippingMethodFilterParameter {
   fulfillmentHandlerCode: StringOperators
   _and: [ShippingMethodFilterParameter!]
   _or: [ShippingMethodFilterParameter!]
+  enabled: BooleanOperators
 }
 
 input ShippingMethodSortParameter {
@@ -8999,6 +12390,7 @@ input ShippingMethodSortParameter {
   name: SortOrder
   description: SortOrder
   fulfillmentHandlerCode: SortOrder
+  enabled: SortOrder
 }
 
 input StockLocationFilterParameter {
@@ -9009,6 +12401,10 @@ input StockLocationFilterParameter {
   description: StringOperators
   _and: [StockLocationFilterParameter!]
   _or: [StockLocationFilterParameter!]
+  kind: StringOperators
+  code: StringOperators
+  channelCode: StringOperators
+  deliveryMethods: StringListOperators
   lat: NumberOperators
   lng: NumberOperators
   serviceCities: StringListOperators
@@ -9020,6 +12416,9 @@ input StockLocationSortParameter {
   updatedAt: SortOrder
   name: SortOrder
   description: SortOrder
+  kind: SortOrder
+  code: SortOrder
+  channelCode: SortOrder
   lat: SortOrder
   lng: SortOrder
 }
@@ -9086,9 +12485,13 @@ input PickupLocationFilterParameter {
   name: StringOperators
   type: StringOperators
   address: StringOperators
+  contactPerson: StringOperators
   phoneNumber: StringOperators
   businessHours: StringOperators
   partner: StringOperators
+  remark: StringOperators
+  sortOrder: NumberOperators
+  enabled: BooleanOperators
   isPublic: BooleanOperators
   ownerChannelId: IDOperators
   province: StringOperators
@@ -9103,9 +12506,12 @@ input PickupLocationSortParameter {
   id: SortOrder
   name: SortOrder
   address: SortOrder
+  contactPerson: SortOrder
   phoneNumber: SortOrder
   businessHours: SortOrder
   partner: SortOrder
+  remark: SortOrder
+  sortOrder: SortOrder
   ownerChannelId: SortOrder
   province: SortOrder
   city: SortOrder
@@ -9120,6 +12526,11 @@ input ShippingProfileFilterParameter {
   code: StringOperators
   isGlobal: BooleanOperators
   freeShippingThreshold: NumberOperators
+  isTenantDefault: BooleanOperators
+  enabled: BooleanOperators
+  requiresAddress: BooleanOperators
+  requiresContact: BooleanOperators
+  paymentProfileId: IDOperators
   _and: [ShippingProfileFilterParameter!]
   _or: [ShippingProfileFilterParameter!]
 }
@@ -9130,6 +12541,7 @@ input ShippingProfileSortParameter {
   description: SortOrder
   code: SortOrder
   freeShippingThreshold: SortOrder
+  paymentProfileId: SortOrder
 }
 
 input PaymentProfileFilterParameter {
@@ -9138,6 +12550,8 @@ input PaymentProfileFilterParameter {
   description: StringOperators
   code: StringOperators
   isGlobal: BooleanOperators
+  isTenantDefault: BooleanOperators
+  enabled: BooleanOperators
   _and: [PaymentProfileFilterParameter!]
   _or: [PaymentProfileFilterParameter!]
 }
@@ -9147,54 +12561,6 @@ input PaymentProfileSortParameter {
   name: SortOrder
   description: SortOrder
   code: SortOrder
-}
-
-input InvoiceFilterParameter {
-  id: IDOperators
-  invoiceType: StringOperators
-  status: StringOperators
-  title: StringOperators
-  taxNumber: StringOperators
-  email: StringOperators
-  companyAddress: StringOperators
-  companyPhone: StringOperators
-  bankName: StringOperators
-  bankAccount: StringOperators
-  amount: NumberOperators
-  customerId: IDOperators
-  pdfUrl: StringOperators
-  issuedAt: DateOperators
-  reversedAt: DateOperators
-  reverseReason: StringOperators
-  providerInvoiceNo: StringOperators
-  lastError: StringOperators
-  createdAt: DateOperators
-  updatedAt: DateOperators
-  _and: [InvoiceFilterParameter!]
-  _or: [InvoiceFilterParameter!]
-}
-
-input InvoiceSortParameter {
-  id: SortOrder
-  invoiceType: SortOrder
-  status: SortOrder
-  title: SortOrder
-  taxNumber: SortOrder
-  email: SortOrder
-  companyAddress: SortOrder
-  companyPhone: SortOrder
-  bankName: SortOrder
-  bankAccount: SortOrder
-  amount: SortOrder
-  customerId: SortOrder
-  pdfUrl: SortOrder
-  issuedAt: SortOrder
-  reversedAt: SortOrder
-  reverseReason: SortOrder
-  providerInvoiceNo: SortOrder
-  lastError: SortOrder
-  createdAt: SortOrder
-  updatedAt: SortOrder
 }
 
 input GroupBuyActivityFilterParameter {
@@ -9358,6 +12724,12 @@ input AfterSalesRequestAdminFilterParameter {
   returnTrackingNo: StringOperators
   returnCarrier: StringOperators
   rejectReason: StringOperators
+  receivedQuantity: NumberOperators
+  restockJson: StringOperators
+  refundTransactionId: StringOperators
+  actualRefundAmount: NumberOperators
+  refundedAt: DateOperators
+  refundError: StringOperators
   customerId: IDOperators
   createdAt: DateOperators
   updatedAt: DateOperators
@@ -9377,6 +12749,12 @@ input AfterSalesRequestAdminSortParameter {
   returnTrackingNo: SortOrder
   returnCarrier: SortOrder
   rejectReason: SortOrder
+  receivedQuantity: SortOrder
+  restockJson: SortOrder
+  refundTransactionId: SortOrder
+  actualRefundAmount: SortOrder
+  refundedAt: SortOrder
+  refundError: SortOrder
   customerId: SortOrder
   createdAt: SortOrder
   updatedAt: SortOrder
@@ -9389,6 +12767,7 @@ input ReviewFilterParameter {
   productId: IDOperators
   variantId: IDOperators
   orderLineId: IDOperators
+  parentId: IDOperators
   rating: NumberOperators
   content: StringOperators
   isAnonymous: BooleanOperators
@@ -9409,6 +12788,7 @@ input ReviewSortParameter {
   productId: SortOrder
   variantId: SortOrder
   orderLineId: SortOrder
+  parentId: SortOrder
   rating: SortOrder
   content: SortOrder
   status: SortOrder
@@ -9419,44 +12799,284 @@ input ReviewSortParameter {
   updatedAt: SortOrder
 }
 
-input CouponFilterParameter {
+input CouponTemplateFilterParameter {
+  id: IDOperators
+  name: StringOperators
+  nameZh: StringOperators
+  nameEn: StringOperators
+  description: StringOperators
+  descZh: StringOperators
+  descEn: StringOperators
+  type: StringOperators
+  discountValue: NumberOperators
+  minSpend: NumberOperators
+  startsAt: DateOperators
+  endsAt: DateOperators
+  totalCount: NumberOperators
+  claimedCount: NumberOperators
+  pointsPrice: NumberOperators
+  perUserLimit: NumberOperators
+  scope: StringOperators
+  categoryId: IDOperators
+  variantId: IDOperators
+  enabled: BooleanOperators
+  claimable: BooleanOperators
+  claimCode: StringOperators
+  validDays: NumberOperators
+  newCustomerOnly: BooleanOperators
+  memberLevel: StringOperators
+  shopId: IDOperators
+  usageScene: StringOperators
+  distributionChannels: StringOperators
+  salePrice: NumberOperators
+  createdAt: DateOperators
+  updatedAt: DateOperators
+  _and: [CouponTemplateFilterParameter!]
+  _or: [CouponTemplateFilterParameter!]
+}
+
+input CouponTemplateSortParameter {
+  id: SortOrder
+  name: SortOrder
+  nameZh: SortOrder
+  nameEn: SortOrder
+  description: SortOrder
+  descZh: SortOrder
+  descEn: SortOrder
+  discountValue: SortOrder
+  minSpend: SortOrder
+  startsAt: SortOrder
+  endsAt: SortOrder
+  totalCount: SortOrder
+  claimedCount: SortOrder
+  pointsPrice: SortOrder
+  perUserLimit: SortOrder
+  scope: SortOrder
+  categoryId: SortOrder
+  variantId: SortOrder
+  claimCode: SortOrder
+  validDays: SortOrder
+  memberLevel: SortOrder
+  shopId: SortOrder
+  distributionChannels: SortOrder
+  salePrice: SortOrder
+  createdAt: SortOrder
+  updatedAt: SortOrder
+}
+
+input CustomerCouponFilterParameter {
+  id: IDOperators
+  customerId: IDOperators
+  templateId: IDOperators
+  code: StringOperators
+  status: StringOperators
+  issuedBy: StringOperators
+  reservedOrderId: IDOperators
+  usedOrderId: IDOperators
+  issuedAt: DateOperators
+  usedAt: DateOperators
+  expiredAt: DateOperators
+  createdAt: DateOperators
+  updatedAt: DateOperators
+  _and: [CustomerCouponFilterParameter!]
+  _or: [CustomerCouponFilterParameter!]
+}
+
+input CustomerCouponSortParameter {
+  id: SortOrder
+  customerId: SortOrder
+  templateId: SortOrder
+  code: SortOrder
+  reservedOrderId: SortOrder
+  usedOrderId: SortOrder
+  issuedAt: SortOrder
+  usedAt: SortOrder
+  expiredAt: SortOrder
+  createdAt: SortOrder
+  updatedAt: SortOrder
+}
+
+input InStoreBillFilterParameter {
+  id: IDOperators
+  channelId: IDOperators
+  couponCode: StringOperators
+  couponTemplateId: IDOperators
+  couponName: StringOperators
+  customerId: IDOperators
+  customerName: StringOperators
+  customerPhone: StringOperators
+  discountType: StringOperators
+  discountValue: NumberOperators
+  originalAmount: NumberOperators
+  discountAmount: NumberOperators
+  finalAmount: NumberOperators
+  operatorId: IDOperators
+  operatorName: StringOperators
+  remark: StringOperators
+  billedAt: DateOperators
+  createdAt: DateOperators
+  _and: [InStoreBillFilterParameter!]
+  _or: [InStoreBillFilterParameter!]
+}
+
+input InStoreBillSortParameter {
+  id: SortOrder
+  channelId: SortOrder
+  couponCode: SortOrder
+  couponTemplateId: SortOrder
+  couponName: SortOrder
+  customerId: SortOrder
+  customerName: SortOrder
+  customerPhone: SortOrder
+  discountType: SortOrder
+  discountValue: SortOrder
+  originalAmount: SortOrder
+  discountAmount: SortOrder
+  finalAmount: SortOrder
+  operatorId: SortOrder
+  operatorName: SortOrder
+  remark: SortOrder
+  billedAt: SortOrder
+  createdAt: SortOrder
+}
+
+input CouponBundleFilterParameter {
   id: IDOperators
   name: StringOperators
   description: StringOperators
-  couponType: StringOperators
-  discountValue: NumberOperators
-  minSpend: NumberOperators
-  maxDiscount: NumberOperators
-  startAt: DateOperators
-  endAt: DateOperators
-  totalQuantity: NumberOperators
-  claimedCount: NumberOperators
-  limitPerUser: NumberOperators
-  isActive: BooleanOperators
-  isNewUserOnly: BooleanOperators
-  isGlobal: BooleanOperators
-  ownerChannelId: IDOperators
-  enabledInCurrentChannel: BooleanOperators
-  createdAt: DateOperators
-  updatedAt: DateOperators
-  _and: [CouponFilterParameter!]
-  _or: [CouponFilterParameter!]
+  salePrice: NumberOperators
+  enabled: BooleanOperators
+  shopId: IDOperators
+  channelId: IDOperators
+  _and: [CouponBundleFilterParameter!]
+  _or: [CouponBundleFilterParameter!]
 }
 
-input CouponSortParameter {
+input CouponBundleSortParameter {
   id: SortOrder
   name: SortOrder
   description: SortOrder
-  couponType: SortOrder
-  discountValue: SortOrder
-  minSpend: SortOrder
-  maxDiscount: SortOrder
+  salePrice: SortOrder
+  shopId: SortOrder
+  channelId: SortOrder
+}
+
+input CouponSaleOrderFilterParameter {
+  id: IDOperators
+  customerId: IDOperators
+  payMode: StringOperators
+  templateId: IDOperators
+  bundleId: IDOperators
+  orderId: IDOperators
+  amount: NumberOperators
+  status: StringOperators
+  paymentMethod: StringOperators
+  externalRef: StringOperators
+  paidAt: DateOperators
+  refundedAt: DateOperators
+  createdAt: DateOperators
+  _and: [CouponSaleOrderFilterParameter!]
+  _or: [CouponSaleOrderFilterParameter!]
+}
+
+input CouponSaleOrderSortParameter {
+  id: SortOrder
+  customerId: SortOrder
+  payMode: SortOrder
+  templateId: SortOrder
+  bundleId: SortOrder
+  orderId: SortOrder
+  amount: SortOrder
+  status: SortOrder
+  paymentMethod: SortOrder
+  externalRef: SortOrder
+  paidAt: SortOrder
+  refundedAt: SortOrder
+  createdAt: SortOrder
+}
+
+input LiveRoomFilterParameter {
+  id: IDOperators
+  name: StringOperators
+  coverUrl: StringOperators
+  description: StringOperators
+  streamerCustomerId: IDOperators
+  streamerName: StringOperators
+  type: StringOperators
+  status: StringOperators
+  scheduledStartAt: DateOperators
+  startedAt: DateOperators
+  endedAt: DateOperators
+  playUrl: StringOperators
+  replayUrl: StringOperators
+  likeCount: NumberOperators
+  viewCount: NumberOperators
+  pushUrl: StringOperators
+  createdAt: DateOperators
+  updatedAt: DateOperators
+  _and: [LiveRoomFilterParameter!]
+  _or: [LiveRoomFilterParameter!]
+}
+
+input LiveRoomSortParameter {
+  id: SortOrder
+  name: SortOrder
+  coverUrl: SortOrder
+  description: SortOrder
+  streamerCustomerId: SortOrder
+  streamerName: SortOrder
+  type: SortOrder
+  status: SortOrder
+  scheduledStartAt: SortOrder
+  startedAt: SortOrder
+  endedAt: SortOrder
+  playUrl: SortOrder
+  replayUrl: SortOrder
+  likeCount: SortOrder
+  viewCount: SortOrder
+  pushUrl: SortOrder
+  createdAt: SortOrder
+  updatedAt: SortOrder
+}
+
+input PreSaleActivityFilterParameter {
+  id: IDOperators
+  name: StringOperators
+  mode: StringOperators
+  startAt: DateOperators
+  endAt: DateOperators
+  releaseAt: DateOperators
+  tailStartAt: DateOperators
+  tailEndAt: DateOperators
+  presalePrice: NumberOperators
+  depositAmount: NumberOperators
+  totalStock: NumberOperators
+  soldCount: NumberOperators
+  limitPerUser: NumberOperators
+  productId: IDOperators
+  variantId: IDOperators
+  status: StringOperators
+  createdAt: DateOperators
+  updatedAt: DateOperators
+  _and: [PreSaleActivityFilterParameter!]
+  _or: [PreSaleActivityFilterParameter!]
+}
+
+input PreSaleActivitySortParameter {
+  id: SortOrder
+  name: SortOrder
   startAt: SortOrder
   endAt: SortOrder
-  totalQuantity: SortOrder
-  claimedCount: SortOrder
+  releaseAt: SortOrder
+  tailStartAt: SortOrder
+  tailEndAt: SortOrder
+  presalePrice: SortOrder
+  depositAmount: SortOrder
+  totalStock: SortOrder
+  soldCount: SortOrder
   limitPerUser: SortOrder
-  ownerChannelId: SortOrder
+  productId: SortOrder
+  variantId: SortOrder
   createdAt: SortOrder
   updatedAt: SortOrder
 }
@@ -9492,6 +13112,21 @@ input UpdateAddressCustomFieldsInput {
   longitude: Float
 }
 
+type AssetCustomFields {
+  uploadedBy: String
+  assetTags: [String!]
+}
+
+input CreateAssetCustomFieldsInput {
+  uploadedBy: String
+  assetTags: [String!]
+}
+
+input UpdateAssetCustomFieldsInput {
+  uploadedBy: String
+  assetTags: [String!]
+}
+
 type ChannelDefaultLocationStruct {
   lat: Float
   lng: Float
@@ -9515,7 +13150,53 @@ type ChannelMapConfigStruct {
   securityJsCode: String
 }
 
+type ChannelCategoryMappingStruct {
+  tenantCategory: String
+  collectionId: String
+}
+
+type ChannelBasicConfigStruct {
+  tenantName: String
+  contactPhone: String
+  address: String
+  invoiceHeaderJson: String
+  serviceContactsJson: String
+  timeZoneId: String
+}
+
+type ChannelServiceNotifyConfigStruct {
+  wecomEnabled: Boolean
+  wecomAgentId: String
+  wecomCorpId: String
+  wecomCorpSecret: String
+  wechatPushEnabled: Boolean
+  wechatPushTemplateJson: String
+  chatChannelEnabled: Boolean
+}
+
+type ChannelMultiLanguageConfigStruct {
+  availableLanguageCodes: [String!]
+  defaultLanguageCode: String
+  translationWorkflowEnabled: Boolean
+  operationalCopyJson: String
+}
+
 type ChannelCustomFields {
+  displayTemplate: String
+  themeId: String
+  shopName: String
+  shopLogo: String
+  shopIntro: String
+  servicePhone: String
+  shopContent: String
+  detailConfig: String
+  orderDetailConfig: String
+  orderListConfig: String
+  promoSchemes: String
+  serviceSchemes: String
+  pageCategoryConfig: String
+  pageCartConfig: String
+  pageProfileConfig: String
   couponStackable: Boolean
   maxStackableCount: Int
   employeePickupMode: String
@@ -9523,18 +13204,42 @@ type ChannelCustomFields {
   authConfig: ChannelAuthConfigStruct
   payConfig: ChannelPayConfigStruct
   customDomains: [String!]
+  domain: String
   mapConfig: ChannelMapConfigStruct
+  enabled: Boolean
+  tenantNo: Int
+  isOfficial: Boolean
+  merchantStatus: String
+  categoryMapping: [ChannelCategoryMappingStruct!]
+  multilingualEnabled: Boolean
+  redeemCollectMode: String
+  binMode: String
+  taxMode: String
+  physicalStockEnabled: Boolean
+  shareImageUrl: String
+  basicConfig: ChannelBasicConfigStruct
+  serviceNotifyConfig: ChannelServiceNotifyConfigStruct
+  multiLanguageConfig: ChannelMultiLanguageConfigStruct
+  inventoryMode: String
+  odooBaseUrl: String
+  odooApiKey: String
+  inventoryDefaultSafetyStock: Int
+  orderAdjustMaxRateBp: Int
+  orderAdjustMaxAmount: Int
+  reservationTtlMinutes: Int
+  templateId: String
+  themeTokensOverride: String
   orderPaymentTimeoutMinutes: Int
   orderFulfillmentTimeoutHours: Int
   orderReceiptTimeoutDays: Int
   orderReviewReminderDays: Int
-  stockLocationPriority: String
-  shippingStrategy: String
   directCommissionRate: Int
   indirectCommissionRate: Int
   minWithdrawalAmount: Int
   commissionSettlementDays: Int
   distributionEnabled: Boolean
+  rechargeMinAmount: Int
+  rechargeMaxAmount: Int
   level1Threshold: Int
   level1Name: String
   level2Threshold: Int
@@ -9547,6 +13252,33 @@ type ChannelCustomFields {
   level5Name: String
   pointsEarnRatio: Float
   pointsEarnOnShipping: Boolean
+  pointsPerYuan: Int
+  pointsExpireDays: Int
+  freeShippingLevel: Int
+  checkinPoints: Int
+  checkinGrowth: Int
+  checkinStreakThreshold: Int
+  checkinStreakBonusPoints: Int
+  checkinStreakBonusGrowth: Int
+  taskSharePoints: Int
+  taskShareGrowth: Int
+  taskLoginPoints: Int
+  taskLoginGrowth: Int
+  taskProfilePoints: Int
+  taskProfileGrowth: Int
+  taskBindPhonePoints: Int
+  taskBindPhoneGrowth: Int
+  taskReachLevelThreshold: Int
+  taskReachLevelPoints: Int
+  taskReachLevelGrowth: Int
+  taskFirstOrderPoints: Int
+  taskFirstOrderGrowth: Int
+  taskOrderCountThreshold: Int
+  taskOrderCountPoints: Int
+  taskOrderCountGrowth: Int
+  taskOrderAmountThreshold: Int
+  taskOrderAmountPoints: Int
+  taskOrderAmountGrowth: Int
   orderPaidTemplateId: String
   orderShippedTemplateId: String
   orderDeliveredTemplateId: String
@@ -9554,6 +13286,11 @@ type ChannelCustomFields {
   subscribeMessagePage: String
   subscribeMessageMiniprogramState: String
   settlementBasis: String
+  stockLocationPriority: String
+  shippingStrategy: String
+  memberStockStrategy: String
+  packageShippingRule: String
+  orderCompleteDays: Int
   uniPushAppKey: String
   uniPushMasterSecret: String
 }
@@ -9581,7 +13318,53 @@ input ChannelMapConfigStructInput {
   securityJsCode: String
 }
 
+input ChannelCategoryMappingStructInput {
+  tenantCategory: String
+  collectionId: String
+}
+
+input ChannelBasicConfigStructInput {
+  tenantName: String
+  contactPhone: String
+  address: String
+  invoiceHeaderJson: String
+  serviceContactsJson: String
+  timeZoneId: String
+}
+
+input ChannelServiceNotifyConfigStructInput {
+  wecomEnabled: Boolean
+  wecomAgentId: String
+  wecomCorpId: String
+  wecomCorpSecret: String
+  wechatPushEnabled: Boolean
+  wechatPushTemplateJson: String
+  chatChannelEnabled: Boolean
+}
+
+input ChannelMultiLanguageConfigStructInput {
+  availableLanguageCodes: [String!]
+  defaultLanguageCode: String
+  translationWorkflowEnabled: Boolean
+  operationalCopyJson: String
+}
+
 input CreateChannelCustomFieldsInput {
+  displayTemplate: String
+  themeId: String
+  shopName: String
+  shopLogo: String
+  shopIntro: String
+  servicePhone: String
+  shopContent: String
+  detailConfig: String
+  orderDetailConfig: String
+  orderListConfig: String
+  promoSchemes: String
+  serviceSchemes: String
+  pageCategoryConfig: String
+  pageCartConfig: String
+  pageProfileConfig: String
   couponStackable: Boolean
   maxStackableCount: Int
   employeePickupMode: String
@@ -9589,18 +13372,42 @@ input CreateChannelCustomFieldsInput {
   authConfig: ChannelAuthConfigStructInput
   payConfig: ChannelPayConfigStructInput
   customDomains: [String!]
+  domain: String
   mapConfig: ChannelMapConfigStructInput
+  enabled: Boolean
+  tenantNo: Int
+  isOfficial: Boolean
+  merchantStatus: String
+  categoryMapping: [ChannelCategoryMappingStructInput!]
+  multilingualEnabled: Boolean
+  redeemCollectMode: String
+  binMode: String
+  taxMode: String
+  physicalStockEnabled: Boolean
+  shareImageUrl: String
+  basicConfig: ChannelBasicConfigStructInput
+  serviceNotifyConfig: ChannelServiceNotifyConfigStructInput
+  multiLanguageConfig: ChannelMultiLanguageConfigStructInput
+  inventoryMode: String
+  odooBaseUrl: String
+  odooApiKey: String
+  inventoryDefaultSafetyStock: Int
+  orderAdjustMaxRateBp: Int
+  orderAdjustMaxAmount: Int
+  reservationTtlMinutes: Int
+  templateId: String
+  themeTokensOverride: String
   orderPaymentTimeoutMinutes: Int
   orderFulfillmentTimeoutHours: Int
   orderReceiptTimeoutDays: Int
   orderReviewReminderDays: Int
-  stockLocationPriority: String
-  shippingStrategy: String
   directCommissionRate: Int
   indirectCommissionRate: Int
   minWithdrawalAmount: Int
   commissionSettlementDays: Int
   distributionEnabled: Boolean
+  rechargeMinAmount: Int
+  rechargeMaxAmount: Int
   level1Threshold: Int
   level1Name: String
   level2Threshold: Int
@@ -9613,6 +13420,33 @@ input CreateChannelCustomFieldsInput {
   level5Name: String
   pointsEarnRatio: Float
   pointsEarnOnShipping: Boolean
+  pointsPerYuan: Int
+  pointsExpireDays: Int
+  freeShippingLevel: Int
+  checkinPoints: Int
+  checkinGrowth: Int
+  checkinStreakThreshold: Int
+  checkinStreakBonusPoints: Int
+  checkinStreakBonusGrowth: Int
+  taskSharePoints: Int
+  taskShareGrowth: Int
+  taskLoginPoints: Int
+  taskLoginGrowth: Int
+  taskProfilePoints: Int
+  taskProfileGrowth: Int
+  taskBindPhonePoints: Int
+  taskBindPhoneGrowth: Int
+  taskReachLevelThreshold: Int
+  taskReachLevelPoints: Int
+  taskReachLevelGrowth: Int
+  taskFirstOrderPoints: Int
+  taskFirstOrderGrowth: Int
+  taskOrderCountThreshold: Int
+  taskOrderCountPoints: Int
+  taskOrderCountGrowth: Int
+  taskOrderAmountThreshold: Int
+  taskOrderAmountPoints: Int
+  taskOrderAmountGrowth: Int
   orderPaidTemplateId: String
   orderShippedTemplateId: String
   orderDeliveredTemplateId: String
@@ -9620,11 +13454,31 @@ input CreateChannelCustomFieldsInput {
   subscribeMessagePage: String
   subscribeMessageMiniprogramState: String
   settlementBasis: String
+  stockLocationPriority: String
+  shippingStrategy: String
+  memberStockStrategy: String
+  packageShippingRule: String
+  orderCompleteDays: Int
   uniPushAppKey: String
   uniPushMasterSecret: String
 }
 
 input UpdateChannelCustomFieldsInput {
+  displayTemplate: String
+  themeId: String
+  shopName: String
+  shopLogo: String
+  shopIntro: String
+  servicePhone: String
+  shopContent: String
+  detailConfig: String
+  orderDetailConfig: String
+  orderListConfig: String
+  promoSchemes: String
+  serviceSchemes: String
+  pageCategoryConfig: String
+  pageCartConfig: String
+  pageProfileConfig: String
   couponStackable: Boolean
   maxStackableCount: Int
   employeePickupMode: String
@@ -9632,18 +13486,42 @@ input UpdateChannelCustomFieldsInput {
   authConfig: ChannelAuthConfigStructInput
   payConfig: ChannelPayConfigStructInput
   customDomains: [String!]
+  domain: String
   mapConfig: ChannelMapConfigStructInput
+  enabled: Boolean
+  tenantNo: Int
+  isOfficial: Boolean
+  merchantStatus: String
+  categoryMapping: [ChannelCategoryMappingStructInput!]
+  multilingualEnabled: Boolean
+  redeemCollectMode: String
+  binMode: String
+  taxMode: String
+  physicalStockEnabled: Boolean
+  shareImageUrl: String
+  basicConfig: ChannelBasicConfigStructInput
+  serviceNotifyConfig: ChannelServiceNotifyConfigStructInput
+  multiLanguageConfig: ChannelMultiLanguageConfigStructInput
+  inventoryMode: String
+  odooBaseUrl: String
+  odooApiKey: String
+  inventoryDefaultSafetyStock: Int
+  orderAdjustMaxRateBp: Int
+  orderAdjustMaxAmount: Int
+  reservationTtlMinutes: Int
+  templateId: String
+  themeTokensOverride: String
   orderPaymentTimeoutMinutes: Int
   orderFulfillmentTimeoutHours: Int
   orderReceiptTimeoutDays: Int
   orderReviewReminderDays: Int
-  stockLocationPriority: String
-  shippingStrategy: String
   directCommissionRate: Int
   indirectCommissionRate: Int
   minWithdrawalAmount: Int
   commissionSettlementDays: Int
   distributionEnabled: Boolean
+  rechargeMinAmount: Int
+  rechargeMaxAmount: Int
   level1Threshold: Int
   level1Name: String
   level2Threshold: Int
@@ -9656,6 +13534,33 @@ input UpdateChannelCustomFieldsInput {
   level5Name: String
   pointsEarnRatio: Float
   pointsEarnOnShipping: Boolean
+  pointsPerYuan: Int
+  pointsExpireDays: Int
+  freeShippingLevel: Int
+  checkinPoints: Int
+  checkinGrowth: Int
+  checkinStreakThreshold: Int
+  checkinStreakBonusPoints: Int
+  checkinStreakBonusGrowth: Int
+  taskSharePoints: Int
+  taskShareGrowth: Int
+  taskLoginPoints: Int
+  taskLoginGrowth: Int
+  taskProfilePoints: Int
+  taskProfileGrowth: Int
+  taskBindPhonePoints: Int
+  taskBindPhoneGrowth: Int
+  taskReachLevelThreshold: Int
+  taskReachLevelPoints: Int
+  taskReachLevelGrowth: Int
+  taskFirstOrderPoints: Int
+  taskFirstOrderGrowth: Int
+  taskOrderCountThreshold: Int
+  taskOrderCountPoints: Int
+  taskOrderCountGrowth: Int
+  taskOrderAmountThreshold: Int
+  taskOrderAmountPoints: Int
+  taskOrderAmountGrowth: Int
   orderPaidTemplateId: String
   orderShippedTemplateId: String
   orderDeliveredTemplateId: String
@@ -9663,6 +13568,11 @@ input UpdateChannelCustomFieldsInput {
   subscribeMessagePage: String
   subscribeMessageMiniprogramState: String
   settlementBasis: String
+  stockLocationPriority: String
+  shippingStrategy: String
+  memberStockStrategy: String
+  packageShippingRule: String
+  orderCompleteDays: Int
   uniPushAppKey: String
   uniPushMasterSecret: String
 }
@@ -9695,6 +13605,7 @@ type CollectionCustomFields {
   floorTheme: CollectionFloorThemeStruct
   floorItemConfig: [CollectionFloorItemConfigStruct!]
   floorSchedule: CollectionFloorScheduleStruct
+  icon: String
 }
 
 input CollectionFloorThemeStructInput {
@@ -9725,6 +13636,7 @@ input CreateCollectionCustomFieldsInput {
   floorTheme: CollectionFloorThemeStructInput
   floorItemConfig: [CollectionFloorItemConfigStructInput!]
   floorSchedule: CollectionFloorScheduleStructInput
+  icon: String
 }
 
 input UpdateCollectionCustomFieldsInput {
@@ -9737,10 +13649,13 @@ input UpdateCollectionCustomFieldsInput {
   floorTheme: CollectionFloorThemeStructInput
   floorItemConfig: [CollectionFloorItemConfigStructInput!]
   floorSchedule: CollectionFloorScheduleStructInput
+  icon: String
 }
 
 type CustomerCustomFields {
   inviteCode: String
+  ssoId: String
+  ssoUid: String
   alipayOpenid: String
   wechatOpenid: String
   wechatMiniOpenid: String
@@ -9759,6 +13674,8 @@ type CustomerCustomFields {
 
 input CreateCustomerCustomFieldsInput {
   inviteCode: String
+  ssoId: String
+  ssoUid: String
   alipayOpenid: String
   wechatOpenid: String
   wechatMiniOpenid: String
@@ -9777,6 +13694,8 @@ input CreateCustomerCustomFieldsInput {
 
 input UpdateCustomerCustomFieldsInput {
   inviteCode: String
+  ssoId: String
+  ssoUid: String
   alipayOpenid: String
   wechatOpenid: String
   wechatMiniOpenid: String
@@ -9798,6 +13717,8 @@ type FulfillmentCustomFields {
   carrier: String
   carrierCode: String
   shippingNote: String
+  packageId: String
+  shippingFee: Int
 }
 
 type OrderCsNotesStruct {
@@ -9809,8 +13730,26 @@ type OrderCsNotesStruct {
 type OrderCustomFields {
   selectedPickupLocationId: PickupLocation
   pickupType: String
+  pickupLat: Float
+  pickupLng: Float
+  pickupClaimed: Boolean
   shippingProfileSnapshot: String
   paymentProfileSnapshot: String
+  boxShippingSelections: String
+  contactName: String
+  contactPhone: String
+  remark: String
+  redeemCodeCipher: String
+  redeemCodeIv: String
+  redeemCodeHash: String
+  redeemClaimed: Boolean
+  redeemClaimedAt: DateTime
+  redeemExpiresAt: DateTime
+  redeemVersion: Int
+  redeemReissuedAt: DateTime
+  deliveryType: String
+  collected: Boolean
+  paymentType: String
   invoiceRequired: Boolean
   invoiceType: String
   invoiceTitle: String
@@ -9820,10 +13759,6 @@ type OrderCustomFields {
   invoiceCompanyPhone: String
   invoiceBankName: String
   invoiceBankAccount: String
-  lat: Float
-  lng: Float
-  city: String
-  deliveryType: String
   groupBuyActivityId: Int
   groupBuyIsLeader: Boolean
   flashSaleActivityId: Int
@@ -9832,7 +13767,20 @@ type OrderCustomFields {
   invoicePdfUrl: String
   invoiceNumber: String
   afterSalesStatus: String
-  appliedCouponCode: String
+  pointsToRedeem: Int
+  pointsRedeemAmount: Int
+  posSessionId: Int
+  orderType: String
+  refundedOrderId: Int
+  shiftId: Int
+  terminalCode: String
+  aggregatePayStatus: String
+  promotionId: Int
+  promotionType: String
+  promotionDiscount: Int
+  couponCode: String
+  couponId: Int
+  liveRoomId: Int
   deliveryStaffId: String
   deliveryStatus: String
   assignedAt: DateTime
@@ -9846,7 +13794,18 @@ type OrderCustomFields {
   salesChannel: String
   salesNote: String
   saleSource: String
+  lat: Float
+  lng: Float
+  city: String
+  packageShippingJson: String
+  shippingAdjustment: Int
+  fulfillmentDeliveredAt: DateTime
+  fulfillmentCompletedAt: DateTime
   csNotes: [OrderCsNotesStruct!]
+  preSaleActivityId: Int
+  preSaleMode: String
+  preSaleDepositTotal: Int
+  preSaleReleaseAt: DateTime
 }
 
 input OrderCsNotesStructInput {
@@ -9858,8 +13817,26 @@ input OrderCsNotesStructInput {
 input UpdateOrderCustomFieldsInput {
   selectedPickupLocationIdId: ID
   pickupType: String
+  pickupLat: Float
+  pickupLng: Float
+  pickupClaimed: Boolean
   shippingProfileSnapshot: String
   paymentProfileSnapshot: String
+  boxShippingSelections: String
+  contactName: String
+  contactPhone: String
+  remark: String
+  redeemCodeCipher: String
+  redeemCodeIv: String
+  redeemCodeHash: String
+  redeemClaimed: Boolean
+  redeemClaimedAt: DateTime
+  redeemExpiresAt: DateTime
+  redeemVersion: Int
+  redeemReissuedAt: DateTime
+  deliveryType: String
+  collected: Boolean
+  paymentType: String
   invoiceRequired: Boolean
   invoiceType: String
   invoiceTitle: String
@@ -9869,10 +13846,6 @@ input UpdateOrderCustomFieldsInput {
   invoiceCompanyPhone: String
   invoiceBankName: String
   invoiceBankAccount: String
-  lat: Float
-  lng: Float
-  city: String
-  deliveryType: String
   groupBuyActivityId: Int
   groupBuyIsLeader: Boolean
   flashSaleActivityId: Int
@@ -9881,7 +13854,20 @@ input UpdateOrderCustomFieldsInput {
   invoicePdfUrl: String
   invoiceNumber: String
   afterSalesStatus: String
-  appliedCouponCode: String
+  pointsToRedeem: Int
+  pointsRedeemAmount: Int
+  posSessionId: Int
+  orderType: String
+  refundedOrderId: Int
+  shiftId: Int
+  terminalCode: String
+  aggregatePayStatus: String
+  promotionId: Int
+  promotionType: String
+  promotionDiscount: Int
+  couponCode: String
+  couponId: Int
+  liveRoomId: Int
   deliveryStaffId: String
   deliveryStatus: String
   assignedAt: DateTime
@@ -9895,47 +13881,142 @@ input UpdateOrderCustomFieldsInput {
   salesChannel: String
   salesNote: String
   saleSource: String
+  lat: Float
+  lng: Float
+  city: String
+  packageShippingJson: String
+  shippingAdjustment: Int
+  fulfillmentDeliveredAt: DateTime
+  fulfillmentCompletedAt: DateTime
   csNotes: [OrderCsNotesStructInput!]
+  preSaleActivityId: Int
+  preSaleMode: String
+  preSaleDepositTotal: Int
+  preSaleReleaseAt: DateTime
 }
 
 type OrderLineCustomFields {
-  overwrittenPrice: Int
+  hotelCheckIn: String
+  hotelCheckOut: String
+  hotelNights: Int
   originalPrice: Int
+  discount: Int
+  memberPriceApplied: Boolean
+  isGift: Boolean
+  note: String
+  originalOrderLineId: Int
+  giftRuleId: Int
+  overwrittenPrice: Int
   modifiedBy: String
   modifiedAt: DateTime
+  stockLocationId: String
+  stockLocationsJson: String
+}
+
+type PaymentCustomFields {
+  aggregatePayCode: String
+  aggregatePayStatus: String
+  needsManualRefund: Boolean
+  posSessionId: Int
 }
 
 type ProductCustomFields {
-  belongCity: String
-  serviceCities: [String!]
+  shopId: Int
+  reviewRating: Float
+  reviewCount: Int
+  favoriteCount: Int
   listedInMarketplace: Boolean
   marketplaceStatus: String
   rejectReason: String
   merchantRef: Channel
   barcode: String
   internalCode: String
+  marketingTags: String
+  sellingPoint: String
+  tenantCategoryRef: String
+  platformCategoryId: String
+  needsCategorization: Boolean
+  videoAssetId: String
+  promos: String
+  services: String
+  salesCount: Int
+  realSalesCount: Int
+  bonusSales: Int
+  pointsReward: Int
+  pointsRewardOverride: Int
+  belongCity: String
+  serviceCities: [String!]
+  deliveryMethods: [String!]
+  videoUrl: String
+  displayTemplate: String
+}
+
+type ProductTranslationCustomFields {
+  sellingPoint: String
+  displayTemplate: String
 }
 
 input CreateProductCustomFieldsInput {
-  belongCity: String
-  serviceCities: [String!]
+  shopId: Int
+  reviewRating: Float
+  reviewCount: Int
+  favoriteCount: Int
   listedInMarketplace: Boolean
   marketplaceStatus: String
   rejectReason: String
   merchantRefId: ID
   barcode: String
   internalCode: String
+  marketingTags: String
+  tenantCategoryRef: String
+  platformCategoryId: String
+  needsCategorization: Boolean
+  videoAssetId: String
+  promos: String
+  services: String
+  salesCount: Int
+  realSalesCount: Int
+  bonusSales: Int
+  pointsReward: Int
+  pointsRewardOverride: Int
+  belongCity: String
+  serviceCities: [String!]
+  deliveryMethods: [String!]
+  videoUrl: String
 }
 
 input UpdateProductCustomFieldsInput {
-  belongCity: String
-  serviceCities: [String!]
+  shopId: Int
+  reviewRating: Float
+  reviewCount: Int
+  favoriteCount: Int
   listedInMarketplace: Boolean
   marketplaceStatus: String
   rejectReason: String
   merchantRefId: ID
   barcode: String
   internalCode: String
+  marketingTags: String
+  tenantCategoryRef: String
+  platformCategoryId: String
+  needsCategorization: Boolean
+  videoAssetId: String
+  promos: String
+  services: String
+  salesCount: Int
+  realSalesCount: Int
+  bonusSales: Int
+  pointsReward: Int
+  pointsRewardOverride: Int
+  belongCity: String
+  serviceCities: [String!]
+  deliveryMethods: [String!]
+  videoUrl: String
+}
+
+input ProductTranslationInputCustomFields {
+  sellingPoint: String
+  displayTemplate: String
 }
 
 type ProductVariantCustomFields {
@@ -9945,6 +14026,14 @@ type ProductVariantCustomFields {
   height: Float
   shippingProfileId: String
   paymentProfileId: String
+  listPrice: Int
+  saleStart: DateTime
+  saleEnd: DateTime
+  costPrice: Int
+  barcode: String
+  internalCode: String
+  hotelRoomConfig: String
+  videoUrl: String
 }
 
 input CreateProductVariantCustomFieldsInput {
@@ -9954,6 +14043,14 @@ input CreateProductVariantCustomFieldsInput {
   height: Float
   shippingProfileId: String
   paymentProfileId: String
+  listPrice: Int
+  saleStart: DateTime
+  saleEnd: DateTime
+  costPrice: Int
+  barcode: String
+  internalCode: String
+  hotelRoomConfig: String
+  videoUrl: String
 }
 
 input UpdateProductVariantCustomFieldsInput {
@@ -9963,6 +14060,14 @@ input UpdateProductVariantCustomFieldsInput {
   height: Float
   shippingProfileId: String
   paymentProfileId: String
+  listPrice: Int
+  saleStart: DateTime
+  saleEnd: DateTime
+  costPrice: Int
+  barcode: String
+  internalCode: String
+  hotelRoomConfig: String
+  videoUrl: String
 }
 
 type PromotionCustomFields {
@@ -9995,19 +14100,43 @@ input UpdateSellerCustomFieldsInput {
   marketplaceMerchant: Boolean
 }
 
+type ShippingMethodCustomFields {
+  enabled: Boolean
+}
+
+input CreateShippingMethodCustomFieldsInput {
+  enabled: Boolean
+}
+
+input UpdateShippingMethodCustomFieldsInput {
+  enabled: Boolean
+}
+
 type StockLocationCustomFields {
+  kind: String
+  code: String
+  channelCode: String
+  deliveryMethods: [String!]
   lat: Float
   lng: Float
   serviceCities: [String!]
 }
 
 input CreateStockLocationCustomFieldsInput {
+  kind: String
+  code: String
+  channelCode: String
+  deliveryMethods: [String!]
   lat: Float
   lng: Float
   serviceCities: [String!]
 }
 
 input UpdateStockLocationCustomFieldsInput {
+  kind: String
+  code: String
+  channelCode: String
+  deliveryMethods: [String!]
   lat: Float
   lng: Float
   serviceCities: [String!]
@@ -10038,10 +14167,21 @@ type ReleaseCustomFields {
 }
 
 input OrderLineCustomFieldsInput {
-  overwrittenPrice: Int
+  hotelCheckIn: String
+  hotelCheckOut: String
+  hotelNights: Int
   originalPrice: Int
+  discount: Int
+  memberPriceApplied: Boolean
+  isGift: Boolean
+  note: String
+  originalOrderLineId: Int
+  giftRuleId: Int
+  overwrittenPrice: Int
   modifiedBy: String
   modifiedAt: DateTime
+  stockLocationId: String
+  stockLocationsJson: String
 }
 
 input NativeAuthInput {

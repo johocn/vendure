@@ -40,8 +40,12 @@ export declare class WechatpayService {
     resolveCustomerOpenid(ctx: RequestContext, customerId?: ID | null, opts?: {
         preferMini?: boolean;
     }): Promise<string | undefined>;
-    /** 集中构造配置好的 WxPay 实例 + 凭证（复用 getPaymentOverride） */
+    /** 默认渠道 ctx（未按租户指定渠道时的回退，兼容历史单店部署） */
+    private defaultChannelCtx;
+    /** 集中构造配置好的 WxPay 实例 + 凭证（复用 getPaymentOverride）。
+     *  传入 ctx 时使用「该 ctx 所属租户」的凭证与回调地址；缺省回退默认渠道。 */
     private buildWechatpay;
-    /** devBypass 下返回模拟支付页；否则调真实微信 API 生成支付参数 */
-    createBarePayment(input: BarePaymentInput): Promise<BarePaymentResult>;
+    /** devBypass 下返回模拟支付页；否则调真实微信 API 生成支付参数。
+     *  ctx 决定用哪个租户的商户凭证与回调地址（CS-/RC- 等代付单须传自身 ctx）。 */
+    createBarePayment(input: BarePaymentInput, ctx?: RequestContext): Promise<BarePaymentResult>;
 }

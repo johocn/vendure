@@ -14,6 +14,9 @@ export interface WechatpayCredentials {
     apiKey: string;
     serialNo: string;
     tradeType?: 'JSAPI' | 'NATIVE' | 'APP' | 'H5';
+    /** 本租户微信支付回调地址（下单时下发给微信，回调也落在该域名）。
+     *  按租户配置而非全局 env：各租户商户号的回调域名不同。 */
+    notifyUrl?: string;
 }
 
 export interface DouyinpayCredentials {

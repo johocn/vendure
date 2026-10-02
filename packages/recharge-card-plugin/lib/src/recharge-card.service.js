@@ -247,7 +247,7 @@ let RechargeCardService = class RechargeCardService {
             tradeType: effectiveTradeType,
             openid: effectiveOpenid,
             description: `Recharge ${outTradeNo}`,
-        });
+        }, ctx);
         order.paymentMethod = 'wechatpay';
         order.externalRef = outTradeNo;
         await repo.save(order);

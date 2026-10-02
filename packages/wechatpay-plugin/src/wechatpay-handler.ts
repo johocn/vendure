@@ -93,7 +93,8 @@ export function createWechatpayHandler(options: WechatpayPluginOptions) {
                 const baseParams = {
                     description: `Order ${order.code}`,
                     out_trade_no: order.code,
-                    notify_url: options?.notifyUrl || '',
+                    // 回调地址按租户配置（渠道 payConfig.wechatpay.notifyUrl）优先，全局 env 仅作兜底
+                    notify_url: override?.notifyUrl || options?.notifyUrl || '',
                     amount: {
                         total: Math.round(amount / 100),
                         currency: 'CNY',

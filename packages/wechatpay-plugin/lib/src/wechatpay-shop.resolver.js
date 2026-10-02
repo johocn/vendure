@@ -20,17 +20,19 @@ let WechatpayShopResolver = class WechatpayShopResolver {
     constructor(wechatpayService) {
         this.wechatpayService = wechatpayService;
     }
-    wechatpayCreatePayment(input) {
-        return this.wechatpayService.createBarePayment(input);
+    wechatpayCreatePayment(ctx, input) {
+        // 传 ctx：按当前请求渠道取该租户的商户凭证与回调地址
+        return this.wechatpayService.createBarePayment(input, ctx);
     }
 };
 exports.WechatpayShopResolver = WechatpayShopResolver;
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(core_1.Permission.Authenticated),
-    __param(0, (0, graphql_1.Args)('input')),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('input')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], WechatpayShopResolver.prototype, "wechatpayCreatePayment", null);
 exports.WechatpayShopResolver = WechatpayShopResolver = __decorate([

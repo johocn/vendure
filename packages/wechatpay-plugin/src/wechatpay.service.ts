@@ -101,22 +101,29 @@ export class WechatpayService {
         return mini || official;
     }
 
-    /** 集中构造配置好的 WxPay 实例 + 凭证（复用 getPaymentOverride） */
-    private async buildWechatpay(): Promise<{
-        pay: WxPay;
-        appId: string;
-        privateKey: string;
-        tradeType: string;
-    }> {
+    /** 默认渠道 ctx（未按租户指定渠道时的回退，兼容历史单店部署） */
+    private async defaultChannelCtx(): Promise<RequestContext> {
         const channel = await this.channelService.getDefaultChannel();
-        const ctx = new RequestContext({
+        return new RequestContext({
             apiType: 'admin',
             channel,
             isAuthorized: true,
             authorizedAsOwnerOnly: false,
         });
-        const override = getPaymentOverride(ctx, 'wechatpay') as WechatpayCredentials | null;
-        const pms = await this.paymentMethodService.findAll(ctx);
+    }
+
+    /** 集中构造配置好的 WxPay 实例 + 凭证（复用 getPaymentOverride）。
+     *  传入 ctx 时使用「该 ctx 所属租户」的凭证与回调地址；缺省回退默认渠道。 */
+    private async buildWechatpay(ctx?: RequestContext): Promise<{
+        pay: WxPay;
+        appId: string;
+        privateKey: string;
+        tradeType: string;
+        notifyUrl: string;
+    }> {
+        const effectiveCtx = ctx ?? (await this.defaultChannelCtx());
+        const override = getPaymentOverride(effectiveCtx, 'wechatpay') as WechatpayCredentials | null;
+        const pms = await this.paymentMethodService.findAll(effectiveCtx);
         const pm = pms.items.find(p => p.code === 'wechatpay');
         const args = pm?.handler?.args || [];
         const getArg = (name: string) => args.find(a => a.name === name)?.value || '';
@@ -134,22 +141,24 @@ export class WechatpayService {
             appId,
             privateKey,
             tradeType: override?.tradeType || getArg('tradeType') || 'JSAPI',
+            notifyUrl: override?.notifyUrl || this.options?.notifyUrl || '',
         };
     }
 
-    /** devBypass 下返回模拟支付页；否则调真实微信 API 生成支付参数 */
-    async createBarePayment(input: BarePaymentInput): Promise<BarePaymentResult> {
+    /** devBypass 下返回模拟支付页；否则调真实微信 API 生成支付参数。
+     *  ctx 决定用哪个租户的商户凭证与回调地址（CS-/RC- 等代付单须传自身 ctx）。 */
+    async createBarePayment(input: BarePaymentInput, ctx?: RequestContext): Promise<BarePaymentResult> {
         if (this.options?.devBypass) {
             return {
                 payType: 'dev-h5',
                 payUrl: `/wechatpay/dev-pay?outTradeNo=${encodeURIComponent(input.outTradeNo)}`,
             };
         }
-        const { pay, appId, privateKey, tradeType } = await this.buildWechatpay();
+        const { pay, appId, privateKey, tradeType, notifyUrl } = await this.buildWechatpay(ctx);
         const baseParams = {
             description: input.description || `Pay ${input.outTradeNo}`,
             out_trade_no: input.outTradeNo,
-            notify_url: this.options?.notifyUrl || '',
+            notify_url: notifyUrl,
             amount: { total: Math.round(input.amount / 100), currency: 'CNY' },
         };
         const type = input.tradeType || tradeType;

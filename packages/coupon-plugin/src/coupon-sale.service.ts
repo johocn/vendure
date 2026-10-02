@@ -152,13 +152,16 @@ export class CouponSaleService {
             (await resolveCustomerOpenid(ctx, order.customerId, {
                 preferMini: effectiveTradeType === 'JSAPI',
             }));
-        const pay = await gatewayService.createBarePayment({
-            outTradeNo,
-            amount: order.amount,
-            tradeType: effectiveTradeType,
-            openid: effectiveOpenid,
-            description: `Coupon ${outTradeNo}`,
-        });
+        const pay = await gatewayService.createBarePayment(
+            {
+                outTradeNo,
+                amount: order.amount,
+                tradeType: effectiveTradeType,
+                openid: effectiveOpenid,
+                description: `Coupon ${outTradeNo}`,
+            },
+            ctx,
+        );
         order.paymentMethod = 'wechatpay';
         order.externalRef = outTradeNo;
         await this.connection.getRepository(ctx, CouponSaleOrder).save(order);
