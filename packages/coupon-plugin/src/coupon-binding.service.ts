@@ -58,6 +58,19 @@ export class CouponBindingService {
         }) as Promise<ProductCouponBinding[]>;
     }
 
+    /**
+     * 后台管理用：模板下全部绑定（含停用、含非 claimable），不做渠道/场景可见性过滤，按渠道隔离。
+     * 供后台「按模板查已绑商品」选品器使用（SALE 渠道券无 PRODUCT 分发渠道，可见性过滤会误判为空）。
+     */
+    async listByTemplateAdmin(ctx: RequestContext, templateId: number): Promise<ProductCouponBinding[]> {
+        const repo = this.connection.getRepository(ctx, ProductCouponBinding);
+        const bindings = await repo.find({
+            where: { couponTemplateId: templateId as any },
+            relations: { template: true },
+        });
+        return bindings.filter(b => !b.channelId || Number(b.channelId) === Number(ctx.channel?.id));
+    }
+
     /** 后台管理用：商品下全部绑定（含停用、含非 claimable），按渠道隔离 */
     async listByProductAdmin(ctx: RequestContext, productId: number): Promise<ProductCouponBinding[]> {
         const repo = this.connection.getRepository(ctx, ProductCouponBinding);
@@ -191,6 +204,67 @@ export class CouponBindingService {
         }
         couponBindingCache.invalidate(saved.couponTemplateId as any);
         return saved;
+    }
+
+    /**
+     * 批量绑券：逐商品建绑定，已存在同 (productId, couponTemplateId) 则跳过；
+     * 每个新建后单向同步模板 scope=SKU（模板不存在则跳过，不阻断）；返回新建条数。
+     */
+    async bindProducts(
+        ctx: RequestContext,
+        templateId: number,
+        productIds: ID[],
+        variantIds?: ID[] | null,
+    ): Promise<number> {
+        const repo = this.connection.getRepository(ctx, ProductCouponBinding);
+        const tplRepo = this.connection.getRepository(ctx, CouponTemplate);
+        const tpl = await tplRepo.findOne({ where: { id: templateId as any } });
+        const normalizedVariants = variantIds?.length ? variantIds.map(v => Number(v)) : undefined;
+        let created = 0;
+        for (const raw of productIds) {
+            const productId = Number(raw);
+            const existing = await repo.findOne({
+                where: { productId, couponTemplateId: templateId },
+            });
+            if (existing) {
+                continue;
+            }
+            const binding = new ProductCouponBinding({
+                productId,
+                couponTemplateId: templateId,
+                variantIds: normalizedVariants,
+                enabled: true,
+                channelId: ctx.channel?.id != null ? Number(ctx.channel.id) : undefined,
+                displayOrder: 0,
+            });
+            const saved = await repo.save(binding);
+            created++;
+            if (tpl) {
+                await this.syncTemplateScope(ctx, tpl, saved);
+            }
+        }
+        couponBindingCache.invalidate(templateId);
+        return created;
+    }
+
+    /** 解绑单个商品：删除该 (templateId, productId) 且渠道匹配的绑定；末绑定回退 scope 并失效缓存 */
+    async unbindProduct(ctx: RequestContext, templateId: number, productId: number): Promise<boolean> {
+        const repo = this.connection.getRepository(ctx, ProductCouponBinding);
+        const bindings = await repo.find({
+            where: { couponTemplateId: templateId as any, productId },
+        });
+        const targets = bindings.filter(
+            b => !b.channelId || Number(b.channelId) === Number(ctx.channel?.id),
+        );
+        if (targets.length === 0) {
+            return false;
+        }
+        for (const binding of targets) {
+            await repo.delete(binding.id);
+        }
+        await this.syncTemplateScopeAfterMutation(ctx, templateId);
+        couponBindingCache.invalidate(templateId);
+        return true;
     }
 
     /**

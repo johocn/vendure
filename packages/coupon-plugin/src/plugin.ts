@@ -17,6 +17,11 @@ import { COUPON_PLUGIN_OPTIONS, loggerCtx } from './constants';
 import { CouponAdminResolver } from './coupon-admin.resolver';
 import { CouponBindingAdminResolver } from './coupon-binding-admin.resolver';
 import { CouponBindingService } from './coupon-binding.service';
+import { CouponBundleResolver } from './coupon-bundle.resolver';
+import { setCouponBalancePort } from './coupon-balance-port';
+import { CouponSaleAdminResolver } from './coupon-sale-admin.resolver';
+import { CouponSaleShopResolver } from './coupon-sale-shop.resolver';
+import { CouponSaleService, setCouponSaleGateway } from './coupon-sale.service';
 import { CustomerCouponResolver } from './coupon-customer-coupon.resolver';
 import { CouponTemplateResolver } from './coupon-template.resolver';
 import { couponDiscountAction } from './coupon-promotion-action';
@@ -26,11 +31,14 @@ import { setBindingService } from './coupon-settlement';
 import { CouponService } from './coupon.service';
 import { CouponShopResolver } from './coupon-shop.resolver';
 import { CouponTemplate } from './coupon-template.entity';
+import { CouponBundle, CouponBundleItem } from './coupon-bundle.entity';
+import { CouponSaleOrder } from './coupon-sale-order.entity';
 import { CustomerCoupon } from './customer-coupon.entity';
 import {
     AddCouponFieldsMigration,
     AddCouponIndexes20260919,
     AddCouponUsageSceneMigration,
+    CreateCouponSaleMigration,
     CreateInStoreBillMigration,
     CreateProductCouponBindingMigration,
 } from './migrations';
@@ -107,11 +115,12 @@ type CustomerCoupon implements Node {
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [CouponTemplate, CustomerCoupon, ProductCouponBinding, InStoreBill],
+    entities: [CouponTemplate, CustomerCoupon, ProductCouponBinding, InStoreBill, CouponSaleOrder, CouponBundle, CouponBundleItem],
     providers: [
         { provide: COUPON_PLUGIN_OPTIONS, useFactory: () => CouponPlugin.options },
         CouponService,
         CouponBindingService,
+        CouponSaleService,
         InStoreBillService,
         AddCouponFieldsMigration,
         CreateProductCouponBindingMigration,
@@ -119,8 +128,9 @@ type CustomerCoupon implements Node {
         AddCouponUsageSceneMigration,
         AddCouponDistributionChannelsMigration,
         CreateInStoreBillMigration,
+        CreateCouponSaleMigration,
     ],
-    exports: [CouponService, CouponBindingService],
+    exports: [CouponService, CouponBindingService, CouponSaleService],
     adminApiExtensions: {
         schema: () => gql`
             enum CouponType { FIXED PERCENT FULL FREE_SHIPPING }
@@ -321,15 +331,89 @@ type CustomerCoupon implements Node {
 
             input CustomerCouponListOptions
 
+            type CouponBundleItem {
+                id: ID!
+                bundleId: ID!
+                templateId: ID!
+                quantity: Int!
+            }
+
+            type CouponBundle implements Node {
+                id: ID!
+                name: String!
+                description: String
+                salePrice: Int!
+                enabled: Boolean!
+                shopId: ID
+                channelId: ID!
+                items: [CouponBundleItem!]!
+            }
+
+            type CouponBundleList implements PaginatedList {
+                items: [CouponBundle!]!
+                totalItems: Int!
+            }
+
+            input CouponBundleItemInput {
+                templateId: ID!
+                quantity: Int
+            }
+
+            input CouponBundleInput {
+                name: String
+                description: String
+                salePrice: Int!
+                enabled: Boolean
+                shopId: ID
+                items: [CouponBundleItemInput!]
+            }
+
+            input CouponBundleListOptions {
+                skip: Int
+                take: Int
+            }
+
+            type CouponSaleOrder implements Node {
+                id: ID!
+                customerId: ID!
+                payMode: String!
+                templateId: ID
+                bundleId: ID
+                orderId: ID
+                amount: Int!
+                status: String!
+                paymentMethod: String
+                externalRef: String
+                paidAt: DateTime
+                refundedAt: DateTime
+                createdAt: DateTime!
+            }
+
+            type CouponSaleOrderList implements PaginatedList {
+                items: [CouponSaleOrder!]!
+                totalItems: Int!
+            }
+
+            input CouponSaleOrderListOptions {
+                skip: Int
+                take: Int
+                status: String
+            }
+
             extend type Query {
                 couponTemplates(options: CouponTemplateListOptions): CouponTemplateList!
                 couponTemplate(id: ID!): CouponTemplate
                 customerCoupons(options: CustomerCouponListOptions): CustomerCouponList!
                 couponChannelCustomers(query: String, take: Int, skip: Int): CouponIssueCustomerList!
                 productCouponBindings(productId: ID!): [ProductCouponBinding!]!
+                couponBoundProducts(templateId: ID!): [ProductCouponBinding!]!
                 inStoreBillQuote(code: String!, originalAmount: Int): InStoreBillQuote!
                 inStoreBills(options: InStoreBillListOptions): InStoreBillList!
                 inStoreBillSummary(options: InStoreBillSummaryOptions): InStoreBillSummary!
+                couponBundles(options: CouponBundleListOptions): CouponBundleList!
+                couponBundle(id: ID!): CouponBundle
+                couponSaleOrders(options: CouponSaleOrderListOptions): CouponSaleOrderList!
+                couponSaleOrder(id: ID!): CouponSaleOrder
             }
 
             extend type Mutation {
@@ -343,9 +427,15 @@ type CustomerCoupon implements Node {
                 createProductCouponBinding(input: CreateProductCouponBindingInput!): ProductCouponBinding!
                 updateProductCouponBinding(input: UpdateProductCouponBindingInput!): ProductCouponBinding!
                 deleteProductCouponBinding(id: ID!): Boolean!
+                bindProductsToCoupon(templateId: ID!, productIds: [ID!]!, variantIds: [ID!]): Int!
+                unbindProductFromCoupon(templateId: ID!, productId: ID!): Boolean!
+                createCouponBundle(input: CouponBundleInput!): CouponBundle!
+                updateCouponBundle(id: ID!, input: CouponBundleInput!): CouponBundle!
+                deleteCouponBundle(id: ID!): Boolean!
+                refundCouponSaleOrder(id: ID!, reason: String): CouponSaleOrder!
             }
         `,
-        resolvers: [CouponAdminResolver, CouponTemplateResolver, CustomerCouponResolver, CouponBindingAdminResolver, InStoreBillAdminResolver],
+        resolvers: [CouponAdminResolver, CouponTemplateResolver, CustomerCouponResolver, CouponBindingAdminResolver, InStoreBillAdminResolver, CouponSaleAdminResolver, CouponBundleResolver],
     },
     shopApiExtensions: {
         schema: () => gql`
@@ -374,11 +464,67 @@ type CustomerCoupon implements Node {
                 spentPoints: Int!
             }
 
+            type CouponSaleCatalogue {
+                templates: [CouponTemplate!]!
+                bundles: [CouponBundle!]!
+            }
+
+            type CouponBundleItem {
+                id: ID!
+                bundleId: ID!
+                templateId: ID!
+                quantity: Int!
+            }
+
+            type CouponBundle implements Node {
+                id: ID!
+                name: String!
+                description: String
+                salePrice: Int!
+                enabled: Boolean!
+                channelId: ID!
+                items: [CouponBundleItem!]!
+            }
+
+            type CouponSaleOrder implements Node {
+                id: ID!
+                customerId: ID!
+                payMode: String!
+                templateId: ID
+                bundleId: ID
+                orderId: ID
+                amount: Int!
+                status: String!
+                paidAt: DateTime
+                refundedAt: DateTime
+                createdAt: DateTime!
+            }
+
+            type CouponWechatPayParams {
+                payType: String!
+                prepayId: String
+                appId: String
+                timeStamp: String
+                nonceStr: String
+                package: String
+                signType: String
+                paySign: String
+                payUrl: String
+            }
+
+            type CouponWechatPayResult {
+                saleOrderId: ID!
+                outTradeNo: String!
+                pay: CouponWechatPayParams!
+            }
+
             extend type Query {
                 couponCentre: [CouponTemplate!]!
                 myCoupons(status: CouponStatus): [CustomerCoupon!]!
                 pointsMallTemplates: [CouponTemplate!]!
                 productCoupons(productId: ID!): [ProductCouponBinding!]!
+                couponSaleCatalogue(scene: CouponUsageScene): CouponSaleCatalogue!
+                myCouponSaleOrders: [CouponSaleOrder!]!
             }
 
             extend type Mutation {
@@ -388,9 +534,16 @@ type CustomerCoupon implements Node {
                 applyCouponToOrder(code: String!): Order!
                 clearCouponFromOrder: Order!
                 exchangeCouponWithPoints(templateId: ID!): ExchangeCouponResult!
+                createCouponSaleOrder(templateId: ID, bundleId: ID): CouponSaleOrder!
+                payCouponSaleWithBalance(id: ID!): CouponSaleOrder!
+                createWechatCouponPayment(saleOrderId: ID!, tradeType: String, openid: String): CouponWechatPayResult!
+                cancelCouponSaleOrder(id: ID!): CouponSaleOrder!
+                refundCouponSaleOrder(id: ID!, reason: String): CouponSaleOrder!
+                attachCouponToOrder(orderId: ID!, templateId: ID!): CouponSaleOrder!
+                detachCouponFromOrder(orderId: ID!, templateId: ID!): Boolean!
             }
         `,
-        resolvers: [CouponShopResolver, CouponTemplateResolver, CustomerCouponResolver],
+        resolvers: [CouponShopResolver, CouponTemplateResolver, CustomerCouponResolver, CouponSaleShopResolver, CouponBundleResolver],
     },
     configuration: (config) => {
         config.customFields.Order = mergeCustomFields(config.customFields.Order, couponOrderCustomFields.Order);
@@ -430,6 +583,40 @@ export class CouponPlugin implements OnApplicationBootstrap {
         this.couponService.init(this.injector);
         setCouponConnection(this.injector.get(TransactionalConnection));
         setBindingService(this.injector.get(CouponBindingService));
+
+        // 余额能力端口（可选依赖 recharge-card-plugin）：未装载时余额支付入口一律不可用
+        try {
+            const { RechargeCardService } = await import(
+                '@vendure/recharge-card-plugin/lib/src/recharge-card.service.js'
+            );
+            const svc = this.injector.get(RechargeCardService);
+            setCouponBalancePort({
+                getBalance: (ctx, cid) => svc.getBalance(ctx, cid),
+                deductBalance: (ctx, cid, amt) => svc.deductBalance(ctx, cid, amt),
+                addBalance: (ctx, cid, amt) => svc.addBalance(ctx, cid, amt, null, null),
+            });
+            Logger.info('Coupon balance port registered (recharge-card)', loggerCtx);
+        } catch (e: any) {
+            setCouponBalancePort(null);
+            Logger.info('Coupon balance port unavailable (recharge-card not registered)', loggerCtx);
+        }
+
+        // 微信回调结算注册（前缀 CS-）+ 网关引用注入（可选依赖 wechatpay-plugin）
+        try {
+            const { WechatpaySettlementRegistry, WechatpayService } = await import('@vendure/wechatpay-plugin');
+            const registry = this.injector.get(WechatpaySettlementRegistry);
+            const gateway = this.injector.get(WechatpayService);
+            setCouponSaleGateway(gateway);
+            const saleService = this.injector.get(CouponSaleService);
+            registry.register({
+                prefix: 'CS-',
+                settle: (ctx, outTradeNo) => saleService.settleCouponSaleOrderByOutTradeNo(ctx, outTradeNo),
+            });
+            Logger.info('CouponSaleOrder ~CS- settlement registered (wechatpay gateway)', loggerCtx);
+        } catch (e: any) {
+            setCouponSaleGateway(null);
+            Logger.warn('Wechatpay settlement registry unavailable for coupon sale', loggerCtx);
+        }
 
         // 可选定时清扫：收敛无人访问的存量过期券（惰性 on-read 已覆盖用户路径，此为长线兜底）。
         // 显式 set COUPON_EXPIRE_SWEEP_MS 才启动；默认关闭避免生产意外全量 UPDATE。
@@ -474,6 +661,30 @@ export class CouponPlugin implements OnApplicationBootstrap {
                 await this.couponService.returnCouponOnFullRefund(event.ctx, event.refund.id as any);
             } catch (e: any) {
                 Logger.error(`Failed to return coupon on refund ${event.refund.id}: ${e.message}`, loggerCtx);
+            }
+        });
+
+        // 加价购：主订单支付成功 → 结算 PENDING 加价购单并发券
+        this.eventBus.ofType(OrderStateTransitionEvent).subscribe(async (event) => {
+            if (event.toState !== 'PaymentSettled') return;
+            try {
+                await this.injector
+                    .get(CouponSaleService)
+                    .settleSurchargeOrdersForOrder(event.ctx, event.order.id);
+            } catch (e: any) {
+                Logger.error(`Failed to settle coupon surcharge on order ${event.order.id}: ${e.message}`, loggerCtx);
+            }
+        });
+
+        // 加价购：主订单取消 / 整单退款 → 回收加价购券（钱随主订单退回）
+        this.eventBus.ofType(OrderStateTransitionEvent).subscribe(async (event) => {
+            if (event.toState !== 'Cancelled') return;
+            try {
+                await this.injector
+                    .get(CouponSaleService)
+                    .refundSurchargeOrdersForOrder(event.ctx, event.order.id);
+            } catch (e: any) {
+                Logger.error(`Failed to recycle coupon surcharge on order ${event.order.id}: ${e.message}`, loggerCtx);
             }
         });
 

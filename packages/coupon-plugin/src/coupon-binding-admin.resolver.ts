@@ -17,6 +17,35 @@ export class CouponBindingAdminResolver {
         return this.bindingService.listByProductAdmin(ctx, Number(productId));
     }
 
+    @Query()
+    @Allow(Permission.UpdateOrder)
+    async couponBoundProducts(@Ctx() ctx: RequestContext, @Args('templateId') templateId: ID) {
+        return this.bindingService.listByTemplateAdmin(ctx, Number(templateId));
+    }
+
+    @Mutation()
+    @Transaction()
+    @Allow(Permission.UpdateOrder)
+    async bindProductsToCoupon(
+        @Ctx() ctx: RequestContext,
+        @Args('templateId') templateId: ID,
+        @Args('productIds') productIds: ID[],
+        @Args('variantIds', { nullable: true }) variantIds?: ID[],
+    ) {
+        return this.bindingService.bindProducts(ctx, Number(templateId), productIds, variantIds ?? null);
+    }
+
+    @Mutation()
+    @Transaction()
+    @Allow(Permission.UpdateOrder)
+    async unbindProductFromCoupon(
+        @Ctx() ctx: RequestContext,
+        @Args('templateId') templateId: ID,
+        @Args('productId') productId: ID,
+    ) {
+        return this.bindingService.unbindProduct(ctx, Number(templateId), Number(productId));
+    }
+
     @Mutation()
     @Transaction()
     @Allow(Permission.UpdateOrder)
