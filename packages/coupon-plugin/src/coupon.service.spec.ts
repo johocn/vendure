@@ -76,13 +76,13 @@ describe('CouponService.claimProductCoupon', () => {
         expect(claimSpy).not.toHaveBeenCalled();
     });
 
-    it('模板非 claimable → 报 Coupon is not claimable（既有行为，回归）', async () => {
+    it('模板使用场景非线上 → 报 Coupon is not claimable', async () => {
         bindingRepo.findOne.mockResolvedValue({
             id: 1,
             channelId: 37,
             enabled: true,
             couponTemplateId: 10,
-            template: { claimable: false },
+            template: { usageScene: 'OFFLINE' },
         });
         const claimSpy = vi.spyOn(service, 'claimCoupon').mockResolvedValue({} as any);
 

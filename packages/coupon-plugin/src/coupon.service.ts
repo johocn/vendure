@@ -23,7 +23,7 @@ import { MemberLevelService } from '@vendure/member-level-plugin';
 import { COUPON_NOT_OWNED, loggerCtx } from './constants';
 import { localizeText } from './localize';
 import { isDefaultMallChannel, lineHasShopId } from './coupon-scope';
-import { filterTemplatesByChannelAndScene } from './coupon-channel';
+import { filterTemplatesByChannelAndScene, hasChannel, matchesScene } from './coupon-channel';
 import { CouponBindingService } from './coupon-binding.service';
 import { isNewCustomerWithinChannel } from './coupon-settlement';
 import { CouponTemplate } from './coupon-template.entity';
@@ -558,7 +558,11 @@ export class CouponService {
         if (binding.channelId != null && Number(binding.channelId) !== Number(ctx.channel?.id)) {
             throw new UserInputError('Binding not found');
         }
-        if (!binding.template || !binding.template.claimable) {
+        if (
+            !binding.template ||
+            !hasChannel(binding.template, true, 'PRODUCT') ||
+            !matchesScene(binding.template.usageScene, 'ONLINE')
+        ) {
             throw new UserInputError('Coupon is not claimable');
         }
         return this.claimCoupon(ctx, binding.couponTemplateId);
@@ -571,7 +575,13 @@ export class CouponService {
             where: { claimCode } as any,
             relations: { channels: true },
         });
-        const hit = candidates.find(t => t.claimCode && this.templateBelongsToChannel(ctx, t));
+        const hit = candidates.find(
+            t =>
+                t.claimCode &&
+                this.templateBelongsToChannel(ctx, t) &&
+                hasChannel(t, false, 'CODE') &&
+                matchesScene(t.usageScene, 'ONLINE'),
+        );
         if (!hit) {
             if (candidates.length === 0) {
                 throw new UserInputError('Invalid claim code');

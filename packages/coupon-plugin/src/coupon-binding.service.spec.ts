@@ -76,11 +76,12 @@ describe('CouponBindingService', () => {
         expect(bindingRepo.save).not.toHaveBeenCalled();
     });
 
-    it('listByProduct 只返回 enabled 且模板 claimable 且 channelId 匹配的绑定', async () => {
+    it('listByProduct 只返回 enabled、模板渠道含 PRODUCT 且 channelId 匹配的绑定', async () => {
+        // 模板绑定了商品即视为 PRODUCT 渠道（hasProductBinding=true）；显式配置渠道优先，不含 PRODUCT 的模板不可见
         bindingRepo.find.mockResolvedValue([
-            { id: 1, enabled: false, channelId: 1, template: { enabled: true, claimable: true } },
-            { id: 2, enabled: true, channelId: 1, template: { enabled: true, claimable: false } },
-            { id: 3, enabled: true, channelId: 1, template: { enabled: true, claimable: true } },
+            { id: 1, enabled: false, channelId: 1, template: { enabled: true } },
+            { id: 2, enabled: true, channelId: 1, template: { enabled: true, distributionChannels: 'SALE' } },
+            { id: 3, enabled: true, channelId: 1, template: { enabled: true } },
         ]);
 
         const result = await service.listByProduct(ctx, 10);

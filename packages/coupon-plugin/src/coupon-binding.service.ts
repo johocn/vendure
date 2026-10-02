@@ -4,6 +4,7 @@ import { ID, RequestContext, TransactionalConnection, UserInputError } from '@ve
 import { CouponTemplate } from './coupon-template.entity';
 import { ProductCouponBinding } from './product-coupon-binding.entity';
 import { CouponBindingCache } from './coupon-binding-cache';
+import { hasChannel, matchesScene } from './coupon-channel';
 import { CreateProductCouponBindingInput, UpdateProductCouponBindingInput } from './types';
 
 /** 进程内共享的 binding 集合缓存实例（结算侧经 listByTemplate 走此缓存） */
@@ -192,10 +193,20 @@ export class CouponBindingService {
         return saved;
     }
 
-    /** 可见性过滤：binding.enabled（查询已含，双保险）&& 模板 enabled && claimable && 渠道匹配 */
+    /**
+     * 可见性过滤：binding.enabled（查询已含，双保险）&& 模板 enabled
+     * && 渠道集合含 PRODUCT（显式配置优先，未配置时回落 claimable）
+     * && 使用场景匹配线上。
+     */
     private visibleBinding(b: ProductCouponBinding, ctx: RequestContext): boolean {
         // channelId 为 number 大整数列，ctx.channel.id 为 string，需统一转 number 比较
         const channelMatch = !b.channelId || Number(b.channelId) === Number(ctx.channel?.id);
-        return !!b.enabled && !!b.template?.enabled && !!b.template.claimable && channelMatch;
+        return (
+            !!b.enabled &&
+            !!b.template?.enabled &&
+            hasChannel(b.template, true, 'PRODUCT') &&
+            matchesScene(b.template.usageScene, 'ONLINE') &&
+            channelMatch
+        );
     }
 }
