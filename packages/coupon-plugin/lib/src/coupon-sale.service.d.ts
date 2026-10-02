@@ -23,7 +23,7 @@ export declare class CouponSaleService {
     }>;
     /** 创建出售单（路径 A）：校验渠道含 SALE / 可售 / 未售罄，落 PENDING 单 */
     createSaleOrder(ctx: RequestContext, templateId?: ID | null, bundleId?: ID | null): Promise<CouponSaleOrder>;
-    /** 余额支付（同步结算）：扣余额 → 置 PAID → 发券 */
+    /** 余额支付（同步结算）：先发券 + 置 PAID，再扣款；扣款内部提交事务，三者一并落库 */
     paySaleOrderWithBalance(ctx: RequestContext, id: ID): Promise<CouponSaleOrder>;
     /** 生成微信支付参数（仅本人 PENDING 单），镜像 recharge-card 的 RC- 范式 */
     createWechatCouponPayment(ctx: RequestContext, saleOrderId: ID, tradeType?: 'JSAPI' | 'NATIVE' | 'H5' | 'APP', openid?: string): Promise<any>;
@@ -84,8 +84,6 @@ export declare class CouponSaleService {
     private loadSaleCoupons;
     /** 结算 + 发券（自带事务；供余额支付与加价购复用） */
     private settleSaleOrderWithTx;
-    /** 余额支付：已在事务内的结算（避免嵌套问题，直接发券） */
-    private settleSaleOrder;
     /** 按出售单发券：单券 1 张 / 券包按 item 展开逐张签发 */
     private issueCouponsForOrder;
     private invalidateCoupons;
