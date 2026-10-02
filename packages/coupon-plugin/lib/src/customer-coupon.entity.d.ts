@@ -28,4 +28,6 @@ export declare class CustomerCoupon extends VendureEntity {
     usedAt?: Date;
     /** 过期时间（快照模板 endsAt，回退/过期判定用） */
     expiredAt?: Date;
+    /** 溯源：该券由哪笔出售单生成（退款回收按此定位；非出售券为 null） */
+    saleOrderId: number | null;
 }

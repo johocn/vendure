@@ -12,15 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CouponTemplate = void 0;
 const typeorm_1 = require("typeorm");
 const core_1 = require("@vendure/core");
-/**
- * 多语言文本的 DB 列转换：DB 内始终以字符串落库（纯字符串原样存；对象/JSON 字符串存
- * 序列化结果），读写时原样保留，使实体上的 `name`/`description` 既可能是纯字符串
- * （历史数据），也可能是 `LocalizedText` 对象（多语言），而无需迁移列类型。
- */
-const localizedTextColumn = {
-    to: (value) => value == null ? value : typeof value === 'string' ? value : JSON.stringify(value),
-    from: (value) => value,
-};
+const localize_1 = require("./localize");
 /**
  * 券模板：后台可配置的券规则。
  */
@@ -31,11 +23,11 @@ let CouponTemplate = class CouponTemplate extends core_1.VendureEntity {
 };
 exports.CouponTemplate = CouponTemplate;
 __decorate([
-    (0, typeorm_1.Column)('text', { nullable: false, transformer: localizedTextColumn }),
+    (0, typeorm_1.Column)('text', { nullable: false, transformer: localize_1.localizedTextColumn }),
     __metadata("design:type", Object)
 ], CouponTemplate.prototype, "name", void 0);
 __decorate([
-    (0, typeorm_1.Column)('text', { nullable: true, transformer: localizedTextColumn }),
+    (0, typeorm_1.Column)('text', { nullable: true, transformer: localize_1.localizedTextColumn }),
     __metadata("design:type", Object)
 ], CouponTemplate.prototype, "description", void 0);
 __decorate([
@@ -118,6 +110,14 @@ __decorate([
     (0, typeorm_1.Column)('varchar', { default: 'ONLINE' }),
     __metadata("design:type", String)
 ], CouponTemplate.prototype, "usageScene", void 0);
+__decorate([
+    (0, typeorm_1.Column)('varchar', { nullable: true }),
+    __metadata("design:type", String)
+], CouponTemplate.prototype, "distributionChannels", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ default: 0 }),
+    __metadata("design:type", Number)
+], CouponTemplate.prototype, "salePrice", void 0);
 __decorate([
     (0, typeorm_1.ManyToMany)(() => core_1.Channel),
     (0, typeorm_1.JoinTable)(),

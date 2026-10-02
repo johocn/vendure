@@ -25,6 +25,11 @@ const constants_1 = require("./constants");
 const coupon_admin_resolver_1 = require("./coupon-admin.resolver");
 const coupon_binding_admin_resolver_1 = require("./coupon-binding-admin.resolver");
 const coupon_binding_service_1 = require("./coupon-binding.service");
+const coupon_bundle_resolver_1 = require("./coupon-bundle.resolver");
+const coupon_balance_port_1 = require("./coupon-balance-port");
+const coupon_sale_admin_resolver_1 = require("./coupon-sale-admin.resolver");
+const coupon_sale_shop_resolver_1 = require("./coupon-sale-shop.resolver");
+const coupon_sale_service_1 = require("./coupon-sale.service");
 const coupon_customer_coupon_resolver_1 = require("./coupon-customer-coupon.resolver");
 const coupon_template_resolver_1 = require("./coupon-template.resolver");
 const coupon_promotion_action_1 = require("./coupon-promotion-action");
@@ -34,8 +39,11 @@ const coupon_settlement_1 = require("./coupon-settlement");
 const coupon_service_1 = require("./coupon.service");
 const coupon_shop_resolver_1 = require("./coupon-shop.resolver");
 const coupon_template_entity_1 = require("./coupon-template.entity");
+const coupon_bundle_entity_1 = require("./coupon-bundle.entity");
+const coupon_sale_order_entity_1 = require("./coupon-sale-order.entity");
 const customer_coupon_entity_1 = require("./customer-coupon.entity");
 const migrations_1 = require("./migrations");
+const add_coupon_distribution_channels_1 = require("./migrations/add-coupon-distribution-channels");
 const in_store_bill_entity_1 = require("./in-store-bill.entity");
 const in_store_bill_admin_resolver_1 = require("./in-store-bill-admin.resolver");
 const in_store_bill_service_1 = require("./in-store-bill.service");
@@ -75,6 +83,8 @@ type CouponTemplate implements Node {
     memberLevel: String
     shopId: ID
     usageScene: CouponUsageScene!
+    distributionChannels: String
+    salePrice: Int!
     createdAt: DateTime!
     updatedAt: DateTime!
 }`;
@@ -113,6 +123,38 @@ let CouponPlugin = CouponPlugin_1 = class CouponPlugin {
         this.couponService.init(this.injector);
         (0, coupon_runtime_1.setCouponConnection)(this.injector.get(core_2.TransactionalConnection));
         (0, coupon_settlement_1.setBindingService)(this.injector.get(coupon_binding_service_1.CouponBindingService));
+        // 余额能力端口（可选依赖 recharge-card-plugin）：未装载时余额支付入口一律不可用
+        try {
+            const { RechargeCardService } = await import('@vendure/recharge-card-plugin');
+            const svc = this.injector.get(RechargeCardService);
+            (0, coupon_balance_port_1.setCouponBalancePort)({
+                getBalance: (ctx, cid) => svc.getBalance(ctx, cid),
+                deductBalance: (ctx, cid, amt) => svc.deductBalance(ctx, cid, amt),
+                addBalance: (ctx, cid, amt) => svc.addBalance(ctx, cid, amt, null, null),
+            });
+            core_2.Logger.info('Coupon balance port registered (recharge-card)', constants_1.loggerCtx);
+        }
+        catch (e) {
+            (0, coupon_balance_port_1.setCouponBalancePort)(null);
+            core_2.Logger.info('Coupon balance port unavailable (recharge-card not registered)', constants_1.loggerCtx);
+        }
+        // 微信回调结算注册（前缀 CS-）+ 网关引用注入（可选依赖 wechatpay-plugin）
+        try {
+            const { WechatpaySettlementRegistry, WechatpayService } = await import('@vendure/wechatpay-plugin');
+            const registry = this.injector.get(WechatpaySettlementRegistry);
+            const gateway = this.injector.get(WechatpayService);
+            (0, coupon_sale_service_1.setCouponSaleGateway)(gateway);
+            const saleService = this.injector.get(coupon_sale_service_1.CouponSaleService);
+            registry.register({
+                prefix: 'CS-',
+                settle: (ctx, outTradeNo) => saleService.settleCouponSaleOrderByOutTradeNo(ctx, outTradeNo),
+            });
+            core_2.Logger.info('CouponSaleOrder ~CS- settlement registered (wechatpay gateway)', constants_1.loggerCtx);
+        }
+        catch (e) {
+            (0, coupon_sale_service_1.setCouponSaleGateway)(null);
+            core_2.Logger.warn('Wechatpay settlement registry unavailable for coupon sale', constants_1.loggerCtx);
+        }
         // 可选定时清扫：收敛无人访问的存量过期券（惰性 on-read 已覆盖用户路径，此为长线兜底）。
         // 显式 set COUPON_EXPIRE_SWEEP_MS 才启动；默认关闭避免生产意外全量 UPDATE。
         const sweepMs = Number((_a = process.env.COUPON_EXPIRE_SWEEP_MS) !== null && _a !== void 0 ? _a : 0);
@@ -161,6 +203,32 @@ let CouponPlugin = CouponPlugin_1 = class CouponPlugin {
                 core_2.Logger.error(`Failed to return coupon on refund ${event.refund.id}: ${e.message}`, constants_1.loggerCtx);
             }
         });
+        // 加价购：主订单支付成功 → 结算 PENDING 加价购单并发券
+        this.eventBus.ofType(core_2.OrderStateTransitionEvent).subscribe(async (event) => {
+            if (event.toState !== 'PaymentSettled')
+                return;
+            try {
+                await this.injector
+                    .get(coupon_sale_service_1.CouponSaleService)
+                    .settleSurchargeOrdersForOrder(event.ctx, event.order.id);
+            }
+            catch (e) {
+                core_2.Logger.error(`Failed to settle coupon surcharge on order ${event.order.id}: ${e.message}`, constants_1.loggerCtx);
+            }
+        });
+        // 加价购：主订单取消 / 整单退款 → 回收加价购券（钱随主订单退回）
+        this.eventBus.ofType(core_2.OrderStateTransitionEvent).subscribe(async (event) => {
+            if (event.toState !== 'Cancelled')
+                return;
+            try {
+                await this.injector
+                    .get(coupon_sale_service_1.CouponSaleService)
+                    .refundSurchargeOrdersForOrder(event.ctx, event.order.id);
+            }
+            catch (e) {
+                core_2.Logger.error(`Failed to recycle coupon surcharge on order ${event.order.id}: ${e.message}`, constants_1.loggerCtx);
+            }
+        });
         core_2.Logger.info('CouponPlugin initialized', constants_1.loggerCtx);
     }
 };
@@ -169,19 +237,22 @@ CouponPlugin.options = {};
 exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
     (0, core_2.VendurePlugin)({
         imports: [core_2.PluginCommonModule],
-        entities: [coupon_template_entity_1.CouponTemplate, customer_coupon_entity_1.CustomerCoupon, product_coupon_binding_entity_1.ProductCouponBinding, in_store_bill_entity_1.InStoreBill],
+        entities: [coupon_template_entity_1.CouponTemplate, customer_coupon_entity_1.CustomerCoupon, product_coupon_binding_entity_1.ProductCouponBinding, in_store_bill_entity_1.InStoreBill, coupon_sale_order_entity_1.CouponSaleOrder, coupon_bundle_entity_1.CouponBundle, coupon_bundle_entity_1.CouponBundleItem],
         providers: [
             { provide: constants_1.COUPON_PLUGIN_OPTIONS, useFactory: () => CouponPlugin.options },
             coupon_service_1.CouponService,
             coupon_binding_service_1.CouponBindingService,
+            coupon_sale_service_1.CouponSaleService,
             in_store_bill_service_1.InStoreBillService,
             migrations_1.AddCouponFieldsMigration,
             migrations_1.CreateProductCouponBindingMigration,
             migrations_1.AddCouponIndexes20260919,
             migrations_1.AddCouponUsageSceneMigration,
+            add_coupon_distribution_channels_1.AddCouponDistributionChannelsMigration,
             migrations_1.CreateInStoreBillMigration,
+            migrations_1.CreateCouponSaleMigration,
         ],
-        exports: [coupon_service_1.CouponService, coupon_binding_service_1.CouponBindingService],
+        exports: [coupon_service_1.CouponService, coupon_binding_service_1.CouponBindingService, coupon_sale_service_1.CouponSaleService],
         adminApiExtensions: {
             schema: () => (0, graphql_tag_1.default) `
             enum CouponType { FIXED PERCENT FULL FREE_SHIPPING }
@@ -344,6 +415,8 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 memberLevel: String
                 shopId: ID
                 usageScene: CouponUsageScene
+                distributionChannels: String
+                salePrice: Int
             }
 
             input UpdateCouponTemplateInput {
@@ -372,11 +445,82 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 newCustomerOnly: Boolean
                 memberLevel: String
                 usageScene: CouponUsageScene
+                distributionChannels: String
+                salePrice: Int
             }
 
             input CouponTemplateListOptions
 
             input CustomerCouponListOptions
+
+            type CouponBundleItem {
+                id: ID!
+                bundleId: ID!
+                templateId: ID!
+                quantity: Int!
+            }
+
+            type CouponBundle implements Node {
+                id: ID!
+                name: String!
+                description: String
+                salePrice: Int!
+                enabled: Boolean!
+                shopId: ID
+                channelId: ID!
+                items: [CouponBundleItem!]!
+            }
+
+            type CouponBundleList implements PaginatedList {
+                items: [CouponBundle!]!
+                totalItems: Int!
+            }
+
+            input CouponBundleItemInput {
+                templateId: ID!
+                quantity: Int
+            }
+
+            input CouponBundleInput {
+                name: String
+                description: String
+                salePrice: Int!
+                enabled: Boolean
+                shopId: ID
+                items: [CouponBundleItemInput!]
+            }
+
+            input CouponBundleListOptions {
+                skip: Int
+                take: Int
+            }
+
+            type CouponSaleOrder implements Node {
+                id: ID!
+                customerId: ID!
+                payMode: String!
+                templateId: ID
+                bundleId: ID
+                orderId: ID
+                amount: Int!
+                status: String!
+                paymentMethod: String
+                externalRef: String
+                paidAt: DateTime
+                refundedAt: DateTime
+                createdAt: DateTime!
+            }
+
+            type CouponSaleOrderList implements PaginatedList {
+                items: [CouponSaleOrder!]!
+                totalItems: Int!
+            }
+
+            input CouponSaleOrderListOptions {
+                skip: Int
+                take: Int
+                status: String
+            }
 
             extend type Query {
                 couponTemplates(options: CouponTemplateListOptions): CouponTemplateList!
@@ -384,9 +528,14 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 customerCoupons(options: CustomerCouponListOptions): CustomerCouponList!
                 couponChannelCustomers(query: String, take: Int, skip: Int): CouponIssueCustomerList!
                 productCouponBindings(productId: ID!): [ProductCouponBinding!]!
+                couponBoundProducts(templateId: ID!): [ProductCouponBinding!]!
                 inStoreBillQuote(code: String!, originalAmount: Int): InStoreBillQuote!
                 inStoreBills(options: InStoreBillListOptions): InStoreBillList!
                 inStoreBillSummary(options: InStoreBillSummaryOptions): InStoreBillSummary!
+                couponBundles(options: CouponBundleListOptions): CouponBundleList!
+                couponBundle(id: ID!): CouponBundle
+                couponSaleOrders(options: CouponSaleOrderListOptions): CouponSaleOrderList!
+                couponSaleOrder(id: ID!): CouponSaleOrder
             }
 
             extend type Mutation {
@@ -400,9 +549,15 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 createProductCouponBinding(input: CreateProductCouponBindingInput!): ProductCouponBinding!
                 updateProductCouponBinding(input: UpdateProductCouponBindingInput!): ProductCouponBinding!
                 deleteProductCouponBinding(id: ID!): Boolean!
+                bindProductsToCoupon(templateId: ID!, productIds: [ID!]!, variantIds: [ID!]): Int!
+                unbindProductFromCoupon(templateId: ID!, productId: ID!): Boolean!
+                createCouponBundle(input: CouponBundleInput!): CouponBundle!
+                updateCouponBundle(id: ID!, input: CouponBundleInput!): CouponBundle!
+                deleteCouponBundle(id: ID!): Boolean!
+                refundCouponSaleOrder(id: ID!, reason: String): CouponSaleOrder!
             }
         `,
-            resolvers: [coupon_admin_resolver_1.CouponAdminResolver, coupon_template_resolver_1.CouponTemplateResolver, coupon_customer_coupon_resolver_1.CustomerCouponResolver, coupon_binding_admin_resolver_1.CouponBindingAdminResolver, in_store_bill_admin_resolver_1.InStoreBillAdminResolver],
+            resolvers: [coupon_admin_resolver_1.CouponAdminResolver, coupon_template_resolver_1.CouponTemplateResolver, coupon_customer_coupon_resolver_1.CustomerCouponResolver, coupon_binding_admin_resolver_1.CouponBindingAdminResolver, in_store_bill_admin_resolver_1.InStoreBillAdminResolver, coupon_sale_admin_resolver_1.CouponSaleAdminResolver, coupon_bundle_resolver_1.CouponBundleResolver],
         },
         shopApiExtensions: {
             schema: () => (0, graphql_tag_1.default) `
@@ -431,11 +586,67 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 spentPoints: Int!
             }
 
+            type CouponSaleCatalogue {
+                templates: [CouponTemplate!]!
+                bundles: [CouponBundle!]!
+            }
+
+            type CouponBundleItem {
+                id: ID!
+                bundleId: ID!
+                templateId: ID!
+                quantity: Int!
+            }
+
+            type CouponBundle implements Node {
+                id: ID!
+                name: String!
+                description: String
+                salePrice: Int!
+                enabled: Boolean!
+                channelId: ID!
+                items: [CouponBundleItem!]!
+            }
+
+            type CouponSaleOrder implements Node {
+                id: ID!
+                customerId: ID!
+                payMode: String!
+                templateId: ID
+                bundleId: ID
+                orderId: ID
+                amount: Int!
+                status: String!
+                paidAt: DateTime
+                refundedAt: DateTime
+                createdAt: DateTime!
+            }
+
+            type CouponWechatPayParams {
+                payType: String!
+                prepayId: String
+                appId: String
+                timeStamp: String
+                nonceStr: String
+                package: String
+                signType: String
+                paySign: String
+                payUrl: String
+            }
+
+            type CouponWechatPayResult {
+                saleOrderId: ID!
+                outTradeNo: String!
+                pay: CouponWechatPayParams!
+            }
+
             extend type Query {
                 couponCentre: [CouponTemplate!]!
                 myCoupons(status: CouponStatus): [CustomerCoupon!]!
                 pointsMallTemplates: [CouponTemplate!]!
                 productCoupons(productId: ID!): [ProductCouponBinding!]!
+                couponSaleCatalogue(scene: CouponUsageScene): CouponSaleCatalogue!
+                myCouponSaleOrders: [CouponSaleOrder!]!
             }
 
             extend type Mutation {
@@ -445,9 +656,16 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 applyCouponToOrder(code: String!): Order!
                 clearCouponFromOrder: Order!
                 exchangeCouponWithPoints(templateId: ID!): ExchangeCouponResult!
+                createCouponSaleOrder(templateId: ID, bundleId: ID): CouponSaleOrder!
+                payCouponSaleWithBalance(id: ID!): CouponSaleOrder!
+                createWechatCouponPayment(saleOrderId: ID!, tradeType: String, openid: String): CouponWechatPayResult!
+                cancelCouponSaleOrder(id: ID!): CouponSaleOrder!
+                refundCouponSaleOrder(id: ID!, reason: String): CouponSaleOrder!
+                attachCouponToOrder(orderId: ID!, templateId: ID!): CouponSaleOrder!
+                detachCouponFromOrder(orderId: ID!, templateId: ID!): Boolean!
             }
         `,
-            resolvers: [coupon_shop_resolver_1.CouponShopResolver, coupon_template_resolver_1.CouponTemplateResolver, coupon_customer_coupon_resolver_1.CustomerCouponResolver],
+            resolvers: [coupon_shop_resolver_1.CouponShopResolver, coupon_template_resolver_1.CouponTemplateResolver, coupon_customer_coupon_resolver_1.CustomerCouponResolver, coupon_sale_shop_resolver_1.CouponSaleShopResolver, coupon_bundle_resolver_1.CouponBundleResolver],
         },
         configuration: (config) => {
             var _a, _b;

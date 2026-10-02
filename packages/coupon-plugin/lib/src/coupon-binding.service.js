@@ -15,6 +15,7 @@ const core_1 = require("@vendure/core");
 const coupon_template_entity_1 = require("./coupon-template.entity");
 const product_coupon_binding_entity_1 = require("./product-coupon-binding.entity");
 const coupon_binding_cache_1 = require("./coupon-binding-cache");
+const coupon_channel_1 = require("./coupon-channel");
 /** 进程内共享的 binding 集合缓存实例（结算侧经 listByTemplate 走此缓存） */
 exports.couponBindingCache = new coupon_binding_cache_1.CouponBindingCache();
 /**
@@ -59,6 +60,18 @@ let CouponBindingService = class CouponBindingService {
             });
             return bindings.filter(b => this.visibleBinding(b, ctx));
         });
+    }
+    /**
+     * 后台管理用：模板下全部绑定（含停用、含非 claimable），不做渠道/场景可见性过滤，按渠道隔离。
+     * 供后台「按模板查已绑商品」选品器使用（SALE 渠道券无 PRODUCT 分发渠道，可见性过滤会误判为空）。
+     */
+    async listByTemplateAdmin(ctx, templateId) {
+        const repo = this.connection.getRepository(ctx, product_coupon_binding_entity_1.ProductCouponBinding);
+        const bindings = await repo.find({
+            where: { couponTemplateId: templateId },
+            relations: { template: true },
+        });
+        return bindings.filter(b => { var _a; return !b.channelId || Number(b.channelId) === Number((_a = ctx.channel) === null || _a === void 0 ? void 0 : _a.id); });
     }
     /** 后台管理用：商品下全部绑定（含停用、含非 claimable），按渠道隔离 */
     async listByProductAdmin(ctx, productId) {
@@ -181,12 +194,73 @@ let CouponBindingService = class CouponBindingService {
         exports.couponBindingCache.invalidate(saved.couponTemplateId);
         return saved;
     }
-    /** 可见性过滤：binding.enabled（查询已含，双保险）&& 模板 enabled && claimable && 渠道匹配 */
+    /**
+     * 批量绑券：逐商品建绑定，已存在同 (productId, couponTemplateId) 则跳过；
+     * 每个新建后单向同步模板 scope=SKU（模板不存在则跳过，不阻断）；返回新建条数。
+     */
+    async bindProducts(ctx, templateId, productIds, variantIds) {
+        var _a;
+        const repo = this.connection.getRepository(ctx, product_coupon_binding_entity_1.ProductCouponBinding);
+        const tplRepo = this.connection.getRepository(ctx, coupon_template_entity_1.CouponTemplate);
+        const tpl = await tplRepo.findOne({ where: { id: templateId } });
+        const normalizedVariants = (variantIds === null || variantIds === void 0 ? void 0 : variantIds.length) ? variantIds.map(v => Number(v)) : undefined;
+        let created = 0;
+        for (const raw of productIds) {
+            const productId = Number(raw);
+            const existing = await repo.findOne({
+                where: { productId, couponTemplateId: templateId },
+            });
+            if (existing) {
+                continue;
+            }
+            const binding = new product_coupon_binding_entity_1.ProductCouponBinding({
+                productId,
+                couponTemplateId: templateId,
+                variantIds: normalizedVariants,
+                enabled: true,
+                channelId: ((_a = ctx.channel) === null || _a === void 0 ? void 0 : _a.id) != null ? Number(ctx.channel.id) : undefined,
+                displayOrder: 0,
+            });
+            const saved = await repo.save(binding);
+            created++;
+            if (tpl) {
+                await this.syncTemplateScope(ctx, tpl, saved);
+            }
+        }
+        exports.couponBindingCache.invalidate(templateId);
+        return created;
+    }
+    /** 解绑单个商品：删除该 (templateId, productId) 且渠道匹配的绑定；末绑定回退 scope 并失效缓存 */
+    async unbindProduct(ctx, templateId, productId) {
+        const repo = this.connection.getRepository(ctx, product_coupon_binding_entity_1.ProductCouponBinding);
+        const bindings = await repo.find({
+            where: { couponTemplateId: templateId, productId },
+        });
+        const targets = bindings.filter(b => { var _a; return !b.channelId || Number(b.channelId) === Number((_a = ctx.channel) === null || _a === void 0 ? void 0 : _a.id); });
+        if (targets.length === 0) {
+            return false;
+        }
+        for (const binding of targets) {
+            await repo.delete(binding.id);
+        }
+        await this.syncTemplateScopeAfterMutation(ctx, templateId);
+        exports.couponBindingCache.invalidate(templateId);
+        return true;
+    }
+    /**
+     * 可见性过滤：binding.enabled（查询已含，双保险）&& 模板 enabled
+     * && 渠道集合含 PRODUCT（显式配置优先，未配置时回落 claimable）
+     * && 使用场景匹配线上。
+     */
     visibleBinding(b, ctx) {
         var _a, _b;
         // channelId 为 number 大整数列，ctx.channel.id 为 string，需统一转 number 比较
         const channelMatch = !b.channelId || Number(b.channelId) === Number((_a = ctx.channel) === null || _a === void 0 ? void 0 : _a.id);
-        return !!b.enabled && !!((_b = b.template) === null || _b === void 0 ? void 0 : _b.enabled) && !!b.template.claimable && channelMatch;
+        return (!!b.enabled &&
+            !!((_b = b.template) === null || _b === void 0 ? void 0 : _b.enabled) &&
+            (0, coupon_channel_1.hasChannel)(b.template, true, 'PRODUCT') &&
+            (0, coupon_channel_1.matchesScene)(b.template.usageScene, 'ONLINE') &&
+            channelMatch);
     }
 };
 exports.CouponBindingService = CouponBindingService;

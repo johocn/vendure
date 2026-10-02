@@ -27,6 +27,15 @@ let CouponBindingAdminResolver = class CouponBindingAdminResolver {
     async productCouponBindings(ctx, productId) {
         return this.bindingService.listByProductAdmin(ctx, Number(productId));
     }
+    async couponBoundProducts(ctx, templateId) {
+        return this.bindingService.listByTemplateAdmin(ctx, Number(templateId));
+    }
+    async bindProductsToCoupon(ctx, templateId, productIds, variantIds) {
+        return this.bindingService.bindProducts(ctx, Number(templateId), productIds, variantIds !== null && variantIds !== void 0 ? variantIds : null);
+    }
+    async unbindProductFromCoupon(ctx, templateId, productId) {
+        return this.bindingService.unbindProduct(ctx, Number(templateId), Number(productId));
+    }
     async createProductCouponBinding(ctx, input) {
         return this.bindingService.create(ctx, input);
     }
@@ -48,6 +57,38 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], CouponBindingAdminResolver.prototype, "productCouponBindings", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('templateId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], CouponBindingAdminResolver.prototype, "couponBoundProducts", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Transaction)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('templateId')),
+    __param(2, (0, graphql_1.Args)('productIds')),
+    __param(3, (0, graphql_1.Args)('variantIds', { nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Array, Array]),
+    __metadata("design:returntype", Promise)
+], CouponBindingAdminResolver.prototype, "bindProductsToCoupon", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Transaction)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('templateId')),
+    __param(2, (0, graphql_1.Args)('productId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object]),
+    __metadata("design:returntype", Promise)
+], CouponBindingAdminResolver.prototype, "unbindProductFromCoupon", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),

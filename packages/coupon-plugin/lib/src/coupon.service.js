@@ -11,11 +11,13 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CouponService = exports.CouponNotOwnedError = void 0;
 const common_1 = require("@nestjs/common");
+const typeorm_1 = require("typeorm");
 const core_1 = require("@vendure/core");
 const member_level_plugin_1 = require("@vendure/member-level-plugin");
 const constants_1 = require("./constants");
 const localize_1 = require("./localize");
 const coupon_scope_1 = require("./coupon-scope");
+const coupon_channel_1 = require("./coupon-channel");
 const coupon_binding_service_1 = require("./coupon-binding.service");
 const coupon_settlement_1 = require("./coupon-settlement");
 const coupon_template_entity_1 = require("./coupon-template.entity");
@@ -38,6 +40,8 @@ const TEMPLATE_UPDATE_ALLOWED = [
     'variantId',
     'enabled',
     'usageScene',
+    'distributionChannels',
+    'salePrice',
 ];
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 function generateCode(prefix) {
@@ -272,33 +276,42 @@ let CouponService = class CouponService {
     async couponCentre(ctx) {
         const repo = this.connection.getRepository(ctx, coupon_template_entity_1.CouponTemplate);
         const now = new Date();
+        // 粗筛：显式配置了渠道集合的券不再要求 claimable=true（显式优先）；
+        // 未配置的历史券仍按老字段 claimable 过滤，保证行为不变。
         const own = await repo
             .createQueryBuilder('tpl')
             .innerJoin('tpl.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId })
             .where('tpl.enabled = :enabled', { enabled: true })
-            .andWhere('tpl.claimable = :claimable', { claimable: true })
+            .andWhere(new typeorm_1.Brackets(qb => qb
+            .where('tpl.distributionChannels IS NOT NULL')
+            .andWhere("tpl.distributionChannels <> ''")
+            .orWhere('tpl.claimable = :claimable', { claimable: true })))
             .andWhere('(tpl.startsAt IS NULL OR tpl.startsAt <= :now)', { now })
             .andWhere('(tpl.endsAt IS NULL OR tpl.endsAt >= :now)', { now })
             .getMany();
         // 非默认商城维持现状：仅列出本渠道券。
         if (!(0, coupon_scope_1.isDefaultMallChannel)(ctx)) {
-            return own;
+            return (0, coupon_channel_1.filterTemplatesByChannelAndScene)(own, 'CENTRE', 'ONLINE');
         }
         // 默认商城：除本渠道券外，追加列出「其 shopId 对应商品出现在本商城」的租户券。
         const shopIds = await this.shopIdsPresentInChannel(ctx);
         if (shopIds.size === 0) {
-            return own;
+            return (0, coupon_channel_1.filterTemplatesByChannelAndScene)(own, 'CENTRE', 'ONLINE');
         }
         const extra = await repo
             .createQueryBuilder('tpl')
             .where('tpl.shopId IN (:...shopIds)', { shopIds: [...shopIds] })
             .andWhere('tpl.enabled = :enabled', { enabled: true })
-            .andWhere('tpl.claimable = :claimable', { claimable: true })
+            .andWhere(new typeorm_1.Brackets(qb => qb
+            .where('tpl.distributionChannels IS NOT NULL')
+            .andWhere("tpl.distributionChannels <> ''")
+            .orWhere('tpl.claimable = :claimable', { claimable: true })))
             .andWhere('(tpl.startsAt IS NULL OR tpl.startsAt <= :now)', { now })
             .andWhere('(tpl.endsAt IS NULL OR tpl.endsAt >= :now)', { now })
             .getMany();
         const ownIds = new Set(own.map(t => String(t.id)));
-        return [...own, ...extra.filter(t => !ownIds.has(String(t.id)))];
+        const merged = [...own, ...extra.filter(t => !ownIds.has(String(t.id)))];
+        return (0, coupon_channel_1.filterTemplatesByChannelAndScene)(merged, 'CENTRE', 'ONLINE');
     }
     /** 默认商城渠道下，本商城商品（Product.customFields.shopId）中出现过的店铺 id 集合。 */
     async shopIdsPresentInChannel(ctx) {
@@ -337,6 +350,31 @@ let CouponService = class CouponService {
         }
         return qb.getMany();
     }
+    /**
+     * 到店收银：列出某顾客在当前渠道「可到店核销」的券（未使用 / 未过期 / 场景含 IN_STORE）。
+     * 仅到店场景过滤，不做渠道集合判定（券可由任意渠道获得，到店核销只看场景与归属）。
+     */
+    async listInStoreCoupons(ctx, customerId) {
+        const repo = this.connection.getRepository(ctx, customer_coupon_entity_1.CustomerCoupon);
+        const list = await repo.find({
+            where: { customerId },
+            relations: { template: { channels: true } },
+            order: { id: 'DESC' },
+        });
+        const now = Date.now();
+        return list.filter(cc => {
+            const tpl = cc.template;
+            if (!tpl || !tpl.enabled)
+                return false;
+            if (cc.status !== 'UNUSED' && cc.status !== 'RETURNED')
+                return false;
+            if (cc.expiredAt && new Date(cc.expiredAt).getTime() <= now)
+                return false;
+            if (!(0, coupon_channel_1.matchesScene)(tpl.usageScene, 'IN_STORE'))
+                return false;
+            return this.templateBelongsToChannel(ctx, tpl);
+        });
+    }
     async listAllCoupons(ctx, options) {
         return this.listQueryBuilder
             .build(customer_coupon_entity_1.CustomerCoupon, options, {
@@ -350,15 +388,20 @@ let CouponService = class CouponService {
     async pointsMallTemplates(ctx) {
         const repo = this.connection.getRepository(ctx, coupon_template_entity_1.CouponTemplate);
         const now = new Date();
-        return repo
+        // 粗筛：显式配置渠道的券不再要求 pointsPrice>0；历史券仍按 pointsPrice>0 过滤。
+        const rows = await repo
             .createQueryBuilder('tpl')
             .innerJoin('tpl.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId })
             .where('tpl.enabled = :enabled', { enabled: true })
-            .andWhere('tpl.pointsPrice > 0')
+            .andWhere(new typeorm_1.Brackets(qb => qb
+            .where('tpl.distributionChannels IS NOT NULL')
+            .andWhere("tpl.distributionChannels <> ''")
+            .orWhere('tpl.pointsPrice > 0')))
             .andWhere('(tpl.startsAt IS NULL OR tpl.startsAt <= :now)', { now })
             .andWhere('(tpl.endsAt IS NULL OR tpl.endsAt >= :now)', { now })
             .orderBy('tpl.pointsPrice', 'ASC')
             .getMany();
+        return (0, coupon_channel_1.filterTemplatesByChannelAndScene)(rows, 'POINTS', 'ONLINE');
     }
     async exchangeWithPoints(ctx, templateId) {
         if (!this.memberLevelService) {
@@ -469,7 +512,9 @@ let CouponService = class CouponService {
         if (binding.channelId != null && Number(binding.channelId) !== Number((_a = ctx.channel) === null || _a === void 0 ? void 0 : _a.id)) {
             throw new core_1.UserInputError('Binding not found');
         }
-        if (!binding.template || !binding.template.claimable) {
+        if (!binding.template ||
+            !(0, coupon_channel_1.hasChannel)(binding.template, true, 'PRODUCT') ||
+            !(0, coupon_channel_1.matchesScene)(binding.template.usageScene, 'ONLINE')) {
             throw new core_1.UserInputError('Coupon is not claimable');
         }
         return this.claimCoupon(ctx, binding.couponTemplateId);
@@ -481,7 +526,10 @@ let CouponService = class CouponService {
             where: { claimCode },
             relations: { channels: true },
         });
-        const hit = candidates.find(t => t.claimCode && this.templateBelongsToChannel(ctx, t));
+        const hit = candidates.find(t => t.claimCode &&
+            this.templateBelongsToChannel(ctx, t) &&
+            (0, coupon_channel_1.hasChannel)(t, false, 'CODE') &&
+            (0, coupon_channel_1.matchesScene)(t.usageScene, 'ONLINE'));
         if (!hit) {
             if (candidates.length === 0) {
                 throw new core_1.UserInputError('Invalid claim code');
@@ -574,6 +622,9 @@ let CouponService = class CouponService {
         const tpl = await this.findOneTemplate(ctx, templateId);
         if (!tpl) {
             throw new core_1.UserInputError(`CouponTemplate ${templateId} not found`);
+        }
+        if (!(0, coupon_channel_1.hasChannel)(tpl, false, 'GRANT')) {
+            throw new core_1.UserInputError('Coupon is not available for targeted grant');
         }
         const customerRepo = this.connection.getRepository(ctx, core_1.Customer);
         const results = [];
@@ -941,7 +992,18 @@ let CouponService = class CouponService {
     async hasPlacedOrder(ctx, customerId) {
         return !(await (0, coupon_settlement_1.isNewCustomerWithinChannel)(ctx, customerId));
     }
-    async createUserCoupon(ctx, customerId, tpl, issuedBy) {
+    /**
+     * 出售发券桥接：复用发券不变量（原子扣余量 → 建券并记录出售单溯源）。
+     * 券包逐张调用本方法，任一张售罄即抛错，由调用方事务回滚整包。
+     */
+    async issueForSale(ctx, customerId, tpl, saleOrderId) {
+        const ok = await this.atomicIncrementClaimed(ctx, tpl.id, tpl);
+        if (!ok) {
+            throw new core_1.UserInputError('Coupon sold out');
+        }
+        return this.createUserCoupon(ctx, customerId, tpl, 'SALE', saleOrderId);
+    }
+    async createUserCoupon(ctx, customerId, tpl, issuedBy, saleOrderId) {
         var _a, _b;
         const repo = this.connection.getRepository(ctx, customer_coupon_entity_1.CustomerCoupon);
         // 重试兜底唯一码冲突（碰撞概率极低）
@@ -956,6 +1018,7 @@ let CouponService = class CouponService {
                 issuedAt: new Date(),
                 // validDays 券按领取时刻起算过期时间；否则快照模板固定 endsAt
                 expiredAt: tpl.validDays ? new Date(Date.now() + tpl.validDays * 86400000) : ((_a = tpl.endsAt) !== null && _a !== void 0 ? _a : undefined),
+                saleOrderId: saleOrderId !== null && saleOrderId !== void 0 ? saleOrderId : null,
             });
             try {
                 return await repo.save(cc);

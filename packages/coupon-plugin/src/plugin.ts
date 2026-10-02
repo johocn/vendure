@@ -586,9 +586,7 @@ export class CouponPlugin implements OnApplicationBootstrap {
 
         // 余额能力端口（可选依赖 recharge-card-plugin）：未装载时余额支付入口一律不可用
         try {
-            const { RechargeCardService } = await import(
-                '@vendure/recharge-card-plugin/lib/src/recharge-card.service.js'
-            );
+            const { RechargeCardService } = await import('@vendure/recharge-card-plugin');
             const svc = this.injector.get(RechargeCardService);
             setCouponBalancePort({
                 getBalance: (ctx, cid) => svc.getBalance(ctx, cid),

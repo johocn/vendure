@@ -6,6 +6,14 @@ import { LanguageCode } from '@vendure/core';
  */
 export type LocalizedText = string | Partial<Record<LanguageCode, string>>;
 /**
+ * 多语言文本的 DB 列转换：DB 内始终以字符串落库（纯字符串原样存；对象/JSON 字符串存
+ * 序列化结果），读写时原样保留。券模板与券包实体共用。
+ */
+export declare const localizedTextColumn: {
+    to: (value: LocalizedText | null | undefined) => string | null | undefined;
+    from: (value: LocalizedText | null | undefined) => LocalizedText | null | undefined;
+};
+/**
  * 按当前会话语言 `locale` 求值本地化文本，逐级回退：
  *  1. 纯字符串 → 直接返回（向后兼容既有 `name: string`）；
  *  2. `locale` 命中 → 返回该语言文案；

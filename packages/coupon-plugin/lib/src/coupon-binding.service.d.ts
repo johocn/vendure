@@ -24,6 +24,11 @@ export declare class CouponBindingService {
     listByProduct(ctx: RequestContext, productId: number): Promise<ProductCouponBinding[]>;
     /** 模板下的可见绑定（模板编辑页展示，过滤规则同上）——经进程内 TTL 缓存，CRUD 时主动失效 */
     listByTemplate(ctx: RequestContext, templateId: ID): Promise<ProductCouponBinding[]>;
+    /**
+     * 后台管理用：模板下全部绑定（含停用、含非 claimable），不做渠道/场景可见性过滤，按渠道隔离。
+     * 供后台「按模板查已绑商品」选品器使用（SALE 渠道券无 PRODUCT 分发渠道，可见性过滤会误判为空）。
+     */
+    listByTemplateAdmin(ctx: RequestContext, templateId: number): Promise<ProductCouponBinding[]>;
     /** 后台管理用：商品下全部绑定（含停用、含非 claimable），按渠道隔离 */
     listByProductAdmin(ctx: RequestContext, productId: number): Promise<ProductCouponBinding[]>;
     /** 创建绑定：同渠道同商品同模板去重；save 后单向同步模板 scope=SKU */
@@ -39,6 +44,17 @@ export declare class CouponBindingService {
     delete(ctx: RequestContext, id: ID): Promise<void>;
     /** 启停翻转 */
     toggleEnabled(ctx: RequestContext, id: ID): Promise<ProductCouponBinding>;
-    /** 可见性过滤：binding.enabled（查询已含，双保险）&& 模板 enabled && claimable && 渠道匹配 */
+    /**
+     * 批量绑券：逐商品建绑定，已存在同 (productId, couponTemplateId) 则跳过；
+     * 每个新建后单向同步模板 scope=SKU（模板不存在则跳过，不阻断）；返回新建条数。
+     */
+    bindProducts(ctx: RequestContext, templateId: number, productIds: ID[], variantIds?: ID[] | null): Promise<number>;
+    /** 解绑单个商品：删除该 (templateId, productId) 且渠道匹配的绑定；末绑定回退 scope 并失效缓存 */
+    unbindProduct(ctx: RequestContext, templateId: number, productId: number): Promise<boolean>;
+    /**
+     * 可见性过滤：binding.enabled（查询已含，双保险）&& 模板 enabled
+     * && 渠道集合含 PRODUCT（显式配置优先，未配置时回落 claimable）
+     * && 使用场景匹配线上。
+     */
     private visibleBinding;
 }

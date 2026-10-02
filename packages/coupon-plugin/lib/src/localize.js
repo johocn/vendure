@@ -1,8 +1,17 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.localizedTextColumn = void 0;
 exports.localizeText = localizeText;
 exports.localizedParts = localizedParts;
 const core_1 = require("@vendure/core");
+/**
+ * 多语言文本的 DB 列转换：DB 内始终以字符串落库（纯字符串原样存；对象/JSON 字符串存
+ * 序列化结果），读写时原样保留。券模板与券包实体共用。
+ */
+exports.localizedTextColumn = {
+    to: (value) => value == null ? value : typeof value === 'string' ? value : JSON.stringify(value),
+    from: (value) => value,
+};
 /**
  * 将文本解析为真正的对象形态。历史 / 旧版数据可能直接存了 JSON 字符串
  * （例如 GraphQL `String!` 标量里塞入的 `'{"zh_Hans":"..","en":".."}'`），

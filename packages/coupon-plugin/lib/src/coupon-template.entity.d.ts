@@ -54,5 +54,12 @@ export declare class CouponTemplate extends VendureEntity implements ChannelAwar
     shopId?: number;
     /** 使用场景：ONLINE（仅线上，默认）| IN_STORE（仅到店买单）| ALL（两者皆可） */
     usageScene: CouponUsageScene;
+    /**
+     * 分发渠道集合（逗号分隔，如 'CENTRE,SALE,POINTS,CODE,PRODUCT,GRANT'）。
+     * 为 null / 空时由老字段（claimable / pointsPrice / claimCode / 商品绑定）推导，保证历史券行为不变。
+     */
+    distributionChannels?: string;
+    /** 出售价（分，与 Vendure money 子单位一致）；0 = 不可售 */
+    salePrice: number;
     channels: Channel[];
 }

@@ -1,10 +1,23 @@
 "use strict";
+var __rest = (this && this.__rest) || function (s, e) {
+    var t = {};
+    for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
+        t[p] = s[p];
+    if (s != null && typeof Object.getOwnPropertySymbols === "function")
+        for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
+            if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
+                t[p[i]] = s[p[i]];
+        }
+    return t;
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 const vitest_1 = require("vitest");
 const core_1 = require("@vendure/core");
+const typeorm_1 = require("typeorm");
 const coupon_service_1 = require("./coupon.service");
 const coupon_template_entity_1 = require("./coupon-template.entity");
 const product_coupon_binding_entity_1 = require("./product-coupon-binding.entity");
+const customer_coupon_entity_1 = require("./customer-coupon.entity");
 const coupon_runtime_1 = require("./coupon-runtime");
 /**
  * CouponService.claimProductCoupon 纯单元测试：mock TransactionalConnection，
@@ -65,13 +78,13 @@ const coupon_runtime_1 = require("./coupon-runtime");
         await (0, vitest_1.expect)(service.claimProductCoupon(ctx, 1)).rejects.toThrow('Binding not found');
         (0, vitest_1.expect)(claimSpy).not.toHaveBeenCalled();
     });
-    (0, vitest_1.it)('模板非 claimable → 报 Coupon is not claimable（既有行为，回归）', async () => {
+    (0, vitest_1.it)('模板使用场景非线上 → 报 Coupon is not claimable', async () => {
         bindingRepo.findOne.mockResolvedValue({
             id: 1,
             channelId: 37,
             enabled: true,
             couponTemplateId: 10,
-            template: { claimable: false },
+            template: { usageScene: 'IN_STORE' },
         });
         const claimSpy = vitest_1.vi.spyOn(service, 'claimCoupon').mockResolvedValue({});
         await (0, vitest_1.expect)(service.claimProductCoupon(ctx, 1)).rejects.toThrow('Coupon is not claimable');
@@ -321,7 +334,7 @@ const coupon_runtime_1 = require("./coupon-runtime");
         const result = await service.couponCentre(ctx);
         (0, vitest_1.expect)(result).toEqual(own);
         (0, vitest_1.expect)(qb.innerJoin).toHaveBeenCalledWith('tpl.channels', 'channel', 'channel.id = :channelId', { channelId: 37 });
-        (0, vitest_1.expect)(qb.andWhere).toHaveBeenCalledWith('tpl.claimable = :claimable', { claimable: true });
+        (0, vitest_1.expect)(qb.andWhere).toHaveBeenNthCalledWith(1, vitest_1.expect.any(typeorm_1.Brackets));
     });
 });
 /**
@@ -357,6 +370,41 @@ const coupon_runtime_1 = require("./coupon-runtime");
         const tpl = { name: '满100减20', description: undefined };
         service.applyMultilingualInput(tpl, { nameEn: '20 off 100' });
         (0, vitest_1.expect)(tpl.name).toEqual({ zh_Hans: '满100减20', en: '20 off 100' });
+    });
+});
+/**
+ * Task 4：到店收银可用券列表，仅保留到店/全场景、未使用（UNUSED/RETURNED）、未过期且渠道归属命中的券。
+ */
+(0, vitest_1.describe)('CouponService.listInStoreCoupons', () => {
+    let ccRepo;
+    let connection;
+    let service;
+    const baseCc = (over = {}) => {
+        const { template } = over, rest = __rest(over, ["template"]);
+        return Object.assign({ id: 1, customerId: 5, status: 'UNUSED', expiredAt: null, template: Object.assign({ id: 9, enabled: true, usageScene: 'IN_STORE', channels: [] }, template) }, rest);
+    };
+    (0, vitest_1.beforeEach)(() => {
+        ccRepo = { find: vitest_1.vi.fn() };
+        connection = {
+            getRepository: vitest_1.vi.fn((_ctx, entity) => {
+                if (entity === customer_coupon_entity_1.CustomerCoupon)
+                    return ccRepo;
+                throw new Error(`unknown entity: ${entity}`);
+            }),
+        };
+        service = new coupon_service_1.CouponService(connection, {}, {});
+    });
+    (0, vitest_1.it)('仅返回到店/全场景且未使用未过期的券', async () => {
+        const rows = [
+            baseCc({ id: 1, template: { usageScene: 'IN_STORE' } }),
+            baseCc({ id: 2, template: { usageScene: 'ALL' } }),
+            baseCc({ id: 3, template: { usageScene: 'ONLINE' } }),
+            baseCc({ id: 4, status: 'USED', template: { usageScene: 'IN_STORE' } }),
+            baseCc({ id: 5, expiredAt: new Date(Date.now() - 1000), template: { usageScene: 'IN_STORE' } }),
+        ];
+        ccRepo.find.mockResolvedValue(rows);
+        const out = await service.listInStoreCoupons({ channelId: 1 }, 5);
+        (0, vitest_1.expect)(out.map((c) => c.id)).toEqual([1, 2]);
     });
 });
 //# sourceMappingURL=coupon.service.spec.js.map

@@ -55,6 +55,11 @@ export declare class CouponService {
     /** 默认商城渠道下，本商城商品（Product.customFields.shopId）中出现过的店铺 id 集合。 */
     private shopIdsPresentInChannel;
     listMyCoupons(ctx: RequestContext, status?: string): Promise<CustomerCoupon[]>;
+    /**
+     * 到店收银：列出某顾客在当前渠道「可到店核销」的券（未使用 / 未过期 / 场景含 IN_STORE）。
+     * 仅到店场景过滤，不做渠道集合判定（券可由任意渠道获得，到店核销只看场景与归属）。
+     */
+    listInStoreCoupons(ctx: RequestContext, customerId: number): Promise<CustomerCoupon[]>;
     listAllCoupons(ctx: RequestContext, options?: ListQueryOptions<CustomerCoupon>): Promise<{
         items: CustomerCoupon[];
         totalItems: number;
@@ -132,5 +137,10 @@ export declare class CouponService {
     private atomicIncrementClaimed;
     /** 新客判定：本租户是否已有历史有效订单（排除创建/购物车/待支付/修改/取消等未完成态） */
     private hasPlacedOrder;
+    /**
+     * 出售发券桥接：复用发券不变量（原子扣余量 → 建券并记录出售单溯源）。
+     * 券包逐张调用本方法，任一张售罄即抛错，由调用方事务回滚整包。
+     */
+    issueForSale(ctx: RequestContext, customerId: number, tpl: CouponTemplate, saleOrderId: number): Promise<CustomerCoupon>;
     private createUserCoupon;
 }

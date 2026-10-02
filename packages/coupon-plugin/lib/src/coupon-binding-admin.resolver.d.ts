@@ -8,6 +8,9 @@ export declare class CouponBindingAdminResolver {
     private bindingService;
     constructor(bindingService: CouponBindingService);
     productCouponBindings(ctx: RequestContext, productId: ID): Promise<import("./product-coupon-binding.entity").ProductCouponBinding[]>;
+    couponBoundProducts(ctx: RequestContext, templateId: ID): Promise<import("./product-coupon-binding.entity").ProductCouponBinding[]>;
+    bindProductsToCoupon(ctx: RequestContext, templateId: ID, productIds: ID[], variantIds?: ID[]): Promise<number>;
+    unbindProductFromCoupon(ctx: RequestContext, templateId: ID, productId: ID): Promise<boolean>;
     createProductCouponBinding(ctx: RequestContext, input: any): Promise<import("./product-coupon-binding.entity").ProductCouponBinding>;
     updateProductCouponBinding(ctx: RequestContext, input: any): Promise<import("./product-coupon-binding.entity").ProductCouponBinding>;
     deleteProductCouponBinding(ctx: RequestContext, id: ID): Promise<boolean>;
