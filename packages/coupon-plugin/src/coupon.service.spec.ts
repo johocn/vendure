@@ -82,7 +82,7 @@ describe('CouponService.claimProductCoupon', () => {
             channelId: 37,
             enabled: true,
             couponTemplateId: 10,
-            template: { usageScene: 'OFFLINE' },
+            template: { usageScene: 'IN_STORE' },
         });
         const claimSpy = vi.spyOn(service, 'claimCoupon').mockResolvedValue({} as any);
 
