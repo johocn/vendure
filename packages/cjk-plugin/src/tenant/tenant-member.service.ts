@@ -67,6 +67,9 @@ export const PERMISSION_CATALOG: PermissionCatalogGroup[] = [
             { code: Permission.ReadOrder, label: '订单·读' },
             { code: Permission.UpdateOrder, label: '订单·改' },
             { code: Permission.CreateOrder, label: '订单·建' },
+            // 到店核销（受限）：勾选即「受限核销员」，仅能在人员管理配置的配送档案白名单内核销；
+            // 不勾选者（店主/超管）不受档案限制，看本租户全量
+            { code: 'VerifyOrder', label: '核销·按配送档案' },
         ],
     },
     {
@@ -106,7 +109,6 @@ export const PERMISSION_CATALOG: PermissionCatalogGroup[] = [
         items: [
             { code: 'TenantRoleManage', label: '角色·管理' },
             { code: 'TenantMemberManage', label: '人员·管理' },
-            { code: 'VerifyOrder', label: '核销·预留' },
         ],
     },
     {

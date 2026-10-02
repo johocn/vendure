@@ -46,6 +46,9 @@ export const OFFICIAL_ROLE_TEMPLATES: RoleTemplate[] = [
             Permission.ReadOrder, Permission.UpdateOrder, Permission.CreateOrder,
             Permission.ReadAsset, Permission.CreateAsset,
             Permission.ReadCollection,
+            // 到店核销（受限）：持有该权限即「受限核销员」，只能在人员管理配置的配送档案白名单范围内核销；
+            // 白名单为空 = 一律拒绝（新租户销售员默认不可见，需店主显式配置后才放行）
+            'VerifyOrder',
         ],
     },
     {
