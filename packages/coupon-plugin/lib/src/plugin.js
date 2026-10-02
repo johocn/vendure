@@ -202,6 +202,15 @@ let CouponPlugin = CouponPlugin_1 = class CouponPlugin {
             catch (e) {
                 core_2.Logger.error(`Failed to return coupon on refund ${event.refund.id}: ${e.message}`, constants_1.loggerCtx);
             }
+            // 加价购：整单退款 Settled → 回收加价购券（与订单取消同语义）
+            try {
+                await this.injector
+                    .get(coupon_sale_service_1.CouponSaleService)
+                    .refundSurchargeOrdersForOrder(event.ctx, event.order.id);
+            }
+            catch (e) {
+                core_2.Logger.error(`Failed to recycle coupon surcharge on refund of order ${event.order.id}: ${e.message}`, constants_1.loggerCtx);
+            }
         });
         // 加价购：主订单支付成功 → 结算 PENDING 加价购单并发券
         this.eventBus.ofType(core_2.OrderStateTransitionEvent).subscribe(async (event) => {
@@ -257,7 +266,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
             schema: () => (0, graphql_tag_1.default) `
             enum CouponType { FIXED PERCENT FULL FREE_SHIPPING }
             enum CouponStatus { UNUSED USED RETURNED EXPIRED INVALID }
-            enum CouponIssuedBy { CENTRE ADMIN EXCHANGE }
+            enum CouponIssuedBy { CENTRE ADMIN EXCHANGE SALE }
             enum CouponUsageScene { ONLINE IN_STORE ALL }
 
             ${couponTemplateType}
@@ -532,6 +541,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 inStoreBillQuote(code: String!, originalAmount: Int): InStoreBillQuote!
                 inStoreBills(options: InStoreBillListOptions): InStoreBillList!
                 inStoreBillSummary(options: InStoreBillSummaryOptions): InStoreBillSummary!
+                inStoreCustomerCoupons(customerId: ID!): [CustomerCoupon!]!
                 couponBundles(options: CouponBundleListOptions): CouponBundleList!
                 couponBundle(id: ID!): CouponBundle
                 couponSaleOrders(options: CouponSaleOrderListOptions): CouponSaleOrderList!
@@ -563,7 +573,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
             schema: () => (0, graphql_tag_1.default) `
             enum CouponType { FIXED PERCENT FULL FREE_SHIPPING }
             enum CouponStatus { UNUSED USED RETURNED EXPIRED INVALID }
-            enum CouponIssuedBy { CENTRE ADMIN EXCHANGE }
+            enum CouponIssuedBy { CENTRE ADMIN EXCHANGE SALE }
             enum CouponUsageScene { ONLINE IN_STORE ALL }
 
             ${couponTemplateType}

@@ -15,6 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.InStoreBillAdminResolver = void 0;
 const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
+const coupon_service_1 = require("./coupon.service");
 const in_store_bill_service_1 = require("./in-store-bill.service");
 /**
  * 到店买单（admin-api）：商户端核销 + 流水查询。
@@ -22,8 +23,13 @@ const in_store_bill_service_1 = require("./in-store-bill.service");
  * 属店隔离由 service 内的 assertManagedByShop（券模板）+ ctx.channelId（流水）共同保证。
  */
 let InStoreBillAdminResolver = class InStoreBillAdminResolver {
-    constructor(inStoreBillService) {
+    constructor(inStoreBillService, couponService) {
         this.inStoreBillService = inStoreBillService;
+        this.couponService = couponService;
+    }
+    /** 到店收银：某顾客在当前渠道可到店核销的券列表（仅看场景 IN_STORE/ALL + 未使用/未过期） */
+    async inStoreCustomerCoupons(ctx, customerId) {
+        return this.couponService.listInStoreCoupons(ctx, Number(customerId));
     }
     async inStoreBillQuote(ctx, code, originalAmount) {
         return this.inStoreBillService.quote(ctx, code, originalAmount !== null && originalAmount !== void 0 ? originalAmount : null);
@@ -49,6 +55,15 @@ let InStoreBillAdminResolver = class InStoreBillAdminResolver {
     }
 };
 exports.InStoreBillAdminResolver = InStoreBillAdminResolver;
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('customerId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], InStoreBillAdminResolver.prototype, "inStoreCustomerCoupons", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(core_1.Permission.UpdateOrder),
@@ -91,6 +106,7 @@ __decorate([
 ], InStoreBillAdminResolver.prototype, "inStoreBillRedeem", null);
 exports.InStoreBillAdminResolver = InStoreBillAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
-    __metadata("design:paramtypes", [in_store_bill_service_1.InStoreBillService])
+    __metadata("design:paramtypes", [in_store_bill_service_1.InStoreBillService,
+        coupon_service_1.CouponService])
 ], InStoreBillAdminResolver);
 //# sourceMappingURL=in-store-bill-admin.resolver.js.map

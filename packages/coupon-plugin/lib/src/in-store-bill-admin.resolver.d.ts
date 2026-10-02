@@ -1,4 +1,5 @@
-import { RequestContext } from '@vendure/core';
+import { ID, RequestContext } from '@vendure/core';
+import { CouponService } from './coupon.service';
 import { InStoreBillService } from './in-store-bill.service';
 /**
  * 到店买单（admin-api）：商户端核销 + 流水查询。
@@ -7,7 +8,10 @@ import { InStoreBillService } from './in-store-bill.service';
  */
 export declare class InStoreBillAdminResolver {
     private inStoreBillService;
-    constructor(inStoreBillService: InStoreBillService);
+    private couponService;
+    constructor(inStoreBillService: InStoreBillService, couponService: CouponService);
+    /** 到店收银：某顾客在当前渠道可到店核销的券列表（仅看场景 IN_STORE/ALL + 未使用/未过期） */
+    inStoreCustomerCoupons(ctx: RequestContext, customerId: ID): Promise<import("./customer-coupon.entity").CustomerCoupon[]>;
     inStoreBillQuote(ctx: RequestContext, code: string, originalAmount?: number): Promise<import("./in-store-bill.service").InStoreBillQuote>;
     inStoreBills(ctx: RequestContext, options?: any): Promise<{
         items: import("./in-store-bill.entity").InStoreBill[];

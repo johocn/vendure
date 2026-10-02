@@ -52,6 +52,7 @@ export declare class CouponSaleService {
     settleSurchargeOrdersForOrder(ctx: RequestContext, orderId: ID): Promise<void>;
     /**
      * 主订单整单退款/取消 → 回收加价购券并置 REFUNDED（钱随主订单退回，不做余额补偿）。
+     * 同时把仍未支付（PENDING）的加价购单置 CANCELLED：主订单已取消，加价购意图随之作废。
      */
     refundSurchargeOrdersForOrder(ctx: RequestContext, orderId: ID): Promise<void>;
     listBundles(ctx: RequestContext, options?: {

@@ -135,7 +135,7 @@ type CustomerCoupon implements Node {
         schema: () => gql`
             enum CouponType { FIXED PERCENT FULL FREE_SHIPPING }
             enum CouponStatus { UNUSED USED RETURNED EXPIRED INVALID }
-            enum CouponIssuedBy { CENTRE ADMIN EXCHANGE }
+            enum CouponIssuedBy { CENTRE ADMIN EXCHANGE SALE }
             enum CouponUsageScene { ONLINE IN_STORE ALL }
 
             ${couponTemplateType}
@@ -410,6 +410,7 @@ type CustomerCoupon implements Node {
                 inStoreBillQuote(code: String!, originalAmount: Int): InStoreBillQuote!
                 inStoreBills(options: InStoreBillListOptions): InStoreBillList!
                 inStoreBillSummary(options: InStoreBillSummaryOptions): InStoreBillSummary!
+                inStoreCustomerCoupons(customerId: ID!): [CustomerCoupon!]!
                 couponBundles(options: CouponBundleListOptions): CouponBundleList!
                 couponBundle(id: ID!): CouponBundle
                 couponSaleOrders(options: CouponSaleOrderListOptions): CouponSaleOrderList!
@@ -441,7 +442,7 @@ type CustomerCoupon implements Node {
         schema: () => gql`
             enum CouponType { FIXED PERCENT FULL FREE_SHIPPING }
             enum CouponStatus { UNUSED USED RETURNED EXPIRED INVALID }
-            enum CouponIssuedBy { CENTRE ADMIN EXCHANGE }
+            enum CouponIssuedBy { CENTRE ADMIN EXCHANGE SALE }
             enum CouponUsageScene { ONLINE IN_STORE ALL }
 
             ${couponTemplateType}
@@ -659,6 +660,17 @@ export class CouponPlugin implements OnApplicationBootstrap {
                 await this.couponService.returnCouponOnFullRefund(event.ctx, event.refund.id as any);
             } catch (e: any) {
                 Logger.error(`Failed to return coupon on refund ${event.refund.id}: ${e.message}`, loggerCtx);
+            }
+            // 加价购：整单退款 Settled → 回收加价购券（与订单取消同语义）
+            try {
+                await this.injector
+                    .get(CouponSaleService)
+                    .refundSurchargeOrdersForOrder(event.ctx, event.order.id);
+            } catch (e: any) {
+                Logger.error(
+                    `Failed to recycle coupon surcharge on refund of order ${event.order.id}: ${e.message}`,
+                    loggerCtx,
+                );
             }
         });
 

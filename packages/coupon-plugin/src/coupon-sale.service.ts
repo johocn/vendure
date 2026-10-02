@@ -365,17 +365,18 @@ export class CouponSaleService {
 
     /**
      * 主订单整单退款/取消 → 回收加价购券并置 REFUNDED（钱随主订单退回，不做余额补偿）。
+     * 同时把仍未支付（PENDING）的加价购单置 CANCELLED：主订单已取消，加价购意图随之作废。
      */
     async refundSurchargeOrdersForOrder(ctx: RequestContext, orderId: ID): Promise<void> {
         const repo = this.connection.getRepository(ctx, CouponSaleOrder);
-        const orders = await repo.find({
+        const paidOrders = await repo.find({
             where: {
                 orderId: Number(orderId),
                 payMode: 'ORDER_SURCHARGE',
                 status: 'PAID',
             },
         });
-        for (const order of orders) {
+        for (const order of paidOrders) {
             await this.connection.startTransaction(ctx);
             try {
                 const claim = await repo
@@ -395,6 +396,17 @@ export class CouponSaleService {
                 throw e;
             }
         }
+        // 未支付的加价购单：直接作废（无钱可退，无券可回收）
+        await repo
+            .createQueryBuilder()
+            .update(CouponSaleOrder)
+            .set({ status: 'CANCELLED' })
+            .where('orderId = :orderId AND payMode = :payMode AND status = :status', {
+                orderId: Number(orderId),
+                payMode: 'ORDER_SURCHARGE',
+                status: 'PENDING',
+            })
+            .execute();
     }
 
     // ===== 券包（admin + 购买编排）=====

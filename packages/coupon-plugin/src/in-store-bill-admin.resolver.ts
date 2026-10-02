@@ -1,6 +1,7 @@
 import { Args, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { Allow, Ctx, ID, Permission, RequestContext, Transaction } from '@vendure/core';
 
+import { CouponService } from './coupon.service';
 import { InStoreBillService } from './in-store-bill.service';
 
 /**
@@ -10,7 +11,17 @@ import { InStoreBillService } from './in-store-bill.service';
  */
 @Resolver()
 export class InStoreBillAdminResolver {
-    constructor(private inStoreBillService: InStoreBillService) {}
+    constructor(
+        private inStoreBillService: InStoreBillService,
+        private couponService: CouponService,
+    ) {}
+
+    /** 到店收银：某顾客在当前渠道可到店核销的券列表（仅看场景 IN_STORE/ALL + 未使用/未过期） */
+    @Query()
+    @Allow(Permission.UpdateOrder)
+    async inStoreCustomerCoupons(@Ctx() ctx: RequestContext, @Args('customerId') customerId: ID) {
+        return this.couponService.listInStoreCoupons(ctx, Number(customerId));
+    }
 
     @Query()
     @Allow(Permission.UpdateOrder)
