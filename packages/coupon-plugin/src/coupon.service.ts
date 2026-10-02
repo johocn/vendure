@@ -45,6 +45,8 @@ const TEMPLATE_UPDATE_ALLOWED: ReadonlyArray<keyof CouponTemplate> = [
     'variantId',
     'enabled',
     'usageScene',
+    'distributionChannels',
+    'salePrice',
 ];
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';

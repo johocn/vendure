@@ -34,6 +34,7 @@ import {
     CreateInStoreBillMigration,
     CreateProductCouponBindingMigration,
 } from './migrations';
+import { AddCouponDistributionChannelsMigration } from './migrations/add-coupon-distribution-channels';
 import { InStoreBill } from './in-store-bill.entity';
 import { InStoreBillAdminResolver } from './in-store-bill-admin.resolver';
 import { InStoreBillService } from './in-store-bill.service';
@@ -79,6 +80,8 @@ type CouponTemplate implements Node {
     memberLevel: String
     shopId: ID
     usageScene: CouponUsageScene!
+    distributionChannels: String
+    salePrice: Int!
     createdAt: DateTime!
     updatedAt: DateTime!
 }`;
@@ -114,6 +117,7 @@ type CustomerCoupon implements Node {
         CreateProductCouponBindingMigration,
         AddCouponIndexes20260919,
         AddCouponUsageSceneMigration,
+        AddCouponDistributionChannelsMigration,
         CreateInStoreBillMigration,
     ],
     exports: [CouponService, CouponBindingService],
@@ -279,6 +283,8 @@ type CustomerCoupon implements Node {
                 memberLevel: String
                 shopId: ID
                 usageScene: CouponUsageScene
+                distributionChannels: String
+                salePrice: Int
             }
 
             input UpdateCouponTemplateInput {
@@ -307,6 +313,8 @@ type CustomerCoupon implements Node {
                 newCustomerOnly: Boolean
                 memberLevel: String
                 usageScene: CouponUsageScene
+                distributionChannels: String
+                salePrice: Int
             }
 
             input CouponTemplateListOptions
