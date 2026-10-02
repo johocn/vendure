@@ -91,7 +91,7 @@ export class CouponSaleService {
             amount = tpl.salePrice;
         } else {
             const { bundle, items } = await this.loadSaleableBundle(ctx, bundleId as ID);
-            this.assertBundleStock(items);
+            await this.assertBundleStock(items);
             amount = bundle.salePrice;
         }
         const repo = this.connection.getRepository(ctx, CouponSaleOrder);
@@ -113,7 +113,7 @@ export class CouponSaleService {
         );
     }
 
-    /** 余额支付（同步结算）：扣余额 → 置 PAID → 发券 */
+    /** 余额支付（同步结算）：先发券 + 置 PAID，再扣款；扣款内部提交事务，三者一并落库 */
     async paySaleOrderWithBalance(ctx: RequestContext, id: ID): Promise<CouponSaleOrder> {
         const port = getCouponBalancePort();
         if (!port) {
@@ -121,10 +121,15 @@ export class CouponSaleService {
         }
         const repo = this.connection.getRepository(ctx, CouponSaleOrder);
         const order = await this.loadOwnedPendingOrder(ctx, id);
-        await port.deductBalance(ctx, order.customerId, order.amount);
+        // 顺序不可颠倒：deductBalance 内部会 commitOpenTransaction（提前提交外层事务），
+        // 所以必须先把「发券 + 置 PAID」做完再扣款提交。这样任一步失败（券包某张售罄、余额不足）
+        // 都只是回滚外层事务，不会出现「已扣款却只发了一半券」的半成品状态。
+        await this.issueCouponsForOrder(ctx, order);
         order.paymentMethod = 'balance';
+        order.status = 'PAID';
+        order.paidAt = order.paidAt ?? new Date();
         await repo.save(order);
-        await this.settleSaleOrder(ctx, order.id as number);
+        await port.deductBalance(ctx, order.customerId, order.amount);
         const fresh = await repo.findOne({ where: { id: order.id } });
         return fresh as CouponSaleOrder;
     }
@@ -620,19 +625,6 @@ export class CouponSaleService {
             await this.connection.rollBackTransaction(ctx);
             throw e;
         }
-    }
-
-    /** 余额支付：已在事务内的结算（避免嵌套问题，直接发券） */
-    private async settleSaleOrder(ctx: RequestContext, saleOrderId: number): Promise<void> {
-        const repo = this.connection.getRepository(ctx, CouponSaleOrder);
-        const order = await repo.findOne({ where: { id: saleOrderId as any } });
-        if (!order) {
-            throw new UserInputError('Coupon sale order not found');
-        }
-        await this.issueCouponsForOrder(ctx, order);
-        order.status = 'PAID';
-        order.paidAt = order.paidAt ?? new Date();
-        await repo.save(order);
     }
 
     /** 按出售单发券：单券 1 张 / 券包按 item 展开逐张签发 */
