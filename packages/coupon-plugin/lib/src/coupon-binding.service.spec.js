@@ -66,15 +66,22 @@ const product_coupon_binding_entity_1 = require("./product-coupon-binding.entity
         // 去重命中后不应再写库
         (0, vitest_1.expect)(bindingRepo.save).not.toHaveBeenCalled();
     });
-    (0, vitest_1.it)('listByProduct 只返回 enabled、模板渠道含 PRODUCT 且 channelId 匹配的绑定', async () => {
-        // 模板绑定了商品即视为 PRODUCT 渠道（hasProductBinding=true）；显式配置渠道优先，不含 PRODUCT 的模板不可见
+    (0, vitest_1.it)('listByProduct 返回 enabled、模板渠道含 PRODUCT 或 SALE、场景命中且 channelId 匹配的绑定', async () => {
+        // 详情页入口要同时支撑「领取」(PRODUCT) 与「加价购」(SALE)：
+        // 绑定商品即视为 PRODUCT 渠道（hasProductBinding=true），显式配置渠道优先。
         bindingRepo.find.mockResolvedValue([
             { id: 1, enabled: false, channelId: 1, template: { enabled: true } },
             { id: 2, enabled: true, channelId: 1, template: { enabled: true, distributionChannels: 'SALE' } },
             { id: 3, enabled: true, channelId: 1, template: { enabled: true } },
+            // 仅 CENTRE 渠道：既不可领也不可加价购 → 不可见
+            { id: 4, enabled: true, channelId: 1, template: { enabled: true, distributionChannels: 'CENTRE' } },
+            // SALE 但纯到店券：线上加价购不可用 → 不可见
+            { id: 5, enabled: true, channelId: 1, template: { enabled: true, distributionChannels: 'SALE', usageScene: 'IN_STORE' } },
+            // 渠道不匹配 → 不可见
+            { id: 6, enabled: true, channelId: 99, template: { enabled: true, distributionChannels: 'SALE' } },
         ]);
         const result = await service.listByProduct(ctx, 10);
-        (0, vitest_1.expect)(result.map(b => b.id)).toEqual([3]);
+        (0, vitest_1.expect)(result.map(b => b.id)).toEqual([2, 3]);
     });
     (0, vitest_1.it)('toggleEnabled 翻转 enabled 并保存', async () => {
         bindingRepo.findOne.mockResolvedValue({ id: 5, enabled: true });

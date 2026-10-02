@@ -20,7 +20,11 @@ export declare class CouponBindingService {
     syncTemplateScope(ctx: RequestContext, tpl: CouponTemplate, binding: {
         variantIds?: number[] | null;
     }): Promise<void>;
-    /** 商品下的可见绑定：enabled && 模板 enabled && claimable && 渠道匹配（详情页领券入口用） */
+    /**
+     * 商品下的可见绑定（详情页入口用）：enabled && 模板 enabled && 渠道匹配，且模板
+     * 可通过 PRODUCT（详情页领取）或 SALE（加价购）分发。两者都需返回，C 端再按
+     * template 的渠道分别渲染「领取」与「加价购」两个区块。
+     */
     listByProduct(ctx: RequestContext, productId: number): Promise<ProductCouponBinding[]>;
     /** 模板下的可见绑定（模板编辑页展示，过滤规则同上）——经进程内 TTL 缓存，CRUD 时主动失效 */
     listByTemplate(ctx: RequestContext, templateId: ID): Promise<ProductCouponBinding[]>;
@@ -57,4 +61,11 @@ export declare class CouponBindingService {
      * && 使用场景匹配线上。
      */
     private visibleBinding;
+    /**
+     * 详情页入口可见绑定：与 visibleBinding 同源，但额外接纳 SALE 渠道——
+     * 加价购券没有 PRODUCT 分发渠道，若沿用 visibleBinding 会被判为不可见，
+     * 导致 C 端「加价购」区块永远拿不到数据。结算侧仍走 listByTemplate/visibleBinding，
+     * 不受影响。
+     */
+    private visibleEntryBinding;
 }
