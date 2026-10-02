@@ -615,6 +615,15 @@ describe('CouponPlugin · 营销促销闭环（优惠券体系）', () => {
         await adminClient.asUserWithCredentials('owner-b-authz@test.com', 'test');
         const tplB = await createTemplate({ name: '店B券', type: 'FIXED', discountValue: 2000 });
 
+        // 超管为两店各发一张券实例，用于校验店主看不到别店的券实例（customerCoupons 归属过滤）
+        await adminClient.asSuperAdmin();
+        await adminClient.query(gql`
+            mutation { grantCoupon(templateId: "${tplA}", customerIds: ["${myCustomerId}"]) }
+        `);
+        await adminClient.query(gql`
+            mutation { grantCoupon(templateId: "${tplB}", customerIds: ["${myCustomerId}"]) }
+        `);
+
         // 回到店主 A
         await adminClient.asUserWithCredentials('owner-a-authz@test.com', 'test');
 
@@ -642,5 +651,13 @@ describe('CouponPlugin · 营销促销闭环（优惠券体系）', () => {
         `) as any;
         expect(String(upd.updateCouponTemplate.id)).toBe(String(tplA));
         expect(upd.updateCouponTemplate.name).toBe('店A券-已改');
+
+        // 断言4：A 的 customerCoupons 只含本店券实例，不含 B 的（券实例归属过滤）
+        const ccs = (await adminClient.query(gql`
+            query { customerCoupons(options: { take: 100 }) { items { templateId } } }
+        `)) as any;
+        const instanceTplIds = ccs.customerCoupons.items.map((c: any) => String(c.templateId));
+        expect(instanceTplIds).toContain(String(tplA));
+        expect(instanceTplIds).not.toContain(String(tplB));
     });
 });

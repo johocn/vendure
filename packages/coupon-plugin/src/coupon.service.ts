@@ -414,12 +414,15 @@ export class CouponService {
             order: { id: 'DESC' },
         });
         const now = Date.now();
+        // 属店隔离：店主管理员只看本店券 + 平台级券（与 assertManagedByShop 同法）。
+        const adminShopId = await this.resolveShopIdFromActiveUser(ctx, ctx.activeUserId);
         return list.filter(cc => {
             const tpl = cc.template;
             if (!tpl || !tpl.enabled) return false;
             if (cc.status !== 'UNUSED' && cc.status !== 'RETURNED') return false;
             if (cc.expiredAt && new Date(cc.expiredAt).getTime() <= now) return false;
             if (!matchesScene(tpl.usageScene, 'IN_STORE')) return false;
+            if (adminShopId != null && tpl.shopId != null && Number(tpl.shopId) !== adminShopId) return false;
             return this.templateBelongsToChannel(ctx, tpl);
         });
     }
@@ -428,13 +431,15 @@ export class CouponService {
         ctx: RequestContext,
         options?: ListQueryOptions<CustomerCoupon>,
     ): Promise<{ items: CustomerCoupon[]; totalItems: number }> {
-        return this.listQueryBuilder
-            .build(CustomerCoupon, options, {
-                ctx,
-                relations: ['template'],
-            })
-            .getManyAndCount()
-            .then(([items, totalItems]) => ({ items, totalItems }));
+        const qb = this.listQueryBuilder.build(CustomerCoupon, options, { ctx });
+        qb.leftJoinAndSelect('customercoupon.template', 'tpl');
+        // 属店隔离：店主管理员只看「本店券实例 + 平台级券实例」（与 assertManagedByShop 同法）；
+        // 超级管理员（无属店）→ 全量。
+        const adminShopId = await this.resolveShopIdFromActiveUser(ctx, ctx.activeUserId);
+        if (adminShopId != null) {
+            qb.andWhere('(tpl.shopId IS NULL OR tpl.shopId = :adminShopId)', { adminShopId });
+        }
+        return qb.getManyAndCount().then(([items, totalItems]) => ({ items, totalItems }));
     }
 
     /* ------------------------- 积分兑换商城 ------------------------- */

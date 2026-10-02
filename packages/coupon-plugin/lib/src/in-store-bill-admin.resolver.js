@@ -15,12 +15,15 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.InStoreBillAdminResolver = void 0;
 const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
+const shop_plugin_1 = require("@vendure/shop-plugin");
 const coupon_service_1 = require("./coupon.service");
 const in_store_bill_service_1 = require("./in-store-bill.service");
 /**
  * 到店买单（admin-api）：商户端核销 + 流水查询。
- * 权限沿用 coupon-plugin 范式：@Allow(Permission.UpdateOrder)，
- * 属店隔离由 service 内的 assertManagedByShop（券模板）+ ctx.channelId（流水）共同保证。
+ * 核销类操作（券列表/试算/核销）放行店主管理员：`@Allow` 为 OR 语义，平台管理员走 UpdateOrder，
+ * 店主走 ManageOwnShop，属店隔离由 service 内的 assertManagedByShop（券模板）二次把关。
+ * 流水/汇总两查询仅按 ctx.channelId 隔离、无属店维度（InStoreBill 无 shopId），
+ * 故不放行店主，避免同渠道内跨店串看。
  */
 let InStoreBillAdminResolver = class InStoreBillAdminResolver {
     constructor(inStoreBillService, couponService) {
@@ -57,7 +60,7 @@ let InStoreBillAdminResolver = class InStoreBillAdminResolver {
 exports.InStoreBillAdminResolver = InStoreBillAdminResolver;
 __decorate([
     (0, graphql_1.Query)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder, shop_plugin_1.manageOwnShop.Permission),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('customerId')),
     __metadata("design:type", Function),
@@ -66,7 +69,7 @@ __decorate([
 ], InStoreBillAdminResolver.prototype, "inStoreCustomerCoupons", null);
 __decorate([
     (0, graphql_1.Query)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder, shop_plugin_1.manageOwnShop.Permission),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('code')),
     __param(2, (0, graphql_1.Args)('originalAmount', { type: () => graphql_1.Int, nullable: true })),
@@ -95,7 +98,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder, shop_plugin_1.manageOwnShop.Permission),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('code')),
     __param(2, (0, graphql_1.Args)('originalAmount', { type: () => graphql_1.Int })),

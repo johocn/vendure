@@ -15,7 +15,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CouponAdminResolver = void 0;
 const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
+const shop_plugin_1 = require("@vendure/shop-plugin");
 const coupon_service_1 = require("./coupon.service");
+/**
+ * 优惠券 admin 接口：平台管理员（UpdateOrder）与店主管理员（ManageOwnShop）共用同一 GraphQL 面。
+ * `@Allow` 为 OR 语义（任一权限命中即放行），店主须能进入本 resolver，属店隔离再由
+ * service 层 resolveShopIdFromActiveUser / assertManagedByShop 与列表过滤兜底；
+ * 否则店主在权限闸门即被拒，service 内的隔离逻辑对店主不可达。
+ */
 let CouponAdminResolver = class CouponAdminResolver {
     constructor(couponService) {
         this.couponService = couponService;
@@ -55,7 +62,7 @@ let CouponAdminResolver = class CouponAdminResolver {
 exports.CouponAdminResolver = CouponAdminResolver;
 __decorate([
     (0, graphql_1.Query)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder, shop_plugin_1.manageOwnShop.Permission),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('options', { nullable: true })),
     __metadata("design:type", Function),
@@ -64,7 +71,7 @@ __decorate([
 ], CouponAdminResolver.prototype, "couponTemplates", null);
 __decorate([
     (0, graphql_1.Query)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder, shop_plugin_1.manageOwnShop.Permission),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __metadata("design:type", Function),
@@ -73,7 +80,7 @@ __decorate([
 ], CouponAdminResolver.prototype, "couponTemplate", null);
 __decorate([
     (0, graphql_1.Query)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder, shop_plugin_1.manageOwnShop.Permission),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('options', { nullable: true })),
     __metadata("design:type", Function),
@@ -83,7 +90,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder, shop_plugin_1.manageOwnShop.Permission),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('input')),
     __metadata("design:type", Function),
@@ -93,7 +100,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder, shop_plugin_1.manageOwnShop.Permission),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('input')),
     __metadata("design:type", Function),
@@ -103,7 +110,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder, shop_plugin_1.manageOwnShop.Permission),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __metadata("design:type", Function),
@@ -113,7 +120,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder, shop_plugin_1.manageOwnShop.Permission),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('templateId')),
     __param(2, (0, graphql_1.Args)('customerIds')),
@@ -124,7 +131,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder, shop_plugin_1.manageOwnShop.Permission),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __metadata("design:type", Function),
@@ -133,7 +140,7 @@ __decorate([
 ], CouponAdminResolver.prototype, "revokeCustomerCoupon", null);
 __decorate([
     (0, graphql_1.Query)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder, shop_plugin_1.manageOwnShop.Permission),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('query', { nullable: true })),
     __param(2, (0, graphql_1.Args)('take', { nullable: true, type: () => Number })),
@@ -145,7 +152,7 @@ __decorate([
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder, shop_plugin_1.manageOwnShop.Permission),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('templateId')),
     __param(2, (0, graphql_1.Args)('customerIds', { type: () => [String] })),
