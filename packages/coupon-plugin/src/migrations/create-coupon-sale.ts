@@ -1,0 +1,95 @@
+// 幂等建出售相关表：coupon_sale_order / coupon_bundle / coupon_bundle_item，
+// 并补 customer_coupon.saleOrderId 列。生产 PG 与本地 SQLite 都可能关闭 synchronize。
+import { Injectable, OnApplicationBootstrap } from '@nestjs/common';
+import { InjectConnection } from '@nestjs/typeorm';
+import { Connection, Table, TableColumn } from 'typeorm';
+
+@Injectable()
+export class CreateCouponSaleMigration implements OnApplicationBootstrap {
+    constructor(@InjectConnection() private connection: Connection) {}
+
+    async onApplicationBootstrap() {
+        try {
+            const queryRunner = this.connection.createQueryRunner();
+            try {
+                const saleTable = 'coupon_sale_order';
+                if (!(await queryRunner.hasTable(saleTable))) {
+                    await queryRunner.createTable(
+                        new Table({
+                            name: saleTable,
+                            columns: [
+                                { name: 'id', type: 'integer', isPrimary: true, isGenerated: true, generationStrategy: 'increment' },
+                                { name: 'createdAt', type: 'datetime', isNullable: false, default: 'CURRENT_TIMESTAMP' },
+                                { name: 'updatedAt', type: 'datetime', isNullable: false, default: 'CURRENT_TIMESTAMP' },
+                                { name: 'customerId', type: 'int', isNullable: false },
+                                { name: 'payMode', type: 'varchar', isNullable: false },
+                                { name: 'templateId', type: 'int', isNullable: true },
+                                { name: 'bundleId', type: 'int', isNullable: true },
+                                { name: 'orderId', type: 'int', isNullable: true },
+                                { name: 'surchargeId', type: 'int', isNullable: true },
+                                { name: 'amount', type: 'int', isNullable: false },
+                                { name: 'status', type: 'varchar', isNullable: false },
+                                { name: 'paymentMethod', type: 'varchar', isNullable: true },
+                                { name: 'externalRef', type: 'varchar', isNullable: true },
+                                { name: 'paidAt', type: 'datetime', isNullable: true },
+                                { name: 'refundedAt', type: 'datetime', isNullable: true },
+                                { name: 'remark', type: 'text', isNullable: true },
+                                { name: 'channelId', type: 'int', isNullable: false },
+                            ],
+                        }),
+                    );
+                }
+
+                const bundleTable = 'coupon_bundle';
+                if (!(await queryRunner.hasTable(bundleTable))) {
+                    await queryRunner.createTable(
+                        new Table({
+                            name: bundleTable,
+                            columns: [
+                                { name: 'id', type: 'integer', isPrimary: true, isGenerated: true, generationStrategy: 'increment' },
+                                { name: 'createdAt', type: 'datetime', isNullable: false, default: 'CURRENT_TIMESTAMP' },
+                                { name: 'updatedAt', type: 'datetime', isNullable: false, default: 'CURRENT_TIMESTAMP' },
+                                { name: 'name', type: 'text', isNullable: false },
+                                { name: 'description', type: 'text', isNullable: true },
+                                { name: 'salePrice', type: 'int', isNullable: false },
+                                { name: 'enabled', type: 'boolean', isNullable: false, default: true },
+                                { name: 'shopId', type: 'int', isNullable: true },
+                                { name: 'channelId', type: 'int', isNullable: false },
+                            ],
+                        }),
+                    );
+                }
+
+                const itemTable = 'coupon_bundle_item';
+                if (!(await queryRunner.hasTable(itemTable))) {
+                    await queryRunner.createTable(
+                        new Table({
+                            name: itemTable,
+                            columns: [
+                                { name: 'id', type: 'integer', isPrimary: true, isGenerated: true, generationStrategy: 'increment' },
+                                { name: 'createdAt', type: 'datetime', isNullable: false, default: 'CURRENT_TIMESTAMP' },
+                                { name: 'updatedAt', type: 'datetime', isNullable: false, default: 'CURRENT_TIMESTAMP' },
+                                { name: 'bundleId', type: 'int', isNullable: false },
+                                { name: 'templateId', type: 'int', isNullable: false },
+                                { name: 'quantity', type: 'int', isNullable: false, default: 1 },
+                            ],
+                        }),
+                    );
+                }
+
+                const ccMeta = this.connection.getMetadata('CustomerCoupon');
+                const ccTable = ccMeta.tableName;
+                const saleOrderId = new TableColumn({ name: 'saleOrderId', type: 'int', isNullable: true });
+                if (!(await queryRunner.hasColumn(ccTable, saleOrderId.name))) {
+                    await queryRunner.addColumn(ccTable, saleOrderId);
+                }
+            } finally {
+                await queryRunner.release();
+            }
+        } catch (e: any) {
+            // 建表失败不阻塞启动，等待下次启动重试
+            // eslint-disable-next-line no-console
+            console.error('[CreateCouponSaleMigration] failed to ensure tables:', e?.message);
+        }
+    }
+}

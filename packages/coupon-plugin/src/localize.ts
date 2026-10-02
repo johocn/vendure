@@ -8,6 +8,16 @@ import { LanguageCode } from '@vendure/core';
 export type LocalizedText = string | Partial<Record<LanguageCode, string>>;
 
 /**
+ * 多语言文本的 DB 列转换：DB 内始终以字符串落库（纯字符串原样存；对象/JSON 字符串存
+ * 序列化结果），读写时原样保留。券模板与券包实体共用。
+ */
+export const localizedTextColumn = {
+    to: (value: LocalizedText | null | undefined) =>
+        value == null ? value : typeof value === 'string' ? value : JSON.stringify(value),
+    from: (value: LocalizedText | null | undefined) => value,
+};
+
+/**
  * 将文本解析为真正的对象形态。历史 / 旧版数据可能直接存了 JSON 字符串
  * （例如 GraphQL `String!` 标量里塞入的 `'{"zh_Hans":"..","en":".."}'`），
  * 这里做一次安全的反序列化：能解析成对象则返回对象，否则原样返回字符串。

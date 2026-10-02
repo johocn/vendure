@@ -1,19 +1,8 @@
 import { Column, Entity, JoinTable, ManyToMany } from 'typeorm';
 import { Channel, ChannelAware, DeepPartial, VendureEntity } from '@vendure/core';
 
-import { LocalizedText } from './localize';
+import { LocalizedText, localizedTextColumn } from './localize';
 import { CouponScope, CouponType, CouponUsageScene } from './types';
-
-/**
- * 多语言文本的 DB 列转换：DB 内始终以字符串落库（纯字符串原样存；对象/JSON 字符串存
- * 序列化结果），读写时原样保留，使实体上的 `name`/`description` 既可能是纯字符串
- * （历史数据），也可能是 `LocalizedText` 对象（多语言），而无需迁移列类型。
- */
-const localizedTextColumn = {
-    to: (value: LocalizedText | null | undefined) =>
-        value == null ? value : typeof value === 'string' ? value : JSON.stringify(value),
-    from: (value: LocalizedText | null | undefined) => value,
-};
 
 /**
  * 券模板：后台可配置的券规则。
