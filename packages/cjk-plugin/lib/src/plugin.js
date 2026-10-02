@@ -57,6 +57,7 @@ const tenant_setup_service_1 = require("./tenant/tenant-setup.service");
 const tenant_member_entity_1 = require("./tenant/tenant-member.entity");
 const tenant_permissions_1 = require("./tenant/tenant-permissions");
 const tenant_member_service_1 = require("./tenant/tenant-member.service");
+const redeem_scope_service_1 = require("./tenant/redeem-scope.service");
 const tenant_admin_resolver_1 = require("./tenant/tenant-admin.resolver");
 const tenant_member_resolver_1 = require("./tenant/tenant-member.resolver");
 const my_access_resolver_1 = require("./tenant/my-access.resolver");
@@ -73,6 +74,7 @@ const map_service_1 = require("./map/map.service");
 const map_admin_resolver_1 = require("./map/map-admin.resolver");
 const map_shop_resolver_1 = require("./map/map-shop.resolver");
 const migrations_1 = require("./migrations");
+const coupon_plugin_1 = require("@vendure/coupon-plugin");
 const auth_config_service_1 = require("./auth/auth-config.service");
 const pay_config_service_1 = require("./payment/pay-config.service");
 const map_config_service_1 = require("./map/map-config.service");
@@ -204,6 +206,8 @@ let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
         injector.get(virtual_physical_stock_service_1.VirtualPhysicalStockService).registerMirrorHandler();
         // 多仓拆分发货预留单：ALLOCATION/SALE/CANCELLATION/RELEASE 事件接线（下单/发货/取消）
         injector.get(stock_reservation_service_1.StockReservationService).registerOrderHandlers();
+        // 到店核销范围：把本插件的判定实现注册给 coupon-plugin（依赖方向 cjk → coupon，避免成环）
+        (0, coupon_plugin_1.setRedeemScopeResolver)(injector.get(redeem_scope_service_1.RedeemScopeService));
         // 幂等创建默认配送/支付数据（自提点、门店自提配送档案、门店收银支付档案）
         if (this.options.seedDefaultData !== false && ((_a = this.options.profiles) === null || _a === void 0 ? void 0 : _a.enabled) !== false) {
             const seedService = injector.get(default_data_service_1.DefaultDataService);
@@ -416,6 +420,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             migrations_1.MapConfigEncryptionMigration,
             migrations_1.PayConfigEncryptionMigration,
             migrations_1.TenantMemberColumnMigration,
+            migrations_1.AddTenantMemberRedeemProfiles,
             migrations_1.ChannelCustomColumnMigration,
             migrations_1.ReservationExpiresAtMigration,
             migrations_1.ReservationTtlColumnMigration,
@@ -442,6 +447,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             room_template_service_1.RoomTemplateService,
             default_data_service_1.DefaultDataService,
             tenant_member_service_1.TenantMemberService,
+            redeem_scope_service_1.RedeemScopeService,
             order_box_service_1.OrderBoxService,
             order_split_service_1.OrderSplitService,
             merchant_settlement_service_1.MerchantSettlementService,
@@ -1079,6 +1085,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     emailAddress: String
                     roleIds: [ID!]!
                     canResetPassword: Boolean!
+                    shippingProfileIds: [ID!]!
                     createdAt: DateTime!
                     initialPassword: String
                 }
@@ -1250,6 +1257,8 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     tenantLinkMember(channelId: ID!, administratorId: ID!, roleIds: [ID!]!, displayName: String, phone: String, remark: String): TenantMember!
                     myLinkMember(administratorId: ID!, roleIds: [ID!]!, displayName: String, phone: String, remark: String): TenantMember!
                     myResetTenantMemberPassword(id: ID!): Boolean!
+                    setTenantMemberRedeemProfiles(id: ID!, shippingProfileIds: [ID!]!): TenantMember!
+                    mySetTenantMemberRedeemProfiles(id: ID!, shippingProfileIds: [ID!]!): TenantMember!
                     tenantChangeMyPassword(oldPassword: String, newPassword: String!): Boolean!
                     myUpdateChannelCustomFields(input: JSON!): JSON!
                 }

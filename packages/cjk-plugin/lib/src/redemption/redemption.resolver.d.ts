@@ -1,5 +1,6 @@
 import { ConfigService, EntityHydrator, OrderService, RequestContext } from '@vendure/core';
 import { RedemptionCodeService } from './redemption-code.service';
+import { RedeemScopeService } from '../tenant/redeem-scope.service';
 export declare class RedemptionShopResolver {
     private redemptionCodeService;
     private orderService;
@@ -14,7 +15,13 @@ export declare class RedemptionAdminResolver {
     private redemptionCodeService;
     private orderService;
     private entityHydrator;
-    constructor(redemptionCodeService: RedemptionCodeService, orderService: OrderService, entityHydrator: EntityHydrator);
+    private redeemScopeService;
+    constructor(redemptionCodeService: RedemptionCodeService, orderService: OrderService, entityHydrator: EntityHydrator, redeemScopeService: RedeemScopeService);
+    /**
+     * 受限核销员（持有 VerifyOrder）在配送档案范围外时，统一按「查不到」处理（不泄漏存在性）。
+     * 不受限（店主/超管）恒为 true。
+     */
+    private inScope;
     myPendingRedemptions(ctx: RequestContext, options?: any): Promise<{
         items: import("./redemption-code.service").PendingRedemptionItem[];
         totalItems: number;

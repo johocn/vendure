@@ -20,4 +20,6 @@ __exportStar(require("./src/constants"), exports);
 __exportStar(require("./src/coupon-template.entity"), exports);
 __exportStar(require("./src/customer-coupon.entity"), exports);
 __exportStar(require("./src/coupon.service"), exports);
+__exportStar(require("./src/product-coupon-binding.entity"), exports);
+__exportStar(require("./src/redeem-scope"), exports);
 //# sourceMappingURL=index.js.map

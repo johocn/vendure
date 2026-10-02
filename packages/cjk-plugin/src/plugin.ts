@@ -55,6 +55,7 @@ import { TenantSetupService } from './tenant/tenant-setup.service';
 import { TenantMember } from './tenant/tenant-member.entity';
 import { tenantPermissionDefinitions } from './tenant/tenant-permissions';
 import { TenantMemberService } from './tenant/tenant-member.service';
+import { RedeemScopeService } from './tenant/redeem-scope.service';
 import { TenantAdminResolver } from './tenant/tenant-admin.resolver';
 import { TenantMemberResolver } from './tenant/tenant-member.resolver';
 import { MyAccessResolver } from './tenant/my-access.resolver';
@@ -71,7 +72,8 @@ import { MapProviderRegistry } from './map/map-provider-registry';
 import { MapService } from './map/map.service';
 import { MapAdminResolver } from './map/map-admin.resolver';
 import { MapShopResolver } from './map/map-shop.resolver';
-import { MapConfigEncryptionMigration, PayConfigEncryptionMigration, TenantMemberColumnMigration, ChannelCustomColumnMigration, ShippingContactFlagMigration, StockTableMigration, ChannelInventoryModeColumnMigration, CollectionIconMigration, ReservationExpiresAtMigration, ReservationTtlColumnMigration, PickBatchHandoverColumnMigration, StocktakePostedDocIndexMigration, HotelOrderLineColumnMigration } from './migrations';
+import { MapConfigEncryptionMigration, PayConfigEncryptionMigration, TenantMemberColumnMigration, AddTenantMemberRedeemProfiles, ChannelCustomColumnMigration, ShippingContactFlagMigration, StockTableMigration, ChannelInventoryModeColumnMigration, CollectionIconMigration, ReservationExpiresAtMigration, ReservationTtlColumnMigration, PickBatchHandoverColumnMigration, StocktakePostedDocIndexMigration, HotelOrderLineColumnMigration } from './migrations';
+import { setRedeemScopeResolver } from '@vendure/coupon-plugin';
 import { AuthConfigService } from './auth/auth-config.service';
 import { PayConfigService } from './payment/pay-config.service';
 import { MapConfigService } from './map/map-config.service';
@@ -207,6 +209,7 @@ function mergeCustomFields<T extends { name: string }>(
         MapConfigEncryptionMigration,
         PayConfigEncryptionMigration,
         TenantMemberColumnMigration,
+        AddTenantMemberRedeemProfiles,
         ChannelCustomColumnMigration,
         ReservationExpiresAtMigration,
         ReservationTtlColumnMigration,
@@ -233,6 +236,7 @@ function mergeCustomFields<T extends { name: string }>(
         RoomTemplateService,
         DefaultDataService,
         TenantMemberService,
+        RedeemScopeService,
         OrderBoxService,
         OrderSplitService,
         MerchantSettlementService,
@@ -870,6 +874,7 @@ function mergeCustomFields<T extends { name: string }>(
                     emailAddress: String
                     roleIds: [ID!]!
                     canResetPassword: Boolean!
+                    shippingProfileIds: [ID!]!
                     createdAt: DateTime!
                     initialPassword: String
                 }
@@ -1041,6 +1046,8 @@ function mergeCustomFields<T extends { name: string }>(
                     tenantLinkMember(channelId: ID!, administratorId: ID!, roleIds: [ID!]!, displayName: String, phone: String, remark: String): TenantMember!
                     myLinkMember(administratorId: ID!, roleIds: [ID!]!, displayName: String, phone: String, remark: String): TenantMember!
                     myResetTenantMemberPassword(id: ID!): Boolean!
+                    setTenantMemberRedeemProfiles(id: ID!, shippingProfileIds: [ID!]!): TenantMember!
+                    mySetTenantMemberRedeemProfiles(id: ID!, shippingProfileIds: [ID!]!): TenantMember!
                     tenantChangeMyPassword(oldPassword: String, newPassword: String!): Boolean!
                     myUpdateChannelCustomFields(input: JSON!): JSON!
                 }
@@ -2623,6 +2630,9 @@ export class CjkPlugin implements OnApplicationBootstrap, NestModule {
 
         // 多仓拆分发货预留单：ALLOCATION/SALE/CANCELLATION/RELEASE 事件接线（下单/发货/取消）
         injector.get(StockReservationService).registerOrderHandlers();
+
+        // 到店核销范围：把本插件的判定实现注册给 coupon-plugin（依赖方向 cjk → coupon，避免成环）
+        setRedeemScopeResolver(injector.get(RedeemScopeService));
 
         // 幂等创建默认配送/支付数据（自提点、门店自提配送档案、门店收银支付档案）
         if (this.options.seedDefaultData !== false && this.options.profiles?.enabled !== false) {

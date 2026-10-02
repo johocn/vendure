@@ -4,8 +4,11 @@ import {
 } from '@vendure/core';
 import { RedemptionCodeService } from './redemption-code.service';
 import { computeRedemptionStatus } from './redemption-crypto';
+import { RedeemScopeService } from '../tenant/redeem-scope.service';
 
 const ERR_NOT_FOUND = 'redemption.error.not_found';
+/** 受限核销员（持有 VerifyOrder）的身份判据；与 tenant-permissions.ts 单一来源一致 */
+const VERIFY_ORDER_PERMISSION = 'VerifyOrder' as Permission;
 
 @Resolver()
 export class RedemptionShopResolver {
@@ -55,18 +58,30 @@ export class RedemptionAdminResolver {
         private redemptionCodeService: RedemptionCodeService,
         private orderService: OrderService,
         private entityHydrator: EntityHydrator,
+        private redeemScopeService: RedeemScopeService,
     ) {}
 
+    /**
+     * 受限核销员（持有 VerifyOrder）在配送档案范围外时，统一按「查不到」处理（不泄漏存在性）。
+     * 不受限（店主/超管）恒为 true。
+     */
+    private async inScope(ctx: RequestContext, orderId: any): Promise<boolean> {
+        const scope = await this.redeemScopeService.resolve(ctx);
+        if (!scope.restricted) return true;
+        return this.redeemScopeService.orderInScope(ctx, orderId, scope);
+    }
+
     @Query()
-    @Allow(Permission.UpdateOrder)
+    @Allow(Permission.UpdateOrder, VERIFY_ORDER_PERMISSION)
     async myPendingRedemptions(@Ctx() ctx: RequestContext, @Args('options', { nullable: true }) options?: any) {
         return this.redemptionCodeService.listPending(ctx, options ?? {});
     }
 
     @Query()
-    @Allow(Permission.UpdateOrder)
+    @Allow(Permission.UpdateOrder, VERIFY_ORDER_PERMISSION)
     async redemptionLookup(@Ctx() ctx: RequestContext, @Args('code') code: string) {
-        const order = await this.redemptionCodeService.lookupByCode(ctx, code);
+        const found = await this.redemptionCodeService.lookupByCode(ctx, code);
+        const order = found && (await this.inScope(ctx, found.id)) ? found : null;
         if (!order) {
             return { order: null, claimed: false, claimedAt: null, status: 'active', expiresAt: null, version: 1, reissueable: false };
         }
@@ -100,13 +115,14 @@ export class RedemptionAdminResolver {
     }
 
     @Mutation()
-    @Allow(Permission.UpdateOrder)
+    @Allow(Permission.UpdateOrder, VERIFY_ORDER_PERMISSION)
     async redemptionClaim(
         @Ctx() ctx: RequestContext,
         @Args('code') code: string,
         @Args('collect', { type: () => Boolean, nullable: true }) collect?: boolean,
     ) {
-        const order = await this.redemptionCodeService.lookupByCode(ctx, code);
+        const found = await this.redemptionCodeService.lookupByCode(ctx, code);
+        const order = found && (await this.inScope(ctx, found.id)) ? found : null;
         if (!order) throw new UserInputError(ERR_NOT_FOUND);
         // 同 redemptionLookup：先灌注 lines 再读 totalQuantity，避免未加载 relation 访问抛错。
         await this.entityHydrator.hydrate(ctx, order, { relations: ['lines'] } as any);
@@ -150,9 +166,10 @@ export class RedemptionAdminResolver {
     }
 
     @Mutation()
-    @Allow(Permission.UpdateOrder)
+    @Allow(Permission.UpdateOrder, VERIFY_ORDER_PERMISSION)
     async redemptionReissue(@Ctx() ctx: RequestContext, @Args('code') code: string) {
-        const order = await this.redemptionCodeService.lookupByCode(ctx, code);
+        const found = await this.redemptionCodeService.lookupByCode(ctx, code);
+        const order = found && (await this.inScope(ctx, found.id)) ? found : null;
         if (!order) throw new UserInputError(ERR_NOT_FOUND);
         const result = await this.redemptionCodeService.reissue(ctx, order.id);
         const cfr = (order.customFields ?? {}) as Record<string, any>;

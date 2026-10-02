@@ -2,6 +2,7 @@
 export { MapConfigEncryptionMigration, MAP_CONFIG_MIGRATION_DONE } from './migrate-mapconfig-encryption';
 export { PayConfigEncryptionMigration, PAY_CONFIG_MIGRATION_DONE } from './migrate-payconfig-encryption';
 export { TenantMemberColumnMigration } from './migrate-tenant-member-column';
+export { AddTenantMemberRedeemProfiles } from './add-tenant-member-redeem-profiles';
 export { ChannelCustomColumnMigration } from './migrate-channel-custom-column';
 export { ShippingContactFlagMigration } from './migrate-shipping-contact-flags';
 export { StockTableMigration, ChannelInventoryModeColumnMigration } from './migrate-stock-tables';

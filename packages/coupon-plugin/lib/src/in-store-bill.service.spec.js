@@ -6,6 +6,7 @@ const in_store_bill_entity_1 = require("./in-store-bill.entity");
 const in_store_bill_service_1 = require("./in-store-bill.service");
 const in_store_bill_1 = require("./in-store-bill");
 const customer_coupon_entity_1 = require("./customer-coupon.entity");
+const redeem_scope_1 = require("./redeem-scope");
 /** 构造一张可用到店买单券模板 */
 function tplStub(over = {}) {
     return Object.assign({ id: 7, type: 'PERCENT', discountValue: 80, minSpend: 0, enabled: true, shopId: null, name: '到店 8 折', channels: [{ id: 3 }] }, over);
@@ -269,6 +270,82 @@ function ccStub(over = {}) {
         (0, vitest_1.expect)(await service.summary(ctx, {})).toEqual({
             count: 0, originalTotal: 0, discountTotal: 0, finalTotal: 0,
         });
+    });
+});
+(0, vitest_1.describe)('InStoreBillService · 受限核销员（VerifyOrder）范围收口', () => {
+    const ctx = { channelId: 3, activeUserId: 99, languageCode: 'zh_Hans' };
+    const restricted = { restricted: true, shippingProfileIds: ['5'] };
+    let ccRepo;
+    let listQb;
+    let connection;
+    let couponService;
+    let service;
+    /** 注册受限核销员实现；orderInScope/couponTemplateInScope 由用例指定命中与否 */
+    function useProvider(opts = {}) {
+        (0, redeem_scope_1.setRedeemScopeResolver)({
+            resolve: vitest_1.vi.fn(async () => restricted),
+            orderInScope: vitest_1.vi.fn(async () => true),
+            couponTemplateInScope: vitest_1.vi.fn(async () => { var _a; return (_a = opts.templateHit) !== null && _a !== void 0 ? _a : true; }),
+        });
+    }
+    (0, vitest_1.beforeEach)(() => {
+        ccRepo = { findOne: vitest_1.vi.fn(), createQueryBuilder: vitest_1.vi.fn() };
+        listQb = {
+            where: vitest_1.vi.fn().mockReturnThis(),
+            andWhere: vitest_1.vi.fn().mockReturnThis(),
+            orderBy: vitest_1.vi.fn().mockReturnThis(),
+            addOrderBy: vitest_1.vi.fn().mockReturnThis(),
+            skip: vitest_1.vi.fn().mockReturnThis(),
+            take: vitest_1.vi.fn().mockReturnThis(),
+            getManyAndCount: vitest_1.vi.fn(async () => [[], 0]),
+        };
+        connection = {
+            getRepository: vitest_1.vi.fn((_c, entity) => {
+                if (entity === customer_coupon_entity_1.CustomerCoupon)
+                    return ccRepo;
+                if (entity === in_store_bill_entity_1.InStoreBill)
+                    return { createQueryBuilder: vitest_1.vi.fn(() => listQb) };
+                if (entity === core_1.Customer)
+                    return { findOne: vitest_1.vi.fn(async () => null) };
+                if (entity === core_1.Administrator)
+                    return { findOne: vitest_1.vi.fn(async () => null) };
+                throw new Error(`unknown entity: ${entity === null || entity === void 0 ? void 0 : entity.name}`);
+            }),
+        };
+        couponService = {
+            templateBelongsToChannel: vitest_1.vi.fn(() => true),
+            assertManagedByShop: vitest_1.vi.fn(async () => undefined),
+        };
+        service = new in_store_bill_service_1.InStoreBillService(connection, couponService);
+    });
+    (0, vitest_1.afterEach)(() => (0, redeem_scope_1.setRedeemScopeResolver)(null));
+    (0, vitest_1.it)('券模板不在范围（通用券/部分商品越界）→ SCOPE_MISMATCH', async () => {
+        useProvider({ templateHit: false });
+        ccRepo.findOne.mockResolvedValueOnce(ccStub({ template: tplStub({ usageScene: 'IN_STORE' }) }));
+        const r = await service.quote(ctx, 'C-ABCD-EFGH', 10000);
+        (0, vitest_1.expect)(r).toMatchObject({ ok: false, reason: in_store_bill_1.IN_STORE_REASON.SCOPE_MISMATCH });
+    });
+    (0, vitest_1.it)('券模板全命中 → 放行试算', async () => {
+        useProvider({ templateHit: true });
+        ccRepo.findOne.mockResolvedValueOnce(ccStub({ template: tplStub({ usageScene: 'IN_STORE' }) }));
+        const r = await service.quote(ctx, 'C-ABCD-EFGH', 10000);
+        (0, vitest_1.expect)(r).toMatchObject({ ok: true, finalAmount: 8000 });
+    });
+    (0, vitest_1.it)('核销时范围外 → 抛 SCOPE_MISMATCH 文案，不占用/不写流水', async () => {
+        useProvider({ templateHit: false });
+        ccRepo.findOne.mockResolvedValueOnce(ccStub({ template: tplStub({ usageScene: 'IN_STORE' }) }));
+        await (0, vitest_1.expect)(service.redeem(ctx, 'C-ABCD-EFGH', 10000)).rejects.toThrow('该券不在你的核销范围内');
+        (0, vitest_1.expect)(ccRepo.createQueryBuilder).not.toHaveBeenCalled();
+    });
+    (0, vitest_1.it)('流水受限 → 追加 operatorId = activeUserId（只看自己经手）', async () => {
+        useProvider();
+        await service.list(ctx, {});
+        (0, vitest_1.expect)(listQb.andWhere).toHaveBeenCalledWith('b.operatorId = :operatorId', { operatorId: 99 });
+    });
+    (0, vitest_1.it)('不受限（未注册实现）→ 不追加 operatorId 过滤', async () => {
+        (0, redeem_scope_1.setRedeemScopeResolver)(null);
+        await service.list(ctx, {});
+        (0, vitest_1.expect)(listQb.andWhere).not.toHaveBeenCalledWith('b.operatorId = :operatorId', vitest_1.expect.anything());
     });
 });
 //# sourceMappingURL=in-store-bill.service.spec.js.map

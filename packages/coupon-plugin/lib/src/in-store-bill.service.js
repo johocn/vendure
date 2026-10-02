@@ -17,6 +17,7 @@ const customer_coupon_entity_1 = require("./customer-coupon.entity");
 const in_store_bill_entity_1 = require("./in-store-bill.entity");
 const in_store_bill_1 = require("./in-store-bill");
 const localize_1 = require("./localize");
+const redeem_scope_1 = require("./redeem-scope");
 let InStoreBillService = class InStoreBillService {
     constructor(connection, couponService) {
         this.connection = connection;
@@ -62,6 +63,12 @@ let InStoreBillService = class InStoreBillService {
         }
         catch (_b) {
             return { ok: false, reason: in_store_bill_1.IN_STORE_REASON.TENANT_MISMATCH };
+        }
+        // 受限核销员（持有 VerifyOrder）：券模板全部关联商品须命中授权配送档案；通用券一律拒绝。
+        // 不受限（店主/超管）时 couponTemplateInScope 恒为 true，不产生额外判定开销。
+        const scope = await (0, redeem_scope_1.resolveRedeemScope)(ctx);
+        if (scope.restricted && !(await (0, redeem_scope_1.couponTemplateInScope)(ctx, tpl.id, scope))) {
+            return { ok: false, reason: in_store_bill_1.IN_STORE_REASON.SCOPE_MISMATCH };
         }
         return { ok: true, cc, tpl };
     }
@@ -151,7 +158,7 @@ let InStoreBillService = class InStoreBillService {
     /** 流水列表：按当前渠道强制隔离 + 券码/时间筛选 + 时间倒序分页 */
     async list(ctx, options) {
         var _a, _b;
-        const qb = this.buildBillsQuery(ctx, options);
+        const qb = await this.buildBillsQuery(ctx, options);
         qb.orderBy('b.billedAt', 'DESC').addOrderBy('b.id', 'DESC');
         qb.skip(Math.max(0, (_a = options === null || options === void 0 ? void 0 : options.skip) !== null && _a !== void 0 ? _a : 0)).take(Math.min((_b = options === null || options === void 0 ? void 0 : options.take) !== null && _b !== void 0 ? _b : 20, 200));
         const [items, totalItems] = await qb.getManyAndCount();
@@ -160,7 +167,7 @@ let InStoreBillService = class InStoreBillService {
     /** 流水汇总：笔数 / 原价合计 / 优惠合计 / 实收合计（金额单位：分） */
     async summary(ctx, options) {
         var _a, _b, _c, _d;
-        const qb = this.buildBillsQuery(ctx, options);
+        const qb = await this.buildBillsQuery(ctx, options);
         const raw = await qb
             .select('COUNT(*)', 'count')
             .addSelect('COALESCE(SUM(b.originalAmount), 0)', 'originalTotal')
@@ -174,12 +181,19 @@ let InStoreBillService = class InStoreBillService {
             finalTotal: Number((_d = raw === null || raw === void 0 ? void 0 : raw.finalTotal) !== null && _d !== void 0 ? _d : 0),
         };
     }
-    /** 流水查询基座：渠道隔离 + 可选筛选（list / summary 共用） */
-    buildBillsQuery(ctx, options) {
+    /**
+     * 流水查询基座：渠道隔离 + 可选筛选（list / summary 共用）。
+     * 受限核销员（持有 VerifyOrder）只能看到自己的核销流水；店主/超管不受限。
+     */
+    async buildBillsQuery(ctx, options) {
         const qb = this.connection
             .getRepository(ctx, in_store_bill_entity_1.InStoreBill)
             .createQueryBuilder('b')
             .where('b.channelId = :channelId', { channelId: Number(ctx.channelId) });
+        const scope = await (0, redeem_scope_1.resolveRedeemScope)(ctx);
+        if (scope.restricted && ctx.activeUserId != null) {
+            qb.andWhere('b.operatorId = :operatorId', { operatorId: Number(ctx.activeUserId) });
+        }
         if (options === null || options === void 0 ? void 0 : options.couponCode) {
             qb.andWhere('b.couponCode = :code', { code: options.couponCode.trim() });
         }

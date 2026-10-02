@@ -85,6 +85,10 @@ export declare class TenantAdminResolver {
         channelId: string;
         roleIds: string[];
     }): Promise<boolean>;
+    setTenantMemberRedeemProfiles(ctx: RequestContext, args: {
+        id: string;
+        shippingProfileIds: string[];
+    }): Promise<any>;
     tenantSearchAdmins(ctx: RequestContext, args: {
         channelId: string;
         keyword?: string;

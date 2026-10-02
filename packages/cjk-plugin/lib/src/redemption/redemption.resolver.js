@@ -17,7 +17,10 @@ const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
 const redemption_code_service_1 = require("./redemption-code.service");
 const redemption_crypto_1 = require("./redemption-crypto");
+const redeem_scope_service_1 = require("../tenant/redeem-scope.service");
 const ERR_NOT_FOUND = 'redemption.error.not_found';
+/** 受限核销员（持有 VerifyOrder）的身份判据；与 tenant-permissions.ts 单一来源一致 */
+const VERIFY_ORDER_PERMISSION = 'VerifyOrder';
 let RedemptionShopResolver = class RedemptionShopResolver {
     constructor(redemptionCodeService, orderService, configService) {
         this.redemptionCodeService = redemptionCodeService;
@@ -71,17 +74,29 @@ exports.RedemptionShopResolver = RedemptionShopResolver = __decorate([
         core_1.ConfigService])
 ], RedemptionShopResolver);
 let RedemptionAdminResolver = class RedemptionAdminResolver {
-    constructor(redemptionCodeService, orderService, entityHydrator) {
+    constructor(redemptionCodeService, orderService, entityHydrator, redeemScopeService) {
         this.redemptionCodeService = redemptionCodeService;
         this.orderService = orderService;
         this.entityHydrator = entityHydrator;
+        this.redeemScopeService = redeemScopeService;
+    }
+    /**
+     * 受限核销员（持有 VerifyOrder）在配送档案范围外时，统一按「查不到」处理（不泄漏存在性）。
+     * 不受限（店主/超管）恒为 true。
+     */
+    async inScope(ctx, orderId) {
+        const scope = await this.redeemScopeService.resolve(ctx);
+        if (!scope.restricted)
+            return true;
+        return this.redeemScopeService.orderInScope(ctx, orderId, scope);
     }
     async myPendingRedemptions(ctx, options) {
         return this.redemptionCodeService.listPending(ctx, options !== null && options !== void 0 ? options : {});
     }
     async redemptionLookup(ctx, code) {
         var _a, _b, _c, _d, _e, _f, _g;
-        const order = await this.redemptionCodeService.lookupByCode(ctx, code);
+        const found = await this.redemptionCodeService.lookupByCode(ctx, code);
+        const order = found && (await this.inScope(ctx, found.id)) ? found : null;
         if (!order) {
             return { order: null, claimed: false, claimedAt: null, status: 'active', expiresAt: null, version: 1, reissueable: false };
         }
@@ -115,7 +130,8 @@ let RedemptionAdminResolver = class RedemptionAdminResolver {
     }
     async redemptionClaim(ctx, code, collect) {
         var _a, _b, _c, _d;
-        const order = await this.redemptionCodeService.lookupByCode(ctx, code);
+        const found = await this.redemptionCodeService.lookupByCode(ctx, code);
+        const order = found && (await this.inScope(ctx, found.id)) ? found : null;
         if (!order)
             throw new core_1.UserInputError(ERR_NOT_FOUND);
         // 同 redemptionLookup：先灌注 lines 再读 totalQuantity，避免未加载 relation 访问抛错。
@@ -160,7 +176,8 @@ let RedemptionAdminResolver = class RedemptionAdminResolver {
     }
     async redemptionReissue(ctx, code) {
         var _a;
-        const order = await this.redemptionCodeService.lookupByCode(ctx, code);
+        const found = await this.redemptionCodeService.lookupByCode(ctx, code);
+        const order = found && (await this.inScope(ctx, found.id)) ? found : null;
         if (!order)
             throw new core_1.UserInputError(ERR_NOT_FOUND);
         const result = await this.redemptionCodeService.reissue(ctx, order.id);
@@ -188,7 +205,7 @@ let RedemptionAdminResolver = class RedemptionAdminResolver {
 exports.RedemptionAdminResolver = RedemptionAdminResolver;
 __decorate([
     (0, graphql_1.Query)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder, VERIFY_ORDER_PERMISSION),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('options', { nullable: true })),
     __metadata("design:type", Function),
@@ -197,7 +214,7 @@ __decorate([
 ], RedemptionAdminResolver.prototype, "myPendingRedemptions", null);
 __decorate([
     (0, graphql_1.Query)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder, VERIFY_ORDER_PERMISSION),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('code')),
     __metadata("design:type", Function),
@@ -206,7 +223,7 @@ __decorate([
 ], RedemptionAdminResolver.prototype, "redemptionLookup", null);
 __decorate([
     (0, graphql_1.Mutation)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder, VERIFY_ORDER_PERMISSION),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('code')),
     __param(2, (0, graphql_1.Args)('collect', { type: () => Boolean, nullable: true })),
@@ -216,7 +233,7 @@ __decorate([
 ], RedemptionAdminResolver.prototype, "redemptionClaim", null);
 __decorate([
     (0, graphql_1.Mutation)(),
-    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder, VERIFY_ORDER_PERMISSION),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('code')),
     __metadata("design:type", Function),
@@ -227,6 +244,7 @@ exports.RedemptionAdminResolver = RedemptionAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [redemption_code_service_1.RedemptionCodeService,
         core_1.OrderService,
-        core_1.EntityHydrator])
+        core_1.EntityHydrator,
+        redeem_scope_service_1.RedeemScopeService])
 ], RedemptionAdminResolver);
 //# sourceMappingURL=redemption.resolver.js.map

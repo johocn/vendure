@@ -18,6 +18,7 @@ import {
     computeInStoreBill,
 } from './in-store-bill';
 import { localizeText } from './localize';
+import { couponTemplateInScope, resolveRedeemScope } from './redeem-scope';
 
 /** 核销表单试算返回（金额单位：分；originalAmount 省略时金额字段为 null，仅回券信息） */
 export interface InStoreBillQuote {
@@ -94,6 +95,12 @@ export class InStoreBillService {
             await this.couponService.assertManagedByShop(ctx, tpl.shopId);
         } catch {
             return { ok: false, reason: IN_STORE_REASON.TENANT_MISMATCH };
+        }
+        // 受限核销员（持有 VerifyOrder）：券模板全部关联商品须命中授权配送档案；通用券一律拒绝。
+        // 不受限（店主/超管）时 couponTemplateInScope 恒为 true，不产生额外判定开销。
+        const scope = await resolveRedeemScope(ctx);
+        if (scope.restricted && !(await couponTemplateInScope(ctx, tpl.id, scope))) {
+            return { ok: false, reason: IN_STORE_REASON.SCOPE_MISMATCH };
         }
         return { ok: true, cc, tpl };
     }
@@ -201,7 +208,7 @@ export class InStoreBillService {
         ctx: RequestContext,
         options?: InStoreBillListOptions,
     ): Promise<{ items: InStoreBill[]; totalItems: number }> {
-        const qb = this.buildBillsQuery(ctx, options);
+        const qb = await this.buildBillsQuery(ctx, options);
         qb.orderBy('b.billedAt', 'DESC').addOrderBy('b.id', 'DESC');
         qb.skip(Math.max(0, options?.skip ?? 0)).take(Math.min(options?.take ?? 20, 200));
         const [items, totalItems] = await qb.getManyAndCount();
@@ -213,7 +220,7 @@ export class InStoreBillService {
         ctx: RequestContext,
         options?: { from?: Date; to?: Date },
     ): Promise<{ count: number; originalTotal: number; discountTotal: number; finalTotal: number }> {
-        const qb = this.buildBillsQuery(ctx, options);
+        const qb = await this.buildBillsQuery(ctx, options);
         const raw = await qb
             .select('COUNT(*)', 'count')
             .addSelect('COALESCE(SUM(b.originalAmount), 0)', 'originalTotal')
@@ -228,12 +235,19 @@ export class InStoreBillService {
         };
     }
 
-    /** 流水查询基座：渠道隔离 + 可选筛选（list / summary 共用） */
-    private buildBillsQuery(ctx: RequestContext, options?: InStoreBillListOptions & { take?: number }) {
+    /**
+     * 流水查询基座：渠道隔离 + 可选筛选（list / summary 共用）。
+     * 受限核销员（持有 VerifyOrder）只能看到自己的核销流水；店主/超管不受限。
+     */
+    private async buildBillsQuery(ctx: RequestContext, options?: InStoreBillListOptions & { take?: number }) {
         const qb = this.connection
             .getRepository(ctx, InStoreBill)
             .createQueryBuilder('b')
             .where('b.channelId = :channelId', { channelId: Number(ctx.channelId) });
+        const scope = await resolveRedeemScope(ctx);
+        if (scope.restricted && ctx.activeUserId != null) {
+            qb.andWhere('b.operatorId = :operatorId', { operatorId: Number(ctx.activeUserId) });
+        }
         if (options?.couponCode) {
             qb.andWhere('b.couponCode = :code', { code: options.couponCode.trim() });
         }

@@ -15,6 +15,7 @@ const core_1 = require("@vendure/core");
 const redemption_crypto_1 = require("./redemption-crypto");
 const merchant_settlement_ledger_entity_1 = require("../order/merchant-settlement-ledger.entity");
 const tenant_member_entity_1 = require("../tenant/tenant-member.entity");
+const redeem_scope_service_1 = require("../tenant/redeem-scope.service");
 const core_2 = require("@vendure/core");
 const loggerCtx = 'RedemptionCodeService';
 /** 到店/货到付款（COD）支付方式 code，命中即需收银确认；与 nshop 确认页 & 旧 pickup 收银一致 */
@@ -26,12 +27,13 @@ exports.COD_PAYMENT_CODES = [
     'fixed-aggregate-collection',
 ];
 let RedemptionCodeService = class RedemptionCodeService {
-    constructor(orderService, connection, fulfillmentService, entityHydrator) {
+    constructor(orderService, connection, fulfillmentService, entityHydrator, redeemScopeService) {
         var _a;
         this.orderService = orderService;
         this.connection = connection;
         this.fulfillmentService = fulfillmentService;
         this.entityHydrator = entityHydrator;
+        this.redeemScopeService = redeemScopeService;
         this.keyHex = (_a = process.env.REDEMPTION_KEY) !== null && _a !== void 0 ? _a : '7'.repeat(64); // dev 默认；生产必由运维注入
         if (process.env.REDEMPTION_KEY === undefined && process.env.NODE_ENV === 'production') {
             throw new Error('REDEMPTION_KEY 必须在生产环境注入（32 字节 hex）');
@@ -347,7 +349,7 @@ let RedemptionCodeService = class RedemptionCodeService {
      * Order 按 channelId 归属多租户隔离；码密文解密后回填 code，状态由 computeRedemptionStatus 推导。
      */
     async listPending(ctx, options = {}) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
         const qb = this.connection
             .getRepository(ctx, core_1.Order)
             .createQueryBuilder('order')
@@ -358,22 +360,49 @@ let RedemptionCodeService = class RedemptionCodeService {
             .addOrderBy('order.id', 'DESC');
         const all = await qb.getMany();
         const now = new Date();
+        // 受限核销员（持有 VerifyOrder）：必须在分页前完成「订单所有行档案 ∈ 白名单」判定，
+        // 否则 totalItems 与分页会错位。逐单 hydrate 仅限受限分支，避免给店主/超管增加开销。
+        const scope = await this.redeemScopeService.resolve(ctx);
+        let inScopeIds = null;
+        if (scope.restricted) {
+            inScopeIds = new Set();
+            if (scope.shippingProfileIds.length > 0) {
+                const allow = new Set(scope.shippingProfileIds.map(String));
+                for (const o of all) {
+                    await this.entityHydrator.hydrate(ctx, o, {
+                        relations: ['lines', 'lines.productVariant'],
+                    });
+                    const lines = ((_a = o.lines) !== null && _a !== void 0 ? _a : []);
+                    const hit = lines.length > 0 &&
+                        lines.every(l => {
+                            var _a, _b;
+                            const pid = (_b = (_a = l.productVariant) === null || _a === void 0 ? void 0 : _a.customFields) === null || _b === void 0 ? void 0 : _b.shippingProfileId;
+                            return pid != null && allow.has(String(pid));
+                        });
+                    if (hit) {
+                        inScopeIds.add(String(o.id));
+                    }
+                }
+            }
+        }
         const pending = [];
         for (const o of all) {
-            const cf = ((_a = o.customFields) !== null && _a !== void 0 ? _a : {});
+            if (inScopeIds && !inScopeIds.has(String(o.id)))
+                continue;
+            const cf = ((_b = o.customFields) !== null && _b !== void 0 ? _b : {});
             let code = '';
             if (cf.redeemCodeCipher && cf.redeemCodeIv) {
                 try {
                     code = (0, redemption_crypto_1.decryptRedemptionCode)(cf.redeemCodeCipher, cf.redeemCodeIv, this.keyHex);
                 }
-                catch (_k) {
+                catch (_l) {
                     /* 坏密文 → 无有效码，跳过 */
                 }
             }
             const claimed = !!cf.redeemClaimed;
             if (!code || claimed)
                 continue;
-            const expiresAt = (_b = cf.redeemExpiresAt) !== null && _b !== void 0 ? _b : null;
+            const expiresAt = (_c = cf.redeemExpiresAt) !== null && _c !== void 0 ? _c : null;
             pending.push({
                 item: {
                     orderId: String(o.id),
@@ -383,15 +412,15 @@ let RedemptionCodeService = class RedemptionCodeService {
                     expiresAt,
                     version: Number(cf.redeemVersion) || 1,
                     claimed,
-                    paymentType: (_e = (_d = ((_c = o.payments) !== null && _c !== void 0 ? _c : [])[0]) === null || _d === void 0 ? void 0 : _d.method) !== null && _e !== void 0 ? _e : null,
+                    paymentType: (_f = (_e = ((_d = o.payments) !== null && _d !== void 0 ? _d : [])[0]) === null || _e === void 0 ? void 0 : _e.method) !== null && _f !== void 0 ? _f : null,
                     collected: !!cf.collected || !!cf.redeemCollected,
                     lines: [],
                 },
                 orderId: String(o.id),
             });
         }
-        const skip = (_f = options.skip) !== null && _f !== void 0 ? _f : 0;
-        const take = (_g = options.take) !== null && _g !== void 0 ? _g : 20;
+        const skip = (_g = options.skip) !== null && _g !== void 0 ? _g : 0;
+        const take = (_h = options.take) !== null && _h !== void 0 ? _h : 20;
         const page = pending.slice(skip, skip + take);
         // 灌注本页订单的商品行（本版本 EntityHydrator.hydrate 仅支持单实体，逐单灌注）
         const pageOrders = all.filter((o) => page.some((p) => String(o.id) === p.orderId));
@@ -406,7 +435,7 @@ let RedemptionCodeService = class RedemptionCodeService {
                         'lines.productVariant.options',
                     ],
                 });
-                const rows = ((_h = o.lines) !== null && _h !== void 0 ? _h : []).map((l) => {
+                const rows = ((_j = o.lines) !== null && _j !== void 0 ? _j : []).map((l) => {
                     var _a, _b, _c, _d, _e, _f, _g, _h, _j;
                     const base = (_e = (_c = (_b = (_a = l.productVariant) === null || _a === void 0 ? void 0 : _a.product) === null || _b === void 0 ? void 0 : _b.name) !== null && _c !== void 0 ? _c : (_d = l.productVariant) === null || _d === void 0 ? void 0 : _d.name) !== null && _e !== void 0 ? _e : `Item ${l.id}`;
                     const options = Array.isArray((_f = l.productVariant) === null || _f === void 0 ? void 0 : _f.options) ? l.productVariant.options : [];
@@ -424,7 +453,7 @@ let RedemptionCodeService = class RedemptionCodeService {
                 lineMap.set(String(o.id), rows);
             }
             for (const p of page) {
-                p.item.lines = (_j = lineMap.get(p.orderId)) !== null && _j !== void 0 ? _j : [];
+                p.item.lines = (_k = lineMap.get(p.orderId)) !== null && _k !== void 0 ? _k : [];
             }
         }
         return { items: page.map((p) => p.item), totalItems: pending.length };
@@ -539,6 +568,7 @@ exports.RedemptionCodeService = RedemptionCodeService = __decorate([
     __metadata("design:paramtypes", [core_1.OrderService,
         core_1.TransactionalConnection,
         core_1.FulfillmentService,
-        core_1.EntityHydrator])
+        core_1.EntityHydrator,
+        redeem_scope_service_1.RedeemScopeService])
 ], RedemptionCodeService);
 //# sourceMappingURL=redemption-code.service.js.map

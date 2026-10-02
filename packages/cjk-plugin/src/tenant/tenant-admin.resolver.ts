@@ -212,6 +212,20 @@ export class TenantAdminResolver {
         return true;
     }
 
+    @Mutation()
+    @Allow(Permission.SuperAdmin)
+    async setTenantMemberRedeemProfiles(
+        @Ctx() ctx: RequestContext,
+        @Args() args: { id: string; shippingProfileIds: string[] },
+    ): Promise<any> {
+        return this.tenantMemberService.setMemberRedeemProfiles(
+            ctx,
+            ctx.channelId,
+            args.id,
+            args.shippingProfileIds ?? [],
+        );
+    }
+
     @Query()
     @Allow(Permission.SuperAdmin)
     async tenantSearchAdmins(

@@ -135,6 +135,22 @@ export class TenantMemberResolver {
         return true;
     }
 
+    /** 设置当前租户某人员的可核销配送档案白名单（受限核销员） */
+    @Mutation()
+    @Allow(tenantMemberManagePermission.Permission)
+    async mySetTenantMemberRedeemProfiles(
+        @Ctx() ctx: RequestContext,
+        @Args() args: { id: string; shippingProfileIds: string[] },
+    ): Promise<any> {
+        this.tenantMemberService.assertChannelMember(ctx);
+        return this.tenantMemberService.setMemberRedeemProfiles(
+            ctx,
+            ctx.channelId,
+            args.id,
+            args.shippingProfileIds ?? [],
+        );
+    }
+
     /** 更换当前租户某人员的角色 */
     @Mutation()
     @Allow(tenantMemberManagePermission.Permission)

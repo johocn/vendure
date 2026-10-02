@@ -457,6 +457,7 @@ export class DefaultDataService {
                 enabled: true,
                 displayName: `官方自营${String(i).padStart(2, '0')}管理员`,
                 remark: 'seed 默认管理员',
+                shippingProfileIds: [],
             } as any),
         );
     }

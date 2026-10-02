@@ -1,10 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Administrator, Customer } from '@vendure/core';
 
 import { InStoreBill } from './in-store-bill.entity';
 import { InStoreBillService } from './in-store-bill.service';
 import { IN_STORE_REASON } from './in-store-bill';
 import { CustomerCoupon } from './customer-coupon.entity';
+import { setRedeemScopeResolver } from './redeem-scope';
 
 /** 构造一张可用到店买单券模板 */
 function tplStub(over: Record<string, any> = {}): any {
@@ -320,5 +321,86 @@ describe('InStoreBillService.list / summary', () => {
         expect(await service.summary(ctx, {})).toEqual({
             count: 0, originalTotal: 0, discountTotal: 0, finalTotal: 0,
         });
+    });
+});
+
+describe('InStoreBillService · 受限核销员（VerifyOrder）范围收口', () => {
+    const ctx: any = { channelId: 3, activeUserId: 99, languageCode: 'zh_Hans' };
+    const restricted = { restricted: true, shippingProfileIds: ['5'] };
+
+    let ccRepo: any;
+    let listQb: any;
+    let connection: any;
+    let couponService: any;
+    let service: InStoreBillService;
+
+    /** 注册受限核销员实现；orderInScope/couponTemplateInScope 由用例指定命中与否 */
+    function useProvider(opts: { templateHit?: boolean } = {}) {
+        setRedeemScopeResolver({
+            resolve: vi.fn(async () => restricted),
+            orderInScope: vi.fn(async () => true),
+            couponTemplateInScope: vi.fn(async () => opts.templateHit ?? true),
+        });
+    }
+
+    beforeEach(() => {
+        ccRepo = { findOne: vi.fn(), createQueryBuilder: vi.fn() };
+        listQb = {
+            where: vi.fn().mockReturnThis(),
+            andWhere: vi.fn().mockReturnThis(),
+            orderBy: vi.fn().mockReturnThis(),
+            addOrderBy: vi.fn().mockReturnThis(),
+            skip: vi.fn().mockReturnThis(),
+            take: vi.fn().mockReturnThis(),
+            getManyAndCount: vi.fn(async () => [[], 0]),
+        };
+        connection = {
+            getRepository: vi.fn((_c: any, entity: any) => {
+                if (entity === CustomerCoupon) return ccRepo;
+                if (entity === InStoreBill) return { createQueryBuilder: vi.fn(() => listQb) };
+                if (entity === Customer) return { findOne: vi.fn(async () => null) };
+                if (entity === Administrator) return { findOne: vi.fn(async () => null) };
+                throw new Error(`unknown entity: ${entity?.name}`);
+            }),
+        };
+        couponService = {
+            templateBelongsToChannel: vi.fn(() => true),
+            assertManagedByShop: vi.fn(async () => undefined),
+        };
+        service = new InStoreBillService(connection, couponService);
+    });
+    afterEach(() => setRedeemScopeResolver(null));
+
+    it('券模板不在范围（通用券/部分商品越界）→ SCOPE_MISMATCH', async () => {
+        useProvider({ templateHit: false });
+        ccRepo.findOne.mockResolvedValueOnce(ccStub({ template: tplStub({ usageScene: 'IN_STORE' }) }));
+        const r = await service.quote(ctx, 'C-ABCD-EFGH', 10000);
+        expect(r).toMatchObject({ ok: false, reason: IN_STORE_REASON.SCOPE_MISMATCH });
+    });
+
+    it('券模板全命中 → 放行试算', async () => {
+        useProvider({ templateHit: true });
+        ccRepo.findOne.mockResolvedValueOnce(ccStub({ template: tplStub({ usageScene: 'IN_STORE' }) }));
+        const r = await service.quote(ctx, 'C-ABCD-EFGH', 10000);
+        expect(r).toMatchObject({ ok: true, finalAmount: 8000 });
+    });
+
+    it('核销时范围外 → 抛 SCOPE_MISMATCH 文案，不占用/不写流水', async () => {
+        useProvider({ templateHit: false });
+        ccRepo.findOne.mockResolvedValueOnce(ccStub({ template: tplStub({ usageScene: 'IN_STORE' }) }));
+        await expect(service.redeem(ctx, 'C-ABCD-EFGH', 10000)).rejects.toThrow('该券不在你的核销范围内');
+        expect(ccRepo.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('流水受限 → 追加 operatorId = activeUserId（只看自己经手）', async () => {
+        useProvider();
+        await service.list(ctx, {});
+        expect(listQb.andWhere).toHaveBeenCalledWith('b.operatorId = :operatorId', { operatorId: 99 });
+    });
+
+    it('不受限（未注册实现）→ 不追加 operatorId 过滤', async () => {
+        setRedeemScopeResolver(null);
+        await service.list(ctx, {});
+        expect(listQb.andWhere).not.toHaveBeenCalledWith('b.operatorId = :operatorId', expect.anything());
     });
 });

@@ -14,6 +14,7 @@ import {
 } from './redemption-crypto';
 import { MerchantSettlementLedger } from '../order/merchant-settlement-ledger.entity';
 import { TenantMember } from '../tenant/tenant-member.entity';
+import { RedeemScopeService } from '../tenant/redeem-scope.service';
 import { Administrator } from '@vendure/core';
 
 const loggerCtx = 'RedemptionCodeService';
@@ -66,6 +67,7 @@ export class RedemptionCodeService {
         private connection: TransactionalConnection,
         private fulfillmentService: FulfillmentService,
         private entityHydrator: EntityHydrator,
+        private redeemScopeService: RedeemScopeService,
     ) {
         this.keyHex = process.env.REDEMPTION_KEY ?? '7'.repeat(64); // dev 默认；生产必由运维注入
         if (process.env.REDEMPTION_KEY === undefined && process.env.NODE_ENV === 'production') {
@@ -395,8 +397,34 @@ export class RedemptionCodeService {
             .addOrderBy('order.id', 'DESC');
         const all = await qb.getMany();
         const now = new Date();
+        // 受限核销员（持有 VerifyOrder）：必须在分页前完成「订单所有行档案 ∈ 白名单」判定，
+        // 否则 totalItems 与分页会错位。逐单 hydrate 仅限受限分支，避免给店主/超管增加开销。
+        const scope = await this.redeemScopeService.resolve(ctx);
+        let inScopeIds: Set<string> | null = null;
+        if (scope.restricted) {
+            inScopeIds = new Set<string>();
+            if (scope.shippingProfileIds.length > 0) {
+                const allow = new Set(scope.shippingProfileIds.map(String));
+                for (const o of all) {
+                    await this.entityHydrator.hydrate(ctx, o, {
+                        relations: ['lines', 'lines.productVariant'],
+                    } as any);
+                    const lines = ((o.lines ?? []) as any[]);
+                    const hit =
+                        lines.length > 0 &&
+                        lines.every(l => {
+                            const pid = l.productVariant?.customFields?.shippingProfileId;
+                            return pid != null && allow.has(String(pid));
+                        });
+                    if (hit) {
+                        inScopeIds.add(String(o.id));
+                    }
+                }
+            }
+        }
         const pending: { item: PendingRedemptionItem; orderId: string }[] = [];
         for (const o of all) {
+            if (inScopeIds && !inScopeIds.has(String(o.id))) continue;
             const cf = (o.customFields ?? {}) as Record<string, any>;
             let code = '';
             if (cf.redeemCodeCipher && cf.redeemCodeIv) {

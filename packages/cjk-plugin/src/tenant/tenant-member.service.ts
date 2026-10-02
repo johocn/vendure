@@ -13,9 +13,12 @@ import {
     RoleService,
     TransactionalConnection,
 } from '@vendure/core';
+import { In } from 'typeorm';
 import { CJK_PLUGIN_OPTIONS, loggerCtx } from '../constants';
 import type { CjkPluginOptions } from '../types';
 import { TenantMember } from './tenant-member.entity';
+// 仅类型导入：ShippingProfile 实体装饰器在部分测试环境无法求值，运行期按实体名取仓库
+import type { ShippingProfile } from '../shipping/shipping-profile.entity';
 import { OFFICIAL_ROLE_TEMPLATES } from './role-templates';
 import { TenantMemberManagePermission, TenantRoleManagePermission } from './tenant-permissions';
 import { VirtualPhysicalStockService } from '../inventory/virtual-physical-stock.service';
@@ -718,6 +721,50 @@ export class TenantMemberService {
         await this.syncMemberRolesInChannel(ctx, member.administratorId as any, channelId, roleIds || []);
     }
 
+    /**
+     * 设置某人员的「可核销配送档案」白名单（受限核销员）。
+     * 归属校验：成员须属于该租户；档案须存在且为全局档案或本租户档案。
+     * 空白名单 = 默认拒绝（该人员将看不到/核销不了任何单据）。
+     */
+    async setMemberRedeemProfiles(
+        ctx: RequestContext,
+        channelId: ID,
+        memberId: ID,
+        shippingProfileIds: ID[],
+    ): Promise<any> {
+        await this.assertChannelMember(ctx);
+        const repo = this.connection.getRepository(ctx, TenantMember);
+        const member = await repo.findOne({ where: { id: String(memberId) } });
+        if (!member) throw new Error('MEMBER_NOT_FOUND');
+        if (String(member.channelId) !== String(channelId)) throw new Error('MEMBER_NOT_IN_CHANNEL');
+        const ids = Array.from(new Set((shippingProfileIds ?? []).map(String).filter(Boolean)));
+        await this.assertShippingProfilesVisible(ctx, ids, channelId);
+        member.shippingProfileIds = ids;
+        await repo.save(member);
+        return this.memberToView(ctx, member);
+    }
+
+    /** 校验档案 id 均存在且对当前租户可见（全局档案 或 本租户档案） */
+    private async assertShippingProfilesVisible(
+        ctx: RequestContext,
+        profileIds: string[],
+        channelId: ID,
+    ): Promise<void> {
+        if (profileIds.length === 0) return;
+        const profiles = await this.connection
+            .getRepository(ctx, 'ShippingProfile' as any)
+            .find({ where: { id: In(profileIds.map(Number)) } as any });
+        const byId = new Map<string, ShippingProfile>(
+            (profiles as ShippingProfile[]).map(p => [String(p.id), p]),
+        );
+        for (const id of profileIds) {
+            const profile = byId.get(id);
+            if (!profile) throw new Error('SHIPPING_PROFILE_NOT_FOUND');
+            const visible = profile.isGlobal || String(profile.ownerChannelId) === String(channelId);
+            if (!visible) throw new Error('SHIPPING_PROFILE_NOT_VISIBLE');
+        }
+    }
+
     /** 以「合并」语义同步某管理员在本 channel 的角色：仅替换本租户角色，保留其在其它租户的角色（跨店任职互不影响） */
     async syncMemberRolesInChannel(
         ctx: RequestContext,
@@ -765,7 +812,11 @@ export class TenantMemberService {
     /** 将 TenantMember 组装为含 roleIds / canResetPassword / emailAddress 的视图对象 */
     async memberToView(ctx: RequestContext, member: TenantMember): Promise<any> {
         const roleIds = await this.memberRoleIdsInChannel(ctx, member);
-        const view: any = { ...member, roleIds };
+        const view: any = {
+            ...member,
+            roleIds,
+            shippingProfileIds: (member.shippingProfileIds ?? []).map(String),
+        };
         const activeUserId = ctx.activeUserId;
         let emailAddress: string | null = null;
         let myAdmin: Administrator | null | undefined = null;

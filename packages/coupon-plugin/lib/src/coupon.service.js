@@ -23,6 +23,7 @@ const coupon_settlement_1 = require("./coupon-settlement");
 const coupon_template_entity_1 = require("./coupon-template.entity");
 const customer_coupon_entity_1 = require("./customer-coupon.entity");
 const product_coupon_binding_entity_1 = require("./product-coupon-binding.entity");
+const redeem_scope_1 = require("./redeem-scope");
 /** 模板 update() 允许写入的字段白名单 */
 const TEMPLATE_UPDATE_ALLOWED = [
     'name',
@@ -364,7 +365,7 @@ let CouponService = class CouponService {
         const now = Date.now();
         // 属店隔离：店主管理员只看本店券 + 平台级券（与 assertManagedByShop 同法）。
         const adminShopId = await this.resolveShopIdFromActiveUser(ctx, ctx.activeUserId);
-        return list.filter(cc => {
+        const base = list.filter(cc => {
             const tpl = cc.template;
             if (!tpl || !tpl.enabled)
                 return false;
@@ -378,6 +379,18 @@ let CouponService = class CouponService {
                 return false;
             return this.templateBelongsToChannel(ctx, tpl);
         });
+        // 受限核销员（持有 VerifyOrder）：只保留「券模板全部关联商品档案命中白名单」的券，通用券一律不返回。
+        const scope = await (0, redeem_scope_1.resolveRedeemScope)(ctx);
+        if (!scope.restricted) {
+            return base;
+        }
+        const out = [];
+        for (const cc of base) {
+            if (cc.template && (await (0, redeem_scope_1.couponTemplateInScope)(ctx, cc.template.id, scope))) {
+                out.push(cc);
+            }
+        }
+        return out;
     }
     async listAllCoupons(ctx, options) {
         const qb = this.listQueryBuilder.build(customer_coupon_entity_1.CustomerCoupon, options, { ctx });

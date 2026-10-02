@@ -423,6 +423,7 @@ let DefaultDataService = class DefaultDataService {
             enabled: true,
             displayName: `官方自营${String(i).padStart(2, '0')}管理员`,
             remark: 'seed 默认管理员',
+            shippingProfileIds: [],
         }));
     }
     /** 修复历史破损官方管理员：此前直存 Administrator 未建 user/auth，现补齐使其可登录。

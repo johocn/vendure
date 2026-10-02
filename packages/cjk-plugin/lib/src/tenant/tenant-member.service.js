@@ -19,6 +19,7 @@ exports.canGrantRole = canGrantRole;
 exports.dedupeRolesByLabel = dedupeRolesByLabel;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
+const typeorm_1 = require("typeorm");
 const constants_1 = require("../constants");
 const tenant_member_entity_1 = require("./tenant-member.entity");
 const role_templates_1 = require("./role-templates");
@@ -61,6 +62,9 @@ exports.PERMISSION_CATALOG = [
             { code: core_1.Permission.ReadOrder, label: '订单·读' },
             { code: core_1.Permission.UpdateOrder, label: '订单·改' },
             { code: core_1.Permission.CreateOrder, label: '订单·建' },
+            // 到店核销（受限）：勾选即「受限核销员」，仅能在人员管理配置的配送档案白名单内核销；
+            // 不勾选者（店主/超管）不受档案限制，看本租户全量
+            { code: 'VerifyOrder', label: '核销·按配送档案' },
         ],
     },
     {
@@ -100,7 +104,6 @@ exports.PERMISSION_CATALOG = [
         items: [
             { code: 'TenantRoleManage', label: '角色·管理' },
             { code: 'TenantMemberManage', label: '人员·管理' },
-            { code: 'VerifyOrder', label: '核销·预留' },
         ],
     },
     {
@@ -648,6 +651,42 @@ let TenantMemberService = class TenantMemberService {
             throw new Error('MEMBER_NOT_IN_CHANNEL');
         await this.syncMemberRolesInChannel(ctx, member.administratorId, channelId, roleIds || []);
     }
+    /**
+     * 设置某人员的「可核销配送档案」白名单（受限核销员）。
+     * 归属校验：成员须属于该租户；档案须存在且为全局档案或本租户档案。
+     * 空白名单 = 默认拒绝（该人员将看不到/核销不了任何单据）。
+     */
+    async setMemberRedeemProfiles(ctx, channelId, memberId, shippingProfileIds) {
+        await this.assertChannelMember(ctx);
+        const repo = this.connection.getRepository(ctx, tenant_member_entity_1.TenantMember);
+        const member = await repo.findOne({ where: { id: String(memberId) } });
+        if (!member)
+            throw new Error('MEMBER_NOT_FOUND');
+        if (String(member.channelId) !== String(channelId))
+            throw new Error('MEMBER_NOT_IN_CHANNEL');
+        const ids = Array.from(new Set((shippingProfileIds !== null && shippingProfileIds !== void 0 ? shippingProfileIds : []).map(String).filter(Boolean)));
+        await this.assertShippingProfilesVisible(ctx, ids, channelId);
+        member.shippingProfileIds = ids;
+        await repo.save(member);
+        return this.memberToView(ctx, member);
+    }
+    /** 校验档案 id 均存在且对当前租户可见（全局档案 或 本租户档案） */
+    async assertShippingProfilesVisible(ctx, profileIds, channelId) {
+        if (profileIds.length === 0)
+            return;
+        const profiles = await this.connection
+            .getRepository(ctx, 'ShippingProfile')
+            .find({ where: { id: (0, typeorm_1.In)(profileIds.map(Number)) } });
+        const byId = new Map(profiles.map(p => [String(p.id), p]));
+        for (const id of profileIds) {
+            const profile = byId.get(id);
+            if (!profile)
+                throw new Error('SHIPPING_PROFILE_NOT_FOUND');
+            const visible = profile.isGlobal || String(profile.ownerChannelId) === String(channelId);
+            if (!visible)
+                throw new Error('SHIPPING_PROFILE_NOT_VISIBLE');
+        }
+    }
     /** 以「合并」语义同步某管理员在本 channel 的角色：仅替换本租户角色，保留其在其它租户的角色（跨店任职互不影响） */
     async syncMemberRolesInChannel(ctx, administratorId, channelId, roleIds) {
         var _a, _b;
@@ -692,9 +731,9 @@ let TenantMemberService = class TenantMemberService {
     }
     /** 将 TenantMember 组装为含 roleIds / canResetPassword / emailAddress 的视图对象 */
     async memberToView(ctx, member) {
-        var _a, _b, _c;
+        var _a, _b, _c, _d;
         const roleIds = await this.memberRoleIdsInChannel(ctx, member);
-        const view = Object.assign(Object.assign({}, member), { roleIds });
+        const view = Object.assign(Object.assign({}, member), { roleIds, shippingProfileIds: ((_a = member.shippingProfileIds) !== null && _a !== void 0 ? _a : []).map(String) });
         const activeUserId = ctx.activeUserId;
         let emailAddress = null;
         let myAdmin = null;
@@ -710,7 +749,7 @@ let TenantMemberService = class TenantMemberService {
             const admin = await this.administratorService
                 .findOne(ctx, String(member.administratorId))
                 .catch(() => null);
-            emailAddress = (_a = admin === null || admin === void 0 ? void 0 : admin.emailAddress) !== null && _a !== void 0 ? _a : null;
+            emailAddress = (_b = admin === null || admin === void 0 ? void 0 : admin.emailAddress) !== null && _b !== void 0 ? _b : null;
         }
         view.emailAddress = emailAddress;
         if (activeUserId != null) {
@@ -719,7 +758,7 @@ let TenantMemberService = class TenantMemberService {
                 return view;
             }
         }
-        if (((_c = (_b = ctx.session) === null || _b === void 0 ? void 0 : _b.user) === null || _c === void 0 ? void 0 : _c.superAdmin) === true || ctx.userHasPermissions([core_1.Permission.SuperAdmin])) {
+        if (((_d = (_c = ctx.session) === null || _c === void 0 ? void 0 : _c.user) === null || _d === void 0 ? void 0 : _d.superAdmin) === true || ctx.userHasPermissions([core_1.Permission.SuperAdmin])) {
             view.canResetPassword = true;
         }
         else {

@@ -57,7 +57,10 @@ export declare class InStoreBillService {
         discountTotal: number;
         finalTotal: number;
     }>;
-    /** 流水查询基座：渠道隔离 + 可选筛选（list / summary 共用） */
+    /**
+     * 流水查询基座：渠道隔离 + 可选筛选（list / summary 共用）。
+     * 受限核销员（持有 VerifyOrder）只能看到自己的核销流水；店主/超管不受限。
+     */
     private buildBillsQuery;
     /** 顾客姓名/手机号快照（查询失败不阻断核销） */
     private loadCustomerInfo;

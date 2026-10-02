@@ -90,6 +90,12 @@ let TenantMemberResolver = class TenantMemberResolver {
         await this.tenantMemberService.deleteTenantRole(ctx, roleId, ctx.channelId);
         return true;
     }
+    /** 设置当前租户某人员的可核销配送档案白名单（受限核销员） */
+    async mySetTenantMemberRedeemProfiles(ctx, args) {
+        var _a;
+        this.tenantMemberService.assertChannelMember(ctx);
+        return this.tenantMemberService.setMemberRedeemProfiles(ctx, ctx.channelId, args.id, (_a = args.shippingProfileIds) !== null && _a !== void 0 ? _a : []);
+    }
     /** 更换当前租户某人员的角色 */
     async myUpdateTenantMemberRoles(ctx, args) {
         await this.tenantMemberService.updateTenantMemberRoles(ctx, ctx.channelId, args.id, args.roleIds);
@@ -245,6 +251,15 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, String]),
     __metadata("design:returntype", Promise)
 ], TenantMemberResolver.prototype, "myDeleteTenantRole", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(tenant_permissions_1.tenantMemberManagePermission.Permission),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], TenantMemberResolver.prototype, "mySetTenantMemberRedeemProfiles", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(tenant_permissions_1.tenantMemberManagePermission.Permission),

@@ -153,6 +153,14 @@ export declare class TenantMemberService {
     deleteTenantRole(ctx: RequestContext, roleId: ID, channelId?: ID): Promise<void>;
     /** 更换某人员在该租户内的角色：归属 + 白名单 + 横向越权三重校验 */
     updateTenantMemberRoles(ctx: RequestContext, channelId: ID, memberId: ID, roleIds: ID[]): Promise<void>;
+    /**
+     * 设置某人员的「可核销配送档案」白名单（受限核销员）。
+     * 归属校验：成员须属于该租户；档案须存在且为全局档案或本租户档案。
+     * 空白名单 = 默认拒绝（该人员将看不到/核销不了任何单据）。
+     */
+    setMemberRedeemProfiles(ctx: RequestContext, channelId: ID, memberId: ID, shippingProfileIds: ID[]): Promise<any>;
+    /** 校验档案 id 均存在且对当前租户可见（全局档案 或 本租户档案） */
+    private assertShippingProfilesVisible;
     /** 以「合并」语义同步某管理员在本 channel 的角色：仅替换本租户角色，保留其在其它租户的角色（跨店任职互不影响） */
     syncMemberRolesInChannel(ctx: RequestContext, administratorId: ID, channelId: ID, roleIds: ID[]): Promise<void>;
     /** 返回人员在当前租户内的角色 id（用于改角色弹层回显勾选） */

@@ -29,6 +29,7 @@ import { isNewCustomerWithinChannel } from './coupon-settlement';
 import { CouponTemplate } from './coupon-template.entity';
 import { CustomerCoupon } from './customer-coupon.entity';
 import { ProductCouponBinding } from './product-coupon-binding.entity';
+import { couponTemplateInScope, resolveRedeemScope } from './redeem-scope';
 
 /** 模板 update() 允许写入的字段白名单 */
 const TEMPLATE_UPDATE_ALLOWED: ReadonlyArray<keyof CouponTemplate> = [
@@ -416,7 +417,7 @@ export class CouponService {
         const now = Date.now();
         // 属店隔离：店主管理员只看本店券 + 平台级券（与 assertManagedByShop 同法）。
         const adminShopId = await this.resolveShopIdFromActiveUser(ctx, ctx.activeUserId);
-        return list.filter(cc => {
+        const base = list.filter(cc => {
             const tpl = cc.template;
             if (!tpl || !tpl.enabled) return false;
             if (cc.status !== 'UNUSED' && cc.status !== 'RETURNED') return false;
@@ -425,6 +426,18 @@ export class CouponService {
             if (adminShopId != null && tpl.shopId != null && Number(tpl.shopId) !== adminShopId) return false;
             return this.templateBelongsToChannel(ctx, tpl);
         });
+        // 受限核销员（持有 VerifyOrder）：只保留「券模板全部关联商品档案命中白名单」的券，通用券一律不返回。
+        const scope = await resolveRedeemScope(ctx);
+        if (!scope.restricted) {
+            return base;
+        }
+        const out: CustomerCoupon[] = [];
+        for (const cc of base) {
+            if (cc.template && (await couponTemplateInScope(ctx, cc.template.id, scope))) {
+                out.push(cc);
+            }
+        }
+        return out;
     }
 
     async listAllCoupons(

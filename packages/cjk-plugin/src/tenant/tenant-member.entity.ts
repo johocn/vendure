@@ -41,4 +41,12 @@ export class TenantMember extends VendureEntity {
     /** 手机号（选填） */
     @Column({ type: 'varchar', length: 32, nullable: true })
     phone!: string | null;
+
+    /**
+     * 可核销的配送档案白名单（ShippingProfile.id）。
+     * 仅在持有 VerifyOrder 权限时生效；为空 = 默认拒绝（看不到/核销不了任何单据）。
+     * 列由 AddTenantMemberRedeemProfiles 迁移补齐（生产 NOT NULL DEFAULT '[]'）。
+     */
+    @Column({ type: 'simple-json', default: [] })
+    shippingProfileIds!: string[];
 }

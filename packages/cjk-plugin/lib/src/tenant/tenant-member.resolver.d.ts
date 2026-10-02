@@ -36,6 +36,11 @@ export declare class TenantMemberResolver {
         input: any;
     }): Promise<any>;
     myDeleteTenantRole(ctx: RequestContext, roleId: string): Promise<boolean>;
+    /** 设置当前租户某人员的可核销配送档案白名单（受限核销员） */
+    mySetTenantMemberRedeemProfiles(ctx: RequestContext, args: {
+        id: string;
+        shippingProfileIds: string[];
+    }): Promise<any>;
     /** 更换当前租户某人员的角色 */
     myUpdateTenantMemberRoles(ctx: RequestContext, args: {
         id: string;
