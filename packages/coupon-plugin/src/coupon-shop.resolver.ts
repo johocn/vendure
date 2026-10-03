@@ -20,6 +20,12 @@ export class CouponShopResolver {
         return this.couponService.listMyCoupons(ctx, status);
     }
 
+    /** 按券码精准查当前用户自己的单张券（券码页轮询核销状态），非本人券返回 null */
+    @Query()
+    async customerCouponByCode(@Ctx() ctx: RequestContext, @Args('code') code: string) {
+        return this.couponService.getMyCouponByCode(ctx, code);
+    }
+
     @Query()
     async pointsMallTemplates(@Ctx() ctx: RequestContext) {
         return this.couponService.pointsMallTemplates(ctx);

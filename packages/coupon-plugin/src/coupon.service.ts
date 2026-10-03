@@ -401,6 +401,25 @@ export class CouponService {
     }
 
     /**
+     * C 端：按券码精准查当前登录用户自己的单张券（券码页轮询核销状态用）。
+     * 只匹配本人名下的券，非本人或不存在一律返回 null，避免越权探测券码。
+     */
+    async getMyCouponByCode(ctx: RequestContext, code: string): Promise<CustomerCoupon | null> {
+        const customerId = await this.currentCustomerId(ctx);
+        if (!customerId) return null;
+        // 与 listMyCoupons 一致：先收敛过期状态，轮询方能立刻看到 EXPIRED
+        await this.expireDueCoupons(ctx, customerId);
+        const normalized = (code || '').trim().toUpperCase();
+        if (!normalized) return null;
+        const repo = this.connection.getRepository(ctx, CustomerCoupon);
+        const cc = await repo.findOne({
+            where: { customerId, code: normalized } as any,
+            relations: { template: true },
+        });
+        return cc ?? null;
+    }
+
+    /**
      * 到店收银：列出某顾客在当前渠道「可到店核销」的券（未使用 / 未过期 / 场景含 IN_STORE）。
      * 仅到店场景过滤，不做渠道集合判定（券可由任意渠道获得，到店核销只看场景与归属）。
      */

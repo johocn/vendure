@@ -1,0 +1,8 @@
+packages:
+  - packages/*
+
+allowBuilds:
+  '@swc/core': true
+  esbuild: true
+  husky: true
+  nx: true
