@@ -111,6 +111,7 @@ let CouponSaleService = class CouponSaleService {
         // 都只是回滚外层事务，不会出现「已扣款却只发了一半券」的半成品状态。
         await this.issueCouponsForOrder(ctx, order);
         order.paymentMethod = 'balance';
+        order.payMode = 'BALANCE';
         order.status = 'PAID';
         order.paidAt = (_a = order.paidAt) !== null && _a !== void 0 ? _a : new Date();
         await repo.save(order);
