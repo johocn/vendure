@@ -16,7 +16,10 @@ const campus_zone_entity_1 = require("./campus-zone.entity");
 const custom_fields_1 = require("./custom-fields");
 const create_campus_tables_1 = require("./migrations/create-campus-tables");
 const permissions_1 = require("./permissions");
+const rider_admin_resolver_1 = require("./rider-admin.resolver");
 const rider_earning_entity_1 = require("./rider-earning.entity");
+const rider_service_1 = require("./rider.service");
+const rider_shop_resolver_1 = require("./rider-shop.resolver");
 let CampusDeliveryPlugin = class CampusDeliveryPlugin {
 };
 exports.CampusDeliveryPlugin = CampusDeliveryPlugin;
@@ -24,7 +27,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
         entities: [campus_zone_entity_1.CampusZone, campus_building_entity_1.CampusBuilding, rider_earning_entity_1.RiderEarning, campus_fulfillment_config_entity_1.CampusFulfillmentConfig],
-        providers: [create_campus_tables_1.CreateCampusTablesMigration, campus_config_service_1.CampusConfigService],
+        providers: [create_campus_tables_1.CreateCampusTablesMigration, campus_config_service_1.CampusConfigService, rider_service_1.RiderService],
         adminApiExtensions: {
             schema: () => {
                 const { gql } = require('graphql-tag');
@@ -73,7 +76,53 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                 }
             `;
             },
-            resolvers: [campus_config_admin_resolver_1.CampusConfigAdminResolver],
+            resolvers: [campus_config_admin_resolver_1.CampusConfigAdminResolver, rider_admin_resolver_1.RiderAdminResolver],
+        },
+        shopApiExtensions: {
+            schema: () => {
+                const { gql } = require('graphql-tag');
+                // shop 与 admin 是两个独立 schema，输出类型需各自定义
+                return gql `
+                type CampusZone {
+                    id: ID!
+                    name: String!
+                    fee: Int!
+                    channelId: ID!
+                }
+
+                type CampusBuilding {
+                    id: ID!
+                    name: String!
+                    detail: String
+                    zoneId: ID!
+                    channelId: ID!
+                }
+
+                type RiderProfile {
+                    customerId: ID!
+                    riderStatus: String
+                    riderRealName: String
+                    riderStudentNo: String
+                    riderCampus: String
+                    riderCredit: Int
+                }
+
+                type RiderApplyResult {
+                    status: String!
+                }
+
+                extend type Query {
+                    myRiderProfile: RiderProfile!
+                    campusZones: [CampusZone!]!
+                    campusBuildings(zoneId: ID): [CampusBuilding!]!
+                }
+
+                extend type Mutation {
+                    applyRider(realName: String!, studentNo: String!, campus: String!, idImg: String): RiderApplyResult!
+                }
+            `;
+            },
+            resolvers: [rider_shop_resolver_1.RiderShopResolver],
         },
         configuration: config => {
             var _a, _b, _c, _d, _e;

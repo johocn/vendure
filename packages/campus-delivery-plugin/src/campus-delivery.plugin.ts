@@ -7,12 +7,15 @@ import { CampusZone } from './campus-zone.entity';
 import { campusCustomFields } from './custom-fields';
 import { CreateCampusTablesMigration } from './migrations/create-campus-tables';
 import { campusPermissionDefinitions } from './permissions';
+import { RiderAdminResolver } from './rider-admin.resolver';
 import { RiderEarning } from './rider-earning.entity';
+import { RiderService } from './rider.service';
+import { RiderShopResolver } from './rider-shop.resolver';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
     entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig],
-    providers: [CreateCampusTablesMigration, CampusConfigService],
+    providers: [CreateCampusTablesMigration, CampusConfigService, RiderService],
     adminApiExtensions: {
         schema: () => {
             const { gql } = require('graphql-tag');
@@ -61,7 +64,53 @@ import { RiderEarning } from './rider-earning.entity';
                 }
             `;
         },
-        resolvers: [CampusConfigAdminResolver],
+        resolvers: [CampusConfigAdminResolver, RiderAdminResolver],
+    },
+    shopApiExtensions: {
+        schema: () => {
+            const { gql } = require('graphql-tag');
+            // shop 与 admin 是两个独立 schema，输出类型需各自定义
+            return gql`
+                type CampusZone {
+                    id: ID!
+                    name: String!
+                    fee: Int!
+                    channelId: ID!
+                }
+
+                type CampusBuilding {
+                    id: ID!
+                    name: String!
+                    detail: String
+                    zoneId: ID!
+                    channelId: ID!
+                }
+
+                type RiderProfile {
+                    customerId: ID!
+                    riderStatus: String
+                    riderRealName: String
+                    riderStudentNo: String
+                    riderCampus: String
+                    riderCredit: Int
+                }
+
+                type RiderApplyResult {
+                    status: String!
+                }
+
+                extend type Query {
+                    myRiderProfile: RiderProfile!
+                    campusZones: [CampusZone!]!
+                    campusBuildings(zoneId: ID): [CampusBuilding!]!
+                }
+
+                extend type Mutation {
+                    applyRider(realName: String!, studentNo: String!, campus: String!, idImg: String): RiderApplyResult!
+                }
+            `;
+        },
+        resolvers: [RiderShopResolver],
     },
     configuration: config => {
         config.authOptions.customPermissions = [
