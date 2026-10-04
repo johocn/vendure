@@ -1,5 +1,6 @@
-import { Column, Entity, Index, JoinTable, ManyToMany } from 'typeorm';
+import { Column, Entity, Index, JoinTable, ManyToMany, ManyToOne, OneToMany } from 'typeorm';
 import { Channel, ChannelAware, DeepPartial, VendureEntity } from '@vendure/core';
+import { LiveRoomPlatform } from './live-room-platform.entity';
 import { LiveRoomProduct } from './live-room-product.entity';
 
 @Entity()
@@ -74,6 +75,10 @@ export class LiveRoom extends VendureEntity implements ChannelAware {
     @ManyToMany(() => LiveRoomProduct)
     @JoinTable()
     products: LiveRoomProduct[];
+
+    /** 平台分发配置（多租户按渠道过滤） */
+    @OneToMany(() => LiveRoomPlatform, p => p.liveRoom)
+    platforms: LiveRoomPlatform[];
 
     @ManyToMany(() => Channel)
     @JoinTable()

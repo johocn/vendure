@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.LiveRoom = void 0;
 const typeorm_1 = require("typeorm");
 const core_1 = require("@vendure/core");
+const live_room_platform_entity_1 = require("./live-room-platform.entity");
 const live_room_product_entity_1 = require("./live-room-product.entity");
 let LiveRoom = class LiveRoom extends core_1.VendureEntity {
     constructor(input) {
@@ -86,6 +87,10 @@ __decorate([
     (0, typeorm_1.JoinTable)(),
     __metadata("design:type", Array)
 ], LiveRoom.prototype, "products", void 0);
+__decorate([
+    (0, typeorm_1.OneToMany)(() => live_room_platform_entity_1.LiveRoomPlatform, p => p.liveRoom),
+    __metadata("design:type", Array)
+], LiveRoom.prototype, "platforms", void 0);
 __decorate([
     (0, typeorm_1.ManyToMany)(() => core_1.Channel),
     (0, typeorm_1.JoinTable)(),

@@ -1,4 +1,5 @@
 import { Channel, ChannelAware, DeepPartial, VendureEntity } from '@vendure/core';
+import { LiveRoomPlatform } from './live-room-platform.entity';
 import { LiveRoomProduct } from './live-room-product.entity';
 export declare class LiveRoom extends VendureEntity implements ChannelAware {
     constructor(input?: DeepPartial<LiveRoom>);
@@ -18,5 +19,6 @@ export declare class LiveRoom extends VendureEntity implements ChannelAware {
     likeCount: number;
     viewCount: number;
     products: LiveRoomProduct[];
+    platforms: LiveRoomPlatform[];
     channels: Channel[];
 }

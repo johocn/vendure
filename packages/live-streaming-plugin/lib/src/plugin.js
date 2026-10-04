@@ -23,6 +23,7 @@ const core_2 = require("@vendure/core");
 const graphql_tag_1 = __importDefault(require("graphql-tag"));
 const constants_1 = require("./constants");
 const live_room_entity_1 = require("./live-room.entity");
+const live_room_platform_entity_1 = require("./live-room-platform.entity");
 const live_room_product_entity_1 = require("./live-room-product.entity");
 const live_admin_resolver_1 = require("./live-admin.resolver");
 const live_shop_resolver_1 = require("./live-shop.resolver");
@@ -98,7 +99,7 @@ exports.LiveStreamingPlugin = LiveStreamingPlugin;
 exports.LiveStreamingPlugin = LiveStreamingPlugin = LiveStreamingPlugin_1 = __decorate([
     (0, core_2.VendurePlugin)({
         imports: [core_2.PluginCommonModule],
-        entities: [live_room_entity_1.LiveRoom, live_room_product_entity_1.LiveRoomProduct],
+        entities: [live_room_entity_1.LiveRoom, live_room_product_entity_1.LiveRoomProduct, live_room_platform_entity_1.LiveRoomPlatform],
         providers: [
             { provide: constants_1.LIVE_PLUGIN_OPTIONS, useFactory: () => LiveStreamingPlugin.options },
             live_room_service_1.LiveRoomService,

@@ -5,6 +5,7 @@ import gql from 'graphql-tag';
 
 import { LIVE_PLUGIN_OPTIONS, loggerCtx } from './constants';
 import { LiveRoom } from './live-room.entity';
+import { LiveRoomPlatform } from './live-room-platform.entity';
 import { LiveRoomProduct } from './live-room-product.entity';
 import { LiveAdminResolver } from './live-admin.resolver';
 import { LiveShopResolver } from './live-shop.resolver';
@@ -58,7 +59,7 @@ input LiveRoomListOptions {
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [LiveRoom, LiveRoomProduct],
+    entities: [LiveRoom, LiveRoomProduct, LiveRoomPlatform],
     providers: [
         { provide: LIVE_PLUGIN_OPTIONS, useFactory: () => LiveStreamingPlugin.options },
         LiveRoomService,
