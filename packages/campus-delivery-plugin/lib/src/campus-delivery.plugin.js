@@ -5,6 +5,9 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CampusDeliveryPlugin = void 0;
 const core_1 = require("@vendure/core");
@@ -14,6 +17,7 @@ const campus_config_service_1 = require("./campus-config.service");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
 const campus_zone_entity_1 = require("./campus-zone.entity");
 const custom_fields_1 = require("./custom-fields");
+const hall_service_1 = require("./hall.service");
 const create_campus_tables_1 = require("./migrations/create-campus-tables");
 const permissions_1 = require("./permissions");
 const rider_admin_resolver_1 = require("./rider-admin.resolver");
@@ -21,13 +25,20 @@ const rider_earning_entity_1 = require("./rider-earning.entity");
 const rider_service_1 = require("./rider.service");
 const rider_shop_resolver_1 = require("./rider-shop.resolver");
 let CampusDeliveryPlugin = class CampusDeliveryPlugin {
+    constructor(eventBus, hallService) {
+        this.eventBus = eventBus;
+        this.hallService = hallService;
+    }
+    onApplicationBootstrap() {
+        this.eventBus.ofType(core_1.OrderPlacedEvent).subscribe(({ ctx, order }) => this.hallService.onOrderPlaced(ctx, order).catch(e => core_1.Logger.error(String(e), 'CampusHall')));
+    }
 };
 exports.CampusDeliveryPlugin = CampusDeliveryPlugin;
 exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
         entities: [campus_zone_entity_1.CampusZone, campus_building_entity_1.CampusBuilding, rider_earning_entity_1.RiderEarning, campus_fulfillment_config_entity_1.CampusFulfillmentConfig],
-        providers: [create_campus_tables_1.CreateCampusTablesMigration, campus_config_service_1.CampusConfigService, rider_service_1.RiderService],
+        providers: [create_campus_tables_1.CreateCampusTablesMigration, campus_config_service_1.CampusConfigService, rider_service_1.RiderService, hall_service_1.HallService],
         adminApiExtensions: {
             schema: () => {
                 const { gql } = require('graphql-tag');
@@ -134,6 +145,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             return config;
         },
         compatibility: '^3.6.4',
-    })
+    }),
+    __metadata("design:paramtypes", [core_1.EventBus, hall_service_1.HallService])
 ], CampusDeliveryPlugin);
 //# sourceMappingURL=campus-delivery.plugin.js.map

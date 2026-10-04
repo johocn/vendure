@@ -1,10 +1,12 @@
-import { PluginCommonModule, VendurePlugin } from '@vendure/core';
+import { OnApplicationBootstrap } from '@nestjs/common';
+import { EventBus, Logger, OrderPlacedEvent, PluginCommonModule, VendurePlugin } from '@vendure/core';
 import { CampusBuilding } from './campus-building.entity';
 import { CampusConfigAdminResolver } from './campus-config-admin.resolver';
 import { CampusConfigService } from './campus-config.service';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CampusZone } from './campus-zone.entity';
 import { campusCustomFields } from './custom-fields';
+import { HallService } from './hall.service';
 import { CreateCampusTablesMigration } from './migrations/create-campus-tables';
 import { campusPermissionDefinitions } from './permissions';
 import { RiderAdminResolver } from './rider-admin.resolver';
@@ -15,7 +17,7 @@ import { RiderShopResolver } from './rider-shop.resolver';
 @VendurePlugin({
     imports: [PluginCommonModule],
     entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig],
-    providers: [CreateCampusTablesMigration, CampusConfigService, RiderService],
+    providers: [CreateCampusTablesMigration, CampusConfigService, RiderService, HallService],
     adminApiExtensions: {
         schema: () => {
             const { gql } = require('graphql-tag');
@@ -126,4 +128,12 @@ import { RiderShopResolver } from './rider-shop.resolver';
     },
     compatibility: '^3.6.4',
 })
-export class CampusDeliveryPlugin {}
+export class CampusDeliveryPlugin implements OnApplicationBootstrap {
+    constructor(private eventBus: EventBus, private hallService: HallService) {}
+
+    onApplicationBootstrap(): void {
+        this.eventBus.ofType(OrderPlacedEvent).subscribe(({ ctx, order }) =>
+            this.hallService.onOrderPlaced(ctx, order).catch(e => Logger.error(String(e), 'CampusHall')),
+        );
+    }
+}
