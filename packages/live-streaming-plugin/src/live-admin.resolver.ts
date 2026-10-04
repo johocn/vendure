@@ -57,4 +57,10 @@ export class LiveAdminResolver {
     async removeLiveRoomProduct(@Ctx() ctx: RequestContext, @Args('roomId') roomId: ID, @Args('productId') productId: ID) {
         return this.liveRoomService.removeProduct(ctx, roomId, productId);
     }
+
+    @Mutation()
+    @Transaction()
+    async setLiveRoomPlatforms(@Ctx() ctx: RequestContext, @Args('roomId') roomId: ID, @Args('platforms') platforms: any) {
+        return this.liveRoomService.setPlatforms(ctx, roomId, platforms);
+    }
 }

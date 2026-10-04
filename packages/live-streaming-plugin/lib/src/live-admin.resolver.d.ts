@@ -12,4 +12,5 @@ export declare class LiveAdminResolver {
     stopLiveRoom(ctx: RequestContext, id: ID, replayUrl?: string): Promise<import("./live-room.entity").LiveRoom>;
     addLiveRoomProduct(ctx: RequestContext, roomId: ID, input: any): Promise<import("./live-room.entity").LiveRoom>;
     removeLiveRoomProduct(ctx: RequestContext, roomId: ID, productId: ID): Promise<import("./live-room.entity").LiveRoom>;
+    setLiveRoomPlatforms(ctx: RequestContext, roomId: ID, platforms: any): Promise<import("./live-room.entity").LiveRoom>;
 }

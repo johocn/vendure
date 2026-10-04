@@ -49,6 +49,7 @@ type LiveRoom implements Node {
     viewCount: Int!
     pushUrl: String
     products: [LiveRoomProduct!]!
+    platforms: [LiveRoomPlatform!]!
     createdAt: DateTime!
     updatedAt: DateTime!
 }
@@ -60,6 +61,12 @@ type LiveRoomProduct implements Node {
     price: Int!
     imageUrl: String
     sortOrder: Int!
+}
+
+type LiveRoomPlatform implements Node {
+    id: ID!
+    platform: String!
+    externalUrl: String!
 }
 
 type LiveRoomList implements PaginatedList {
@@ -140,6 +147,11 @@ exports.LiveStreamingPlugin = LiveStreamingPlugin = LiveStreamingPlugin_1 = __de
                 sortOrder: Int
             }
 
+            input LiveRoomPlatformInput {
+                platform: String!
+                externalUrl: String!
+            }
+
             extend type Query {
                 liveRooms(options: LiveRoomListOptions): LiveRoomList!
                 liveRoom(id: ID!): LiveRoom
@@ -153,6 +165,7 @@ exports.LiveStreamingPlugin = LiveStreamingPlugin = LiveStreamingPlugin_1 = __de
                 stopLiveRoom(id: ID!, replayUrl: String): LiveRoom!
                 addLiveRoomProduct(roomId: ID!, input: AddLiveRoomProductInput!): LiveRoom!
                 removeLiveRoomProduct(roomId: ID!, productId: ID!): LiveRoom!
+                setLiveRoomPlatforms(roomId: ID!, platforms: [LiveRoomPlatformInput!]!): LiveRoom!
             }
         `,
             resolvers: [live_admin_resolver_1.LiveAdminResolver],

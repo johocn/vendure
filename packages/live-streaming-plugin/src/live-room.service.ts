@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Channel, ID, ListQueryBuilder, ListQueryOptions, PaginatedList, RequestContext, TransactionalConnection, UserInputError } from '@vendure/core';
 import { LiveRoom } from './live-room.entity';
+import { LiveRoomPlatform } from './live-room-platform.entity';
 import { LiveRoomProduct } from './live-room-product.entity';
 import { LiveStreamingPluginOptions } from './types';
 
@@ -10,6 +11,9 @@ function randomKey(len: number): string {
     for (let i = 0; i < len; i++) out += chars.charAt(Math.floor(Math.random() * chars.length));
     return out;
 }
+
+const PLATFORM_RE = /^[a-z0-9_]{2,32}$/;
+const WXCHANNELS_RE = /^wxchannels:\/\/finder=[A-Za-z0-9_-]+(&feed=[A-Za-z0-9_-]+)?$/;
 
 @Injectable()
 export class LiveRoomService {
@@ -23,14 +27,14 @@ export class LiveRoomService {
 
     findAll(ctx: RequestContext, options?: ListQueryOptions<LiveRoom>): Promise<PaginatedList<LiveRoom>> {
         return this.listQueryBuilder
-            .build(LiveRoom, options, { ctx, channelId: ctx.channelId, relations: ['products'] })
+            .build(LiveRoom, options, { ctx, channelId: ctx.channelId, relations: ['products', 'platforms'] })
             .getManyAndCount()
             .then(([items, totalItems]) => ({ items, totalItems }));
     }
 
     async findOne(ctx: RequestContext, id: ID): Promise<LiveRoom | undefined> {
         return this.connection
-            .findOneInChannel(ctx, LiveRoom, id, ctx.channelId, { relations: ['products'] })
+            .findOneInChannel(ctx, LiveRoom, id, ctx.channelId, { relations: ['products', 'platforms'] })
             .then(r => r ?? undefined);
     }
 
@@ -138,5 +142,35 @@ export class LiveRoomService {
         current.products = (current.products ?? []).filter(p => String(p.id) !== String(productId));
         await this.connection.getRepository(ctx, LiveRoomProduct).delete(productId as any).catch(() => undefined);
         return repo.save(current);
+    }
+
+    /** 平台分发整清单回写（传空数组=清空本渠道配置） */
+    async setPlatforms(ctx: RequestContext, roomId: ID, inputs: any[]): Promise<LiveRoom> {
+        const room = await this.findOne(ctx, roomId);
+        if (!room) throw new UserInputError('Live room not found');
+        const seen = new Set<string>();
+        for (const p of inputs) {
+            if (!p?.platform || !PLATFORM_RE.test(p.platform)) {
+                throw new UserInputError(`Invalid platform: ${p?.platform}`);
+            }
+            if (seen.has(p.platform)) throw new UserInputError(`Duplicate platform: ${p.platform}`);
+            seen.add(p.platform);
+            if (!p.externalUrl) throw new UserInputError(`externalUrl required for ${p.platform}`);
+            if (p.platform === 'wechat_channels' && !WXCHANNELS_RE.test(p.externalUrl)) {
+                throw new UserInputError('wechat_channels externalUrl must be wxchannels://finder=<id>(&feed=<id>)');
+            }
+        }
+        const repo = this.connection.getRepository(ctx, LiveRoomPlatform);
+        const existing = await repo.find({ where: { liveRoom: { id: roomId as any } }, relations: ['channels'] });
+        const mine = existing.filter(p => p.channels.some(c => c.id === ctx.channelId));
+        if (mine.length) await repo.remove(mine);
+        const channel = await this.connection.getEntityOrThrow(ctx, Channel, ctx.channelId);
+        await repo.save(inputs.map(p => repo.create({
+            liveRoom: room,
+            platform: p.platform,
+            externalUrl: p.externalUrl,
+            channels: [channel],
+        })));
+        return (await this.findOne(ctx, roomId))!;
     }
 }

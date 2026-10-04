@@ -47,6 +47,9 @@ let LiveAdminResolver = class LiveAdminResolver {
     async removeLiveRoomProduct(ctx, roomId, productId) {
         return this.liveRoomService.removeProduct(ctx, roomId, productId);
     }
+    async setLiveRoomPlatforms(ctx, roomId, platforms) {
+        return this.liveRoomService.setPlatforms(ctx, roomId, platforms);
+    }
 };
 exports.LiveAdminResolver = LiveAdminResolver;
 __decorate([
@@ -131,6 +134,16 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object, Object]),
     __metadata("design:returntype", Promise)
 ], LiveAdminResolver.prototype, "removeLiveRoomProduct", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Transaction)(),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('roomId')),
+    __param(2, (0, graphql_1.Args)('platforms')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object]),
+    __metadata("design:returntype", Promise)
+], LiveAdminResolver.prototype, "setLiveRoomPlatforms", null);
 exports.LiveAdminResolver = LiveAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [live_room_service_1.LiveRoomService])

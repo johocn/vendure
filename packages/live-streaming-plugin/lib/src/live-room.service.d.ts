@@ -17,4 +17,5 @@ export declare class LiveRoomService {
     pushUrlOf(room: LiveRoom): string | null;
     addProduct(ctx: RequestContext, roomId: ID, input: any): Promise<LiveRoom>;
     removeProduct(ctx: RequestContext, roomId: ID, productId: ID): Promise<LiveRoom>;
+    setPlatforms(ctx: RequestContext, roomId: ID, inputs: any[]): Promise<LiveRoom>;
 }
