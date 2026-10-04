@@ -28,9 +28,10 @@ export class LiveRoomShopService {
 
     async detail(ctx: RequestContext, id: ID): Promise<LiveRoom> {
         const room = await this.connection
-            .findOneInChannel(ctx, LiveRoom, id, ctx.channelId, { relations: ['products'] })
+            .findOneInChannel(ctx, LiveRoom, id, ctx.channelId, { relations: ['products', 'platforms', 'platforms.channels'] })
             .then(r => r ?? undefined);
         if (!room) throw new UserInputError('Live room not found');
+        room.platforms = (room.platforms ?? []).filter(p => (p.channels ?? []).some(c => c.id === ctx.channelId));
         room.viewCount += 1;
         await this.connection.getRepository(ctx, LiveRoom).save(room);
         return room;
