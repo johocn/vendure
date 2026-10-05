@@ -209,7 +209,8 @@ export const devConfig: VendureConfig = {
     },
     dbConnectionOptions: {
         synchronize: false,
-        logging: false,
+        // SQL_LOG=1 时打印全部 SQL（排查 shipping_line orderId 丢失等数据问题，平时关闭）
+        logging: process.env.SQL_LOG === '1' ? ['query', 'error'] : false,
         migrations: [path.join(devServerDir, 'migrations/*.ts')],
         ...getDbConfig(),
     },

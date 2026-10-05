@@ -176,7 +176,7 @@ exports.devConfig = {
             secret: 'abc',
         },
     },
-    dbConnectionOptions: Object.assign({ synchronize: false, logging: false, migrations: [path_1.default.join(devServerDir, 'migrations/*.ts')] }, getDbConfig()),
+    dbConnectionOptions: Object.assign({ synchronize: false, logging: process.env.SQL_LOG === '1' ? ['query', 'error'] : false, migrations: [path_1.default.join(devServerDir, 'migrations/*.ts')] }, getDbConfig()),
     paymentOptions: {
         paymentMethodHandlers: [core_1.dummyPaymentHandler],
     },
