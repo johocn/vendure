@@ -209,8 +209,10 @@ export const devConfig: VendureConfig = {
     },
     dbConnectionOptions: {
         synchronize: false,
-        // SQL_LOG=1 时打印全部 SQL（排查 shipping_line orderId 丢失等数据问题，平时关闭）
+        // SQL_LOG=1 时直落 simple-console（ConnectionModule 会把 logging 包进 TypeOrmLogger，
+        // 其 query 输出走 Logger.debug 被生产 logLevel 滤掉，故需显式 logger 绕过）
         logging: process.env.SQL_LOG === '1' ? ['query', 'error'] : false,
+        logger: process.env.SQL_LOG === '1' ? ('simple-console' as any) : undefined,
         migrations: [path.join(devServerDir, 'migrations/*.ts')],
         ...getDbConfig(),
     },
