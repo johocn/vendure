@@ -1,1 +1,1 @@
-export * from './src/campus-delivery.plugin';
+export * from './src/index';

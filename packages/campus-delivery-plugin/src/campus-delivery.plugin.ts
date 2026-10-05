@@ -64,16 +64,22 @@ import { RiderTaskShopResolver } from './rider-task-shop.resolver';
                     paused: Boolean
                 }
 
+                type CampusSetRiderStatusResult {
+                    status: String!
+                }
+
                 extend type Query {
                     campusZones: [CampusZone!]!
                     campusBuildings(zoneId: ID): [CampusBuilding!]!
                     campusConfig: CampusFulfillmentConfig!
+                    riderApplications(status: String!): [Customer!]!
                 }
 
                 extend type Mutation {
                     campusCreateZone(name: String!, fee: Int!): CampusZone!
                     campusCreateBuilding(name: String!, zoneId: ID!, detail: String): CampusBuilding!
                     campusUpdateConfig(input: CampusFulfillmentConfigInput!): CampusFulfillmentConfig!
+                    campusSetRiderStatus(customerId: ID!, status: String!): CampusSetRiderStatusResult!
                 }
             `;
         },
