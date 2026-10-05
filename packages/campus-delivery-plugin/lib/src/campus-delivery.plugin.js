@@ -42,6 +42,8 @@ const rider_task_service_1 = require("./rider-task.service");
 const rider_task_shop_resolver_1 = require("./rider-task-shop.resolver");
 const shipping_calculator_1 = require("./shipping-calculator");
 const slot_lock_service_1 = require("./slot-lock.service");
+const waimai_shop_resolver_1 = require("./waimai-shop.resolver");
+const waimai_store_service_1 = require("./waimai-store.service");
 let CampusDeliveryPlugin = class CampusDeliveryPlugin {
     constructor(eventBus, hallService, moduleRef) {
         this.eventBus = eventBus;
@@ -77,6 +79,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             dispatch_admin_service_1.DispatchAdminService,
             errand_service_1.ErrandService,
             r2_mark_service_1.R2MarkService,
+            waimai_store_service_1.WaimaiStoreService,
         ],
         adminApiExtensions: {
             schema: () => {
@@ -291,6 +294,23 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     leg1Status: String!
                 }
 
+                type WaimaiStore {
+                    channelId: ID!
+                    channelToken: String!
+                    name: String!
+                    logo: String
+                    tags: [String!]!
+                    monthlySales: Int!
+                    promoText: String
+                    paused: Boolean!
+                    routesEnabled: [String!]!
+                }
+
+                type CampusOrderRider {
+                    realName: String!
+                    credit: Int!
+                }
+
                 extend type Query {
                     myRiderProfile: RiderProfile!
                     campusZones: [CampusZone!]!
@@ -300,15 +320,18 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusShopSlots: [DeliverySlot!]!
                     myRiderEarnings(skip: Int, take: Int): [RiderEarning!]!
                     campusCapacityCheck: CampusCapacityCheck!
+                    waimaiStoreList: [WaimaiStore!]!
+                    campusOrderRider(orderId: ID!): CampusOrderRider
                 }
 
                 extend type Mutation {
                     applyRider(realName: String!, studentNo: String!, campus: String!, idImg: String): RiderApplyResult!
                     campusGrabOrder(orderId: ID!): Order!
                     campusStartTask(orderId: ID!): Order!
+                    campusTransferTask(orderId: ID!, photos: [String!]!, note: String): Order!
                     campusDeliverTask(orderId: ID!, photos: [String!]!, note: String): Order!
                     campusReportException(orderId: ID!, type: String!, photos: [String!]!, note: String): Order!
-                    campusSetDeliveryTarget(zoneId: ID!, buildingId: ID!): Order!
+                    campusSetDeliveryTarget(zoneId: ID!, buildingId: ID!, route: String, slotId: Int): Order!
                     campusRejectAssignment(orderId: ID!): CampusRejectResult!
                     campusRiderOnline(online: Boolean!): CampusRiderOnlineResult!
                     campusRiderHeartbeat: CampusRiderOnlineResult!
@@ -317,17 +340,17 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                 }
             `;
             },
-            resolvers: [rider_shop_resolver_1.RiderShopResolver, hall_shop_resolver_1.HallShopResolver, rider_task_shop_resolver_1.RiderTaskShopResolver, errand_shop_resolver_1.ErrandShopResolver],
+            resolvers: [rider_shop_resolver_1.RiderShopResolver, hall_shop_resolver_1.HallShopResolver, rider_task_shop_resolver_1.RiderTaskShopResolver, errand_shop_resolver_1.ErrandShopResolver, waimai_shop_resolver_1.WaimaiShopResolver],
         },
         configuration: config => {
-            var _a, _b, _c, _d, _e, _f;
+            var _a, _b, _c, _d, _e, _f, _g, _h;
             config.authOptions.customPermissions = [
                 ...((_a = config.authOptions.customPermissions) !== null && _a !== void 0 ? _a : []),
                 ...permissions_1.campusPermissionDefinitions,
             ];
-            config.customFields = Object.assign(Object.assign({}, config.customFields), { Order: [...((_b = config.customFields.Order) !== null && _b !== void 0 ? _b : []), ...((_c = custom_fields_1.campusCustomFields.Order) !== null && _c !== void 0 ? _c : [])], Customer: [...((_d = config.customFields.Customer) !== null && _d !== void 0 ? _d : []), ...((_e = custom_fields_1.campusCustomFields.Customer) !== null && _e !== void 0 ? _e : [])] });
+            config.customFields = Object.assign(Object.assign({}, config.customFields), { Order: [...((_b = config.customFields.Order) !== null && _b !== void 0 ? _b : []), ...((_c = custom_fields_1.campusCustomFields.Order) !== null && _c !== void 0 ? _c : [])], Customer: [...((_d = config.customFields.Customer) !== null && _d !== void 0 ? _d : []), ...((_e = custom_fields_1.campusCustomFields.Customer) !== null && _e !== void 0 ? _e : [])], Channel: [...((_f = config.customFields.Channel) !== null && _f !== void 0 ? _f : []), ...((_g = custom_fields_1.campusCustomFields.Channel) !== null && _g !== void 0 ? _g : [])] });
             config.shippingOptions.shippingCalculators = [
-                ...((_f = config.shippingOptions.shippingCalculators) !== null && _f !== void 0 ? _f : []),
+                ...((_h = config.shippingOptions.shippingCalculators) !== null && _h !== void 0 ? _h : []),
                 shipping_calculator_1.campusErrandCalculator,
             ];
             // 跑腿单 ShippingLine 分配：包装既有策略（cjk Box 按配送档案分箱，跑腿 0 元载体无档案

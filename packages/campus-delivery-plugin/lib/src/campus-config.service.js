@@ -97,8 +97,9 @@ let CampusConfigService = class CampusConfigService {
             .map(s => (Object.assign(Object.assign({}, s), { remaining: Math.max(0, s.capacity - s.lockedCount) })))
             .filter(s => s.remaining > 0);
     }
-    /** C 端选楼/选区写入 activeOrder（plan2 campusSetDeliveryTarget 依赖） */
-    async setDeliveryTarget(ctx, zoneId, buildingId) {
+    /** C 端选楼/选区/选路线/选时段写入 activeOrder。
+     * route/slot 可选（向后兼容 plan2 旧调用形态）；route 仅 R1/R3，R2 走 r2-mark 专属流程。 */
+    async setDeliveryTarget(ctx, zoneId, buildingId, route, slotId) {
         var _a;
         const zone = await this.dataSource.getRepository(campus_zone_entity_1.CampusZone).findOne({ where: { id: zoneId } });
         if (!zone)
@@ -108,14 +109,29 @@ let CampusConfigService = class CampusConfigService {
             .findOne({ where: { id: buildingId } });
         if (!building)
             throw new core_1.UserInputError('宿舍楼不存在');
+        if (route && route !== 'R1' && route !== 'R3')
+            throw new core_1.UserInputError('配送路线不合法');
+        const fields = {
+            buildingId: String(buildingId),
+            campusZone: zone.name,
+        };
+        if (route)
+            fields.fulfillmentRoute = route;
+        if (slotId != null) {
+            const slot = await this.dataSource.getRepository(delivery_slot_entity_1.DeliverySlot).findOne({ where: { id: slotId } });
+            if (!slot || !slot.active || Number(slot.channelId) !== Number(ctx.channelId)) {
+                throw new core_1.UserInputError('时段不可用');
+            }
+            if (slot.lockedCount >= slot.capacity)
+                throw new core_1.UserInputError('该时段已满');
+            fields.deliverySlotId = String(slotId);
+            fields.deliverySlotText = `${slot.slotDate} ${slot.startTime}-${slot.endTime}`;
+        }
         const orderId = (_a = ctx.session) === null || _a === void 0 ? void 0 : _a.activeOrderId;
         if (!orderId)
             throw new core_1.UserInputError('购物车为空');
         // 与 core shop setOrderCustomFields mutation 内部实现等价（patchEntity + 保存 + OrderEvent）
-        return this.orderService.updateCustomFields(ctx, orderId, {
-            buildingId: String(buildingId),
-            campusZone: zone.name,
-        });
+        return this.orderService.updateCustomFields(ctx, orderId, fields);
     }
 };
 exports.CampusConfigService = CampusConfigService;

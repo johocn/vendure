@@ -1,0 +1,66 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const vitest_1 = require("vitest");
+const rider_task_service_1 = require("./rider-task.service");
+function makeEnv(opts = {}) {
+    var _a, _b;
+    const repoByEntity = {
+        Order: { findOne: vitest_1.vi.fn().mockResolvedValue((_a = opts.order) !== null && _a !== void 0 ? _a : null), update: vitest_1.vi.fn().mockResolvedValue({}) },
+        Customer: { findOne: vitest_1.vi.fn().mockResolvedValue((_b = opts.rider) !== null && _b !== void 0 ? _b : null) },
+    };
+    const conn = { getRepository: vitest_1.vi.fn((_ctx, ent) => { var _a; return repoByEntity[(_a = ent.name) !== null && _a !== void 0 ? _a : String(ent)]; }) };
+    const svc = new rider_task_service_1.RiderTaskService(conn, { assertApprovedRider: vitest_1.vi.fn().mockResolvedValue({ id: 7 }) }, { adjust: vitest_1.vi.fn() }, { backToHall: vitest_1.vi.fn().mockResolvedValue(undefined) });
+    return { svc, repoByEntity };
+}
+(0, vitest_1.describe)('RiderTaskService.orderRider', () => {
+    (0, vitest_1.it)('已指派订单返回骑手姓名与信用分', async () => {
+        const env = makeEnv({
+            order: { id: 5, customFields: { deliveryStaffId: '7' } },
+            rider: { id: 7, customFields: { riderRealName: '王同学', riderCredit: 98 } },
+        });
+        (0, vitest_1.expect)(await env.svc.orderRider({}, 5)).toEqual({ realName: '王同学', credit: 98 });
+    });
+    (0, vitest_1.it)('未指派/骑手不存在返回 null', async () => {
+        const env = makeEnv({ order: { id: 5, customFields: {} } });
+        (0, vitest_1.expect)(await env.svc.orderRider({}, 5)).toBeNull();
+        const env2 = makeEnv({ order: { id: 5, customFields: { deliveryStaffId: '99' } } });
+        (0, vitest_1.expect)(await env2.svc.orderRider({}, 5)).toBeNull();
+    });
+});
+(0, vitest_1.describe)('RiderTaskService.transfer', () => {
+    function makeTransferEnv(opts = {}) {
+        var _a;
+        const orderRepo = {
+            findOne: vitest_1.vi.fn().mockResolvedValue((_a = opts.order) !== null && _a !== void 0 ? _a : null),
+            update: vitest_1.vi.fn().mockResolvedValue({}),
+        };
+        const conn = { getRepository: vitest_1.vi.fn(() => orderRepo) };
+        const hall = { backToHall: vitest_1.vi.fn().mockResolvedValue(undefined) };
+        const svc = new rider_task_service_1.RiderTaskService(conn, { assertApprovedRider: vitest_1.vi.fn().mockResolvedValue({ id: 7 }) }, { adjust: vitest_1.vi.fn() }, hall);
+        return { svc, orderRepo, hall };
+    }
+    (0, vitest_1.it)('assigned 未取货转单：直接回大厅，不写交接存证', async () => {
+        const env = makeTransferEnv({ order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'assigned' } } });
+        await env.svc.transfer({}, 5, []);
+        (0, vitest_1.expect)(env.hall.backToHall).toHaveBeenCalledWith(vitest_1.expect.anything(), 5);
+        (0, vitest_1.expect)(env.orderRepo.update).not.toHaveBeenCalled();
+    });
+    (0, vitest_1.it)('in_progress 已取货转单：photos 必填并写存证', async () => {
+        const env = makeTransferEnv({ order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'in_progress' } } });
+        await (0, vitest_1.expect)(env.svc.transfer({}, 5, [])).rejects.toThrow('已取货转单需拍照交接');
+        await env.svc.transfer({}, 5, ['/static/p1.jpg'], '货物完好');
+        (0, vitest_1.expect)(env.hall.backToHall).toHaveBeenCalled();
+        (0, vitest_1.expect)(env.orderRepo.update).toHaveBeenCalledWith(5, vitest_1.expect.objectContaining({
+            customFields: vitest_1.expect.objectContaining({
+                transferPhotos: ['/static/p1.jpg'],
+                transferNote: '货物完好',
+                transferAt: vitest_1.expect.any(Date),
+            }),
+        }));
+    });
+    (0, vitest_1.it)('delivered 状态拒绝转单', async () => {
+        const env = makeTransferEnv({ order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'delivered' } } });
+        await (0, vitest_1.expect)(env.svc.transfer({}, 5, [])).rejects.toThrow('当前状态不允许转单');
+    });
+});
+//# sourceMappingURL=rider-task-extra.spec.js.map

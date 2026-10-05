@@ -56,8 +56,8 @@ let HallShopResolver = class HallShopResolver {
     async campusShopSlots(ctx) {
         return this.config.slotsForShop(ctx);
     }
-    async campusSetDeliveryTarget(ctx, zoneId, buildingId) {
-        return this.config.setDeliveryTarget(ctx, Number(zoneId), Number(buildingId));
+    async campusSetDeliveryTarget(ctx, zoneId, buildingId, route, slotId) {
+        return this.config.setDeliveryTarget(ctx, Number(zoneId), Number(buildingId), route, slotId);
     }
     async myRiderEarnings(ctx, skip, take) {
         const rider = await this.riderService.assertApprovedRider(ctx);
@@ -107,8 +107,10 @@ __decorate([
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('zoneId')),
     __param(2, (0, graphql_1.Args)('buildingId')),
+    __param(3, (0, graphql_1.Args)({ name: 'route', type: () => String, nullable: true })),
+    __param(4, (0, graphql_1.Args)({ name: 'slotId', type: () => graphql_1.Int, nullable: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object]),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, String, Number]),
     __metadata("design:returntype", Promise)
 ], HallShopResolver.prototype, "campusSetDeliveryTarget", null);
 __decorate([

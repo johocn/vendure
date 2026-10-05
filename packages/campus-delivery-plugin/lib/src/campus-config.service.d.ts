@@ -43,6 +43,7 @@ export declare class CampusConfigService {
         createdAt: Date;
         updatedAt: Date;
     }[]>;
-    /** C 端选楼/选区写入 activeOrder（plan2 campusSetDeliveryTarget 依赖） */
-    setDeliveryTarget(ctx: RequestContext, zoneId: number, buildingId: number): Promise<import("@vendure/core").Order>;
+    /** C 端选楼/选区/选路线/选时段写入 activeOrder。
+     * route/slot 可选（向后兼容 plan2 旧调用形态）；route 仅 R1/R3，R2 走 r2-mark 专属流程。 */
+    setDeliveryTarget(ctx: RequestContext, zoneId: number, buildingId: number, route?: 'R1' | 'R3', slotId?: number): Promise<import("@vendure/core").Order>;
 }

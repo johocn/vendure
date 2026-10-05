@@ -26,8 +26,16 @@ let RiderTaskShopResolver = class RiderTaskShopResolver {
     async campusMyTasks(ctx, status) {
         return this.riderTaskService.myTasks(ctx, status);
     }
+    /** 公开只读：C 端订单跟踪骑手卡（姓名+信用分，不含联系方式） */
+    async campusOrderRider(ctx, orderId) {
+        return this.riderTaskService.orderRider(ctx, orderId);
+    }
     async campusStartTask(ctx, orderId) {
         return this.riderTaskService.start(ctx, orderId);
+    }
+    /** 转单回大厅；已取货必须拍照交接。错误语义：未登录/非本人 ForbiddenError，状态/缺照片 UserInputError。 */
+    async campusTransferTask(ctx, orderId, photos, note) {
+        return this.riderTaskService.transfer(ctx, orderId, photos, note);
     }
     async campusDeliverTask(ctx, orderId, photos, note) {
         return this.riderTaskService.deliver(ctx, orderId, photos, note);
@@ -50,6 +58,14 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], RiderTaskShopResolver.prototype, "campusMyTasks", null);
 __decorate([
+    (0, graphql_1.Query)(),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], RiderTaskShopResolver.prototype, "campusOrderRider", null);
+__decorate([
     (0, graphql_1.Mutation)(),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('orderId')),
@@ -57,6 +73,16 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], RiderTaskShopResolver.prototype, "campusStartTask", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __param(2, (0, graphql_1.Args)('photos')),
+    __param(3, (0, graphql_1.Args)('note', { nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Array, String]),
+    __metadata("design:returntype", Promise)
+], RiderTaskShopResolver.prototype, "campusTransferTask", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     __param(0, (0, core_1.Ctx)()),

@@ -14,14 +14,29 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const coupon_plugin_1 = require("@vendure/coupon-plugin");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
+const hall_service_1 = require("./hall.service");
 const rider_credit_service_1 = require("./rider-credit.service");
 const rider_earning_entity_1 = require("./rider-earning.entity");
 const rider_service_1 = require("./rider.service");
 let RiderTaskService = class RiderTaskService {
-    constructor(connection, riderService, credit) {
+    constructor(connection, riderService, credit, hall) {
         this.connection = connection;
         this.riderService = riderService;
         this.credit = credit;
+        this.hall = hall;
+    }
+    /** 订单骑手卡信息：C 端订单跟踪轮询用。未指派返回 null。 */
+    async orderRider(ctx, orderId) {
+        var _a, _b, _c, _d, _e;
+        const order = await this.connection.getRepository(ctx, core_1.Order).findOne({ where: { id: orderId } });
+        const riderId = Number((_b = (_a = order === null || order === void 0 ? void 0 : order.customFields) === null || _a === void 0 ? void 0 : _a.deliveryStaffId) !== null && _b !== void 0 ? _b : NaN);
+        if (!riderId)
+            return null;
+        const rider = await this.connection.getRepository(ctx, core_1.Customer).findOne({ where: { id: riderId } });
+        if (!rider)
+            return null;
+        const cf = ((_c = rider.customFields) !== null && _c !== void 0 ? _c : {});
+        return { realName: (_d = cf.riderRealName) !== null && _d !== void 0 ? _d : '骑手', credit: (_e = cf.riderCredit) !== null && _e !== void 0 ? _e : 100 };
     }
     /** 我的任务：本骑手名下已进入配送流程的订单，按下单时间倒序。
      * customFields 为嵌入式物理列，QueryBuilder 用 embedded 路径 order.customFields.deliveryStaffId
@@ -40,6 +55,30 @@ let RiderTaskService = class RiderTaskService {
             qb.andWhere('order.customFields.deliveryStatus = :s', { s: status });
         }
         return qb.orderBy('order.createdAt', 'DESC').getMany();
+    }
+    /** 转单回大厅：assigned 未取货直接回；in_progress 已取货必须拍照交接存证。
+     * 回大厅复用 backToHall（清骑手指派、hallStatus 复位 open），存证写 transferPhotos。
+     * 一期转单不扣信用分（规则后续租户可配）。 */
+    async transfer(ctx, orderId, photos, note) {
+        const order = await this.assertOwner(ctx, orderId);
+        const status = order.customFields.deliveryStatus;
+        if (status === 'in_progress' && !(photos === null || photos === void 0 ? void 0 : photos.length)) {
+            throw new core_1.UserInputError('已取货转单需拍照交接');
+        }
+        if (status !== 'assigned' && status !== 'in_progress') {
+            throw new core_1.UserInputError('当前状态不允许转单');
+        }
+        await this.hall.backToHall(ctx, order.id);
+        if (photos === null || photos === void 0 ? void 0 : photos.length) {
+            await this.connection.getRepository(ctx, core_1.Order).update(order.id, {
+                customFields: {
+                    transferPhotos: photos,
+                    transferNote: note !== null && note !== void 0 ? note : null,
+                    transferAt: new Date(),
+                },
+            });
+        }
+        return order;
     }
     /** 开始配送：assigned → in_progress */
     async start(ctx, orderId) {
@@ -132,6 +171,7 @@ exports.RiderTaskService = RiderTaskService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
         rider_service_1.RiderService,
-        rider_credit_service_1.RiderCreditService])
+        rider_credit_service_1.RiderCreditService,
+        hall_service_1.HallService])
 ], RiderTaskService);
 //# sourceMappingURL=rider-task.service.js.map

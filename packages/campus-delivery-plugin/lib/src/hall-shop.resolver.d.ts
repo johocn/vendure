@@ -36,6 +36,6 @@ export declare class HallShopResolver {
         createdAt: Date;
         updatedAt: Date;
     }[]>;
-    campusSetDeliveryTarget(ctx: RequestContext, zoneId: ID, buildingId: ID): Promise<Order>;
+    campusSetDeliveryTarget(ctx: RequestContext, zoneId: ID, buildingId: ID, route?: 'R1' | 'R3', slotId?: number): Promise<Order>;
     myRiderEarnings(ctx: RequestContext, skip?: number, take?: number): Promise<RiderEarning[]>;
 }
