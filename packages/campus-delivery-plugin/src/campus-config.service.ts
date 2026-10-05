@@ -102,20 +102,39 @@ export class CampusConfigService {
             .filter(s => s.remaining > 0);
     }
 
-    /** C 端选楼/选区写入 activeOrder（plan2 campusSetDeliveryTarget 依赖） */
-    async setDeliveryTarget(ctx: RequestContext, zoneId: number, buildingId: number) {
+    /** C 端选楼/选区/选路线/选时段写入 activeOrder。
+     * route/slot 可选（向后兼容 plan2 旧调用形态）；route 仅 R1/R3，R2 走 r2-mark 专属流程。 */
+    async setDeliveryTarget(
+        ctx: RequestContext,
+        zoneId: number,
+        buildingId: number,
+        route?: 'R1' | 'R3',
+        slotId?: number,
+    ) {
         const zone = await this.dataSource.getRepository(CampusZone).findOne({ where: { id: zoneId as any } });
         if (!zone) throw new UserInputError('分区不存在');
         const building = await this.dataSource
             .getRepository(CampusBuilding)
             .findOne({ where: { id: buildingId as any } });
         if (!building) throw new UserInputError('宿舍楼不存在');
+        if (route && route !== 'R1' && route !== 'R3') throw new UserInputError('配送路线不合法');
+        const fields: Record<string, string> = {
+            buildingId: String(buildingId),
+            campusZone: zone.name,
+        };
+        if (route) fields.fulfillmentRoute = route;
+        if (slotId != null) {
+            const slot = await this.dataSource.getRepository(DeliverySlot).findOne({ where: { id: slotId as any } });
+            if (!slot || !slot.active || Number(slot.channelId) !== Number(ctx.channelId)) {
+                throw new UserInputError('时段不可用');
+            }
+            if (slot.lockedCount >= slot.capacity) throw new UserInputError('该时段已满');
+            fields.deliverySlotId = String(slotId);
+            fields.deliverySlotText = `${slot.slotDate} ${slot.startTime}-${slot.endTime}`;
+        }
         const orderId = ctx.session?.activeOrderId;
         if (!orderId) throw new UserInputError('购物车为空');
         // 与 core shop setOrderCustomFields mutation 内部实现等价（patchEntity + 保存 + OrderEvent）
-        return this.orderService.updateCustomFields(ctx, orderId, {
-            buildingId: String(buildingId),
-            campusZone: zone.name,
-        });
+        return this.orderService.updateCustomFields(ctx, orderId, fields);
     }
 }

@@ -10,7 +10,7 @@ describe('campusCustomFields', () => {
         expect(names).toContain('waimaiPromoText');
     });
     it('Order 含转单存证字段', () => {
-        const names = campusCustomFields.Order.map(f => f.name);
+        const names = (campusCustomFields.Order ?? []).map(f => f.name);
         expect(names).toContain('transferPhotos');
         expect(names).toContain('transferNote');
         expect(names).toContain('transferAt');

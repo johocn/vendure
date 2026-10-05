@@ -1,4 +1,4 @@
-import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Args, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { Ctx, ID, Order, RequestContext, TransactionalConnection, UserInputError } from '@vendure/core';
 import { CampusConfigService } from './campus-config.service';
 import { HallGrabService } from './hall-grab.service';
@@ -58,8 +58,10 @@ export class HallShopResolver {
         @Ctx() ctx: RequestContext,
         @Args('zoneId') zoneId: ID,
         @Args('buildingId') buildingId: ID,
+        @Args({ name: 'route', type: () => String, nullable: true }) route?: 'R1' | 'R3',
+        @Args({ name: 'slotId', type: () => Int, nullable: true }) slotId?: number,
     ) {
-        return this.config.setDeliveryTarget(ctx, Number(zoneId), Number(buildingId));
+        return this.config.setDeliveryTarget(ctx, Number(zoneId), Number(buildingId), route, slotId);
     }
 
     @Query()

@@ -41,3 +41,62 @@ describe('CampusConfigService slots', () => {
         expect(repo.save).toHaveBeenCalledWith(expect.objectContaining({ channelId: 7, capacity: 30 }));
     });
 });
+
+describe('setDeliveryTarget route/slot 扩展', () => {
+    const slot = {
+        id: 5, channelId: 1, active: true, capacity: 20, lockedCount: 3,
+        slotDate: '2026-10-06', startTime: '11:00', endTime: '11:30',
+    };
+    const ctx = { channelId: 1, session: { activeOrderId: 100 } } as any;
+
+    function makeEnv(opts: { slot?: any } = {}) {
+        const zoneRepo = { findOne: vi.fn().mockResolvedValue({ id: 1, name: '东区' }) };
+        const buildingRepo = { findOne: vi.fn().mockResolvedValue({ id: 7, name: '1号楼' }) };
+        const slotRepo = { findOne: vi.fn().mockResolvedValue(opts.slot === undefined ? slot : opts.slot) };
+        const repos: Record<string, any> = {
+            CampusZone: zoneRepo,
+            CampusBuilding: buildingRepo,
+            DeliverySlot: slotRepo,
+        };
+        const dataSource = { getRepository: vi.fn((ent: any) => repos[ent.name ?? String(ent)]) } as any;
+        const orderService = { updateCustomFields: vi.fn().mockResolvedValue({ id: 100 }) } as any;
+        const svc = new CampusConfigService(dataSource, orderService);
+        return { svc, orderService, slotRepo };
+    }
+
+    it('传 route+slotId 时写全 fulfillmentRoute/deliverySlotId/deliverySlotText', async () => {
+        const env = makeEnv();
+        await env.svc.setDeliveryTarget(ctx, 1, 7, 'R3', 5);
+        expect(env.orderService.updateCustomFields).toHaveBeenCalledWith(ctx, 100, {
+            buildingId: '7',
+            campusZone: '东区',
+            fulfillmentRoute: 'R3',
+            deliverySlotId: '5',
+            deliverySlotText: '2026-10-06 11:00-11:30',
+        });
+    });
+    it('slot 余量为 0 抛 UserInputError("该时段已满")', async () => {
+        const env = makeEnv({ slot: { ...slot, lockedCount: 20 } });
+        await expect(env.svc.setDeliveryTarget(ctx, 1, 7, 'R1', 5)).rejects.toThrow('该时段已满');
+    });
+    it('slot 跨渠道/不存在/未激活 抛 UserInputError("时段不可用")', async () => {
+        const a = makeEnv({ slot: { ...slot, channelId: 2 } });
+        await expect(a.svc.setDeliveryTarget(ctx, 1, 7, 'R1', 5)).rejects.toThrow('时段不可用');
+        const b = makeEnv({ slot: null });
+        await expect(b.svc.setDeliveryTarget(ctx, 1, 7, 'R1', 5)).rejects.toThrow('时段不可用');
+        const c = makeEnv({ slot: { ...slot, active: false } });
+        await expect(c.svc.setDeliveryTarget(ctx, 1, 7, 'R1', 5)).rejects.toThrow('时段不可用');
+    });
+    it('非法 route 抛 UserInputError（仅允许 R1/R3）', async () => {
+        const env = makeEnv();
+        await expect(env.svc.setDeliveryTarget(ctx, 1, 7, 'R2' as any)).rejects.toThrow('配送路线不合法');
+    });
+    it('不传 route/slot 时行为与旧版完全一致（只写 buildingId/campusZone）', async () => {
+        const env = makeEnv();
+        await env.svc.setDeliveryTarget(ctx, 1, 7);
+        expect(env.orderService.updateCustomFields).toHaveBeenCalledWith(ctx, 100, {
+            buildingId: '7',
+            campusZone: '东区',
+        });
+    });
+});
