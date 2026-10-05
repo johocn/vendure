@@ -50,7 +50,10 @@ export class ErrandService {
         const productService = this.injector.get(ProductService);
         const variantService = this.injector.get(ProductVariantService);
         const product: Product = await productService.create(ctx, {
-            translations: [{ languageCode: ctx.languageCode, name: '校园跑腿服务', slug: ERRAND_BASE_SLUG }],
+            translations: [{
+                languageCode: ctx.languageCode, name: '校园跑腿服务',
+                slug: ERRAND_BASE_SLUG, description: '跑腿单 0 元载体商品',
+            }],
         } as any);
         const [variant] = await variantService.create(ctx, [
             {
