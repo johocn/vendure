@@ -39,6 +39,8 @@ import { RiderTaskService } from './rider-task.service';
 import { RiderTaskShopResolver } from './rider-task-shop.resolver';
 import { bindCampusErrandCalculatorConnection, campusErrandCalculator } from './shipping-calculator';
 import { SlotLockService } from './slot-lock.service';
+import { WaimaiShopResolver } from './waimai-shop.resolver';
+import { WaimaiStoreService } from './waimai-store.service';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
@@ -57,6 +59,7 @@ import { SlotLockService } from './slot-lock.service';
         DispatchAdminService,
         ErrandService,
         R2MarkService,
+        WaimaiStoreService,
     ],
     adminApiExtensions: {
         schema: () => {
@@ -271,6 +274,18 @@ import { SlotLockService } from './slot-lock.service';
                     leg1Status: String!
                 }
 
+                type WaimaiStore {
+                    channelId: ID!
+                    channelToken: String!
+                    name: String!
+                    logo: String
+                    tags: [String!]!
+                    monthlySales: Int!
+                    promoText: String
+                    paused: Boolean!
+                    routesEnabled: [String!]!
+                }
+
                 extend type Query {
                     myRiderProfile: RiderProfile!
                     campusZones: [CampusZone!]!
@@ -280,6 +295,7 @@ import { SlotLockService } from './slot-lock.service';
                     campusShopSlots: [DeliverySlot!]!
                     myRiderEarnings(skip: Int, take: Int): [RiderEarning!]!
                     campusCapacityCheck: CampusCapacityCheck!
+                    waimaiStoreList: [WaimaiStore!]!
                 }
 
                 extend type Mutation {
@@ -297,7 +313,7 @@ import { SlotLockService } from './slot-lock.service';
                 }
             `;
         },
-        resolvers: [RiderShopResolver, HallShopResolver, RiderTaskShopResolver, ErrandShopResolver],
+        resolvers: [RiderShopResolver, HallShopResolver, RiderTaskShopResolver, ErrandShopResolver, WaimaiShopResolver],
     },
     configuration: config => {
         config.authOptions.customPermissions = [
