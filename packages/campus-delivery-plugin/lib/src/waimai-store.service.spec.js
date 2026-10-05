@@ -14,9 +14,12 @@ function makeEnv(opts = {}) {
 (0, vitest_1.describe)('WaimaiStoreService.listStores', () => {
     (0, vitest_1.it)('仅返回有履约配置的渠道并解析 tags', async () => {
         const env = makeEnv({
-            configs: [{ channelId: 2, paused: false, routesEnabled: ['R1', 'R3'] }],
+            configs: [
+                { channelId: 1, paused: false, routesEnabled: ['R3'] }, // 默认渠道脏配置：应被跳过
+                { channelId: 2, paused: false, routesEnabled: ['R1', 'R3'] },
+            ],
             channels: [
-                { id: 1, token: 'default', code: 'default-channel', customFields: {} },
+                { id: 1, token: 'default', code: '__default_channel__', customFields: {} },
                 { id: 2, token: 'canteen', code: '一食堂麻辣香锅',
                     customFields: { waimaiTags: '米饭快餐, 夜宵', waimaiMonthlySales: 320, waimaiLogo: '/static/a.webp', waimaiPromoText: '满20减4' } },
             ],

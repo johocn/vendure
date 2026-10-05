@@ -29,6 +29,8 @@ let WaimaiStoreService = class WaimaiStoreService {
             const cfg = byChannel.get(Number(ch.id));
             if (!cfg)
                 continue;
+            if (ch.code === '__default_channel__')
+                continue; // 默认渠道是平台会话渠道，不是店铺（防脏配置污染 C 端列表/骑手大厅）
             const cf = ((_a = ch.customFields) !== null && _a !== void 0 ? _a : {});
             stores.push({
                 channelId: Number(ch.id),
