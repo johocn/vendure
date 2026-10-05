@@ -56,17 +56,24 @@ let DispatchJobService = class DispatchJobService {
                 .getRepository(campus_fulfillment_config_entity_1.CampusFulfillmentConfig)
                 .find();
             for (const cfg of cfgs) {
-                await this.scan(this.ctxForChannel(cfg.channelId));
+                await this.scan(await this.ctxForChannel(cfg.channelId));
             }
         }
         finally {
             this.running = false;
         }
     }
-    ctxForChannel(channelId) {
+    async ctxForChannel(channelId) {
+        var _a;
+        // 必须查完整 Channel 实体（含 defaultTaxZone）：手工 new Channel({id}) 无 taxZone，
+        // order-calculator 重算价时 taxZoneStrategy.determineTaxZone 返回 undefined → error.no-active-tax-zone
+        const channel = (_a = (await this.connection.rawConnection.getRepository(core_2.Channel).findOne({
+            where: { id: channelId },
+            relations: ['defaultTaxZone'],
+        }))) !== null && _a !== void 0 ? _a : new core_2.Channel({ id: channelId });
         return new core_2.RequestContext({
             apiType: 'admin',
-            channel: new core_2.Channel({ id: channelId }),
+            channel,
             isAuthorized: true,
             authorizedAsOwnerOnly: false,
         });

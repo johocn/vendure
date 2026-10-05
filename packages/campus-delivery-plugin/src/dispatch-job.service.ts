@@ -63,17 +63,24 @@ export class DispatchJobService implements OnApplicationShutdown {
                 .getRepository(CampusFulfillmentConfig)
                 .find();
             for (const cfg of cfgs) {
-                await this.scan(this.ctxForChannel(cfg.channelId));
+                await this.scan(await this.ctxForChannel(cfg.channelId));
             }
         } finally {
             this.running = false;
         }
     }
 
-    private ctxForChannel(channelId: ID): RequestContext {
+    private async ctxForChannel(channelId: ID): Promise<RequestContext> {
+        // 必须查完整 Channel 实体（含 defaultTaxZone）：手工 new Channel({id}) 无 taxZone，
+        // order-calculator 重算价时 taxZoneStrategy.determineTaxZone 返回 undefined → error.no-active-tax-zone
+        const channel =
+            (await this.connection.rawConnection.getRepository(Channel).findOne({
+                where: { id: channelId as any },
+                relations: ['defaultTaxZone'],
+            })) ?? new Channel({ id: channelId });
         return new RequestContext({
             apiType: 'admin',
-            channel: new Channel({ id: channelId }),
+            channel,
             isAuthorized: true,
             authorizedAsOwnerOnly: false,
         });
