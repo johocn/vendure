@@ -52,6 +52,7 @@ const checkin_plugin_1 = require("@vendure/checkin-plugin");
 const review_plugin_1 = require("@vendure/review-plugin");
 const wechat_subscribe_message_plugin_1 = require("@vendure/wechat-subscribe-message-plugin");
 const coupon_plugin_1 = require("@vendure/coupon-plugin");
+const campus_delivery_plugin_1 = require("@vendure/campus-delivery-plugin");
 const delivery_plugin_1 = require("@vendure/delivery-plugin");
 const sales_plugin_1 = require("@vendure/sales-plugin");
 const sales_plugin_2 = require("@vendure/sales-plugin");
@@ -399,6 +400,7 @@ exports.devConfig = {
             wsSecret: process.env.LIVE_WS_SECRET || 'dev-live-secret',
         }),
         delivery_plugin_1.DeliveryPlugin.init(),
+        campus_delivery_plugin_1.CampusDeliveryPlugin,
         sales_plugin_1.SalesPlugin.init(),
         marketplace_plugin_1.MarketplacePlugin.init({}),
         logistics_plugin_1.LogisticsPlugin.init({
