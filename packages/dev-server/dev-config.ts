@@ -59,6 +59,7 @@ import { CheckinPlugin } from '@vendure/checkin-plugin';
 import { ReviewPlugin } from '@vendure/review-plugin';
 import { WechatSubscribeMessagePlugin } from '@vendure/wechat-subscribe-message-plugin';
 import { CouponPlugin } from '@vendure/coupon-plugin';
+import { CampusDeliveryPlugin } from '@vendure/campus-delivery-plugin';
 import { DeliveryPlugin } from '@vendure/delivery-plugin';
 import { SalesPlugin } from '@vendure/sales-plugin';
 import { SalesOrderItemPriceCalculationStrategy } from '@vendure/sales-plugin';
@@ -464,6 +465,8 @@ export const devConfig: VendureConfig = {
             wsSecret: process.env.LIVE_WS_SECRET || 'dev-live-secret',
         }),
         DeliveryPlugin.init(),
+        // 校园配送（分区/宿舍楼/履约配置 + 骑手入驻/抢单大厅/送达分成），无 init，直接挂类
+        CampusDeliveryPlugin,
         SalesPlugin.init(),
         MarketplacePlugin.init({}),
         // LogisticsPlugin 必须在 MarketplacePlugin 之后注册：两者都会设置 stockLocationStrategy，
