@@ -31,3 +31,47 @@ describe('RiderTaskService.orderRider', () => {
         expect(await env2.svc.orderRider({} as any, 5)).toBeNull();
     });
 });
+
+describe('RiderTaskService.transfer', () => {
+    function makeTransferEnv(opts: { order?: any } = {}) {
+        const orderRepo = {
+            findOne: vi.fn().mockResolvedValue(opts.order ?? null),
+            update: vi.fn().mockResolvedValue({}),
+        };
+        const conn = { getRepository: vi.fn(() => orderRepo) } as any;
+        const hall = { backToHall: vi.fn().mockResolvedValue(undefined) };
+        const svc = new RiderTaskService(
+            conn,
+            { assertApprovedRider: vi.fn().mockResolvedValue({ id: 7 }) } as any,
+            { adjust: vi.fn() } as any,
+            hall as any,
+        );
+        return { svc, orderRepo, hall };
+    }
+
+    it('assigned 未取货转单：直接回大厅，不写交接存证', async () => {
+        const env = makeTransferEnv({ order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'assigned' } } });
+        await env.svc.transfer({} as any, 5, []);
+        expect(env.hall.backToHall).toHaveBeenCalledWith(expect.anything(), 5);
+        expect(env.orderRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('in_progress 已取货转单：photos 必填并写存证', async () => {
+        const env = makeTransferEnv({ order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'in_progress' } } });
+        await expect(env.svc.transfer({} as any, 5, [])).rejects.toThrow('已取货转单需拍照交接');
+        await env.svc.transfer({} as any, 5, ['/static/p1.jpg'], '货物完好');
+        expect(env.hall.backToHall).toHaveBeenCalled();
+        expect(env.orderRepo.update).toHaveBeenCalledWith(5, expect.objectContaining({
+            customFields: expect.objectContaining({
+                transferPhotos: ['/static/p1.jpg'],
+                transferNote: '货物完好',
+                transferAt: expect.any(Date),
+            }),
+        }));
+    });
+
+    it('delivered 状态拒绝转单', async () => {
+        const env = makeTransferEnv({ order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'delivered' } } });
+        await expect(env.svc.transfer({} as any, 5, [])).rejects.toThrow('当前状态不允许转单');
+    });
+});

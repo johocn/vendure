@@ -10,6 +10,7 @@ import {
 } from '@vendure/core';
 import { getCouponBalancePort } from '@vendure/coupon-plugin';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
+import { HallService } from './hall.service';
 import { CREDIT_COMPLETE, RiderCreditService } from './rider-credit.service';
 import { RiderEarning } from './rider-earning.entity';
 import { RiderService } from './rider.service';
@@ -20,6 +21,7 @@ export class RiderTaskService {
         private connection: TransactionalConnection,
         private riderService: RiderService,
         private credit: RiderCreditService,
+        private hall: HallService,
     ) {}
 
     /** 订单骑手卡信息：C 端订单跟踪轮询用。未指派返回 null。 */
@@ -50,6 +52,31 @@ export class RiderTaskService {
             qb.andWhere('order.customFields.deliveryStatus = :s', { s: status });
         }
         return qb.orderBy('order.createdAt', 'DESC').getMany();
+    }
+
+    /** 转单回大厅：assigned 未取货直接回；in_progress 已取货必须拍照交接存证。
+     * 回大厅复用 backToHall（清骑手指派、hallStatus 复位 open），存证写 transferPhotos。
+     * 一期转单不扣信用分（规则后续租户可配）。 */
+    async transfer(ctx: RequestContext, orderId: ID, photos: string[], note?: string) {
+        const order = await this.assertOwner(ctx, orderId);
+        const status = (order.customFields as any).deliveryStatus;
+        if (status === 'in_progress' && !photos?.length) {
+            throw new UserInputError('已取货转单需拍照交接');
+        }
+        if (status !== 'assigned' && status !== 'in_progress') {
+            throw new UserInputError('当前状态不允许转单');
+        }
+        await this.hall.backToHall(ctx, order.id as any);
+        if (photos?.length) {
+            await this.connection.getRepository(ctx, Order).update(order.id, {
+                customFields: {
+                    transferPhotos: photos,
+                    transferNote: note ?? null,
+                    transferAt: new Date(),
+                },
+            } as any);
+        }
+        return order;
     }
 
     /** 开始配送：assigned → in_progress */

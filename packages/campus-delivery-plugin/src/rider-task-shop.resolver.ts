@@ -24,6 +24,17 @@ export class RiderTaskShopResolver {
         return this.riderTaskService.start(ctx, orderId);
     }
 
+    /** 转单回大厅；已取货必须拍照交接。错误语义：未登录/非本人 ForbiddenError，状态/缺照片 UserInputError。 */
+    @Mutation()
+    async campusTransferTask(
+        @Ctx() ctx: RequestContext,
+        @Args('orderId') orderId: ID,
+        @Args('photos') photos: string[],
+        @Args('note', { nullable: true }) note?: string,
+    ) {
+        return this.riderTaskService.transfer(ctx, orderId, photos, note);
+    }
+
     @Mutation()
     async campusDeliverTask(
         @Ctx() ctx: RequestContext,
