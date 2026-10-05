@@ -54,4 +54,22 @@ export class CampusConfigAdminResolver {
     async campusUpdateConfig(@Ctx() ctx: RequestContext, @Args('input') input: any) {
         return this.config.updateConfig(ctx, input);
     }
+
+    @Mutation()
+    @Allow(CampusPermissions.CampusConfig as any)
+    async campusCreateSlot(@Ctx() ctx: RequestContext, @Args('input') input: any) {
+        return this.config.createSlot(ctx, input);
+    }
+
+    @Mutation()
+    @Allow(CampusPermissions.CampusConfig as any)
+    async campusUpdateSlot(@Ctx() ctx: RequestContext, @Args('id') id: number, @Args('input') input: any) {
+        return this.config.updateSlot(ctx, id, input);
+    }
+
+    @Query()
+    @Allow(CampusPermissions.CampusConfig as any)
+    async campusSlots(@Ctx() ctx: RequestContext) {
+        return this.config.listSlots(ctx);
+    }
 }

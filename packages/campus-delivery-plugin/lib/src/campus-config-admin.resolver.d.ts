@@ -9,4 +9,7 @@ export declare class CampusConfigAdminResolver {
     campusCreateZone(ctx: RequestContext, name: string, fee: number): Promise<any>;
     campusCreateBuilding(ctx: RequestContext, name: string, zoneId: ID, detail?: string): Promise<any>;
     campusUpdateConfig(ctx: RequestContext, input: any): Promise<import("./campus-fulfillment-config.entity").CampusFulfillmentConfig>;
+    campusCreateSlot(ctx: RequestContext, input: any): Promise<any>;
+    campusUpdateSlot(ctx: RequestContext, id: number, input: any): Promise<import("./delivery-slot.entity").DeliverySlot>;
+    campusSlots(ctx: RequestContext): Promise<import("./delivery-slot.entity").DeliverySlot[]>;
 }

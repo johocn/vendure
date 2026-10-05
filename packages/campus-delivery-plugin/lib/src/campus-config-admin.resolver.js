@@ -39,6 +39,15 @@ let CampusConfigAdminResolver = class CampusConfigAdminResolver {
     async campusUpdateConfig(ctx, input) {
         return this.config.updateConfig(ctx, input);
     }
+    async campusCreateSlot(ctx, input) {
+        return this.config.createSlot(ctx, input);
+    }
+    async campusUpdateSlot(ctx, id, input) {
+        return this.config.updateSlot(ctx, id, input);
+    }
+    async campusSlots(ctx) {
+        return this.config.listSlots(ctx);
+    }
 };
 exports.CampusConfigAdminResolver = CampusConfigAdminResolver;
 __decorate([
@@ -96,6 +105,33 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], CampusConfigAdminResolver.prototype, "campusUpdateConfig", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusConfig),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('input')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], CampusConfigAdminResolver.prototype, "campusCreateSlot", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusConfig),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('input')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Number, Object]),
+    __metadata("design:returntype", Promise)
+], CampusConfigAdminResolver.prototype, "campusUpdateSlot", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusConfig),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], CampusConfigAdminResolver.prototype, "campusSlots", null);
 exports.CampusConfigAdminResolver = CampusConfigAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [campus_config_service_1.CampusConfigService])

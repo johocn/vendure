@@ -72,6 +72,33 @@ import { RiderTaskShopResolver } from './rider-task-shop.resolver';
                     compensationCouponTemplateId: String
                 }
 
+                type DeliverySlot {
+                    id: ID!
+                    slotDate: String!
+                    startTime: String!
+                    endTime: String!
+                    zoneId: ID
+                    capacity: Int!
+                    lockedCount: Int!
+                    active: Boolean!
+                    channelId: ID!
+                }
+
+                input DeliverySlotInput {
+                    slotDate: String!
+                    startTime: String!
+                    endTime: String!
+                    zoneId: ID
+                    capacity: Int
+                }
+
+                input DeliverySlotUpdateInput {
+                    startTime: String
+                    endTime: String
+                    capacity: Int
+                    active: Boolean
+                }
+
                 type CampusSetRiderStatusResult {
                     status: String!
                 }
@@ -80,6 +107,7 @@ import { RiderTaskShopResolver } from './rider-task-shop.resolver';
                     campusZones: [CampusZone!]!
                     campusBuildings(zoneId: ID): [CampusBuilding!]!
                     campusConfig: CampusFulfillmentConfig!
+                    campusSlots: [DeliverySlot!]!
                     riderApplications(status: String!): [Customer!]!
                 }
 
@@ -87,6 +115,8 @@ import { RiderTaskShopResolver } from './rider-task-shop.resolver';
                     campusCreateZone(name: String!, fee: Int!): CampusZone!
                     campusCreateBuilding(name: String!, zoneId: ID!, detail: String): CampusBuilding!
                     campusUpdateConfig(input: CampusFulfillmentConfigInput!): CampusFulfillmentConfig!
+                    campusCreateSlot(input: DeliverySlotInput!): DeliverySlot!
+                    campusUpdateSlot(id: ID!, input: DeliverySlotUpdateInput!): DeliverySlot!
                     campusSetRiderStatus(customerId: ID!, status: String!): CampusSetRiderStatusResult!
                 }
             `;
@@ -126,12 +156,37 @@ import { RiderTaskShopResolver } from './rider-task-shop.resolver';
                     status: String!
                 }
 
+                type DeliverySlot {
+                    id: ID!
+                    slotDate: String!
+                    startTime: String!
+                    endTime: String!
+                    zoneId: ID
+                    capacity: Int!
+                    lockedCount: Int!
+                    active: Boolean!
+                    channelId: ID!
+                }
+
+                type RiderEarning {
+                    id: ID!
+                    orderId: ID!
+                    riderCustomerId: ID!
+                    amount: Int!
+                    tip: Int!
+                    status: String!
+                    createdAt: DateTime
+                    channelId: ID!
+                }
+
                 extend type Query {
                     myRiderProfile: RiderProfile!
                     campusZones: [CampusZone!]!
                     campusBuildings(zoneId: ID): [CampusBuilding!]!
                     campusHall: [Order!]!
                     campusMyTasks(status: String): [Order!]!
+                    campusShopSlots: [DeliverySlot!]!
+                    myRiderEarnings(skip: Int, take: Int): [RiderEarning!]!
                 }
 
                 extend type Mutation {
@@ -140,6 +195,7 @@ import { RiderTaskShopResolver } from './rider-task-shop.resolver';
                     campusStartTask(orderId: ID!): Order!
                     campusDeliverTask(orderId: ID!, photos: [String!]!, note: String): Order!
                     campusReportException(orderId: ID!, type: String!, photos: [String!]!, note: String): Order!
+                    campusSetDeliveryTarget(zoneId: ID!, buildingId: ID!): Order!
                 }
             `;
         },

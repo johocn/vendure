@@ -11,13 +11,16 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CampusConfigService = void 0;
 const common_1 = require("@nestjs/common");
+const core_1 = require("@vendure/core");
 const typeorm_1 = require("typeorm");
 const campus_building_entity_1 = require("./campus-building.entity");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
 const campus_zone_entity_1 = require("./campus-zone.entity");
+const delivery_slot_entity_1 = require("./delivery-slot.entity");
 let CampusConfigService = class CampusConfigService {
-    constructor(dataSource) {
+    constructor(dataSource, orderService) {
         this.dataSource = dataSource;
+        this.orderService = orderService;
     }
     listZones(ctx) {
         return this.dataSource.getRepository(campus_zone_entity_1.CampusZone).find({ where: { channelId: ctx.channelId } });
@@ -55,10 +58,69 @@ let CampusConfigService = class CampusConfigService {
         Object.assign(cfg, patch);
         return this.dataSource.getRepository(campus_fulfillment_config_entity_1.CampusFulfillmentConfig).save(cfg);
     }
+    async createSlot(ctx, input) {
+        var _a;
+        return this.dataSource.getRepository(delivery_slot_entity_1.DeliverySlot).save({
+            slotDate: input.slotDate,
+            startTime: input.startTime,
+            endTime: input.endTime,
+            zoneId: input.zoneId != null ? Number(input.zoneId) : null,
+            capacity: (_a = input.capacity) !== null && _a !== void 0 ? _a : 20,
+            active: true,
+            channelId: ctx.channelId,
+        });
+    }
+    async updateSlot(ctx, id, patch) {
+        const repo = this.dataSource.getRepository(delivery_slot_entity_1.DeliverySlot);
+        const slot = await repo.findOne({ where: { id: id } });
+        if (!slot)
+            throw new core_1.UserInputError('时段不存在');
+        Object.assign(slot, patch);
+        return repo.save(slot);
+    }
+    async listSlots(ctx) {
+        return this.dataSource.getRepository(delivery_slot_entity_1.DeliverySlot).find({
+            where: { channelId: ctx.channelId },
+            order: { slotDate: 'ASC', startTime: 'ASC' },
+        });
+    }
+    /** C 端可订时段：active 且未过期，带余量 */
+    async slotsForShop(ctx) {
+        const slots = await this.dataSource.getRepository(delivery_slot_entity_1.DeliverySlot).find({
+            where: { channelId: ctx.channelId, active: true },
+            order: { slotDate: 'ASC', startTime: 'ASC' },
+        });
+        const today = new Date().toISOString().slice(0, 10);
+        return slots
+            .filter(s => s.active)
+            .filter(s => s.slotDate >= today)
+            .map(s => (Object.assign(Object.assign({}, s), { remaining: Math.max(0, s.capacity - s.lockedCount) })))
+            .filter(s => s.remaining > 0);
+    }
+    /** C 端选楼/选区写入 activeOrder（plan2 campusSetDeliveryTarget 依赖） */
+    async setDeliveryTarget(ctx, zoneId, buildingId) {
+        var _a;
+        const zone = await this.dataSource.getRepository(campus_zone_entity_1.CampusZone).findOne({ where: { id: zoneId } });
+        if (!zone)
+            throw new core_1.UserInputError('分区不存在');
+        const building = await this.dataSource
+            .getRepository(campus_building_entity_1.CampusBuilding)
+            .findOne({ where: { id: buildingId } });
+        if (!building)
+            throw new core_1.UserInputError('宿舍楼不存在');
+        const orderId = (_a = ctx.session) === null || _a === void 0 ? void 0 : _a.activeOrderId;
+        if (!orderId)
+            throw new core_1.UserInputError('购物车为空');
+        // 与 core shop setOrderCustomFields mutation 内部实现等价（patchEntity + 保存 + OrderEvent）
+        return this.orderService.updateCustomFields(ctx, orderId, {
+            buildingId: String(buildingId),
+            campusZone: zone.name,
+        });
+    }
 };
 exports.CampusConfigService = CampusConfigService;
 exports.CampusConfigService = CampusConfigService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [typeorm_1.DataSource])
+    __metadata("design:paramtypes", [typeorm_1.DataSource, core_1.OrderService])
 ], CampusConfigService);
 //# sourceMappingURL=campus-config.service.js.map
