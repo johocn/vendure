@@ -19,6 +19,8 @@ const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.
 const campus_zone_entity_1 = require("./campus-zone.entity");
 const custom_fields_1 = require("./custom-fields");
 const delivery_slot_entity_1 = require("./delivery-slot.entity");
+const dispatch_admin_resolver_1 = require("./dispatch-admin.resolver");
+const dispatch_admin_service_1 = require("./dispatch-admin.service");
 const dispatch_job_service_1 = require("./dispatch-job.service");
 const hall_grab_service_1 = require("./hall-grab.service");
 const hall_service_1 = require("./hall.service");
@@ -61,6 +63,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             rider_task_service_1.RiderTaskService,
             rider_credit_service_1.RiderCreditService,
             dispatch_job_service_1.DispatchJobService,
+            dispatch_admin_service_1.DispatchAdminService,
         ],
         adminApiExtensions: {
             schema: () => {
@@ -134,12 +137,39 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     status: String!
                 }
 
+                type DispatchAlert {
+                    orderId: ID!
+                    orderCode: String!
+                    type: String!
+                    detail: String!
+                }
+
+                type DispatchRider {
+                    customerId: ID!
+                    realName: String!
+                    credit: Int!
+                }
+
+                type CampusDispatchBoard {
+                    paused: Boolean!
+                    alerts: [DispatchAlert!]!
+                    hallOrders: [Order!]!
+                    activeOrders: [Order!]!
+                    ridersOnline: [DispatchRider!]!
+                }
+
+                type CampusDispatchResult {
+                    assigned: Boolean
+                    backToHall: Boolean
+                }
+
                 extend type Query {
                     campusZones: [CampusZone!]!
                     campusBuildings(zoneId: ID): [CampusBuilding!]!
                     campusConfig: CampusFulfillmentConfig!
                     campusSlots: [DeliverySlot!]!
                     riderApplications(status: String!): [Customer!]!
+                    campusDispatchBoard: CampusDispatchBoard!
                 }
 
                 extend type Mutation {
@@ -149,10 +179,12 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusCreateSlot(input: DeliverySlotInput!): DeliverySlot!
                     campusUpdateSlot(id: ID!, input: DeliverySlotUpdateInput!): DeliverySlot!
                     campusSetRiderStatus(customerId: ID!, status: String!): CampusSetRiderStatusResult!
+                    campusAssignOrder(orderId: ID!, riderCustomerId: ID!): CampusDispatchResult!
+                    campusBackToHall(orderId: ID!): CampusDispatchResult!
                 }
             `;
             },
-            resolvers: [campus_config_admin_resolver_1.CampusConfigAdminResolver, rider_admin_resolver_1.RiderAdminResolver],
+            resolvers: [campus_config_admin_resolver_1.CampusConfigAdminResolver, rider_admin_resolver_1.RiderAdminResolver, dispatch_admin_resolver_1.DispatchAdminResolver],
         },
         shopApiExtensions: {
             schema: () => {

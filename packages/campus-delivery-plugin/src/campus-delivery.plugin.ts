@@ -8,6 +8,8 @@ import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CampusZone } from './campus-zone.entity';
 import { campusCustomFields } from './custom-fields';
 import { DeliverySlot } from './delivery-slot.entity';
+import { DispatchAdminResolver } from './dispatch-admin.resolver';
+import { DispatchAdminService } from './dispatch-admin.service';
 import { DispatchJobService } from './dispatch-job.service';
 import { HallGrabService } from './hall-grab.service';
 import { HallService } from './hall.service';
@@ -38,6 +40,7 @@ import { SlotLockService } from './slot-lock.service';
         RiderTaskService,
         RiderCreditService,
         DispatchJobService,
+        DispatchAdminService,
     ],
     adminApiExtensions: {
         schema: () => {
@@ -111,12 +114,39 @@ import { SlotLockService } from './slot-lock.service';
                     status: String!
                 }
 
+                type DispatchAlert {
+                    orderId: ID!
+                    orderCode: String!
+                    type: String!
+                    detail: String!
+                }
+
+                type DispatchRider {
+                    customerId: ID!
+                    realName: String!
+                    credit: Int!
+                }
+
+                type CampusDispatchBoard {
+                    paused: Boolean!
+                    alerts: [DispatchAlert!]!
+                    hallOrders: [Order!]!
+                    activeOrders: [Order!]!
+                    ridersOnline: [DispatchRider!]!
+                }
+
+                type CampusDispatchResult {
+                    assigned: Boolean
+                    backToHall: Boolean
+                }
+
                 extend type Query {
                     campusZones: [CampusZone!]!
                     campusBuildings(zoneId: ID): [CampusBuilding!]!
                     campusConfig: CampusFulfillmentConfig!
                     campusSlots: [DeliverySlot!]!
                     riderApplications(status: String!): [Customer!]!
+                    campusDispatchBoard: CampusDispatchBoard!
                 }
 
                 extend type Mutation {
@@ -126,10 +156,12 @@ import { SlotLockService } from './slot-lock.service';
                     campusCreateSlot(input: DeliverySlotInput!): DeliverySlot!
                     campusUpdateSlot(id: ID!, input: DeliverySlotUpdateInput!): DeliverySlot!
                     campusSetRiderStatus(customerId: ID!, status: String!): CampusSetRiderStatusResult!
+                    campusAssignOrder(orderId: ID!, riderCustomerId: ID!): CampusDispatchResult!
+                    campusBackToHall(orderId: ID!): CampusDispatchResult!
                 }
             `;
         },
-        resolvers: [CampusConfigAdminResolver, RiderAdminResolver],
+        resolvers: [CampusConfigAdminResolver, RiderAdminResolver, DispatchAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {

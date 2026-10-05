@@ -22,7 +22,9 @@ function makeEnv(opts) {
         createQueryBuilder: () => {
             var _a, _b;
             return ({
+                leftJoin: vitest_1.vi.fn().mockReturnThis(),
                 where: vitest_1.vi.fn().mockReturnThis(),
+                andWhere: vitest_1.vi.fn().mockReturnThis(),
                 getMany: vitest_1.vi.fn().mockResolvedValue([...((_a = opts.openOrders) !== null && _a !== void 0 ? _a : []), ...((_b = opts.assignedOrders) !== null && _b !== void 0 ? _b : [])]),
             });
         },
