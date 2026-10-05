@@ -27,11 +27,11 @@ __decorate([
     __metadata("design:type", String)
 ], CampusBuilding.prototype, "detail", void 0);
 __decorate([
-    (0, typeorm_1.Column)(),
+    (0, typeorm_1.Column)('int'),
     __metadata("design:type", Object)
 ], CampusBuilding.prototype, "zoneId", void 0);
 __decorate([
-    (0, typeorm_1.Column)(),
+    (0, typeorm_1.Column)('int'),
     __metadata("design:type", Object)
 ], CampusBuilding.prototype, "channelId", void 0);
 exports.CampusBuilding = CampusBuilding = __decorate([

@@ -19,11 +19,11 @@ let RiderEarning = class RiderEarning extends core_1.VendureEntity {
 };
 exports.RiderEarning = RiderEarning;
 __decorate([
-    (0, typeorm_1.Column)(),
+    (0, typeorm_1.Column)('int'),
     __metadata("design:type", Object)
 ], RiderEarning.prototype, "orderId", void 0);
 __decorate([
-    (0, typeorm_1.Column)(),
+    (0, typeorm_1.Column)('int'),
     __metadata("design:type", Object)
 ], RiderEarning.prototype, "riderCustomerId", void 0);
 __decorate([
@@ -39,7 +39,7 @@ __decorate([
     __metadata("design:type", String)
 ], RiderEarning.prototype, "status", void 0);
 __decorate([
-    (0, typeorm_1.Column)(),
+    (0, typeorm_1.Column)('int'),
     __metadata("design:type", Object)
 ], RiderEarning.prototype, "channelId", void 0);
 exports.RiderEarning = RiderEarning = __decorate([

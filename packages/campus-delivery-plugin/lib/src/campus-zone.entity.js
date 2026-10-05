@@ -27,7 +27,7 @@ __decorate([
     __metadata("design:type", Number)
 ], CampusZone.prototype, "fee", void 0);
 __decorate([
-    (0, typeorm_1.Column)(),
+    (0, typeorm_1.Column)('int'),
     __metadata("design:type", Object)
 ], CampusZone.prototype, "channelId", void 0);
 exports.CampusZone = CampusZone = __decorate([
