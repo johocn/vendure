@@ -16,10 +16,12 @@ exports.CampusConfigAdminResolver = void 0;
 const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
 const campus_config_service_1 = require("./campus-config.service");
+const errand_service_1 = require("./errand.service");
 const permissions_1 = require("./permissions");
 let CampusConfigAdminResolver = class CampusConfigAdminResolver {
-    constructor(config) {
+    constructor(config, errand) {
         this.config = config;
+        this.errand = errand;
     }
     async campusZones(ctx) {
         return this.config.listZones(ctx);
@@ -47,6 +49,11 @@ let CampusConfigAdminResolver = class CampusConfigAdminResolver {
     }
     async campusSlots(ctx) {
         return this.config.listSlots(ctx);
+    }
+    /** R5 跑腿单：幂等创建 0 元载体商品（SKU 查重），C 端 addItemToOrder 用其 variantId */
+    async campusEnsureErrandProducts(ctx) {
+        const { variantId, sku } = await this.errand.ensureErrandProduct(ctx);
+        return { variantId, sku };
     }
 };
 exports.CampusConfigAdminResolver = CampusConfigAdminResolver;
@@ -132,8 +139,16 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext]),
     __metadata("design:returntype", Promise)
 ], CampusConfigAdminResolver.prototype, "campusSlots", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusConfig),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], CampusConfigAdminResolver.prototype, "campusEnsureErrandProducts", null);
 exports.CampusConfigAdminResolver = CampusConfigAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
-    __metadata("design:paramtypes", [campus_config_service_1.CampusConfigService])
+    __metadata("design:paramtypes", [campus_config_service_1.CampusConfigService, errand_service_1.ErrandService])
 ], CampusConfigAdminResolver);
 //# sourceMappingURL=campus-config-admin.resolver.js.map

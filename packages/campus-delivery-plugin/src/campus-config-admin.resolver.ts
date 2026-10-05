@@ -1,11 +1,12 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { Allow, Ctx, ID, RequestContext } from '@vendure/core';
 import { CampusConfigService } from './campus-config.service';
+import { ErrandService } from './errand.service';
 import { CampusPermissions } from './permissions';
 
 @Resolver()
 export class CampusConfigAdminResolver {
-    constructor(private config: CampusConfigService) {}
+    constructor(private config: CampusConfigService, private errand: ErrandService) {}
 
     @Query()
     @Allow(CampusPermissions.CampusConfig as any)
@@ -71,5 +72,13 @@ export class CampusConfigAdminResolver {
     @Allow(CampusPermissions.CampusConfig as any)
     async campusSlots(@Ctx() ctx: RequestContext) {
         return this.config.listSlots(ctx);
+    }
+
+    /** R5 跑腿单：幂等创建 0 元载体商品（SKU 查重），C 端 addItemToOrder 用其 variantId */
+    @Mutation()
+    @Allow(CampusPermissions.CampusConfig as any)
+    async campusEnsureErrandProducts(@Ctx() ctx: RequestContext) {
+        const { variantId, sku } = await this.errand.ensureErrandProduct(ctx);
+        return { variantId, sku };
     }
 }

@@ -1,5 +1,13 @@
 import { OnApplicationBootstrap } from '@nestjs/common';
-import { EventBus, Injector, Logger, OrderPlacedEvent, PluginCommonModule, VendurePlugin } from '@vendure/core';
+import {
+    EventBus,
+    Injector,
+    Logger,
+    OrderPlacedEvent,
+    PluginCommonModule,
+    TransactionalConnection,
+    VendurePlugin,
+} from '@vendure/core';
 import { CampusBuilding } from './campus-building.entity';
 import { CapacityService } from './capacity.service';
 import { CampusConfigAdminResolver } from './campus-config-admin.resolver';
@@ -11,6 +19,8 @@ import { DeliverySlot } from './delivery-slot.entity';
 import { DispatchAdminResolver } from './dispatch-admin.resolver';
 import { DispatchAdminService } from './dispatch-admin.service';
 import { DispatchJobService } from './dispatch-job.service';
+import { ErrandService } from './errand.service';
+import { ErrandShopResolver } from './errand-shop.resolver';
 import { HallGrabService } from './hall-grab.service';
 import { HallService } from './hall.service';
 import { HallShopResolver } from './hall-shop.resolver';
@@ -24,6 +34,7 @@ import { RiderService } from './rider.service';
 import { RiderShopResolver } from './rider-shop.resolver';
 import { RiderTaskService } from './rider-task.service';
 import { RiderTaskShopResolver } from './rider-task-shop.resolver';
+import { bindCampusErrandCalculatorConnection, campusErrandCalculator } from './shipping-calculator';
 import { SlotLockService } from './slot-lock.service';
 
 @VendurePlugin({
@@ -41,6 +52,7 @@ import { SlotLockService } from './slot-lock.service';
         RiderCreditService,
         DispatchJobService,
         DispatchAdminService,
+        ErrandService,
     ],
     adminApiExtensions: {
         schema: () => {
@@ -140,6 +152,11 @@ import { SlotLockService } from './slot-lock.service';
                     backToHall: Boolean
                 }
 
+                type CampusErrandProductResult {
+                    variantId: ID!
+                    sku: String!
+                }
+
                 extend type Query {
                     campusZones: [CampusZone!]!
                     campusBuildings(zoneId: ID): [CampusBuilding!]!
@@ -158,6 +175,7 @@ import { SlotLockService } from './slot-lock.service';
                     campusSetRiderStatus(customerId: ID!, status: String!): CampusSetRiderStatusResult!
                     campusAssignOrder(orderId: ID!, riderCustomerId: ID!): CampusDispatchResult!
                     campusBackToHall(orderId: ID!): CampusDispatchResult!
+                    campusEnsureErrandProducts: CampusErrandProductResult!
                 }
             `;
         },
@@ -232,6 +250,19 @@ import { SlotLockService } from './slot-lock.service';
                     backToHall: Boolean!
                 }
 
+                input CampusErrandInput {
+                    kind: String!
+                    fromText: String!
+                    toText: String!
+                    tip: Int!
+                    buildingId: ID
+                    campusZone: String
+                }
+
+                type CampusErrandInfoResult {
+                    orderId: ID!
+                }
+
                 extend type Query {
                     myRiderProfile: RiderProfile!
                     campusZones: [CampusZone!]!
@@ -253,10 +284,11 @@ import { SlotLockService } from './slot-lock.service';
                     campusRejectAssignment(orderId: ID!): CampusRejectResult!
                     campusRiderOnline(online: Boolean!): CampusRiderOnlineResult!
                     campusRiderHeartbeat: CampusRiderOnlineResult!
+                    campusSetErrandInfo(input: CampusErrandInput!): CampusErrandInfoResult!
                 }
             `;
         },
-        resolvers: [RiderShopResolver, HallShopResolver, RiderTaskShopResolver],
+        resolvers: [RiderShopResolver, HallShopResolver, RiderTaskShopResolver, ErrandShopResolver],
     },
     configuration: config => {
         config.authOptions.customPermissions = [
@@ -268,6 +300,10 @@ import { SlotLockService } from './slot-lock.service';
             Order: [...(config.customFields.Order ?? []), ...(campusCustomFields.Order ?? [])],
             Customer: [...(config.customFields.Customer ?? []), ...(campusCustomFields.Customer ?? [])],
         };
+        config.shippingOptions.shippingCalculators = [
+            ...(config.shippingOptions.shippingCalculators ?? []),
+            campusErrandCalculator,
+        ];
         return config;
     },
     compatibility: '^3.6.4',
@@ -280,6 +316,7 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
     ) {}
 
     onApplicationBootstrap(): void {
+        bindCampusErrandCalculatorConnection(this.injector.get(TransactionalConnection));
         this.eventBus.ofType(OrderPlacedEvent).subscribe(({ ctx, order }) =>
             this.hallService.onOrderPlaced(ctx, order).catch(e => Logger.error(String(e), 'CampusHall')),
         );
