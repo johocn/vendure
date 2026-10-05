@@ -1,10 +1,11 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { Ctx, ID, RequestContext } from '@vendure/core';
+import { R2MarkService } from './r2-mark.service';
 import { RiderTaskService } from './rider-task.service';
 
 @Resolver()
 export class RiderTaskShopResolver {
-    constructor(private riderTaskService: RiderTaskService) {}
+    constructor(private riderTaskService: RiderTaskService, private r2Mark: R2MarkService) {}
 
     /** 需登录骑手：service 内部 assertApprovedRider，未登录/未批准/信用分不足抛 ForbiddenError。 */
     @Query()
@@ -36,5 +37,11 @@ export class RiderTaskShopResolver {
         @Args('note', { nullable: true }) note?: string,
     ) {
         return this.riderTaskService.reportException(ctx, orderId, type, photos, note);
+    }
+
+    /** R2 快递单到校确认：本人 + fulfillmentRoute='R2'，service 内校验，违规抛 Forbidden/UserInputError。 */
+    @Mutation()
+    async campusMarkArrived(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID) {
+        return this.r2Mark.markArrived(ctx, orderId);
     }
 }

@@ -15,10 +15,12 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.RiderTaskShopResolver = void 0;
 const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
+const r2_mark_service_1 = require("./r2-mark.service");
 const rider_task_service_1 = require("./rider-task.service");
 let RiderTaskShopResolver = class RiderTaskShopResolver {
-    constructor(riderTaskService) {
+    constructor(riderTaskService, r2Mark) {
         this.riderTaskService = riderTaskService;
+        this.r2Mark = r2Mark;
     }
     /** 需登录骑手：service 内部 assertApprovedRider，未登录/未批准/信用分不足抛 ForbiddenError。 */
     async campusMyTasks(ctx, status) {
@@ -32,6 +34,10 @@ let RiderTaskShopResolver = class RiderTaskShopResolver {
     }
     async campusReportException(ctx, orderId, type, photos, note) {
         return this.riderTaskService.reportException(ctx, orderId, type, photos, note);
+    }
+    /** R2 快递单到校确认：本人 + fulfillmentRoute='R2'，service 内校验，违规抛 Forbidden/UserInputError。 */
+    async campusMarkArrived(ctx, orderId) {
+        return this.r2Mark.markArrived(ctx, orderId);
     }
 };
 exports.RiderTaskShopResolver = RiderTaskShopResolver;
@@ -72,8 +78,16 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object, String, Array, String]),
     __metadata("design:returntype", Promise)
 ], RiderTaskShopResolver.prototype, "campusReportException", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], RiderTaskShopResolver.prototype, "campusMarkArrived", null);
 exports.RiderTaskShopResolver = RiderTaskShopResolver = __decorate([
     (0, graphql_1.Resolver)(),
-    __metadata("design:paramtypes", [rider_task_service_1.RiderTaskService])
+    __metadata("design:paramtypes", [rider_task_service_1.RiderTaskService, r2_mark_service_1.R2MarkService])
 ], RiderTaskShopResolver);
 //# sourceMappingURL=rider-task-shop.resolver.js.map

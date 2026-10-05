@@ -26,6 +26,7 @@ import { HallService } from './hall.service';
 import { HallShopResolver } from './hall-shop.resolver';
 import { CreateCampusTablesMigration } from './migrations/create-campus-tables';
 import { campusPermissionDefinitions } from './permissions';
+import { R2MarkService } from './r2-mark.service';
 import { RiderAdminResolver } from './rider-admin.resolver';
 import { RiderCreditLog } from './rider-credit-log.entity';
 import { RiderCreditService } from './rider-credit.service';
@@ -53,6 +54,7 @@ import { SlotLockService } from './slot-lock.service';
         DispatchJobService,
         DispatchAdminService,
         ErrandService,
+        R2MarkService,
     ],
     adminApiExtensions: {
         schema: () => {
@@ -263,6 +265,10 @@ import { SlotLockService } from './slot-lock.service';
                     orderId: ID!
                 }
 
+                type CampusArrivedResult {
+                    leg1Status: String!
+                }
+
                 extend type Query {
                     myRiderProfile: RiderProfile!
                     campusZones: [CampusZone!]!
@@ -285,6 +291,7 @@ import { SlotLockService } from './slot-lock.service';
                     campusRiderOnline(online: Boolean!): CampusRiderOnlineResult!
                     campusRiderHeartbeat: CampusRiderOnlineResult!
                     campusSetErrandInfo(input: CampusErrandInput!): CampusErrandInfoResult!
+                    campusMarkArrived(orderId: ID!): CampusArrivedResult!
                 }
             `;
         },

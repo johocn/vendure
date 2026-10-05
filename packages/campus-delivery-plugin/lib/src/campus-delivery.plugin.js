@@ -29,6 +29,7 @@ const hall_service_1 = require("./hall.service");
 const hall_shop_resolver_1 = require("./hall-shop.resolver");
 const create_campus_tables_1 = require("./migrations/create-campus-tables");
 const permissions_1 = require("./permissions");
+const r2_mark_service_1 = require("./r2-mark.service");
 const rider_admin_resolver_1 = require("./rider-admin.resolver");
 const rider_credit_log_entity_1 = require("./rider-credit-log.entity");
 const rider_credit_service_1 = require("./rider-credit.service");
@@ -69,6 +70,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             dispatch_job_service_1.DispatchJobService,
             dispatch_admin_service_1.DispatchAdminService,
             errand_service_1.ErrandService,
+            r2_mark_service_1.R2MarkService,
         ],
         adminApiExtensions: {
             schema: () => {
@@ -279,6 +281,10 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     orderId: ID!
                 }
 
+                type CampusArrivedResult {
+                    leg1Status: String!
+                }
+
                 extend type Query {
                     myRiderProfile: RiderProfile!
                     campusZones: [CampusZone!]!
@@ -301,6 +307,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusRiderOnline(online: Boolean!): CampusRiderOnlineResult!
                     campusRiderHeartbeat: CampusRiderOnlineResult!
                     campusSetErrandInfo(input: CampusErrandInput!): CampusErrandInfoResult!
+                    campusMarkArrived(orderId: ID!): CampusArrivedResult!
                 }
             `;
             },
