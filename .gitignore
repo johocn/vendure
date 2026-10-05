@@ -430,3 +430,6 @@ e2e-shots/
 packages/shop-template-plugin/lib/**/*.spec.js
 packages/shop-template-plugin/lib/**/*.spec.js.map
 packages/shop-template-plugin/lib/**/*.spec.d.ts
+
+# 密钥与部署凭据区（一律不入库；部署脚本/凭据放此处）
+.secrets/
