@@ -8,6 +8,7 @@ import {
     Order,
     OrderService,
     Payment,
+    Refund,
     RequestContext,
     TransactionalConnection,
 } from '@vendure/core';
@@ -204,20 +205,30 @@ export class DispatchJobService implements OnApplicationShutdown {
                 order: { id: 'DESC' as any },
             });
             if (payment) {
-                const created = await orderSvc!.refundOrder(ctx, {
-                    paymentId: payment.id,
-                    amount: payment.amount,
-                    // fork 的 refund 表 shipping/adjustment 列 NOT NULL（payment.service createRefund 透传
-                    // input.shipping/input.adjustment），全额退款经 amount 通道，两者必须显式给 0，
-                    // 否则 INSERT 报 not-null violation
-                    shipping: 0,
-                    adjustment: 0,
-                    reason: `no_rider auto refund (${order.code})`,
-                } as any);
-                if (!created || (created as any).errorCode) {
-                    throw new Error(`refundOrder failed: ${(created as any)?.errorCode ?? 'no result'}`);
+                // 幂等重试：上一轮 refund 成功但 transition 失败时，payment 已全额退，
+                // 再次 refundOrder 会报 REFUND_AMOUNT_ERROR——先查已退总额，退完则跳过退款只做取消
+                const refunded = await this.connection.rawConnection
+                    .getRepository(Refund)
+                    .createQueryBuilder('r')
+                    .select('COALESCE(SUM(r.total), 0)', 'sum')
+                    .where('r."paymentId" = :pid', { pid: payment.id })
+                    .getRawOne();
+                if (Number(refunded?.sum ?? 0) < Number(payment.amount)) {
+                    const created = await orderSvc!.refundOrder(ctx, {
+                        paymentId: payment.id,
+                        amount: payment.amount,
+                        // fork 的 refund 表 shipping/adjustment 列 NOT NULL（payment.service createRefund 透传
+                        // input.shipping/input.adjustment），全额退款经 amount 通道，两者必须显式给 0，
+                        // 否则 INSERT 报 not-null violation
+                        shipping: 0,
+                        adjustment: 0,
+                        reason: `no_rider auto refund (${order.code})`,
+                    } as any);
+                    if (!created || (created as any).errorCode) {
+                        throw new Error(`refundOrder failed: ${(created as any)?.errorCode ?? 'no result'}`);
+                    }
+                    await orderSvc!.settleRefund(ctx, { id: (created as any).id } as any);
                 }
-                await orderSvc!.settleRefund(ctx, { id: (created as any).id } as any);
             }
             await orderSvc!.transitionToState(ctx, order.id as any, 'Cancelled');
             await mark();

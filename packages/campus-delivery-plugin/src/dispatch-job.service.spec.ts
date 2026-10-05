@@ -6,6 +6,7 @@ function makeEnv(opts: {
     assignedOrders?: any[];
     onlineRiders?: any[];
     cfg?: any;
+    refundedSum?: number;
 }) {
     const grabResults: any[] = [];
     const grabSvc = {
@@ -30,12 +31,21 @@ function makeEnv(opts: {
         }),
     };
     const configRepo = { findOne: vi.fn().mockResolvedValue(opts.cfg ?? { autoAssignMinutes: 10, autoRefundMinutes: 30, inProgressSlaMinutes: 45 }) };
+    const refundRepo = {
+        createQueryBuilder: () => ({
+            select: vi.fn().mockReturnThis(),
+            where: vi.fn().mockReturnThis(),
+            getRawOne: vi.fn().mockResolvedValue({ sum: String(opts.refundedSum ?? 0) }),
+        }),
+    };
     const conn = {
         getRepository: vi.fn((_ctx: any, ent: any) => {
             const name = (ent as any).name;
             if (name === 'CampusFulfillmentConfig') return configRepo;
+            if (name === 'Refund') return refundRepo;
             return orderRepo;
         }),
+        rawConnection: { getRepository: vi.fn((_ent: any) => refundRepo) },
     } as any;
     const svc = new DispatchJobService(
         conn, grabSvc as any, hallSvc as any, capacitySvc as any, creditSvc as any, { get: vi.fn() } as any,
@@ -131,6 +141,23 @@ describe('DispatchJobService.scan T4 自动退款', () => {
         await env.svc.scan({ channelId: 1 } as any);
         expect((env.svc as any).couponSvc.grantCoupon).not.toHaveBeenCalled();
         expect((env.svc as any).orderSvc.transitionToState).toHaveBeenCalledWith(expect.anything(), 4, 'Cancelled');
+        expect(env.hallSvc.updateOrder).toHaveBeenCalledWith(expect.anything(), 4, expect.objectContaining({
+            customFields: expect.objectContaining({ campusCause: 'no_rider', hallStatus: 'no_rider_final' }),
+        }));
+    });
+
+    it('幂等重试：上轮已全额退款（transition 失败残留）→ 跳过 refundOrder 只做取消+标记', async () => {
+        const env = makeEnv({
+            openOrders: [{ id: 4, code: 'T4', customerId: 501, customFields: { hallStatus: 'open', hallEnteredAt: minAgo(31) } }],
+            cfg: { channelId: 1, autoAssignMinutes: 10, autoRefundMinutes: 30 },
+            refundedSum: 8800, // 已退全额
+        });
+        injectT4Services(env.svc);
+        const orderSvc = (env.svc as any).orderSvc;
+        await env.svc.scan({ channelId: 1 } as any);
+        expect(orderSvc.refundOrder).not.toHaveBeenCalled();
+        expect(orderSvc.settleRefund).not.toHaveBeenCalled();
+        expect(orderSvc.transitionToState).toHaveBeenCalledWith(expect.anything(), 4, 'Cancelled');
         expect(env.hallSvc.updateOrder).toHaveBeenCalledWith(expect.anything(), 4, expect.objectContaining({
             customFields: expect.objectContaining({ campusCause: 'no_rider', hallStatus: 'no_rider_final' }),
         }));

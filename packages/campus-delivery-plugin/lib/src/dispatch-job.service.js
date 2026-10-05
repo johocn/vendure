@@ -187,7 +187,7 @@ let DispatchJobService = class DispatchJobService {
      * 失败降级：同样写 campusCause='no_rider' + hallStatus='no_rider_final' 留人工，Logger 留痕，不抛出。
      */
     async refundNoRider(ctx, order, cfg) {
-        var _a, _b;
+        var _a, _b, _c;
         const mark = () => this.hall.updateOrder(ctx, order.id, {
             customFields: { campusCause: 'no_rider', hallStatus: 'no_rider_final' },
         });
@@ -198,20 +198,30 @@ let DispatchJobService = class DispatchJobService {
                 order: { id: 'DESC' },
             });
             if (payment) {
-                const created = await orderSvc.refundOrder(ctx, {
-                    paymentId: payment.id,
-                    amount: payment.amount,
-                    // fork 的 refund 表 shipping/adjustment 列 NOT NULL（payment.service createRefund 透传
-                    // input.shipping/input.adjustment），全额退款经 amount 通道，两者必须显式给 0，
-                    // 否则 INSERT 报 not-null violation
-                    shipping: 0,
-                    adjustment: 0,
-                    reason: `no_rider auto refund (${order.code})`,
-                });
-                if (!created || created.errorCode) {
-                    throw new Error(`refundOrder failed: ${(_a = created === null || created === void 0 ? void 0 : created.errorCode) !== null && _a !== void 0 ? _a : 'no result'}`);
+                // 幂等重试：上一轮 refund 成功但 transition 失败时，payment 已全额退，
+                // 再次 refundOrder 会报 REFUND_AMOUNT_ERROR——先查已退总额，退完则跳过退款只做取消
+                const refunded = await this.connection.rawConnection
+                    .getRepository(core_2.Refund)
+                    .createQueryBuilder('r')
+                    .select('COALESCE(SUM(r.total), 0)', 'sum')
+                    .where('r."paymentId" = :pid', { pid: payment.id })
+                    .getRawOne();
+                if (Number((_a = refunded === null || refunded === void 0 ? void 0 : refunded.sum) !== null && _a !== void 0 ? _a : 0) < Number(payment.amount)) {
+                    const created = await orderSvc.refundOrder(ctx, {
+                        paymentId: payment.id,
+                        amount: payment.amount,
+                        // fork 的 refund 表 shipping/adjustment 列 NOT NULL（payment.service createRefund 透传
+                        // input.shipping/input.adjustment），全额退款经 amount 通道，两者必须显式给 0，
+                        // 否则 INSERT 报 not-null violation
+                        shipping: 0,
+                        adjustment: 0,
+                        reason: `no_rider auto refund (${order.code})`,
+                    });
+                    if (!created || created.errorCode) {
+                        throw new Error(`refundOrder failed: ${(_b = created === null || created === void 0 ? void 0 : created.errorCode) !== null && _b !== void 0 ? _b : 'no result'}`);
+                    }
+                    await orderSvc.settleRefund(ctx, { id: created.id });
                 }
-                await orderSvc.settleRefund(ctx, { id: created.id });
             }
             await orderSvc.transitionToState(ctx, order.id, 'Cancelled');
             await mark();
@@ -219,7 +229,7 @@ let DispatchJobService = class DispatchJobService {
             if (templateId && order.customerId && coupon) {
                 await coupon.grantCoupon(ctx, templateId, [order.customerId]);
             }
-            core_2.Logger.warn(`Order ${order.code} auto-refunded (no rider within ${(_b = cfg.autoRefundMinutes) !== null && _b !== void 0 ? _b : 30}min)`, 'CampusDispatch');
+            core_2.Logger.warn(`Order ${order.code} auto-refunded (no rider within ${(_c = cfg.autoRefundMinutes) !== null && _c !== void 0 ? _c : 30}min)`, 'CampusDispatch');
         }
         catch (e) {
             core_2.Logger.error(`T4 refund failed for order ${order.code}: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch');
