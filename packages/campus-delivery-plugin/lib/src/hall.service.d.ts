@@ -14,6 +14,8 @@ export declare class HallService {
     onOrderPlaced(ctx: RequestContext, order: Order): Promise<void>;
     /** 回大厅：清骑手指派字段，hallStatus 复位 open（拒单/超时改派共用） */
     backToHall(ctx: RequestContext, orderId: number): Promise<void>;
+    /** 通用订单更新（T4 退款终态标记等复用） */
+    updateOrder(ctx: RequestContext, orderId: number, patch: any): Promise<import("typeorm").UpdateResult>;
     /** T0: 新单入厅即提醒在线骑手（订阅消息），失败只记日志不阻塞入厅。
      * 模板 ID 复用渠道 orderShippedTemplateId（wechat 插件未定义 campus 专用模板字段），
      * 未配置则跳过；逐骑手发送，单个失败不影响其余骑手。 */

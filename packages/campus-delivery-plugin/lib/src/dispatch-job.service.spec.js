@@ -38,7 +38,7 @@ function makeEnv(opts) {
             return orderRepo;
         }),
     };
-    const svc = new dispatch_job_service_1.DispatchJobService(conn, grabSvc, hallSvc, capacitySvc, creditSvc);
+    const svc = new dispatch_job_service_1.DispatchJobService(conn, grabSvc, hallSvc, capacitySvc, creditSvc, { get: vitest_1.vi.fn() });
     return { svc, grabSvc, creditSvc, hallSvc, capacitySvc, orderRepo, configRepo, grabResults };
 }
 const now = Date.now();
@@ -78,6 +78,48 @@ const minAgo = (m) => new Date(now - m * 60000);
         });
         await svc.scan({ channelId: 1 });
         (0, vitest_1.expect)(hallSvc.backToHall).not.toHaveBeenCalled();
+    });
+});
+/** 预注入 T4 依赖的惰性私有服务（绕过 lazy init，injector 不会被真调） */
+function injectT4Services(svc) {
+    svc['orderSvc'] = {
+        refundOrder: vitest_1.vi.fn().mockResolvedValue({ id: 77 }),
+        settleRefund: vitest_1.vi.fn().mockResolvedValue({}),
+        transitionToState: vitest_1.vi.fn().mockResolvedValue({}),
+    };
+    svc['paymentRepo'] = { findOne: vitest_1.vi.fn().mockResolvedValue({ id: 55, amount: 8800 }) };
+    svc['couponSvc'] = { grantCoupon: vitest_1.vi.fn().mockResolvedValue([]) };
+}
+(0, vitest_1.describe)('DispatchJobService.scan T4 自动退款', () => {
+    (0, vitest_1.it)('open 超 autoRefundMinutes → 退款 + Cancelled + cause=no_rider + 补偿券', async () => {
+        const env = makeEnv({
+            openOrders: [{ id: 4, code: 'T4', customerId: 501, customFields: { hallStatus: 'open', hallEnteredAt: minAgo(31) } }],
+            cfg: { channelId: 1, autoAssignMinutes: 10, autoRefundMinutes: 30, compensationCouponTemplateId: '9' },
+        });
+        injectT4Services(env.svc);
+        const orderSvc = env.svc.orderSvc;
+        const couponSvc = env.svc.couponSvc;
+        await env.svc.scan({ channelId: 1 });
+        (0, vitest_1.expect)(orderSvc.refundOrder).toHaveBeenCalledOnce();
+        (0, vitest_1.expect)(orderSvc.settleRefund).toHaveBeenCalledOnce();
+        (0, vitest_1.expect)(orderSvc.transitionToState).toHaveBeenCalledWith(vitest_1.expect.anything(), 4, 'Cancelled');
+        (0, vitest_1.expect)(couponSvc.grantCoupon).toHaveBeenCalledWith(vitest_1.expect.anything(), '9', [vitest_1.expect.anything()]);
+        (0, vitest_1.expect)(env.hallSvc.updateOrder).toHaveBeenCalledWith(vitest_1.expect.anything(), 4, vitest_1.expect.objectContaining({
+            customFields: vitest_1.expect.objectContaining({ campusCause: 'no_rider', hallStatus: 'no_rider_final' }),
+        }));
+    });
+    (0, vitest_1.it)('未配置补偿券模板 → 不发券不报错，退款照常', async () => {
+        const env = makeEnv({
+            openOrders: [{ id: 4, code: 'T4', customerId: 501, customFields: { hallStatus: 'open', hallEnteredAt: minAgo(31) } }],
+            cfg: { channelId: 1, autoAssignMinutes: 10, autoRefundMinutes: 30 },
+        });
+        injectT4Services(env.svc);
+        await env.svc.scan({ channelId: 1 });
+        (0, vitest_1.expect)(env.svc.couponSvc.grantCoupon).not.toHaveBeenCalled();
+        (0, vitest_1.expect)(env.svc.orderSvc.transitionToState).toHaveBeenCalledWith(vitest_1.expect.anything(), 4, 'Cancelled');
+        (0, vitest_1.expect)(env.hallSvc.updateOrder).toHaveBeenCalledWith(vitest_1.expect.anything(), 4, vitest_1.expect.objectContaining({
+            customFields: vitest_1.expect.objectContaining({ campusCause: 'no_rider', hallStatus: 'no_rider_final' }),
+        }));
     });
 });
 //# sourceMappingURL=dispatch-job.service.spec.js.map
