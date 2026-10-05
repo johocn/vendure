@@ -26,6 +26,8 @@ const rider_admin_resolver_1 = require("./rider-admin.resolver");
 const rider_earning_entity_1 = require("./rider-earning.entity");
 const rider_service_1 = require("./rider.service");
 const rider_shop_resolver_1 = require("./rider-shop.resolver");
+const rider_task_service_1 = require("./rider-task.service");
+const rider_task_shop_resolver_1 = require("./rider-task-shop.resolver");
 let CampusDeliveryPlugin = class CampusDeliveryPlugin {
     constructor(eventBus, hallService) {
         this.eventBus = eventBus;
@@ -40,7 +42,14 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
         entities: [campus_zone_entity_1.CampusZone, campus_building_entity_1.CampusBuilding, rider_earning_entity_1.RiderEarning, campus_fulfillment_config_entity_1.CampusFulfillmentConfig],
-        providers: [create_campus_tables_1.CreateCampusTablesMigration, campus_config_service_1.CampusConfigService, rider_service_1.RiderService, hall_service_1.HallService, hall_grab_service_1.HallGrabService],
+        providers: [
+            create_campus_tables_1.CreateCampusTablesMigration,
+            campus_config_service_1.CampusConfigService,
+            rider_service_1.RiderService,
+            hall_service_1.HallService,
+            hall_grab_service_1.HallGrabService,
+            rider_task_service_1.RiderTaskService,
+        ],
         adminApiExtensions: {
             schema: () => {
                 const { gql } = require('graphql-tag');
@@ -129,15 +138,19 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusZones: [CampusZone!]!
                     campusBuildings(zoneId: ID): [CampusBuilding!]!
                     campusHall: [Order!]!
+                    campusMyTasks(status: String): [Order!]!
                 }
 
                 extend type Mutation {
                     applyRider(realName: String!, studentNo: String!, campus: String!, idImg: String): RiderApplyResult!
                     campusGrabOrder(orderId: ID!): Order!
+                    campusStartTask(orderId: ID!): Order!
+                    campusDeliverTask(orderId: ID!, photos: [String!]!, note: String): Order!
+                    campusReportException(orderId: ID!, type: String!, photos: [String!]!, note: String): Order!
                 }
             `;
             },
-            resolvers: [rider_shop_resolver_1.RiderShopResolver, hall_shop_resolver_1.HallShopResolver],
+            resolvers: [rider_shop_resolver_1.RiderShopResolver, hall_shop_resolver_1.HallShopResolver, rider_task_shop_resolver_1.RiderTaskShopResolver],
         },
         configuration: config => {
             var _a, _b, _c, _d, _e;

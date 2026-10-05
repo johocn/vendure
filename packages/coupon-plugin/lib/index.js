@@ -22,4 +22,5 @@ __exportStar(require("./src/customer-coupon.entity"), exports);
 __exportStar(require("./src/coupon.service"), exports);
 __exportStar(require("./src/product-coupon-binding.entity"), exports);
 __exportStar(require("./src/redeem-scope"), exports);
+__exportStar(require("./src/coupon-balance-port"), exports);
 //# sourceMappingURL=index.js.map
