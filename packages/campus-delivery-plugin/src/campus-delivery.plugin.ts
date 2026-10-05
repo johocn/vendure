@@ -1,5 +1,5 @@
 import { OnApplicationBootstrap } from '@nestjs/common';
-import { EventBus, Logger, OrderPlacedEvent, PluginCommonModule, VendurePlugin } from '@vendure/core';
+import { EventBus, Injector, Logger, OrderPlacedEvent, PluginCommonModule, VendurePlugin } from '@vendure/core';
 import { CampusBuilding } from './campus-building.entity';
 import { CapacityService } from './capacity.service';
 import { CampusConfigAdminResolver } from './campus-config-admin.resolver';
@@ -8,6 +8,7 @@ import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CampusZone } from './campus-zone.entity';
 import { campusCustomFields } from './custom-fields';
 import { DeliverySlot } from './delivery-slot.entity';
+import { DispatchJobService } from './dispatch-job.service';
 import { HallGrabService } from './hall-grab.service';
 import { HallService } from './hall.service';
 import { HallShopResolver } from './hall-shop.resolver';
@@ -36,6 +37,7 @@ import { SlotLockService } from './slot-lock.service';
         HallGrabService,
         RiderTaskService,
         RiderCreditService,
+        DispatchJobService,
     ],
     adminApiExtensions: {
         schema: () => {
@@ -194,6 +196,10 @@ import { SlotLockService } from './slot-lock.service';
                     ridersOnline: Int!
                 }
 
+                type CampusRejectResult {
+                    backToHall: Boolean!
+                }
+
                 extend type Query {
                     myRiderProfile: RiderProfile!
                     campusZones: [CampusZone!]!
@@ -212,6 +218,7 @@ import { SlotLockService } from './slot-lock.service';
                     campusDeliverTask(orderId: ID!, photos: [String!]!, note: String): Order!
                     campusReportException(orderId: ID!, type: String!, photos: [String!]!, note: String): Order!
                     campusSetDeliveryTarget(zoneId: ID!, buildingId: ID!): Order!
+                    campusRejectAssignment(orderId: ID!): CampusRejectResult!
                     campusRiderOnline(online: Boolean!): CampusRiderOnlineResult!
                     campusRiderHeartbeat: CampusRiderOnlineResult!
                 }
@@ -234,11 +241,16 @@ import { SlotLockService } from './slot-lock.service';
     compatibility: '^3.6.4',
 })
 export class CampusDeliveryPlugin implements OnApplicationBootstrap {
-    constructor(private eventBus: EventBus, private hallService: HallService) {}
+    constructor(
+        private eventBus: EventBus,
+        private hallService: HallService,
+        private injector: Injector,
+    ) {}
 
     onApplicationBootstrap(): void {
         this.eventBus.ofType(OrderPlacedEvent).subscribe(({ ctx, order }) =>
             this.hallService.onOrderPlaced(ctx, order).catch(e => Logger.error(String(e), 'CampusHall')),
         );
+        this.injector.get(DispatchJobService).start();
     }
 }

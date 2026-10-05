@@ -19,6 +19,7 @@ const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.
 const campus_zone_entity_1 = require("./campus-zone.entity");
 const custom_fields_1 = require("./custom-fields");
 const delivery_slot_entity_1 = require("./delivery-slot.entity");
+const dispatch_job_service_1 = require("./dispatch-job.service");
 const hall_grab_service_1 = require("./hall-grab.service");
 const hall_service_1 = require("./hall.service");
 const hall_shop_resolver_1 = require("./hall-shop.resolver");
@@ -34,12 +35,14 @@ const rider_task_service_1 = require("./rider-task.service");
 const rider_task_shop_resolver_1 = require("./rider-task-shop.resolver");
 const slot_lock_service_1 = require("./slot-lock.service");
 let CampusDeliveryPlugin = class CampusDeliveryPlugin {
-    constructor(eventBus, hallService) {
+    constructor(eventBus, hallService, injector) {
         this.eventBus = eventBus;
         this.hallService = hallService;
+        this.injector = injector;
     }
     onApplicationBootstrap() {
         this.eventBus.ofType(core_1.OrderPlacedEvent).subscribe(({ ctx, order }) => this.hallService.onOrderPlaced(ctx, order).catch(e => core_1.Logger.error(String(e), 'CampusHall')));
+        this.injector.get(dispatch_job_service_1.DispatchJobService).start();
     }
 };
 exports.CampusDeliveryPlugin = CampusDeliveryPlugin;
@@ -57,6 +60,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             hall_grab_service_1.HallGrabService,
             rider_task_service_1.RiderTaskService,
             rider_credit_service_1.RiderCreditService,
+            dispatch_job_service_1.DispatchJobService,
         ],
         adminApiExtensions: {
             schema: () => {
@@ -215,6 +219,10 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     ridersOnline: Int!
                 }
 
+                type CampusRejectResult {
+                    backToHall: Boolean!
+                }
+
                 extend type Query {
                     myRiderProfile: RiderProfile!
                     campusZones: [CampusZone!]!
@@ -233,6 +241,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusDeliverTask(orderId: ID!, photos: [String!]!, note: String): Order!
                     campusReportException(orderId: ID!, type: String!, photos: [String!]!, note: String): Order!
                     campusSetDeliveryTarget(zoneId: ID!, buildingId: ID!): Order!
+                    campusRejectAssignment(orderId: ID!): CampusRejectResult!
                     campusRiderOnline(online: Boolean!): CampusRiderOnlineResult!
                     campusRiderHeartbeat: CampusRiderOnlineResult!
                 }
@@ -251,6 +260,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
         },
         compatibility: '^3.6.4',
     }),
-    __metadata("design:paramtypes", [core_1.EventBus, hall_service_1.HallService])
+    __metadata("design:paramtypes", [core_1.EventBus,
+        hall_service_1.HallService,
+        core_1.Injector])
 ], CampusDeliveryPlugin);
 //# sourceMappingURL=campus-delivery.plugin.js.map

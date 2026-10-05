@@ -1,8 +1,10 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { Ctx, ID, RequestContext, TransactionalConnection } from '@vendure/core';
+import { Ctx, ID, Order, RequestContext, TransactionalConnection, UserInputError } from '@vendure/core';
 import { CampusConfigService } from './campus-config.service';
 import { HallGrabService } from './hall-grab.service';
+import { HallService } from './hall.service';
 import { RiderEarning } from './rider-earning.entity';
+import { CREDIT_REJECT, RiderCreditService } from './rider-credit.service';
 import { RiderService } from './rider.service';
 
 @Resolver()
@@ -12,12 +14,32 @@ export class HallShopResolver {
         private config: CampusConfigService,
         private riderService: RiderService,
         private connection: TransactionalConnection,
+        private hall: HallService,
+        private credit: RiderCreditService,
     ) {}
 
     /** grab 失败（已被抢/抢自己的/非骑手）由 service 抛 UserInputError/ForbiddenError，Vendure 转 GraphQL 错误。 */
     @Mutation()
     async campusGrabOrder(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID) {
         return this.grab.grab(ctx, orderId);
+    }
+
+    /** 拒单：仅限被指派且未取货的骑手；订单回大厅 + 骑手扣分。 */
+    @Mutation()
+    async campusRejectAssignment(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID) {
+        return this.rejectAssignment(ctx, orderId);
+    }
+
+    private async rejectAssignment(ctx: RequestContext, orderId: ID) {
+        const rider = await this.riderService.assertApprovedRider(ctx);
+        const order = await this.connection.getRepository(ctx, Order).findOne({ where: { id: orderId as any } });
+        const cf = order?.customFields as any;
+        if (!order || cf.deliveryStaffId !== String(rider.id) || cf.deliveryStatus !== 'assigned') {
+            throw new UserInputError('该订单未指派给您或已取货，不能拒单');
+        }
+        await this.hall.backToHall(ctx, order.id as any);
+        await this.credit.adjust(ctx, rider.id as any, CREDIT_REJECT, 'reject_assign', order.id as any);
+        return { backToHall: true };
     }
 
     @Query()

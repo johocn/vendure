@@ -17,18 +17,37 @@ const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
 const campus_config_service_1 = require("./campus-config.service");
 const hall_grab_service_1 = require("./hall-grab.service");
+const hall_service_1 = require("./hall.service");
 const rider_earning_entity_1 = require("./rider-earning.entity");
+const rider_credit_service_1 = require("./rider-credit.service");
 const rider_service_1 = require("./rider.service");
 let HallShopResolver = class HallShopResolver {
-    constructor(grab, config, riderService, connection) {
+    constructor(grab, config, riderService, connection, hall, credit) {
         this.grab = grab;
         this.config = config;
         this.riderService = riderService;
         this.connection = connection;
+        this.hall = hall;
+        this.credit = credit;
     }
     /** grab 失败（已被抢/抢自己的/非骑手）由 service 抛 UserInputError/ForbiddenError，Vendure 转 GraphQL 错误。 */
     async campusGrabOrder(ctx, orderId) {
         return this.grab.grab(ctx, orderId);
+    }
+    /** 拒单：仅限被指派且未取货的骑手；订单回大厅 + 骑手扣分。 */
+    async campusRejectAssignment(ctx, orderId) {
+        return this.rejectAssignment(ctx, orderId);
+    }
+    async rejectAssignment(ctx, orderId) {
+        const rider = await this.riderService.assertApprovedRider(ctx);
+        const order = await this.connection.getRepository(ctx, core_1.Order).findOne({ where: { id: orderId } });
+        const cf = order === null || order === void 0 ? void 0 : order.customFields;
+        if (!order || cf.deliveryStaffId !== String(rider.id) || cf.deliveryStatus !== 'assigned') {
+            throw new core_1.UserInputError('该订单未指派给您或已取货，不能拒单');
+        }
+        await this.hall.backToHall(ctx, order.id);
+        await this.credit.adjust(ctx, rider.id, rider_credit_service_1.CREDIT_REJECT, 'reject_assign', order.id);
+        return { backToHall: true };
     }
     async campusHall(ctx) {
         return this.grab.hall(ctx);
@@ -61,6 +80,14 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], HallShopResolver.prototype, "campusGrabOrder", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], HallShopResolver.prototype, "campusRejectAssignment", null);
 __decorate([
     (0, graphql_1.Query)(),
     __param(0, (0, core_1.Ctx)()),
@@ -98,6 +125,8 @@ exports.HallShopResolver = HallShopResolver = __decorate([
     __metadata("design:paramtypes", [hall_grab_service_1.HallGrabService,
         campus_config_service_1.CampusConfigService,
         rider_service_1.RiderService,
-        core_1.TransactionalConnection])
+        core_1.TransactionalConnection,
+        hall_service_1.HallService,
+        rider_credit_service_1.RiderCreditService])
 ], HallShopResolver);
 //# sourceMappingURL=hall-shop.resolver.js.map

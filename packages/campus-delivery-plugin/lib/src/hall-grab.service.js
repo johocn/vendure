@@ -47,24 +47,57 @@ let HallGrabService = class HallGrabService {
             return em.getRepository(core_1.Order).findOneByOrFail({ id: orderId });
         });
     }
+    /** T2/T3 强派原语：hallStatus='open' → 'grabbed'（事务+悲观锁，与 grab 同款防双抢）。
+     * 目标骑手须 approved；低信用分在调用方（DispatchJobService）过滤。 */
+    async grabByRider(ctx, orderId, rider) {
+        return this.connection.rawConnection.transaction(async (em) => {
+            const order = await em.getRepository(core_1.Order).findOne({
+                where: { id: orderId },
+                lock: { mode: 'pessimistic_write' },
+            });
+            const cf = order === null || order === void 0 ? void 0 : order.customFields;
+            if (!order || (cf === null || cf === void 0 ? void 0 : cf.hallStatus) !== 'open')
+                return false;
+            await em.getRepository(core_1.Order).update(order.id, {
+                customFields: {
+                    hallStatus: 'grabbed',
+                    deliveryStaffId: String(rider.id),
+                    deliveryStatus: 'assigned',
+                    assignedAt: new Date(),
+                },
+            });
+            return true;
+        });
+    }
     /**
-     * 大厅列表：当前渠道 open 状态订单（含跑腿单），按小费/入厅时间排序。
-     * customFields 为嵌入式物理列（物理列名 customFieldsHallstatus 等），
-     * QueryBuilder 中必须用 embedded 路径 order.customFields.hallStatus（TypeORM 解析改写），
-     * 裸列 order.hallStatus 在 PG 不存在（与 delivery-plugin 同写法）。
+     * 大厅列表：当前渠道 open 状态订单（含跑腿单）。
+     * T1: 滞留 > 5min 加急置顶，其次小费降序，再按入厅时间升序（JS 排序，避免 customFields
+     * 物理列名在 SQL 排序中的风险）。customFields 为嵌入式物理列，QueryBuilder 中必须用
+     * embedded 路径 order.customFields.hallStatus（TypeORM 解析改写）。
      * 渠道过滤：Order 无标量 channelId 列，channels 为多对多关联（同 core findOneInChannel 模式），
      * 故 join order.channels 过滤 channel.id = ctx.channelId。
      */
     async hall(ctx) {
-        return this.connection
+        const orders = await this.connection
             .getRepository(ctx, core_1.Order)
             .createQueryBuilder('order')
             .leftJoin('order.channels', 'channel')
             .where('channel.id = :ch', { ch: ctx.channelId })
             .andWhere('order.customFields.hallStatus = :s', { s: 'open' })
-            .orderBy('order.customFields.tip', 'DESC')
-            .addOrderBy('order.createdAt', 'ASC')
             .getMany();
+        const now = Date.now();
+        const urgentBefore = now - 5 * 60000;
+        const urgent = (o) => {
+            const at = o.customFields.hallEnteredAt;
+            return at ? new Date(at).getTime() < urgentBefore : false;
+        };
+        return orders.sort((a, b) => {
+            var _a, _b, _c, _d;
+            return (urgent(b) ? 1 : 0) - (urgent(a) ? 1 : 0)
+                || ((_a = b.customFields.tip) !== null && _a !== void 0 ? _a : 0) - ((_b = a.customFields.tip) !== null && _b !== void 0 ? _b : 0)
+                || new Date((_c = a.customFields.hallEnteredAt) !== null && _c !== void 0 ? _c : a.createdAt).getTime()
+                    - new Date((_d = b.customFields.hallEnteredAt) !== null && _d !== void 0 ? _d : b.createdAt).getTime();
+        });
     }
 };
 exports.HallGrabService = HallGrabService;
