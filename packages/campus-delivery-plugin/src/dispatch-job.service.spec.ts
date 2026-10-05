@@ -102,7 +102,7 @@ function injectT4Services(svc: DispatchJobService) {
     svc['orderSvc'] = {
         refundOrder: vi.fn().mockResolvedValue({ id: 77 }),
         settleRefund: vi.fn().mockResolvedValue({}),
-        transitionToState: vi.fn().mockResolvedValue({}),
+        cancelOrder: vi.fn().mockResolvedValue({ id: 4 }),
     } as any;
     svc['paymentRepo'] = { findOne: vi.fn().mockResolvedValue({ id: 55, amount: 8800 }) };
     svc['couponSvc'] = { grantCoupon: vi.fn().mockResolvedValue([]) };
@@ -125,7 +125,7 @@ describe('DispatchJobService.scan T4 自动退款', () => {
             adjustment: 0,
         }));
         expect(orderSvc.settleRefund).toHaveBeenCalledOnce();
-        expect(orderSvc.transitionToState).toHaveBeenCalledWith(expect.anything(), 4, 'Cancelled');
+        expect(orderSvc.cancelOrder).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ orderId: 4 }));
         expect(couponSvc.grantCoupon).toHaveBeenCalledWith(expect.anything(), '9', [expect.anything()]);
         expect(env.hallSvc.updateOrder).toHaveBeenCalledWith(expect.anything(), 4, expect.objectContaining({
             customFields: expect.objectContaining({ campusCause: 'no_rider', hallStatus: 'no_rider_final' }),
@@ -140,7 +140,7 @@ describe('DispatchJobService.scan T4 自动退款', () => {
         injectT4Services(env.svc);
         await env.svc.scan({ channelId: 1 } as any);
         expect((env.svc as any).couponSvc.grantCoupon).not.toHaveBeenCalled();
-        expect((env.svc as any).orderSvc.transitionToState).toHaveBeenCalledWith(expect.anything(), 4, 'Cancelled');
+        expect((env.svc as any).orderSvc.cancelOrder).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ orderId: 4 }));
         expect(env.hallSvc.updateOrder).toHaveBeenCalledWith(expect.anything(), 4, expect.objectContaining({
             customFields: expect.objectContaining({ campusCause: 'no_rider', hallStatus: 'no_rider_final' }),
         }));
@@ -157,9 +157,10 @@ describe('DispatchJobService.scan T4 自动退款', () => {
         await env.svc.scan({ channelId: 1 } as any);
         expect(orderSvc.refundOrder).not.toHaveBeenCalled();
         expect(orderSvc.settleRefund).not.toHaveBeenCalled();
-        expect(orderSvc.transitionToState).toHaveBeenCalledWith(expect.anything(), 4, 'Cancelled');
+        expect(orderSvc.cancelOrder).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ orderId: 4 }));
         expect(env.hallSvc.updateOrder).toHaveBeenCalledWith(expect.anything(), 4, expect.objectContaining({
             customFields: expect.objectContaining({ campusCause: 'no_rider', hallStatus: 'no_rider_final' }),
         }));
     });
 });
+

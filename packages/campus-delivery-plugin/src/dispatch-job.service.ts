@@ -230,7 +230,15 @@ export class DispatchJobService implements OnApplicationShutdown {
                     await orderSvc!.settleRefund(ctx, { id: (created as any).id } as any);
                 }
             }
-            await orderSvc!.transitionToState(ctx, order.id as any, 'Cancelled');
+            // 用 cancelOrder 而非 transitionToState(Cancelled)：默认 checkAllItemsBeforeCancel 要求
+            // 订单行先取消，cancelOrder 内部完成行取消+状态转换；transitionToState 会静默返回 ErrorResult
+            const cancelled = await orderSvc!.cancelOrder(ctx, {
+                orderId: order.id as any,
+                reason: `no_rider auto cancel (${order.code})`,
+            } as any);
+            if (cancelled && (cancelled as any).errorCode) {
+                throw new Error(`cancelOrder failed: ${(cancelled as any).errorCode}`);
+            }
             await mark();
             const templateId = cfg.compensationCouponTemplateId;
             if (templateId && order.customerId && coupon) {

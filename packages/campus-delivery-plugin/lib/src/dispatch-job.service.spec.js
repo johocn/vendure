@@ -98,7 +98,7 @@ function injectT4Services(svc) {
     svc['orderSvc'] = {
         refundOrder: vitest_1.vi.fn().mockResolvedValue({ id: 77 }),
         settleRefund: vitest_1.vi.fn().mockResolvedValue({}),
-        transitionToState: vitest_1.vi.fn().mockResolvedValue({}),
+        cancelOrder: vitest_1.vi.fn().mockResolvedValue({ id: 4 }),
     };
     svc['paymentRepo'] = { findOne: vitest_1.vi.fn().mockResolvedValue({ id: 55, amount: 8800 }) };
     svc['couponSvc'] = { grantCoupon: vitest_1.vi.fn().mockResolvedValue([]) };
@@ -120,7 +120,7 @@ function injectT4Services(svc) {
             adjustment: 0,
         }));
         (0, vitest_1.expect)(orderSvc.settleRefund).toHaveBeenCalledOnce();
-        (0, vitest_1.expect)(orderSvc.transitionToState).toHaveBeenCalledWith(vitest_1.expect.anything(), 4, 'Cancelled');
+        (0, vitest_1.expect)(orderSvc.cancelOrder).toHaveBeenCalledWith(vitest_1.expect.anything(), vitest_1.expect.objectContaining({ orderId: 4 }));
         (0, vitest_1.expect)(couponSvc.grantCoupon).toHaveBeenCalledWith(vitest_1.expect.anything(), '9', [vitest_1.expect.anything()]);
         (0, vitest_1.expect)(env.hallSvc.updateOrder).toHaveBeenCalledWith(vitest_1.expect.anything(), 4, vitest_1.expect.objectContaining({
             customFields: vitest_1.expect.objectContaining({ campusCause: 'no_rider', hallStatus: 'no_rider_final' }),
@@ -134,7 +134,7 @@ function injectT4Services(svc) {
         injectT4Services(env.svc);
         await env.svc.scan({ channelId: 1 });
         (0, vitest_1.expect)(env.svc.couponSvc.grantCoupon).not.toHaveBeenCalled();
-        (0, vitest_1.expect)(env.svc.orderSvc.transitionToState).toHaveBeenCalledWith(vitest_1.expect.anything(), 4, 'Cancelled');
+        (0, vitest_1.expect)(env.svc.orderSvc.cancelOrder).toHaveBeenCalledWith(vitest_1.expect.anything(), vitest_1.expect.objectContaining({ orderId: 4 }));
         (0, vitest_1.expect)(env.hallSvc.updateOrder).toHaveBeenCalledWith(vitest_1.expect.anything(), 4, vitest_1.expect.objectContaining({
             customFields: vitest_1.expect.objectContaining({ campusCause: 'no_rider', hallStatus: 'no_rider_final' }),
         }));
@@ -150,7 +150,7 @@ function injectT4Services(svc) {
         await env.svc.scan({ channelId: 1 });
         (0, vitest_1.expect)(orderSvc.refundOrder).not.toHaveBeenCalled();
         (0, vitest_1.expect)(orderSvc.settleRefund).not.toHaveBeenCalled();
-        (0, vitest_1.expect)(orderSvc.transitionToState).toHaveBeenCalledWith(vitest_1.expect.anything(), 4, 'Cancelled');
+        (0, vitest_1.expect)(orderSvc.cancelOrder).toHaveBeenCalledWith(vitest_1.expect.anything(), vitest_1.expect.objectContaining({ orderId: 4 }));
         (0, vitest_1.expect)(env.hallSvc.updateOrder).toHaveBeenCalledWith(vitest_1.expect.anything(), 4, vitest_1.expect.objectContaining({
             customFields: vitest_1.expect.objectContaining({ campusCause: 'no_rider', hallStatus: 'no_rider_final' }),
         }));

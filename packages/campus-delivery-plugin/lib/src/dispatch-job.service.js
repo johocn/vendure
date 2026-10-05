@@ -223,7 +223,15 @@ let DispatchJobService = class DispatchJobService {
                     await orderSvc.settleRefund(ctx, { id: created.id });
                 }
             }
-            await orderSvc.transitionToState(ctx, order.id, 'Cancelled');
+            // 用 cancelOrder 而非 transitionToState(Cancelled)：默认 checkAllItemsBeforeCancel 要求
+            // 订单行先取消，cancelOrder 内部完成行取消+状态转换；transitionToState 会静默返回 ErrorResult
+            const cancelled = await orderSvc.cancelOrder(ctx, {
+                orderId: order.id,
+                reason: `no_rider auto cancel (${order.code})`,
+            });
+            if (cancelled && cancelled.errorCode) {
+                throw new Error(`cancelOrder failed: ${cancelled.errorCode}`);
+            }
             await mark();
             const templateId = cfg.compensationCouponTemplateId;
             if (templateId && order.customerId && coupon) {
