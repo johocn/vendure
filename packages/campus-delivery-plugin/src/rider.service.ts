@@ -73,15 +73,14 @@ export class RiderService {
 
     /**
      * 按 riderStatus 查询入驻申请列表。
-     * 注：customFields 在 Vendure 中注册为扁平物理列（registerCustomEntityFields），
-     * 故主用扁平列取法 customer.riderStatus；
-     * 备选（若部署为 JSON 列）：customer.customFields ->> 'riderStatus' = :status
+     * customFields 为嵌入式物理列，QueryBuilder 用 embedded 路径
+     * customer.customFields.riderStatus（与 delivery-plugin 的 order.customFields.* 写法一致）。
      */
     async listApplications(ctx: RequestContext, status: string) {
         return this.connection
             .getRepository(ctx, Customer)
             .createQueryBuilder('customer')
-            .where('customer.riderStatus = :status', { status })
+            .where('customer.customFields.riderStatus = :status', { status })
             .getMany();
     }
 }

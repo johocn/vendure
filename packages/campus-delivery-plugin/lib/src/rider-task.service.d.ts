@@ -5,8 +5,8 @@ export declare class RiderTaskService {
     private riderService;
     constructor(connection: TransactionalConnection, riderService: RiderService);
     /** 我的任务：本骑手名下已进入配送流程的订单，按下单时间倒序。
-     * customFields 在 Vendure 中注册为扁平物理列（registerCustomEntityFields），
-     * 故用扁平列取法 order.deliveryStaffId / order.deliveryStatus（同 hall() 的 order.hallStatus）。
+     * customFields 为嵌入式物理列，QueryBuilder 用 embedded 路径 order.customFields.deliveryStaffId
+     * （与 delivery-plugin 写法一致），裸列 order.deliveryStaffId 在 PG 不存在。
      * 渠道过滤：Order 无标量 channelId，join order.channels 过滤 channel.id（同 hall()）。 */
     myTasks(ctx: RequestContext, status?: string): Promise<Order[]>;
     /** 开始配送：assigned → in_progress */

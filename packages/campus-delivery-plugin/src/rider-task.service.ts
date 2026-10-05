@@ -17,8 +17,8 @@ export class RiderTaskService {
     constructor(private connection: TransactionalConnection, private riderService: RiderService) {}
 
     /** 我的任务：本骑手名下已进入配送流程的订单，按下单时间倒序。
-     * customFields 在 Vendure 中注册为扁平物理列（registerCustomEntityFields），
-     * 故用扁平列取法 order.deliveryStaffId / order.deliveryStatus（同 hall() 的 order.hallStatus）。
+     * customFields 为嵌入式物理列，QueryBuilder 用 embedded 路径 order.customFields.deliveryStaffId
+     * （与 delivery-plugin 写法一致），裸列 order.deliveryStaffId 在 PG 不存在。
      * 渠道过滤：Order 无标量 channelId，join order.channels 过滤 channel.id（同 hall()）。 */
     async myTasks(ctx: RequestContext, status?: string) {
         const rider = await this.riderService.assertApprovedRider(ctx);
@@ -27,10 +27,10 @@ export class RiderTaskService {
             .createQueryBuilder('order')
             .leftJoin('order.channels', 'channel')
             .where('channel.id = :ch', { ch: ctx.channelId as any })
-            .andWhere('order.deliveryStaffId = :id', { id: String(rider.id) })
-            .andWhere('order.deliveryStatus IS NOT NULL');
+            .andWhere('order.customFields.deliveryStaffId = :id', { id: String(rider.id) })
+            .andWhere('order.customFields.deliveryStatus IS NOT NULL');
         if (status) {
-            qb.andWhere('order.deliveryStatus = :s', { s: status });
+            qb.andWhere('order.customFields.deliveryStatus = :s', { s: status });
         }
         return qb.orderBy('order.createdAt', 'DESC').getMany();
     }

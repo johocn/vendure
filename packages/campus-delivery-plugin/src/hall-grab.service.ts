@@ -41,14 +41,9 @@ export class HallGrabService {
 
     /**
      * 大厅列表：当前渠道 open 状态订单（含跑腿单），按小费/入厅时间排序。
-     * customFields 在 Vendure 中注册为嵌入式真实物理列（registerCustomEntityFields），
-     * 故采用扁平列取法 order.hallStatus / order.tip（TypeORM 会改写为 "order"."hallStatus" 等）。
-     * 备选：若部署为 JSON 列，则改用
-     *   where: "order.customFields ->> 'hallStatus' = :s"
-     *   orderBy: "order.customFields ->> 'tip'" DESC
-     * PG 索引建议：JSON 列取法补
-     *   CREATE INDEX IF NOT EXISTS idx_order_hall_status ON "order" ((customFields->>'hallStatus'))；
-     * 扁平列取法则为 ON "order" ("hallStatus")。
+     * customFields 为嵌入式物理列（物理列名 customFieldsHallstatus 等），
+     * QueryBuilder 中必须用 embedded 路径 order.customFields.hallStatus（TypeORM 解析改写），
+     * 裸列 order.hallStatus 在 PG 不存在（与 delivery-plugin 同写法）。
      * 渠道过滤：Order 无标量 channelId 列，channels 为多对多关联（同 core findOneInChannel 模式），
      * 故 join order.channels 过滤 channel.id = ctx.channelId。
      */
@@ -58,8 +53,8 @@ export class HallGrabService {
             .createQueryBuilder('order')
             .leftJoin('order.channels', 'channel')
             .where('channel.id = :ch', { ch: ctx.channelId as any })
-            .andWhere('order.hallStatus = :s', { s: 'open' })
-            .orderBy('order.tip', 'DESC')
+            .andWhere('order.customFields.hallStatus = :s', { s: 'open' })
+            .orderBy('order.customFields.tip', 'DESC')
             .addOrderBy('order.createdAt', 'ASC')
             .getMany();
     }
