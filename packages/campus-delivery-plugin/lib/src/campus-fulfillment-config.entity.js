@@ -19,7 +19,7 @@ let CampusFulfillmentConfig = class CampusFulfillmentConfig extends core_1.Vendu
 };
 exports.CampusFulfillmentConfig = CampusFulfillmentConfig;
 __decorate([
-    (0, typeorm_1.Column)({ unique: true }),
+    (0, typeorm_1.Column)('int', { unique: true }),
     __metadata("design:type", Object)
 ], CampusFulfillmentConfig.prototype, "channelId", void 0);
 __decorate([
