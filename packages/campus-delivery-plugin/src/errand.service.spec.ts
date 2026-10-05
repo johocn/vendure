@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ErrandService } from './errand.service';
 
-function makeEnv(opts: { variant?: any } = {}) {
+function makeEnv(opts: { variant?: any; surcharges?: any[] } = {}) {
     const orderSvc = {
         updateCustomFields: vi.fn().mockResolvedValue({ id: 5 }),
         addSurchargeToOrder: vi.fn().mockResolvedValue({ id: 5 }),
+        removeSurchargeFromOrder: vi.fn().mockResolvedValue({ id: 5 }),
     };
     const productService = { create: vi.fn().mockResolvedValue({ id: 9 }) };
     const variantService = { create: vi.fn().mockResolvedValue([{ id: 11, sku: 'CAMPUS-ERRAND-BASE' }]) };
@@ -12,11 +13,14 @@ function makeEnv(opts: { variant?: any } = {}) {
         get: vi.fn((t: any) => (t.name === 'ProductService' ? productService : variantService)),
     };
     const variantRepo = { findOne: vi.fn().mockResolvedValue(opts.variant ?? null) };
+    const orderRepo = { findOne: vi.fn().mockResolvedValue({ id: 5, surcharges: opts.surcharges ?? [] }) };
     const conn = {
-        getRepository: vi.fn((_ctx: any, ent: any) => ((ent as any).name === 'ProductVariant' ? variantRepo : {})),
+        getRepository: vi.fn((_ctx: any, ent: any) =>
+            (ent as any).name === 'ProductVariant' ? variantRepo : orderRepo,
+        ),
     } as any;
     const svc = new ErrandService(conn, orderSvc as any, injector as any);
-    return { svc, orderSvc, injector, productService, variantService, variantRepo };
+    return { svc, orderSvc, injector, productService, variantService, variantRepo, orderRepo };
 }
 
 describe('ErrandService.ensureErrandProduct', () => {
@@ -41,16 +45,12 @@ describe('ErrandService.ensureErrandProduct', () => {
 });
 
 describe('ErrandService.setErrandInfo', () => {
+    const input = { kind: 'pickup_express', fromText: '东门取件', toText: '12号楼501', tip: 100, campusZone: 'A区' };
+
     it('写 errand customFields + 小费 surcharge', async () => {
         const env = makeEnv();
         const ctx = { channelId: 1, activeUserId: 9, session: { activeOrderId: 5 } } as any;
-        await env.svc.setErrandInfo(ctx, {
-            kind: 'pickup_express',
-            fromText: '东门取件',
-            toText: '12号楼501',
-            tip: 100,
-            campusZone: 'A区',
-        });
+        await env.svc.setErrandInfo(ctx, input);
         expect(env.orderSvc.updateCustomFields).toHaveBeenCalledWith(
             ctx,
             5,
@@ -67,5 +67,31 @@ describe('ErrandService.setErrandInfo', () => {
             5,
             expect.objectContaining({ listPrice: 100 }),
         );
+    });
+
+    it('幂等：同单已有小费 surcharge，先清后加只留一条', async () => {
+        const env = makeEnv({
+            surcharges: [
+                { id: 71, description: '跑腿小费' },
+                { id: 72, description: '跑腿小费' },
+                { id: 73, description: '其他费用' },
+            ],
+        });
+        const ctx = { channelId: 1, activeUserId: 9, session: { activeOrderId: 5 } } as any;
+        await env.svc.setErrandInfo(ctx, input);
+        // 只清两条「跑腿小费」，不动其他 surcharge
+        expect(env.orderSvc.removeSurchargeFromOrder).toHaveBeenCalledTimes(2);
+        expect(env.orderSvc.removeSurchargeFromOrder).toHaveBeenCalledWith(ctx, 5, 71);
+        expect(env.orderSvc.removeSurchargeFromOrder).toHaveBeenCalledWith(ctx, 5, 72);
+        // 再补一条新小费
+        expect(env.orderSvc.addSurchargeToOrder).toHaveBeenCalledOnce();
+    });
+
+    it('幂等：tip 改 0 时只清不加', async () => {
+        const env = makeEnv({ surcharges: [{ id: 71, description: '跑腿小费' }] });
+        const ctx = { channelId: 1, activeUserId: 9, session: { activeOrderId: 5 } } as any;
+        await env.svc.setErrandInfo(ctx, { ...input, tip: 0 });
+        expect(env.orderSvc.removeSurchargeFromOrder).toHaveBeenCalledWith(ctx, 5, 71);
+        expect(env.orderSvc.addSurchargeToOrder).not.toHaveBeenCalled();
     });
 });

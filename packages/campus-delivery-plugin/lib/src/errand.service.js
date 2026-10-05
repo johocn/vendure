@@ -9,13 +9,15 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ErrandService = exports.ERRAND_BASE_SLUG = exports.ERRAND_BASE_SKU = void 0;
+exports.ErrandService = exports.ERRAND_TIP_SURCHARGE_DESC = exports.ERRAND_BASE_SLUG = exports.ERRAND_BASE_SKU = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@nestjs/core");
 const core_2 = require("@vendure/core");
 /** 0 元载体商品 SKU：幂等创建的查重键，C 端 addItemToOrder 用其 variantId 加购物车 */
 exports.ERRAND_BASE_SKU = 'CAMPUS-ERRAND-BASE';
 exports.ERRAND_BASE_SLUG = 'campus-errand-base';
+/** 小费 surcharge 标识（幂等清理键：同单重复设置按此描述清旧补新，防重复计费） */
+exports.ERRAND_TIP_SURCHARGE_DESC = '跑腿小费';
 /**
  * R5 跑腿单：两步式链路——
  * 1) admin 用 ensureErrandProduct 幂等建 0 元载体（SKU 查重入口）；
@@ -65,7 +67,7 @@ let ErrandService = class ErrandService {
      * tip>0 时给订单加小费 surcharge（listPrice=tip，含税口径）。
      */
     async setErrandInfo(ctx, input) {
-        var _a, _b, _c;
+        var _a, _b, _c, _d;
         if (!ctx.activeUserId)
             throw new core_2.ForbiddenError();
         const orderId = (_a = ctx.session) === null || _a === void 0 ? void 0 : _a.activeOrderId;
@@ -84,10 +86,19 @@ let ErrandService = class ErrandService {
             buildingId: (_b = input.buildingId) !== null && _b !== void 0 ? _b : null,
             campusZone: (_c = input.campusZone) !== null && _c !== void 0 ? _c : null,
         });
+        // 小费 surcharge 幂等：先清本单全部旧小费，再按新 tip 加一条（tip=0 只清不加），
+        // 防止同单重复设置（改小费/改地址/重复提交）叠加多条 surcharge 重复计费
+        const existing = await this.connection.getRepository(ctx, core_2.Order).findOne({
+            where: { id: orderId },
+            relations: ['surcharges'],
+        });
+        for (const s of ((_d = existing === null || existing === void 0 ? void 0 : existing.surcharges) !== null && _d !== void 0 ? _d : []).filter(x => x.description === exports.ERRAND_TIP_SURCHARGE_DESC)) {
+            await this.orderService.removeSurchargeFromOrder(ctx, orderId, s.id);
+        }
         if (tip > 0) {
             // 本 fork 无独立 SurchargeService，surcharge 原语在 OrderService.addSurchargeToOrder（service 层无权限校验，shop ctx 可用）
             await this.orderService.addSurchargeToOrder(ctx, orderId, {
-                description: '跑腿小费',
+                description: exports.ERRAND_TIP_SURCHARGE_DESC,
                 listPrice: tip,
                 listPriceIncludesTax: true,
             });

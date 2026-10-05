@@ -4,6 +4,7 @@ import {
     ForbiddenError,
     ID,
     Injector,
+    Order,
     OrderService,
     Product,
     ProductService,
@@ -17,6 +18,8 @@ import {
 /** 0 元载体商品 SKU：幂等创建的查重键，C 端 addItemToOrder 用其 variantId 加购物车 */
 export const ERRAND_BASE_SKU = 'CAMPUS-ERRAND-BASE';
 export const ERRAND_BASE_SLUG = 'campus-errand-base';
+/** 小费 surcharge 标识（幂等清理键：同单重复设置按此描述清旧补新，防重复计费） */
+export const ERRAND_TIP_SURCHARGE_DESC = '跑腿小费';
 
 /**
  * R5 跑腿单：两步式链路——
@@ -89,10 +92,19 @@ export class ErrandService {
             buildingId: input.buildingId ?? null,
             campusZone: input.campusZone ?? null,
         } as any);
+        // 小费 surcharge 幂等：先清本单全部旧小费，再按新 tip 加一条（tip=0 只清不加），
+        // 防止同单重复设置（改小费/改地址/重复提交）叠加多条 surcharge 重复计费
+        const existing = await this.connection.getRepository(ctx, Order).findOne({
+            where: { id: orderId as any },
+            relations: ['surcharges'],
+        });
+        for (const s of (existing?.surcharges ?? []).filter(x => x.description === ERRAND_TIP_SURCHARGE_DESC)) {
+            await this.orderService.removeSurchargeFromOrder(ctx, orderId as any, s.id as any);
+        }
         if (tip > 0) {
             // 本 fork 无独立 SurchargeService，surcharge 原语在 OrderService.addSurchargeToOrder（service 层无权限校验，shop ctx 可用）
             await this.orderService.addSurchargeToOrder(ctx, orderId as any, {
-                description: '跑腿小费',
+                description: ERRAND_TIP_SURCHARGE_DESC,
                 listPrice: tip,
                 listPriceIncludesTax: true,
             } as any);
