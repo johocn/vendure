@@ -25,6 +25,7 @@ const dispatch_admin_service_1 = require("./dispatch-admin.service");
 const dispatch_job_service_1 = require("./dispatch-job.service");
 const errand_service_1 = require("./errand.service");
 const errand_shop_resolver_1 = require("./errand-shop.resolver");
+const errand_shipping_line_assignment_1 = require("./errand-shipping-line-assignment");
 const hall_grab_service_1 = require("./hall-grab.service");
 const hall_service_1 = require("./hall.service");
 const hall_shop_resolver_1 = require("./hall-shop.resolver");
@@ -329,6 +330,14 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                 ...((_f = config.shippingOptions.shippingCalculators) !== null && _f !== void 0 ? _f : []),
                 shipping_calculator_1.campusErrandCalculator,
             ];
+            // 跑腿单 ShippingLine 分配：包装既有策略（cjk Box 按配送档案分箱，跑腿 0 元载体无档案
+            // 绑定会被返回空数组 → 孤儿线）。本插件在 dev-config 中位于 CjkPlugin 之后，
+            // configuration 钩子后执行，此处拿到的即为 cjk 已设置的策略，包装后原行为不变。
+            const prevAssignmentStrategy = config.shippingOptions.shippingLineAssignmentStrategy;
+            if (prevAssignmentStrategy) {
+                config.shippingOptions.shippingLineAssignmentStrategy =
+                    new errand_shipping_line_assignment_1.CampusErrandShippingLineAssignmentStrategy(prevAssignmentStrategy);
+            }
             return config;
         },
         compatibility: '^3.6.4',

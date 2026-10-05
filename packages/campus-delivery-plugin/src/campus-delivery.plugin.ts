@@ -22,6 +22,7 @@ import { DispatchAdminService } from './dispatch-admin.service';
 import { DispatchJobService } from './dispatch-job.service';
 import { ErrandService } from './errand.service';
 import { ErrandShopResolver } from './errand-shop.resolver';
+import { CampusErrandShippingLineAssignmentStrategy } from './errand-shipping-line-assignment';
 import { HallGrabService } from './hall-grab.service';
 import { HallService } from './hall.service';
 import { HallShopResolver } from './hall-shop.resolver';
@@ -312,6 +313,14 @@ import { SlotLockService } from './slot-lock.service';
             ...(config.shippingOptions.shippingCalculators ?? []),
             campusErrandCalculator,
         ];
+        // 跑腿单 ShippingLine 分配：包装既有策略（cjk Box 按配送档案分箱，跑腿 0 元载体无档案
+        // 绑定会被返回空数组 → 孤儿线）。本插件在 dev-config 中位于 CjkPlugin 之后，
+        // configuration 钩子后执行，此处拿到的即为 cjk 已设置的策略，包装后原行为不变。
+        const prevAssignmentStrategy = config.shippingOptions.shippingLineAssignmentStrategy;
+        if (prevAssignmentStrategy) {
+            config.shippingOptions.shippingLineAssignmentStrategy =
+                new CampusErrandShippingLineAssignmentStrategy(prevAssignmentStrategy);
+        }
         return config;
     },
     compatibility: '^3.6.4',

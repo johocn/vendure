@@ -35,5 +35,6 @@ __exportStar(require("./dispatch-job.service"), exports);
 __exportStar(require("./dispatch-admin.service"), exports);
 __exportStar(require("./errand.service"), exports);
 __exportStar(require("./shipping-calculator"), exports);
+__exportStar(require("./errand-shipping-line-assignment"), exports);
 __exportStar(require("./r2-mark.service"), exports);
 //# sourceMappingURL=index.js.map

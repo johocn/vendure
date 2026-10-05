@@ -19,4 +19,5 @@ export * from './dispatch-job.service';
 export * from './dispatch-admin.service';
 export * from './errand.service';
 export * from './shipping-calculator';
+export * from './errand-shipping-line-assignment';
 export * from './r2-mark.service';
