@@ -5,8 +5,10 @@ exports.bindCampusErrandCalculatorConnection = bindCampusErrandCalculatorConnect
 const core_1 = require("@vendure/core");
 const campus_zone_entity_1 = require("./campus-zone.entity");
 /**
- * R5 跑腿单分区运费 calculator：shipping = 所在分区 zone.fee。
- * 非 errand 单返回 undefined（vendure 视为该方法不适用，不影响普通订单现有运费）。
+ * 校园单分区运费 calculator：shipping = 所在分区 zone.fee。
+ * 适用：R5 跑腿单（orderKind='errand'）+ R1/R3 外卖单（fulfillmentRoute，plan2 §Task6/7 结算链路
+ * 「campus-zone-fee-calculator 出分区运费」即由此实现）。其他单返回 undefined
+ * （vendure 视为该方法不适用，不影响普通订单现有运费）。
  *
  * fork 实测签名：CalculateShippingFn = (ctx, order, args, method)，返回
  * ShippingCalculationResult { price, priceIncludesTax, taxRate, metadata? } | undefined。
@@ -21,12 +23,13 @@ function bindCampusErrandCalculatorConnection(conn) {
 }
 exports.campusErrandCalculator = new core_1.ShippingCalculator({
     code: 'campus-errand-calculator',
-    description: [{ languageCode: core_1.LanguageCode.zh, value: '校园跑腿分区运费' }],
+    description: [{ languageCode: core_1.LanguageCode.zh, value: '校园配送分区运费' }],
     args: {},
     calculate: async (ctx, order) => {
         var _a, _b;
         const cf = ((_a = order.customFields) !== null && _a !== void 0 ? _a : {});
-        if (cf.orderKind !== 'errand')
+        const route = cf.fulfillmentRoute;
+        if (cf.orderKind !== 'errand' && route !== 'R1' && route !== 'R3')
             return undefined;
         const conn = connectionRef;
         if (!conn)
