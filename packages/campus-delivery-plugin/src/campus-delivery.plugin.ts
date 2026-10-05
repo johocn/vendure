@@ -6,7 +6,9 @@ import { CampusConfigService } from './campus-config.service';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CampusZone } from './campus-zone.entity';
 import { campusCustomFields } from './custom-fields';
+import { HallGrabService } from './hall-grab.service';
 import { HallService } from './hall.service';
+import { HallShopResolver } from './hall-shop.resolver';
 import { CreateCampusTablesMigration } from './migrations/create-campus-tables';
 import { campusPermissionDefinitions } from './permissions';
 import { RiderAdminResolver } from './rider-admin.resolver';
@@ -17,7 +19,7 @@ import { RiderShopResolver } from './rider-shop.resolver';
 @VendurePlugin({
     imports: [PluginCommonModule],
     entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig],
-    providers: [CreateCampusTablesMigration, CampusConfigService, RiderService, HallService],
+    providers: [CreateCampusTablesMigration, CampusConfigService, RiderService, HallService, HallGrabService],
     adminApiExtensions: {
         schema: () => {
             const { gql } = require('graphql-tag');
@@ -105,14 +107,16 @@ import { RiderShopResolver } from './rider-shop.resolver';
                     myRiderProfile: RiderProfile!
                     campusZones: [CampusZone!]!
                     campusBuildings(zoneId: ID): [CampusBuilding!]!
+                    campusHall: [Order!]!
                 }
 
                 extend type Mutation {
                     applyRider(realName: String!, studentNo: String!, campus: String!, idImg: String): RiderApplyResult!
+                    campusGrabOrder(orderId: ID!): Order!
                 }
             `;
         },
-        resolvers: [RiderShopResolver],
+        resolvers: [RiderShopResolver, HallShopResolver],
     },
     configuration: config => {
         config.authOptions.customPermissions = [
