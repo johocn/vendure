@@ -9,12 +9,13 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ErrandService = exports.ERRAND_BASE_SKU = void 0;
+exports.ErrandService = exports.ERRAND_BASE_SLUG = exports.ERRAND_BASE_SKU = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@nestjs/core");
 const core_2 = require("@vendure/core");
 /** 0 元载体商品 SKU：幂等创建的查重键，C 端 addItemToOrder 用其 variantId 加购物车 */
 exports.ERRAND_BASE_SKU = 'CAMPUS-ERRAND-BASE';
+exports.ERRAND_BASE_SLUG = 'campus-errand-base';
 /**
  * R5 跑腿单：两步式链路——
  * 1) admin 用 ensureErrandProduct 幂等建 0 元载体（SKU 查重入口）；
@@ -44,7 +45,7 @@ let ErrandService = class ErrandService {
         const productService = this.injector.get(core_2.ProductService);
         const variantService = this.injector.get(core_2.ProductVariantService);
         const product = await productService.create(ctx, {
-            translations: [{ languageCode: ctx.languageCode, name: '校园跑腿服务' }],
+            translations: [{ languageCode: ctx.languageCode, name: '校园跑腿服务', slug: exports.ERRAND_BASE_SLUG }],
         });
         const [variant] = await variantService.create(ctx, [
             {

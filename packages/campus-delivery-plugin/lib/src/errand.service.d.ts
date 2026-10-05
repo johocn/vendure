@@ -2,6 +2,7 @@ import { ModuleRef } from '@nestjs/core';
 import { ID, OrderService, RequestContext, TransactionalConnection } from '@vendure/core';
 /** 0 元载体商品 SKU：幂等创建的查重键，C 端 addItemToOrder 用其 variantId 加购物车 */
 export declare const ERRAND_BASE_SKU = "CAMPUS-ERRAND-BASE";
+export declare const ERRAND_BASE_SLUG = "campus-errand-base";
 /**
  * R5 跑腿单：两步式链路——
  * 1) admin 用 ensureErrandProduct 幂等建 0 元载体（SKU 查重入口）；

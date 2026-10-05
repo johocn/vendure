@@ -16,6 +16,7 @@ import {
 
 /** 0 元载体商品 SKU：幂等创建的查重键，C 端 addItemToOrder 用其 variantId 加购物车 */
 export const ERRAND_BASE_SKU = 'CAMPUS-ERRAND-BASE';
+export const ERRAND_BASE_SLUG = 'campus-errand-base';
 
 /**
  * R5 跑腿单：两步式链路——
@@ -49,7 +50,7 @@ export class ErrandService {
         const productService = this.injector.get(ProductService);
         const variantService = this.injector.get(ProductVariantService);
         const product: Product = await productService.create(ctx, {
-            translations: [{ languageCode: ctx.languageCode, name: '校园跑腿服务' }],
+            translations: [{ languageCode: ctx.languageCode, name: '校园跑腿服务', slug: ERRAND_BASE_SLUG }],
         } as any);
         const [variant] = await variantService.create(ctx, [
             {
