@@ -13,6 +13,12 @@ export class RiderTaskShopResolver {
         return this.riderTaskService.myTasks(ctx, status);
     }
 
+    /** 公开只读：C 端订单跟踪骑手卡（姓名+信用分，不含联系方式） */
+    @Query()
+    async campusOrderRider(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID) {
+        return this.riderTaskService.orderRider(ctx, orderId);
+    }
+
     @Mutation()
     async campusStartTask(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID) {
         return this.riderTaskService.start(ctx, orderId);

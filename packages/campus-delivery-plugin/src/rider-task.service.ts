@@ -6,6 +6,7 @@ import {
     RequestContext,
     TransactionalConnection,
     UserInputError,
+    Customer,
 } from '@vendure/core';
 import { getCouponBalancePort } from '@vendure/coupon-plugin';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
@@ -20,6 +21,17 @@ export class RiderTaskService {
         private riderService: RiderService,
         private credit: RiderCreditService,
     ) {}
+
+    /** 订单骑手卡信息：C 端订单跟踪轮询用。未指派返回 null。 */
+    async orderRider(ctx: RequestContext, orderId: ID) {
+        const order = await this.connection.getRepository(ctx, Order).findOne({ where: { id: orderId as any } });
+        const riderId = Number((order?.customFields as any)?.deliveryStaffId ?? NaN);
+        if (!riderId) return null;
+        const rider = await this.connection.getRepository(ctx, Customer).findOne({ where: { id: riderId } });
+        if (!rider) return null;
+        const cf = (rider.customFields ?? {}) as any;
+        return { realName: cf.riderRealName ?? '骑手', credit: cf.riderCredit ?? 100 };
+    }
 
     /** 我的任务：本骑手名下已进入配送流程的订单，按下单时间倒序。
      * customFields 为嵌入式物理列，QueryBuilder 用 embedded 路径 order.customFields.deliveryStaffId

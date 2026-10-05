@@ -286,6 +286,11 @@ import { WaimaiStoreService } from './waimai-store.service';
                     routesEnabled: [String!]!
                 }
 
+                type CampusOrderRider {
+                    realName: String!
+                    credit: Int!
+                }
+
                 extend type Query {
                     myRiderProfile: RiderProfile!
                     campusZones: [CampusZone!]!
@@ -296,6 +301,7 @@ import { WaimaiStoreService } from './waimai-store.service';
                     myRiderEarnings(skip: Int, take: Int): [RiderEarning!]!
                     campusCapacityCheck: CampusCapacityCheck!
                     waimaiStoreList: [WaimaiStore!]!
+                    campusOrderRider(orderId: ID!): CampusOrderRider
                 }
 
                 extend type Mutation {
