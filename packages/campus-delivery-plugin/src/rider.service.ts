@@ -73,15 +73,15 @@ export class RiderService {
 
     /**
      * 按 riderStatus 查询入驻申请列表。
-     * 注：customFields 存储有两种可能——PG JSON 取法与扁平列取法，部署冒烟时择一：
-     * 1. JSON 取法（默认采用）：customer.customFields ->> 'riderStatus' = :status
-     * 2. 扁平列备选写法：'"customer"."riderStatus" = :status'
+     * 注：customFields 在 Vendure 中注册为扁平物理列（registerCustomEntityFields），
+     * 故主用扁平列取法 customer.riderStatus；
+     * 备选（若部署为 JSON 列）：customer.customFields ->> 'riderStatus' = :status
      */
     async listApplications(ctx: RequestContext, status: string) {
         return this.connection
             .getRepository(ctx, Customer)
             .createQueryBuilder('customer')
-            .where("customer.customFields ->> 'riderStatus' = :status", { status })
+            .where('customer.riderStatus = :status', { status })
             .getMany();
     }
 }
