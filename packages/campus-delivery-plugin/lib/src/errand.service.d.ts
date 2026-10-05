@@ -1,4 +1,5 @@
-import { ID, Injector, OrderService, RequestContext, TransactionalConnection } from '@vendure/core';
+import { ModuleRef } from '@nestjs/core';
+import { ID, OrderService, RequestContext, TransactionalConnection } from '@vendure/core';
 /** 0 元载体商品 SKU：幂等创建的查重键，C 端 addItemToOrder 用其 variantId 加购物车 */
 export declare const ERRAND_BASE_SKU = "CAMPUS-ERRAND-BASE";
 /**
@@ -11,8 +12,10 @@ export declare const ERRAND_BASE_SKU = "CAMPUS-ERRAND-BASE";
 export declare class ErrandService {
     private connection;
     private orderService;
-    private injector;
-    constructor(connection: TransactionalConnection, orderService: OrderService, injector: Injector);
+    private moduleRef;
+    constructor(connection: TransactionalConnection, orderService: OrderService, moduleRef: ModuleRef);
+    /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
+    private get injector();
     /** 幂等创建 0 元载体：按 SKU 查 ProductVariant，已存在直接返回。
      * ProductVariant 有 product FK，必须走 ProductService/ProductVariantService 组合（禁裸 repo.save 单表）。 */
     ensureErrandProduct(ctx: RequestContext): Promise<{

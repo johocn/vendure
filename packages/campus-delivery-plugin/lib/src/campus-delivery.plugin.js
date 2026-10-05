@@ -11,6 +11,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CampusDeliveryPlugin = void 0;
 const core_1 = require("@vendure/core");
+const core_2 = require("@nestjs/core");
 const campus_building_entity_1 = require("./campus-building.entity");
 const capacity_service_1 = require("./capacity.service");
 const campus_config_admin_resolver_1 = require("./campus-config-admin.resolver");
@@ -41,10 +42,14 @@ const rider_task_shop_resolver_1 = require("./rider-task-shop.resolver");
 const shipping_calculator_1 = require("./shipping-calculator");
 const slot_lock_service_1 = require("./slot-lock.service");
 let CampusDeliveryPlugin = class CampusDeliveryPlugin {
-    constructor(eventBus, hallService, injector) {
+    constructor(eventBus, hallService, moduleRef) {
         this.eventBus = eventBus;
         this.hallService = hallService;
-        this.injector = injector;
+        this.moduleRef = moduleRef;
+    }
+    /** vendure Injector 需由 ModuleRef 构造（插件模块类构造器不直接提供 Injector） */
+    get injector() {
+        return new core_1.Injector(this.moduleRef);
     }
     onApplicationBootstrap() {
         (0, shipping_calculator_1.bindCampusErrandCalculatorConnection)(this.injector.get(core_1.TransactionalConnection));
@@ -330,6 +335,6 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
     }),
     __metadata("design:paramtypes", [core_1.EventBus,
         hall_service_1.HallService,
-        core_1.Injector])
+        core_2.ModuleRef])
 ], CampusDeliveryPlugin);
 //# sourceMappingURL=campus-delivery.plugin.js.map

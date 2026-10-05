@@ -1,5 +1,6 @@
 import { OnApplicationShutdown } from '@nestjs/common';
-import { Injector, RequestContext, TransactionalConnection } from '@vendure/core';
+import { ModuleRef } from '@nestjs/core';
+import { RequestContext, TransactionalConnection } from '@vendure/core';
 import { CapacityService } from './capacity.service';
 import { HallGrabService } from './hall-grab.service';
 import { HallService } from './hall.service';
@@ -10,13 +11,15 @@ export declare class DispatchJobService implements OnApplicationShutdown {
     private hall;
     private capacity;
     private credit;
-    private injector;
+    private moduleRef;
     private timer;
     private running;
     private orderSvc?;
     private couponSvc?;
     private paymentRepo?;
-    constructor(connection: TransactionalConnection, grab: HallGrabService, hall: HallService, capacity: CapacityService, credit: RiderCreditService, injector: Injector);
+    constructor(connection: TransactionalConnection, grab: HallGrabService, hall: HallService, capacity: CapacityService, credit: RiderCreditService, moduleRef: ModuleRef);
+    /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
+    private get injector();
     start(intervalMs?: number): void;
     onApplicationShutdown(): void;
     private tick;

@@ -1,4 +1,5 @@
-import { Injector, Order, RequestContext, TransactionalConnection } from '@vendure/core';
+import { ModuleRef } from '@nestjs/core';
+import { Order, RequestContext, TransactionalConnection } from '@vendure/core';
 import { CapacityService } from './capacity.service';
 import { SlotLockService } from './slot-lock.service';
 /**
@@ -8,9 +9,11 @@ import { SlotLockService } from './slot-lock.service';
 export declare class HallService {
     private connection;
     private slotLock;
-    private injector;
+    private moduleRef;
     private capacity;
-    constructor(connection: TransactionalConnection, slotLock: SlotLockService, injector: Injector, capacity: CapacityService);
+    constructor(connection: TransactionalConnection, slotLock: SlotLockService, moduleRef: ModuleRef, capacity: CapacityService);
+    /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
+    private get injector();
     onOrderPlaced(ctx: RequestContext, order: Order): Promise<void>;
     /** 回大厅：清骑手指派字段，hallStatus 复位 open（拒单/超时改派共用） */
     backToHall(ctx: RequestContext, orderId: number): Promise<void>;

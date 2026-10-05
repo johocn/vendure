@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { Injector, Logger, Order, RequestContext, TransactionalConnection } from '@vendure/core';
 import { SubscribeMessageService } from '@vendure/wechat-subscribe-message-plugin';
 import { CapacityService } from './capacity.service';
@@ -13,9 +14,14 @@ export class HallService {
     constructor(
         private connection: TransactionalConnection,
         private slotLock: SlotLockService,
-        private injector: Injector,
+        private moduleRef: ModuleRef,
         private capacity: CapacityService,
     ) {}
+
+    /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
+    private get injector(): Injector {
+        return new Injector(this.moduleRef);
+    }
 
     async onOrderPlaced(ctx: RequestContext, order: Order) {
         const cf = order.customFields as any;

@@ -11,7 +11,8 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DispatchJobService = void 0;
 const common_1 = require("@nestjs/common");
-const core_1 = require("@vendure/core");
+const core_1 = require("@nestjs/core");
+const core_2 = require("@vendure/core");
 const capacity_service_1 = require("./capacity.service");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
 const hall_grab_service_1 = require("./hall-grab.service");
@@ -19,21 +20,25 @@ const hall_service_1 = require("./hall.service");
 const rider_credit_service_1 = require("./rider-credit.service");
 const NOT_PICKED_TIMEOUT_MIN = 15;
 let DispatchJobService = class DispatchJobService {
-    constructor(connection, grab, hall, capacity, credit, injector) {
+    constructor(connection, grab, hall, capacity, credit, moduleRef) {
         this.connection = connection;
         this.grab = grab;
         this.hall = hall;
         this.capacity = capacity;
         this.credit = credit;
-        this.injector = injector;
+        this.moduleRef = moduleRef;
         this.timer = null;
         this.running = false;
+    }
+    /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
+    get injector() {
+        return new core_2.Injector(this.moduleRef);
     }
     start(intervalMs = 60000) {
         if (this.timer)
             return;
         this.timer = setInterval(() => {
-            this.tick().catch(e => core_1.Logger.error(`dispatch tick: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch'));
+            this.tick().catch(e => core_2.Logger.error(`dispatch tick: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch'));
         }, intervalMs);
     }
     onApplicationShutdown() {
@@ -59,9 +64,9 @@ let DispatchJobService = class DispatchJobService {
         }
     }
     ctxForChannel(channelId) {
-        return new core_1.RequestContext({
+        return new core_2.RequestContext({
             apiType: 'admin',
-            channel: new core_1.Channel({ id: channelId }),
+            channel: new core_2.Channel({ id: channelId }),
             isAuthorized: true,
             authorizedAsOwnerOnly: false,
         });
@@ -73,7 +78,7 @@ let DispatchJobService = class DispatchJobService {
      * （T4 退款扫描在 Task 8 追加到此方法）
      */
     async scan(ctx) {
-        const repo = this.connection.getRepository(ctx, core_1.Order);
+        const repo = this.connection.getRepository(ctx, core_2.Order);
         const orders = await repo.createQueryBuilder('order')
             .leftJoin('order.channels', 'channel')
             .where('channel.id = :ch', { ch: ctx.channelId })
@@ -87,7 +92,7 @@ let DispatchJobService = class DispatchJobService {
                 if (now - new Date(cf.assignedAt).getTime() > NOT_PICKED_TIMEOUT_MIN * 60000) {
                     await this.hall.backToHall(ctx, o.id);
                     await this.credit.adjust(ctx, Number(cf.deliveryStaffId), rider_credit_service_1.CREDIT_TIMEOUT, 'timeout_not_picked', o.id);
-                    core_1.Logger.warn(`Order ${o.code} reassigned (rider ${cf.deliveryStaffId} not picked in ${NOT_PICKED_TIMEOUT_MIN}min)`, 'CampusDispatch');
+                    core_2.Logger.warn(`Order ${o.code} reassigned (rider ${cf.deliveryStaffId} not picked in ${NOT_PICKED_TIMEOUT_MIN}min)`, 'CampusDispatch');
                 }
             }
         }
@@ -120,7 +125,7 @@ let DispatchJobService = class DispatchJobService {
                 for (const o of stale) {
                     const ok = await this.grab.grabByRider(ctx, o.id, eligible[0]);
                     if (ok)
-                        core_1.Logger.warn(`Order ${o.code} auto-assigned to rider ${eligible[0].id} (T2)`, 'CampusDispatch');
+                        core_2.Logger.warn(`Order ${o.code} auto-assigned to rider ${eligible[0].id} (T2)`, 'CampusDispatch');
                     // 无论成败，该单已离开 open 大厅（成功→grabbed；失败→已被抢/已退款），
                     // 内存标记防止同轮 T4 对已派单误退款（grabByRider 事务内有二次校验兜底）。
                     o.customFields.hallStatus = 'grabbed';
@@ -148,8 +153,8 @@ let DispatchJobService = class DispatchJobService {
     services() {
         var _a;
         if (!this.orderSvc) {
-            this.orderSvc = this.injector.get(core_1.OrderService);
-            this.paymentRepo = this.connection.rawConnection.getRepository(core_1.Payment);
+            this.orderSvc = this.injector.get(core_2.OrderService);
+            this.paymentRepo = this.connection.rawConnection.getRepository(core_2.Payment);
             this.couponSvc = this.tryGetCouponService();
         }
         return { order: this.orderSvc, coupon: (_a = this.couponSvc) !== null && _a !== void 0 ? _a : null };
@@ -202,15 +207,15 @@ let DispatchJobService = class DispatchJobService {
             if (templateId && order.customerId && coupon) {
                 await coupon.grantCoupon(ctx, templateId, [order.customerId]);
             }
-            core_1.Logger.warn(`Order ${order.code} auto-refunded (no rider within ${(_b = cfg.autoRefundMinutes) !== null && _b !== void 0 ? _b : 30}min)`, 'CampusDispatch');
+            core_2.Logger.warn(`Order ${order.code} auto-refunded (no rider within ${(_b = cfg.autoRefundMinutes) !== null && _b !== void 0 ? _b : 30}min)`, 'CampusDispatch');
         }
         catch (e) {
-            core_1.Logger.error(`T4 refund failed for order ${order.code}: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch');
+            core_2.Logger.error(`T4 refund failed for order ${order.code}: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch');
             try {
                 await mark();
             }
             catch (e2) {
-                core_1.Logger.error(`T4 fallback mark failed for order ${order.code}: ${e2 === null || e2 === void 0 ? void 0 : e2.message}`, 'CampusDispatch');
+                core_2.Logger.error(`T4 fallback mark failed for order ${order.code}: ${e2 === null || e2 === void 0 ? void 0 : e2.message}`, 'CampusDispatch');
             }
         }
     }
@@ -218,11 +223,11 @@ let DispatchJobService = class DispatchJobService {
 exports.DispatchJobService = DispatchJobService;
 exports.DispatchJobService = DispatchJobService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [core_1.TransactionalConnection,
+    __metadata("design:paramtypes", [core_2.TransactionalConnection,
         hall_grab_service_1.HallGrabService,
         hall_service_1.HallService,
         capacity_service_1.CapacityService,
         rider_credit_service_1.RiderCreditService,
-        core_1.Injector])
+        core_1.ModuleRef])
 ], DispatchJobService);
 //# sourceMappingURL=dispatch-job.service.js.map

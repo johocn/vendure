@@ -1,4 +1,5 @@
 import { Injectable, OnApplicationShutdown } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import {
     Channel,
     ID,
@@ -33,8 +34,13 @@ export class DispatchJobService implements OnApplicationShutdown {
         private hall: HallService,
         private capacity: CapacityService,
         private credit: RiderCreditService,
-        private injector: Injector,
+        private moduleRef: ModuleRef,
     ) {}
+
+    /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
+    private get injector(): Injector {
+        return new Injector(this.moduleRef);
+    }
 
     start(intervalMs = 60_000) {
         if (this.timer) return;

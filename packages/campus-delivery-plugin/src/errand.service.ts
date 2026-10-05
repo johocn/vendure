@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import {
     ForbiddenError,
     ID,
@@ -28,8 +29,13 @@ export class ErrandService {
     constructor(
         private connection: TransactionalConnection,
         private orderService: OrderService,
-        private injector: Injector,
+        private moduleRef: ModuleRef,
     ) {}
+
+    /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
+    private get injector(): Injector {
+        return new Injector(this.moduleRef);
+    }
 
     /** 幂等创建 0 元载体：按 SKU 查 ProductVariant，已存在直接返回。
      * ProductVariant 有 product FK，必须走 ProductService/ProductVariantService 组合（禁裸 repo.save 单表）。 */

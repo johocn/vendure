@@ -11,7 +11,8 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ErrandService = exports.ERRAND_BASE_SKU = void 0;
 const common_1 = require("@nestjs/common");
-const core_1 = require("@vendure/core");
+const core_1 = require("@nestjs/core");
+const core_2 = require("@vendure/core");
 /** 0 元载体商品 SKU：幂等创建的查重键，C 端 addItemToOrder 用其 variantId 加购物车 */
 exports.ERRAND_BASE_SKU = 'CAMPUS-ERRAND-BASE';
 /**
@@ -22,22 +23,26 @@ exports.ERRAND_BASE_SKU = 'CAMPUS-ERRAND-BASE';
  * 分成按 shipping + tip 计算（surcharge 不进 order.shipping，无双算）。
  */
 let ErrandService = class ErrandService {
-    constructor(connection, orderService, injector) {
+    constructor(connection, orderService, moduleRef) {
         this.connection = connection;
         this.orderService = orderService;
-        this.injector = injector;
+        this.moduleRef = moduleRef;
+    }
+    /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
+    get injector() {
+        return new core_2.Injector(this.moduleRef);
     }
     /** 幂等创建 0 元载体：按 SKU 查 ProductVariant，已存在直接返回。
      * ProductVariant 有 product FK，必须走 ProductService/ProductVariantService 组合（禁裸 repo.save 单表）。 */
     async ensureErrandProduct(ctx) {
         const existing = await this.connection
-            .getRepository(ctx, core_1.ProductVariant)
+            .getRepository(ctx, core_2.ProductVariant)
             .findOne({ where: { sku: exports.ERRAND_BASE_SKU } });
         if (existing) {
             return { variantId: existing.id, sku: exports.ERRAND_BASE_SKU, created: false };
         }
-        const productService = this.injector.get(core_1.ProductService);
-        const variantService = this.injector.get(core_1.ProductVariantService);
+        const productService = this.injector.get(core_2.ProductService);
+        const variantService = this.injector.get(core_2.ProductVariantService);
         const product = await productService.create(ctx, {
             translations: [{ languageCode: ctx.languageCode, name: '校园跑腿服务' }],
         });
@@ -58,12 +63,12 @@ let ErrandService = class ErrandService {
     async setErrandInfo(ctx, input) {
         var _a, _b, _c;
         if (!ctx.activeUserId)
-            throw new core_1.ForbiddenError();
+            throw new core_2.ForbiddenError();
         const orderId = (_a = ctx.session) === null || _a === void 0 ? void 0 : _a.activeOrderId;
         if (!orderId)
-            throw new core_1.UserInputError('购物车为空');
+            throw new core_2.UserInputError('购物车为空');
         if (!Number.isFinite(input.tip) || input.tip < 0)
-            throw new core_1.UserInputError('小费金额不合法');
+            throw new core_2.UserInputError('小费金额不合法');
         const tip = Math.floor(input.tip);
         const order = await this.orderService.updateCustomFields(ctx, orderId, {
             orderKind: 'errand',
@@ -89,8 +94,8 @@ let ErrandService = class ErrandService {
 exports.ErrandService = ErrandService;
 exports.ErrandService = ErrandService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [core_1.TransactionalConnection,
-        core_1.OrderService,
-        core_1.Injector])
+    __metadata("design:paramtypes", [core_2.TransactionalConnection,
+        core_2.OrderService,
+        core_1.ModuleRef])
 ], ErrandService);
 //# sourceMappingURL=errand.service.js.map

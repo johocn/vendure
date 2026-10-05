@@ -8,6 +8,7 @@ import {
     TransactionalConnection,
     VendurePlugin,
 } from '@vendure/core';
+import { ModuleRef } from '@nestjs/core';
 import { CampusBuilding } from './campus-building.entity';
 import { CapacityService } from './capacity.service';
 import { CampusConfigAdminResolver } from './campus-config-admin.resolver';
@@ -319,8 +320,13 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
     constructor(
         private eventBus: EventBus,
         private hallService: HallService,
-        private injector: Injector,
+        private moduleRef: ModuleRef,
     ) {}
+
+    /** vendure Injector 需由 ModuleRef 构造（插件模块类构造器不直接提供 Injector） */
+    private get injector(): Injector {
+        return new Injector(this.moduleRef);
+    }
 
     onApplicationBootstrap(): void {
         bindCampusErrandCalculatorConnection(this.injector.get(TransactionalConnection));
