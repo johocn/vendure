@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CampusDeliveryPlugin = void 0;
 const core_1 = require("@vendure/core");
 const campus_building_entity_1 = require("./campus-building.entity");
+const capacity_service_1 = require("./capacity.service");
 const campus_config_admin_resolver_1 = require("./campus-config-admin.resolver");
 const campus_config_service_1 = require("./campus-config.service");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
@@ -49,6 +50,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             create_campus_tables_1.CreateCampusTablesMigration,
             campus_config_service_1.CampusConfigService,
             rider_service_1.RiderService,
+            capacity_service_1.CapacityService,
             slot_lock_service_1.SlotLockService,
             hall_service_1.HallService,
             hall_grab_service_1.HallGrabService,
@@ -202,6 +204,15 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     channelId: ID!
                 }
 
+                type CampusRiderOnlineResult {
+                    online: Boolean!
+                }
+
+                type CampusCapacityCheck {
+                    paused: Boolean!
+                    ridersOnline: Int!
+                }
+
                 extend type Query {
                     myRiderProfile: RiderProfile!
                     campusZones: [CampusZone!]!
@@ -210,6 +221,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMyTasks(status: String): [Order!]!
                     campusShopSlots: [DeliverySlot!]!
                     myRiderEarnings(skip: Int, take: Int): [RiderEarning!]!
+                    campusCapacityCheck: CampusCapacityCheck!
                 }
 
                 extend type Mutation {
@@ -219,6 +231,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusDeliverTask(orderId: ID!, photos: [String!]!, note: String): Order!
                     campusReportException(orderId: ID!, type: String!, photos: [String!]!, note: String): Order!
                     campusSetDeliveryTarget(zoneId: ID!, buildingId: ID!): Order!
+                    campusRiderOnline(online: Boolean!): CampusRiderOnlineResult!
+                    campusRiderHeartbeat: CampusRiderOnlineResult!
                 }
             `;
             },

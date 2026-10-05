@@ -25,6 +25,10 @@ export declare class RiderService {
         riderCampus: any;
         riderCredit: any;
     }>;
+    /** 骑手上下线开关 + 心跳：大厅轮询页每 15s 调 online=true 即续命 */
+    setOnline(ctx: RequestContext, online: boolean): Promise<{
+        online: boolean;
+    }>;
     /**
      * 按 riderStatus 查询入驻申请列表。
      * customFields 为嵌入式物理列，QueryBuilder 用 embedded 路径

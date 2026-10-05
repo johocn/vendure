@@ -15,12 +15,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.RiderShopResolver = void 0;
 const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
+const capacity_service_1 = require("./capacity.service");
 const campus_config_service_1 = require("./campus-config.service");
 const rider_service_1 = require("./rider.service");
 let RiderShopResolver = class RiderShopResolver {
-    constructor(riderService, configService) {
+    constructor(riderService, configService, capacity) {
         this.riderService = riderService;
         this.configService = configService;
+        this.capacity = capacity;
     }
     /** 需登录：service 内部校验当前顾客，未登录抛 ForbiddenError。 */
     async applyRider(ctx, realName, studentNo, campus, idImg) {
@@ -28,6 +30,18 @@ let RiderShopResolver = class RiderShopResolver {
     }
     async myRiderProfile(ctx) {
         return this.riderService.myRiderProfile(ctx);
+    }
+    /** 骑手上下线开关（大厅轮询页 15s 轮询续命） */
+    async campusRiderOnline(ctx, online) {
+        return this.riderService.setOnline(ctx, online);
+    }
+    /** 骑手心跳（30s 定时调），带骑手资格校验 */
+    async campusRiderHeartbeat(ctx) {
+        return this.capacity.heartbeat(ctx);
+    }
+    /** T0 运力预检：C 端下单前提示「运力紧张」 */
+    async campusCapacityCheck(ctx) {
+        return this.capacity.capacityCheck(ctx);
     }
     // 公开只读：C 端选楼用
     async campusZones(ctx) {
@@ -57,6 +71,28 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], RiderShopResolver.prototype, "myRiderProfile", null);
 __decorate([
+    (0, graphql_1.Mutation)(),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('online')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Boolean]),
+    __metadata("design:returntype", Promise)
+], RiderShopResolver.prototype, "campusRiderOnline", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], RiderShopResolver.prototype, "campusRiderHeartbeat", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], RiderShopResolver.prototype, "campusCapacityCheck", null);
+__decorate([
     (0, graphql_1.Query)(),
     __param(0, (0, core_1.Ctx)()),
     __metadata("design:type", Function),
@@ -73,6 +109,8 @@ __decorate([
 ], RiderShopResolver.prototype, "campusBuildings", null);
 exports.RiderShopResolver = RiderShopResolver = __decorate([
     (0, graphql_1.Resolver)(),
-    __metadata("design:paramtypes", [rider_service_1.RiderService, campus_config_service_1.CampusConfigService])
+    __metadata("design:paramtypes", [rider_service_1.RiderService,
+        campus_config_service_1.CampusConfigService,
+        capacity_service_1.CapacityService])
 ], RiderShopResolver);
 //# sourceMappingURL=rider-shop.resolver.js.map

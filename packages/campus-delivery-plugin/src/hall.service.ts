@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { Logger, Order, RequestContext, TransactionalConnection } from '@vendure/core';
+import { Injector, Logger, Order, RequestContext, TransactionalConnection } from '@vendure/core';
+import { SubscribeMessageService } from '@vendure/wechat-subscribe-message-plugin';
+import { CapacityService } from './capacity.service';
 import { SlotLockService } from './slot-lock.service';
 
 /**
@@ -11,6 +13,8 @@ export class HallService {
     constructor(
         private connection: TransactionalConnection,
         private slotLock: SlotLockService,
+        private injector: Injector,
+        private capacity: CapacityService,
     ) {}
 
     async onOrderPlaced(ctx: RequestContext, order: Order) {
@@ -28,6 +32,41 @@ export class HallService {
                 `Order ${order.code} entered hall (${cf.fulfillmentRoute}, slot=${cf.deliverySlotText ?? 'immediate'}, slotLocked=${locked})`,
                 'CampusHall',
             );
+            this.notifyRiders(ctx, order);
         }
+    }
+
+    /** T0: 新单入厅即提醒在线骑手（订阅消息），失败只记日志不阻塞入厅。
+     * 模板 ID 复用渠道 orderShippedTemplateId（wechat 插件未定义 campus 专用模板字段），
+     * 未配置则跳过；逐骑手发送，单个失败不影响其余骑手。 */
+    private notifyRiders(ctx: RequestContext, order: Order) {
+        void (async () => {
+            try {
+                const templateId = ((ctx.channel as any)?.customFields ?? {}).orderShippedTemplateId as
+                    | string
+                    | undefined;
+                if (!templateId) {
+                    Logger.debug(
+                        `Channel ${ctx.channelId} has no orderShippedTemplateId, skip rider notify`,
+                        'CampusHall',
+                    );
+                    return;
+                }
+                const msg = this.injector.get(SubscribeMessageService);
+                const riders = await this.capacity.listOnlineRiders(ctx);
+                for (const r of riders) {
+                    try {
+                        await msg.sendCustomMessage(ctx, r.id as any, templateId, {
+                            orderCode: { value: order.code },
+                            zone: { value: (order.customFields as any).campusZone ?? '' },
+                        });
+                    } catch (e: any) {
+                        Logger.warn(`rider notify failed (customer ${r.id}): ${e?.message}`, 'CampusHall');
+                    }
+                }
+            } catch (e: any) {
+                Logger.warn(`rider notify failed: ${e?.message}`, 'CampusHall');
+            }
+        })();
     }
 }

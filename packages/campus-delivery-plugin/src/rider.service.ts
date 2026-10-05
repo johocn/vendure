@@ -71,6 +71,15 @@ export class RiderService {
         };
     }
 
+    /** 骑手上下线开关 + 心跳：大厅轮询页每 15s 调 online=true 即续命 */
+    async setOnline(ctx: RequestContext, online: boolean) {
+        const customer = await this.requireCustomer(ctx);
+        await this.connection.getRepository(ctx, Customer).update(customer.id, {
+            customFields: { riderOnlineAt: online ? new Date() : null },
+        } as any);
+        return { online };
+    }
+
     /**
      * 按 riderStatus 查询入驻申请列表。
      * customFields 为嵌入式物理列，QueryBuilder 用 embedded 路径

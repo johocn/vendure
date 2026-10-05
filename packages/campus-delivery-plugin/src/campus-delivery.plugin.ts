@@ -1,6 +1,7 @@
 import { OnApplicationBootstrap } from '@nestjs/common';
 import { EventBus, Logger, OrderPlacedEvent, PluginCommonModule, VendurePlugin } from '@vendure/core';
 import { CampusBuilding } from './campus-building.entity';
+import { CapacityService } from './capacity.service';
 import { CampusConfigAdminResolver } from './campus-config-admin.resolver';
 import { CampusConfigService } from './campus-config.service';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
@@ -28,6 +29,7 @@ import { SlotLockService } from './slot-lock.service';
         CreateCampusTablesMigration,
         CampusConfigService,
         RiderService,
+        CapacityService,
         SlotLockService,
         HallService,
         HallGrabService,
@@ -181,6 +183,15 @@ import { SlotLockService } from './slot-lock.service';
                     channelId: ID!
                 }
 
+                type CampusRiderOnlineResult {
+                    online: Boolean!
+                }
+
+                type CampusCapacityCheck {
+                    paused: Boolean!
+                    ridersOnline: Int!
+                }
+
                 extend type Query {
                     myRiderProfile: RiderProfile!
                     campusZones: [CampusZone!]!
@@ -189,6 +200,7 @@ import { SlotLockService } from './slot-lock.service';
                     campusMyTasks(status: String): [Order!]!
                     campusShopSlots: [DeliverySlot!]!
                     myRiderEarnings(skip: Int, take: Int): [RiderEarning!]!
+                    campusCapacityCheck: CampusCapacityCheck!
                 }
 
                 extend type Mutation {
@@ -198,6 +210,8 @@ import { SlotLockService } from './slot-lock.service';
                     campusDeliverTask(orderId: ID!, photos: [String!]!, note: String): Order!
                     campusReportException(orderId: ID!, type: String!, photos: [String!]!, note: String): Order!
                     campusSetDeliveryTarget(zoneId: ID!, buildingId: ID!): Order!
+                    campusRiderOnline(online: Boolean!): CampusRiderOnlineResult!
+                    campusRiderHeartbeat: CampusRiderOnlineResult!
                 }
             `;
         },
