@@ -6,12 +6,14 @@ import { CampusConfigService } from './campus-config.service';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CampusZone } from './campus-zone.entity';
 import { campusCustomFields } from './custom-fields';
+import { DeliverySlot } from './delivery-slot.entity';
 import { HallGrabService } from './hall-grab.service';
 import { HallService } from './hall.service';
 import { HallShopResolver } from './hall-shop.resolver';
 import { CreateCampusTablesMigration } from './migrations/create-campus-tables';
 import { campusPermissionDefinitions } from './permissions';
 import { RiderAdminResolver } from './rider-admin.resolver';
+import { RiderCreditLog } from './rider-credit-log.entity';
 import { RiderEarning } from './rider-earning.entity';
 import { RiderService } from './rider.service';
 import { RiderShopResolver } from './rider-shop.resolver';
@@ -20,7 +22,7 @@ import { RiderTaskShopResolver } from './rider-task-shop.resolver';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig],
+    entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig, DeliverySlot, RiderCreditLog],
     providers: [
         CreateCampusTablesMigration,
         CampusConfigService,
@@ -55,6 +57,9 @@ import { RiderTaskShopResolver } from './rider-task-shop.resolver';
                     riderCommissionRate: Int!
                     autoAssignMinutes: Int!
                     paused: Boolean!
+                    autoRefundMinutes: Int!
+                    inProgressSlaMinutes: Int!
+                    compensationCouponTemplateId: String
                 }
 
                 input CampusFulfillmentConfigInput {
@@ -62,6 +67,9 @@ import { RiderTaskShopResolver } from './rider-task-shop.resolver';
                     riderCommissionRate: Int
                     autoAssignMinutes: Int
                     paused: Boolean
+                    autoRefundMinutes: Int
+                    inProgressSlaMinutes: Int
+                    compensationCouponTemplateId: String
                 }
 
                 type CampusSetRiderStatusResult {

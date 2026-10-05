@@ -11,6 +11,14 @@ exports.campusCustomFields = {
         { name: 'hallEnteredAt', type: 'datetime', nullable: true },
         { name: 'riderEarning', type: 'int', nullable: true },
         { name: 'tip', type: 'int', nullable: true },
+        { name: 'deliverySlotId', type: 'string', nullable: true }, // ID 存 string，与 customFields 类型系统一致
+        { name: 'deliverySlotText', type: 'string', nullable: true }, // '2026-10-06 11:00-11:30'
+        { name: 'errandKind', type: 'string', nullable: true }, // pickup_express / bring_food / buy / other
+        { name: 'errandFrom', type: 'string', nullable: true },
+        { name: 'errandTo', type: 'string', nullable: true },
+        { name: 'leg1Status', type: 'string', nullable: true }, // R2: preparing / arrived_gate
+        { name: 'handoverAt', type: 'datetime', nullable: true }, // R2 到校时间
+        { name: 'campusCause', type: 'string', nullable: true }, // 对账标记: slot_full / no_rider
     ],
     Customer: [
         { name: 'riderStatus', type: 'string', nullable: true }, // none/pending/approved/suspended
@@ -19,6 +27,7 @@ exports.campusCustomFields = {
         { name: 'riderCampus', type: 'string', nullable: true },
         { name: 'riderIdImg', type: 'string', nullable: true },
         { name: 'riderCredit', type: 'int', nullable: true, defaultValue: 100 },
+        { name: 'riderOnlineAt', type: 'datetime', nullable: true }, // 心跳时间戳，「在线」= approved && 5min 内有心跳
     ],
 };
 //# sourceMappingURL=custom-fields.js.map

@@ -17,12 +17,14 @@ const campus_config_service_1 = require("./campus-config.service");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
 const campus_zone_entity_1 = require("./campus-zone.entity");
 const custom_fields_1 = require("./custom-fields");
+const delivery_slot_entity_1 = require("./delivery-slot.entity");
 const hall_grab_service_1 = require("./hall-grab.service");
 const hall_service_1 = require("./hall.service");
 const hall_shop_resolver_1 = require("./hall-shop.resolver");
 const create_campus_tables_1 = require("./migrations/create-campus-tables");
 const permissions_1 = require("./permissions");
 const rider_admin_resolver_1 = require("./rider-admin.resolver");
+const rider_credit_log_entity_1 = require("./rider-credit-log.entity");
 const rider_earning_entity_1 = require("./rider-earning.entity");
 const rider_service_1 = require("./rider.service");
 const rider_shop_resolver_1 = require("./rider-shop.resolver");
@@ -41,7 +43,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin;
 exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [campus_zone_entity_1.CampusZone, campus_building_entity_1.CampusBuilding, rider_earning_entity_1.RiderEarning, campus_fulfillment_config_entity_1.CampusFulfillmentConfig],
+        entities: [campus_zone_entity_1.CampusZone, campus_building_entity_1.CampusBuilding, rider_earning_entity_1.RiderEarning, campus_fulfillment_config_entity_1.CampusFulfillmentConfig, delivery_slot_entity_1.DeliverySlot, rider_credit_log_entity_1.RiderCreditLog],
         providers: [
             create_campus_tables_1.CreateCampusTablesMigration,
             campus_config_service_1.CampusConfigService,
@@ -76,6 +78,9 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     riderCommissionRate: Int!
                     autoAssignMinutes: Int!
                     paused: Boolean!
+                    autoRefundMinutes: Int!
+                    inProgressSlaMinutes: Int!
+                    compensationCouponTemplateId: String
                 }
 
                 input CampusFulfillmentConfigInput {
@@ -83,6 +88,9 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     riderCommissionRate: Int
                     autoAssignMinutes: Int
                     paused: Boolean
+                    autoRefundMinutes: Int
+                    inProgressSlaMinutes: Int
+                    compensationCouponTemplateId: String
                 }
 
                 type CampusSetRiderStatusResult {

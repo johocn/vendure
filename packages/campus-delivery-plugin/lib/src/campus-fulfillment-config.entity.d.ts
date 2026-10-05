@@ -6,5 +6,8 @@ export declare class CampusFulfillmentConfig extends VendureEntity {
     riderCommissionRate: number;
     autoAssignMinutes: number;
     paused: boolean;
+    autoRefundMinutes: number;
+    inProgressSlaMinutes: number;
+    compensationCouponTemplateId: string;
     constructor(input?: DeepPartial<CampusFulfillmentConfig>);
 }

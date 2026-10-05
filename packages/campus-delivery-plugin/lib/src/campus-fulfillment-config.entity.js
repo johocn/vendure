@@ -38,6 +38,18 @@ __decorate([
     (0, typeorm_1.Column)({ default: false }),
     __metadata("design:type", Boolean)
 ], CampusFulfillmentConfig.prototype, "paused", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', default: 30 }),
+    __metadata("design:type", Number)
+], CampusFulfillmentConfig.prototype, "autoRefundMinutes", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', default: 45 }),
+    __metadata("design:type", Number)
+], CampusFulfillmentConfig.prototype, "inProgressSlaMinutes", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", String)
+], CampusFulfillmentConfig.prototype, "compensationCouponTemplateId", void 0);
 exports.CampusFulfillmentConfig = CampusFulfillmentConfig = __decorate([
     (0, typeorm_1.Entity)(),
     __metadata("design:paramtypes", [Object])
