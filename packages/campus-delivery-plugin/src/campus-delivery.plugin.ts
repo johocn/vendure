@@ -308,6 +308,7 @@ import { SlotLockService } from './slot-lock.service';
             ...config.customFields,
             Order: [...(config.customFields.Order ?? []), ...(campusCustomFields.Order ?? [])],
             Customer: [...(config.customFields.Customer ?? []), ...(campusCustomFields.Customer ?? [])],
+            Channel: [...(config.customFields.Channel ?? []), ...(campusCustomFields.Channel ?? [])],
         };
         config.shippingOptions.shippingCalculators = [
             ...(config.shippingOptions.shippingCalculators ?? []),

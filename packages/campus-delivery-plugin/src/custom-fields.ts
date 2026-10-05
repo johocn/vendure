@@ -18,6 +18,15 @@ export const campusCustomFields: CustomFields = {
         { name: 'leg1Status', type: 'string', nullable: true }, // R2: preparing / arrived_gate
         { name: 'handoverAt', type: 'datetime', nullable: true }, // R2 到校时间
         { name: 'campusCause', type: 'string', nullable: true }, // 对账标记: slot_full / no_rider
+        { name: 'transferPhotos', type: 'string', list: true, nullable: true }, // 已取货转单拍照交接存证
+        { name: 'transferNote', type: 'string', nullable: true },
+        { name: 'transferAt', type: 'datetime', nullable: true },
+    ],
+    Channel: [
+        { name: 'waimaiTags', type: 'string', nullable: true }, // '米饭快餐,夜宵' 逗号分隔
+        { name: 'waimaiMonthlySales', type: 'int', nullable: true },
+        { name: 'waimaiLogo', type: 'string', nullable: true },
+        { name: 'waimaiPromoText', type: 'string', nullable: true }, // 满减 tag 文案，如 '满20减4'（spec §12.2 增补）
     ],
     Customer: [
         { name: 'riderStatus', type: 'string', nullable: true }, // none/pending/approved/suspended
