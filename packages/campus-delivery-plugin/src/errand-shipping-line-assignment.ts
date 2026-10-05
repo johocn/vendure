@@ -29,7 +29,10 @@ export class CampusErrandShippingLineAssignmentStrategy implements ShippingLineA
         shippingLine: ShippingLine,
         order: Order,
     ): Promise<OrderLine[]> {
-        if ((order.customFields as any)?.orderKind === 'errand') {
+        // R1/R3 外卖单同跑腿单：整单由校园配送方式承运（分区运费），全量分配；
+        // 不扩展则商品无档案绑定时 delegate 返回 [] → shippingLines 空 → 无法 transition（plan2 Task6/7 实测）
+        const cf = (order.customFields ?? {}) as any;
+        if (cf.orderKind === 'errand' || cf.fulfillmentRoute === 'R1' || cf.fulfillmentRoute === 'R3') {
             return order.lines ?? [];
         }
         return this.delegate.assignShippingLineToOrderLines(ctx, shippingLine, order);
