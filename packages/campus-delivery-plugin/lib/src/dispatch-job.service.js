@@ -75,7 +75,9 @@ let DispatchJobService = class DispatchJobService {
     async scan(ctx) {
         const repo = this.connection.getRepository(ctx, core_2.Order);
         const orders = await repo.createQueryBuilder('order')
-            .where("order.customFields.hallStatus IN ('open', 'grabbed')")
+            .leftJoin('order.channels', 'channel')
+            .where('channel.id = :ch', { ch: ctx.channelId })
+            .andWhere("order.customFields.hallStatus IN ('open', 'grabbed')")
             .getMany();
         const now = Date.now();
         // 1) assigned 超 15min 未取货 → 回大厅 + 扣分

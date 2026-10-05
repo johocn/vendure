@@ -68,7 +68,9 @@ export class DispatchJobService implements OnApplicationShutdown {
     async scan(ctx: RequestContext) {
         const repo = this.connection.getRepository(ctx, Order);
         const orders = await repo.createQueryBuilder('order')
-            .where("order.customFields.hallStatus IN ('open', 'grabbed')")
+            .leftJoin('order.channels', 'channel')
+            .where('channel.id = :ch', { ch: ctx.channelId as any })
+            .andWhere("order.customFields.hallStatus IN ('open', 'grabbed')")
             .getMany();
         const now = Date.now();
 

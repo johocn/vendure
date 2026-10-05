@@ -23,7 +23,9 @@ function makeEnv(opts: {
     const orderRepo = {
         findOne: vi.fn(),
         createQueryBuilder: () => ({
+            leftJoin: vi.fn().mockReturnThis(),
             where: vi.fn().mockReturnThis(),
+            andWhere: vi.fn().mockReturnThis(),
             getMany: vi.fn().mockResolvedValue([...(opts.openOrders ?? []), ...(opts.assignedOrders ?? [])]),
         }),
     };
