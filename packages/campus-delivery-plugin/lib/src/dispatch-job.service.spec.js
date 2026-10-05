@@ -103,7 +103,8 @@ function injectT4Services(svc) {
         (0, vitest_1.expect)(orderSvc.refundOrder).toHaveBeenCalledWith(vitest_1.expect.anything(), vitest_1.expect.objectContaining({
             paymentId: 55,
             amount: 8800,
-            shipping: 0, // fork refund 表 shipping 列 NOT NULL，必须显式传 0
+            shipping: 0, // fork refund 表 shipping/adjustment 列 NOT NULL，必须显式传 0
+            adjustment: 0,
         }));
         (0, vitest_1.expect)(orderSvc.settleRefund).toHaveBeenCalledOnce();
         (0, vitest_1.expect)(orderSvc.transitionToState).toHaveBeenCalledWith(vitest_1.expect.anything(), 4, 'Cancelled');

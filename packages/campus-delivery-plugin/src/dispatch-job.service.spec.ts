@@ -111,7 +111,8 @@ describe('DispatchJobService.scan T4 自动退款', () => {
         expect(orderSvc.refundOrder).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
             paymentId: 55,
             amount: 8800,
-            shipping: 0, // fork refund 表 shipping 列 NOT NULL，必须显式传 0
+            shipping: 0, // fork refund 表 shipping/adjustment 列 NOT NULL，必须显式传 0
+            adjustment: 0,
         }));
         expect(orderSvc.settleRefund).toHaveBeenCalledOnce();
         expect(orderSvc.transitionToState).toHaveBeenCalledWith(expect.anything(), 4, 'Cancelled');

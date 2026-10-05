@@ -194,9 +194,11 @@ let DispatchJobService = class DispatchJobService {
                 const created = await orderSvc.refundOrder(ctx, {
                     paymentId: payment.id,
                     amount: payment.amount,
-                    // fork 的 refund 表 shipping 列 NOT NULL（payment.service createRefund 透传 input.shipping），
-                    // 全额退款经 amount 通道，shipping 必须显式给 0，否则 INSERT 报 not-null violation
+                    // fork 的 refund 表 shipping/adjustment 列 NOT NULL（payment.service createRefund 透传
+                    // input.shipping/input.adjustment），全额退款经 amount 通道，两者必须显式给 0，
+                    // 否则 INSERT 报 not-null violation
                     shipping: 0,
+                    adjustment: 0,
                     reason: `no_rider auto refund (${order.code})`,
                 });
                 if (!created || created.errorCode) {
