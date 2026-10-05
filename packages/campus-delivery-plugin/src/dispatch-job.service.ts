@@ -200,6 +200,9 @@ export class DispatchJobService implements OnApplicationShutdown {
                 const created = await orderSvc!.refundOrder(ctx, {
                     paymentId: payment.id,
                     amount: payment.amount,
+                    // fork 的 refund 表 shipping 列 NOT NULL（payment.service createRefund 透传 input.shipping），
+                    // 全额退款经 amount 通道，shipping 必须显式给 0，否则 INSERT 报 not-null violation
+                    shipping: 0,
                     reason: `no_rider auto refund (${order.code})`,
                 } as any);
                 if (!created || (created as any).errorCode) {

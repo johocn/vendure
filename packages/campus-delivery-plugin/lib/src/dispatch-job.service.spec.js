@@ -100,7 +100,11 @@ function injectT4Services(svc) {
         const orderSvc = env.svc.orderSvc;
         const couponSvc = env.svc.couponSvc;
         await env.svc.scan({ channelId: 1 });
-        (0, vitest_1.expect)(orderSvc.refundOrder).toHaveBeenCalledOnce();
+        (0, vitest_1.expect)(orderSvc.refundOrder).toHaveBeenCalledWith(vitest_1.expect.anything(), vitest_1.expect.objectContaining({
+            paymentId: 55,
+            amount: 8800,
+            shipping: 0, // fork refund 表 shipping 列 NOT NULL，必须显式传 0
+        }));
         (0, vitest_1.expect)(orderSvc.settleRefund).toHaveBeenCalledOnce();
         (0, vitest_1.expect)(orderSvc.transitionToState).toHaveBeenCalledWith(vitest_1.expect.anything(), 4, 'Cancelled');
         (0, vitest_1.expect)(couponSvc.grantCoupon).toHaveBeenCalledWith(vitest_1.expect.anything(), '9', [vitest_1.expect.anything()]);
