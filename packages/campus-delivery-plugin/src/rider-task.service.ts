@@ -9,12 +9,17 @@ import {
 } from '@vendure/core';
 import { getCouponBalancePort } from '@vendure/coupon-plugin';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
+import { CREDIT_COMPLETE, RiderCreditService } from './rider-credit.service';
 import { RiderEarning } from './rider-earning.entity';
 import { RiderService } from './rider.service';
 
 @Injectable()
 export class RiderTaskService {
-    constructor(private connection: TransactionalConnection, private riderService: RiderService) {}
+    constructor(
+        private connection: TransactionalConnection,
+        private riderService: RiderService,
+        private credit: RiderCreditService,
+    ) {}
 
     /** 我的任务：本骑手名下已进入配送流程的订单，按下单时间倒序。
      * customFields 为嵌入式物理列，QueryBuilder 用 embedded 路径 order.customFields.deliveryStaffId
@@ -73,6 +78,8 @@ export class RiderTaskService {
         } else {
             Logger.warn('余额端口未注册，分成未入账', 'RiderTask');
         }
+        // 完单信用加分（+2）
+        await this.credit.adjust(ctx, rider.id as any, CREDIT_COMPLETE, 'complete', order.id as any);
         return order;
     }
 

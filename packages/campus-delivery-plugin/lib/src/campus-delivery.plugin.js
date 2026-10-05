@@ -26,6 +26,7 @@ const create_campus_tables_1 = require("./migrations/create-campus-tables");
 const permissions_1 = require("./permissions");
 const rider_admin_resolver_1 = require("./rider-admin.resolver");
 const rider_credit_log_entity_1 = require("./rider-credit-log.entity");
+const rider_credit_service_1 = require("./rider-credit.service");
 const rider_earning_entity_1 = require("./rider-earning.entity");
 const rider_service_1 = require("./rider.service");
 const rider_shop_resolver_1 = require("./rider-shop.resolver");
@@ -55,6 +56,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             hall_service_1.HallService,
             hall_grab_service_1.HallGrabService,
             rider_task_service_1.RiderTaskService,
+            rider_credit_service_1.RiderCreditService,
         ],
         adminApiExtensions: {
             schema: () => {

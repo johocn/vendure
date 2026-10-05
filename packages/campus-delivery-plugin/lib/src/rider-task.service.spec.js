@@ -16,7 +16,7 @@ function make(order, cfg = { riderCommissionRate: 100 }) {
         }),
     };
     const conn = { getRepository: () => repo };
-    return { svc: new rider_task_service_1.RiderTaskService(conn, riderSvc), repo, saved };
+    return { svc: new rider_task_service_1.RiderTaskService(conn, riderSvc, { adjust: vitest_1.vi.fn().mockResolvedValue(102) }), repo, saved };
 }
 const assigned = { id: 10, code: 'A1', shipping: 300, customFields: { deliveryStaffId: '9', deliveryStatus: 'assigned', tip: 100 } };
 (0, vitest_1.describe)('RiderTaskService', () => {

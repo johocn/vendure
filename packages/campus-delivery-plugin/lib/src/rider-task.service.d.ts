@@ -1,9 +1,11 @@
 import { ID, Order, RequestContext, TransactionalConnection } from '@vendure/core';
+import { RiderCreditService } from './rider-credit.service';
 import { RiderService } from './rider.service';
 export declare class RiderTaskService {
     private connection;
     private riderService;
-    constructor(connection: TransactionalConnection, riderService: RiderService);
+    private credit;
+    constructor(connection: TransactionalConnection, riderService: RiderService, credit: RiderCreditService);
     /** 我的任务：本骑手名下已进入配送流程的订单，按下单时间倒序。
      * customFields 为嵌入式物理列，QueryBuilder 用 embedded 路径 order.customFields.deliveryStaffId
      * （与 delivery-plugin 写法一致），裸列 order.deliveryStaffId 在 PG 不存在。

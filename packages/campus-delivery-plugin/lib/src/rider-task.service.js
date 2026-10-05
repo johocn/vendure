@@ -14,12 +14,14 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const coupon_plugin_1 = require("@vendure/coupon-plugin");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
+const rider_credit_service_1 = require("./rider-credit.service");
 const rider_earning_entity_1 = require("./rider-earning.entity");
 const rider_service_1 = require("./rider.service");
 let RiderTaskService = class RiderTaskService {
-    constructor(connection, riderService) {
+    constructor(connection, riderService, credit) {
         this.connection = connection;
         this.riderService = riderService;
+        this.credit = credit;
     }
     /** 我的任务：本骑手名下已进入配送流程的订单，按下单时间倒序。
      * customFields 为嵌入式物理列，QueryBuilder 用 embedded 路径 order.customFields.deliveryStaffId
@@ -79,6 +81,8 @@ let RiderTaskService = class RiderTaskService {
         else {
             common_1.Logger.warn('余额端口未注册，分成未入账', 'RiderTask');
         }
+        // 完单信用加分（+2）
+        await this.credit.adjust(ctx, rider.id, rider_credit_service_1.CREDIT_COMPLETE, 'complete', order.id);
         return order;
     }
     /** 异常上报：不校验状态，标记 exception */
@@ -126,6 +130,8 @@ let RiderTaskService = class RiderTaskService {
 exports.RiderTaskService = RiderTaskService;
 exports.RiderTaskService = RiderTaskService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [core_1.TransactionalConnection, rider_service_1.RiderService])
+    __metadata("design:paramtypes", [core_1.TransactionalConnection,
+        rider_service_1.RiderService,
+        rider_credit_service_1.RiderCreditService])
 ], RiderTaskService);
 //# sourceMappingURL=rider-task.service.js.map

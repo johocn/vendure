@@ -15,6 +15,7 @@ import { CreateCampusTablesMigration } from './migrations/create-campus-tables';
 import { campusPermissionDefinitions } from './permissions';
 import { RiderAdminResolver } from './rider-admin.resolver';
 import { RiderCreditLog } from './rider-credit-log.entity';
+import { RiderCreditService } from './rider-credit.service';
 import { RiderEarning } from './rider-earning.entity';
 import { RiderService } from './rider.service';
 import { RiderShopResolver } from './rider-shop.resolver';
@@ -34,6 +35,7 @@ import { SlotLockService } from './slot-lock.service';
         HallService,
         HallGrabService,
         RiderTaskService,
+        RiderCreditService,
     ],
     adminApiExtensions: {
         schema: () => {
