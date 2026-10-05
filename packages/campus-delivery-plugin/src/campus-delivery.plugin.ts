@@ -19,6 +19,7 @@ import { RiderService } from './rider.service';
 import { RiderShopResolver } from './rider-shop.resolver';
 import { RiderTaskService } from './rider-task.service';
 import { RiderTaskShopResolver } from './rider-task-shop.resolver';
+import { SlotLockService } from './slot-lock.service';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
@@ -27,6 +28,7 @@ import { RiderTaskShopResolver } from './rider-task-shop.resolver';
         CreateCampusTablesMigration,
         CampusConfigService,
         RiderService,
+        SlotLockService,
         HallService,
         HallGrabService,
         RiderTaskService,

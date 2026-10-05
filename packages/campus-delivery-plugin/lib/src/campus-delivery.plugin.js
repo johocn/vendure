@@ -30,6 +30,7 @@ const rider_service_1 = require("./rider.service");
 const rider_shop_resolver_1 = require("./rider-shop.resolver");
 const rider_task_service_1 = require("./rider-task.service");
 const rider_task_shop_resolver_1 = require("./rider-task-shop.resolver");
+const slot_lock_service_1 = require("./slot-lock.service");
 let CampusDeliveryPlugin = class CampusDeliveryPlugin {
     constructor(eventBus, hallService) {
         this.eventBus = eventBus;
@@ -48,6 +49,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             create_campus_tables_1.CreateCampusTablesMigration,
             campus_config_service_1.CampusConfigService,
             rider_service_1.RiderService,
+            slot_lock_service_1.SlotLockService,
             hall_service_1.HallService,
             hall_grab_service_1.HallGrabService,
             rider_task_service_1.RiderTaskService,
