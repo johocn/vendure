@@ -311,7 +311,7 @@ import { WaimaiStoreService } from './waimai-store.service';
                     campusTransferTask(orderId: ID!, photos: [String!]!, note: String): Order!
                     campusDeliverTask(orderId: ID!, photos: [String!]!, note: String): Order!
                     campusReportException(orderId: ID!, type: String!, photos: [String!]!, note: String): Order!
-                    campusSetDeliveryTarget(zoneId: ID!, buildingId: ID!): Order!
+                    campusSetDeliveryTarget(zoneId: ID!, buildingId: ID!, route: String, slotId: Int): Order!
                     campusRejectAssignment(orderId: ID!): CampusRejectResult!
                     campusRiderOnline(online: Boolean!): CampusRiderOnlineResult!
                     campusRiderHeartbeat: CampusRiderOnlineResult!
