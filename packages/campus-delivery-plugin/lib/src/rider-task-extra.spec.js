@@ -60,6 +60,38 @@ function makeEnv(opts = {}) {
         await (0, vitest_1.expect)(env.svc.reportLocation({}, 5, 30.1, 120.2)).rejects.toThrow('仅配送中的订单可上报位置');
     });
 });
+(0, vitest_1.describe)('RiderTaskService.urgeOrder', () => {
+    const ctx = { activeUserId: 42 };
+    (0, vitest_1.it)('配送中订单本人可催单：写 urged=true + urgedAt', async () => {
+        const env = makeEnv({ order: { id: 5, customFields: { deliveryStatus: 'in_progress' }, customer: { userId: 42 } } });
+        await env.svc.urgeOrder(ctx, 5);
+        (0, vitest_1.expect)(env.repoByEntity.Order.update).toHaveBeenCalledWith(5, vitest_1.expect.objectContaining({
+            customFields: vitest_1.expect.objectContaining({ urged: true, urgedAt: vitest_1.expect.any(Date) }),
+        }));
+    });
+    (0, vitest_1.it)('未登录拒绝', async () => {
+        const env = makeEnv({ order: { id: 5, customFields: { deliveryStatus: 'assigned' }, customer: { userId: 42 } } });
+        await (0, vitest_1.expect)(env.svc.urgeOrder({}, 5)).rejects.toThrow();
+    });
+    (0, vitest_1.it)('非下单人拒绝', async () => {
+        const env = makeEnv({ order: { id: 5, customFields: { deliveryStatus: 'assigned' }, customer: { userId: 99 } } });
+        await (0, vitest_1.expect)(env.svc.urgeOrder(ctx, 5)).rejects.toThrow();
+    });
+    (0, vitest_1.it)('不在配送流程（无 deliveryStatus）拒绝', async () => {
+        const env = makeEnv({ order: { id: 5, customFields: {}, customer: { userId: 42 } } });
+        await (0, vitest_1.expect)(env.svc.urgeOrder(ctx, 5)).rejects.toThrow('订单不存在或不在配送流程中');
+    });
+    (0, vitest_1.it)('delivered 状态拒绝催单', async () => {
+        const env = makeEnv({ order: { id: 5, customFields: { deliveryStatus: 'delivered' }, customer: { userId: 42 } } });
+        await (0, vitest_1.expect)(env.svc.urgeOrder(ctx, 5)).rejects.toThrow('当前状态无需催单');
+    });
+    (0, vitest_1.it)('10min 内重复催单拒绝', async () => {
+        const env = makeEnv({
+            order: { id: 5, customFields: { deliveryStatus: 'assigned', urgedAt: new Date(Date.now() - 5 * 60 * 1000) }, customer: { userId: 42 } },
+        });
+        await (0, vitest_1.expect)(env.svc.urgeOrder(ctx, 5)).rejects.toThrow('已收到催单，请耐心等待');
+    });
+});
 (0, vitest_1.describe)('RiderTaskService.transfer', () => {
     function makeTransferEnv(opts = {}) {
         var _a;

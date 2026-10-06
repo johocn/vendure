@@ -61,6 +61,35 @@ let RiderTaskService = class RiderTaskService {
         });
         return order;
     }
+    /** 用户催单（plan 2.4）：仅下单人本人；校园履约单未终态可催；10min 内重复催单拒绝。
+     * 一期催单不推送骑手（骑手端任务卡轮询读 customFields.urged 显示提醒），虚拟号/订阅消息留待下一轮。 */
+    async urgeOrder(ctx, orderId) {
+        var _a, _b;
+        if (!ctx.activeUserId)
+            throw new core_1.ForbiddenError();
+        const order = await this.connection
+            .getRepository(ctx, core_1.Order)
+            .findOne({ where: { id: orderId }, relations: ['customer'] });
+        const cf = ((_a = order === null || order === void 0 ? void 0 : order.customFields) !== null && _a !== void 0 ? _a : {});
+        if (!order || !cf.deliveryStatus) {
+            throw new core_1.UserInputError('订单不存在或不在配送流程中');
+        }
+        if (((_b = order.customer) === null || _b === void 0 ? void 0 : _b.userId) !== ctx.activeUserId) {
+            throw new core_1.ForbiddenError();
+        }
+        const status = cf.deliveryStatus;
+        if (status === 'delivered' || status === 'exception') {
+            throw new core_1.UserInputError('当前状态无需催单');
+        }
+        const last = cf.urgedAt ? new Date(cf.urgedAt).getTime() : 0;
+        if (Date.now() - last < 10 * 60 * 1000) {
+            throw new core_1.UserInputError('已收到催单，请耐心等待');
+        }
+        await this.connection.getRepository(ctx, core_1.Order).update(order.id, {
+            customFields: { urged: true, urgedAt: new Date() },
+        });
+        return order;
+    }
     /** 我的任务：本骑手名下已进入配送流程的订单，按下单时间倒序。
      * customFields 为嵌入式物理列，QueryBuilder 用 embedded 路径 order.customFields.deliveryStaffId
      * （与 delivery-plugin 写法一致），裸列 order.deliveryStaffId 在 PG 不存在。

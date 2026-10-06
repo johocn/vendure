@@ -24,6 +24,8 @@ export const campusCustomFields: CustomFields = {
         { name: 'transferAt', type: 'datetime', nullable: true },
         { name: 'riderLat', type: 'float', nullable: true }, // 骑手实时位置（gcj02），仅配送中写入，送达/转单清除
         { name: 'riderLng', type: 'float', nullable: true },
+        { name: 'urged', type: 'boolean', nullable: true, defaultValue: false }, // 用户催单标记（plan 2.4）
+        { name: 'urgedAt', type: 'datetime', nullable: true }, // 最近一次催单时间，10min 内禁止重复催
     ],
     Channel: [
         { name: 'waimaiTags', type: 'string', nullable: true }, // '米饭快餐,夜宵' 逗号分隔

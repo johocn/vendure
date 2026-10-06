@@ -27,4 +27,6 @@ export declare class RiderTaskShopResolver {
     campusMarkArrived(ctx: RequestContext, orderId: ID): Promise<{
         leg1Status: string;
     }>;
+    /** 用户催单（plan 2.4）：状态/频率校验在 service，标记 urged=true + urgedAt。 */
+    campusUrgeOrder(ctx: RequestContext, orderId: ID): Promise<import("@vendure/core").Order>;
 }

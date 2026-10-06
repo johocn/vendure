@@ -67,6 +67,39 @@ describe('RiderTaskService.reportLocation', () => {
     });
 });
 
+describe('RiderTaskService.urgeOrder', () => {
+    const ctx = { activeUserId: 42 } as any;
+    it('配送中订单本人可催单：写 urged=true + urgedAt', async () => {
+        const env = makeEnv({ order: { id: 5, customFields: { deliveryStatus: 'in_progress' }, customer: { userId: 42 } } });
+        await env.svc.urgeOrder(ctx, 5);
+        expect(env.repoByEntity.Order.update).toHaveBeenCalledWith(5, expect.objectContaining({
+            customFields: expect.objectContaining({ urged: true, urgedAt: expect.any(Date) }),
+        }));
+    });
+    it('未登录拒绝', async () => {
+        const env = makeEnv({ order: { id: 5, customFields: { deliveryStatus: 'assigned' }, customer: { userId: 42 } } });
+        await expect(env.svc.urgeOrder({} as any, 5)).rejects.toThrow();
+    });
+    it('非下单人拒绝', async () => {
+        const env = makeEnv({ order: { id: 5, customFields: { deliveryStatus: 'assigned' }, customer: { userId: 99 } } });
+        await expect(env.svc.urgeOrder(ctx, 5)).rejects.toThrow();
+    });
+    it('不在配送流程（无 deliveryStatus）拒绝', async () => {
+        const env = makeEnv({ order: { id: 5, customFields: {}, customer: { userId: 42 } } });
+        await expect(env.svc.urgeOrder(ctx, 5)).rejects.toThrow('订单不存在或不在配送流程中');
+    });
+    it('delivered 状态拒绝催单', async () => {
+        const env = makeEnv({ order: { id: 5, customFields: { deliveryStatus: 'delivered' }, customer: { userId: 42 } } });
+        await expect(env.svc.urgeOrder(ctx, 5)).rejects.toThrow('当前状态无需催单');
+    });
+    it('10min 内重复催单拒绝', async () => {
+        const env = makeEnv({
+            order: { id: 5, customFields: { deliveryStatus: 'assigned', urgedAt: new Date(Date.now() - 5 * 60 * 1000) }, customer: { userId: 42 } },
+        });
+        await expect(env.svc.urgeOrder(ctx, 5)).rejects.toThrow('已收到催单，请耐心等待');
+    });
+});
+
 describe('RiderTaskService.transfer', () => {
     function makeTransferEnv(opts: { order?: any } = {}) {
         const orderRepo = {

@@ -72,4 +72,10 @@ export class RiderTaskShopResolver {
     async campusMarkArrived(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID) {
         return this.r2Mark.markArrived(ctx, orderId);
     }
+
+    /** 用户催单（plan 2.4）：状态/频率校验在 service，标记 urged=true + urgedAt。 */
+    @Mutation()
+    async campusUrgeOrder(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID) {
+        return this.riderTaskService.urgeOrder(ctx, orderId);
+    }
 }

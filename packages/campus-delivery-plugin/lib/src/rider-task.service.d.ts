@@ -22,6 +22,9 @@ export declare class RiderTaskService {
     } | null>;
     /** 骑手位置上报：本人订单 + 仅 assigned/in_progress 可写（plan 2.2，10s/次）。 */
     reportLocation(ctx: RequestContext, orderId: ID, lat: number, lng: number): Promise<Order>;
+    /** 用户催单（plan 2.4）：仅下单人本人；校园履约单未终态可催；10min 内重复催单拒绝。
+     * 一期催单不推送骑手（骑手端任务卡轮询读 customFields.urged 显示提醒），虚拟号/订阅消息留待下一轮。 */
+    urgeOrder(ctx: RequestContext, orderId: ID): Promise<Order>;
     /** 我的任务：本骑手名下已进入配送流程的订单，按下单时间倒序。
      * customFields 为嵌入式物理列，QueryBuilder 用 embedded 路径 order.customFields.deliveryStaffId
      * （与 delivery-plugin 写法一致），裸列 order.deliveryStaffId 在 PG 不存在。

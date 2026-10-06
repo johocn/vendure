@@ -51,6 +51,10 @@ let RiderTaskShopResolver = class RiderTaskShopResolver {
     async campusMarkArrived(ctx, orderId) {
         return this.r2Mark.markArrived(ctx, orderId);
     }
+    /** 用户催单（plan 2.4）：状态/频率校验在 service，标记 urged=true + urgedAt。 */
+    async campusUrgeOrder(ctx, orderId) {
+        return this.riderTaskService.urgeOrder(ctx, orderId);
+    }
 };
 exports.RiderTaskShopResolver = RiderTaskShopResolver;
 __decorate([
@@ -126,6 +130,14 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], RiderTaskShopResolver.prototype, "campusMarkArrived", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], RiderTaskShopResolver.prototype, "campusUrgeOrder", null);
 exports.RiderTaskShopResolver = RiderTaskShopResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [rider_task_service_1.RiderTaskService, r2_mark_service_1.R2MarkService])
