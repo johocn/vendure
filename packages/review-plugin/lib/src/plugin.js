@@ -46,8 +46,10 @@ const adminSchema = () => gql `
         tags: [String!]
         isAnonymous: Boolean!
         status: String!
+        giftGranted: Boolean!
         reply: String
         repliedAt: DateTime
+        reviewedAt: DateTime
         helpfulCount: Int!
         createdAt: DateTime!
         updatedAt: DateTime!
@@ -120,6 +122,7 @@ const shopSchema = () => gql `
         status: String!
         reply: String
         repliedAt: DateTime
+        reviewedAt: DateTime
         helpfulCount: Int!
         createdAt: DateTime!
         updatedAt: DateTime!
