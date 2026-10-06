@@ -212,6 +212,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     orderCode: String!
                     type: String!
                     detail: String!
+                    exceptionNote: String
+                    exceptionPhotos: [String!]
                 }
 
                 type DispatchRider {
@@ -220,17 +222,34 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     credit: Int!
                 }
 
+                type HandedException {
+                    orderId: ID!
+                    orderCode: String!
+                    exceptionType: String
+                    action: String!
+                    compensation: Int
+                    couponTemplateId: String
+                    note: String
+                    handledAt: String
+                    handledBy: String!
+                }
+
                 type CampusDispatchBoard {
                     paused: Boolean!
                     alerts: [DispatchAlert!]!
                     hallOrders: [Order!]!
                     activeOrders: [Order!]!
                     ridersOnline: [DispatchRider!]!
+                    handledOrders: [HandedException!]!
                 }
 
                 type CampusDispatchResult {
                     assigned: Boolean
                     backToHall: Boolean
+                }
+                type CampusHandleExceptionResult {
+                    ok: Boolean
+                    action: String
                 }
 
                 type CampusErrandProductResult {
@@ -316,6 +335,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusSetRiderStatus(customerId: ID!, status: String!): CampusSetRiderStatusResult!
                     campusAssignOrder(orderId: ID!, riderCustomerId: ID!): CampusDispatchResult!
                     campusBackToHall(orderId: ID!): CampusDispatchResult!
+                    campusHandleException(orderId: ID!, action: String!, amount: Int, couponTemplateId: ID, note: String): CampusHandleExceptionResult!
                     campusEnsureErrandProducts: CampusErrandProductResult!
                     campusUpdateStoreConfig(channelId: ID!, input: CampusStoreConfigInput!): CampusStoreConfigWithChannel!
                     campusEnsureDefaultShippingProfile(channelId: ID!): CampusEnsureProfileResult!
