@@ -17,6 +17,7 @@ exports.ReviewPlugin = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const constants_1 = require("./constants");
+const review_channel_custom_fields_1 = require("./review-channel-custom-fields");
 const review_entity_1 = require("./review.entity");
 const review_admin_resolver_1 = require("./review-admin.resolver");
 const review_product_custom_fields_1 = require("./review-product-custom-fields");
@@ -237,6 +238,8 @@ exports.ReviewPlugin = ReviewPlugin = ReviewPlugin_1 = __decorate([
         configuration: (config) => {
             // 评星驱动的商品评分聚合结果写入 Product 自定义字段
             config.customFields.Product = mergeCustomFields(config.customFields.Product, review_product_custom_fields_1.reviewProductCustomFields.Product);
+            // 评价有礼/追评窗口：渠道级配置（Channel customFields）
+            config.customFields.Channel = mergeCustomFields(config.customFields.Channel, review_channel_custom_fields_1.reviewChannelCustomFields.Channel);
             return config;
         },
         dashboard: '../dashboard/index.tsx',

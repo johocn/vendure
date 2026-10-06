@@ -1,9 +1,12 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import {
+    Channel,
     CustomerService,
     EntityNotFoundError,
     ForbiddenError,
     ID,
+    Injector,
     ListQueryBuilder,
     Logger,
     OrderLine,
@@ -14,6 +17,8 @@ import {
     UnauthorizedError,
     UserInputError,
 } from '@vendure/core';
+import { CouponService } from '@vendure/coupon-plugin';
+import { MemberLevelService } from '@vendure/member-level-plugin';
 
 import { loggerCtx, REVIEW_PLUGIN_OPTIONS } from './constants';
 import { Review } from './review.entity';
@@ -104,7 +109,13 @@ export class ReviewService {
         private listQueryBuilder: ListQueryBuilder,
         private customerService: CustomerService,
         private productService: ProductService,
+        @Optional() private moduleRef?: ModuleRef,
     ) {}
+
+    /** vendure Injector 由 ModuleRef 惰性构造（跨模块解析 Coupon/MemberLevel 服务，避免循环依赖） */
+    private get injector(): Injector {
+        return new Injector(this.moduleRef!);
+    }
 
     async createReview(ctx: RequestContext, input: CreateReviewInput): Promise<Review> {
         const customer = await this.requireCustomer(ctx);
@@ -170,7 +181,7 @@ export class ReviewService {
         return saved;
     }
 
-    /** 追评：挂在本人主评（parentId）下，聚合不计入。 */
+    /** 追评：挂在本人主评（parentId）下，聚合不计入；仅 approved 主评且在追评窗口内。 */
     async createFollowUpReview(
         ctx: RequestContext,
         reviewId: ID,
@@ -190,6 +201,17 @@ export class ReviewService {
         }
         if (parent.parentId != null) {
             throw new UserInputError('Cannot add a follow-up to a follow-up');
+        }
+        if (parent.status !== VISIBLE_STATUS) {
+            throw new UserInputError('主评价通过审核后才能追评');
+        }
+        const windowDays = await this.getFollowUpWindowDays(ctx);
+        if (windowDays <= 0) {
+            throw new UserInputError('当前店铺未开放追评');
+        }
+        const base = parent.reviewedAt ?? parent.createdAt;
+        if (base && Date.now() - new Date(base).getTime() > windowDays * 86400000) {
+            throw new UserInputError(`已超过追评窗口（审核通过后 ${windowDays} 天内可追评）`);
         }
         if (input.content != null) {
             this.assertContent(input.content);
@@ -284,10 +306,20 @@ export class ReviewService {
 
     async approveReview(ctx: RequestContext, id: ID): Promise<Review> {
         const review = await this.connection.getEntityOrThrow(ctx, Review, id);
+        const wasVisible = review.status === VISIBLE_STATUS;
         review.status = VISIBLE_STATUS;
+        review.reviewedAt = new Date();
         const saved = await this.connection.getRepository(ctx, Review).save(review);
         if (!review.parentId) {
             await this.recomputeProductRating(ctx, saved.productId);
+            if (!wasVisible && !review.giftGranted) {
+                // 评价有礼：发奖成功则回写 giftGranted（幂等闸），失败不阻塞审核流转
+                const granted = await this.grantReviewGift(ctx, review);
+                if (granted) {
+                    review.giftGranted = true;
+                    return this.connection.getRepository(ctx, Review).save(review);
+                }
+            }
         }
         return saved;
     }
@@ -296,6 +328,7 @@ export class ReviewService {
         const review = await this.connection.getEntityOrThrow(ctx, Review, id);
         const wasApprovedRoot = review.status === VISIBLE_STATUS && !review.parentId;
         review.status = 'rejected';
+        review.reviewedAt = new Date();
         const saved = await this.connection.getRepository(ctx, Review).save(review);
         if (wasApprovedRoot) {
             await this.recomputeProductRating(ctx, saved.productId);
@@ -478,6 +511,66 @@ export class ReviewService {
             return null;
         }
         return [customer.firstName, customer.lastName].filter(Boolean).join(' ') || customer.emailAddress;
+    }
+
+    /** 渠道评价奖励配置（Channel customFields，未配置 = 不发奖）。 */
+    private async getGiftConfig(ctx: RequestContext): Promise<{ couponTemplateId: string | null; points: number }> {
+        const channel = await this.connection
+            .getRepository(ctx, Channel)
+            .findOne({ where: { id: ctx.channelId } as any });
+        const cf = (channel?.customFields ?? {}) as any;
+        const points = Number(cf.reviewGiftPoints) || 0;
+        const couponTemplateId = cf.reviewGiftCouponTemplateId ? String(cf.reviewGiftCouponTemplateId) : null;
+        return { couponTemplateId, points };
+    }
+
+    /** 渠道追评窗口（天；缺省 7，0 = 不允许追评）。 */
+    private async getFollowUpWindowDays(ctx: RequestContext): Promise<number> {
+        const channel = await this.connection
+            .getRepository(ctx, Channel)
+            .findOne({ where: { id: ctx.channelId } as any });
+        const n = Number((channel?.customFields as any)?.reviewFollowUpWindowDays);
+        return Number.isFinite(n) && n >= 0 ? n : 7;
+    }
+
+    /** 评价有礼：发券/积分（任一成功返回 true）。单侧失败仅告警不阻塞。 */
+    private async grantReviewGift(ctx: RequestContext, review: Review): Promise<boolean> {
+        let granted = false;
+        try {
+            const cfg = await this.getGiftConfig(ctx);
+            if (!cfg.couponTemplateId && cfg.points <= 0) {
+                return false;
+            }
+            if (cfg.couponTemplateId) {
+                try {
+                    const res = await this.injector
+                        .get(CouponService)
+                        .grantCouponIssue(ctx, cfg.couponTemplateId as any, [review.customerId as any], false);
+                    granted = granted || res?.[0]?.ok === true;
+                    if (res?.[0]?.ok !== true) {
+                        Logger.warn(
+                            `review gift coupon not granted for review ${review.id}: ${res?.[0]?.reason ?? 'unknown'}`,
+                            loggerCtx,
+                        );
+                    }
+                } catch (e: any) {
+                    Logger.warn(`grantCouponIssue failed for review ${review.id}: ${e?.message ?? e}`, loggerCtx);
+                }
+            }
+            if (cfg.points > 0) {
+                try {
+                    await this.injector
+                        .get(MemberLevelService)
+                        .addPoints(ctx, review.customerId as any, cfg.points, null, '评价奖励');
+                    granted = true;
+                } catch (e: any) {
+                    Logger.warn(`addPoints failed for review ${review.id}: ${e?.message ?? e}`, loggerCtx);
+                }
+            }
+        } catch (e: any) {
+            Logger.warn(`grantReviewGift failed for review ${review.id}: ${e?.message ?? e}`, loggerCtx);
+        }
+        return granted;
     }
 
     private assertContent(content: string): void {

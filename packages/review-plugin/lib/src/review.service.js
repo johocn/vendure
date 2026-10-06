@@ -14,7 +14,10 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ReviewService = void 0;
 const common_1 = require("@nestjs/common");
-const core_1 = require("@vendure/core");
+const core_1 = require("@nestjs/core");
+const core_2 = require("@vendure/core");
+const coupon_plugin_1 = require("@vendure/coupon-plugin");
+const member_level_plugin_1 = require("@vendure/member-level-plugin");
 const constants_1 = require("./constants");
 const review_entity_1 = require("./review.entity");
 const typeorm_1 = require("typeorm");
@@ -85,37 +88,42 @@ function computeStats(reviews) {
     return { totalCount, goodRate, averageRating, ratingDistribution, topTags };
 }
 let ReviewService = class ReviewService {
-    constructor(options = {}, connection, listQueryBuilder, customerService, productService) {
+    constructor(options = {}, connection, listQueryBuilder, customerService, productService, moduleRef) {
         this.options = options;
         this.connection = connection;
         this.listQueryBuilder = listQueryBuilder;
         this.customerService = customerService;
         this.productService = productService;
+        this.moduleRef = moduleRef;
+    }
+    /** vendure Injector 由 ModuleRef 惰性构造（跨模块解析 Coupon/MemberLevel 服务，避免循环依赖） */
+    get injector() {
+        return new core_2.Injector(this.moduleRef);
     }
     async createReview(ctx, input) {
         var _a, _b, _c, _d;
         const customer = await this.requireCustomer(ctx);
         if (!Number.isInteger(input.rating) || input.rating < 1 || input.rating > 5) {
-            throw new core_1.UserInputError('rating must be an integer between 1 and 5');
+            throw new core_2.UserInputError('rating must be an integer between 1 and 5');
         }
         this.assertContent(input.content);
         if (!input.orderLineId) {
-            throw new core_1.UserInputError('orderLineId is required to create a review');
+            throw new core_2.UserInputError('orderLineId is required to create a review');
         }
-        const orderLineRepo = this.connection.getRepository(ctx, core_1.OrderLine);
+        const orderLineRepo = this.connection.getRepository(ctx, core_2.OrderLine);
         const orderLine = await orderLineRepo.findOne({
             where: { id: Number(input.orderLineId) },
             relations: ['order', 'order.customer'],
         });
         if (!orderLine || !orderLine.order) {
-            throw new core_1.EntityNotFoundError('OrderLine', input.orderLineId);
+            throw new core_2.EntityNotFoundError('OrderLine', input.orderLineId);
         }
         const order = orderLine.order;
         if (!order.customer || order.customer.id !== customer.id) {
-            throw new core_1.ForbiddenError();
+            throw new core_2.ForbiddenError();
         }
         if (!ALLOWED_ORDER_STATES.includes(order.state)) {
-            throw new core_1.UserInputError('Order must be delivered before reviewing');
+            throw new core_2.UserInputError('Order must be delivered before reviewing');
         }
         const reviewRepo = this.connection.getRepository(ctx, review_entity_1.Review);
         const existing = await reviewRepo.findOne({
@@ -125,7 +133,7 @@ let ReviewService = class ReviewService {
             },
         });
         if (existing) {
-            throw new core_1.UserInputError('You have already reviewed this order line');
+            throw new core_2.UserInputError('You have already reviewed this order line');
         }
         const status = this.options.autoApprove ? VISIBLE_STATUS : 'pending';
         const review = new review_entity_1.Review({
@@ -147,44 +155,55 @@ let ReviewService = class ReviewService {
         if (status === VISIBLE_STATUS) {
             await this.recomputeProductRating(ctx, Number(input.productId));
         }
-        core_1.Logger.info(`Review created by customer ${customer.id} for product ${input.productId}`, constants_1.loggerCtx);
+        core_2.Logger.info(`Review created by customer ${customer.id} for product ${input.productId}`, constants_1.loggerCtx);
         return saved;
     }
-    /** 追评：挂在本人主评（parentId）下，聚合不计入。 */
+    /** 追评：挂在本人主评（parentId）下，聚合不计入；仅 approved 主评且在追评窗口内。 */
     async createFollowUpReview(ctx, reviewId, input) {
-        var _a, _b, _c, _d, _e, _f;
+        var _a, _b, _c, _d, _e, _f, _g;
         const customer = await this.requireCustomer(ctx);
         const reviewRepo = this.connection.getRepository(ctx, review_entity_1.Review);
         const parent = await reviewRepo.findOne({ where: { id: Number(reviewId) } });
         if (!parent) {
-            throw new core_1.EntityNotFoundError('Review', reviewId);
+            throw new core_2.EntityNotFoundError('Review', reviewId);
         }
         if (parent.customerId !== customer.id) {
-            throw new core_1.ForbiddenError();
+            throw new core_2.ForbiddenError();
         }
         if (parent.status === DELETED_STATUS) {
-            throw new core_1.UserInputError('Cannot add a follow-up to a deleted review');
+            throw new core_2.UserInputError('Cannot add a follow-up to a deleted review');
         }
         if (parent.parentId != null) {
-            throw new core_1.UserInputError('Cannot add a follow-up to a follow-up');
+            throw new core_2.UserInputError('Cannot add a follow-up to a follow-up');
+        }
+        if (parent.status !== VISIBLE_STATUS) {
+            throw new core_2.UserInputError('主评价通过审核后才能追评');
+        }
+        const windowDays = await this.getFollowUpWindowDays(ctx);
+        if (windowDays <= 0) {
+            throw new core_2.UserInputError('当前店铺未开放追评');
+        }
+        const base = (_a = parent.reviewedAt) !== null && _a !== void 0 ? _a : parent.createdAt;
+        if (base && Date.now() - new Date(base).getTime() > windowDays * 86400000) {
+            throw new core_2.UserInputError(`已超过追评窗口（审核通过后 ${windowDays} 天内可追评）`);
         }
         if (input.content != null) {
             this.assertContent(input.content);
         }
         if (input.rating != null && (!Number.isInteger(input.rating) || input.rating < 1 || input.rating > 5)) {
-            throw new core_1.UserInputError('rating must be an integer between 1 and 5');
+            throw new core_2.UserInputError('rating must be an integer between 1 and 5');
         }
         const followUp = new review_entity_1.Review({
             customerId: customer.id,
             productId: parent.productId,
             orderLineId: parent.orderLineId,
             variantId: parent.variantId,
-            rating: (_a = input.rating) !== null && _a !== void 0 ? _a : parent.rating,
-            content: ((_b = input.content) !== null && _b !== void 0 ? _b : '').trim(),
-            images: (_c = input.images) !== null && _c !== void 0 ? _c : null,
-            videos: (_d = input.videos) !== null && _d !== void 0 ? _d : null,
-            tags: (_e = input.tags) !== null && _e !== void 0 ? _e : null,
-            isAnonymous: (_f = input.isAnonymous) !== null && _f !== void 0 ? _f : parent.isAnonymous,
+            rating: (_b = input.rating) !== null && _b !== void 0 ? _b : parent.rating,
+            content: ((_c = input.content) !== null && _c !== void 0 ? _c : '').trim(),
+            images: (_d = input.images) !== null && _d !== void 0 ? _d : null,
+            videos: (_e = input.videos) !== null && _e !== void 0 ? _e : null,
+            tags: (_f = input.tags) !== null && _f !== void 0 ? _f : null,
+            isAnonymous: (_g = input.isAnonymous) !== null && _g !== void 0 ? _g : parent.isAnonymous,
             status: this.options.autoApprove ? VISIBLE_STATUS : 'pending',
             parentId: parent.id,
             channelId: ctx.channelId,
@@ -197,10 +216,10 @@ let ReviewService = class ReviewService {
         const customer = await this.requireCustomer(ctx);
         const review = await this.connection.getEntityOrThrow(ctx, review_entity_1.Review, id);
         if (review.customerId !== customer.id) {
-            throw new core_1.ForbiddenError();
+            throw new core_2.ForbiddenError();
         }
         if (review.status !== 'pending' && review.status !== VISIBLE_STATUS) {
-            throw new core_1.UserInputError('Only pending or approved reviews can be updated');
+            throw new core_2.UserInputError('Only pending or approved reviews can be updated');
         }
         if (input.content != null) {
             this.assertContent(input.content);
@@ -208,7 +227,7 @@ let ReviewService = class ReviewService {
         }
         if (input.rating != null) {
             if (!Number.isInteger(input.rating) || input.rating < 1 || input.rating > 5) {
-                throw new core_1.UserInputError('rating must be an integer between 1 and 5');
+                throw new core_2.UserInputError('rating must be an integer between 1 and 5');
             }
             // 追评无独立评分聚合，改评风仅主评生效
             if (!review.parentId) {
@@ -235,7 +254,7 @@ let ReviewService = class ReviewService {
         const customer = await this.requireCustomer(ctx);
         const review = await this.connection.getEntityOrThrow(ctx, review_entity_1.Review, id);
         if (review.customerId !== customer.id) {
-            throw new core_1.ForbiddenError();
+            throw new core_2.ForbiddenError();
         }
         if (review.status === DELETED_STATUS) {
             return true;
@@ -250,7 +269,7 @@ let ReviewService = class ReviewService {
     }
     async replyReview(ctx, id, reply) {
         if (!reply || !reply.trim()) {
-            throw new core_1.UserInputError('reply must not be empty');
+            throw new core_2.UserInputError('reply must not be empty');
         }
         const review = await this.connection.getEntityOrThrow(ctx, review_entity_1.Review, id);
         review.reply = reply;
@@ -259,10 +278,20 @@ let ReviewService = class ReviewService {
     }
     async approveReview(ctx, id) {
         const review = await this.connection.getEntityOrThrow(ctx, review_entity_1.Review, id);
+        const wasVisible = review.status === VISIBLE_STATUS;
         review.status = VISIBLE_STATUS;
+        review.reviewedAt = new Date();
         const saved = await this.connection.getRepository(ctx, review_entity_1.Review).save(review);
         if (!review.parentId) {
             await this.recomputeProductRating(ctx, saved.productId);
+            if (!wasVisible && !review.giftGranted) {
+                // 评价有礼：发奖成功则回写 giftGranted（幂等闸），失败不阻塞审核流转
+                const granted = await this.grantReviewGift(ctx, review);
+                if (granted) {
+                    review.giftGranted = true;
+                    return this.connection.getRepository(ctx, review_entity_1.Review).save(review);
+                }
+            }
         }
         return saved;
     }
@@ -270,6 +299,7 @@ let ReviewService = class ReviewService {
         const review = await this.connection.getEntityOrThrow(ctx, review_entity_1.Review, id);
         const wasApprovedRoot = review.status === VISIBLE_STATUS && !review.parentId;
         review.status = 'rejected';
+        review.reviewedAt = new Date();
         const saved = await this.connection.getRepository(ctx, review_entity_1.Review).save(review);
         if (wasApprovedRoot) {
             await this.recomputeProductRating(ctx, saved.productId);
@@ -373,7 +403,7 @@ let ReviewService = class ReviewService {
         var _a, _b, _c;
         const product = await this.productService.findOne(ctx, productId);
         if (!product) {
-            throw new core_1.EntityNotFoundError('Product', productId);
+            throw new core_2.EntityNotFoundError('Product', productId);
         }
         const cf = ((_a = product.customFields) !== null && _a !== void 0 ? _a : {});
         return {
@@ -401,7 +431,7 @@ let ReviewService = class ReviewService {
             });
         }
         catch (e) {
-            core_1.Logger.error(`Failed to recompute rating for product ${productId}: ${(_b = e === null || e === void 0 ? void 0 : e.message) !== null && _b !== void 0 ? _b : e}`, constants_1.loggerCtx);
+            core_2.Logger.error(`Failed to recompute rating for product ${productId}: ${(_b = e === null || e === void 0 ? void 0 : e.message) !== null && _b !== void 0 ? _b : e}`, constants_1.loggerCtx);
         }
     }
     async getCustomerName(ctx, review) {
@@ -414,23 +444,83 @@ let ReviewService = class ReviewService {
         }
         return [customer.firstName, customer.lastName].filter(Boolean).join(' ') || customer.emailAddress;
     }
+    /** 渠道评价奖励配置（Channel customFields，未配置 = 不发奖）。 */
+    async getGiftConfig(ctx) {
+        var _a;
+        const channel = await this.connection
+            .getRepository(ctx, core_2.Channel)
+            .findOne({ where: { id: ctx.channelId } });
+        const cf = ((_a = channel === null || channel === void 0 ? void 0 : channel.customFields) !== null && _a !== void 0 ? _a : {});
+        const points = Number(cf.reviewGiftPoints) || 0;
+        const couponTemplateId = cf.reviewGiftCouponTemplateId ? String(cf.reviewGiftCouponTemplateId) : null;
+        return { couponTemplateId, points };
+    }
+    /** 渠道追评窗口（天；缺省 7，0 = 不允许追评）。 */
+    async getFollowUpWindowDays(ctx) {
+        var _a;
+        const channel = await this.connection
+            .getRepository(ctx, core_2.Channel)
+            .findOne({ where: { id: ctx.channelId } });
+        const n = Number((_a = channel === null || channel === void 0 ? void 0 : channel.customFields) === null || _a === void 0 ? void 0 : _a.reviewFollowUpWindowDays);
+        return Number.isFinite(n) && n >= 0 ? n : 7;
+    }
+    /** 评价有礼：发券/积分（任一成功返回 true）。单侧失败仅告警不阻塞。 */
+    async grantReviewGift(ctx, review) {
+        var _a, _b, _c, _d, _e, _f, _g;
+        let granted = false;
+        try {
+            const cfg = await this.getGiftConfig(ctx);
+            if (!cfg.couponTemplateId && cfg.points <= 0) {
+                return false;
+            }
+            if (cfg.couponTemplateId) {
+                try {
+                    const res = await this.injector
+                        .get(coupon_plugin_1.CouponService)
+                        .grantCouponIssue(ctx, cfg.couponTemplateId, [review.customerId], false);
+                    granted = granted || ((_a = res === null || res === void 0 ? void 0 : res[0]) === null || _a === void 0 ? void 0 : _a.ok) === true;
+                    if (((_b = res === null || res === void 0 ? void 0 : res[0]) === null || _b === void 0 ? void 0 : _b.ok) !== true) {
+                        core_2.Logger.warn(`review gift coupon not granted for review ${review.id}: ${(_d = (_c = res === null || res === void 0 ? void 0 : res[0]) === null || _c === void 0 ? void 0 : _c.reason) !== null && _d !== void 0 ? _d : 'unknown'}`, constants_1.loggerCtx);
+                    }
+                }
+                catch (e) {
+                    core_2.Logger.warn(`grantCouponIssue failed for review ${review.id}: ${(_e = e === null || e === void 0 ? void 0 : e.message) !== null && _e !== void 0 ? _e : e}`, constants_1.loggerCtx);
+                }
+            }
+            if (cfg.points > 0) {
+                try {
+                    await this.injector
+                        .get(member_level_plugin_1.MemberLevelService)
+                        .addPoints(ctx, review.customerId, cfg.points, null, '评价奖励');
+                    granted = true;
+                }
+                catch (e) {
+                    core_2.Logger.warn(`addPoints failed for review ${review.id}: ${(_f = e === null || e === void 0 ? void 0 : e.message) !== null && _f !== void 0 ? _f : e}`, constants_1.loggerCtx);
+                }
+            }
+        }
+        catch (e) {
+            core_2.Logger.warn(`grantReviewGift failed for review ${review.id}: ${(_g = e === null || e === void 0 ? void 0 : e.message) !== null && _g !== void 0 ? _g : e}`, constants_1.loggerCtx);
+        }
+        return granted;
+    }
     assertContent(content) {
         var _a;
         if (content == null || !content.trim()) {
-            throw new core_1.UserInputError('content must not be empty');
+            throw new core_2.UserInputError('content must not be empty');
         }
         const minLength = (_a = this.options.minContentLength) !== null && _a !== void 0 ? _a : 0;
         if (minLength > 0 && content.trim().length < minLength) {
-            throw new core_1.UserInputError(`content must be at least ${minLength} characters`);
+            throw new core_2.UserInputError(`content must be at least ${minLength} characters`);
         }
     }
     async requireCustomer(ctx) {
         if (!ctx.activeUserId) {
-            throw new core_1.UnauthorizedError();
+            throw new core_2.UnauthorizedError();
         }
         const customer = await this.customerService.findOneByUserId(ctx, ctx.activeUserId);
         if (!customer) {
-            throw new core_1.EntityNotFoundError('Customer', ctx.activeUserId);
+            throw new core_2.EntityNotFoundError('Customer', ctx.activeUserId);
         }
         return customer;
     }
@@ -440,9 +530,11 @@ exports.ReviewService = ReviewService = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, common_1.Optional)()),
     __param(0, (0, common_1.Inject)(constants_1.REVIEW_PLUGIN_OPTIONS)),
-    __metadata("design:paramtypes", [Object, core_1.TransactionalConnection,
-        core_1.ListQueryBuilder,
-        core_1.CustomerService,
-        core_1.ProductService])
+    __param(5, (0, common_1.Optional)()),
+    __metadata("design:paramtypes", [Object, core_2.TransactionalConnection,
+        core_2.ListQueryBuilder,
+        core_2.CustomerService,
+        core_2.ProductService,
+        core_1.ModuleRef])
 ], ReviewService);
 //# sourceMappingURL=review.service.js.map

@@ -2,6 +2,7 @@ import { Inject, Type } from '@nestjs/common';
 import { PluginCommonModule, VendurePlugin } from '@vendure/core';
 
 import { REVIEW_PLUGIN_OPTIONS } from './constants';
+import { reviewChannelCustomFields } from './review-channel-custom-fields';
 import { Review } from './review.entity';
 import { ReviewAdminResolver } from './review-admin.resolver';
 import { reviewProductCustomFields } from './review-product-custom-fields';
@@ -221,6 +222,11 @@ const shopSchema = () => gql`
         config.customFields.Product = mergeCustomFields(
             config.customFields.Product,
             reviewProductCustomFields.Product,
+        );
+        // 评价有礼/追评窗口：渠道级配置（Channel customFields）
+        config.customFields.Channel = mergeCustomFields(
+            config.customFields.Channel,
+            reviewChannelCustomFields.Channel,
         );
         return config;
     },

@@ -1,6 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const vitest_1 = require("vitest");
+const core_1 = require("@vendure/core");
+const coupon_plugin_1 = require("@vendure/coupon-plugin");
 const review_entity_1 = require("./review.entity");
 const review_service_1 = require("./review.service");
 /**
@@ -95,6 +97,148 @@ const CTX = { channelId: 113 };
         await svc.getProductReviews(CTX, '42', { hasImages: true });
         (0, vitest_1.expect)(listQueryBuilder.build.mock.calls[0][2].where.productId).toBe(42);
         (0, vitest_1.expect)(andWhere).toHaveBeenCalledWith(`("images" IS NOT NULL AND "images" <> '[]')`);
+    });
+});
+// ── 四期 Task 7：评价有礼（approveReview 奖励钩子） ──
+const gift = vitest_1.vi.hoisted(() => ({
+    coupon: { grantCouponIssue: vitest_1.vi.fn() },
+    points: { addPoints: vitest_1.vi.fn() },
+}));
+vitest_1.vi.mock('@vendure/coupon-plugin', () => ({ CouponService: class CouponServiceMock {
+    } }));
+vitest_1.vi.mock('@vendure/member-level-plugin', () => ({ MemberLevelService: class MemberLevelServiceMock {
+    } }));
+function makeGiftService(channelCf, reviewRow) {
+    const reviewRepo = {
+        save: vitest_1.vi.fn().mockImplementation(async (r) => (Object.assign({}, r))),
+        update: vitest_1.vi.fn().mockResolvedValue({}),
+        find: vitest_1.vi.fn().mockResolvedValue([]),
+    };
+    const channelRepo = { findOne: vitest_1.vi.fn().mockResolvedValue({ id: CTX.channelId, customFields: channelCf }) };
+    const connection = {
+        getEntityOrThrow: vitest_1.vi.fn().mockResolvedValue(new review_entity_1.Review(reviewRow)),
+        getRepository: vitest_1.vi.fn((_ctx, entity) => (entity === core_1.Channel ? channelRepo : reviewRepo)),
+    };
+    const moduleRef = {
+        get: vitest_1.vi.fn((token) => (token === coupon_plugin_1.CouponService ? gift.coupon : gift.points)),
+    };
+    const productService = { findOne: vitest_1.vi.fn().mockResolvedValue(null) };
+    const svc = new review_service_1.ReviewService({}, connection, {}, {}, productService, moduleRef);
+    return { svc, reviewRepo, channelRepo };
+}
+(0, vitest_1.describe)('ReviewService.approveReview 评价有礼', () => {
+    (0, vitest_1.beforeEach)(() => {
+        gift.coupon.grantCouponIssue.mockReset();
+        gift.points.addPoints.mockReset();
+    });
+    (0, vitest_1.it)('主评审核通过且渠道配置开启 → 发券+积分，giftGranted=true 并留痕 reviewedAt', async () => {
+        gift.coupon.grantCouponIssue.mockResolvedValue([{ customerId: 9, ok: true, code: 'C1', reason: null }]);
+        gift.points.addPoints.mockResolvedValue(10);
+        const { svc, reviewRepo } = makeGiftService({ reviewGiftCouponTemplateId: 'T9', reviewGiftPoints: 10, reviewFollowUpWindowDays: 7 }, { id: 1, status: 'pending', parentId: null, giftGranted: false, customerId: 9, productId: 42 });
+        const saved = await svc.approveReview(CTX, '1');
+        (0, vitest_1.expect)(gift.coupon.grantCouponIssue).toHaveBeenCalledWith(CTX, 'T9', [9], false);
+        (0, vitest_1.expect)(gift.points.addPoints).toHaveBeenCalledWith(CTX, 9, 10, null, '评价奖励');
+        (0, vitest_1.expect)(saved.status).toBe('approved');
+        (0, vitest_1.expect)(saved.giftGranted).toBe(true);
+        (0, vitest_1.expect)(saved.reviewedAt).toBeTruthy();
+        (0, vitest_1.expect)(reviewRepo.save).toHaveBeenCalledTimes(2);
+    });
+    (0, vitest_1.it)('重复 approve（状态已 approved）→ 状态闸生效不再发奖', async () => {
+        const { svc } = makeGiftService({ reviewGiftCouponTemplateId: 'T9', reviewGiftPoints: 10 }, { id: 1, status: 'approved', parentId: null, giftGranted: false, customerId: 9, productId: 42 });
+        await svc.approveReview(CTX, '1');
+        (0, vitest_1.expect)(gift.coupon.grantCouponIssue).not.toHaveBeenCalled();
+        (0, vitest_1.expect)(gift.points.addPoints).not.toHaveBeenCalled();
+    });
+    (0, vitest_1.it)('giftGranted=true 幂等闸 → 不再发奖', async () => {
+        const { svc } = makeGiftService({ reviewGiftCouponTemplateId: 'T9', reviewGiftPoints: 10 }, { id: 1, status: 'pending', parentId: null, giftGranted: true, customerId: 9, productId: 42 });
+        await svc.approveReview(CTX, '1');
+        (0, vitest_1.expect)(gift.coupon.grantCouponIssue).not.toHaveBeenCalled();
+        (0, vitest_1.expect)(gift.points.addPoints).not.toHaveBeenCalled();
+    });
+    (0, vitest_1.it)('未配置奖励（无模板/积分为 0）→ 只流转状态不发奖不置 giftGranted', async () => {
+        const { svc, reviewRepo } = makeGiftService({ reviewGiftCouponTemplateId: null, reviewGiftPoints: 0 }, { id: 1, status: 'pending', parentId: null, customerId: 9, productId: 42 });
+        const saved = await svc.approveReview(CTX, '1');
+        (0, vitest_1.expect)(gift.coupon.grantCouponIssue).not.toHaveBeenCalled();
+        (0, vitest_1.expect)(gift.points.addPoints).not.toHaveBeenCalled();
+        (0, vitest_1.expect)(saved.status).toBe('approved');
+        (0, vitest_1.expect)(saved.giftGranted).toBeFalsy();
+        (0, vitest_1.expect)(reviewRepo.save).toHaveBeenCalledTimes(1);
+    });
+    (0, vitest_1.it)('追评 approve 不发奖（仅流转+留痕）', async () => {
+        const { svc } = makeGiftService({ reviewGiftCouponTemplateId: 'T9', reviewGiftPoints: 10 }, { id: 2, status: 'pending', parentId: 5, customerId: 9, productId: 42 });
+        const saved = await svc.approveReview(CTX, '2');
+        (0, vitest_1.expect)(gift.coupon.grantCouponIssue).not.toHaveBeenCalled();
+        (0, vitest_1.expect)(gift.points.addPoints).not.toHaveBeenCalled();
+        (0, vitest_1.expect)(saved.status).toBe('approved');
+        (0, vitest_1.expect)(saved.reviewedAt).toBeTruthy();
+    });
+    (0, vitest_1.it)('发奖抛错不阻塞审核流转（giftGranted 不置，便于重试）', async () => {
+        gift.coupon.grantCouponIssue.mockRejectedValue(new Error('tpl missing'));
+        const { svc } = makeGiftService({ reviewGiftCouponTemplateId: 'T9', reviewGiftPoints: 0 }, { id: 1, status: 'pending', parentId: null, customerId: 9, productId: 42 });
+        const saved = await svc.approveReview(CTX, '1');
+        (0, vitest_1.expect)(saved.status).toBe('approved');
+        (0, vitest_1.expect)(saved.giftGranted).toBeFalsy();
+    });
+});
+// ── 四期 Task 8：追评窗口校验 ──
+const FOLLOW_CTX = { channelId: 113, activeUserId: 77 };
+const daysAgo = (n) => new Date(Date.now() - n * 86400000);
+function makeFollowService(parentRow, channelCf = { reviewFollowUpWindowDays: 7 }) {
+    const reviewRepo = {
+        findOne: vitest_1.vi.fn().mockResolvedValue(parentRow ? new review_entity_1.Review(parentRow) : null),
+        save: vitest_1.vi.fn().mockImplementation(async (r) => (Object.assign({}, r))),
+    };
+    const channelRepo = { findOne: vitest_1.vi.fn().mockResolvedValue({ id: FOLLOW_CTX.channelId, customFields: channelCf }) };
+    const connection = {
+        getRepository: vitest_1.vi.fn((_ctx, entity) => (entity === core_1.Channel ? channelRepo : reviewRepo)),
+    };
+    const customerService = { findOneByUserId: vitest_1.vi.fn().mockResolvedValue({ id: 9 }) };
+    const svc = new review_service_1.ReviewService({}, connection, {}, customerService, {}, { get: vitest_1.vi.fn() });
+    return { svc, reviewRepo };
+}
+(0, vitest_1.describe)('ReviewService.createFollowUpReview 追评窗口', () => {
+    (0, vitest_1.beforeEach)(() => vitest_1.vi.clearAllMocks());
+    (0, vitest_1.it)('主评 approved 且窗口内 → 追评成功（pending，挂主评）', async () => {
+        const { svc } = makeFollowService({
+            id: 1, customerId: 9, status: 'approved', parentId: null,
+            reviewedAt: daysAgo(2), productId: 42, rating: 5, isAnonymous: false,
+        });
+        const fu = await svc.createFollowUpReview(FOLLOW_CTX, '1', { content: '补充：吃了一周还想吃' });
+        (0, vitest_1.expect)(fu.parentId).toBe(1);
+        (0, vitest_1.expect)(fu.status).toBe('pending');
+    });
+    (0, vitest_1.it)('窗口外（reviewedAt 10 天前，窗口 7 天）→ 抛错', async () => {
+        const { svc } = makeFollowService({
+            id: 1, customerId: 9, status: 'approved', parentId: null,
+            reviewedAt: daysAgo(10), productId: 42, rating: 5,
+        });
+        await (0, vitest_1.expect)(svc.createFollowUpReview(FOLLOW_CTX, '1', { content: '迟到追评' })).rejects.toThrow(/追评窗口/);
+    });
+    (0, vitest_1.it)('历史主评无 reviewedAt → 回退 createdAt 判窗', async () => {
+        const { svc } = makeFollowService({
+            id: 1, customerId: 9, status: 'approved', parentId: null,
+            createdAt: daysAgo(2), productId: 42, rating: 5,
+        });
+        const fu = await svc.createFollowUpReview(FOLLOW_CTX, '1', { content: '历史数据也能追' });
+        (0, vitest_1.expect)(fu.parentId).toBe(1);
+    });
+    (0, vitest_1.it)('渠道窗口配置 0 → 未开放追评', async () => {
+        const { svc } = makeFollowService({ id: 1, customerId: 9, status: 'approved', parentId: null, reviewedAt: daysAgo(0), productId: 42, rating: 5 }, { reviewFollowUpWindowDays: 0 });
+        await (0, vitest_1.expect)(svc.createFollowUpReview(FOLLOW_CTX, '1', { content: 'x' })).rejects.toThrow(/未开放/);
+    });
+    (0, vitest_1.it)('追评的追评 → 抛错', async () => {
+        const { svc } = makeFollowService({
+            id: 3, customerId: 9, status: 'approved', parentId: 1,
+            reviewedAt: daysAgo(1), productId: 42, rating: 5,
+        });
+        await (0, vitest_1.expect)(svc.createFollowUpReview(FOLLOW_CTX, '3', { content: '套娃' })).rejects.toThrow(/follow-up/i);
+    });
+    (0, vitest_1.it)('主评未 approved → 抛错', async () => {
+        const { svc } = makeFollowService({
+            id: 1, customerId: 9, status: 'pending', parentId: null,
+            reviewedAt: daysAgo(1), productId: 42, rating: 5,
+        });
+        await (0, vitest_1.expect)(svc.createFollowUpReview(FOLLOW_CTX, '1', { content: '还没通过就追' })).rejects.toThrow(/通过审核/);
     });
 });
 //# sourceMappingURL=review.service.spec.js.map

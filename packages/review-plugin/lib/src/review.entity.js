@@ -87,6 +87,14 @@ __decorate([
     (0, typeorm_1.Column)({ type: 'int', nullable: true }),
     __metadata("design:type", Object)
 ], Review.prototype, "parentId", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ default: false }),
+    __metadata("design:type", Boolean)
+], Review.prototype, "giftGranted", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
+    __metadata("design:type", Object)
+], Review.prototype, "reviewedAt", void 0);
 exports.Review = Review = __decorate([
     (0, typeorm_1.Entity)(),
     __metadata("design:paramtypes", [Object])
