@@ -33,6 +33,7 @@ import { campusPermissionDefinitions } from './permissions';
 import { R2MarkService } from './r2-mark.service';
 import { R2ShopResolver } from './r2-shop.resolver';
 import { R4TagService } from './r4-tag.service';
+import { ShippingProfileEnsureService } from './shipping-profile-ensure.service';
 import { RiderAdminResolver } from './rider-admin.resolver';
 import { RiderCreditLog } from './rider-credit-log.entity';
 import { RiderCreditService } from './rider-credit.service';
@@ -64,6 +65,7 @@ import { WaimaiStoreService } from './waimai-store.service';
         ErrandService,
         R2MarkService,
         R4TagService,
+        ShippingProfileEnsureService,
         WaimaiStoreService,
     ],
     adminApiExtensions: {
@@ -169,6 +171,14 @@ import { WaimaiStoreService } from './waimai-store.service';
                     sku: String!
                 }
 
+                type CampusEnsureProfileResult {
+                    profileId: ID!
+                    profileName: String!
+                    linkedMethodCodes: [String!]!
+                    missingMethodCodes: [String!]!
+                    boundVariantCount: Int!
+                }
+
                 type CampusStoreConfigWithChannel {
                     channelId: ID!
                     channelName: String!
@@ -215,6 +225,7 @@ import { WaimaiStoreService } from './waimai-store.service';
                     campusBackToHall(orderId: ID!): CampusDispatchResult!
                     campusEnsureErrandProducts: CampusErrandProductResult!
                     campusUpdateStoreConfig(channelId: ID!, input: CampusStoreConfigInput!): CampusStoreConfigWithChannel!
+                    campusEnsureDefaultShippingProfile(channelId: ID!): CampusEnsureProfileResult!
                 }
             `;
         },

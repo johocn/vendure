@@ -1,12 +1,14 @@
 import { ID, RequestContext } from '@vendure/core';
 import { CampusConfigService } from './campus-config.service';
 import { ErrandService } from './errand.service';
+import { ShippingProfileEnsureService } from './shipping-profile-ensure.service';
 import { WaimaiStoreService } from './waimai-store.service';
 export declare class CampusConfigAdminResolver {
     private config;
     private errand;
     private stores;
-    constructor(config: CampusConfigService, errand: ErrandService, stores: WaimaiStoreService);
+    private profileEnsure;
+    constructor(config: CampusConfigService, errand: ErrandService, stores: WaimaiStoreService, profileEnsure: ShippingProfileEnsureService);
     campusZones(ctx: RequestContext): Promise<import("./campus-zone.entity").CampusZone[]>;
     campusBuildings(ctx: RequestContext, zoneId?: ID): Promise<import("./campus-building.entity").CampusBuilding[]>;
     campusConfig(ctx: RequestContext): Promise<import("./campus-fulfillment-config.entity").CampusFulfillmentConfig>;
@@ -24,4 +26,6 @@ export declare class CampusConfigAdminResolver {
     /** 拾光达店铺配置：全店铺列表（跨租户视角） */
     campusStoreConfigs(ctx: RequestContext): Promise<import("./waimai-store.service").CampusStoreConfigWithChannel[]>;
     campusUpdateStoreConfig(ctx: RequestContext, channelId: ID, input: any): Promise<import("./waimai-store.service").CampusStoreConfigWithChannel>;
+    /** R2/R4 档案冲突治本：get-or-create 渠道合并默认配送档案（store-pickup+courier-delivery）并补绑未绑档案变体 */
+    campusEnsureDefaultShippingProfile(ctx: RequestContext, channelId: ID): Promise<import("./shipping-profile-ensure.service").CampusEnsureProfileResult>;
 }

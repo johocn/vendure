@@ -35,6 +35,7 @@ const permissions_1 = require("./permissions");
 const r2_mark_service_1 = require("./r2-mark.service");
 const r2_shop_resolver_1 = require("./r2-shop.resolver");
 const r4_tag_service_1 = require("./r4-tag.service");
+const shipping_profile_ensure_service_1 = require("./shipping-profile-ensure.service");
 const rider_admin_resolver_1 = require("./rider-admin.resolver");
 const rider_credit_log_entity_1 = require("./rider-credit-log.entity");
 const rider_credit_service_1 = require("./rider-credit.service");
@@ -87,6 +88,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             errand_service_1.ErrandService,
             r2_mark_service_1.R2MarkService,
             r4_tag_service_1.R4TagService,
+            shipping_profile_ensure_service_1.ShippingProfileEnsureService,
             waimai_store_service_1.WaimaiStoreService,
         ],
         adminApiExtensions: {
@@ -192,6 +194,14 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     sku: String!
                 }
 
+                type CampusEnsureProfileResult {
+                    profileId: ID!
+                    profileName: String!
+                    linkedMethodCodes: [String!]!
+                    missingMethodCodes: [String!]!
+                    boundVariantCount: Int!
+                }
+
                 type CampusStoreConfigWithChannel {
                     channelId: ID!
                     channelName: String!
@@ -238,6 +248,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusBackToHall(orderId: ID!): CampusDispatchResult!
                     campusEnsureErrandProducts: CampusErrandProductResult!
                     campusUpdateStoreConfig(channelId: ID!, input: CampusStoreConfigInput!): CampusStoreConfigWithChannel!
+                    campusEnsureDefaultShippingProfile(channelId: ID!): CampusEnsureProfileResult!
                 }
             `;
             },
