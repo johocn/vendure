@@ -23,6 +23,21 @@ let AfterSalesAdminResolver = class AfterSalesAdminResolver {
     async afterSalesRequests(ctx, options) {
         return this.afterSalesService.findAll(ctx, options);
     }
+    async afterSalesRequestAdmin(ctx, id) {
+        return this.afterSalesService.findOneForAdmin(ctx, id);
+    }
+    async afterSalesReturnAddress(ctx) {
+        return this.afterSalesService.getReturnAddress(ctx);
+    }
+    async updateAfterSalesReturnAddress(ctx, address) {
+        return this.afterSalesService.updateReturnAddress(ctx, address);
+    }
+    async batchApproveAfterSalesRequests(ctx, ids) {
+        return this.afterSalesService.batchApprove(ctx, ids);
+    }
+    async batchRejectAfterSalesRequests(ctx, ids, reason) {
+        return this.afterSalesService.batchReject(ctx, ids, reason);
+    }
     async approveAfterSalesRequest(ctx, id) {
         return this.afterSalesService.approveRequest(ctx, id);
     }
@@ -49,6 +64,51 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], AfterSalesAdminResolver.prototype, "afterSalesRequests", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.ReadOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Number]),
+    __metadata("design:returntype", Promise)
+], AfterSalesAdminResolver.prototype, "afterSalesRequestAdmin", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], AfterSalesAdminResolver.prototype, "afterSalesReturnAddress", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('address')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String]),
+    __metadata("design:returntype", Promise)
+], AfterSalesAdminResolver.prototype, "updateAfterSalesReturnAddress", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('ids', { type: () => [graphql_1.ID] })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Array]),
+    __metadata("design:returntype", Promise)
+], AfterSalesAdminResolver.prototype, "batchApproveAfterSalesRequests", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('ids', { type: () => [graphql_1.ID] })),
+    __param(2, (0, graphql_1.Args)('reason')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Array, String]),
+    __metadata("design:returntype", Promise)
+], AfterSalesAdminResolver.prototype, "batchRejectAfterSalesRequests", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(core_1.Permission.UpdateOrder),

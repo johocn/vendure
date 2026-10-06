@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AfterSalesRequest = void 0;
 const typeorm_1 = require("typeorm");
 const core_1 = require("@vendure/core");
+const after_sales_state_history_entity_1 = require("./after-sales-state-history.entity");
 let AfterSalesRequest = class AfterSalesRequest extends core_1.VendureEntity {
     constructor(input) {
         super(input);
@@ -102,6 +103,10 @@ __decorate([
     (0, typeorm_1.Column)(),
     __metadata("design:type", Number)
 ], AfterSalesRequest.prototype, "customerId", void 0);
+__decorate([
+    (0, typeorm_1.OneToMany)(() => after_sales_state_history_entity_1.AfterSalesStateHistory, (h) => h.request),
+    __metadata("design:type", Array)
+], AfterSalesRequest.prototype, "history", void 0);
 __decorate([
     (0, typeorm_1.ManyToMany)(() => core_1.Channel),
     (0, typeorm_1.JoinTable)(),

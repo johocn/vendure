@@ -26,6 +26,9 @@ let AfterSalesShopResolver = class AfterSalesShopResolver {
     async afterSalesRequest(ctx, id) {
         return this.afterSalesService.findOneForCustomer(ctx, id);
     }
+    async afterSalesReturnAddress(ctx) {
+        return this.afterSalesService.getReturnAddress(ctx);
+    }
     async createAfterSalesRequest(ctx, input) {
         return this.afterSalesService.createRequest(ctx, input);
     }
@@ -58,6 +61,14 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Number]),
     __metadata("design:returntype", Promise)
 ], AfterSalesShopResolver.prototype, "afterSalesRequest", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], AfterSalesShopResolver.prototype, "afterSalesReturnAddress", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(core_1.Permission.Authenticated),

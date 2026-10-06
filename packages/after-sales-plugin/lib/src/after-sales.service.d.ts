@@ -9,6 +9,7 @@ export declare class AfterSalesService {
     private options;
     private assetService;
     private configService;
+    private channelService;
     constructor(connection: TransactionalConnection, listQueryBuilder: ListQueryBuilder);
     init(injector: Injector): void;
     /**
@@ -56,6 +57,8 @@ export declare class AfterSalesService {
      * 触发 "Cannot return null for non-nullable field AfterSalesRequest.order"。
      */
     private hydrate;
+    /** 状态流转历史落库：失败仅告警，绝不阻断主流程 */
+    private recordState;
     approveRequest(ctx: RequestContext, id: ID): Promise<AfterSalesRequest>;
     rejectRequest(ctx: RequestContext, id: ID, reason: string): Promise<AfterSalesRequest>;
     /**
@@ -83,5 +86,25 @@ export declare class AfterSalesService {
      * 回写 Order customFields.afterSalesStatus。失败仅告警，不影响主流程。
      */
     private updateOrderAfterSalesStatus;
+    /** Admin 单查：加载 order/orderLine/customer/history（web-admin 详情页专用，替代列表过滤 hack） */
+    findOneForAdmin(ctx: RequestContext, id: ID): Promise<AfterSalesRequest | undefined>;
+    /** 批量同意：复用单条方法逐条执行，单条失败不中断整批。上限 50。 */
+    batchApprove(ctx: RequestContext, ids: ID[]): Promise<Array<{
+        id: string;
+        success: boolean;
+        state: string;
+        message: string;
+    }>>;
+    /** 批量拒绝：同 batchApprove，整批共用一个 reason。 */
+    batchReject(ctx: RequestContext, ids: ID[], reason: string): Promise<Array<{
+        id: string;
+        success: boolean;
+        state: string;
+        message: string;
+    }>>;
+    /** 读当前渠道售后寄回地址（Admin/Shop 共用；未配置返回空串） */
+    getReturnAddress(ctx: RequestContext): Promise<string>;
+    /** 写当前渠道售后寄回地址（走 ChannelService.update，免开 ChannelService 权限） */
+    updateReturnAddress(ctx: RequestContext, address: string): Promise<boolean>;
     private transitionState;
 }

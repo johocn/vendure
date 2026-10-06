@@ -17,6 +17,7 @@ const typeorm_1 = require("typeorm");
 const core_1 = require("@vendure/core");
 const constants_1 = require("./constants");
 const after_sales_request_entity_1 = require("./after-sales-request.entity");
+const after_sales_state_history_entity_1 = require("./after-sales-state-history.entity");
 const types_1 = require("./types");
 const inventory_plugin_1 = require("@vendure/inventory-plugin");
 let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
@@ -29,6 +30,7 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
         this.options = {};
         this.assetService = null;
         this.configService = null;
+        this.channelService = null;
     }
     init(injector) {
         var _a, _b;
@@ -49,6 +51,12 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
         }
         this.assetService = injector.get(core_1.AssetService);
         this.configService = injector.get(core_1.ConfigService);
+        try {
+            this.channelService = injector.get(core_1.ChannelService);
+        }
+        catch (_d) {
+            this.channelService = null;
+        }
     }
     /**
      * 当前登录用户对应的 Customer 主键。
@@ -65,7 +73,8 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
         const repo = this.connection.getRepository(ctx, after_sales_request_entity_1.AfterSalesRequest);
         const result = await repo.findOne({
             where: { id: id },
-            relations: { order: true, orderLine: true, customer: true, channels: true },
+            relations: { order: true, orderLine: true, customer: true, channels: true, history: true },
+            order: { history: { createdAt: 'ASC' } },
         });
         return result !== null && result !== void 0 ? result : undefined;
     }
@@ -80,7 +89,8 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
         const repo = this.connection.getRepository(ctx, after_sales_request_entity_1.AfterSalesRequest);
         const result = await repo.findOne({
             where: { id: id, customerId },
-            relations: { order: true, orderLine: true, channels: true },
+            relations: { order: true, orderLine: true, channels: true, history: true },
+            order: { history: { createdAt: 'ASC' } },
         });
         return result !== null && result !== void 0 ? result : undefined;
     }
@@ -191,6 +201,7 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
         });
         request.channels = [ctx.channel];
         const saved = await repo.save(request);
+        await this.recordState(ctx, Number(saved.id), null, 'Pending');
         core_1.Logger.info(`After-sales request ${saved.id} created by customer ${ctx.activeUserId}`, constants_1.loggerCtx);
         return this.hydrate(ctx, saved.id);
     }
@@ -202,8 +213,10 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
         if (request.state !== 'Pending') {
             throw new Error(`Cannot cancel request in state: ${request.state}`);
         }
+        const fromState = request.state;
         request.state = 'Closed';
         const saved = await repo.save(request);
+        await this.recordState(ctx, Number(saved.id), fromState, 'Closed');
         return this.hydrate(ctx, saved.id);
     }
     async updateReturnTracking(ctx, id, trackingNo, carrier) {
@@ -214,10 +227,12 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
         if (request.state !== 'Approved') {
             throw new Error(`Cannot update tracking in state: ${request.state}`);
         }
+        const fromState = request.state;
         request.returnTrackingNo = trackingNo;
         request.returnCarrier = carrier;
         request.state = 'Returning';
         const saved = await repo.save(request);
+        await this.recordState(ctx, Number(saved.id), fromState, 'Returning');
         return this.hydrate(ctx, saved.id);
     }
     /**
@@ -296,12 +311,29 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
         const repo = this.connection.getRepository(ctx, after_sales_request_entity_1.AfterSalesRequest);
         const full = await repo.findOne({
             where: { id: id },
-            relations: { order: true, orderLine: true, channels: true },
+            relations: { order: true, orderLine: true, channels: true, history: true },
+            order: { history: { createdAt: 'ASC' } },
         });
         if (full) {
             return full;
         }
         throw new Error(`AfterSalesRequest #${id} not found after save`);
+    }
+    /** 状态流转历史落库：失败仅告警，绝不阻断主流程 */
+    async recordState(ctx, requestId, fromState, toState) {
+        var _a;
+        try {
+            const repo = this.connection.getRepository(ctx, after_sales_state_history_entity_1.AfterSalesStateHistory);
+            await repo.insert({
+                requestId,
+                fromState: fromState !== null && fromState !== void 0 ? fromState : null,
+                toState,
+                operatorUserId: ctx.activeUserId != null ? Number(ctx.activeUserId) : null,
+            });
+        }
+        catch (e) {
+            core_1.Logger.warn(`recordState failed for after-sales #${requestId}: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, constants_1.loggerCtx);
+        }
     }
     // ===== Admin Operations =====
     async approveRequest(ctx, id) {
@@ -316,9 +348,12 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
         if (!((_a = types_1.STATE_TRANSITIONS[request.state]) === null || _a === void 0 ? void 0 : _a.includes('Rejected'))) {
             throw new Error(`Cannot reject from state: ${request.state}`);
         }
+        const fromState = request.state;
         request.state = 'Rejected';
         request.rejectReason = reason;
-        return repo.save(request);
+        const saved = await repo.save(request);
+        await this.recordState(ctx, Number(saved.id), fromState, 'Rejected');
+        return saved;
     }
     /**
      * Returning → Received（收到退货）：
@@ -365,8 +400,11 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
             else {
                 core_1.Logger.warn(`after-sales#${request.id} 无订单行或 InventoryService 不可用，跳过库存回补`, constants_1.loggerCtx);
             }
+            const fromState = request.state;
             request.state = 'Received';
-            return repo.save(request);
+            const saved = await repo.save(request);
+            await this.recordState(txCtx, Number(saved.id), fromState, 'Received');
+            return saved;
         });
     }
     async processRefund(ctx, id) {
@@ -419,6 +457,7 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
             throw new core_1.UserInputError(`Cannot refund: no payment found for order ${request.orderId}`);
         }
         const paymentId = payments[0].id;
+        const fromState = request.state;
         // 事务包裹：退款成功后统一提交（改状态 + 落账 + 回写 order.afterSalesStatus），失败回滚整笔。
         await this.connection.startTransaction(ctx);
         try {
@@ -436,6 +475,7 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
                 request.refundError = `refundOrder 拒绝: ${JSON.stringify(refundResult)}`;
                 request.refundedAt = undefined;
                 await repo.save(request);
+                await this.recordState(ctx, Number(request.id), fromState, 'RefundFailed');
                 await this.updateOrderAfterSalesStatus(ctx, request.orderId, 'RefundFailed');
                 await this.connection.commitOpenTransaction(ctx);
                 core_1.Logger.warn(`after-sales #${request.id} refundOrder 拒绝: ${request.refundError}`, constants_1.loggerCtx);
@@ -457,6 +497,7 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
                 request.refundedAt = new Date();
                 request.state = 'Refunded';
                 await repo.save(request);
+                await this.recordState(ctx, Number(request.id), fromState, 'Refunded');
                 await this.updateOrderAfterSalesStatus(ctx, request.orderId, 'Refunded');
                 core_1.Logger.info(`Refund settled for after-sales request #${request.id}, tx=${request.refundTransactionId}`, constants_1.loggerCtx);
             }
@@ -466,6 +507,7 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
                 request.refundError = `退款未达 Settled，当前 ${refund.state}`;
                 request.refundedAt = undefined;
                 await repo.save(request);
+                await this.recordState(ctx, Number(request.id), fromState, 'RefundFailed');
                 await this.updateOrderAfterSalesStatus(ctx, request.orderId, 'RefundFailed');
                 core_1.Logger.warn(`after-sales #${request.id} 退款终态 ${refund.state}，已置 RefundFailed`, constants_1.loggerCtx);
             }
@@ -492,10 +534,14 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
             const request = typeof idOrRequest === 'object' ? idOrRequest : await repo.findOne({ where: { id: idOrRequest } });
             if (!request || request.state === 'Refunded')
                 return;
+            const fromState = request.state;
             request.state = 'RefundFailed';
             request.refundError = error;
             request.refundedAt = undefined;
             await repo.save(request);
+            if (fromState !== 'RefundFailed') {
+                await this.recordState(ctx, Number(request.id), fromState, 'RefundFailed');
+            }
             await this.updateOrderAfterSalesStatus(ctx, request.orderId, 'RefundFailed');
         }
         catch (inner) {
@@ -515,6 +561,71 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
             core_1.Logger.warn(`Failed to update order afterSalesStatus: ${e.message}`, constants_1.loggerCtx);
         }
     }
+    /** Admin 单查：加载 order/orderLine/customer/history（web-admin 详情页专用，替代列表过滤 hack） */
+    async findOneForAdmin(ctx, id) {
+        const repo = this.connection.getRepository(ctx, after_sales_request_entity_1.AfterSalesRequest);
+        const result = await repo.findOne({
+            where: { id: id },
+            relations: { order: true, orderLine: true, customer: true, channels: true, history: true },
+            order: { history: { createdAt: 'ASC' } },
+        });
+        return result !== null && result !== void 0 ? result : undefined;
+    }
+    /** 批量同意：复用单条方法逐条执行，单条失败不中断整批。上限 50。 */
+    async batchApprove(ctx, ids) {
+        var _a;
+        if (!Array.isArray(ids) || ids.length === 0)
+            throw new core_1.UserInputError('ids is required');
+        if (ids.length > 50)
+            throw new core_1.UserInputError(`Batch limit is 50, got ${ids.length}`);
+        const results = [];
+        for (const id of ids) {
+            try {
+                const r = await this.approveRequest(ctx, id);
+                results.push({ id: String(id), success: true, state: r.state, message: '' });
+            }
+            catch (e) {
+                results.push({ id: String(id), success: false, state: '', message: (_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : String(e) });
+            }
+        }
+        return results;
+    }
+    /** 批量拒绝：同 batchApprove，整批共用一个 reason。 */
+    async batchReject(ctx, ids, reason) {
+        var _a;
+        if (!Array.isArray(ids) || ids.length === 0)
+            throw new core_1.UserInputError('ids is required');
+        if (ids.length > 50)
+            throw new core_1.UserInputError(`Batch limit is 50, got ${ids.length}`);
+        const results = [];
+        for (const id of ids) {
+            try {
+                const r = await this.rejectRequest(ctx, id, reason);
+                results.push({ id: String(id), success: true, state: r.state, message: '' });
+            }
+            catch (e) {
+                results.push({ id: String(id), success: false, state: '', message: (_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : String(e) });
+            }
+        }
+        return results;
+    }
+    /** 读当前渠道售后寄回地址（Admin/Shop 共用；未配置返回空串） */
+    async getReturnAddress(ctx) {
+        var _a, _b;
+        const repo = this.connection.getRepository(ctx, core_1.Channel);
+        const channel = await repo.findOne({ where: { id: ctx.channelId } });
+        return (_b = (_a = channel === null || channel === void 0 ? void 0 : channel.customFields) === null || _a === void 0 ? void 0 : _a.afterSalesReturnAddress) !== null && _b !== void 0 ? _b : '';
+    }
+    /** 写当前渠道售后寄回地址（走 ChannelService.update，免开 ChannelService 权限） */
+    async updateReturnAddress(ctx, address) {
+        if (!this.channelService)
+            throw new Error('ChannelService not initialized');
+        await this.channelService.update(ctx, {
+            id: ctx.channelId,
+            customFields: { afterSalesReturnAddress: address },
+        });
+        return true;
+    }
     async transitionState(ctx, id, toState) {
         const repo = this.connection.getRepository(ctx, after_sales_request_entity_1.AfterSalesRequest);
         const request = await repo.findOne({ where: { id: id } });
@@ -524,8 +635,11 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
         if (!(allowed === null || allowed === void 0 ? void 0 : allowed.includes(toState))) {
             throw new Error(`Invalid transition: ${request.state} -> ${toState}`);
         }
+        const fromState = request.state;
         request.state = toState;
-        return repo.save(request);
+        const saved = await repo.save(request);
+        await this.recordState(ctx, Number(saved.id), fromState, toState);
+        return saved;
     }
 };
 exports.AfterSalesService = AfterSalesService;

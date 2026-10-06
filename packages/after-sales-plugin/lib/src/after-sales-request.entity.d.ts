@@ -1,5 +1,6 @@
 import { Channel, ChannelAware, Customer, DeepPartial, Order, OrderLine, VendureEntity } from '@vendure/core';
 import { AfterSalesState, AfterSalesType } from './types';
+import { AfterSalesStateHistory } from './after-sales-state-history.entity';
 export declare class AfterSalesRequest extends VendureEntity implements ChannelAware {
     constructor(input?: DeepPartial<AfterSalesRequest>);
     order: Order;
@@ -29,5 +30,6 @@ export declare class AfterSalesRequest extends VendureEntity implements ChannelA
     refundError: string | null;
     customer: Customer;
     customerId: number;
+    history: AfterSalesStateHistory[];
     channels: Channel[];
 }

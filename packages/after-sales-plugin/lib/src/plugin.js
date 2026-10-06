@@ -19,6 +19,7 @@ const core_1 = require("@nestjs/core");
 const core_2 = require("@vendure/core");
 const constants_1 = require("./constants");
 const after_sales_request_entity_1 = require("./after-sales-request.entity");
+const after_sales_state_history_entity_1 = require("./after-sales-state-history.entity");
 const after_sales_service_1 = require("./after-sales.service");
 const after_sales_shop_resolver_1 = require("./after-sales-shop.resolver");
 const after_sales_admin_resolver_1 = require("./after-sales-admin.resolver");
@@ -45,7 +46,7 @@ AfterSalesPlugin.options = {};
 exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
     (0, core_2.VendurePlugin)({
         imports: [core_2.PluginCommonModule],
-        entities: [after_sales_request_entity_1.AfterSalesRequest],
+        entities: [after_sales_request_entity_1.AfterSalesRequest, after_sales_state_history_entity_1.AfterSalesStateHistory],
         providers: [
             { provide: constants_1.AFTER_SALES_PLUGIN_OPTIONS, useFactory: () => AfterSalesPlugin.options },
             after_sales_service_1.AfterSalesService,
@@ -55,6 +56,13 @@ exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
             schema: () => gql `
             enum AfterSalesType { return_refund refund_only exchange }
             enum AfterSalesState { Pending Approved Rejected Returning Received Refunded RefundFailed Closed }
+
+            type AfterSalesStateHistoryEntry {
+                fromState: AfterSalesState
+                toState: AfterSalesState!
+                operatorUserId: ID
+                createdAt: DateTime!
+            }
 
             type AfterSalesRequest implements Node {
                 id: ID!
@@ -78,6 +86,7 @@ exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
                 updatedAt: DateTime!
                 order: Order!
                 orderLine: OrderLine
+                history: [AfterSalesStateHistoryEntry!]!
             }
 
             type AfterSalesRequestList implements PaginatedList {
@@ -102,6 +111,7 @@ exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
             extend type Query {
                 myAfterSalesRequests(options: AfterSalesRequestListOptions): AfterSalesRequestList!
                 afterSalesRequest(id: ID!): AfterSalesRequest
+                afterSalesReturnAddress: String!
             }
 
             extend type Mutation {
@@ -116,6 +126,20 @@ exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
         },
         adminApiExtensions: {
             schema: () => gql `
+            type AfterSalesStateHistoryEntry {
+                fromState: String
+                toState: String!
+                operatorUserId: ID
+                createdAt: DateTime!
+            }
+
+            type AfterSalesBatchResult {
+                id: ID!
+                success: Boolean!
+                state: String
+                message: String
+            }
+
             type AfterSalesRequestAdmin implements Node {
                 id: ID!
                 orderId: ID!
@@ -141,6 +165,7 @@ exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
                 order: Order
                 orderLine: OrderLine
                 customer: Customer
+                history: [AfterSalesStateHistoryEntry!]!
             }
 
             type AfterSalesRequestAdminList implements PaginatedList {
@@ -152,6 +177,8 @@ exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
 
             extend type Query {
                 afterSalesRequests(options: AfterSalesRequestAdminListOptions): AfterSalesRequestAdminList!
+                afterSalesRequestAdmin(id: ID!): AfterSalesRequestAdmin
+                afterSalesReturnAddress: String!
             }
 
             extend type Mutation {
@@ -160,15 +187,26 @@ exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
                 confirmReturnReceived(id: ID!, receivedQuantity: Int): AfterSalesRequestAdmin!
                 processAfterSalesRefund(id: ID!): AfterSalesRequestAdmin!
                 retryAfterSalesRefund(id: ID!): AfterSalesRequestAdmin!
+                batchApproveAfterSalesRequests(ids: [ID!]!): [AfterSalesBatchResult!]!
+                batchRejectAfterSalesRequests(ids: [ID!]!, reason: String!): [AfterSalesBatchResult!]!
+                updateAfterSalesReturnAddress(address: String!): Boolean!
             }
         `,
             resolvers: [after_sales_admin_resolver_1.AfterSalesAdminResolver],
         },
         configuration: (config) => {
-            var _a, _b;
+            var _a, _b, _c, _d;
             config.customFields = Object.assign(Object.assign({}, config.customFields), { Order: [
                     ...((_b = (_a = config.customFields) === null || _a === void 0 ? void 0 : _a.Order) !== null && _b !== void 0 ? _b : []),
                     ...order_custom_fields_1.afterSalesOrderCustomFields.Order,
+                ], Channel: [
+                    ...((_d = (_c = config.customFields) === null || _c === void 0 ? void 0 : _c.Channel) !== null && _d !== void 0 ? _d : []),
+                    {
+                        name: 'afterSalesReturnAddress',
+                        type: 'string',
+                        nullable: true,
+                        label: [{ languageCode: core_2.LanguageCode.zh_Hans, value: '售后寄回地址' }],
+                    },
                 ] });
             return config;
         },

@@ -367,7 +367,12 @@ export class AfterSalesService {
     private async recordState(ctx: RequestContext, requestId: number, fromState: string | null, toState: string): Promise<void> {
         try {
             const repo = this.connection.getRepository(ctx, AfterSalesStateHistory);
-            await repo.insert({ requestId, fromState: fromState ?? null, toState, operatorUserId: ctx.activeUserId ?? null });
+            await repo.insert({
+                requestId,
+                fromState: fromState ?? null,
+                toState,
+                operatorUserId: ctx.activeUserId != null ? Number(ctx.activeUserId) : null,
+            });
         } catch (e: any) {
             Logger.warn(`recordState failed for after-sales #${requestId}: ${e?.message ?? e}`, loggerCtx);
         }
