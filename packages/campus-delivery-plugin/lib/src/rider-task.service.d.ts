@@ -1,4 +1,5 @@
 import { ID, Order, RequestContext, TransactionalConnection } from '@vendure/core';
+import { CampusNotifyService } from './campus-notify.service';
 import { HallService } from './hall.service';
 import { RiderCreditService } from './rider-credit.service';
 import { RiderService } from './rider.service';
@@ -7,7 +8,8 @@ export declare class RiderTaskService {
     private riderService;
     private credit;
     private hall;
-    constructor(connection: TransactionalConnection, riderService: RiderService, credit: RiderCreditService, hall: HallService);
+    private notify;
+    constructor(connection: TransactionalConnection, riderService: RiderService, credit: RiderCreditService, hall: HallService, notify: CampusNotifyService);
     /** 订单骑手卡信息：C 端订单跟踪轮询用。未指派返回 null。 */
     orderRider(ctx: RequestContext, orderId: ID): Promise<{
         realName: any;

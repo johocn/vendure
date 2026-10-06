@@ -1,9 +1,11 @@
 import { ID, Order, RequestContext, TransactionalConnection } from '@vendure/core';
 import { RiderService } from './rider.service';
+import { CampusNotifyService } from './campus-notify.service';
 export declare class HallGrabService {
     private connection;
     private riderService;
-    constructor(connection: TransactionalConnection, riderService: RiderService);
+    private notify;
+    constructor(connection: TransactionalConnection, riderService: RiderService, notify: CampusNotifyService);
     /** 抢单：事务 + pessimistic_write，hallStatus 非 open 即抛「手慢了」。
      * 同时写 delivery customFields（deliveryStaffId/deliveryStatus=assigned），复用其任务体系。
      * 事务内查询与更新均使用事务 em，保证读写同一事务。

@@ -43,6 +43,10 @@ ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "storeNotice" var
 ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "errandBaseFee" int;
 ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "merchantConfirmEnabled" boolean DEFAULT false;
 ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "merchantAutoOpenMinutes" int DEFAULT 15;
+ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "notifyTemplateAccepted" varchar;
+ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "notifyTemplateRiderAssigned" varchar;
+ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "notifyTemplateCookingDone" varchar;
+ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "notifyTemplateDelivered" varchar;
 `;
 
 @Injectable()

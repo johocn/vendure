@@ -34,6 +34,7 @@ const min_order_process_1 = require("./min-order.process");
 const permissions_1 = require("./permissions");
 const merchant_admin_resolver_1 = require("./merchant-admin.resolver");
 const merchant_admin_service_1 = require("./merchant-admin.service");
+const campus_notify_service_1 = require("./campus-notify.service");
 const r2_mark_service_1 = require("./r2-mark.service");
 const r2_shop_resolver_1 = require("./r2-shop.resolver");
 const r4_tag_service_1 = require("./r4-tag.service");
@@ -96,6 +97,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             shipping_profile_ensure_service_1.ShippingProfileEnsureService,
             waimai_store_service_1.WaimaiStoreService,
             merchant_admin_service_1.MerchantAdminService,
+            campus_notify_service_1.CampusNotifyService,
         ],
         adminApiExtensions: {
             schema: () => {

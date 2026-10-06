@@ -32,6 +32,7 @@ import { bindMinOrderConnection, campusMinOrderProcess } from './min-order.proce
 import { campusPermissionDefinitions } from './permissions';
 import { MerchantAdminResolver } from './merchant-admin.resolver';
 import { MerchantAdminService } from './merchant-admin.service';
+import { CampusNotifyService } from './campus-notify.service';
 import { R2MarkService } from './r2-mark.service';
 import { R2ShopResolver } from './r2-shop.resolver';
 import { R4TagService } from './r4-tag.service';
@@ -73,6 +74,7 @@ import { WaimaiStoreService } from './waimai-store.service';
         ShippingProfileEnsureService,
         WaimaiStoreService,
         MerchantAdminService,
+        CampusNotifyService,
     ],
     adminApiExtensions: {
         schema: () => {

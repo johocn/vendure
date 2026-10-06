@@ -14,16 +14,18 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const coupon_plugin_1 = require("@vendure/coupon-plugin");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
+const campus_notify_service_1 = require("./campus-notify.service");
 const hall_service_1 = require("./hall.service");
 const rider_credit_service_1 = require("./rider-credit.service");
 const rider_earning_entity_1 = require("./rider-earning.entity");
 const rider_service_1 = require("./rider.service");
 let RiderTaskService = class RiderTaskService {
-    constructor(connection, riderService, credit, hall) {
+    constructor(connection, riderService, credit, hall, notify) {
         this.connection = connection;
         this.riderService = riderService;
         this.credit = credit;
         this.hall = hall;
+        this.notify = notify;
     }
     /** 订单骑手卡信息：C 端订单跟踪轮询用。未指派返回 null。 */
     async orderRider(ctx, orderId) {
@@ -129,6 +131,8 @@ let RiderTaskService = class RiderTaskService {
         }
         // 完单信用加分（+2）
         await this.credit.adjust(ctx, rider.id, rider_credit_service_1.CREDIT_COMPLETE, 'complete', order.id);
+        // 通知下单用户已送达（fire-and-forget）
+        this.notify.user(ctx, order.id, 'orderDelivered');
         return order;
     }
     /** 异常上报：不校验状态，标记 exception */
@@ -179,6 +183,7 @@ exports.RiderTaskService = RiderTaskService = __decorate([
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
         rider_service_1.RiderService,
         rider_credit_service_1.RiderCreditService,
-        hall_service_1.HallService])
+        hall_service_1.HallService,
+        campus_notify_service_1.CampusNotifyService])
 ], RiderTaskService);
 //# sourceMappingURL=rider-task.service.js.map

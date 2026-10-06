@@ -33,6 +33,10 @@ export interface CampusStoreConfigWithChannel {
     storePhone: string | null;
     storeNotice: string | null;
     errandBaseFee: number | null;
+    notifyTemplateAccepted: string | null;
+    notifyTemplateRiderAssigned: string | null;
+    notifyTemplateCookingDone: string | null;
+    notifyTemplateDelivered: string | null;
 }
 
 const ROUTE_WHITELIST = ['R1', 'R2', 'R3', 'R4', 'R5'];
@@ -107,6 +111,10 @@ export class WaimaiStoreService {
             storePhone?: string | null;
             storeNotice?: string | null;
             errandBaseFee?: number | null;
+            notifyTemplateAccepted?: string | null;
+            notifyTemplateRiderAssigned?: string | null;
+            notifyTemplateCookingDone?: string | null;
+            notifyTemplateDelivered?: string | null;
         },
     ): Promise<CampusStoreConfigWithChannel> {
         const bad = (input.routesEnabled ?? []).filter(r => !ROUTE_WHITELIST.includes(r));
@@ -128,6 +136,10 @@ export class WaimaiStoreService {
         cfg.storePhone = input.storePhone ?? null;
         cfg.storeNotice = input.storeNotice ?? null;
         cfg.errandBaseFee = input.errandBaseFee ?? null;
+        cfg.notifyTemplateAccepted = input.notifyTemplateAccepted ?? null;
+        cfg.notifyTemplateRiderAssigned = input.notifyTemplateRiderAssigned ?? null;
+        cfg.notifyTemplateCookingDone = input.notifyTemplateCookingDone ?? null;
+        cfg.notifyTemplateDelivered = input.notifyTemplateDelivered ?? null;
         await repo.save(cfg);
         const address = (input.storeAddress ?? '').trim();
         if (address) {
@@ -182,6 +194,10 @@ export class WaimaiStoreService {
             storePhone: cfg?.storePhone ?? null,
             storeNotice: cfg?.storeNotice ?? null,
             errandBaseFee: cfg?.errandBaseFee ?? null,
+            notifyTemplateAccepted: cfg?.notifyTemplateAccepted ?? null,
+            notifyTemplateRiderAssigned: cfg?.notifyTemplateRiderAssigned ?? null,
+            notifyTemplateCookingDone: cfg?.notifyTemplateCookingDone ?? null,
+            notifyTemplateDelivered: cfg?.notifyTemplateDelivered ?? null,
         };
     }
 }

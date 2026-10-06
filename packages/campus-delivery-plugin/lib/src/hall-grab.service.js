@@ -13,10 +13,12 @@ exports.HallGrabService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const rider_service_1 = require("./rider.service");
+const campus_notify_service_1 = require("./campus-notify.service");
 let HallGrabService = class HallGrabService {
-    constructor(connection, riderService) {
+    constructor(connection, riderService, notify) {
         this.connection = connection;
         this.riderService = riderService;
+        this.notify = notify;
     }
     /** 抢单：事务 + pessimistic_write，hallStatus 非 open 即抛「手慢了」。
      * 同时写 delivery customFields（deliveryStaffId/deliveryStatus=assigned），复用其任务体系。
@@ -24,7 +26,7 @@ let HallGrabService = class HallGrabService {
      * 注：lock.tables 指定 "order" 表，避免 FOR UPDATE 作用于 customer 外连接的可空侧（PG 报错）。 */
     async grab(ctx, orderId) {
         const rider = await this.riderService.assertApprovedRider(ctx);
-        return this.connection.rawConnection.transaction(async (em) => {
+        const order = await this.connection.rawConnection.transaction(async (em) => {
             var _a;
             const order = await em.getRepository(core_1.Order).findOne({
                 where: { id: orderId },
@@ -46,11 +48,14 @@ let HallGrabService = class HallGrabService {
             });
             return em.getRepository(core_1.Order).findOneByOrFail({ id: orderId });
         });
+        // 事务提交后通知下单用户（fire-and-forget，不影响抢单主流程）
+        this.notify.user(ctx, order.id, 'riderAssigned');
+        return order;
     }
     /** T2/T3 强派原语：hallStatus='open' → 'grabbed'（事务+悲观锁，与 grab 同款防双抢）。
      * 目标骑手须 approved；低信用分在调用方（DispatchJobService）过滤。 */
     async grabByRider(ctx, orderId, rider) {
-        return this.connection.rawConnection.transaction(async (em) => {
+        const ok = await this.connection.rawConnection.transaction(async (em) => {
             const order = await em.getRepository(core_1.Order).findOne({
                 where: { id: orderId },
                 lock: { mode: 'pessimistic_write' },
@@ -68,6 +73,10 @@ let HallGrabService = class HallGrabService {
             });
             return true;
         });
+        // 事务提交后通知下单用户（T2 自动强派/手动强派共用此触点）
+        if (ok)
+            this.notify.user(ctx, orderId, 'riderAssigned');
+        return ok;
     }
     /**
      * 大厅列表：当前渠道 open 状态订单（含跑腿单）。
@@ -103,6 +112,8 @@ let HallGrabService = class HallGrabService {
 exports.HallGrabService = HallGrabService;
 exports.HallGrabService = HallGrabService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [core_1.TransactionalConnection, rider_service_1.RiderService])
+    __metadata("design:paramtypes", [core_1.TransactionalConnection,
+        rider_service_1.RiderService,
+        campus_notify_service_1.CampusNotifyService])
 ], HallGrabService);
 //# sourceMappingURL=hall-grab.service.js.map

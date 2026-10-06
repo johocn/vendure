@@ -23,7 +23,7 @@ function makeSvc(order: any) {
         }),
     };
     const conn = { rawConnection: { transaction: (fn: any) => fn(em) } } as any;
-    return { svc: new HallGrabService(conn, riderSvc), updated };
+    return { svc: new HallGrabService(conn, riderSvc, { user: vi.fn() } as any), updated };
 }
 
 describe('HallGrabService.grab', () => {

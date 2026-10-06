@@ -12,6 +12,7 @@ function makeEnv(opts: { order?: any; rider?: any } = {}) {
         { assertApprovedRider: vi.fn().mockResolvedValue({ id: 7 }) } as any,
         { adjust: vi.fn() } as any,
         { backToHall: vi.fn().mockResolvedValue(undefined) } as any,
+        { user: vi.fn() } as any,
     );
     return { svc, repoByEntity };
 }
@@ -45,6 +46,7 @@ describe('RiderTaskService.transfer', () => {
             { assertApprovedRider: vi.fn().mockResolvedValue({ id: 7 }) } as any,
             { adjust: vi.fn() } as any,
             hall as any,
+            { user: vi.fn() } as any,
         );
         return { svc, orderRepo, hall };
     }

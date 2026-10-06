@@ -1,5 +1,6 @@
 import { ID, RequestContext, TransactionalConnection } from '@vendure/core';
 import { CampusConfigService } from './campus-config.service';
+import { CampusNotifyService } from './campus-notify.service';
 import { HallService } from './hall.service';
 export interface MerchantBoardLine {
     name: string;
@@ -38,7 +39,8 @@ export declare class MerchantAdminService {
     private connection;
     private config;
     private hall;
-    constructor(connection: TransactionalConnection, config: CampusConfigService, hall: HallService);
+    private notify;
+    constructor(connection: TransactionalConnection, config: CampusConfigService, hall: HallService, notify: CampusNotifyService);
     board(ctx: RequestContext): Promise<MerchantBoard>;
     /** 商家接单确认：pending_merchant → accepted */
     acceptOrder(ctx: RequestContext, orderId: ID): Promise<{

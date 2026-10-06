@@ -10,6 +10,7 @@ import {
 } from '@vendure/core';
 import { getCouponBalancePort } from '@vendure/coupon-plugin';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
+import { CampusNotifyService } from './campus-notify.service';
 import { HallService } from './hall.service';
 import { CREDIT_COMPLETE, RiderCreditService } from './rider-credit.service';
 import { RiderEarning } from './rider-earning.entity';
@@ -22,6 +23,7 @@ export class RiderTaskService {
         private riderService: RiderService,
         private credit: RiderCreditService,
         private hall: HallService,
+        private notify: CampusNotifyService,
     ) {}
 
     /** 订单骑手卡信息：C 端订单跟踪轮询用。未指派返回 null。 */
@@ -125,6 +127,8 @@ export class RiderTaskService {
         }
         // 完单信用加分（+2）
         await this.credit.adjust(ctx, rider.id as any, CREDIT_COMPLETE, 'complete', order.id as any);
+        // 通知下单用户已送达（fire-and-forget）
+        this.notify.user(ctx, order.id as any, 'orderDelivered');
         return order;
     }
 

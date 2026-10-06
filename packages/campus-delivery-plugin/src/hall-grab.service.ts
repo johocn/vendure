@@ -7,10 +7,15 @@ import {
     UserInputError,
 } from '@vendure/core';
 import { RiderService } from './rider.service';
+import { CampusNotifyService } from './campus-notify.service';
 
 @Injectable()
 export class HallGrabService {
-    constructor(private connection: TransactionalConnection, private riderService: RiderService) {}
+    constructor(
+        private connection: TransactionalConnection,
+        private riderService: RiderService,
+        private notify: CampusNotifyService,
+    ) {}
 
     /** 抢单：事务 + pessimistic_write，hallStatus 非 open 即抛「手慢了」。
      * 同时写 delivery customFields（deliveryStaffId/deliveryStatus=assigned），复用其任务体系。
@@ -18,7 +23,7 @@ export class HallGrabService {
      * 注：lock.tables 指定 "order" 表，避免 FOR UPDATE 作用于 customer 外连接的可空侧（PG 报错）。 */
     async grab(ctx: RequestContext, orderId: ID): Promise<Order> {
         const rider = await this.riderService.assertApprovedRider(ctx);
-        return this.connection.rawConnection.transaction(async em => {
+        const order = await this.connection.rawConnection.transaction(async em => {
             const order = await em.getRepository(Order).findOne({
                 where: { id: orderId as any },
                 relations: ['customer'],
@@ -37,12 +42,15 @@ export class HallGrabService {
             } as any);
             return em.getRepository(Order).findOneByOrFail({ id: orderId as any });
         });
+        // 事务提交后通知下单用户（fire-and-forget，不影响抢单主流程）
+        this.notify.user(ctx, order.id, 'riderAssigned');
+        return order;
     }
 
     /** T2/T3 强派原语：hallStatus='open' → 'grabbed'（事务+悲观锁，与 grab 同款防双抢）。
      * 目标骑手须 approved；低信用分在调用方（DispatchJobService）过滤。 */
     async grabByRider(ctx: RequestContext, orderId: ID, rider: { id: ID }): Promise<boolean> {
-        return this.connection.rawConnection.transaction(async em => {
+        const ok = await this.connection.rawConnection.transaction(async em => {
             const order = await em.getRepository(Order).findOne({
                 where: { id: orderId as any },
                 lock: { mode: 'pessimistic_write' },
@@ -59,6 +67,9 @@ export class HallGrabService {
             } as any);
             return true;
         });
+        // 事务提交后通知下单用户（T2 自动强派/手动强派共用此触点）
+        if (ok) this.notify.user(ctx, orderId, 'riderAssigned');
+        return ok;
     }
 
     /**

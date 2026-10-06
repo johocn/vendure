@@ -22,6 +22,11 @@ export class CampusFulfillmentConfig extends VendureEntity {
     @Column({ type: 'int', nullable: true }) errandBaseFee: number | null; // R5 跑腿起步价（分；null=默认 200）
     @Column({ default: false }) merchantConfirmEnabled: boolean; // 商家接单确认模式：支付后先待商家接单，出餐完成才入大厅
     @Column({ type: 'int', default: 15 }) merchantAutoOpenMinutes: number; // 商家未处理（待接单/备餐中）超时自动入厅，防卡单
+    // 用户侧节点通知（公众号模板消息）：四个触点的模板 ID，未配置 = 该节点静默跳过
+    @Column({ type: 'varchar', nullable: true }) notifyTemplateAccepted: string | null; // 商家已接单
+    @Column({ type: 'varchar', nullable: true }) notifyTemplateRiderAssigned: string | null; // 骑手已接单
+    @Column({ type: 'varchar', nullable: true }) notifyTemplateCookingDone: string | null; // 出餐完成
+    @Column({ type: 'varchar', nullable: true }) notifyTemplateDelivered: string | null; // 已送达
     constructor(input?: DeepPartial<CampusFulfillmentConfig>) {
         super(input);
     }

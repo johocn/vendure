@@ -9,7 +9,7 @@ function makeEnv(opts = {}) {
         Customer: { findOne: vitest_1.vi.fn().mockResolvedValue((_b = opts.rider) !== null && _b !== void 0 ? _b : null) },
     };
     const conn = { getRepository: vitest_1.vi.fn((_ctx, ent) => { var _a; return repoByEntity[(_a = ent.name) !== null && _a !== void 0 ? _a : String(ent)]; }) };
-    const svc = new rider_task_service_1.RiderTaskService(conn, { assertApprovedRider: vitest_1.vi.fn().mockResolvedValue({ id: 7 }) }, { adjust: vitest_1.vi.fn() }, { backToHall: vitest_1.vi.fn().mockResolvedValue(undefined) });
+    const svc = new rider_task_service_1.RiderTaskService(conn, { assertApprovedRider: vitest_1.vi.fn().mockResolvedValue({ id: 7 }) }, { adjust: vitest_1.vi.fn() }, { backToHall: vitest_1.vi.fn().mockResolvedValue(undefined) }, { user: vitest_1.vi.fn() });
     return { svc, repoByEntity };
 }
 (0, vitest_1.describe)('RiderTaskService.orderRider', () => {
@@ -36,7 +36,7 @@ function makeEnv(opts = {}) {
         };
         const conn = { getRepository: vitest_1.vi.fn(() => orderRepo) };
         const hall = { backToHall: vitest_1.vi.fn().mockResolvedValue(undefined) };
-        const svc = new rider_task_service_1.RiderTaskService(conn, { assertApprovedRider: vitest_1.vi.fn().mockResolvedValue({ id: 7 }) }, { adjust: vitest_1.vi.fn() }, hall);
+        const svc = new rider_task_service_1.RiderTaskService(conn, { assertApprovedRider: vitest_1.vi.fn().mockResolvedValue({ id: 7 }) }, { adjust: vitest_1.vi.fn() }, hall, { user: vitest_1.vi.fn() });
         return { svc, orderRepo, hall };
     }
     (0, vitest_1.it)('assigned 未取货转单：直接回大厅，不写交接存证', async () => {

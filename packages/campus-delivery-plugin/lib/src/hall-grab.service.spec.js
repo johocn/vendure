@@ -23,7 +23,7 @@ function makeSvc(order) {
         }),
     };
     const conn = { rawConnection: { transaction: (fn) => fn(em) } };
-    return { svc: new hall_grab_service_1.HallGrabService(conn, riderSvc), updated };
+    return { svc: new hall_grab_service_1.HallGrabService(conn, riderSvc, { user: vitest_1.vi.fn() }), updated };
 }
 (0, vitest_1.describe)('HallGrabService.grab', () => {
     (0, vitest_1.it)('open 订单可抢并写入 delivery customFields', async () => {

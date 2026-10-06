@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ID, Order, RequestContext, TransactionalConnection, UserInputError } from '@vendure/core';
 import { CampusBuilding } from './campus-building.entity';
 import { CampusConfigService } from './campus-config.service';
+import { CampusNotifyService } from './campus-notify.service';
 import { HallService } from './hall.service';
 
 export interface MerchantBoardLine {
@@ -46,6 +47,7 @@ export class MerchantAdminService {
         private connection: TransactionalConnection,
         private config: CampusConfigService,
         private hall: HallService,
+        private notify: CampusNotifyService,
     ) {}
 
     async board(ctx: RequestContext): Promise<MerchantBoard> {
@@ -96,6 +98,7 @@ export class MerchantAdminService {
     async acceptOrder(ctx: RequestContext, orderId: ID) {
         const order = await this.assertChannelOrder(ctx, orderId, 'pending_merchant');
         await this.hall.updateOrder(ctx, order.id as any, { customFields: { hallStatus: 'accepted' } } as any);
+        this.notify.user(ctx, order.id as any, 'orderAccepted');
         return { ok: true };
     }
 
@@ -105,6 +108,7 @@ export class MerchantAdminService {
         await this.hall.updateOrder(ctx, order.id as any, {
             customFields: { hallStatus: 'open', hallEnteredAt: new Date() },
         } as any);
+        this.notify.user(ctx, order.id as any, 'cookingDone');
         return { ok: true };
     }
 

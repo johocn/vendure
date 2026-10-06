@@ -14,6 +14,7 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const campus_building_entity_1 = require("./campus-building.entity");
 const campus_config_service_1 = require("./campus-config.service");
+const campus_notify_service_1 = require("./campus-notify.service");
 const hall_service_1 = require("./hall.service");
 /**
  * 商家接单工作台（admin-api，CampusMerchant 权限，渠道隔离 = 商家角色绑定渠道）。
@@ -22,10 +23,11 @@ const hall_service_1 = require("./hall.service");
  * campusMerchantCookingDone）→ 骑手 grabbed/delivering → delivered。
  */
 let MerchantAdminService = class MerchantAdminService {
-    constructor(connection, config, hall) {
+    constructor(connection, config, hall, notify) {
         this.connection = connection;
         this.config = config;
         this.hall = hall;
+        this.notify = notify;
     }
     async board(ctx) {
         const cfg = await this.config.getConfig(ctx);
@@ -73,6 +75,7 @@ let MerchantAdminService = class MerchantAdminService {
     async acceptOrder(ctx, orderId) {
         const order = await this.assertChannelOrder(ctx, orderId, 'pending_merchant');
         await this.hall.updateOrder(ctx, order.id, { customFields: { hallStatus: 'accepted' } });
+        this.notify.user(ctx, order.id, 'orderAccepted');
         return { ok: true };
     }
     /** 出餐完成：accepted → open 入大厅（hallEnteredAt 重置，骑手侧调度计时从此起算） */
@@ -81,6 +84,7 @@ let MerchantAdminService = class MerchantAdminService {
         await this.hall.updateOrder(ctx, order.id, {
             customFields: { hallStatus: 'open', hallEnteredAt: new Date() },
         });
+        this.notify.user(ctx, order.id, 'cookingDone');
         return { ok: true };
     }
     /** 营业开关：商家仅可切换本渠道 paused，其余配置仍归 CampusConfig 管理员 */
@@ -151,6 +155,7 @@ exports.MerchantAdminService = MerchantAdminService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
         campus_config_service_1.CampusConfigService,
-        hall_service_1.HallService])
+        hall_service_1.HallService,
+        campus_notify_service_1.CampusNotifyService])
 ], MerchantAdminService);
 //# sourceMappingURL=merchant-admin.service.js.map
