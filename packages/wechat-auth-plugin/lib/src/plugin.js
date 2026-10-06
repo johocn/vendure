@@ -24,6 +24,7 @@ const wechat_message_controller_1 = require("./wechat-message.controller");
 const wechat_auth_service_1 = require("./wechat-auth.service");
 const wxacode_service_1 = require("./wxacode.service");
 const wechat_auth_shop_resolver_1 = require("./wechat-auth-shop.resolver");
+const wechat_official_resolver_1 = require("./wechat-official.resolver");
 let WechatAuthPlugin = WechatAuthPlugin_1 = class WechatAuthPlugin {
     constructor(options, wechatAuthService) {
         this.options = options;
@@ -78,6 +79,24 @@ exports.WechatAuthPlugin = WechatAuthPlugin = WechatAuthPlugin_1 = __decorate([
             `;
             },
             resolvers: [wechat_auth_shop_resolver_1.WechatAuthShopResolver],
+        },
+        adminApiExtensions: {
+            schema: () => {
+                const { gql } = require('graphql-tag');
+                return gql `
+                extend type Query {
+                    wechatCurrentMenu: JSON
+                    wechatFans(nextOpenid: String): JSON
+                    wechatTemplates: JSON
+                }
+                extend type Mutation {
+                    wechatMenuPublish(menu: JSON!): JSON!
+                    wechatMenuDelete: JSON!
+                    wechatTemplateSend(input: JSON!): JSON!
+                }
+            `;
+            },
+            resolvers: [wechat_official_resolver_1.WechatOfficialResolver],
         },
         compatibility: '^3.0.0',
     }),

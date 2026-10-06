@@ -10,6 +10,7 @@ import { WechatAuthPluginOptions } from './types';
 import { WechatAuthService } from './wechat-auth.service';
 import { WxacodeService } from './wxacode.service';
 import { WechatAuthShopResolver } from './wechat-auth-shop.resolver';
+import { WechatOfficialResolver } from './wechat-official.resolver';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
@@ -57,6 +58,24 @@ import { WechatAuthShopResolver } from './wechat-auth-shop.resolver';
             `;
         },
         resolvers: [WechatAuthShopResolver],
+    },
+    adminApiExtensions: {
+        schema: () => {
+            const { gql } = require('graphql-tag');
+            return gql`
+                extend type Query {
+                    wechatCurrentMenu: JSON
+                    wechatFans(nextOpenid: String): JSON
+                    wechatTemplates: JSON
+                }
+                extend type Mutation {
+                    wechatMenuPublish(menu: JSON!): JSON!
+                    wechatMenuDelete: JSON!
+                    wechatTemplateSend(input: JSON!): JSON!
+                }
+            `;
+        },
+        resolvers: [WechatOfficialResolver],
     },
     compatibility: '^3.0.0',
 })

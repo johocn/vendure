@@ -165,6 +165,55 @@ let WechatAuthService = class WechatAuthService {
             result += chars.charAt(Math.floor(Math.random() * chars.length));
         return result;
     }
+    // ============ 公众号运营 API（菜单 / 粉丝 / 模板消息），供 admin GraphQL 代理 ============
+    /** 微信 cgi-bin 通用 GET 请求（自动带 access_token，errcode 非 0 抛错） */
+    async wxGet(path) {
+        const token = await this.getAccessToken();
+        const res = await fetch(`https://api.weixin.qq.com/cgi-bin/${path}${path.includes('?') ? '&' : '?'}access_token=${token}`);
+        const data = (await res.json());
+        if (data.errcode && data.errcode !== 0) {
+            throw new Error(`WeChat API ${data.errcode}: ${data.errmsg}`);
+        }
+        return data;
+    }
+    async wxPost(path, payload) {
+        const token = await this.getAccessToken();
+        const res = await fetch(`https://api.weixin.qq.com/cgi-bin/${path}?access_token=${token}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const data = (await res.json());
+        if (data.errcode && data.errcode !== 0) {
+            throw new Error(`WeChat API ${data.errcode}: ${data.errmsg}`);
+        }
+        return data;
+    }
+    /** 拉取当前公众号自定义菜单（get_current_selfmenu_info） */
+    async getOfficialMenu() {
+        return this.wxGet('get_current_selfmenu_info');
+    }
+    /** 发布自定义菜单（menu/create） */
+    async createOfficialMenu(menu) {
+        return this.wxPost('menu/create', menu);
+    }
+    /** 删除自定义菜单（menu/delete） */
+    async deleteOfficialMenu() {
+        return this.wxGet('menu/delete');
+    }
+    /** 粉丝 openid 列表（user/get，支持 next_openid 分页） */
+    async getFans(nextOpenid) {
+        const p = nextOpenid ? `user/get?next_openid=${encodeURIComponent(nextOpenid)}` : 'user/get';
+        return this.wxGet(p);
+    }
+    /** 获取所有私有模板（template/get_all_private_template） */
+    async getTemplates() {
+        return this.wxGet('template/get_all_private_template');
+    }
+    /** 发送模板消息（message/template/send） */
+    async sendTemplate(input) {
+        return this.wxPost('message/template/send', input);
+    }
 };
 exports.WechatAuthService = WechatAuthService;
 exports.WechatAuthService = WechatAuthService = __decorate([
