@@ -1,8 +1,9 @@
 import { ID, LanguageCode, Order, ShippingCalculator, TransactionalConnection } from '@vendure/core';
+import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CampusZone } from './campus-zone.entity';
 
 /**
- * 校园单分区运费 calculator：shipping = 所在分区 zone.fee。
+ * 校园单运费 calculator：R5 跑腿单固定起步价（errandBaseFee）+ R1/R3 分区运费（zone.fee）。
  * 适用：R5 跑腿单（orderKind='errand'）+ R1/R3 外卖单（fulfillmentRoute，plan2 §Task6/7 结算链路
  * 「campus-zone-fee-calculator 出分区运费」即由此实现）。其他单返回 undefined
  * （vendure 视为该方法不适用，不影响普通订单现有运费）。
@@ -27,9 +28,23 @@ export const campusErrandCalculator = new ShippingCalculator({
     calculate: async (ctx, order: Order) => {
         const cf = (order.customFields ?? {}) as any;
         const route = cf.fulfillmentRoute;
-        if (cf.orderKind !== 'errand' && route !== 'R1' && route !== 'R3') return undefined;
+        const isErrand = cf.orderKind === 'errand';
+        // R2 返回 undefined：快递段运费走店铺普通快递运费（接力费用由 R5 接力单单独承担）
+        if (!isErrand && route !== 'R1' && route !== 'R3') return undefined;
         const conn = connectionRef;
         if (!conn) return undefined;
+        if (isErrand) {
+            // R5 跑腿费 = 固定起步价 errandBaseFee（后台可配；null=默认 200 分），不按分区
+            const cfg = await conn.rawConnection.getRepository(CampusFulfillmentConfig).findOne({
+                where: { channelId: ctx.channelId as any },
+            });
+            return {
+                price: cfg?.errandBaseFee ?? 200,
+                priceIncludesTax: true,
+                taxRate: 0,
+                metadata: { calculator: 'campus-errand', pricing: 'errand-base-fee' },
+            };
+        }
         const zones = (await conn.rawConnection.getRepository(CampusZone).find({
             where: { channelId: ctx.channelId as any },
             order: { id: 'ASC' as any },
