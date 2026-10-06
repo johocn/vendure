@@ -10,6 +10,8 @@ import {
     OrderService,
     CustomerService,
     AssetService,
+    Channel,
+    ChannelService,
     ConfigService,
     PaginatedList,
     RequestContext,
@@ -23,6 +25,7 @@ import {
 
 import { loggerCtx, AFTER_SALES_PLUGIN_OPTIONS } from './constants';
 import { AfterSalesRequest } from './after-sales-request.entity';
+import { AfterSalesStateHistory } from './after-sales-state-history.entity';
 import { AfterSalesState, AfterSalesPluginOptions, STATE_TRANSITIONS } from './types';
 import { InventoryService } from '@vendure/inventory-plugin';
 
@@ -34,6 +37,7 @@ export class AfterSalesService {
     private options: AfterSalesPluginOptions = {};
     private assetService: AssetService | null = null;
     private configService: ConfigService | null = null;
+    private channelService: ChannelService | null = null;
 
     constructor(
         private connection: TransactionalConnection,
@@ -56,6 +60,11 @@ export class AfterSalesService {
         }
         this.assetService = injector.get(AssetService);
         this.configService = injector.get(ConfigService);
+        try {
+            this.channelService = injector.get(ChannelService);
+        } catch {
+            this.channelService = null;
+        }
     }
 
     /**
@@ -73,7 +82,8 @@ export class AfterSalesService {
         const repo = this.connection.getRepository(ctx, AfterSalesRequest);
         const result = await repo.findOne({
             where: { id: id as any },
-            relations: { order: true, orderLine: true, customer: true, channels: true },
+            relations: { order: true, orderLine: true, customer: true, channels: true, history: true },
+            order: { history: { createdAt: 'ASC' } } as any,
         });
         return result ?? undefined;
     }
@@ -89,7 +99,8 @@ export class AfterSalesService {
         const repo = this.connection.getRepository(ctx, AfterSalesRequest);
         const result = await repo.findOne({
             where: { id: id as any, customerId },
-            relations: { order: true, orderLine: true, channels: true },
+            relations: { order: true, orderLine: true, channels: true, history: true },
+            order: { history: { createdAt: 'ASC' } } as any,
         });
         return result ?? undefined;
     }
@@ -224,6 +235,7 @@ export class AfterSalesService {
         });
         request.channels = [ctx.channel];
         const saved = await repo.save(request);
+        await this.recordState(ctx, Number(saved.id), null, 'Pending');
         Logger.info(`After-sales request ${saved.id} created by customer ${ctx.activeUserId}`, loggerCtx);
         return this.hydrate(ctx, saved.id);
     }
@@ -235,8 +247,10 @@ export class AfterSalesService {
         if (request.state !== 'Pending') {
             throw new Error(`Cannot cancel request in state: ${request.state}`);
         }
+        const fromState = request.state;
         request.state = 'Closed';
         const saved = await repo.save(request);
+        await this.recordState(ctx, Number(saved.id), fromState, 'Closed');
         return this.hydrate(ctx, saved.id);
     }
 
@@ -247,10 +261,12 @@ export class AfterSalesService {
         if (request.state !== 'Approved') {
             throw new Error(`Cannot update tracking in state: ${request.state}`);
         }
+        const fromState = request.state;
         request.returnTrackingNo = trackingNo;
         request.returnCarrier = carrier;
         request.state = 'Returning';
         const saved = await repo.save(request);
+        await this.recordState(ctx, Number(saved.id), fromState, 'Returning');
         return this.hydrate(ctx, saved.id);
     }
 
@@ -338,12 +354,23 @@ export class AfterSalesService {
         const repo = this.connection.getRepository(ctx, AfterSalesRequest);
         const full = await repo.findOne({
             where: { id: id as any },
-            relations: { order: true, orderLine: true, channels: true },
+            relations: { order: true, orderLine: true, channels: true, history: true },
+            order: { history: { createdAt: 'ASC' } } as any,
         });
         if (full) {
             return full;
         }
         throw new Error(`AfterSalesRequest #${id} not found after save`);
+    }
+
+    /** 状态流转历史落库：失败仅告警，绝不阻断主流程 */
+    private async recordState(ctx: RequestContext, requestId: number, fromState: string | null, toState: string): Promise<void> {
+        try {
+            const repo = this.connection.getRepository(ctx, AfterSalesStateHistory);
+            await repo.insert({ requestId, fromState: fromState ?? null, toState, operatorUserId: ctx.activeUserId ?? null });
+        } catch (e: any) {
+            Logger.warn(`recordState failed for after-sales #${requestId}: ${e?.message ?? e}`, loggerCtx);
+        }
     }
 
     // ===== Admin Operations =====
@@ -359,9 +386,12 @@ export class AfterSalesService {
         if (!STATE_TRANSITIONS[request.state]?.includes('Rejected')) {
             throw new Error(`Cannot reject from state: ${request.state}`);
         }
+        const fromState = request.state;
         request.state = 'Rejected';
         request.rejectReason = reason;
-        return repo.save(request);
+        const saved = await repo.save(request);
+        await this.recordState(ctx, Number(saved.id), fromState, 'Rejected');
+        return saved;
     }
 
     /**
@@ -427,8 +457,11 @@ export class AfterSalesService {
                 );
             }
 
+            const fromState = request.state;
             request.state = 'Received';
-            return repo.save(request);
+            const saved = await repo.save(request);
+            await this.recordState(txCtx, Number(saved.id), fromState, 'Received');
+            return saved;
         });
     }
 
@@ -483,6 +516,7 @@ export class AfterSalesService {
             throw new UserInputError(`Cannot refund: no payment found for order ${request.orderId}`);
         }
         const paymentId = payments[0].id;
+        const fromState = request.state;
 
         // 事务包裹：退款成功后统一提交（改状态 + 落账 + 回写 order.afterSalesStatus），失败回滚整笔。
         await this.connection.startTransaction(ctx);
@@ -502,6 +536,7 @@ export class AfterSalesService {
                 request.refundError = `refundOrder 拒绝: ${JSON.stringify(refundResult)}`;
                 request.refundedAt = undefined;
                 await repo.save(request);
+                await this.recordState(ctx, Number(request.id), fromState, 'RefundFailed');
                 await this.updateOrderAfterSalesStatus(ctx, request.orderId, 'RefundFailed');
                 await this.connection.commitOpenTransaction(ctx);
                 Logger.warn(`after-sales #${request.id} refundOrder 拒绝: ${request.refundError}`, loggerCtx);
@@ -525,6 +560,7 @@ export class AfterSalesService {
                 request.refundedAt = new Date();
                 request.state = 'Refunded';
                 await repo.save(request);
+                await this.recordState(ctx, Number(request.id), fromState, 'Refunded');
                 await this.updateOrderAfterSalesStatus(ctx, request.orderId, 'Refunded');
                 Logger.info(`Refund settled for after-sales request #${request.id}, tx=${request.refundTransactionId}`, loggerCtx);
             } else {
@@ -533,6 +569,7 @@ export class AfterSalesService {
                 request.refundError = `退款未达 Settled，当前 ${refund.state}`;
                 request.refundedAt = undefined;
                 await repo.save(request);
+                await this.recordState(ctx, Number(request.id), fromState, 'RefundFailed');
                 await this.updateOrderAfterSalesStatus(ctx, request.orderId, 'RefundFailed');
                 Logger.warn(`after-sales #${request.id} 退款终态 ${refund.state}，已置 RefundFailed`, loggerCtx);
             }
@@ -559,10 +596,14 @@ export class AfterSalesService {
             const request =
                 typeof idOrRequest === 'object' ? idOrRequest : await repo.findOne({ where: { id: idOrRequest as any } });
             if (!request || request.state === 'Refunded') return;
+            const fromState = request.state;
             request.state = 'RefundFailed';
             request.refundError = error;
             request.refundedAt = undefined;
             await repo.save(request);
+            if (fromState !== 'RefundFailed') {
+                await this.recordState(ctx, Number(request.id), fromState, 'RefundFailed');
+            }
             await this.updateOrderAfterSalesStatus(ctx, (request as any).orderId, 'RefundFailed');
         } catch (inner: any) {
             Logger.error(`applyRefundFailed 兜底写入失败: ${inner?.message ?? inner}`, loggerCtx);
@@ -581,6 +622,66 @@ export class AfterSalesService {
         }
     }
 
+    /** Admin 单查：加载 order/orderLine/customer/history（web-admin 详情页专用，替代列表过滤 hack） */
+    async findOneForAdmin(ctx: RequestContext, id: ID): Promise<AfterSalesRequest | undefined> {
+        const repo = this.connection.getRepository(ctx, AfterSalesRequest);
+        const result = await repo.findOne({
+            where: { id: id as any },
+            relations: { order: true, orderLine: true, customer: true, channels: true, history: true },
+            order: { history: { createdAt: 'ASC' } } as any,
+        });
+        return result ?? undefined;
+    }
+
+    /** 批量同意：复用单条方法逐条执行，单条失败不中断整批。上限 50。 */
+    async batchApprove(ctx: RequestContext, ids: ID[]): Promise<Array<{ id: string; success: boolean; state: string; message: string }>> {
+        if (!Array.isArray(ids) || ids.length === 0) throw new UserInputError('ids is required');
+        if (ids.length > 50) throw new UserInputError(`Batch limit is 50, got ${ids.length}`);
+        const results: Array<{ id: string; success: boolean; state: string; message: string }> = [];
+        for (const id of ids) {
+            try {
+                const r = await this.approveRequest(ctx, id);
+                results.push({ id: String(id), success: true, state: r.state, message: '' });
+            } catch (e: any) {
+                results.push({ id: String(id), success: false, state: '', message: e?.message ?? String(e) });
+            }
+        }
+        return results;
+    }
+
+    /** 批量拒绝：同 batchApprove，整批共用一个 reason。 */
+    async batchReject(ctx: RequestContext, ids: ID[], reason: string): Promise<Array<{ id: string; success: boolean; state: string; message: string }>> {
+        if (!Array.isArray(ids) || ids.length === 0) throw new UserInputError('ids is required');
+        if (ids.length > 50) throw new UserInputError(`Batch limit is 50, got ${ids.length}`);
+        const results: Array<{ id: string; success: boolean; state: string; message: string }> = [];
+        for (const id of ids) {
+            try {
+                const r = await this.rejectRequest(ctx, id, reason);
+                results.push({ id: String(id), success: true, state: r.state, message: '' });
+            } catch (e: any) {
+                results.push({ id: String(id), success: false, state: '', message: e?.message ?? String(e) });
+            }
+        }
+        return results;
+    }
+
+    /** 读当前渠道售后寄回地址（Admin/Shop 共用；未配置返回空串） */
+    async getReturnAddress(ctx: RequestContext): Promise<string> {
+        const repo = this.connection.getRepository(ctx, Channel);
+        const channel = await repo.findOne({ where: { id: ctx.channelId as any } });
+        return (channel?.customFields as any)?.afterSalesReturnAddress ?? '';
+    }
+
+    /** 写当前渠道售后寄回地址（走 ChannelService.update，免开 ChannelService 权限） */
+    async updateReturnAddress(ctx: RequestContext, address: string): Promise<boolean> {
+        if (!this.channelService) throw new Error('ChannelService not initialized');
+        await this.channelService.update(ctx, {
+            id: ctx.channelId as any,
+            customFields: { afterSalesReturnAddress: address },
+        } as any);
+        return true;
+    }
+
     private async transitionState(ctx: RequestContext, id: ID, toState: AfterSalesState): Promise<AfterSalesRequest> {
         const repo = this.connection.getRepository(ctx, AfterSalesRequest);
         const request = await repo.findOne({ where: { id: id as any } });
@@ -589,7 +690,10 @@ export class AfterSalesService {
         if (!allowed?.includes(toState)) {
             throw new Error(`Invalid transition: ${request.state} -> ${toState}`);
         }
+        const fromState = request.state;
         request.state = toState;
-        return repo.save(request);
+        const saved = await repo.save(request);
+        await this.recordState(ctx, Number(saved.id), fromState, toState);
+        return saved;
     }
 }

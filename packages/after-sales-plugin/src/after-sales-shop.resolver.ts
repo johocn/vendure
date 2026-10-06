@@ -19,6 +19,12 @@ export class AfterSalesShopResolver {
         return this.afterSalesService.findOneForCustomer(ctx, id);
     }
 
+    @Query()
+    @Allow(Permission.Authenticated)
+    async afterSalesReturnAddress(@Ctx() ctx: RequestContext): Promise<string> {
+        return this.afterSalesService.getReturnAddress(ctx);
+    }
+
     @Mutation()
     @Allow(Permission.Authenticated)
     async createAfterSalesRequest(@Ctx() ctx: RequestContext, @Args('input') input: any): Promise<any> {

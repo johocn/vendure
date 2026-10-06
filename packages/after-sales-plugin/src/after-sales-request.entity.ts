@@ -1,7 +1,8 @@
-import { Column, Entity, JoinTable, ManyToMany, ManyToOne } from 'typeorm';
+import { Column, Entity, JoinTable, ManyToMany, ManyToOne, OneToMany } from 'typeorm';
 import { Channel, ChannelAware, Customer, DeepPartial, Order, OrderLine, VendureEntity } from '@vendure/core';
 
 import { AfterSalesState, AfterSalesType } from './types';
+import { AfterSalesStateHistory } from './after-sales-state-history.entity';
 
 @Entity()
 export class AfterSalesRequest extends VendureEntity implements ChannelAware {
@@ -77,6 +78,9 @@ export class AfterSalesRequest extends VendureEntity implements ChannelAware {
 
     @Column()
     customerId: number;
+
+    @OneToMany(() => AfterSalesStateHistory, (h) => h.request)
+    history: AfterSalesStateHistory[];
 
     @ManyToMany(() => Channel)
     @JoinTable()

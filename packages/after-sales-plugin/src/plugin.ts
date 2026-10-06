@@ -1,10 +1,11 @@
 import { Inject, OnApplicationBootstrap, Type } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import { Injector, Logger, PluginCommonModule, VendurePlugin } from '@vendure/core';
+import { Injector, LanguageCode, Logger, PluginCommonModule, VendurePlugin } from '@vendure/core';
 
 import { AFTER_SALES_PLUGIN_OPTIONS, loggerCtx } from './constants';
 import { AfterSalesPluginOptions } from './types';
 import { AfterSalesRequest } from './after-sales-request.entity';
+import { AfterSalesStateHistory } from './after-sales-state-history.entity';
 import { AfterSalesService } from './after-sales.service';
 import { AfterSalesShopResolver } from './after-sales-shop.resolver';
 import { AfterSalesAdminResolver } from './after-sales-admin.resolver';
@@ -14,7 +15,7 @@ const { gql } = require('graphql-tag');
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [AfterSalesRequest],
+    entities: [AfterSalesRequest, AfterSalesStateHistory],
     providers: [
         { provide: AFTER_SALES_PLUGIN_OPTIONS, useFactory: () => AfterSalesPlugin.options },
         AfterSalesService,
@@ -24,6 +25,13 @@ const { gql } = require('graphql-tag');
         schema: () => gql`
             enum AfterSalesType { return_refund refund_only exchange }
             enum AfterSalesState { Pending Approved Rejected Returning Received Refunded RefundFailed Closed }
+
+            type AfterSalesStateHistoryEntry {
+                fromState: AfterSalesState
+                toState: AfterSalesState!
+                operatorUserId: ID
+                createdAt: DateTime!
+            }
 
             type AfterSalesRequest implements Node {
                 id: ID!
@@ -47,6 +55,7 @@ const { gql } = require('graphql-tag');
                 updatedAt: DateTime!
                 order: Order!
                 orderLine: OrderLine
+                history: [AfterSalesStateHistoryEntry!]!
             }
 
             type AfterSalesRequestList implements PaginatedList {
@@ -71,6 +80,7 @@ const { gql } = require('graphql-tag');
             extend type Query {
                 myAfterSalesRequests(options: AfterSalesRequestListOptions): AfterSalesRequestList!
                 afterSalesRequest(id: ID!): AfterSalesRequest
+                afterSalesReturnAddress: String!
             }
 
             extend type Mutation {
@@ -85,6 +95,20 @@ const { gql } = require('graphql-tag');
     },
     adminApiExtensions: {
         schema: () => gql`
+            type AfterSalesStateHistoryEntry {
+                fromState: String
+                toState: String!
+                operatorUserId: ID
+                createdAt: DateTime!
+            }
+
+            type AfterSalesBatchResult {
+                id: ID!
+                success: Boolean!
+                state: String
+                message: String
+            }
+
             type AfterSalesRequestAdmin implements Node {
                 id: ID!
                 orderId: ID!
@@ -110,6 +134,7 @@ const { gql } = require('graphql-tag');
                 order: Order
                 orderLine: OrderLine
                 customer: Customer
+                history: [AfterSalesStateHistoryEntry!]!
             }
 
             type AfterSalesRequestAdminList implements PaginatedList {
@@ -121,6 +146,8 @@ const { gql } = require('graphql-tag');
 
             extend type Query {
                 afterSalesRequests(options: AfterSalesRequestAdminListOptions): AfterSalesRequestAdminList!
+                afterSalesRequestAdmin(id: ID!): AfterSalesRequestAdmin
+                afterSalesReturnAddress: String!
             }
 
             extend type Mutation {
@@ -129,6 +156,9 @@ const { gql } = require('graphql-tag');
                 confirmReturnReceived(id: ID!, receivedQuantity: Int): AfterSalesRequestAdmin!
                 processAfterSalesRefund(id: ID!): AfterSalesRequestAdmin!
                 retryAfterSalesRefund(id: ID!): AfterSalesRequestAdmin!
+                batchApproveAfterSalesRequests(ids: [ID!]!): [AfterSalesBatchResult!]!
+                batchRejectAfterSalesRequests(ids: [ID!]!, reason: String!): [AfterSalesBatchResult!]!
+                updateAfterSalesReturnAddress(address: String!): Boolean!
             }
         `,
         resolvers: [AfterSalesAdminResolver],
@@ -139,6 +169,15 @@ const { gql } = require('graphql-tag');
             Order: [
                 ...(config.customFields?.Order ?? []),
                 ...afterSalesOrderCustomFields.Order!,
+            ],
+            Channel: [
+                ...(config.customFields?.Channel ?? []),
+                {
+                    name: 'afterSalesReturnAddress',
+                    type: 'string',
+                    nullable: true,
+                    label: [{ languageCode: LanguageCode.zh_Hans, value: '售后寄回地址' }],
+                },
             ],
         };
         return config;

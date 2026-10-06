@@ -42,6 +42,7 @@ describe('AfterSalesPlugin · 售后退款/回补入账本闭环', () => {
     let variantId: string;
     let orderLineId: string;
     let orderId: string;
+    let mainAsId: string;
 
     beforeAll(async () => {
         await server.init({
@@ -235,6 +236,7 @@ describe('AfterSalesPlugin · 售后退款/回补入账本闭环', () => {
         `);
         const asId = created.createAfterSalesRequest.id;
         expect(created.createAfterSalesRequest.state).toBe('Pending');
+        mainAsId = asId;
         // 注意：asId 是 GraphQL 编码 ID（如 T_1），而账本 bizCode 存的是实体数字 ID（AS1）。
         // 账本查询/断言必须用数字 ID；mutation 参数继续用编码 ID。
         const asNumId = asId.replace(/^T_/, '');
@@ -458,5 +460,98 @@ describe('AfterSalesPlugin · 售后退款/回补入账本闭环', () => {
                 }
             `),
         ).rejects.toThrow();
+    }, TEST_SETUP_TIMEOUT_MS);
+
+    it('状态历史：单查 afterSalesRequestAdmin 返回逐节点 history，含 order/customer', async () => {
+        const single = await adminClient.query(gql`
+            query {
+                afterSalesRequestAdmin(id: "${mainAsId}") {
+                    id state
+                    history { fromState toState createdAt }
+                    order { id code }
+                    customer { id }
+                }
+            }
+        `);
+        const row = single.afterSalesRequestAdmin;
+        expect(row).toBeDefined();
+        expect(row.history.map((h: any) => h.toState)).toEqual([
+            'Pending', 'Approved', 'Returning', 'Received', 'Refunded',
+        ]);
+        expect(row.history[0].fromState).toBeNull();
+        expect(row.history[0].createdAt).toBeTruthy();
+        expect(row.order?.code).toBeTruthy();
+        expect(row.customer?.id).toBeTruthy();
+    }, TEST_SETUP_TIMEOUT_MS);
+
+    it('Shop 详情 history：顾客端 afterSalesRequest 返回 history', async () => {
+        await shopClient.asUserWithCredentials('hayden.zieme12@hotmail.com', 'test');
+        const res = await shopClient.query(gql`
+            query { afterSalesRequest(id: "${mainAsId}") { id state history { toState createdAt } } }
+        `);
+        expect(res.afterSalesRequest.history.length).toBeGreaterThanOrEqual(5);
+    }, TEST_SETUP_TIMEOUT_MS);
+
+    it('批量操作：全成功 / 部分失败（非法id+非法状态）/ 超 50 拒绝', async () => {
+        await shopClient.asUserWithCredentials('hayden.zieme12@hotmail.com', 'test');
+        // 主订单（已 Shipped）上创建 3 张整单售后（无 orderLineId 无重复限制）
+        const ids: string[] = [];
+        for (let i = 0; i < 3; i++) {
+            const c = await shopClient.query(gql`
+                mutation {
+                    createAfterSalesRequest(input: { orderId: "${orderId}", type: refund_only, reason: "batch-${i}", refundAmount: 1 }) { id state }
+                }
+            `);
+            ids.push(c.createAfterSalesRequest.id);
+        }
+        // 批量同意全成功
+        const approved = await adminClient.query(gql`
+            mutation { batchApproveAfterSalesRequests(ids: [${ids.map((i) => `"${i}"`).join(', ')}]) { id success state message } }
+        `);
+        expect(approved.batchApproveAfterSalesRequests.every((r: any) => r.success && r.state === 'Approved')).toBe(true);
+        // 再建 3 张 Pending，批量拒绝：混入非法 id + 已 Approved 的 id → 部分失败
+        const rejectIds: string[] = [];
+        for (let i = 0; i < 3; i++) {
+            const c = await shopClient.query(gql`
+                mutation {
+                    createAfterSalesRequest(input: { orderId: "${orderId}", type: refund_only, reason: "batch-rej-${i}", refundAmount: 1 }) { id state }
+                }
+            `);
+            rejectIds.push(c.createAfterSalesRequest.id);
+        }
+        const mixed = await adminClient.query(gql`
+            mutation { batchRejectAfterSalesRequests(ids: [${[...rejectIds, '999999', ids[0]].map((i) => `"${i}"`).join(', ')}], reason: "e2e-batch-reject") { id success state message } }
+        `);
+        const byId = Object.fromEntries(mixed.batchRejectAfterSalesRequests.map((r: any) => [r.id, r]));
+        expect(rejectIds.every((id) => byId[id]?.success && byId[id]?.state === 'Rejected')).toBe(true);
+        // 注意：返回的 id 经 Vendure IdCodec 全局编码，'999999' 这类裸数字键对不上，按输入顺序断言
+        const rejResults = mixed.batchRejectAfterSalesRequests;
+        expect(rejResults).toHaveLength(5);
+        expect(rejResults[3].success).toBe(false); // '999999' 不存在
+        expect(rejResults[3].message).toBeTruthy();
+        expect(rejResults[4].success).toBe(false); // Approved 不可 reject
+        // 超 50 条：后端 UserInputError
+        const tooMany = Array.from({ length: 51 }, (_, i) => `"${i + 1}"`).join(', ');
+        await expect(
+            adminClient.query(gql`
+                mutation { batchApproveAfterSalesRequests(ids: [${tooMany}]) { id success } }
+            `),
+        ).rejects.toThrow();
+    }, TEST_SETUP_TIMEOUT_MS);
+
+    it('退货地址：未登录 Shop 被拒 / Admin 写读回环 / Shop 只读', async () => {
+        // 1. 未登录被拒
+        await shopClient.asAnonymousUser();
+        await expect(shopClient.query(gql`query { afterSalesReturnAddress }`)).rejects.toThrow();
+        // 2. Admin 写 → 读回环
+        await adminClient.query(gql`
+            mutation { updateAfterSalesReturnAddress(address: "四川省成都市武侯区售后仓 1 号楼") }
+        `);
+        const adminRead = await adminClient.query(gql`query { afterSalesReturnAddress }`);
+        expect(adminRead.afterSalesReturnAddress).toBe('四川省成都市武侯区售后仓 1 号楼');
+        // 3. Shop 登录只读一致
+        await shopClient.asUserWithCredentials('hayden.zieme12@hotmail.com', 'test');
+        const shopRead = await shopClient.query(gql`query { afterSalesReturnAddress }`);
+        expect(shopRead.afterSalesReturnAddress).toBe('四川省成都市武侯区售后仓 1 号楼');
     }, TEST_SETUP_TIMEOUT_MS);
 });
