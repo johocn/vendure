@@ -85,6 +85,8 @@ function makeEnv(opts = {}) {
             deliveryMinutes: 35, minOrderAmount: 1500, deliveryFee: 200,
             storeAddress: '东门 1 号楼', storePhone: '13800000000', storeNotice: '周末出餐慢',
             errandBaseFee: null,
+            notifyTemplateAccepted: null, notifyTemplateRiderAssigned: null,
+            notifyTemplateCookingDone: null, notifyTemplateDelivered: null,
         });
         (0, vitest_1.expect)(list[1]).toEqual({
             channelId: 3, channelName: '奶茶铺', channelToken: 'milktea',
@@ -92,6 +94,8 @@ function makeEnv(opts = {}) {
             deliveryMinutes: null, minOrderAmount: null, deliveryFee: null,
             storeAddress: null, storePhone: null, storeNotice: null,
             errandBaseFee: null,
+            notifyTemplateAccepted: null, notifyTemplateRiderAssigned: null,
+            notifyTemplateCookingDone: null, notifyTemplateDelivered: null,
         });
     });
 });
@@ -143,6 +147,8 @@ function makeEnv(opts = {}) {
             deliveryMinutes: null, minOrderAmount: null, deliveryFee: null,
             storeAddress: null, storePhone: null, storeNotice: '公告',
             errandBaseFee: null,
+            notifyTemplateAccepted: null, notifyTemplateRiderAssigned: null,
+            notifyTemplateCookingDone: null, notifyTemplateDelivered: null,
         });
     });
 });
