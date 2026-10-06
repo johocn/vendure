@@ -55,10 +55,12 @@ const { gql } = require('graphql-tag');
         resolvers: [WechatpayShopResolver],
     },
     configuration: config => {
-        const handler = createWechatpayHandler(WechatpayPlugin.options);
+        // 主方法 + 可配置的额外方法 code（分端分支付方案，handler 逻辑相同仅 code 不同）
+        const codes = ['wechatpay', ...(WechatpayPlugin.options?.extraHandlerCodes || [])];
+        const handlers = codes.map(code => createWechatpayHandler(WechatpayPlugin.options, code));
         config.paymentOptions.paymentMethodHandlers = [
             ...(config.paymentOptions.paymentMethodHandlers || []),
-            handler,
+            ...handlers,
         ];
         return config;
     },

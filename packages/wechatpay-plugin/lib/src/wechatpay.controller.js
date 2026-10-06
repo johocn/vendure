@@ -79,15 +79,26 @@ let WechatpayController = class WechatpayController {
         }
     }
     /**
-     * 从该租户渠道的 PaymentMethod args + channel override 构造 WxPay 实例
-     * 用于通知回调中验签解密
+     * 构造 WxPay 实例用于通知回调中验签解密。
+     * 凭证路由（分端分支付方案）：
+     * 1. Host 命中 options.callbackMethodMap → 直接用该 PaymentMethod 的 args
+     *    （同一 Host 下多个 method 共用商户时 apiKey 相同，任取其一即可解密验签）
+     * 2. 未命中 → 渠道 override（payConfig.wechatpayJson）+ code='wechatpay' 的 PaymentMethod args
      */
-    async buildWxPay(ctx) {
-        var _a;
-        const override = (0, cjk_plugin_1.getPaymentOverride)(ctx, 'wechatpay');
+    async buildWxPay(ctx, host) {
+        var _a, _b, _c;
+        const mapCode = (_b = (_a = this.options) === null || _a === void 0 ? void 0 : _a.callbackMethodMap) === null || _b === void 0 ? void 0 : _b[host];
+        let override = null;
+        let methodCode = 'wechatpay';
+        if (mapCode) {
+            methodCode = mapCode;
+        }
+        else {
+            override = (0, cjk_plugin_1.getPaymentOverride)(ctx, 'wechatpay');
+        }
         const pms = await this.paymentMethodService.findAll(ctx);
-        const pm = pms.items.find(p => p.code === 'wechatpay');
-        const args = ((_a = pm === null || pm === void 0 ? void 0 : pm.handler) === null || _a === void 0 ? void 0 : _a.args) || [];
+        const pm = pms.items.find(p => p.code === methodCode);
+        const args = ((_c = pm === null || pm === void 0 ? void 0 : pm.handler) === null || _c === void 0 ? void 0 : _c.args) || [];
         const getArg = (name) => { var _a; return ((_a = args.find(a => a.name === name)) === null || _a === void 0 ? void 0 : _a.value) || ''; };
         const apiKey = (override === null || override === void 0 ? void 0 : override.apiKey) || getArg('apiKey');
         const pay = new wechatpay_node_v3_1.default({
@@ -111,7 +122,8 @@ let WechatpayController = class WechatpayController {
                 return res.status(400).json({ code: 'FAIL', message: 'missing resource' });
             }
             const ctx = await this.callbackCtx(req);
-            const { pay, apiKey } = await this.buildWxPay(ctx);
+            const host = req.hostname || req.headers.host || '';
+            const { pay, apiKey } = await this.buildWxPay(ctx, host);
             // 1. 验签
             const bodyStr = JSON.stringify(body);
             const verified = pay.verifySign({

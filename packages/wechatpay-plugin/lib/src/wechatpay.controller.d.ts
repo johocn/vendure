@@ -23,8 +23,11 @@ export declare class WechatpayController {
      */
     private settleOrderPayment;
     /**
-     * 从该租户渠道的 PaymentMethod args + channel override 构造 WxPay 实例
-     * 用于通知回调中验签解密
+     * 构造 WxPay 实例用于通知回调中验签解密。
+     * 凭证路由（分端分支付方案）：
+     * 1. Host 命中 options.callbackMethodMap → 直接用该 PaymentMethod 的 args
+     *    （同一 Host 下多个 method 共用商户时 apiKey 相同，任取其一即可解密验签）
+     * 2. 未命中 → 渠道 override（payConfig.wechatpayJson）+ code='wechatpay' 的 PaymentMethod args
      */
     private buildWxPay;
     /**

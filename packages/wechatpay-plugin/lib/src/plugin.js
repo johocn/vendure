@@ -110,10 +110,13 @@ exports.WechatpayPlugin = WechatpayPlugin = WechatpayPlugin_1 = __decorate([
             resolvers: [wechatpay_shop_resolver_1.WechatpayShopResolver],
         },
         configuration: config => {
-            const handler = (0, wechatpay_handler_1.createWechatpayHandler)(WechatpayPlugin.options);
+            var _a;
+            // 主方法 + 可配置的额外方法 code（分端分支付方案，handler 逻辑相同仅 code 不同）
+            const codes = ['wechatpay', ...(((_a = WechatpayPlugin.options) === null || _a === void 0 ? void 0 : _a.extraHandlerCodes) || [])];
+            const handlers = codes.map(code => (0, wechatpay_handler_1.createWechatpayHandler)(WechatpayPlugin.options, code));
             config.paymentOptions.paymentMethodHandlers = [
                 ...(config.paymentOptions.paymentMethodHandlers || []),
-                handler,
+                ...handlers,
             ];
             return config;
         },

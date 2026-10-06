@@ -7,6 +7,9 @@ export interface BarePaymentInput {
     tradeType?: 'JSAPI' | 'NATIVE' | 'H5' | 'APP';
     openid?: string;
     description?: string;
+    /** 指定支付方法 code（分端分支付方案：充值/代付按端选方法，如 'wechatpay' / 'wechatpay-youshop-jsapi'）。
+     *  显式指定时优先用该方法的 args，不再叠加渠道 override。 */
+    methodCode?: string;
 }
 export interface BarePaymentResult {
     payType: string;
@@ -43,7 +46,8 @@ export declare class WechatpayService {
     /** 默认渠道 ctx（未按租户指定渠道时的回退，兼容历史单店部署） */
     private defaultChannelCtx;
     /** 集中构造配置好的 WxPay 实例 + 凭证（复用 getPaymentOverride）。
-     *  传入 ctx 时使用「该 ctx 所属租户」的凭证与回调地址；缺省回退默认渠道。 */
+     *  传入 ctx 时使用「该 ctx 所属租户」的凭证与回调地址；缺省回退默认渠道。
+     *  显式传 methodCode（分端分支付方案）时直接用该方法的 args，不再叠加渠道 override。 */
     private buildWechatpay;
     /** devBypass 下返回模拟支付页；否则调真实微信 API 生成支付参数。
      *  ctx 决定用哪个租户的商户凭证与回调地址（CS-/RC- 等代付单须传自身 ctx）。 */

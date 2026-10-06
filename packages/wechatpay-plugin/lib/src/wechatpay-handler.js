@@ -10,9 +10,15 @@ const crypto_1 = __importDefault(require("crypto"));
 const cjk_plugin_1 = require("@vendure/cjk-plugin");
 const constants_1 = require("./constants");
 const wechatpay_service_1 = require("./wechatpay.service");
-function createWechatpayHandler(options) {
+/**
+ * 微信支付 PaymentMethodHandler 工厂。
+ * code 参数化：同一套 args/逻辑可注册多个支付方法
+ * （如 wechatpay=小程序、wechatpay-yourbao-h5=公众号JSAPI、wechatpay-youshop-jsapi 等），
+ * 每个方法各自持有 appId/商户凭证/notifyUrl，实现分端分支付方案。
+ */
+function createWechatpayHandler(options, code = 'wechatpay') {
     return new core_1.PaymentMethodHandler({
-        code: 'wechatpay',
+        code,
         description: [
             { languageCode: core_1.LanguageCode.zh_Hans, value: '微信支付' },
             { languageCode: core_1.LanguageCode.zh_Hant, value: '微信支付' },
@@ -47,6 +53,13 @@ function createWechatpayHandler(options) {
                 type: 'string',
                 defaultValue: 'JSAPI',
                 label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '交易类型 (JSAPI/NATIVE/APP/H5)' }],
+            },
+            notifyUrl: {
+                type: 'string',
+                label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '回调地址 (notifyUrl，选填，覆盖全局配置)' }],
+                description: [
+                    { languageCode: core_1.LanguageCode.zh_Hans, value: '微信支付异步通知地址；优先级：渠道 payConfig > 此处 > 全局 env' },
+                ],
             },
         },
         async createPayment(ctx, order, amount, args, metadata, method) {
@@ -93,8 +106,8 @@ function createWechatpayHandler(options) {
                 const baseParams = {
                     description: `Order ${order.code}`,
                     out_trade_no: order.code,
-                    // 回调地址按租户配置（渠道 payConfig.wechatpay.notifyUrl）优先，全局 env 仅作兜底
-                    notify_url: (override === null || override === void 0 ? void 0 : override.notifyUrl) || (options === null || options === void 0 ? void 0 : options.notifyUrl) || '',
+                    // 回调地址四级回落：渠道 payConfig > 本方法 args.notifyUrl > 全局 env
+                    notify_url: (override === null || override === void 0 ? void 0 : override.notifyUrl) || args.notifyUrl || (options === null || options === void 0 ? void 0 : options.notifyUrl) || '',
                     amount: {
                         total: Math.round(amount / 100),
                         currency: 'CNY',

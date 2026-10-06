@@ -82,16 +82,26 @@ export class WechatpayController {
     }
 
     /**
-     * 从该租户渠道的 PaymentMethod args + channel override 构造 WxPay 实例
-     * 用于通知回调中验签解密
+     * 构造 WxPay 实例用于通知回调中验签解密。
+     * 凭证路由（分端分支付方案）：
+     * 1. Host 命中 options.callbackMethodMap → 直接用该 PaymentMethod 的 args
+     *    （同一 Host 下多个 method 共用商户时 apiKey 相同，任取其一即可解密验签）
+     * 2. 未命中 → 渠道 override（payConfig.wechatpayJson）+ code='wechatpay' 的 PaymentMethod args
      */
-    private async buildWxPay(ctx: RequestContext): Promise<{
+    private async buildWxPay(ctx: RequestContext, host: string): Promise<{
         pay: WxPay;
         apiKey: string;
     }> {
-        const override = getPaymentOverride(ctx, 'wechatpay') as WechatpayCredentials | null;
+        const mapCode = this.options?.callbackMethodMap?.[host];
+        let override: WechatpayCredentials | null = null;
+        let methodCode = 'wechatpay';
+        if (mapCode) {
+            methodCode = mapCode;
+        } else {
+            override = getPaymentOverride(ctx, 'wechatpay') as WechatpayCredentials | null;
+        }
         const pms = await this.paymentMethodService.findAll(ctx);
-        const pm = pms.items.find(p => p.code === 'wechatpay');
+        const pm = pms.items.find(p => p.code === methodCode);
         const args = pm?.handler?.args || [];
         const getArg = (name: string) => args.find(a => a.name === name)?.value || '';
         const apiKey = override?.apiKey || getArg('apiKey');
@@ -127,7 +137,8 @@ export class WechatpayController {
             }
 
             const ctx = await this.callbackCtx(req);
-            const { pay, apiKey } = await this.buildWxPay(ctx);
+            const host = req.hostname || (req.headers.host as string) || '';
+            const { pay, apiKey } = await this.buildWxPay(ctx, host);
 
             // 1. 验签
             const bodyStr = JSON.stringify(body);

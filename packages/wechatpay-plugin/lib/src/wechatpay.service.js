@@ -89,13 +89,17 @@ let WechatpayService = class WechatpayService {
         });
     }
     /** 集中构造配置好的 WxPay 实例 + 凭证（复用 getPaymentOverride）。
-     *  传入 ctx 时使用「该 ctx 所属租户」的凭证与回调地址；缺省回退默认渠道。 */
-    async buildWechatpay(ctx) {
+     *  传入 ctx 时使用「该 ctx 所属租户」的凭证与回调地址；缺省回退默认渠道。
+     *  显式传 methodCode（分端分支付方案）时直接用该方法的 args，不再叠加渠道 override。 */
+    async buildWechatpay(ctx, methodCode) {
         var _a, _b;
         const effectiveCtx = ctx !== null && ctx !== void 0 ? ctx : (await this.defaultChannelCtx());
-        const override = (0, cjk_plugin_1.getPaymentOverride)(effectiveCtx, 'wechatpay');
+        const explicitCode = methodCode || '';
+        const override = explicitCode
+            ? null
+            : (0, cjk_plugin_1.getPaymentOverride)(effectiveCtx, 'wechatpay');
         const pms = await this.paymentMethodService.findAll(effectiveCtx);
-        const pm = pms.items.find(p => p.code === 'wechatpay');
+        const pm = pms.items.find(p => p.code === (explicitCode || 'wechatpay'));
         const args = ((_a = pm === null || pm === void 0 ? void 0 : pm.handler) === null || _a === void 0 ? void 0 : _a.args) || [];
         const getArg = (name) => { var _a; return ((_a = args.find(a => a.name === name)) === null || _a === void 0 ? void 0 : _a.value) || ''; };
         const appId = (override === null || override === void 0 ? void 0 : override.appId) || getArg('appId');
@@ -112,7 +116,7 @@ let WechatpayService = class WechatpayService {
             appId,
             privateKey,
             tradeType: (override === null || override === void 0 ? void 0 : override.tradeType) || getArg('tradeType') || 'JSAPI',
-            notifyUrl: (override === null || override === void 0 ? void 0 : override.notifyUrl) || ((_b = this.options) === null || _b === void 0 ? void 0 : _b.notifyUrl) || '',
+            notifyUrl: (override === null || override === void 0 ? void 0 : override.notifyUrl) || getArg('notifyUrl') || ((_b = this.options) === null || _b === void 0 ? void 0 : _b.notifyUrl) || '',
         };
     }
     /** devBypass 下返回模拟支付页；否则调真实微信 API 生成支付参数。
@@ -125,7 +129,7 @@ let WechatpayService = class WechatpayService {
                 payUrl: `/wechatpay/dev-pay?outTradeNo=${encodeURIComponent(input.outTradeNo)}`,
             };
         }
-        const { pay, appId, privateKey, tradeType, notifyUrl } = await this.buildWechatpay(ctx);
+        const { pay, appId, privateKey, tradeType, notifyUrl } = await this.buildWechatpay(ctx, input.methodCode);
         const baseParams = {
             description: input.description || `Pay ${input.outTradeNo}`,
             out_trade_no: input.outTradeNo,

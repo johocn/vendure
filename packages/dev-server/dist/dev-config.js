@@ -333,6 +333,11 @@ exports.devConfig = {
             notifyUrl: process.env.WECHATPAY_NOTIFY_URL || '',
             devBypass: process.env.DEV_BYPASS_WECHATPAY === 'true',
             devBypassOpenid: 'dev_test_openid',
+            extraHandlerCodes: (process.env.WECHATPAY_EXTRA_HANDLER_CODES || '')
+                .split(',').map(s => s.trim()).filter(Boolean),
+            callbackMethodMap: process.env.WECHATPAY_CALLBACK_METHOD_MAP
+                ? JSON.parse(process.env.WECHATPAY_CALLBACK_METHOD_MAP)
+                : undefined,
         }),
         ...(process.env.OSS_ACCESS_KEY_ID ? [oss_plugin_1.OssPlugin.init({
                 region: (_c = process.env.OSS_REGION) !== null && _c !== void 0 ? _c : '',

@@ -24,6 +24,9 @@ export interface BarePaymentInput {
     tradeType?: 'JSAPI' | 'NATIVE' | 'H5' | 'APP';
     openid?: string;
     description?: string;
+    /** 指定支付方法 code（分端分支付方案：充值/代付按端选方法，如 'wechatpay' / 'wechatpay-youshop-jsapi'）。
+     *  显式指定时优先用该方法的 args，不再叠加渠道 override。 */
+    methodCode?: string;
 }
 
 export interface BarePaymentResult {
@@ -113,8 +116,9 @@ export class WechatpayService {
     }
 
     /** 集中构造配置好的 WxPay 实例 + 凭证（复用 getPaymentOverride）。
-     *  传入 ctx 时使用「该 ctx 所属租户」的凭证与回调地址；缺省回退默认渠道。 */
-    private async buildWechatpay(ctx?: RequestContext): Promise<{
+     *  传入 ctx 时使用「该 ctx 所属租户」的凭证与回调地址；缺省回退默认渠道。
+     *  显式传 methodCode（分端分支付方案）时直接用该方法的 args，不再叠加渠道 override。 */
+    private async buildWechatpay(ctx?: RequestContext, methodCode?: string): Promise<{
         pay: WxPay;
         appId: string;
         privateKey: string;
@@ -122,9 +126,12 @@ export class WechatpayService {
         notifyUrl: string;
     }> {
         const effectiveCtx = ctx ?? (await this.defaultChannelCtx());
-        const override = getPaymentOverride(effectiveCtx, 'wechatpay') as WechatpayCredentials | null;
+        const explicitCode = methodCode || '';
+        const override = explicitCode
+            ? null
+            : (getPaymentOverride(effectiveCtx, 'wechatpay') as WechatpayCredentials | null);
         const pms = await this.paymentMethodService.findAll(effectiveCtx);
-        const pm = pms.items.find(p => p.code === 'wechatpay');
+        const pm = pms.items.find(p => p.code === (explicitCode || 'wechatpay'));
         const args = pm?.handler?.args || [];
         const getArg = (name: string) => args.find(a => a.name === name)?.value || '';
         const appId = override?.appId || getArg('appId');
@@ -141,7 +148,7 @@ export class WechatpayService {
             appId,
             privateKey,
             tradeType: override?.tradeType || getArg('tradeType') || 'JSAPI',
-            notifyUrl: override?.notifyUrl || this.options?.notifyUrl || '',
+            notifyUrl: override?.notifyUrl || getArg('notifyUrl') || this.options?.notifyUrl || '',
         };
     }
 
@@ -154,7 +161,7 @@ export class WechatpayService {
                 payUrl: `/wechatpay/dev-pay?outTradeNo=${encodeURIComponent(input.outTradeNo)}`,
             };
         }
-        const { pay, appId, privateKey, tradeType, notifyUrl } = await this.buildWechatpay(ctx);
+        const { pay, appId, privateKey, tradeType, notifyUrl } = await this.buildWechatpay(ctx, input.methodCode);
         const baseParams = {
             description: input.description || `Pay ${input.outTradeNo}`,
             out_trade_no: input.outTradeNo,

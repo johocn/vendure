@@ -8,9 +8,15 @@ import { loggerCtx } from './constants';
 import { WechatpayPluginOptions } from './types';
 import { resolveCustomerOpenid } from './wechatpay.service';
 
-export function createWechatpayHandler(options: WechatpayPluginOptions) {
+/**
+ * 微信支付 PaymentMethodHandler 工厂。
+ * code 参数化：同一套 args/逻辑可注册多个支付方法
+ * （如 wechatpay=小程序、wechatpay-yourbao-h5=公众号JSAPI、wechatpay-youshop-jsapi 等），
+ * 每个方法各自持有 appId/商户凭证/notifyUrl，实现分端分支付方案。
+ */
+export function createWechatpayHandler(options: WechatpayPluginOptions, code = 'wechatpay') {
     return new PaymentMethodHandler({
-        code: 'wechatpay',
+        code,
         description: [
             { languageCode: LanguageCode.zh_Hans, value: '微信支付' },
             { languageCode: LanguageCode.zh_Hant, value: '微信支付' },
@@ -45,6 +51,13 @@ export function createWechatpayHandler(options: WechatpayPluginOptions) {
                 type: 'string',
                 defaultValue: 'JSAPI',
                 label: [{ languageCode: LanguageCode.zh_Hans, value: '交易类型 (JSAPI/NATIVE/APP/H5)' }],
+            },
+            notifyUrl: {
+                type: 'string',
+                label: [{ languageCode: LanguageCode.zh_Hans, value: '回调地址 (notifyUrl，选填，覆盖全局配置)' }],
+                description: [
+                    { languageCode: LanguageCode.zh_Hans, value: '微信支付异步通知地址；优先级：渠道 payConfig > 此处 > 全局 env' },
+                ],
             },
         },
         async createPayment(ctx, order, amount, args, metadata, method) {
@@ -93,8 +106,8 @@ export function createWechatpayHandler(options: WechatpayPluginOptions) {
                 const baseParams = {
                     description: `Order ${order.code}`,
                     out_trade_no: order.code,
-                    // 回调地址按租户配置（渠道 payConfig.wechatpay.notifyUrl）优先，全局 env 仅作兜底
-                    notify_url: override?.notifyUrl || options?.notifyUrl || '',
+                    // 回调地址四级回落：渠道 payConfig > 本方法 args.notifyUrl > 全局 env
+                    notify_url: override?.notifyUrl || args.notifyUrl || options?.notifyUrl || '',
                     amount: {
                         total: Math.round(amount / 100),
                         currency: 'CNY',

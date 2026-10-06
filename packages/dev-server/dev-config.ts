@@ -399,6 +399,14 @@ export const devConfig: VendureConfig = {
             notifyUrl: process.env.WECHATPAY_NOTIFY_URL || '',
             devBypass: process.env.DEV_BYPASS_WECHATPAY === 'true',
             devBypassOpenid: 'dev_test_openid',
+            // 分端分支付方案：额外注册的支付方法 code（handler 同 wechatpay）
+            extraHandlerCodes: (process.env.WECHATPAY_EXTRA_HANDLER_CODES || '')
+                .split(',').map(s => s.trim()).filter(Boolean),
+            // 回调验签凭证路由：回调 Host → PaymentMethod code（JSON）
+            // 例：{"www.yourbao.cn":"wechatpay","www.youshop.cn":"wechatpay-youshop-jsapi"}
+            callbackMethodMap: process.env.WECHATPAY_CALLBACK_METHOD_MAP
+                ? JSON.parse(process.env.WECHATPAY_CALLBACK_METHOD_MAP)
+                : undefined,
         }),
         ...(process.env.OSS_ACCESS_KEY_ID ? [OssPlugin.init({
             region: process.env.OSS_REGION ?? '',
