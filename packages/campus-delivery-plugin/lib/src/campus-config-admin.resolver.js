@@ -18,10 +18,12 @@ const core_1 = require("@vendure/core");
 const campus_config_service_1 = require("./campus-config.service");
 const errand_service_1 = require("./errand.service");
 const permissions_1 = require("./permissions");
+const waimai_store_service_1 = require("./waimai-store.service");
 let CampusConfigAdminResolver = class CampusConfigAdminResolver {
-    constructor(config, errand) {
+    constructor(config, errand, stores) {
         this.config = config;
         this.errand = errand;
+        this.stores = stores;
     }
     async campusZones(ctx) {
         return this.config.listZones(ctx);
@@ -54,6 +56,13 @@ let CampusConfigAdminResolver = class CampusConfigAdminResolver {
     async campusEnsureErrandProducts(ctx) {
         const { variantId, sku } = await this.errand.ensureErrandProduct(ctx);
         return { variantId, sku };
+    }
+    /** 拾光达店铺配置：全店铺列表（跨租户视角） */
+    async campusStoreConfigs(ctx) {
+        return this.stores.listStoreConfigs(ctx);
+    }
+    async campusUpdateStoreConfig(ctx, channelId, input) {
+        return this.stores.updateStoreConfig(ctx, Number(channelId), input);
     }
 };
 exports.CampusConfigAdminResolver = CampusConfigAdminResolver;
@@ -147,8 +156,26 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext]),
     __metadata("design:returntype", Promise)
 ], CampusConfigAdminResolver.prototype, "campusEnsureErrandProducts", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusConfig),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], CampusConfigAdminResolver.prototype, "campusStoreConfigs", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusConfig),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('channelId')),
+    __param(2, (0, graphql_1.Args)('input')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object]),
+    __metadata("design:returntype", Promise)
+], CampusConfigAdminResolver.prototype, "campusUpdateStoreConfig", null);
 exports.CampusConfigAdminResolver = CampusConfigAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
-    __metadata("design:paramtypes", [campus_config_service_1.CampusConfigService, errand_service_1.ErrandService])
+    __metadata("design:paramtypes", [campus_config_service_1.CampusConfigService, errand_service_1.ErrandService, waimai_store_service_1.WaimaiStoreService])
 ], CampusConfigAdminResolver);
 //# sourceMappingURL=campus-config-admin.resolver.js.map

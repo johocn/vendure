@@ -1,10 +1,12 @@
 import { ID, RequestContext } from '@vendure/core';
 import { CampusConfigService } from './campus-config.service';
 import { ErrandService } from './errand.service';
+import { WaimaiStoreService } from './waimai-store.service';
 export declare class CampusConfigAdminResolver {
     private config;
     private errand;
-    constructor(config: CampusConfigService, errand: ErrandService);
+    private stores;
+    constructor(config: CampusConfigService, errand: ErrandService, stores: WaimaiStoreService);
     campusZones(ctx: RequestContext): Promise<import("./campus-zone.entity").CampusZone[]>;
     campusBuildings(ctx: RequestContext, zoneId?: ID): Promise<import("./campus-building.entity").CampusBuilding[]>;
     campusConfig(ctx: RequestContext): Promise<import("./campus-fulfillment-config.entity").CampusFulfillmentConfig>;
@@ -19,4 +21,7 @@ export declare class CampusConfigAdminResolver {
         variantId: ID;
         sku: string;
     }>;
+    /** 拾光达店铺配置：全店铺列表（跨租户视角） */
+    campusStoreConfigs(ctx: RequestContext): Promise<import("./waimai-store.service").CampusStoreConfigWithChannel[]>;
+    campusUpdateStoreConfig(ctx: RequestContext, channelId: ID, input: any): Promise<import("./waimai-store.service").CampusStoreConfigWithChannel>;
 }

@@ -184,6 +184,29 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     sku: String!
                 }
 
+                type CampusStoreConfigWithChannel {
+                    channelId: ID!
+                    channelName: String!
+                    channelToken: String!
+                    routesEnabled: [String!]!
+                    deliveryMinutes: Int
+                    minOrderAmount: Int
+                    deliveryFee: Int
+                    storeAddress: String
+                    storePhone: String
+                    storeNotice: String
+                }
+
+                input CampusStoreConfigInput {
+                    routesEnabled: [String!]!
+                    deliveryMinutes: Int
+                    minOrderAmount: Int
+                    deliveryFee: Int
+                    storeAddress: String
+                    storePhone: String
+                    storeNotice: String
+                }
+
                 extend type Query {
                     campusZones: [CampusZone!]!
                     campusBuildings(zoneId: ID): [CampusBuilding!]!
@@ -191,6 +214,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusSlots: [DeliverySlot!]!
                     riderApplications(status: String!): [Customer!]!
                     campusDispatchBoard: CampusDispatchBoard!
+                    campusStoreConfigs: [CampusStoreConfigWithChannel!]!
                 }
 
                 extend type Mutation {
@@ -203,6 +227,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusAssignOrder(orderId: ID!, riderCustomerId: ID!): CampusDispatchResult!
                     campusBackToHall(orderId: ID!): CampusDispatchResult!
                     campusEnsureErrandProducts: CampusErrandProductResult!
+                    campusUpdateStoreConfig(channelId: ID!, input: CampusStoreConfigInput!): CampusStoreConfigWithChannel!
                 }
             `;
             },
@@ -304,6 +329,12 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     promoText: String
                     paused: Boolean!
                     routesEnabled: [String!]!
+                    deliveryMinutes: Int
+                    minOrderAmount: Int
+                    deliveryFee: Int
+                    storeAddress: String
+                    storePhone: String
+                    storeNotice: String
                 }
 
                 type CampusOrderRider {

@@ -48,6 +48,12 @@ CREATE TABLE IF NOT EXISTS rider_credit_log (
 ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "autoRefundMinutes" int DEFAULT 30;
 ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "inProgressSlaMinutes" int DEFAULT 45;
 ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "compensationCouponTemplateId" varchar(255);
+ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "deliveryMinutes" int;
+ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "minOrderAmount" int;
+ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "deliveryFee" int;
+ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "storeAddress" varchar(255);
+ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "storePhone" varchar(255);
+ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "storeNotice" varchar(255);
 `;
 let CreateCampusTablesMigration = class CreateCampusTablesMigration {
     constructor(connection) {
