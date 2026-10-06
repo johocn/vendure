@@ -103,12 +103,12 @@ export class CampusConfigService {
     }
 
     /** C 端选楼/选区/选路线/选时段写入 activeOrder。
-     * route/slot 可选（向后兼容 plan2 旧调用形态）；route 仅 R1/R3，R2 走 r2-mark 专属流程。 */
+     * route/slot 可选（向后兼容 plan2 旧调用形态）；route 为 R1/R2/R3；R2 的到校确认走 r2-mark 链路。 */
     async setDeliveryTarget(
         ctx: RequestContext,
         zoneId: number,
         buildingId: number,
-        route?: 'R1' | 'R3',
+        route?: 'R1' | 'R2' | 'R3',
         slotId?: number,
     ) {
         const zone = await this.dataSource.getRepository(CampusZone).findOne({ where: { id: zoneId as any } });
@@ -117,7 +117,8 @@ export class CampusConfigService {
             .getRepository(CampusBuilding)
             .findOne({ where: { id: buildingId as any } });
         if (!building) throw new UserInputError('宿舍楼不存在');
-        if (route && route !== 'R1' && route !== 'R3') throw new UserInputError('配送路线不合法');
+        // R2 与 R1/R3 同走 zone/building 写入（R2 原单收宿舍楼信息供接力预填）；R4 不经骑手不落此链路
+        if (route && !['R1', 'R2', 'R3'].includes(route)) throw new UserInputError('配送路线不合法');
         const fields: Record<string, string> = {
             buildingId: String(buildingId),
             campusZone: zone.name,

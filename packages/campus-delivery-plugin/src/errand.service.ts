@@ -14,6 +14,7 @@ import {
     TransactionalConnection,
     UserInputError,
 } from '@vendure/core';
+import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 
 /** 0 元载体商品 SKU：幂等创建的查重键，C 端 addItemToOrder 用其 variantId 加购物车 */
 export const ERRAND_BASE_SKU = 'CAMPUS-ERRAND-BASE';
@@ -75,7 +76,8 @@ export class ErrandService {
      */
     async setErrandInfo(
         ctx: RequestContext,
-        input: { kind: string; fromText: string; toText: string; tip: number; buildingId?: string; campusZone?: string },
+        input: { kind: string; fromText: string; toText: string; tip: number;
+                 errandFrom?: string; note?: string; buildingId?: string; campusZone?: string },
     ) {
         if (!ctx.activeUserId) throw new ForbiddenError();
         const orderId = ctx.session?.activeOrderId;
@@ -86,8 +88,10 @@ export class ErrandService {
             orderKind: 'errand',
             fulfillmentRoute: 'R5',
             errandKind: input.kind,
-            errandFrom: input.fromText,
+            // R2 接力单：errandFrom 存原单号（campusR2Relay 反查键）；普通 R5 缺省落 A 点文字
+            errandFrom: input.errandFrom ?? input.fromText,
             errandTo: input.toText,
+            errandNote: input.note ?? null,
             tip,
             buildingId: input.buildingId ?? null,
             campusZone: input.campusZone ?? null,
@@ -110,5 +114,13 @@ export class ErrandService {
             } as any);
         }
         return order;
+    }
+
+    /** R5 发单页读起步价：当前渠道 errandBaseFee（null → 默认 200 分） */
+    async getErrandBaseFee(ctx: RequestContext): Promise<number> {
+        const cfg = await this.connection.getRepository(ctx, CampusFulfillmentConfig).findOne({
+            where: { channelId: ctx.channelId as any },
+        });
+        return cfg?.errandBaseFee ?? 200;
     }
 }

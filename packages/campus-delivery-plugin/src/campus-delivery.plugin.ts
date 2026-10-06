@@ -293,10 +293,18 @@ import { WaimaiStoreService } from './waimai-store.service';
                     tip: Int!
                     buildingId: ID
                     campusZone: String
+                    errandFrom: String
+                    note: String
                 }
 
                 type CampusErrandInfoResult {
                     orderId: ID!
+                }
+
+                type CampusErrandVariantResult {
+                    variantId: ID!
+                    sku: String!
+                    errandBaseFee: Int!
                 }
 
                 type CampusArrivedResult {
@@ -350,6 +358,7 @@ import { WaimaiStoreService } from './waimai-store.service';
                     waimaiStoreList: [WaimaiStore!]!
                     campusOrderRider(orderId: ID!): CampusOrderRider
                     campusR2Relay(orderId: ID!): CampusR2Relay
+                    campusErrandVariant: CampusErrandVariantResult!
                 }
 
                 extend type Mutation {

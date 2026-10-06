@@ -15,6 +15,7 @@ export const campusCustomFields: CustomFields = {
         { name: 'errandKind', type: 'string', nullable: true }, // pickup_express / bring_food / buy / other
         { name: 'errandFrom', type: 'string', nullable: true },
         { name: 'errandTo', type: 'string', nullable: true },
+        { name: 'errandNote', type: 'string', nullable: true }, // 跑腿物品描述/要求
         { name: 'leg1Status', type: 'string', nullable: true }, // R2: preparing / arrived_gate
         { name: 'handoverAt', type: 'datetime', nullable: true }, // R2 到校时间
         { name: 'campusCause', type: 'string', nullable: true }, // 对账标记: slot_full / no_rider

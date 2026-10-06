@@ -95,3 +95,35 @@ describe('ErrandService.setErrandInfo', () => {
         expect(env.orderSvc.addSurchargeToOrder).not.toHaveBeenCalled();
     });
 });
+
+describe('ErrandService.setErrandInfo 二期字段', () => {
+    const baseInput = { kind: 'pickup_express', fromText: '东门取件', toText: '12号楼501', tip: 0 };
+    const ctx = { channelId: 1, activeUserId: 9, session: { activeOrderId: 5 } } as any;
+
+    it('note 透传 errandNote；errandFrom 覆盖优先于 fromText（R2 接力单存原单号）', async () => {
+        const env = makeEnv();
+        await env.svc.setErrandInfo(ctx, { ...baseInput, note: '两个包裹', errandFrom: 'A100' });
+        expect(env.orderSvc.updateCustomFields).toHaveBeenCalledWith(
+            ctx, 5,
+            expect.objectContaining({ errandNote: '两个包裹', errandFrom: 'A100' }),
+        );
+    });
+
+    it('errandFrom 缺省落 fromText（普通 R5 保持 A 点文字）', async () => {
+        const env = makeEnv();
+        await env.svc.setErrandInfo(ctx, baseInput);
+        expect(env.orderSvc.updateCustomFields).toHaveBeenCalledWith(
+            ctx, 5, expect.objectContaining({ errandFrom: '东门取件' }),
+        );
+    });
+});
+
+describe('ErrandService.getErrandBaseFee', () => {
+    it('配置存在返回 errandBaseFee，缺失回默认 200 分', async () => {
+        const env = makeEnv();
+        env.orderRepo.findOne.mockResolvedValue({ errandBaseFee: 300 });
+        expect(await env.svc.getErrandBaseFee({ channelId: 2 } as any)).toBe(300);
+        env.orderRepo.findOne.mockResolvedValue(null);
+        expect(await env.svc.getErrandBaseFee({ channelId: 2 } as any)).toBe(200);
+    });
+});

@@ -87,9 +87,14 @@ describe('setDeliveryTarget route/slot 扩展', () => {
         const c = makeEnv({ slot: { ...slot, active: false } });
         await expect(c.svc.setDeliveryTarget(ctx, 1, 7, 'R1', 5)).rejects.toThrow('时段不可用');
     });
-    it('非法 route 抛 UserInputError（仅允许 R1/R3）', async () => {
+    it('R2 放行写入 fulfillmentRoute=R2；其余非法 route 仍拒绝', async () => {
         const env = makeEnv();
-        await expect(env.svc.setDeliveryTarget(ctx, 1, 7, 'R2' as any)).rejects.toThrow('配送路线不合法');
+        await env.svc.setDeliveryTarget(ctx, 1, 7, 'R2' as any);
+        expect(env.orderService.updateCustomFields).toHaveBeenCalledWith(
+            ctx, 100, expect.objectContaining({ fulfillmentRoute: 'R2' }),
+        );
+        const bad = makeEnv();
+        await expect(bad.svc.setDeliveryTarget(ctx, 1, 7, 'R9' as any)).rejects.toThrow('配送路线不合法');
     });
     it('不传 route/slot 时行为与旧版完全一致（只写 buildingId/campusZone）', async () => {
         const env = makeEnv();
