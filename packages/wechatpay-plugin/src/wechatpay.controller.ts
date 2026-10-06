@@ -9,7 +9,9 @@ import {
     RequestContext,
     RequestContextService,
 } from '@vendure/core';
-import { findChannelByDomain, getPaymentOverride } from '@vendure/cjk-plugin';
+// 断开循环依赖（同 wechatpay-handler.ts 注释）：从叶子模块导入，不经 cjk 主入口
+import { findChannelByDomain } from '@vendure/cjk-plugin/lib/src/tenant/domain-resolver.service';
+import { getPaymentOverride } from '@vendure/cjk-plugin/lib/src/payment/payment-config';
 import type { WechatpayCredentials } from '@vendure/cjk-plugin';
 
 import { WECHATPAY_PLUGIN_OPTIONS, loggerCtx } from './constants';

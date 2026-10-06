@@ -7,7 +7,10 @@ exports.createWechatpayHandler = createWechatpayHandler;
 const core_1 = require("@vendure/core");
 const wechatpay_node_v3_1 = __importDefault(require("wechatpay-node-v3"));
 const crypto_1 = __importDefault(require("crypto"));
-const cjk_plugin_1 = require("@vendure/cjk-plugin");
+// 断开模块级循环依赖：cjk → inventory → shop → review → coupon → wechatpay → cjk。
+// 顶层 import cjk 主入口会在 inventory 半初始化时把 cjk 提前拉起，cjk 的 providers 数组
+// 引用 inventory 未导出的类（undefined），VendurePlugin 装饰即崩溃。改为从叶子模块直接导入。
+const payment_config_1 = require("@vendure/cjk-plugin/lib/src/payment/payment-config");
 const constants_1 = require("./constants");
 const wechatpay_service_1 = require("./wechatpay.service");
 /**
@@ -86,7 +89,7 @@ function createWechatpayHandler(options, code = 'wechatpay') {
                         },
                     };
                 }
-                const override = (0, cjk_plugin_1.getPaymentOverride)(ctx, 'wechatpay');
+                const override = (0, payment_config_1.getPaymentOverride)(ctx, 'wechatpay');
                 const pay = new wechatpay_node_v3_1.default({
                     appid: (override === null || override === void 0 ? void 0 : override.appId) || args.appId,
                     mchid: (override === null || override === void 0 ? void 0 : override.mchId) || args.mchId,
@@ -205,7 +208,7 @@ function createWechatpayHandler(options, code = 'wechatpay') {
         async createRefund(ctx, input, amount, order, payment, args, method) {
             try {
                 // 退款使用多租户凭证 override，与 createPayment 保持一致
-                const override = (0, cjk_plugin_1.getPaymentOverride)(ctx, 'wechatpay');
+                const override = (0, payment_config_1.getPaymentOverride)(ctx, 'wechatpay');
                 const pay = new wechatpay_node_v3_1.default({
                     appid: (override === null || override === void 0 ? void 0 : override.appId) || args.appId,
                     mchid: (override === null || override === void 0 ? void 0 : override.mchId) || args.mchId,

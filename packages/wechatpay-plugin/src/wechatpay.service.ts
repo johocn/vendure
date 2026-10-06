@@ -11,7 +11,8 @@ import {
 } from '@vendure/core';
 import crypto from 'crypto';
 import WxPay from 'wechatpay-node-v3';
-import { getPaymentOverride } from '@vendure/cjk-plugin';
+// 断开循环依赖（同 wechatpay-handler.ts 注释）：从叶子模块导入，不经 cjk 主入口
+import { getPaymentOverride } from '@vendure/cjk-plugin/lib/src/payment/payment-config';
 import type { WechatpayCredentials } from '@vendure/cjk-plugin';
 
 import { WECHATPAY_PLUGIN_OPTIONS, loggerCtx } from './constants';

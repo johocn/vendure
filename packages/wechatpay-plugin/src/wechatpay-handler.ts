@@ -1,7 +1,10 @@
 import { LanguageCode, Logger, PaymentMethodHandler } from '@vendure/core';
 import WxPay from 'wechatpay-node-v3';
 import crypto from 'crypto';
-import { getPaymentOverride } from '@vendure/cjk-plugin';
+// 断开模块级循环依赖：cjk → inventory → shop → review → coupon → wechatpay → cjk。
+// 顶层 import cjk 主入口会在 inventory 半初始化时把 cjk 提前拉起，cjk 的 providers 数组
+// 引用 inventory 未导出的类（undefined），VendurePlugin 装饰即崩溃。改为从叶子模块直接导入。
+import { getPaymentOverride } from '@vendure/cjk-plugin/lib/src/payment/payment-config';
 import type { WechatpayCredentials } from '@vendure/cjk-plugin';
 
 import { loggerCtx } from './constants';

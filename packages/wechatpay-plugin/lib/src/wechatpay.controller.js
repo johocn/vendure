@@ -19,7 +19,9 @@ exports.WechatpayController = void 0;
 const common_1 = require("@nestjs/common");
 const wechatpay_node_v3_1 = __importDefault(require("wechatpay-node-v3"));
 const core_1 = require("@vendure/core");
-const cjk_plugin_1 = require("@vendure/cjk-plugin");
+// 断开循环依赖（同 wechatpay-handler.ts 注释）：从叶子模块导入，不经 cjk 主入口
+const domain_resolver_service_1 = require("@vendure/cjk-plugin/lib/src/tenant/domain-resolver.service");
+const payment_config_1 = require("@vendure/cjk-plugin/lib/src/payment/payment-config");
 const constants_1 = require("./constants");
 const wechatpay_settlement_1 = require("./wechatpay-settlement");
 let WechatpayController = class WechatpayController {
@@ -37,7 +39,7 @@ let WechatpayController = class WechatpayController {
     async callbackCtx(req) {
         var _a;
         const host = req.hostname || req.headers.host || '';
-        const channel = (_a = (await (0, cjk_plugin_1.findChannelByDomain)(this.channelService, host))) !== null && _a !== void 0 ? _a : (await this.channelService.getDefaultChannel());
+        const channel = (_a = (await (0, domain_resolver_service_1.findChannelByDomain)(this.channelService, host))) !== null && _a !== void 0 ? _a : (await this.channelService.getDefaultChannel());
         return new core_1.RequestContext({
             apiType: 'admin',
             channel,
@@ -94,7 +96,7 @@ let WechatpayController = class WechatpayController {
             methodCode = mapCode;
         }
         else {
-            override = (0, cjk_plugin_1.getPaymentOverride)(ctx, 'wechatpay');
+            override = (0, payment_config_1.getPaymentOverride)(ctx, 'wechatpay');
         }
         const pms = await this.paymentMethodService.findAll(ctx);
         const pm = pms.items.find(p => p.code === methodCode);

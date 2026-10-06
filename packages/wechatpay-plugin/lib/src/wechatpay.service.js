@@ -22,7 +22,8 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const crypto_1 = __importDefault(require("crypto"));
 const wechatpay_node_v3_1 = __importDefault(require("wechatpay-node-v3"));
-const cjk_plugin_1 = require("@vendure/cjk-plugin");
+// 断开循环依赖（同 wechatpay-handler.ts 注释）：从叶子模块导入，不经 cjk 主入口
+const payment_config_1 = require("@vendure/cjk-plugin/lib/src/payment/payment-config");
 const constants_1 = require("./constants");
 /**
  * 进程内 WechatpayService 引用（沿用本项目 `setWechatpayGateway` / `getPaymentOverride`
@@ -97,7 +98,7 @@ let WechatpayService = class WechatpayService {
         const explicitCode = methodCode || '';
         const override = explicitCode
             ? null
-            : (0, cjk_plugin_1.getPaymentOverride)(effectiveCtx, 'wechatpay');
+            : (0, payment_config_1.getPaymentOverride)(effectiveCtx, 'wechatpay');
         const pms = await this.paymentMethodService.findAll(effectiveCtx);
         const pm = pms.items.find(p => p.code === (explicitCode || 'wechatpay'));
         const args = ((_a = pm === null || pm === void 0 ? void 0 : pm.handler) === null || _a === void 0 ? void 0 : _a.args) || [];
