@@ -27,6 +27,7 @@ import { HallGrabService } from './hall-grab.service';
 import { HallService } from './hall.service';
 import { HallShopResolver } from './hall-shop.resolver';
 import { CreateCampusTablesMigration } from './migrations/create-campus-tables';
+import { bindMinOrderConnection, campusMinOrderProcess } from './min-order.process';
 import { campusPermissionDefinitions } from './permissions';
 import { R2MarkService } from './r2-mark.service';
 import { RiderAdminResolver } from './rider-admin.resolver';
@@ -371,6 +372,11 @@ import { WaimaiStoreService } from './waimai-store.service';
             ...(config.shippingOptions.shippingCalculators ?? []),
             campusErrandCalculator,
         ];
+        // 起送价硬校验（二期 §3.2）：ArrangingPayment 过渡拦截，跑腿单豁免
+        config.orderOptions = {
+            ...(config.orderOptions ?? {}),
+            process: [...(config.orderOptions?.process ?? []), campusMinOrderProcess],
+        } as any;
         // 跑腿单 ShippingLine 分配：包装既有策略（cjk Box 按配送档案分箱，跑腿 0 元载体无档案
         // 绑定会被返回空数组 → 孤儿线）。本插件在 dev-config 中位于 CjkPlugin 之后，
         // configuration 钩子后执行，此处拿到的即为 cjk 已设置的策略，包装后原行为不变。
@@ -397,6 +403,7 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
 
     onApplicationBootstrap(): void {
         bindCampusErrandCalculatorConnection(this.injector.get(TransactionalConnection));
+        bindMinOrderConnection(this.injector.get(TransactionalConnection));
         this.eventBus.ofType(OrderPlacedEvent).subscribe(({ ctx, order }) =>
             this.hallService.onOrderPlaced(ctx, order).catch(e => Logger.error(String(e), 'CampusHall')),
         );
