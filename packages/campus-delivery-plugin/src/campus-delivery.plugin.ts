@@ -175,6 +175,7 @@ import { WaimaiStoreService } from './waimai-store.service';
                     storeAddress: String
                     storePhone: String
                     storeNotice: String
+                    errandBaseFee: Int
                 }
 
                 input CampusStoreConfigInput {
@@ -185,6 +186,7 @@ import { WaimaiStoreService } from './waimai-store.service';
                     storeAddress: String
                     storePhone: String
                     storeNotice: String
+                    errandBaseFee: Int
                 }
 
                 extend type Query {
@@ -315,6 +317,7 @@ import { WaimaiStoreService } from './waimai-store.service';
                     storeAddress: String
                     storePhone: String
                     storeNotice: String
+                    errandBaseFee: Int
                 }
 
                 type CampusOrderRider {
