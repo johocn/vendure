@@ -164,6 +164,29 @@ import { WaimaiStoreService } from './waimai-store.service';
                     sku: String!
                 }
 
+                type CampusStoreConfigWithChannel {
+                    channelId: ID!
+                    channelName: String!
+                    channelToken: String!
+                    routesEnabled: [String!]!
+                    deliveryMinutes: Int
+                    minOrderAmount: Int
+                    deliveryFee: Int
+                    storeAddress: String
+                    storePhone: String
+                    storeNotice: String
+                }
+
+                input CampusStoreConfigInput {
+                    routesEnabled: [String!]!
+                    deliveryMinutes: Int
+                    minOrderAmount: Int
+                    deliveryFee: Int
+                    storeAddress: String
+                    storePhone: String
+                    storeNotice: String
+                }
+
                 extend type Query {
                     campusZones: [CampusZone!]!
                     campusBuildings(zoneId: ID): [CampusBuilding!]!
@@ -171,6 +194,7 @@ import { WaimaiStoreService } from './waimai-store.service';
                     campusSlots: [DeliverySlot!]!
                     riderApplications(status: String!): [Customer!]!
                     campusDispatchBoard: CampusDispatchBoard!
+                    campusStoreConfigs: [CampusStoreConfigWithChannel!]!
                 }
 
                 extend type Mutation {
@@ -183,6 +207,7 @@ import { WaimaiStoreService } from './waimai-store.service';
                     campusAssignOrder(orderId: ID!, riderCustomerId: ID!): CampusDispatchResult!
                     campusBackToHall(orderId: ID!): CampusDispatchResult!
                     campusEnsureErrandProducts: CampusErrandProductResult!
+                    campusUpdateStoreConfig(channelId: ID!, input: CampusStoreConfigInput!): CampusStoreConfigWithChannel!
                 }
             `;
         },
@@ -284,6 +309,12 @@ import { WaimaiStoreService } from './waimai-store.service';
                     promoText: String
                     paused: Boolean!
                     routesEnabled: [String!]!
+                    deliveryMinutes: Int
+                    minOrderAmount: Int
+                    deliveryFee: Int
+                    storeAddress: String
+                    storePhone: String
+                    storeNotice: String
                 }
 
                 type CampusOrderRider {

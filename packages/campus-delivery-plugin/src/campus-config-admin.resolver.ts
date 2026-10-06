@@ -3,10 +3,11 @@ import { Allow, Ctx, ID, RequestContext } from '@vendure/core';
 import { CampusConfigService } from './campus-config.service';
 import { ErrandService } from './errand.service';
 import { CampusPermissions } from './permissions';
+import { WaimaiStoreService } from './waimai-store.service';
 
 @Resolver()
 export class CampusConfigAdminResolver {
-    constructor(private config: CampusConfigService, private errand: ErrandService) {}
+    constructor(private config: CampusConfigService, private errand: ErrandService, private stores: WaimaiStoreService) {}
 
     @Query()
     @Allow(CampusPermissions.CampusConfig as any)
@@ -80,5 +81,22 @@ export class CampusConfigAdminResolver {
     async campusEnsureErrandProducts(@Ctx() ctx: RequestContext) {
         const { variantId, sku } = await this.errand.ensureErrandProduct(ctx);
         return { variantId, sku };
+    }
+
+    /** 拾光达店铺配置：全店铺列表（跨租户视角） */
+    @Query()
+    @Allow(CampusPermissions.CampusConfig as any)
+    async campusStoreConfigs(@Ctx() ctx: RequestContext) {
+        return this.stores.listStoreConfigs(ctx);
+    }
+
+    @Mutation()
+    @Allow(CampusPermissions.CampusConfig as any)
+    async campusUpdateStoreConfig(
+        @Ctx() ctx: RequestContext,
+        @Args('channelId') channelId: ID,
+        @Args('input') input: any,
+    ) {
+        return this.stores.updateStoreConfig(ctx, Number(channelId), input);
     }
 }

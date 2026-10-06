@@ -112,7 +112,7 @@ export class WaimaiStoreService {
         if (!ch) throw new UserInputError(`渠道不存在: ${channelId}`);
         const repo = this.connection.getRepository(ctx, CampusFulfillmentConfig);
         let cfg = await repo.findOne({ where: { channelId: channelId as any } });
-        if (!cfg) cfg = new CampusFulfillmentConfig({ channelId });
+        if (!cfg) cfg = new CampusFulfillmentConfig({ channelId: channelId as any });
         cfg.routesEnabled = input.routesEnabled;
         cfg.deliveryMinutes = input.deliveryMinutes ?? null;
         cfg.minOrderAmount = input.minOrderAmount ?? null;
