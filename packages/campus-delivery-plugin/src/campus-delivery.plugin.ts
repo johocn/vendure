@@ -30,6 +30,7 @@ import { CreateCampusTablesMigration } from './migrations/create-campus-tables';
 import { bindMinOrderConnection, campusMinOrderProcess } from './min-order.process';
 import { campusPermissionDefinitions } from './permissions';
 import { R2MarkService } from './r2-mark.service';
+import { R2ShopResolver } from './r2-shop.resolver';
 import { RiderAdminResolver } from './rider-admin.resolver';
 import { RiderCreditLog } from './rider-credit-log.entity';
 import { RiderCreditService } from './rider-credit.service';
@@ -326,6 +327,17 @@ import { WaimaiStoreService } from './waimai-store.service';
                     credit: Int!
                 }
 
+                type CampusR2Relay {
+                    orderId: ID!
+                    orderCode: String!
+                    state: String!
+                    hallStatus: String
+                    deliveryStatus: String
+                    errandTo: String
+                    tip: Int!
+                    totalWithTax: Int!
+                }
+
                 extend type Query {
                     myRiderProfile: RiderProfile!
                     campusZones: [CampusZone!]!
@@ -337,6 +349,7 @@ import { WaimaiStoreService } from './waimai-store.service';
                     campusCapacityCheck: CampusCapacityCheck!
                     waimaiStoreList: [WaimaiStore!]!
                     campusOrderRider(orderId: ID!): CampusOrderRider
+                    campusR2Relay(orderId: ID!): CampusR2Relay
                 }
 
                 extend type Mutation {
@@ -355,7 +368,7 @@ import { WaimaiStoreService } from './waimai-store.service';
                 }
             `;
         },
-        resolvers: [RiderShopResolver, HallShopResolver, RiderTaskShopResolver, ErrandShopResolver, WaimaiShopResolver],
+        resolvers: [RiderShopResolver, HallShopResolver, RiderTaskShopResolver, ErrandShopResolver, WaimaiShopResolver, R2ShopResolver],
     },
     configuration: config => {
         config.authOptions.customPermissions = [
