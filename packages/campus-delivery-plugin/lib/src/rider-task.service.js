@@ -64,7 +64,7 @@ let RiderTaskService = class RiderTaskService {
     /** 用户催单（plan 2.4）：仅下单人本人；校园履约单未终态可催；10min 内重复催单拒绝。
      * 一期催单不推送骑手（骑手端任务卡轮询读 customFields.urged 显示提醒），虚拟号/订阅消息留待下一轮。 */
     async urgeOrder(ctx, orderId) {
-        var _a, _b;
+        var _a, _b, _c;
         if (!ctx.activeUserId)
             throw new core_1.ForbiddenError();
         const order = await this.connection
@@ -74,7 +74,8 @@ let RiderTaskService = class RiderTaskService {
         if (!order || !cf.deliveryStatus) {
             throw new core_1.UserInputError('订单不存在或不在配送流程中');
         }
-        if (((_b = order.customer) === null || _b === void 0 ? void 0 : _b.userId) !== ctx.activeUserId) {
+        // Customer 实体无 userId 标量属性（user 关系 eager），归属比对取 user.id
+        if (((_c = (_b = order.customer) === null || _b === void 0 ? void 0 : _b.user) === null || _c === void 0 ? void 0 : _c.id) !== ctx.activeUserId) {
             throw new core_1.ForbiddenError();
         }
         const status = cf.deliveryStatus;

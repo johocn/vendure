@@ -70,7 +70,8 @@ export class RiderTaskService {
         if (!order || !cf.deliveryStatus) {
             throw new UserInputError('订单不存在或不在配送流程中');
         }
-        if ((order.customer as any)?.userId !== ctx.activeUserId) {
+        // Customer 实体无 userId 标量属性（user 关系 eager），归属比对取 user.id
+        if (order.customer?.user?.id !== ctx.activeUserId) {
             throw new ForbiddenError();
         }
         const status = cf.deliveryStatus as string;
