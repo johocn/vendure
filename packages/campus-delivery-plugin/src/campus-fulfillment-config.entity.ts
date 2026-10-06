@@ -19,6 +19,7 @@ export class CampusFulfillmentConfig extends VendureEntity {
     @Column({ type: 'varchar', nullable: true }) storeAddress: string | null; // 自提地址
     @Column({ type: 'varchar', nullable: true }) storePhone: string | null; // 联系电话
     @Column({ type: 'varchar', nullable: true }) storeNotice: string | null; // 店铺公告
+    @Column({ type: 'int', nullable: true }) errandBaseFee: number | null; // R5 跑腿起步价（分；null=默认 200）
     constructor(input?: DeepPartial<CampusFulfillmentConfig>) {
         super(input);
     }
