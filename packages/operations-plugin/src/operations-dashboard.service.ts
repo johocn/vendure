@@ -126,14 +126,16 @@ export class OperationsDashboardService {
         const orderRepo = this.connection.getRepository(ctx, 'Order' as any);
 
         // Group by customFields.deliveryStatus
-        // Vendure customFields are stored as columns: customFields_deliveryStatus
+        // Vendure customFields 是 embedded 子列（customFields_deliveryStatus），不是实体真实属性：
+        // TypeORM 不会对 `order.customFields_xxx` 加引号转义，而 order 是 PG 保留字，
+        // 必须整路径手写引号 `"order"."customFields_xxx"`，否则报 syntax error at or near "."
         const rows = await orderRepo
             .createQueryBuilder('order')
-            .select('order.customFields_deliveryStatus', 'status')
+            .select('"order"."customFields_deliveryStatus"', 'status')
             .addSelect('COUNT(order.id)', 'count')
             .where('order.createdAt BETWEEN :start AND :end', { start, end })
-            .andWhere('order.customFields_deliveryStatus IS NOT NULL')
-            .groupBy('order.customFields_deliveryStatus')
+            .andWhere('"order"."customFields_deliveryStatus" IS NOT NULL')
+            .groupBy('"order"."customFields_deliveryStatus"')
             .getRawMany();
 
         const map: Record<string, number> = {};
@@ -163,10 +165,10 @@ export class OperationsDashboardService {
         // Level distribution (depends on member-level-plugin customFields.memberLevelId)
         const levelRows = await customerRepo
             .createQueryBuilder('customer')
-            .select('customer.customFields_memberLevelId', 'levelId')
+            .select('"customer"."customFields_memberLevelId"', 'levelId')
             .addSelect('COUNT(customer.id)', 'count')
-            .where('customer.customFields_memberLevelId IS NOT NULL')
-            .groupBy('customer.customFields_memberLevelId')
+            .where('"customer"."customFields_memberLevelId" IS NOT NULL')
+            .groupBy('"customer"."customFields_memberLevelId"')
             .getRawMany();
 
         const levelDistribution = levelRows.map(r => ({
@@ -230,7 +232,7 @@ export class OperationsDashboardService {
             exceptionOrderCount = await orderRepo
                 .createQueryBuilder('order')
                 .where('order.createdAt BETWEEN :start AND :end', { start, end })
-                .andWhere('order.customFields_deliveryStatus = :status', { status: 'exception' })
+                .andWhere('"order"."customFields_deliveryStatus" = :status', { status: 'exception' })
                 .getCount();
         } catch (e: any) {
             Logger.warn(`Exception order query failed: ${e.message}`, 'OperationsDashboard');
@@ -437,12 +439,12 @@ export class OperationsDashboardService {
         const orderRepo = this.connection.getRepository(ctx, 'Order' as any);
         const rows = await orderRepo
             .createQueryBuilder('order')
-            .select('order.customFields_deliveryStaffId', 'riderId')
-            .addSelect('order.customFields_deliverySlotText', 'slotText')
-            .addSelect('order.customFields_deliveredAt', 'deliveredAt')
+            .select('"order"."customFields_deliveryStaffId"', 'riderId')
+            .addSelect('"order"."customFields_deliverySlotText"', 'slotText')
+            .addSelect('"order"."customFields_deliveredAt"', 'deliveredAt')
             .where('order.createdAt >= :start', { start })
-            .andWhere('order.customFields_deliveryStatus = :status', { status: 'delivered' })
-            .andWhere('order.customFields_deliveryStaffId IS NOT NULL')
+            .andWhere('"order"."customFields_deliveryStatus" = :status', { status: 'delivered' })
+            .andWhere('"order"."customFields_deliveryStaffId" IS NOT NULL')
             .getRawMany();
 
         // JS 聚合：completed = 送达单数；onTime = 有承诺时段且 deliveredAt ≤ 时段结束
