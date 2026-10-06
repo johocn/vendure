@@ -88,14 +88,15 @@ let RiderTaskService = class RiderTaskService {
             .update(order.id, { customFields: { deliveryStatus: 'in_progress' } });
         return order;
     }
-    /** 送达：拍照必传 → delivered → 分成入余额 */
+    /** 送达：拍照必传 → delivered → 分成入余额（0 分成单跳过入账） */
     async deliver(ctx, orderId, photos, note) {
-        var _a;
+        var _a, _b;
         if (!(photos === null || photos === void 0 ? void 0 : photos.length))
             throw new core_1.UserInputError('送达需至少一张照片');
         const order = await this.assertOwner(ctx, orderId, 'in_progress');
         const rider = await this.riderService.assertApprovedRider(ctx);
         const earning = this.calcEarning(order, await this.getConfig(ctx));
+        const tip = (_a = order.customFields.tip) !== null && _a !== void 0 ? _a : 0;
         await this.connection.getRepository(ctx, core_1.Order).update(order.id, {
             customFields: {
                 deliveryStatus: 'delivered',
@@ -105,20 +106,26 @@ let RiderTaskService = class RiderTaskService {
                 riderEarning: earning,
             },
         });
-        await this.connection.getRepository(ctx, rider_earning_entity_1.RiderEarning).save({
-            orderId: order.id,
-            riderCustomerId: rider.id,
-            amount: earning,
-            tip: (_a = order.customFields.tip) !== null && _a !== void 0 ? _a : 0,
-            status: 'credited',
-            channelId: ctx.channelId,
-        });
-        const port = (0, coupon_plugin_1.getCouponBalancePort)();
-        if (port) {
-            await port.addBalance(ctx, rider.id, earning);
+        if (earning === 0 && tip === 0) {
+            // 0 分成单：不写 earning 不调 addBalance（余额端口对 0 金额入账会抛错）
+            common_1.Logger.log(`订单 ${(_b = order.code) !== null && _b !== void 0 ? _b : order.id} 0 分成，跳过入账`, 'RiderTask');
         }
         else {
-            common_1.Logger.warn('余额端口未注册，分成未入账', 'RiderTask');
+            await this.connection.getRepository(ctx, rider_earning_entity_1.RiderEarning).save({
+                orderId: order.id,
+                riderCustomerId: rider.id,
+                amount: earning,
+                tip,
+                status: 'credited',
+                channelId: ctx.channelId,
+            });
+            const port = (0, coupon_plugin_1.getCouponBalancePort)();
+            if (port) {
+                await port.addBalance(ctx, rider.id, earning);
+            }
+            else {
+                common_1.Logger.warn('余额端口未注册，分成未入账', 'RiderTask');
+            }
         }
         // 完单信用加分（+2）
         await this.credit.adjust(ctx, rider.id, rider_credit_service_1.CREDIT_COMPLETE, 'complete', order.id);

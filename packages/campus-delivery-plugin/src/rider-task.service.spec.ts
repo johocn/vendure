@@ -50,4 +50,18 @@ describe('RiderTaskService', () => {
         const { svc } = make(other);
         await expect(svc.start({ channelId: 1 } as any, 10 as any)).rejects.toThrow();
     });
+    it('0 分成单（0 运费 0 小费）不入账不写 earning 且不抛错', async () => {
+        const zero = { id: 11, code: 'A2', shipping: 0, customFields: { deliveryStaffId: '9', deliveryStatus: 'in_progress', tip: 0 } };
+        const { svc, saved } = make(zero, { riderCommissionRate: 80 });
+        const order = await svc.deliver({ channelId: 1 } as any, 11 as any, ['p1']);
+        expect(order).toBeTruthy();
+        expect(saved).toHaveLength(0); // 未写 RiderEarning
+    });
+    it('有运费但分成 0（rate=0）仍写 earning 走入账分支', async () => {
+        const inProg = { ...assigned, customFields: { ...assigned.customFields, deliveryStatus: 'in_progress' } };
+        const { svc, saved } = make(inProg, { riderCommissionRate: 0 });
+        await svc.deliver({ channelId: 1 } as any, 10 as any, ['p1']);
+        expect(saved).toHaveLength(1);
+        expect(saved[0].amount).toBe(0);
+    });
 });
