@@ -44,6 +44,7 @@ const rider_service_1 = require("./rider.service");
 const rider_shop_resolver_1 = require("./rider-shop.resolver");
 const rider_task_service_1 = require("./rider-task.service");
 const rider_task_shop_resolver_1 = require("./rider-task-shop.resolver");
+const rider_wallet_service_1 = require("./rider-wallet.service");
 const rider_withdrawal_entity_1 = require("./rider-withdrawal.entity");
 const shipping_calculator_1 = require("./shipping-calculator");
 const slot_lock_service_1 = require("./slot-lock.service");
@@ -84,6 +85,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             hall_grab_service_1.HallGrabService,
             rider_task_service_1.RiderTaskService,
             rider_credit_service_1.RiderCreditService,
+            rider_wallet_service_1.RiderWalletService,
             dispatch_job_service_1.DispatchJobService,
             dispatch_admin_service_1.DispatchAdminService,
             errand_service_1.ErrandService,
@@ -228,6 +230,20 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     errandBaseFee: Int
                 }
 
+                type RiderWithdrawalRequest {
+                    id: ID!
+                    customerId: ID!
+                    channelId: ID!
+                    amount: Int!
+                    channel: String!
+                    account: String!
+                    status: String!
+                    remark: String
+                    reviewedBy: String
+                    reviewedAt: DateTime
+                    createdAt: DateTime
+                }
+
                 extend type Query {
                     campusZones: [CampusZone!]!
                     campusBuildings(zoneId: ID): [CampusBuilding!]!
@@ -236,6 +252,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     riderApplications(status: String!): [Customer!]!
                     campusDispatchBoard: CampusDispatchBoard!
                     campusStoreConfigs: [CampusStoreConfigWithChannel!]!
+                    riderWithdrawals(status: String, skip: Int, take: Int): [RiderWithdrawalRequest!]!
                 }
 
                 extend type Mutation {
@@ -250,6 +267,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusEnsureErrandProducts: CampusErrandProductResult!
                     campusUpdateStoreConfig(channelId: ID!, input: CampusStoreConfigInput!): CampusStoreConfigWithChannel!
                     campusEnsureDefaultShippingProfile(channelId: ID!): CampusEnsureProfileResult!
+                    approveRiderWithdraw(id: ID!, remark: String): RiderWithdrawalRequest!
+                    rejectRiderWithdraw(id: ID!, remark: String): RiderWithdrawalRequest!
                 }
             `;
             },
@@ -384,6 +403,35 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     totalWithTax: Int!
                 }
 
+                type RiderWallet {
+                    available: Int!
+                    frozen: Int!
+                    totalEarned: Int!
+                }
+
+                type RiderWithdrawalRequest {
+                    id: ID!
+                    customerId: ID!
+                    channelId: ID!
+                    amount: Int!
+                    channel: String!
+                    account: String!
+                    status: String!
+                    remark: String
+                    reviewedBy: String
+                    reviewedAt: DateTime
+                    createdAt: DateTime
+                }
+
+                type RiderBalanceTx {
+                    id: ID!
+                    createdAt: DateTime
+                    type: String!
+                    amount: Int!
+                    balanceAfter: Int!
+                    remark: String
+                }
+
                 extend type Query {
                     myRiderProfile: RiderProfile!
                     campusZones: [CampusZone!]!
@@ -397,6 +445,9 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusOrderRider(orderId: ID!): CampusOrderRider
                     campusR2Relay(orderId: ID!): CampusR2Relay
                     campusErrandVariant: CampusErrandVariantResult!
+                    myRiderWallet: RiderWallet!
+                    riderBalanceHistory(skip: Int, take: Int): [RiderBalanceTx!]!
+                    riderWithdrawRequests(skip: Int, take: Int): [RiderWithdrawalRequest!]!
                 }
 
                 extend type Mutation {
@@ -412,6 +463,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusRiderHeartbeat: CampusRiderOnlineResult!
                     campusSetErrandInfo(input: CampusErrandInput!): CampusErrandInfoResult!
                     campusMarkArrived(orderId: ID!): CampusArrivedResult!
+                    riderWithdraw(amount: Int!, channel: String!, account: String!): RiderWithdrawalRequest!
                 }
             `;
             },

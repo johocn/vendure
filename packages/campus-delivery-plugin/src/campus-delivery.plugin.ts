@@ -42,6 +42,7 @@ import { RiderService } from './rider.service';
 import { RiderShopResolver } from './rider-shop.resolver';
 import { RiderTaskService } from './rider-task.service';
 import { RiderTaskShopResolver } from './rider-task-shop.resolver';
+import { RiderWalletService } from './rider-wallet.service';
 import { RiderWithdrawalRequest } from './rider-withdrawal.entity';
 import { bindCampusErrandCalculatorConnection, campusErrandCalculator } from './shipping-calculator';
 import { SlotLockService } from './slot-lock.service';
@@ -61,6 +62,7 @@ import { WaimaiStoreService } from './waimai-store.service';
         HallGrabService,
         RiderTaskService,
         RiderCreditService,
+        RiderWalletService,
         DispatchJobService,
         DispatchAdminService,
         ErrandService,
@@ -205,6 +207,20 @@ import { WaimaiStoreService } from './waimai-store.service';
                     errandBaseFee: Int
                 }
 
+                type RiderWithdrawalRequest {
+                    id: ID!
+                    customerId: ID!
+                    channelId: ID!
+                    amount: Int!
+                    channel: String!
+                    account: String!
+                    status: String!
+                    remark: String
+                    reviewedBy: String
+                    reviewedAt: DateTime
+                    createdAt: DateTime
+                }
+
                 extend type Query {
                     campusZones: [CampusZone!]!
                     campusBuildings(zoneId: ID): [CampusBuilding!]!
@@ -213,6 +229,7 @@ import { WaimaiStoreService } from './waimai-store.service';
                     riderApplications(status: String!): [Customer!]!
                     campusDispatchBoard: CampusDispatchBoard!
                     campusStoreConfigs: [CampusStoreConfigWithChannel!]!
+                    riderWithdrawals(status: String, skip: Int, take: Int): [RiderWithdrawalRequest!]!
                 }
 
                 extend type Mutation {
@@ -227,6 +244,8 @@ import { WaimaiStoreService } from './waimai-store.service';
                     campusEnsureErrandProducts: CampusErrandProductResult!
                     campusUpdateStoreConfig(channelId: ID!, input: CampusStoreConfigInput!): CampusStoreConfigWithChannel!
                     campusEnsureDefaultShippingProfile(channelId: ID!): CampusEnsureProfileResult!
+                    approveRiderWithdraw(id: ID!, remark: String): RiderWithdrawalRequest!
+                    rejectRiderWithdraw(id: ID!, remark: String): RiderWithdrawalRequest!
                 }
             `;
         },
@@ -361,6 +380,35 @@ import { WaimaiStoreService } from './waimai-store.service';
                     totalWithTax: Int!
                 }
 
+                type RiderWallet {
+                    available: Int!
+                    frozen: Int!
+                    totalEarned: Int!
+                }
+
+                type RiderWithdrawalRequest {
+                    id: ID!
+                    customerId: ID!
+                    channelId: ID!
+                    amount: Int!
+                    channel: String!
+                    account: String!
+                    status: String!
+                    remark: String
+                    reviewedBy: String
+                    reviewedAt: DateTime
+                    createdAt: DateTime
+                }
+
+                type RiderBalanceTx {
+                    id: ID!
+                    createdAt: DateTime
+                    type: String!
+                    amount: Int!
+                    balanceAfter: Int!
+                    remark: String
+                }
+
                 extend type Query {
                     myRiderProfile: RiderProfile!
                     campusZones: [CampusZone!]!
@@ -374,6 +422,9 @@ import { WaimaiStoreService } from './waimai-store.service';
                     campusOrderRider(orderId: ID!): CampusOrderRider
                     campusR2Relay(orderId: ID!): CampusR2Relay
                     campusErrandVariant: CampusErrandVariantResult!
+                    myRiderWallet: RiderWallet!
+                    riderBalanceHistory(skip: Int, take: Int): [RiderBalanceTx!]!
+                    riderWithdrawRequests(skip: Int, take: Int): [RiderWithdrawalRequest!]!
                 }
 
                 extend type Mutation {
@@ -389,6 +440,7 @@ import { WaimaiStoreService } from './waimai-store.service';
                     campusRiderHeartbeat: CampusRiderOnlineResult!
                     campusSetErrandInfo(input: CampusErrandInput!): CampusErrandInfoResult!
                     campusMarkArrived(orderId: ID!): CampusArrivedResult!
+                    riderWithdraw(amount: Int!, channel: String!, account: String!): RiderWithdrawalRequest!
                 }
             `;
         },

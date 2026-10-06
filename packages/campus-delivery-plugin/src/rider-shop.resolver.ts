@@ -1,8 +1,9 @@
-import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Args, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { Ctx, ID, RequestContext } from '@vendure/core';
 import { CapacityService } from './capacity.service';
 import { CampusConfigService } from './campus-config.service';
 import { RiderService } from './rider.service';
+import { RiderWalletService } from './rider-wallet.service';
 
 @Resolver()
 export class RiderShopResolver {
@@ -10,6 +11,7 @@ export class RiderShopResolver {
         private riderService: RiderService,
         private configService: CampusConfigService,
         private capacity: CapacityService,
+        private wallet: RiderWalletService,
     ) {}
 
     /** 需登录：service 内部校验当前顾客，未登录抛 ForbiddenError。 */
@@ -27,6 +29,43 @@ export class RiderShopResolver {
     @Query()
     async myRiderProfile(@Ctx() ctx: RequestContext) {
         return this.riderService.myRiderProfile(ctx);
+    }
+
+    /** 骑手钱包：可用余额 / 冻结中 / 累计收入 */
+    @Query()
+    async myRiderWallet(@Ctx() ctx: RequestContext) {
+        return this.wallet.myRiderWallet(ctx);
+    }
+
+    /** 余额流水（含分成入账/充值/消费/提现冻结/退回） */
+    @Query()
+    async riderBalanceHistory(
+        @Ctx() ctx: RequestContext,
+        @Args('skip', { nullable: true }) skip?: number,
+        @Args('take', { nullable: true }) take?: number,
+    ) {
+        return this.wallet.riderBalanceHistory(ctx, skip, take);
+    }
+
+    /** 本人提现申请记录 */
+    @Query()
+    async riderWithdrawRequests(
+        @Ctx() ctx: RequestContext,
+        @Args('skip', { nullable: true }) skip?: number,
+        @Args('take', { nullable: true }) take?: number,
+    ) {
+        return this.wallet.riderWithdrawRequests(ctx, skip, take);
+    }
+
+    /** 提现申请：金额（分）+ 收款渠道 + 账号，提交即冻结 */
+    @Mutation()
+    async riderWithdraw(
+        @Ctx() ctx: RequestContext,
+        @Args('amount') amount: number,
+        @Args('channel') channel: string,
+        @Args('account') account: string,
+    ) {
+        return this.wallet.riderWithdraw(ctx, { amount, channel, account });
     }
 
     /** 骑手上下线开关（大厅轮询页 15s 轮询续命） */

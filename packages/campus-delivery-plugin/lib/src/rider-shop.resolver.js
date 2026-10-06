@@ -18,11 +18,13 @@ const core_1 = require("@vendure/core");
 const capacity_service_1 = require("./capacity.service");
 const campus_config_service_1 = require("./campus-config.service");
 const rider_service_1 = require("./rider.service");
+const rider_wallet_service_1 = require("./rider-wallet.service");
 let RiderShopResolver = class RiderShopResolver {
-    constructor(riderService, configService, capacity) {
+    constructor(riderService, configService, capacity, wallet) {
         this.riderService = riderService;
         this.configService = configService;
         this.capacity = capacity;
+        this.wallet = wallet;
     }
     /** 需登录：service 内部校验当前顾客，未登录抛 ForbiddenError。 */
     async applyRider(ctx, realName, studentNo, campus, idImg) {
@@ -30,6 +32,22 @@ let RiderShopResolver = class RiderShopResolver {
     }
     async myRiderProfile(ctx) {
         return this.riderService.myRiderProfile(ctx);
+    }
+    /** 骑手钱包：可用余额 / 冻结中 / 累计收入 */
+    async myRiderWallet(ctx) {
+        return this.wallet.myRiderWallet(ctx);
+    }
+    /** 余额流水（含分成入账/充值/消费/提现冻结/退回） */
+    async riderBalanceHistory(ctx, skip, take) {
+        return this.wallet.riderBalanceHistory(ctx, skip, take);
+    }
+    /** 本人提现申请记录 */
+    async riderWithdrawRequests(ctx, skip, take) {
+        return this.wallet.riderWithdrawRequests(ctx, skip, take);
+    }
+    /** 提现申请：金额（分）+ 收款渠道 + 账号，提交即冻结 */
+    async riderWithdraw(ctx, amount, channel, account) {
+        return this.wallet.riderWithdraw(ctx, { amount, channel, account });
     }
     /** 骑手上下线开关（大厅轮询页 15s 轮询续命） */
     async campusRiderOnline(ctx, online) {
@@ -71,6 +89,41 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], RiderShopResolver.prototype, "myRiderProfile", null);
 __decorate([
+    (0, graphql_1.Query)(),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], RiderShopResolver.prototype, "myRiderWallet", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('skip', { nullable: true })),
+    __param(2, (0, graphql_1.Args)('take', { nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Number, Number]),
+    __metadata("design:returntype", Promise)
+], RiderShopResolver.prototype, "riderBalanceHistory", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('skip', { nullable: true })),
+    __param(2, (0, graphql_1.Args)('take', { nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Number, Number]),
+    __metadata("design:returntype", Promise)
+], RiderShopResolver.prototype, "riderWithdrawRequests", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('amount')),
+    __param(2, (0, graphql_1.Args)('channel')),
+    __param(3, (0, graphql_1.Args)('account')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Number, String, String]),
+    __metadata("design:returntype", Promise)
+], RiderShopResolver.prototype, "riderWithdraw", null);
+__decorate([
     (0, graphql_1.Mutation)(),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('online')),
@@ -111,6 +164,7 @@ exports.RiderShopResolver = RiderShopResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [rider_service_1.RiderService,
         campus_config_service_1.CampusConfigService,
-        capacity_service_1.CapacityService])
+        capacity_service_1.CapacityService,
+        rider_wallet_service_1.RiderWalletService])
 ], RiderShopResolver);
 //# sourceMappingURL=rider-shop.resolver.js.map
