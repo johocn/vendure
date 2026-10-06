@@ -15,6 +15,10 @@ function makeEnv(opts: { channels?: any[]; configs?: any[] } = {}) {
         },
     };
     const conn = { getRepository: vi.fn((_ctx: any, ent: any) => repoByEntity[ent.name ?? String(ent)]) } as any;
+    // 默认桩：updateStoreConfig 带 storeAddress 时会走 R4 自提点 upsert（rawConnection），既有用例不对其断言
+    conn.rawConnection = {
+        getRepository: vi.fn(() => ({ findOne: vi.fn().mockResolvedValue(undefined), save: vi.fn(async (x: any) => x) })),
+    };
     return { svc: new WaimaiStoreService(conn), repoByEntity };
 }
 
@@ -161,5 +165,52 @@ describe('WaimaiStoreService.updateStoreConfig errandBaseFee', () => {
             routesEnabled: ['R5'], errandBaseFee: 300,
         } as any);
         expect(out.errandBaseFee).toBe(300);
+    });
+});
+
+describe('WaimaiStoreService R4 store pickup location upsert', () => {
+    function makeLocEnv(locRepo: any) {
+        const env = makeEnv({ channels: [{ id: 2, token: 'canteen', code: '一食堂麻辣香锅', customFields: {} }] });
+        (env.svc as any).connection.rawConnection = {
+            getRepository: vi.fn(() => locRepo),
+        };
+        return env;
+    }
+
+    it('storeAddress 非空：新建自提点（type=store, remark=campus-r4, 绑渠道）', async () => {
+        const locRepo = {
+            findOne: vi.fn().mockResolvedValue(null),
+            save: vi.fn(async (x: any) => ({ id: 55, ...x })),
+        };
+        const env = makeLocEnv(locRepo);
+        await env.svc.updateStoreConfig({} as any, 2, {
+            routesEnabled: ['R4'], storeAddress: '东门 1 号楼', storePhone: '13800000000',
+        } as any);
+        expect(locRepo.save).toHaveBeenCalledWith(expect.objectContaining({
+            name: '一食堂麻辣香锅', address: '东门 1 号楼', phoneNumber: '13800000000',
+            type: 'store', ownerChannelId: 2, remark: 'campus-r4', channels: [{ id: 2 }],
+        }));
+    });
+
+    it('已存在：更新地址不新建', async () => {
+        const locRepo = {
+            findOne: vi.fn().mockResolvedValue({ id: 55, name: '旧名', address: '旧址', phoneNumber: null, remark: 'campus-r4' }),
+            save: vi.fn(async (x: any) => x),
+        };
+        const env = makeLocEnv(locRepo);
+        await env.svc.updateStoreConfig({} as any, 2, {
+            routesEnabled: ['R4'], storeAddress: '新址', storePhone: null,
+        } as any);
+        expect(locRepo.save).toHaveBeenCalledWith(expect.objectContaining({ id: 55, address: '新址' }));
+    });
+
+    it('storeAddress 清空：跳过 upsert（不删除既有记录）', async () => {
+        const locRepo = {
+            findOne: vi.fn(), save: vi.fn(),
+        };
+        const env = makeLocEnv(locRepo);
+        await env.svc.updateStoreConfig({} as any, 2, { routesEnabled: ['R4'], storeAddress: null } as any);
+        expect(locRepo.findOne).not.toHaveBeenCalled();
+        expect(locRepo.save).not.toHaveBeenCalled();
     });
 });

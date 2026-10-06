@@ -37,6 +37,9 @@ export interface CampusStoreConfigWithChannel {
 
 const ROUTE_WHITELIST = ['R1', 'R2', 'R3', 'R4', 'R5'];
 
+/** R4 自提点标记：campus 配置管理的本渠道门店自提点（幂等 upsert 键，复用 cjk PickupLocation 体系） */
+const CAMPUS_R4_REMARK = 'campus-r4';
+
 @Injectable()
 export class WaimaiStoreService {
     constructor(private connection: TransactionalConnection) {}
@@ -126,7 +129,39 @@ export class WaimaiStoreService {
         cfg.storeNotice = input.storeNotice ?? null;
         cfg.errandBaseFee = input.errandBaseFee ?? null;
         await repo.save(cfg);
+        const address = (input.storeAddress ?? '').trim();
+        if (address) {
+            // R4：同步幂等 upsert 本渠道门店自提点（名称=店铺名，地址=storeAddress），核销走 pickup_redemption 零新表
+            await this.upsertStorePickupLocation(Number(channelId), ch.code, address, (input.storePhone ?? '').trim() || null);
+        }
         return this.toConfigView(channelId, ch.code, ch.token, cfg);
+    }
+
+    /** 经 rawConnection 按实体名取 repo（避免对 cjk-plugin 的构建期依赖；PickupLocation 由 cjk-plugin 注册于同一进程）。
+     * 可见性：isPublic=false + ownerChannelId=本渠道 + channels 含本渠道 → shop 端 applyVisibility 对本渠道可见（cjk pickup-location.service.ts:35）。 */
+    private async upsertStorePickupLocation(channelId: number, name: string, address: string, phone: string | null) {
+        const repo = this.connection.rawConnection.getRepository('PickupLocation');
+        const existing = await repo.findOne({ where: { ownerChannelId: channelId, remark: CAMPUS_R4_REMARK } });
+        if (existing) {
+            existing.name = name;
+            existing.address = address;
+            existing.phoneNumber = phone;
+            existing.enabled = true;
+            await repo.save(existing);
+            return existing;
+        }
+        return repo.save({
+            name,
+            address,
+            phoneNumber: phone,
+            type: 'store',
+            stockType: 'own',
+            enabled: true,
+            isPublic: false,
+            ownerChannelId: channelId,
+            channels: [{ id: channelId }],
+            remark: CAMPUS_R4_REMARK,
+        });
     }
 
     private toConfigView(
