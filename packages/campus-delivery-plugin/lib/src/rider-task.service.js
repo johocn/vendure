@@ -27,18 +27,39 @@ let RiderTaskService = class RiderTaskService {
         this.hall = hall;
         this.notify = notify;
     }
-    /** 订单骑手卡信息：C 端订单跟踪轮询用。未指派返回 null。 */
+    /** 订单骑手卡信息：C 端订单跟踪轮询用。未指派返回 null。
+     * 位置（plan 2.2）：仅配送中（assigned/in_progress）返回，送达/异常/转单不暴露（隐私）。 */
     async orderRider(ctx, orderId) {
         var _a, _b, _c, _d, _e;
         const order = await this.connection.getRepository(ctx, core_1.Order).findOne({ where: { id: orderId } });
-        const riderId = Number((_b = (_a = order === null || order === void 0 ? void 0 : order.customFields) === null || _a === void 0 ? void 0 : _a.deliveryStaffId) !== null && _b !== void 0 ? _b : NaN);
+        const cf = ((_a = order === null || order === void 0 ? void 0 : order.customFields) !== null && _a !== void 0 ? _a : {});
+        const riderId = Number((_b = cf.deliveryStaffId) !== null && _b !== void 0 ? _b : NaN);
         if (!riderId)
             return null;
         const rider = await this.connection.getRepository(ctx, core_1.Customer).findOne({ where: { id: riderId } });
         if (!rider)
             return null;
-        const cf = ((_c = rider.customFields) !== null && _c !== void 0 ? _c : {});
-        return { realName: (_d = cf.riderRealName) !== null && _d !== void 0 ? _d : '骑手', credit: (_e = cf.riderCredit) !== null && _e !== void 0 ? _e : 100 };
+        const rcf = ((_c = rider.customFields) !== null && _c !== void 0 ? _c : {});
+        const locating = cf.deliveryStatus === 'assigned' || cf.deliveryStatus === 'in_progress';
+        const lat = Number(cf.riderLat);
+        const lng = Number(cf.riderLng);
+        return {
+            realName: (_d = rcf.riderRealName) !== null && _d !== void 0 ? _d : '骑手',
+            credit: (_e = rcf.riderCredit) !== null && _e !== void 0 ? _e : 100,
+            location: locating && Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null,
+        };
+    }
+    /** 骑手位置上报：本人订单 + 仅 assigned/in_progress 可写（plan 2.2，10s/次）。 */
+    async reportLocation(ctx, orderId, lat, lng) {
+        const order = await this.assertOwner(ctx, orderId);
+        const status = order.customFields.deliveryStatus;
+        if (status !== 'assigned' && status !== 'in_progress') {
+            throw new core_1.UserInputError('仅配送中的订单可上报位置');
+        }
+        await this.connection.getRepository(ctx, core_1.Order).update(order.id, {
+            customFields: { riderLat: lat, riderLng: lng },
+        });
+        return order;
     }
     /** 我的任务：本骑手名下已进入配送流程的订单，按下单时间倒序。
      * customFields 为嵌入式物理列，QueryBuilder 用 embedded 路径 order.customFields.deliveryStaffId
@@ -71,6 +92,10 @@ let RiderTaskService = class RiderTaskService {
             throw new core_1.UserInputError('当前状态不允许转单');
         }
         await this.hall.backToHall(ctx, order.id);
+        // 转单即清除位置残留（plan 2.2 隐私：位置只跟随当前配送骑手）
+        await this.connection.getRepository(ctx, core_1.Order).update(order.id, {
+            customFields: { riderLat: null, riderLng: null },
+        });
         if (photos === null || photos === void 0 ? void 0 : photos.length) {
             await this.connection.getRepository(ctx, core_1.Order).update(order.id, {
                 customFields: {
@@ -106,6 +131,8 @@ let RiderTaskService = class RiderTaskService {
                 deliveryPhotos: photos,
                 deliveryNote: note !== null && note !== void 0 ? note : null,
                 riderEarning: earning,
+                riderLat: null,
+                riderLng: null,
             },
         });
         if (earning === 0 && tip === 0) {

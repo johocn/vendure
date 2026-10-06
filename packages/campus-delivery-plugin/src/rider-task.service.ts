@@ -26,15 +26,37 @@ export class RiderTaskService {
         private notify: CampusNotifyService,
     ) {}
 
-    /** 订单骑手卡信息：C 端订单跟踪轮询用。未指派返回 null。 */
+    /** 订单骑手卡信息：C 端订单跟踪轮询用。未指派返回 null。
+     * 位置（plan 2.2）：仅配送中（assigned/in_progress）返回，送达/异常/转单不暴露（隐私）。 */
     async orderRider(ctx: RequestContext, orderId: ID) {
         const order = await this.connection.getRepository(ctx, Order).findOne({ where: { id: orderId as any } });
-        const riderId = Number((order?.customFields as any)?.deliveryStaffId ?? NaN);
+        const cf = (order?.customFields ?? {}) as any;
+        const riderId = Number(cf.deliveryStaffId ?? NaN);
         if (!riderId) return null;
         const rider = await this.connection.getRepository(ctx, Customer).findOne({ where: { id: riderId } });
         if (!rider) return null;
-        const cf = (rider.customFields ?? {}) as any;
-        return { realName: cf.riderRealName ?? '骑手', credit: cf.riderCredit ?? 100 };
+        const rcf = (rider.customFields ?? {}) as any;
+        const locating = cf.deliveryStatus === 'assigned' || cf.deliveryStatus === 'in_progress';
+        const lat = Number(cf.riderLat);
+        const lng = Number(cf.riderLng);
+        return {
+            realName: rcf.riderRealName ?? '骑手',
+            credit: rcf.riderCredit ?? 100,
+            location: locating && Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null,
+        };
+    }
+
+    /** 骑手位置上报：本人订单 + 仅 assigned/in_progress 可写（plan 2.2，10s/次）。 */
+    async reportLocation(ctx: RequestContext, orderId: ID, lat: number, lng: number) {
+        const order = await this.assertOwner(ctx, orderId);
+        const status = (order.customFields as any).deliveryStatus;
+        if (status !== 'assigned' && status !== 'in_progress') {
+            throw new UserInputError('仅配送中的订单可上报位置');
+        }
+        await this.connection.getRepository(ctx, Order).update(order.id, {
+            customFields: { riderLat: lat, riderLng: lng },
+        } as any);
+        return order;
     }
 
     /** 我的任务：本骑手名下已进入配送流程的订单，按下单时间倒序。
@@ -69,6 +91,10 @@ export class RiderTaskService {
             throw new UserInputError('当前状态不允许转单');
         }
         await this.hall.backToHall(ctx, order.id as any);
+        // 转单即清除位置残留（plan 2.2 隐私：位置只跟随当前配送骑手）
+        await this.connection.getRepository(ctx, Order).update(order.id, {
+            customFields: { riderLat: null, riderLng: null },
+        } as any);
         if (photos?.length) {
             await this.connection.getRepository(ctx, Order).update(order.id, {
                 customFields: {
@@ -104,6 +130,8 @@ export class RiderTaskService {
                 deliveryPhotos: photos,
                 deliveryNote: note ?? null,
                 riderEarning: earning,
+                riderLat: null,
+                riderLng: null,
             },
         } as any);
         if (earning === 0 && tip === 0) {

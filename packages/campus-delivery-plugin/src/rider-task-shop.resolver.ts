@@ -45,6 +45,17 @@ export class RiderTaskShopResolver {
         return this.riderTaskService.deliver(ctx, orderId, photos, note);
     }
 
+    /** 骑手位置上报（配送中 10s 一次）：本人 + assigned/in_progress 才写，送达/转单由 service 清除。 */
+    @Mutation()
+    async campusRiderReportLocation(
+        @Ctx() ctx: RequestContext,
+        @Args('orderId') orderId: ID,
+        @Args('lat') lat: number,
+        @Args('lng') lng: number,
+    ) {
+        return this.riderTaskService.reportLocation(ctx, orderId, lat, lng);
+    }
+
     @Mutation()
     async campusReportException(
         @Ctx() ctx: RequestContext,

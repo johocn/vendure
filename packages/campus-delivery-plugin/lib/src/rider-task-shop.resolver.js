@@ -40,6 +40,10 @@ let RiderTaskShopResolver = class RiderTaskShopResolver {
     async campusDeliverTask(ctx, orderId, photos, note) {
         return this.riderTaskService.deliver(ctx, orderId, photos, note);
     }
+    /** 骑手位置上报（配送中 10s 一次）：本人 + assigned/in_progress 才写，送达/转单由 service 清除。 */
+    async campusRiderReportLocation(ctx, orderId, lat, lng) {
+        return this.riderTaskService.reportLocation(ctx, orderId, lat, lng);
+    }
     async campusReportException(ctx, orderId, type, photos, note) {
         return this.riderTaskService.reportException(ctx, orderId, type, photos, note);
     }
@@ -93,6 +97,16 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object, Array, String]),
     __metadata("design:returntype", Promise)
 ], RiderTaskShopResolver.prototype, "campusDeliverTask", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __param(2, (0, graphql_1.Args)('lat')),
+    __param(3, (0, graphql_1.Args)('lng')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Number, Number]),
+    __metadata("design:returntype", Promise)
+], RiderTaskShopResolver.prototype, "campusRiderReportLocation", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     __param(0, (0, core_1.Ctx)()),

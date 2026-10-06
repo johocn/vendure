@@ -422,6 +422,12 @@ import { WaimaiStoreService } from './waimai-store.service';
                 type CampusOrderRider {
                     realName: String!
                     credit: Int!
+                    location: CampusRiderLocation
+                }
+
+                type CampusRiderLocation {
+                    lat: Float!
+                    lng: Float!
                 }
 
                 type CampusR2Relay {
@@ -488,6 +494,7 @@ import { WaimaiStoreService } from './waimai-store.service';
                     campusStartTask(orderId: ID!): Order!
                     campusTransferTask(orderId: ID!, photos: [String!]!, note: String): Order!
                     campusDeliverTask(orderId: ID!, photos: [String!]!, note: String): Order!
+                    campusRiderReportLocation(orderId: ID!, lat: Float!, lng: Float!): Order!
                     campusReportException(orderId: ID!, type: String!, photos: [String!]!, note: String): Order!
                     campusSetDeliveryTarget(zoneId: ID!, buildingId: ID!, route: String, slotId: Int): Order!
                     campusRejectAssignment(orderId: ID!): CampusRejectResult!

@@ -23,6 +23,8 @@ exports.campusCustomFields = {
         { name: 'transferPhotos', type: 'string', list: true, nullable: true }, // 已取货转单拍照交接存证
         { name: 'transferNote', type: 'string', nullable: true },
         { name: 'transferAt', type: 'datetime', nullable: true },
+        { name: 'riderLat', type: 'float', nullable: true }, // 骑手实时位置（gcj02），仅配送中写入，送达/转单清除
+        { name: 'riderLng', type: 'float', nullable: true },
     ],
     Channel: [
         { name: 'waimaiTags', type: 'string', nullable: true }, // '米饭快餐,夜宵' 逗号分隔

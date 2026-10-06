@@ -61,6 +61,9 @@ ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "notifyTemplateAc
 ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "notifyTemplateRiderAssigned" varchar;
 ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "notifyTemplateCookingDone" varchar;
 ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "notifyTemplateDelivered" varchar;
+-- 骑手实时位置（plan 2.2）：Order customFields 嵌入式物理列，列名 = customFields + 字段名（PascalCase）
+ALTER TABLE "order" ADD COLUMN IF NOT EXISTS "customFieldsRiderLat" double precision;
+ALTER TABLE "order" ADD COLUMN IF NOT EXISTS "customFieldsRiderLng" double precision;
 `;
 let CreateCampusTablesMigration = class CreateCampusTablesMigration {
     constructor(connection) {

@@ -11,11 +11,17 @@ export declare class RiderTaskShopResolver {
     campusOrderRider(ctx: RequestContext, orderId: ID): Promise<{
         realName: any;
         credit: any;
+        location: {
+            lat: number;
+            lng: number;
+        } | null;
     } | null>;
     campusStartTask(ctx: RequestContext, orderId: ID): Promise<import("@vendure/core").Order>;
     /** 转单回大厅；已取货必须拍照交接。错误语义：未登录/非本人 ForbiddenError，状态/缺照片 UserInputError。 */
     campusTransferTask(ctx: RequestContext, orderId: ID, photos: string[], note?: string): Promise<import("@vendure/core").Order>;
     campusDeliverTask(ctx: RequestContext, orderId: ID, photos: string[], note?: string): Promise<import("@vendure/core").Order>;
+    /** 骑手位置上报（配送中 10s 一次）：本人 + assigned/in_progress 才写，送达/转单由 service 清除。 */
+    campusRiderReportLocation(ctx: RequestContext, orderId: ID, lat: number, lng: number): Promise<import("@vendure/core").Order>;
     campusReportException(ctx: RequestContext, orderId: ID, type: string, photos: string[], note?: string): Promise<import("@vendure/core").Order>;
     /** R2 快递单到校确认：本人 + fulfillmentRoute='R2'，service 内校验，违规抛 Forbidden/UserInputError。 */
     campusMarkArrived(ctx: RequestContext, orderId: ID): Promise<{
