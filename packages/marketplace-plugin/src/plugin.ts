@@ -63,8 +63,17 @@ import { SettlementService } from './settlement.service';
         mergeFields(config.customFields.Seller, marketplaceCustomFields.Seller!);
         config.shippingOptions.shippingEligibilityCheckers.push(multivendorShippingEligibilityChecker);
 
-        const customDefaultOrderProcess = configureDefaultOrderProcess({ checkFulfillmentStates: false });
-        config.orderOptions.process = [customDefaultOrderProcess, marketplaceOrderProcess];
+        // 修复：按 __isDefaultOrderProcess 标记替换默认进程（mergeConfig 深拷贝后身份比对失效），
+        // 保留其他插件注册的自定义进程（如 campus-delivery 起送价校验）；
+        // 过滤本插件已注册进程保证 configuration 被多次应用时幂等。
+        const existingProcesses = (config.orderOptions.process ?? []).filter(
+            p => !(p as any).__isDefaultOrderProcess && p !== marketplaceOrderProcess,
+        );
+        config.orderOptions.process = [
+            configureDefaultOrderProcess({ checkFulfillmentStates: false }),
+            ...existingProcesses,
+            marketplaceOrderProcess,
+        ];
         config.orderOptions.orderSellerStrategy = new MarketplaceSellerStrategy();
         config.catalogOptions.productVariantPriceUpdateStrategy =
             new DefaultProductVariantPriceUpdateStrategy({ syncPricesAcrossChannels: true });

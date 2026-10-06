@@ -301,9 +301,13 @@ exports.LogisticsPlugin = LogisticsPlugin = LogisticsPlugin_1 = __decorate([
                 split_shipping_calculator_1.splitShippingCalculator,
             ];
             // 履约闭环：包裹聚合驱动订单状态机（禁用 checkFulfillmentStates，city 包无 fulfillment 不拦截）
-            if (!((_b = config.orderOptions.process) !== null && _b !== void 0 ? _b : []).some(p => p.__logisticsClosure)) {
+            // 修复：按 __isDefaultOrderProcess 标记替换默认进程（mergeConfig 深拷贝后身份比对失效），
+            // 保留其他插件注册的自定义进程（如 campus-delivery 起送价校验）——整组覆写会吞掉它们。
+            const existingProcesses = (_b = config.orderOptions.process) !== null && _b !== void 0 ? _b : [];
+            if (!existingProcesses.some(p => p.__logisticsClosure)) {
                 config.orderOptions.process = [
                     (0, core_2.configureDefaultOrderProcess)({ checkFulfillmentStates: false }),
+                    ...existingProcesses.filter(p => !p.__isDefaultOrderProcess),
                     Object.assign(Object.assign({}, order_completion_process_1.orderCompletionProcess), { __logisticsClosure: true }),
                 ];
             }

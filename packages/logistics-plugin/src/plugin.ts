@@ -235,9 +235,13 @@ const shopSchema = () => gql`
             splitShippingCalculator,
         ];
         // 履约闭环：包裹聚合驱动订单状态机（禁用 checkFulfillmentStates，city 包无 fulfillment 不拦截）
-        if (!(config.orderOptions.process ?? []).some(p => (p as any).__logisticsClosure)) {
+        // 修复：按 __isDefaultOrderProcess 标记替换默认进程（mergeConfig 深拷贝后身份比对失效），
+        // 保留其他插件注册的自定义进程（如 campus-delivery 起送价校验）——整组覆写会吞掉它们。
+        const existingProcesses = config.orderOptions.process ?? [];
+        if (!existingProcesses.some(p => (p as any).__logisticsClosure)) {
             config.orderOptions.process = [
                 configureDefaultOrderProcess({ checkFulfillmentStates: false }),
+                ...existingProcesses.filter(p => !(p as any).__isDefaultOrderProcess),
                 { ...orderCompletionProcess, __logisticsClosure: true } as any,
             ];
         }

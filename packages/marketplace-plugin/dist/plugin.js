@@ -196,6 +196,7 @@ exports.MarketplacePlugin = MarketplacePlugin = MarketplacePlugin_1 = __decorate
         imports: [core_1.PluginCommonModule],
         entities: [marketplace_inventory_ledger_entity_1.MarketplaceInventoryLedger],
         configuration: config => {
+            var _a;
             // 幂等追加：本 fork 的 preBootstrapConfig 会多次应用插件 configuration（setConfig + runPluginConfigurations），
             // 若直接用 `[...(config.customFields.X || []), ...marketplaceCustomFields.X]` 会导致重复自定义字段，
             // 触发 core 的 validateCustomFieldsConfig 硬校验（duplicated custom field name）。改为按 name 去重。
@@ -213,8 +214,15 @@ exports.MarketplacePlugin = MarketplacePlugin = MarketplacePlugin_1 = __decorate
             mergeFields(config.customFields.Channel, custom_fields_1.marketplaceCustomFields.Channel);
             mergeFields(config.customFields.Seller, custom_fields_1.marketplaceCustomFields.Seller);
             config.shippingOptions.shippingEligibilityCheckers.push(mv_shipping_eligibility_checker_1.multivendorShippingEligibilityChecker);
-            const customDefaultOrderProcess = (0, core_1.configureDefaultOrderProcess)({ checkFulfillmentStates: false });
-            config.orderOptions.process = [customDefaultOrderProcess, marketplace_order_process_1.marketplaceOrderProcess];
+            // 修复：按 __isDefaultOrderProcess 标记替换默认进程（mergeConfig 深拷贝后身份比对失效），
+            // 保留其他插件注册的自定义进程（如 campus-delivery 起送价校验）；
+            // 过滤本插件已注册进程保证 configuration 被多次应用时幂等。
+            const existingProcesses = ((_a = config.orderOptions.process) !== null && _a !== void 0 ? _a : []).filter(p => !p.__isDefaultOrderProcess && p !== marketplace_order_process_1.marketplaceOrderProcess);
+            config.orderOptions.process = [
+                (0, core_1.configureDefaultOrderProcess)({ checkFulfillmentStates: false }),
+                ...existingProcesses,
+                marketplace_order_process_1.marketplaceOrderProcess,
+            ];
             config.orderOptions.orderSellerStrategy = new marketplace_seller_strategy_1.MarketplaceSellerStrategy();
             config.catalogOptions.productVariantPriceUpdateStrategy =
                 new core_1.DefaultProductVariantPriceUpdateStrategy({ syncPricesAcrossChannels: true });

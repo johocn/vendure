@@ -309,6 +309,10 @@ function configureDefaultOrderProcess(options) {
             relations: ['lines', 'fulfillments', 'fulfillments.lines', 'fulfillments.lines.fulfillment'],
         });
     }
+    // 标记默认进程：mergeConfig 的深拷贝会使对象身份比对失效，
+    // 插件 configuration 需借此标记识别并替换默认进程，避免整组覆写 orderOptions.process 时
+    // 误吞其他插件注册的自定义进程、或残留多个默认进程。
+    orderProcess.__isDefaultOrderProcess = true;
     return orderProcess;
 }
 /**
