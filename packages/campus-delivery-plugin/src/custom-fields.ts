@@ -27,6 +27,12 @@ export const campusCustomFields: CustomFields = {
         { name: 'urged', type: 'boolean', nullable: true, defaultValue: false }, // 用户催单标记（plan 2.4）
         { name: 'urgedAt', type: 'datetime', nullable: true }, // 最近一次催单时间，10min 内禁止重复催
         { name: 'scheduledFor', type: 'datetime', nullable: true }, // 预约送达锚点=时段开始时间（plan 3.1），调度 job 到点前 30min 放量入厅
+        { name: 'exceptionAction', type: 'string', nullable: true }, // 异常处置动作（plan 3.4）: reassign / refund_diff / coupon / refund_all
+        { name: 'exceptionCompensation', type: 'int', nullable: true }, // 退差价金额（分）
+        { name: 'exceptionCouponTemplateId', type: 'string', nullable: true }, // 补偿券模板 ID
+        { name: 'exceptionHandledNote', type: 'string', nullable: true }, // 处置备注
+        { name: 'exceptionHandledAt', type: 'datetime', nullable: true }, // 处置时间
+        { name: 'exceptionHandledBy', type: 'string', nullable: true }, // 处置人（admin userId）
     ],
     Channel: [
         { name: 'waimaiTags', type: 'string', nullable: true }, // '米饭快餐,夜宵' 逗号分隔

@@ -30,6 +30,10 @@ let DispatchAdminResolver = class DispatchAdminResolver {
     async campusBackToHall(ctx, orderId) {
         return this.dispatchAdmin.backToHall(ctx, orderId);
     }
+    /** 异常处置（plan 3.4）：reassign 回大厅 / refund_diff 退差价 / coupon 发补偿券 / refund_all 全额退单 */
+    async campusHandleException(ctx, orderId, action, amount, couponTemplateId, note) {
+        return this.dispatchAdmin.handleException(ctx, orderId, action, amount, couponTemplateId, note);
+    }
 };
 exports.DispatchAdminResolver = DispatchAdminResolver;
 __decorate([
@@ -59,6 +63,19 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], DispatchAdminResolver.prototype, "campusBackToHall", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusViewDispatch),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __param(2, (0, graphql_1.Args)('action')),
+    __param(3, (0, graphql_1.Args)({ name: 'amount', type: () => graphql_1.Int, nullable: true })),
+    __param(4, (0, graphql_1.Args)({ name: 'couponTemplateId', type: () => graphql_1.ID, nullable: true })),
+    __param(5, (0, graphql_1.Args)({ name: 'note', type: () => String, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String, Number, Object, String]),
+    __metadata("design:returntype", Promise)
+], DispatchAdminResolver.prototype, "campusHandleException", null);
 exports.DispatchAdminResolver = DispatchAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [dispatch_admin_service_1.DispatchAdminService])
