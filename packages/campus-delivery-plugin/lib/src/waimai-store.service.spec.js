@@ -28,7 +28,7 @@ function makeEnv(opts = {}) {
         const env = makeEnv({
             configs: [
                 { channelId: 1, paused: false, routesEnabled: ['R3'] }, // 默认渠道脏配置：应被跳过
-                { channelId: 2, paused: false, routesEnabled: ['R1', 'R3'], deliveryMinutes: 35, minOrderAmount: 1500, deliveryFee: 200, storeAddress: '东门 1 号楼', storePhone: '13800000000', storeNotice: '周末出餐慢', errandBaseFee: 300 },
+                { channelId: 2, paused: false, routesEnabled: ['R1', 'R3'], deliveryMinutes: 35, minOrderAmount: 1500, deliveryFee: 200, storeAddress: '东门 1 号楼', storePhone: '13800000000', storeNotice: '周末出餐慢', errandBaseFee: 300, freeShippingThreshold: 1800 },
             ],
             channels: [
                 { id: 1, token: 'default', code: '__default_channel__', customFields: {} },
@@ -46,6 +46,7 @@ function makeEnv(opts = {}) {
             deliveryMinutes: 35, minOrderAmount: 1500, deliveryFee: 200,
             storeAddress: '东门 1 号楼', storePhone: '13800000000', storeNotice: '周末出餐慢',
             errandBaseFee: 300,
+            freeShippingThreshold: 1800,
         });
     });
     (0, vitest_1.it)('空 tags/缺月售/缺新字段容错（全 null），paused 透传', async () => {
@@ -85,6 +86,7 @@ function makeEnv(opts = {}) {
             deliveryMinutes: 35, minOrderAmount: 1500, deliveryFee: 200,
             storeAddress: '东门 1 号楼', storePhone: '13800000000', storeNotice: '周末出餐慢',
             errandBaseFee: null,
+            freeShippingThreshold: null,
             notifyTemplateAccepted: null, notifyTemplateRiderAssigned: null,
             notifyTemplateCookingDone: null, notifyTemplateDelivered: null,
         });
@@ -94,6 +96,7 @@ function makeEnv(opts = {}) {
             deliveryMinutes: null, minOrderAmount: null, deliveryFee: null,
             storeAddress: null, storePhone: null, storeNotice: null,
             errandBaseFee: null,
+            freeShippingThreshold: null,
             notifyTemplateAccepted: null, notifyTemplateRiderAssigned: null,
             notifyTemplateCookingDone: null, notifyTemplateDelivered: null,
         });
@@ -147,6 +150,7 @@ function makeEnv(opts = {}) {
             deliveryMinutes: null, minOrderAmount: null, deliveryFee: null,
             storeAddress: null, storePhone: null, storeNotice: '公告',
             errandBaseFee: null,
+            freeShippingThreshold: null,
             notifyTemplateAccepted: null, notifyTemplateRiderAssigned: null,
             notifyTemplateCookingDone: null, notifyTemplateDelivered: null,
         });
@@ -165,6 +169,25 @@ function makeEnv(opts = {}) {
             routesEnabled: ['R5'], errandBaseFee: 300,
         });
         (0, vitest_1.expect)(out.errandBaseFee).toBe(300);
+    });
+});
+(0, vitest_1.describe)('WaimaiStoreService.updateStoreConfig freeShippingThreshold（plan 3.2）', () => {
+    (0, vitest_1.it)('负数拒绝', async () => {
+        const env = makeEnv({ channels: [{ id: 2, token: 'canteen', code: '一食堂', customFields: {} }] });
+        await (0, vitest_1.expect)(env.svc.updateStoreConfig({}, 2, {
+            routesEnabled: ['R1'], freeShippingThreshold: -100,
+        })).rejects.toThrow('不能为负数');
+    });
+    (0, vitest_1.it)('持久化并回读（null=不启用）', async () => {
+        const env = makeEnv({ channels: [{ id: 2, token: 'canteen', code: '一食堂', customFields: {} }] });
+        const out = await env.svc.updateStoreConfig({}, 2, {
+            routesEnabled: ['R1'], freeShippingThreshold: 1800,
+        });
+        (0, vitest_1.expect)(out.freeShippingThreshold).toBe(1800);
+        const off = await env.svc.updateStoreConfig({}, 2, {
+            routesEnabled: ['R1'], freeShippingThreshold: null,
+        });
+        (0, vitest_1.expect)(off.freeShippingThreshold).toBeNull();
     });
 });
 (0, vitest_1.describe)('WaimaiStoreService R4 store pickup location upsert', () => {

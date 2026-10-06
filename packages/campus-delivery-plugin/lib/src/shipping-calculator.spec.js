@@ -40,5 +40,36 @@ function makeCtx(channelId) { return { channelId }; }
             (0, vitest_1.expect)(res).toBeUndefined();
         }
     });
+    // ===== plan 3.2 满X免配送费（仅 R1/R3 外卖单） =====
+    (0, vitest_1.it)('R1 达门槛：运费 0 + metadata 划线原价/门槛', async () => {
+        zoneRepo.find.mockResolvedValue([{ name: '东区', fee: 200 }]);
+        cfgRepo.findOne.mockResolvedValue({ errandBaseFee: null, freeShippingThreshold: 1800 });
+        const res = await shipping_calculator_1.campusErrandCalculator.calculate(makeCtx(2), { subTotalWithTax: 2045, customFields: { fulfillmentRoute: 'R1', campusZone: '东区' } }, [], {});
+        (0, vitest_1.expect)(res.price).toBe(0);
+        (0, vitest_1.expect)(res.metadata).toMatchObject({ freeShipping: true, originalPrice: 200, threshold: 1800 });
+    });
+    (0, vitest_1.it)('R1 未达门槛：仍收分区运费', async () => {
+        var _a;
+        zoneRepo.find.mockResolvedValue([{ name: '东区', fee: 200 }]);
+        cfgRepo.findOne.mockResolvedValue({ freeShippingThreshold: 1800 });
+        const res = await shipping_calculator_1.campusErrandCalculator.calculate(makeCtx(2), { subTotalWithTax: 1500, customFields: { fulfillmentRoute: 'R3', campusZone: '东区' } }, [], {});
+        (0, vitest_1.expect)(res.price).toBe(200);
+        (0, vitest_1.expect)((_a = res.metadata) === null || _a === void 0 ? void 0 : _a.freeShipping).toBeUndefined();
+    });
+    (0, vitest_1.it)('R1 门槛 0/null 视为不启用', async () => {
+        zoneRepo.find.mockResolvedValue([{ name: '东区', fee: 200 }]);
+        for (const cfg of [{ freeShippingThreshold: 0 }, { freeShippingThreshold: null }, {}]) {
+            cfgRepo.findOne.mockResolvedValue(cfg);
+            const res = await shipping_calculator_1.campusErrandCalculator.calculate(makeCtx(2), { subTotalWithTax: 999999, customFields: { fulfillmentRoute: 'R1', campusZone: '东区' } }, [], {});
+            (0, vitest_1.expect)(res.price).toBe(200);
+        }
+    });
+    (0, vitest_1.it)('R5 跑腿单不参与满免（达门槛仍收起步价）', async () => {
+        var _a;
+        cfgRepo.findOne.mockResolvedValue({ errandBaseFee: 300, freeShippingThreshold: 100 });
+        const res = await shipping_calculator_1.campusErrandCalculator.calculate(makeCtx(2), { subTotalWithTax: 5000, customFields: { orderKind: 'errand' } }, [], {});
+        (0, vitest_1.expect)(res.price).toBe(300);
+        (0, vitest_1.expect)((_a = res.metadata) === null || _a === void 0 ? void 0 : _a.freeShipping).toBeUndefined();
+    });
 });
 //# sourceMappingURL=shipping-calculator.spec.js.map

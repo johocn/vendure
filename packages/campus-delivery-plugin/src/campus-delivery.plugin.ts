@@ -107,6 +107,7 @@ import { WaimaiStoreService } from './waimai-store.service';
                     compensationCouponTemplateId: String
                     merchantConfirmEnabled: Boolean!
                     merchantAutoOpenMinutes: Int!
+                    freeShippingThreshold: Int
                 }
 
                 input CampusFulfillmentConfigInput {
@@ -234,6 +235,7 @@ import { WaimaiStoreService } from './waimai-store.service';
                     storePhone: String
                     storeNotice: String
                     errandBaseFee: Int
+                    freeShippingThreshold: Int
                     notifyTemplateAccepted: String
                     notifyTemplateRiderAssigned: String
                     notifyTemplateCookingDone: String
@@ -249,6 +251,7 @@ import { WaimaiStoreService } from './waimai-store.service';
                     storePhone: String
                     storeNotice: String
                     errandBaseFee: Int
+                    freeShippingThreshold: Int
                     notifyTemplateAccepted: String
                     notifyTemplateRiderAssigned: String
                     notifyTemplateCookingDone: String
@@ -418,6 +421,7 @@ import { WaimaiStoreService } from './waimai-store.service';
                     storePhone: String
                     storeNotice: String
                     errandBaseFee: Int
+                    freeShippingThreshold: Int
                 }
 
                 type CampusOrderRider {

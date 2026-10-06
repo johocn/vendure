@@ -27,7 +27,7 @@ describe('WaimaiStoreService.listStores', () => {
         const env = makeEnv({
             configs: [
                 { channelId: 1, paused: false, routesEnabled: ['R3'] },   // 默认渠道脏配置：应被跳过
-                { channelId: 2, paused: false, routesEnabled: ['R1', 'R3'], deliveryMinutes: 35, minOrderAmount: 1500, deliveryFee: 200, storeAddress: '东门 1 号楼', storePhone: '13800000000', storeNotice: '周末出餐慢', errandBaseFee: 300 },
+                { channelId: 2, paused: false, routesEnabled: ['R1', 'R3'], deliveryMinutes: 35, minOrderAmount: 1500, deliveryFee: 200, storeAddress: '东门 1 号楼', storePhone: '13800000000', storeNotice: '周末出餐慢', errandBaseFee: 300, freeShippingThreshold: 1800 },
             ],
             channels: [
                 { id: 1, token: 'default', code: '__default_channel__', customFields: {} },
@@ -45,6 +45,7 @@ describe('WaimaiStoreService.listStores', () => {
             deliveryMinutes: 35, minOrderAmount: 1500, deliveryFee: 200,
             storeAddress: '东门 1 号楼', storePhone: '13800000000', storeNotice: '周末出餐慢',
             errandBaseFee: 300,
+            freeShippingThreshold: 1800,
         });
     });
     it('空 tags/缺月售/缺新字段容错（全 null），paused 透传', async () => {
@@ -85,6 +86,7 @@ describe('WaimaiStoreService.listStoreConfigs', () => {
             deliveryMinutes: 35, minOrderAmount: 1500, deliveryFee: 200,
             storeAddress: '东门 1 号楼', storePhone: '13800000000', storeNotice: '周末出餐慢',
             errandBaseFee: null,
+            freeShippingThreshold: null,
             notifyTemplateAccepted: null, notifyTemplateRiderAssigned: null,
             notifyTemplateCookingDone: null, notifyTemplateDelivered: null,
         });
@@ -94,6 +96,7 @@ describe('WaimaiStoreService.listStoreConfigs', () => {
             deliveryMinutes: null, minOrderAmount: null, deliveryFee: null,
             storeAddress: null, storePhone: null, storeNotice: null,
             errandBaseFee: null,
+            freeShippingThreshold: null,
             notifyTemplateAccepted: null, notifyTemplateRiderAssigned: null,
             notifyTemplateCookingDone: null, notifyTemplateDelivered: null,
         });
@@ -152,6 +155,7 @@ describe('WaimaiStoreService.updateStoreConfig', () => {
             deliveryMinutes: null, minOrderAmount: null, deliveryFee: null,
             storeAddress: null, storePhone: null, storeNotice: '公告',
             errandBaseFee: null,
+            freeShippingThreshold: null,
             notifyTemplateAccepted: null, notifyTemplateRiderAssigned: null,
             notifyTemplateCookingDone: null, notifyTemplateDelivered: null,
         });
@@ -171,6 +175,26 @@ describe('WaimaiStoreService.updateStoreConfig errandBaseFee', () => {
             routesEnabled: ['R5'], errandBaseFee: 300,
         } as any);
         expect(out.errandBaseFee).toBe(300);
+    });
+});
+
+describe('WaimaiStoreService.updateStoreConfig freeShippingThreshold（plan 3.2）', () => {
+    it('负数拒绝', async () => {
+        const env = makeEnv({ channels: [{ id: 2, token: 'canteen', code: '一食堂', customFields: {} }] });
+        await expect(env.svc.updateStoreConfig({} as any, 2, {
+            routesEnabled: ['R1'], freeShippingThreshold: -100,
+        } as any)).rejects.toThrow('不能为负数');
+    });
+    it('持久化并回读（null=不启用）', async () => {
+        const env = makeEnv({ channels: [{ id: 2, token: 'canteen', code: '一食堂', customFields: {} }] });
+        const out = await env.svc.updateStoreConfig({} as any, 2, {
+            routesEnabled: ['R1'], freeShippingThreshold: 1800,
+        } as any);
+        expect(out.freeShippingThreshold).toBe(1800);
+        const off = await env.svc.updateStoreConfig({} as any, 2, {
+            routesEnabled: ['R1'], freeShippingThreshold: null,
+        } as any);
+        expect(off.freeShippingThreshold).toBeNull();
     });
 });
 

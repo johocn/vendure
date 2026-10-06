@@ -130,6 +130,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     compensationCouponTemplateId: String
                     merchantConfirmEnabled: Boolean!
                     merchantAutoOpenMinutes: Int!
+                    freeShippingThreshold: Int
                 }
 
                 input CampusFulfillmentConfigInput {
@@ -257,6 +258,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     storePhone: String
                     storeNotice: String
                     errandBaseFee: Int
+                    freeShippingThreshold: Int
                     notifyTemplateAccepted: String
                     notifyTemplateRiderAssigned: String
                     notifyTemplateCookingDone: String
@@ -272,6 +274,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     storePhone: String
                     storeNotice: String
                     errandBaseFee: Int
+                    freeShippingThreshold: Int
                     notifyTemplateAccepted: String
                     notifyTemplateRiderAssigned: String
                     notifyTemplateCookingDone: String
@@ -441,6 +444,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     storePhone: String
                     storeNotice: String
                     errandBaseFee: Int
+                    freeShippingThreshold: Int
                 }
 
                 type CampusOrderRider {

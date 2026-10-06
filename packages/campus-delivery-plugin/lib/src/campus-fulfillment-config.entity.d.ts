@@ -16,6 +16,7 @@ export declare class CampusFulfillmentConfig extends VendureEntity {
     storePhone: string | null;
     storeNotice: string | null;
     errandBaseFee: number | null;
+    freeShippingThreshold: number | null;
     merchantConfirmEnabled: boolean;
     merchantAutoOpenMinutes: number;
     notifyTemplateAccepted: string | null;

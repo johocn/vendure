@@ -19,6 +19,7 @@ export interface WaimaiStore {
     storePhone: string | null;
     storeNotice: string | null;
     errandBaseFee: number | null;
+    freeShippingThreshold: number | null;
 }
 
 export interface CampusStoreConfigWithChannel {
@@ -33,6 +34,7 @@ export interface CampusStoreConfigWithChannel {
     storePhone: string | null;
     storeNotice: string | null;
     errandBaseFee: number | null;
+    freeShippingThreshold: number | null;
     notifyTemplateAccepted: string | null;
     notifyTemplateRiderAssigned: string | null;
     notifyTemplateCookingDone: string | null;
@@ -79,6 +81,7 @@ export class WaimaiStoreService {
                 storePhone: cfg.storePhone ?? null,
                 storeNotice: cfg.storeNotice ?? null,
                 errandBaseFee: cfg.errandBaseFee ?? null,
+                freeShippingThreshold: cfg.freeShippingThreshold ?? null,
             });
         }
         return stores;
@@ -111,6 +114,7 @@ export class WaimaiStoreService {
             storePhone?: string | null;
             storeNotice?: string | null;
             errandBaseFee?: number | null;
+            freeShippingThreshold?: number | null;
             notifyTemplateAccepted?: string | null;
             notifyTemplateRiderAssigned?: string | null;
             notifyTemplateCookingDone?: string | null;
@@ -119,7 +123,7 @@ export class WaimaiStoreService {
     ): Promise<CampusStoreConfigWithChannel> {
         const bad = (input.routesEnabled ?? []).filter(r => !ROUTE_WHITELIST.includes(r));
         if (bad.length) throw new UserInputError(`不支持的配送路线: ${bad.join(', ')}（仅接受 R1-R5）`);
-        const negative = (['deliveryMinutes', 'minOrderAmount', 'deliveryFee', 'errandBaseFee'] as const)
+        const negative = (['deliveryMinutes', 'minOrderAmount', 'deliveryFee', 'errandBaseFee', 'freeShippingThreshold'] as const)
             .filter(k => input[k] != null && (input[k] as number) < 0);
         if (negative.length) throw new UserInputError(`不能为负数: ${negative.join(', ')}`);
         const chRepo = this.connection.getRepository(ctx, Channel);
@@ -136,6 +140,7 @@ export class WaimaiStoreService {
         cfg.storePhone = input.storePhone ?? null;
         cfg.storeNotice = input.storeNotice ?? null;
         cfg.errandBaseFee = input.errandBaseFee ?? null;
+        cfg.freeShippingThreshold = input.freeShippingThreshold ?? null;
         cfg.notifyTemplateAccepted = input.notifyTemplateAccepted ?? null;
         cfg.notifyTemplateRiderAssigned = input.notifyTemplateRiderAssigned ?? null;
         cfg.notifyTemplateCookingDone = input.notifyTemplateCookingDone ?? null;
@@ -194,6 +199,7 @@ export class WaimaiStoreService {
             storePhone: cfg?.storePhone ?? null,
             storeNotice: cfg?.storeNotice ?? null,
             errandBaseFee: cfg?.errandBaseFee ?? null,
+            freeShippingThreshold: cfg?.freeShippingThreshold ?? null,
             notifyTemplateAccepted: cfg?.notifyTemplateAccepted ?? null,
             notifyTemplateRiderAssigned: cfg?.notifyTemplateRiderAssigned ?? null,
             notifyTemplateCookingDone: cfg?.notifyTemplateCookingDone ?? null,

@@ -27,7 +27,7 @@ exports.campusErrandCalculator = new core_1.ShippingCalculator({
     description: [{ languageCode: core_1.LanguageCode.zh, value: '校园配送分区运费' }],
     args: {},
     calculate: async (ctx, order) => {
-        var _a, _b, _c;
+        var _a, _b, _c, _d, _e, _f, _g;
         const cf = ((_a = order.customFields) !== null && _a !== void 0 ? _a : {});
         const route = cf.fulfillmentRoute;
         const isErrand = cf.orderKind === 'errand';
@@ -56,6 +56,19 @@ exports.campusErrandCalculator = new core_1.ShippingCalculator({
         if (!zones.length)
             return undefined;
         const zone = (_c = zones.find(z => z.name === cf.campusZone)) !== null && _c !== void 0 ? _c : zones[0];
+        // 满 X 元免配送费（plan 3.2）：门店级门槛，达标即运费 0（仅 R1/R3 外卖单；跑腿单不参与）
+        const threshold = (_e = (_d = (await conn.rawConnection.getRepository(campus_fulfillment_config_entity_1.CampusFulfillmentConfig).findOne({
+            where: { channelId: ctx.channelId },
+        }))) === null || _d === void 0 ? void 0 : _d.freeShippingThreshold) !== null && _e !== void 0 ? _e : null;
+        const goods = (_g = (_f = order.subTotalWithTax) !== null && _f !== void 0 ? _f : order.subTotal) !== null && _g !== void 0 ? _g : 0;
+        if (threshold != null && threshold > 0 && goods >= threshold) {
+            return {
+                price: 0,
+                priceIncludesTax: true,
+                taxRate: 0,
+                metadata: { zoneName: zone.name, calculator: 'campus-errand', freeShipping: true, originalPrice: zone.fee, threshold },
+            };
+        }
         return {
             price: zone.fee,
             priceIncludesTax: true,

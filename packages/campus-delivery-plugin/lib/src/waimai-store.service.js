@@ -23,7 +23,7 @@ let WaimaiStoreService = class WaimaiStoreService {
     /** 店铺列表：有履约配置的渠道即外卖店铺（跨渠道公开元数据聚合，供 C 端首页）。
      * C 端进入店铺后用 channelToken 作 vendure-token 切换渠道拉菜单/下单。 */
     async listStores(ctx) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o;
         const configs = await this.connection.getRepository(ctx, campus_fulfillment_config_entity_1.CampusFulfillmentConfig).find();
         const byChannel = new Map(configs.map(c => [Number(c.channelId), c]));
         const channels = await this.connection.getRepository(ctx, core_1.Channel).find();
@@ -54,6 +54,7 @@ let WaimaiStoreService = class WaimaiStoreService {
                 storePhone: (_k = cfg.storePhone) !== null && _k !== void 0 ? _k : null,
                 storeNotice: (_l = cfg.storeNotice) !== null && _l !== void 0 ? _l : null,
                 errandBaseFee: (_m = cfg.errandBaseFee) !== null && _m !== void 0 ? _m : null,
+                freeShippingThreshold: (_o = cfg.freeShippingThreshold) !== null && _o !== void 0 ? _o : null,
             });
         }
         return stores;
@@ -74,11 +75,11 @@ let WaimaiStoreService = class WaimaiStoreService {
     }
     /** admin：按 channelId upsert（幂等），routesEnabled 白名单 R1-R5，负数金额拒绝 */
     async updateStoreConfig(ctx, channelId, input) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q;
         const bad = ((_a = input.routesEnabled) !== null && _a !== void 0 ? _a : []).filter(r => !ROUTE_WHITELIST.includes(r));
         if (bad.length)
             throw new core_1.UserInputError(`不支持的配送路线: ${bad.join(', ')}（仅接受 R1-R5）`);
-        const negative = ['deliveryMinutes', 'minOrderAmount', 'deliveryFee', 'errandBaseFee']
+        const negative = ['deliveryMinutes', 'minOrderAmount', 'deliveryFee', 'errandBaseFee', 'freeShippingThreshold']
             .filter(k => input[k] != null && input[k] < 0);
         if (negative.length)
             throw new core_1.UserInputError(`不能为负数: ${negative.join(', ')}`);
@@ -98,15 +99,16 @@ let WaimaiStoreService = class WaimaiStoreService {
         cfg.storePhone = (_f = input.storePhone) !== null && _f !== void 0 ? _f : null;
         cfg.storeNotice = (_g = input.storeNotice) !== null && _g !== void 0 ? _g : null;
         cfg.errandBaseFee = (_h = input.errandBaseFee) !== null && _h !== void 0 ? _h : null;
-        cfg.notifyTemplateAccepted = (_j = input.notifyTemplateAccepted) !== null && _j !== void 0 ? _j : null;
-        cfg.notifyTemplateRiderAssigned = (_k = input.notifyTemplateRiderAssigned) !== null && _k !== void 0 ? _k : null;
-        cfg.notifyTemplateCookingDone = (_l = input.notifyTemplateCookingDone) !== null && _l !== void 0 ? _l : null;
-        cfg.notifyTemplateDelivered = (_m = input.notifyTemplateDelivered) !== null && _m !== void 0 ? _m : null;
+        cfg.freeShippingThreshold = (_j = input.freeShippingThreshold) !== null && _j !== void 0 ? _j : null;
+        cfg.notifyTemplateAccepted = (_k = input.notifyTemplateAccepted) !== null && _k !== void 0 ? _k : null;
+        cfg.notifyTemplateRiderAssigned = (_l = input.notifyTemplateRiderAssigned) !== null && _l !== void 0 ? _l : null;
+        cfg.notifyTemplateCookingDone = (_m = input.notifyTemplateCookingDone) !== null && _m !== void 0 ? _m : null;
+        cfg.notifyTemplateDelivered = (_o = input.notifyTemplateDelivered) !== null && _o !== void 0 ? _o : null;
         await repo.save(cfg);
-        const address = ((_o = input.storeAddress) !== null && _o !== void 0 ? _o : '').trim();
+        const address = ((_p = input.storeAddress) !== null && _p !== void 0 ? _p : '').trim();
         if (address) {
             // R4：同步幂等 upsert 本渠道门店自提点（名称=店铺名，地址=storeAddress），核销走 pickup_redemption 零新表
-            await this.upsertStorePickupLocation(Number(channelId), ch.code, address, ((_p = input.storePhone) !== null && _p !== void 0 ? _p : '').trim() || null);
+            await this.upsertStorePickupLocation(Number(channelId), ch.code, address, ((_q = input.storePhone) !== null && _q !== void 0 ? _q : '').trim() || null);
         }
         return this.toConfigView(channelId, ch.code, ch.token, cfg);
     }
@@ -137,7 +139,7 @@ let WaimaiStoreService = class WaimaiStoreService {
         });
     }
     toConfigView(channelId, channelName, channelToken, cfg) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o;
         return {
             channelId,
             channelName,
@@ -150,10 +152,11 @@ let WaimaiStoreService = class WaimaiStoreService {
             storePhone: (_f = cfg === null || cfg === void 0 ? void 0 : cfg.storePhone) !== null && _f !== void 0 ? _f : null,
             storeNotice: (_g = cfg === null || cfg === void 0 ? void 0 : cfg.storeNotice) !== null && _g !== void 0 ? _g : null,
             errandBaseFee: (_h = cfg === null || cfg === void 0 ? void 0 : cfg.errandBaseFee) !== null && _h !== void 0 ? _h : null,
-            notifyTemplateAccepted: (_j = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateAccepted) !== null && _j !== void 0 ? _j : null,
-            notifyTemplateRiderAssigned: (_k = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateRiderAssigned) !== null && _k !== void 0 ? _k : null,
-            notifyTemplateCookingDone: (_l = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateCookingDone) !== null && _l !== void 0 ? _l : null,
-            notifyTemplateDelivered: (_m = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateDelivered) !== null && _m !== void 0 ? _m : null,
+            freeShippingThreshold: (_j = cfg === null || cfg === void 0 ? void 0 : cfg.freeShippingThreshold) !== null && _j !== void 0 ? _j : null,
+            notifyTemplateAccepted: (_k = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateAccepted) !== null && _k !== void 0 ? _k : null,
+            notifyTemplateRiderAssigned: (_l = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateRiderAssigned) !== null && _l !== void 0 ? _l : null,
+            notifyTemplateCookingDone: (_m = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateCookingDone) !== null && _m !== void 0 ? _m : null,
+            notifyTemplateDelivered: (_o = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateDelivered) !== null && _o !== void 0 ? _o : null,
         };
     }
 };

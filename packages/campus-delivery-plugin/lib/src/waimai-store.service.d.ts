@@ -16,6 +16,7 @@ export interface WaimaiStore {
     storePhone: string | null;
     storeNotice: string | null;
     errandBaseFee: number | null;
+    freeShippingThreshold: number | null;
 }
 export interface CampusStoreConfigWithChannel {
     channelId: number;
@@ -29,6 +30,7 @@ export interface CampusStoreConfigWithChannel {
     storePhone: string | null;
     storeNotice: string | null;
     errandBaseFee: number | null;
+    freeShippingThreshold: number | null;
     notifyTemplateAccepted: string | null;
     notifyTemplateRiderAssigned: string | null;
     notifyTemplateCookingDone: string | null;
@@ -52,6 +54,7 @@ export declare class WaimaiStoreService {
         storePhone?: string | null;
         storeNotice?: string | null;
         errandBaseFee?: number | null;
+        freeShippingThreshold?: number | null;
         notifyTemplateAccepted?: string | null;
         notifyTemplateRiderAssigned?: string | null;
         notifyTemplateCookingDone?: string | null;

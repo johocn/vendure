@@ -51,6 +51,19 @@ export const campusErrandCalculator = new ShippingCalculator({
         })) as Array<CampusZone & { id: ID }>;
         if (!zones.length) return undefined;
         const zone = zones.find(z => z.name === cf.campusZone) ?? zones[0];
+        // 满 X 元免配送费（plan 3.2）：门店级门槛，达标即运费 0（仅 R1/R3 外卖单；跑腿单不参与）
+        const threshold = (await conn.rawConnection.getRepository(CampusFulfillmentConfig).findOne({
+            where: { channelId: ctx.channelId as any },
+        }))?.freeShippingThreshold ?? null;
+        const goods = order.subTotalWithTax ?? order.subTotal ?? 0;
+        if (threshold != null && threshold > 0 && goods >= threshold) {
+            return {
+                price: 0,
+                priceIncludesTax: true,
+                taxRate: 0,
+                metadata: { zoneName: zone.name, calculator: 'campus-errand', freeShipping: true, originalPrice: zone.fee, threshold },
+            };
+        }
         return {
             price: zone.fee,
             priceIncludesTax: true,

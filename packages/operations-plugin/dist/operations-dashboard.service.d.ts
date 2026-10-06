@@ -5,6 +5,12 @@ export declare class OperationsDashboardService {
     constructor(connection: TransactionalConnection);
     private getRange;
     private getDaysAgoStart;
+    /**
+     * 解析 customFields 子字段的物理列名（embedded 列名随 TypeORM 命名策略生成，
+     * 如 deliveryStatus → customFieldsDeliverystatus，无下划线，不能硬编码）。
+     * 字段未注册（对应插件未启用）时返回 null，调用方应优雅降级。
+     */
+    private cfColumnName;
     getSalesMetrics(ctx: RequestContext, range: DashboardRange): Promise<{
         orderCount: number;
         gmv: number;
