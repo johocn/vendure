@@ -18,7 +18,7 @@ import {
 import { loggerCtx, REVIEW_PLUGIN_OPTIONS } from './constants';
 import { Review } from './review.entity';
 import { ReviewPluginOptions } from './types';
-import { Between, FindOperator, IsNull, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import { Between, FindOperator, IsNull, LessThanOrEqual, MoreThanOrEqual, SelectQueryBuilder } from 'typeorm';
 import {
     CreateReviewInput,
     FollowUpReviewInput,
@@ -47,6 +47,53 @@ function buildRatingFilter(min?: number, max?: number): FindOperator<number> | u
     if (hasMin) return MoreThanOrEqual(min!);
     if (hasMax) return LessThanOrEqual(max!);
     return undefined;
+}
+
+/** simple-json 列「有图」过滤：images 为非空 JSON 数组（PG text 存储口径）。 */
+function applyHasImagesFilter(qb: SelectQueryBuilder<Review>, options?: ReviewListOptions): void {
+    if (options?.hasImages === true) {
+        qb.andWhere(`("images" IS NOT NULL AND "images" <> '[]')`);
+    }
+}
+
+/** approved 主评集合 → 统计摘要（商品级与店铺级共用）。 */
+function computeStats(reviews: Review[]): ReviewStats {
+    const totalCount = reviews.length;
+    if (totalCount === 0) {
+        return {
+            totalCount: 0,
+            goodRate: 0,
+            averageRating: 0,
+            ratingDistribution: [1, 2, 3, 4, 5].map(rating => ({ rating, count: 0 })),
+            topTags: [],
+        };
+    }
+    const goodCount = reviews.filter(r => r.rating >= 4).length;
+    const goodRate = Math.round((goodCount / totalCount) * 1000) / 10;
+    const sum = reviews.reduce((acc, r) => acc + r.rating, 0);
+    const averageRating = Math.round((sum / totalCount) * 10) / 10;
+
+    const distMap = new Map<number, number>();
+    for (const r of reviews) {
+        distMap.set(r.rating, (distMap.get(r.rating) ?? 0) + 1);
+    }
+    const ratingDistribution: RatingCount[] = [1, 2, 3, 4, 5].map(rating => ({
+        rating,
+        count: distMap.get(rating) ?? 0,
+    }));
+
+    const tagMap = new Map<string, number>();
+    for (const r of reviews) {
+        for (const tag of r.tags ?? []) {
+            tagMap.set(tag, (tagMap.get(tag) ?? 0) + 1);
+        }
+    }
+    const topTags: TagCount[] = [...tagMap.entries()]
+        .map(([tag, count]) => ({ tag, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10);
+
+    return { totalCount, goodRate, averageRating, ratingDistribution, topTags };
 }
 
 @Injectable()
@@ -286,7 +333,7 @@ export class ReviewService {
         options?: ReviewListOptions,
     ): Promise<PaginatedList<Review>> {
         const ratingFilter = buildRatingFilter(options?.ratingMin, options?.ratingMax);
-        return this.listQueryBuilder
+        const qb = this.listQueryBuilder
             .build(
                 Review,
                 { ...options },
@@ -301,9 +348,49 @@ export class ReviewService {
                         ...(ratingFilter ? { rating: ratingFilter } : {}),
                     } as any,
                 },
-            )
+            );
+        applyHasImagesFilter(qb, options);
+        return qb
             .getManyAndCount()
             .then(([items, totalItems]) => ({ items, totalItems }));
+    }
+
+    /** C 端店铺级评论流：当前渠道全部 approved 主评（menu 评论 tab 数据源）。 */
+    async getChannelReviews(ctx: RequestContext, options?: ReviewListOptions): Promise<PaginatedList<Review>> {
+        const ratingFilter = buildRatingFilter(options?.ratingMin, options?.ratingMax);
+        const qb = this.listQueryBuilder
+            .build(
+                Review,
+                { ...options },
+                {
+                    ctx,
+                    relations: ['channels'],
+                    channelId: ctx.channelId,
+                    where: {
+                        status: VISIBLE_STATUS,
+                        parentId: IsNull(),
+                        ...(ratingFilter ? { rating: ratingFilter } : {}),
+                    } as any,
+                },
+            );
+        applyHasImagesFilter(qb, options);
+        return qb
+            .getManyAndCount()
+            .then(([items, totalItems]) => ({ items, totalItems }));
+    }
+
+    /** C 端店铺级统计：当前渠道全店 approved 主评（摘要卡：均分/好评率/分布/标签）。 */
+    async getChannelReviewStats(ctx: RequestContext): Promise<ReviewStats> {
+        const reviews = await this.connection
+            .getRepository(ctx, Review)
+            .find({
+                where: {
+                    channelId: ctx.channelId as number,
+                    status: VISIBLE_STATUS,
+                    parentId: IsNull(),
+                } as any,
+            });
+        return computeStats(reviews);
     }
 
     async getMyReviews(ctx: RequestContext): Promise<Review[]> {
@@ -326,46 +413,10 @@ export class ReviewService {
     }
 
     async getReviewStats(ctx: RequestContext, productId: ID): Promise<ReviewStats> {
-        const repo = this.connection.getRepository(ctx, Review);
-        const reviews = await repo.find({
+        const reviews = await this.connection.getRepository(ctx, Review).find({
             where: { productId: Number(productId), status: VISIBLE_STATUS, parentId: IsNull() } as any,
         });
-        const totalCount = reviews.length;
-        if (totalCount === 0) {
-            return {
-                totalCount: 0,
-                goodRate: 0,
-                averageRating: 0,
-                ratingDistribution: [1, 2, 3, 4, 5].map(rating => ({ rating, count: 0 })),
-                topTags: [],
-            };
-        }
-        const goodCount = reviews.filter(r => r.rating >= 4).length;
-        const goodRate = Math.round((goodCount / totalCount) * 1000) / 10;
-        const sum = reviews.reduce((acc, r) => acc + r.rating, 0);
-        const averageRating = Math.round((sum / totalCount) * 10) / 10;
-
-        const distMap = new Map<number, number>();
-        for (const r of reviews) {
-            distMap.set(r.rating, (distMap.get(r.rating) ?? 0) + 1);
-        }
-        const ratingDistribution: RatingCount[] = [1, 2, 3, 4, 5].map(rating => ({
-            rating,
-            count: distMap.get(rating) ?? 0,
-        }));
-
-        const tagMap = new Map<string, number>();
-        for (const r of reviews) {
-            for (const tag of r.tags ?? []) {
-                tagMap.set(tag, (tagMap.get(tag) ?? 0) + 1);
-            }
-        }
-        const topTags: TagCount[] = [...tagMap.entries()]
-            .map(([tag, count]) => ({ tag, count }))
-            .sort((a, b) => b.count - a.count)
-            .slice(0, 10);
-
-        return { totalCount, goodRate, averageRating, ratingDistribution, topTags };
+        return computeStats(reviews);
     }
 
     async markHelpful(ctx: RequestContext, id: ID): Promise<Review> {

@@ -47,6 +47,8 @@ export interface ReviewListOptions extends ListQueryOptions<Review> {
     ratingMin?: number;
     /** C 端星级档筛选上界（含）。 */
     ratingMax?: number;
+    /** C 端「有图」筛选：images 非空数组。 */
+    hasImages?: boolean;
 }
 
 export interface RatingCount {

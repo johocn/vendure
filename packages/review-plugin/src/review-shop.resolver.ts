@@ -30,6 +30,20 @@ export class ReviewShopResolver {
         return this.reviewService.getReviewStats(ctx, productId);
     }
 
+    /** 店铺级评论流：当前渠道全部 approved 主评（menu 评论 tab 数据源）。 */
+    @Query()
+    @Allow(Permission.Public)
+    async channelReviews(@Ctx() ctx: RequestContext, @Args('options', { nullable: true }) options: any): Promise<any> {
+        return this.reviewService.getChannelReviews(ctx, options);
+    }
+
+    /** 店铺级统计：当前渠道全店 approved 主评（摘要卡）。 */
+    @Query()
+    @Allow(Permission.Public)
+    async channelReviewStats(@Ctx() ctx: RequestContext): Promise<any> {
+        return this.reviewService.getChannelReviewStats(ctx);
+    }
+
     @Query()
     @Allow(Permission.Public)
     async productRating(@Ctx() ctx: RequestContext, @Args('productId') productId: ID): Promise<any> {

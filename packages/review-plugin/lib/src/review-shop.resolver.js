@@ -30,6 +30,14 @@ let ReviewShopResolver = class ReviewShopResolver {
     async reviewStats(ctx, productId) {
         return this.reviewService.getReviewStats(ctx, productId);
     }
+    /** 店铺级评论流：当前渠道全部 approved 主评（menu 评论 tab 数据源）。 */
+    async channelReviews(ctx, options) {
+        return this.reviewService.getChannelReviews(ctx, options);
+    }
+    /** 店铺级统计：当前渠道全店 approved 主评（摘要卡）。 */
+    async channelReviewStats(ctx) {
+        return this.reviewService.getChannelReviewStats(ctx);
+    }
     async productRating(ctx, productId) {
         return this.reviewService.getProductRating(ctx, productId);
     }
@@ -83,6 +91,23 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], ReviewShopResolver.prototype, "reviewStats", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Public),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('options', { nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], ReviewShopResolver.prototype, "channelReviews", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Public),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], ReviewShopResolver.prototype, "channelReviewStats", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(core_1.Permission.Public),

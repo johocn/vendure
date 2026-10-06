@@ -23,6 +23,10 @@ export declare class ReviewService {
     getReviews(ctx: RequestContext, options?: ReviewListOptions): Promise<PaginatedList<Review>>;
     /** C 端商品列表：仅对外可见（approved）的主评 + 追评（followUps 由 ResolveField 加载）。 */
     getProductReviews(ctx: RequestContext, productId: ID, options?: ReviewListOptions): Promise<PaginatedList<Review>>;
+    /** C 端店铺级评论流：当前渠道全部 approved 主评（menu 评论 tab 数据源）。 */
+    getChannelReviews(ctx: RequestContext, options?: ReviewListOptions): Promise<PaginatedList<Review>>;
+    /** C 端店铺级统计：当前渠道全店 approved 主评（摘要卡：均分/好评率/分布/标签）。 */
+    getChannelReviewStats(ctx: RequestContext): Promise<ReviewStats>;
     getMyReviews(ctx: RequestContext): Promise<Review[]>;
     getReviewFollowUps(ctx: RequestContext, review: Review): Promise<Review[]>;
     getReviewStats(ctx: RequestContext, productId: ID): Promise<ReviewStats>;

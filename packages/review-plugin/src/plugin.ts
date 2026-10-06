@@ -127,6 +127,7 @@ const shopSchema = () => gql`
         take: Int
         ratingMin: Int
         ratingMax: Int
+        hasImages: Boolean
     }
 
     input CreateReviewInput {
@@ -187,6 +188,8 @@ const shopSchema = () => gql`
         myReviews: [Review!]!
         reviewStats(productId: ID!): ReviewStats!
         productRating(productId: ID!): ProductRating!
+        channelReviews(options: ReviewListOptions): ReviewList!
+        channelReviewStats: ReviewStats!
     }
 
     extend type Mutation {

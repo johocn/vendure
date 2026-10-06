@@ -38,6 +38,52 @@ function buildRatingFilter(min, max) {
         return (0, typeorm_1.LessThanOrEqual)(max);
     return undefined;
 }
+/** simple-json 列「有图」过滤：images 为非空 JSON 数组（PG text 存储口径）。 */
+function applyHasImagesFilter(qb, options) {
+    if ((options === null || options === void 0 ? void 0 : options.hasImages) === true) {
+        qb.andWhere(`("images" IS NOT NULL AND "images" <> '[]')`);
+    }
+}
+/** approved 主评集合 → 统计摘要（商品级与店铺级共用）。 */
+function computeStats(reviews) {
+    var _a, _b, _c;
+    const totalCount = reviews.length;
+    if (totalCount === 0) {
+        return {
+            totalCount: 0,
+            goodRate: 0,
+            averageRating: 0,
+            ratingDistribution: [1, 2, 3, 4, 5].map(rating => ({ rating, count: 0 })),
+            topTags: [],
+        };
+    }
+    const goodCount = reviews.filter(r => r.rating >= 4).length;
+    const goodRate = Math.round((goodCount / totalCount) * 1000) / 10;
+    const sum = reviews.reduce((acc, r) => acc + r.rating, 0);
+    const averageRating = Math.round((sum / totalCount) * 10) / 10;
+    const distMap = new Map();
+    for (const r of reviews) {
+        distMap.set(r.rating, ((_a = distMap.get(r.rating)) !== null && _a !== void 0 ? _a : 0) + 1);
+    }
+    const ratingDistribution = [1, 2, 3, 4, 5].map(rating => {
+        var _a;
+        return ({
+            rating,
+            count: (_a = distMap.get(rating)) !== null && _a !== void 0 ? _a : 0,
+        });
+    });
+    const tagMap = new Map();
+    for (const r of reviews) {
+        for (const tag of (_b = r.tags) !== null && _b !== void 0 ? _b : []) {
+            tagMap.set(tag, ((_c = tagMap.get(tag)) !== null && _c !== void 0 ? _c : 0) + 1);
+        }
+    }
+    const topTags = [...tagMap.entries()]
+        .map(([tag, count]) => ({ tag, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10);
+    return { totalCount, goodRate, averageRating, ratingDistribution, topTags };
+}
 let ReviewService = class ReviewService {
     constructor(options = {}, connection, listQueryBuilder, customerService, productService) {
         this.options = options;
@@ -254,15 +300,45 @@ let ReviewService = class ReviewService {
     /** C 端商品列表：仅对外可见（approved）的主评 + 追评（followUps 由 ResolveField 加载）。 */
     async getProductReviews(ctx, productId, options) {
         const ratingFilter = buildRatingFilter(options === null || options === void 0 ? void 0 : options.ratingMin, options === null || options === void 0 ? void 0 : options.ratingMax);
-        return this.listQueryBuilder
+        const qb = this.listQueryBuilder
             .build(review_entity_1.Review, Object.assign({}, options), {
             ctx,
             relations: ['channels'],
             channelId: ctx.channelId,
             where: Object.assign({ productId: Number(productId), status: VISIBLE_STATUS, parentId: (0, typeorm_1.IsNull)() }, (ratingFilter ? { rating: ratingFilter } : {})),
-        })
+        });
+        applyHasImagesFilter(qb, options);
+        return qb
             .getManyAndCount()
             .then(([items, totalItems]) => ({ items, totalItems }));
+    }
+    /** C 端店铺级评论流：当前渠道全部 approved 主评（menu 评论 tab 数据源）。 */
+    async getChannelReviews(ctx, options) {
+        const ratingFilter = buildRatingFilter(options === null || options === void 0 ? void 0 : options.ratingMin, options === null || options === void 0 ? void 0 : options.ratingMax);
+        const qb = this.listQueryBuilder
+            .build(review_entity_1.Review, Object.assign({}, options), {
+            ctx,
+            relations: ['channels'],
+            channelId: ctx.channelId,
+            where: Object.assign({ status: VISIBLE_STATUS, parentId: (0, typeorm_1.IsNull)() }, (ratingFilter ? { rating: ratingFilter } : {})),
+        });
+        applyHasImagesFilter(qb, options);
+        return qb
+            .getManyAndCount()
+            .then(([items, totalItems]) => ({ items, totalItems }));
+    }
+    /** C 端店铺级统计：当前渠道全店 approved 主评（摘要卡：均分/好评率/分布/标签）。 */
+    async getChannelReviewStats(ctx) {
+        const reviews = await this.connection
+            .getRepository(ctx, review_entity_1.Review)
+            .find({
+            where: {
+                channelId: ctx.channelId,
+                status: VISIBLE_STATUS,
+                parentId: (0, typeorm_1.IsNull)(),
+            },
+        });
+        return computeStats(reviews);
     }
     async getMyReviews(ctx) {
         const customer = await this.requireCustomer(ctx);
@@ -282,47 +358,10 @@ let ReviewService = class ReviewService {
         });
     }
     async getReviewStats(ctx, productId) {
-        var _a, _b, _c;
-        const repo = this.connection.getRepository(ctx, review_entity_1.Review);
-        const reviews = await repo.find({
+        const reviews = await this.connection.getRepository(ctx, review_entity_1.Review).find({
             where: { productId: Number(productId), status: VISIBLE_STATUS, parentId: (0, typeorm_1.IsNull)() },
         });
-        const totalCount = reviews.length;
-        if (totalCount === 0) {
-            return {
-                totalCount: 0,
-                goodRate: 0,
-                averageRating: 0,
-                ratingDistribution: [1, 2, 3, 4, 5].map(rating => ({ rating, count: 0 })),
-                topTags: [],
-            };
-        }
-        const goodCount = reviews.filter(r => r.rating >= 4).length;
-        const goodRate = Math.round((goodCount / totalCount) * 1000) / 10;
-        const sum = reviews.reduce((acc, r) => acc + r.rating, 0);
-        const averageRating = Math.round((sum / totalCount) * 10) / 10;
-        const distMap = new Map();
-        for (const r of reviews) {
-            distMap.set(r.rating, ((_a = distMap.get(r.rating)) !== null && _a !== void 0 ? _a : 0) + 1);
-        }
-        const ratingDistribution = [1, 2, 3, 4, 5].map(rating => {
-            var _a;
-            return ({
-                rating,
-                count: (_a = distMap.get(rating)) !== null && _a !== void 0 ? _a : 0,
-            });
-        });
-        const tagMap = new Map();
-        for (const r of reviews) {
-            for (const tag of (_b = r.tags) !== null && _b !== void 0 ? _b : []) {
-                tagMap.set(tag, ((_c = tagMap.get(tag)) !== null && _c !== void 0 ? _c : 0) + 1);
-            }
-        }
-        const topTags = [...tagMap.entries()]
-            .map(([tag, count]) => ({ tag, count }))
-            .sort((a, b) => b.count - a.count)
-            .slice(0, 10);
-        return { totalCount, goodRate, averageRating, ratingDistribution, topTags };
+        return computeStats(reviews);
     }
     async markHelpful(ctx, id) {
         const review = await this.connection.getEntityOrThrow(ctx, review_entity_1.Review, id);
