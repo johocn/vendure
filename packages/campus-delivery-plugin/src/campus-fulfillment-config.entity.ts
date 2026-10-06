@@ -20,6 +20,8 @@ export class CampusFulfillmentConfig extends VendureEntity {
     @Column({ type: 'varchar', nullable: true }) storePhone: string | null; // 联系电话
     @Column({ type: 'varchar', nullable: true }) storeNotice: string | null; // 店铺公告
     @Column({ type: 'int', nullable: true }) errandBaseFee: number | null; // R5 跑腿起步价（分；null=默认 200）
+    @Column({ default: false }) merchantConfirmEnabled: boolean; // 商家接单确认模式：支付后先待商家接单，出餐完成才入大厅
+    @Column({ type: 'int', default: 15 }) merchantAutoOpenMinutes: number; // 商家未处理（待接单/备餐中）超时自动入厅，防卡单
     constructor(input?: DeepPartial<CampusFulfillmentConfig>) {
         super(input);
     }

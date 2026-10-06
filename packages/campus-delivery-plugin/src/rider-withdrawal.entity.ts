@@ -13,7 +13,7 @@ export class RiderWithdrawalRequest extends VendureEntity {
     @Column({ type: 'varchar', default: 'PENDING' }) status: 'PENDING' | 'PAID' | 'REJECTED';
     @Column({ type: 'varchar', nullable: true }) remark: string | null;
     @Column({ type: 'varchar', nullable: true }) reviewedBy: string | null;
-    @Column({ type: 'datetime', nullable: true }) reviewedAt: Date | null;
+    @Column({ type: 'timestamp', nullable: true }) reviewedAt: Date | null;
     constructor(input?: DeepPartial<RiderWithdrawalRequest>) {
         super(input);
     }

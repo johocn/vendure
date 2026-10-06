@@ -89,7 +89,7 @@ let DispatchJobService = class DispatchJobService {
         const orders = await repo.createQueryBuilder('order')
             .leftJoin('order.channels', 'channel')
             .where('channel.id = :ch', { ch: ctx.channelId })
-            .andWhere("order.customFields.hallStatus IN ('open', 'grabbed')")
+            .andWhere("order.customFields.hallStatus IN ('open', 'grabbed', 'pending_merchant', 'accepted')")
             .getMany();
         const now = Date.now();
         // 1) assigned 超 15min 未取货 → 回大厅 + 扣分
@@ -108,6 +108,23 @@ let DispatchJobService = class DispatchJobService {
             .getRepository(ctx, campus_fulfillment_config_entity_1.CampusFulfillmentConfig)
             .findOne({ where: { channelId: ctx.channelId } });
         if (cfg) {
+            // 0) 商家确认模式卡单兜底：待接单/备餐中超 merchantAutoOpenMinutes 自动入厅
+            // （跳过商家确认，campusCause 留痕；以支付时间 createdAt 为基准）
+            if (cfg.merchantConfirmEnabled) {
+                const merchantStale = orders.filter(o => {
+                    var _a;
+                    const cf = o.customFields;
+                    return (cf.hallStatus === 'pending_merchant' || cf.hallStatus === 'accepted')
+                        && now - new Date(o.createdAt).getTime() > ((_a = cfg.merchantAutoOpenMinutes) !== null && _a !== void 0 ? _a : 15) * 60000;
+                });
+                for (const o of merchantStale) {
+                    await this.hall.updateOrder(ctx, o.id, {
+                        customFields: { hallStatus: 'open', hallEnteredAt: new Date(), campusCause: 'merchant_timeout' },
+                    });
+                    core_2.Logger.warn(`Order ${o.code} auto-opened (merchant not responding)`, 'CampusDispatch');
+                    o.customFields.hallStatus = 'open';
+                }
+            }
             const riders = await this.capacity.listOnlineRiders(ctx);
             const eligible = riders
                 .filter(r => { var _a; return ((_a = r.customFields.riderCredit) !== null && _a !== void 0 ? _a : 100) >= rider_credit_service_1.CREDIT_LIMIT; })

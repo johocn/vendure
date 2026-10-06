@@ -30,6 +30,8 @@ import { HallShopResolver } from './hall-shop.resolver';
 import { CreateCampusTablesMigration } from './migrations/create-campus-tables';
 import { bindMinOrderConnection, campusMinOrderProcess } from './min-order.process';
 import { campusPermissionDefinitions } from './permissions';
+import { MerchantAdminResolver } from './merchant-admin.resolver';
+import { MerchantAdminService } from './merchant-admin.service';
 import { R2MarkService } from './r2-mark.service';
 import { R2ShopResolver } from './r2-shop.resolver';
 import { R4TagService } from './r4-tag.service';
@@ -70,6 +72,7 @@ import { WaimaiStoreService } from './waimai-store.service';
         R4TagService,
         ShippingProfileEnsureService,
         WaimaiStoreService,
+        MerchantAdminService,
     ],
     adminApiExtensions: {
         schema: () => {
@@ -100,6 +103,8 @@ import { WaimaiStoreService } from './waimai-store.service';
                     autoRefundMinutes: Int!
                     inProgressSlaMinutes: Int!
                     compensationCouponTemplateId: String
+                    merchantConfirmEnabled: Boolean!
+                    merchantAutoOpenMinutes: Int!
                 }
 
                 input CampusFulfillmentConfigInput {
@@ -110,6 +115,8 @@ import { WaimaiStoreService } from './waimai-store.service';
                     autoRefundMinutes: Int
                     inProgressSlaMinutes: Int
                     compensationCouponTemplateId: String
+                    merchantConfirmEnabled: Boolean
+                    merchantAutoOpenMinutes: Int
                 }
 
                 type DeliverySlot {
@@ -141,6 +148,36 @@ import { WaimaiStoreService } from './waimai-store.service';
 
                 type CampusSetRiderStatusResult {
                     status: String!
+                }
+
+                type MerchantBoardLine {
+                    name: String!
+                    quantity: Int!
+                    price: Int!
+                }
+
+                type MerchantBoardOrder {
+                    id: ID!
+                    code: String!
+                    createdAt: DateTime!
+                    total: Int!
+                    building: String!
+                    zone: String!
+                    slotText: String!
+                    route: String!
+                    riderName: String
+                    lines: [MerchantBoardLine!]!
+                }
+
+                type CampusMerchantBoard {
+                    paused: Boolean!
+                    merchantConfirmEnabled: Boolean!
+                    pending: [MerchantBoardOrder!]!
+                    cooking: [MerchantBoardOrder!]!
+                    awaitingRider: [MerchantBoardOrder!]!
+                    delivering: [MerchantBoardOrder!]!
+                    completedToday: Int!
+                    completedTodayAmount: Int!
                 }
 
                 type DispatchAlert {
@@ -229,6 +266,7 @@ import { WaimaiStoreService } from './waimai-store.service';
                     riderApplications(status: String!): [Customer!]!
                     campusDispatchBoard: CampusDispatchBoard!
                     campusStoreConfigs: [CampusStoreConfigWithChannel!]!
+                    campusMerchantBoard: CampusMerchantBoard!
                     riderWithdrawals(status: String, skip: Int, take: Int): [RiderWithdrawalRequest!]!
                 }
 
@@ -244,12 +282,19 @@ import { WaimaiStoreService } from './waimai-store.service';
                     campusEnsureErrandProducts: CampusErrandProductResult!
                     campusUpdateStoreConfig(channelId: ID!, input: CampusStoreConfigInput!): CampusStoreConfigWithChannel!
                     campusEnsureDefaultShippingProfile(channelId: ID!): CampusEnsureProfileResult!
+                    campusMerchantAcceptOrder(orderId: ID!): CampusMerchantOpResult!
+                    campusMerchantCookingDone(orderId: ID!): CampusMerchantOpResult!
+                    campusMerchantSetPaused(paused: Boolean!): CampusMerchantOpResult!
                     approveRiderWithdraw(id: ID!, remark: String): RiderWithdrawalRequest!
                     rejectRiderWithdraw(id: ID!, remark: String): RiderWithdrawalRequest!
                 }
+
+                type CampusMerchantOpResult {
+                    ok: Boolean!
+                }
             `;
         },
-        resolvers: [CampusConfigAdminResolver, RiderAdminResolver, DispatchAdminResolver],
+        resolvers: [CampusConfigAdminResolver, RiderAdminResolver, DispatchAdminResolver, MerchantAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {

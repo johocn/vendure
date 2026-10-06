@@ -98,7 +98,7 @@ export class DispatchJobService implements OnApplicationShutdown {
         const orders = await repo.createQueryBuilder('order')
             .leftJoin('order.channels', 'channel')
             .where('channel.id = :ch', { ch: ctx.channelId as any })
-            .andWhere("order.customFields.hallStatus IN ('open', 'grabbed')")
+            .andWhere("order.customFields.hallStatus IN ('open', 'grabbed', 'pending_merchant', 'accepted')")
             .getMany();
         const now = Date.now();
 
@@ -119,6 +119,22 @@ export class DispatchJobService implements OnApplicationShutdown {
             .getRepository(ctx, CampusFulfillmentConfig)
             .findOne({ where: { channelId: ctx.channelId as any } });
         if (cfg) {
+            // 0) 商家确认模式卡单兜底：待接单/备餐中超 merchantAutoOpenMinutes 自动入厅
+            // （跳过商家确认，campusCause 留痕；以支付时间 createdAt 为基准）
+            if (cfg.merchantConfirmEnabled) {
+                const merchantStale = orders.filter(o => {
+                    const cf = o.customFields as any;
+                    return (cf.hallStatus === 'pending_merchant' || cf.hallStatus === 'accepted')
+                        && now - new Date(o.createdAt).getTime() > (cfg.merchantAutoOpenMinutes ?? 15) * 60_000;
+                });
+                for (const o of merchantStale) {
+                    await this.hall.updateOrder(ctx, o.id as any, {
+                        customFields: { hallStatus: 'open', hallEnteredAt: new Date(), campusCause: 'merchant_timeout' },
+                    } as any);
+                    Logger.warn(`Order ${o.code} auto-opened (merchant not responding)`, 'CampusDispatch');
+                    (o.customFields as any).hallStatus = 'open';
+                }
+            }
             const riders = await this.capacity.listOnlineRiders(ctx);
             const eligible = riders
                 .filter(r => ((r.customFields as any).riderCredit ?? 100) >= CREDIT_LIMIT)

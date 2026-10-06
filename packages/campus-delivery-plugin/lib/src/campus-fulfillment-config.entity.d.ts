@@ -16,5 +16,7 @@ export declare class CampusFulfillmentConfig extends VendureEntity {
     storePhone: string | null;
     storeNotice: string | null;
     errandBaseFee: number | null;
+    merchantConfirmEnabled: boolean;
+    merchantAutoOpenMinutes: number;
     constructor(input?: DeepPartial<CampusFulfillmentConfig>);
 }

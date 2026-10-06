@@ -129,6 +129,16 @@ exports.PERMISSION_CATALOG = [
             { code: 'ManageOwnShop', label: 'POS 收银·操作' },
         ],
     },
+    {
+        key: 'campus',
+        label: '拾光达配送',
+        items: [
+            { code: 'CampusConfig', label: '拾光达·履约配置' },
+            { code: 'CampusMerchant', label: '拾光达·商家接单' },
+            { code: 'CampusViewDispatch', label: '拾光达·调度中心' },
+            { code: 'CampusAuditRider', label: '拾光达·骑手审核' },
+        ],
+    },
 ];
 /** 租户级角色可用的业务权限白名单（由 PERMISSION_CATALOG 扁平派生，建模/校验统一使用） */
 exports.BUSINESS_PERMISSIONS = exports.PERMISSION_CATALOG.flatMap((g) => g.items.map((i) => i.code));

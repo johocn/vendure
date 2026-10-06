@@ -32,6 +32,8 @@ const hall_shop_resolver_1 = require("./hall-shop.resolver");
 const create_campus_tables_1 = require("./migrations/create-campus-tables");
 const min_order_process_1 = require("./min-order.process");
 const permissions_1 = require("./permissions");
+const merchant_admin_resolver_1 = require("./merchant-admin.resolver");
+const merchant_admin_service_1 = require("./merchant-admin.service");
 const r2_mark_service_1 = require("./r2-mark.service");
 const r2_shop_resolver_1 = require("./r2-shop.resolver");
 const r4_tag_service_1 = require("./r4-tag.service");
@@ -93,6 +95,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             r4_tag_service_1.R4TagService,
             shipping_profile_ensure_service_1.ShippingProfileEnsureService,
             waimai_store_service_1.WaimaiStoreService,
+            merchant_admin_service_1.MerchantAdminService,
         ],
         adminApiExtensions: {
             schema: () => {
@@ -123,6 +126,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     autoRefundMinutes: Int!
                     inProgressSlaMinutes: Int!
                     compensationCouponTemplateId: String
+                    merchantConfirmEnabled: Boolean!
+                    merchantAutoOpenMinutes: Int!
                 }
 
                 input CampusFulfillmentConfigInput {
@@ -133,6 +138,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     autoRefundMinutes: Int
                     inProgressSlaMinutes: Int
                     compensationCouponTemplateId: String
+                    merchantConfirmEnabled: Boolean
+                    merchantAutoOpenMinutes: Int
                 }
 
                 type DeliverySlot {
@@ -164,6 +171,36 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
 
                 type CampusSetRiderStatusResult {
                     status: String!
+                }
+
+                type MerchantBoardLine {
+                    name: String!
+                    quantity: Int!
+                    price: Int!
+                }
+
+                type MerchantBoardOrder {
+                    id: ID!
+                    code: String!
+                    createdAt: DateTime!
+                    total: Int!
+                    building: String!
+                    zone: String!
+                    slotText: String!
+                    route: String!
+                    riderName: String
+                    lines: [MerchantBoardLine!]!
+                }
+
+                type CampusMerchantBoard {
+                    paused: Boolean!
+                    merchantConfirmEnabled: Boolean!
+                    pending: [MerchantBoardOrder!]!
+                    cooking: [MerchantBoardOrder!]!
+                    awaitingRider: [MerchantBoardOrder!]!
+                    delivering: [MerchantBoardOrder!]!
+                    completedToday: Int!
+                    completedTodayAmount: Int!
                 }
 
                 type DispatchAlert {
@@ -252,6 +289,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     riderApplications(status: String!): [Customer!]!
                     campusDispatchBoard: CampusDispatchBoard!
                     campusStoreConfigs: [CampusStoreConfigWithChannel!]!
+                    campusMerchantBoard: CampusMerchantBoard!
                     riderWithdrawals(status: String, skip: Int, take: Int): [RiderWithdrawalRequest!]!
                 }
 
@@ -267,12 +305,19 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusEnsureErrandProducts: CampusErrandProductResult!
                     campusUpdateStoreConfig(channelId: ID!, input: CampusStoreConfigInput!): CampusStoreConfigWithChannel!
                     campusEnsureDefaultShippingProfile(channelId: ID!): CampusEnsureProfileResult!
+                    campusMerchantAcceptOrder(orderId: ID!): CampusMerchantOpResult!
+                    campusMerchantCookingDone(orderId: ID!): CampusMerchantOpResult!
+                    campusMerchantSetPaused(paused: Boolean!): CampusMerchantOpResult!
                     approveRiderWithdraw(id: ID!, remark: String): RiderWithdrawalRequest!
                     rejectRiderWithdraw(id: ID!, remark: String): RiderWithdrawalRequest!
                 }
+
+                type CampusMerchantOpResult {
+                    ok: Boolean!
+                }
             `;
             },
-            resolvers: [campus_config_admin_resolver_1.CampusConfigAdminResolver, rider_admin_resolver_1.RiderAdminResolver, dispatch_admin_resolver_1.DispatchAdminResolver],
+            resolvers: [campus_config_admin_resolver_1.CampusConfigAdminResolver, rider_admin_resolver_1.RiderAdminResolver, dispatch_admin_resolver_1.DispatchAdminResolver, merchant_admin_resolver_1.MerchantAdminResolver],
         },
         shopApiExtensions: {
             schema: () => {

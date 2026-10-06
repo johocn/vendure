@@ -14,6 +14,7 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@nestjs/core");
 const core_2 = require("@vendure/core");
 const wechat_subscribe_message_plugin_1 = require("@vendure/wechat-subscribe-message-plugin");
+const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
 const capacity_service_1 = require("./capacity.service");
 const slot_lock_service_1 = require("./slot-lock.service");
 /**
@@ -32,14 +33,28 @@ let HallService = class HallService {
         return new core_2.Injector(this.moduleRef);
     }
     async onOrderPlaced(ctx, order) {
-        var _a;
+        var _a, _b;
         const cf = order.customFields;
         if (cf.orderKind === 'errand' || cf.fulfillmentRoute === 'R1' || cf.fulfillmentRoute === 'R3') {
+            // 时段锁位（T0 前置）：商家确认模式同样要先锁容量（用户已支付占用时段），
+            // 锁位失败标 campusCause='slot_full'，靠调度告警人工跟进。
             const locked = await this.slotLock.lock(ctx, order);
+            // 商家确认模式：先挂「待商家接单」，出餐完成（merchantCookingDone）才入大厅；
+            // 未启用则照旧直接入厅。商家超时未处理由调度 job 自动入厅兜底。
+            const cfg = await this.connection
+                .getRepository(ctx, campus_fulfillment_config_entity_1.CampusFulfillmentConfig)
+                .findOne({ where: { channelId: ctx.channelId } });
+            if (cfg === null || cfg === void 0 ? void 0 : cfg.merchantConfirmEnabled) {
+                await this.connection.getRepository(ctx, core_2.Order).update(order.id, {
+                    customFields: Object.assign({ hallStatus: 'pending_merchant' }, (locked ? {} : { campusCause: 'slot_full' })),
+                });
+                core_2.Logger.info(`Order ${order.code} awaiting merchant confirm (${cf.fulfillmentRoute}, slot=${(_a = cf.deliverySlotText) !== null && _a !== void 0 ? _a : 'immediate'}, slotLocked=${locked})`, 'CampusHall');
+                return;
+            }
             await this.connection.getRepository(ctx, core_2.Order).update(order.id, {
                 customFields: Object.assign({ hallStatus: 'open', hallEnteredAt: new Date() }, (locked ? {} : { campusCause: 'slot_full' })),
             });
-            core_2.Logger.info(`Order ${order.code} entered hall (${cf.fulfillmentRoute}, slot=${(_a = cf.deliverySlotText) !== null && _a !== void 0 ? _a : 'immediate'}, slotLocked=${locked})`, 'CampusHall');
+            core_2.Logger.info(`Order ${order.code} entered hall (${cf.fulfillmentRoute}, slot=${(_b = cf.deliverySlotText) !== null && _b !== void 0 ? _b : 'immediate'}, slotLocked=${locked})`, 'CampusHall');
             this.notifyRiders(ctx, order);
         }
     }
