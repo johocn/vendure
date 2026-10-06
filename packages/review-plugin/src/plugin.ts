@@ -38,6 +38,7 @@ const adminSchema = () => gql`
         tags: [String!]
         isAnonymous: Boolean!
         status: String!
+        giftGranted: Boolean!
         reply: String
         repliedAt: DateTime
         reviewedAt: DateTime
