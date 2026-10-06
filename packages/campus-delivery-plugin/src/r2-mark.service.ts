@@ -19,6 +19,9 @@ export class R2MarkService {
         if ((order.customFields as any)?.fulfillmentRoute !== 'R2') {
             throw new UserInputError('仅 R2 快递单支持到校确认');
         }
+        const leg1 = (order.customFields as any)?.leg1Status as string | null;
+        if (leg1 === 'arrived_gate') return { leg1Status: 'arrived_gate' }; // 幂等：不重复写 handoverAt
+        if (leg1 != null && leg1 !== 'preparing') throw new UserInputError('当前状态不支持到校确认');
         await this.connection.getRepository(ctx, Order).update(order.id, {
             customFields: { leg1Status: 'arrived_gate', handoverAt: new Date() },
         } as any);
