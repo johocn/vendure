@@ -358,6 +358,8 @@ exports.devConfig = {
                 appSecret: process.env.WECHAT_AUTH_APP_SECRET || 'dev_test_app_secret',
                 miniProgramAppId: process.env.WECHAT_AUTH_MINI_APP_ID || '',
                 miniProgramAppSecret: process.env.WECHAT_AUTH_MINI_APP_SECRET || '',
+                token: process.env.WECHAT_MESSAGE_TOKEN || '',
+                encodingAESKey: process.env.WECHAT_MESSAGE_AES_KEY || '',
                 devBypass: process.env.DEV_BYPASS_WECHAT === 'true',
                 devBypassOpenid: 'dev_test_openid',
             })] : []),
