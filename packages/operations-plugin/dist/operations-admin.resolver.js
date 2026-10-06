@@ -57,6 +57,26 @@ let OperationsAdminResolver = class OperationsAdminResolver {
         }
         return this.dashboardService.getCategoryTop(ctx, days);
     }
+    async repurchaseRate(ctx, days) {
+        this.assertDays(days);
+        return this.dashboardService.getRepurchaseRate(ctx, days);
+    }
+    async reviewOverview(ctx) {
+        return this.dashboardService.getReviewOverview(ctx);
+    }
+    async productSalesTop(ctx, days, take) {
+        this.assertDays(days);
+        return this.dashboardService.getProductSalesTop(ctx, days, Math.min(Math.max(take, 1), 20));
+    }
+    async riderEfficiency(ctx, days, take) {
+        this.assertDays(days);
+        return this.dashboardService.getRiderEfficiency(ctx, days, Math.min(Math.max(take, 1), 20));
+    }
+    assertDays(days) {
+        if (!Number.isFinite(days) || days < 1 || days > 90) {
+            throw new Error('days must be between 1 and 90');
+        }
+    }
     // ===== CMS (dynamic permission by type) =====
     async contentItems(ctx, type, position, enabled, page, pageSize) {
         this.assertContentPermission(ctx, type);
@@ -156,6 +176,43 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Number]),
     __metadata("design:returntype", Promise)
 ], OperationsAdminResolver.prototype, "categoryTop", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(constants_1.OperationsPermissions.ViewDashboard),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('days')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Number]),
+    __metadata("design:returntype", Promise)
+], OperationsAdminResolver.prototype, "repurchaseRate", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(constants_1.OperationsPermissions.ViewDashboard),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], OperationsAdminResolver.prototype, "reviewOverview", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(constants_1.OperationsPermissions.ViewDashboard),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('days')),
+    __param(2, (0, graphql_1.Args)({ name: 'take', type: () => Number, nullable: true, defaultValue: 5 })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Number, Number]),
+    __metadata("design:returntype", Promise)
+], OperationsAdminResolver.prototype, "productSalesTop", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(constants_1.OperationsPermissions.ViewDashboard),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('days')),
+    __param(2, (0, graphql_1.Args)({ name: 'take', type: () => Number, nullable: true, defaultValue: 5 })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Number, Number]),
+    __metadata("design:returntype", Promise)
+], OperationsAdminResolver.prototype, "riderEfficiency", null);
 __decorate([
     (0, graphql_1.Query)(),
     __param(0, (0, core_1.Ctx)()),

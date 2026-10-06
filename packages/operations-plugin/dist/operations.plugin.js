@@ -139,10 +139,36 @@ exports.OperationsPlugin = OperationsPlugin = OperationsPlugin_1 = __decorate([
                 orderCount: Int!
             }
 
+            type ReviewOverview {
+                totalApproved: Int!
+                avgRating: Float!
+                badRate: Float!
+                pendingCount: Int!
+                withImagesRate: Float!
+            }
+
+            type ProductSalesItem {
+                productId: ID!
+                name: String!
+                quantity: Int!
+                amount: Int!
+            }
+
+            type RiderEfficiencyItem {
+                customerId: ID!
+                name: String!
+                completed: Int!
+                onTimeRate: Float!
+            }
+
             extend type Query {
                 dashboardOverview(range: String!): DashboardMetrics!
                 salesTrend(days: Int!): [SalesTrendPoint!]!
                 categoryTop(days: Int!): [CategoryTopItem!]!
+                repurchaseRate(days: Int!): Float!
+                reviewOverview: ReviewOverview!
+                productSalesTop(days: Int!, take: Int): [ProductSalesItem!]!
+                riderEfficiency(days: Int!, take: Int): [RiderEfficiencyItem!]!
             }
 
             # ===== CMS =====

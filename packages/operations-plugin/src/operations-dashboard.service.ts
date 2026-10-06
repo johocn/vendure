@@ -352,6 +352,141 @@ export class OperationsDashboardService {
         }));
     }
 
+    // ===== Growth-loop aggregates（四期：复购/评价/热销/骑手效率） =====
+
+    /** 有效订单状态集合（与 getSalesMetrics 口径一致） */
+    private static readonly VALID_ORDER_STATUSES = ['Paid', 'Shipped', 'Delivered', 'PartiallyShipped'];
+
+    /** 复购率（0-100，一位小数）：窗口内有效下单客户中 ≥2 单客户的占比 */
+    async getRepurchaseRate(ctx: RequestContext, days: number) {
+        const start = this.getDaysAgoStart(days);
+        const orderRepo = this.connection.getRepository(ctx, 'Order' as any);
+        const rows = await orderRepo
+            .createQueryBuilder('order')
+            .select('order.customerId', 'customerId')
+            .addSelect('COUNT(order.id)', 'cnt')
+            .where('order.createdAt >= :start', { start })
+            .andWhere('order.state IN (:...statuses)', { statuses: OperationsDashboardService.VALID_ORDER_STATUSES })
+            .groupBy('order.customerId')
+            .getRawMany();
+        const total = rows.length;
+        if (!total) return 0;
+        const repeat = rows.filter(r => Number(r.cnt) >= 2).length;
+        return Math.round((repeat / total) * 1000) / 10;
+    }
+
+    /** 评价概览（渠道内主评）：均分/差评率(rating≤2)/待审数/带图率 */
+    async getReviewOverview(ctx: RequestContext) {
+        const reviewRepo = this.connection.getRepository(ctx, 'Review' as any);
+        const agg = await reviewRepo
+            .createQueryBuilder('review')
+            .select('COUNT(review.id)', 'total')
+            .addSelect('COALESCE(AVG(review.rating), 0)', 'avgRating')
+            .addSelect('COALESCE(SUM(CASE WHEN review.rating <= 2 THEN 1 ELSE 0 END), 0)', 'bad')
+            .addSelect("COALESCE(SUM(CASE WHEN review.images IS NOT NULL AND review.images != '[]' THEN 1 ELSE 0 END), 0)", 'withImages')
+            .where('review.status = :status', { status: 'approved' })
+            .andWhere('review.parentId IS NULL')
+            .getRawOne();
+        const pendingCount = await reviewRepo
+            .createQueryBuilder('review')
+            .where('review.status = :status', { status: 'pending' })
+            .andWhere('review.parentId IS NULL')
+            .getCount();
+        const total = Number(agg?.total ?? 0);
+        const pct = (n: number) => (total ? Math.round((n / total) * 1000) / 10 : 0);
+        return {
+            totalApproved: total,
+            avgRating: Math.round(Number(agg?.avgRating ?? 0) * 10) / 10,
+            badRate: pct(Number(agg?.bad ?? 0)),
+            pendingCount,
+            withImagesRate: pct(Number(agg?.withImages ?? 0)),
+        };
+    }
+
+    /** 热销商品榜：窗口内有效订单按件数排序，amount 为分（listPrice*qty，与 gmv 口径一致） */
+    async getProductSalesTop(ctx: RequestContext, days: number, take = 5) {
+        const start = this.getDaysAgoStart(days);
+        const orderRepo = this.connection.getRepository(ctx, 'Order' as any);
+        const rows = await orderRepo
+            .createQueryBuilder('order')
+            .innerJoin('order.lines', 'line')
+            .innerJoin('line.productVariant', 'variant')
+            .innerJoin('variant.product', 'product')
+            .leftJoin('product.translations', 'pt', 'pt.languageCode IN (:...langs)', { langs: ['zh', 'zh_CN', 'en', 'en_US'] })
+            .select('product.id', 'productId')
+            .addSelect('MAX(pt.name)', 'name')
+            .addSelect('COALESCE(SUM(line.quantity), 0)', 'quantity')
+            .addSelect('COALESCE(SUM(line.listPrice * line.quantity), 0)', 'amount')
+            .where('order.createdAt >= :start', { start })
+            .andWhere('order.state IN (:...statuses)', { statuses: OperationsDashboardService.VALID_ORDER_STATUSES })
+            .groupBy('product.id')
+            .orderBy('quantity', 'DESC')
+            .limit(take)
+            .getRawMany();
+        return rows.map(r => ({
+            productId: r.productId,
+            name: r.name ?? `Product ${r.productId}`,
+            quantity: Number(r.quantity),
+            amount: Number(r.amount),
+        }));
+    }
+
+    /** 骑手效率榜：窗口内 deliveryStatus=delivered 的订单按骑手聚合；准时率基于承诺时段（deliverySlotText）结束时刻 */
+    async getRiderEfficiency(ctx: RequestContext, days: number, take = 5) {
+        const start = this.getDaysAgoStart(days);
+        const orderRepo = this.connection.getRepository(ctx, 'Order' as any);
+        const rows = await orderRepo
+            .createQueryBuilder('order')
+            .select('order.customFields_deliveryStaffId', 'riderId')
+            .addSelect('order.customFields_deliverySlotText', 'slotText')
+            .addSelect('order.customFields_deliveredAt', 'deliveredAt')
+            .where('order.createdAt >= :start', { start })
+            .andWhere('order.customFields_deliveryStatus = :status', { status: 'delivered' })
+            .andWhere('order.customFields_deliveryStaffId IS NOT NULL')
+            .getRawMany();
+
+        // JS 聚合：completed = 送达单数；onTime = 有承诺时段且 deliveredAt ≤ 时段结束
+        const stat = new Map<string, { completed: number; slotted: number; onTime: number }>();
+        for (const r of rows) {
+            const key = String(r.riderId);
+            const s = stat.get(key) ?? { completed: 0, slotted: 0, onTime: 0 };
+            s.completed += 1;
+            const end = this.slotEndTime(r.slotText);
+            if (end) {
+                s.slotted += 1;
+                const delivered = r.deliveredAt ? new Date(r.deliveredAt) : null;
+                if (delivered && delivered <= end) s.onTime += 1;
+            }
+            stat.set(key, s);
+        }
+        if (!stat.size) return [];
+
+        // 骑手姓名解析（Customer.firstName/lastName，与 merchant-admin.service 同款）
+        const riderIds = [...stat.keys()];
+        const customerRepo = this.connection.getRepository(ctx, 'Customer' as any);
+        const customers = await customerRepo.findByIds(riderIds);
+        const nameById = new Map(customers.map(c => [c.id, [c.firstName, c.lastName].filter(Boolean).join(' ').trim() || c.email]));
+
+        return [...stat.entries()]
+            .map(([id, s]) => ({
+                customerId: id,
+                name: nameById.get(id) ?? `骑手 ${id}`,
+                completed: s.completed,
+                onTimeRate: s.slotted ? Math.round((s.onTime / s.slotted) * 1000) / 10 : 100,
+            }))
+            .sort((a, b) => b.completed - a.completed)
+            .slice(0, take);
+    }
+
+    /** 解析承诺时段文案的结束时刻：'2026-10-06 11:00-11:30' → 当日 11:30 */
+    private slotEndTime(text: string | null): Date | null {
+        if (!text) return null;
+        const m = text.match(/(\d{4}-\d{2}-\d{2})\s+\d{2}:\d{2}-(\d{2}:\d{2})/);
+        if (!m) return null;
+        const d = new Date(`${m[1].replace(/-/g, '/')} ${m[2]}`);
+        return isNaN(d.getTime()) ? null : d;
+    }
+
     // ===== Dashboard aggregation entry (fault-tolerant) =====
 
     async getDashboardOverview(ctx: RequestContext, range: DashboardRange) {

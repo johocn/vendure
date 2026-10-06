@@ -67,6 +67,27 @@ export declare class OperationsAdminResolver {
         gmv: number;
         orderCount: number;
     }[]>;
+    repurchaseRate(ctx: RequestContext, days: number): Promise<number>;
+    reviewOverview(ctx: RequestContext): Promise<{
+        totalApproved: number;
+        avgRating: number;
+        badRate: number;
+        pendingCount: number;
+        withImagesRate: number;
+    }>;
+    productSalesTop(ctx: RequestContext, days: number, take: number): Promise<{
+        productId: any;
+        name: any;
+        quantity: number;
+        amount: number;
+    }[]>;
+    riderEfficiency(ctx: RequestContext, days: number, take: number): Promise<{
+        customerId: string;
+        name: any;
+        completed: number;
+        onTimeRate: number;
+    }[]>;
+    private assertDays;
     contentItems(ctx: RequestContext, type?: string, position?: string, enabled?: boolean, page?: number, pageSize?: number): Promise<{
         items: import(".").ContentItem[];
         totalItems: number;

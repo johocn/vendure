@@ -65,6 +65,50 @@ export class OperationsAdminResolver {
         return this.dashboardService.getCategoryTop(ctx, days as 7 | 30);
     }
 
+    @Query()
+    @Allow(OperationsPermissions.ViewDashboard as Permission)
+    async repurchaseRate(
+        @Ctx() ctx: RequestContext,
+        @Args('days') days: number,
+    ) {
+        this.assertDays(days);
+        return this.dashboardService.getRepurchaseRate(ctx, days);
+    }
+
+    @Query()
+    @Allow(OperationsPermissions.ViewDashboard as Permission)
+    async reviewOverview(@Ctx() ctx: RequestContext) {
+        return this.dashboardService.getReviewOverview(ctx);
+    }
+
+    @Query()
+    @Allow(OperationsPermissions.ViewDashboard as Permission)
+    async productSalesTop(
+        @Ctx() ctx: RequestContext,
+        @Args('days') days: number,
+        @Args({ name: 'take', type: () => Number, nullable: true, defaultValue: 5 }) take: number,
+    ) {
+        this.assertDays(days);
+        return this.dashboardService.getProductSalesTop(ctx, days, Math.min(Math.max(take, 1), 20));
+    }
+
+    @Query()
+    @Allow(OperationsPermissions.ViewDashboard as Permission)
+    async riderEfficiency(
+        @Ctx() ctx: RequestContext,
+        @Args('days') days: number,
+        @Args({ name: 'take', type: () => Number, nullable: true, defaultValue: 5 }) take: number,
+    ) {
+        this.assertDays(days);
+        return this.dashboardService.getRiderEfficiency(ctx, days, Math.min(Math.max(take, 1), 20));
+    }
+
+    private assertDays(days: number): void {
+        if (!Number.isFinite(days) || days < 1 || days > 90) {
+            throw new Error('days must be between 1 and 90');
+        }
+    }
+
     // ===== CMS (dynamic permission by type) =====
 
     @Query()
