@@ -40,6 +40,7 @@ const adminSchema = () => gql`
         status: String!
         reply: String
         repliedAt: DateTime
+        reviewedAt: DateTime
         helpfulCount: Int!
         createdAt: DateTime!
         updatedAt: DateTime!
@@ -113,6 +114,7 @@ const shopSchema = () => gql`
         status: String!
         reply: String
         repliedAt: DateTime
+        reviewedAt: DateTime
         helpfulCount: Int!
         createdAt: DateTime!
         updatedAt: DateTime!
