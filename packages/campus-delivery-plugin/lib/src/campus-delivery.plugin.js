@@ -34,6 +34,7 @@ const min_order_process_1 = require("./min-order.process");
 const permissions_1 = require("./permissions");
 const r2_mark_service_1 = require("./r2-mark.service");
 const r2_shop_resolver_1 = require("./r2-shop.resolver");
+const r4_tag_service_1 = require("./r4-tag.service");
 const rider_admin_resolver_1 = require("./rider-admin.resolver");
 const rider_credit_log_entity_1 = require("./rider-credit-log.entity");
 const rider_credit_service_1 = require("./rider-credit.service");
@@ -47,9 +48,10 @@ const slot_lock_service_1 = require("./slot-lock.service");
 const waimai_shop_resolver_1 = require("./waimai-shop.resolver");
 const waimai_store_service_1 = require("./waimai-store.service");
 let CampusDeliveryPlugin = class CampusDeliveryPlugin {
-    constructor(eventBus, hallService, moduleRef) {
+    constructor(eventBus, hallService, r4TagService, moduleRef) {
         this.eventBus = eventBus;
         this.hallService = hallService;
+        this.r4TagService = r4TagService;
         this.moduleRef = moduleRef;
     }
     /** vendure Injector 需由 ModuleRef 构造（插件模块类构造器不直接提供 Injector） */
@@ -60,6 +62,8 @@ let CampusDeliveryPlugin = class CampusDeliveryPlugin {
         (0, shipping_calculator_1.bindCampusErrandCalculatorConnection)(this.injector.get(core_1.TransactionalConnection));
         (0, min_order_process_1.bindMinOrderConnection)(this.injector.get(core_1.TransactionalConnection));
         this.eventBus.ofType(core_1.OrderPlacedEvent).subscribe(({ ctx, order }) => this.hallService.onOrderPlaced(ctx, order).catch(e => core_1.Logger.error(String(e), 'CampusHall')));
+        // R4 到店自取打标（二期 §5.4）：store-pickup 运费方式订单在支付闸门补写 fulfillmentRoute
+        this.eventBus.ofType(core_1.OrderStateTransitionEvent).subscribe(e => this.r4TagService.tagR4(e).catch(err => core_1.Logger.error(`R4 tag failed: ${String(err)}`, 'CampusR4Tag')));
         this.injector.get(dispatch_job_service_1.DispatchJobService).start();
     }
 };
@@ -82,6 +86,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             dispatch_admin_service_1.DispatchAdminService,
             errand_service_1.ErrandService,
             r2_mark_service_1.R2MarkService,
+            r4_tag_service_1.R4TagService,
             waimai_store_service_1.WaimaiStoreService,
         ],
         adminApiExtensions: {
@@ -427,6 +432,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
     }),
     __metadata("design:paramtypes", [core_1.EventBus,
         hall_service_1.HallService,
+        r4_tag_service_1.R4TagService,
         core_2.ModuleRef])
 ], CampusDeliveryPlugin);
 //# sourceMappingURL=campus-delivery.plugin.js.map

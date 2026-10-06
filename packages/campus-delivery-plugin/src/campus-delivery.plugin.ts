@@ -4,6 +4,7 @@ import {
     Injector,
     Logger,
     OrderPlacedEvent,
+    OrderStateTransitionEvent,
     PluginCommonModule,
     TransactionalConnection,
     VendurePlugin,
@@ -31,6 +32,7 @@ import { bindMinOrderConnection, campusMinOrderProcess } from './min-order.proce
 import { campusPermissionDefinitions } from './permissions';
 import { R2MarkService } from './r2-mark.service';
 import { R2ShopResolver } from './r2-shop.resolver';
+import { R4TagService } from './r4-tag.service';
 import { RiderAdminResolver } from './rider-admin.resolver';
 import { RiderCreditLog } from './rider-credit-log.entity';
 import { RiderCreditService } from './rider-credit.service';
@@ -61,6 +63,7 @@ import { WaimaiStoreService } from './waimai-store.service';
         DispatchAdminService,
         ErrandService,
         R2MarkService,
+        R4TagService,
         WaimaiStoreService,
     ],
     adminApiExtensions: {
@@ -415,6 +418,7 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
     constructor(
         private eventBus: EventBus,
         private hallService: HallService,
+        private r4TagService: R4TagService,
         private moduleRef: ModuleRef,
     ) {}
 
@@ -428,6 +432,10 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
         bindMinOrderConnection(this.injector.get(TransactionalConnection));
         this.eventBus.ofType(OrderPlacedEvent).subscribe(({ ctx, order }) =>
             this.hallService.onOrderPlaced(ctx, order).catch(e => Logger.error(String(e), 'CampusHall')),
+        );
+        // R4 到店自取打标（二期 §5.4）：store-pickup 运费方式订单在支付闸门补写 fulfillmentRoute
+        this.eventBus.ofType(OrderStateTransitionEvent).subscribe(e =>
+            this.r4TagService.tagR4(e).catch(err => Logger.error(`R4 tag failed: ${String(err)}`, 'CampusR4Tag')),
         );
         this.injector.get(DispatchJobService).start();
     }
