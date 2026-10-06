@@ -78,6 +78,17 @@ let OperationsDashboardService = OperationsDashboardService_1 = class Operations
         d.setHours(0, 0, 0, 0);
         return d;
     }
+    /**
+     * 解析 customFields 子字段的物理列名（embedded 列名随 TypeORM 命名策略生成，
+     * 如 deliveryStatus → customFieldsDeliverystatus，无下划线，不能硬编码）。
+     * 字段未注册（对应插件未启用）时返回 null，调用方应优雅降级。
+     */
+    cfColumnName(repo, field) {
+        var _a, _b;
+        const embedded = (_a = repo.metadata.embeddeds) === null || _a === void 0 ? void 0 : _a.find((e) => e.propertyName === 'customFields');
+        const col = (_b = embedded === null || embedded === void 0 ? void 0 : embedded.columns) === null || _b === void 0 ? void 0 : _b.find((c) => c.propertyName === field);
+        return col ? String(col.databaseName) : null;
+    }
     // ===== 6 metric cards =====
     async getSalesMetrics(ctx, range) {
         var _a, _b, _c, _d;
@@ -118,17 +129,17 @@ let OperationsDashboardService = OperationsDashboardService_1 = class Operations
         var _a, _b, _c, _d, _e, _f;
         const { start, end } = this.getRange(range);
         const orderRepo = this.connection.getRepository(ctx, 'Order');
-        // Group by customFields.deliveryStatus
-        // Vendure customFields 是 embedded 子列（customFields_deliveryStatus），不是实体真实属性：
-        // TypeORM 不会对 `order.customFields_xxx` 加引号转义，而 order 是 PG 保留字，
-        // 必须整路径手写引号 `"order"."customFields_xxx"`，否则报 syntax error at or near "."
+        // Group by customFields.deliveryStatus（列名经 metadata 动态解析，见 cfColumnName）
+        const statusCol = this.cfColumnName(orderRepo, 'deliveryStatus');
+        if (!statusCol)
+            return { pending: 0, inProgress: 0, delivered: 0, exception: 0 };
         const rows = await orderRepo
             .createQueryBuilder('order')
-            .select('"order"."customFields_deliveryStatus"', 'status')
+            .select(`"order"."${statusCol}"`, 'status')
             .addSelect('COUNT(order.id)', 'count')
             .where('order.createdAt BETWEEN :start AND :end', { start, end })
-            .andWhere('"order"."customFields_deliveryStatus" IS NOT NULL')
-            .groupBy('"order"."customFields_deliveryStatus"')
+            .andWhere(`"order"."${statusCol}" IS NOT NULL`)
+            .groupBy(`"order"."${statusCol}"`)
             .getRawMany();
         const map = {};
         for (const r of rows) {
@@ -149,19 +160,21 @@ let OperationsDashboardService = OperationsDashboardService_1 = class Operations
             .where('customer.createdAt BETWEEN :start AND :end', { start, end })
             .getCount();
         const totalCount = await customerRepo.createQueryBuilder('customer').getCount();
-        // Level distribution (depends on member-level-plugin customFields.memberLevelId)
-        const levelRows = await customerRepo
-            .createQueryBuilder('customer')
-            .select('"customer"."customFields_memberLevelId"', 'levelId')
-            .addSelect('COUNT(customer.id)', 'count')
-            .where('"customer"."customFields_memberLevelId" IS NOT NULL')
-            .groupBy('"customer"."customFields_memberLevelId"')
-            .getRawMany();
-        const levelDistribution = levelRows.map(r => ({
-            levelId: r.levelId,
-            levelName: null, // Resolved by frontend or via separate query
-            count: Number(r.count),
-        }));
+        // Level distribution（Customer 自定义字段 memberLevel；列名经 metadata 动态解析）
+        const levelCol = this.cfColumnName(customerRepo, 'memberLevel');
+        const levelDistribution = levelCol
+            ? (await customerRepo
+                .createQueryBuilder('customer')
+                .select(`"customer"."${levelCol}"`, 'levelId')
+                .addSelect('COUNT(customer.id)', 'count')
+                .where(`"customer"."${levelCol}" IS NOT NULL`)
+                .groupBy(`"customer"."${levelCol}"`)
+                .getRawMany()).map(r => ({
+                levelId: r.levelId,
+                levelName: null, // Resolved by frontend or via separate query
+                count: Number(r.count),
+            }))
+            : [];
         return { newCount, totalCount, levelDistribution };
     }
     async getInventoryMetrics(ctx) {
@@ -214,10 +227,13 @@ let OperationsDashboardService = OperationsDashboardService_1 = class Operations
         }
         try {
             const orderRepo = this.connection.getRepository(ctx, 'Order');
+            const statusCol = this.cfColumnName(orderRepo, 'deliveryStatus');
+            if (!statusCol)
+                throw new Error('customFields.deliveryStatus not registered');
             exceptionOrderCount = await orderRepo
                 .createQueryBuilder('order')
                 .where('order.createdAt BETWEEN :start AND :end', { start, end })
-                .andWhere('"order"."customFields_deliveryStatus" = :status', { status: 'exception' })
+                .andWhere(`"order"."${statusCol}" = :status`, { status: 'exception' })
                 .getCount();
         }
         catch (e) {
@@ -408,14 +424,21 @@ let OperationsDashboardService = OperationsDashboardService_1 = class Operations
         var _a;
         const start = this.getDaysAgoStart(days);
         const orderRepo = this.connection.getRepository(ctx, 'Order');
+        // 骑手字段来自 campus/delivery 插件；任一未注册（插件未启用）时优雅返回空榜
+        const staffCol = this.cfColumnName(orderRepo, 'deliveryStaffId');
+        const slotCol = this.cfColumnName(orderRepo, 'deliverySlotText');
+        const deliveredCol = this.cfColumnName(orderRepo, 'deliveredAt');
+        const statusCol = this.cfColumnName(orderRepo, 'deliveryStatus');
+        if (!staffCol || !slotCol || !deliveredCol || !statusCol)
+            return [];
         const rows = await orderRepo
             .createQueryBuilder('order')
-            .select('"order"."customFields_deliveryStaffId"', 'riderId')
-            .addSelect('"order"."customFields_deliverySlotText"', 'slotText')
-            .addSelect('"order"."customFields_deliveredAt"', 'deliveredAt')
+            .select(`"order"."${staffCol}"`, 'riderId')
+            .addSelect(`"order"."${slotCol}"`, 'slotText')
+            .addSelect(`"order"."${deliveredCol}"`, 'deliveredAt')
             .where('order.createdAt >= :start', { start })
-            .andWhere('"order"."customFields_deliveryStatus" = :status', { status: 'delivered' })
-            .andWhere('"order"."customFields_deliveryStaffId" IS NOT NULL')
+            .andWhere(`"order"."${statusCol}" = :status`, { status: 'delivered' })
+            .andWhere(`"order"."${staffCol}" IS NOT NULL`)
             .getRawMany();
         // JS 聚合：completed = 送达单数；onTime = 有承诺时段且 deliveredAt ≤ 时段结束
         const stat = new Map();
