@@ -61,9 +61,8 @@ ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "notifyTemplateAc
 ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "notifyTemplateRiderAssigned" varchar;
 ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "notifyTemplateCookingDone" varchar;
 ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "notifyTemplateDelivered" varchar;
--- 骑手实时位置（plan 2.2）：Order customFields 嵌入式物理列，列名 = customFields + 字段名（PascalCase）
-ALTER TABLE "order" ADD COLUMN IF NOT EXISTS "customFieldsRiderLat" double precision;
-ALTER TABLE "order" ADD COLUMN IF NOT EXISTS "customFieldsRiderLng" double precision;
+-- 骑手实时位置 riderLat/riderLng（plan 2.2）：Order customFields 列由 Vendure 启动时自动同步（含类型），
+-- 实测列名 customFieldsRiderlat/customFieldsRiderlng（首字母大写+小写化规则），此处无需手工 ALTER。
 `;
 let CreateCampusTablesMigration = class CreateCampusTablesMigration {
     constructor(connection) {
