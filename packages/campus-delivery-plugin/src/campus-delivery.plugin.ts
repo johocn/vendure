@@ -233,6 +233,10 @@ import { WaimaiStoreService } from './waimai-store.service';
                     storePhone: String
                     storeNotice: String
                     errandBaseFee: Int
+                    notifyTemplateAccepted: String
+                    notifyTemplateRiderAssigned: String
+                    notifyTemplateCookingDone: String
+                    notifyTemplateDelivered: String
                 }
 
                 input CampusStoreConfigInput {
@@ -244,6 +248,10 @@ import { WaimaiStoreService } from './waimai-store.service';
                     storePhone: String
                     storeNotice: String
                     errandBaseFee: Int
+                    notifyTemplateAccepted: String
+                    notifyTemplateRiderAssigned: String
+                    notifyTemplateCookingDone: String
+                    notifyTemplateDelivered: String
                 }
 
                 type RiderWithdrawalRequest {
