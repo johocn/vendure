@@ -23,7 +23,7 @@ describe('WaimaiStoreService.listStores', () => {
         const env = makeEnv({
             configs: [
                 { channelId: 1, paused: false, routesEnabled: ['R3'] },   // 默认渠道脏配置：应被跳过
-                { channelId: 2, paused: false, routesEnabled: ['R1', 'R3'], deliveryMinutes: 35, minOrderAmount: 1500, deliveryFee: 200, storeAddress: '东门 1 号楼', storePhone: '13800000000', storeNotice: '周末出餐慢' },
+                { channelId: 2, paused: false, routesEnabled: ['R1', 'R3'], deliveryMinutes: 35, minOrderAmount: 1500, deliveryFee: 200, storeAddress: '东门 1 号楼', storePhone: '13800000000', storeNotice: '周末出餐慢', errandBaseFee: 300 },
             ],
             channels: [
                 { id: 1, token: 'default', code: '__default_channel__', customFields: {} },
@@ -40,6 +40,7 @@ describe('WaimaiStoreService.listStores', () => {
             paused: false, routesEnabled: ['R1', 'R3'],
             deliveryMinutes: 35, minOrderAmount: 1500, deliveryFee: 200,
             storeAddress: '东门 1 号楼', storePhone: '13800000000', storeNotice: '周末出餐慢',
+            errandBaseFee: 300,
         });
     });
     it('空 tags/缺月售/缺新字段容错（全 null），paused 透传', async () => {
@@ -58,6 +59,7 @@ describe('WaimaiStoreService.listStores', () => {
         expect(list[0].storeAddress).toBeNull();
         expect(list[0].storePhone).toBeNull();
         expect(list[0].storeNotice).toBeNull();
+        expect(list[0].errandBaseFee).toBeNull();
     });
 });
 
@@ -78,12 +80,14 @@ describe('WaimaiStoreService.listStoreConfigs', () => {
             routesEnabled: ['R1', 'R3'],
             deliveryMinutes: 35, minOrderAmount: 1500, deliveryFee: 200,
             storeAddress: '东门 1 号楼', storePhone: '13800000000', storeNotice: '周末出餐慢',
+            errandBaseFee: null,
         });
         expect(list[1]).toEqual({
             channelId: 3, channelName: '奶茶铺', channelToken: 'milktea',
             routesEnabled: [],
             deliveryMinutes: null, minOrderAmount: null, deliveryFee: null,
             storeAddress: null, storePhone: null, storeNotice: null,
+            errandBaseFee: null,
         });
     });
 });
@@ -139,6 +143,23 @@ describe('WaimaiStoreService.updateStoreConfig', () => {
             routesEnabled: ['R2'],
             deliveryMinutes: null, minOrderAmount: null, deliveryFee: null,
             storeAddress: null, storePhone: null, storeNotice: '公告',
+            errandBaseFee: null,
         });
+    });
+});
+
+describe('WaimaiStoreService.updateStoreConfig errandBaseFee', () => {
+    it('errandBaseFee 负数拒绝', async () => {
+        const env = makeEnv({ channels: [{ id: 2, token: 'canteen', code: '一食堂', customFields: {} }] });
+        await expect(env.svc.updateStoreConfig({} as any, 2, {
+            routesEnabled: ['R1'], errandBaseFee: -1,
+        } as any)).rejects.toThrow('不能为负数');
+    });
+    it('errandBaseFee 持久化并回读', async () => {
+        const env = makeEnv({ channels: [{ id: 2, token: 'canteen', code: '一食堂', customFields: {} }] });
+        const out = await env.svc.updateStoreConfig({} as any, 2, {
+            routesEnabled: ['R5'], errandBaseFee: 300,
+        } as any);
+        expect(out.errandBaseFee).toBe(300);
     });
 });

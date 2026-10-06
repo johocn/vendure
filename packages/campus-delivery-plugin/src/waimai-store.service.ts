@@ -18,6 +18,7 @@ export interface WaimaiStore {
     storeAddress: string | null;
     storePhone: string | null;
     storeNotice: string | null;
+    errandBaseFee: number | null;
 }
 
 export interface CampusStoreConfigWithChannel {
@@ -31,6 +32,7 @@ export interface CampusStoreConfigWithChannel {
     storeAddress: string | null;
     storePhone: string | null;
     storeNotice: string | null;
+    errandBaseFee: number | null;
 }
 
 const ROUTE_WHITELIST = ['R1', 'R2', 'R3', 'R4', 'R5'];
@@ -69,6 +71,7 @@ export class WaimaiStoreService {
                 storeAddress: cfg.storeAddress ?? null,
                 storePhone: cfg.storePhone ?? null,
                 storeNotice: cfg.storeNotice ?? null,
+                errandBaseFee: cfg.errandBaseFee ?? null,
             });
         }
         return stores;
@@ -100,11 +103,12 @@ export class WaimaiStoreService {
             storeAddress?: string | null;
             storePhone?: string | null;
             storeNotice?: string | null;
+            errandBaseFee?: number | null;
         },
     ): Promise<CampusStoreConfigWithChannel> {
         const bad = (input.routesEnabled ?? []).filter(r => !ROUTE_WHITELIST.includes(r));
         if (bad.length) throw new UserInputError(`不支持的配送路线: ${bad.join(', ')}（仅接受 R1-R5）`);
-        const negative = (['deliveryMinutes', 'minOrderAmount', 'deliveryFee'] as const)
+        const negative = (['deliveryMinutes', 'minOrderAmount', 'deliveryFee', 'errandBaseFee'] as const)
             .filter(k => input[k] != null && (input[k] as number) < 0);
         if (negative.length) throw new UserInputError(`不能为负数: ${negative.join(', ')}`);
         const chRepo = this.connection.getRepository(ctx, Channel);
@@ -120,6 +124,7 @@ export class WaimaiStoreService {
         cfg.storeAddress = input.storeAddress ?? null;
         cfg.storePhone = input.storePhone ?? null;
         cfg.storeNotice = input.storeNotice ?? null;
+        cfg.errandBaseFee = input.errandBaseFee ?? null;
         await repo.save(cfg);
         return this.toConfigView(channelId, ch.code, ch.token, cfg);
     }
@@ -141,6 +146,7 @@ export class WaimaiStoreService {
             storeAddress: cfg?.storeAddress ?? null,
             storePhone: cfg?.storePhone ?? null,
             storeNotice: cfg?.storeNotice ?? null,
+            errandBaseFee: cfg?.errandBaseFee ?? null,
         };
     }
 }
