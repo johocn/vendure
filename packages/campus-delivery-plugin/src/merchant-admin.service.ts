@@ -31,6 +31,7 @@ export interface MerchantBoard {
     cooking: MerchantBoardOrder[];
     awaitingRider: MerchantBoardOrder[];
     delivering: MerchantBoardOrder[];
+    scheduled: MerchantBoardOrder[]; // 预约单（plan 3.1）：已支付未放量，到点前 30min 自动进入待接单/大厅
     completedToday: number;
     completedTodayAmount: number;
 }
@@ -75,7 +76,16 @@ export class MerchantAdminService {
             const s = (o.customFields as any).hallStatus;
             return ['pending_merchant', 'accepted', 'open', 'grabbed'].includes(s);
         });
+        // 预约单（scheduled）：按预约锚点升序，供商家提前备料知悉（不进入四栏流转）
+        const scheduledOrders = orders
+            .filter(o => (o.customFields as any).hallStatus === 'scheduled')
+            .sort((a, b) => {
+                const ta = new Date((a.customFields as any).scheduledFor ?? 0).getTime();
+                const tb = new Date((b.customFields as any).scheduledFor ?? 0).getTime();
+                return ta - tb;
+            });
         const dtos = await this.toDto(ctx, active);
+        const scheduledDtos = await this.toDto(ctx, scheduledOrders);
         const cfOf = (o: Order) => o.customFields as any;
         const pending = dtos.filter((_, i) => cfOf(active[i]).hallStatus === 'pending_merchant');
         const cooking = dtos.filter((_, i) => cfOf(active[i]).hallStatus === 'accepted');
@@ -89,6 +99,7 @@ export class MerchantAdminService {
             cooking,
             awaitingRider,
             delivering,
+            scheduled: scheduledDtos,
             completedToday: deliveredToday.length,
             completedTodayAmount,
         };

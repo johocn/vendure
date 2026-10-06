@@ -64,7 +64,7 @@ describe('setDeliveryTarget route/slot 扩展', () => {
         return { svc, orderService, slotRepo };
     }
 
-    it('传 route+slotId 时写全 fulfillmentRoute/deliverySlotId/deliverySlotText', async () => {
+    it('传 route+slotId 时写全 fulfillmentRoute/deliverySlotId/deliverySlotText/scheduledFor', async () => {
         const env = makeEnv();
         await env.svc.setDeliveryTarget(ctx, 1, 7, 'R3', 5);
         expect(env.orderService.updateCustomFields).toHaveBeenCalledWith(ctx, 100, {
@@ -73,6 +73,7 @@ describe('setDeliveryTarget route/slot 扩展', () => {
             fulfillmentRoute: 'R3',
             deliverySlotId: '5',
             deliverySlotText: '2026-10-06 11:00-11:30',
+            scheduledFor: new Date('2026-10-06T11:00:00'),
         });
     });
     it('slot 余量为 0 抛 UserInputError("该时段已满")', async () => {
@@ -96,12 +97,27 @@ describe('setDeliveryTarget route/slot 扩展', () => {
         const bad = makeEnv();
         await expect(bad.svc.setDeliveryTarget(ctx, 1, 7, 'R9' as any)).rejects.toThrow('配送路线不合法');
     });
-    it('不传 route/slot 时行为与旧版完全一致（只写 buildingId/campusZone）', async () => {
+    it('未传 slotId（尽快送，undefined）同样清空 slot 字段与预约锚点（防 stale scheduledFor）', async () => {
         const env = makeEnv();
         await env.svc.setDeliveryTarget(ctx, 1, 7);
         expect(env.orderService.updateCustomFields).toHaveBeenCalledWith(ctx, 100, {
             buildingId: '7',
             campusZone: '东区',
+            deliverySlotId: null,
+            deliverySlotText: null,
+            scheduledFor: null,
+        });
+    });
+    it('显式 slotId=null（切回尽快送）同样清空残留字段', async () => {
+        const env = makeEnv();
+        await env.svc.setDeliveryTarget(ctx, 1, 7, 'R3', null as unknown as undefined);
+        expect(env.orderService.updateCustomFields).toHaveBeenCalledWith(ctx, 100, {
+            buildingId: '7',
+            campusZone: '东区',
+            fulfillmentRoute: 'R3',
+            deliverySlotId: null,
+            deliverySlotText: null,
+            scheduledFor: null,
         });
     });
 });

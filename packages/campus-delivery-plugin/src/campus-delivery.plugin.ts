@@ -178,6 +178,7 @@ import { WaimaiStoreService } from './waimai-store.service';
                     cooking: [MerchantBoardOrder!]!
                     awaitingRider: [MerchantBoardOrder!]!
                     delivering: [MerchantBoardOrder!]!
+                    scheduled: [MerchantBoardOrder!]!
                     completedToday: Int!
                     completedTodayAmount: Int!
                 }

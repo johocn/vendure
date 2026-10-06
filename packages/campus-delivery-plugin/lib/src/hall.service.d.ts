@@ -1,5 +1,6 @@
 import { ModuleRef } from '@nestjs/core';
 import { Order, RequestContext, TransactionalConnection } from '@vendure/core';
+import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CapacityService } from './capacity.service';
 import { SlotLockService } from './slot-lock.service';
 /**
@@ -11,10 +12,14 @@ export declare class HallService {
     private slotLock;
     private moduleRef;
     private capacity;
+    /** 预约单放量窗口：scheduledFor 前 30min 才进入商家确认/抢单大厅（plan 3.1） */
+    static readonly SCHEDULE_RELEASE_MIN = 30;
     constructor(connection: TransactionalConnection, slotLock: SlotLockService, moduleRef: ModuleRef, capacity: CapacityService);
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
     private get injector();
     onOrderPlaced(ctx: RequestContext, order: Order): Promise<void>;
+    /** 预约单放量（调度 job 调用，plan 3.1）：按渠道配置进入商家确认或直接入厅 */
+    releaseScheduled(ctx: RequestContext, order: Order, cfg: CampusFulfillmentConfig | null): Promise<void>;
     /** 回大厅：清骑手指派字段，hallStatus 复位 open（拒单/超时改派共用） */
     backToHall(ctx: RequestContext, orderId: number): Promise<void>;
     /** 通用订单更新（T4 退款终态标记等复用） */

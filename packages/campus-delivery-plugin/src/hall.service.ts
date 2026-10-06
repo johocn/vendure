@@ -12,6 +12,9 @@ import { SlotLockService } from './slot-lock.service';
  */
 @Injectable()
 export class HallService {
+    /** 预约单放量窗口：scheduledFor 前 30min 才进入商家确认/抢单大厅（plan 3.1） */
+    static readonly SCHEDULE_RELEASE_MIN = 30;
+
     constructor(
         private connection: TransactionalConnection,
         private slotLock: SlotLockService,
@@ -30,6 +33,22 @@ export class HallService {
             // 时段锁位（T0 前置）：商家确认模式同样要先锁容量（用户已支付占用时段），
             // 锁位失败标 campusCause='slot_full'，靠调度告警人工跟进。
             const locked = await this.slotLock.lock(ctx, order);
+            // 预约单闸门（plan 3.1）：scheduledFor 距今超 30min 时挂 'scheduled' 暂不入厅，
+            // 由调度 job 到点前 30min 放量（releaseScheduled）；临近时段照旧即时流转。
+            const scheduledAt = cf.scheduledFor ? new Date(cf.scheduledFor).getTime() : NaN;
+            if (!Number.isNaN(scheduledAt) && scheduledAt - Date.now() > HallService.SCHEDULE_RELEASE_MIN * 60_000) {
+                await this.connection.getRepository(ctx, Order).update(order.id, {
+                    customFields: {
+                        hallStatus: 'scheduled',
+                        ...(locked ? {} : { campusCause: 'slot_full' }),
+                    },
+                } as any);
+                Logger.info(
+                    `Order ${order.code} deferred (scheduled=${cf.scheduledFor}, slotLocked=${locked})`,
+                    'CampusHall',
+                );
+                return;
+            }
             // 商家确认模式：先挂「待商家接单」，出餐完成（merchantCookingDone）才入大厅；
             // 未启用则照旧直接入厅。商家超时未处理由调度 job 自动入厅兜底。
             const cfg = await this.connection
@@ -61,6 +80,22 @@ export class HallService {
             );
             this.notifyRiders(ctx, order);
         }
+    }
+
+    /** 预约单放量（调度 job 调用，plan 3.1）：按渠道配置进入商家确认或直接入厅 */
+    async releaseScheduled(ctx: RequestContext, order: Order, cfg: CampusFulfillmentConfig | null) {
+        if (cfg?.merchantConfirmEnabled) {
+            await this.connection.getRepository(ctx, Order).update(order.id, {
+                customFields: { hallStatus: 'pending_merchant' },
+            } as any);
+            Logger.info(`Order ${order.code} scheduled → pending_merchant`, 'CampusHall');
+            return;
+        }
+        await this.connection.getRepository(ctx, Order).update(order.id, {
+            customFields: { hallStatus: 'open', hallEnteredAt: new Date() },
+        } as any);
+        Logger.info(`Order ${order.code} scheduled → hall open`, 'CampusHall');
+        this.notifyRiders(ctx, order);
     }
 
     /** 回大厅：清骑手指派字段，hallStatus 复位 open（拒单/超时改派共用） */

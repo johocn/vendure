@@ -26,6 +26,7 @@ export interface MerchantBoard {
     cooking: MerchantBoardOrder[];
     awaitingRider: MerchantBoardOrder[];
     delivering: MerchantBoardOrder[];
+    scheduled: MerchantBoardOrder[];
     completedToday: number;
     completedTodayAmount: number;
 }

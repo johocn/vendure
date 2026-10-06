@@ -89,7 +89,7 @@ let DispatchJobService = class DispatchJobService {
         const orders = await repo.createQueryBuilder('order')
             .leftJoin('order.channels', 'channel')
             .where('channel.id = :ch', { ch: ctx.channelId })
-            .andWhere("order.customFields.hallStatus IN ('open', 'grabbed', 'pending_merchant', 'accepted')")
+            .andWhere("order.customFields.hallStatus IN ('open', 'grabbed', 'pending_merchant', 'accepted', 'scheduled')")
             .getMany();
         const now = Date.now();
         // 1) assigned 超 15min 未取货 → 回大厅 + 扣分
@@ -108,7 +108,20 @@ let DispatchJobService = class DispatchJobService {
             .getRepository(ctx, campus_fulfillment_config_entity_1.CampusFulfillmentConfig)
             .findOne({ where: { channelId: ctx.channelId } });
         if (cfg) {
-            // 0) 商家确认模式卡单兜底：待接单/备餐中超 merchantAutoOpenMinutes 自动入厅
+            // 0) 预约单放量（plan 3.1）：到 scheduledFor 前 30min 才进入商家确认/大厅
+            const toRelease = orders.filter(o => {
+                const cf = o.customFields;
+                if (cf.hallStatus !== 'scheduled')
+                    return false;
+                const t = cf.scheduledFor ? new Date(cf.scheduledFor).getTime() : NaN;
+                return !Number.isNaN(t) && t - now <= hall_service_1.HallService.SCHEDULE_RELEASE_MIN * 60000;
+            });
+            for (const o of toRelease) {
+                await this.hall.releaseScheduled(ctx, o, cfg);
+                // 内存同步防同轮 T2/T4 误处理（释放即离开 scheduled 态）
+                o.customFields.hallStatus = cfg.merchantConfirmEnabled ? 'pending_merchant' : 'open';
+            }
+            // 商家确认模式卡单兜底：待接单/备餐中超 merchantAutoOpenMinutes 自动入厅
             // （跳过商家确认，campusCause 留痕；以支付时间 createdAt 为基准）
             if (cfg.merchantConfirmEnabled) {
                 const merchantStale = orders.filter(o => {

@@ -15,6 +15,7 @@ function makeEnv(opts) {
     const hallSvc = {
         backToHall: vitest_1.vi.fn().mockResolvedValue({}),
         updateOrder: vitest_1.vi.fn().mockResolvedValue({}),
+        releaseScheduled: vitest_1.vi.fn().mockResolvedValue({}),
     };
     const capacitySvc = { listOnlineRiders: vitest_1.vi.fn().mockResolvedValue((_a = opts.onlineRiders) !== null && _a !== void 0 ? _a : []) };
     const orderRepo = {
@@ -91,6 +92,43 @@ const minAgo = (m) => new Date(now - m * 60000);
         });
         await svc.scan({ channelId: 1 });
         (0, vitest_1.expect)(hallSvc.backToHall).not.toHaveBeenCalled();
+    });
+});
+(0, vitest_1.describe)('DispatchJobService.scan 预约单放量（plan 3.1）', () => {
+    (0, vitest_1.it)('scheduledFor 进入 30min 窗口 → releaseScheduled 放量', async () => {
+        const { svc, hallSvc } = makeEnv({
+            openOrders: [{ id: 11, customFields: { hallStatus: 'scheduled', scheduledFor: new Date(now + 10 * 60000) } }],
+            cfg: { channelId: 1, autoAssignMinutes: 10, autoRefundMinutes: 30 }, // merchantConfirmEnabled 未启用
+        });
+        await svc.scan({ channelId: 1 });
+        (0, vitest_1.expect)(hallSvc.releaseScheduled).toHaveBeenCalledOnce();
+        (0, vitest_1.expect)(hallSvc.releaseScheduled).toHaveBeenCalledWith(vitest_1.expect.anything(), vitest_1.expect.objectContaining({ id: 11 }), vitest_1.expect.anything());
+    });
+    (0, vitest_1.it)('scheduledFor 距今超 30min → 不放量', async () => {
+        const { svc, hallSvc } = makeEnv({
+            openOrders: [{ id: 11, customFields: { hallStatus: 'scheduled', scheduledFor: new Date(now + 60 * 60000) } }],
+            cfg: { channelId: 1, autoAssignMinutes: 10, autoRefundMinutes: 30 },
+        });
+        await svc.scan({ channelId: 1 });
+        (0, vitest_1.expect)(hallSvc.releaseScheduled).not.toHaveBeenCalled();
+    });
+    (0, vitest_1.it)('商家确认模式渠道 → 放量进入 pending_merchant（走 T2 前不误强派）', async () => {
+        const env = makeEnv({
+            openOrders: [{ id: 12, customFields: { hallStatus: 'scheduled', scheduledFor: new Date(now + 5 * 60000) } }],
+            cfg: { channelId: 1, autoAssignMinutes: 10, autoRefundMinutes: 30, merchantConfirmEnabled: true },
+        });
+        await env.svc.scan({ channelId: 1 });
+        (0, vitest_1.expect)(env.hallSvc.releaseScheduled).toHaveBeenCalledOnce();
+        // 放量后进 pending_merchant，无 open 单，T2 不触发
+        (0, vitest_1.expect)(env.grabSvc.grabByRider).not.toHaveBeenCalled();
+    });
+    (0, vitest_1.it)('scheduled 缺 scheduledFor → 永不放量（脏数据保护）', async () => {
+        const { svc, hallSvc } = makeEnv({
+            openOrders: [{ id: 13, customFields: { hallStatus: 'scheduled' } }],
+            cfg: { channelId: 1, autoAssignMinutes: 10, autoRefundMinutes: 30 },
+        });
+        await svc.scan({ channelId: 1 });
+        (0, vitest_1.expect)(hallSvc.releaseScheduled).not.toHaveBeenCalled();
     });
 });
 /** 预注入 T4 依赖的惰性私有服务（绕过 lazy init，injector 不会被真调） */

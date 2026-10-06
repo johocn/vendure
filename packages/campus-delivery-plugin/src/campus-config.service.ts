@@ -119,7 +119,7 @@ export class CampusConfigService {
         if (!building) throw new UserInputError('宿舍楼不存在');
         // R2 与 R1/R3 同走 zone/building 写入（R2 原单收宿舍楼信息供接力预填）；R4 不经骑手不落此链路
         if (route && !['R1', 'R2', 'R3'].includes(route)) throw new UserInputError('配送路线不合法');
-        const fields: Record<string, string> = {
+        const fields: Record<string, any> = {
             buildingId: String(buildingId),
             campusZone: zone.name,
         };
@@ -132,6 +132,13 @@ export class CampusConfigService {
             if (slot.lockedCount >= slot.capacity) throw new UserInputError('该时段已满');
             fields.deliverySlotId = String(slotId);
             fields.deliverySlotText = `${slot.slotDate} ${slot.startTime}-${slot.endTime}`;
+            // 预约锚点 = 时段开始时间（本地时区解析，plan 3.1）；调度 job 于该时点前 30min 放量
+            fields.scheduledFor = new Date(`${slot.slotDate}T${slot.startTime}:00`);
+        } else {
+            // 切回「尽快送」：清空残留时段与预约锚点，避免旧值误触发预约调度
+            fields.deliverySlotId = null;
+            fields.deliverySlotText = null;
+            fields.scheduledFor = null;
         }
         const orderId = ctx.session?.activeOrderId;
         if (!orderId) throw new UserInputError('购物车为空');

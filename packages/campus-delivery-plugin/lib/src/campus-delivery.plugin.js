@@ -201,6 +201,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     cooking: [MerchantBoardOrder!]!
                     awaitingRider: [MerchantBoardOrder!]!
                     delivering: [MerchantBoardOrder!]!
+                    scheduled: [MerchantBoardOrder!]!
                     completedToday: Int!
                     completedTodayAmount: Int!
                 }

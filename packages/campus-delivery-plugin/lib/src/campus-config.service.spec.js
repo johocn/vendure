@@ -61,7 +61,7 @@ const campus_config_service_1 = require("./campus-config.service");
         const svc = new campus_config_service_1.CampusConfigService(dataSource, orderService);
         return { svc, orderService, slotRepo };
     }
-    (0, vitest_1.it)('传 route+slotId 时写全 fulfillmentRoute/deliverySlotId/deliverySlotText', async () => {
+    (0, vitest_1.it)('传 route+slotId 时写全 fulfillmentRoute/deliverySlotId/deliverySlotText/scheduledFor', async () => {
         const env = makeEnv();
         await env.svc.setDeliveryTarget(ctx, 1, 7, 'R3', 5);
         (0, vitest_1.expect)(env.orderService.updateCustomFields).toHaveBeenCalledWith(ctx, 100, {
@@ -70,6 +70,7 @@ const campus_config_service_1 = require("./campus-config.service");
             fulfillmentRoute: 'R3',
             deliverySlotId: '5',
             deliverySlotText: '2026-10-06 11:00-11:30',
+            scheduledFor: new Date('2026-10-06T11:00:00'),
         });
     });
     (0, vitest_1.it)('slot 余量为 0 抛 UserInputError("该时段已满")', async () => {
@@ -91,12 +92,27 @@ const campus_config_service_1 = require("./campus-config.service");
         const bad = makeEnv();
         await (0, vitest_1.expect)(bad.svc.setDeliveryTarget(ctx, 1, 7, 'R9')).rejects.toThrow('配送路线不合法');
     });
-    (0, vitest_1.it)('不传 route/slot 时行为与旧版完全一致（只写 buildingId/campusZone）', async () => {
+    (0, vitest_1.it)('未传 slotId（尽快送，undefined）同样清空 slot 字段与预约锚点（防 stale scheduledFor）', async () => {
         const env = makeEnv();
         await env.svc.setDeliveryTarget(ctx, 1, 7);
         (0, vitest_1.expect)(env.orderService.updateCustomFields).toHaveBeenCalledWith(ctx, 100, {
             buildingId: '7',
             campusZone: '东区',
+            deliverySlotId: null,
+            deliverySlotText: null,
+            scheduledFor: null,
+        });
+    });
+    (0, vitest_1.it)('显式 slotId=null（切回尽快送）同样清空残留字段', async () => {
+        const env = makeEnv();
+        await env.svc.setDeliveryTarget(ctx, 1, 7, 'R3', null);
+        (0, vitest_1.expect)(env.orderService.updateCustomFields).toHaveBeenCalledWith(ctx, 100, {
+            buildingId: '7',
+            campusZone: '东区',
+            fulfillmentRoute: 'R3',
+            deliverySlotId: null,
+            deliverySlotText: null,
+            scheduledFor: null,
         });
     });
 });

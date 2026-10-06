@@ -127,6 +127,14 @@ let CampusConfigService = class CampusConfigService {
                 throw new core_1.UserInputError('该时段已满');
             fields.deliverySlotId = String(slotId);
             fields.deliverySlotText = `${slot.slotDate} ${slot.startTime}-${slot.endTime}`;
+            // 预约锚点 = 时段开始时间（本地时区解析，plan 3.1）；调度 job 于该时点前 30min 放量
+            fields.scheduledFor = new Date(`${slot.slotDate}T${slot.startTime}:00`);
+        }
+        else {
+            // 切回「尽快送」：清空残留时段与预约锚点，避免旧值误触发预约调度
+            fields.deliverySlotId = null;
+            fields.deliverySlotText = null;
+            fields.scheduledFor = null;
         }
         const orderId = (_a = ctx.session) === null || _a === void 0 ? void 0 : _a.activeOrderId;
         if (!orderId)

@@ -50,6 +50,8 @@ let DispatchAdminService = class DispatchAdminService {
         const activeOrders = [];
         for (const o of orders) {
             const cf = o.customFields;
+            if (cf.hallStatus === 'scheduled')
+                continue; // 预约单未放量，不进调度墙（商家工作台可见，plan 3.1）
             if (cf.hallStatus === 'open') {
                 hallOrders.push(o);
                 if (cf.campusCause === 'slot_full') {

@@ -53,7 +53,17 @@ let MerchantAdminService = class MerchantAdminService {
             const s = o.customFields.hallStatus;
             return ['pending_merchant', 'accepted', 'open', 'grabbed'].includes(s);
         });
+        // 预约单（scheduled）：按预约锚点升序，供商家提前备料知悉（不进入四栏流转）
+        const scheduledOrders = orders
+            .filter(o => o.customFields.hallStatus === 'scheduled')
+            .sort((a, b) => {
+            var _a, _b;
+            const ta = new Date((_a = a.customFields.scheduledFor) !== null && _a !== void 0 ? _a : 0).getTime();
+            const tb = new Date((_b = b.customFields.scheduledFor) !== null && _b !== void 0 ? _b : 0).getTime();
+            return ta - tb;
+        });
         const dtos = await this.toDto(ctx, active);
+        const scheduledDtos = await this.toDto(ctx, scheduledOrders);
         const cfOf = (o) => o.customFields;
         const pending = dtos.filter((_, i) => cfOf(active[i]).hallStatus === 'pending_merchant');
         const cooking = dtos.filter((_, i) => cfOf(active[i]).hallStatus === 'accepted');
@@ -67,6 +77,7 @@ let MerchantAdminService = class MerchantAdminService {
             cooking,
             awaitingRider,
             delivering,
+            scheduled: scheduledDtos,
             completedToday: deliveredToday.length,
             completedTodayAmount,
         };

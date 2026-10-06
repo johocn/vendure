@@ -8,6 +8,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var HallService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.HallService = void 0;
 const common_1 = require("@nestjs/common");
@@ -21,7 +22,7 @@ const slot_lock_service_1 = require("./slot-lock.service");
  * 入厅服务：跑腿单（orderKind='errand'）或路线 R1/R3 的订单在支付后自动进入抢单大厅。
  * 含预约时段锁位（T0 前置）：锁位失败标 campusCause='slot_full'，靠调度告警人工跟进。
  */
-let HallService = class HallService {
+let HallService = HallService_1 = class HallService {
     constructor(connection, slotLock, moduleRef, capacity) {
         this.connection = connection;
         this.slotLock = slotLock;
@@ -39,6 +40,16 @@ let HallService = class HallService {
             // 时段锁位（T0 前置）：商家确认模式同样要先锁容量（用户已支付占用时段），
             // 锁位失败标 campusCause='slot_full'，靠调度告警人工跟进。
             const locked = await this.slotLock.lock(ctx, order);
+            // 预约单闸门（plan 3.1）：scheduledFor 距今超 30min 时挂 'scheduled' 暂不入厅，
+            // 由调度 job 到点前 30min 放量（releaseScheduled）；临近时段照旧即时流转。
+            const scheduledAt = cf.scheduledFor ? new Date(cf.scheduledFor).getTime() : NaN;
+            if (!Number.isNaN(scheduledAt) && scheduledAt - Date.now() > HallService_1.SCHEDULE_RELEASE_MIN * 60000) {
+                await this.connection.getRepository(ctx, core_2.Order).update(order.id, {
+                    customFields: Object.assign({ hallStatus: 'scheduled' }, (locked ? {} : { campusCause: 'slot_full' })),
+                });
+                core_2.Logger.info(`Order ${order.code} deferred (scheduled=${cf.scheduledFor}, slotLocked=${locked})`, 'CampusHall');
+                return;
+            }
             // 商家确认模式：先挂「待商家接单」，出餐完成（merchantCookingDone）才入大厅；
             // 未启用则照旧直接入厅。商家超时未处理由调度 job 自动入厅兜底。
             const cfg = await this.connection
@@ -57,6 +68,21 @@ let HallService = class HallService {
             core_2.Logger.info(`Order ${order.code} entered hall (${cf.fulfillmentRoute}, slot=${(_b = cf.deliverySlotText) !== null && _b !== void 0 ? _b : 'immediate'}, slotLocked=${locked})`, 'CampusHall');
             this.notifyRiders(ctx, order);
         }
+    }
+    /** 预约单放量（调度 job 调用，plan 3.1）：按渠道配置进入商家确认或直接入厅 */
+    async releaseScheduled(ctx, order, cfg) {
+        if (cfg === null || cfg === void 0 ? void 0 : cfg.merchantConfirmEnabled) {
+            await this.connection.getRepository(ctx, core_2.Order).update(order.id, {
+                customFields: { hallStatus: 'pending_merchant' },
+            });
+            core_2.Logger.info(`Order ${order.code} scheduled → pending_merchant`, 'CampusHall');
+            return;
+        }
+        await this.connection.getRepository(ctx, core_2.Order).update(order.id, {
+            customFields: { hallStatus: 'open', hallEnteredAt: new Date() },
+        });
+        core_2.Logger.info(`Order ${order.code} scheduled → hall open`, 'CampusHall');
+        this.notifyRiders(ctx, order);
     }
     /** 回大厅：清骑手指派字段，hallStatus 复位 open（拒单/超时改派共用） */
     async backToHall(ctx, orderId) {
@@ -101,7 +127,9 @@ let HallService = class HallService {
     }
 };
 exports.HallService = HallService;
-exports.HallService = HallService = __decorate([
+/** 预约单放量窗口：scheduledFor 前 30min 才进入商家确认/抢单大厅（plan 3.1） */
+HallService.SCHEDULE_RELEASE_MIN = 30;
+exports.HallService = HallService = HallService_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [core_2.TransactionalConnection,
         slot_lock_service_1.SlotLockService,
