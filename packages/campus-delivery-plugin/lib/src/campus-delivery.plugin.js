@@ -44,6 +44,7 @@ const rider_service_1 = require("./rider.service");
 const rider_shop_resolver_1 = require("./rider-shop.resolver");
 const rider_task_service_1 = require("./rider-task.service");
 const rider_task_shop_resolver_1 = require("./rider-task-shop.resolver");
+const rider_withdrawal_entity_1 = require("./rider-withdrawal.entity");
 const shipping_calculator_1 = require("./shipping-calculator");
 const slot_lock_service_1 = require("./slot-lock.service");
 const waimai_shop_resolver_1 = require("./waimai-shop.resolver");
@@ -72,7 +73,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin;
 exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [campus_zone_entity_1.CampusZone, campus_building_entity_1.CampusBuilding, rider_earning_entity_1.RiderEarning, campus_fulfillment_config_entity_1.CampusFulfillmentConfig, delivery_slot_entity_1.DeliverySlot, rider_credit_log_entity_1.RiderCreditLog],
+        entities: [campus_zone_entity_1.CampusZone, campus_building_entity_1.CampusBuilding, rider_earning_entity_1.RiderEarning, campus_fulfillment_config_entity_1.CampusFulfillmentConfig, delivery_slot_entity_1.DeliverySlot, rider_credit_log_entity_1.RiderCreditLog, rider_withdrawal_entity_1.RiderWithdrawalRequest],
         providers: [
             create_campus_tables_1.CreateCampusTablesMigration,
             campus_config_service_1.CampusConfigService,

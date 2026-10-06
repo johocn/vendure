@@ -42,6 +42,7 @@ import { RiderService } from './rider.service';
 import { RiderShopResolver } from './rider-shop.resolver';
 import { RiderTaskService } from './rider-task.service';
 import { RiderTaskShopResolver } from './rider-task-shop.resolver';
+import { RiderWithdrawalRequest } from './rider-withdrawal.entity';
 import { bindCampusErrandCalculatorConnection, campusErrandCalculator } from './shipping-calculator';
 import { SlotLockService } from './slot-lock.service';
 import { WaimaiShopResolver } from './waimai-shop.resolver';
@@ -49,7 +50,7 @@ import { WaimaiStoreService } from './waimai-store.service';
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig, DeliverySlot, RiderCreditLog],
+    entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig, DeliverySlot, RiderCreditLog, RiderWithdrawalRequest],
     providers: [
         CreateCampusTablesMigration,
         CampusConfigService,
