@@ -24,7 +24,7 @@ export declare class RiderTaskService {
     transfer(ctx: RequestContext, orderId: ID, photos: string[], note?: string): Promise<Order>;
     /** 开始配送：assigned → in_progress */
     start(ctx: RequestContext, orderId: ID): Promise<Order>;
-    /** 送达：拍照必传 → delivered → 分成入余额 */
+    /** 送达：拍照必传 → delivered → 分成入余额（0 分成单跳过入账） */
     deliver(ctx: RequestContext, orderId: ID, photos: string[], note?: string): Promise<Order>;
     /** 异常上报：不校验状态，标记 exception */
     reportException(ctx: RequestContext, orderId: ID, type: string, photos: string[], note?: string): Promise<Order>;

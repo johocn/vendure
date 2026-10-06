@@ -19,38 +19,48 @@ const rider_service_1 = require("./rider.service");
 const rider_withdrawal_entity_1 = require("./rider-withdrawal.entity");
 const MIN_WITHDRAW_AMOUNT = 1000; // 最低提现 ¥10（分）
 /** 骑手钱包：余额底座复用 coupon-balance-port（recharge-card CustomerBalance）。
- * 提现即扣减余额（冻结语义：frozen = PENDING 申请合计），驳回退回、打款仅留痕。 */
+ * 提现即扣减余额（冻结语义：frozen = PENDING 申请合计），驳回退回、打款仅留痕。
+ * 骑手为平台级能力：资金操作与流水的渠道上下文固定为默认渠道（platformCtx），
+ * 不随调用方（骑手端无渠道头、管理端选店）的 channelToken 漂移。 */
 let RiderWalletService = class RiderWalletService {
-    constructor(connection, riderService) {
+    constructor(connection, riderService, requestContextService) {
         this.connection = connection;
         this.riderService = riderService;
+        this.requestContextService = requestContextService;
+    }
+    /** 默认渠道上下文：余额端口与提现记录统一在此渠道下读写 */
+    async platformCtx() {
+        return this.requestContextService.create({ apiType: 'admin' });
     }
     async myRiderWallet(ctx) {
         const rider = await this.riderService.assertApprovedRider(ctx);
+        const pc = await this.platformCtx();
         const port = (0, coupon_plugin_1.getCouponBalancePort)();
-        const available = port ? await port.getBalance(ctx, rider.id) : 0;
-        const frozen = await this.sumPending(ctx, rider.id);
-        const totalEarned = await this.sumEarned(ctx, rider.id);
+        const available = port ? await port.getBalance(pc, rider.id) : 0;
+        const frozen = await this.sumPending(pc, rider.id);
+        const totalEarned = await this.sumEarned(pc, rider.id);
         return { available, frozen, totalEarned };
     }
-    /** 余额流水（recharge-card BalanceTransaction，本渠道本人倒序） */
+    /** 余额流水（recharge-card BalanceTransaction，默认渠道本人倒序） */
     async riderBalanceHistory(ctx, skip, take) {
         const rider = await this.riderService.assertApprovedRider(ctx);
+        const pc = await this.platformCtx();
         return this.connection
-            .getRepository(ctx, recharge_card_plugin_1.BalanceTransaction)
+            .getRepository(pc, recharge_card_plugin_1.BalanceTransaction)
             .createQueryBuilder('tx')
             .where('tx.customerId = :id', { id: rider.id })
-            .andWhere('tx.channelId = :ch', { ch: ctx.channelId })
+            .andWhere('tx.channelId = :ch', { ch: pc.channelId })
             .orderBy('tx.createdAt', 'DESC')
             .skip(skip !== null && skip !== void 0 ? skip : 0)
             .take(take !== null && take !== void 0 ? take : 20)
             .getMany();
     }
-    /** 本人提现申请记录（倒序） */
+    /** 本人提现申请记录（平台级，倒序） */
     async riderWithdrawRequests(ctx, skip, take) {
         const rider = await this.riderService.assertApprovedRider(ctx);
+        const pc = await this.platformCtx();
         return this.connection
-            .getRepository(ctx, rider_withdrawal_entity_1.RiderWithdrawalRequest)
+            .getRepository(pc, rider_withdrawal_entity_1.RiderWithdrawalRequest)
             .createQueryBuilder('w')
             .where('w.customerId = :id', { id: rider.id })
             .orderBy('w.createdAt', 'DESC')
@@ -69,28 +79,27 @@ let RiderWalletService = class RiderWalletService {
             throw new core_1.UserInputError('请选择收款渠道');
         if (!((_b = input.account) === null || _b === void 0 ? void 0 : _b.trim()))
             throw new core_1.UserInputError('请填写收款账号');
+        const pc = await this.platformCtx();
         const port = (0, coupon_plugin_1.getCouponBalancePort)();
         if (!port)
             throw new core_1.UserInputError('余额功能未开通');
-        const available = await port.getBalance(ctx, rider.id);
+        const available = await port.getBalance(pc, rider.id);
         if (amount > available)
             throw new core_1.UserInputError('超过可提现余额');
-        await port.deductBalance(ctx, rider.id, amount);
-        return this.connection.getRepository(ctx, rider_withdrawal_entity_1.RiderWithdrawalRequest).save({
+        await port.deductBalance(pc, rider.id, amount);
+        return this.connection.getRepository(pc, rider_withdrawal_entity_1.RiderWithdrawalRequest).save({
             customerId: rider.id,
-            channelId: ctx.channelId,
+            channelId: pc.channelId,
             amount,
             channel: input.channel.trim(),
             account: input.account.trim(),
             status: 'PENDING',
         });
     }
-    /** 管理端：提现申请列表（status=ALL 或具体状态，渠道隔离） */
+    /** 管理端：提现申请列表（status=ALL 或具体状态；平台级，不限定选店渠道） */
     async adminList(ctx, status, skip, take) {
-        const qb = this.connection
-            .getRepository(ctx, rider_withdrawal_entity_1.RiderWithdrawalRequest)
-            .createQueryBuilder('w')
-            .where('w.channelId = :ch', { ch: ctx.channelId });
+        const pc = await this.platformCtx();
+        const qb = this.connection.getRepository(pc, rider_withdrawal_entity_1.RiderWithdrawalRequest).createQueryBuilder('w');
         if (status && status !== 'ALL') {
             qb.andWhere('w.status = :s', { s: status });
         }
@@ -98,8 +107,9 @@ let RiderWalletService = class RiderWalletService {
     }
     /** 管理端：通过打款（仅留痕，金额已在申请时扣减） */
     async adminApprove(ctx, id, remark) {
-        const req = await this.getForReview(ctx, id);
-        const repo = this.connection.getRepository(ctx, rider_withdrawal_entity_1.RiderWithdrawalRequest);
+        const req = await this.getForReview(id);
+        const pc = await this.platformCtx();
+        const repo = this.connection.getRepository(pc, rider_withdrawal_entity_1.RiderWithdrawalRequest);
         await repo.update(req.id, {
             status: 'PAID',
             remark: (remark === null || remark === void 0 ? void 0 : remark.trim()) || req.remark || null,
@@ -108,17 +118,18 @@ let RiderWalletService = class RiderWalletService {
         });
         return repo.findOne({ where: { id: req.id } });
     }
-    /** 管理端：驳回（退回冻结金额 + 留痕） */
+    /** 管理端：驳回（退回冻结金额 + 留痕；退回资金固定默认渠道，与申请扣款同渠道） */
     async adminReject(ctx, id, remark) {
-        const req = await this.getForReview(ctx, id);
+        const req = await this.getForReview(id);
+        const pc = await this.platformCtx();
         const port = (0, coupon_plugin_1.getCouponBalancePort)();
         if (port) {
-            await port.addBalance(ctx, req.customerId, req.amount);
+            await port.addBalance(pc, req.customerId, req.amount);
         }
         else {
             common_1.Logger.warn('余额端口未注册，驳回退回未执行', 'RiderWallet');
         }
-        const repo = this.connection.getRepository(ctx, rider_withdrawal_entity_1.RiderWithdrawalRequest);
+        const repo = this.connection.getRepository(pc, rider_withdrawal_entity_1.RiderWithdrawalRequest);
         await repo.update(req.id, {
             status: 'REJECTED',
             remark: (remark === null || remark === void 0 ? void 0 : remark.trim()) || req.remark || null,
@@ -130,10 +141,10 @@ let RiderWalletService = class RiderWalletService {
     reviewer(ctx) {
         return ctx.activeUserId ? String(ctx.activeUserId) : null;
     }
-    async getForReview(ctx, id) {
-        const req = await this.connection
-            .getRepository(ctx, rider_withdrawal_entity_1.RiderWithdrawalRequest)
-            .findOne({ where: { id, channelId: ctx.channelId } });
+    /** 审核前置校验（平台级：不限定 channelId） */
+    async getForReview(id) {
+        const pc = await this.platformCtx();
+        const req = await this.connection.getRepository(pc, rider_withdrawal_entity_1.RiderWithdrawalRequest).findOne({ where: { id } });
         if (!req)
             throw new core_1.UserInputError('提现申请不存在');
         if (req.status !== 'PENDING')
@@ -164,6 +175,8 @@ let RiderWalletService = class RiderWalletService {
 exports.RiderWalletService = RiderWalletService;
 exports.RiderWalletService = RiderWalletService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [core_1.TransactionalConnection, rider_service_1.RiderService])
+    __metadata("design:paramtypes", [core_1.TransactionalConnection,
+        rider_service_1.RiderService,
+        core_1.RequestContextService])
 ], RiderWalletService);
 //# sourceMappingURL=rider-wallet.service.js.map

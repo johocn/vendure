@@ -48,5 +48,19 @@ const assigned = { id: 10, code: 'A1', shipping: 300, customFields: { deliverySt
         const { svc } = make(other);
         await (0, vitest_1.expect)(svc.start({ channelId: 1 }, 10)).rejects.toThrow();
     });
+    (0, vitest_1.it)('0 分成单（0 运费 0 小费）不入账不写 earning 且不抛错', async () => {
+        const zero = { id: 11, code: 'A2', shipping: 0, customFields: { deliveryStaffId: '9', deliveryStatus: 'in_progress', tip: 0 } };
+        const { svc, saved } = make(zero, { riderCommissionRate: 80 });
+        const order = await svc.deliver({ channelId: 1 }, 11, ['p1']);
+        (0, vitest_1.expect)(order).toBeTruthy();
+        (0, vitest_1.expect)(saved).toHaveLength(0); // 未写 RiderEarning
+    });
+    (0, vitest_1.it)('有运费但分成 0（rate=0）仍写 earning 走入账分支', async () => {
+        const inProg = Object.assign(Object.assign({}, assigned), { customFields: Object.assign(Object.assign({}, assigned.customFields), { deliveryStatus: 'in_progress' }) });
+        const { svc, saved } = make(inProg, { riderCommissionRate: 0 });
+        await svc.deliver({ channelId: 1 }, 10, ['p1']);
+        (0, vitest_1.expect)(saved).toHaveLength(1);
+        (0, vitest_1.expect)(saved[0].amount).toBe(0);
+    });
 });
 //# sourceMappingURL=rider-task.service.spec.js.map
