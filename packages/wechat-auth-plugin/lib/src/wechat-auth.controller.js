@@ -16,9 +16,31 @@ exports.WechatAuthController = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const constants_1 = require("./constants");
+const wechat_auth_service_1 = require("./wechat-auth.service");
 let WechatAuthController = class WechatAuthController {
-    constructor(options) {
+    constructor(options, wechatAuthService) {
         this.options = options;
+        this.wechatAuthService = wechatAuthService;
+    }
+    /**
+     * JS-SDK 签名接口（公开只读）：GET /wechat-auth/jssdk-signature?url=<当前页面URL>
+     * 返回 wx.config 所需的 appId/timestamp/nonceStr/signature
+     */
+    async jssdkSignature(url, res) {
+        if (!url) {
+            res.status(400).json({ error: 'Missing url parameter' });
+            return;
+        }
+        try {
+            // 去掉微信会在签名校验时忽略的 hash 部分
+            const cleanUrl = url.split('#')[0];
+            const signature = await this.wechatAuthService.generateJsapiSignature(cleanUrl);
+            res.json(signature);
+        }
+        catch (e) {
+            core_1.Logger.error(`JS-SDK signature error: ${String(e.message)}`, constants_1.loggerCtx);
+            res.status(500).json({ error: 'Failed to generate signature' });
+        }
     }
     async callback(req, res, code) {
         if (!code) {
@@ -48,6 +70,14 @@ let WechatAuthController = class WechatAuthController {
 };
 exports.WechatAuthController = WechatAuthController;
 __decorate([
+    (0, common_1.Get)('jssdk-signature'),
+    __param(0, (0, common_1.Query)('url')),
+    __param(1, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], WechatAuthController.prototype, "jssdkSignature", null);
+__decorate([
     (0, common_1.Get)('callback'),
     __param(0, (0, common_1.Req)()),
     __param(1, (0, common_1.Res)()),
@@ -59,6 +89,6 @@ __decorate([
 exports.WechatAuthController = WechatAuthController = __decorate([
     (0, common_1.Controller)('wechat-auth'),
     __param(0, (0, common_1.Inject)(constants_1.WECHAT_AUTH_PLUGIN_OPTIONS)),
-    __metadata("design:paramtypes", [Object])
+    __metadata("design:paramtypes", [Object, wechat_auth_service_1.WechatAuthService])
 ], WechatAuthController);
 //# sourceMappingURL=wechat-auth.controller.js.map
