@@ -78,4 +78,27 @@ function makeEnv(opts = {}) {
         (0, vitest_1.expect)(env.orderSvc.addSurchargeToOrder).not.toHaveBeenCalled();
     });
 });
+(0, vitest_1.describe)('ErrandService.setErrandInfo 二期字段', () => {
+    const baseInput = { kind: 'pickup_express', fromText: '东门取件', toText: '12号楼501', tip: 0 };
+    const ctx = { channelId: 1, activeUserId: 9, session: { activeOrderId: 5 } };
+    (0, vitest_1.it)('note 透传 errandNote；errandFrom 覆盖优先于 fromText（R2 接力单存原单号）', async () => {
+        const env = makeEnv();
+        await env.svc.setErrandInfo(ctx, Object.assign(Object.assign({}, baseInput), { note: '两个包裹', errandFrom: 'A100' }));
+        (0, vitest_1.expect)(env.orderSvc.updateCustomFields).toHaveBeenCalledWith(ctx, 5, vitest_1.expect.objectContaining({ errandNote: '两个包裹', errandFrom: 'A100' }));
+    });
+    (0, vitest_1.it)('errandFrom 缺省落 fromText（普通 R5 保持 A 点文字）', async () => {
+        const env = makeEnv();
+        await env.svc.setErrandInfo(ctx, baseInput);
+        (0, vitest_1.expect)(env.orderSvc.updateCustomFields).toHaveBeenCalledWith(ctx, 5, vitest_1.expect.objectContaining({ errandFrom: '东门取件' }));
+    });
+});
+(0, vitest_1.describe)('ErrandService.getErrandBaseFee', () => {
+    (0, vitest_1.it)('配置存在返回 errandBaseFee，缺失回默认 200 分', async () => {
+        const env = makeEnv();
+        env.orderRepo.findOne.mockResolvedValue({ errandBaseFee: 300 });
+        (0, vitest_1.expect)(await env.svc.getErrandBaseFee({ channelId: 2 })).toBe(300);
+        env.orderRepo.findOne.mockResolvedValue(null);
+        (0, vitest_1.expect)(await env.svc.getErrandBaseFee({ channelId: 2 })).toBe(200);
+    });
+});
 //# sourceMappingURL=errand.service.spec.js.map

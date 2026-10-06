@@ -14,6 +14,8 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
 const ROUTE_WHITELIST = ['R1', 'R2', 'R3', 'R4', 'R5'];
+/** R4 自提点标记：campus 配置管理的本渠道门店自提点（幂等 upsert 键，复用 cjk PickupLocation 体系） */
+const CAMPUS_R4_REMARK = 'campus-r4';
 let WaimaiStoreService = class WaimaiStoreService {
     constructor(connection) {
         this.connection = connection;
@@ -21,7 +23,7 @@ let WaimaiStoreService = class WaimaiStoreService {
     /** 店铺列表：有履约配置的渠道即外卖店铺（跨渠道公开元数据聚合，供 C 端首页）。
      * C 端进入店铺后用 channelToken 作 vendure-token 切换渠道拉菜单/下单。 */
     async listStores(ctx) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
         const configs = await this.connection.getRepository(ctx, campus_fulfillment_config_entity_1.CampusFulfillmentConfig).find();
         const byChannel = new Map(configs.map(c => [Number(c.channelId), c]));
         const channels = await this.connection.getRepository(ctx, core_1.Channel).find();
@@ -51,6 +53,7 @@ let WaimaiStoreService = class WaimaiStoreService {
                 storeAddress: (_j = cfg.storeAddress) !== null && _j !== void 0 ? _j : null,
                 storePhone: (_k = cfg.storePhone) !== null && _k !== void 0 ? _k : null,
                 storeNotice: (_l = cfg.storeNotice) !== null && _l !== void 0 ? _l : null,
+                errandBaseFee: (_m = cfg.errandBaseFee) !== null && _m !== void 0 ? _m : null,
             });
         }
         return stores;
@@ -71,11 +74,11 @@ let WaimaiStoreService = class WaimaiStoreService {
     }
     /** admin：按 channelId upsert（幂等），routesEnabled 白名单 R1-R5，负数金额拒绝 */
     async updateStoreConfig(ctx, channelId, input) {
-        var _a, _b, _c, _d, _e, _f, _g;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
         const bad = ((_a = input.routesEnabled) !== null && _a !== void 0 ? _a : []).filter(r => !ROUTE_WHITELIST.includes(r));
         if (bad.length)
             throw new core_1.UserInputError(`不支持的配送路线: ${bad.join(', ')}（仅接受 R1-R5）`);
-        const negative = ['deliveryMinutes', 'minOrderAmount', 'deliveryFee']
+        const negative = ['deliveryMinutes', 'minOrderAmount', 'deliveryFee', 'errandBaseFee']
             .filter(k => input[k] != null && input[k] < 0);
         if (negative.length)
             throw new core_1.UserInputError(`不能为负数: ${negative.join(', ')}`);
@@ -94,11 +97,43 @@ let WaimaiStoreService = class WaimaiStoreService {
         cfg.storeAddress = (_e = input.storeAddress) !== null && _e !== void 0 ? _e : null;
         cfg.storePhone = (_f = input.storePhone) !== null && _f !== void 0 ? _f : null;
         cfg.storeNotice = (_g = input.storeNotice) !== null && _g !== void 0 ? _g : null;
+        cfg.errandBaseFee = (_h = input.errandBaseFee) !== null && _h !== void 0 ? _h : null;
         await repo.save(cfg);
+        const address = ((_j = input.storeAddress) !== null && _j !== void 0 ? _j : '').trim();
+        if (address) {
+            // R4：同步幂等 upsert 本渠道门店自提点（名称=店铺名，地址=storeAddress），核销走 pickup_redemption 零新表
+            await this.upsertStorePickupLocation(Number(channelId), ch.code, address, ((_k = input.storePhone) !== null && _k !== void 0 ? _k : '').trim() || null);
+        }
         return this.toConfigView(channelId, ch.code, ch.token, cfg);
     }
+    /** 经 rawConnection 按实体名取 repo（避免对 cjk-plugin 的构建期依赖；PickupLocation 由 cjk-plugin 注册于同一进程）。
+     * 可见性：isPublic=false + ownerChannelId=本渠道 + channels 含本渠道 → shop 端 applyVisibility 对本渠道可见（cjk pickup-location.service.ts:35）。 */
+    async upsertStorePickupLocation(channelId, name, address, phone) {
+        const repo = this.connection.rawConnection.getRepository('PickupLocation');
+        const existing = await repo.findOne({ where: { ownerChannelId: channelId, remark: CAMPUS_R4_REMARK } });
+        if (existing) {
+            existing.name = name;
+            existing.address = address;
+            existing.phoneNumber = phone;
+            existing.enabled = true;
+            await repo.save(existing);
+            return existing;
+        }
+        return repo.save({
+            name,
+            address,
+            phoneNumber: phone,
+            type: 'store',
+            stockType: 'own',
+            enabled: true,
+            isPublic: false,
+            ownerChannelId: channelId,
+            channels: [{ id: channelId }],
+            remark: CAMPUS_R4_REMARK,
+        });
+    }
     toConfigView(channelId, channelName, channelToken, cfg) {
-        var _a, _b, _c, _d, _e, _f, _g;
+        var _a, _b, _c, _d, _e, _f, _g, _h;
         return {
             channelId,
             channelName,
@@ -110,6 +145,7 @@ let WaimaiStoreService = class WaimaiStoreService {
             storeAddress: (_e = cfg === null || cfg === void 0 ? void 0 : cfg.storeAddress) !== null && _e !== void 0 ? _e : null,
             storePhone: (_f = cfg === null || cfg === void 0 ? void 0 : cfg.storePhone) !== null && _f !== void 0 ? _f : null,
             storeNotice: (_g = cfg === null || cfg === void 0 ? void 0 : cfg.storeNotice) !== null && _g !== void 0 ? _g : null,
+            errandBaseFee: (_h = cfg === null || cfg === void 0 ? void 0 : cfg.errandBaseFee) !== null && _h !== void 0 ? _h : null,
         };
     }
 };

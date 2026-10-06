@@ -30,8 +30,10 @@ const hall_grab_service_1 = require("./hall-grab.service");
 const hall_service_1 = require("./hall.service");
 const hall_shop_resolver_1 = require("./hall-shop.resolver");
 const create_campus_tables_1 = require("./migrations/create-campus-tables");
+const min_order_process_1 = require("./min-order.process");
 const permissions_1 = require("./permissions");
 const r2_mark_service_1 = require("./r2-mark.service");
+const r2_shop_resolver_1 = require("./r2-shop.resolver");
 const rider_admin_resolver_1 = require("./rider-admin.resolver");
 const rider_credit_log_entity_1 = require("./rider-credit-log.entity");
 const rider_credit_service_1 = require("./rider-credit.service");
@@ -56,6 +58,7 @@ let CampusDeliveryPlugin = class CampusDeliveryPlugin {
     }
     onApplicationBootstrap() {
         (0, shipping_calculator_1.bindCampusErrandCalculatorConnection)(this.injector.get(core_1.TransactionalConnection));
+        (0, min_order_process_1.bindMinOrderConnection)(this.injector.get(core_1.TransactionalConnection));
         this.eventBus.ofType(core_1.OrderPlacedEvent).subscribe(({ ctx, order }) => this.hallService.onOrderPlaced(ctx, order).catch(e => core_1.Logger.error(String(e), 'CampusHall')));
         this.injector.get(dispatch_job_service_1.DispatchJobService).start();
     }
@@ -195,6 +198,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     storeAddress: String
                     storePhone: String
                     storeNotice: String
+                    errandBaseFee: Int
                 }
 
                 input CampusStoreConfigInput {
@@ -205,6 +209,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     storeAddress: String
                     storePhone: String
                     storeNotice: String
+                    errandBaseFee: Int
                 }
 
                 extend type Query {
@@ -309,10 +314,18 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     tip: Int!
                     buildingId: ID
                     campusZone: String
+                    errandFrom: String
+                    note: String
                 }
 
                 type CampusErrandInfoResult {
                     orderId: ID!
+                }
+
+                type CampusErrandVariantResult {
+                    variantId: ID!
+                    sku: String!
+                    errandBaseFee: Int!
                 }
 
                 type CampusArrivedResult {
@@ -335,11 +348,23 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     storeAddress: String
                     storePhone: String
                     storeNotice: String
+                    errandBaseFee: Int
                 }
 
                 type CampusOrderRider {
                     realName: String!
                     credit: Int!
+                }
+
+                type CampusR2Relay {
+                    orderId: ID!
+                    orderCode: String!
+                    state: String!
+                    hallStatus: String
+                    deliveryStatus: String
+                    errandTo: String
+                    tip: Int!
+                    totalWithTax: Int!
                 }
 
                 extend type Query {
@@ -353,6 +378,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusCapacityCheck: CampusCapacityCheck!
                     waimaiStoreList: [WaimaiStore!]!
                     campusOrderRider(orderId: ID!): CampusOrderRider
+                    campusR2Relay(orderId: ID!): CampusR2Relay
+                    campusErrandVariant: CampusErrandVariantResult!
                 }
 
                 extend type Mutation {
@@ -371,10 +398,10 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                 }
             `;
             },
-            resolvers: [rider_shop_resolver_1.RiderShopResolver, hall_shop_resolver_1.HallShopResolver, rider_task_shop_resolver_1.RiderTaskShopResolver, errand_shop_resolver_1.ErrandShopResolver, waimai_shop_resolver_1.WaimaiShopResolver],
+            resolvers: [rider_shop_resolver_1.RiderShopResolver, hall_shop_resolver_1.HallShopResolver, rider_task_shop_resolver_1.RiderTaskShopResolver, errand_shop_resolver_1.ErrandShopResolver, waimai_shop_resolver_1.WaimaiShopResolver, r2_shop_resolver_1.R2ShopResolver],
         },
         configuration: config => {
-            var _a, _b, _c, _d, _e, _f, _g, _h;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
             config.authOptions.customPermissions = [
                 ...((_a = config.authOptions.customPermissions) !== null && _a !== void 0 ? _a : []),
                 ...permissions_1.campusPermissionDefinitions,
@@ -384,6 +411,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                 ...((_h = config.shippingOptions.shippingCalculators) !== null && _h !== void 0 ? _h : []),
                 shipping_calculator_1.campusErrandCalculator,
             ];
+            // 起送价硬校验（二期 §3.2）：ArrangingPayment 过渡拦截，跑腿单豁免
+            config.orderOptions = Object.assign(Object.assign({}, ((_j = config.orderOptions) !== null && _j !== void 0 ? _j : {})), { process: [...((_l = (_k = config.orderOptions) === null || _k === void 0 ? void 0 : _k.process) !== null && _l !== void 0 ? _l : []), min_order_process_1.campusMinOrderProcess] });
             // 跑腿单 ShippingLine 分配：包装既有策略（cjk Box 按配送档案分箱，跑腿 0 元载体无档案
             // 绑定会被返回空数组 → 孤儿线）。本插件在 dev-config 中位于 CjkPlugin 之后，
             // configuration 钩子后执行，此处拿到的即为 cjk 已设置的策略，包装后原行为不变。

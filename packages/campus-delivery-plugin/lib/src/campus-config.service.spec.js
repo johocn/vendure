@@ -84,9 +84,12 @@ const campus_config_service_1 = require("./campus-config.service");
         const c = makeEnv({ slot: Object.assign(Object.assign({}, slot), { active: false }) });
         await (0, vitest_1.expect)(c.svc.setDeliveryTarget(ctx, 1, 7, 'R1', 5)).rejects.toThrow('时段不可用');
     });
-    (0, vitest_1.it)('非法 route 抛 UserInputError（仅允许 R1/R3）', async () => {
+    (0, vitest_1.it)('R2 放行写入 fulfillmentRoute=R2；其余非法 route 仍拒绝', async () => {
         const env = makeEnv();
-        await (0, vitest_1.expect)(env.svc.setDeliveryTarget(ctx, 1, 7, 'R2')).rejects.toThrow('配送路线不合法');
+        await env.svc.setDeliveryTarget(ctx, 1, 7, 'R2');
+        (0, vitest_1.expect)(env.orderService.updateCustomFields).toHaveBeenCalledWith(ctx, 100, vitest_1.expect.objectContaining({ fulfillmentRoute: 'R2' }));
+        const bad = makeEnv();
+        await (0, vitest_1.expect)(bad.svc.setDeliveryTarget(ctx, 1, 7, 'R9')).rejects.toThrow('配送路线不合法');
     });
     (0, vitest_1.it)('不传 route/slot 时行为与旧版完全一致（只写 buildingId/campusZone）', async () => {
         const env = makeEnv();

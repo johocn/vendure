@@ -35,7 +35,11 @@ export declare class ErrandService {
         fromText: string;
         toText: string;
         tip: number;
+        errandFrom?: string;
+        note?: string;
         buildingId?: string;
         campusZone?: string;
     }): Promise<Order>;
+    /** R5 发单页读起步价：当前渠道 errandBaseFee（null → 默认 200 分） */
+    getErrandBaseFee(ctx: RequestContext): Promise<number>;
 }

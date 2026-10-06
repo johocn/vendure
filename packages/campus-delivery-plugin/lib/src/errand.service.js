@@ -13,6 +13,7 @@ exports.ErrandService = exports.ERRAND_TIP_SURCHARGE_DESC = exports.ERRAND_BASE_
 const common_1 = require("@nestjs/common");
 const core_1 = require("@nestjs/core");
 const core_2 = require("@vendure/core");
+const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
 /** 0 元载体商品 SKU：幂等创建的查重键，C 端 addItemToOrder 用其 variantId 加购物车 */
 exports.ERRAND_BASE_SKU = 'CAMPUS-ERRAND-BASE';
 exports.ERRAND_BASE_SLUG = 'campus-errand-base';
@@ -67,7 +68,7 @@ let ErrandService = class ErrandService {
      * tip>0 时给订单加小费 surcharge（listPrice=tip，含税口径）。
      */
     async setErrandInfo(ctx, input) {
-        var _a, _b, _c, _d;
+        var _a, _b, _c, _d, _e, _f;
         if (!ctx.activeUserId)
             throw new core_2.ForbiddenError();
         const orderId = (_a = ctx.session) === null || _a === void 0 ? void 0 : _a.activeOrderId;
@@ -80,11 +81,13 @@ let ErrandService = class ErrandService {
             orderKind: 'errand',
             fulfillmentRoute: 'R5',
             errandKind: input.kind,
-            errandFrom: input.fromText,
+            // R2 接力单：errandFrom 存原单号（campusR2Relay 反查键）；普通 R5 缺省落 A 点文字
+            errandFrom: (_b = input.errandFrom) !== null && _b !== void 0 ? _b : input.fromText,
             errandTo: input.toText,
+            errandNote: (_c = input.note) !== null && _c !== void 0 ? _c : null,
             tip,
-            buildingId: (_b = input.buildingId) !== null && _b !== void 0 ? _b : null,
-            campusZone: (_c = input.campusZone) !== null && _c !== void 0 ? _c : null,
+            buildingId: (_d = input.buildingId) !== null && _d !== void 0 ? _d : null,
+            campusZone: (_e = input.campusZone) !== null && _e !== void 0 ? _e : null,
         });
         // 小费 surcharge 幂等：先清本单全部旧小费，再按新 tip 加一条（tip=0 只清不加），
         // 防止同单重复设置（改小费/改地址/重复提交）叠加多条 surcharge 重复计费
@@ -92,7 +95,7 @@ let ErrandService = class ErrandService {
             where: { id: orderId },
             relations: ['surcharges'],
         });
-        for (const s of ((_d = existing === null || existing === void 0 ? void 0 : existing.surcharges) !== null && _d !== void 0 ? _d : []).filter(x => x.description === exports.ERRAND_TIP_SURCHARGE_DESC)) {
+        for (const s of ((_f = existing === null || existing === void 0 ? void 0 : existing.surcharges) !== null && _f !== void 0 ? _f : []).filter(x => x.description === exports.ERRAND_TIP_SURCHARGE_DESC)) {
             await this.orderService.removeSurchargeFromOrder(ctx, orderId, s.id);
         }
         if (tip > 0) {
@@ -104,6 +107,14 @@ let ErrandService = class ErrandService {
             });
         }
         return order;
+    }
+    /** R5 发单页读起步价：当前渠道 errandBaseFee（null → 默认 200 分） */
+    async getErrandBaseFee(ctx) {
+        var _a;
+        const cfg = await this.connection.getRepository(ctx, campus_fulfillment_config_entity_1.CampusFulfillmentConfig).findOne({
+            where: { channelId: ctx.channelId },
+        });
+        return (_a = cfg === null || cfg === void 0 ? void 0 : cfg.errandBaseFee) !== null && _a !== void 0 ? _a : 200;
     }
 };
 exports.ErrandService = ErrandService;

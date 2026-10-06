@@ -20,6 +20,11 @@ let ErrandShopResolver = class ErrandShopResolver {
     constructor(errand) {
         this.errand = errand;
     }
+    /** R5 发单第一步数据源：0 元载体 variantId（幂等建）+ 本渠道跑腿起步价（分，null→200） */
+    async campusErrandVariant(ctx) {
+        const { variantId, sku } = await this.errand.ensureErrandProduct(ctx);
+        return { variantId, sku, errandBaseFee: await this.errand.getErrandBaseFee(ctx) };
+    }
     /** 跑腿单第二步：需先 addItemToOrder(0元载体) 建购物车，再调本 mutation 写标记 + 小费。
      * 未登录/空购物车/小费非法由 service 抛 ForbiddenError/UserInputError。 */
     async campusSetErrandInfo(ctx, input) {
@@ -28,6 +33,13 @@ let ErrandShopResolver = class ErrandShopResolver {
     }
 };
 exports.ErrandShopResolver = ErrandShopResolver;
+__decorate([
+    (0, graphql_1.Query)(),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], ErrandShopResolver.prototype, "campusErrandVariant", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     __param(0, (0, core_1.Ctx)()),

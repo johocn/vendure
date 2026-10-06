@@ -15,5 +15,6 @@ export declare class CampusFulfillmentConfig extends VendureEntity {
     storeAddress: string | null;
     storePhone: string | null;
     storeNotice: string | null;
+    errandBaseFee: number | null;
     constructor(input?: DeepPartial<CampusFulfillmentConfig>);
 }

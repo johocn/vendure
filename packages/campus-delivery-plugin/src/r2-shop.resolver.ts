@@ -1,4 +1,4 @@
-import { Query, Resolver } from '@nestjs/graphql';
+import { Args, Query, Resolver } from '@nestjs/graphql';
 import { Ctx, ID, RequestContext } from '@vendure/core';
 import { R2MarkService } from './r2-mark.service';
 

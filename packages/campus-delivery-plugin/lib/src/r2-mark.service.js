@@ -24,7 +24,7 @@ let R2MarkService = class R2MarkService {
     }
     /** R2: 学生确认快递已到校 → leg1Status='arrived_gate' + handoverAt */
     async markArrived(ctx, orderId) {
-        var _a, _b, _c;
+        var _a, _b, _c, _d;
         if (!ctx.activeUserId)
             throw new core_1.ForbiddenError();
         const order = await this.orderService.findOne(ctx, orderId, ['customer', 'customer.user']);
@@ -35,10 +35,46 @@ let R2MarkService = class R2MarkService {
         if (((_c = order.customFields) === null || _c === void 0 ? void 0 : _c.fulfillmentRoute) !== 'R2') {
             throw new core_1.UserInputError('仅 R2 快递单支持到校确认');
         }
+        const leg1 = (_d = order.customFields) === null || _d === void 0 ? void 0 : _d.leg1Status;
+        if (leg1 === 'arrived_gate')
+            return { leg1Status: 'arrived_gate' }; // 幂等：不重复写 handoverAt
+        if (leg1 != null && leg1 !== 'preparing')
+            throw new core_1.UserInputError('当前状态不支持到校确认');
         await this.connection.getRepository(ctx, core_1.Order).update(order.id, {
             customFields: { leg1Status: 'arrived_gate', handoverAt: new Date() },
         });
         return { leg1Status: 'arrived_gate' };
+    }
+    /** R2 原单动态反查接力单：errandFrom=本单 code 的 R5 单，实时读状态、不写回标记（二期 §3.5/§4.3） */
+    async relayStatus(ctx, orderId) {
+        var _a, _b, _c, _d, _e, _f, _g;
+        if (!ctx.activeUserId)
+            throw new core_1.ForbiddenError();
+        const order = await this.orderService.findOne(ctx, orderId, ['customer', 'customer.user']);
+        if (!order)
+            throw new core_1.UserInputError('订单不存在');
+        if (((_b = (_a = order.customer) === null || _a === void 0 ? void 0 : _a.user) === null || _b === void 0 ? void 0 : _b.id) !== ctx.activeUserId)
+            throw new core_1.ForbiddenError();
+        const relay = await this.connection.getRepository(ctx, core_1.Order).createQueryBuilder('o')
+            .leftJoin('o.channels', 'ch')
+            .where('ch.id = :chId', { chId: ctx.channelId })
+            .andWhere('o.customFields.errandFrom = :code', { code: order.code })
+            .andWhere('o.customFields.orderKind = :kind', { kind: 'errand' })
+            .orderBy('o.id', 'DESC')
+            .getOne();
+        if (!relay)
+            return null;
+        const rcf = ((_c = relay.customFields) !== null && _c !== void 0 ? _c : {});
+        return {
+            orderId: relay.id,
+            orderCode: relay.code,
+            state: relay.state,
+            hallStatus: (_d = rcf.hallStatus) !== null && _d !== void 0 ? _d : null,
+            deliveryStatus: (_e = rcf.deliveryStatus) !== null && _e !== void 0 ? _e : null,
+            errandTo: (_f = rcf.errandTo) !== null && _f !== void 0 ? _f : null,
+            tip: (_g = rcf.tip) !== null && _g !== void 0 ? _g : 0,
+            totalWithTax: relay.totalWithTax,
+        };
     }
 };
 exports.R2MarkService = R2MarkService;

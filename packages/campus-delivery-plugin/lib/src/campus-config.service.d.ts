@@ -44,6 +44,6 @@ export declare class CampusConfigService {
         updatedAt: Date;
     }[]>;
     /** C 端选楼/选区/选路线/选时段写入 activeOrder。
-     * route/slot 可选（向后兼容 plan2 旧调用形态）；route 仅 R1/R3，R2 走 r2-mark 专属流程。 */
-    setDeliveryTarget(ctx: RequestContext, zoneId: number, buildingId: number, route?: 'R1' | 'R3', slotId?: number): Promise<import("@vendure/core").Order>;
+     * route/slot 可选（向后兼容 plan2 旧调用形态）；route 为 R1/R2/R3；R2 的到校确认走 r2-mark 链路。 */
+    setDeliveryTarget(ctx: RequestContext, zoneId: number, buildingId: number, route?: 'R1' | 'R2' | 'R3', slotId?: number): Promise<import("@vendure/core").Order>;
 }

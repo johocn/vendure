@@ -12,4 +12,15 @@ export declare class R2MarkService {
     markArrived(ctx: RequestContext, orderId: ID): Promise<{
         leg1Status: string;
     }>;
+    /** R2 原单动态反查接力单：errandFrom=本单 code 的 R5 单，实时读状态、不写回标记（二期 §3.5/§4.3） */
+    relayStatus(ctx: RequestContext, orderId: ID): Promise<{
+        orderId: ID;
+        orderCode: string;
+        state: import("@vendure/core").OrderState;
+        hallStatus: any;
+        deliveryStatus: any;
+        errandTo: any;
+        tip: any;
+        totalWithTax: number;
+    } | null>;
 }
