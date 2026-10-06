@@ -17,7 +17,7 @@ function bindMinOrderConnection(conn) {
 }
 exports.campusMinOrderProcess = {
     async onTransitionStart(fromState, toState, { ctx, order }) {
-        var _a, _b;
+        var _a, _b, _c;
         if (toState !== 'ArrangingPayment')
             return;
         const cf = ((_a = order.customFields) !== null && _a !== void 0 ? _a : {});
@@ -31,7 +31,8 @@ exports.campusMinOrderProcess = {
         });
         if (!(cfg === null || cfg === void 0 ? void 0 : cfg.minOrderAmount))
             return;
-        if (((_b = order.subTotal) !== null && _b !== void 0 ? _b : 0) < cfg.minOrderAmount) {
+        // 与 C 端软校验同口径：顾客可见的商品金额为含税小计（subTotalWithTax）
+        if (((_c = (_b = order.subTotalWithTax) !== null && _b !== void 0 ? _b : order.subTotal) !== null && _c !== void 0 ? _c : 0) < cfg.minOrderAmount) {
             throw new core_1.UserInputError(`未满起送价 ¥${Number((cfg.minOrderAmount / 100).toFixed(2))}`);
         }
     },

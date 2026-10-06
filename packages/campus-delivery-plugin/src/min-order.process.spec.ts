@@ -1,10 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { bindMinOrderConnection, campusMinOrderProcess } from './min-order.process';
 
-function makeData(opts: { cfg?: any; cf?: any; subTotal?: number }) {
+function makeData(opts: { cfg?: any; cf?: any; subTotal?: number; subTotalWithTax?: number }) {
     return {
         ctx: { channelId: 2 } as any,
-        order: { subTotal: opts.subTotal ?? 1000, customFields: opts.cf ?? {} } as any,
+        order: {
+            subTotal: opts.subTotal ?? 1000,
+            subTotalWithTax: opts.subTotalWithTax ?? opts.subTotal ?? 1000,
+            customFields: opts.cf ?? {},
+        } as any,
     } as any;
 }
 
@@ -42,6 +46,16 @@ describe('campusMinOrderProcess', () => {
         cfgRepo.findOne.mockResolvedValue({ minOrderAmount: 1500 });
         await expect(
             campusMinOrderProcess.onTransitionStart!('AddingItems', 'ArrangingPayment', makeData({ subTotal: 2000 })),
+        ).resolves.toBeUndefined();
+    });
+
+    it('含税小计达标即放行（与 C 端软校验同口径）', async () => {
+        cfgRepo.findOne.mockResolvedValue({ minOrderAmount: 1500 });
+        await expect(
+            campusMinOrderProcess.onTransitionStart!(
+                'AddingItems', 'ArrangingPayment',
+                makeData({ subTotal: 1304, subTotalWithTax: 1500 }),
+            ),
         ).resolves.toBeUndefined();
     });
 

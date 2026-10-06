@@ -3,10 +3,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const vitest_1 = require("vitest");
 const min_order_process_1 = require("./min-order.process");
 function makeData(opts) {
-    var _a, _b;
+    var _a, _b, _c, _d;
     return {
         ctx: { channelId: 2 },
-        order: { subTotal: (_a = opts.subTotal) !== null && _a !== void 0 ? _a : 1000, customFields: (_b = opts.cf) !== null && _b !== void 0 ? _b : {} },
+        order: {
+            subTotal: (_a = opts.subTotal) !== null && _a !== void 0 ? _a : 1000,
+            subTotalWithTax: (_c = (_b = opts.subTotalWithTax) !== null && _b !== void 0 ? _b : opts.subTotal) !== null && _c !== void 0 ? _c : 1000,
+            customFields: (_d = opts.cf) !== null && _d !== void 0 ? _d : {},
+        },
     };
 }
 (0, vitest_1.describe)('campusMinOrderProcess', () => {
@@ -32,6 +36,10 @@ function makeData(opts) {
     (0, vitest_1.it)('商品单满足起送价放行', async () => {
         cfgRepo.findOne.mockResolvedValue({ minOrderAmount: 1500 });
         await (0, vitest_1.expect)(min_order_process_1.campusMinOrderProcess.onTransitionStart('AddingItems', 'ArrangingPayment', makeData({ subTotal: 2000 }))).resolves.toBeUndefined();
+    });
+    (0, vitest_1.it)('含税小计达标即放行（与 C 端软校验同口径）', async () => {
+        cfgRepo.findOne.mockResolvedValue({ minOrderAmount: 1500 });
+        await (0, vitest_1.expect)(min_order_process_1.campusMinOrderProcess.onTransitionStart('AddingItems', 'ArrangingPayment', makeData({ subTotal: 1304, subTotalWithTax: 1500 }))).resolves.toBeUndefined();
     });
     (0, vitest_1.it)('跑腿单（orderKind=errand）豁免商品起送价', async () => {
         cfgRepo.findOne.mockResolvedValue({ minOrderAmount: 1500 });

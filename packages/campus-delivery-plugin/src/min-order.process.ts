@@ -25,7 +25,8 @@ export const campusMinOrderProcess: OrderProcess<any> = {
             where: { channelId: ctx.channelId as any },
         });
         if (!cfg?.minOrderAmount) return;
-        if ((order.subTotal ?? 0) < cfg.minOrderAmount) {
+        // 与 C 端软校验同口径：顾客可见的商品金额为含税小计（subTotalWithTax）
+        if ((order.subTotalWithTax ?? order.subTotal ?? 0) < cfg.minOrderAmount) {
             throw new UserInputError(`未满起送价 ¥${Number((cfg.minOrderAmount / 100).toFixed(2))}`);
         }
     },
