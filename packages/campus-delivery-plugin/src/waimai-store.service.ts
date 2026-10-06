@@ -12,6 +12,12 @@ export interface WaimaiStore {
     promoText: string | null;
     paused: boolean;
     routesEnabled: string[];
+    deliveryMinutes: number | null;
+    minOrderAmount: number | null;
+    deliveryFee: number | null;
+    storeAddress: string | null;
+    storePhone: string | null;
+    storeNotice: string | null;
 }
 
 @Injectable()
@@ -42,6 +48,12 @@ export class WaimaiStoreService {
                 promoText: cf.waimaiPromoText ?? null,
                 paused: cfg.paused,
                 routesEnabled: cfg.routesEnabled ?? [],
+                deliveryMinutes: cfg.deliveryMinutes ?? null,
+                minOrderAmount: cfg.minOrderAmount ?? null,
+                deliveryFee: cfg.deliveryFee ?? null,
+                storeAddress: cfg.storeAddress ?? null,
+                storePhone: cfg.storePhone ?? null,
+                storeNotice: cfg.storeNotice ?? null,
             });
         }
         return stores;
