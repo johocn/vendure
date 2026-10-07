@@ -523,6 +523,7 @@ type CustomerCoupon implements Node {
                 couponCentre: [CouponTemplate!]!
                 couponCentreUpcoming: [CouponTemplate!]!
                 myCoupons(status: CouponStatus): [CustomerCoupon!]!
+                customerCouponByCode(code: String!): CustomerCoupon
                 pointsMallTemplates: [CouponTemplate!]!
                 productCoupons(productId: ID!): [ProductCouponBinding!]!
                 couponSaleCatalogue(scene: CouponUsageScene): CouponSaleCatalogue!

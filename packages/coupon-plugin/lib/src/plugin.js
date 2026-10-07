@@ -654,6 +654,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 couponCentre: [CouponTemplate!]!
                 couponCentreUpcoming: [CouponTemplate!]!
                 myCoupons(status: CouponStatus): [CustomerCoupon!]!
+                customerCouponByCode(code: String!): CustomerCoupon
                 pointsMallTemplates: [CouponTemplate!]!
                 productCoupons(productId: ID!): [ProductCouponBinding!]!
                 couponSaleCatalogue(scene: CouponUsageScene): CouponSaleCatalogue!
