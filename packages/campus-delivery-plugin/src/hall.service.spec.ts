@@ -4,9 +4,14 @@ import { Order } from '@vendure/core';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { HallService } from './hall.service';
 
-function makeEnv(opts: { cfg?: any; slotLocked?: boolean } = {}) {
+function makeEnv(opts: { cfg?: any; slotLocked?: boolean; curHs?: string } = {}) {
     const updates: any[] = [];
-    const orderRepo = { update: vi.fn().mockImplementation((_id: any, patch: any) => { updates.push(patch); return Promise.resolve({}); }) };
+    const orderRepo = {
+        update: vi.fn().mockImplementation((_id: any, patch: any) => { updates.push(patch); return Promise.resolve({}); }),
+        findOne: vi.fn().mockResolvedValue(
+            opts.curHs !== undefined ? { id: 9, code: 'S1', customFields: { hallStatus: opts.curHs } } : null,
+        ),
+    };
     const cfgRepo = { findOne: vi.fn().mockResolvedValue(opts.cfg ?? null) };
     const conn = {
         getRepository: vi.fn((_ctx: any, ent: any) => {
@@ -69,5 +74,38 @@ describe('HallService.releaseScheduled', () => {
         await env.svc.releaseScheduled({ channelId: 1 } as any, order, { merchantConfirmEnabled: false } as CampusFulfillmentConfig);
         expect(env.updates[0].customFields.hallStatus).toBe('open');
         expect(env.updates[0].customFields.hallEnteredAt).toBeInstanceOf(Date);
+    });
+});
+
+describe('HallService.exitHall 取消脱厅（3.3）', () => {
+    const order = { id: 9, code: 'S1' } as unknown as Order;
+
+    it('大厅流转态 open → 清为 cancelled，不碰指派字段', async () => {
+        const env = makeEnv({ curHs: 'open' });
+        await env.svc.exitHall({ channelId: 1 } as any, order);
+        expect(env.updates[0].customFields).toEqual({ hallStatus: 'cancelled' });
+    });
+
+    it('grabbed → 连带清骑手指派字段（任务卡不残留）', async () => {
+        const env = makeEnv({ curHs: 'grabbed' });
+        await env.svc.exitHall({ channelId: 1 } as any, order);
+        expect(env.updates[0].customFields).toEqual({
+            hallStatus: 'cancelled',
+            deliveryStaffId: null,
+            deliveryStatus: null,
+            assignedAt: null,
+        });
+    });
+
+    it('no_rider_final（T4 终态）→ 跳过不写，防竞态覆盖', async () => {
+        const env = makeEnv({ curHs: 'no_rider_final' });
+        await env.svc.exitHall({ channelId: 1 } as any, order);
+        expect(env.updates).toHaveLength(0);
+    });
+
+    it('DB 无记录/无 hallStatus → 幂等跳过', async () => {
+        const env = makeEnv();
+        await env.svc.exitHall({ channelId: 1 } as any, order);
+        expect(env.updates).toHaveLength(0);
     });
 });

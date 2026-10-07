@@ -22,6 +22,9 @@ export declare class HallService {
     releaseScheduled(ctx: RequestContext, order: Order, cfg: CampusFulfillmentConfig | null): Promise<void>;
     /** 回大厅：清骑手指派字段，hallStatus 复位 open（拒单/超时改派共用） */
     backToHall(ctx: RequestContext, orderId: number): Promise<void>;
+    /** 取消脱厅（3.3 冒烟实测缺陷）：订单取消终态时清 hallStatus，使其退出大厅/打包扫描/整组抢单/调度台。
+     * 先读 DB 当前值防 T4 mark() 竞态覆盖（no_rider_final 不碰）；grabbed 单连带清骑手指派字段。 */
+    exitHall(ctx: RequestContext, order: Order): Promise<void>;
     /** 通用订单更新（T4 退款终态标记等复用） */
     updateOrder(ctx: RequestContext, orderId: number, patch: any): Promise<import("typeorm").UpdateResult>;
     /** T0: 新单入厅即提醒在线骑手（订阅消息），失败只记日志不阻塞入厅。

@@ -587,10 +587,14 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
         this.eventBus.ofType(OrderPlacedEvent).subscribe(({ ctx, order }) =>
             this.hallService.onOrderPlaced(ctx, order).catch(e => Logger.error(String(e), 'CampusHall')),
         );
-        // R4 到店自取打标（二期 §5.4）：store-pickup 运费方式订单在支付闸门补写 fulfillmentRoute
-        this.eventBus.ofType(OrderStateTransitionEvent).subscribe(e =>
-            this.r4TagService.tagR4(e).catch(err => Logger.error(`R4 tag failed: ${String(err)}`, 'CampusR4Tag')),
-        );
+        // R4 到店自取打标（二期 §5.4）：store-pickup 运费方式订单在支付闸门补写 fulfillmentRoute；
+        // 取消脱厅（3.3）：订单取消终态时清 hallStatus/指派字段，退出大厅与整组抢单链路
+        this.eventBus.ofType(OrderStateTransitionEvent).subscribe(e => {
+            this.r4TagService.tagR4(e).catch(err => Logger.error(`R4 tag failed: ${String(err)}`, 'CampusR4Tag'));
+            if (e.toState === 'Cancelled') {
+                this.hallService.exitHall(e.ctx, e.order).catch(err => Logger.error(`Hall exit failed: ${String(err)}`, 'CampusHall'));
+            }
+        });
         this.injector.get(DispatchJobService).start();
     }
 }

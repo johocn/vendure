@@ -105,6 +105,21 @@ export class HallService {
         } as any);
     }
 
+    /** 取消脱厅（3.3 冒烟实测缺陷）：订单取消终态时清 hallStatus，使其退出大厅/打包扫描/整组抢单/调度台。
+     * 先读 DB 当前值防 T4 mark() 竞态覆盖（no_rider_final 不碰）；grabbed 单连带清骑手指派字段。 */
+    async exitHall(ctx: RequestContext, order: Order) {
+        const cur = await this.connection.getRepository(ctx, Order).findOne({ where: { id: order.id as any } });
+        const hs = (cur?.customFields as any)?.hallStatus as string | undefined;
+        if (!hs || !['open', 'pending_merchant', 'accepted', 'scheduled', 'grabbed'].includes(hs)) return;
+        await this.connection.getRepository(ctx, Order).update(order.id as any, {
+            customFields: {
+                hallStatus: 'cancelled',
+                ...(hs === 'grabbed' ? { deliveryStaffId: null, deliveryStatus: null, assignedAt: null } : {}),
+            },
+        } as any);
+        Logger.info(`Order ${order.code} exited hall (${hs} → cancelled)`, 'CampusHall');
+    }
+
     /** 通用订单更新（T4 退款终态标记等复用） */
     updateOrder(ctx: RequestContext, orderId: number, patch: any) {
         return this.connection.getRepository(ctx, Order).update(orderId, patch as any);

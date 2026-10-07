@@ -211,7 +211,7 @@ function injectT4Services(svc) {
         await svc.scan({ channelId: 1 });
         (0, vitest_1.expect)(orderRepo.update).toHaveBeenCalledOnce();
         const [ids, patch] = orderRepo.update.mock.calls[0];
-        (0, vitest_1.expect)([...ids].sort()).toEqual([1, 2]);
+        (0, vitest_1.expect)([...ids].sort()).toEqual(['1', '2']);
         const gid = patch.customFields.routeGroupId;
         (0, vitest_1.expect)(gid).toMatch(/^rg-/);
     });
@@ -232,7 +232,7 @@ function injectT4Services(svc) {
         const env = makeEnv({ openOrders: [near, near2, far] });
         await env.svc.scan({ channelId: 1 });
         const [ids] = env.orderRepo.update.mock.calls[0];
-        (0, vitest_1.expect)([...ids].sort()).toEqual([1, 2]); // far 单差 29min 不入组
+        (0, vitest_1.expect)([...ids].sort()).toEqual(['1', '2']); // far 单差 29min 不入组
     });
     (0, vitest_1.it)('errand 跑腿单不打包', async () => {
         const { svc, orderRepo } = makeEnv({
@@ -255,7 +255,7 @@ function injectT4Services(svc) {
         (0, vitest_1.expect)(orderRepo.update).toHaveBeenCalledOnce();
         const [ids, patch] = orderRepo.update.mock.calls[0];
         (0, vitest_1.expect)(patch.customFields.routeGroupId).toBe('rg-old');
-        (0, vitest_1.expect)(ids).toEqual([2]); // 已带组 id 的单不再 update
+        (0, vitest_1.expect)(ids).toEqual(['2']); // 已带组 id 的单不再 update
     });
 });
 //# sourceMappingURL=dispatch-job.service.spec.js.map

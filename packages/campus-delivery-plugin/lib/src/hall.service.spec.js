@@ -6,7 +6,10 @@ const hall_service_1 = require("./hall.service");
 function makeEnv(opts = {}) {
     var _a, _b;
     const updates = [];
-    const orderRepo = { update: vitest_1.vi.fn().mockImplementation((_id, patch) => { updates.push(patch); return Promise.resolve({}); }) };
+    const orderRepo = {
+        update: vitest_1.vi.fn().mockImplementation((_id, patch) => { updates.push(patch); return Promise.resolve({}); }),
+        findOne: vitest_1.vi.fn().mockResolvedValue(opts.curHs !== undefined ? { id: 9, code: 'S1', customFields: { hallStatus: opts.curHs } } : null),
+    };
     const cfgRepo = { findOne: vitest_1.vi.fn().mockResolvedValue((_a = opts.cfg) !== null && _a !== void 0 ? _a : null) };
     const conn = {
         getRepository: vitest_1.vi.fn((_ctx, ent) => {
@@ -61,6 +64,34 @@ const future = (min) => new Date(Date.now() + min * 60000);
         await env.svc.releaseScheduled({ channelId: 1 }, order, { merchantConfirmEnabled: false });
         (0, vitest_1.expect)(env.updates[0].customFields.hallStatus).toBe('open');
         (0, vitest_1.expect)(env.updates[0].customFields.hallEnteredAt).toBeInstanceOf(Date);
+    });
+});
+(0, vitest_1.describe)('HallService.exitHall 取消脱厅（3.3）', () => {
+    const order = { id: 9, code: 'S1' };
+    (0, vitest_1.it)('大厅流转态 open → 清为 cancelled，不碰指派字段', async () => {
+        const env = makeEnv({ curHs: 'open' });
+        await env.svc.exitHall({ channelId: 1 }, order);
+        (0, vitest_1.expect)(env.updates[0].customFields).toEqual({ hallStatus: 'cancelled' });
+    });
+    (0, vitest_1.it)('grabbed → 连带清骑手指派字段（任务卡不残留）', async () => {
+        const env = makeEnv({ curHs: 'grabbed' });
+        await env.svc.exitHall({ channelId: 1 }, order);
+        (0, vitest_1.expect)(env.updates[0].customFields).toEqual({
+            hallStatus: 'cancelled',
+            deliveryStaffId: null,
+            deliveryStatus: null,
+            assignedAt: null,
+        });
+    });
+    (0, vitest_1.it)('no_rider_final（T4 终态）→ 跳过不写，防竞态覆盖', async () => {
+        const env = makeEnv({ curHs: 'no_rider_final' });
+        await env.svc.exitHall({ channelId: 1 }, order);
+        (0, vitest_1.expect)(env.updates).toHaveLength(0);
+    });
+    (0, vitest_1.it)('DB 无记录/无 hallStatus → 幂等跳过', async () => {
+        const env = makeEnv();
+        await env.svc.exitHall({ channelId: 1 }, order);
+        (0, vitest_1.expect)(env.updates).toHaveLength(0);
     });
 });
 //# sourceMappingURL=hall.service.spec.js.map

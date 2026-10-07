@@ -90,6 +90,19 @@ let HallService = HallService_1 = class HallService {
             customFields: { hallStatus: 'open', deliveryStaffId: null, deliveryStatus: null, assignedAt: null },
         });
     }
+    /** 取消脱厅（3.3 冒烟实测缺陷）：订单取消终态时清 hallStatus，使其退出大厅/打包扫描/整组抢单/调度台。
+     * 先读 DB 当前值防 T4 mark() 竞态覆盖（no_rider_final 不碰）；grabbed 单连带清骑手指派字段。 */
+    async exitHall(ctx, order) {
+        var _a;
+        const cur = await this.connection.getRepository(ctx, core_2.Order).findOne({ where: { id: order.id } });
+        const hs = (_a = cur === null || cur === void 0 ? void 0 : cur.customFields) === null || _a === void 0 ? void 0 : _a.hallStatus;
+        if (!hs || !['open', 'pending_merchant', 'accepted', 'scheduled', 'grabbed'].includes(hs))
+            return;
+        await this.connection.getRepository(ctx, core_2.Order).update(order.id, {
+            customFields: Object.assign({ hallStatus: 'cancelled' }, (hs === 'grabbed' ? { deliveryStaffId: null, deliveryStatus: null, assignedAt: null } : {})),
+        });
+        core_2.Logger.info(`Order ${order.code} exited hall (${hs} → cancelled)`, 'CampusHall');
+    }
     /** 通用订单更新（T4 退款终态标记等复用） */
     updateOrder(ctx, orderId, patch) {
         return this.connection.getRepository(ctx, core_2.Order).update(orderId, patch);

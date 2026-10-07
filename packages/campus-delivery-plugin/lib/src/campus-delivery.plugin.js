@@ -68,8 +68,14 @@ let CampusDeliveryPlugin = class CampusDeliveryPlugin {
         (0, shipping_calculator_1.bindCampusErrandCalculatorConnection)(this.injector.get(core_1.TransactionalConnection));
         (0, min_order_process_1.bindMinOrderConnection)(this.injector.get(core_1.TransactionalConnection));
         this.eventBus.ofType(core_1.OrderPlacedEvent).subscribe(({ ctx, order }) => this.hallService.onOrderPlaced(ctx, order).catch(e => core_1.Logger.error(String(e), 'CampusHall')));
-        // R4 到店自取打标（二期 §5.4）：store-pickup 运费方式订单在支付闸门补写 fulfillmentRoute
-        this.eventBus.ofType(core_1.OrderStateTransitionEvent).subscribe(e => this.r4TagService.tagR4(e).catch(err => core_1.Logger.error(`R4 tag failed: ${String(err)}`, 'CampusR4Tag')));
+        // R4 到店自取打标（二期 §5.4）：store-pickup 运费方式订单在支付闸门补写 fulfillmentRoute；
+        // 取消脱厅（3.3）：订单取消终态时清 hallStatus/指派字段，退出大厅与整组抢单链路
+        this.eventBus.ofType(core_1.OrderStateTransitionEvent).subscribe(e => {
+            this.r4TagService.tagR4(e).catch(err => core_1.Logger.error(`R4 tag failed: ${String(err)}`, 'CampusR4Tag'));
+            if (e.toState === 'Cancelled') {
+                this.hallService.exitHall(e.ctx, e.order).catch(err => core_1.Logger.error(`Hall exit failed: ${String(err)}`, 'CampusHall'));
+            }
+        });
         this.injector.get(dispatch_job_service_1.DispatchJobService).start();
     }
 };
