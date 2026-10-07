@@ -160,12 +160,13 @@ export class RiderWalletService {
     }
 
     private async sumEarned(ctx: RequestContext, riderCustomerId: number) {
+        // 骑手为平台级角色：分成流水写在各店铺渠道，钱包查询固定默认渠道上下文，
+        // 按渠道过滤会导致累计收入恒为 0，此处跨渠道汇总
         const row = await this.connection
             .getRepository(ctx, RiderEarning)
             .createQueryBuilder('e')
             .select('COALESCE(SUM(e.amount + e.tip), 0)', 'sum')
             .where('e.riderCustomerId = :id', { id: riderCustomerId })
-            .andWhere('e.channelId = :ch', { ch: ctx.channelId })
             .getRawOne();
         return Number(row?.sum) || 0;
     }
