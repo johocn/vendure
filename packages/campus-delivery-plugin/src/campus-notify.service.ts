@@ -4,8 +4,10 @@ import { Injector, Logger, Order, RequestContext, TransactionalConnection } from
 import { WechatAuthService } from '@vendure/wechat-auth-plugin';
 import { CampusConfigService } from './campus-config.service';
 
-/** 用户侧节点通知触点 */
-export type CampusNotifyEvent = 'orderAccepted' | 'riderAssigned' | 'cookingDone' | 'orderDelivered' | 'exceptionHandled';
+/** 用户侧节点通知触点（履约 5 + 用户订单域 4） */
+export type CampusNotifyEvent =
+    | 'orderAccepted' | 'riderAssigned' | 'cookingDone' | 'orderDelivered' | 'exceptionHandled'
+    | 'orderPlaced' | 'paymentPending' | 'orderCancelled' | 'afterSales';
 
 /** 触点 → 配置实体模板 ID 字段（未配置 = 该节点静默跳过） */
 const TEMPLATE_FIELD: Record<CampusNotifyEvent, string> = {
@@ -14,6 +16,10 @@ const TEMPLATE_FIELD: Record<CampusNotifyEvent, string> = {
     cookingDone: 'notifyTemplateCookingDone',
     orderDelivered: 'notifyTemplateDelivered',
     exceptionHandled: 'notifyTemplateExceptionHandled',
+    orderPlaced: 'notifyTemplateOrderPlaced',
+    paymentPending: 'notifyTemplatePaymentPending',
+    orderCancelled: 'notifyTemplateCancelled',
+    afterSales: 'notifyTemplateAfterSales',
 };
 
 /** 状态文案（公众号模板 thing 字段 ≤20 字符） */
@@ -23,6 +29,10 @@ const STATUS_TEXT: Record<CampusNotifyEvent, string> = {
     cookingDone: '出餐完成，等待取货',
     orderDelivered: '订单已送达',
     exceptionHandled: '异常已处理',
+    orderPlaced: '订单支付成功，商家接单中',
+    paymentPending: '订单待支付，请尽快完成',
+    orderCancelled: '订单已取消',
+    afterSales: '售后进度更新',
 };
 
 /**
@@ -45,8 +55,8 @@ export class CampusNotifyService {
         return new Injector(this.moduleRef);
     }
 
-    /** 发送节点通知（异步不等待，不抛错）。text：动态文案覆盖 thing1（如异常处置结果，超 20 字符自动截断） */
-    user(ctx: RequestContext, orderId: number | string, event: CampusNotifyEvent, text?: string): void {
+    /** 发送节点通知（异步不等待，不抛错）。text：动态文案覆盖 thing1（如异常处置结果，超 20 字符自动截断）；h5BaseUrl：配置后模板消息带 url 跳 H5 订单详情落地页 */
+    user(ctx: RequestContext, orderId: number | string, event: CampusNotifyEvent, text?: string, h5BaseUrl?: string): void {
         void (async () => {
             try {
                 const cfg = await this.config.getConfig(ctx);
@@ -72,6 +82,7 @@ export class CampusNotifyService {
                     touser: openid,
                     template_id: templateId,
                     data: this.buildData(order.code, event, text),
+                    ...(h5BaseUrl ? { url: `${h5BaseUrl.replace(/\/$/, '')}/#/pkg-order/pages/order-detail?code=${order.code}` } : {}),
                 });
                 Logger.info(
                     `user notify ${event} sent for ${order.code} (msgid=${(res as any)?.msgid ?? '?'})`,

@@ -25,6 +25,10 @@ describe('CampusNotifyService', () => {
                     notifyTemplateCookingDone: opts.templateId ?? null,
                     notifyTemplateDelivered: opts.templateId ?? null,
                     notifyTemplateExceptionHandled: opts.templateId ?? null,
+                    notifyTemplateOrderPlaced: opts.templateId ?? null,
+                    notifyTemplatePaymentPending: opts.templateId ?? null,
+                    notifyTemplateCancelled: opts.templateId ?? null,
+                    notifyTemplateAfterSales: opts.templateId ?? null,
                 }),
             } as any,
             { get: vi.fn().mockReturnValue({ sendTemplate }) } as any,
@@ -73,5 +77,31 @@ describe('CampusNotifyService', () => {
         await vi.waitFor(() => expect(sendTemplate).toHaveBeenCalled());
         const arg = sendTemplate.mock.calls[0][0];
         expect(arg.data.thing1.value).toBe('订单已全额退款');
+    });
+
+    it('orderPlaced：映射 thing1=订单支付成功，商家接单中', async () => {
+        const { svc, sendTemplate } = makeSvc({ templateId: 'TID', openid: 'o-123' });
+        svc.user(makeCtx(), 1, 'orderPlaced');
+        await vi.waitFor(() => expect(sendTemplate).toHaveBeenCalled());
+        expect(sendTemplate.mock.calls[0][0].data.thing1.value).toBe('订单支付成功，商家接单中');
+    });
+
+    it('paymentPending / orderCancelled / afterSales 文案映射', async () => {
+        const { svc, sendTemplate } = makeSvc({ templateId: 'TID', openid: 'o-123' });
+        svc.user(makeCtx(), 1, 'paymentPending');
+        svc.user(makeCtx(), 1, 'orderCancelled', '订单超时未支付，已自动取消');
+        svc.user(makeCtx(), 1, 'afterSales', '退款已到账');
+        await vi.waitFor(() => expect(sendTemplate).toHaveBeenCalledTimes(3));
+        const things = sendTemplate.mock.calls.map(c => c[0].data.thing1.value);
+        expect(things).toContain('订单待支付，请尽快完成');
+        expect(things).toContain('订单超时未支付，已自动取消');
+        expect(things).toContain('退款已到账');
+    });
+
+    it('配置 h5BaseUrl → url 指向 H5 订单详情（跳转落地页）', async () => {
+        const { svc, sendTemplate } = makeSvc({ templateId: 'TID', openid: 'o-123' });
+        (svc as any).user(makeCtx(), 1, 'orderPlaced', undefined, 'https://www.yourbao.cn');
+        await vi.waitFor(() => expect(sendTemplate).toHaveBeenCalled());
+        expect(sendTemplate.mock.calls[0][0].url).toBe('https://www.yourbao.cn/#/pkg-order/pages/order-detail?code=ORD1');
     });
 });

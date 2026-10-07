@@ -6,7 +6,7 @@ const campus_notify_service_1 = require("./campus-notify.service");
 (0, vitest_1.describe)('CampusNotifyService', () => {
     const makeCtx = () => ({ channelId: 7 });
     function makeSvc(opts) {
-        var _a, _b, _c, _d, _e;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j;
         const findOne = vitest_1.vi.fn().mockResolvedValue(opts.openid === null
             ? { code: 'ORD1', customer: { customFields: { wechatMiniOpenid: 'mini-x' } } }
             : { code: 'ORD1', customer: { customFields: { wechatOpenid: 'o-123' } } });
@@ -22,6 +22,10 @@ const campus_notify_service_1 = require("./campus-notify.service");
                 notifyTemplateCookingDone: (_c = opts.templateId) !== null && _c !== void 0 ? _c : null,
                 notifyTemplateDelivered: (_d = opts.templateId) !== null && _d !== void 0 ? _d : null,
                 notifyTemplateExceptionHandled: (_e = opts.templateId) !== null && _e !== void 0 ? _e : null,
+                notifyTemplateOrderPlaced: (_f = opts.templateId) !== null && _f !== void 0 ? _f : null,
+                notifyTemplatePaymentPending: (_g = opts.templateId) !== null && _g !== void 0 ? _g : null,
+                notifyTemplateCancelled: (_h = opts.templateId) !== null && _h !== void 0 ? _h : null,
+                notifyTemplateAfterSales: (_j = opts.templateId) !== null && _j !== void 0 ? _j : null,
             }),
         }, { get: vitest_1.vi.fn().mockReturnValue({ sendTemplate }) });
         return { svc, findOne, sendTemplate };
@@ -62,6 +66,29 @@ const campus_notify_service_1 = require("./campus-notify.service");
         await vitest_1.vi.waitFor(() => (0, vitest_1.expect)(sendTemplate).toHaveBeenCalled());
         const arg = sendTemplate.mock.calls[0][0];
         (0, vitest_1.expect)(arg.data.thing1.value).toBe('订单已全额退款');
+    });
+    (0, vitest_1.it)('orderPlaced：映射 thing1=订单支付成功，商家接单中', async () => {
+        const { svc, sendTemplate } = makeSvc({ templateId: 'TID', openid: 'o-123' });
+        svc.user(makeCtx(), 1, 'orderPlaced');
+        await vitest_1.vi.waitFor(() => (0, vitest_1.expect)(sendTemplate).toHaveBeenCalled());
+        (0, vitest_1.expect)(sendTemplate.mock.calls[0][0].data.thing1.value).toBe('订单支付成功，商家接单中');
+    });
+    (0, vitest_1.it)('paymentPending / orderCancelled / afterSales 文案映射', async () => {
+        const { svc, sendTemplate } = makeSvc({ templateId: 'TID', openid: 'o-123' });
+        svc.user(makeCtx(), 1, 'paymentPending');
+        svc.user(makeCtx(), 1, 'orderCancelled', '订单超时未支付，已自动取消');
+        svc.user(makeCtx(), 1, 'afterSales', '退款已到账');
+        await vitest_1.vi.waitFor(() => (0, vitest_1.expect)(sendTemplate).toHaveBeenCalledTimes(3));
+        const things = sendTemplate.mock.calls.map(c => c[0].data.thing1.value);
+        (0, vitest_1.expect)(things).toContain('订单待支付，请尽快完成');
+        (0, vitest_1.expect)(things).toContain('订单超时未支付，已自动取消');
+        (0, vitest_1.expect)(things).toContain('退款已到账');
+    });
+    (0, vitest_1.it)('配置 h5BaseUrl → url 指向 H5 订单详情（跳转落地页）', async () => {
+        const { svc, sendTemplate } = makeSvc({ templateId: 'TID', openid: 'o-123' });
+        svc.user(makeCtx(), 1, 'orderPlaced', undefined, 'https://www.yourbao.cn');
+        await vitest_1.vi.waitFor(() => (0, vitest_1.expect)(sendTemplate).toHaveBeenCalled());
+        (0, vitest_1.expect)(sendTemplate.mock.calls[0][0].url).toBe('https://www.yourbao.cn/#/pkg-order/pages/order-detail?code=ORD1');
     });
 });
 //# sourceMappingURL=campus-notify.service.spec.js.map
