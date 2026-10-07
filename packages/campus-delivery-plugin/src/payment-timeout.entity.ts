@@ -1,16 +1,8 @@
-import { Column, Entity } from 'typeorm';
 import { DeepPartial, ID, VendureEntity } from '@vendure/core';
+import { Column, Entity } from 'typeorm';
 
-export enum PaymentTimeoutType {
-    REMIND = 'REMIND',
-    CANCEL = 'CANCEL',
-}
-export enum PaymentTimeoutStatus {
-    PENDING = 'PENDING',
-    EXECUTED = 'EXECUTED',
-    CANCELLED = 'CANCELLED',
-    FAILED = 'FAILED',
-}
+export enum PaymentTimeoutType { REMIND = 'REMIND', CANCEL = 'CANCEL' }
+export enum PaymentTimeoutStatus { PENDING = 'PENDING', EXECUTED = 'EXECUTED', CANCELLED = 'CANCELLED', FAILED = 'FAILED' }
 
 /** 待付款定时任务：订单进入 ArrangingPayment 时登记 +10min 提醒 / +15min 取消（时长常量，spec §4.3） */
 @Entity()
@@ -24,7 +16,5 @@ export class PaymentTimeoutTask extends VendureEntity {
     @Column({ type: 'varchar' }) expectedState: string; // 登记时订单状态（到点复查）
     @Column({ type: 'int', default: 0 }) retryCount: number;
     @Column({ type: 'varchar', nullable: true }) lastError: string | null;
-    constructor(input?: DeepPartial<PaymentTimeoutTask>) {
-        super(input);
-    }
+    constructor(input?: DeepPartial<PaymentTimeoutTask>) { super(input); }
 }

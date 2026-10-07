@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PaymentTimeoutJob, PAYMENT_REMIND_MS, PAYMENT_CANCEL_MS } from './payment-timeout.job';
 import { PaymentTimeoutStatus, PaymentTimeoutType } from './payment-timeout.entity';
 
@@ -6,8 +6,8 @@ describe('PaymentTimeoutJob', () => {
     function makeJob(opts: { orderState: string; dueAtPast?: boolean }) {
         const task = {
             id: 1, orderId: 11, channelId: 7, type: PaymentTimeoutType.CANCEL,
-            // dueAtPast 为 false 时 dueAt 在未来（未到期）；默认 1ms 前已到期
-            dueAt: new Date(Date.now() + (opts.dueAtPast === false ? 60_000 : -1)),
+            // dueAtPast=false → 60s 后到期（未到点）；默认 → 已到期（到点复查语义）
+            dueAt: new Date(Date.now() - (opts.dueAtPast === false ? -60_000 : 1)),
             status: PaymentTimeoutStatus.PENDING, expectedState: 'ArrangingPayment', retryCount: 0, lastError: null,
         };
         const taskRepo = {
@@ -23,12 +23,13 @@ describe('PaymentTimeoutJob', () => {
         const stockMovementService = { createReleasesForOrderLines: vi.fn().mockResolvedValue([]) };
         const notify = { user: vi.fn() };
         const job = new PaymentTimeoutJob(
+            { createQueue: vi.fn() } as any, // jobQueueService（process 不经 init 也能跑）
             { rawConnection: { getRepository: () => taskRepo } } as any,
+            orderService as any,
             { findOne: vi.fn().mockResolvedValue({}) } as any, // channelService
-            orderService,
-            stockMovementService,
-            notify,
-            { getConfig: vi.fn().mockResolvedValue({ h5BaseUrl: null }) } as any,
+            stockMovementService as any,
+            notify as any,
+            { getConfig: vi.fn().mockResolvedValue({ h5BaseUrl: null }) } as any, // campusConfig
         );
         return { job, taskRepo, task, orderService, stockMovementService, notify, order };
     }
@@ -57,7 +58,7 @@ describe('PaymentTimeoutJob', () => {
         const { job, task, notify, orderService } = makeJob({ orderState: 'ArrangingPayment' });
         task.type = PaymentTimeoutType.REMIND;
         await job.process({ taskId: 1 } as any);
-        expect(notify.user).toHaveBeenCalledWith(expect.anything(), 11, 'paymentPending');
+        expect(notify.user).toHaveBeenCalledWith(expect.anything(), 11, 'paymentPending', undefined, undefined);
         expect(orderService.cancelOrder).not.toHaveBeenCalled();
     });
 
