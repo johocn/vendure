@@ -652,6 +652,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
 
             extend type Query {
                 couponCentre: [CouponTemplate!]!
+                couponCentreUpcoming: [CouponTemplate!]!
                 myCoupons(status: CouponStatus): [CustomerCoupon!]!
                 pointsMallTemplates: [CouponTemplate!]!
                 productCoupons(productId: ID!): [ProductCouponBinding!]!

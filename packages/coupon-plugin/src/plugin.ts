@@ -521,6 +521,7 @@ type CustomerCoupon implements Node {
 
             extend type Query {
                 couponCentre: [CouponTemplate!]!
+                couponCentreUpcoming: [CouponTemplate!]!
                 myCoupons(status: CouponStatus): [CustomerCoupon!]!
                 pointsMallTemplates: [CouponTemplate!]!
                 productCoupons(productId: ID!): [ProductCouponBinding!]!

@@ -24,8 +24,15 @@ let CouponShopResolver = class CouponShopResolver {
     async couponCentre(ctx) {
         return this.couponService.couponCentre(ctx);
     }
+    async couponCentreUpcoming(ctx) {
+        return this.couponService.couponCentreUpcoming(ctx);
+    }
     async myCoupons(ctx, status) {
         return this.couponService.listMyCoupons(ctx, status);
+    }
+    /** 按券码精准查当前用户自己的单张券（券码页轮询核销状态），非本人券返回 null */
+    async customerCouponByCode(ctx, code) {
+        return this.couponService.getMyCouponByCode(ctx, code);
     }
     async pointsMallTemplates(ctx) {
         return this.couponService.pointsMallTemplates(ctx);
@@ -71,11 +78,26 @@ __decorate([
 __decorate([
     (0, graphql_1.Query)(),
     __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], CouponShopResolver.prototype, "couponCentreUpcoming", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('status')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext, String]),
     __metadata("design:returntype", Promise)
 ], CouponShopResolver.prototype, "myCoupons", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('code')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String]),
+    __metadata("design:returntype", Promise)
+], CouponShopResolver.prototype, "customerCouponByCode", null);
 __decorate([
     (0, graphql_1.Query)(),
     __param(0, (0, core_1.Ctx)()),

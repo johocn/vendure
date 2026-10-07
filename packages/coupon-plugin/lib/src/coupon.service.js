@@ -314,6 +314,18 @@ let CouponService = class CouponService {
         const merged = [...own, ...extra.filter(t => !ownIds.has(String(t.id)))];
         return (0, coupon_channel_1.filterTemplatesByChannelAndScene)(merged, 'CENTRE', 'ONLINE');
     }
+    /** 领券中心「即将开始」：enabled 且 startsAt 在未来的券模板（与 couponCentre 同渠道/scene 口径） */
+    async couponCentreUpcoming(ctx) {
+        const repo = this.connection.getRepository(ctx, coupon_template_entity_1.CouponTemplate);
+        const now = new Date();
+        const own = await repo
+            .createQueryBuilder('tpl')
+            .innerJoin('tpl.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId })
+            .where('tpl.enabled = :enabled', { enabled: true })
+            .andWhere('tpl.startsAt > :now', { now })
+            .getMany();
+        return (0, coupon_channel_1.filterTemplatesByChannelAndScene)(own, 'CENTRE', 'ONLINE');
+    }
     /** 默认商城渠道下，本商城商品（Product.customFields.shopId）中出现过的店铺 id 集合。 */
     async shopIdsPresentInChannel(ctx) {
         var _a, _b;
@@ -350,6 +362,26 @@ let CouponService = class CouponService {
             qb.andWhere('cc.status = :status', { status });
         }
         return qb.getMany();
+    }
+    /**
+     * C 端：按券码精准查当前登录用户自己的单张券（券码页轮询核销状态用）。
+     * 只匹配本人名下的券，非本人或不存在一律返回 null，避免越权探测券码。
+     */
+    async getMyCouponByCode(ctx, code) {
+        const customerId = await this.currentCustomerId(ctx);
+        if (!customerId)
+            return null;
+        // 与 listMyCoupons 一致：先收敛过期状态，轮询方能立刻看到 EXPIRED
+        await this.expireDueCoupons(ctx, customerId);
+        const normalized = (code || '').trim().toUpperCase();
+        if (!normalized)
+            return null;
+        const repo = this.connection.getRepository(ctx, customer_coupon_entity_1.CustomerCoupon);
+        const cc = await repo.findOne({
+            where: { customerId, code: normalized },
+            relations: { template: true },
+        });
+        return cc !== null && cc !== void 0 ? cc : null;
     }
     /**
      * 到店收银：列出某顾客在当前渠道「可到店核销」的券（未使用 / 未过期 / 场景含 IN_STORE）。

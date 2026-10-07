@@ -52,9 +52,16 @@ export declare class CouponService {
     private mergeLocalized;
     deleteTemplate(ctx: RequestContext, id: ID): Promise<void>;
     couponCentre(ctx: RequestContext): Promise<CouponTemplate[]>;
+    /** 领券中心「即将开始」：enabled 且 startsAt 在未来的券模板（与 couponCentre 同渠道/scene 口径） */
+    couponCentreUpcoming(ctx: RequestContext): Promise<CouponTemplate[]>;
     /** 默认商城渠道下，本商城商品（Product.customFields.shopId）中出现过的店铺 id 集合。 */
     private shopIdsPresentInChannel;
     listMyCoupons(ctx: RequestContext, status?: string): Promise<CustomerCoupon[]>;
+    /**
+     * C 端：按券码精准查当前登录用户自己的单张券（券码页轮询核销状态用）。
+     * 只匹配本人名下的券，非本人或不存在一律返回 null，避免越权探测券码。
+     */
+    getMyCouponByCode(ctx: RequestContext, code: string): Promise<CustomerCoupon | null>;
     /**
      * 到店收银：列出某顾客在当前渠道「可到店核销」的券（未使用 / 未过期 / 场景含 IN_STORE）。
      * 仅到店场景过滤，不做渠道集合判定（券可由任意渠道获得，到店核销只看场景与归属）。

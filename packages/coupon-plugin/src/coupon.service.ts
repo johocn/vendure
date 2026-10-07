@@ -364,6 +364,19 @@ export class CouponService {
         return filterTemplatesByChannelAndScene(merged, 'CENTRE', 'ONLINE');
     }
 
+    /** 领券中心「即将开始」：enabled 且 startsAt 在未来的券模板（与 couponCentre 同渠道/scene 口径） */
+    async couponCentreUpcoming(ctx: RequestContext): Promise<CouponTemplate[]> {
+        const repo = this.connection.getRepository(ctx, CouponTemplate);
+        const now = new Date();
+        const own = await repo
+            .createQueryBuilder('tpl')
+            .innerJoin('tpl.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId })
+            .where('tpl.enabled = :enabled', { enabled: true })
+            .andWhere('tpl.startsAt > :now', { now })
+            .getMany();
+        return filterTemplatesByChannelAndScene(own, 'CENTRE', 'ONLINE');
+    }
+
     /** 默认商城渠道下，本商城商品（Product.customFields.shopId）中出现过的店铺 id 集合。 */
     private async shopIdsPresentInChannel(ctx: RequestContext): Promise<Set<number>> {
         const set = new Set<number>();

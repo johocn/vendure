@@ -16,6 +16,11 @@ export class CouponShopResolver {
     }
 
     @Query()
+    async couponCentreUpcoming(@Ctx() ctx: RequestContext) {
+        return this.couponService.couponCentreUpcoming(ctx);
+    }
+
+    @Query()
     async myCoupons(@Ctx() ctx: RequestContext, @Args('status') status?: string) {
         return this.couponService.listMyCoupons(ctx, status);
     }
