@@ -282,6 +282,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     notifyTemplateRiderAssigned: String
                     notifyTemplateCookingDone: String
                     notifyTemplateDelivered: String
+                    notifyTemplateExceptionHandled: String
                 }
 
                 input CampusStoreConfigInput {
@@ -298,6 +299,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     notifyTemplateRiderAssigned: String
                     notifyTemplateCookingDone: String
                     notifyTemplateDelivered: String
+                    notifyTemplateExceptionHandled: String
                 }
 
                 type RiderWithdrawalRequest {

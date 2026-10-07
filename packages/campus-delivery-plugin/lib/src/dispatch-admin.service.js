@@ -15,8 +15,16 @@ const core_1 = require("@nestjs/core");
 const core_2 = require("@vendure/core");
 const capacity_service_1 = require("./capacity.service");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
+const campus_notify_service_1 = require("./campus-notify.service");
 const hall_grab_service_1 = require("./hall-grab.service");
 const hall_service_1 = require("./hall.service");
+/** 处置完结 push 文案（公众号模板 thing 字段 ≤20 字符，均已核对） */
+const EXCEPTION_NOTIFY_TEXT = {
+    refund_diff: '异常已处理，差价原路退回',
+    coupon: '异常已处理，补偿券已发放',
+    refund_all: '订单已全额退款',
+    reassign: '平台已重新安排配送',
+};
 /**
  * T3 调度看板 + 手动派单/改派（admin）。
  * board：按渠道拉取 hallStatus 非空订单，分类为大厅/进行中，产出四类告警
@@ -28,12 +36,13 @@ const hall_service_1 = require("./hall.service");
  * 全部动作写 exceptionAction* 记录字段留痕。
  */
 let DispatchAdminService = class DispatchAdminService {
-    constructor(connection, grab, hall, capacity, moduleRef) {
+    constructor(connection, grab, hall, capacity, moduleRef, notify) {
         this.connection = connection;
         this.grab = grab;
         this.hall = hall;
         this.capacity = capacity;
         this.moduleRef = moduleRef;
+        this.notify = notify;
     }
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
     get injector() {
@@ -218,6 +227,8 @@ let DispatchAdminService = class DispatchAdminService {
         }
         await this.connection.getRepository(ctx, core_2.Order).update(order.id, { customFields: patch });
         core_2.Logger.info(`Order ${order.code} exception handled: ${action}`, 'CampusDispatch');
+        // 处置完结 push（fire-and-forget，plan 3.4 补全）：按 action 带动态文案通知下单用户
+        this.notify.user(ctx, order.id, 'exceptionHandled', EXCEPTION_NOTIFY_TEXT[action]);
         return { ok: true, action };
     }
     /** 部分退款（fork 无 core RefundService，走 OrderService.refundOrder/settleRefund，与 T4 同源）。
@@ -310,6 +321,7 @@ exports.DispatchAdminService = DispatchAdminService = __decorate([
         hall_grab_service_1.HallGrabService,
         hall_service_1.HallService,
         capacity_service_1.CapacityService,
-        core_1.ModuleRef])
+        core_1.ModuleRef,
+        campus_notify_service_1.CampusNotifyService])
 ], DispatchAdminService);
 //# sourceMappingURL=dispatch-admin.service.js.map

@@ -49,7 +49,7 @@ function makeEnv(opts: HandleEnvOpts = {}) {
             }),
         },
     } as any;
-    const svc = new DispatchAdminService(conn, grabSvc as any, hallSvc as any, capacitySvc as any, {} as any);
+    const svc = new DispatchAdminService(conn, grabSvc as any, hallSvc as any, capacitySvc as any, {} as any, { user: vi.fn() } as any);
     // 测试直接注入惰性服务，绕过 ModuleRef/require（handleException 专用）
     const orderSvc = opts.orderSvc ?? {
         refundOrder: vi.fn().mockResolvedValue({ id: 55 }),
@@ -57,7 +57,7 @@ function makeEnv(opts: HandleEnvOpts = {}) {
         cancelOrder: vi.fn().mockResolvedValue({}),
     };
     (svc as any).orderSvc = orderSvc;
-    return { svc, grabSvc, hallSvc, capacitySvc, orderRepo, configRepo, paymentRepo, refundRepo, orderSvc };
+    return { svc, grabSvc, hallSvc, capacitySvc, orderRepo, configRepo, paymentRepo, refundRepo, orderSvc, notifySvc: (svc as any).notify };
 }
 
 const now = Date.now();
@@ -133,7 +133,7 @@ describe('DispatchAdminService.handleException', () => {
     });
 
     it('reassign：回大厅 + 留痕，不置 exception_final', async () => {
-        const { svc, orderRepo, hallSvc } = makeEnv();
+        const { svc, orderRepo, hallSvc, notifySvc } = makeEnv();
         orderRepo.findOne.mockResolvedValue(exceptionOrder(6, 'A6'));
         const res = await svc.handleException(ctx, 6 as any, 'reassign', undefined, undefined, '改派');
         expect(res).toEqual({ ok: true, action: 'reassign' });
@@ -141,6 +141,8 @@ describe('DispatchAdminService.handleException', () => {
         const patch = orderRepo.update.mock.calls[0][1].customFields;
         expect(patch).toEqual(expect.objectContaining({ exceptionAction: 'reassign', exceptionHandledNote: '改派', exceptionHandledBy: '3' }));
         expect(patch.hallStatus).toBeUndefined();
+        // 处置完结 push：reassign 也通知
+        expect(notifySvc.user).toHaveBeenCalledWith(ctx, 6, 'exceptionHandled', '平台已重新安排配送');
     });
 
     it('refund_diff：部分退款（shipping/adjustment 显式 0）+ settleRefund + exception_final 留痕', async () => {
@@ -207,5 +209,18 @@ describe('DispatchAdminService.handleException', () => {
         expect(patch).toEqual(expect.objectContaining({
             exceptionAction: 'refund_all', hallStatus: 'exception_final', campusCause: 'exception_refund',
         }));
+    });
+
+    it('处置完结 push（plan 3.4 补全）：按 action 带对应动态文案通知 exceptionHandled', async () => {
+        const { svc, orderRepo, notifySvc } = makeEnv();
+        orderRepo.findOne.mockResolvedValue(exceptionOrder(11, 'A11'));
+        (svc as any).couponSvc = { grantCoupon: vi.fn().mockResolvedValue(['CODE1']) };
+        await svc.handleException(ctx, 11 as any, 'coupon', undefined, '9' as any, '补偿');
+        expect(notifySvc.user).toHaveBeenCalledWith(ctx, 11, 'exceptionHandled', '异常已处理，补偿券已发放');
+
+        const env2 = makeEnv({ payment: { id: 9, amount: 2300 }, refundedSum: 0 });
+        env2.orderRepo.findOne.mockResolvedValue(exceptionOrder(12, 'A12'));
+        await env2.svc.handleException(ctx, 12 as any, 'refund_diff', 300);
+        expect(env2.notifySvc.user).toHaveBeenCalledWith(ctx, 12, 'exceptionHandled', '异常已处理，差价原路退回');
     });
 });

@@ -75,7 +75,7 @@ let WaimaiStoreService = class WaimaiStoreService {
     }
     /** admin：按 channelId upsert（幂等），routesEnabled 白名单 R1-R5，负数金额拒绝 */
     async updateStoreConfig(ctx, channelId, input) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r;
         const bad = ((_a = input.routesEnabled) !== null && _a !== void 0 ? _a : []).filter(r => !ROUTE_WHITELIST.includes(r));
         if (bad.length)
             throw new core_1.UserInputError(`不支持的配送路线: ${bad.join(', ')}（仅接受 R1-R5）`);
@@ -104,11 +104,12 @@ let WaimaiStoreService = class WaimaiStoreService {
         cfg.notifyTemplateRiderAssigned = (_l = input.notifyTemplateRiderAssigned) !== null && _l !== void 0 ? _l : null;
         cfg.notifyTemplateCookingDone = (_m = input.notifyTemplateCookingDone) !== null && _m !== void 0 ? _m : null;
         cfg.notifyTemplateDelivered = (_o = input.notifyTemplateDelivered) !== null && _o !== void 0 ? _o : null;
+        cfg.notifyTemplateExceptionHandled = (_p = input.notifyTemplateExceptionHandled) !== null && _p !== void 0 ? _p : null;
         await repo.save(cfg);
-        const address = ((_p = input.storeAddress) !== null && _p !== void 0 ? _p : '').trim();
+        const address = ((_q = input.storeAddress) !== null && _q !== void 0 ? _q : '').trim();
         if (address) {
             // R4：同步幂等 upsert 本渠道门店自提点（名称=店铺名，地址=storeAddress），核销走 pickup_redemption 零新表
-            await this.upsertStorePickupLocation(Number(channelId), ch.code, address, ((_q = input.storePhone) !== null && _q !== void 0 ? _q : '').trim() || null);
+            await this.upsertStorePickupLocation(Number(channelId), ch.code, address, ((_r = input.storePhone) !== null && _r !== void 0 ? _r : '').trim() || null);
         }
         return this.toConfigView(channelId, ch.code, ch.token, cfg);
     }
@@ -139,7 +140,7 @@ let WaimaiStoreService = class WaimaiStoreService {
         });
     }
     toConfigView(channelId, channelName, channelToken, cfg) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p;
         return {
             channelId,
             channelName,
@@ -157,6 +158,7 @@ let WaimaiStoreService = class WaimaiStoreService {
             notifyTemplateRiderAssigned: (_l = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateRiderAssigned) !== null && _l !== void 0 ? _l : null,
             notifyTemplateCookingDone: (_m = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateCookingDone) !== null && _m !== void 0 ? _m : null,
             notifyTemplateDelivered: (_o = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateDelivered) !== null && _o !== void 0 ? _o : null,
+            notifyTemplateExceptionHandled: (_p = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateExceptionHandled) !== null && _p !== void 0 ? _p : null,
         };
     }
 };

@@ -1,6 +1,7 @@
 import { ModuleRef } from '@nestjs/core';
 import { ID, Order, RequestContext, TransactionalConnection } from '@vendure/core';
 import { CapacityService } from './capacity.service';
+import { CampusNotifyService } from './campus-notify.service';
 import { HallGrabService } from './hall-grab.service';
 import { HallService } from './hall.service';
 export type ExceptionAction = 'reassign' | 'refund_diff' | 'coupon' | 'refund_all';
@@ -44,9 +45,10 @@ export declare class DispatchAdminService {
     private hall;
     private capacity;
     private moduleRef;
+    private notify;
     private orderSvc?;
     private couponSvc?;
-    constructor(connection: TransactionalConnection, grab: HallGrabService, hall: HallService, capacity: CapacityService, moduleRef: ModuleRef);
+    constructor(connection: TransactionalConnection, grab: HallGrabService, hall: HallService, capacity: CapacityService, moduleRef: ModuleRef, notify: CampusNotifyService);
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
     private get injector();
     board(ctx: RequestContext): Promise<{

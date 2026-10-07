@@ -14,10 +14,19 @@ import {
 } from '@vendure/core';
 import { CapacityService } from './capacity.service';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
+import { CampusNotifyService } from './campus-notify.service';
 import { HallGrabService } from './hall-grab.service';
 import { HallService } from './hall.service';
 
 export type ExceptionAction = 'reassign' | 'refund_diff' | 'coupon' | 'refund_all';
+
+/** 处置完结 push 文案（公众号模板 thing 字段 ≤20 字符，均已核对） */
+const EXCEPTION_NOTIFY_TEXT: Record<ExceptionAction, string> = {
+    refund_diff: '异常已处理，差价原路退回',
+    coupon: '异常已处理，补偿券已发放',
+    refund_all: '订单已全额退款',
+    reassign: '平台已重新安排配送',
+};
 
 export interface DispatchAlert {
     orderId: string;
@@ -67,6 +76,7 @@ export class DispatchAdminService {
         private hall: HallService,
         private capacity: CapacityService,
         private moduleRef: ModuleRef,
+        private notify: CampusNotifyService,
     ) {}
 
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
@@ -244,6 +254,8 @@ export class DispatchAdminService {
         }
         await this.connection.getRepository(ctx, Order).update(order.id, { customFields: patch });
         Logger.info(`Order ${order.code} exception handled: ${action}`, 'CampusDispatch');
+        // 处置完结 push（fire-and-forget，plan 3.4 补全）：按 action 带动态文案通知下单用户
+        this.notify.user(ctx, order.id, 'exceptionHandled', EXCEPTION_NOTIFY_TEXT[action]);
         return { ok: true, action };
     }
 

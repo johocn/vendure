@@ -39,6 +39,7 @@ export interface CampusStoreConfigWithChannel {
     notifyTemplateRiderAssigned: string | null;
     notifyTemplateCookingDone: string | null;
     notifyTemplateDelivered: string | null;
+    notifyTemplateExceptionHandled: string | null;
 }
 
 const ROUTE_WHITELIST = ['R1', 'R2', 'R3', 'R4', 'R5'];
@@ -119,6 +120,7 @@ export class WaimaiStoreService {
             notifyTemplateRiderAssigned?: string | null;
             notifyTemplateCookingDone?: string | null;
             notifyTemplateDelivered?: string | null;
+            notifyTemplateExceptionHandled?: string | null;
         },
     ): Promise<CampusStoreConfigWithChannel> {
         const bad = (input.routesEnabled ?? []).filter(r => !ROUTE_WHITELIST.includes(r));
@@ -145,6 +147,7 @@ export class WaimaiStoreService {
         cfg.notifyTemplateRiderAssigned = input.notifyTemplateRiderAssigned ?? null;
         cfg.notifyTemplateCookingDone = input.notifyTemplateCookingDone ?? null;
         cfg.notifyTemplateDelivered = input.notifyTemplateDelivered ?? null;
+        cfg.notifyTemplateExceptionHandled = input.notifyTemplateExceptionHandled ?? null;
         await repo.save(cfg);
         const address = (input.storeAddress ?? '').trim();
         if (address) {
@@ -204,6 +207,7 @@ export class WaimaiStoreService {
             notifyTemplateRiderAssigned: cfg?.notifyTemplateRiderAssigned ?? null,
             notifyTemplateCookingDone: cfg?.notifyTemplateCookingDone ?? null,
             notifyTemplateDelivered: cfg?.notifyTemplateDelivered ?? null,
+            notifyTemplateExceptionHandled: cfg?.notifyTemplateExceptionHandled ?? null,
         };
     }
 }

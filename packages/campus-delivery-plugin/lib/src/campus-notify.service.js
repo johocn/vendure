@@ -22,6 +22,7 @@ const TEMPLATE_FIELD = {
     riderAssigned: 'notifyTemplateRiderAssigned',
     cookingDone: 'notifyTemplateCookingDone',
     orderDelivered: 'notifyTemplateDelivered',
+    exceptionHandled: 'notifyTemplateExceptionHandled',
 };
 /** 状态文案（公众号模板 thing 字段 ≤20 字符） */
 const STATUS_TEXT = {
@@ -29,6 +30,7 @@ const STATUS_TEXT = {
     riderAssigned: '骑手已接单，待取货',
     cookingDone: '出餐完成，等待取货',
     orderDelivered: '订单已送达',
+    exceptionHandled: '异常已处理',
 };
 /**
  * 用户侧节点通知（公众号模板消息，touser = Customer.customFields.wechatOpenid）。
@@ -47,8 +49,8 @@ let CampusNotifyService = CampusNotifyService_1 = class CampusNotifyService {
     get injector() {
         return new core_2.Injector(this.moduleRef);
     }
-    /** 发送节点通知（异步不等待，不抛错） */
-    user(ctx, orderId, event) {
+    /** 发送节点通知（异步不等待，不抛错）。text：动态文案覆盖 thing1（如异常处置结果，超 20 字符自动截断） */
+    user(ctx, orderId, event, text) {
         void (async () => {
             var _a, _b, _c, _d;
             try {
@@ -71,7 +73,7 @@ let CampusNotifyService = CampusNotifyService_1 = class CampusNotifyService {
                 const res = await wx.sendTemplate({
                     touser: openid,
                     template_id: templateId,
-                    data: this.buildData(order.code, event),
+                    data: this.buildData(order.code, event, text),
                 });
                 core_2.Logger.info(`user notify ${event} sent for ${order.code} (msgid=${(_c = res === null || res === void 0 ? void 0 : res.msgid) !== null && _c !== void 0 ? _c : '?'})`, 'CampusNotify');
             }
@@ -81,10 +83,10 @@ let CampusNotifyService = CampusNotifyService_1 = class CampusNotifyService {
         })();
     }
     /** 模板字段映射（订单号/状态/时间），字段名以申请到的模板为准 */
-    buildData(orderCode, event) {
+    buildData(orderCode, event, text) {
         return {
             character_string1: { value: orderCode },
-            thing1: { value: STATUS_TEXT[event] },
+            thing1: { value: (text !== null && text !== void 0 ? text : STATUS_TEXT[event]).slice(0, 20) },
             time2: { value: CampusNotifyService_1.formatTime(new Date()) },
         };
     }

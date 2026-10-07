@@ -6,7 +6,7 @@ const campus_notify_service_1 = require("./campus-notify.service");
 (0, vitest_1.describe)('CampusNotifyService', () => {
     const makeCtx = () => ({ channelId: 7 });
     function makeSvc(opts) {
-        var _a, _b, _c, _d;
+        var _a, _b, _c, _d, _e;
         const findOne = vitest_1.vi.fn().mockResolvedValue(opts.openid === null
             ? { code: 'ORD1', customer: { customFields: { wechatMiniOpenid: 'mini-x' } } }
             : { code: 'ORD1', customer: { customFields: { wechatOpenid: 'o-123' } } });
@@ -21,6 +21,7 @@ const campus_notify_service_1 = require("./campus-notify.service");
                 notifyTemplateRiderAssigned: (_b = opts.templateId) !== null && _b !== void 0 ? _b : null,
                 notifyTemplateCookingDone: (_c = opts.templateId) !== null && _c !== void 0 ? _c : null,
                 notifyTemplateDelivered: (_d = opts.templateId) !== null && _d !== void 0 ? _d : null,
+                notifyTemplateExceptionHandled: (_e = opts.templateId) !== null && _e !== void 0 ? _e : null,
             }),
         }, { get: vitest_1.vi.fn().mockReturnValue({ sendTemplate }) });
         return { svc, findOne, sendTemplate };
@@ -54,6 +55,13 @@ const campus_notify_service_1 = require("./campus-notify.service");
         await vitest_1.vi.waitFor(() => (0, vitest_1.expect)(sendTemplate).toHaveBeenCalled());
         // fire-and-forget promise 已内部消化
         await new Promise(r => setTimeout(r, 10));
+    });
+    (0, vitest_1.it)('exceptionHandled：动态文案覆盖 thing1（处置结果 push，plan 3.4 补全）', async () => {
+        const { svc, sendTemplate } = makeSvc({ templateId: 'TID', openid: 'o-123' });
+        svc.user(makeCtx(), 2, 'exceptionHandled', '订单已全额退款');
+        await vitest_1.vi.waitFor(() => (0, vitest_1.expect)(sendTemplate).toHaveBeenCalled());
+        const arg = sendTemplate.mock.calls[0][0];
+        (0, vitest_1.expect)(arg.data.thing1.value).toBe('订单已全额退款');
     });
 });
 //# sourceMappingURL=campus-notify.service.spec.js.map

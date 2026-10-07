@@ -23,5 +23,6 @@ export declare class CampusFulfillmentConfig extends VendureEntity {
     notifyTemplateRiderAssigned: string | null;
     notifyTemplateCookingDone: string | null;
     notifyTemplateDelivered: string | null;
+    notifyTemplateExceptionHandled: string | null;
     constructor(input?: DeepPartial<CampusFulfillmentConfig>);
 }

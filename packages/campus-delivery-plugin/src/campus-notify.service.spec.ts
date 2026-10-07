@@ -24,6 +24,7 @@ describe('CampusNotifyService', () => {
                     notifyTemplateRiderAssigned: opts.templateId ?? null,
                     notifyTemplateCookingDone: opts.templateId ?? null,
                     notifyTemplateDelivered: opts.templateId ?? null,
+                    notifyTemplateExceptionHandled: opts.templateId ?? null,
                 }),
             } as any,
             { get: vi.fn().mockReturnValue({ sendTemplate }) } as any,
@@ -64,5 +65,13 @@ describe('CampusNotifyService', () => {
         await vi.waitFor(() => expect(sendTemplate).toHaveBeenCalled());
         // fire-and-forget promise 已内部消化
         await new Promise(r => setTimeout(r, 10));
+    });
+
+    it('exceptionHandled：动态文案覆盖 thing1（处置结果 push，plan 3.4 补全）', async () => {
+        const { svc, sendTemplate } = makeSvc({ templateId: 'TID', openid: 'o-123' });
+        svc.user(makeCtx(), 2, 'exceptionHandled', '订单已全额退款');
+        await vi.waitFor(() => expect(sendTemplate).toHaveBeenCalled());
+        const arg = sendTemplate.mock.calls[0][0];
+        expect(arg.data.thing1.value).toBe('订单已全额退款');
     });
 });

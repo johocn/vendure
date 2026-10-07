@@ -259,6 +259,7 @@ import { WaimaiStoreService } from './waimai-store.service';
                     notifyTemplateRiderAssigned: String
                     notifyTemplateCookingDone: String
                     notifyTemplateDelivered: String
+                    notifyTemplateExceptionHandled: String
                 }
 
                 input CampusStoreConfigInput {
@@ -275,6 +276,7 @@ import { WaimaiStoreService } from './waimai-store.service';
                     notifyTemplateRiderAssigned: String
                     notifyTemplateCookingDone: String
                     notifyTemplateDelivered: String
+                    notifyTemplateExceptionHandled: String
                 }
 
                 type RiderWithdrawalRequest {
