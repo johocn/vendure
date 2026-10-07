@@ -35,14 +35,17 @@ export class HallGrabService {
             const cf = order?.customFields as any;
             if (!order || cf?.hallStatus !== 'open') throw new UserInputError('手慢了，该订单已被抢');
             if (order.customer?.id === rider.id) throw new UserInputError('不能抢自己的订单');
-            // 整组抢单：同组 open 单按 id 升序锁定（主单已在锁内，重复锁无害）
+            // 整组抢单：同组 open 单按 id 升序锁定（主单已在锁内，重复锁无害）。
+            // 注意：单表查询直接 FOR UPDATE 即可——setLock 的 lockTables 第三参
+            // 在 TypeORM 中是原样 join 不加引号（" OF " + tables.join），别名 order
+            // 是 PG 保留字会触发 syntax error（单测 mock 不暴露，生产实测踩坑）。
             let mates: Order[] = [];
             if (cf.routeGroupId) {
                 mates = await em.getRepository(Order).createQueryBuilder('order')
                     .where('order.customFields.routeGroupId = :gid', { gid: cf.routeGroupId })
                     .andWhere('order.customFields.hallStatus = :s', { s: 'open' })
                     .orderBy('order.id', 'ASC')
-                    .setLock('pessimistic_write', undefined, ['order'])
+                    .setLock('pessimistic_write')
                     .getMany();
             }
             const targets = [order, ...mates.filter(m => m.id !== order.id && m.customerId !== rider.id)];

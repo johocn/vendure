@@ -224,7 +224,7 @@ describe('DispatchJobService.scan 多单顺路打包 T1.5（plan 3.3）', () => 
         await svc.scan({ channelId: 1 } as any);
         expect(orderRepo.update).toHaveBeenCalledOnce();
         const [ids, patch] = orderRepo.update.mock.calls[0];
-        expect([...ids].sort()).toEqual([1, 2]);
+        expect([...ids].sort()).toEqual(['1', '2']);
         const gid = patch.customFields.routeGroupId;
         expect(gid).toMatch(/^rg-/);
     });
@@ -247,7 +247,7 @@ describe('DispatchJobService.scan 多单顺路打包 T1.5（plan 3.3）', () => 
         const env = makeEnv({ openOrders: [near, near2, far] });
         await env.svc.scan({ channelId: 1 } as any);
         const [ids] = env.orderRepo.update.mock.calls[0];
-        expect([...ids].sort()).toEqual([1, 2]); // far 单差 29min 不入组
+        expect([...ids].sort()).toEqual(['1', '2']); // far 单差 29min 不入组
     });
 
     it('errand 跑腿单不打包', async () => {
@@ -272,7 +272,7 @@ describe('DispatchJobService.scan 多单顺路打包 T1.5（plan 3.3）', () => 
         expect(orderRepo.update).toHaveBeenCalledOnce();
         const [ids, patch] = orderRepo.update.mock.calls[0];
         expect(patch.customFields.routeGroupId).toBe('rg-old');
-        expect(ids).toEqual([2]); // 已带组 id 的单不再 update
+        expect(ids).toEqual(['2']); // 已带组 id 的单不再 update
     });
 });
 
