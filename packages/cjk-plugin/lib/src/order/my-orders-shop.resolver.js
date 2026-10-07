@@ -15,6 +15,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.MyOrdersShopResolver = void 0;
 const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
+const loggerCtx = 'MyOrdersShopResolver';
+/** 顾客可自行取消的订单状态（尚未支付/未进入履约） */
+const CUSTOMER_CANCELLABLE_STATES = ['Created', 'AddingItems', 'ArrangingPayment'];
 /**
  * C 端「我的订单」列表查询。
  *
@@ -33,9 +36,11 @@ const core_1 = require("@vendure/core");
  * 前端只会表现为「暂无订单」，难以定位。
  */
 let MyOrdersShopResolver = class MyOrdersShopResolver {
-    constructor(customerService, listQueryBuilder) {
+    constructor(customerService, listQueryBuilder, orderService, stockMovementService) {
         this.customerService = customerService;
         this.listQueryBuilder = listQueryBuilder;
+        this.orderService = orderService;
+        this.stockMovementService = stockMovementService;
     }
     async myOrders(ctx, options, relations) {
         if (!ctx.activeUserId) {
@@ -55,6 +60,39 @@ let MyOrdersShopResolver = class MyOrdersShopResolver {
             .getManyAndCount()
             .then(([items, totalItems]) => ({ items, totalItems }));
     }
+    /**
+     * C 端「取消订单」：仅限本人、且处于未支付/未履约状态（Created/AddingItems/ArrangingPayment）。
+     * core 的 cancelOrder 对 active 订单（如 ArrangingPayment）不会释放库存分配，
+     * 需先显式释放分配，否则取消后库存被永久占用（与 order-timeout-plugin 同一处理）。
+     */
+    async cancelMyOrder(ctx, orderId) {
+        var _a, _b, _c;
+        if (!ctx.activeUserId) {
+            throw new core_1.UnauthorizedError();
+        }
+        const order = await this.orderService.findOne(ctx, orderId, ['customer', 'customer.user', 'lines']);
+        if (!order) {
+            throw new core_1.EntityNotFoundError('Order', orderId);
+        }
+        // 归属校验：order.customer.id 是 Customer 主键，与 activeUserId（User 主键）不同，须比 customer.user.id
+        const customerUserId = (_b = (_a = order.customer) === null || _a === void 0 ? void 0 : _a.user) === null || _b === void 0 ? void 0 : _b.id;
+        if (!order.customer || customerUserId == null || String(customerUserId) !== String(ctx.activeUserId)) {
+            throw new core_1.ForbiddenError();
+        }
+        if (!CUSTOMER_CANCELLABLE_STATES.includes(order.state)) {
+            throw new core_1.UserInputError(`ORDER_CANNOT_BE_CANCELLED:${order.state}`);
+        }
+        const lines = ((_c = order.lines) !== null && _c !== void 0 ? _c : []).map(l => ({ orderLineId: l.id, quantity: l.quantity }));
+        if (lines.length > 0) {
+            await this.stockMovementService.createReleasesForOrderLines(ctx, lines);
+        }
+        const result = await this.orderService.cancelOrder(ctx, { orderId });
+        if ((0, core_1.isGraphQlErrorResult)(result)) {
+            core_1.Logger.warn(`取消订单失败 order#${orderId}: ${result.message}`, loggerCtx);
+            throw new core_1.UserInputError(result.message);
+        }
+        return result;
+    }
 };
 exports.MyOrdersShopResolver = MyOrdersShopResolver;
 __decorate([
@@ -67,9 +105,21 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object, Array]),
     __metadata("design:returntype", Promise)
 ], MyOrdersShopResolver.prototype, "myOrders", null);
+__decorate([
+    (0, core_1.Transaction)(),
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], MyOrdersShopResolver.prototype, "cancelMyOrder", null);
 exports.MyOrdersShopResolver = MyOrdersShopResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [core_1.CustomerService,
-        core_1.ListQueryBuilder])
+        core_1.ListQueryBuilder,
+        core_1.OrderService,
+        core_1.StockMovementService])
 ], MyOrdersShopResolver);
 //# sourceMappingURL=my-orders-shop.resolver.js.map

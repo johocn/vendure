@@ -1,4 +1,4 @@
-import { CustomerService, ListQueryBuilder, Order, PaginatedList, RequestContext } from '@vendure/core';
+import { CustomerService, ID, ListQueryBuilder, Order, OrderService, PaginatedList, RequestContext, StockMovementService } from '@vendure/core';
 /**
  * C 端「我的订单」列表查询。
  *
@@ -19,6 +19,14 @@ import { CustomerService, ListQueryBuilder, Order, PaginatedList, RequestContext
 export declare class MyOrdersShopResolver {
     private customerService;
     private listQueryBuilder;
-    constructor(customerService: CustomerService, listQueryBuilder: ListQueryBuilder);
+    private orderService;
+    private stockMovementService;
+    constructor(customerService: CustomerService, listQueryBuilder: ListQueryBuilder, orderService: OrderService, stockMovementService: StockMovementService);
     myOrders(ctx: RequestContext, options: any, relations: string[]): Promise<PaginatedList<Order>>;
+    /**
+     * C 端「取消订单」：仅限本人、且处于未支付/未履约状态（Created/AddingItems/ArrangingPayment）。
+     * core 的 cancelOrder 对 active 订单（如 ArrangingPayment）不会释放库存分配，
+     * 需先显式释放分配，否则取消后库存被永久占用（与 order-timeout-plugin 同一处理）。
+     */
+    cancelMyOrder(ctx: RequestContext, orderId: ID): Promise<Order>;
 }

@@ -2214,6 +2214,13 @@ function mergeCustomFields<T extends { name: string }>(
                     myOrders(options: OrderListOptions): OrderList!
                 }
 
+                # ===== C 端「取消订单」 =====
+                # core 的 cancelOrder 仅在 admin-api（shop-api 无同名 mutation），此处补齐顾客自助取消：
+                # 仅本人 + 未支付/未履约状态，服务层做归属与状态校验并释放库存分配。
+                extend type Mutation {
+                    cancelMyOrder(orderId: ID!): Order!
+                }
+
                 ${redemptionShopSchema}
             `;
         },
