@@ -26,6 +26,9 @@ let AfterSalesAdminResolver = class AfterSalesAdminResolver {
     async afterSalesRequestAdmin(ctx, id) {
         return this.afterSalesService.findOneForAdmin(ctx, id);
     }
+    async afterSalesStats(ctx, from, to) {
+        return this.afterSalesService.stats(ctx, from, to);
+    }
     async afterSalesReturnAddress(ctx) {
         return this.afterSalesService.getReturnAddress(ctx);
     }
@@ -53,6 +56,15 @@ let AfterSalesAdminResolver = class AfterSalesAdminResolver {
     async retryAfterSalesRefund(ctx, id) {
         return this.afterSalesService.retryRefund(ctx, id);
     }
+    async afterSalesMessages(ctx, id, options) {
+        return this.afterSalesService.listMessages(ctx, id, 'admin', options);
+    }
+    async replyAfterSalesMessage(ctx, id, content, images) {
+        return this.afterSalesService.addMessage(ctx, id, 'admin', content, images);
+    }
+    async exchangeShipAfterSalesRequest(ctx, id, trackingNo, carrier) {
+        return this.afterSalesService.exchangeShip(ctx, id, trackingNo, carrier);
+    }
 };
 exports.AfterSalesAdminResolver = AfterSalesAdminResolver;
 __decorate([
@@ -73,6 +85,16 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Number]),
     __metadata("design:returntype", Promise)
 ], AfterSalesAdminResolver.prototype, "afterSalesRequestAdmin", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.ReadOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('from')),
+    __param(2, (0, graphql_1.Args)('to')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, String]),
+    __metadata("design:returntype", Promise)
+], AfterSalesAdminResolver.prototype, "afterSalesStats", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(core_1.Permission.UpdateOrder),
@@ -156,6 +178,38 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Number]),
     __metadata("design:returntype", Promise)
 ], AfterSalesAdminResolver.prototype, "retryAfterSalesRefund", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.ReadOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('options', { nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Number, Object]),
+    __metadata("design:returntype", Promise)
+], AfterSalesAdminResolver.prototype, "afterSalesMessages", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('content')),
+    __param(3, (0, graphql_1.Args)('images', { nullable: true, type: () => [String] })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Number, String, Array]),
+    __metadata("design:returntype", Promise)
+], AfterSalesAdminResolver.prototype, "replyAfterSalesMessage", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('trackingNo')),
+    __param(3, (0, graphql_1.Args)('carrier')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Number, String, String]),
+    __metadata("design:returntype", Promise)
+], AfterSalesAdminResolver.prototype, "exchangeShipAfterSalesRequest", null);
 exports.AfterSalesAdminResolver = AfterSalesAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [after_sales_service_1.AfterSalesService])

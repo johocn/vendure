@@ -76,6 +76,14 @@ __decorate([
     __metadata("design:type", Object)
 ], AfterSalesRequest.prototype, "returnCarrier", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], AfterSalesRequest.prototype, "exchangeTrackingNo", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], AfterSalesRequest.prototype, "exchangeCarrier", void 0);
+__decorate([
     (0, typeorm_1.Column)({ nullable: true, type: 'text' }),
     __metadata("design:type", Object)
 ], AfterSalesRequest.prototype, "rejectReason", void 0);

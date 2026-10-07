@@ -19,6 +19,10 @@ export declare class AfterSalesRequest extends VendureEntity implements ChannelA
     restockJson: string | null;
     returnTrackingNo: string | null;
     returnCarrier: string | null;
+    /** 换货发货运单号（exchangeShip 时落） */
+    exchangeTrackingNo: string | null;
+    /** 换货发货承运商 */
+    exchangeCarrier: string | null;
     rejectReason: string | null;
     /** 支付网关退款流水号（退款成功后落） */
     refundTransactionId: string | null;
@@ -32,4 +36,6 @@ export declare class AfterSalesRequest extends VendureEntity implements ChannelA
     customerId: number;
     history: AfterSalesStateHistory[];
     channels: Channel[];
+    /** 留言条数（非持久化：service.attachMessageCounts 批量附加，避免 N+1 field resolver） */
+    messageCount?: number;
 }

@@ -41,6 +41,15 @@ let AfterSalesShopResolver = class AfterSalesShopResolver {
     async uploadAfterSalesEvidence(ctx, images) {
         return this.afterSalesService.uploadEvidence(ctx, images);
     }
+    async afterSalesMessages(ctx, id, options) {
+        return this.afterSalesService.listMessages(ctx, id, 'customer', options);
+    }
+    async addAfterSalesMessage(ctx, id, content, images) {
+        return this.afterSalesService.addMessage(ctx, id, 'customer', content, images);
+    }
+    async exchangeReceiveAfterSalesRequest(ctx, id) {
+        return this.afterSalesService.exchangeReceive(ctx, id);
+    }
 };
 exports.AfterSalesShopResolver = AfterSalesShopResolver;
 __decorate([
@@ -107,6 +116,36 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Array]),
     __metadata("design:returntype", Promise)
 ], AfterSalesShopResolver.prototype, "uploadAfterSalesEvidence", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('options', { nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Number, Object]),
+    __metadata("design:returntype", Promise)
+], AfterSalesShopResolver.prototype, "afterSalesMessages", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('content')),
+    __param(3, (0, graphql_1.Args)('images', { nullable: true, type: () => [String] })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Number, String, Array]),
+    __metadata("design:returntype", Promise)
+], AfterSalesShopResolver.prototype, "addAfterSalesMessage", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Number]),
+    __metadata("design:returntype", Promise)
+], AfterSalesShopResolver.prototype, "exchangeReceiveAfterSalesRequest", null);
 exports.AfterSalesShopResolver = AfterSalesShopResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [after_sales_service_1.AfterSalesService])

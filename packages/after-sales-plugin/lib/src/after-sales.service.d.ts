@@ -1,5 +1,6 @@
 import { ID, Injector, ListQueryBuilder, ListQueryOptions, PaginatedList, RequestContext, TransactionalConnection } from '@vendure/core';
 import { AfterSalesRequest } from './after-sales-request.entity';
+import { AfterSalesMessage, AfterSalesMessageSenderType } from './after-sales-message.entity';
 export declare class AfterSalesService {
     private connection;
     private listQueryBuilder;
@@ -10,6 +11,7 @@ export declare class AfterSalesService {
     private assetService;
     private configService;
     private channelService;
+    private eventBus;
     constructor(connection: TransactionalConnection, listQueryBuilder: ListQueryBuilder);
     init(injector: Injector): void;
     /**
@@ -57,6 +59,11 @@ export declare class AfterSalesService {
      * 触发 "Cannot return null for non-nullable field AfterSalesRequest.order"。
      */
     private hydrate;
+    /**
+     * 状态变更统一出口：写状态 + 落历史 + 发布 AfterSalesStateTransitionEvent。
+     * 所有状态写入点必须经此方法保证通知全覆盖；事件发布失败仅告警不阻断。
+     */
+    private commitState;
     /** 状态流转历史落库：失败仅告警，绝不阻断主流程 */
     private recordState;
     approveRequest(ctx: RequestContext, id: ID): Promise<AfterSalesRequest>;
@@ -106,5 +113,34 @@ export declare class AfterSalesService {
     getReturnAddress(ctx: RequestContext): Promise<string>;
     /** 写当前渠道售后寄回地址（走 ChannelService.update，免开 ChannelService 权限） */
     updateReturnAddress(ctx: RequestContext, address: string): Promise<boolean>;
+    /**
+     * 售后数据看板聚合（三期设计 §四）：窗口申请总数 / 仍 Pending / 实退总额 / 平均处理时长 / 按日 / 按状态 / 按类型。
+     * from/to 接受 'YYYY-MM-DD' 或完整 ISO 串（纯日期的 to 按当日 23:59:59.999 收口）。
+     * 分日聚合用 SUBSTR(createdAt,1,10)（sqlite/mysql 均支持）；平均处理时长用 JS 计算避免跨库 AVG 精度差异。
+     */
+    stats(ctx: RequestContext, from: string, to: string): Promise<any>;
     private transitionState;
+    private static readonly MESSAGE_MAX_IMAGES;
+    private static readonly MESSAGE_MAX_LENGTH;
+    /**
+     * 追加一条协商留言。senderType=customer 供顾客发送（addAfterSalesMessage），admin 供商家回复（replyAfterSalesMessage）。
+     * 售后单关闭（Closed）后禁止继续留言；图片 ≤3 张、正文 ≤1000 字。
+     */
+    addMessage(ctx: RequestContext, requestId: ID, senderType: AfterSalesMessageSenderType, content: string, images?: string[] | null): Promise<AfterSalesMessage>;
+    /** 发送人显示名：管理员取 Administrator、顾客取 Customer（姓名拼接），失败兜底 'user' */
+    private resolveSenderName;
+    /**
+     * 售后单留言列表（createdAt 正序，skip/take 常规分页）。
+     * senderType=customer 时校验售后单归属当前顾客，防止越权读他人留言。
+     */
+    listMessages(ctx: RequestContext, requestId: ID, senderType: AfterSalesMessageSenderType, options?: {
+        skip?: number;
+        take?: number;
+    }): Promise<PaginatedList<AfterSalesMessage>>;
+    /** 批量统计各售后单留言条数并附加到 messageCount 非持久化属性 */
+    private attachMessageCounts;
+    /** 换货发货（admin）：Received → ExchangeShipped，仅 exchange 类型、仅 Received 状态可走 */
+    exchangeShip(ctx: RequestContext, id: ID, trackingNo: string, carrier: string): Promise<AfterSalesRequest>;
+    /** 换货确认收货（shop 顾客）：ExchangeShipped → Closed，需校验售后单归属 */
+    exchangeReceive(ctx: RequestContext, id: ID): Promise<AfterSalesRequest>;
 }

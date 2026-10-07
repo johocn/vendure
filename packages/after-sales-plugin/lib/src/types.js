@@ -6,7 +6,8 @@ exports.STATE_TRANSITIONS = {
     Approved: ['Returning', 'Closed'],
     Rejected: [],
     Returning: ['Received', 'Closed'],
-    Received: ['Refunded', 'RefundFailed'],
+    Received: ['Refunded', 'RefundFailed', 'ExchangeShipped'],
+    ExchangeShipped: ['Closed'], // 换货已发货 → 顾客确认收货即关闭
     RefundFailed: ['Refunded'], // 退款失败后可重试
     Refunded: [],
     Closed: [],

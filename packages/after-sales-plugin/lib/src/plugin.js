@@ -20,15 +20,32 @@ const core_2 = require("@vendure/core");
 const constants_1 = require("./constants");
 const after_sales_request_entity_1 = require("./after-sales-request.entity");
 const after_sales_state_history_entity_1 = require("./after-sales-state-history.entity");
+const after_sales_message_entity_1 = require("./after-sales-message.entity");
 const after_sales_service_1 = require("./after-sales.service");
 const after_sales_shop_resolver_1 = require("./after-sales-shop.resolver");
 const after_sales_admin_resolver_1 = require("./after-sales-admin.resolver");
 const order_custom_fields_1 = require("./order-custom-fields");
+const after_sales_events_1 = require("./after-sales.events");
+const after_sales_config_1 = require("./after-sales-config");
+const after_sales_timeout_job_1 = require("./after-sales-timeout.job");
+const after_sales_timeout_entity_1 = require("./after-sales-timeout.entity");
 const { gql } = require('graphql-tag');
+const COMPENSATION_TASK_ID = 'after-sales-timeout-compensation';
+const compensationTask = new core_2.ScheduledTask({
+    id: COMPENSATION_TASK_ID,
+    description: 'Scan overdue AfterSalesTimeoutTask records and re-enqueue them',
+    schedule: cron => cron.every(5).minutes(),
+    async execute({ injector }) {
+        const job = injector.get(after_sales_timeout_job_1.AfterSalesTimeoutJob);
+        await job.runCompensation();
+    },
+});
 let AfterSalesPlugin = AfterSalesPlugin_1 = class AfterSalesPlugin {
-    constructor(options, afterSalesService, moduleRef) {
+    constructor(options, afterSalesService, afterSalesTimeoutJob, eventBus, moduleRef) {
         this.options = options;
         this.afterSalesService = afterSalesService;
+        this.afterSalesTimeoutJob = afterSalesTimeoutJob;
+        this.eventBus = eventBus;
         this.moduleRef = moduleRef;
     }
     static init(options) {
@@ -38,7 +55,33 @@ let AfterSalesPlugin = AfterSalesPlugin_1 = class AfterSalesPlugin {
     async onApplicationBootstrap() {
         this.injector = new core_2.Injector(this.moduleRef);
         this.afterSalesService.init(this.injector);
+        await this.afterSalesTimeoutJob.init();
+        // 状态流转 → 登记超时任务（Pending 提醒 / Pending 自动同意 / RefundFailed 重试）
+        this.eventBus.ofType(after_sales_events_1.AfterSalesStateTransitionEvent).subscribe((e) => {
+            void this.onAfterSalesStateTransition(e);
+        });
         core_2.Logger.info('AfterSalesPlugin initialized', constants_1.loggerCtx);
+    }
+    async onAfterSalesStateTransition(e) {
+        var _a;
+        try {
+            const thresholds = await (0, after_sales_config_1.resolveAfterSalesThresholds)(this.injector, e.ctx, e.ctx.channelId, AfterSalesPlugin_1.options);
+            if (e.toState === 'Pending' && e.fromState === null) {
+                await this.afterSalesTimeoutJob.scheduleTimeout(after_sales_timeout_entity_1.AfterSalesTimeoutType.PENDING_REMIND, e.requestId, Number(e.ctx.channelId), thresholds.timeoutHours * 60 * 60 * 1000, 'Pending');
+                if (thresholds.autoApproveHours > 0) {
+                    await this.afterSalesTimeoutJob.scheduleTimeout(after_sales_timeout_entity_1.AfterSalesTimeoutType.PENDING_AUTO_APPROVE, e.requestId, Number(e.ctx.channelId), thresholds.autoApproveHours * 60 * 60 * 1000, 'Pending');
+                }
+            }
+            else if (e.toState === 'RefundFailed' &&
+                // 重试再失败会经 commitState 再发布 RefundFailed→RefundFailed，必须去重，防无限登记重试
+                e.fromState !== 'RefundFailed' &&
+                thresholds.refundAutoRetry > 0) {
+                await this.afterSalesTimeoutJob.scheduleTimeout(after_sales_timeout_entity_1.AfterSalesTimeoutType.REFUND_RETRY, e.requestId, Number(e.ctx.channelId), 30 * 60 * 1000, 'RefundFailed', thresholds.refundAutoRetry);
+            }
+        }
+        catch (err) {
+            core_2.Logger.error(`Schedule after-sales timeout failed for request #${e.requestId}: ${(_a = err === null || err === void 0 ? void 0 : err.message) !== null && _a !== void 0 ? _a : err}`, constants_1.loggerCtx);
+        }
     }
 };
 exports.AfterSalesPlugin = AfterSalesPlugin;
@@ -46,16 +89,17 @@ AfterSalesPlugin.options = {};
 exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
     (0, core_2.VendurePlugin)({
         imports: [core_2.PluginCommonModule],
-        entities: [after_sales_request_entity_1.AfterSalesRequest, after_sales_state_history_entity_1.AfterSalesStateHistory],
+        entities: [after_sales_request_entity_1.AfterSalesRequest, after_sales_state_history_entity_1.AfterSalesStateHistory, after_sales_message_entity_1.AfterSalesMessage, after_sales_timeout_entity_1.AfterSalesTimeoutTask],
         providers: [
             { provide: constants_1.AFTER_SALES_PLUGIN_OPTIONS, useFactory: () => AfterSalesPlugin.options },
             after_sales_service_1.AfterSalesService,
+            after_sales_timeout_job_1.AfterSalesTimeoutJob,
         ],
         exports: [after_sales_service_1.AfterSalesService],
         shopApiExtensions: {
             schema: () => gql `
             enum AfterSalesType { return_refund refund_only exchange }
-            enum AfterSalesState { Pending Approved Rejected Returning Received Refunded RefundFailed Closed }
+            enum AfterSalesState { Pending Approved Rejected Returning Received ExchangeShipped Refunded RefundFailed Closed }
 
             type AfterSalesStateHistoryEntry {
                 fromState: AfterSalesState
@@ -76,6 +120,8 @@ exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
                 refundAmount: Int!
                 returnTrackingNo: String
                 returnCarrier: String
+                exchangeTrackingNo: String
+                exchangeCarrier: String
                 rejectReason: String
                 receivedQuantity: Int
                 refundTransactionId: String
@@ -87,11 +133,36 @@ exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
                 order: Order!
                 orderLine: OrderLine
                 history: [AfterSalesStateHistoryEntry!]!
+                messageCount: Int!
             }
 
             type AfterSalesRequestList implements PaginatedList {
                 items: [AfterSalesRequest!]!
                 totalItems: Int!
+            }
+
+            type AfterSalesMessage implements Node {
+                id: ID!
+                requestId: ID!
+                senderType: String!
+                senderUserId: ID
+                senderName: String!
+                content: String!
+                images: [String!]
+                createdAt: DateTime!
+            }
+
+            type AfterSalesMessageList implements PaginatedList {
+                items: [AfterSalesMessage!]!
+                totalItems: Int!
+            }
+
+            input AfterSalesMessageListOptions {
+
+                skip: Int
+
+                take: Int
+
             }
 
             input CreateAfterSalesRequestInput {
@@ -112,6 +183,7 @@ exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
                 myAfterSalesRequests(options: AfterSalesRequestListOptions): AfterSalesRequestList!
                 afterSalesRequest(id: ID!): AfterSalesRequest
                 afterSalesReturnAddress: String!
+                afterSalesMessages(id: ID!, options: AfterSalesMessageListOptions): AfterSalesMessageList!
             }
 
             extend type Mutation {
@@ -120,6 +192,10 @@ exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
                 updateReturnTracking(id: ID!, trackingNo: String!, carrier: String!): AfterSalesRequest!
                 """顾客端上传售后凭证图：入参为 base64 data URL 数组，返回图片 URL 数组（不创建售后单）"""
                 uploadAfterSalesEvidence(images: [String!]!): [String!]!
+                """售后单内追加协商留言（Closed 后禁言；图片 ≤3 张、正文 ≤1000 字）"""
+                addAfterSalesMessage(id: ID!, content: String!, images: [String!]): AfterSalesMessage!
+                """顾客确认收到换货商品：ExchangeShipped → Closed"""
+                exchangeReceiveAfterSalesRequest(id: ID!): AfterSalesRequest!
             }
         `,
             resolvers: [after_sales_shop_resolver_1.AfterSalesShopResolver],
@@ -152,6 +228,8 @@ exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
                 refundAmount: Int!
                 returnTrackingNo: String
                 returnCarrier: String
+                exchangeTrackingNo: String
+                exchangeCarrier: String
                 rejectReason: String
                 receivedQuantity: Int
                 restockJson: String
@@ -166,6 +244,7 @@ exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
                 orderLine: OrderLine
                 customer: Customer
                 history: [AfterSalesStateHistoryEntry!]!
+                messageCount: Int!
             }
 
             type AfterSalesRequestAdminList implements PaginatedList {
@@ -173,12 +252,59 @@ exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
                 totalItems: Int!
             }
 
+            type AfterSalesMessageAdmin implements Node {
+                id: ID!
+                requestId: ID!
+                senderType: String!
+                senderUserId: ID
+                senderName: String!
+                content: String!
+                images: [String!]
+                createdAt: DateTime!
+            }
+
+            type AfterSalesMessageAdminList implements PaginatedList {
+                items: [AfterSalesMessageAdmin!]!
+                totalItems: Int!
+            }
+
+            input AfterSalesMessageAdminListOptions {
+
+                skip: Int
+
+                take: Int
+
+            }
+
             input AfterSalesRequestAdminListOptions
+
+            type AfterSalesDaily {
+                date: String!
+                total: Int!
+            }
+
+            type AfterSalesBucket {
+                key: String!
+                count: Int!
+                amount: Int!
+            }
+
+            type AfterSalesStats {
+                totalRequests: Int!
+                pendingCount: Int!
+                totalRefundAmount: Int!
+                avgHandleHours: Float
+                daily: [AfterSalesDaily!]!
+                byState: [AfterSalesBucket!]!
+                byType: [AfterSalesBucket!]!
+            }
 
             extend type Query {
                 afterSalesRequests(options: AfterSalesRequestAdminListOptions): AfterSalesRequestAdminList!
                 afterSalesRequestAdmin(id: ID!): AfterSalesRequestAdmin
                 afterSalesReturnAddress: String!
+                afterSalesStats(from: String!, to: String!): AfterSalesStats!
+                afterSalesMessages(id: ID!, options: AfterSalesMessageAdminListOptions): AfterSalesMessageAdminList!
             }
 
             extend type Mutation {
@@ -190,6 +316,10 @@ exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
                 batchApproveAfterSalesRequests(ids: [ID!]!): [AfterSalesBatchResult!]!
                 batchRejectAfterSalesRequests(ids: [ID!]!, reason: String!): [AfterSalesBatchResult!]!
                 updateAfterSalesReturnAddress(address: String!): Boolean!
+                """商家回复售后协商留言（Closed 后禁言；图片 ≤3 张、正文 ≤1000 字）"""
+                replyAfterSalesMessage(id: ID!, content: String!, images: [String!]): AfterSalesMessageAdmin!
+                """换货发货：Received → ExchangeShipped（仅 exchange 类型）"""
+                exchangeShipAfterSalesRequest(id: ID!, trackingNo: String!, carrier: String!): AfterSalesRequestAdmin!
             }
         `,
             resolvers: [after_sales_admin_resolver_1.AfterSalesAdminResolver],
@@ -207,13 +337,37 @@ exports.AfterSalesPlugin = AfterSalesPlugin = AfterSalesPlugin_1 = __decorate([
                         nullable: true,
                         label: [{ languageCode: core_2.LanguageCode.zh_Hans, value: '售后寄回地址' }],
                     },
+                    {
+                        name: 'afterSalesTimeoutHours',
+                        type: 'int',
+                        defaultValue: 48,
+                        label: [{ languageCode: core_2.LanguageCode.zh_Hans, value: '售后待处理超时提醒（小时）' }],
+                    },
+                    {
+                        name: 'afterSalesAutoApproveHours',
+                        type: 'int',
+                        defaultValue: 0,
+                        label: [{ languageCode: core_2.LanguageCode.zh_Hans, value: '售后超时自动同意（小时，0=关闭）' }],
+                    },
+                    {
+                        name: 'afterSalesRefundAutoRetry',
+                        type: 'int',
+                        defaultValue: 1,
+                        label: [{ languageCode: core_2.LanguageCode.zh_Hans, value: '退款失败自动重试次数（0=关闭）' }],
+                    },
                 ] });
+            const exists = config.schedulerOptions.tasks.some(t => t.id === COMPENSATION_TASK_ID);
+            if (!exists) {
+                config.schedulerOptions.tasks.push(compensationTask);
+            }
             return config;
         },
         compatibility: '^3.0.0',
     }),
     __param(0, (0, common_1.Inject)(constants_1.AFTER_SALES_PLUGIN_OPTIONS)),
     __metadata("design:paramtypes", [Object, after_sales_service_1.AfterSalesService,
+        after_sales_timeout_job_1.AfterSalesTimeoutJob,
+        core_2.EventBus,
         core_1.ModuleRef])
 ], AfterSalesPlugin);
 //# sourceMappingURL=plugin.js.map

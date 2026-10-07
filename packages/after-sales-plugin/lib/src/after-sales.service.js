@@ -17,7 +17,9 @@ const typeorm_1 = require("typeorm");
 const core_1 = require("@vendure/core");
 const constants_1 = require("./constants");
 const after_sales_request_entity_1 = require("./after-sales-request.entity");
+const after_sales_message_entity_1 = require("./after-sales-message.entity");
 const after_sales_state_history_entity_1 = require("./after-sales-state-history.entity");
+const after_sales_events_1 = require("./after-sales.events");
 const types_1 = require("./types");
 const inventory_plugin_1 = require("@vendure/inventory-plugin");
 let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
@@ -31,6 +33,7 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
         this.assetService = null;
         this.configService = null;
         this.channelService = null;
+        this.eventBus = null;
     }
     init(injector) {
         var _a, _b;
@@ -56,6 +59,12 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
         }
         catch (_d) {
             this.channelService = null;
+        }
+        try {
+            this.eventBus = injector.get(core_1.EventBus);
+        }
+        catch (_e) {
+            this.eventBus = null;
         }
     }
     /**
@@ -92,6 +101,9 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
             relations: { order: true, orderLine: true, channels: true, history: true },
             order: { history: { createdAt: 'ASC' } },
         });
+        if (result) {
+            await this.attachMessageCounts(ctx, [result]);
+        }
         return result !== null && result !== void 0 ? result : undefined;
     }
     async findMyRequests(ctx, options) {
@@ -107,7 +119,10 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
         })
             .andWhere('aftersalesrequest."customerId" = :customerId', { customerId })
             .getManyAndCount()
-            .then(([items, totalItems]) => ({ items, totalItems }));
+            .then(async ([items, totalItems]) => {
+            await this.attachMessageCounts(ctx, items);
+            return { items, totalItems };
+        });
     }
     async findAll(ctx, options) {
         return this.listQueryBuilder
@@ -117,7 +132,10 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
             channelId: ctx.channelId,
         })
             .getManyAndCount()
-            .then(([items, totalItems]) => ({ items, totalItems }));
+            .then(async ([items, totalItems]) => {
+            await this.attachMessageCounts(ctx, items);
+            return { items, totalItems };
+        });
     }
     async createRequest(ctx, input) {
         var _a, _b, _c, _d, _e, _f;
@@ -192,7 +210,6 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
             orderId: entityOrderId,
             orderLineId: entityOrderLineId,
             type: input.type || 'return_refund',
-            state: 'Pending',
             reason: input.reason,
             description: input.description || null,
             evidenceImages: input.evidenceImages || null,
@@ -200,8 +217,7 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
             customerId: order.customer.id,
         });
         request.channels = [ctx.channel];
-        const saved = await repo.save(request);
-        await this.recordState(ctx, Number(saved.id), null, 'Pending');
+        const saved = await this.commitState(ctx, request, null, 'Pending');
         core_1.Logger.info(`After-sales request ${saved.id} created by customer ${ctx.activeUserId}`, constants_1.loggerCtx);
         return this.hydrate(ctx, saved.id);
     }
@@ -214,9 +230,7 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
             throw new Error(`Cannot cancel request in state: ${request.state}`);
         }
         const fromState = request.state;
-        request.state = 'Closed';
-        const saved = await repo.save(request);
-        await this.recordState(ctx, Number(saved.id), fromState, 'Closed');
+        const saved = await this.commitState(ctx, request, fromState, 'Closed');
         return this.hydrate(ctx, saved.id);
     }
     async updateReturnTracking(ctx, id, trackingNo, carrier) {
@@ -230,9 +244,7 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
         const fromState = request.state;
         request.returnTrackingNo = trackingNo;
         request.returnCarrier = carrier;
-        request.state = 'Returning';
-        const saved = await repo.save(request);
-        await this.recordState(ctx, Number(saved.id), fromState, 'Returning');
+        const saved = await this.commitState(ctx, request, fromState, 'Returning');
         return this.hydrate(ctx, saved.id);
     }
     /**
@@ -315,9 +327,29 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
             order: { history: { createdAt: 'ASC' } },
         });
         if (full) {
+            await this.attachMessageCounts(ctx, [full]);
             return full;
         }
         throw new Error(`AfterSalesRequest #${id} not found after save`);
+    }
+    /**
+     * 状态变更统一出口：写状态 + 落历史 + 发布 AfterSalesStateTransitionEvent。
+     * 所有状态写入点必须经此方法保证通知全覆盖；事件发布失败仅告警不阻断。
+     */
+    async commitState(ctx, request, fromState, toState) {
+        var _a, _b, _c, _d;
+        const repo = this.connection.getRepository(ctx, after_sales_request_entity_1.AfterSalesRequest);
+        request.state = toState;
+        const saved = await repo.save(request);
+        await this.recordState(ctx, Number(saved.id), fromState, toState);
+        try {
+            const full = await repo.findOne({ where: { id: saved.id }, relations: { order: true } });
+            await ((_a = this.eventBus) === null || _a === void 0 ? void 0 : _a.publish(new after_sales_events_1.AfterSalesStateTransitionEvent(ctx, Number(saved.id), Number(saved.orderId), saved.type, fromState, toState, saved.customerId != null ? Number(saved.customerId) : null, (_c = (_b = full === null || full === void 0 ? void 0 : full.order) === null || _b === void 0 ? void 0 : _b.code) !== null && _c !== void 0 ? _c : null, new Date())));
+        }
+        catch (e) {
+            core_1.Logger.warn(`publish AfterSalesStateTransitionEvent failed for #${saved.id}: ${(_d = e === null || e === void 0 ? void 0 : e.message) !== null && _d !== void 0 ? _d : e}`, constants_1.loggerCtx);
+        }
+        return saved;
     }
     /** 状态流转历史落库：失败仅告警，绝不阻断主流程 */
     async recordState(ctx, requestId, fromState, toState) {
@@ -349,11 +381,9 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
             throw new Error(`Cannot reject from state: ${request.state}`);
         }
         const fromState = request.state;
-        request.state = 'Rejected';
         request.rejectReason = reason;
-        const saved = await repo.save(request);
-        await this.recordState(ctx, Number(saved.id), fromState, 'Rejected');
-        return saved;
+        const saved = await this.commitState(ctx, request, fromState, 'Rejected');
+        return this.hydrate(ctx, saved.id);
     }
     /**
      * Returning → Received（收到退货）：
@@ -401,10 +431,8 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
                 core_1.Logger.warn(`after-sales#${request.id} 无订单行或 InventoryService 不可用，跳过库存回补`, constants_1.loggerCtx);
             }
             const fromState = request.state;
-            request.state = 'Received';
-            const saved = await repo.save(request);
-            await this.recordState(txCtx, Number(saved.id), fromState, 'Received');
-            return saved;
+            const saved = await this.commitState(txCtx, request, fromState, 'Received');
+            return this.hydrate(txCtx, saved.id);
         });
     }
     async processRefund(ctx, id) {
@@ -421,6 +449,9 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
         }
         if (request.state !== 'Received') {
             throw new core_1.UserInputError('Cannot refund: request must be in Received state');
+        }
+        if (request.type === 'exchange') {
+            throw new core_1.UserInputError('Cannot refund: exchange requests are not refundable');
         }
         return this.executeRefund(ctx, request);
     }
@@ -471,11 +502,9 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
             });
             if ((0, core_1.isGraphQlErrorResult)(refundResult)) {
                 // refundOrder 拒绝（如超额 RefundAmountError）：无实际退款发生，置 RefundFailed 留痕并提交
-                request.state = 'RefundFailed';
                 request.refundError = `refundOrder 拒绝: ${JSON.stringify(refundResult)}`;
                 request.refundedAt = undefined;
-                await repo.save(request);
-                await this.recordState(ctx, Number(request.id), fromState, 'RefundFailed');
+                await this.commitState(ctx, request, fromState, 'RefundFailed');
                 await this.updateOrderAfterSalesStatus(ctx, request.orderId, 'RefundFailed');
                 await this.connection.commitOpenTransaction(ctx);
                 core_1.Logger.warn(`after-sales #${request.id} refundOrder 拒绝: ${request.refundError}`, constants_1.loggerCtx);
@@ -495,19 +524,15 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
                 request.actualRefundAmount = refund.total != null ? Number(refund.total) : request.refundAmount;
                 request.refundError = null;
                 request.refundedAt = new Date();
-                request.state = 'Refunded';
-                await repo.save(request);
-                await this.recordState(ctx, Number(request.id), fromState, 'Refunded');
+                await this.commitState(ctx, request, fromState, 'Refunded');
                 await this.updateOrderAfterSalesStatus(ctx, request.orderId, 'Refunded');
                 core_1.Logger.info(`Refund settled for after-sales request #${request.id}, tx=${request.refundTransactionId}`, constants_1.loggerCtx);
             }
             else {
                 // Failed 等非成功终态：不抛（调用方可进入 RefundFailed 重试），仅告警与留痕
-                request.state = 'RefundFailed';
                 request.refundError = `退款未达 Settled，当前 ${refund.state}`;
                 request.refundedAt = undefined;
-                await repo.save(request);
-                await this.recordState(ctx, Number(request.id), fromState, 'RefundFailed');
+                await this.commitState(ctx, request, fromState, 'RefundFailed');
                 await this.updateOrderAfterSalesStatus(ctx, request.orderId, 'RefundFailed');
                 core_1.Logger.warn(`after-sales #${request.id} 退款终态 ${refund.state}，已置 RefundFailed`, constants_1.loggerCtx);
             }
@@ -535,12 +560,14 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
             if (!request || request.state === 'Refunded')
                 return;
             const fromState = request.state;
-            request.state = 'RefundFailed';
             request.refundError = error;
             request.refundedAt = undefined;
-            await repo.save(request);
             if (fromState !== 'RefundFailed') {
-                await this.recordState(ctx, Number(request.id), fromState, 'RefundFailed');
+                await this.commitState(ctx, request, fromState, 'RefundFailed');
+            }
+            else {
+                // 已是 RefundFailed 的重复兜底：只更新错误信息，不再发布事件（防重试风暴）
+                await repo.save(request);
             }
             await this.updateOrderAfterSalesStatus(ctx, request.orderId, 'RefundFailed');
         }
@@ -569,6 +596,9 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
             relations: { order: true, orderLine: true, customer: true, channels: true, history: true },
             order: { history: { createdAt: 'ASC' } },
         });
+        if (result) {
+            await this.attachMessageCounts(ctx, [result]);
+        }
         return result !== null && result !== void 0 ? result : undefined;
     }
     /** 批量同意：复用单条方法逐条执行，单条失败不中断整批。上限 50。 */
@@ -626,6 +656,96 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
         });
         return true;
     }
+    /**
+     * 售后数据看板聚合（三期设计 §四）：窗口申请总数 / 仍 Pending / 实退总额 / 平均处理时长 / 按日 / 按状态 / 按类型。
+     * from/to 接受 'YYYY-MM-DD' 或完整 ISO 串（纯日期的 to 按当日 23:59:59.999 收口）。
+     * 分日聚合用 SUBSTR(createdAt,1,10)（sqlite/mysql 均支持）；平均处理时长用 JS 计算避免跨库 AVG 精度差异。
+     */
+    async stats(ctx, from, to) {
+        var _a;
+        const fromDate = new Date(from);
+        const toDate = new Date(to);
+        if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
+            throw new core_1.UserInputError('Invalid from/to date');
+        }
+        if (/^\d{4}-\d{2}-\d{2}$/.test(String(to).trim())) {
+            toDate.setHours(23, 59, 59, 999);
+        }
+        const repo = this.connection.getRepository(ctx, after_sales_request_entity_1.AfterSalesRequest);
+        const totalRequests = await repo
+            .createQueryBuilder('r')
+            .where('r.createdAt >= :from', { from: fromDate })
+            .andWhere('r.createdAt <= :to', { to: toDate })
+            .getCount();
+        const pendingCount = await repo
+            .createQueryBuilder('r')
+            .where('r.state = :state', { state: 'Pending' })
+            .andWhere('r.createdAt <= :to', { to: toDate })
+            .getCount();
+        const refundRow = await repo
+            .createQueryBuilder('r')
+            .select('COALESCE(SUM(r.actualRefundAmount), 0)', 'total')
+            .where("r.state = 'Refunded'")
+            .andWhere('r.refundedAt >= :from', { from: fromDate })
+            .andWhere('r.refundedAt <= :to', { to: toDate })
+            .getRawOne();
+        const totalRefundAmount = Number((_a = refundRow === null || refundRow === void 0 ? void 0 : refundRow.total) !== null && _a !== void 0 ? _a : 0);
+        const dailyRows = await repo
+            .createQueryBuilder('r')
+            .select('SUBSTR(r.createdAt, 1, 10)', 'date')
+            .addSelect('COUNT(*)', 'total')
+            .where('r.createdAt >= :from', { from: fromDate })
+            .andWhere('r.createdAt <= :to', { to: toDate })
+            .groupBy('SUBSTR(r.createdAt, 1, 10)')
+            .orderBy('SUBSTR(r.createdAt, 1, 10)', 'ASC')
+            .getRawMany();
+        const stateRows = await repo
+            .createQueryBuilder('r')
+            .select('r.state', 'key')
+            .addSelect('COUNT(*)', 'count')
+            .addSelect('COALESCE(SUM(r.actualRefundAmount), 0)', 'amount')
+            .where('r.createdAt >= :from', { from: fromDate })
+            .andWhere('r.createdAt <= :to', { to: toDate })
+            .groupBy('r.state')
+            .getRawMany();
+        const typeRows = await repo
+            .createQueryBuilder('r')
+            .select('r.type', 'key')
+            .addSelect('COUNT(*)', 'count')
+            .addSelect('COALESCE(SUM(r.actualRefundAmount), 0)', 'amount')
+            .where('r.createdAt >= :from', { from: fromDate })
+            .andWhere('r.createdAt <= :to', { to: toDate })
+            .groupBy('r.type')
+            .getRawMany();
+        // 平均处理时长（小时）：窗口内 Refunded 行 refundedAt - createdAt 的均值，保留两位；无数据为 null
+        const refunded = await repo.find({ where: { state: 'Refunded' } });
+        const hours = refunded
+            .filter((r) => r.refundedAt &&
+            new Date(r.createdAt) >= fromDate &&
+            new Date(r.createdAt) <= toDate)
+            .map((r) => (r.refundedAt.getTime() - new Date(r.createdAt).getTime()) / 3600000)
+            .filter((h) => h >= 0);
+        const avgHandleHours = hours.length
+            ? Math.round((hours.reduce((a, b) => a + b, 0) / hours.length) * 100) / 100
+            : null;
+        return {
+            totalRequests,
+            pendingCount,
+            totalRefundAmount,
+            avgHandleHours,
+            daily: dailyRows.map((row) => ({ date: String(row.date), total: Number(row.total) })),
+            byState: stateRows.map((row) => ({
+                key: String(row.key),
+                count: Number(row.count),
+                amount: Number(row.amount),
+            })),
+            byType: typeRows.map((row) => ({
+                key: String(row.key),
+                count: Number(row.count),
+                amount: Number(row.amount),
+            })),
+        };
+    }
     async transitionState(ctx, id, toState) {
         const repo = this.connection.getRepository(ctx, after_sales_request_entity_1.AfterSalesRequest);
         const request = await repo.findOne({ where: { id: id } });
@@ -635,11 +755,154 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
         if (!(allowed === null || allowed === void 0 ? void 0 : allowed.includes(toState))) {
             throw new Error(`Invalid transition: ${request.state} -> ${toState}`);
         }
-        const fromState = request.state;
-        request.state = toState;
-        const saved = await repo.save(request);
-        await this.recordState(ctx, Number(saved.id), fromState, toState);
-        return saved;
+        const saved = await this.commitState(ctx, request, request.state, toState);
+        return this.hydrate(ctx, saved.id);
+    }
+    /**
+     * 追加一条协商留言。senderType=customer 供顾客发送（addAfterSalesMessage），admin 供商家回复（replyAfterSalesMessage）。
+     * 售后单关闭（Closed）后禁止继续留言；图片 ≤3 张、正文 ≤1000 字。
+     */
+    async addMessage(ctx, requestId, senderType, content, images) {
+        if (!ctx.activeUserId) {
+            throw new core_1.UnauthorizedError();
+        }
+        const repo = this.connection.getRepository(ctx, after_sales_request_entity_1.AfterSalesRequest);
+        const request = await repo.findOne({ where: { id: requestId } });
+        if (!request)
+            throw new core_1.UserInputError(`After-sales request ${requestId} not found`);
+        if (request.state === 'Closed') {
+            // ForbiddenError 是 I18nError，自定义文案会被丢弃，故用 UserInputError 透传禁言提示
+            throw new core_1.UserInputError('After-sales request is closed: messaging disabled');
+        }
+        const trimmed = (content !== null && content !== void 0 ? content : '').trim();
+        if (!trimmed) {
+            throw new core_1.UserInputError('Message content is required');
+        }
+        if (trimmed.length > AfterSalesService_1.MESSAGE_MAX_LENGTH) {
+            throw new core_1.UserInputError(`Message content exceeds ${AfterSalesService_1.MESSAGE_MAX_LENGTH} characters`);
+        }
+        const imgs = Array.isArray(images) ? images : [];
+        if (imgs.length > AfterSalesService_1.MESSAGE_MAX_IMAGES) {
+            throw new core_1.UserInputError(`Message images exceed limit of ${AfterSalesService_1.MESSAGE_MAX_IMAGES}`);
+        }
+        const senderName = await this.resolveSenderName(ctx, senderType);
+        const msgRepo = this.connection.getRepository(ctx, after_sales_message_entity_1.AfterSalesMessage);
+        const message = await msgRepo.save(new after_sales_message_entity_1.AfterSalesMessage({
+            requestId: Number(requestId),
+            senderType,
+            senderUserId: Number(ctx.activeUserId),
+            senderName,
+            content: trimmed,
+            images: imgs.length ? imgs : null,
+        }));
+        core_1.Logger.info(`After-sales message added: request=${requestId} sender=${senderType} user=${ctx.activeUserId}`, constants_1.loggerCtx);
+        return message;
+    }
+    /** 发送人显示名：管理员取 Administrator、顾客取 Customer（姓名拼接），失败兜底 'user' */
+    async resolveSenderName(ctx, senderType) {
+        var _a;
+        if (!ctx.activeUserId)
+            return 'user';
+        try {
+            if (senderType === 'admin') {
+                const adminRepo = this.connection.getRepository(ctx, core_1.Administrator);
+                const admin = await adminRepo.findOne({
+                    where: { user: { id: ctx.activeUserId } },
+                    relations: { user: true },
+                });
+                if (admin)
+                    return `${admin.firstName} ${admin.lastName}`.trim();
+            }
+            else if (this.customerService) {
+                const customer = await this.customerService.findOneByUserId(ctx, ctx.activeUserId);
+                if (customer)
+                    return `${customer.firstName} ${customer.lastName}`.trim();
+            }
+        }
+        catch (e) {
+            core_1.Logger.warn(`resolveSenderName failed: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, constants_1.loggerCtx);
+        }
+        return 'user';
+    }
+    /**
+     * 售后单留言列表（createdAt 正序，skip/take 常规分页）。
+     * senderType=customer 时校验售后单归属当前顾客，防止越权读他人留言。
+     */
+    async listMessages(ctx, requestId, senderType, options) {
+        var _a, _b;
+        const repo = this.connection.getRepository(ctx, after_sales_request_entity_1.AfterSalesRequest);
+        const request = await repo.findOne({ where: { id: requestId } });
+        if (!request)
+            throw new core_1.UserInputError(`After-sales request ${requestId} not found`);
+        if (senderType === 'customer') {
+            const customerId = await this.resolveCustomerId(ctx);
+            if (!customerId || Number(request.customerId) !== customerId) {
+                throw new core_1.ForbiddenError();
+            }
+        }
+        const msgRepo = this.connection.getRepository(ctx, after_sales_message_entity_1.AfterSalesMessage);
+        const take = Math.min(Math.max((_a = options === null || options === void 0 ? void 0 : options.take) !== null && _a !== void 0 ? _a : 50, 1), 100);
+        const skip = Math.max((_b = options === null || options === void 0 ? void 0 : options.skip) !== null && _b !== void 0 ? _b : 0, 0);
+        const [items, totalItems] = await msgRepo.findAndCount({
+            where: { requestId: Number(requestId) },
+            order: { createdAt: 'ASC' },
+            skip,
+            take,
+        });
+        return { items, totalItems };
+    }
+    /** 批量统计各售后单留言条数并附加到 messageCount 非持久化属性 */
+    async attachMessageCounts(ctx, requests) {
+        var _a;
+        if (!requests.length)
+            return;
+        const ids = requests.map((r) => Number(r.id));
+        const msgRepo = this.connection.getRepository(ctx, after_sales_message_entity_1.AfterSalesMessage);
+        const rows = await msgRepo
+            .createQueryBuilder('m')
+            .select('m.requestId', 'requestId')
+            .addSelect('COUNT(*)', 'count')
+            .where('m.requestId IN (:...ids)', { ids })
+            .groupBy('m.requestId')
+            .getRawMany();
+        const map = new Map(rows.map((r) => [Number(r.requestId), Number(r.count)]));
+        for (const r of requests) {
+            r.messageCount = (_a = map.get(Number(r.id))) !== null && _a !== void 0 ? _a : 0;
+        }
+    }
+    // ===== 换货闭环（迭代三期） =====
+    /** 换货发货（admin）：Received → ExchangeShipped，仅 exchange 类型、仅 Received 状态可走 */
+    async exchangeShip(ctx, id, trackingNo, carrier) {
+        const repo = this.connection.getRepository(ctx, after_sales_request_entity_1.AfterSalesRequest);
+        const request = await repo.findOne({ where: { id: id } });
+        if (!request)
+            throw new core_1.UserInputError(`After-sales request ${id} not found`);
+        if (request.type !== 'exchange') {
+            throw new core_1.UserInputError('Only exchange requests can be exchange-shipped');
+        }
+        if (request.state !== 'Received') {
+            throw new core_1.UserInputError(`Cannot exchange-ship from state: ${request.state}`);
+        }
+        request.exchangeTrackingNo = trackingNo;
+        request.exchangeCarrier = carrier;
+        // commitState 统一出口：落历史 + 发布事件（顾客收「换货已发货」站内信）
+        return this.commitState(ctx, request, 'Received', 'ExchangeShipped');
+    }
+    /** 换货确认收货（shop 顾客）：ExchangeShipped → Closed，需校验售后单归属 */
+    async exchangeReceive(ctx, id) {
+        const repo = this.connection.getRepository(ctx, after_sales_request_entity_1.AfterSalesRequest);
+        const request = await repo.findOne({ where: { id: id } });
+        if (!request)
+            throw new core_1.UserInputError(`After-sales request ${id} not found`);
+        const customerId = await this.resolveCustomerId(ctx);
+        if (!customerId || Number(request.customerId) !== customerId) {
+            throw new core_1.ForbiddenError();
+        }
+        if (request.state !== 'ExchangeShipped') {
+            throw new core_1.UserInputError(`Cannot exchange-receive from state: ${request.state}`);
+        }
+        // commitState 统一出口：fromState=ExchangeShipped 的 Closed 事件驱动「换货完成」站内信
+        return this.commitState(ctx, request, 'ExchangeShipped', 'Closed');
     }
 };
 exports.AfterSalesService = AfterSalesService;
@@ -651,6 +914,9 @@ AfterSalesService.EVIDENCE_MIME_EXT = {
 };
 /** 单张凭证图解码后大小上限（5MB），边界校验，非业务规则 */
 AfterSalesService.EVIDENCE_MAX_BYTES = 5 * 1024 * 1024;
+// ===== 协商留言（迭代三期） =====
+AfterSalesService.MESSAGE_MAX_IMAGES = 3;
+AfterSalesService.MESSAGE_MAX_LENGTH = 1000;
 exports.AfterSalesService = AfterSalesService = AfterSalesService_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [core_1.TransactionalConnection,

@@ -5,6 +5,7 @@ export declare class AfterSalesAdminResolver {
     constructor(afterSalesService: AfterSalesService);
     afterSalesRequests(ctx: RequestContext, options: any): Promise<any>;
     afterSalesRequestAdmin(ctx: RequestContext, id: number): Promise<any>;
+    afterSalesStats(ctx: RequestContext, from: string, to: string): Promise<any>;
     afterSalesReturnAddress(ctx: RequestContext): Promise<string>;
     updateAfterSalesReturnAddress(ctx: RequestContext, address: string): Promise<boolean>;
     batchApproveAfterSalesRequests(ctx: RequestContext, ids: number[]): Promise<any>;
@@ -14,4 +15,7 @@ export declare class AfterSalesAdminResolver {
     confirmReturnReceived(ctx: RequestContext, id: number, receivedQuantity?: number): Promise<any>;
     processAfterSalesRefund(ctx: RequestContext, id: number): Promise<any>;
     retryAfterSalesRefund(ctx: RequestContext, id: number): Promise<any>;
+    afterSalesMessages(ctx: RequestContext, id: number, options: any): Promise<any>;
+    replyAfterSalesMessage(ctx: RequestContext, id: number, content: string, images?: string[]): Promise<any>;
+    exchangeShipAfterSalesRequest(ctx: RequestContext, id: number, trackingNo: string, carrier: string): Promise<any>;
 }
