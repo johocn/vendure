@@ -116,6 +116,21 @@ class SsoAuthenticationStrategy {
                             core_1.Logger.warn(`Failed to persist ssoId: ${e.message}`, loggerCtx);
                         }
                     }
+                    // openid 透传（全链路统一 zhao-sso 公众号）：SSO 侧公众号授权 openid 写入
+                    // Customer.customFields.wechatOpenid，供 campus-notify 模板消息（touser）使用。
+                    // 覆盖式写入（公众号切换后旧号 openid 自愈）；userInfo 无 openid 字段时跳过、不清已有值。
+                    const wxOpenid = String((userInfo === null || userInfo === void 0 ? void 0 : userInfo.openid) || (userInfo === null || userInfo === void 0 ? void 0 : userInfo.wx_openid) || (userInfo === null || userInfo === void 0 ? void 0 : userInfo.wechat_openid) || '');
+                    if (wxOpenid && wxOpenid !== cf.wechatOpenid) {
+                        try {
+                            await this.customerService.update(ctx, {
+                                id: customer.id,
+                                customFields: { wechatOpenid: wxOpenid },
+                            });
+                        }
+                        catch (e) {
+                            core_1.Logger.warn(`Failed to persist wechatOpenid: ${e.message}`, loggerCtx);
+                        }
+                    }
                     // 本人自有邀请码（/v1/user/me 返回 ownInviteCode，四层同码的 SSO 源）
                     const ownInviteCode = (userInfo === null || userInfo === void 0 ? void 0 : userInfo.ownInviteCode) || '';
                     // inviteCode 衔接：优先用 data.inviteCode，否则取 SSO 用户注册时使用的邀请码
