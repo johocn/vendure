@@ -22,7 +22,7 @@ export declare class RiderWalletService {
     riderBalanceHistory(ctx: RequestContext, skip?: number, take?: number): Promise<BalanceTransaction[]>;
     /** 本人提现申请记录（平台级，倒序） */
     riderWithdrawRequests(ctx: RequestContext, skip?: number, take?: number): Promise<RiderWithdrawalRequest[]>;
-    /** 提现申请：校验骑手 + ≥¥10 + ≤可提现 → 扣款冻结 → PENDING 申请 */
+    /** 提现申请：校验骑手 + ≥¥10 + 无在途申请 + ≤可提现 → 扣款冻结 → PENDING 申请 */
     riderWithdraw(ctx: RequestContext, input: {
         amount: number;
         channel: string;

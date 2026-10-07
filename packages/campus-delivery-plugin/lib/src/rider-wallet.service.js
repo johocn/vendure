@@ -68,7 +68,7 @@ let RiderWalletService = class RiderWalletService {
             .take(take !== null && take !== void 0 ? take : 20)
             .getMany();
     }
-    /** 提现申请：校验骑手 + ≥¥10 + ≤可提现 → 扣款冻结 → PENDING 申请 */
+    /** 提现申请：校验骑手 + ≥¥10 + 无在途申请 + ≤可提现 → 扣款冻结 → PENDING 申请 */
     async riderWithdraw(ctx, input) {
         var _a, _b;
         const rider = await this.riderService.assertApprovedRider(ctx);
@@ -83,6 +83,11 @@ let RiderWalletService = class RiderWalletService {
         const port = (0, coupon_plugin_1.getCouponBalancePort)();
         if (!port)
             throw new core_1.UserInputError('余额功能未开通');
+        const pending = await this.connection
+            .getRepository(pc, rider_withdrawal_entity_1.RiderWithdrawalRequest)
+            .count({ where: { customerId: rider.id, status: 'PENDING' } });
+        if (pending > 0)
+            throw new core_1.UserInputError('您有审核中的提现申请，请等待审核完成');
         const available = await port.getBalance(pc, rider.id);
         if (amount > available)
             throw new core_1.UserInputError('超过可提现余额');

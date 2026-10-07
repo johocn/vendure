@@ -29,6 +29,7 @@ function make() {
         }),
         findOne: vi.fn(),
         update: vi.fn().mockResolvedValue({}),
+        count: vi.fn().mockResolvedValue(0),
     };
     const conn = { getRepository: () => repo } as any;
     const reqCtxSvc = { create: vi.fn().mockResolvedValue(platformCtx) } as any;
@@ -89,5 +90,16 @@ describe('RiderWalletService', () => {
             6,
             expect.objectContaining({ status: 'REJECTED', reviewedBy: '7' }),
         );
+    });
+
+    it('withdraw 已有 PENDING 申请时拒绝（防重复申请）', async () => {
+        const { svc, repo } = make();
+        repo.count.mockResolvedValue(1);
+        mocks.port.getBalance.mockResolvedValue(50000);
+        mocks.port.deductBalance.mockClear(); // 清除前置用例泄漏的调用历史
+        await expect(svc.riderWithdraw(ctx, { amount: 2000, channel: '支付宝', account: 'a@b.c' })).rejects.toThrow(
+            '您有审核中的提现申请',
+        );
+        expect(mocks.port.deductBalance).not.toHaveBeenCalled();
     });
 });

@@ -26,6 +26,7 @@ function make() {
         }),
         findOne: vitest_1.vi.fn(),
         update: vitest_1.vi.fn().mockResolvedValue({}),
+        count: vitest_1.vi.fn().mockResolvedValue(0),
     };
     const conn = { getRepository: () => repo };
     const reqCtxSvc = { create: vitest_1.vi.fn().mockResolvedValue(platformCtx) };
@@ -71,6 +72,14 @@ function make() {
         (0, vitest_1.expect)(repo.findOne).toHaveBeenCalledWith({ where: { id: 6 } });
         (0, vitest_1.expect)(mocks.port.addBalance).toHaveBeenCalledWith(platformCtx, 9, 1000);
         (0, vitest_1.expect)(repo.update).toHaveBeenCalledWith(6, vitest_1.expect.objectContaining({ status: 'REJECTED', reviewedBy: '7' }));
+    });
+    (0, vitest_1.it)('withdraw 已有 PENDING 申请时拒绝（防重复申请）', async () => {
+        const { svc, repo } = make();
+        repo.count.mockResolvedValue(1);
+        mocks.port.getBalance.mockResolvedValue(50000);
+        mocks.port.deductBalance.mockClear(); // 清除前置用例泄漏的调用历史
+        await (0, vitest_1.expect)(svc.riderWithdraw(ctx, { amount: 2000, channel: '支付宝', account: 'a@b.c' })).rejects.toThrow('您有审核中的提现申请');
+        (0, vitest_1.expect)(mocks.port.deductBalance).not.toHaveBeenCalled();
     });
 });
 //# sourceMappingURL=rider-wallet.service.spec.js.map

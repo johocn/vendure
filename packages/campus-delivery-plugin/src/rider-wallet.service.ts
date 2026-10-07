@@ -64,7 +64,7 @@ export class RiderWalletService {
             .getMany();
     }
 
-    /** 提现申请：校验骑手 + ≥¥10 + ≤可提现 → 扣款冻结 → PENDING 申请 */
+    /** 提现申请：校验骑手 + ≥¥10 + 无在途申请 + ≤可提现 → 扣款冻结 → PENDING 申请 */
     async riderWithdraw(ctx: RequestContext, input: { amount: number; channel: string; account: string }) {
         const rider = await this.riderService.assertApprovedRider(ctx);
         const amount = Math.floor(input.amount);
@@ -74,6 +74,10 @@ export class RiderWalletService {
         const pc = await this.platformCtx();
         const port = getCouponBalancePort();
         if (!port) throw new UserInputError('余额功能未开通');
+        const pending = await this.connection
+            .getRepository(pc, RiderWithdrawalRequest)
+            .count({ where: { customerId: rider.id as number, status: 'PENDING' } });
+        if (pending > 0) throw new UserInputError('您有审核中的提现申请，请等待审核完成');
         const available = await port.getBalance(pc, rider.id as number);
         if (amount > available) throw new UserInputError('超过可提现余额');
         await port.deductBalance(pc, rider.id as number, amount);
