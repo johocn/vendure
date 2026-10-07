@@ -6,10 +6,13 @@ import {
     OrderPlacedEvent,
     OrderStateTransitionEvent,
     PluginCommonModule,
+    RequestContext,
+    ScheduledTask,
     TransactionalConnection,
     VendurePlugin,
 } from '@vendure/core';
 import { ModuleRef } from '@nestjs/core';
+import { AfterSalesStateTransitionEvent } from '@vendure/after-sales-plugin';
 import { CampusBuilding } from './campus-building.entity';
 import { CapacityService } from './capacity.service';
 import { CampusConfigAdminResolver } from './campus-config-admin.resolver';
@@ -30,6 +33,8 @@ import { HallShopResolver } from './hall-shop.resolver';
 import { InvoiceShopResolver } from './campus-invoice.resolver';
 import { CreateCampusTablesMigration } from './migrations/create-campus-tables';
 import { bindMinOrderConnection, campusMinOrderProcess } from './min-order.process';
+import { PaymentTimeoutJob } from './payment-timeout.job';
+import { PaymentTimeoutTask } from './payment-timeout.entity';
 import { campusPermissionDefinitions } from './permissions';
 import { MerchantAdminResolver } from './merchant-admin.resolver';
 import { MerchantAdminService } from './merchant-admin.service';
@@ -53,9 +58,21 @@ import { SlotLockService } from './slot-lock.service';
 import { WaimaiShopResolver } from './waimai-shop.resolver';
 import { WaimaiStoreService } from './waimai-store.service';
 
+const PAYMENT_TIMEOUT_COMPENSATION = 'payment-timeout-compensation';
+
+// 补偿扫描（照抄 OrderTimeoutPlugin 模式）：SQL JobQueue 忽略 delay，靠此任务把 overdue 任务重入队
+const paymentTimeoutCompensation = new ScheduledTask({
+    id: PAYMENT_TIMEOUT_COMPENSATION,
+    description: 'Scan overdue PaymentTimeoutTask records and re-enqueue them',
+    schedule: cron => cron.every(5).minutes(),
+    async execute({ injector }) {
+        await injector.get(PaymentTimeoutJob).runCompensation();
+    },
+});
+
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig, DeliverySlot, RiderCreditLog, RiderWithdrawalRequest],
+    entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig, DeliverySlot, RiderCreditLog, RiderWithdrawalRequest, PaymentTimeoutTask],
     providers: [
         CreateCampusTablesMigration,
         CampusConfigService,
@@ -76,6 +93,7 @@ import { WaimaiStoreService } from './waimai-store.service';
         WaimaiStoreService,
         MerchantAdminService,
         CampusNotifyService,
+        PaymentTimeoutJob,
     ],
     adminApiExtensions: {
         schema: () => {
@@ -577,6 +595,11 @@ import { WaimaiStoreService } from './waimai-store.service';
             config.shippingOptions.shippingLineAssignmentStrategy =
                 new CampusErrandShippingLineAssignmentStrategy(prevAssignmentStrategy);
         }
+        // 待付款补偿任务幂等注册
+        config.schedulerOptions.tasks = config.schedulerOptions.tasks ?? [];
+        if (!config.schedulerOptions.tasks.some(t => t.id === PAYMENT_TIMEOUT_COMPENSATION)) {
+            config.schedulerOptions.tasks.push(paymentTimeoutCompensation);
+        }
         return config;
     },
     compatibility: '^3.6.4',
@@ -587,6 +610,9 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
         private hallService: HallService,
         private r4TagService: R4TagService,
         private moduleRef: ModuleRef,
+        private notify: CampusNotifyService,
+        private paymentTimeout: PaymentTimeoutJob,
+        private configService: CampusConfigService,
     ) {}
 
     /** vendure Injector 需由 ModuleRef 构造（插件模块类构造器不直接提供 Injector） */
@@ -597,17 +623,56 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
     onApplicationBootstrap(): void {
         bindCampusErrandCalculatorConnection(this.injector.get(TransactionalConnection));
         bindMinOrderConnection(this.injector.get(TransactionalConnection));
-        this.eventBus.ofType(OrderPlacedEvent).subscribe(({ ctx, order }) =>
-            this.hallService.onOrderPlaced(ctx, order).catch(e => Logger.error(String(e), 'CampusHall')),
-        );
+        // 待付款任务队列（+10min 提醒 / +15min 取消）
+        this.injector
+            .get(PaymentTimeoutJob)
+            .init()
+            .catch(e => Logger.error(`PaymentTimeout init failed: ${String(e)}`, 'PaymentTimeout'));
+        this.eventBus.ofType(OrderPlacedEvent).subscribe(({ ctx, order }) => {
+            this.hallService.onOrderPlaced(ctx, order).catch(e => Logger.error(String(e), 'CampusHall'));
+            // 下单成功通知（waimai 流程下单即支付完成；进大厅逻辑同源）
+            void this.h5BaseUrl(ctx).then(url => this.notify.user(ctx, order.id, 'orderPlaced', undefined, url));
+        });
         // R4 到店自取打标（二期 §5.4）：store-pickup 运费方式订单在支付闸门补写 fulfillmentRoute；
-        // 取消脱厅（3.3）：订单取消终态时清 hallStatus/指派字段，退出大厅与整组抢单链路
+        // 取消脱厅（3.3）：订单取消终态时清 hallStatus/指派字段，退出大厅与整组抢单链路；
+        // 待付款任务：离开 ArrangingPayment 作废，进入 ArrangingPayment 登记
         this.eventBus.ofType(OrderStateTransitionEvent).subscribe(e => {
             this.r4TagService.tagR4(e).catch(err => Logger.error(`R4 tag failed: ${String(err)}`, 'CampusR4Tag'));
             if (e.toState === 'Cancelled') {
                 this.hallService.exitHall(e.ctx, e.order).catch(err => Logger.error(`Hall exit failed: ${String(err)}`, 'CampusHall'));
+                // 用户本人主动取消不推（ctx.activeUserId 存在即本人操作）；商家/系统/超时取消才推
+                if (!e.ctx.activeUserId) {
+                    void this.h5BaseUrl(e.ctx).then(url => this.notify.user(e.ctx, e.order.id, 'orderCancelled', undefined, url));
+                }
+            }
+            if (e.fromState === 'ArrangingPayment' && e.toState !== 'ArrangingPayment') {
+                void this.paymentTimeout.cancelForOrder(Number(e.order.id)).catch(err => Logger.warn(String(err), 'PaymentTimeout'));
+            }
+            if (e.toState === 'ArrangingPayment') {
+                void this.paymentTimeout
+                    .scheduleForOrder(e.ctx, Number(e.order.id), Number(e.ctx.channelId), e.toState)
+                    .catch(err => Logger.warn(`schedule payment timeout failed: ${String(err)}`, 'PaymentTimeout'));
             }
         });
+        // 售后进度：Approved / Refunded / RefundFailed 三个用户侧节点（其余状态不推）
+        this.eventBus.ofType(AfterSalesStateTransitionEvent).subscribe(e => {
+            const text = e.toState === 'Approved' ? '售后审核通过'
+                : e.toState === 'Refunded' ? '退款已到账'
+                : e.toState === 'RefundFailed' ? '退款失败，请联系客服'
+                : null;
+            if (!text) return;
+            void this.h5BaseUrl(e.ctx).then(url => this.notify.user(e.ctx, e.orderId, 'afterSales', text, url));
+        });
         this.injector.get(DispatchJobService).start();
+    }
+
+    /** h5BaseUrl 取渠道配置（未配置返回 undefined，通知静默不带 url） */
+    private async h5BaseUrl(ctx: RequestContext): Promise<string | undefined> {
+        try {
+            const cfg = await this.configService.getConfig(ctx);
+            return (cfg as any)?.h5BaseUrl ?? undefined;
+        } catch {
+            return undefined;
+        }
     }
 }

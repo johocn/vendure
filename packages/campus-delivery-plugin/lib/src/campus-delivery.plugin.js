@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CampusDeliveryPlugin = void 0;
 const core_1 = require("@vendure/core");
 const core_2 = require("@nestjs/core");
+const after_sales_plugin_1 = require("@vendure/after-sales-plugin");
 const campus_building_entity_1 = require("./campus-building.entity");
 const capacity_service_1 = require("./capacity.service");
 const campus_config_admin_resolver_1 = require("./campus-config-admin.resolver");
@@ -32,6 +33,8 @@ const hall_shop_resolver_1 = require("./hall-shop.resolver");
 const campus_invoice_resolver_1 = require("./campus-invoice.resolver");
 const create_campus_tables_1 = require("./migrations/create-campus-tables");
 const min_order_process_1 = require("./min-order.process");
+const payment_timeout_job_1 = require("./payment-timeout.job");
+const payment_timeout_entity_1 = require("./payment-timeout.entity");
 const permissions_1 = require("./permissions");
 const merchant_admin_resolver_1 = require("./merchant-admin.resolver");
 const merchant_admin_service_1 = require("./merchant-admin.service");
@@ -54,12 +57,25 @@ const shipping_calculator_1 = require("./shipping-calculator");
 const slot_lock_service_1 = require("./slot-lock.service");
 const waimai_shop_resolver_1 = require("./waimai-shop.resolver");
 const waimai_store_service_1 = require("./waimai-store.service");
+const PAYMENT_TIMEOUT_COMPENSATION = 'payment-timeout-compensation';
+// 补偿扫描（照抄 OrderTimeoutPlugin 模式）：SQL JobQueue 忽略 delay，靠此任务把 overdue 任务重入队
+const paymentTimeoutCompensation = new core_1.ScheduledTask({
+    id: PAYMENT_TIMEOUT_COMPENSATION,
+    description: 'Scan overdue PaymentTimeoutTask records and re-enqueue them',
+    schedule: cron => cron.every(5).minutes(),
+    async execute({ injector }) {
+        await injector.get(payment_timeout_job_1.PaymentTimeoutJob).runCompensation();
+    },
+});
 let CampusDeliveryPlugin = class CampusDeliveryPlugin {
-    constructor(eventBus, hallService, r4TagService, moduleRef) {
+    constructor(eventBus, hallService, r4TagService, moduleRef, notify, paymentTimeout, configService) {
         this.eventBus = eventBus;
         this.hallService = hallService;
         this.r4TagService = r4TagService;
         this.moduleRef = moduleRef;
+        this.notify = notify;
+        this.paymentTimeout = paymentTimeout;
+        this.configService = configService;
     }
     /** vendure Injector 需由 ModuleRef 构造（插件模块类构造器不直接提供 Injector） */
     get injector() {
@@ -68,23 +84,66 @@ let CampusDeliveryPlugin = class CampusDeliveryPlugin {
     onApplicationBootstrap() {
         (0, shipping_calculator_1.bindCampusErrandCalculatorConnection)(this.injector.get(core_1.TransactionalConnection));
         (0, min_order_process_1.bindMinOrderConnection)(this.injector.get(core_1.TransactionalConnection));
-        this.eventBus.ofType(core_1.OrderPlacedEvent).subscribe(({ ctx, order }) => this.hallService.onOrderPlaced(ctx, order).catch(e => core_1.Logger.error(String(e), 'CampusHall')));
+        // 待付款任务队列（+10min 提醒 / +15min 取消）
+        this.injector
+            .get(payment_timeout_job_1.PaymentTimeoutJob)
+            .init()
+            .catch(e => core_1.Logger.error(`PaymentTimeout init failed: ${String(e)}`, 'PaymentTimeout'));
+        this.eventBus.ofType(core_1.OrderPlacedEvent).subscribe(({ ctx, order }) => {
+            this.hallService.onOrderPlaced(ctx, order).catch(e => core_1.Logger.error(String(e), 'CampusHall'));
+            // 下单成功通知（waimai 流程下单即支付完成；进大厅逻辑同源）
+            void this.h5BaseUrl(ctx).then(url => this.notify.user(ctx, order.id, 'orderPlaced', undefined, url));
+        });
         // R4 到店自取打标（二期 §5.4）：store-pickup 运费方式订单在支付闸门补写 fulfillmentRoute；
-        // 取消脱厅（3.3）：订单取消终态时清 hallStatus/指派字段，退出大厅与整组抢单链路
+        // 取消脱厅（3.3）：订单取消终态时清 hallStatus/指派字段，退出大厅与整组抢单链路；
+        // 待付款任务：离开 ArrangingPayment 作废，进入 ArrangingPayment 登记
         this.eventBus.ofType(core_1.OrderStateTransitionEvent).subscribe(e => {
             this.r4TagService.tagR4(e).catch(err => core_1.Logger.error(`R4 tag failed: ${String(err)}`, 'CampusR4Tag'));
             if (e.toState === 'Cancelled') {
                 this.hallService.exitHall(e.ctx, e.order).catch(err => core_1.Logger.error(`Hall exit failed: ${String(err)}`, 'CampusHall'));
+                // 用户本人主动取消不推（ctx.activeUserId 存在即本人操作）；商家/系统/超时取消才推
+                if (!e.ctx.activeUserId) {
+                    void this.h5BaseUrl(e.ctx).then(url => this.notify.user(e.ctx, e.order.id, 'orderCancelled', undefined, url));
+                }
+            }
+            if (e.fromState === 'ArrangingPayment' && e.toState !== 'ArrangingPayment') {
+                void this.paymentTimeout.cancelForOrder(Number(e.order.id)).catch(err => core_1.Logger.warn(String(err), 'PaymentTimeout'));
+            }
+            if (e.toState === 'ArrangingPayment') {
+                void this.paymentTimeout
+                    .scheduleForOrder(e.ctx, Number(e.order.id), Number(e.ctx.channelId), e.toState)
+                    .catch(err => core_1.Logger.warn(`schedule payment timeout failed: ${String(err)}`, 'PaymentTimeout'));
             }
         });
+        // 售后进度：Approved / Refunded / RefundFailed 三个用户侧节点（其余状态不推）
+        this.eventBus.ofType(after_sales_plugin_1.AfterSalesStateTransitionEvent).subscribe(e => {
+            const text = e.toState === 'Approved' ? '售后审核通过'
+                : e.toState === 'Refunded' ? '退款已到账'
+                    : e.toState === 'RefundFailed' ? '退款失败，请联系客服'
+                        : null;
+            if (!text)
+                return;
+            void this.h5BaseUrl(e.ctx).then(url => this.notify.user(e.ctx, e.orderId, 'afterSales', text, url));
+        });
         this.injector.get(dispatch_job_service_1.DispatchJobService).start();
+    }
+    /** h5BaseUrl 取渠道配置（未配置返回 undefined，通知静默不带 url） */
+    async h5BaseUrl(ctx) {
+        var _a;
+        try {
+            const cfg = await this.configService.getConfig(ctx);
+            return (_a = cfg === null || cfg === void 0 ? void 0 : cfg.h5BaseUrl) !== null && _a !== void 0 ? _a : undefined;
+        }
+        catch (_b) {
+            return undefined;
+        }
     }
 };
 exports.CampusDeliveryPlugin = CampusDeliveryPlugin;
 exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [campus_zone_entity_1.CampusZone, campus_building_entity_1.CampusBuilding, rider_earning_entity_1.RiderEarning, campus_fulfillment_config_entity_1.CampusFulfillmentConfig, delivery_slot_entity_1.DeliverySlot, rider_credit_log_entity_1.RiderCreditLog, rider_withdrawal_entity_1.RiderWithdrawalRequest],
+        entities: [campus_zone_entity_1.CampusZone, campus_building_entity_1.CampusBuilding, rider_earning_entity_1.RiderEarning, campus_fulfillment_config_entity_1.CampusFulfillmentConfig, delivery_slot_entity_1.DeliverySlot, rider_credit_log_entity_1.RiderCreditLog, rider_withdrawal_entity_1.RiderWithdrawalRequest, payment_timeout_entity_1.PaymentTimeoutTask],
         providers: [
             create_campus_tables_1.CreateCampusTablesMigration,
             campus_config_service_1.CampusConfigService,
@@ -105,6 +164,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             waimai_store_service_1.WaimaiStoreService,
             merchant_admin_service_1.MerchantAdminService,
             campus_notify_service_1.CampusNotifyService,
+            payment_timeout_job_1.PaymentTimeoutJob,
         ],
         adminApiExtensions: {
             schema: () => {
@@ -578,7 +638,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             resolvers: [rider_shop_resolver_1.RiderShopResolver, hall_shop_resolver_1.HallShopResolver, rider_task_shop_resolver_1.RiderTaskShopResolver, errand_shop_resolver_1.ErrandShopResolver, waimai_shop_resolver_1.WaimaiShopResolver, r2_shop_resolver_1.R2ShopResolver, campus_invoice_resolver_1.InvoiceShopResolver],
         },
         configuration: config => {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p;
             config.authOptions.customPermissions = [
                 ...((_a = config.authOptions.customPermissions) !== null && _a !== void 0 ? _a : []),
                 ...permissions_1.campusPermissionDefinitions,
@@ -598,6 +658,11 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                 config.shippingOptions.shippingLineAssignmentStrategy =
                     new errand_shipping_line_assignment_1.CampusErrandShippingLineAssignmentStrategy(prevAssignmentStrategy);
             }
+            // 待付款补偿任务幂等注册
+            config.schedulerOptions.tasks = (_p = config.schedulerOptions.tasks) !== null && _p !== void 0 ? _p : [];
+            if (!config.schedulerOptions.tasks.some(t => t.id === PAYMENT_TIMEOUT_COMPENSATION)) {
+                config.schedulerOptions.tasks.push(paymentTimeoutCompensation);
+            }
             return config;
         },
         compatibility: '^3.6.4',
@@ -605,6 +670,9 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
     __metadata("design:paramtypes", [core_1.EventBus,
         hall_service_1.HallService,
         r4_tag_service_1.R4TagService,
-        core_2.ModuleRef])
+        core_2.ModuleRef,
+        campus_notify_service_1.CampusNotifyService,
+        payment_timeout_job_1.PaymentTimeoutJob,
+        campus_config_service_1.CampusConfigService])
 ], CampusDeliveryPlugin);
 //# sourceMappingURL=campus-delivery.plugin.js.map
