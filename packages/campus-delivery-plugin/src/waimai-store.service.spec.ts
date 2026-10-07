@@ -90,6 +90,9 @@ describe('WaimaiStoreService.listStoreConfigs', () => {
             notifyTemplateAccepted: null, notifyTemplateRiderAssigned: null,
             notifyTemplateCookingDone: null, notifyTemplateDelivered: null,
             notifyTemplateExceptionHandled: null,
+            notifyTemplateOrderPlaced: null, notifyTemplatePaymentPending: null,
+            notifyTemplateCancelled: null, notifyTemplateAfterSales: null,
+            h5BaseUrl: null,
         });
         expect(list[1]).toEqual({
             channelId: 3, channelName: '奶茶铺', channelToken: 'milktea',
@@ -101,6 +104,9 @@ describe('WaimaiStoreService.listStoreConfigs', () => {
             notifyTemplateAccepted: null, notifyTemplateRiderAssigned: null,
             notifyTemplateCookingDone: null, notifyTemplateDelivered: null,
             notifyTemplateExceptionHandled: null,
+            notifyTemplateOrderPlaced: null, notifyTemplatePaymentPending: null,
+            notifyTemplateCancelled: null, notifyTemplateAfterSales: null,
+            h5BaseUrl: null,
         });
     });
 });
@@ -161,6 +167,9 @@ describe('WaimaiStoreService.updateStoreConfig', () => {
             notifyTemplateAccepted: null, notifyTemplateRiderAssigned: null,
             notifyTemplateCookingDone: null, notifyTemplateDelivered: null,
             notifyTemplateExceptionHandled: null,
+            notifyTemplateOrderPlaced: null, notifyTemplatePaymentPending: null,
+            notifyTemplateCancelled: null, notifyTemplateAfterSales: null,
+            h5BaseUrl: null,
         });
     });
 });

@@ -40,6 +40,11 @@ export interface CampusStoreConfigWithChannel {
     notifyTemplateCookingDone: string | null;
     notifyTemplateDelivered: string | null;
     notifyTemplateExceptionHandled: string | null;
+    notifyTemplateOrderPlaced: string | null;
+    notifyTemplatePaymentPending: string | null;
+    notifyTemplateCancelled: string | null;
+    notifyTemplateAfterSales: string | null;
+    h5BaseUrl: string | null;
 }
 
 const ROUTE_WHITELIST = ['R1', 'R2', 'R3', 'R4', 'R5'];
@@ -121,6 +126,11 @@ export class WaimaiStoreService {
             notifyTemplateCookingDone?: string | null;
             notifyTemplateDelivered?: string | null;
             notifyTemplateExceptionHandled?: string | null;
+            notifyTemplateOrderPlaced?: string | null;
+            notifyTemplatePaymentPending?: string | null;
+            notifyTemplateCancelled?: string | null;
+            notifyTemplateAfterSales?: string | null;
+            h5BaseUrl?: string | null;
         },
     ): Promise<CampusStoreConfigWithChannel> {
         const bad = (input.routesEnabled ?? []).filter(r => !ROUTE_WHITELIST.includes(r));
@@ -148,6 +158,11 @@ export class WaimaiStoreService {
         cfg.notifyTemplateCookingDone = input.notifyTemplateCookingDone ?? null;
         cfg.notifyTemplateDelivered = input.notifyTemplateDelivered ?? null;
         cfg.notifyTemplateExceptionHandled = input.notifyTemplateExceptionHandled ?? null;
+        cfg.notifyTemplateOrderPlaced = input.notifyTemplateOrderPlaced ?? null;
+        cfg.notifyTemplatePaymentPending = input.notifyTemplatePaymentPending ?? null;
+        cfg.notifyTemplateCancelled = input.notifyTemplateCancelled ?? null;
+        cfg.notifyTemplateAfterSales = input.notifyTemplateAfterSales ?? null;
+        cfg.h5BaseUrl = input.h5BaseUrl ?? null;
         await repo.save(cfg);
         const address = (input.storeAddress ?? '').trim();
         if (address) {
@@ -208,6 +223,11 @@ export class WaimaiStoreService {
             notifyTemplateCookingDone: cfg?.notifyTemplateCookingDone ?? null,
             notifyTemplateDelivered: cfg?.notifyTemplateDelivered ?? null,
             notifyTemplateExceptionHandled: cfg?.notifyTemplateExceptionHandled ?? null,
+            notifyTemplateOrderPlaced: cfg?.notifyTemplateOrderPlaced ?? null,
+            notifyTemplatePaymentPending: cfg?.notifyTemplatePaymentPending ?? null,
+            notifyTemplateCancelled: cfg?.notifyTemplateCancelled ?? null,
+            notifyTemplateAfterSales: cfg?.notifyTemplateAfterSales ?? null,
+            h5BaseUrl: cfg?.h5BaseUrl ?? null,
         };
     }
 }

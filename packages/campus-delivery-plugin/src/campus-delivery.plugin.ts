@@ -261,6 +261,11 @@ import { WaimaiStoreService } from './waimai-store.service';
                     notifyTemplateCookingDone: String
                     notifyTemplateDelivered: String
                     notifyTemplateExceptionHandled: String
+                    notifyTemplateOrderPlaced: String
+                    notifyTemplatePaymentPending: String
+                    notifyTemplateCancelled: String
+                    notifyTemplateAfterSales: String
+                    h5BaseUrl: String
                 }
 
                 input CampusStoreConfigInput {
@@ -278,6 +283,11 @@ import { WaimaiStoreService } from './waimai-store.service';
                     notifyTemplateCookingDone: String
                     notifyTemplateDelivered: String
                     notifyTemplateExceptionHandled: String
+                    notifyTemplateOrderPlaced: String
+                    notifyTemplatePaymentPending: String
+                    notifyTemplateCancelled: String
+                    notifyTemplateAfterSales: String
+                    h5BaseUrl: String
                 }
 
                 type RiderWithdrawalRequest {

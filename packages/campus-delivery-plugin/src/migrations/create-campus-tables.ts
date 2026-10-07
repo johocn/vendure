@@ -48,6 +48,11 @@ ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "notifyTemplateRi
 ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "notifyTemplateCookingDone" varchar;
 ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "notifyTemplateDelivered" varchar;
 ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "notifyTemplateExceptionHandled" varchar;
+ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "notifyTemplateOrderPlaced" varchar;
+ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "notifyTemplatePaymentPending" varchar;
+ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "notifyTemplateCancelled" varchar;
+ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "notifyTemplateAfterSales" varchar;
+ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "h5BaseUrl" varchar(255);
 -- 骑手实时位置 riderLat/riderLng（plan 2.2）：Order customFields 列由 Vendure 启动时自动同步（含类型），
 -- 实测列名 customFieldsRiderlat/customFieldsRiderlng（首字母大写+小写化规则），此处无需手工 ALTER。
 `;

@@ -29,6 +29,12 @@ export class CampusFulfillmentConfig extends VendureEntity {
     @Column({ type: 'varchar', nullable: true }) notifyTemplateCookingDone: string | null; // 出餐完成
     @Column({ type: 'varchar', nullable: true }) notifyTemplateDelivered: string | null; // 已送达
     @Column({ type: 'varchar', nullable: true }) notifyTemplateExceptionHandled: string | null; // 异常处置完结
+    // 订单域通知（spec §4.1）：4 个模板 ID + H5 落地页域名（禁硬编码域名，per-channel 配置）
+    @Column({ type: 'varchar', nullable: true }) notifyTemplateOrderPlaced: string | null; // 下单成功
+    @Column({ type: 'varchar', nullable: true }) notifyTemplatePaymentPending: string | null; // 待付款提醒
+    @Column({ type: 'varchar', nullable: true }) notifyTemplateCancelled: string | null; // 取消通知
+    @Column({ type: 'varchar', nullable: true }) notifyTemplateAfterSales: string | null; // 售后进度
+    @Column({ type: 'varchar', nullable: true }) h5BaseUrl: string | null; // C 端 H5 站点 origin，如 https://www.yourbao.cn
     constructor(input?: DeepPartial<CampusFulfillmentConfig>) {
         super(input);
     }

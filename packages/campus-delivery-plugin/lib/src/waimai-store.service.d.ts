@@ -36,6 +36,11 @@ export interface CampusStoreConfigWithChannel {
     notifyTemplateCookingDone: string | null;
     notifyTemplateDelivered: string | null;
     notifyTemplateExceptionHandled: string | null;
+    notifyTemplateOrderPlaced: string | null;
+    notifyTemplatePaymentPending: string | null;
+    notifyTemplateCancelled: string | null;
+    notifyTemplateAfterSales: string | null;
+    h5BaseUrl: string | null;
 }
 export declare class WaimaiStoreService {
     private connection;
@@ -61,6 +66,11 @@ export declare class WaimaiStoreService {
         notifyTemplateCookingDone?: string | null;
         notifyTemplateDelivered?: string | null;
         notifyTemplateExceptionHandled?: string | null;
+        notifyTemplateOrderPlaced?: string | null;
+        notifyTemplatePaymentPending?: string | null;
+        notifyTemplateCancelled?: string | null;
+        notifyTemplateAfterSales?: string | null;
+        h5BaseUrl?: string | null;
     }): Promise<CampusStoreConfigWithChannel>;
     /** 经 rawConnection 按实体名取 repo（避免对 cjk-plugin 的构建期依赖；PickupLocation 由 cjk-plugin 注册于同一进程）。
      * 可见性：isPublic=false + ownerChannelId=本渠道 + channels 含本渠道 → shop 端 applyVisibility 对本渠道可见（cjk pickup-location.service.ts:35）。 */

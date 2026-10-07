@@ -90,6 +90,9 @@ function makeEnv(opts = {}) {
             notifyTemplateAccepted: null, notifyTemplateRiderAssigned: null,
             notifyTemplateCookingDone: null, notifyTemplateDelivered: null,
             notifyTemplateExceptionHandled: null,
+            notifyTemplateOrderPlaced: null, notifyTemplatePaymentPending: null,
+            notifyTemplateCancelled: null, notifyTemplateAfterSales: null,
+            h5BaseUrl: null,
         });
         (0, vitest_1.expect)(list[1]).toEqual({
             channelId: 3, channelName: '奶茶铺', channelToken: 'milktea',
@@ -101,6 +104,9 @@ function makeEnv(opts = {}) {
             notifyTemplateAccepted: null, notifyTemplateRiderAssigned: null,
             notifyTemplateCookingDone: null, notifyTemplateDelivered: null,
             notifyTemplateExceptionHandled: null,
+            notifyTemplateOrderPlaced: null, notifyTemplatePaymentPending: null,
+            notifyTemplateCancelled: null, notifyTemplateAfterSales: null,
+            h5BaseUrl: null,
         });
     });
 });
@@ -156,6 +162,9 @@ function makeEnv(opts = {}) {
             notifyTemplateAccepted: null, notifyTemplateRiderAssigned: null,
             notifyTemplateCookingDone: null, notifyTemplateDelivered: null,
             notifyTemplateExceptionHandled: null,
+            notifyTemplateOrderPlaced: null, notifyTemplatePaymentPending: null,
+            notifyTemplateCancelled: null, notifyTemplateAfterSales: null,
+            h5BaseUrl: null,
         });
     });
 });
