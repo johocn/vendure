@@ -108,4 +108,15 @@ export class AfterSalesAdminResolver {
     ): Promise<any> {
         return this.afterSalesService.addMessage(ctx, id, 'admin', content, images);
     }
+
+    @Mutation()
+    @Allow(Permission.UpdateOrder)
+    async exchangeShipAfterSalesRequest(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: number,
+        @Args('trackingNo') trackingNo: string,
+        @Args('carrier') carrier: string,
+    ): Promise<any> {
+        return this.afterSalesService.exchangeShip(ctx, id, trackingNo, carrier);
+    }
 }

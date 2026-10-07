@@ -346,4 +346,82 @@ describe('AfterSalesPlugin · 迭代三期（通知/留言/换货/超时/看板�
             /not.*authorized|forbidden/i,
         );
     }, TEST_SETUP_TIMEOUT_MS);
+
+    it('换货闭环：confirmReceive 停在 Received；processRefund 被拒；exchangeShip → ExchangeShipped；顾客 exchangeReceive → Closed；全程站内信', async () => {
+        await shipNewOrder();
+        const created = await shopClient.query(gql`
+            mutation { createAfterSalesRequest(input: {
+                orderId: "${orderId}" orderLineId: "${orderLineId}" type: exchange reason: "t3-exchange" refundAmount: 0
+            }) { id state } }
+        `);
+        const id8 = created.createAfterSalesRequest.id;
+        await adminClient.query(gql`mutation { approveAfterSalesRequest(id: "${id8}") { id state } }`);
+        await shopClient.query(gql`
+            mutation { updateReturnTracking(id: "${id8}", trackingNo: "TH0001", carrier: "顺丰") { id state } }
+        `);
+        // confirmReceive 对 exchange 停在 Received（不触发退款）
+        const received = await adminClient.query(gql`mutation { confirmReturnReceived(id: "${id8}") { id state } }`);
+        expect(received.confirmReturnReceived.state).toBe('Received');
+
+        // exchange 拒绝退款
+        await expectGqlError(
+            () => adminClient.query(gql`mutation { processAfterSalesRefund(id: "${id8}") { id state } }`),
+            /exchange requests are not refundable/,
+        );
+
+        // 商家换货发货
+        const shipped = await adminClient.query(gql`
+            mutation { exchangeShipAfterSalesRequest(id: "${id8}", trackingNo: "EX9001", carrier: "京东") {
+                id state exchangeTrackingNo exchangeCarrier } }
+        `);
+        expect(shipped.exchangeShipAfterSalesRequest.state).toBe('ExchangeShipped');
+        expect(shipped.exchangeShipAfterSalesRequest.exchangeTrackingNo).toBe('EX9001');
+        expect(shipped.exchangeShipAfterSalesRequest.exchangeCarrier).toBe('京东');
+
+        // 顾客确认收货 → Closed
+        const done = await shopClient.query(gql`
+            mutation { exchangeReceiveAfterSalesRequest(id: "${id8}") { id state } }
+        `);
+        expect(done.exchangeReceiveAfterSalesRequest.state).toBe('Closed');
+
+        // history 含 ExchangeShipped 节点
+        const detail = await shopClient.query(gql`
+            query { afterSalesRequest(id: "${id8}") { state history { fromState toState } } }
+        `);
+        const tos = detail.afterSalesRequest.history.map((h: any) => h.toState);
+        expect(tos).toEqual(expect.arrayContaining(['ExchangeShipped', 'Closed']));
+
+        // Task 1 通知链路：换货已发货 + 换货完成
+        await waitFor(async () => {
+            const mine = await shopClient.query(gql`query { myInbox { items { title } } }`);
+            return mine.myInbox.items.some((m: any) => m.title === '换货已发货');
+        });
+        await waitFor(async () => {
+            const mine = await shopClient.query(gql`query { myInbox { items { title } } }`);
+            return mine.myInbox.items.some((m: any) => m.title === '换货完成');
+        });
+    }, TEST_SETUP_TIMEOUT_MS);
+
+    it('exchangeShip 校验：非 exchange 类型拒绝；Pending 状态拒绝', async () => {
+        await shipNewOrder();
+        await expectGqlError(
+            () => adminClient.query(gql`
+                mutation { exchangeShipAfterSalesRequest(id: "${orderId}", trackingNo: "X", carrier: "Y") { id } }
+            `),
+            /not found/,
+        );
+
+        // Pending 的 exchange 单（未收货）不可发货
+        const ex = await shopClient.query(gql`
+            mutation { createAfterSalesRequest(input: {
+                orderId: "${orderId}" orderLineId: "${orderLineId}" type: exchange reason: "t3-xg-pending" refundAmount: 0
+            }) { id } }
+        `);
+        await expectGqlError(
+            () => adminClient.query(gql`
+                mutation { exchangeShipAfterSalesRequest(id: "${ex.createAfterSalesRequest.id}", trackingNo: "X", carrier: "Y") { id } }
+            `),
+            /Cannot exchange-ship from state: Pending/,
+        );
+    }, TEST_SETUP_TIMEOUT_MS);
 });

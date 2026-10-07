@@ -530,6 +530,9 @@ export class AfterSalesService {
         if (request.state !== 'Received') {
             throw new UserInputError('Cannot refund: request must be in Received state');
         }
+        if (request.type === 'exchange') {
+            throw new UserInputError('Cannot refund: exchange requests are not refundable');
+        }
         return this.executeRefund(ctx, request);
     }
 
@@ -866,5 +869,40 @@ export class AfterSalesService {
         for (const r of requests) {
             r.messageCount = map.get(Number(r.id)) ?? 0;
         }
+    }
+
+    // ===== 换货闭环（迭代三期） =====
+
+    /** 换货发货（admin）：Received → ExchangeShipped，仅 exchange 类型、仅 Received 状态可走 */
+    async exchangeShip(ctx: RequestContext, id: ID, trackingNo: string, carrier: string): Promise<AfterSalesRequest> {
+        const repo = this.connection.getRepository(ctx, AfterSalesRequest);
+        const request = await repo.findOne({ where: { id: id as any } });
+        if (!request) throw new UserInputError(`After-sales request ${id} not found`);
+        if (request.type !== 'exchange') {
+            throw new UserInputError('Only exchange requests can be exchange-shipped');
+        }
+        if (request.state !== 'Received') {
+            throw new UserInputError(`Cannot exchange-ship from state: ${request.state}`);
+        }
+        request.exchangeTrackingNo = trackingNo;
+        request.exchangeCarrier = carrier;
+        // commitState 统一出口：落历史 + 发布事件（顾客收「换货已发货」站内信）
+        return this.commitState(ctx, request, 'Received', 'ExchangeShipped');
+    }
+
+    /** 换货确认收货（shop 顾客）：ExchangeShipped → Closed，需校验售后单归属 */
+    async exchangeReceive(ctx: RequestContext, id: ID): Promise<AfterSalesRequest> {
+        const repo = this.connection.getRepository(ctx, AfterSalesRequest);
+        const request = await repo.findOne({ where: { id: id as any } });
+        if (!request) throw new UserInputError(`After-sales request ${id} not found`);
+        const customerId = await this.resolveCustomerId(ctx);
+        if (!customerId || Number(request.customerId) !== customerId) {
+            throw new ForbiddenError();
+        }
+        if (request.state !== 'ExchangeShipped') {
+            throw new UserInputError(`Cannot exchange-receive from state: ${request.state}`);
+        }
+        // commitState 统一出口：fromState=ExchangeShipped 的 Closed 事件驱动「换货完成」站内信
+        return this.commitState(ctx, request, 'ExchangeShipped', 'Closed');
     }
 }

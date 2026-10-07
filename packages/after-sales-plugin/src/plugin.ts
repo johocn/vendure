@@ -25,7 +25,7 @@ const { gql } = require('graphql-tag');
     shopApiExtensions: {
         schema: () => gql`
             enum AfterSalesType { return_refund refund_only exchange }
-            enum AfterSalesState { Pending Approved Rejected Returning Received Refunded RefundFailed Closed }
+            enum AfterSalesState { Pending Approved Rejected Returning Received ExchangeShipped Refunded RefundFailed Closed }
 
             type AfterSalesStateHistoryEntry {
                 fromState: AfterSalesState
@@ -46,6 +46,8 @@ const { gql } = require('graphql-tag');
                 refundAmount: Int!
                 returnTrackingNo: String
                 returnCarrier: String
+                exchangeTrackingNo: String
+                exchangeCarrier: String
                 rejectReason: String
                 receivedQuantity: Int
                 refundTransactionId: String
@@ -118,6 +120,8 @@ const { gql } = require('graphql-tag');
                 uploadAfterSalesEvidence(images: [String!]!): [String!]!
                 """售后单内追加协商留言（Closed 后禁言；图片 ≤3 张、正文 ≤1000 字）"""
                 addAfterSalesMessage(id: ID!, content: String!, images: [String!]): AfterSalesMessage!
+                """顾客确认收到换货商品：ExchangeShipped → Closed"""
+                exchangeReceiveAfterSalesRequest(id: ID!): AfterSalesRequest!
             }
         `,
         resolvers: [AfterSalesShopResolver],
@@ -150,6 +154,8 @@ const { gql } = require('graphql-tag');
                 refundAmount: Int!
                 returnTrackingNo: String
                 returnCarrier: String
+                exchangeTrackingNo: String
+                exchangeCarrier: String
                 rejectReason: String
                 receivedQuantity: Int
                 restockJson: String
@@ -216,6 +222,8 @@ const { gql } = require('graphql-tag');
                 updateAfterSalesReturnAddress(address: String!): Boolean!
                 """商家回复售后协商留言（Closed 后禁言；图片 ≤3 张、正文 ≤1000 字）"""
                 replyAfterSalesMessage(id: ID!, content: String!, images: [String!]): AfterSalesMessageAdmin!
+                """换货发货：Received → ExchangeShipped（仅 exchange 类型）"""
+                exchangeShipAfterSalesRequest(id: ID!, trackingNo: String!, carrier: String!): AfterSalesRequestAdmin!
             }
         `,
         resolvers: [AfterSalesAdminResolver],

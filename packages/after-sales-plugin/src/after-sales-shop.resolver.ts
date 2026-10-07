@@ -74,4 +74,10 @@ export class AfterSalesShopResolver {
     ): Promise<any> {
         return this.afterSalesService.addMessage(ctx, id, 'customer', content, images);
     }
+
+    @Mutation()
+    @Allow(Permission.Authenticated)
+    async exchangeReceiveAfterSalesRequest(@Ctx() ctx: RequestContext, @Args('id') id: number): Promise<any> {
+        return this.afterSalesService.exchangeReceive(ctx, id);
+    }
 }

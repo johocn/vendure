@@ -10,6 +10,7 @@ export type AfterSalesState =
     | 'Rejected'
     | 'Returning'
     | 'Received'
+    | 'ExchangeShipped'
     | 'Refunded'
     | 'RefundFailed'
     | 'Closed';
@@ -19,7 +20,8 @@ export const STATE_TRANSITIONS: Record<AfterSalesState, AfterSalesState[]> = {
     Approved: ['Returning', 'Closed'],
     Rejected: [],
     Returning: ['Received', 'Closed'],
-    Received: ['Refunded', 'RefundFailed'],
+    Received: ['Refunded', 'RefundFailed', 'ExchangeShipped'],
+    ExchangeShipped: ['Closed'], // 换货已发货 → 顾客确认收货即关闭
     RefundFailed: ['Refunded'], // 退款失败后可重试
     Refunded: [],
     Closed: [],

@@ -54,6 +54,14 @@ export class AfterSalesRequest extends VendureEntity implements ChannelAware {
     @Column({ type: 'varchar', nullable: true })
     returnCarrier: string | null;
 
+    /** 换货发货运单号（exchangeShip 时落） */
+    @Column({ type: 'varchar', nullable: true })
+    exchangeTrackingNo: string | null;
+
+    /** 换货发货承运商 */
+    @Column({ type: 'varchar', nullable: true })
+    exchangeCarrier: string | null;
+
     @Column({ nullable: true, type: 'text' })
     rejectReason: string | null;
 
