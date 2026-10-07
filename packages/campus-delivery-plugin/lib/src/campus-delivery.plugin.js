@@ -29,6 +29,7 @@ const errand_shipping_line_assignment_1 = require("./errand-shipping-line-assign
 const hall_grab_service_1 = require("./hall-grab.service");
 const hall_service_1 = require("./hall.service");
 const hall_shop_resolver_1 = require("./hall-shop.resolver");
+const campus_invoice_resolver_1 = require("./campus-invoice.resolver");
 const create_campus_tables_1 = require("./migrations/create-campus-tables");
 const min_order_process_1 = require("./min-order.process");
 const permissions_1 = require("./permissions");
@@ -554,6 +555,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusUrgeOrder(orderId: ID!): Order!
                     campusReportException(orderId: ID!, type: String!, photos: [String!]!, note: String): Order!
                     campusSetDeliveryTarget(zoneId: ID!, buildingId: ID!, route: String, slotId: Int): Order!
+                    applyOrderInvoice(orderId: ID!, invoiceInfo: String!): Boolean!
                     campusRejectAssignment(orderId: ID!): CampusRejectResult!
                     campusRiderOnline(online: Boolean!): CampusRiderOnlineResult!
                     campusRiderHeartbeat: CampusRiderOnlineResult!
@@ -563,21 +565,21 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                 }
             `;
             },
-            resolvers: [rider_shop_resolver_1.RiderShopResolver, hall_shop_resolver_1.HallShopResolver, rider_task_shop_resolver_1.RiderTaskShopResolver, errand_shop_resolver_1.ErrandShopResolver, waimai_shop_resolver_1.WaimaiShopResolver, r2_shop_resolver_1.R2ShopResolver],
+            resolvers: [rider_shop_resolver_1.RiderShopResolver, hall_shop_resolver_1.HallShopResolver, rider_task_shop_resolver_1.RiderTaskShopResolver, errand_shop_resolver_1.ErrandShopResolver, waimai_shop_resolver_1.WaimaiShopResolver, r2_shop_resolver_1.R2ShopResolver, campus_invoice_resolver_1.InvoiceShopResolver],
         },
         configuration: config => {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o;
             config.authOptions.customPermissions = [
                 ...((_a = config.authOptions.customPermissions) !== null && _a !== void 0 ? _a : []),
                 ...permissions_1.campusPermissionDefinitions,
             ];
-            config.customFields = Object.assign(Object.assign({}, config.customFields), { Order: [...((_b = config.customFields.Order) !== null && _b !== void 0 ? _b : []), ...((_c = custom_fields_1.campusCustomFields.Order) !== null && _c !== void 0 ? _c : [])], Customer: [...((_d = config.customFields.Customer) !== null && _d !== void 0 ? _d : []), ...((_e = custom_fields_1.campusCustomFields.Customer) !== null && _e !== void 0 ? _e : [])], Channel: [...((_f = config.customFields.Channel) !== null && _f !== void 0 ? _f : []), ...((_g = custom_fields_1.campusCustomFields.Channel) !== null && _g !== void 0 ? _g : [])] });
+            config.customFields = Object.assign(Object.assign({}, config.customFields), { Order: [...((_b = config.customFields.Order) !== null && _b !== void 0 ? _b : []), ...((_c = custom_fields_1.campusCustomFields.Order) !== null && _c !== void 0 ? _c : [])], Customer: [...((_d = config.customFields.Customer) !== null && _d !== void 0 ? _d : []), ...((_e = custom_fields_1.campusCustomFields.Customer) !== null && _e !== void 0 ? _e : [])], Channel: [...((_f = config.customFields.Channel) !== null && _f !== void 0 ? _f : []), ...((_g = custom_fields_1.campusCustomFields.Channel) !== null && _g !== void 0 ? _g : [])], Address: [...((_h = config.customFields.Address) !== null && _h !== void 0 ? _h : []), ...((_j = custom_fields_1.campusCustomFields.Address) !== null && _j !== void 0 ? _j : [])] });
             config.shippingOptions.shippingCalculators = [
-                ...((_h = config.shippingOptions.shippingCalculators) !== null && _h !== void 0 ? _h : []),
+                ...((_k = config.shippingOptions.shippingCalculators) !== null && _k !== void 0 ? _k : []),
                 shipping_calculator_1.campusErrandCalculator,
             ];
             // 起送价硬校验（二期 §3.2）：ArrangingPayment 过渡拦截，跑腿单豁免
-            config.orderOptions = Object.assign(Object.assign({}, ((_j = config.orderOptions) !== null && _j !== void 0 ? _j : {})), { process: [...((_l = (_k = config.orderOptions) === null || _k === void 0 ? void 0 : _k.process) !== null && _l !== void 0 ? _l : []), min_order_process_1.campusMinOrderProcess] });
+            config.orderOptions = Object.assign(Object.assign({}, ((_l = config.orderOptions) !== null && _l !== void 0 ? _l : {})), { process: [...((_o = (_m = config.orderOptions) === null || _m === void 0 ? void 0 : _m.process) !== null && _o !== void 0 ? _o : []), min_order_process_1.campusMinOrderProcess] });
             // 跑腿单 ShippingLine 分配：包装既有策略（cjk Box 按配送档案分箱，跑腿 0 元载体无档案
             // 绑定会被返回空数组 → 孤儿线）。本插件在 dev-config 中位于 CjkPlugin 之后，
             // configuration 钩子后执行，此处拿到的即为 cjk 已设置的策略，包装后原行为不变。

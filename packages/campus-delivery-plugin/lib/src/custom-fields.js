@@ -35,6 +35,8 @@ exports.campusCustomFields = {
         { name: 'exceptionHandledAt', type: 'datetime', nullable: true }, // 处置时间
         { name: 'exceptionHandledBy', type: 'string', nullable: true }, // 处置人（admin userId）
         { name: 'routeGroupId', type: 'string', nullable: true }, // 多单顺路路线组（plan 3.3）：同楼栋+同时段打包，整组抢单
+        { name: 'invoiceApplied', type: 'boolean', nullable: true, defaultValue: false }, // 开票申请幂等闸（个人中心 spec §4）
+        { name: 'invoiceInfo', type: 'string', nullable: true }, // 开票申请快照 JSON：{titleName,titleType,taxNo,email,appliedAt}
     ],
     Channel: [
         { name: 'waimaiTags', type: 'string', nullable: true }, // '米饭快餐,夜宵' 逗号分隔
@@ -50,6 +52,13 @@ exports.campusCustomFields = {
         { name: 'riderIdImg', type: 'string', nullable: true },
         { name: 'riderCredit', type: 'int', nullable: true, defaultValue: 100 },
         { name: 'riderOnlineAt', type: 'datetime', nullable: true }, // 心跳时间戳，「在线」= approved && 5min 内有心跳
+        { name: 'avatarUrl', type: 'string', nullable: true }, // 头像 URL（uploadCustomerAsset 产物）
+        { name: 'invoiceTitles', type: 'string', nullable: true }, // 发票抬头列表 JSON（≤5 条，spec §3.2）
+    ],
+    Address: [
+        { name: 'zoneId', type: 'string', nullable: true }, // 校园分区 ID（campusZones 引用）
+        { name: 'buildingId', type: 'string', nullable: true }, // 宿舍楼 ID（campusBuildings 引用）
+        { name: 'route', type: 'string', nullable: true }, // 路线快照 R1..R5（备用）
     ],
 };
 //# sourceMappingURL=custom-fields.js.map

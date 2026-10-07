@@ -27,6 +27,7 @@ import { CampusErrandShippingLineAssignmentStrategy } from './errand-shipping-li
 import { HallGrabService } from './hall-grab.service';
 import { HallService } from './hall.service';
 import { HallShopResolver } from './hall-shop.resolver';
+import { InvoiceShopResolver } from './campus-invoice.resolver';
 import { CreateCampusTablesMigration } from './migrations/create-campus-tables';
 import { bindMinOrderConnection, campusMinOrderProcess } from './min-order.process';
 import { campusPermissionDefinitions } from './permissions';
@@ -525,6 +526,7 @@ import { WaimaiStoreService } from './waimai-store.service';
                     campusUrgeOrder(orderId: ID!): Order!
                     campusReportException(orderId: ID!, type: String!, photos: [String!]!, note: String): Order!
                     campusSetDeliveryTarget(zoneId: ID!, buildingId: ID!, route: String, slotId: Int): Order!
+                    applyOrderInvoice(orderId: ID!, invoiceInfo: String!): Boolean!
                     campusRejectAssignment(orderId: ID!): CampusRejectResult!
                     campusRiderOnline(online: Boolean!): CampusRiderOnlineResult!
                     campusRiderHeartbeat: CampusRiderOnlineResult!
@@ -534,7 +536,7 @@ import { WaimaiStoreService } from './waimai-store.service';
                 }
             `;
         },
-        resolvers: [RiderShopResolver, HallShopResolver, RiderTaskShopResolver, ErrandShopResolver, WaimaiShopResolver, R2ShopResolver],
+        resolvers: [RiderShopResolver, HallShopResolver, RiderTaskShopResolver, ErrandShopResolver, WaimaiShopResolver, R2ShopResolver, InvoiceShopResolver],
     },
     configuration: config => {
         config.authOptions.customPermissions = [
@@ -546,6 +548,7 @@ import { WaimaiStoreService } from './waimai-store.service';
             Order: [...(config.customFields.Order ?? []), ...(campusCustomFields.Order ?? [])],
             Customer: [...(config.customFields.Customer ?? []), ...(campusCustomFields.Customer ?? [])],
             Channel: [...(config.customFields.Channel ?? []), ...(campusCustomFields.Channel ?? [])],
+            Address: [...(config.customFields.Address ?? []), ...(campusCustomFields.Address ?? [])],
         };
         config.shippingOptions.shippingCalculators = [
             ...(config.shippingOptions.shippingCalculators ?? []),
