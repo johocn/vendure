@@ -5,3 +5,6 @@ export * from './src/after-sales-request.entity';
 export * from './src/after-sales-state-history.entity';
 export * from './src/after-sales.service';
 export * from './src/after-sales.events';
+export * from './src/after-sales-timeout.entity';
+export * from './src/after-sales-timeout.job';
+export * from './src/after-sales-config';

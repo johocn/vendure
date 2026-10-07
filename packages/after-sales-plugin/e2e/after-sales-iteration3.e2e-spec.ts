@@ -2,7 +2,9 @@ import { createTestEnvironment, registerInitializer, SimpleGraphQLClient, SqljsI
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import path from 'path';
 import gql from 'graphql-tag';
-import { mergeConfig } from '@vendure/core';
+import { mergeConfig, PaymentMethodHandler, LanguageCode, TransactionalConnection } from '@vendure/core';
+import { AfterSalesTimeoutJob } from '../src/after-sales-timeout.job';
+import { AfterSalesTimeoutTask, AfterSalesTimeoutType } from '../src/after-sales-timeout.entity';
 import { initialData } from '../../../e2e-common/e2e-initial-data';
 import { TEST_SETUP_TIMEOUT_MS, testConfig } from '../../../e2e-common/test-config';
 import { AfterSalesPlugin } from '../src/plugin';
@@ -19,6 +21,21 @@ import { addPaymentToOrder, proceedToArrangingPayment } from '../../core/e2e/uti
 
 registerInitializer('sqljs', new SqljsInitializer(path.join(__dirname, '__data3__')));
 
+/** 永远退款失败（state='Failed'，不抛错）：用于构造 RefundFailed 自动重试耗尽场景 */
+const alwaysFailingRefundHandler = new PaymentMethodHandler({
+    code: 'always-failing-refund',
+    description: [{ languageCode: LanguageCode.en, value: 'Always failing refund' }],
+    args: {},
+    createPayment: (ctx, order, amount, args, metadata) => ({
+        amount,
+        state: 'Settled' as const,
+        transactionId: '12345',
+        metadata,
+    }),
+    settlePayment: () => ({ success: true as const }),
+    createRefund: () => ({ state: 'Failed' as const, metadata: {} }),
+});
+
 /** 简单轮询（事件订阅为异步落库，断言前 waitFor） */
 async function waitFor(fn: () => Promise<boolean>, timeoutMs = 8000, intervalMs = 100): Promise<void> {
     const start = Date.now();
@@ -27,6 +44,11 @@ async function waitFor(fn: () => Promise<boolean>, timeoutMs = 8000, intervalMs 
         await new Promise((r) => setTimeout(r, intervalMs));
     }
     throw new Error('waitFor timeout');
+}
+
+/** GraphQL 编码 ID（T_1）→ 实体数字 ID（直查仓储外键用） */
+function toEntityId(id: string): number {
+    return Number(String(id).replace(/\D+/g, ''));
 }
 
 /** 断言 GraphQL 操作抛错且文案匹配（宽松子串，SimpleGraphQLClient 把 GraphQL error 拼进 Error.message） */
@@ -54,6 +76,7 @@ describe('AfterSalesPlugin · 迭代三期（通知/留言/换货/超时/看板�
             paymentMethodHandlers: [
                 singleStageRefundablePaymentMethod,
                 singleStageRefundFailingPaymentMethod,
+                alwaysFailingRefundHandler,
             ],
         },
     });
@@ -423,5 +446,174 @@ describe('AfterSalesPlugin · 迭代三期（通知/留言/换货/超时/看板�
             `),
             /Cannot exchange-ship from state: Pending/,
         );
+    }, TEST_SETUP_TIMEOUT_MS);
+
+    it('超时自动化：Pending 默认 48h 商家提醒；autoApprove=0 不自动同意', async () => {
+        await shipNewOrder();
+        const created = await shopClient.query(gql`
+            mutation { createAfterSalesRequest(input: {
+                orderId: "${orderId}" orderLineId: "${orderLineId}" type: return_refund reason: "t3-timeout" refundAmount: 100
+            }) { id state } }
+        `);
+        const id11 = created.createAfterSalesRequest.id;
+
+        const job = server.app.get(AfterSalesTimeoutJob);
+        const conn = server.app.get(TransactionalConnection);
+        const taskRepo = conn.rawConnection.getRepository(AfterSalesTimeoutTask);
+
+        // 默认配置：只登记提醒任务（48h）；autoApproveHours=0 不登记自动同意任务
+        const remind = await taskRepo.findOne({
+            where: { requestId: toEntityId(id11), type: AfterSalesTimeoutType.PENDING_REMIND },
+        });
+        expect(remind).toBeDefined();
+        expect(remind!.expectedState).toBe('Pending');
+        const spanH = (remind!.dueAt.getTime() - Date.now()) / 3600000;
+        expect(spanH).toBeGreaterThan(47);
+        expect(spanH).toBeLessThan(49);
+        const auto = await taskRepo.findOne({
+            where: { requestId: toEntityId(id11), type: AfterSalesTimeoutType.PENDING_AUTO_APPROVE },
+        });
+        expect(auto).toBeNull();
+
+        // dueAt 改为过去 → 补偿扫描触发 → 店主收超时提醒
+        await taskRepo.update({ id: remind!.id as any }, { dueAt: new Date(Date.now() - 1000) });
+        await job.runCompensation();
+        const owner = new SimpleGraphQLClient(config, adminApiUrl);
+        await owner.asUserWithCredentials(ownerEmail, 'test');
+        await waitFor(async () => {
+            const inbox = await owner.query(gql`query { adminInbox { items { title } } }`);
+            return inbox.adminInbox.items.some((m: any) => m.title === '售后处理超时提醒');
+        });
+
+        // autoApproveHours=0：状态不被自动同意
+        const after = await shopClient.query(gql`query { afterSalesRequest(id: "${id11}") { id state } }`);
+        expect(after.afterSalesRequest.state).toBe('Pending');
+    }, TEST_SETUP_TIMEOUT_MS);
+
+    it('超时自动化：afterSalesAutoApproveHours=1 到期自动同意 + 顾客收通知', async () => {
+        // 调低渠道阈值：提醒 1h、自动同意 1h
+        await adminClient.query(gql`
+            mutation { updateChannel(input: { id: "T_1", customFields: {
+                afterSalesTimeoutHours: 1, afterSalesAutoApproveHours: 1
+            } }) { ... on Channel { id } } }
+        `);
+        await shipNewOrder();
+        const created = await shopClient.query(gql`
+            mutation { createAfterSalesRequest(input: {
+                orderId: "${orderId}" orderLineId: "${orderLineId}" type: return_refund reason: "t3-auto-approve" refundAmount: 100
+            }) { id state } }
+        `);
+        const id12 = created.createAfterSalesRequest.id;
+
+        const job = server.app.get(AfterSalesTimeoutJob);
+        const conn = server.app.get(TransactionalConnection);
+        const taskRepo = conn.rawConnection.getRepository(AfterSalesTimeoutTask);
+        // 两个任务都已登记（提醒 + 自动同意）
+        const remind = await taskRepo.findOne({
+            where: { requestId: toEntityId(id12), type: AfterSalesTimeoutType.PENDING_REMIND },
+        });
+        const auto = await taskRepo.findOne({
+            where: { requestId: toEntityId(id12), type: AfterSalesTimeoutType.PENDING_AUTO_APPROVE },
+        });
+        expect(remind).toBeDefined();
+        expect(auto).toBeDefined();
+        await taskRepo.update({ id: remind!.id as any }, { dueAt: new Date(Date.now() - 1000) });
+        await taskRepo.update({ id: auto!.id as any }, { dueAt: new Date(Date.now() - 1000) });
+        await job.runCompensation();
+
+        // 自动同意 → Approved（经 commitState → 顾客收「售后审核通过」）
+        await waitFor(async () => {
+            const r = await shopClient.query(gql`query { afterSalesRequest(id: "${id12}") { id state } }`);
+            return r.afterSalesRequest.state === 'Approved';
+        });
+        await waitFor(async () => {
+            const mine = await shopClient.query(gql`query { myInbox { items { title } } }`);
+            return mine.myInbox.items.some((m: any) => m.title === '售后审核通过');
+        });
+        // 恢复默认阈值，避免污染后续用例
+        await adminClient.query(gql`
+            mutation { updateChannel(input: { id: "T_1", customFields: {
+                afterSalesTimeoutHours: 48, afterSalesAutoApproveHours: 0
+            } }) { ... on Channel { id } } }
+        `);
+    }, TEST_SETUP_TIMEOUT_MS);
+
+    it('退款自动重试耗尽 → 商家提醒；autoRetry=0 不登记任务', async () => {
+        // 创建「始终退款失败」支付方式（构造重试耗尽场景；旧处理器仅首退失败、重试即成功，无法覆盖耗尽）
+        await adminClient.query(gql`
+            mutation { createPaymentMethod(input: {
+                code: "${alwaysFailingRefundHandler.code}"
+                enabled: true
+                translations: [{ languageCode: zh_Hans, name: "${alwaysFailingRefundHandler.code}" }]
+                handler: { code: "${alwaysFailingRefundHandler.code}" arguments: [] }
+            }) { id code } }
+        `);
+        await adminClient.query(gql`
+            mutation { updateChannel(input: { id: "T_1", customFields: { afterSalesRefundAutoRetry: 1 } }) { ... on Channel { id } } }
+        `);
+        await shipNewOrder(1, alwaysFailingRefundHandler.code);
+        const created = await shopClient.query(gql`
+            mutation { createAfterSalesRequest(input: {
+                orderId: "${orderId}" orderLineId: "${orderLineId}" type: return_refund reason: "t3-retry" refundAmount: 100
+            }) { id state } }
+        `);
+        const id13 = created.createAfterSalesRequest.id;
+        await adminClient.query(gql`mutation { approveAfterSalesRequest(id: "${id13}") { id state } }`);
+        await shopClient.query(gql`mutation { updateReturnTracking(id: "${id13}", trackingNo: "RT13", carrier: "顺丰") { id state } }`);
+        await adminClient.query(gql`mutation { confirmReturnReceived(id: "${id13}") { id state } }`);
+        const failed = await adminClient.query(gql`mutation { processAfterSalesRefund(id: "${id13}") { id state } }`);
+        expect(failed.processAfterSalesRefund.state).toBe('RefundFailed');
+
+        const job = server.app.get(AfterSalesTimeoutJob);
+        const conn = server.app.get(TransactionalConnection);
+        const taskRepo = conn.rawConnection.getRepository(AfterSalesTimeoutTask);
+        // RefundFailed（首入）→ 登记重试任务（30min 后）
+        await waitFor(async () => {
+            const t = await taskRepo.findOne({ where: { requestId: toEntityId(id13), type: AfterSalesTimeoutType.REFUND_RETRY } });
+            return !!t;
+        });
+        const retry = await taskRepo.findOne({ where: { requestId: toEntityId(id13), type: AfterSalesTimeoutType.REFUND_RETRY } });
+        expect(retry!.expectedState).toBe('RefundFailed');
+        expect(retry!.maxAttempt).toBe(1);
+        await taskRepo.update({ id: retry!.id as any }, { dueAt: new Date(Date.now() - 1000) });
+        await job.runCompensation();
+
+        // 重试一次仍失败（首退失败处理器）→ attempt=1 达上限 → EXECUTED + 商家「退款自动重试耗尽」
+        await waitFor(async () => {
+            const t = await taskRepo.findOne({ where: { id: retry!.id as any } });
+            return t!.status === 'executed';
+        });
+        const done = await taskRepo.findOne({ where: { id: retry!.id as any } });
+        expect(done!.attempt).toBe(1);
+        const owner = new SimpleGraphQLClient(config, adminApiUrl);
+        await owner.asUserWithCredentials(ownerEmail, 'test');
+        await waitFor(async () => {
+            const inbox = await owner.query(gql`query { adminInbox { items { title } } }`);
+            return inbox.adminInbox.items.some((m: any) => m.title === '退款自动重试耗尽');
+        });
+
+        // 关闭重试（0=关闭）→ 新 RefundFailed 单不再登记任务
+        await adminClient.query(gql`
+            mutation { updateChannel(input: { id: "T_1", customFields: { afterSalesRefundAutoRetry: 0 } }) { ... on Channel { id } } }
+        `);
+        await shipNewOrder(1, alwaysFailingRefundHandler.code);
+        const created2 = await shopClient.query(gql`
+            mutation { createAfterSalesRequest(input: {
+                orderId: "${orderId}" orderLineId: "${orderLineId}" type: return_refund reason: "t3-retry-off" refundAmount: 100
+            }) { id state } }
+        `);
+        const id13b = created2.createAfterSalesRequest.id;
+        await adminClient.query(gql`mutation { approveAfterSalesRequest(id: "${id13b}") { id state } }`);
+        await shopClient.query(gql`mutation { updateReturnTracking(id: "${id13b}", trackingNo: "RT14", carrier: "顺丰") { id state } }`);
+        await adminClient.query(gql`mutation { confirmReturnReceived(id: "${id13b}") { id state } }`);
+        const failed2 = await adminClient.query(gql`mutation { processAfterSalesRefund(id: "${id13b}") { id state } }`);
+        expect(failed2.processAfterSalesRefund.state).toBe('RefundFailed');
+        await new Promise((r) => setTimeout(r, 500));
+        const none = await taskRepo.findOne({ where: { requestId: toEntityId(id13b), type: AfterSalesTimeoutType.REFUND_RETRY } });
+        expect(none).toBeNull();
+        // 恢复默认阈值
+        await adminClient.query(gql`
+            mutation { updateChannel(input: { id: "T_1", customFields: { afterSalesRefundAutoRetry: 1 } }) { ... on Channel { id } } }
+        `);
     }, TEST_SETUP_TIMEOUT_MS);
 });

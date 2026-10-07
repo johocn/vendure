@@ -1,6 +1,6 @@
 import { Inject, OnApplicationBootstrap, Type } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import { Injector, LanguageCode, Logger, PluginCommonModule, VendurePlugin } from '@vendure/core';
+import { EventBus, Injector, LanguageCode, Logger, PluginCommonModule, ScheduledTask, VendurePlugin } from '@vendure/core';
 
 import { AFTER_SALES_PLUGIN_OPTIONS, loggerCtx } from './constants';
 import { AfterSalesPluginOptions } from './types';
@@ -11,15 +11,32 @@ import { AfterSalesService } from './after-sales.service';
 import { AfterSalesShopResolver } from './after-sales-shop.resolver';
 import { AfterSalesAdminResolver } from './after-sales-admin.resolver';
 import { afterSalesOrderCustomFields } from './order-custom-fields';
+import { AfterSalesStateTransitionEvent } from './after-sales.events';
+import { resolveAfterSalesThresholds } from './after-sales-config';
+import { AfterSalesTimeoutJob } from './after-sales-timeout.job';
+import { AfterSalesTimeoutTask, AfterSalesTimeoutType } from './after-sales-timeout.entity';
 
 const { gql } = require('graphql-tag');
 
+const COMPENSATION_TASK_ID = 'after-sales-timeout-compensation';
+
+const compensationTask = new ScheduledTask({
+    id: COMPENSATION_TASK_ID,
+    description: 'Scan overdue AfterSalesTimeoutTask records and re-enqueue them',
+    schedule: cron => cron.every(5).minutes(),
+    async execute({ injector }) {
+        const job = injector.get(AfterSalesTimeoutJob);
+        await job.runCompensation();
+    },
+});
+
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [AfterSalesRequest, AfterSalesStateHistory, AfterSalesMessage],
+    entities: [AfterSalesRequest, AfterSalesStateHistory, AfterSalesMessage, AfterSalesTimeoutTask],
     providers: [
         { provide: AFTER_SALES_PLUGIN_OPTIONS, useFactory: () => AfterSalesPlugin.options },
         AfterSalesService,
+        AfterSalesTimeoutJob,
     ],
     exports: [AfterSalesService],
     shopApiExtensions: {
@@ -243,8 +260,30 @@ const { gql } = require('graphql-tag');
                     nullable: true,
                     label: [{ languageCode: LanguageCode.zh_Hans, value: '售后寄回地址' }],
                 },
+                {
+                    name: 'afterSalesTimeoutHours',
+                    type: 'int',
+                    defaultValue: 48,
+                    label: [{ languageCode: LanguageCode.zh_Hans, value: '售后待处理超时提醒（小时）' }],
+                },
+                {
+                    name: 'afterSalesAutoApproveHours',
+                    type: 'int',
+                    defaultValue: 0,
+                    label: [{ languageCode: LanguageCode.zh_Hans, value: '售后超时自动同意（小时，0=关闭）' }],
+                },
+                {
+                    name: 'afterSalesRefundAutoRetry',
+                    type: 'int',
+                    defaultValue: 1,
+                    label: [{ languageCode: LanguageCode.zh_Hans, value: '退款失败自动重试次数（0=关闭）' }],
+                },
             ],
         };
+        const exists = config.schedulerOptions.tasks.some(t => t.id === COMPENSATION_TASK_ID);
+        if (!exists) {
+            config.schedulerOptions.tasks.push(compensationTask);
+        }
         return config;
     },
     compatibility: '^3.0.0',
@@ -256,6 +295,8 @@ export class AfterSalesPlugin implements OnApplicationBootstrap {
     constructor(
         @Inject(AFTER_SALES_PLUGIN_OPTIONS) private options: AfterSalesPluginOptions,
         private afterSalesService: AfterSalesService,
+        private afterSalesTimeoutJob: AfterSalesTimeoutJob,
+        private eventBus: EventBus,
         private moduleRef: ModuleRef,
     ) {}
 
@@ -267,6 +308,61 @@ export class AfterSalesPlugin implements OnApplicationBootstrap {
     async onApplicationBootstrap(): Promise<void> {
         this.injector = new Injector(this.moduleRef);
         this.afterSalesService.init(this.injector);
+        await this.afterSalesTimeoutJob.init();
+
+        // 状态流转 → 登记超时任务（Pending 提醒 / Pending 自动同意 / RefundFailed 重试）
+        this.eventBus.ofType(AfterSalesStateTransitionEvent).subscribe((e) => {
+            void this.onAfterSalesStateTransition(e);
+        });
+
         Logger.info('AfterSalesPlugin initialized', loggerCtx);
+    }
+
+    private async onAfterSalesStateTransition(e: AfterSalesStateTransitionEvent): Promise<void> {
+        try {
+            const thresholds = await resolveAfterSalesThresholds(
+                this.injector,
+                e.ctx,
+                e.ctx.channelId,
+                AfterSalesPlugin.options,
+            );
+            if (e.toState === 'Pending' && e.fromState === null) {
+                await this.afterSalesTimeoutJob.scheduleTimeout(
+                    AfterSalesTimeoutType.PENDING_REMIND,
+                    e.requestId,
+                    Number(e.ctx.channelId),
+                    thresholds.timeoutHours * 60 * 60 * 1000,
+                    'Pending',
+                );
+                if (thresholds.autoApproveHours > 0) {
+                    await this.afterSalesTimeoutJob.scheduleTimeout(
+                        AfterSalesTimeoutType.PENDING_AUTO_APPROVE,
+                        e.requestId,
+                        Number(e.ctx.channelId),
+                        thresholds.autoApproveHours * 60 * 60 * 1000,
+                        'Pending',
+                    );
+                }
+            } else if (
+                e.toState === 'RefundFailed' &&
+                // 重试再失败会经 commitState 再发布 RefundFailed→RefundFailed，必须去重，防无限登记重试
+                e.fromState !== 'RefundFailed' &&
+                thresholds.refundAutoRetry > 0
+            ) {
+                await this.afterSalesTimeoutJob.scheduleTimeout(
+                    AfterSalesTimeoutType.REFUND_RETRY,
+                    e.requestId,
+                    Number(e.ctx.channelId),
+                    30 * 60 * 1000,
+                    'RefundFailed',
+                    thresholds.refundAutoRetry,
+                );
+            }
+        } catch (err: any) {
+            Logger.error(
+                `Schedule after-sales timeout failed for request #${e.requestId}: ${err?.message ?? err}`,
+                loggerCtx,
+            );
+        }
     }
 }

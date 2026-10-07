@@ -10,7 +10,7 @@ import {
     VendurePlugin,
 } from '@vendure/core';
 
-import { AfterSalesStateTransitionEvent } from '@vendure/after-sales-plugin';
+import { AfterSalesMerchantNotifyEvent, AfterSalesStateTransitionEvent } from '@vendure/after-sales-plugin';
 import { NOTIFICATION_PLUGIN_OPTIONS } from './constants';
 import { InboxMessage } from './inbox-message.entity';
 import { NotificationAdminResolver } from './notification-admin.resolver';
@@ -120,6 +120,11 @@ export class NotificationPlugin implements OnApplicationBootstrap {
                 toState: event.toState,
                 customerId: event.customerId,
             });
+        });
+
+        // 售后超时自动化等内部触发的商家提醒（after-sales-plugin 经事件解耦发布）
+        this.eventBus.ofType(AfterSalesMerchantNotifyEvent).subscribe((event) => {
+            void this.notificationService.notifyAfterSalesMerchant(event.ctx, event.requestId, event.title, event.content);
         });
     }
 }

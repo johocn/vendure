@@ -19,3 +19,18 @@ export class AfterSalesStateTransitionEvent extends VendureEvent {
         super();
     }
 }
+
+/**
+ * 商家侧售后提醒事件（超时自动化等内部触发场景发布，notification-plugin 订阅落站内信）。
+ * 经 EventBus 解耦：本插件可独立使用（未装 notification-plugin 时事件无人订阅，仅无提醒）。
+ */
+export class AfterSalesMerchantNotifyEvent extends VendureEvent {
+    constructor(
+        public readonly ctx: RequestContext,
+        public readonly requestId: number,
+        public readonly title: string,
+        public readonly content: string,
+    ) {
+        super();
+    }
+}
