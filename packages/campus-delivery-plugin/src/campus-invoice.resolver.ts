@@ -1,5 +1,5 @@
 import { Args, Mutation, Resolver } from '@nestjs/graphql';
-import { Ctx, Order, RequestContext, UserInputError } from '@vendure/core';
+import { Ctx, Order, OrderService, RequestContext, UserInputError } from '@vendure/core';
 import { DataSource } from 'typeorm';
 
 const INVOICE_ELIGIBLE_STATES = ['PaymentAuthorized', 'PaymentSettled', 'Shipped', 'Delivered'];
@@ -9,10 +9,12 @@ const INVOICE_ELIGIBLE_STATES = ['PaymentAuthorized', 'PaymentSettled', 'Shipped
  * 对已支付的历史订单写 invoiceApplied/invoiceInfo customFields（Vendure updateOrderCustomFields
  * 只作用于 activeOrder，历史单不可用，故加本 mutation）。幂等：invoiceApplied=true 再调报错。
  * 商家线下人工开票，B 端本期不动。
+ * 写路径用 OrderService.updateCustomFields（同 after-sales-plugin 惯例）：裸 repo save 会因
+ * Order.discounts getter 缺 lines 关联报 500。
  */
 @Resolver()
 export class InvoiceShopResolver {
-    constructor(private dataSource: DataSource) {}
+    constructor(private dataSource: DataSource, private orderService: OrderService) {}
 
     @Mutation()
     async applyOrderInvoice(
@@ -42,8 +44,7 @@ export class InvoiceShopResolver {
         if (!INVOICE_ELIGIBLE_STATES.includes(order.state)) {
             throw new UserInputError('ORDER_NOT_PAID');
         }
-        order.customFields = { ...cf, invoiceApplied: true, invoiceInfo } as any;
-        await this.dataSource.getRepository(Order).save(order);
+        await this.orderService.updateCustomFields(ctx, orderId, { invoiceApplied: true, invoiceInfo });
         return true;
     }
 }

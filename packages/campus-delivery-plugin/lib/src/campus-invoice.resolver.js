@@ -22,10 +22,13 @@ const INVOICE_ELIGIBLE_STATES = ['PaymentAuthorized', 'PaymentSettled', 'Shipped
  * 对已支付的历史订单写 invoiceApplied/invoiceInfo customFields（Vendure updateOrderCustomFields
  * 只作用于 activeOrder，历史单不可用，故加本 mutation）。幂等：invoiceApplied=true 再调报错。
  * 商家线下人工开票，B 端本期不动。
+ * 写路径用 OrderService.updateCustomFields（同 after-sales-plugin 惯例）：裸 repo save 会因
+ * Order.discounts getter 缺 lines 关联报 500。
  */
 let InvoiceShopResolver = class InvoiceShopResolver {
-    constructor(dataSource) {
+    constructor(dataSource, orderService) {
         this.dataSource = dataSource;
+        this.orderService = orderService;
     }
     async applyOrderInvoice(ctx, orderId, invoiceInfo) {
         var _a, _b;
@@ -51,8 +54,7 @@ let InvoiceShopResolver = class InvoiceShopResolver {
         if (!INVOICE_ELIGIBLE_STATES.includes(order.state)) {
             throw new core_1.UserInputError('ORDER_NOT_PAID');
         }
-        order.customFields = Object.assign(Object.assign({}, cf), { invoiceApplied: true, invoiceInfo });
-        await this.dataSource.getRepository(core_1.Order).save(order);
+        await this.orderService.updateCustomFields(ctx, orderId, { invoiceApplied: true, invoiceInfo });
         return true;
     }
 };
@@ -68,6 +70,6 @@ __decorate([
 ], InvoiceShopResolver.prototype, "applyOrderInvoice", null);
 exports.InvoiceShopResolver = InvoiceShopResolver = __decorate([
     (0, graphql_1.Resolver)(),
-    __metadata("design:paramtypes", [typeorm_1.DataSource])
+    __metadata("design:paramtypes", [typeorm_1.DataSource, core_1.OrderService])
 ], InvoiceShopResolver);
 //# sourceMappingURL=campus-invoice.resolver.js.map
