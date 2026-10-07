@@ -33,6 +33,8 @@ import { HallShopResolver } from './hall-shop.resolver';
 import { InvoiceShopResolver } from './campus-invoice.resolver';
 import { CreateCampusTablesMigration } from './migrations/create-campus-tables';
 import { bindMinOrderConnection, campusMinOrderProcess } from './min-order.process';
+import { PaymentTimeoutAdminResolver } from './payment-timeout-admin.resolver';
+import { PaymentTimeoutAdminService } from './payment-timeout-admin.service';
 import { PaymentTimeoutJob } from './payment-timeout.job';
 import { PaymentTimeoutTask } from './payment-timeout.entity';
 import { campusPermissionDefinitions } from './permissions';
@@ -94,6 +96,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
         MerchantAdminService,
         CampusNotifyService,
         PaymentTimeoutJob,
+        PaymentTimeoutAdminService,
     ],
     adminApiExtensions: {
         schema: () => {
@@ -357,9 +360,55 @@ const paymentTimeoutCompensation = new ScheduledTask({
                 type CampusMerchantOpResult {
                     ok: Boolean!
                 }
+
+                type PaymentTimeoutTask {
+                    id: ID!
+                    orderId: ID!
+                    type: String!
+                    status: String!
+                    dueAt: DateTime!
+                    retryCount: Int!
+                    lastError: String
+                }
+
+                type PaymentTimeoutTaskRow {
+                    id: ID!
+                    orderId: ID!
+                    channelId: ID!
+                    orderCode: String
+                    orderState: String
+                    type: String!
+                    status: String!
+                    dueAt: DateTime!
+                    retryCount: Int!
+                    lastError: String
+                }
+
+                type PaymentTimeoutTaskList {
+                    items: [PaymentTimeoutTaskRow!]!
+                    total: Int!
+                }
+
+                type PaymentTimeoutStats {
+                    todayRemind: Int!
+                    todayCancel: Int!
+                    totalFailed: Int!
+                    pendingOverdue: Int!
+                }
+
+                extend type Query {
+                    paymentTimeoutTasks(status: String, type: String, from: DateTime, to: DateTime, skip: Int, take: Int): PaymentTimeoutTaskList!
+                    paymentTimeoutStats: PaymentTimeoutStats!
+                }
+
+                extend type Mutation {
+                    executePaymentTimeoutTask(id: ID!): PaymentTimeoutTask!
+                    resendPaymentTimeoutRemind(taskId: ID!): Boolean!
+                    runPaymentTimeoutCompensation: Int!
+                }
             `;
         },
-        resolvers: [CampusConfigAdminResolver, RiderAdminResolver, DispatchAdminResolver, MerchantAdminResolver],
+        resolvers: [CampusConfigAdminResolver, RiderAdminResolver, DispatchAdminResolver, MerchantAdminResolver, PaymentTimeoutAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {
