@@ -10,11 +10,17 @@ describe('CampusNotifyService', () => {
         SSO_NOTIFY_APP_SECRET: 'sec-xyz',
     };
 
+    const ORDER = {
+        code: 'ORD1',
+        totalWithTax: 1900,
+        lines: [{ productVariant: { name: '拿铁' } }, { productVariant: { name: '三明治' } }],
+    };
+
     function makeSvc(opts: { templateCode?: string | null; ssoId?: string | null }) {
         const findOne = vi.fn().mockResolvedValue(
             opts.ssoId === null
-                ? { code: 'ORD1', customer: { customFields: { wechatOpenid: 'o-123' } } }
-                : { code: 'ORD1', customer: { customFields: { ssoId: opts.ssoId ?? '3' } } },
+                ? { ...ORDER, customer: { customFields: { wechatOpenid: 'o-123' } } }
+                : { ...ORDER, customer: { customFields: { ssoId: opts.ssoId ?? '3' } } },
         );
         const fetchMock = vi.fn().mockResolvedValue({
             ok: true,
@@ -69,7 +75,7 @@ describe('CampusNotifyService', () => {
         await vi.waitFor(() => expect(fetchMock).not.toHaveBeenCalled());
     });
 
-    it('配置 + ssoId → POST template-send（鉴权/目标/模板/params/dedupe_key）', async () => {
+    it('履约节点（amount 型模板）→ params 含 itemName/amount/payMethod', async () => {
         const { svc, fetchMock } = makeSvc({ templateCode: 'waimai_order_created', ssoId: '3' });
         svc.user(makeCtx(), 1, 'cookingDone');
         await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
@@ -81,9 +87,12 @@ describe('CampusNotifyService', () => {
         expect(body.app_secret).toBe('sec-xyz');
         expect(body.sso_user_id).toBe(3);
         expect(body.template_code).toBe('waimai_order_created');
-        expect(body.params.orderCode).toBe('ORD1');
-        expect(body.params.status).toBe('出餐完成，等待取货');
-        expect(body.params.time).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+        expect(body.params).toEqual({
+            orderCode: 'ORD1',
+            itemName: '拿铁 等2件',
+            amount: '19.00',
+            payMethod: '在线支付',
+        });
         expect(body.dedupe_key).toBe('campus:cookingDone:1');
     });
 
@@ -95,12 +104,29 @@ describe('CampusNotifyService', () => {
         await new Promise(r => setTimeout(r, 10));
     });
 
-    it('exceptionHandled：动态文案覆盖 status（处置结果）', async () => {
+    it('exceptionHandled：text 动态文案 → afterSaleType 截 5 字符（phrase 占位符）', async () => {
         const { svc, fetchMock } = makeSvc({ templateCode: 'waimai_after_sales' });
         svc.user(makeCtx(), 2, 'exceptionHandled', '订单已全额退款');
         await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
         const body = JSON.parse(fetchMock.mock.calls[0][1].body);
-        expect(body.params.status).toBe('订单已全额退款');
+        expect(body.params).toEqual({
+            orderCode: 'ORD1',
+            itemName: '拿铁 等2件',
+            afterSaleType: '订单已全额',
+        });
+    });
+
+    it('orderCancelled → refundAmount 型 params', async () => {
+        const { svc, fetchMock } = makeSvc({ templateCode: 'waimai_order_cancelled' });
+        svc.user(makeCtx(), 3, 'orderCancelled');
+        await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        expect(body.params).toEqual({
+            orderCode: 'ORD1',
+            itemName: '拿铁 等2件',
+            refundAmount: '19.00',
+        });
+        expect(body.dedupe_key).toBe('campus:orderCancelled:3');
     });
 
     it('配置 h5BaseUrl → link 指向 H5 订单详情（跳转落地页）', async () => {

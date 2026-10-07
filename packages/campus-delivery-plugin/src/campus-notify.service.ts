@@ -20,17 +20,10 @@ const TEMPLATE_FIELD: Record<CampusNotifyEvent, string> = {
     afterSales: 'notifyTemplateAfterSales',
 };
 
-/** 状态文案（公众号模板 thing 字段 ≤20 字符） */
-const STATUS_TEXT: Record<CampusNotifyEvent, string> = {
-    orderAccepted: '商家已接单，备餐中',
-    riderAssigned: '骑手已接单，待取货',
-    cookingDone: '出餐完成，等待取货',
-    orderDelivered: '订单已送达',
+/** 售后类型短语（微信 phrase 占位符 ≤5 字符） */
+const AFTER_SALE_TYPE: Partial<Record<CampusNotifyEvent, string>> = {
     exceptionHandled: '异常已处理',
-    orderPlaced: '订单支付成功，商家接单中',
-    paymentPending: '订单待支付，请尽快完成',
-    orderCancelled: '订单已取消',
-    afterSales: '售后进度更新',
+    afterSales: '进度更新',
 };
 
 /**
@@ -39,7 +32,7 @@ const STATUS_TEXT: Record<CampusNotifyEvent, string> = {
  * （app_code+app_secret bcrypt 鉴权）→ SSO msg-job 落库 → 按绑定表解析 openid → 微信模板消息。
  * 环境变量：SSO_NOTIFY_BASE_URL（如 https://h.joho.cn/api/zhao-sso）、SSO_NOTIFY_APP_CODE、SSO_NOTIFY_APP_SECRET。
  * 设计约束：fire-and-forget——模板未配置/用户无 ssoId/SSO 未配置/发送失败一律只记日志，绝不阻塞、绝不抛出到业务主流程。
- * 微信模板字段映射（character_string1/thing1/time2）由 SSO msg-template 的 wxTemplateFields 配置。
+ * 微信模板占位符映射由 SSO msg-template 的 wxTemplateFields 配置（name=微信占位符，key=本服务 params 键）。
  */
 @Injectable()
 export class CampusNotifyService {
@@ -67,7 +60,7 @@ export class CampusNotifyService {
                 }
                 const order = await this.connection.getRepository(ctx, Order).findOne({
                     where: { id: orderId as any },
-                    relations: ['customer'],
+                    relations: ['customer', 'lines', 'lines.productVariant'],
                 });
                 const ssoId = (order?.customer?.customFields as any)?.ssoId as string | number | undefined;
                 if (!order || !ssoId) {
@@ -77,6 +70,21 @@ export class CampusNotifyService {
                     );
                     return;
                 }
+                // 微信模板字段必填：按事件分型组装 params（与 sso_msg_templates.wx_template_fields 的 key 对应）
+                const lines = order.lines ?? [];
+                const firstName = lines[0]?.productVariant?.name ?? '商品';
+                const itemName = (lines.length > 1 ? `${firstName} 等${lines.length}件` : firstName).slice(0, 20);
+                const amount = ((order.totalWithTax ?? 0) / 100).toFixed(2);
+                const params =
+                    event === 'orderCancelled'
+                        ? { orderCode: order.code, itemName, refundAmount: amount }
+                        : event === 'afterSales' || event === 'exceptionHandled'
+                          ? {
+                                orderCode: order.code,
+                                itemName,
+                                afterSaleType: (text ?? AFTER_SALE_TYPE[event] ?? '进度更新').slice(0, 5),
+                            }
+                          : { orderCode: order.code, itemName, amount, payMethod: '在线支付' };
                 const link = h5BaseUrl
                     ? `${h5BaseUrl.replace(/\/$/, '')}/#/pkg-order/pages/order-detail?code=${order.code}`
                     : undefined;
@@ -88,11 +96,7 @@ export class CampusNotifyService {
                         app_secret: appSecret,
                         sso_user_id: Number(ssoId),
                         template_code: templateCode,
-                        params: {
-                            orderCode: order.code,
-                            status: (text ?? STATUS_TEXT[event]).slice(0, 20),
-                            time: CampusNotifyService.formatTime(new Date()),
-                        },
+                        params,
                         link,
                         scene: `campus:${event}`,
                         dedupe_key: `campus:${event}:${orderId}`,
@@ -115,8 +119,4 @@ export class CampusNotifyService {
         })();
     }
 
-    static formatTime(d: Date): string {
-        const pad = (n: number) => String(n).padStart(2, '0');
-        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    }
 }
