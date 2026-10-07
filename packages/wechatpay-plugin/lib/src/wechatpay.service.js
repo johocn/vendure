@@ -123,7 +123,7 @@ let WechatpayService = class WechatpayService {
     /** devBypass 下返回模拟支付页；否则调真实微信 API 生成支付参数。
      *  ctx 决定用哪个租户的商户凭证与回调地址（CS-/RC- 等代付单须传自身 ctx）。 */
     async createBarePayment(input, ctx) {
-        var _a, _b, _c, _d, _e;
+        var _a, _b, _c, _d, _e, _f;
         if ((_a = this.options) === null || _a === void 0 ? void 0 : _a.devBypass) {
             return {
                 payType: 'dev-h5',
@@ -156,6 +156,10 @@ let WechatpayService = class WechatpayService {
         // JSAPI
         const r = (await pay.transactions_jsapi(Object.assign(Object.assign({}, baseParams), { payer: { openid: input.openid || '' } })));
         const prepayId = (_e = r === null || r === void 0 ? void 0 : r.data) === null || _e === void 0 ? void 0 : _e.prepay_id;
+        // 同 handler：微信失败响应不 reject，缺 prepay_id 时显式报错（勿产出 prepay_id=undefined 假参数）
+        if (!prepayId) {
+            throw new Error(`微信 JSAPI 下单失败(status=${r === null || r === void 0 ? void 0 : r.status}): ` + JSON.stringify((_f = r === null || r === void 0 ? void 0 : r.data) !== null && _f !== void 0 ? _f : r).slice(0, 300));
+        }
         const timeStamp = String(Math.floor(Date.now() / 1000));
         const nonceStr = Math.random().toString(36).substring(2, 34);
         const pkg = `prepay_id=${prepayId}`;

@@ -60,6 +60,14 @@ describe('createWechatpayHandler openid preferMini 语义（F-VS-08 修正）', 
         await handler.createPayment!(ctx, order, 1000, args, { openid: 'front-openid' }, {} as any);
         expect(resolveCustomerOpenid).not.toHaveBeenCalled();
     });
+
+    it('微信下单失败（无 prepay_id）→ Declined（D 修复：不产出 prepay_id=undefined 假参数）', async () => {
+        jsapiMock.mockResolvedValueOnce({ status: 400, data: { code: 'PARAM_ERROR', message: 'openid和appid不匹配' } });
+        const handler = createWechatpayHandler({} as any, 'wechatpay-yourbao-h5');
+        const r: any = await handler.createPayment!(ctx, order, 1000, args, {}, {} as any);
+        expect(r.state).toBe('Declined');
+        expect(String(r.errorMessage)).toContain('微信 JSAPI 下单失败');
+    });
 });
 
 describe('WechatpayService.resolveCustomerOpenid 取舍', () => {

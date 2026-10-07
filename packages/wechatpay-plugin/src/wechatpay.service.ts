@@ -195,6 +195,12 @@ export class WechatpayService {
             payer: { openid: input.openid || '' },
         })) as any;
         const prepayId = r?.data?.prepay_id;
+        // 同 handler：微信失败响应不 reject，缺 prepay_id 时显式报错（勿产出 prepay_id=undefined 假参数）
+        if (!prepayId) {
+            throw new Error(
+                `微信 JSAPI 下单失败(status=${r?.status}): ` + JSON.stringify(r?.data ?? r).slice(0, 300),
+            );
+        }
         const timeStamp = String(Math.floor(Date.now() / 1000));
         const nonceStr = Math.random().toString(36).substring(2, 34);
         const pkg = `prepay_id=${prepayId}`;

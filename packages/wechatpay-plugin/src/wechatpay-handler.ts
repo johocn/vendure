@@ -177,6 +177,14 @@ export function createWechatpayHandler(options: WechatpayPluginOptions, code = '
                     payer: { openid: openid || '' },
                 });
                 const prepayId = (result as any).data?.prepay_id;
+                // 微信失败响应（openid 缺失/不匹配等）不 reject，仅返回 {status,data:{code,message}}；
+                // 不校验会产出 prepay_id=undefined 的假签名参数 + 订单假 Authorized（P2 实锤）
+                if (!prepayId) {
+                    throw new Error(
+                        `微信 JSAPI 下单失败(status=${(result as any).status}): ` +
+                        JSON.stringify((result as any).data ?? result).slice(0, 300),
+                    );
+                }
                 const jsapiAppId = override?.appId || args.appId;
                 const jsapiTimeStamp = String(Math.floor(Date.now() / 1000));
                 const jsapiNonceStr = Math.random().toString(36).substring(2, 34);

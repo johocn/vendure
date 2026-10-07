@@ -66,7 +66,7 @@ function createWechatpayHandler(options, code = 'wechatpay') {
             },
         },
         async createPayment(ctx, order, amount, args, metadata, method) {
-            var _a, _b, _c, _d, _e;
+            var _a, _b, _c, _d, _e, _f;
             try {
                 // Dev Bypass: 跳过真实微信 API 调用，返回模拟支付页面链接
                 // 注意：Shop API 的 Payment.metadata 字段 resolver 只返回 metadata.public
@@ -167,6 +167,12 @@ function createWechatpayHandler(options, code = 'wechatpay') {
                 // JSAPI: 生成完整签名参数供前端 wx.requestPayment 直接调用
                 const result = await pay.transactions_jsapi(Object.assign(Object.assign({}, baseParams), { payer: { openid: openid || '' } }));
                 const prepayId = (_e = result.data) === null || _e === void 0 ? void 0 : _e.prepay_id;
+                // 微信失败响应（openid 缺失/不匹配等）不 reject，仅返回 {status,data:{code,message}}；
+                // 不校验会产出 prepay_id=undefined 的假签名参数 + 订单假 Authorized（P2 实锤）
+                if (!prepayId) {
+                    throw new Error(`微信 JSAPI 下单失败(status=${result.status}): ` +
+                        JSON.stringify((_f = result.data) !== null && _f !== void 0 ? _f : result).slice(0, 300));
+                }
                 const jsapiAppId = (override === null || override === void 0 ? void 0 : override.appId) || args.appId;
                 const jsapiTimeStamp = String(Math.floor(Date.now() / 1000));
                 const jsapiNonceStr = Math.random().toString(36).substring(2, 34);
