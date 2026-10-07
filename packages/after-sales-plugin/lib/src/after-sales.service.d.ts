@@ -67,7 +67,14 @@ export declare class AfterSalesService {
     /** 状态流转历史落库：失败仅告警，绝不阻断主流程 */
     private recordState;
     approveRequest(ctx: RequestContext, id: ID): Promise<AfterSalesRequest>;
+    /** refund_only 退款链：Approved → Received（免退货直达）→ executeRefund。
+     *  退款失败由 executeRefund 内部落 RefundFailed 可重试，不回滚已到达的 Received。 */
+    private refundOnlyChain;
     rejectRequest(ctx: RequestContext, id: ID, reason: string): Promise<AfterSalesRequest>;
+    /** C 端申诉：Rejected → Appealed（仅本人售后单）；申诉说明落入协商留言流（customer），商家/平台可见 */
+    appealRequest(ctx: RequestContext, id: ID, note: string): Promise<AfterSalesRequest>;
+    /** 平台仲裁：Appealed → Approved（同意；refund_only 链式退款）| Closed（维持拒绝，note 必填写入 rejectReason） */
+    arbitrateRequest(ctx: RequestContext, id: ID, approve: boolean, note?: string): Promise<AfterSalesRequest>;
     /**
      * Returning → Received（收到退货）：
      * 在状态流转前先做库存回补——把收到的退货回补到原发货仓（orderLine.stockLocationId），

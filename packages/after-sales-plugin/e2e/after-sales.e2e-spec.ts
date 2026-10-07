@@ -542,17 +542,17 @@ describe('AfterSalesPlugin · 售后退款/回补入账本闭环', () => {
 
         const c = await shopClient.query(gql`
             mutation {
-                createAfterSalesRequest(input: { orderId: "${batchOrderId}", type: refund_only, reason: "batch-0", refundAmount: 1 }) { id state }
+                createAfterSalesRequest(input: { orderId: "${batchOrderId}", type: return_refund, reason: "batch-0", refundAmount: 1 }) { id state }
             }
         `);
         const firstId = c.createAfterSalesRequest.id;
         // 整单查重：同订单再提整单售后被拒（旧规则允许同单多张，现按 spec 收紧）
         await expect(shopClient.query(gql`
             mutation {
-                createAfterSalesRequest(input: { orderId: "${batchOrderId}", type: refund_only, reason: "batch-dup", refundAmount: 1 }) { id state }
+                createAfterSalesRequest(input: { orderId: "${batchOrderId}", type: return_refund, reason: "batch-dup", refundAmount: 1 }) { id state }
             }
         `)).rejects.toThrow(/already exists/);
-        // 批量同意全成功
+        // 批量同意全成功（用 return_refund：refund_only 审批即链式退款，终态为 Refunded 不适合此处断言）
         const approved = await adminClient.query(gql`
             mutation { batchApproveAfterSalesRequests(ids: ["${firstId}"]) { id success state message } }
         `);

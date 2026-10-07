@@ -13,4 +13,5 @@ export declare class AfterSalesShopResolver {
     afterSalesMessages(ctx: RequestContext, id: number, options: any): Promise<any>;
     addAfterSalesMessage(ctx: RequestContext, id: number, content: string, images?: string[]): Promise<any>;
     exchangeReceiveAfterSalesRequest(ctx: RequestContext, id: number): Promise<any>;
+    appealAfterSalesRequest(ctx: RequestContext, id: number, note: string): Promise<any>;
 }

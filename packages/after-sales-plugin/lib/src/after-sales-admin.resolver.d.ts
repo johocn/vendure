@@ -12,6 +12,7 @@ export declare class AfterSalesAdminResolver {
     batchRejectAfterSalesRequests(ctx: RequestContext, ids: number[], reason: string): Promise<any>;
     approveAfterSalesRequest(ctx: RequestContext, id: number): Promise<any>;
     rejectAfterSalesRequest(ctx: RequestContext, id: number, reason: string): Promise<any>;
+    arbitrateAfterSales(ctx: RequestContext, id: number, approve: boolean, note?: string): Promise<any>;
     confirmReturnReceived(ctx: RequestContext, id: number, receivedQuantity?: number): Promise<any>;
     processAfterSalesRefund(ctx: RequestContext, id: number): Promise<any>;
     retryAfterSalesRefund(ctx: RequestContext, id: number): Promise<any>;

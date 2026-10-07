@@ -138,7 +138,7 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
         });
     }
     async createRequest(ctx, input) {
-        var _a, _b, _c, _d, _e, _f;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
         if (!ctx.activeUserId) {
             throw new core_1.UnauthorizedError();
         }
@@ -162,21 +162,42 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
         if (!order.customer || customerUserId == null || String(customerUserId) !== String(ctx.activeUserId)) {
             throw new core_1.ForbiddenError();
         }
-        // 2. 校验订单状态（必须 Shipped/Delivered/PartiallyDelivered/Completed/Cancelled 才能售后）
-        const allowedStates = ['Shipped', 'Delivered', 'PartiallyDelivered', 'Completed', 'Cancelled'];
+        // 2. 校验订单状态（白名单可配置；外卖单全程 PaymentSettled，由 dev-config 显式放行）
+        const allowedStates = ((_d = (_c = this.options) === null || _c === void 0 ? void 0 : _c.allowedOrderStates) === null || _d === void 0 ? void 0 : _d.length)
+            ? this.options.allowedOrderStates
+            : ['Shipped', 'Delivered', 'PartiallyDelivered', 'Completed', 'Cancelled'];
         if (!allowedStates.includes(order.state)) {
             throw new core_1.UserInputError(`Cannot create after-sales: order state must be one of ${allowedStates.join('/')}, got ${order.state}`);
         }
-        // 3. 售后期窗口校验（默认 7 天无理由 + 15 天质量问题 = 22 天上限）。
-        // 计时起点优先取交易完成时间 fulfillmentCompletedAt（阶段10 确认收货/自动完成落库），
-        // 其次首次送达 fulfillmentDeliveredAt，最后回退订单 updatedAt。
-        const maxDays = (_d = (_c = this.options) === null || _c === void 0 ? void 0 : _c.maxDaysAfterDelivery) !== null && _d !== void 0 ? _d : 7;
-        const completedAt = (_e = order.customFields) === null || _e === void 0 ? void 0 : _e.fulfillmentCompletedAt;
-        const deliveredAt = (_f = order.customFields) === null || _f === void 0 ? void 0 : _f.fulfillmentDeliveredAt;
-        const orderDate = completedAt || deliveredAt || order.updatedAt || order.createdAt;
-        const daysSince = (Date.now() - orderDate.getTime()) / (1000 * 60 * 60 * 24);
-        if (daysSince > maxDays + 15) {
-            throw new core_1.UserInputError(`Cannot create after-sales: exceeded ${maxDays + 15} days limit`);
+        // 3. 售后窗口校验：
+        //    afterSalesWindowHours > 0 时按小时窗口（送达时间起算，外卖 24h 场景）；
+        //    否则按 maxDays + 15 天质量问题延长逻辑。
+        //    计时起点 fulfillmentCompletedAt → fulfillmentDeliveredAt → deliveredAt（外卖骑手送达落库）→ updatedAt。
+        const cf = ((_e = order.customFields) !== null && _e !== void 0 ? _e : {});
+        const orderDate = cf.fulfillmentCompletedAt || cf.fulfillmentDeliveredAt || cf.deliveredAt
+            || order.updatedAt || order.createdAt;
+        const windowHours = (_g = (_f = this.options) === null || _f === void 0 ? void 0 : _f.afterSalesWindowHours) !== null && _g !== void 0 ? _g : 0;
+        if (windowHours > 0) {
+            const hoursSince = (Date.now() - orderDate.getTime()) / (1000 * 60 * 60);
+            if (hoursSince > windowHours) {
+                throw new core_1.UserInputError(`Cannot create after-sales: exceeded ${windowHours}h window`);
+            }
+        }
+        else {
+            const maxDays = (_j = (_h = this.options) === null || _h === void 0 ? void 0 : _h.maxDaysAfterDelivery) !== null && _j !== void 0 ? _j : 7;
+            const daysSince = (Date.now() - orderDate.getTime()) / (1000 * 60 * 60 * 24);
+            if (daysSince > maxDays + 15) {
+                throw new core_1.UserInputError(`Cannot create after-sales: exceeded ${maxDays + 15} days limit`);
+            }
+        }
+        // 3.1 送达门槛（外卖场景）：requireOrderCustomField 指定的 customFields 字段必须等于指定值，
+        //     防止未送达（deliveryStatus 空/assigned/in_progress）的已支付单走售后与取消链路双退款
+        const gate = (_k = this.options) === null || _k === void 0 ? void 0 : _k.requireOrderCustomField;
+        if (gate === null || gate === void 0 ? void 0 : gate.field) {
+            const actual = cf[gate.field];
+            if (String(actual) !== String(gate.value)) {
+                throw new core_1.UserInputError(`Cannot create after-sales: order not eligible (${gate.field}=${actual !== null && actual !== void 0 ? actual : 'null'})`);
+            }
         }
         // 4. 退款金额上限校验
         const orderLine = input.orderLineId
@@ -195,9 +216,10 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
         // 不能直接用 GraphQL 编码 ID（T_1）写入 number 外键列，否则触发 FOREIGN KEY 约束失败。
         const entityOrderId = order.id;
         const entityOrderLineId = orderLine ? orderLine.id : null;
-        // 5. 重复售后校验（同一 orderLineId 不能有未关闭的售后单）
+        // 5. 重复售后校验：整单售后（无 orderLineId）按订单查重；指定行按行查重（均排除 Closed，
+        //    Rejected 也算占用——被拒单必须走申诉，不允许绕开仲裁重新提单）
+        const repo = this.connection.getRepository(ctx, after_sales_request_entity_1.AfterSalesRequest);
         if (entityOrderLineId != null) {
-            const repo = this.connection.getRepository(ctx, after_sales_request_entity_1.AfterSalesRequest);
             const existing = await repo.findOne({
                 where: { orderLineId: entityOrderLineId, state: (0, typeorm_1.Not)('Closed') },
             });
@@ -205,7 +227,14 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
                 throw new core_1.UserInputError(`After-sales already exists for order line ${input.orderLineId}`);
             }
         }
-        const repo = this.connection.getRepository(ctx, after_sales_request_entity_1.AfterSalesRequest);
+        else {
+            const existing = await repo.findOne({
+                where: { orderId: entityOrderId, state: (0, typeorm_1.Not)('Closed') },
+            });
+            if (existing) {
+                throw new core_1.UserInputError(`After-sales already exists for order ${input.orderId}`);
+            }
+        }
         const request = new after_sales_request_entity_1.AfterSalesRequest({
             orderId: entityOrderId,
             orderLineId: entityOrderLineId,
@@ -369,7 +398,29 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
     }
     // ===== Admin Operations =====
     async approveRequest(ctx, id) {
-        return this.transitionState(ctx, id, 'Approved');
+        const repo = this.connection.getRepository(ctx, after_sales_request_entity_1.AfterSalesRequest);
+        const request = await repo.findOne({ where: { id: id } });
+        if (!request)
+            throw new Error('Request not found');
+        const saved = await this.transitionState(ctx, id, 'Approved');
+        // refund_only（外卖）无需退货：审批通过（含 48h 自动同意）即链式 Received → 退款
+        if (request.type === 'refund_only') {
+            return this.refundOnlyChain(ctx, id);
+        }
+        return saved;
+    }
+    /** refund_only 退款链：Approved → Received（免退货直达）→ executeRefund。
+     *  退款失败由 executeRefund 内部落 RefundFailed 可重试，不回滚已到达的 Received。 */
+    async refundOnlyChain(ctx, id) {
+        await this.transitionState(ctx, id, 'Received');
+        const repo = this.connection.getRepository(ctx, after_sales_request_entity_1.AfterSalesRequest);
+        const request = await repo.findOne({
+            where: { id: id },
+            relations: ['order', 'order.payments'],
+        });
+        if (!request)
+            throw new core_1.EntityNotFoundError('AfterSalesRequest', id);
+        return this.executeRefund(ctx, request);
     }
     async rejectRequest(ctx, id, reason) {
         var _a;
@@ -384,6 +435,50 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
         request.rejectReason = reason;
         const saved = await this.commitState(ctx, request, fromState, 'Rejected');
         return this.hydrate(ctx, saved.id);
+    }
+    /** C 端申诉：Rejected → Appealed（仅本人售后单）；申诉说明落入协商留言流（customer），商家/平台可见 */
+    async appealRequest(ctx, id, note) {
+        const customerId = await this.resolveCustomerId(ctx);
+        if (!customerId)
+            throw new core_1.UnauthorizedError();
+        const repo = this.connection.getRepository(ctx, after_sales_request_entity_1.AfterSalesRequest);
+        const request = await repo.findOne({ where: { id: id, customerId } });
+        if (!request)
+            throw new core_1.UserInputError(`After-sales request ${id} not found`);
+        if (request.state !== 'Rejected') {
+            throw new core_1.UserInputError(`Cannot appeal request in state: ${request.state}`);
+        }
+        if (note === null || note === void 0 ? void 0 : note.trim()) {
+            await this.addMessage(ctx, id, 'customer', note.trim().slice(0, 1000));
+        }
+        return this.transitionState(ctx, id, 'Appealed');
+    }
+    /** 平台仲裁：Appealed → Approved（同意；refund_only 链式退款）| Closed（维持拒绝，note 必填写入 rejectReason） */
+    async arbitrateRequest(ctx, id, approve, note) {
+        const repo = this.connection.getRepository(ctx, after_sales_request_entity_1.AfterSalesRequest);
+        const request = await repo.findOne({ where: { id: id } });
+        if (!request)
+            throw new Error('Request not found');
+        if (request.state !== 'Appealed') {
+            throw new Error(`Cannot arbitrate request in state: ${request.state}`);
+        }
+        if (!approve) {
+            const text = (note !== null && note !== void 0 ? note : '').trim();
+            if (!text)
+                throw new core_1.UserInputError('维持拒绝必须填写仲裁说明');
+            request.rejectReason = text;
+            await repo.save(request);
+            return this.transitionState(ctx, id, 'Closed');
+        }
+        if (note === null || note === void 0 ? void 0 : note.trim()) {
+            // 仲裁说明落入协商留言流（admin 侧），C 端留言卡可见
+            await this.addMessage(ctx, id, 'admin', note.trim().slice(0, 1000));
+        }
+        const saved = await this.transitionState(ctx, id, 'Approved');
+        if (request.type === 'refund_only') {
+            return this.refundOnlyChain(ctx, id);
+        }
+        return saved;
     }
     /**
      * Returning → Received（收到退货）：

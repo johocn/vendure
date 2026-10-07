@@ -108,4 +108,63 @@ describe('AfterSalesPlugin · refund_only 外卖链路（创建侧）', () => {
             }),
         ).rejects.toThrow(/exceeds max/);
     });
+
+    // ===== 审批即退款链 / 申诉 / 仲裁 =====
+
+    const APPROVE = gql`mutation($i: ID!) { approveAfterSalesRequest(id: $i) { id state actualRefundAmount refundTransactionId } }`;
+    const REJECT = gql`mutation($i: ID!, $r: String!) { rejectAfterSalesRequest(id: $i, reason: $r) { id state } }`;
+    const APPEAL = gql`mutation($i: ID!, $n: String!) { appealAfterSalesRequest(id: $i, note: $n) { id state } }`;
+    const ARBITRATE = gql`mutation($i: ID!, $a: Boolean!, $n: String) { arbitrateAfterSales(id: $i, approve: $a, note: $n) { id state rejectReason actualRefundAmount } }`;
+
+    async function newPaidOrder(): Promise<string> {
+        await shopClient.query(gql`mutation($v: ID!) { addItemToOrder(productVariantId: $v, quantity: 1) { ... on Order { id } } }`, { v: variantId });
+        await proceedToArrangingPayment(shopClient);
+        // 单段支付处理器结算后 activeOrder 置空，用支付返回值取订单
+        const paid = await addPaymentToOrder(shopClient, singleStageRefundablePaymentMethod);
+        return paid.id;
+    }
+
+    it('商家审批 refund_only → 链式退款直达 Refunded', async () => {
+        const oid = await newPaidOrder();
+        const { createAfterSalesRequest: req } = await shopClient.query(CREATE_REQ, {
+            i: { orderId: oid, type: 'refund_only', reason: '餐损洒漏', refundAmount: 300 },
+        });
+        const { approveAfterSalesRequest } = await adminClient.query(APPROVE, { i: req.id });
+        expect(approveAfterSalesRequest.state).toBe('Refunded');
+        expect(approveAfterSalesRequest.actualRefundAmount).toBe(300);
+    });
+
+    it('商家拒绝 → 申诉 Appealed → 仲裁同意 → Refunded', async () => {
+        const oid = await newPaidOrder();
+        const { createAfterSalesRequest: req } = await shopClient.query(CREATE_REQ, {
+            i: { orderId: oid, type: 'refund_only', reason: '错送', refundAmount: 200 },
+        });
+        const rejected = await adminClient.query(REJECT, { i: req.id, r: '已足量出餐' });
+        expect(rejected.rejectAfterSalesRequest.state).toBe('Rejected');
+        const appealed = await shopClient.query(APPEAL, { i: req.id, n: '收到的与下单不符，有照片' });
+        expect(appealed.appealAfterSalesRequest.state).toBe('Appealed');
+        const arbitrated = await adminClient.query(ARBITRATE, { i: req.id, a: true, n: '凭证有效，同意退款' });
+        expect(arbitrated.arbitrateAfterSales.state).toBe('Refunded');
+    });
+
+    it('仲裁维持拒绝：无 note 报错；带 note → Closed 且 rejectReason 更新', async () => {
+        const oid = await newPaidOrder();
+        const { createAfterSalesRequest: req } = await shopClient.query(CREATE_REQ, {
+            i: { orderId: oid, type: 'refund_only', reason: '其他', refundAmount: 100 },
+        });
+        await adminClient.query(REJECT, { i: req.id, r: '出餐记录正常' });
+        await shopClient.query(APPEAL, { i: req.id, n: '不认可' });
+        await expect(adminClient.query(ARBITRATE, { i: req.id, a: false, n: '' })).rejects.toThrow(/必须填写/);
+        const closed = await adminClient.query(ARBITRATE, { i: req.id, a: false, n: '双方凭证不足以支持退款' });
+        expect(closed.arbitrateAfterSales.state).toBe('Closed');
+        expect(closed.arbitrateAfterSales.rejectReason).toBe('双方凭证不足以支持退款');
+    });
+
+    it('非 Rejected 态申诉被拒', async () => {
+        const oid = await newPaidOrder();
+        const { createAfterSalesRequest: req } = await shopClient.query(CREATE_REQ, {
+            i: { orderId: oid, type: 'refund_only', reason: '少送', refundAmount: 100 },
+        });
+        await expect(shopClient.query(APPEAL, { i: req.id, n: 'x' })).rejects.toThrow(/Cannot appeal/);
+    });
 });

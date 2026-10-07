@@ -459,7 +459,28 @@ export class AfterSalesService {
     // ===== Admin Operations =====
 
     async approveRequest(ctx: RequestContext, id: ID): Promise<AfterSalesRequest> {
-        return this.transitionState(ctx, id, 'Approved');
+        const repo = this.connection.getRepository(ctx, AfterSalesRequest);
+        const request = await repo.findOne({ where: { id: id as any } });
+        if (!request) throw new Error('Request not found');
+        const saved = await this.transitionState(ctx, id, 'Approved');
+        // refund_only（外卖）无需退货：审批通过（含 48h 自动同意）即链式 Received → 退款
+        if ((request.type as string) === 'refund_only') {
+            return this.refundOnlyChain(ctx, id);
+        }
+        return saved;
+    }
+
+    /** refund_only 退款链：Approved → Received（免退货直达）→ executeRefund。
+     *  退款失败由 executeRefund 内部落 RefundFailed 可重试，不回滚已到达的 Received。 */
+    private async refundOnlyChain(ctx: RequestContext, id: ID): Promise<AfterSalesRequest> {
+        await this.transitionState(ctx, id, 'Received');
+        const repo = this.connection.getRepository(ctx, AfterSalesRequest);
+        const request = await repo.findOne({
+            where: { id: id as any },
+            relations: ['order', 'order.payments'] as any,
+        });
+        if (!request) throw new EntityNotFoundError('AfterSalesRequest', id);
+        return this.executeRefund(ctx, request);
     }
 
     async rejectRequest(ctx: RequestContext, id: ID, reason: string): Promise<AfterSalesRequest> {
@@ -473,6 +494,48 @@ export class AfterSalesService {
         request.rejectReason = reason;
         const saved = await this.commitState(ctx, request, fromState, 'Rejected');
         return this.hydrate(ctx, saved.id);
+    }
+
+    /** C 端申诉：Rejected → Appealed（仅本人售后单）；申诉说明落入协商留言流（customer），商家/平台可见 */
+    async appealRequest(ctx: RequestContext, id: ID, note: string): Promise<AfterSalesRequest> {
+        const customerId = await this.resolveCustomerId(ctx);
+        if (!customerId) throw new UnauthorizedError();
+        const repo = this.connection.getRepository(ctx, AfterSalesRequest);
+        const request = await repo.findOne({ where: { id: id as any, customerId } });
+        if (!request) throw new UserInputError(`After-sales request ${id} not found`);
+        if (request.state !== 'Rejected') {
+            throw new UserInputError(`Cannot appeal request in state: ${request.state}`);
+        }
+        if (note?.trim()) {
+            await this.addMessage(ctx, id, 'customer', note.trim().slice(0, 1000));
+        }
+        return this.transitionState(ctx, id, 'Appealed');
+    }
+
+    /** 平台仲裁：Appealed → Approved（同意；refund_only 链式退款）| Closed（维持拒绝，note 必填写入 rejectReason） */
+    async arbitrateRequest(ctx: RequestContext, id: ID, approve: boolean, note?: string): Promise<AfterSalesRequest> {
+        const repo = this.connection.getRepository(ctx, AfterSalesRequest);
+        const request = await repo.findOne({ where: { id: id as any } });
+        if (!request) throw new Error('Request not found');
+        if (request.state !== 'Appealed') {
+            throw new Error(`Cannot arbitrate request in state: ${request.state}`);
+        }
+        if (!approve) {
+            const text = (note ?? '').trim();
+            if (!text) throw new UserInputError('维持拒绝必须填写仲裁说明');
+            request.rejectReason = text;
+            await repo.save(request);
+            return this.transitionState(ctx, id, 'Closed');
+        }
+        if (note?.trim()) {
+            // 仲裁说明落入协商留言流（admin 侧），C 端留言卡可见
+            await this.addMessage(ctx, id, 'admin', note.trim().slice(0, 1000));
+        }
+        const saved = await this.transitionState(ctx, id, 'Approved');
+        if ((request.type as string) === 'refund_only') {
+            return this.refundOnlyChain(ctx, id);
+        }
+        return saved;
     }
 
     /**

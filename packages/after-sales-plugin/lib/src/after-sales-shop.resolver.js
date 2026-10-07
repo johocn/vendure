@@ -50,6 +50,9 @@ let AfterSalesShopResolver = class AfterSalesShopResolver {
     async exchangeReceiveAfterSalesRequest(ctx, id) {
         return this.afterSalesService.exchangeReceive(ctx, id);
     }
+    async appealAfterSalesRequest(ctx, id, note) {
+        return this.afterSalesService.appealRequest(ctx, id, note);
+    }
 };
 exports.AfterSalesShopResolver = AfterSalesShopResolver;
 __decorate([
@@ -146,6 +149,16 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Number]),
     __metadata("design:returntype", Promise)
 ], AfterSalesShopResolver.prototype, "exchangeReceiveAfterSalesRequest", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('note')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Number, String]),
+    __metadata("design:returntype", Promise)
+], AfterSalesShopResolver.prototype, "appealAfterSalesRequest", null);
 exports.AfterSalesShopResolver = AfterSalesShopResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [after_sales_service_1.AfterSalesService])

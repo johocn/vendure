@@ -80,4 +80,14 @@ export class AfterSalesShopResolver {
     async exchangeReceiveAfterSalesRequest(@Ctx() ctx: RequestContext, @Args('id') id: number): Promise<any> {
         return this.afterSalesService.exchangeReceive(ctx, id);
     }
+
+    @Mutation()
+    @Allow(Permission.Authenticated)
+    async appealAfterSalesRequest(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: number,
+        @Args('note') note: string,
+    ): Promise<any> {
+        return this.afterSalesService.appealRequest(ctx, id, note);
+    }
 }

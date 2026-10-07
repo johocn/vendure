@@ -47,6 +47,9 @@ let AfterSalesAdminResolver = class AfterSalesAdminResolver {
     async rejectAfterSalesRequest(ctx, id, reason) {
         return this.afterSalesService.rejectRequest(ctx, id, reason);
     }
+    async arbitrateAfterSales(ctx, id, approve, note) {
+        return this.afterSalesService.arbitrateRequest(ctx, id, approve, note);
+    }
     async confirmReturnReceived(ctx, id, receivedQuantity) {
         return this.afterSalesService.confirmReceive(ctx, id, receivedQuantity);
     }
@@ -150,6 +153,17 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Number, String]),
     __metadata("design:returntype", Promise)
 ], AfterSalesAdminResolver.prototype, "rejectAfterSalesRequest", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('approve', { type: () => Boolean })),
+    __param(3, (0, graphql_1.Args)('note', { nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Number, Boolean, String]),
+    __metadata("design:returntype", Promise)
+], AfterSalesAdminResolver.prototype, "arbitrateAfterSales", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(core_1.Permission.UpdateOrder),

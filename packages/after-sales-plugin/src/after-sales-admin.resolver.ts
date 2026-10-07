@@ -78,6 +78,17 @@ export class AfterSalesAdminResolver {
 
     @Mutation()
     @Allow(Permission.UpdateOrder)
+    async arbitrateAfterSales(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: number,
+        @Args('approve', { type: () => Boolean }) approve: boolean,
+        @Args('note', { nullable: true }) note?: string,
+    ): Promise<any> {
+        return this.afterSalesService.arbitrateRequest(ctx, id, approve, note);
+    }
+
+    @Mutation()
+    @Allow(Permission.UpdateOrder)
     async confirmReturnReceived(
         @Ctx() ctx: RequestContext,
         @Args('id') id: number,

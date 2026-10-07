@@ -42,7 +42,7 @@ const compensationTask = new ScheduledTask({
     shopApiExtensions: {
         schema: () => gql`
             enum AfterSalesType { return_refund refund_only exchange }
-            enum AfterSalesState { Pending Approved Rejected Returning Received ExchangeShipped Refunded RefundFailed Closed }
+            enum AfterSalesState { Pending Approved Rejected Appealed Returning Received ExchangeShipped Refunded RefundFailed Closed }
 
             type AfterSalesStateHistoryEntry {
                 fromState: AfterSalesState
@@ -139,6 +139,9 @@ const compensationTask = new ScheduledTask({
                 addAfterSalesMessage(id: ID!, content: String!, images: [String!]): AfterSalesMessage!
                 """顾客确认收到换货商品：ExchangeShipped → Closed"""
                 exchangeReceiveAfterSalesRequest(id: ID!): AfterSalesRequest!
+
+                """被拒后申诉：Rejected → Appealed（申诉说明进入协商留言流）"""
+                appealAfterSalesRequest(id: ID!, note: String!): AfterSalesRequest!
             }
         `,
         resolvers: [AfterSalesShopResolver],
@@ -263,6 +266,9 @@ const compensationTask = new ScheduledTask({
                 replyAfterSalesMessage(id: ID!, content: String!, images: [String!]): AfterSalesMessageAdmin!
                 """换货发货：Received → ExchangeShipped（仅 exchange 类型）"""
                 exchangeShipAfterSalesRequest(id: ID!, trackingNo: String!, carrier: String!): AfterSalesRequestAdmin!
+
+                """平台仲裁：Appealed → Approved（同意，refund_only 即退款）| Closed（维持拒绝，note 必填）"""
+                arbitrateAfterSales(id: ID!, approve: Boolean!, note: String): AfterSalesRequestAdmin!
             }
         `,
         resolvers: [AfterSalesAdminResolver],
