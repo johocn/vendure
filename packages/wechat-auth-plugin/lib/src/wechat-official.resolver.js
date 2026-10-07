@@ -20,7 +20,9 @@ const constants_1 = require("./constants");
 const wechat_auth_service_1 = require("./wechat-auth.service");
 /**
  * 公众号运营 admin API（菜单 / 粉丝 / 模板消息）——微信 cgi-bin 的 GraphQL 代理。
- * admin-api 默认要求认证，运营后台登录态即可调用。
+ * 安全：无 @Allow 时 Vendure 默认放行（permissions.length===0 → allow），
+ * 匿名即可调用（发布菜单 / 群发模板消息危害大），故显式要求 SuperAdmin；
+ * 与 web-admin 前端「仅超管可见」的门禁保持一致。
  */
 let WechatOfficialResolver = class WechatOfficialResolver {
     constructor(options, wechatAuthService) {
@@ -49,6 +51,7 @@ let WechatOfficialResolver = class WechatOfficialResolver {
 exports.WechatOfficialResolver = WechatOfficialResolver;
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext]),
@@ -56,6 +59,7 @@ __decorate([
 ], WechatOfficialResolver.prototype, "wechatCurrentMenu", null);
 __decorate([
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('menu')),
     __metadata("design:type", Function),
@@ -64,6 +68,7 @@ __decorate([
 ], WechatOfficialResolver.prototype, "wechatMenuPublish", null);
 __decorate([
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext]),
@@ -71,6 +76,7 @@ __decorate([
 ], WechatOfficialResolver.prototype, "wechatMenuDelete", null);
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('nextOpenid', { nullable: true })),
     __metadata("design:type", Function),
@@ -79,6 +85,7 @@ __decorate([
 ], WechatOfficialResolver.prototype, "wechatFans", null);
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext]),
@@ -86,6 +93,7 @@ __decorate([
 ], WechatOfficialResolver.prototype, "wechatTemplates", null);
 __decorate([
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.SuperAdmin),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('input')),
     __metadata("design:type", Function),

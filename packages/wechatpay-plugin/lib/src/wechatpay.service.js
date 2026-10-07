@@ -135,7 +135,9 @@ let WechatpayService = class WechatpayService {
             description: input.description || `Pay ${input.outTradeNo}`,
             out_trade_no: input.outTradeNo,
             notify_url: notifyUrl,
-            amount: { total: Math.round(input.amount / 100), currency: 'CNY' },
+            // 单位：input.amount 为「分」（见 BarePaymentInput 定义），微信 V3 amount.total 同为
+            // 「分」，故直接透传，切勿再 /100（否则少收 100 倍）。
+            amount: { total: Math.round(input.amount), currency: 'CNY' },
         };
         const type = input.tradeType || tradeType;
         if (type === 'NATIVE') {

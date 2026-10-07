@@ -36,10 +36,14 @@ export declare class WechatpayController {
     notify(req: Request, res: Response, body: any): Promise<Response<any, Record<string, any>> | undefined>;
     /**
      * Dev Bypass: 模拟微信支付页面
+     * 安全门禁：控制器注册是静态装饰器元数据，无法按运行时 options 省略路由，
+     * 故仅在显式开启 devBypass 时可用，否则返回 404（不暴露该端点存在）。
      */
-    getDevPayPage(req: Request, res: Response): void;
+    getDevPayPage(req: Request, res: Response): Response<any, Record<string, any>> | undefined;
     /**
      * Dev Bypass: 自动回调，结算订单或走注册表结算
+     * 安全门禁：无验签、直接结算，匿名可零元结算订单/免费充值，
+     * 故仅在显式开启 devBypass 时可用，否则返回 404。
      */
     devNotify(req: Request, res: Response): Promise<Response<any, Record<string, any>> | undefined>;
 }

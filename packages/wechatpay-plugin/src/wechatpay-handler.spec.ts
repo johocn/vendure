@@ -13,8 +13,14 @@ vi.mock('@vendure/cjk-plugin/lib/src/payment/payment-config', () => ({
     getPaymentOverride: vi.fn().mockReturnValue(null),
 }));
 const jsapiMock = vi.fn().mockResolvedValue({ data: { prepay_id: 'PREPAY1' } });
+const nativeMock = vi.fn().mockResolvedValue({ data: { code_url: 'weixin://pay/x' } });
+const refundsMock = vi.fn().mockResolvedValue({ status: 200 });
 vi.mock('wechatpay-node-v3', () => ({
-    default: vi.fn().mockImplementation(() => ({ transactions_jsapi: jsapiMock })),
+    default: vi.fn().mockImplementation(() => ({
+        transactions_jsapi: jsapiMock,
+        transactions_native: nativeMock,
+        refunds: refundsMock,
+    })),
 }));
 
 import { createWechatpayHandler } from './wechatpay-handler';
@@ -68,6 +74,13 @@ describe('createWechatpayHandler openid preferMini 语义（F-VS-08 修正）', 
         expect(r.state).toBe('Declined');
         expect(String(r.errorMessage)).toContain('微信 JSAPI 下单失败');
     });
+
+    it('金额单位（P0 修复）：Vendure 传「分」，V3 amount.total 直接透传不 /100', async () => {
+        const handler = createWechatpayHandler({} as any, 'wechatpay');
+        await handler.createPayment!(ctx, order, 12345, args, {}, {} as any);
+        expect(jsapiMock).toHaveBeenCalledTimes(1);
+        expect((jsapiMock.mock.calls[0][0] as any).amount).toEqual({ total: 12345, currency: 'CNY' });
+    });
 });
 
 describe('WechatpayService.resolveCustomerOpenid 取舍', () => {
@@ -95,5 +108,50 @@ describe('WechatpayService.resolveCustomerOpenid 取舍', () => {
     it('仅存其一则用之', async () => {
         expect(await makeService({ wechatOpenid: 'o-official' }).resolveCustomerOpenid(ctx, 5)).toBe('o-official');
         expect(await makeService({ wechatMiniOpenid: 'o-mini' }).resolveCustomerOpenid(ctx, 5)).toBe('o-mini');
+    });
+});
+
+describe('createRefund 金额单位（P0 修复：按「分」提交不 /100）', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it('refund/total 均按「分」透传', async () => {
+        const handler = createWechatpayHandler({} as any, 'wechatpay');
+        const payment = { id: 7, amount: 12345, transactionId: 'WXTX1' } as any;
+        await handler.createRefund!(ctx, {} as any, 5000, order, payment, args, {} as any);
+        expect(refundsMock).toHaveBeenCalledTimes(1);
+        expect((refundsMock.mock.calls[0][0] as any).amount).toEqual({
+            refund: 5000,
+            total: 12345,
+            currency: 'CNY',
+        });
+    });
+});
+
+describe('WechatpayService.createBarePayment 金额单位（P0 修复）', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    function makeService() {
+        const paymentMethodService = {
+            findAll: vi.fn().mockResolvedValue({
+                items: [{ code: 'wechatpay', handler: { args } }],
+            }),
+        };
+        return new WechatpayService(
+            {} as any,
+            {} as any,
+            paymentMethodService as any,
+            {} as any,
+            {} as any,
+        );
+    }
+
+    it('NATIVE 代付/充值单按「分」提交 amount.total', async () => {
+        const svc = makeService();
+        await svc.createBarePayment(
+            { outTradeNo: 'RC-1', amount: 9999, tradeType: 'NATIVE' },
+            ctx,
+        );
+        expect(nativeMock).toHaveBeenCalledTimes(1);
+        expect((nativeMock.mock.calls[0][0] as any).amount).toEqual({ total: 9999, currency: 'CNY' });
     });
 });

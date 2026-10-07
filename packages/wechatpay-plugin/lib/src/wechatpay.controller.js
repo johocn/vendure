@@ -158,8 +158,14 @@ let WechatpayController = class WechatpayController {
     }
     /**
      * Dev Bypass: 模拟微信支付页面
+     * 安全门禁：控制器注册是静态装饰器元数据，无法按运行时 options 省略路由，
+     * 故仅在显式开启 devBypass 时可用，否则返回 404（不暴露该端点存在）。
      */
     getDevPayPage(req, res) {
+        var _a;
+        if (!((_a = this.options) === null || _a === void 0 ? void 0 : _a.devBypass)) {
+            return res.status(404).send('Not Found');
+        }
         const outTradeNo = req.query.outTradeNo;
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.send(`<!DOCTYPE html>
@@ -202,8 +208,14 @@ let WechatpayController = class WechatpayController {
     }
     /**
      * Dev Bypass: 自动回调，结算订单或走注册表结算
+     * 安全门禁：无验签、直接结算，匿名可零元结算订单/免费充值，
+     * 故仅在显式开启 devBypass 时可用，否则返回 404。
      */
     async devNotify(req, res) {
+        var _a;
+        if (!((_a = this.options) === null || _a === void 0 ? void 0 : _a.devBypass)) {
+            return res.status(404).json({ code: 'FAIL', message: 'Not Found' });
+        }
         const outTradeNo = req.query.outTradeNo;
         try {
             if (!outTradeNo) {

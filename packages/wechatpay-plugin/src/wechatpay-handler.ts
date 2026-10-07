@@ -115,7 +115,10 @@ export function createWechatpayHandler(options: WechatpayPluginOptions, code = '
                     // 回调地址四级回落：渠道 payConfig > 本方法 args.notifyUrl > 全局 env
                     notify_url: override?.notifyUrl || args.notifyUrl || options?.notifyUrl || '',
                     amount: {
-                        total: Math.round(amount / 100),
+                        // 单位：Vendure 默认 MoneyStrategy precision=2，handler 收到的
+                        // amount 已是「分」（最小货币单位）；微信 V3 的 amount.total 同样
+                        // 以「分」计，故直接透传，切勿再 /100（否则少收 100 倍）。
+                        total: Math.round(amount),
                         currency: 'CNY',
                     },
                 };
@@ -244,8 +247,10 @@ export function createWechatpayHandler(options: WechatpayPluginOptions, code = '
                     out_trade_no: order.code,
                     out_refund_no: `REFUND-${payment.id}-${Date.now()}`,
                     amount: {
-                        refund: Math.round(amount / 100),
-                        total: Math.round(payment.amount / 100),
+                        // 单位同 createPayment：Vendure 的退款额/原支付额均以「分」计，
+                        // 微信 V3 退款 amount.refund/total 亦为「分」，切勿 /100。
+                        refund: Math.round(amount),
+                        total: Math.round(payment.amount),
                         currency: 'CNY',
                     },
                 });

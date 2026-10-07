@@ -185,9 +185,14 @@ export class WechatpayController {
 
     /**
      * Dev Bypass: 模拟微信支付页面
+     * 安全门禁：控制器注册是静态装饰器元数据，无法按运行时 options 省略路由，
+     * 故仅在显式开启 devBypass 时可用，否则返回 404（不暴露该端点存在）。
      */
     @Get('dev-pay')
     getDevPayPage(@Req() req: Request, @Res() res: Response) {
+        if (!this.options?.devBypass) {
+            return res.status(404).send('Not Found');
+        }
         const outTradeNo = (req.query as any).outTradeNo as string;
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.send(`<!DOCTYPE html>
@@ -231,9 +236,14 @@ export class WechatpayController {
 
     /**
      * Dev Bypass: 自动回调，结算订单或走注册表结算
+     * 安全门禁：无验签、直接结算，匿名可零元结算订单/免费充值，
+     * 故仅在显式开启 devBypass 时可用，否则返回 404。
      */
     @Post('dev-notify')
     async devNotify(@Req() req: Request, @Res() res: Response) {
+        if (!this.options?.devBypass) {
+            return res.status(404).json({ code: 'FAIL', message: 'Not Found' });
+        }
         const outTradeNo = (req.query as any).outTradeNo as string;
         try {
             if (!outTradeNo) {
