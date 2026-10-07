@@ -60,6 +60,7 @@ const marketplace_plugin_1 = require("@vendure/marketplace-plugin");
 const customer_service_plugin_1 = require("@vendure/customer-service-plugin");
 const inventory_plugin_1 = require("@vendure/inventory-plugin");
 const message_plugin_1 = require("@vendure/message-plugin");
+const notification_plugin_1 = require("@vendure/notification-plugin");
 const operations_plugin_1 = require("@vendure/operations-plugin");
 const pre_sale_plugin_1 = require("@vendure/pre-sale-plugin");
 const live_streaming_plugin_1 = require("@vendure/live-streaming-plugin");
@@ -390,7 +391,13 @@ exports.devConfig = {
             })] : []),
         invoice_pdf_plugin_1.InvoicePdfPlugin.init(),
         recharge_card_plugin_1.RechargeCardPlugin.init({ defaultExpiresMonths: 12 }),
-        after_sales_plugin_1.AfterSalesPlugin.init(),
+        after_sales_plugin_1.AfterSalesPlugin.init({
+            afterSalesWindowHours: 24,
+            afterSalesAutoApproveHours: 48,
+            afterSalesRefundAutoRetry: 1,
+            allowedOrderStates: ['PaymentSettled', 'Delivered'],
+            requireOrderCustomField: { field: 'deliveryStatus', value: 'delivered' },
+        }),
         member_level_plugin_1.MemberLevelPlugin.init(),
         vcash_pos_plugin_1.VcashPosPlugin,
         vcash_offline_plugin_1.VcashOfflinePlugin,
@@ -428,6 +435,7 @@ exports.devConfig = {
         inventory_plugin_1.InventoryPlugin.init(),
         operations_plugin_1.OperationsPlugin.init(),
         message_plugin_1.MessagePlugin.init(),
+        notification_plugin_1.NotificationPlugin.init(),
         pre_sale_plugin_1.PreSalePlugin.init({}),
         DisableSellerSplitPlugin,
     ],
