@@ -6,6 +6,7 @@ import { AFTER_SALES_PLUGIN_OPTIONS, loggerCtx } from './constants';
 import { AfterSalesPluginOptions } from './types';
 import { AfterSalesRequest } from './after-sales-request.entity';
 import { AfterSalesStateHistory } from './after-sales-state-history.entity';
+import { AfterSalesMessage } from './after-sales-message.entity';
 import { AfterSalesService } from './after-sales.service';
 import { AfterSalesShopResolver } from './after-sales-shop.resolver';
 import { AfterSalesAdminResolver } from './after-sales-admin.resolver';
@@ -15,7 +16,7 @@ const { gql } = require('graphql-tag');
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [AfterSalesRequest, AfterSalesStateHistory],
+    entities: [AfterSalesRequest, AfterSalesStateHistory, AfterSalesMessage],
     providers: [
         { provide: AFTER_SALES_PLUGIN_OPTIONS, useFactory: () => AfterSalesPlugin.options },
         AfterSalesService,
@@ -56,11 +57,36 @@ const { gql } = require('graphql-tag');
                 order: Order!
                 orderLine: OrderLine
                 history: [AfterSalesStateHistoryEntry!]!
+                messageCount: Int!
             }
 
             type AfterSalesRequestList implements PaginatedList {
                 items: [AfterSalesRequest!]!
                 totalItems: Int!
+            }
+
+            type AfterSalesMessage implements Node {
+                id: ID!
+                requestId: ID!
+                senderType: String!
+                senderUserId: ID
+                senderName: String!
+                content: String!
+                images: [String!]
+                createdAt: DateTime!
+            }
+
+            type AfterSalesMessageList implements PaginatedList {
+                items: [AfterSalesMessage!]!
+                totalItems: Int!
+            }
+
+            input AfterSalesMessageListOptions {
+
+                skip: Int
+
+                take: Int
+
             }
 
             input CreateAfterSalesRequestInput {
@@ -81,6 +107,7 @@ const { gql } = require('graphql-tag');
                 myAfterSalesRequests(options: AfterSalesRequestListOptions): AfterSalesRequestList!
                 afterSalesRequest(id: ID!): AfterSalesRequest
                 afterSalesReturnAddress: String!
+                afterSalesMessages(id: ID!, options: AfterSalesMessageListOptions): AfterSalesMessageList!
             }
 
             extend type Mutation {
@@ -89,6 +116,8 @@ const { gql } = require('graphql-tag');
                 updateReturnTracking(id: ID!, trackingNo: String!, carrier: String!): AfterSalesRequest!
                 """顾客端上传售后凭证图：入参为 base64 data URL 数组，返回图片 URL 数组（不创建售后单）"""
                 uploadAfterSalesEvidence(images: [String!]!): [String!]!
+                """售后单内追加协商留言（Closed 后禁言；图片 ≤3 张、正文 ≤1000 字）"""
+                addAfterSalesMessage(id: ID!, content: String!, images: [String!]): AfterSalesMessage!
             }
         `,
         resolvers: [AfterSalesShopResolver],
@@ -135,11 +164,36 @@ const { gql } = require('graphql-tag');
                 orderLine: OrderLine
                 customer: Customer
                 history: [AfterSalesStateHistoryEntry!]!
+                messageCount: Int!
             }
 
             type AfterSalesRequestAdminList implements PaginatedList {
                 items: [AfterSalesRequestAdmin!]!
                 totalItems: Int!
+            }
+
+            type AfterSalesMessageAdmin implements Node {
+                id: ID!
+                requestId: ID!
+                senderType: String!
+                senderUserId: ID
+                senderName: String!
+                content: String!
+                images: [String!]
+                createdAt: DateTime!
+            }
+
+            type AfterSalesMessageAdminList implements PaginatedList {
+                items: [AfterSalesMessageAdmin!]!
+                totalItems: Int!
+            }
+
+            input AfterSalesMessageAdminListOptions {
+
+                skip: Int
+
+                take: Int
+
             }
 
             input AfterSalesRequestAdminListOptions
@@ -148,6 +202,7 @@ const { gql } = require('graphql-tag');
                 afterSalesRequests(options: AfterSalesRequestAdminListOptions): AfterSalesRequestAdminList!
                 afterSalesRequestAdmin(id: ID!): AfterSalesRequestAdmin
                 afterSalesReturnAddress: String!
+                afterSalesMessages(id: ID!, options: AfterSalesMessageAdminListOptions): AfterSalesMessageAdminList!
             }
 
             extend type Mutation {
@@ -159,6 +214,8 @@ const { gql } = require('graphql-tag');
                 batchApproveAfterSalesRequests(ids: [ID!]!): [AfterSalesBatchResult!]!
                 batchRejectAfterSalesRequests(ids: [ID!]!, reason: String!): [AfterSalesBatchResult!]!
                 updateAfterSalesReturnAddress(address: String!): Boolean!
+                """商家回复售后协商留言（Closed 后禁言；图片 ≤3 张、正文 ≤1000 字）"""
+                replyAfterSalesMessage(id: ID!, content: String!, images: [String!]): AfterSalesMessageAdmin!
             }
         `,
         resolvers: [AfterSalesAdminResolver],

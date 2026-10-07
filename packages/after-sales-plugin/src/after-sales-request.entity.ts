@@ -85,4 +85,7 @@ export class AfterSalesRequest extends VendureEntity implements ChannelAware {
     @ManyToMany(() => Channel)
     @JoinTable()
     channels: Channel[];
+
+    /** 留言条数（非持久化：service.attachMessageCounts 批量附加，避免 N+1 field resolver） */
+    messageCount?: number;
 }

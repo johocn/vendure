@@ -87,4 +87,25 @@ export class AfterSalesAdminResolver {
     async retryAfterSalesRefund(@Ctx() ctx: RequestContext, @Args('id') id: number): Promise<any> {
         return this.afterSalesService.retryRefund(ctx, id);
     }
+
+    @Query()
+    @Allow(Permission.ReadOrder)
+    async afterSalesMessages(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: number,
+        @Args('options', { nullable: true }) options: any,
+    ): Promise<any> {
+        return this.afterSalesService.listMessages(ctx, id, 'admin', options);
+    }
+
+    @Mutation()
+    @Allow(Permission.UpdateOrder)
+    async replyAfterSalesMessage(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: number,
+        @Args('content') content: string,
+        @Args('images', { nullable: true, type: () => [String] }) images?: string[],
+    ): Promise<any> {
+        return this.afterSalesService.addMessage(ctx, id, 'admin', content, images);
+    }
 }

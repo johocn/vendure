@@ -53,4 +53,25 @@ export class AfterSalesShopResolver {
     async uploadAfterSalesEvidence(@Ctx() ctx: RequestContext, @Args('images') images: string[]): Promise<string[]> {
         return this.afterSalesService.uploadEvidence(ctx, images);
     }
+
+    @Query()
+    @Allow(Permission.Authenticated)
+    async afterSalesMessages(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: number,
+        @Args('options', { nullable: true }) options: any,
+    ): Promise<any> {
+        return this.afterSalesService.listMessages(ctx, id, 'customer', options);
+    }
+
+    @Mutation()
+    @Allow(Permission.Authenticated)
+    async addAfterSalesMessage(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: number,
+        @Args('content') content: string,
+        @Args('images', { nullable: true, type: () => [String] }) images?: string[],
+    ): Promise<any> {
+        return this.afterSalesService.addMessage(ctx, id, 'customer', content, images);
+    }
 }

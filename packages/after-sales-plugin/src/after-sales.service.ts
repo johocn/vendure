@@ -10,6 +10,7 @@ import {
     OrderService,
     CustomerService,
     AssetService,
+    Administrator,
     Channel,
     ChannelService,
     ConfigService,
@@ -26,6 +27,7 @@ import {
 
 import { loggerCtx, AFTER_SALES_PLUGIN_OPTIONS } from './constants';
 import { AfterSalesRequest } from './after-sales-request.entity';
+import { AfterSalesMessage, AfterSalesMessageSenderType } from './after-sales-message.entity';
 import { AfterSalesStateHistory } from './after-sales-state-history.entity';
 import { AfterSalesStateTransitionEvent } from './after-sales.events';
 import { AfterSalesState, AfterSalesPluginOptions, STATE_TRANSITIONS } from './types';
@@ -110,6 +112,9 @@ export class AfterSalesService {
             relations: { order: true, orderLine: true, channels: true, history: true },
             order: { history: { createdAt: 'ASC' } } as any,
         });
+        if (result) {
+            await this.attachMessageCounts(ctx, [result]);
+        }
         return result ?? undefined;
     }
 
@@ -129,7 +134,10 @@ export class AfterSalesService {
             })
             .andWhere('aftersalesrequest."customerId" = :customerId', { customerId })
             .getManyAndCount()
-            .then(([items, totalItems]) => ({ items, totalItems }));
+            .then(async ([items, totalItems]) => {
+                await this.attachMessageCounts(ctx, items);
+                return { items, totalItems };
+            });
     }
 
     async findAll(
@@ -143,7 +151,10 @@ export class AfterSalesService {
                 channelId: ctx.channelId,
             })
             .getManyAndCount()
-            .then(([items, totalItems]) => ({ items, totalItems }));
+            .then(async ([items, totalItems]) => {
+                await this.attachMessageCounts(ctx, items);
+                return { items, totalItems };
+            });
     }
 
     async createRequest(ctx: RequestContext, input: {
@@ -360,6 +371,7 @@ export class AfterSalesService {
             order: { history: { createdAt: 'ASC' } } as any,
         });
         if (full) {
+            await this.attachMessageCounts(ctx, [full]);
             return full;
         }
         throw new Error(`AfterSalesRequest #${id} not found after save`);
@@ -430,7 +442,8 @@ export class AfterSalesService {
         }
         const fromState = request.state;
         request.rejectReason = reason;
-        return this.commitState(ctx, request, fromState, 'Rejected');
+        const saved = await this.commitState(ctx, request, fromState, 'Rejected');
+        return this.hydrate(ctx, saved.id);
     }
 
     /**
@@ -497,7 +510,8 @@ export class AfterSalesService {
             }
 
             const fromState = request.state;
-            return this.commitState(txCtx, request, fromState, 'Received');
+            const saved = await this.commitState(txCtx, request, fromState, 'Received');
+            return this.hydrate(txCtx, saved.id);
         });
     }
 
@@ -661,6 +675,9 @@ export class AfterSalesService {
             relations: { order: true, orderLine: true, customer: true, channels: true, history: true },
             order: { history: { createdAt: 'ASC' } } as any,
         });
+        if (result) {
+            await this.attachMessageCounts(ctx, [result]);
+        }
         return result ?? undefined;
     }
 
@@ -721,6 +738,133 @@ export class AfterSalesService {
         if (!allowed?.includes(toState)) {
             throw new Error(`Invalid transition: ${request.state} -> ${toState}`);
         }
-        return this.commitState(ctx, request, request.state, toState);
+        const saved = await this.commitState(ctx, request, request.state, toState);
+        return this.hydrate(ctx, saved.id);
+    }
+
+    // ===== 协商留言（迭代三期） =====
+
+    private static readonly MESSAGE_MAX_IMAGES = 3;
+    private static readonly MESSAGE_MAX_LENGTH = 1000;
+
+    /**
+     * 追加一条协商留言。senderType=customer 供顾客发送（addAfterSalesMessage），admin 供商家回复（replyAfterSalesMessage）。
+     * 售后单关闭（Closed）后禁止继续留言；图片 ≤3 张、正文 ≤1000 字。
+     */
+    async addMessage(
+        ctx: RequestContext,
+        requestId: ID,
+        senderType: AfterSalesMessageSenderType,
+        content: string,
+        images?: string[] | null,
+    ): Promise<AfterSalesMessage> {
+        if (!ctx.activeUserId) {
+            throw new UnauthorizedError();
+        }
+        const repo = this.connection.getRepository(ctx, AfterSalesRequest);
+        const request = await repo.findOne({ where: { id: requestId as any } });
+        if (!request) throw new UserInputError(`After-sales request ${requestId} not found`);
+        if (request.state === 'Closed') {
+            // ForbiddenError 是 I18nError，自定义文案会被丢弃，故用 UserInputError 透传禁言提示
+            throw new UserInputError('After-sales request is closed: messaging disabled');
+        }
+        const trimmed = (content ?? '').trim();
+        if (!trimmed) {
+            throw new UserInputError('Message content is required');
+        }
+        if (trimmed.length > AfterSalesService.MESSAGE_MAX_LENGTH) {
+            throw new UserInputError(`Message content exceeds ${AfterSalesService.MESSAGE_MAX_LENGTH} characters`);
+        }
+        const imgs = Array.isArray(images) ? images : [];
+        if (imgs.length > AfterSalesService.MESSAGE_MAX_IMAGES) {
+            throw new UserInputError(`Message images exceed limit of ${AfterSalesService.MESSAGE_MAX_IMAGES}`);
+        }
+        const senderName = await this.resolveSenderName(ctx, senderType);
+        const msgRepo = this.connection.getRepository(ctx, AfterSalesMessage);
+        const message = await msgRepo.save(
+            new AfterSalesMessage({
+                requestId: Number(requestId),
+                senderType,
+                senderUserId: Number(ctx.activeUserId),
+                senderName,
+                content: trimmed,
+                images: imgs.length ? imgs : null,
+            }),
+        );
+        Logger.info(
+            `After-sales message added: request=${requestId} sender=${senderType} user=${ctx.activeUserId}`,
+            loggerCtx,
+        );
+        return message;
+    }
+
+    /** 发送人显示名：管理员取 Administrator、顾客取 Customer（姓名拼接），失败兜底 'user' */
+    private async resolveSenderName(ctx: RequestContext, senderType: AfterSalesMessageSenderType): Promise<string> {
+        if (!ctx.activeUserId) return 'user';
+        try {
+            if (senderType === 'admin') {
+                const adminRepo = this.connection.getRepository(ctx, Administrator);
+                const admin = await adminRepo.findOne({
+                    where: { user: { id: ctx.activeUserId as any } } as any,
+                    relations: { user: true },
+                });
+                if (admin) return `${admin.firstName} ${admin.lastName}`.trim();
+            } else if (this.customerService) {
+                const customer = await this.customerService.findOneByUserId(ctx, ctx.activeUserId);
+                if (customer) return `${customer.firstName} ${customer.lastName}`.trim();
+            }
+        } catch (e: any) {
+            Logger.warn(`resolveSenderName failed: ${e?.message ?? e}`, loggerCtx);
+        }
+        return 'user';
+    }
+
+    /**
+     * 售后单留言列表（createdAt 正序，skip/take 常规分页）。
+     * senderType=customer 时校验售后单归属当前顾客，防止越权读他人留言。
+     */
+    async listMessages(
+        ctx: RequestContext,
+        requestId: ID,
+        senderType: AfterSalesMessageSenderType,
+        options?: { skip?: number; take?: number },
+    ): Promise<PaginatedList<AfterSalesMessage>> {
+        const repo = this.connection.getRepository(ctx, AfterSalesRequest);
+        const request = await repo.findOne({ where: { id: requestId as any } });
+        if (!request) throw new UserInputError(`After-sales request ${requestId} not found`);
+        if (senderType === 'customer') {
+            const customerId = await this.resolveCustomerId(ctx);
+            if (!customerId || Number(request.customerId) !== customerId) {
+                throw new ForbiddenError();
+            }
+        }
+        const msgRepo = this.connection.getRepository(ctx, AfterSalesMessage);
+        const take = Math.min(Math.max(options?.take ?? 50, 1), 100);
+        const skip = Math.max(options?.skip ?? 0, 0);
+        const [items, totalItems] = await msgRepo.findAndCount({
+            where: { requestId: Number(requestId) },
+            order: { createdAt: 'ASC' },
+            skip,
+            take,
+        });
+        return { items, totalItems };
+    }
+
+    /** 批量统计各售后单留言条数并附加到 messageCount 非持久化属性 */
+    private async attachMessageCounts(ctx: RequestContext, requests: AfterSalesRequest[]): Promise<void> {
+        if (!requests.length) return;
+        const ids = requests.map((r) => Number(r.id));
+        const msgRepo = this.connection.getRepository(ctx, AfterSalesMessage);
+        const rows = await msgRepo
+            .createQueryBuilder('m')
+            .select('m.requestId', 'requestId')
+            .addSelect('COUNT(*)', 'count')
+            .where('m.requestId IN (:...ids)', { ids })
+            .groupBy('m.requestId')
+            .getRawMany<{ requestId: number; count: string }>();
+        const map = new Map(rows.map((r) => [Number(r.requestId), Number(r.count)]));
+        for (const r of requests) {
+            r.messageCount = map.get(Number(r.id)) ?? 0;
+        }
     }
 }
