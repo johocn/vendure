@@ -460,7 +460,13 @@ export const devConfig: VendureConfig = {
         })] : []),
         InvoicePdfPlugin.init(),
         RechargeCardPlugin.init({ defaultExpiresMonths: 12 }),
-        AfterSalesPlugin.init(),
+        AfterSalesPlugin.init({
+            afterSalesWindowHours: 24,         // 外卖售后窗口：送达后 24h
+            afterSalesAutoApproveHours: 48,    // Pending 48h 未审自动同意并退款
+            afterSalesRefundAutoRetry: 1,      // 退款失败自动重试 1 次
+            allowedOrderStates: ['PaymentSettled', 'Delivered'], // 外卖单全程 PaymentSettled，确认收货后 Delivered
+            requireOrderCustomField: { field: 'deliveryStatus', value: 'delivered' }, // 仅骑手送达后可售后
+        }),
         MemberLevelPlugin.init(),
         // 门店收银 POS：会员价依赖 MemberLevelPlugin；离线同步插件内部复用 VcashPosPlugin（同库/同渠道）
         VcashPosPlugin,
