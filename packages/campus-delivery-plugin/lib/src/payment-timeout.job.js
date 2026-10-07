@@ -43,12 +43,16 @@ let PaymentTimeoutJob = class PaymentTimeoutJob {
         });
     }
     async process(data) {
-        var _a, _b;
         const task = await this.taskRepo.findOne({ where: { id: data.taskId } });
         if (!task || task.status !== payment_timeout_entity_1.PaymentTimeoutStatus.PENDING)
             return;
         if (new Date() < new Date(task.dueAt))
             return; // SQL JobQueue 忽略 delay → 补偿扫描兜底
+        await this.runTask(task);
+    }
+    /** 执行核心（定时队列与手动执行共用）：状态复查 → 提醒/取消 → 落库 */
+    async runTask(task) {
+        var _a, _b;
         try {
             const ctx = await this.buildCtx(task.channelId);
             if (!ctx)
@@ -106,7 +110,32 @@ let PaymentTimeoutJob = class PaymentTimeoutJob {
             await this.taskRepo.save(t);
         }
     }
-    /** 补偿扫描：捡起 dueAt 已过的 PENDING 任务重新入队 */
+    /** 手动执行：PENDING（无视 dueAt）/ FAILED 重试；EXECUTED/CANCELLED 拒绝。条件防并发：执行前复查状态 */
+    async executeTaskNow(taskId) {
+        const task = await this.taskRepo.findOne({ where: { id: taskId } });
+        if (!task)
+            throw new Error('PAYMENT_TIMEOUT_TASK_NOT_FOUND');
+        if (task.status === payment_timeout_entity_1.PaymentTimeoutStatus.EXECUTED || task.status === payment_timeout_entity_1.PaymentTimeoutStatus.CANCELLED) {
+            throw new Error('PAYMENT_TIMEOUT_TASK_NOT_EXECUTABLE');
+        }
+        await this.runTask(task);
+        return task;
+    }
+    /** 手动重发提醒：按任务取 orderId/channelId 直发通知，不经状态机 */
+    async resendRemind(taskId) {
+        const task = await this.taskRepo.findOne({ where: { id: taskId } });
+        if (!task || task.type !== payment_timeout_entity_1.PaymentTimeoutType.REMIND)
+            throw new Error('PAYMENT_TIMEOUT_REMIND_TASK_NOT_FOUND');
+        const ctx = await this.buildCtx(task.channelId);
+        if (!ctx)
+            throw new Error('PAYMENT_TIMEOUT_CHANNEL_NOT_FOUND');
+        const order = await this.orderService.findOne(ctx, task.orderId);
+        if (!order)
+            throw new Error('PAYMENT_TIMEOUT_ORDER_NOT_FOUND');
+        this.notify.user(ctx, order.id, 'paymentPending', undefined, await this.h5Base(ctx));
+        return true;
+    }
+    /** 补偿扫描：捡起 dueAt 已过的 PENDING 任务重新入队，返回处理条数 */
     async runCompensation() {
         const now = new Date();
         const overdue = await this.taskRepo.createQueryBuilder('t')
@@ -117,6 +146,7 @@ let PaymentTimeoutJob = class PaymentTimeoutJob {
         for (const t of overdue) {
             await this.jobQueue.add({ taskId: Number(t.id) }, { retries: MAX_RETRY });
         }
+        return overdue.length;
     }
     async h5Base(ctx) {
         var _a;

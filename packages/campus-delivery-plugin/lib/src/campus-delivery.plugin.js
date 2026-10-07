@@ -33,6 +33,8 @@ const hall_shop_resolver_1 = require("./hall-shop.resolver");
 const campus_invoice_resolver_1 = require("./campus-invoice.resolver");
 const create_campus_tables_1 = require("./migrations/create-campus-tables");
 const min_order_process_1 = require("./min-order.process");
+const payment_timeout_admin_resolver_1 = require("./payment-timeout-admin.resolver");
+const payment_timeout_admin_service_1 = require("./payment-timeout-admin.service");
 const payment_timeout_job_1 = require("./payment-timeout.job");
 const payment_timeout_entity_1 = require("./payment-timeout.entity");
 const permissions_1 = require("./permissions");
@@ -165,6 +167,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             merchant_admin_service_1.MerchantAdminService,
             campus_notify_service_1.CampusNotifyService,
             payment_timeout_job_1.PaymentTimeoutJob,
+            payment_timeout_admin_service_1.PaymentTimeoutAdminService,
         ],
         adminApiExtensions: {
             schema: () => {
@@ -428,9 +431,55 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                 type CampusMerchantOpResult {
                     ok: Boolean!
                 }
+
+                type PaymentTimeoutTask {
+                    id: ID!
+                    orderId: ID!
+                    type: String!
+                    status: String!
+                    dueAt: DateTime!
+                    retryCount: Int!
+                    lastError: String
+                }
+
+                type PaymentTimeoutTaskRow {
+                    id: ID!
+                    orderId: ID!
+                    channelId: ID!
+                    orderCode: String
+                    orderState: String
+                    type: String!
+                    status: String!
+                    dueAt: DateTime!
+                    retryCount: Int!
+                    lastError: String
+                }
+
+                type PaymentTimeoutTaskList {
+                    items: [PaymentTimeoutTaskRow!]!
+                    total: Int!
+                }
+
+                type PaymentTimeoutStats {
+                    todayRemind: Int!
+                    todayCancel: Int!
+                    totalFailed: Int!
+                    pendingOverdue: Int!
+                }
+
+                extend type Query {
+                    paymentTimeoutTasks(status: String, type: String, from: DateTime, to: DateTime, skip: Int, take: Int): PaymentTimeoutTaskList!
+                    paymentTimeoutStats: PaymentTimeoutStats!
+                }
+
+                extend type Mutation {
+                    executePaymentTimeoutTask(id: ID!): PaymentTimeoutTask!
+                    resendPaymentTimeoutRemind(taskId: ID!): Boolean!
+                    runPaymentTimeoutCompensation: Int!
+                }
             `;
             },
-            resolvers: [campus_config_admin_resolver_1.CampusConfigAdminResolver, rider_admin_resolver_1.RiderAdminResolver, dispatch_admin_resolver_1.DispatchAdminResolver, merchant_admin_resolver_1.MerchantAdminResolver],
+            resolvers: [campus_config_admin_resolver_1.CampusConfigAdminResolver, rider_admin_resolver_1.RiderAdminResolver, dispatch_admin_resolver_1.DispatchAdminResolver, merchant_admin_resolver_1.MerchantAdminResolver, payment_timeout_admin_resolver_1.PaymentTimeoutAdminResolver],
         },
         shopApiExtensions: {
             schema: () => {
