@@ -57,7 +57,11 @@ export class PaymentTimeoutJob {
         const task = await this.taskRepo.findOne({ where: { id: data.taskId as any } });
         if (!task || task.status !== PaymentTimeoutStatus.PENDING) return;
         if (new Date() < new Date(task.dueAt)) return; // SQL JobQueue 忽略 delay → 补偿扫描兜底
+        await this.runTask(task);
+    }
 
+    /** 执行核心（定时队列与手动执行共用）：状态复查 → 提醒/取消 → 落库 */
+    private async runTask(task: PaymentTimeoutTask): Promise<void> {
         try {
             const ctx = await this.buildCtx(task.channelId);
             if (!ctx) throw new Error(`Channel ${task.channelId} not found`);
@@ -112,8 +116,31 @@ export class PaymentTimeoutJob {
         }
     }
 
-    /** 补偿扫描：捡起 dueAt 已过的 PENDING 任务重新入队 */
-    async runCompensation(): Promise<void> {
+    /** 手动执行：PENDING（无视 dueAt）/ FAILED 重试；EXECUTED/CANCELLED 拒绝。条件防并发：执行前复查状态 */
+    async executeTaskNow(taskId: number): Promise<PaymentTimeoutTask> {
+        const task = await this.taskRepo.findOne({ where: { id: taskId as any } });
+        if (!task) throw new Error('PAYMENT_TIMEOUT_TASK_NOT_FOUND');
+        if (task.status === PaymentTimeoutStatus.EXECUTED || task.status === PaymentTimeoutStatus.CANCELLED) {
+            throw new Error('PAYMENT_TIMEOUT_TASK_NOT_EXECUTABLE');
+        }
+        await this.runTask(task);
+        return task;
+    }
+
+    /** 手动重发提醒：按任务取 orderId/channelId 直发通知，不经状态机 */
+    async resendRemind(taskId: number): Promise<boolean> {
+        const task = await this.taskRepo.findOne({ where: { id: taskId as any } });
+        if (!task || task.type !== PaymentTimeoutType.REMIND) throw new Error('PAYMENT_TIMEOUT_REMIND_TASK_NOT_FOUND');
+        const ctx = await this.buildCtx(task.channelId);
+        if (!ctx) throw new Error('PAYMENT_TIMEOUT_CHANNEL_NOT_FOUND');
+        const order = await this.orderService.findOne(ctx, task.orderId as any);
+        if (!order) throw new Error('PAYMENT_TIMEOUT_ORDER_NOT_FOUND');
+        this.notify.user(ctx, order.id, 'paymentPending', undefined, await this.h5Base(ctx));
+        return true;
+    }
+
+    /** 补偿扫描：捡起 dueAt 已过的 PENDING 任务重新入队，返回处理条数 */
+    async runCompensation(): Promise<number> {
         const now = new Date();
         const overdue = await this.taskRepo.createQueryBuilder('t')
             .where('t.status = :status', { status: PaymentTimeoutStatus.PENDING })
@@ -123,6 +150,7 @@ export class PaymentTimeoutJob {
         for (const t of overdue) {
             await this.jobQueue.add({ taskId: Number(t.id) }, { retries: MAX_RETRY } as any);
         }
+        return overdue.length;
     }
 
     private async h5Base(ctx: RequestContext): Promise<string | undefined> {
