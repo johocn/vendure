@@ -3,12 +3,14 @@ import { ModuleRef } from '@nestjs/core';
 import {
     EventBus,
     Injector,
+    Logger,
     OrderStateTransitionEvent,
     PluginCommonModule,
     RefundStateTransitionEvent,
     VendurePlugin,
 } from '@vendure/core';
 
+import { AfterSalesStateTransitionEvent } from '@vendure/after-sales-plugin';
 import { NOTIFICATION_PLUGIN_OPTIONS } from './constants';
 import { InboxMessage } from './inbox-message.entity';
 import { NotificationAdminResolver } from './notification-admin.resolver';
@@ -107,6 +109,17 @@ export class NotificationPlugin implements OnApplicationBootstrap {
         this.eventBus.ofType(RefundStateTransitionEvent).subscribe((event) => {
             if (event.toState !== 'Settled') return;
             void this.notificationService.onRefundSettled(event.ctx, event.order.id, event.refund.total);
+        });
+
+        this.eventBus.ofType(AfterSalesStateTransitionEvent).subscribe((event) => {
+            void this.notificationService.onAfterSalesStateTransition(event.ctx, {
+                requestId: event.requestId,
+                orderId: event.orderId,
+                type: event.type,
+                fromState: event.fromState,
+                toState: event.toState,
+                customerId: event.customerId,
+            });
         });
     }
 }

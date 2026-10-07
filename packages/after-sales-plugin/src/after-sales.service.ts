@@ -18,6 +18,7 @@ import {
     Logger,
     TransactionalConnection,
     EntityNotFoundError,
+    EventBus,
     UserInputError,
     ForbiddenError,
     UnauthorizedError,
@@ -26,6 +27,7 @@ import {
 import { loggerCtx, AFTER_SALES_PLUGIN_OPTIONS } from './constants';
 import { AfterSalesRequest } from './after-sales-request.entity';
 import { AfterSalesStateHistory } from './after-sales-state-history.entity';
+import { AfterSalesStateTransitionEvent } from './after-sales.events';
 import { AfterSalesState, AfterSalesPluginOptions, STATE_TRANSITIONS } from './types';
 import { InventoryService } from '@vendure/inventory-plugin';
 
@@ -38,6 +40,7 @@ export class AfterSalesService {
     private assetService: AssetService | null = null;
     private configService: ConfigService | null = null;
     private channelService: ChannelService | null = null;
+    private eventBus: EventBus | null = null;
 
     constructor(
         private connection: TransactionalConnection,
@@ -64,6 +67,11 @@ export class AfterSalesService {
             this.channelService = injector.get(ChannelService);
         } catch {
             this.channelService = null;
+        }
+        try {
+            this.eventBus = injector.get(EventBus);
+        } catch {
+            this.eventBus = null;
         }
     }
 
@@ -226,7 +234,6 @@ export class AfterSalesService {
             orderId: entityOrderId as any,
             orderLineId: entityOrderLineId as any,
             type: (input.type as any) || 'return_refund',
-            state: 'Pending',
             reason: input.reason,
             description: input.description || null,
             evidenceImages: input.evidenceImages || null,
@@ -234,8 +241,7 @@ export class AfterSalesService {
             customerId: (order.customer as any).id as any,
         });
         request.channels = [ctx.channel];
-        const saved = await repo.save(request);
-        await this.recordState(ctx, Number(saved.id), null, 'Pending');
+        const saved = await this.commitState(ctx, request, null, 'Pending');
         Logger.info(`After-sales request ${saved.id} created by customer ${ctx.activeUserId}`, loggerCtx);
         return this.hydrate(ctx, saved.id);
     }
@@ -248,9 +254,7 @@ export class AfterSalesService {
             throw new Error(`Cannot cancel request in state: ${request.state}`);
         }
         const fromState = request.state;
-        request.state = 'Closed';
-        const saved = await repo.save(request);
-        await this.recordState(ctx, Number(saved.id), fromState, 'Closed');
+        const saved = await this.commitState(ctx, request, fromState, 'Closed');
         return this.hydrate(ctx, saved.id);
     }
 
@@ -264,9 +268,7 @@ export class AfterSalesService {
         const fromState = request.state;
         request.returnTrackingNo = trackingNo;
         request.returnCarrier = carrier;
-        request.state = 'Returning';
-        const saved = await repo.save(request);
-        await this.recordState(ctx, Number(saved.id), fromState, 'Returning');
+        const saved = await this.commitState(ctx, request, fromState, 'Returning');
         return this.hydrate(ctx, saved.id);
     }
 
@@ -363,6 +365,41 @@ export class AfterSalesService {
         throw new Error(`AfterSalesRequest #${id} not found after save`);
     }
 
+    /**
+     * 状态变更统一出口：写状态 + 落历史 + 发布 AfterSalesStateTransitionEvent。
+     * 所有状态写入点必须经此方法保证通知全覆盖；事件发布失败仅告警不阻断。
+     */
+    private async commitState(
+        ctx: RequestContext,
+        request: AfterSalesRequest,
+        fromState: string | null,
+        toState: AfterSalesState,
+    ): Promise<AfterSalesRequest> {
+        const repo = this.connection.getRepository(ctx, AfterSalesRequest);
+        request.state = toState;
+        const saved = await repo.save(request);
+        await this.recordState(ctx, Number(saved.id), fromState, toState);
+        try {
+            const full = await repo.findOne({ where: { id: saved.id as any }, relations: { order: true } });
+            await this.eventBus?.publish(
+                new AfterSalesStateTransitionEvent(
+                    ctx,
+                    Number(saved.id),
+                    Number(saved.orderId),
+                    saved.type,
+                    fromState,
+                    toState,
+                    saved.customerId != null ? Number(saved.customerId) : null,
+                    full?.order?.code ?? null,
+                    new Date(),
+                ),
+            );
+        } catch (e: any) {
+            Logger.warn(`publish AfterSalesStateTransitionEvent failed for #${saved.id}: ${e?.message ?? e}`, loggerCtx);
+        }
+        return saved;
+    }
+
     /** 状态流转历史落库：失败仅告警，绝不阻断主流程 */
     private async recordState(ctx: RequestContext, requestId: number, fromState: string | null, toState: string): Promise<void> {
         try {
@@ -392,11 +429,8 @@ export class AfterSalesService {
             throw new Error(`Cannot reject from state: ${request.state}`);
         }
         const fromState = request.state;
-        request.state = 'Rejected';
         request.rejectReason = reason;
-        const saved = await repo.save(request);
-        await this.recordState(ctx, Number(saved.id), fromState, 'Rejected');
-        return saved;
+        return this.commitState(ctx, request, fromState, 'Rejected');
     }
 
     /**
@@ -463,10 +497,7 @@ export class AfterSalesService {
             }
 
             const fromState = request.state;
-            request.state = 'Received';
-            const saved = await repo.save(request);
-            await this.recordState(txCtx, Number(saved.id), fromState, 'Received');
-            return saved;
+            return this.commitState(txCtx, request, fromState, 'Received');
         });
     }
 
@@ -537,11 +568,9 @@ export class AfterSalesService {
 
             if (isGraphQlErrorResult(refundResult)) {
                 // refundOrder 拒绝（如超额 RefundAmountError）：无实际退款发生，置 RefundFailed 留痕并提交
-                request.state = 'RefundFailed';
                 request.refundError = `refundOrder 拒绝: ${JSON.stringify(refundResult)}`;
                 request.refundedAt = undefined;
-                await repo.save(request);
-                await this.recordState(ctx, Number(request.id), fromState, 'RefundFailed');
+                await this.commitState(ctx, request, fromState, 'RefundFailed');
                 await this.updateOrderAfterSalesStatus(ctx, request.orderId, 'RefundFailed');
                 await this.connection.commitOpenTransaction(ctx);
                 Logger.warn(`after-sales #${request.id} refundOrder 拒绝: ${request.refundError}`, loggerCtx);
@@ -563,18 +592,14 @@ export class AfterSalesService {
                 request.actualRefundAmount = refund.total != null ? Number(refund.total) : request.refundAmount;
                 request.refundError = null;
                 request.refundedAt = new Date();
-                request.state = 'Refunded';
-                await repo.save(request);
-                await this.recordState(ctx, Number(request.id), fromState, 'Refunded');
+                await this.commitState(ctx, request, fromState, 'Refunded');
                 await this.updateOrderAfterSalesStatus(ctx, request.orderId, 'Refunded');
                 Logger.info(`Refund settled for after-sales request #${request.id}, tx=${request.refundTransactionId}`, loggerCtx);
             } else {
                 // Failed 等非成功终态：不抛（调用方可进入 RefundFailed 重试），仅告警与留痕
-                request.state = 'RefundFailed';
                 request.refundError = `退款未达 Settled，当前 ${refund.state}`;
                 request.refundedAt = undefined;
-                await repo.save(request);
-                await this.recordState(ctx, Number(request.id), fromState, 'RefundFailed');
+                await this.commitState(ctx, request, fromState, 'RefundFailed');
                 await this.updateOrderAfterSalesStatus(ctx, request.orderId, 'RefundFailed');
                 Logger.warn(`after-sales #${request.id} 退款终态 ${refund.state}，已置 RefundFailed`, loggerCtx);
             }
@@ -602,12 +627,13 @@ export class AfterSalesService {
                 typeof idOrRequest === 'object' ? idOrRequest : await repo.findOne({ where: { id: idOrRequest as any } });
             if (!request || request.state === 'Refunded') return;
             const fromState = request.state;
-            request.state = 'RefundFailed';
             request.refundError = error;
             request.refundedAt = undefined;
-            await repo.save(request);
             if (fromState !== 'RefundFailed') {
-                await this.recordState(ctx, Number(request.id), fromState, 'RefundFailed');
+                await this.commitState(ctx, request, fromState, 'RefundFailed');
+            } else {
+                // 已是 RefundFailed 的重复兜底：只更新错误信息，不再发布事件（防重试风暴）
+                await repo.save(request);
             }
             await this.updateOrderAfterSalesStatus(ctx, (request as any).orderId, 'RefundFailed');
         } catch (inner: any) {
@@ -695,10 +721,6 @@ export class AfterSalesService {
         if (!allowed?.includes(toState)) {
             throw new Error(`Invalid transition: ${request.state} -> ${toState}`);
         }
-        const fromState = request.state;
-        request.state = toState;
-        const saved = await repo.save(request);
-        await this.recordState(ctx, Number(saved.id), fromState, toState);
-        return saved;
+        return this.commitState(ctx, request, request.state, toState);
     }
 }
