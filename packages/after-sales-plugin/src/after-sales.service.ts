@@ -190,24 +190,47 @@ export class AfterSalesService {
             throw new ForbiddenError();
         }
 
-        // 2. 校验订单状态（必须 Shipped/Delivered/PartiallyDelivered/Completed/Cancelled 才能售后）
-        const allowedStates = ['Shipped', 'Delivered', 'PartiallyDelivered', 'Completed', 'Cancelled'];
+        // 2. 校验订单状态（白名单可配置；外卖单全程 PaymentSettled，由 dev-config 显式放行）
+        const allowedStates = this.options?.allowedOrderStates?.length
+            ? this.options.allowedOrderStates
+            : ['Shipped', 'Delivered', 'PartiallyDelivered', 'Completed', 'Cancelled'];
         if (!allowedStates.includes(order.state)) {
             throw new UserInputError(
                 `Cannot create after-sales: order state must be one of ${allowedStates.join('/')}, got ${order.state}`,
             );
         }
 
-        // 3. 售后期窗口校验（默认 7 天无理由 + 15 天质量问题 = 22 天上限）。
-        // 计时起点优先取交易完成时间 fulfillmentCompletedAt（阶段10 确认收货/自动完成落库），
-        // 其次首次送达 fulfillmentDeliveredAt，最后回退订单 updatedAt。
-        const maxDays = this.options?.maxDaysAfterDelivery ?? 7;
-        const completedAt = (order.customFields as any)?.fulfillmentCompletedAt;
-        const deliveredAt = (order.customFields as any)?.fulfillmentDeliveredAt;
-        const orderDate = completedAt || deliveredAt || order.updatedAt || order.createdAt;
-        const daysSince = (Date.now() - orderDate.getTime()) / (1000 * 60 * 60 * 24);
-        if (daysSince > maxDays + 15) {
-            throw new UserInputError(`Cannot create after-sales: exceeded ${maxDays + 15} days limit`);
+        // 3. 售后窗口校验：
+        //    afterSalesWindowHours > 0 时按小时窗口（送达时间起算，外卖 24h 场景）；
+        //    否则按 maxDays + 15 天质量问题延长逻辑。
+        //    计时起点 fulfillmentCompletedAt → fulfillmentDeliveredAt → deliveredAt（外卖骑手送达落库）→ updatedAt。
+        const cf: Record<string, any> = (order.customFields ?? {}) as any;
+        const orderDate: Date = cf.fulfillmentCompletedAt || cf.fulfillmentDeliveredAt || cf.deliveredAt
+            || order.updatedAt || order.createdAt;
+        const windowHours = this.options?.afterSalesWindowHours ?? 0;
+        if (windowHours > 0) {
+            const hoursSince = (Date.now() - orderDate.getTime()) / (1000 * 60 * 60);
+            if (hoursSince > windowHours) {
+                throw new UserInputError(`Cannot create after-sales: exceeded ${windowHours}h window`);
+            }
+        } else {
+            const maxDays = this.options?.maxDaysAfterDelivery ?? 7;
+            const daysSince = (Date.now() - orderDate.getTime()) / (1000 * 60 * 60 * 24);
+            if (daysSince > maxDays + 15) {
+                throw new UserInputError(`Cannot create after-sales: exceeded ${maxDays + 15} days limit`);
+            }
+        }
+
+        // 3.1 送达门槛（外卖场景）：requireOrderCustomField 指定的 customFields 字段必须等于指定值，
+        //     防止未送达（deliveryStatus 空/assigned/in_progress）的已支付单走售后与取消链路双退款
+        const gate = this.options?.requireOrderCustomField;
+        if (gate?.field) {
+            const actual = cf[gate.field];
+            if (String(actual) !== String(gate.value)) {
+                throw new UserInputError(
+                    `Cannot create after-sales: order not eligible (${gate.field}=${actual ?? 'null'})`,
+                );
+            }
         }
 
         // 4. 退款金额上限校验
@@ -229,18 +252,24 @@ export class AfterSalesService {
         const entityOrderId = order.id;
         const entityOrderLineId = orderLine ? orderLine.id : null;
 
-        // 5. 重复售后校验（同一 orderLineId 不能有未关闭的售后单）
+        // 5. 重复售后校验：整单售后（无 orderLineId）按订单查重；指定行按行查重（均排除 Closed，
+        //    Rejected 也算占用——被拒单必须走申诉，不允许绕开仲裁重新提单）
+        const repo = this.connection.getRepository(ctx, AfterSalesRequest);
         if (entityOrderLineId != null) {
-            const repo = this.connection.getRepository(ctx, AfterSalesRequest);
             const existing = await repo.findOne({
                 where: { orderLineId: entityOrderLineId as any, state: Not('Closed' as any) },
             });
             if (existing) {
                 throw new UserInputError(`After-sales already exists for order line ${input.orderLineId}`);
             }
+        } else {
+            const existing = await repo.findOne({
+                where: { orderId: entityOrderId as any, state: Not('Closed' as any) },
+            });
+            if (existing) {
+                throw new UserInputError(`After-sales already exists for order ${input.orderId}`);
+            }
         }
-
-        const repo = this.connection.getRepository(ctx, AfterSalesRequest);
         const request = new AfterSalesRequest({
             orderId: entityOrderId as any,
             orderLineId: entityOrderLineId as any,

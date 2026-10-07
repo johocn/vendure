@@ -492,44 +492,81 @@ describe('AfterSalesPlugin · 售后退款/回补入账本闭环', () => {
         expect(res.afterSalesRequest.history.length).toBeGreaterThanOrEqual(5);
     }, TEST_SETUP_TIMEOUT_MS);
 
-    it('批量操作：全成功 / 部分失败（非法id+非法状态）/ 超 50 拒绝', async () => {
+    it('批量操作：整单查重 + 全成功 / 部分失败（非法id+非法状态）/ 超 50 拒绝', async () => {
         await shopClient.asUserWithCredentials('hayden.zieme12@hotmail.com', 'test');
-        // 主订单（已 Shipped）上创建 3 张整单售后（无 orderLineId 无重复限制）
-        const ids: string[] = [];
-        for (let i = 0; i < 3; i++) {
-            const c = await shopClient.query(gql`
-                mutation {
-                    createAfterSalesRequest(input: { orderId: "${orderId}", type: refund_only, reason: "batch-${i}", refundAmount: 1 }) { id state }
+        // 新规则：整单售后按订单查重（非 Closed 均占用）→ 主订单已 Refunded 被占用，需新建 Shipped 订单
+        const addResult = await shopClient.query(gql`
+            mutation {
+                addItemToOrder(productVariantId: "${variantId}", quantity: 1) {
+                    ... on Order { id }
+                    ... on ErrorResult { errorCode message }
                 }
-            `);
-            ids.push(c.createAfterSalesRequest.id);
-        }
+            }
+        `);
+        const batchOrderId = addResult.addItemToOrder.id;
+        expect(batchOrderId).toBeDefined();
+        await shopClient.query(gql`
+            mutation {
+                setOrderCustomFields(input: { customFields: { lat: 30.66, lng: 104.06, city: "成都" } }) {
+                    ... on Order { id }
+                    ... on ErrorResult { errorCode message }
+                }
+            }
+        `);
+        await proceedToArrangingPayment(shopClient);
+        await addPaymentToOrder(shopClient, singleStageRefundablePaymentMethod);
+        const bd = await adminClient.query(gql`
+            query { order(id: "${batchOrderId}") { id state lines { id quantity } } }
+        `);
+        const bl = bd.order.lines[0];
+        const bf = await adminClient.query(gql`
+            mutation {
+                addFulfillmentToOrder(input: {
+                    lines: [{ orderLineId: "${bl.id}", quantity: ${bl.quantity} }]
+                    handler: {
+                        code: "manual-fulfillment"
+                        arguments: [
+                            { name: "method", value: "standard" }
+                            { name: "trackingCode", value: "SF_BATCH" }
+                        ]
+                    }
+                }) { ... on Fulfillment { id } ... on ErrorResult { errorCode message } }
+            }
+        `);
+        await adminClient.query(gql`
+            mutation { transitionFulfillmentToState(id: "${bf.addFulfillmentToOrder.id}", state: "Shipped") { ... on Fulfillment { id state } } }
+        `);
+        await adminClient.query(gql`
+            mutation { transitionOrderToState(id: "${batchOrderId}", state: "Shipped") { ... on Order { id state } ... on ErrorResult { errorCode message } } }
+        `);
+
+        const c = await shopClient.query(gql`
+            mutation {
+                createAfterSalesRequest(input: { orderId: "${batchOrderId}", type: refund_only, reason: "batch-0", refundAmount: 1 }) { id state }
+            }
+        `);
+        const firstId = c.createAfterSalesRequest.id;
+        // 整单查重：同订单再提整单售后被拒（旧规则允许同单多张，现按 spec 收紧）
+        await expect(shopClient.query(gql`
+            mutation {
+                createAfterSalesRequest(input: { orderId: "${batchOrderId}", type: refund_only, reason: "batch-dup", refundAmount: 1 }) { id state }
+            }
+        `)).rejects.toThrow(/already exists/);
         // 批量同意全成功
         const approved = await adminClient.query(gql`
-            mutation { batchApproveAfterSalesRequests(ids: [${ids.map((i) => `"${i}"`).join(', ')}]) { id success state message } }
+            mutation { batchApproveAfterSalesRequests(ids: ["${firstId}"]) { id success state message } }
         `);
         expect(approved.batchApproveAfterSalesRequests.every((r: any) => r.success && r.state === 'Approved')).toBe(true);
-        // 再建 3 张 Pending，批量拒绝：混入非法 id + 已 Approved 的 id → 部分失败
-        const rejectIds: string[] = [];
-        for (let i = 0; i < 3; i++) {
-            const c = await shopClient.query(gql`
-                mutation {
-                    createAfterSalesRequest(input: { orderId: "${orderId}", type: refund_only, reason: "batch-rej-${i}", refundAmount: 1 }) { id state }
-                }
-            `);
-            rejectIds.push(c.createAfterSalesRequest.id);
-        }
+        // 批量拒绝部分失败：混入非法 id + 已 Approved 的 id（返回按输入顺序）
         const mixed = await adminClient.query(gql`
-            mutation { batchRejectAfterSalesRequests(ids: [${[...rejectIds, '999999', ids[0]].map((i) => `"${i}"`).join(', ')}], reason: "e2e-batch-reject") { id success state message } }
+            mutation { batchRejectAfterSalesRequests(ids: ["999999", "${firstId}"], reason: "e2e-batch-reject") { id success state message } }
         `);
-        const byId = Object.fromEntries(mixed.batchRejectAfterSalesRequests.map((r: any) => [r.id, r]));
-        expect(rejectIds.every((id) => byId[id]?.success && byId[id]?.state === 'Rejected')).toBe(true);
         // 注意：返回的 id 经 Vendure IdCodec 全局编码，'999999' 这类裸数字键对不上，按输入顺序断言
         const rejResults = mixed.batchRejectAfterSalesRequests;
-        expect(rejResults).toHaveLength(5);
-        expect(rejResults[3].success).toBe(false); // '999999' 不存在
-        expect(rejResults[3].message).toBeTruthy();
-        expect(rejResults[4].success).toBe(false); // Approved 不可 reject
+        expect(rejResults).toHaveLength(2);
+        expect(rejResults[0].success).toBe(false); // '999999' 不存在
+        expect(rejResults[0].message).toBeTruthy();
+        expect(rejResults[1].success).toBe(false); // Approved 不可 reject
         // 超 50 条：后端 UserInputError
         const tooMany = Array.from({ length: 51 }, (_, i) => `"${i + 1}"`).join(', ');
         await expect(

@@ -1,6 +1,12 @@
 export interface AfterSalesPluginOptions {
     /** Maximum days after delivery to allow after-sales request (default: 15) */
     maxDaysAfterDelivery?: number;
+    /** 售后窗口小时数（>0 时覆盖 maxDaysAfterDelivery 逻辑：从送达时间起算，如 24 = 送达后 24h；默认 0 = 沿用 maxDaysAfterDelivery） */
+    afterSalesWindowHours?: number;
+    /** 允许售后的订单状态（默认 Shipped/Delivered/PartiallyDelivered/Completed/Cancelled；外卖单全程 PaymentSettled，需显式放行） */
+    allowedOrderStates?: string[];
+    /** 要求订单 customFields[field] === value 才允许售后（外卖场景 { field: 'deliveryStatus', value: 'delivered' }；不设置则仅按订单状态校验） */
+    requireOrderCustomField?: { field: string; value: string };
     /** Pending 超时提醒商家小时数（默认 48；渠道 customFields afterSalesTimeoutHours 优先） */
     afterSalesTimeoutHours?: number;
     /** Pending 超时自动同意小时数（0 = 关闭，默认 0；渠道 customFields afterSalesAutoApproveHours 优先） */
@@ -19,12 +25,14 @@ export type AfterSalesState =
     | 'ExchangeShipped'
     | 'Refunded'
     | 'RefundFailed'
+    | 'Appealed'
     | 'Closed';
 
 export const STATE_TRANSITIONS: Record<AfterSalesState, AfterSalesState[]> = {
     Pending: ['Approved', 'Rejected'],
-    Approved: ['Returning', 'Closed'],
-    Rejected: [],
+    Approved: ['Returning', 'Received', 'Closed'], // +Received：refund_only 免退货直达退款
+    Rejected: ['Appealed', 'Closed'], // +Appealed：用户申诉入口
+    Appealed: ['Approved', 'Closed'], // 仲裁：同意退款 / 维持拒绝
     Returning: ['Received', 'Closed'],
     Received: ['Refunded', 'RefundFailed', 'ExchangeShipped'],
     ExchangeShipped: ['Closed'], // 换货已发货 → 顾客确认收货即关闭
