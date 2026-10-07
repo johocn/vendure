@@ -616,4 +616,41 @@ describe('AfterSalesPlugin · 迭代三期（通知/留言/换货/超时/看板�
             mutation { updateChannel(input: { id: "T_1", customFields: { afterSalesRefundAutoRetry: 1 } }) { ... on Channel { id } } }
         `);
     }, TEST_SETUP_TIMEOUT_MS);
+
+    it('afterSalesStats 聚合：窗口内计数/分组正确；空窗口返回 0/[]', async () => {
+        const from = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+        const to = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+        const { afterSalesStats } = await adminClient.query(gql`
+            query { afterSalesStats(from: "${from}", to: "${to}") {
+                totalRequests pendingCount totalRefundAmount avgHandleHours
+                daily { date total }
+                byState { key count amount }
+                byType { key count amount }
+            } }
+        `);
+        expect(afterSalesStats.totalRequests).toBeGreaterThan(0);
+        expect(afterSalesStats.pendingCount).toBeGreaterThan(0); // 用例 11 的单仍 Pending
+        expect(afterSalesStats.totalRefundAmount).toBeGreaterThan(0); // 用例 4 已产生 Refunded 单
+        expect(afterSalesStats.avgHandleHours).not.toBeNull();
+        const stateKeys = afterSalesStats.byState.map((b: any) => b.key);
+        expect(stateKeys).toContain('Pending');
+        expect(stateKeys).toContain('Refunded');
+        const typeKeys = afterSalesStats.byType.map((b: any) => b.key);
+        expect(typeKeys).toContain('return_refund');
+        expect(afterSalesStats.daily.length).toBeGreaterThan(0);
+
+        // 空窗口：不伪造数据
+        const empty = await adminClient.query(gql`
+            query { afterSalesStats(from: "2000-01-01", to: "2000-01-02") {
+                totalRequests pendingCount totalRefundAmount avgHandleHours
+                daily { date total } byState { key count } byType { key count }
+            } }
+        `);
+        expect(empty.afterSalesStats.totalRequests).toBe(0);
+        expect(empty.afterSalesStats.totalRefundAmount).toBe(0);
+        expect(empty.afterSalesStats.daily).toEqual([]);
+        expect(empty.afterSalesStats.byState).toEqual([]);
+        expect(empty.afterSalesStats.byType).toEqual([]);
+        expect(empty.afterSalesStats.avgHandleHours).toBeNull();
+    }, TEST_SETUP_TIMEOUT_MS);
 });

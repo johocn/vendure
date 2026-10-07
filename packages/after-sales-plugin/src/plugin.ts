@@ -221,10 +221,32 @@ const compensationTask = new ScheduledTask({
 
             input AfterSalesRequestAdminListOptions
 
+            type AfterSalesDaily {
+                date: String!
+                total: Int!
+            }
+
+            type AfterSalesBucket {
+                key: String!
+                count: Int!
+                amount: Int!
+            }
+
+            type AfterSalesStats {
+                totalRequests: Int!
+                pendingCount: Int!
+                totalRefundAmount: Int!
+                avgHandleHours: Float
+                daily: [AfterSalesDaily!]!
+                byState: [AfterSalesBucket!]!
+                byType: [AfterSalesBucket!]!
+            }
+
             extend type Query {
                 afterSalesRequests(options: AfterSalesRequestAdminListOptions): AfterSalesRequestAdminList!
                 afterSalesRequestAdmin(id: ID!): AfterSalesRequestAdmin
                 afterSalesReturnAddress: String!
+                afterSalesStats(from: String!, to: String!): AfterSalesStats!
                 afterSalesMessages(id: ID!, options: AfterSalesMessageAdminListOptions): AfterSalesMessageAdminList!
             }
 

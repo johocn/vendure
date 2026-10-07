@@ -733,6 +733,107 @@ export class AfterSalesService {
         return true;
     }
 
+    /**
+     * 售后数据看板聚合（三期设计 §四）：窗口申请总数 / 仍 Pending / 实退总额 / 平均处理时长 / 按日 / 按状态 / 按类型。
+     * from/to 接受 'YYYY-MM-DD' 或完整 ISO 串（纯日期的 to 按当日 23:59:59.999 收口）。
+     * 分日聚合用 SUBSTR(createdAt,1,10)（sqlite/mysql 均支持）；平均处理时长用 JS 计算避免跨库 AVG 精度差异。
+     */
+    async stats(ctx: RequestContext, from: string, to: string): Promise<any> {
+        const fromDate = new Date(from);
+        const toDate = new Date(to);
+        if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
+            throw new UserInputError('Invalid from/to date');
+        }
+        if (/^\d{4}-\d{2}-\d{2}$/.test(String(to).trim())) {
+            toDate.setHours(23, 59, 59, 999);
+        }
+        const repo = this.connection.getRepository(ctx, AfterSalesRequest);
+
+        const totalRequests = await repo
+            .createQueryBuilder('r')
+            .where('r.createdAt >= :from', { from: fromDate })
+            .andWhere('r.createdAt <= :to', { to: toDate })
+            .getCount();
+
+        const pendingCount = await repo
+            .createQueryBuilder('r')
+            .where('r.state = :state', { state: 'Pending' })
+            .andWhere('r.createdAt <= :to', { to: toDate })
+            .getCount();
+
+        const refundRow = await repo
+            .createQueryBuilder('r')
+            .select('COALESCE(SUM(r.actualRefundAmount), 0)', 'total')
+            .where("r.state = 'Refunded'")
+            .andWhere('r.refundedAt >= :from', { from: fromDate })
+            .andWhere('r.refundedAt <= :to', { to: toDate })
+            .getRawOne();
+        const totalRefundAmount = Number(refundRow?.total ?? 0);
+
+        const dailyRows = await repo
+            .createQueryBuilder('r')
+            .select('SUBSTR(r.createdAt, 1, 10)', 'date')
+            .addSelect('COUNT(*)', 'total')
+            .where('r.createdAt >= :from', { from: fromDate })
+            .andWhere('r.createdAt <= :to', { to: toDate })
+            .groupBy('SUBSTR(r.createdAt, 1, 10)')
+            .orderBy('SUBSTR(r.createdAt, 1, 10)', 'ASC')
+            .getRawMany();
+
+        const stateRows = await repo
+            .createQueryBuilder('r')
+            .select('r.state', 'key')
+            .addSelect('COUNT(*)', 'count')
+            .addSelect('COALESCE(SUM(r.actualRefundAmount), 0)', 'amount')
+            .where('r.createdAt >= :from', { from: fromDate })
+            .andWhere('r.createdAt <= :to', { to: toDate })
+            .groupBy('r.state')
+            .getRawMany();
+
+        const typeRows = await repo
+            .createQueryBuilder('r')
+            .select('r.type', 'key')
+            .addSelect('COUNT(*)', 'count')
+            .addSelect('COALESCE(SUM(r.actualRefundAmount), 0)', 'amount')
+            .where('r.createdAt >= :from', { from: fromDate })
+            .andWhere('r.createdAt <= :to', { to: toDate })
+            .groupBy('r.type')
+            .getRawMany();
+
+        // 平均处理时长（小时）：窗口内 Refunded 行 refundedAt - createdAt 的均值，保留两位；无数据为 null
+        const refunded = await repo.find({ where: { state: 'Refunded' as any } });
+        const hours = refunded
+            .filter(
+                (r) =>
+                    r.refundedAt &&
+                    new Date(r.createdAt as any) >= fromDate &&
+                    new Date(r.createdAt as any) <= toDate,
+            )
+            .map((r) => (r.refundedAt!.getTime() - new Date(r.createdAt as any).getTime()) / 3600000)
+            .filter((h) => h >= 0);
+        const avgHandleHours = hours.length
+            ? Math.round((hours.reduce((a, b) => a + b, 0) / hours.length) * 100) / 100
+            : null;
+
+        return {
+            totalRequests,
+            pendingCount,
+            totalRefundAmount,
+            avgHandleHours,
+            daily: dailyRows.map((row: any) => ({ date: String(row.date), total: Number(row.total) })),
+            byState: stateRows.map((row: any) => ({
+                key: String(row.key),
+                count: Number(row.count),
+                amount: Number(row.amount),
+            })),
+            byType: typeRows.map((row: any) => ({
+                key: String(row.key),
+                count: Number(row.count),
+                amount: Number(row.amount),
+            })),
+        };
+    }
+
     private async transitionState(ctx: RequestContext, id: ID, toState: AfterSalesState): Promise<AfterSalesRequest> {
         const repo = this.connection.getRepository(ctx, AfterSalesRequest);
         const request = await repo.findOne({ where: { id: id as any } });

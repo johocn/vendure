@@ -20,6 +20,16 @@ export class AfterSalesAdminResolver {
     }
 
     @Query()
+    @Allow(Permission.ReadOrder)
+    async afterSalesStats(
+        @Ctx() ctx: RequestContext,
+        @Args('from') from: string,
+        @Args('to') to: string,
+    ): Promise<any> {
+        return this.afterSalesService.stats(ctx, from, to);
+    }
+
+    @Query()
     @Allow(Permission.UpdateOrder)
     async afterSalesReturnAddress(@Ctx() ctx: RequestContext): Promise<string> {
         return this.afterSalesService.getReturnAddress(ctx);
