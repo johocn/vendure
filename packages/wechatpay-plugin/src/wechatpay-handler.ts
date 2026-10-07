@@ -100,10 +100,13 @@ export function createWechatpayHandler(options: WechatpayPluginOptions, code = '
                 const tradeType = override?.tradeType || args.tradeType || 'JSAPI';
                 // openid 三级回落（F-VS-08）：前端显式传入 → 由客户档案推导 → devBypass 兜底。
                 // 前端本地存储可能缺失/过期，服务端按客户档案推导可避免 JSAPI 支付失败。
+                // preferMini 语义：默认 PM（code='wechatpay'）绑定小程序 appid，JSAPI 时优先小程序
+                // openid；extra PM（公众号 JSAPI，如 wechatpay-yourbao-h5）须用公众号 openid，
+                // 否则双 openid 客户会取到小程序 openid 配公众号 appid，微信报「openid和appid不匹配」。
                 const openid =
                     (metadata?.openid as string | undefined) ||
                     (await resolveCustomerOpenid(ctx, order.customerId, {
-                        preferMini: tradeType === 'JSAPI',
+                        preferMini: tradeType === 'JSAPI' && code === 'wechatpay',
                     })) ||
                     options?.devBypassOpenid;
                 const baseParams = {
