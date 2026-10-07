@@ -12,11 +12,9 @@ var CampusNotifyService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CampusNotifyService = void 0;
 const common_1 = require("@nestjs/common");
-const core_1 = require("@nestjs/core");
-const core_2 = require("@vendure/core");
-const wechat_auth_plugin_1 = require("@vendure/wechat-auth-plugin");
+const core_1 = require("@vendure/core");
 const campus_config_service_1 = require("./campus-config.service");
-/** 触点 → 配置实体模板 ID 字段（未配置 = 该节点静默跳过） */
+/** 触点 → 配置实体模板字段（值 = SSO msg-template 的 templateCode；未配置 = 该节点静默跳过） */
 const TEMPLATE_FIELD = {
     orderAccepted: 'notifyTemplateAccepted',
     riderAssigned: 'notifyTemplateRiderAssigned',
@@ -41,58 +39,76 @@ const STATUS_TEXT = {
     afterSales: '售后进度更新',
 };
 /**
- * 用户侧节点通知（公众号模板消息，touser = Customer.customFields.wechatOpenid）。
- * 设计约束：fire-and-forget——模板未配置/用户无 openid（未关注公众号）/服务未注册/
- * 发送失败一律只记日志，绝不阻塞、绝不抛出到业务主流程。
- * 字段名映射（character_string1/thing1/time2）按申请到的订单类模板而定，
- * 若模板字段不同仅需调整本文件 buildData 一处。
+ * 用户侧节点通知（公众号模板消息，经 zhao-sso 服务间 API 发送）。
+ * 链路：customer.customFields.ssoId（SSO 用户 id）→ POST {SSO_NOTIFY_BASE_URL}/v1/msg/template-send
+ * （app_code+app_secret bcrypt 鉴权）→ SSO msg-job 落库 → 按绑定表解析 openid → 微信模板消息。
+ * 环境变量：SSO_NOTIFY_BASE_URL（如 https://h.joho.cn/api/zhao-sso）、SSO_NOTIFY_APP_CODE、SSO_NOTIFY_APP_SECRET。
+ * 设计约束：fire-and-forget——模板未配置/用户无 ssoId/SSO 未配置/发送失败一律只记日志，绝不阻塞、绝不抛出到业务主流程。
+ * 微信模板字段映射（character_string1/thing1/time2）由 SSO msg-template 的 wxTemplateFields 配置。
  */
 let CampusNotifyService = CampusNotifyService_1 = class CampusNotifyService {
-    constructor(connection, config, moduleRef) {
+    constructor(connection, config) {
         this.connection = connection;
         this.config = config;
-        this.moduleRef = moduleRef;
     }
-    /** vendure Injector 需由 ModuleRef 构造（与 hall.service 同款惰性解析，避免插件未注册时构造期报错） */
-    get injector() {
-        return new core_2.Injector(this.moduleRef);
-    }
-    /** 发送节点通知（异步不等待，不抛错）。text：动态文案覆盖 thing1（如异常处置结果，超 20 字符自动截断）；h5BaseUrl：配置后模板消息带 url 跳 H5 订单详情落地页 */
+    /** 发送节点通知（异步不等待，不抛错）。text：动态文案覆盖 status（如异常处置结果，超 20 字符自动截断）；h5BaseUrl：配置后消息带 url 跳 H5 订单详情落地页 */
     user(ctx, orderId, event, text, h5BaseUrl) {
         void (async () => {
-            var _a, _b, _c, _d;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q;
             try {
-                const cfg = await this.config.getConfig(ctx);
-                const templateId = cfg[TEMPLATE_FIELD[event]];
-                if (!templateId) {
-                    core_2.Logger.debug(`channel ${ctx.channelId} has no ${TEMPLATE_FIELD[event]}, skip user notify`, 'CampusNotify');
+                const baseUrl = process.env.SSO_NOTIFY_BASE_URL;
+                const appCode = process.env.SSO_NOTIFY_APP_CODE;
+                const appSecret = process.env.SSO_NOTIFY_APP_SECRET;
+                if (!baseUrl || !appCode || !appSecret) {
+                    core_1.Logger.debug('SSO notify env not configured (SSO_NOTIFY_BASE_URL/APP_CODE/APP_SECRET), skip', 'CampusNotify');
                     return;
                 }
-                const order = await this.connection.getRepository(ctx, core_2.Order).findOne({
+                const cfg = await this.config.getConfig(ctx);
+                const templateCode = cfg[TEMPLATE_FIELD[event]];
+                if (!templateCode) {
+                    core_1.Logger.debug(`channel ${ctx.channelId} has no ${TEMPLATE_FIELD[event]}, skip user notify`, 'CampusNotify');
+                    return;
+                }
+                const order = await this.connection.getRepository(ctx, core_1.Order).findOne({
                     where: { id: orderId },
                     relations: ['customer'],
                 });
-                const openid = (_b = (_a = order === null || order === void 0 ? void 0 : order.customer) === null || _a === void 0 ? void 0 : _a.customFields) === null || _b === void 0 ? void 0 : _b.wechatOpenid;
-                if (!order || !openid) {
-                    core_2.Logger.debug(`order ${orderId} customer has no wechatOpenid, skip user notify (${event})`, 'CampusNotify');
+                const ssoId = (_b = (_a = order === null || order === void 0 ? void 0 : order.customer) === null || _a === void 0 ? void 0 : _a.customFields) === null || _b === void 0 ? void 0 : _b.ssoId;
+                if (!order || !ssoId) {
+                    core_1.Logger.debug(`order ${orderId} customer has no ssoId, skip user notify (${event})`, 'CampusNotify');
                     return;
                 }
-                const wx = this.injector.get(wechat_auth_plugin_1.WechatAuthService);
-                const res = await wx.sendTemplate(Object.assign({ touser: openid, template_id: templateId, data: this.buildData(order.code, event, text) }, (h5BaseUrl ? { url: `${h5BaseUrl.replace(/\/$/, '')}/#/pkg-order/pages/order-detail?code=${order.code}` } : {})));
-                core_2.Logger.info(`user notify ${event} sent for ${order.code} (msgid=${(_c = res === null || res === void 0 ? void 0 : res.msgid) !== null && _c !== void 0 ? _c : '?'})`, 'CampusNotify');
+                const link = h5BaseUrl
+                    ? `${h5BaseUrl.replace(/\/$/, '')}/#/pkg-order/pages/order-detail?code=${order.code}`
+                    : undefined;
+                const res = await fetch(`${baseUrl.replace(/\/$/, '')}/v1/msg/template-send`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        app_code: appCode,
+                        app_secret: appSecret,
+                        sso_user_id: Number(ssoId),
+                        template_code: templateCode,
+                        params: {
+                            orderCode: order.code,
+                            status: (text !== null && text !== void 0 ? text : STATUS_TEXT[event]).slice(0, 20),
+                            time: CampusNotifyService_1.formatTime(new Date()),
+                        },
+                        link,
+                        scene: `campus:${event}`,
+                        dedupe_key: `campus:${event}:${orderId}`,
+                    }),
+                });
+                const body = (await res.json().catch(() => null));
+                if (!res.ok) {
+                    throw new Error(`SSO api ${res.status}: ${(_d = (_c = body === null || body === void 0 ? void 0 : body.error) !== null && _c !== void 0 ? _c : body === null || body === void 0 ? void 0 : body.error_description) !== null && _d !== void 0 ? _d : 'unknown'}`);
+                }
+                core_1.Logger.info(`user notify ${event} sent for ${order.code} (job=${(_j = ((_g = (_f = (_e = body === null || body === void 0 ? void 0 : body.data) === null || _e === void 0 ? void 0 : _e.job) === null || _f === void 0 ? void 0 : _f.id) !== null && _g !== void 0 ? _g : (_h = body === null || body === void 0 ? void 0 : body.data) === null || _h === void 0 ? void 0 : _h.id)) !== null && _j !== void 0 ? _j : '?'} status=${(_p = (_m = (_l = (_k = body === null || body === void 0 ? void 0 : body.data) === null || _k === void 0 ? void 0 : _k.job) === null || _l === void 0 ? void 0 : _l.status) !== null && _m !== void 0 ? _m : (_o = body === null || body === void 0 ? void 0 : body.data) === null || _o === void 0 ? void 0 : _o.status) !== null && _p !== void 0 ? _p : '?'})`, 'CampusNotify');
             }
             catch (e) {
-                core_2.Logger.warn(`user notify ${event} for order ${orderId} failed: ${(_d = e === null || e === void 0 ? void 0 : e.message) !== null && _d !== void 0 ? _d : e}`, 'CampusNotify');
+                core_1.Logger.warn(`user notify ${event} for order ${orderId} failed: ${(_q = e === null || e === void 0 ? void 0 : e.message) !== null && _q !== void 0 ? _q : e}`, 'CampusNotify');
             }
         })();
-    }
-    /** 模板字段映射（订单号/状态/时间），字段名以申请到的模板为准 */
-    buildData(orderCode, event, text) {
-        return {
-            character_string1: { value: orderCode },
-            thing1: { value: (text !== null && text !== void 0 ? text : STATUS_TEXT[event]).slice(0, 20) },
-            time2: { value: CampusNotifyService_1.formatTime(new Date()) },
-        };
     }
     static formatTime(d) {
         const pad = (n) => String(n).padStart(2, '0');
@@ -102,8 +118,7 @@ let CampusNotifyService = CampusNotifyService_1 = class CampusNotifyService {
 exports.CampusNotifyService = CampusNotifyService;
 exports.CampusNotifyService = CampusNotifyService = CampusNotifyService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [core_2.TransactionalConnection,
-        campus_config_service_1.CampusConfigService,
-        core_1.ModuleRef])
+    __metadata("design:paramtypes", [core_1.TransactionalConnection,
+        campus_config_service_1.CampusConfigService])
 ], CampusNotifyService);
 //# sourceMappingURL=campus-notify.service.js.map

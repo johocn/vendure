@@ -1,7 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { ModuleRef } from '@nestjs/core';
-import { Injector, Logger, Order, RequestContext, TransactionalConnection } from '@vendure/core';
-import { WechatAuthService } from '@vendure/wechat-auth-plugin';
+import { Logger, Order, RequestContext, TransactionalConnection } from '@vendure/core';
 import { CampusConfigService } from './campus-config.service';
 
 /** 用户侧节点通知触点（履约 5 + 用户订单域 4） */
@@ -9,7 +7,7 @@ export type CampusNotifyEvent =
     | 'orderAccepted' | 'riderAssigned' | 'cookingDone' | 'orderDelivered' | 'exceptionHandled'
     | 'orderPlaced' | 'paymentPending' | 'orderCancelled' | 'afterSales';
 
-/** 触点 → 配置实体模板 ID 字段（未配置 = 该节点静默跳过） */
+/** 触点 → 配置实体模板字段（值 = SSO msg-template 的 templateCode；未配置 = 该节点静默跳过） */
 const TEMPLATE_FIELD: Record<CampusNotifyEvent, string> = {
     orderAccepted: 'notifyTemplateAccepted',
     riderAssigned: 'notifyTemplateRiderAssigned',
@@ -36,32 +34,34 @@ const STATUS_TEXT: Record<CampusNotifyEvent, string> = {
 };
 
 /**
- * 用户侧节点通知（公众号模板消息，touser = Customer.customFields.wechatOpenid）。
- * 设计约束：fire-and-forget——模板未配置/用户无 openid（未关注公众号）/服务未注册/
- * 发送失败一律只记日志，绝不阻塞、绝不抛出到业务主流程。
- * 字段名映射（character_string1/thing1/time2）按申请到的订单类模板而定，
- * 若模板字段不同仅需调整本文件 buildData 一处。
+ * 用户侧节点通知（公众号模板消息，经 zhao-sso 服务间 API 发送）。
+ * 链路：customer.customFields.ssoId（SSO 用户 id）→ POST {SSO_NOTIFY_BASE_URL}/v1/msg/template-send
+ * （app_code+app_secret bcrypt 鉴权）→ SSO msg-job 落库 → 按绑定表解析 openid → 微信模板消息。
+ * 环境变量：SSO_NOTIFY_BASE_URL（如 https://h.joho.cn/api/zhao-sso）、SSO_NOTIFY_APP_CODE、SSO_NOTIFY_APP_SECRET。
+ * 设计约束：fire-and-forget——模板未配置/用户无 ssoId/SSO 未配置/发送失败一律只记日志，绝不阻塞、绝不抛出到业务主流程。
+ * 微信模板字段映射（character_string1/thing1/time2）由 SSO msg-template 的 wxTemplateFields 配置。
  */
 @Injectable()
 export class CampusNotifyService {
     constructor(
         private connection: TransactionalConnection,
         private config: CampusConfigService,
-        private moduleRef: ModuleRef,
     ) {}
 
-    /** vendure Injector 需由 ModuleRef 构造（与 hall.service 同款惰性解析，避免插件未注册时构造期报错） */
-    private get injector(): Injector {
-        return new Injector(this.moduleRef);
-    }
-
-    /** 发送节点通知（异步不等待，不抛错）。text：动态文案覆盖 thing1（如异常处置结果，超 20 字符自动截断）；h5BaseUrl：配置后模板消息带 url 跳 H5 订单详情落地页 */
+    /** 发送节点通知（异步不等待，不抛错）。text：动态文案覆盖 status（如异常处置结果，超 20 字符自动截断）；h5BaseUrl：配置后消息带 url 跳 H5 订单详情落地页 */
     user(ctx: RequestContext, orderId: number | string, event: CampusNotifyEvent, text?: string, h5BaseUrl?: string): void {
         void (async () => {
             try {
+                const baseUrl = process.env.SSO_NOTIFY_BASE_URL;
+                const appCode = process.env.SSO_NOTIFY_APP_CODE;
+                const appSecret = process.env.SSO_NOTIFY_APP_SECRET;
+                if (!baseUrl || !appCode || !appSecret) {
+                    Logger.debug('SSO notify env not configured (SSO_NOTIFY_BASE_URL/APP_CODE/APP_SECRET), skip', 'CampusNotify');
+                    return;
+                }
                 const cfg = await this.config.getConfig(ctx);
-                const templateId = (cfg as any)[TEMPLATE_FIELD[event]] as string | null | undefined;
-                if (!templateId) {
+                const templateCode = (cfg as any)[TEMPLATE_FIELD[event]] as string | null | undefined;
+                if (!templateCode) {
                     Logger.debug(`channel ${ctx.channelId} has no ${TEMPLATE_FIELD[event]}, skip user notify`, 'CampusNotify');
                     return;
                 }
@@ -69,23 +69,41 @@ export class CampusNotifyService {
                     where: { id: orderId as any },
                     relations: ['customer'],
                 });
-                const openid = (order?.customer?.customFields as any)?.wechatOpenid as string | undefined;
-                if (!order || !openid) {
+                const ssoId = (order?.customer?.customFields as any)?.ssoId as string | number | undefined;
+                if (!order || !ssoId) {
                     Logger.debug(
-                        `order ${orderId} customer has no wechatOpenid, skip user notify (${event})`,
+                        `order ${orderId} customer has no ssoId, skip user notify (${event})`,
                         'CampusNotify',
                     );
                     return;
                 }
-                const wx = this.injector.get(WechatAuthService);
-                const res = await wx.sendTemplate({
-                    touser: openid,
-                    template_id: templateId,
-                    data: this.buildData(order.code, event, text),
-                    ...(h5BaseUrl ? { url: `${h5BaseUrl.replace(/\/$/, '')}/#/pkg-order/pages/order-detail?code=${order.code}` } : {}),
+                const link = h5BaseUrl
+                    ? `${h5BaseUrl.replace(/\/$/, '')}/#/pkg-order/pages/order-detail?code=${order.code}`
+                    : undefined;
+                const res = await fetch(`${baseUrl.replace(/\/$/, '')}/v1/msg/template-send`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        app_code: appCode,
+                        app_secret: appSecret,
+                        sso_user_id: Number(ssoId),
+                        template_code: templateCode,
+                        params: {
+                            orderCode: order.code,
+                            status: (text ?? STATUS_TEXT[event]).slice(0, 20),
+                            time: CampusNotifyService.formatTime(new Date()),
+                        },
+                        link,
+                        scene: `campus:${event}`,
+                        dedupe_key: `campus:${event}:${orderId}`,
+                    }),
                 });
+                const body = (await res.json().catch(() => null)) as any;
+                if (!res.ok) {
+                    throw new Error(`SSO api ${res.status}: ${body?.error ?? body?.error_description ?? 'unknown'}`);
+                }
                 Logger.info(
-                    `user notify ${event} sent for ${order.code} (msgid=${(res as any)?.msgid ?? '?'})`,
+                    `user notify ${event} sent for ${order.code} (job=${(body?.data?.job?.id ?? body?.data?.id) ?? '?'} status=${body?.data?.job?.status ?? body?.data?.status ?? '?'})`,
                     'CampusNotify',
                 );
             } catch (e: any) {
@@ -95,15 +113,6 @@ export class CampusNotifyService {
                 );
             }
         })();
-    }
-
-    /** 模板字段映射（订单号/状态/时间），字段名以申请到的模板为准 */
-    private buildData(orderCode: string, event: CampusNotifyEvent, text?: string) {
-        return {
-            character_string1: { value: orderCode },
-            thing1: { value: (text ?? STATUS_TEXT[event]).slice(0, 20) },
-            time2: { value: CampusNotifyService.formatTime(new Date()) },
-        };
     }
 
     static formatTime(d: Date): string {

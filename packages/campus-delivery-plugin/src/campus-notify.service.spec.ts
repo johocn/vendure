@@ -1,107 +1,113 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { WechatAuthService } from '@vendure/wechat-auth-plugin';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { CampusNotifyService } from './campus-notify.service';
 
-/** 用户侧节点通知：fire-and-forget 语义（未配置/无 openid/发送失败均不上抛） */
+/** 用户侧节点通知（经 zhao-sso 服务间 API）：fire-and-forget 语义（未配置/无 ssoId/发送失败均不上抛） */
 describe('CampusNotifyService', () => {
     const makeCtx = () => ({ channelId: 7 } as any);
+    const ENV = {
+        SSO_NOTIFY_BASE_URL: 'https://h.joho.cn/api/zhao-sso',
+        SSO_NOTIFY_APP_CODE: 'vendure-youshop',
+        SSO_NOTIFY_APP_SECRET: 'sec-xyz',
+    };
 
-    function makeSvc(opts: { templateId?: string | null; openid?: string | null; sendErr?: Error }) {
+    function makeSvc(opts: { templateCode?: string | null; ssoId?: string | null }) {
         const findOne = vi.fn().mockResolvedValue(
-            opts.openid === null
-                ? { code: 'ORD1', customer: { customFields: { wechatMiniOpenid: 'mini-x' } } }
-                : { code: 'ORD1', customer: { customFields: { wechatOpenid: 'o-123' } } },
+            opts.ssoId === null
+                ? { code: 'ORD1', customer: { customFields: { wechatOpenid: 'o-123' } } }
+                : { code: 'ORD1', customer: { customFields: { ssoId: opts.ssoId ?? '3' } } },
         );
-        const sendTemplate = vi.fn().mockImplementation(async () => {
-            if (opts.sendErr) throw opts.sendErr;
-            return { errcode: 0, msgid: 1001 };
+        const fetchMock = vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({ data: { job: { id: 9, status: 'sent' } } }),
         });
+        vi.stubGlobal('fetch', fetchMock);
         const svc = new CampusNotifyService(
             { getRepository: () => ({ findOne }) } as any,
             {
                 getConfig: vi.fn().mockResolvedValue({
-                    notifyTemplateAccepted: opts.templateId ?? null,
-                    notifyTemplateRiderAssigned: opts.templateId ?? null,
-                    notifyTemplateCookingDone: opts.templateId ?? null,
-                    notifyTemplateDelivered: opts.templateId ?? null,
-                    notifyTemplateExceptionHandled: opts.templateId ?? null,
-                    notifyTemplateOrderPlaced: opts.templateId ?? null,
-                    notifyTemplatePaymentPending: opts.templateId ?? null,
-                    notifyTemplateCancelled: opts.templateId ?? null,
-                    notifyTemplateAfterSales: opts.templateId ?? null,
+                    notifyTemplateAccepted: opts.templateCode ?? null,
+                    notifyTemplateRiderAssigned: opts.templateCode ?? null,
+                    notifyTemplateCookingDone: opts.templateCode ?? null,
+                    notifyTemplateDelivered: opts.templateCode ?? null,
+                    notifyTemplateExceptionHandled: opts.templateCode ?? null,
+                    notifyTemplateOrderPlaced: opts.templateCode ?? null,
+                    notifyTemplatePaymentPending: opts.templateCode ?? null,
+                    notifyTemplateCancelled: opts.templateCode ?? null,
+                    notifyTemplateAfterSales: opts.templateCode ?? null,
                 }),
             } as any,
-            { get: vi.fn().mockReturnValue({ sendTemplate }) } as any,
         );
-        return { svc, findOne, sendTemplate };
+        return { svc, findOne, fetchMock };
     }
 
-    beforeEach(() => vi.clearAllMocks());
+    beforeEach(() => {
+        for (const [k, v] of Object.entries(ENV)) vi.stubEnv(k, v);
+    });
+    afterEach(() => {
+        vi.unstubAllEnvs();
+        vi.unstubAllGlobals();
+    });
 
-    it('未配置模板 → 跳过（不查订单不发送）', async () => {
-        const { svc, findOne, sendTemplate } = makeSvc({ templateId: null });
+    it('env 未配置 → 跳过（不查订单不调 API）', async () => {
+        vi.stubEnv('SSO_NOTIFY_BASE_URL', '');
+        const { svc, findOne, fetchMock } = makeSvc({ templateCode: 'waimai_order_created' });
         svc.user(makeCtx(), 1, 'orderAccepted');
         await vi.waitFor(() => expect(findOne).not.toHaveBeenCalled());
-        expect(sendTemplate).not.toHaveBeenCalled();
+        expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it('用户无公众号 openid（仅小程序 openid）→ 跳过发送', async () => {
-        const { svc, sendTemplate } = makeSvc({ templateId: 'TID', openid: null });
+    it('未配置模板 → 跳过（不查订单不调 API）', async () => {
+        const { svc, findOne, fetchMock } = makeSvc({ templateCode: null });
         svc.user(makeCtx(), 1, 'orderAccepted');
-        await vi.waitFor(() => expect(sendTemplate).not.toHaveBeenCalled());
+        await vi.waitFor(() => expect(findOne).not.toHaveBeenCalled());
+        expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it('配置 + openid → sendTemplate 收到映射数据（订单号/状态/时间）', async () => {
-        const { svc, sendTemplate } = makeSvc({ templateId: 'TID', openid: 'o-123' });
+    it('customer 无 ssoId（仅 wechatOpenid）→ 跳过调用', async () => {
+        const { svc, fetchMock } = makeSvc({ templateCode: 'waimai_order_created', ssoId: null });
+        svc.user(makeCtx(), 1, 'orderAccepted');
+        await vi.waitFor(() => expect(fetchMock).not.toHaveBeenCalled());
+    });
+
+    it('配置 + ssoId → POST template-send（鉴权/目标/模板/params/dedupe_key）', async () => {
+        const { svc, fetchMock } = makeSvc({ templateCode: 'waimai_order_created', ssoId: '3' });
         svc.user(makeCtx(), 1, 'cookingDone');
-        await vi.waitFor(() => expect(sendTemplate).toHaveBeenCalled());
-        const arg = sendTemplate.mock.calls[0][0];
-        expect(arg.touser).toBe('o-123');
-        expect(arg.template_id).toBe('TID');
-        expect(arg.data.character_string1.value).toBe('ORD1');
-        expect(arg.data.thing1.value).toBe('出餐完成，等待取货');
-        expect(arg.data.time2.value).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+        await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+        const [url, init] = fetchMock.mock.calls[0];
+        expect(url).toBe('https://h.joho.cn/api/zhao-sso/v1/msg/template-send');
+        expect(init.method).toBe('POST');
+        const body = JSON.parse(init.body);
+        expect(body.app_code).toBe('vendure-youshop');
+        expect(body.app_secret).toBe('sec-xyz');
+        expect(body.sso_user_id).toBe(3);
+        expect(body.template_code).toBe('waimai_order_created');
+        expect(body.params.orderCode).toBe('ORD1');
+        expect(body.params.status).toBe('出餐完成，等待取货');
+        expect(body.params.time).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+        expect(body.dedupe_key).toBe('campus:cookingDone:1');
     });
 
-    it('发送抛错 → 静默吞掉（不 unhandledRejection）', async () => {
-        const { svc, sendTemplate } = makeSvc({ templateId: 'TID', openid: 'o-123', sendErr: new Error('wx down') });
+    it('SSO 返回非 2xx → 静默吞掉（不 unhandledRejection）', async () => {
+        const { svc, fetchMock } = makeSvc({ templateCode: 'waimai_order_created' });
+        fetchMock.mockResolvedValue({ ok: false, status: 400, json: async () => ({ error: 'app_secret 验证失败' }) });
         svc.user(makeCtx(), 1, 'orderDelivered');
-        await vi.waitFor(() => expect(sendTemplate).toHaveBeenCalled());
-        // fire-and-forget promise 已内部消化
+        await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
         await new Promise(r => setTimeout(r, 10));
     });
 
-    it('exceptionHandled：动态文案覆盖 thing1（处置结果 push，plan 3.4 补全）', async () => {
-        const { svc, sendTemplate } = makeSvc({ templateId: 'TID', openid: 'o-123' });
+    it('exceptionHandled：动态文案覆盖 status（处置结果）', async () => {
+        const { svc, fetchMock } = makeSvc({ templateCode: 'waimai_after_sales' });
         svc.user(makeCtx(), 2, 'exceptionHandled', '订单已全额退款');
-        await vi.waitFor(() => expect(sendTemplate).toHaveBeenCalled());
-        const arg = sendTemplate.mock.calls[0][0];
-        expect(arg.data.thing1.value).toBe('订单已全额退款');
+        await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        expect(body.params.status).toBe('订单已全额退款');
     });
 
-    it('orderPlaced：映射 thing1=订单支付成功，商家接单中', async () => {
-        const { svc, sendTemplate } = makeSvc({ templateId: 'TID', openid: 'o-123' });
-        svc.user(makeCtx(), 1, 'orderPlaced');
-        await vi.waitFor(() => expect(sendTemplate).toHaveBeenCalled());
-        expect(sendTemplate.mock.calls[0][0].data.thing1.value).toBe('订单支付成功，商家接单中');
-    });
-
-    it('paymentPending / orderCancelled / afterSales 文案映射', async () => {
-        const { svc, sendTemplate } = makeSvc({ templateId: 'TID', openid: 'o-123' });
-        svc.user(makeCtx(), 1, 'paymentPending');
-        svc.user(makeCtx(), 1, 'orderCancelled', '订单超时未支付，已自动取消');
-        svc.user(makeCtx(), 1, 'afterSales', '退款已到账');
-        await vi.waitFor(() => expect(sendTemplate).toHaveBeenCalledTimes(3));
-        const things = sendTemplate.mock.calls.map(c => c[0].data.thing1.value);
-        expect(things).toContain('订单待支付，请尽快完成');
-        expect(things).toContain('订单超时未支付，已自动取消');
-        expect(things).toContain('退款已到账');
-    });
-
-    it('配置 h5BaseUrl → url 指向 H5 订单详情（跳转落地页）', async () => {
-        const { svc, sendTemplate } = makeSvc({ templateId: 'TID', openid: 'o-123' });
+    it('配置 h5BaseUrl → link 指向 H5 订单详情（跳转落地页）', async () => {
+        const { svc, fetchMock } = makeSvc({ templateCode: 'waimai_order_created' });
         (svc as any).user(makeCtx(), 1, 'orderPlaced', undefined, 'https://www.yourbao.cn');
-        await vi.waitFor(() => expect(sendTemplate).toHaveBeenCalled());
-        expect(sendTemplate.mock.calls[0][0].url).toBe('https://www.yourbao.cn/#/pkg-order/pages/order-detail?code=ORD1');
+        await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        expect(body.link).toBe('https://www.yourbao.cn/#/pkg-order/pages/order-detail?code=ORD1');
     });
 });
