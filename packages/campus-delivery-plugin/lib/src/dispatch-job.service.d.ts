@@ -31,6 +31,18 @@ export declare class DispatchJobService implements OnApplicationShutdown {
      * （T4 退款扫描在 Task 8 追加到此方法）
      */
     scan(ctx: RequestContext): Promise<void>;
+    /** 即时单（无 deliverySlotId）打包时间窗：入厅时间差 ≤10min 视为顺路 */
+    private static readonly ROUTE_IMM_WINDOW_MIN;
+    /**
+     * T1.5 多单顺路打包（plan 3.3）：同渠道 hallStatus='open' 的 R1/R3 配送单
+     * （errand 跑腿单性质不同不打包）按「同楼栋 + 同时段」分桶：
+     * - 有 deliverySlotId：slot 相等即同时段；
+     * - 即时单：按 hallEnteredAt 聚类，相邻时间差 ≤ ROUTE_IMM_WINDOW_MIN 分钟归一批。
+     * 每批 ≥2 单写同一 routeGroupId（批内已有组 id 则复用，保持组稳定不抖动）。
+     * 组 id 仅用于整组抢单与展示聚合，不严格维护成员一致性——子单被抢/回厅/退款后
+     * 自然脱组（回厅清指派字段，成员过滤以 hallStatus='open' 为准）。
+     */
+    private packRoutes;
     /** 订单渠道匹配：channels 关联未加载（无 scalar channelId 可比对）时视为匹配，
      * grabByRider 事务内二次校验 hallStatus 保证幂等，跨渠道重复尝试无害。 */
     private orderInChannel;

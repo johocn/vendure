@@ -23,10 +23,13 @@ let HallGrabService = class HallGrabService {
     /** 抢单：事务 + pessimistic_write，hallStatus 非 open 即抛「手慢了」。
      * 同时写 delivery customFields（deliveryStaffId/deliveryStatus=assigned），复用其任务体系。
      * 事务内查询与更新均使用事务 em，保证读写同一事务。
-     * 注：lock.tables 指定 "order" 表，避免 FOR UPDATE 作用于 customer 外连接的可空侧（PG 报错）。 */
+     * 注：lock.tables 指定 "order" 表，避免 FOR UPDATE 作用于 customer 外连接的可空侧（PG 报错）。
+     * 多单顺路（plan 3.3）：主单带 routeGroupId 时，同组 hallStatus='open' 的单在同一事务内
+     * 一并锁定并写同一骑手（整组接走）；组内骑手自己的单跳过留在大厅。组内查询按 id 升序
+     * FOR UPDATE，保证并发抢同组两单时加锁顺序一致，避免 PG 死锁（败者整体回滚重试）。 */
     async grab(ctx, orderId) {
         const rider = await this.riderService.assertApprovedRider(ctx);
-        const order = await this.connection.rawConnection.transaction(async (em) => {
+        const grabbed = await this.connection.rawConnection.transaction(async (em) => {
             var _a;
             const order = await em.getRepository(core_1.Order).findOne({
                 where: { id: orderId },
@@ -38,19 +41,35 @@ let HallGrabService = class HallGrabService {
                 throw new core_1.UserInputError('手慢了，该订单已被抢');
             if (((_a = order.customer) === null || _a === void 0 ? void 0 : _a.id) === rider.id)
                 throw new core_1.UserInputError('不能抢自己的订单');
-            await em.getRepository(core_1.Order).update(order.id, {
+            // 整组抢单：同组 open 单按 id 升序锁定（主单已在锁内，重复锁无害）
+            let mates = [];
+            if (cf.routeGroupId) {
+                mates = await em.getRepository(core_1.Order).createQueryBuilder('order')
+                    .where('order.customFields.routeGroupId = :gid', { gid: cf.routeGroupId })
+                    .andWhere('order.customFields.hallStatus = :s', { s: 'open' })
+                    .orderBy('order.id', 'ASC')
+                    .setLock('pessimistic_write', undefined, ['order'])
+                    .getMany();
+            }
+            const targets = [order, ...mates.filter(m => m.id !== order.id && m.customerId !== rider.id)];
+            const patch = {
                 customFields: {
                     hallStatus: 'grabbed',
                     deliveryStaffId: String(rider.id),
                     deliveryStatus: 'assigned',
                     assignedAt: new Date(),
                 },
-            });
-            return em.getRepository(core_1.Order).findOneByOrFail({ id: orderId });
+            };
+            for (const t of targets) {
+                await em.getRepository(core_1.Order).update(t.id, patch);
+            }
+            return { order, targetIds: targets.map(t => t.id) };
         });
-        // 事务提交后通知下单用户（fire-and-forget，不影响抢单主流程）
-        this.notify.user(ctx, order.id, 'riderAssigned');
-        return order;
+        // 事务提交后通知下单用户（fire-and-forget，不影响抢单主流程）：整组逐单通知各自用户
+        for (const id of grabbed.targetIds) {
+            this.notify.user(ctx, id, 'riderAssigned');
+        }
+        return grabbed.order;
     }
     /** T2/T3 强派原语：hallStatus='open' → 'grabbed'（事务+悲观锁，与 grab 同款防双抢）。
      * 目标骑手须 approved；低信用分在调用方（DispatchJobService）过滤。 */

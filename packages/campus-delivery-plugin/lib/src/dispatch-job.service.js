@@ -8,6 +8,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var DispatchJobService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DispatchJobService = void 0;
 const common_1 = require("@nestjs/common");
@@ -19,7 +20,7 @@ const hall_grab_service_1 = require("./hall-grab.service");
 const hall_service_1 = require("./hall.service");
 const rider_credit_service_1 = require("./rider-credit.service");
 const NOT_PICKED_TIMEOUT_MIN = 15;
-let DispatchJobService = class DispatchJobService {
+let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
     constructor(connection, grab, hall, capacity, credit, moduleRef) {
         this.connection = connection;
         this.grab = grab;
@@ -138,6 +139,9 @@ let DispatchJobService = class DispatchJobService {
                     o.customFields.hallStatus = 'open';
                 }
             }
+            // T1.5 多单顺路打包（plan 3.3）：同楼栋+同时段 open 配送单写同一 routeGroupId，
+            // 后续 T2 强派逐单派给同一骑手天然同车；骑手抢单由 HallGrabService.grab 整组接走。
+            await this.packRoutes(ctx, orders);
             const riders = await this.capacity.listOnlineRiders(ctx);
             const eligible = riders
                 .filter(r => { var _a; return ((_a = r.customFields.riderCredit) !== null && _a !== void 0 ? _a : 100) >= rider_credit_service_1.CREDIT_LIMIT; })
@@ -178,6 +182,74 @@ let DispatchJobService = class DispatchJobService {
             for (const o of staleFinal) {
                 await this.refundNoRider(ctx, o, cfg);
             }
+        }
+    }
+    /**
+     * T1.5 多单顺路打包（plan 3.3）：同渠道 hallStatus='open' 的 R1/R3 配送单
+     * （errand 跑腿单性质不同不打包）按「同楼栋 + 同时段」分桶：
+     * - 有 deliverySlotId：slot 相等即同时段；
+     * - 即时单：按 hallEnteredAt 聚类，相邻时间差 ≤ ROUTE_IMM_WINDOW_MIN 分钟归一批。
+     * 每批 ≥2 单写同一 routeGroupId（批内已有组 id 则复用，保持组稳定不抖动）。
+     * 组 id 仅用于整组抢单与展示聚合，不严格维护成员一致性——子单被抢/回厅/退款后
+     * 自然脱组（回厅清指派字段，成员过滤以 hallStatus='open' 为准）。
+     */
+    async packRoutes(ctx, orders) {
+        var _a, _b, _c;
+        const deliverable = orders.filter(o => {
+            const cf = o.customFields;
+            return cf.hallStatus === 'open'
+                && (cf.fulfillmentRoute === 'R1' || cf.fulfillmentRoute === 'R3');
+        });
+        if (deliverable.length < 2)
+            return;
+        // 分桶：buildingId + slotKey
+        const buckets = new Map();
+        for (const o of deliverable) {
+            const cf = o.customFields;
+            const key = `${(_a = cf.buildingId) !== null && _a !== void 0 ? _a : ''}|${(_b = cf.deliverySlotId) !== null && _b !== void 0 ? _b : 'imm'}`;
+            const arr = (_c = buckets.get(key)) !== null && _c !== void 0 ? _c : [];
+            arr.push(o);
+            buckets.set(key, arr);
+        }
+        const groups = [];
+        for (const [key, arr] of buckets) {
+            if (!key.endsWith('|imm')) {
+                if (arr.length >= 2)
+                    groups.push(arr);
+                continue;
+            }
+            // 即时单：按入厅时间聚类（升序，相邻差超窗口即断批）
+            const entered = (o) => { var _a; return new Date((_a = o.customFields.hallEnteredAt) !== null && _a !== void 0 ? _a : o.createdAt).getTime(); };
+            const sorted = [...arr].sort((a, b) => entered(a) - entered(b));
+            let cluster = [];
+            for (const o of sorted) {
+                if (cluster.length
+                    && entered(o) - entered(cluster[cluster.length - 1])
+                        > DispatchJobService_1.ROUTE_IMM_WINDOW_MIN * 60000) {
+                    if (cluster.length >= 2)
+                        groups.push(cluster);
+                    cluster = [];
+                }
+                cluster.push(o);
+            }
+            if (cluster.length >= 2)
+                groups.push(cluster);
+        }
+        const repo = this.connection.getRepository(ctx, core_2.Order);
+        for (const g of groups) {
+            const existing = g
+                .map(o => o.customFields.routeGroupId)
+                .find(Boolean);
+            const gid = existing !== null && existing !== void 0 ? existing : `rg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            const todo = g.filter(o => o.customFields.routeGroupId !== gid);
+            if (!todo.length)
+                continue;
+            await repo.update(todo.map(o => String(o.id)), {
+                customFields: { routeGroupId: gid },
+            });
+            for (const o of todo)
+                o.customFields.routeGroupId = gid;
+            core_2.Logger.info(`Route packed: ${gid} (${g.length} orders, buildings=${[...new Set(g.map(o => o.customFields.buildingId))].join('/')})`, 'CampusDispatch');
         }
     }
     /** 订单渠道匹配：channels 关联未加载（无 scalar channelId 可比对）时视为匹配，
@@ -281,7 +353,9 @@ let DispatchJobService = class DispatchJobService {
     }
 };
 exports.DispatchJobService = DispatchJobService;
-exports.DispatchJobService = DispatchJobService = __decorate([
+/** 即时单（无 deliverySlotId）打包时间窗：入厅时间差 ≤10min 视为顺路 */
+DispatchJobService.ROUTE_IMM_WINDOW_MIN = 10;
+exports.DispatchJobService = DispatchJobService = DispatchJobService_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [core_2.TransactionalConnection,
         hall_grab_service_1.HallGrabService,

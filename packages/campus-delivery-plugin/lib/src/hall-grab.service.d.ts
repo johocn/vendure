@@ -9,7 +9,10 @@ export declare class HallGrabService {
     /** 抢单：事务 + pessimistic_write，hallStatus 非 open 即抛「手慢了」。
      * 同时写 delivery customFields（deliveryStaffId/deliveryStatus=assigned），复用其任务体系。
      * 事务内查询与更新均使用事务 em，保证读写同一事务。
-     * 注：lock.tables 指定 "order" 表，避免 FOR UPDATE 作用于 customer 外连接的可空侧（PG 报错）。 */
+     * 注：lock.tables 指定 "order" 表，避免 FOR UPDATE 作用于 customer 外连接的可空侧（PG 报错）。
+     * 多单顺路（plan 3.3）：主单带 routeGroupId 时，同组 hallStatus='open' 的单在同一事务内
+     * 一并锁定并写同一骑手（整组接走）；组内骑手自己的单跳过留在大厅。组内查询按 id 升序
+     * FOR UPDATE，保证并发抢同组两单时加锁顺序一致，避免 PG 死锁（败者整体回滚重试）。 */
     grab(ctx: RequestContext, orderId: ID): Promise<Order>;
     /** T2/T3 强派原语：hallStatus='open' → 'grabbed'（事务+悲观锁，与 grab 同款防双抢）。
      * 目标骑手须 approved；低信用分在调用方（DispatchJobService）过滤。 */

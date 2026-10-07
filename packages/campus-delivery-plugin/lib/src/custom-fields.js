@@ -34,6 +34,7 @@ exports.campusCustomFields = {
         { name: 'exceptionHandledNote', type: 'string', nullable: true }, // 处置备注
         { name: 'exceptionHandledAt', type: 'datetime', nullable: true }, // 处置时间
         { name: 'exceptionHandledBy', type: 'string', nullable: true }, // 处置人（admin userId）
+        { name: 'routeGroupId', type: 'string', nullable: true }, // 多单顺路路线组（plan 3.3）：同楼栋+同时段打包，整组抢单
     ],
     Channel: [
         { name: 'waimaiTags', type: 'string', nullable: true }, // '米饭快餐,夜宵' 逗号分隔

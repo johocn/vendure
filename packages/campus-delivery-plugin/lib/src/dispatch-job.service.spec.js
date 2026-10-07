@@ -20,6 +20,7 @@ function makeEnv(opts) {
     const capacitySvc = { listOnlineRiders: vitest_1.vi.fn().mockResolvedValue((_a = opts.onlineRiders) !== null && _a !== void 0 ? _a : []) };
     const orderRepo = {
         findOne: vitest_1.vi.fn(),
+        update: vitest_1.vi.fn().mockResolvedValue({}),
         createQueryBuilder: () => {
             var _a, _b;
             return ({
@@ -192,6 +193,69 @@ function injectT4Services(svc) {
         (0, vitest_1.expect)(env.hallSvc.updateOrder).toHaveBeenCalledWith(vitest_1.expect.anything(), 4, vitest_1.expect.objectContaining({
             customFields: vitest_1.expect.objectContaining({ campusCause: 'no_rider', hallStatus: 'no_rider_final' }),
         }));
+    });
+});
+(0, vitest_1.describe)('DispatchJobService.scan 多单顺路打包 T1.5（plan 3.3）', () => {
+    const fresh = (id, cf) => ({
+        id,
+        createdAt: minAgo(20),
+        customFields: Object.assign({ hallStatus: 'open', hallEnteredAt: minAgo(1), fulfillmentRoute: 'R1' }, cf),
+    });
+    (0, vitest_1.it)('同楼栋+同时段 2 单 → 写同一 routeGroupId', async () => {
+        const { svc, orderRepo } = makeEnv({
+            openOrders: [
+                fresh(1, { buildingId: 'b1', deliverySlotId: '11', deliverySlotText: '11:00-11:30' }),
+                fresh(2, { buildingId: 'b1', deliverySlotId: '11', deliverySlotText: '11:00-11:30' }),
+            ],
+        });
+        await svc.scan({ channelId: 1 });
+        (0, vitest_1.expect)(orderRepo.update).toHaveBeenCalledOnce();
+        const [ids, patch] = orderRepo.update.mock.calls[0];
+        (0, vitest_1.expect)([...ids].sort()).toEqual([1, 2]);
+        const gid = patch.customFields.routeGroupId;
+        (0, vitest_1.expect)(gid).toMatch(/^rg-/);
+    });
+    (0, vitest_1.it)('不同楼栋不成组', async () => {
+        const { svc, orderRepo } = makeEnv({
+            openOrders: [
+                fresh(1, { buildingId: 'b1', deliverySlotId: '11' }),
+                fresh(2, { buildingId: 'b2', deliverySlotId: '11' }),
+            ],
+        });
+        await svc.scan({ channelId: 1 });
+        (0, vitest_1.expect)(orderRepo.update).not.toHaveBeenCalled();
+    });
+    (0, vitest_1.it)('即时单同楼栋入厅差 ≤10min 成组，超窗不成组', async () => {
+        const near = { id: 1, createdAt: minAgo(20), customFields: { hallStatus: 'open', fulfillmentRoute: 'R1', buildingId: 'b1', hallEnteredAt: minAgo(9) } };
+        const near2 = { id: 2, createdAt: minAgo(19), customFields: { hallStatus: 'open', fulfillmentRoute: 'R1', buildingId: 'b1', hallEnteredAt: minAgo(1) } };
+        const far = { id: 3, createdAt: minAgo(40), customFields: { hallStatus: 'open', fulfillmentRoute: 'R1', buildingId: 'b1', hallEnteredAt: minAgo(30) } };
+        const env = makeEnv({ openOrders: [near, near2, far] });
+        await env.svc.scan({ channelId: 1 });
+        const [ids] = env.orderRepo.update.mock.calls[0];
+        (0, vitest_1.expect)([...ids].sort()).toEqual([1, 2]); // far 单差 29min 不入组
+    });
+    (0, vitest_1.it)('errand 跑腿单不打包', async () => {
+        const { svc, orderRepo } = makeEnv({
+            openOrders: [
+                fresh(1, { buildingId: 'b1' }),
+                fresh(2, { buildingId: 'b1', fulfillmentRoute: undefined, orderKind: 'errand' }),
+            ],
+        });
+        await svc.scan({ channelId: 1 });
+        (0, vitest_1.expect)(orderRepo.update).not.toHaveBeenCalled();
+    });
+    (0, vitest_1.it)('批内已有 routeGroupId → 复用不重生成', async () => {
+        const { svc, orderRepo } = makeEnv({
+            openOrders: [
+                fresh(1, { buildingId: 'b1', deliverySlotId: '11', routeGroupId: 'rg-old' }),
+                fresh(2, { buildingId: 'b1', deliverySlotId: '11' }),
+            ],
+        });
+        await svc.scan({ channelId: 1 });
+        (0, vitest_1.expect)(orderRepo.update).toHaveBeenCalledOnce();
+        const [ids, patch] = orderRepo.update.mock.calls[0];
+        (0, vitest_1.expect)(patch.customFields.routeGroupId).toBe('rg-old');
+        (0, vitest_1.expect)(ids).toEqual([2]); // 已带组 id 的单不再 update
     });
 });
 //# sourceMappingURL=dispatch-job.service.spec.js.map

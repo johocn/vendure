@@ -24,6 +24,7 @@ function makeEnv(opts: {
     const capacitySvc = { listOnlineRiders: vi.fn().mockResolvedValue(opts.onlineRiders ?? []) };
     const orderRepo = {
         findOne: vi.fn(),
+        update: vi.fn().mockResolvedValue({}),
         createQueryBuilder: () => ({
             leftJoin: vi.fn().mockReturnThis(),
             where: vi.fn().mockReturnThis(),
@@ -203,6 +204,75 @@ describe('DispatchJobService.scan T4 自动退款', () => {
         expect(env.hallSvc.updateOrder).toHaveBeenCalledWith(expect.anything(), 4, expect.objectContaining({
             customFields: expect.objectContaining({ campusCause: 'no_rider', hallStatus: 'no_rider_final' }),
         }));
+    });
+});
+
+describe('DispatchJobService.scan 多单顺路打包 T1.5（plan 3.3）', () => {
+    const fresh = (id: number, cf: any) => ({
+        id,
+        createdAt: minAgo(20),
+        customFields: { hallStatus: 'open', hallEnteredAt: minAgo(1), fulfillmentRoute: 'R1', ...cf },
+    });
+
+    it('同楼栋+同时段 2 单 → 写同一 routeGroupId', async () => {
+        const { svc, orderRepo } = makeEnv({
+            openOrders: [
+                fresh(1, { buildingId: 'b1', deliverySlotId: '11', deliverySlotText: '11:00-11:30' }),
+                fresh(2, { buildingId: 'b1', deliverySlotId: '11', deliverySlotText: '11:00-11:30' }),
+            ],
+        });
+        await svc.scan({ channelId: 1 } as any);
+        expect(orderRepo.update).toHaveBeenCalledOnce();
+        const [ids, patch] = orderRepo.update.mock.calls[0];
+        expect([...ids].sort()).toEqual([1, 2]);
+        const gid = patch.customFields.routeGroupId;
+        expect(gid).toMatch(/^rg-/);
+    });
+
+    it('不同楼栋不成组', async () => {
+        const { svc, orderRepo } = makeEnv({
+            openOrders: [
+                fresh(1, { buildingId: 'b1', deliverySlotId: '11' }),
+                fresh(2, { buildingId: 'b2', deliverySlotId: '11' }),
+            ],
+        });
+        await svc.scan({ channelId: 1 } as any);
+        expect(orderRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('即时单同楼栋入厅差 ≤10min 成组，超窗不成组', async () => {
+        const near = { id: 1, createdAt: minAgo(20), customFields: { hallStatus: 'open', fulfillmentRoute: 'R1', buildingId: 'b1', hallEnteredAt: minAgo(9) } };
+        const near2 = { id: 2, createdAt: minAgo(19), customFields: { hallStatus: 'open', fulfillmentRoute: 'R1', buildingId: 'b1', hallEnteredAt: minAgo(1) } };
+        const far = { id: 3, createdAt: minAgo(40), customFields: { hallStatus: 'open', fulfillmentRoute: 'R1', buildingId: 'b1', hallEnteredAt: minAgo(30) } };
+        const env = makeEnv({ openOrders: [near, near2, far] });
+        await env.svc.scan({ channelId: 1 } as any);
+        const [ids] = env.orderRepo.update.mock.calls[0];
+        expect([...ids].sort()).toEqual([1, 2]); // far 单差 29min 不入组
+    });
+
+    it('errand 跑腿单不打包', async () => {
+        const { svc, orderRepo } = makeEnv({
+            openOrders: [
+                fresh(1, { buildingId: 'b1' }),
+                fresh(2, { buildingId: 'b1', fulfillmentRoute: undefined, orderKind: 'errand' }),
+            ],
+        });
+        await svc.scan({ channelId: 1 } as any);
+        expect(orderRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('批内已有 routeGroupId → 复用不重生成', async () => {
+        const { svc, orderRepo } = makeEnv({
+            openOrders: [
+                fresh(1, { buildingId: 'b1', deliverySlotId: '11', routeGroupId: 'rg-old' }),
+                fresh(2, { buildingId: 'b1', deliverySlotId: '11' }),
+            ],
+        });
+        await svc.scan({ channelId: 1 } as any);
+        expect(orderRepo.update).toHaveBeenCalledOnce();
+        const [ids, patch] = orderRepo.update.mock.calls[0];
+        expect(patch.customFields.routeGroupId).toBe('rg-old');
+        expect(ids).toEqual([2]); // 已带组 id 的单不再 update
     });
 });
 

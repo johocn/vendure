@@ -147,6 +147,10 @@ export class DispatchJobService implements OnApplicationShutdown {
                     (o.customFields as any).hallStatus = 'open';
                 }
             }
+            // T1.5 多单顺路打包（plan 3.3）：同楼栋+同时段 open 配送单写同一 routeGroupId，
+            // 后续 T2 强派逐单派给同一骑手天然同车；骑手抢单由 HallGrabService.grab 整组接走。
+            await this.packRoutes(ctx, orders);
+
             const riders = await this.capacity.listOnlineRiders(ctx);
             const eligible = riders
                 .filter(r => ((r.customFields as any).riderCredit ?? 100) >= CREDIT_LIMIT)
@@ -183,6 +187,75 @@ export class DispatchJobService implements OnApplicationShutdown {
             for (const o of staleFinal) {
                 await this.refundNoRider(ctx, o, cfg);
             }
+        }
+    }
+
+    /** 即时单（无 deliverySlotId）打包时间窗：入厅时间差 ≤10min 视为顺路 */
+    private static readonly ROUTE_IMM_WINDOW_MIN = 10;
+
+    /**
+     * T1.5 多单顺路打包（plan 3.3）：同渠道 hallStatus='open' 的 R1/R3 配送单
+     * （errand 跑腿单性质不同不打包）按「同楼栋 + 同时段」分桶：
+     * - 有 deliverySlotId：slot 相等即同时段；
+     * - 即时单：按 hallEnteredAt 聚类，相邻时间差 ≤ ROUTE_IMM_WINDOW_MIN 分钟归一批。
+     * 每批 ≥2 单写同一 routeGroupId（批内已有组 id 则复用，保持组稳定不抖动）。
+     * 组 id 仅用于整组抢单与展示聚合，不严格维护成员一致性——子单被抢/回厅/退款后
+     * 自然脱组（回厅清指派字段，成员过滤以 hallStatus='open' 为准）。
+     */
+    private async packRoutes(ctx: RequestContext, orders: Order[]) {
+        const deliverable = orders.filter(o => {
+            const cf = o.customFields as any;
+            return cf.hallStatus === 'open'
+                && (cf.fulfillmentRoute === 'R1' || cf.fulfillmentRoute === 'R3');
+        });
+        if (deliverable.length < 2) return;
+        // 分桶：buildingId + slotKey
+        const buckets = new Map<string, Order[]>();
+        for (const o of deliverable) {
+            const cf = o.customFields as any;
+            const key = `${cf.buildingId ?? ''}|${cf.deliverySlotId ?? 'imm'}`;
+            const arr = buckets.get(key) ?? [];
+            arr.push(o);
+            buckets.set(key, arr);
+        }
+        const groups: Order[][] = [];
+        for (const [key, arr] of buckets) {
+            if (!key.endsWith('|imm')) {
+                if (arr.length >= 2) groups.push(arr);
+                continue;
+            }
+            // 即时单：按入厅时间聚类（升序，相邻差超窗口即断批）
+            const entered = (o: Order) =>
+                new Date((o.customFields as any).hallEnteredAt ?? o.createdAt).getTime();
+            const sorted = [...arr].sort((a, b) => entered(a) - entered(b));
+            let cluster: Order[] = [];
+            for (const o of sorted) {
+                if (cluster.length
+                    && entered(o) - entered(cluster[cluster.length - 1])
+                        > DispatchJobService.ROUTE_IMM_WINDOW_MIN * 60_000) {
+                    if (cluster.length >= 2) groups.push(cluster);
+                    cluster = [];
+                }
+                cluster.push(o);
+            }
+            if (cluster.length >= 2) groups.push(cluster);
+        }
+        const repo = this.connection.getRepository(ctx, Order);
+        for (const g of groups) {
+            const existing = g
+                .map(o => (o.customFields as any).routeGroupId as string | undefined)
+                .find(Boolean);
+            const gid = existing ?? `rg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            const todo = g.filter(o => (o.customFields as any).routeGroupId !== gid);
+            if (!todo.length) continue;
+            await repo.update(todo.map(o => String(o.id)), {
+                customFields: { routeGroupId: gid },
+            } as any);
+            for (const o of todo) (o.customFields as any).routeGroupId = gid;
+            Logger.info(
+                `Route packed: ${gid} (${g.length} orders, buildings=${[...new Set(g.map(o => (o.customFields as any).buildingId))].join('/')})`,
+                'CampusDispatch',
+            );
         }
     }
 
