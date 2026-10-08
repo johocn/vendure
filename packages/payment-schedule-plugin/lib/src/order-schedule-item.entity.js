@@ -48,8 +48,8 @@ __decorate([
     __metadata("design:type", Object)
 ], OrderScheduleItem.prototype, "trigger", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
-    __metadata("design:type", Object)
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Date)
 ], OrderScheduleItem.prototype, "dueAt", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'int', default: 0 }),
@@ -64,8 +64,8 @@ __decorate([
     __metadata("design:type", String)
 ], OrderScheduleItem.prototype, "status", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
-    __metadata("design:type", Object)
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Date)
 ], OrderScheduleItem.prototype, "paidAt", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'int', nullable: true }),

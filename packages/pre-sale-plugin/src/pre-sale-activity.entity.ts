@@ -93,7 +93,7 @@ export class PreSaleActivity extends VendureEntity implements ChannelAware {
     earnestRefundPolicy?: { onTimeout: 'full' | 'partial'; partialRate?: number } | null;
 
     /** 发货承诺时间（卖家违约判定基准） */
-    @Column({ type: 'datetime', nullable: true })
+    @Column({ nullable: true })
     shipDeadlineAt?: Date;
 
     /** 协议版本快照（下单时写入期次实例，改配置不影响已生成订单） */

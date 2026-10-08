@@ -65,11 +65,11 @@ export declare class PaymentScheduleService {
             kind: ItemKind;
             amount: number;
             allowCod: boolean;
-            dueAt: Date | null;
+            dueAt?: Date;
             graceHours: number;
             lateFeeRule: import("./schedule-config").LateFeeRule | null;
             status: import("./schedule-config").ItemStatus;
-            paidAt: Date | null;
+            paidAt?: Date;
             paymentId: number | null;
             groupBuyActivityId: number | null;
             id: ID;
@@ -86,7 +86,7 @@ export declare class PaymentScheduleService {
         agreementVersion: string;
         status: ScheduleStatus;
         breachType: import("./schedule-config").ScheduleBreachType | null;
-        shipDeadline: Date | null;
+        shipDeadline?: Date;
         meta: Record<string, unknown> | null;
         channels: import("@vendure/core").Channel[];
         id: ID;

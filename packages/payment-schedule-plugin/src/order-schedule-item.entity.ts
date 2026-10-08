@@ -35,8 +35,8 @@ export class OrderScheduleItem extends VendureEntity {
     trigger: ScheduleTrigger;
 
     /** 计算后的应付时点（date/interval 在创建或解锁时落值） */
-    @Column({ type: 'datetime', nullable: true })
-    dueAt: Date | null;
+    @Column({ nullable: true })
+    dueAt?: Date;
 
     /** 宽限期（小时）：dueAt + graceHours 之后转 overdue */
     @Column({ type: 'int', default: 0 })
@@ -48,8 +48,8 @@ export class OrderScheduleItem extends VendureEntity {
     @Column('varchar', { default: 'locked' })
     status: ItemStatus;
 
-    @Column({ type: 'datetime', nullable: true })
-    paidAt: Date | null;
+    @Column({ nullable: true })
+    paidAt?: Date;
 
     @Column({ type: 'int', nullable: true })
     paymentId: number | null;

@@ -17,7 +17,7 @@ export declare class OrderPaymentSchedule extends VendureEntity implements Chann
     status: ScheduleStatus;
     breachType: ScheduleBreachType | null;
     /** 发货承诺（超过未发货 → seller_breach 待确认） */
-    shipDeadline: Date | null;
+    shipDeadline?: Date;
     /** 场景扩展快照（如租赁：{ rental: { buyoutPrice, allowBuyout } }，改配置不影响已生成订单） */
     meta: Record<string, unknown> | null;
     channels: Channel[];

@@ -110,7 +110,7 @@ __decorate([
     __metadata("design:type", Object)
 ], PreSaleActivity.prototype, "earnestRefundPolicy", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
+    (0, typeorm_1.Column)({ nullable: true }),
     __metadata("design:type", Date)
 ], PreSaleActivity.prototype, "shipDeadlineAt", void 0);
 __decorate([

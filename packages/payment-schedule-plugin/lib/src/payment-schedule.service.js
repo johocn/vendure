@@ -92,14 +92,14 @@ let PaymentScheduleService = class PaymentScheduleService {
             deliveryGate: input.deliveryGate,
             depositRule: (_b = input.depositRule) !== null && _b !== void 0 ? _b : null,
             agreementVersion: input.agreementVersion,
-            shipDeadline: (_c = input.shipDeadline) !== null && _c !== void 0 ? _c : null,
+            shipDeadline: (_c = input.shipDeadline) !== null && _c !== void 0 ? _c : undefined,
             meta: ((_d = input.meta) !== null && _d !== void 0 ? _d : null),
             status: 'pending',
         });
         schedule.channels = [ctx.channel];
         const savedSchedule = await this.scheduleRepo(ctx).save(schedule);
         const itemEntities = sorted.map((item, idx) => {
-            var _a, _b, _c;
+            var _a, _b, _c, _d;
             const trigger = item.trigger;
             return new order_schedule_item_entity_1.OrderScheduleItem({
                 scheduleId: savedSchedule.id,
@@ -108,12 +108,12 @@ let PaymentScheduleService = class PaymentScheduleService {
                 amount: item.amount,
                 allowCod: (_a = item.allowCod) !== null && _a !== void 0 ? _a : false,
                 trigger,
-                dueAt: (0, schedule_config_1.computeDueAt)(trigger, now),
-                graceHours: (_b = item.graceHours) !== null && _b !== void 0 ? _b : 0,
-                lateFeeRule: (_c = item.lateFeeRule) !== null && _c !== void 0 ? _c : null,
+                dueAt: (_b = (0, schedule_config_1.computeDueAt)(trigger, now)) !== null && _b !== void 0 ? _b : undefined,
+                graceHours: (_c = item.graceHours) !== null && _c !== void 0 ? _c : 0,
+                lateFeeRule: (_d = item.lateFeeRule) !== null && _d !== void 0 ? _d : null,
                 // 首期立即可付（首笔款），其余锁定等触发
                 status: idx === 0 ? 'payable' : 'locked',
-                paidAt: null,
+                paidAt: undefined,
                 paymentId: null,
                 groupBuyActivityId: trigger.type === 'group_buy' ? trigger.groupBuyActivityId : null,
             });
@@ -151,7 +151,7 @@ let PaymentScheduleService = class PaymentScheduleService {
             graceHours: 0,
             lateFeeRule: null,
             status: 'payable',
-            paidAt: null,
+            paidAt: undefined,
             paymentId: null,
             groupBuyActivityId: null,
         });

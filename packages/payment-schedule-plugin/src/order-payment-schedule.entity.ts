@@ -40,8 +40,8 @@ export class OrderPaymentSchedule extends VendureEntity implements ChannelAware 
     breachType: ScheduleBreachType | null;
 
     /** 发货承诺（超过未发货 → seller_breach 待确认） */
-    @Column({ type: 'datetime', nullable: true })
-    shipDeadline: Date | null;
+    @Column({ nullable: true })
+    shipDeadline?: Date;
 
     /** 场景扩展快照（如租赁：{ rental: { buyoutPrice, allowBuyout } }，改配置不影响已生成订单） */
     @Column('simple-json', { nullable: true })

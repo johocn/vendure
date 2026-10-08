@@ -16,12 +16,12 @@ export declare class OrderScheduleItem extends VendureEntity {
     allowCod: boolean;
     trigger: ScheduleTrigger;
     /** 计算后的应付时点（date/interval 在创建或解锁时落值） */
-    dueAt: Date | null;
+    dueAt?: Date;
     /** 宽限期（小时）：dueAt + graceHours 之后转 overdue */
     graceHours: number;
     lateFeeRule: LateFeeRule | null;
     status: ItemStatus;
-    paidAt: Date | null;
+    paidAt?: Date;
     paymentId: number | null;
     /**
      * trigger.type=group_buy 时的镜像列（便于按活动索引查询，JSON 字段无法跨方言检索）。

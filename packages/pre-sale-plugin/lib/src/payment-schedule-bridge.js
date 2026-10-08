@@ -59,7 +59,7 @@ async function createScheduleForOrder(ctx, injector, order, activity) {
                 deliveryGate: 'all_paid',
                 depositRule: null,
                 agreementVersion: activity.agreementVersion,
-                shipDeadline: (_b = activity.shipDeadlineAt) !== null && _b !== void 0 ? _b : null,
+                shipDeadline: (_b = activity.shipDeadlineAt) !== null && _b !== void 0 ? _b : undefined,
                 items: [
                     {
                         seq: 1,
@@ -84,7 +84,7 @@ async function createScheduleForOrder(ctx, injector, order, activity) {
                 deliveryGate: 'all_paid',
                 depositRule,
                 agreementVersion: activity.agreementVersion,
-                shipDeadline: (_d = activity.shipDeadlineAt) !== null && _d !== void 0 ? _d : null,
+                shipDeadline: (_d = activity.shipDeadlineAt) !== null && _d !== void 0 ? _d : undefined,
                 items: [
                     {
                         seq: 1,

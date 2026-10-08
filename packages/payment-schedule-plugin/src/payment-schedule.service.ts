@@ -146,7 +146,7 @@ export class PaymentScheduleService {
             deliveryGate: input.deliveryGate,
             depositRule: input.depositRule ?? null,
             agreementVersion: input.agreementVersion,
-            shipDeadline: input.shipDeadline ?? null,
+            shipDeadline: input.shipDeadline ?? undefined,
             meta: (input.meta ?? null) as any,
             status: 'pending',
         });
@@ -162,12 +162,12 @@ export class PaymentScheduleService {
                 amount: item.amount,
                 allowCod: item.allowCod ?? false,
                 trigger,
-                dueAt: computeDueAt(trigger, now),
+                dueAt: computeDueAt(trigger, now) ?? undefined,
                 graceHours: item.graceHours ?? 0,
                 lateFeeRule: item.lateFeeRule ?? null,
                 // 首期立即可付（首笔款），其余锁定等触发
                 status: idx === 0 ? 'payable' : 'locked',
-                paidAt: null,
+                paidAt: undefined,
                 paymentId: null,
                 groupBuyActivityId: trigger.type === 'group_buy' ? trigger.groupBuyActivityId : null,
             });
@@ -213,7 +213,7 @@ export class PaymentScheduleService {
             graceHours: 0,
             lateFeeRule: null,
             status: 'payable',
-            paidAt: null,
+            paidAt: undefined,
             paymentId: null,
             groupBuyActivityId: null,
         });

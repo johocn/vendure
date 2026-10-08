@@ -57,7 +57,7 @@ export async function createScheduleForOrder(
                 deliveryGate: 'all_paid',
                 depositRule: null,
                 agreementVersion: activity.agreementVersion,
-                shipDeadline: activity.shipDeadlineAt ?? null,
+                shipDeadline: activity.shipDeadlineAt ?? undefined,
                 items: [
                     {
                         seq: 1,
@@ -81,7 +81,7 @@ export async function createScheduleForOrder(
                 deliveryGate: 'all_paid',
                 depositRule,
                 agreementVersion: activity.agreementVersion,
-                shipDeadline: activity.shipDeadlineAt ?? null,
+                shipDeadline: activity.shipDeadlineAt ?? undefined,
                 items: [
                     {
                         seq: 1,
