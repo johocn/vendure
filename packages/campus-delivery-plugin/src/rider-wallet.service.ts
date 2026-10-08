@@ -1,11 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import {
-    Customer,
-    RequestContext,
-    RequestContextService,
-    TransactionalConnection,
-    UserInputError,
-} from '@vendure/core';
+import { RequestContext, RequestContextService, TransactionalConnection, UserInputError } from '@vendure/core';
 import { getCouponBalancePort } from '@vendure/coupon-plugin';
 import { BalanceTransaction } from '@vendure/recharge-card-plugin';
 import { RiderEarning } from './rider-earning.entity';
@@ -85,10 +79,9 @@ export class RiderWalletService {
         // 「防重检查→余额校验→扣款→落库」对同骑手串行化：并发双请求只有一个能通过 PENDING 检查。
         // 残余风险（与历史一致且窗口极小）：扣款成功后 raw 事务提交失败 → 已扣无单，需人工对账。
         return this.connection.rawConnection.transaction(async (em) => {
-            await em.getRepository(Customer).findOne({
-                where: { id: rider.id as number },
-                lock: { mode: 'pessimistic_write' },
-            });
+            // 裸 SQL 行锁：Customer 实体 findOne+lock 会 LEFT JOIN channels 等关联表，
+            // PG 拒绝对外连接可空侧 FOR UPDATE，故用单表 SELECT ... FOR UPDATE
+            await em.query('SELECT id FROM customer WHERE id = $1 FOR UPDATE', [rider.id]);
             const pending = await em.getRepository(RiderWithdrawalRequest).count({
                 where: { customerId: rider.id as number, status: 'PENDING' },
             });

@@ -41,7 +41,10 @@ function make() {
             return Promise.resolve(v);
         }),
     };
-    const em = { getRepository: vi.fn(() => emRepo) };
+    const em = {
+        query: vi.fn().mockResolvedValue([{ id: 9 }]),
+        getRepository: vi.fn(() => emRepo),
+    };
     const conn = {
         getRepository: () => repo,
         rawConnection: { transaction: vi.fn((fn: any) => fn(em)) },
@@ -70,14 +73,12 @@ describe('RiderWalletService', () => {
     });
 
     it('withdraw 成功：事务内锁 Customer 行 + PENDING 检查后扣款冻结落库（资金走默认渠道上下文）', async () => {
-        const { svc, saved, emRepo } = make();
+        const { svc, saved, em } = make();
         mocks.port.getBalance.mockResolvedValue(5000);
         mocks.port.deductBalance.mockResolvedValue(3000);
         const req = await svc.riderWithdraw(ctx, { amount: 2000, channel: '支付宝', account: 'a@b.c' });
-        // F2：先悲观锁 Customer 行串行化同骑手并发
-        expect(emRepo.findOne).toHaveBeenCalledWith(
-            expect.objectContaining({ where: { id: 9 }, lock: { mode: 'pessimistic_write' } }),
-        );
+        // F2：先裸 SQL 行锁（SELECT ... FOR UPDATE）串行化同骑手并发
+        expect(em.query).toHaveBeenCalledWith('SELECT id FROM customer WHERE id = $1 FOR UPDATE', [9]);
         expect(mocks.port.deductBalance).toHaveBeenCalledWith(platformCtx, 9, 2000);
         expect(req.status).toBe('PENDING');
         expect(req.amount).toBe(2000);
