@@ -60,6 +60,7 @@ import { ReviewPlugin } from '@vendure/review-plugin';
 import { WechatSubscribeMessagePlugin } from '@vendure/wechat-subscribe-message-plugin';
 import { CouponPlugin } from '@vendure/coupon-plugin';
 import { CampusDeliveryPlugin } from '@vendure/campus-delivery-plugin';
+import { CampusJianghuPlugin } from '@vendure/campus-jianghu-plugin';
 import { DeliveryPlugin } from '@vendure/delivery-plugin';
 import { SalesPlugin } from '@vendure/sales-plugin';
 import { SalesOrderItemPriceCalculationStrategy } from '@vendure/sales-plugin';
@@ -70,6 +71,7 @@ import { MessagePlugin } from '@vendure/message-plugin';
 import { NotificationPlugin } from '@vendure/notification-plugin';
 import { OperationsPlugin } from '@vendure/operations-plugin';
 import { PreSalePlugin } from '@vendure/pre-sale-plugin';
+import { PaymentSchedulePlugin } from '@vendure/payment-schedule-plugin';
 import { LiveStreamingPlugin } from '@vendure/live-streaming-plugin';
 import { ShopPlugin } from '@vendure/shop-plugin';
 import { PickupPlugin } from '@vendure/pickup-plugin';
@@ -487,6 +489,8 @@ export const devConfig: VendureConfig = {
         DeliveryPlugin.init(),
         // 校园配送（分区/宿舍楼/履约配置 + 骑手入驻/抢单大厅/送达分成），无 init，直接挂类
         CampusDeliveryPlugin,
+        // 校园江湖（声望/段位/密信/情报/事件 + 四态核销 + 幂等声望），无 init，直接挂类
+        CampusJianghuPlugin,
         SalesPlugin.init(),
         MarketplacePlugin.init({}),
         // LogisticsPlugin 必须在 MarketplacePlugin 之后注册：两者都会设置 stockLocationStrategy，
@@ -517,6 +521,7 @@ export const devConfig: VendureConfig = {
         NotificationPlugin.init(),
         // 预售/定金预售：两阶段支付（定金→尾款）+ 全款预售 + 分档定价 + 到货释放库存
         PreSalePlugin.init({}),
+        PaymentSchedulePlugin.init({}),
         // 必须最后注册：覆盖 MarketplacePlugin 的 Seller 拆分，根治租户渠道商品的幽灵配送子单
         DisableSellerSplitPlugin,
     ],
