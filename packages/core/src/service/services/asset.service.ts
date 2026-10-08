@@ -307,8 +307,11 @@ export class AssetService {
     async create(ctx: RequestContext, input: CreateAssetInput): Promise<Translated<Asset> | MimeTypeError> {
         const { createReadStream, filename, mimetype } = await input.file;
         const { stream, errorPromise } = this.makeStreamGuard(createReadStream);
+        // uploadedBy 不信任客户端自报（图库「仅本人上传」过滤依据）：强制覆写为当前会话用户 id，
+        // 防止篡改 localStorage wa_user_id 冒名上传/污染他人图库（审计 B3-C P2）
+        const customFields: any = { ...(input.customFields || {}), uploadedBy: String(ctx.activeUserId ?? '') };
         const result = await Promise.race([
-            this.createAssetInternal(ctx, stream, filename, mimetype, input.customFields, input.translations),
+            this.createAssetInternal(ctx, stream, filename, mimetype, customFields, input.translations),
             errorPromise,
         ]);
         if (isGraphQlErrorResult(result)) {
@@ -331,6 +334,10 @@ export class AssetService {
      */
     async update(ctx: RequestContext, input: UpdateAssetInput): Promise<Translated<Asset>> {
         const asset = await this.connection.getEntityOrThrow(ctx, Asset, input.id);
+        // 归属字段只允许 create 时写入，update 一律剥离，防把资产「划」给他人绕过图库过滤
+        if ((input.customFields as any)?.uploadedBy !== undefined) {
+            delete (input.customFields as any).uploadedBy;
+        }
         if (input.focalPoint) {
             const to3dp = (x: number) => +x.toFixed(3);
             input.focalPoint.x = to3dp(input.focalPoint.x);

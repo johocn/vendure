@@ -233,10 +233,14 @@ let AssetService = class AssetService {
      * See the [Uploading Files docs](/developer-guide/uploading-files) for an example of usage.
      */
     async create(ctx, input) {
+        var _a;
         const { createReadStream, filename, mimetype } = await input.file;
         const { stream, errorPromise } = this.makeStreamGuard(createReadStream);
+        // uploadedBy 不信任客户端自报（图库「仅本人上传」过滤依据）：强制覆写为当前会话用户 id，
+        // 防止篡改 localStorage wa_user_id 冒名上传/污染他人图库（审计 B3-C P2）
+        const customFields = Object.assign(Object.assign({}, (input.customFields || {})), { uploadedBy: String((_a = ctx.activeUserId) !== null && _a !== void 0 ? _a : '') });
         const result = await Promise.race([
-            this.createAssetInternal(ctx, stream, filename, mimetype, input.customFields, input.translations),
+            this.createAssetInternal(ctx, stream, filename, mimetype, customFields, input.translations),
             errorPromise,
         ]);
         if ((0, error_result_1.isGraphQlErrorResult)(result)) {
@@ -257,8 +261,12 @@ let AssetService = class AssetService {
      * Updates the name, focalPoint, tags & custom fields of an Asset.
      */
     async update(ctx, input) {
-        var _a;
+        var _a, _b;
         const asset = await this.connection.getEntityOrThrow(ctx, asset_entity_1.Asset, input.id);
+        // 归属字段只允许 create 时写入，update 一律剥离，防把资产「划」给他人绕过图库过滤
+        if (((_a = input.customFields) === null || _a === void 0 ? void 0 : _a.uploadedBy) !== undefined) {
+            delete input.customFields.uploadedBy;
+        }
         if (input.focalPoint) {
             const to3dp = (x) => +x.toFixed(3);
             input.focalPoint.x = to3dp(input.focalPoint.x);
@@ -269,7 +277,7 @@ let AssetService = class AssetService {
             asset.tags = await this.tagService.valuesToTags(ctx, input.tags);
         }
         // Handle translations
-        const translationsInput = (_a = input.translations) !== null && _a !== void 0 ? _a : [];
+        const translationsInput = (_b = input.translations) !== null && _b !== void 0 ? _b : [];
         // For backward compatibility: if name is provided without translations, update the current language translation
         if (input.name != null && !translationsInput.some(t => t.languageCode === ctx.languageCode)) {
             translationsInput.push({ languageCode: ctx.languageCode, name: input.name });
