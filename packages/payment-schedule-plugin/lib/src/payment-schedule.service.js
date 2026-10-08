@@ -206,6 +206,10 @@ let PaymentScheduleService = class PaymentScheduleService {
         const { schedule, items } = withItems;
         return Object.assign(Object.assign({}, schedule), { items: items.map(i => (Object.assign(Object.assign({}, i), { trigger: i.trigger, paidAmount: i.status === 'paid' ? i.amount : 0, lateFeeAccrued: (0, schedule_config_1.lateFeeAccrued)(i, now) }))), paidTotal: items.filter(i => i.status === 'paid').reduce((s, i) => s + i.amount, 0), totalAmount: items.reduce((s, i) => s + i.amount, 0) });
     }
+    /** Admin 列表批量取期次（供 resolver 组装 present） */
+    async findItemsForPresent(ctx, scheduleId) {
+        return this.findItems(ctx, scheduleId);
+    }
     /* ------------------------- 支付 ------------------------- */
     /**
      * 付任意期次（在线/COD 均经此）。

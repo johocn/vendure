@@ -93,6 +93,8 @@ export declare class PaymentScheduleService {
         createdAt: Date;
         updatedAt: Date;
     };
+    /** Admin 列表批量取期次（供 resolver 组装 present） */
+    findItemsForPresent(ctx: RequestContext, scheduleId: number): Promise<OrderScheduleItem[]>;
     /**
      * 付任意期次（在线/COD 均经此）。
      * Settled → item paid + 推进订单状态；Authorized（COD handler）→ item 留待 confirmCodReceived。

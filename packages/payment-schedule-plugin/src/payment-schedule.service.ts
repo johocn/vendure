@@ -288,6 +288,11 @@ export class PaymentScheduleService {
         };
     }
 
+    /** Admin 列表批量取期次（供 resolver 组装 present） */
+    async findItemsForPresent(ctx: RequestContext, scheduleId: number) {
+        return this.findItems(ctx, scheduleId);
+    }
+
     /* ------------------------- 支付 ------------------------- */
 
     /**
