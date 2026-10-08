@@ -68,6 +68,38 @@ export class PreSaleActivity extends VendureEntity implements ChannelAware {
     @Column({ type: 'int' })
     channelId: number;
 
+    /** 定金性质：legal_deposit（法律定金，有罚则）/ earnest（订金，原则上可退） */
+    @Column('varchar', { default: 'legal_deposit' })
+    depositKind: 'legal_deposit' | 'earnest';
+
+    /** 尾款触发方式：date（到点自动）/ group_buy（成团解锁）/ manual（管理员开启） */
+    @Column('varchar', { default: 'date' })
+    tailTriggerType: 'date' | 'group_buy' | 'manual';
+
+    /** 团购活动 id（tailTriggerType=group_buy 时必填） */
+    @Column({ type: 'int', nullable: true })
+    groupBuyActivityId?: number;
+
+    /** 尾款支付窗口时长（小时，展示/协议用） */
+    @Column({ type: 'int', nullable: true })
+    tailWindowHours?: number;
+
+    /** 期次宽限小时数（逾期判定） */
+    @Column({ type: 'int', default: 72 })
+    graceHours: number;
+
+    /** 订金退款策略（depositKind=earnest 时生效） */
+    @Column('simple-json', { nullable: true })
+    earnestRefundPolicy?: { onTimeout: 'full' | 'partial'; partialRate?: number } | null;
+
+    /** 发货承诺时间（卖家违约判定基准） */
+    @Column({ type: 'datetime', nullable: true })
+    shipDeadlineAt?: Date;
+
+    /** 协议版本快照（下单时写入期次实例，改配置不影响已生成订单） */
+    @Column('varchar', { default: 'v1' })
+    agreementVersion: string;
+
     @Column('varchar', { default: 'upcoming' })
     status: PreSaleStatus;
 

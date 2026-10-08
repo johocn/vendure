@@ -9,12 +9,13 @@ import {
     OrderService,
     PaginatedList,
     PaymentService,
+    ProductVariantService,
     RequestContext,
     TransactionalConnection,
     UserInputError,
 } from '@vendure/core';
 
-import { loggerCtx } from './constants';
+import { LEGAL_DEPOSIT_CAP_RATIO, loggerCtx } from './constants';
 import { PreSaleActivity } from './pre-sale-activity.entity';
 import { setPreSaleConnection } from './pre-sale-runtime';
 
@@ -36,6 +37,14 @@ const UPDATE_ALLOWED_FIELDS: ReadonlyArray<keyof PreSaleActivity> = [
     'limitPerUser',
     'productId',
     'variantId',
+    'depositKind',
+    'tailTriggerType',
+    'groupBuyActivityId',
+    'tailWindowHours',
+    'graceHours',
+    'earnestRefundPolicy',
+    'shipDeadlineAt',
+    'agreementVersion',
 ];
 
 @Injectable()
@@ -45,6 +54,7 @@ export class PreSaleService {
         private listQueryBuilder: ListQueryBuilder,
         private orderService: OrderService,
         private paymentService: PaymentService,
+        private productVariantService: ProductVariantService,
     ) {}
 
     init(injector: Injector): void {
@@ -78,6 +88,7 @@ export class PreSaleService {
     }
 
     async create(ctx: RequestContext, input: Partial<PreSaleActivity>): Promise<PreSaleActivity> {
+        await this.assertLegalDepositCap(ctx, input);
         const repo = this.connection.getRepository(ctx, PreSaleActivity);
         const activity = new PreSaleActivity(input as any);
         activity.channels = [ctx.channel];
@@ -97,6 +108,8 @@ export class PreSaleService {
         if (!activity) {
             throw new UserInputError(`PreSaleActivity with id ${input.id} not found`);
         }
+        // 定金 20% 硬校验：以「既有值 + 本次 input」合并后的生效配置为准（input 未带 mode/depositAmount 等字段时兜底活动既有值）
+        await this.assertLegalDepositCap(ctx, { ...activity, ...input });
         // 字段白名单：禁止外部 input 篡改 soldCount/status 等内部字段
         for (const key of UPDATE_ALLOWED_FIELDS) {
             if (key in input) {
@@ -336,6 +349,31 @@ export class PreSaleService {
     }
 
     /* ------------------------- 私有工具 ------------------------- */
+
+    /**
+     * 定金 20% 法定上限硬校验（设计 §10 合规硬点 1：超出拒绝保存）。
+     * 基准价：presalePrice > 0 ? presalePrice : variant.priceWithTax（原价）。
+     * 注：ProductVariant.priceWithTax 是运行时计算值（依赖 listPrice/taxRateApplied），
+     * 裸 repository.findOne 不会填充（恒为 0），故经 ProductVariantService.findOne
+     * 取已应用渠道价格/税的变体；变体不存在时返回 undefined（与计划的容错语义一致）。
+     */
+    private async assertLegalDepositCap(ctx: RequestContext, input: Partial<PreSaleActivity>): Promise<void> {
+        const mode = input.mode;
+        const depositAmount = Number(input.depositAmount ?? 0);
+        if (mode !== 'deposit' || !(depositAmount > 0)) return;
+        let base = Number(input.presalePrice ?? 0);
+        if (!(base > 0) && input.variantId != null) {
+            const variant = await this.productVariantService.findOne(ctx, input.variantId as any);
+            if (variant) base = variant.priceWithTax;
+        }
+        if (!(base > 0)) {
+            throw new UserInputError('Cannot validate deposit cap: base price unknown (set presalePrice or ensure variant exists)');
+        }
+        const cap = Math.floor(base * LEGAL_DEPOSIT_CAP_RATIO);
+        if (depositAmount > cap) {
+            throw new UserInputError(`Deposit ${depositAmount} exceeds legal cap ${cap} (20% of base price ${base})`);
+        }
+    }
 
     /**
      * 校验订单已绑定预售活动，并返回重载后的订单（含 lines.productVariant）。

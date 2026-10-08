@@ -86,6 +86,38 @@ __decorate([
     __metadata("design:type", Number)
 ], PreSaleActivity.prototype, "channelId", void 0);
 __decorate([
+    (0, typeorm_1.Column)('varchar', { default: 'legal_deposit' }),
+    __metadata("design:type", String)
+], PreSaleActivity.prototype, "depositKind", void 0);
+__decorate([
+    (0, typeorm_1.Column)('varchar', { default: 'date' }),
+    __metadata("design:type", String)
+], PreSaleActivity.prototype, "tailTriggerType", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', nullable: true }),
+    __metadata("design:type", Number)
+], PreSaleActivity.prototype, "groupBuyActivityId", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', nullable: true }),
+    __metadata("design:type", Number)
+], PreSaleActivity.prototype, "tailWindowHours", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', default: 72 }),
+    __metadata("design:type", Number)
+], PreSaleActivity.prototype, "graceHours", void 0);
+__decorate([
+    (0, typeorm_1.Column)('simple-json', { nullable: true }),
+    __metadata("design:type", Object)
+], PreSaleActivity.prototype, "earnestRefundPolicy", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
+    __metadata("design:type", Date)
+], PreSaleActivity.prototype, "shipDeadlineAt", void 0);
+__decorate([
+    (0, typeorm_1.Column)('varchar', { default: 'v1' }),
+    __metadata("design:type", String)
+], PreSaleActivity.prototype, "agreementVersion", void 0);
+__decorate([
     (0, typeorm_1.Column)('varchar', { default: 'upcoming' }),
     __metadata("design:type", String)
 ], PreSaleActivity.prototype, "status", void 0);

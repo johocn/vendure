@@ -62,6 +62,14 @@ function mergeCustomFields<T extends { name: string }>(
                 productId: ID!
                 variantId: ID!
                 status: PreSaleStatus!
+                depositKind: String!
+                tailTriggerType: String!
+                groupBuyActivityId: Int
+                tailWindowHours: Int
+                graceHours: Int!
+                earnestRefundPolicy: JSON
+                shipDeadlineAt: DateTime
+                agreementVersion: String!
                 createdAt: DateTime!
                 updatedAt: DateTime!
             }
@@ -85,6 +93,14 @@ function mergeCustomFields<T extends { name: string }>(
                 limitPerUser: Int
                 productId: ID!
                 variantId: ID!
+                depositKind: String
+                tailTriggerType: String
+                groupBuyActivityId: Int
+                tailWindowHours: Int
+                graceHours: Int
+                earnestRefundPolicy: JSON
+                shipDeadlineAt: DateTime
+                agreementVersion: String
             }
 
             input UpdatePreSaleActivityInput {
@@ -102,6 +118,14 @@ function mergeCustomFields<T extends { name: string }>(
                 limitPerUser: Int
                 productId: ID
                 variantId: ID
+                depositKind: String
+                tailTriggerType: String
+                groupBuyActivityId: Int
+                tailWindowHours: Int
+                graceHours: Int
+                earnestRefundPolicy: JSON
+                shipDeadlineAt: DateTime
+                agreementVersion: String
             }
 
             input PreSaleActivityListOptions
@@ -142,6 +166,14 @@ function mergeCustomFields<T extends { name: string }>(
                 productId: ID!
                 variantId: ID!
                 status: PreSaleStatus!
+                depositKind: String!
+                tailTriggerType: String!
+                groupBuyActivityId: Int
+                tailWindowHours: Int
+                graceHours: Int!
+                earnestRefundPolicy: JSON
+                shipDeadlineAt: DateTime
+                agreementVersion: String!
                 createdAt: DateTime!
                 updatedAt: DateTime!
             }

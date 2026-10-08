@@ -31,6 +31,25 @@ export declare class PreSaleActivity extends VendureEntity implements ChannelAwa
     productId: number;
     variantId: number;
     channelId: number;
+    /** 定金性质：legal_deposit（法律定金，有罚则）/ earnest（订金，原则上可退） */
+    depositKind: 'legal_deposit' | 'earnest';
+    /** 尾款触发方式：date（到点自动）/ group_buy（成团解锁）/ manual（管理员开启） */
+    tailTriggerType: 'date' | 'group_buy' | 'manual';
+    /** 团购活动 id（tailTriggerType=group_buy 时必填） */
+    groupBuyActivityId?: number;
+    /** 尾款支付窗口时长（小时，展示/协议用） */
+    tailWindowHours?: number;
+    /** 期次宽限小时数（逾期判定） */
+    graceHours: number;
+    /** 订金退款策略（depositKind=earnest 时生效） */
+    earnestRefundPolicy?: {
+        onTimeout: 'full' | 'partial';
+        partialRate?: number;
+    } | null;
+    /** 发货承诺时间（卖家违约判定基准） */
+    shipDeadlineAt?: Date;
+    /** 协议版本快照（下单时写入期次实例，改配置不影响已生成订单） */
+    agreementVersion: string;
     status: PreSaleStatus;
     channels: Channel[];
 }

@@ -33,13 +33,22 @@ const UPDATE_ALLOWED_FIELDS = [
     'limitPerUser',
     'productId',
     'variantId',
+    'depositKind',
+    'tailTriggerType',
+    'groupBuyActivityId',
+    'tailWindowHours',
+    'graceHours',
+    'earnestRefundPolicy',
+    'shipDeadlineAt',
+    'agreementVersion',
 ];
 let PreSaleService = class PreSaleService {
-    constructor(connection, listQueryBuilder, orderService, paymentService) {
+    constructor(connection, listQueryBuilder, orderService, paymentService, productVariantService) {
         this.connection = connection;
         this.listQueryBuilder = listQueryBuilder;
         this.orderService = orderService;
         this.paymentService = paymentService;
+        this.productVariantService = productVariantService;
     }
     init(injector) {
         // 供 Promotion 条件/动作在结算期动态取活动配置
@@ -65,6 +74,7 @@ let PreSaleService = class PreSaleService {
         return result !== null && result !== void 0 ? result : undefined;
     }
     async create(ctx, input) {
+        await this.assertLegalDepositCap(ctx, input);
         const repo = this.connection.getRepository(ctx, pre_sale_activity_entity_1.PreSaleActivity);
         const activity = new pre_sale_activity_entity_1.PreSaleActivity(input);
         activity.channels = [ctx.channel];
@@ -84,6 +94,8 @@ let PreSaleService = class PreSaleService {
         if (!activity) {
             throw new core_1.UserInputError(`PreSaleActivity with id ${input.id} not found`);
         }
+        // 定金 20% 硬校验：以「既有值 + 本次 input」合并后的生效配置为准（input 未带 mode/depositAmount 等字段时兜底活动既有值）
+        await this.assertLegalDepositCap(ctx, Object.assign(Object.assign({}, activity), input));
         // 字段白名单：禁止外部 input 篡改 soldCount/status 等内部字段
         for (const key of UPDATE_ALLOWED_FIELDS) {
             if (key in input) {
@@ -306,6 +318,33 @@ let PreSaleService = class PreSaleService {
     }
     /* ------------------------- 私有工具 ------------------------- */
     /**
+     * 定金 20% 法定上限硬校验（设计 §10 合规硬点 1：超出拒绝保存）。
+     * 基准价：presalePrice > 0 ? presalePrice : variant.priceWithTax（原价）。
+     * 注：ProductVariant.priceWithTax 是运行时计算值（依赖 listPrice/taxRateApplied），
+     * 裸 repository.findOne 不会填充（恒为 0），故经 ProductVariantService.findOne
+     * 取已应用渠道价格/税的变体；变体不存在时返回 undefined（与计划的容错语义一致）。
+     */
+    async assertLegalDepositCap(ctx, input) {
+        var _a, _b;
+        const mode = input.mode;
+        const depositAmount = Number((_a = input.depositAmount) !== null && _a !== void 0 ? _a : 0);
+        if (mode !== 'deposit' || !(depositAmount > 0))
+            return;
+        let base = Number((_b = input.presalePrice) !== null && _b !== void 0 ? _b : 0);
+        if (!(base > 0) && input.variantId != null) {
+            const variant = await this.productVariantService.findOne(ctx, input.variantId);
+            if (variant)
+                base = variant.priceWithTax;
+        }
+        if (!(base > 0)) {
+            throw new core_1.UserInputError('Cannot validate deposit cap: base price unknown (set presalePrice or ensure variant exists)');
+        }
+        const cap = Math.floor(base * constants_1.LEGAL_DEPOSIT_CAP_RATIO);
+        if (depositAmount > cap) {
+            throw new core_1.UserInputError(`Deposit ${depositAmount} exceeds legal cap ${cap} (20% of base price ${base})`);
+        }
+    }
+    /**
      * 校验订单已绑定预售活动，并返回重载后的订单（含 lines.productVariant）。
      */
     async requirePreSaleOrder(ctx, orderId) {
@@ -463,6 +502,7 @@ exports.PreSaleService = PreSaleService = __decorate([
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
         core_1.ListQueryBuilder,
         core_1.OrderService,
-        core_1.PaymentService])
+        core_1.PaymentService,
+        core_1.ProductVariantService])
 ], PreSaleService);
 //# sourceMappingURL=pre-sale.service.js.map

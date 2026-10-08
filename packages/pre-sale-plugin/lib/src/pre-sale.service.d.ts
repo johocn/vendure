@@ -1,11 +1,12 @@
-import { ID, Injector, ListQueryBuilder, ListQueryOptions, Order, OrderService, PaginatedList, PaymentService, RequestContext, TransactionalConnection } from '@vendure/core';
+import { ID, Injector, ListQueryBuilder, ListQueryOptions, Order, OrderService, PaginatedList, PaymentService, ProductVariantService, RequestContext, TransactionalConnection } from '@vendure/core';
 import { PreSaleActivity } from './pre-sale-activity.entity';
 export declare class PreSaleService {
     private connection;
     private listQueryBuilder;
     private orderService;
     private paymentService;
-    constructor(connection: TransactionalConnection, listQueryBuilder: ListQueryBuilder, orderService: OrderService, paymentService: PaymentService);
+    private productVariantService;
+    constructor(connection: TransactionalConnection, listQueryBuilder: ListQueryBuilder, orderService: OrderService, paymentService: PaymentService, productVariantService: ProductVariantService);
     init(injector: Injector): void;
     findAll(ctx: RequestContext, options?: ListQueryOptions<PreSaleActivity>): Promise<PaginatedList<PreSaleActivity>>;
     findOne(ctx: RequestContext, id: ID): Promise<PreSaleActivity | undefined>;
@@ -52,6 +53,14 @@ export declare class PreSaleService {
      * 订单取消时按订单内预售行实际件数回滚锁定库存。
      */
     releaseStockForOrder(ctx: RequestContext, orderId: ID): Promise<void>;
+    /**
+     * 定金 20% 法定上限硬校验（设计 §10 合规硬点 1：超出拒绝保存）。
+     * 基准价：presalePrice > 0 ? presalePrice : variant.priceWithTax（原价）。
+     * 注：ProductVariant.priceWithTax 是运行时计算值（依赖 listPrice/taxRateApplied），
+     * 裸 repository.findOne 不会填充（恒为 0），故经 ProductVariantService.findOne
+     * 取已应用渠道价格/税的变体；变体不存在时返回 undefined（与计划的容错语义一致）。
+     */
+    private assertLegalDepositCap;
     /**
      * 校验订单已绑定预售活动，并返回重载后的订单（含 lines.productVariant）。
      */

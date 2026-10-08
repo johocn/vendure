@@ -102,6 +102,14 @@ exports.PreSalePlugin = PreSalePlugin = PreSalePlugin_1 = __decorate([
                 productId: ID!
                 variantId: ID!
                 status: PreSaleStatus!
+                depositKind: String!
+                tailTriggerType: String!
+                groupBuyActivityId: Int
+                tailWindowHours: Int
+                graceHours: Int!
+                earnestRefundPolicy: JSON
+                shipDeadlineAt: DateTime
+                agreementVersion: String!
                 createdAt: DateTime!
                 updatedAt: DateTime!
             }
@@ -125,6 +133,14 @@ exports.PreSalePlugin = PreSalePlugin = PreSalePlugin_1 = __decorate([
                 limitPerUser: Int
                 productId: ID!
                 variantId: ID!
+                depositKind: String
+                tailTriggerType: String
+                groupBuyActivityId: Int
+                tailWindowHours: Int
+                graceHours: Int
+                earnestRefundPolicy: JSON
+                shipDeadlineAt: DateTime
+                agreementVersion: String
             }
 
             input UpdatePreSaleActivityInput {
@@ -142,6 +158,14 @@ exports.PreSalePlugin = PreSalePlugin = PreSalePlugin_1 = __decorate([
                 limitPerUser: Int
                 productId: ID
                 variantId: ID
+                depositKind: String
+                tailTriggerType: String
+                groupBuyActivityId: Int
+                tailWindowHours: Int
+                graceHours: Int
+                earnestRefundPolicy: JSON
+                shipDeadlineAt: DateTime
+                agreementVersion: String
             }
 
             input PreSaleActivityListOptions
@@ -182,6 +206,14 @@ exports.PreSalePlugin = PreSalePlugin = PreSalePlugin_1 = __decorate([
                 productId: ID!
                 variantId: ID!
                 status: PreSaleStatus!
+                depositKind: String!
+                tailTriggerType: String!
+                groupBuyActivityId: Int
+                tailWindowHours: Int
+                graceHours: Int!
+                earnestRefundPolicy: JSON
+                shipDeadlineAt: DateTime
+                agreementVersion: String!
                 createdAt: DateTime!
                 updatedAt: DateTime!
             }

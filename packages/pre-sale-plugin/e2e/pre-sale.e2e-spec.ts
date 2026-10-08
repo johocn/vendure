@@ -56,7 +56,8 @@ describe('PreSalePlugin · 预售/定金预售', () => {
     }): Promise<string> {
         const mode = input.mode ?? 'deposit';
         const presalePrice = input.presalePrice ?? 0;
-        const depositAmount = input.depositAmount ?? 30000;
+        // 默认定金 15000：合规（≤ 基准价 20%——presalePrice=0 时 cap 25980、presalePrice=99900 时 cap 19980）
+        const depositAmount = input.depositAmount ?? 15000;
         const totalStock = input.totalStock ?? 100;
         const limitPerUser = input.limitPerUser ?? 10;
         const res = (await adminClient.query(gql`
@@ -241,7 +242,7 @@ describe('PreSalePlugin · 预售/定金预售', () => {
     });
 
     it('预售价格分档：绑定活动后折扣价 = PRESALE_PRICE（999.00），未生效时原价', async () => {
-        // 价格分档活动（presalePrice=99900 < 原价 129900），deposit 定金 30000
+        // 价格分档活动（presalePrice=99900 < 原价 129900），deposit 定金 15000（合规默认值）
         const id = await createActivity({ mode: 'deposit', presalePrice: PRESALE_PRICE });
         const orderId = await applyPreSale(id);
         const aptId = await proceedToArrangingPayment(shopClient);
@@ -313,5 +314,65 @@ describe('PreSalePlugin · 预售/定金预售', () => {
         `);
         await applyPreSaleExpectError(id, 'ended');
         expect(promoId).toBeTruthy();
+    });
+
+    it('合规硬点：定金超出基准价 20% 拒绝保存；恰好 20% 可保存', async () => {
+        // 基准价 = presalePrice(99900) > 0 时用预售价；cap = floor(99900 * 0.2) = 19980
+        await assertShopError(
+            () =>
+                adminClient.query(gql`
+                    mutation {
+                        createPreSaleActivity(input: {
+                            name: "超限-${seq++}"
+                            mode: deposit
+                            startAt: "${ts(-60)}"
+                            endAt: "${ts(24 * 60)}"
+                            presalePrice: ${PRESALE_PRICE}
+                            depositAmount: 19990
+                            totalStock: 10
+                            productId: "${variantId}"
+                            variantId: "${variantId}"
+                        }) { id }
+                    }
+                `),
+            '20%',
+        );
+        // 恰好 cap：可保存
+        const ok = (await adminClient.query(gql`
+            mutation {
+                createPreSaleActivity(input: {
+                    name: "合规-${seq++}"
+                    mode: deposit
+                    startAt: "${ts(-60)}"
+                    endAt: "${ts(24 * 60)}"
+                    presalePrice: ${PRESALE_PRICE}
+                    depositAmount: 19980
+                    totalStock: 10
+                    productId: "${variantId}"
+                    variantId: "${variantId}"
+                }) { id depositKind tailTriggerType graceHours agreementVersion }
+            }
+        `)) as any;
+        expect(ok.createPreSaleActivity.id).toBeDefined();
+        // presalePrice=0 → 基准价 = variant 原价 129900；cap = 25980；25981 拒绝
+        await assertShopError(
+            () =>
+                adminClient.query(gql`
+                    mutation {
+                        createPreSaleActivity(input: {
+                            name: "原价超限-${seq++}"
+                            mode: deposit
+                            startAt: "${ts(-60)}"
+                            endAt: "${ts(24 * 60)}"
+                            presalePrice: 0
+                            depositAmount: 25981
+                            totalStock: 10
+                            productId: "${variantId}"
+                            variantId: "${variantId}"
+                        }) { id }
+                    }
+                `),
+            '20%',
+        );
     });
 });
