@@ -16,6 +16,7 @@ const typeorm_1 = require("typeorm");
 const constants_1 = require("./constants");
 const group_buy_activity_entity_1 = require("./group-buy-activity.entity");
 const group_buy_order_entity_1 = require("./group-buy-order.entity");
+const events_1 = require("./events");
 const group_buy_runtime_1 = require("./group-buy-runtime");
 const ALLOWED_UPDATE_FIELDS = [
     'name',
@@ -34,13 +35,14 @@ const ALLOWED_UPDATE_FIELDS = [
     'status',
 ];
 let GroupBuyService = class GroupBuyService {
-    constructor(connection, listQueryBuilder, channelService, customerService, orderService, paymentService) {
+    constructor(connection, listQueryBuilder, channelService, customerService, orderService, paymentService, eventBus) {
         this.connection = connection;
         this.listQueryBuilder = listQueryBuilder;
         this.channelService = channelService;
         this.customerService = customerService;
         this.orderService = orderService;
         this.paymentService = paymentService;
+        this.eventBus = eventBus;
         this.stockReserveService = null;
         this.stockPrewarmService = null;
     }
@@ -204,6 +206,9 @@ let GroupBuyService = class GroupBuyService {
                 fresh.status = 'completed';
                 await activityRepo.save(fresh);
                 await this.markAllSuccess(ctx, activity.id);
+                // 成团领域事件（供支付计划等下游订阅）
+                const joined = await orderRepo.find({ where: { groupBuyActivityId: String(activity.id) } });
+                this.eventBus.publish(new events_1.GroupBuyCompletedEvent(ctx, Number(activity.id), joined.map(j => j.orderId)));
             }
         }
         core_1.Logger.info(`User ${ctx.activeUserId} ${isLeader ? 'opened' : 'joined'} group buy ${activity.id} on order ${orderId} (count ${activity.currentCount + (alreadyJoined ? 0 : 1)})`, constants_1.loggerCtx);
@@ -252,6 +257,9 @@ let GroupBuyService = class GroupBuyService {
                         core_1.Logger.error(`Failed to cancel group buy order ${gbo.orderId}: ${e.message}`, constants_1.loggerCtx);
                     }
                 }
+                // 不成团领域事件（供支付计划等下游订阅）
+                const allJoined = await orderRepo.find({ where: { groupBuyActivityId: String(activity.id) } });
+                this.eventBus.publish(new events_1.GroupBuyFailedEvent(ctx, Number(activity.id), allJoined.map(j => j.orderId)));
             }
             core_1.Logger.info(`Activity ${activity.id} status changed to ${activity.status}`, constants_1.loggerCtx);
         }
@@ -379,6 +387,7 @@ exports.GroupBuyService = GroupBuyService = __decorate([
         core_1.ChannelService,
         core_1.CustomerService,
         core_1.OrderService,
-        core_1.PaymentService])
+        core_1.PaymentService,
+        core_1.EventBus])
 ], GroupBuyService);
 //# sourceMappingURL=group-buy.service.js.map

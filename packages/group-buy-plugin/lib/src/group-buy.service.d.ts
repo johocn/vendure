@@ -1,4 +1,4 @@
-import { ChannelService, CustomerService, ID, Injector, ListQueryBuilder, ListQueryOptions, OrderService, PaginatedList, PaymentService, RequestContext, TransactionalConnection } from '@vendure/core';
+import { ChannelService, CustomerService, EventBus, ID, Injector, ListQueryBuilder, ListQueryOptions, OrderService, PaginatedList, PaymentService, RequestContext, TransactionalConnection } from '@vendure/core';
 import { GroupBuyActivity } from './group-buy-activity.entity';
 import { GroupBuyOrder } from './group-buy-order.entity';
 export interface MyGroupBuyOrder {
@@ -17,7 +17,8 @@ export declare class GroupBuyService {
     private customerService;
     private orderService;
     private paymentService;
-    constructor(connection: TransactionalConnection, listQueryBuilder: ListQueryBuilder, channelService: ChannelService, customerService: CustomerService, orderService: OrderService, paymentService: PaymentService);
+    private eventBus;
+    constructor(connection: TransactionalConnection, listQueryBuilder: ListQueryBuilder, channelService: ChannelService, customerService: CustomerService, orderService: OrderService, paymentService: PaymentService, eventBus: EventBus);
     private stockReserveService;
     private stockPrewarmService;
     init(injector: Injector): void;

@@ -4,3 +4,4 @@ export * from './src/constants';
 export * from './src/group-buy-activity.entity';
 export * from './src/group-buy-order.entity';
 export * from './src/group-buy.service';
+export * from './src/events';

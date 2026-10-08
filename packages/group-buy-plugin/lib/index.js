@@ -20,4 +20,5 @@ __exportStar(require("./src/constants"), exports);
 __exportStar(require("./src/group-buy-activity.entity"), exports);
 __exportStar(require("./src/group-buy-order.entity"), exports);
 __exportStar(require("./src/group-buy.service"), exports);
+__exportStar(require("./src/events"), exports);
 //# sourceMappingURL=index.js.map

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
     ChannelService,
     CustomerService,
+    EventBus,
     ID,
     Injector,
     ListQueryBuilder,
@@ -20,6 +21,7 @@ import { In } from 'typeorm';
 import { loggerCtx } from './constants';
 import { GroupBuyActivity } from './group-buy-activity.entity';
 import { GroupBuyOrder } from './group-buy-order.entity';
+import { GroupBuyCompletedEvent, GroupBuyFailedEvent } from './events';
 import { setGroupBuyConnection } from './group-buy-runtime';
 
 const ALLOWED_UPDATE_FIELDS = [
@@ -58,6 +60,7 @@ export class GroupBuyService {
         private customerService: CustomerService,
         private orderService: OrderService,
         private paymentService: PaymentService,
+        private eventBus: EventBus,
     ) {}
 
     private stockReserveService: any = null;
@@ -250,6 +253,9 @@ export class GroupBuyService {
                 fresh.status = 'completed';
                 await activityRepo.save(fresh);
                 await this.markAllSuccess(ctx, activity.id);
+                // 成团领域事件（供支付计划等下游订阅）
+                const joined = await orderRepo.find({ where: { groupBuyActivityId: String(activity.id) } });
+                this.eventBus.publish(new GroupBuyCompletedEvent(ctx, Number(activity.id), joined.map(j => j.orderId)));
             }
         }
 
@@ -311,6 +317,9 @@ export class GroupBuyService {
                         );
                     }
                 }
+                // 不成团领域事件（供支付计划等下游订阅）
+                const allJoined = await orderRepo.find({ where: { groupBuyActivityId: String(activity.id) } });
+                this.eventBus.publish(new GroupBuyFailedEvent(ctx, Number(activity.id), allJoined.map(j => j.orderId)));
             }
             Logger.info(`Activity ${activity.id} status changed to ${activity.status}`, loggerCtx);
         }
