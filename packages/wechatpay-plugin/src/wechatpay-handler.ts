@@ -175,9 +175,15 @@ export function createWechatpayHandler(options: WechatpayPluginOptions, code = '
                 }
 
                 // JSAPI: 生成完整签名参数供前端 wx.requestPayment 直接调用
+                // openid 空防线：三级回落全落空时提前拒绝（payer.openid 为微信必填参数），
+                // 避免打微信 API 吃 400（生产 5:41 ×6 实锤），并给出场景引导；
+                // 与下方 !prepayId 分支同为 throw 形态
+                if (!openid) {
+                    throw new Error('微信 JSAPI 支付需在微信内完成：未获取到用户 openid，请在微信内打开订单页重试');
+                }
                 const result = await pay.transactions_jsapi({
                     ...baseParams,
-                    payer: { openid: openid || '' },
+                    payer: { openid },
                 });
                 const prepayId = (result as any).data?.prepay_id;
                 // 微信失败响应（openid 缺失/不匹配等）不 reject，仅返回 {status,data:{code,message}}；
