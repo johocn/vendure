@@ -710,7 +710,7 @@ let PaymentScheduleService = class PaymentScheduleService {
                 continue;
             if (depositItem && (0, core_1.idsAreEqual)(item.id, depositItem.id) && (rule === null || rule === void 0 ? void 0 : rule.kind) === 'legal_deposit') {
                 await this.refundPaymentOnce(ctx, order, payment, item.amount, 'seller breach: principal refund');
-                await this.refundPayment(ctx, order, payment, item.amount, 'seller breach: statutory compensation (double refund)');
+                await this.recordCompensationRefund(ctx, payment, item.amount, 'seller breach: statutory compensation (double refund)');
             }
             else {
                 await this.refundPaymentOnce(ctx, order, payment, item.amount, 'seller breach: full refund');
@@ -878,6 +878,32 @@ let PaymentScheduleService = class PaymentScheduleService {
             return false;
         }
         return this.refundPayment(ctx, order, payment, amount, reason);
+    }
+    /**
+     * 双倍返还的「等额赔偿」笔：本金退完后 createRefund 的可退余额为 0（Vendure 对超额退款
+     * 恒返 RefundAmountError），赔偿属平台法定赔付留痕（设计 §7：本金 refund + 等额赔偿 refund），
+     * 直接落一条 Settled Refund 记录，不经网关、不受可退余额约束。
+     */
+    async recordCompensationRefund(ctx, payment, amount, reason) {
+        var _a;
+        try {
+            await this.connection.getRepository(ctx, core_1.Refund).save(new core_1.Refund({
+                payment,
+                total: amount,
+                reason,
+                method: payment.method,
+                state: 'Settled',
+                metadata: { statutoryCompensation: true },
+                items: 0,
+                shipping: 0,
+                adjustment: 0,
+            }));
+            return true;
+        }
+        catch (e) {
+            core_1.Logger.error(`Failed to record compensation refund for payment ${payment.id}: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, constants_1.loggerCtx);
+            return false;
+        }
     }
 };
 exports.PaymentScheduleService = PaymentScheduleService;

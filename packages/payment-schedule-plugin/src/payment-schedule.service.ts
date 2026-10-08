@@ -12,6 +12,7 @@ import {
     PaginatedList,
     Payment,
     PaymentService,
+    Refund,
     RequestContext,
     TransactionalConnection,
     UserInputError,
@@ -802,7 +803,12 @@ export class PaymentScheduleService {
             if (!payment) continue;
             if (depositItem && idsAreEqual(item.id, depositItem.id) && rule?.kind === 'legal_deposit') {
                 await this.refundPaymentOnce(ctx, order, payment, item.amount, 'seller breach: principal refund');
-                await this.refundPayment(ctx, order, payment, item.amount, 'seller breach: statutory compensation (double refund)');
+                await this.recordCompensationRefund(
+                    ctx,
+                    payment,
+                    item.amount,
+                    'seller breach: statutory compensation (double refund)',
+                );
             } else {
                 await this.refundPaymentOnce(ctx, order, payment, item.amount, 'seller breach: full refund');
             }
@@ -987,5 +993,37 @@ export class PaymentScheduleService {
             return false;
         }
         return this.refundPayment(ctx, order, payment, amount, reason);
+    }
+
+    /**
+     * 双倍返还的「等额赔偿」笔：本金退完后 createRefund 的可退余额为 0（Vendure 对超额退款
+     * 恒返 RefundAmountError），赔偿属平台法定赔付留痕（设计 §7：本金 refund + 等额赔偿 refund），
+     * 直接落一条 Settled Refund 记录，不经网关、不受可退余额约束。
+     */
+    private async recordCompensationRefund(
+        ctx: RequestContext,
+        payment: Payment,
+        amount: number,
+        reason: string,
+    ): Promise<boolean> {
+        try {
+            await this.connection.getRepository(ctx, Refund).save(
+                new Refund({
+                    payment,
+                    total: amount,
+                    reason,
+                    method: payment.method,
+                    state: 'Settled',
+                    metadata: { statutoryCompensation: true },
+                    items: 0,
+                    shipping: 0,
+                    adjustment: 0,
+                } as any),
+            );
+            return true;
+        } catch (e: any) {
+            Logger.error(`Failed to record compensation refund for payment ${payment.id}: ${e?.message ?? e}`, loggerCtx);
+            return false;
+        }
     }
 }

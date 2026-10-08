@@ -162,4 +162,10 @@ export declare class PaymentScheduleService {
     private refundPayment;
     /** 幂等退款：已 Settled 退款合计 + 本次 > 支付额 时拒绝（防团购与调度双通道重复退款） */
     private refundPaymentOnce;
+    /**
+     * 双倍返还的「等额赔偿」笔：本金退完后 createRefund 的可退余额为 0（Vendure 对超额退款
+     * 恒返 RefundAmountError），赔偿属平台法定赔付留痕（设计 §7：本金 refund + 等额赔偿 refund），
+     * 直接落一条 Settled Refund 记录，不经网关、不受可退余额约束。
+     */
+    private recordCompensationRefund;
 }
