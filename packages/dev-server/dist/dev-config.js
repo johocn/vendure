@@ -53,6 +53,7 @@ const review_plugin_1 = require("@vendure/review-plugin");
 const wechat_subscribe_message_plugin_1 = require("@vendure/wechat-subscribe-message-plugin");
 const coupon_plugin_1 = require("@vendure/coupon-plugin");
 const campus_delivery_plugin_1 = require("@vendure/campus-delivery-plugin");
+const campus_jianghu_plugin_1 = require("@vendure/campus-jianghu-plugin");
 const delivery_plugin_1 = require("@vendure/delivery-plugin");
 const sales_plugin_1 = require("@vendure/sales-plugin");
 const sales_plugin_2 = require("@vendure/sales-plugin");
@@ -63,6 +64,9 @@ const message_plugin_1 = require("@vendure/message-plugin");
 const notification_plugin_1 = require("@vendure/notification-plugin");
 const operations_plugin_1 = require("@vendure/operations-plugin");
 const pre_sale_plugin_1 = require("@vendure/pre-sale-plugin");
+const payment_schedule_plugin_1 = require("@vendure/payment-schedule-plugin");
+const installment_plugin_1 = require("@vendure/installment-plugin");
+const rental_plugin_1 = require("@vendure/rental-plugin");
 const live_streaming_plugin_1 = require("@vendure/live-streaming-plugin");
 const shop_plugin_1 = require("@vendure/shop-plugin");
 const pickup_plugin_1 = require("@vendure/pickup-plugin");
@@ -415,6 +419,7 @@ exports.devConfig = {
         }),
         delivery_plugin_1.DeliveryPlugin.init(),
         campus_delivery_plugin_1.CampusDeliveryPlugin,
+        campus_jianghu_plugin_1.CampusJianghuPlugin,
         sales_plugin_1.SalesPlugin.init(),
         marketplace_plugin_1.MarketplacePlugin.init({}),
         logistics_plugin_1.LogisticsPlugin.init({
@@ -437,6 +442,9 @@ exports.devConfig = {
         message_plugin_1.MessagePlugin.init(),
         notification_plugin_1.NotificationPlugin.init(),
         pre_sale_plugin_1.PreSalePlugin.init({}),
+        payment_schedule_plugin_1.PaymentSchedulePlugin.init({}),
+        installment_plugin_1.InstallmentPlugin.init({}),
+        rental_plugin_1.RentalPlugin.init({}),
         DisableSellerSplitPlugin,
     ],
 };
