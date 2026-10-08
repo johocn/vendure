@@ -10,7 +10,7 @@ import {
     StockMovementEvent,
     TransactionalConnection,
 } from '@vendure/core';
-import { In } from 'typeorm';
+import { EntityManager, In } from 'typeorm';
 import { StockLedgerService } from '@vendure/inventory-plugin';
 import { StockReservationEntity } from './stock-reservation.entity';
 import { FulfillType, StockReservationItemEntity } from './stock-reservation-item.entity';
@@ -128,27 +128,36 @@ export class StockReservationService {
 
     /** 备货拆分：重建 item（幂等），守恒校验 Σqty==totalQty、每仓 qty≤物理 onHand，头→ALLOCATED */
     async allocate(ctx: RequestContext, reservationId: number, splits: ReservationSplit[]): Promise<StockReservationEntity> {
-        const res = await this.get(ctx, reservationId);
-        const sum = splits.reduce((s, x) => s + x.qty, 0);
-        if (sum !== res.totalQty) {
-            throw new Error(`拆分总量(${sum})≠预占(${res.totalQty})`);
-        }
-        await this.itemRepo(ctx).delete({ reservationId: res.id });
-        for (const s of splits) {
-            const level = await this.stockLevelService.getStockLevel(ctx, res.variantId as ID, s.locationId);
-            if (s.qty > level.stockOnHand) {
-                throw new Error(`仓库${s.locationId}物理库存不足(${level.stockOnHand}<${s.qty})`);
+        // 事务 + 头单行锁：拆分 delete/save 原子化（原实现 delete 后任一仓校验失败即丢明细）；
+        // FOR UPDATE 串行化同一预留的并发重提，避免检查-后-写入超分配（Σqty>onHand 记账脏账；
+        // 物理防超卖仍由 core SALE 兜底）
+        return this.conn.rawConnection.transaction(async (em: EntityManager) => {
+            await em.query('SELECT id FROM stock_reservation WHERE id = $1 FOR UPDATE', [reservationId]);
+            const res = await em.findOne(StockReservationEntity, { where: { id: reservationId } });
+            if (!res) {
+                throw new Error(`预留单不存在: ${reservationId}`);
             }
-            const item = new StockReservationItemEntity();
-            item.reservationId = res.id;
-            item.stockLocationId = Number(s.locationId);
-            item.qty = s.qty;
-            item.fulfillType = s.fulfillType;
-            item.status = 'PENDING';
-            await this.itemRepo(ctx).save(item);
-        }
-        res.status = 'ALLOCATED';
-        return this.repo(ctx).save(res);
+            const sum = splits.reduce((s, x) => s + x.qty, 0);
+            if (sum !== res.totalQty) {
+                throw new Error(`拆分总量(${sum})≠预占(${res.totalQty})`);
+            }
+            await em.delete(StockReservationItemEntity, { reservationId: res.id });
+            for (const s of splits) {
+                const level = await this.stockLevelService.getStockLevel(ctx, res.variantId as ID, s.locationId);
+                if (s.qty > level.stockOnHand) {
+                    throw new Error(`仓库${s.locationId}物理库存不足(${level.stockOnHand}<${s.qty})`);
+                }
+                const item = new StockReservationItemEntity();
+                item.reservationId = res.id;
+                item.stockLocationId = Number(s.locationId);
+                item.qty = s.qty;
+                item.fulfillType = s.fulfillType;
+                item.status = 'PENDING';
+                await em.save(item);
+            }
+            res.status = 'ALLOCATED';
+            return em.save(res);
+        });
     }
 
     /** 出库核销：按核销数量递减 item.qty，清零→DONE；全部 DONE→头 DONE。物理扣减由 core 在 SALE 完成。 */

@@ -14,7 +14,8 @@ class AmapProvider {
         // 高德 /v3/config/district：subdistrict=1 返回下一级
         const keywords = parentAdcode !== null && parentAdcode !== void 0 ? parentAdcode : '中国';
         const url = `https://restapi.amap.com/v3/config/district?key=${encodeURIComponent(apiKey)}&keywords=${encodeURIComponent(keywords)}&subdistrict=1&extensions=base`;
-        const res = await fetch(url);
+        // 外部 API 必须带超时：高德挂起时避免无限等待拖死调用链路
+        const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
         if (!res.ok) {
             throw new Error(`高德行政区划查询失败: HTTP ${res.status}`);
         }
@@ -34,7 +35,7 @@ class AmapProvider {
         var _a, _b, _c, _d;
         const location = `${lng},${lat}`;
         const url = `https://restapi.amap.com/v3/geocode/regeo?key=${encodeURIComponent(apiKey)}&location=${encodeURIComponent(location)}&extensions=base`;
-        const res = await fetch(url);
+        const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
         if (!res.ok) {
             throw new Error(`高德逆地理编码失败: HTTP ${res.status}`);
         }

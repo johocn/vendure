@@ -109,6 +109,20 @@ function makeService(ctx: any, opts: { locations?: Array<{ id: number; customFie
 
     const conn = {
         withTransaction: vi.fn(async (_c: any, fn: any) => fn(_c)),
+        // allocate 事务+行锁：fn(em) 直调，em 分派到内存 repo（query 为行锁 no-op）
+        rawConnection: {
+            transaction: vi.fn(async (fn: any) => {
+                const em = {
+                    query: vi.fn().mockResolvedValue([]),
+                    findOne: vi.fn((_e: any, opts: any) => reservationRepo.findOne(opts)),
+                    delete: vi.fn((_e: any, crit: any) => itemRepo.delete(crit)),
+                    save: vi.fn((e: any) =>
+                        e instanceof h.MockStockReservationEntity ? reservationRepo.save(e) : itemRepo.save(e),
+                    ),
+                };
+                return fn(em);
+            }),
+        },
         getRepository: vi.fn().mockImplementation((_c: any, entity: any) => {
             if (entity === h.MockStockReservationEntity) return reservationRepo;
             if (entity === h.MockStockReservationItemEntity) return itemRepo;
