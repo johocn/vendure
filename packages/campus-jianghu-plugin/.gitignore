@@ -1,0 +1,4 @@
+# Vendure e2e 测试运行期间生成的 sqljs 缓存库（自动再生，勿提交）
+/e2e/__data__/
+__data__/
+*.sqlite
