@@ -172,6 +172,19 @@ describe('PreSalePlugin · 预售/定金预售', () => {
         return res.order.lines[0].discountedUnitPriceWithTax as number;
     }
 
+    /**
+     * 免运费进 ArrangingPayment：期次金额在 applyPreSale 时快照（未含运费），
+     * 走期次路径支付的用例须用 0 元运费保持「订单总额 == 期次合计」，
+     * 否则 PaymentSettled 的 settled-payments 覆盖校验会失败。
+     */
+    async function proceedToArrangingPaymentFree(client: SimpleGraphQLClient): Promise<string> {
+        const { eligibleShippingMethods } = (await client.query(gql`
+            query { eligibleShippingMethods { id name priceWithTax } }
+        `)) as any;
+        const idx = eligibleShippingMethods.findIndex((m: any) => m.name === 'Free Shipping');
+        return proceedToArrangingPayment(client, idx);
+    }
+
     /* ------------------------- beforeAll / afterAll ------------------------- */
 
     beforeAll(async () => {
@@ -187,6 +200,24 @@ describe('PreSalePlugin · 预售/定金预售', () => {
         });
         await adminClient.asSuperAdmin();
         await setChannelPricesIncludeTax();
+
+        // 0 元运费方式：预售期次在 applyPreSale 时按当时订单总额（尚未含运费）快照期次金额，
+        // 支付类用例若挂带价运费方式，订单总额会大于期次合计 → PaymentSettled 覆盖校验失败。
+        await adminClient.query(gql`
+            mutation {
+                createShippingMethod(input: {
+                    code: "free-shipping"
+                    fulfillmentHandler: "manual-fulfillment"
+                    checker: { code: "default-shipping-eligibility-checker", arguments: [{ name: "orderMinimum", value: "0" }] }
+                    calculator: { code: "default-shipping-calculator", arguments: [
+                        { name: "rate", value: "0" }
+                        { name: "includesTax", value: "auto" }
+                        { name: "taxRate", value: "0" }
+                    ] }
+                    translations: [{ languageCode: en, name: "Free Shipping" }]
+                }) { id }
+            }
+        `);
 
         const products = (await adminClient.query(gql`
             query { products(options: { take: 1 }) { items { id variants { id } } } }
@@ -249,7 +280,7 @@ describe('PreSalePlugin · 预售/定金预售', () => {
         const id = await createActivity({ mode: 'full', totalStock: 50 });
         const orderId = await applyPreSale(id);
         expect(await orderState(orderId)).toBe('AddingItems');
-        const aptId = await proceedToArrangingPayment(shopClient);
+        const aptId = await proceedToArrangingPaymentFree(shopClient);
         expect(await orderState(aptId)).toBe('ArrangingPayment');
         const paid = (await shopClient.query(gql`
             mutation { payPreSaleFull(orderId: "${aptId}", method: "${PAY_METHOD}") {
@@ -266,7 +297,7 @@ describe('PreSalePlugin · 预售/定金预售', () => {
         // 价格分档活动（presalePrice=99900 < 原价 129900），deposit 定金 15000（合规默认值）
         const id = await createActivity({ mode: 'deposit', presalePrice: PRESALE_PRICE });
         const orderId = await applyPreSale(id);
-        const aptId = await proceedToArrangingPayment(shopClient);
+        const aptId = await proceedToArrangingPaymentFree(shopClient);
         expect(await orderLineDiscountedUnitPrice(aptId)).toBe(PRESALE_PRICE);
         // 到货释放尾款窗口
         await adminClient.query(gql`mutation { deliverPreSale(id: "${id}") { id status } }`);
@@ -457,5 +488,61 @@ describe('PreSalePlugin · 预售/定金预售', () => {
         `)) as any;
         expect(res.paymentSchedule.depositRule.kind).toBe('earnest');
         expect(res.paymentSchedule.depositRule.earnestRefundPolicy).toEqual({ onTimeout: 'full' });
+    });
+
+    it('薄壳支付走期次路径：payPreSaleDeposit→Deposited；到货+payPreSaleTail→PaymentSettled', async () => {
+        const actId = await createActivity({
+            presalePrice: PRESALE_PRICE,
+            depositAmount: 19980,
+            tailTriggerType: 'manual',
+        });
+        const orderId = await applyPreSale(actId);
+        await proceedToArrangingPaymentFree(shopClient);
+
+        // 付定金（薄壳 → 期次 seq=1）
+        await shopClient.query(gql`
+            mutation { payPreSaleDeposit(orderId: "${orderId}", method: "${PAY_METHOD}") { id state } }
+        `);
+        expect(await orderState(orderId)).toBe('Deposited');
+        let sched = (await shopClient.query(gql`
+            query { paymentSchedule(orderId: "${orderId}") { status paidTotal items { seq kind status } } }
+        `)) as any;
+        expect(sched.paymentSchedule.status).toBe('in_progress');
+        expect(sched.paymentSchedule.items[0].status).toBe('paid');
+        expect(sched.paymentSchedule.items[1].status).toBe('locked');
+
+        // 到货 → 手动开尾款窗（manual 型）→ 薄壳付尾款
+        await adminClient.query(gql`mutation { deliverPreSale(id: "${actId}") { id status } }`);
+        const schedId = (
+            (await shopClient.query(gql`
+                query { paymentSchedule(orderId: "${orderId}") { id } }
+            `)) as any
+        ).paymentSchedule.id;
+        await adminClient.query(gql`
+            mutation { openTailWindow(scheduleId: "${schedId}") { id items { seq status } } }
+        `);
+        await shopClient.query(gql`
+            mutation { payPreSaleTail(orderId: "${orderId}", method: "${PAY_METHOD}") { id state } }
+        `);
+        expect(await orderState(orderId)).toBe('PaymentSettled');
+        sched = (await shopClient.query(gql`
+            query { paymentSchedule(orderId: "${orderId}") { status paidTotal items { seq status } } }
+        `)) as any;
+        expect(sched.paymentSchedule.status).toBe('completed');
+        expect(sched.paymentSchedule.paidTotal).toBe(PRESALE_PRICE);
+    });
+
+    it('全款预售薄壳走期次路径：payPreSaleFull → PaymentSettled + 期次 completed', async () => {
+        const actId = await createActivity({ mode: 'full', presalePrice: PRESALE_PRICE });
+        const orderId = await applyPreSale(actId);
+        await proceedToArrangingPaymentFree(shopClient);
+        await shopClient.query(gql`
+            mutation { payPreSaleFull(orderId: "${orderId}", method: "${PAY_METHOD}") { id state } }
+        `);
+        expect(await orderState(orderId)).toBe('PaymentSettled');
+        const sched = (await shopClient.query(gql`
+            query { paymentSchedule(orderId: "${orderId}") { status items { seq status } } }
+        `)) as any;
+        expect(sched.paymentSchedule.status).toBe('completed');
     });
 });

@@ -31,21 +31,19 @@ export declare class PreSaleService {
     applyPreSale(ctx: RequestContext, activityId: ID): Promise<Order>;
     /**
      * 全款预售：一次收清。
-     * 校验订单已绑活动 + mode=full + 窗口内 → 创建 Settled 全款 Payment。
-     * 注：全额支付覆盖总额后，default-payment-process 会自动把订单流转到 PaymentSettled，
-     * 这里不再手动 transition（否则会报 from PaymentSettled to PaymentSettled）。
+     * 新路径：期次实例存在 → paySchedulePeriod(seq=1)；否则旧路径直接收全额。
      */
     payPreSaleFull(ctx: RequestContext, orderId: ID, method: string): Promise<Order>;
     /**
      * 定金预售：付定金。
-     * 校验状态 ArrangingPayment + mode=deposit + 窗口内 → 创建 Settled 定金 Payment。
-     * 定金不覆盖总价，default-payment-process 不会自动流转，因此手动转 Deposited。
+     * 新路径：期次实例存在 → paySchedulePeriod(seq=1)（内部负责 ArrangingPayment→Deposited）；
+     * 旧路径：createSettledPayment + 手动转 Deposited。
      */
     payPreSaleDeposit(ctx: RequestContext, orderId: ID, method: string): Promise<Order>;
     /**
      * 定金预售：付尾款。
-     * 校验状态 Deposited + mode=deposit + 活动已到货 + 尾款窗口内 → 创建 Settled 尾款 Payment。
-     * 定金+尾款覆盖总额后 default-payment-process 自动流转到 PaymentSettled，无需手动 transition。
+     * 校验状态 Deposited + 活动已到货 + 尾款窗口内（旧语义保留）。
+     * 新路径：unlockTailForOrder + paySchedulePeriod（尾款期）；旧路径按剩余金额收款。
      */
     payPreSaleTail(ctx: RequestContext, orderId: ID, method: string): Promise<Order>;
     findActive(ctx: RequestContext): Promise<PreSaleActivity[]>;

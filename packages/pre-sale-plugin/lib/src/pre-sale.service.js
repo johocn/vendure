@@ -215,9 +215,7 @@ let PreSaleService = class PreSaleService {
     /* ------------------------- 两阶段支付 ------------------------- */
     /**
      * 全款预售：一次收清。
-     * 校验订单已绑活动 + mode=full + 窗口内 → 创建 Settled 全款 Payment。
-     * 注：全额支付覆盖总额后，default-payment-process 会自动把订单流转到 PaymentSettled，
-     * 这里不再手动 transition（否则会报 from PaymentSettled to PaymentSettled）。
+     * 新路径：期次实例存在 → paySchedulePeriod(seq=1)；否则旧路径直接收全额。
      */
     async payPreSaleFull(ctx, orderId, method) {
         const order = await this.requirePreSaleOrder(ctx, orderId);
@@ -225,13 +223,16 @@ let PreSaleService = class PreSaleService {
         if (activity.mode !== 'full') {
             throw new core_1.UserInputError('This activity requires deposit pre-sale payment flow');
         }
+        if (await (0, payment_schedule_bridge_1.payViaSchedule)(ctx, (0, pre_sale_runtime_1.getPreSaleInjector)(), order, 1, method)) {
+            return this.reload(ctx, orderId);
+        }
         await this.createSettledPayment(ctx, order, order.totalWithTax, method);
         return this.reload(ctx, orderId);
     }
     /**
      * 定金预售：付定金。
-     * 校验状态 ArrangingPayment + mode=deposit + 窗口内 → 创建 Settled 定金 Payment。
-     * 定金不覆盖总价，default-payment-process 不会自动流转，因此手动转 Deposited。
+     * 新路径：期次实例存在 → paySchedulePeriod(seq=1)（内部负责 ArrangingPayment→Deposited）；
+     * 旧路径：createSettledPayment + 手动转 Deposited。
      */
     async payPreSaleDeposit(ctx, orderId, method) {
         var _a, _b;
@@ -243,6 +244,9 @@ let PreSaleService = class PreSaleService {
         if (activity.mode !== 'deposit') {
             throw new core_1.UserInputError('This activity requires full pre-sale payment flow');
         }
+        if (await (0, payment_schedule_bridge_1.payViaSchedule)(ctx, (0, pre_sale_runtime_1.getPreSaleInjector)(), order, 1, method)) {
+            return this.reload(ctx, orderId);
+        }
         const depositTotal = (_b = (_a = order.customFields) === null || _a === void 0 ? void 0 : _a.preSaleDepositTotal) !== null && _b !== void 0 ? _b : activity.depositAmount;
         if (!(depositTotal > 0)) {
             throw new core_1.UserInputError('Deposit amount must be greater than zero');
@@ -253,8 +257,8 @@ let PreSaleService = class PreSaleService {
     }
     /**
      * 定金预售：付尾款。
-     * 校验状态 Deposited + mode=deposit + 活动已到货 + 尾款窗口内 → 创建 Settled 尾款 Payment。
-     * 定金+尾款覆盖总额后 default-payment-process 自动流转到 PaymentSettled，无需手动 transition。
+     * 校验状态 Deposited + 活动已到货 + 尾款窗口内（旧语义保留）。
+     * 新路径：unlockTailForOrder + paySchedulePeriod（尾款期）；旧路径按剩余金额收款。
      */
     async payPreSaleTail(ctx, orderId, method) {
         var _a;
@@ -267,7 +271,6 @@ let PreSaleService = class PreSaleService {
         if (!activity || activity.mode !== 'deposit') {
             throw new core_1.UserInputError('Pre-sale deposit activity not found');
         }
-        // 到货校验：活动须已 delivered（到货）且尾款窗口已开启
         if (activity.status !== 'delivered') {
             throw new core_1.UserInputError('Activity has not been delivered yet, tail payment not opened');
         }
@@ -277,6 +280,9 @@ let PreSaleService = class PreSaleService {
         }
         if (activity.tailEndAt && now > activity.tailEndAt) {
             throw new core_1.UserInputError('Tail payment window has ended');
+        }
+        if (await (0, payment_schedule_bridge_1.payTailViaSchedule)(ctx, (0, pre_sale_runtime_1.getPreSaleInjector)(), order, method)) {
+            return this.reload(ctx, orderId);
         }
         const covered = await this.settledCovered(ctx, order.id);
         const tailAmount = order.totalWithTax - covered;

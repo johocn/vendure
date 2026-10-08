@@ -13,3 +13,12 @@ export declare function tryGetScheduleService(injector: Injector): any | null;
  * 生成失败仅告警不阻断抢购（期次缺失时薄壳回退旧支付路径）。
  */
 export declare function createScheduleForOrder(ctx: RequestContext, injector: Injector, order: Order, activity: PreSaleActivity): Promise<void>;
+/**
+ * 薄壳支付转发：订单已有期次 → 调 paySchedulePeriod 支付指定 seq。
+ * 返回 true=已走期次路径；false=无期次/未启用（调用方回退旧路径）。
+ */
+export declare function payViaSchedule(ctx: RequestContext, injector: Injector, order: Order, seq: number, method: string): Promise<boolean>;
+/**
+ * 薄壳尾款转发：强制解锁尾款期（legacy 窗口语义）→ 期次支付尾款期。
+ */
+export declare function payTailViaSchedule(ctx: RequestContext, injector: Injector, order: Order, method: string): Promise<boolean>;

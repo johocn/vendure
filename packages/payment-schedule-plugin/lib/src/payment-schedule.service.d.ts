@@ -106,6 +106,11 @@ export declare class PaymentScheduleService {
     /** COD 环收尾：签收后管理员确认 → settle 授权支付 → item paid → 可能 PaymentSettled */
     confirmCodReceived(ctx: RequestContext, orderId: ID): Promise<ScheduleWithItems>;
     /**
+     * 薄壳桥专用：预售尾款窗口已开（窗口校验由 pre-sale-plugin 负责）→ 强制解锁 locked 尾款期。
+     * 属 legacy 兼容通道（旧 API 语义：到货+窗口 ⇒ 尾款可付），优先级高于期次 trigger。
+     */
+    unlockTailForOrder(ctx: RequestContext, orderId: ID): Promise<void>;
+    /**
      * 买家主动取消：
      * - legal_deposit：须 confirmForfeit=true，定金没收（forfeited），其余已付期次全退
      * - earnest：按 earnestRefundPolicy 退（默认全额）

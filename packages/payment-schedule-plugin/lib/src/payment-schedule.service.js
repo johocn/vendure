@@ -341,6 +341,28 @@ let PaymentScheduleService = class PaymentScheduleService {
         await this.afterItemPaymentRecorded(ctx, order, schedule, refreshed, 'Settled');
         return (await this.getScheduleById(ctx, schedule.id));
     }
+    /**
+     * 薄壳桥专用：预售尾款窗口已开（窗口校验由 pre-sale-plugin 负责）→ 强制解锁 locked 尾款期。
+     * 属 legacy 兼容通道（旧 API 语义：到货+窗口 ⇒ 尾款可付），优先级高于期次 trigger。
+     */
+    async unlockTailForOrder(ctx, orderId) {
+        var _a;
+        const order = await this.orderService.findOne(ctx, orderId);
+        if (!order)
+            return;
+        const scheduleId = (_a = order.customFields) === null || _a === void 0 ? void 0 : _a.paymentScheduleId;
+        const withItems = await this.getScheduleById(ctx, scheduleId);
+        if (!withItems)
+            return;
+        const tail = withItems.items.find(i => i.kind === 'balance' && i.status === 'locked');
+        if (!tail)
+            return;
+        tail.status = 'payable';
+        if (!tail.dueAt)
+            tail.dueAt = new Date();
+        await this.itemRepo(ctx).save(tail);
+        core_1.Logger.info(`Tail item ${tail.id} unlocked for order ${order.code} (legacy tail window open)`, constants_1.loggerCtx);
+    }
     /* ------------------------- 取消 / 违约 ------------------------- */
     /**
      * 买家主动取消：

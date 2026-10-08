@@ -2,6 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.tryGetScheduleService = tryGetScheduleService;
 exports.createScheduleForOrder = createScheduleForOrder;
+exports.payViaSchedule = payViaSchedule;
+exports.payTailViaSchedule = payTailViaSchedule;
 const core_1 = require("@vendure/core");
 const constants_1 = require("./constants");
 /**
@@ -106,5 +108,37 @@ async function createScheduleForOrder(ctx, injector, order, activity) {
     catch (e) {
         core_1.Logger.error(`createScheduleForOrder failed for order ${order.code}: ${e.message}`, constants_1.loggerCtx);
     }
+}
+/**
+ * 薄壳支付转发：订单已有期次 → 调 paySchedulePeriod 支付指定 seq。
+ * 返回 true=已走期次路径；false=无期次/未启用（调用方回退旧路径）。
+ */
+async function payViaSchedule(ctx, injector, order, seq, method) {
+    var _a;
+    const scheduleService = tryGetScheduleService(injector);
+    if (!scheduleService)
+        return false;
+    if (!((_a = order.customFields) === null || _a === void 0 ? void 0 : _a.paymentScheduleId))
+        return false;
+    await scheduleService.paySchedulePeriod(ctx, order.id, seq, method);
+    return true;
+}
+/**
+ * 薄壳尾款转发：强制解锁尾款期（legacy 窗口语义）→ 期次支付尾款期。
+ */
+async function payTailViaSchedule(ctx, injector, order, method) {
+    var _a, _b;
+    const scheduleService = tryGetScheduleService(injector);
+    if (!scheduleService)
+        return false;
+    if (!((_a = order.customFields) === null || _a === void 0 ? void 0 : _a.paymentScheduleId))
+        return false;
+    await scheduleService.unlockTailForOrder(ctx, order.id);
+    const withItems = await scheduleService.getScheduleForOrder(ctx, order.id);
+    const tail = ((_b = withItems === null || withItems === void 0 ? void 0 : withItems.items) !== null && _b !== void 0 ? _b : []).find((i) => i.kind === 'balance' && !['paid', 'refunded', 'waived', 'forfeited'].includes(i.status));
+    if (!tail)
+        return false;
+    await scheduleService.paySchedulePeriod(ctx, order.id, tail.seq, method);
+    return true;
 }
 //# sourceMappingURL=payment-schedule-bridge.js.map

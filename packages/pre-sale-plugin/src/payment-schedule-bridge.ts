@@ -105,3 +105,43 @@ export async function createScheduleForOrder(
         Logger.error(`createScheduleForOrder failed for order ${order.code}: ${e.message}`, loggerCtx);
     }
 }
+
+/**
+ * 薄壳支付转发：订单已有期次 → 调 paySchedulePeriod 支付指定 seq。
+ * 返回 true=已走期次路径；false=无期次/未启用（调用方回退旧路径）。
+ */
+export async function payViaSchedule(
+    ctx: RequestContext,
+    injector: Injector,
+    order: Order,
+    seq: number,
+    method: string,
+): Promise<boolean> {
+    const scheduleService = tryGetScheduleService(injector);
+    if (!scheduleService) return false;
+    if (!(order.customFields as any)?.paymentScheduleId) return false;
+    await scheduleService.paySchedulePeriod(ctx, order.id, seq, method);
+    return true;
+}
+
+/**
+ * 薄壳尾款转发：强制解锁尾款期（legacy 窗口语义）→ 期次支付尾款期。
+ */
+export async function payTailViaSchedule(
+    ctx: RequestContext,
+    injector: Injector,
+    order: Order,
+    method: string,
+): Promise<boolean> {
+    const scheduleService = tryGetScheduleService(injector);
+    if (!scheduleService) return false;
+    if (!(order.customFields as any)?.paymentScheduleId) return false;
+    await scheduleService.unlockTailForOrder(ctx, order.id);
+    const withItems = await scheduleService.getScheduleForOrder(ctx, order.id);
+    const tail = (withItems?.items ?? []).find(
+        (i: any) => i.kind === 'balance' && !['paid', 'refunded', 'waived', 'forfeited'].includes(i.status),
+    );
+    if (!tail) return false;
+    await scheduleService.paySchedulePeriod(ctx, order.id, tail.seq, method);
+    return true;
+}
