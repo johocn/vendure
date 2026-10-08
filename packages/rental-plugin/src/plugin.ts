@@ -6,6 +6,7 @@ import { RENTAL_PLUGIN_OPTIONS } from './constants';
 import { RentalPlan } from './rental-plan.entity';
 import { RentalAdminResolver } from './rental-admin.resolver';
 import { RentalService } from './rental.service';
+import { RentalShopResolver } from './rental-shop.resolver';
 import { RentalPluginOptions } from './types';
 
 @VendurePlugin({
@@ -79,6 +80,38 @@ import { RentalPluginOptions } from './types';
             }
         `,
         resolvers: [RentalAdminResolver],
+    },
+    shopApiExtensions: {
+        schema: () => gql`
+            type RentalPlan implements Node {
+                id: ID!
+                name: String!
+                variantId: ID!
+                depositAmount: Int!
+                rentAmount: Int!
+                rentUnit: String!
+                prepaidOrPostpaid: String!
+                buyoutPrice: Int
+                allowBuyout: Boolean!
+                allowCod: Boolean!
+            }
+
+            type RentalBuyoutResult {
+                scheduleId: ID!
+                seq: Int!
+                amount: Int!
+            }
+
+            extend type Query {
+                rentalPlans(variantId: ID!): [RentalPlan!]!
+            }
+
+            extend type Mutation {
+                startRental(orderId: ID!, planId: ID!, periods: Int): Order!
+                buyoutRental(orderId: ID!): RentalBuyoutResult!
+            }
+        `,
+        resolvers: [RentalShopResolver],
     },
     compatibility: '^3.0.0',
 })

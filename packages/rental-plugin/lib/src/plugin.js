@@ -17,6 +17,7 @@ const constants_1 = require("./constants");
 const rental_plan_entity_1 = require("./rental-plan.entity");
 const rental_admin_resolver_1 = require("./rental-admin.resolver");
 const rental_service_1 = require("./rental.service");
+const rental_shop_resolver_1 = require("./rental-shop.resolver");
 let RentalPlugin = RentalPlugin_1 = class RentalPlugin {
     static init(options) {
         RentalPlugin_1.options = options !== null && options !== void 0 ? options : {};
@@ -97,6 +98,38 @@ exports.RentalPlugin = RentalPlugin = RentalPlugin_1 = __decorate([
             }
         `,
             resolvers: [rental_admin_resolver_1.RentalAdminResolver],
+        },
+        shopApiExtensions: {
+            schema: () => (0, graphql_tag_1.default) `
+            type RentalPlan implements Node {
+                id: ID!
+                name: String!
+                variantId: ID!
+                depositAmount: Int!
+                rentAmount: Int!
+                rentUnit: String!
+                prepaidOrPostpaid: String!
+                buyoutPrice: Int
+                allowBuyout: Boolean!
+                allowCod: Boolean!
+            }
+
+            type RentalBuyoutResult {
+                scheduleId: ID!
+                seq: Int!
+                amount: Int!
+            }
+
+            extend type Query {
+                rentalPlans(variantId: ID!): [RentalPlan!]!
+            }
+
+            extend type Mutation {
+                startRental(orderId: ID!, planId: ID!, periods: Int): Order!
+                buyoutRental(orderId: ID!): RentalBuyoutResult!
+            }
+        `,
+            resolvers: [rental_shop_resolver_1.RentalShopResolver],
         },
         compatibility: '^3.0.0',
     })
