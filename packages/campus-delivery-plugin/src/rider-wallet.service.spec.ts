@@ -1,6 +1,6 @@
 // 骑手钱包单测：提现下限/余额上限/成功冻结/驳回退回/平台级渠道语义（mock 余额端口与仓储）
 // F2/F3 并发安全：withdraw 走 rawConnection 事务+Customer 行悲观锁串行化；reject/claim 条件更新防双审双退回
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
     port: {
@@ -54,6 +54,14 @@ function make() {
 }
 
 describe('RiderWalletService', () => {
+    // mocks.port 为模块级共享 spy：清除跨用例调用记录，
+    // 避免 not.toHaveBeenCalled 全量断言被前面的成功路径用例污染
+    beforeEach(() => {
+        mocks.port.getBalance.mockClear();
+        mocks.port.deductBalance.mockClear();
+        mocks.port.addBalance.mockClear();
+    });
+
     it('withdraw 低于 ¥10 抛错', async () => {
         const { svc } = make();
         mocks.port.getBalance.mockResolvedValue(50000);
