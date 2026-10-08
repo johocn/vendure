@@ -50,6 +50,8 @@ let HallShopResolver = class HallShopResolver {
         return { backToHall: true };
     }
     async campusHall(ctx) {
+        // F4 收敛信息暴露面：大厅仅对已认证骑手开放（防匿名拉取全渠道单号/金额/楼栋）
+        await this.riderService.assertApprovedRider(ctx);
         return this.grab.hall(ctx);
     }
     /** 公开只读：选时段前预检余量 */
