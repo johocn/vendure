@@ -83,22 +83,32 @@ let RiderWalletService = class RiderWalletService {
         const port = (0, coupon_plugin_1.getCouponBalancePort)();
         if (!port)
             throw new core_1.UserInputError('余额功能未开通');
-        const pending = await this.connection
-            .getRepository(pc, rider_withdrawal_entity_1.RiderWithdrawalRequest)
-            .count({ where: { customerId: rider.id, status: 'PENDING' } });
-        if (pending > 0)
-            throw new core_1.UserInputError('您有审核中的提现申请，请等待审核完成');
-        const available = await port.getBalance(pc, rider.id);
-        if (amount > available)
-            throw new core_1.UserInputError('超过可提现余额');
-        await port.deductBalance(pc, rider.id, amount);
-        return this.connection.getRepository(pc, rider_withdrawal_entity_1.RiderWithdrawalRequest).save({
-            customerId: rider.id,
-            channelId: pc.channelId,
-            amount,
-            channel: input.channel.trim(),
-            account: input.account.trim(),
-            status: 'PENDING',
+        // F2 并发防重：余额端口的 add/deduct 自带事务提交（startTransaction+commitOpenTransaction），
+        // 不能与外层事务同 ctx 嵌套，故用 rawConnection 独立事务 + Customer 行悲观锁把
+        // 「防重检查→余额校验→扣款→落库」对同骑手串行化：并发双请求只有一个能通过 PENDING 检查。
+        // 残余风险（与历史一致且窗口极小）：扣款成功后 raw 事务提交失败 → 已扣无单，需人工对账。
+        return this.connection.rawConnection.transaction(async (em) => {
+            await em.getRepository(core_1.Customer).findOne({
+                where: { id: rider.id },
+                lock: { mode: 'pessimistic_write' },
+            });
+            const pending = await em.getRepository(rider_withdrawal_entity_1.RiderWithdrawalRequest).count({
+                where: { customerId: rider.id, status: 'PENDING' },
+            });
+            if (pending > 0)
+                throw new core_1.UserInputError('您有审核中的提现申请，请等待审核完成');
+            const available = await port.getBalance(pc, rider.id);
+            if (amount > available)
+                throw new core_1.UserInputError('超过可提现余额');
+            await port.deductBalance(pc, rider.id, amount);
+            return em.getRepository(rider_withdrawal_entity_1.RiderWithdrawalRequest).save({
+                customerId: rider.id,
+                channelId: pc.channelId,
+                amount,
+                channel: input.channel.trim(),
+                account: input.account.trim(),
+                status: 'PENDING',
+            });
         });
     }
     /** 管理端：提现申请列表（status=ALL 或具体状态；平台级，不限定选店渠道） */
@@ -115,32 +125,49 @@ let RiderWalletService = class RiderWalletService {
         const req = await this.getForReview(id);
         const pc = await this.platformCtx();
         const repo = this.connection.getRepository(pc, rider_withdrawal_entity_1.RiderWithdrawalRequest);
-        await repo.update(req.id, {
+        // 原子认领：条件更新仅当仍为 PENDING 时生效，防并发双审
+        const claim = await repo.update(req.id, {
             status: 'PAID',
             remark: (remark === null || remark === void 0 ? void 0 : remark.trim()) || req.remark || null,
             reviewedBy: this.reviewer(ctx),
             reviewedAt: new Date(),
         });
+        if (claim && claim.affected === 0)
+            throw new core_1.UserInputError('该申请已处理');
         return repo.findOne({ where: { id: req.id } });
     }
     /** 管理端：驳回（退回冻结金额 + 留痕；退回资金固定默认渠道，与申请扣款同渠道） */
     async adminReject(ctx, id, remark) {
-        const req = await this.getForReview(id);
+        var _a;
         const pc = await this.platformCtx();
-        const port = (0, coupon_plugin_1.getCouponBalancePort)();
-        if (port) {
-            await port.addBalance(pc, req.customerId, req.amount);
-        }
-        else {
-            common_1.Logger.warn('余额端口未注册，驳回退回未执行', 'RiderWallet');
-        }
         const repo = this.connection.getRepository(pc, rider_withdrawal_entity_1.RiderWithdrawalRequest);
-        await repo.update(req.id, {
+        const req = await repo.findOne({ where: { id } });
+        if (!req)
+            throw new core_1.UserInputError('提现申请不存在');
+        // F3 原子认领：条件更新仅当仍为 PENDING 时生效，防并发双审 → 双重退回；
+        // 先改状态再退回，退回失败补偿恢复 PENDING 以便重试（避免「已驳回但钱未退」）
+        const claim = await repo.update(req.id, {
             status: 'REJECTED',
             remark: (remark === null || remark === void 0 ? void 0 : remark.trim()) || req.remark || null,
             reviewedBy: this.reviewer(ctx),
             reviewedAt: new Date(),
         });
+        if (claim && claim.affected === 0)
+            throw new core_1.UserInputError('该申请已处理');
+        const port = (0, coupon_plugin_1.getCouponBalancePort)();
+        if (port) {
+            try {
+                await port.addBalance(pc, req.customerId, req.amount);
+            }
+            catch (e) {
+                await repo.update(req.id, { status: 'PENDING' }).catch(() => undefined);
+                common_1.Logger.error(`驳回退回失败（已恢复 PENDING 可重试）：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, 'RiderWallet');
+                throw new core_1.UserInputError('退回失败，请稍后重试');
+            }
+        }
+        else {
+            common_1.Logger.warn('余额端口未注册，驳回退回未执行', 'RiderWallet');
+        }
         return repo.findOne({ where: { id: req.id } });
     }
     reviewer(ctx) {

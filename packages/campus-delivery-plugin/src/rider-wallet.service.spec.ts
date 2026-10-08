@@ -1,4 +1,5 @@
 // 骑手钱包单测：提现下限/余额上限/成功冻结/驳回退回/平台级渠道语义（mock 余额端口与仓储）
+// F2/F3 并发安全：withdraw 走 rawConnection 事务+Customer 行悲观锁串行化；reject/claim 条件更新防双审双退回
 import { describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -28,12 +29,25 @@ function make() {
             return Promise.resolve(v);
         }),
         findOne: vi.fn(),
-        update: vi.fn().mockResolvedValue({}),
+        update: vi.fn().mockResolvedValue({ affected: 1 }),
         count: vi.fn().mockResolvedValue(0),
     };
-    const conn = { getRepository: () => repo } as any;
+    // em 仓储：rawConnection 事务内使用（Customer 行锁 / PENDING 防重 count / PENDING 落库 save）
+    const emRepo = {
+        findOne: vi.fn().mockResolvedValue({ id: 9 }),
+        count: vi.fn().mockResolvedValue(0),
+        save: vi.fn().mockImplementation((v: any) => {
+            saved.push(v);
+            return Promise.resolve(v);
+        }),
+    };
+    const em = { getRepository: vi.fn(() => emRepo) };
+    const conn = {
+        getRepository: () => repo,
+        rawConnection: { transaction: vi.fn((fn: any) => fn(em)) },
+    } as any;
     const reqCtxSvc = { create: vi.fn().mockResolvedValue(platformCtx) } as any;
-    return { svc: new RiderWalletService(conn, riderSvc, reqCtxSvc), repo, saved, reqCtxSvc };
+    return { svc: new RiderWalletService(conn, riderSvc, reqCtxSvc), repo, emRepo, em, saved, reqCtxSvc, conn };
 }
 
 describe('RiderWalletService', () => {
@@ -55,11 +69,15 @@ describe('RiderWalletService', () => {
         expect(mocks.port.deductBalance).not.toHaveBeenCalled();
     });
 
-    it('withdraw 成功：创建 PENDING 申请并扣款冻结（资金走默认渠道上下文）', async () => {
-        const { svc, saved } = make();
+    it('withdraw 成功：事务内锁 Customer 行 + PENDING 检查后扣款冻结落库（资金走默认渠道上下文）', async () => {
+        const { svc, saved, emRepo } = make();
         mocks.port.getBalance.mockResolvedValue(5000);
         mocks.port.deductBalance.mockResolvedValue(3000);
         const req = await svc.riderWithdraw(ctx, { amount: 2000, channel: '支付宝', account: 'a@b.c' });
+        // F2：先悲观锁 Customer 行串行化同骑手并发
+        expect(emRepo.findOne).toHaveBeenCalledWith(
+            expect.objectContaining({ where: { id: 9 }, lock: { mode: 'pessimistic_write' } }),
+        );
         expect(mocks.port.deductBalance).toHaveBeenCalledWith(platformCtx, 9, 2000);
         expect(req.status).toBe('PENDING');
         expect(req.amount).toBe(2000);
@@ -68,15 +86,30 @@ describe('RiderWalletService', () => {
         expect(saved).toHaveLength(1);
     });
 
-    it('reject 解冻退回：addBalance(+amount) 且状态 REJECTED（资金走默认渠道上下文）', async () => {
+    it('reject 解冻退回：先原子认领（REJECTED）再 addBalance(+amount)（资金走默认渠道上下文）', async () => {
         const { svc, repo } = make();
         repo.findOne.mockResolvedValue({ id: 5, customerId: 9, amount: 2000, status: 'PENDING', channelId: 1 });
         await svc.adminReject(ctx, 5 as any, '信息不符');
+        // F3：认领在前，退回在后
+        expect(repo.update.mock.calls[0][0]).toBe(5);
+        expect(repo.update.mock.calls[0][1]).toEqual(expect.objectContaining({ status: 'REJECTED', remark: '信息不符' }));
         expect(mocks.port.addBalance).toHaveBeenCalledWith(platformCtx, 9, 2000);
-        expect(repo.update).toHaveBeenCalledWith(
-            5,
-            expect.objectContaining({ status: 'REJECTED', remark: '信息不符' }),
-        );
+    });
+
+    it('reject 并发已处理（条件更新 affected=0）抛错且不退回', async () => {
+        const { svc, repo } = make();
+        repo.findOne.mockResolvedValue({ id: 5, customerId: 9, amount: 2000, status: 'PENDING', channelId: 1 });
+        repo.update.mockResolvedValueOnce({ affected: 0 });
+        await expect(svc.adminReject(ctx, 5 as any, '信息不符')).rejects.toThrow('该申请已处理');
+        expect(mocks.port.addBalance).not.toHaveBeenCalled();
+    });
+
+    it('reject 退回失败：补偿恢复 PENDING 并抛「退回失败」以便重试', async () => {
+        const { svc, repo } = make();
+        repo.findOne.mockResolvedValue({ id: 5, customerId: 9, amount: 2000, status: 'PENDING', channelId: 1 });
+        mocks.port.addBalance.mockRejectedValueOnce(new Error('db down'));
+        await expect(svc.adminReject(ctx, 5 as any, '信息不符')).rejects.toThrow('退回失败');
+        expect(repo.update).toHaveBeenLastCalledWith(5, { status: 'PENDING' });
     });
 
     it('管理端跨渠道可审核：查询不限定 channelId，退回资金固定默认渠道，留痕记审核人', async () => {
@@ -92,11 +125,10 @@ describe('RiderWalletService', () => {
         );
     });
 
-    it('withdraw 已有 PENDING 申请时拒绝（防重复申请）', async () => {
-        const { svc, repo } = make();
-        repo.count.mockResolvedValue(1);
+    it('withdraw 已有 PENDING 申请时拒绝（事务内防重检查，扣款不发生）', async () => {
+        const { svc, emRepo } = make();
+        emRepo.count.mockResolvedValue(1);
         mocks.port.getBalance.mockResolvedValue(50000);
-        mocks.port.deductBalance.mockClear(); // 清除前置用例泄漏的调用历史
         await expect(svc.riderWithdraw(ctx, { amount: 2000, channel: '支付宝', account: 'a@b.c' })).rejects.toThrow(
             '您有审核中的提现申请',
         );
