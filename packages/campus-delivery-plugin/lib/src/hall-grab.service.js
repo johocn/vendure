@@ -83,7 +83,9 @@ let HallGrabService = class HallGrabService {
         const ok = await this.connection.rawConnection.transaction(async (em) => {
             const order = await em.getRepository(core_1.Order).findOne({
                 where: { id: orderId },
-                lock: { mode: 'pessimistic_write' },
+                // 锁限主表：Order eager relations 会产生 LEFT JOIN，不限表时
+                // FOR UPDATE 落 nullable side 直接报错（生产 8:06 实锤），对齐 grab 同款
+                lock: { mode: 'pessimistic_write', tables: ['order'] },
             });
             const cf = order === null || order === void 0 ? void 0 : order.customFields;
             if (!order || (cf === null || cf === void 0 ? void 0 : cf.hallStatus) !== 'open')

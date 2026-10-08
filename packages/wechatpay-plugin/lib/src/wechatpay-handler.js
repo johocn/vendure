@@ -180,8 +180,13 @@ function createWechatpayHandler(options, code = 'wechatpay') {
                 const jsapiTimeStamp = String(Math.floor(Date.now() / 1000));
                 const jsapiNonceStr = Math.random().toString(36).substring(2, 34);
                 const jsapiPackage = `prepay_id=${prepayId}`;
-                // 商户私钥 RSA-SHA256 签名
-                const privateKeyBuf = Buffer.from((override === null || override === void 0 ? void 0 : override.privateKey) || args.privateKey);
+                // 商户私钥 RSA-SHA256 签名：双缺时显式抛业务错误，避免 crypto
+                // Buffer.from(undefined) 的晦涩报错「Received undefined」（生产 8:29 实锤）
+                const merchantPrivateKey = (override === null || override === void 0 ? void 0 : override.privateKey) || args.privateKey;
+                if (!merchantPrivateKey) {
+                    throw new Error('微信 JSAPI 支付失败：商户私钥(privateKey)未配置，请检查支付方式配置');
+                }
+                const privateKeyBuf = Buffer.from(merchantPrivateKey);
                 const signContent = `${jsapiAppId}\n${jsapiTimeStamp}\n${jsapiNonceStr}\n${jsapiPackage}\n`;
                 const paySign = crypto_1.default
                     .sign('RSA-SHA256', Buffer.from(signContent), { key: privateKeyBuf })

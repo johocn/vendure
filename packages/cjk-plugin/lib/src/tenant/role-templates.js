@@ -21,8 +21,8 @@ exports.OFFICIAL_ROLE_TEMPLATES = [
             // 收银/POS：租户管理员可操作到店自提核销收款，且可向下授权「收银员」角色
             'ManageOwnShop',
             'TenantRoleManage', 'TenantMemberManage',
-            // 多人协同盘库（规格 §9）：仓管主管「能盘」+「能过账」
-            'StocktakeCount', 'StocktakePost',
+            // 多人协同盘库（规格 §9）：StocktakeCount/StocktakePost 为超管专属权限，
+            // 授予租户角色会 FORBIDDEN_PERMISSION（每次启动补种 warn），移除——租户侧盘点由超管操作
         ],
     },
     {

@@ -1,7 +1,9 @@
 process.env.NODE_ENV = 'production';
 
-// 加载 .env 环境变量
+// 加载 .env 环境变量：pm2 exec cwd 是本目录（packages/dev-server），默认 config() 读不到根 .env，
+// 补显式根路径二次加载（dotenv 默认不覆盖已定义值，两行均安全）
 require('dotenv').config();
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
 
 // 确保 PostgreSQL 连接配置
 if (!process.env.DB) {
