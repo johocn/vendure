@@ -72,6 +72,7 @@ import { NotificationPlugin } from '@vendure/notification-plugin';
 import { OperationsPlugin } from '@vendure/operations-plugin';
 import { PreSalePlugin } from '@vendure/pre-sale-plugin';
 import { PaymentSchedulePlugin } from '@vendure/payment-schedule-plugin';
+import { InstallmentPlugin } from '@vendure/installment-plugin';
 import { LiveStreamingPlugin } from '@vendure/live-streaming-plugin';
 import { ShopPlugin } from '@vendure/shop-plugin';
 import { PickupPlugin } from '@vendure/pickup-plugin';
@@ -522,6 +523,7 @@ export const devConfig: VendureConfig = {
         // 预售/定金预售：两阶段支付（定金→尾款）+ 全款预售 + 分档定价 + 到货释放库存
         PreSalePlugin.init({}),
         PaymentSchedulePlugin.init({}),
+        InstallmentPlugin.init({}),
         // 必须最后注册：覆盖 MarketplacePlugin 的 Seller 拆分，根治租户渠道商品的幽灵配送子单
         DisableSellerSplitPlugin,
     ],

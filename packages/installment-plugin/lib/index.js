@@ -17,5 +17,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 __exportStar(require("./src/plugin"), exports);
 __exportStar(require("./src/installment-plan.entity"), exports);
 __exportStar(require("./src/installment.service"), exports);
+__exportStar(require("./src/installment-shop.resolver"), exports);
 __exportStar(require("./src/types"), exports);
 __exportStar(require("./src/constants"), exports);

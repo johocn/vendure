@@ -6,6 +6,7 @@ import { INSTALLMENT_PLUGIN_OPTIONS } from './constants';
 import { InstallmentPlan } from './installment-plan.entity';
 import { InstallmentAdminResolver } from './installment-admin.resolver';
 import { InstallmentService } from './installment.service';
+import { InstallmentShopResolver } from './installment-shop.resolver';
 import { InstallmentPluginOptions } from './types';
 
 @VendurePlugin({
@@ -76,6 +77,29 @@ import { InstallmentPluginOptions } from './types';
             }
         `,
         resolvers: [InstallmentAdminResolver],
+    },
+    shopApiExtensions: {
+        schema: () => gql`
+            type InstallmentPlan implements Node {
+                id: ID!
+                name: String!
+                variantId: ID!
+                downPaymentRatio: Int!
+                periods: Int!
+                intervalUnit: String!
+                intervalCount: Int!
+                allowCod: Boolean!
+            }
+
+            extend type Query {
+                installmentPlans(variantId: ID!): [InstallmentPlan!]!
+            }
+
+            extend type Mutation {
+                enableInstallment(orderId: ID!, planId: ID!): Order!
+            }
+        `,
+        resolvers: [InstallmentShopResolver],
     },
     compatibility: '^3.0.0',
 })

@@ -17,6 +17,7 @@ const constants_1 = require("./constants");
 const installment_plan_entity_1 = require("./installment-plan.entity");
 const installment_admin_resolver_1 = require("./installment-admin.resolver");
 const installment_service_1 = require("./installment.service");
+const installment_shop_resolver_1 = require("./installment-shop.resolver");
 let InstallmentPlugin = InstallmentPlugin_1 = class InstallmentPlugin {
     static init(options) {
         InstallmentPlugin_1.options = options !== null && options !== void 0 ? options : {};
@@ -94,6 +95,29 @@ exports.InstallmentPlugin = InstallmentPlugin = InstallmentPlugin_1 = __decorate
             }
         `,
             resolvers: [installment_admin_resolver_1.InstallmentAdminResolver],
+        },
+        shopApiExtensions: {
+            schema: () => (0, graphql_tag_1.default) `
+            type InstallmentPlan implements Node {
+                id: ID!
+                name: String!
+                variantId: ID!
+                downPaymentRatio: Int!
+                periods: Int!
+                intervalUnit: String!
+                intervalCount: Int!
+                allowCod: Boolean!
+            }
+
+            extend type Query {
+                installmentPlans(variantId: ID!): [InstallmentPlan!]!
+            }
+
+            extend type Mutation {
+                enableInstallment(orderId: ID!, planId: ID!): Order!
+            }
+        `,
+            resolvers: [installment_shop_resolver_1.InstallmentShopResolver],
         },
         compatibility: '^3.0.0',
     })

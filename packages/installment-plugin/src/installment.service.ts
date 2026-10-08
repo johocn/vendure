@@ -1,15 +1,22 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import {
     ID,
+    Injector,
     ListQueryBuilder,
     ListQueryOptions,
+    Order,
+    OrderService,
     PaginatedList,
     RequestContext,
     TransactionalConnection,
     UserInputError,
 } from '@vendure/core';
 
+import { INSTALLMENT_PLUGIN_OPTIONS } from './constants';
 import { InstallmentPlan } from './installment-plan.entity';
+import { createInstallmentSchedule } from './installment-schedule-bridge';
+import { InstallmentPluginOptions } from './types';
 
 const INTERVAL_UNITS: ReadonlyArray<string> = ['day', 'week', 'month'];
 
@@ -18,6 +25,9 @@ export class InstallmentService {
     constructor(
         private connection: TransactionalConnection,
         private listQueryBuilder: ListQueryBuilder,
+        private orderService: OrderService,
+        private moduleRef: ModuleRef,
+        @Inject(INSTALLMENT_PLUGIN_OPTIONS) private options: InstallmentPluginOptions,
     ) {}
 
     private repo(ctx: RequestContext) {
@@ -64,6 +74,46 @@ export class InstallmentService {
 
     async delete(ctx: RequestContext, id: ID): Promise<void> {
         await this.repo(ctx).delete(id);
+    }
+
+    private get defaultGraceHours(): number {
+        return this.options.defaultGraceHours ?? 72;
+    }
+
+    /**
+     * 结算页启用分期：校验归属/状态/无既有期次 → 生成期次实例。
+     * 注：RequestContext 无 injector 属性（本仓 Vendure 3.6 实装），
+     * 经注入的 ModuleRef 构造 Injector（同 PaymentSchedulePlugin.onApplicationBootstrap 手法）。
+     */
+    async enableInstallment(ctx: RequestContext, orderId: ID, planId: ID): Promise<Order> {
+        const order = await this.orderService.findOne(ctx, orderId, [
+            'customer',
+            'customer.user',
+            // hasLines 校验需 lines.productVariant（findOne 不默认加载 lines）
+            'lines',
+            'lines.productVariant',
+        ]);
+        if (!order) {
+            throw new UserInputError(`Order ${orderId} not found`);
+        }
+        if ((order as any)?.customer?.user?.id !== ctx.activeUserId) {
+            throw new UserInputError('You can only enable installment on your own order');
+        }
+        if (order.state !== 'ArrangingPayment') {
+            throw new UserInputError(`Order state ${order.state} does not allow enabling installment`);
+        }
+        const plan = await this.findOne(ctx, planId);
+        if (!plan || !plan.enabled) {
+            throw new UserInputError(`InstallmentPlan ${planId} not found or disabled`);
+        }
+        const hasLines = (order as any)?.lines?.some(
+            (l: any) => String(l.productVariant?.id) === String(plan.variantId),
+        );
+        if (!hasLines) {
+            throw new UserInputError('Order does not contain the installment variant');
+        }
+        await createInstallmentSchedule(ctx, new Injector(this.moduleRef), order, plan, this.defaultGraceHours);
+        return (await this.orderService.findOne(ctx, orderId)) as Order;
     }
 
     /** 参数硬校验（设计 §5：首付比 0-90 / 期数 1-36） */
