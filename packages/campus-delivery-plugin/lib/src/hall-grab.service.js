@@ -142,6 +142,9 @@ let HallGrabService = class HallGrabService {
             .leftJoinAndSelect('order.channels', 'channel')
             .where('channel.id IN (:...ids)', { ids: stores.map(s => s.id) })
             .andWhere('order.customFields.hallStatus = :s', { s: 'open' })
+            // PG LIMIT 无 ORDER BY 时截断集不确定：按创建时间升序（最老最紧急优先）固定截断口径，
+            // 且保证 sortHall 的小费降序作用于确定的候选集（不会漏掉高小费单）
+            .orderBy('order.createdAt', 'ASC')
             .take(HALL_ALL_LIMIT)
             .getMany();
         if (orders.length >= HALL_ALL_LIMIT) {

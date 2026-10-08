@@ -109,19 +109,20 @@ describe('HallGrabService.grab 整组抢单（plan 3.3）', () => {
 // F5 聚合大厅：一次带回全渠道（非默认渠道+有履约配置+未暂停）open 单并附店铺渠道信息
 describe('HallGrabService.hallAll（F5 聚合大厅）', () => {
     function makeHallAllEnv(orders: any[], channels: any[], configs: any[]) {
+        // qb 共享实例（Order repo 每次返回同一个）：测试可断言链式调用
+        const qb = {
+            leftJoinAndSelect: vi.fn().mockReturnThis(),
+            where: vi.fn().mockReturnThis(),
+            andWhere: vi.fn().mockReturnThis(),
+            orderBy: vi.fn().mockReturnThis(),
+            take: vi.fn().mockReturnThis(),
+            getMany: vi.fn().mockResolvedValue(orders),
+        };
         const repoFor = (ent: any) => {
             const name = (ent as any).name;
             if (name === 'CampusFulfillmentConfig') return { find: vi.fn().mockResolvedValue(configs) };
             if (name === 'Channel') return { find: vi.fn().mockResolvedValue(channels) };
-            return {
-                createQueryBuilder: () => ({
-                    leftJoinAndSelect: vi.fn().mockReturnThis(),
-                    where: vi.fn().mockReturnThis(),
-                    andWhere: vi.fn().mockReturnThis(),
-                    take: vi.fn().mockReturnThis(),
-                    getMany: vi.fn().mockResolvedValue(orders),
-                }),
-            };
+            return { createQueryBuilder: () => qb };
         };
         const conn = { getRepository: (_c: any, ent: any) => repoFor(ent) } as any;
         return new HallGrabService(conn, { assertApprovedRider: vi.fn() } as any, { user: vi.fn() } as any);
@@ -164,5 +165,13 @@ describe('HallGrabService.hallAll（F5 聚合大厅）', () => {
     it('无履约渠道时返回空数组', async () => {
         const svc = makeHallAllEnv([], stores, []);
         expect(await svc.hallAll({} as any)).toEqual([]);
+    });
+
+    it('take 截断前固定 orderBy（PG LIMIT 无 ORDER BY 截断集不确定）', async () => {
+        const svc = makeHallAllEnv([], stores, [{ channelId: 2, paused: false }]);
+        await svc.hallAll({} as any);
+        const qb = (svc as any).connection.getRepository(null, { name: 'Order' }).createQueryBuilder();
+        expect(qb.orderBy).toHaveBeenCalledWith('order.createdAt', 'ASC');
+        expect(qb.take).toHaveBeenCalledWith(500);
     });
 });

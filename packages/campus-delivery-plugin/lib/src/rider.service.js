@@ -89,13 +89,16 @@ let RiderService = class RiderService {
      * F8 分页：skip/take 由前端传参，take 缺省 200 兜底防全量。
      */
     async listApplications(ctx, status, skip, take) {
+        // 分页参数钳制：防 GraphQL Int 负数（take<1 生成非法 LIMIT）与超大 take 绕过兜底全量拉取
+        const safeSkip = Math.max(0, skip !== null && skip !== void 0 ? skip : 0);
+        const safeTake = Math.min(Math.max(take !== null && take !== void 0 ? take : 200, 1), 500);
         const [items, total] = await this.connection
             .getRepository(ctx, core_1.Customer)
             .createQueryBuilder('customer')
             .where('customer.customFields.riderStatus = :status', { status })
             .orderBy('customer.id', 'ASC')
-            .skip(skip !== null && skip !== void 0 ? skip : 0)
-            .take(take !== null && take !== void 0 ? take : 200)
+            .skip(safeSkip)
+            .take(safeTake)
             .getManyAndCount();
         return { items, total };
     }

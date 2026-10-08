@@ -50,4 +50,21 @@ describe('RiderService.listApplications（F8 分页）', () => {
         expect(qb.skip).toHaveBeenCalledWith(0);
         expect(qb.take).toHaveBeenCalledWith(200);
     });
+
+    it('参数钳制：负数 take → 1，超大 take → 500，负 skip → 0', async () => {
+        const qb: any = {
+            where: vi.fn().mockReturnThis(),
+            orderBy: vi.fn().mockReturnThis(),
+            skip: vi.fn().mockReturnThis(),
+            take: vi.fn().mockReturnThis(),
+            getManyAndCount: vi.fn().mockResolvedValue([[], 0]),
+        };
+        const conn = { getRepository: vi.fn().mockReturnValue({ createQueryBuilder: () => qb }) } as any;
+        const svc = new RiderService(conn, {} as any);
+        await svc.listApplications({ channelId: 1 } as any, 'approved', -5, -1);
+        expect(qb.skip).toHaveBeenCalledWith(0);
+        expect(qb.take).toHaveBeenCalledWith(1);
+        await svc.listApplications({ channelId: 1 } as any, 'approved', 0, 100000);
+        expect(qb.take).toHaveBeenLastCalledWith(500);
+    });
 });

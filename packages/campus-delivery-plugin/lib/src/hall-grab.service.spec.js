@@ -103,21 +103,22 @@ function makeSvc(order) {
 // F5 聚合大厅：一次带回全渠道（非默认渠道+有履约配置+未暂停）open 单并附店铺渠道信息
 (0, vitest_1.describe)('HallGrabService.hallAll（F5 聚合大厅）', () => {
     function makeHallAllEnv(orders, channels, configs) {
+        // qb 共享实例（Order repo 每次返回同一个）：测试可断言链式调用
+        const qb = {
+            leftJoinAndSelect: vitest_1.vi.fn().mockReturnThis(),
+            where: vitest_1.vi.fn().mockReturnThis(),
+            andWhere: vitest_1.vi.fn().mockReturnThis(),
+            orderBy: vitest_1.vi.fn().mockReturnThis(),
+            take: vitest_1.vi.fn().mockReturnThis(),
+            getMany: vitest_1.vi.fn().mockResolvedValue(orders),
+        };
         const repoFor = (ent) => {
             const name = ent.name;
             if (name === 'CampusFulfillmentConfig')
                 return { find: vitest_1.vi.fn().mockResolvedValue(configs) };
             if (name === 'Channel')
                 return { find: vitest_1.vi.fn().mockResolvedValue(channels) };
-            return {
-                createQueryBuilder: () => ({
-                    leftJoinAndSelect: vitest_1.vi.fn().mockReturnThis(),
-                    where: vitest_1.vi.fn().mockReturnThis(),
-                    andWhere: vitest_1.vi.fn().mockReturnThis(),
-                    take: vitest_1.vi.fn().mockReturnThis(),
-                    getMany: vitest_1.vi.fn().mockResolvedValue(orders),
-                }),
-            };
+            return { createQueryBuilder: () => qb };
         };
         const conn = { getRepository: (_c, ent) => repoFor(ent) };
         return new hall_grab_service_1.HallGrabService(conn, { assertApprovedRider: vitest_1.vi.fn() }, { user: vitest_1.vi.fn() });
@@ -148,6 +149,13 @@ function makeSvc(order) {
     (0, vitest_1.it)('无履约渠道时返回空数组', async () => {
         const svc = makeHallAllEnv([], stores, []);
         (0, vitest_1.expect)(await svc.hallAll({})).toEqual([]);
+    });
+    (0, vitest_1.it)('take 截断前固定 orderBy（PG LIMIT 无 ORDER BY 截断集不确定）', async () => {
+        const svc = makeHallAllEnv([], stores, [{ channelId: 2, paused: false }]);
+        await svc.hallAll({});
+        const qb = svc.connection.getRepository(null, { name: 'Order' }).createQueryBuilder();
+        (0, vitest_1.expect)(qb.orderBy).toHaveBeenCalledWith('order.createdAt', 'ASC');
+        (0, vitest_1.expect)(qb.take).toHaveBeenCalledWith(500);
     });
 });
 //# sourceMappingURL=hall-grab.service.spec.js.map

@@ -48,5 +48,21 @@ const rider_service_1 = require("./rider.service");
         (0, vitest_1.expect)(qb.skip).toHaveBeenCalledWith(0);
         (0, vitest_1.expect)(qb.take).toHaveBeenCalledWith(200);
     });
+    (0, vitest_1.it)('参数钳制：负数 take → 1，超大 take → 500，负 skip → 0', async () => {
+        const qb = {
+            where: vitest_1.vi.fn().mockReturnThis(),
+            orderBy: vitest_1.vi.fn().mockReturnThis(),
+            skip: vitest_1.vi.fn().mockReturnThis(),
+            take: vitest_1.vi.fn().mockReturnThis(),
+            getManyAndCount: vitest_1.vi.fn().mockResolvedValue([[], 0]),
+        };
+        const conn = { getRepository: vitest_1.vi.fn().mockReturnValue({ createQueryBuilder: () => qb }) };
+        const svc = new rider_service_1.RiderService(conn, {});
+        await svc.listApplications({ channelId: 1 }, 'approved', -5, -1);
+        (0, vitest_1.expect)(qb.skip).toHaveBeenCalledWith(0);
+        (0, vitest_1.expect)(qb.take).toHaveBeenCalledWith(1);
+        await svc.listApplications({ channelId: 1 }, 'approved', 0, 100000);
+        (0, vitest_1.expect)(qb.take).toHaveBeenLastCalledWith(500);
+    });
 });
 //# sourceMappingURL=rider.service.spec.js.map
