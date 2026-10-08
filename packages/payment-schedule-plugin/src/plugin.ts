@@ -38,10 +38,11 @@ function mergeCustomFields<T extends { name: string }>(
     providers: [
         { provide: PAYMENT_SCHEDULE_PLUGIN_OPTIONS, useFactory: () => PaymentSchedulePlugin.options },
         PaymentScheduleService,
-        PaymentScheduleAdminResolver,
-        PaymentScheduleShopResolver,
         // 供 ScheduledTask injector.get(PaymentScheduleJob)
         PaymentScheduleJob,
+        // 注意：Resolver 类不放 providers——放这里会被 nest resolver explorer 扫进两个 API 的
+        // resolver map（admin resolver 泄漏到 shop schema 报 "defined in resolvers, but not in schema"），
+        // 正确位置是下方 adminApiExtensions/shopApiExtensions 的 resolvers 数组（经 DynamicPluginApiModule 按 API 分侧注册）。
     ],
     exports: [PaymentScheduleService],
     adminApiExtensions: {

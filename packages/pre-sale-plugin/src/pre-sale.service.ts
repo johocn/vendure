@@ -16,8 +16,9 @@ import {
 } from '@vendure/core';
 
 import { LEGAL_DEPOSIT_CAP_RATIO, loggerCtx } from './constants';
+import { createScheduleForOrder } from './payment-schedule-bridge';
 import { PreSaleActivity } from './pre-sale-activity.entity';
-import { setPreSaleConnection } from './pre-sale-runtime';
+import { setPreSaleConnection, setPreSaleInjector, getPreSaleInjector } from './pre-sale-runtime';
 
 /**
  * update() 允许写入的字段白名单。
@@ -58,8 +59,9 @@ export class PreSaleService {
     ) {}
 
     init(injector: Injector): void {
-        // 供 Promotion 条件/动作在结算期动态取活动配置
+        // 供 Promotion 条件/动作在结算期动态取活动配置；供软依赖桥取跨插件服务
         setPreSaleConnection(this.connection);
+        setPreSaleInjector(injector);
     }
 
     /* ------------------------- 活动管理 ------------------------- */
@@ -228,6 +230,13 @@ export class PreSaleService {
             fresh.status = 'ended';
             await this.connection.getRepository(ctx, PreSaleActivity).save(fresh);
             Logger.info(`PreSaleActivity ${activityId} ended due to stock depletion`, loggerCtx);
+        }
+
+        // 生成期次实例（软依赖 payment-schedule-plugin；未启用时跳过，薄壳回退旧路径）。
+        // 重新取价格重算后的订单（Promotion 预售价此时已生效）。
+        const pricedOrder = await this.orderService.findOne(ctx, order.id);
+        if (pricedOrder) {
+            await createScheduleForOrder(ctx, getPreSaleInjector(), pricedOrder, activity);
         }
 
         return this.orderService.findOne(ctx, order.id, ['lines', 'lines.productVariant']) as Promise<Order>;

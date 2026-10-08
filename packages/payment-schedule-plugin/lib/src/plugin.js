@@ -94,10 +94,11 @@ exports.PaymentSchedulePlugin = PaymentSchedulePlugin = PaymentSchedulePlugin_1 
         providers: [
             { provide: constants_1.PAYMENT_SCHEDULE_PLUGIN_OPTIONS, useFactory: () => PaymentSchedulePlugin.options },
             payment_schedule_service_1.PaymentScheduleService,
-            payment_schedule_admin_resolver_1.PaymentScheduleAdminResolver,
-            payment_schedule_shop_resolver_1.PaymentScheduleShopResolver,
             // 供 ScheduledTask injector.get(PaymentScheduleJob)
             payment_schedule_job_1.PaymentScheduleJob,
+            // 注意：Resolver 类不放 providers——放这里会被 nest resolver explorer 扫进两个 API 的
+            // resolver map（admin resolver 泄漏到 shop schema 报 "defined in resolvers, but not in schema"），
+            // 正确位置是下方 adminApiExtensions/shopApiExtensions 的 resolvers 数组（经 DynamicPluginApiModule 按 API 分侧注册）。
         ],
         exports: [payment_schedule_service_1.PaymentScheduleService],
         adminApiExtensions: {

@@ -13,6 +13,7 @@ exports.PreSaleService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const constants_1 = require("./constants");
+const payment_schedule_bridge_1 = require("./payment-schedule-bridge");
 const pre_sale_activity_entity_1 = require("./pre-sale-activity.entity");
 const pre_sale_runtime_1 = require("./pre-sale-runtime");
 /**
@@ -51,8 +52,9 @@ let PreSaleService = class PreSaleService {
         this.productVariantService = productVariantService;
     }
     init(injector) {
-        // 供 Promotion 条件/动作在结算期动态取活动配置
+        // 供 Promotion 条件/动作在结算期动态取活动配置；供软依赖桥取跨插件服务
         (0, pre_sale_runtime_1.setPreSaleConnection)(this.connection);
+        (0, pre_sale_runtime_1.setPreSaleInjector)(injector);
     }
     /* ------------------------- 活动管理 ------------------------- */
     async findAll(ctx, options) {
@@ -201,6 +203,12 @@ let PreSaleService = class PreSaleService {
             fresh.status = 'ended';
             await this.connection.getRepository(ctx, pre_sale_activity_entity_1.PreSaleActivity).save(fresh);
             core_1.Logger.info(`PreSaleActivity ${activityId} ended due to stock depletion`, constants_1.loggerCtx);
+        }
+        // 生成期次实例（软依赖 payment-schedule-plugin；未启用时跳过，薄壳回退旧路径）。
+        // 重新取价格重算后的订单（Promotion 预售价此时已生效）。
+        const pricedOrder = await this.orderService.findOne(ctx, order.id);
+        if (pricedOrder) {
+            await (0, payment_schedule_bridge_1.createScheduleForOrder)(ctx, (0, pre_sale_runtime_1.getPreSaleInjector)(), pricedOrder, activity);
         }
         return this.orderService.findOne(ctx, order.id, ['lines', 'lines.productVariant']);
     }

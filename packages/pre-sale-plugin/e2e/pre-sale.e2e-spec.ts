@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import path from 'path';
 import gql from 'graphql-tag';
 import { mergeConfig } from '@vendure/core';
+import { PaymentSchedulePlugin } from '@vendure/payment-schedule-plugin';
 import { initialData } from '../../../e2e-common/e2e-initial-data';
 import { TEST_SETUP_TIMEOUT_MS, testConfig } from '../../../e2e-common/test-config';
 import { PreSalePlugin } from '../src/plugin';
@@ -18,7 +19,7 @@ registerInitializer('sqljs', new SqljsInitializer(path.join(__dirname, '__data__
  */
 describe('PreSalePlugin · 预售/定金预售', () => {
     const config = mergeConfig(testConfig(), {
-        plugins: [PreSalePlugin.init({})],
+        plugins: [PreSalePlugin.init({}), PaymentSchedulePlugin.init({})],
         paymentOptions: { paymentMethodHandlers: [singleStageRefundablePaymentMethod] },
     });
     const { server, adminClient, shopClient } = createTestEnvironment(config);
@@ -53,6 +54,13 @@ describe('PreSalePlugin · 预售/定金预售', () => {
         totalStock?: number;
         limitPerUser?: number;
         mode?: string;
+        depositKind?: string;
+        tailTriggerType?: string;
+        groupBuyActivityId?: number;
+        tailStartAt?: string;
+        graceHours?: number;
+        earnestRefundPolicy?: string;
+        shipDeadlineAt?: string;
     }): Promise<string> {
         const mode = input.mode ?? 'deposit';
         const presalePrice = input.presalePrice ?? 0;
@@ -60,6 +68,18 @@ describe('PreSalePlugin · 预售/定金预售', () => {
         const depositAmount = input.depositAmount ?? 15000;
         const totalStock = input.totalStock ?? 100;
         const limitPerUser = input.limitPerUser ?? 10;
+        // 可选字段逐条拼接（undefined 不输出，避免 gql 模板出现 "undefined" 字面量）
+        const optional = [
+            input.depositKind ? `depositKind: "${input.depositKind}"` : '',
+            input.tailTriggerType ? `tailTriggerType: "${input.tailTriggerType}"` : '',
+            input.groupBuyActivityId != null ? `groupBuyActivityId: ${input.groupBuyActivityId}` : '',
+            input.tailStartAt ? `tailStartAt: "${input.tailStartAt}"` : '',
+            input.graceHours != null ? `graceHours: ${input.graceHours}` : '',
+            input.earnestRefundPolicy ? `earnestRefundPolicy: ${input.earnestRefundPolicy}` : '',
+            input.shipDeadlineAt ? `shipDeadlineAt: "${input.shipDeadlineAt}"` : '',
+        ]
+            .filter(Boolean)
+            .join('\n                    ');
         const res = (await adminClient.query(gql`
             mutation {
                 createPreSaleActivity(input: {
@@ -71,9 +91,10 @@ describe('PreSalePlugin · 预售/定金预售', () => {
                     depositAmount: ${depositAmount}
                     totalStock: ${totalStock}
                     limitPerUser: ${limitPerUser}
+                    ${optional}
                     productId: "${variantId}"
                     variantId: "${variantId}"
-                }) { id name mode status soldCount totalStock depositAmount presalePrice }
+                }) { id name mode status soldCount totalStock depositAmount presalePrice depositKind tailTriggerType graceHours }
             }
         `)) as any;
         const act = res.createPreSaleActivity;
@@ -374,5 +395,67 @@ describe('PreSalePlugin · 预售/定金预售', () => {
                 `),
             '20%',
         );
+    });
+
+    it('applyPreSale 生成期次实例：deposit 双项（定金 payable + 尾款 locked）', async () => {
+        const actId = await createActivity({
+            presalePrice: PRESALE_PRICE,
+            depositAmount: 19980,
+            tailTriggerType: 'date',
+            tailStartAt: ts(-1),
+            graceHours: 72,
+        });
+        const orderId = await applyPreSale(actId);
+        const res = (await shopClient.query(gql`
+            query {
+                paymentSchedule(orderId: "${orderId}") {
+                    id scenario status depositRule totalAmount paidTotal
+                    items { seq kind amount status allowCod graceHours trigger dueAt }
+                }
+            }
+        `)) as any;
+        const sched = res.paymentSchedule;
+        expect(sched.scenario).toBe('presale');
+        expect(sched.status).toBe('pending');
+        expect(sched.depositRule.kind).toBe('legal_deposit');
+        expect(sched.items).toHaveLength(2);
+        expect(sched.items[0]).toMatchObject({ seq: 1, kind: 'deposit', amount: 19980, status: 'payable' });
+        expect(sched.items[1]).toMatchObject({ seq: 2, kind: 'balance', amount: PRESALE_PRICE - 19980, status: 'locked' });
+        // trigger 经 GraphQL JSON 标量返回对象（兼容字符串形态）
+        const balTrigger =
+            typeof sched.items[1].trigger === 'string' ? JSON.parse(sched.items[1].trigger) : sched.items[1].trigger;
+        expect(balTrigger.type).toBe('date');
+        expect(sched.totalAmount).toBe(PRESALE_PRICE);
+        expect(sched.paidTotal).toBe(0);
+    });
+
+    it('applyPreSale 生成期次实例：full 单 balance 项（首期立即可付）', async () => {
+        const actId = await createActivity({ mode: 'full', presalePrice: PRESALE_PRICE });
+        const orderId = await applyPreSale(actId);
+        const res = (await shopClient.query(gql`
+            query {
+                paymentSchedule(orderId: "${orderId}") {
+                    scenario items { seq kind amount status }
+                }
+            }
+        `)) as any;
+        const sched = res.paymentSchedule;
+        expect(sched.items).toHaveLength(1);
+        expect(sched.items[0]).toMatchObject({ seq: 1, kind: 'balance', amount: PRESALE_PRICE, status: 'payable' });
+    });
+
+    it('applyPreSale 生成期次实例：earnest 订金性质落入 depositRule', async () => {
+        const actId = await createActivity({
+            presalePrice: PRESALE_PRICE,
+            depositAmount: 19980,
+            depositKind: 'earnest',
+            earnestRefundPolicy: '{ onTimeout: "full" }',
+        });
+        const orderId = await applyPreSale(actId);
+        const res = (await shopClient.query(gql`
+            query { paymentSchedule(orderId: "${orderId}") { depositRule items { seq kind status } } }
+        `)) as any;
+        expect(res.paymentSchedule.depositRule.kind).toBe('earnest');
+        expect(res.paymentSchedule.depositRule.earnestRefundPolicy).toEqual({ onTimeout: 'full' });
     });
 });
