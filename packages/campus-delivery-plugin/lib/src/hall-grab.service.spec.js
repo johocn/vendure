@@ -100,4 +100,54 @@ function makeSvc(order) {
         (0, vitest_1.expect)(notifyCalls).toEqual([10]);
     });
 });
+// F5 聚合大厅：一次带回全渠道（非默认渠道+有履约配置+未暂停）open 单并附店铺渠道信息
+(0, vitest_1.describe)('HallGrabService.hallAll（F5 聚合大厅）', () => {
+    function makeHallAllEnv(orders, channels, configs) {
+        const repoFor = (ent) => {
+            const name = ent.name;
+            if (name === 'CampusFulfillmentConfig')
+                return { find: vitest_1.vi.fn().mockResolvedValue(configs) };
+            if (name === 'Channel')
+                return { find: vitest_1.vi.fn().mockResolvedValue(channels) };
+            return {
+                createQueryBuilder: () => ({
+                    leftJoinAndSelect: vitest_1.vi.fn().mockReturnThis(),
+                    where: vitest_1.vi.fn().mockReturnThis(),
+                    andWhere: vitest_1.vi.fn().mockReturnThis(),
+                    take: vitest_1.vi.fn().mockReturnThis(),
+                    getMany: vitest_1.vi.fn().mockResolvedValue(orders),
+                }),
+            };
+        };
+        const conn = { getRepository: (_c, ent) => repoFor(ent) };
+        return new hall_grab_service_1.HallGrabService(conn, { assertApprovedRider: vitest_1.vi.fn() }, { user: vitest_1.vi.fn() });
+    }
+    const stores = [
+        { id: 1, code: '__default_channel__', token: 'default' },
+        { id: 2, code: 'shop-a', token: 'tok-a' },
+        { id: 3, code: 'shop-b', token: 'tok-b' },
+    ];
+    (0, vitest_1.it)('open 单附加 channelToken/channelName；paused 渠道剔除', async () => {
+        const o1 = { id: 1, code: 'A', total: 1000, shipping: 300, createdAt: new Date(), channels: [{ id: 2 }], customFields: { hallStatus: 'open', tip: 0, hallEnteredAt: new Date() } };
+        const o2 = { id: 2, code: 'B', total: 2000, shipping: 300, createdAt: new Date(), channels: [{ id: 3 }], customFields: { hallStatus: 'open', tip: 100, hallEnteredAt: new Date() } };
+        const svc = makeHallAllEnv([o1, o2], stores, [{ channelId: 2, paused: false }, { channelId: 3, paused: true }]);
+        const out = await svc.hallAll({});
+        (0, vitest_1.expect)(out.map(o => o.id)).toEqual([1]);
+        (0, vitest_1.expect)(out[0].channelToken).toBe('tok-a');
+        (0, vitest_1.expect)(out[0].channelName).toBe('shop-a');
+        (0, vitest_1.expect)(out[0].customFields.hallStatus).toBe('open');
+    });
+    (0, vitest_1.it)('跨渠道合并后统一排序：非加急单按小费降序', async () => {
+        const t = (m) => new Date(Date.now() - m * 60000);
+        const low = { id: 1, code: 'L', channels: [{ id: 2 }], createdAt: t(3), customFields: { hallStatus: 'open', tip: 0, hallEnteredAt: t(3) } };
+        const high = { id: 2, code: 'H', channels: [{ id: 3 }], createdAt: t(2), customFields: { hallStatus: 'open', tip: 50, hallEnteredAt: t(2) } };
+        const svc = makeHallAllEnv([low, high], stores, [{ channelId: 2, paused: false }, { channelId: 3, paused: false }]);
+        const out = await svc.hallAll({});
+        (0, vitest_1.expect)(out.map(o => o.code)).toEqual(['H', 'L']);
+    });
+    (0, vitest_1.it)('无履约渠道时返回空数组', async () => {
+        const svc = makeHallAllEnv([], stores, []);
+        (0, vitest_1.expect)(await svc.hallAll({})).toEqual([]);
+    });
+});
 //# sourceMappingURL=hall-grab.service.spec.js.map

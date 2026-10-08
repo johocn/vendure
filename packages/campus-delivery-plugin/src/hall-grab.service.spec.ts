@@ -105,3 +105,64 @@ describe('HallGrabService.grab 整组抢单（plan 3.3）', () => {
         expect(notifyCalls).toEqual([10]);
     });
 });
+
+// F5 聚合大厅：一次带回全渠道（非默认渠道+有履约配置+未暂停）open 单并附店铺渠道信息
+describe('HallGrabService.hallAll（F5 聚合大厅）', () => {
+    function makeHallAllEnv(orders: any[], channels: any[], configs: any[]) {
+        const repoFor = (ent: any) => {
+            const name = (ent as any).name;
+            if (name === 'CampusFulfillmentConfig') return { find: vi.fn().mockResolvedValue(configs) };
+            if (name === 'Channel') return { find: vi.fn().mockResolvedValue(channels) };
+            return {
+                createQueryBuilder: () => ({
+                    leftJoinAndSelect: vi.fn().mockReturnThis(),
+                    where: vi.fn().mockReturnThis(),
+                    andWhere: vi.fn().mockReturnThis(),
+                    take: vi.fn().mockReturnThis(),
+                    getMany: vi.fn().mockResolvedValue(orders),
+                }),
+            };
+        };
+        const conn = { getRepository: (_c: any, ent: any) => repoFor(ent) } as any;
+        return new HallGrabService(conn, { assertApprovedRider: vi.fn() } as any, { user: vi.fn() } as any);
+    }
+
+    const stores = [
+        { id: 1, code: '__default_channel__', token: 'default' },
+        { id: 2, code: 'shop-a', token: 'tok-a' },
+        { id: 3, code: 'shop-b', token: 'tok-b' },
+    ];
+
+    it('open 单附加 channelToken/channelName；paused 渠道剔除', async () => {
+        const o1 = { id: 1, code: 'A', total: 1000, shipping: 300, createdAt: new Date(), channels: [{ id: 2 }], customFields: { hallStatus: 'open', tip: 0, hallEnteredAt: new Date() } };
+        const o2 = { id: 2, code: 'B', total: 2000, shipping: 300, createdAt: new Date(), channels: [{ id: 3 }], customFields: { hallStatus: 'open', tip: 100, hallEnteredAt: new Date() } };
+        const svc = makeHallAllEnv(
+            [o1, o2],
+            stores,
+            [{ channelId: 2, paused: false }, { channelId: 3, paused: true }], // shop-b 暂停
+        );
+        const out: any[] = await svc.hallAll({} as any);
+        expect(out.map(o => o.id)).toEqual([1]);
+        expect(out[0].channelToken).toBe('tok-a');
+        expect(out[0].channelName).toBe('shop-a');
+        expect(out[0].customFields.hallStatus).toBe('open');
+    });
+
+    it('跨渠道合并后统一排序：非加急单按小费降序', async () => {
+        const t = (m: number) => new Date(Date.now() - m * 60_000);
+        const low = { id: 1, code: 'L', channels: [{ id: 2 }], createdAt: t(3), customFields: { hallStatus: 'open', tip: 0, hallEnteredAt: t(3) } };
+        const high = { id: 2, code: 'H', channels: [{ id: 3 }], createdAt: t(2), customFields: { hallStatus: 'open', tip: 50, hallEnteredAt: t(2) } };
+        const svc = makeHallAllEnv(
+            [low, high],
+            stores,
+            [{ channelId: 2, paused: false }, { channelId: 3, paused: false }],
+        );
+        const out: any[] = await svc.hallAll({} as any);
+        expect(out.map(o => o.code)).toEqual(['H', 'L']);
+    });
+
+    it('无履约渠道时返回空数组', async () => {
+        const svc = makeHallAllEnv([], stores, []);
+        expect(await svc.hallAll({} as any)).toEqual([]);
+    });
+});

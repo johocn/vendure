@@ -16,4 +16,6 @@ export declare class CampusNotifyService {
     constructor(connection: TransactionalConnection, config: CampusConfigService);
     /** 发送节点通知（异步不等待，不抛错）。text：动态文案覆盖 status（如异常处置结果，超 20 字符自动截断）；h5BaseUrl：配置后消息带 url 跳 H5 订单详情落地页 */
     user(ctx: RequestContext, orderId: number | string, event: CampusNotifyEvent, text?: string, h5BaseUrl?: string): void;
+    /** 单次发送（10s 超时）；非 2xx 或响应体异常抛错由上层重试 */
+    private sendOnce;
 }

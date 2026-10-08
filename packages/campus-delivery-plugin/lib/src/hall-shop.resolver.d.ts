@@ -21,6 +21,18 @@ export declare class HallShopResolver {
     }>;
     private rejectAssignment;
     campusHall(ctx: RequestContext): Promise<Order[]>;
+    /** F5 聚合大厅：一次带回全渠道 open 单（骑手端轮询从 N+1 请求降为 1 请求） */
+    campusHallAll(ctx: RequestContext): Promise<{
+        id: ID;
+        code: string;
+        total: number;
+        shipping: number;
+        createdAt: Date;
+        channelId: string;
+        channelToken: string;
+        channelName: string;
+        customFields: any;
+    }[]>;
     /** 公开只读：选时段前预检余量 */
     campusShopSlots(ctx: RequestContext): Promise<{
         remaining: number;

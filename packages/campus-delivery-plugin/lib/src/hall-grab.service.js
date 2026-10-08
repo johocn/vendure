@@ -14,6 +14,9 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const rider_service_1 = require("./rider.service");
 const campus_notify_service_1 = require("./campus-notify.service");
+const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
+/** F5 聚合大厅单量上限（超限截断 + 告警，防单量增长拖垮小机） */
+const HALL_ALL_LIMIT = 500;
 let HallGrabService = class HallGrabService {
     constructor(connection, riderService, notify) {
         this.connection = connection;
@@ -116,6 +119,56 @@ let HallGrabService = class HallGrabService {
             .where('channel.id = :ch', { ch: ctx.channelId })
             .andWhere('order.customFields.hallStatus = :s', { s: 'open' })
             .getMany();
+        return this.sortHall(orders);
+    }
+    /**
+     * F5 聚合大厅：一次带回全部营业中店铺渠道的 open 单（替代骑手端「店铺列表 + N 渠道逐请求」的 N+1 轮询）。
+     * 范围与骑手端 activeChannels 对齐：有履约配置、非默认渠道、未暂停。
+     * 返回 plain object：每单附加 channelId/channelToken/channelName（抢单 mutation 须带同渠道 token 回传）。
+     * 排序与单渠道 hall() 一致（跨渠道合并后统一排）；超 HALL_ALL_LIMIT 截断 + 告警。
+     */
+    async hallAll(ctx) {
+        const configs = await this.connection.getRepository(ctx, campus_fulfillment_config_entity_1.CampusFulfillmentConfig).find();
+        const paused = new Set(configs.filter(c => c.paused).map(c => Number(c.channelId)));
+        const channels = await this.connection.getRepository(ctx, core_1.Channel).find();
+        const stores = channels.filter(ch => ch.code !== '__default_channel__'
+            && configs.some(c => Number(c.channelId) === Number(ch.id))
+            && !paused.has(Number(ch.id)));
+        if (!stores.length)
+            return [];
+        const orders = await this.connection
+            .getRepository(ctx, core_1.Order)
+            .createQueryBuilder('order')
+            .leftJoinAndSelect('order.channels', 'channel')
+            .where('channel.id IN (:...ids)', { ids: stores.map(s => s.id) })
+            .andWhere('order.customFields.hallStatus = :s', { s: 'open' })
+            .take(HALL_ALL_LIMIT)
+            .getMany();
+        if (orders.length >= HALL_ALL_LIMIT) {
+            core_1.Logger.warn(`hallAll truncated at ${HALL_ALL_LIMIT} open orders`, 'CampusHall');
+        }
+        return this.sortHall(orders)
+            .map(o => {
+            var _a;
+            const hit = stores.find(s => { var _a; return ((_a = o.channels) !== null && _a !== void 0 ? _a : []).some(c => Number(c.id) === Number(s.id)); });
+            if (!hit)
+                return null;
+            return {
+                id: o.id,
+                code: o.code,
+                total: o.total,
+                shipping: o.shipping,
+                createdAt: o.createdAt,
+                channelId: String(hit.id),
+                channelToken: hit.token,
+                channelName: hit.code,
+                customFields: ((_a = o.customFields) !== null && _a !== void 0 ? _a : {}),
+            };
+        })
+            .filter((x) => x !== null);
+    }
+    /** 大厅排序：滞留 >5min 加急置顶，其次小费降序，再按入厅时间升序（JS 排序，避免 customFields 物理列名在 SQL 排序中的风险） */
+    sortHall(orders) {
         const now = Date.now();
         const urgentBefore = now - 5 * 60000;
         const urgent = (o) => {

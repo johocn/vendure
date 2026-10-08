@@ -19,6 +19,8 @@ import { HallService } from './hall.service';
 import { CREDIT_LIMIT, CREDIT_TIMEOUT, RiderCreditService } from './rider-credit.service';
 
 const NOT_PICKED_TIMEOUT_MIN = 15;
+// F6 单渠道单轮扫描上限：按 createdAt 升序截断（最老的最紧急），超限告警暴露积压
+const SCAN_LIMIT = 200;
 
 @Injectable()
 export class DispatchJobService implements OnApplicationShutdown {
@@ -99,7 +101,15 @@ export class DispatchJobService implements OnApplicationShutdown {
             .leftJoin('order.channels', 'channel')
             .where('channel.id = :ch', { ch: ctx.channelId as any })
             .andWhere("order.customFields.hallStatus IN ('open', 'grabbed', 'pending_merchant', 'accepted', 'scheduled')")
+            .orderBy('order.createdAt', 'ASC')
+            .take(SCAN_LIMIT)
             .getMany();
+        if (orders.length >= SCAN_LIMIT) {
+            Logger.warn(
+                `channel ${ctx.channelId} dispatch backlog: >=${SCAN_LIMIT} in-flight orders, scan truncated (oldest-first)`,
+                'CampusDispatch',
+            );
+        }
         const now = Date.now();
 
         // 1) assigned 超 15min 未取货 → 回大厅 + 扣分

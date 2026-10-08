@@ -396,12 +396,17 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     createdAt: DateTime
                 }
 
+                type RiderApplicationList {
+                    items: [Customer!]!
+                    total: Int!
+                }
+
                 extend type Query {
                     campusZones: [CampusZone!]!
                     campusBuildings(zoneId: ID): [CampusBuilding!]!
                     campusConfig: CampusFulfillmentConfig!
                     campusSlots: [DeliverySlot!]!
-                    riderApplications(status: String!): [Customer!]!
+                    riderApplications(status: String!, skip: Int, take: Int): RiderApplicationList!
                     campusDispatchBoard: CampusDispatchBoard!
                     campusStoreConfigs: [CampusStoreConfigWithChannel!]!
                     campusMerchantBoard: CampusMerchantBoard!
@@ -646,11 +651,35 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     remark: String
                 }
 
+                type CampusHallOrderCustomFields {
+                    hallStatus: String
+                    hallEnteredAt: DateTime
+                    tip: Int
+                    fulfillmentRoute: String
+                    campusZone: String
+                    buildingId: String
+                    deliverySlotText: String
+                    routeGroupId: String
+                }
+
+                type CampusHallOrder {
+                    id: ID!
+                    code: String!
+                    total: Int!
+                    shipping: Int!
+                    createdAt: DateTime!
+                    channelId: ID!
+                    channelToken: String!
+                    channelName: String!
+                    customFields: CampusHallOrderCustomFields
+                }
+
                 extend type Query {
                     myRiderProfile: RiderProfile!
                     campusZones: [CampusZone!]!
                     campusBuildings(zoneId: ID): [CampusBuilding!]!
                     campusHall: [Order!]!
+                    campusHallAll: [CampusHallOrder!]!
                     campusMyTasks(status: String): [Order!]!
                     campusShopSlots: [DeliverySlot!]!
                     myRiderEarnings(skip: Int, take: Int): [RiderEarning!]!

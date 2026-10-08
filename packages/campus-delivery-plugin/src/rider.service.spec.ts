@@ -14,3 +14,40 @@ describe('RiderService.assertApprovedRider', () => {
     it('pending 拒绝', async () => expect(make({ riderStatus: 'pending', riderCredit: 100 })).rejects.toThrow());
     it('信用分低于 60 拒绝', async () => expect(make({ riderStatus: 'approved', riderCredit: 59 })).rejects.toThrow());
 });
+
+// F8 审核列表分页：skip/take 透传 QueryBuilder，返回 { items, total }
+describe('RiderService.listApplications（F8 分页）', () => {
+    it('skip/take 透传并返回 items+total', async () => {
+        const qb: any = {
+            where: vi.fn().mockReturnThis(),
+            orderBy: vi.fn().mockReturnThis(),
+            skip: vi.fn().mockReturnThis(),
+            take: vi.fn().mockReturnThis(),
+            getManyAndCount: vi.fn().mockResolvedValue([[{ id: 1 }], 1]),
+        };
+        const conn = {
+            getRepository: vi.fn().mockReturnValue({ createQueryBuilder: () => qb }),
+        } as any;
+        const svc = new RiderService(conn, {} as any);
+        const out = await svc.listApplications({ channelId: 1 } as any, 'pending', 50, 25);
+        expect(qb.skip).toHaveBeenCalledWith(50);
+        expect(qb.take).toHaveBeenCalledWith(25);
+        expect(qb.orderBy).toHaveBeenCalled();
+        expect(out).toEqual({ items: [{ id: 1 }], total: 1 });
+    });
+
+    it('缺省参数：skip=0 / take=200 兜底防全量', async () => {
+        const qb: any = {
+            where: vi.fn().mockReturnThis(),
+            orderBy: vi.fn().mockReturnThis(),
+            skip: vi.fn().mockReturnThis(),
+            take: vi.fn().mockReturnThis(),
+            getManyAndCount: vi.fn().mockResolvedValue([[], 0]),
+        };
+        const conn = { getRepository: vi.fn().mockReturnValue({ createQueryBuilder: () => qb }) } as any;
+        const svc = new RiderService(conn, {} as any);
+        await svc.listApplications({ channelId: 1 } as any, 'approved');
+        expect(qb.skip).toHaveBeenCalledWith(0);
+        expect(qb.take).toHaveBeenCalledWith(200);
+    });
+});

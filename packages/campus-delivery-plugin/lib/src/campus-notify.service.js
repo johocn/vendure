@@ -30,6 +30,12 @@ const AFTER_SALE_TYPE = {
     exceptionHandled: '异常已处理',
     afterSales: '进度更新',
 };
+// F7 最小补发：进程内重试 + 退避（首推失败不再只留一条日志）。
+// 不落库（1G 小机避免加表/迁移）；dedupe_key 固定为 campus:{event}:{orderId}，
+// SSO msg-job 侧按 key 幂等 → 超时重发不会产生重复消息。
+const SEND_ATTEMPTS = 3;
+const SEND_BACKOFF_MS = [2000, 8000];
+const SEND_TIMEOUT_MS = 10000;
 /**
  * 用户侧节点通知（公众号模板消息，经 zhao-sso 服务间 API 发送）。
  * 链路：customer.customFields.ssoId（SSO 用户 id）→ POST {SSO_NOTIFY_BASE_URL}/v1/msg/template-send
@@ -46,7 +52,7 @@ let CampusNotifyService = class CampusNotifyService {
     /** 发送节点通知（异步不等待，不抛错）。text：动态文案覆盖 status（如异常处置结果，超 20 字符自动截断）；h5BaseUrl：配置后消息带 url 跳 H5 订单详情落地页 */
     user(ctx, orderId, event, text, h5BaseUrl) {
         void (async () => {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v;
             try {
                 const baseUrl = process.env.SSO_NOTIFY_BASE_URL;
                 const appCode = process.env.SSO_NOTIFY_APP_CODE;
@@ -87,30 +93,53 @@ let CampusNotifyService = class CampusNotifyService {
                 const link = h5BaseUrl
                     ? `${h5BaseUrl.replace(/\/$/, '')}/#/pkg-order/pages/order-detail?code=${order.code}`
                     : undefined;
-                const res = await fetch(`${baseUrl.replace(/\/$/, '')}/v1/msg/template-send`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        app_code: appCode,
-                        app_secret: appSecret,
-                        sso_user_id: Number(ssoId),
-                        template_code: templateCode,
-                        params,
-                        link,
-                        scene: `campus:${event}`,
-                        dedupe_key: `campus:${event}:${orderId}`,
-                    }),
+                const payload = JSON.stringify({
+                    app_code: appCode,
+                    app_secret: appSecret,
+                    sso_user_id: Number(ssoId),
+                    template_code: templateCode,
+                    params,
+                    link,
+                    scene: `campus:${event}`,
+                    dedupe_key: `campus:${event}:${orderId}`,
                 });
-                const body = (await res.json().catch(() => null));
-                if (!res.ok) {
-                    throw new Error(`SSO api ${res.status}: ${(_k = (_j = body === null || body === void 0 ? void 0 : body.error) !== null && _j !== void 0 ? _j : body === null || body === void 0 ? void 0 : body.error_description) !== null && _k !== void 0 ? _k : 'unknown'}`);
+                // 发送 + 退避重试：2s / 8s，单次超时 10s；dedupe_key 幂等，重发不产生重复消息
+                let lastErr;
+                for (let attempt = 1; attempt <= SEND_ATTEMPTS; attempt++) {
+                    try {
+                        if (attempt > 1) {
+                            await new Promise(r => setTimeout(r, SEND_BACKOFF_MS[attempt - 2]));
+                        }
+                        const body = await this.sendOnce(baseUrl, payload);
+                        core_1.Logger.info(`user notify ${event} sent for ${order.code} (job=${(_o = ((_l = (_k = (_j = body === null || body === void 0 ? void 0 : body.data) === null || _j === void 0 ? void 0 : _j.job) === null || _k === void 0 ? void 0 : _k.id) !== null && _l !== void 0 ? _l : (_m = body === null || body === void 0 ? void 0 : body.data) === null || _m === void 0 ? void 0 : _m.id)) !== null && _o !== void 0 ? _o : '?'} status=${(_t = (_r = (_q = (_p = body === null || body === void 0 ? void 0 : body.data) === null || _p === void 0 ? void 0 : _p.job) === null || _q === void 0 ? void 0 : _q.status) !== null && _r !== void 0 ? _r : (_s = body === null || body === void 0 ? void 0 : body.data) === null || _s === void 0 ? void 0 : _s.status) !== null && _t !== void 0 ? _t : '?'})`, 'CampusNotify');
+                        return;
+                    }
+                    catch (e) {
+                        lastErr = e;
+                        core_1.Logger.warn(`user notify ${event} for order ${orderId} attempt ${attempt}/${SEND_ATTEMPTS} failed: ${(_u = e === null || e === void 0 ? void 0 : e.message) !== null && _u !== void 0 ? _u : e}`, 'CampusNotify');
+                    }
                 }
-                core_1.Logger.info(`user notify ${event} sent for ${order.code} (job=${(_q = ((_o = (_m = (_l = body === null || body === void 0 ? void 0 : body.data) === null || _l === void 0 ? void 0 : _l.job) === null || _m === void 0 ? void 0 : _m.id) !== null && _o !== void 0 ? _o : (_p = body === null || body === void 0 ? void 0 : body.data) === null || _p === void 0 ? void 0 : _p.id)) !== null && _q !== void 0 ? _q : '?'} status=${(_v = (_t = (_s = (_r = body === null || body === void 0 ? void 0 : body.data) === null || _r === void 0 ? void 0 : _r.job) === null || _s === void 0 ? void 0 : _s.status) !== null && _t !== void 0 ? _t : (_u = body === null || body === void 0 ? void 0 : body.data) === null || _u === void 0 ? void 0 : _u.status) !== null && _v !== void 0 ? _v : '?'})`, 'CampusNotify');
+                core_1.Logger.error(`user notify ${event} for order ${orderId} dropped after ${SEND_ATTEMPTS} attempts: ${lastErr instanceof Error ? lastErr.message : lastErr}`, 'CampusNotify');
             }
             catch (e) {
-                core_1.Logger.warn(`user notify ${event} for order ${orderId} failed: ${(_w = e === null || e === void 0 ? void 0 : e.message) !== null && _w !== void 0 ? _w : e}`, 'CampusNotify');
+                core_1.Logger.warn(`user notify ${event} for order ${orderId} failed: ${(_v = e === null || e === void 0 ? void 0 : e.message) !== null && _v !== void 0 ? _v : e}`, 'CampusNotify');
             }
         })();
+    }
+    /** 单次发送（10s 超时）；非 2xx 或响应体异常抛错由上层重试 */
+    async sendOnce(baseUrl, payload) {
+        var _a, _b;
+        const res = await fetch(`${baseUrl.replace(/\/$/, '')}/v1/msg/template-send`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload,
+            signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
+        });
+        const body = (await res.json().catch(() => null));
+        if (!res.ok) {
+            throw new Error(`SSO api ${res.status}: ${(_b = (_a = body === null || body === void 0 ? void 0 : body.error) !== null && _a !== void 0 ? _a : body === null || body === void 0 ? void 0 : body.error_description) !== null && _b !== void 0 ? _b : 'unknown'}`);
+        }
+        return body;
     }
 };
 exports.CampusNotifyService = CampusNotifyService;

@@ -23,8 +23,9 @@ let RiderAdminResolver = class RiderAdminResolver {
         this.riderService = riderService;
         this.wallet = wallet;
     }
-    async riderApplications(ctx, status) {
-        return this.riderService.listApplications(ctx, status);
+    /** 骑手入驻申请列表（F8 分页：返回 { items, total }） */
+    async riderApplications(ctx, status, skip, take) {
+        return this.riderService.listApplications(ctx, status, skip, take);
     }
     async campusSetRiderStatus(ctx, customerId, status) {
         return this.riderService.setRiderStatus(ctx, Number(customerId), status);
@@ -48,8 +49,10 @@ __decorate([
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusAuditRider),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('status')),
+    __param(2, (0, graphql_1.Args)('skip', { nullable: true })),
+    __param(3, (0, graphql_1.Args)('take', { nullable: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, String]),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, Number, Number]),
     __metadata("design:returntype", Promise)
 ], RiderAdminResolver.prototype, "riderApplications", null);
 __decorate([

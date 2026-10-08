@@ -20,6 +20,8 @@ const hall_grab_service_1 = require("./hall-grab.service");
 const hall_service_1 = require("./hall.service");
 const rider_credit_service_1 = require("./rider-credit.service");
 const NOT_PICKED_TIMEOUT_MIN = 15;
+// F6 单渠道单轮扫描上限：按 createdAt 升序截断（最老的最紧急），超限告警暴露积压
+const SCAN_LIMIT = 200;
 let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
     constructor(connection, grab, hall, capacity, credit, moduleRef) {
         this.connection = connection;
@@ -91,7 +93,12 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
             .leftJoin('order.channels', 'channel')
             .where('channel.id = :ch', { ch: ctx.channelId })
             .andWhere("order.customFields.hallStatus IN ('open', 'grabbed', 'pending_merchant', 'accepted', 'scheduled')")
+            .orderBy('order.createdAt', 'ASC')
+            .take(SCAN_LIMIT)
             .getMany();
+        if (orders.length >= SCAN_LIMIT) {
+            core_2.Logger.warn(`channel ${ctx.channelId} dispatch backlog: >=${SCAN_LIMIT} in-flight orders, scan truncated (oldest-first)`, 'CampusDispatch');
+        }
         const now = Date.now();
         // 1) assigned 超 15min 未取货 → 回大厅 + 扣分
         for (const o of orders) {

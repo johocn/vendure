@@ -33,6 +33,10 @@ export declare class RiderService {
      * 按 riderStatus 查询入驻申请列表。
      * customFields 为嵌入式物理列，QueryBuilder 用 embedded 路径
      * customer.customFields.riderStatus（与 delivery-plugin 的 order.customFields.* 写法一致）。
+     * F8 分页：skip/take 由前端传参，take 缺省 200 兜底防全量。
      */
-    listApplications(ctx: RequestContext, status: string): Promise<Customer[]>;
+    listApplications(ctx: RequestContext, status: string, skip?: number, take?: number): Promise<{
+        items: Customer[];
+        total: number;
+    }>;
 }

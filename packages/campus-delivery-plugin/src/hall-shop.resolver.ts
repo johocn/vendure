@@ -49,6 +49,13 @@ export class HallShopResolver {
         return this.grab.hall(ctx);
     }
 
+    /** F5 聚合大厅：一次带回全渠道 open 单（骑手端轮询从 N+1 请求降为 1 请求） */
+    @Query()
+    async campusHallAll(@Ctx() ctx: RequestContext) {
+        await this.riderService.assertApprovedRider(ctx);
+        return this.grab.hallAll(ctx);
+    }
+
     /** 公开只读：选时段前预检余量 */
     @Query()
     async campusShopSlots(@Ctx() ctx: RequestContext) {

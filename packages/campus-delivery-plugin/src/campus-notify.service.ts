@@ -26,6 +26,13 @@ const AFTER_SALE_TYPE: Partial<Record<CampusNotifyEvent, string>> = {
     afterSales: '进度更新',
 };
 
+// F7 最小补发：进程内重试 + 退避（首推失败不再只留一条日志）。
+// 不落库（1G 小机避免加表/迁移）；dedupe_key 固定为 campus:{event}:{orderId}，
+// SSO msg-job 侧按 key 幂等 → 超时重发不会产生重复消息。
+const SEND_ATTEMPTS = 3;
+const SEND_BACKOFF_MS = [2_000, 8_000];
+const SEND_TIMEOUT_MS = 10_000;
+
 /**
  * 用户侧节点通知（公众号模板消息，经 zhao-sso 服务间 API 发送）。
  * 链路：customer.customFields.ssoId（SSO 用户 id）→ POST {SSO_NOTIFY_BASE_URL}/v1/msg/template-send
@@ -88,26 +95,39 @@ export class CampusNotifyService {
                 const link = h5BaseUrl
                     ? `${h5BaseUrl.replace(/\/$/, '')}/#/pkg-order/pages/order-detail?code=${order.code}`
                     : undefined;
-                const res = await fetch(`${baseUrl.replace(/\/$/, '')}/v1/msg/template-send`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        app_code: appCode,
-                        app_secret: appSecret,
-                        sso_user_id: Number(ssoId),
-                        template_code: templateCode,
-                        params,
-                        link,
-                        scene: `campus:${event}`,
-                        dedupe_key: `campus:${event}:${orderId}`,
-                    }),
+                const payload = JSON.stringify({
+                    app_code: appCode,
+                    app_secret: appSecret,
+                    sso_user_id: Number(ssoId),
+                    template_code: templateCode,
+                    params,
+                    link,
+                    scene: `campus:${event}`,
+                    dedupe_key: `campus:${event}:${orderId}`,
                 });
-                const body = (await res.json().catch(() => null)) as any;
-                if (!res.ok) {
-                    throw new Error(`SSO api ${res.status}: ${body?.error ?? body?.error_description ?? 'unknown'}`);
+                // 发送 + 退避重试：2s / 8s，单次超时 10s；dedupe_key 幂等，重发不产生重复消息
+                let lastErr: unknown;
+                for (let attempt = 1; attempt <= SEND_ATTEMPTS; attempt++) {
+                    try {
+                        if (attempt > 1) {
+                            await new Promise(r => setTimeout(r, SEND_BACKOFF_MS[attempt - 2]));
+                        }
+                        const body = await this.sendOnce(baseUrl, payload);
+                        Logger.info(
+                            `user notify ${event} sent for ${order.code} (job=${(body?.data?.job?.id ?? body?.data?.id) ?? '?'} status=${body?.data?.job?.status ?? body?.data?.status ?? '?'})`,
+                            'CampusNotify',
+                        );
+                        return;
+                    } catch (e: any) {
+                        lastErr = e;
+                        Logger.warn(
+                            `user notify ${event} for order ${orderId} attempt ${attempt}/${SEND_ATTEMPTS} failed: ${e?.message ?? e}`,
+                            'CampusNotify',
+                        );
+                    }
                 }
-                Logger.info(
-                    `user notify ${event} sent for ${order.code} (job=${(body?.data?.job?.id ?? body?.data?.id) ?? '?'} status=${body?.data?.job?.status ?? body?.data?.status ?? '?'})`,
+                Logger.error(
+                    `user notify ${event} for order ${orderId} dropped after ${SEND_ATTEMPTS} attempts: ${lastErr instanceof Error ? lastErr.message : lastErr}`,
                     'CampusNotify',
                 );
             } catch (e: any) {
@@ -117,6 +137,21 @@ export class CampusNotifyService {
                 );
             }
         })();
+    }
+
+    /** 单次发送（10s 超时）；非 2xx 或响应体异常抛错由上层重试 */
+    private async sendOnce(baseUrl: string, payload: string): Promise<any> {
+        const res = await fetch(`${baseUrl.replace(/\/$/, '')}/v1/msg/template-send`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload,
+            signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
+        });
+        const body = (await res.json().catch(() => null)) as any;
+        if (!res.ok) {
+            throw new Error(`SSO api ${res.status}: ${body?.error ?? body?.error_description ?? 'unknown'}`);
+        }
+        return body;
     }
 
 }

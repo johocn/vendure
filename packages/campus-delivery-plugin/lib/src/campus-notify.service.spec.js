@@ -122,5 +122,35 @@ const campus_notify_service_1 = require("./campus-notify.service");
         const body = JSON.parse(fetchMock.mock.calls[0][1].body);
         (0, vitest_1.expect)(body.link).toBe('https://www.yourbao.cn/#/pkg-order/pages/order-detail?code=ORD1');
     });
+    // F7 进程内重试：首发失败退避 2s/8s 重发（dedupe_key 幂等，重发不产生重复消息）
+    (0, vitest_1.it)('F7：首发失败 → 退避 2s 后第 2 次重试成功（共 2 次调用）', async () => {
+        const { svc, fetchMock } = makeSvc({ templateCode: 'waimai_order_created' });
+        fetchMock
+            .mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({ error: 'boom' }) })
+            .mockResolvedValueOnce({ ok: true, json: async () => ({ data: { job: { id: 9, status: 'sent' } } }) });
+        vitest_1.vi.useFakeTimers();
+        try {
+            svc.user(makeCtx(), 1, 'orderAccepted');
+            await vitest_1.vi.advanceTimersByTimeAsync(2100); // 首发失败 + 2s 退避 + 重试
+            (0, vitest_1.expect)(fetchMock).toHaveBeenCalledTimes(2);
+        }
+        finally {
+            vitest_1.vi.useRealTimers();
+        }
+    });
+    (0, vitest_1.it)('F7：三次全失败 → 共 3 次调用后放弃（静默，不 unhandledRejection）', async () => {
+        const { svc, fetchMock } = makeSvc({ templateCode: 'waimai_order_created' });
+        fetchMock.mockResolvedValue({ ok: false, status: 503, json: async () => ({ error: 'down' }) });
+        vitest_1.vi.useFakeTimers();
+        try {
+            svc.user(makeCtx(), 1, 'orderAccepted');
+            await vitest_1.vi.advanceTimersByTimeAsync(3000);
+            await vitest_1.vi.advanceTimersByTimeAsync(9000); // 2s + 8s 退避走完
+            (0, vitest_1.expect)(fetchMock).toHaveBeenCalledTimes(3);
+        }
+        finally {
+            vitest_1.vi.useRealTimers();
+        }
+    });
 });
 //# sourceMappingURL=campus-notify.service.spec.js.map

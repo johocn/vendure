@@ -11,10 +11,16 @@ export class RiderAdminResolver {
         private wallet: RiderWalletService,
     ) {}
 
+    /** 骑手入驻申请列表（F8 分页：返回 { items, total }） */
     @Query()
     @Allow(CampusPermissions.CampusAuditRider as any)
-    async riderApplications(@Ctx() ctx: RequestContext, @Args('status') status: string) {
-        return this.riderService.listApplications(ctx, status);
+    async riderApplications(
+        @Ctx() ctx: RequestContext,
+        @Args('status') status: string,
+        @Args('skip', { nullable: true }) skip?: number,
+        @Args('take', { nullable: true }) take?: number,
+    ) {
+        return this.riderService.listApplications(ctx, status, skip, take);
     }
 
     @Mutation()

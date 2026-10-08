@@ -54,6 +54,11 @@ let HallShopResolver = class HallShopResolver {
         await this.riderService.assertApprovedRider(ctx);
         return this.grab.hall(ctx);
     }
+    /** F5 聚合大厅：一次带回全渠道 open 单（骑手端轮询从 N+1 请求降为 1 请求） */
+    async campusHallAll(ctx) {
+        await this.riderService.assertApprovedRider(ctx);
+        return this.grab.hallAll(ctx);
+    }
     /** 公开只读：选时段前预检余量 */
     async campusShopSlots(ctx) {
         return this.config.slotsForShop(ctx);
@@ -97,6 +102,13 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext]),
     __metadata("design:returntype", Promise)
 ], HallShopResolver.prototype, "campusHall", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], HallShopResolver.prototype, "campusHallAll", null);
 __decorate([
     (0, graphql_1.Query)(),
     __param(0, (0, core_1.Ctx)()),

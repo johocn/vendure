@@ -5,7 +5,11 @@ export declare class RiderAdminResolver {
     private riderService;
     private wallet;
     constructor(riderService: RiderService, wallet: RiderWalletService);
-    riderApplications(ctx: RequestContext, status: string): Promise<import("@vendure/core").Customer[]>;
+    /** 骑手入驻申请列表（F8 分页：返回 { items, total }） */
+    riderApplications(ctx: RequestContext, status: string, skip?: number, take?: number): Promise<{
+        items: import("@vendure/core").Customer[];
+        total: number;
+    }>;
     campusSetRiderStatus(ctx: RequestContext, customerId: ID, status: 'approved' | 'suspended' | 'none'): Promise<{
         status: "approved" | "suspended" | "none";
     }>;
