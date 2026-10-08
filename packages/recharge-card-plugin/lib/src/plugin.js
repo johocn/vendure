@@ -45,6 +45,10 @@ let RechargeCardPlugin = RechargeCardPlugin_1 = class RechargeCardPlugin {
     async onApplicationBootstrap() {
         (0, balance_payment_handler_1.setRechargeService)(this.rechargeCardService);
         (0, balance_payment_handler_1.setOrderService)(this.orderService);
+        // 明文卡密落库加密密钥未配置：新批次将明文落库（拖库即泄漏），建议配置 64 位 hex 密钥
+        if (!process.env.RECHARGE_CARD_PIN_KEY) {
+            core_2.Logger.warn('RECHARGE_CARD_PIN_KEY 未配置：充值卡批次明文卡密将直接落库', 'RechargeCardPlugin');
+        }
         // 可选接入支付网关：进程内注册了 WechatpayPlugin 时解析到，否则保持独立可用
         const injector = new core_2.Injector(this.moduleRef);
         let registry = null;

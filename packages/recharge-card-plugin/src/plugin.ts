@@ -260,6 +260,10 @@ export class RechargeCardPlugin implements OnApplicationBootstrap {
     async onApplicationBootstrap(): Promise<void> {
         setRechargeService(this.rechargeCardService);
         setOrderService(this.orderService);
+        // 明文卡密落库加密密钥未配置：新批次将明文落库（拖库即泄漏），建议配置 64 位 hex 密钥
+        if (!process.env.RECHARGE_CARD_PIN_KEY) {
+            Logger.warn('RECHARGE_CARD_PIN_KEY 未配置：充值卡批次明文卡密将直接落库', 'RechargeCardPlugin');
+        }
         // 可选接入支付网关：进程内注册了 WechatpayPlugin 时解析到，否则保持独立可用
         const injector = new Injector(this.moduleRef);
         let registry: WechatpaySettlementRegistry | null = null;

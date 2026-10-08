@@ -18,6 +18,8 @@ export declare class RiderWalletService {
         frozen: number;
         totalEarned: number;
     }>;
+    /** 分成入账失败的自愈补账：deliver 落 pending 后入账失败/未注册端口的记录，读取钱包时重试入账 */
+    private settlePendingEarnings;
     /** 余额流水（recharge-card BalanceTransaction，默认渠道本人倒序） */
     riderBalanceHistory(ctx: RequestContext, skip?: number, take?: number): Promise<BalanceTransaction[]>;
     /** 本人提现申请记录（平台级，倒序） */

@@ -26,6 +26,7 @@ function make() {
             return Promise.resolve(v);
         }),
         findOne: vitest_1.vi.fn(),
+        find: vitest_1.vi.fn().mockResolvedValue([]),
         update: vitest_1.vi.fn().mockResolvedValue({ affected: 1 }),
         count: vitest_1.vi.fn().mockResolvedValue(0),
     };
@@ -50,6 +51,13 @@ function make() {
     return { svc: new rider_wallet_service_1.RiderWalletService(conn, riderSvc, reqCtxSvc), repo, emRepo, em, saved, reqCtxSvc, conn };
 }
 (0, vitest_1.describe)('RiderWalletService', () => {
+    // mocks.port 为模块级共享 spy：清除跨用例调用记录，
+    // 避免 not.toHaveBeenCalled 全量断言被前面的成功路径用例污染
+    (0, vitest_1.beforeEach)(() => {
+        mocks.port.getBalance.mockClear();
+        mocks.port.deductBalance.mockClear();
+        mocks.port.addBalance.mockClear();
+    });
     (0, vitest_1.it)('withdraw 低于 ¥10 抛错', async () => {
         const { svc } = make();
         mocks.port.getBalance.mockResolvedValue(50000);

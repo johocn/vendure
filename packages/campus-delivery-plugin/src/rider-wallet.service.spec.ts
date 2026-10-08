@@ -29,6 +29,7 @@ function make() {
             return Promise.resolve(v);
         }),
         findOne: vi.fn(),
+        find: vi.fn().mockResolvedValue([]),
         update: vi.fn().mockResolvedValue({ affected: 1 }),
         count: vi.fn().mockResolvedValue(0),
     };

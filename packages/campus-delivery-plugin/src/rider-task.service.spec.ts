@@ -15,7 +15,11 @@ function make(order: any, cfg: any = { riderCommissionRate: 100 }) {
             return Promise.resolve(v);
         }),
     };
-    const conn = { getRepository: () => repo } as any;
+    const conn = {
+        getRepository: () => repo,
+        // deliver 原子认领（RETURNING id）：TypeORM PG query 返回 [rows, fields]
+        rawConnection: { query: vi.fn().mockResolvedValue([[{ id: 10 }], []]) },
+    } as any;
     return { svc: new RiderTaskService(conn, riderSvc, { adjust: vi.fn().mockResolvedValue(102) } as any, { backToHall: vi.fn() } as any, { user: vi.fn() } as any), repo, saved };
 }
 

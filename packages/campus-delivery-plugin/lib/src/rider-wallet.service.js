@@ -35,11 +35,35 @@ let RiderWalletService = class RiderWalletService {
     async myRiderWallet(ctx) {
         const rider = await this.riderService.assertApprovedRider(ctx);
         const pc = await this.platformCtx();
+        await this.settlePendingEarnings(pc, rider.id);
         const port = (0, coupon_plugin_1.getCouponBalancePort)();
         const available = port ? await port.getBalance(pc, rider.id) : 0;
         const frozen = await this.sumPending(pc, rider.id);
         const totalEarned = await this.sumEarned(pc, rider.id);
         return { available, frozen, totalEarned };
+    }
+    /** 分成入账失败的自愈补账：deliver 落 pending 后入账失败/未注册端口的记录，读取钱包时重试入账 */
+    async settlePendingEarnings(pc, riderCustomerId) {
+        var _a;
+        const port = (0, coupon_plugin_1.getCouponBalancePort)();
+        if (!port)
+            return;
+        const repo = this.connection.getRepository(pc, rider_earning_entity_1.RiderEarning);
+        const pending = await repo.find({
+            where: { riderCustomerId, status: 'pending' },
+            take: 50,
+        });
+        for (const row of pending) {
+            try {
+                await port.addBalance(pc, riderCustomerId, row.amount);
+                await repo.update(row.id, { status: 'credited' });
+                common_1.Logger.warn(`补账成功：earning ${row.id}（${row.amount} 分）`, 'RiderWallet');
+            }
+            catch (e) {
+                common_1.Logger.error(`补账失败：earning ${row.id}：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, 'RiderWallet');
+                break; // 余额端口异常时停止本轮，避免逐条打错误
+            }
+        }
     }
     /** 余额流水（recharge-card BalanceTransaction，默认渠道本人倒序） */
     async riderBalanceHistory(ctx, skip, take) {

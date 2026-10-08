@@ -15,7 +15,11 @@ function make(order, cfg = { riderCommissionRate: 100 }) {
             return Promise.resolve(v);
         }),
     };
-    const conn = { getRepository: () => repo };
+    const conn = {
+        getRepository: () => repo,
+        // deliver 原子认领（RETURNING id）：TypeORM PG query 返回 [rows, fields]
+        rawConnection: { query: vitest_1.vi.fn().mockResolvedValue([[{ id: 10 }], []]) },
+    };
     return { svc: new rider_task_service_1.RiderTaskService(conn, riderSvc, { adjust: vitest_1.vi.fn().mockResolvedValue(102) }, { backToHall: vitest_1.vi.fn() }, { user: vitest_1.vi.fn() }), repo, saved };
 }
 const assigned = { id: 10, code: 'A1', shipping: 300, customFields: { deliveryStaffId: '9', deliveryStatus: 'assigned', tip: 100 } };

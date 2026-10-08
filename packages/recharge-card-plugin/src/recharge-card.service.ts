@@ -29,6 +29,45 @@ export function setWechatpayGateway(gw: WechatpayService | null): void {
 
 const SCRYPT_KEYLEN = 64;
 
+// ── 批次明文卡密落库加密（AES-256-GCM）──
+// 密钥来自环境变量 RECHARGE_CARD_PIN_KEY（64 位 hex = 32 bytes）；未配置时降级明文落库并告警。
+// 密文以 'enc:v1:' 前缀标识：读取时带前缀且已配密钥才解密，存量明文原样返回（兼容历史批次）。
+const PIN_ENC_PREFIX = 'enc:v1:';
+
+function getPinKey(): Buffer | null {
+    const hex = process.env.RECHARGE_CARD_PIN_KEY;
+    if (!hex) return null;
+    const buf = Buffer.from(hex, 'hex');
+    return buf.length === 32 ? buf : null;
+}
+
+export function encryptPins(list: { code: string; pin: string }[]): { code: string; pin: string }[] {
+    const key = getPinKey();
+    if (!key) return list;
+    return list.map((it) => {
+        const iv = crypto.randomBytes(12);
+        const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+        const enc = Buffer.concat([cipher.update(JSON.stringify(it), 'utf8'), cipher.final()]);
+        const tag = cipher.getAuthTag();
+        return { code: it.code, pin: PIN_ENC_PREFIX + Buffer.concat([iv, tag, enc]).toString('base64') };
+    });
+}
+
+export function decryptPins(stored: { code: string; pin: string }[]): { code: string; pin: string }[] {
+    const key = getPinKey();
+    return stored.map((it) => {
+        if (!it?.pin?.startsWith?.(PIN_ENC_PREFIX)) return it;
+        if (!key) return { code: it.code, pin: '(encrypted, key not configured)' };
+        const raw = Buffer.from(it.pin.slice(PIN_ENC_PREFIX.length), 'base64');
+        const iv = raw.subarray(0, 12);
+        const tag = raw.subarray(12, 28);
+        const data = raw.subarray(28);
+        const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+        decipher.setAuthTag(tag);
+        return JSON.parse(Buffer.concat([decipher.update(data), decipher.final()]).toString('utf8'));
+    });
+}
+
 function scryptDerive(password: string, salt: Buffer): Promise<Buffer> {
     return new Promise((resolve, reject) => {
         crypto.scrypt(password, salt, SCRYPT_KEYLEN, (err, derivedKey) => {
@@ -406,10 +445,18 @@ export class RechargeCardService {
     }
 
     async findAllBatches(ctx: RequestContext, options?: ListQueryOptions<RechargeCardBatch>): Promise<PaginatedList<RechargeCardBatch>> {
-        return this.listQueryBuilder
+        const result = await this.listQueryBuilder
             .build(RechargeCardBatch, options, { ctx, relations: ['channels'], channelId: ctx.channelId })
             .getManyAndCount()
             .then(([items, totalItems]) => ({ items, totalItems }));
+        // 密文批次导出时解密（存量明文原样；未配密钥时密文项返回占位符）
+        const pinKey = getPinKey();
+        if (pinKey) {
+            for (const b of result.items) {
+                if (b.plaintextPins?.length) b.plaintextPins = decryptPins(b.plaintextPins);
+            }
+        }
+        return result;
     }
 
     async createBatch(ctx: RequestContext, input: {
@@ -454,9 +501,17 @@ export class RechargeCardService {
         await cardRepo.save(cards);
 
         savedBatch.generatedCount = input.quantity;
-        savedBatch.plaintextPins = plaintextPins;
+        const pinKey = getPinKey();
+        if (pinKey) {
+            savedBatch.plaintextPins = encryptPins(plaintextPins);
+        } else {
+            savedBatch.plaintextPins = plaintextPins;
+            Logger.warn('未配置 RECHARGE_CARD_PIN_KEY，批次明文卡密将直接落库（建议配置后重新生成批次）', loggerCtx);
+        }
         await batchRepo.save(savedBatch);
 
+        // 返回给管理端的必须是明文（创建后立即导出场景）
+        savedBatch.plaintextPins = plaintextPins;
         Logger.info(`Created batch ${savedBatch.name} with ${input.quantity} cards`, loggerCtx);
         return savedBatch;
     }

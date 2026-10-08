@@ -152,6 +152,15 @@ export class RiderTaskService {
         const rider = await this.riderService.assertApprovedRider(ctx);
         const earning = this.calcEarning(order, await this.getConfig(ctx));
         const tip = (order.customFields as any).tip ?? 0;
+        // 原子认领：条件更新仅当仍为 in_progress 时生效，防并发双送达 → 双分成入账
+        // （对齐 grab() 的锁语义；RETURNING id 以取 affected 行数）
+        const claimed: any = await this.connection.rawConnection.query(
+            'UPDATE "order" SET "customFieldsDeliverystatus" = $1, "customFieldsDeliveredat" = $2 '
+            + 'WHERE id = $3 AND "customFieldsDeliverystatus" = $4 RETURNING id',
+            ['delivered', new Date(), order.id, 'in_progress'],
+        );
+        const claimedRows = Array.isArray(claimed) ? claimed[0] : claimed;
+        if (!claimedRows?.length) throw new UserInputError('当前状态不允许该操作（订单已被处理）');
         await this.connection.getRepository(ctx, Order).update(order.id, {
             customFields: {
                 deliveryStatus: 'delivered',
@@ -167,23 +176,36 @@ export class RiderTaskService {
             // 0 分成单：不写 earning 不调 addBalance（余额端口对 0 金额入账会抛错）
             Logger.log(`订单 ${order.code ?? order.id} 0 分成，跳过入账`, 'RiderTask');
         } else {
-            await this.connection.getRepository(ctx, RiderEarning).save({
+            // 先落 earning（pending），入账成功才置 credited：addBalance 失败时订单已终态、
+            // 骑手重试会被状态机挡住，留 pending 供 myRiderWallet 读取时补账（避免「有分成记录但钱未到」）
+            const earningRow = await this.connection.getRepository(ctx, RiderEarning).save({
                 orderId: order.id,
                 riderCustomerId: rider.id,
                 amount: earning,
                 tip,
-                status: 'credited',
+                status: 'pending',
                 channelId: ctx.channelId,
             } as any);
             const port = getCouponBalancePort();
             if (port) {
-                await port.addBalance(ctx, rider.id as number, earning);
+                try {
+                    await port.addBalance(ctx, rider.id as number, earning);
+                    await this.connection.getRepository(ctx, RiderEarning).update(earningRow.id, {
+                        status: 'credited',
+                    } as any);
+                } catch (e: any) {
+                    Logger.error(`分成入账失败（earning ${earningRow.id} 留 pending 待补账）：${e?.message ?? e}`, 'RiderTask');
+                }
             } else {
                 Logger.warn('余额端口未注册，分成未入账', 'RiderTask');
             }
         }
-        // 完单信用加分（+2）
-        await this.credit.adjust(ctx, rider.id as any, CREDIT_COMPLETE, 'complete', order.id as any);
+        // 完单信用加分（+2）；非资金项，失败不阻断送达
+        try {
+            await this.credit.adjust(ctx, rider.id as any, CREDIT_COMPLETE, 'complete', order.id as any);
+        } catch (e: any) {
+            Logger.warn(`完单信用加分失败：${e?.message ?? e}`, 'RiderTask');
+        }
         // 通知下单用户已送达（fire-and-forget）
         this.notify.user(ctx, order.id as any, 'orderDelivered');
         return order;

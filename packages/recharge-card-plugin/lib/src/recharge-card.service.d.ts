@@ -6,6 +6,20 @@ import { BalanceTransaction, BalanceTransactionType } from './balance-transactio
 import { RechargeOrder } from './recharge-order.entity';
 import { WechatpayService } from '@vendure/wechatpay-plugin';
 export declare function setWechatpayGateway(gw: WechatpayService | null): void;
+export declare function encryptPins(list: {
+    code: string;
+    pin: string;
+}[]): {
+    code: string;
+    pin: string;
+}[];
+export declare function decryptPins(stored: {
+    code: string;
+    pin: string;
+}[]): {
+    code: string;
+    pin: string;
+}[];
 export declare class RechargeCardService {
     private connection;
     private listQueryBuilder;
