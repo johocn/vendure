@@ -815,7 +815,7 @@ let TenantMemberService = class TenantMemberService {
         }
         return member;
     }
-    /** 当前登录者修改自身密码：主动改密校验旧密码；首登强改密（未传旧密码或存在 mustChangePassword）跳过校验。更新后清除本租户首登强改密标志 */
+    /** 当前登录者修改自身密码：主动改密必须校验旧密码；仅首登强改密（mustChangePassword=true）允许跳过旧密码校验。更新后清除本租户首登强改密标志 */
     async changeMyPassword(ctx, oldPassword, newPassword) {
         var _a;
         if (!newPassword || newPassword.length < 8)
@@ -831,7 +831,10 @@ let TenantMemberService = class TenantMemberService {
         const memberRepo = this.connection.getRepository(ctx, tenant_member_entity_1.TenantMember);
         const members = await memberRepo.find({ where: { administratorId: adminId } });
         const mustChange = members.some((m) => m.mustChangePassword);
-        if (oldPassword && !mustChange) {
+        if (!mustChange) {
+            // 主动改密：未传旧密码直接拒绝，防止已登录会话（XSS/共享电脑）绕过旧密码验证改密
+            if (!oldPassword)
+                throw new Error('OLD_PASSWORD_REQUIRED');
             const ok = await this.authService.verifyUserPassword(ctx, (_a = admin.user) === null || _a === void 0 ? void 0 : _a.id, oldPassword);
             if (ok !== true)
                 throw new Error('WRONG_OLD_PASSWORD');

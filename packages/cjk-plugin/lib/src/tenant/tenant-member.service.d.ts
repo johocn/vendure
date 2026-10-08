@@ -169,7 +169,7 @@ export declare class TenantMemberService {
     memberToView(ctx: RequestContext, member: TenantMember): Promise<any>;
     /** 超管为租户建管理员账号并绑定角色，同时写入 TenantMember */
     createTenantAdministrator(ctx: RequestContext, channelId: ID, input: CreateTenantAdminInput): Promise<TenantMember>;
-    /** 当前登录者修改自身密码：主动改密校验旧密码；首登强改密（未传旧密码或存在 mustChangePassword）跳过校验。更新后清除本租户首登强改密标志 */
+    /** 当前登录者修改自身密码：主动改密必须校验旧密码；仅首登强改密（mustChangePassword=true）允许跳过旧密码校验。更新后清除本租户首登强改密标志 */
     changeMyPassword(ctx: RequestContext, oldPassword: string | null, newPassword: string): Promise<void>;
     /** 租户人员启停 */
     setMemberEnabled(ctx: RequestContext, channelId: ID, memberId: ID, enabled: boolean): Promise<void>;
