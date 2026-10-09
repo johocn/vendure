@@ -454,7 +454,13 @@ export const devConfig: VendureConfig = {
             minWithdrawalAmount: 10000,
             settlementDays: 7,
         }),
-        TcmClinicPlugin.init({}),
+        // 医生工作台 SSO 桥接：baseUrl 指向 zhao-sso 中心（SSO_MOCK=true 时支持 mock-<手机号> 本地联调登录）
+        TcmClinicPlugin.init({
+            sso: {
+                baseUrl: process.env.ZHAO_SSO_BASE_URL || '',
+                mock: process.env.SSO_MOCK === 'true',
+            },
+        }),
         EcoPlugin.init(),
         ProductSurveyPlugin.init(),
         ...(process.env.REDIS_URL ? [RedisStockPlugin.init({
