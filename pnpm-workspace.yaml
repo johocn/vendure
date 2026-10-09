@@ -5,6 +5,10 @@ packages:
 # （@vendure/* 插件均为私有包，registry 上不存在，必须走 workspace 链接）
 linkWorkspacePackages: true
 
+# 把所有已安装依赖提升到根 node_modules（dev-config 顶层 require 的 @nestjs/* 等历史依赖
+# 未在 dev-server 显式声明，靠提升解析；过滤安装后布局与历史 hybrid 布局兼容）
+shamefullyHoist: true
+
 allowBuilds:
   '@swc/core': true
   esbuild: true
