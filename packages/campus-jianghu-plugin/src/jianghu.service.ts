@@ -734,15 +734,21 @@ export class JianghuService {
             });
             if (!res.ok) return null;
             const json: any = await res.json();
-            const item = json?.data?.[0]?.attributes;
-            if (!item) return null;
+            const raw: any = json?.data?.[0];
+            if (!raw) return null;
+            // Strapi v4 把字段包在 attributes 里；v5 起直接平铺在 document 上。
+            // h.joho.cn 已是 v5，这里两种都兼容，避免版本差异导致线上取不到文案。
+            const item: any = raw.attributes ?? raw;
             const img = item.bannerImage?.url ?? item.bannerImage ?? null;
+            let banner: string | null = typeof img === 'string' ? img : null;
+            // Strapi 本地上传 provider 存相对路径（/uploads/xx.png），补上基址变成绝对 URL
+            if (banner && banner.startsWith('/')) banner = base + banner;
             return {
                 title: item.title ?? null,
                 desc: item.desc ?? null,
-                bannerImage: typeof img === 'string' ? img : null,
+                bannerImage: banner,
                 rewardText: item.rewardText ?? null,
-                active: true,
+                active: item.active ?? true,
             };
         } catch {
             // 文案源不可达：不阻断玩法，回退到实体内联文案

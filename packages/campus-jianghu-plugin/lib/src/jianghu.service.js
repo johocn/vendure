@@ -638,7 +638,7 @@ let JianghuService = class JianghuService {
      * 未配置 contentApi 或拉取失败（网络/鉴权）时优雅返回 null，前端回退到实体内联文案。
      */
     async getEventContent(_ctx) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
         const api = options_1.jianghuOptions.contentApi;
         if (!(api === null || api === void 0 ? void 0 : api.baseUrl))
             return null;
@@ -655,19 +655,26 @@ let JianghuService = class JianghuService {
             if (!res.ok)
                 return null;
             const json = await res.json();
-            const item = (_c = (_b = json === null || json === void 0 ? void 0 : json.data) === null || _b === void 0 ? void 0 : _b[0]) === null || _c === void 0 ? void 0 : _c.attributes;
-            if (!item)
+            const raw = (_b = json === null || json === void 0 ? void 0 : json.data) === null || _b === void 0 ? void 0 : _b[0];
+            if (!raw)
                 return null;
+            // Strapi v4 把字段包在 attributes 里；v5 起直接平铺在 document 上。
+            // h.joho.cn 已是 v5，这里两种都兼容，避免版本差异导致线上取不到文案。
+            const item = (_c = raw.attributes) !== null && _c !== void 0 ? _c : raw;
             const img = (_f = (_e = (_d = item.bannerImage) === null || _d === void 0 ? void 0 : _d.url) !== null && _e !== void 0 ? _e : item.bannerImage) !== null && _f !== void 0 ? _f : null;
+            let banner = typeof img === 'string' ? img : null;
+            // Strapi 本地上传 provider 存相对路径（/uploads/xx.png），补上基址变成绝对 URL
+            if (banner && banner.startsWith('/'))
+                banner = base + banner;
             return {
                 title: (_g = item.title) !== null && _g !== void 0 ? _g : null,
                 desc: (_h = item.desc) !== null && _h !== void 0 ? _h : null,
-                bannerImage: typeof img === 'string' ? img : null,
+                bannerImage: banner,
                 rewardText: (_j = item.rewardText) !== null && _j !== void 0 ? _j : null,
-                active: true,
+                active: (_k = item.active) !== null && _k !== void 0 ? _k : true,
             };
         }
-        catch (_k) {
+        catch (_l) {
             // 文案源不可达：不阻断玩法，回退到实体内联文案
             return null;
         }
