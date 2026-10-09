@@ -48,15 +48,33 @@ for (const pkg of PLUGINS) {
   console.log("  OK: " + pkg);
 }
 // Step 2: Compile entry points
+// 注意：tsc 不允许 --project 与源文件混用（TS5042），改为生成临时 tsconfig（extends dev-server 配置以保留 paths 映射）
 console.log("=== Compile entry points ===");
-const tscCmd = "npx tsc --project packages/dev-server/tsconfig.json"
-  + " --outDir " + DIST
-  + " --declaration false --sourceMap false --module commonjs"
-  + " --target es2017 --skipLibCheck --esModuleInterop"
-  + " --resolveJsonModule --emitDecoratorMetadata --experimentalDecorators"
-  + " packages/dev-server/index.ts packages/dev-server/index-worker.ts"
-  + " packages/dev-server/migration.ts";
-execSync(tscCmd, { stdio: "inherit", cwd: ROOT });
+const deployTsconfig = {
+  extends: "./packages/dev-server/tsconfig.json",
+  compilerOptions: {
+    declaration: false,
+    sourceMap: false,
+    module: "commonjs",
+    moduleResolution: "node",
+    target: "es2017",
+    skipLibCheck: true,
+    esModuleInterop: true,
+    resolveJsonModule: true,
+    emitDecoratorMetadata: true,
+    experimentalDecorators: true,
+    outDir: path.relative(ROOT, DIST).split(path.sep).join("/"),
+  },
+  files: [
+    "packages/dev-server/index.ts",
+    "packages/dev-server/index-worker.ts",
+    "packages/dev-server/migration.ts",
+  ],
+};
+const tsconfigPackPath = path.join(ROOT, "tsconfig.deploy-pack.json");
+fs.writeFileSync(tsconfigPackPath, JSON.stringify(deployTsconfig, null, 2));
+execSync(`npx tsc --project "${tsconfigPackPath}"`, { stdio: "inherit", cwd: ROOT });
+fs.rmSync(tsconfigPackPath, { force: true });
 // Step 3: Create config files
 console.log("=== Create config ===");
 fs.writeFileSync(path.join(PROD, "package.json"), JSON.stringify({
