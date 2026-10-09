@@ -9,6 +9,17 @@ linkWorkspacePackages: true
 # 未在 dev-server 显式声明，靠提升解析；过滤安装后布局与历史 hybrid 布局兼容）
 shamefullyHoist: true
 
+# 关闭 peer 自动安装：跨插件 peer（如 inventory-plugin peer shop-plugin）全部由
+# dev-server 的显式依赖满足；否则 lockfile-only 全仓解析时 peer 会被送去 registry
+# 解析，私有包 404 + 无限重试导致卡死
+autoInstallPeers: false
+
+# pnpm 11 从 pnpm-workspace.yaml 读取 overrides（package.json 的 pnpm.overrides 被忽略）。
+# stitch 钉在 range 下限 10.1.16：其 10.3.x 新版需要 batch-delegate@^10.1.1 / delegate@^12.2.1，
+# npmmirror 尚未同步这两个版本（只有 10.1.0 / 12.2.0）
+overrides:
+  '@graphql-tools/stitch': 10.1.16
+
 allowBuilds:
   '@swc/core': true
   esbuild: true

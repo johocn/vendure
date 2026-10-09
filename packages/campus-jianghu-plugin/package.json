@@ -8,12 +8,16 @@
     "build": "rimraf lib && tsc -p ./tsconfig.build.json",
     "test": "vitest --config vitest.config.mts --run"
   },
-  "dependencies": { "graphql-tag": "^2.12.6" },
-  "peerDependencies": { "@vendure/core": "3.6.4" },
+  "dependencies": {
+    "graphql-tag": "^2.12.6"
+  },
+  "peerDependencies": {
+    "@vendure/core": "3.6.4"
+  },
   "devDependencies": {
-    "@vendure/common": "3.6.4",
-    "@vendure/core": "3.6.4",
-    "@vendure/testing": "3.6.4",
+    "@vendure/common": "workspace:*",
+    "@vendure/core": "workspace:*",
+    "@vendure/testing": "workspace:*",
     "typescript": "^5",
     "vitest": "^2",
     "rimraf": "^5"

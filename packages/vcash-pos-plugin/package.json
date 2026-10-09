@@ -5,7 +5,9 @@
   "private": true,
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
-  "files": ["lib/**/*"],
+  "files": [
+    "lib/**/*"
+  ],
   "scripts": {
     "watch": "tsc -p ./tsconfig.json --watch",
     "build": "rimraf lib && tsc -p ./tsconfig.json",
@@ -24,8 +26,8 @@
     "@vendure/core": "^3.6.0"
   },
   "devDependencies": {
-    "@vendure/common": "3.6.4",
-    "@vendure/core": "3.6.4",
+    "@vendure/common": "workspace:*",
+    "@vendure/core": "workspace:*",
     "rimraf": "^5.0.5",
     "typescript": "5.8.2"
   }

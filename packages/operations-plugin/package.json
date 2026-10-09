@@ -10,11 +10,11 @@
     "e2e": "cross-env PACKAGE=operations-plugin vitest --config vitest.config.mts --run"
   },
   "dependencies": {
-    "@vendure/core": "^3.6.0",
-    "@vendure/delivery-plugin": "1.0.0",
-    "@vendure/flash-sale-plugin": "0.0.1",
-    "@vendure/group-buy-plugin": "0.0.1",
-    "@vendure/coupon-plugin": "0.0.1"
+    "@vendure/core": "workspace:*",
+    "@vendure/delivery-plugin": "workspace:*",
+    "@vendure/flash-sale-plugin": "workspace:*",
+    "@vendure/group-buy-plugin": "workspace:*",
+    "@vendure/coupon-plugin": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.0.0"

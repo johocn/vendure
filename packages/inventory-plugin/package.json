@@ -10,7 +10,7 @@
     "e2e": "cross-env PACKAGE=inventory-plugin vitest --config vitest.config.mts --run"
   },
   "dependencies": {
-    "@vendure/core": "^3.6.0"
+    "@vendure/core": "workspace:*"
   },
   "peerDependencies": {
     "@vendure/shop-plugin": "^0.0.1"
