@@ -72,6 +72,7 @@ const shop_plugin_1 = require("@vendure/shop-plugin");
 const pickup_plugin_1 = require("@vendure/pickup-plugin");
 const shop_template_plugin_1 = require("@vendure/shop-template-plugin");
 const favorite_plugin_1 = require("@vendure/favorite-plugin");
+const tcm_clinic_plugin_1 = require("@vendure/tcm-clinic-plugin");
 if (!process.env.REDEMPTION_KEY) {
     process.env.REDEMPTION_KEY = 'd'.repeat(64);
 }
@@ -384,6 +385,12 @@ exports.devConfig = {
             minWithdrawalAmount: 10000,
             settlementDays: 7,
         }),
+        tcm_clinic_plugin_1.TcmClinicPlugin.init({
+            sso: {
+                baseUrl: process.env.ZHAO_SSO_BASE_URL || '',
+                mock: process.env.SSO_MOCK === 'true',
+            },
+        }),
         eco_plugin_1.EcoPlugin.init(),
         product_survey_plugin_1.ProductSurveyPlugin.init(),
         ...(process.env.REDIS_URL ? [redis_stock_plugin_1.RedisStockPlugin.init({
@@ -419,7 +426,13 @@ exports.devConfig = {
         }),
         delivery_plugin_1.DeliveryPlugin.init(),
         campus_delivery_plugin_1.CampusDeliveryPlugin,
-        campus_jianghu_plugin_1.CampusJianghuPlugin,
+        campus_jianghu_plugin_1.CampusJianghuPlugin.init({
+            contentApi: {
+                baseUrl: process.env.JIANGHU_STRAPI_URL || 'https://h.joho.cn',
+                token: process.env.JIANGHU_STRAPI_TOKEN,
+                collection: 'jianghu-event-copies',
+            },
+        }),
         sales_plugin_1.SalesPlugin.init(),
         marketplace_plugin_1.MarketplacePlugin.init({}),
         logistics_plugin_1.LogisticsPlugin.init({
