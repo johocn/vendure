@@ -63,4 +63,49 @@ describe('TcmClinicPlugin', () => {
         expect(list.clinics.totalItems).toBe(1);
         expect(list.clinics.items[0].licenseNo).toBe('BA1101');
     });
+
+    it('staff guard + patient profile creation', async () => {
+        // 建第二家馆
+        await adminClient.query(gql`
+            mutation {
+                createClinic(input: { name: "仁济馆", licenseNo: "BA1102" }) { id }
+            }
+        `);
+        // 当前超管绑定为馆1医生（测试环境 ID 带 T_ 前缀，需还原数字）
+        const me = await adminClient.query(gql`
+            query { me { id } }
+        `);
+        const adminId = Number(String(me.me.id).replace('T_', ''));
+        const staffRes = await adminClient.query(gql`
+            mutation {
+                createClinicStaff(input: { clinicId: 1, administratorId: ${adminId}, displayName: "张医生", role: "doctor" }) {
+                    id
+                    clinicId
+                    displayName
+                }
+            }
+        `);
+        expect(staffRes.createClinicStaff.displayName).toBe('张医生');
+        expect(Number(String(staffRes.createClinicStaff.clinicId).replace('T_', ''))).toBe(1);
+        // 馆2 未绑定 → 建档应被拒绝（守卫抛 ForbiddenError，固定文案）
+        await expect(
+            adminClient.query(gql`
+                mutation {
+                    createPatientProfile(input: { clinicId: 2, customerId: 1 }) { id }
+                }
+            `),
+        ).rejects.toThrow(/not currently authorized/);
+        // 馆1 建档成功
+        const okRes = await adminClient.query(gql`
+            mutation {
+                createPatientProfile(input: { clinicId: 1, customerId: 1, constitution: { type: "阳虚质" } }) {
+                    id
+                    customerId
+                    constitution
+                }
+            }
+        `);
+        expect(Number(String(okRes.createPatientProfile.customerId).replace('T_', ''))).toBe(1);
+        expect(okRes.createPatientProfile.constitution.type).toBe('阳虚质');
+    });
 });

@@ -3,8 +3,11 @@ import { PluginCommonModule, VendurePlugin } from '@vendure/core';
 
 import { TCM_PLUGIN_OPTIONS } from './constants';
 import { TcmClinic } from './entities/tcm-clinic.entity';
+import { TcmClinicStaff } from './entities/tcm-clinic-staff.entity';
+import { TcmPatientProfile } from './entities/tcm-patient-profile.entity';
 import { TcmAdminResolver } from './resolvers/tcm-admin.resolver';
 import { TcmClinicService } from './services/tcm-clinic.service';
+import { TcmStaffService } from './services/tcm-staff.service';
 import { TcmClinicPluginOptions } from './types';
 
 const { gql } = require('graphql-tag');
@@ -35,17 +38,48 @@ const adminSchema = () => gql`
         items: [TcmClinic!]!
         totalItems: Int!
     }
+    type TcmClinicStaff {
+        id: ID!
+        createdAt: DateTime!
+        updatedAt: DateTime!
+        administratorId: ID!
+        clinicId: ID!
+        role: String!
+        displayName: String!
+    }
+    input TcmClinicStaffInput {
+        clinicId: Int!
+        administratorId: Int!
+        displayName: String!
+        role: String
+    }
+    type TcmPatientProfile {
+        id: ID!
+        createdAt: DateTime!
+        updatedAt: DateTime!
+        customerId: ID!
+        clinicId: ID!
+        constitution: JSON
+    }
+    input TcmPatientProfileInput {
+        clinicId: Int!
+        customerId: Int!
+        constitution: JSON
+    }
     extend type Mutation {
         createClinic(input: TcmClinicInput!): TcmClinic!
+        createClinicStaff(input: TcmClinicStaffInput!): TcmClinicStaff!
+        createPatientProfile(input: TcmPatientProfileInput!): TcmPatientProfile!
     }
 `;
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [TcmClinic],
+    entities: [TcmClinic, TcmClinicStaff, TcmPatientProfile],
     providers: [
         { provide: TCM_PLUGIN_OPTIONS, useFactory: () => TcmClinicPlugin.options },
         TcmClinicService,
+        TcmStaffService,
     ],
     adminApiExtensions: {
         schema: adminSchema,
