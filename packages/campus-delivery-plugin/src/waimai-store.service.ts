@@ -68,6 +68,9 @@ export class WaimaiStoreService {
             if (!cfg) continue;
             if (ch.code === '__default_channel__') continue;   // 默认渠道是平台会话渠道，不是店铺（防脏配置污染 C 端列表/骑手大厅）
             const cf = (ch.customFields ?? {}) as any;
+            // 外卖准入：仅餐饮行业租户展示（设计文档 2026-10-09 §4.2；存量由 BackfillWaimaiIndustryMigration 刷数）。
+            // 仅过滤 C 端列表；listStoreConfigs（admin 配置视图）不过滤，避免管理员看不到已配履约的非餐饮渠道。
+            if (cf.industryType !== 'catering') continue;
             stores.push({
                 channelId: Number(ch.id),
                 channelToken: ch.token,
