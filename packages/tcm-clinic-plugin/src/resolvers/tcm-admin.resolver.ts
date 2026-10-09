@@ -108,7 +108,14 @@ export class TcmAdminResolver {
         const staff = await this.staffService.assertStaffOfClinic(ctx, encounter.clinicId);
         const record = await this.recordService.create(ctx, staff.id, input);
         const view = await this.recordService.decryptView(record);
-        return { id: record.id, encounterId: record.encounterId, version: record.version, ...view, revisions: [] };
+        return {
+            id: record.id,
+            encounterId: record.encounterId,
+            clinicId: record.clinicId,
+            version: record.version,
+            ...view,
+            revisions: [],
+        };
     }
 
     @Transaction()
@@ -135,7 +142,14 @@ export class TcmAdminResolver {
         const staff = await this.staffService.assertStaffOfClinic(ctx, encounter.clinicId);
         const updated = await this.recordService.update(ctx, staff.id, recordId, input);
         const view = await this.recordService.decryptView(updated);
-        return { id: updated.id, encounterId: updated.encounterId, version: updated.version, ...view, revisions: [] };
+        return {
+            id: updated.id,
+            encounterId: updated.encounterId,
+            clinicId: updated.clinicId,
+            version: updated.version,
+            ...view,
+            revisions: [],
+        };
     }
 
     @Transaction()

@@ -26,6 +26,7 @@ export interface MedicalRecordRevisionView {
 export interface MedicalRecordView {
     id: number;
     encounterId: number;
+    clinicId: number;
     version: number;
     chiefComplaint: string;
     diagnosis: string;
@@ -154,6 +155,7 @@ export class TcmMedicalRecordService {
             records.map(async record => ({
                 id: record.id,
                 encounterId: record.encounterId,
+                clinicId: record.clinicId,
                 version: record.version,
                 ...(await this.decryptView(record)),
                 revisions: revisions

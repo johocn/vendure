@@ -9,7 +9,8 @@ export class TcmFollowUpTask extends VendureEntity {
     }
     @Column({ type: 'int' })
     patientProfileId: number;
-    @Column({ type: 'int' })
+    /** 关联康养规划（spec：planId/patientId 二选一，可空） */
+    @Column({ type: 'int', nullable: true })
     planId?: number;
     @Column({ type: 'varchar', length: 255 })
     title: string;

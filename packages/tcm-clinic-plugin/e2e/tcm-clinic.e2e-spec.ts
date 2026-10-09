@@ -17,6 +17,8 @@ describe('TcmClinicPlugin', () => {
     );
 
     beforeAll(async () => {
+        // retention describe 在模块加载时会重设插件静态 options，这里显式恢复本 describe 的默认配置
+        TcmClinicPlugin.init({});
         await server.init({
             initialData: {
                 defaultLanguage: LanguageCode.zh_Hans,
@@ -166,9 +168,14 @@ describe('TcmClinicPlugin', () => {
         expect(updated.updateMedicalRecord.version).toBe(2);
         const detail = await adminClient.query(gql`
             query { medicalRecords(options: {}) {
-                items { id version chiefComplaint diagnosis prescription revisions { version editedByStaffId } }
+                items { id clinicId version chiefComplaint diagnosis prescription revisions { version editedByStaffId } }
             } }
         `);
+        // 跨馆隔离回归：当前超管只绑定馆1，馆2 无病志数据，medicalRecords 应全部 clinicId===1
+        expect(detail.medicalRecords.items.length).toBeGreaterThan(0);
+        expect(
+            detail.medicalRecords.items.every(i => Number(String(i.clinicId).replace('T_', '')) === 1),
+        ).toBe(true);
         const item = detail.medicalRecords.items[0];
         expect(item.diagnosis).toContain('加重');
         expect(item.prescription.items.length).toBe(1);
@@ -266,5 +273,81 @@ describe('TcmClinicPlugin', () => {
                 query { myPatientProfile { id } }
             `),
         ).rejects.toThrow(/not currently authorized/);
+    });
+});
+
+describe('TcmClinicPlugin retention (years=0)', () => {
+    const { server, adminClient } = createTestEnvironment(
+        mergeConfig(testConfig, {
+            apiOptions: { port: 3921 },
+            plugins: [TcmClinicPlugin.init({ retentionYears: 0 })],
+        }),
+    );
+
+    beforeAll(async () => {
+        // 插件 options 为静态挂载：init 需在各 server bootstrap 前重新设置，避免与主 describe 互相覆盖
+        TcmClinicPlugin.init({ retentionYears: 0 });
+        // 独立数据目录，保证全新库；注册需在 server.init 之前生效
+        registerInitializer('sqljs', new SqljsInitializer(path.join(__dirname, '__data__', 'retention')));
+        await server.init({
+            initialData: {
+                defaultLanguage: LanguageCode.zh_Hans,
+                defaultZone: 'Asia',
+                countries: [{ code: 'CN', name: 'China', zone: 'Asia' }],
+                taxRates: [{ name: 'Standard Tax', percentage: 13 }],
+                shippingMethods: [{ name: 'Standard Shipping', price: 500 }],
+                paymentMethods: [],
+                collections: [],
+            },
+            productsCsvPath: '',
+            customerCount: 1,
+        });
+        await adminClient.asSuperAdmin();
+    }, 120000);
+
+    afterAll(async () => {
+        await server.destroy();
+    });
+
+    it('medical record becomes readonly once retention (years=0) expires', async () => {
+        // 建馆 → 当前超管绑员工 → 建档 → 建接诊 → 建病志
+        const clinic = await adminClient.query(gql`
+            mutation { createClinic(input: { name: "存档馆", licenseNo: "BA2101" }) { id } }
+        `);
+        const clinicId = Number(String(clinic.createClinic.id).replace('T_', ''));
+        const me = await adminClient.query(gql`
+            query { me { id } }
+        `);
+        const adminId = Number(String(me.me.id).replace('T_', ''));
+        await adminClient.query(gql`
+            mutation {
+                createClinicStaff(input: { clinicId: ${clinicId}, administratorId: ${adminId}, displayName: "钱医生", role: "doctor" }) { id }
+            }
+        `);
+        const profile = await adminClient.query(gql`
+            mutation { createPatientProfile(input: { clinicId: ${clinicId}, customerId: 1 }) { id } }
+        `);
+        const profileId = Number(String(profile.createPatientProfile.id).replace('T_', ''));
+        const enc = await adminClient.query(gql`
+            mutation {
+                createEncounter(input: { patientProfileId: ${profileId}, clinicId: ${clinicId}, type: "initial" }) { id status }
+            }
+        `);
+        expect(enc.createEncounter.status).toBe('PENDING');
+        const encounterId = Number(String(enc.createEncounter.id).replace('T_', ''));
+        const rec = await adminClient.query(gql`
+            mutation {
+                createMedicalRecord(input: { encounterId: ${encounterId}, chiefComplaint: "腰膝酸软", diagnosis: "肾虚腰痛" }) { id version }
+            }
+        `);
+        expect(rec.createMedicalRecord.version).toBe(1);
+        // retentionYears=0 → retentionUntil 即创建瞬间，立即更新应被拒绝（归档只读）
+        await expect(
+            adminClient.query(gql`
+                mutation {
+                    updateMedicalRecord(id: "${rec.createMedicalRecord.id}", input: { diagnosis: "肾虚腰痛（复诊）" }) { id }
+                }
+            `),
+        ).rejects.toThrow(/归档只读/);
     });
 });

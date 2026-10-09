@@ -172,6 +172,7 @@ const adminSchema = () => gql`
     type MedicalRecordView {
         id: ID!
         encounterId: ID!
+        clinicId: ID!
         version: Int!
         chiefComplaint: String!
         diagnosis: String!
