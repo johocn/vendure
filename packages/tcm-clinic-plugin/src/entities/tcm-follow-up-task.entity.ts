@@ -14,7 +14,7 @@ export class TcmFollowUpTask extends VendureEntity {
     planId?: number;
     @Column({ type: 'varchar', length: 255 })
     title: string;
-    @Column({ type: 'datetime' })
+    @Column({ type: 'timestamp' })
     dueAt: Date;
     /** wechat | sms | phone */
     @Column({ type: 'varchar', length: 16, default: 'wechat' })

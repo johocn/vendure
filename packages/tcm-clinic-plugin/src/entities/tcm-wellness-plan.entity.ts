@@ -16,8 +16,8 @@ export class TcmWellnessPlan extends VendureEntity {
     /** DRAFT | ACTIVE | PAUSED | CLOSED */
     @Column({ type: 'varchar', length: 16, default: 'DRAFT' })
     status: string;
-    @Column({ type: 'datetime', nullable: true })
+    @Column({ type: 'timestamp', nullable: true })
     cycleStart?: Date;
-    @Column({ type: 'datetime', nullable: true })
+    @Column({ type: 'timestamp', nullable: true })
     cycleEnd?: Date;
 }

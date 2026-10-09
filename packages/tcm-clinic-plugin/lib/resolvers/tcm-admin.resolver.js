@@ -20,6 +20,7 @@ const tcm_encounter_entity_1 = require("../entities/tcm-encounter.entity");
 const tcm_follow_up_task_entity_1 = require("../entities/tcm-follow-up-task.entity");
 const tcm_medical_record_entity_1 = require("../entities/tcm-medical-record.entity");
 const tcm_patient_profile_entity_1 = require("../entities/tcm-patient-profile.entity");
+const tcm_plan_item_entity_1 = require("../entities/tcm-plan-item.entity");
 const tcm_wellness_plan_entity_1 = require("../entities/tcm-wellness-plan.entity");
 const tcm_encounter_service_1 = require("../services/tcm-encounter.service");
 const tcm_clinic_service_1 = require("../services/tcm-clinic.service");
@@ -193,6 +194,93 @@ let TcmAdminResolver = class TcmAdminResolver {
             order: { id: 'ASC' },
         });
         return { items, totalItems };
+    }
+    async myStaff(ctx) {
+        return this.staffService.staffOf(ctx, ctx.activeUserId);
+    }
+    async patientProfiles(ctx, options) {
+        const clinicIds = await this.currentClinicIds(ctx);
+        if (!clinicIds.length)
+            return { items: [], totalItems: 0 };
+        const [items, totalItems] = await this.connection
+            .getRepository(ctx, tcm_patient_profile_entity_1.TcmPatientProfile)
+            .findAndCount({
+            where: { clinicId: (0, typeorm_1.In)(clinicIds) },
+            skip: options === null || options === void 0 ? void 0 : options.skip,
+            take: options === null || options === void 0 ? void 0 : options.take,
+            order: { id: 'ASC' },
+        });
+        return { items: await this.enrichProfiles(ctx, items), totalItems };
+    }
+    async patientProfile(ctx, id) {
+        const profile = await this.clinicService.findPatientProfile(ctx, Number(String(id).replace('T_', '')));
+        if (!profile)
+            return null;
+        await this.staffService.assertStaffOfClinic(ctx, Number(profile.clinicId));
+        return (await this.enrichProfiles(ctx, [profile]))[0];
+    }
+    async encounters(ctx, options) {
+        const clinicIds = await this.currentClinicIds(ctx);
+        if (!clinicIds.length)
+            return { items: [], totalItems: 0 };
+        const [items, totalItems] = await this.connection
+            .getRepository(ctx, tcm_encounter_entity_1.TcmEncounter)
+            .findAndCount({
+            where: Object.assign({ clinicId: (0, typeorm_1.In)(clinicIds) }, ((options === null || options === void 0 ? void 0 : options.since) ? { createdAt: (0, typeorm_1.MoreThanOrEqual)(options.since) } : {})),
+            skip: options === null || options === void 0 ? void 0 : options.skip,
+            take: options === null || options === void 0 ? void 0 : options.take,
+            order: { id: 'DESC' },
+        });
+        return { items, totalItems };
+    }
+    async encounter(ctx, id) {
+        const enc = await this.connection
+            .getRepository(ctx, tcm_encounter_entity_1.TcmEncounter)
+            .findOne({ where: { id: Number(String(id).replace('T_', '')) } });
+        if (!enc)
+            return null;
+        await this.staffService.assertStaffOfClinic(ctx, Number(enc.clinicId));
+        return enc;
+    }
+    async medicalRecord(ctx, id) {
+        return this.recordService.findOneView(ctx, Number(String(id).replace('T_', '')));
+    }
+    async wellnessPlan(ctx, id) {
+        const plan = await this.connection
+            .getRepository(ctx, tcm_wellness_plan_entity_1.TcmWellnessPlan)
+            .findOne({ where: { id: Number(String(id).replace('T_', '')) } });
+        if (!plan)
+            return null;
+        await this.staffService.assertStaffOfClinic(ctx, Number(plan.clinicId));
+        const items = await this.connection.getRepository(ctx, tcm_plan_item_entity_1.TcmPlanItem).find({ where: { planId: Number(plan.id) }, order: { id: 'ASC' } });
+        const followUps = await this.connection.getRepository(ctx, tcm_follow_up_task_entity_1.TcmFollowUpTask).find({ where: { planId: Number(plan.id) }, order: { id: 'ASC' } });
+        return Object.assign(Object.assign({}, plan), { items, followUps });
+    }
+    async currentClinicIds(ctx) {
+        const staffList = await this.staffService.staffOf(ctx, ctx.activeUserId);
+        return staffList.map(s => Number(s.clinicId));
+    }
+    /** 患者档案视图增强：读时联查 Customer 姓名/手机号（无外键，仅 ID 关联） */
+    async enrichProfiles(ctx, profiles) {
+        const customerIds = [...new Set(profiles.map(p => Number(p.customerId)))];
+        const customers = customerIds.length
+            ? await this.connection.getRepository(ctx, core_1.Customer).find({ where: { id: (0, typeorm_1.In)(customerIds) } })
+            : [];
+        const byId = new Map(customers.map(c => [Number(c.id), c]));
+        return profiles.map(p => {
+            var _a;
+            const c = byId.get(Number(p.customerId));
+            return {
+                id: p.id,
+                createdAt: p.createdAt,
+                updatedAt: p.updatedAt,
+                customerId: p.customerId,
+                clinicId: p.clinicId,
+                constitution: p.constitution,
+                customerName: c ? [c.firstName, c.lastName].filter(Boolean).join(' ') : `客户 ${p.customerId}`,
+                customerPhone: (_a = c === null || c === void 0 ? void 0 : c.phoneNumber) !== null && _a !== void 0 ? _a : null,
+            };
+        });
     }
     async findPatientProfile(ctx, id) {
         const profile = await this.clinicService.findPatientProfile(ctx, id);
@@ -377,6 +465,68 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], TcmAdminResolver.prototype, "followUpTasks", null);
+__decorate([
+    (0, core_1.Transaction)(),
+    (0, graphql_1.Query)(),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], TcmAdminResolver.prototype, "myStaff", null);
+__decorate([
+    (0, core_1.Transaction)(),
+    (0, graphql_1.Query)(),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('options')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], TcmAdminResolver.prototype, "patientProfiles", null);
+__decorate([
+    (0, core_1.Transaction)(),
+    (0, graphql_1.Query)(),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], TcmAdminResolver.prototype, "patientProfile", null);
+__decorate([
+    (0, core_1.Transaction)(),
+    (0, graphql_1.Query)(),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('options')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], TcmAdminResolver.prototype, "encounters", null);
+__decorate([
+    (0, core_1.Transaction)(),
+    (0, graphql_1.Query)(),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], TcmAdminResolver.prototype, "encounter", null);
+__decorate([
+    (0, core_1.Transaction)(),
+    (0, graphql_1.Query)(),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], TcmAdminResolver.prototype, "medicalRecord", null);
+__decorate([
+    (0, core_1.Transaction)(),
+    (0, graphql_1.Query)(),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], TcmAdminResolver.prototype, "wellnessPlan", null);
 exports.TcmAdminResolver = TcmAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [core_1.TransactionalConnection,

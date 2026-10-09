@@ -9,6 +9,7 @@ var TcmClinicPlugin_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TcmClinicPlugin = void 0;
 const core_1 = require("@vendure/core");
+const tcm_sso_strategy_1 = require("./auth/tcm-sso.strategy");
 const constants_1 = require("./constants");
 const tcm_clinic_entity_1 = require("./entities/tcm-clinic.entity");
 const tcm_clinic_staff_entity_1 = require("./entities/tcm-clinic-staff.entity");
@@ -115,6 +116,13 @@ const adminSchema = () => gql `
         auditLogs(options: AuditLogListOptions): AuditLogList!
         wellnessPlans(options: TcmWellnessPlanListOptions): TcmWellnessPlanList!
         followUpTasks(options: TcmFollowUpTaskListOptions): TcmFollowUpTaskList!
+        myStaff: [TcmClinicStaff!]!
+        patientProfiles(options: TcmPatientProfileListOptions): TcmPatientProfileList!
+        patientProfile(id: ID!): TcmPatientProfileView
+        encounters(options: TcmEncounterListOptions): TcmEncounterList!
+        encounter(id: ID!): TcmEncounter
+        medicalRecord(id: ID!): MedicalRecordView
+        wellnessPlan(id: ID!): TcmWellnessPlanDetailView
     }
     input TcmClinicListOptions {
         skip: Int
@@ -300,6 +308,46 @@ const adminSchema = () => gql `
         items: [TcmFollowUpTask!]!
         totalItems: Int!
     }
+    type TcmPatientProfileView {
+        id: ID!
+        createdAt: DateTime!
+        updatedAt: DateTime!
+        customerId: ID!
+        clinicId: ID!
+        customerName: String
+        customerPhone: String
+        constitution: JSON
+    }
+    input TcmPatientProfileListOptions {
+        skip: Int
+        take: Int
+    }
+    type TcmPatientProfileList {
+        items: [TcmPatientProfileView!]!
+        totalItems: Int!
+    }
+    input TcmEncounterListOptions {
+        skip: Int
+        take: Int
+        since: DateTime
+    }
+    type TcmEncounterList {
+        items: [TcmEncounter!]!
+        totalItems: Int!
+    }
+    type TcmWellnessPlanDetailView {
+        id: ID!
+        createdAt: DateTime!
+        updatedAt: DateTime!
+        patientProfileId: ID!
+        clinicId: ID!
+        title: String!
+        status: WellnessPlanStatus!
+        cycleStart: DateTime
+        cycleEnd: DateTime
+        items: [TcmPlanItem!]!
+        followUps: [TcmFollowUpTask!]!
+    }
     extend type Mutation {
         createClinic(input: TcmClinicInput!): TcmClinic!
         createClinicStaff(input: TcmClinicStaffInput!): TcmClinicStaff!
@@ -357,6 +405,15 @@ exports.TcmClinicPlugin = TcmClinicPlugin = TcmClinicPlugin_1 = __decorate([
         shopApiExtensions: {
             schema: shopSchema,
             resolvers: [tcm_shop_resolver_1.TcmShopResolver],
+        },
+        configuration: config => {
+            // 医生工作台：Admin API zhao-sso 桥接策略（authenticate(input: { tcmSso: ... })）
+            config.authOptions = config.authOptions || {};
+            config.authOptions.adminAuthenticationStrategy = [
+                ...(config.authOptions.adminAuthenticationStrategy || []),
+                tcm_sso_strategy_1.tcmSsoAuthenticationStrategy,
+            ];
+            return config;
         },
         compatibility: '^3.0.0',
     })

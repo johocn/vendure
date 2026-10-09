@@ -92,5 +92,28 @@ export declare class TcmAdminResolver {
         items: TcmFollowUpTask[];
         totalItems: number;
     }>;
+    myStaff(ctx: RequestContext): Promise<TcmClinicStaff[]>;
+    patientProfiles(ctx: RequestContext, options?: {
+        skip?: number;
+        take?: number;
+    }): Promise<{
+        items: any[];
+        totalItems: number;
+    }>;
+    patientProfile(ctx: RequestContext, id: string | number): Promise<any | null>;
+    encounters(ctx: RequestContext, options?: {
+        skip?: number;
+        take?: number;
+        since?: Date;
+    }): Promise<{
+        items: TcmEncounter[];
+        totalItems: number;
+    }>;
+    encounter(ctx: RequestContext, id: string | number): Promise<TcmEncounter | null>;
+    medicalRecord(ctx: RequestContext, id: string | number): Promise<any | null>;
+    wellnessPlan(ctx: RequestContext, id: string | number): Promise<any | null>;
+    private currentClinicIds;
+    /** 患者档案视图增强：读时联查 Customer 姓名/手机号（无外键，仅 ID 关联） */
+    private enrichProfiles;
     private findPatientProfile;
 }

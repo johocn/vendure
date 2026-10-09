@@ -48,4 +48,6 @@ export declare class TcmMedicalRecordService {
         items: MedicalRecordView[];
         totalItems: number;
     }>;
+    /** 单条病志视图（含版本链），供工作台详情页 */
+    findOneView(ctx: RequestContext, recordId: number): Promise<MedicalRecordView | null>;
 }

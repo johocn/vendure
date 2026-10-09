@@ -31,7 +31,7 @@ __decorate([
     __metadata("design:type", String)
 ], TcmFollowUpTask.prototype, "title", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime' }),
+    (0, typeorm_1.Column)({ type: 'timestamp' }),
     __metadata("design:type", Date)
 ], TcmFollowUpTask.prototype, "dueAt", void 0);
 __decorate([

@@ -31,6 +31,6 @@ export class TcmMedicalRecord extends VendureEntity {
     @Column({ type: 'varchar', length: 128, nullable: true })
     signatureCert?: string;
     /** 保存期限：到期后归档只读（门诊病志 ≥15 年） */
-    @Column({ type: 'datetime' })
+    @Column({ type: 'timestamp' })
     retentionUntil: Date;
 }
