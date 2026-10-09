@@ -40,6 +40,7 @@ import { OrderPriceAdminResolver } from './order/order-price-admin.resolver';
 import { MyOrdersShopResolver } from './order/my-orders-shop.resolver';
 import { customerCustomFields } from './customer/customer-custom-fields';
 import { tenantChannelCustomFields } from './tenant/tenant-channel-custom-fields';
+import { productTypeCustomFields } from './product/product-custom-fields';
 import { productVariantCustomFields } from './shipping/product-variant-custom-fields';
 import { customShippingMethodFields } from './shipping/shipping-method-custom-fields';
 import { assetCustomFields } from './asset/asset-custom-fields';
@@ -2356,6 +2357,17 @@ function mergeCustomFields<T extends { name: string }>(
                 };
             }
         }
+
+        // 注册商品类型 customFields（实体/虚拟/服务；按 name 去重，dev-config 已定义的同名字段以既有为准）
+        config.customFields = {
+            ...config.customFields,
+            Product: [
+                ...(config.customFields?.Product || []),
+                ...(productTypeCustomFields.Product || []).filter(
+                    f => !(config.customFields?.Product || []).some(e => e.name === f.name),
+                ),
+            ],
+        };
 
         // 注册 Order customFields（selectedPickupLocationId、pickupType）
         config.customFields = {
