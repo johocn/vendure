@@ -5,15 +5,27 @@ const ROOT = __dirname;
 const PROD = path.join(ROOT, "vendure-prod");
 const PKGS = path.join(PROD, "packages");
 const DIST = path.join(PROD, "dist");
+// 与 packages/dev-server/dev-config.ts 实际 import/注册的 @vendure/* 包全量对齐（宁多勿漏）
 const PLUGINS = [
-  "core","common","admin-ui-plugin","asset-server-plugin",
-  "email-plugin","cjk-plugin","alipay-plugin","wechatpay-plugin",
-  "oss-plugin","phone-auth-plugin","wechat-auth-plugin",
-  "order-timeout-plugin","invoice-plugin","logistics-plugin",
-  "group-buy-plugin","flash-sale-plugin","distribution-plugin",
-  "redis-stock-plugin","logistics-api-plugin","invoice-pdf-plugin",
-  "recharge-card-plugin","after-sales-plugin","inventory-plugin",
-  "job-queue-plugin","graphiql-plugin","harden-plugin","telemetry-plugin","dashboard",
+  // 基础设施
+  "core","common","admin-ui-plugin","asset-server-plugin","dashboard",
+  "email-plugin","cjk-plugin","graphiql-plugin","harden-plugin","telemetry-plugin",
+  "job-queue-plugin","order-timeout-plugin",
+  // 支付 / 认证 / 存储
+  "alipay-plugin","wechatpay-plugin","oss-plugin",
+  "phone-auth-plugin","wechat-auth-plugin","douyin-auth-plugin",
+  // 业务插件
+  "invoice-plugin","invoice-pdf-plugin","logistics-plugin","logistics-api-plugin",
+  "delivery-plugin","delivery-gateway-plugin","campus-delivery-plugin","pickup-plugin",
+  "group-buy-plugin","flash-sale-plugin","distribution-plugin","eco-plugin",
+  "product-survey-plugin","redis-stock-plugin","recharge-card-plugin","after-sales-plugin",
+  "member-level-plugin","vcash-pos-plugin","vcash-offline-plugin","checkin-plugin",
+  "feedback-plugin","lottery-plugin","shopping-circle-plugin","review-plugin",
+  "favorite-plugin","wechat-subscribe-message-plugin","coupon-plugin",
+  "campus-jianghu-plugin","sales-plugin","marketplace-plugin","customer-service-plugin",
+  "inventory-plugin","message-plugin","notification-plugin","operations-plugin",
+  "pre-sale-plugin","payment-schedule-plugin","installment-plugin","rental-plugin",
+  "live-streaming-plugin","shop-plugin","shop-template-plugin","tcm-clinic-plugin",
 ];
 function copy(src, dst) {
   if (fs.existsSync(src)) fs.cpSync(src, dst, { recursive: true, force: true });

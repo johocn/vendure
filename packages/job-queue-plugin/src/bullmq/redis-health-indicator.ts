@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { HealthCheckError, HealthIndicator, HealthIndicatorResult } from '@nestjs/terminus';
 import { Logger } from '@vendure/core';
 import { RedisConnection } from 'bullmq';
+import { Redis } from 'ioredis';
 
 import { BULLMQ_PLUGIN_OPTIONS, loggerCtx } from './constants';
 import { BullMQPluginOptions } from './types';
@@ -36,7 +37,7 @@ export class RedisHealthIndicator extends HealthIndicator {
                     resolve('timeout');
                     return;
                 }
-                void client.ping((err: any, res: any) => {
+                void (client as unknown as Redis).ping((err: any, res: any) => {
                     if (err) {
                         resolve(err);
                     } else {

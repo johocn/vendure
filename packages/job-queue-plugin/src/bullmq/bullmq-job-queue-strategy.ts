@@ -91,7 +91,7 @@ export class BullMQJobQueueStrategy implements InspectableJobQueueStrategy {
         this.redisConnection =
             this.connectionOptions instanceof EventEmitter
                 ? this.connectionOptions
-                : new Redis(this.connectionOptions);
+                : new Redis(this.connectionOptions as RedisOptions);
 
         this.defineCustomLuaScripts();
 

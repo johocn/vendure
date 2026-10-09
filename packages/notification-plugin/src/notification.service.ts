@@ -257,6 +257,7 @@ export class NotificationService {
         fromState: string | null;
         toState: string;
         customerId: number | null;
+        orderCode?: string | null;
     }): Promise<void> {
         try {
             const customerLink = `/account/after-sales/${e.requestId}`;
@@ -320,7 +321,7 @@ export class NotificationService {
         try {
             const request = await this.connection.rawConnection.getRepository(AfterSalesRequest).findOne({
                 where: { id: requestId as any },
-                relations: { order: true, order: { lines: { productVariant: true } } } as any,
+                relations: { order: { lines: { productVariant: true } } } as any,
             });
             if (!request?.order) return;
             const shopIds = await this.getOrderShopIds(ctx, request.order);

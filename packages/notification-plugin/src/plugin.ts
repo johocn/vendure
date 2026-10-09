@@ -119,6 +119,7 @@ export class NotificationPlugin implements OnApplicationBootstrap {
                 fromState: event.fromState,
                 toState: event.toState,
                 customerId: event.customerId,
+                orderCode: event.orderCode,
             });
         });
 
