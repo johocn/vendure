@@ -85,7 +85,9 @@ function check(name, ok, detail) {
     const gqlErr = auth.body?.errors?.[0]?.message;
     check('已登录应返回 Strapi 文案（mock）', Boolean(c), gqlErr || JSON.stringify(c));
     if (c) {
-        check('文案字段解析正确', c.title === '测试·拾光传信者' && c.active === true,
+        // 默认校验本地 mock 的文案；联调线上时可用 EXPECTED_TITLE 指定后台实际录入的标题
+        const expected = process.env.EXPECTED_TITLE || '测试·拾光传信者';
+        check('文案字段解析正确', c.title === expected && c.active === true,
             `title=${c.title} active=${c.active} banner=${c.bannerImage}`);
     }
 

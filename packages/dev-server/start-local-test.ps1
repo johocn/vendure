@@ -9,7 +9,8 @@ param(
     [switch]$Verify,
     [switch]$Restart,
     [switch]$Stop,
-    [switch]$Status
+    [switch]$Status,
+    [switch]$Live   # 直连线上 h.joho.cn 文案源（不启本地 mock），用于真机联调验收
 )
 
 $ErrorActionPreference = 'Continue'
@@ -100,22 +101,32 @@ if (-not $pg) {
     Write-Host "数据库    : $($pg.Name) 运行中" -ForegroundColor Green
 }
 
-# 2) 文案源 mock（7788）
-if ($Restart) { Stop-LocalService }
-if (Test-Port 7788) {
-    Write-Host '文案源 mock: 已监听 7788（复用）' -ForegroundColor Green
+# 2) 文案源 mock（7788）；-Live 时直连线上，不需要 mock
+if ($Live) {
+    Write-Host '文案源    : 直连线上 h.joho.cn（跳过本地 mock）' -ForegroundColor Cyan
 } else {
-    Start-Process -FilePath 'node' -ArgumentList 'strapi-mock.mjs' -WorkingDirectory $root `
-        -RedirectStandardOutput $mockLog -RedirectStandardError $mockErr -NoNewWindow | Out-Null
-    Write-Host '文案源 mock: 已启动 -> http://127.0.0.1:7788/api/jianghu-event-copies'
+    if ($Restart) { Stop-LocalService }
+    if (Test-Port 7788) {
+        Write-Host '文案源 mock: 已监听 7788（复用）' -ForegroundColor Green
+    } else {
+        Start-Process -FilePath 'node' -ArgumentList 'strapi-mock.mjs' -WorkingDirectory $root `
+            -RedirectStandardOutput $mockLog -RedirectStandardError $mockErr -NoNewWindow | Out-Null
+        Write-Host '文案源 mock: 已启动 -> http://127.0.0.1:7788/api/jianghu-event-copies'
+    }
 }
 
 # 3) Vendure dev-server（3000）
 if (Test-Port 3000) {
     Write-Host 'Vendure API: 已监听 3000（复用）' -ForegroundColor Green
 } else {
-    $env:DB = 'postgres'                               # 覆盖 dev-config 默认的 mysql
-    $env:JIANGHU_STRAPI_URL = 'http://127.0.0.1:7788'  # 指向本地 mock 而非线上 h.joho.cn
+    $env:DB = 'postgres'  # 覆盖 dev-config 默认的 mysql
+    if ($Live) {
+        # 直连线上；若外界已设置 JIANGHU_STRAPI_URL 则沿用（方便切域名）
+        if (-not $env:JIANGHU_STRAPI_URL) { $env:JIANGHU_STRAPI_URL = 'https://h.joho.cn' }
+        Write-Host "Vendure API: 文案源指向 $env:JIANGHU_STRAPI_URL"
+    } else {
+        $env:JIANGHU_STRAPI_URL = 'http://127.0.0.1:7788'  # 本地 mock
+    }
     Start-Process -FilePath 'node' -ArgumentList '-r','ts-node/register','-r','dotenv/config','-r','tsconfig-paths/register','index.ts' `
         -WorkingDirectory $root -RedirectStandardOutput $srvLog -RedirectStandardError $srvErr -NoNewWindow | Out-Null
     Write-Host 'Vendure API: 启动中（首次 ts-node 冷启动约 60s）...'
