@@ -491,8 +491,14 @@ export const devConfig: VendureConfig = {
         DeliveryPlugin.init(),
         // 校园配送（分区/宿舍楼/履约配置 + 骑手入驻/抢单大厅/送达分成），无 init，直接挂类
         CampusDeliveryPlugin,
-        // 校园江湖（声望/段位/密信/情报/事件 + 四态核销 + 幂等声望），无 init，直接挂类
-        CampusJianghuPlugin,
+        // 校园江湖：接 Strapi 文案源（h.joho.cn）。baseUrl/token 走 env，未配置或不可达时优雅回退实体内联文案
+        CampusJianghuPlugin.init({
+            contentApi: {
+                baseUrl: process.env.JIANGHU_STRAPI_URL || 'https://h.joho.cn',
+                token: process.env.JIANGHU_STRAPI_TOKEN,
+                collection: 'jianghu-event-copies',
+            },
+        }),
         SalesPlugin.init(),
         MarketplacePlugin.init({}),
         // LogisticsPlugin 必须在 MarketplacePlugin 之后注册：两者都会设置 stockLocationStrategy，
