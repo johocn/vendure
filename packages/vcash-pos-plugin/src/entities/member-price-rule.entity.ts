@@ -45,7 +45,8 @@ export class MemberPriceRule {
    */
   @Column({ type: 'int', default: 10 }) priority: number = 10;
 
-  @CreateDateColumn({ type: 'timestamp' }) createdAt!: Date;
+  // 省略 type：postgres 默认 timestamp，sqljs/sqlite 默认 datetime（显式 timestamp 会使 sqljs e2e 崩）
+  @CreateDateColumn() createdAt!: Date;
 
-  @UpdateDateColumn({ type: 'timestamp' }) updatedAt!: Date;
+  @UpdateDateColumn() updatedAt!: Date;
 }

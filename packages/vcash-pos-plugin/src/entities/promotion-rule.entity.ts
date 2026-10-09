@@ -46,9 +46,11 @@ export class PromotionRule {
 
   @Column({ type: 'boolean', default: true }) active: boolean = true;
 
-  @Column({ type: 'timestamp', nullable: true }) startTime: Date | null = null;
+  // type: Date（类引用）由 TypeORM 按驱动归一化：postgres→timestamp、sqljs/sqlite→datetime。
+  // 显式字符串 'timestamp' 会使 sqljs e2e 崩；省略 type 时 Date|null 联合类型反射成 Object 同样崩。
+  @Column({ type: Date, nullable: true }) startTime: Date | null = null;
 
-  @Column({ type: 'timestamp', nullable: true }) endTime: Date | null = null;
+  @Column({ type: Date, nullable: true }) endTime: Date | null = null;
 
   /**
    * 按 type 不同（JSON 字符串）：
@@ -66,7 +68,7 @@ export class PromotionRule {
    */
   @Column({ type: 'json', nullable: true }) actions: any | null = null;
 
-  @CreateDateColumn({ type: 'timestamp' }) createdAt!: Date;
+  @CreateDateColumn() createdAt!: Date;
 
-  @UpdateDateColumn({ type: 'timestamp' }) updatedAt!: Date;
+  @UpdateDateColumn() updatedAt!: Date;
 }

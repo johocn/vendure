@@ -17,7 +17,8 @@ import { VcashPosPlugin } from '../src/plugin';
 // 引用 member-level-plugin 编译产物（避免 @vendure/core 双实例加载冲突）
 import { MemberLevelPlugin } from '../../../../vendure/packages/member-level-plugin/lib/index';
 
-registerInitializer('sqljs', new SqljsInitializer('__data__'));
+// 绝对路径：相对 '__data__' 会落在 cwd（包根）而非 e2e/，陈旧库会导致 populateInitialData 被跳过
+registerInitializer('sqljs', new SqljsInitializer(path.join(__dirname, '__data__')));
 
 const posOrderProcess = configureDefaultOrderProcess({
   arrangingPaymentRequiresCustomer: false,
@@ -73,6 +74,14 @@ const ADJUST_GROWTH = gql`
   mutation AdjustGrowth($customerId: ID!, $amount: Int!, $source: String) {
     adjustMemberGrowth(customerId: $customerId, amount: $amount, source: $source) {
       customerId level levelName growthValue points
+    }
+  }
+`;
+
+const SAVE_TIERS = gql`
+  mutation SaveTiers($input: [MemberTierInput!]!) {
+    saveTiers(input: $input) {
+      id tierLevel threshold name
     }
   }
 `;
@@ -165,12 +174,24 @@ describe('会员价引擎', () => {
         paymentMethods: [],
         collections: [],
       },
+      // 原 '../../../server/__tests__/fixtures/products.csv' 为上游仓布局，本 monorepo 用 core 的 fixtures
+      // （spec 依赖 items[0..2] 三个商品，需用 full 版；minimal 只有 1 个商品）
       productsCsvPath: path.join(
         __dirname,
-        '../../../server/__tests__/fixtures/products.csv',
+        '../../core/e2e/fixtures/e2e-products-full.csv',
       ),
     });
     await adminClient.asSuperAdmin();
+
+    // 播种会员档位：addGrowthValue 落库 customFields.memberLevel 按 MemberTier 表解析
+    // （空表回落 1 档）；播种 2 档（阈值 1000）使 growthValue 1500 → memberLevel = 2，
+    // 与下方 LV2 会员价规则匹配
+    await adminClient.query(SAVE_TIERS, {
+      input: [
+        { tierLevel: 1, threshold: 0, name: '普通会员' },
+        { tierLevel: 2, threshold: 1000, name: '银卡会员' },
+      ],
+    });
 
     const productsRes = await adminClient.query(GET_PRODUCTS);
     expect(productsRes.products.items.length).toBeGreaterThan(0);

@@ -56,9 +56,10 @@ export class PosSession {
   @Column({ type: 'varchar', default: 'open' })
   state: PosSessionState = 'open';
 
-  @CreateDateColumn({ type: 'timestamp' }) openedAt!: Date;
+  @CreateDateColumn() openedAt!: Date;
 
-  @Column({ type: 'timestamp', nullable: true })
+  // type: Date（类引用）由 TypeORM 按驱动归一化：postgres→timestamp、sqljs/sqlite→datetime（跨驱动兼容）
+  @Column({ type: Date, nullable: true })
   closedAt: Date | null = null;
 
   @Column({ type: 'json', nullable: true })
@@ -85,5 +86,5 @@ export class PosSession {
   @ManyToOne(() => Customer, { nullable: true })
   customer: Customer | null = null;
 
-  @UpdateDateColumn({ type: 'timestamp' }) updatedAt!: Date;
+  @UpdateDateColumn() updatedAt!: Date;
 }
