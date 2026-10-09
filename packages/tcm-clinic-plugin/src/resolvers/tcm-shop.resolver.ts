@@ -28,7 +28,7 @@ export class TcmShopResolver {
         if (!customer) {
             throw new ForbiddenError();
         }
-        const profile = await this.clinicService.findProfileByCustomerId(ctx, customer.id);
+        const profile = await this.clinicService.findProfileByCustomerId(ctx, Number(customer.id));
         if (!profile) {
             throw new ForbiddenError();
         }
@@ -56,14 +56,14 @@ export class TcmShopResolver {
         const [rows, total] = await this.connection
             .getRepository(ctx, TcmMedicalRecord)
             .findAndCount({
-                where: { patientProfileId: profile.id },
+                where: { patientProfileId: Number(profile.id) },
                 order: { id: 'DESC' },
                 skip,
                 take: take ?? 10,
             });
         return {
             items: rows.map(r => ({
-                id: r.id,
+                id: Number(r.id),
                 version: r.version,
                 createdAt: r.createdAt,
                 diagnosisSummary: this.crypto.decrypt(r.diagnosisEnc).slice(0, 20),
@@ -80,13 +80,13 @@ export class TcmShopResolver {
     ): Promise<(TcmWellnessPlan & { items: TcmPlanItem[] }) | null> {
         const profile = await this.assertOwnProfile(ctx);
         const plan = await this.connection.getRepository(ctx, TcmWellnessPlan).findOne({
-            where: { patientProfileId: profile.id, status: 'ACTIVE' },
+            where: { patientProfileId: Number(profile.id), status: 'ACTIVE' },
             order: { id: 'DESC' },
         });
         if (!plan) {
             return null;
         }
-        const items = await this.wellnessService.itemsOfPlan(ctx, plan.id);
+        const items = await this.wellnessService.itemsOfPlan(ctx, Number(plan.id));
         return { ...plan, items };
     }
 
@@ -96,7 +96,7 @@ export class TcmShopResolver {
     async myFollowUps(@Ctx() ctx: RequestContext): Promise<TcmFollowUpTask[]> {
         const profile = await this.assertOwnProfile(ctx);
         return this.connection.getRepository(ctx, TcmFollowUpTask).find({
-            where: { patientProfileId: profile.id, status: 'PENDING' },
+            where: { patientProfileId: Number(profile.id), status: 'PENDING' },
             order: { dueAt: 'ASC' },
         });
     }

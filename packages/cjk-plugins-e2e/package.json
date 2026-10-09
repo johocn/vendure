@@ -15,6 +15,7 @@
         "@vendure/wechatpay-plugin": "*",
         "@vendure/oss-plugin": "*",
         "@vendure/phone-auth-plugin": "*",
+        "@vendure/tcm-clinic-plugin": "*",
         "@vendure/wechat-auth-plugin": "*",
         "@vendure/order-timeout-plugin": "*",
         "@vendure/invoice-plugin": "*",

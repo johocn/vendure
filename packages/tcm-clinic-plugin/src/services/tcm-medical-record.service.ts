@@ -62,7 +62,7 @@ export class TcmMedicalRecordService {
         const retentionUntil = new Date(Date.now() + this.retentionYears * 365 * 24 * 3600 * 1000);
         const record = await repo.save(
             new TcmMedicalRecord({
-                encounterId: encounter.id,
+                encounterId: Number(encounter.id),
                 patientProfileId: encounter.patientProfileId,
                 clinicId: encounter.clinicId,
                 chiefComplaintEnc: this.crypto.encrypt(input.chiefComplaint),
@@ -73,7 +73,7 @@ export class TcmMedicalRecordService {
             }),
         );
         await this.audit.log(ctx, {
-            entityType: 'TcmMedicalRecord', entityId: record.id, staffId, action: 'CREATE',
+            entityType: 'TcmMedicalRecord', entityId: Number(record.id), staffId, action: 'CREATE',
             diff: { version: 1 },
         });
         return record;
@@ -97,7 +97,7 @@ export class TcmMedicalRecordService {
         const revRepo = this.connection.getRepository(ctx, TcmMedicalRecordRevision);
         await revRepo.save(
             new TcmMedicalRecordRevision({
-                recordId: record.id,
+                recordId: Number(record.id),
                 version: record.version,
                 chiefComplaintEnc: record.chiefComplaintEnc,
                 diagnosisEnc: record.diagnosisEnc,
@@ -153,7 +153,7 @@ export class TcmMedicalRecordService {
             : [];
         const items = await Promise.all(
             records.map(async record => ({
-                id: record.id,
+                id: Number(record.id),
                 encounterId: record.encounterId,
                 clinicId: record.clinicId,
                 version: record.version,

@@ -77,7 +77,7 @@ export class TcmAdminResolver {
         @Args('input') input: { patientProfileId: number; clinicId: number; type?: string },
     ): Promise<TcmEncounter> {
         const staff = await this.staffService.assertStaffOfClinic(ctx, input.clinicId);
-        return this.encounterService.create(ctx, input, staff.id);
+        return this.encounterService.create(ctx, input, Number(staff.id));
     }
 
     @Transaction()
@@ -106,10 +106,10 @@ export class TcmAdminResolver {
             throw new UserInputError(`接诊不存在：${input.encounterId}`);
         }
         const staff = await this.staffService.assertStaffOfClinic(ctx, encounter.clinicId);
-        const record = await this.recordService.create(ctx, staff.id, input);
+        const record = await this.recordService.create(ctx, Number(staff.id), input);
         const view = await this.recordService.decryptView(record);
         return {
-            id: record.id,
+            id: Number(record.id),
             encounterId: record.encounterId,
             clinicId: record.clinicId,
             version: record.version,
@@ -140,10 +140,10 @@ export class TcmAdminResolver {
             throw new UserInputError(`接诊不存在：${record.encounterId}`);
         }
         const staff = await this.staffService.assertStaffOfClinic(ctx, encounter.clinicId);
-        const updated = await this.recordService.update(ctx, staff.id, recordId, input);
+        const updated = await this.recordService.update(ctx, Number(staff.id), recordId, input);
         const view = await this.recordService.decryptView(updated);
         return {
-            id: updated.id,
+            id: Number(updated.id),
             encounterId: updated.encounterId,
             clinicId: updated.clinicId,
             version: updated.version,
@@ -184,7 +184,7 @@ export class TcmAdminResolver {
         },
     ): Promise<TcmWellnessPlan> {
         const staff = await this.staffService.assertStaffOfClinic(ctx, input.clinicId);
-        return this.wellnessService.createPlan(ctx, staff.id, input);
+        return this.wellnessService.createPlan(ctx, Number(staff.id), input);
     }
 
     @Transaction()
@@ -202,7 +202,7 @@ export class TcmAdminResolver {
             throw new UserInputError(`康养规划不存在：${planId}`);
         }
         const staff = await this.staffService.assertStaffOfClinic(ctx, plan.clinicId);
-        return this.wellnessService.transitionPlan(ctx, staff.id, planId, to);
+        return this.wellnessService.transitionPlan(ctx, Number(staff.id), planId, to);
     }
 
     @Transaction()
@@ -232,7 +232,7 @@ export class TcmAdminResolver {
         // 馆归属来自患者档案：先取档案，再守卫，最后落任务
         const profile = await this.findPatientProfile(ctx, input.patientProfileId);
         const staff = await this.staffService.assertStaffOfClinic(ctx, profile.clinicId);
-        return this.wellnessService.createFollowUp(ctx, staff.id, input);
+        return this.wellnessService.createFollowUp(ctx, Number(staff.id), input);
     }
 
     @Transaction()
@@ -252,7 +252,7 @@ export class TcmAdminResolver {
         // 经任务的 patientProfileId → 档案的 clinicId 守卫
         const profile = await this.findPatientProfile(ctx, task.patientProfileId);
         const staff = await this.staffService.assertStaffOfClinic(ctx, profile.clinicId);
-        return this.wellnessService.completeFollowUp(ctx, staff.id, taskId, followUpEncounterId);
+        return this.wellnessService.completeFollowUp(ctx, Number(staff.id), taskId, followUpEncounterId);
     }
 
     @Transaction()
@@ -267,7 +267,7 @@ export class TcmAdminResolver {
         }
         const profile = await this.findPatientProfile(ctx, task.patientProfileId);
         const staff = await this.staffService.assertStaffOfClinic(ctx, profile.clinicId);
-        return this.wellnessService.cancelFollowUp(ctx, staff.id, taskId);
+        return this.wellnessService.cancelFollowUp(ctx, Number(staff.id), taskId);
     }
 
     @Transaction()

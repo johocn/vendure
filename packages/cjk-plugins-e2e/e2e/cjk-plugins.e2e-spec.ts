@@ -11,6 +11,7 @@ import { OrderTimeoutPlugin } from '@vendure/order-timeout-plugin';
 import { GroupBuyPlugin } from '@vendure/group-buy-plugin';
 import { FlashSalePlugin } from '@vendure/flash-sale-plugin';
 import { DistributionPlugin } from '@vendure/distribution-plugin';
+import { TcmClinicPlugin } from '@vendure/tcm-clinic-plugin';
 
 registerInitializer('sqljs', new SqljsInitializer(path.join(__dirname, '__data__')));
 
@@ -37,6 +38,7 @@ describe('CJK Plugins Integration', () => {
                     minWithdrawalAmount: 10000,
                     settlementDays: 7,
                 }),
+                TcmClinicPlugin.init({}),
             ],
         }),
     );
@@ -137,6 +139,19 @@ describe('CJK Plugins Integration', () => {
             }
         `);
         expect(result.myDistributorProfile).toBeNull();
+    });
+
+    it('TcmClinic admin API is accessible', async () => {
+        const result = await adminClient.query(gql`
+            query {
+                clinics(options: {}) {
+                    items { id name }
+                    totalItems
+                }
+            }
+        `);
+        expect(result.clinics).toBeDefined();
+        expect(result.clinics.totalItems).toBe(0);
     });
 
     it('Channel CustomFields are registered', async () => {

@@ -25,7 +25,7 @@ export class TcmWellnessService {
         const plan = await this.connection
             .getRepository(ctx, TcmWellnessPlan)
             .save(new TcmWellnessPlan({ ...input, status: 'DRAFT' }));
-        await this.audit.log(ctx, { entityType: 'TcmWellnessPlan', entityId: plan.id, staffId, action: 'CREATE' });
+        await this.audit.log(ctx, { entityType: 'TcmWellnessPlan', entityId: Number(plan.id), staffId, action: 'CREATE' });
         return plan;
     }
 
@@ -75,7 +75,7 @@ export class TcmWellnessService {
         const task = await this.connection.getRepository(ctx, TcmFollowUpTask).save(
             new TcmFollowUpTask({ ...input, channel: input.channel ?? 'wechat', status: 'PENDING' }),
         );
-        await this.audit.log(ctx, { entityType: 'TcmFollowUpTask', entityId: task.id, staffId, action: 'CREATE' });
+        await this.audit.log(ctx, { entityType: 'TcmFollowUpTask', entityId: Number(task.id), staffId, action: 'CREATE' });
         return task;
     }
 
