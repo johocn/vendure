@@ -36,6 +36,7 @@
         "@vendure/vcash-offline-plugin": "0.0.1",
         "@vendure/checkin-plugin": "0.0.1",
         "@vendure/feedback-plugin": "0.0.1",
+        "@vendure/shopping-circle-plugin": "0.0.1",
         "@vendure/review-plugin": "0.0.1",
         "@vendure/wechat-subscribe-message-plugin": "0.0.1",
         "@vendure/coupon-plugin": "0.0.1",
