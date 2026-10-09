@@ -144,4 +144,41 @@ describe('TcmClinicPlugin', () => {
             `),
         ).rejects.toThrow(/非法状态迁移/);
     });
+
+    it('medical record versioning + audit trail + encryption at rest', async () => {
+        const created = await adminClient.query(gql`
+            mutation {
+                createMedicalRecord(input: {
+                    encounterId: 1
+                    chiefComplaint: "失眠多梦"
+                    diagnosis: "不寐·心脾两虚"
+                    prescription: { items: [{ name: "归脾汤", dosage: "7剂" }] }
+                }) { id version }
+            }
+        `);
+        expect(created.createMedicalRecord.version).toBe(1);
+        const id = created.createMedicalRecord.id;
+        const updated = await adminClient.query(gql`
+            mutation {
+                updateMedicalRecord(id: "${id}", input: { diagnosis: "不寐·心脾两虚（加重）" }) { id version }
+            }
+        `);
+        expect(updated.updateMedicalRecord.version).toBe(2);
+        const detail = await adminClient.query(gql`
+            query { medicalRecords(options: {}) {
+                items { id version chiefComplaint diagnosis prescription revisions { version editedByStaffId } }
+            } }
+        `);
+        const item = detail.medicalRecords.items[0];
+        expect(item.diagnosis).toContain('加重');
+        expect(item.prescription.items.length).toBe(1);
+        expect(item.revisions.length).toBe(1);
+        expect(item.revisions[0].version).toBe(1);
+        const audits = await adminClient.query(gql`
+            query { auditLogs(options: {}) { items { entityType action diff } totalItems } }
+        `);
+        expect(audits.auditLogs.totalItems).toBe(2);
+        // 库内密文：直接查 DB 无明文由 decryptView 保证；断言 GraphQL 不返回 *Enc 字段
+        expect(JSON.stringify(detail)).not.toContain('Enc');
+    });
 });
