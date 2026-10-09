@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { RequestContext, TransactionalConnection } from '@vendure/core';
+import { Customer, CustomerService, RequestContext, TransactionalConnection } from '@vendure/core';
 
 import { TcmClinic } from '../entities/tcm-clinic.entity';
 import { TcmClinicStaff } from '../entities/tcm-clinic-staff.entity';
@@ -13,7 +13,7 @@ export interface CreateClinicInput {
 
 @Injectable()
 export class TcmClinicService {
-    constructor(private connection: TransactionalConnection) {}
+    constructor(private connection: TransactionalConnection, private customerService: CustomerService) {}
 
     async createClinic(ctx: RequestContext, input: CreateClinicInput): Promise<TcmClinic> {
         const repo = this.connection.getRepository(ctx, TcmClinic);
@@ -52,5 +52,16 @@ export class TcmClinicService {
 
     async findPatientProfile(ctx: RequestContext, id: number): Promise<TcmPatientProfile | null> {
         return this.connection.getRepository(ctx, TcmPatientProfile).findOne({ where: { id } });
+    }
+
+    /** 按 User id 找关联客户（Shop API 归属校验第一步） */
+    async findCustomerByUserId(ctx: RequestContext, userId: number): Promise<Customer | null> {
+        const customer = await this.customerService.findOneByUserId(ctx, userId);
+        return customer ?? null;
+    }
+
+    /** 按 Customer id 找患者档案（Shop API 归属校验第二步） */
+    async findProfileByCustomerId(ctx: RequestContext, customerId: number): Promise<TcmPatientProfile | null> {
+        return this.connection.getRepository(ctx, TcmPatientProfile).findOne({ where: { customerId } });
     }
 }

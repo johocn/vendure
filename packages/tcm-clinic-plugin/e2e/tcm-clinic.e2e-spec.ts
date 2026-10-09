@@ -9,7 +9,7 @@ import { TcmClinicPlugin } from '../src/plugin';
 registerInitializer('sqljs', new SqljsInitializer(path.join(__dirname, '__data__')));
 
 describe('TcmClinicPlugin', () => {
-    const { server, adminClient } = createTestEnvironment(
+    const { server, adminClient, shopClient } = createTestEnvironment(
         mergeConfig(testConfig, {
             apiOptions: { port: 3920 },
             plugins: [TcmClinicPlugin.init({})],
@@ -225,5 +225,46 @@ describe('TcmClinicPlugin', () => {
                 mutation { transitionWellnessPlan(id: "${plan.createWellnessPlan.id}", to: ACTIVE) { status } }
             `),
         ).rejects.toThrow(/非法状态迁移/);
+    });
+
+    it('shop API returns only own data with masked summaries', async () => {
+        // 种子客户（customerCount: 1 自动创建，faker seed(1) → hayden.zieme12@hotmail.com，密码 test）
+        await shopClient.asUserWithCredentials('hayden.zieme12@hotmail.com', 'test');
+        const profile = await shopClient.query(gql`
+            query { myPatientProfile { id customerId constitution } }
+        `);
+        expect(profile.myPatientProfile.customerId).toBeDefined(); // 非空即归属本人
+        expect(profile.myPatientProfile.constitution.type).toBe('阳虚质');
+        const records = await shopClient.query(gql`
+            query { myMedicalRecords { items { id version diagnosisSummary createdAt } totalItems } }
+        `);
+        expect(records.myMedicalRecords.totalItems).toBe(1);
+        expect(records.myMedicalRecords.items[0].diagnosisSummary.length).toBeLessThanOrEqual(21);
+        expect(JSON.stringify(records)).not.toContain('Enc');
+        const planView = await shopClient.query(gql`
+            query { myWellnessPlan { id title status items { title frequency productVariantId orderId } } }
+        `);
+        expect(planView.myWellnessPlan.status).toBe('ACTIVE');
+        expect(planView.myWellnessPlan.items.length).toBe(1);
+        // 前序用例已把唯一随访完成（DONE），此处补一条 PENDING 随访供 myFollowUps 断言
+        await adminClient.query(gql`
+            mutation {
+                createFollowUp(input: { patientProfileId: 1, planId: 1, title: "术后 7 天回访", dueAt: "2026-10-15T10:00:00.000Z" }) {
+                    id
+                    status
+                }
+            }
+        `);
+        const followUps = await shopClient.query(gql`
+            query { myFollowUps { id title status dueAt } }
+        `);
+        expect(followUps.myFollowUps.length).toBe(1);
+        // 未登录访问 → 报错（ForbiddenError 固定 i18n 文案）
+        await shopClient.asAnonymousUser();
+        await expect(
+            shopClient.query(gql`
+                query { myPatientProfile { id } }
+            `),
+        ).rejects.toThrow(/not currently authorized/);
     });
 });

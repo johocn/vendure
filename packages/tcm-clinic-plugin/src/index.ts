@@ -16,3 +16,4 @@ export * from './services/tcm-encounter.service';
 export * from './services/tcm-audit.service';
 export * from './services/tcm-medical-record.service';
 export * from './services/tcm-wellness.service';
+export * from './resolvers/tcm-shop.resolver';

@@ -13,6 +13,7 @@ import { TcmPatientProfile } from './entities/tcm-patient-profile.entity';
 import { TcmPlanItem } from './entities/tcm-plan-item.entity';
 import { TcmWellnessPlan } from './entities/tcm-wellness-plan.entity';
 import { TcmAdminResolver } from './resolvers/tcm-admin.resolver';
+import { TcmShopResolver } from './resolvers/tcm-shop.resolver';
 import { TcmAuditService } from './services/tcm-audit.service';
 import { TcmClinicService } from './services/tcm-clinic.service';
 import { TcmCryptoService } from './crypto/tcm-crypto.service';
@@ -23,6 +24,71 @@ import { TcmWellnessService } from './services/tcm-wellness.service';
 import { TcmClinicPluginOptions } from './types';
 
 const { gql } = require('graphql-tag');
+
+/**
+ * Shop API（患者端）：输出类型均不含 *Enc/prescription 等加密字段，
+ * 病志仅暴露脱敏摘要 diagnosisSummary。
+ */
+const shopSchema = () => gql`
+    type TcmPatientProfileView {
+        id: ID!
+        createdAt: DateTime!
+        updatedAt: DateTime!
+        customerId: ID!
+        clinicId: ID!
+        constitution: JSON
+    }
+    type TcmMedicalRecordSummary {
+        id: ID!
+        version: Int!
+        diagnosisSummary: String!
+        createdAt: DateTime!
+    }
+    type TcmMedicalRecordSummaryList {
+        items: [TcmMedicalRecordSummary!]!
+        totalItems: Int!
+    }
+    type TcmPlanItemView {
+        id: ID!
+        title: String!
+        frequency: String
+        productVariantId: ID
+        orderId: ID
+    }
+    type TcmWellnessPlanView {
+        id: ID!
+        createdAt: DateTime!
+        updatedAt: DateTime!
+        title: String!
+        status: WellnessPlanStatus!
+        cycleStart: DateTime
+        cycleEnd: DateTime
+        items: [TcmPlanItemView!]!
+    }
+    type TcmFollowUpView {
+        id: ID!
+        title: String!
+        status: FollowUpStatus!
+        dueAt: DateTime!
+    }
+    enum WellnessPlanStatus {
+        DRAFT
+        ACTIVE
+        PAUSED
+        CLOSED
+    }
+    enum FollowUpStatus {
+        PENDING
+        DONE
+        CANCELED
+    }
+    extend type Query {
+        myPatientProfile: TcmPatientProfileView!
+        myMedicalRecords(skip: Int, take: Int): TcmMedicalRecordSummaryList!
+        myWellnessPlan: TcmWellnessPlanView
+        myFollowUps: [TcmFollowUpView!]!
+    }
+`;
 
 const adminSchema = () => gql`
     type TcmClinic {
@@ -274,6 +340,10 @@ const adminSchema = () => gql`
     adminApiExtensions: {
         schema: adminSchema,
         resolvers: [TcmAdminResolver],
+    },
+    shopApiExtensions: {
+        schema: shopSchema,
+        resolvers: [TcmShopResolver],
     },
     compatibility: '^3.0.0',
 })
