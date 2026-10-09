@@ -57,6 +57,7 @@ import { VcashPosPlugin } from '@vendure/vcash-pos-plugin';
 import { VcashOfflinePlugin } from '@vendure/vcash-offline-plugin';
 import { CheckinPlugin } from '@vendure/checkin-plugin';
 import { FeedbackPlugin } from '@vendure/feedback-plugin';
+import { LotteryPlugin } from '@vendure/lottery-plugin';
 import { ShoppingCirclePlugin } from '@vendure/shopping-circle-plugin';
 import { ReviewPlugin } from '@vendure/review-plugin';
 import { WechatSubscribeMessagePlugin } from '@vendure/wechat-subscribe-message-plugin';
@@ -487,6 +488,7 @@ export const devConfig: VendureConfig = {
         VcashOfflinePlugin,
         CheckinPlugin.init(),
         FeedbackPlugin.init(),
+        LotteryPlugin.init(),
         ShoppingCirclePlugin.init(),
         ReviewPlugin.init(),
         // 商品收藏 / 店铺关注（toggle 语义，依赖 ShopPlugin 的 Shop 实体）
