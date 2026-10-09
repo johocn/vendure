@@ -150,7 +150,6 @@ let LiveRoomService = class LiveRoomService {
         await this.connection.getRepository(ctx, live_room_product_entity_1.LiveRoomProduct).delete(productId).catch(() => undefined);
         return repo.save(current);
     }
-    /** 平台分发整清单回写（传空数组=清空本渠道配置） */
     async setPlatforms(ctx, roomId, inputs) {
         const room = await this.findOne(ctx, roomId);
         if (!room)

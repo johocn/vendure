@@ -49,4 +49,17 @@ export declare class NotificationService {
     private requireCustomer;
     /** 按登录 User 主键反查 Administrator（Administrator.user 关系）。 */
     private administratorForUser;
+    /** 售后状态迁移 → 顾客/商家站内信。任何失败仅告警，绝不阻断主流程。 */
+    onAfterSalesStateTransition(ctx: RequestContext, e: {
+        requestId: number;
+        orderId: number;
+        type: string;
+        fromState: string | null;
+        toState: string;
+        customerId: number | null;
+        orderCode?: string | null;
+    }): Promise<void>;
+    /** 商家（商品归属店铺 administratorId）售后站内信；无店铺归属（自营）则不落。 */
+    notifyAfterSalesMerchant(ctx: RequestContext, requestId: number, title: string, content: string): Promise<void>;
+    private afterSalesRequestRow;
 }

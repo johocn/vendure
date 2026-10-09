@@ -18,6 +18,7 @@ let PosSession = class PosSession {
         this.approver = null;
         // 简化两态：open / closed
         this.state = 'open';
+        // type: Date（类引用）由 TypeORM 按驱动归一化：postgres→timestamp、sqljs/sqlite→datetime（跨驱动兼容）
         this.closedAt = null;
         this.closeSummary = null;
         // 备用金（分）
@@ -65,11 +66,11 @@ __decorate([
     __metadata("design:type", String)
 ], PosSession.prototype, "state", void 0);
 __decorate([
-    (0, typeorm_1.CreateDateColumn)({ type: 'timestamp' }),
+    (0, typeorm_1.CreateDateColumn)(),
     __metadata("design:type", Date)
 ], PosSession.prototype, "openedAt", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
+    (0, typeorm_1.Column)({ type: Date, nullable: true }),
     __metadata("design:type", Object)
 ], PosSession.prototype, "closedAt", void 0);
 __decorate([
@@ -98,7 +99,7 @@ __decorate([
     __metadata("design:type", Object)
 ], PosSession.prototype, "customer", void 0);
 __decorate([
-    (0, typeorm_1.UpdateDateColumn)({ type: 'timestamp' }),
+    (0, typeorm_1.UpdateDateColumn)(),
     __metadata("design:type", Date)
 ], PosSession.prototype, "updatedAt", void 0);
 exports.PosSession = PosSession = __decorate([

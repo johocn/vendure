@@ -17,6 +17,7 @@ exports.NotificationPlugin = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@nestjs/core");
 const core_2 = require("@vendure/core");
+const after_sales_plugin_1 = require("@vendure/after-sales-plugin");
 const constants_1 = require("./constants");
 const inbox_message_entity_1 = require("./inbox-message.entity");
 const notification_admin_resolver_1 = require("./notification-admin.resolver");
@@ -91,6 +92,21 @@ let NotificationPlugin = NotificationPlugin_1 = class NotificationPlugin {
             if (event.toState !== 'Settled')
                 return;
             void this.notificationService.onRefundSettled(event.ctx, event.order.id, event.refund.total);
+        });
+        this.eventBus.ofType(after_sales_plugin_1.AfterSalesStateTransitionEvent).subscribe((event) => {
+            void this.notificationService.onAfterSalesStateTransition(event.ctx, {
+                requestId: event.requestId,
+                orderId: event.orderId,
+                type: event.type,
+                fromState: event.fromState,
+                toState: event.toState,
+                customerId: event.customerId,
+                orderCode: event.orderCode,
+            });
+        });
+        // 售后超时自动化等内部触发的商家提醒（after-sales-plugin 经事件解耦发布）
+        this.eventBus.ofType(after_sales_plugin_1.AfterSalesMerchantNotifyEvent).subscribe((event) => {
+            void this.notificationService.notifyAfterSalesMerchant(event.ctx, event.requestId, event.title, event.content);
         });
     }
 };

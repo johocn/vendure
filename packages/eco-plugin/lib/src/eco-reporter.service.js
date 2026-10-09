@@ -14,8 +14,8 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.EcoReporter = void 0;
 const common_1 = require("@nestjs/common");
-const crypto_1 = require("crypto");
 const core_1 = require("@vendure/core");
+const crypto_1 = require("crypto");
 const constants_1 = require("./constants");
 /**
  * 生态行为上报器（三处复用：purchase / distribute / view_product|view_price 转发端点）。
@@ -60,9 +60,7 @@ let EcoReporter = class EcoReporter {
         const ts = Math.floor(Date.now() / 1000);
         // 固定键序（对象键按插入顺序）序列化；发送原文即签名原文
         const rawBody = JSON.stringify(body);
-        const sign = (0, crypto_1.createHmac)('sha256', this.secret)
-            .update(`${rawBody}|${ts}`)
-            .digest('hex');
+        const sign = (0, crypto_1.createHmac)('sha256', this.secret).update(`${rawBody}|${ts}`).digest('hex');
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), (_a = this.options.timeoutMs) !== null && _a !== void 0 ? _a : 2000);
         try {

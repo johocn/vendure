@@ -16,6 +16,7 @@ exports.NotificationService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const typeorm_1 = require("typeorm");
+const after_sales_plugin_1 = require("@vendure/after-sales-plugin");
 const shop_plugin_1 = require("@vendure/shop-plugin");
 const constants_1 = require("./constants");
 const inbox_message_entity_1 = require("./inbox-message.entity");
@@ -238,6 +239,99 @@ let NotificationService = class NotificationService {
         if (!a)
             throw new core_1.EntityNotFoundError('Administrator', userId);
         return a;
+    }
+    // ---------- 售后状态通知（迭代三期，通知矩阵见三期设计 §一） ----------
+    /** 售后状态迁移 → 顾客/商家站内信。任何失败仅告警，绝不阻断主流程。 */
+    async onAfterSalesStateTransition(ctx, e) {
+        var _a, _b, _c, _d;
+        try {
+            const customerLink = `/account/after-sales/${e.requestId}`;
+            const cTitles = {
+                Approved: '售后审核通过',
+                Received: '商家已收货',
+                Refunded: '退款已到账',
+                RefundFailed: '退款异常',
+            };
+            const cContents = {
+                Approved: '您的售后申请已审核通过，请按寄回地址寄回商品。',
+                Received: '商家已确认收到您的退货，退款将原路退回。',
+                Refunded: '您的退款已原路退回，请留意账户变动。',
+                RefundFailed: '退款处理出现异常，商家正在处理，请耐心等待。',
+            };
+            // ---- 顾客侧 ----
+            if (e.customerId != null) {
+                if (e.toState === 'Rejected') {
+                    const req = await this.afterSalesRequestRow(e.requestId);
+                    const reason = ((_a = req === null || req === void 0 ? void 0 : req.rejectReason) !== null && _a !== void 0 ? _a : '').slice(0, 50);
+                    await this.deliver(ctx, {
+                        scene: 'after_sales', title: '售后被拒绝',
+                        content: `您的售后申请被拒绝${reason ? '：' + reason : '。'}`,
+                        recipientType: 'customer', customerId: e.customerId, link: customerLink,
+                    });
+                }
+                else if (e.toState === 'ExchangeShipped') {
+                    const req = await this.afterSalesRequestRow(e.requestId);
+                    await this.deliver(ctx, {
+                        scene: 'after_sales', title: '换货已发货',
+                        content: `商家已寄出换货新品${(req === null || req === void 0 ? void 0 : req.exchangeTrackingNo) ? `（运单号 ${req.exchangeTrackingNo}）` : ''}，请确认收货。`,
+                        recipientType: 'customer', customerId: e.customerId, link: customerLink,
+                    });
+                }
+                else if (e.toState === 'Closed' && e.fromState === 'ExchangeShipped') {
+                    await this.deliver(ctx, {
+                        scene: 'after_sales', title: '换货完成',
+                        content: '换货已完成，感谢您的耐心等待。',
+                        recipientType: 'customer', customerId: e.customerId, link: customerLink,
+                    });
+                }
+                else if (cTitles[e.toState]) {
+                    await this.deliver(ctx, {
+                        scene: 'after_sales', title: cTitles[e.toState], content: cContents[e.toState],
+                        recipientType: 'customer', customerId: e.customerId, link: customerLink,
+                    });
+                }
+            }
+            // ---- 商家侧（商品归属店铺管理员）----
+            if (e.toState === 'Pending' && e.fromState === null) {
+                await this.notifyAfterSalesMerchant(ctx, e.requestId, '新售后待处理', `您有一笔新的售后申请（订单 ${(_b = e.orderCode) !== null && _b !== void 0 ? _b : e.orderId}），请及时处理。`);
+            }
+            else if (e.toState === 'Returning') {
+                await this.notifyAfterSalesMerchant(ctx, e.requestId, '顾客已寄回', `顾客已填写退货物流（订单 ${(_c = e.orderCode) !== null && _c !== void 0 ? _c : e.orderId}），请尽快确认收货。`);
+            }
+        }
+        catch (err) {
+            core_1.Logger.warn(`onAfterSalesStateTransition failed: ${(_d = err === null || err === void 0 ? void 0 : err.message) !== null && _d !== void 0 ? _d : err}`, constants_1.loggerCtx);
+        }
+    }
+    /** 商家（商品归属店铺 administratorId）售后站内信；无店铺归属（自营）则不落。 */
+    async notifyAfterSalesMerchant(ctx, requestId, title, content) {
+        var _a;
+        try {
+            const request = await this.connection.rawConnection.getRepository(after_sales_plugin_1.AfterSalesRequest).findOne({
+                where: { id: requestId },
+                relations: { order: { lines: { productVariant: true } } },
+            });
+            if (!(request === null || request === void 0 ? void 0 : request.order))
+                return;
+            const shopIds = await this.getOrderShopIds(ctx, request.order);
+            if (shopIds.length === 0)
+                return;
+            const shops = await this.connection.getRepository(ctx, shop_plugin_1.Shop).find({ where: { id: (0, typeorm_1.In)(shopIds) } });
+            for (const shop of shops) {
+                if (shop.administratorId == null)
+                    continue;
+                await this.createInbox(ctx, {
+                    scene: 'after_sales', title, content, recipientType: 'admin',
+                    link: `/after-sale/detail?id=${requestId}`,
+                }, { recipientType: 'admin', administratorId: shop.administratorId });
+            }
+        }
+        catch (err) {
+            core_1.Logger.warn(`notifyAfterSalesMerchant failed: ${(_a = err === null || err === void 0 ? void 0 : err.message) !== null && _a !== void 0 ? _a : err}`, constants_1.loggerCtx);
+        }
+    }
+    async afterSalesRequestRow(id) {
+        return this.connection.rawConnection.getRepository(after_sales_plugin_1.AfterSalesRequest).findOne({ where: { id: id } });
     }
 };
 exports.NotificationService = NotificationService;

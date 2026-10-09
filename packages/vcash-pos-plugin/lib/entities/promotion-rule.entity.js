@@ -20,6 +20,8 @@ let PromotionRule = class PromotionRule {
          */
         this.priority = 10;
         this.active = true;
+        // type: Date（类引用）由 TypeORM 按驱动归一化：postgres→timestamp、sqljs/sqlite→datetime。
+        // 显式字符串 'timestamp' 会使 sqljs e2e 崩；省略 type 时 Date|null 联合类型反射成 Object 同样崩。
         this.startTime = null;
         this.endTime = null;
         /**
@@ -77,11 +79,11 @@ __decorate([
     __metadata("design:type", Boolean)
 ], PromotionRule.prototype, "active", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
+    (0, typeorm_1.Column)({ type: Date, nullable: true }),
     __metadata("design:type", Object)
 ], PromotionRule.prototype, "startTime", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'timestamp', nullable: true }),
+    (0, typeorm_1.Column)({ type: Date, nullable: true }),
     __metadata("design:type", Object)
 ], PromotionRule.prototype, "endTime", void 0);
 __decorate([
@@ -93,11 +95,11 @@ __decorate([
     __metadata("design:type", Object)
 ], PromotionRule.prototype, "actions", void 0);
 __decorate([
-    (0, typeorm_1.CreateDateColumn)({ type: 'timestamp' }),
+    (0, typeorm_1.CreateDateColumn)(),
     __metadata("design:type", Date)
 ], PromotionRule.prototype, "createdAt", void 0);
 __decorate([
-    (0, typeorm_1.UpdateDateColumn)({ type: 'timestamp' }),
+    (0, typeorm_1.UpdateDateColumn)(),
     __metadata("design:type", Date)
 ], PromotionRule.prototype, "updatedAt", void 0);
 exports.PromotionRule = PromotionRule = __decorate([

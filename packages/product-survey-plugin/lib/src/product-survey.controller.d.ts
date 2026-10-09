@@ -25,11 +25,5 @@ export declare class InvalidChannelTokenFilter implements ExceptionFilter {
 export declare class ProductSurveyController {
     private productSurveyService;
     constructor(productSurveyService: ProductSurveyService);
-    getCandidates(
-        vendureToken: string | undefined,
-        productIds?: string,
-        collection?: string,
-        onsale?: string,
-        take?: string,
-    ): Promise<CandidatesResponse>;
+    getCandidates(vendureToken: string | undefined, productIds?: string, collection?: string, onsale?: string, take?: string): Promise<CandidatesResponse>;
 }

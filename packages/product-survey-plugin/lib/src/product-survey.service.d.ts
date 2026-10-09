@@ -1,10 +1,4 @@
-import {
-    ChannelService,
-    CollectionService,
-    ProductService,
-    ProductVariantService,
-    TranslatorService,
-} from '@vendure/core';
+import { ChannelService, CollectionService, ProductService, ProductVariantService, TranslatorService } from '@vendure/core';
 import { CandidatesResponse, ProductSurveyPluginOptions } from './types';
 interface CandidatesParams {
     productIds?: string;
@@ -24,14 +18,7 @@ export declare class ProductSurveyService {
     private productVariantService;
     private translator;
     private options;
-    constructor(
-        channelService: ChannelService,
-        collectionService: CollectionService,
-        productService: ProductService,
-        productVariantService: ProductVariantService,
-        translator: TranslatorService,
-        options: ProductSurveyPluginOptions,
-    );
+    constructor(channelService: ChannelService, collectionService: CollectionService, productService: ProductService, productVariantService: ProductVariantService, translator: TranslatorService, options: ProductSurveyPluginOptions);
     private get defaultTake();
     private get maxTake();
     getCandidates(token: string | undefined, params: CandidatesParams): Promise<CandidatesResponse>;

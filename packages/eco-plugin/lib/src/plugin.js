@@ -17,9 +17,9 @@ exports.EcoPlugin = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const constants_1 = require("./constants");
-const eco_controller_1 = require("./eco.controller");
 const eco_events_listener_1 = require("./eco-events.listener");
 const eco_reporter_service_1 = require("./eco-reporter.service");
+const eco_controller_1 = require("./eco.controller");
 /**
  * 生态行为回调钩子（E5b）：
  * - purchase：监听 OrderPlacedEvent，上报下单用户的 SSO ID（targetId=订单 code）
