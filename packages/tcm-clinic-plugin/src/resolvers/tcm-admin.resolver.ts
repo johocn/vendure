@@ -1,6 +1,6 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { Ctx, RequestContext, Transaction, TransactionalConnection, UserInputError } from '@vendure/core';
-import { In } from 'typeorm';
+import { Ctx, Customer, RequestContext, Transaction, TransactionalConnection, UserInputError } from '@vendure/core';
+import { In, MoreThanOrEqual } from 'typeorm';
 
 import { TcmClinic } from '../entities/tcm-clinic.entity';
 import { TcmClinicStaff } from '../entities/tcm-clinic-staff.entity';
@@ -317,6 +317,122 @@ export class TcmAdminResolver {
                 order: { id: 'ASC' },
             });
         return { items, totalItems };
+    }
+
+    @Transaction()
+    @Query()
+    async myStaff(@Ctx() ctx: RequestContext): Promise<TcmClinicStaff[]> {
+        return this.staffService.staffOf(ctx, ctx.activeUserId as number);
+    }
+
+    @Transaction()
+    @Query()
+    async patientProfiles(
+        @Ctx() ctx: RequestContext,
+        @Args('options') options?: { skip?: number; take?: number },
+    ): Promise<{ items: any[]; totalItems: number }> {
+        const clinicIds = await this.currentClinicIds(ctx);
+        if (!clinicIds.length) return { items: [], totalItems: 0 };
+        const [items, totalItems] = await this.connection
+            .getRepository(ctx, TcmPatientProfile)
+            .findAndCount({
+                where: { clinicId: In(clinicIds) },
+                skip: options?.skip,
+                take: options?.take,
+                order: { id: 'ASC' },
+            });
+        return { items: await this.enrichProfiles(ctx, items), totalItems };
+    }
+
+    @Transaction()
+    @Query()
+    async patientProfile(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: string | number,
+    ): Promise<any | null> {
+        const profile = await this.clinicService.findPatientProfile(ctx, Number(String(id).replace('T_', '')));
+        if (!profile) return null;
+        await this.staffService.assertStaffOfClinic(ctx, Number(profile.clinicId));
+        return (await this.enrichProfiles(ctx, [profile]))[0];
+    }
+
+    @Transaction()
+    @Query()
+    async encounters(
+        @Ctx() ctx: RequestContext,
+        @Args('options') options?: { skip?: number; take?: number; since?: Date },
+    ): Promise<{ items: TcmEncounter[]; totalItems: number }> {
+        const clinicIds = await this.currentClinicIds(ctx);
+        if (!clinicIds.length) return { items: [], totalItems: 0 };
+        const [items, totalItems] = await this.connection
+            .getRepository(ctx, TcmEncounter)
+            .findAndCount({
+                where: {
+                    clinicId: In(clinicIds),
+                    ...(options?.since ? { createdAt: MoreThanOrEqual(options.since) } : {}),
+                },
+                skip: options?.skip,
+                take: options?.take,
+                order: { id: 'DESC' },
+            });
+        return { items, totalItems };
+    }
+
+    @Transaction()
+    @Query()
+    async encounter(@Ctx() ctx: RequestContext, @Args('id') id: string | number): Promise<TcmEncounter | null> {
+        const enc = await this.connection
+            .getRepository(ctx, TcmEncounter)
+            .findOne({ where: { id: Number(String(id).replace('T_', '')) } });
+        if (!enc) return null;
+        await this.staffService.assertStaffOfClinic(ctx, Number(enc.clinicId));
+        return enc;
+    }
+
+    @Transaction()
+    @Query()
+    async medicalRecord(@Ctx() ctx: RequestContext, @Args('id') id: string | number): Promise<any | null> {
+        return this.recordService.findOneView(ctx, Number(String(id).replace('T_', '')));
+    }
+
+    @Transaction()
+    @Query()
+    async wellnessPlan(@Ctx() ctx: RequestContext, @Args('id') id: string | number): Promise<any | null> {
+        const plan = await this.connection
+            .getRepository(ctx, TcmWellnessPlan)
+            .findOne({ where: { id: Number(String(id).replace('T_', '')) } });
+        if (!plan) return null;
+        await this.staffService.assertStaffOfClinic(ctx, Number(plan.clinicId));
+        const items = await this.connection.getRepository(ctx, TcmPlanItem).find({ where: { planId: Number(plan.id) }, order: { id: 'ASC' } });
+        const followUps = await this.connection.getRepository(ctx, TcmFollowUpTask).find({ where: { planId: Number(plan.id) }, order: { id: 'ASC' } });
+        return { ...plan, items, followUps };
+    }
+
+    private async currentClinicIds(ctx: RequestContext): Promise<number[]> {
+        const staffList = await this.staffService.staffOf(ctx, ctx.activeUserId as number);
+        return staffList.map(s => Number(s.clinicId));
+    }
+
+    /** 患者档案视图增强：读时联查 Customer 姓名/手机号（无外键，仅 ID 关联） */
+    private async enrichProfiles(ctx: RequestContext, profiles: TcmPatientProfile[]): Promise<any[]> {
+        const customerIds = [...new Set(profiles.map(p => Number(p.customerId)))];
+        const customers = customerIds.length
+            ? await this.connection.getRepository(ctx, Customer).find({ where: { id: In(customerIds) } })
+            : [];
+        const byId = new Map(customers.map(c => [Number(c.id), c]));
+        return profiles.map(p => {
+            const c = byId.get(Number(p.customerId));
+            return {
+                id: p.id,
+                createdAt: p.createdAt,
+                updatedAt: p.updatedAt,
+                customerId: p.customerId,
+                clinicId: p.clinicId,
+                constitution: (p as any).constitution,
+                customerName: c ? [c.firstName, c.lastName].filter(Boolean).join(' ') : `客户 ${p.customerId}`,
+                customerPhone: c?.phoneNumber ?? null,
+            };
+        });
     }
 
     private async findPatientProfile(ctx: RequestContext, id: number): Promise<TcmPatientProfile> {

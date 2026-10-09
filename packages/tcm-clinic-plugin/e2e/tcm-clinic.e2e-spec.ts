@@ -274,6 +274,62 @@ describe('TcmClinicPlugin', () => {
             `),
         ).rejects.toThrow(/not currently authorized/);
     });
+
+    it('workbench queries: myStaff/patientProfiles/encounters/details', async () => {
+        const staffs = await adminClient.query(gql`
+            query { myStaff { id clinicId displayName role } }
+        `);
+        expect(staffs.myStaff.length).toBeGreaterThanOrEqual(1);
+
+        const profiles = await adminClient.query(gql`
+            query { patientProfiles(options: { take: 10 }) { totalItems items { id customerId customerName customerPhone clinicId } } }
+        `);
+        expect(profiles.patientProfiles.totalItems).toBeGreaterThanOrEqual(1);
+        expect(profiles.patientProfiles.items[0].customerName).toBeTruthy();
+
+        // 测试环境 ID 带 T_ 前缀，Int! 输入字段需还原为数字
+        const profileId = Number(String(profiles.patientProfiles.items[0].id).replace('T_', ''));
+        const enc = await adminClient.query(gql`
+            mutation { createEncounter(input: { patientProfileId: ${profileId}, clinicId: 1, type: "FIRST" }) { id status version } }
+        `);
+        expect(enc.createEncounter.status).toBe('PENDING');
+        const encs = await adminClient.query(gql`
+            query { encounters(options: { take: 10 }) { totalItems items { id status type } } }
+        `);
+        expect(encs.encounters.totalItems).toBeGreaterThanOrEqual(1);
+        const single = await adminClient.query(gql`
+            query { encounter(id: "${enc.createEncounter.id}") { id status } }
+        `);
+        expect(single.encounter.status).toBe('PENDING');
+
+        const encounterId = Number(String(enc.createEncounter.id).replace('T_', ''));
+        const rec = await adminClient.query(gql`
+            mutation { createMedicalRecord(input: { encounterId: ${encounterId}, chiefComplaint: "咳嗽三日", diagnosis: "风寒袭肺", prescription: [{ name: "荆防败毒散", dosage: "7剂", frequency: "日一剂" }] }) { id version chiefComplaint } }
+        `);
+        expect(rec.createMedicalRecord.chiefComplaint).toBe('咳嗽三日');
+        const recView = await adminClient.query(gql`
+            query { medicalRecord(id: "${rec.createMedicalRecord.id}") { id version chiefComplaint diagnosis revisions { version } } }
+        `);
+        expect(recView.medicalRecord.version).toBe(1);
+        expect(recView.medicalRecord.revisions.length).toBe(0);
+
+        const plan = await adminClient.query(gql`
+            mutation { createWellnessPlan(input: { patientProfileId: ${profileId}, clinicId: 1, title: "冬季温养方案" }) { id status } }
+        `);
+        const planId = Number(String(plan.createWellnessPlan.id).replace('T_', ''));
+        await adminClient.query(gql`
+            mutation { addPlanItem(input: { planId: ${planId}, title: "艾灸足三里", frequency: "每周2次" }) { id } }
+        `);
+        await adminClient.query(gql`
+            mutation { createFollowUp(input: { patientProfileId: ${profileId}, planId: ${planId}, title: "一周后回访", dueAt: "2026-10-20T10:00:00.000Z", channel: "wechat" }) { id } }
+        `);
+        const planView = await adminClient.query(gql`
+            query { wellnessPlan(id: "${plan.createWellnessPlan.id}") { id title items { title } followUps { title status } } }
+        `);
+        expect(planView.wellnessPlan.items.length).toBe(1);
+        expect(planView.wellnessPlan.followUps.length).toBe(1);
+        expect(planView.wellnessPlan.followUps[0].status).toBe('PENDING');
+    });
 });
 
 describe('TcmClinicPlugin retention (years=0)', () => {

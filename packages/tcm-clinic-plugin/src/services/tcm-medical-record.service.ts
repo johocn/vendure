@@ -165,4 +165,27 @@ export class TcmMedicalRecordService {
         );
         return { items, totalItems };
     }
+
+    /** 单条病志视图（含版本链），供工作台详情页 */
+    async findOneView(ctx: RequestContext, recordId: number): Promise<MedicalRecordView | null> {
+        const record = await this.connection.getRepository(ctx, TcmMedicalRecord).findOne({ where: { id: recordId } });
+        if (!record) return null;
+        const view = await this.decryptView(record);
+        const revisions = await this.connection.getRepository(ctx, TcmMedicalRecordRevision).find({
+            where: { recordId },
+            order: { version: 'ASC' },
+        });
+        return {
+            id: Number(record.id),
+            encounterId: record.encounterId,
+            clinicId: record.clinicId,
+            version: record.version,
+            ...view,
+            revisions: revisions.map(r => ({
+                version: r.version,
+                editedByStaffId: r.editedByStaffId,
+                createdAt: r.createdAt,
+            })),
+        };
+    }
 }

@@ -111,6 +111,13 @@ const adminSchema = () => gql`
         auditLogs(options: AuditLogListOptions): AuditLogList!
         wellnessPlans(options: TcmWellnessPlanListOptions): TcmWellnessPlanList!
         followUpTasks(options: TcmFollowUpTaskListOptions): TcmFollowUpTaskList!
+        myStaff: [TcmClinicStaff!]!
+        patientProfiles(options: TcmPatientProfileListOptions): TcmPatientProfileList!
+        patientProfile(id: ID!): TcmPatientProfileView
+        encounters(options: TcmEncounterListOptions): TcmEncounterList!
+        encounter(id: ID!): TcmEncounter
+        medicalRecord(id: ID!): MedicalRecordView
+        wellnessPlan(id: ID!): TcmWellnessPlanDetailView
     }
     input TcmClinicListOptions {
         skip: Int
@@ -295,6 +302,46 @@ const adminSchema = () => gql`
     type TcmFollowUpTaskList {
         items: [TcmFollowUpTask!]!
         totalItems: Int!
+    }
+    type TcmPatientProfileView {
+        id: ID!
+        createdAt: DateTime!
+        updatedAt: DateTime!
+        customerId: ID!
+        clinicId: ID!
+        customerName: String
+        customerPhone: String
+        constitution: JSON
+    }
+    input TcmPatientProfileListOptions {
+        skip: Int
+        take: Int
+    }
+    type TcmPatientProfileList {
+        items: [TcmPatientProfileView!]!
+        totalItems: Int!
+    }
+    input TcmEncounterListOptions {
+        skip: Int
+        take: Int
+        since: DateTime
+    }
+    type TcmEncounterList {
+        items: [TcmEncounter!]!
+        totalItems: Int!
+    }
+    type TcmWellnessPlanDetailView {
+        id: ID!
+        createdAt: DateTime!
+        updatedAt: DateTime!
+        patientProfileId: ID!
+        clinicId: ID!
+        title: String!
+        status: WellnessPlanStatus!
+        cycleStart: DateTime
+        cycleEnd: DateTime
+        items: [TcmPlanItem!]!
+        followUps: [TcmFollowUpTask!]!
     }
     extend type Mutation {
         createClinic(input: TcmClinicInput!): TcmClinic!

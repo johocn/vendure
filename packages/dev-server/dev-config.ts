@@ -79,6 +79,7 @@ import { ShopPlugin } from '@vendure/shop-plugin';
 import { PickupPlugin } from '@vendure/pickup-plugin';
 import { ShopTemplatePlugin } from '@vendure/shop-template-plugin';
 import { FavoritePlugin } from '@vendure/favorite-plugin';
+import { TcmClinicPlugin } from '@vendure/tcm-clinic-plugin';
 
 // 本地联调默认注入 REDEMPTION_KEY（AES-GCM/HMAC 密钥，64 hex chars）
 if (!process.env.REDEMPTION_KEY) {
@@ -453,6 +454,7 @@ export const devConfig: VendureConfig = {
             minWithdrawalAmount: 10000,
             settlementDays: 7,
         }),
+        TcmClinicPlugin.init({}),
         EcoPlugin.init(),
         ProductSurveyPlugin.init(),
         ...(process.env.REDIS_URL ? [RedisStockPlugin.init({
