@@ -13,7 +13,7 @@
     "@vendure/core": "^3.6.0"
   },
   "peerDependencies": {
-    "@vendure/shop-plugin": "^1.0.0"
+    "@vendure/shop-plugin": "^0.0.1"
   },
   "devDependencies": {
     "typescript": "^5.0.0"
