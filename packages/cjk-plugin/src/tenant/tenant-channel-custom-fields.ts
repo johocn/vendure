@@ -333,5 +333,28 @@ export const tenantChannelCustomFields: CustomFields = {
                 { name: 'operationalCopyJson', type: 'text' },
             ],
         },
+        {
+            name: 'industryType',
+            type: 'string',
+            nullable: true,
+            public: true,
+            label: [
+                { languageCode: LanguageCode.zh_Hans, value: '行业类型' },
+                { languageCode: LanguageCode.en, value: 'Industry Type' },
+            ],
+            description: [
+                { languageCode: LanguageCode.zh_Hans, value: '预制行业清单；catering=餐饮，为外卖频道准入条件。仅平台管理员可改。' },
+            ],
+            options: [
+                { value: 'catering', label: [{ languageCode: LanguageCode.zh_Hans, value: '餐饮' }, { languageCode: LanguageCode.en, value: 'Catering' }] },
+                { value: 'retail', label: [{ languageCode: LanguageCode.zh_Hans, value: '零售商超' }, { languageCode: LanguageCode.en, value: 'Retail' }] },
+                { value: 'fresh', label: [{ languageCode: LanguageCode.zh_Hans, value: '生鲜果蔬' }, { languageCode: LanguageCode.en, value: 'Fresh' }] },
+                { value: 'service', label: [{ languageCode: LanguageCode.zh_Hans, value: '生活服务' }, { languageCode: LanguageCode.en, value: 'Services' }] },
+                { value: 'hotel', label: [{ languageCode: LanguageCode.zh_Hans, value: '酒店民宿' }, { languageCode: LanguageCode.en, value: 'Hotel' }] },
+                { value: 'beauty', label: [{ languageCode: LanguageCode.zh_Hans, value: '美容美发' }, { languageCode: LanguageCode.en, value: 'Beauty' }] },
+                { value: 'education', label: [{ languageCode: LanguageCode.zh_Hans, value: '教培' }, { languageCode: LanguageCode.en, value: 'Education' }] },
+                { value: 'other', label: [{ languageCode: LanguageCode.zh_Hans, value: '其他' }, { languageCode: LanguageCode.en, value: 'Other' }] },
+            ],
+        },
     ],
 };
