@@ -108,4 +108,40 @@ describe('TcmClinicPlugin', () => {
         expect(Number(String(okRes.createPatientProfile.customerId).replace('T_', ''))).toBe(1);
         expect(okRes.createPatientProfile.constitution.type).toBe('阳虚质');
     });
+
+    it('encounter state machine with optimistic lock', async () => {
+        const created = await adminClient.query(gql`
+            mutation {
+                createEncounter(input: { patientProfileId: 1, clinicId: 1, type: "initial" }) {
+                    id
+                    status
+                    version
+                }
+            }
+        `);
+        expect(created.createEncounter.status).toBe('PENDING');
+        const id = created.createEncounter.id;
+        // 已有未完成接诊（PENDING）时重复创建 → 拒绝（UserInputError，message 可透传）
+        await expect(
+            adminClient.query(gql`
+                mutation {
+                    createEncounter(input: { patientProfileId: 1, clinicId: 1, type: "revisit" }) { id }
+                }
+            `),
+        ).rejects.toThrow(/已有未完成接诊/);
+        const started = await adminClient.query(gql`
+            mutation { startEncounter(id: "${id}") { id status } }
+        `);
+        expect(started.startEncounter.status).toBe('ACTIVE');
+        const completed = await adminClient.query(gql`
+            mutation { completeEncounter(id: "${id}") { id status } }
+        `);
+        expect(completed.completeEncounter.status).toBe('COMPLETED');
+        // 已完成再 start → 报错（IllegalOperationError）
+        await expect(
+            adminClient.query(gql`
+                mutation { startEncounter(id: "${id}") { id } }
+            `),
+        ).rejects.toThrow(/非法状态迁移/);
+    });
 });

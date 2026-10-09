@@ -4,9 +4,11 @@ import { PluginCommonModule, VendurePlugin } from '@vendure/core';
 import { TCM_PLUGIN_OPTIONS } from './constants';
 import { TcmClinic } from './entities/tcm-clinic.entity';
 import { TcmClinicStaff } from './entities/tcm-clinic-staff.entity';
+import { TcmEncounter } from './entities/tcm-encounter.entity';
 import { TcmPatientProfile } from './entities/tcm-patient-profile.entity';
 import { TcmAdminResolver } from './resolvers/tcm-admin.resolver';
 import { TcmClinicService } from './services/tcm-clinic.service';
+import { TcmEncounterService } from './services/tcm-encounter.service';
 import { TcmStaffService } from './services/tcm-staff.service';
 import { TcmClinicPluginOptions } from './types';
 
@@ -66,20 +68,40 @@ const adminSchema = () => gql`
         customerId: Int!
         constitution: JSON
     }
+    type TcmEncounter {
+        id: ID!
+        createdAt: DateTime!
+        updatedAt: DateTime!
+        patientProfileId: ID!
+        clinicId: ID!
+        staffId: ID!
+        type: String!
+        status: String!
+        version: Int!
+    }
+    input TcmEncounterInput {
+        patientProfileId: Int!
+        clinicId: Int!
+        type: String
+    }
     extend type Mutation {
         createClinic(input: TcmClinicInput!): TcmClinic!
         createClinicStaff(input: TcmClinicStaffInput!): TcmClinicStaff!
         createPatientProfile(input: TcmPatientProfileInput!): TcmPatientProfile!
+        createEncounter(input: TcmEncounterInput!): TcmEncounter!
+        startEncounter(id: ID!): TcmEncounter!
+        completeEncounter(id: ID!): TcmEncounter!
     }
 `;
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [TcmClinic, TcmClinicStaff, TcmPatientProfile],
+    entities: [TcmClinic, TcmClinicStaff, TcmPatientProfile, TcmEncounter],
     providers: [
         { provide: TCM_PLUGIN_OPTIONS, useFactory: () => TcmClinicPlugin.options },
         TcmClinicService,
         TcmStaffService,
+        TcmEncounterService,
     ],
     adminApiExtensions: {
         schema: adminSchema,
