@@ -181,4 +181,49 @@ describe('TcmClinicPlugin', () => {
         // 库内密文：直接查 DB 无明文由 decryptView 保证；断言 GraphQL 不返回 *Enc 字段
         expect(JSON.stringify(detail)).not.toContain('Enc');
     });
+
+    it('wellness plan lifecycle with plan items and follow-ups', async () => {
+        const plan = await adminClient.query(gql`
+            mutation {
+                createWellnessPlan(input: { patientProfileId: 1, clinicId: 1, title: "温阳调理 8 周方案" }) {
+                    id
+                    status
+                }
+            }
+        `);
+        expect(plan.createWellnessPlan.status).toBe('DRAFT');
+        const planId = Number(String(plan.createWellnessPlan.id).replace('T_', ''));
+        const item = await adminClient.query(gql`
+            mutation {
+                addPlanItem(input: { planId: ${planId}, title: "艾灸关元穴", frequency: "每周二/四", productVariantId: 1 }) {
+                    id
+                    title
+                }
+            }
+        `);
+        expect(item.addPlanItem.title).toBe('艾灸关元穴');
+        const activated = await adminClient.query(gql`
+            mutation { transitionWellnessPlan(id: "${plan.createWellnessPlan.id}", to: ACTIVE) { status } }
+        `);
+        expect(activated.transitionWellnessPlan.status).toBe('ACTIVE');
+        const fu = await adminClient.query(gql`
+            mutation {
+                createFollowUp(input: { patientProfileId: 1, planId: ${planId}, title: "3天后复诊随访", dueAt: "2026-10-12T10:00:00.000Z" }) {
+                    id
+                    status
+                }
+            }
+        `);
+        expect(fu.createFollowUp.status).toBe('PENDING');
+        const done = await adminClient.query(gql`
+            mutation { completeFollowUp(id: "${fu.createFollowUp.id}") { status } }
+        `);
+        expect(done.completeFollowUp.status).toBe('DONE');
+        // ACTIVE → ACTIVE 非法迁移（IllegalOperationError，message 可透传）
+        await expect(
+            adminClient.query(gql`
+                mutation { transitionWellnessPlan(id: "${plan.createWellnessPlan.id}", to: ACTIVE) { status } }
+            `),
+        ).rejects.toThrow(/非法状态迁移/);
+    });
 });
