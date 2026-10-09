@@ -895,6 +895,7 @@ function mergeCustomFields<T extends { name: string }>(
                     tenantNo: Int
                     isOfficial: Boolean
                     domain: String
+                    industryType: String
                 }
 
                 input TenantListOptions {

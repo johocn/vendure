@@ -364,7 +364,7 @@ export class TenantMemberService {
     async updateChannel(
         ctx: RequestContext,
         channelId: ID,
-        input: { name?: string; tenantNo?: number; isOfficial?: boolean; domain?: string },
+        input: { name?: string; tenantNo?: number; isOfficial?: boolean; domain?: string; industryType?: string },
     ): Promise<void> {
         const repo = this.connection.getRepository(ctx, Channel);
         const existing = await repo.findOne({ where: { id: String(channelId) } } as any);
@@ -373,6 +373,7 @@ export class TenantMemberService {
         if (input.isOfficial !== undefined) cf.set('isOfficial', input.isOfficial);
         if (input.name !== undefined && input.name !== null) cf.set('shopName', input.name);
         if (input.domain !== undefined && input.domain !== null) cf.set('domain', input.domain);
+        if (input.industryType !== undefined && input.industryType !== null) cf.set('industryType', input.industryType);
         await this.channelService.update(ctx, {
             id: channelId,
             customFields: Object.fromEntries(cf),
@@ -1048,7 +1049,7 @@ export class TenantMemberService {
         const channel = await channelRepo.findOne({ where: { id: channelId } as any });
         if (!channel) throw new Error('CHANNEL_NOT_FOUND');
         // 安全字段禁止租户端越权修改（启停/租户号/官营标记仅超管可改）
-        const protectedKeys = ['enabled', 'tenantNo', 'isOfficial'];
+        const protectedKeys = ['enabled', 'tenantNo', 'isOfficial', 'industryType'];
         const merged = {
             ...((channel as any).customFields || {}),
             ...Object.fromEntries(Object.entries(input).filter(([k]) => !protectedKeys.includes(k))),

@@ -96,7 +96,7 @@ export class TenantAdminResolver {
     @Allow(Permission.SuperAdmin)
     async updateTenant(
         @Ctx() ctx: RequestContext,
-        @Args() args: { id: string; input: { name?: string; tenantNo?: number; isOfficial?: boolean; domain?: string } },
+        @Args() args: { id: string; input: { name?: string; tenantNo?: number; isOfficial?: boolean; domain?: string; industryType?: string } },
     ): Promise<any> {
         await this.tenantMemberService.updateChannel(ctx, args.id, args.input);
         return this.channelService.findOne(ctx, args.id as any);
