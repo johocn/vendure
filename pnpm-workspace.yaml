@@ -1,6 +1,10 @@
 packages:
   - packages/*
 
+# pnpm 10+ 将该设置从 .npmrc 迁移至此：允许依赖声明用精确版本时自动链接 workspace 包
+# （@vendure/* 插件均为私有包，registry 上不存在，必须走 workspace 链接）
+linkWorkspacePackages: true
+
 allowBuilds:
   '@swc/core': true
   esbuild: true
