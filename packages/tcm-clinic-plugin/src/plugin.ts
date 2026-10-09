@@ -1,6 +1,7 @@
 import { Inject, Type } from '@nestjs/common';
 import { PluginCommonModule, VendurePlugin } from '@vendure/core';
 
+import { tcmSsoAuthenticationStrategy } from './auth/tcm-sso.strategy';
 import { TCM_PLUGIN_OPTIONS } from './constants';
 import { TcmClinic } from './entities/tcm-clinic.entity';
 import { TcmClinicStaff } from './entities/tcm-clinic-staff.entity';
@@ -392,6 +393,15 @@ const adminSchema = () => gql`
     shopApiExtensions: {
         schema: shopSchema,
         resolvers: [TcmShopResolver],
+    },
+    configuration: config => {
+        // 医生工作台：Admin API zhao-sso 桥接策略（authenticate(input: { tcmSso: ... })）
+        config.authOptions = config.authOptions || {};
+        config.authOptions.adminAuthenticationStrategy = [
+            ...(config.authOptions.adminAuthenticationStrategy || []),
+            tcmSsoAuthenticationStrategy,
+        ];
+        return config;
     },
     compatibility: '^3.0.0',
 })
