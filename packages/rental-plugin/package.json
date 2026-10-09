@@ -1,31 +1,29 @@
 {
-  "name": "@vendure/rental-plugin",
-  "version": "0.0.1",
-  "license": "GPL-3.0-or-later",
-  "main": "lib/index.js",
-  "types": "lib/index.d.ts",
-  "files": [
-    "lib/**/*"
-  ],
-  "scripts": {
-    "watch": "tsc -p ./tsconfig.build.json --watch",
-    "build": "rimraf lib && tsc -p ./tsconfig.build.json",
-    "lint": "eslint --fix .",
-    "test": "vitest --config vitest.config.mts --run src",
-    "e2e": "cross-env PACKAGE=rental-plugin vitest --config vitest.config.mts --run"
-  },
-  "dependencies": {},
-  "peerDependencies": {
-    "@vendure/common": "^3.6.0",
-    "@vendure/core": "^3.6.0"
-  },
-  "devDependencies": {
-    "@vendure/core": "workspace:*",
-    "@vendure/testing": "workspace:*",
-    "rimraf": "^3.0.2",
-    "typescript": "5.8.2",
-    "vitest": "^3.2.4",
-    "cross-env": "^7.0.3",
-    "graphql-tag": "^2.12.6"
-  }
+    "name": "@vendure/rental-plugin",
+    "version": "0.0.1",
+    "license": "GPL-3.0-or-later",
+    "main": "lib/index.js",
+    "types": "lib/index.d.ts",
+    "files": ["lib/**/*"],
+    "scripts": {
+        "watch": "tsc -p ./tsconfig.build.json --watch",
+        "build": "rimraf lib && tsc -p ./tsconfig.build.json",
+        "lint": "eslint --fix .",
+        "test": "vitest --config vitest.config.mts --run src",
+        "e2e": "cross-env PACKAGE=rental-plugin vitest --config vitest.config.mts --run"
+    },
+    "dependencies": {},
+    "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0"
+    },
+    "devDependencies": {
+        "@vendure/core": "^3.6.0",
+        "@vendure/testing": "^3.6.0",
+        "rimraf": "^3.0.2",
+        "typescript": "5.8.2",
+        "vitest": "^3.2.4",
+        "cross-env": "^7.0.3",
+        "graphql-tag": "^2.12.6"
+    }
 }

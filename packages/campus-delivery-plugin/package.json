@@ -9,6 +9,6 @@
     "test": "vitest --config vitest.config.mts --run"
   },
   "dependencies": { "graphql-tag": "^2.12.6" },
-  "peerDependencies": { "@vendure/core": "3.6.4" },
+  "peerDependencies": { "@vendure/core": "workspace:*" },
   "devDependencies": { "typescript": "^5", "vitest": "^2", "rimraf": "^5" }
 }

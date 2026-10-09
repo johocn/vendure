@@ -12,7 +12,7 @@
     "graphql-tag": "^2.12.6"
   },
   "peerDependencies": {
-    "@vendure/core": "3.6.4"
+    "@vendure/core": "workspace:*"
   },
   "devDependencies": {
     "@vendure/common": "workspace:*",

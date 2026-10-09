@@ -35,3 +35,4 @@ allowBuilds:
   esbuild: true
   husky: true
   nx: true
+  better-sqlite3: true
