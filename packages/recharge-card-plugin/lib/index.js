@@ -21,6 +21,8 @@ __exportStar(require("./src/recharge-card.entity"), exports);
 __exportStar(require("./src/recharge-card-batch.entity"), exports);
 __exportStar(require("./src/customer-balance.entity"), exports);
 __exportStar(require("./src/balance-transaction.entity"), exports);
+__exportStar(require("./src/balance-withdrawal-request.entity"), exports);
 __exportStar(require("./src/recharge-card.service"), exports);
+__exportStar(require("./src/balance-withdrawal.service"), exports);
 __exportStar(require("./src/recharge-order.entity"), exports);
 //# sourceMappingURL=index.js.map

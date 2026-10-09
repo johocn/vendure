@@ -8,23 +8,27 @@ import { RechargeCard } from './recharge-card.entity';
 import { RechargeCardBatch } from './recharge-card-batch.entity';
 import { CustomerBalance } from './customer-balance.entity';
 import { BalanceTransaction } from './balance-transaction.entity';
+import { BalanceWithdrawalRequest } from './balance-withdrawal-request.entity';
 import { RechargeOrder } from './recharge-order.entity';
 import { RechargeCardService, setWechatpayGateway } from './recharge-card.service';
+import { BalanceWithdrawalService } from './balance-withdrawal.service';
 import { rechargeChannelCustomFields } from './channel-custom-fields';
 import { RechargeOrderResolver } from './recharge-order.resolver';
 import { balancePaymentHandler, setOrderService, setRechargeService } from './balance-payment-handler';
 import { RechargeCardShopResolver } from './recharge-card-shop.resolver';
 import { RechargeCardAdminResolver } from './recharge-card-admin.resolver';
+import { BalanceWithdrawalShopResolver, BalanceWithdrawalAdminResolver } from './balance-withdrawal.resolvers';
 import { WechatpayService, WechatpaySettlementRegistry } from '@vendure/wechatpay-plugin';
 
 const { gql } = require('graphql-tag');
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [RechargeCard, RechargeCardBatch, CustomerBalance, BalanceTransaction, RechargeOrder],
+    entities: [RechargeCard, RechargeCardBatch, CustomerBalance, BalanceTransaction, RechargeOrder, BalanceWithdrawalRequest],
     providers: [
         { provide: RECHARGE_CARD_PLUGIN_OPTIONS, useFactory: () => RechargeCardPlugin.options },
         RechargeCardService,
+        BalanceWithdrawalService,
     ],
     shopApiExtensions: {
         schema: () => gql`
@@ -95,11 +99,41 @@ const { gql } = require('graphql-tag');
                 take: Int
             }
 
+            type BalanceWithdrawalRequest implements Node {
+                id: ID!
+                customerId: ID!
+                amount: Int!
+                method: String!
+                accountInfo: String!
+                status: String!
+                remark: String
+                reviewedAt: DateTime
+                paidAt: DateTime
+                createdAt: DateTime!
+            }
+
+            type BalanceWithdrawalList implements PaginatedList {
+                items: [BalanceWithdrawalRequest!]!
+                totalItems: Int!
+            }
+
+            type MyBalanceWithFrozen {
+                balance: Int!
+                frozenBalance: Int!
+            }
+
+            input BalanceWithdrawalListOptions {
+                skip: Int
+                take: Int
+            }
+
             extend type Query {
                 myRechargeBalance: Int!
                 myRechargeHistory: [RechargeCard!]!
                 myRechargeOrders: [RechargeOrderItem!]!
                 myBalanceTransactions(options: RechargeCardListOptions): BalanceTransactionList!
+                myBalanceWithFrozen: MyBalanceWithFrozen!
+                myBalanceWithdrawals(options: BalanceWithdrawalListOptions): BalanceWithdrawalList!
             }
 
             extend type Mutation {
@@ -108,9 +142,10 @@ const { gql } = require('graphql-tag');
                 payRechargeOrder(id: ID!): RechargeOrderItem!
                 cancelRechargeOrder(id: ID!): RechargeOrderItem!
                 createWechatRechargePayment(rechargeOrderId: ID!, tradeType: String, openid: String): WechatRechargePaymentResult!
+                requestBalanceWithdrawal(amount: Int!, method: String!, accountInfo: String!): BalanceWithdrawalRequest!
             }
         `,
-        resolvers: [RechargeCardShopResolver, RechargeOrderResolver],
+        resolvers: [RechargeCardShopResolver, RechargeOrderResolver, BalanceWithdrawalShopResolver],
     },
     adminApiExtensions: {
         schema: () => gql`
@@ -210,11 +245,36 @@ const { gql } = require('graphql-tag');
                 remark: String
             }
 
+            type BalanceWithdrawalRequest implements Node {
+                id: ID!
+                customerId: ID!
+                amount: Int!
+                method: String!
+                accountInfo: String!
+                status: String!
+                remark: String
+                reviewedAt: DateTime
+                paidAt: DateTime
+                createdAt: DateTime!
+            }
+
+            type BalanceWithdrawalList implements PaginatedList {
+                items: [BalanceWithdrawalRequest!]!
+                totalItems: Int!
+            }
+
+            input BalanceWithdrawalListOptions {
+                skip: Int
+                take: Int
+                status: String
+            }
+
             extend type Query {
                 rechargeCards(options: RechargeCardListOptions): RechargeCardAdminList!
                 rechargeCardBatches(options: RechargeCardBatchListOptions): RechargeCardBatchAdminList!
                 customerBalances(options: RechargeCardListOptions): CustomerBalanceList!
                 customerBalanceTransactions(customerId: ID!, options: RechargeCardListOptions): BalanceTransactionListAdmin!
+                balanceWithdrawals(options: BalanceWithdrawalListOptions): BalanceWithdrawalList!
             }
 
             extend type Mutation {
@@ -222,9 +282,12 @@ const { gql } = require('graphql-tag');
                 freezeRechargeCard(id: ID!): RechargeCardAdmin!
                 unfreezeRechargeCard(id: ID!): RechargeCardAdmin!
                 adminAdjustBalance(input: AdminAdjustBalanceInput!): CustomerBalanceItem!
+                approveBalanceWithdrawal(id: ID!, remark: String): BalanceWithdrawalRequest!
+                rejectBalanceWithdrawal(id: ID!, remark: String): BalanceWithdrawalRequest!
+                markBalanceWithdrawalPaid(id: ID!): BalanceWithdrawalRequest!
             }
         `,
-        resolvers: [RechargeCardAdminResolver],
+        resolvers: [RechargeCardAdminResolver, BalanceWithdrawalAdminResolver],
     },
     configuration: (config) => {
         config.paymentOptions.paymentMethodHandlers = [

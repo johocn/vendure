@@ -5,5 +5,7 @@ export * from './src/recharge-card.entity';
 export * from './src/recharge-card-batch.entity';
 export * from './src/customer-balance.entity';
 export * from './src/balance-transaction.entity';
+export * from './src/balance-withdrawal-request.entity';
 export * from './src/recharge-card.service';
+export * from './src/balance-withdrawal.service';
 export * from './src/recharge-order.entity';
