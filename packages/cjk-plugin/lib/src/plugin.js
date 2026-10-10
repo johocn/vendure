@@ -1235,6 +1235,8 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     completedAt: DateTime
                     cancelledAt: DateTime
                     cancelReason: String
+                    "房型名（admin 列表按语言 enrich；非持久化）"
+                    variantName: String
                     createdAt: DateTime!
                     updatedAt: DateTime!
                 }

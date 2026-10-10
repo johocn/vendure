@@ -75,7 +75,31 @@ export class HotelBookingService {
         if (filter.variantId != null) where.productVariantId = Number(filter.variantId);
         if (filter.orderId != null) where.orderId = Number(filter.orderId);
         if (filter.orderCode) where.orderCode = filter.orderCode;
-        return this.repo(ctx).find({ where, order: { id: 'DESC' }, take });
+        // 租户隔离：channelToken 存 booking 时为创建渠道；admin 会话经 vendure-token 绑定渠道后只看本渠道
+        if (ctx.channel?.token) where.channelToken = ctx.channel.token;
+        const rows = await this.repo(ctx).find({ where, order: { id: 'DESC' }, take });
+        await this.enrichVariantNames(ctx, rows);
+        return rows;
+    }
+
+    /** 批量补房型名（非持久化字段，仅 admin 列表展示；按 ctx 语言取 translation） */
+    private async enrichVariantNames(ctx: RequestContext, rows: HotelBooking[]): Promise<void> {
+        const ids = [...new Set(rows.map(r => Number(r.productVariantId)))].filter(n => Number.isFinite(n));
+        if (!ids.length) return;
+        const lang = String(ctx.languageCode ?? '');
+        const variants = await this.conn.getRepository(ctx, ProductVariant).find({
+            where: { id: In(ids) },
+            relations: ['translations'],
+        });
+        const names = new Map<number, string>();
+        for (const v of variants) {
+            const trs = ((v as any).translations ?? []) as any[];
+            const hit = trs.find(t => String(t.languageCode) === lang) ?? trs[0];
+            names.set(Number(v.id), String(hit?.name ?? '').trim());
+        }
+        for (const r of rows) {
+            r.variantName = names.get(Number(r.productVariantId)) || null;
+        }
     }
 
     /** C 端「我的预订」：按顾客名下订单 id 集合过滤（归属隔离在 resolver 层做），可选状态过滤 */

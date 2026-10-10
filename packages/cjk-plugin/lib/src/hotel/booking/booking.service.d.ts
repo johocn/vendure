@@ -20,6 +20,8 @@ export declare class HotelBookingService {
     findByCode(ctx: RequestContext, code: string): Promise<HotelBooking | null>;
     /** 商家端简版列表（Task 13 预订管理页数据源；id DESC 尾页语义，上限 200） */
     listForAdmin(ctx: RequestContext, filter?: HotelBookingAdminFilter, take?: number): Promise<HotelBooking[]>;
+    /** 批量补房型名（非持久化字段，仅 admin 列表展示；按 ctx 语言取 translation） */
+    private enrichVariantNames;
     /** C 端「我的预订」：按顾客名下订单 id 集合过滤（归属隔离在 resolver 层做），可选状态过滤 */
     listForCustomer(ctx: RequestContext, orderIds: number[], status?: string): Promise<HotelBooking[]>;
     /**

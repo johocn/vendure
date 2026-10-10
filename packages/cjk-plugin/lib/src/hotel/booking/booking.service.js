@@ -51,6 +51,7 @@ let HotelBookingService = class HotelBookingService {
     }
     /** 商家端简版列表（Task 13 预订管理页数据源；id DESC 尾页语义，上限 200） */
     async listForAdmin(ctx, filter = {}, take = 200) {
+        var _a;
         const where = {};
         if (filter.status)
             where.status = filter.status;
@@ -60,7 +61,33 @@ let HotelBookingService = class HotelBookingService {
             where.orderId = Number(filter.orderId);
         if (filter.orderCode)
             where.orderCode = filter.orderCode;
-        return this.repo(ctx).find({ where, order: { id: 'DESC' }, take });
+        // 租户隔离：channelToken 存 booking 时为创建渠道；admin 会话经 vendure-token 绑定渠道后只看本渠道
+        if ((_a = ctx.channel) === null || _a === void 0 ? void 0 : _a.token)
+            where.channelToken = ctx.channel.token;
+        const rows = await this.repo(ctx).find({ where, order: { id: 'DESC' }, take });
+        await this.enrichVariantNames(ctx, rows);
+        return rows;
+    }
+    /** 批量补房型名（非持久化字段，仅 admin 列表展示；按 ctx 语言取 translation） */
+    async enrichVariantNames(ctx, rows) {
+        var _a, _b, _c, _d;
+        const ids = [...new Set(rows.map(r => Number(r.productVariantId)))].filter(n => Number.isFinite(n));
+        if (!ids.length)
+            return;
+        const lang = String((_a = ctx.languageCode) !== null && _a !== void 0 ? _a : '');
+        const variants = await this.conn.getRepository(ctx, core_1.ProductVariant).find({
+            where: { id: (0, typeorm_1.In)(ids) },
+            relations: ['translations'],
+        });
+        const names = new Map();
+        for (const v of variants) {
+            const trs = ((_b = v.translations) !== null && _b !== void 0 ? _b : []);
+            const hit = (_c = trs.find(t => String(t.languageCode) === lang)) !== null && _c !== void 0 ? _c : trs[0];
+            names.set(Number(v.id), String((_d = hit === null || hit === void 0 ? void 0 : hit.name) !== null && _d !== void 0 ? _d : '').trim());
+        }
+        for (const r of rows) {
+            r.variantName = names.get(Number(r.productVariantId)) || null;
+        }
     }
     /** C 端「我的预订」：按顾客名下订单 id 集合过滤（归属隔离在 resolver 层做），可选状态过滤 */
     async listForCustomer(ctx, orderIds, status) {

@@ -35,4 +35,6 @@ export declare class HotelBooking extends VendureEntity {
     completedAt?: Date;
     cancelledAt?: Date;
     cancelReason: string | null;
+    /** 房型名（非持久化；仅 admin 列表 listForAdmin 按 ctx 语言 enrich） */
+    variantName?: string | null;
 }

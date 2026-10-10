@@ -90,4 +90,7 @@ export class HotelBooking extends VendureEntity {
 
     @Column({ type: 'varchar', length: 255, nullable: true })
     cancelReason: string | null;
+
+    /** 房型名（非持久化；仅 admin 列表 listForAdmin 按 ctx 语言 enrich） */
+    variantName?: string | null;
 }
