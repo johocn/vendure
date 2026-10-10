@@ -387,9 +387,20 @@ export class PointsMallService {
     // ===== 积分订单 =====
 
     private async loadPointsProductForOrder(ctx: RequestContext, id: number): Promise<PointsProduct> {
-        const pp = await this.connection.getRepository(ctx, PointsProduct).findOne({
-            where: { id, channelId: ctx.channelId, status: 'enabled' } as any,
-        });
+        // pessimistic_write：resolver @Transaction() 内执行，行锁使同商品并发下单串行，
+        // assertBuyable 的 perUserLimit count 与后续扣库存不再有检查-写入窗口
+        let pp: PointsProduct | null;
+        try {
+            pp = await this.connection.getRepository(ctx, PointsProduct).findOne({
+                where: { id, channelId: ctx.channelId, status: 'enabled' } as any,
+                lock: { mode: 'pessimistic_write' },
+            });
+        } catch {
+            // sqljs 等 e2e 驱动不支持 SELECT FOR UPDATE，降级为普通读取
+            pp = await this.connection.getRepository(ctx, PointsProduct).findOne({
+                where: { id, channelId: ctx.channelId, status: 'enabled' } as any,
+            });
+        }
         if (!pp) throw new UserInputError('PointsProduct not found');
         return pp;
     }
