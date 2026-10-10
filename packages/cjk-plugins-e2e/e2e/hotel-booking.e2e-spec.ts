@@ -135,4 +135,55 @@ describe('Hotel P1 防超订（shop 加购链路）', () => {
         const res = (await shopClient.query(ADD_ITEM, { variantId, in: CHECK_IN, out: CHECK_OUT })) as any;
         expect(res.addItemToOrder.id).toBeDefined();
     }, 60000);
+
+    it('⑤ admin 房量管理：批量设置 + 单日关房 → hotelRoomDays 可查', async () => {
+        // 批量建 2026-12-07..09 各 5 间（含尾日），再把 12-08 关房
+        const batch = (await adminClient.query(gql`
+            mutation {
+                batchSetHotelRoomDays(variantId: "${variantId}", from: "2026-12-07", to: "2026-12-09", totalRooms: 5)
+            }
+        `)) as any;
+        expect(batch.batchSetHotelRoomDays).toBe(3);
+        const set = (await adminClient.query(gql`
+            mutation {
+                setHotelRoomDay(variantId: "${variantId}", date: "2026-12-08", closed: true) {
+                    id date totalRooms closed
+                }
+            }
+        `)) as any;
+        expect(set.setHotelRoomDay.closed).toBe(true);
+        expect(set.setHotelRoomDay.totalRooms).toBe(5);
+
+        const days = (await adminClient.query(gql`
+            query { hotelRoomDays(variantId: "${variantId}", month: "2026-12") { date totalRooms closed } }
+        `)) as any;
+        const byDate = new Map(days.hotelRoomDays.map((d: any) => [d.date, d]));
+        expect(byDate.get('2026-12-07')?.totalRooms).toBe(5);
+        expect(byDate.get('2026-12-08')?.closed).toBe(true);
+        // 早前由防超订 upsert 的缺省行也在
+        expect(byDate.get('2026-12-01')?.totalRooms).toBe(1);
+    }, 60000);
+
+    it('⑥ shop hotelAvailability：余量/关房/报价可见，关房晚加购被拦截', async () => {
+        await shopClient.asAnonymousUser();
+        const res = (await shopClient.query(gql`
+            query {
+                hotelAvailability(variantId: "${variantId}", from: "2026-12-07", to: "2026-12-09") {
+                    date priceCent dayType remaining closed
+                }
+            }
+        `)) as any;
+        expect(res.hotelAvailability).toHaveLength(3); // 含两端
+        const byDate = new Map<string, any>(res.hotelAvailability.map((d: any) => [d.date, d]));
+        expect(byDate.get('2026-12-07').remaining).toBe(5);
+        expect(byDate.get('2026-12-07').priceCent).toBe(30000);
+        expect(byDate.get('2026-12-08').closed).toBe(true);
+        expect(byDate.get('2026-12-08').remaining).toBe(0);
+
+        // 关房晚在段内 → 加购拦截
+        const item = (await shopClient.query(ADD_ITEM, { variantId, in: '2026-12-07', out: '2026-12-09' })) as any;
+        expect(item.addItemToOrder.__typename).toBe('OrderInterceptorError');
+        expect(item.addItemToOrder.interceptorError).toContain('HOTEL_SOLD_OUT');
+        expect(item.addItemToOrder.interceptorError).toContain('2026-12-08');
+    }, 60000);
 });

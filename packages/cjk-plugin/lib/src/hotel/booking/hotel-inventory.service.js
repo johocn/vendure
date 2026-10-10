@@ -85,7 +85,7 @@ let HotelInventoryService = class HotelInventoryService {
      * - 落 hold（每间每晚一行，TTL 15min）；不限房晚不落锁
      */
     async holdForOrder(ctx, orderId, variantId, checkIn, checkOut, quantity, options = {}) {
-        var _a, _b;
+        var _a, _b, _c;
         const nights = (0, hotel_inventory_logic_1.enumerateNights)(checkIn, checkOut);
         if (!nights.length || quantity < 1)
             return;
@@ -133,6 +133,11 @@ let HotelInventoryService = class HotelInventoryService {
         }
         const short = (0, hotel_inventory_logic_1.findShortNights)(nights, remainingByDate, quantity);
         if (short.length) {
+            // closed 晚 remaining 也是 0，按 roomDay 行标注 reason（前端区分「关房/满房」文案）
+            for (const s of short) {
+                if ((_c = roomDayByDate.get(s.date)) === null || _c === void 0 ? void 0 : _c.closed)
+                    s.reason = 'closed';
+            }
             throw new hotel_inventory_logic_1.HotelSoldOutError(short, vId);
         }
         // 释放待重置集（幂等），再按最终数量落新 hold
@@ -222,6 +227,68 @@ let HotelInventoryService = class HotelInventoryService {
     /** 行创建后回填 orderLineId（按订单+房型，补齐审计链） */
     async attachOrderLineId(ctx, orderId, variantId, orderLineId) {
         await this.lockRepo(ctx).update({ orderId: Number(orderId), productVariantId: Number(variantId), orderLineId: (0, typeorm_1.IsNull)() }, { orderLineId: Number(orderLineId) });
+    }
+    // ===== Admin 房量管理（房量日历） =====
+    /** 某月已建房量行（month = YYYY-MM） */
+    async listRoomDays(ctx, variantId, month) {
+        if (!/^\d{4}-\d{2}$/.test(month))
+            return [];
+        const [y, m] = month.split('-').map(Number);
+        const first = `${month}-01`;
+        const lastDate = new Date(y, m, 0).getDate(); // 当月天数（m 为 1-based，Date(y, m, 0) 即月末）
+        const last = `${month}-${String(lastDate).padStart(2, '0')}`;
+        return this.roomDayRepo(ctx).find({
+            where: { productVariantId: Number(variantId), date: (0, typeorm_1.Between)(first, last) },
+            order: { date: 'ASC' },
+        });
+    }
+    /** upsert 单日房量（totalRooms/closed 可选，只更新传入字段；无行则建） */
+    async upsertRoomDay(ctx, variantId, date, patch) {
+        var _a, _b, _c;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+            throw new Error(`非法日期: ${date}`);
+        }
+        if (patch.totalRooms != null && (patch.totalRooms < 0 || !Number.isFinite(patch.totalRooms))) {
+            throw new Error(`非法房量: ${patch.totalRooms}`);
+        }
+        const repo = this.roomDayRepo(ctx);
+        let row = await repo.findOne({ where: { productVariantId: Number(variantId), date } });
+        if (!row) {
+            const configTotal = await this.getVariantTotalRooms(ctx, variantId);
+            row = await repo.save(repo.create({
+                productVariantId: Number(variantId),
+                date,
+                totalRooms: (_b = (_a = patch.totalRooms) !== null && _a !== void 0 ? _a : configTotal) !== null && _b !== void 0 ? _b : 0,
+                closed: (_c = patch.closed) !== null && _c !== void 0 ? _c : false,
+            }));
+        }
+        else {
+            if (patch.totalRooms != null)
+                row.totalRooms = Math.round(patch.totalRooms);
+            if (patch.closed != null)
+                row.closed = patch.closed;
+            await repo.save(row);
+        }
+        return row;
+    }
+    /**
+     * 批量 upsert [from, to] 含两端（weekdays 可选 0-6 过滤，0=周日）。
+     * 返回写入行数；任一日期非法即整体失败（调用方事务内）。
+     */
+    async batchUpsertRoomDays(ctx, variantId, from, to, patch) {
+        var _a;
+        const nights = (0, hotel_inventory_logic_1.enumerateNights)(from, (0, hotel_inventory_logic_1.nextDate)(to)); // 含两端窗口
+        if (!nights.length)
+            throw new Error(`非法日期区间: ${from} ~ ${to}`);
+        const weekdays = ((_a = patch.weekdays) === null || _a === void 0 ? void 0 : _a.length) ? new Set(patch.weekdays) : null;
+        let count = 0;
+        for (const date of nights) {
+            if (weekdays && !weekdays.has(new Date(`${date}T00:00:00`).getDay()))
+                continue;
+            await this.upsertRoomDay(ctx, variantId, date, patch);
+            count++;
+        }
+        return count;
     }
 };
 exports.HotelInventoryService = HotelInventoryService;

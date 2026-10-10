@@ -4,7 +4,7 @@
 // - 房量回退：HotelRoomDay 行 ?? hotelRoomConfig.totalRooms ?? 不限房（null）
 import { Injectable } from '@nestjs/common';
 import { ID, Logger, ProductVariant, RequestContext, TransactionalConnection } from '@vendure/core';
-import { In, IsNull, Not } from 'typeorm';
+import { Between, In, IsNull, Not } from 'typeorm';
 import { parseHotelRoomConfig } from '../hotel-nightly-pricing';
 import { HotelRoomDay } from './room-day.entity';
 import { HotelBookingLock, HotelBookingLockStatus } from './booking-lock.entity';
@@ -15,6 +15,7 @@ import {
     countOccupied,
     enumerateNights,
     findShortNights,
+    nextDate,
 } from './hotel-inventory-logic';
 
 const loggerCtx = 'HotelInventoryService';
@@ -149,6 +150,10 @@ export class HotelInventoryService {
         }
         const short = findShortNights(nights, remainingByDate, quantity);
         if (short.length) {
+            // closed 晚 remaining 也是 0，按 roomDay 行标注 reason（前端区分「关房/满房」文案）
+            for (const s of short) {
+                if (roomDayByDate.get(s.date)?.closed) s.reason = 'closed';
+            }
             throw new HotelSoldOutError(short, vId);
         }
 
@@ -256,5 +261,76 @@ export class HotelInventoryService {
             { orderId: Number(orderId), productVariantId: Number(variantId), orderLineId: IsNull() as any },
             { orderLineId: Number(orderLineId) },
         );
+    }
+
+    // ===== Admin 房量管理（房量日历） =====
+
+    /** 某月已建房量行（month = YYYY-MM） */
+    async listRoomDays(ctx: RequestContext, variantId: ID, month: string): Promise<HotelRoomDay[]> {
+        if (!/^\d{4}-\d{2}$/.test(month)) return [];
+        const [y, m] = month.split('-').map(Number);
+        const first = `${month}-01`;
+        const lastDate = new Date(y, m, 0).getDate(); // 当月天数（m 为 1-based，Date(y, m, 0) 即月末）
+        const last = `${month}-${String(lastDate).padStart(2, '0')}`;
+        return this.roomDayRepo(ctx).find({
+            where: { productVariantId: Number(variantId), date: Between(first, last) },
+            order: { date: 'ASC' },
+        });
+    }
+
+    /** upsert 单日房量（totalRooms/closed 可选，只更新传入字段；无行则建） */
+    async upsertRoomDay(
+        ctx: RequestContext,
+        variantId: ID,
+        date: string,
+        patch: { totalRooms?: number | null; closed?: boolean },
+    ): Promise<HotelRoomDay> {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+            throw new Error(`非法日期: ${date}`);
+        }
+        if (patch.totalRooms != null && (patch.totalRooms < 0 || !Number.isFinite(patch.totalRooms))) {
+            throw new Error(`非法房量: ${patch.totalRooms}`);
+        }
+        const repo = this.roomDayRepo(ctx);
+        let row = await repo.findOne({ where: { productVariantId: Number(variantId), date } });
+        if (!row) {
+            const configTotal = await this.getVariantTotalRooms(ctx, variantId);
+            row = await repo.save(
+                repo.create({
+                    productVariantId: Number(variantId),
+                    date,
+                    totalRooms: patch.totalRooms ?? configTotal ?? 0,
+                    closed: patch.closed ?? false,
+                }),
+            );
+        } else {
+            if (patch.totalRooms != null) row.totalRooms = Math.round(patch.totalRooms);
+            if (patch.closed != null) row.closed = patch.closed;
+            await repo.save(row);
+        }
+        return row;
+    }
+
+    /**
+     * 批量 upsert [from, to] 含两端（weekdays 可选 0-6 过滤，0=周日）。
+     * 返回写入行数；任一日期非法即整体失败（调用方事务内）。
+     */
+    async batchUpsertRoomDays(
+        ctx: RequestContext,
+        variantId: ID,
+        from: string,
+        to: string,
+        patch: { totalRooms?: number | null; closed?: boolean; weekdays?: number[] },
+    ): Promise<number> {
+        const nights = enumerateNights(from, nextDate(to)); // 含两端窗口
+        if (!nights.length) throw new Error(`非法日期区间: ${from} ~ ${to}`);
+        const weekdays = patch.weekdays?.length ? new Set(patch.weekdays) : null;
+        let count = 0;
+        for (const date of nights) {
+            if (weekdays && !weekdays.has(new Date(`${date}T00:00:00`).getDay())) continue;
+            await this.upsertRoomDay(ctx, variantId, date, patch);
+            count++;
+        }
+        return count;
     }
 }

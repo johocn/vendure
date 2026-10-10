@@ -40,3 +40,5 @@ export declare function findShortNights(nights: string[], remainingByDate: Map<s
     remaining: number | null;
     reason: 'closed' | 'soldOut';
 }>;
+/** date-only 加一天（YYYY-MM-DD → YYYY-MM-DD），用于「含尾日」窗口枚举 */
+export declare function nextDate(date: string): string;

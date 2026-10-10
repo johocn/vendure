@@ -7,6 +7,7 @@ exports.enumerateNights = enumerateNights;
 exports.computeRemaining = computeRemaining;
 exports.countOccupied = countOccupied;
 exports.findShortNights = findShortNights;
+exports.nextDate = nextDate;
 exports.HOTEL_HOLD_TTL_MINUTES = 15;
 /** 防超订业务错误：调用方（OrderInterceptor）转用户文案，错误码前缀供前端识别 */
 class HotelSoldOutError extends Error {
@@ -68,5 +69,13 @@ function findShortNights(nights, remainingByDate, neededExtra) {
         }
     }
     return bad;
+}
+/** date-only 加一天（YYYY-MM-DD → YYYY-MM-DD），用于「含尾日」窗口枚举 */
+function nextDate(date) {
+    const d = new Date(`${date}T00:00:00`);
+    if (Number.isNaN(d.getTime()))
+        return date;
+    const n = new Date(d.getTime() + 86400000);
+    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
 }
 //# sourceMappingURL=hotel-inventory-logic.js.map

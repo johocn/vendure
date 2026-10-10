@@ -1,4 +1,5 @@
 import { ID, RequestContext, TransactionalConnection } from '@vendure/core';
+import { HotelRoomDay } from './room-day.entity';
 import { HotelSoldOutError } from './hotel-inventory-logic';
 export { HotelSoldOutError };
 export declare class HotelInventoryService {
@@ -45,4 +46,20 @@ export declare class HotelInventoryService {
     expireStaleHolds(ctx: RequestContext, now?: Date): Promise<number>;
     /** 行创建后回填 orderLineId（按订单+房型，补齐审计链） */
     attachOrderLineId(ctx: RequestContext, orderId: ID, variantId: ID, orderLineId: ID): Promise<void>;
+    /** 某月已建房量行（month = YYYY-MM） */
+    listRoomDays(ctx: RequestContext, variantId: ID, month: string): Promise<HotelRoomDay[]>;
+    /** upsert 单日房量（totalRooms/closed 可选，只更新传入字段；无行则建） */
+    upsertRoomDay(ctx: RequestContext, variantId: ID, date: string, patch: {
+        totalRooms?: number | null;
+        closed?: boolean;
+    }): Promise<HotelRoomDay>;
+    /**
+     * 批量 upsert [from, to] 含两端（weekdays 可选 0-6 过滤，0=周日）。
+     * 返回写入行数；任一日期非法即整体失败（调用方事务内）。
+     */
+    batchUpsertRoomDays(ctx: RequestContext, variantId: ID, from: string, to: string, patch: {
+        totalRooms?: number | null;
+        closed?: boolean;
+        weekdays?: number[];
+    }): Promise<number>;
 }

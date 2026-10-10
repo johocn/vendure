@@ -125,6 +125,8 @@ const merchant_settlement_admin_resolver_1 = require("./order/merchant-settlemen
 const redemption_code_service_1 = require("./redemption/redemption-code.service");
 const redemption_resolver_1 = require("./redemption/redemption.resolver");
 const redemption_schema_1 = require("./redemption/redemption.schema");
+const hotel_inventory_shop_resolver_1 = require("./hotel/booking/hotel-inventory-shop.resolver");
+const hotel_inventory_admin_resolver_1 = require("./hotel/booking/hotel-inventory-admin.resolver");
 const box_shipping_line_assignment_strategy_1 = require("./shipping/box-shipping-line-assignment-strategy");
 const channel_tax_line_calculation_strategy_1 = require("./tax/channel-tax-line-calculation-strategy");
 const core_3 = require("@vendure/core");
@@ -1076,6 +1078,28 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     updateRoomTemplate(id: ID!, input: RoomTemplateInput!): RoomTemplate!
                     deleteRoomTemplate(id: ID!): Boolean!
                     applyRoomTemplate(variantId: ID!, templateId: ID!): Boolean!
+                }
+
+                # ===== 酒店房量管理（房量日历） =====
+                type HotelRoomDay {
+                    id: ID!
+                    productVariantId: ID!
+                    "YYYY-MM-DD"
+                    date: String!
+                    totalRooms: Int!
+                    closed: Boolean!
+                }
+
+                extend type Query {
+                    "某月已建房量行（month = YYYY-MM）；未建行回退 hotelRoomConfig.totalRooms，由前端兜底展示"
+                    hotelRoomDays(variantId: ID!, month: String!): [HotelRoomDay!]!
+                }
+
+                extend type Mutation {
+                    "upsert 单日房量；totalRooms/closed 可选只更新传入字段"
+                    setHotelRoomDay(variantId: ID!, date: String!, totalRooms: Int, closed: Boolean): HotelRoomDay!
+                    "批量 upsert [from, to] 含两端；weekdays 0-6 可选过滤（0=周日）；返回写入行数"
+                    batchSetHotelRoomDays(variantId: ID!, from: String!, to: String!, totalRooms: Int, closed: Boolean, weekdays: [Int!]): Int!
                 }
 
                 # ===== 租户 / 角色 / 权限体系 =====
@@ -2099,7 +2123,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                 }
                 `;
             },
-            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, room_template_admin_resolver_1.RoomTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver, tenant_catalog_admin_resolver_1.TenantCatalogAdminResolver, asset_library_admin_resolver_1.AssetLibraryAdminResolver, redemption_resolver_1.RedemptionAdminResolver, merchant_settlement_admin_resolver_1.MerchantSettlementAdminResolver, delivery_admin_resolver_1.DeliveryAdminResolver, inventory_admin_resolver_1.InventoryAdminResolver, reconciliation_admin_resolver_1.ReconciliationAdminResolver, stock_doc_admin_resolver_1.StockDocAdminResolver, stock_reservation_admin_resolver_1.StockReservationAdminResolver, delivery_capability_resolver_1.DeliveryCapabilityResolver, pick_batch_admin_resolver_1.PickBatchAdminResolver, storage_bin_admin_resolver_1.StorageBinAdminResolver, order_address_admin_resolver_1.OrderAddressAdminResolver, stocktake_admin_resolver_1.StocktakeAdminResolver, order_price_admin_resolver_1.OrderPriceAdminResolver],
+            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, room_template_admin_resolver_1.RoomTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver, tenant_catalog_admin_resolver_1.TenantCatalogAdminResolver, asset_library_admin_resolver_1.AssetLibraryAdminResolver, redemption_resolver_1.RedemptionAdminResolver, merchant_settlement_admin_resolver_1.MerchantSettlementAdminResolver, delivery_admin_resolver_1.DeliveryAdminResolver, inventory_admin_resolver_1.InventoryAdminResolver, reconciliation_admin_resolver_1.ReconciliationAdminResolver, stock_doc_admin_resolver_1.StockDocAdminResolver, stock_reservation_admin_resolver_1.StockReservationAdminResolver, delivery_capability_resolver_1.DeliveryCapabilityResolver, pick_batch_admin_resolver_1.PickBatchAdminResolver, storage_bin_admin_resolver_1.StorageBinAdminResolver, order_address_admin_resolver_1.OrderAddressAdminResolver, stocktake_admin_resolver_1.StocktakeAdminResolver, order_price_admin_resolver_1.OrderPriceAdminResolver, hotel_inventory_admin_resolver_1.HotelInventoryAdminResolver],
         },
         shopApiExtensions: {
             schema: () => {
@@ -2439,10 +2463,29 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     cancelMyOrder(orderId: ID!): Order!
                 }
 
+                # ===== 酒店房态查询（C 端日历/DateBar 余量展示） =====
+                type HotelAvailabilityDay {
+                    "YYYY-MM-DD"
+                    date: String!
+                    "当晚单价（分）；不含连住折扣"
+                    priceCent: Int!
+                    "weekday | weekend | holiday | custom"
+                    dayType: String!
+                    "剩余可订间数；null = 不限房"
+                    remaining: Int
+                    "关房（不可订）"
+                    closed: Boolean!
+                }
+
+                extend type Query {
+                    "逐晚房态与报价，[from, to] 含两端"
+                    hotelAvailability(variantId: ID!, from: String!, to: String!): [HotelAvailabilityDay!]!
+                }
+
                 ${redemption_schema_1.redemptionShopSchema}
             `;
             },
-            resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver, shipping_profile_shop_resolver_1.ShippingProfileShopResolver, delivery_capability_resolver_1.DeliveryCapabilityResolver, payment_profile_shop_resolver_1.PaymentProfileShopResolver, order_box_shop_resolver_1.OrderBoxShopResolver, order_split_shop_resolver_1.OrderSplitShopResolver, wallet_shop_resolver_1.WalletShopResolver, redemption_resolver_1.RedemptionShopResolver, inventory_shop_resolver_1.InventoryShopResolver, storage_bin_shop_resolver_1.StorageBinShopResolver, customer_asset_shop_resolver_1.CustomerAssetShopResolver, my_orders_shop_resolver_1.MyOrdersShopResolver],
+            resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver, shipping_profile_shop_resolver_1.ShippingProfileShopResolver, delivery_capability_resolver_1.DeliveryCapabilityResolver, payment_profile_shop_resolver_1.PaymentProfileShopResolver, order_box_shop_resolver_1.OrderBoxShopResolver, order_split_shop_resolver_1.OrderSplitShopResolver, wallet_shop_resolver_1.WalletShopResolver, redemption_resolver_1.RedemptionShopResolver, inventory_shop_resolver_1.InventoryShopResolver, storage_bin_shop_resolver_1.StorageBinShopResolver, customer_asset_shop_resolver_1.CustomerAssetShopResolver, my_orders_shop_resolver_1.MyOrdersShopResolver, hotel_inventory_shop_resolver_1.HotelInventoryShopResolver],
         },
         configuration: config => {
             var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9;

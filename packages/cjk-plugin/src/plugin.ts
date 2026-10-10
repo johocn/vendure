@@ -127,6 +127,8 @@ import { MerchantSettlementAdminResolver } from './order/merchant-settlement-adm
 import { RedemptionCodeService } from './redemption/redemption-code.service';
 import { RedemptionShopResolver, RedemptionAdminResolver } from './redemption/redemption.resolver';
 import { redemptionShopSchema, redemptionAdminSchema } from './redemption/redemption.schema';
+import { HotelInventoryShopResolver } from './hotel/booking/hotel-inventory-shop.resolver';
+import { HotelInventoryAdminResolver } from './hotel/booking/hotel-inventory-admin.resolver';
 import { BoxShippingLineAssignmentStrategy } from './shipping/box-shipping-line-assignment-strategy';
 import { ChannelTaxLineCalculationStrategy } from './tax/channel-tax-line-calculation-strategy';
 import { ChannelEvent, EventBus, OrderEvent, OrderService, TransactionalConnection } from '@vendure/core';
@@ -866,6 +868,28 @@ function mergeCustomFields<T extends { name: string }>(
                     updateRoomTemplate(id: ID!, input: RoomTemplateInput!): RoomTemplate!
                     deleteRoomTemplate(id: ID!): Boolean!
                     applyRoomTemplate(variantId: ID!, templateId: ID!): Boolean!
+                }
+
+                # ===== 酒店房量管理（房量日历） =====
+                type HotelRoomDay {
+                    id: ID!
+                    productVariantId: ID!
+                    "YYYY-MM-DD"
+                    date: String!
+                    totalRooms: Int!
+                    closed: Boolean!
+                }
+
+                extend type Query {
+                    "某月已建房量行（month = YYYY-MM）；未建行回退 hotelRoomConfig.totalRooms，由前端兜底展示"
+                    hotelRoomDays(variantId: ID!, month: String!): [HotelRoomDay!]!
+                }
+
+                extend type Mutation {
+                    "upsert 单日房量；totalRooms/closed 可选只更新传入字段"
+                    setHotelRoomDay(variantId: ID!, date: String!, totalRooms: Int, closed: Boolean): HotelRoomDay!
+                    "批量 upsert [from, to] 含两端；weekdays 0-6 可选过滤（0=周日）；返回写入行数"
+                    batchSetHotelRoomDays(variantId: ID!, from: String!, to: String!, totalRooms: Int, closed: Boolean, weekdays: [Int!]): Int!
                 }
 
                 # ===== 租户 / 角色 / 权限体系 =====
@@ -1889,7 +1913,7 @@ function mergeCustomFields<T extends { name: string }>(
                 }
                 `;
         },
-        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, RoomTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver, MerchantSettlementAdminResolver, DeliveryAdminResolver, InventoryAdminResolver, ReconciliationAdminResolver, StockDocAdminResolver, StockReservationAdminResolver, DeliveryCapabilityResolver, PickBatchAdminResolver, StorageBinAdminResolver, OrderAddressAdminResolver, StocktakeAdminResolver, OrderPriceAdminResolver],
+        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, RoomTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver, MerchantSettlementAdminResolver, DeliveryAdminResolver, InventoryAdminResolver, ReconciliationAdminResolver, StockDocAdminResolver, StockReservationAdminResolver, DeliveryCapabilityResolver, PickBatchAdminResolver, StorageBinAdminResolver, OrderAddressAdminResolver, StocktakeAdminResolver, OrderPriceAdminResolver, HotelInventoryAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {
@@ -2229,10 +2253,29 @@ function mergeCustomFields<T extends { name: string }>(
                     cancelMyOrder(orderId: ID!): Order!
                 }
 
+                # ===== 酒店房态查询（C 端日历/DateBar 余量展示） =====
+                type HotelAvailabilityDay {
+                    "YYYY-MM-DD"
+                    date: String!
+                    "当晚单价（分）；不含连住折扣"
+                    priceCent: Int!
+                    "weekday | weekend | holiday | custom"
+                    dayType: String!
+                    "剩余可订间数；null = 不限房"
+                    remaining: Int
+                    "关房（不可订）"
+                    closed: Boolean!
+                }
+
+                extend type Query {
+                    "逐晚房态与报价，[from, to] 含两端"
+                    hotelAvailability(variantId: ID!, from: String!, to: String!): [HotelAvailabilityDay!]!
+                }
+
                 ${redemptionShopSchema}
             `;
         },
-        resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver, DomainShopResolver, MapShopResolver, ShippingProfileShopResolver, DeliveryCapabilityResolver, PaymentProfileShopResolver, OrderBoxShopResolver, OrderSplitShopResolver, WalletShopResolver, RedemptionShopResolver, InventoryShopResolver, StorageBinShopResolver, CustomerAssetShopResolver, MyOrdersShopResolver],
+        resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver, DomainShopResolver, MapShopResolver, ShippingProfileShopResolver, DeliveryCapabilityResolver, PaymentProfileShopResolver, OrderBoxShopResolver, OrderSplitShopResolver, WalletShopResolver, RedemptionShopResolver, InventoryShopResolver, StorageBinShopResolver, CustomerAssetShopResolver, MyOrdersShopResolver, HotelInventoryShopResolver],
     },
     configuration: config => {
         // 注入 authSecret 到 crypto 模块（configuration 在 bootstrap 早期执行，此时 options 已可用）
