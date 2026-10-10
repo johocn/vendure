@@ -1,0 +1,270 @@
+import { Type } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
+import { Injector, PluginCommonModule, VendurePlugin } from '@vendure/core';
+import { MemberLevelService } from '@vendure/member-level-plugin';
+import { WechatpayService, WechatpaySettlementRegistry } from '@vendure/wechatpay-plugin';
+
+import { PointsMallAdminResolver } from './points-mall-admin.resolver';
+import { PointsMallService } from './points-mall.service';
+import { PointsMallShopResolver } from './points-mall-shop.resolver';
+import { ProductFavorite } from './product-favorite.entity';
+import { PointsOrder } from './points-order.entity';
+import { PointsOrderPayment } from './points-order-payment.entity';
+import { PointsProduct } from './points-product.entity';
+
+const { gql } = require('graphql-tag');
+
+const shopSchema = () => gql`
+    type PointsProduct implements Node {
+        id: ID!
+        productId: ID!
+        variantId: ID!
+        name: String!
+        slug: String!
+        image: String
+        pointsPrice: Int!
+        cashPrice: Int!
+        deliveryType: String!
+        stock: Int!
+        perUserLimit: Int!
+        redeemedCount: Int!
+        validFrom: DateTime
+        validTo: DateTime
+        sortOrder: Int!
+        priceWithTax: Int!
+        inStock: Boolean!
+    }
+    type PointsProductList implements PaginatedList {
+        items: [PointsProduct!]!
+        totalItems: Int!
+    }
+    input PointsProductListOptions {
+        skip: Int
+        take: Int
+    }
+    type FavoriteProductView {
+        productId: ID!
+        name: String!
+        slug: String!
+        image: String
+        priceWithTax: Int!
+        isOnSale: Boolean!
+        pointsPrice: Int
+        favoritedAt: DateTime!
+    }
+    type FavoriteProductList {
+        items: [FavoriteProductView!]!
+        totalItems: Int!
+    }
+    type ToggleFavoriteResult {
+        favorited: Boolean!
+        favoriteCount: Int!
+    }
+    type FavoriteMeta {
+        favoriteCount: Int!
+        myFavorited: Boolean!
+    }
+    type ProductSnapshot {
+        productId: ID
+        variantId: ID
+        name: String
+        image: String
+        spec: String
+    }
+    type AddressSnapshot {
+        name: String
+        phone: String
+        province: String
+        city: String
+        district: String
+        detail: String
+    }
+    type PointsOrder implements Node {
+        id: ID!
+        code: String!
+        customerId: ID!
+        quantity: Int!
+        pointsTotal: Int!
+        cashTotal: Int!
+        deliveryType: String!
+        status: String!
+        productSnapshot: ProductSnapshot
+        addressSnapshot: AddressSnapshot
+        trackingNo: String
+        paidAt: DateTime
+        shippedAt: DateTime
+        completedAt: DateTime
+        createdAt: DateTime!
+    }
+    type PointsOrderList implements PaginatedList {
+        items: [PointsOrder!]!
+        totalItems: Int!
+    }
+    input PointsOrderListOptions {
+        skip: Int
+        take: Int
+        status: String
+    }
+    type PointsPayParams {
+        pointsOrderId: ID!
+        outTradeNo: String!
+        pay: JSON!
+    }
+    input CreatePointsOrderInput {
+        pointsProductId: ID!
+        quantity: Int!
+        addressId: ID
+    }
+    extend type Query {
+        pointsProducts(options: PointsProductListOptions): PointsProductList!
+        pointsProduct(id: ID!): PointsProduct
+        myFavorites(options: PointsProductListOptions): FavoriteProductList!
+        productFavoriteMeta(productId: ID!): FavoriteMeta!
+        myPointsOrders(options: PointsOrderListOptions): PointsOrderList!
+        myPointsOrder(id: ID!): PointsOrder
+    }
+    extend type Mutation {
+        toggleProductFavorite(productId: ID!): ToggleFavoriteResult!
+        createPointsOrderExchange(input: CreatePointsOrderInput!): PointsOrder!
+        createPointsOrderPayment(pointsOrderId: ID!, tradeType: String, openid: String): PointsPayParams!
+        cancelPointsOrder(id: ID!): PointsOrder!
+    }
+`;
+
+const adminSchema = () => gql`
+    type PointsProductAdmin implements Node {
+        id: ID!
+        productId: ID!
+        variantId: ID!
+        pointsPrice: Int!
+        cashPrice: Int!
+        deliveryType: String!
+        stock: Int!
+        perUserLimit: Int!
+        redeemedCount: Int!
+        validFrom: DateTime
+        validTo: DateTime
+        status: String!
+        sortOrder: Int!
+    }
+    type PointsProductAdminList implements PaginatedList {
+        items: [PointsProductAdmin!]!
+        totalItems: Int!
+    }
+    input PointsProductAdminListOptions {
+        skip: Int
+        take: Int
+    }
+    input CreatePointsProductInput {
+        productId: ID!
+        variantId: ID!
+        pointsPrice: Int!
+        cashPrice: Int
+        deliveryType: String!
+        stock: Int!
+        perUserLimit: Int
+        validFrom: DateTime
+        validTo: DateTime
+        status: String
+        sortOrder: Int
+    }
+    input UpdatePointsProductInput {
+        id: ID!
+        pointsPrice: Int
+        cashPrice: Int
+        deliveryType: String
+        stock: Int
+        perUserLimit: Int
+        validFrom: DateTime
+        validTo: DateTime
+        status: String
+        sortOrder: Int
+    }
+    type PointsOrderAdmin implements Node {
+        id: ID!
+        code: String!
+        customerId: ID!
+        quantity: Int!
+        pointsTotal: Int!
+        cashTotal: Int!
+        deliveryType: String!
+        status: String!
+        productSnapshot: JSON
+        addressSnapshot: JSON
+        trackingNo: String
+        paidAt: DateTime
+        shippedAt: DateTime
+        completedAt: DateTime
+        createdAt: DateTime!
+    }
+    type PointsOrderAdminList implements PaginatedList {
+        items: [PointsOrderAdmin!]!
+        totalItems: Int!
+    }
+    input PointsOrderAdminListOptions {
+        skip: Int
+        take: Int
+        status: String
+    }
+    extend type Query {
+        pointsProductsAdmin(options: PointsProductAdminListOptions): PointsProductAdminList!
+        pointsOrdersAdmin(options: PointsOrderAdminListOptions): PointsOrderAdminList!
+    }
+    extend type Mutation {
+        createPointsProduct(input: CreatePointsProductInput!): PointsProductAdmin!
+        updatePointsProduct(input: UpdatePointsProductInput!): PointsProductAdmin!
+        deletePointsProduct(id: ID!): Boolean!
+        markPointsOrderPaid(id: ID!): PointsOrderAdmin!
+        markPointsOrderShipped(id: ID!, trackingNo: String): PointsOrderAdmin!
+        markPointsOrderCompleted(id: ID!): PointsOrderAdmin!
+    }
+`;
+
+@VendurePlugin({
+    imports: [PluginCommonModule],
+    entities: [ProductFavorite, PointsProduct, PointsOrder, PointsOrderPayment],
+    providers: [PointsMallService],
+    shopApiExtensions: {
+        schema: shopSchema,
+        resolvers: [PointsMallShopResolver],
+    },
+    adminApiExtensions: {
+        schema: adminSchema,
+        resolvers: [PointsMallAdminResolver],
+    },
+    compatibility: '^3.0.0',
+})
+export class PointsMallPlugin {
+    constructor(private moduleRef: ModuleRef) {}
+
+    static init(): Type<PointsMallPlugin> {
+        return PointsMallPlugin;
+    }
+
+    async onApplicationBootstrap(): Promise<void> {
+        const injector = new Injector(this.moduleRef);
+        let svc: PointsMallService;
+        try {
+            svc = injector.get(PointsMallService);
+        } catch {
+            return;
+        }
+        try {
+            const memberLevel = injector.get(MemberLevelService);
+            svc.setMemberLevelService(memberLevel);
+        } catch {
+            // 未加载 member-level 插件 → 收藏/商城浏览可用，积分兑换不可用
+        }
+        try {
+            const gateway = injector.get(WechatpayService);
+            svc.setWechatpayGateway(gateway);
+            const registry = injector.get(WechatpaySettlementRegistry);
+            registry.register({
+                prefix: 'PO-',
+                settle: (ctx, outTradeNo) => svc.settlePointsOrderByOutTradeNo(ctx, outTradeNo),
+            });
+        } catch {
+            // 未注册微信网关 → 纯积分模式可用
+        }
+    }
+}

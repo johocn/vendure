@@ -4,3 +4,6 @@ export * from './src/points-product.entity';
 export * from './src/points-order.entity';
 export * from './src/points-order-payment.entity';
 export * from './src/points-mall.service';
+export * from './src/points-mall-shop.resolver';
+export * from './src/points-mall-admin.resolver';
+export * from './src/plugin';
