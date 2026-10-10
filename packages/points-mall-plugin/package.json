@@ -1,0 +1,32 @@
+{
+    "name": "@vendure/points-mall-plugin",
+    "version": "0.0.1",
+    "license": "GPL-3.0-or-later",
+    "main": "lib/index.js",
+    "types": "lib/index.d.ts",
+    "files": ["lib/**/*"],
+    "scripts": {
+        "watch": "tsc -p ./tsconfig.build.json --watch",
+        "build": "rimraf lib && tsc -p ./tsconfig.build.json",
+        "lint": "eslint --fix .",
+        "test": "vitest --config vitest.config.mts --run",
+        "e2e": "cross-env PACKAGE=points-mall-plugin vitest --config vitest.config.mts --run"
+    },
+    "dependencies": {
+        "@vendure/wechatpay-plugin": "workspace:*"
+    },
+    "peerDependencies": {
+        "@vendure/common": "^3.6.0",
+        "@vendure/core": "^3.6.0"
+    },
+    "devDependencies": {
+        "@vendure/common": "workspace:*",
+        "@vendure/core": "workspace:*",
+        "@vendure/member-level-plugin": "workspace:*",
+        "@vendure/testing": "workspace:*",
+        "cross-env": "^7.0.3",
+        "graphql-tag": "^2.12.6",
+        "rimraf": "^5.0.5",
+        "typescript": "5.8.2"
+    }
+}
