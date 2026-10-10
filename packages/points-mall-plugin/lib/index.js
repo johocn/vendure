@@ -20,4 +20,7 @@ __exportStar(require("./src/points-product.entity"), exports);
 __exportStar(require("./src/points-order.entity"), exports);
 __exportStar(require("./src/points-order-payment.entity"), exports);
 __exportStar(require("./src/points-mall.service"), exports);
+__exportStar(require("./src/points-mall-shop.resolver"), exports);
+__exportStar(require("./src/points-mall-admin.resolver"), exports);
+__exportStar(require("./src/plugin"), exports);
 //# sourceMappingURL=index.js.map

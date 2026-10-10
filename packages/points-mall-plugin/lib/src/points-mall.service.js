@@ -20,8 +20,9 @@ const points_order_payment_entity_1 = require("./points-order-payment.entity");
 const points_product_entity_1 = require("./points-product.entity");
 const loggerCtx = 'PointsMallService';
 let PointsMallService = class PointsMallService {
-    constructor(connection) {
+    constructor(connection, productPriceApplicator) {
         this.connection = connection;
+        this.productPriceApplicator = productPriceApplicator;
         this.memberLevel = null;
         this.gateway = null;
     }
@@ -46,8 +47,16 @@ let PointsMallService = class PointsMallService {
         const { ProductVariant } = require('@vendure/core');
         return this.connection.getRepository(ctx, ProductVariant).findOne({
             where: { id: variantId },
-            relations: ['product', 'product.featuredAsset', 'product.translations'],
+            relations: ['product', 'product.featuredAsset', 'product.translations', 'taxCategory'],
         });
+    }
+    /** 运行时填充变体价格（priceWithTax 为 @Calculated getter，需 listPrice/taxRateApplied 就位） */
+    async applyVariantPrices(ctx, variants) {
+        for (const v of variants) {
+            if (v) {
+                await this.productPriceApplicator.applyChannelPriceAndTax(v, ctx);
+            }
+        }
     }
     /** 批量取变体（含 product/featuredAsset/translations），返回 variantId → 变体 Map */
     async getVariantsWithProduct(ctx, variantIds) {
@@ -59,7 +68,7 @@ let PointsMallService = class PointsMallService {
             .getRepository(ctx, ProductVariant)
             .find({
             where: { id: (0, typeorm_1.In)(variantIds) },
-            relations: ['product', 'product.featuredAsset', 'product.translations'],
+            relations: ['product', 'product.featuredAsset', 'product.translations', 'taxCategory'],
         });
         for (const v of variants) {
             map.set(Number(v.id), v);
@@ -132,6 +141,7 @@ let PointsMallService = class PointsMallService {
         }
         const productIds = [...new Set(favorites.map(f => f.productId))];
         const variants = await this.getFirstVariantsByProductIds(ctx, productIds);
+        await this.applyVariantPrices(ctx, [...variants.values()]);
         const pool = await this.activePointsPool(ctx, productIds);
         const items = [];
         for (const fav of favorites) {
@@ -174,7 +184,7 @@ let PointsMallService = class PointsMallService {
             .getRepository(ctx, ProductVariant)
             .find({
             where: { productId: (0, typeorm_1.In)(productIds) },
-            relations: ['product', 'product.featuredAsset', 'product.translations'],
+            relations: ['product', 'product.featuredAsset', 'product.translations', 'taxCategory'],
             order: { id: 'ASC' },
         });
         for (const v of variants) {
@@ -305,6 +315,7 @@ let PointsMallService = class PointsMallService {
             .take((_a = options === null || options === void 0 ? void 0 : options.take) !== null && _a !== void 0 ? _a : 20)
             .getManyAndCount();
         const variants = await this.getVariantsWithProduct(ctx, rows.map(r => r.variantId));
+        await this.applyVariantPrices(ctx, [...variants.values()]);
         return { items: rows.map(r => this.toView(ctx, r, variants.get(r.variantId))), totalItems };
     }
     /** 商城单条（enabled）。 */
@@ -315,6 +326,7 @@ let PointsMallService = class PointsMallService {
         if (!pp)
             return undefined;
         const v = await this.getVariantWithProduct(ctx, pp.variantId);
+        await this.applyVariantPrices(ctx, [v]);
         return this.toView(ctx, pp, v !== null && v !== void 0 ? v : undefined);
     }
     toView(ctx, r, v) {
@@ -559,7 +571,7 @@ let PointsMallService = class PointsMallService {
             if (claim.affected === 0) {
                 throw new core_1.UserInputError('ORDER_NOT_CANCELLABLE');
             }
-            await this.memberLevel.earnPoints(ctx, customer.id, order.pointsTotal, order.id, `Points order ${order.code} cancel refund`);
+            await this.memberLevel.addPoints(ctx, customer.id, order.pointsTotal, order.id, `Points order ${order.code} cancel refund`);
             await this.connection
                 .getRepository(ctx, points_product_entity_1.PointsProduct)
                 .createQueryBuilder()
@@ -665,6 +677,7 @@ let PointsMallService = class PointsMallService {
 exports.PointsMallService = PointsMallService;
 exports.PointsMallService = PointsMallService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [core_1.TransactionalConnection])
+    __metadata("design:paramtypes", [core_1.TransactionalConnection,
+        core_1.ProductPriceApplicator])
 ], PointsMallService);
 //# sourceMappingURL=points-mall.service.js.map

@@ -1,16 +1,19 @@
-import { ID, PaginatedList, RequestContext, TransactionalConnection } from '@vendure/core';
+import { ID, PaginatedList, ProductPriceApplicator, RequestContext, TransactionalConnection } from '@vendure/core';
 import { PointsOrder } from './points-order.entity';
 import { PointsProduct } from './points-product.entity';
 import { CreatePointsOrderInput, CreatePointsProductInput, FavoriteProductView, PointsOrderListOptions, PointsPayParams, PointsProductListOptions, PointsProductView, ToggleFavoriteResult, UpdatePointsProductInput } from './types';
 export declare class PointsMallService {
     private connection;
+    private productPriceApplicator;
     private memberLevel;
     private gateway;
-    constructor(connection: TransactionalConnection);
+    constructor(connection: TransactionalConnection, productPriceApplicator: ProductPriceApplicator);
     setMemberLevelService(svc: any): void;
     setWechatpayGateway(g: any): void;
     private requireCustomer;
     private getVariantWithProduct;
+    /** 运行时填充变体价格（priceWithTax 为 @Calculated getter，需 listPrice/taxRateApplied 就位） */
+    private applyVariantPrices;
     /** 批量取变体（含 product/featuredAsset/translations），返回 variantId → 变体 Map */
     private getVariantsWithProduct;
     /** 按语言取翻译，取不到退回第一条 */

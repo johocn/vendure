@@ -59,6 +59,7 @@ import { CheckinPlugin } from '@vendure/checkin-plugin';
 import { FeedbackPlugin } from '@vendure/feedback-plugin';
 import { LotteryPlugin } from '@vendure/lottery-plugin';
 import { ShoppingCirclePlugin } from '@vendure/shopping-circle-plugin';
+import { PointsMallPlugin } from '@vendure/points-mall-plugin';
 import { ReviewPlugin } from '@vendure/review-plugin';
 import { WechatSubscribeMessagePlugin } from '@vendure/wechat-subscribe-message-plugin';
 import { CouponPlugin } from '@vendure/coupon-plugin';
@@ -490,6 +491,8 @@ export const devConfig: VendureConfig = {
         FeedbackPlugin.init(),
         LotteryPlugin.init(),
         ShoppingCirclePlugin.init(),
+        // 积分商城：商品收藏 + 积分兑换（依赖 MemberLevelPlugin 的积分账户，可选接 WechatpayPlugin 混合价支付）
+        PointsMallPlugin.init(),
         ReviewPlugin.init(),
         // 商品收藏 / 店铺关注（toggle 语义，依赖 ShopPlugin 的 Shop 实体）
         FavoritePlugin.init(),
