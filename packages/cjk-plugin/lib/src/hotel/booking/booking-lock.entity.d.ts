@@ -17,6 +17,6 @@ export declare class HotelBookingLock extends VendureEntity {
     /** P3 建 booking 后回填 */
     bookingId: number | null;
     status: HotelBookingLockStatus;
-    /** hold 过期时间（默认 15min）；booked/released 为 null */
-    holdExpiresAt: Date | null;
+    /** hold 过期时间（默认 15min）；booked/released 为 null（列 nullable，代码层用 undefined/省略） */
+    holdExpiresAt?: Date;
 }

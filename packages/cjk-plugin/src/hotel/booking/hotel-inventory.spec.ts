@@ -62,10 +62,13 @@ describe('countOccupied（占用口径：hold未过期 + booked）', () => {
         const locks = [lock({ holdExpiresAt: new Date(NOW.getTime() - 1) }), lock({ holdExpiresAt: null })];
         expect(countOccupied(locks, '2026-10-10', NOW)).toBe(0);
     });
-    it('按日期过滤 + excludeOrderId 排除本单', () => {
-        const locks = [lock({}), lock({ orderId: 7 }), lock({ date: '2026-10-11' })];
+    it('按日期过滤 + excludeLockIds 扣除待重置锁', () => {
+        const l1 = lock({});
+        const l2 = lock({ id: 7 });
+        const l3 = lock({ date: '2026-10-11' });
+        const locks = [l1, l2, l3];
         expect(countOccupied(locks, '2026-10-10', NOW)).toBe(2);
-        expect(countOccupied(locks, '2026-10-10', NOW, 7)).toBe(1);
+        expect(countOccupied(locks, '2026-10-10', NOW, new Set([l2.id as number]))).toBe(1);
     });
 });
 

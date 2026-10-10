@@ -77,14 +77,15 @@ let HotelInventoryService = class HotelInventoryService {
         });
     }
     /**
-     * 锁房（校验 + 落锁，一体完成）：
+     * 锁房（校验 + 落锁，一体完成，须在调用方事务内）：
      * - 对段内「有限房量」的 HotelRoomDay 行悲观加锁（无行时先 upsert 缺省行以获得锁锚点）
-     * - 先释放本订单该房型的既有 hold（幂等自愈：加购/改行/重复调用收敛到最终状态）
-     * - 逐晚校验 remaining ≥ 新增间数，任一晚不足抛 HotelSoldOutError（调用方回滚整体）
+     * - 释放「本次会重置」的 hold：orderLineId 为 null 的孤儿 + toReleaseLineIds 指定行的（幂等自愈，
+     *   同房型多行重叠段时互不影响——只重置属于本次操作的锁）
+     * - 逐晚校验 remaining ≥ 新增间数（统计扣除待释放集），任一晚不足抛 HotelSoldOutError
      * - 落 hold（每间每晚一行，TTL 15min）；不限房晚不落锁
      */
     async holdForOrder(ctx, orderId, variantId, checkIn, checkOut, quantity, options = {}) {
-        var _a;
+        var _a, _b;
         const nights = (0, hotel_inventory_logic_1.enumerateNights)(checkIn, checkOut);
         if (!nights.length || quantity < 1)
             return;
@@ -111,29 +112,33 @@ let HotelInventoryService = class HotelInventoryService {
         const roomDayByDate = new Map(roomDays.map(r => [r.date, r]));
         const limitedDates = nights.filter(d => roomDayByDate.has(d) || configTotal != null);
         const now = new Date();
-        // 占用统计需在「扣除本单既有 hold 后」校验：本单旧 hold 即将释放
-        const ownLocks = await this.lockRepo(ctx).find({
+        // 待重置集：本单该房型的 null 孤儿（上次 willAdd 落的）+ 指定行（本行/同段旧行）的 hold
+        const releaseLineIds = ((_a = options.toReleaseLineIds) !== null && _a !== void 0 ? _a : []).map(Number);
+        const toRelease = await this.lockRepo(ctx).find({
             where: { orderId: Number(orderId), productVariantId: vId, status: 'hold' },
         });
+        const toReleaseIds = new Set(toRelease.filter(l => l.orderLineId == null || releaseLineIds.includes(l.orderLineId)).map(l => l.id));
         const occupiedByDate = new Map();
         if (limitedDates.length) {
             const locks = await this.lockRepo(ctx).find({
                 where: { productVariantId: vId, date: (0, typeorm_1.In)(limitedDates) },
             });
             for (const d of limitedDates) {
-                occupiedByDate.set(d, (0, hotel_inventory_logic_1.countOccupied)(locks, d, now, Number(orderId)));
+                occupiedByDate.set(d, (0, hotel_inventory_logic_1.countOccupied)(locks, d, now, toReleaseIds));
             }
         }
         const remainingByDate = new Map();
         for (const d of nights) {
-            remainingByDate.set(d, (0, hotel_inventory_logic_1.computeRemaining)(roomDayByDate.get(d), configTotal, (_a = occupiedByDate.get(d)) !== null && _a !== void 0 ? _a : 0));
+            remainingByDate.set(d, (0, hotel_inventory_logic_1.computeRemaining)(roomDayByDate.get(d), configTotal, (_b = occupiedByDate.get(d)) !== null && _b !== void 0 ? _b : 0));
         }
         const short = (0, hotel_inventory_logic_1.findShortNights)(nights, remainingByDate, quantity);
         if (short.length) {
             throw new hotel_inventory_logic_1.HotelSoldOutError(short, vId);
         }
-        // 释放本单该房型全部 hold（幂等），再按最终数量落新 hold
-        await this.lockRepo(ctx).update({ orderId: Number(orderId), productVariantId: vId, status: 'hold' }, { status: 'released', holdExpiresAt: null });
+        // 释放待重置集（幂等），再按最终数量落新 hold
+        if (toReleaseIds.size) {
+            await this.lockRepo(ctx).update({ id: (0, typeorm_1.In)([...toReleaseIds]) }, { status: 'released', holdExpiresAt: null });
+        }
         const expiresAt = new Date(now.getTime() + hotel_inventory_logic_1.HOTEL_HOLD_TTL_MINUTES * 60000);
         const rows = [];
         for (const date of nights) {
@@ -144,7 +149,7 @@ let HotelInventoryService = class HotelInventoryService {
                     productVariantId: vId,
                     date,
                     orderId: Number(orderId),
-                    orderLineId: options.orderLineId ? Number(options.orderLineId) : null,
+                    orderLineId: options.orderLineId != null ? Number(options.orderLineId) : null,
                     bookingId: null,
                     status: 'hold',
                     holdExpiresAt: expiresAt,
@@ -177,6 +182,25 @@ let HotelInventoryService = class HotelInventoryService {
     async releaseLocksByOrderLine(ctx, orderLineId) {
         var _a;
         const res = await this.lockRepo(ctx).update({ orderLineId: Number(orderLineId), status: (0, typeorm_1.Not)('released') }, { status: 'released', holdExpiresAt: null });
+        return (_a = res.affected) !== null && _a !== void 0 ? _a : 0;
+    }
+    /**
+     * 释放（订单 × 房型 × 日期段内）orderLineId 为 null 的 hold 孤儿。
+     * willAdd 落锁时行尚未创建只能落 null；移除行时按行上日期段回溯释放。
+     * 同 variant + 同 customFields 的加购 core 会合并为一行，故段不重叠互不误伤。
+     */
+    async releaseOrphanHolds(ctx, orderId, variantId, checkIn, checkOut) {
+        var _a;
+        const nights = (0, hotel_inventory_logic_1.enumerateNights)(checkIn, checkOut);
+        if (!nights.length)
+            return 0;
+        const res = await this.lockRepo(ctx).update({
+            orderId: Number(orderId),
+            productVariantId: Number(variantId),
+            date: (0, typeorm_1.In)(nights),
+            orderLineId: (0, typeorm_1.IsNull)(),
+            status: (0, typeorm_1.Not)('released'),
+        }, { status: 'released', holdExpiresAt: null });
         return (_a = res.affected) !== null && _a !== void 0 ? _a : 0;
     }
     /** 定时清理：过期 hold → released（清理统计面；released 行保留审计） */

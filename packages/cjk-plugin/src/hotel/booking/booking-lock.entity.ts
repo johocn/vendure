@@ -40,7 +40,7 @@ export class HotelBookingLock extends VendureEntity {
     @Column({ type: 'varchar', length: 20, default: 'hold' })
     status: HotelBookingLockStatus;
 
-    /** hold 过期时间（默认 15min）；booked/released 为 null */
+    /** hold 过期时间（默认 15min）；booked/released 为 null（列 nullable，代码层用 undefined/省略） */
     @Column({ nullable: true })
-    holdExpiresAt: Date | null;
+    holdExpiresAt?: Date;
 }

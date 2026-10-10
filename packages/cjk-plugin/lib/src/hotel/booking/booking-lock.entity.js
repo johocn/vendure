@@ -54,7 +54,7 @@ __decorate([
 ], HotelBookingLock.prototype, "status", void 0);
 __decorate([
     (0, typeorm_1.Column)({ nullable: true }),
-    __metadata("design:type", Object)
+    __metadata("design:type", Date)
 ], HotelBookingLock.prototype, "holdExpiresAt", void 0);
 exports.HotelBookingLock = HotelBookingLock = __decorate([
     (0, typeorm_1.Entity)(),

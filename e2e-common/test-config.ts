@@ -109,28 +109,28 @@ function getDbConfig(): DataSourceOptions {
             return {
                 synchronize: true,
                 type: 'postgres',
-                host: '127.0.0.1',
-                port: process.env.CI ? +(process.env.E2E_POSTGRES_PORT || 5432) : 5432,
-                username: 'vendure',
-                password: 'password',
+                host: process.env.DB_HOST || '127.0.0.1',
+                port: process.env.CI ? +(process.env.E2E_POSTGRES_PORT || 5432) : +(process.env.DB_PORT || 5432),
+                username: process.env.DB_USERNAME || 'vendure',
+                password: process.env.DB_PASSWORD || 'password',
             };
         case 'mariadb':
             return {
                 synchronize: true,
                 type: 'mariadb',
-                host: '127.0.0.1',
-                port: process.env.CI ? +(process.env.E2E_MARIADB_PORT || 3306) : 3306,
-                username: 'root',
-                password: 'password',
+                host: process.env.DB_HOST || '127.0.0.1',
+                port: process.env.CI ? +(process.env.E2E_MARIADB_PORT || 3306) : +(process.env.DB_PORT || 3306),
+                username: process.env.DB_USERNAME || 'root',
+                password: process.env.DB_PASSWORD || 'password',
             };
         case 'mysql':
             return {
                 synchronize: true,
                 type: 'mysql',
-                host: '127.0.0.1',
-                port: process.env.CI ? +(process.env.E2E_MYSQL_PORT || 3306) : 3306,
-                username: 'root',
-                password: 'password',
+                host: process.env.DB_HOST || '127.0.0.1',
+                port: process.env.CI ? +(process.env.E2E_MYSQL_PORT || 3306) : +(process.env.DB_PORT || 3306),
+                username: process.env.DB_USERNAME || 'root',
+                password: process.env.DB_PASSWORD || 'password',
             };
         case 'sqljs':
         default:

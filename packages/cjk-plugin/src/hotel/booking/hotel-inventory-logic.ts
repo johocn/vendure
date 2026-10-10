@@ -10,8 +10,8 @@ export interface RoomDayLike {
 export interface LockLike {
     date: string;
     status: 'hold' | 'booked' | 'released';
-    holdExpiresAt: Date | null;
-    orderId?: number;
+    holdExpiresAt?: Date | null;
+    id?: number | string;
 }
 
 export const HOTEL_HOLD_TTL_MINUTES = 15;
@@ -58,12 +58,17 @@ export function computeRemaining(
     return Math.max(0, Math.round(total) - occupied);
 }
 
-/** 占用统计：只算未过期 hold + booked；released / 过期 hold 不计 */
-export function countOccupied(locks: LockLike[], date: string, now: Date, excludeOrderId?: number): number {
+/** 占用统计：只算未过期 hold + booked；released / 过期 hold 不计；excludeLockIds 用于扣除「即将重置释放」的锁 */
+export function countOccupied(
+    locks: LockLike[],
+    date: string,
+    now: Date,
+    excludeLockIds?: Set<number | string>,
+): number {
     return locks.filter(l =>
         l.date === date
         && (l.status === 'booked' || (l.status === 'hold' && !!l.holdExpiresAt && l.holdExpiresAt > now))
-        && (excludeOrderId == null || l.orderId !== excludeOrderId)
+        && !(l.id != null && excludeLockIds?.has(l.id))
     ).length;
 }
 

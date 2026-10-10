@@ -93,7 +93,6 @@ const delivery_facet_service_1 = require("./shipping/delivery-facet.service");
 const shipping_profile_admin_resolver_1 = require("./shipping/shipping-profile-admin.resolver");
 const shipping_profile_permissions_1 = require("./shipping/shipping-profile-permissions");
 const payment_profile_entity_1 = require("./payment/payment-profile.entity");
-const payment_profile_method_entity_1 = require("./payment/payment-profile-method.entity");
 const payment_profile_service_1 = require("./payment/payment-profile.service");
 const payment_profile_admin_resolver_1 = require("./payment/payment-profile-admin.resolver");
 const payment_profile_permissions_1 = require("./payment/payment-profile-permissions");
@@ -105,6 +104,11 @@ const room_template_entity_1 = require("./hotel/room-template.entity");
 const room_template_control_entity_1 = require("./hotel/room-template-control.entity");
 const room_template_service_1 = require("./hotel/room-template.service");
 const room_template_admin_resolver_1 = require("./hotel/room-template-admin.resolver");
+const room_day_entity_1 = require("./hotel/booking/room-day.entity");
+const booking_lock_entity_1 = require("./hotel/booking/booking-lock.entity");
+const hotel_inventory_service_1 = require("./hotel/booking/hotel-inventory.service");
+const hotel_order_interceptor_1 = require("./hotel/booking/hotel-order-interceptor");
+const release_expired_holds_task_1 = require("./hotel/booking/release-expired-holds.task");
 const hotel_custom_fields_1 = require("./hotel/hotel-custom-fields");
 const hotel_order_line_custom_fields_1 = require("./hotel/hotel-order-line-custom-fields");
 const hotel_order_item_price_strategy_1 = require("./hotel/hotel-order-item-price-strategy");
@@ -403,7 +407,7 @@ exports.CjkPlugin = CjkPlugin;
 exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_profile_method_entity_1.PaymentProfileMethod, payment_template_entity_1.PaymentTemplate, room_template_entity_1.RoomTemplate, room_template_control_entity_1.RoomTemplateControl, tenant_member_entity_1.TenantMember, wallet_entity_1.Wallet, merchant_settlement_ledger_entity_1.MerchantSettlementLedger, variant_location_binding_entity_1.VariantLocationBinding, delivery_record_entity_1.DeliveryRecord, reconciliation_entity_1.ReconciliationBatch, reconciliation_entity_1.ReconciliationOrderLine, stock_doc_entity_1.StockDocEntity, stock_doc_item_entity_1.StockDocItemEntity, inventory_alert_rule_entity_1.InventoryAlertRuleEntity, stock_reservation_entity_1.StockReservationEntity, stock_reservation_item_entity_1.StockReservationItemEntity, pick_batch_entity_1.PickBatch, pick_batch_order_entity_1.PickBatchOrder, storage_zone_entity_1.StorageZone, storage_bin_entity_1.StorageBin, variant_storage_bin_entity_1.VariantStorageBin,
+        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_template_entity_1.PaymentTemplate, room_template_entity_1.RoomTemplate, room_template_control_entity_1.RoomTemplateControl, room_day_entity_1.HotelRoomDay, booking_lock_entity_1.HotelBookingLock, tenant_member_entity_1.TenantMember, wallet_entity_1.Wallet, merchant_settlement_ledger_entity_1.MerchantSettlementLedger, variant_location_binding_entity_1.VariantLocationBinding, delivery_record_entity_1.DeliveryRecord, reconciliation_entity_1.ReconciliationBatch, reconciliation_entity_1.ReconciliationOrderLine, stock_doc_entity_1.StockDocEntity, stock_doc_item_entity_1.StockDocItemEntity, inventory_alert_rule_entity_1.InventoryAlertRuleEntity, stock_reservation_entity_1.StockReservationEntity, stock_reservation_item_entity_1.StockReservationItemEntity, pick_batch_entity_1.PickBatch, pick_batch_order_entity_1.PickBatchOrder, storage_zone_entity_1.StorageZone, storage_bin_entity_1.StorageBin, variant_storage_bin_entity_1.VariantStorageBin,
             stocktake_task_entity_1.StocktakeTask,
             stocktake_wave_entity_1.StocktakeWave,
             stocktake_line_entity_1.StocktakeLine,
@@ -446,6 +450,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             payment_profile_service_1.PaymentProfileService,
             payment_template_service_1.PaymentTemplateService,
             room_template_service_1.RoomTemplateService,
+            hotel_inventory_service_1.HotelInventoryService,
             default_data_service_1.DefaultDataService,
             tenant_member_service_1.TenantMemberService,
             redeem_scope_service_1.RedeemScopeService,
@@ -2728,8 +2733,19 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             if (!config.schedulerOptions.tasks.some(t => t.id === reservation_expiry_task_1.RELEASE_EXPIRED_RESERVATIONS_TASK_ID)) {
                 config.schedulerOptions.tasks.push(reservation_expiry_task_1.releaseExpiredReservationsTask);
             }
+            // 注册过期锁房单释放 ScheduledTask（每小时；hold 统计口径已排除过期，此任务收敛状态与审计）
+            if (!config.schedulerOptions.tasks.some(t => t.id === release_expired_holds_task_1.RELEASE_EXPIRED_HOTEL_HOLDS_TASK_ID)) {
+                config.schedulerOptions.tasks.push(release_expired_holds_task_1.releaseExpiredHotelHoldsTask);
+            }
             // 注册订单行单价策略：酒店房型按入离日期逐晚计价，其它变体直通默认价
             config.orderOptions = Object.assign(Object.assign({}, ((_9 = config.orderOptions) !== null && _9 !== void 0 ? _9 : {})), { orderItemPriceCalculationStrategy: new hotel_order_item_price_strategy_1.HotelOrderItemPriceCalculationStrategy() });
+            // 注册酒店防超订拦截器（幂等：configuration 可能被调用多次）
+            if (!Array.isArray(config.orderOptions.orderInterceptors)) {
+                config.orderOptions.orderInterceptors = [];
+            }
+            if (!config.orderOptions.orderInterceptors.some(i => i instanceof hotel_order_interceptor_1.HotelOrderInterceptor)) {
+                config.orderOptions.orderInterceptors.push(new hotel_order_interceptor_1.HotelOrderInterceptor());
+            }
             return config;
         },
         dashboard: '../dashboard/index.tsx',

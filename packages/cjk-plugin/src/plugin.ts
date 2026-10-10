@@ -104,6 +104,11 @@ import { RoomTemplate } from './hotel/room-template.entity';
 import { RoomTemplateControl } from './hotel/room-template-control.entity';
 import { RoomTemplateService } from './hotel/room-template.service';
 import { RoomTemplateAdminResolver } from './hotel/room-template-admin.resolver';
+import { HotelRoomDay } from './hotel/booking/room-day.entity';
+import { HotelBookingLock } from './hotel/booking/booking-lock.entity';
+import { HotelInventoryService } from './hotel/booking/hotel-inventory.service';
+import { HotelOrderInterceptor } from './hotel/booking/hotel-order-interceptor';
+import { releaseExpiredHotelHoldsTask, RELEASE_EXPIRED_HOTEL_HOLDS_TASK_ID } from './hotel/booking/release-expired-holds.task';
 import { hotelRoomCustomFields } from './hotel/hotel-custom-fields';
 import { hotelOrderLineCustomFields } from './hotel/hotel-order-line-custom-fields';
 import { HotelOrderItemPriceCalculationStrategy } from './hotel/hotel-order-item-price-strategy';
@@ -192,7 +197,7 @@ function mergeCustomFields<T extends { name: string }>(
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod, PaymentTemplate, RoomTemplate, RoomTemplateControl, TenantMember, Wallet, MerchantSettlementLedger, VariantLocationBinding, DeliveryRecord, ReconciliationBatch, ReconciliationOrderLine, StockDocEntity, StockDocItemEntity, InventoryAlertRuleEntity, StockReservationEntity, StockReservationItemEntity, PickBatch, PickBatchOrder, StorageZone, StorageBin, VariantStorageBin,
+    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentTemplate, RoomTemplate, RoomTemplateControl, HotelRoomDay, HotelBookingLock, TenantMember, Wallet, MerchantSettlementLedger, VariantLocationBinding, DeliveryRecord, ReconciliationBatch, ReconciliationOrderLine, StockDocEntity, StockDocItemEntity, InventoryAlertRuleEntity, StockReservationEntity, StockReservationItemEntity, PickBatch, PickBatchOrder, StorageZone, StorageBin, VariantStorageBin,
         StocktakeTask,
         StocktakeWave,
         StocktakeLine,
@@ -235,6 +240,7 @@ function mergeCustomFields<T extends { name: string }>(
         PaymentProfileService,
         PaymentTemplateService,
         RoomTemplateService,
+        HotelInventoryService,
         DefaultDataService,
         TenantMemberService,
         RedeemScopeService,
@@ -2608,12 +2614,23 @@ function mergeCustomFields<T extends { name: string }>(
         if (!config.schedulerOptions.tasks.some(t => t.id === RELEASE_EXPIRED_RESERVATIONS_TASK_ID)) {
             config.schedulerOptions.tasks.push(releaseExpiredReservationsTask);
         }
+        // 注册过期锁房单释放 ScheduledTask（每小时；hold 统计口径已排除过期，此任务收敛状态与审计）
+        if (!config.schedulerOptions.tasks.some(t => t.id === RELEASE_EXPIRED_HOTEL_HOLDS_TASK_ID)) {
+            config.schedulerOptions.tasks.push(releaseExpiredHotelHoldsTask);
+        }
 
         // 注册订单行单价策略：酒店房型按入离日期逐晚计价，其它变体直通默认价
         config.orderOptions = {
             ...(config.orderOptions ?? {}),
             orderItemPriceCalculationStrategy: new HotelOrderItemPriceCalculationStrategy(),
         } as any;
+        // 注册酒店防超订拦截器（幂等：configuration 可能被调用多次）
+        if (!Array.isArray(config.orderOptions.orderInterceptors)) {
+            (config.orderOptions as any).orderInterceptors = [];
+        }
+        if (!config.orderOptions.orderInterceptors.some(i => i instanceof HotelOrderInterceptor)) {
+            config.orderOptions.orderInterceptors.push(new HotelOrderInterceptor());
+        }
 
         return config;
     },
