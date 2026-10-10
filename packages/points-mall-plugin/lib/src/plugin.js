@@ -15,14 +15,17 @@ const core_1 = require("@nestjs/core");
 const core_2 = require("@vendure/core");
 const member_level_plugin_1 = require("@vendure/member-level-plugin");
 const wechatpay_plugin_1 = require("@vendure/wechatpay-plugin");
+const constants_1 = require("./constants");
 const points_mall_admin_resolver_1 = require("./points-mall-admin.resolver");
 const points_mall_service_1 = require("./points-mall.service");
 const points_mall_shop_resolver_1 = require("./points-mall-shop.resolver");
+const points_order_expiry_task_1 = require("./points-order-expiry.task");
 const product_favorite_entity_1 = require("./product-favorite.entity");
 const points_order_entity_1 = require("./points-order.entity");
 const points_order_payment_entity_1 = require("./points-order-payment.entity");
 const points_product_entity_1 = require("./points-product.entity");
 const { gql } = require('graphql-tag');
+let pluginOptions = {};
 const shopSchema = () => gql `
     type PointsProduct implements Node {
         id: ID!
@@ -37,6 +40,7 @@ const shopSchema = () => gql `
         stock: Int!
         perUserLimit: Int!
         redeemedCount: Int!
+        myRedeemedCount: Int!
         validFrom: DateTime
         validTo: DateTime
         sortOrder: Int!
@@ -162,6 +166,7 @@ const adminSchema = () => gql `
     input PointsProductAdminListOptions {
         skip: Int
         take: Int
+        keyword: String
     }
     input CreatePointsProductInput {
         productId: ID!
@@ -213,6 +218,7 @@ const adminSchema = () => gql `
         skip: Int
         take: Int
         status: String
+        keyword: String
     }
     extend type Query {
         pointsProductsAdmin(options: PointsProductAdminListOptions): PointsProductAdminList!
@@ -231,7 +237,8 @@ let PointsMallPlugin = PointsMallPlugin_1 = class PointsMallPlugin {
     constructor(moduleRef) {
         this.moduleRef = moduleRef;
     }
-    static init() {
+    static init(options = {}) {
+        pluginOptions = options;
         return PointsMallPlugin_1;
     }
     async onApplicationBootstrap() {
@@ -269,7 +276,10 @@ exports.PointsMallPlugin = PointsMallPlugin = PointsMallPlugin_1 = __decorate([
     (0, core_2.VendurePlugin)({
         imports: [core_2.PluginCommonModule],
         entities: [product_favorite_entity_1.ProductFavorite, points_product_entity_1.PointsProduct, points_order_entity_1.PointsOrder, points_order_payment_entity_1.PointsOrderPayment],
-        providers: [points_mall_service_1.PointsMallService],
+        providers: [
+            points_mall_service_1.PointsMallService,
+            { provide: constants_1.POINTS_MALL_PLUGIN_OPTIONS, useFactory: () => pluginOptions },
+        ],
         shopApiExtensions: {
             schema: shopSchema,
             resolvers: [points_mall_shop_resolver_1.PointsMallShopResolver],
@@ -279,6 +289,19 @@ exports.PointsMallPlugin = PointsMallPlugin = PointsMallPlugin_1 = __decorate([
             resolvers: [points_mall_admin_resolver_1.PointsMallAdminResolver],
         },
         compatibility: '^3.0.0',
+        configuration: (config) => {
+            // 注册待支付订单超时关单 ScheduledTask（幂等：configuration 可能被调用多次）
+            if (!config.schedulerOptions) {
+                config.schedulerOptions = { tasks: [] };
+            }
+            if (!config.schedulerOptions.tasks) {
+                config.schedulerOptions.tasks = [];
+            }
+            if (!config.schedulerOptions.tasks.some(t => t.id === constants_1.POINTS_ORDER_EXPIRY_TASK_ID)) {
+                config.schedulerOptions.tasks.push(points_order_expiry_task_1.pointsOrderExpiryTask);
+            }
+            return config;
+        },
     }),
     __metadata("design:paramtypes", [core_1.ModuleRef])
 ], PointsMallPlugin);

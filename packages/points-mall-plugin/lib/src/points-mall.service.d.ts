@@ -38,6 +38,10 @@ export declare class PointsMallService {
     private getFirstVariantsByProductIds;
     /** 在售积分商品池：productId → 最低 pointsPrice */
     private activePointsPool;
+    /** 登录客户对给定积分商品的已兑数量（非取消订单），customerId 为空返回空 Map */
+    private redeemedCountMap;
+    /** 静默解析当前客户主键（游客返回 null），供 myRedeemedCount 使用 */
+    private resolveOptionalCustomerId;
     private assertVariantBelongsToProduct;
     createPointsProduct(ctx: RequestContext, input: CreatePointsProductInput): Promise<PointsProduct>;
     updatePointsProduct(ctx: RequestContext, input: UpdatePointsProductInput): Promise<PointsProduct>;
@@ -59,8 +63,12 @@ export declare class PointsMallService {
     createPointsOrderPayment(ctx: RequestContext, pointsOrderId: ID, tradeType?: string, openid?: string): Promise<PointsPayParams>;
     /** 支付回调结算：按 outTradeNo（PO-<id>）幂等置为 paid → pending_ship/completed。 */
     settlePointsOrderByOutTradeNo(ctx: RequestContext, outTradeNo: string): Promise<void>;
+    /** 原子取消一笔待支付单：claim 状态 → 退分 → 回补库存 → 支付单置 cancelled。调用方负责事务与归属校验。 */
+    private executeCancel;
     /** 未支付取消：退积分 + 回补库存 + 支付单置 cancelled。 */
     cancelPointsOrder(ctx: RequestContext, id: ID): Promise<PointsOrder>;
+    /** 定时任务入口：取消 ctx 渠道内 createdAt < before 的待支付单，返回取消数量 */
+    cancelExpiredOrders(ctx: RequestContext, before: Date): Promise<number>;
     myPointsOrders(ctx: RequestContext, options?: PointsOrderListOptions): Promise<PaginatedList<PointsOrder>>;
     myPointsOrder(ctx: RequestContext, id: ID): Promise<PointsOrder | undefined>;
     adminPointsOrders(ctx: RequestContext, options?: PointsOrderListOptions): Promise<PaginatedList<PointsOrder>>;

@@ -2,14 +2,20 @@ export interface ToggleFavoriteResult {
     favorited: boolean;
     favoriteCount: number;
 }
+export interface PointsMallPluginOptions {
+    /** 待支付积分订单超时自动关单分钟数，默认 30；设 0 关闭自动关单 */
+    pointsOrderTimeoutMinutes?: number;
+}
 export interface PointsProductListOptions {
     skip?: number;
     take?: number;
+    keyword?: string;
 }
 export interface PointsOrderListOptions {
     skip?: number;
     take?: number;
     status?: string;
+    keyword?: string;
 }
 export interface CreatePointsProductInput {
     productId: string;
@@ -49,4 +55,5 @@ export interface FavoriteProductView {
 }
 export interface PointsProductView {
     [k: string]: any;
+    myRedeemedCount: number;
 }

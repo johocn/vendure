@@ -65,11 +65,7 @@ let PointsMallService = class PointsMallService {
     }
     /** 运行时填充变体价格（priceWithTax 为 @Calculated getter，需 listPrice/taxRateApplied 就位） */
     async applyVariantPrices(ctx, variants) {
-        for (const v of variants) {
-            if (v) {
-                await this.productPriceApplicator.applyChannelPriceAndTax(v, ctx);
-            }
-        }
+        await Promise.all(variants.filter(Boolean).map(v => this.productPriceApplicator.applyChannelPriceAndTax(v, ctx)));
     }
     /** 批量取变体（含 product/featuredAsset/translations），返回 variantId → 变体 Map */
     async getVariantsWithProduct(ctx, variantIds) {
@@ -223,6 +219,34 @@ let PointsMallService = class PointsMallService {
         }
         return map;
     }
+    /** 登录客户对给定积分商品的已兑数量（非取消订单），customerId 为空返回空 Map */
+    async redeemedCountMap(ctx, pointsProductIds, customerId) {
+        const map = new Map();
+        if (!customerId || !pointsProductIds.length)
+            return map;
+        const rows = await this.connection
+            .getRepository(ctx, points_order_entity_1.PointsOrder)
+            .createQueryBuilder('po')
+            .select('po.pointsProductId', 'pid')
+            .addSelect('SUM(po.quantity)', 'qty')
+            .where('po.customerId = :cid', { cid: customerId })
+            .andWhere('po.pointsProductId IN (:...ids)', { ids: pointsProductIds })
+            .andWhere("po.status != 'cancelled'")
+            .groupBy('po.pointsProductId')
+            .getRawMany();
+        for (const r of rows)
+            map.set(Number(r.pid), Number(r.qty) || 0);
+        return map;
+    }
+    /** 静默解析当前客户主键（游客返回 null），供 myRedeemedCount 使用 */
+    async resolveOptionalCustomerId(ctx) {
+        if (!ctx.activeUserId)
+            return null;
+        const customer = await this.connection
+            .getRepository(ctx, core_1.Customer)
+            .findOne({ where: { user: { id: ctx.activeUserId } } });
+        return customer ? customer.id : null;
+    }
     // ===== 积分商品（admin CRUD）=====
     async assertVariantBelongsToProduct(ctx, productId, variantId) {
         const v = await this.getVariantWithProduct(ctx, variantId);
@@ -298,15 +322,29 @@ let PointsMallService = class PointsMallService {
         return true;
     }
     async adminPointsProducts(ctx, options) {
-        var _a;
-        const [items, totalItems] = await this.connection
+        var _a, _b;
+        const qb = this.connection
             .getRepository(ctx, points_product_entity_1.PointsProduct)
             .createQueryBuilder('pp')
-            .where('pp.channelId = :channelId', { channelId: ctx.channelId })
+            .where('pp.channelId = :channelId', { channelId: ctx.channelId });
+        const kw = (_a = options === null || options === void 0 ? void 0 : options.keyword) === null || _a === void 0 ? void 0 : _a.trim();
+        if (kw) {
+            // 商品翻译名模糊 + 纯数字时 productId 精确（联表用表名+camelCase 带引号列）
+            // 注意：product_translation 的外键列是 baseId（translation 实体 FK 命名），非 productId
+            // AS TEXT 而非 AS CHAR：Postgres 下 CHAR 为 bpchar(1) 会截断；LIKE 仅为 Postgres 用 ILIKE（sqljs e2e 不支持）
+            const LIKE = this.connection.rawConnection.options.type === 'postgres' ? 'ILIKE' : 'LIKE';
+            qb.leftJoin('product_variant', 'v', 'v."id" = pp."variantId"')
+                .leftJoin('product_translation', 'pt', 'pt."baseId" = v."productId"')
+                .andWhere(`(pt."name" ${LIKE} :kw OR CAST(pp."productId" AS TEXT) = :kwExact)`, {
+                kw: `%${kw}%`,
+                kwExact: kw,
+            });
+        }
+        const [items, totalItems] = await qb
             .orderBy('pp.sortOrder', 'ASC')
             .addOrderBy('pp.id', 'DESC')
             .skip(options === null || options === void 0 ? void 0 : options.skip)
-            .take((_a = options === null || options === void 0 ? void 0 : options.take) !== null && _a !== void 0 ? _a : 50)
+            .take((_b = options === null || options === void 0 ? void 0 : options.take) !== null && _b !== void 0 ? _b : 50)
             .getManyAndCount();
         return { items, totalItems };
     }
@@ -329,10 +367,16 @@ let PointsMallService = class PointsMallService {
             .getManyAndCount();
         const variants = await this.getVariantsWithProduct(ctx, rows.map(r => r.variantId));
         await this.applyVariantPrices(ctx, [...variants.values()]);
-        return { items: rows.map(r => this.toView(ctx, r, variants.get(r.variantId))), totalItems };
+        const customerId = await this.resolveOptionalCustomerId(ctx);
+        const redeemed = await this.redeemedCountMap(ctx, rows.map(r => Number(r.id)), customerId);
+        return {
+            items: rows.map(r => { var _a; return this.toView(ctx, r, variants.get(r.variantId), (_a = redeemed.get(Number(r.id))) !== null && _a !== void 0 ? _a : 0); }),
+            totalItems,
+        };
     }
     /** 商城单条（enabled）。 */
     async shopPointsProduct(ctx, id) {
+        var _a;
         const pp = await this.connection.getRepository(ctx, points_product_entity_1.PointsProduct).findOne({
             where: { id: Number(id), channelId: ctx.channelId, status: 'enabled' },
         });
@@ -340,9 +384,11 @@ let PointsMallService = class PointsMallService {
             return undefined;
         const v = await this.getVariantWithProduct(ctx, pp.variantId);
         await this.applyVariantPrices(ctx, [v]);
-        return this.toView(ctx, pp, v !== null && v !== void 0 ? v : undefined);
+        const customerId = await this.resolveOptionalCustomerId(ctx);
+        const redeemed = await this.redeemedCountMap(ctx, [Number(pp.id)], customerId);
+        return this.toView(ctx, pp, v !== null && v !== void 0 ? v : undefined, (_a = redeemed.get(Number(pp.id))) !== null && _a !== void 0 ? _a : 0);
     }
-    toView(ctx, r, v) {
+    toView(ctx, r, v, myRedeemedCount = 0) {
         var _a, _b, _c, _d, _e;
         const product = v === null || v === void 0 ? void 0 : v.product;
         const t = this.pickTranslation(product, ctx);
@@ -364,13 +410,26 @@ let PointsMallService = class PointsMallService {
             sortOrder: r.sortOrder,
             priceWithTax: (_e = v === null || v === void 0 ? void 0 : v.priceWithTax) !== null && _e !== void 0 ? _e : 0,
             inStock: r.stock > 0,
+            myRedeemedCount,
         };
     }
     // ===== 积分订单 =====
     async loadPointsProductForOrder(ctx, id) {
-        const pp = await this.connection.getRepository(ctx, points_product_entity_1.PointsProduct).findOne({
-            where: { id, channelId: ctx.channelId, status: 'enabled' },
-        });
+        // pessimistic_write：resolver @Transaction() 内执行，行锁使同商品并发下单串行，
+        // assertBuyable 的 perUserLimit count 与后续扣库存不再有检查-写入窗口
+        let pp;
+        try {
+            pp = await this.connection.getRepository(ctx, points_product_entity_1.PointsProduct).findOne({
+                where: { id, channelId: ctx.channelId, status: 'enabled' },
+                lock: { mode: 'pessimistic_write' },
+            });
+        }
+        catch (_a) {
+            // sqljs 等 e2e 驱动不支持 SELECT FOR UPDATE，降级为普通读取
+            pp = await this.connection.getRepository(ctx, points_product_entity_1.PointsProduct).findOne({
+                where: { id, channelId: ctx.channelId, status: 'enabled' },
+            });
+        }
         if (!pp)
             throw new core_1.UserInputError('PointsProduct not found');
         return pp;
@@ -558,6 +617,39 @@ let PointsMallService = class PointsMallService {
         }
         core_1.Logger.info(`PointsOrder ${order.code} settled via ${outTradeNo} -> ${next}`, loggerCtx);
     }
+    /** 原子取消一笔待支付单：claim 状态 → 退分 → 回补库存 → 支付单置 cancelled。调用方负责事务与归属校验。 */
+    async executeCancel(ctx, order, reason) {
+        const repo = this.connection.getRepository(ctx, points_order_entity_1.PointsOrder);
+        const claim = await repo
+            .createQueryBuilder()
+            .update(points_order_entity_1.PointsOrder)
+            .set({ status: 'cancelled' })
+            .where('id = :id AND status = :status', { id: order.id, status: 'pending_payment' })
+            .execute();
+        if (claim.affected === 0)
+            return false;
+        if (this.memberLevel) {
+            await this.memberLevel.addPoints(ctx, order.customerId, order.pointsTotal, order.id, reason);
+        }
+        else {
+            core_1.Logger.warn(`PointsOrder ${order.code} cancelled but memberLevel unavailable, points NOT refunded`, loggerCtx);
+        }
+        await this.connection
+            .getRepository(ctx, points_product_entity_1.PointsProduct)
+            .createQueryBuilder()
+            .update(points_product_entity_1.PointsProduct)
+            .set({ stock: () => `stock + ${order.quantity}`, redeemedCount: () => `redeemedCount - ${order.quantity}` })
+            .where('id = :id', { id: order.pointsProductId })
+            .execute();
+        await this.connection
+            .getRepository(ctx, points_order_payment_entity_1.PointsOrderPayment)
+            .createQueryBuilder()
+            .update(points_order_payment_entity_1.PointsOrderPayment)
+            .set({ status: 'cancelled' })
+            .where('orderId = :orderId AND status = :status', { orderId: order.id, status: 'pending' })
+            .execute();
+        return true;
+    }
     /** 未支付取消：退积分 + 回补库存 + 支付单置 cancelled。 */
     async cancelPointsOrder(ctx, id) {
         if (!this.memberLevel) {
@@ -575,30 +667,11 @@ let PointsMallService = class PointsMallService {
         }
         await this.connection.startTransaction(ctx);
         try {
-            const claim = await repo
-                .createQueryBuilder()
-                .update(points_order_entity_1.PointsOrder)
-                .set({ status: 'cancelled' })
-                .where('id = :id AND status = :status', { id: order.id, status: 'pending_payment' })
-                .execute();
-            if (claim.affected === 0) {
+            const done = await this.executeCancel(ctx, order, `Points order ${order.code} cancel refund`);
+            if (!done) {
+                await this.connection.commitOpenTransaction(ctx);
                 throw new core_1.UserInputError('ORDER_NOT_CANCELLABLE');
             }
-            await this.memberLevel.addPoints(ctx, customer.id, order.pointsTotal, order.id, `Points order ${order.code} cancel refund`);
-            await this.connection
-                .getRepository(ctx, points_product_entity_1.PointsProduct)
-                .createQueryBuilder()
-                .update(points_product_entity_1.PointsProduct)
-                .set({ stock: () => `stock + ${order.quantity}`, redeemedCount: () => `redeemedCount - ${order.quantity}` })
-                .where('id = :id', { id: order.pointsProductId })
-                .execute();
-            await this.connection
-                .getRepository(ctx, points_order_payment_entity_1.PointsOrderPayment)
-                .createQueryBuilder()
-                .update(points_order_payment_entity_1.PointsOrderPayment)
-                .set({ status: 'cancelled' })
-                .where('orderId = :orderId AND status = :status', { orderId: order.id, status: 'pending' })
-                .execute();
             await this.connection.commitOpenTransaction(ctx);
         }
         catch (e) {
@@ -607,6 +680,31 @@ let PointsMallService = class PointsMallService {
         }
         core_1.Logger.info(`PointsOrder ${order.code} cancelled by customer ${customer.id}, refunded ${order.pointsTotal} points`, loggerCtx);
         return Object.assign(Object.assign({}, order), { status: 'cancelled' });
+    }
+    /** 定时任务入口：取消 ctx 渠道内 createdAt < before 的待支付单，返回取消数量 */
+    async cancelExpiredOrders(ctx, before) {
+        const repo = this.connection.getRepository(ctx, points_order_entity_1.PointsOrder);
+        const expired = await repo.find({
+            where: { status: 'pending_payment', channelId: ctx.channelId },
+        });
+        let count = 0;
+        for (const order of expired) {
+            if (order.createdAt >= before)
+                continue;
+            await this.connection.startTransaction(ctx);
+            try {
+                if (await this.executeCancel(ctx, order, `Points order ${order.code} timeout refund`)) {
+                    count++;
+                    core_1.Logger.info(`PointsOrder ${order.code} expired-cancelled, refunded ${order.pointsTotal} points`, loggerCtx);
+                }
+                await this.connection.commitOpenTransaction(ctx);
+            }
+            catch (e) {
+                await this.connection.rollBackTransaction(ctx);
+                core_1.Logger.error(`PointsOrder ${order.code} expire-cancel failed: ${String(e)}`, loggerCtx);
+            }
+        }
+        return count;
     }
     // ===== 订单查询 =====
     async myPointsOrders(ctx, options) {
@@ -635,7 +733,7 @@ let PointsMallService = class PointsMallService {
         }))) !== null && _a !== void 0 ? _a : undefined);
     }
     async adminPointsOrders(ctx, options) {
-        var _a;
+        var _a, _b;
         const qb = this.connection
             .getRepository(ctx, points_order_entity_1.PointsOrder)
             .createQueryBuilder('po')
@@ -643,10 +741,22 @@ let PointsMallService = class PointsMallService {
         if (options === null || options === void 0 ? void 0 : options.status) {
             qb.andWhere('po.status = :status', { status: options.status });
         }
+        const kw = (_a = options === null || options === void 0 ? void 0 : options.keyword) === null || _a === void 0 ? void 0 : _a.trim();
+        if (kw) {
+            // 单号模糊；纯数字时追加 PO-<id> 前缀精确与 customerId 精确
+            const LIKE = this.connection.rawConnection.options.type === 'postgres' ? 'ILIKE' : 'LIKE';
+            qb.andWhere(new typeorm_1.Brackets(w => {
+                w.where(`po.code ${LIKE} :kw`, { kw: `%${kw}%` });
+                if (/^\d+$/.test(kw)) {
+                    w.orWhere('po.code = :codeExact', { codeExact: 'PO-' + kw });
+                    w.orWhere('po.customerId = :cid', { cid: Number(kw) });
+                }
+            }));
+        }
         const [items, totalItems] = await qb
             .orderBy('po.id', 'DESC')
             .skip(options === null || options === void 0 ? void 0 : options.skip)
-            .take((_a = options === null || options === void 0 ? void 0 : options.take) !== null && _a !== void 0 ? _a : 20)
+            .take((_b = options === null || options === void 0 ? void 0 : options.take) !== null && _b !== void 0 ? _b : 20)
             .getManyAndCount();
         return { items, totalItems };
     }
@@ -654,37 +764,44 @@ let PointsMallService = class PointsMallService {
     async markPointsOrderPaid(ctx, id) {
         return this.applyTransition(ctx, id, 'pending_payment', o => {
             const virtual = o.deliveryType === 'virtual';
-            o.status = virtual ? 'completed' : 'pending_ship';
-            o.paidAt = new Date();
-            if (virtual)
-                o.completedAt = o.paidAt;
+            return Object.assign({ status: virtual ? 'completed' : 'pending_ship', paidAt: new Date() }, (virtual ? { completedAt: new Date() } : {}));
         });
     }
     async markPointsOrderShipped(ctx, id, trackingNo) {
-        return this.applyTransition(ctx, id, 'pending_ship', o => {
-            o.status = 'shipped';
-            o.shippedAt = new Date();
-            o.trackingNo = trackingNo || null;
-        });
+        return this.applyTransition(ctx, id, 'pending_ship', () => ({
+            status: 'shipped',
+            shippedAt: new Date(),
+            trackingNo: trackingNo || null,
+        }));
     }
     async markPointsOrderCompleted(ctx, id) {
-        return this.applyTransition(ctx, id, 'shipped', o => {
-            o.status = 'completed';
-            o.completedAt = new Date();
-        });
+        return this.applyTransition(ctx, id, 'shipped', () => ({
+            status: 'completed',
+            completedAt: new Date(),
+        }));
     }
     async applyTransition(ctx, id, fromStatus, patchFn) {
         const repo = this.connection.getRepository(ctx, points_order_entity_1.PointsOrder);
-        const order = await repo.findOne({ where: { id: Number(id), channelId: ctx.channelId } });
-        if (!order)
+        const existing = await repo.findOne({ where: { id: Number(id), channelId: ctx.channelId } });
+        if (!existing)
             throw new core_1.UserInputError('Points order not found');
-        if (order.status !== fromStatus) {
-            throw new core_1.UserInputError(`Points order is ${order.status}`);
+        const patch = patchFn(existing);
+        // 原子抢占：status 条件在 UPDATE 内，并发双击只成功一次
+        const claim = await repo
+            .createQueryBuilder()
+            .update(points_order_entity_1.PointsOrder)
+            .set(patch)
+            .where('id = :id AND status = :status AND channelId = :channelId', {
+            id: existing.id,
+            status: fromStatus,
+            channelId: ctx.channelId,
+        })
+            .execute();
+        if (claim.affected === 0) {
+            throw new core_1.UserInputError(`Points order is ${existing.status}`);
         }
-        patchFn(order);
-        const saved = await repo.save(order);
-        core_1.Logger.info(`PointsOrder ${saved.code} ${fromStatus} -> ${saved.status}`, loggerCtx);
-        return saved;
+        core_1.Logger.info(`PointsOrder ${existing.code} ${fromStatus} -> ${patch.status}`, loggerCtx);
+        return Object.assign(Object.assign({}, existing), patch);
     }
 };
 exports.PointsMallService = PointsMallService;
