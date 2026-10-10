@@ -42,6 +42,8 @@ export interface HotelConfig {
     tags?: Array<string | Record<string, string>>;
   };
   rooms?: RoomDetail[];
+  /** 当日总房量（缺省房量）：无 HotelRoomDay 行时回退此值；缺失 → 不限房 */
+  totalRooms?: number;
   basePriceCent: number;
   priceCalendar?: PriceSegment[];
   longStayDiscount?: LongStayDiscount[];
