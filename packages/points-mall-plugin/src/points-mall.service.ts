@@ -658,6 +658,41 @@ export class PointsMallService {
         Logger.info(`PointsOrder ${order.code} settled via ${outTradeNo} -> ${next}`, loggerCtx);
     }
 
+    /** 原子取消一笔待支付单：claim 状态 → 退分 → 回补库存 → 支付单置 cancelled。调用方负责事务与归属校验。 */
+    private async executeCancel(ctx: RequestContext, order: PointsOrder, reason: string): Promise<boolean> {
+        const repo = this.connection.getRepository(ctx, PointsOrder);
+        const claim = await repo
+            .createQueryBuilder()
+            .update(PointsOrder)
+            .set({ status: 'cancelled' })
+            .where('id = :id AND status = :status', { id: order.id, status: 'pending_payment' })
+            .execute();
+        if (claim.affected === 0) return false;
+        if (this.memberLevel) {
+            await this.memberLevel.addPoints(ctx, order.customerId, order.pointsTotal, order.id, reason);
+        } else {
+            Logger.warn(
+                `PointsOrder ${order.code} cancelled but memberLevel unavailable, points NOT refunded`,
+                loggerCtx,
+            );
+        }
+        await this.connection
+            .getRepository(ctx, PointsProduct)
+            .createQueryBuilder()
+            .update(PointsProduct)
+            .set({ stock: () => `stock + ${order.quantity}`, redeemedCount: () => `redeemedCount - ${order.quantity}` })
+            .where('id = :id', { id: order.pointsProductId })
+            .execute();
+        await this.connection
+            .getRepository(ctx, PointsOrderPayment)
+            .createQueryBuilder()
+            .update(PointsOrderPayment)
+            .set({ status: 'cancelled' })
+            .where('orderId = :orderId AND status = :status', { orderId: order.id, status: 'pending' })
+            .execute();
+        return true;
+    }
+
     /** 未支付取消：退积分 + 回补库存 + 支付单置 cancelled。 */
     async cancelPointsOrder(ctx: RequestContext, id: ID): Promise<PointsOrder> {
         if (!this.memberLevel) {
@@ -674,36 +709,11 @@ export class PointsMallService {
         }
         await this.connection.startTransaction(ctx);
         try {
-            const claim = await repo
-                .createQueryBuilder()
-                .update(PointsOrder)
-                .set({ status: 'cancelled' })
-                .where('id = :id AND status = :status', { id: order.id, status: 'pending_payment' })
-                .execute();
-            if (claim.affected === 0) {
+            const done = await this.executeCancel(ctx, order, `Points order ${order.code} cancel refund`);
+            if (!done) {
+                await this.connection.commitOpenTransaction(ctx);
                 throw new UserInputError('ORDER_NOT_CANCELLABLE');
             }
-            await this.memberLevel.addPoints(
-                ctx,
-                customer.id,
-                order.pointsTotal,
-                order.id,
-                `Points order ${order.code} cancel refund`,
-            );
-            await this.connection
-                .getRepository(ctx, PointsProduct)
-                .createQueryBuilder()
-                .update(PointsProduct)
-                .set({ stock: () => `stock + ${order.quantity}`, redeemedCount: () => `redeemedCount - ${order.quantity}` })
-                .where('id = :id', { id: order.pointsProductId })
-                .execute();
-            await this.connection
-                .getRepository(ctx, PointsOrderPayment)
-                .createQueryBuilder()
-                .update(PointsOrderPayment)
-                .set({ status: 'cancelled' })
-                .where('orderId = :orderId AND status = :status', { orderId: order.id, status: 'pending' })
-                .execute();
             await this.connection.commitOpenTransaction(ctx);
         } catch (e) {
             await this.connection.rollBackTransaction(ctx);
@@ -714,6 +724,33 @@ export class PointsMallService {
             loggerCtx,
         );
         return { ...order, status: 'cancelled' };
+    }
+
+    /** 定时任务入口：取消 ctx 渠道内 createdAt < before 的待支付单，返回取消数量 */
+    async cancelExpiredOrders(ctx: RequestContext, before: Date): Promise<number> {
+        const repo = this.connection.getRepository(ctx, PointsOrder);
+        const expired = await repo.find({
+            where: { status: 'pending_payment', channelId: ctx.channelId } as any,
+        });
+        let count = 0;
+        for (const order of expired) {
+            if (order.createdAt >= before) continue;
+            await this.connection.startTransaction(ctx);
+            try {
+                if (await this.executeCancel(ctx, order, `Points order ${order.code} timeout refund`)) {
+                    count++;
+                    Logger.info(
+                        `PointsOrder ${order.code} expired-cancelled, refunded ${order.pointsTotal} points`,
+                        loggerCtx,
+                    );
+                }
+                await this.connection.commitOpenTransaction(ctx);
+            } catch (e) {
+                await this.connection.rollBackTransaction(ctx);
+                Logger.error(`PointsOrder ${order.code} expire-cancel failed: ${String(e)}`, loggerCtx);
+            }
+        }
+        return count;
     }
 
     // ===== 订单查询 =====

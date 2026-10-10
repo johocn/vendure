@@ -3,6 +3,11 @@ export interface ToggleFavoriteResult {
     favoriteCount: number;
 }
 
+export interface PointsMallPluginOptions {
+    /** 待支付积分订单超时自动关单分钟数，默认 30；设 0 关闭自动关单 */
+    pointsOrderTimeoutMinutes?: number;
+}
+
 export interface PointsProductListOptions {
     skip?: number;
     take?: number;

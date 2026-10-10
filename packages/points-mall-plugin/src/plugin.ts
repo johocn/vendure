@@ -1,18 +1,23 @@
 import { Type } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import { Injector, PluginCommonModule, VendurePlugin } from '@vendure/core';
+import { Injector, PluginCommonModule, RuntimeVendureConfig, VendurePlugin } from '@vendure/core';
 import { MemberLevelService } from '@vendure/member-level-plugin';
 import { WechatpayService, WechatpaySettlementRegistry } from '@vendure/wechatpay-plugin';
 
+import { POINTS_MALL_PLUGIN_OPTIONS, POINTS_ORDER_EXPIRY_TASK_ID } from './constants';
 import { PointsMallAdminResolver } from './points-mall-admin.resolver';
 import { PointsMallService } from './points-mall.service';
 import { PointsMallShopResolver } from './points-mall-shop.resolver';
+import { pointsOrderExpiryTask } from './points-order-expiry.task';
 import { ProductFavorite } from './product-favorite.entity';
 import { PointsOrder } from './points-order.entity';
 import { PointsOrderPayment } from './points-order-payment.entity';
 import { PointsProduct } from './points-product.entity';
+import { PointsMallPluginOptions } from './types';
 
 const { gql } = require('graphql-tag');
+
+let pluginOptions: PointsMallPluginOptions = {};
 
 const shopSchema = () => gql`
     type PointsProduct implements Node {
@@ -226,7 +231,10 @@ const adminSchema = () => gql`
 @VendurePlugin({
     imports: [PluginCommonModule],
     entities: [ProductFavorite, PointsProduct, PointsOrder, PointsOrderPayment],
-    providers: [PointsMallService],
+    providers: [
+        PointsMallService,
+        { provide: POINTS_MALL_PLUGIN_OPTIONS, useFactory: () => pluginOptions },
+    ],
     shopApiExtensions: {
         schema: shopSchema,
         resolvers: [PointsMallShopResolver],
@@ -236,11 +244,25 @@ const adminSchema = () => gql`
         resolvers: [PointsMallAdminResolver],
     },
     compatibility: '^3.0.0',
+    configuration: (config: RuntimeVendureConfig) => {
+        // 注册待支付订单超时关单 ScheduledTask（幂等：configuration 可能被调用多次）
+        if (!config.schedulerOptions) {
+            config.schedulerOptions = { tasks: [] } as any;
+        }
+        if (!config.schedulerOptions.tasks) {
+            config.schedulerOptions.tasks = [];
+        }
+        if (!config.schedulerOptions.tasks.some(t => t.id === POINTS_ORDER_EXPIRY_TASK_ID)) {
+            config.schedulerOptions.tasks.push(pointsOrderExpiryTask);
+        }
+        return config;
+    },
 })
 export class PointsMallPlugin {
     constructor(private moduleRef: ModuleRef) {}
 
-    static init(): Type<PointsMallPlugin> {
+    static init(options: PointsMallPluginOptions = {}): Type<PointsMallPlugin> {
+        pluginOptions = options;
         return PointsMallPlugin;
     }
 
