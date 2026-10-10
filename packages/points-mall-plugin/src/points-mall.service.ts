@@ -81,11 +81,9 @@ export class PointsMallService {
 
     /** 运行时填充变体价格（priceWithTax 为 @Calculated getter，需 listPrice/taxRateApplied 就位） */
     private async applyVariantPrices(ctx: RequestContext, variants: any[]): Promise<void> {
-        for (const v of variants) {
-            if (v) {
-                await this.productPriceApplicator.applyChannelPriceAndTax(v, ctx);
-            }
-        }
+        await Promise.all(
+            variants.filter(Boolean).map(v => this.productPriceApplicator.applyChannelPriceAndTax(v, ctx)),
+        );
     }
 
     /** 批量取变体（含 product/featuredAsset/translations），返回 variantId → 变体 Map */
