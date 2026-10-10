@@ -242,6 +242,37 @@ export class PointsMallService {
         return map;
     }
 
+    /** 登录客户对给定积分商品的已兑数量（非取消订单），customerId 为空返回空 Map */
+    private async redeemedCountMap(
+        ctx: RequestContext,
+        pointsProductIds: number[],
+        customerId: number | null,
+    ): Promise<Map<number, number>> {
+        const map = new Map<number, number>();
+        if (!customerId || !pointsProductIds.length) return map;
+        const rows: Array<{ pid: number; qty: string }> = await this.connection
+            .getRepository(ctx, PointsOrder)
+            .createQueryBuilder('po')
+            .select('po.pointsProductId', 'pid')
+            .addSelect('SUM(po.quantity)', 'qty')
+            .where('po.customerId = :cid', { cid: customerId })
+            .andWhere('po.pointsProductId IN (:...ids)', { ids: pointsProductIds })
+            .andWhere("po.status != 'cancelled'")
+            .groupBy('po.pointsProductId')
+            .getRawMany();
+        for (const r of rows) map.set(Number(r.pid), Number(r.qty) || 0);
+        return map;
+    }
+
+    /** 静默解析当前客户主键（游客返回 null），供 myRedeemedCount 使用 */
+    private async resolveOptionalCustomerId(ctx: RequestContext): Promise<number | null> {
+        if (!ctx.activeUserId) return null;
+        const customer = await this.connection
+            .getRepository(ctx, Customer)
+            .findOne({ where: { user: { id: ctx.activeUserId } } as any });
+        return customer ? (customer.id as number) : null;
+    }
+
     // ===== 积分商品（admin CRUD）=====
 
     private async assertVariantBelongsToProduct(ctx: RequestContext, productId: number, variantId: number): Promise<void> {
@@ -359,7 +390,12 @@ export class PointsMallService {
             .getManyAndCount();
         const variants = await this.getVariantsWithProduct(ctx, rows.map(r => r.variantId));
         await this.applyVariantPrices(ctx, [...variants.values()]);
-        return { items: rows.map(r => this.toView(ctx, r, variants.get(r.variantId))), totalItems };
+        const customerId = await this.resolveOptionalCustomerId(ctx);
+        const redeemed = await this.redeemedCountMap(ctx, rows.map(r => Number(r.id)), customerId);
+        return {
+            items: rows.map(r => this.toView(ctx, r, variants.get(r.variantId), redeemed.get(Number(r.id)) ?? 0)),
+            totalItems,
+        };
     }
 
     /** 商城单条（enabled）。 */
@@ -370,10 +406,12 @@ export class PointsMallService {
         if (!pp) return undefined;
         const v = await this.getVariantWithProduct(ctx, pp.variantId);
         await this.applyVariantPrices(ctx, [v]);
-        return this.toView(ctx, pp, v ?? undefined);
+        const customerId = await this.resolveOptionalCustomerId(ctx);
+        const redeemed = await this.redeemedCountMap(ctx, [Number(pp.id)], customerId);
+        return this.toView(ctx, pp, v ?? undefined, redeemed.get(Number(pp.id)) ?? 0);
     }
 
-    private toView(ctx: RequestContext, r: PointsProduct, v?: any): PointsProductView {
+    private toView(ctx: RequestContext, r: PointsProduct, v?: any, myRedeemedCount = 0): PointsProductView {
         const product = v?.product;
         const t = this.pickTranslation(product, ctx);
         return {
@@ -394,6 +432,7 @@ export class PointsMallService {
             sortOrder: r.sortOrder,
             priceWithTax: v?.priceWithTax ?? 0,
             inStock: r.stock > 0,
+            myRedeemedCount,
         };
     }
 

@@ -28,6 +28,7 @@ const shopSchema = () => gql`
         stock: Int!
         perUserLimit: Int!
         redeemedCount: Int!
+        myRedeemedCount: Int!
         validFrom: DateTime
         validTo: DateTime
         sortOrder: Int!

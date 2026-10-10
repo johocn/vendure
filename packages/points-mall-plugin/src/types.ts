@@ -59,4 +59,5 @@ export interface FavoriteProductView {
 
 export interface PointsProductView {
     [k: string]: any;
+    myRedeemedCount: number;
 }
