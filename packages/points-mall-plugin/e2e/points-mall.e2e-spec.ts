@@ -2,11 +2,12 @@ import { createTestEnvironment, registerInitializer, SqljsInitializer } from '@v
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import path from 'path';
 import gql from 'graphql-tag';
-import { mergeConfig } from '@vendure/core';
+import { mergeConfig, RequestContextService, TransactionalConnection } from '@vendure/core';
 import { initialData } from '../../../e2e-common/e2e-initial-data';
 import { TEST_SETUP_TIMEOUT_MS, testConfig } from '../../../e2e-common/test-config';
 import { MemberLevelPlugin } from '@vendure/member-level-plugin';
 import { PointsMallPlugin } from '../src/plugin';
+import { PointsMallService } from '../src/points-mall.service';
 
 registerInitializer('sqljs', new SqljsInitializer(path.join(__dirname, '__data__')));
 
@@ -442,5 +443,81 @@ describe('PointsMallPlugin · 积分商城（收藏/积分商品/兑换/支付/�
         await expect(adminClient.query(gql`
             mutation { markPointsOrderCompleted(id: "${mixOrderId}") { id status } }
         `)).rejects.toThrow('Points order is completed');
+    });
+
+    it('超时关单：过期 pending_payment 混合价单被 cancelExpiredOrders 取消并退分回补库存', async () => {
+        // 混合价（cashPrice>0）才会产生 pending_payment；纯积分实物单直接 pending_ship
+        const pp = await createPointsProduct({
+            pointsPrice: 100,
+            cashPrice: 100,
+            deliveryType: 'physical',
+            stock: 5,
+        });
+        const pointsBefore = await myPoints();
+        const stockBefore = (await adminPointsProduct(pp.id)).stock;
+
+        const order = await exchange(pp.id, 1);
+        expect(order.status).toBe('pending_payment');
+        expect((await adminPointsProduct(pp.id)).stock).toBe(stockBefore - 1);
+        expect(await myPoints()).toBe(pointsBefore - 100);
+
+        // 直接改库把该单 createdAt 拨回 31 分钟前
+        // （order.id 是编码 ID（如 T_5），raw repo 不解码 → 由 code 反推数字主键；裸 SQL 绕开 CreateDateColumn 限制）
+        const conn = server.app.get(TransactionalConnection);
+        const numericId = Number(order.code.replace('PO-', ''));
+        expect(numericId).toBeGreaterThan(0);
+        await conn.rawConnection.query('UPDATE points_order SET "createdAt" = ? WHERE id = ?', [
+            new Date(Date.now() - 31 * 60 * 1000).toISOString(),
+            numericId,
+        ]);
+
+        const svc = server.app.get(PointsMallService);
+        const adminCtx = await server.app.get(RequestContextService).create({ apiType: 'admin' });
+        const cancelled = await svc.cancelExpiredOrders(adminCtx, new Date(Date.now() - 30 * 60 * 1000));
+        expect(cancelled).toBeGreaterThanOrEqual(1);
+
+        // 库存回补到原值、积分退回原值
+        expect((await adminPointsProduct(pp.id)).stock).toBe(stockBefore);
+        expect(await myPoints()).toBe(pointsBefore);
+
+        const res = await shopClient.query(gql`
+            query { myPointsOrders(options: { take: 50 }) { items { id status } } }
+        `) as any;
+        const target = res.myPointsOrders.items.find((i: any) => i.id === order.id);
+        expect(target.status).toBe('cancelled');
+    });
+
+    it('admin keyword 搜索：商品按翻译名/productId 命中，订单按 code 命中', async () => {
+        // e2e 商品名来自 e2e-products-minimal.csv（唯一商品 "Laptop"）
+        const byName = await adminClient.query(gql`
+            query { pointsProductsAdmin(options: { keyword: "Laptop" }) { items { id } totalItems } }
+        `) as any;
+        expect(byName.pointsProductsAdmin.totalItems).toBeGreaterThanOrEqual(1);
+
+        // 纯数字 keyword 走 productId 精确（CAST AS TEXT 分支）；GraphQL id 是编码值（T_1），剥前缀取数字主键
+        const numericProductId = String(productId).replace(/^T_/, '');
+        const byProductId = await adminClient.query(gql`
+            query { pointsProductsAdmin(options: { keyword: "${numericProductId}" }) { items { id } totalItems } }
+        `) as any;
+        expect(byProductId.pointsProductsAdmin.totalItems).toBeGreaterThanOrEqual(1);
+
+        const orders = await adminClient.query(gql`
+            query { pointsOrdersAdmin(options: { keyword: "PO-" }) { items { code } totalItems } }
+        `) as any;
+        expect(orders.pointsOrdersAdmin.totalItems).toBeGreaterThanOrEqual(1);
+        expect(orders.pointsOrdersAdmin.items.every((o: any) => o.code.startsWith('PO-'))).toBe(true);
+    });
+
+    it('myRedeemedCount：登录客户 shop 视图返回累计已兑数量', async () => {
+        const pp = await createPointsProduct({ pointsPrice: 50, deliveryType: 'physical', stock: 10 });
+        const order = await exchange(pp.id, 2);
+        expect(order.status).toBe('pending_ship');
+
+        const res = await shopClient.query(gql`
+            query { pointsProduct(id: "${pp.id}") { id myRedeemedCount stock redeemedCount } }
+        `) as any;
+        expect(res.pointsProduct.myRedeemedCount).toBe(2);
+        expect(res.pointsProduct.stock).toBe(8);
+        expect(res.pointsProduct.redeemedCount).toBe(2);
     });
 });
