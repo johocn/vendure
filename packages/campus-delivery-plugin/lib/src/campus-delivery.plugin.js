@@ -32,6 +32,7 @@ const hall_service_1 = require("./hall.service");
 const hall_shop_resolver_1 = require("./hall-shop.resolver");
 const campus_invoice_resolver_1 = require("./campus-invoice.resolver");
 const create_campus_tables_1 = require("./migrations/create-campus-tables");
+const backfill_waimai_industry_1 = require("./migrations/backfill-waimai-industry");
 const min_order_process_1 = require("./min-order.process");
 const payment_timeout_admin_resolver_1 = require("./payment-timeout-admin.resolver");
 const payment_timeout_admin_service_1 = require("./payment-timeout-admin.service");
@@ -148,6 +149,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
         entities: [campus_zone_entity_1.CampusZone, campus_building_entity_1.CampusBuilding, rider_earning_entity_1.RiderEarning, campus_fulfillment_config_entity_1.CampusFulfillmentConfig, delivery_slot_entity_1.DeliverySlot, rider_credit_log_entity_1.RiderCreditLog, rider_withdrawal_entity_1.RiderWithdrawalRequest, payment_timeout_entity_1.PaymentTimeoutTask],
         providers: [
             create_campus_tables_1.CreateCampusTablesMigration,
+            backfill_waimai_industry_1.BackfillWaimaiIndustryMigration,
             campus_config_service_1.CampusConfigService,
             rider_service_1.RiderService,
             capacity_service_1.CapacityService,

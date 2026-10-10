@@ -84,6 +84,7 @@ export declare class TenantMemberService {
         tenantNo?: number;
         isOfficial?: boolean;
         domain?: string;
+        industryType?: string;
     }): Promise<void>;
     /** 租户级角色创建（限定 channelIds=[channelId]；权限白名单校验） */
     createTenantRole(ctx: RequestContext, channelId: ID, input: {

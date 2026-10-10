@@ -335,6 +335,29 @@ exports.tenantChannelCustomFields = {
                 { name: 'operationalCopyJson', type: 'text' },
             ],
         },
+        {
+            name: 'industryType',
+            type: 'string',
+            nullable: true,
+            public: true,
+            label: [
+                { languageCode: core_1.LanguageCode.zh_Hans, value: '行业类型' },
+                { languageCode: core_1.LanguageCode.en, value: 'Industry Type' },
+            ],
+            description: [
+                { languageCode: core_1.LanguageCode.zh_Hans, value: '预制行业清单；catering=餐饮，为外卖频道准入条件。仅平台管理员可改。' },
+            ],
+            options: [
+                { value: 'catering', label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '餐饮' }, { languageCode: core_1.LanguageCode.en, value: 'Catering' }] },
+                { value: 'retail', label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '零售商超' }, { languageCode: core_1.LanguageCode.en, value: 'Retail' }] },
+                { value: 'fresh', label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '生鲜果蔬' }, { languageCode: core_1.LanguageCode.en, value: 'Fresh' }] },
+                { value: 'service', label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '生活服务' }, { languageCode: core_1.LanguageCode.en, value: 'Services' }] },
+                { value: 'hotel', label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '酒店民宿' }, { languageCode: core_1.LanguageCode.en, value: 'Hotel' }] },
+                { value: 'beauty', label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '美容美发' }, { languageCode: core_1.LanguageCode.en, value: 'Beauty' }] },
+                { value: 'education', label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '教培' }, { languageCode: core_1.LanguageCode.en, value: 'Education' }] },
+                { value: 'other', label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '其他' }, { languageCode: core_1.LanguageCode.en, value: 'Other' }] },
+            ],
+        },
     ],
 };
 //# sourceMappingURL=tenant-channel-custom-fields.js.map

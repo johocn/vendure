@@ -328,6 +328,8 @@ let TenantMemberService = class TenantMemberService {
             cf.set('shopName', input.name);
         if (input.domain !== undefined && input.domain !== null)
             cf.set('domain', input.domain);
+        if (input.industryType !== undefined && input.industryType !== null)
+            cf.set('industryType', input.industryType);
         await this.channelService.update(ctx, {
             id: channelId,
             customFields: Object.fromEntries(cf),
@@ -966,7 +968,7 @@ let TenantMemberService = class TenantMemberService {
         if (!channel)
             throw new Error('CHANNEL_NOT_FOUND');
         // 安全字段禁止租户端越权修改（启停/租户号/官营标记仅超管可改）
-        const protectedKeys = ['enabled', 'tenantNo', 'isOfficial'];
+        const protectedKeys = ['enabled', 'tenantNo', 'isOfficial', 'industryType'];
         const merged = Object.assign(Object.assign({}, (channel.customFields || {})), Object.fromEntries(Object.entries(input).filter(([k]) => !protectedKeys.includes(k))));
         await this.channelService.update(ctx, { id: channelId, customFields: merged });
         const updated = await this.channelService.findOne(ctx, channelId);
