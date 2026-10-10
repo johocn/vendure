@@ -38,6 +38,7 @@
         "@vendure/feedback-plugin": "0.0.1",
         "@vendure/lottery-plugin": "0.0.1",
         "@vendure/shopping-circle-plugin": "0.0.1",
+        "@vendure/points-mall-plugin": "0.0.1",
         "@vendure/review-plugin": "0.0.1",
         "@vendure/wechat-subscribe-message-plugin": "0.0.1",
         "@vendure/coupon-plugin": "0.0.1",

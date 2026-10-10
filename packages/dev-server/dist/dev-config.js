@@ -52,6 +52,7 @@ const checkin_plugin_1 = require("@vendure/checkin-plugin");
 const feedback_plugin_1 = require("@vendure/feedback-plugin");
 const lottery_plugin_1 = require("@vendure/lottery-plugin");
 const shopping_circle_plugin_1 = require("@vendure/shopping-circle-plugin");
+const points_mall_plugin_1 = require("@vendure/points-mall-plugin");
 const review_plugin_1 = require("@vendure/review-plugin");
 const wechat_subscribe_message_plugin_1 = require("@vendure/wechat-subscribe-message-plugin");
 const coupon_plugin_1 = require("@vendure/coupon-plugin");
@@ -419,6 +420,7 @@ exports.devConfig = {
         feedback_plugin_1.FeedbackPlugin.init(),
         lottery_plugin_1.LotteryPlugin.init(),
         shopping_circle_plugin_1.ShoppingCirclePlugin.init(),
+        points_mall_plugin_1.PointsMallPlugin.init(),
         review_plugin_1.ReviewPlugin.init(),
         favorite_plugin_1.FavoritePlugin.init(),
         wechat_subscribe_message_plugin_1.WechatSubscribeMessagePlugin.init(),
