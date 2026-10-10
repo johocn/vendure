@@ -350,10 +350,11 @@ export class PointsMallService {
         const kw = options?.keyword?.trim();
         if (kw) {
             // 商品翻译名模糊 + 纯数字时 productId 精确（联表用表名+camelCase 带引号列）
+            // 注意：product_translation 的外键列是 baseId（translation 实体 FK 命名），非 productId
             // AS TEXT 而非 AS CHAR：Postgres 下 CHAR 为 bpchar(1) 会截断；LIKE 仅为 Postgres 用 ILIKE（sqljs e2e 不支持）
             const LIKE = this.connection.rawConnection.options.type === 'postgres' ? 'ILIKE' : 'LIKE';
             qb.leftJoin('product_variant', 'v', 'v."id" = pp."variantId"')
-                .leftJoin('product_translation', 'pt', 'pt."productId" = v."productId"')
+                .leftJoin('product_translation', 'pt', 'pt."baseId" = v."productId"')
                 .andWhere(`(pt."name" ${LIKE} :kw OR CAST(pp."productId" AS TEXT) = :kwExact)`, {
                     kw: `%${kw}%`,
                     kwExact: kw,
