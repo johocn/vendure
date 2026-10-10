@@ -79,9 +79,8 @@ let HotelRatePlanService = class HotelRatePlanService {
             return [];
         const memberLevel = await this.resolveMemberLevel(ctx);
         const checkIn = (_a = options.checkIn) !== null && _a !== void 0 ? _a : null;
-        return plans
-            .filter(p => !checkIn || (0, rate_plan_logic_1.isRatePlanSaleable)(p, checkIn, memberLevel))
-            .map(p => ({
+        // 会员门槛无条件过滤；checkIn 提供时再判售卖期（isRatePlanSaleable 内部语义）
+        return plans.filter(p => (0, rate_plan_logic_1.isRatePlanSaleable)(p, checkIn, memberLevel)).map(p => ({
             id: String(p.id),
             code: p.code,
             name: p.name,

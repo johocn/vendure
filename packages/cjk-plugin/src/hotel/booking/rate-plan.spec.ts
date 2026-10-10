@@ -125,6 +125,15 @@ describe('isRatePlanSaleable（会员门槛 + 售卖期，与 C 端可见性同�
     it('入住日非法 → 不可售', () => {
         expect(isRatePlanSaleable(plan(), 'bad', null)).toBe(false);
     });
+
+    it('checkIn 缺省：跳过售卖期判定，会员门槛仍强制（fail-closed）', () => {
+        const p = plan({ memberOnly: '3', dateFrom: '2026-11-01' });
+        expect(isRatePlanSaleable(plan(), null, null)).toBe(true);
+        expect(isRatePlanSaleable(p, null, 3)).toBe(true);
+        expect(isRatePlanSaleable(p, null, 1)).toBe(false);
+        expect(isRatePlanSaleable(p, null, null)).toBe(false);
+        expect(isRatePlanSaleable(plan({ dateFrom: '2026-11-01' }), null, null)).toBe(true);
+    });
 });
 
 describe('parseMemberOnly', () => {

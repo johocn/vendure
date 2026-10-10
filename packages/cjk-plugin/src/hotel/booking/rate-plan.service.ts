@@ -92,16 +92,15 @@ export class HotelRatePlanService {
         if (!plans.length) return [];
         const memberLevel = await this.resolveMemberLevel(ctx);
         const checkIn = options.checkIn ?? null;
-        return plans
-            .filter(p => !checkIn || isRatePlanSaleable(p, checkIn, memberLevel))
-            .map(p => ({
-                id: String(p.id),
-                code: p.code,
-                name: p.name,
-                adjustType: p.adjustType,
-                adjustValue: p.adjustValue,
-                memberOnly: p.memberOnly,
-            }));
+        // 会员门槛无条件过滤；checkIn 提供时再判售卖期（isRatePlanSaleable 内部语义）
+        return plans.filter(p => isRatePlanSaleable(p, checkIn, memberLevel)).map(p => ({
+            id: String(p.id),
+            code: p.code,
+            name: p.name,
+            adjustType: p.adjustType,
+            adjustValue: p.adjustValue,
+            memberOnly: p.memberOnly,
+        }));
     }
 
     /** C 端 chips：可见方案 + 日均价预估（变体基准价套用单晚方案价；坏配置基准按 0） */

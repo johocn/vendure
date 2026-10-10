@@ -51,7 +51,9 @@ function parseMemberOnly(raw) {
 /**
  * 方案对「某顾客 + 某入住日」是否可售（C 端可见性与下单套用共用同一口径）：
  * - memberOnly：null = 全员；数字 n = 顾客 memberLevel ≥ n；顾客未登录（memberLevel null）不可见；门槛非法不可见
- * - dateFrom/dateTo：入住日 checkIn 落在 [dateFrom, dateTo]（含两端）；null 端 = 不限
+ *   （会员门槛无条件校验，不随 checkIn 缺省跳过——fail-closed）
+ * - dateFrom/dateTo：入住日 checkIn 落在 [dateFrom, dateTo]（含两端）；null 端 = 不限；
+ *   checkIn 缺省（如 C 端不带日期拉方案列表）= 跳过售卖期判定；提供了但格式坏 = fail-closed 不可售
  */
 function isRatePlanSaleable(plan, checkIn, memberLevel) {
     const gate = parseMemberOnly(plan.memberOnly);
@@ -61,7 +63,9 @@ function isRatePlanSaleable(plan, checkIn, memberLevel) {
     else if (Number.isNaN(gate) || memberLevel == null || memberLevel < gate) {
         return false;
     }
-    const d = typeof checkIn === 'string' ? checkIn.slice(0, 10) : '';
+    const d = typeof checkIn === 'string' ? checkIn.trim().slice(0, 10) : '';
+    if (!d)
+        return true;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d))
         return false;
     const from = plan.dateFrom ? String(plan.dateFrom).slice(0, 10) : null;
