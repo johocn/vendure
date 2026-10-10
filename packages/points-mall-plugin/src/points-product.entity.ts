@@ -34,10 +34,10 @@ export class PointsProduct extends VendureEntity {
     @Column({ type: 'int', default: 0 })
     redeemedCount: number;
 
-    @Column({ type: 'datetime', nullable: true })
+    @Column({ type: Date, nullable: true })
     validFrom: Date | null;
 
-    @Column({ type: 'datetime', nullable: true })
+    @Column({ type: Date, nullable: true })
     validTo: Date | null; // 虚拟商品兼作核销有效期
 
     @Column({ default: 'enabled' })

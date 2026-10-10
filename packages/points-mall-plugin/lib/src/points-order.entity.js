@@ -70,15 +70,15 @@ __decorate([
     __metadata("design:type", Object)
 ], PointsOrder.prototype, "trackingNo", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
+    (0, typeorm_1.Column)({ type: Date, nullable: true }),
     __metadata("design:type", Object)
 ], PointsOrder.prototype, "paidAt", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
+    (0, typeorm_1.Column)({ type: Date, nullable: true }),
     __metadata("design:type", Object)
 ], PointsOrder.prototype, "shippedAt", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
+    (0, typeorm_1.Column)({ type: Date, nullable: true }),
     __metadata("design:type", Object)
 ], PointsOrder.prototype, "completedAt", void 0);
 __decorate([

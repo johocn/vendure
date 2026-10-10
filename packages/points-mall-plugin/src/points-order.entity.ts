@@ -51,13 +51,13 @@ export class PointsOrder extends VendureEntity {
     @Column({ type: 'varchar', nullable: true })
     trackingNo: string | null;
 
-    @Column({ type: 'datetime', nullable: true })
+    @Column({ type: Date, nullable: true })
     paidAt: Date | null;
 
-    @Column({ type: 'datetime', nullable: true })
+    @Column({ type: Date, nullable: true })
     shippedAt: Date | null;
 
-    @Column({ type: 'datetime', nullable: true })
+    @Column({ type: Date, nullable: true })
     completedAt: Date | null;
 
     @Column()

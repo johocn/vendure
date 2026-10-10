@@ -27,7 +27,7 @@ export class PointsOrderPayment extends VendureEntity {
     @Column({ type: 'varchar', nullable: true })
     transactionId: string | null;
 
-    @Column({ type: 'datetime', nullable: true })
+    @Column({ type: Date, nullable: true })
     paidAt: Date | null;
 
     @Column()
