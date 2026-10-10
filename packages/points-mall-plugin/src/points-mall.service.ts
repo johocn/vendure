@@ -703,42 +703,54 @@ export class PointsMallService {
     async markPointsOrderPaid(ctx: RequestContext, id: ID): Promise<PointsOrder> {
         return this.applyTransition(ctx, id, 'pending_payment', o => {
             const virtual = o.deliveryType === 'virtual';
-            o.status = virtual ? 'completed' : 'pending_ship';
-            o.paidAt = new Date();
-            if (virtual) o.completedAt = o.paidAt;
+            return {
+                status: virtual ? 'completed' : 'pending_ship',
+                paidAt: new Date(),
+                ...(virtual ? { completedAt: new Date() } : {}),
+            };
         });
     }
 
     async markPointsOrderShipped(ctx: RequestContext, id: ID, trackingNo?: string): Promise<PointsOrder> {
-        return this.applyTransition(ctx, id, 'pending_ship', o => {
-            o.status = 'shipped';
-            o.shippedAt = new Date();
-            o.trackingNo = trackingNo || null;
-        });
+        return this.applyTransition(ctx, id, 'pending_ship', () => ({
+            status: 'shipped',
+            shippedAt: new Date(),
+            trackingNo: trackingNo || null,
+        }));
     }
 
     async markPointsOrderCompleted(ctx: RequestContext, id: ID): Promise<PointsOrder> {
-        return this.applyTransition(ctx, id, 'shipped', o => {
-            o.status = 'completed';
-            o.completedAt = new Date();
-        });
+        return this.applyTransition(ctx, id, 'shipped', () => ({
+            status: 'completed',
+            completedAt: new Date(),
+        }));
     }
 
     private async applyTransition(
         ctx: RequestContext,
         id: ID,
         fromStatus: string,
-        patchFn: (o: PointsOrder) => void,
+        patchFn: (o: PointsOrder) => Partial<PointsOrder>,
     ): Promise<PointsOrder> {
         const repo = this.connection.getRepository(ctx, PointsOrder);
-        const order = await repo.findOne({ where: { id: Number(id), channelId: ctx.channelId } as any });
-        if (!order) throw new UserInputError('Points order not found');
-        if (order.status !== fromStatus) {
-            throw new UserInputError(`Points order is ${order.status}`);
+        const existing = await repo.findOne({ where: { id: Number(id), channelId: ctx.channelId } as any });
+        if (!existing) throw new UserInputError('Points order not found');
+        const patch = patchFn(existing);
+        // 原子抢占：status 条件在 UPDATE 内，并发双击只成功一次
+        const claim = await repo
+            .createQueryBuilder()
+            .update(PointsOrder)
+            .set(patch)
+            .where('id = :id AND status = :status AND channelId = :channelId', {
+                id: existing.id,
+                status: fromStatus,
+                channelId: ctx.channelId,
+            })
+            .execute();
+        if (claim.affected === 0) {
+            throw new UserInputError(`Points order is ${existing.status}`);
         }
-        patchFn(order);
-        const saved = await repo.save(order);
-        Logger.info(`PointsOrder ${saved.code} ${fromStatus} -> ${saved.status}`, loggerCtx);
-        return saved;
+        Logger.info(`PointsOrder ${existing.code} ${fromStatus} -> ${patch.status}`, loggerCtx);
+        return { ...existing, ...patch } as PointsOrder;
     }
 }
