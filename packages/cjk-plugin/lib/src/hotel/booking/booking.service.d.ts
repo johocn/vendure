@@ -20,6 +20,8 @@ export declare class HotelBookingService {
     findByCode(ctx: RequestContext, code: string): Promise<HotelBooking | null>;
     /** 商家端简版列表（Task 13 预订管理页数据源；id DESC 尾页语义，上限 200） */
     listForAdmin(ctx: RequestContext, filter?: HotelBookingAdminFilter, take?: number): Promise<HotelBooking[]>;
+    /** C 端「我的预订」：按顾客名下订单 id 集合过滤（归属隔离在 resolver 层做），可选状态过滤 */
+    listForCustomer(ctx: RequestContext, orderIds: number[], status?: string): Promise<HotelBooking[]>;
     /**
      * 幂等创建 pending 预订单（per 酒店订单行）：
      * - 行已有非 cancelled booking → 跳过；若仍为 pendingDeposit 则同步可能变化的日期/数量/金额
@@ -39,6 +41,11 @@ export declare class HotelBookingService {
     private allocateCode;
     /** 取消截止点固化：方案级 cancelPolicyOverride 优先，回退房型 hotelRoomConfig.cancelPolicy；checkInTime 取房型配置 */
     private deriveDeadline;
+    /**
+     * OrderStateTransitionEvent 入口：事件携带的 order 不保证加载 lines/customer，
+     * 按 id 重取完整订单后复用 handleOrderUpdated（幂等，双路触发无副作用）。
+     */
+    handleOrderTransition(ctx: RequestContext, orderId: ID): Promise<void>;
     /**
      * 订单更新 reconcile：
      * - 无酒店行 / 状态不在可处理集合 → no-op

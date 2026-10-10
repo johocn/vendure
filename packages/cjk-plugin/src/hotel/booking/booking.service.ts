@@ -4,7 +4,7 @@
 // - 事件接入（OrderEvent → handleOrderUpdated）在 Task 11 于 plugin.ts onInit 订阅
 import { Injectable } from '@nestjs/common';
 import { ID, Logger, Order, ProductVariant, RequestContext, TransactionalConnection } from '@vendure/core';
-import { LessThan, LessThanOrEqual } from 'typeorm';
+import { In, LessThan, LessThanOrEqual } from 'typeorm';
 
 import { CancelPolicy } from '../hotel-config';
 import { parseHotelRoomConfig } from '../hotel-nightly-pricing';
@@ -76,6 +76,14 @@ export class HotelBookingService {
         if (filter.orderId != null) where.orderId = Number(filter.orderId);
         if (filter.orderCode) where.orderCode = filter.orderCode;
         return this.repo(ctx).find({ where, order: { id: 'DESC' }, take });
+    }
+
+    /** C 端「我的预订」：按顾客名下订单 id 集合过滤（归属隔离在 resolver 层做），可选状态过滤 */
+    async listForCustomer(ctx: RequestContext, orderIds: number[], status?: string): Promise<HotelBooking[]> {
+        if (!orderIds.length) return [];
+        const where: any = { orderId: In(orderIds) };
+        if (status) where.status = status;
+        return this.repo(ctx).find({ where, order: { id: 'DESC' }, take: 200 });
     }
 
     // ===== 状态机：建单（pendingDeposit） =====
@@ -185,7 +193,8 @@ export class HotelBookingService {
         const confirmed: HotelBooking[] = [];
         for (const b of pending) {
             b.bookingCode = await this.allocateCode(ctx);
-            b.cancelDeadlineAt = await this.deriveDeadline(ctx, b);
+            // deriveDeadline 可能为 null（无政策/nonRefundable）——列已是 null，undefined = 保持不变
+            b.cancelDeadlineAt = (await this.deriveDeadline(ctx, b)) ?? undefined;
             b.confirmedAt = new Date();
             b.status = 'confirmed';
             const saved = await this.repo(ctx).save(b);
@@ -234,7 +243,20 @@ export class HotelBookingService {
         return deriveCancelDeadline(policy, b.checkIn, cfg?.checkInTime);
     }
 
-    // ===== 事件入口（Task 11 于 plugin.ts 订阅 OrderEvent 调用） =====
+    // ===== 事件入口（Task 11 于 plugin.ts 订阅 OrderEvent/OrderStateTransitionEvent 调用） =====
+
+    /**
+     * OrderStateTransitionEvent 入口：事件携带的 order 不保证加载 lines/customer，
+     * 按 id 重取完整订单后复用 handleOrderUpdated（幂等，双路触发无副作用）。
+     */
+    async handleOrderTransition(ctx: RequestContext, orderId: ID): Promise<void> {
+        const order = await this.conn.getRepository(ctx, Order).findOne({
+            where: { id: Number(orderId) as any },
+            relations: ['lines', 'customer'],
+        });
+        if (!order) return;
+        await this.handleOrderUpdated(ctx, order);
+    }
 
     /**
      * 订单更新 reconcile：

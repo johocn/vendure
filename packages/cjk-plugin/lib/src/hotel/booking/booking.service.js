@@ -62,6 +62,15 @@ let HotelBookingService = class HotelBookingService {
             where.orderCode = filter.orderCode;
         return this.repo(ctx).find({ where, order: { id: 'DESC' }, take });
     }
+    /** C 端「我的预订」：按顾客名下订单 id 集合过滤（归属隔离在 resolver 层做），可选状态过滤 */
+    async listForCustomer(ctx, orderIds, status) {
+        if (!orderIds.length)
+            return [];
+        const where = { orderId: (0, typeorm_1.In)(orderIds) };
+        if (status)
+            where.status = status;
+        return this.repo(ctx).find({ where, order: { id: 'DESC' }, take: 200 });
+    }
     // ===== 状态机：建单（pendingDeposit） =====
     /**
      * 幂等创建 pending 预订单（per 酒店订单行）：
@@ -161,11 +170,13 @@ let HotelBookingService = class HotelBookingService {
      * 状态守卫在调用方（handleOrderUpdated 按订单状态判断）。
      */
     async confirmPendingForOrder(ctx, orderId) {
+        var _a;
         const pending = await this.repo(ctx).find({ where: { orderId: Number(orderId), status: 'pendingDeposit' } });
         const confirmed = [];
         for (const b of pending) {
             b.bookingCode = await this.allocateCode(ctx);
-            b.cancelDeadlineAt = await this.deriveDeadline(ctx, b);
+            // deriveDeadline 可能为 null（无政策/nonRefundable）——列已是 null，undefined = 保持不变
+            b.cancelDeadlineAt = (_a = (await this.deriveDeadline(ctx, b))) !== null && _a !== void 0 ? _a : undefined;
             b.confirmedAt = new Date();
             b.status = 'confirmed';
             const saved = await this.repo(ctx).save(b);
@@ -212,7 +223,20 @@ let HotelBookingService = class HotelBookingService {
             policy = (_c = cfg === null || cfg === void 0 ? void 0 : cfg.cancelPolicy) !== null && _c !== void 0 ? _c : null;
         return (0, booking_logic_1.deriveCancelDeadline)(policy, b.checkIn, cfg === null || cfg === void 0 ? void 0 : cfg.checkInTime);
     }
-    // ===== 事件入口（Task 11 于 plugin.ts 订阅 OrderEvent 调用） =====
+    // ===== 事件入口（Task 11 于 plugin.ts 订阅 OrderEvent/OrderStateTransitionEvent 调用） =====
+    /**
+     * OrderStateTransitionEvent 入口：事件携带的 order 不保证加载 lines/customer，
+     * 按 id 重取完整订单后复用 handleOrderUpdated（幂等，双路触发无副作用）。
+     */
+    async handleOrderTransition(ctx, orderId) {
+        const order = await this.conn.getRepository(ctx, core_1.Order).findOne({
+            where: { id: Number(orderId) },
+            relations: ['lines', 'customer'],
+        });
+        if (!order)
+            return;
+        await this.handleOrderUpdated(ctx, order);
+    }
     /**
      * 订单更新 reconcile：
      * - 无酒店行 / 状态不在可处理集合 → no-op

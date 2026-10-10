@@ -136,9 +136,11 @@ import { HotelInventoryShopResolver } from './hotel/booking/hotel-inventory-shop
 import { HotelInventoryAdminResolver } from './hotel/booking/hotel-inventory-admin.resolver';
 import { HotelRatePlanAdminResolver } from './hotel/booking/rate-plan-admin.resolver';
 import { HotelRatePlanShopResolver } from './hotel/booking/rate-plan-shop.resolver';
+import { HotelBookingAdminResolver } from './hotel/booking/booking-admin.resolver';
+import { HotelBookingShopResolver } from './hotel/booking/booking-shop.resolver';
 import { BoxShippingLineAssignmentStrategy } from './shipping/box-shipping-line-assignment-strategy';
 import { ChannelTaxLineCalculationStrategy } from './tax/channel-tax-line-calculation-strategy';
-import { ChannelEvent, EventBus, OrderEvent, OrderService, TransactionalConnection } from '@vendure/core';
+import { ChannelEvent, EventBus, OrderEvent, OrderService, OrderStateTransitionEvent, TransactionalConnection } from '@vendure/core';
 import { DefaultDataService } from './seed/default-data.service';
 import { Wallet } from './wallet/wallet.entity';
 import { WalletService } from './wallet/wallet.service';
@@ -960,6 +962,59 @@ function mergeCustomFields<T extends { name: string }>(
                     "更新方案（partial：未传字段沿用现值；memberOnly/dateFrom/dateTo/cancelPolicyOverride 显式 null = 清除）"
                     updateHotelRatePlan(id: ID!, input: HotelRatePlanInput!): HotelRatePlan!
                     deleteHotelRatePlan(id: ID!): Boolean!
+                }
+
+                # ===== 酒店预订单管理（P3 预订管理页） =====
+                input HotelBookingFilterInput {
+                    "pendingDeposit | confirmed | checkedIn | completed | cancelled | noShow"
+                    status: String
+                    variantId: ID
+                    orderId: ID
+                    orderCode: String
+                }
+
+                type HotelBooking {
+                    id: ID!
+                    orderId: ID!
+                    orderLineId: ID!
+                    orderCode: String
+                    productVariantId: ID!
+                    "YYYY-MM-DD"
+                    checkIn: String!
+                    "YYYY-MM-DD"
+                    checkOut: String!
+                    nights: Int!
+                    roomCount: Int!
+                    status: String!
+                    ratePlanCode: String
+                    "成交总额（分，订单行实付口径）"
+                    totalCent: Int!
+                    guestName: String
+                    guestPhone: String
+                    "8 位数字入住码（确认后才有；核销凭码）"
+                    bookingCode: String
+                    cancelDeadlineAt: DateTime
+                    confirmedAt: DateTime
+                    checkedInAt: DateTime
+                    completedAt: DateTime
+                    cancelledAt: DateTime
+                    cancelReason: String
+                    createdAt: DateTime!
+                    updatedAt: DateTime!
+                }
+
+                extend type Query {
+                    "预订单列表（filter 可选，id 倒序，上限 200）"
+                    hotelBookings(filter: HotelBookingFilterInput): [HotelBooking!]!
+                }
+
+                extend type Mutation {
+                    "到店核销（凭 8 位入住码）；仅 confirmed 且当日 ∈ [checkIn, checkOut)，否则抛错"
+                    hotelBookingCheckIn(code: String!): HotelBooking!
+                    "完成离店（仅已入住 checkedIn）"
+                    hotelBookingComplete(id: ID!): HotelBooking!
+                    "强制取消（pendingDeposit/confirmed → cancelled 并释放锁房；退款走售后单）"
+                    hotelBookingForceCancel(id: ID!, reason: String): HotelBooking!
                 }
 
                 # ===== 租户 / 角色 / 权限体系 =====
@@ -1983,7 +2038,7 @@ function mergeCustomFields<T extends { name: string }>(
                 }
                 `;
         },
-        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, RoomTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver, MerchantSettlementAdminResolver, DeliveryAdminResolver, InventoryAdminResolver, ReconciliationAdminResolver, StockDocAdminResolver, StockReservationAdminResolver, DeliveryCapabilityResolver, PickBatchAdminResolver, StorageBinAdminResolver, OrderAddressAdminResolver, StocktakeAdminResolver, OrderPriceAdminResolver, HotelInventoryAdminResolver, HotelRatePlanAdminResolver],
+        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, RoomTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver, MerchantSettlementAdminResolver, DeliveryAdminResolver, InventoryAdminResolver, ReconciliationAdminResolver, StockDocAdminResolver, StockReservationAdminResolver, DeliveryCapabilityResolver, PickBatchAdminResolver, StocktakeAdminResolver, OrderAddressAdminResolver, StocktakeAdminResolver, OrderPriceAdminResolver, HotelInventoryAdminResolver, HotelRatePlanAdminResolver, HotelBookingAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {
@@ -2363,10 +2418,41 @@ function mergeCustomFields<T extends { name: string }>(
                     hotelRatePlans(variantId: ID!, checkIn: String): [HotelRatePlanPublic!]!
                 }
 
+                # ===== 酒店预订单（C 端预订卡） =====
+                type HotelBookingPublic {
+                    id: ID!
+                    "订单号（关联订单）"
+                    orderCode: String
+                    productVariantId: ID!
+                    "YYYY-MM-DD"
+                    checkIn: String!
+                    "YYYY-MM-DD"
+                    checkOut: String!
+                    nights: Int!
+                    roomCount: Int!
+                    "pendingDeposit | confirmed | checkedIn | completed | cancelled | noShow"
+                    status: String!
+                    ratePlanCode: String
+                    "成交总额（分，订单行实付口径）"
+                    totalCent: Int!
+                    guestName: String
+                    guestPhone: String
+                    "8 位数字入住码（确认后才有；核销凭码）"
+                    bookingCode: String
+                    "免费取消截止点（确认时固化；null = 无免费取消窗口）"
+                    cancelDeadlineAt: DateTime
+                    createdAt: DateTime!
+                }
+
+                extend type Query {
+                    "当前登录顾客的酒店预订单（按订单归属隔离，id 倒序，上限 200）；status 可选过滤"
+                    myHotelBookings(status: String): [HotelBookingPublic!]!
+                }
+
                 ${redemptionShopSchema}
             `;
         },
-        resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver, DomainShopResolver, MapShopResolver, ShippingProfileShopResolver, DeliveryCapabilityResolver, PaymentProfileShopResolver, OrderBoxShopResolver, OrderSplitShopResolver, WalletShopResolver, RedemptionShopResolver, InventoryShopResolver, StorageBinShopResolver, CustomerAssetShopResolver, MyOrdersShopResolver, HotelInventoryShopResolver, HotelRatePlanShopResolver],
+        resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver, DomainShopResolver, MapShopResolver, ShippingProfileShopResolver, DeliveryCapabilityResolver, PaymentProfileShopResolver, OrderBoxShopResolver, OrderSplitShopResolver, WalletShopResolver, RedemptionShopResolver, InventoryShopResolver, StorageBinShopResolver, CustomerAssetShopResolver, MyOrdersShopResolver, HotelInventoryShopResolver, HotelRatePlanShopResolver, HotelBookingShopResolver],
     },
     configuration: config => {
         // 注入 authSecret 到 crypto 模块（configuration 在 bootstrap 早期执行，此时 options 已可用）
@@ -2958,6 +3044,31 @@ export class CjkPlugin implements OnApplicationBootstrap, NestModule {
                         `Order ${order.code} has mixed shipping profiles: ${[...profileIds].join(', ')}`,
                         loggerCtx,
                     );
+                }
+            });
+        }
+
+        // 酒店预订单事件联动（P3）：订单进入可处理状态 → 建 pending 预订单；
+        // PartiallyPaid（支付计划首期付清）/ PaymentSettled（全清）→ 自动确认（入住码+取消截止点+锁房 booked）
+        // 触发源两路：OrderEvent 'updated'（客户/自定义字段更新）+ OrderStateTransitionEvent
+        // （支付结算与状态流转只发后者，不发 OrderEvent）；transition 事件上的 order 缺
+        // lines/customer 关系，service 内按 id 重取（handleOrderTransition）。ensure 幂等，双路无副作用。
+        {
+            const eventBus = injector.get(EventBus);
+            const bookingService = injector.get(HotelBookingService);
+            eventBus.ofType(OrderEvent).subscribe(async (event) => {
+                if (event.type !== 'updated') return;
+                try {
+                    await bookingService.handleOrderUpdated(event.ctx, event.entity);
+                } catch (e: any) {
+                    Logger.error(`hotel booking event failed: ${e?.message}`, loggerCtx);
+                }
+            });
+            eventBus.ofType(OrderStateTransitionEvent).subscribe(async (event) => {
+                try {
+                    await bookingService.handleOrderTransition(event.ctx, event.order.id);
+                } catch (e: any) {
+                    Logger.error(`hotel booking transition event failed: ${e?.message}`, loggerCtx);
                 }
             });
         }

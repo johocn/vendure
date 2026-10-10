@@ -134,6 +134,8 @@ const hotel_inventory_shop_resolver_1 = require("./hotel/booking/hotel-inventory
 const hotel_inventory_admin_resolver_1 = require("./hotel/booking/hotel-inventory-admin.resolver");
 const rate_plan_admin_resolver_1 = require("./hotel/booking/rate-plan-admin.resolver");
 const rate_plan_shop_resolver_1 = require("./hotel/booking/rate-plan-shop.resolver");
+const booking_admin_resolver_1 = require("./hotel/booking/booking-admin.resolver");
+const booking_shop_resolver_1 = require("./hotel/booking/booking-shop.resolver");
 const box_shipping_line_assignment_strategy_1 = require("./shipping/box-shipping-line-assignment-strategy");
 const channel_tax_line_calculation_strategy_1 = require("./tax/channel-tax-line-calculation-strategy");
 const core_3 = require("@vendure/core");
@@ -183,7 +185,6 @@ const storage_zone_entity_1 = require("./storage/storage-zone.entity");
 const storage_bin_entity_1 = require("./storage/storage-bin.entity");
 const variant_storage_bin_entity_1 = require("./storage/variant-storage-bin.entity");
 const storage_bin_service_1 = require("./storage/storage-bin.service");
-const storage_bin_admin_resolver_1 = require("./storage/storage-bin.admin.resolver");
 const storage_bin_shop_resolver_1 = require("./storage/storage-bin.shop.resolver");
 const order_address_admin_resolver_1 = require("./order/order-address.admin.resolver");
 const stocktake_task_entity_1 = require("./stocktake/stocktake-task.entity");
@@ -365,6 +366,33 @@ let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
                 }
                 if (profileIds.size > 1) {
                     core_1.Logger.info(`Order ${order.code} has mixed shipping profiles: ${[...profileIds].join(', ')}`, constants_1.loggerCtx);
+                }
+            });
+        }
+        // 酒店预订单事件联动（P3）：订单进入可处理状态 → 建 pending 预订单；
+        // PartiallyPaid（支付计划首期付清）/ PaymentSettled（全清）→ 自动确认（入住码+取消截止点+锁房 booked）
+        // 触发源两路：OrderEvent 'updated'（客户/自定义字段更新）+ OrderStateTransitionEvent
+        // （支付结算与状态流转只发后者，不发 OrderEvent）；transition 事件上的 order 缺
+        // lines/customer 关系，service 内按 id 重取（handleOrderTransition）。ensure 幂等，双路无副作用。
+        {
+            const eventBus = injector.get(core_3.EventBus);
+            const bookingService = injector.get(booking_service_1.HotelBookingService);
+            eventBus.ofType(core_3.OrderEvent).subscribe(async (event) => {
+                if (event.type !== 'updated')
+                    return;
+                try {
+                    await bookingService.handleOrderUpdated(event.ctx, event.entity);
+                }
+                catch (e) {
+                    core_1.Logger.error(`hotel booking event failed: ${e === null || e === void 0 ? void 0 : e.message}`, constants_1.loggerCtx);
+                }
+            });
+            eventBus.ofType(core_3.OrderStateTransitionEvent).subscribe(async (event) => {
+                try {
+                    await bookingService.handleOrderTransition(event.ctx, event.order.id);
+                }
+                catch (e) {
+                    core_1.Logger.error(`hotel booking transition event failed: ${e === null || e === void 0 ? void 0 : e.message}`, constants_1.loggerCtx);
                 }
             });
         }
@@ -1170,6 +1198,59 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     "更新方案（partial：未传字段沿用现值；memberOnly/dateFrom/dateTo/cancelPolicyOverride 显式 null = 清除）"
                     updateHotelRatePlan(id: ID!, input: HotelRatePlanInput!): HotelRatePlan!
                     deleteHotelRatePlan(id: ID!): Boolean!
+                }
+
+                # ===== 酒店预订单管理（P3 预订管理页） =====
+                input HotelBookingFilterInput {
+                    "pendingDeposit | confirmed | checkedIn | completed | cancelled | noShow"
+                    status: String
+                    variantId: ID
+                    orderId: ID
+                    orderCode: String
+                }
+
+                type HotelBooking {
+                    id: ID!
+                    orderId: ID!
+                    orderLineId: ID!
+                    orderCode: String
+                    productVariantId: ID!
+                    "YYYY-MM-DD"
+                    checkIn: String!
+                    "YYYY-MM-DD"
+                    checkOut: String!
+                    nights: Int!
+                    roomCount: Int!
+                    status: String!
+                    ratePlanCode: String
+                    "成交总额（分，订单行实付口径）"
+                    totalCent: Int!
+                    guestName: String
+                    guestPhone: String
+                    "8 位数字入住码（确认后才有；核销凭码）"
+                    bookingCode: String
+                    cancelDeadlineAt: DateTime
+                    confirmedAt: DateTime
+                    checkedInAt: DateTime
+                    completedAt: DateTime
+                    cancelledAt: DateTime
+                    cancelReason: String
+                    createdAt: DateTime!
+                    updatedAt: DateTime!
+                }
+
+                extend type Query {
+                    "预订单列表（filter 可选，id 倒序，上限 200）"
+                    hotelBookings(filter: HotelBookingFilterInput): [HotelBooking!]!
+                }
+
+                extend type Mutation {
+                    "到店核销（凭 8 位入住码）；仅 confirmed 且当日 ∈ [checkIn, checkOut)，否则抛错"
+                    hotelBookingCheckIn(code: String!): HotelBooking!
+                    "完成离店（仅已入住 checkedIn）"
+                    hotelBookingComplete(id: ID!): HotelBooking!
+                    "强制取消（pendingDeposit/confirmed → cancelled 并释放锁房；退款走售后单）"
+                    hotelBookingForceCancel(id: ID!, reason: String): HotelBooking!
                 }
 
                 # ===== 租户 / 角色 / 权限体系 =====
@@ -2193,7 +2274,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                 }
                 `;
             },
-            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, room_template_admin_resolver_1.RoomTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver, tenant_catalog_admin_resolver_1.TenantCatalogAdminResolver, asset_library_admin_resolver_1.AssetLibraryAdminResolver, redemption_resolver_1.RedemptionAdminResolver, merchant_settlement_admin_resolver_1.MerchantSettlementAdminResolver, delivery_admin_resolver_1.DeliveryAdminResolver, inventory_admin_resolver_1.InventoryAdminResolver, reconciliation_admin_resolver_1.ReconciliationAdminResolver, stock_doc_admin_resolver_1.StockDocAdminResolver, stock_reservation_admin_resolver_1.StockReservationAdminResolver, delivery_capability_resolver_1.DeliveryCapabilityResolver, pick_batch_admin_resolver_1.PickBatchAdminResolver, storage_bin_admin_resolver_1.StorageBinAdminResolver, order_address_admin_resolver_1.OrderAddressAdminResolver, stocktake_admin_resolver_1.StocktakeAdminResolver, order_price_admin_resolver_1.OrderPriceAdminResolver, hotel_inventory_admin_resolver_1.HotelInventoryAdminResolver, rate_plan_admin_resolver_1.HotelRatePlanAdminResolver],
+            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, room_template_admin_resolver_1.RoomTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver, tenant_catalog_admin_resolver_1.TenantCatalogAdminResolver, asset_library_admin_resolver_1.AssetLibraryAdminResolver, redemption_resolver_1.RedemptionAdminResolver, merchant_settlement_admin_resolver_1.MerchantSettlementAdminResolver, delivery_admin_resolver_1.DeliveryAdminResolver, inventory_admin_resolver_1.InventoryAdminResolver, reconciliation_admin_resolver_1.ReconciliationAdminResolver, stock_doc_admin_resolver_1.StockDocAdminResolver, stock_reservation_admin_resolver_1.StockReservationAdminResolver, delivery_capability_resolver_1.DeliveryCapabilityResolver, pick_batch_admin_resolver_1.PickBatchAdminResolver, stocktake_admin_resolver_1.StocktakeAdminResolver, order_address_admin_resolver_1.OrderAddressAdminResolver, stocktake_admin_resolver_1.StocktakeAdminResolver, order_price_admin_resolver_1.OrderPriceAdminResolver, hotel_inventory_admin_resolver_1.HotelInventoryAdminResolver, rate_plan_admin_resolver_1.HotelRatePlanAdminResolver, booking_admin_resolver_1.HotelBookingAdminResolver],
         },
         shopApiExtensions: {
             schema: () => {
@@ -2573,10 +2654,41 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     hotelRatePlans(variantId: ID!, checkIn: String): [HotelRatePlanPublic!]!
                 }
 
+                # ===== 酒店预订单（C 端预订卡） =====
+                type HotelBookingPublic {
+                    id: ID!
+                    "订单号（关联订单）"
+                    orderCode: String
+                    productVariantId: ID!
+                    "YYYY-MM-DD"
+                    checkIn: String!
+                    "YYYY-MM-DD"
+                    checkOut: String!
+                    nights: Int!
+                    roomCount: Int!
+                    "pendingDeposit | confirmed | checkedIn | completed | cancelled | noShow"
+                    status: String!
+                    ratePlanCode: String
+                    "成交总额（分，订单行实付口径）"
+                    totalCent: Int!
+                    guestName: String
+                    guestPhone: String
+                    "8 位数字入住码（确认后才有；核销凭码）"
+                    bookingCode: String
+                    "免费取消截止点（确认时固化；null = 无免费取消窗口）"
+                    cancelDeadlineAt: DateTime
+                    createdAt: DateTime!
+                }
+
+                extend type Query {
+                    "当前登录顾客的酒店预订单（按订单归属隔离，id 倒序，上限 200）；status 可选过滤"
+                    myHotelBookings(status: String): [HotelBookingPublic!]!
+                }
+
                 ${redemption_schema_1.redemptionShopSchema}
             `;
             },
-            resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver, shipping_profile_shop_resolver_1.ShippingProfileShopResolver, delivery_capability_resolver_1.DeliveryCapabilityResolver, payment_profile_shop_resolver_1.PaymentProfileShopResolver, order_box_shop_resolver_1.OrderBoxShopResolver, order_split_shop_resolver_1.OrderSplitShopResolver, wallet_shop_resolver_1.WalletShopResolver, redemption_resolver_1.RedemptionShopResolver, inventory_shop_resolver_1.InventoryShopResolver, storage_bin_shop_resolver_1.StorageBinShopResolver, customer_asset_shop_resolver_1.CustomerAssetShopResolver, my_orders_shop_resolver_1.MyOrdersShopResolver, hotel_inventory_shop_resolver_1.HotelInventoryShopResolver, rate_plan_shop_resolver_1.HotelRatePlanShopResolver],
+            resolvers: [pickup_location_shop_resolver_1.PickupLocationShopResolver, pickup_shop_resolver_1.PickupShopResolver, auth_shop_resolver_1.AuthShopResolver, domain_shop_resolver_1.DomainShopResolver, map_shop_resolver_1.MapShopResolver, shipping_profile_shop_resolver_1.ShippingProfileShopResolver, delivery_capability_resolver_1.DeliveryCapabilityResolver, payment_profile_shop_resolver_1.PaymentProfileShopResolver, order_box_shop_resolver_1.OrderBoxShopResolver, order_split_shop_resolver_1.OrderSplitShopResolver, wallet_shop_resolver_1.WalletShopResolver, redemption_resolver_1.RedemptionShopResolver, inventory_shop_resolver_1.InventoryShopResolver, storage_bin_shop_resolver_1.StorageBinShopResolver, customer_asset_shop_resolver_1.CustomerAssetShopResolver, my_orders_shop_resolver_1.MyOrdersShopResolver, hotel_inventory_shop_resolver_1.HotelInventoryShopResolver, rate_plan_shop_resolver_1.HotelRatePlanShopResolver, booking_shop_resolver_1.HotelBookingShopResolver],
         },
         configuration: config => {
             var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9;
