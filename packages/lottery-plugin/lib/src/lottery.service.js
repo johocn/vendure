@@ -16,6 +16,8 @@ const member_level_plugin_1 = require("@vendure/member-level-plugin");
 const constants_1 = require("./constants");
 const lottery_prize_entity_1 = require("./lottery-prize.entity");
 const lottery_record_entity_1 = require("./lottery-record.entity");
+/** C 端九宫格固定 8 槽：启用中的奖品硬上限（超出会按取模对位，语义混乱）。 */
+const MAX_ENABLED_PRIZES = 8;
 let LotteryService = class LotteryService {
     constructor(connection, listQueryBuilder, customerService, 
     /** 积分桥软依赖（checkin-plugin 同款直注，需与 MemberLevelPlugin 同容器） */
@@ -53,6 +55,23 @@ let LotteryService = class LotteryService {
             .orderBy('prize.sort', 'ASC')
             .addOrderBy('prize.id', 'ASC')
             .getMany();
+    }
+    /**
+     * 当前渠道内启用中奖品数（含全渠道；不含库存过滤——上限约束针对"启用"本身）。
+     * excludeId：更新场景排除自身，避免把待启用奖品计入已启用数。
+     */
+    countEnabledPrizes(ctx, excludeId) {
+        const qb = this.connection
+            .getRepository(ctx, lottery_prize_entity_1.LotteryPrize)
+            .createQueryBuilder('prize')
+            .where('prize.enabled = :enabled', { enabled: true })
+            .andWhere('(prize.channelId IS NULL OR prize.channelId = :channelId)', {
+            channelId: ctx.channelId,
+        });
+        if (excludeId != null) {
+            qb.andWhere('prize.id != :excludeId', { excludeId });
+        }
+        return qb.getCount();
     }
     /** shop：九宫格奖品列表（启用中，含 consume；顺序与开奖 prizeIndex 同源）。未登录可访问。 */
     async myPrizes(ctx) {
@@ -157,14 +176,18 @@ let LotteryService = class LotteryService {
         if (!Number.isFinite(consume) || consume < 0) {
             throw new core_1.UserInputError('consume must be a non-negative integer');
         }
+        const enabled = (_c = input.enabled) !== null && _c !== void 0 ? _c : true;
+        if (enabled && (await this.countEnabledPrizes(ctx)) >= MAX_ENABLED_PRIZES) {
+            throw new core_1.UserInputError(`Lottery enabled prize limit reached (max ${MAX_ENABLED_PRIZES})`);
+        }
         const repo = this.connection.getRepository(ctx, lottery_prize_entity_1.LotteryPrize);
         const saved = await repo.save(repo.create({
             name,
-            image: (_c = input.image) !== null && _c !== void 0 ? _c : null,
+            image: (_d = input.image) !== null && _d !== void 0 ? _d : null,
             weight,
             consume,
-            stock: (_d = input.stock) !== null && _d !== void 0 ? _d : null,
-            enabled: (_e = input.enabled) !== null && _e !== void 0 ? _e : true,
+            stock: (_e = input.stock) !== null && _e !== void 0 ? _e : null,
+            enabled,
             sort: (_f = input.sort) !== null && _f !== void 0 ? _f : 0,
             channelId: ctx.channelId,
         }));
@@ -208,6 +231,10 @@ let LotteryService = class LotteryService {
         }
         if (input.sort != null) {
             prize.sort = Math.floor(input.sort);
+        }
+        // 本次更新后仍处于启用态（false→true 或本就启用）时校验上限，排除自身计数
+        if (prize.enabled && (await this.countEnabledPrizes(ctx, prize.id)) >= MAX_ENABLED_PRIZES) {
+            throw new core_1.UserInputError(`Lottery enabled prize limit reached (max ${MAX_ENABLED_PRIZES})`);
         }
         const saved = await repo.save(prize);
         core_1.Logger.info(`LotteryPrize ${saved.id} updated`, constants_1.loggerCtx);

@@ -20,6 +20,11 @@ export declare class LotteryService {
      * weight <= 0 的奖项保留在下标序列中（仅展示，不参与加权抽取）。
      */
     private enabledPrizes;
+    /**
+     * 当前渠道内启用中奖品数（含全渠道；不含库存过滤——上限约束针对"启用"本身）。
+     * excludeId：更新场景排除自身，避免把待启用奖品计入已启用数。
+     */
+    private countEnabledPrizes;
     /** shop：九宫格奖品列表（启用中，含 consume；顺序与开奖 prizeIndex 同源）。未登录可访问。 */
     myPrizes(ctx: RequestContext): Promise<LotteryPrize[]>;
     /**

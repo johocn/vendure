@@ -185,4 +185,47 @@ describe('LotteryPlugin · 九宫格积分抽奖（加权开奖/spendPoints 桥�
         }
         expect((await myLotteryPrizes()).length).toBe(3);
     });
+
+    it('启用奖品上限：满 8 后创建/启用第 9 个被拒；禁用一个后可再启用另一个', async () => {
+        // 当前 3 个启用奖品（一等奖/谢谢参与/二等奖），补 5 个凑满 8
+        const extra: string[] = [];
+        for (let i = 1; i <= 5; i++) {
+            const c = await adminClient.query(gql`
+                mutation { createLotteryPrize(input: { name: "补位奖${i}", weight: 0, consume: 0 }) { id enabled } }
+            `) as any;
+            expect(c.createLotteryPrize.enabled).toBe(true);
+            extra.push(c.createLotteryPrize.id);
+        }
+        expect((await myLotteryPrizes()).length).toBe(8);
+
+        // 第 9 个（默认启用）创建被拒
+        await expect(
+            adminClient.query(gql`
+                mutation { createLotteryPrize(input: { name: "第9奖", weight: 0, consume: 0 }) { id } }
+            `),
+        ).rejects.toThrow('Lottery enabled prize limit reached (max 8)');
+
+        // 停用态创建成功，但再启用被拒
+        const ninth = await adminClient.query(gql`
+            mutation { createLotteryPrize(input: { name: "第9奖", weight: 0, consume: 0, enabled: false }) { id enabled } }
+        `) as any;
+        expect(ninth.createLotteryPrize.enabled).toBe(false);
+        await expect(
+            adminClient.query(gql`
+                mutation { updateLotteryPrize(input: { id: "${ninth.createLotteryPrize.id}", enabled: true }) { id enabled } }
+            `),
+        ).rejects.toThrow('Lottery enabled prize limit reached (max 8)');
+
+        // 禁用一个后可再启用另一个
+        await setPrizeEnabled(extra[0], false);
+        await setPrizeEnabled(ninth.createLotteryPrize.id, true);
+        expect((await myLotteryPrizes()).length).toBe(8);
+
+        // 清理：删除补位奖品与第 9 个，恢复初始 3 奖品状态
+        for (const id of extra) {
+            await adminClient.query(gql`mutation { deleteLotteryPrize(id: "${id}") }`);
+        }
+        await adminClient.query(gql`mutation { deleteLotteryPrize(id: "${ninth.createLotteryPrize.id}") }`);
+        expect((await adminPrizes()).totalItems).toBe(3);
+    });
 });

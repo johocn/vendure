@@ -25,6 +25,9 @@ import {
     UpdateLotteryPrizeInput,
 } from './types';
 
+/** C 端九宫格固定 8 槽：启用中的奖品硬上限（超出会按取模对位，语义混乱）。 */
+const MAX_ENABLED_PRIZES = 8;
+
 @Injectable()
 export class LotteryService {
     constructor(
@@ -64,6 +67,24 @@ export class LotteryService {
             .orderBy('prize.sort', 'ASC')
             .addOrderBy('prize.id', 'ASC')
             .getMany();
+    }
+
+    /**
+     * 当前渠道内启用中奖品数（含全渠道；不含库存过滤——上限约束针对"启用"本身）。
+     * excludeId：更新场景排除自身，避免把待启用奖品计入已启用数。
+     */
+    private countEnabledPrizes(ctx: RequestContext, excludeId?: ID): Promise<number> {
+        const qb = this.connection
+            .getRepository(ctx, LotteryPrize)
+            .createQueryBuilder('prize')
+            .where('prize.enabled = :enabled', { enabled: true })
+            .andWhere('(prize.channelId IS NULL OR prize.channelId = :channelId)', {
+                channelId: ctx.channelId,
+            });
+        if (excludeId != null) {
+            qb.andWhere('prize.id != :excludeId', { excludeId });
+        }
+        return qb.getCount();
     }
 
     /** shop：九宫格奖品列表（启用中，含 consume；顺序与开奖 prizeIndex 同源）。未登录可访问。 */
@@ -190,6 +211,10 @@ export class LotteryService {
         if (!Number.isFinite(consume) || consume < 0) {
             throw new UserInputError('consume must be a non-negative integer');
         }
+        const enabled = input.enabled ?? true;
+        if (enabled && (await this.countEnabledPrizes(ctx)) >= MAX_ENABLED_PRIZES) {
+            throw new UserInputError(`Lottery enabled prize limit reached (max ${MAX_ENABLED_PRIZES})`);
+        }
         const repo = this.connection.getRepository(ctx, LotteryPrize);
         const saved = await repo.save(
             repo.create({
@@ -198,7 +223,7 @@ export class LotteryService {
                 weight,
                 consume,
                 stock: input.stock ?? null,
-                enabled: input.enabled ?? true,
+                enabled,
                 sort: input.sort ?? 0,
                 channelId: ctx.channelId as number,
             }),
@@ -244,6 +269,10 @@ export class LotteryService {
         }
         if (input.sort != null) {
             prize.sort = Math.floor(input.sort);
+        }
+        // 本次更新后仍处于启用态（false→true 或本就启用）时校验上限，排除自身计数
+        if (prize.enabled && (await this.countEnabledPrizes(ctx, prize.id)) >= MAX_ENABLED_PRIZES) {
+            throw new UserInputError(`Lottery enabled prize limit reached (max ${MAX_ENABLED_PRIZES})`);
         }
         const saved = await repo.save(prize);
         Logger.info(`LotteryPrize ${saved.id} updated`, loggerCtx);
