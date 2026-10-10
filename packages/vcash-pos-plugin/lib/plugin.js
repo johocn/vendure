@@ -27,6 +27,7 @@ const admin_promotion_resolver_1 = require("./resolvers/admin-promotion.resolver
 const admin_refund_resolver_1 = require("./resolvers/admin-refund.resolver");
 const admin_report_resolver_1 = require("./resolvers/admin-report.resolver");
 const admin_terminal_resolver_1 = require("./resolvers/admin-terminal.resolver");
+const shop_member_price_resolver_1 = require("./resolvers/shop-member-price.resolver");
 const aggregate_pay_service_1 = require("./services/aggregate-pay.service");
 const member_price_calculator_1 = require("./services/member-price-calculator");
 const member_price_rule_service_1 = require("./services/member-price-rule.service");
@@ -416,6 +417,19 @@ const adminSchema = (0, graphql_tag_1.default) `
     ): TopProductReport!
   }
 `;
+// Shop API 与 admin API 两套 SDL 独立（参照 cjk-plugin 模式），仅暴露 C 端所需最小字段
+const shopSchema = (0, graphql_tag_1.default) `
+  # ===== C 端会员价展示（只读，不参与下单计价） =====
+  type ProductMemberPrice {
+    productId: ID!
+    applied: Boolean!
+    discountPercent: Int
+  }
+
+  extend type Query {
+    myMemberPrice(productIds: [ID!]!): [ProductMemberPrice!]!
+  }
+`;
 let VcashPosPlugin = class VcashPosPlugin {
 };
 exports.VcashPosPlugin = VcashPosPlugin;
@@ -458,6 +472,10 @@ exports.VcashPosPlugin = VcashPosPlugin = __decorate([
                 admin_report_resolver_1.AdminReportResolver,
             ],
             schema: adminSchema,
+        },
+        shopApiExtensions: {
+            resolvers: [shop_member_price_resolver_1.ShopMemberPriceResolver],
+            schema: shopSchema,
         },
         configuration: (config) => {
             var _a, _b, _c, _d, _e, _f, _g;

@@ -16,6 +16,7 @@ import { AdminPromotionResolver } from './resolvers/admin-promotion.resolver';
 import { AdminRefundResolver } from './resolvers/admin-refund.resolver';
 import { AdminReportResolver } from './resolvers/admin-report.resolver';
 import { AdminTerminalResolver } from './resolvers/admin-terminal.resolver';
+import { ShopMemberPriceResolver } from './resolvers/shop-member-price.resolver';
 import { AggregatePayService } from './services/aggregate-pay.service';
 import { MemberPriceCalculator } from './services/member-price-calculator';
 import { MemberPriceRuleService } from './services/member-price-rule.service';
@@ -407,6 +408,20 @@ const adminSchema = gql`
   }
 `;
 
+// Shop API 与 admin API 两套 SDL 独立（参照 cjk-plugin 模式），仅暴露 C 端所需最小字段
+const shopSchema = gql`
+  # ===== C 端会员价展示（只读，不参与下单计价） =====
+  type ProductMemberPrice {
+    productId: ID!
+    applied: Boolean!
+    discountPercent: Int
+  }
+
+  extend type Query {
+    myMemberPrice(productIds: [ID!]!): [ProductMemberPrice!]!
+  }
+`;
+
 @VendurePlugin({
   imports: [
     PluginCommonModule,
@@ -445,6 +460,10 @@ const adminSchema = gql`
       AdminReportResolver,
     ],
     schema: adminSchema,
+  },
+  shopApiExtensions: {
+    resolvers: [ShopMemberPriceResolver],
+    schema: shopSchema,
   },
   configuration: (config) => {
     // 注册 PosTerminal + PosSession CRUD 自定义权限定义（superadmin 自动放行，其他角色需显式授予）
