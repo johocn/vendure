@@ -92,23 +92,23 @@ __decorate([
     __metadata("design:type", Object)
 ], HotelBooking.prototype, "guestPhone", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
+    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
     __metadata("design:type", Object)
 ], HotelBooking.prototype, "cancelDeadlineAt", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
+    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
     __metadata("design:type", Object)
 ], HotelBooking.prototype, "confirmedAt", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
+    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
     __metadata("design:type", Object)
 ], HotelBooking.prototype, "checkedInAt", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
+    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
     __metadata("design:type", Object)
 ], HotelBooking.prototype, "completedAt", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
+    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
     __metadata("design:type", Object)
 ], HotelBooking.prototype, "cancelledAt", void 0);
 __decorate([

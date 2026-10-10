@@ -73,19 +73,19 @@ export class HotelBooking extends VendureEntity {
     guestPhone: string | null;
 
     /** 免费取消截止点（确认时固化；null = 无免费取消窗口或无政策） */
-    @Column({ nullable: true })
+    @Column({ type: 'datetime', nullable: true })
     cancelDeadlineAt?: Date | null;
 
-    @Column({ nullable: true })
+    @Column({ type: 'datetime', nullable: true })
     confirmedAt?: Date | null;
 
-    @Column({ nullable: true })
+    @Column({ type: 'datetime', nullable: true })
     checkedInAt?: Date | null;
 
-    @Column({ nullable: true })
+    @Column({ type: 'datetime', nullable: true })
     completedAt?: Date | null;
 
-    @Column({ nullable: true })
+    @Column({ type: 'datetime', nullable: true })
     cancelledAt?: Date | null;
 
     @Column({ type: 'varchar', length: 255, nullable: true })
