@@ -107,10 +107,13 @@ import { RoomTemplateAdminResolver } from './hotel/room-template-admin.resolver'
 import { HotelRoomDay } from './hotel/booking/room-day.entity';
 import { HotelBookingLock } from './hotel/booking/booking-lock.entity';
 import { HotelRatePlan } from './hotel/booking/rate-plan.entity';
+import { HotelBooking } from './hotel/booking/booking.entity';
 import { HotelInventoryService } from './hotel/booking/hotel-inventory.service';
 import { HotelRatePlanService } from './hotel/booking/rate-plan.service';
+import { HotelBookingService } from './hotel/booking/booking.service';
 import { HotelOrderInterceptor } from './hotel/booking/hotel-order-interceptor';
 import { releaseExpiredHotelHoldsTask, RELEASE_EXPIRED_HOTEL_HOLDS_TASK_ID } from './hotel/booking/release-expired-holds.task';
+import { hotelBookingDailyTransitionTask, HOTEL_BOOKING_DAILY_TRANSITION_TASK_ID } from './hotel/booking/booking-daily-transition.task';
 import { hotelRoomCustomFields } from './hotel/hotel-custom-fields';
 import { hotelOrderLineCustomFields } from './hotel/hotel-order-line-custom-fields';
 import { HotelOrderItemPriceCalculationStrategy } from './hotel/hotel-order-item-price-strategy';
@@ -203,7 +206,7 @@ function mergeCustomFields<T extends { name: string }>(
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentTemplate, RoomTemplate, RoomTemplateControl, HotelRoomDay, HotelBookingLock, HotelRatePlan, TenantMember, Wallet, MerchantSettlementLedger, VariantLocationBinding, DeliveryRecord, ReconciliationBatch, ReconciliationOrderLine, StockDocEntity, StockDocItemEntity, InventoryAlertRuleEntity, StockReservationEntity, StockReservationItemEntity, PickBatch, PickBatchOrder, StorageZone, StorageBin, VariantStorageBin,
+    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentTemplate, RoomTemplate, RoomTemplateControl, HotelRoomDay, HotelBookingLock, HotelRatePlan, HotelBooking, TenantMember, Wallet, MerchantSettlementLedger, VariantLocationBinding, DeliveryRecord, ReconciliationBatch, ReconciliationOrderLine, StockDocEntity, StockDocItemEntity, InventoryAlertRuleEntity, StockReservationEntity, StockReservationItemEntity, PickBatch, PickBatchOrder, StorageZone, StorageBin, VariantStorageBin,
         StocktakeTask,
         StocktakeWave,
         StocktakeLine,
@@ -248,6 +251,7 @@ function mergeCustomFields<T extends { name: string }>(
         RoomTemplateService,
         HotelInventoryService,
         HotelRatePlanService,
+        HotelBookingService,
         DefaultDataService,
         TenantMemberService,
         RedeemScopeService,
@@ -2747,6 +2751,10 @@ function mergeCustomFields<T extends { name: string }>(
         // 注册过期锁房单释放 ScheduledTask（每小时；hold 统计口径已排除过期，此任务收敛状态与审计）
         if (!config.schedulerOptions.tasks.some(t => t.id === RELEASE_EXPIRED_HOTEL_HOLDS_TASK_ID)) {
             config.schedulerOptions.tasks.push(releaseExpiredHotelHoldsTask);
+        }
+        // 注册酒店预订日常流转 ScheduledTask（每日：离店日 completed、过离店日未入住 noShow）
+        if (!config.schedulerOptions.tasks.some(t => t.id === HOTEL_BOOKING_DAILY_TRANSITION_TASK_ID)) {
+            config.schedulerOptions.tasks.push(hotelBookingDailyTransitionTask);
         }
 
         // 注册订单行单价策略：酒店房型按入离日期逐晚计价，其它变体直通默认价

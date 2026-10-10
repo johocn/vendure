@@ -107,10 +107,13 @@ const room_template_admin_resolver_1 = require("./hotel/room-template-admin.reso
 const room_day_entity_1 = require("./hotel/booking/room-day.entity");
 const booking_lock_entity_1 = require("./hotel/booking/booking-lock.entity");
 const rate_plan_entity_1 = require("./hotel/booking/rate-plan.entity");
+const booking_entity_1 = require("./hotel/booking/booking.entity");
 const hotel_inventory_service_1 = require("./hotel/booking/hotel-inventory.service");
 const rate_plan_service_1 = require("./hotel/booking/rate-plan.service");
+const booking_service_1 = require("./hotel/booking/booking.service");
 const hotel_order_interceptor_1 = require("./hotel/booking/hotel-order-interceptor");
 const release_expired_holds_task_1 = require("./hotel/booking/release-expired-holds.task");
+const booking_daily_transition_task_1 = require("./hotel/booking/booking-daily-transition.task");
 const hotel_custom_fields_1 = require("./hotel/hotel-custom-fields");
 const hotel_order_line_custom_fields_1 = require("./hotel/hotel-order-line-custom-fields");
 const hotel_order_item_price_strategy_1 = require("./hotel/hotel-order-item-price-strategy");
@@ -413,7 +416,7 @@ exports.CjkPlugin = CjkPlugin;
 exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_template_entity_1.PaymentTemplate, room_template_entity_1.RoomTemplate, room_template_control_entity_1.RoomTemplateControl, room_day_entity_1.HotelRoomDay, booking_lock_entity_1.HotelBookingLock, rate_plan_entity_1.HotelRatePlan, tenant_member_entity_1.TenantMember, wallet_entity_1.Wallet, merchant_settlement_ledger_entity_1.MerchantSettlementLedger, variant_location_binding_entity_1.VariantLocationBinding, delivery_record_entity_1.DeliveryRecord, reconciliation_entity_1.ReconciliationBatch, reconciliation_entity_1.ReconciliationOrderLine, stock_doc_entity_1.StockDocEntity, stock_doc_item_entity_1.StockDocItemEntity, inventory_alert_rule_entity_1.InventoryAlertRuleEntity, stock_reservation_entity_1.StockReservationEntity, stock_reservation_item_entity_1.StockReservationItemEntity, pick_batch_entity_1.PickBatch, pick_batch_order_entity_1.PickBatchOrder, storage_zone_entity_1.StorageZone, storage_bin_entity_1.StorageBin, variant_storage_bin_entity_1.VariantStorageBin,
+        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_template_entity_1.PaymentTemplate, room_template_entity_1.RoomTemplate, room_template_control_entity_1.RoomTemplateControl, room_day_entity_1.HotelRoomDay, booking_lock_entity_1.HotelBookingLock, rate_plan_entity_1.HotelRatePlan, booking_entity_1.HotelBooking, tenant_member_entity_1.TenantMember, wallet_entity_1.Wallet, merchant_settlement_ledger_entity_1.MerchantSettlementLedger, variant_location_binding_entity_1.VariantLocationBinding, delivery_record_entity_1.DeliveryRecord, reconciliation_entity_1.ReconciliationBatch, reconciliation_entity_1.ReconciliationOrderLine, stock_doc_entity_1.StockDocEntity, stock_doc_item_entity_1.StockDocItemEntity, inventory_alert_rule_entity_1.InventoryAlertRuleEntity, stock_reservation_entity_1.StockReservationEntity, stock_reservation_item_entity_1.StockReservationItemEntity, pick_batch_entity_1.PickBatch, pick_batch_order_entity_1.PickBatchOrder, storage_zone_entity_1.StorageZone, storage_bin_entity_1.StorageBin, variant_storage_bin_entity_1.VariantStorageBin,
             stocktake_task_entity_1.StocktakeTask,
             stocktake_wave_entity_1.StocktakeWave,
             stocktake_line_entity_1.StocktakeLine,
@@ -458,6 +461,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             room_template_service_1.RoomTemplateService,
             hotel_inventory_service_1.HotelInventoryService,
             rate_plan_service_1.HotelRatePlanService,
+            booking_service_1.HotelBookingService,
             default_data_service_1.DefaultDataService,
             tenant_member_service_1.TenantMemberService,
             redeem_scope_service_1.RedeemScopeService,
@@ -2866,6 +2870,10 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             // 注册过期锁房单释放 ScheduledTask（每小时；hold 统计口径已排除过期，此任务收敛状态与审计）
             if (!config.schedulerOptions.tasks.some(t => t.id === release_expired_holds_task_1.RELEASE_EXPIRED_HOTEL_HOLDS_TASK_ID)) {
                 config.schedulerOptions.tasks.push(release_expired_holds_task_1.releaseExpiredHotelHoldsTask);
+            }
+            // 注册酒店预订日常流转 ScheduledTask（每日：离店日 completed、过离店日未入住 noShow）
+            if (!config.schedulerOptions.tasks.some(t => t.id === booking_daily_transition_task_1.HOTEL_BOOKING_DAILY_TRANSITION_TASK_ID)) {
+                config.schedulerOptions.tasks.push(booking_daily_transition_task_1.hotelBookingDailyTransitionTask);
             }
             // 注册订单行单价策略：酒店房型按入离日期逐晚计价，其它变体直通默认价
             config.orderOptions = Object.assign(Object.assign({}, ((_9 = config.orderOptions) !== null && _9 !== void 0 ? _9 : {})), { orderItemPriceCalculationStrategy: new hotel_order_item_price_strategy_1.HotelOrderItemPriceCalculationStrategy() });
