@@ -72,21 +72,21 @@ export class HotelBooking extends VendureEntity {
     @Column({ type: 'varchar', length: 40, nullable: true })
     guestPhone: string | null;
 
-    /** 免费取消截止点（确认时固化；null = 无免费取消窗口或无政策） */
-    @Column({ type: 'datetime', nullable: true })
-    cancelDeadlineAt?: Date | null;
+    /** 免费取消截止点（确认时固化；null = 无免费取消窗口或无政策）。可选 Date 省略 type 跨库铁律（勿写 Date | null：联合类型反射成 Object 跨库必炸） */
+    @Column({ nullable: true })
+    cancelDeadlineAt?: Date;
 
-    @Column({ type: 'datetime', nullable: true })
-    confirmedAt?: Date | null;
+    @Column({ nullable: true })
+    confirmedAt?: Date;
 
-    @Column({ type: 'datetime', nullable: true })
-    checkedInAt?: Date | null;
+    @Column({ nullable: true })
+    checkedInAt?: Date;
 
-    @Column({ type: 'datetime', nullable: true })
-    completedAt?: Date | null;
+    @Column({ nullable: true })
+    completedAt?: Date;
 
-    @Column({ type: 'datetime', nullable: true })
-    cancelledAt?: Date | null;
+    @Column({ nullable: true })
+    cancelledAt?: Date;
 
     @Column({ type: 'varchar', length: 255, nullable: true })
     cancelReason: string | null;

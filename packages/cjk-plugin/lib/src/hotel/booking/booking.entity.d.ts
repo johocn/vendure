@@ -28,11 +28,11 @@ export declare class HotelBooking extends VendureEntity {
     totalCent: number;
     guestName: string | null;
     guestPhone: string | null;
-    /** 免费取消截止点（确认时固化；null = 无免费取消窗口或无政策） */
-    cancelDeadlineAt?: Date | null;
-    confirmedAt?: Date | null;
-    checkedInAt?: Date | null;
-    completedAt?: Date | null;
-    cancelledAt?: Date | null;
+    /** 免费取消截止点（确认时固化；null = 无免费取消窗口或无政策）。可选 Date 省略 type 跨库铁律（勿写 Date | null：联合类型反射成 Object 跨库必炸） */
+    cancelDeadlineAt?: Date;
+    confirmedAt?: Date;
+    checkedInAt?: Date;
+    completedAt?: Date;
+    cancelledAt?: Date;
     cancelReason: string | null;
 }
