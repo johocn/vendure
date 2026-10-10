@@ -106,7 +106,9 @@ import { RoomTemplateService } from './hotel/room-template.service';
 import { RoomTemplateAdminResolver } from './hotel/room-template-admin.resolver';
 import { HotelRoomDay } from './hotel/booking/room-day.entity';
 import { HotelBookingLock } from './hotel/booking/booking-lock.entity';
+import { HotelRatePlan } from './hotel/booking/rate-plan.entity';
 import { HotelInventoryService } from './hotel/booking/hotel-inventory.service';
+import { HotelRatePlanService } from './hotel/booking/rate-plan.service';
 import { HotelOrderInterceptor } from './hotel/booking/hotel-order-interceptor';
 import { releaseExpiredHotelHoldsTask, RELEASE_EXPIRED_HOTEL_HOLDS_TASK_ID } from './hotel/booking/release-expired-holds.task';
 import { hotelRoomCustomFields } from './hotel/hotel-custom-fields';
@@ -199,7 +201,7 @@ function mergeCustomFields<T extends { name: string }>(
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentTemplate, RoomTemplate, RoomTemplateControl, HotelRoomDay, HotelBookingLock, TenantMember, Wallet, MerchantSettlementLedger, VariantLocationBinding, DeliveryRecord, ReconciliationBatch, ReconciliationOrderLine, StockDocEntity, StockDocItemEntity, InventoryAlertRuleEntity, StockReservationEntity, StockReservationItemEntity, PickBatch, PickBatchOrder, StorageZone, StorageBin, VariantStorageBin,
+    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentTemplate, RoomTemplate, RoomTemplateControl, HotelRoomDay, HotelBookingLock, HotelRatePlan, TenantMember, Wallet, MerchantSettlementLedger, VariantLocationBinding, DeliveryRecord, ReconciliationBatch, ReconciliationOrderLine, StockDocEntity, StockDocItemEntity, InventoryAlertRuleEntity, StockReservationEntity, StockReservationItemEntity, PickBatch, PickBatchOrder, StorageZone, StorageBin, VariantStorageBin,
         StocktakeTask,
         StocktakeWave,
         StocktakeLine,
@@ -243,6 +245,7 @@ function mergeCustomFields<T extends { name: string }>(
         PaymentTemplateService,
         RoomTemplateService,
         HotelInventoryService,
+        HotelRatePlanService,
         DefaultDataService,
         TenantMemberService,
         RedeemScopeService,

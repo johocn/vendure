@@ -1,5 +1,6 @@
 // 酒店逐晚计价纯函数（与 nshop app/utils/hotel-pricing.ts 同规则；无副作用、坏数据返回 null）
 import { dayTypeFor, HotelConfig, PriceSegmentType } from './hotel-config';
+import { RatePlanAdjustment, applyNightlyAdjustment } from './booking/rate-plan-logic';
 
 export interface NightPriceRow {
     date: string;
@@ -43,11 +44,16 @@ function toDateOnly(v: unknown): string | null {
     return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
 }
 
-/** 晚数 = 离店 − 入住（入住当日计第 1 晚）；判定优先级 custom > holiday > weekend > weekday */
+/**
+ * 晚数 = 离店 − 入住（入住当日计第 1 晚）；判定优先级 custom > holiday > weekend > weekday
+ * ratePlan（P2 房价方案，可选）：per-night 套用后累计总价；fixed 类型连住优惠不再叠加（固定价直接生效），
+ * discount/surcharge 仍按连住折扣率作用于总价。
+ */
 export function calcNightlyPricing(
     cfg: HotelConfig | null | undefined,
     checkIn: string,
     checkOut: string,
+    ratePlan?: RatePlanAdjustment | null,
 ): NightlyPricingResult | null {
     if (!cfg || typeof cfg.basePriceCent !== 'number') return null;
     const inD = new Date(`${checkIn}T00:00:00`);
@@ -58,7 +64,6 @@ export function calcNightlyPricing(
 
     const segments = Array.isArray(cfg.priceCalendar) ? cfg.priceCalendar : [];
     const rows: NightPriceRow[] = [];
-    let baseTotal = 0;
     for (let i = 0; i < nights; i++) {
         const d = new Date(inD.getTime() + i * 86400000);
         const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -69,14 +74,15 @@ export function calcNightlyPricing(
             ? (seg.priceCent != null ? seg.priceCent : Math.round(cfg.basePriceCent * (seg.rate ?? 1)))
             : cfg.basePriceCent;
         rows.push({ date, priceCent: price, type });
-        baseTotal += price;
     }
 
     const discounts = (cfg.longStayDiscount ?? [])
         .filter(x => nights >= x.minNights)
         .sort((a, b) => b.minNights - a.minNights);
-    const rate = discounts.length ? discounts[0].rate : 1;
-    return { nights: rows, stayTotalCent: Math.round(baseTotal * rate) };
+    const planAdjusted = ratePlan ? rows.map(r => ({ ...r, priceCent: applyNightlyAdjustment(r.priceCent, ratePlan) })) : rows;
+    const baseTotal = planAdjusted.reduce((sum, r) => sum + r.priceCent, 0);
+    const rate = ratePlan?.adjustType === 'fixed' ? 1 : discounts.length ? discounts[0].rate : 1;
+    return { nights: planAdjusted, stayTotalCent: Math.round(baseTotal * rate) };
 }
 
 /** orderBoxes 行映射用：非酒店行返回全 null；酒店行回填日期/晚数，明细可因坏配置为 null */

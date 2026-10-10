@@ -13,11 +13,12 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.HotelOrderLineColumnMigration = void 0;
-// 确保 order_line 表存在酒店订单行自定义字段列（入住/离店/晚数）。
+// 确保 order_line 表存在酒店订单行自定义字段列（入住/离店/晚数/房价方案码）。
 // Vendure 自定义字段列名规则 = customFields + 首字母大写字段名，其余小写：
 //   hotelCheckIn → customFieldsHotelcheckin
 //   hotelCheckOut → customFieldsHotelcheckout
 //   hotelNights → customFieldsHotelnights
+//   ratePlanCode → customFieldsRateplancode
 // 生产（PostgreSQL）与本地开发（SQLite）均可能关闭 synchronize，故此 migration 幂等地补列；
 // 失败仅 console.error，不阻塞启动。
 const common_1 = require("@nestjs/common");
@@ -42,6 +43,7 @@ let HotelOrderLineColumnMigration = class HotelOrderLineColumnMigration {
                 await ensure('customFieldsHotelcheckin', 'varchar(255)');
                 await ensure('customFieldsHotelcheckout', 'varchar(255)');
                 await ensure('customFieldsHotelnights', 'integer');
+                await ensure('customFieldsRateplancode', 'varchar(255)');
             }
             finally {
                 await qr.release();

@@ -36,6 +36,17 @@ exports.hotelOrderLineCustomFields = {
                 { languageCode: core_1.LanguageCode.en, value: 'Nights' },
             ],
         },
+        {
+            // P2 房价方案码：套用 HotelRatePlan（坏 code / 不可用 → 计价策略回退基价）
+            name: 'ratePlanCode',
+            type: 'string',
+            public: true,
+            nullable: true,
+            label: [
+                { languageCode: core_1.LanguageCode.zh_Hans, value: '房价方案' },
+                { languageCode: core_1.LanguageCode.en, value: 'Rate plan' },
+            ],
+        },
     ],
 };
 //# sourceMappingURL=hotel-order-line-custom-fields.js.map

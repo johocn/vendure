@@ -106,7 +106,9 @@ const room_template_service_1 = require("./hotel/room-template.service");
 const room_template_admin_resolver_1 = require("./hotel/room-template-admin.resolver");
 const room_day_entity_1 = require("./hotel/booking/room-day.entity");
 const booking_lock_entity_1 = require("./hotel/booking/booking-lock.entity");
+const rate_plan_entity_1 = require("./hotel/booking/rate-plan.entity");
 const hotel_inventory_service_1 = require("./hotel/booking/hotel-inventory.service");
+const rate_plan_service_1 = require("./hotel/booking/rate-plan.service");
 const hotel_order_interceptor_1 = require("./hotel/booking/hotel-order-interceptor");
 const release_expired_holds_task_1 = require("./hotel/booking/release-expired-holds.task");
 const hotel_custom_fields_1 = require("./hotel/hotel-custom-fields");
@@ -409,7 +411,7 @@ exports.CjkPlugin = CjkPlugin;
 exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_template_entity_1.PaymentTemplate, room_template_entity_1.RoomTemplate, room_template_control_entity_1.RoomTemplateControl, room_day_entity_1.HotelRoomDay, booking_lock_entity_1.HotelBookingLock, tenant_member_entity_1.TenantMember, wallet_entity_1.Wallet, merchant_settlement_ledger_entity_1.MerchantSettlementLedger, variant_location_binding_entity_1.VariantLocationBinding, delivery_record_entity_1.DeliveryRecord, reconciliation_entity_1.ReconciliationBatch, reconciliation_entity_1.ReconciliationOrderLine, stock_doc_entity_1.StockDocEntity, stock_doc_item_entity_1.StockDocItemEntity, inventory_alert_rule_entity_1.InventoryAlertRuleEntity, stock_reservation_entity_1.StockReservationEntity, stock_reservation_item_entity_1.StockReservationItemEntity, pick_batch_entity_1.PickBatch, pick_batch_order_entity_1.PickBatchOrder, storage_zone_entity_1.StorageZone, storage_bin_entity_1.StorageBin, variant_storage_bin_entity_1.VariantStorageBin,
+        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_template_entity_1.PaymentTemplate, room_template_entity_1.RoomTemplate, room_template_control_entity_1.RoomTemplateControl, room_day_entity_1.HotelRoomDay, booking_lock_entity_1.HotelBookingLock, rate_plan_entity_1.HotelRatePlan, tenant_member_entity_1.TenantMember, wallet_entity_1.Wallet, merchant_settlement_ledger_entity_1.MerchantSettlementLedger, variant_location_binding_entity_1.VariantLocationBinding, delivery_record_entity_1.DeliveryRecord, reconciliation_entity_1.ReconciliationBatch, reconciliation_entity_1.ReconciliationOrderLine, stock_doc_entity_1.StockDocEntity, stock_doc_item_entity_1.StockDocItemEntity, inventory_alert_rule_entity_1.InventoryAlertRuleEntity, stock_reservation_entity_1.StockReservationEntity, stock_reservation_item_entity_1.StockReservationItemEntity, pick_batch_entity_1.PickBatch, pick_batch_order_entity_1.PickBatchOrder, storage_zone_entity_1.StorageZone, storage_bin_entity_1.StorageBin, variant_storage_bin_entity_1.VariantStorageBin,
             stocktake_task_entity_1.StocktakeTask,
             stocktake_wave_entity_1.StocktakeWave,
             stocktake_line_entity_1.StocktakeLine,
@@ -453,6 +455,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             payment_template_service_1.PaymentTemplateService,
             room_template_service_1.RoomTemplateService,
             hotel_inventory_service_1.HotelInventoryService,
+            rate_plan_service_1.HotelRatePlanService,
             default_data_service_1.DefaultDataService,
             tenant_member_service_1.TenantMemberService,
             redeem_scope_service_1.RedeemScopeService,
