@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
     Address,
+    ConfigService,
     Customer,
     ID,
     Logger,
@@ -38,7 +39,19 @@ export class PointsMallService {
     constructor(
         private connection: TransactionalConnection,
         private productPriceApplicator: ProductPriceApplicator,
+        private configService: ConfigService,
     ) {}
+
+    /** 与 AssetInterceptorPlugin 同源：用 assetStorageStrategy.toAbsoluteUrl 补绝对前缀。
+     * C端 H5 为 history/hash 混合路由，裸 `preview/...` 相对路径会被解析到当前路由目录下导致图片 404。 */
+    private toAbsoluteAssetUrl(ctx: RequestContext, preview: string | null | undefined): string {
+        if (!preview) return '';
+        const strategy = (this.configService?.assetOptions?.assetStorageStrategy ?? null) as any;
+        if (strategy?.toAbsoluteUrl && ctx.req) {
+            return strategy.toAbsoluteUrl(ctx.req, preview);
+        }
+        return preview;
+    }
 
     setMemberLevelService(svc: any) {
         this.memberLevel = svc;
@@ -186,7 +199,7 @@ export class PointsMallService {
                 productId: String(fav.productId),
                 name: t?.name ?? variant.name ?? '',
                 slug: t?.slug ?? '',
-                image: variant.product?.featuredAsset?.preview ?? null,
+                image: this.toAbsoluteAssetUrl(ctx, variant.product?.featuredAsset?.preview) || null,
                 priceWithTax: variant.priceWithTax,
                 isOnSale: variant.product?.enabled === true && !variant.deletedAt,
                 pointsPrice: pool.get(fav.productId) ?? null,
@@ -358,7 +371,7 @@ export class PointsMallService {
             variantId: r.variantId,
             name: t?.name ?? v?.name ?? '',
             slug: t?.slug ?? '',
-            image: product?.featuredAsset?.preview ?? null,
+            image: this.toAbsoluteAssetUrl(ctx, product?.featuredAsset?.preview) || null,
             pointsPrice: r.pointsPrice,
             cashPrice: r.cashPrice,
             deliveryType: r.deliveryType,
@@ -459,7 +472,7 @@ export class PointsMallService {
             productId: pp.productId,
             variantId: pp.variantId,
             name: t?.name ?? v?.name ?? '',
-            image: v?.product?.featuredAsset?.preview ?? null,
+            image: this.toAbsoluteAssetUrl(ctx, v?.product?.featuredAsset?.preview) || null,
             spec: v?.name ?? '',
         };
 

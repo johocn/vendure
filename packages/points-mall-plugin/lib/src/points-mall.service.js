@@ -20,11 +20,24 @@ const points_order_payment_entity_1 = require("./points-order-payment.entity");
 const points_product_entity_1 = require("./points-product.entity");
 const loggerCtx = 'PointsMallService';
 let PointsMallService = class PointsMallService {
-    constructor(connection, productPriceApplicator) {
+    constructor(connection, productPriceApplicator, configService) {
         this.connection = connection;
         this.productPriceApplicator = productPriceApplicator;
+        this.configService = configService;
         this.memberLevel = null;
         this.gateway = null;
+    }
+    /** 与 AssetInterceptorPlugin 同源：用 assetStorageStrategy.toAbsoluteUrl 补绝对前缀。
+     * C端 H5 为 history/hash 混合路由，裸 `preview/...` 相对路径会被解析到当前路由目录下导致图片 404。 */
+    toAbsoluteAssetUrl(ctx, preview) {
+        var _a, _b, _c;
+        if (!preview)
+            return '';
+        const strategy = ((_c = (_b = (_a = this.configService) === null || _a === void 0 ? void 0 : _a.assetOptions) === null || _b === void 0 ? void 0 : _b.assetStorageStrategy) !== null && _c !== void 0 ? _c : null);
+        if ((strategy === null || strategy === void 0 ? void 0 : strategy.toAbsoluteUrl) && ctx.req) {
+            return strategy.toAbsoluteUrl(ctx.req, preview);
+        }
+        return preview;
     }
     setMemberLevelService(svc) {
         this.memberLevel = svc;
@@ -125,7 +138,7 @@ let PointsMallService = class PointsMallService {
     }
     /** 我的收藏（渠道隔离，id 倒序），带商品视图与最低积分价；商品已删则给占位视图。 */
     async myFavorites(ctx, options) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j;
         const customer = await this.requireCustomer(ctx);
         const [favorites, totalItems] = await this.connection
             .getRepository(ctx, product_favorite_entity_1.ProductFavorite)
@@ -165,10 +178,10 @@ let PointsMallService = class PointsMallService {
                 productId: String(fav.productId),
                 name: (_d = (_c = t === null || t === void 0 ? void 0 : t.name) !== null && _c !== void 0 ? _c : variant.name) !== null && _d !== void 0 ? _d : '',
                 slug: (_e = t === null || t === void 0 ? void 0 : t.slug) !== null && _e !== void 0 ? _e : '',
-                image: (_h = (_g = (_f = variant.product) === null || _f === void 0 ? void 0 : _f.featuredAsset) === null || _g === void 0 ? void 0 : _g.preview) !== null && _h !== void 0 ? _h : null,
+                image: this.toAbsoluteAssetUrl(ctx, (_g = (_f = variant.product) === null || _f === void 0 ? void 0 : _f.featuredAsset) === null || _g === void 0 ? void 0 : _g.preview) || null,
                 priceWithTax: variant.priceWithTax,
-                isOnSale: ((_j = variant.product) === null || _j === void 0 ? void 0 : _j.enabled) === true && !variant.deletedAt,
-                pointsPrice: (_k = pool.get(fav.productId)) !== null && _k !== void 0 ? _k : null,
+                isOnSale: ((_h = variant.product) === null || _h === void 0 ? void 0 : _h.enabled) === true && !variant.deletedAt,
+                pointsPrice: (_j = pool.get(fav.productId)) !== null && _j !== void 0 ? _j : null,
                 favoritedAt: fav.favoritedAt,
             });
         }
@@ -330,7 +343,7 @@ let PointsMallService = class PointsMallService {
         return this.toView(ctx, pp, v !== null && v !== void 0 ? v : undefined);
     }
     toView(ctx, r, v) {
-        var _a, _b, _c, _d, _e, _f;
+        var _a, _b, _c, _d, _e;
         const product = v === null || v === void 0 ? void 0 : v.product;
         const t = this.pickTranslation(product, ctx);
         return {
@@ -339,7 +352,7 @@ let PointsMallService = class PointsMallService {
             variantId: r.variantId,
             name: (_b = (_a = t === null || t === void 0 ? void 0 : t.name) !== null && _a !== void 0 ? _a : v === null || v === void 0 ? void 0 : v.name) !== null && _b !== void 0 ? _b : '',
             slug: (_c = t === null || t === void 0 ? void 0 : t.slug) !== null && _c !== void 0 ? _c : '',
-            image: (_e = (_d = product === null || product === void 0 ? void 0 : product.featuredAsset) === null || _d === void 0 ? void 0 : _d.preview) !== null && _e !== void 0 ? _e : null,
+            image: this.toAbsoluteAssetUrl(ctx, (_d = product === null || product === void 0 ? void 0 : product.featuredAsset) === null || _d === void 0 ? void 0 : _d.preview) || null,
             pointsPrice: r.pointsPrice,
             cashPrice: r.cashPrice,
             deliveryType: r.deliveryType,
@@ -349,7 +362,7 @@ let PointsMallService = class PointsMallService {
             validFrom: r.validFrom,
             validTo: r.validTo,
             sortOrder: r.sortOrder,
-            priceWithTax: (_f = v === null || v === void 0 ? void 0 : v.priceWithTax) !== null && _f !== void 0 ? _f : 0,
+            priceWithTax: (_e = v === null || v === void 0 ? void 0 : v.priceWithTax) !== null && _e !== void 0 ? _e : 0,
             inStock: r.stock > 0,
         };
     }
@@ -381,7 +394,7 @@ let PointsMallService = class PointsMallService {
     }
     /** 积分兑换下单（resolver 端 @Transaction() 包裹）：扣分 → 原子扣库存 → 建单（code 回写）→ 混合价建支付单。 */
     async createPointsOrderExchange(ctx, input) {
-        var _a, _b, _c, _d, _e, _f, _g;
+        var _a, _b, _c, _d, _e, _f;
         if (!this.memberLevel) {
             throw new core_1.UserInputError('Member level service unavailable');
         }
@@ -433,8 +446,8 @@ let PointsMallService = class PointsMallService {
             productId: pp.productId,
             variantId: pp.variantId,
             name: (_c = (_b = t === null || t === void 0 ? void 0 : t.name) !== null && _b !== void 0 ? _b : v === null || v === void 0 ? void 0 : v.name) !== null && _c !== void 0 ? _c : '',
-            image: (_f = (_e = (_d = v === null || v === void 0 ? void 0 : v.product) === null || _d === void 0 ? void 0 : _d.featuredAsset) === null || _e === void 0 ? void 0 : _e.preview) !== null && _f !== void 0 ? _f : null,
-            spec: (_g = v === null || v === void 0 ? void 0 : v.name) !== null && _g !== void 0 ? _g : '',
+            image: this.toAbsoluteAssetUrl(ctx, (_e = (_d = v === null || v === void 0 ? void 0 : v.product) === null || _d === void 0 ? void 0 : _d.featuredAsset) === null || _e === void 0 ? void 0 : _e.preview) || null,
+            spec: (_f = v === null || v === void 0 ? void 0 : v.name) !== null && _f !== void 0 ? _f : '',
         };
         const status = cashTotal > 0 ? 'pending_payment' : pp.deliveryType === 'virtual' ? 'completed' : 'pending_ship';
         const now = new Date();
@@ -678,6 +691,7 @@ exports.PointsMallService = PointsMallService;
 exports.PointsMallService = PointsMallService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
-        core_1.ProductPriceApplicator])
+        core_1.ProductPriceApplicator,
+        core_1.ConfigService])
 ], PointsMallService);
 //# sourceMappingURL=points-mall.service.js.map

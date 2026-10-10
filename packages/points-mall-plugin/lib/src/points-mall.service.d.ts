@@ -1,13 +1,17 @@
-import { ID, PaginatedList, ProductPriceApplicator, RequestContext, TransactionalConnection } from '@vendure/core';
+import { ConfigService, ID, PaginatedList, ProductPriceApplicator, RequestContext, TransactionalConnection } from '@vendure/core';
 import { PointsOrder } from './points-order.entity';
 import { PointsProduct } from './points-product.entity';
 import { CreatePointsOrderInput, CreatePointsProductInput, FavoriteProductView, PointsOrderListOptions, PointsPayParams, PointsProductListOptions, PointsProductView, ToggleFavoriteResult, UpdatePointsProductInput } from './types';
 export declare class PointsMallService {
     private connection;
     private productPriceApplicator;
+    private configService;
     private memberLevel;
     private gateway;
-    constructor(connection: TransactionalConnection, productPriceApplicator: ProductPriceApplicator);
+    constructor(connection: TransactionalConnection, productPriceApplicator: ProductPriceApplicator, configService: ConfigService);
+    /** 与 AssetInterceptorPlugin 同源：用 assetStorageStrategy.toAbsoluteUrl 补绝对前缀。
+     * C端 H5 为 history/hash 混合路由，裸 `preview/...` 相对路径会被解析到当前路由目录下导致图片 404。 */
+    private toAbsoluteAssetUrl;
     setMemberLevelService(svc: any): void;
     setWechatpayGateway(g: any): void;
     private requireCustomer;
