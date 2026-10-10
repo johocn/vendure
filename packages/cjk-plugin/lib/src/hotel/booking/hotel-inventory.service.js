@@ -18,6 +18,7 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const typeorm_1 = require("typeorm");
 const hotel_nightly_pricing_1 = require("../hotel-nightly-pricing");
+const hotel_config_1 = require("../hotel-config");
 const room_day_entity_1 = require("./room-day.entity");
 const booking_lock_entity_1 = require("./booking-lock.entity");
 const hotel_inventory_logic_1 = require("./hotel-inventory-logic");
@@ -73,6 +74,31 @@ let HotelInventoryService = class HotelInventoryService {
                 date,
                 remaining: (0, hotel_inventory_logic_1.computeRemaining)(roomDay, configTotal, (_a = occupied.get(date)) !== null && _a !== void 0 ? _a : 0),
                 closed: (_b = roomDay === null || roomDay === void 0 ? void 0 : roomDay.closed) !== null && _b !== void 0 ? _b : false,
+            };
+        });
+    }
+    /**
+     * 逐晚房态 + 当晚报价（date/priceCent/dayType/remaining/closed）。
+     * shop hotelAvailability / admin 房量日历共用；窗口语义由调用方决定（含两端时传 to+1）。
+     */
+    async getAvailabilityDetailed(ctx, variantId, from, to) {
+        var _a;
+        const rows = await this.getAvailability(ctx, variantId, from, to);
+        const variant = await this.conn.getRepository(ctx, core_1.ProductVariant).findOne({
+            where: { id: variantId },
+            loadEagerRelations: false,
+        });
+        const cfg = (0, hotel_nightly_pricing_1.parseHotelRoomConfig)((_a = variant === null || variant === void 0 ? void 0 : variant.customFields) === null || _a === void 0 ? void 0 : _a.hotelRoomConfig);
+        const segments = Array.isArray(cfg === null || cfg === void 0 ? void 0 : cfg.priceCalendar) ? cfg.priceCalendar : [];
+        return rows.map(r => {
+            var _a, _b, _c;
+            const pricing = (0, hotel_nightly_pricing_1.calcNightlyPricing)(cfg, r.date, (0, hotel_inventory_logic_1.nextDate)(r.date));
+            return {
+                date: r.date,
+                priceCent: (_c = (_b = (_a = pricing === null || pricing === void 0 ? void 0 : pricing.nights[0]) === null || _a === void 0 ? void 0 : _a.priceCent) !== null && _b !== void 0 ? _b : cfg === null || cfg === void 0 ? void 0 : cfg.basePriceCent) !== null && _c !== void 0 ? _c : 0,
+                dayType: (0, hotel_config_1.dayTypeFor)(r.date, segments),
+                remaining: r.remaining,
+                closed: r.closed,
             };
         });
     }

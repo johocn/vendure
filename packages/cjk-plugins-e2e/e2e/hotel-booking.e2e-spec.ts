@@ -162,6 +162,17 @@ describe('Hotel P1 防超订（shop 加购链路）', () => {
         expect(byDate.get('2026-12-08')?.closed).toBe(true);
         // 早前由防超订 upsert 的缺省行也在
         expect(byDate.get('2026-12-01')?.totalRooms).toBe(1);
+
+        // admin 端 hotelAvailability（房量日历「剩 N」数据源）
+        const adminAvail = (await adminClient.query(gql`
+            query { hotelAvailability(variantId: "${variantId}", from: "2026-12-07", to: "2026-12-09") { date priceCent remaining closed } }
+        `)) as any;
+        expect(adminAvail.hotelAvailability).toHaveLength(3);
+        const adminByDate = new Map<string, any>(adminAvail.hotelAvailability.map((d: any) => [d.date, d]));
+        expect(adminByDate.get('2026-12-07').remaining).toBe(5);
+        expect(adminByDate.get('2026-12-07').priceCent).toBe(30000);
+        expect(adminByDate.get('2026-12-08').closed).toBe(true);
+        expect(adminByDate.get('2026-12-08').remaining).toBe(0);
     }, 60000);
 
     it('⑥ shop hotelAvailability：余量/关房/报价可见，关房晚加购被拦截', async () => {

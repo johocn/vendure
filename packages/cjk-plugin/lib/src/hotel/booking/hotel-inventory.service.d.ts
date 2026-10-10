@@ -16,6 +16,17 @@ export declare class HotelInventoryService {
         closed: boolean;
     }>>;
     /**
+     * 逐晚房态 + 当晚报价（date/priceCent/dayType/remaining/closed）。
+     * shop hotelAvailability / admin 房量日历共用；窗口语义由调用方决定（含两端时传 to+1）。
+     */
+    getAvailabilityDetailed(ctx: RequestContext, variantId: ID, from: string, to: string): Promise<Array<{
+        date: string;
+        priceCent: number;
+        dayType: string;
+        remaining: number | null;
+        closed: boolean;
+    }>>;
+    /**
      * 锁房（校验 + 落锁，一体完成，须在调用方事务内）：
      * - 对段内「有限房量」的 HotelRoomDay 行悲观加锁（无行时先 upsert 缺省行以获得锁锚点）
      * - 释放「本次会重置」的 hold：orderLineId 为 null 的孤儿 + toReleaseLineIds 指定行的（幂等自愈，

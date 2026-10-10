@@ -3,6 +3,8 @@ import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { Allow, Ctx, ID, Permission, RequestContext, Transaction } from '@vendure/core';
 import { HotelInventoryService } from './hotel-inventory.service';
 import { HotelRoomDay } from './room-day.entity';
+import { HotelAvailabilityDay } from './hotel-inventory-shop.resolver';
+import { nextDate } from './hotel-inventory-logic';
 
 @Resolver()
 export class HotelInventoryAdminResolver {
@@ -16,6 +18,18 @@ export class HotelInventoryAdminResolver {
         @Args('month') month: string,
     ): Promise<HotelRoomDay[]> {
         return this.inventory.listRoomDays(ctx, variantId, month);
+    }
+
+    /** 与 shop 端同构（含两端窗口）；web-admin 房量日历「剩 N」用 */
+    @Query()
+    @Allow(Permission.ReadCatalog, Permission.UpdateCatalog)
+    async hotelAvailability(
+        @Ctx() ctx: RequestContext,
+        @Args('variantId') variantId: ID,
+        @Args('from') from: string,
+        @Args('to') to: string,
+    ): Promise<HotelAvailabilityDay[]> {
+        return this.inventory.getAvailabilityDetailed(ctx, variantId, from, nextDate(to));
     }
 
     @Mutation()

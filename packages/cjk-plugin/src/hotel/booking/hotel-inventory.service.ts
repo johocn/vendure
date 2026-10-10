@@ -5,7 +5,8 @@
 import { Injectable } from '@nestjs/common';
 import { ID, Logger, ProductVariant, RequestContext, TransactionalConnection } from '@vendure/core';
 import { Between, In, IsNull, Not } from 'typeorm';
-import { parseHotelRoomConfig } from '../hotel-nightly-pricing';
+import { calcNightlyPricing, parseHotelRoomConfig } from '../hotel-nightly-pricing';
+import { dayTypeFor } from '../hotel-config';
 import { HotelRoomDay } from './room-day.entity';
 import { HotelBookingLock, HotelBookingLockStatus } from './booking-lock.entity';
 import {
@@ -76,6 +77,35 @@ export class HotelInventoryService {
                 date,
                 remaining: computeRemaining(roomDay, configTotal, occupied.get(date) ?? 0),
                 closed: roomDay?.closed ?? false,
+            };
+        });
+    }
+
+    /**
+     * 逐晚房态 + 当晚报价（date/priceCent/dayType/remaining/closed）。
+     * shop hotelAvailability / admin 房量日历共用；窗口语义由调用方决定（含两端时传 to+1）。
+     */
+    async getAvailabilityDetailed(
+        ctx: RequestContext,
+        variantId: ID,
+        from: string,
+        to: string,
+    ): Promise<Array<{ date: string; priceCent: number; dayType: string; remaining: number | null; closed: boolean }>> {
+        const rows = await this.getAvailability(ctx, variantId, from, to);
+        const variant = await this.conn.getRepository(ctx, ProductVariant).findOne({
+            where: { id: variantId as any },
+            loadEagerRelations: false,
+        });
+        const cfg = parseHotelRoomConfig((variant?.customFields as any)?.hotelRoomConfig);
+        const segments = Array.isArray(cfg?.priceCalendar) ? cfg!.priceCalendar! : [];
+        return rows.map(r => {
+            const pricing = calcNightlyPricing(cfg, r.date, nextDate(r.date));
+            return {
+                date: r.date,
+                priceCent: pricing?.nights[0]?.priceCent ?? cfg?.basePriceCent ?? 0,
+                dayType: dayTypeFor(r.date, segments),
+                remaining: r.remaining,
+                closed: r.closed,
             };
         });
     }

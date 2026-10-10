@@ -17,12 +17,17 @@ exports.HotelInventoryAdminResolver = void 0;
 const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
 const hotel_inventory_service_1 = require("./hotel-inventory.service");
+const hotel_inventory_logic_1 = require("./hotel-inventory-logic");
 let HotelInventoryAdminResolver = class HotelInventoryAdminResolver {
     constructor(inventory) {
         this.inventory = inventory;
     }
     async hotelRoomDays(ctx, variantId, month) {
         return this.inventory.listRoomDays(ctx, variantId, month);
+    }
+    /** 与 shop 端同构（含两端窗口）；web-admin 房量日历「剩 N」用 */
+    async hotelAvailability(ctx, variantId, from, to) {
+        return this.inventory.getAvailabilityDetailed(ctx, variantId, from, (0, hotel_inventory_logic_1.nextDate)(to));
     }
     async setHotelRoomDay(ctx, variantId, date, totalRooms, closed) {
         return this.inventory.upsertRoomDay(ctx, variantId, date, { totalRooms, closed });
@@ -42,6 +47,17 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
     __metadata("design:returntype", Promise)
 ], HotelInventoryAdminResolver.prototype, "hotelRoomDays", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.ReadCatalog, core_1.Permission.UpdateCatalog),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('variantId')),
+    __param(2, (0, graphql_1.Args)('from')),
+    __param(3, (0, graphql_1.Args)('to')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String, String]),
+    __metadata("design:returntype", Promise)
+], HotelInventoryAdminResolver.prototype, "hotelAvailability", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),

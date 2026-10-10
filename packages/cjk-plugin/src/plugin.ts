@@ -880,9 +880,24 @@ function mergeCustomFields<T extends { name: string }>(
                     closed: Boolean!
                 }
 
+                type HotelAvailabilityDay {
+                    "YYYY-MM-DD"
+                    date: String!
+                    "当晚单价（分）；不含连住折扣"
+                    priceCent: Int!
+                    "weekday | weekend | holiday | custom"
+                    dayType: String!
+                    "剩余可订间数；null = 不限房"
+                    remaining: Int
+                    "关房（不可订）"
+                    closed: Boolean!
+                }
+
                 extend type Query {
                     "某月已建房量行（month = YYYY-MM）；未建行回退 hotelRoomConfig.totalRooms，由前端兜底展示"
                     hotelRoomDays(variantId: ID!, month: String!): [HotelRoomDay!]!
+                    "逐晚房态（占用已扣），[from, to] 含两端；房量日历「剩 N」用"
+                    hotelAvailability(variantId: ID!, from: String!, to: String!): [HotelAvailabilityDay!]!
                 }
 
                 extend type Mutation {
