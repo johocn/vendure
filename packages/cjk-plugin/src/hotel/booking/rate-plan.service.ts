@@ -1,11 +1,13 @@
 // 房价方案服务（P2）：CRUD + 计价策略用查询 + C 端可见性过滤
 // 会员等级判定沿用 vcash-pos myMemberPrice 通道：Customer.customFields.memberLevel ?? 1
 import { Injectable } from '@nestjs/common';
-import { Customer, ID, RequestContext, TransactionalConnection } from '@vendure/core';
+import { Customer, ID, ProductVariant, RequestContext, TransactionalConnection } from '@vendure/core';
 import { In } from 'typeorm';
+import { parseHotelRoomConfig } from '../hotel-nightly-pricing';
 import { HotelRatePlan } from './rate-plan.entity';
 import {
     RatePlanAdjustType,
+    applyNightlyAdjustment,
     isRatePlanSaleable,
     isValidRatePlanAdjustment,
     parseMemberOnly,
@@ -100,6 +102,29 @@ export class HotelRatePlanService {
                 adjustValue: p.adjustValue,
                 memberOnly: p.memberOnly,
             }));
+    }
+
+    /** C 端 chips：可见方案 + 日均价预估（变体基准价套用单晚方案价；坏配置基准按 0） */
+    async listVisibleWithEstimate(
+        ctx: RequestContext,
+        variantId: ID,
+        options: { checkIn?: string | null } = {},
+    ): Promise<Array<{ id: string; code: string; name: string; adjustType: string; adjustValue: number; memberOnly: string | null; avgNightlyEstimateCent: number }>> {
+        const plans = await this.listVisibleForCustomer(ctx, variantId, options);
+        if (!plans.length) return [];
+        const variant = await this.conn.getRepository(ctx, ProductVariant).findOne({
+            where: { id: variantId as any },
+            loadEagerRelations: false,
+        });
+        const cfg = parseHotelRoomConfig((variant?.customFields as any)?.hotelRoomConfig);
+        const base = cfg?.basePriceCent ?? 0;
+        return plans.map(p => ({
+            ...p,
+            avgNightlyEstimateCent: applyNightlyAdjustment(base, {
+                adjustType: p.adjustType as RatePlanAdjustType,
+                adjustValue: p.adjustValue,
+            }),
+        }));
     }
 
     async create(ctx: RequestContext, variantId: ID, input: HotelRatePlanInput): Promise<HotelRatePlan> {

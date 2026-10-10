@@ -38,7 +38,9 @@ class HotelOrderItemPriceCalculationStrategy {
         const denom = Number.isFinite(quantity) && quantity > 0 ? quantity : pricing.nights.length;
         return {
             price: (0, core_1.roundMoney)(pricing.stayTotalCent / denom),
-            priceIncludesTax: productVariant.listPriceIncludesTax,
+            // 酒店房价统一按含税挂牌价口径（与 C 端逐日价/hotelAvailability priceCent 一致），
+            // 订单行 WithTax = 挂牌价，不再被默认税率放大
+            priceIncludesTax: true,
         };
     }
     /** 行上 ratePlanCode → 可套用方案（不可用返回 null 回退基价）；非酒店方案/异常一律静默回退 */

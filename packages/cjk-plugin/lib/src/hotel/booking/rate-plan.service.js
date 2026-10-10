@@ -16,6 +16,7 @@ exports.validateRatePlanInput = validateRatePlanInput;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const typeorm_1 = require("typeorm");
+const hotel_nightly_pricing_1 = require("../hotel-nightly-pricing");
 const rate_plan_entity_1 = require("./rate-plan.entity");
 const rate_plan_logic_1 = require("./rate-plan-logic");
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -88,6 +89,23 @@ let HotelRatePlanService = class HotelRatePlanService {
             adjustValue: p.adjustValue,
             memberOnly: p.memberOnly,
         }));
+    }
+    /** C 端 chips：可见方案 + 日均价预估（变体基准价套用单晚方案价；坏配置基准按 0） */
+    async listVisibleWithEstimate(ctx, variantId, options = {}) {
+        var _a, _b;
+        const plans = await this.listVisibleForCustomer(ctx, variantId, options);
+        if (!plans.length)
+            return [];
+        const variant = await this.conn.getRepository(ctx, core_1.ProductVariant).findOne({
+            where: { id: variantId },
+            loadEagerRelations: false,
+        });
+        const cfg = (0, hotel_nightly_pricing_1.parseHotelRoomConfig)((_a = variant === null || variant === void 0 ? void 0 : variant.customFields) === null || _a === void 0 ? void 0 : _a.hotelRoomConfig);
+        const base = (_b = cfg === null || cfg === void 0 ? void 0 : cfg.basePriceCent) !== null && _b !== void 0 ? _b : 0;
+        return plans.map(p => (Object.assign(Object.assign({}, p), { avgNightlyEstimateCent: (0, rate_plan_logic_1.applyNightlyAdjustment)(base, {
+                adjustType: p.adjustType,
+                adjustValue: p.adjustValue,
+            }) })));
     }
     async create(ctx, variantId, input) {
         var _a;

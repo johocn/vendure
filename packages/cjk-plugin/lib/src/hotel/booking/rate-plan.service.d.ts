@@ -39,6 +39,18 @@ export declare class HotelRatePlanService {
         adjustValue: number;
         memberOnly: string | null;
     }>>;
+    /** C 端 chips：可见方案 + 日均价预估（变体基准价套用单晚方案价；坏配置基准按 0） */
+    listVisibleWithEstimate(ctx: RequestContext, variantId: ID, options?: {
+        checkIn?: string | null;
+    }): Promise<Array<{
+        id: string;
+        code: string;
+        name: string;
+        adjustType: string;
+        adjustValue: number;
+        memberOnly: string | null;
+        avgNightlyEstimateCent: number;
+    }>>;
     create(ctx: RequestContext, variantId: ID, input: HotelRatePlanInput): Promise<HotelRatePlan>;
     update(ctx: RequestContext, planId: ID, input: HotelRatePlanInput): Promise<HotelRatePlan>;
     delete(ctx: RequestContext, planId: ID): Promise<boolean>;

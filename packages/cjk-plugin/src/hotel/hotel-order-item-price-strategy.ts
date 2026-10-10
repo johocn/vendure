@@ -52,7 +52,9 @@ export class HotelOrderItemPriceCalculationStrategy implements OrderItemPriceCal
         const denom = Number.isFinite(quantity) && quantity > 0 ? quantity : pricing.nights.length;
         return {
             price: roundMoney(pricing.stayTotalCent / denom),
-            priceIncludesTax: productVariant.listPriceIncludesTax,
+            // 酒店房价统一按含税挂牌价口径（与 C 端逐日价/hotelAvailability priceCent 一致），
+            // 订单行 WithTax = 挂牌价，不再被默认税率放大
+            priceIncludesTax: true,
         };
     }
 

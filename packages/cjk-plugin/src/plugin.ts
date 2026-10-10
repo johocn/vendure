@@ -131,6 +131,8 @@ import { RedemptionShopResolver, RedemptionAdminResolver } from './redemption/re
 import { redemptionShopSchema, redemptionAdminSchema } from './redemption/redemption.schema';
 import { HotelInventoryShopResolver } from './hotel/booking/hotel-inventory-shop.resolver';
 import { HotelInventoryAdminResolver } from './hotel/booking/hotel-inventory-admin.resolver';
+import { HotelRatePlanAdminResolver } from './hotel/booking/rate-plan-admin.resolver';
+import { HotelRatePlanShopResolver } from './hotel/booking/rate-plan-shop.resolver';
 import { BoxShippingLineAssignmentStrategy } from './shipping/box-shipping-line-assignment-strategy';
 import { ChannelTaxLineCalculationStrategy } from './tax/channel-tax-line-calculation-strategy';
 import { ChannelEvent, EventBus, OrderEvent, OrderService, TransactionalConnection } from '@vendure/core';
@@ -908,6 +910,52 @@ function mergeCustomFields<T extends { name: string }>(
                     setHotelRoomDay(variantId: ID!, date: String!, totalRooms: Int, closed: Boolean): HotelRoomDay!
                     "批量 upsert [from, to] 含两端；weekdays 0-6 可选过滤（0=周日）；返回写入行数"
                     batchSetHotelRoomDays(variantId: ID!, from: String!, to: String!, totalRooms: Int, closed: Boolean, weekdays: [Int!]): Int!
+                }
+
+                # ===== 酒店房价方案管理（P2） =====
+                input HotelRatePlanInput {
+                    code: String
+                    name: String
+                    "discount | fixed | surcharge"
+                    adjustType: String
+                    "discount 千分比（900=×0.9）；fixed/surcharge 分"
+                    adjustValue: Int
+                    "会员等级门槛（数字字符串如 '2'，达到该等级及以上可见）；null/空 = 全员"
+                    memberOnly: String
+                    "售卖期起（YYYY-MM-DD，以入住日为准含两端）；null = 不限"
+                    dateFrom: String
+                    "售卖期止；null = 不限"
+                    dateTo: String
+                    "取消政策覆盖 JSON（{type:'freeUntil'|'nonRefundable', freeUntilHours?}）；null = 用房型级政策"
+                    cancelPolicyOverride: String
+                    enabled: Boolean
+                }
+
+                type HotelRatePlan {
+                    id: ID!
+                    productVariantId: ID!
+                    code: String!
+                    name: String!
+                    adjustType: String!
+                    adjustValue: Int!
+                    memberOnly: String
+                    dateFrom: String
+                    dateTo: String
+                    cancelPolicyOverride: String
+                    enabled: Boolean!
+                }
+
+                extend type Query {
+                    "房型全部房价方案（含停用），按 id 升序"
+                    hotelRatePlans(variantId: ID!): [HotelRatePlan!]!
+                }
+
+                extend type Mutation {
+                    "新建方案（code 行内唯一）；校验失败抛错"
+                    createHotelRatePlan(variantId: ID!, input: HotelRatePlanInput!): HotelRatePlan!
+                    "更新方案（partial：未传字段沿用现值；memberOnly/dateFrom/dateTo/cancelPolicyOverride 显式 null = 清除）"
+                    updateHotelRatePlan(id: ID!, input: HotelRatePlanInput!): HotelRatePlan!
+                    deleteHotelRatePlan(id: ID!): Boolean!
                 }
 
                 # ===== 租户 / 角色 / 权限体系 =====
@@ -1931,7 +1979,7 @@ function mergeCustomFields<T extends { name: string }>(
                 }
                 `;
         },
-        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, RoomTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver, MerchantSettlementAdminResolver, DeliveryAdminResolver, InventoryAdminResolver, ReconciliationAdminResolver, StockDocAdminResolver, StockReservationAdminResolver, DeliveryCapabilityResolver, PickBatchAdminResolver, StorageBinAdminResolver, OrderAddressAdminResolver, StocktakeAdminResolver, OrderPriceAdminResolver, HotelInventoryAdminResolver],
+        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, RoomTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver, MerchantSettlementAdminResolver, DeliveryAdminResolver, InventoryAdminResolver, ReconciliationAdminResolver, StockDocAdminResolver, StockReservationAdminResolver, DeliveryCapabilityResolver, PickBatchAdminResolver, StorageBinAdminResolver, OrderAddressAdminResolver, StocktakeAdminResolver, OrderPriceAdminResolver, HotelInventoryAdminResolver, HotelRatePlanAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {
@@ -2290,10 +2338,31 @@ function mergeCustomFields<T extends { name: string }>(
                     hotelAvailability(variantId: ID!, from: String!, to: String!): [HotelAvailabilityDay!]!
                 }
 
+                # ===== 酒店房价方案（C 端方案 chips） =====
+                type HotelRatePlanPublic {
+                    id: ID!
+                    code: String!
+                    "展示名（纯文本或 LocalizedText JSON 字符串）"
+                    name: String!
+                    "discount | fixed | surcharge"
+                    adjustType: String!
+                    "discount 千分比（900=×0.9）；fixed/surcharge 分"
+                    adjustValue: Int!
+                    "会员等级门槛（数字字符串，达到该等级及以上可见）；null = 全员"
+                    memberOnly: String
+                    "日均价预估（变体基准价套用单晚方案价，分）；精确逐晚价由 C 端按入住区间重算"
+                    avgNightlyEstimateCent: Int!
+                }
+
+                extend type Query {
+                    "可见房价方案（enabled + 会员过滤 + 售卖期过滤）；checkIn 传入住日时额外过滤售卖期"
+                    hotelRatePlans(variantId: ID!, checkIn: String): [HotelRatePlanPublic!]!
+                }
+
                 ${redemptionShopSchema}
             `;
         },
-        resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver, DomainShopResolver, MapShopResolver, ShippingProfileShopResolver, DeliveryCapabilityResolver, PaymentProfileShopResolver, OrderBoxShopResolver, OrderSplitShopResolver, WalletShopResolver, RedemptionShopResolver, InventoryShopResolver, StorageBinShopResolver, CustomerAssetShopResolver, MyOrdersShopResolver, HotelInventoryShopResolver],
+        resolvers: [PickupLocationShopResolver, PickupShopResolver, AuthShopResolver, DomainShopResolver, MapShopResolver, ShippingProfileShopResolver, DeliveryCapabilityResolver, PaymentProfileShopResolver, OrderBoxShopResolver, OrderSplitShopResolver, WalletShopResolver, RedemptionShopResolver, InventoryShopResolver, StorageBinShopResolver, CustomerAssetShopResolver, MyOrdersShopResolver, HotelInventoryShopResolver, HotelRatePlanShopResolver],
     },
     configuration: config => {
         // 注入 authSecret 到 crypto 模块（configuration 在 bootstrap 早期执行，此时 options 已可用）
