@@ -6,12 +6,14 @@ export interface ToggleFavoriteResult {
 export interface PointsProductListOptions {
     skip?: number;
     take?: number;
+    keyword?: string;
 }
 
 export interface PointsOrderListOptions {
     skip?: number;
     take?: number;
     status?: string;
+    keyword?: string;
 }
 
 export interface CreatePointsProductInput {

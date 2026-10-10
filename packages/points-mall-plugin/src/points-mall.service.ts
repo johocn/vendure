@@ -11,7 +11,7 @@ import {
     TransactionalConnection,
     UserInputError,
 } from '@vendure/core';
-import { In, Not } from 'typeorm';
+import { Brackets, In, Not } from 'typeorm';
 import { resolveCustomerOpenid } from '@vendure/wechatpay-plugin';
 import { ProductFavorite } from './product-favorite.entity';
 import { PointsOrder } from './points-order.entity';
@@ -312,10 +312,23 @@ export class PointsMallService {
         ctx: RequestContext,
         options?: PointsProductListOptions,
     ): Promise<PaginatedList<PointsProduct>> {
-        const [items, totalItems] = await this.connection
+        const qb = this.connection
             .getRepository(ctx, PointsProduct)
             .createQueryBuilder('pp')
-            .where('pp.channelId = :channelId', { channelId: ctx.channelId })
+            .where('pp.channelId = :channelId', { channelId: ctx.channelId });
+        const kw = options?.keyword?.trim();
+        if (kw) {
+            // 商品翻译名模糊 + 纯数字时 productId 精确（联表用表名+camelCase 带引号列）
+            // AS TEXT 而非 AS CHAR：Postgres 下 CHAR 为 bpchar(1) 会截断；LIKE 仅为 Postgres 用 ILIKE（sqljs e2e 不支持）
+            const LIKE = this.connection.rawConnection.options.type === 'postgres' ? 'ILIKE' : 'LIKE';
+            qb.leftJoin('product_variant', 'v', 'v."id" = pp."variantId"')
+                .leftJoin('product_translation', 'pt', 'pt."productId" = v."productId"')
+                .andWhere(`(pt."name" ${LIKE} :kw OR CAST(pp."productId" AS TEXT) = :kwExact)`, {
+                    kw: `%${kw}%`,
+                    kwExact: kw,
+                });
+        }
+        const [items, totalItems] = await qb
             .orderBy('pp.sortOrder', 'ASC')
             .addOrderBy('pp.id', 'DESC')
             .skip(options?.skip)
@@ -700,6 +713,20 @@ export class PointsMallService {
             .where('po.channelId = :channelId', { channelId: ctx.channelId });
         if (options?.status) {
             qb.andWhere('po.status = :status', { status: options.status });
+        }
+        const kw = options?.keyword?.trim();
+        if (kw) {
+            // 单号模糊；纯数字时追加 PO-<id> 前缀精确与 customerId 精确
+            const LIKE = this.connection.rawConnection.options.type === 'postgres' ? 'ILIKE' : 'LIKE';
+            qb.andWhere(
+                new Brackets(w => {
+                    w.where(`po.code ${LIKE} :kw`, { kw: `%${kw}%` });
+                    if (/^\d+$/.test(kw)) {
+                        w.orWhere('po.code = :codeExact', { codeExact: 'PO-' + kw });
+                        w.orWhere('po.customerId = :cid', { cid: Number(kw) });
+                    }
+                }),
+            );
         }
         const [items, totalItems] = await qb
             .orderBy('po.id', 'DESC')

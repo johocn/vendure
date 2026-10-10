@@ -154,6 +154,7 @@ const adminSchema = () => gql`
     input PointsProductAdminListOptions {
         skip: Int
         take: Int
+        keyword: String
     }
     input CreatePointsProductInput {
         productId: ID!
@@ -205,6 +206,7 @@ const adminSchema = () => gql`
         skip: Int
         take: Int
         status: String
+        keyword: String
     }
     extend type Query {
         pointsProductsAdmin(options: PointsProductAdminListOptions): PointsProductAdminList!
