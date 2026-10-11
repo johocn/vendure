@@ -130,6 +130,8 @@ import {
 import { MerchantSettlementService } from './order/merchant-settlement.service';
 import { MerchantSettlementAdminResolver } from './order/merchant-settlement-admin.resolver';
 import { RedemptionCodeService } from './redemption/redemption-code.service';
+import { OrderScopeService } from './order-scope/order-scope.service';
+import { OrderScopeAdminResolver } from './order-scope/order-scope.resolver';
 import { RedemptionShopResolver, RedemptionAdminResolver } from './redemption/redemption.resolver';
 import { redemptionShopSchema, redemptionAdminSchema } from './redemption/redemption.schema';
 import { HotelInventoryShopResolver } from './hotel/booking/hotel-inventory-shop.resolver';
@@ -267,6 +269,7 @@ function mergeCustomFields<T extends { name: string }>(
         TenantCatalogService,
         TenantOptionGroupService,
         RedemptionCodeService,
+        OrderScopeService,
         VariantLocationBindingService,
         StockLedgerService,
         InventoryService,
@@ -2051,9 +2054,26 @@ function mergeCustomFields<T extends { name: string }>(
                 extend type Mutation {
                     adjustOrderPrice(input: AdjustOrderPriceInput!): Order!
                 }
+                input ScopedOrderFilterInput {
+                    states: [String!]
+                    timeStart: String
+                    timeEnd: String
+                    keyword: String
+                    deliveryType: String
+                    exceptionType: String
+                    exceptionOnly: Boolean
+                    afterSales: [String!]
+                }
+                type ScopedOrderList { totalItems: Int!, items: [Order!]! }
+                type NewOrderSignal { count: Int!, latestPlacedAt: DateTime }
+                extend type Query {
+                    scopedOrders(filter: ScopedOrderFilterInput, take: Int, skip: Int): ScopedOrderList!
+                    scopedOrderCounts(filters: [ScopedOrderFilterInput!]): [Int!]!
+                    newOrderSignal(since: DateTime!): NewOrderSignal!
+                }
                 `;
         },
-        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, RoomTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver, MerchantSettlementAdminResolver, DeliveryAdminResolver, InventoryAdminResolver, ReconciliationAdminResolver, StockDocAdminResolver, StockReservationAdminResolver, DeliveryCapabilityResolver, PickBatchAdminResolver, StocktakeAdminResolver, OrderAddressAdminResolver, StocktakeAdminResolver, OrderPriceAdminResolver, HotelInventoryAdminResolver, HotelRatePlanAdminResolver, HotelBookingAdminResolver],
+        resolvers: [PickupLocationAdminResolver, EmployeeCustomerAdminResolver, AuthAdminResolver, MapAdminResolver, TenantConfigAdminResolver, ShippingTemplateAdminResolver, ShippingProfileAdminResolver, PaymentProfileAdminResolver, PaymentTemplateAdminResolver, RoomTemplateAdminResolver, TenantAdminResolver, TenantMemberResolver, MyAccessResolver, WalletAdminResolver, TenantCatalogAdminResolver, AssetLibraryAdminResolver, RedemptionAdminResolver, MerchantSettlementAdminResolver, DeliveryAdminResolver, InventoryAdminResolver, ReconciliationAdminResolver, StockDocAdminResolver, StockReservationAdminResolver, DeliveryCapabilityResolver, PickBatchAdminResolver, StocktakeAdminResolver, OrderAddressAdminResolver, StocktakeAdminResolver, OrderPriceAdminResolver, HotelInventoryAdminResolver, HotelRatePlanAdminResolver, HotelBookingAdminResolver, OrderScopeAdminResolver],
     },
     shopApiExtensions: {
         schema: () => {
