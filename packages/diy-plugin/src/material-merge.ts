@@ -1,3 +1,5 @@
+import { ID } from '@vendure/core';
+
 import { DiyCategory } from './entities/diy-category.entity';
 import { DiyMaterial } from './entities/diy-material.entity';
 
@@ -25,4 +27,14 @@ export function mergeMaterials(platform: DiyMaterial[], tenant: DiyMaterial[]): 
 /** 两层分类合并（规格 §4.1）：纯并集、无覆盖；排序责任在查询侧（ORDER BY sortOrder） */
 export function mergeCategories(platform: DiyCategory[], tenant: DiyCategory[]): DiyCategory[] {
     return [...platform, ...tenant];
+}
+
+/** C 端分类并集（规格 §7）：平台 + 租户两层直拼，过滤 enabled 且有 code 的行，sortOrder/id 升序 */
+export function unionCategories<T extends { id: ID; code: string | null; enabled: boolean; sortOrder: number }>(
+    platform: T[],
+    tenant: T[],
+): T[] {
+    return [...platform, ...tenant]
+        .filter(c => c.enabled && !!c.code)
+        .sort((a, b) => a.sortOrder - b.sortOrder || Number(a.id) - Number(b.id));
 }

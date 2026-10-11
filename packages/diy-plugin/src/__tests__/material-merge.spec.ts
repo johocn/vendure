@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { DiyMaterial } from '../entities/diy-material.entity';
-import { mergeCategories, mergeMaterials } from '../material-merge';
+import { mergeCategories, mergeMaterials, unionCategories } from '../material-merge';
 
 function mat(p: Partial<DiyMaterial> & { id: number; code: string }): DiyMaterial {
     return {
@@ -62,5 +62,21 @@ describe('mergeCategories', () => {
         const merged = mergeCategories(platform as any, tenant as any);
         expect(merged).toHaveLength(3);
         expect(merged.map(c => c.id)).toEqual([1, 2, 9]);
+    });
+});
+
+describe('unionCategories', () => {
+    const row = (id: number, code: string | null, enabled = true, sortOrder = 0) =>
+        ({ id, code, enabled, sortOrder });
+    it('平台 + 租户并集，过滤 disabled 与无 code 行', () => {
+        const r = unionCategories(
+            [row(1, 'crystal'), row(2, 'agate', false), row(3, null)],
+            [row(4, 'spacer'), row(5, 'metal', false)],
+        );
+        expect(r.map(c => c.code)).toEqual(['crystal', 'spacer']);
+    });
+    it('按 sortOrder 升序，同序按 id', () => {
+        const r = unionCategories([row(2, 'b', true, 1), row(1, 'a', true, 1), row(3, 'c', true, 0)], []);
+        expect(r.map(c => c.code)).toEqual(['c', 'a', 'b']);
     });
 });

@@ -3,6 +3,7 @@ import { Allow, Ctx, Permission, RequestContext } from '@vendure/core';
 
 import { DiyOrderService } from './diy-order.service';
 import { DiyMaterialList, DiyPlanList, DiyShopService } from './diy-shop.service';
+import { DiyCategory } from './entities/diy-category.entity';
 import { DiyMaterial } from './entities/diy-material.entity';
 import { DiyPlan } from './entities/diy-plan.entity';
 import { DiyTemplate } from './entities/diy-template.entity';
@@ -21,6 +22,12 @@ export class DiyShopResolver {
         @Args('filter', { nullable: true }) filter?: any,
     ): Promise<DiyMaterialList> {
         return this.service.findShopMaterials(ctx, filter ?? {});
+    }
+
+    @Query()
+    @Allow(Permission.Public)
+    async diyCategories(@Ctx() ctx: RequestContext): Promise<DiyCategory[]> {
+        return this.service.findShopCategories(ctx);
     }
 
     @Query()

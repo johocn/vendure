@@ -9,7 +9,8 @@
     "watch": "tsc -p ./tsconfig.build.json --watch",
     "build": "rimraf lib && tsc -p ./tsconfig.build.json",
     "lint": "eslint --fix .",
-    "e2e": "cross-env PACKAGE=diy-plugin vitest --config vitest.config.mts --run"
+    "test": "vitest --config vitest.config.mts --run src",
+    "e2e": "cross-env PACKAGE=diy-plugin vitest --config vitest.config.mts --run e2e"
   },
   "dependencies": {
     "@diy/calc": "workspace:*"

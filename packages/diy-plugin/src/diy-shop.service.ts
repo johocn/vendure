@@ -11,7 +11,7 @@ import { DiyMaterial } from './entities/diy-material.entity';
 import { DiyPlan } from './entities/diy-plan.entity';
 import { DiyTemplate } from './entities/diy-template.entity';
 import { parseTemplateConfig } from './template-config';
-import { mergeMaterials } from './material-merge';
+import { mergeMaterials, unionCategories } from './material-merge';
 import { DiyMaterialFilter, DiyPlanSpec, DiyPluginOptions } from './types';
 
 export interface DiyMaterialList {
@@ -78,6 +78,16 @@ export class DiyShopService {
         const skip = filter.skip ?? 0;
         const take = filter.take ?? 50;
         return { items: items.slice(skip, skip + take), total };
+    }
+
+    /** C 端分类列表：平台 + 租户两层并集（无覆盖），仅 enabled，sortOrder 升序 */
+    async findShopCategories(ctx: RequestContext): Promise<DiyCategory[]> {
+        const repo = this.connection.getRepository(ctx, DiyCategory);
+        const [platform, tenant] = await Promise.all([
+            repo.find({ where: { app: IsNull() } }),
+            repo.find({ where: { app: this.app } }),
+        ]);
+        return unionCategories(platform, tenant);
     }
 
     private matchKeyword(m: DiyMaterial, kw: string): boolean {
