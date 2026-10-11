@@ -11,7 +11,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
-var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.devConfig = void 0;
 const admin_ui_plugin_1 = require("@vendure/admin-ui-plugin");
@@ -75,6 +75,7 @@ const live_streaming_plugin_1 = require("@vendure/live-streaming-plugin");
 const shop_plugin_1 = require("@vendure/shop-plugin");
 const pickup_plugin_1 = require("@vendure/pickup-plugin");
 const shop_template_plugin_1 = require("@vendure/shop-template-plugin");
+const diy_plugin_1 = require("@vendure/diy-plugin");
 const favorite_plugin_1 = require("@vendure/favorite-plugin");
 const tcm_clinic_plugin_1 = require("@vendure/tcm-clinic-plugin");
 if (!process.env.REDEMPTION_KEY) {
@@ -330,10 +331,11 @@ exports.devConfig = {
         }),
         shop_plugin_1.ShopPlugin.init({}),
         shop_template_plugin_1.ShopTemplatePlugin.init({ app: (_a = process.env.APP) !== null && _a !== void 0 ? _a : 'nshop' }),
+        diy_plugin_1.DiyPlugin.init({ app: (_b = process.env.APP) !== null && _b !== void 0 ? _b : 'nshop' }),
         pickup_plugin_1.PickupPlugin.init({}),
         ...((process.env.ALIPAY_NOTIFY_URL || process.env.DEV_BYPASS_ALIPAY === 'true') ? [alipay_plugin_1.AlipayPlugin.init({
                 notifyUrl: process.env.ALIPAY_NOTIFY_URL || '',
-                alipayPublicKey: (_b = process.env.ALIPAY_PUBLIC_KEY) !== null && _b !== void 0 ? _b : '',
+                alipayPublicKey: (_c = process.env.ALIPAY_PUBLIC_KEY) !== null && _c !== void 0 ? _c : '',
                 auth: process.env.DEV_BYPASS_ALIPAY === 'true' ? {
                     devBypass: true,
                     devBypassOpenid: 'dev_test_openid',
@@ -350,16 +352,16 @@ exports.devConfig = {
                 : undefined,
         }),
         ...(process.env.OSS_ACCESS_KEY_ID ? [oss_plugin_1.OssPlugin.init({
-                region: (_c = process.env.OSS_REGION) !== null && _c !== void 0 ? _c : '',
-                accessKeyId: (_d = process.env.OSS_ACCESS_KEY_ID) !== null && _d !== void 0 ? _d : '',
-                accessKeySecret: (_e = process.env.OSS_ACCESS_KEY_SECRET) !== null && _e !== void 0 ? _e : '',
-                bucket: (_f = process.env.OSS_BUCKET) !== null && _f !== void 0 ? _f : '',
+                region: (_d = process.env.OSS_REGION) !== null && _d !== void 0 ? _d : '',
+                accessKeyId: (_e = process.env.OSS_ACCESS_KEY_ID) !== null && _e !== void 0 ? _e : '',
+                accessKeySecret: (_f = process.env.OSS_ACCESS_KEY_SECRET) !== null && _f !== void 0 ? _f : '',
+                bucket: (_g = process.env.OSS_BUCKET) !== null && _g !== void 0 ? _g : '',
             })] : []),
         ...((process.env.SMS_ACCESS_KEY_ID || process.env.DEV_BYPASS_SMS === 'true') ? [phone_auth_plugin_1.PhoneAuthPlugin.init({
                 accessKeyId: process.env.SMS_ACCESS_KEY_ID || '',
-                accessKeySecret: (_g = process.env.SMS_ACCESS_KEY_SECRET) !== null && _g !== void 0 ? _g : '',
-                signName: (_h = process.env.SMS_SIGN_NAME) !== null && _h !== void 0 ? _h : '',
-                templateCode: (_j = process.env.SMS_TEMPLATE_CODE) !== null && _j !== void 0 ? _j : '',
+                accessKeySecret: (_h = process.env.SMS_ACCESS_KEY_SECRET) !== null && _h !== void 0 ? _h : '',
+                signName: (_j = process.env.SMS_SIGN_NAME) !== null && _j !== void 0 ? _j : '',
+                templateCode: (_k = process.env.SMS_TEMPLATE_CODE) !== null && _k !== void 0 ? _k : '',
                 devBypass: process.env.DEV_BYPASS_SMS === 'true',
                 devBypassCode: '123456',
             })] : []),
@@ -402,7 +404,7 @@ exports.devConfig = {
             })] : []),
         ...(process.env.KUAIDI100_CUSTOMER ? [logistics_api_plugin_1.LogisticsApiPlugin.init({
                 customer: process.env.KUAIDI100_CUSTOMER,
-                key: (_k = process.env.KUAIDI100_KEY) !== null && _k !== void 0 ? _k : '',
+                key: (_l = process.env.KUAIDI100_KEY) !== null && _l !== void 0 ? _l : '',
             })] : []),
         invoice_pdf_plugin_1.InvoicePdfPlugin.init(),
         recharge_card_plugin_1.RechargeCardPlugin.init({ defaultExpiresMonths: 12 }),
