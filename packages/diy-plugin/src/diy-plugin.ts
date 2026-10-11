@@ -5,6 +5,7 @@ import gql from 'graphql-tag';
 import { loggerCtx, PLUGIN_INIT_OPTIONS } from './constants';
 import { DiyAdminResolver } from './diy-admin.resolver';
 import { DiyService } from './diy.service';
+import { DiyShopService } from './diy-shop.service';
 import { DiyCategory } from './entities/diy-category.entity';
 import { DiyMaterial } from './entities/diy-material.entity';
 import { DiyTemplate } from './entities/diy-template.entity';
@@ -146,6 +147,7 @@ export class DiySeedRunner {
     providers: [
         { provide: PLUGIN_INIT_OPTIONS, useFactory: () => DiyPlugin.options },
         DiyService,
+        DiyShopService,
         DiySeedRunner,
     ],
     exports: [DiyService],
