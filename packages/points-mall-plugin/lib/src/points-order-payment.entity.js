@@ -48,6 +48,26 @@ __decorate([
     __metadata("design:type", Object)
 ], PointsOrderPayment.prototype, "paidAt", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ default: 'none' }),
+    __metadata("design:type", String)
+], PointsOrderPayment.prototype, "refundStatus", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], PointsOrderPayment.prototype, "refundNo", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: Date, nullable: true }),
+    __metadata("design:type", Object)
+], PointsOrderPayment.prototype, "refundedAt", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], PointsOrderPayment.prototype, "refundError", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', default: 0 }),
+    __metadata("design:type", Number)
+], PointsOrderPayment.prototype, "refundAttempts", void 0);
+__decorate([
     (0, typeorm_1.Column)(),
     __metadata("design:type", Number)
 ], PointsOrderPayment.prototype, "channelId", void 0);

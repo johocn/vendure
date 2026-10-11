@@ -65,6 +65,23 @@ export declare class PointsMallService {
     createPointsOrderPayment(ctx: RequestContext, pointsOrderId: ID, tradeType?: string, openid?: string): Promise<PointsPayParams>;
     /** 支付回调结算：按 outTradeNo（PO-<id>）幂等置为 paid → pending_ship/completed。 */
     settlePointsOrderByOutTradeNo(ctx: RequestContext, outTradeNo: string, transactionId: string): Promise<void>;
+    /**
+     * 回调晚于关单：订单已 cancelled（积分已退、库存已回补）但微信现金已收 → 原路自动退款。
+     * 事务内原子认领支付行（pending/cancelled + refundStatus=none → paid + refunding），
+     * 提交后事务外调微信退款；失败落 failed 交 refund-retry task，本方法不抛错（回调须返回成功）。
+     */
+    private refundLateSettledPayment;
+    /** 调微信裸退款并按结果原子落 refunded/failed（refunding → 终态），返回是否成功。 */
+    private executeRefund;
+    /**
+     * 退款重试核心（task 按渠道分组后逐渠道调用）：
+     * 扫 failed 行与卡 refunding 超 10 分钟的行（refundAttempts<8，指数退避 5min×2^min(attempts,4)）；
+     * 卡 refunding 行先 findBareRefund 对账，微信侧已成功则直接落 refunded，否则同 refundNo 幂等重发。
+     */
+    retryPointsOrderRefunds(ctx: RequestContext): Promise<{
+        refunded: number;
+        failed: number;
+    }>;
     /** 原子取消一笔待支付单：claim 状态 → 退分 → 回补库存 → 支付单置 cancelled。调用方负责事务与归属校验。 */
     private executeCancel;
     /** 未支付取消：退积分 + 回补库存 + 支付单置 cancelled。 */

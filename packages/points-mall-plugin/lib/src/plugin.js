@@ -20,6 +20,7 @@ const points_mall_admin_resolver_1 = require("./points-mall-admin.resolver");
 const points_mall_service_1 = require("./points-mall.service");
 const points_mall_shop_resolver_1 = require("./points-mall-shop.resolver");
 const points_order_expiry_task_1 = require("./points-order-expiry.task");
+const points_order_refund_retry_task_1 = require("./points-order-refund-retry.task");
 const product_favorite_entity_1 = require("./product-favorite.entity");
 const points_order_entity_1 = require("./points-order.entity");
 const points_order_payment_entity_1 = require("./points-order-payment.entity");
@@ -299,6 +300,10 @@ exports.PointsMallPlugin = PointsMallPlugin = PointsMallPlugin_1 = __decorate([
             }
             if (!config.schedulerOptions.tasks.some(t => t.id === constants_1.POINTS_ORDER_EXPIRY_TASK_ID)) {
                 config.schedulerOptions.tasks.push(points_order_expiry_task_1.pointsOrderExpiryTask);
+            }
+            // 回调晚于关单的微信退款失败重试任务（同样幂等注册）
+            if (!config.schedulerOptions.tasks.some(t => t.id === constants_1.POINTS_ORDER_REFUND_RETRY_TASK_ID)) {
+                config.schedulerOptions.tasks.push(points_order_refund_retry_task_1.pointsOrderRefundRetryTask);
             }
             return config;
         },

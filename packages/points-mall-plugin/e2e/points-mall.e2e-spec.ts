@@ -1,13 +1,15 @@
 import { createTestEnvironment, registerInitializer, SqljsInitializer } from '@vendure/testing';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import path from 'path';
 import gql from 'graphql-tag';
-import { mergeConfig, RequestContextService, TransactionalConnection } from '@vendure/core';
+import { mergeConfig, Injector, RequestContextService, TransactionalConnection } from '@vendure/core';
+import { ModuleRef } from '@nestjs/core';
 import { initialData } from '../../../e2e-common/e2e-initial-data';
 import { TEST_SETUP_TIMEOUT_MS, testConfig } from '../../../e2e-common/test-config';
 import { MemberLevelPlugin } from '@vendure/member-level-plugin';
 import { PointsMallPlugin } from '../src/plugin';
 import { PointsMallService } from '../src/points-mall.service';
+import { pointsOrderRefundRetryTask } from '../src/points-order-refund-retry.task';
 
 registerInitializer('sqljs', new SqljsInitializer(path.join(__dirname, '__data__')));
 
@@ -574,7 +576,7 @@ describe('PointsMallPlugin · 积分商城（收藏/积分商品/兑换/支付/�
         expect(adminOver.pointsProductsAdmin.items.length).toBeLessThanOrEqual(100);
     });
 
-    it('settle 晚于取消：抛错且无半提交（订单仍 cancelled、支付单不 paid、积分库存不回滚）', async () => {
+    it('回调晚于关单：自动原路退款（支付行 paid+refunded，订单仍 cancelled，积分不二次退回）', async () => {
         const pp = await createPointsProduct({
             pointsPrice: 200,
             cashPrice: 100,
@@ -594,29 +596,126 @@ describe('PointsMallPlugin · 积分商城（收藏/积分商品/兑换/支付/�
         expect(cancelled.cancelPointsOrder.status).toBe('cancelled');
         expect(await myPoints()).toBe(pointsBefore);
 
-        // 支付回调迟到：settle 必须抛错，不得留下 paid 支付单
+        // 注入 fake 退款网关（e2e 未装载 WechatpayPlugin，gateway 默认空）
         const svc = server.app.get(PointsMallService);
-        const adminCtx = await server.app.get(RequestContextService).create({ apiType: 'admin' });
-        await expect(svc.settlePointsOrderByOutTradeNo(adminCtx, order.code, 'WX-LATE-1')).rejects.toThrow();
+        const refundMock = vi.fn().mockResolvedValue({ refundId: 'RF-WX-1', status: 'SUCCESS' });
+        svc.setWechatpayGateway({ refundBarePayment: refundMock });
+        try {
+            const adminCtx = await server.app.get(RequestContextService).create({ apiType: 'admin' });
+            // 支付回调迟到：settle 不抛错，支付行置 paid 并自动退款
+            await svc.settlePointsOrderByOutTradeNo(adminCtx, order.code, 'WX-LATE-1');
 
+            expect(refundMock).toHaveBeenCalledTimes(1);
+            const callInput = refundMock.mock.calls[0][1];
+            expect(callInput.outTradeNo).toBe(order.code);
+            expect(callInput.outRefundNo).toMatch(/^PO-RF-/);
+            expect(callInput.refund).toBe(100);
+            expect(callInput.total).toBe(100);
+
+            const conn = server.app.get(TransactionalConnection);
+            const payRows = await conn.rawConnection.query(
+                'SELECT status, "transactionId", "refundStatus", "refundNo", "refundedAt" FROM points_order_payment WHERE orderId = ?',
+                [numericId],
+            );
+            expect(payRows.length).toBe(1);
+            expect(payRows[0].status).toBe('paid');
+            expect(payRows[0].transactionId).toBe('WX-LATE-1');
+            expect(payRows[0].refundStatus).toBe('refunded');
+            expect(payRows[0].refundNo).toMatch(/^PO-RF-/);
+            expect(payRows[0].refundedAt).toBeTruthy();
+
+            // 订单终态与积分/库存不被 settle 改动（积分不二次退回）
+            const orders = await shopClient.query(gql`
+                query { myPointsOrders(options: { take: 100 }) { items { id status } } }
+            `) as any;
+            expect(orders.myPointsOrders.items.find((i: any) => i.id === order.id).status).toBe('cancelled');
+            expect(await myPoints()).toBe(pointsBefore);
+            const ppAfter = await adminPointsProduct(pp.id);
+            expect(ppAfter.stock).toBe(3);
+            expect(ppAfter.redeemedCount).toBe(0);
+        } finally {
+            svc.setWechatpayGateway(null);
+        }
+    });
+
+    it('回调晚于关单幂等：同 outTradeNo 重复 settle 不再发退款', async () => {
+        const pp = await createPointsProduct({
+            pointsPrice: 150,
+            cashPrice: 120,
+            deliveryType: 'physical',
+            stock: 2,
+        });
+        const order = await exchange(pp.id, 1, true);
+        await shopClient.query(gql`
+            mutation { cancelPointsOrder(id: "${order.id}") { id status } }
+        `);
+
+        const svc = server.app.get(PointsMallService);
+        const refundMock = vi.fn().mockResolvedValue({ refundId: 'RF-WX-2', status: 'SUCCESS' });
+        svc.setWechatpayGateway({ refundBarePayment: refundMock });
+        try {
+            const adminCtx = await server.app.get(RequestContextService).create({ apiType: 'admin' });
+            await svc.settlePointsOrderByOutTradeNo(adminCtx, order.code, 'WX-LATE-2');
+            await svc.settlePointsOrderByOutTradeNo(adminCtx, order.code, 'WX-LATE-2');
+            expect(refundMock).toHaveBeenCalledTimes(1);
+        } finally {
+            svc.setWechatpayGateway(null);
+        }
+    });
+
+    it('退款失败进入重试：failed 落库，重试任务执行成功后置 refunded', async () => {
+        const pp = await createPointsProduct({
+            pointsPrice: 120,
+            cashPrice: 80,
+            deliveryType: 'physical',
+            stock: 2,
+        });
+        const order = await exchange(pp.id, 1, true);
+        const numericId = Number(order.code.replace('PO-', ''));
+        await shopClient.query(gql`
+            mutation { cancelPointsOrder(id: "${order.id}") { id status } }
+        `);
+
+        const svc = server.app.get(PointsMallService);
         const conn = server.app.get(TransactionalConnection);
-        const payRows = await conn.rawConnection.query(
-            'SELECT status, "transactionId" FROM points_order_payment WHERE orderId = ?',
-            [numericId],
-        );
-        expect(payRows.length).toBe(1);
-        expect(payRows[0].status).toBe('cancelled');
-        expect(payRows[0].transactionId).toBeNull();
+        const refundMock = vi.fn().mockRejectedValueOnce(new Error('wx refund boom'));
+        svc.setWechatpayGateway({ refundBarePayment: refundMock });
+        try {
+            const adminCtx = await server.app.get(RequestContextService).create({ apiType: 'admin' });
+            await svc.settlePointsOrderByOutTradeNo(adminCtx, order.code, 'WX-LATE-3');
 
-        // 订单终态与积分/库存不被 settle 改动
-        const orders = await shopClient.query(gql`
-            query { myPointsOrders(options: { take: 100 }) { items { id status } } }
-        `) as any;
-        expect(orders.myPointsOrders.items.find((i: any) => i.id === order.id).status).toBe('cancelled');
-        expect(await myPoints()).toBe(pointsBefore);
-        const ppAfter = await adminPointsProduct(pp.id);
-        expect(ppAfter.stock).toBe(3);
-        expect(ppAfter.redeemedCount).toBe(0);
+            let payRows = await conn.rawConnection.query(
+                'SELECT status, "refundStatus", "refundError", "refundAttempts" FROM points_order_payment WHERE orderId = ?',
+                [numericId],
+            );
+            expect(payRows[0].status).toBe('paid');
+            expect(payRows[0].refundStatus).toBe('failed');
+            expect(payRows[0].refundError).toContain('wx refund boom');
+            expect(payRows[0].refundAttempts).toBe(1);
+
+            // 退避窗口：attempts=1 → 10min；拨回 updatedAt 使重试到期
+            const sqliteUtc = (d: Date) => d.toISOString().slice(0, 23).replace('T', ' ');
+            await conn.rawConnection.query('UPDATE points_order_payment SET "updatedAt" = ? WHERE orderId = ?', [
+                sqliteUtc(new Date(Date.now() - 11 * 60 * 1000)),
+                numericId,
+            ]);
+
+            // 网关恢复成功，跑真实 ScheduledTask（跨渠道分组 → retryPointsOrderRefunds）
+            refundMock.mockResolvedValue({ refundId: 'RF-WX-3', status: 'SUCCESS' });
+            const injector = new Injector(server.app.get(ModuleRef));
+            const result = await pointsOrderRefundRetryTask.execute(injector);
+            expect(result.refunded).toBeGreaterThanOrEqual(1);
+
+            payRows = await conn.rawConnection.query(
+                'SELECT status, "refundStatus", "refundedAt" FROM points_order_payment WHERE orderId = ?',
+                [numericId],
+            );
+            expect(payRows[0].refundStatus).toBe('refunded');
+            expect(payRows[0].refundedAt).toBeTruthy();
+            expect(refundMock).toHaveBeenCalledTimes(2);
+        } finally {
+            svc.setWechatpayGateway(null);
+        }
     });
 
     it('settle 成功：支付单 paid 且 transactionId 回写微信流水号，实物单转 pending_ship', async () => {

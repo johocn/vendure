@@ -6,6 +6,8 @@ export interface ToggleFavoriteResult {
 export interface PointsMallPluginOptions {
     /** 待支付积分订单超时自动关单分钟数，默认 30；设 0 关闭自动关单 */
     pointsOrderTimeoutMinutes?: number;
+    /** 回调晚于关单的微信退款失败自动重试开关，默认 true */
+    pointsRefundRetryEnabled?: boolean;
 }
 
 export interface PointsProductListOptions {

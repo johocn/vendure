@@ -4,11 +4,12 @@ import { Injector, PluginCommonModule, RuntimeVendureConfig, VendurePlugin } fro
 import { MemberLevelService } from '@vendure/member-level-plugin';
 import { WechatpayService, WechatpaySettlementRegistry } from '@vendure/wechatpay-plugin';
 
-import { POINTS_MALL_PLUGIN_OPTIONS, POINTS_ORDER_EXPIRY_TASK_ID } from './constants';
+import { POINTS_MALL_PLUGIN_OPTIONS, POINTS_ORDER_EXPIRY_TASK_ID, POINTS_ORDER_REFUND_RETRY_TASK_ID } from './constants';
 import { PointsMallAdminResolver } from './points-mall-admin.resolver';
 import { PointsMallService } from './points-mall.service';
 import { PointsMallShopResolver } from './points-mall-shop.resolver';
 import { pointsOrderExpiryTask } from './points-order-expiry.task';
+import { pointsOrderRefundRetryTask } from './points-order-refund-retry.task';
 import { ProductFavorite } from './product-favorite.entity';
 import { PointsOrder } from './points-order.entity';
 import { PointsOrderPayment } from './points-order-payment.entity';
@@ -254,6 +255,10 @@ const adminSchema = () => gql`
         }
         if (!config.schedulerOptions.tasks.some(t => t.id === POINTS_ORDER_EXPIRY_TASK_ID)) {
             config.schedulerOptions.tasks.push(pointsOrderExpiryTask);
+        }
+        // 回调晚于关单的微信退款失败重试任务（同样幂等注册）
+        if (!config.schedulerOptions.tasks.some(t => t.id === POINTS_ORDER_REFUND_RETRY_TASK_ID)) {
+            config.schedulerOptions.tasks.push(pointsOrderRefundRetryTask);
         }
         return config;
     },

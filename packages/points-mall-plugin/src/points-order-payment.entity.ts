@@ -30,6 +30,21 @@ export class PointsOrderPayment extends VendureEntity {
     @Column({ type: Date, nullable: true })
     paidAt: Date | null;
 
+    @Column({ default: 'none' })
+    refundStatus: string; // none/refunding/refunded/failed
+
+    @Column({ type: 'varchar', nullable: true })
+    refundNo: string | null; // out_refund_no，PO-RF-<paymentId>
+
+    @Column({ type: Date, nullable: true })
+    refundedAt: Date | null;
+
+    @Column({ type: 'varchar', nullable: true })
+    refundError: string | null;
+
+    @Column({ type: 'int', default: 0 })
+    refundAttempts: number;
+
     @Column()
     channelId: number;
 }

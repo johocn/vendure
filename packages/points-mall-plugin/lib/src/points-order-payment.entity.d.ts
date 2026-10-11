@@ -9,5 +9,10 @@ export declare class PointsOrderPayment extends VendureEntity {
     externalRef: string | null;
     transactionId: string | null;
     paidAt: Date | null;
+    refundStatus: string;
+    refundNo: string | null;
+    refundedAt: Date | null;
+    refundError: string | null;
+    refundAttempts: number;
     channelId: number;
 }
