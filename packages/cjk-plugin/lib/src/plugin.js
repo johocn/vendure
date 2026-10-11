@@ -128,6 +128,8 @@ const merchant_settlement_ledger_entity_1 = require("./order/merchant-settlement
 const merchant_settlement_service_1 = require("./order/merchant-settlement.service");
 const merchant_settlement_admin_resolver_1 = require("./order/merchant-settlement-admin.resolver");
 const redemption_code_service_1 = require("./redemption/redemption-code.service");
+const order_scope_service_1 = require("./order-scope/order-scope.service");
+const order_scope_resolver_1 = require("./order-scope/order-scope.resolver");
 const redemption_resolver_1 = require("./redemption/redemption.resolver");
 const redemption_schema_1 = require("./redemption/redemption.schema");
 const hotel_inventory_shop_resolver_1 = require("./hotel/booking/hotel-inventory-shop.resolver");
@@ -532,6 +534,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             tenant_catalog_service_1.TenantCatalogService,
             tenant_option_group_service_1.TenantOptionGroupService,
             redemption_code_service_1.RedemptionCodeService,
+            order_scope_service_1.OrderScopeService,
             variant_location_binding_service_1.VariantLocationBindingService,
             inventory_plugin_1.StockLedgerService,
             inventory_plugin_1.InventoryService,
@@ -2316,9 +2319,26 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                 extend type Mutation {
                     adjustOrderPrice(input: AdjustOrderPriceInput!): Order!
                 }
+                input ScopedOrderFilterInput {
+                    states: [String!]
+                    timeStart: String
+                    timeEnd: String
+                    keyword: String
+                    deliveryType: String
+                    exceptionType: String
+                    exceptionOnly: Boolean
+                    afterSales: [String!]
+                }
+                type ScopedOrderList { totalItems: Int!, items: [Order!]! }
+                type NewOrderSignal { count: Int!, latestPlacedAt: DateTime }
+                extend type Query {
+                    scopedOrders(filter: ScopedOrderFilterInput, take: Int, skip: Int): ScopedOrderList!
+                    scopedOrderCounts(filters: [ScopedOrderFilterInput!]): [Int!]!
+                    newOrderSignal(since: DateTime!): NewOrderSignal!
+                }
                 `;
             },
-            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, room_template_admin_resolver_1.RoomTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver, tenant_catalog_admin_resolver_1.TenantCatalogAdminResolver, asset_library_admin_resolver_1.AssetLibraryAdminResolver, redemption_resolver_1.RedemptionAdminResolver, merchant_settlement_admin_resolver_1.MerchantSettlementAdminResolver, delivery_admin_resolver_1.DeliveryAdminResolver, inventory_admin_resolver_1.InventoryAdminResolver, reconciliation_admin_resolver_1.ReconciliationAdminResolver, stock_doc_admin_resolver_1.StockDocAdminResolver, stock_reservation_admin_resolver_1.StockReservationAdminResolver, delivery_capability_resolver_1.DeliveryCapabilityResolver, pick_batch_admin_resolver_1.PickBatchAdminResolver, stocktake_admin_resolver_1.StocktakeAdminResolver, order_address_admin_resolver_1.OrderAddressAdminResolver, stocktake_admin_resolver_1.StocktakeAdminResolver, order_price_admin_resolver_1.OrderPriceAdminResolver, hotel_inventory_admin_resolver_1.HotelInventoryAdminResolver, rate_plan_admin_resolver_1.HotelRatePlanAdminResolver, booking_admin_resolver_1.HotelBookingAdminResolver],
+            resolvers: [pickup_location_admin_resolver_1.PickupLocationAdminResolver, enterprise_customer_admin_resolver_1.EmployeeCustomerAdminResolver, auth_admin_resolver_1.AuthAdminResolver, map_admin_resolver_1.MapAdminResolver, tenant_config_admin_resolver_1.TenantConfigAdminResolver, shipping_template_admin_resolver_1.ShippingTemplateAdminResolver, shipping_profile_admin_resolver_1.ShippingProfileAdminResolver, payment_profile_admin_resolver_1.PaymentProfileAdminResolver, payment_template_admin_resolver_1.PaymentTemplateAdminResolver, room_template_admin_resolver_1.RoomTemplateAdminResolver, tenant_admin_resolver_1.TenantAdminResolver, tenant_member_resolver_1.TenantMemberResolver, my_access_resolver_1.MyAccessResolver, wallet_admin_resolver_1.WalletAdminResolver, tenant_catalog_admin_resolver_1.TenantCatalogAdminResolver, asset_library_admin_resolver_1.AssetLibraryAdminResolver, redemption_resolver_1.RedemptionAdminResolver, merchant_settlement_admin_resolver_1.MerchantSettlementAdminResolver, delivery_admin_resolver_1.DeliveryAdminResolver, inventory_admin_resolver_1.InventoryAdminResolver, reconciliation_admin_resolver_1.ReconciliationAdminResolver, stock_doc_admin_resolver_1.StockDocAdminResolver, stock_reservation_admin_resolver_1.StockReservationAdminResolver, delivery_capability_resolver_1.DeliveryCapabilityResolver, pick_batch_admin_resolver_1.PickBatchAdminResolver, stocktake_admin_resolver_1.StocktakeAdminResolver, order_address_admin_resolver_1.OrderAddressAdminResolver, stocktake_admin_resolver_1.StocktakeAdminResolver, order_price_admin_resolver_1.OrderPriceAdminResolver, hotel_inventory_admin_resolver_1.HotelInventoryAdminResolver, rate_plan_admin_resolver_1.HotelRatePlanAdminResolver, booking_admin_resolver_1.HotelBookingAdminResolver, order_scope_resolver_1.OrderScopeAdminResolver],
         },
         shopApiExtensions: {
             schema: () => {
