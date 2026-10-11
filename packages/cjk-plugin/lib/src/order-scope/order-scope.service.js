@@ -107,8 +107,6 @@ let OrderScopeService = class OrderScopeService {
         // 计数 QB 不携带关系加载配置）
         const totalItems = Number((_b = (_a = (await qb.clone().select('COUNT(DISTINCT order.id)', 'cnt').getRawOne())) === null || _a === void 0 ? void 0 : _a.cnt) !== null && _b !== void 0 ? _b : 0);
         if (relations.length) {
-            // eslint-disable-next-line no-console
-            console.log('[order-scope][debug] relations =', JSON.stringify(relations));
             qb.setFindOptions({ relations, relationLoadStrategy: 'query' });
         }
         const items = await qb
