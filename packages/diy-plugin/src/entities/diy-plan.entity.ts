@@ -48,7 +48,10 @@ export class DiyPlan extends VendureEntity {
     @Column('varchar', { length: 32, nullable: true })
     quoteNo: string | null;
 
-    @Column({ type: 'datetime', nullable: true })
+    // type: Date（构造器）让 typeorm 按方言推断（postgres→timestamp / sqlite→datetime）；
+    // 不能写裸 @Column()——`Date | null` 联合类型 design:type 反射为 Object，两边都不认；
+    // 显式 'timestamp' 不被 sqljs 支持、'datetime' 不被 postgres 支持（typeorm 驱动源码实证）
+    @Column({ type: Date, nullable: true })
     expiresAt: Date | null;
 
     /** 成单后的 Vendure OrderLine id */
