@@ -25,6 +25,10 @@ let HotelBooking = class HotelBooking extends core_1.VendureEntity {
     constructor(input) {
         super(input);
     }
+    /** 是否有在途补差（非持久化；shop SDL 直出） */
+    get reschedulePending() {
+        return this.reschedulePendingJson != null;
+    }
 };
 exports.HotelBooking = HotelBooking;
 __decorate([
@@ -123,6 +127,18 @@ __decorate([
     (0, typeorm_1.Column)({ type: 'int', nullable: true }),
     __metadata("design:type", Object)
 ], HotelBooking.prototype, "afterSalesRequestId", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', default: 0 }),
+    __metadata("design:type", Number)
+], HotelBooking.prototype, "rescheduleCount", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Date)
+], HotelBooking.prototype, "rescheduledAt", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'text', nullable: true }),
+    __metadata("design:type", Object)
+], HotelBooking.prototype, "reschedulePendingJson", void 0);
 exports.HotelBooking = HotelBooking = __decorate([
     (0, typeorm_1.Entity)(),
     (0, typeorm_1.Index)('idx_hotel_booking_order', ['orderId']),

@@ -69,3 +69,38 @@ export interface CancelQuoteInput {
  * - 未配置政策（null）→ blocked：顾客不可自助取消，走管理员强制取消
  */
 export declare function computeCancelQuote(input: CancelQuoteInput): CancelQuote;
+/** V1 每单限改 1 次（design §8 L163） */
+export declare const HOTEL_MAX_RESCHEDULES_V1 = 1;
+export type RescheduleBlockReason = 'notConfirmed' | 'limitReached' | 'sameDates' | 'invalidDates' | 'advanceDays' | 'tooShort' | 'tooLong';
+export interface RescheduleRuleInput {
+    status: HotelBookingStatus;
+    rescheduleCount: number;
+    oldCheckIn: string;
+    oldCheckOut: string;
+    newCheckIn: string;
+    newCheckOut: string;
+    /** 提前预订天数（新入住日 ≥ today + advanceDays）；缺省只要求不早于今天 */
+    advanceDays?: number | null;
+    minNights?: number | null;
+    maxNights?: number | null;
+    now?: Date;
+}
+export type RescheduleRuleResult = {
+    ok: true;
+    nights: number;
+} | {
+    ok: false;
+    reason: RescheduleBlockReason;
+    message: string;
+};
+/** 严格日历日期校验（拒绝 2026-13-40 这类） */
+export declare function isValidDateOnly(d: unknown): d is string;
+/** date-only 加减天；非法输入 → null */
+export declare function addDaysDateOnly(date: string, days: number): string | null;
+/**
+ * 改期资格规则（design §8 L163）：
+ * - 仅 confirmed；每单 V1 限改 1 次
+ * - 新日期合法、与旧段不同、入住日不早于 today+advanceDays（advanceDays 缺省 0）
+ * - 新晚数落在 [minNights, maxNights]（缺省不约束）
+ */
+export declare function evaluateRescheduleRules(input: RescheduleRuleInput): RescheduleRuleResult;

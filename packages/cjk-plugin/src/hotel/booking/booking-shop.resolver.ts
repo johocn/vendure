@@ -16,7 +16,7 @@ import {
 } from '@vendure/core';
 import { Order } from '@vendure/core';
 
-import { HotelBookingService, HotelCancelQuoteResult } from './booking.service';
+import { HotelBookingService, HotelCancelQuoteResult, HotelRescheduleQuoteResult } from './booking.service';
 import { HotelBooking } from './booking.entity';
 
 @Resolver()
@@ -114,6 +114,114 @@ export class HotelBookingShopResolver {
             return await this.bookingService.cancelByCustomer(ctx, id, reason);
         } catch (e: any) {
             throw new UserInputError(e?.message ?? 'CANCEL_FAILED');
+        }
+    }
+
+    /** 改期报价（改期弹层：规则拦截/逐晚房态/新旧价差；不落库） */
+    @Query()
+    @Allow(Permission.Authenticated)
+    async hotelBookingRescheduleQuote(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args('checkIn') checkIn: string,
+        @Args('checkOut') checkOut: string,
+    ): Promise<{
+        bookingId: ID;
+        eligible: boolean;
+        reason: string | null;
+        message: string | null;
+        oldCheckIn: string;
+        oldCheckOut: string;
+        newCheckIn: string;
+        newCheckOut: string;
+        nights: number;
+        oldTotalCent: number;
+        newTotalCent: number | null;
+        diffCent: number | null;
+        refundCent: number | null;
+        supplementCent: number | null;
+        availability: Array<{ date: string; remaining: number | null; closed: boolean; feasible: boolean }>;
+    }> {
+        await this.loadOwnedBooking(ctx, id);
+        try {
+            const r: HotelRescheduleQuoteResult = await this.bookingService.quoteReschedule(ctx, id, {
+                checkIn,
+                checkOut,
+            });
+            return {
+                bookingId: r.booking.id,
+                eligible: r.eligible,
+                reason: r.reason ?? null,
+                message: r.message ?? null,
+                oldCheckIn: r.oldCheckIn,
+                oldCheckOut: r.oldCheckOut,
+                newCheckIn: r.newCheckIn,
+                newCheckOut: r.newCheckOut,
+                nights: r.nights,
+                oldTotalCent: r.oldTotalCent,
+                newTotalCent: r.newTotalCent,
+                diffCent: r.diffCent,
+                refundCent: r.refundCent,
+                supplementCent: r.supplementCent,
+                availability: r.availability,
+            };
+        } catch (e: any) {
+            throw new UserInputError(e?.message ?? 'RESCHEDULE_QUOTE_FAILED');
+        }
+    }
+
+    /**
+     * 顾客提交改期（归属隔离）：
+     * applied=true 改期完成（等价/退差/补差即时到账）；applied=false 返回补差支付参数（paymentState/paymentPublic），
+     * 支付成功后由服务端事件自动收口，前端轮询 myHotelBookings 即可。
+     */
+    @Mutation()
+    @Transaction()
+    @Allow(Permission.Authenticated)
+    async rescheduleMyHotelBooking(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args('checkIn') checkIn: string,
+        @Args('checkOut') checkOut: string,
+        @Args('paymentMethod', { nullable: true }) paymentMethod?: string,
+    ): Promise<{
+        booking: HotelBooking;
+        applied: boolean;
+        paymentState: string | null;
+        paymentId: ID | null;
+        supplementCent: number;
+        paymentPublic: string | null;
+    }> {
+        await this.loadOwnedBooking(ctx, id);
+        try {
+            const r = await this.bookingService.rescheduleByCustomer(ctx, id, {
+                checkIn,
+                checkOut,
+                paymentMethod,
+            });
+            return {
+                booking: r.booking,
+                applied: r.applied,
+                paymentState: r.paymentState,
+                paymentId: r.paymentId as any,
+                supplementCent: r.supplementCent,
+                paymentPublic: r.paymentPublic ? JSON.stringify(r.paymentPublic) : null,
+            };
+        } catch (e: any) {
+            throw new UserInputError(e?.message ?? 'RESCHEDULE_FAILED');
+        }
+    }
+
+    /** 放弃在途改期补差（取消补差 Payment 并清空意向；归属隔离） */
+    @Mutation()
+    @Transaction()
+    @Allow(Permission.Authenticated)
+    async cancelMyRescheduleSupplement(@Ctx() ctx: RequestContext, @Args('id') id: ID): Promise<HotelBooking> {
+        await this.loadOwnedBooking(ctx, id);
+        try {
+            return await this.bookingService.cancelRescheduleSupplement(ctx, id);
+        } catch (e: any) {
+            throw new UserInputError(e?.message ?? 'RESCHEDULE_SUPPLEMENT_CANCEL_FAILED');
         }
     }
 }

@@ -99,6 +99,27 @@ export class HotelBooking extends VendureEntity {
     @Column({ type: 'int', nullable: true })
     afterSalesRequestId: number | null;
 
+    /** 已使用改期次数（P4 Task 15；V1 上限 1，HOTEL_MAX_RESCHEDULES_V1） */
+    @Column({ type: 'int', default: 0 })
+    rescheduleCount: number;
+
+    /** 最近一次改期完成时间（V1 仅 0/1） */
+    @Column({ nullable: true })
+    rescheduledAt?: Date;
+
+    /**
+     * 待支付补差的改期意向 JSON（P4 Task 15，补差异步支付期间临时持有）：
+     * {checkIn,checkOut,nights,newTotalCent,diffCent,paymentId,createdAt}；
+     * 支付 Settled 事件完成改期后清空；支付取消/失败亦清空。null = 无在途补差。
+     */
+    @Column({ type: 'text', nullable: true })
+    reschedulePendingJson: string | null;
+
+    /** 是否有在途补差（非持久化；shop SDL 直出） */
+    get reschedulePending(): boolean {
+        return this.reschedulePendingJson != null;
+    }
+
     /** 房型名（非持久化；仅 admin 列表 listForAdmin 按 ctx 语言 enrich） */
     variantName?: string | null;
 }

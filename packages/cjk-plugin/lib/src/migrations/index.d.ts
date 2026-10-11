@@ -12,3 +12,4 @@ export { PickBatchHandoverColumnMigration } from './migrate-pick-batch-handover-
 export { StocktakePostedDocIndexMigration } from './migrate-stocktake-posted-doc-index';
 export { HotelOrderLineColumnMigration } from './migrate-hotel-order-line-columns';
 export { HotelBookingCancelColumnsMigration } from './migrate-hotel-booking-cancel-columns';
+export { HotelBookingRescheduleColumnsMigration } from './migrate-hotel-booking-reschedule-columns';

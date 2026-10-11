@@ -396,6 +396,16 @@ let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
                     core_1.Logger.error(`hotel booking transition event failed: ${e === null || e === void 0 ? void 0 : e.message}`, constants_1.loggerCtx);
                 }
             });
+            // P4 Task 15：改期补差 Payment Settled → 自动落地改期；Cancelled/Declined/Error → 清在途意向。
+            // 非补差支付（metadata 无标记）在 service 内 no-op。
+            eventBus.ofType(core_3.PaymentStateTransitionEvent).subscribe(async (event) => {
+                try {
+                    await bookingService.handleReschedulePayment(event);
+                }
+                catch (e) {
+                    core_1.Logger.error(`hotel reschedule payment event failed: ${e === null || e === void 0 ? void 0 : e.message}`, constants_1.loggerCtx);
+                }
+            });
         }
         // P4 Task 14：跨插件注入 AfterSalesService（延迟注入规避模块顺序）；
         // 订阅售后状态机事件：refund_only 退款 Refunded → 预订自动 cancelled + 释放锁房（逾时扣首晚审批收口）。
@@ -494,6 +504,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             migrations_1.CollectionIconMigration,
             migrations_1.HotelOrderLineColumnMigration,
             migrations_1.HotelBookingCancelColumnsMigration,
+            migrations_1.HotelBookingRescheduleColumnsMigration,
             auth_config_service_1.AuthConfigService,
             pay_config_service_1.PayConfigService,
             map_config_service_1.MapConfigService,
@@ -1260,6 +1271,12 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     cancelFeeCent: Int
                     "关联退款售后单 id（逾时部分退款/免费取消自动退款）"
                     afterSalesRequestId: ID
+                    "已使用改期次数（每单 V1 限改 1 次）"
+                    rescheduleCount: Int!
+                    "最近改期时间"
+                    rescheduledAt: DateTime
+                    "是否有在途改期补差价支付"
+                    reschedulePending: Boolean!
                     "房型名（admin 列表按语言 enrich；非持久化）"
                     variantName: String
                     createdAt: DateTime!
@@ -2710,6 +2727,12 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     cancelFeeCent: Int
                     "关联退款售后单 id（非空=取消退款流程在途或已完成）"
                     afterSalesRequestId: ID
+                    "已使用改期次数（每单 V1 限改 1 次）"
+                    rescheduleCount: Int!
+                    "最近改期时间"
+                    rescheduledAt: DateTime
+                    "是否有在途改期补差价支付"
+                    reschedulePending: Boolean!
                     createdAt: DateTime!
                 }
 
@@ -2737,11 +2760,62 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     deadline: DateTime
                 }
 
+                type HotelRescheduleNight {
+                    "YYYY-MM-DD（入住当晚口径）"
+                    date: String!
+                    "原始余量（null=不限房，已含本单旧锁）"
+                    remaining: Int
+                    closed: Boolean!
+                    "扣除本单旧段自身锁后是否可住"
+                    feasible: Boolean!
+                }
+
+                """
+                改期报价（C 端改期弹层）：eligible=false 时 reason 给出拦截码
+                （notConfirmed/limitReached/sameDates/invalidDates/advanceDays/tooShort/tooLong/soldOut/pricingError）；
+                diffCent 正=补差，负=退差。
+                """
+                type HotelRescheduleQuote {
+                    bookingId: ID!
+                    eligible: Boolean!
+                    reason: String
+                    message: String
+                    oldCheckIn: String!
+                    oldCheckOut: String!
+                    newCheckIn: String!
+                    newCheckOut: String!
+                    nights: Int!
+                    oldTotalCent: Int!
+                    newTotalCent: Int
+                    diffCent: Int
+                    refundCent: Int
+                    supplementCent: Int
+                    availability: [HotelRescheduleNight!]!
+                }
+
+                """
+                改期提交结果：
+                applied=true 已完成（等价/退差/补差即时到账）；
+                applied=false=补差异步支付在途，paymentState/paymentId/paymentPublic 供前端拉起支付，
+                支付成功后服务端事件自动收口，前端轮询 myHotelBookings 即可。
+                """
+                type HotelRescheduleResult {
+                    booking: HotelBookingPublic!
+                    applied: Boolean!
+                    paymentState: String
+                    paymentId: ID
+                    supplementCent: Int!
+                    "支付透传参数 JSON 字符串（如微信 payUrl/payType；无则 null）"
+                    paymentPublic: String
+                }
+
                 extend type Query {
                     "当前登录顾客的酒店预订单（按订单归属隔离，id 倒序，上限 200）；status 可选过滤"
                     myHotelBookings(status: String): [HotelBookingPublic!]!
                     "取消报价（归属隔离；非可取消状态抛错）"
                     hotelBookingCancelQuote(id: ID!): HotelCancelQuote!
+                    "改期报价（归属隔离；checkIn/checkOut 为期望新日期 YYYY-MM-DD）"
+                    hotelBookingRescheduleQuote(id: ID!, checkIn: String!, checkOut: String!): HotelRescheduleQuote!
                 }
 
                 extend type Mutation {
@@ -2750,6 +2824,14 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     unpaid/forfeit 立即取消；free 自动全额退款后取消；partial 建售后单待商家审批（预订保留至退款完成）；blocked 拒绝。
                     """
                     cancelMyHotelBooking(id: ID!, reason: String): HotelBookingPublic!
+                    """
+                    顾客自助改期（归属隔离；confirmed 且每单限 1 次）：
+                    等价/退差直接完成（退差自动退回原支付渠道）；补差需传 paymentMethod，
+                    即时结算支付方式直接完成，异步支付返回在途结果待支付回调收口。
+                    """
+                    rescheduleMyHotelBooking(id: ID!, checkIn: String!, checkOut: String!, paymentMethod: String): HotelRescheduleResult!
+                    "放弃在途改期补差（取消补差支付并清空意向）"
+                    cancelMyRescheduleSupplement(id: ID!): HotelBookingPublic!
                 }
 
                 ${redemption_schema_1.redemptionShopSchema}

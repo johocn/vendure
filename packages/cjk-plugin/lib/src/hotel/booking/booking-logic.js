@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.HOTEL_ORDER_PENDING_STATES = exports.HOTEL_BOOKING_STATUSES = void 0;
+exports.HOTEL_MAX_RESCHEDULES_V1 = exports.HOTEL_ORDER_PENDING_STATES = exports.HOTEL_BOOKING_STATUSES = void 0;
 exports.toDateOnly = toDateOnly;
 exports.todayStr = todayStr;
 exports.generateBookingCode = generateBookingCode;
@@ -10,6 +10,9 @@ exports.dailyTransition = dailyTransition;
 exports.hotelDatesOfLine = hotelDatesOfLine;
 exports.bookingTotalCent = bookingTotalCent;
 exports.computeCancelQuote = computeCancelQuote;
+exports.isValidDateOnly = isValidDateOnly;
+exports.addDaysDateOnly = addDaysDateOnly;
+exports.evaluateRescheduleRules = evaluateRescheduleRules;
 exports.HOTEL_BOOKING_STATUSES = [
     'pendingDeposit',
     'confirmed',
@@ -133,5 +136,74 @@ function computeCancelQuote(input) {
     const fee = clampFee(policy.partial === 'full' ? total : firstNight, paid);
     const refund = Math.max(0, paid - fee);
     return Object.assign(Object.assign({}, base), { mode: refund > 0 ? 'partial' : 'forfeit', free: false, cancellable: true, refundCent: refund, feeCent: fee });
+}
+// ===== P4 Task 15：在线改期规则（纯函数，无 DB/时钟副作用，可单测） =====
+/** V1 每单限改 1 次（design §8 L163） */
+exports.HOTEL_MAX_RESCHEDULES_V1 = 1;
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+/** 严格日历日期校验（拒绝 2026-13-40 这类） */
+function isValidDateOnly(d) {
+    if (typeof d !== 'string' || !DATE_ONLY_RE.test(d))
+        return false;
+    const dt = new Date(`${d}T00:00:00`);
+    if (Number.isNaN(dt.getTime()))
+        return false;
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth() + 1).padStart(2, '0');
+    const day = String(dt.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}` === d;
+}
+/** date-only 加减天；非法输入 → null */
+function addDaysDateOnly(date, days) {
+    if (!isValidDateOnly(date))
+        return null;
+    const dt = new Date(`${date}T00:00:00`);
+    dt.setDate(dt.getDate() + days);
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth() + 1).padStart(2, '0');
+    const day = String(dt.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+/**
+ * 改期资格规则（design §8 L163）：
+ * - 仅 confirmed；每单 V1 限改 1 次
+ * - 新日期合法、与旧段不同、入住日不早于 today+advanceDays（advanceDays 缺省 0）
+ * - 新晚数落在 [minNights, maxNights]（缺省不约束）
+ */
+function evaluateRescheduleRules(input) {
+    if (input.status !== 'confirmed') {
+        return { ok: false, reason: 'notConfirmed', message: `当前状态 ${input.status} 不可改期` };
+    }
+    if (Math.max(0, Math.round(Number(input.rescheduleCount) || 0)) >= exports.HOTEL_MAX_RESCHEDULES_V1) {
+        return { ok: false, reason: 'limitReached', message: '该订单已使用改期机会（每单限改 1 次），请联系酒店/客服' };
+    }
+    if (!isValidDateOnly(input.newCheckIn) || !isValidDateOnly(input.newCheckOut)) {
+        return { ok: false, reason: 'invalidDates', message: '新入离日期不合法' };
+    }
+    if (input.newCheckOut <= input.newCheckIn) {
+        return { ok: false, reason: 'invalidDates', message: '离店日期必须晚于入住日期' };
+    }
+    if (input.newCheckIn === toDateOnly(input.oldCheckIn) && input.newCheckOut === toDateOnly(input.oldCheckOut)) {
+        return { ok: false, reason: 'sameDates', message: '新日期与原入住日期一致，无需改期' };
+    }
+    const nights = Math.round((new Date(`${input.newCheckOut}T00:00:00`).getTime() - new Date(`${input.newCheckIn}T00:00:00`).getTime()) / 86400000);
+    const advance = Math.max(0, Math.round(Number(input.advanceDays) || 0));
+    const earliest = addDaysDateOnly(todayStr(input.now), advance);
+    if (input.newCheckIn < earliest) {
+        return {
+            ok: false,
+            reason: 'advanceDays',
+            message: advance > 0 ? `最早可改期至 ${earliest}（须提前 ${advance} 天）` : `入住日不能早于今天（${earliest}）`,
+        };
+    }
+    const min = Number(input.minNights);
+    if (Number.isFinite(min) && min > 0 && nights < min) {
+        return { ok: false, reason: 'tooShort', message: `最少连住 ${min} 晚` };
+    }
+    const max = Number(input.maxNights);
+    if (Number.isFinite(max) && max > 0 && nights > max) {
+        return { ok: false, reason: 'tooLong', message: `最多连住 ${max} 晚` };
+    }
+    return { ok: true, nights };
 }
 //# sourceMappingURL=booking-logic.js.map

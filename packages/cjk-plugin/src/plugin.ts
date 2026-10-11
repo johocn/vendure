@@ -73,7 +73,7 @@ import { MapProviderRegistry } from './map/map-provider-registry';
 import { MapService } from './map/map.service';
 import { MapAdminResolver } from './map/map-admin.resolver';
 import { MapShopResolver } from './map/map-shop.resolver';
-import { MapConfigEncryptionMigration, PayConfigEncryptionMigration, TenantMemberColumnMigration, AddTenantMemberRedeemProfiles, ChannelCustomColumnMigration, ShippingContactFlagMigration, StockTableMigration, ChannelInventoryModeColumnMigration, CollectionIconMigration, ReservationExpiresAtMigration, ReservationTtlColumnMigration, PickBatchHandoverColumnMigration, StocktakePostedDocIndexMigration, HotelOrderLineColumnMigration, HotelBookingCancelColumnsMigration } from './migrations';
+import { MapConfigEncryptionMigration, PayConfigEncryptionMigration, TenantMemberColumnMigration, AddTenantMemberRedeemProfiles, ChannelCustomColumnMigration, ShippingContactFlagMigration, StockTableMigration, ChannelInventoryModeColumnMigration, CollectionIconMigration, ReservationExpiresAtMigration, ReservationTtlColumnMigration, PickBatchHandoverColumnMigration, StocktakePostedDocIndexMigration, HotelOrderLineColumnMigration, HotelBookingCancelColumnsMigration, HotelBookingRescheduleColumnsMigration } from './migrations';
 import { setRedeemScopeResolver } from '@vendure/coupon-plugin';
 import { AuthConfigService } from './auth/auth-config.service';
 import { PayConfigService } from './payment/pay-config.service';
@@ -140,7 +140,7 @@ import { HotelBookingAdminResolver } from './hotel/booking/booking-admin.resolve
 import { HotelBookingShopResolver } from './hotel/booking/booking-shop.resolver';
 import { BoxShippingLineAssignmentStrategy } from './shipping/box-shipping-line-assignment-strategy';
 import { ChannelTaxLineCalculationStrategy } from './tax/channel-tax-line-calculation-strategy';
-import { ChannelEvent, EventBus, OrderEvent, OrderService, OrderStateTransitionEvent, TransactionalConnection } from '@vendure/core';
+import { ChannelEvent, EventBus, OrderEvent, OrderService, OrderStateTransitionEvent, PaymentStateTransitionEvent, TransactionalConnection } from '@vendure/core';
 import { AfterSalesService, AfterSalesStateTransitionEvent } from '@vendure/after-sales-plugin';
 import { DefaultDataService } from './seed/default-data.service';
 import { Wallet } from './wallet/wallet.entity';
@@ -239,6 +239,7 @@ function mergeCustomFields<T extends { name: string }>(
         CollectionIconMigration,
         HotelOrderLineColumnMigration,
         HotelBookingCancelColumnsMigration,
+        HotelBookingRescheduleColumnsMigration,
         AuthConfigService,
         PayConfigService,
         MapConfigService,
@@ -1005,6 +1006,12 @@ function mergeCustomFields<T extends { name: string }>(
                     cancelFeeCent: Int
                     "关联退款售后单 id（逾时部分退款/免费取消自动退款）"
                     afterSalesRequestId: ID
+                    "已使用改期次数（每单 V1 限改 1 次）"
+                    rescheduleCount: Int!
+                    "最近改期时间"
+                    rescheduledAt: DateTime
+                    "是否有在途改期补差价支付"
+                    reschedulePending: Boolean!
                     "房型名（admin 列表按语言 enrich；非持久化）"
                     variantName: String
                     createdAt: DateTime!
@@ -2455,6 +2462,12 @@ function mergeCustomFields<T extends { name: string }>(
                     cancelFeeCent: Int
                     "关联退款售后单 id（非空=取消退款流程在途或已完成）"
                     afterSalesRequestId: ID
+                    "已使用改期次数（每单 V1 限改 1 次）"
+                    rescheduleCount: Int!
+                    "最近改期时间"
+                    rescheduledAt: DateTime
+                    "是否有在途改期补差价支付"
+                    reschedulePending: Boolean!
                     createdAt: DateTime!
                 }
 
@@ -2482,11 +2495,62 @@ function mergeCustomFields<T extends { name: string }>(
                     deadline: DateTime
                 }
 
+                type HotelRescheduleNight {
+                    "YYYY-MM-DD（入住当晚口径）"
+                    date: String!
+                    "原始余量（null=不限房，已含本单旧锁）"
+                    remaining: Int
+                    closed: Boolean!
+                    "扣除本单旧段自身锁后是否可住"
+                    feasible: Boolean!
+                }
+
+                """
+                改期报价（C 端改期弹层）：eligible=false 时 reason 给出拦截码
+                （notConfirmed/limitReached/sameDates/invalidDates/advanceDays/tooShort/tooLong/soldOut/pricingError）；
+                diffCent 正=补差，负=退差。
+                """
+                type HotelRescheduleQuote {
+                    bookingId: ID!
+                    eligible: Boolean!
+                    reason: String
+                    message: String
+                    oldCheckIn: String!
+                    oldCheckOut: String!
+                    newCheckIn: String!
+                    newCheckOut: String!
+                    nights: Int!
+                    oldTotalCent: Int!
+                    newTotalCent: Int
+                    diffCent: Int
+                    refundCent: Int
+                    supplementCent: Int
+                    availability: [HotelRescheduleNight!]!
+                }
+
+                """
+                改期提交结果：
+                applied=true 已完成（等价/退差/补差即时到账）；
+                applied=false=补差异步支付在途，paymentState/paymentId/paymentPublic 供前端拉起支付，
+                支付成功后服务端事件自动收口，前端轮询 myHotelBookings 即可。
+                """
+                type HotelRescheduleResult {
+                    booking: HotelBookingPublic!
+                    applied: Boolean!
+                    paymentState: String
+                    paymentId: ID
+                    supplementCent: Int!
+                    "支付透传参数 JSON 字符串（如微信 payUrl/payType；无则 null）"
+                    paymentPublic: String
+                }
+
                 extend type Query {
                     "当前登录顾客的酒店预订单（按订单归属隔离，id 倒序，上限 200）；status 可选过滤"
                     myHotelBookings(status: String): [HotelBookingPublic!]!
                     "取消报价（归属隔离；非可取消状态抛错）"
                     hotelBookingCancelQuote(id: ID!): HotelCancelQuote!
+                    "改期报价（归属隔离；checkIn/checkOut 为期望新日期 YYYY-MM-DD）"
+                    hotelBookingRescheduleQuote(id: ID!, checkIn: String!, checkOut: String!): HotelRescheduleQuote!
                 }
 
                 extend type Mutation {
@@ -2495,6 +2559,14 @@ function mergeCustomFields<T extends { name: string }>(
                     unpaid/forfeit 立即取消；free 自动全额退款后取消；partial 建售后单待商家审批（预订保留至退款完成）；blocked 拒绝。
                     """
                     cancelMyHotelBooking(id: ID!, reason: String): HotelBookingPublic!
+                    """
+                    顾客自助改期（归属隔离；confirmed 且每单限 1 次）：
+                    等价/退差直接完成（退差自动退回原支付渠道）；补差需传 paymentMethod，
+                    即时结算支付方式直接完成，异步支付返回在途结果待支付回调收口。
+                    """
+                    rescheduleMyHotelBooking(id: ID!, checkIn: String!, checkOut: String!, paymentMethod: String): HotelRescheduleResult!
+                    "放弃在途改期补差（取消补差支付并清空意向）"
+                    cancelMyRescheduleSupplement(id: ID!): HotelBookingPublic!
                 }
 
                 ${redemptionShopSchema}
@@ -3117,6 +3189,15 @@ export class CjkPlugin implements OnApplicationBootstrap, NestModule {
                     await bookingService.handleOrderTransition(event.ctx, event.order.id);
                 } catch (e: any) {
                     Logger.error(`hotel booking transition event failed: ${e?.message}`, loggerCtx);
+                }
+            });
+            // P4 Task 15：改期补差 Payment Settled → 自动落地改期；Cancelled/Declined/Error → 清在途意向。
+            // 非补差支付（metadata 无标记）在 service 内 no-op。
+            eventBus.ofType(PaymentStateTransitionEvent).subscribe(async (event) => {
+                try {
+                    await bookingService.handleReschedulePayment(event);
+                } catch (e: any) {
+                    Logger.error(`hotel reschedule payment event failed: ${e?.message}`, loggerCtx);
                 }
             });
         }

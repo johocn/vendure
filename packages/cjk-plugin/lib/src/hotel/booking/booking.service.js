@@ -27,11 +27,22 @@ const booking_entity_1 = require("./booking.entity");
 const loggerCtx = 'HotelBookingService';
 /** 可取消（管理员强制取消）的状态白名单 */
 const CANCELLABLE_STATUSES = ['pendingDeposit', 'confirmed'];
+/** 补差支付 metadata 标记（PaymentStateTransitionEvent 路由用） */
+const RESCHEDULE_PAYMENT_META_TYPE = 'hotelRescheduleSupplement';
+/**
+ * 改期退差/补差舍入退回的系统售后单 reason 前缀标记。
+ * handleAfterSalesRefunded 凭此区分「取消退款」与「改期多退少补」：
+ * 改期退款完成不得触发取消收口（否则会把新段锁房释放并把预订置 cancelled）。
+ */
+const RESCHEDULE_REFUND_REASON_PREFIX = '[hotel-reschedule-refund]';
 let HotelBookingService = class HotelBookingService {
-    constructor(conn, inventory, ratePlans) {
+    constructor(conn, inventory, ratePlans, orderService, orderModifier, paymentService) {
         this.conn = conn;
         this.inventory = inventory;
         this.ratePlans = ratePlans;
+        this.orderService = orderService;
+        this.orderModifier = orderModifier;
+        this.paymentService = paymentService;
         /** after-sales 插件由 plugin.ts onInit 延迟注入（跨插件依赖，规避模块初始化顺序） */
         this.afterSales = null;
     }
@@ -236,43 +247,44 @@ let HotelBookingService = class HotelBookingService {
         }
         return String(Date.now() % 100000000).padStart(8, '0');
     }
-    /** 有效取消政策解析：方案级 cancelPolicyOverride 优先（坏 JSON 回退），再回退房型 hotelRoomConfig.cancelPolicy */
-    async resolvePolicy(ctx, b) {
-        var _a, _b, _c, _d;
-        let policy;
+    /**
+     * 房型计价上下文：variant + 解析后的 hotelRoomConfig + 有效取消政策 + 房价方案调整。
+     * 有效取消政策：方案级 cancelPolicyOverride 优先（坏 JSON 回退房型级），再回退房型 cancelPolicy。
+     */
+    async resolveRoomContext(ctx, b) {
+        var _a, _b, _c, _d, _e, _f;
+        const variant = (_a = (await this.conn
+            .getRepository(ctx, core_1.ProductVariant)
+            .findOne({ where: { id: Number(b.productVariantId) } }))) !== null && _a !== void 0 ? _a : null;
+        const cfg = (0, hotel_nightly_pricing_1.parseHotelRoomConfig)((_b = variant === null || variant === void 0 ? void 0 : variant.customFields) === null || _b === void 0 ? void 0 : _b.hotelRoomConfig);
+        let policy = (_c = cfg === null || cfg === void 0 ? void 0 : cfg.cancelPolicy) !== null && _c !== void 0 ? _c : null;
         let planAdjust = null;
         if (b.ratePlanCode) {
             const plans = await this.ratePlans.findByCodes(ctx, b.productVariantId, [b.ratePlanCode]);
             const plan = plans[0];
             if (plan) {
-                planAdjust = { adjustType: String((_a = plan.adjustType) !== null && _a !== void 0 ? _a : ''), adjustValue: Number((_b = plan.adjustValue) !== null && _b !== void 0 ? _b : 0) };
+                planAdjust = { adjustType: String((_d = plan.adjustType) !== null && _d !== void 0 ? _d : ''), adjustValue: Number((_e = plan.adjustValue) !== null && _e !== void 0 ? _e : 0) };
             }
             const raw = plan === null || plan === void 0 ? void 0 : plan.cancelPolicyOverride;
             if (raw) {
                 try {
                     policy = JSON.parse(raw);
                 }
-                catch (_e) {
-                    policy = null; // 坏 JSON 回退房型级政策
+                catch (_g) {
+                    policy = (_f = cfg === null || cfg === void 0 ? void 0 : cfg.cancelPolicy) !== null && _f !== void 0 ? _f : null; // 坏 JSON 回退房型级政策
                 }
             }
         }
-        const variant = await this.conn
-            .getRepository(ctx, core_1.ProductVariant)
-            .findOne({ where: { id: Number(b.productVariantId) } });
-        const cfg = (0, hotel_nightly_pricing_1.parseHotelRoomConfig)((_c = variant === null || variant === void 0 ? void 0 : variant.customFields) === null || _c === void 0 ? void 0 : _c.hotelRoomConfig);
-        if (!policy)
-            policy = (_d = cfg === null || cfg === void 0 ? void 0 : cfg.cancelPolicy) !== null && _d !== void 0 ? _d : null;
-        return { policy: policy !== null && policy !== void 0 ? policy : null, planAdjust };
+        return { variant, cfg, policy: policy !== null && policy !== void 0 ? policy : null, planAdjust };
+    }
+    /** 有效取消政策解析（Task 14；语义保留，实现转调 resolveRoomContext） */
+    async resolvePolicy(ctx, b) {
+        const { policy, planAdjust } = await this.resolveRoomContext(ctx, b);
+        return { policy, planAdjust };
     }
     /** 取消截止点固化：checkInTime 取房型配置（缺省 00:00） */
     async deriveDeadline(ctx, b) {
-        var _a;
-        const { policy } = await this.resolvePolicy(ctx, b);
-        const variant = await this.conn
-            .getRepository(ctx, core_1.ProductVariant)
-            .findOne({ where: { id: Number(b.productVariantId) } });
-        const cfg = (0, hotel_nightly_pricing_1.parseHotelRoomConfig)((_a = variant === null || variant === void 0 ? void 0 : variant.customFields) === null || _a === void 0 ? void 0 : _a.hotelRoomConfig);
+        const { cfg, policy } = await this.resolveRoomContext(ctx, b);
         return (0, booking_logic_1.deriveCancelDeadline)(policy, b.checkIn, cfg === null || cfg === void 0 ? void 0 : cfg.checkInTime);
     }
     // ===== 事件入口（Task 11 于 plugin.ts 订阅 OrderEvent/OrderStateTransitionEvent 调用） =====
@@ -530,6 +542,10 @@ let HotelBookingService = class HotelBookingService {
             });
             if (!req || req.orderLineId == null)
                 return;
+            // 改期多退少补产生的系统退款单：不触发取消收口（预订仍为 confirmed，锁房已在新段）
+            if (typeof req.reason === 'string' && req.reason.startsWith(RESCHEDULE_REFUND_REASON_PREFIX)) {
+                return;
+            }
             // 精确按售后关联定位发起取消的预订（退款引发的订单事件可能已产生新的同行动态，
             // 不能简单取 orderLine 最新一条）；无关联的历史数据回退最新一条兜底
             let booking = await this.repo(ctx).findOne({
@@ -607,12 +623,484 @@ let HotelBookingService = class HotelBookingService {
             .update({ status: 'confirmed', checkOut: (0, typeorm_1.LessThan)(today) }, { status: 'noShow' });
         return { completed: (_a = done.affected) !== null && _a !== void 0 ? _a : 0, noShow: (_b = nos.affected) !== null && _b !== void 0 ? _b : 0 };
     }
+    // ===== P4 Task 15：在线改期（报价 / 提交 / 补差支付收口） =====
+    /**
+     * 改期报价（不落库）：
+     * - 规则（confirmed + V1 限改 1 次 + advanceDays/min/maxNights）不通过 → eligible=false + reason
+     * - 房态：逐晚把「本单旧段内自身 booked 锁」加回余量后判定 feasible
+     * - 价格：与 HotelOrderItemPriceCalculationStrategy 同口径（calcNightlyPricing.stayTotalCent，
+     *   quantity=间数时策略除间数再乘回，行小计≈住宿总价）；最终以提交时重算订单行为准
+     */
+    async quoteReschedule(ctx, id, dto, now) {
+        var _a, _b, _c;
+        const booking = await this.repo(ctx).findOne({ where: { id: Number(id) } });
+        if (!booking)
+            throw new core_1.UserInputError('预订单不存在');
+        const newCheckIn = (_a = (0, booking_logic_1.toDateOnly)(dto.checkIn)) !== null && _a !== void 0 ? _a : '';
+        const newCheckOut = (_b = (0, booking_logic_1.toDateOnly)(dto.checkOut)) !== null && _b !== void 0 ? _b : '';
+        const base = {
+            booking,
+            eligible: false,
+            oldCheckIn: booking.checkIn,
+            oldCheckOut: booking.checkOut,
+            newCheckIn,
+            newCheckOut,
+            nights: 0,
+            oldTotalCent: booking.totalCent,
+            newTotalCent: null,
+            diffCent: null,
+            refundCent: null,
+            supplementCent: null,
+            availability: [],
+        };
+        const { cfg, planAdjust } = await this.resolveRoomContext(ctx, booking);
+        const rule = (0, booking_logic_1.evaluateRescheduleRules)({
+            status: booking.status,
+            rescheduleCount: (_c = booking.rescheduleCount) !== null && _c !== void 0 ? _c : 0,
+            oldCheckIn: booking.checkIn,
+            oldCheckOut: booking.checkOut,
+            newCheckIn,
+            newCheckOut,
+            advanceDays: cfg === null || cfg === void 0 ? void 0 : cfg.advanceDays,
+            minNights: cfg === null || cfg === void 0 ? void 0 : cfg.minNights,
+            maxNights: cfg === null || cfg === void 0 ? void 0 : cfg.maxNights,
+            now,
+        });
+        if (!rule.ok) {
+            return Object.assign(Object.assign({}, base), { reason: rule.reason, message: rule.message });
+        }
+        const availability = await this.rescheduleAvailability(ctx, booking, newCheckIn, newCheckOut);
+        const sold = availability.find(a => !a.feasible);
+        const pricing = (0, hotel_nightly_pricing_1.calcNightlyPricing)(cfg, newCheckIn, newCheckOut, (planAdjust === null || planAdjust === void 0 ? void 0 : planAdjust.adjustType) ? planAdjust : null);
+        const newTotalCent = pricing ? Math.round(pricing.stayTotalCent) : null;
+        const diffCent = newTotalCent == null ? null : newTotalCent - booking.totalCent;
+        return Object.assign(Object.assign({}, base), { nights: rule.nights, eligible: !sold && newTotalCent != null, reason: sold ? 'soldOut' : newTotalCent == null ? 'pricingError' : undefined, message: sold
+                ? sold.closed
+                    ? `日期 ${sold.date} 已关房，无法改期`
+                    : `日期 ${sold.date} 房量不足，无法改期`
+                : newTotalCent == null
+                    ? '房价配置异常，暂时无法改期'
+                    : undefined, newTotalCent,
+            diffCent, refundCent: diffCent == null ? null : Math.max(0, -diffCent), supplementCent: diffCent == null ? null : Math.max(0, diffCent), availability });
+    }
+    /** 逐晚可行性：旧段内的晚把本单 roomCount 间自身锁加回（移动锁房的净占用口径） */
+    async rescheduleAvailability(ctx, booking, newCheckIn, newCheckOut) {
+        const rows = await this.inventory.getAvailability(ctx, booking.productVariantId, newCheckIn, newCheckOut);
+        return rows.map(r => {
+            const inOldSegment = r.date >= booking.checkIn && r.date < booking.checkOut;
+            const ownLocks = inOldSegment ? Math.max(1, booking.roomCount) : 0;
+            const effectiveRemaining = r.remaining == null ? null : r.remaining + ownLocks;
+            return {
+                date: r.date,
+                remaining: r.remaining,
+                closed: r.closed,
+                feasible: !r.closed && (effectiveRemaining == null || effectiveRemaining >= Math.max(1, booking.roomCount)),
+            };
+        });
+    }
+    /**
+     * 顾客提交改期（归属隔离在 resolver 层；须在事务内调用）：
+     * - 等价/退差：移动锁房 → 订单行重定价 → 退差走售后系统单自动退款 → 预订改期完成
+     * - 补差：先建补差 Payment（不动订单行/锁/价）：
+     *   · 同步 Settled（钱包/模拟支付）→ Payment 事件内同步完成改期
+     *   · 异步 Authorized（微信/COD）→ 落 reschedulePendingJson，等 Settled 事件收口
+     */
+    async rescheduleByCustomer(ctx, id, dto) {
+        var _a, _b, _c, _d, _e;
+        const booking = await this.repo(ctx).findOne({ where: { id: Number(id) } });
+        if (!booking)
+            throw new core_1.UserInputError('预订单不存在');
+        this.assertReschedulable(booking);
+        await this.assertNoActiveAfterSales(ctx, booking);
+        const target = await this.buildRescheduleTarget(ctx, booking, dto);
+        if (target.diffCent <= 0) {
+            const saved = await this.applyReschedule(ctx, booking, target, { payment: null });
+            return {
+                booking: saved,
+                applied: true,
+                paymentState: null,
+                paymentId: null,
+                supplementCent: 0,
+                paymentPublic: null,
+            };
+        }
+        const method = String((_a = dto.paymentMethod) !== null && _a !== void 0 ? _a : '').trim();
+        if (!method) {
+            throw new core_1.UserInputError(`改期后需补差价 ¥${(target.diffCent / 100).toFixed(2)}，请选择支付方式后提交`);
+        }
+        const order = await this.orderService.findOne(ctx, booking.orderId, ['payments']);
+        if (!order)
+            throw new core_1.UserInputError('订单不存在');
+        if (order.state !== 'PaymentSettled') {
+            // PartiallyPaid（首付未付清）改期涉及定金比例重算，V1 不支持，引导客服
+            throw new core_1.UserInputError('仅已全额支付的预订支持线上改期补差，请联系客服处理');
+        }
+        const payment = await this.paymentService.createPayment(ctx, order, target.diffCent, method, {
+            type: RESCHEDULE_PAYMENT_META_TYPE,
+            rescheduleBookingId: Number(booking.id),
+            rescheduleCheckIn: target.checkIn,
+            rescheduleCheckOut: target.checkOut,
+            rescheduleNights: target.nights,
+            // Shop API Payment.metadata 只透出 public 子字段（与微信支付 handler 同约定）
+            public: {
+                type: RESCHEDULE_PAYMENT_META_TYPE,
+                amountCent: target.diffCent,
+                bookingId: Number(booking.id),
+                newCheckIn: target.checkIn,
+                newCheckOut: target.checkOut,
+            },
+        });
+        if (payment instanceof Error || payment.errorCode) {
+            throw new core_1.UserInputError(`补差支付发起失败：${(_c = (_b = payment.eligibilityCheckerMessage) !== null && _b !== void 0 ? _b : payment.message) !== null && _c !== void 0 ? _c : '支付方式不可用'}`);
+        }
+        const pay = payment;
+        const paymentPublic = ((_e = (_d = pay.metadata) === null || _d === void 0 ? void 0 : _d.public) !== null && _e !== void 0 ? _e : null);
+        if (pay.state === 'Settled') {
+            // createPayment 事务内已同步派发 Settled 事件 → handleReschedulePayment 已完成改期，此处只回读
+            const done = await this.repo(ctx).findOne({ where: { id: Number(booking.id) } });
+            return {
+                booking: done !== null && done !== void 0 ? done : booking,
+                applied: true,
+                paymentState: 'Settled',
+                paymentId: Number(pay.id),
+                supplementCent: target.diffCent,
+                paymentPublic,
+            };
+        }
+        // 异步支付：登记待支付意向（不动订单/锁房/价格；支付完成前预订一切照旧）
+        const pending = {
+            checkIn: target.checkIn,
+            checkOut: target.checkOut,
+            nights: target.nights,
+            expectedTotalCent: target.expectedTotalCent,
+            diffCent: target.diffCent,
+            paymentId: Number(pay.id),
+            createdAt: new Date().toISOString(),
+        };
+        booking.reschedulePendingJson = JSON.stringify(pending);
+        const saved = await this.repo(ctx).save(booking);
+        core_1.Logger.info(`Booking ${saved.id} reschedule supplement pending: payment ${pay.id} (${pay.state}), ${saved.checkIn}→${target.checkIn}`, loggerCtx);
+        return {
+            booking: saved,
+            applied: false,
+            paymentState: pay.state,
+            paymentId: Number(pay.id),
+            supplementCent: target.diffCent,
+            paymentPublic,
+        };
+    }
+    /** 顾客放弃补差：支付未结算则取消 Payment 并清空在途意向（Settled 会自动完成改期，拒绝取消） */
+    async cancelRescheduleSupplement(ctx, id) {
+        const booking = await this.repo(ctx).findOne({ where: { id: Number(id) } });
+        if (!booking)
+            throw new core_1.UserInputError('预订单不存在');
+        const pending = this.parsePending(booking.reschedulePendingJson);
+        if (!pending)
+            throw new core_1.UserInputError('没有在途的改期补差支付');
+        const payment = await this.conn.getRepository(ctx, core_1.Payment).findOne({ where: { id: pending.paymentId } });
+        if ((payment === null || payment === void 0 ? void 0 : payment.state) === 'Settled') {
+            throw new core_1.UserInputError('补差款已支付，改期正在处理中，无法取消');
+        }
+        if (payment && payment.state !== 'Cancelled') {
+            try {
+                await this.paymentService.cancelPayment(ctx, payment.id);
+            }
+            catch (e) {
+                // 取消失败不阻塞意向清理（支付侧超时/失败事件也会收口），留日志
+                core_1.Logger.warn(`cancelRescheduleSupplement booking ${booking.id} payment ${payment.id} cancel failed: ${e === null || e === void 0 ? void 0 : e.message}`, loggerCtx);
+            }
+        }
+        booking.reschedulePendingJson = null;
+        return this.repo(ctx).save(booking);
+    }
+    /**
+     * 补差 Payment 状态事件入口（plugin.ts 订阅 PaymentStateTransitionEvent）：
+     * - Settled → 完成改期（意向单或同步支付 metadata 定日期）
+     * - Cancelled/Declined/Error → 清空在途意向
+     * 路由双通道：metadata 标记（模拟支付/透传 metadata 的网关）+ 在途意向 paymentId 匹配
+     * （COD 等 handler 会覆写 metadata，必须靠 booking.reschedulePendingJson 关联）。
+     * 非补差支付一律 no-op。
+     */
+    async handleReschedulePayment(event) {
+        var _a, _b;
+        const ctx = event.ctx;
+        const meta = ((_a = event.payment.metadata) !== null && _a !== void 0 ? _a : {});
+        // 候选 1：metadata 标记（同步 Settled 的模拟支付在写意向前就靠它收口）
+        let bookingId = null;
+        if (meta.type === RESCHEDULE_PAYMENT_META_TYPE) {
+            const b = Number(meta.rescheduleBookingId);
+            if (Number.isFinite(b) && b > 0)
+                bookingId = b;
+        }
+        // 候选 2：同订单下在途意向指向该 payment（COD handler 覆写 metadata 时的唯一可靠关联）
+        if (((_b = event.order) === null || _b === void 0 ? void 0 : _b.id) != null) {
+            const rows = await this.repo(ctx).find({ where: { orderId: Number(event.order.id) } });
+            for (const row of rows) {
+                const p = this.parsePending(row.reschedulePendingJson);
+                if (p && p.paymentId === Number(event.payment.id)) {
+                    bookingId = Number(row.id);
+                    break;
+                }
+            }
+        }
+        if (bookingId == null)
+            return;
+        if (['Cancelled', 'Declined', 'Error'].includes(event.toState)) {
+            try {
+                const booking = await this.repo(ctx).findOne({ where: { id: bookingId } });
+                const pending = this.parsePending(booking === null || booking === void 0 ? void 0 : booking.reschedulePendingJson);
+                if (booking && pending && pending.paymentId === Number(event.payment.id)) {
+                    booking.reschedulePendingJson = null;
+                    await this.repo(ctx).save(booking);
+                    core_1.Logger.info(`Booking ${booking.id} reschedule supplement payment ${event.payment.id} ${event.toState}, pending cleared`, loggerCtx);
+                }
+            }
+            catch (e) {
+                core_1.Logger.error(`handleReschedulePayment clear pending failed: ${e === null || e === void 0 ? void 0 : e.message}`, loggerCtx);
+            }
+            return;
+        }
+        if (event.toState !== 'Settled')
+            return;
+        try {
+            // 锁房迁移用悲观锁，必须在事务内：
+            // - 同步 Settled（createPayment 事务内派发事件）→ withTransaction 复用当前事务
+            // - 异步 Settled（支付回调/管理员结算，事件线程无事务）→ 新开事务
+            await this.conn.withTransaction(ctx, async (txCtx) => {
+                var _a, _b, _c;
+                const booking = await this.repo(txCtx).findOne({ where: { id: bookingId } });
+                if (!booking) {
+                    core_1.Logger.warn(`Reschedule supplement settled but booking ${bookingId} missing`, loggerCtx);
+                    return;
+                }
+                if (booking.status !== 'confirmed') {
+                    // 已取消/已入住等：钱已收但不能改期，需人工退补差
+                    core_1.Logger.error(`Reschedule supplement payment ${event.payment.id} settled but booking ${bookingId} is ${booking.status}; manual refund required`, loggerCtx);
+                    return;
+                }
+                const pending = this.parsePending(booking.reschedulePendingJson);
+                if (pending && pending.paymentId !== Number(event.payment.id)) {
+                    core_1.Logger.warn(`Reschedule payment ${event.payment.id} does not match pending payment ${pending.paymentId} on booking ${bookingId}; ignored`, loggerCtx);
+                    return;
+                }
+                const checkIn = (_a = pending === null || pending === void 0 ? void 0 : pending.checkIn) !== null && _a !== void 0 ? _a : (0, booking_logic_1.toDateOnly)(meta.rescheduleCheckIn);
+                const checkOut = (_b = pending === null || pending === void 0 ? void 0 : pending.checkOut) !== null && _b !== void 0 ? _b : (0, booking_logic_1.toDateOnly)(meta.rescheduleCheckOut);
+                if (!checkIn || !checkOut) {
+                    core_1.Logger.error(`Reschedule payment ${event.payment.id} settled without target dates on booking ${bookingId}; manual handling required`, loggerCtx);
+                    return;
+                }
+                // 意向重复事件/并发收口：已改过则幂等成功返回
+                if (((_c = booking.rescheduleCount) !== null && _c !== void 0 ? _c : 0) >= booking_logic_1.HOTEL_MAX_RESCHEDULES_V1)
+                    return;
+                const target = await this.buildRescheduleTarget(txCtx, booking, { checkIn, checkOut });
+                await this.applyReschedule(txCtx, booking, target, { payment: event.payment });
+                core_1.Logger.info(`Booking ${booking.id} reschedule applied via settled supplement payment ${event.payment.id}`, loggerCtx);
+            });
+        }
+        catch (e) {
+            // 支付后改期失败（典型：支付期间房态被抢）：保留原预订与在途意向，补差需人工经售后退款
+            core_1.Logger.error(`handleReschedulePayment booking ${bookingId} apply failed: ${e === null || e === void 0 ? void 0 : e.message}; supplement payment ${event.payment.id} settled, manual refund required`, loggerCtx);
+        }
+    }
+    /** 改期前置守卫：状态 + 限次 + 在途补差 */
+    assertReschedulable(booking) {
+        var _a;
+        if (booking.status !== 'confirmed') {
+            throw new core_1.UserInputError(`当前状态 ${booking.status} 不可改期`);
+        }
+        if (((_a = booking.rescheduleCount) !== null && _a !== void 0 ? _a : 0) >= booking_logic_1.HOTEL_MAX_RESCHEDULES_V1) {
+            throw new core_1.UserInputError('该订单已使用改期机会（每单限改 1 次），请联系酒店/客服');
+        }
+        if (booking.reschedulePendingJson) {
+            throw new core_1.UserInputError('该订单已有改期补差价支付在途，请完成支付或取消后重试');
+        }
+    }
+    /** 规则 + 房态 + 价格，构造改期目标（不通过直接 UserInputError） */
+    async buildRescheduleTarget(ctx, booking, dto, now) {
+        var _a;
+        const checkIn = (0, booking_logic_1.toDateOnly)(dto.checkIn);
+        const checkOut = (0, booking_logic_1.toDateOnly)(dto.checkOut);
+        if (!checkIn || !checkOut)
+            throw new core_1.UserInputError('新入离日期不合法');
+        const { cfg, planAdjust } = await this.resolveRoomContext(ctx, booking);
+        const rule = (0, booking_logic_1.evaluateRescheduleRules)({
+            status: booking.status,
+            rescheduleCount: (_a = booking.rescheduleCount) !== null && _a !== void 0 ? _a : 0,
+            oldCheckIn: booking.checkIn,
+            oldCheckOut: booking.checkOut,
+            newCheckIn: checkIn,
+            newCheckOut: checkOut,
+            advanceDays: cfg === null || cfg === void 0 ? void 0 : cfg.advanceDays,
+            minNights: cfg === null || cfg === void 0 ? void 0 : cfg.minNights,
+            maxNights: cfg === null || cfg === void 0 ? void 0 : cfg.maxNights,
+            now,
+        });
+        if (!rule.ok)
+            throw new core_1.UserInputError(rule.message);
+        const availability = await this.rescheduleAvailability(ctx, booking, checkIn, checkOut);
+        const sold = availability.find(a => !a.feasible);
+        if (sold) {
+            throw new core_1.UserInputError(sold.closed ? `日期 ${sold.date} 已关房，无法改期` : `日期 ${sold.date} 房量不足，无法改期`);
+        }
+        const pricing = (0, hotel_nightly_pricing_1.calcNightlyPricing)(cfg, checkIn, checkOut, (planAdjust === null || planAdjust === void 0 ? void 0 : planAdjust.adjustType) ? planAdjust : null);
+        if (!pricing)
+            throw new core_1.UserInputError('房价配置异常，暂时无法改期');
+        const expectedTotalCent = Math.round(pricing.stayTotalCent);
+        return {
+            checkIn,
+            checkOut,
+            nights: rule.nights,
+            expectedTotalCent,
+            diffCent: expectedTotalCent - booking.totalCent,
+            availability,
+        };
+    }
+    parsePending(raw) {
+        if (!raw)
+            return null;
+        try {
+            const obj = JSON.parse(raw);
+            if (typeof obj.checkIn === 'string' &&
+                typeof obj.checkOut === 'string' &&
+                typeof obj.paymentId === 'number') {
+                return obj;
+            }
+        }
+        catch (_a) {
+            // 坏 JSON 视为无在途意向
+        }
+        return null;
+    }
+    /**
+     * 改期落地（须在调用方事务内；事件/直提两路复用）：
+     * 1. 重新加载并重验规则/房态（支付期间可能被抢房）
+     * 2. 释放旧 booked 锁 → holdForOrder 权威重验并落新段 hold → confirmLocks 转 booked
+     * 3. 订单行自定义字段改日期 → OrderModifier/OrderCalculator 重定价（酒店计价策略按新日期逐晚计价）
+     * 4. 多退少补：退差走售后系统单自动退款；补差校验 Settled Payment 覆盖差额（舍入多收 >1 分退回）
+     * 5. booking 日期/晚数/总额/次数/取消截止点固化，清在途意向
+     */
+    async applyReschedule(ctx, booking, targetRef, opts) {
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+        const fresh = await this.repo(ctx).findOne({ where: { id: Number(booking.id) } });
+        if (!fresh)
+            throw new core_1.UserInputError('预订单不存在');
+        if (fresh.status !== 'confirmed')
+            throw new core_1.UserInputError(`当前状态 ${fresh.status} 不可改期`);
+        if (((_a = fresh.rescheduleCount) !== null && _a !== void 0 ? _a : 0) >= booking_logic_1.HOTEL_MAX_RESCHEDULES_V1) {
+            throw new core_1.UserInputError('该订单已使用改期机会');
+        }
+        await this.assertNoActiveAfterSales(ctx, fresh);
+        const target = await this.buildRescheduleTarget(ctx, fresh, targetRef);
+        const order = await this.orderService.findOne(ctx, fresh.orderId, [
+            'channels',
+            'customer',
+            'lines',
+            'lines.productVariant',
+            'lines.featuredAsset',
+            'lines.taxCategory',
+            'shippingLines',
+            'surcharges',
+            'payments',
+        ]);
+        if (!order)
+            throw new core_1.UserInputError('订单不存在');
+        const line = ((_b = order.lines) !== null && _b !== void 0 ? _b : []).find(l => Number(l.id) === fresh.orderLineId);
+        if (!line)
+            throw new core_1.UserInputError('订单酒店行不存在');
+        // 锁房迁移：先释放本行旧 booked 锁，再在新段落 hold（内部悲观锁+逐晚余量权威校验），随后转 booked
+        await this.inventory.releaseLocksByOrderLine(ctx, fresh.orderLineId);
+        try {
+            await this.inventory.holdForOrder(ctx, order.id, fresh.productVariantId, target.checkIn, target.checkOut, Math.max(1, fresh.roomCount), { orderLineId: fresh.orderLineId, toReleaseLineIds: [fresh.orderLineId] });
+        }
+        catch (e) {
+            if (e instanceof hotel_inventory_service_1.HotelSoldOutError) {
+                const first = e.shortNights[0];
+                throw new core_1.UserInputError((first === null || first === void 0 ? void 0 : first.reason) === 'closed' ? `日期 ${(_c = first === null || first === void 0 ? void 0 : first.date) !== null && _c !== void 0 ? _c : ''} 已关房，无法改期` : `日期 ${(_d = first === null || first === void 0 ? void 0 : first.date) !== null && _d !== void 0 ? _d : ''} 房量不足，无法改期`);
+            }
+            throw e;
+        }
+        await this.inventory.confirmLocks(ctx, order.id, fresh.productVariantId, {
+            orderLineId: fresh.orderLineId,
+            bookingId: fresh.id,
+        });
+        // 订单行日期 + 重定价（与 active order adjustOrderLine 同一套内部机制，跳过 active-only 状态守卫）
+        const oldCf = ((_e = line.customFields) !== null && _e !== void 0 ? _e : {});
+        line.customFields = Object.assign(Object.assign({}, oldCf), { hotelCheckIn: target.checkIn, hotelCheckOut: target.checkOut, hotelNights: target.nights });
+        await this.orderModifier.updateOrderLineQuantity(ctx, line, Math.max(1, fresh.roomCount), order);
+        const updatedOrder = await this.orderService.applyPriceAdjustments(ctx, order, [line]);
+        const freshLine = ((_f = updatedOrder.lines) !== null && _f !== void 0 ? _f : []).find(l => Number(l.id) === fresh.orderLineId);
+        const newTotalCent = freshLine ? (0, booking_logic_1.bookingTotalCent)(freshLine) : 0;
+        if (!(newTotalCent > 0))
+            throw new core_1.UserInputError('改期计价失败，请重试或联系客服');
+        // 多退少补
+        const oldTotalCent = fresh.totalCent;
+        if (newTotalCent < oldTotalCent) {
+            const refundCent = oldTotalCent - newTotalCent;
+            if (!this.afterSales) {
+                core_1.Logger.error(`applyReschedule booking ${fresh.id}: AfterSalesService unavailable`, loggerCtx);
+                throw new core_1.UserInputError('退款服务暂不可用，改期未提交，请联系客服');
+            }
+            const reason = `${RESCHEDULE_REFUND_REASON_PREFIX} 改期退差价 ${(_g = fresh.bookingCode) !== null && _g !== void 0 ? _g : fresh.id}（${fresh.checkIn}→${target.checkIn}）`;
+            const req = await this.afterSales.createSystemRequest(ctx, {
+                orderId: fresh.orderId,
+                orderLineId: fresh.orderLineId,
+                type: 'refund_only',
+                reason,
+                description: `改期前 ${oldTotalCent} 分，改期后 ${newTotalCent} 分，退差 ${refundCent} 分`,
+                refundAmount: refundCent,
+            });
+            const approved = await this.afterSales.approveRequest(ctx, req.id);
+            if (approved.state !== 'Refunded') {
+                throw new core_1.UserInputError(`退差价未成功（售后单 ${req.id} 状态 ${approved.state}），改期未提交`);
+            }
+        }
+        else if (newTotalCent > oldTotalCent) {
+            const pay = opts.payment;
+            if (!pay || pay.state !== 'Settled') {
+                throw new core_1.UserInputError('改期补差款未到账，改期未提交');
+            }
+            const paidCent = Math.max(0, Math.round(Number(pay.amount) || 0));
+            const needCent = newTotalCent - oldTotalCent;
+            if (paidCent + 1 < needCent) {
+                throw new core_1.UserInputError(`改期补差金额不足（需 ${needCent} 分，实付 ${paidCent} 分），改期未提交`);
+            }
+            // 舍入多收（>1 分）走售后退回，保证订单总额口径一致
+            const overshootCent = oldTotalCent + paidCent - newTotalCent;
+            if (overshootCent > 1 && this.afterSales) {
+                const req = await this.afterSales.createSystemRequest(ctx, {
+                    orderId: fresh.orderId,
+                    orderLineId: fresh.orderLineId,
+                    type: 'refund_only',
+                    reason: `${RESCHEDULE_REFUND_REASON_PREFIX} 改期补差舍入退回 ${(_h = fresh.bookingCode) !== null && _h !== void 0 ? _h : fresh.id}`,
+                    refundAmount: overshootCent,
+                });
+                await this.afterSales.approveRequest(ctx, req.id);
+            }
+        }
+        // 预订固化
+        fresh.checkIn = target.checkIn;
+        fresh.checkOut = target.checkOut;
+        fresh.nights = target.nights;
+        fresh.totalCent = newTotalCent;
+        fresh.rescheduleCount = ((_j = fresh.rescheduleCount) !== null && _j !== void 0 ? _j : 0) + 1;
+        fresh.rescheduledAt = new Date();
+        fresh.reschedulePendingJson = null;
+        const { cfg, policy } = await this.resolveRoomContext(ctx, fresh);
+        // 列类型为 Date|undefined，但语义要求可清空（新政策无免费窗口）→ null 落库
+        fresh.cancelDeadlineAt = (_k = (0, booking_logic_1.deriveCancelDeadline)(policy, fresh.checkIn, cfg === null || cfg === void 0 ? void 0 : cfg.checkInTime)) !== null && _k !== void 0 ? _k : null;
+        const saved = await this.repo(ctx).save(fresh);
+        core_1.Logger.info(`Booking ${saved.id} rescheduled: ${oldTotalCent}→${newTotalCent}, ${saved.checkIn}/${saved.checkOut}, count ${saved.rescheduleCount}`, loggerCtx);
+        return saved;
+    }
 };
 exports.HotelBookingService = HotelBookingService;
 exports.HotelBookingService = HotelBookingService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
         hotel_inventory_service_1.HotelInventoryService,
-        rate_plan_service_1.HotelRatePlanService])
+        rate_plan_service_1.HotelRatePlanService,
+        core_1.OrderService,
+        core_1.OrderModifier,
+        core_1.PaymentService])
 ], HotelBookingService);
 //# sourceMappingURL=booking.service.js.map

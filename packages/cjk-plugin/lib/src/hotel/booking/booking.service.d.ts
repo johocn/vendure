@@ -1,4 +1,4 @@
-import { ID, Order, RequestContext, TransactionalConnection } from '@vendure/core';
+import { ID, Order, OrderModifier, OrderService, PaymentService, PaymentStateTransitionEvent, RequestContext, TransactionalConnection } from '@vendure/core';
 import { AfterSalesStateTransitionEvent } from '@vendure/after-sales-plugin';
 import type { AfterSalesService } from '@vendure/after-sales-plugin';
 import { HotelInventoryService } from './hotel-inventory.service';
@@ -20,13 +20,55 @@ export interface HotelCancelQuoteResult {
     /** 首晚房费（全部房间合计，分） */
     firstNightFeeCent: number;
 }
+/** 改期逐晚可行性（remaining 已含本单旧锁；feasible=扣除旧锁后可住） */
+export interface HotelRescheduleNight {
+    date: string;
+    /** 原始余量（null=不限房） */
+    remaining: number | null;
+    closed: boolean;
+    feasible: boolean;
+}
+/** 改期报价结果 */
+export interface HotelRescheduleQuoteResult {
+    booking: HotelBooking;
+    eligible: boolean;
+    /** 拦截码：纯函数规则码或 soldOut */
+    reason?: string;
+    message?: string;
+    oldCheckIn: string;
+    oldCheckOut: string;
+    newCheckIn: string;
+    newCheckOut: string;
+    nights: number;
+    oldTotalCent: number;
+    /** 规则/房态/配置不通过时为 null */
+    newTotalCent: number | null;
+    /** 新−旧（分）：正=补差，负=退差 */
+    diffCent: number | null;
+    refundCent: number | null;
+    supplementCent: number | null;
+    availability: HotelRescheduleNight[];
+}
+/** 改期 mutation 结果：applied=false 时为补差异步支付在途，需等支付 Settled 事件收口 */
+export interface HotelRescheduleMutationResult {
+    booking: HotelBooking;
+    applied: boolean;
+    paymentState: string | null;
+    paymentId: number | null;
+    supplementCent: number;
+    /** 支付透传参数（如微信 payUrl/payType，原样来自 payment.metadata.public） */
+    paymentPublic: Record<string, any> | null;
+}
 export declare class HotelBookingService {
     private conn;
     private inventory;
     private ratePlans;
+    private orderService;
+    private orderModifier;
+    private paymentService;
     /** after-sales 插件由 plugin.ts onInit 延迟注入（跨插件依赖，规避模块初始化顺序） */
     private afterSales;
-    constructor(conn: TransactionalConnection, inventory: HotelInventoryService, ratePlans: HotelRatePlanService);
+    constructor(conn: TransactionalConnection, inventory: HotelInventoryService, ratePlans: HotelRatePlanService, orderService: OrderService, orderModifier: OrderModifier, paymentService: PaymentService);
     setAfterSalesService(svc: AfterSalesService): void;
     private repo;
     listByOrder(ctx: RequestContext, orderId: ID): Promise<HotelBooking[]>;
@@ -56,7 +98,12 @@ export declare class HotelBookingService {
     confirmPendingForOrder(ctx: RequestContext, orderId: ID): Promise<HotelBooking[]>;
     /** 8 位入住码分配：随机 + 查重重试，5 次未命中回退时间戳后 8 位（唯一索引兜底） */
     private allocateCode;
-    /** 有效取消政策解析：方案级 cancelPolicyOverride 优先（坏 JSON 回退），再回退房型 hotelRoomConfig.cancelPolicy */
+    /**
+     * 房型计价上下文：variant + 解析后的 hotelRoomConfig + 有效取消政策 + 房价方案调整。
+     * 有效取消政策：方案级 cancelPolicyOverride 优先（坏 JSON 回退房型级），再回退房型 cancelPolicy。
+     */
+    private resolveRoomContext;
+    /** 有效取消政策解析（Task 14；语义保留，实现转调 resolveRoomContext） */
     private resolvePolicy;
     /** 取消截止点固化：checkInTime 取房型配置（缺省 00:00） */
     private deriveDeadline;
@@ -130,4 +177,54 @@ export declare class HotelBookingService {
         completed: number;
         noShow: number;
     }>;
+    /**
+     * 改期报价（不落库）：
+     * - 规则（confirmed + V1 限改 1 次 + advanceDays/min/maxNights）不通过 → eligible=false + reason
+     * - 房态：逐晚把「本单旧段内自身 booked 锁」加回余量后判定 feasible
+     * - 价格：与 HotelOrderItemPriceCalculationStrategy 同口径（calcNightlyPricing.stayTotalCent，
+     *   quantity=间数时策略除间数再乘回，行小计≈住宿总价）；最终以提交时重算订单行为准
+     */
+    quoteReschedule(ctx: RequestContext, id: ID, dto: {
+        checkIn: string;
+        checkOut: string;
+    }, now?: Date): Promise<HotelRescheduleQuoteResult>;
+    /** 逐晚可行性：旧段内的晚把本单 roomCount 间自身锁加回（移动锁房的净占用口径） */
+    private rescheduleAvailability;
+    /**
+     * 顾客提交改期（归属隔离在 resolver 层；须在事务内调用）：
+     * - 等价/退差：移动锁房 → 订单行重定价 → 退差走售后系统单自动退款 → 预订改期完成
+     * - 补差：先建补差 Payment（不动订单行/锁/价）：
+     *   · 同步 Settled（钱包/模拟支付）→ Payment 事件内同步完成改期
+     *   · 异步 Authorized（微信/COD）→ 落 reschedulePendingJson，等 Settled 事件收口
+     */
+    rescheduleByCustomer(ctx: RequestContext, id: ID, dto: {
+        checkIn: string;
+        checkOut: string;
+        paymentMethod?: string | null;
+    }): Promise<HotelRescheduleMutationResult>;
+    /** 顾客放弃补差：支付未结算则取消 Payment 并清空在途意向（Settled 会自动完成改期，拒绝取消） */
+    cancelRescheduleSupplement(ctx: RequestContext, id: ID): Promise<HotelBooking>;
+    /**
+     * 补差 Payment 状态事件入口（plugin.ts 订阅 PaymentStateTransitionEvent）：
+     * - Settled → 完成改期（意向单或同步支付 metadata 定日期）
+     * - Cancelled/Declined/Error → 清空在途意向
+     * 路由双通道：metadata 标记（模拟支付/透传 metadata 的网关）+ 在途意向 paymentId 匹配
+     * （COD 等 handler 会覆写 metadata，必须靠 booking.reschedulePendingJson 关联）。
+     * 非补差支付一律 no-op。
+     */
+    handleReschedulePayment(event: PaymentStateTransitionEvent): Promise<void>;
+    /** 改期前置守卫：状态 + 限次 + 在途补差 */
+    private assertReschedulable;
+    /** 规则 + 房态 + 价格，构造改期目标（不通过直接 UserInputError） */
+    private buildRescheduleTarget;
+    private parsePending;
+    /**
+     * 改期落地（须在调用方事务内；事件/直提两路复用）：
+     * 1. 重新加载并重验规则/房态（支付期间可能被抢房）
+     * 2. 释放旧 booked 锁 → holdForOrder 权威重验并落新段 hold → confirmLocks 转 booked
+     * 3. 订单行自定义字段改日期 → OrderModifier/OrderCalculator 重定价（酒店计价策略按新日期逐晚计价）
+     * 4. 多退少补：退差走售后系统单自动退款；补差校验 Settled Payment 覆盖差额（舍入多收 >1 分退回）
+     * 5. booking 日期/晚数/总额/次数/取消截止点固化，清在途意向
+     */
+    private applyReschedule;
 }

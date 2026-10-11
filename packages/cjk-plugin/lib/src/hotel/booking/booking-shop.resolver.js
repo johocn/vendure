@@ -93,6 +93,75 @@ let HotelBookingShopResolver = class HotelBookingShopResolver {
             throw new core_1.UserInputError((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : 'CANCEL_FAILED');
         }
     }
+    /** 改期报价（改期弹层：规则拦截/逐晚房态/新旧价差；不落库） */
+    async hotelBookingRescheduleQuote(ctx, id, checkIn, checkOut) {
+        var _a, _b, _c;
+        await this.loadOwnedBooking(ctx, id);
+        try {
+            const r = await this.bookingService.quoteReschedule(ctx, id, {
+                checkIn,
+                checkOut,
+            });
+            return {
+                bookingId: r.booking.id,
+                eligible: r.eligible,
+                reason: (_a = r.reason) !== null && _a !== void 0 ? _a : null,
+                message: (_b = r.message) !== null && _b !== void 0 ? _b : null,
+                oldCheckIn: r.oldCheckIn,
+                oldCheckOut: r.oldCheckOut,
+                newCheckIn: r.newCheckIn,
+                newCheckOut: r.newCheckOut,
+                nights: r.nights,
+                oldTotalCent: r.oldTotalCent,
+                newTotalCent: r.newTotalCent,
+                diffCent: r.diffCent,
+                refundCent: r.refundCent,
+                supplementCent: r.supplementCent,
+                availability: r.availability,
+            };
+        }
+        catch (e) {
+            throw new core_1.UserInputError((_c = e === null || e === void 0 ? void 0 : e.message) !== null && _c !== void 0 ? _c : 'RESCHEDULE_QUOTE_FAILED');
+        }
+    }
+    /**
+     * 顾客提交改期（归属隔离）：
+     * applied=true 改期完成（等价/退差/补差即时到账）；applied=false 返回补差支付参数（paymentState/paymentPublic），
+     * 支付成功后由服务端事件自动收口，前端轮询 myHotelBookings 即可。
+     */
+    async rescheduleMyHotelBooking(ctx, id, checkIn, checkOut, paymentMethod) {
+        var _a;
+        await this.loadOwnedBooking(ctx, id);
+        try {
+            const r = await this.bookingService.rescheduleByCustomer(ctx, id, {
+                checkIn,
+                checkOut,
+                paymentMethod,
+            });
+            return {
+                booking: r.booking,
+                applied: r.applied,
+                paymentState: r.paymentState,
+                paymentId: r.paymentId,
+                supplementCent: r.supplementCent,
+                paymentPublic: r.paymentPublic ? JSON.stringify(r.paymentPublic) : null,
+            };
+        }
+        catch (e) {
+            throw new core_1.UserInputError((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : 'RESCHEDULE_FAILED');
+        }
+    }
+    /** 放弃在途改期补差（取消补差 Payment 并清空意向；归属隔离） */
+    async cancelMyRescheduleSupplement(ctx, id) {
+        var _a;
+        await this.loadOwnedBooking(ctx, id);
+        try {
+            return await this.bookingService.cancelRescheduleSupplement(ctx, id);
+        }
+        catch (e) {
+            throw new core_1.UserInputError((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : 'RESCHEDULE_SUPPLEMENT_CANCEL_FAILED');
+        }
+    }
 };
 exports.HotelBookingShopResolver = HotelBookingShopResolver;
 __decorate([
@@ -124,6 +193,40 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
     __metadata("design:returntype", Promise)
 ], HotelBookingShopResolver.prototype, "cancelMyHotelBooking", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('checkIn')),
+    __param(3, (0, graphql_1.Args)('checkOut')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String, String]),
+    __metadata("design:returntype", Promise)
+], HotelBookingShopResolver.prototype, "hotelBookingRescheduleQuote", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Transaction)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('checkIn')),
+    __param(3, (0, graphql_1.Args)('checkOut')),
+    __param(4, (0, graphql_1.Args)('paymentMethod', { nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String, String, String]),
+    __metadata("design:returntype", Promise)
+], HotelBookingShopResolver.prototype, "rescheduleMyHotelBooking", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Transaction)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], HotelBookingShopResolver.prototype, "cancelMyRescheduleSupplement", null);
 exports.HotelBookingShopResolver = HotelBookingShopResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [booking_service_1.HotelBookingService,
