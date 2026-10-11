@@ -1625,6 +1625,15 @@ importers:
         specifier: 5.8.2
         version: 5.8.2
 
+  packages/diy-calc:
+    devDependencies:
+      rimraf:
+        specifier: ^5.0.5
+        version: 5.0.5
+      typescript:
+        specifier: 5.8.2
+        version: 5.8.2
+
   packages/douyin-auth-plugin:
     devDependencies:
       '@vendure/common':

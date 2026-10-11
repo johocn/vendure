@@ -1,0 +1,17 @@
+{
+  "name": "@diy/calc",
+  "version": "0.1.0",
+  "license": "GPL-3.0-or-later",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "files": ["lib/**/*"],
+  "scripts": {
+    "watch": "tsc -p ./tsconfig.build.json --watch",
+    "build": "rimraf lib && tsc -p ./tsconfig.build.json",
+    "lint": "eslint --fix ."
+  },
+  "devDependencies": {
+    "rimraf": "^5.0.5",
+    "typescript": "5.8.2"
+  }
+}
