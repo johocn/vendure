@@ -22,6 +22,7 @@ const core_1 = require("@vendure/core");
 const graphql_tag_1 = __importDefault(require("graphql-tag"));
 const constants_1 = require("./constants");
 const diy_admin_resolver_1 = require("./diy-admin.resolver");
+const diy_order_service_1 = require("./diy-order.service");
 const diy_service_1 = require("./diy.service");
 const diy_stock_service_1 = require("./diy-stock.service");
 const diy_shop_resolver_1 = require("./diy-shop.resolver");
@@ -134,6 +135,29 @@ const adminSchema = (0, graphql_tag_1.default) `
         diyMaterial(id: ID!): DiyMaterial
         diyTemplates(app: String): [DiyTemplate!]!
         diyTemplate(id: ID!): DiyTemplate
+        diyPlans(app: String, status: String, skip: Int, take: Int): DiyPlanList!
+    }
+    type DiyPlan {
+        id: ID!
+        app: String!
+        userId: Int
+        templateId: Int!
+        templateVersion: Int!
+        status: String!
+        spec: JSON
+        bom: JSON
+        calcVersion: String!
+        quoteNo: String
+        expiresAt: DateTime
+        orderLineId: Int
+        thumb: String
+        shareImage: String
+        createdAt: DateTime!
+        updatedAt: DateTime!
+    }
+    type DiyPlanList {
+        items: [DiyPlan!]!
+        total: Int!
     }
     extend type Mutation {
         createDiyCategory(input: DiyCategoryInput!): DiyCategory!
@@ -223,6 +247,7 @@ const shopSchema = (0, graphql_tag_1.default) `
     extend type Mutation {
         createDiyPlan(templateCode: String!, spec: JSON!, thumb: String): DiyPlan!
         quoteDiyPlan(id: ID!): DiyPlan!
+        createOrderFromPlan(id: ID!): DiyPlan!
     }
 `;
 let DiySeedRunner = class DiySeedRunner {
@@ -243,12 +268,41 @@ let DiyPlugin = DiyPlugin_1 = class DiyPlugin {
         DiyPlugin_1.options = options !== null && options !== void 0 ? options : {};
         return DiyPlugin_1;
     }
-    constructor(options, seedRunner) {
+    constructor(options, seedRunner, connection, stockService, eventBus) {
         this.options = options;
         this.seedRunner = seedRunner;
+        this.connection = connection;
+        this.stockService = stockService;
+        this.eventBus = eventBus;
     }
     async onApplicationBootstrap() {
         await this.seedRunner.run();
+        await (0, diy_order_service_1.ensureCarrierProduct)(this.connection);
+        // 订单取消 → 回补 DIY 素材库存 + 方案回退 quoted（规格 §6.5）。
+        // 本 fork 无 VendureEventSubscriber 装饰器，按仓库惯例（coupon-plugin）在 bootstrap 订阅 EventBus。
+        this.eventBus.ofType(core_1.OrderStateTransitionEvent).subscribe(async (event) => {
+            var _a, _b;
+            if (event.toState !== 'Cancelled') {
+                return;
+            }
+            try {
+                for (const line of event.order.lines) {
+                    const planId = (_a = line.customFields) === null || _a === void 0 ? void 0 : _a.diyPlanId;
+                    const bomRaw = (_b = line.customFields) === null || _b === void 0 ? void 0 : _b.diyBom;
+                    if (!planId || !bomRaw) {
+                        continue;
+                    }
+                    const bom = JSON.parse(bomRaw);
+                    await this.stockService.restock(event.ctx, bom.items.map(i => ({ materialId: Number(i.materialId), qty: i.qty })));
+                    await this.connection
+                        .getRepository(event.ctx, diy_plan_entity_1.DiyPlan)
+                        .update({ id: Number(planId) }, { status: 'quoted', orderLineId: null });
+                }
+            }
+            catch (e) {
+                core_1.Logger.error(`Failed to restock diy materials on order cancel: ${e === null || e === void 0 ? void 0 : e.message}`, constants_1.loggerCtx);
+            }
+        });
         core_1.Logger.info('DiyPlugin initialized', constants_1.loggerCtx);
     }
 };
@@ -264,6 +318,7 @@ exports.DiyPlugin = DiyPlugin = DiyPlugin_1 = __decorate([
             diy_shop_service_1.DiyShopService,
             DiySeedRunner,
             diy_stock_service_1.DiyStockService,
+            diy_order_service_1.DiyOrderService,
         ],
         exports: [diy_service_1.DiyService],
         adminApiExtensions: {
@@ -276,11 +331,17 @@ exports.DiyPlugin = DiyPlugin = DiyPlugin_1 = __decorate([
         },
         configuration: config => {
             config.authOptions.customPermissions.push(permissions_1.DiyRead, permissions_1.DiyCreate, permissions_1.DiyUpdate, permissions_1.DiyDelete);
+            config.customFields.OrderLine.push({ name: 'diyPlanId', type: 'int', nullable: true }, { name: 'diyUnitPrice', type: 'int', nullable: true }, { name: 'diyBom', type: 'text', nullable: true }, { name: 'diyQuoteRefAmount', type: 'int', nullable: true });
+            const original = config.orderOptions.orderItemPriceCalculationStrategy;
+            config.orderOptions.orderItemPriceCalculationStrategy = new diy_order_service_1.DiyOrderItemPriceCalculationStrategy(original);
             return config;
         },
         compatibility: '^3.0.0',
     }),
     __param(0, (0, common_1.Inject)(constants_1.PLUGIN_INIT_OPTIONS)),
-    __metadata("design:paramtypes", [Object, DiySeedRunner])
+    __metadata("design:paramtypes", [Object, DiySeedRunner,
+        core_1.TransactionalConnection,
+        diy_stock_service_1.DiyStockService,
+        core_1.EventBus])
 ], DiyPlugin);
 //# sourceMappingURL=diy-plugin.js.map

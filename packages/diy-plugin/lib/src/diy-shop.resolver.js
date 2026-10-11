@@ -15,10 +15,12 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.DiyShopResolver = void 0;
 const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
+const diy_order_service_1 = require("./diy-order.service");
 const diy_shop_service_1 = require("./diy-shop.service");
 let DiyShopResolver = class DiyShopResolver {
-    constructor(service) {
+    constructor(service, orderService) {
         this.service = service;
+        this.orderService = orderService;
     }
     async diyMaterials(ctx, filter) {
         return this.service.findShopMaterials(ctx, filter !== null && filter !== void 0 ? filter : {});
@@ -40,6 +42,9 @@ let DiyShopResolver = class DiyShopResolver {
     }
     async quoteDiyPlan(ctx, id) {
         return this.service.quoteDiyPlan(ctx, id);
+    }
+    async createOrderFromPlan(ctx, id) {
+        return this.orderService.createOrderFromPlan(ctx, id);
     }
 };
 exports.DiyShopResolver = DiyShopResolver;
@@ -109,8 +114,18 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, String]),
     __metadata("design:returntype", Promise)
 ], DiyShopResolver.prototype, "quoteDiyPlan", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String]),
+    __metadata("design:returntype", Promise)
+], DiyShopResolver.prototype, "createOrderFromPlan", null);
 exports.DiyShopResolver = DiyShopResolver = __decorate([
     (0, graphql_1.Resolver)(),
-    __metadata("design:paramtypes", [diy_shop_service_1.DiyShopService])
+    __metadata("design:paramtypes", [diy_shop_service_1.DiyShopService,
+        diy_order_service_1.DiyOrderService])
 ], DiyShopResolver);
 //# sourceMappingURL=diy-shop.resolver.js.map

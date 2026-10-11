@@ -18,6 +18,7 @@ const core_1 = require("@vendure/core");
 const constants_1 = require("./constants");
 const diy_category_entity_1 = require("./entities/diy-category.entity");
 const diy_material_entity_1 = require("./entities/diy-material.entity");
+const diy_plan_entity_1 = require("./entities/diy-plan.entity");
 const diy_template_entity_1 = require("./entities/diy-template.entity");
 let DiyService = class DiyService {
     constructor(connection, options) {
@@ -400,6 +401,26 @@ let DiyService = class DiyService {
             throw new core_1.UserInputError(`租户模板 code 已存在: ${source.code}`);
         }
         return repo.save(new diy_template_entity_1.DiyTemplate(Object.assign(Object.assign({}, source), { id: undefined, app: tenantApp })));
+    }
+    /* ------------------------------ 方案 ------------------------------ */
+    /** admin 方案列表（规格 §7 admin 面）；app 不传 = 全部租户端 */
+    async findPlans(ctx, options = {}) {
+        var _a, _b;
+        const repo = this.connection.getRepository(ctx, diy_plan_entity_1.DiyPlan);
+        const where = {};
+        if (options.app !== undefined) {
+            where.app = options.app;
+        }
+        if (options.status) {
+            where.status = options.status;
+        }
+        const [items, total] = await repo.findAndCount({
+            where,
+            order: { createdAt: 'DESC' },
+            skip: (_a = options.skip) !== null && _a !== void 0 ? _a : 0,
+            take: (_b = options.take) !== null && _b !== void 0 ? _b : 50,
+        });
+        return { items, total };
     }
 };
 exports.DiyService = DiyService;

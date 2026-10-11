@@ -81,6 +81,10 @@ let DiyAdminResolver = class DiyAdminResolver {
     async copyDiyTemplate(ctx, id) {
         return this.service.copyTemplate(ctx, id);
     }
+    /* ------------------------------ 方案 ------------------------------ */
+    async diyPlans(ctx, app, status, skip, take) {
+        return this.service.findPlans(ctx, { app, status, skip, take });
+    }
 };
 exports.DiyAdminResolver = DiyAdminResolver;
 __decorate([
@@ -269,6 +273,18 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], DiyAdminResolver.prototype, "copyDiyTemplate", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.DiyRead.Permission),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('app', { nullable: true })),
+    __param(2, (0, graphql_1.Args)('status', { nullable: true })),
+    __param(3, (0, graphql_1.Args)('skip', { nullable: true, defaultValue: 0 })),
+    __param(4, (0, graphql_1.Args)('take', { nullable: true, defaultValue: 50 })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, String, Number, Number]),
+    __metadata("design:returntype", Promise)
+], DiyAdminResolver.prototype, "diyPlans", null);
 exports.DiyAdminResolver = DiyAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [diy_service_1.DiyService])

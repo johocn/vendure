@@ -1,6 +1,7 @@
 import { ID, RequestContext, TransactionalConnection } from '@vendure/core';
 import { DiyCategory } from './entities/diy-category.entity';
 import { DiyMaterial } from './entities/diy-material.entity';
+import { DiyPlan } from './entities/diy-plan.entity';
 import { DiyTemplate } from './entities/diy-template.entity';
 import { DiyCategoryInput, DiyMaterialInput, DiyPluginOptions, DiyTemplateInput } from './types';
 export declare class DiyService {
@@ -40,4 +41,14 @@ export declare class DiyService {
     publishTemplate(ctx: RequestContext, id: ID): Promise<DiyTemplate>;
     /** 租户复制平台模板改配置（同素材库哲学） */
     copyTemplate(ctx: RequestContext, id: ID): Promise<DiyTemplate>;
+    /** admin 方案列表（规格 §7 admin 面）；app 不传 = 全部租户端 */
+    findPlans(ctx: RequestContext, options?: {
+        app?: string;
+        status?: string;
+        skip?: number;
+        take?: number;
+    }): Promise<{
+        items: DiyPlan[];
+        total: number;
+    }>;
 }

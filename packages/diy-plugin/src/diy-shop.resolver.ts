@@ -1,6 +1,7 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { Allow, Ctx, Permission, RequestContext } from '@vendure/core';
 
+import { DiyOrderService } from './diy-order.service';
 import { DiyMaterialList, DiyPlanList, DiyShopService } from './diy-shop.service';
 import { DiyMaterial } from './entities/diy-material.entity';
 import { DiyPlan } from './entities/diy-plan.entity';
@@ -8,7 +9,10 @@ import { DiyTemplate } from './entities/diy-template.entity';
 
 @Resolver()
 export class DiyShopResolver {
-    constructor(private service: DiyShopService) {}
+    constructor(
+        private service: DiyShopService,
+        private orderService: DiyOrderService,
+    ) {}
 
     @Query()
     @Allow(Permission.Public)
@@ -63,5 +67,11 @@ export class DiyShopResolver {
     @Allow(Permission.Authenticated)
     async quoteDiyPlan(@Ctx() ctx: RequestContext, @Args('id') id: string): Promise<DiyPlan> {
         return this.service.quoteDiyPlan(ctx, id);
+    }
+
+    @Mutation()
+    @Allow(Permission.Authenticated)
+    async createOrderFromPlan(@Ctx() ctx: RequestContext, @Args('id') id: string): Promise<DiyPlan> {
+        return this.orderService.createOrderFromPlan(ctx, id);
     }
 }

@@ -3,6 +3,7 @@ import { Allow, Ctx, ID, RequestContext, Transaction } from '@vendure/core';
 
 import { DiyCategory } from './entities/diy-category.entity';
 import { DiyMaterial } from './entities/diy-material.entity';
+import { DiyPlan } from './entities/diy-plan.entity';
 import { DiyTemplate } from './entities/diy-template.entity';
 import { DiyCreate, DiyDelete, DiyRead, DiyUpdate } from './permissions';
 import { DiyService } from './diy.service';
@@ -153,5 +154,19 @@ export class DiyAdminResolver {
     @Allow(DiyCreate.Permission)
     async copyDiyTemplate(@Ctx() ctx: RequestContext, @Args('id') id: ID): Promise<DiyTemplate> {
         return this.service.copyTemplate(ctx, id);
+    }
+
+    /* ------------------------------ 方案 ------------------------------ */
+
+    @Query()
+    @Allow(DiyRead.Permission)
+    async diyPlans(
+        @Ctx() ctx: RequestContext,
+        @Args('app', { nullable: true }) app?: string,
+        @Args('status', { nullable: true }) status?: string,
+        @Args('skip', { nullable: true, defaultValue: 0 }) skip?: number,
+        @Args('take', { nullable: true, defaultValue: 50 }) take?: number,
+    ): Promise<{ items: DiyPlan[]; total: number }> {
+        return this.service.findPlans(ctx, { app, status, skip, take });
     }
 }

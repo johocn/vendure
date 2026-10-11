@@ -1,9 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ID, Logger, RequestContext, TransactionalConnection, UserInputError } from '@vendure/core';
+import { FindOptionsWhere } from 'typeorm';
 
 import { loggerCtx, PLUGIN_INIT_OPTIONS } from './constants';
 import { DiyCategory } from './entities/diy-category.entity';
 import { DiyMaterial } from './entities/diy-material.entity';
+import { DiyPlan } from './entities/diy-plan.entity';
 import { DiyTemplate } from './entities/diy-template.entity';
 import {
     DiyCategoryInput,
@@ -390,5 +392,29 @@ export class DiyService {
                 app: tenantApp,
             } as Partial<DiyTemplate>),
         );
+    }
+
+    /* ------------------------------ 方案 ------------------------------ */
+
+    /** admin 方案列表（规格 §7 admin 面）；app 不传 = 全部租户端 */
+    async findPlans(
+        ctx: RequestContext,
+        options: { app?: string; status?: string; skip?: number; take?: number } = {},
+    ): Promise<{ items: DiyPlan[]; total: number }> {
+        const repo = this.connection.getRepository(ctx, DiyPlan);
+        const where: FindOptionsWhere<DiyPlan> = {};
+        if (options.app !== undefined) {
+            where.app = options.app;
+        }
+        if (options.status) {
+            where.status = options.status as 'draft' | 'quoted' | 'ordered';
+        }
+        const [items, total] = await repo.findAndCount({
+            where,
+            order: { createdAt: 'DESC' },
+            skip: options.skip ?? 0,
+            take: options.take ?? 50,
+        });
+        return { items, total };
     }
 }

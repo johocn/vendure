@@ -1,6 +1,7 @@
 import { ID, RequestContext } from '@vendure/core';
 import { DiyCategory } from './entities/diy-category.entity';
 import { DiyMaterial } from './entities/diy-material.entity';
+import { DiyPlan } from './entities/diy-plan.entity';
 import { DiyTemplate } from './entities/diy-template.entity';
 import { DiyService } from './diy.service';
 export declare class DiyAdminResolver {
@@ -25,4 +26,8 @@ export declare class DiyAdminResolver {
     deleteDiyTemplate(ctx: RequestContext, id: ID): Promise<boolean>;
     publishDiyTemplate(ctx: RequestContext, id: ID): Promise<DiyTemplate>;
     copyDiyTemplate(ctx: RequestContext, id: ID): Promise<DiyTemplate>;
+    diyPlans(ctx: RequestContext, app?: string, status?: string, skip?: number, take?: number): Promise<{
+        items: DiyPlan[];
+        total: number;
+    }>;
 }

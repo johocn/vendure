@@ -395,6 +395,7 @@ export const devConfig: VendureConfig = {
         // 风格模板库与全局配置（四层风格体系后台配置）。app 决定本实例模板库端：nshop/vshop，缺省 nshop
         ShopTemplatePlugin.init({ app: (process.env.APP as 'nshop' | 'vshop') ?? 'nshop' }),
         // DIY 商品：两层素材库 + 玩法模板 + 方案三链路（demo/quote/order）
+        // 保持位于设置 orderItemPriceCalculationStrategy 的插件/配置之后（diy 价格包装器委托 original）
         DiyPlugin.init({ app: (process.env.APP as 'nshop' | 'vshop') ?? 'nshop' }),
         PickupPlugin.init({}),
         ...((process.env.ALIPAY_NOTIFY_URL || process.env.DEV_BYPASS_ALIPAY === 'true') ? [AlipayPlugin.init({

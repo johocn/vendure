@@ -1,10 +1,12 @@
 import { RequestContext } from '@vendure/core';
+import { DiyOrderService } from './diy-order.service';
 import { DiyMaterialList, DiyPlanList, DiyShopService } from './diy-shop.service';
 import { DiyPlan } from './entities/diy-plan.entity';
 import { DiyTemplate } from './entities/diy-template.entity';
 export declare class DiyShopResolver {
     private service;
-    constructor(service: DiyShopService);
+    private orderService;
+    constructor(service: DiyShopService, orderService: DiyOrderService);
     diyMaterials(ctx: RequestContext, filter?: any): Promise<DiyMaterialList>;
     diyShopTemplates(ctx: RequestContext): Promise<DiyTemplate[]>;
     diyShopTemplate(ctx: RequestContext, code: string): Promise<DiyTemplate | null>;
@@ -12,4 +14,5 @@ export declare class DiyShopResolver {
     myDiyPlans(ctx: RequestContext, status?: 'draft' | 'quoted' | 'ordered', skip?: number, take?: number): Promise<DiyPlanList>;
     myDiyPlan(ctx: RequestContext, id: string): Promise<DiyPlan | null>;
     quoteDiyPlan(ctx: RequestContext, id: string): Promise<DiyPlan>;
+    createOrderFromPlan(ctx: RequestContext, id: string): Promise<DiyPlan>;
 }
