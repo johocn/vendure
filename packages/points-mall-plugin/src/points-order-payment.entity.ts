@@ -4,6 +4,8 @@ import { Column, Entity, Index } from 'typeorm';
 /** 混合价现金支付单（微信），参照 RechargeOrder 的幂等模式 */
 @Entity()
 @Index(['orderId'])
+// 退款重试 task 扫描条件（channelId + refundStatus + updatedAt）复合索引
+@Index(['channelId', 'refundStatus', 'updatedAt'])
 export class PointsOrderPayment extends VendureEntity {
     constructor(input?: DeepPartial<PointsOrderPayment>) {
         super(input);

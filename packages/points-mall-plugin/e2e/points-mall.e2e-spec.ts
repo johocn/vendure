@@ -749,4 +749,125 @@ describe('PointsMallPlugin · 积分商城（收藏/积分商品/兑换/支付/�
         expect(target.status).toBe('pending_ship');
         expect(target.paidAt).toBeTruthy();
     });
+
+    it('退款 PROCESSING：受理未到账保持 refunding，对账 SUCCESS 后 task 落 refunded', async () => {
+        const pp = await createPointsProduct({
+            pointsPrice: 110,
+            cashPrice: 70,
+            deliveryType: 'physical',
+            stock: 2,
+        });
+        const order = await exchange(pp.id, 1, true);
+        const numericId = Number(order.code.replace('PO-', ''));
+        await shopClient.query(gql`
+            mutation { cancelPointsOrder(id: "${order.id}") { id status } }
+        `);
+
+        const svc = server.app.get(PointsMallService);
+        const conn = server.app.get(TransactionalConnection);
+        const refundMock = vi.fn().mockResolvedValue({ refundId: 'rx1', status: 'PROCESSING' });
+        // findBareRefund 可切换返回态（闭包变量），模拟微信侧受理→到账的过程
+        let reconcileStatus = 'PROCESSING';
+        const findMock = vi.fn(() => Promise.resolve({ refundId: 'rx1', status: reconcileStatus }));
+        svc.setWechatpayGateway({ refundBarePayment: refundMock, findBareRefund: findMock });
+        const sqliteUtc = (d: Date) => d.toISOString().slice(0, 23).replace('T', ' ');
+        try {
+            const adminCtx = await server.app.get(RequestContextService).create({ apiType: 'admin' });
+            // settle：微信受理但 PROCESSING → 保持 refunding，不落终态
+            await svc.settlePointsOrderByOutTradeNo(adminCtx, order.code, 'WX-LATE-4');
+            let payRows = await conn.rawConnection.query(
+                'SELECT "refundStatus", "refundError", "refundAttempts" FROM points_order_payment WHERE orderId = ?',
+                [numericId],
+            );
+            expect(payRows[0].refundStatus).toBe('refunding');
+            expect(refundMock).toHaveBeenCalledTimes(1);
+
+            // 拨回 updatedAt 满足卡单条件（>10min），跑 task：对账仍 PROCESSING → 保持 refunding 且不重发
+            await conn.rawConnection.query('UPDATE points_order_payment SET "updatedAt" = ? WHERE orderId = ?', [
+                sqliteUtc(new Date(Date.now() - 11 * 60 * 1000)),
+                numericId,
+            ]);
+            const injector = new Injector(server.app.get(ModuleRef));
+            const r1 = await pointsOrderRefundRetryTask.execute(injector);
+            expect(r1.processing).toBeGreaterThanOrEqual(1);
+            payRows = await conn.rawConnection.query(
+                'SELECT "refundStatus", "refundAttempts" FROM points_order_payment WHERE orderId = ?',
+                [numericId],
+            );
+            expect(payRows[0].refundStatus).toBe('refunding');
+            expect(refundMock).toHaveBeenCalledTimes(1); // PROCESSING 不重发
+
+            // 对账翻 SUCCESS → task 落 refunded（不重发，仍只调用过一次退款发起）
+            reconcileStatus = 'SUCCESS';
+            const r2 = await pointsOrderRefundRetryTask.execute(injector);
+            expect(r2.refunded).toBeGreaterThanOrEqual(1);
+            payRows = await conn.rawConnection.query(
+                'SELECT "refundStatus", "refundedAt" FROM points_order_payment WHERE orderId = ?',
+                [numericId],
+            );
+            expect(payRows[0].refundStatus).toBe('refunded');
+            expect(payRows[0].refundedAt).toBeTruthy();
+            expect(refundMock).toHaveBeenCalledTimes(1);
+        } finally {
+            svc.setWechatpayGateway(null);
+        }
+    });
+
+    it('退款 CLOSED：微信终态失败落 failed，refundError 含状态；admin 订单列表暴露退款字段', async () => {
+        const pp = await createPointsProduct({
+            pointsPrice: 130,
+            cashPrice: 90,
+            deliveryType: 'physical',
+            stock: 2,
+        });
+        const order = await exchange(pp.id, 1, true);
+        const numericId = Number(order.code.replace('PO-', ''));
+        await shopClient.query(gql`
+            mutation { cancelPointsOrder(id: "${order.id}") { id status } }
+        `);
+
+        const svc = server.app.get(PointsMallService);
+        const conn = server.app.get(TransactionalConnection);
+        const refundMock = vi.fn().mockResolvedValue({ refundId: 'rx2', status: 'CLOSED' });
+        svc.setWechatpayGateway({ refundBarePayment: refundMock });
+        try {
+            const adminCtx = await server.app.get(RequestContextService).create({ apiType: 'admin' });
+            await svc.settlePointsOrderByOutTradeNo(adminCtx, order.code, 'WX-LATE-5');
+
+            const payRows = await conn.rawConnection.query(
+                'SELECT "refundStatus", "refundError", "refundAttempts" FROM points_order_payment WHERE orderId = ?',
+                [numericId],
+            );
+            expect(payRows[0].refundStatus).toBe('failed');
+            expect(String(payRows[0].refundError)).toContain('CLOSED');
+            // attempts 走 JS 计算值自增（去裸 SQL 方言依赖）
+            expect(payRows[0].refundAttempts).toBe(1);
+
+            // admin 订单列表一次挂上支付单退款字段
+            const adminOrders = await adminClient.query(gql`
+                query {
+                    pointsOrdersAdmin(options: { keyword: "PO-" }) {
+                        items {
+                            code
+                            payments {
+                                id amount status externalRef transactionId
+                                refundStatus refundNo refundedAt refundError refundAttempts
+                            }
+                        }
+                    }
+                }
+            `) as any;
+            const target = adminOrders.pointsOrdersAdmin.items.find((o: any) => o.code === order.code);
+            expect(target).toBeTruthy();
+            expect(target.payments.length).toBe(1);
+            const pay = target.payments[0];
+            expect(pay.refundStatus).toBe('failed');
+            expect(pay.refundError).toContain('CLOSED');
+            expect(pay.refundAttempts).toBe(1);
+            expect(pay.amount).toBe(90);
+            expect(pay.externalRef).toBe(order.code);
+        } finally {
+            svc.setWechatpayGateway(null);
+        }
+    });
 });

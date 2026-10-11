@@ -73,7 +73,10 @@ __decorate([
 ], PointsOrderPayment.prototype, "channelId", void 0);
 exports.PointsOrderPayment = PointsOrderPayment = __decorate([
     (0, typeorm_1.Entity)(),
-    (0, typeorm_1.Index)(['orderId']),
+    (0, typeorm_1.Index)(['orderId'])
+    // 退款重试 task 扫描条件（channelId + refundStatus + updatedAt）复合索引
+    ,
+    (0, typeorm_1.Index)(['channelId', 'refundStatus', 'updatedAt']),
     __metadata("design:paramtypes", [Object])
 ], PointsOrderPayment);
 //# sourceMappingURL=points-order-payment.entity.js.map

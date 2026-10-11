@@ -22,7 +22,7 @@ export const pointsOrderRefundRetryTask = new ScheduledTask({
         } catch {
             // 未注册 options 用默认（启用）
         }
-        if (options.pointsRefundRetryEnabled === false) return { refunded: 0, failed: 0, skipped: true };
+        if (options.pointsRefundRetryEnabled === false) return { refunded: 0, failed: 0, processing: 0, skipped: true };
         const connection = injector.get(TransactionalConnection);
         const requestContextService = injector.get(RequestContextService);
         const svc = injector.get(PointsMallService);
@@ -42,6 +42,7 @@ export const pointsOrderRefundRetryTask = new ScheduledTask({
         const channelRepo = connection.rawConnection.getRepository(Channel);
         let refunded = 0;
         let failed = 0;
+        let processing = 0;
         for (const g of groups) {
             const channel = g.cid ? await channelRepo.findOne({ where: { id: g.cid } }) : null;
             const ctx = channel
@@ -50,10 +51,14 @@ export const pointsOrderRefundRetryTask = new ScheduledTask({
             const r = await svc.retryPointsOrderRefunds(ctx);
             refunded += r.refunded;
             failed += r.failed;
+            processing += r.processing ?? 0;
         }
-        if (refunded || failed) {
-            Logger.info(`Points order refund retry: refunded=${refunded} failed=${failed}`, loggerCtx);
+        if (refunded || failed || processing) {
+            Logger.info(
+                `Points order refund retry: refunded=${refunded} failed=${failed} processing=${processing}`,
+                loggerCtx,
+            );
         }
-        return { refunded, failed };
+        return { refunded, failed, processing };
     },
 });

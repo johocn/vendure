@@ -17,16 +17,16 @@ exports.pointsOrderRefundRetryTask = new core_1.ScheduledTask({
     timeout: 120 * 1000,
     preventOverlap: true,
     async execute({ injector, scheduledContext }) {
-        var _a;
+        var _a, _b;
         let options = {};
         try {
             options = (_a = injector.get(constants_1.POINTS_MALL_PLUGIN_OPTIONS)) !== null && _a !== void 0 ? _a : {};
         }
-        catch (_b) {
+        catch (_c) {
             // 未注册 options 用默认（启用）
         }
         if (options.pointsRefundRetryEnabled === false)
-            return { refunded: 0, failed: 0, skipped: true };
+            return { refunded: 0, failed: 0, processing: 0, skipped: true };
         const connection = injector.get(core_1.TransactionalConnection);
         const requestContextService = injector.get(core_1.RequestContextService);
         const svc = injector.get(points_mall_service_1.PointsMallService);
@@ -42,6 +42,7 @@ exports.pointsOrderRefundRetryTask = new core_1.ScheduledTask({
         const channelRepo = connection.rawConnection.getRepository(core_1.Channel);
         let refunded = 0;
         let failed = 0;
+        let processing = 0;
         for (const g of groups) {
             const channel = g.cid ? await channelRepo.findOne({ where: { id: g.cid } }) : null;
             const ctx = channel
@@ -50,11 +51,12 @@ exports.pointsOrderRefundRetryTask = new core_1.ScheduledTask({
             const r = await svc.retryPointsOrderRefunds(ctx);
             refunded += r.refunded;
             failed += r.failed;
+            processing += (_b = r.processing) !== null && _b !== void 0 ? _b : 0;
         }
-        if (refunded || failed) {
-            core_1.Logger.info(`Points order refund retry: refunded=${refunded} failed=${failed}`, loggerCtx);
+        if (refunded || failed || processing) {
+            core_1.Logger.info(`Points order refund retry: refunded=${refunded} failed=${failed} processing=${processing}`, loggerCtx);
         }
-        return { refunded, failed };
+        return { refunded, failed, processing };
     },
 });
 //# sourceMappingURL=points-order-refund-retry.task.js.map

@@ -71,16 +71,22 @@ export declare class PointsMallService {
      * 提交后事务外调微信退款；失败落 failed 交 refund-retry task，本方法不抛错（回调须返回成功）。
      */
     private refundLateSettledPayment;
-    /** 调微信裸退款并按结果原子落 refunded/failed（refunding → 终态），返回是否成功。 */
+    /**
+     * 调微信裸退款并按微信返回状态分态落库（refunding → 终态/保持）：
+     * SUCCESS → refunded；CLOSED/ABNORMAL → failed；PROCESSING/未知非终态 → 保持 refunding（受理未到账，留待重试 task 对账）。
+     * 返回 'refunded' | 'processing' | 'failed' 供调用方记日志。
+     */
     private executeRefund;
     /**
      * 退款重试核心（task 按渠道分组后逐渠道调用）：
-     * 扫 failed 行与卡 refunding 超 10 分钟的行（refundAttempts<8，指数退避 5min×2^min(attempts,4)）；
-     * 卡 refunding 行先 findBareRefund 对账，微信侧已成功则直接落 refunded，否则同 refundNo 幂等重发。
+     * 扫 failed 行与卡 refunding 超 10 分钟的行（refundAttempts<8，指数退避 5min×2^min(attempts,4)，单次最多 50 行）；
+     * 卡 refunding 行先 findBareRefund 对账：SUCCESS→refunded；CLOSED/ABNORMAL→failed；
+     * PROCESSING/未知非终态→保持 refunding 下轮再来；查无记录→同 refundNo 幂等重发。
      */
     retryPointsOrderRefunds(ctx: RequestContext): Promise<{
         refunded: number;
         failed: number;
+        processing: number;
     }>;
     /** 原子取消一笔待支付单：claim 状态 → 退分 → 回补库存 → 支付单置 cancelled。调用方负责事务与归属校验。 */
     private executeCancel;
@@ -91,6 +97,8 @@ export declare class PointsMallService {
     myPointsOrders(ctx: RequestContext, options?: PointsOrderListOptions): Promise<PaginatedList<PointsOrder>>;
     myPointsOrder(ctx: RequestContext, id: ID): Promise<PointsOrder | undefined>;
     adminPointsOrders(ctx: RequestContext, options?: PointsOrderListOptions): Promise<PaginatedList<PointsOrder>>;
+    /** orderId → PointsOrderPayment 列表（单次 IN 查询，供 admin 订单列表组装退款字段） */
+    private paymentsByOrderIds;
     markPointsOrderPaid(ctx: RequestContext, id: ID): Promise<PointsOrder>;
     markPointsOrderShipped(ctx: RequestContext, id: ID, trackingNo?: string): Promise<PointsOrder>;
     markPointsOrderCompleted(ctx: RequestContext, id: ID): Promise<PointsOrder>;

@@ -210,6 +210,19 @@ const adminSchema = () => gql `
         shippedAt: DateTime
         completedAt: DateTime
         createdAt: DateTime!
+        payments: [PointsOrderPaymentAdmin]
+    }
+    type PointsOrderPaymentAdmin {
+        id: Int!
+        amount: Int!
+        status: String!
+        externalRef: String
+        transactionId: String
+        refundStatus: String!
+        refundNo: String
+        refundedAt: DateTime
+        refundError: String
+        refundAttempts: Int!
     }
     type PointsOrderAdminList implements PaginatedList {
         items: [PointsOrderAdmin!]!

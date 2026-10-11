@@ -721,75 +721,104 @@ export class PointsMallService {
         }
         if (!claimed) return; // 已在退款/已退款 → 幂等返回
         payment.refundNo = refundNo;
-        const ok = await this.executeRefund(ctx, payment, 'Points order cancelled before payment callback');
-        if (ok) {
+        const result = await this.executeRefund(ctx, payment, 'Points order cancelled before payment callback');
+        if (result === 'refunded') {
             Logger.warn(
                 `PointsOrder ${order.code} already cancelled but cash received; auto-refunded ${payment.amount} (refundNo=${refundNo})`,
+                loggerCtx,
+            );
+        } else if (result === 'processing') {
+            Logger.warn(
+                `PointsOrder ${order.code} already cancelled but cash received; refund accepted, awaiting settlement (refundNo=${refundNo})`,
                 loggerCtx,
             );
         }
     }
 
-    /** 调微信裸退款并按结果原子落 refunded/failed（refunding → 终态），返回是否成功。 */
-    private async executeRefund(ctx: RequestContext, payment: PointsOrderPayment, reason: string): Promise<boolean> {
+    /**
+     * 调微信裸退款并按微信返回状态分态落库（refunding → 终态/保持）：
+     * SUCCESS → refunded；CLOSED/ABNORMAL → failed；PROCESSING/未知非终态 → 保持 refunding（受理未到账，留待重试 task 对账）。
+     * 返回 'refunded' | 'processing' | 'failed' 供调用方记日志。
+     */
+    private async executeRefund(
+        ctx: RequestContext,
+        payment: PointsOrderPayment,
+        reason: string,
+    ): Promise<'refunded' | 'processing' | 'failed'> {
         const payRepo = this.connection.getRepository(ctx, PointsOrderPayment);
-        if (!this.gateway?.refundBarePayment) {
+        // JS 计算值自增：裸 SQL `x + 1` 在 MariaDB 双引号下是字符串字面量会恒写 1（attempts 仅退避元数据，竞态无害）
+        const markFailed = async (refundError: string) => {
             await payRepo
                 .createQueryBuilder()
                 .update(PointsOrderPayment)
                 .set({
                     refundStatus: 'failed',
-                    refundError: 'Payment gateway refund unavailable',
-                    refundAttempts: () => '"refundAttempts" + 1',
+                    refundError: refundError.slice(0, 500),
+                    refundAttempts: payment.refundAttempts + 1,
                 })
                 .where("id = :id AND refundStatus = 'refunding'", { id: payment.id })
                 .execute();
+        };
+        if (!this.gateway?.refundBarePayment) {
+            await markFailed('Payment gateway refund unavailable');
             Logger.error(`PointsOrderPayment ${payment.id} refund failed: gateway unavailable`, loggerCtx);
-            return false;
+            return 'failed';
         }
+        let res: { refundId?: string; status?: string };
         try {
-            await this.gateway.refundBarePayment(ctx, {
+            res = await this.gateway.refundBarePayment(ctx, {
                 outTradeNo: payment.externalRef ?? '',
                 outRefundNo: payment.refundNo,
                 refund: payment.amount,
                 total: payment.amount,
                 reason,
             });
+        } catch (e: any) {
+            const msg = String(e?.message ?? e);
+            await markFailed(msg);
+            Logger.error(
+                `PointsOrderPayment ${payment.id} refund failed (refundNo=${payment.refundNo}): ${msg}`,
+                loggerCtx,
+            );
+            return 'failed';
+        }
+        const status = res?.status ?? '';
+        if (status === 'SUCCESS') {
             await payRepo
                 .createQueryBuilder()
                 .update(PointsOrderPayment)
                 .set({ refundStatus: 'refunded', refundedAt: new Date(), refundError: null })
                 .where("id = :id AND refundStatus = 'refunding'", { id: payment.id })
                 .execute();
-            return true;
-        } catch (e: any) {
-            await payRepo
-                .createQueryBuilder()
-                .update(PointsOrderPayment)
-                .set({
-                    refundStatus: 'failed',
-                    refundError: String(e?.message ?? e).slice(0, 500),
-                    refundAttempts: () => '"refundAttempts" + 1',
-                })
-                .where("id = :id AND refundStatus = 'refunding'", { id: payment.id })
-                .execute();
+            return 'refunded';
+        }
+        if (status === 'CLOSED' || status === 'ABNORMAL') {
+            await markFailed(`微信退款终态失败: status=${status}`);
             Logger.error(
-                `PointsOrderPayment ${payment.id} refund failed (refundNo=${payment.refundNo}): ${String(e?.message ?? e)}`,
+                `PointsOrderPayment ${payment.id} refund terminal failure (refundNo=${payment.refundNo}): status=${status}`,
                 loggerCtx,
             );
-            return false;
+            return 'failed';
         }
+        // PROCESSING/未知非终态：受理未必到账，refunded 是终态会阻断重试对账 → 保持 refunding 不动
+        Logger.warn(
+            `PointsOrderPayment ${payment.id} refund accepted but status=${status || 'UNKNOWN'}, keeping refunding (refundNo=${payment.refundNo})`,
+            loggerCtx,
+        );
+        return 'processing';
     }
 
     /**
      * 退款重试核心（task 按渠道分组后逐渠道调用）：
-     * 扫 failed 行与卡 refunding 超 10 分钟的行（refundAttempts<8，指数退避 5min×2^min(attempts,4)）；
-     * 卡 refunding 行先 findBareRefund 对账，微信侧已成功则直接落 refunded，否则同 refundNo 幂等重发。
+     * 扫 failed 行与卡 refunding 超 10 分钟的行（refundAttempts<8，指数退避 5min×2^min(attempts,4)，单次最多 50 行）；
+     * 卡 refunding 行先 findBareRefund 对账：SUCCESS→refunded；CLOSED/ABNORMAL→failed；
+     * PROCESSING/未知非终态→保持 refunding 下轮再来；查无记录→同 refundNo 幂等重发。
      */
-    async retryPointsOrderRefunds(ctx: RequestContext): Promise<{ refunded: number; failed: number }> {
+    async retryPointsOrderRefunds(ctx: RequestContext): Promise<{ refunded: number; failed: number; processing: number }> {
         const MAX_ATTEMPTS = 8;
         const STUCK_REFUNDING_MS = 10 * 60 * 1000;
         const RETRY_BASE_MS = 5 * 60 * 1000;
+        const BATCH_LIMIT = 50;
         const now = Date.now();
         const payRepo = this.connection.getRepository(ctx, PointsOrderPayment);
         const candidates = await payRepo
@@ -804,9 +833,11 @@ export class PointsMallService {
                 }),
             )
             .andWhere('p."refundAttempts" < :max', { max: MAX_ATTEMPTS })
+            .take(BATCH_LIMIT)
             .getMany();
         let refunded = 0;
         let failed = 0;
+        let processing = 0;
         for (const payment of candidates) {
             const backoffMs = RETRY_BASE_MS * Math.pow(2, Math.min(payment.refundAttempts ?? 0, 4));
             if (payment.updatedAt && now - payment.updatedAt.getTime() < backoffMs) continue;
@@ -814,7 +845,8 @@ export class PointsMallService {
             if (payment.refundStatus === 'refunding' && this.gateway?.findBareRefund && payment.refundNo) {
                 try {
                     const existing = await this.gateway.findBareRefund(ctx, payment.refundNo);
-                    if (existing?.status === 'SUCCESS') {
+                    const status = existing?.status ?? '';
+                    if (status === 'SUCCESS') {
                         await payRepo
                             .createQueryBuilder()
                             .update(PointsOrderPayment)
@@ -828,6 +860,30 @@ export class PointsMallService {
                         );
                         continue;
                     }
+                    if (status === 'CLOSED' || status === 'ABNORMAL') {
+                        await payRepo
+                            .createQueryBuilder()
+                            .update(PointsOrderPayment)
+                            .set({
+                                refundStatus: 'failed',
+                                refundError: `微信退款终态失败: status=${status}`,
+                                refundAttempts: payment.refundAttempts + 1,
+                            })
+                            .where("id = :id AND refundStatus = 'refunding'", { id: payment.id })
+                            .execute();
+                        failed++;
+                        Logger.error(
+                            `PointsOrderPayment ${payment.id} reconciled as failed via findBareRefund (refundNo=${payment.refundNo}): status=${status}`,
+                            loggerCtx,
+                        );
+                        continue;
+                    }
+                    if (status) {
+                        // PROCESSING/未知非终态：受理未到账，保持 refunding 下轮再对账（不重发）
+                        processing++;
+                        continue;
+                    }
+                    // status 为空（微信侧查无记录）→ 落到下方同 refundNo 幂等重发
                 } catch (e: any) {
                     Logger.warn(
                         `findBareRefund failed for payment ${payment.id}: ${String(e?.message ?? e)}, resending refund`,
@@ -845,11 +901,12 @@ export class PointsMallService {
                     .execute();
                 if ((claim.affected ?? 0) === 0) continue; // 已被并发认领
             }
-            const ok = await this.executeRefund(ctx, payment, 'Points order refund retry');
-            if (ok) refunded++;
+            const result = await this.executeRefund(ctx, payment, 'Points order refund retry');
+            if (result === 'refunded') refunded++;
+            else if (result === 'processing') processing++;
             else failed++;
         }
-        return { refunded, failed };
+        return { refunded, failed, processing };
     }
 
     /** 原子取消一笔待支付单：claim 状态 → 退分 → 回补库存 → 支付单置 cancelled。调用方负责事务与归属校验。 */
@@ -996,12 +1053,34 @@ export class PointsMallService {
             );
         }
         const page = this.clampPage(options, 20);
-        const [items, totalItems] = await qb
+        const [rows, totalItems] = await qb
             .orderBy('po.id', 'DESC')
             .skip(page.skip)
             .take(page.take)
             .getManyAndCount();
+        // 一次 IN 查询支付单按 orderId 分组挂上（admin 展示退款字段，避免 N+1）
+        const payments = await this.paymentsByOrderIds(ctx, rows.map(r => Number(r.id)));
+        const items: any[] = rows.map(o => ({ ...o, payments: payments.get(Number(o.id)) ?? [] }));
         return { items, totalItems };
+    }
+
+    /** orderId → PointsOrderPayment 列表（单次 IN 查询，供 admin 订单列表组装退款字段） */
+    private async paymentsByOrderIds(
+        ctx: RequestContext,
+        orderIds: number[],
+    ): Promise<Map<number, PointsOrderPayment[]>> {
+        const map = new Map<number, PointsOrderPayment[]>();
+        if (!orderIds.length) return map;
+        const rows = await this.connection.getRepository(ctx, PointsOrderPayment).find({
+            where: { orderId: In(orderIds) } as any,
+            order: { id: 'ASC' } as any,
+        });
+        for (const r of rows) {
+            const list = map.get(r.orderId) ?? [];
+            list.push(r);
+            map.set(r.orderId, list);
+        }
+        return map;
     }
 
     // ===== admin 履约状态机 =====
