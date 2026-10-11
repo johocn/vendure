@@ -175,7 +175,11 @@ let WechatpayService = class WechatpayService {
     /** 裸退款（POST /v3/refund/domestic/refunds）：ctx 决定用哪个租户的商户凭证（同 createBarePayment）。
      *  微信侧错误（非 2xx 或无 refund_id）显式抛出，供调用方落 failed 走重试。 */
     async refundBarePayment(ctx, input) {
-        var _a, _b;
+        var _a, _b, _c;
+        if ((_a = this.options) === null || _a === void 0 ? void 0 : _a.devBypass) {
+            // devBypass 与 createBarePayment 同源短路：开发环境不向真实商户号发起退款
+            return { status: 'SUCCESS' };
+        }
         const { pay } = await this.buildWechatpay(ctx, input.methodCode);
         const r = (await pay.refunds({
             out_trade_no: input.outTradeNo,
@@ -183,18 +187,22 @@ let WechatpayService = class WechatpayService {
             reason: input.reason,
             amount: { refund: Math.round(input.refund), total: Math.round(input.total), currency: 'CNY' },
         }));
-        const data = (_a = r === null || r === void 0 ? void 0 : r.data) !== null && _a !== void 0 ? _a : {};
+        const data = (_b = r === null || r === void 0 ? void 0 : r.data) !== null && _b !== void 0 ? _b : {};
         if (!data.refund_id) {
-            throw new Error(`微信退款发起失败(status=${r === null || r === void 0 ? void 0 : r.status}): ` + JSON.stringify((_b = r === null || r === void 0 ? void 0 : r.data) !== null && _b !== void 0 ? _b : r).slice(0, 300));
+            throw new Error(`微信退款发起失败(status=${r === null || r === void 0 ? void 0 : r.status}): ` + JSON.stringify((_c = r === null || r === void 0 ? void 0 : r.data) !== null && _c !== void 0 ? _c : r).slice(0, 300));
         }
         return { refundId: data.refund_id, outRefundNo: data.out_refund_no, status: data.status };
     }
     /** 查询单笔退款（GET /v3/refund/domestic/refunds/{out_refund_no}），供卡单对账；查无记录返回 null。 */
     async findBareRefund(ctx, outRefundNo, methodCode) {
-        var _a;
+        var _a, _b;
+        if ((_a = this.options) === null || _a === void 0 ? void 0 : _a.devBypass) {
+            // devBypass 短路：视为查无退款记录（调用方将走同 refundNo 幂等重发，而重发亦被 devBypass 拦截）
+            return null;
+        }
         const { pay } = await this.buildWechatpay(ctx, methodCode);
         const r = (await pay.find_refunds(outRefundNo));
-        const data = (_a = r === null || r === void 0 ? void 0 : r.data) !== null && _a !== void 0 ? _a : null;
+        const data = (_b = r === null || r === void 0 ? void 0 : r.data) !== null && _b !== void 0 ? _b : null;
         if (!(data === null || data === void 0 ? void 0 : data.out_refund_no))
             return null;
         return { refundId: data.refund_id, outRefundNo: data.out_refund_no, status: data.status };

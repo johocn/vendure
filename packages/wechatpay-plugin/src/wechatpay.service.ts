@@ -236,6 +236,10 @@ export class WechatpayService {
     /** 裸退款（POST /v3/refund/domestic/refunds）：ctx 决定用哪个租户的商户凭证（同 createBarePayment）。
      *  微信侧错误（非 2xx 或无 refund_id）显式抛出，供调用方落 failed 走重试。 */
     async refundBarePayment(ctx: RequestContext | undefined, input: BareRefundInput): Promise<BareRefundResult> {
+        if (this.options?.devBypass) {
+            // devBypass 与 createBarePayment 同源短路：开发环境不向真实商户号发起退款
+            return { status: 'SUCCESS' };
+        }
         const { pay } = await this.buildWechatpay(ctx, input.methodCode);
         const r = (await pay.refunds({
             out_trade_no: input.outTradeNo,
@@ -256,6 +260,10 @@ export class WechatpayService {
         outRefundNo: string,
         methodCode?: string,
     ): Promise<BareRefundResult | null> {
+        if (this.options?.devBypass) {
+            // devBypass 短路：视为查无退款记录（调用方将走同 refundNo 幂等重发，而重发亦被 devBypass 拦截）
+            return null;
+        }
         const { pay } = await this.buildWechatpay(ctx, methodCode);
         const r = (await pay.find_refunds(outRefundNo)) as any;
         const data = r?.data ?? null;
