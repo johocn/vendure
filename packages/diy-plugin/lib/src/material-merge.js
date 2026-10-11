@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.mergeMaterials = mergeMaterials;
 exports.mergeCategories = mergeCategories;
+exports.unionCategories = unionCategories;
 /**
  * 两层素材合并（规格 §4.2）：
  * - 起点 = 平台库全集；
@@ -26,5 +27,11 @@ function mergeMaterials(platform, tenant) {
 /** 两层分类合并（规格 §4.1）：纯并集、无覆盖；排序责任在查询侧（ORDER BY sortOrder） */
 function mergeCategories(platform, tenant) {
     return [...platform, ...tenant];
+}
+/** C 端分类并集（规格 §7）：平台 + 租户两层直拼，过滤 enabled 且有 code 的行，sortOrder/id 升序 */
+function unionCategories(platform, tenant) {
+    return [...platform, ...tenant]
+        .filter(c => c.enabled && !!c.code)
+        .sort((a, b) => a.sortOrder - b.sortOrder || Number(a.id) - Number(b.id));
 }
 //# sourceMappingURL=material-merge.js.map

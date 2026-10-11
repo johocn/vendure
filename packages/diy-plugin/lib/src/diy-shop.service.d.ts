@@ -1,4 +1,5 @@
 import { RequestContext, TransactionalConnection } from '@vendure/core';
+import { DiyCategory } from './entities/diy-category.entity';
 import { DiyMaterial } from './entities/diy-material.entity';
 import { DiyPlan } from './entities/diy-plan.entity';
 import { DiyTemplate } from './entities/diy-template.entity';
@@ -22,6 +23,8 @@ export declare class DiyShopService {
     private get app();
     /** C 端素材列表：两层合并去重后内存过滤 + 分页（素材量级千内，内存过滤足够） */
     findShopMaterials(ctx: RequestContext, filter?: DiyMaterialFilter): Promise<DiyMaterialList>;
+    /** C 端分类列表：平台 + 租户两层并集（无覆盖），仅 enabled，sortOrder 升序 */
+    findShopCategories(ctx: RequestContext): Promise<DiyCategory[]>;
     private matchKeyword;
     /** categoryCode → 该码下两层分类 id 集合（分类并集、无覆盖） */
     private categoryIdsByCode;

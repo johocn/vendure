@@ -198,6 +198,17 @@ const shopSchema = (0, graphql_tag_1.default) `
         createdAt: DateTime!
         updatedAt: DateTime!
     }
+    type DiyCategory {
+        id: ID!
+        app: String
+        code: String
+        name: JSON
+        image: String
+        sortOrder: Int!
+        enabled: Boolean!
+        createdAt: DateTime!
+        updatedAt: DateTime!
+    }
     type DiyMaterialList {
         items: [DiyMaterial!]!
         total: Int!
@@ -220,6 +231,7 @@ const shopSchema = (0, graphql_tag_1.default) `
     }
     extend type Query {
         diyMaterials(filter: JSON): DiyMaterialList!
+        diyCategories: [DiyCategory!]!
         diyShopTemplates: [DiyTemplate!]!
         diyShopTemplate(code: String!): DiyTemplate
     }

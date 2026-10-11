@@ -25,6 +25,9 @@ let DiyShopResolver = class DiyShopResolver {
     async diyMaterials(ctx, filter) {
         return this.service.findShopMaterials(ctx, filter !== null && filter !== void 0 ? filter : {});
     }
+    async diyCategories(ctx) {
+        return this.service.findShopCategories(ctx);
+    }
     async diyShopTemplates(ctx) {
         return this.service.findShopTemplates(ctx);
     }
@@ -57,6 +60,14 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], DiyShopResolver.prototype, "diyMaterials", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Public),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], DiyShopResolver.prototype, "diyCategories", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(core_1.Permission.Public),

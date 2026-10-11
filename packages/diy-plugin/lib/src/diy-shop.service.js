@@ -75,6 +75,15 @@ let DiyShopService = class DiyShopService {
         const take = (_e = filter.take) !== null && _e !== void 0 ? _e : 50;
         return { items: items.slice(skip, skip + take), total };
     }
+    /** C 端分类列表：平台 + 租户两层并集（无覆盖），仅 enabled，sortOrder 升序 */
+    async findShopCategories(ctx) {
+        const repo = this.connection.getRepository(ctx, diy_category_entity_1.DiyCategory);
+        const [platform, tenant] = await Promise.all([
+            repo.find({ where: { app: (0, typeorm_1.IsNull)() } }),
+            repo.find({ where: { app: this.app } }),
+        ]);
+        return (0, material_merge_1.unionCategories)(platform, tenant);
+    }
     matchKeyword(m, kw) {
         var _a;
         if (m.code.toLowerCase().includes(kw)) {
