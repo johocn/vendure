@@ -2,6 +2,9 @@ import { Injectable, Type } from '@nestjs/common';
 import { Logger, PluginCommonModule, VendurePlugin } from '@vendure/core';
 
 import { loggerCtx, PLUGIN_INIT_OPTIONS } from './constants';
+import { DiyCategory } from './entities/diy-category.entity';
+import { DiyMaterial } from './entities/diy-material.entity';
+import { DiyTemplate } from './entities/diy-template.entity';
 import { DiyPluginOptions } from './types';
 
 @Injectable()
@@ -9,7 +12,7 @@ export class DiyServiceStub {}
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [],
+    entities: [DiyCategory, DiyMaterial, DiyTemplate],
     providers: [{ provide: PLUGIN_INIT_OPTIONS, useFactory: () => DiyPlugin.options }, DiyServiceStub],
     exports: [],
     compatibility: '^3.0.0',

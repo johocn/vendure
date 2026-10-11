@@ -82,6 +82,7 @@ import { LiveStreamingPlugin } from '@vendure/live-streaming-plugin';
 import { ShopPlugin } from '@vendure/shop-plugin';
 import { PickupPlugin } from '@vendure/pickup-plugin';
 import { ShopTemplatePlugin } from '@vendure/shop-template-plugin';
+import { DiyPlugin } from '@vendure/diy-plugin';
 import { FavoritePlugin } from '@vendure/favorite-plugin';
 import { TcmClinicPlugin } from '@vendure/tcm-clinic-plugin';
 
@@ -393,6 +394,8 @@ export const devConfig: VendureConfig = {
         ShopPlugin.init({}),
         // 风格模板库与全局配置（四层风格体系后台配置）。app 决定本实例模板库端：nshop/vshop，缺省 nshop
         ShopTemplatePlugin.init({ app: (process.env.APP as 'nshop' | 'vshop') ?? 'nshop' }),
+        // DIY 商品：两层素材库 + 玩法模板 + 方案三链路（demo/quote/order）
+        DiyPlugin.init({ app: (process.env.APP as 'nshop' | 'vshop') ?? 'nshop' }),
         PickupPlugin.init({}),
         ...((process.env.ALIPAY_NOTIFY_URL || process.env.DEV_BYPASS_ALIPAY === 'true') ? [AlipayPlugin.init({
             notifyUrl: process.env.ALIPAY_NOTIFY_URL || '',

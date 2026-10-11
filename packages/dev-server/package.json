@@ -43,6 +43,7 @@
         "@vendure/wechat-subscribe-message-plugin": "0.0.1",
         "@vendure/coupon-plugin": "0.0.1",
         "@vendure/shop-template-plugin": "0.0.1",
+        "@vendure/diy-plugin": "0.0.1",
         "@vendure/live-streaming-plugin": "0.0.1",
         "@vendure/tcm-clinic-plugin": "0.0.1",
         "@vendure/admin-ui": "3.6.4",
