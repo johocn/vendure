@@ -50,7 +50,7 @@ describe('OrderScopeService', () => {
         const svc = new OrderScopeService(conn, scopeSvc);
         await svc.scopedOrders(ctx, {}, 20, 0);
         const calls = andWhere.mock.calls.map((c: any[]) => String(c[0]));
-        expect(calls.some((c) => c.includes('NOT EXISTS') && c.includes('pv.customFields.shippingProfileId'))).toBe(true);
+        expect(calls.some((c) => c.includes('NOT EXISTS') && c.includes('pv."customFieldsShippingprofileid"') && c.includes('hasl."orderId"'))).toBe(true);
         expect(setParams).toHaveBeenCalled();
     });
 

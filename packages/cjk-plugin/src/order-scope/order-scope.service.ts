@@ -65,13 +65,15 @@ export class OrderScopeService {
             return;
         }
         // embedded 列形态（Task 0 探针已固化）：pv.customFields.shippingProfileId 由 QB 自动映射
+        // PG 合法形态：主表别名 order/列 id 需引号（order 为保留字）；原生子查询中
+        // camelCase 列名（orderId/productVariantId）与 embedded 列（customFieldsShippingprofileid）须带引号
         qb.setParameters({ allow });
         qb.andWhere(
-            `EXISTS (SELECT 1 FROM order_line hasl WHERE hasl.orderId = order.id) AND NOT EXISTS (
+            `EXISTS (SELECT 1 FROM order_line hasl WHERE hasl."orderId" = "order"."id") AND NOT EXISTS (
                 SELECT 1 FROM order_line viol
-                INNER JOIN product_variant pv ON pv.id = viol.productVariantId
-                WHERE viol.orderId = order.id
-                  AND (pv.customFields.shippingProfileId IS NULL OR CAST(pv.customFields.shippingProfileId AS varchar) NOT IN (:...allow))
+                INNER JOIN product_variant pv ON pv.id = viol."productVariantId"
+                WHERE viol."orderId" = "order"."id"
+                  AND (pv."customFieldsShippingprofileid" IS NULL OR CAST(pv."customFieldsShippingprofileid" AS varchar) NOT IN (:...allow))
             )`,
         );
     }
