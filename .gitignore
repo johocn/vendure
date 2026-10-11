@@ -432,5 +432,10 @@ packages/shop-template-plugin/lib/**/*.spec.js
 packages/shop-template-plugin/lib/**/*.spec.js.map
 packages/shop-template-plugin/lib/**/*.spec.d.ts
 
+# diy-calc lib 编译产物中的测试文件（与 cjk-plugin 同规则；其余 lib 产物需提交）
+packages/diy-calc/lib/**/*.spec.js
+packages/diy-calc/lib/**/*.spec.js.map
+packages/diy-calc/lib/**/*.spec.d.ts
+
 # 密钥与部署凭据区（一律不入库；部署脚本/凭据放此处）
 .secrets/
