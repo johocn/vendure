@@ -17,6 +17,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 __exportStar(require("./version"), exports);
 __exportStar(require("./types"), exports);
 __exportStar(require("./prng"), exports);
+__exportStar(require("./bracelet"), exports);
 __exportStar(require("./bracelet-calculator"), exports);
 __exportStar(require("./sum"), exports);
 __exportStar(require("./registry"), exports);
