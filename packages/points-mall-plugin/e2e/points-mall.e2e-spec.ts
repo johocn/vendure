@@ -548,4 +548,106 @@ describe('PointsMallPlugin · 积分商城（收藏/积分商品/兑换/支付/�
         expect(res.pointsProduct.stock).toBe(8);
         expect(res.pointsProduct.redeemedCount).toBe(2);
     });
+
+    it('分页 clamp：take 超上限钳到 100、take=0 钳到 1、skip 负数钳到 0，不报错', async () => {
+        const overTake = await shopClient.query(gql`
+            query { pointsProducts(options: { take: 100000 }) { items { id } totalItems } }
+        `) as any;
+        expect(overTake.pointsProducts.items.length).toBeLessThanOrEqual(100);
+        expect(overTake.pointsProducts.totalItems).toBeGreaterThanOrEqual(1);
+
+        // take=0 钳到 1（不钳则 LIMIT 0 返回空）
+        const zeroTake = await shopClient.query(gql`
+            query { pointsProducts(options: { take: 0 }) { items { id } totalItems } }
+        `) as any;
+        expect(zeroTake.pointsProducts.items.length).toBe(1);
+
+        const negativeSkip = await shopClient.query(gql`
+            query { pointsProducts(options: { take: 5, skip: -5 }) { items { id } totalItems } }
+        `) as any;
+        expect(negativeSkip.pointsProducts.items.length).toBeGreaterThanOrEqual(1);
+
+        // admin 侧同样钳制
+        const adminOver = await adminClient.query(gql`
+            query { pointsProductsAdmin(options: { take: 99999, skip: -1 }) { items { id } totalItems } }
+        `) as any;
+        expect(adminOver.pointsProductsAdmin.items.length).toBeLessThanOrEqual(100);
+    });
+
+    it('settle 晚于取消：抛错且无半提交（订单仍 cancelled、支付单不 paid、积分库存不回滚）', async () => {
+        const pp = await createPointsProduct({
+            pointsPrice: 200,
+            cashPrice: 100,
+            deliveryType: 'physical',
+            stock: 3,
+        });
+        const pointsBefore = await myPoints();
+        const order = await exchange(pp.id, 1, true);
+        expect(order.status).toBe('pending_payment');
+        const numericId = Number(order.code.replace('PO-', ''));
+        expect(await myPoints()).toBe(pointsBefore - 200);
+
+        // 客户先取消：退分 + 回补库存 + 支付单 cancelled
+        const cancelled = await shopClient.query(gql`
+            mutation { cancelPointsOrder(id: "${order.id}") { id status } }
+        `) as any;
+        expect(cancelled.cancelPointsOrder.status).toBe('cancelled');
+        expect(await myPoints()).toBe(pointsBefore);
+
+        // 支付回调迟到：settle 必须抛错，不得留下 paid 支付单
+        const svc = server.app.get(PointsMallService);
+        const adminCtx = await server.app.get(RequestContextService).create({ apiType: 'admin' });
+        await expect(svc.settlePointsOrderByOutTradeNo(adminCtx, order.code, 'WX-LATE-1')).rejects.toThrow();
+
+        const conn = server.app.get(TransactionalConnection);
+        const payRows = await conn.rawConnection.query(
+            'SELECT status, "transactionId" FROM points_order_payment WHERE orderId = ?',
+            [numericId],
+        );
+        expect(payRows.length).toBe(1);
+        expect(payRows[0].status).toBe('cancelled');
+        expect(payRows[0].transactionId).toBeNull();
+
+        // 订单终态与积分/库存不被 settle 改动
+        const orders = await shopClient.query(gql`
+            query { myPointsOrders(options: { take: 100 }) { items { id status } } }
+        `) as any;
+        expect(orders.myPointsOrders.items.find((i: any) => i.id === order.id).status).toBe('cancelled');
+        expect(await myPoints()).toBe(pointsBefore);
+        const ppAfter = await adminPointsProduct(pp.id);
+        expect(ppAfter.stock).toBe(3);
+        expect(ppAfter.redeemedCount).toBe(0);
+    });
+
+    it('settle 成功：支付单 paid 且 transactionId 回写微信流水号，实物单转 pending_ship', async () => {
+        const pp = await createPointsProduct({
+            pointsPrice: 300,
+            cashPrice: 200,
+            deliveryType: 'physical',
+            stock: 3,
+        });
+        const order = await exchange(pp.id, 1, true);
+        expect(order.status).toBe('pending_payment');
+        const numericId = Number(order.code.replace('PO-', ''));
+
+        const svc = server.app.get(PointsMallService);
+        const adminCtx = await server.app.get(RequestContextService).create({ apiType: 'admin' });
+        await svc.settlePointsOrderByOutTradeNo(adminCtx, order.code, 'WXTX-TEST-123');
+
+        const conn = server.app.get(TransactionalConnection);
+        const payRows = await conn.rawConnection.query(
+            'SELECT status, "transactionId" FROM points_order_payment WHERE orderId = ?',
+            [numericId],
+        );
+        expect(payRows.length).toBe(1);
+        expect(payRows[0].status).toBe('paid');
+        expect(payRows[0].transactionId).toBe('WXTX-TEST-123');
+
+        const orders = await shopClient.query(gql`
+            query { myPointsOrders(options: { take: 100 }) { items { id status paidAt } } }
+        `) as any;
+        const target = orders.myPointsOrders.items.find((i: any) => i.id === order.id);
+        expect(target.status).toBe('pending_ship');
+        expect(target.paidAt).toBeTruthy();
+    });
 });

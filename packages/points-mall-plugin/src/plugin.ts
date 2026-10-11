@@ -286,7 +286,7 @@ export class PointsMallPlugin {
             const registry = injector.get(WechatpaySettlementRegistry);
             registry.register({
                 prefix: 'PO-',
-                settle: (ctx, outTradeNo) => svc.settlePointsOrderByOutTradeNo(ctx, outTradeNo),
+                settle: (ctx, outTradeNo, transactionId) => svc.settlePointsOrderByOutTradeNo(ctx, outTradeNo, transactionId),
             });
         } catch {
             // 未注册微信网关 → 纯积分模式可用

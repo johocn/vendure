@@ -53,6 +53,17 @@ export class PointsMallService {
         return preview;
     }
 
+    /** 分页参数钳制：take ∈ [1,100]、skip ≥ 0，防全表拉取与负数分页 SQL 报错 */
+    private clampPage(
+        options: { take?: number | null; skip?: number | null } | undefined,
+        defaultTake: number,
+    ): { take: number; skip: number } {
+        return {
+            take: Math.min(Math.max(options?.take ?? defaultTake, 1), 100),
+            skip: Math.max(options?.skip ?? 0, 0),
+        };
+    }
+
     setMemberLevelService(svc: any) {
         this.memberLevel = svc;
     }
@@ -159,14 +170,15 @@ export class PointsMallService {
         options?: PointsProductListOptions,
     ): Promise<{ items: FavoriteProductView[]; totalItems: number }> {
         const customer = await this.requireCustomer(ctx);
+        const page = this.clampPage(options, 20);
         const [favorites, totalItems] = await this.connection
             .getRepository(ctx, ProductFavorite)
             .createQueryBuilder('fav')
             .where('fav.customerId = :customerId', { customerId: customer.id })
             .andWhere('fav.channelId = :channelId', { channelId: ctx.channelId })
             .orderBy('fav.id', 'DESC')
-            .skip(options?.skip)
-            .take(options?.take ?? 20)
+            .skip(page.skip)
+            .take(page.take)
             .getManyAndCount();
         if (!favorites.length) {
             return { items: [], totalItems };
@@ -360,11 +372,12 @@ export class PointsMallService {
                     kwExact: kw,
                 });
         }
+        const page = this.clampPage(options, 50);
         const [items, totalItems] = await qb
             .orderBy('pp.sortOrder', 'ASC')
             .addOrderBy('pp.id', 'DESC')
-            .skip(options?.skip)
-            .take(options?.take ?? 50)
+            .skip(page.skip)
+            .take(page.take)
             .getManyAndCount();
         return { items, totalItems };
     }
@@ -377,6 +390,7 @@ export class PointsMallService {
         options?: PointsProductListOptions,
     ): Promise<{ items: PointsProductView[]; totalItems: number }> {
         const now = new Date();
+        const page = this.clampPage(options, 20);
         const [rows, totalItems] = await this.connection
             .getRepository(ctx, PointsProduct)
             .createQueryBuilder('pp')
@@ -386,8 +400,8 @@ export class PointsMallService {
             .andWhere('(pp.validTo IS NULL OR pp.validTo >= :now)', { now })
             .orderBy('pp.sortOrder', 'ASC')
             .addOrderBy('pp.id', 'DESC')
-            .skip(options?.skip)
-            .take(options?.take ?? 20)
+            .skip(page.skip)
+            .take(page.take)
             .getManyAndCount();
         const variants = await this.getVariantsWithProduct(ctx, rows.map(r => r.variantId));
         await this.applyVariantPrices(ctx, [...variants.values()]);
@@ -623,7 +637,11 @@ export class PointsMallService {
     }
 
     /** 支付回调结算：按 outTradeNo（PO-<id>）幂等置为 paid → pending_ship/completed。 */
-    async settlePointsOrderByOutTradeNo(ctx: RequestContext, outTradeNo: string): Promise<void> {
+    async settlePointsOrderByOutTradeNo(
+        ctx: RequestContext,
+        outTradeNo: string,
+        transactionId: string,
+    ): Promise<void> {
         const m = String(outTradeNo).match(/^PO-(\d+)$/);
         if (!m) throw new UserInputError('Invalid points out_trade_no');
         const repo = this.connection.getRepository(ctx, PointsOrder);
@@ -631,23 +649,16 @@ export class PointsMallService {
             where: { id: m[1] as any, channelId: ctx.channelId as any },
         });
         if (!order) throw new UserInputError('Points order not found');
-        if (order.status !== 'pending_payment') return; // 幂等：已结算直接返回
+        if (order.status !== 'pending_payment') {
+            // 已结算（含后续履约态）属重复回调，幂等返回；已取消属异常（现金已收但单已退分回补），抛错上抛告警
+            if (order.status === 'cancelled') throw new UserInputError('Points order already cancelled');
+            return;
+        }
         const next = order.deliveryType === 'virtual' ? 'completed' : 'pending_ship';
         const now = new Date();
         await this.connection.startTransaction(ctx);
         try {
-            // 原子抢占支付单（并发回调只成功一次）
-            const claimPay = await this.connection
-                .getRepository(ctx, PointsOrderPayment)
-                .createQueryBuilder()
-                .update(PointsOrderPayment)
-                .set({ status: 'paid', paidAt: now })
-                .where('orderId = :orderId AND status = :status', { orderId: order.id, status: 'pending' })
-                .execute();
-            if (claimPay.affected === 0) {
-                await this.connection.commitOpenTransaction(ctx);
-                return;
-            }
+            // 1) 先原子抢占订单：pending_payment → next；若已被取消/结算则 affected===0
             const claimOrder = await repo
                 .createQueryBuilder()
                 .update(PointsOrder)
@@ -655,8 +666,18 @@ export class PointsMallService {
                 .where('id = :id AND status = :status', { id: order.id, status: 'pending_payment' })
                 .execute();
             if (claimOrder.affected === 0) {
-                await this.connection.commitOpenTransaction(ctx);
-                return;
+                throw new UserInputError(`Points order is ${order.status}`);
+            }
+            // 2) 再原子抢占支付单：pending → paid，并写入 transactionId
+            const claimPay = await this.connection
+                .getRepository(ctx, PointsOrderPayment)
+                .createQueryBuilder()
+                .update(PointsOrderPayment)
+                .set({ status: 'paid', transactionId, paidAt: now })
+                .where('orderId = :orderId AND status = :status', { orderId: order.id, status: 'pending' })
+                .execute();
+            if (claimPay.affected === 0) {
+                throw new UserInputError('Payment already settled or not found');
             }
             await this.connection.commitOpenTransaction(ctx);
         } catch (e) {
@@ -769,10 +790,11 @@ export class PointsMallService {
         if (options?.status) {
             qb.andWhere('po.status = :status', { status: options.status });
         }
+        const page = this.clampPage(options, 20);
         const [items, totalItems] = await qb
             .orderBy('po.id', 'DESC')
-            .skip(options?.skip)
-            .take(options?.take ?? 20)
+            .skip(page.skip)
+            .take(page.take)
             .getManyAndCount();
         return { items, totalItems };
     }
@@ -808,10 +830,11 @@ export class PointsMallService {
                 }),
             );
         }
+        const page = this.clampPage(options, 20);
         const [items, totalItems] = await qb
             .orderBy('po.id', 'DESC')
-            .skip(options?.skip)
-            .take(options?.take ?? 20)
+            .skip(page.skip)
+            .take(page.take)
             .getManyAndCount();
         return { items, totalItems };
     }
