@@ -3,5 +3,6 @@ export * from './types';
 export * from './prng';
 export * from './bracelet';
 export * from './bracelet-calculator';
+export * from './layout';
 export * from './sum';
 export * from './registry';
