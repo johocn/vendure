@@ -12,6 +12,12 @@ export interface LongStayDiscount {
 export interface CancelPolicy {
     type: 'freeUntil' | 'nonRefundable';
     freeUntilHours?: number;
+    /**
+     * 免费窗口外取消的扣款口径（P4 Task 14，仅 type=freeUntil 生效；缺省 firstNight）：
+     * firstNight = 扣首晚房费退余款；full = 扣全款不退。
+     * nonRefundable 恒为扣全款，无需此字段。
+     */
+    partial?: 'firstNight' | 'full';
 }
 export interface RoomDetail {
     no: string;

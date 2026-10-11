@@ -36,6 +36,19 @@ export declare class AfterSalesService {
         evidenceImages?: string[];
         refundAmount: number;
     }): Promise<AfterSalesRequest>;
+    /**
+     * 系统内部建单（P4 酒店预订取消链路）：绕过顾客门禁（订单状态/送达/窗口白名单），
+     * 由后端策略计算退款额后代顾客发起；归属仍落订单顾客，状态历史/事件经统一 commitState 出口。
+     * 调用方负责后续审批（refund_only 可直接 approveRequest 走自动退款链）。
+     */
+    createSystemRequest(ctx: RequestContext, input: {
+        orderId: ID;
+        orderLineId?: ID;
+        type: string;
+        reason: string;
+        description?: string;
+        refundAmount: number;
+    }): Promise<AfterSalesRequest>;
     cancelRequest(ctx: RequestContext, id: ID): Promise<AfterSalesRequest>;
     updateReturnTracking(ctx: RequestContext, id: ID, trackingNo: string, carrier: string): Promise<AfterSalesRequest>;
     /** 凭证图白名单 MIME 及其扩展名（扩展名用于 createFromFileStream 判定 MIME） */

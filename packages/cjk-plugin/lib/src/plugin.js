@@ -139,6 +139,7 @@ const booking_shop_resolver_1 = require("./hotel/booking/booking-shop.resolver")
 const box_shipping_line_assignment_strategy_1 = require("./shipping/box-shipping-line-assignment-strategy");
 const channel_tax_line_calculation_strategy_1 = require("./tax/channel-tax-line-calculation-strategy");
 const core_3 = require("@vendure/core");
+const after_sales_plugin_1 = require("@vendure/after-sales-plugin");
 const default_data_service_1 = require("./seed/default-data.service");
 const wallet_entity_1 = require("./wallet/wallet.entity");
 const wallet_service_1 = require("./wallet/wallet.service");
@@ -396,6 +397,25 @@ let CjkPlugin = CjkPlugin_1 = class CjkPlugin {
                 }
             });
         }
+        // P4 Task 14：跨插件注入 AfterSalesService（延迟注入规避模块顺序）；
+        // 订阅售后状态机事件：refund_only 退款 Refunded → 预订自动 cancelled + 释放锁房（逾时扣首晚审批收口）。
+        // AfterSalesPlugin 未安装的部署降级：注入失败仅告警，顾客侧退款取消将被服务层拒绝。
+        try {
+            const afterSalesService = injector.get(after_sales_plugin_1.AfterSalesService);
+            const bookingServiceForCancel = injector.get(booking_service_1.HotelBookingService);
+            bookingServiceForCancel.setAfterSalesService(afterSalesService);
+            injector.get(core_3.EventBus).ofType(after_sales_plugin_1.AfterSalesStateTransitionEvent).subscribe(async (event) => {
+                try {
+                    await bookingServiceForCancel.handleAfterSalesRefunded(event);
+                }
+                catch (e) {
+                    core_1.Logger.error(`hotel after-sales refund event failed: ${e === null || e === void 0 ? void 0 : e.message}`, constants_1.loggerCtx);
+                }
+            });
+        }
+        catch (e) {
+            core_1.Logger.warn(`AfterSalesService not available, hotel booking refund cancel disabled: ${e === null || e === void 0 ? void 0 : e.message}`, constants_1.loggerCtx);
+        }
         // 核销码改由 checkoutSplitted（performSplitCheckout）同步 best-effort 生成，并在 C端
         // orderRedemptionCode（ensure 写后重读对账）兜底。原 OrderStateTransitionEvent 异步后台 ensure
         // 会与同步 ensure 并发生成不同码、后写覆盖导致 lookupByCode 查不到（spurious not_found），已移除。
@@ -473,6 +493,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             migrations_1.ChannelInventoryModeColumnMigration,
             migrations_1.CollectionIconMigration,
             migrations_1.HotelOrderLineColumnMigration,
+            migrations_1.HotelBookingCancelColumnsMigration,
             auth_config_service_1.AuthConfigService,
             pay_config_service_1.PayConfigService,
             map_config_service_1.MapConfigService,
@@ -1235,6 +1256,10 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     completedAt: DateTime
                     cancelledAt: DateTime
                     cancelReason: String
+                    "实际扣款快照（分；0=免费取消/未付款，null=未取消）"
+                    cancelFeeCent: Int
+                    "关联退款售后单 id（逾时部分退款/免费取消自动退款）"
+                    afterSalesRequestId: ID
                     "房型名（admin 列表按语言 enrich；非持久化）"
                     variantName: String
                     createdAt: DateTime!
@@ -2679,12 +2704,52 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     bookingCode: String
                     "免费取消截止点（确认时固化；null = 无免费取消窗口）"
                     cancelDeadlineAt: DateTime
+                    cancelledAt: DateTime
+                    cancelReason: String
+                    "实际扣款快照（分；0=免费取消/未付款，null=未取消）"
+                    cancelFeeCent: Int
+                    "关联退款售后单 id（非空=取消退款流程在途或已完成）"
+                    afterSalesRequestId: ID
                     createdAt: DateTime!
+                }
+
+                """
+                取消报价（C 端取消按钮前置确认弹层）：
+                mode = free（窗口内全额退）| partial（逾时扣首晚退余款）| forfeit（扣全款不退）
+                     | unpaid（未付款直接取消）| blocked（无政策，引导联系酒店）
+                """
+                type HotelCancelQuote {
+                    bookingId: ID!
+                    mode: String!
+                    free: Boolean!
+                    cancellable: Boolean!
+                    "应退金额（分）"
+                    refundCent: Int!
+                    "扣款金额（分）"
+                    feeCent: Int!
+                    "成交总额（分）"
+                    totalCent: Int!
+                    "已结算实付（分）"
+                    paidCent: Int!
+                    "首晚房费（全部房间合计，分）"
+                    firstNightFeeCent: Int!
+                    "免费取消截止点"
+                    deadline: DateTime
                 }
 
                 extend type Query {
                     "当前登录顾客的酒店预订单（按订单归属隔离，id 倒序，上限 200）；status 可选过滤"
                     myHotelBookings(status: String): [HotelBookingPublic!]!
+                    "取消报价（归属隔离；非可取消状态抛错）"
+                    hotelBookingCancelQuote(id: ID!): HotelCancelQuote!
+                }
+
+                extend type Mutation {
+                    """
+                    顾客自助取消预订（归属隔离）：
+                    unpaid/forfeit 立即取消；free 自动全额退款后取消；partial 建售后单待商家审批（预订保留至退款完成）；blocked 拒绝。
+                    """
+                    cancelMyHotelBooking(id: ID!, reason: String): HotelBookingPublic!
                 }
 
                 ${redemption_schema_1.redemptionShopSchema}

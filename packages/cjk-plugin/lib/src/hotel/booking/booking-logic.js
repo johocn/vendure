@@ -9,6 +9,7 @@ exports.canCheckIn = canCheckIn;
 exports.dailyTransition = dailyTransition;
 exports.hotelDatesOfLine = hotelDatesOfLine;
 exports.bookingTotalCent = bookingTotalCent;
+exports.computeCancelQuote = computeCancelQuote;
 exports.HOTEL_BOOKING_STATUSES = [
     'pendingDeposit',
     'confirmed',
@@ -94,5 +95,43 @@ function bookingTotalCent(line) {
         return Math.round(line.linePriceWithTax * Math.max(1, (_a = line.quantity) !== null && _a !== void 0 ? _a : 1));
     }
     return 0;
+}
+const clampFee = (fee, paid) => Math.max(0, Math.min(Math.round(fee), Math.max(0, Math.round(paid))));
+/**
+ * 取消报价（design §8）：
+ * - 无已结算支付（未付/仅授权）→ unpaid：不涉及退款，直接取消
+ * - pendingDeposit 但已有结算款（确认事件延迟等边缘）→ 按全额退 free
+ * - confirmed + freeUntil：now ≤ 截止点 → free 全额退；逾时 → partial（partial=full 扣全款，否则扣首晚），
+ *   应退为 0 时落 forfeit
+ * - nonRefundable → forfeit（可取消但不退）
+ * - 未配置政策（null）→ blocked：顾客不可自助取消，走管理员强制取消
+ */
+function computeCancelQuote(input) {
+    var _a, _b;
+    const total = Math.max(0, Math.round(Number(input.totalCent) || 0));
+    const paid = Math.max(0, Math.round(Number(input.paidCent) || 0));
+    const firstNight = Math.max(0, Math.round(Number(input.firstNightFeeCent) || 0));
+    const deadline = input.deadline instanceof Date && !Number.isNaN(input.deadline.getTime()) ? input.deadline : null;
+    const base = { deadline };
+    if (paid <= 0)
+        return Object.assign(Object.assign({}, base), { mode: 'unpaid', free: false, cancellable: true, refundCent: 0, feeCent: 0 });
+    if (input.status === 'pendingDeposit') {
+        return Object.assign(Object.assign({}, base), { mode: 'free', free: true, cancellable: true, refundCent: paid, feeCent: 0 });
+    }
+    const policy = (_a = input.policy) !== null && _a !== void 0 ? _a : null;
+    if (!policy) {
+        return Object.assign(Object.assign({}, base), { mode: 'blocked', free: false, cancellable: false, refundCent: 0, feeCent: 0 });
+    }
+    if (policy.type === 'nonRefundable') {
+        return Object.assign(Object.assign({}, base), { mode: 'forfeit', free: false, cancellable: true, refundCent: 0, feeCent: paid });
+    }
+    // freeUntil
+    const now = (_b = input.now) !== null && _b !== void 0 ? _b : new Date();
+    if (deadline && now.getTime() <= deadline.getTime()) {
+        return Object.assign(Object.assign({}, base), { mode: 'free', free: true, cancellable: true, refundCent: paid, feeCent: 0 });
+    }
+    const fee = clampFee(policy.partial === 'full' ? total : firstNight, paid);
+    const refund = Math.max(0, paid - fee);
+    return Object.assign(Object.assign({}, base), { mode: refund > 0 ? 'partial' : 'forfeit', free: false, cancellable: true, refundCent: refund, feeCent: fee });
 }
 //# sourceMappingURL=booking-logic.js.map

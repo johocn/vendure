@@ -250,6 +250,64 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
         core_1.Logger.info(`After-sales request ${saved.id} created by customer ${ctx.activeUserId}`, constants_1.loggerCtx);
         return this.hydrate(ctx, saved.id);
     }
+    /**
+     * 系统内部建单（P4 酒店预订取消链路）：绕过顾客门禁（订单状态/送达/窗口白名单），
+     * 由后端策略计算退款额后代顾客发起；归属仍落订单顾客，状态历史/事件经统一 commitState 出口。
+     * 调用方负责后续审批（refund_only 可直接 approveRequest 走自动退款链）。
+     */
+    async createSystemRequest(ctx, input) {
+        var _a, _b, _c;
+        if (!this.orderService) {
+            throw new Error('OrderService not initialized');
+        }
+        const order = await this.orderService.findOne(ctx, input.orderId, ['customer', 'lines']);
+        if (!order) {
+            throw new core_1.UserInputError(`Order ${input.orderId} not found`);
+        }
+        const orderLine = input.orderLineId
+            ? order.lines.find(l => String(l.id) === String(input.orderLineId))
+            : undefined;
+        if (input.orderLineId && !orderLine) {
+            throw new core_1.UserInputError(`Order line ${input.orderLineId} not found in order ${input.orderId}`);
+        }
+        const refundAmount = Math.max(0, Math.round(input.refundAmount || 0));
+        // 含税口径优先（酒店预订等含税价租户：proratedLinePrice 为不含税额，会误拦真实可退额）
+        const maxRefund = orderLine
+            ? ((_a = orderLine.proratedLinePriceWithTax) !== null && _a !== void 0 ? _a : orderLine.proratedLinePrice)
+            : ((_b = order.totalWithTax) !== null && _b !== void 0 ? _b : order.lines.reduce((s, l) => { var _a, _b; return s + ((_b = (_a = l.proratedLinePriceWithTax) !== null && _a !== void 0 ? _a : l.proratedLinePrice) !== null && _b !== void 0 ? _b : 0); }, 0));
+        if (refundAmount > maxRefund) {
+            throw new core_1.UserInputError(`Refund amount ${refundAmount} exceeds max ${maxRefund}`);
+        }
+        if (!((_c = order.customer) === null || _c === void 0 ? void 0 : _c.id)) {
+            throw new core_1.UserInputError(`Order ${input.orderId} has no customer`);
+        }
+        const entityOrderId = order.id;
+        const entityOrderLineId = orderLine ? orderLine.id : null;
+        const repo = this.connection.getRepository(ctx, after_sales_request_entity_1.AfterSalesRequest);
+        // 行级幂等：同一订单行已有未关闭售后单则拒绝（酒店 booking.afterSalesRequestId 亦做去重）
+        if (entityOrderLineId != null) {
+            const existing = await repo.findOne({
+                where: { orderLineId: entityOrderLineId, state: (0, typeorm_1.Not)('Closed') },
+            });
+            if (existing) {
+                throw new core_1.UserInputError(`After-sales already exists for order line ${input.orderLineId}`);
+            }
+        }
+        const request = new after_sales_request_entity_1.AfterSalesRequest({
+            orderId: entityOrderId,
+            orderLineId: entityOrderLineId,
+            type: input.type || 'refund_only',
+            reason: input.reason,
+            description: input.description || null,
+            evidenceImages: null,
+            refundAmount,
+            customerId: order.customer.id,
+        });
+        request.channels = [ctx.channel];
+        const saved = await this.commitState(ctx, request, null, 'Pending');
+        core_1.Logger.info(`After-sales request ${saved.id} created by system (order ${entityOrderId}, line ${entityOrderLineId !== null && entityOrderLineId !== void 0 ? entityOrderLineId : '-'})`, constants_1.loggerCtx);
+        return this.hydrate(ctx, saved.id);
+    }
     async cancelRequest(ctx, id) {
         const repo = this.connection.getRepository(ctx, after_sales_request_entity_1.AfterSalesRequest);
         const request = await repo.findOne({ where: { id: id } });

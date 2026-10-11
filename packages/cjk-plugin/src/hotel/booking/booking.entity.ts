@@ -91,6 +91,14 @@ export class HotelBooking extends VendureEntity {
     @Column({ type: 'varchar', length: 255, nullable: true })
     cancelReason: string | null;
 
+    /** 实际扣款快照（分，P4 取消时落；0 = 免费取消/未付款；null = 未取消） */
+    @Column({ type: 'int', nullable: true })
+    cancelFeeCent: number | null;
+
+    /** 关联售后单 id（逾时部分退款走售后审批链；P4，幂等去重用） */
+    @Column({ type: 'int', nullable: true })
+    afterSalesRequestId: number | null;
+
     /** 房型名（非持久化；仅 admin 列表 listForAdmin 按 ctx 语言 enrich） */
     variantName?: string | null;
 }

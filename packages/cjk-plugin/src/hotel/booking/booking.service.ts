@@ -5,9 +5,14 @@
 import { Injectable } from '@nestjs/common';
 import { ID, Logger, Order, ProductVariant, RequestContext, TransactionalConnection } from '@vendure/core';
 import { In, LessThan, LessThanOrEqual } from 'typeorm';
+import {
+    AfterSalesRequest,
+    AfterSalesStateTransitionEvent,
+} from '@vendure/after-sales-plugin';
+import type { AfterSalesService } from '@vendure/after-sales-plugin';
 
 import { CancelPolicy } from '../hotel-config';
-import { parseHotelRoomConfig } from '../hotel-nightly-pricing';
+import { calcNightlyPricing, parseHotelRoomConfig } from '../hotel-nightly-pricing';
 import { HotelInventoryService } from './hotel-inventory.service';
 import { enumerateNights } from './hotel-inventory-logic';
 import { HotelRatePlanService } from './rate-plan.service';
@@ -15,11 +20,13 @@ import {
     HotelBookingStatus,
     HOTEL_ORDER_PENDING_STATES,
     canCheckIn,
+    computeCancelQuote,
     deriveCancelDeadline,
     generateBookingCode,
     hotelDatesOfLine,
     bookingTotalCent,
     todayStr,
+    type CancelQuote,
 } from './booking-logic';
 import { HotelBooking } from './booking.entity';
 
@@ -35,13 +42,30 @@ export interface HotelBookingAdminFilter {
     orderCode?: string;
 }
 
+/** 取消报价结果（shop/admin 共用；SDL 映射由 resolver 完成） */
+export interface HotelCancelQuoteResult {
+    booking: HotelBooking;
+    quote: CancelQuote;
+    /** 已结算实付快照（分） */
+    paidCent: number;
+    /** 首晚房费（全部房间合计，分） */
+    firstNightFeeCent: number;
+}
+
 @Injectable()
 export class HotelBookingService {
+    /** after-sales 插件由 plugin.ts onInit 延迟注入（跨插件依赖，规避模块初始化顺序） */
+    private afterSales: AfterSalesService | null = null;
+
     constructor(
         private conn: TransactionalConnection,
         private inventory: HotelInventoryService,
         private ratePlans: HotelRatePlanService,
     ) {}
+
+    setAfterSalesService(svc: AfterSalesService) {
+        this.afterSales = svc;
+    }
 
     private repo(ctx: RequestContext) {
         return this.conn.getRepository(ctx, HotelBooking);
@@ -136,6 +160,9 @@ export class HotelBookingService {
                 }
                 continue;
             }
+            // 已取消且关联退款售后单（Task 14）：行随退款链路终结，即使退款引发订单状态事件重放，
+            // 也绝不重建/重确认幻影预订（无售后单的旧取消仍保留「取消后重走支付重建」边缘能力）
+            if (existing && existing.afterSalesRequestId != null) continue;
 
             const guest = this.guestOf(order, cf);
             const booking = await this.repo(ctx).save(
@@ -245,12 +272,20 @@ export class HotelBookingService {
         return String(Date.now() % 100_000_000).padStart(8, '0');
     }
 
-    /** 取消截止点固化：方案级 cancelPolicyOverride 优先，回退房型 hotelRoomConfig.cancelPolicy；checkInTime 取房型配置 */
-    private async deriveDeadline(ctx: RequestContext, b: HotelBooking): Promise<Date | null> {
+    /** 有效取消政策解析：方案级 cancelPolicyOverride 优先（坏 JSON 回退），再回退房型 hotelRoomConfig.cancelPolicy */
+    private async resolvePolicy(
+        ctx: RequestContext,
+        b: HotelBooking,
+    ): Promise<{ policy: CancelPolicy | null; planAdjust: { adjustType: string; adjustValue: number } | null }> {
         let policy: CancelPolicy | null | undefined;
+        let planAdjust: { adjustType: string; adjustValue: number } | null = null;
         if (b.ratePlanCode) {
             const plans = await this.ratePlans.findByCodes(ctx, b.productVariantId, [b.ratePlanCode]);
-            const raw = plans[0]?.cancelPolicyOverride as string | null | undefined;
+            const plan = plans[0] as any;
+            if (plan) {
+                planAdjust = { adjustType: String(plan.adjustType ?? ''), adjustValue: Number(plan.adjustValue ?? 0) };
+            }
+            const raw = plan?.cancelPolicyOverride as string | null | undefined;
             if (raw) {
                 try {
                     policy = JSON.parse(raw);
@@ -264,6 +299,16 @@ export class HotelBookingService {
             .findOne({ where: { id: Number(b.productVariantId) } });
         const cfg = parseHotelRoomConfig((variant?.customFields as any)?.hotelRoomConfig);
         if (!policy) policy = cfg?.cancelPolicy ?? null;
+        return { policy: policy ?? null, planAdjust };
+    }
+
+    /** 取消截止点固化：checkInTime 取房型配置（缺省 00:00） */
+    private async deriveDeadline(ctx: RequestContext, b: HotelBooking): Promise<Date | null> {
+        const { policy } = await this.resolvePolicy(ctx, b);
+        const variant = await this.conn
+            .getRepository(ctx, ProductVariant)
+            .findOne({ where: { id: Number(b.productVariantId) } });
+        const cfg = parseHotelRoomConfig((variant?.customFields as any)?.hotelRoomConfig);
         return deriveCancelDeadline(policy, b.checkIn, cfg?.checkInTime);
     }
 
@@ -338,9 +383,151 @@ export class HotelBookingService {
         return this.repo(ctx).save(booking);
     }
 
+    // ===== P4 Task 14：取消报价 / 取消退款 =====
+
     /**
-     * 管理员强制取消：pendingDeposit/confirmed → cancelled 并释放锁房。
-     * 退款走 Task 14 售后单（本方法不处理钱）。
+     * 取消报价（design §8）：解析有效政策 + 已结算实付 + 首晚房费，交纯函数 computeCancelQuote。
+     * 可取消状态白名单之外（已入住/已完成/noShow/已取消）一律拒绝。
+     */
+    async quoteCancel(ctx: RequestContext, id: ID, now?: Date): Promise<HotelCancelQuoteResult> {
+        const booking = await this.repo(ctx).findOne({ where: { id: Number(id) } });
+        if (!booking) throw new Error('预订单不存在');
+        if (!CANCELLABLE_STATUSES.includes(booking.status)) {
+            throw new Error(`当前状态 ${booking.status} 不可取消`);
+        }
+        const { policy, planAdjust } = await this.resolvePolicy(ctx, booking);
+        const paidCent = await this.settledPaidCent(ctx, booking.orderId);
+        const firstNightFeeCent = await this.firstNightFeeCent(ctx, booking, policy, planAdjust);
+        const quote = computeCancelQuote({
+            status: booking.status,
+            policy,
+            deadline: booking.cancelDeadlineAt ?? null,
+            now,
+            totalCent: booking.totalCent,
+            paidCent,
+            firstNightFeeCent,
+        });
+        return { booking, quote, paidCent, firstNightFeeCent };
+    }
+
+    /** 订单已结算（Settled）支付合计（分）；仅 Settled 可走 refundOrder 退款，Authorized 不计 */
+    private async settledPaidCent(ctx: RequestContext, orderId: number): Promise<number> {
+        const order = await this.conn.getRepository(ctx, Order).findOne({
+            where: { id: orderId as any },
+            relations: ['payments'],
+        });
+        const payments = ((order as any)?.payments ?? []) as Array<{ state: string; amount: number }>;
+        return payments
+            .filter(p => p.state === 'Settled')
+            .reduce((sum, p) => sum + Math.round(Number(p.amount) || 0), 0);
+    }
+
+    /**
+     * 首晚房费（全部房间合计，分）：服务端用房型配置+方案重算（hotelNightly 不落库）；
+     * 配置缺失/重算失败时兜底 ceil(成交总额/晚数)，保证扣款口径非 0。
+     */
+    private async firstNightFeeCent(
+        ctx: RequestContext,
+        b: HotelBooking,
+        policy: CancelPolicy | null,
+        planAdjust: { adjustType: string; adjustValue: number } | null,
+    ): Promise<number> {
+        if (policy?.partial === 'full') return b.totalCent;
+        try {
+            const variant = await this.conn
+                .getRepository(ctx, ProductVariant)
+                .findOne({ where: { id: Number(b.productVariantId) } });
+            const cfg = parseHotelRoomConfig((variant?.customFields as any)?.hotelRoomConfig);
+            const pricing = calcNightlyPricing(
+                cfg,
+                b.checkIn,
+                b.checkOut,
+                planAdjust?.adjustType ? (planAdjust as any) : null,
+            );
+            const perRoom = pricing?.nights?.[0]?.priceCent;
+            if (typeof perRoom === 'number' && perRoom > 0) return perRoom * Math.max(1, b.roomCount);
+        } catch (e: any) {
+            Logger.warn(`firstNightFeeCent booking ${b.id} recompute failed: ${e?.message}`, loggerCtx);
+        }
+        return Math.ceil(b.totalCent / Math.max(1, b.nights));
+    }
+
+    /**
+     * 顾客自助取消（归属隔离在 resolver 层）：
+     * - unpaid（未付/仅授权）/ forfeit（扣全款不退）→ 立即置 cancelled + 释放锁房，无售后单
+     * - free（免费窗口内）→ 建 refund_only 售后单并自动审批退款；退款成功后立即收口；
+     *   RefundFailed 不取消、不释放，售后单留痕可重试
+     * - partial（逾时扣首晚退余款）→ 建 Pending 售后单等待商家审批，booking 保持 confirmed 与锁房；
+     *   审批 Refunded 后由 handleAfterSalesRefunded 收口
+     * - blocked（未配置政策）→ 拒绝，引导联系酒店
+     */
+    async cancelByCustomer(ctx: RequestContext, id: ID, reason?: string): Promise<HotelBooking> {
+        const { booking, quote, paidCent } = await this.quoteCancel(ctx, id);
+        await this.assertNoActiveAfterSales(ctx, booking);
+        if (!quote.cancellable) {
+            throw new Error('该订单暂不支持线上自助取消，请联系酒店/客服处理');
+        }
+        const userReason = (reason ?? '').trim();
+        const baseReason = `预订取消 ${booking.bookingCode ?? booking.id}${userReason ? `｜${userReason}` : ''}`;
+
+        if (quote.mode === 'unpaid' || quote.mode === 'forfeit') {
+            return this.finalizeCancel(ctx, booking, {
+                feeCent: quote.mode === 'forfeit' ? paidCent : 0,
+                reason: baseReason,
+            });
+        }
+
+        if (!this.afterSales) {
+            // 售后插件缺失：免费/部分退款无法走钱，禁止自助取消（防止漏退款）
+            Logger.error(`cancelByCustomer booking ${booking.id}: AfterSalesService unavailable`, loggerCtx);
+            throw new Error('退款服务暂不可用，请联系客服取消');
+        }
+
+        if (quote.mode === 'free') {
+            const req = await this.afterSales.createSystemRequest(ctx, {
+                orderId: booking.orderId,
+                orderLineId: booking.orderLineId,
+                type: 'refund_only',
+                reason: `${baseReason}｜免费窗口内全额退`,
+                refundAmount: quote.refundCent,
+            });
+            const approved = await this.afterSales.approveRequest(ctx, req.id);
+            if (approved.state !== 'Refunded') {
+                throw new Error(
+                    `退款未成功（售后单 ${req.id} 状态 ${approved.state}），预订保留，请稍后重试或联系客服`,
+                );
+            }
+            return this.finalizeCancel(ctx, booking, {
+                feeCent: 0,
+                reason: baseReason,
+                afterSalesRequestId: Number(req.id),
+            });
+        }
+
+        // partial：逾时扣首晚，余款售后单待商家审批
+        const req = await this.afterSales.createSystemRequest(ctx, {
+            orderId: booking.orderId,
+            orderLineId: booking.orderLineId,
+            type: 'refund_only',
+            reason: `${baseReason}｜逾时扣首晚 ¥${(quote.feeCent / 100).toFixed(2)}，申请退余款`,
+            description: `取消扣款 ${quote.feeCent} 分；应退 ${quote.refundCent} 分；已付 ${paidCent} 分`,
+            refundAmount: quote.refundCent,
+        });
+        booking.afterSalesRequestId = Number(req.id);
+        booking.cancelReason = baseReason;
+        const saved = await this.repo(ctx).save(booking);
+        Logger.info(
+            `Booking ${saved.id} cancel requested, after-sales ${req.id} pending approval (fee ${quote.feeCent})`,
+            loggerCtx,
+        );
+        return saved;
+    }
+
+    /**
+     * 管理员强制取消（升级）：
+     * - 已有售后单在途 → 拒绝（防止双退；退款完成事件会自动收口）
+     * - 有已结算款 → 建售后单全额退款并自动审批，Refunded 后才置 cancelled + 释放锁房
+     * - 无结算款 / 售后插件缺失（仅遗留环境）→ 直接取消释放
      */
     async forceCancel(ctx: RequestContext, id: ID, reason?: string): Promise<HotelBooking> {
         const booking = await this.repo(ctx).findOne({ where: { id: Number(id) } });
@@ -348,11 +535,118 @@ export class HotelBookingService {
         if (!CANCELLABLE_STATUSES.includes(booking.status)) {
             throw new Error(`当前状态 ${booking.status} 不可取消`);
         }
+        await this.assertNoActiveAfterSales(ctx, booking);
+        const adminReason = `商家强制取消 ${booking.bookingCode ?? booking.id}${(reason ?? '').trim() ? `｜${(reason ?? '').trim()}` : ''}`;
+        const paidCent = await this.settledPaidCent(ctx, booking.orderId);
+        if (paidCent <= 0 || !this.afterSales) {
+            if (paidCent > 0) {
+                Logger.warn(
+                    `forceCancel booking ${booking.id}: AfterSalesService unavailable, cancelling without refund`,
+                    loggerCtx,
+                );
+            }
+            return this.finalizeCancel(ctx, booking, { feeCent: 0, reason: adminReason });
+        }
+        const req = await this.afterSales.createSystemRequest(ctx, {
+            orderId: booking.orderId,
+            orderLineId: booking.orderLineId,
+            type: 'refund_only',
+            reason: `${adminReason}｜全额退款`,
+            refundAmount: paidCent,
+        });
+        const approved = await this.afterSales.approveRequest(ctx, req.id);
+        if (approved.state !== 'Refunded') {
+            throw new Error(`退款未成功（售后单 ${req.id} 状态 ${approved.state}），预订保留`);
+        }
+        return this.finalizeCancel(ctx, booking, {
+            feeCent: 0,
+            reason: adminReason,
+            afterSalesRequestId: Number(req.id),
+        });
+    }
+
+    /**
+     * 售后状态事件收口（plugin.ts 订阅 AfterSalesStateTransitionEvent）：
+     * 仅 Refunded 触发；按 orderLineId 反查在途预订，置 cancelled + 释放锁房。
+     * 扣款快照 = 已付 − 实际退款；幂等（已取消/noShow/已入住均 no-op）。
+     */
+    async handleAfterSalesRefunded(event: AfterSalesStateTransitionEvent): Promise<void> {
+        if (event.toState !== 'Refunded') return;
+        const ctx = event.ctx;
+        try {
+            const req = await this.conn.getRepository(ctx, AfterSalesRequest).findOne({
+                where: { id: Number(event.requestId) as any },
+            });
+            if (!req || req.orderLineId == null) return;
+            // 精确按售后关联定位发起取消的预订（退款引发的订单事件可能已产生新的同行动态，
+            // 不能简单取 orderLine 最新一条）；无关联的历史数据回退最新一条兜底
+            let booking = await this.repo(ctx).findOne({
+                where: { afterSalesRequestId: Number(req.id) },
+                order: { id: 'DESC' },
+            });
+            if (!booking) {
+                booking = await this.repo(ctx).findOne({
+                    where: { orderLineId: req.orderLineId },
+                    order: { id: 'DESC' },
+                });
+            }
+            if (!booking || !CANCELLABLE_STATUSES.includes(booking.status)) return;
+            const paidCent = await this.settledPaidCent(ctx, booking.orderId);
+            const actualRefund =
+                req.actualRefundAmount != null
+                    ? Math.max(0, Math.round(req.actualRefundAmount))
+                    : Math.max(0, Math.round(req.refundAmount || 0));
+            const feeCent = Math.max(0, paidCent - actualRefund);
+            await this.finalizeCancel(ctx, booking, {
+                feeCent,
+                reason: booking.cancelReason ?? `售后退款完成自动取消（售后单 ${req.id}）`,
+                afterSalesRequestId: Number(req.id),
+            });
+        } catch (e: any) {
+            Logger.error(
+                `handleAfterSalesRefunded request ${event.requestId} failed: ${e?.message}`,
+                loggerCtx,
+            );
+        }
+    }
+
+    /**
+     * 售后单在途守卫：关联单处于 Pending/Approved/Received/RefundFailed 等活动态 → 阻断（防双退）；
+     * Rejected/Closed → 视为已终结，清空关联放行（可重新发起）；Refunded 理论上 booking 已收口，亦阻断。
+     */
+    private async assertNoActiveAfterSales(ctx: RequestContext, booking: HotelBooking): Promise<void> {
+        if (booking.afterSalesRequestId == null) return;
+        const req = await this.conn.getRepository(ctx, AfterSalesRequest).findOne({
+            where: { id: booking.afterSalesRequestId as any },
+        });
+        const state = String(req?.state ?? '');
+        if (state === 'Rejected' || state === 'Closed') {
+            booking.afterSalesRequestId = null;
+            await this.repo(ctx).update(booking.id, { afterSalesRequestId: null } as any);
+            return;
+        }
+        throw new Error(
+            `该预订已有退款售后单 ${booking.afterSalesRequestId}${state ? `（${state}）` : ''}处理中，请在售后管理中完成`,
+        );
+    }
+
+    /** 取消收口：置 cancelled + 扣款快照 + 释放该行全部 lock（幂等） */
+    private async finalizeCancel(
+        ctx: RequestContext,
+        booking: HotelBooking,
+        opts: { feeCent: number; reason: string; afterSalesRequestId?: number },
+    ): Promise<HotelBooking> {
         booking.status = 'cancelled';
         booking.cancelledAt = new Date();
-        booking.cancelReason = (reason ?? '').trim() || null;
+        booking.cancelReason = opts.reason;
+        booking.cancelFeeCent = Math.max(0, Math.round(opts.feeCent));
+        if (opts.afterSalesRequestId != null) booking.afterSalesRequestId = opts.afterSalesRequestId;
         const saved = await this.repo(ctx).save(booking);
         await this.inventory.releaseLocksByOrderLine(ctx, saved.orderLineId);
+        Logger.info(
+            `Booking ${saved.id} cancelled (fee ${saved.cancelFeeCent}, after-sales ${saved.afterSalesRequestId ?? '-'})`,
+            loggerCtx,
+        );
         return saved;
     }
 

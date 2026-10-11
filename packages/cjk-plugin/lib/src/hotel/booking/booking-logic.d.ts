@@ -30,3 +30,42 @@ export declare function bookingTotalCent(line: {
     linePriceWithTax?: number | null;
     quantity?: number | null;
 }): number;
+/** free=免费窗口内全额退；partial=逾时扣首晚退余款；forfeit=分文不退；unpaid=未付款直接取消；blocked=无政策不可自助取消 */
+export type CancelQuoteMode = 'free' | 'partial' | 'forfeit' | 'unpaid' | 'blocked';
+export interface CancelQuote {
+    mode: CancelQuoteMode;
+    /** 免费取消（全额退） */
+    free: boolean;
+    /** 顾客可否自助取消（blocked=false：未配置取消政策，引导联系酒店；管理员强制取消不受限） */
+    cancellable: boolean;
+    /** 应退金额（分，≤ 实付） */
+    refundCent: number;
+    /** 扣款金额（分） */
+    feeCent: number;
+    /** 免费取消截止点（无窗口为 null） */
+    deadline: Date | null;
+}
+export interface CancelQuoteInput {
+    status: HotelBookingStatus;
+    /** 方案级覆盖 → 房型级回退后的有效政策；null = 未配置政策 */
+    policy: CancelPolicy | null | undefined;
+    /** 确认时固化的免费取消截止点（cancelDeadlineAt） */
+    deadline?: Date | null;
+    now?: Date;
+    /** 订单行成交总额（分） */
+    totalCent: number;
+    /** 已结算实付（分；未结算的授权单按 0 处理——无 Settled 支付可退） */
+    paidCent: number;
+    /** 首晚房费（全部房间合计，分） */
+    firstNightFeeCent: number;
+}
+/**
+ * 取消报价（design §8）：
+ * - 无已结算支付（未付/仅授权）→ unpaid：不涉及退款，直接取消
+ * - pendingDeposit 但已有结算款（确认事件延迟等边缘）→ 按全额退 free
+ * - confirmed + freeUntil：now ≤ 截止点 → free 全额退；逾时 → partial（partial=full 扣全款，否则扣首晚），
+ *   应退为 0 时落 forfeit
+ * - nonRefundable → forfeit（可取消但不退）
+ * - 未配置政策（null）→ blocked：顾客不可自助取消，走管理员强制取消
+ */
+export declare function computeCancelQuote(input: CancelQuoteInput): CancelQuote;

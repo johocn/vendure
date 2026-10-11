@@ -35,6 +35,10 @@ export declare class HotelBooking extends VendureEntity {
     completedAt?: Date;
     cancelledAt?: Date;
     cancelReason: string | null;
+    /** 实际扣款快照（分，P4 取消时落；0 = 免费取消/未付款；null = 未取消） */
+    cancelFeeCent: number | null;
+    /** 关联售后单 id（逾时部分退款走售后审批链；P4，幂等去重用） */
+    afterSalesRequestId: number | null;
     /** 房型名（非持久化；仅 admin 列表 listForAdmin 按 ctx 语言 enrich） */
     variantName?: string | null;
 }

@@ -115,6 +115,14 @@ __decorate([
     (0, typeorm_1.Column)({ type: 'varchar', length: 255, nullable: true }),
     __metadata("design:type", Object)
 ], HotelBooking.prototype, "cancelReason", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', nullable: true }),
+    __metadata("design:type", Object)
+], HotelBooking.prototype, "cancelFeeCent", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', nullable: true }),
+    __metadata("design:type", Object)
+], HotelBooking.prototype, "afterSalesRequestId", void 0);
 exports.HotelBooking = HotelBooking = __decorate([
     (0, typeorm_1.Entity)(),
     (0, typeorm_1.Index)('idx_hotel_booking_order', ['orderId']),

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.HotelOrderLineColumnMigration = exports.StocktakePostedDocIndexMigration = exports.PickBatchHandoverColumnMigration = exports.ReservationTtlColumnMigration = exports.ReservationExpiresAtMigration = exports.CollectionIconMigration = exports.ChannelInventoryModeColumnMigration = exports.StockTableMigration = exports.ShippingContactFlagMigration = exports.ChannelCustomColumnMigration = exports.AddTenantMemberRedeemProfiles = exports.TenantMemberColumnMigration = exports.PAY_CONFIG_MIGRATION_DONE = exports.PayConfigEncryptionMigration = exports.MAP_CONFIG_MIGRATION_DONE = exports.MapConfigEncryptionMigration = void 0;
+exports.HotelBookingCancelColumnsMigration = exports.HotelOrderLineColumnMigration = exports.StocktakePostedDocIndexMigration = exports.PickBatchHandoverColumnMigration = exports.ReservationTtlColumnMigration = exports.ReservationExpiresAtMigration = exports.CollectionIconMigration = exports.ChannelInventoryModeColumnMigration = exports.StockTableMigration = exports.ShippingContactFlagMigration = exports.ChannelCustomColumnMigration = exports.AddTenantMemberRedeemProfiles = exports.TenantMemberColumnMigration = exports.PAY_CONFIG_MIGRATION_DONE = exports.PayConfigEncryptionMigration = exports.MAP_CONFIG_MIGRATION_DONE = exports.MapConfigEncryptionMigration = void 0;
 // packages/cjk-plugin/src/migrations/index.ts
 var migrate_mapconfig_encryption_1 = require("./migrate-mapconfig-encryption");
 Object.defineProperty(exports, "MapConfigEncryptionMigration", { enumerable: true, get: function () { return migrate_mapconfig_encryption_1.MapConfigEncryptionMigration; } });
@@ -31,4 +31,6 @@ var migrate_stocktake_posted_doc_index_1 = require("./migrate-stocktake-posted-d
 Object.defineProperty(exports, "StocktakePostedDocIndexMigration", { enumerable: true, get: function () { return migrate_stocktake_posted_doc_index_1.StocktakePostedDocIndexMigration; } });
 var migrate_hotel_order_line_columns_1 = require("./migrate-hotel-order-line-columns");
 Object.defineProperty(exports, "HotelOrderLineColumnMigration", { enumerable: true, get: function () { return migrate_hotel_order_line_columns_1.HotelOrderLineColumnMigration; } });
+var migrate_hotel_booking_cancel_columns_1 = require("./migrate-hotel-booking-cancel-columns");
+Object.defineProperty(exports, "HotelBookingCancelColumnsMigration", { enumerable: true, get: function () { return migrate_hotel_booking_cancel_columns_1.HotelBookingCancelColumnsMigration; } });
 //# sourceMappingURL=index.js.map

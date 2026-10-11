@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@nestjs/event-emitter": "^3.1.0",
+    "@vendure/after-sales-plugin": "workspace:*",
     "@vendure/coupon-plugin": "workspace:*",
     "@vendure/distribution-plugin": "workspace:*",
     "@vendure/logistics-plugin": "workspace:*"
