@@ -1,9 +1,14 @@
 import { RequestContext, TransactionalConnection } from '@vendure/core';
 import { DiyMaterial } from './entities/diy-material.entity';
+import { DiyPlan } from './entities/diy-plan.entity';
 import { DiyTemplate } from './entities/diy-template.entity';
-import { DiyMaterialFilter, DiyPluginOptions } from './types';
+import { DiyMaterialFilter, DiyPlanSpec, DiyPluginOptions } from './types';
 export interface DiyMaterialList {
     items: DiyMaterial[];
+    total: number;
+}
+export interface DiyPlanList {
+    items: DiyPlan[];
     total: number;
 }
 /**
@@ -24,4 +29,18 @@ export declare class DiyShopService {
     findShopTemplates(ctx: RequestContext): Promise<DiyTemplate[]>;
     /** C 端单模板：租户优先、其次平台，仅 enabled；不存在/未启用返回 null */
     findShopTemplateByCode(ctx: RequestContext, code: string): Promise<DiyTemplate | null>;
+    /** C 端创建方案（可匿名演示）：required 槽位校验 → 合并素材 → 服务端复算 → draft 落库（价格快照） */
+    createDiyPlan(ctx: RequestContext, input: {
+        templateCode: string;
+        spec: DiyPlanSpec;
+        thumb?: string | null;
+    }): Promise<DiyPlan>;
+    /** 我的方案列表（未登录返回空页） */
+    myDiyPlans(ctx: RequestContext, options?: {
+        status?: 'draft' | 'quoted' | 'ordered';
+        skip?: number;
+        take?: number;
+    }): Promise<DiyPlanList>;
+    /** 我的方案详情（仅本人可见，他人/跨租户一律 null） */
+    myDiyPlan(ctx: RequestContext, id: string): Promise<DiyPlan | null>;
 }

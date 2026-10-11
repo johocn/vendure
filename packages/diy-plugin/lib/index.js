@@ -24,4 +24,6 @@ __exportStar(require("./src/template-config"), exports);
 __exportStar(require("./src/entities/diy-category.entity"), exports);
 __exportStar(require("./src/entities/diy-material.entity"), exports);
 __exportStar(require("./src/entities/diy-template.entity"), exports);
+__exportStar(require("./src/entities/diy-plan.entity"), exports);
+__exportStar(require("./src/calc-bridge"), exports);
 //# sourceMappingURL=index.js.map

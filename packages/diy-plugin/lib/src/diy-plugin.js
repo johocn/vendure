@@ -27,6 +27,7 @@ const diy_shop_resolver_1 = require("./diy-shop.resolver");
 const diy_shop_service_1 = require("./diy-shop.service");
 const diy_category_entity_1 = require("./entities/diy-category.entity");
 const diy_material_entity_1 = require("./entities/diy-material.entity");
+const diy_plan_entity_1 = require("./entities/diy-plan.entity");
 const diy_template_entity_1 = require("./entities/diy-template.entity");
 const permissions_1 = require("./permissions");
 const seed_1 = require("./seed");
@@ -197,6 +198,30 @@ const shopSchema = (0, graphql_tag_1.default) `
         diyShopTemplates: [DiyTemplate!]!
         diyShopTemplate(code: String!): DiyTemplate
     }
+    type DiyPlan {
+        id: ID!
+        status: String!
+        spec: JSON
+        bom: JSON
+        calcVersion: String!
+        quoteNo: String
+        expiresAt: DateTime
+        orderLineId: Int
+        thumb: String
+        createdAt: DateTime!
+        updatedAt: DateTime!
+    }
+    type DiyPlanList {
+        items: [DiyPlan!]!
+        total: Int!
+    }
+    extend type Query {
+        myDiyPlans(status: String, skip: Int, take: Int): DiyPlanList!
+        myDiyPlan(id: ID!): DiyPlan
+    }
+    extend type Mutation {
+        createDiyPlan(templateCode: String!, spec: JSON!, thumb: String): DiyPlan!
+    }
 `;
 let DiySeedRunner = class DiySeedRunner {
     constructor(connection) {
@@ -230,7 +255,7 @@ DiyPlugin.options = {};
 exports.DiyPlugin = DiyPlugin = DiyPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [diy_category_entity_1.DiyCategory, diy_material_entity_1.DiyMaterial, diy_template_entity_1.DiyTemplate],
+        entities: [diy_category_entity_1.DiyCategory, diy_material_entity_1.DiyMaterial, diy_template_entity_1.DiyTemplate, diy_plan_entity_1.DiyPlan],
         providers: [
             { provide: constants_1.PLUGIN_INIT_OPTIONS, useFactory: () => DiyPlugin.options },
             diy_service_1.DiyService,

@@ -1,16 +1,25 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { RequestContext, TransactionalConnection } from '@vendure/core';
+import { RequestContext, TransactionalConnection, UserInputError } from '@vendure/core';
+import { CALC_VERSION } from '@diy/calc';
 import { IsNull } from 'typeorm';
 
 import { PLUGIN_INIT_OPTIONS } from './constants';
+import { runDiyCalc, toPlanBom } from './calc-bridge';
 import { DiyCategory } from './entities/diy-category.entity';
 import { DiyMaterial } from './entities/diy-material.entity';
+import { DiyPlan } from './entities/diy-plan.entity';
 import { DiyTemplate } from './entities/diy-template.entity';
+import { parseTemplateConfig } from './template-config';
 import { mergeMaterials } from './material-merge';
-import { DiyMaterialFilter, DiyPluginOptions } from './types';
+import { DiyMaterialFilter, DiyPlanSpec, DiyPluginOptions } from './types';
 
 export interface DiyMaterialList {
     items: DiyMaterial[];
+    total: number;
+}
+
+export interface DiyPlanList {
+    items: DiyPlan[];
     total: number;
 }
 
@@ -113,5 +122,79 @@ export class DiyShopService {
             return tenant;
         }
         return repo.findOne({ where: { app: IsNull(), code, status: 'enabled' } });
+    }
+
+    /* ------------------------- 方案（规格 §6.2） ------------------------- */
+
+    /** C 端创建方案（可匿名演示）：required 槽位校验 → 合并素材 → 服务端复算 → draft 落库（价格快照） */
+    async createDiyPlan(
+        ctx: RequestContext,
+        input: { templateCode: string; spec: DiyPlanSpec; thumb?: string | null },
+    ): Promise<DiyPlan> {
+        const template = await this.findShopTemplateByCode(ctx, input.templateCode);
+        if (!template) {
+            throw new UserInputError(`Diy template not found: ${input.templateCode}`);
+        }
+        const parsed = parseTemplateConfig(template.config);
+        if (!parsed) {
+            throw new UserInputError(`Invalid template config: ${template.code}`);
+        }
+        for (const slot of parsed.slots) {
+            if (slot.required && !input.spec.slots[slot.key]?.materialId) {
+                throw new UserInputError(`Slot "${slot.key}" is required`);
+            }
+        }
+        // 仅启用素材参与复算：素材禁用/删除 → 合并视图缺席 → runDiyCalc 抛错
+        const materialList = await this.findShopMaterials(ctx, { onlyEnabled: true, take: 100000 });
+        const { bom } = runDiyCalc(template, input.spec, materialList.items, ctx.languageCode);
+        return this.connection.getRepository(ctx, DiyPlan).save(
+            new DiyPlan({
+                app: this.app,
+                userId: ctx.activeUserId != null ? Number(ctx.activeUserId) : null,
+                templateId: Number(template.id),
+                templateVersion: template.version,
+                status: 'draft',
+                spec: input.spec,
+                bom: toPlanBom(bom),
+                calcVersion: CALC_VERSION,
+                thumb: input.thumb ?? null,
+            }),
+        );
+    }
+
+    /** 我的方案列表（未登录返回空页） */
+    async myDiyPlans(
+        ctx: RequestContext,
+        options: { status?: 'draft' | 'quoted' | 'ordered'; skip?: number; take?: number } = {},
+    ): Promise<DiyPlanList> {
+        const userId = ctx.activeUserId;
+        if (!userId) {
+            return { items: [], total: 0 };
+        }
+        const [items, total] = await this.connection
+            .getRepository(ctx, DiyPlan)
+            .findAndCount({
+                where: {
+                    app: this.app,
+                    userId: Number(userId),
+                    ...(options.status ? { status: options.status } : {}),
+                },
+                order: { createdAt: 'DESC', id: 'DESC' },
+                skip: options.skip ?? 0,
+                take: options.take ?? 20,
+            });
+        return { items, total };
+    }
+
+    /** 我的方案详情（仅本人可见，他人/跨租户一律 null） */
+    async myDiyPlan(ctx: RequestContext, id: string): Promise<DiyPlan | null> {
+        const userId = ctx.activeUserId;
+        if (!userId) {
+            return null;
+        }
+        const plan = await this.connection
+            .getRepository(ctx, DiyPlan)
+            .findOne({ where: { app: this.app, id: Number(id) } });
+        return plan && plan.userId === Number(userId) ? plan : null;
     }
 }

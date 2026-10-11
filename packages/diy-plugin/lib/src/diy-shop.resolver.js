@@ -29,6 +29,15 @@ let DiyShopResolver = class DiyShopResolver {
     async diyShopTemplate(ctx, code) {
         return this.service.findShopTemplateByCode(ctx, code);
     }
+    async createDiyPlan(ctx, templateCode, spec, thumb) {
+        return this.service.createDiyPlan(ctx, { templateCode, spec, thumb });
+    }
+    async myDiyPlans(ctx, status, skip, take) {
+        return this.service.myDiyPlans(ctx, { status, skip, take });
+    }
+    async myDiyPlan(ctx, id) {
+        return this.service.myDiyPlan(ctx, id);
+    }
 };
 exports.DiyShopResolver = DiyShopResolver;
 __decorate([
@@ -57,6 +66,37 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, String]),
     __metadata("design:returntype", Promise)
 ], DiyShopResolver.prototype, "diyShopTemplate", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Public),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('templateCode')),
+    __param(2, (0, graphql_1.Args)('spec')),
+    __param(3, (0, graphql_1.Args)('thumb', { nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, Object, Object]),
+    __metadata("design:returntype", Promise)
+], DiyShopResolver.prototype, "createDiyPlan", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('status', { nullable: true })),
+    __param(2, (0, graphql_1.Args)('skip', { nullable: true })),
+    __param(3, (0, graphql_1.Args)('take', { nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, Number, Number]),
+    __metadata("design:returntype", Promise)
+], DiyShopResolver.prototype, "myDiyPlans", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String]),
+    __metadata("design:returntype", Promise)
+], DiyShopResolver.prototype, "myDiyPlan", null);
 exports.DiyShopResolver = DiyShopResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [diy_shop_service_1.DiyShopService])

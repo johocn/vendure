@@ -9,6 +9,7 @@ import { DiyShopResolver } from './diy-shop.resolver';
 import { DiyShopService } from './diy-shop.service';
 import { DiyCategory } from './entities/diy-category.entity';
 import { DiyMaterial } from './entities/diy-material.entity';
+import { DiyPlan } from './entities/diy-plan.entity';
 import { DiyTemplate } from './entities/diy-template.entity';
 import { DiyCreate, DiyDelete, DiyRead, DiyUpdate } from './permissions';
 import { seedDiy } from './seed';
@@ -182,6 +183,30 @@ const shopSchema = gql`
         diyShopTemplates: [DiyTemplate!]!
         diyShopTemplate(code: String!): DiyTemplate
     }
+    type DiyPlan {
+        id: ID!
+        status: String!
+        spec: JSON
+        bom: JSON
+        calcVersion: String!
+        quoteNo: String
+        expiresAt: DateTime
+        orderLineId: Int
+        thumb: String
+        createdAt: DateTime!
+        updatedAt: DateTime!
+    }
+    type DiyPlanList {
+        items: [DiyPlan!]!
+        total: Int!
+    }
+    extend type Query {
+        myDiyPlans(status: String, skip: Int, take: Int): DiyPlanList!
+        myDiyPlan(id: ID!): DiyPlan
+    }
+    extend type Mutation {
+        createDiyPlan(templateCode: String!, spec: JSON!, thumb: String): DiyPlan!
+    }
 `;
 
 @Injectable()
@@ -194,7 +219,7 @@ export class DiySeedRunner {
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [DiyCategory, DiyMaterial, DiyTemplate],
+    entities: [DiyCategory, DiyMaterial, DiyTemplate, DiyPlan],
     providers: [
         { provide: PLUGIN_INIT_OPTIONS, useFactory: () => DiyPlugin.options },
         DiyService,

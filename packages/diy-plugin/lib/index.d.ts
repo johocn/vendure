@@ -8,3 +8,5 @@ export * from './src/template-config';
 export * from './src/entities/diy-category.entity';
 export * from './src/entities/diy-material.entity';
 export * from './src/entities/diy-template.entity';
+export * from './src/entities/diy-plan.entity';
+export * from './src/calc-bridge';

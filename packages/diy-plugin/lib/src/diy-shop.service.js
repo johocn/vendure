@@ -15,11 +15,15 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.DiyShopService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
+const calc_1 = require("@diy/calc");
 const typeorm_1 = require("typeorm");
 const constants_1 = require("./constants");
+const calc_bridge_1 = require("./calc-bridge");
 const diy_category_entity_1 = require("./entities/diy-category.entity");
 const diy_material_entity_1 = require("./entities/diy-material.entity");
+const diy_plan_entity_1 = require("./entities/diy-plan.entity");
 const diy_template_entity_1 = require("./entities/diy-template.entity");
+const template_config_1 = require("./template-config");
 const material_merge_1 = require("./material-merge");
 /**
  * C 端查询面（规格 §7 shop 部分）。
@@ -112,6 +116,66 @@ let DiyShopService = class DiyShopService {
             return tenant;
         }
         return repo.findOne({ where: { app: (0, typeorm_1.IsNull)(), code, status: 'enabled' } });
+    }
+    /* ------------------------- 方案（规格 §6.2） ------------------------- */
+    /** C 端创建方案（可匿名演示）：required 槽位校验 → 合并素材 → 服务端复算 → draft 落库（价格快照） */
+    async createDiyPlan(ctx, input) {
+        var _a, _b;
+        const template = await this.findShopTemplateByCode(ctx, input.templateCode);
+        if (!template) {
+            throw new core_1.UserInputError(`Diy template not found: ${input.templateCode}`);
+        }
+        const parsed = (0, template_config_1.parseTemplateConfig)(template.config);
+        if (!parsed) {
+            throw new core_1.UserInputError(`Invalid template config: ${template.code}`);
+        }
+        for (const slot of parsed.slots) {
+            if (slot.required && !((_a = input.spec.slots[slot.key]) === null || _a === void 0 ? void 0 : _a.materialId)) {
+                throw new core_1.UserInputError(`Slot "${slot.key}" is required`);
+            }
+        }
+        // 仅启用素材参与复算：素材禁用/删除 → 合并视图缺席 → runDiyCalc 抛错
+        const materialList = await this.findShopMaterials(ctx, { onlyEnabled: true, take: 100000 });
+        const { bom } = (0, calc_bridge_1.runDiyCalc)(template, input.spec, materialList.items, ctx.languageCode);
+        return this.connection.getRepository(ctx, diy_plan_entity_1.DiyPlan).save(new diy_plan_entity_1.DiyPlan({
+            app: this.app,
+            userId: ctx.activeUserId != null ? Number(ctx.activeUserId) : null,
+            templateId: Number(template.id),
+            templateVersion: template.version,
+            status: 'draft',
+            spec: input.spec,
+            bom: (0, calc_bridge_1.toPlanBom)(bom),
+            calcVersion: calc_1.CALC_VERSION,
+            thumb: (_b = input.thumb) !== null && _b !== void 0 ? _b : null,
+        }));
+    }
+    /** 我的方案列表（未登录返回空页） */
+    async myDiyPlans(ctx, options = {}) {
+        var _a, _b;
+        const userId = ctx.activeUserId;
+        if (!userId) {
+            return { items: [], total: 0 };
+        }
+        const [items, total] = await this.connection
+            .getRepository(ctx, diy_plan_entity_1.DiyPlan)
+            .findAndCount({
+            where: Object.assign({ app: this.app, userId: Number(userId) }, (options.status ? { status: options.status } : {})),
+            order: { createdAt: 'DESC', id: 'DESC' },
+            skip: (_a = options.skip) !== null && _a !== void 0 ? _a : 0,
+            take: (_b = options.take) !== null && _b !== void 0 ? _b : 20,
+        });
+        return { items, total };
+    }
+    /** 我的方案详情（仅本人可见，他人/跨租户一律 null） */
+    async myDiyPlan(ctx, id) {
+        const userId = ctx.activeUserId;
+        if (!userId) {
+            return null;
+        }
+        const plan = await this.connection
+            .getRepository(ctx, diy_plan_entity_1.DiyPlan)
+            .findOne({ where: { app: this.app, id: Number(id) } });
+        return plan && plan.userId === Number(userId) ? plan : null;
     }
 };
 exports.DiyShopService = DiyShopService;
