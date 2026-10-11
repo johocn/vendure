@@ -11,6 +11,23 @@ export interface BarePaymentInput {
      *  显式指定时优先用该方法的 args，不再叠加渠道 override。 */
     methodCode?: string;
 }
+export interface BareRefundInput {
+    outTradeNo: string;
+    outRefundNo: string;
+    /** 退款金额：分 */
+    refund: number;
+    /** 原订单金额：分 */
+    total: number;
+    reason?: string;
+    /** 指定支付方法 code（同 BarePaymentInput.methodCode 口径） */
+    methodCode?: string;
+}
+export interface BareRefundResult {
+    refundId?: string;
+    outRefundNo?: string;
+    /** 微信退款状态：SUCCESS/CLOSED/PROCESSING/ABNORMAL 等 */
+    status?: string;
+}
 export interface BarePaymentResult {
     payType: string;
     prepayId?: string;
@@ -52,4 +69,9 @@ export declare class WechatpayService {
     /** devBypass 下返回模拟支付页；否则调真实微信 API 生成支付参数。
      *  ctx 决定用哪个租户的商户凭证与回调地址（CS-/RC- 等代付单须传自身 ctx）。 */
     createBarePayment(input: BarePaymentInput, ctx?: RequestContext): Promise<BarePaymentResult>;
+    /** 裸退款（POST /v3/refund/domestic/refunds）：ctx 决定用哪个租户的商户凭证（同 createBarePayment）。
+     *  微信侧错误（非 2xx 或无 refund_id）显式抛出，供调用方落 failed 走重试。 */
+    refundBarePayment(ctx: RequestContext | undefined, input: BareRefundInput): Promise<BareRefundResult>;
+    /** 查询单笔退款（GET /v3/refund/domestic/refunds/{out_refund_no}），供卡单对账；查无记录返回 null。 */
+    findBareRefund(ctx: RequestContext | undefined, outRefundNo: string, methodCode?: string): Promise<BareRefundResult | null>;
 }
