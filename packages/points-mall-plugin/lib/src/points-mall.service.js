@@ -39,6 +39,14 @@ let PointsMallService = class PointsMallService {
         }
         return preview;
     }
+    /** 分页参数钳制：take ∈ [1,100]、skip ≥ 0，防全表拉取与负数分页 SQL 报错 */
+    clampPage(options, defaultTake) {
+        var _a, _b;
+        return {
+            take: Math.min(Math.max((_a = options === null || options === void 0 ? void 0 : options.take) !== null && _a !== void 0 ? _a : defaultTake, 1), 100),
+            skip: Math.max((_b = options === null || options === void 0 ? void 0 : options.skip) !== null && _b !== void 0 ? _b : 0, 0),
+        };
+    }
     setMemberLevelService(svc) {
         this.memberLevel = svc;
     }
@@ -134,16 +142,17 @@ let PointsMallService = class PointsMallService {
     }
     /** 我的收藏（渠道隔离，id 倒序），带商品视图与最低积分价；商品已删则给占位视图。 */
     async myFavorites(ctx, options) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+        var _a, _b, _c, _d, _e, _f, _g, _h;
         const customer = await this.requireCustomer(ctx);
+        const page = this.clampPage(options, 20);
         const [favorites, totalItems] = await this.connection
             .getRepository(ctx, product_favorite_entity_1.ProductFavorite)
             .createQueryBuilder('fav')
             .where('fav.customerId = :customerId', { customerId: customer.id })
             .andWhere('fav.channelId = :channelId', { channelId: ctx.channelId })
             .orderBy('fav.id', 'DESC')
-            .skip(options === null || options === void 0 ? void 0 : options.skip)
-            .take((_a = options === null || options === void 0 ? void 0 : options.take) !== null && _a !== void 0 ? _a : 20)
+            .skip(page.skip)
+            .take(page.take)
             .getManyAndCount();
         if (!favorites.length) {
             return { items: [], totalItems };
@@ -155,7 +164,7 @@ let PointsMallService = class PointsMallService {
         const items = [];
         for (const fav of favorites) {
             const variant = variants.get(fav.productId);
-            const deleted = !variant || !!((_b = variant.product) === null || _b === void 0 ? void 0 : _b.deletedAt);
+            const deleted = !variant || !!((_a = variant.product) === null || _a === void 0 ? void 0 : _a.deletedAt);
             if (deleted) {
                 items.push({
                     productId: String(fav.productId),
@@ -172,12 +181,12 @@ let PointsMallService = class PointsMallService {
             const t = this.pickTranslation(variant.product, ctx);
             items.push({
                 productId: String(fav.productId),
-                name: (_d = (_c = t === null || t === void 0 ? void 0 : t.name) !== null && _c !== void 0 ? _c : variant.name) !== null && _d !== void 0 ? _d : '',
-                slug: (_e = t === null || t === void 0 ? void 0 : t.slug) !== null && _e !== void 0 ? _e : '',
-                image: this.toAbsoluteAssetUrl(ctx, (_g = (_f = variant.product) === null || _f === void 0 ? void 0 : _f.featuredAsset) === null || _g === void 0 ? void 0 : _g.preview) || null,
+                name: (_c = (_b = t === null || t === void 0 ? void 0 : t.name) !== null && _b !== void 0 ? _b : variant.name) !== null && _c !== void 0 ? _c : '',
+                slug: (_d = t === null || t === void 0 ? void 0 : t.slug) !== null && _d !== void 0 ? _d : '',
+                image: this.toAbsoluteAssetUrl(ctx, (_f = (_e = variant.product) === null || _e === void 0 ? void 0 : _e.featuredAsset) === null || _f === void 0 ? void 0 : _f.preview) || null,
                 priceWithTax: variant.priceWithTax,
-                isOnSale: ((_h = variant.product) === null || _h === void 0 ? void 0 : _h.enabled) === true && !variant.deletedAt,
-                pointsPrice: (_j = pool.get(fav.productId)) !== null && _j !== void 0 ? _j : null,
+                isOnSale: ((_g = variant.product) === null || _g === void 0 ? void 0 : _g.enabled) === true && !variant.deletedAt,
+                pointsPrice: (_h = pool.get(fav.productId)) !== null && _h !== void 0 ? _h : null,
                 favoritedAt: fav.favoritedAt,
             });
         }
@@ -322,7 +331,7 @@ let PointsMallService = class PointsMallService {
         return true;
     }
     async adminPointsProducts(ctx, options) {
-        var _a, _b;
+        var _a;
         const qb = this.connection
             .getRepository(ctx, points_product_entity_1.PointsProduct)
             .createQueryBuilder('pp')
@@ -340,19 +349,20 @@ let PointsMallService = class PointsMallService {
                 kwExact: kw,
             });
         }
+        const page = this.clampPage(options, 50);
         const [items, totalItems] = await qb
             .orderBy('pp.sortOrder', 'ASC')
             .addOrderBy('pp.id', 'DESC')
-            .skip(options === null || options === void 0 ? void 0 : options.skip)
-            .take((_b = options === null || options === void 0 ? void 0 : options.take) !== null && _b !== void 0 ? _b : 50)
+            .skip(page.skip)
+            .take(page.take)
             .getManyAndCount();
         return { items, totalItems };
     }
     // ===== 积分商品（shop）=====
     /** 商城列表：enabled + 在有效期内，排序同 admin。 */
     async shopPointsProducts(ctx, options) {
-        var _a;
         const now = new Date();
+        const page = this.clampPage(options, 20);
         const [rows, totalItems] = await this.connection
             .getRepository(ctx, points_product_entity_1.PointsProduct)
             .createQueryBuilder('pp')
@@ -362,8 +372,8 @@ let PointsMallService = class PointsMallService {
             .andWhere('(pp.validTo IS NULL OR pp.validTo >= :now)', { now })
             .orderBy('pp.sortOrder', 'ASC')
             .addOrderBy('pp.id', 'DESC')
-            .skip(options === null || options === void 0 ? void 0 : options.skip)
-            .take((_a = options === null || options === void 0 ? void 0 : options.take) !== null && _a !== void 0 ? _a : 20)
+            .skip(page.skip)
+            .take(page.take)
             .getManyAndCount();
         const variants = await this.getVariantsWithProduct(ctx, rows.map(r => r.variantId));
         await this.applyVariantPrices(ctx, [...variants.values()]);
@@ -578,7 +588,7 @@ let PointsMallService = class PointsMallService {
         return { pointsOrderId: order.id, outTradeNo: order.code, pay };
     }
     /** 支付回调结算：按 outTradeNo（PO-<id>）幂等置为 paid → pending_ship/completed。 */
-    async settlePointsOrderByOutTradeNo(ctx, outTradeNo) {
+    async settlePointsOrderByOutTradeNo(ctx, outTradeNo, transactionId) {
         const m = String(outTradeNo).match(/^PO-(\d+)$/);
         if (!m)
             throw new core_1.UserInputError('Invalid points out_trade_no');
@@ -588,24 +598,17 @@ let PointsMallService = class PointsMallService {
         });
         if (!order)
             throw new core_1.UserInputError('Points order not found');
-        if (order.status !== 'pending_payment')
-            return; // 幂等：已结算直接返回
+        if (order.status !== 'pending_payment') {
+            // 已结算（含后续履约态）属重复回调，幂等返回；已取消属异常（现金已收但单已退分回补），抛错上抛告警
+            if (order.status === 'cancelled')
+                throw new core_1.UserInputError('Points order already cancelled');
+            return;
+        }
         const next = order.deliveryType === 'virtual' ? 'completed' : 'pending_ship';
         const now = new Date();
         await this.connection.startTransaction(ctx);
         try {
-            // 原子抢占支付单（并发回调只成功一次）
-            const claimPay = await this.connection
-                .getRepository(ctx, points_order_payment_entity_1.PointsOrderPayment)
-                .createQueryBuilder()
-                .update(points_order_payment_entity_1.PointsOrderPayment)
-                .set({ status: 'paid', paidAt: now })
-                .where('orderId = :orderId AND status = :status', { orderId: order.id, status: 'pending' })
-                .execute();
-            if (claimPay.affected === 0) {
-                await this.connection.commitOpenTransaction(ctx);
-                return;
-            }
+            // 1) 先原子抢占订单：pending_payment → next；若已被取消/结算则 affected===0
             const claimOrder = await repo
                 .createQueryBuilder()
                 .update(points_order_entity_1.PointsOrder)
@@ -613,8 +616,18 @@ let PointsMallService = class PointsMallService {
                 .where('id = :id AND status = :status', { id: order.id, status: 'pending_payment' })
                 .execute();
             if (claimOrder.affected === 0) {
-                await this.connection.commitOpenTransaction(ctx);
-                return;
+                throw new core_1.UserInputError(`Points order is ${order.status}`);
+            }
+            // 2) 再原子抢占支付单：pending → paid，并写入 transactionId
+            const claimPay = await this.connection
+                .getRepository(ctx, points_order_payment_entity_1.PointsOrderPayment)
+                .createQueryBuilder()
+                .update(points_order_payment_entity_1.PointsOrderPayment)
+                .set({ status: 'paid', transactionId, paidAt: now })
+                .where('orderId = :orderId AND status = :status', { orderId: order.id, status: 'pending' })
+                .execute();
+            if (claimPay.affected === 0) {
+                throw new core_1.UserInputError('Payment already settled or not found');
             }
             await this.connection.commitOpenTransaction(ctx);
         }
@@ -713,7 +726,6 @@ let PointsMallService = class PointsMallService {
     }
     // ===== 订单查询 =====
     async myPointsOrders(ctx, options) {
-        var _a;
         const customer = await this.requireCustomer(ctx);
         const qb = this.connection
             .getRepository(ctx, points_order_entity_1.PointsOrder)
@@ -723,10 +735,11 @@ let PointsMallService = class PointsMallService {
         if (options === null || options === void 0 ? void 0 : options.status) {
             qb.andWhere('po.status = :status', { status: options.status });
         }
+        const page = this.clampPage(options, 20);
         const [items, totalItems] = await qb
             .orderBy('po.id', 'DESC')
-            .skip(options === null || options === void 0 ? void 0 : options.skip)
-            .take((_a = options === null || options === void 0 ? void 0 : options.take) !== null && _a !== void 0 ? _a : 20)
+            .skip(page.skip)
+            .take(page.take)
             .getManyAndCount();
         return { items, totalItems };
     }
@@ -738,7 +751,7 @@ let PointsMallService = class PointsMallService {
         }))) !== null && _a !== void 0 ? _a : undefined);
     }
     async adminPointsOrders(ctx, options) {
-        var _a, _b;
+        var _a;
         const qb = this.connection
             .getRepository(ctx, points_order_entity_1.PointsOrder)
             .createQueryBuilder('po')
@@ -758,10 +771,11 @@ let PointsMallService = class PointsMallService {
                 }
             }));
         }
+        const page = this.clampPage(options, 20);
         const [items, totalItems] = await qb
             .orderBy('po.id', 'DESC')
-            .skip(options === null || options === void 0 ? void 0 : options.skip)
-            .take((_b = options === null || options === void 0 ? void 0 : options.take) !== null && _b !== void 0 ? _b : 20)
+            .skip(page.skip)
+            .take(page.take)
             .getManyAndCount();
         return { items, totalItems };
     }

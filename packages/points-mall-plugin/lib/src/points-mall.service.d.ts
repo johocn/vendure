@@ -12,6 +12,8 @@ export declare class PointsMallService {
     /** 与 AssetInterceptorPlugin 同源：用 assetStorageStrategy.toAbsoluteUrl 补绝对前缀。
      * C端 H5 为 history/hash 混合路由，裸 `preview/...` 相对路径会被解析到当前路由目录下导致图片 404。 */
     private toAbsoluteAssetUrl;
+    /** 分页参数钳制：take ∈ [1,100]、skip ≥ 0，防全表拉取与负数分页 SQL 报错 */
+    private clampPage;
     setMemberLevelService(svc: any): void;
     setWechatpayGateway(g: any): void;
     private requireCustomer;
@@ -62,7 +64,7 @@ export declare class PointsMallService {
     /** 混合价现金支付：校验本人订单 + pending_payment，走微信网关裸支付参数。 */
     createPointsOrderPayment(ctx: RequestContext, pointsOrderId: ID, tradeType?: string, openid?: string): Promise<PointsPayParams>;
     /** 支付回调结算：按 outTradeNo（PO-<id>）幂等置为 paid → pending_ship/completed。 */
-    settlePointsOrderByOutTradeNo(ctx: RequestContext, outTradeNo: string): Promise<void>;
+    settlePointsOrderByOutTradeNo(ctx: RequestContext, outTradeNo: string, transactionId: string): Promise<void>;
     /** 原子取消一笔待支付单：claim 状态 → 退分 → 回补库存 → 支付单置 cancelled。调用方负责事务与归属校验。 */
     private executeCancel;
     /** 未支付取消：退积分 + 回补库存 + 支付单置 cancelled。 */

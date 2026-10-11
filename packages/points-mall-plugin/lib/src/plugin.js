@@ -263,7 +263,7 @@ let PointsMallPlugin = PointsMallPlugin_1 = class PointsMallPlugin {
             const registry = injector.get(wechatpay_plugin_1.WechatpaySettlementRegistry);
             registry.register({
                 prefix: 'PO-',
-                settle: (ctx, outTradeNo) => svc.settlePointsOrderByOutTradeNo(ctx, outTradeNo),
+                settle: (ctx, outTradeNo, transactionId) => svc.settlePointsOrderByOutTradeNo(ctx, outTradeNo, transactionId),
             });
         }
         catch (_c) {
