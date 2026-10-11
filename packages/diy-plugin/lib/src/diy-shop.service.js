@@ -18,6 +18,7 @@ const core_1 = require("@vendure/core");
 const calc_1 = require("@diy/calc");
 const typeorm_1 = require("typeorm");
 const constants_1 = require("./constants");
+const quote_utils_1 = require("./quote-utils");
 const calc_bridge_1 = require("./calc-bridge");
 const diy_category_entity_1 = require("./entities/diy-category.entity");
 const diy_material_entity_1 = require("./entities/diy-material.entity");
@@ -176,6 +177,37 @@ let DiyShopService = class DiyShopService {
             .getRepository(ctx, diy_plan_entity_1.DiyPlan)
             .findOne({ where: { app: this.app, id: Number(id) } });
         return plan && plan.userId === Number(userId) ? plan : null;
+    }
+    /** 报价（规格 §6.3）：draft/quoted 可重复报价（每次以服务端实时价复算覆盖 bom，新号新效期）；ordered 不可 */
+    async quoteDiyPlan(ctx, planId) {
+        const userId = ctx.activeUserId;
+        if (!userId) {
+            throw new core_1.ForbiddenError();
+        }
+        const repo = this.connection.getRepository(ctx, diy_plan_entity_1.DiyPlan);
+        const plan = await repo.findOne({ where: { app: this.app, id: Number(planId) } });
+        if (!plan || plan.userId !== Number(userId)) {
+            throw new core_1.UserInputError(`Diy plan not found: ${planId}`);
+        }
+        if (plan.status === 'ordered') {
+            throw new core_1.UserInputError(`Diy plan ${plan.id} already ordered`);
+        }
+        const template = await this.connection
+            .getRepository(ctx, diy_template_entity_1.DiyTemplate)
+            .findOne({ where: { id: plan.templateId } });
+        if (!template || template.status !== 'enabled') {
+            throw new core_1.UserInputError(`Diy template not available`);
+        }
+        // 服务端实时价为唯一价格权威；素材禁用/删除 → 合并视图缺席 → runDiyCalc 抛错
+        const materialList = await this.findShopMaterials(ctx, { onlyEnabled: true, take: 100000 });
+        const { bom } = (0, calc_bridge_1.runDiyCalc)(template, plan.spec, materialList.items, ctx.languageCode);
+        const now = new Date();
+        plan.status = 'quoted';
+        plan.bom = (0, calc_bridge_1.toPlanBom)(bom);
+        plan.calcVersion = calc_1.CALC_VERSION;
+        plan.quoteNo = (0, quote_utils_1.buildQuoteNo)(now);
+        plan.expiresAt = (0, quote_utils_1.quoteExpiresAt)(now, constants_1.DEFAULT_QUOTE_TTL_DAYS);
+        return repo.save(plan);
     }
 };
 exports.DiyShopService = DiyShopService;

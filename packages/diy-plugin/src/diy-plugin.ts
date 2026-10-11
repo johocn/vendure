@@ -206,6 +206,7 @@ const shopSchema = gql`
     }
     extend type Mutation {
         createDiyPlan(templateCode: String!, spec: JSON!, thumb: String): DiyPlan!
+        quoteDiyPlan(id: ID!): DiyPlan!
     }
 `;
 

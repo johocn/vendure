@@ -221,6 +221,7 @@ const shopSchema = (0, graphql_tag_1.default) `
     }
     extend type Mutation {
         createDiyPlan(templateCode: String!, spec: JSON!, thumb: String): DiyPlan!
+        quoteDiyPlan(id: ID!): DiyPlan!
     }
 `;
 let DiySeedRunner = class DiySeedRunner {

@@ -43,4 +43,6 @@ export declare class DiyShopService {
     }): Promise<DiyPlanList>;
     /** 我的方案详情（仅本人可见，他人/跨租户一律 null） */
     myDiyPlan(ctx: RequestContext, id: string): Promise<DiyPlan | null>;
+    /** 报价（规格 §6.3）：draft/quoted 可重复报价（每次以服务端实时价复算覆盖 bom，新号新效期）；ordered 不可 */
+    quoteDiyPlan(ctx: RequestContext, planId: string): Promise<DiyPlan>;
 }

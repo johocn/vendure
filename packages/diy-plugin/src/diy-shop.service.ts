@@ -1,9 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { RequestContext, TransactionalConnection, UserInputError } from '@vendure/core';
+import { RequestContext, TransactionalConnection, ForbiddenError, UserInputError } from '@vendure/core';
 import { CALC_VERSION } from '@diy/calc';
 import { IsNull } from 'typeorm';
 
-import { PLUGIN_INIT_OPTIONS } from './constants';
+import { PLUGIN_INIT_OPTIONS, DEFAULT_QUOTE_TTL_DAYS } from './constants';
+import { buildQuoteNo, quoteExpiresAt } from './quote-utils';
 import { runDiyCalc, toPlanBom } from './calc-bridge';
 import { DiyCategory } from './entities/diy-category.entity';
 import { DiyMaterial } from './entities/diy-material.entity';
@@ -196,5 +197,37 @@ export class DiyShopService {
             .getRepository(ctx, DiyPlan)
             .findOne({ where: { app: this.app, id: Number(id) } });
         return plan && plan.userId === Number(userId) ? plan : null;
+    }
+
+    /** 报价（规格 §6.3）：draft/quoted 可重复报价（每次以服务端实时价复算覆盖 bom，新号新效期）；ordered 不可 */
+    async quoteDiyPlan(ctx: RequestContext, planId: string): Promise<DiyPlan> {
+        const userId = ctx.activeUserId;
+        if (!userId) {
+            throw new ForbiddenError();
+        }
+        const repo = this.connection.getRepository(ctx, DiyPlan);
+        const plan = await repo.findOne({ where: { app: this.app, id: Number(planId) } });
+        if (!plan || plan.userId !== Number(userId)) {
+            throw new UserInputError(`Diy plan not found: ${planId}`);
+        }
+        if (plan.status === 'ordered') {
+            throw new UserInputError(`Diy plan ${plan.id} already ordered`);
+        }
+        const template = await this.connection
+            .getRepository(ctx, DiyTemplate)
+            .findOne({ where: { id: plan.templateId } });
+        if (!template || template.status !== 'enabled') {
+            throw new UserInputError(`Diy template not available`);
+        }
+        // 服务端实时价为唯一价格权威；素材禁用/删除 → 合并视图缺席 → runDiyCalc 抛错
+        const materialList = await this.findShopMaterials(ctx, { onlyEnabled: true, take: 100000 });
+        const { bom } = runDiyCalc(template, plan.spec, materialList.items, ctx.languageCode);
+        const now = new Date();
+        plan.status = 'quoted';
+        plan.bom = toPlanBom(bom);
+        plan.calcVersion = CALC_VERSION;
+        plan.quoteNo = buildQuoteNo(now);
+        plan.expiresAt = quoteExpiresAt(now, DEFAULT_QUOTE_TTL_DAYS);
+        return repo.save(plan);
     }
 }

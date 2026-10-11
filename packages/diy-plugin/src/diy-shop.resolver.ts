@@ -58,4 +58,10 @@ export class DiyShopResolver {
     async myDiyPlan(@Ctx() ctx: RequestContext, @Args('id') id: string): Promise<DiyPlan | null> {
         return this.service.myDiyPlan(ctx, id);
     }
+
+    @Mutation()
+    @Allow(Permission.Authenticated)
+    async quoteDiyPlan(@Ctx() ctx: RequestContext, @Args('id') id: string): Promise<DiyPlan> {
+        return this.service.quoteDiyPlan(ctx, id);
+    }
 }

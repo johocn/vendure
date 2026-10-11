@@ -38,6 +38,9 @@ let DiyShopResolver = class DiyShopResolver {
     async myDiyPlan(ctx, id) {
         return this.service.myDiyPlan(ctx, id);
     }
+    async quoteDiyPlan(ctx, id) {
+        return this.service.quoteDiyPlan(ctx, id);
+    }
 };
 exports.DiyShopResolver = DiyShopResolver;
 __decorate([
@@ -97,6 +100,15 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, String]),
     __metadata("design:returntype", Promise)
 ], DiyShopResolver.prototype, "myDiyPlan", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String]),
+    __metadata("design:returntype", Promise)
+], DiyShopResolver.prototype, "quoteDiyPlan", null);
 exports.DiyShopResolver = DiyShopResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [diy_shop_service_1.DiyShopService])

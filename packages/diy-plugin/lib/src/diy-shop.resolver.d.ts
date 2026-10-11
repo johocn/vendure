@@ -11,4 +11,5 @@ export declare class DiyShopResolver {
     createDiyPlan(ctx: RequestContext, templateCode: string, spec: any, thumb?: string | null): Promise<DiyPlan>;
     myDiyPlans(ctx: RequestContext, status?: 'draft' | 'quoted' | 'ordered', skip?: number, take?: number): Promise<DiyPlanList>;
     myDiyPlan(ctx: RequestContext, id: string): Promise<DiyPlan | null>;
+    quoteDiyPlan(ctx: RequestContext, id: string): Promise<DiyPlan>;
 }
