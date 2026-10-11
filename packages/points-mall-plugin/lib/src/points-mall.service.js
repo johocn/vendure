@@ -556,6 +556,9 @@ let PointsMallService = class PointsMallService {
                 transactionId: null,
                 paidAt: null,
                 channelId: ctx.channelId,
+                // createBarePayment 未指定 methodCode，buildWechatpay 缺省回退固定解析 code='wechatpay'，
+                // 此处记录实际使用的 code，退款据此路由商户凭证（历史 NULL 行回退现行为）
+                methodCode: 'wechatpay',
             });
         }
         core_1.Logger.info(`PointsOrder ${final.code} created by customer ${customer.id} (status=${status}, points=${pointsTotal}, cash=${cashTotal})`, loggerCtx);
@@ -684,7 +687,7 @@ let PointsMallService = class PointsMallService {
      * 返回 'refunded' | 'processing' | 'failed' 供调用方记日志。
      */
     async executeRefund(ctx, payment, reason) {
-        var _a, _b, _c, _d;
+        var _a, _b, _c, _d, _e;
         const payRepo = this.connection.getRepository(ctx, points_order_payment_entity_1.PointsOrderPayment);
         // JS 计算值自增：裸 SQL `x + 1` 在 MariaDB 双引号下是字符串字面量会恒写 1（attempts 仅退避元数据，竞态无害）
         const markFailed = async (refundError) => {
@@ -712,15 +715,17 @@ let PointsMallService = class PointsMallService {
                 refund: payment.amount,
                 total: payment.amount,
                 reason,
+                // 按支付行记录的支付方式 code 路由商户凭证（NULL 行 undefined → 保持渠道默认回退）
+                methodCode: (_c = payment.methodCode) !== null && _c !== void 0 ? _c : undefined,
             });
         }
         catch (e) {
-            const msg = String((_c = e === null || e === void 0 ? void 0 : e.message) !== null && _c !== void 0 ? _c : e);
+            const msg = String((_d = e === null || e === void 0 ? void 0 : e.message) !== null && _d !== void 0 ? _d : e);
             await markFailed(msg);
             core_1.Logger.error(`PointsOrderPayment ${payment.id} refund failed (refundNo=${payment.refundNo}): ${msg}`, loggerCtx);
             return 'failed';
         }
-        const status = (_d = res === null || res === void 0 ? void 0 : res.status) !== null && _d !== void 0 ? _d : '';
+        const status = (_e = res === null || res === void 0 ? void 0 : res.status) !== null && _e !== void 0 ? _e : '';
         if (status === 'SUCCESS') {
             await payRepo
                 .createQueryBuilder()
@@ -746,7 +751,7 @@ let PointsMallService = class PointsMallService {
      * PROCESSING/未知非终态→保持 refunding 下轮再来；查无记录→同 refundNo 幂等重发。
      */
     async retryPointsOrderRefunds(ctx) {
-        var _a, _b, _c, _d, _e;
+        var _a, _b, _c, _d, _e, _f;
         const MAX_ATTEMPTS = 8;
         const STUCK_REFUNDING_MS = 10 * 60 * 1000;
         const RETRY_BASE_MS = 5 * 60 * 1000;
@@ -772,8 +777,8 @@ let PointsMallService = class PointsMallService {
             // 卡 refunding：先对账，微信侧已成功直接落 refunded（不再重发）
             if (payment.refundStatus === 'refunding' && ((_b = this.gateway) === null || _b === void 0 ? void 0 : _b.findBareRefund) && payment.refundNo) {
                 try {
-                    const existing = await this.gateway.findBareRefund(ctx, payment.refundNo);
-                    const status = (_c = existing === null || existing === void 0 ? void 0 : existing.status) !== null && _c !== void 0 ? _c : '';
+                    const existing = await this.gateway.findBareRefund(ctx, payment.refundNo, (_c = payment.methodCode) !== null && _c !== void 0 ? _c : undefined);
+                    const status = (_d = existing === null || existing === void 0 ? void 0 : existing.status) !== null && _d !== void 0 ? _d : '';
                     if (status === 'SUCCESS') {
                         await payRepo
                             .createQueryBuilder()
@@ -808,7 +813,7 @@ let PointsMallService = class PointsMallService {
                     // status 为空（微信侧查无记录）→ 落到下方同 refundNo 幂等重发
                 }
                 catch (e) {
-                    core_1.Logger.warn(`findBareRefund failed for payment ${payment.id}: ${String((_d = e === null || e === void 0 ? void 0 : e.message) !== null && _d !== void 0 ? _d : e)}, resending refund`, loggerCtx);
+                    core_1.Logger.warn(`findBareRefund failed for payment ${payment.id}: ${String((_e = e === null || e === void 0 ? void 0 : e.message) !== null && _e !== void 0 ? _e : e)}, resending refund`, loggerCtx);
                 }
             }
             // failed → refunding 原子认领（refunding 卡单已在此态，无需再认领）
@@ -819,7 +824,7 @@ let PointsMallService = class PointsMallService {
                     .set({ refundStatus: 'refunding' })
                     .where("id = :id AND refundStatus = 'failed'", { id: payment.id })
                     .execute();
-                if (((_e = claim.affected) !== null && _e !== void 0 ? _e : 0) === 0)
+                if (((_f = claim.affected) !== null && _f !== void 0 ? _f : 0) === 0)
                     continue; // 已被并发认领
             }
             const result = await this.executeRefund(ctx, payment, 'Points order refund retry');

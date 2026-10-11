@@ -15,4 +15,5 @@ export declare class PointsOrderPayment extends VendureEntity {
     refundError: string | null;
     refundAttempts: number;
     channelId: number;
+    methodCode: string | null;
 }

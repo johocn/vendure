@@ -589,6 +589,14 @@ describe('PointsMallPlugin · 积分商城（收藏/积分商品/兑换/支付/�
         const numericId = Number(order.code.replace('PO-', ''));
         expect(await myPoints()).toBe(pointsBefore - 200);
 
+        // 创建支付后 methodCode 已写入支付行（退款据此路由商户凭证）
+        const conn = server.app.get(TransactionalConnection);
+        const createdRows = await conn.rawConnection.query(
+            'SELECT "methodCode" FROM points_order_payment WHERE orderId = ?',
+            [numericId],
+        );
+        expect(createdRows[0].methodCode).toBe('wechatpay');
+
         // 客户先取消：退分 + 回补库存 + 支付单 cancelled
         const cancelled = await shopClient.query(gql`
             mutation { cancelPointsOrder(id: "${order.id}") { id status } }
@@ -611,10 +619,11 @@ describe('PointsMallPlugin · 积分商城（收藏/积分商品/兑换/支付/�
             expect(callInput.outRefundNo).toMatch(/^PO-RF-/);
             expect(callInput.refund).toBe(100);
             expect(callInput.total).toBe(100);
+            // 退款按支付行 methodCode 路由凭证
+            expect(callInput.methodCode).toBe('wechatpay');
 
-            const conn = server.app.get(TransactionalConnection);
             const payRows = await conn.rawConnection.query(
-                'SELECT status, "transactionId", "refundStatus", "refundNo", "refundedAt" FROM points_order_payment WHERE orderId = ?',
+                'SELECT status, "transactionId", "refundStatus", "refundNo", "refundedAt", "methodCode" FROM points_order_payment WHERE orderId = ?',
                 [numericId],
             );
             expect(payRows.length).toBe(1);
@@ -623,6 +632,8 @@ describe('PointsMallPlugin · 积分商城（收藏/积分商品/兑换/支付/�
             expect(payRows[0].refundStatus).toBe('refunded');
             expect(payRows[0].refundNo).toMatch(/^PO-RF-/);
             expect(payRows[0].refundedAt).toBeTruthy();
+            // 退款后 methodCode 仍可读
+            expect(payRows[0].methodCode).toBe('wechatpay');
 
             // 订单终态与积分/库存不被 settle 改动（积分不二次退回）
             const orders = await shopClient.query(gql`
@@ -713,6 +724,9 @@ describe('PointsMallPlugin · 积分商城（收藏/积分商品/兑换/支付/�
             expect(payRows[0].refundStatus).toBe('refunded');
             expect(payRows[0].refundedAt).toBeTruthy();
             expect(refundMock).toHaveBeenCalledTimes(2);
+            // 重试重发退款同样按支付行 methodCode 路由凭证
+            expect(refundMock.mock.calls[0][1].methodCode).toBe('wechatpay');
+            expect(refundMock.mock.calls[1][1].methodCode).toBe('wechatpay');
         } finally {
             svc.setWechatpayGateway(null);
         }
@@ -796,6 +810,8 @@ describe('PointsMallPlugin · 积分商城（收藏/积分商品/兑换/支付/�
             );
             expect(payRows[0].refundStatus).toBe('refunding');
             expect(refundMock).toHaveBeenCalledTimes(1); // PROCESSING 不重发
+            // 对账 findBareRefund 同样按支付行 methodCode 路由（第三参）
+            expect(findMock.mock.calls[0][2]).toBe('wechatpay');
 
             // 对账翻 SUCCESS → task 落 refunded（不重发，仍只调用过一次退款发起）
             reconcileStatus = 'SUCCESS';
@@ -850,7 +866,7 @@ describe('PointsMallPlugin · 积分商城（收藏/积分商品/兑换/支付/�
                         items {
                             code
                             payments {
-                                id amount status externalRef transactionId
+                                id amount status externalRef transactionId methodCode
                                 refundStatus refundNo refundedAt refundError refundAttempts
                             }
                         }
@@ -866,6 +882,8 @@ describe('PointsMallPlugin · 积分商城（收藏/积分商品/兑换/支付/�
             expect(pay.refundAttempts).toBe(1);
             expect(pay.amount).toBe(90);
             expect(pay.externalRef).toBe(order.code);
+            // admin 暴露支付方式 code，便于后台核对退款凭证路由
+            expect(pay.methodCode).toBe('wechatpay');
         } finally {
             svc.setWechatpayGateway(null);
         }

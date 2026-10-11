@@ -71,6 +71,10 @@ __decorate([
     (0, typeorm_1.Column)(),
     __metadata("design:type", Number)
 ], PointsOrderPayment.prototype, "channelId", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], PointsOrderPayment.prototype, "methodCode", void 0);
 exports.PointsOrderPayment = PointsOrderPayment = __decorate([
     (0, typeorm_1.Entity)(),
     (0, typeorm_1.Index)(['orderId'])

@@ -592,6 +592,9 @@ export class PointsMallService {
                 transactionId: null,
                 paidAt: null,
                 channelId: ctx.channelId,
+                // createBarePayment 未指定 methodCode，buildWechatpay 缺省回退固定解析 code='wechatpay'，
+                // 此处记录实际使用的 code，退款据此路由商户凭证（历史 NULL 行回退现行为）
+                methodCode: 'wechatpay',
             } as any);
         }
 
@@ -772,6 +775,8 @@ export class PointsMallService {
                 refund: payment.amount,
                 total: payment.amount,
                 reason,
+                // 按支付行记录的支付方式 code 路由商户凭证（NULL 行 undefined → 保持渠道默认回退）
+                methodCode: payment.methodCode ?? undefined,
             });
         } catch (e: any) {
             const msg = String(e?.message ?? e);
@@ -844,7 +849,7 @@ export class PointsMallService {
             // 卡 refunding：先对账，微信侧已成功直接落 refunded（不再重发）
             if (payment.refundStatus === 'refunding' && this.gateway?.findBareRefund && payment.refundNo) {
                 try {
-                    const existing = await this.gateway.findBareRefund(ctx, payment.refundNo);
+                    const existing = await this.gateway.findBareRefund(ctx, payment.refundNo, payment.methodCode ?? undefined);
                     const status = existing?.status ?? '';
                     if (status === 'SUCCESS') {
                         await payRepo

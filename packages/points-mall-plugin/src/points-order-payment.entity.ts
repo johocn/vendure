@@ -49,4 +49,7 @@ export class PointsOrderPayment extends VendureEntity {
 
     @Column()
     channelId: number;
+
+    @Column({ type: 'varchar', nullable: true })
+    methodCode: string | null; // 创建支付时所用支付方式 code，退款据此路由商户凭证
 }

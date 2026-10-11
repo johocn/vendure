@@ -213,6 +213,7 @@ const adminSchema = () => gql`
         status: String!
         externalRef: String
         transactionId: String
+        methodCode: String
         refundStatus: String!
         refundNo: String
         refundedAt: DateTime
