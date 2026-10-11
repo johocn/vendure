@@ -1,4 +1,4 @@
-import { Order, RequestContext, TransactionalConnection } from '@vendure/core';
+import { Order, RelationPaths, RequestContext, TransactionalConnection } from '@vendure/core';
 import { RedeemScope } from '@vendure/coupon-plugin';
 import { RedeemScopeService } from '../tenant/redeem-scope.service';
 /** 前端语义过滤入参（时间为已解析的半开区间） */
@@ -42,7 +42,13 @@ export declare class OrderScopeService {
     private applyScope;
     private applyFilter;
     private baseQb;
-    scopedOrders(ctx: RequestContext, filter: ScopedOrderFilter, take: number, skip: number): Promise<ScopedOrderList>;
+    /**
+     * @param relations 由 resolver 的 @Relations(Order) 装饰器按 GraphQL selection 计算（含 Calculated
+     * 字段依赖，如 totalQuantity → lines）。与原生 listQueryBuilder 同机制：setFindOptions +
+     * relationLoadStrategy:'query'，一对多关系走独立子查询，避免 join 一对多 + take 分页错乱；
+     * 未加载 lines 时 GraphQL 序列化 totalQuantity 会抛 InternalServerError（实体 getter 防御）。
+     */
+    scopedOrders(ctx: RequestContext, filter: ScopedOrderFilter, take: number, skip: number, relations?: RelationPaths<Order>): Promise<ScopedOrderList>;
     /** N 组计数（每条独立 QB，参数互不冲突）；异常向上抛由前端保留旧值 */
     scopedOrderCounts(ctx: RequestContext, filters: ScopedOrderFilter[]): Promise<number[]>;
     /**

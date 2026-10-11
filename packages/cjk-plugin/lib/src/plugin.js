@@ -2329,7 +2329,10 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     exceptionOnly: Boolean
                     afterSales: [String!]
                 }
-                type ScopedOrderList { totalItems: Int!, items: [Order!]! }
+                # implements PaginatedList：@Relations 装饰器靠该接口识别分页查询并下钻 items
+                # 计算 selection relations（含 Calculated 字段依赖），否则返回空数组导致
+                # totalQuantity 等 getter 在序列化时抛「relation not joined」
+                type ScopedOrderList implements PaginatedList { totalItems: Int!, items: [Order!]! }
                 type NewOrderSignal { count: Int!, latestPlacedAt: DateTime }
                 extend type Query {
                     scopedOrders(filter: ScopedOrderFilterInput, take: Int, skip: Int): ScopedOrderList!

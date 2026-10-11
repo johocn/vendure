@@ -93,12 +93,24 @@ let OrderScopeService = class OrderScopeService {
         this.applyFilter(qb, f);
         return qb;
     }
-    async scopedOrders(ctx, filter, take, skip) {
+    /**
+     * @param relations 由 resolver 的 @Relations(Order) 装饰器按 GraphQL selection 计算（含 Calculated
+     * 字段依赖，如 totalQuantity → lines）。与原生 listQueryBuilder 同机制：setFindOptions +
+     * relationLoadStrategy:'query'，一对多关系走独立子查询，避免 join 一对多 + take 分页错乱；
+     * 未加载 lines 时 GraphQL 序列化 totalQuantity 会抛 InternalServerError（实体 getter 防御）。
+     */
+    async scopedOrders(ctx, filter, take, skip, relations = []) {
         var _a, _b;
         const qb = this.baseQb(ctx, filter);
         await this.applyScope(ctx, qb);
-        // innerJoin(order.channels) 会产生重复行 → 计数须 DISTINCT
+        // innerJoin(order.channels) 会产生重复行 → 计数须 DISTINCT（clone 先于 setFindOptions，
+        // 计数 QB 不携带关系加载配置）
         const totalItems = Number((_b = (_a = (await qb.clone().select('COUNT(DISTINCT order.id)', 'cnt').getRawOne())) === null || _a === void 0 ? void 0 : _a.cnt) !== null && _b !== void 0 ? _b : 0);
+        if (relations.length) {
+            // eslint-disable-next-line no-console
+            console.log('[order-scope][debug] relations =', JSON.stringify(relations));
+            qb.setFindOptions({ relations, relationLoadStrategy: 'query' });
+        }
         const items = await qb
             .orderBy('order.createdAt', 'DESC')
             .skip(skip)

@@ -8,6 +8,7 @@ const orderBy = vi.fn().mockReturnThis();
 const skipQb = vi.fn().mockReturnThis();
 const takeQb = vi.fn().mockReturnThis();
 const setParams = vi.fn().mockReturnThis();
+const setFindOptions = vi.fn().mockReturnThis();
 const getRawMany = vi.fn().mockResolvedValue([{ id: 11 }, { id: 12 }]);
 
 const qb: any = {
@@ -17,6 +18,7 @@ const qb: any = {
     skip: skipQb,
     take: takeQb,
     setParameters: setParams,
+    setFindOptions,
     getRawMany,
     select: vi.fn().mockReturnThis(),
     addSelect: vi.fn().mockReturnThis(),
@@ -52,6 +54,26 @@ describe('OrderScopeService', () => {
         const calls = andWhere.mock.calls.map((c: any[]) => String(c[0]));
         expect(calls.some((c) => c.includes('NOT EXISTS') && c.includes('pv."customFieldsShippingprofileid"') && c.includes('hasl."orderId"'))).toBe(true);
         expect(setParams).toHaveBeenCalled();
+    });
+
+    it('scopedOrders 透传 GraphQL selection relations：setFindOptions relationLoadStrategy=query', async () => {
+        setFindOptions.mockClear();
+        const svc = new OrderScopeService(conn, scopeSvc);
+        const relations = ['lines', 'lines.productVariant', 'shippingLines.shippingMethod'] as any;
+        await svc.scopedOrders(ctx, {}, 20, 0, relations);
+        // 与原生 listQueryBuilder 同机制：'query' 策略对一对多关系走独立子查询，
+        // 避免 join 一对多 + take 的分页错乱；未传 relations 时不产生额外加载
+        expect(setFindOptions).toHaveBeenCalledTimes(1);
+        const opts = setFindOptions.mock.calls[0][0];
+        expect(opts.relations).toEqual(relations);
+        expect(opts.relationLoadStrategy).toBe('query');
+    });
+
+    it('scopedOrders 未传 relations 时不 setFindOptions（counts/newOrderSignal 不受影响）', async () => {
+        setFindOptions.mockClear();
+        const svc = new OrderScopeService(conn, scopeSvc);
+        await svc.scopedOrders(ctx, {}, 20, 0);
+        expect(setFindOptions).not.toHaveBeenCalled();
     });
 
     it('newOrderSignal 按 since 过滤并返回 latestPlacedAt', async () => {

@@ -1,5 +1,5 @@
 import { Args, Query, Resolver } from '@nestjs/graphql';
-import { Allow, Ctx, Permission, RequestContext } from '@vendure/core';
+import { Allow, Ctx, Order, Permission, RelationPaths, Relations, RequestContext } from '@vendure/core';
 
 import { OrderScopeService, ScopedOrderFilter } from './order-scope.service';
 
@@ -14,8 +14,11 @@ export class OrderScopeAdminResolver {
         @Args('filter', { nullable: true }) filter?: ScopedOrderFilter,
         @Args('take', { nullable: true, type: () => Number }) take?: number,
         @Args('skip', { nullable: true, type: () => Number }) skip?: number,
+        // 与原生 orders 查询同机制：按 GraphQL selection 计算 relations（含 Calculated 字段
+        // 依赖如 totalQuantity → lines）传给 service 做关系加载
+        @Relations(Order) relations?: RelationPaths<Order>,
     ) {
-        return this.orderScopeService.scopedOrders(ctx, filter ?? {}, take ?? 20, skip ?? 0);
+        return this.orderScopeService.scopedOrders(ctx, filter ?? {}, take ?? 20, skip ?? 0, relations ?? []);
     }
 
     @Query()

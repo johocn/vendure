@@ -20,8 +20,8 @@ let OrderScopeAdminResolver = class OrderScopeAdminResolver {
     constructor(orderScopeService) {
         this.orderScopeService = orderScopeService;
     }
-    async scopedOrders(ctx, filter, take, skip) {
-        return this.orderScopeService.scopedOrders(ctx, filter !== null && filter !== void 0 ? filter : {}, take !== null && take !== void 0 ? take : 20, skip !== null && skip !== void 0 ? skip : 0);
+    async scopedOrders(ctx, filter, take, skip, relations) {
+        return this.orderScopeService.scopedOrders(ctx, filter !== null && filter !== void 0 ? filter : {}, take !== null && take !== void 0 ? take : 20, skip !== null && skip !== void 0 ? skip : 0, relations !== null && relations !== void 0 ? relations : []);
     }
     async scopedOrderCounts(ctx, filters) {
         return this.orderScopeService.scopedOrderCounts(ctx, filters !== null && filters !== void 0 ? filters : []);
@@ -38,8 +38,9 @@ __decorate([
     __param(1, (0, graphql_1.Args)('filter', { nullable: true })),
     __param(2, (0, graphql_1.Args)('take', { nullable: true, type: () => Number })),
     __param(3, (0, graphql_1.Args)('skip', { nullable: true, type: () => Number })),
+    __param(4, (0, core_1.Relations)(core_1.Order)),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, Object, Number, Number]),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Number, Number, Array]),
     __metadata("design:returntype", Promise)
 ], OrderScopeAdminResolver.prototype, "scopedOrders", null);
 __decorate([
