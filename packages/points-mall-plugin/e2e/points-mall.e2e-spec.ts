@@ -357,6 +357,32 @@ describe('PointsMallPlugin · 积分商城（收藏/积分商品/兑换/支付/�
         `)).rejects.toThrow('PER_USER_LIMIT_EXCEEDED');
     });
 
+    it('个人限购按件数累计：perUserLimit=3，兑 2 件后再兑 2 件被拒、兑 1 件成功', async () => {
+        await adjustPointsBy(10000);
+        const limited = await createPointsProduct({
+            pointsPrice: 10,
+            deliveryType: 'virtual',
+            stock: 10,
+            perUserLimit: 3,
+        });
+
+        // 首单 quantity=2 成功（累计 2/3 件）
+        const o1 = await exchange(limited.id, 2, false);
+        expect(o1.status).toBe('completed');
+        expect(o1.quantity).toBe(2);
+
+        // 再兑 quantity=2：2+2>3 按件数超限被拒
+        await expect(shopClient.query(gql`
+            mutation {
+                createPointsOrderExchange(input: { pointsProductId: "${limited.id}", quantity: 2 }) { id }
+            }
+        `)).rejects.toThrow('PER_USER_LIMIT_EXCEEDED');
+
+        // 再兑 quantity=1：2+1=3 未超限，成功
+        const o2 = await exchange(limited.id, 1, false);
+        expect(o2.status).toBe('completed');
+    });
+
     it('混合价取消：退积分+回补库存+支付单 cancelled，复购无库存泄漏', async () => {
         const before = await myPoints();
         const mix = await createPointsProduct({
@@ -462,12 +488,14 @@ describe('PointsMallPlugin · 积分商城（收藏/积分商品/兑换/支付/�
         expect(await myPoints()).toBe(pointsBefore - 100);
 
         // 直接改库把该单 createdAt 拨回 31 分钟前
-        // （order.id 是编码 ID（如 T_5），raw repo 不解码 → 由 code 反推数字主键；裸 SQL 绕开 CreateDateColumn 限制）
+        // （order.id 是编码 ID（如 T_5），raw repo 不解码 → 由 code 反推数字主键；裸 SQL 绕开 CreateDateColumn 限制；
+        //   写入格式须与 typeorm sqlite 序列化一致 "YYYY-MM-DD HH:mm:ss.SSS"（UTC 空格分隔），否则 SQL 字符串比较失效）
         const conn = server.app.get(TransactionalConnection);
         const numericId = Number(order.code.replace('PO-', ''));
         expect(numericId).toBeGreaterThan(0);
+        const sqliteUtc = (d: Date) => d.toISOString().slice(0, 23).replace('T', ' ');
         await conn.rawConnection.query('UPDATE points_order SET "createdAt" = ? WHERE id = ?', [
-            new Date(Date.now() - 31 * 60 * 1000).toISOString(),
+            sqliteUtc(new Date(Date.now() - 31 * 60 * 1000)),
             numericId,
         ]);
 
