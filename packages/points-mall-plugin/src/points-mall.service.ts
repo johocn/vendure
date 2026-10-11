@@ -1018,6 +1018,23 @@ export class PointsMallService {
             .skip(page.skip)
             .take(page.take)
             .getManyAndCount();
+        // 聚合现金退款状态：一次 IN 查询，按支付单 id 降序取每单最新一条，无支付行默认 none
+        if (items.length) {
+            const payments = await this.connection
+                .getRepository(ctx, PointsOrderPayment)
+                .find({ where: { orderId: In(items.map(i => Number(i.id))) } as any });
+            payments.sort((a, b) => Number(b.id) - Number(a.id));
+            const latestByOrder = new Map<number, string>();
+            for (const p of payments) {
+                if (!latestByOrder.has(p.orderId)) {
+                    latestByOrder.set(p.orderId, p.refundStatus || 'none');
+                }
+            }
+            return {
+                items: items.map(o => ({ ...o, refundStatus: latestByOrder.get(Number(o.id)) ?? 'none' })),
+                totalItems,
+            };
+        }
         return { items, totalItems };
     }
 

@@ -870,4 +870,45 @@ describe('PointsMallPlugin · 积分商城（收藏/积分商品/兑换/支付/�
             svc.setWechatpayGateway(null);
         }
     });
+
+    it('C端 myPointsOrders 聚合 refundStatus：已退款单 refunded，无支付行默认 none', async () => {
+        const pp = await createPointsProduct({
+            pointsPrice: 210,
+            cashPrice: 60,
+            deliveryType: 'physical',
+            stock: 2,
+        });
+        const order = await exchange(pp.id, 1, true);
+        await shopClient.query(gql`
+            mutation { cancelPointsOrder(id: "${order.id}") { id status } }
+        `);
+
+        const svc = server.app.get(PointsMallService);
+        const refundMock = vi.fn().mockResolvedValue({ refundId: 'RF-SHOP-1', status: 'SUCCESS' });
+        svc.setWechatpayGateway({ refundBarePayment: refundMock });
+        try {
+            const adminCtx = await server.app.get(RequestContextService).create({ apiType: 'admin' });
+            // 取消后支付回调迟到：settle 自动退款，支付行落 refunded
+            await svc.settlePointsOrderByOutTradeNo(adminCtx, order.code, 'WX-LATE-6');
+            expect(refundMock).toHaveBeenCalledTimes(1);
+
+            // shop 端订单列表按 orderId 聚合最新支付单退款状态
+            const orders = await shopClient.query(gql`
+                query { myPointsOrders(options: { take: 100 }) { items { id status refundStatus } } }
+            `) as any;
+            const target = orders.myPointsOrders.items.find((i: any) => i.id === order.id);
+            expect(target.refundStatus).toBe('refunded');
+        } finally {
+            svc.setWechatpayGateway(null);
+        }
+
+        // 无支付行的纯积分单默认 none
+        const pure = await createPointsProduct({ pointsPrice: 20, deliveryType: 'virtual', stock: 2 });
+        const pureOrder = await exchange(pure.id, 1, false);
+        const pureRes = await shopClient.query(gql`
+            query { myPointsOrders(options: { take: 100 }) { items { id refundStatus } } }
+        `) as any;
+        const pureTarget = pureRes.myPointsOrders.items.find((i: any) => i.id === pureOrder.id);
+        expect(pureTarget.refundStatus).toBe('none');
+    });
 });

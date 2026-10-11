@@ -936,6 +936,23 @@ let PointsMallService = class PointsMallService {
             .skip(page.skip)
             .take(page.take)
             .getManyAndCount();
+        // 聚合现金退款状态：一次 IN 查询，按支付单 id 降序取每单最新一条，无支付行默认 none
+        if (items.length) {
+            const payments = await this.connection
+                .getRepository(ctx, points_order_payment_entity_1.PointsOrderPayment)
+                .find({ where: { orderId: (0, typeorm_1.In)(items.map(i => Number(i.id))) } });
+            payments.sort((a, b) => Number(b.id) - Number(a.id));
+            const latestByOrder = new Map();
+            for (const p of payments) {
+                if (!latestByOrder.has(p.orderId)) {
+                    latestByOrder.set(p.orderId, p.refundStatus || 'none');
+                }
+            }
+            return {
+                items: items.map(o => { var _a; return (Object.assign(Object.assign({}, o), { refundStatus: (_a = latestByOrder.get(Number(o.id))) !== null && _a !== void 0 ? _a : 'none' })); }),
+                totalItems,
+            };
+        }
         return { items, totalItems };
     }
     async myPointsOrder(ctx, id) {

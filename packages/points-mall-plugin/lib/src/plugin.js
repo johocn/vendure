@@ -109,6 +109,7 @@ const shopSchema = () => gql `
         shippedAt: DateTime
         completedAt: DateTime
         createdAt: DateTime!
+        refundStatus: String
     }
     type PointsOrderList implements PaginatedList {
         items: [PointsOrder!]!
