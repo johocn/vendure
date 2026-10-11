@@ -74,6 +74,10 @@ export async function ensureCarrierProduct(connection: TransactionalConnection):
         return;
     }
     const taxCategory = await connection.getRepository(TaxCategory).findOne({ where: {} });
+    // 插件 bootstrap 先于测试 populate 执行，税类表可能为空：兜底创建，否则载体变体 taxCategory=null，
+    // 下单时 core 的 applyChannelPriceAndTax 读取 variant.taxCategory.id 会崩（无税率行时 getApplicableTaxRate 有默认税率兜底）
+    const resolvedTaxCategory =
+        taxCategory ?? (await connection.getRepository(TaxCategory).save(new TaxCategory({ name: 'Standard' })));
     const channel = await connection.getRepository(Channel).findOne({ where: { code: '__default_channel__' } });
 
     const product = await connection.getRepository(Product).save(
@@ -94,7 +98,7 @@ export async function ensureCarrierProduct(connection: TransactionalConnection):
             sku: CARRIER_VARIANT_SKU,
             enabled: true,
             trackInventory: GlobalFlag.FALSE,
-            taxCategory: taxCategory ?? undefined,
+            taxCategory: resolvedTaxCategory,
             product,
             channels: channel ? [channel] : [],
         }),

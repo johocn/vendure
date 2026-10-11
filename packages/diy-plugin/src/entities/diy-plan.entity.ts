@@ -48,7 +48,7 @@ export class DiyPlan extends VendureEntity {
     @Column('varchar', { length: 32, nullable: true })
     quoteNo: string | null;
 
-    @Column({ type: 'timestamp', nullable: true })
+    @Column({ type: 'datetime', nullable: true })
     expiresAt: Date | null;
 
     /** 成单后的 Vendure OrderLine id */
