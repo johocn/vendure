@@ -1437,6 +1437,9 @@ importers:
       '@vendure/distribution-plugin':
         specifier: 0.0.1
         version: link:../distribution-plugin
+      '@vendure/diy-plugin':
+        specifier: 0.0.1
+        version: link:../diy-plugin
       '@vendure/douyin-auth-plugin':
         specifier: 0.0.1
         version: link:../douyin-auth-plugin
