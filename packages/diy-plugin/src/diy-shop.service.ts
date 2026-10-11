@@ -5,6 +5,7 @@ import { IsNull } from 'typeorm';
 import { PLUGIN_INIT_OPTIONS } from './constants';
 import { DiyCategory } from './entities/diy-category.entity';
 import { DiyMaterial } from './entities/diy-material.entity';
+import { DiyTemplate } from './entities/diy-template.entity';
 import { mergeMaterials } from './material-merge';
 import { DiyMaterialFilter, DiyPluginOptions } from './types';
 
@@ -91,5 +92,26 @@ export class DiyShopService {
             map.set(c.code, set);
         }
         return map;
+    }
+
+    /** C 端模板列表：两层 enabled 模板，同 code 租户覆盖平台（模板无复制回链列） */
+    async findShopTemplates(ctx: RequestContext): Promise<DiyTemplate[]> {
+        const repo = this.connection.getRepository(ctx, DiyTemplate);
+        const [platform, tenant] = await Promise.all([
+            repo.find({ where: { app: IsNull(), status: 'enabled' }, order: { sortOrder: 'ASC', id: 'ASC' } }),
+            repo.find({ where: { app: this.app, status: 'enabled' }, order: { sortOrder: 'ASC', id: 'ASC' } }),
+        ]);
+        const tenantCodes = new Set(tenant.map(t => t.code));
+        return [...platform.filter(p => !tenantCodes.has(p.code)), ...tenant];
+    }
+
+    /** C 端单模板：租户优先、其次平台，仅 enabled；不存在/未启用返回 null */
+    async findShopTemplateByCode(ctx: RequestContext, code: string): Promise<DiyTemplate | null> {
+        const repo = this.connection.getRepository(ctx, DiyTemplate);
+        const tenant = await repo.findOne({ where: { app: this.app, code, status: 'enabled' } });
+        if (tenant) {
+            return tenant;
+        }
+        return repo.findOne({ where: { app: IsNull(), code, status: 'enabled' } });
     }
 }

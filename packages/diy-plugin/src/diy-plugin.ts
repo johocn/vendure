@@ -5,6 +5,7 @@ import gql from 'graphql-tag';
 import { loggerCtx, PLUGIN_INIT_OPTIONS } from './constants';
 import { DiyAdminResolver } from './diy-admin.resolver';
 import { DiyService } from './diy.service';
+import { DiyShopResolver } from './diy-shop.resolver';
 import { DiyShopService } from './diy-shop.service';
 import { DiyCategory } from './entities/diy-category.entity';
 import { DiyMaterial } from './entities/diy-material.entity';
@@ -133,6 +134,56 @@ const adminSchema = gql`
     }
 `;
 
+const shopSchema = gql`
+    type DiyMaterial {
+        id: ID!
+        app: String
+        code: String!
+        name: JSON
+        categoryId: Int!
+        shape: String!
+        diameter: Float
+        axialLength: Float
+        holeSize: Float
+        attrs: JSON
+        render: JSON
+        price: Int!
+        priceUnit: String!
+        currency: String!
+        stock: Int!
+        images: JSON
+        enabled: Boolean!
+        sortOrder: Int!
+        createdAt: DateTime!
+        updatedAt: DateTime!
+    }
+    type DiyMaterialList {
+        items: [DiyMaterial!]!
+        total: Int!
+    }
+    type DiyTemplate {
+        id: ID!
+        app: String
+        code: String!
+        name: JSON
+        description: JSON
+        thumb: String
+        images: JSON
+        config: JSON
+        calculatorKey: String
+        status: String!
+        version: Int!
+        sortOrder: Int!
+        createdAt: DateTime!
+        updatedAt: DateTime!
+    }
+    extend type Query {
+        diyMaterials(filter: JSON): DiyMaterialList!
+        diyShopTemplates: [DiyTemplate!]!
+        diyShopTemplate(code: String!): DiyTemplate
+    }
+`;
+
 @Injectable()
 export class DiySeedRunner {
     constructor(private connection: TransactionalConnection) {}
@@ -154,6 +205,10 @@ export class DiySeedRunner {
     adminApiExtensions: {
         schema: () => adminSchema,
         resolvers: [DiyAdminResolver],
+    },
+    shopApiExtensions: {
+        schema: () => shopSchema,
+        resolvers: [DiyShopResolver],
     },
     configuration: config => {
         config.authOptions.customPermissions.push(DiyRead, DiyCreate, DiyUpdate, DiyDelete);

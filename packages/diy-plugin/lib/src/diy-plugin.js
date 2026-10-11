@@ -23,6 +23,8 @@ const graphql_tag_1 = __importDefault(require("graphql-tag"));
 const constants_1 = require("./constants");
 const diy_admin_resolver_1 = require("./diy-admin.resolver");
 const diy_service_1 = require("./diy.service");
+const diy_shop_resolver_1 = require("./diy-shop.resolver");
+const diy_shop_service_1 = require("./diy-shop.service");
 const diy_category_entity_1 = require("./entities/diy-category.entity");
 const diy_material_entity_1 = require("./entities/diy-material.entity");
 const diy_template_entity_1 = require("./entities/diy-template.entity");
@@ -147,6 +149,55 @@ const adminSchema = (0, graphql_tag_1.default) `
         copyDiyTemplate(id: ID!): DiyTemplate!
     }
 `;
+const shopSchema = (0, graphql_tag_1.default) `
+    type DiyMaterial {
+        id: ID!
+        app: String
+        code: String!
+        name: JSON
+        categoryId: Int!
+        shape: String!
+        diameter: Float
+        axialLength: Float
+        holeSize: Float
+        attrs: JSON
+        render: JSON
+        price: Int!
+        priceUnit: String!
+        currency: String!
+        stock: Int!
+        images: JSON
+        enabled: Boolean!
+        sortOrder: Int!
+        createdAt: DateTime!
+        updatedAt: DateTime!
+    }
+    type DiyMaterialList {
+        items: [DiyMaterial!]!
+        total: Int!
+    }
+    type DiyTemplate {
+        id: ID!
+        app: String
+        code: String!
+        name: JSON
+        description: JSON
+        thumb: String
+        images: JSON
+        config: JSON
+        calculatorKey: String
+        status: String!
+        version: Int!
+        sortOrder: Int!
+        createdAt: DateTime!
+        updatedAt: DateTime!
+    }
+    extend type Query {
+        diyMaterials(filter: JSON): DiyMaterialList!
+        diyShopTemplates: [DiyTemplate!]!
+        diyShopTemplate(code: String!): DiyTemplate
+    }
+`;
 let DiySeedRunner = class DiySeedRunner {
     constructor(connection) {
         this.connection = connection;
@@ -183,12 +234,17 @@ exports.DiyPlugin = DiyPlugin = DiyPlugin_1 = __decorate([
         providers: [
             { provide: constants_1.PLUGIN_INIT_OPTIONS, useFactory: () => DiyPlugin.options },
             diy_service_1.DiyService,
+            diy_shop_service_1.DiyShopService,
             DiySeedRunner,
         ],
         exports: [diy_service_1.DiyService],
         adminApiExtensions: {
             schema: () => adminSchema,
             resolvers: [diy_admin_resolver_1.DiyAdminResolver],
+        },
+        shopApiExtensions: {
+            schema: () => shopSchema,
+            resolvers: [diy_shop_resolver_1.DiyShopResolver],
         },
         configuration: config => {
             config.authOptions.customPermissions.push(permissions_1.DiyRead, permissions_1.DiyCreate, permissions_1.DiyUpdate, permissions_1.DiyDelete);
