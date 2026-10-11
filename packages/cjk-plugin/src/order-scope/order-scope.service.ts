@@ -25,8 +25,8 @@ export interface ScopedOrderList {
 
 export interface NewOrderSignal {
     count: number;
-    /** 过滤范围内最大 orderPlacedAt（ISO），无单为 null */
-    latestPlacedAt: string | null;
+    /** 窗口内最大 createdAt（ISO），无单为 null——游标与计数同轴（见 newOrderSignal 注释） */
+    latestCreatedAt: string | null;
 }
 
 /**
@@ -161,7 +161,13 @@ export class OrderScopeService {
     }
 
     /**
-     * 新单信号：since 之后下单数 + 范围内最大 orderPlacedAt
+     * 新单信号：since 之后建单数 + 窗口内最大 createdAt
+     *
+     * 游标同轴铁律（2026-10-12 修复重复播报）：计数谓词与游标必须同用 createdAt 轴——
+     * 此前游标取 MAX(orderPlacedAt)（下单轴）两轴脱节：未付款单 orderPlacedAt 为 null，
+     * 窗口内只有未付款单时前端游标不前进 → 每 30s 重播横幅+语音且 unread 无限累加；
+     * 窗口内有付款单时，建单时间晚于该单 orderPlacedAt 的未付款单也会每轮重复计数。
+     * 同轴后 MAX(createdAt) ≥ 一切已计数单的 createdAt，严格大于天然排除（含未付款单）。
      *
      * 时区口径（dev 实测定性，勿改回 toISOString() 字符串传参）：
      * 列形态为 timestamp without time zone 且存本地字面（本地 17:40 建单 → 列字面 2026-10-11 17:40:39）。
@@ -176,12 +182,12 @@ export class OrderScopeService {
         await this.applyScope(ctx, qb);
         const rows = await qb
             .select('COUNT(DISTINCT order.id)', 'cnt')
-            .addSelect('MAX(order.orderPlacedAt)', 'latest')
+            .addSelect('MAX(order.createdAt)', 'latest')
             .getRawMany();
         const row = rows[0];
         return {
             count: Number(row?.cnt ?? 0),
-            latestPlacedAt: row?.latest ? new Date(row.latest).toISOString() : null,
+            latestCreatedAt: row?.latest ? new Date(row.latest).toISOString() : null,
         };
     }
 }

@@ -76,13 +76,15 @@ describe('OrderScopeService', () => {
         expect(setFindOptions).not.toHaveBeenCalled();
     });
 
-    it('newOrderSignal 按 since 过滤并返回 latestPlacedAt', async () => {
+    it('newOrderSignal 按 since 过滤并返回 latestCreatedAt（游标与计数同轴）', async () => {
         andWhere.mockClear();
         getRawMany.mockResolvedValueOnce([{ cnt: '2', latest: '2026-10-11T08:00:00.000Z' }]);
         const svc = new OrderScopeService(conn, scopeSvc);
         const since = new Date('2026-10-11T00:00:00.000Z');
         const r = await svc.newOrderSignal(ctx, since);
-        expect(r).toEqual({ count: 2, latestPlacedAt: '2026-10-11T08:00:00.000Z' });
+        expect(r).toEqual({ count: 2, latestCreatedAt: '2026-10-11T08:00:00.000Z' });
+        // 游标同轴：MAX 聚合必须取 createdAt——取 orderPlacedAt 时未付款单致游标不前进/每轮重复计数
+        expect(qb.addSelect).toHaveBeenCalledWith('MAX(order.createdAt)', 'latest');
         // 时区口径：参数必须是 Date 实例——pg 驱动按连接时区序列化「本地字面+偏移」与列字面对齐；
         // toISOString() 字符串会被 PG 丢 Z 按 UTC 字面比较 → 窗口整体早 8h（同批单反复命中）
         const calls = andWhere.mock.calls.map((c: any[]) => String(c[0]));

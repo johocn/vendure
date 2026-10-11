@@ -2068,7 +2068,7 @@ function mergeCustomFields<T extends { name: string }>(
                 # 计算 selection relations（含 Calculated 字段依赖），否则返回空数组导致
                 # totalQuantity 等 getter 在序列化时抛「relation not joined」
                 type ScopedOrderList implements PaginatedList { totalItems: Int!, items: [Order!]! }
-                type NewOrderSignal { count: Int!, latestPlacedAt: DateTime }
+                type NewOrderSignal { count: Int!, latestCreatedAt: DateTime }
                 extend type Query {
                     scopedOrders(filter: ScopedOrderFilterInput, take: Int, skip: Int): ScopedOrderList!
                     scopedOrderCounts(filters: [ScopedOrderFilterInput!]): [Int!]!
