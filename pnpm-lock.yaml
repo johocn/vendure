@@ -1634,6 +1634,34 @@ importers:
         specifier: 5.8.2
         version: 5.8.2
 
+  packages/diy-plugin:
+    dependencies:
+      '@diy/calc':
+        specifier: workspace:*
+        version: link:../diy-calc
+    devDependencies:
+      '@vendure/common':
+        specifier: workspace:*
+        version: link:../common
+      '@vendure/core':
+        specifier: workspace:*
+        version: link:../core
+      '@vendure/testing':
+        specifier: workspace:*
+        version: link:../testing
+      cross-env:
+        specifier: ^7.0.3
+        version: 7.0.3
+      graphql-tag:
+        specifier: ^2.12.6
+        version: 2.12.7(graphql@16.14.2)
+      rimraf:
+        specifier: ^5.0.5
+        version: 5.0.5
+      typescript:
+        specifier: 5.8.2
+        version: 5.8.2
+
   packages/douyin-auth-plugin:
     devDependencies:
       '@vendure/common':
