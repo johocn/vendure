@@ -45,6 +45,15 @@ export declare class OrderScopeService {
     scopedOrders(ctx: RequestContext, filter: ScopedOrderFilter, take: number, skip: number): Promise<ScopedOrderList>;
     /** N 组计数（每条独立 QB，参数互不冲突）；异常向上抛由前端保留旧值 */
     scopedOrderCounts(ctx: RequestContext, filters: ScopedOrderFilter[]): Promise<number[]>;
-    /** 新单信号：since 之后下单数 + 范围内最大 orderPlacedAt */
+    /**
+     * 新单信号：since 之后下单数 + 范围内最大 orderPlacedAt
+     *
+     * 时区口径（dev 实测定性，勿改回 toISOString() 字符串传参）：
+     * 列形态为 timestamp without time zone 且存本地字面（本地 17:40 建单 → 列字面 2026-10-11 17:40:39）。
+     * since 以 Date 对象直传：pg 驱动按连接时区序列化为「本地字面+偏移」（实测 2026-10-11T09:40:39.209Z
+     * → '2026-10-11T17:40:39.209+08:00'），PG 解析时丢偏移取字面 = 本地日历字面，与列字面对齐；
+     * 若传 toISOString() 字符串则被丢 Z 按 UTC 字面比较 → 窗口整体早 8h → 同批单反复命中。
+     * 谓词用严格大于：排除「构成上次锚点的最后一单」（含等于会让 count 恒多 1，前端 unread 重复累加）。
+     */
     newOrderSignal(ctx: RequestContext, since: Date): Promise<NewOrderSignal>;
 }

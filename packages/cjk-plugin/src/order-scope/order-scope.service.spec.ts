@@ -55,9 +55,19 @@ describe('OrderScopeService', () => {
     });
 
     it('newOrderSignal 按 since 过滤并返回 latestPlacedAt', async () => {
+        andWhere.mockClear();
         getRawMany.mockResolvedValueOnce([{ cnt: '2', latest: '2026-10-11T08:00:00.000Z' }]);
         const svc = new OrderScopeService(conn, scopeSvc);
-        const r = await svc.newOrderSignal(ctx, new Date('2026-10-11T00:00:00.000Z'));
+        const since = new Date('2026-10-11T00:00:00.000Z');
+        const r = await svc.newOrderSignal(ctx, since);
         expect(r).toEqual({ count: 2, latestPlacedAt: '2026-10-11T08:00:00.000Z' });
+        // 时区口径：参数必须是 Date 实例——pg 驱动按连接时区序列化「本地字面+偏移」与列字面对齐；
+        // toISOString() 字符串会被 PG 丢 Z 按 UTC 字面比较 → 窗口整体早 8h（同批单反复命中）
+        const calls = andWhere.mock.calls.map((c: any[]) => String(c[0]));
+        expect(calls.some((c) => c.includes('order.createdAt > :timeStart'))).toBe(true);
+        expect(calls.some((c) => c.includes('>='))).toBe(false);
+        const param = andWhere.mock.calls.map((c: any[]) => c[1]).find((p: any) => p && 'timeStart' in p)?.timeStart;
+        expect(param).toBeInstanceOf(Date);
+        expect(param.getTime()).toBe(since.getTime());
     });
 });
