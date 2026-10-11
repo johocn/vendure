@@ -443,9 +443,16 @@ let PointsMallService = class PointsMallService {
             throw new core_1.UserInputError('OUT_OF_STOCK');
         }
         if (pp.perUserLimit > 0) {
-            const used = await this.connection.getRepository(ctx, points_order_entity_1.PointsOrder).count({
-                where: { customerId, pointsProductId: pp.id, status: (0, typeorm_1.Not)('cancelled') },
-            });
+            // 按件数口径（与 redeemedCountMap 一致）：非取消订单的 SUM(quantity)
+            const raw = await this.connection
+                .getRepository(ctx, points_order_entity_1.PointsOrder)
+                .createQueryBuilder('po')
+                .select('SUM(po.quantity)', 'qty')
+                .where('po.customerId = :cid', { cid: customerId })
+                .andWhere('po.pointsProductId = :pid', { pid: pp.id })
+                .andWhere("po.status != 'cancelled'")
+                .getRawOne();
+            const used = Number(raw === null || raw === void 0 ? void 0 : raw.qty) || 0;
             if (used + quantity > pp.perUserLimit) {
                 throw new core_1.UserInputError('PER_USER_LIMIT_EXCEEDED');
             }
@@ -632,7 +639,7 @@ let PointsMallService = class PointsMallService {
             await this.memberLevel.addPoints(ctx, order.customerId, order.pointsTotal, order.id, reason);
         }
         else {
-            core_1.Logger.warn(`PointsOrder ${order.code} cancelled but memberLevel unavailable, points NOT refunded`, loggerCtx);
+            throw new Error('MemberLevelService unavailable, abort cancel to avoid losing points refund');
         }
         await this.connection
             .getRepository(ctx, points_product_entity_1.PointsProduct)
@@ -685,12 +692,10 @@ let PointsMallService = class PointsMallService {
     async cancelExpiredOrders(ctx, before) {
         const repo = this.connection.getRepository(ctx, points_order_entity_1.PointsOrder);
         const expired = await repo.find({
-            where: { status: 'pending_payment', channelId: ctx.channelId },
+            where: { status: 'pending_payment', channelId: ctx.channelId, createdAt: (0, typeorm_1.LessThan)(before) },
         });
         let count = 0;
         for (const order of expired) {
-            if (order.createdAt >= before)
-                continue;
             await this.connection.startTransaction(ctx);
             try {
                 if (await this.executeCancel(ctx, order, `Points order ${order.code} timeout refund`)) {
