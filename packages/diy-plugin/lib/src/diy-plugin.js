@@ -23,6 +23,7 @@ const graphql_tag_1 = __importDefault(require("graphql-tag"));
 const constants_1 = require("./constants");
 const diy_admin_resolver_1 = require("./diy-admin.resolver");
 const diy_service_1 = require("./diy.service");
+const diy_stock_service_1 = require("./diy-stock.service");
 const diy_shop_resolver_1 = require("./diy-shop.resolver");
 const diy_shop_service_1 = require("./diy-shop.service");
 const diy_category_entity_1 = require("./entities/diy-category.entity");
@@ -262,6 +263,7 @@ exports.DiyPlugin = DiyPlugin = DiyPlugin_1 = __decorate([
             diy_service_1.DiyService,
             diy_shop_service_1.DiyShopService,
             DiySeedRunner,
+            diy_stock_service_1.DiyStockService,
         ],
         exports: [diy_service_1.DiyService],
         adminApiExtensions: {
