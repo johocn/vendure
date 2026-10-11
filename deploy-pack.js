@@ -11,6 +11,8 @@ const PLUGINS = [
   "core","common","admin-ui-plugin","asset-server-plugin","dashboard",
   "email-plugin","cjk-plugin","graphiql-plugin","harden-plugin","telemetry-plugin",
   "job-queue-plugin","order-timeout-plugin",
+  // DIY（@diy/calc 为 diy-plugin 的 workspace 依赖，须一并打包）
+  "diy-calc","diy-plugin",
   // 支付 / 认证 / 存储
   "alipay-plugin","wechatpay-plugin","oss-plugin",
   "phone-auth-plugin","wechat-auth-plugin","douyin-auth-plugin",
