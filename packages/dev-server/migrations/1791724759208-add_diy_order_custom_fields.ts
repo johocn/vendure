@@ -1,4 +1,5 @@
-import {MigrationInterface, QueryRunner} from "typeorm";
+// import type：生产由 node22 strip-types 直接加载 .ts（无 ts-node），值导入的具名类型在运行时不存在会导致 ESM 加载崩溃
+import type {MigrationInterface, QueryRunner} from "typeorm";
 
 export class AddDiyOrderCustomFields1791724759208 implements MigrationInterface {
 
