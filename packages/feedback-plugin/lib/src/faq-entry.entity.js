@@ -39,6 +39,14 @@ __decorate([
     __metadata("design:type", Boolean)
 ], FaqEntry.prototype, "enabled", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ type: 'text', nullable: true }),
+    __metadata("design:type", Object)
+], FaqEntry.prototype, "titleI18n", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'text', nullable: true }),
+    __metadata("design:type", Object)
+], FaqEntry.prototype, "contentI18n", void 0);
+__decorate([
     (0, typeorm_1.ManyToMany)(() => core_1.Channel),
     (0, typeorm_1.JoinTable)(),
     __metadata("design:type", Array)

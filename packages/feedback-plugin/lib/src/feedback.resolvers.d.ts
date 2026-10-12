@@ -6,10 +6,14 @@ import { CreateFeedbackInput, FaqListOptions, FeedbackListOptions, SaveFaqInput 
 export declare class FeedbackShopResolver {
     private feedbackService;
     constructor(feedbackService: FeedbackService);
-    /** 未登录可看 FAQ（对齐 usemall），不加 @Allow。 */
-    faqs(ctx: RequestContext, type?: string): Promise<FaqEntry[]>;
+    /** 未登录可看 FAQ（对齐 usemall），不加 @Allow。lang 直传前端 locale（CONTENT_LOCALES 白名单外回退基线）。 */
+    faqs(ctx: RequestContext, type?: string, lang?: string): Promise<FaqEntry[]>;
     myFeedbacks(ctx: RequestContext, options?: FeedbackListOptions): Promise<PaginatedList<Feedback>>;
     createFeedback(ctx: RequestContext, input: CreateFeedbackInput): Promise<Feedback>;
+    /** 全部可读反馈标记已读（幂等），返回最新未读数。 */
+    markFeedbacksRead(ctx: RequestContext): Promise<number>;
+    /** 未读数 = readAt 为空且状态非 pending。 */
+    unreadFeedbackCount(ctx: RequestContext): Promise<number>;
 }
 export declare class FeedbackAdminResolver {
     private feedbackService;
@@ -19,4 +23,6 @@ export declare class FeedbackAdminResolver {
     saveFaq(ctx: RequestContext, input: SaveFaqInput): Promise<FaqEntry>;
     deleteFaq(ctx: RequestContext, id: ID): Promise<boolean>;
     updateFeedbackStatus(ctx: RequestContext, id: ID, status: string): Promise<Feedback>;
+    /** 回复反馈：resolve=true 直接 resolved；否则 pending 转 processing。仅 pending/processing 可回复。 */
+    replyFeedback(ctx: RequestContext, id: ID, reply: string, resolve?: boolean): Promise<Feedback>;
 }

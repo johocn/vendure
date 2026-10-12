@@ -11,10 +11,12 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FeedbackService = void 0;
 const common_1 = require("@nestjs/common");
+const typeorm_1 = require("typeorm");
 const core_1 = require("@vendure/core");
 const constants_1 = require("./constants");
 const faq_entry_entity_1 = require("./faq-entry.entity");
 const feedback_entity_1 = require("./feedback.entity");
+const types_1 = require("./types");
 const FEEDBACK_STATUSES = ['pending', 'processing', 'resolved'];
 const MAX_TITLE_LENGTH = 20;
 const MAX_CONTACT_LENGTH = 30;
@@ -35,8 +37,21 @@ let FeedbackService = class FeedbackService {
         }
         return customer;
     }
-    /** shop：启用中的 FAQ（渠道隔离 + type 可选过滤，sort ASC/id ASC）。未登录可访问。 */
-    async faqs(ctx, type) {
+    /** 解析 i18n JSON 列（坏 JSON/非对象返回 null）。 */
+    parseI18n(raw) {
+        if (!raw) {
+            return null;
+        }
+        try {
+            const v = JSON.parse(raw);
+            return v && typeof v === 'object' ? v : null;
+        }
+        catch (_a) {
+            return null;
+        }
+    }
+    /** shop：启用中的 FAQ（渠道隔离 + type/lang 过滤合并，sort ASC/id ASC）。lang 直传前端 locale，缺失语言回退基线 title/content。未登录可访问。 */
+    async faqs(ctx, type, lang) {
         const repo = this.connection.getRepository(ctx, faq_entry_entity_1.FaqEntry);
         const qb = repo
             .createQueryBuilder('faq')
@@ -47,7 +62,16 @@ let FeedbackService = class FeedbackService {
         if (type) {
             qb.andWhere('faq.type = :type', { type });
         }
-        return qb.getMany();
+        const list = await qb.getMany();
+        if (!lang || !types_1.CONTENT_LOCALES.includes(lang)) {
+            return list;
+        }
+        return list.map(f => {
+            var _a, _b;
+            const ti = this.parseI18n(f.titleI18n);
+            const ci = this.parseI18n(f.contentI18n);
+            return Object.assign(Object.assign({}, f), { title: (_a = ti === null || ti === void 0 ? void 0 : ti[lang]) !== null && _a !== void 0 ? _a : f.title, content: (_b = ci === null || ci === void 0 ? void 0 : ci[lang]) !== null && _b !== void 0 ? _b : f.content });
+        });
     }
     /** admin：FAQ 分页列表（按当前渠道隔离）。 */
     adminFaqs(ctx, options) {
@@ -85,6 +109,12 @@ let FeedbackService = class FeedbackService {
             if (input.enabled != null) {
                 faq.enabled = input.enabled;
             }
+            if (input.titleI18n !== undefined) {
+                faq.titleI18n = input.titleI18n ? JSON.stringify(input.titleI18n) : null;
+            }
+            if (input.contentI18n !== undefined) {
+                faq.contentI18n = input.contentI18n ? JSON.stringify(input.contentI18n) : null;
+            }
         }
         else {
             const title = (_b = (_a = input.title) === null || _a === void 0 ? void 0 : _a.trim()) !== null && _b !== void 0 ? _b : '';
@@ -101,6 +131,8 @@ let FeedbackService = class FeedbackService {
                 type: (_e = input.type) !== null && _e !== void 0 ? _e : 'general',
                 sort: (_f = input.sort) !== null && _f !== void 0 ? _f : 0,
                 enabled: (_g = input.enabled) !== null && _g !== void 0 ? _g : true,
+                titleI18n: input.titleI18n ? JSON.stringify(input.titleI18n) : null,
+                contentI18n: input.contentI18n ? JSON.stringify(input.contentI18n) : null,
             });
         }
         const channel = await this.connection.getEntityOrThrow(ctx, 'Channel', ctx.channelId);
@@ -177,6 +209,50 @@ let FeedbackService = class FeedbackService {
         }));
         core_1.Logger.info(`Feedback ${saved.id} created by customer ${customer.id}`, constants_1.loggerCtx);
         return saved;
+    }
+    /** admin：回复反馈。resolve=true 直接 resolved；否则 pending 转 processing。仅 pending/processing 可回复。 */
+    async replyFeedback(ctx, id, reply, resolve) {
+        var _a;
+        const repo = this.connection.getRepository(ctx, feedback_entity_1.Feedback);
+        const fb = await repo.findOne({ where: { id } });
+        if (!fb) {
+            throw new core_1.UserInputError(`Feedback ${id} not found`);
+        }
+        if (fb.status === 'resolved') {
+            throw new core_1.UserInputError(`Feedback is resolved`);
+        }
+        const text = (_a = reply === null || reply === void 0 ? void 0 : reply.trim()) !== null && _a !== void 0 ? _a : '';
+        if (!text) {
+            throw new core_1.UserInputError('reply is required');
+        }
+        fb.reply = text;
+        fb.repliedAt = new Date();
+        fb.repliedBy = ctx.activeUserId != null ? String(ctx.activeUserId) : null;
+        // 新回复重开未读（用户再次收到角标提醒）
+        fb.readAt = null;
+        if (resolve) {
+            fb.status = 'resolved';
+            fb.handledAt = new Date();
+        }
+        else if (fb.status === 'pending') {
+            fb.status = 'processing';
+        }
+        const saved = await repo.save(fb);
+        core_1.Logger.info(`Feedback ${id} replied (status=${saved.status})`, constants_1.loggerCtx);
+        return saved;
+    }
+    /** shop：当前用户全部可读反馈标记已读（幂等），返回最新未读数。 */
+    async markFeedbacksRead(ctx) {
+        const customer = await this.requireCustomer(ctx);
+        const repo = this.connection.getRepository(ctx, feedback_entity_1.Feedback);
+        await repo.update({ customerId: customer.id, readAt: (0, typeorm_1.IsNull)(), status: (0, typeorm_1.Not)('pending') }, { readAt: new Date() });
+        return this.unreadFeedbackCount(ctx);
+    }
+    /** shop：未读数 = readAt 为空且状态非 pending。 */
+    async unreadFeedbackCount(ctx) {
+        const customer = await this.requireCustomer(ctx);
+        const repo = this.connection.getRepository(ctx, feedback_entity_1.Feedback);
+        return repo.count({ where: { customerId: customer.id, readAt: (0, typeorm_1.IsNull)(), status: (0, typeorm_1.Not)('pending') } });
     }
     /** admin：流转反馈状态（pending/processing/resolved），同时盖 handledAt。 */
     async updateFeedbackStatus(ctx, id, status) {

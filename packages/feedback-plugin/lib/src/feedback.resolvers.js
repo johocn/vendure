@@ -20,9 +20,9 @@ let FeedbackShopResolver = class FeedbackShopResolver {
     constructor(feedbackService) {
         this.feedbackService = feedbackService;
     }
-    /** 未登录可看 FAQ（对齐 usemall），不加 @Allow。 */
-    async faqs(ctx, type) {
-        return this.feedbackService.faqs(ctx, type);
+    /** 未登录可看 FAQ（对齐 usemall），不加 @Allow。lang 直传前端 locale（CONTENT_LOCALES 白名单外回退基线）。 */
+    async faqs(ctx, type, lang) {
+        return this.feedbackService.faqs(ctx, type, lang);
     }
     async myFeedbacks(ctx, options) {
         return this.feedbackService.myFeedbacks(ctx, options);
@@ -30,14 +30,23 @@ let FeedbackShopResolver = class FeedbackShopResolver {
     async createFeedback(ctx, input) {
         return this.feedbackService.createFeedback(ctx, input);
     }
+    /** 全部可读反馈标记已读（幂等），返回最新未读数。 */
+    async markFeedbacksRead(ctx) {
+        return this.feedbackService.markFeedbacksRead(ctx);
+    }
+    /** 未读数 = readAt 为空且状态非 pending。 */
+    async unreadFeedbackCount(ctx) {
+        return this.feedbackService.unreadFeedbackCount(ctx);
+    }
 };
 exports.FeedbackShopResolver = FeedbackShopResolver;
 __decorate([
     (0, graphql_1.Query)(),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('type', { nullable: true })),
+    __param(2, (0, graphql_1.Args)('lang', { nullable: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, String]),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, String]),
     __metadata("design:returntype", Promise)
 ], FeedbackShopResolver.prototype, "faqs", null);
 __decorate([
@@ -59,6 +68,23 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], FeedbackShopResolver.prototype, "createFeedback", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Transaction)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], FeedbackShopResolver.prototype, "markFeedbacksRead", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], FeedbackShopResolver.prototype, "unreadFeedbackCount", null);
 exports.FeedbackShopResolver = FeedbackShopResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [feedback_service_1.FeedbackService])
@@ -81,6 +107,10 @@ let FeedbackAdminResolver = class FeedbackAdminResolver {
     }
     async updateFeedbackStatus(ctx, id, status) {
         return this.feedbackService.updateFeedbackStatus(ctx, id, status);
+    }
+    /** 回复反馈：resolve=true 直接 resolved；否则 pending 转 processing。仅 pending/processing 可回复。 */
+    async replyFeedback(ctx, id, reply, resolve) {
+        return this.feedbackService.replyFeedback(ctx, String(id), reply, resolve !== null && resolve !== void 0 ? resolve : false);
     }
 };
 exports.FeedbackAdminResolver = FeedbackAdminResolver;
@@ -133,6 +163,18 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
     __metadata("design:returntype", Promise)
 ], FeedbackAdminResolver.prototype, "updateFeedbackStatus", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Transaction)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateSettings),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('reply')),
+    __param(3, (0, graphql_1.Args)('resolve', { nullable: true, defaultValue: false })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String, Boolean]),
+    __metadata("design:returntype", Promise)
+], FeedbackAdminResolver.prototype, "replyFeedback", null);
 exports.FeedbackAdminResolver = FeedbackAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [feedback_service_1.FeedbackService])

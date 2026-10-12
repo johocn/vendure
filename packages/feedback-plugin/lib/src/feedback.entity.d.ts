@@ -14,4 +14,11 @@ export declare class Feedback extends VendureEntity {
     status: 'pending' | 'processing' | 'resolved';
     /** 日期列省略 type（2026-10-08 教训：显式 datetime/timestamp 在 sqljs 下报 DataTypeNotSupportedError） */
     handledAt: Date;
+    /** 管理员回复（回复即闭环；C 端 myFeedbacks 透出） */
+    reply: string | null;
+    /** 日期列省略 type（sqljs 兼容，同 handledAt） */
+    repliedAt: Date;
+    repliedBy: string | null;
+    /** 用户已读标记：未读 = readAt IS NULL AND status != 'pending'（联合类型需显式 datetime，否则反射为 Object 且 sqljs 不认） */
+    readAt: Date | null;
 }

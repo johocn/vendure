@@ -50,6 +50,22 @@ __decorate([
     (0, typeorm_1.Column)({ nullable: true }),
     __metadata("design:type", Date)
 ], Feedback.prototype, "handledAt", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'text', nullable: true }),
+    __metadata("design:type", Object)
+], Feedback.prototype, "reply", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Date)
+], Feedback.prototype, "repliedAt", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], Feedback.prototype, "repliedBy", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
+    __metadata("design:type", Object)
+], Feedback.prototype, "readAt", void 0);
 exports.Feedback = Feedback = __decorate([
     (0, typeorm_1.Entity)(),
     __metadata("design:paramtypes", [Object])

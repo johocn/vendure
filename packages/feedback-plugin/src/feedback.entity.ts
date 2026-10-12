@@ -47,7 +47,7 @@ export class Feedback extends VendureEntity {
     @Column({ type: 'varchar', nullable: true })
     repliedBy: string | null;
 
-    /** 用户已读标记：未读 = readAt IS NULL AND status != 'pending' */
-    @Column({ nullable: true })
-    readAt: Date;
+    /** 用户已读标记：未读 = readAt IS NULL AND status != 'pending'（联合类型需显式 datetime，否则反射为 Object 且 sqljs 不认） */
+    @Column({ type: 'datetime', nullable: true })
+    readAt: Date | null;
 }
