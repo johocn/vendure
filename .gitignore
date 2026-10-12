@@ -444,3 +444,14 @@ packages/diy-plugin/lib/**/*.spec.d.ts
 
 # 密钥与部署凭据区（一律不入库；部署脚本/凭据放此处）
 .secrets/
+
+# 本地构建/排查临时物与部署暂存（2026-10-13 卫生治理）
+.nx/
+__data__/
+*.tar.gz
+build-batch*.log
+pack-out.log
+regression-*.log
+packages/dev-server/*.log
+vendure-prod/
+.tmp-*.cjs
