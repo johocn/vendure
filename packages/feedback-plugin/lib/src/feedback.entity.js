@@ -63,8 +63,8 @@ __decorate([
     __metadata("design:type", Object)
 ], Feedback.prototype, "repliedBy", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
-    __metadata("design:type", Object)
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Date)
 ], Feedback.prototype, "readAt", void 0);
 exports.Feedback = Feedback = __decorate([
     (0, typeorm_1.Entity)(),
