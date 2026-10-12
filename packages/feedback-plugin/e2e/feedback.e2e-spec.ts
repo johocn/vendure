@@ -146,4 +146,114 @@ describe('FeedbackPlugin · 常见问题 + 意见反馈（FAQ 过滤/enabled、�
             mutation { createFeedback(input: { title: "${longTitle}", content: "内容" }) { id } }
         `)).rejects.toThrow(/at most 20 characters/);
     });
+
+    it('faqs lang 合并与回退：zh/en 命中、ko 回退基线、不传 lang 原行为、admin 回显 titleI18n', async () => {
+        // zh-CN 键带连字符，内联对象字面量写不了 → 用 variables 传 JSON
+        const save = await adminClient.query(
+            gql`
+                mutation SaveFaqI18n($input: SaveFaqInput!) {
+                    saveFaq(input: $input) { id title titleI18n }
+                }
+            `,
+            {
+                input: {
+                    title: '包邮门槛',
+                    content: '满99包邮',
+                    type: 'account',
+                    sort: 1,
+                    titleI18n: { 'zh-CN': '包邮门槛', en: 'Free shipping threshold' },
+                    contentI18n: { 'zh-CN': '满99包邮', en: 'Free over ¥99' },
+                },
+            },
+        ) as any;
+        expect(save.saveFaq.title).toBe('包邮门槛');
+        expect(JSON.parse(save.saveFaq.titleI18n).en).toBe('Free shipping threshold');
+
+        const zh = await shopClient.query(gql`query { faqs(type: "account", lang: "zh-CN") { title content } }`) as any;
+        expect(zh.faqs).toHaveLength(1);
+        expect(zh.faqs[0].title).toBe('包邮门槛');
+        expect(zh.faqs[0].content).toBe('满99包邮');
+
+        const en = await shopClient.query(gql`query { faqs(type: "account", lang: "en") { title content } }`) as any;
+        expect(en.faqs[0].title).toBe('Free shipping threshold');
+        expect(en.faqs[0].content).toBe('Free over ¥99');
+
+        // 未配置语言回退基线
+        const ko = await shopClient.query(gql`query { faqs(type: "account", lang: "ko") { title } }`) as any;
+        expect(ko.faqs[0].title).toBe('包邮门槛');
+
+        // 非白名单 lang 与不传 lang 均原行为
+        const bad = await shopClient.query(gql`query { faqs(type: "account", lang: "xx-YY") { title } }`) as any;
+        expect(bad.faqs[0].title).toBe('包邮门槛');
+        const noLang = await shopClient.query(gql`query { faqs(type: "account") { title } }`) as any;
+        expect(noLang.faqs[0].title).toBe('包邮门槛');
+
+        // admin 列表回显（web-admin 编辑卡数据源）
+        const adminList = await adminClient.query(gql`
+            query { faqEntries(options: { skip: 0, take: 10 }) { items { id title titleI18n contentI18n } } }
+        `) as any;
+        const acc = adminList.faqEntries.items.find((f: any) => f.title === '包邮门槛');
+        expect(acc).toBeTruthy();
+        expect(JSON.parse(acc.titleI18n)['zh-CN']).toBe('包邮门槛');
+        expect(JSON.parse(acc.contentI18n).en).toBe('Free over ¥99');
+    });
+
+    it('回复闭环：pending 不计未读、processing 计未读、已读幂等、再回复重开未读、resolved 拒绝再回复', async () => {
+        // 前序用例已留下 fb1（resolved、未读）；此刻 unread = 1（fb1），新建 pending 不计
+        const created = await shopClient.query(gql`
+            mutation { createFeedback(input: { title: "回复闭环测试", content: "请尽快处理" }) { id title status } }
+        `) as any;
+        const id = created.createFeedback.id;
+        expect(created.createFeedback.status).toBe('pending');
+        const c1 = await shopClient.query(gql`query { unreadFeedbackCount }`) as any;
+        expect(c1.unreadFeedbackCount).toBe(1);
+
+        // 回复不解决：pending → processing，计入未读
+        const replied = await adminClient.query(gql`
+            mutation { replyFeedback(id: "${id}", reply: "已收到，正在处理", resolve: false) { id reply status repliedAt repliedBy } }
+        `) as any;
+        expect(replied.replyFeedback.status).toBe('processing');
+        expect(replied.replyFeedback.reply).toBe('已收到，正在处理');
+        expect(replied.replyFeedback.repliedAt).toBeTruthy();
+        expect(replied.replyFeedback.repliedBy).toBeTruthy();
+        const c2 = await shopClient.query(gql`query { unreadFeedbackCount }`) as any;
+        expect(c2.unreadFeedbackCount).toBe(2);
+
+        // myFeedbacks 透出回复
+        const mine = await shopClient.query(gql`
+            query { myFeedbacks(options: { skip: 0, take: 10 }) { items { id reply repliedAt readAt } totalItems } }
+        `) as any;
+        const mineFb = mine.myFeedbacks.items.find((f: any) => f.id === id);
+        expect(mineFb.reply).toBe('已收到，正在处理');
+        expect(mineFb.readAt).toBeNull();
+
+        // 标记已读（幂等）：fb1 + 本条全部清零
+        expect((await shopClient.query(gql`mutation { markFeedbacksRead }`) as any).markFeedbacksRead).toBe(0);
+        expect((await shopClient.query(gql`mutation { markFeedbacksRead }`) as any).markFeedbacksRead).toBe(0);
+        const c3 = await shopClient.query(gql`query { unreadFeedbackCount }`) as any;
+        expect(c3.unreadFeedbackCount).toBe(0);
+
+        // 再次回复（resolve=true）：processing → resolved，且重开未读
+        const r2 = await adminClient.query(gql`
+            mutation { replyFeedback(id: "${id}", reply: "已解决", resolve: true) { id status handledAt } }
+        `) as any;
+        expect(r2.replyFeedback.status).toBe('resolved');
+        expect(r2.replyFeedback.handledAt).toBeTruthy();
+        const c4 = await shopClient.query(gql`query { unreadFeedbackCount }`) as any;
+        expect(c4.unreadFeedbackCount).toBe(1);
+        expect((await shopClient.query(gql`mutation { markFeedbacksRead }`) as any).markFeedbacksRead).toBe(0);
+
+        // resolved 拒绝再回复
+        await expect(adminClient.query(gql`
+            mutation { replyFeedback(id: "${id}", reply: "x") { id } }
+        `)).rejects.toThrow(/resolved/);
+
+        // 空 reply 拒绝
+        const fb2 = await shopClient.query(gql`
+            mutation { createFeedback(input: { title: "空回复校验", content: "内容" }) { id } }
+        `) as any;
+        await expect(adminClient.query(gql`
+            mutation { replyFeedback(id: "${fb2.createFeedback.id}", reply: "   ") { id } }
+        `)).rejects.toThrow(/reply is required/);
+    });
 });

@@ -251,6 +251,8 @@ export class FeedbackService {
         fb.reply = text;
         fb.repliedAt = new Date();
         fb.repliedBy = ctx.activeUserId != null ? String(ctx.activeUserId) : null;
+        // 新回复重开未读（用户再次收到角标提醒）
+        fb.readAt = null;
         if (resolve) {
             fb.status = 'resolved';
             fb.handledAt = new Date();
