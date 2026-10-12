@@ -21,15 +21,20 @@ export interface CalcMaterial {
   price: number;
 }
 
+/** 槽位角色：decor 装饰只计价不进几何环 */
+export type SlotRole = 'main' | 'secondary' | 'spacer' | 'focal' | 'decor';
+
 /** 槽位选择（来自 DiyPlan.spec.slots） */
 export interface SlotSelection {
   key: string;
-  role: 'main' | 'secondary' | 'spacer' | 'focal' | 'decor';
+  role: SlotRole;
   materialId?: string;
   /** user 数量槽位的覆盖值 */
   qtyOverride?: number;
   /** 隔片：每隔几颗插一片 */
   every?: number;
+  /** 序列排布模式：alternate 交替 / random 随机 / zoned 分区 */
+  arrange?: 'alternate' | 'random' | 'zoned';
 }
 
 /** 计算器统一输入 */
