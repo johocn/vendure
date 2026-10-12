@@ -10,6 +10,10 @@ export declare class PhoneAuthenticationStrategy implements AuthenticationStrate
     readonly name = "phone";
     private smsService;
     private userService;
+    private externalAuthService;
+    private connection;
+    private channelService;
+    private customerService;
     constructor(options: PhoneAuthPluginOptions);
     init(injector: Injector): Promise<void>;
     defineInputType(): DocumentNode;
