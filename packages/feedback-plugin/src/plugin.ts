@@ -43,7 +43,7 @@ const shopSchema = () => gql`
         contactWay: String
     }
     extend type Query {
-        faqs(type: String): [FaqEntry!]!
+        faqs(type: String, lang: String): [FaqEntry!]!
         myFeedbacks(options: FeedbackListOptions): FeedbackList!
     }
     extend type Mutation {
@@ -59,6 +59,8 @@ const adminSchema = () => gql`
         type: String!
         sort: Int!
         enabled: Boolean!
+        titleI18n: String
+        contentI18n: String
         createdAt: DateTime!
         updatedAt: DateTime!
     }
@@ -77,6 +79,8 @@ const adminSchema = () => gql`
         type: String
         sort: Int
         enabled: Boolean
+        titleI18n: JSON
+        contentI18n: JSON
     }
     type Feedback implements Node {
         id: ID!

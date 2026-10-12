@@ -10,10 +10,14 @@ import { CreateFeedbackInput, FaqListOptions, FeedbackListOptions, SaveFaqInput 
 export class FeedbackShopResolver {
     constructor(private feedbackService: FeedbackService) {}
 
-    /** 未登录可看 FAQ（对齐 usemall），不加 @Allow。 */
+    /** 未登录可看 FAQ（对齐 usemall），不加 @Allow。lang 直传前端 locale（CONTENT_LOCALES 白名单外回退基线）。 */
     @Query()
-    async faqs(@Ctx() ctx: RequestContext, @Args('type', { nullable: true }) type?: string): Promise<FaqEntry[]> {
-        return this.feedbackService.faqs(ctx, type);
+    async faqs(
+        @Ctx() ctx: RequestContext,
+        @Args('type', { nullable: true }) type?: string,
+        @Args('lang', { nullable: true }) lang?: string,
+    ): Promise<FaqEntry[]> {
+        return this.feedbackService.faqs(ctx, type, lang);
     }
 
     @Query()

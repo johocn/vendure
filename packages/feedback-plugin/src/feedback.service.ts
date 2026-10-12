@@ -16,7 +16,7 @@ import {
 import { loggerCtx } from './constants';
 import { FaqEntry } from './faq-entry.entity';
 import { Feedback } from './feedback.entity';
-import { CreateFeedbackInput, FaqListOptions, FeedbackListOptions, SaveFaqInput } from './types';
+import { CONTENT_LOCALES, CreateFeedbackInput, FaqListOptions, FeedbackListOptions, SaveFaqInput } from './types';
 
 const FEEDBACK_STATUSES: Array<Feedback['status']> = ['pending', 'processing', 'resolved'];
 
@@ -43,8 +43,21 @@ export class FeedbackService {
         return customer;
     }
 
-    /** shop：启用中的 FAQ（渠道隔离 + type 可选过滤，sort ASC/id ASC）。未登录可访问。 */
-    async faqs(ctx: RequestContext, type?: string): Promise<FaqEntry[]> {
+    /** 解析 i18n JSON 列（坏 JSON/非对象返回 null）。 */
+    private parseI18n(raw: string | null): Record<string, string> | null {
+        if (!raw) {
+            return null;
+        }
+        try {
+            const v = JSON.parse(raw);
+            return v && typeof v === 'object' ? v : null;
+        } catch {
+            return null;
+        }
+    }
+
+    /** shop：启用中的 FAQ（渠道隔离 + type/lang 过滤合并，sort ASC/id ASC）。lang 直传前端 locale，缺失语言回退基线 title/content。未登录可访问。 */
+    async faqs(ctx: RequestContext, type?: string, lang?: string): Promise<FaqEntry[]> {
         const repo = this.connection.getRepository(ctx, FaqEntry);
         const qb = repo
             .createQueryBuilder('faq')
@@ -55,7 +68,19 @@ export class FeedbackService {
         if (type) {
             qb.andWhere('faq.type = :type', { type });
         }
-        return qb.getMany();
+        const list = await qb.getMany();
+        if (!lang || !(CONTENT_LOCALES as readonly string[]).includes(lang)) {
+            return list;
+        }
+        return list.map(f => {
+            const ti = this.parseI18n(f.titleI18n);
+            const ci = this.parseI18n(f.contentI18n);
+            return {
+                ...f,
+                title: ti?.[lang] ?? f.title,
+                content: ci?.[lang] ?? f.content,
+            } as FaqEntry;
+        });
     }
 
     /** admin：FAQ 分页列表（按当前渠道隔离）。 */
@@ -94,6 +119,12 @@ export class FeedbackService {
             if (input.enabled != null) {
                 faq.enabled = input.enabled;
             }
+            if (input.titleI18n !== undefined) {
+                faq.titleI18n = input.titleI18n ? JSON.stringify(input.titleI18n) : null;
+            }
+            if (input.contentI18n !== undefined) {
+                faq.contentI18n = input.contentI18n ? JSON.stringify(input.contentI18n) : null;
+            }
         } else {
             const title = input.title?.trim() ?? '';
             const content = input.content?.trim() ?? '';
@@ -109,6 +140,8 @@ export class FeedbackService {
                 type: input.type ?? 'general',
                 sort: input.sort ?? 0,
                 enabled: input.enabled ?? true,
+                titleI18n: input.titleI18n ? JSON.stringify(input.titleI18n) : null,
+                contentI18n: input.contentI18n ? JSON.stringify(input.contentI18n) : null,
             }) as FaqEntry;
         }
         const channel = await this.connection.getEntityOrThrow(ctx, 'Channel' as any, ctx.channelId);

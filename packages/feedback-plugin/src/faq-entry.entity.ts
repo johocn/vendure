@@ -23,6 +23,13 @@ export class FaqEntry extends VendureEntity {
     @Column({ type: 'boolean', default: true })
     enabled: boolean;
 
+    /** 多语言覆盖（LocalizedText JSON 存 text 列）；读取语义 titleI18n[lang] ?? title，zh-CN 与 title 同值 */
+    @Column({ type: 'text', nullable: true })
+    titleI18n: string | null;
+
+    @Column({ type: 'text', nullable: true })
+    contentI18n: string | null;
+
     /** 渠道隔离（仿 distribution WithdrawalRequest.channels，ListQueryBuilder channelId 过滤走此关系） */
     @ManyToMany(() => Channel)
     @JoinTable()
