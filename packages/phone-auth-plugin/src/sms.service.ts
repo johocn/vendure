@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import Dysmsapi, { SendSmsRequest } from '@alicloud/dysmsapi20170525';
 import OpenApiClient, { Config } from '@alicloud/openapi-client';
 import { Logger } from '@vendure/core';
+import Redis from 'ioredis';
 
 import { loggerCtx } from './constants';
 import { PhoneAuthPluginOptions } from './types';
@@ -25,6 +26,120 @@ export interface StoredCode {
     failures: number;
 }
 
+/**
+ * 验证码/限流状态存储抽象。
+ * 单实例用进程内存（InMemoryStore）；配置 redisUrl 后用 Redis（多实例共享，TTL 自动过期）。
+ */
+interface CodeStore {
+    getCode(phoneNumber: string): Promise<StoredCode | undefined>;
+    setCode(phoneNumber: string, rec: StoredCode): Promise<void>;
+    deleteCode(phoneNumber: string): Promise<void>;
+    isCoolingDown(phoneNumber: string): Promise<boolean>;
+    markSent(phoneNumber: string, cooldownMs: number): Promise<void>;
+    /** 当日计数自增并返回新值（首次调用设置当日过期） */
+    incrDaily(phoneNumber: string, dayKey: string): Promise<number>;
+}
+
+class InMemoryStore implements CodeStore {
+    private codes = new Map<string, StoredCode>();
+    private cooldowns = new Map<string, number>();
+    private daily = new Map<string, number>();
+
+    async getCode(phoneNumber: string): Promise<StoredCode | undefined> {
+        return this.codes.get(phoneNumber);
+    }
+
+    async setCode(phoneNumber: string, rec: StoredCode): Promise<void> {
+        this.codes.set(phoneNumber, rec);
+    }
+
+    async deleteCode(phoneNumber: string): Promise<void> {
+        this.codes.delete(phoneNumber);
+    }
+
+    async isCoolingDown(phoneNumber: string): Promise<boolean> {
+        const last = this.cooldowns.get(phoneNumber);
+        return !!last && Date.now() - last < SEND_COOLDOWN_MS;
+    }
+
+    async markSent(phoneNumber: string): Promise<void> {
+        this.cooldowns.set(phoneNumber, Date.now());
+    }
+
+    async incrDaily(phoneNumber: string, dayKey: string): Promise<number> {
+        const key = `${phoneNumber}:${dayKey}`;
+        const next = (this.daily.get(key) || 0) + 1;
+        this.daily.set(key, next);
+        return next;
+    }
+
+    /** 惰性清理：该号过期验证码 + 全局容量兜底（Redis 实现靠 TTL，无需此步） */
+    sweep(): void {
+        const now = Date.now();
+        if (this.codes.size > 10_000) {
+            for (const [k, v] of this.codes) {
+                if (now > v.expiresAt) this.codes.delete(k);
+            }
+        }
+        if (this.cooldowns.size > 10_000) {
+            for (const [k, t] of this.cooldowns) {
+                if (now - t >= SEND_COOLDOWN_MS) this.cooldowns.delete(k);
+            }
+        }
+        if (this.daily.size > 50_000) {
+            const today = this.dayKey();
+            for (const k of this.daily.keys()) {
+                if (!k.endsWith(`:${today}`)) this.daily.delete(k);
+            }
+        }
+    }
+
+    dayKey(): string {
+        const d = new Date();
+        return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+    }
+}
+
+const KEY_PREFIX = {
+    code: 'phone-auth:code:',
+    cooldown: 'phone-auth:cd:',
+    daily: 'phone-auth:daily:',
+};
+
+class RedisStore implements CodeStore {
+    constructor(private redis: Redis) {}
+
+    async getCode(phoneNumber: string): Promise<StoredCode | undefined> {
+        const raw = await this.redis.get(KEY_PREFIX.code + phoneNumber);
+        return raw ? (JSON.parse(raw) as StoredCode) : undefined;
+    }
+
+    async setCode(phoneNumber: string, rec: StoredCode): Promise<void> {
+        // TTL = 有效期 + 60s 缓冲，保证「已过期但可区分」与「不存在」两种失败语义
+        const ttl = Math.max(1, Math.ceil((rec.expiresAt - Date.now()) / 1000) + 60);
+        await this.redis.set(KEY_PREFIX.code + phoneNumber, JSON.stringify(rec), 'EX', ttl);
+    }
+
+    async deleteCode(phoneNumber: string): Promise<void> {
+        await this.redis.del(KEY_PREFIX.code + phoneNumber);
+    }
+
+    async isCoolingDown(phoneNumber: string): Promise<boolean> {
+        return (await this.redis.exists(KEY_PREFIX.cooldown + phoneNumber)) === 1;
+    }
+
+    async markSent(phoneNumber: string, cooldownMs: number): Promise<void> {
+        await this.redis.set(KEY_PREFIX.cooldown + phoneNumber, '1', 'PX', cooldownMs);
+    }
+
+    async incrDaily(phoneNumber: string, dayKey: string): Promise<number> {
+        const key = KEY_PREFIX.daily + `${phoneNumber}:${dayKey}`;
+        const next = await this.redis.incr(key);
+        if (next === 1) await this.redis.expire(key, 25 * 3600);
+        return next;
+    }
+}
+
 @Injectable()
 export class SmsService {
     private signName: string;
@@ -32,12 +147,9 @@ export class SmsService {
     private codeLength: number;
     private codeExpirySeconds: number;
 
-    /** 验证码存储：phoneNumber → code（含失败次数） */
-    private codeStore: Map<string, StoredCode>;
-    /** 发码冷却：phoneNumber → 上次发码时间戳 */
-    private sendCooldowns: Map<string, number>;
-    /** 每日计数：`${phoneNumber}:${yyyyMMdd}` → 当日已发条数 */
-    private dailyCounts: Map<string, number>;
+    private store: CodeStore;
+    private inMemoryStore: InMemoryStore;
+
     /** 按凭证指纹缓存的阿里云客户端（支持租户级凭证覆盖） */
     private clients: Map<string, Dysmsapi>;
 
@@ -49,9 +161,6 @@ export class SmsService {
         this.templateCode = options.templateCode;
         this.codeLength = options.codeLength || 6;
         this.codeExpirySeconds = options.codeExpirySeconds || 300;
-        this.codeStore = new Map();
-        this.sendCooldowns = new Map();
-        this.dailyCounts = new Map();
         this.clients = new Map();
         // 生产环境强制关闭 devBypass 后门（防环境变量误配导致任意手机号接管账号）
         this.devBypass = options.devBypass || false;
@@ -60,17 +169,31 @@ export class SmsService {
             this.devBypass = false;
         }
         this.devBypassCode = options.devBypassCode || '123456';
+
+        if (options.redisUrl) {
+            const redis = new Redis(options.redisUrl, {
+                lazyConnect: false,
+                maxRetriesPerRequest: 2,
+            });
+            redis.on('error', (e) => Logger.error(`phone-auth Redis error: ${e.message}`, loggerCtx));
+            this.store = new RedisStore(redis);
+            this.inMemoryStore = new InMemoryStore(); // 仅用于 dayKey 工具
+            Logger.info('phone-auth: using Redis-backed code store', loggerCtx);
+        } else {
+            this.inMemoryStore = new InMemoryStore();
+            this.store = this.inMemoryStore;
+        }
     }
 
     /** 判定能否立即发码；返回 null 表示放行，否则返回拒绝原因（供日志） */
-    checkRateLimit(phoneNumber: string): string | null {
-        this.sweepExpired(phoneNumber);
-        const last = this.sendCooldowns.get(phoneNumber);
-        if (last && Date.now() - last < SEND_COOLDOWN_MS) {
+    async checkRateLimit(phoneNumber: string): Promise<string | null> {
+        if (this.store === this.inMemoryStore) this.inMemoryStore.sweep();
+        if (await this.store.isCoolingDown(phoneNumber)) {
             return 'cooldown';
         }
-        const dayKey = `${phoneNumber}:${this.dayKey()}`;
-        if ((this.dailyCounts.get(dayKey) || 0) >= DAILY_SEND_LIMIT) {
+        const sentToday = await this.store.incrDaily(phoneNumber, this.inMemoryStore.dayKey());
+        if (sentToday > DAILY_SEND_LIMIT) {
+            // check 即占额（防滥用优先于精确计数；被拒绝的尝试同样消耗当日额度）
             return 'daily-limit';
         }
         return null;
@@ -78,14 +201,12 @@ export class SmsService {
 
     async sendVerificationCode(phoneNumber: string, credentials?: SmsCredentials): Promise<boolean> {
         const code = this.generateCode();
-        this.codeStore.set(phoneNumber, {
+        await this.store.setCode(phoneNumber, {
             code,
             expiresAt: Date.now() + this.codeExpirySeconds * 1000,
             failures: 0,
         });
-        this.sendCooldowns.set(phoneNumber, Date.now());
-        const dayKey = `${phoneNumber}:${this.dayKey()}`;
-        this.dailyCounts.set(dayKey, (this.dailyCounts.get(dayKey) || 0) + 1);
+        await this.store.markSent(phoneNumber, SEND_COOLDOWN_MS);
 
         if (this.devBypass) {
             Logger.info(`[DEV BYPASS] Verification code for ${phoneNumber}: ${code}`, loggerCtx);
@@ -127,26 +248,27 @@ export class SmsService {
         }
     }
 
-    verifyCode(phoneNumber: string, code: string): boolean {
-        const stored = this.codeStore.get(phoneNumber);
+    async verifyCode(phoneNumber: string, code: string): Promise<boolean> {
+        const stored = await this.store.getCode(phoneNumber);
         if (!stored) return false;
         if (Date.now() > stored.expiresAt) {
-            this.codeStore.delete(phoneNumber);
+            await this.store.deleteCode(phoneNumber);
             return false;
         }
         // 连续失败超过阈值则作废当前验证码（防 6 位码暴力枚举），需重新发码
         if (stored.code === code) {
-            this.codeStore.delete(phoneNumber);
+            await this.store.deleteCode(phoneNumber);
             return true;
         }
         stored.failures += 1;
         if (stored.failures >= MAX_VERIFY_FAILURES) {
-            this.codeStore.delete(phoneNumber);
+            await this.store.deleteCode(phoneNumber);
             Logger.warn(`Verification code invalidated after ${stored.failures} failures (${phoneNumber})`, loggerCtx);
             return false;
         }
+        await this.store.setCode(phoneNumber, stored);
         if (this.devBypass && code === this.devBypassCode) {
-            this.codeStore.delete(phoneNumber);
+            await this.store.deleteCode(phoneNumber);
             Logger.info(`[DEV BYPASS] Accepted bypass code for ${phoneNumber}`, loggerCtx);
             return true;
         }
@@ -180,37 +302,5 @@ export class SmsService {
             code += String(randomInt(0, 10));
         }
         return code;
-    }
-
-    /** 本地时区当日键（如 20261012） */
-    private dayKey(): string {
-        const d = new Date();
-        return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-    }
-
-    /** 惰性清理：该号的过期验证码/冷却记录 + 全局过载兜底清扫 */
-    private sweepExpired(phoneNumber?: string): void {
-        if (phoneNumber && this.codeStore.has(phoneNumber)) {
-            const stored = this.codeStore.get(phoneNumber)!;
-            if (Date.now() > stored.expiresAt) this.codeStore.delete(phoneNumber);
-        }
-        if (this.codeStore.size > 10_000) {
-            const now = Date.now();
-            for (const [k, v] of this.codeStore) {
-                if (now > v.expiresAt) this.codeStore.delete(k);
-            }
-        }
-        if (this.sendCooldowns.size > 10_000) {
-            const now = Date.now();
-            for (const [k, t] of this.sendCooldowns) {
-                if (now - t >= SEND_COOLDOWN_MS) this.sendCooldowns.delete(k);
-            }
-        }
-        if (this.dailyCounts.size > 50_000) {
-            const today = this.dayKey();
-            for (const k of this.dailyCounts.keys()) {
-                if (!k.endsWith(`:${today}`)) this.dailyCounts.delete(k);
-            }
-        }
     }
 }

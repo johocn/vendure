@@ -257,6 +257,10 @@ exports.devConfig = {
         Channel: [
             { name: 'displayTemplate', type: 'string', defaultValue: 'standard', public: true },
             { name: 'themeId', type: 'string', defaultValue: 'taobao-orange', public: true },
+            { name: 'balanceMinWithdrawalAmount', type: 'int', nullable: true, public: true,
+                label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '余额提现起提金额(分)' }] },
+            { name: 'lotteryFixedCost', type: 'int', nullable: true, public: true,
+                label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '抽奖每次固定消耗(积分)' }] },
             { name: 'shopName', type: 'string', public: true },
             { name: 'shopLogo', type: 'string', public: true },
             { name: 'shopIntro', type: 'string', public: true },
@@ -364,6 +368,7 @@ exports.devConfig = {
                 templateCode: (_k = process.env.SMS_TEMPLATE_CODE) !== null && _k !== void 0 ? _k : '',
                 devBypass: process.env.DEV_BYPASS_SMS === 'true',
                 devBypassCode: '123456',
+                redisUrl: process.env.PHONE_AUTH_REDIS_URL || undefined,
             })] : []),
         ...((process.env.WECHAT_AUTH_APP_ID || process.env.DEV_BYPASS_WECHAT === 'true') ? [wechat_auth_plugin_1.WechatAuthPlugin.init({
                 appId: process.env.WECHAT_AUTH_APP_ID || 'dev_test_app_id',

@@ -53,7 +53,7 @@ export class PhoneAuthenticationStrategy implements AuthenticationStrategy<Phone
 
         const { phoneNumber, code } = data;
 
-        if (!this.smsService.verifyCode(phoneNumber, code)) {
+        if (!(await this.smsService.verifyCode(phoneNumber, code))) {
             return '验证码错误或已过期';
         }
 

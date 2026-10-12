@@ -35,7 +35,7 @@ class PhoneAuthenticationStrategy {
         // 注：租户凭证覆盖（getAuthOverride）在发码链路（auth.resolver.sendPhoneVerificationCode）生效；
         // authenticate 仅校验验证码，不使用短信凭证。
         const { phoneNumber, code } = data;
-        if (!this.smsService.verifyCode(phoneNumber, code)) {
+        if (!(await this.smsService.verifyCode(phoneNumber, code))) {
             return '验证码错误或已过期';
         }
         try {

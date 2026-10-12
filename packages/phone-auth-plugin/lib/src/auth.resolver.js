@@ -36,7 +36,7 @@ let PhoneAuthResolver = class PhoneAuthResolver {
             throw new core_1.UserInputError('手机号格式不正确');
         }
         // 发送频率限制：60s 冷却 + 同号每日上限（防短信轰炸/费用消耗）
-        const limited = this.smsService.checkRateLimit(phoneNumber);
+        const limited = await this.smsService.checkRateLimit(phoneNumber);
         if (limited) {
             return false;
         }

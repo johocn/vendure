@@ -443,6 +443,8 @@ export const devConfig: VendureConfig = {
             templateCode: process.env.SMS_TEMPLATE_CODE ?? '',
             devBypass: process.env.DEV_BYPASS_SMS === 'true',
             devBypassCode: '123456',
+            // 可选：配置后验证码/限流状态存 Redis（多实例部署共享），未配置走进程内存
+            redisUrl: process.env.PHONE_AUTH_REDIS_URL || undefined,
         })] : []),
         ...((process.env.WECHAT_AUTH_APP_ID || process.env.DEV_BYPASS_WECHAT === 'true') ? [WechatAuthPlugin.init({
             appId: process.env.WECHAT_AUTH_APP_ID || 'dev_test_app_id',
