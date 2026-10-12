@@ -73,13 +73,24 @@ export interface DiyPlanSlotSelection {
     every?: number;
 }
 
+/** v2 数组槽位（多主珠/多隔片/decor 混搭）；slotList 非空时优先于 slots 对象 */
+export interface DiyPlanSlotListItem extends DiyPlanSlotSelection {
+    role: TemplateSlot['role'];
+    /** 序列排布模式：alternate 交替 / random 随机 / zoned 分区 */
+    arrange?: 'alternate' | 'random' | 'zoned';
+}
+
 export interface DiyPlanSpec {
-    /** slotKey → 选择 */
+    /** slotKey → 选择（v1 对象形式；仍用于模板 required 校验与 v1 兼容） */
     slots: Record<string, DiyPlanSlotSelection>;
     /** 模板 params 键值对（wristSize/fit/gap…） */
     params: Record<string, number | string>;
     /** 随机混色种子 */
     seed?: number;
+    /** v2 数组槽位；非空时优先于 slots 解析（calc-bridge v2） */
+    slotList?: DiyPlanSlotListItem[];
+    /** 自由/规律序列（materialId 有序数组，前端 seeded 生成可复现）；非空时走 sequenceGeometry 复算 */
+    sequence?: string[];
 }
 
 /* ------------------------- DiyPlan.bom（BOM 快照，规格 §6.1） ------------------------- */
