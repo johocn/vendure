@@ -12,6 +12,28 @@ export interface DiyPlanList {
     items: DiyPlan[];
     total: number;
 }
+/** 画廊条目（v2 公开橱窗）：title 派生自 bom 快照，authorName 实体暂无归属人昵称列 → null */
+export interface DiyGalleryItem {
+    id: string;
+    title: string;
+    coverMaterialIds: string[];
+    totalAmount: number;
+    totalCount: number;
+    authorName: string | null;
+    createdAt: Date;
+}
+export interface DiyGalleryList {
+    items: DiyGalleryItem[];
+    total: number;
+}
+export interface DiyPublicPlan {
+    id: string;
+    title: string;
+    spec: DiyPlanSpec;
+    totalAmount: number;
+    totalCount: number;
+    createdAt: Date;
+}
 /**
  * C 端查询面（规格 §7 shop 部分）。
  * app 固定取插件 init 传入的租户端，不暴露给 C 端调用方。
@@ -48,4 +70,16 @@ export declare class DiyShopService {
     myDiyPlan(ctx: RequestContext, id: string): Promise<DiyPlan | null>;
     /** 报价（规格 §6.3）：draft/quoted 可重复报价（每次以服务端实时价复算覆盖 bom，新号新效期）；ordered 不可 */
     quoteDiyPlan(ctx: RequestContext, planId: string): Promise<DiyPlan>;
+    private toGalleryItem;
+    /** 公开画廊：仅 isPublic=true，按发布时间倒序，take 上限 50 */
+    diyGalleryPlans(ctx: RequestContext, options?: {
+        skip?: number;
+        take?: number;
+    }): Promise<DiyGalleryList>;
+    /** 公开方案详情（分享页）：仅 isPublic=true，否则统一 PLAN_NOT_ACCESSIBLE（不暴露存在性） */
+    diyPublicPlan(ctx: RequestContext, id: string): Promise<DiyPublicPlan>;
+    /** 发布/取消发布（仅 owner）：发布记 publishedAt=now，取消置 null */
+    publishDiyPlan(ctx: RequestContext, id: string, isPublic: boolean): Promise<DiyPlan>;
+    /** 复制方案（owner 或 isPublic=true 可复制）：复制体归属当前用户、回到 draft、不公开，spec/bom 原样 */
+    copyDiyPlan(ctx: RequestContext, id: string): Promise<DiyPlan>;
 }

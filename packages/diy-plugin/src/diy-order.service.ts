@@ -139,7 +139,8 @@ export class DiyOrderService {
         return this.connection.withTransaction(ctx, async tctx => {
             const planRepo = this.connection.getRepository(tctx, DiyPlan);
             const plan = await planRepo.findOne({ where: { app: this.app, id: Number(planId) } });
-            if (!plan || plan.userId !== userId) {
+            // v2：归属校验放宽为 owner 或 isPublic=true（他人公开方案可一键复购下单）
+            if (!plan || (plan.userId !== userId && !plan.isPublic)) {
                 throw new UserInputError(`Diy plan not found: ${planId}`);
             }
             if (plan.status === 'ordered') {
@@ -189,6 +190,8 @@ export class DiyOrderService {
                     diyUnitPrice: bom.totalAmount,
                     diyBom: JSON.stringify(bom),
                     diyQuoteRefAmount: quoteRefAmount,
+                    // v2：下单他人公开方案时记录原作者 userId（自购为 null）
+                    copiedFrom: plan.userId !== userId ? plan.userId : null,
                 },
                 ['lines'],
             );

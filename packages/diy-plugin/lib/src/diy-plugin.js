@@ -66,6 +66,8 @@ const adminSchema = (0, graphql_tag_1.default) `
         sourceMaterialId: Int
         enabled: Boolean!
         sortOrder: Int!
+        renderUrl: String
+        renderPreset: String
         createdAt: DateTime!
         updatedAt: DateTime!
     }
@@ -152,6 +154,8 @@ const adminSchema = (0, graphql_tag_1.default) `
         orderLineId: Int
         thumb: String
         shareImage: String
+        isPublic: Boolean!
+        publishedAt: DateTime
         createdAt: DateTime!
         updatedAt: DateTime!
     }
@@ -195,6 +199,8 @@ const shopSchema = (0, graphql_tag_1.default) `
         images: JSON
         enabled: Boolean!
         sortOrder: Int!
+        renderUrl: String
+        renderPreset: String
         createdAt: DateTime!
         updatedAt: DateTime!
     }
@@ -234,6 +240,8 @@ const shopSchema = (0, graphql_tag_1.default) `
         diyCategories: [DiyCategory!]!
         diyShopTemplates: [DiyTemplate!]!
         diyShopTemplate(code: String!): DiyTemplate
+        diyGalleryPlans(skip: Int = 0, take: Int = 12): DiyGalleryList!
+        diyPublicPlan(id: ID!): DiyPublicPlan
     }
     type DiyPlan {
         id: ID!
@@ -245,12 +253,35 @@ const shopSchema = (0, graphql_tag_1.default) `
         expiresAt: DateTime
         orderLineId: Int
         thumb: String
+        isPublic: Boolean!
+        publishedAt: DateTime
         createdAt: DateTime!
         updatedAt: DateTime!
     }
     type DiyPlanList {
         items: [DiyPlan!]!
         total: Int!
+    }
+    type DiyGalleryItem {
+        id: ID!
+        title: String!
+        coverMaterialIds: [String!]!
+        totalAmount: Int!
+        totalCount: Int!
+        authorName: String
+        createdAt: DateTime!
+    }
+    type DiyGalleryList {
+        items: [DiyGalleryItem!]!
+        total: Int!
+    }
+    type DiyPublicPlan {
+        id: ID!
+        title: String!
+        spec: JSON
+        totalAmount: Int!
+        totalCount: Int!
+        createdAt: DateTime!
     }
     extend type Query {
         myDiyPlans(status: String, skip: Int, take: Int): DiyPlanList!
@@ -259,6 +290,8 @@ const shopSchema = (0, graphql_tag_1.default) `
     extend type Mutation {
         createDiyPlan(templateCode: String!, spec: JSON!, thumb: String): DiyPlan!
         quoteDiyPlan(id: ID!): DiyPlan!
+        publishDiyPlan(id: ID!, isPublic: Boolean!): DiyPlan!
+        copyDiyPlan(id: ID!): DiyPlan!
         createOrderFromPlan(id: ID!): DiyPlan!
     }
 `;
@@ -343,7 +376,7 @@ exports.DiyPlugin = DiyPlugin = DiyPlugin_1 = __decorate([
         },
         configuration: config => {
             config.authOptions.customPermissions.push(permissions_1.DiyRead, permissions_1.DiyCreate, permissions_1.DiyUpdate, permissions_1.DiyDelete);
-            config.customFields.OrderLine.push({ name: 'diyPlanId', type: 'int', nullable: true }, { name: 'diyUnitPrice', type: 'int', nullable: true }, { name: 'diyBom', type: 'text', nullable: true }, { name: 'diyQuoteRefAmount', type: 'int', nullable: true });
+            config.customFields.OrderLine.push({ name: 'diyPlanId', type: 'int', nullable: true }, { name: 'diyUnitPrice', type: 'int', nullable: true }, { name: 'diyBom', type: 'text', nullable: true }, { name: 'diyQuoteRefAmount', type: 'int', nullable: true }, { name: 'copiedFrom', type: 'int', nullable: true });
             const original = config.orderOptions.orderItemPriceCalculationStrategy;
             config.orderOptions.orderItemPriceCalculationStrategy = new diy_order_service_1.DiyOrderItemPriceCalculationStrategy(original);
             return config;

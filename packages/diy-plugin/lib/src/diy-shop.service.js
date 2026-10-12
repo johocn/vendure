@@ -26,6 +26,7 @@ const diy_plan_entity_1 = require("./entities/diy-plan.entity");
 const diy_template_entity_1 = require("./entities/diy-template.entity");
 const template_config_1 = require("./template-config");
 const material_merge_1 = require("./material-merge");
+const plan_utils_1 = require("./plan-utils");
 /**
  * C 端查询面（规格 §7 shop 部分）。
  * app 固定取插件 init 传入的租户端，不暴露给 C 端调用方。
@@ -217,6 +218,90 @@ let DiyShopService = class DiyShopService {
         plan.quoteNo = (0, quote_utils_1.buildQuoteNo)(now);
         plan.expiresAt = (0, quote_utils_1.quoteExpiresAt)(now, constants_1.DEFAULT_QUOTE_TTL_DAYS);
         return repo.save(plan);
+    }
+    /* ------------------------- v2：公开分享 / 画廊 ------------------------- */
+    toGalleryItem(plan) {
+        var _a, _b, _c, _d;
+        return {
+            id: String(plan.id),
+            title: (0, plan_utils_1.derivePlanTitle)(plan.spec, plan.bom),
+            coverMaterialIds: (0, plan_utils_1.coverMaterialIds)(plan.spec),
+            totalAmount: (_b = (_a = plan.bom) === null || _a === void 0 ? void 0 : _a.totalAmount) !== null && _b !== void 0 ? _b : 0,
+            totalCount: (_d = (_c = plan.bom) === null || _c === void 0 ? void 0 : _c.totalCount) !== null && _d !== void 0 ? _d : 0,
+            authorName: null,
+            createdAt: plan.createdAt,
+        };
+    }
+    /** 公开画廊：仅 isPublic=true，按发布时间倒序，take 上限 50 */
+    async diyGalleryPlans(ctx, options = {}) {
+        var _a, _b;
+        const [plans, total] = await this.connection
+            .getRepository(ctx, diy_plan_entity_1.DiyPlan)
+            .findAndCount({
+            where: { app: this.app, isPublic: true },
+            order: { publishedAt: 'DESC', id: 'DESC' },
+            skip: (_a = options.skip) !== null && _a !== void 0 ? _a : 0,
+            take: Math.min(Math.max(1, (_b = options.take) !== null && _b !== void 0 ? _b : 12), 50),
+        });
+        return { items: plans.map(p => this.toGalleryItem(p)), total };
+    }
+    /** 公开方案详情（分享页）：仅 isPublic=true，否则统一 PLAN_NOT_ACCESSIBLE（不暴露存在性） */
+    async diyPublicPlan(ctx, id) {
+        var _a, _b, _c, _d;
+        const plan = await this.connection
+            .getRepository(ctx, diy_plan_entity_1.DiyPlan)
+            .findOne({ where: { app: this.app, id: Number(id), isPublic: true } });
+        if (!plan) {
+            throw new core_1.UserInputError('PLAN_NOT_ACCESSIBLE');
+        }
+        return {
+            id: String(plan.id),
+            title: (0, plan_utils_1.derivePlanTitle)(plan.spec, plan.bom),
+            spec: plan.spec,
+            totalAmount: (_b = (_a = plan.bom) === null || _a === void 0 ? void 0 : _a.totalAmount) !== null && _b !== void 0 ? _b : 0,
+            totalCount: (_d = (_c = plan.bom) === null || _c === void 0 ? void 0 : _c.totalCount) !== null && _d !== void 0 ? _d : 0,
+            createdAt: plan.createdAt,
+        };
+    }
+    /** 发布/取消发布（仅 owner）：发布记 publishedAt=now，取消置 null */
+    async publishDiyPlan(ctx, id, isPublic) {
+        const userId = ctx.activeUserId;
+        if (!userId) {
+            throw new core_1.ForbiddenError();
+        }
+        const repo = this.connection.getRepository(ctx, diy_plan_entity_1.DiyPlan);
+        const plan = await repo.findOne({ where: { app: this.app, id: Number(id) } });
+        if (!plan || plan.userId !== Number(userId)) {
+            throw new core_1.UserInputError('PLAN_NOT_FOUND_OR_NOT_OWNER');
+        }
+        plan.isPublic = isPublic;
+        plan.publishedAt = isPublic ? new Date() : null;
+        return repo.save(plan);
+    }
+    /** 复制方案（owner 或 isPublic=true 可复制）：复制体归属当前用户、回到 draft、不公开，spec/bom 原样 */
+    async copyDiyPlan(ctx, id) {
+        const userId = ctx.activeUserId;
+        if (!userId) {
+            throw new core_1.ForbiddenError();
+        }
+        const repo = this.connection.getRepository(ctx, diy_plan_entity_1.DiyPlan);
+        const plan = await repo.findOne({ where: { app: this.app, id: Number(id) } });
+        if (!plan || (plan.userId !== Number(userId) && !plan.isPublic)) {
+            throw new core_1.UserInputError('PLAN_NOT_ACCESSIBLE');
+        }
+        return repo.save(new diy_plan_entity_1.DiyPlan({
+            app: this.app,
+            userId: Number(userId),
+            templateId: plan.templateId,
+            templateVersion: plan.templateVersion,
+            status: 'draft',
+            spec: plan.spec,
+            bom: plan.bom,
+            calcVersion: plan.calcVersion,
+            thumb: plan.thumb,
+            isPublic: false,
+            publishedAt: null,
+        }));
     }
 };
 exports.DiyShopService = DiyShopService;

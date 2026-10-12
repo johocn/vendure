@@ -12,6 +12,7 @@ import { DiyPlan } from './entities/diy-plan.entity';
 import { DiyTemplate } from './entities/diy-template.entity';
 import { parseTemplateConfig } from './template-config';
 import { mergeMaterials, unionCategories } from './material-merge';
+import { coverMaterialIds, derivePlanTitle } from './plan-utils';
 import { DiyMaterialFilter, DiyPlanSpec, DiyPluginOptions } from './types';
 
 export interface DiyMaterialList {
@@ -22,6 +23,31 @@ export interface DiyMaterialList {
 export interface DiyPlanList {
     items: DiyPlan[];
     total: number;
+}
+
+/** 画廊条目（v2 公开橱窗）：title 派生自 bom 快照，authorName 实体暂无归属人昵称列 → null */
+export interface DiyGalleryItem {
+    id: string;
+    title: string;
+    coverMaterialIds: string[];
+    totalAmount: number;
+    totalCount: number;
+    authorName: string | null;
+    createdAt: Date;
+}
+
+export interface DiyGalleryList {
+    items: DiyGalleryItem[];
+    total: number;
+}
+
+export interface DiyPublicPlan {
+    id: string;
+    title: string;
+    spec: DiyPlanSpec;
+    totalAmount: number;
+    totalCount: number;
+    createdAt: Date;
 }
 
 /**
@@ -239,5 +265,97 @@ export class DiyShopService {
         plan.quoteNo = buildQuoteNo(now);
         plan.expiresAt = quoteExpiresAt(now, DEFAULT_QUOTE_TTL_DAYS);
         return repo.save(plan);
+    }
+
+    /* ------------------------- v2：公开分享 / 画廊 ------------------------- */
+
+    private toGalleryItem(plan: DiyPlan): DiyGalleryItem {
+        return {
+            id: String(plan.id),
+            title: derivePlanTitle(plan.spec, plan.bom),
+            coverMaterialIds: coverMaterialIds(plan.spec),
+            totalAmount: plan.bom?.totalAmount ?? 0,
+            totalCount: plan.bom?.totalCount ?? 0,
+            authorName: null,
+            createdAt: plan.createdAt,
+        };
+    }
+
+    /** 公开画廊：仅 isPublic=true，按发布时间倒序，take 上限 50 */
+    async diyGalleryPlans(
+        ctx: RequestContext,
+        options: { skip?: number; take?: number } = {},
+    ): Promise<DiyGalleryList> {
+        const [plans, total] = await this.connection
+            .getRepository(ctx, DiyPlan)
+            .findAndCount({
+                where: { app: this.app, isPublic: true },
+                order: { publishedAt: 'DESC', id: 'DESC' },
+                skip: options.skip ?? 0,
+                take: Math.min(Math.max(1, options.take ?? 12), 50),
+            });
+        return { items: plans.map(p => this.toGalleryItem(p)), total };
+    }
+
+    /** 公开方案详情（分享页）：仅 isPublic=true，否则统一 PLAN_NOT_ACCESSIBLE（不暴露存在性） */
+    async diyPublicPlan(ctx: RequestContext, id: string): Promise<DiyPublicPlan> {
+        const plan = await this.connection
+            .getRepository(ctx, DiyPlan)
+            .findOne({ where: { app: this.app, id: Number(id), isPublic: true } });
+        if (!plan) {
+            throw new UserInputError('PLAN_NOT_ACCESSIBLE');
+        }
+        return {
+            id: String(plan.id),
+            title: derivePlanTitle(plan.spec, plan.bom),
+            spec: plan.spec,
+            totalAmount: plan.bom?.totalAmount ?? 0,
+            totalCount: plan.bom?.totalCount ?? 0,
+            createdAt: plan.createdAt,
+        };
+    }
+
+    /** 发布/取消发布（仅 owner）：发布记 publishedAt=now，取消置 null */
+    async publishDiyPlan(ctx: RequestContext, id: string, isPublic: boolean): Promise<DiyPlan> {
+        const userId = ctx.activeUserId;
+        if (!userId) {
+            throw new ForbiddenError();
+        }
+        const repo = this.connection.getRepository(ctx, DiyPlan);
+        const plan = await repo.findOne({ where: { app: this.app, id: Number(id) } });
+        if (!plan || plan.userId !== Number(userId)) {
+            throw new UserInputError('PLAN_NOT_FOUND_OR_NOT_OWNER');
+        }
+        plan.isPublic = isPublic;
+        plan.publishedAt = isPublic ? new Date() : null;
+        return repo.save(plan);
+    }
+
+    /** 复制方案（owner 或 isPublic=true 可复制）：复制体归属当前用户、回到 draft、不公开，spec/bom 原样 */
+    async copyDiyPlan(ctx: RequestContext, id: string): Promise<DiyPlan> {
+        const userId = ctx.activeUserId;
+        if (!userId) {
+            throw new ForbiddenError();
+        }
+        const repo = this.connection.getRepository(ctx, DiyPlan);
+        const plan = await repo.findOne({ where: { app: this.app, id: Number(id) } });
+        if (!plan || (plan.userId !== Number(userId) && !plan.isPublic)) {
+            throw new UserInputError('PLAN_NOT_ACCESSIBLE');
+        }
+        return repo.save(
+            new DiyPlan({
+                app: this.app,
+                userId: Number(userId),
+                templateId: plan.templateId,
+                templateVersion: plan.templateVersion,
+                status: 'draft',
+                spec: plan.spec,
+                bom: plan.bom,
+                calcVersion: plan.calcVersion,
+                thumb: plan.thumb,
+                isPublic: false,
+                publishedAt: null,
+            }),
+        );
     }
 }

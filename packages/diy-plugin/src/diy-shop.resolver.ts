@@ -2,7 +2,7 @@ import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { Allow, Ctx, Permission, RequestContext } from '@vendure/core';
 
 import { DiyOrderService } from './diy-order.service';
-import { DiyMaterialList, DiyPlanList, DiyShopService } from './diy-shop.service';
+import { DiyGalleryList, DiyMaterialList, DiyPlanList, DiyPublicPlan, DiyShopService } from './diy-shop.service';
 import { DiyCategory } from './entities/diy-category.entity';
 import { DiyMaterial } from './entities/diy-material.entity';
 import { DiyPlan } from './entities/diy-plan.entity';
@@ -40,6 +40,38 @@ export class DiyShopResolver {
     @Allow(Permission.Public)
     async diyShopTemplate(@Ctx() ctx: RequestContext, @Args('code') code: string): Promise<DiyTemplate | null> {
         return this.service.findShopTemplateByCode(ctx, code);
+    }
+
+    @Query()
+    @Allow(Permission.Public)
+    async diyGalleryPlans(
+        @Ctx() ctx: RequestContext,
+        @Args('skip', { nullable: true, defaultValue: 0 }) skip?: number,
+        @Args('take', { nullable: true, defaultValue: 12 }) take?: number,
+    ): Promise<DiyGalleryList> {
+        return this.service.diyGalleryPlans(ctx, { skip, take });
+    }
+
+    @Query()
+    @Allow(Permission.Public)
+    async diyPublicPlan(@Ctx() ctx: RequestContext, @Args('id') id: string): Promise<DiyPublicPlan> {
+        return this.service.diyPublicPlan(ctx, id);
+    }
+
+    @Mutation()
+    @Allow(Permission.Authenticated)
+    async publishDiyPlan(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: string,
+        @Args('isPublic') isPublic: boolean,
+    ): Promise<DiyPlan> {
+        return this.service.publishDiyPlan(ctx, id, isPublic);
+    }
+
+    @Mutation()
+    @Allow(Permission.Authenticated)
+    async copyDiyPlan(@Ctx() ctx: RequestContext, @Args('id') id: string): Promise<DiyPlan> {
+        return this.service.copyDiyPlan(ctx, id);
     }
 
     @Mutation()
