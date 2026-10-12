@@ -16,16 +16,41 @@ exports.PhoneAuthResolver = void 0;
 const graphql_1 = require("@nestjs/graphql");
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
+const cjk_plugin_1 = require("@vendure/cjk-plugin");
 const constants_1 = require("./constants");
 const sms_service_1 = require("./sms.service");
+/** 大陆手机号格式 */
+const PHONE_NUMBER_RE = /^1[3-9]\d{9}$/;
 let PhoneAuthResolver = class PhoneAuthResolver {
     constructor(options, smsService, customerService) {
         this.options = options;
         this.smsService = smsService;
         this.customerService = customerService;
     }
-    async sendPhoneVerificationCode(phoneNumber) {
-        return this.smsService.sendVerificationCode(phoneNumber);
+    async sendPhoneVerificationCode(ctx, phoneNumber) {
+        // 租户级登录方式开关（未启用即权限错误）
+        if (!(0, cjk_plugin_1.isAuthMethodEnabled)(ctx, 'phone')) {
+            throw new core_1.ForbiddenError();
+        }
+        if (!PHONE_NUMBER_RE.test(phoneNumber)) {
+            throw new core_1.UserInputError('手机号格式不正确');
+        }
+        // 发送频率限制：60s 冷却 + 同号每日上限（防短信轰炸/费用消耗）
+        const limited = this.smsService.checkRateLimit(phoneNumber);
+        if (limited) {
+            return false;
+        }
+        // 租户级凭证覆盖（已解密）：租户自行配置的阿里云凭证/签名/模板优先于全局 options
+        const override = (0, cjk_plugin_1.getAuthOverride)(ctx, 'phone');
+        const credentials = override
+            ? {
+                accessKeyId: override.accessKeyId || this.options.accessKeyId,
+                accessKeySecret: override.accessKeySecret || this.options.accessKeySecret,
+                signName: override.signName || this.options.signName,
+                templateCode: override.templateCode || this.options.templateCode,
+            }
+            : undefined;
+        return this.smsService.sendVerificationCode(phoneNumber, credentials);
     }
     async registerCustomer(ctx, args) {
         const { phoneNumber, code, password, emailAddress } = args.input;
@@ -38,6 +63,9 @@ let PhoneAuthResolver = class PhoneAuthResolver {
         let identifier;
         let resolvedPhone;
         if (isPhoneMode) {
+            if (!PHONE_NUMBER_RE.test(phoneNumber)) {
+                throw new core_1.UserInputError('手机号格式不正确');
+            }
             if (!code) {
                 throw new core_1.UserInputError('手机号注册必须提供验证码');
             }
@@ -70,9 +98,11 @@ let PhoneAuthResolver = class PhoneAuthResolver {
 exports.PhoneAuthResolver = PhoneAuthResolver;
 __decorate([
     (0, graphql_1.Mutation)(),
-    __param(0, (0, graphql_1.Args)('phoneNumber')),
+    (0, core_1.Allow)(core_1.Permission.Public),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('phoneNumber')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", [core_1.RequestContext, String]),
     __metadata("design:returntype", Promise)
 ], PhoneAuthResolver.prototype, "sendPhoneVerificationCode", null);
 __decorate([

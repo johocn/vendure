@@ -1,7 +1,7 @@
 import { DocumentNode } from 'graphql';
 import { gql } from 'graphql-tag';
 import { AuthenticationStrategy, ChannelService, Customer, CustomerService, ExternalAuthenticationService, ForbiddenError, Injector, Logger, RequestContext, TransactionalConnection, User, UserService } from '@vendure/core';
-import { getAuthOverride, isAuthMethodEnabled } from '@vendure/cjk-plugin';
+import { isAuthMethodEnabled } from '@vendure/cjk-plugin';
 
 import { loggerCtx } from './constants';
 import { SmsService } from './sms.service';
@@ -48,12 +48,8 @@ export class PhoneAuthenticationStrategy implements AuthenticationStrategy<Phone
             throw new ForbiddenError();
         }
 
-        // 租户凭证覆盖（已解密；无覆盖则回退 this.options；当前策略 authenticate 仅校验 code，凭证由 SmsService 在发码时使用）
-        const override = getAuthOverride(ctx, 'phone');
-        const accessKeyId = override?.accessKeyId || this.options.accessKeyId;
-        const accessKeySecret = override?.accessKeySecret || this.options.accessKeySecret;
-        const signName = override?.signName || this.options.signName;
-        const templateCode = override?.templateCode || this.options.templateCode;
+        // 注：租户凭证覆盖（getAuthOverride）在发码链路（auth.resolver.sendPhoneVerificationCode）生效；
+        // authenticate 仅校验验证码，不使用短信凭证。
 
         const { phoneNumber, code } = data;
 

@@ -1,4 +1,5 @@
 import { Inject, Type } from '@nestjs/common';
+import { gql } from 'graphql-tag';
 import { Logger, PluginCommonModule, VendurePlugin } from '@vendure/core';
 
 import { PHONE_AUTH_PLUGIN_OPTIONS, loggerCtx } from './constants';
@@ -19,7 +20,6 @@ import { PhoneAuthPluginOptions } from './types';
     ],
     shopApiExtensions: {
         schema: () => {
-            const { gql } = require('graphql-tag');
             return gql`
                 extend type Mutation {
                     sendPhoneVerificationCode(phoneNumber: String!): Boolean!

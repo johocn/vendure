@@ -4,14 +4,19 @@ import {
     Allow,
     Ctx,
     CustomerService,
+    ForbiddenError,
     isGraphQlErrorResult,
     Permission,
     RequestContext,
     UserInputError,
 } from '@vendure/core';
+import { getAuthOverride, isAuthMethodEnabled } from '@vendure/cjk-plugin';
 import { PHONE_AUTH_PLUGIN_OPTIONS } from './constants';
 import { PhoneAuthPluginOptions, RegisterCustomerInput } from './types';
 import { SmsService } from './sms.service';
+
+/** 大陆手机号格式 */
+const PHONE_NUMBER_RE = /^1[3-9]\d{9}$/;
 
 @Resolver()
 export class PhoneAuthResolver {
@@ -22,8 +27,31 @@ export class PhoneAuthResolver {
     ) {}
 
     @Mutation()
-    async sendPhoneVerificationCode(@Args('phoneNumber') phoneNumber: string): Promise<boolean> {
-        return this.smsService.sendVerificationCode(phoneNumber);
+    @Allow(Permission.Public)
+    async sendPhoneVerificationCode(@Ctx() ctx: RequestContext, @Args('phoneNumber') phoneNumber: string): Promise<boolean> {
+        // 租户级登录方式开关（未启用即权限错误）
+        if (!isAuthMethodEnabled(ctx, 'phone')) {
+            throw new ForbiddenError();
+        }
+        if (!PHONE_NUMBER_RE.test(phoneNumber)) {
+            throw new UserInputError('手机号格式不正确');
+        }
+        // 发送频率限制：60s 冷却 + 同号每日上限（防短信轰炸/费用消耗）
+        const limited = this.smsService.checkRateLimit(phoneNumber);
+        if (limited) {
+            return false;
+        }
+        // 租户级凭证覆盖（已解密）：租户自行配置的阿里云凭证/签名/模板优先于全局 options
+        const override = getAuthOverride(ctx, 'phone');
+        const credentials = override
+            ? {
+                  accessKeyId: override.accessKeyId || this.options.accessKeyId,
+                  accessKeySecret: override.accessKeySecret || this.options.accessKeySecret,
+                  signName: override.signName || this.options.signName,
+                  templateCode: override.templateCode || this.options.templateCode,
+              }
+            : undefined;
+        return this.smsService.sendVerificationCode(phoneNumber, credentials);
     }
 
     @Mutation()
@@ -45,6 +73,9 @@ export class PhoneAuthResolver {
         let resolvedPhone: string | undefined;
 
         if (isPhoneMode) {
+            if (!PHONE_NUMBER_RE.test(phoneNumber!)) {
+                throw new UserInputError('手机号格式不正确');
+            }
             if (!code) {
                 throw new UserInputError('手机号注册必须提供验证码');
             }

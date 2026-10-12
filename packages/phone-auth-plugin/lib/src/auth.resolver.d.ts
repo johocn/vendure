@@ -6,7 +6,7 @@ export declare class PhoneAuthResolver {
     private smsService;
     private customerService;
     constructor(options: PhoneAuthPluginOptions, smsService: SmsService, customerService: CustomerService);
-    sendPhoneVerificationCode(phoneNumber: string): Promise<boolean>;
+    sendPhoneVerificationCode(ctx: RequestContext, phoneNumber: string): Promise<boolean>;
     registerCustomer(ctx: RequestContext, args: {
         input: RegisterCustomerInput;
     }): Promise<{

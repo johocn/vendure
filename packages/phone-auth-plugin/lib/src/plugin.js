@@ -15,6 +15,7 @@ var PhoneAuthPlugin_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PhoneAuthPlugin = void 0;
 const common_1 = require("@nestjs/common");
+const graphql_tag_1 = require("graphql-tag");
 const core_1 = require("@vendure/core");
 const constants_1 = require("./constants");
 const auth_resolver_1 = require("./auth.resolver");
@@ -43,8 +44,7 @@ exports.PhoneAuthPlugin = PhoneAuthPlugin = PhoneAuthPlugin_1 = __decorate([
         ],
         shopApiExtensions: {
             schema: () => {
-                const { gql } = require('graphql-tag');
-                return gql `
+                return (0, graphql_tag_1.gql) `
                 extend type Mutation {
                     sendPhoneVerificationCode(phoneNumber: String!): Boolean!
                     registerCustomer(input: PhoneRegisterInput!): Success!
