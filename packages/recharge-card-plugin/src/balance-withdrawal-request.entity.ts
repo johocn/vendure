@@ -13,7 +13,7 @@ export class BalanceWithdrawalRequest extends VendureEntity {
 
     @Column({ type: 'varchar' }) method: 'wechat' | 'alipay' | 'bank';
 
-    @Column({ type: 'text' }) accountInfo: string; // 收款账号（展示与打款用）
+    @Column({ type: 'text' }) accountInfo: string; // 收款账号：aes-256-gcm 密文存储（account-crypto），读取时解密、API 返回明文
 
     @Column({ type: 'varchar', default: 'pending' }) status: 'pending' | 'approved' | 'rejected' | 'paid';
 

@@ -12,6 +12,7 @@ import {
 
 import { BalanceTransaction, BalanceTransactionType } from './balance-transaction.entity';
 import { BalanceWithdrawalRequest } from './balance-withdrawal-request.entity';
+import { decryptAccount, encryptAccount } from './account-crypto';
 import { loggerCtx } from './constants';
 import { CustomerBalance } from './customer-balance.entity';
 
@@ -67,7 +68,10 @@ export class BalanceWithdrawalService {
                 { ctx },
             )
             .getManyAndCount()
-            .then(([items, totalItems]) => ({ items, totalItems }));
+            .then(([items, totalItems]) => ({
+                items: items.map(item => ({ ...item, accountInfo: decryptAccount(item.accountInfo) })),
+                totalItems,
+            }));
     }
 
     async findAll(
@@ -85,7 +89,10 @@ export class BalanceWithdrawalService {
                 { ctx },
             )
             .getManyAndCount()
-            .then(([items, totalItems]) => ({ items, totalItems }));
+            .then(([items, totalItems]) => ({
+                items: items.map(item => ({ ...item, accountInfo: decryptAccount(item.accountInfo) })),
+                totalItems,
+            }));
     }
 
     /**
@@ -148,10 +155,11 @@ export class BalanceWithdrawalService {
             customerId: cid,
             amount,
             method,
-            accountInfo: accountInfo.trim(),
+            accountInfo: encryptAccount(accountInfo.trim()),
             status: 'pending',
             channelId: ctx.channelId,
         } as any);
+        saved.accountInfo = decryptAccount(saved.accountInfo);
         Logger.info(`Balance withdrawal ${saved.id} requested by customer ${cid}, amount ${amount}`, loggerCtx);
         return saved;
     }
@@ -185,6 +193,7 @@ export class BalanceWithdrawalService {
                 `Withdrawal request ${id} is ${request.status}, cannot be marked as ${patch.status}`,
             );
         }
+        request.accountInfo = decryptAccount(request.accountInfo);
         return request;
     }
 

@@ -3,9 +3,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import path from 'path';
 import gql from 'graphql-tag';
 import { mergeConfig } from '@vendure/core';
+import { DataSource } from 'typeorm';
 import { initialData } from '../../../e2e-common/e2e-initial-data';
 import { TEST_SETUP_TIMEOUT_MS, testConfig } from '../../../e2e-common/test-config';
 import { RechargeCardPlugin } from '../src/plugin';
+import { BalanceWithdrawalRequest } from '../src/balance-withdrawal-request.entity';
 
 registerInitializer('sqljs', new SqljsInitializer(path.join(__dirname, '__data__')));
 
@@ -174,5 +176,31 @@ describe('RechargeCardPlugin · 余额提现三态机', () => {
             query { balanceWithdrawals(options: { status: "paid" }) { totalItems } }
         `)) as any;
         expect(paidOnly.balanceWithdrawals.totalItems).toBe(1);
+    });
+
+    it('收款账号静态加密：DB 存 enc: 密文、API 返回明文、存量明文行兼容', async () => {
+        const r = (await shopClient.query(gql`
+            mutation { requestBalanceWithdrawal(amount: 2000, method: "bank", accountInfo: "6222020200112233445") { id accountInfo status } }
+        `)) as any;
+        expect(r.requestBalanceWithdrawal.accountInfo).toBe('6222020200112233445');
+
+        // 绕过 service 解密层直读 repo：库里必须是 enc: 密文
+        const dataSource = server.app.get(DataSource);
+        const raw = await dataSource.getRepository(BalanceWithdrawalRequest).findOne({
+            where: { method: 'bank' },
+            order: { id: 'DESC' } as any,
+        });
+        expect(raw).toBeTruthy();
+        expect(raw!.accountInfo.startsWith('enc:')).toBe(true);
+
+        // 存量明文行兼容：把刚建的一行改回明文（模拟存量数据）→ admin 列表原样返回
+        // （密文→明文 API 链路已由上方 mutation 返回断言覆盖）
+        const repo = dataSource.getRepository(BalanceWithdrawalRequest);
+        await repo.update(raw!.id, { accountInfo: 'legacy-plain-account' } as any);
+        const list = (await adminClient.query(gql`
+            query { balanceWithdrawals(options: { take: 50 }) { items { method accountInfo } } }
+        `)) as any;
+        const accounts = list.balanceWithdrawals.items.map((x: any) => x.accountInfo);
+        expect(accounts).toContain('legacy-plain-account');
     });
 });

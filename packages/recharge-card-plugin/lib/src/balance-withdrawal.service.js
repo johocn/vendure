@@ -14,6 +14,7 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const balance_transaction_entity_1 = require("./balance-transaction.entity");
 const balance_withdrawal_request_entity_1 = require("./balance-withdrawal-request.entity");
+const account_crypto_1 = require("./account-crypto");
 const constants_1 = require("./constants");
 const customer_balance_entity_1 = require("./customer-balance.entity");
 const MIN_WITHDRAWAL_AMOUNT = 1000; // 分，¥10 起提
@@ -57,7 +58,10 @@ let BalanceWithdrawalService = class BalanceWithdrawalService {
             filter: { channelId: { eq: ctx.channelId }, customerId: { eq: cid } },
         }, { ctx })
             .getManyAndCount()
-            .then(([items, totalItems]) => ({ items, totalItems }));
+            .then(([items, totalItems]) => ({
+            items: items.map(item => (Object.assign(Object.assign({}, item), { accountInfo: (0, account_crypto_1.decryptAccount)(item.accountInfo) }))),
+            totalItems,
+        }));
     }
     async findAll(ctx, options) {
         const filter = { channelId: { eq: ctx.channelId } };
@@ -67,7 +71,10 @@ let BalanceWithdrawalService = class BalanceWithdrawalService {
         return this.listQueryBuilder
             .build(balance_withdrawal_request_entity_1.BalanceWithdrawalRequest, { skip: options === null || options === void 0 ? void 0 : options.skip, take: options === null || options === void 0 ? void 0 : options.take, filter }, { ctx })
             .getManyAndCount()
-            .then(([items, totalItems]) => ({ items, totalItems }));
+            .then(([items, totalItems]) => ({
+            items: items.map(item => (Object.assign(Object.assign({}, item), { accountInfo: (0, account_crypto_1.decryptAccount)(item.accountInfo) }))),
+            totalItems,
+        }));
     }
     /**
      * 申请提现：原子条件扣减 balance 并入 frozenBalance（仿 distribution withdrawal.service.ts:77-90）。
@@ -120,10 +127,11 @@ let BalanceWithdrawalService = class BalanceWithdrawalService {
             customerId: cid,
             amount,
             method,
-            accountInfo: accountInfo.trim(),
+            accountInfo: (0, account_crypto_1.encryptAccount)(accountInfo.trim()),
             status: 'pending',
             channelId: ctx.channelId,
         });
+        saved.accountInfo = (0, account_crypto_1.decryptAccount)(saved.accountInfo);
         core_1.Logger.info(`Balance withdrawal ${saved.id} requested by customer ${cid}, amount ${amount}`, constants_1.loggerCtx);
         return saved;
     }
@@ -149,6 +157,7 @@ let BalanceWithdrawalService = class BalanceWithdrawalService {
         if (!claim.affected) {
             throw new core_1.UserInputError(`Withdrawal request ${id} is ${request.status}, cannot be marked as ${patch.status}`);
         }
+        request.accountInfo = (0, account_crypto_1.decryptAccount)(request.accountInfo);
         return request;
     }
     async approve(ctx, id, remark) {
