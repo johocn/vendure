@@ -38,6 +38,21 @@ export class FeedbackShopResolver {
     ): Promise<Feedback> {
         return this.feedbackService.createFeedback(ctx, input);
     }
+
+    /** 全部可读反馈标记已读（幂等），返回最新未读数。 */
+    @Mutation()
+    @Transaction()
+    @Allow(Permission.Authenticated)
+    async markFeedbacksRead(@Ctx() ctx: RequestContext): Promise<number> {
+        return this.feedbackService.markFeedbacksRead(ctx);
+    }
+
+    /** 未读数 = readAt 为空且状态非 pending。 */
+    @Query()
+    @Allow(Permission.Authenticated)
+    async unreadFeedbackCount(@Ctx() ctx: RequestContext): Promise<number> {
+        return this.feedbackService.unreadFeedbackCount(ctx);
+    }
 }
 
 @Resolver()
@@ -85,5 +100,18 @@ export class FeedbackAdminResolver {
         @Args('status') status: string,
     ): Promise<Feedback> {
         return this.feedbackService.updateFeedbackStatus(ctx, id, status);
+    }
+
+    /** 回复反馈：resolve=true 直接 resolved；否则 pending 转 processing。仅 pending/processing 可回复。 */
+    @Mutation()
+    @Transaction()
+    @Allow(Permission.UpdateSettings)
+    async replyFeedback(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args('reply') reply: string,
+        @Args('resolve', { nullable: true, defaultValue: false }) resolve?: boolean,
+    ): Promise<Feedback> {
+        return this.feedbackService.replyFeedback(ctx, String(id), reply, resolve ?? false);
     }
 }

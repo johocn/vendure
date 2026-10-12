@@ -35,4 +35,19 @@ export class Feedback extends VendureEntity {
     /** 日期列省略 type（2026-10-08 教训：显式 datetime/timestamp 在 sqljs 下报 DataTypeNotSupportedError） */
     @Column({ nullable: true })
     handledAt: Date;
+
+    /** 管理员回复（回复即闭环；C 端 myFeedbacks 透出） */
+    @Column({ type: 'text', nullable: true })
+    reply: string | null;
+
+    /** 日期列省略 type（sqljs 兼容，同 handledAt） */
+    @Column({ nullable: true })
+    repliedAt: Date;
+
+    @Column({ type: 'varchar', nullable: true })
+    repliedBy: string | null;
+
+    /** 用户已读标记：未读 = readAt IS NULL AND status != 'pending' */
+    @Column({ nullable: true })
+    readAt: Date;
 }

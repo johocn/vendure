@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { IsNull, Not } from 'typeorm';
 import {
     Customer,
     CustomerService,
@@ -231,6 +232,52 @@ export class FeedbackService {
         );
         Logger.info(`Feedback ${saved.id} created by customer ${customer.id}`, loggerCtx);
         return saved;
+    }
+
+    /** admin：回复反馈。resolve=true 直接 resolved；否则 pending 转 processing。仅 pending/processing 可回复。 */
+    async replyFeedback(ctx: RequestContext, id: string, reply: string, resolve: boolean): Promise<Feedback> {
+        const repo = this.connection.getRepository(ctx, Feedback);
+        const fb = await repo.findOne({ where: { id } as any });
+        if (!fb) {
+            throw new UserInputError(`Feedback ${id} not found`);
+        }
+        if (fb.status === 'resolved') {
+            throw new UserInputError(`Feedback is resolved`);
+        }
+        const text = reply?.trim() ?? '';
+        if (!text) {
+            throw new UserInputError('reply is required');
+        }
+        fb.reply = text;
+        fb.repliedAt = new Date();
+        fb.repliedBy = ctx.activeUserId != null ? String(ctx.activeUserId) : null;
+        if (resolve) {
+            fb.status = 'resolved';
+            fb.handledAt = new Date();
+        } else if (fb.status === 'pending') {
+            fb.status = 'processing';
+        }
+        const saved = await repo.save(fb);
+        Logger.info(`Feedback ${id} replied (status=${saved.status})`, loggerCtx);
+        return saved;
+    }
+
+    /** shop：当前用户全部可读反馈标记已读（幂等），返回最新未读数。 */
+    async markFeedbacksRead(ctx: RequestContext): Promise<number> {
+        const customer = await this.requireCustomer(ctx);
+        const repo = this.connection.getRepository(ctx, Feedback);
+        await repo.update(
+            { customerId: customer.id, readAt: IsNull(), status: Not('pending') } as any,
+            { readAt: new Date() } as any,
+        );
+        return this.unreadFeedbackCount(ctx);
+    }
+
+    /** shop：未读数 = readAt 为空且状态非 pending。 */
+    async unreadFeedbackCount(ctx: RequestContext): Promise<number> {
+        const customer = await this.requireCustomer(ctx);
+        const repo = this.connection.getRepository(ctx, Feedback);
+        return repo.count({ where: { customerId: customer.id, readAt: IsNull(), status: Not('pending') } as any });
     }
 
     /** admin：流转反馈状态（pending/processing/resolved），同时盖 handledAt。 */

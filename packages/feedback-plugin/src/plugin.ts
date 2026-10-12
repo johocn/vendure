@@ -25,6 +25,10 @@ const shopSchema = () => gql`
         imgs: String
         contactWay: String
         status: String!
+        reply: String
+        repliedAt: DateTime
+        repliedBy: String
+        readAt: DateTime
         createdAt: DateTime!
     }
     type FeedbackList implements PaginatedList {
@@ -45,9 +49,11 @@ const shopSchema = () => gql`
     extend type Query {
         faqs(type: String, lang: String): [FaqEntry!]!
         myFeedbacks(options: FeedbackListOptions): FeedbackList!
+        unreadFeedbackCount: Int!
     }
     extend type Mutation {
         createFeedback(input: CreateFeedbackInput!): Feedback!
+        markFeedbacksRead: Int!
     }
 `;
 
@@ -91,6 +97,10 @@ const adminSchema = () => gql`
         imgs: String
         contactWay: String
         status: String!
+        reply: String
+        repliedAt: DateTime
+        repliedBy: String
+        readAt: DateTime
         handledAt: DateTime
         createdAt: DateTime!
         updatedAt: DateTime!
@@ -112,6 +122,7 @@ const adminSchema = () => gql`
         saveFaq(input: SaveFaqInput!): FaqEntry!
         deleteFaq(id: ID!): Boolean!
         updateFeedbackStatus(id: ID!, status: String!): Feedback!
+        replyFeedback(id: ID!, reply: String!, resolve: Boolean): Feedback!
     }
 `;
 
