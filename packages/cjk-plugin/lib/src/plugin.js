@@ -93,6 +93,7 @@ const delivery_facet_service_1 = require("./shipping/delivery-facet.service");
 const shipping_profile_admin_resolver_1 = require("./shipping/shipping-profile-admin.resolver");
 const shipping_profile_permissions_1 = require("./shipping/shipping-profile-permissions");
 const payment_profile_entity_1 = require("./payment/payment-profile.entity");
+const payment_profile_method_entity_1 = require("./payment/payment-profile-method.entity");
 const payment_profile_service_1 = require("./payment/payment-profile.service");
 const payment_profile_admin_resolver_1 = require("./payment/payment-profile-admin.resolver");
 const payment_profile_permissions_1 = require("./payment/payment-profile-permissions");
@@ -476,7 +477,7 @@ exports.CjkPlugin = CjkPlugin;
 exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_template_entity_1.PaymentTemplate, room_template_entity_1.RoomTemplate, room_template_control_entity_1.RoomTemplateControl, room_day_entity_1.HotelRoomDay, booking_lock_entity_1.HotelBookingLock, rate_plan_entity_1.HotelRatePlan, booking_entity_1.HotelBooking, tenant_member_entity_1.TenantMember, wallet_entity_1.Wallet, merchant_settlement_ledger_entity_1.MerchantSettlementLedger, variant_location_binding_entity_1.VariantLocationBinding, delivery_record_entity_1.DeliveryRecord, reconciliation_entity_1.ReconciliationBatch, reconciliation_entity_1.ReconciliationOrderLine, stock_doc_entity_1.StockDocEntity, stock_doc_item_entity_1.StockDocItemEntity, inventory_alert_rule_entity_1.InventoryAlertRuleEntity, stock_reservation_entity_1.StockReservationEntity, stock_reservation_item_entity_1.StockReservationItemEntity, pick_batch_entity_1.PickBatch, pick_batch_order_entity_1.PickBatchOrder, storage_zone_entity_1.StorageZone, storage_bin_entity_1.StorageBin, variant_storage_bin_entity_1.VariantStorageBin,
+        entities: [pickup_location_entity_1.PickupLocation, enterprise_customer_entity_1.EmployeeCustomer, shipping_template_entity_1.ShippingTemplate, shipping_profile_entity_1.ShippingProfile, payment_profile_entity_1.PaymentProfile, shipping_profile_method_entity_1.ShippingProfileMethod, payment_profile_method_entity_1.PaymentProfileMethod, payment_template_entity_1.PaymentTemplate, room_template_entity_1.RoomTemplate, room_template_control_entity_1.RoomTemplateControl, room_day_entity_1.HotelRoomDay, booking_lock_entity_1.HotelBookingLock, rate_plan_entity_1.HotelRatePlan, booking_entity_1.HotelBooking, tenant_member_entity_1.TenantMember, wallet_entity_1.Wallet, merchant_settlement_ledger_entity_1.MerchantSettlementLedger, variant_location_binding_entity_1.VariantLocationBinding, delivery_record_entity_1.DeliveryRecord, reconciliation_entity_1.ReconciliationBatch, reconciliation_entity_1.ReconciliationOrderLine, stock_doc_entity_1.StockDocEntity, stock_doc_item_entity_1.StockDocItemEntity, inventory_alert_rule_entity_1.InventoryAlertRuleEntity, stock_reservation_entity_1.StockReservationEntity, stock_reservation_item_entity_1.StockReservationItemEntity, pick_batch_entity_1.PickBatch, pick_batch_order_entity_1.PickBatchOrder, storage_zone_entity_1.StorageZone, storage_bin_entity_1.StorageBin, variant_storage_bin_entity_1.VariantStorageBin,
             stocktake_task_entity_1.StocktakeTask,
             stocktake_wave_entity_1.StocktakeWave,
             stocktake_line_entity_1.StocktakeLine,
@@ -507,6 +508,7 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
             migrations_1.HotelOrderLineColumnMigration,
             migrations_1.HotelBookingCancelColumnsMigration,
             migrations_1.HotelBookingRescheduleColumnsMigration,
+            migrations_1.PaymentProfileMethodTableMigration,
             auth_config_service_1.AuthConfigService,
             pay_config_service_1.PayConfigService,
             map_config_service_1.MapConfigService,

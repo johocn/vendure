@@ -73,7 +73,7 @@ import { MapProviderRegistry } from './map/map-provider-registry';
 import { MapService } from './map/map.service';
 import { MapAdminResolver } from './map/map-admin.resolver';
 import { MapShopResolver } from './map/map-shop.resolver';
-import { MapConfigEncryptionMigration, PayConfigEncryptionMigration, TenantMemberColumnMigration, AddTenantMemberRedeemProfiles, ChannelCustomColumnMigration, ShippingContactFlagMigration, StockTableMigration, ChannelInventoryModeColumnMigration, CollectionIconMigration, ReservationExpiresAtMigration, ReservationTtlColumnMigration, PickBatchHandoverColumnMigration, StocktakePostedDocIndexMigration, HotelOrderLineColumnMigration, HotelBookingCancelColumnsMigration, HotelBookingRescheduleColumnsMigration } from './migrations';
+import { MapConfigEncryptionMigration, PayConfigEncryptionMigration, TenantMemberColumnMigration, AddTenantMemberRedeemProfiles, ChannelCustomColumnMigration, ShippingContactFlagMigration, StockTableMigration, ChannelInventoryModeColumnMigration, CollectionIconMigration, ReservationExpiresAtMigration, ReservationTtlColumnMigration, PickBatchHandoverColumnMigration, StocktakePostedDocIndexMigration, HotelOrderLineColumnMigration, HotelBookingCancelColumnsMigration, HotelBookingRescheduleColumnsMigration, PaymentProfileMethodTableMigration } from './migrations';
 import { setRedeemScopeResolver } from '@vendure/coupon-plugin';
 import { AuthConfigService } from './auth/auth-config.service';
 import { PayConfigService } from './payment/pay-config.service';
@@ -211,7 +211,7 @@ function mergeCustomFields<T extends { name: string }>(
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentTemplate, RoomTemplate, RoomTemplateControl, HotelRoomDay, HotelBookingLock, HotelRatePlan, HotelBooking, TenantMember, Wallet, MerchantSettlementLedger, VariantLocationBinding, DeliveryRecord, ReconciliationBatch, ReconciliationOrderLine, StockDocEntity, StockDocItemEntity, InventoryAlertRuleEntity, StockReservationEntity, StockReservationItemEntity, PickBatch, PickBatchOrder, StorageZone, StorageBin, VariantStorageBin,
+    entities: [PickupLocation, EmployeeCustomer, ShippingTemplate, ShippingProfile, PaymentProfile, ShippingProfileMethod, PaymentProfileMethod, PaymentTemplate, RoomTemplate, RoomTemplateControl, HotelRoomDay, HotelBookingLock, HotelRatePlan, HotelBooking, TenantMember, Wallet, MerchantSettlementLedger, VariantLocationBinding, DeliveryRecord, ReconciliationBatch, ReconciliationOrderLine, StockDocEntity, StockDocItemEntity, InventoryAlertRuleEntity, StockReservationEntity, StockReservationItemEntity, PickBatch, PickBatchOrder, StorageZone, StorageBin, VariantStorageBin,
         StocktakeTask,
         StocktakeWave,
         StocktakeLine,
@@ -242,6 +242,7 @@ function mergeCustomFields<T extends { name: string }>(
         HotelOrderLineColumnMigration,
         HotelBookingCancelColumnsMigration,
         HotelBookingRescheduleColumnsMigration,
+        PaymentProfileMethodTableMigration,
         AuthConfigService,
         PayConfigService,
         MapConfigService,

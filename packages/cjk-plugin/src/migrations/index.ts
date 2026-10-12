@@ -14,3 +14,4 @@ export { StocktakePostedDocIndexMigration } from './migrate-stocktake-posted-doc
 export { HotelOrderLineColumnMigration } from './migrate-hotel-order-line-columns';
 export { HotelBookingCancelColumnsMigration } from './migrate-hotel-booking-cancel-columns';
 export { HotelBookingRescheduleColumnsMigration } from './migrate-hotel-booking-reschedule-columns';
+export { PaymentProfileMethodTableMigration } from './create-payment-profile-method-table';
