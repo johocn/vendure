@@ -1,5 +1,7 @@
 import { CustomerService, ID, ListQueryBuilder, PaginatedList, RequestContext, TransactionalConnection } from '@vendure/core';
 import { BalanceWithdrawalRequest } from './balance-withdrawal-request.entity';
+/** 渠道级起提金额（分）：customFields.balanceMinWithdrawalAmount >0 生效，否则回退默认 ¥10 */
+export declare function resolveMinWithdrawalAmount(ctx: RequestContext): number;
 export declare class BalanceWithdrawalService {
     private connection;
     private listQueryBuilder;

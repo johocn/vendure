@@ -120,6 +120,7 @@ const { gql } = require('graphql-tag');
             type MyBalanceWithFrozen {
                 balance: Int!
                 frozenBalance: Int!
+                minWithdrawalAmount: Int!
             }
 
             input BalanceWithdrawalListOptions {

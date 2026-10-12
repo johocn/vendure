@@ -13,6 +13,7 @@ import {
     DefaultSchedulerPlugin,
     DefaultSearchPlugin,
     dummyPaymentHandler,
+    LanguageCode,
     LogLevel,
     PluginCommonModule,
     RequestContextService,
@@ -297,6 +298,13 @@ export const devConfig: VendureConfig = {
             // 店铺装修字段（对齐生产 + 装修需要，Task 6）
             { name: 'displayTemplate', type: 'string', defaultValue: 'standard', public: true },
             { name: 'themeId', type: 'string', defaultValue: 'taobao-orange', public: true },
+            // 余额提现起提金额（分，int nullable）：null/<=0 回退后端默认 1000（¥10）
+            // 注意：分销插件已占用 Channel.minWithdrawalAmount（分销佣金提现，默认 10000），此处须用独立名
+            { name: 'balanceMinWithdrawalAmount', type: 'int', nullable: true, public: true,
+              label: [{ languageCode: LanguageCode.zh_Hans, value: '余额提现起提金额(分)' }] },
+            // 抽奖每次固定消耗（积分，int nullable）：null = 按所中奖品 consume（现状）；>=0 = 每次固定扣该值
+            { name: 'lotteryFixedCost', type: 'int', nullable: true, public: true,
+              label: [{ languageCode: LanguageCode.zh_Hans, value: '抽奖每次固定消耗(积分)' }] },
             { name: 'shopName', type: 'string', public: true },
             { name: 'shopLogo', type: 'string', public: true },
             { name: 'shopIntro', type: 'string', public: true },

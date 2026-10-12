@@ -1,6 +1,7 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { Allow, Ctx, ID, PaginatedList, Permission, RequestContext, Transaction } from '@vendure/core';
 
+import { resolveMinWithdrawalAmount } from './balance-withdrawal.service';
 import { BalanceWithdrawalRequest } from './balance-withdrawal-request.entity';
 import { BalanceWithdrawalService } from './balance-withdrawal.service';
 
@@ -12,8 +13,9 @@ export class BalanceWithdrawalShopResolver {
     @Allow(Permission.Authenticated)
     async myBalanceWithFrozen(
         @Ctx() ctx: RequestContext,
-    ): Promise<{ balance: number; frozenBalance: number }> {
-        return this.balanceWithdrawalService.myBalance(ctx);
+    ): Promise<{ balance: number; frozenBalance: number; minWithdrawalAmount: number }> {
+        const { balance, frozenBalance } = await this.balanceWithdrawalService.myBalance(ctx);
+        return { balance, frozenBalance, minWithdrawalAmount: resolveMinWithdrawalAmount(ctx) };
     }
 
     @Query()

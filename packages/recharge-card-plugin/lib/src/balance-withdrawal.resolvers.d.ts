@@ -7,6 +7,7 @@ export declare class BalanceWithdrawalShopResolver {
     myBalanceWithFrozen(ctx: RequestContext): Promise<{
         balance: number;
         frozenBalance: number;
+        minWithdrawalAmount: number;
     }>;
     myBalanceWithdrawals(ctx: RequestContext, options: {
         skip?: number;

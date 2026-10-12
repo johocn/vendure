@@ -24,6 +24,10 @@ let LotteryShopResolver = class LotteryShopResolver {
     async myLotteryPrizes(ctx) {
         return this.lotteryService.myPrizes(ctx);
     }
+    /** 未登录可看消耗配置（九宫格按模式展示固定消耗/每奖消耗），不加 @Allow。 */
+    async lotteryCostConfig(ctx) {
+        return this.lotteryService.costConfig(ctx);
+    }
     async myLotteryRecords(ctx, options) {
         return this.lotteryService.myRecords(ctx, options);
     }
@@ -39,6 +43,13 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext]),
     __metadata("design:returntype", Promise)
 ], LotteryShopResolver.prototype, "myLotteryPrizes", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], LotteryShopResolver.prototype, "lotteryCostConfig", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(core_1.Permission.Authenticated),

@@ -28,6 +28,15 @@ export declare class LotteryService {
     /** shop：九宫格奖品列表（启用中，含 consume；顺序与开奖 prizeIndex 同源）。未登录可访问。 */
     myPrizes(ctx: RequestContext): Promise<LotteryPrize[]>;
     /**
+     * shop：抽奖消耗配置（未登录可访问，九宫格展示用）。
+     * mode=fixed：渠道配置 lotteryFixedCost>=0，每次固定扣该值（0=免费）；
+     * mode=perPrize：未配置，按所中奖品 consume（现状）。
+     */
+    costConfig(ctx: RequestContext): Promise<{
+        mode: 'perPrize' | 'fixed';
+        fixedCost: number;
+    }>;
+    /**
      * 服务端开奖：按权重随机取奖 → spendPoints 桥扣积分（余额不足抛 UserInputError，事务回滚）
      * → 库存原子递减 → 落抽奖记录。resolver 端 @Transaction() 包裹。
      */

@@ -93,6 +93,20 @@ export class LotteryService {
     }
 
     /**
+     * shop：抽奖消耗配置（未登录可访问，九宫格展示用）。
+     * mode=fixed：渠道配置 lotteryFixedCost>=0，每次固定扣该值（0=免费）；
+     * mode=perPrize：未配置，按所中奖品 consume（现状）。
+     */
+    async costConfig(ctx: RequestContext): Promise<{ mode: 'perPrize' | 'fixed'; fixedCost: number }> {
+        const raw = (ctx.channel?.customFields as any)?.lotteryFixedCost;
+        // 注意 Number(null)=0，必须先判 null/undefined，避免未配置被误判为 fixed/0（免费抽）
+        if (raw != null && Number.isFinite(Number(raw)) && Number(raw) >= 0) {
+            return { mode: 'fixed', fixedCost: Math.floor(Number(raw)) };
+        }
+        return { mode: 'perPrize', fixedCost: 0 };
+    }
+
+    /**
      * 服务端开奖：按权重随机取奖 → spendPoints 桥扣积分（余额不足抛 UserInputError，事务回滚）
      * → 库存原子递减 → 落抽奖记录。resolver 端 @Transaction() 包裹。
      */
@@ -121,10 +135,14 @@ export class LotteryService {
             }
         }
 
+        // 消耗取值：fixed 模式按渠道 lotteryFixedCost 固定扣，perPrize 按所中奖品 consume（现状）
+        const cost = await this.costConfig(ctx);
+        const consume = cost.mode === 'fixed' ? cost.fixedCost : picked.consume;
+
         // 先扣积分（不足即抛、整体回滚），consume=0 视为免费抽奖
-        if (picked.consume > 0) {
-            const balance = await this.memberService.spendPoints(ctx, customer.id, picked.consume, null, '积分抽奖');
-            Logger.info(`Lottery draw customer ${customer.id} spent ${picked.consume} points, balance ${balance}`, loggerCtx);
+        if (consume > 0) {
+            const balance = await this.memberService.spendPoints(ctx, customer.id, consume, null, '积分抽奖');
+            Logger.info(`Lottery draw customer ${customer.id} spent ${consume} points, balance ${balance}`, loggerCtx);
         }
 
         // 库存原子递减（camelCase 列必须双引号：postgres 生产 + sqljs 测试双兼容）
@@ -149,7 +167,7 @@ export class LotteryService {
                 prizeId: picked.id as number,
                 prizeName: picked.name,
                 prizeImage: picked.image,
-                consume: picked.consume,
+                consume,
                 channelId: ctx.channelId as number,
                 createdAt: new Date(),
             }),

@@ -16,7 +16,13 @@ import { decryptAccount, encryptAccount } from './account-crypto';
 import { loggerCtx } from './constants';
 import { CustomerBalance } from './customer-balance.entity';
 
-const MIN_WITHDRAWAL_AMOUNT = 1000; // 分，¥10 起提
+const DEFAULT_MIN_WITHDRAWAL_AMOUNT = 1000; // 分，¥10 起提（渠道未配置 minWithdrawalAmount 时的回退值）
+
+/** 渠道级起提金额（分）：customFields.balanceMinWithdrawalAmount >0 生效，否则回退默认 ¥10 */
+export function resolveMinWithdrawalAmount(ctx: RequestContext): number {
+    const configured = Number((ctx.channel?.customFields as any)?.balanceMinWithdrawalAmount);
+    return Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : DEFAULT_MIN_WITHDRAWAL_AMOUNT;
+}
 
 @Injectable()
 export class BalanceWithdrawalService {
@@ -108,8 +114,8 @@ export class BalanceWithdrawalService {
         if (!Number.isFinite(amount) || !Number.isInteger(amount) || amount <= 0) {
             throw new UserInputError('Invalid withdrawal amount');
         }
-        if (amount < MIN_WITHDRAWAL_AMOUNT) {
-            throw new UserInputError(`Minimum withdrawal amount is ${MIN_WITHDRAWAL_AMOUNT} (cents)`);
+        if (amount < resolveMinWithdrawalAmount(ctx)) {
+            throw new UserInputError(`Minimum withdrawal amount is ${resolveMinWithdrawalAmount(ctx)} (cents)`);
         }
         if (!accountInfo?.trim()) {
             throw new UserInputError('accountInfo is required');

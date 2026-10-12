@@ -16,12 +16,14 @@ exports.BalanceWithdrawalAdminResolver = exports.BalanceWithdrawalShopResolver =
 const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
 const balance_withdrawal_service_1 = require("./balance-withdrawal.service");
+const balance_withdrawal_service_2 = require("./balance-withdrawal.service");
 let BalanceWithdrawalShopResolver = class BalanceWithdrawalShopResolver {
     constructor(balanceWithdrawalService) {
         this.balanceWithdrawalService = balanceWithdrawalService;
     }
     async myBalanceWithFrozen(ctx) {
-        return this.balanceWithdrawalService.myBalance(ctx);
+        const { balance, frozenBalance } = await this.balanceWithdrawalService.myBalance(ctx);
+        return { balance, frozenBalance, minWithdrawalAmount: (0, balance_withdrawal_service_1.resolveMinWithdrawalAmount)(ctx) };
     }
     async myBalanceWithdrawals(ctx, options) {
         return this.balanceWithdrawalService.findMyRequests(ctx, options);
@@ -62,7 +64,7 @@ __decorate([
 ], BalanceWithdrawalShopResolver.prototype, "requestBalanceWithdrawal", null);
 exports.BalanceWithdrawalShopResolver = BalanceWithdrawalShopResolver = __decorate([
     (0, graphql_1.Resolver)(),
-    __metadata("design:paramtypes", [balance_withdrawal_service_1.BalanceWithdrawalService])
+    __metadata("design:paramtypes", [balance_withdrawal_service_2.BalanceWithdrawalService])
 ], BalanceWithdrawalShopResolver);
 let BalanceWithdrawalAdminResolver = class BalanceWithdrawalAdminResolver {
     constructor(balanceWithdrawalService) {
@@ -125,6 +127,6 @@ __decorate([
 ], BalanceWithdrawalAdminResolver.prototype, "markBalanceWithdrawalPaid", null);
 exports.BalanceWithdrawalAdminResolver = BalanceWithdrawalAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
-    __metadata("design:paramtypes", [balance_withdrawal_service_1.BalanceWithdrawalService])
+    __metadata("design:paramtypes", [balance_withdrawal_service_2.BalanceWithdrawalService])
 ], BalanceWithdrawalAdminResolver);
 //# sourceMappingURL=balance-withdrawal.resolvers.js.map

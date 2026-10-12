@@ -14,6 +14,10 @@ registerInitializer('sqljs', new SqljsInitializer(path.join(__dirname, '__data__
 describe('RechargeCardPlugin · 余额提现三态机', () => {
     const { server, adminClient, shopClient } = createTestEnvironment(
         mergeConfig(testConfig(), {
+            // 与 dev-config.ts Channel customFields 同名声明（分销插件已占用 minWithdrawalAmount，余额提现用独立名）
+            customFields: {
+                Channel: [{ name: 'balanceMinWithdrawalAmount', type: 'int', nullable: true }],
+            },
             plugins: [RechargeCardPlugin.init()],
         }),
     );
@@ -202,5 +206,45 @@ describe('RechargeCardPlugin · 余额提现三态机', () => {
         `)) as any;
         const accounts = list.balanceWithdrawals.items.map((x: any) => x.accountInfo);
         expect(accounts).toContain('legacy-plain-account');
+    });
+
+    it('渠道配置化起提金额：balanceMinWithdrawalAmount=5000 生效（myBalanceWithFrozen 返回 + 2000 拒/5000 过），置 null 回退默认 1000', async () => {
+        const ch = (await adminClient.query(gql`query { activeChannel { id } }`)) as any;
+        const channelId = ch.activeChannel.id;
+
+        // 配置 5000（分）
+        await adminClient.query(gql`
+            mutation { updateChannel(input: { id: "${channelId}", customFields: { balanceMinWithdrawalAmount: 5000 } }) { ... on Channel { id } } }
+        `);
+
+        // shop API 返回当前配置值
+        const frozen = (await shopClient.query(gql`
+            query { myBalanceWithFrozen { balance frozenBalance minWithdrawalAmount } }
+        `)) as any;
+        expect(frozen.myBalanceWithFrozen.minWithdrawalAmount).toBe(5000);
+
+        // 低于配置值被拒（默认 1000 时 2000 本可通过）
+        const before = await fetchFrozenBalance();
+        await expect(shopClient.query(gql`
+            mutation { requestBalanceWithdrawal(amount: 2000, method: "wechat", accountInfo: "cfg@example.com") { id status } }
+        `)).rejects.toThrow(/Minimum withdrawal amount/);
+        expect(await fetchFrozenBalance()).toEqual(before);
+
+        // 恰好等于配置值可通过
+        const ok = (await shopClient.query(gql`
+            mutation { requestBalanceWithdrawal(amount: 5000, method: "wechat", accountInfo: "cfg@example.com") { id amount status } }
+        `)) as any;
+        expect(ok.requestBalanceWithdrawal.status).toBe('pending');
+        expect(ok.requestBalanceWithdrawal.amount).toBe(5000);
+        expect(await fetchFrozenBalance()).toEqual({ balance: before.balance - 5000, frozenBalance: before.frozenBalance + 5000 });
+
+        // 恢复 null → 回退默认 1000
+        await adminClient.query(gql`
+            mutation { updateChannel(input: { id: "${channelId}", customFields: { balanceMinWithdrawalAmount: null } }) { ... on Channel { id } } }
+        `);
+        const restored = (await shopClient.query(gql`
+            query { myBalanceWithFrozen { minWithdrawalAmount } }
+        `)) as any;
+        expect(restored.myBalanceWithFrozen.minWithdrawalAmount).toBe(1000);
     });
 });

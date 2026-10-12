@@ -10,6 +10,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BalanceWithdrawalService = void 0;
+exports.resolveMinWithdrawalAmount = resolveMinWithdrawalAmount;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const balance_transaction_entity_1 = require("./balance-transaction.entity");
@@ -17,7 +18,13 @@ const balance_withdrawal_request_entity_1 = require("./balance-withdrawal-reques
 const account_crypto_1 = require("./account-crypto");
 const constants_1 = require("./constants");
 const customer_balance_entity_1 = require("./customer-balance.entity");
-const MIN_WITHDRAWAL_AMOUNT = 1000; // 分，¥10 起提
+const DEFAULT_MIN_WITHDRAWAL_AMOUNT = 1000; // 分，¥10 起提（渠道未配置 minWithdrawalAmount 时的回退值）
+/** 渠道级起提金额（分）：customFields.balanceMinWithdrawalAmount >0 生效，否则回退默认 ¥10 */
+function resolveMinWithdrawalAmount(ctx) {
+    var _a, _b;
+    const configured = Number((_b = (_a = ctx.channel) === null || _a === void 0 ? void 0 : _a.customFields) === null || _b === void 0 ? void 0 : _b.balanceMinWithdrawalAmount);
+    return Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : DEFAULT_MIN_WITHDRAWAL_AMOUNT;
+}
 let BalanceWithdrawalService = class BalanceWithdrawalService {
     constructor(connection, listQueryBuilder, customerService) {
         this.connection = connection;
@@ -84,8 +91,8 @@ let BalanceWithdrawalService = class BalanceWithdrawalService {
         if (!Number.isFinite(amount) || !Number.isInteger(amount) || amount <= 0) {
             throw new core_1.UserInputError('Invalid withdrawal amount');
         }
-        if (amount < MIN_WITHDRAWAL_AMOUNT) {
-            throw new core_1.UserInputError(`Minimum withdrawal amount is ${MIN_WITHDRAWAL_AMOUNT} (cents)`);
+        if (amount < resolveMinWithdrawalAmount(ctx)) {
+            throw new core_1.UserInputError(`Minimum withdrawal amount is ${resolveMinWithdrawalAmount(ctx)} (cents)`);
         }
         if (!(accountInfo === null || accountInfo === void 0 ? void 0 : accountInfo.trim())) {
             throw new core_1.UserInputError('accountInfo is required');

@@ -8,6 +8,11 @@ export declare class LotteryShopResolver {
     constructor(lotteryService: LotteryService);
     /** 未登录可看奖品列表（C 端九宫格渲染），不加 @Allow。 */
     myLotteryPrizes(ctx: RequestContext): Promise<LotteryPrize[]>;
+    /** 未登录可看消耗配置（九宫格按模式展示固定消耗/每奖消耗），不加 @Allow。 */
+    lotteryCostConfig(ctx: RequestContext): Promise<{
+        mode: string;
+        fixedCost: number;
+    }>;
     myLotteryRecords(ctx: RequestContext, options?: LotteryRecordListOptions): Promise<PaginatedList<LotteryRecord>>;
     drawLottery(ctx: RequestContext): Promise<LotteryDrawResult>;
 }

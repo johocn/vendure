@@ -12,6 +12,10 @@ registerInitializer('sqljs', new SqljsInitializer(path.join(__dirname, '__data__
 
 describe('LotteryPlugin · 九宫格积分抽奖（加权开奖/spendPoints 桥扣/库存/CRUD）', () => {
     const config = mergeConfig(testConfig(), {
+        // 与 dev-config.ts Channel customFields 同名声明，e2e 内可直接 updateChannel 写入
+        customFields: {
+            Channel: [{ name: 'lotteryFixedCost', type: 'int', nullable: true }],
+        },
         plugins: [MemberLevelPlugin.init({}), LotteryPlugin.init({})],
     });
     const { server, adminClient, shopClient } = createTestEnvironment(config);
@@ -227,5 +231,46 @@ describe('LotteryPlugin · 九宫格积分抽奖（加权开奖/spendPoints 桥�
         }
         await adminClient.query(gql`mutation { deleteLotteryPrize(id: "${ninth.createLotteryPrize.id}") }`);
         expect((await adminPrizes()).totalItems).toBe(3);
+    });
+
+    it('lotteryCostConfig：默认 perPrize → 渠道配置 lotteryFixedCost=50 后 fixed 模式，draw 固定扣 50（含记录快照），置 null 回退 perPrize', async () => {
+        const ch = (await adminClient.query(gql`query { activeChannel { id } }`)) as any;
+        const channelId = ch.activeChannel.id;
+
+        async function costConfig(): Promise<any> {
+            const res = await shopClient.query(gql`
+                query { lotteryCostConfig { mode fixedCost } }
+            `) as any;
+            return res.lotteryCostConfig;
+        }
+
+        // 默认：未配置 → perPrize（按所中奖品 consume）
+        expect(await costConfig()).toEqual({ mode: 'perPrize', fixedCost: 0 });
+
+        // 配置固定消耗 50
+        await adminClient.query(gql`
+            mutation { updateChannel(input: { id: "${channelId}", customFields: { lotteryFixedCost: 50 } }) { ... on Channel { id } } }
+        `);
+        expect(await costConfig()).toEqual({ mode: 'fixed', fixedCost: 50 });
+
+        // 固定模式：不论中哪个奖品（各奖品 consume 均为 100），每次固定扣 50
+        await adjustPoints(1000);
+        expect(await myMemberPoints()).toBe(1000);
+        const recordsBefore = (await myRecords()).totalItems;
+        for (let i = 1; i <= 3; i++) {
+            const r = await drawLottery();
+            expect(await myMemberPoints()).toBe(1000 - 50 * i);
+            const records = await myRecords();
+            expect(records.totalItems).toBe(recordsBefore + i);
+            expect(records.items[0].consume).toBe(50);
+            expect(records.items[0].prizeId).toBe(r.prize.id);
+        }
+        expect(await myMemberPoints()).toBe(850);
+
+        // 恢复 null → 回退 perPrize 模式
+        await adminClient.query(gql`
+            mutation { updateChannel(input: { id: "${channelId}", customFields: { lotteryFixedCost: null } }) { ... on Channel { id } } }
+        `);
+        expect(await costConfig()).toEqual({ mode: 'perPrize', fixedCost: 0 });
     });
 });

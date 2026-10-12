@@ -176,6 +176,7 @@ exports.RechargeCardPlugin = RechargeCardPlugin = RechargeCardPlugin_1 = __decor
             type MyBalanceWithFrozen {
                 balance: Int!
                 frozenBalance: Int!
+                minWithdrawalAmount: Int!
             }
 
             input BalanceWithdrawalListOptions {

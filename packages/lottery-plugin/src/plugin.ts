@@ -36,9 +36,15 @@ const shopSchema = () => gql`
         prizeIndex: Int!
         prize: LotteryPrizeInfo!
     }
+    type LotteryCostConfig {
+        """fixed=每次固定扣 fixedCost（0=免费）；perPrize=按所中奖品 consume"""
+        mode: String!
+        fixedCost: Int!
+    }
     extend type Query {
         myLotteryPrizes: [LotteryPrizeInfo!]!
         myLotteryRecords(options: LotteryRecordListOptions): LotteryRecordList!
+        lotteryCostConfig: LotteryCostConfig!
     }
     extend type Mutation {
         drawLottery: LotteryDrawResult!

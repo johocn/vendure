@@ -22,6 +22,12 @@ export class LotteryShopResolver {
         return this.lotteryService.myPrizes(ctx);
     }
 
+    /** 未登录可看消耗配置（九宫格按模式展示固定消耗/每奖消耗），不加 @Allow。 */
+    @Query()
+    async lotteryCostConfig(@Ctx() ctx: RequestContext): Promise<{ mode: string; fixedCost: number }> {
+        return this.lotteryService.costConfig(ctx);
+    }
+
     @Query()
     @Allow(Permission.Authenticated)
     async myLotteryRecords(
