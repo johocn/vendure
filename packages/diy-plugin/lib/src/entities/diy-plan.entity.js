@@ -75,6 +75,14 @@ __decorate([
     (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
     __metadata("design:type", Object)
 ], DiyPlan.prototype, "shareImage", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ default: false }),
+    __metadata("design:type", Boolean)
+], DiyPlan.prototype, "isPublic", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: Date, nullable: true }),
+    __metadata("design:type", Object)
+], DiyPlan.prototype, "publishedAt", void 0);
 exports.DiyPlan = DiyPlan = __decorate([
     (0, typeorm_1.Entity)(),
     (0, typeorm_1.Index)('idx_diy_plan_app_user', ['app', 'userId']),

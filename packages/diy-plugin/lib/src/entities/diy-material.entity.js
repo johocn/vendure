@@ -96,6 +96,14 @@ __decorate([
     (0, typeorm_1.Column)({ default: 0 }),
     __metadata("design:type", Number)
 ], DiyMaterial.prototype, "sortOrder", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], DiyMaterial.prototype, "renderUrl", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], DiyMaterial.prototype, "renderPreset", void 0);
 exports.DiyMaterial = DiyMaterial = __decorate([
     (0, typeorm_1.Entity)(),
     (0, typeorm_1.Index)('idx_diy_material_app_code', ['app', 'code']),

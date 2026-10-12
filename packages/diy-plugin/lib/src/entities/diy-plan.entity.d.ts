@@ -29,4 +29,7 @@ export declare class DiyPlan extends VendureEntity {
     thumb: string | null;
     /** 分享图（P5 使用，可空） */
     shareImage: string | null;
+    /** 是否公开分享（v2：公开橱窗/分享页可读） */
+    isPublic: boolean;
+    publishedAt: Date | null;
 }

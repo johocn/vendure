@@ -65,4 +65,13 @@ export class DiyPlan extends VendureEntity {
     /** 分享图（P5 使用，可空） */
     @Column({ type: 'varchar', nullable: true })
     shareImage: string | null;
+
+    /** 是否公开分享（v2：公开橱窗/分享页可读） */
+    @Column({ default: false })
+    isPublic: boolean;
+
+    // type: Date（构造器）口径同 expiresAt——`Date | null` 联合类型 design:type 反射为 Object，
+    // 必须显式构造器写法让 typeorm 按方言推断（postgres→timestamp / sqlite→datetime）
+    @Column({ type: Date, nullable: true })
+    publishedAt: Date | null;
 }

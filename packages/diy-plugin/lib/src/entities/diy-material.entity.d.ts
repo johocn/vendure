@@ -37,4 +37,8 @@ export declare class DiyMaterial extends VendureEntity {
     sourceMaterialId: number | null;
     enabled: boolean;
     sortOrder: number;
+    /** 透明底统一光照贴图（静态目录 URL，前端渲染用） */
+    renderUrl: string | null;
+    /** 渲染预设枚举串：glass | jade | jade-flower | amber | pearl | metal | wood | matte */
+    renderPreset: string | null;
 }

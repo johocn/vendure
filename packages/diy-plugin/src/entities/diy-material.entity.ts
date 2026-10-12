@@ -80,4 +80,12 @@ export class DiyMaterial extends VendureEntity {
 
     @Column({ default: 0 })
     sortOrder: number;
+
+    /** 透明底统一光照贴图（静态目录 URL，前端渲染用） */
+    @Column({ type: 'varchar', nullable: true })
+    renderUrl: string | null;
+
+    /** 渲染预设枚举串：glass | jade | jade-flower | amber | pearl | metal | wood | matte */
+    @Column({ type: 'varchar', nullable: true })
+    renderPreset: string | null;
 }
