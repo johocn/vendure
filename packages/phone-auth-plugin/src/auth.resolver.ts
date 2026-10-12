@@ -79,7 +79,8 @@ export class PhoneAuthResolver {
             if (!code) {
                 throw new UserInputError('手机号注册必须提供验证码');
             }
-            const verified = this.smsService.verifyCode(phoneNumber!, code);
+            // verifyCode 是 async：漏 await 会得到恒真值的 Promise，令校验失效
+            const verified = await this.smsService.verifyCode(phoneNumber!, code);
             if (!verified) {
                 throw new UserInputError('验证码错误或已过期');
             }

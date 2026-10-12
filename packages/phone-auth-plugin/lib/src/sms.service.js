@@ -117,6 +117,12 @@ const KEY_PREFIX = {
     cooldown: 'phone-auth:cd:',
     daily: 'phone-auth:daily:',
 };
+/** INCR + 首次 EXPIRE 原子执行（Lua，Redis 2.6+ 兼容），避免两步之间崩溃导致当日 key 永不过期 */
+const LUA_INCR_DAILY = `
+local v = redis.call('INCR', KEYS[1])
+if v == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
+return v
+`;
 class RedisStore {
     constructor(redis) {
         this.redis = redis;
@@ -141,10 +147,7 @@ class RedisStore {
     }
     async incrDaily(phoneNumber, dayKey) {
         const key = KEY_PREFIX.daily + `${phoneNumber}:${dayKey}`;
-        const next = await this.redis.incr(key);
-        if (next === 1)
-            await this.redis.expire(key, 25 * 3600);
-        return next;
+        return (await this.redis.eval(LUA_INCR_DAILY, 1, key, 25 * 3600));
     }
 }
 let SmsService = class SmsService {
@@ -248,6 +251,12 @@ let SmsService = class SmsService {
             await this.store.deleteCode(phoneNumber);
             return true;
         }
+        // devBypass 判定须在失败计数之前：bypass 成功不应消耗失败次数，也避免先回写再删除
+        if (this.devBypass && code === this.devBypassCode) {
+            await this.store.deleteCode(phoneNumber);
+            core_1.Logger.info(`[DEV BYPASS] Accepted bypass code for ${phoneNumber}`, constants_1.loggerCtx);
+            return true;
+        }
         stored.failures += 1;
         if (stored.failures >= MAX_VERIFY_FAILURES) {
             await this.store.deleteCode(phoneNumber);
@@ -255,11 +264,6 @@ let SmsService = class SmsService {
             return false;
         }
         await this.store.setCode(phoneNumber, stored);
-        if (this.devBypass && code === this.devBypassCode) {
-            await this.store.deleteCode(phoneNumber);
-            core_1.Logger.info(`[DEV BYPASS] Accepted bypass code for ${phoneNumber}`, constants_1.loggerCtx);
-            return true;
-        }
         return false;
     }
     /** devBypass 透传（registerCustomer 等调用方需要知道验证流程是否在旁路模式） */
