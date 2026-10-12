@@ -21,6 +21,9 @@ import { CONTENT_LOCALES, CreateFeedbackInput, FaqListOptions, FeedbackListOptio
 
 const FEEDBACK_STATUSES: Array<Feedback['status']> = ['pending', 'processing', 'resolved'];
 
+/** 反馈类型白名单（与 C 端 TYPE_KEYS 对齐），非法值拒绝提交 */
+const FEEDBACK_TYPES = ['bug', 'experience', 'other'] as const;
+
 const MAX_TITLE_LENGTH = 20;
 const MAX_CONTACT_LENGTH = 30;
 
@@ -200,9 +203,13 @@ export class FeedbackService {
             .then(([items, totalItems]) => ({ items, totalItems }));
     }
 
-    /** shop：提交意见反馈（title ≤20、contactWay ≤30，imgs 数组 JSON 化存储）。 */
+    /** shop：提交意见反馈（type 白名单、title ≤20、contactWay ≤30，imgs 数组 JSON 化存储）。 */
     async createFeedback(ctx: RequestContext, input: CreateFeedbackInput): Promise<Feedback> {
         const customer = await this.requireCustomer(ctx);
+        const type = input.type ?? 'other';
+        if (!(FEEDBACK_TYPES as readonly string[]).includes(type)) {
+            throw new UserInputError(`Invalid feedback type "${type}"`);
+        }
         const title = input.title?.trim() ?? '';
         if (!title) {
             throw new UserInputError('title is required');
@@ -222,7 +229,7 @@ export class FeedbackService {
         const saved = await repo.save(
             repo.create({
                 customerId: customer.id as number,
-                type: input.type ?? 'other',
+                type,
                 title,
                 content,
                 imgs: Array.isArray(input.imgs) && input.imgs.length ? JSON.stringify(input.imgs) : null,

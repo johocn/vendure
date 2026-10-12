@@ -147,6 +147,21 @@ describe('FeedbackPlugin · 常见问题 + 意见反馈（FAQ 过滤/enabled、�
         `)).rejects.toThrow(/at most 20 characters/);
     });
 
+    it('type 白名单：非法值报 UserInputError，合法三值通过', async () => {
+        await expect(shopClient.query(gql`
+            mutation { createFeedback(input: { type: "功能异常", title: "白名单校验", content: "内容" }) { id } }
+        `)).rejects.toThrow(/Invalid feedback type/);
+        await expect(shopClient.query(gql`
+            mutation { createFeedback(input: { type: "suggest", title: "白名单校验", content: "内容" }) { id } }
+        `)).rejects.toThrow(/Invalid feedback type/);
+        for (const type of ['bug', 'experience', 'other']) {
+            const r = await shopClient.query(gql`
+                mutation { createFeedback(input: { type: "${type}", title: "白名单${type}", content: "内容" }) { id type } }
+            `) as any;
+            expect(r.createFeedback.type).toBe(type);
+        }
+    });
+
     it('faqs lang 合并与回退：zh/en 命中、ko 回退基线、不传 lang 原行为、admin 回显 titleI18n', async () => {
         // zh-CN 键带连字符，内联对象字面量写不了 → 用 variables 传 JSON
         const save = await adminClient.query(
