@@ -3,10 +3,19 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.coverMaterialIds = coverMaterialIds;
 exports.derivePlanTitle = derivePlanTitle;
 exports.inferRenderPreset = inferRenderPreset;
-/** 画廊封面素材 id：spec.slots 的 materialId 去重取前 3 */
+/** 画廊封面素材 id：优先 spec.slotList（v2 数组槽位），回退 spec.slots 对象；去重取前 3 */
 function coverMaterialIds(spec) {
     var _a;
     const seen = new Set();
+    const fromList = Array.isArray(spec === null || spec === void 0 ? void 0 : spec.slotList) ? spec.slotList : [];
+    for (const slot of fromList) {
+        if (slot === null || slot === void 0 ? void 0 : slot.materialId) {
+            seen.add(String(slot.materialId));
+        }
+        if (seen.size >= 3) {
+            return [...seen];
+        }
+    }
     for (const slot of Object.values((_a = spec === null || spec === void 0 ? void 0 : spec.slots) !== null && _a !== void 0 ? _a : {})) {
         if (slot === null || slot === void 0 ? void 0 : slot.materialId) {
             seen.add(slot.materialId);
@@ -37,7 +46,7 @@ function derivePlanTitle(spec, bom) {
     }
     const wristSize = Number((_c = (_b = spec === null || spec === void 0 ? void 0 : spec.params) === null || _b === void 0 ? void 0 : _b.wristSize) !== null && _c !== void 0 ? _c : 0);
     const suffix = wristSize > 0 ? ` · ${Math.round(wristSize / 10)}cm` : '';
-    return names.join('') + suffix;
+    return names.join(' + ') + suffix;
 }
 /**
  * 渲染预设推断（populate 脚本与素材导入共用）。按素材名关键词匹配，

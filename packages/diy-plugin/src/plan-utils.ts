@@ -1,8 +1,17 @@
 import { DiyPlanBom, DiyPlanSpec } from './types';
 
-/** 画廊封面素材 id：spec.slots 的 materialId 去重取前 3 */
+/** 画廊封面素材 id：优先 spec.slotList（v2 数组槽位），回退 spec.slots 对象；去重取前 3 */
 export function coverMaterialIds(spec: DiyPlanSpec | null | undefined): string[] {
     const seen = new Set<string>();
+    const fromList = Array.isArray(spec?.slotList) ? spec!.slotList! : [];
+    for (const slot of fromList) {
+        if (slot?.materialId) {
+            seen.add(String(slot.materialId));
+        }
+        if (seen.size >= 3) {
+            return [...seen];
+        }
+    }
     for (const slot of Object.values(spec?.slots ?? {})) {
         if (slot?.materialId) {
             seen.add(slot.materialId);
@@ -33,7 +42,7 @@ export function derivePlanTitle(spec: DiyPlanSpec | null | undefined, bom: DiyPl
     }
     const wristSize = Number(spec?.params?.wristSize ?? 0);
     const suffix = wristSize > 0 ? ` · ${Math.round(wristSize / 10)}cm` : '';
-    return names.join('') + suffix;
+    return names.join(' + ') + suffix;
 }
 
 /**

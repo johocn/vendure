@@ -1,5 +1,5 @@
 import { DiyPlanBom, DiyPlanSpec } from './types';
-/** 画廊封面素材 id：spec.slots 的 materialId 去重取前 3 */
+/** 画廊封面素材 id：优先 spec.slotList（v2 数组槽位），回退 spec.slots 对象；去重取前 3 */
 export declare function coverMaterialIds(spec: DiyPlanSpec | null | undefined): string[];
 /**
  * 画廊/公开页标题派生：bom 快照素材名（创建时已本地化）去重串联 + 手围 cm，

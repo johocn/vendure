@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+﻿import { describe, expect, it } from 'vitest';
 
 import { DiyOrderService } from '../diy-order.service';
 import { DiyShopService } from '../diy-shop.service';
@@ -29,8 +29,8 @@ describe('plan-utils', () => {
     });
 
     it('derivePlanTitle：bom 素材名组合 + 手围 cm', () => {
-        expect(derivePlanTitle(spec, bom)).toBe('南红青金 · 16cm');
-        expect(derivePlanTitle({ slots: {}, params: {} }, bom)).toBe('南红青金');
+        expect(derivePlanTitle(spec, bom)).toBe('南红 + 青金 · 16cm');
+        expect(derivePlanTitle({ slots: {}, params: {} }, bom)).toBe('南红 + 青金');
         expect(derivePlanTitle(spec, { items: [], totalCount: 0, totalAmount: 0 })).toBe('DIY 方案');
     });
 
@@ -147,7 +147,7 @@ describe('diyGalleryPlans', () => {
         expect(page.total).toBe(2);
         expect(page.items.map(i => i.id)).toEqual(['1', '3']);
         expect(page.items[0]).toMatchObject({
-            title: '南红青金 · 16cm',
+            title: '南红 + 青金 · 16cm',
             coverMaterialIds: ['11', '22', '33'],
             totalAmount: 5040,
             totalCount: 21,
@@ -166,7 +166,7 @@ describe('diyPublicPlan', () => {
         expect(pub.spec).toEqual(spec);
         expect(pub.totalAmount).toBe(5040);
         expect(pub.totalCount).toBe(21);
-        expect(pub.title).toBe('南红青金 · 16cm');
+        expect(pub.title).toBe('南红 + 青金 · 16cm');
     });
 });
 
