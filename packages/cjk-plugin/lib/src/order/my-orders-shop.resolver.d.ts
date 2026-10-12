@@ -1,4 +1,4 @@
-import { CustomerService, ID, ListQueryBuilder, Order, OrderService, PaginatedList, RequestContext, StockMovementService } from '@vendure/core';
+import { CustomerService, ID, ListQueryBuilder, Order, OrderService, PaginatedList, PaymentService, RequestContext, StockMovementService, TransactionalConnection } from '@vendure/core';
 /**
  * C 端「我的订单」列表查询。
  *
@@ -21,12 +21,19 @@ export declare class MyOrdersShopResolver {
     private listQueryBuilder;
     private orderService;
     private stockMovementService;
-    constructor(customerService: CustomerService, listQueryBuilder: ListQueryBuilder, orderService: OrderService, stockMovementService: StockMovementService);
+    private paymentService;
+    private connection;
+    constructor(customerService: CustomerService, listQueryBuilder: ListQueryBuilder, orderService: OrderService, stockMovementService: StockMovementService, paymentService: PaymentService, connection: TransactionalConnection);
     myOrders(ctx: RequestContext, options: any, relations: string[]): Promise<PaginatedList<Order>>;
     /**
-     * C 端「取消订单」：仅限本人、且处于未支付/未履约状态（Created/AddingItems/ArrangingPayment）。
-     * core 的 cancelOrder 对 active 订单（如 ArrangingPayment）不会释放库存分配，
-     * 需先显式释放分配，否则取消后库存被永久占用（与 order-timeout-plugin 同一处理）。
+     * C 端「取消订单」：
+     * - 未支付/未履约（Created/AddingItems/ArrangingPayment）：释放库存分配后整体取消；
+     *   core 的 cancelOrder 对 active 订单（如 ArrangingPayment）不会释放库存分配，
+     *   需先显式释放，否则取消后库存被永久占用（与 order-timeout-plugin 同一处理）。
+     * - 已下单未支付（PaymentAuthorized）：先逐笔取消未结算支付（Authorized → Cancelled），
+     *   再整体取消订单（已下单单走 cancelOrderByOrderLines，幂等释放分配）。
+     *   守卫：任一支付已结算（Settled）→ 拒绝（实付单走售后退款）；含酒店行 → 拒绝
+     *   （走 OrderHotelCancelModal 专用取消/退款流程，避免预订单悬空）。
      */
     cancelMyOrder(ctx: RequestContext, orderId: ID): Promise<Order>;
 }

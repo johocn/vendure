@@ -12,11 +12,14 @@ import {
     Order,
     OrderService,
     PaginatedList,
+    Payment,
+    PaymentService,
     Permission,
     Relations as GraphQLRelations,
     RequestContext,
     StockMovementService,
     Transaction,
+    TransactionalConnection,
     UnauthorizedError,
     UserInputError,
 } from '@vendure/core';
@@ -25,6 +28,8 @@ const loggerCtx = 'MyOrdersShopResolver';
 
 /** 顾客可自行取消的订单状态（尚未支付/未进入履约） */
 const CUSTOMER_CANCELLABLE_STATES = ['Created', 'AddingItems', 'ArrangingPayment'];
+/** 已下单未支付（支付已授权未结算）也允许顾客自助取消 */
+const UNPAID_AUTHORIZED_STATE = 'PaymentAuthorized';
 
 /**
  * C 端「我的订单」列表查询。
@@ -50,6 +55,8 @@ export class MyOrdersShopResolver {
         private listQueryBuilder: ListQueryBuilder,
         private orderService: OrderService,
         private stockMovementService: StockMovementService,
+        private paymentService: PaymentService,
+        private connection: TransactionalConnection,
     ) {}
 
     @Query()
@@ -78,9 +85,14 @@ export class MyOrdersShopResolver {
     }
 
     /**
-     * C 端「取消订单」：仅限本人、且处于未支付/未履约状态（Created/AddingItems/ArrangingPayment）。
-     * core 的 cancelOrder 对 active 订单（如 ArrangingPayment）不会释放库存分配，
-     * 需先显式释放分配，否则取消后库存被永久占用（与 order-timeout-plugin 同一处理）。
+     * C 端「取消订单」：
+     * - 未支付/未履约（Created/AddingItems/ArrangingPayment）：释放库存分配后整体取消；
+     *   core 的 cancelOrder 对 active 订单（如 ArrangingPayment）不会释放库存分配，
+     *   需先显式释放，否则取消后库存被永久占用（与 order-timeout-plugin 同一处理）。
+     * - 已下单未支付（PaymentAuthorized）：先逐笔取消未结算支付（Authorized → Cancelled），
+     *   再整体取消订单（已下单单走 cancelOrderByOrderLines，幂等释放分配）。
+     *   守卫：任一支付已结算（Settled）→ 拒绝（实付单走售后退款）；含酒店行 → 拒绝
+     *   （走 OrderHotelCancelModal 专用取消/退款流程，避免预订单悬空）。
      */
     @Transaction()
     @Mutation()
@@ -98,8 +110,41 @@ export class MyOrdersShopResolver {
         if (!order.customer || customerUserId == null || String(customerUserId) !== String(ctx.activeUserId)) {
             throw new ForbiddenError();
         }
-        if (!CUSTOMER_CANCELLABLE_STATES.includes(order.state)) {
+        if (!CUSTOMER_CANCELLABLE_STATES.includes(order.state) && order.state !== UNPAID_AUTHORIZED_STATE) {
             throw new UserInputError(`ORDER_CANNOT_BE_CANCELLED:${order.state}`);
+        }
+        if (order.state === UNPAID_AUTHORIZED_STATE) {
+            // 含酒店行的已下单单走酒店专用取消/退款（预订单锁房/截止点独立收口），不开放自助取消
+            const hasHotelLine = (order.lines ?? []).some(l => {
+                const cf = (l as any).customFields;
+                return !!cf?.hotelCheckIn && !!cf?.hotelCheckOut;
+            });
+            if (hasHotelLine) {
+                throw new UserInputError(`ORDER_CANNOT_BE_CANCELLED:${order.state}`);
+            }
+            const payments = await this.connection
+                .getRepository(ctx, Payment)
+                .find({ where: { order: { id: order.id } } });
+            // 全部支付须处于 Authorized（或历史已 Cancelled 的重试幂等）；Settled 实付/Declined/Error 异常态拒绝
+            if (payments.length === 0 || payments.some(p => p.state !== 'Authorized' && p.state !== 'Cancelled')) {
+                throw new UserInputError(`ORDER_CANNOT_BE_CANCELLED:${order.state}`);
+            }
+            for (const payment of payments) {
+                if (payment.state === 'Cancelled') {
+                    continue;
+                }
+                const cancelled = await this.paymentService.cancelPayment(ctx, payment.id);
+                if (isGraphQlErrorResult(cancelled) || cancelled.state !== 'Cancelled') {
+                    Logger.warn(`取消订单支付失败 order#${orderId} payment#${payment.id}`, loggerCtx);
+                    throw new UserInputError('PAYMENT_CANCEL_FAILED');
+                }
+            }
+            const unpaidResult = await this.orderService.cancelOrder(ctx, { orderId });
+            if (isGraphQlErrorResult(unpaidResult)) {
+                Logger.warn(`取消订单失败 order#${orderId}: ${unpaidResult.message}`, loggerCtx);
+                throw new UserInputError(unpaidResult.message);
+            }
+            return unpaidResult;
         }
         const lines = (order.lines ?? []).map(l => ({ orderLineId: l.id, quantity: l.quantity }));
         if (lines.length > 0) {
