@@ -18,6 +18,8 @@ const faq_entry_entity_1 = require("./faq-entry.entity");
 const feedback_entity_1 = require("./feedback.entity");
 const types_1 = require("./types");
 const FEEDBACK_STATUSES = ['pending', 'processing', 'resolved'];
+/** 反馈类型白名单（与 C 端 TYPE_KEYS 对齐），非法值拒绝提交 */
+const FEEDBACK_TYPES = ['bug', 'experience', 'other'];
 const MAX_TITLE_LENGTH = 20;
 const MAX_CONTACT_LENGTH = 30;
 let FeedbackService = class FeedbackService {
@@ -178,29 +180,33 @@ let FeedbackService = class FeedbackService {
             .getManyAndCount()
             .then(([items, totalItems]) => ({ items, totalItems }));
     }
-    /** shop：提交意见反馈（title ≤20、contactWay ≤30，imgs 数组 JSON 化存储）。 */
+    /** shop：提交意见反馈（type 白名单、title ≤20、contactWay ≤30，imgs 数组 JSON 化存储）。 */
     async createFeedback(ctx, input) {
         var _a, _b, _c, _d, _e, _f, _g;
         const customer = await this.requireCustomer(ctx);
-        const title = (_b = (_a = input.title) === null || _a === void 0 ? void 0 : _a.trim()) !== null && _b !== void 0 ? _b : '';
+        const type = (_a = input.type) !== null && _a !== void 0 ? _a : 'other';
+        if (!FEEDBACK_TYPES.includes(type)) {
+            throw new core_1.UserInputError(`Invalid feedback type "${type}"`);
+        }
+        const title = (_c = (_b = input.title) === null || _b === void 0 ? void 0 : _b.trim()) !== null && _c !== void 0 ? _c : '';
         if (!title) {
             throw new core_1.UserInputError('title is required');
         }
         if (title.length > MAX_TITLE_LENGTH) {
             throw new core_1.UserInputError(`title must be at most ${MAX_TITLE_LENGTH} characters`);
         }
-        const content = (_d = (_c = input.content) === null || _c === void 0 ? void 0 : _c.trim()) !== null && _d !== void 0 ? _d : '';
+        const content = (_e = (_d = input.content) === null || _d === void 0 ? void 0 : _d.trim()) !== null && _e !== void 0 ? _e : '';
         if (!content) {
             throw new core_1.UserInputError('content is required');
         }
-        const contactWay = (_f = (_e = input.contactWay) === null || _e === void 0 ? void 0 : _e.trim()) !== null && _f !== void 0 ? _f : null;
+        const contactWay = (_g = (_f = input.contactWay) === null || _f === void 0 ? void 0 : _f.trim()) !== null && _g !== void 0 ? _g : null;
         if (contactWay && contactWay.length > MAX_CONTACT_LENGTH) {
             throw new core_1.UserInputError(`contactWay must be at most ${MAX_CONTACT_LENGTH} characters`);
         }
         const repo = this.connection.getRepository(ctx, feedback_entity_1.Feedback);
         const saved = await repo.save(repo.create({
             customerId: customer.id,
-            type: (_g = input.type) !== null && _g !== void 0 ? _g : 'other',
+            type,
             title,
             content,
             imgs: Array.isArray(input.imgs) && input.imgs.length ? JSON.stringify(input.imgs) : null,

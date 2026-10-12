@@ -22,7 +22,7 @@ export declare class FeedbackService {
     myFeedbacks(ctx: RequestContext, options?: FeedbackListOptions): Promise<PaginatedList<Feedback>>;
     /** admin：全量反馈列表（status 可选过滤）。 */
     adminFeedbacks(ctx: RequestContext, options?: FeedbackListOptions): Promise<PaginatedList<Feedback>>;
-    /** shop：提交意见反馈（title ≤20、contactWay ≤30，imgs 数组 JSON 化存储）。 */
+    /** shop：提交意见反馈（type 白名单、title ≤20、contactWay ≤30，imgs 数组 JSON 化存储）。 */
     createFeedback(ctx: RequestContext, input: CreateFeedbackInput): Promise<Feedback>;
     /** admin：回复反馈。resolve=true 直接 resolved；否则 pending 转 processing。仅 pending/processing 可回复。 */
     replyFeedback(ctx: RequestContext, id: string, reply: string, resolve: boolean): Promise<Feedback>;
