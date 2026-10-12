@@ -247,7 +247,7 @@ let DiyShopService = class DiyShopService {
     }
     /** 公开方案详情（分享页）：仅 isPublic=true，否则统一 PLAN_NOT_ACCESSIBLE（不暴露存在性） */
     async diyPublicPlan(ctx, id) {
-        var _a, _b, _c, _d;
+        var _a, _b, _c, _d, _e;
         const plan = await this.connection
             .getRepository(ctx, diy_plan_entity_1.DiyPlan)
             .findOne({ where: { app: this.app, id: Number(id), isPublic: true } });
@@ -261,6 +261,8 @@ let DiyShopService = class DiyShopService {
             totalAmount: (_b = (_a = plan.bom) === null || _a === void 0 ? void 0 : _a.totalAmount) !== null && _b !== void 0 ? _b : 0,
             totalCount: (_d = (_c = plan.bom) === null || _c === void 0 ? void 0 : _c.totalCount) !== null && _d !== void 0 ? _d : 0,
             createdAt: plan.createdAt,
+            thumb: plan.thumb,
+            bom: (_e = plan.bom) !== null && _e !== void 0 ? _e : null,
         };
     }
     /** 发布/取消发布（仅 owner）：发布记 publishedAt=now，取消置 null */

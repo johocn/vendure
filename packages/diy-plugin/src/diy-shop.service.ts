@@ -13,7 +13,7 @@ import { DiyTemplate } from './entities/diy-template.entity';
 import { parseTemplateConfig } from './template-config';
 import { mergeMaterials, unionCategories } from './material-merge';
 import { coverMaterialIds, derivePlanTitle } from './plan-utils';
-import { DiyMaterialFilter, DiyPlanSpec, DiyPluginOptions } from './types';
+import { DiyMaterialFilter, DiyPlanSpec, DiyPluginOptions, DiyPlanBom } from './types';
 
 export interface DiyMaterialList {
     items: DiyMaterial[];
@@ -48,6 +48,10 @@ export interface DiyPublicPlan {
     totalAmount: number;
     totalCount: number;
     createdAt: Date;
+    /** 分享缩略图（微信分享卡/广场展示用） */
+    thumb: string | null;
+    /** 服务端权威 BOM 快照（公开详情直接展示，避免客户端复算漂移） */
+    bom: DiyPlanBom | null;
 }
 
 /**
@@ -312,6 +316,8 @@ export class DiyShopService {
             totalAmount: plan.bom?.totalAmount ?? 0,
             totalCount: plan.bom?.totalCount ?? 0,
             createdAt: plan.createdAt,
+            thumb: plan.thumb,
+            bom: plan.bom ?? null,
         };
     }
 

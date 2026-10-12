@@ -282,6 +282,8 @@ const shopSchema = (0, graphql_tag_1.default) `
         totalAmount: Int!
         totalCount: Int!
         createdAt: DateTime!
+        thumb: String
+        bom: JSON
     }
     extend type Query {
         myDiyPlans(status: String, skip: Int, take: Int): DiyPlanList!

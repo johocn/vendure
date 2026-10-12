@@ -3,7 +3,7 @@ import { DiyCategory } from './entities/diy-category.entity';
 import { DiyMaterial } from './entities/diy-material.entity';
 import { DiyPlan } from './entities/diy-plan.entity';
 import { DiyTemplate } from './entities/diy-template.entity';
-import { DiyMaterialFilter, DiyPlanSpec, DiyPluginOptions } from './types';
+import { DiyMaterialFilter, DiyPlanSpec, DiyPluginOptions, DiyPlanBom } from './types';
 export interface DiyMaterialList {
     items: DiyMaterial[];
     total: number;
@@ -33,6 +33,10 @@ export interface DiyPublicPlan {
     totalAmount: number;
     totalCount: number;
     createdAt: Date;
+    /** 分享缩略图（微信分享卡/广场展示用） */
+    thumb: string | null;
+    /** 服务端权威 BOM 快照（公开详情直接展示，避免客户端复算漂移） */
+    bom: DiyPlanBom | null;
 }
 /**
  * C 端查询面（规格 §7 shop 部分）。
