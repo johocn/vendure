@@ -88,10 +88,11 @@ async function ensureCarrierProduct(connection) {
  * 全程包在事务里：任一步抛错整体回滚（含已扣库存），无需手动补偿。
  */
 let DiyOrderService = class DiyOrderService {
-    constructor(options, connection, orderService, shopService, stockService) {
+    constructor(options, connection, orderService, sessionService, shopService, stockService) {
         this.options = options;
         this.connection = connection;
         this.orderService = orderService;
+        this.sessionService = sessionService;
         this.shopService = shopService;
         this.stockService = stockService;
     }
@@ -105,7 +106,7 @@ let DiyOrderService = class DiyOrderService {
             throw new core_1.ForbiddenError();
         }
         const userId = Number(activeUserId);
-        return this.connection.withTransaction(ctx, async (tctx) => {
+        const plan = await this.connection.withTransaction(ctx, async (tctx) => {
             const planRepo = this.connection.getRepository(tctx, diy_plan_entity_1.DiyPlan);
             const plan = await planRepo.findOne({ where: { app: this.app, id: Number(planId) } });
             // v2：归属校验放宽为 owner 或 isPublic=true（他人公开方案可一键复购下单）
@@ -161,6 +162,18 @@ let DiyOrderService = class DiyOrderService {
             await planRepo.save(plan);
             return plan;
         });
+        // 事务提交后绑定 session activeOrder：UI 下单即结算（checkout 页的 activeOrder 系列
+        // mutation）必须定位到刚建的单。createOrderFromPlan 用 orderService.create 直建，
+        // 不经 shop addItemToOrder resolver，session 绑定需在此显式补上（管理员调用无 session 时跳过）。
+        if (ctx.session && plan.orderLineId != null) {
+            const line = await this.connection
+                .getRepository(ctx, core_1.OrderLine)
+                .findOne({ where: { id: plan.orderLineId }, relations: ['order'] });
+            if (line) {
+                await this.sessionService.setActiveOrder(ctx, ctx.session, line.order);
+            }
+        }
+        return plan;
     }
 };
 exports.DiyOrderService = DiyOrderService;
@@ -169,6 +182,7 @@ exports.DiyOrderService = DiyOrderService = __decorate([
     __param(0, (0, common_1.Inject)(constants_1.PLUGIN_INIT_OPTIONS)),
     __metadata("design:paramtypes", [Object, core_1.TransactionalConnection,
         core_1.OrderService,
+        core_1.SessionService,
         diy_shop_service_1.DiyShopService,
         diy_stock_service_1.DiyStockService])
 ], DiyOrderService);

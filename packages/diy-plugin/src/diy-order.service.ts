@@ -8,6 +8,7 @@ import {
     Logger,
     Order,
     OrderItemPriceCalculationStrategy,
+    OrderLine,
     OrderService,
     PriceCalculationResult,
     Product,
@@ -16,6 +17,7 @@ import {
     ProductVariantPrice,
     ProductVariantTranslation,
     RequestContext,
+    SessionService,
     TaxCategory,
     TransactionalConnection,
     UserInputError,
@@ -122,6 +124,7 @@ export class DiyOrderService {
         @Inject(PLUGIN_INIT_OPTIONS) private options: DiyPluginOptions,
         private connection: TransactionalConnection,
         private orderService: OrderService,
+        private sessionService: SessionService,
         private shopService: DiyShopService,
         private stockService: DiyStockService,
     ) {}
@@ -136,7 +139,7 @@ export class DiyOrderService {
             throw new ForbiddenError();
         }
         const userId = Number(activeUserId);
-        return this.connection.withTransaction(ctx, async tctx => {
+        const plan = await this.connection.withTransaction(ctx, async tctx => {
             const planRepo = this.connection.getRepository(tctx, DiyPlan);
             const plan = await planRepo.findOne({ where: { app: this.app, id: Number(planId) } });
             // v2：归属校验放宽为 owner 或 isPublic=true（他人公开方案可一键复购下单）
@@ -203,5 +206,17 @@ export class DiyOrderService {
             await planRepo.save(plan);
             return plan;
         });
+        // 事务提交后绑定 session activeOrder：UI 下单即结算（checkout 页的 activeOrder 系列
+        // mutation）必须定位到刚建的单。createOrderFromPlan 用 orderService.create 直建，
+        // 不经 shop addItemToOrder resolver，session 绑定需在此显式补上（管理员调用无 session 时跳过）。
+        if (ctx.session && plan.orderLineId != null) {
+            const line = await this.connection
+                .getRepository(ctx, OrderLine)
+                .findOne({ where: { id: plan.orderLineId }, relations: ['order'] });
+            if (line) {
+                await this.sessionService.setActiveOrder(ctx, ctx.session, line.order);
+            }
+        }
+        return plan;
     }
 }

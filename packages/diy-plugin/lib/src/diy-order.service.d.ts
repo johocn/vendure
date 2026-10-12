@@ -1,4 +1,4 @@
-import { Order, OrderItemPriceCalculationStrategy, OrderService, PriceCalculationResult, ProductVariant, RequestContext, TransactionalConnection } from '@vendure/core';
+import { Order, OrderItemPriceCalculationStrategy, OrderService, PriceCalculationResult, ProductVariant, RequestContext, SessionService, TransactionalConnection } from '@vendure/core';
 import { DiyShopService } from './diy-shop.service';
 import { DiyStockService } from './diy-stock.service';
 import { DiyPlan } from './entities/diy-plan.entity';
@@ -28,9 +28,10 @@ export declare class DiyOrderService {
     private options;
     private connection;
     private orderService;
+    private sessionService;
     private shopService;
     private stockService;
-    constructor(options: DiyPluginOptions, connection: TransactionalConnection, orderService: OrderService, shopService: DiyShopService, stockService: DiyStockService);
+    constructor(options: DiyPluginOptions, connection: TransactionalConnection, orderService: OrderService, sessionService: SessionService, shopService: DiyShopService, stockService: DiyStockService);
     private get app();
     createOrderFromPlan(ctx: RequestContext, planId: string): Promise<DiyPlan>;
 }
