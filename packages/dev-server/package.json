@@ -67,6 +67,7 @@
         "@vendure/invoice-plugin": "0.0.1",
         "@vendure/logistics-api-plugin": "1.0.0",
         "@vendure/logistics-plugin": "0.0.1",
+        "@vendure/meilisearch-plugin": "0.0.1",
         "@vendure/marketplace-plugin": "0.1.0",
         "@vendure/message-plugin": "0.0.1",
         "@vendure/notification-plugin": "0.0.1",
