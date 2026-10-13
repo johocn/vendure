@@ -16,9 +16,15 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.MeiliSearchPlugin = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
+const node_fs_1 = require("node:fs");
+const node_path_1 = require("node:path");
+const meili_admin_resolver_1 = require("./admin-api/meili-admin.resolver");
 const constants_1 = require("./constants");
 const meili_service_1 = require("./meili.service");
 const product_sync_service_1 = require("./product-sync.service");
+const { gql } = require('graphql-tag');
+/** SDL 独立维护在 admin-api/schema.graphql（构建时随 lib 一并拷贝），此处惰性读取 */
+const adminApiSchema = () => gql((0, node_fs_1.readFileSync)((0, node_path_1.join)(__dirname, 'admin-api', 'schema.graphql'), 'utf-8'));
 let MeiliSearchPlugin = MeiliSearchPlugin_1 = class MeiliSearchPlugin {
     constructor(options, meiliService, productSync, eventBus) {
         this.options = options;
@@ -101,6 +107,10 @@ exports.MeiliSearchPlugin = MeiliSearchPlugin = MeiliSearchPlugin_1 = __decorate
             product_sync_service_1.ProductSyncService,
         ],
         exports: [meili_service_1.MeiliService],
+        adminApiExtensions: {
+            schema: adminApiSchema,
+            resolvers: [meili_admin_resolver_1.MeiliAdminResolver],
+        },
         compatibility: '^3.0.0',
     }),
     __param(0, (0, common_1.Inject)(constants_1.MEILI_PLUGIN_OPTIONS)),

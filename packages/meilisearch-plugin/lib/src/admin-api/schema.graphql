@@ -1,0 +1,24 @@
+extend type Query {
+    meiliIndexStats: [MeiliIndexStatus!]!
+}
+
+extend type Mutation {
+    meiliReindex(scope: MeiliReindexScope!): MeiliReindexResult!
+}
+
+enum MeiliReindexScope {
+    PRODUCTS
+    CONTENTS
+    ALL
+}
+
+type MeiliIndexStatus {
+    index: String!
+    documents: Int!
+    healthy: Boolean!
+}
+
+type MeiliReindexResult {
+    queued: Boolean!
+    contentsTriggered: Boolean!
+}

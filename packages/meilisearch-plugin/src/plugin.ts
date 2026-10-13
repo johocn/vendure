@@ -7,11 +7,19 @@ import {
     ProductVariantEvent,
     VendurePlugin,
 } from '@vendure/core';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
+import { MeiliAdminResolver } from './admin-api/meili-admin.resolver';
 import { loggerCtx, MEILI_PLUGIN_OPTIONS } from './constants';
 import { MeiliService } from './meili.service';
 import { ProductSyncService } from './product-sync.service';
 import { MeiliPluginOptions } from './types';
+
+const { gql } = require('graphql-tag');
+
+/** SDL 独立维护在 admin-api/schema.graphql（构建时随 lib 一并拷贝），此处惰性读取 */
+const adminApiSchema = () => gql(readFileSync(join(__dirname, 'admin-api', 'schema.graphql'), 'utf-8'));
 
 @VendurePlugin({
     imports: [PluginCommonModule],
@@ -21,6 +29,10 @@ import { MeiliPluginOptions } from './types';
         ProductSyncService,
     ],
     exports: [MeiliService],
+    adminApiExtensions: {
+        schema: adminApiSchema,
+        resolvers: [MeiliAdminResolver],
+    },
     compatibility: '^3.0.0',
 })
 export class MeiliSearchPlugin {

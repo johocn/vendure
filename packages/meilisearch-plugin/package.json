@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "watch": "tsc -p ./tsconfig.json --watch",
-    "build": "rimraf lib && tsc -p ./tsconfig.json",
+    "build": "rimraf lib && tsc -p ./tsconfig.json && node -e \"const fs=require('fs');fs.mkdirSync('lib/src/admin-api',{recursive:true});fs.copyFileSync('src/admin-api/schema.graphql','lib/src/admin-api/schema.graphql')\"",
     "lint": "eslint --fix .",
     "test": "vitest --config vitest.config.mts --run"
   },
