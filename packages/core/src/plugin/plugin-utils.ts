@@ -37,29 +37,33 @@ import { Logger } from '../config';
 export function createProxyHandler(options: ProxyOptions): RequestHandler {
     const route = options.route.charAt(0) === '/' ? options.route : '/' + options.route;
     const proxyHostname = options.hostname || 'localhost';
+    // http-proxy-middleware 3.0.7 把 Logger 收窄为 Pick<Console,'info'|'warn'|'error'>；
+    // 保留 log/debug 方法对运行时无害（hpm 内部仅调用 error/info/warn），以变量传入绕过
+    // 对象字面量的多余属性检查（TS2353）。
+    const proxyLogger = {
+        log(message: string) {
+            Logger.debug(message, options.label);
+        },
+        debug(message: string) {
+            Logger.debug(message, options.label);
+        },
+        info(message: string) {
+            Logger.debug(message, options.label);
+        },
+        warn(message: string) {
+            Logger.warn(message, options.label);
+        },
+        error(message: string) {
+            Logger.error(message, options.label);
+        },
+    };
     const middleware = createProxyMiddleware({
         // TODO: how do we detect https?
         target: `http://${proxyHostname}:${options.port}/${options.basePath ?? ''}`,
         pathRewrite: {
             [`^${route}`]: '/' + (options.basePath || ''),
         },
-        logger: {
-            log(message: string) {
-                Logger.debug(message, options.label);
-            },
-            debug(message: string) {
-                Logger.debug(message, options.label);
-            },
-            info(message: string) {
-                Logger.debug(message, options.label);
-            },
-            warn(message: string) {
-                Logger.warn(message, options.label);
-            },
-            error(message: string) {
-                Logger.error(message, options.label);
-            },
-        },
+        logger: proxyLogger,
     });
     return middleware;
 }
