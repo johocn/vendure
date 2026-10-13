@@ -1,4 +1,4 @@
-﻿import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ShippingProfileEnsureService } from './shipping-profile-ensure.service';
 
 /**
@@ -59,7 +59,7 @@ const STORE_PICKUP = () => ({ id: 1, code: 'store-pickup', channels: [{ id: 113 
 const COURIER = () => ({ id: 9, code: 'courier-delivery', channels: [] });
 
 describe('ShippingProfileEnsureService.ensureDefaultShippingProfile', () => {
-    beforeEach(() => vi.clearAllMocks());
+    beforeEach(() => { vi.clearAllMocks(); });
 
     it('渠道不存在 → 抛错', async () => {
         const { svc, channelRepo } = makeEnv({ channel: null });

@@ -34,7 +34,7 @@ describe('PaymentTimeoutJob', () => {
         return { job, taskRepo, task, orderService, stockMovementService, notify, order };
     }
 
-    beforeEach(() => vi.clearAllMocks());
+    beforeEach(() => { vi.clearAllMocks(); });
 
     it('到点订单已支付（非 ArrangingPayment）→ 任务 CANCELLED，不取消订单', async () => {
         const { job, taskRepo, orderService } = makeJob({ orderState: 'PaymentSettled' });

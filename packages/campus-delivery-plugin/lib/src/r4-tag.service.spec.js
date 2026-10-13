@@ -20,7 +20,7 @@ function makeSvc(opts) {
     return { svc, updateCustomFields };
 }
 (0, vitest_1.describe)('R4TagService', () => {
-    (0, vitest_1.beforeEach)(() => vitest_1.vi.clearAllMocks());
+    (0, vitest_1.beforeEach)(() => { vitest_1.vi.clearAllMocks(); });
     (0, vitest_1.it)('非 ArrangingPayment 过渡不打标', async () => {
         const { svc, updateCustomFields } = makeSvc({ methodCode: 'store-pickup' });
         await svc.tagR4(makeEvent({ toState: 'PaymentAuthorized', methodCode: 'store-pickup' }));

@@ -28,7 +28,7 @@ const payment_timeout_entity_1 = require("./payment-timeout.entity");
         stockMovementService, notify, { getConfig: vitest_1.vi.fn().mockResolvedValue({ h5BaseUrl: null }) });
         return { job, taskRepo, task, orderService, stockMovementService, notify, order };
     }
-    (0, vitest_1.beforeEach)(() => vitest_1.vi.clearAllMocks());
+    (0, vitest_1.beforeEach)(() => { vitest_1.vi.clearAllMocks(); });
     (0, vitest_1.it)('到点订单已支付（非 ArrangingPayment）→ 任务 CANCELLED，不取消订单', async () => {
         const { job, taskRepo, orderService } = makeJob({ orderState: 'PaymentSettled' });
         await job.process({ taskId: 1 });

@@ -54,7 +54,7 @@ function makeEnv(opts) {
 const STORE_PICKUP = () => ({ id: 1, code: 'store-pickup', channels: [{ id: 113 }] });
 const COURIER = () => ({ id: 9, code: 'courier-delivery', channels: [] });
 (0, vitest_1.describe)('ShippingProfileEnsureService.ensureDefaultShippingProfile', () => {
-    (0, vitest_1.beforeEach)(() => vitest_1.vi.clearAllMocks());
+    (0, vitest_1.beforeEach)(() => { vitest_1.vi.clearAllMocks(); });
     (0, vitest_1.it)('渠道不存在 → 抛错', async () => {
         const { svc, channelRepo } = makeEnv({ channel: null });
         await (0, vitest_1.expect)(svc.ensureDefaultShippingProfile({}, 999)).rejects.toThrow('渠道不存在');

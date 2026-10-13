@@ -24,7 +24,7 @@ function makeSvc(opts: { methodCode?: string | null }) {
 }
 
 describe('R4TagService', () => {
-    beforeEach(() => vi.clearAllMocks());
+    beforeEach(() => { vi.clearAllMocks(); });
 
     it('非 ArrangingPayment 过渡不打标', async () => {
         const { svc, updateCustomFields } = makeSvc({ methodCode: 'store-pickup' });
