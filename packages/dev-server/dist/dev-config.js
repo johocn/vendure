@@ -11,7 +11,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
-var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
+var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.devConfig = void 0;
 const admin_ui_plugin_1 = require("@vendure/admin-ui-plugin");
@@ -78,6 +78,7 @@ const shop_template_plugin_1 = require("@vendure/shop-template-plugin");
 const diy_plugin_1 = require("@vendure/diy-plugin");
 const favorite_plugin_1 = require("@vendure/favorite-plugin");
 const tcm_clinic_plugin_1 = require("@vendure/tcm-clinic-plugin");
+const meilisearch_plugin_1 = require("@vendure/meilisearch-plugin");
 if (!process.env.REDEMPTION_KEY) {
     process.env.REDEMPTION_KEY = 'd'.repeat(64);
 }
@@ -473,6 +474,14 @@ exports.devConfig = {
         payment_schedule_plugin_1.PaymentSchedulePlugin.init({}),
         installment_plugin_1.InstallmentPlugin.init({}),
         rental_plugin_1.RentalPlugin.init({}),
+        meilisearch_plugin_1.MeiliSearchPlugin.init({
+            host: (_m = process.env.MEILI_HOST) !== null && _m !== void 0 ? _m : 'http://127.0.0.1:7700',
+            adminKey: (_o = process.env.MEILI_ADMIN_KEY) !== null && _o !== void 0 ? _o : '',
+            indexPrefix: 'kb',
+            locales: ['zh', 'en'],
+            reindexUrl: process.env.ZHAO_SEARCH_REINDEX_URL,
+            sharedSecret: process.env.ZHAO_SEARCH_SHARED_SECRET,
+        }),
         DisableSellerSplitPlugin,
     ],
 };

@@ -86,6 +86,7 @@ import { ShopTemplatePlugin } from '@vendure/shop-template-plugin';
 import { DiyPlugin } from '@vendure/diy-plugin';
 import { FavoritePlugin } from '@vendure/favorite-plugin';
 import { TcmClinicPlugin } from '@vendure/tcm-clinic-plugin';
+import { MeiliSearchPlugin } from '@vendure/meilisearch-plugin';
 
 // 本地联调默认注入 REDEMPTION_KEY（AES-GCM/HMAC 密钥，64 hex chars）
 if (!process.env.REDEMPTION_KEY) {
@@ -563,6 +564,17 @@ export const devConfig: VendureConfig = {
         PaymentSchedulePlugin.init({}),
         InstallmentPlugin.init({}),
         RentalPlugin.init({}),
+        // MeiliSearch 统一知识库：商品域直推 kb-zh/kb-en（索引前缀 kb，语言拆索引）。
+        // 全部读 env（Task 6）；ZHAO_SEARCH_REINDEX_URL 指向 strapi zhao-search 管理路由，
+        // 插件 admin 路由挂载规则为 /<pluginName><route.path>，Task 9 e2e 校准。
+        MeiliSearchPlugin.init({
+            host: process.env.MEILI_HOST ?? 'http://127.0.0.1:7700',
+            adminKey: process.env.MEILI_ADMIN_KEY ?? '',
+            indexPrefix: 'kb',
+            locales: ['zh', 'en'],
+            reindexUrl: process.env.ZHAO_SEARCH_REINDEX_URL,
+            sharedSecret: process.env.ZHAO_SEARCH_SHARED_SECRET,
+        }),
         // 必须最后注册：覆盖 MarketplacePlugin 的 Seller 拆分，根治租户渠道商品的幽灵配送子单
         DisableSellerSplitPlugin,
     ],
