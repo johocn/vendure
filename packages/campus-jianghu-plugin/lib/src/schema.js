@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.JIANGHU_ADMIN_API = exports.JIANGHU_SHOP_API = exports.JIANGHU_TYPES = void 0;
 const graphql_tag_1 = __importDefault(require("graphql-tag"));
 /** 江湖域公共类型（shop 与 admin 两套 schema 各自引用） */
+// 显式标注 DocumentNode：pnpm 布局下推断类型需回溯 core/node_modules/graphql，TS2742 不可移植
 exports.JIANGHU_TYPES = (0, graphql_tag_1.default) `
     type JianghuProfile {
         id: ID!

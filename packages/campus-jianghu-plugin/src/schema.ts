@@ -1,7 +1,9 @@
+import { DocumentNode } from 'graphql';
 import gql from 'graphql-tag';
 
 /** 江湖域公共类型（shop 与 admin 两套 schema 各自引用） */
-export const JIANGHU_TYPES = gql`
+// 显式标注 DocumentNode：pnpm 布局下推断类型需回溯 core/node_modules/graphql，TS2742 不可移植
+export const JIANGHU_TYPES: DocumentNode = gql`
     type JianghuProfile {
         id: ID!
         customerId: ID!
@@ -167,7 +169,7 @@ export const JIANGHU_TYPES = gql`
     }
 `;
 
-export const JIANGHU_SHOP_API = gql`
+export const JIANGHU_SHOP_API: DocumentNode = gql`
     extend type Query {
         jianghuProfile: JianghuProfile
         jianghuRankLadder: [RankTier!]!
@@ -203,7 +205,7 @@ export const JIANGHU_SHOP_API = gql`
     }
 `;
 
-export const JIANGHU_ADMIN_API = gql`
+export const JIANGHU_ADMIN_API: DocumentNode = gql`
     extend type Query {
         jianghuListProfiles(cursor: String, limit: Int): [JianghuProfile!]!
         jianghuListTasks(status: String, limit: Int): [JianghuTask!]!
