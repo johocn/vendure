@@ -18,4 +18,5 @@ __exportStar(require("./src/plugin"), exports);
 __exportStar(require("./src/types"), exports);
 __exportStar(require("./src/constants"), exports);
 __exportStar(require("./src/meili.service"), exports);
+__exportStar(require("./src/product-sync.service"), exports);
 //# sourceMappingURL=index.js.map
