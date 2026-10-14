@@ -8,6 +8,9 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AssistantHttpController = void 0;
 const common_1 = require("@nestjs/common");
@@ -16,14 +19,16 @@ const assistant_service_1 = require("./assistant.service");
 const constants_1 = require("./constants");
 /**
  * strapi zhao-sso 公众号回调转调接口：
- *   POST /shop-api/wechat-assistant/handle
+ *   POST /wechat-assistant/handle（**根路径**，Nest 无 API 前缀；
+ *   对外经 nginx location 原样透传，同 /wechat/message 机制——
+ *   /shop-api/* 前缀下的 POST 会被 Apollo GraphQL 中间件拦截，勿挂）
  *   header: x-zhao-secret（与 strapi 端 ZHAO_SEARCH_SHARED_SECRET 同值）
  *   body:   { openid, text, msgId?, createTime?, channelToken? }
  *   返回:   { kind: 'text', content } | { kind: 'news', articles: [{title,description,pic_url,url}] }
  *           | { handled: false }（无需回复，sso 回 success）
  *
  * 回复由 sso 侧组装被动回复 XML（受微信 5 秒窗口约束，本接口必须快速返回）。
- * 微信直连回调链路（/shop-api/wechat/message → 事件总线 → 客服消息）保留为备选，
+ * 微信直连回调链路（/wechat/message → 事件总线 → 客服消息）保留为备选，
  * 公众号后台只能配一个回调 URL，生产走 sso 链路。
  */
 let AssistantHttpController = class AssistantHttpController {
@@ -37,7 +42,16 @@ let AssistantHttpController = class AssistantHttpController {
             res.status(403).json({ handled: false, error: 'invalid secret' });
             return;
         }
-        const body = (req.body || {});
+        const rawBody = req.body;
+        let body = {};
+        try {
+            // jsonBridge 中间件已把 body 解析为对象；兼容字符串形式
+            body = typeof rawBody === 'string' ? JSON.parse(rawBody) : rawBody || {};
+        }
+        catch (_b) {
+            res.status(400).json({ handled: false, error: 'invalid json body' });
+            return;
+        }
         const openid = String(body.openid || body.fromUserName || '');
         const text = typeof body.text === 'string' ? body.text : '';
         if (!openid || !text) {
@@ -82,6 +96,8 @@ let AssistantHttpController = class AssistantHttpController {
 exports.AssistantHttpController = AssistantHttpController;
 __decorate([
     (0, common_1.Post)('handle'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Res)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
