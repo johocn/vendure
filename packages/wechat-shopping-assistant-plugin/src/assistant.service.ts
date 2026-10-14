@@ -183,14 +183,23 @@ export class AssistantService {
             await this.sessionService.clearFlow(msg.fromUserName);
             return buildFlowCancelledText(msg.fromUserName);
         }
-        // 地址流程中发「地址管理/新增地址」指令 → 切换流程（状态机优先但地址指令仍要放行，
-        // 否则重发「地址管理」会被当无效编号）；新增入口保留 order 流程上下文
-        const flowIntent = recognizeIntent(text);
-        if (flowIntent.kind === 'address_manage') return this.handleAddressManage(msg);
-        if (flowIntent.kind === 'address_add') {
-            const sessionNow = await this.sessionService.getActive(msg.fromUserName);
-            const keepFlow = sessionNow?.draft?.flow === 'order' ? sessionNow.draft : { flow: 'manage' as const };
-            return this.handleAddressAdd(msg, keepFlow);
+        // 地址流程态（addr_* / order_confirm）放行显式指令（状态机优先但指令不放行会成死胡同：
+        // 重发「地址管理」被当无效编号；「买N」无法重新下单；补录态（awaiting_*）不放行）。
+        // 新增入口保留 order 流程上下文。
+        const inAddrFlow = session.state?.startsWith('addr_') || session.state === 'order_confirm';
+        if (inAddrFlow) {
+            const flowIntent = recognizeIntent(text);
+            if (flowIntent.kind === 'address_manage') return this.handleAddressManage(msg);
+            if (flowIntent.kind === 'address_add') {
+                const sessionNow = await this.sessionService.getActive(msg.fromUserName);
+                const keepFlow = sessionNow?.draft?.flow === 'order' ? sessionNow.draft : { flow: 'manage' as const };
+                return this.handleAddressAdd(msg, keepFlow);
+            }
+            // 显式「买N」（带引导词）= 重新开始下单（重列地址选址）；
+            // 纯数字「1」在地址流态是编号回复（选地址/菜单项），不放行
+            const explicitOrder =
+                flowIntent.kind === 'order' && /^(?:购买|下单|订购|买|要|来|购|拍)/.test(normalizeInput(text));
+            if (explicitOrder) return this.handleOrder(msg, flowIntent.indices);
         }
         const ttl = this.opts.sessionTtlMinutes ?? 30;
         const draft: AssistantFlowDraft = session.draft ?? {};

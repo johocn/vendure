@@ -135,30 +135,39 @@ let AssistantService = class AssistantService {
     }
     // ============ 状态机：补录（awaiting_*）+ 地址簿/选址（addr_* / order_confirm） ============
     async handleFlowStep(msg, session) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r;
         const text = (msg.content || '').trim();
         if (/^(取消|退出)[!！。.~]?$/.test(text)) {
             await this.sessionService.clearFlow(msg.fromUserName);
             return (0, card_builder_1.buildFlowCancelledText)(msg.fromUserName);
         }
-        // 地址流程中发「地址管理/新增地址」指令 → 切换流程（状态机优先但地址指令仍要放行，
-        // 否则重发「地址管理」会被当无效编号）；新增入口保留 order 流程上下文
-        const flowIntent = (0, intent_1.recognizeIntent)(text);
-        if (flowIntent.kind === 'address_manage')
-            return this.handleAddressManage(msg);
-        if (flowIntent.kind === 'address_add') {
-            const sessionNow = await this.sessionService.getActive(msg.fromUserName);
-            const keepFlow = ((_a = sessionNow === null || sessionNow === void 0 ? void 0 : sessionNow.draft) === null || _a === void 0 ? void 0 : _a.flow) === 'order' ? sessionNow.draft : { flow: 'manage' };
-            return this.handleAddressAdd(msg, keepFlow);
+        // 地址流程态（addr_* / order_confirm）放行显式指令（状态机优先但指令不放行会成死胡同：
+        // 重发「地址管理」被当无效编号；「买N」无法重新下单；补录态（awaiting_*）不放行）。
+        // 新增入口保留 order 流程上下文。
+        const inAddrFlow = ((_a = session.state) === null || _a === void 0 ? void 0 : _a.startsWith('addr_')) || session.state === 'order_confirm';
+        if (inAddrFlow) {
+            const flowIntent = (0, intent_1.recognizeIntent)(text);
+            if (flowIntent.kind === 'address_manage')
+                return this.handleAddressManage(msg);
+            if (flowIntent.kind === 'address_add') {
+                const sessionNow = await this.sessionService.getActive(msg.fromUserName);
+                const keepFlow = ((_b = sessionNow === null || sessionNow === void 0 ? void 0 : sessionNow.draft) === null || _b === void 0 ? void 0 : _b.flow) === 'order' ? sessionNow.draft : { flow: 'manage' };
+                return this.handleAddressAdd(msg, keepFlow);
+            }
+            // 显式「买N」（带引导词）= 重新开始下单（重列地址选址）；
+            // 纯数字「1」在地址流态是编号回复（选地址/菜单项），不放行
+            const explicitOrder = flowIntent.kind === 'order' && /^(?:购买|下单|订购|买|要|来|购|拍)/.test((0, intent_1.normalizeInput)(text));
+            if (explicitOrder)
+                return this.handleOrder(msg, flowIntent.indices);
         }
-        const ttl = (_b = this.opts.sessionTtlMinutes) !== null && _b !== void 0 ? _b : 30;
-        const draft = (_c = session.draft) !== null && _c !== void 0 ? _c : {};
+        const ttl = (_c = this.opts.sessionTtlMinutes) !== null && _c !== void 0 ? _c : 30;
+        const draft = (_d = session.draft) !== null && _d !== void 0 ? _d : {};
         if (session.state === 'awaiting_phone') {
             const phone = text.replace(/[-\s]/g, '');
             if (!/^1[3-9]\d{9}$/.test(phone)) {
                 return (0, card_builder_1.buildInvalidPhoneText)(msg.fromUserName);
             }
-            await this.sessionService.setFlow(msg.fromUserName, 'awaiting_address', { phone, indices: (_d = draft.indices) !== null && _d !== void 0 ? _d : [] }, ttl);
+            await this.sessionService.setFlow(msg.fromUserName, 'awaiting_address', { phone, indices: (_e = draft.indices) !== null && _e !== void 0 ? _e : [] }, ttl);
             core_1.Logger.info(`Assistant flow awaiting_address openid=${msg.fromUserName}`, constants_1.loggerCtx);
             return (0, card_builder_1.buildAwaitingAddressText)(msg.fromUserName, phone);
         }
@@ -172,7 +181,7 @@ let AssistantService = class AssistantService {
                 return (0, card_builder_1.buildBindGuideText)(msg.fromUserName, this.loginUrl());
             }
             // 建档前先取待下单编号（清态后 draft 即失效）
-            const indices = (_e = draft.indices) !== null && _e !== void 0 ? _e : [];
+            const indices = (_f = draft.indices) !== null && _f !== void 0 ? _f : [];
             const picked = session.results.filter(r => indices.includes(r.index));
             const ctx = await this.createShopCtx(session.channelId);
             const outcome = await this.customerBinding.bindOrCreateCustomer(ctx, msg.fromUserName, phone, text);
@@ -206,7 +215,7 @@ let AssistantService = class AssistantService {
                 await this.sessionService.setFlow(msg.fromUserName, 'addr_edit_person', draft, ttl);
                 return (0, card_builder_1.buildAddrEditPersonPrompt)(msg.fromUserName);
             }
-            return (0, card_builder_1.buildAddrEditFieldText)(msg.fromUserName, (_f = draft.pickIndex) !== null && _f !== void 0 ? _f : 0);
+            return (0, card_builder_1.buildAddrEditFieldText)(msg.fromUserName, (_g = draft.pickIndex) !== null && _g !== void 0 ? _g : 0);
         }
         if (session.state === 'addr_edit_text') {
             if (text.length < 8) {
@@ -267,7 +276,7 @@ let AssistantService = class AssistantService {
                     return (0, card_builder_1.buildOrderFailText)(msg.fromUserName, '删除地址失败');
                 const remaining = await this.addressBook.list(outcome.ctx, outcome.customerId);
                 // core 已把默认顶替给剩余最早地址；仅当删的是默认时展示切换/无默认提示
-                const newDefault = item.isDefault ? ((_g = remaining.find(a => a.isDefault)) !== null && _g !== void 0 ? _g : null) : undefined;
+                const newDefault = item.isDefault ? ((_h = remaining.find(a => a.isDefault)) !== null && _h !== void 0 ? _h : null) : undefined;
                 await this.sessionService.setFlow(msg.fromUserName, 'addr_pick', { flow: 'manage' }, ttl);
                 core_1.Logger.info(`Assistant address removed: addressId=${outcome.addressId} wasDefault=${item.isDefault}`, constants_1.loggerCtx);
                 return (0, card_builder_1.buildAddrDeletedText)(msg.fromUserName, newDefault);
@@ -289,7 +298,7 @@ let AssistantService = class AssistantService {
                 return (0, card_builder_1.buildBindGuideText)(msg.fromUserName, this.loginUrl());
             }
             const nextDraft = Object.assign(Object.assign({}, draft), { pendingText: text.slice(0, 250) });
-            const registeredPhone = (_h = customer.phoneNumber) !== null && _h !== void 0 ? _h : '';
+            const registeredPhone = (_j = customer.phoneNumber) !== null && _j !== void 0 ? _j : '';
             if (registeredPhone) {
                 await this.sessionService.setFlow(msg.fromUserName, 'addr_new_phone', nextDraft, ttl);
                 return (0, card_builder_1.buildAddrNewPhoneText)(msg.fromUserName, registeredPhone);
@@ -301,7 +310,7 @@ let AssistantService = class AssistantService {
         if (session.state === 'addr_new_phone') {
             const input = (0, intent_1.normalizeInput)(text);
             const customer = await this.customerBinding.findCustomerByOpenid(msg.fromUserName);
-            const registeredPhone = (_j = customer === null || customer === void 0 ? void 0 : customer.phoneNumber) !== null && _j !== void 0 ? _j : '';
+            const registeredPhone = (_k = customer === null || customer === void 0 ? void 0 : customer.phoneNumber) !== null && _k !== void 0 ? _k : '';
             if (input === '1' && registeredPhone) {
                 if (!draft.pendingText) {
                     await this.sessionService.clearFlow(msg.fromUserName);
@@ -331,7 +340,7 @@ let AssistantService = class AssistantService {
         if (session.state === 'addr_new_default') {
             const input = (0, intent_1.normalizeInput)(text);
             if (input !== '是' && input !== '否') {
-                return (0, card_builder_1.buildAddrNewDefaultText)(msg.fromUserName, (_k = draft.pendingText) !== null && _k !== void 0 ? _k : '', (_l = draft.pendingPhone) !== null && _l !== void 0 ? _l : '');
+                return (0, card_builder_1.buildAddrNewDefaultText)(msg.fromUserName, (_l = draft.pendingText) !== null && _l !== void 0 ? _l : '', (_m = draft.pendingPhone) !== null && _m !== void 0 ? _m : '');
             }
             const ctx = await this.createShopCtx(session.channelId);
             const customer = await this.customerBinding.findCustomerByOpenid(msg.fromUserName);
@@ -340,14 +349,14 @@ let AssistantService = class AssistantService {
                 return (0, card_builder_1.buildBindGuideText)(msg.fromUserName, this.loginUrl());
             }
             const addressId = await this.addressBook.add(ctx, customer.id, {
-                streetLine1: (_m = draft.pendingText) !== null && _m !== void 0 ? _m : '',
-                phoneNumber: (_o = draft.pendingPhone) !== null && _o !== void 0 ? _o : '',
+                streetLine1: (_o = draft.pendingText) !== null && _o !== void 0 ? _o : '',
+                phoneNumber: (_p = draft.pendingPhone) !== null && _p !== void 0 ? _p : '',
                 setDefault: input === '是',
             });
             if (!addressId)
                 return (0, card_builder_1.buildOrderFailText)(msg.fromUserName, '保存地址失败');
             const item = await this.addressBook.getItem(ctx, customer.id, addressId);
-            core_1.Logger.info(`Assistant address added: addressId=${addressId} flow=${(_p = draft.flow) !== null && _p !== void 0 ? _p : 'manage'}`, constants_1.loggerCtx);
+            core_1.Logger.info(`Assistant address added: addressId=${addressId} flow=${(_q = draft.flow) !== null && _q !== void 0 ? _q : 'manage'}`, constants_1.loggerCtx);
             // 下单流程：新地址直接进下单确认；管理流程：落库后回列表态
             if (draft.flow === 'order') {
                 await this.sessionService.setFlow(msg.fromUserName, 'order_confirm', Object.assign(Object.assign({}, draft), { pickAddressId: addressId }), ttl);
@@ -382,7 +391,7 @@ let AssistantService = class AssistantService {
                 await this.sessionService.clearFlow(msg.fromUserName);
                 return (0, card_builder_1.buildSessionExpiredText)(msg.fromUserName);
             }
-            const out = await this.placeOrder(ctx, msg.fromUserName, customer, picked, (_q = draft.pickAddressId) !== null && _q !== void 0 ? _q : undefined);
+            const out = await this.placeOrder(ctx, msg.fromUserName, customer, picked, (_r = draft.pickAddressId) !== null && _r !== void 0 ? _r : undefined);
             await this.sessionService.clearFlow(msg.fromUserName);
             return out;
         }

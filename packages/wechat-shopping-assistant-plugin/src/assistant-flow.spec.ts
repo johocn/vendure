@@ -666,4 +666,32 @@ describe('AssistantService 地址簿管理 + 下单选址（方案 B）', () => 
         expect(session.draft.indices).toEqual([1]);
         expect(outbound[outbound.length - 1].content).toContain('请回复新的收货地址');
     });
+
+    test('地址管理流中发「买1」→ 放行下单（重新列地址，order 上下文）', async () => {
+        const { svc, connection, outbound } = makeService();
+        connection.customers.set('openid-user-1', { id: 42, phoneNumber: '13800138000' });
+        await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
+        await svc.onMessage(textEvent('地址管理', 'M2')); // 进入管理流 flow=manage
+        await svc.onMessage(textEvent('买1', 'M3')); // 改主意下单
+        const last = outbound[outbound.length - 1];
+        expect(last.content).toContain('请选择收货地址');
+        const session = connection.sessions.get('openid-user-1');
+        expect(session.state).toBe('addr_pick');
+        expect(session.draft.flow).toBe('order');
+        expect(session.draft.indices).toEqual([1]);
+    });
+
+    test('下单选址流中改发「买2」→ 重新列地址并更新编号', async () => {
+        const { svc, connection, outbound } = makeService();
+        connection.customers.set('openid-user-1', { id: 42, phoneNumber: '13800138000' });
+        await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
+        await svc.onMessage(textEvent('买1', 'M2')); // 地址列表 indices=[1]
+        await svc.onMessage(textEvent('买2', 'M3')); // 改买第 2 个
+        const last = outbound[outbound.length - 1];
+        expect(last.content).toContain('请选择收货地址');
+        const session = connection.sessions.get('openid-user-1');
+        expect(session.state).toBe('addr_pick');
+        expect(session.draft.flow).toBe('order');
+        expect(session.draft.indices).toEqual([2]);
+    });
 });
