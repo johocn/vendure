@@ -21,6 +21,8 @@ export interface KbDocument {
     price?: number;
     collectionIds?: string[];
     slug?: string;
+    /** 商品主图绝对地址（无配置资产域名时省略） */
+    thumbnail?: string;
 }
 export interface MeiliIndexStatus {
     index: string;

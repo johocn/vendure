@@ -1,0 +1,15 @@
+import { TransactionalConnection } from '@vendure/core';
+import { CardProduct } from './types';
+import { WechatShoppingSession } from './entities/wechat-shopping-session.entity';
+/**
+ * 会话存储：openid 维度 upsert 最近一次搜索结果。
+ * 为控制体量，写入时顺带清理过期会话（低频消息场景足够）。
+ */
+export declare class SessionService {
+    private connection;
+    constructor(connection: TransactionalConnection);
+    saveResults(openid: string, channelId: string, results: CardProduct[], query: string, ttlMinutes: number): Promise<void>;
+    /** 返回 null 表示无会话/已过期 */
+    getActive(openid: string): Promise<WechatShoppingSession | null>;
+    clear(openid: string): Promise<void>;
+}

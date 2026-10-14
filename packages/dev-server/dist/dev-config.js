@@ -79,6 +79,7 @@ const diy_plugin_1 = require("@vendure/diy-plugin");
 const favorite_plugin_1 = require("@vendure/favorite-plugin");
 const tcm_clinic_plugin_1 = require("@vendure/tcm-clinic-plugin");
 const meilisearch_plugin_1 = require("@vendure/meilisearch-plugin");
+const wechat_shopping_assistant_plugin_1 = require("@vendure/wechat-shopping-assistant-plugin");
 if (!process.env.REDEMPTION_KEY) {
     process.env.REDEMPTION_KEY = 'd'.repeat(64);
 }
@@ -482,6 +483,14 @@ exports.devConfig = {
             reindexUrl: process.env.ZHAO_SEARCH_REINDEX_URL,
             sharedSecret: process.env.ZHAO_SEARCH_SHARED_SECRET,
         }),
+        ...((process.env.WECHAT_AUTH_APP_ID || process.env.DEV_BYPASS_WECHAT === 'true') ? [wechat_shopping_assistant_plugin_1.WechatShoppingAssistantPlugin.init({
+                storefrontUrl: process.env.PUBLIC_STOREFRONT_URL || '',
+                assetBaseUrl: process.env.PUBLIC_ASSET_URL || '',
+                searchLocale: 'zh',
+                sessionTtlMinutes: 30,
+                searchLimit: 5,
+                outboundMode: process.env.WECHAT_ASSISTANT_OUTBOUND_MODE === 'echo' ? 'echo' : 'api',
+            })] : []),
         DisableSellerSplitPlugin,
     ],
 };

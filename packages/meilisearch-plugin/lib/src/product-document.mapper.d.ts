@@ -14,6 +14,8 @@ export interface ProductProjection {
     collectionIds: string[];
     tags: string[];
     urlBase: string;
+    /** 商品主图绝对地址（featuredAsset.preview + 资产域名）；空则省略 thumbnail */
+    thumbnailUrl?: string;
 }
 export declare function productDocId(productId: string): string;
 export declare function toProductDocuments(p: ProductProjection, locales: string[]): KbDocument[];

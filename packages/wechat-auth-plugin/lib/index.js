@@ -20,4 +20,6 @@ __exportStar(require("./src/constants"), exports);
 __exportStar(require("./src/wechat-auth.service"), exports);
 __exportStar(require("./src/wechat-auth-shop.resolver"), exports);
 __exportStar(require("./src/wxacode.service"), exports);
+__exportStar(require("./src/wechat-message.events"), exports);
+__exportStar(require("./src/wechat-xml"), exports);
 //# sourceMappingURL=index.js.map

@@ -54,6 +54,29 @@ let MeiliService = class MeiliService {
             return;
         await this.req('POST', `/indexes/${this.indexUid(locale)}/documents?primaryKey=id`, docs);
     }
+    /**
+     * 商品搜索（shop 侧统一入口）：
+     * filter 固定 type=product + status=published，可叠加 channelId；
+     * 权重由 ensureIndexes 的 searchableAttributes 决定（title > tags > body）。
+     */
+    async search(locale, params) {
+        var _a, _b, _c, _d, _e, _f;
+        const filter = ["type = 'product'", "status = 'published'"];
+        if (params.channelId)
+            filter.push(`channelId = '${String(params.channelId).replace(/'/g, "''")}'`);
+        const body = {
+            q: params.q,
+            limit: (_a = params.limit) !== null && _a !== void 0 ? _a : 10,
+            offset: (_b = params.offset) !== null && _b !== void 0 ? _b : 0,
+            filter,
+        };
+        const r = await this.req('POST', `/indexes/${this.indexUid(locale)}/search`, body);
+        return {
+            hits: ((_c = r.hits) !== null && _c !== void 0 ? _c : []),
+            total: (_e = (_d = r.estimatedTotalHits) !== null && _d !== void 0 ? _d : r.totalHits) !== null && _e !== void 0 ? _e : 0,
+            processingTimeMs: (_f = r.processingTimeMs) !== null && _f !== void 0 ? _f : 0,
+        };
+    }
     async deleteDocuments(locale, ids) {
         if (!ids.length)
             return;

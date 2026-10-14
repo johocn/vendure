@@ -16,6 +16,8 @@ const PLUGINS = [
   // 支付 / 认证 / 存储
   "alipay-plugin","wechatpay-plugin","oss-plugin",
   "phone-auth-plugin","wechat-auth-plugin","douyin-auth-plugin",
+  // 搜索 / 微信购物助手（依赖 wechat-auth + meilisearch）
+  "meilisearch-plugin","wechat-shopping-assistant-plugin",
   // 业务插件
   "invoice-plugin","invoice-pdf-plugin","logistics-plugin","logistics-api-plugin",
   "delivery-plugin","delivery-gateway-plugin","campus-delivery-plugin","pickup-plugin",

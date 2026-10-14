@@ -95,19 +95,15 @@ export class WechatAuthService {
     }
 
     private async fetchAccessToken(): Promise<string> {
-        const url = `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${this.options.appId}&secret=${this.options.appSecret}`;
-        const response = await fetch(url);
-        const data = (await response.json()) as any;
-        if (data.access_token) {
-            this.accessTokenCache = {
-                token: data.access_token,
-                expiresAt: Date.now() + (data.expires_in - this.REFRESH_BUFFER_SECONDS) * 1000,
-            };
-            Logger.info(`WeChat access_token refreshed, expires in ${data.expires_in}s`, loggerCtx);
-            return data.access_token;
+        return this.fetchAccessTokenByCredentials(this.options.appId, this.options.appSecret);
+    }
+
+    /** 按凭证取 access_token：未传或与插件主 appId 相同时走主缓存；否则按 appId 独立缓存 */
+    private async getAccessTokenFor(cred?: { appId?: string; appSecret?: string }): Promise<string> {
+        if (!cred?.appId || !cred.appSecret || cred.appId === this.options.appId) {
+            return this.getAccessToken();
         }
-        Logger.error(`Failed to get access_token: ${JSON.stringify(data)}`, loggerCtx);
-        throw new Error('Failed to get WeChat access_token');
+        return this.getMiniProgramAccessToken(cred.appId, cred.appSecret);
     }
 
     private async fetchJsapiTicket(): Promise<string> {
@@ -137,8 +133,8 @@ export class WechatAuthService {
     // ============ 公众号运营 API（菜单 / 粉丝 / 模板消息），供 admin GraphQL 代理 ============
 
     /** 微信 cgi-bin 通用 GET 请求（自动带 access_token，errcode 非 0 抛错） */
-    private async wxGet(path: string): Promise<any> {
-        const token = await this.getAccessToken();
+    private async wxGet(path: string, cred?: { appId?: string; appSecret?: string }): Promise<any> {
+        const token = await this.getAccessTokenFor(cred);
         const res = await fetch(`https://api.weixin.qq.com/cgi-bin/${path}${path.includes('?') ? '&' : '?'}access_token=${token}`);
         const data = (await res.json()) as any;
         if (data.errcode && data.errcode !== 0) {
@@ -147,8 +143,8 @@ export class WechatAuthService {
         return data;
     }
 
-    private async wxPost(path: string, payload: any): Promise<any> {
-        const token = await this.getAccessToken();
+    private async wxPost(path: string, payload: any, cred?: { appId?: string; appSecret?: string }): Promise<any> {
+        const token = await this.getAccessTokenFor(cred);
         const res = await fetch(`https://api.weixin.qq.com/cgi-bin/${path}?access_token=${token}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -190,5 +186,28 @@ export class WechatAuthService {
     /** 发送模板消息（message/template/send） */
     async sendTemplate(input: { touser: string; template_id: string; data?: any; url?: string; miniprogram?: any }): Promise<any> {
         return this.wxPost('message/template/send', input);
+    }
+
+    // ============ 客服消息（48h 窗口内主动推送），供消息回调链路使用 ============
+
+    /**
+     * 发送客服文本消息。cred 传渠道覆盖凭证（appId/appSecret），
+     * 未传或与主 appId 一致时走主 access_token。
+     */
+    async sendCustomText(
+        touser: string,
+        content: string,
+        cred?: { appId?: string; appSecret?: string },
+    ): Promise<any> {
+        return this.wxPost('message/custom/send', { touser, msgtype: 'text', text: { content } }, cred);
+    }
+
+    /** 发送客服图文消息（news，最多 8 条；imageUrl 必须为公网可访问的绝对地址） */
+    async sendCustomNews(
+        touser: string,
+        articles: Array<{ title: string; description?: string; url?: string; picurl?: string }>,
+        cred?: { appId?: string; appSecret?: string },
+    ): Promise<any> {
+        return this.wxPost('message/custom/send', { touser, msgtype: 'news', news: { articles } }, cred);
     }
 }

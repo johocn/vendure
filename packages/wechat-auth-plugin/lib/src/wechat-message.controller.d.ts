@@ -1,7 +1,8 @@
-import { ChannelService } from '@vendure/core';
+import { EventBus, ChannelService } from '@vendure/core';
 export declare class WechatMessageController {
     private channelService;
-    constructor(channelService: ChannelService);
+    private eventBus;
+    constructor(channelService: ChannelService, eventBus: EventBus);
     private getCredentials;
     verify(query: {
         signature?: string;

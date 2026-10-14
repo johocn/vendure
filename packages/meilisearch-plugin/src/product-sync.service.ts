@@ -68,6 +68,11 @@ export class ProductSyncService {
         await this.projectAll(this.connection.rawConnection.manager, [...this.opts.locales], this.urlBase());
     }
 
+    /** 商品主图绝对地址前缀（Vendure 资产服务公网域名）；未配置则文档省略 thumbnail */
+    private assetBase(): string {
+        return (process.env.PUBLIC_ASSET_URL ?? '').replace(/\/+$/, '');
+    }
+
     /**
      * 全量投影：分块查 Product（防大表）→ 组装投影 → toProductDocuments → 按 locale 500 条/批 upsert
      */
@@ -85,6 +90,7 @@ export class ProductSyncService {
                     translations: true,
                     variants: { productVariantPrices: true, collections: true },
                     channels: true,
+                    featuredAsset: true,
                 },
                 skip,
                 take: PRODUCT_CHUNK_SIZE,
@@ -124,6 +130,7 @@ export class ProductSyncService {
                 translations: true,
                 variants: { productVariantPrices: true, collections: true },
                 channels: true,
+                featuredAsset: true,
             },
         });
         if (!product) {
@@ -163,6 +170,9 @@ export class ProductSyncService {
         const zh = product.translations?.find(t => t.languageCode === LanguageCode.zh_Hans);
         const en = product.translations?.find(t => t.languageCode === LanguageCode.en);
         const channelId = this.resolveChannelId(product);
+        const assetBase = this.assetBase();
+        const preview = product.featuredAsset?.preview ?? '';
+        const thumbnailUrl = assetBase && preview ? `${assetBase}/${preview.replace(/^\/+/, '')}` : '';
         return {
             productId: String(product.id),
             channelId,
@@ -182,6 +192,7 @@ export class ProductSyncService {
             ],
             tags: [],
             urlBase,
+            ...(thumbnailUrl ? { thumbnailUrl } : {}),
         };
     }
 

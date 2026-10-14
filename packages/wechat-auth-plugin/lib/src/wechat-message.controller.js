@@ -52,9 +52,13 @@ const core_1 = require("@vendure/core");
 const cjk_plugin_1 = require("@vendure/cjk-plugin");
 const plugin_1 = require("./plugin");
 const wechat_message_crypto_1 = require("./wechat-message-crypto");
+const constants_1 = require("./constants");
+const wechat_xml_1 = require("./wechat-xml");
+const wechat_message_events_1 = require("./wechat-message.events");
 let WechatMessageController = class WechatMessageController {
-    constructor(channelService) {
+    constructor(channelService, eventBus) {
         this.channelService = channelService;
+        this.eventBus = eventBus;
     }
     async getCredentials(channelId) {
         var _a, _b, _c;
@@ -83,22 +87,46 @@ let WechatMessageController = class WechatMessageController {
         return query.echostr;
     }
     async receive(query, body) {
+        var _a;
         if (!query.channel)
             throw new common_1.BadRequestException('Missing channel');
         const { token, encodingAESKey, appId } = await this.getCredentials(query.channel);
-        const encrypted = body === null || body === void 0 ? void 0 : body.Encrypt;
-        if (!encrypted) {
-            return 'success';
-        }
+        // body 由插件注册的 text/xml 中间件解析为字符串；兼容 JSON 转发（{Encrypt} 形式）
+        const isXmlString = typeof body === 'string';
+        let xml;
         if (query.encrypt_type === 'aes') {
+            const encrypted = isXmlString ? (0, wechat_xml_1.parseWechatXml)(body).Encrypt : body === null || body === void 0 ? void 0 : body.Encrypt;
+            if (!encrypted)
+                return 'success';
             if (!query.msg_signature)
                 throw new common_1.BadRequestException('Missing msg_signature');
             if (!(0, wechat_message_crypto_1.verifySignature)(token, query.timestamp, query.nonce, query.msg_signature, encrypted)) {
                 throw new common_1.BadRequestException('Signature verification failed');
             }
-            const xml = (0, wechat_message_crypto_1.decryptMessage)(token, encodingAESKey, appId, encrypted);
-            // TODO: 解析 xml,路由到内部 handler(关注/菜单点击/消息等)
+            xml = (0, wechat_xml_1.parseWechatXml)((0, wechat_message_crypto_1.decryptMessage)(token, encodingAESKey, appId, encrypted));
+        }
+        else {
+            // 明文模式：直接解析 XML（微信要求 5 秒内应答，解析失败也回 success 避免重试风暴）
+            xml = isXmlString ? (0, wechat_xml_1.parseWechatXml)(body) : {};
+        }
+        if (!xml.FromUserName || !xml.MsgType)
             return 'success';
+        const message = {
+            channelToken: query.channel,
+            msgType: xml.MsgType,
+            fromUserName: xml.FromUserName,
+            toUserName: (_a = xml.ToUserName) !== null && _a !== void 0 ? _a : '',
+            content: xml.Content,
+            msgId: xml.MsgId,
+            event: xml.Event,
+            eventKey: xml.EventKey,
+            createTime: xml.CreateTime ? Number(xml.CreateTime) : undefined,
+        };
+        try {
+            this.eventBus.publish(new wechat_message_events_1.WechatMessageEvent(message));
+        }
+        catch (e) {
+            core_1.Logger.error(`WechatMessageEvent publish failed: ${String(e)}`, constants_1.loggerCtx);
         }
         return 'success';
     }
@@ -121,6 +149,7 @@ __decorate([
 ], WechatMessageController.prototype, "receive", null);
 exports.WechatMessageController = WechatMessageController = __decorate([
     (0, common_1.Controller)('wechat/message'),
-    __metadata("design:paramtypes", [core_1.ChannelService])
+    __metadata("design:paramtypes", [core_1.ChannelService,
+        core_1.EventBus])
 ], WechatMessageController);
 //# sourceMappingURL=wechat-message.controller.js.map

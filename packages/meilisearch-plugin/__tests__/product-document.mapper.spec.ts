@@ -43,4 +43,11 @@ describe('product-document.mapper 投影', () => {
     test('productDocId format', () => {
         expect(productDocId('9')).toBe('product-9');
     });
+
+    test('thumbnail included only when thumbnailUrl present', () => {
+        const withThumb = toProductDocuments({ ...base, thumbnailUrl: 'https://cdn.example.com/assets/a.jpg' }, ['zh']);
+        expect(withThumb[0].thumbnail).toBe('https://cdn.example.com/assets/a.jpg');
+        const withoutThumb = toProductDocuments({ ...base, thumbnailUrl: undefined }, ['zh']);
+        expect('thumbnail' in withoutThumb[0]).toBe(false);
+    });
 });

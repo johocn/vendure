@@ -60,6 +60,11 @@ let ProductSyncService = class ProductSyncService {
     async syncAll() {
         await this.projectAll(this.connection.rawConnection.manager, [...this.opts.locales], this.urlBase());
     }
+    /** 商品主图绝对地址前缀（Vendure 资产服务公网域名）；未配置则文档省略 thumbnail */
+    assetBase() {
+        var _a;
+        return ((_a = process.env.PUBLIC_ASSET_URL) !== null && _a !== void 0 ? _a : '').replace(/\/+$/, '');
+    }
     /**
      * 全量投影：分块查 Product（防大表）→ 组装投影 → toProductDocuments → 按 locale 500 条/批 upsert
      */
@@ -73,6 +78,7 @@ let ProductSyncService = class ProductSyncService {
                     translations: true,
                     variants: { productVariantPrices: true, collections: true },
                     channels: true,
+                    featuredAsset: true,
                 },
                 skip,
                 take: PRODUCT_CHUNK_SIZE,
@@ -111,6 +117,7 @@ let ProductSyncService = class ProductSyncService {
                 translations: true,
                 variants: { productVariantPrices: true, collections: true },
                 channels: true,
+                featuredAsset: true,
             },
         });
         if (!product) {
@@ -145,28 +152,16 @@ let ProductSyncService = class ProductSyncService {
         }
     }
     toProjection(product, urlBase) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
         const zh = (_a = product.translations) === null || _a === void 0 ? void 0 : _a.find(t => t.languageCode === core_1.LanguageCode.zh_Hans);
         const en = (_b = product.translations) === null || _b === void 0 ? void 0 : _b.find(t => t.languageCode === core_1.LanguageCode.en);
         const channelId = this.resolveChannelId(product);
-        return {
-            productId: String(product.id),
-            channelId,
-            status: product.enabled ? 'published' : 'draft',
-            updatedAt: product.updatedAt ? new Date(product.updatedAt).getTime() : Date.now(),
-            nameZh: (_c = zh === null || zh === void 0 ? void 0 : zh.name) !== null && _c !== void 0 ? _c : '',
-            nameEn: (_d = en === null || en === void 0 ? void 0 : en.name) !== null && _d !== void 0 ? _d : '',
-            descZh: (_e = zh === null || zh === void 0 ? void 0 : zh.description) !== null && _e !== void 0 ? _e : '',
-            descEn: (_f = en === null || en === void 0 ? void 0 : en.description) !== null && _f !== void 0 ? _f : '',
-            slugZh: (_g = zh === null || zh === void 0 ? void 0 : zh.slug) !== null && _g !== void 0 ? _g : '',
-            slugEn: (_h = en === null || en === void 0 ? void 0 : en.slug) !== null && _h !== void 0 ? _h : '',
-            price: this.resolvePrice(product, channelId),
-            collectionIds: [
-                ...new Set(((_j = product.variants) !== null && _j !== void 0 ? _j : []).flatMap(v => { var _a; return ((_a = v.collections) !== null && _a !== void 0 ? _a : []).map(c => String(c.id)); })),
-            ],
-            tags: [],
-            urlBase,
-        };
+        const assetBase = this.assetBase();
+        const preview = (_d = (_c = product.featuredAsset) === null || _c === void 0 ? void 0 : _c.preview) !== null && _d !== void 0 ? _d : '';
+        const thumbnailUrl = assetBase && preview ? `${assetBase}/${preview.replace(/^\/+/, '')}` : '';
+        return Object.assign({ productId: String(product.id), channelId, status: product.enabled ? 'published' : 'draft', updatedAt: product.updatedAt ? new Date(product.updatedAt).getTime() : Date.now(), nameZh: (_e = zh === null || zh === void 0 ? void 0 : zh.name) !== null && _e !== void 0 ? _e : '', nameEn: (_f = en === null || en === void 0 ? void 0 : en.name) !== null && _f !== void 0 ? _f : '', descZh: (_g = zh === null || zh === void 0 ? void 0 : zh.description) !== null && _g !== void 0 ? _g : '', descEn: (_h = en === null || en === void 0 ? void 0 : en.description) !== null && _h !== void 0 ? _h : '', slugZh: (_j = zh === null || zh === void 0 ? void 0 : zh.slug) !== null && _j !== void 0 ? _j : '', slugEn: (_k = en === null || en === void 0 ? void 0 : en.slug) !== null && _k !== void 0 ? _k : '', price: this.resolvePrice(product, channelId), collectionIds: [
+                ...new Set(((_l = product.variants) !== null && _l !== void 0 ? _l : []).flatMap(v => { var _a; return ((_a = v.collections) !== null && _a !== void 0 ? _a : []).map(c => String(c.id)); })),
+            ], tags: [], urlBase }, (thumbnailUrl ? { thumbnailUrl } : {}));
     }
     /** channelId：第一个非默认渠道 id（默认渠道 code '__default_channel__'）；全无则回退默认渠道 '1' */
     resolveChannelId(product) {

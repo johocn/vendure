@@ -85,7 +85,8 @@
         "@vendure/shop-plugin": "0.0.1",
         "@vendure/telemetry-plugin": "3.6.4",
         "@vendure/wechat-auth-plugin": "0.0.1",
-        "@vendure/wechatpay-plugin": "0.0.1"
+        "@vendure/wechatpay-plugin": "0.0.1",
+        "@vendure/wechat-shopping-assistant-plugin": "0.0.1"
     },
     "devDependencies": {
         "@vendure/testing": "3.6.4",

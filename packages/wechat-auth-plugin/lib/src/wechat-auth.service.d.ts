@@ -20,6 +20,8 @@ export declare class WechatAuthService {
         signature: string;
     }>;
     private fetchAccessToken;
+    /** 按凭证取 access_token：未传或与插件主 appId 相同时走主缓存；否则按 appId 独立缓存 */
+    private getAccessTokenFor;
     private fetchJsapiTicket;
     private generateNonceStr;
     /** 微信 cgi-bin 通用 GET 请求（自动带 access_token，errcode 非 0 抛错） */
@@ -42,5 +44,23 @@ export declare class WechatAuthService {
         data?: any;
         url?: string;
         miniprogram?: any;
+    }): Promise<any>;
+    /**
+     * 发送客服文本消息。cred 传渠道覆盖凭证（appId/appSecret），
+     * 未传或与主 appId 一致时走主 access_token。
+     */
+    sendCustomText(touser: string, content: string, cred?: {
+        appId?: string;
+        appSecret?: string;
+    }): Promise<any>;
+    /** 发送客服图文消息（news，最多 8 条；imageUrl 必须为公网可访问的绝对地址） */
+    sendCustomNews(touser: string, articles: Array<{
+        title: string;
+        description?: string;
+        url?: string;
+        picurl?: string;
+    }>, cred?: {
+        appId?: string;
+        appSecret?: string;
     }): Promise<any>;
 }

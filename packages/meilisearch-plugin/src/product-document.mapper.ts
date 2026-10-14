@@ -15,6 +15,8 @@ export interface ProductProjection {
     collectionIds: string[];
     tags: string[];
     urlBase: string; // 从 env/动态 origin 注入，禁止硬编码域名
+    /** 商品主图绝对地址（featuredAsset.preview + 资产域名）；空则省略 thumbnail */
+    thumbnailUrl?: string;
 }
 
 export function productDocId(productId: string): string {
@@ -43,6 +45,7 @@ export function toProductDocuments(p: ProductProjection, locales: string[]): KbD
                 price: p.price,
                 collectionIds: p.collectionIds,
                 slug: p.slugZh || p.slugEn,
+                ...(p.thumbnailUrl ? { thumbnail: p.thumbnailUrl } : {}),
             }) satisfies KbDocument,
     );
 }

@@ -4,3 +4,5 @@ export * from './src/constants';
 export * from './src/wechat-auth.service';
 export * from './src/wechat-auth-shop.resolver';
 export * from './src/wxacode.service';
+export * from './src/wechat-message.events';
+export * from './src/wechat-xml';

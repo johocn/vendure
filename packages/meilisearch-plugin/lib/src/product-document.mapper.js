@@ -10,21 +10,6 @@ function toProductDocuments(p, locales) {
     if (p.status !== 'published')
         return [];
     const id = productDocId(p.productId);
-    return locales.map(locale => ({
-        id,
-        type: 'product',
-        sourceId: p.productId,
-        sourceSystem: 'vendure',
-        url: `${p.urlBase}/${locale === 'zh' ? p.slugZh || p.productId : p.slugEn || p.slugZh || p.productId}`,
-        channelId: p.channelId,
-        status: p.status,
-        tags: p.tags,
-        title: locale === 'zh' ? p.nameZh : pick(p.nameZh, p.nameEn),
-        body: locale === 'zh' ? p.descZh : pick(p.descZh, p.descEn),
-        updatedAt: p.updatedAt,
-        price: p.price,
-        collectionIds: p.collectionIds,
-        slug: p.slugZh || p.slugEn,
-    }));
+    return locales.map(locale => (Object.assign({ id, type: 'product', sourceId: p.productId, sourceSystem: 'vendure', url: `${p.urlBase}/${locale === 'zh' ? p.slugZh || p.productId : p.slugEn || p.slugZh || p.productId}`, channelId: p.channelId, status: p.status, tags: p.tags, title: locale === 'zh' ? p.nameZh : pick(p.nameZh, p.nameEn), body: locale === 'zh' ? p.descZh : pick(p.descZh, p.descEn), updatedAt: p.updatedAt, price: p.price, collectionIds: p.collectionIds, slug: p.slugZh || p.slugEn }, (p.thumbnailUrl ? { thumbnail: p.thumbnailUrl } : {}))));
 }
 //# sourceMappingURL=product-document.mapper.js.map

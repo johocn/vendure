@@ -18,6 +18,8 @@ export declare class ProductSyncService {
     /** 单品或全量入队；Meili 不可用导致的 job 失败由 retries 兜底重试 */
     enqueue(productIds?: string[]): Promise<void>;
     syncAll(): Promise<void>;
+    /** 商品主图绝对地址前缀（Vendure 资产服务公网域名）；未配置则文档省略 thumbnail */
+    private assetBase;
     /**
      * 全量投影：分块查 Product（防大表）→ 组装投影 → toProductDocuments → 按 locale 500 条/批 upsert
      */

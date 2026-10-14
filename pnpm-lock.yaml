@@ -1569,6 +1569,9 @@ importers:
       '@vendure/wechat-auth-plugin':
         specifier: 0.0.1
         version: link:../wechat-auth-plugin
+      '@vendure/wechat-shopping-assistant-plugin':
+        specifier: 0.0.1
+        version: link:../wechat-shopping-assistant-plugin
       '@vendure/wechat-subscribe-message-plugin':
         specifier: 0.0.1
         version: link:../wechat-subscribe-message-plugin
@@ -2698,6 +2701,27 @@ importers:
       '@vendure/core':
         specifier: workspace:*
         version: link:../core
+      rimraf:
+        specifier: ^5.0.5
+        version: 5.0.5
+      typescript:
+        specifier: 5.8.2
+        version: 5.8.2
+
+  packages/wechat-shopping-assistant-plugin:
+    devDependencies:
+      '@vendure/common':
+        specifier: workspace:*
+        version: link:../common
+      '@vendure/core':
+        specifier: workspace:*
+        version: link:../core
+      '@vendure/meilisearch-plugin':
+        specifier: workspace:*
+        version: link:../meilisearch-plugin
+      '@vendure/wechat-auth-plugin':
+        specifier: workspace:*
+        version: link:../wechat-auth-plugin
       rimraf:
         specifier: ^5.0.5
         version: 5.0.5

@@ -27,6 +27,15 @@ import { WechatOfficialResolver } from './wechat-official.resolver';
             strategy,
         ];
 
+        // 公众号回调 POST 为 text/xml，Vendure 默认 body-parser 不解析该类型，
+        // 注册路由级 text 中间件把 body 解析为字符串（控制器内再解密/解析 XML）
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { text } = require('express');
+        config.apiOptions.middleware.push({
+            handler: text({ type: ['text/xml', 'application/xml'], limit: '1mb' }),
+            route: 'wechat/message',
+        });
+
         config.customFields = {
             ...config.customFields,
             Customer: [

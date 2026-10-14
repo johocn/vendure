@@ -87,6 +87,7 @@ import { DiyPlugin } from '@vendure/diy-plugin';
 import { FavoritePlugin } from '@vendure/favorite-plugin';
 import { TcmClinicPlugin } from '@vendure/tcm-clinic-plugin';
 import { MeiliSearchPlugin } from '@vendure/meilisearch-plugin';
+import { WechatShoppingAssistantPlugin } from '@vendure/wechat-shopping-assistant-plugin';
 
 // 本地联调默认注入 REDEMPTION_KEY（AES-GCM/HMAC 密钥，64 hex chars）
 if (!process.env.REDEMPTION_KEY) {
@@ -575,6 +576,17 @@ export const devConfig: VendureConfig = {
             reindexUrl: process.env.ZHAO_SEARCH_REINDEX_URL,
             sharedSecret: process.env.ZHAO_SEARCH_SHARED_SECRET,
         }),
+        // 微信公众号购物助手：文本消息搜索商品 → 客服消息卡片回复 → 回复编号下单 → H5 收银台支付。
+        // 依赖 WechatAuthPlugin（消息回调）与 MeiliSearchPlugin（商品索引），随 WechatAuthPlugin 条件装配。
+        // outboundMode=echo 时出站消息仅打日志（本地冒烟，不调微信 API）。
+        ...((process.env.WECHAT_AUTH_APP_ID || process.env.DEV_BYPASS_WECHAT === 'true') ? [WechatShoppingAssistantPlugin.init({
+            storefrontUrl: process.env.PUBLIC_STOREFRONT_URL || '',
+            assetBaseUrl: process.env.PUBLIC_ASSET_URL || '',
+            searchLocale: 'zh',
+            sessionTtlMinutes: 30,
+            searchLimit: 5,
+            outboundMode: process.env.WECHAT_ASSISTANT_OUTBOUND_MODE === 'echo' ? 'echo' : 'api',
+        })] : []),
         // 必须最后注册：覆盖 MarketplacePlugin 的 Seller 拆分，根治租户渠道商品的幽灵配送子单
         DisableSellerSplitPlugin,
     ],

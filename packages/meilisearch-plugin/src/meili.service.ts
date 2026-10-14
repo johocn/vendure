@@ -42,6 +42,31 @@ export class MeiliService {
         await this.req('POST', `/indexes/${this.indexUid(locale)}/documents?primaryKey=id`, docs);
     }
 
+    /**
+     * 商品搜索（shop 侧统一入口）：
+     * filter 固定 type=product + status=published，可叠加 channelId；
+     * 权重由 ensureIndexes 的 searchableAttributes 决定（title > tags > body）。
+     */
+    async search(
+        locale: string,
+        params: { q: string; channelId?: string; limit?: number; offset?: number },
+    ): Promise<{ hits: KbDocument[]; total: number; processingTimeMs: number }> {
+        const filter = ["type = 'product'", "status = 'published'"];
+        if (params.channelId) filter.push(`channelId = '${String(params.channelId).replace(/'/g, "''")}'`);
+        const body = {
+            q: params.q,
+            limit: params.limit ?? 10,
+            offset: params.offset ?? 0,
+            filter,
+        };
+        const r = await this.req('POST', `/indexes/${this.indexUid(locale)}/search`, body);
+        return {
+            hits: (r.hits ?? []) as KbDocument[],
+            total: r.estimatedTotalHits ?? r.totalHits ?? 0,
+            processingTimeMs: r.processingTimeMs ?? 0,
+        };
+    }
+
     async deleteDocuments(locale: string, ids: string[]): Promise<void> {
         if (!ids.length) return;
         await this.req('POST', `/indexes/${this.indexUid(locale)}/documents/delete-batch`, ids);

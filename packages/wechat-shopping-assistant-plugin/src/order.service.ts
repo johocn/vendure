@@ -1,0 +1,141 @@
+import { Injectable } from '@nestjs/common';
+import {
+    ID,
+    Logger,
+    Order,
+    OrderService,
+    Product,
+    ProductVariant,
+    RequestContext,
+    TransactionalConnection,
+} from '@vendure/core';
+
+import { loggerCtx } from './constants';
+
+export interface OrderSelection {
+    productId: string;
+    quantity: number;
+}
+
+export type CreateOrderOutcome =
+    | { status: 'ok'; order: Order; items: Array<{ title: string; quantity: number; price: number }> }
+    | { status: 'out_of_stock'; title: string }
+    | { status: 'no_variant'; title: string }
+    | { status: 'error'; message: string };
+
+/**
+ * 微信对话下单：
+ * 选品（productId）→ 解析渠道默认变体（最低价有货）→ 建 Order 绑定顾客 → 加购物车 → ArrangingPayment。
+ * 支付通过返回的订单号跳 H5 收银台（/checkout/confirmation/<code>）。
+ */
+@Injectable()
+export class AssistantOrderService {
+    constructor(
+        private connection: TransactionalConnection,
+        private orderService: OrderService,
+    ) {}
+
+    async createOrder(ctx: RequestContext, customerId: ID, selections: OrderSelection[]): Promise<CreateOrderOutcome> {
+        if (!selections.length) {
+            return { status: 'error', message: '未选择商品' };
+        }
+        try {
+            // 每个选品解析渠道默认变体；解析失败的跳过，全部失败则报错
+            const variantPicks: Array<{ variant: ProductVariant; title: string; quantity: number }> = [];
+            for (const sel of selections) {
+                const pick = await this.resolveDefaultVariant(ctx, sel.productId, String(ctx.channelId ?? ''));
+                if (!pick) {
+                    return { status: 'no_variant', title: sel.productId };
+                }
+                variantPicks.push({ ...pick, quantity: sel.quantity });
+            }
+
+            const order = await this.orderService.create(ctx);
+            // 绑定顾客（对齐 vcash-pos-plugin 做法：create 不接受 customer，创建后补写）
+            await this.connection.getRepository(ctx, Order).update(order.id, {
+                customer: { id: customerId } as any,
+            });
+
+            const items: Array<{ title: string; quantity: number; price: number }> = [];
+            for (const pick of variantPicks) {
+                const result = await this.orderService.addItemToOrder(
+                    ctx,
+                    order.id,
+                    pick.variant.id,
+                    pick.quantity,
+                );
+                if ('errorCode' in result) {
+                    if (result.errorCode === 'INSUFFICIENT_STOCK_ERROR') {
+                        return { status: 'out_of_stock', title: pick.title };
+                    }
+                    return { status: 'error', message: result.message };
+                }
+                const line = result.lines.find(l => String(l.productVariant.id) === String(pick.variant.id));
+                items.push({
+                    title: pick.title,
+                    quantity: pick.quantity,
+                    price: line?.unitPrice ?? pick.variant.listPrice ?? 0,
+                });
+            }
+
+            // 转入待支付（ArrangingPayment），由用户点击支付链接在 H5 收银台完成支付
+            const arrangeResult = await this.orderService.transitionToState(ctx, order.id, 'ArrangingPayment');
+            if ('errorCode' in arrangeResult) {
+                return { status: 'error', message: arrangeResult.message };
+            }
+
+            const finalOrder = await this.orderService.findOne(ctx, order.id, ['lines']);
+            return {
+                status: 'ok',
+                order: finalOrder ?? order,
+                items: items.length
+                    ? items
+                    : (finalOrder?.lines ?? []).map(l => ({
+                          title: l.productVariant.name,
+                          quantity: l.quantity,
+                          price: l.unitPrice,
+                      })),
+            };
+        } catch (e) {
+            Logger.error(`Assistant order creation failed: ${String(e)}`, loggerCtx);
+            return { status: 'error', message: String((e as Error).message ?? e) };
+        }
+    }
+
+    /**
+     * 渠道默认变体：商品已发布 → 取该渠道有价格且启用、按价格升序的第一个变体。
+     * 查询限定 channelId 匹配价格行，避免跨渠道下单。
+     */
+    private async resolveDefaultVariant(
+        ctx: RequestContext,
+        productId: string,
+        channelId: string,
+    ): Promise<{ variant: ProductVariant; title: string } | null> {
+        const product = await this.connection.getRepository(ctx, Product).findOne({
+            where: { id: productId as any, enabled: true },
+            relations: {
+                translations: true,
+                variants: { translations: true, productVariantPrices: true },
+            },
+        });
+        if (!product) return null;
+        const productTitle = product.translations.find(t => t.languageCode === ctx.languageCode)?.name
+            ?? product.translations[0]?.name
+            ?? `商品#${productId}`;
+        const candidates = (product.variants ?? [])
+            .filter(v => v.enabled)
+            .map(v => ({
+                variant: v,
+                price:
+                    v.productVariantPrices?.find(p => Number(p.channelId) === Number(channelId))?.price ?? 0,
+            }))
+            .filter(x => x.price > 0)
+            .sort((a, b) => a.price - b.price);
+        if (!candidates.length) return null;
+        const variant = candidates[0].variant;
+        const variantTitle = variant.translations.find(t => t.languageCode === ctx.languageCode)?.name
+            ?? variant.translations[0]?.name
+            ?? '';
+        return { variant, title: variantTitle && variantTitle !== productTitle ? `${productTitle} ${variantTitle}` : productTitle };
+    }
+}
