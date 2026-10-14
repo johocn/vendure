@@ -1,7 +1,7 @@
 import { DeepPartial, VendureEntity } from '@vendure/core';
 import { Column, Entity, Index } from 'typeorm';
 
-import { CardProduct } from '../types';
+import { AssistantFlowDraft, CardProduct } from '../types';
 
 /**
  * 微信购物助手会话：openid 维度保存最近一次搜索结果（编号 → 商品）。
@@ -39,7 +39,7 @@ export class WechatShoppingSession extends VendureEntity {
 
     /** 状态机草稿（手机号/待下单编号/地址流程上下文），simple-json */
     @Column({ type: 'simple-json', nullable: true })
-    draft: { phone?: string | null; indices?: number[] } | null;
+    draft: AssistantFlowDraft | null;
 
     /** 会话过期时间；type: Date 构造器让 typeorm 按方言推断（postgres→timestamp / sqlite→datetime，显式 'datetime' 不被 postgres 支持） */
     @Column({ type: Date })

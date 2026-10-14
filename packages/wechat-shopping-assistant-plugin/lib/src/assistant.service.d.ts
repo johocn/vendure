@@ -54,7 +54,7 @@ export declare class AssistantService {
     private onAddrOp;
     /** 「地址管理」入口：列地址簿 → addr_pick（manage 态） */
     private handleAddressManage;
-    /** 「新增地址」入口：直接进新增地址文本状态（manage 流程） */
+    /** 「新增地址」入口：直接进新增地址文本状态（默认 manage 流程；下单流程传入保留 order 上下文） */
     private handleAddressAdd;
     /** 下单确认卡组装：草稿选址 → 回退默认地址 → 兜底空态引导 */
     private orderConfirmCard;

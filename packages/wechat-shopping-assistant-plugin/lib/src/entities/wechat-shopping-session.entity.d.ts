@@ -1,5 +1,5 @@
 import { DeepPartial, VendureEntity } from '@vendure/core';
-import { CardProduct } from '../types';
+import { AssistantFlowDraft, CardProduct } from '../types';
 /**
  * 微信购物助手会话：openid 维度保存最近一次搜索结果（编号 → 商品）。
  * 用户回复「买N」时按编号回查本表下单；过期需重新搜索。
@@ -20,10 +20,7 @@ export declare class WechatShoppingSession extends VendureEntity {
      */
     state: string | null;
     /** 状态机草稿（手机号/待下单编号/地址流程上下文），simple-json */
-    draft: {
-        phone?: string | null;
-        indices?: number[];
-    } | null;
+    draft: AssistantFlowDraft | null;
     /** 会话过期时间；type: Date 构造器让 typeorm 按方言推断（postgres→timestamp / sqlite→datetime，显式 'datetime' 不被 postgres 支持） */
     expireAt: Date;
 }
