@@ -15,11 +15,17 @@ exports.marketplaceOrderProcess = {
         requestContextService = injector.get(core_1.RequestContextService);
     },
     async onTransitionStart(fromState, toState, data) {
+        var _a;
         const { ctx, order } = data;
         if (fromState === 'AddingItems' && toState === 'ArrangingPayment') {
-            for (const line of data.order.lines) {
-                if (!line.shippingLineId) {
-                    return 'not all lines have shipping';
+            // 无头单（orderKind='assistant'，公众号助手/POS 等直付单）无物流环节，
+            // 豁免逐行 shippingLineId 校验（对齐 campus orderKind='errand' 豁免先例）
+            const cf = ((_a = order.customFields) !== null && _a !== void 0 ? _a : {});
+            if (cf.orderKind !== 'assistant') {
+                for (const line of data.order.lines) {
+                    if (!line.shippingLineId) {
+                        return 'not all lines have shipping';
+                    }
                 }
             }
         }

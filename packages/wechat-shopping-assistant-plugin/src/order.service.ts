@@ -53,6 +53,9 @@ export class AssistantOrderService {
 
             const order = await this.orderService.create(ctx);
             await this.orderService.addCustomerToOrder(ctx, order, customer);
+            // 标记无头单：marketplace 进程按 orderKind='assistant' 豁免逐行 shippingLineId 校验
+            // （服务类商品无物流；campus orderKind='errand' 同款豁免先例）
+            await this.orderService.updateCustomFields(ctx, order.id, { orderKind: 'assistant' } as any);
 
             const items: Array<{ title: string; quantity: number; price: number }> = [];
             for (const pick of variantPicks) {
