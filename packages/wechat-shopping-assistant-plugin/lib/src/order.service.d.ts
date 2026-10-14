@@ -1,4 +1,4 @@
-import { ID, Order, OrderService, RequestContext, TransactionalConnection } from '@vendure/core';
+import { Customer, Order, OrderService, RequestContext, TransactionalConnection } from '@vendure/core';
 export interface OrderSelection {
     productId: string;
     quantity: number;
@@ -23,14 +23,15 @@ export type CreateOrderOutcome = {
 };
 /**
  * 微信对话下单：
- * 选品（productId）→ 解析渠道默认变体（最低价有货）→ 建 Order 绑定顾客 → 加购物车 → ArrangingPayment。
- * 支付通过返回的订单号跳 H5 收银台（/checkout/confirmation/<code>）。
+ * 选品（productId）→ 解析渠道默认变体（最低价有货）→ 建 Order 绑顾客 → 加购物车 → ArrangingPayment。
+ * 绑顾客走 orderService.addCustomerToOrder（同步更新内存实体，ArrangingPayment 的
+ * customer 守卫可见；裸 repo update 只落库、守卫读不到）。支付通过返回的订单号跳 H5 收银台。
  */
 export declare class AssistantOrderService {
     private connection;
     private orderService;
     constructor(connection: TransactionalConnection, orderService: OrderService);
-    createOrder(ctx: RequestContext, customerId: ID, selections: OrderSelection[]): Promise<CreateOrderOutcome>;
+    createOrder(ctx: RequestContext, customer: Customer, selections: OrderSelection[]): Promise<CreateOrderOutcome>;
     /**
      * 渠道默认变体：商品已发布 → 取该渠道有价格且启用、按价格升序的第一个变体。
      * 查询限定 channelId 匹配价格行，避免跨渠道下单。

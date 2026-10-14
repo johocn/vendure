@@ -15,15 +15,16 @@ const core_1 = require("@vendure/core");
 const constants_1 = require("./constants");
 /**
  * 微信对话下单：
- * 选品（productId）→ 解析渠道默认变体（最低价有货）→ 建 Order 绑定顾客 → 加购物车 → ArrangingPayment。
- * 支付通过返回的订单号跳 H5 收银台（/checkout/confirmation/<code>）。
+ * 选品（productId）→ 解析渠道默认变体（最低价有货）→ 建 Order 绑顾客 → 加购物车 → ArrangingPayment。
+ * 绑顾客走 orderService.addCustomerToOrder（同步更新内存实体，ArrangingPayment 的
+ * customer 守卫可见；裸 repo update 只落库、守卫读不到）。支付通过返回的订单号跳 H5 收银台。
  */
 let AssistantOrderService = class AssistantOrderService {
     constructor(connection, orderService) {
         this.connection = connection;
         this.orderService = orderService;
     }
-    async createOrder(ctx, customerId, selections) {
+    async createOrder(ctx, customer, selections) {
         var _a, _b, _c, _d, _e;
         if (!selections.length) {
             return { status: 'error', message: '未选择商品' };
@@ -39,10 +40,7 @@ let AssistantOrderService = class AssistantOrderService {
                 variantPicks.push(Object.assign(Object.assign({}, pick), { quantity: sel.quantity }));
             }
             const order = await this.orderService.create(ctx);
-            // 绑定顾客（对齐 vcash-pos-plugin 做法：create 不接受 customer，创建后补写）
-            await this.connection.getRepository(ctx, core_1.Order).update(order.id, {
-                customer: { id: customerId },
-            });
+            await this.orderService.addCustomerToOrder(ctx, order, customer);
             const items = [];
             for (const pick of variantPicks) {
                 const result = await this.orderService.addItemToOrder(ctx, order.id, pick.variant.id, pick.quantity);

@@ -163,7 +163,7 @@ let AssistantService = class AssistantService {
                 case 'ok': {
                     if (!picked.length)
                         return (0, card_builder_1.buildBindSuccessText)(msg.fromUserName);
-                    return this.placeOrder(ctx, msg.fromUserName, outcome.customer.id, picked);
+                    return this.placeOrder(ctx, msg.fromUserName, outcome.customer, picked);
                 }
                 case 'phone_taken':
                     return (0, card_builder_1.buildPhoneTakenText)(msg.fromUserName, this.loginUrl());
@@ -221,7 +221,7 @@ let AssistantService = class AssistantService {
                 const bindOutcome = await this.customerBinding.bindOrCreateCustomer(ctx, msg.fromUserName, boundPhone);
                 if (bindOutcome.status === 'ok') {
                     core_1.Logger.info(`Assistant path-A auto bind: customerId=${bindOutcome.customer.id} openid=${msg.fromUserName}`, constants_1.loggerCtx);
-                    return this.placeOrder(ctx, msg.fromUserName, bindOutcome.customer.id, picked);
+                    return this.placeOrder(ctx, msg.fromUserName, bindOutcome.customer, picked);
                 }
                 if (bindOutcome.status === 'error') {
                     core_1.Logger.warn(`Assistant path-A auto bind failed (${bindOutcome.message}), fallback to flow`, constants_1.loggerCtx);
@@ -233,11 +233,11 @@ let AssistantService = class AssistantService {
             return (0, card_builder_1.buildBindGuideText)(msg.fromUserName, this.loginUrl());
         }
         const ctx = await this.createShopCtx(session.channelId);
-        return this.placeOrder(ctx, msg.fromUserName, customer.id, picked);
+        return this.placeOrder(ctx, msg.fromUserName, customer, picked);
     }
     /** 建单 + 结果文案（成功附支付链接；库存/变体/失败各回对应提示） */
-    async placeOrder(ctx, touser, customerId, picked) {
-        const outcome = await this.orderService.createOrder(ctx, customerId, picked.map(p => { var _a; return ({ productId: p.productId, quantity: (_a = p.quantity) !== null && _a !== void 0 ? _a : 1 }); }));
+    async placeOrder(ctx, touser, customer, picked) {
+        const outcome = await this.orderService.createOrder(ctx, customer, picked.map(p => { var _a; return ({ productId: p.productId, quantity: (_a = p.quantity) !== null && _a !== void 0 ? _a : 1 }); }));
         switch (outcome.status) {
             case 'ok': {
                 const payUrl = this.payUrl(outcome.order.code);

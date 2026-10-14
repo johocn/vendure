@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
-    ID,
+    Customer,
     Logger,
     Order,
     OrderService,
@@ -25,8 +25,9 @@ export type CreateOrderOutcome =
 
 /**
  * 微信对话下单：
- * 选品（productId）→ 解析渠道默认变体（最低价有货）→ 建 Order 绑定顾客 → 加购物车 → ArrangingPayment。
- * 支付通过返回的订单号跳 H5 收银台（/checkout/confirmation/<code>）。
+ * 选品（productId）→ 解析渠道默认变体（最低价有货）→ 建 Order 绑顾客 → 加购物车 → ArrangingPayment。
+ * 绑顾客走 orderService.addCustomerToOrder（同步更新内存实体，ArrangingPayment 的
+ * customer 守卫可见；裸 repo update 只落库、守卫读不到）。支付通过返回的订单号跳 H5 收银台。
  */
 @Injectable()
 export class AssistantOrderService {
@@ -35,7 +36,7 @@ export class AssistantOrderService {
         private orderService: OrderService,
     ) {}
 
-    async createOrder(ctx: RequestContext, customerId: ID, selections: OrderSelection[]): Promise<CreateOrderOutcome> {
+    async createOrder(ctx: RequestContext, customer: Customer, selections: OrderSelection[]): Promise<CreateOrderOutcome> {
         if (!selections.length) {
             return { status: 'error', message: '未选择商品' };
         }
@@ -51,10 +52,7 @@ export class AssistantOrderService {
             }
 
             const order = await this.orderService.create(ctx);
-            // 绑定顾客（对齐 vcash-pos-plugin 做法：create 不接受 customer，创建后补写）
-            await this.connection.getRepository(ctx, Order).update(order.id, {
-                customer: { id: customerId } as any,
-            });
+            await this.orderService.addCustomerToOrder(ctx, order, customer);
 
             const items: Array<{ title: string; quantity: number; price: number }> = [];
             for (const pick of variantPicks) {

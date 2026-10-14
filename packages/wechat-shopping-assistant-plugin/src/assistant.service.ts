@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
     Channel,
     ChannelService,
-    ID,
+    Customer,
     Logger,
     RequestContext,
     RequestContextService,
@@ -194,7 +194,7 @@ export class AssistantService {
             switch (outcome.status) {
                 case 'ok': {
                     if (!picked.length) return buildBindSuccessText(msg.fromUserName);
-                    return this.placeOrder(ctx, msg.fromUserName, outcome.customer.id, picked);
+                    return this.placeOrder(ctx, msg.fromUserName, outcome.customer, picked);
                 }
                 case 'phone_taken':
                     return buildPhoneTakenText(msg.fromUserName, this.loginUrl());
@@ -271,7 +271,7 @@ export class AssistantService {
                         `Assistant path-A auto bind: customerId=${bindOutcome.customer.id} openid=${msg.fromUserName}`,
                         loggerCtx,
                     );
-                    return this.placeOrder(ctx, msg.fromUserName, bindOutcome.customer.id, picked);
+                    return this.placeOrder(ctx, msg.fromUserName, bindOutcome.customer, picked);
                 }
                 if (bindOutcome.status === 'error') {
                     Logger.warn(
@@ -287,19 +287,19 @@ export class AssistantService {
         }
 
         const ctx = await this.createShopCtx(session.channelId);
-        return this.placeOrder(ctx, msg.fromUserName, customer.id, picked);
+        return this.placeOrder(ctx, msg.fromUserName, customer, picked);
     }
 
     /** 建单 + 结果文案（成功附支付链接；库存/变体/失败各回对应提示） */
     private async placeOrder(
         ctx: RequestContext,
         touser: string,
-        customerId: ID,
+        customer: Customer,
         picked: Array<{ productId: string; quantity?: number; title: string }>,
     ): Promise<OutboundMessage> {
         const outcome = await this.orderService.createOrder(
             ctx,
-            customerId,
+            customer,
             picked.map(p => ({ productId: p.productId, quantity: p.quantity ?? 1 })),
         );
 

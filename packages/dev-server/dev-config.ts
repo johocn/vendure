@@ -12,6 +12,7 @@ import {
     DefaultOrderSellerStrategy,
     DefaultSchedulerPlugin,
     DefaultSearchPlugin,
+    configureDefaultOrderProcess,
     dummyPaymentHandler,
     LanguageCode,
     LogLevel,
@@ -156,6 +157,32 @@ class ReadonlySettingsTestPlugin implements OnApplicationBootstrap {
     },
 })
 class DisableSellerSplitPlugin {}
+
+/**
+ * 放宽进入 ArrangingPayment 的「顾客/配送方式必填」两道默认守卫（2026-10-14）：
+ * 公众号购物助手、POS 等无头下单无物流环节（服务类商品如洗车），支付由 H5 收银台直付
+ * （vshop payment.vue 的 PAYABLE_STATES 含 AddingItems，页面自行 transition）。
+ * 按默认进程标记替换（保留 checkFulfillmentStates:false 的 logistics 放宽），保留
+ * campus 起送价 / marketplace 等自定义进程；有货校验、内容校验等其余默认守卫不动。
+ * 必须置于 Marketplace/Logistics 之后、DisableSellerSplitPlugin 之前。
+ */
+@VendurePlugin({
+    configuration: config => {
+        const existing = (config.orderOptions.process ?? []).filter(
+            p => !(p as any).__isDefaultOrderProcess,
+        );
+        config.orderOptions.process = [
+            configureDefaultOrderProcess({
+                checkFulfillmentStates: false,
+                arrangingPaymentRequiresCustomer: false,
+                arrangingPaymentRequiresShipping: false,
+            }),
+            ...existing,
+        ];
+        return config;
+    },
+})
+class RelaxArrangingPaymentGuardPlugin {}
 
 /**
  * Config settings used during development
@@ -592,6 +619,7 @@ export const devConfig: VendureConfig = {
             outboundMode: process.env.WECHAT_ASSISTANT_OUTBOUND_MODE === 'echo' ? 'echo' : 'api',
         })] : []),
         // 必须最后注册：覆盖 MarketplacePlugin 的 Seller 拆分，根治租户渠道商品的幽灵配送子单
+        RelaxArrangingPaymentGuardPlugin,
         DisableSellerSplitPlugin,
     ],
 };
