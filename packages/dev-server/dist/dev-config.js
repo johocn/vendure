@@ -133,6 +133,25 @@ DisableSellerSplitPlugin = __decorate([
         },
     })
 ], DisableSellerSplitPlugin);
+let RelaxArrangingPaymentGuardPlugin = class RelaxArrangingPaymentGuardPlugin {
+};
+RelaxArrangingPaymentGuardPlugin = __decorate([
+    (0, core_1.VendurePlugin)({
+        configuration: config => {
+            var _a;
+            const existing = ((_a = config.orderOptions.process) !== null && _a !== void 0 ? _a : []).filter(p => !p.__isDefaultOrderProcess);
+            config.orderOptions.process = [
+                (0, core_1.configureDefaultOrderProcess)({
+                    checkFulfillmentStates: false,
+                    arrangingPaymentRequiresCustomer: false,
+                    arrangingPaymentRequiresShipping: false,
+                }),
+                ...existing,
+            ];
+            return config;
+        },
+    })
+], RelaxArrangingPaymentGuardPlugin);
 exports.devConfig = {
     apiOptions: {
         port: Number(process.env.API_PORT) || shared_constants_1.API_PORT,
@@ -494,6 +513,7 @@ exports.devConfig = {
                 searchLimit: 5,
                 outboundMode: process.env.WECHAT_ASSISTANT_OUTBOUND_MODE === 'echo' ? 'echo' : 'api',
             })] : []),
+        RelaxArrangingPaymentGuardPlugin,
         DisableSellerSplitPlugin,
     ],
 };
