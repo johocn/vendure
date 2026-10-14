@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { IsNull } from 'typeorm';
 import {
     Customer,
     Logger,
@@ -143,7 +144,7 @@ export class AssistantOrderService {
         channelId: string,
     ): Promise<{ variant: ProductVariant; title: string } | null> {
         const product = await this.connection.getRepository(ctx, Product).findOne({
-            where: { id: productId as any, enabled: true },
+            where: { id: productId as any, enabled: true, deletedAt: IsNull() },
             relations: {
                 translations: true,
                 variants: { translations: true, productVariantPrices: true },
@@ -154,7 +155,7 @@ export class AssistantOrderService {
             ?? product.translations[0]?.name
             ?? `商品#${productId}`;
         const candidates = (product.variants ?? [])
-            .filter(v => v.enabled)
+            .filter(v => v.enabled && !v.deletedAt)
             .map(v => ({
                 variant: v,
                 price:

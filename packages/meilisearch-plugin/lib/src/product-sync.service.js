@@ -87,6 +87,11 @@ let ProductSyncService = class ProductSyncService {
             if (!products.length)
                 break;
             for (const product of products) {
+                // 已软删商品：同步清索引（全量重建是 upsert 语义，残留文档不会自动消失）
+                if (product.deletedAt) {
+                    await this.removeProduct(String(product.id));
+                    continue;
+                }
                 const projection = this.toProjection(product, urlBase);
                 // toProductDocuments 按 locales 顺序产出，zip 回对应 locale 桶
                 (0, product_document_mapper_1.toProductDocuments)(projection, locales).forEach((doc, i) => {
@@ -120,8 +125,8 @@ let ProductSyncService = class ProductSyncService {
                 featuredAsset: true,
             },
         });
-        if (!product) {
-            core_1.Logger.warn(`Meili syncOne: product ${productId} not found, removing docs`, constants_1.loggerCtx);
+        if (!product || product.deletedAt) {
+            core_1.Logger.warn(`Meili syncOne: product ${productId} ${product ? 'soft-deleted' : 'not found'}, removing docs`, constants_1.loggerCtx);
             await this.removeProduct(String(productId));
             return;
         }
@@ -159,7 +164,7 @@ let ProductSyncService = class ProductSyncService {
         const assetBase = this.assetBase();
         const preview = (_d = (_c = product.featuredAsset) === null || _c === void 0 ? void 0 : _c.preview) !== null && _d !== void 0 ? _d : '';
         const thumbnailUrl = assetBase && preview ? `${assetBase}/${preview.replace(/^\/+/, '')}` : '';
-        return Object.assign({ productId: String(product.id), channelId, status: product.enabled ? 'published' : 'draft', updatedAt: product.updatedAt ? new Date(product.updatedAt).getTime() : Date.now(), nameZh: (_e = zh === null || zh === void 0 ? void 0 : zh.name) !== null && _e !== void 0 ? _e : '', nameEn: (_f = en === null || en === void 0 ? void 0 : en.name) !== null && _f !== void 0 ? _f : '', descZh: (_g = zh === null || zh === void 0 ? void 0 : zh.description) !== null && _g !== void 0 ? _g : '', descEn: (_h = en === null || en === void 0 ? void 0 : en.description) !== null && _h !== void 0 ? _h : '', slugZh: (_j = zh === null || zh === void 0 ? void 0 : zh.slug) !== null && _j !== void 0 ? _j : '', slugEn: (_k = en === null || en === void 0 ? void 0 : en.slug) !== null && _k !== void 0 ? _k : '', price: this.resolvePrice(product, channelId), collectionIds: [
+        return Object.assign({ productId: String(product.id), channelId, status: product.enabled && !product.deletedAt ? 'published' : 'draft', updatedAt: product.updatedAt ? new Date(product.updatedAt).getTime() : Date.now(), nameZh: (_e = zh === null || zh === void 0 ? void 0 : zh.name) !== null && _e !== void 0 ? _e : '', nameEn: (_f = en === null || en === void 0 ? void 0 : en.name) !== null && _f !== void 0 ? _f : '', descZh: (_g = zh === null || zh === void 0 ? void 0 : zh.description) !== null && _g !== void 0 ? _g : '', descEn: (_h = en === null || en === void 0 ? void 0 : en.description) !== null && _h !== void 0 ? _h : '', slugZh: (_j = zh === null || zh === void 0 ? void 0 : zh.slug) !== null && _j !== void 0 ? _j : '', slugEn: (_k = en === null || en === void 0 ? void 0 : en.slug) !== null && _k !== void 0 ? _k : '', price: this.resolvePrice(product, channelId), collectionIds: [
                 ...new Set(((_l = product.variants) !== null && _l !== void 0 ? _l : []).flatMap(v => { var _a; return ((_a = v.collections) !== null && _a !== void 0 ? _a : []).map(c => String(c.id)); })),
             ], tags: [], urlBase }, (thumbnailUrl ? { thumbnailUrl } : {}));
     }

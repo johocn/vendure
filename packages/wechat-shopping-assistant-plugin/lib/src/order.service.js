@@ -11,6 +11,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AssistantOrderService = void 0;
 const common_1 = require("@nestjs/common");
+const typeorm_1 = require("typeorm");
 const core_1 = require("@vendure/core");
 const constants_1 = require("./constants");
 /**
@@ -108,7 +109,7 @@ let AssistantOrderService = class AssistantOrderService {
     async resolveDefaultVariant(ctx, productId, channelId) {
         var _a, _b, _c, _d, _e, _f, _g, _h, _j;
         const product = await this.connection.getRepository(ctx, core_1.Product).findOne({
-            where: { id: productId, enabled: true },
+            where: { id: productId, enabled: true, deletedAt: (0, typeorm_1.IsNull)() },
             relations: {
                 translations: true,
                 variants: { translations: true, productVariantPrices: true },
@@ -118,7 +119,7 @@ let AssistantOrderService = class AssistantOrderService {
             return null;
         const productTitle = (_d = (_b = (_a = product.translations.find(t => t.languageCode === ctx.languageCode)) === null || _a === void 0 ? void 0 : _a.name) !== null && _b !== void 0 ? _b : (_c = product.translations[0]) === null || _c === void 0 ? void 0 : _c.name) !== null && _d !== void 0 ? _d : `商品#${productId}`;
         const candidates = ((_e = product.variants) !== null && _e !== void 0 ? _e : [])
-            .filter(v => v.enabled)
+            .filter(v => v.enabled && !v.deletedAt)
             .map(v => {
             var _a, _b, _c;
             return ({

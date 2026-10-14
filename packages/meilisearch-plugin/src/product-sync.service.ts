@@ -98,6 +98,11 @@ export class ProductSyncService {
             });
             if (!products.length) break;
             for (const product of products) {
+                // 已软删商品：同步清索引（全量重建是 upsert 语义，残留文档不会自动消失）
+                if (product.deletedAt) {
+                    await this.removeProduct(String(product.id));
+                    continue;
+                }
                 const projection = this.toProjection(product, urlBase);
                 // toProductDocuments 按 locales 顺序产出，zip 回对应 locale 桶
                 toProductDocuments(projection, locales).forEach((doc, i) => {
@@ -133,8 +138,8 @@ export class ProductSyncService {
                 featuredAsset: true,
             },
         });
-        if (!product) {
-            Logger.warn(`Meili syncOne: product ${productId} not found, removing docs`, loggerCtx);
+        if (!product || product.deletedAt) {
+            Logger.warn(`Meili syncOne: product ${productId} ${product ? 'soft-deleted' : 'not found'}, removing docs`, loggerCtx);
             await this.removeProduct(String(productId));
             return;
         }
@@ -176,7 +181,7 @@ export class ProductSyncService {
         return {
             productId: String(product.id),
             channelId,
-            status: product.enabled ? 'published' : 'draft',
+            status: product.enabled && !product.deletedAt ? 'published' : 'draft',
             updatedAt: product.updatedAt ? new Date(product.updatedAt).getTime() : Date.now(),
             nameZh: zh?.name ?? '',
             nameEn: en?.name ?? '',
