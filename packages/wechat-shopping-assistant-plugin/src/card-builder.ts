@@ -60,14 +60,72 @@ export function buildGuideText(touser: string, storefrontUrl?: string): TextMess
     return { kind: 'text', touser, content: lines.join('\n') };
 }
 
+/**
+ * 绑定/补录引导（聊天内两步补录：手机号 → 收货地址；H5 登录页兜底）。
+ * 触发点：用户回复「绑定」、未绑定用户回复编号下单、绑定手机号已被注册（防冒领回退）。
+ */
 export function buildBindGuideText(touser: string, loginUrl?: string): TextMessage {
-    const base = '您还未绑定购物账号，下单前请先绑定：';
-    if (!loginUrl) return { kind: 'text', touser, content: base + '\n请用微信打开店铺完成手机号登录。' };
+    const lines = [
+        '您还未绑定购物账号，回复手机号即可开通，如「13800138000」。',
+        '开通后我会继续帮您完成下单。',
+    ];
+    if (loginUrl) lines.push(`也可以点链接在店铺内登录绑定：${loginUrl}`);
+    lines.push('回复「取消」退出。');
+    return { kind: 'text', touser, content: lines.join('\n') };
+}
+
+/** 收到手机号后，引导回复收货地址（第二步） */
+export function buildAwaitingAddressText(touser: string, phone: string): TextMessage {
     return {
         kind: 'text',
         touser,
-        content: `${base}\n${loginUrl}\n（微信内打开，手机号验证码登录即自动绑定）\n绑定后可在「个人中心 → 地址簿」维护电话与收货地址，然后回复编号即可下单。`,
+        content: `手机号 ${phone} 已收到，再回复您的收货地址（含省市区 + 详细地址），如「北京市朝阳区xx路xx号」。\n回复「取消」退出。`,
     };
+}
+
+/** 状态机中回复无效手机号的重新提示 */
+export function buildInvalidPhoneText(touser: string): TextMessage {
+    return {
+        kind: 'text',
+        touser,
+        content: '手机号格式不对，请回复 11 位手机号，如「13800138000」。\n回复「取消」退出。',
+    };
+}
+
+/** 地址过短，重新提示 */
+export function buildInvalidAddressText(touser: string): TextMessage {
+    return {
+        kind: 'text',
+        touser,
+        content: '地址好像不完整，请回复包含省/市/区的详细收货地址。\n回复「取消」退出。',
+    };
+}
+
+/** 已取消补录 */
+export function buildFlowCancelledText(touser: string): TextMessage {
+    return {
+        kind: 'text',
+        touser,
+        content: '已取消。发送想买的商品（如「买一瓶酱油」）可继续购物。',
+    };
+}
+
+/** 建档绑定成功但无待下单商品（直接发手机号/绑定开启的流程） */
+export function buildBindSuccessText(touser: string): TextMessage {
+    return {
+        kind: 'text',
+        touser,
+        content: '绑定成功！发送想买的商品（如「买一瓶酱油」），我来帮你下单～\n收货信息可在店铺「个人中心 → 地址簿」随时修改。',
+    };
+}
+
+/** 绑定手机号已被注册 → 防冒领，回退 H5 登录验证 */
+export function buildPhoneTakenText(touser: string, loginUrl?: string): TextMessage {
+    const lines = [
+        '该手机号已注册过店铺账号，为保护账号安全，请在微信内打开链接登录绑定：',
+    ];
+    if (loginUrl) lines.push(loginUrl);
+    return { kind: 'text', touser, content: lines.join('\n') };
 }
 
 export function buildInvalidOrderText(touser: string, indices: number[]): TextMessage {

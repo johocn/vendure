@@ -46,6 +46,32 @@ let SessionService = class SessionService {
     async clear(openid) {
         await this.connection.getRepository(wechat_shopping_session_entity_1.WechatShoppingSession).delete({ openid });
     }
+    // ============ 聊天内补录状态机（手机号 → 收货地址） ============
+    /** 确保存在会话行（无搜索记录时先建空会话），返回当前会话或 null */
+    async ensureSession(openid, channelId, ttlMinutes) {
+        const existing = await this.getActive(openid);
+        if (existing)
+            return existing;
+        const repo = this.connection.getRepository(wechat_shopping_session_entity_1.WechatShoppingSession);
+        const expireAt = new Date(Date.now() + ttlMinutes * 60000);
+        await repo.insert(repo.create({ openid, channelId, results: [], query: null, expireAt }));
+        return this.getActive(openid);
+    }
+    /** 写入补录状态与草稿；顺带续期会话（补录两步可能跨过原 TTL） */
+    async setFlow(openid, state, draft, ttlMinutes) {
+        const session = await this.connection.getRepository(wechat_shopping_session_entity_1.WechatShoppingSession).findOne({ where: { openid } });
+        if (!session)
+            return;
+        await this.connection.getRepository(wechat_shopping_session_entity_1.WechatShoppingSession).update(session.id, {
+            state,
+            draft,
+            expireAt: new Date(Date.now() + ttlMinutes * 60000),
+        });
+    }
+    /** 清除补录状态（保留搜索结果，用户可直接重新回复编号下单） */
+    async clearFlow(openid) {
+        await this.setFlow(openid, null, null, 30);
+    }
 };
 exports.SessionService = SessionService;
 exports.SessionService = SessionService = __decorate([

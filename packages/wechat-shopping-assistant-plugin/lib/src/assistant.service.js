@@ -18,6 +18,7 @@ const core_1 = require("@vendure/core");
 const card_builder_1 = require("./card-builder");
 const constants_1 = require("./constants");
 const credential_service_1 = require("./credential.service");
+const customer_binding_service_1 = require("./customer-binding.service");
 const wechat_processed_message_entity_1 = require("./entities/wechat-processed-message.entity");
 const intent_1 = require("./intent");
 const order_service_1 = require("./order.service");
@@ -31,7 +32,7 @@ const wechat_sender_1 = require("./wechat-sender");
  * 重复推送由 MsgId 去重表挡住）。
  */
 let AssistantService = class AssistantService {
-    constructor(opts, connection, sessionService, searchService, orderService, sender, credentialService, channelService, requestContextService) {
+    constructor(opts, connection, sessionService, searchService, orderService, sender, credentialService, channelService, requestContextService, customerBinding) {
         this.opts = opts;
         this.connection = connection;
         this.sessionService = sessionService;
@@ -41,6 +42,7 @@ let AssistantService = class AssistantService {
         this.credentialService = credentialService;
         this.channelService = channelService;
         this.requestContextService = requestContextService;
+        this.customerBinding = customerBinding;
     }
     async onMessage(event) {
         const msg = event.message;
@@ -72,27 +74,105 @@ let AssistantService = class AssistantService {
      * ① 微信事件总线（本插件回调直连，handle() 负责发送）
      * ② HTTP 接口（strapi zhao-sso 回调转调 POST /wechat-assistant/handle，
      *    回复由 sso 的被动回复 XML 承担——受 5 秒窗口约束，本方法须快速返回）。
+     * extra.boundPhone：sso 转调时附带的绑定用户手机号（路径 A：vendure 未绑定时自动建档，免输入）。
      * 返回 null = 无需回复（重复消息 / 非文本 / 未识别事件）。
      */
-    async processMessage(msg) {
-        var _a;
+    async processMessage(msg, extra) {
+        var _a, _b;
         // 关注事件：欢迎语；其余事件忽略（购物链路只处理文本）
         if (msg.msgType === 'event') {
             return msg.event === 'subscribe' ? (0, card_builder_1.buildWelcomeText)(msg.fromUserName) : null;
         }
         if (msg.msgType !== 'text' || !msg.content)
             return null;
+        const ttl = (_a = this.opts.sessionTtlMinutes) !== null && _a !== void 0 ? _a : 30;
+        // 补录状态机优先：处于手机号/地址补录中的用户，输入不走意图识别
+        const session = await this.sessionService.getActive(msg.fromUserName);
+        if (session === null || session === void 0 ? void 0 : session.state) {
+            return this.handleFlowStep(msg, session);
+        }
+        // 裸手机号入口：未绑定用户直接发手机号 → 进入地址补录（路径 B 第二步直接开始）
+        const phone = msg.content.trim().replace(/[-\s]/g, '');
+        if (/^1[3-9]\d{9}$/.test(phone)) {
+            const bound = await this.customerBinding.findCustomerByOpenid(msg.fromUserName);
+            if (!bound) {
+                const channelId = await this.resolveChannelId(msg.channelToken);
+                await this.sessionService.ensureSession(msg.fromUserName, channelId, ttl);
+                await this.sessionService.setFlow(msg.fromUserName, 'awaiting_address', { phone, indices: [] }, ttl);
+                core_1.Logger.info(`Assistant flow awaiting_address (bare phone) openid=${msg.fromUserName}`, constants_1.loggerCtx);
+                return (0, card_builder_1.buildAwaitingAddressText)(msg.fromUserName, phone);
+            }
+            // 已绑定用户发手机号：继续走搜索意图（罕见，不拦截）
+        }
         const intent = (0, intent_1.recognizeIntent)(msg.content);
         core_1.Logger.info(`Assistant intent=${intent.kind} from=${msg.fromUserName}`, constants_1.loggerCtx);
         switch (intent.kind) {
             case 'help':
                 return (0, card_builder_1.buildGuideText)(msg.fromUserName, this.storefront());
-            case 'bind':
+            case 'bind': {
+                const bound = await this.customerBinding.findCustomerByOpenid(msg.fromUserName);
+                if (bound) {
+                    return {
+                        kind: 'text',
+                        touser: msg.fromUserName,
+                        content: '您的微信已绑定购物账号，直接发商品名即可下单（如「买一瓶酱油」）。',
+                    };
+                }
                 return (0, card_builder_1.buildBindGuideText)(msg.fromUserName, this.loginUrl());
+            }
             case 'search':
-                return this.handleSearch(msg, intent.query, (_a = intent.quantity) !== null && _a !== void 0 ? _a : 1);
+                return this.handleSearch(msg, intent.query, (_b = intent.quantity) !== null && _b !== void 0 ? _b : 1);
             case 'order':
-                return this.handleOrder(msg, intent.indices);
+                return this.handleOrder(msg, intent.indices, extra === null || extra === void 0 ? void 0 : extra.boundPhone);
+        }
+        return null;
+    }
+    // ============ 补录状态机：awaiting_phone → awaiting_address → 建档（续下单） ============
+    async handleFlowStep(msg, session) {
+        var _a, _b, _c, _d, _e, _f;
+        const text = (msg.content || '').trim();
+        if (/^(取消|退出)[!！。.~]?$/.test(text)) {
+            await this.sessionService.clearFlow(msg.fromUserName);
+            return (0, card_builder_1.buildFlowCancelledText)(msg.fromUserName);
+        }
+        if (session.state === 'awaiting_phone') {
+            const phone = text.replace(/[-\s]/g, '');
+            if (!/^1[3-9]\d{9}$/.test(phone)) {
+                return (0, card_builder_1.buildInvalidPhoneText)(msg.fromUserName);
+            }
+            await this.sessionService.setFlow(msg.fromUserName, 'awaiting_address', { phone, indices: (_b = (_a = session.draft) === null || _a === void 0 ? void 0 : _a.indices) !== null && _b !== void 0 ? _b : [] }, (_c = this.opts.sessionTtlMinutes) !== null && _c !== void 0 ? _c : 30);
+            core_1.Logger.info(`Assistant flow awaiting_address openid=${msg.fromUserName}`, constants_1.loggerCtx);
+            return (0, card_builder_1.buildAwaitingAddressText)(msg.fromUserName, phone);
+        }
+        if (session.state === 'awaiting_address') {
+            if (text.length < 8) {
+                return (0, card_builder_1.buildInvalidAddressText)(msg.fromUserName);
+            }
+            const phone = (_d = session.draft) === null || _d === void 0 ? void 0 : _d.phone;
+            if (!phone) {
+                await this.sessionService.clearFlow(msg.fromUserName);
+                return (0, card_builder_1.buildBindGuideText)(msg.fromUserName, this.loginUrl());
+            }
+            // 建档前先取待下单编号（清态后 draft 即失效）
+            const indices = (_f = (_e = session.draft) === null || _e === void 0 ? void 0 : _e.indices) !== null && _f !== void 0 ? _f : [];
+            const picked = session.results.filter(r => indices.includes(r.index));
+            const ctx = await this.requestContextService.create({
+                apiType: 'shop',
+                channelOrToken: session.channelId,
+            });
+            const outcome = await this.customerBinding.bindOrCreateCustomer(ctx, msg.fromUserName, phone, text);
+            await this.sessionService.clearFlow(msg.fromUserName);
+            switch (outcome.status) {
+                case 'ok': {
+                    if (!picked.length)
+                        return (0, card_builder_1.buildBindSuccessText)(msg.fromUserName);
+                    return this.placeOrder(ctx, msg.fromUserName, outcome.customer.id, picked);
+                }
+                case 'phone_taken':
+                    return (0, card_builder_1.buildPhoneTakenText)(msg.fromUserName, this.loginUrl());
+                default:
+                    return (0, card_builder_1.buildOrderFailText)(msg.fromUserName, outcome.message);
+            }
         }
         return null;
     }
@@ -123,8 +203,9 @@ let AssistantService = class AssistantService {
         await this.sessionService.saveResults(msg.fromUserName, channelId, results, query, (_c = this.opts.sessionTtlMinutes) !== null && _c !== void 0 ? _c : 30);
         return (_d = (0, card_builder_1.buildNewsMessage)(msg.fromUserName, results)) !== null && _d !== void 0 ? _d : (0, card_builder_1.buildTextListMessage)(msg.fromUserName, results);
     }
-    // ============ 下单：编号回查会话 → 绑定校验 → 建单 → 确认通知 ============
-    async handleOrder(msg, indices) {
+    // ============ 下单：编号回查会话 → 绑定校验/建档 → 建单 → 确认通知 ============
+    async handleOrder(msg, indices, boundPhone) {
+        var _a;
         const session = await this.sessionService.getActive(msg.fromUserName);
         if (!session) {
             return (0, card_builder_1.buildSessionExpiredText)(msg.fromUserName);
@@ -133,21 +214,44 @@ let AssistantService = class AssistantService {
         if (!picked.length) {
             return (0, card_builder_1.buildInvalidOrderText)(msg.fromUserName, indices);
         }
-        // 身份门槛：仅已绑定微信用户（openid→Customer）可下单
-        const customer = await this.findCustomerByOpenid(msg.fromUserName);
+        // 身份门槛：openid → Customer；未绑定时按可用信息走自动/补录建档
+        const customer = await this.customerBinding.findCustomerByOpenid(msg.fromUserName);
         if (!customer) {
+            const ttl = (_a = this.opts.sessionTtlMinutes) !== null && _a !== void 0 ? _a : 30;
+            // 路径 A：sso 已绑定用户带手机号 → 自动建档后直接续下单（零输入）
+            if (boundPhone) {
+                const ctx = await this.requestContextService.create({
+                    apiType: 'shop',
+                    channelOrToken: session.channelId,
+                });
+                const bindOutcome = await this.customerBinding.bindOrCreateCustomer(ctx, msg.fromUserName, boundPhone);
+                if (bindOutcome.status === 'ok') {
+                    core_1.Logger.info(`Assistant path-A auto bind: customerId=${bindOutcome.customer.id} openid=${msg.fromUserName}`, constants_1.loggerCtx);
+                    return this.placeOrder(ctx, msg.fromUserName, bindOutcome.customer.id, picked);
+                }
+                if (bindOutcome.status === 'error') {
+                    core_1.Logger.warn(`Assistant path-A auto bind failed (${bindOutcome.message}), fallback to flow`, constants_1.loggerCtx);
+                }
+                // phone_taken / error → 回退路径 B（聊天内补录另一手机号）
+            }
+            // 路径 B：进入聊天内补录状态机（手机号 → 收货地址 → 建档续下单）
+            await this.sessionService.setFlow(msg.fromUserName, 'awaiting_phone', { indices }, ttl);
             return (0, card_builder_1.buildBindGuideText)(msg.fromUserName, this.loginUrl());
         }
         const ctx = await this.requestContextService.create({
             apiType: 'shop',
             channelOrToken: session.channelId,
         });
-        const outcome = await this.orderService.createOrder(ctx, customer.id, picked.map(p => { var _a; return ({ productId: p.productId, quantity: (_a = p.quantity) !== null && _a !== void 0 ? _a : 1 }); }));
+        return this.placeOrder(ctx, msg.fromUserName, customer.id, picked);
+    }
+    /** 建单 + 结果文案（成功附支付链接；库存/变体/失败各回对应提示） */
+    async placeOrder(ctx, touser, customerId, picked) {
+        const outcome = await this.orderService.createOrder(ctx, customerId, picked.map(p => { var _a; return ({ productId: p.productId, quantity: (_a = p.quantity) !== null && _a !== void 0 ? _a : 1 }); }));
         switch (outcome.status) {
             case 'ok': {
                 const payUrl = this.payUrl(outcome.order.code);
-                core_1.Logger.info(`Assistant order created: ${outcome.order.code} openid=${msg.fromUserName}`, constants_1.loggerCtx);
-                return (0, card_builder_1.buildOrderSuccessText)(msg.fromUserName, {
+                core_1.Logger.info(`Assistant order created: ${outcome.order.code}`, constants_1.loggerCtx);
+                return (0, card_builder_1.buildOrderSuccessText)(touser, {
                     orderCode: outcome.order.code,
                     total: outcome.order.totalWithTax,
                     items: outcome.items,
@@ -156,9 +260,9 @@ let AssistantService = class AssistantService {
             }
             case 'out_of_stock':
             case 'no_variant':
-                return (0, card_builder_1.buildOutOfStockText)(msg.fromUserName, outcome.title);
+                return (0, card_builder_1.buildOutOfStockText)(touser, outcome.title);
             default:
-                return (0, card_builder_1.buildOrderFailText)(msg.fromUserName, outcome.message);
+                return (0, card_builder_1.buildOrderFailText)(touser, outcome.message);
         }
     }
     // ============ 基础设施 ============
@@ -176,12 +280,6 @@ let AssistantService = class AssistantService {
             core_1.Logger.info(`Duplicated wechat message skipped: ${dedupKey}`, constants_1.loggerCtx);
             return false;
         }
-    }
-    async findCustomerByOpenid(openid) {
-        const customer = await this.connection
-            .getRepository(core_1.Customer)
-            .findOne({ where: { customFields: { wechatOpenid: openid } } });
-        return customer !== null && customer !== void 0 ? customer : null;
     }
     async resolveChannelId(channelToken) {
         if (channelToken) {
@@ -233,6 +331,7 @@ exports.AssistantService = AssistantService = __decorate([
         wechat_sender_1.WechatSender,
         credential_service_1.CredentialService,
         core_1.ChannelService,
-        core_1.RequestContextService])
+        core_1.RequestContextService,
+        customer_binding_service_1.CustomerBindingService])
 ], AssistantService);
 //# sourceMappingURL=assistant.service.js.map

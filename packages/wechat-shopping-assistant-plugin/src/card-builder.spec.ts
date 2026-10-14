@@ -1,8 +1,11 @@
 import { describe, expect, test } from 'vitest';
 import {
+    buildAwaitingAddressText,
+    buildBindGuideText,
     buildInvalidOrderText,
     buildNewsMessage,
     buildOrderSuccessText,
+    buildPhoneTakenText,
     buildTextListMessage,
     formatPrice,
 } from './card-builder';
@@ -71,5 +74,24 @@ describe('buildInvalidOrderText', () => {
         const msg = buildInvalidOrderText('oX', [5]);
         expect(msg.content).toContain('「5」');
         expect(msg.content).toContain('重新发送');
+    });
+});
+
+describe('绑定/补录文案', () => {
+    test('绑定引导：回复手机号开通 + 登录链接兜底', () => {
+        const msg = buildBindGuideText('oX', 'https://shop.example.com/account/login');
+        expect(msg.content).toContain('未绑定');
+        expect(msg.content).toContain('13800138000');
+        expect(msg.content).toContain('https://shop.example.com/account/login');
+        expect(msg.content).toContain('取消');
+    });
+    test('地址补录提示：回显手机号', () => {
+        expect(buildAwaitingAddressText('oX', '13800138000').content).toContain('13800138000');
+        expect(buildAwaitingAddressText('oX', '13800138000').content).toContain('收货地址');
+    });
+    test('防冒领文案：指向 H5 登录', () => {
+        expect(buildPhoneTakenText('oX', 'https://shop.example.com/account/login').content).toContain(
+            'https://shop.example.com/account/login',
+        );
     });
 });

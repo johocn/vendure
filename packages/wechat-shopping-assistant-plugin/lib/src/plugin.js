@@ -22,11 +22,13 @@ const assistant_service_1 = require("./assistant.service");
 const assistant_http_controller_1 = require("./assistant-http.controller");
 const constants_1 = require("./constants");
 const credential_service_1 = require("./credential.service");
+const customer_binding_service_1 = require("./customer-binding.service");
 const wechat_processed_message_entity_1 = require("./entities/wechat-processed-message.entity");
 const wechat_shopping_session_entity_1 = require("./entities/wechat-shopping-session.entity");
 const order_service_1 = require("./order.service");
 const search_adapter_1 = require("./search-adapter");
 const session_service_1 = require("./session.service");
+const shopping_session_flow_columns_migration_1 = require("./migrations/shopping-session-flow-columns.migration");
 const wechat_sender_1 = require("./wechat-sender");
 /**
  * 微信公众号购物助手：
@@ -69,6 +71,8 @@ exports.WechatShoppingAssistantPlugin = WechatShoppingAssistantPlugin = WechatSh
             credential_service_1.CredentialService,
             wechat_sender_1.WechatSender,
             assistant_service_1.AssistantService,
+            customer_binding_service_1.CustomerBindingService,
+            shopping_session_flow_columns_migration_1.ShoppingSessionFlowColumnsMigration,
         ],
         compatibility: '^3.0.0',
     }),

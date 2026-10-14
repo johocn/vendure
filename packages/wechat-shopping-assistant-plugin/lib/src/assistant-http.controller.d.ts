@@ -6,7 +6,7 @@ import { AssistantService } from './assistant.service';
  *   对外经 nginx location 原样透传，同 /wechat/message 机制——
  *   /shop-api/* 前缀下的 POST 会被 Apollo GraphQL 中间件拦截，勿挂）
  *   header: x-zhao-secret（与 strapi 端 ZHAO_SEARCH_SHARED_SECRET 同值）
- *   body:   { openid, text, msgId?, createTime?, channelToken? }
+ *   body:   { openid, text, msgId?, createTime?, channelToken?, boundPhone? }
  *   返回:   { kind: 'text', content } | { kind: 'news', articles: [{title,description,pic_url,url}] }
  *           | { handled: false }（无需回复，sso 回 success）
  *

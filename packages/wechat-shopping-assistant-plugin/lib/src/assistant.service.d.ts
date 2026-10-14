@@ -1,6 +1,7 @@
 import { ChannelService, RequestContextService, TransactionalConnection } from '@vendure/core';
 import { WechatInboundMessage, WechatMessageEvent } from '@vendure/wechat-auth-plugin';
 import { CredentialService } from './credential.service';
+import { CustomerBindingService } from './customer-binding.service';
 import { AssistantOrderService } from './order.service';
 import { AssistantSearchService } from './search-adapter';
 import { SessionService } from './session.service';
@@ -22,7 +23,8 @@ export declare class AssistantService {
     private credentialService;
     private channelService;
     private requestContextService;
-    constructor(opts: WechatShoppingAssistantOptions, connection: TransactionalConnection, sessionService: SessionService, searchService: AssistantSearchService, orderService: AssistantOrderService, sender: WechatSender, credentialService: CredentialService, channelService: ChannelService, requestContextService: RequestContextService);
+    private customerBinding;
+    constructor(opts: WechatShoppingAssistantOptions, connection: TransactionalConnection, sessionService: SessionService, searchService: AssistantSearchService, orderService: AssistantOrderService, sender: WechatSender, credentialService: CredentialService, channelService: ChannelService, requestContextService: RequestContextService, customerBinding: CustomerBindingService);
     onMessage(event: WechatMessageEvent): Promise<void>;
     /** 事件总线链路（本插件回调直连微信时用）：去重 → 决策 → 客服消息发送 */
     private handle;
@@ -32,14 +34,19 @@ export declare class AssistantService {
      * ① 微信事件总线（本插件回调直连，handle() 负责发送）
      * ② HTTP 接口（strapi zhao-sso 回调转调 POST /wechat-assistant/handle，
      *    回复由 sso 的被动回复 XML 承担——受 5 秒窗口约束，本方法须快速返回）。
+     * extra.boundPhone：sso 转调时附带的绑定用户手机号（路径 A：vendure 未绑定时自动建档，免输入）。
      * 返回 null = 无需回复（重复消息 / 非文本 / 未识别事件）。
      */
-    processMessage(msg: WechatInboundMessage): Promise<OutboundMessage | null>;
+    processMessage(msg: WechatInboundMessage, extra?: {
+        boundPhone?: string;
+    }): Promise<OutboundMessage | null>;
+    private handleFlowStep;
     private handleSearch;
     private handleOrder;
+    /** 建单 + 结果文案（成功附支付链接；库存/变体/失败各回对应提示） */
+    private placeOrder;
     /** MsgId 幂等：插入成功=首次处理；唯一键冲突=重复推送，直接跳过 */
     private claimDedup;
-    private findCustomerByOpenid;
     private resolveChannelId;
     private storefront;
     private loginUrl;

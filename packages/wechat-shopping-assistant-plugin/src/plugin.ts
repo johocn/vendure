@@ -7,11 +7,13 @@ import { AssistantService } from './assistant.service';
 import { AssistantHttpController } from './assistant-http.controller';
 import { loggerCtx, WECHAT_ASSISTANT_PLUGIN_OPTIONS } from './constants';
 import { CredentialService } from './credential.service';
+import { CustomerBindingService } from './customer-binding.service';
 import { WechatProcessedMessage } from './entities/wechat-processed-message.entity';
 import { WechatShoppingSession } from './entities/wechat-shopping-session.entity';
 import { AssistantOrderService } from './order.service';
 import { AssistantSearchService } from './search-adapter';
 import { SessionService } from './session.service';
+import { ShoppingSessionFlowColumnsMigration } from './migrations/shopping-session-flow-columns.migration';
 import { WechatShoppingAssistantOptions } from './types';
 import { WechatSender } from './wechat-sender';
 
@@ -35,6 +37,8 @@ import { WechatSender } from './wechat-sender';
         CredentialService,
         WechatSender,
         AssistantService,
+        CustomerBindingService,
+        ShoppingSessionFlowColumnsMigration,
     ],
     compatibility: '^3.0.0',
 })

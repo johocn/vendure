@@ -39,6 +39,14 @@ __decorate([
     __metadata("design:type", Object)
 ], WechatShoppingSession.prototype, "query", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', length: 32, nullable: true }),
+    __metadata("design:type", Object)
+], WechatShoppingSession.prototype, "state", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'simple-json', nullable: true }),
+    __metadata("design:type", Object)
+], WechatShoppingSession.prototype, "draft", void 0);
+__decorate([
     (0, typeorm_1.Column)({ type: Date }),
     __metadata("design:type", Date)
 ], WechatShoppingSession.prototype, "expireAt", void 0);

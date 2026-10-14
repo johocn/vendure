@@ -30,6 +30,14 @@ export class WechatShoppingSession extends VendureEntity {
     @Column({ type: 'varchar', length: 255, nullable: true })
     query: string | null;
 
+    /** 聊天内补录状态机：null=正常会话；awaiting_phone=待回复手机号；awaiting_address=待回复收货地址 */
+    @Column({ type: 'varchar', length: 32, nullable: true })
+    state: string | null;
+
+    /** 补录草稿（手机号 + 待下单编号），simple-json */
+    @Column({ type: 'simple-json', nullable: true })
+    draft: { phone?: string | null; indices?: number[] } | null;
+
     /** 会话过期时间；type: Date 构造器让 typeorm 按方言推断（postgres→timestamp / sqlite→datetime，显式 'datetime' 不被 postgres 支持） */
     @Column({ type: Date })
     expireAt: Date;

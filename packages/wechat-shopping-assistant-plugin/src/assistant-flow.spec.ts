@@ -82,7 +82,7 @@ const SEARCH_HITS = [
     { productId: '12', title: '千禾零添加酱油 1L', price: 1280 },
 ];
 
-function makeService(overrides: { search?: any; order?: any } = {}) {
+function makeService(overrides: { search?: any; order?: any; binding?: any } = {}) {
     const connection = makeConnection();
     const outbound: any[] = [];
     const sender = {
@@ -104,8 +104,31 @@ function makeService(overrides: { search?: any; order?: any } = {}) {
         { resolveForChannel: async () => ({}) } as any,
         { findOne: async () => ({ id: '2' }) } as any,
         { create: async () => ({ channelId: '2' }) } as any,
+        (overrides.binding ?? makeBindingStub({}, connection)) as any,
     );
     return { svc, connection, outbound };
+}
+
+/**
+ * 绑定建档假件：findCustomerByOpenid 默认读 connection.customers（对齐旧用例「已绑定」语义）；
+ * bindOrCreateCustomer 默认建档成功（customerId=42）。
+ */
+function makeBindingStub(
+    overrides: { boundCustomer?: any; bindOutcome?: any; calls?: any[] } = {},
+    connection?: any,
+) {
+    const calls = overrides.calls ?? [];
+    return {
+        findCustomerByOpenid: async (openid: string) =>
+            overrides.boundCustomer !== undefined
+                ? overrides.boundCustomer
+                : (connection?.customers.get(openid) ?? null),
+        bindOrCreateCustomer: async (_ctx: any, openid: string, phone: string, address?: string) => {
+            calls.push({ openid, phone, address });
+            return overrides.bindOutcome ?? { status: 'ok', customer: { id: 42 } };
+        },
+        calls,
+    };
 }
 
 function textEvent(content: string, msgId = 'M1'): WechatMessageEvent {
@@ -138,14 +161,127 @@ describe('AssistantService 冒烟闭环', () => {
         expect(session.channelId).toBe('2');
     });
 
-    test('回复「买1」未绑定 → 引导绑定', async () => {
+    test('回复「买1」未绑定 → 引导绑定 + 进入补录状态机', async () => {
         const { svc, connection, outbound } = makeService();
         await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
         await svc.onMessage(textEvent('买1', 'M2'));
         const last = outbound[outbound.length - 1];
         expect(last.kind).toBe('text');
         expect(last.content).toContain('未绑定');
+        expect(last.content).toContain('13800138000');
         expect(last.content).toContain('https://shop.example.com/account/login');
+        const session = connection.sessions.get('openid-user-1');
+        expect(session.state).toBe('awaiting_phone');
+        expect(session.draft.indices).toEqual([1]);
+    });
+
+    test('路径 B：补录手机号 → 补录地址 → 建档续下单', async () => {
+        const order = makeOrderStub(null);
+        const binding = makeBindingStub();
+        const { svc, connection, outbound } = makeService({ order, binding });
+        await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
+        await svc.onMessage(textEvent('买1', 'M2'));
+        await svc.onMessage(textEvent('13800138000', 'M3'));
+        expect(outbound[outbound.length - 1].content).toContain('收货地址');
+        const session = connection.sessions.get('openid-user-1');
+        expect(session.state).toBe('awaiting_address');
+        expect(session.draft.phone).toBe('13800138000');
+        await svc.onMessage(textEvent('北京市朝阳区建国路1号院', 'M4'));
+        expect(binding.calls[0]).toEqual({
+            openid: 'openid-user-1',
+            phone: '13800138000',
+            address: '北京市朝阳区建国路1号院',
+        });
+        expect(order.calls.length).toBe(1);
+        expect(order.calls[0]).toEqual([{ productId: '11', quantity: 1 }]);
+        const last = outbound[outbound.length - 1];
+        expect(last.content).toContain('下单成功');
+        expect(last.content).toContain('ABCD12');
+        // 补录完成后状态清空，可直接回复编号下单
+        expect(session.state).toBeNull();
+        expect(session.draft).toBeNull();
+    });
+
+    test('路径 A：sso 附带 boundPhone → 自动建档后直接下单（零输入）', async () => {
+        const order = makeOrderStub(null);
+        const binding = makeBindingStub();
+        const { svc, outbound } = makeService({ order, binding });
+        await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
+        // sso 转调链路：processMessage 第二参携带绑定手机号（纯决策，不发送，断言返回值）
+        const out: any = await svc.processMessage(
+            {
+                channelToken: 'channel-token-a',
+                msgType: 'text',
+                fromUserName: 'openid-user-1',
+                toUserName: 'gh_x',
+                content: '买1',
+                msgId: 'M2',
+            } as any,
+            { boundPhone: '13900139000' },
+        );
+        expect(binding.calls[0]).toEqual({ openid: 'openid-user-1', phone: '13900139000', address: undefined });
+        expect(order.calls.length).toBe(1);
+        expect(out.content).toContain('下单成功');
+    });
+
+    test('路径 A 手机号被冒用（phone_taken）→ 回退路径 B 补录引导', async () => {
+        const binding = makeBindingStub({ bindOutcome: { status: 'phone_taken' } });
+        const { svc, connection, outbound } = makeService({ binding });
+        await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
+        const out: any = await svc.processMessage(
+            {
+                channelToken: 'channel-token-a',
+                msgType: 'text',
+                fromUserName: 'openid-user-1',
+                toUserName: 'gh_x',
+                content: '买1',
+                msgId: 'M2',
+            } as any,
+            { boundPhone: '13900139000' },
+        );
+        const session = connection.sessions.get('openid-user-1');
+        expect(session.state).toBe('awaiting_phone');
+        expect(out.content).toContain('未绑定');
+    });
+
+    test('补录中回复「取消」→ 清态退出', async () => {
+        const { svc, connection, outbound } = makeService();
+        await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
+        await svc.onMessage(textEvent('买1', 'M2'));
+        await svc.onMessage(textEvent('取消', 'M3'));
+        const session = connection.sessions.get('openid-user-1');
+        expect(session.state).toBeNull();
+        expect(outbound[outbound.length - 1].content).toContain('已取消');
+    });
+
+    test('补录手机号格式无效 → 重新提示', async () => {
+        const { svc, outbound } = makeService();
+        await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
+        await svc.onMessage(textEvent('买1', 'M2'));
+        await svc.onMessage(textEvent('12345', 'M3'));
+        expect(outbound[outbound.length - 1].content).toContain('手机号格式不对');
+    });
+
+    test('补录地址过短 → 重新提示', async () => {
+        const { svc, outbound } = makeService();
+        await svc.onMessage(textEvent('买一瓶酱油', 'M1'));
+        await svc.onMessage(textEvent('买1', 'M2'));
+        await svc.onMessage(textEvent('13800138000', 'M3'));
+        await svc.onMessage(textEvent('北京', 'M4'));
+        expect(outbound[outbound.length - 1].content).toContain('不完整');
+    });
+
+    test('未绑定用户直接发手机号 → 进入地址补录；完成后无待下单商品回绑定成功', async () => {
+        const binding = makeBindingStub();
+        const { svc, connection, outbound } = makeService({ binding });
+        await svc.onMessage(textEvent('13800138000', 'M1'));
+        expect(outbound[0].content).toContain('收货地址');
+        expect(connection.sessions.get('openid-user-1').state).toBe('awaiting_address');
+        await svc.onMessage(textEvent('上海市浦东新区世纪大道100号', 'M2'));
+        const last = outbound[outbound.length - 1];
+        expect(last.content).toContain('绑定成功');
+        expect(binding.calls[0].phone).toBe('13800138000');
+        expect(binding.calls[0].address).toBe('上海市浦东新区世纪大道100号');
     });
 
     test('已绑定用户回复「买1」→ 下单成功通知 + 支付链接；重复 MsgId 跳过', async () => {
