@@ -3,6 +3,12 @@ export interface OrderSelection {
     productId: string;
     quantity: number;
 }
+/** 下单落单收货地址（对话选址携带，含电话） */
+export interface OrderShippingAddress {
+    fullName?: string;
+    phoneNumber?: string;
+    streetLine1: string;
+}
 export type CreateOrderOutcome = {
     status: 'ok';
     order: Order;
@@ -31,7 +37,7 @@ export declare class AssistantOrderService {
     private connection;
     private orderService;
     constructor(connection: TransactionalConnection, orderService: OrderService);
-    createOrder(ctx: RequestContext, customer: Customer, selections: OrderSelection[]): Promise<CreateOrderOutcome>;
+    createOrder(ctx: RequestContext, customer: Customer, selections: OrderSelection[], address?: OrderShippingAddress): Promise<CreateOrderOutcome>;
     /**
      * 渠道默认变体：商品已发布 → 取该渠道有价格且启用、按价格升序的第一个变体。
      * 查询限定 channelId 匹配价格行，避免跨渠道下单。

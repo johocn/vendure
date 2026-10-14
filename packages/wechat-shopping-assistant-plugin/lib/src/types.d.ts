@@ -58,6 +58,39 @@ export type OutboundMessage = {
         picurl?: string;
     }>;
 };
+/**
+ * 会话状态机状态：
+ * - awaiting_phone / awaiting_address：未绑定建档补录（手机号 → 地址）
+ * - addr_* / order_confirm：地址簿管理 + 下单选地址（方案 B 列表式逐轮问答）
+ */
+export type AssistantFlowState = 'awaiting_phone' | 'awaiting_address' | 'addr_pick' | 'addr_op' | 'addr_edit_field' | 'addr_edit_text' | 'addr_edit_person' | 'addr_del_confirm' | 'addr_new_text' | 'addr_new_phone' | 'addr_new_phone_text' | 'addr_new_default' | 'order_confirm' | null;
+/** 状态机草稿：随 state 存取，各状态按需读写 */
+export interface AssistantFlowDraft {
+    /** 补录/新增地址中的手机号 */
+    phone?: string | null;
+    /** 待下单商品编号 */
+    indices?: number[];
+    /** 地址流程来源：order=下单选址 / manage=地址管理 */
+    flow?: 'order' | 'manage' | null;
+    /** 列表中选中的地址编号（1 起，用于回查列表项） */
+    pickIndex?: number | null;
+    /** 选中地址 id */
+    pickAddressId?: string | null;
+    /** 新增/修改中的地址文本 */
+    pendingText?: string | null;
+    /** 新增地址已确定的电话 */
+    pendingPhone?: string | null;
+}
+/** 地址簿列表项（service 层聚合给文案构建用） */
+export interface AddressBookItem {
+    id: string;
+    /** 序号（列表展示从 1 起） */
+    index: number;
+    fullName: string;
+    phoneNumber: string;
+    streetLine1: string;
+    isDefault: boolean;
+}
 /** 入站消息的统一处理上下文 */
 export interface InboundContext {
     message: WechatInboundMessage;

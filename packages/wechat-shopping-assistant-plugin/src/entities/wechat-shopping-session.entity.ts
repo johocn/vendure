@@ -30,11 +30,14 @@ export class WechatShoppingSession extends VendureEntity {
     @Column({ type: 'varchar', length: 255, nullable: true })
     query: string | null;
 
-    /** 聊天内补录状态机：null=正常会话；awaiting_phone=待回复手机号；awaiting_address=待回复收货地址 */
+    /**
+     * 对话状态机：null=正常会话；awaiting_phone/awaiting_address=建档补录；
+     * addr_ 与 order_confirm 前缀状态=地址管理 + 下单选地址（方案 B 列表式逐轮问答）
+     */
     @Column({ type: 'varchar', length: 32, nullable: true })
     state: string | null;
 
-    /** 补录草稿（手机号 + 待下单编号），simple-json */
+    /** 状态机草稿（手机号/待下单编号/地址流程上下文），simple-json */
     @Column({ type: 'simple-json', nullable: true })
     draft: { phone?: string | null; indices?: number[] } | null;
 

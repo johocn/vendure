@@ -7,10 +7,14 @@ export type AssistantIntent =
     | { kind: 'search'; query: string; quantity?: number }
     | { kind: 'order'; indices: number[] }
     | { kind: 'help' }
-    | { kind: 'bind' };
+    | { kind: 'bind' }
+    | { kind: 'address_manage' }
+    | { kind: 'address_add' };
 
 const HELP_RE = /^(帮助|菜单|功能|怎么用|使用帮助|help|hi|hello|你好|您好)[!！。.~]?$/i;
 const BIND_RE = /^(绑定|登录|注册|账号|帐号)([!！。.~]?)/;
+const ADDR_MANAGE_RE = /^(地址管理|我的地址|地址簿|收货地址|管理地址)[!！。.~]?$/;
+const ADDR_ADD_RE = /^(新增地址|添加地址|新增|添加)[!！。.~]?$/;
 const ORDER_HEAD = '(?:购买|下单|订购|买|要|来|购|拍)?';
 const SEARCH_HEAD = '(?:搜索|查询|想买|想要|看看|推荐|买|要|来|找|搜|查)';
 const QTY_UNIT = '(?:个|件|瓶|包|盒|罐|袋|听|支|条|份|箱|斤|克|毫升|升)';
@@ -41,6 +45,9 @@ export function recognizeIntent(raw: string): AssistantIntent {
     if (!text) return { kind: 'help' };
     if (HELP_RE.test(text)) return { kind: 'help' };
     if (BIND_RE.test(text)) return { kind: 'bind' };
+    // 地址指令优先于搜索兜底（「地址簿」等词否则会被当搜索词）
+    if (ADDR_MANAGE_RE.test(text)) return { kind: 'address_manage' };
+    if (ADDR_ADD_RE.test(text)) return { kind: 'address_add' };
 
     // 编号下单：纯编号或「买/来/下单 + 编号（可多个，支持分隔符）」
     const orderMatch = text.match(new RegExp(`^${ORDER_HEAD}(\\d{1,2}(?:[,，、和&]\\d{1,2})*)(?:号|楼)?$`));

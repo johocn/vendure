@@ -174,3 +174,204 @@ export function buildSessionExpiredText(touser: string): TextMessage {
         content: '最近的搜索结果已过期，请重新发送想买的商品（如「买一瓶酱油」），再回复编号下单。',
     };
 }
+
+// ============ 地址簿管理 + 下单选地址（方案 B 列表式逐轮问答） ============
+
+/** 电话打码：137****2222；过短原样返回 */
+export function maskPhone(phone?: string | null): string {
+    const p = String(phone ?? '');
+    return /^1\d{10}$/.test(p) ? `${p.slice(0, 3)}****${p.slice(7)}` : p;
+}
+
+/** 地址簿列表卡：⭐ 默认置顶标记；mode=order（下单选址）/ manage（地址管理） */
+export function buildAddressListCard(
+    touser: string,
+    items: Array<{ index: number; fullName: string; phoneNumber: string; streetLine1: string; isDefault: boolean }>,
+    mode: 'order' | 'manage',
+): TextMessage {
+    const listLines = items
+        .map(
+            a =>
+                `${a.index}${a.isDefault ? ' ⭐' : ''} ${a.fullName || '收货人未填'} ${maskPhone(a.phoneNumber)}\n${a.streetLine1}`,
+        )
+        .join('\n');
+    if (mode === 'order') {
+        return {
+            kind: 'text',
+            touser,
+            content: `请选择收货地址：\n${listLines || '您还没有收货地址'}\n────────\n回复编号选择地址下单${items.length ? '，回复 0 新增地址' : '，请直接回复收货地址（含省市区 + 详细）'}`,
+        };
+    }
+    return {
+        kind: 'text',
+        touser,
+        content: `您的地址簿（⭐ = 默认）：\n${listLines || '您还没有收货地址'}\n────────\n回复编号管理地址，回复「新增」添加${items.length ? '' : '（请直接回复收货地址）'}，回复「退出」结束`,
+    };
+}
+
+/** 管理态：选中地址的操作菜单 */
+export function buildAddrOpMenu(
+    touser: string,
+    item: { index: number; fullName: string; phoneNumber: string; streetLine1: string; isDefault: boolean },
+): TextMessage {
+    return {
+        kind: 'text',
+        touser,
+        content: `地址${item.index}：${item.fullName || '收货人未填'} ${maskPhone(item.phoneNumber)} ${item.streetLine1}${item.isDefault ? ' ⭐默认' : ''}\n要做什么？\n回复 1 设为默认\n回复 2 修改地址\n回复 3 删除\n回复 0 返回列表`,
+    };
+}
+
+/** 下单二次确认卡：商品明细 + 收货信息 */
+export function buildOrderConfirmCard(
+    touser: string,
+    input: {
+        items: Array<{ title: string; quantity: number; price: number }>;
+        total: number;
+        address: { fullName: string; phoneNumber: string; streetLine1: string; isDefault: boolean };
+    },
+): TextMessage {
+    const lines = input.items.map(i => `${i.title} ×${i.quantity}  ${formatPrice(i.price * i.quantity)}`);
+    lines.push(`合计：${formatPrice(input.total)}`);
+    lines.push('────────');
+    lines.push(`收货人：${input.address.fullName || '收货人未填'}${input.address.isDefault ? ' ⭐' : ''}`);
+    lines.push(`电话：${maskPhone(input.address.phoneNumber)}`);
+    lines.push(`地址：${input.address.streetLine1}`);
+    lines.push('────────');
+    lines.push('回复 1 确认下单，回复 0 重选地址');
+    return { kind: 'text', touser, content: lines.join('\n') };
+}
+
+/** 修改分支选择 */
+export function buildAddrEditFieldText(touser: string, index: number): TextMessage {
+    return {
+        kind: 'text',
+        touser,
+        content: `修改地址${index}，要改哪项？\n回复 1 改收货地址\n回复 2 改收货人/电话`,
+    };
+}
+
+/** 请回复新地址文本 */
+export function buildAddrEditTextPrompt(touser: string): TextMessage {
+    return {
+        kind: 'text',
+        touser,
+        content: '请回复新的收货地址（含省市区 + 详细地址）：\n回复「取消」退出。',
+    };
+}
+
+/** 请回复新收货人/电话（一行「姓名 电话」，姓名可省略） */
+export function buildAddrEditPersonPrompt(touser: string): TextMessage {
+    return {
+        kind: 'text',
+        touser,
+        content: '请回复收货人和电话（一行，如「李四 13999990000」，只改电话可只发号码）：\n回复「取消」退出。',
+    };
+}
+
+/** 删除确认 */
+export function buildAddrDeleteConfirm(
+    touser: string,
+    item: { index: number; fullName: string; phoneNumber: string; streetLine1: string },
+): TextMessage {
+    return {
+        kind: 'text',
+        touser,
+        content: `确认删除地址${item.index}？\n${item.fullName || '收货人未填'} ${maskPhone(item.phoneNumber)} ${item.streetLine1}\n────────\n回复 1 确认删除\n回复 0 返回`,
+    };
+}
+
+/**
+ * 删除成功。newDefault 三态：
+ * - 传入对象：删的是默认地址且已自动切换 → 展示新默认；
+ * - null：删的是默认地址且已删光 → 提示无默认可新增；
+ * - undefined：删的不是默认地址 → 省略默认相关行。
+ */
+export function buildAddrDeletedText(
+    touser: string,
+    newDefault?: { index: number; fullName: string; streetLine1: string } | null,
+): TextMessage {
+    const lines = ['已删除 ✓'];
+    if (newDefault) {
+        lines.push(`默认地址已自动切换为「${newDefault.fullName || '收货人未填'} · ${newDefault.streetLine1}」⭐`);
+    } else if (newDefault === null) {
+        lines.push('您目前没有默认地址，可回复「新增」添加。');
+    }
+    lines.push('回复编号继续管理，回复「退出」结束');
+    return { kind: 'text', touser, content: lines.join('\n') };
+}
+
+/** 新增地址：电话选择（默认用注册手机号） */
+export function buildAddrNewPhoneText(touser: string, registeredPhone?: string): TextMessage {
+    if (registeredPhone) {
+        return {
+            kind: 'text',
+            touser,
+            content: `联系电话用注册手机号 ${maskPhone(registeredPhone)} 吗？\n回复 1 用这个号码\n回复 2 换新号码\n回复「取消」退出。`,
+        };
+    }
+    return {
+        kind: 'text',
+        touser,
+        content: '请回复该地址的联系电话（11 位手机号）：\n回复「取消」退出。',
+    };
+}
+
+/** 新增地址：请回复新号码 */
+export function buildAddrNewPhonePromptText(touser: string): TextMessage {
+    return {
+        kind: 'text',
+        touser,
+        content: '请回复该地址的联系电话（11 位手机号）：\n回复「取消」退出。',
+    };
+}
+
+/** 新增地址：是否设为默认 */
+export function buildAddrNewDefaultText(touser: string, text: string, phone: string): TextMessage {
+    return {
+        kind: 'text',
+        touser,
+        content: `已收到地址：${text}（${maskPhone(phone)}）\n设为默认地址？回复「是」/「否」`,
+    };
+}
+
+/** 地址新增/修改成功展示卡 */
+export function buildAddrSavedText(
+    touser: string,
+    item: { index: number; fullName: string; phoneNumber: string; streetLine1: string; isDefault: boolean },
+): TextMessage {
+    return {
+        kind: 'text',
+        touser,
+        content: `地址${item.index}${item.isDefault ? ' ⭐' : ''}：${item.fullName || '收货人未填'} ${maskPhone(item.phoneNumber)}\n${item.streetLine1}\n────────\n回复编号可继续管理，回复「退出」结束`,
+    };
+}
+
+/** 管理态编号超范围/无效 */
+export function buildInvalidAddrIndexText(touser: string, max: number): TextMessage {
+    return {
+        kind: 'text',
+        touser,
+        content: `没有该编号的地址，请回复 1-${max} 之间的编号${max < 99 ? '，回复「新增」添加' : ''}。`,
+    };
+}
+
+/** 收货人/电话格式错误 */
+export function buildInvalidAddrPersonText(touser: string): TextMessage {
+    return {
+        kind: 'text',
+        touser,
+        content: '格式不对，请回复「收货人 电话」（如「李四 13999990000」），或只回复 11 位手机号。',
+    };
+}
+
+/** 已设为默认 */
+export function buildAddrDefaultSetText(
+    touser: string,
+    item: { index: number; fullName: string; streetLine1: string },
+): TextMessage {
+    return {
+        kind: 'text',
+        touser,
+        content: `已将「${item.fullName || '收货人未填'} · ${item.streetLine1}」设为默认地址 ⭐\n回复编号可继续管理，回复「退出」结束`,
+    };
+}

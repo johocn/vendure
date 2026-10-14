@@ -24,8 +24,8 @@ let AssistantOrderService = class AssistantOrderService {
         this.connection = connection;
         this.orderService = orderService;
     }
-    async createOrder(ctx, customer, selections) {
-        var _a, _b, _c, _d, _e;
+    async createOrder(ctx, customer, selections, address) {
+        var _a, _b, _c, _d, _e, _f, _g;
         if (!selections.length) {
             return { status: 'error', message: '未选择商品' };
         }
@@ -60,6 +60,21 @@ let AssistantOrderService = class AssistantOrderService {
                     price: (_c = (_b = line === null || line === void 0 ? void 0 : line.unitPrice) !== null && _b !== void 0 ? _b : pick.variant.listPrice) !== null && _c !== void 0 ? _c : 0,
                 });
             }
+            // 落收货地址（含电话）：对话选址后写入订单 shippingAddress；失败不阻塞下单
+            if (address === null || address === void 0 ? void 0 : address.streetLine1) {
+                try {
+                    await this.orderService.setShippingAddress(ctx, order.id, {
+                        fullName: (_d = address.fullName) !== null && _d !== void 0 ? _d : '',
+                        phoneNumber: (_e = address.phoneNumber) !== null && _e !== void 0 ? _e : '',
+                        streetLine1: address.streetLine1,
+                        countryCode: 'CN',
+                    });
+                    core_1.Logger.info(`Assistant order shipping address set: order=${order.id}`, constants_1.loggerCtx);
+                }
+                catch (e) {
+                    core_1.Logger.warn(`Assistant order setShippingAddress skipped: ${e === null || e === void 0 ? void 0 : e.message}`, constants_1.loggerCtx);
+                }
+            }
             // 转入待支付（ArrangingPayment），由用户点击支付链接在 H5 收银台完成支付
             const arrangeResult = await this.orderService.transitionToState(ctx, order.id, 'ArrangingPayment');
             if ('errorCode' in arrangeResult) {
@@ -74,7 +89,7 @@ let AssistantOrderService = class AssistantOrderService {
                 order: finalOrder !== null && finalOrder !== void 0 ? finalOrder : order,
                 items: items.length
                     ? items
-                    : ((_d = finalOrder === null || finalOrder === void 0 ? void 0 : finalOrder.lines) !== null && _d !== void 0 ? _d : []).map(l => ({
+                    : ((_f = finalOrder === null || finalOrder === void 0 ? void 0 : finalOrder.lines) !== null && _f !== void 0 ? _f : []).map(l => ({
                         title: l.productVariant.name,
                         quantity: l.quantity,
                         price: l.unitPrice,
@@ -83,7 +98,7 @@ let AssistantOrderService = class AssistantOrderService {
         }
         catch (e) {
             core_1.Logger.error(`Assistant order creation failed: ${String(e)}`, constants_1.loggerCtx);
-            return { status: 'error', message: String((_e = e.message) !== null && _e !== void 0 ? _e : e) };
+            return { status: 'error', message: String((_g = e.message) !== null && _g !== void 0 ? _g : e) };
         }
     }
     /**

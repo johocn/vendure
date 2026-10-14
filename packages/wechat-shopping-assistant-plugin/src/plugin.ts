@@ -3,6 +3,7 @@ import { EventBus, Logger, PluginCommonModule, VendurePlugin } from '@vendure/co
 import { MeiliSearchPlugin } from '@vendure/meilisearch-plugin';
 import { WechatAuthPlugin, WechatMessageEvent } from '@vendure/wechat-auth-plugin';
 
+import { AddressBookService } from './address.service';
 import { AssistantService } from './assistant.service';
 import { AssistantHttpController } from './assistant-http.controller';
 import { loggerCtx, WECHAT_ASSISTANT_PLUGIN_OPTIONS } from './constants';
@@ -38,6 +39,7 @@ import { WechatSender } from './wechat-sender';
         WechatSender,
         AssistantService,
         CustomerBindingService,
+        AddressBookService,
         ShoppingSessionFlowColumnsMigration,
     ],
     compatibility: '^3.0.0',

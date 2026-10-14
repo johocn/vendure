@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { TransactionalConnection } from '@vendure/core';
 
-import { CardProduct } from './types';
+import { CardProduct, AssistantFlowDraft, AssistantFlowState } from './types';
 import { WechatShoppingSession } from './entities/wechat-shopping-session.entity';
 
 /**
@@ -49,11 +49,11 @@ export class SessionService {
         return this.getActive(openid);
     }
 
-    /** 写入补录状态与草稿；顺带续期会话（补录两步可能跨过原 TTL） */
+    /** 写入状态机状态与草稿；顺带续期会话（多轮对话可能跨过原 TTL） */
     async setFlow(
         openid: string,
-        state: 'awaiting_phone' | 'awaiting_address' | null,
-        draft: { phone?: string | null; indices?: number[] } | null,
+        state: AssistantFlowState,
+        draft: AssistantFlowDraft | null,
         ttlMinutes: number,
     ): Promise<void> {
         const session = await this.connection.getRepository(WechatShoppingSession).findOne({ where: { openid } });

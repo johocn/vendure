@@ -46,4 +46,85 @@ export declare function buildOrderSuccessText(touser: string, input: {
 }): TextMessage;
 export declare function buildWelcomeText(touser: string, storefrontUrl?: string): TextMessage;
 export declare function buildSessionExpiredText(touser: string): TextMessage;
+/** 电话打码：137****2222；过短原样返回 */
+export declare function maskPhone(phone?: string | null): string;
+/** 地址簿列表卡：⭐ 默认置顶标记；mode=order（下单选址）/ manage（地址管理） */
+export declare function buildAddressListCard(touser: string, items: Array<{
+    index: number;
+    fullName: string;
+    phoneNumber: string;
+    streetLine1: string;
+    isDefault: boolean;
+}>, mode: 'order' | 'manage'): TextMessage;
+/** 管理态：选中地址的操作菜单 */
+export declare function buildAddrOpMenu(touser: string, item: {
+    index: number;
+    fullName: string;
+    phoneNumber: string;
+    streetLine1: string;
+    isDefault: boolean;
+}): TextMessage;
+/** 下单二次确认卡：商品明细 + 收货信息 */
+export declare function buildOrderConfirmCard(touser: string, input: {
+    items: Array<{
+        title: string;
+        quantity: number;
+        price: number;
+    }>;
+    total: number;
+    address: {
+        fullName: string;
+        phoneNumber: string;
+        streetLine1: string;
+        isDefault: boolean;
+    };
+}): TextMessage;
+/** 修改分支选择 */
+export declare function buildAddrEditFieldText(touser: string, index: number): TextMessage;
+/** 请回复新地址文本 */
+export declare function buildAddrEditTextPrompt(touser: string): TextMessage;
+/** 请回复新收货人/电话（一行「姓名 电话」，姓名可省略） */
+export declare function buildAddrEditPersonPrompt(touser: string): TextMessage;
+/** 删除确认 */
+export declare function buildAddrDeleteConfirm(touser: string, item: {
+    index: number;
+    fullName: string;
+    phoneNumber: string;
+    streetLine1: string;
+}): TextMessage;
+/**
+ * 删除成功。newDefault 三态：
+ * - 传入对象：删的是默认地址且已自动切换 → 展示新默认；
+ * - null：删的是默认地址且已删光 → 提示无默认可新增；
+ * - undefined：删的不是默认地址 → 省略默认相关行。
+ */
+export declare function buildAddrDeletedText(touser: string, newDefault?: {
+    index: number;
+    fullName: string;
+    streetLine1: string;
+} | null): TextMessage;
+/** 新增地址：电话选择（默认用注册手机号） */
+export declare function buildAddrNewPhoneText(touser: string, registeredPhone?: string): TextMessage;
+/** 新增地址：请回复新号码 */
+export declare function buildAddrNewPhonePromptText(touser: string): TextMessage;
+/** 新增地址：是否设为默认 */
+export declare function buildAddrNewDefaultText(touser: string, text: string, phone: string): TextMessage;
+/** 地址新增/修改成功展示卡 */
+export declare function buildAddrSavedText(touser: string, item: {
+    index: number;
+    fullName: string;
+    phoneNumber: string;
+    streetLine1: string;
+    isDefault: boolean;
+}): TextMessage;
+/** 管理态编号超范围/无效 */
+export declare function buildInvalidAddrIndexText(touser: string, max: number): TextMessage;
+/** 收货人/电话格式错误 */
+export declare function buildInvalidAddrPersonText(touser: string): TextMessage;
+/** 已设为默认 */
+export declare function buildAddrDefaultSetText(touser: string, item: {
+    index: number;
+    fullName: string;
+    streetLine1: string;
+}): TextMessage;
 export {};

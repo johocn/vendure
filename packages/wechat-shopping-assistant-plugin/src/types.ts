@@ -53,6 +53,56 @@ export type OutboundMessage =
           articles: Array<{ title: string; description?: string; url?: string; picurl?: string }>;
       };
 
+/**
+ * 会话状态机状态：
+ * - awaiting_phone / awaiting_address：未绑定建档补录（手机号 → 地址）
+ * - addr_* / order_confirm：地址簿管理 + 下单选地址（方案 B 列表式逐轮问答）
+ */
+export type AssistantFlowState =
+    | 'awaiting_phone'
+    | 'awaiting_address'
+    | 'addr_pick' // 等地址列表选择（draft.flow 区分下单/管理场景）
+    | 'addr_op' // 管理态：已选地址，等操作（设默认/修改/删除/返回）
+    | 'addr_edit_field' // 修改分支选择（1 改地址 / 2 改收货人电话）
+    | 'addr_edit_text' // 等新地址文本
+    | 'addr_edit_person' // 等新收货人/电话（「姓名 电话」）
+    | 'addr_del_confirm' // 等删除确认（1 确认 / 0 返回）
+    | 'addr_new_text' // 等新增地址文本
+    | 'addr_new_phone' // 等电话选择（1 注册号 / 2 换新号）
+    | 'addr_new_phone_text' // 等新号码
+    | 'addr_new_default' // 等是否设默认（是/否）
+    | 'order_confirm' // 下单二次确认（1 确认 / 0 重选地址）
+    | null;
+
+/** 状态机草稿：随 state 存取，各状态按需读写 */
+export interface AssistantFlowDraft {
+    /** 补录/新增地址中的手机号 */
+    phone?: string | null;
+    /** 待下单商品编号 */
+    indices?: number[];
+    /** 地址流程来源：order=下单选址 / manage=地址管理 */
+    flow?: 'order' | 'manage' | null;
+    /** 列表中选中的地址编号（1 起，用于回查列表项） */
+    pickIndex?: number | null;
+    /** 选中地址 id */
+    pickAddressId?: string | null;
+    /** 新增/修改中的地址文本 */
+    pendingText?: string | null;
+    /** 新增地址已确定的电话 */
+    pendingPhone?: string | null;
+}
+
+/** 地址簿列表项（service 层聚合给文案构建用） */
+export interface AddressBookItem {
+    id: string;
+    /** 序号（列表展示从 1 起） */
+    index: number;
+    fullName: string;
+    phoneNumber: string;
+    streetLine1: string;
+    isDefault: boolean;
+}
+
 /** 入站消息的统一处理上下文 */
 export interface InboundContext {
     message: WechatInboundMessage;

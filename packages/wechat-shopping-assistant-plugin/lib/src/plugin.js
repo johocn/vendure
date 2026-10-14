@@ -18,6 +18,7 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const meilisearch_plugin_1 = require("@vendure/meilisearch-plugin");
 const wechat_auth_plugin_1 = require("@vendure/wechat-auth-plugin");
+const address_service_1 = require("./address.service");
 const assistant_service_1 = require("./assistant.service");
 const assistant_http_controller_1 = require("./assistant-http.controller");
 const constants_1 = require("./constants");
@@ -72,6 +73,7 @@ exports.WechatShoppingAssistantPlugin = WechatShoppingAssistantPlugin = WechatSh
             wechat_sender_1.WechatSender,
             assistant_service_1.AssistantService,
             customer_binding_service_1.CustomerBindingService,
+            address_service_1.AddressBookService,
             shopping_session_flow_columns_migration_1.ShoppingSessionFlowColumnsMigration,
         ],
         compatibility: '^3.0.0',

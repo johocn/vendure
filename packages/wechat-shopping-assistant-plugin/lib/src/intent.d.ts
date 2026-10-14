@@ -13,6 +13,10 @@ export type AssistantIntent = {
     kind: 'help';
 } | {
     kind: 'bind';
+} | {
+    kind: 'address_manage';
+} | {
+    kind: 'address_add';
 };
 /** 全角数字/字母转半角，去空白，统一分隔符 */
 export declare function normalizeInput(raw: string): string;

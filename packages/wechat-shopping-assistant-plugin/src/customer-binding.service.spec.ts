@@ -110,6 +110,8 @@ describe('CustomerBindingService', () => {
         expect(calls.updates[0].customFields.wechatOpenid).toBe('oX');
         expect(calls.addresses[0].input.streetLine1).toBe('北京市朝阳区建国路1号');
         expect(calls.addresses[0].input.phoneNumber).toBe('13800138000');
+        // 建档首地址即默认收货地址（下单选址列表 ⭐ 置顶 + placeOrder 兜底）
+        expect(calls.addresses[0].input.defaultShippingAddress).toBe(true);
     });
 
     test('地址创建失败（国家码缺失等）→ 不阻塞建档', async () => {

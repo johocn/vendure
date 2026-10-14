@@ -57,7 +57,7 @@ let SessionService = class SessionService {
         await repo.insert(repo.create({ openid, channelId, results: [], query: null, expireAt }));
         return this.getActive(openid);
     }
-    /** 写入补录状态与草稿；顺带续期会话（补录两步可能跨过原 TTL） */
+    /** 写入状态机状态与草稿；顺带续期会话（多轮对话可能跨过原 TTL） */
     async setFlow(openid, state, draft, ttlMinutes) {
         const session = await this.connection.getRepository(wechat_shopping_session_entity_1.WechatShoppingSession).findOne({ where: { openid } });
         if (!session)

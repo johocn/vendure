@@ -49,6 +49,19 @@ describe('recognizeIntent', () => {
     test('full-width digits order', () => {
         expect(recognizeIntent('买２')).toEqual({ kind: 'order', indices: [2] });
     });
+
+    test('address manage intents', () => {
+        expect(recognizeIntent('地址管理')).toEqual({ kind: 'address_manage' });
+        expect(recognizeIntent('我的地址')).toEqual({ kind: 'address_manage' });
+        expect(recognizeIntent('地址簿')).toEqual({ kind: 'address_manage' });
+        expect(recognizeIntent('收货地址！')).toEqual({ kind: 'address_manage' });
+    });
+
+    test('address add intents', () => {
+        expect(recognizeIntent('新增地址')).toEqual({ kind: 'address_add' });
+        expect(recognizeIntent('添加地址。')).toEqual({ kind: 'address_add' });
+        expect(recognizeIntent('新增')).toEqual({ kind: 'address_add' });
+    });
 });
 
 describe('buildDedupKey', () => {

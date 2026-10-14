@@ -17,6 +17,13 @@ export interface OrderSelection {
     quantity: number;
 }
 
+/** 下单落单收货地址（对话选址携带，含电话） */
+export interface OrderShippingAddress {
+    fullName?: string;
+    phoneNumber?: string;
+    streetLine1: string;
+}
+
 export type CreateOrderOutcome =
     | { status: 'ok'; order: Order; items: Array<{ title: string; quantity: number; price: number }> }
     | { status: 'out_of_stock'; title: string }
@@ -36,7 +43,12 @@ export class AssistantOrderService {
         private orderService: OrderService,
     ) {}
 
-    async createOrder(ctx: RequestContext, customer: Customer, selections: OrderSelection[]): Promise<CreateOrderOutcome> {
+    async createOrder(
+        ctx: RequestContext,
+        customer: Customer,
+        selections: OrderSelection[],
+        address?: OrderShippingAddress,
+    ): Promise<CreateOrderOutcome> {
         if (!selections.length) {
             return { status: 'error', message: '未选择商品' };
         }
@@ -77,6 +89,21 @@ export class AssistantOrderService {
                     quantity: pick.quantity,
                     price: line?.unitPrice ?? pick.variant.listPrice ?? 0,
                 });
+            }
+
+            // 落收货地址（含电话）：对话选址后写入订单 shippingAddress；失败不阻塞下单
+            if (address?.streetLine1) {
+                try {
+                    await this.orderService.setShippingAddress(ctx, order.id, {
+                        fullName: address.fullName ?? '',
+                        phoneNumber: address.phoneNumber ?? '',
+                        streetLine1: address.streetLine1,
+                        countryCode: 'CN',
+                    } as any);
+                    Logger.info(`Assistant order shipping address set: order=${order.id}`, loggerCtx);
+                } catch (e: any) {
+                    Logger.warn(`Assistant order setShippingAddress skipped: ${e?.message}`, loggerCtx);
+                }
             }
 
             // 转入待支付（ArrangingPayment），由用户点击支付链接在 H5 收银台完成支付

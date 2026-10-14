@@ -124,7 +124,8 @@ export class CustomerBindingService {
                 customFields: { wechatOpenid: openid },
             } as any);
 
-            // 4) 可选收货地址（路径 B 地址文本）；国家码缺失/无效时跳过（不阻塞下单）
+            // 4) 可选收货地址（路径 B 地址文本）；国家码缺失/无效时跳过（不阻塞下单）。
+            //    首地址即默认收货地址：下单选址列表 ⭐ 置顶，placeOrder 未选地址时兜底使用
             if (addressText) {
                 try {
                     await this.customerService.createAddress(ctx, customer.id, {
@@ -132,6 +133,7 @@ export class CustomerBindingService {
                         streetLine1: addressText.slice(0, 250),
                         phoneNumber: phone,
                         countryCode: 'CN',
+                        defaultShippingAddress: true,
                     } as any);
                 } catch (e: any) {
                     Logger.warn(`Assistant bind: create address skipped: ${e?.message}`, loggerCtx);

@@ -1,5 +1,6 @@
 import { ChannelService, RequestContextService, TransactionalConnection } from '@vendure/core';
 import { WechatInboundMessage, WechatMessageEvent } from '@vendure/wechat-auth-plugin';
+import { AddressBookService } from './address.service';
 import { CredentialService } from './credential.service';
 import { CustomerBindingService } from './customer-binding.service';
 import { AssistantOrderService } from './order.service';
@@ -24,7 +25,8 @@ export declare class AssistantService {
     private channelService;
     private requestContextService;
     private customerBinding;
-    constructor(opts: WechatShoppingAssistantOptions, connection: TransactionalConnection, sessionService: SessionService, searchService: AssistantSearchService, orderService: AssistantOrderService, sender: WechatSender, credentialService: CredentialService, channelService: ChannelService, requestContextService: RequestContextService, customerBinding: CustomerBindingService);
+    private addressBook;
+    constructor(opts: WechatShoppingAssistantOptions, connection: TransactionalConnection, sessionService: SessionService, searchService: AssistantSearchService, orderService: AssistantOrderService, sender: WechatSender, credentialService: CredentialService, channelService: ChannelService, requestContextService: RequestContextService, customerBinding: CustomerBindingService, addressBook: AddressBookService);
     onMessage(event: WechatMessageEvent): Promise<void>;
     /** 事件总线链路（本插件回调直连微信时用）：去重 → 决策 → 客服消息发送 */
     private handle;
@@ -41,13 +43,35 @@ export declare class AssistantService {
         boundPhone?: string;
     }): Promise<OutboundMessage | null>;
     private handleFlowStep;
+    /**
+     * 管理态分支公共上下文：ctx + 顾客 + 选定地址 id；顾客失效返回 null（调用方回绑定引导）。
+     * 地址已被删除（列表变动）时 addressId 仍在草稿中，由 getItem 返回 null 让调用方回列表态。
+     */
+    private withAddrCtx;
+    /** addr_pick：回复编号选址（order → 下单确认 / manage → 操作菜单），0/「新增」进新增流程 */
+    private onAddrPick;
+    /** addr_op：管理态操作菜单（1 设默认 / 2 修改 / 3 删除 / 0 返回列表） */
+    private onAddrOp;
+    /** 「地址管理」入口：列地址簿 → addr_pick（manage 态） */
+    private handleAddressManage;
+    /** 「新增地址」入口：直接进新增地址文本状态（manage 流程） */
+    private handleAddressAdd;
+    /** 下单确认卡组装：草稿选址 → 回退默认地址 → 兜底空态引导 */
+    private orderConfirmCard;
     private handleSearch;
     private handleOrder;
-    /** 建单 + 结果文案（成功附支付链接；库存/变体/失败各回对应提示） */
+    /**
+     * 建单 + 结果文案（成功附支付链接；库存/变体/失败各回对应提示）。
+     * addressId：对话选址的地址；未传时回退顾客默认地址（建档续下单场景——
+     * 路径 A/B 刚建档的首地址即默认，直接落单保持零输入）。
+     * 选定地址含收货人/电话，随 setShippingAddress 写入订单。
+     */
     private placeOrder;
     /** MsgId 幂等：插入成功=首次处理；唯一键冲突=重复推送，直接跳过 */
     private claimDedup;
     private resolveChannelId;
+    /** 地址流程目标渠道：优先复用既有会话的渠道（用户在该渠道搜的品），无会话按消息渠道 token */
+    private resolveSessionChannelId;
     /**
      * 按会话存的渠道 ID 建 shop 上下文：
      * RequestContextService.create 的 channelOrToken 仅认 Channel 实体或 token 字符串，

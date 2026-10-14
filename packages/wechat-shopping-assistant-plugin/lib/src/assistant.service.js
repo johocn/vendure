@@ -15,6 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AssistantService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
+const address_service_1 = require("./address.service");
 const card_builder_1 = require("./card-builder");
 const constants_1 = require("./constants");
 const credential_service_1 = require("./credential.service");
@@ -32,7 +33,7 @@ const wechat_sender_1 = require("./wechat-sender");
  * 重复推送由 MsgId 去重表挡住）。
  */
 let AssistantService = class AssistantService {
-    constructor(opts, connection, sessionService, searchService, orderService, sender, credentialService, channelService, requestContextService, customerBinding) {
+    constructor(opts, connection, sessionService, searchService, orderService, sender, credentialService, channelService, requestContextService, customerBinding, addressBook) {
         this.opts = opts;
         this.connection = connection;
         this.sessionService = sessionService;
@@ -43,6 +44,7 @@ let AssistantService = class AssistantService {
         this.channelService = channelService;
         this.requestContextService = requestContextService;
         this.customerBinding = customerBinding;
+        this.addressBook = addressBook;
     }
     async onMessage(event) {
         const msg = event.message;
@@ -124,23 +126,29 @@ let AssistantService = class AssistantService {
                 return this.handleSearch(msg, intent.query, (_b = intent.quantity) !== null && _b !== void 0 ? _b : 1);
             case 'order':
                 return this.handleOrder(msg, intent.indices, extra === null || extra === void 0 ? void 0 : extra.boundPhone);
+            case 'address_manage':
+                return this.handleAddressManage(msg);
+            case 'address_add':
+                return this.handleAddressAdd(msg);
         }
         return null;
     }
-    // ============ 补录状态机：awaiting_phone → awaiting_address → 建档（续下单） ============
+    // ============ 状态机：补录（awaiting_*）+ 地址簿/选址（addr_* / order_confirm） ============
     async handleFlowStep(msg, session) {
-        var _a, _b, _c, _d, _e, _f;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p;
         const text = (msg.content || '').trim();
         if (/^(取消|退出)[!！。.~]?$/.test(text)) {
             await this.sessionService.clearFlow(msg.fromUserName);
             return (0, card_builder_1.buildFlowCancelledText)(msg.fromUserName);
         }
+        const ttl = (_a = this.opts.sessionTtlMinutes) !== null && _a !== void 0 ? _a : 30;
+        const draft = (_b = session.draft) !== null && _b !== void 0 ? _b : {};
         if (session.state === 'awaiting_phone') {
             const phone = text.replace(/[-\s]/g, '');
             if (!/^1[3-9]\d{9}$/.test(phone)) {
                 return (0, card_builder_1.buildInvalidPhoneText)(msg.fromUserName);
             }
-            await this.sessionService.setFlow(msg.fromUserName, 'awaiting_address', { phone, indices: (_b = (_a = session.draft) === null || _a === void 0 ? void 0 : _a.indices) !== null && _b !== void 0 ? _b : [] }, (_c = this.opts.sessionTtlMinutes) !== null && _c !== void 0 ? _c : 30);
+            await this.sessionService.setFlow(msg.fromUserName, 'awaiting_address', { phone, indices: (_c = draft.indices) !== null && _c !== void 0 ? _c : [] }, ttl);
             core_1.Logger.info(`Assistant flow awaiting_address openid=${msg.fromUserName}`, constants_1.loggerCtx);
             return (0, card_builder_1.buildAwaitingAddressText)(msg.fromUserName, phone);
         }
@@ -148,13 +156,13 @@ let AssistantService = class AssistantService {
             if (text.length < 8) {
                 return (0, card_builder_1.buildInvalidAddressText)(msg.fromUserName);
             }
-            const phone = (_d = session.draft) === null || _d === void 0 ? void 0 : _d.phone;
+            const phone = draft.phone;
             if (!phone) {
                 await this.sessionService.clearFlow(msg.fromUserName);
                 return (0, card_builder_1.buildBindGuideText)(msg.fromUserName, this.loginUrl());
             }
             // 建档前先取待下单编号（清态后 draft 即失效）
-            const indices = (_f = (_e = session.draft) === null || _e === void 0 ? void 0 : _e.indices) !== null && _f !== void 0 ? _f : [];
+            const indices = (_d = draft.indices) !== null && _d !== void 0 ? _d : [];
             const picked = session.results.filter(r => indices.includes(r.index));
             const ctx = await this.createShopCtx(session.channelId);
             const outcome = await this.customerBinding.bindOrCreateCustomer(ctx, msg.fromUserName, phone, text);
@@ -163,6 +171,7 @@ let AssistantService = class AssistantService {
                 case 'ok': {
                     if (!picked.length)
                         return (0, card_builder_1.buildBindSuccessText)(msg.fromUserName);
+                    // 建档首地址即默认地址，placeOrder 内自动取默认地址落单
                     return this.placeOrder(ctx, msg.fromUserName, outcome.customer, picked);
                 }
                 case 'phone_taken':
@@ -171,7 +180,323 @@ let AssistantService = class AssistantService {
                     return (0, card_builder_1.buildOrderFailText)(msg.fromUserName, outcome.message);
             }
         }
+        if (session.state === 'addr_pick') {
+            return this.onAddrPick(msg, session, text, draft, ttl);
+        }
+        if (session.state === 'addr_op') {
+            return this.onAddrOp(msg, session, text, draft, ttl);
+        }
+        if (session.state === 'addr_edit_field') {
+            const input = (0, intent_1.normalizeInput)(text);
+            if (input === '1') {
+                await this.sessionService.setFlow(msg.fromUserName, 'addr_edit_text', draft, ttl);
+                return (0, card_builder_1.buildAddrEditTextPrompt)(msg.fromUserName);
+            }
+            if (input === '2') {
+                await this.sessionService.setFlow(msg.fromUserName, 'addr_edit_person', draft, ttl);
+                return (0, card_builder_1.buildAddrEditPersonPrompt)(msg.fromUserName);
+            }
+            return (0, card_builder_1.buildAddrEditFieldText)(msg.fromUserName, (_e = draft.pickIndex) !== null && _e !== void 0 ? _e : 0);
+        }
+        if (session.state === 'addr_edit_text') {
+            if (text.length < 8) {
+                return (0, card_builder_1.buildInvalidAddressText)(msg.fromUserName);
+            }
+            const outcome = await this.withAddrCtx(msg, draft);
+            if (!outcome)
+                return (0, card_builder_1.buildBindGuideText)(msg.fromUserName, this.loginUrl());
+            const ok = await this.addressBook.updateText(outcome.ctx, outcome.addressId, text);
+            if (!ok)
+                return (0, card_builder_1.buildOrderFailText)(msg.fromUserName, '修改地址失败');
+            const updated = await this.addressBook.getItem(outcome.ctx, outcome.customerId, outcome.addressId);
+            await this.sessionService.setFlow(msg.fromUserName, 'addr_pick', { flow: 'manage' }, ttl);
+            return (0, card_builder_1.buildAddrSavedText)(msg.fromUserName, updated);
+        }
+        if (session.state === 'addr_edit_person') {
+            // 「姓名 电话」一行（姓名取最后一个空格前的全部，支持英文姓名）；只发号码 = 只改电话
+            let fullName;
+            let phone;
+            const bare = text.replace(/[-\s]/g, '');
+            const m = text.match(/^(.+)\s+(1[3-9]\d{9})$/);
+            if (/^1[3-9]\d{9}$/.test(bare)) {
+                phone = bare;
+            }
+            else if (m) {
+                fullName = m[1].trim().slice(0, 50);
+                phone = m[2];
+            }
+            else {
+                return (0, card_builder_1.buildInvalidAddrPersonText)(msg.fromUserName);
+            }
+            const outcome = await this.withAddrCtx(msg, draft);
+            if (!outcome)
+                return (0, card_builder_1.buildBindGuideText)(msg.fromUserName, this.loginUrl());
+            const ok = await this.addressBook.updatePerson(outcome.ctx, outcome.addressId, {
+                fullName,
+                phoneNumber: phone,
+            });
+            if (!ok)
+                return (0, card_builder_1.buildOrderFailText)(msg.fromUserName, '修改收货人信息失败');
+            const updated = await this.addressBook.getItem(outcome.ctx, outcome.customerId, outcome.addressId);
+            await this.sessionService.setFlow(msg.fromUserName, 'addr_pick', { flow: 'manage' }, ttl);
+            return (0, card_builder_1.buildAddrSavedText)(msg.fromUserName, updated);
+        }
+        if (session.state === 'addr_del_confirm') {
+            const input = (0, intent_1.normalizeInput)(text);
+            const outcome = await this.withAddrCtx(msg, draft);
+            if (!outcome)
+                return (0, card_builder_1.buildBindGuideText)(msg.fromUserName, this.loginUrl());
+            const item = await this.addressBook.getItem(outcome.ctx, outcome.customerId, outcome.addressId);
+            if (!item) {
+                await this.sessionService.setFlow(msg.fromUserName, 'addr_pick', { flow: 'manage' }, ttl);
+                return (0, card_builder_1.buildInvalidAddrIndexText)(msg.fromUserName, 1);
+            }
+            if (input === '1') {
+                const ok = await this.addressBook.remove(outcome.ctx, outcome.addressId);
+                if (!ok)
+                    return (0, card_builder_1.buildOrderFailText)(msg.fromUserName, '删除地址失败');
+                const remaining = await this.addressBook.list(outcome.ctx, outcome.customerId);
+                // core 已把默认顶替给剩余最早地址；仅当删的是默认时展示切换/无默认提示
+                const newDefault = item.isDefault ? ((_f = remaining.find(a => a.isDefault)) !== null && _f !== void 0 ? _f : null) : undefined;
+                await this.sessionService.setFlow(msg.fromUserName, 'addr_pick', { flow: 'manage' }, ttl);
+                core_1.Logger.info(`Assistant address removed: addressId=${outcome.addressId} wasDefault=${item.isDefault}`, constants_1.loggerCtx);
+                return (0, card_builder_1.buildAddrDeletedText)(msg.fromUserName, newDefault);
+            }
+            if (input === '0') {
+                await this.sessionService.setFlow(msg.fromUserName, 'addr_pick', { flow: 'manage' }, ttl);
+                const items = await this.addressBook.list(outcome.ctx, outcome.customerId);
+                return (0, card_builder_1.buildAddressListCard)(msg.fromUserName, items, 'manage');
+            }
+            return (0, card_builder_1.buildAddrDeleteConfirm)(msg.fromUserName, item);
+        }
+        if (session.state === 'addr_new_text') {
+            if (text.length < 8) {
+                return (0, card_builder_1.buildInvalidAddressText)(msg.fromUserName);
+            }
+            const customer = await this.customerBinding.findCustomerByOpenid(msg.fromUserName);
+            if (!customer) {
+                await this.sessionService.clearFlow(msg.fromUserName);
+                return (0, card_builder_1.buildBindGuideText)(msg.fromUserName, this.loginUrl());
+            }
+            const nextDraft = Object.assign(Object.assign({}, draft), { pendingText: text.slice(0, 250) });
+            const registeredPhone = (_g = customer.phoneNumber) !== null && _g !== void 0 ? _g : '';
+            if (registeredPhone) {
+                await this.sessionService.setFlow(msg.fromUserName, 'addr_new_phone', nextDraft, ttl);
+                return (0, card_builder_1.buildAddrNewPhoneText)(msg.fromUserName, registeredPhone);
+            }
+            // 无注册手机号：跳过选择直接收号码
+            await this.sessionService.setFlow(msg.fromUserName, 'addr_new_phone_text', nextDraft, ttl);
+            return (0, card_builder_1.buildAddrNewPhonePromptText)(msg.fromUserName);
+        }
+        if (session.state === 'addr_new_phone') {
+            const input = (0, intent_1.normalizeInput)(text);
+            const customer = await this.customerBinding.findCustomerByOpenid(msg.fromUserName);
+            const registeredPhone = (_h = customer === null || customer === void 0 ? void 0 : customer.phoneNumber) !== null && _h !== void 0 ? _h : '';
+            if (input === '1' && registeredPhone) {
+                if (!draft.pendingText) {
+                    await this.sessionService.clearFlow(msg.fromUserName);
+                    return (0, card_builder_1.buildBindGuideText)(msg.fromUserName, this.loginUrl());
+                }
+                await this.sessionService.setFlow(msg.fromUserName, 'addr_new_default', Object.assign(Object.assign({}, draft), { pendingPhone: registeredPhone }), ttl);
+                return (0, card_builder_1.buildAddrNewDefaultText)(msg.fromUserName, draft.pendingText, registeredPhone);
+            }
+            if (input === '2' || (input === '1' && !registeredPhone)) {
+                await this.sessionService.setFlow(msg.fromUserName, 'addr_new_phone_text', draft, ttl);
+                return (0, card_builder_1.buildAddrNewPhonePromptText)(msg.fromUserName);
+            }
+            return (0, card_builder_1.buildAddrNewPhoneText)(msg.fromUserName, registeredPhone || undefined);
+        }
+        if (session.state === 'addr_new_phone_text') {
+            const phone = text.replace(/[-\s]/g, '');
+            if (!/^1[3-9]\d{9}$/.test(phone)) {
+                return (0, card_builder_1.buildInvalidPhoneText)(msg.fromUserName);
+            }
+            if (!draft.pendingText) {
+                await this.sessionService.clearFlow(msg.fromUserName);
+                return (0, card_builder_1.buildBindGuideText)(msg.fromUserName, this.loginUrl());
+            }
+            await this.sessionService.setFlow(msg.fromUserName, 'addr_new_default', Object.assign(Object.assign({}, draft), { pendingPhone: phone }), ttl);
+            return (0, card_builder_1.buildAddrNewDefaultText)(msg.fromUserName, draft.pendingText, phone);
+        }
+        if (session.state === 'addr_new_default') {
+            const input = (0, intent_1.normalizeInput)(text);
+            if (input !== '是' && input !== '否') {
+                return (0, card_builder_1.buildAddrNewDefaultText)(msg.fromUserName, (_j = draft.pendingText) !== null && _j !== void 0 ? _j : '', (_k = draft.pendingPhone) !== null && _k !== void 0 ? _k : '');
+            }
+            const ctx = await this.createShopCtx(session.channelId);
+            const customer = await this.customerBinding.findCustomerByOpenid(msg.fromUserName);
+            if (!customer) {
+                await this.sessionService.clearFlow(msg.fromUserName);
+                return (0, card_builder_1.buildBindGuideText)(msg.fromUserName, this.loginUrl());
+            }
+            const addressId = await this.addressBook.add(ctx, customer.id, {
+                streetLine1: (_l = draft.pendingText) !== null && _l !== void 0 ? _l : '',
+                phoneNumber: (_m = draft.pendingPhone) !== null && _m !== void 0 ? _m : '',
+                setDefault: input === '是',
+            });
+            if (!addressId)
+                return (0, card_builder_1.buildOrderFailText)(msg.fromUserName, '保存地址失败');
+            const item = await this.addressBook.getItem(ctx, customer.id, addressId);
+            core_1.Logger.info(`Assistant address added: addressId=${addressId} flow=${(_o = draft.flow) !== null && _o !== void 0 ? _o : 'manage'}`, constants_1.loggerCtx);
+            // 下单流程：新地址直接进下单确认；管理流程：落库后回列表态
+            if (draft.flow === 'order') {
+                await this.sessionService.setFlow(msg.fromUserName, 'order_confirm', Object.assign(Object.assign({}, draft), { pickAddressId: addressId }), ttl);
+                return this.orderConfirmCard(ctx, msg.fromUserName, session, Object.assign(Object.assign({}, draft), { pickAddressId: addressId }));
+            }
+            await this.sessionService.setFlow(msg.fromUserName, 'addr_pick', { flow: 'manage' }, ttl);
+            return (0, card_builder_1.buildAddrSavedText)(msg.fromUserName, item);
+        }
+        if (session.state === 'order_confirm') {
+            const input = (0, intent_1.normalizeInput)(text);
+            const ctx = await this.createShopCtx(session.channelId);
+            if (input === '0') {
+                await this.sessionService.setFlow(msg.fromUserName, 'addr_pick', Object.assign(Object.assign({}, draft), { pickIndex: null, pickAddressId: null }), ttl);
+                const customer = await this.customerBinding.findCustomerByOpenid(msg.fromUserName);
+                if (!customer) {
+                    await this.sessionService.clearFlow(msg.fromUserName);
+                    return (0, card_builder_1.buildBindGuideText)(msg.fromUserName, this.loginUrl());
+                }
+                const items = await this.addressBook.list(ctx, customer.id);
+                return (0, card_builder_1.buildAddressListCard)(msg.fromUserName, items, 'order');
+            }
+            if (input !== '1') {
+                return this.orderConfirmCard(ctx, msg.fromUserName, session, draft);
+            }
+            const customer = await this.customerBinding.findCustomerByOpenid(msg.fromUserName);
+            if (!customer) {
+                await this.sessionService.clearFlow(msg.fromUserName);
+                return (0, card_builder_1.buildBindGuideText)(msg.fromUserName, this.loginUrl());
+            }
+            const picked = session.results.filter(r => { var _a; return ((_a = draft.indices) !== null && _a !== void 0 ? _a : []).includes(r.index); });
+            if (!picked.length) {
+                await this.sessionService.clearFlow(msg.fromUserName);
+                return (0, card_builder_1.buildSessionExpiredText)(msg.fromUserName);
+            }
+            const out = await this.placeOrder(ctx, msg.fromUserName, customer, picked, (_p = draft.pickAddressId) !== null && _p !== void 0 ? _p : undefined);
+            await this.sessionService.clearFlow(msg.fromUserName);
+            return out;
+        }
         return null;
+    }
+    /**
+     * 管理态分支公共上下文：ctx + 顾客 + 选定地址 id；顾客失效返回 null（调用方回绑定引导）。
+     * 地址已被删除（列表变动）时 addressId 仍在草稿中，由 getItem 返回 null 让调用方回列表态。
+     */
+    async withAddrCtx(msg, draft) {
+        var _a;
+        const customer = await this.customerBinding.findCustomerByOpenid(msg.fromUserName);
+        if (!customer || !draft.pickAddressId)
+            return null;
+        const session = await this.sessionService.getActive(msg.fromUserName);
+        const ctx = await this.createShopCtx((_a = session === null || session === void 0 ? void 0 : session.channelId) !== null && _a !== void 0 ? _a : '1');
+        return { ctx, customerId: String(customer.id), addressId: draft.pickAddressId };
+    }
+    /** addr_pick：回复编号选址（order → 下单确认 / manage → 操作菜单），0/「新增」进新增流程 */
+    async onAddrPick(msg, session, text, draft, ttl) {
+        const input = (0, intent_1.normalizeInput)(text);
+        const customer = await this.customerBinding.findCustomerByOpenid(msg.fromUserName);
+        if (!customer) {
+            await this.sessionService.clearFlow(msg.fromUserName);
+            return (0, card_builder_1.buildBindGuideText)(msg.fromUserName, this.loginUrl());
+        }
+        const ctx = await this.createShopCtx(session.channelId);
+        const items = await this.addressBook.list(ctx, customer.id);
+        if (input === '0' || input === '新增' || input === '添加') {
+            await this.sessionService.setFlow(msg.fromUserName, 'addr_new_text', draft, ttl);
+            return (0, card_builder_1.buildAddrEditTextPrompt)(msg.fromUserName);
+        }
+        const n = /^\d{1,2}$/.test(input) ? Number(input) : 0;
+        if (n < 1 || n > items.length) {
+            return (0, card_builder_1.buildInvalidAddrIndexText)(msg.fromUserName, Math.max(items.length, 1));
+        }
+        const item = items[n - 1];
+        if (draft.flow === 'manage') {
+            await this.sessionService.setFlow(msg.fromUserName, 'addr_op', Object.assign(Object.assign({}, draft), { pickIndex: n, pickAddressId: item.id }), ttl);
+            return (0, card_builder_1.buildAddrOpMenu)(msg.fromUserName, item);
+        }
+        await this.sessionService.setFlow(msg.fromUserName, 'order_confirm', Object.assign(Object.assign({}, draft), { pickIndex: n, pickAddressId: item.id }), ttl);
+        return this.orderConfirmCard(ctx, msg.fromUserName, session, Object.assign(Object.assign({}, draft), { pickAddressId: item.id }));
+    }
+    /** addr_op：管理态操作菜单（1 设默认 / 2 修改 / 3 删除 / 0 返回列表） */
+    async onAddrOp(msg, session, text, draft, ttl) {
+        const input = (0, intent_1.normalizeInput)(text);
+        const customer = await this.customerBinding.findCustomerByOpenid(msg.fromUserName);
+        const ctx = await this.createShopCtx(session.channelId);
+        const addressId = draft.pickAddressId;
+        const item = customer && addressId ? await this.addressBook.getItem(ctx, customer.id, addressId) : null;
+        if (!customer || !item) {
+            await this.sessionService.setFlow(msg.fromUserName, 'addr_pick', { flow: 'manage' }, ttl);
+            return (0, card_builder_1.buildInvalidAddrIndexText)(msg.fromUserName, 1);
+        }
+        if (input === '1') {
+            const ok = await this.addressBook.setDefault(ctx, item.id);
+            if (!ok)
+                return (0, card_builder_1.buildOrderFailText)(msg.fromUserName, '设置默认地址失败');
+            const updated = await this.addressBook.getItem(ctx, customer.id, item.id);
+            await this.sessionService.setFlow(msg.fromUserName, 'addr_pick', { flow: 'manage' }, ttl);
+            core_1.Logger.info(`Assistant address default set: addressId=${item.id}`, constants_1.loggerCtx);
+            return (0, card_builder_1.buildAddrDefaultSetText)(msg.fromUserName, updated !== null && updated !== void 0 ? updated : item);
+        }
+        if (input === '2') {
+            await this.sessionService.setFlow(msg.fromUserName, 'addr_edit_field', draft, ttl);
+            return (0, card_builder_1.buildAddrEditFieldText)(msg.fromUserName, item.index);
+        }
+        if (input === '3') {
+            await this.sessionService.setFlow(msg.fromUserName, 'addr_del_confirm', draft, ttl);
+            return (0, card_builder_1.buildAddrDeleteConfirm)(msg.fromUserName, item);
+        }
+        if (input === '0') {
+            await this.sessionService.setFlow(msg.fromUserName, 'addr_pick', { flow: 'manage' }, ttl);
+            const items = await this.addressBook.list(ctx, customer.id);
+            return (0, card_builder_1.buildAddressListCard)(msg.fromUserName, items, 'manage');
+        }
+        return (0, card_builder_1.buildAddrOpMenu)(msg.fromUserName, item);
+    }
+    /** 「地址管理」入口：列地址簿 → addr_pick（manage 态） */
+    async handleAddressManage(msg) {
+        var _a;
+        const customer = await this.customerBinding.findCustomerByOpenid(msg.fromUserName);
+        if (!customer)
+            return (0, card_builder_1.buildBindGuideText)(msg.fromUserName, this.loginUrl());
+        const ttl = (_a = this.opts.sessionTtlMinutes) !== null && _a !== void 0 ? _a : 30;
+        const channelId = await this.resolveSessionChannelId(msg);
+        await this.sessionService.ensureSession(msg.fromUserName, channelId, ttl);
+        const ctx = await this.createShopCtx(channelId);
+        const items = await this.addressBook.list(ctx, customer.id);
+        await this.sessionService.setFlow(msg.fromUserName, 'addr_pick', { flow: 'manage' }, ttl);
+        core_1.Logger.info(`Assistant address book opened: customerId=${customer.id} count=${items.length}`, constants_1.loggerCtx);
+        return (0, card_builder_1.buildAddressListCard)(msg.fromUserName, items, 'manage');
+    }
+    /** 「新增地址」入口：直接进新增地址文本状态（manage 流程） */
+    async handleAddressAdd(msg) {
+        var _a;
+        const customer = await this.customerBinding.findCustomerByOpenid(msg.fromUserName);
+        if (!customer)
+            return (0, card_builder_1.buildBindGuideText)(msg.fromUserName, this.loginUrl());
+        const ttl = (_a = this.opts.sessionTtlMinutes) !== null && _a !== void 0 ? _a : 30;
+        const channelId = await this.resolveSessionChannelId(msg);
+        await this.sessionService.ensureSession(msg.fromUserName, channelId, ttl);
+        await this.sessionService.setFlow(msg.fromUserName, 'addr_new_text', { flow: 'manage' }, ttl);
+        return (0, card_builder_1.buildAddrEditTextPrompt)(msg.fromUserName);
+    }
+    /** 下单确认卡组装：草稿选址 → 回退默认地址 → 兜底空态引导 */
+    async orderConfirmCard(ctx, touser, session, draft) {
+        var _a, _b;
+        const picked = session.results.filter(r => { var _a; return ((_a = draft.indices) !== null && _a !== void 0 ? _a : []).includes(r.index); });
+        if (!picked.length)
+            return (0, card_builder_1.buildSessionExpiredText)(touser);
+        const customer = await this.customerBinding.findCustomerByOpenid(touser);
+        if (!customer)
+            return (0, card_builder_1.buildBindGuideText)(touser, this.loginUrl());
+        const items = await this.addressBook.list(ctx, customer.id);
+        const address = (_b = (_a = (draft.pickAddressId ? items.find(a => a.id === draft.pickAddressId) : null)) !== null && _a !== void 0 ? _a : items.find(a => a.isDefault)) !== null && _b !== void 0 ? _b : items[0];
+        if (!address)
+            return (0, card_builder_1.buildAddressListCard)(touser, [], 'order');
+        return (0, card_builder_1.buildOrderConfirmCard)(touser, {
+            items: picked.map(p => { var _a; return ({ title: p.title, quantity: (_a = p.quantity) !== null && _a !== void 0 ? _a : 1, price: p.price }); }),
+            total: picked.reduce((s, p) => { var _a; return s + p.price * ((_a = p.quantity) !== null && _a !== void 0 ? _a : 1); }, 0),
+            address,
+        });
     }
     // ============ 搜索：meili 检索 → 会话保存 → 卡片消息 ============
     async handleSearch(msg, query, quantity) {
@@ -202,7 +527,7 @@ let AssistantService = class AssistantService {
     }
     // ============ 下单：编号回查会话 → 绑定校验/建档 → 建单 → 确认通知 ============
     async handleOrder(msg, indices, boundPhone) {
-        var _a;
+        var _a, _b;
         const session = await this.sessionService.getActive(msg.fromUserName);
         if (!session) {
             return (0, card_builder_1.buildSessionExpiredText)(msg.fromUserName);
@@ -232,12 +557,34 @@ let AssistantService = class AssistantService {
             await this.sessionService.setFlow(msg.fromUserName, 'awaiting_phone', { indices }, ttl);
             return (0, card_builder_1.buildBindGuideText)(msg.fromUserName, this.loginUrl());
         }
+        // 已绑定：出地址列表选址（⭐默认置顶），无地址直接进新增
         const ctx = await this.createShopCtx(session.channelId);
-        return this.placeOrder(ctx, msg.fromUserName, customer, picked);
+        const ttl = (_b = this.opts.sessionTtlMinutes) !== null && _b !== void 0 ? _b : 30;
+        const addressItems = await this.addressBook.list(ctx, customer.id);
+        if (!addressItems.length) {
+            await this.sessionService.setFlow(msg.fromUserName, 'addr_new_text', { indices, flow: 'order' }, ttl);
+            return (0, card_builder_1.buildAddressListCard)(msg.fromUserName, [], 'order');
+        }
+        await this.sessionService.setFlow(msg.fromUserName, 'addr_pick', { indices, flow: 'order' }, ttl);
+        return (0, card_builder_1.buildAddressListCard)(msg.fromUserName, addressItems, 'order');
     }
-    /** 建单 + 结果文案（成功附支付链接；库存/变体/失败各回对应提示） */
-    async placeOrder(ctx, touser, customer, picked) {
-        const outcome = await this.orderService.createOrder(ctx, customer, picked.map(p => { var _a; return ({ productId: p.productId, quantity: (_a = p.quantity) !== null && _a !== void 0 ? _a : 1 }); }));
+    /**
+     * 建单 + 结果文案（成功附支付链接；库存/变体/失败各回对应提示）。
+     * addressId：对话选址的地址；未传时回退顾客默认地址（建档续下单场景——
+     * 路径 A/B 刚建档的首地址即默认，直接落单保持零输入）。
+     * 选定地址含收货人/电话，随 setShippingAddress 写入订单。
+     */
+    async placeOrder(ctx, touser, customer, picked, addressId) {
+        var _a, _b;
+        const addressItems = await this.addressBook.list(ctx, customer.id);
+        const addrItem = (_b = (_a = (addressId ? addressItems.find(a => a.id === addressId) : null)) !== null && _a !== void 0 ? _a : addressItems.find(a => a.isDefault)) !== null && _b !== void 0 ? _b : undefined;
+        const address = addrItem
+            ? { fullName: addrItem.fullName, phoneNumber: addrItem.phoneNumber, streetLine1: addrItem.streetLine1 }
+            : undefined;
+        if (addrItem) {
+            core_1.Logger.info(`Assistant order shipping address: addressId=${addrItem.id}`, constants_1.loggerCtx);
+        }
+        const outcome = await this.orderService.createOrder(ctx, customer, picked.map(p => { var _a; return ({ productId: p.productId, quantity: (_a = p.quantity) !== null && _a !== void 0 ? _a : 1 }); }), address);
         switch (outcome.status) {
             case 'ok': {
                 const payUrl = this.payUrl(outcome.order.code);
@@ -295,6 +642,13 @@ let AssistantService = class AssistantService {
         }
         return '1';
     }
+    /** 地址流程目标渠道：优先复用既有会话的渠道（用户在该渠道搜的品），无会话按消息渠道 token */
+    async resolveSessionChannelId(msg) {
+        const session = await this.sessionService.getActive(msg.fromUserName);
+        if (session === null || session === void 0 ? void 0 : session.channelId)
+            return session.channelId;
+        return this.resolveChannelId(msg.channelToken);
+    }
     /**
      * 按会话存的渠道 ID 建 shop 上下文：
      * RequestContextService.create 的 channelOrToken 仅认 Channel 实体或 token 字符串，
@@ -338,6 +692,7 @@ exports.AssistantService = AssistantService = __decorate([
         credential_service_1.CredentialService,
         core_1.ChannelService,
         core_1.RequestContextService,
-        customer_binding_service_1.CustomerBindingService])
+        customer_binding_service_1.CustomerBindingService,
+        address_service_1.AddressBookService])
 ], AssistantService);
 //# sourceMappingURL=assistant.service.js.map
