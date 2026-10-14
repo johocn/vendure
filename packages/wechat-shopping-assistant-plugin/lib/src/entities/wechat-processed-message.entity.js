@@ -28,7 +28,7 @@ __decorate([
     __metadata("design:type", String)
 ], WechatProcessedMessage.prototype, "dedupKey", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime' }),
+    (0, typeorm_1.Column)({ type: Date }),
     __metadata("design:type", Date)
 ], WechatProcessedMessage.prototype, "receivedAt", void 0);
 exports.WechatProcessedMessage = WechatProcessedMessage = __decorate([

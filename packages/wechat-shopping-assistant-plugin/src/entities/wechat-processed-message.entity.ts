@@ -17,6 +17,7 @@ export class WechatProcessedMessage extends VendureEntity {
     @Column({ type: 'varchar', length: 128 })
     dedupKey: string;
 
-    @Column({ type: 'datetime' })
+    // type: Date 构造器让 typeorm 按方言推断（postgres→timestamp / sqlite→datetime，显式 'datetime' 不被 postgres 支持）
+    @Column({ type: Date })
     receivedAt: Date;
 }

@@ -14,6 +14,6 @@ export declare class WechatShoppingSession extends VendureEntity {
     results: CardProduct[];
     /** 原始查询词（会话过期引导重搜时展示） */
     query: string | null;
-    /** 会话过期时间 */
+    /** 会话过期时间；type: Date 构造器让 typeorm 按方言推断（postgres→timestamp / sqlite→datetime，显式 'datetime' 不被 postgres 支持） */
     expireAt: Date;
 }

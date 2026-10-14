@@ -30,7 +30,7 @@ export class WechatShoppingSession extends VendureEntity {
     @Column({ type: 'varchar', length: 255, nullable: true })
     query: string | null;
 
-    /** 会话过期时间 */
-    @Column({ type: 'datetime' })
+    /** 会话过期时间；type: Date 构造器让 typeorm 按方言推断（postgres→timestamp / sqlite→datetime，显式 'datetime' 不被 postgres 支持） */
+    @Column({ type: Date })
     expireAt: Date;
 }

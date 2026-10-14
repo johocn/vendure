@@ -23,7 +23,7 @@ let WechatShoppingSession = class WechatShoppingSession extends core_1.VendureEn
 };
 exports.WechatShoppingSession = WechatShoppingSession;
 __decorate([
-    (0, typeorm_1.Column)(),
+    (0, typeorm_1.Column)({ type: 'varchar', length: 64 }),
     __metadata("design:type", String)
 ], WechatShoppingSession.prototype, "openid", void 0);
 __decorate([
@@ -39,7 +39,7 @@ __decorate([
     __metadata("design:type", Object)
 ], WechatShoppingSession.prototype, "query", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime' }),
+    (0, typeorm_1.Column)({ type: Date }),
     __metadata("design:type", Date)
 ], WechatShoppingSession.prototype, "expireAt", void 0);
 exports.WechatShoppingSession = WechatShoppingSession = __decorate([
