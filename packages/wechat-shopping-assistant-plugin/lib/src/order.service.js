@@ -63,7 +63,10 @@ let AssistantOrderService = class AssistantOrderService {
             // 转入待支付（ArrangingPayment），由用户点击支付链接在 H5 收银台完成支付
             const arrangeResult = await this.orderService.transitionToState(ctx, order.id, 'ArrangingPayment');
             if ('errorCode' in arrangeResult) {
-                return { status: 'error', message: arrangeResult.message };
+                // GraphQL 生成错误类的 message 是裸错误码，真实原因在 transitionError（如具体被哪个 process 拦截）
+                const detail = arrangeResult.transitionError || arrangeResult.message;
+                core_1.Logger.warn(`Assistant order ArrangingPayment blocked: ${detail}`, constants_1.loggerCtx);
+                return { status: 'error', message: String(detail) };
             }
             const finalOrder = await this.orderService.findOne(ctx, order.id, ['lines']);
             return {
