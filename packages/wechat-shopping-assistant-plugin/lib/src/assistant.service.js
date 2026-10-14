@@ -156,10 +156,7 @@ let AssistantService = class AssistantService {
             // 建档前先取待下单编号（清态后 draft 即失效）
             const indices = (_f = (_e = session.draft) === null || _e === void 0 ? void 0 : _e.indices) !== null && _f !== void 0 ? _f : [];
             const picked = session.results.filter(r => indices.includes(r.index));
-            const ctx = await this.requestContextService.create({
-                apiType: 'shop',
-                channelOrToken: session.channelId,
-            });
+            const ctx = await this.createShopCtx(session.channelId);
             const outcome = await this.customerBinding.bindOrCreateCustomer(ctx, msg.fromUserName, phone, text);
             await this.sessionService.clearFlow(msg.fromUserName);
             switch (outcome.status) {
@@ -220,10 +217,7 @@ let AssistantService = class AssistantService {
             const ttl = (_a = this.opts.sessionTtlMinutes) !== null && _a !== void 0 ? _a : 30;
             // 路径 A：sso 已绑定用户带手机号 → 自动建档后直接续下单（零输入）
             if (boundPhone) {
-                const ctx = await this.requestContextService.create({
-                    apiType: 'shop',
-                    channelOrToken: session.channelId,
-                });
+                const ctx = await this.createShopCtx(session.channelId);
                 const bindOutcome = await this.customerBinding.bindOrCreateCustomer(ctx, msg.fromUserName, boundPhone);
                 if (bindOutcome.status === 'ok') {
                     core_1.Logger.info(`Assistant path-A auto bind: customerId=${bindOutcome.customer.id} openid=${msg.fromUserName}`, constants_1.loggerCtx);
@@ -238,10 +232,7 @@ let AssistantService = class AssistantService {
             await this.sessionService.setFlow(msg.fromUserName, 'awaiting_phone', { indices }, ttl);
             return (0, card_builder_1.buildBindGuideText)(msg.fromUserName, this.loginUrl());
         }
-        const ctx = await this.requestContextService.create({
-            apiType: 'shop',
-            channelOrToken: session.channelId,
-        });
+        const ctx = await this.createShopCtx(session.channelId);
         return this.placeOrder(ctx, msg.fromUserName, customer.id, picked);
     }
     /** 建单 + 结果文案（成功附支付链接；库存/变体/失败各回对应提示） */
@@ -303,6 +294,18 @@ let AssistantService = class AssistantService {
             }
         }
         return '1';
+    }
+    /**
+     * 按会话存的渠道 ID 建 shop 上下文：
+     * RequestContextService.create 的 channelOrToken 仅认 Channel 实体或 token 字符串，
+     * 会话存的是渠道 ID，须先换实体；查不到时传 undefined 落默认渠道（与 resolveChannelId 兜底一致）。
+     */
+    async createShopCtx(channelId) {
+        var _a;
+        const channel = channelId
+            ? ((_a = (await this.connection.getRepository(core_1.Channel).findOne({ where: { id: channelId } }))) !== null && _a !== void 0 ? _a : undefined)
+            : undefined;
+        return this.requestContextService.create({ apiType: 'shop', channelOrToken: channel });
     }
     storefront() {
         var _a;

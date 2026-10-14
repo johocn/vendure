@@ -9,7 +9,7 @@ import { AssistantService } from './assistant.service';
 import { WechatShoppingSession } from './entities/wechat-shopping-session.entity';
 import { WechatProcessedMessage } from './entities/wechat-processed-message.entity';
 import { SessionService } from './session.service';
-import { Customer } from '@vendure/core';
+import { Channel, Customer } from '@vendure/core';
 
 // ============ 假件 ============
 
@@ -40,10 +40,14 @@ function makeConnection() {
     const customerRepo = {
         findOne: async ({ where }: any) => customers.get(where.customFields.wechatOpenid) ?? null,
     };
+    const channelRepo = {
+        findOne: async ({ where }: any) => ({ id: where.id, token: 'channel-token-a' }),
+    };
     const repos = new Map<any, any>([
         [WechatProcessedMessage, processedRepo],
         [WechatShoppingSession, sessionRepo],
         [Customer, customerRepo],
+        [Channel, channelRepo],
     ]);
     return {
         getRepository: (entity: any) => repos.get(entity),

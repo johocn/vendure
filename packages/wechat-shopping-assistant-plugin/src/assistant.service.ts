@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
+    Channel,
     ChannelService,
     ID,
     Logger,
@@ -187,10 +188,7 @@ export class AssistantService {
             // 建档前先取待下单编号（清态后 draft 即失效）
             const indices = session.draft?.indices ?? [];
             const picked = session.results.filter(r => indices.includes(r.index));
-            const ctx = await this.requestContextService.create({
-                apiType: 'shop',
-                channelOrToken: session.channelId as any,
-            });
+            const ctx = await this.createShopCtx(session.channelId);
             const outcome = await this.customerBinding.bindOrCreateCustomer(ctx, msg.fromUserName, phone, text);
             await this.sessionService.clearFlow(msg.fromUserName);
             switch (outcome.status) {
@@ -266,10 +264,7 @@ export class AssistantService {
             const ttl = this.opts.sessionTtlMinutes ?? 30;
             // 路径 A：sso 已绑定用户带手机号 → 自动建档后直接续下单（零输入）
             if (boundPhone) {
-                const ctx = await this.requestContextService.create({
-                    apiType: 'shop',
-                    channelOrToken: session.channelId as any,
-                });
+                const ctx = await this.createShopCtx(session.channelId);
                 const bindOutcome = await this.customerBinding.bindOrCreateCustomer(ctx, msg.fromUserName, boundPhone);
                 if (bindOutcome.status === 'ok') {
                     Logger.info(
@@ -291,10 +286,7 @@ export class AssistantService {
             return buildBindGuideText(msg.fromUserName, this.loginUrl());
         }
 
-        const ctx = await this.requestContextService.create({
-            apiType: 'shop',
-            channelOrToken: session.channelId as any,
-        });
+        const ctx = await this.createShopCtx(session.channelId);
         return this.placeOrder(ctx, msg.fromUserName, customer.id, picked);
     }
 
@@ -365,6 +357,19 @@ export class AssistantService {
             }
         }
         return '1';
+    }
+
+    /**
+     * 按会话存的渠道 ID 建 shop 上下文：
+     * RequestContextService.create 的 channelOrToken 仅认 Channel 实体或 token 字符串，
+     * 会话存的是渠道 ID，须先换实体；查不到时传 undefined 落默认渠道（与 resolveChannelId 兜底一致）。
+     */
+    private async createShopCtx(channelId: string): Promise<RequestContext> {
+        const channel = channelId
+            ? ((await this.connection.getRepository(Channel).findOne({ where: { id: channelId as any } })) ??
+              undefined)
+            : undefined;
+        return this.requestContextService.create({ apiType: 'shop', channelOrToken: channel });
     }
 
     private storefront(): string {

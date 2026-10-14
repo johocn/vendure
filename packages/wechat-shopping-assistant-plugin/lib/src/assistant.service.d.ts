@@ -48,6 +48,12 @@ export declare class AssistantService {
     /** MsgId 幂等：插入成功=首次处理；唯一键冲突=重复推送，直接跳过 */
     private claimDedup;
     private resolveChannelId;
+    /**
+     * 按会话存的渠道 ID 建 shop 上下文：
+     * RequestContextService.create 的 channelOrToken 仅认 Channel 实体或 token 字符串，
+     * 会话存的是渠道 ID，须先换实体；查不到时传 undefined 落默认渠道（与 resolveChannelId 兜底一致）。
+     */
+    private createShopCtx;
     private storefront;
     private loginUrl;
     /** 支付确认页：优先模板（hash 路由前端，如 `https://host/#/pkg-order/pages/payment?code={code}`） */
