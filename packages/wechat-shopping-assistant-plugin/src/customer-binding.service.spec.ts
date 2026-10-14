@@ -108,7 +108,7 @@ describe('CustomerBindingService', () => {
         expect(out.status).toBe('ok');
         expect(calls.savedCustomers[0].phoneNumber).toBe('13800138000');
         expect(calls.updates[0].customFields.wechatOpenid).toBe('oX');
-        expect(calls.addresses[0].input.streetLine).toBe('北京市朝阳区建国路1号');
+        expect(calls.addresses[0].input.streetLine1).toBe('北京市朝阳区建国路1号');
         expect(calls.addresses[0].input.phoneNumber).toBe('13800138000');
     });
 

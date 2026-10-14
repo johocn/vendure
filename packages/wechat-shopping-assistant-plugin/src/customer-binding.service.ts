@@ -128,7 +128,8 @@ export class CustomerBindingService {
             if (addressText) {
                 try {
                     await this.customerService.createAddress(ctx, customer.id, {
-                        streetLine: addressText.slice(0, 250),
+                        // fork 的 CreateAddressInput 字段为 streetLine1（上游为 streetLine）
+                        streetLine1: addressText.slice(0, 250),
                         phoneNumber: phone,
                         countryCode: 'CN',
                     } as any);
