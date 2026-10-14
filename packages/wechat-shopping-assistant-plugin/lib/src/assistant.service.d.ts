@@ -1,10 +1,10 @@
 import { ChannelService, RequestContextService, TransactionalConnection } from '@vendure/core';
-import { WechatMessageEvent } from '@vendure/wechat-auth-plugin';
+import { WechatInboundMessage, WechatMessageEvent } from '@vendure/wechat-auth-plugin';
 import { CredentialService } from './credential.service';
 import { AssistantOrderService } from './order.service';
 import { AssistantSearchService } from './search-adapter';
 import { SessionService } from './session.service';
-import { WechatShoppingAssistantOptions } from './types';
+import { OutboundMessage, WechatShoppingAssistantOptions } from './types';
 import { WechatSender } from './wechat-sender';
 /**
  * 微信购物助手编排器：
@@ -24,14 +24,23 @@ export declare class AssistantService {
     private requestContextService;
     constructor(opts: WechatShoppingAssistantOptions, connection: TransactionalConnection, sessionService: SessionService, searchService: AssistantSearchService, orderService: AssistantOrderService, sender: WechatSender, credentialService: CredentialService, channelService: ChannelService, requestContextService: RequestContextService);
     onMessage(event: WechatMessageEvent): Promise<void>;
+    /** 事件总线链路（本插件回调直连微信时用）：去重 → 决策 → 客服消息发送 */
     private handle;
+    /**
+     * 纯决策：意图识别 → 搜索/下单 → 组装出站消息（**不发送**）。
+     * 两条链路共用：
+     * ① 微信事件总线（本插件回调直连，handle() 负责发送）
+     * ② HTTP 接口（strapi zhao-sso 回调转调 POST /wechat-assistant/handle，
+     *    回复由 sso 的被动回复 XML 承担——受 5 秒窗口约束，本方法须快速返回）。
+     * 返回 null = 无需回复（重复消息 / 非文本 / 未识别事件）。
+     */
+    processMessage(msg: WechatInboundMessage): Promise<OutboundMessage | null>;
     private handleSearch;
     private handleOrder;
     /** MsgId 幂等：插入成功=首次处理；唯一键冲突=重复推送，直接跳过 */
     private claimDedup;
     private findCustomerByOpenid;
     private resolveChannelId;
-    private reply;
     private storefront;
     private loginUrl;
 }

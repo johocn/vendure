@@ -19,6 +19,7 @@ const core_1 = require("@vendure/core");
 const meilisearch_plugin_1 = require("@vendure/meilisearch-plugin");
 const wechat_auth_plugin_1 = require("@vendure/wechat-auth-plugin");
 const assistant_service_1 = require("./assistant.service");
+const assistant_http_controller_1 = require("./assistant-http.controller");
 const constants_1 = require("./constants");
 const credential_service_1 = require("./credential.service");
 const wechat_processed_message_entity_1 = require("./entities/wechat-processed-message.entity");
@@ -59,6 +60,7 @@ exports.WechatShoppingAssistantPlugin = WechatShoppingAssistantPlugin = WechatSh
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule, meilisearch_plugin_1.MeiliSearchPlugin, wechat_auth_plugin_1.WechatAuthPlugin],
         entities: [wechat_shopping_session_entity_1.WechatShoppingSession, wechat_processed_message_entity_1.WechatProcessedMessage],
+        controllers: [assistant_http_controller_1.AssistantHttpController],
         providers: [
             { provide: constants_1.WECHAT_ASSISTANT_PLUGIN_OPTIONS, useFactory: () => WechatShoppingAssistantPlugin.options },
             session_service_1.SessionService,

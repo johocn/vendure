@@ -30,7 +30,7 @@ import { buildDedupKey, recognizeIntent } from './intent';
 import { AssistantOrderService } from './order.service';
 import { AssistantSearchService } from './search-adapter';
 import { SessionService } from './session.service';
-import { WechatCredentials, WechatShoppingAssistantOptions } from './types';
+import { OutboundMessage, WechatCredentials, WechatShoppingAssistantOptions } from './types';
 import { WechatSender } from './wechat-sender';
 
 /**
@@ -62,47 +62,57 @@ export class AssistantService {
         }
     }
 
+    /** 事件总线链路（本插件回调直连微信时用）：去重 → 决策 → 客服消息发送 */
     private async handle(msg: WechatInboundMessage): Promise<void> {
         if (!(await this.claimDedup(msg))) return;
-
+        const out = await this.processMessage(msg);
+        if (!out) return;
         const credentials = await this.credentialService.resolveForChannel(msg.channelToken, {});
-
-        // 关注事件：欢迎语；其余非文本消息忽略（P0 只处理文本）
-        if (msg.msgType === 'event') {
-            if (msg.event === 'subscribe') {
-                await this.reply(msg, buildWelcomeText(msg.fromUserName), credentials);
-            }
-            return;
+        try {
+            await this.sender.send(out as any, credentials);
+        } catch (e) {
+            Logger.error(`Assistant reply failed: ${String(e)}`, loggerCtx);
         }
-        if (msg.msgType !== 'text' || !msg.content) return;
+    }
+
+    /**
+     * 纯决策：意图识别 → 搜索/下单 → 组装出站消息（**不发送**）。
+     * 两条链路共用：
+     * ① 微信事件总线（本插件回调直连，handle() 负责发送）
+     * ② HTTP 接口（strapi zhao-sso 回调转调 POST /wechat-assistant/handle，
+     *    回复由 sso 的被动回复 XML 承担——受 5 秒窗口约束，本方法须快速返回）。
+     * 返回 null = 无需回复（重复消息 / 非文本 / 未识别事件）。
+     */
+    async processMessage(msg: WechatInboundMessage): Promise<OutboundMessage | null> {
+        // 关注事件：欢迎语；其余事件忽略（购物链路只处理文本）
+        if (msg.msgType === 'event') {
+            return msg.event === 'subscribe' ? buildWelcomeText(msg.fromUserName) : null;
+        }
+        if (msg.msgType !== 'text' || !msg.content) return null;
 
         const intent = recognizeIntent(msg.content);
         Logger.info(`Assistant intent=${intent.kind} from=${msg.fromUserName}`, loggerCtx);
 
         switch (intent.kind) {
             case 'help':
-                await this.reply(msg, buildGuideText(msg.fromUserName, this.storefront()), credentials);
-                return;
+                return buildGuideText(msg.fromUserName, this.storefront());
             case 'bind':
-                await this.reply(msg, buildBindGuideText(msg.fromUserName, this.loginUrl()), credentials);
-                return;
+                return buildBindGuideText(msg.fromUserName, this.loginUrl());
             case 'search':
-                await this.handleSearch(msg, intent.query, intent.quantity ?? 1, credentials);
-                return;
+                return this.handleSearch(msg, intent.query, intent.quantity ?? 1);
             case 'order':
-                await this.handleOrder(msg, intent.indices, credentials);
-                return;
+                return this.handleOrder(msg, intent.indices);
         }
+        return null;
     }
 
-    // ============ 搜索：meili 检索 → 会话保存 → 卡片回复 ============
+    // ============ 搜索：meili 检索 → 会话保存 → 卡片消息 ============
 
     private async handleSearch(
         msg: WechatInboundMessage,
         query: string,
         quantity: number,
-        credentials: WechatCredentials,
-    ): Promise<void> {
+    ): Promise<OutboundMessage | null> {
         const channelId = await this.resolveChannelId(msg.channelToken);
         let products;
         try {
@@ -115,12 +125,10 @@ export class AssistantService {
             });
         } catch (e) {
             Logger.error(`Assistant search failed: ${String(e)}`, loggerCtx);
-            await this.reply(msg, buildSearchErrorText(msg.fromUserName), credentials);
-            return;
+            return buildSearchErrorText(msg.fromUserName);
         }
         if (!products.length) {
-            await this.reply(msg, buildNoResultText(msg.fromUserName, query), credentials);
-            return;
+            return buildNoResultText(msg.fromUserName, query);
         }
         // 数量进会话：编号下单时按该数量加购
         const results = products.map(p => ({ ...p, quantity }));
@@ -131,13 +139,7 @@ export class AssistantService {
             query,
             this.opts.sessionTtlMinutes ?? 30,
         );
-        const news = buildNewsMessage(msg.fromUserName, results);
-        if (news) {
-            // 方案 A（图文卡片）失败自动降级方案 B（纯文本编号列表）
-            await this.sender.sendOrFallback(news, buildTextListMessage(msg.fromUserName, results).content, credentials);
-        } else {
-            await this.sender.send(buildTextListMessage(msg.fromUserName, results), credentials);
-        }
+        return buildNewsMessage(msg.fromUserName, results) ?? buildTextListMessage(msg.fromUserName, results);
     }
 
     // ============ 下单：编号回查会话 → 绑定校验 → 建单 → 确认通知 ============
@@ -145,24 +147,20 @@ export class AssistantService {
     private async handleOrder(
         msg: WechatInboundMessage,
         indices: number[],
-        credentials: WechatCredentials,
-    ): Promise<void> {
+    ): Promise<OutboundMessage | null> {
         const session = await this.sessionService.getActive(msg.fromUserName);
         if (!session) {
-            await this.reply(msg, buildSessionExpiredText(msg.fromUserName), credentials);
-            return;
+            return buildSessionExpiredText(msg.fromUserName);
         }
         const picked = session.results.filter(r => indices.includes(r.index));
         if (!picked.length) {
-            await this.reply(msg, buildInvalidOrderText(msg.fromUserName, indices), credentials);
-            return;
+            return buildInvalidOrderText(msg.fromUserName, indices);
         }
 
         // 身份门槛：仅已绑定微信用户（openid→Customer）可下单
         const customer = await this.findCustomerByOpenid(msg.fromUserName);
         if (!customer) {
-            await this.reply(msg, buildBindGuideText(msg.fromUserName, this.loginUrl()), credentials);
-            return;
+            return buildBindGuideText(msg.fromUserName, this.loginUrl());
         }
 
         const ctx = await this.requestContextService.create({
@@ -180,25 +178,19 @@ export class AssistantService {
                 const payUrl = this.storefront()
                     ? `${this.storefront()}/checkout/confirmation/${outcome.order.code}`
                     : undefined;
-                await this.reply(
-                    msg,
-                    buildOrderSuccessText(msg.fromUserName, {
-                        orderCode: outcome.order.code,
-                        total: outcome.order.totalWithTax,
-                        items: outcome.items,
-                        payUrl,
-                    }),
-                    credentials,
-                );
                 Logger.info(`Assistant order created: ${outcome.order.code} openid=${msg.fromUserName}`, loggerCtx);
-                return;
+                return buildOrderSuccessText(msg.fromUserName, {
+                    orderCode: outcome.order.code,
+                    total: outcome.order.totalWithTax,
+                    items: outcome.items,
+                    payUrl,
+                });
             }
             case 'out_of_stock':
             case 'no_variant':
-                await this.reply(msg, buildOutOfStockText(msg.fromUserName, outcome.title), credentials);
-                return;
+                return buildOutOfStockText(msg.fromUserName, outcome.title);
             default:
-                await this.reply(msg, buildOrderFailText(msg.fromUserName, outcome.message), credentials);
+                return buildOrderFailText(msg.fromUserName, outcome.message);
         }
     }
 
@@ -234,18 +226,6 @@ export class AssistantService {
             // fallthrough
         }
         return '1';
-    }
-
-    private async reply(
-        msg: WechatInboundMessage,
-        message: { kind: string; touser: string; content?: string; articles?: any[] },
-        credentials: WechatCredentials,
-    ): Promise<void> {
-        try {
-            await this.sender.send(message as any, credentials);
-        } catch (e) {
-            Logger.error(`Assistant reply failed: ${String(e)}`, loggerCtx);
-        }
     }
 
     private storefront(): string {

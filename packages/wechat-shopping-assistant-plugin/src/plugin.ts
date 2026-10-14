@@ -4,6 +4,7 @@ import { MeiliSearchPlugin } from '@vendure/meilisearch-plugin';
 import { WechatAuthPlugin, WechatMessageEvent } from '@vendure/wechat-auth-plugin';
 
 import { AssistantService } from './assistant.service';
+import { AssistantHttpController } from './assistant-http.controller';
 import { loggerCtx, WECHAT_ASSISTANT_PLUGIN_OPTIONS } from './constants';
 import { CredentialService } from './credential.service';
 import { WechatProcessedMessage } from './entities/wechat-processed-message.entity';
@@ -25,6 +26,7 @@ import { WechatSender } from './wechat-sender';
 @VendurePlugin({
     imports: [PluginCommonModule, MeiliSearchPlugin, WechatAuthPlugin],
     entities: [WechatShoppingSession, WechatProcessedMessage],
+    controllers: [AssistantHttpController],
     providers: [
         { provide: WECHAT_ASSISTANT_PLUGIN_OPTIONS, useFactory: () => WechatShoppingAssistantPlugin.options },
         SessionService,
