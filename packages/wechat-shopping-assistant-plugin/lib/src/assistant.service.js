@@ -185,13 +185,25 @@ let AssistantService = class AssistantService {
         return customer !== null && customer !== void 0 ? customer : null;
     }
     async resolveChannelId(channelToken) {
-        try {
-            const channel = await this.channelService.findOne(core_1.RequestContext.empty(), channelToken);
-            if (channel)
-                return String(channel.id);
-        }
-        catch (_a) {
-            // fallthrough
+        if (channelToken) {
+            try {
+                const channel = await this.channelService.findOne(core_1.RequestContext.empty(), channelToken);
+                if (channel)
+                    return String(channel.id);
+            }
+            catch (_a) {
+                // fallthrough
+            }
+            // findOne 只按 id 查；再按 token 精确匹配（sso 转调经 env 配置传入渠道 token）
+            try {
+                const { items } = await this.channelService.findAll(core_1.RequestContext.empty());
+                const byToken = items.find(c => c.token === channelToken);
+                if (byToken)
+                    return String(byToken.id);
+            }
+            catch (_b) {
+                // fallthrough
+            }
         }
         return '1';
     }

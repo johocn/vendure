@@ -219,11 +219,21 @@ export class AssistantService {
     }
 
     private async resolveChannelId(channelToken: string): Promise<string> {
-        try {
-            const channel = await this.channelService.findOne(RequestContext.empty(), channelToken as any);
-            if (channel) return String(channel.id);
-        } catch {
-            // fallthrough
+        if (channelToken) {
+            try {
+                const channel = await this.channelService.findOne(RequestContext.empty(), channelToken as any);
+                if (channel) return String(channel.id);
+            } catch {
+                // fallthrough
+            }
+            // findOne 只按 id 查；再按 token 精确匹配（sso 转调经 env 配置传入渠道 token）
+            try {
+                const { items } = await this.channelService.findAll(RequestContext.empty());
+                const byToken = items.find(c => c.token === channelToken);
+                if (byToken) return String(byToken.id);
+            } catch {
+                // fallthrough
+            }
         }
         return '1';
     }
