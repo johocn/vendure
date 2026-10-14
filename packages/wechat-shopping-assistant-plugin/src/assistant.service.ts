@@ -183,6 +183,15 @@ export class AssistantService {
             await this.sessionService.clearFlow(msg.fromUserName);
             return buildFlowCancelledText(msg.fromUserName);
         }
+        // 地址流程中发「地址管理/新增地址」指令 → 切换流程（状态机优先但地址指令仍要放行，
+        // 否则重发「地址管理」会被当无效编号）；新增入口保留 order 流程上下文
+        const flowIntent = recognizeIntent(text);
+        if (flowIntent.kind === 'address_manage') return this.handleAddressManage(msg);
+        if (flowIntent.kind === 'address_add') {
+            const sessionNow = await this.sessionService.getActive(msg.fromUserName);
+            const keepFlow = sessionNow?.draft?.flow === 'order' ? sessionNow.draft : { flow: 'manage' as const };
+            return this.handleAddressAdd(msg, keepFlow);
+        }
         const ttl = this.opts.sessionTtlMinutes ?? 30;
         const draft: AssistantFlowDraft = session.draft ?? {};
 
@@ -556,14 +565,17 @@ export class AssistantService {
         return buildAddressListCard(msg.fromUserName, items, 'manage');
     }
 
-    /** 「新增地址」入口：直接进新增地址文本状态（manage 流程） */
-    private async handleAddressAdd(msg: WechatInboundMessage): Promise<OutboundMessage | null> {
+    /** 「新增地址」入口：直接进新增地址文本状态（默认 manage 流程；下单流程传入保留 order 上下文） */
+    private async handleAddressAdd(
+        msg: WechatInboundMessage,
+        initialDraft: AssistantFlowDraft = { flow: 'manage' },
+    ): Promise<OutboundMessage | null> {
         const customer = await this.customerBinding.findCustomerByOpenid(msg.fromUserName);
         if (!customer) return buildBindGuideText(msg.fromUserName, this.loginUrl());
         const ttl = this.opts.sessionTtlMinutes ?? 30;
         const channelId = await this.resolveSessionChannelId(msg);
         await this.sessionService.ensureSession(msg.fromUserName, channelId, ttl);
-        await this.sessionService.setFlow(msg.fromUserName, 'addr_new_text', { flow: 'manage' }, ttl);
+        await this.sessionService.setFlow(msg.fromUserName, 'addr_new_text', initialDraft, ttl);
         return buildAddrEditTextPrompt(msg.fromUserName);
     }
 
