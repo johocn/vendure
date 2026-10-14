@@ -303,7 +303,10 @@ let AssistantService = class AssistantService {
     async createShopCtx(channelId) {
         var _a;
         const channel = channelId
-            ? ((_a = (await this.connection.getRepository(core_1.Channel).findOne({ where: { id: channelId } }))) !== null && _a !== void 0 ? _a : undefined)
+            ? ((_a = (await this.connection.getRepository(core_1.Channel).findOne({
+                where: { id: channelId },
+                relations: { defaultTaxZone: true, defaultShippingZone: true },
+            }))) !== null && _a !== void 0 ? _a : undefined)
             : undefined;
         return this.requestContextService.create({ apiType: 'shop', channelOrToken: channel });
     }
