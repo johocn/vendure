@@ -72,7 +72,7 @@ function buildBindGuideText(touser, loginUrl) {
     return {
         kind: 'text',
         touser,
-        content: `${base}\n${loginUrl}\n（微信内打开，完成手机号验证后自动绑定，然后回复编号即可下单）`,
+        content: `${base}\n${loginUrl}\n（微信内打开，手机号验证码登录即自动绑定）\n绑定后可在「个人中心 → 地址簿」维护电话与收货地址，然后回复编号即可下单。`,
     };
 }
 function buildInvalidOrderText(touser, indices) {

@@ -35,11 +35,13 @@ export class AssistantSearchService {
     }
 
     private toCardProduct(hit: any, index: number, storefrontUrl: string): CardProduct {
-        let url: string | undefined = typeof hit.url === 'string' && hit.url ? hit.url : undefined;
-        // urlBase 缺失时文档 url 可能是相对路径，用店铺前端地址补全
-        if (url && url.startsWith('/') && storefrontUrl) {
-            url = `${storefrontUrl.replace(/\/+$/, '')}${url}`;
-        }
+        const slug = typeof hit.slug === 'string' && hit.slug
+            ? hit.slug
+            : (typeof hit.url === 'string' ? hit.url.split('/').filter(Boolean).pop() || '' : '');
+        // 卡片点击直达商品详情页（nshop 路由 /product/[slug]）；无店铺地址时退回文档 url 原样
+        const url = storefrontUrl && slug
+            ? `${storefrontUrl.replace(/\/+$/, '')}/product/${slug}`
+            : (typeof hit.url === 'string' && hit.url ? hit.url : undefined);
         return {
             index,
             productId: String(hit.sourceId),
@@ -47,7 +49,7 @@ export class AssistantSearchService {
             price: Number(hit.price ?? 0),
             thumbnail: hit.thumbnail || undefined,
             url,
-            slug: hit.slug,
+            slug,
         };
     }
 
