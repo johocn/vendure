@@ -32,4 +32,21 @@ describe('AssistantSearchService.toCardProduct（卡片 URL 详情页拼装）',
         expect(r[0].slug).toBe('liyang-auto');
         expect(r[0].url).toBe('https://e.joho.cn/product/liyang-auto');
     });
+
+    it('productUrlTemplate 优先（hash 路由前端），{slug} 占位符 encodeURIComponent', async () => {
+        const svc = makeService([
+            { sourceId: '73', title: '洗车', price: 2000, slug: '利洋汽修', url: 'https://e.joho.cn/利洋汽修' },
+        ]);
+        const r = await svc.searchProducts({
+            query: '洗车',
+            channelId: '37',
+            locale: 'zh',
+            limit: 5,
+            storefrontUrl: 'https://e.joho.cn',
+            productUrlTemplate: 'https://e.joho.cn/#/pkg-product/pages/detail?slug={slug}',
+        });
+        expect(r[0].url).toBe(
+            'https://e.joho.cn/#/pkg-product/pages/detail?slug=%E5%88%A9%E6%B4%8B%E6%B1%BD%E4%BF%AE',
+        );
+    });
 });

@@ -43,4 +43,6 @@ export declare class AssistantService {
     private resolveChannelId;
     private storefront;
     private loginUrl;
+    /** 支付确认页：优先模板（hash 路由前端，如 `https://host/#/pkg-order/pages/payment?code={code}`） */
+    private payUrl;
 }

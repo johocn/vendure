@@ -5,6 +5,16 @@ export interface WechatShoppingAssistantOptions {
     storefrontUrl: string;
     /** Vendure 资产公网域名（商品主图前缀），取 PUBLIC_ASSET_URL；未配置则卡片无图 */
     assetBaseUrl?: string;
+    /**
+     * 商品详情页 URL 模板，占位符 {slug}（替换时 encodeURIComponent）。
+     * 默认（未配置）= `{storefrontUrl}/product/{slug}`；hash 路由前端（uni-app H5）
+     * 配置形如 `https://host/#/pkg-product/pages/detail?slug={slug}`
+     */
+    productUrlTemplate?: string;
+    /** 登录页 URL（无占位符，整串绝对地址）。默认 = `{storefrontUrl}/account/login` */
+    loginUrlTemplate?: string;
+    /** 支付确认页 URL 模板，占位符 {code}（订单号，encodeURIComponent）。默认 = `{storefrontUrl}/checkout/confirmation/{code}` */
+    payUrlTemplate?: string;
     /** 搜索索引语言（kb-<locale>），默认 zh */
     searchLocale?: string;
     /** 会话内搜索结果有效期（分钟），默认 30 */

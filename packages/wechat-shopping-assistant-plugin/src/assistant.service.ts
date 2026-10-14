@@ -122,6 +122,7 @@ export class AssistantService {
                 locale: this.opts.searchLocale ?? 'zh',
                 limit: this.opts.searchLimit ?? 5,
                 storefrontUrl: this.storefront(),
+                productUrlTemplate: this.opts.productUrlTemplate,
             });
         } catch (e) {
             Logger.error(`Assistant search failed: ${String(e)}`, loggerCtx);
@@ -175,9 +176,7 @@ export class AssistantService {
 
         switch (outcome.status) {
             case 'ok': {
-                const payUrl = this.storefront()
-                    ? `${this.storefront()}/checkout/confirmation/${outcome.order.code}`
-                    : undefined;
+                const payUrl = this.payUrl(outcome.order.code);
                 Logger.info(`Assistant order created: ${outcome.order.code} openid=${msg.fromUserName}`, loggerCtx);
                 return buildOrderSuccessText(msg.fromUserName, {
                     orderCode: outcome.order.code,
@@ -243,6 +242,13 @@ export class AssistantService {
     }
 
     private loginUrl(): string | undefined {
+        if (this.opts.loginUrlTemplate) return this.opts.loginUrlTemplate;
         return this.storefront() ? `${this.storefront()}/account/login` : undefined;
+    }
+
+    /** 支付确认页：优先模板（hash 路由前端，如 `https://host/#/pkg-order/pages/payment?code={code}`） */
+    private payUrl(orderCode: string): string | undefined {
+        if (this.opts.payUrlTemplate) return this.opts.payUrlTemplate.replace('{code}', encodeURIComponent(orderCode));
+        return this.storefront() ? `${this.storefront()}/checkout/confirmation/${orderCode}` : undefined;
     }
 }

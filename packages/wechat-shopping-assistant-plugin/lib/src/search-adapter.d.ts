@@ -13,6 +13,7 @@ export declare class AssistantSearchService {
         locale: string;
         limit: number;
         storefrontUrl: string;
+        productUrlTemplate?: string;
     }): Promise<CardProduct[]>;
     private toCardProduct;
     private withTimeout;

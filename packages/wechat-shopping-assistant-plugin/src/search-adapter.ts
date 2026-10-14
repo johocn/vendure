@@ -20,6 +20,7 @@ export class AssistantSearchService {
         locale: string;
         limit: number;
         storefrontUrl: string;
+        productUrlTemplate?: string;
     }): Promise<CardProduct[]> {
         const r = await this.withTimeout(
             this.meili.search(input.locale, {
@@ -31,17 +32,21 @@ export class AssistantSearchService {
         );
         return r.hits
             .filter(h => h.sourceId)
-            .map((h, i) => this.toCardProduct(h, i + 1, input.storefrontUrl));
+            .map((h, i) => this.toCardProduct(h, i + 1, input.storefrontUrl, input.productUrlTemplate));
     }
 
-    private toCardProduct(hit: any, index: number, storefrontUrl: string): CardProduct {
+    private toCardProduct(hit: any, index: number, storefrontUrl: string, productUrlTemplate?: string): CardProduct {
         const slug = typeof hit.slug === 'string' && hit.slug
             ? hit.slug
             : (typeof hit.url === 'string' ? hit.url.split('/').filter(Boolean).pop() || '' : '');
-        // 卡片点击直达商品详情页（nshop 路由 /product/[slug]）；无店铺地址时退回文档 url 原样
-        const url = storefrontUrl && slug
-            ? `${storefrontUrl.replace(/\/+$/, '')}/product/${slug}`
-            : (typeof hit.url === 'string' && hit.url ? hit.url : undefined);
+        // 卡片点击直达商品详情页：优先 URL 模板（hash 路由前端，如 uni-app H5
+        // `https://host/#/pkg-product/pages/detail?slug={slug}`）；未配置模板退回
+        // `{storefront}/product/{slug}`；仍无则退回文档 url 原样
+        const url = productUrlTemplate && slug
+            ? productUrlTemplate.replace('{slug}', encodeURIComponent(slug))
+            : storefrontUrl && slug
+                ? `${storefrontUrl.replace(/\/+$/, '')}/product/${slug}`
+                : (typeof hit.url === 'string' && hit.url ? hit.url : undefined);
         return {
             index,
             productId: String(hit.sourceId),

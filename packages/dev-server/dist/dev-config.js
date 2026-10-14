@@ -486,6 +486,9 @@ exports.devConfig = {
         ...((process.env.WECHAT_AUTH_APP_ID || process.env.DEV_BYPASS_WECHAT === 'true') ? [wechat_shopping_assistant_plugin_1.WechatShoppingAssistantPlugin.init({
                 storefrontUrl: process.env.PUBLIC_STOREFRONT_URL || '',
                 assetBaseUrl: process.env.PUBLIC_ASSET_URL || '',
+                productUrlTemplate: process.env.PUBLIC_PRODUCT_URL_TEMPLATE || '',
+                loginUrlTemplate: process.env.PUBLIC_LOGIN_URL_TEMPLATE || '',
+                payUrlTemplate: process.env.PUBLIC_PAY_URL_TEMPLATE || '',
                 searchLocale: 'zh',
                 sessionTtlMinutes: 30,
                 searchLimit: 5,

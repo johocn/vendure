@@ -108,6 +108,7 @@ let AssistantService = class AssistantService {
                 locale: (_a = this.opts.searchLocale) !== null && _a !== void 0 ? _a : 'zh',
                 limit: (_b = this.opts.searchLimit) !== null && _b !== void 0 ? _b : 5,
                 storefrontUrl: this.storefront(),
+                productUrlTemplate: this.opts.productUrlTemplate,
             });
         }
         catch (e) {
@@ -144,9 +145,7 @@ let AssistantService = class AssistantService {
         const outcome = await this.orderService.createOrder(ctx, customer.id, picked.map(p => { var _a; return ({ productId: p.productId, quantity: (_a = p.quantity) !== null && _a !== void 0 ? _a : 1 }); }));
         switch (outcome.status) {
             case 'ok': {
-                const payUrl = this.storefront()
-                    ? `${this.storefront()}/checkout/confirmation/${outcome.order.code}`
-                    : undefined;
+                const payUrl = this.payUrl(outcome.order.code);
                 core_1.Logger.info(`Assistant order created: ${outcome.order.code} openid=${msg.fromUserName}`, constants_1.loggerCtx);
                 return (0, card_builder_1.buildOrderSuccessText)(msg.fromUserName, {
                     orderCode: outcome.order.code,
@@ -212,7 +211,15 @@ let AssistantService = class AssistantService {
         return ((_a = this.opts.storefrontUrl) !== null && _a !== void 0 ? _a : '').replace(/\/+$/, '');
     }
     loginUrl() {
+        if (this.opts.loginUrlTemplate)
+            return this.opts.loginUrlTemplate;
         return this.storefront() ? `${this.storefront()}/account/login` : undefined;
+    }
+    /** 支付确认页：优先模板（hash 路由前端，如 `https://host/#/pkg-order/pages/payment?code={code}`） */
+    payUrl(orderCode) {
+        if (this.opts.payUrlTemplate)
+            return this.opts.payUrlTemplate.replace('{code}', encodeURIComponent(orderCode));
+        return this.storefront() ? `${this.storefront()}/checkout/confirmation/${orderCode}` : undefined;
     }
 };
 exports.AssistantService = AssistantService;

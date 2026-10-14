@@ -582,6 +582,10 @@ export const devConfig: VendureConfig = {
         ...((process.env.WECHAT_AUTH_APP_ID || process.env.DEV_BYPASS_WECHAT === 'true') ? [WechatShoppingAssistantPlugin.init({
             storefrontUrl: process.env.PUBLIC_STOREFRONT_URL || '',
             assetBaseUrl: process.env.PUBLIC_ASSET_URL || '',
+            // hash 路由前端（如 vshop uni-app H5）的真实页面地址模板；未配置走 history 路由默认拼装
+            productUrlTemplate: process.env.PUBLIC_PRODUCT_URL_TEMPLATE || '',
+            loginUrlTemplate: process.env.PUBLIC_LOGIN_URL_TEMPLATE || '',
+            payUrlTemplate: process.env.PUBLIC_PAY_URL_TEMPLATE || '',
             searchLocale: 'zh',
             sessionTtlMinutes: 30,
             searchLimit: 5,
