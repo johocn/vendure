@@ -73,6 +73,10 @@ export declare class TenantMemberService {
         token?: string;
         isOfficial?: boolean;
     }): Promise<any>;
+    /** 渠道创建成功后同步到 SSO 渠道表 sso_channels（fire-and-forget，失败仅告警不阻塞租户创建）。
+     *  保证渠道报表/点击追踪不因渠道缺失而丢数据。需配置 SSO_CHANNEL_SYNC_URL 与
+     *  SSO_CHANNEL_SYNC_TOKEN 环境变量（shared secret），未配置则跳过。 */
+    private syncChannelToSso;
     /** 取当前最大 tenantNo，自增 1；无数据时从 0 开始（第 1 个租户得到 1）。
      *  用 TypeORM 原生 read 绕开 channelService.findAll 的 take≤1000 限制（否则新建租户必报「查询结果大于1000」）。 */
     private nextTenantNo;

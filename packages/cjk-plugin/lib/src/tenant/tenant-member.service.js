@@ -295,8 +295,39 @@ let TenantMemberService = class TenantMemberService {
         catch (e) {
             core_1.Logger.warn(`租户 ${code} 默认角色创建失败（可手动补建）: ${e.message}`, constants_1.loggerCtx);
         }
+        this.syncChannelToSso(code, input.name);
         core_1.Logger.info(`已创建租户 ${code}（tenantNo=${tenantNo}）`, constants_1.loggerCtx);
         return channel;
+    }
+    /** 渠道创建成功后同步到 SSO 渠道表 sso_channels（fire-and-forget，失败仅告警不阻塞租户创建）。
+     *  保证渠道报表/点击追踪不因渠道缺失而丢数据。需配置 SSO_CHANNEL_SYNC_URL 与
+     *  SSO_CHANNEL_SYNC_TOKEN 环境变量（shared secret），未配置则跳过。 */
+    syncChannelToSso(code, name) {
+        const url = process.env.SSO_CHANNEL_SYNC_URL;
+        const token = process.env.SSO_CHANNEL_SYNC_TOKEN;
+        if (!url || !token) {
+            core_1.Logger.warn(`租户 ${code} 未配置 SSO_CHANNEL_SYNC_URL/SSO_CHANNEL_SYNC_TOKEN，跳过渠道同步`, constants_1.loggerCtx);
+            return;
+        }
+        void (async () => {
+            try {
+                const resp = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-sso-sync-token': token },
+                    body: JSON.stringify({ channel_code: code, channel_name: name, channel_type: 'vendure' }),
+                });
+                if (!resp.ok) {
+                    const text = await resp.text().catch(() => '');
+                    core_1.Logger.warn(`租户 ${code} 同步到 SSO 渠道表失败: HTTP ${resp.status} ${text}`, constants_1.loggerCtx);
+                }
+                else {
+                    core_1.Logger.info(`租户 ${code} 已同步到 SSO 渠道表`, constants_1.loggerCtx);
+                }
+            }
+            catch (e) {
+                core_1.Logger.warn(`租户 ${code} 同步到 SSO 渠道表异常: ${e.message}`, constants_1.loggerCtx);
+            }
+        })();
     }
     /** 取当前最大 tenantNo，自增 1；无数据时从 0 开始（第 1 个租户得到 1）。
      *  用 TypeORM 原生 read 绕开 channelService.findAll 的 take≤1000 限制（否则新建租户必报「查询结果大于1000」）。 */
