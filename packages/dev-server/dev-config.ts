@@ -465,7 +465,9 @@ export const devConfig: VendureConfig = {
             accessKeySecret: process.env.OSS_ACCESS_KEY_SECRET ?? '',
             bucket: process.env.OSS_BUCKET ?? '',
         })] : []),
-        ...((process.env.SMS_ACCESS_KEY_ID || process.env.DEV_BYPASS_SMS === 'true') ? [PhoneAuthPlugin.init({
+        // PhoneAuthPlugin 无条件注册：保证发码/手机注册/重置密码 schema 与手机登录策略始终存在；
+        // 未配置 SMS 凭据时发码仅落库不真实发送（SmsService 内建兜底，不会崩溃）
+        PhoneAuthPlugin.init({
             accessKeyId: process.env.SMS_ACCESS_KEY_ID || '',
             accessKeySecret: process.env.SMS_ACCESS_KEY_SECRET ?? '',
             signName: process.env.SMS_SIGN_NAME ?? '',
@@ -474,7 +476,7 @@ export const devConfig: VendureConfig = {
             devBypassCode: '123456',
             // 可选：配置后验证码/限流状态存 Redis（多实例部署共享），未配置走进程内存
             redisUrl: process.env.PHONE_AUTH_REDIS_URL || undefined,
-        })] : []),
+        }),
         ...((process.env.WECHAT_AUTH_APP_ID || process.env.DEV_BYPASS_WECHAT === 'true') ? [WechatAuthPlugin.init({
             appId: process.env.WECHAT_AUTH_APP_ID || 'dev_test_app_id',
             appSecret: process.env.WECHAT_AUTH_APP_SECRET || 'dev_test_app_secret',
