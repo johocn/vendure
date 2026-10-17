@@ -5,7 +5,11 @@ export interface AfterSalesPluginOptions {
     afterSalesWindowHours?: number;
     /** 允许售后的订单状态（默认 Shipped/Delivered/PartiallyDelivered/Completed/Cancelled；外卖单全程 PaymentSettled，需显式放行） */
     allowedOrderStates?: string[];
-    /** 要求订单 customFields[field] === value 才允许售后（外卖场景 { field: 'deliveryStatus', value: 'delivered' }；不设置则仅按订单状态校验） */
+    /**
+     * 送达门槛（外卖/骑手场景）：当订单 customFields[field] **有值（存在配送档案）** 时，必须等于 value 才允许售后；
+     * 字段为空（普通快递/自提单，无配送档案）则跳过校验。
+     * 例 { field: 'deliveryStatus', value: 'delivered' }：骑手/达达单未送达（assigned/in_progress）拒售后，防双退款。
+     */
     requireOrderCustomField?: { field: string; value: string };
     /** Pending 超时提醒商家小时数（默认 48；渠道 customFields afterSalesTimeoutHours 优先） */
     afterSalesTimeoutHours?: number;

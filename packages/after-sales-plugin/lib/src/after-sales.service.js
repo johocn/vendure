@@ -173,27 +173,31 @@ let AfterSalesService = AfterSalesService_1 = class AfterSalesService {
         //    afterSalesWindowHours > 0 时按小时窗口（送达时间起算，外卖 24h 场景）；
         //    否则按 maxDays + 15 天质量问题延长逻辑。
         //    计时起点 fulfillmentCompletedAt → fulfillmentDeliveredAt → deliveredAt（外卖骑手送达落库）→ updatedAt。
+        //    窗口仅对有配送档案的订单生效（外卖/骑手场景专属）；普通快递/自提单（档案字段为空）走 maxDays 分支，
+        //    避免 24h 窗口误伤普通单（发货完成 24h 后即不可售后不合理）。
         const cf = ((_e = order.customFields) !== null && _e !== void 0 ? _e : {});
+        const gate = (_f = this.options) === null || _f === void 0 ? void 0 : _f.requireOrderCustomField;
+        const hasDeliveryArchive = !!(gate === null || gate === void 0 ? void 0 : gate.field) && cf[gate.field] != null;
         const orderDate = cf.fulfillmentCompletedAt || cf.fulfillmentDeliveredAt || cf.deliveredAt
             || order.updatedAt || order.createdAt;
-        const windowHours = (_g = (_f = this.options) === null || _f === void 0 ? void 0 : _f.afterSalesWindowHours) !== null && _g !== void 0 ? _g : 0;
-        if (windowHours > 0) {
+        const windowHours = (_h = (_g = this.options) === null || _g === void 0 ? void 0 : _g.afterSalesWindowHours) !== null && _h !== void 0 ? _h : 0;
+        if (windowHours > 0 && hasDeliveryArchive) {
             const hoursSince = (Date.now() - orderDate.getTime()) / (1000 * 60 * 60);
             if (hoursSince > windowHours) {
                 throw new core_1.UserInputError(`Cannot create after-sales: exceeded ${windowHours}h window`);
             }
         }
         else {
-            const maxDays = (_j = (_h = this.options) === null || _h === void 0 ? void 0 : _h.maxDaysAfterDelivery) !== null && _j !== void 0 ? _j : 7;
+            const maxDays = (_k = (_j = this.options) === null || _j === void 0 ? void 0 : _j.maxDaysAfterDelivery) !== null && _k !== void 0 ? _k : 7;
             const daysSince = (Date.now() - orderDate.getTime()) / (1000 * 60 * 60 * 24);
             if (daysSince > maxDays + 15) {
                 throw new core_1.UserInputError(`Cannot create after-sales: exceeded ${maxDays + 15} days limit`);
             }
         }
-        // 3.1 送达门槛（外卖场景）：requireOrderCustomField 指定的 customFields 字段必须等于指定值，
-        //     防止未送达（deliveryStatus 空/assigned/in_progress）的已支付单走售后与取消链路双退款
-        const gate = (_k = this.options) === null || _k === void 0 ? void 0 : _k.requireOrderCustomField;
-        if (gate === null || gate === void 0 ? void 0 : gate.field) {
+        // 3.1 送达门槛（外卖/骑手场景）：仅当订单存在配送档案（gate.field 有值）时要求等于指定值，
+        //     防止未送达（deliveryStatus 空/assigned/in_progress）的骑手单走售后与取消链路双退款；
+        //     普通快递/自提单无配送档案（字段为 null），跳过校验正常售后。
+        if ((gate === null || gate === void 0 ? void 0 : gate.field) && cf[gate.field] != null) {
             const actual = cf[gate.field];
             if (String(actual) !== String(gate.value)) {
                 throw new core_1.UserInputError(`Cannot create after-sales: order not eligible (${gate.field}=${actual !== null && actual !== void 0 ? actual : 'null'})`);

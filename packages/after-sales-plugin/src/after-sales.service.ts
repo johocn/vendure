@@ -204,11 +204,15 @@ export class AfterSalesService {
         //    afterSalesWindowHours > 0 时按小时窗口（送达时间起算，外卖 24h 场景）；
         //    否则按 maxDays + 15 天质量问题延长逻辑。
         //    计时起点 fulfillmentCompletedAt → fulfillmentDeliveredAt → deliveredAt（外卖骑手送达落库）→ updatedAt。
+        //    窗口仅对有配送档案的订单生效（外卖/骑手场景专属）；普通快递/自提单（档案字段为空）走 maxDays 分支，
+        //    避免 24h 窗口误伤普通单（发货完成 24h 后即不可售后不合理）。
         const cf: Record<string, any> = (order.customFields ?? {}) as any;
+        const gate = this.options?.requireOrderCustomField;
+        const hasDeliveryArchive = !!gate?.field && cf[gate.field] != null;
         const orderDate: Date = cf.fulfillmentCompletedAt || cf.fulfillmentDeliveredAt || cf.deliveredAt
             || order.updatedAt || order.createdAt;
         const windowHours = this.options?.afterSalesWindowHours ?? 0;
-        if (windowHours > 0) {
+        if (windowHours > 0 && hasDeliveryArchive) {
             const hoursSince = (Date.now() - orderDate.getTime()) / (1000 * 60 * 60);
             if (hoursSince > windowHours) {
                 throw new UserInputError(`Cannot create after-sales: exceeded ${windowHours}h window`);
@@ -221,10 +225,10 @@ export class AfterSalesService {
             }
         }
 
-        // 3.1 送达门槛（外卖场景）：requireOrderCustomField 指定的 customFields 字段必须等于指定值，
-        //     防止未送达（deliveryStatus 空/assigned/in_progress）的已支付单走售后与取消链路双退款
-        const gate = this.options?.requireOrderCustomField;
-        if (gate?.field) {
+        // 3.1 送达门槛（外卖/骑手场景）：仅当订单存在配送档案（gate.field 有值）时要求等于指定值，
+        //     防止未送达（deliveryStatus 空/assigned/in_progress）的骑手单走售后与取消链路双退款；
+        //     普通快递/自提单无配送档案（字段为 null），跳过校验正常售后。
+        if (gate?.field && cf[gate.field] != null) {
             const actual = cf[gate.field];
             if (String(actual) !== String(gate.value)) {
                 throw new UserInputError(

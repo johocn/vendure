@@ -526,7 +526,9 @@ export const devConfig: VendureConfig = {
             afterSalesAutoApproveHours: 48,    // Pending 48h 未审自动同意并退款
             afterSalesRefundAutoRetry: 1,      // 退款失败自动重试 1 次
             allowedOrderStates: ['PaymentSettled', 'Delivered'], // 外卖单全程 PaymentSettled，确认收货后 Delivered
-            requireOrderCustomField: { field: 'deliveryStatus', value: 'delivered' }, // 仅骑手送达后可售后
+            // 送达门槛（外卖/骑手场景）：仅当订单有配送档案（deliveryStatus 有值）时要求已送达才可售后，
+            // 防骑手单未送达双退款；普通快递/自提单无配送档案自动放行，走 maxDays+15 天窗口
+            requireOrderCustomField: { field: 'deliveryStatus', value: 'delivered' },
         }),
         MemberLevelPlugin.init(),
         // 门店收银 POS：会员价依赖 MemberLevelPlugin；离线同步插件内部复用 VcashPosPlugin（同库/同渠道）
