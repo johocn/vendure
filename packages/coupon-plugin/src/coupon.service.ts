@@ -602,11 +602,14 @@ export class CouponService {
         }
         // 限领并发防护：在事务连接上对 Customer 行 FOR UPDATE，串行化同一用户的并发领券竞态
         // （countHeld 检查-后-写入窗口；必须在事务 repo 上执行——autocommit 连接的行锁随语句结束即释放）。
-        // Shop API 三个领券入口均带 @Transaction()，锁持续到外层事务提交/回滚
-        await this.connection.getRepository(ctx, Customer).query(
-            'SELECT id FROM customer WHERE id = $1 FOR UPDATE',
-            [customerId],
-        );
+        // Shop API 三个领券入口均带 @Transaction()，锁持续到外层事务提交/回滚。
+        // FOR UPDATE 为 PostgreSQL 语法；e2e 等单进程 SQLite 环境不支持，跳过行锁（无并发竞态）。
+        if (this.connection.rawConnection.options.type === 'postgres') {
+            await this.connection.getRepository(ctx, Customer).query(
+                'SELECT id FROM customer WHERE id = $1 FOR UPDATE',
+                [customerId],
+            );
+        }
         // 限领校验
         if (tpl.perUserLimit > 0) {
             const owned = await this.countHeld(customerId, tpl.id);

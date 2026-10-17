@@ -293,15 +293,20 @@ export class CouponBindingService {
      * 加价购券没有 PRODUCT 分发渠道，若沿用 visibleBinding 会被判为不可见，
      * 导致 C 端「加价购」区块永远拿不到数据。结算侧仍走 listByTemplate/visibleBinding，
      * 不受影响。
+     * 场景过滤同时接纳到店券（IN_STORE）：绑定商品即可在详情页领取，领取后到店
+     * 出示券码核销；「到店券不可线上加购」的排除由 C 端加价购区（saleable）承担，
+     * 线上结算侧 visibleBinding 仍只认 ONLINE/ALL，两侧语义互不影响。
      */
     private visibleEntryBinding(b: ProductCouponBinding, ctx: RequestContext): boolean {
         const channelMatch = !b.channelId || Number(b.channelId) === Number(ctx.channel?.id);
         const tpl = b.template;
+        const sceneVisible =
+            matchesScene(tpl?.usageScene, 'ONLINE') || matchesScene(tpl?.usageScene, 'IN_STORE');
         return (
             !!b.enabled &&
             !!tpl?.enabled &&
             (hasChannel(tpl, true, 'PRODUCT') || hasChannel(tpl, true, 'SALE')) &&
-            matchesScene(tpl.usageScene, 'ONLINE') &&
+            sceneVisible &&
             channelMatch
         );
     }

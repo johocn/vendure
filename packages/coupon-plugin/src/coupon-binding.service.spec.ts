@@ -76,24 +76,28 @@ describe('CouponBindingService', () => {
         expect(bindingRepo.save).not.toHaveBeenCalled();
     });
 
-    it('listByProduct 返回 enabled、模板渠道含 PRODUCT 或 SALE、场景命中且 channelId 匹配的绑定', async () => {
+    it('listByProduct 返回 enabled、模板渠道含 PRODUCT 或 SALE、场景命中（线上或到店）且 channelId 匹配的绑定', async () => {
         // 详情页入口要同时支撑「领取」(PRODUCT) 与「加价购」(SALE)：
         // 绑定商品即视为 PRODUCT 渠道（hasProductBinding=true），显式配置渠道优先。
+        // 场景上 ONLINE / IN_STORE / ALL 均可见：到店券绑定商品后可在详情页领取、
+        // 到店核销；「到店券不可线上加购」由 C 端加价购区（saleable）排除。
         bindingRepo.find.mockResolvedValue([
             { id: 1, enabled: false, channelId: 1, template: { enabled: true } },
             { id: 2, enabled: true, channelId: 1, template: { enabled: true, distributionChannels: 'SALE' } },
             { id: 3, enabled: true, channelId: 1, template: { enabled: true } },
             // 仅 CENTRE 渠道：既不可领也不可加价购 → 不可见
             { id: 4, enabled: true, channelId: 1, template: { enabled: true, distributionChannels: 'CENTRE' } },
-            // SALE 但纯到店券：线上加价购不可用 → 不可见
+            // SALE 但纯到店券：详情页入口可见（领取后到店核销；加价购区由 C 端排除）
             { id: 5, enabled: true, channelId: 1, template: { enabled: true, distributionChannels: 'SALE', usageScene: 'IN_STORE' } },
+            // PRODUCT 渠道 + 纯到店券：详情页领取区核心用例（他老婶铁锅炖场景）
+            { id: 7, enabled: true, channelId: 1, template: { enabled: true, distributionChannels: 'CENTRE,PRODUCT', usageScene: 'IN_STORE' } },
             // 渠道不匹配 → 不可见
             { id: 6, enabled: true, channelId: 99, template: { enabled: true, distributionChannels: 'SALE' } },
         ]);
 
         const result = await service.listByProduct(ctx, 10);
 
-        expect(result.map(b => (b as any).id)).toEqual([2, 3]);
+        expect(result.map(b => (b as any).id)).toEqual([2, 3, 5, 7]);
     });
 
     it('toggleEnabled 翻转 enabled 并保存', async () => {
