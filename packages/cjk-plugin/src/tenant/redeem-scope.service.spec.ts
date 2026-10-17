@@ -74,18 +74,27 @@ describe('RedeemScopeService.resolve', () => {
         });
     });
 
-    it('受限 + 无成员记录 → restricted:true + 空集（默认拒绝）', async () => {
-        const { service } = makeService({ admin: { id: 11 }, member: null });
+    it('有 VerifyOrder + 无成员记录（超管/平台侧）→ 不受限', async () => {
+        const { service, memberRepo } = makeService({ admin: null, member: null });
+        expect(await service.resolve(ctxOf({ restricted: true }))).toEqual({
+            restricted: false,
+            shippingProfileIds: [],
+        });
+        expect(memberRepo.findOne).not.toHaveBeenCalled();
+    });
+
+    it('受限 + 成员存在但白名单为空 → restricted:true + 空集（默认拒绝）', async () => {
+        const { service } = makeService({ admin: { id: 11 }, member: { shippingProfileIds: [] } });
         expect(await service.resolve(ctxOf({ restricted: true }))).toEqual({
             restricted: true,
             shippingProfileIds: [],
         });
     });
 
-    it('受限 + 无登录用户 → restricted:true + 空集', async () => {
+    it('有 VerifyOrder + 无登录用户 → 不受限', async () => {
         const { service } = makeService({});
         expect(await service.resolve(ctxOf({ restricted: true, userId: null }))).toEqual({
-            restricted: true,
+            restricted: false,
             shippingProfileIds: [],
         });
     });

@@ -1,10 +1,11 @@
 import { ID, RequestContext, TransactionalConnection } from '@vendure/core';
 import { RedeemScope, RedeemScopeProvider } from '@vendure/coupon-plugin';
 /**
- * 到店核销范围判定（受限核销员 = 持有 VerifyOrder 权限）。
+ * 到店核销范围判定（受限核销员 = 持有 VerifyOrder 权限的本租户成员）。
  *
  * 判定链见 spec §3：
- *   不受限 → 全量；受限 → 读 TenantMember.shippingProfileIds，
+ *   无 VerifyOrder → 不受限；有 VerifyOrder 但无本租户成员记录（超管/平台侧）→ 不受限；
+ *   有 VerifyOrder 且是本租户成员 → 读 TenantMember.shippingProfileIds，
  *   空白名单 = 默认拒绝；非空则要求「全部命中」（订单所有行 / 券模板所有关联商品）。
  *
  * 本服务在插件 onApplicationBootstrap 中经 setRedeemScopeResolver 注册给 coupon-plugin

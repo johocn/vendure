@@ -16,10 +16,11 @@ const typeorm_1 = require("typeorm");
 const coupon_plugin_1 = require("@vendure/coupon-plugin");
 const tenant_member_entity_1 = require("./tenant-member.entity");
 /**
- * 到店核销范围判定（受限核销员 = 持有 VerifyOrder 权限）。
+ * 到店核销范围判定（受限核销员 = 持有 VerifyOrder 权限的本租户成员）。
  *
  * 判定链见 spec §3：
- *   不受限 → 全量；受限 → 读 TenantMember.shippingProfileIds，
+ *   无 VerifyOrder → 不受限；有 VerifyOrder 但无本租户成员记录（超管/平台侧）→ 不受限；
+ *   有 VerifyOrder 且是本租户成员 → 读 TenantMember.shippingProfileIds，
  *   空白名单 = 默认拒绝；非空则要求「全部命中」（订单所有行 / 券模板所有关联商品）。
  *
  * 本服务在插件 onApplicationBootstrap 中经 setRedeemScopeResolver 注册给 coupon-plugin
@@ -34,10 +35,15 @@ let RedeemScopeService = class RedeemScopeService {
         if (!ctx.userHasPermissions([coupon_plugin_1.VERIFY_ORDER_PERMISSION])) {
             return { restricted: false, shippingProfileIds: [] };
         }
+        // 仅「持有 VerifyOrder 的本租户成员」按档案白名单约束；
+        // 超管/平台侧登录人因权限集包含语义也命中 VerifyOrder，但无本租户成员记录，不受白名单约束
         const member = await this.findMember(ctx);
+        if (!member) {
+            return { restricted: false, shippingProfileIds: [] };
+        }
         return {
             restricted: true,
-            shippingProfileIds: ((_a = member === null || member === void 0 ? void 0 : member.shippingProfileIds) !== null && _a !== void 0 ? _a : []).map(String),
+            shippingProfileIds: ((_a = member.shippingProfileIds) !== null && _a !== void 0 ? _a : []).map(String),
         };
     }
     /** 订单侧：订单所有商品行的档案都须落在白名单内；任一行缺失或越界即拒绝 */
