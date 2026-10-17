@@ -209,9 +209,12 @@ exports.ShopTemplatePlugin = ShopTemplatePlugin = ShopTemplatePlugin_1 = __decor
             // 注册自定义权限（必须 push 到 customPermissions，Permission 枚举才会包含）
             config.authOptions.customPermissions.push(permissions_1.shopTemplatesRead, permissions_1.shopTemplatesCreate, permissions_1.shopTemplatesUpdate, permissions_1.shopTemplatesDelete);
             // 店铺「选模板」引用字段 + L3 令牌覆盖（与既有店铺装修字段并存）
+            // shopApp：渠道归属端（nshop/vshop），后台主题页据此锁定模板库，
+            // 防止跨 app 引用（C 端 shopTemplate 校验 app 不匹配会静默回退默认主题）。
             config.customFields.Channel = mergeCustomFields(config.customFields.Channel, [
                 { name: 'templateId', type: 'string', public: true },
                 { name: 'themeTokensOverride', type: 'text', nullable: true, public: true },
+                { name: 'shopApp', type: 'string', nullable: true, public: true, defaultValue: 'nshop' },
             ]);
             return config;
         },

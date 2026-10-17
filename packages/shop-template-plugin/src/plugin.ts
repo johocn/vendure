@@ -160,9 +160,12 @@ const SEED_TEMPLATES = [
             shopTemplatesDelete,
         );
         // 店铺「选模板」引用字段 + L3 令牌覆盖（与既有店铺装修字段并存）
+        // shopApp：渠道归属端（nshop/vshop），后台主题页据此锁定模板库，
+        // 防止跨 app 引用（C 端 shopTemplate 校验 app 不匹配会静默回退默认主题）。
         config.customFields.Channel = mergeCustomFields(config.customFields.Channel, [
             { name: 'templateId', type: 'string', public: true },
             { name: 'themeTokensOverride', type: 'text', nullable: true, public: true },
+            { name: 'shopApp', type: 'string', nullable: true, public: true, defaultValue: 'nshop' },
         ]);
         return config;
     },
