@@ -378,7 +378,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 to: DateTime
             }
 
-            type InStorePendingCoupon {
+            type InStorePendingCoupon implements Node {
                 id: ID!
                 couponCode: String!
                 couponName: String

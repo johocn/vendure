@@ -247,7 +247,7 @@ type CustomerCoupon implements Node {
                 to: DateTime
             }
 
-            type InStorePendingCoupon {
+            type InStorePendingCoupon implements Node {
                 id: ID!
                 couponCode: String!
                 couponName: String
