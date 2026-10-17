@@ -24,6 +24,7 @@ import { PhoneAuthPluginOptions } from './types';
                 extend type Mutation {
                     sendPhoneVerificationCode(phoneNumber: String!): Boolean!
                     registerCustomer(input: PhoneRegisterInput!): Success!
+                    resetPasswordWithPhoneCode(phoneNumber: String!, code: String!, newPassword: String!): Boolean!
                 }
 
                 input PhoneRegisterInput {

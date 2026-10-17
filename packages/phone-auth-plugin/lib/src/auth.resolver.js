@@ -22,10 +22,11 @@ const sms_service_1 = require("./sms.service");
 /** 大陆手机号格式 */
 const PHONE_NUMBER_RE = /^1[3-9]\d{9}$/;
 let PhoneAuthResolver = class PhoneAuthResolver {
-    constructor(options, smsService, customerService) {
+    constructor(options, smsService, customerService, userService) {
         this.options = options;
         this.smsService = smsService;
         this.customerService = customerService;
+        this.userService = userService;
     }
     async sendPhoneVerificationCode(ctx, phoneNumber) {
         // 租户级登录方式开关（未启用即权限错误）
@@ -95,6 +96,34 @@ let PhoneAuthResolver = class PhoneAuthResolver {
         }
         return { success: true };
     }
+    async resetPasswordWithPhoneCode(ctx, phoneNumber, code, newPassword) {
+        // 租户级登录方式开关（未启用即权限错误）
+        if (!(0, cjk_plugin_1.isAuthMethodEnabled)(ctx, 'phone')) {
+            throw new core_1.ForbiddenError();
+        }
+        if (!PHONE_NUMBER_RE.test(phoneNumber)) {
+            throw new core_1.UserInputError('手机号格式不正确');
+        }
+        // verifyCode 是 async：漏 await 会得到恒真值的 Promise，令校验失效（同 registerCustomer）
+        const verified = await this.smsService.verifyCode(phoneNumber, code);
+        if (!verified) {
+            throw new core_1.UserInputError('验证码错误或已过期');
+        }
+        // 手机注册用户 identifier=手机号（见 registerCustomer 注释）；
+        // getUserByEmailAddress 对非邮箱格式（无 @）按 identifier 精确匹配，不做小写归一
+        const user = await this.userService.getUserByEmailAddress(ctx, phoneNumber);
+        if (!user) {
+            throw new core_1.UserInputError('账号不存在');
+        }
+        // 本 fork 的 UserService 无 setPassword(ctx, userId, ...)，设置密码用 setNativePassword(ctx, user, pwd)；
+        // 其要求 authenticationMethods 已加载，getUserByEmailAddress 已 leftJoinAndSelect 该关系
+        const result = await this.userService.setNativePassword(ctx, user, newPassword);
+        if ((0, core_1.isGraphQlErrorResult)(result)) {
+            // PasswordValidationError.message 是常量错误码，友好文案在 validationErrorMessage
+            throw new core_1.UserInputError(result.validationErrorMessage || result.message || '密码不符合要求');
+        }
+        return true;
+    }
 };
 exports.PhoneAuthResolver = PhoneAuthResolver;
 __decorate([
@@ -115,10 +144,22 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], PhoneAuthResolver.prototype, "registerCustomer", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Public),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('phoneNumber')),
+    __param(2, (0, graphql_1.Args)('code')),
+    __param(3, (0, graphql_1.Args)('newPassword')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, String, String]),
+    __metadata("design:returntype", Promise)
+], PhoneAuthResolver.prototype, "resetPasswordWithPhoneCode", null);
 exports.PhoneAuthResolver = PhoneAuthResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __param(0, (0, common_1.Inject)(constants_1.PHONE_AUTH_PLUGIN_OPTIONS)),
     __metadata("design:paramtypes", [Object, sms_service_1.SmsService,
-        core_1.CustomerService])
+        core_1.CustomerService,
+        core_1.UserService])
 ], PhoneAuthResolver);
 //# sourceMappingURL=auth.resolver.js.map

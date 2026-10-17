@@ -48,6 +48,7 @@ exports.PhoneAuthPlugin = PhoneAuthPlugin = PhoneAuthPlugin_1 = __decorate([
                 extend type Mutation {
                     sendPhoneVerificationCode(phoneNumber: String!): Boolean!
                     registerCustomer(input: PhoneRegisterInput!): Success!
+                    resetPasswordWithPhoneCode(phoneNumber: String!, code: String!, newPassword: String!): Boolean!
                 }
 
                 input PhoneRegisterInput {

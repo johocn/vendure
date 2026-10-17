@@ -9,6 +9,7 @@ import {
     Permission,
     RequestContext,
     UserInputError,
+    UserService,
 } from '@vendure/core';
 import { getAuthOverride, isAuthMethodEnabled } from '@vendure/cjk-plugin';
 import { PHONE_AUTH_PLUGIN_OPTIONS } from './constants';
@@ -24,6 +25,7 @@ export class PhoneAuthResolver {
         @Inject(PHONE_AUTH_PLUGIN_OPTIONS) private options: PhoneAuthPluginOptions,
         private smsService: SmsService,
         private customerService: CustomerService,
+        private userService: UserService,
     ) {}
 
     @Mutation()
@@ -106,5 +108,41 @@ export class PhoneAuthResolver {
         }
 
         return { success: true };
+    }
+
+    @Mutation()
+    @Allow(Permission.Public)
+    async resetPasswordWithPhoneCode(
+        @Ctx() ctx: RequestContext,
+        @Args('phoneNumber') phoneNumber: string,
+        @Args('code') code: string,
+        @Args('newPassword') newPassword: string,
+    ): Promise<boolean> {
+        // 租户级登录方式开关（未启用即权限错误）
+        if (!isAuthMethodEnabled(ctx, 'phone')) {
+            throw new ForbiddenError();
+        }
+        if (!PHONE_NUMBER_RE.test(phoneNumber)) {
+            throw new UserInputError('手机号格式不正确');
+        }
+        // verifyCode 是 async：漏 await 会得到恒真值的 Promise，令校验失效（同 registerCustomer）
+        const verified = await this.smsService.verifyCode(phoneNumber, code);
+        if (!verified) {
+            throw new UserInputError('验证码错误或已过期');
+        }
+        // 手机注册用户 identifier=手机号（见 registerCustomer 注释）；
+        // getUserByEmailAddress 对非邮箱格式（无 @）按 identifier 精确匹配，不做小写归一
+        const user = await this.userService.getUserByEmailAddress(ctx, phoneNumber);
+        if (!user) {
+            throw new UserInputError('账号不存在');
+        }
+        // 本 fork 的 UserService 无 setPassword(ctx, userId, ...)，设置密码用 setNativePassword(ctx, user, pwd)；
+        // 其要求 authenticationMethods 已加载，getUserByEmailAddress 已 leftJoinAndSelect 该关系
+        const result = await this.userService.setNativePassword(ctx, user, newPassword);
+        if (isGraphQlErrorResult(result)) {
+            // PasswordValidationError.message 是常量错误码，友好文案在 validationErrorMessage
+            throw new UserInputError(result.validationErrorMessage || result.message || '密码不符合要求');
+        }
+        return true;
     }
 }
