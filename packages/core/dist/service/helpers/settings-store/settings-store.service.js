@@ -306,7 +306,26 @@ let SettingsStoreService = class SettingsStoreService {
             const batch = orphanedEntries.slice(i, i + batchSize);
             // Extract keys and scopes for deletion
             const conditions = batch.map(entry => ({ key: entry.key, scope: entry.scope }));
-            await this.connection.rawConnection.getRepository(settings_store_entry_entity_1.SettingsStoreEntry).delete(conditions);
+            // typeorm 0.3.21 的 delete() 把数组 criteria 一律按 ID 数组处理（whereInIds），
+            // 复合 (key, scope) 条件必须用 orWhere 显式表达；scope 可为 null（IS NULL 语义）。
+            const deleteQb = this.connection.rawConnection
+                .getRepository(settings_store_entry_entity_1.SettingsStoreEntry)
+                .createQueryBuilder()
+                .delete();
+            conditions.forEach((condition, index) => {
+                if (condition.scope === null || condition.scope === undefined) {
+                    deleteQb.orWhere(`key = :key${index} AND scope IS NULL`, {
+                        [`key${index}`]: condition.key,
+                    });
+                }
+                else {
+                    deleteQb.orWhere(`key = :key${index} AND scope = :scope${index}`, {
+                        [`key${index}`]: condition.key,
+                        [`scope${index}`]: condition.scope,
+                    });
+                }
+            });
+            await deleteQb.execute();
             totalDeleted += batch.length;
             // Keep first batch as sample
             if (i === 0) {
