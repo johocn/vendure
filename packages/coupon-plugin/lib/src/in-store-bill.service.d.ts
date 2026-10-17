@@ -25,6 +25,25 @@ export interface InStoreBillListOptions {
     from?: Date;
     to?: Date;
 }
+/** 待核销券行（核销页默认列表）：券信息 + 顾客快照 */
+export interface PendingInStoreCoupon {
+    id: number;
+    couponCode: string;
+    couponName?: string;
+    discountType: string;
+    discountValue: number;
+    minSpend?: number;
+    customerId: number;
+    customerName?: string;
+    customerPhone?: string;
+    issuedAt?: Date | null;
+    expiredAt?: Date | null;
+}
+/** 待核销券查询条件 */
+export interface PendingInStoreCouponListOptions {
+    skip?: number;
+    take?: number;
+}
 export declare class InStoreBillService {
     private connection;
     private couponService;
@@ -56,6 +75,17 @@ export declare class InStoreBillService {
         originalTotal: number;
         discountTotal: number;
         finalTotal: number;
+    }>;
+    /**
+     * 待核销券列表（核销页默认展示）：当前渠道下未使用、未过期、场景含 IN_STORE 的券实例。
+     * 与 listInStoreCoupons 同一套隔离口径：渠道归属 + 属店（店铺管理员只看本店券/平台券）；
+     * 受限核销员（持有 VerifyOrder）必须在分页前完成档案范围过滤（通用券一律不返回），
+     * 否则 totalItems 与分页会错位——故取候选集后内存过滤再切片（候选集上限 500 兜底）。
+     * 排序：临期优先（无过期时间靠后），便于商户优先处理即将过期的券。
+     */
+    listPending(ctx: RequestContext, options?: PendingInStoreCouponListOptions): Promise<{
+        items: PendingInStoreCoupon[];
+        totalItems: number;
     }>;
     /**
      * 流水查询基座：渠道隔离 + 可选筛选（list / summary 共用）。

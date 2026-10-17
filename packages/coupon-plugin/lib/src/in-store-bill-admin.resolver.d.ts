@@ -20,6 +20,11 @@ export declare class InStoreBillAdminResolver {
         items: import("./in-store-bill.entity").InStoreBill[];
         totalItems: number;
     }>;
+    /** 核销页默认列表：当前渠道待核销（未使用/未过期/IN_STORE 场景）券实例 */
+    inStorePendingCoupons(ctx: RequestContext, options?: any): Promise<{
+        items: import("./in-store-bill.service").PendingInStoreCoupon[];
+        totalItems: number;
+    }>;
     inStoreBillSummary(ctx: RequestContext, options?: any): Promise<{
         count: number;
         originalTotal: number;

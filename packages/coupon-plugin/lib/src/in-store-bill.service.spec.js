@@ -272,6 +272,87 @@ function ccStub(over = {}) {
         });
     });
 });
+(0, vitest_1.describe)('InStoreBillService.listPending（核销页默认待核销券列表）', () => {
+    const ctx = { channelId: 3, activeUserId: 99, languageCode: 'zh_Hans' };
+    let pendingQb;
+    let customerRepo;
+    let connection;
+    let couponService;
+    let service;
+    /** 三张候选券：id 11/12/13，过期时间 10-31 / 无 / 10-20（SQL 已按临期优先排序返回） */
+    function candidates() {
+        return [
+            ccStub({ id: 11, code: 'C-AAAA-0001', customerId: 5, template: tplStub({ usageScene: 'IN_STORE', expiredAt: undefined }) }),
+            ccStub({ id: 12, code: 'C-BBBB-0002', customerId: 6, expiredAt: null, template: tplStub({ id: 8, name: '通用到店券', usageScene: 'ALL' }) }),
+            ccStub({ id: 13, code: 'C-CCCC-0003', customerId: 7, template: tplStub({ id: 9, name: '他渠道券', usageScene: 'IN_STORE' }) }),
+        ];
+    }
+    (0, vitest_1.beforeEach)(() => {
+        pendingQb = {
+            leftJoinAndSelect: vitest_1.vi.fn().mockReturnThis(),
+            where: vitest_1.vi.fn().mockReturnThis(),
+            andWhere: vitest_1.vi.fn().mockReturnThis(),
+            orderBy: vitest_1.vi.fn().mockReturnThis(),
+            addOrderBy: vitest_1.vi.fn().mockReturnThis(),
+            take: vitest_1.vi.fn().mockReturnThis(),
+            getMany: vitest_1.vi.fn(async () => candidates()),
+        };
+        customerRepo = { findOne: vitest_1.vi.fn(async () => ({ firstName: '三', lastName: '张', phoneNumber: '13800000000' })) };
+        connection = {
+            getRepository: vitest_1.vi.fn((_c, entity) => {
+                if (entity === customer_coupon_entity_1.CustomerCoupon)
+                    return { createQueryBuilder: vitest_1.vi.fn(() => pendingQb) };
+                if (entity === core_1.Customer)
+                    return customerRepo;
+                throw new Error(`unknown entity: ${entity === null || entity === void 0 ? void 0 : entity.name}`);
+            }),
+        };
+        couponService = {
+            templateBelongsToChannel: vitest_1.vi.fn(() => true),
+            resolveShopIdFromActiveUser: vitest_1.vi.fn(async () => undefined),
+        };
+        service = new in_store_bill_service_1.InStoreBillService(connection, couponService);
+    });
+    (0, vitest_1.afterEach)(() => (0, redeem_scope_1.setRedeemScopeResolver)(null));
+    (0, vitest_1.it)('默认：固定过滤条件 + 临期优先排序 + 候选集上限 500 + 默认分页 20', async () => {
+        const r = await service.listPending(ctx, {});
+        (0, vitest_1.expect)(pendingQb.where).toHaveBeenCalledWith('cc.status = :status', { status: 'UNUSED' });
+        (0, vitest_1.expect)(pendingQb.andWhere).toHaveBeenCalledWith('tpl.enabled = :enabled', { enabled: true });
+        (0, vitest_1.expect)(pendingQb.andWhere).toHaveBeenCalledWith('(tpl.usageScene = :sceneStore OR tpl.usageScene = :sceneAll)', {
+            sceneStore: 'IN_STORE', sceneAll: 'ALL',
+        });
+        (0, vitest_1.expect)(pendingQb.andWhere).toHaveBeenCalledWith('(cc.expiredAt IS NULL OR cc.expiredAt > :now)', { now: vitest_1.expect.any(Date) });
+        (0, vitest_1.expect)(pendingQb.orderBy).toHaveBeenCalledWith('CASE WHEN cc.expiredAt IS NULL THEN 1 ELSE 0 END', 'ASC');
+        (0, vitest_1.expect)(pendingQb.take).toHaveBeenCalledWith(500);
+        // 超管（无属店）→ 无属店过滤
+        (0, vitest_1.expect)(pendingQb.andWhere).not.toHaveBeenCalledWith('(tpl.shopId IS NULL OR tpl.shopId = :adminShopId)', vitest_1.expect.anything());
+        (0, vitest_1.expect)(r.totalItems).toBe(3);
+        (0, vitest_1.expect)(r.items).toHaveLength(3);
+        (0, vitest_1.expect)(r.items[0]).toMatchObject({ couponCode: 'C-AAAA-0001', couponName: '到店 8 折', discountType: 'PERCENT', discountValue: 80 });
+        (0, vitest_1.expect)(r.items[0].customerName).toBe('三 张');
+    });
+    (0, vitest_1.it)('属店管理员 → 追加本店券/平台券过滤', async () => {
+        couponService.resolveShopIdFromActiveUser.mockResolvedValueOnce(5);
+        await service.listPending(ctx, {});
+        (0, vitest_1.expect)(pendingQb.andWhere).toHaveBeenCalledWith('(tpl.shopId IS NULL OR tpl.shopId = :adminShopId)', { adminShopId: 5 });
+    });
+    (0, vitest_1.it)('渠道不归属 → 排除；受限核销员范围外模板（通用券）→ 排除，totalItems 为过滤后数量', async () => {
+        couponService.templateBelongsToChannel.mockImplementation((_c, tpl) => tpl.id !== 9);
+        (0, redeem_scope_1.setRedeemScopeResolver)({
+            resolve: vitest_1.vi.fn(async () => ({ restricted: true, shippingProfileIds: ['5'] })),
+            orderInScope: vitest_1.vi.fn(async () => true),
+            couponTemplateInScope: vitest_1.vi.fn(async (_c, templateId) => Number(templateId) !== 8),
+        });
+        const r = await service.listPending(ctx, {});
+        (0, vitest_1.expect)(r.totalItems).toBe(1);
+        (0, vitest_1.expect)(r.items.map(i => i.couponCode)).toEqual(['C-AAAA-0001']);
+    });
+    (0, vitest_1.it)('分页在过滤后切片：skip=1 take=1', async () => {
+        const r = await service.listPending(ctx, { skip: 1, take: 1 });
+        (0, vitest_1.expect)(r.totalItems).toBe(3);
+        (0, vitest_1.expect)(r.items.map(i => i.couponCode)).toEqual(['C-BBBB-0002']);
+    });
+});
 (0, vitest_1.describe)('InStoreBillService · 受限核销员（VerifyOrder）范围收口', () => {
     const ctx = { channelId: 3, activeUserId: 99, languageCode: 'zh_Hans' };
     const restricted = { restricted: true, shippingProfileIds: ['5'] };

@@ -76,13 +76,29 @@ describe('CouponService.claimProductCoupon', () => {
         expect(claimSpy).not.toHaveBeenCalled();
     });
 
-    it('模板使用场景非线上 → 报 Coupon is not claimable', async () => {
+    it('到店券（IN_STORE）绑定 → 可领取，领取后到店核销', async () => {
         bindingRepo.findOne.mockResolvedValue({
             id: 1,
             channelId: 37,
             enabled: true,
             couponTemplateId: 10,
             template: { usageScene: 'IN_STORE' },
+        });
+        const claimSpy = vi.spyOn(service, 'claimCoupon').mockResolvedValue({} as any);
+
+        await service.claimProductCoupon(ctx, 1 as any);
+
+        expect(claimSpy).toHaveBeenCalledTimes(1);
+        expect(claimSpy).toHaveBeenCalledWith(ctx, 10);
+    });
+
+    it('未知使用场景（既非线上也非到店）→ 报 Coupon is not claimable', async () => {
+        bindingRepo.findOne.mockResolvedValue({
+            id: 1,
+            channelId: 37,
+            enabled: true,
+            couponTemplateId: 10,
+            template: { usageScene: 'UNKNOWN_SCENE' },
         });
         const claimSpy = vi.spyOn(service, 'claimCoupon').mockResolvedValue({} as any);
 

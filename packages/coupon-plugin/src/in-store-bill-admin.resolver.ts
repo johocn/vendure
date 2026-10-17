@@ -51,6 +51,16 @@ export class InStoreBillAdminResolver {
         });
     }
 
+    /** 核销页默认列表：当前渠道待核销（未使用/未过期/IN_STORE 场景）券实例 */
+    @Query()
+    @Allow(Permission.UpdateOrder, manageOwnShop.Permission, VERIFY_ORDER_PERMISSION)
+    async inStorePendingCoupons(@Ctx() ctx: RequestContext, @Args('options', { nullable: true }) options?: any) {
+        return this.inStoreBillService.listPending(ctx, {
+            skip: options?.skip ?? 0,
+            take: options?.take ?? 20,
+        });
+    }
+
     @Query()
     @Allow(Permission.UpdateOrder, manageOwnShop.Permission, VERIFY_ORDER_PERMISSION)
     async inStoreBillSummary(@Ctx() ctx: RequestContext, @Args('options', { nullable: true }) options?: any) {

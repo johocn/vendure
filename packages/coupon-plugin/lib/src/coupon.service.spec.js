@@ -78,13 +78,26 @@ const coupon_runtime_1 = require("./coupon-runtime");
         await (0, vitest_1.expect)(service.claimProductCoupon(ctx, 1)).rejects.toThrow('Binding not found');
         (0, vitest_1.expect)(claimSpy).not.toHaveBeenCalled();
     });
-    (0, vitest_1.it)('模板使用场景非线上 → 报 Coupon is not claimable', async () => {
+    (0, vitest_1.it)('到店券（IN_STORE）绑定 → 可领取，领取后到店核销', async () => {
         bindingRepo.findOne.mockResolvedValue({
             id: 1,
             channelId: 37,
             enabled: true,
             couponTemplateId: 10,
             template: { usageScene: 'IN_STORE' },
+        });
+        const claimSpy = vitest_1.vi.spyOn(service, 'claimCoupon').mockResolvedValue({});
+        await service.claimProductCoupon(ctx, 1);
+        (0, vitest_1.expect)(claimSpy).toHaveBeenCalledTimes(1);
+        (0, vitest_1.expect)(claimSpy).toHaveBeenCalledWith(ctx, 10);
+    });
+    (0, vitest_1.it)('未知使用场景（既非线上也非到店）→ 报 Coupon is not claimable', async () => {
+        bindingRepo.findOne.mockResolvedValue({
+            id: 1,
+            channelId: 37,
+            enabled: true,
+            couponTemplateId: 10,
+            template: { usageScene: 'UNKNOWN_SCENE' },
         });
         const claimSpy = vitest_1.vi.spyOn(service, 'claimCoupon').mockResolvedValue({});
         await (0, vitest_1.expect)(service.claimProductCoupon(ctx, 1)).rejects.toThrow('Coupon is not claimable');

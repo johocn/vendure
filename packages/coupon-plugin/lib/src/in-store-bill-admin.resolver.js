@@ -49,6 +49,14 @@ let InStoreBillAdminResolver = class InStoreBillAdminResolver {
             to: (options === null || options === void 0 ? void 0 : options.to) ? new Date(options.to) : undefined,
         });
     }
+    /** 核销页默认列表：当前渠道待核销（未使用/未过期/IN_STORE 场景）券实例 */
+    async inStorePendingCoupons(ctx, options) {
+        var _a, _b;
+        return this.inStoreBillService.listPending(ctx, {
+            skip: (_a = options === null || options === void 0 ? void 0 : options.skip) !== null && _a !== void 0 ? _a : 0,
+            take: (_b = options === null || options === void 0 ? void 0 : options.take) !== null && _b !== void 0 ? _b : 20,
+        });
+    }
     async inStoreBillSummary(ctx, options) {
         return this.inStoreBillService.summary(ctx, {
             from: (options === null || options === void 0 ? void 0 : options.from) ? new Date(options.from) : undefined,
@@ -88,6 +96,15 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], InStoreBillAdminResolver.prototype, "inStoreBills", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder, shop_plugin_1.manageOwnShop.Permission, redeem_scope_1.VERIFY_ORDER_PERMISSION),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('options', { nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], InStoreBillAdminResolver.prototype, "inStorePendingCoupons", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(core_1.Permission.UpdateOrder, shop_plugin_1.manageOwnShop.Permission, redeem_scope_1.VERIFY_ORDER_PERMISSION),

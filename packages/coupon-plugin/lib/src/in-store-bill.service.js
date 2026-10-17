@@ -16,6 +16,7 @@ const coupon_service_1 = require("./coupon.service");
 const customer_coupon_entity_1 = require("./customer-coupon.entity");
 const in_store_bill_entity_1 = require("./in-store-bill.entity");
 const in_store_bill_1 = require("./in-store-bill");
+const coupon_channel_1 = require("./coupon-channel");
 const localize_1 = require("./localize");
 const redeem_scope_1 = require("./redeem-scope");
 let InStoreBillService = class InStoreBillService {
@@ -180,6 +181,83 @@ let InStoreBillService = class InStoreBillService {
             discountTotal: Number((_c = raw === null || raw === void 0 ? void 0 : raw.discountTotal) !== null && _c !== void 0 ? _c : 0),
             finalTotal: Number((_d = raw === null || raw === void 0 ? void 0 : raw.finalTotal) !== null && _d !== void 0 ? _d : 0),
         };
+    }
+    /**
+     * 待核销券列表（核销页默认展示）：当前渠道下未使用、未过期、场景含 IN_STORE 的券实例。
+     * 与 listInStoreCoupons 同一套隔离口径：渠道归属 + 属店（店铺管理员只看本店券/平台券）；
+     * 受限核销员（持有 VerifyOrder）必须在分页前完成档案范围过滤（通用券一律不返回），
+     * 否则 totalItems 与分页会错位——故取候选集后内存过滤再切片（候选集上限 500 兜底）。
+     * 排序：临期优先（无过期时间靠后），便于商户优先处理即将过期的券。
+     */
+    async listPending(ctx, options) {
+        var _a, _b, _c, _d, _e;
+        const now = new Date();
+        const adminShopId = await this.couponService.resolveShopIdFromActiveUser(ctx, ctx.activeUserId);
+        const qb = this.connection
+            .getRepository(ctx, customer_coupon_entity_1.CustomerCoupon)
+            .createQueryBuilder('cc')
+            .leftJoinAndSelect('cc.template', 'tpl')
+            .leftJoinAndSelect('tpl.channels', 'tch')
+            .where('cc.status = :status', { status: 'UNUSED' })
+            .andWhere('tpl.enabled = :enabled', { enabled: true })
+            .andWhere('(tpl.usageScene = :sceneStore OR tpl.usageScene = :sceneAll)', {
+            sceneStore: 'IN_STORE',
+            sceneAll: 'ALL',
+        })
+            .andWhere('(cc.expiredAt IS NULL OR cc.expiredAt > :now)', { now });
+        if (adminShopId != null) {
+            qb.andWhere('(tpl.shopId IS NULL OR tpl.shopId = :adminShopId)', { adminShopId });
+        }
+        qb.orderBy('CASE WHEN cc.expiredAt IS NULL THEN 1 ELSE 0 END', 'ASC')
+            .addOrderBy('cc.expiredAt', 'ASC')
+            .addOrderBy('cc.id', 'DESC')
+            // 候选集固定上限（内存过滤/分页在候选集上进行），与受限核销员分页前过滤口径一致
+            .take(500);
+        const candidates = await qb.getMany();
+        // 渠道归属过滤（channels 为空 = 不限渠道）
+        const base = candidates.filter(cc => {
+            const tpl = cc.template;
+            return !!tpl && (0, coupon_channel_1.matchesScene)(tpl.usageScene, 'IN_STORE') && this.couponService.templateBelongsToChannel(ctx, tpl);
+        });
+        // 受限核销员：档案范围过滤（逐模板判定并缓存，通用券一律不返回）
+        const scope = await (0, redeem_scope_1.resolveRedeemScope)(ctx);
+        let filtered = base;
+        if (scope.restricted) {
+            const scopeCache = new Map();
+            filtered = [];
+            for (const cc of base) {
+                const tpl = cc.template;
+                let hit = scopeCache.get(tpl.id);
+                if (hit == null) {
+                    hit = await (0, redeem_scope_1.couponTemplateInScope)(ctx, tpl.id, scope);
+                    scopeCache.set(tpl.id, hit);
+                }
+                if (hit)
+                    filtered.push(cc);
+            }
+        }
+        const skip = Math.max(0, (_a = options === null || options === void 0 ? void 0 : options.skip) !== null && _a !== void 0 ? _a : 0);
+        const take = Math.min(Math.max(1, (_b = options === null || options === void 0 ? void 0 : options.take) !== null && _b !== void 0 ? _b : 20), 200);
+        const page = filtered.slice(skip, skip + take);
+        const items = [];
+        for (const cc of page) {
+            const tpl = cc.template;
+            const info = await this.loadCustomerInfo(ctx, cc.customerId);
+            items.push({
+                id: cc.id,
+                couponCode: cc.code,
+                couponName: (0, localize_1.localizeText)(tpl.name, ctx.languageCode),
+                discountType: tpl.type,
+                discountValue: tpl.discountValue,
+                minSpend: (_c = tpl.minSpend) !== null && _c !== void 0 ? _c : 0,
+                customerId: cc.customerId,
+                customerName: info.name,
+                customerPhone: info.phone,
+                issuedAt: (_d = cc.issuedAt) !== null && _d !== void 0 ? _d : null,
+                expiredAt: (_e = cc.expiredAt) !== null && _e !== void 0 ? _e : null,
+            });
+        }
+        return { items, totalItems: filtered.length };
     }
     /**
      * 流水查询基座：渠道隔离 + 可选筛选（list / summary 共用）。

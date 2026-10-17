@@ -653,7 +653,9 @@ export class CouponService {
         if (
             !binding.template ||
             !hasChannel(binding.template, true, 'PRODUCT') ||
-            !matchesScene(binding.template.usageScene, 'ONLINE')
+            // 领取动作与使用场景无关：线上券领取后线上结算，到店券领取后到店核销
+            !(matchesScene(binding.template.usageScene, 'ONLINE') ||
+              matchesScene(binding.template.usageScene, 'IN_STORE'))
         ) {
             throw new UserInputError('Coupon is not claimable');
         }

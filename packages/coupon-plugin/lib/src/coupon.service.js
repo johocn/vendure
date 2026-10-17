@@ -532,8 +532,11 @@ let CouponService = class CouponService {
         }
         // 限领并发防护：在事务连接上对 Customer 行 FOR UPDATE，串行化同一用户的并发领券竞态
         // （countHeld 检查-后-写入窗口；必须在事务 repo 上执行——autocommit 连接的行锁随语句结束即释放）。
-        // Shop API 三个领券入口均带 @Transaction()，锁持续到外层事务提交/回滚
-        await this.connection.getRepository(ctx, core_1.Customer).query('SELECT id FROM customer WHERE id = $1 FOR UPDATE', [customerId]);
+        // Shop API 三个领券入口均带 @Transaction()，锁持续到外层事务提交/回滚。
+        // FOR UPDATE 为 PostgreSQL 语法；e2e 等单进程 SQLite 环境不支持，跳过行锁（无并发竞态）。
+        if (this.connection.rawConnection.options.type === 'postgres') {
+            await this.connection.getRepository(ctx, core_1.Customer).query('SELECT id FROM customer WHERE id = $1 FOR UPDATE', [customerId]);
+        }
         // 限领校验
         if (tpl.perUserLimit > 0) {
             const owned = await this.countHeld(customerId, tpl.id);
@@ -575,7 +578,9 @@ let CouponService = class CouponService {
         }
         if (!binding.template ||
             !(0, coupon_channel_1.hasChannel)(binding.template, true, 'PRODUCT') ||
-            !(0, coupon_channel_1.matchesScene)(binding.template.usageScene, 'ONLINE')) {
+            // 领取动作与使用场景无关：线上券领取后线上结算，到店券领取后到店核销
+            !((0, coupon_channel_1.matchesScene)(binding.template.usageScene, 'ONLINE') ||
+                (0, coupon_channel_1.matchesScene)(binding.template.usageScene, 'IN_STORE'))) {
             throw new core_1.UserInputError('Coupon is not claimable');
         }
         return this.claimCoupon(ctx, binding.couponTemplateId);

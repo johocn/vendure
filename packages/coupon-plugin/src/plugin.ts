@@ -247,6 +247,30 @@ type CustomerCoupon implements Node {
                 to: DateTime
             }
 
+            type InStorePendingCoupon {
+                id: ID!
+                couponCode: String!
+                couponName: String
+                discountType: String!
+                discountValue: Int!
+                minSpend: Int
+                customerId: ID!
+                customerName: String
+                customerPhone: String
+                issuedAt: DateTime
+                expiredAt: DateTime
+            }
+
+            type InStorePendingCouponList implements PaginatedList {
+                items: [InStorePendingCoupon!]!
+                totalItems: Int!
+            }
+
+            input InStorePendingCouponListOptions {
+                skip: Int
+                take: Int
+            }
+
             type CouponIssueCustomer implements Node {
                 id: ID!
                 emailAddress: String!
@@ -410,6 +434,7 @@ type CustomerCoupon implements Node {
                 inStoreBillQuote(code: String!, originalAmount: Int): InStoreBillQuote!
                 inStoreBills(options: InStoreBillListOptions): InStoreBillList!
                 inStoreBillSummary(options: InStoreBillSummaryOptions): InStoreBillSummary!
+                inStorePendingCoupons(options: InStorePendingCouponListOptions): InStorePendingCouponList!
                 inStoreCustomerCoupons(customerId: ID!): [CustomerCoupon!]!
                 couponBundles(options: CouponBundleListOptions): CouponBundleList!
                 couponBundle(id: ID!): CouponBundle
