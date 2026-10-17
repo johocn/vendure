@@ -1,6 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { expandBundleItems, filterSaleCatalogue, isSaleOrderRefundable } from './coupon-sale';
+import { CouponService } from './coupon.service';
+import { CouponSaleService } from './coupon-sale.service';
+import { CouponTemplate } from './coupon-template.entity';
+import { CouponBundle } from './coupon-bundle.entity';
 
 describe('isSaleOrderRefundable', () => {
     it('全部未使用 → 可退', () => {
@@ -57,5 +61,55 @@ describe('filterSaleCatalogue', () => {
             { id: 4, salePrice: 100 },
         ];
         expect(filterSaleCatalogue(list).map(t => t.id)).toEqual([1, 4]);
+    });
+});
+
+/**
+ * saleCatalogue 渠道隔离：mock TransactionalConnection（不落库），
+ * 别家店的券（distributionChannels 含 SALE 但 channels 不含当前渠道）不得进入本店目录；
+ * 本店券与 channels 为空的平台券正常可见——与 loadSaleableTemplate 购买校验同口径。
+ */
+describe('CouponSaleService.saleCatalogue 渠道隔离', () => {
+    const ctx: any = { channel: { id: 37 }, channelId: 37 };
+
+    function makeService(allTemplates: any[]) {
+        const templateRepo = { find: vi.fn().mockResolvedValue(allTemplates) };
+        const bundleRepo = { find: vi.fn().mockResolvedValue([]) };
+        const connection = {
+            getRepository: vi.fn((_c: any, entity: any) => {
+                if (entity === CouponTemplate) return templateRepo;
+                if (entity === CouponBundle) return bundleRepo;
+                throw new Error(`unknown entity: ${entity}`);
+            }),
+        };
+        const couponService = new CouponService({} as any, {} as any, {} as any);
+        return new CouponSaleService(connection as any, couponService, {} as any);
+    }
+
+    const tpl = (over: Record<string, any>) =>
+        ({ enabled: true, salePrice: 990, distributionChannels: 'SALE', ...over }) as any;
+
+    it('跨渠道券（channels=[1]，ctx=37）不进目录', async () => {
+        const svc = makeService([
+            tpl({ id: 1, channels: [{ id: 37 }] }), // 本店券 → 可见
+            tpl({ id: 2, channels: [{ id: 1 }] }), // 别家店券 → 隐藏
+        ]);
+        const { templates } = await svc.saleCatalogue(ctx);
+        expect(templates.map(t => t.id)).toEqual([1]);
+    });
+
+    it('channels 为空的平台券不限渠道 → 仍可见', async () => {
+        const svc = makeService([tpl({ id: 3, channels: [] })]);
+        const { templates } = await svc.saleCatalogue(ctx);
+        expect(templates.map(t => t.id)).toEqual([3]);
+    });
+
+    it('禁用 / 无售价的券照旧过滤', async () => {
+        const svc = makeService([
+            tpl({ id: 4, enabled: false, channels: [{ id: 37 }] }),
+            tpl({ id: 5, salePrice: 0, channels: [{ id: 37 }] }),
+        ]);
+        const { templates } = await svc.saleCatalogue(ctx);
+        expect(templates).toEqual([]);
     });
 });

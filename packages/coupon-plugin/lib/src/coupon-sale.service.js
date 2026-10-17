@@ -54,7 +54,9 @@ let CouponSaleService = class CouponSaleService {
         const repo = this.connection.getRepository(ctx, coupon_template_entity_1.CouponTemplate);
         const all = await repo.find({ relations: { channels: true } });
         const effectiveScene = (scene !== null && scene !== void 0 ? scene : 'ONLINE');
-        const saleable = (0, coupon_sale_1.filterSaleCatalogue)((0, coupon_channel_1.filterTemplatesByChannelAndScene)(all, 'SALE', effectiveScene)).filter(t => t.enabled);
+        // 渠道归属校验：与 loadSaleableTemplate 同口径，别家店的券不进本店目录
+        // （channels 为空的平台券视为不限渠道，仍然全店可见可购）
+        const saleable = (0, coupon_sale_1.filterSaleCatalogue)((0, coupon_channel_1.filterTemplatesByChannelAndScene)(all, 'SALE', effectiveScene)).filter(t => t.enabled && this.couponService.templateBelongsToChannel(ctx, t));
         const bundleRepo = this.connection.getRepository(ctx, coupon_bundle_entity_1.CouponBundle);
         const bundles = await bundleRepo.find({
             where: { enabled: true, channelId: ctx.channelId },

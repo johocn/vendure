@@ -60,9 +60,11 @@ export class CouponSaleService {
         const repo = this.connection.getRepository(ctx, CouponTemplate);
         const all = await repo.find({ relations: { channels: true } });
         const effectiveScene = (scene ?? 'ONLINE') as any;
+        // 渠道归属校验：与 loadSaleableTemplate 同口径，别家店的券不进本店目录
+        // （channels 为空的平台券视为不限渠道，仍然全店可见可购）
         const saleable = filterSaleCatalogue(
             filterTemplatesByChannelAndScene(all, 'SALE', effectiveScene),
-        ).filter(t => t.enabled);
+        ).filter(t => t.enabled && this.couponService.templateBelongsToChannel(ctx, t));
 
         const bundleRepo = this.connection.getRepository(ctx, CouponBundle);
         const bundles = await bundleRepo.find({
