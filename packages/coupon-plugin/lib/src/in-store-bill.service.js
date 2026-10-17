@@ -208,8 +208,8 @@ let InStoreBillService = class InStoreBillService {
         if (adminShopId != null) {
             qb.andWhere('(tpl.shopId IS NULL OR tpl.shopId = :adminShopId)', { adminShopId });
         }
-        qb.orderBy('CASE WHEN cc.expiredAt IS NULL THEN 1 ELSE 0 END', 'ASC')
-            .addOrderBy('cc.expiredAt', 'ASC')
+        // 临期优先：有到期日在前按时间升序，永久券靠后（NULLS LAST 原生参数，勿用 CASE 表达式——TypeORM 会把含空格表达式误解析为 alias）
+        qb.orderBy('cc.expiredAt', 'ASC', 'NULLS LAST')
             .addOrderBy('cc.id', 'DESC')
             // 候选集固定上限（内存过滤/分页在候选集上进行），与受限核销员分页前过滤口径一致
             .take(500);

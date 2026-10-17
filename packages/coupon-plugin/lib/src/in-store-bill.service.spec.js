@@ -322,7 +322,7 @@ function ccStub(over = {}) {
             sceneStore: 'IN_STORE', sceneAll: 'ALL',
         });
         (0, vitest_1.expect)(pendingQb.andWhere).toHaveBeenCalledWith('(cc.expiredAt IS NULL OR cc.expiredAt > :now)', { now: vitest_1.expect.any(Date) });
-        (0, vitest_1.expect)(pendingQb.orderBy).toHaveBeenCalledWith('CASE WHEN cc.expiredAt IS NULL THEN 1 ELSE 0 END', 'ASC');
+        (0, vitest_1.expect)(pendingQb.orderBy).toHaveBeenCalledWith('cc.expiredAt', 'ASC', 'NULLS LAST');
         (0, vitest_1.expect)(pendingQb.take).toHaveBeenCalledWith(500);
         // 超管（无属店）→ 无属店过滤
         (0, vitest_1.expect)(pendingQb.andWhere).not.toHaveBeenCalledWith('(tpl.shopId IS NULL OR tpl.shopId = :adminShopId)', vitest_1.expect.anything());
