@@ -1,6 +1,9 @@
+import { DocumentNode } from 'graphql';
 import gql from 'graphql-tag';
 
-export const metricsApiExtensions = gql`
+// 显式标注 DocumentNode：否则 tsc 推断类型引用 ../../../core/node_modules/graphql（跨包实例路径），
+// 生成 d.ts 时报 TS2742 不可移植，阻塞 build-prod.ps1 全量构建
+export const metricsApiExtensions: DocumentNode = gql`
     type MetricSummary {
         interval: MetricInterval!
         type: MetricType!
@@ -32,6 +35,6 @@ export const metricsApiExtensions = gql`
     }
 `;
 
-export function getApiExtensions() {
+export function getApiExtensions(): DocumentNode {
     return metricsApiExtensions;
 }

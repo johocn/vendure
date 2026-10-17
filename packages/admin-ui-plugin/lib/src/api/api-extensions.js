@@ -6,6 +6,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.metricsApiExtensions = void 0;
 exports.getApiExtensions = getApiExtensions;
 const graphql_tag_1 = __importDefault(require("graphql-tag"));
+// 显式标注 DocumentNode：否则 tsc 推断类型引用 ../../../core/node_modules/graphql（跨包实例路径），
+// 生成 d.ts 时报 TS2742 不可移植，阻塞 build-prod.ps1 全量构建
 exports.metricsApiExtensions = (0, graphql_tag_1.default) `
     type MetricSummary {
         interval: MetricInterval!

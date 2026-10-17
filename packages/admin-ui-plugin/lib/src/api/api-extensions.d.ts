@@ -1,2 +1,3 @@
-export declare const metricsApiExtensions: import("graphql").DocumentNode;
-export declare function getApiExtensions(): import("graphql").DocumentNode;
+import { DocumentNode } from 'graphql';
+export declare const metricsApiExtensions: DocumentNode;
+export declare function getApiExtensions(): DocumentNode;
