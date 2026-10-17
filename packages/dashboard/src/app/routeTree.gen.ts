@@ -9,73 +9,73 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
-import { Route as AuthenticatedZonesZonesRouteImport } from './routes/_authenticated/_zones/zones'
-import { Route as AuthenticatedTenantSettingsTenantSettingsRouteImport } from './routes/_authenticated/_tenant-settings/tenant-settings'
-import { Route as AuthenticatedTaxRatesTaxRatesRouteImport } from './routes/_authenticated/_tax-rates/tax-rates'
-import { Route as AuthenticatedTaxCategoriesTaxCategoriesRouteImport } from './routes/_authenticated/_tax-categories/tax-categories'
-import { Route as AuthenticatedSystemSettingsStoreRouteImport } from './routes/_authenticated/_system/settings-store'
-import { Route as AuthenticatedSystemScheduledTasksRouteImport } from './routes/_authenticated/_system/scheduled-tasks'
-import { Route as AuthenticatedSystemJobQueueRouteImport } from './routes/_authenticated/_system/job-queue'
-import { Route as AuthenticatedStockLocationsStockLocationsRouteImport } from './routes/_authenticated/_stock-locations/stock-locations'
-import { Route as AuthenticatedShippingMethodsShippingMethodsRouteImport } from './routes/_authenticated/_shipping-methods/shipping-methods'
-import { Route as AuthenticatedSellersSellersRouteImport } from './routes/_authenticated/_sellers/sellers'
-import { Route as AuthenticatedRolesRolesRouteImport } from './routes/_authenticated/_roles/roles'
-import { Route as AuthenticatedPromotionsPromotionsRouteImport } from './routes/_authenticated/_promotions/promotions'
-import { Route as AuthenticatedProfileProfileRouteImport } from './routes/_authenticated/_profile/profile'
-import { Route as AuthenticatedProductsProductsRouteImport } from './routes/_authenticated/_products/products'
-import { Route as AuthenticatedProductVariantsProductVariantsRouteImport } from './routes/_authenticated/_product-variants/product-variants'
-import { Route as AuthenticatedPaymentMethodsPaymentMethodsRouteImport } from './routes/_authenticated/_payment-methods/payment-methods'
-import { Route as AuthenticatedOrdersOrdersRouteImport } from './routes/_authenticated/_orders/orders'
-import { Route as AuthenticatedOptionGroupsOptionGroupsRouteImport } from './routes/_authenticated/_option-groups/option-groups'
-import { Route as AuthenticatedGlobalSettingsGlobalSettingsRouteImport } from './routes/_authenticated/_global-settings/global-settings'
-import { Route as AuthenticatedFacetsFacetsRouteImport } from './routes/_authenticated/_facets/facets'
-import { Route as AuthenticatedCustomersCustomersRouteImport } from './routes/_authenticated/_customers/customers'
-import { Route as AuthenticatedCustomerGroupsCustomerGroupsRouteImport } from './routes/_authenticated/_customer-groups/customer-groups'
-import { Route as AuthenticatedCountriesCountriesRouteImport } from './routes/_authenticated/_countries/countries'
-import { Route as AuthenticatedCollectionsCollectionsRouteImport } from './routes/_authenticated/_collections/collections'
-import { Route as AuthenticatedChannelsChannelsRouteImport } from './routes/_authenticated/_channels/channels'
-import { Route as AuthenticatedAssetsAssetsRouteImport } from './routes/_authenticated/_assets/assets'
-import { Route as AuthenticatedApiKeysApiKeysRouteImport } from './routes/_authenticated/_api-keys/api-keys'
 import { Route as AuthenticatedAdministratorsAdministratorsRouteImport } from './routes/_authenticated/_administrators/administrators'
-import { Route as AuthenticatedZonesZonesIdRouteImport } from './routes/_authenticated/_zones/zones_.$id'
-import { Route as AuthenticatedTaxRatesTaxRatesIdRouteImport } from './routes/_authenticated/_tax-rates/tax-rates_.$id'
-import { Route as AuthenticatedTaxCategoriesTaxCategoriesIdRouteImport } from './routes/_authenticated/_tax-categories/tax-categories_.$id'
-import { Route as AuthenticatedStockLocationsStockLocationsIdRouteImport } from './routes/_authenticated/_stock-locations/stock-locations_.$id'
-import { Route as AuthenticatedShippingMethodsShippingMethodsIdRouteImport } from './routes/_authenticated/_shipping-methods/shipping-methods_.$id'
-import { Route as AuthenticatedSellersSellersIdRouteImport } from './routes/_authenticated/_sellers/sellers_.$id'
-import { Route as AuthenticatedRolesRolesIdRouteImport } from './routes/_authenticated/_roles/roles_.$id'
-import { Route as AuthenticatedPromotionsPromotionsIdRouteImport } from './routes/_authenticated/_promotions/promotions_.$id'
-import { Route as AuthenticatedProductsProductsIdRouteImport } from './routes/_authenticated/_products/products_.$id'
-import { Route as AuthenticatedProductVariantsProductVariantsIdRouteImport } from './routes/_authenticated/_product-variants/product-variants_.$id'
-import { Route as AuthenticatedPaymentMethodsPaymentMethodsIdRouteImport } from './routes/_authenticated/_payment-methods/payment-methods_.$id'
-import { Route as AuthenticatedOrdersOrdersIdRouteImport } from './routes/_authenticated/_orders/orders_.$id'
-import { Route as AuthenticatedOptionGroupsOptionGroupsIdRouteImport } from './routes/_authenticated/_option-groups/option-groups_.$id'
-import { Route as AuthenticatedFacetsFacetsIdRouteImport } from './routes/_authenticated/_facets/facets_.$id'
-import { Route as AuthenticatedCustomersCustomersIdRouteImport } from './routes/_authenticated/_customers/customers_.$id'
-import { Route as AuthenticatedCustomerGroupsCustomerGroupsIdRouteImport } from './routes/_authenticated/_customer-groups/customer-groups_.$id'
-import { Route as AuthenticatedCountriesCountriesIdRouteImport } from './routes/_authenticated/_countries/countries_.$id'
-import { Route as AuthenticatedCollectionsCollectionsIdRouteImport } from './routes/_authenticated/_collections/collections_.$id'
-import { Route as AuthenticatedChannelsChannelsIdRouteImport } from './routes/_authenticated/_channels/channels_.$id'
-import { Route as AuthenticatedAssetsAssetsIdRouteImport } from './routes/_authenticated/_assets/assets_.$id'
-import { Route as AuthenticatedApiKeysApiKeysIdRouteImport } from './routes/_authenticated/_api-keys/api-keys_.$id'
+import { Route as AuthenticatedApiKeysApiKeysRouteImport } from './routes/_authenticated/_api-keys/api-keys'
+import { Route as AuthenticatedAssetsAssetsRouteImport } from './routes/_authenticated/_assets/assets'
+import { Route as AuthenticatedChannelsChannelsRouteImport } from './routes/_authenticated/_channels/channels'
+import { Route as AuthenticatedCollectionsCollectionsRouteImport } from './routes/_authenticated/_collections/collections'
+import { Route as AuthenticatedCountriesCountriesRouteImport } from './routes/_authenticated/_countries/countries'
+import { Route as AuthenticatedCustomerGroupsCustomerGroupsRouteImport } from './routes/_authenticated/_customer-groups/customer-groups'
+import { Route as AuthenticatedCustomersCustomersRouteImport } from './routes/_authenticated/_customers/customers'
+import { Route as AuthenticatedFacetsFacetsRouteImport } from './routes/_authenticated/_facets/facets'
+import { Route as AuthenticatedGlobalSettingsGlobalSettingsRouteImport } from './routes/_authenticated/_global-settings/global-settings'
+import { Route as AuthenticatedOptionGroupsOptionGroupsRouteImport } from './routes/_authenticated/_option-groups/option-groups'
+import { Route as AuthenticatedOrdersOrdersRouteImport } from './routes/_authenticated/_orders/orders'
+import { Route as AuthenticatedPaymentMethodsPaymentMethodsRouteImport } from './routes/_authenticated/_payment-methods/payment-methods'
+import { Route as AuthenticatedProductVariantsProductVariantsRouteImport } from './routes/_authenticated/_product-variants/product-variants'
+import { Route as AuthenticatedProductsProductsRouteImport } from './routes/_authenticated/_products/products'
+import { Route as AuthenticatedProfileProfileRouteImport } from './routes/_authenticated/_profile/profile'
+import { Route as AuthenticatedPromotionsPromotionsRouteImport } from './routes/_authenticated/_promotions/promotions'
+import { Route as AuthenticatedRolesRolesRouteImport } from './routes/_authenticated/_roles/roles'
+import { Route as AuthenticatedSellersSellersRouteImport } from './routes/_authenticated/_sellers/sellers'
+import { Route as AuthenticatedShippingMethodsShippingMethodsRouteImport } from './routes/_authenticated/_shipping-methods/shipping-methods'
+import { Route as AuthenticatedStockLocationsStockLocationsRouteImport } from './routes/_authenticated/_stock-locations/stock-locations'
+import { Route as AuthenticatedSystemJobQueueRouteImport } from './routes/_authenticated/_system/job-queue'
+import { Route as AuthenticatedSystemScheduledTasksRouteImport } from './routes/_authenticated/_system/scheduled-tasks'
+import { Route as AuthenticatedSystemSettingsStoreRouteImport } from './routes/_authenticated/_system/settings-store'
+import { Route as AuthenticatedTaxCategoriesTaxCategoriesRouteImport } from './routes/_authenticated/_tax-categories/tax-categories'
+import { Route as AuthenticatedTaxRatesTaxRatesRouteImport } from './routes/_authenticated/_tax-rates/tax-rates'
+import { Route as AuthenticatedTenantSettingsTenantSettingsRouteImport } from './routes/_authenticated/_tenant-settings/tenant-settings'
+import { Route as AuthenticatedZonesZonesRouteImport } from './routes/_authenticated/_zones/zones'
 import { Route as AuthenticatedAdministratorsAdministratorsIdRouteImport } from './routes/_authenticated/_administrators/administrators_.$id'
-import { Route as AuthenticatedProductsProductsIdVariantsRouteImport } from './routes/_authenticated/_products/products_.$id_.variants'
-import { Route as AuthenticatedOrdersOrdersDraftIdRouteImport } from './routes/_authenticated/_orders/orders_.draft.$id'
+import { Route as AuthenticatedApiKeysApiKeysIdRouteImport } from './routes/_authenticated/_api-keys/api-keys_.$id'
+import { Route as AuthenticatedAssetsAssetsIdRouteImport } from './routes/_authenticated/_assets/assets_.$id'
+import { Route as AuthenticatedChannelsChannelsIdRouteImport } from './routes/_authenticated/_channels/channels_.$id'
+import { Route as AuthenticatedCollectionsCollectionsIdRouteImport } from './routes/_authenticated/_collections/collections_.$id'
+import { Route as AuthenticatedCountriesCountriesIdRouteImport } from './routes/_authenticated/_countries/countries_.$id'
+import { Route as AuthenticatedCustomerGroupsCustomerGroupsIdRouteImport } from './routes/_authenticated/_customer-groups/customer-groups_.$id'
+import { Route as AuthenticatedCustomersCustomersIdRouteImport } from './routes/_authenticated/_customers/customers_.$id'
+import { Route as AuthenticatedFacetsFacetsIdRouteImport } from './routes/_authenticated/_facets/facets_.$id'
+import { Route as AuthenticatedOptionGroupsOptionGroupsIdRouteImport } from './routes/_authenticated/_option-groups/option-groups_.$id'
+import { Route as AuthenticatedOrdersOrdersIdRouteImport } from './routes/_authenticated/_orders/orders_.$id'
+import { Route as AuthenticatedPaymentMethodsPaymentMethodsIdRouteImport } from './routes/_authenticated/_payment-methods/payment-methods_.$id'
+import { Route as AuthenticatedProductVariantsProductVariantsIdRouteImport } from './routes/_authenticated/_product-variants/product-variants_.$id'
+import { Route as AuthenticatedProductsProductsIdRouteImport } from './routes/_authenticated/_products/products_.$id'
+import { Route as AuthenticatedPromotionsPromotionsIdRouteImport } from './routes/_authenticated/_promotions/promotions_.$id'
+import { Route as AuthenticatedRolesRolesIdRouteImport } from './routes/_authenticated/_roles/roles_.$id'
+import { Route as AuthenticatedSellersSellersIdRouteImport } from './routes/_authenticated/_sellers/sellers_.$id'
+import { Route as AuthenticatedShippingMethodsShippingMethodsIdRouteImport } from './routes/_authenticated/_shipping-methods/shipping-methods_.$id'
+import { Route as AuthenticatedStockLocationsStockLocationsIdRouteImport } from './routes/_authenticated/_stock-locations/stock-locations_.$id'
+import { Route as AuthenticatedTaxCategoriesTaxCategoriesIdRouteImport } from './routes/_authenticated/_tax-categories/tax-categories_.$id'
+import { Route as AuthenticatedTaxRatesTaxRatesIdRouteImport } from './routes/_authenticated/_tax-rates/tax-rates_.$id'
+import { Route as AuthenticatedZonesZonesIdRouteImport } from './routes/_authenticated/_zones/zones_.$id'
 import { Route as AuthenticatedOrdersOrdersIdModifyRouteImport } from './routes/_authenticated/_orders/orders_.$id_.modify'
-import { Route as AuthenticatedOrdersOrdersAggregateOrderIdSellerOrdersSellerOrderIdRouteImport } from './routes/_authenticated/_orders/orders_.$aggregateOrderId_.seller-orders.$sellerOrderId'
-import { Route as AuthenticatedOptionGroupsOptionGroupsGroupIdOptionsIdRouteImport } from './routes/_authenticated/_option-groups/option-groups_.$groupId.options_.$id'
+import { Route as AuthenticatedOrdersOrdersDraftIdRouteImport } from './routes/_authenticated/_orders/orders_.draft.$id'
+import { Route as AuthenticatedProductsProductsIdVariantsRouteImport } from './routes/_authenticated/_products/products_.$id_.variants'
 import { Route as AuthenticatedFacetsFacetsFacetIdValuesIdRouteImport } from './routes/_authenticated/_facets/facets_.$facetId.values_.$id'
+import { Route as AuthenticatedOptionGroupsOptionGroupsGroupIdOptionsIdRouteImport } from './routes/_authenticated/_option-groups/option-groups_.$groupId.options_.$id'
+import { Route as AuthenticatedOrdersOrdersAggregateOrderIdSellerOrdersSellerOrderIdRouteImport } from './routes/_authenticated/_orders/orders_.$aggregateOrderId_.seller-orders.$sellerOrderId'
 
+const AuthenticatedRoute = AuthenticatedRouteImport.update({
+  id: '/_authenticated',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AuthenticatedRoute = AuthenticatedRouteImport.update({
-  id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
@@ -83,158 +83,10 @@ const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthenticatedZonesZonesRoute = AuthenticatedZonesZonesRouteImport.update({
-  id: '/_zones/zones',
-  path: '/zones',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedTenantSettingsTenantSettingsRoute =
-  AuthenticatedTenantSettingsTenantSettingsRouteImport.update({
-    id: '/_tenant-settings/tenant-settings',
-    path: '/tenant-settings',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedTaxRatesTaxRatesRoute =
-  AuthenticatedTaxRatesTaxRatesRouteImport.update({
-    id: '/_tax-rates/tax-rates',
-    path: '/tax-rates',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedTaxCategoriesTaxCategoriesRoute =
-  AuthenticatedTaxCategoriesTaxCategoriesRouteImport.update({
-    id: '/_tax-categories/tax-categories',
-    path: '/tax-categories',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedSystemSettingsStoreRoute =
-  AuthenticatedSystemSettingsStoreRouteImport.update({
-    id: '/_system/settings-store',
-    path: '/settings-store',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedSystemScheduledTasksRoute =
-  AuthenticatedSystemScheduledTasksRouteImport.update({
-    id: '/_system/scheduled-tasks',
-    path: '/scheduled-tasks',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedSystemJobQueueRoute =
-  AuthenticatedSystemJobQueueRouteImport.update({
-    id: '/_system/job-queue',
-    path: '/job-queue',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedStockLocationsStockLocationsRoute =
-  AuthenticatedStockLocationsStockLocationsRouteImport.update({
-    id: '/_stock-locations/stock-locations',
-    path: '/stock-locations',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedShippingMethodsShippingMethodsRoute =
-  AuthenticatedShippingMethodsShippingMethodsRouteImport.update({
-    id: '/_shipping-methods/shipping-methods',
-    path: '/shipping-methods',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedSellersSellersRoute =
-  AuthenticatedSellersSellersRouteImport.update({
-    id: '/_sellers/sellers',
-    path: '/sellers',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedRolesRolesRoute = AuthenticatedRolesRolesRouteImport.update({
-  id: '/_roles/roles',
-  path: '/roles',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedPromotionsPromotionsRoute =
-  AuthenticatedPromotionsPromotionsRouteImport.update({
-    id: '/_promotions/promotions',
-    path: '/promotions',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedProfileProfileRoute =
-  AuthenticatedProfileProfileRouteImport.update({
-    id: '/_profile/profile',
-    path: '/profile',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedProductsProductsRoute =
-  AuthenticatedProductsProductsRouteImport.update({
-    id: '/_products/products',
-    path: '/products',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedProductVariantsProductVariantsRoute =
-  AuthenticatedProductVariantsProductVariantsRouteImport.update({
-    id: '/_product-variants/product-variants',
-    path: '/product-variants',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedPaymentMethodsPaymentMethodsRoute =
-  AuthenticatedPaymentMethodsPaymentMethodsRouteImport.update({
-    id: '/_payment-methods/payment-methods',
-    path: '/payment-methods',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedOrdersOrdersRoute =
-  AuthenticatedOrdersOrdersRouteImport.update({
-    id: '/_orders/orders',
-    path: '/orders',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedOptionGroupsOptionGroupsRoute =
-  AuthenticatedOptionGroupsOptionGroupsRouteImport.update({
-    id: '/_option-groups/option-groups',
-    path: '/option-groups',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedGlobalSettingsGlobalSettingsRoute =
-  AuthenticatedGlobalSettingsGlobalSettingsRouteImport.update({
-    id: '/_global-settings/global-settings',
-    path: '/global-settings',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedFacetsFacetsRoute =
-  AuthenticatedFacetsFacetsRouteImport.update({
-    id: '/_facets/facets',
-    path: '/facets',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedCustomersCustomersRoute =
-  AuthenticatedCustomersCustomersRouteImport.update({
-    id: '/_customers/customers',
-    path: '/customers',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedCustomerGroupsCustomerGroupsRoute =
-  AuthenticatedCustomerGroupsCustomerGroupsRouteImport.update({
-    id: '/_customer-groups/customer-groups',
-    path: '/customer-groups',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedCountriesCountriesRoute =
-  AuthenticatedCountriesCountriesRouteImport.update({
-    id: '/_countries/countries',
-    path: '/countries',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedCollectionsCollectionsRoute =
-  AuthenticatedCollectionsCollectionsRouteImport.update({
-    id: '/_collections/collections',
-    path: '/collections',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedChannelsChannelsRoute =
-  AuthenticatedChannelsChannelsRouteImport.update({
-    id: '/_channels/channels',
-    path: '/channels',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedAssetsAssetsRoute =
-  AuthenticatedAssetsAssetsRouteImport.update({
-    id: '/_assets/assets',
-    path: '/assets',
+const AuthenticatedAdministratorsAdministratorsRoute =
+  AuthenticatedAdministratorsAdministratorsRouteImport.update({
+    id: '/_administrators/administrators',
+    path: '/administrators',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedApiKeysApiKeysRoute =
@@ -243,130 +95,164 @@ const AuthenticatedApiKeysApiKeysRoute =
     path: '/api-keys',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedAdministratorsAdministratorsRoute =
-  AuthenticatedAdministratorsAdministratorsRouteImport.update({
-    id: '/_administrators/administrators',
-    path: '/administrators',
+const AuthenticatedAssetsAssetsRoute =
+  AuthenticatedAssetsAssetsRouteImport.update({
+    id: '/_assets/assets',
+    path: '/assets',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedZonesZonesIdRoute =
-  AuthenticatedZonesZonesIdRouteImport.update({
-    id: '/_zones/zones_/$id',
-    path: '/zones/$id',
+const AuthenticatedChannelsChannelsRoute =
+  AuthenticatedChannelsChannelsRouteImport.update({
+    id: '/_channels/channels',
+    path: '/channels',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedTaxRatesTaxRatesIdRoute =
-  AuthenticatedTaxRatesTaxRatesIdRouteImport.update({
-    id: '/_tax-rates/tax-rates_/$id',
-    path: '/tax-rates/$id',
+const AuthenticatedCollectionsCollectionsRoute =
+  AuthenticatedCollectionsCollectionsRouteImport.update({
+    id: '/_collections/collections',
+    path: '/collections',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedTaxCategoriesTaxCategoriesIdRoute =
-  AuthenticatedTaxCategoriesTaxCategoriesIdRouteImport.update({
-    id: '/_tax-categories/tax-categories_/$id',
-    path: '/tax-categories/$id',
+const AuthenticatedCountriesCountriesRoute =
+  AuthenticatedCountriesCountriesRouteImport.update({
+    id: '/_countries/countries',
+    path: '/countries',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedStockLocationsStockLocationsIdRoute =
-  AuthenticatedStockLocationsStockLocationsIdRouteImport.update({
-    id: '/_stock-locations/stock-locations_/$id',
-    path: '/stock-locations/$id',
+const AuthenticatedCustomerGroupsCustomerGroupsRoute =
+  AuthenticatedCustomerGroupsCustomerGroupsRouteImport.update({
+    id: '/_customer-groups/customer-groups',
+    path: '/customer-groups',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedShippingMethodsShippingMethodsIdRoute =
-  AuthenticatedShippingMethodsShippingMethodsIdRouteImport.update({
-    id: '/_shipping-methods/shipping-methods_/$id',
-    path: '/shipping-methods/$id',
+const AuthenticatedCustomersCustomersRoute =
+  AuthenticatedCustomersCustomersRouteImport.update({
+    id: '/_customers/customers',
+    path: '/customers',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedSellersSellersIdRoute =
-  AuthenticatedSellersSellersIdRouteImport.update({
-    id: '/_sellers/sellers_/$id',
-    path: '/sellers/$id',
+const AuthenticatedFacetsFacetsRoute =
+  AuthenticatedFacetsFacetsRouteImport.update({
+    id: '/_facets/facets',
+    path: '/facets',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedRolesRolesIdRoute =
-  AuthenticatedRolesRolesIdRouteImport.update({
-    id: '/_roles/roles_/$id',
-    path: '/roles/$id',
+const AuthenticatedGlobalSettingsGlobalSettingsRoute =
+  AuthenticatedGlobalSettingsGlobalSettingsRouteImport.update({
+    id: '/_global-settings/global-settings',
+    path: '/global-settings',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedPromotionsPromotionsIdRoute =
-  AuthenticatedPromotionsPromotionsIdRouteImport.update({
-    id: '/_promotions/promotions_/$id',
-    path: '/promotions/$id',
+const AuthenticatedOptionGroupsOptionGroupsRoute =
+  AuthenticatedOptionGroupsOptionGroupsRouteImport.update({
+    id: '/_option-groups/option-groups',
+    path: '/option-groups',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedProductsProductsIdRoute =
-  AuthenticatedProductsProductsIdRouteImport.update({
-    id: '/_products/products_/$id',
-    path: '/products/$id',
+const AuthenticatedOrdersOrdersRoute =
+  AuthenticatedOrdersOrdersRouteImport.update({
+    id: '/_orders/orders',
+    path: '/orders',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedProductVariantsProductVariantsIdRoute =
-  AuthenticatedProductVariantsProductVariantsIdRouteImport.update({
-    id: '/_product-variants/product-variants_/$id',
-    path: '/product-variants/$id',
+const AuthenticatedPaymentMethodsPaymentMethodsRoute =
+  AuthenticatedPaymentMethodsPaymentMethodsRouteImport.update({
+    id: '/_payment-methods/payment-methods',
+    path: '/payment-methods',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedPaymentMethodsPaymentMethodsIdRoute =
-  AuthenticatedPaymentMethodsPaymentMethodsIdRouteImport.update({
-    id: '/_payment-methods/payment-methods_/$id',
-    path: '/payment-methods/$id',
+const AuthenticatedProductVariantsProductVariantsRoute =
+  AuthenticatedProductVariantsProductVariantsRouteImport.update({
+    id: '/_product-variants/product-variants',
+    path: '/product-variants',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedOrdersOrdersIdRoute =
-  AuthenticatedOrdersOrdersIdRouteImport.update({
-    id: '/_orders/orders_/$id',
-    path: '/orders/$id',
+const AuthenticatedProductsProductsRoute =
+  AuthenticatedProductsProductsRouteImport.update({
+    id: '/_products/products',
+    path: '/products',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedOptionGroupsOptionGroupsIdRoute =
-  AuthenticatedOptionGroupsOptionGroupsIdRouteImport.update({
-    id: '/_option-groups/option-groups_/$id',
-    path: '/option-groups/$id',
+const AuthenticatedProfileProfileRoute =
+  AuthenticatedProfileProfileRouteImport.update({
+    id: '/_profile/profile',
+    path: '/profile',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedFacetsFacetsIdRoute =
-  AuthenticatedFacetsFacetsIdRouteImport.update({
-    id: '/_facets/facets_/$id',
-    path: '/facets/$id',
+const AuthenticatedPromotionsPromotionsRoute =
+  AuthenticatedPromotionsPromotionsRouteImport.update({
+    id: '/_promotions/promotions',
+    path: '/promotions',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedCustomersCustomersIdRoute =
-  AuthenticatedCustomersCustomersIdRouteImport.update({
-    id: '/_customers/customers_/$id',
-    path: '/customers/$id',
+const AuthenticatedRolesRolesRoute = AuthenticatedRolesRolesRouteImport.update({
+  id: '/_roles/roles',
+  path: '/roles',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedSellersSellersRoute =
+  AuthenticatedSellersSellersRouteImport.update({
+    id: '/_sellers/sellers',
+    path: '/sellers',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedCustomerGroupsCustomerGroupsIdRoute =
-  AuthenticatedCustomerGroupsCustomerGroupsIdRouteImport.update({
-    id: '/_customer-groups/customer-groups_/$id',
-    path: '/customer-groups/$id',
+const AuthenticatedShippingMethodsShippingMethodsRoute =
+  AuthenticatedShippingMethodsShippingMethodsRouteImport.update({
+    id: '/_shipping-methods/shipping-methods',
+    path: '/shipping-methods',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedCountriesCountriesIdRoute =
-  AuthenticatedCountriesCountriesIdRouteImport.update({
-    id: '/_countries/countries_/$id',
-    path: '/countries/$id',
+const AuthenticatedStockLocationsStockLocationsRoute =
+  AuthenticatedStockLocationsStockLocationsRouteImport.update({
+    id: '/_stock-locations/stock-locations',
+    path: '/stock-locations',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedCollectionsCollectionsIdRoute =
-  AuthenticatedCollectionsCollectionsIdRouteImport.update({
-    id: '/_collections/collections_/$id',
-    path: '/collections/$id',
+const AuthenticatedSystemJobQueueRoute =
+  AuthenticatedSystemJobQueueRouteImport.update({
+    id: '/_system/job-queue',
+    path: '/job-queue',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedChannelsChannelsIdRoute =
-  AuthenticatedChannelsChannelsIdRouteImport.update({
-    id: '/_channels/channels_/$id',
-    path: '/channels/$id',
+const AuthenticatedSystemScheduledTasksRoute =
+  AuthenticatedSystemScheduledTasksRouteImport.update({
+    id: '/_system/scheduled-tasks',
+    path: '/scheduled-tasks',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedAssetsAssetsIdRoute =
-  AuthenticatedAssetsAssetsIdRouteImport.update({
-    id: '/_assets/assets_/$id',
-    path: '/assets/$id',
+const AuthenticatedSystemSettingsStoreRoute =
+  AuthenticatedSystemSettingsStoreRouteImport.update({
+    id: '/_system/settings-store',
+    path: '/settings-store',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedTaxCategoriesTaxCategoriesRoute =
+  AuthenticatedTaxCategoriesTaxCategoriesRouteImport.update({
+    id: '/_tax-categories/tax-categories',
+    path: '/tax-categories',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedTaxRatesTaxRatesRoute =
+  AuthenticatedTaxRatesTaxRatesRouteImport.update({
+    id: '/_tax-rates/tax-rates',
+    path: '/tax-rates',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedTenantSettingsTenantSettingsRoute =
+  AuthenticatedTenantSettingsTenantSettingsRouteImport.update({
+    id: '/_tenant-settings/tenant-settings',
+    path: '/tenant-settings',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedZonesZonesRoute = AuthenticatedZonesZonesRouteImport.update({
+  id: '/_zones/zones',
+  path: '/zones',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedAdministratorsAdministratorsIdRoute =
+  AuthenticatedAdministratorsAdministratorsIdRouteImport.update({
+    id: '/_administrators/administrators_/$id',
+    path: '/administrators/$id',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedApiKeysApiKeysIdRoute =
@@ -375,16 +261,130 @@ const AuthenticatedApiKeysApiKeysIdRoute =
     path: '/api-keys/$id',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedAdministratorsAdministratorsIdRoute =
-  AuthenticatedAdministratorsAdministratorsIdRouteImport.update({
-    id: '/_administrators/administrators_/$id',
-    path: '/administrators/$id',
+const AuthenticatedAssetsAssetsIdRoute =
+  AuthenticatedAssetsAssetsIdRouteImport.update({
+    id: '/_assets/assets_/$id',
+    path: '/assets/$id',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedProductsProductsIdVariantsRoute =
-  AuthenticatedProductsProductsIdVariantsRouteImport.update({
-    id: '/_products/products_/$id_/variants',
-    path: '/products/$id/variants',
+const AuthenticatedChannelsChannelsIdRoute =
+  AuthenticatedChannelsChannelsIdRouteImport.update({
+    id: '/_channels/channels_/$id',
+    path: '/channels/$id',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedCollectionsCollectionsIdRoute =
+  AuthenticatedCollectionsCollectionsIdRouteImport.update({
+    id: '/_collections/collections_/$id',
+    path: '/collections/$id',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedCountriesCountriesIdRoute =
+  AuthenticatedCountriesCountriesIdRouteImport.update({
+    id: '/_countries/countries_/$id',
+    path: '/countries/$id',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedCustomerGroupsCustomerGroupsIdRoute =
+  AuthenticatedCustomerGroupsCustomerGroupsIdRouteImport.update({
+    id: '/_customer-groups/customer-groups_/$id',
+    path: '/customer-groups/$id',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedCustomersCustomersIdRoute =
+  AuthenticatedCustomersCustomersIdRouteImport.update({
+    id: '/_customers/customers_/$id',
+    path: '/customers/$id',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedFacetsFacetsIdRoute =
+  AuthenticatedFacetsFacetsIdRouteImport.update({
+    id: '/_facets/facets_/$id',
+    path: '/facets/$id',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedOptionGroupsOptionGroupsIdRoute =
+  AuthenticatedOptionGroupsOptionGroupsIdRouteImport.update({
+    id: '/_option-groups/option-groups_/$id',
+    path: '/option-groups/$id',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedOrdersOrdersIdRoute =
+  AuthenticatedOrdersOrdersIdRouteImport.update({
+    id: '/_orders/orders_/$id',
+    path: '/orders/$id',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedPaymentMethodsPaymentMethodsIdRoute =
+  AuthenticatedPaymentMethodsPaymentMethodsIdRouteImport.update({
+    id: '/_payment-methods/payment-methods_/$id',
+    path: '/payment-methods/$id',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedProductVariantsProductVariantsIdRoute =
+  AuthenticatedProductVariantsProductVariantsIdRouteImport.update({
+    id: '/_product-variants/product-variants_/$id',
+    path: '/product-variants/$id',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedProductsProductsIdRoute =
+  AuthenticatedProductsProductsIdRouteImport.update({
+    id: '/_products/products_/$id',
+    path: '/products/$id',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedPromotionsPromotionsIdRoute =
+  AuthenticatedPromotionsPromotionsIdRouteImport.update({
+    id: '/_promotions/promotions_/$id',
+    path: '/promotions/$id',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedRolesRolesIdRoute =
+  AuthenticatedRolesRolesIdRouteImport.update({
+    id: '/_roles/roles_/$id',
+    path: '/roles/$id',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedSellersSellersIdRoute =
+  AuthenticatedSellersSellersIdRouteImport.update({
+    id: '/_sellers/sellers_/$id',
+    path: '/sellers/$id',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedShippingMethodsShippingMethodsIdRoute =
+  AuthenticatedShippingMethodsShippingMethodsIdRouteImport.update({
+    id: '/_shipping-methods/shipping-methods_/$id',
+    path: '/shipping-methods/$id',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedStockLocationsStockLocationsIdRoute =
+  AuthenticatedStockLocationsStockLocationsIdRouteImport.update({
+    id: '/_stock-locations/stock-locations_/$id',
+    path: '/stock-locations/$id',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedTaxCategoriesTaxCategoriesIdRoute =
+  AuthenticatedTaxCategoriesTaxCategoriesIdRouteImport.update({
+    id: '/_tax-categories/tax-categories_/$id',
+    path: '/tax-categories/$id',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedTaxRatesTaxRatesIdRoute =
+  AuthenticatedTaxRatesTaxRatesIdRouteImport.update({
+    id: '/_tax-rates/tax-rates_/$id',
+    path: '/tax-rates/$id',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedZonesZonesIdRoute =
+  AuthenticatedZonesZonesIdRouteImport.update({
+    id: '/_zones/zones_/$id',
+    path: '/zones/$id',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedOrdersOrdersIdModifyRoute =
+  AuthenticatedOrdersOrdersIdModifyRouteImport.update({
+    id: '/_orders/orders_/$id_/modify',
+    path: '/orders/$id/modify',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedOrdersOrdersDraftIdRoute =
@@ -393,10 +393,22 @@ const AuthenticatedOrdersOrdersDraftIdRoute =
     path: '/orders/draft/$id',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedOrdersOrdersIdModifyRoute =
-  AuthenticatedOrdersOrdersIdModifyRouteImport.update({
-    id: '/_orders/orders_/$id_/modify',
-    path: '/orders/$id/modify',
+const AuthenticatedProductsProductsIdVariantsRoute =
+  AuthenticatedProductsProductsIdVariantsRouteImport.update({
+    id: '/_products/products_/$id_/variants',
+    path: '/products/$id/variants',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedFacetsFacetsFacetIdValuesIdRoute =
+  AuthenticatedFacetsFacetsFacetIdValuesIdRouteImport.update({
+    id: '/_facets/facets_/$facetId/values_/$id',
+    path: '/facets/$facetId/values/$id',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedOptionGroupsOptionGroupsGroupIdOptionsIdRoute =
+  AuthenticatedOptionGroupsOptionGroupsGroupIdOptionsIdRouteImport.update({
+    id: '/_option-groups/option-groups_/$groupId/options_/$id',
+    path: '/option-groups/$groupId/options/$id',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedOrdersOrdersAggregateOrderIdSellerOrdersSellerOrderIdRoute =
@@ -407,18 +419,6 @@ const AuthenticatedOrdersOrdersAggregateOrderIdSellerOrdersSellerOrderIdRoute =
       getParentRoute: () => AuthenticatedRoute,
     } as any,
   )
-const AuthenticatedOptionGroupsOptionGroupsGroupIdOptionsIdRoute =
-  AuthenticatedOptionGroupsOptionGroupsGroupIdOptionsIdRouteImport.update({
-    id: '/_option-groups/option-groups_/$groupId/options_/$id',
-    path: '/option-groups/$groupId/options/$id',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedFacetsFacetsFacetIdValuesIdRoute =
-  AuthenticatedFacetsFacetsFacetIdValuesIdRouteImport.update({
-    id: '/_facets/facets_/$facetId/values_/$id',
-    path: '/facets/$facetId/values/$id',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
@@ -793,18 +793,18 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/_authenticated': {
       id: '/_authenticated'
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof AuthenticatedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/': {
@@ -814,186 +814,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/_zones/zones': {
-      id: '/_authenticated/_zones/zones'
-      path: '/zones'
-      fullPath: '/zones'
-      preLoaderRoute: typeof AuthenticatedZonesZonesRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/_tenant-settings/tenant-settings': {
-      id: '/_authenticated/_tenant-settings/tenant-settings'
-      path: '/tenant-settings'
-      fullPath: '/tenant-settings'
-      preLoaderRoute: typeof AuthenticatedTenantSettingsTenantSettingsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/_tax-rates/tax-rates': {
-      id: '/_authenticated/_tax-rates/tax-rates'
-      path: '/tax-rates'
-      fullPath: '/tax-rates'
-      preLoaderRoute: typeof AuthenticatedTaxRatesTaxRatesRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/_tax-categories/tax-categories': {
-      id: '/_authenticated/_tax-categories/tax-categories'
-      path: '/tax-categories'
-      fullPath: '/tax-categories'
-      preLoaderRoute: typeof AuthenticatedTaxCategoriesTaxCategoriesRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/_system/settings-store': {
-      id: '/_authenticated/_system/settings-store'
-      path: '/settings-store'
-      fullPath: '/settings-store'
-      preLoaderRoute: typeof AuthenticatedSystemSettingsStoreRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/_system/scheduled-tasks': {
-      id: '/_authenticated/_system/scheduled-tasks'
-      path: '/scheduled-tasks'
-      fullPath: '/scheduled-tasks'
-      preLoaderRoute: typeof AuthenticatedSystemScheduledTasksRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/_system/job-queue': {
-      id: '/_authenticated/_system/job-queue'
-      path: '/job-queue'
-      fullPath: '/job-queue'
-      preLoaderRoute: typeof AuthenticatedSystemJobQueueRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/_stock-locations/stock-locations': {
-      id: '/_authenticated/_stock-locations/stock-locations'
-      path: '/stock-locations'
-      fullPath: '/stock-locations'
-      preLoaderRoute: typeof AuthenticatedStockLocationsStockLocationsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/_shipping-methods/shipping-methods': {
-      id: '/_authenticated/_shipping-methods/shipping-methods'
-      path: '/shipping-methods'
-      fullPath: '/shipping-methods'
-      preLoaderRoute: typeof AuthenticatedShippingMethodsShippingMethodsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/_sellers/sellers': {
-      id: '/_authenticated/_sellers/sellers'
-      path: '/sellers'
-      fullPath: '/sellers'
-      preLoaderRoute: typeof AuthenticatedSellersSellersRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/_roles/roles': {
-      id: '/_authenticated/_roles/roles'
-      path: '/roles'
-      fullPath: '/roles'
-      preLoaderRoute: typeof AuthenticatedRolesRolesRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/_promotions/promotions': {
-      id: '/_authenticated/_promotions/promotions'
-      path: '/promotions'
-      fullPath: '/promotions'
-      preLoaderRoute: typeof AuthenticatedPromotionsPromotionsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/_profile/profile': {
-      id: '/_authenticated/_profile/profile'
-      path: '/profile'
-      fullPath: '/profile'
-      preLoaderRoute: typeof AuthenticatedProfileProfileRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/_products/products': {
-      id: '/_authenticated/_products/products'
-      path: '/products'
-      fullPath: '/products'
-      preLoaderRoute: typeof AuthenticatedProductsProductsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/_product-variants/product-variants': {
-      id: '/_authenticated/_product-variants/product-variants'
-      path: '/product-variants'
-      fullPath: '/product-variants'
-      preLoaderRoute: typeof AuthenticatedProductVariantsProductVariantsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/_payment-methods/payment-methods': {
-      id: '/_authenticated/_payment-methods/payment-methods'
-      path: '/payment-methods'
-      fullPath: '/payment-methods'
-      preLoaderRoute: typeof AuthenticatedPaymentMethodsPaymentMethodsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/_orders/orders': {
-      id: '/_authenticated/_orders/orders'
-      path: '/orders'
-      fullPath: '/orders'
-      preLoaderRoute: typeof AuthenticatedOrdersOrdersRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/_option-groups/option-groups': {
-      id: '/_authenticated/_option-groups/option-groups'
-      path: '/option-groups'
-      fullPath: '/option-groups'
-      preLoaderRoute: typeof AuthenticatedOptionGroupsOptionGroupsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/_global-settings/global-settings': {
-      id: '/_authenticated/_global-settings/global-settings'
-      path: '/global-settings'
-      fullPath: '/global-settings'
-      preLoaderRoute: typeof AuthenticatedGlobalSettingsGlobalSettingsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/_facets/facets': {
-      id: '/_authenticated/_facets/facets'
-      path: '/facets'
-      fullPath: '/facets'
-      preLoaderRoute: typeof AuthenticatedFacetsFacetsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/_customers/customers': {
-      id: '/_authenticated/_customers/customers'
-      path: '/customers'
-      fullPath: '/customers'
-      preLoaderRoute: typeof AuthenticatedCustomersCustomersRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/_customer-groups/customer-groups': {
-      id: '/_authenticated/_customer-groups/customer-groups'
-      path: '/customer-groups'
-      fullPath: '/customer-groups'
-      preLoaderRoute: typeof AuthenticatedCustomerGroupsCustomerGroupsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/_countries/countries': {
-      id: '/_authenticated/_countries/countries'
-      path: '/countries'
-      fullPath: '/countries'
-      preLoaderRoute: typeof AuthenticatedCountriesCountriesRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/_collections/collections': {
-      id: '/_authenticated/_collections/collections'
-      path: '/collections'
-      fullPath: '/collections'
-      preLoaderRoute: typeof AuthenticatedCollectionsCollectionsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/_channels/channels': {
-      id: '/_authenticated/_channels/channels'
-      path: '/channels'
-      fullPath: '/channels'
-      preLoaderRoute: typeof AuthenticatedChannelsChannelsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/_assets/assets': {
-      id: '/_authenticated/_assets/assets'
-      path: '/assets'
-      fullPath: '/assets'
-      preLoaderRoute: typeof AuthenticatedAssetsAssetsRouteImport
+    '/_authenticated/_administrators/administrators': {
+      id: '/_authenticated/_administrators/administrators'
+      path: '/administrators'
+      fullPath: '/administrators'
+      preLoaderRoute: typeof AuthenticatedAdministratorsAdministratorsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/_api-keys/api-keys': {
@@ -1003,158 +828,186 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedApiKeysApiKeysRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/_administrators/administrators': {
-      id: '/_authenticated/_administrators/administrators'
-      path: '/administrators'
-      fullPath: '/administrators'
-      preLoaderRoute: typeof AuthenticatedAdministratorsAdministratorsRouteImport
+    '/_authenticated/_assets/assets': {
+      id: '/_authenticated/_assets/assets'
+      path: '/assets'
+      fullPath: '/assets'
+      preLoaderRoute: typeof AuthenticatedAssetsAssetsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/_zones/zones_/$id': {
-      id: '/_authenticated/_zones/zones_/$id'
-      path: '/zones/$id'
-      fullPath: '/zones/$id'
-      preLoaderRoute: typeof AuthenticatedZonesZonesIdRouteImport
+    '/_authenticated/_channels/channels': {
+      id: '/_authenticated/_channels/channels'
+      path: '/channels'
+      fullPath: '/channels'
+      preLoaderRoute: typeof AuthenticatedChannelsChannelsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/_tax-rates/tax-rates_/$id': {
-      id: '/_authenticated/_tax-rates/tax-rates_/$id'
-      path: '/tax-rates/$id'
-      fullPath: '/tax-rates/$id'
-      preLoaderRoute: typeof AuthenticatedTaxRatesTaxRatesIdRouteImport
+    '/_authenticated/_collections/collections': {
+      id: '/_authenticated/_collections/collections'
+      path: '/collections'
+      fullPath: '/collections'
+      preLoaderRoute: typeof AuthenticatedCollectionsCollectionsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/_tax-categories/tax-categories_/$id': {
-      id: '/_authenticated/_tax-categories/tax-categories_/$id'
-      path: '/tax-categories/$id'
-      fullPath: '/tax-categories/$id'
-      preLoaderRoute: typeof AuthenticatedTaxCategoriesTaxCategoriesIdRouteImport
+    '/_authenticated/_countries/countries': {
+      id: '/_authenticated/_countries/countries'
+      path: '/countries'
+      fullPath: '/countries'
+      preLoaderRoute: typeof AuthenticatedCountriesCountriesRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/_stock-locations/stock-locations_/$id': {
-      id: '/_authenticated/_stock-locations/stock-locations_/$id'
-      path: '/stock-locations/$id'
-      fullPath: '/stock-locations/$id'
-      preLoaderRoute: typeof AuthenticatedStockLocationsStockLocationsIdRouteImport
+    '/_authenticated/_customer-groups/customer-groups': {
+      id: '/_authenticated/_customer-groups/customer-groups'
+      path: '/customer-groups'
+      fullPath: '/customer-groups'
+      preLoaderRoute: typeof AuthenticatedCustomerGroupsCustomerGroupsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/_shipping-methods/shipping-methods_/$id': {
-      id: '/_authenticated/_shipping-methods/shipping-methods_/$id'
-      path: '/shipping-methods/$id'
-      fullPath: '/shipping-methods/$id'
-      preLoaderRoute: typeof AuthenticatedShippingMethodsShippingMethodsIdRouteImport
+    '/_authenticated/_customers/customers': {
+      id: '/_authenticated/_customers/customers'
+      path: '/customers'
+      fullPath: '/customers'
+      preLoaderRoute: typeof AuthenticatedCustomersCustomersRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/_sellers/sellers_/$id': {
-      id: '/_authenticated/_sellers/sellers_/$id'
-      path: '/sellers/$id'
-      fullPath: '/sellers/$id'
-      preLoaderRoute: typeof AuthenticatedSellersSellersIdRouteImport
+    '/_authenticated/_facets/facets': {
+      id: '/_authenticated/_facets/facets'
+      path: '/facets'
+      fullPath: '/facets'
+      preLoaderRoute: typeof AuthenticatedFacetsFacetsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/_roles/roles_/$id': {
-      id: '/_authenticated/_roles/roles_/$id'
-      path: '/roles/$id'
-      fullPath: '/roles/$id'
-      preLoaderRoute: typeof AuthenticatedRolesRolesIdRouteImport
+    '/_authenticated/_global-settings/global-settings': {
+      id: '/_authenticated/_global-settings/global-settings'
+      path: '/global-settings'
+      fullPath: '/global-settings'
+      preLoaderRoute: typeof AuthenticatedGlobalSettingsGlobalSettingsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/_promotions/promotions_/$id': {
-      id: '/_authenticated/_promotions/promotions_/$id'
-      path: '/promotions/$id'
-      fullPath: '/promotions/$id'
-      preLoaderRoute: typeof AuthenticatedPromotionsPromotionsIdRouteImport
+    '/_authenticated/_option-groups/option-groups': {
+      id: '/_authenticated/_option-groups/option-groups'
+      path: '/option-groups'
+      fullPath: '/option-groups'
+      preLoaderRoute: typeof AuthenticatedOptionGroupsOptionGroupsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/_products/products_/$id': {
-      id: '/_authenticated/_products/products_/$id'
-      path: '/products/$id'
-      fullPath: '/products/$id'
-      preLoaderRoute: typeof AuthenticatedProductsProductsIdRouteImport
+    '/_authenticated/_orders/orders': {
+      id: '/_authenticated/_orders/orders'
+      path: '/orders'
+      fullPath: '/orders'
+      preLoaderRoute: typeof AuthenticatedOrdersOrdersRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/_product-variants/product-variants_/$id': {
-      id: '/_authenticated/_product-variants/product-variants_/$id'
-      path: '/product-variants/$id'
-      fullPath: '/product-variants/$id'
-      preLoaderRoute: typeof AuthenticatedProductVariantsProductVariantsIdRouteImport
+    '/_authenticated/_payment-methods/payment-methods': {
+      id: '/_authenticated/_payment-methods/payment-methods'
+      path: '/payment-methods'
+      fullPath: '/payment-methods'
+      preLoaderRoute: typeof AuthenticatedPaymentMethodsPaymentMethodsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/_payment-methods/payment-methods_/$id': {
-      id: '/_authenticated/_payment-methods/payment-methods_/$id'
-      path: '/payment-methods/$id'
-      fullPath: '/payment-methods/$id'
-      preLoaderRoute: typeof AuthenticatedPaymentMethodsPaymentMethodsIdRouteImport
+    '/_authenticated/_product-variants/product-variants': {
+      id: '/_authenticated/_product-variants/product-variants'
+      path: '/product-variants'
+      fullPath: '/product-variants'
+      preLoaderRoute: typeof AuthenticatedProductVariantsProductVariantsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/_orders/orders_/$id': {
-      id: '/_authenticated/_orders/orders_/$id'
-      path: '/orders/$id'
-      fullPath: '/orders/$id'
-      preLoaderRoute: typeof AuthenticatedOrdersOrdersIdRouteImport
+    '/_authenticated/_products/products': {
+      id: '/_authenticated/_products/products'
+      path: '/products'
+      fullPath: '/products'
+      preLoaderRoute: typeof AuthenticatedProductsProductsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/_option-groups/option-groups_/$id': {
-      id: '/_authenticated/_option-groups/option-groups_/$id'
-      path: '/option-groups/$id'
-      fullPath: '/option-groups/$id'
-      preLoaderRoute: typeof AuthenticatedOptionGroupsOptionGroupsIdRouteImport
+    '/_authenticated/_profile/profile': {
+      id: '/_authenticated/_profile/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof AuthenticatedProfileProfileRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/_facets/facets_/$id': {
-      id: '/_authenticated/_facets/facets_/$id'
-      path: '/facets/$id'
-      fullPath: '/facets/$id'
-      preLoaderRoute: typeof AuthenticatedFacetsFacetsIdRouteImport
+    '/_authenticated/_promotions/promotions': {
+      id: '/_authenticated/_promotions/promotions'
+      path: '/promotions'
+      fullPath: '/promotions'
+      preLoaderRoute: typeof AuthenticatedPromotionsPromotionsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/_customers/customers_/$id': {
-      id: '/_authenticated/_customers/customers_/$id'
-      path: '/customers/$id'
-      fullPath: '/customers/$id'
-      preLoaderRoute: typeof AuthenticatedCustomersCustomersIdRouteImport
+    '/_authenticated/_roles/roles': {
+      id: '/_authenticated/_roles/roles'
+      path: '/roles'
+      fullPath: '/roles'
+      preLoaderRoute: typeof AuthenticatedRolesRolesRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/_customer-groups/customer-groups_/$id': {
-      id: '/_authenticated/_customer-groups/customer-groups_/$id'
-      path: '/customer-groups/$id'
-      fullPath: '/customer-groups/$id'
-      preLoaderRoute: typeof AuthenticatedCustomerGroupsCustomerGroupsIdRouteImport
+    '/_authenticated/_sellers/sellers': {
+      id: '/_authenticated/_sellers/sellers'
+      path: '/sellers'
+      fullPath: '/sellers'
+      preLoaderRoute: typeof AuthenticatedSellersSellersRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/_countries/countries_/$id': {
-      id: '/_authenticated/_countries/countries_/$id'
-      path: '/countries/$id'
-      fullPath: '/countries/$id'
-      preLoaderRoute: typeof AuthenticatedCountriesCountriesIdRouteImport
+    '/_authenticated/_shipping-methods/shipping-methods': {
+      id: '/_authenticated/_shipping-methods/shipping-methods'
+      path: '/shipping-methods'
+      fullPath: '/shipping-methods'
+      preLoaderRoute: typeof AuthenticatedShippingMethodsShippingMethodsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/_collections/collections_/$id': {
-      id: '/_authenticated/_collections/collections_/$id'
-      path: '/collections/$id'
-      fullPath: '/collections/$id'
-      preLoaderRoute: typeof AuthenticatedCollectionsCollectionsIdRouteImport
+    '/_authenticated/_stock-locations/stock-locations': {
+      id: '/_authenticated/_stock-locations/stock-locations'
+      path: '/stock-locations'
+      fullPath: '/stock-locations'
+      preLoaderRoute: typeof AuthenticatedStockLocationsStockLocationsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/_channels/channels_/$id': {
-      id: '/_authenticated/_channels/channels_/$id'
-      path: '/channels/$id'
-      fullPath: '/channels/$id'
-      preLoaderRoute: typeof AuthenticatedChannelsChannelsIdRouteImport
+    '/_authenticated/_system/job-queue': {
+      id: '/_authenticated/_system/job-queue'
+      path: '/job-queue'
+      fullPath: '/job-queue'
+      preLoaderRoute: typeof AuthenticatedSystemJobQueueRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/_assets/assets_/$id': {
-      id: '/_authenticated/_assets/assets_/$id'
-      path: '/assets/$id'
-      fullPath: '/assets/$id'
-      preLoaderRoute: typeof AuthenticatedAssetsAssetsIdRouteImport
+    '/_authenticated/_system/scheduled-tasks': {
+      id: '/_authenticated/_system/scheduled-tasks'
+      path: '/scheduled-tasks'
+      fullPath: '/scheduled-tasks'
+      preLoaderRoute: typeof AuthenticatedSystemScheduledTasksRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/_api-keys/api-keys_/$id': {
-      id: '/_authenticated/_api-keys/api-keys_/$id'
-      path: '/api-keys/$id'
-      fullPath: '/api-keys/$id'
-      preLoaderRoute: typeof AuthenticatedApiKeysApiKeysIdRouteImport
+    '/_authenticated/_system/settings-store': {
+      id: '/_authenticated/_system/settings-store'
+      path: '/settings-store'
+      fullPath: '/settings-store'
+      preLoaderRoute: typeof AuthenticatedSystemSettingsStoreRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/_tax-categories/tax-categories': {
+      id: '/_authenticated/_tax-categories/tax-categories'
+      path: '/tax-categories'
+      fullPath: '/tax-categories'
+      preLoaderRoute: typeof AuthenticatedTaxCategoriesTaxCategoriesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/_tax-rates/tax-rates': {
+      id: '/_authenticated/_tax-rates/tax-rates'
+      path: '/tax-rates'
+      fullPath: '/tax-rates'
+      preLoaderRoute: typeof AuthenticatedTaxRatesTaxRatesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/_tenant-settings/tenant-settings': {
+      id: '/_authenticated/_tenant-settings/tenant-settings'
+      path: '/tenant-settings'
+      fullPath: '/tenant-settings'
+      preLoaderRoute: typeof AuthenticatedTenantSettingsTenantSettingsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/_zones/zones': {
+      id: '/_authenticated/_zones/zones'
+      path: '/zones'
+      fullPath: '/zones'
+      preLoaderRoute: typeof AuthenticatedZonesZonesRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/_administrators/administrators_/$id': {
@@ -1164,18 +1017,151 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdministratorsAdministratorsIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/_products/products_/$id_/variants': {
-      id: '/_authenticated/_products/products_/$id_/variants'
-      path: '/products/$id/variants'
-      fullPath: '/products/$id/variants'
-      preLoaderRoute: typeof AuthenticatedProductsProductsIdVariantsRouteImport
+    '/_authenticated/_api-keys/api-keys_/$id': {
+      id: '/_authenticated/_api-keys/api-keys_/$id'
+      path: '/api-keys/$id'
+      fullPath: '/api-keys/$id'
+      preLoaderRoute: typeof AuthenticatedApiKeysApiKeysIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/_orders/orders_/draft/$id': {
-      id: '/_authenticated/_orders/orders_/draft/$id'
-      path: '/orders/draft/$id'
-      fullPath: '/orders/draft/$id'
-      preLoaderRoute: typeof AuthenticatedOrdersOrdersDraftIdRouteImport
+    '/_authenticated/_assets/assets_/$id': {
+      id: '/_authenticated/_assets/assets_/$id'
+      path: '/assets/$id'
+      fullPath: '/assets/$id'
+      preLoaderRoute: typeof AuthenticatedAssetsAssetsIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/_channels/channels_/$id': {
+      id: '/_authenticated/_channels/channels_/$id'
+      path: '/channels/$id'
+      fullPath: '/channels/$id'
+      preLoaderRoute: typeof AuthenticatedChannelsChannelsIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/_collections/collections_/$id': {
+      id: '/_authenticated/_collections/collections_/$id'
+      path: '/collections/$id'
+      fullPath: '/collections/$id'
+      preLoaderRoute: typeof AuthenticatedCollectionsCollectionsIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/_countries/countries_/$id': {
+      id: '/_authenticated/_countries/countries_/$id'
+      path: '/countries/$id'
+      fullPath: '/countries/$id'
+      preLoaderRoute: typeof AuthenticatedCountriesCountriesIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/_customer-groups/customer-groups_/$id': {
+      id: '/_authenticated/_customer-groups/customer-groups_/$id'
+      path: '/customer-groups/$id'
+      fullPath: '/customer-groups/$id'
+      preLoaderRoute: typeof AuthenticatedCustomerGroupsCustomerGroupsIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/_customers/customers_/$id': {
+      id: '/_authenticated/_customers/customers_/$id'
+      path: '/customers/$id'
+      fullPath: '/customers/$id'
+      preLoaderRoute: typeof AuthenticatedCustomersCustomersIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/_facets/facets_/$id': {
+      id: '/_authenticated/_facets/facets_/$id'
+      path: '/facets/$id'
+      fullPath: '/facets/$id'
+      preLoaderRoute: typeof AuthenticatedFacetsFacetsIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/_option-groups/option-groups_/$id': {
+      id: '/_authenticated/_option-groups/option-groups_/$id'
+      path: '/option-groups/$id'
+      fullPath: '/option-groups/$id'
+      preLoaderRoute: typeof AuthenticatedOptionGroupsOptionGroupsIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/_orders/orders_/$id': {
+      id: '/_authenticated/_orders/orders_/$id'
+      path: '/orders/$id'
+      fullPath: '/orders/$id'
+      preLoaderRoute: typeof AuthenticatedOrdersOrdersIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/_payment-methods/payment-methods_/$id': {
+      id: '/_authenticated/_payment-methods/payment-methods_/$id'
+      path: '/payment-methods/$id'
+      fullPath: '/payment-methods/$id'
+      preLoaderRoute: typeof AuthenticatedPaymentMethodsPaymentMethodsIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/_product-variants/product-variants_/$id': {
+      id: '/_authenticated/_product-variants/product-variants_/$id'
+      path: '/product-variants/$id'
+      fullPath: '/product-variants/$id'
+      preLoaderRoute: typeof AuthenticatedProductVariantsProductVariantsIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/_products/products_/$id': {
+      id: '/_authenticated/_products/products_/$id'
+      path: '/products/$id'
+      fullPath: '/products/$id'
+      preLoaderRoute: typeof AuthenticatedProductsProductsIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/_promotions/promotions_/$id': {
+      id: '/_authenticated/_promotions/promotions_/$id'
+      path: '/promotions/$id'
+      fullPath: '/promotions/$id'
+      preLoaderRoute: typeof AuthenticatedPromotionsPromotionsIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/_roles/roles_/$id': {
+      id: '/_authenticated/_roles/roles_/$id'
+      path: '/roles/$id'
+      fullPath: '/roles/$id'
+      preLoaderRoute: typeof AuthenticatedRolesRolesIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/_sellers/sellers_/$id': {
+      id: '/_authenticated/_sellers/sellers_/$id'
+      path: '/sellers/$id'
+      fullPath: '/sellers/$id'
+      preLoaderRoute: typeof AuthenticatedSellersSellersIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/_shipping-methods/shipping-methods_/$id': {
+      id: '/_authenticated/_shipping-methods/shipping-methods_/$id'
+      path: '/shipping-methods/$id'
+      fullPath: '/shipping-methods/$id'
+      preLoaderRoute: typeof AuthenticatedShippingMethodsShippingMethodsIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/_stock-locations/stock-locations_/$id': {
+      id: '/_authenticated/_stock-locations/stock-locations_/$id'
+      path: '/stock-locations/$id'
+      fullPath: '/stock-locations/$id'
+      preLoaderRoute: typeof AuthenticatedStockLocationsStockLocationsIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/_tax-categories/tax-categories_/$id': {
+      id: '/_authenticated/_tax-categories/tax-categories_/$id'
+      path: '/tax-categories/$id'
+      fullPath: '/tax-categories/$id'
+      preLoaderRoute: typeof AuthenticatedTaxCategoriesTaxCategoriesIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/_tax-rates/tax-rates_/$id': {
+      id: '/_authenticated/_tax-rates/tax-rates_/$id'
+      path: '/tax-rates/$id'
+      fullPath: '/tax-rates/$id'
+      preLoaderRoute: typeof AuthenticatedTaxRatesTaxRatesIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/_zones/zones_/$id': {
+      id: '/_authenticated/_zones/zones_/$id'
+      path: '/zones/$id'
+      fullPath: '/zones/$id'
+      preLoaderRoute: typeof AuthenticatedZonesZonesIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/_orders/orders_/$id_/modify': {
@@ -1185,11 +1171,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedOrdersOrdersIdModifyRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/_orders/orders_/$aggregateOrderId_/seller-orders/$sellerOrderId': {
-      id: '/_authenticated/_orders/orders_/$aggregateOrderId_/seller-orders/$sellerOrderId'
-      path: '/orders/$aggregateOrderId/seller-orders/$sellerOrderId'
-      fullPath: '/orders/$aggregateOrderId/seller-orders/$sellerOrderId'
-      preLoaderRoute: typeof AuthenticatedOrdersOrdersAggregateOrderIdSellerOrdersSellerOrderIdRouteImport
+    '/_authenticated/_orders/orders_/draft/$id': {
+      id: '/_authenticated/_orders/orders_/draft/$id'
+      path: '/orders/draft/$id'
+      fullPath: '/orders/draft/$id'
+      preLoaderRoute: typeof AuthenticatedOrdersOrdersDraftIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/_products/products_/$id_/variants': {
+      id: '/_authenticated/_products/products_/$id_/variants'
+      path: '/products/$id/variants'
+      fullPath: '/products/$id/variants'
+      preLoaderRoute: typeof AuthenticatedProductsProductsIdVariantsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/_facets/facets_/$facetId/values_/$id': {
+      id: '/_authenticated/_facets/facets_/$facetId/values_/$id'
+      path: '/facets/$facetId/values/$id'
+      fullPath: '/facets/$facetId/values/$id'
+      preLoaderRoute: typeof AuthenticatedFacetsFacetsFacetIdValuesIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/_option-groups/option-groups_/$groupId/options_/$id': {
@@ -1199,11 +1199,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedOptionGroupsOptionGroupsGroupIdOptionsIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/_facets/facets_/$facetId/values_/$id': {
-      id: '/_authenticated/_facets/facets_/$facetId/values_/$id'
-      path: '/facets/$facetId/values/$id'
-      fullPath: '/facets/$facetId/values/$id'
-      preLoaderRoute: typeof AuthenticatedFacetsFacetsFacetIdValuesIdRouteImport
+    '/_authenticated/_orders/orders_/$aggregateOrderId_/seller-orders/$sellerOrderId': {
+      id: '/_authenticated/_orders/orders_/$aggregateOrderId_/seller-orders/$sellerOrderId'
+      path: '/orders/$aggregateOrderId/seller-orders/$sellerOrderId'
+      fullPath: '/orders/$aggregateOrderId/seller-orders/$sellerOrderId'
+      preLoaderRoute: typeof AuthenticatedOrdersOrdersAggregateOrderIdSellerOrdersSellerOrderIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
   }

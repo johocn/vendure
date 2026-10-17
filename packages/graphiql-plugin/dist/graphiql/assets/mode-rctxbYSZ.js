@@ -1,0 +1,2 @@
+import{C as a}from"./codemirror-gmvZQdxb.js";import{t as s,a4 as o,a5 as i,a6 as l}from"./index-C7AQbY2u.js";import{i as n}from"./mode-indent-Dvf_-b54.js";import"./codemirror-BHVpRJhx.js";const p=e=>{const t=s({eatWhitespace:r=>r.eatWhile(l),lexRules:i,parseRules:o,editorConfig:{tabSize:e.tabSize}});return{config:e,startState:t.startState,token:t.token,indent:n,electricInput:/^\s*[})\]]/,fold:"brace",lineComment:"#",closeBrackets:{pairs:'()[]{}""',explode:"()[]{}"}}};a.defineMode("graphql",p);
+//# sourceMappingURL=mode-rctxbYSZ.js.map

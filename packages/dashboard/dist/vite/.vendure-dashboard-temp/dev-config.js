@@ -51,9 +51,15 @@ const member_level_plugin_1 = require("@vendure/member-level-plugin");
 const vcash_pos_plugin_1 = require("@vendure/vcash-pos-plugin");
 const vcash_offline_plugin_1 = require("@vendure/vcash-offline-plugin");
 const checkin_plugin_1 = require("@vendure/checkin-plugin");
+const feedback_plugin_1 = require("@vendure/feedback-plugin");
+const lottery_plugin_1 = require("@vendure/lottery-plugin");
+const shopping_circle_plugin_1 = require("@vendure/shopping-circle-plugin");
+const points_mall_plugin_1 = require("@vendure/points-mall-plugin");
 const review_plugin_1 = require("@vendure/review-plugin");
 const wechat_subscribe_message_plugin_1 = require("@vendure/wechat-subscribe-message-plugin");
 const coupon_plugin_1 = require("@vendure/coupon-plugin");
+const campus_delivery_plugin_1 = require("@vendure/campus-delivery-plugin");
+const campus_jianghu_plugin_1 = require("@vendure/campus-jianghu-plugin");
 const delivery_plugin_1 = require("@vendure/delivery-plugin");
 const sales_plugin_1 = require("@vendure/sales-plugin");
 const sales_plugin_2 = require("@vendure/sales-plugin");
@@ -61,13 +67,21 @@ const marketplace_plugin_1 = require("@vendure/marketplace-plugin");
 const customer_service_plugin_1 = require("@vendure/customer-service-plugin");
 const inventory_plugin_1 = require("@vendure/inventory-plugin");
 const message_plugin_1 = require("@vendure/message-plugin");
+const notification_plugin_1 = require("@vendure/notification-plugin");
 const operations_plugin_1 = require("@vendure/operations-plugin");
 const pre_sale_plugin_1 = require("@vendure/pre-sale-plugin");
+const payment_schedule_plugin_1 = require("@vendure/payment-schedule-plugin");
+const installment_plugin_1 = require("@vendure/installment-plugin");
+const rental_plugin_1 = require("@vendure/rental-plugin");
 const live_streaming_plugin_1 = require("@vendure/live-streaming-plugin");
 const shop_plugin_1 = require("@vendure/shop-plugin");
 const pickup_plugin_1 = require("@vendure/pickup-plugin");
 const shop_template_plugin_1 = require("@vendure/shop-template-plugin");
+const diy_plugin_1 = require("@vendure/diy-plugin");
 const favorite_plugin_1 = require("@vendure/favorite-plugin");
+const tcm_clinic_plugin_1 = require("@vendure/tcm-clinic-plugin");
+const meilisearch_plugin_1 = require("@vendure/meilisearch-plugin");
+const wechat_shopping_assistant_plugin_1 = require("@vendure/wechat-shopping-assistant-plugin");
 // 本地联调默认注入 REDEMPTION_KEY（AES-GCM/HMAC 密钥，64 hex chars）
 if (!process.env.REDEMPTION_KEY) {
     process.env.REDEMPTION_KEY = 'd'.repeat(64); // dev only：生产由运维注入
@@ -137,6 +151,32 @@ DisableSellerSplitPlugin = __decorate([
     })
 ], DisableSellerSplitPlugin);
 /**
+ * 放宽进入 ArrangingPayment 的「顾客/配送方式必填」两道默认守卫（2026-10-14）：
+ * 公众号购物助手、POS 等无头下单无物流环节（服务类商品如洗车），支付由 H5 收银台直付
+ * （vshop payment.vue 的 PAYABLE_STATES 含 AddingItems，页面自行 transition）。
+ * 按默认进程标记替换（保留 checkFulfillmentStates:false 的 logistics 放宽），保留
+ * campus 起送价 / marketplace 等自定义进程；有货校验、内容校验等其余默认守卫不动。
+ * 必须置于 Marketplace/Logistics 之后、DisableSellerSplitPlugin 之前。
+ */
+let RelaxArrangingPaymentGuardPlugin = class RelaxArrangingPaymentGuardPlugin {
+};
+RelaxArrangingPaymentGuardPlugin = __decorate([
+    (0, core_1.VendurePlugin)({
+        configuration: config => {
+            const existing = (config.orderOptions.process ?? []).filter(p => !p.__isDefaultOrderProcess);
+            config.orderOptions.process = [
+                (0, core_1.configureDefaultOrderProcess)({
+                    checkFulfillmentStates: false,
+                    arrangingPaymentRequiresCustomer: false,
+                    arrangingPaymentRequiresShipping: false,
+                }),
+                ...existing,
+            ];
+            return config;
+        },
+    })
+], RelaxArrangingPaymentGuardPlugin);
+/**
  * Config settings used during development
  */
 exports.devConfig = {
@@ -201,7 +241,10 @@ exports.devConfig = {
     },
     dbConnectionOptions: {
         synchronize: false,
-        logging: false,
+        // SQL_LOG=1 时直落 simple-console（ConnectionModule 会把 logging 包进 TypeOrmLogger，
+        // 其 query 输出走 Logger.debug 被生产 logLevel 滤掉，故需显式 logger 绕过）
+        logging: process.env.SQL_LOG === '1' ? ['query', 'error'] : false,
+        logger: process.env.SQL_LOG === '1' ? 'simple-console' : undefined,
         migrations: [path_1.default.join(devServerDir, 'migrations/*.ts')],
         ...getDbConfig(),
     },
@@ -275,6 +318,13 @@ exports.devConfig = {
             // 店铺装修字段（对齐生产 + 装修需要，Task 6）
             { name: 'displayTemplate', type: 'string', defaultValue: 'standard', public: true },
             { name: 'themeId', type: 'string', defaultValue: 'taobao-orange', public: true },
+            // 余额提现起提金额（分，int nullable）：null/<=0 回退后端默认 1000（¥10）
+            // 注意：分销插件已占用 Channel.minWithdrawalAmount（分销佣金提现，默认 10000），此处须用独立名
+            { name: 'balanceMinWithdrawalAmount', type: 'int', nullable: true, public: true,
+                label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '余额提现起提金额(分)' }] },
+            // 抽奖每次固定消耗（积分，int nullable）：null = 按所中奖品 consume（现状）；>=0 = 每次固定扣该值
+            { name: 'lotteryFixedCost', type: 'int', nullable: true, public: true,
+                label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '抽奖每次固定消耗(积分)' }] },
             { name: 'shopName', type: 'string', public: true },
             { name: 'shopLogo', type: 'string', public: true },
             { name: 'shopIntro', type: 'string', public: true },
@@ -370,6 +420,9 @@ exports.devConfig = {
         shop_plugin_1.ShopPlugin.init({}),
         // 风格模板库与全局配置（四层风格体系后台配置）。app 决定本实例模板库端：nshop/vshop，缺省 nshop
         shop_template_plugin_1.ShopTemplatePlugin.init({ app: process.env.APP ?? 'nshop' }),
+        // DIY 商品：两层素材库 + 玩法模板 + 方案三链路（demo/quote/order）
+        // 保持位于设置 orderItemPriceCalculationStrategy 的插件/配置之后（diy 价格包装器委托 original）
+        diy_plugin_1.DiyPlugin.init({ app: process.env.APP ?? 'nshop' }),
         pickup_plugin_1.PickupPlugin.init({}),
         ...((process.env.ALIPAY_NOTIFY_URL || process.env.DEV_BYPASS_ALIPAY === 'true') ? [alipay_plugin_1.AlipayPlugin.init({
                 notifyUrl: process.env.ALIPAY_NOTIFY_URL || '',
@@ -386,6 +439,14 @@ exports.devConfig = {
             notifyUrl: process.env.WECHATPAY_NOTIFY_URL || '',
             devBypass: process.env.DEV_BYPASS_WECHATPAY === 'true',
             devBypassOpenid: 'dev_test_openid',
+            // 分端分支付方案：额外注册的支付方法 code（handler 同 wechatpay）
+            extraHandlerCodes: (process.env.WECHATPAY_EXTRA_HANDLER_CODES || '')
+                .split(',').map(s => s.trim()).filter(Boolean),
+            // 回调验签凭证路由：回调 Host → PaymentMethod code（JSON）
+            // 例：{"www.yourbao.cn":"wechatpay","www.youshop.cn":"wechatpay-youshop-jsapi"}
+            callbackMethodMap: process.env.WECHATPAY_CALLBACK_METHOD_MAP
+                ? JSON.parse(process.env.WECHATPAY_CALLBACK_METHOD_MAP)
+                : undefined,
         }),
         ...(process.env.OSS_ACCESS_KEY_ID ? [oss_plugin_1.OssPlugin.init({
                 region: process.env.OSS_REGION ?? '',
@@ -393,19 +454,25 @@ exports.devConfig = {
                 accessKeySecret: process.env.OSS_ACCESS_KEY_SECRET ?? '',
                 bucket: process.env.OSS_BUCKET ?? '',
             })] : []),
-        ...((process.env.SMS_ACCESS_KEY_ID || process.env.DEV_BYPASS_SMS === 'true') ? [phone_auth_plugin_1.PhoneAuthPlugin.init({
-                accessKeyId: process.env.SMS_ACCESS_KEY_ID || '',
-                accessKeySecret: process.env.SMS_ACCESS_KEY_SECRET ?? '',
-                signName: process.env.SMS_SIGN_NAME ?? '',
-                templateCode: process.env.SMS_TEMPLATE_CODE ?? '',
-                devBypass: process.env.DEV_BYPASS_SMS === 'true',
-                devBypassCode: '123456',
-            })] : []),
+        // PhoneAuthPlugin 无条件注册：保证发码/手机注册/重置密码 schema 与手机登录策略始终存在；
+        // 未配置 SMS 凭据时发码仅落库不真实发送（SmsService 内建兜底，不会崩溃）
+        phone_auth_plugin_1.PhoneAuthPlugin.init({
+            accessKeyId: process.env.SMS_ACCESS_KEY_ID || '',
+            accessKeySecret: process.env.SMS_ACCESS_KEY_SECRET ?? '',
+            signName: process.env.SMS_SIGN_NAME ?? '',
+            templateCode: process.env.SMS_TEMPLATE_CODE ?? '',
+            devBypass: process.env.DEV_BYPASS_SMS === 'true',
+            devBypassCode: '123456',
+            // 可选：配置后验证码/限流状态存 Redis（多实例部署共享），未配置走进程内存
+            redisUrl: process.env.PHONE_AUTH_REDIS_URL || undefined,
+        }),
         ...((process.env.WECHAT_AUTH_APP_ID || process.env.DEV_BYPASS_WECHAT === 'true') ? [wechat_auth_plugin_1.WechatAuthPlugin.init({
                 appId: process.env.WECHAT_AUTH_APP_ID || 'dev_test_app_id',
                 appSecret: process.env.WECHAT_AUTH_APP_SECRET || 'dev_test_app_secret',
                 miniProgramAppId: process.env.WECHAT_AUTH_MINI_APP_ID || '',
                 miniProgramAppSecret: process.env.WECHAT_AUTH_MINI_APP_SECRET || '',
+                token: process.env.WECHAT_MESSAGE_TOKEN || '',
+                encodingAESKey: process.env.WECHAT_MESSAGE_AES_KEY || '',
                 devBypass: process.env.DEV_BYPASS_WECHAT === 'true',
                 devBypassOpenid: 'dev_test_openid',
             })] : []),
@@ -425,6 +492,13 @@ exports.devConfig = {
             minWithdrawalAmount: 10000,
             settlementDays: 7,
         }),
+        // 医生工作台 SSO 桥接：baseUrl 指向 zhao-sso 中心（SSO_MOCK=true 时支持 mock-<手机号> 本地联调登录）
+        tcm_clinic_plugin_1.TcmClinicPlugin.init({
+            sso: {
+                baseUrl: process.env.ZHAO_SSO_BASE_URL || '',
+                mock: process.env.SSO_MOCK === 'true',
+            },
+        }),
         eco_plugin_1.EcoPlugin.init(),
         product_survey_plugin_1.ProductSurveyPlugin.init(),
         ...(process.env.REDIS_URL ? [redis_stock_plugin_1.RedisStockPlugin.init({
@@ -436,12 +510,23 @@ exports.devConfig = {
             })] : []),
         invoice_pdf_plugin_1.InvoicePdfPlugin.init(),
         recharge_card_plugin_1.RechargeCardPlugin.init({ defaultExpiresMonths: 12 }),
-        after_sales_plugin_1.AfterSalesPlugin.init(),
+        after_sales_plugin_1.AfterSalesPlugin.init({
+            afterSalesWindowHours: 24, // 外卖售后窗口：送达后 24h
+            afterSalesAutoApproveHours: 48, // Pending 48h 未审自动同意并退款
+            afterSalesRefundAutoRetry: 1, // 退款失败自动重试 1 次
+            allowedOrderStates: ['PaymentSettled', 'Delivered'], // 外卖单全程 PaymentSettled，确认收货后 Delivered
+            requireOrderCustomField: { field: 'deliveryStatus', value: 'delivered' }, // 仅骑手送达后可售后
+        }),
         member_level_plugin_1.MemberLevelPlugin.init(),
         // 门店收银 POS：会员价依赖 MemberLevelPlugin；离线同步插件内部复用 VcashPosPlugin（同库/同渠道）
         vcash_pos_plugin_1.VcashPosPlugin,
         vcash_offline_plugin_1.VcashOfflinePlugin,
         checkin_plugin_1.CheckinPlugin.init(),
+        feedback_plugin_1.FeedbackPlugin.init(),
+        lottery_plugin_1.LotteryPlugin.init(),
+        shopping_circle_plugin_1.ShoppingCirclePlugin.init(),
+        // 积分商城：商品收藏 + 积分兑换（依赖 MemberLevelPlugin 的积分账户，可选接 WechatpayPlugin 混合价支付）
+        points_mall_plugin_1.PointsMallPlugin.init(),
         review_plugin_1.ReviewPlugin.init(),
         // 商品收藏 / 店铺关注（toggle 语义，依赖 ShopPlugin 的 Shop 实体）
         favorite_plugin_1.FavoritePlugin.init(),
@@ -455,6 +540,16 @@ exports.devConfig = {
             wsSecret: process.env.LIVE_WS_SECRET || 'dev-live-secret',
         }),
         delivery_plugin_1.DeliveryPlugin.init(),
+        // 校园配送（分区/宿舍楼/履约配置 + 骑手入驻/抢单大厅/送达分成），无 init，直接挂类
+        campus_delivery_plugin_1.CampusDeliveryPlugin,
+        // 校园江湖：接 Strapi 文案源（h.joho.cn）。baseUrl/token 走 env，未配置或不可达时优雅回退实体内联文案
+        campus_jianghu_plugin_1.CampusJianghuPlugin.init({
+            contentApi: {
+                baseUrl: process.env.JIANGHU_STRAPI_URL || 'https://h.joho.cn',
+                token: process.env.JIANGHU_STRAPI_TOKEN,
+                collection: 'jianghu-event-copies',
+            },
+        }),
         sales_plugin_1.SalesPlugin.init(),
         marketplace_plugin_1.MarketplacePlugin.init({}),
         // LogisticsPlugin 必须在 MarketplacePlugin 之后注册：两者都会设置 stockLocationStrategy，
@@ -482,9 +577,40 @@ exports.devConfig = {
         inventory_plugin_1.InventoryPlugin.init(),
         operations_plugin_1.OperationsPlugin.init(),
         message_plugin_1.MessagePlugin.init(),
+        notification_plugin_1.NotificationPlugin.init(),
         // 预售/定金预售：两阶段支付（定金→尾款）+ 全款预售 + 分档定价 + 到货释放库存
         pre_sale_plugin_1.PreSalePlugin.init({}),
+        payment_schedule_plugin_1.PaymentSchedulePlugin.init({}),
+        installment_plugin_1.InstallmentPlugin.init({}),
+        rental_plugin_1.RentalPlugin.init({}),
+        // MeiliSearch 统一知识库：商品域直推 kb-zh/kb-en（索引前缀 kb，语言拆索引）。
+        // 全部读 env（Task 6）；ZHAO_SEARCH_REINDEX_URL 指向 strapi zhao-search 管理路由，
+        // 插件 admin 路由挂载规则为 /<pluginName><route.path>，Task 9 e2e 校准。
+        meilisearch_plugin_1.MeiliSearchPlugin.init({
+            host: process.env.MEILI_HOST ?? 'http://127.0.0.1:7700',
+            adminKey: process.env.MEILI_ADMIN_KEY ?? '',
+            indexPrefix: 'kb',
+            locales: ['zh', 'en'],
+            reindexUrl: process.env.ZHAO_SEARCH_REINDEX_URL,
+            sharedSecret: process.env.ZHAO_SEARCH_SHARED_SECRET,
+        }),
+        // 微信公众号购物助手：文本消息搜索商品 → 客服消息卡片回复 → 回复编号下单 → H5 收银台支付。
+        // 依赖 WechatAuthPlugin（消息回调）与 MeiliSearchPlugin（商品索引），随 WechatAuthPlugin 条件装配。
+        // outboundMode=echo 时出站消息仅打日志（本地冒烟，不调微信 API）。
+        ...((process.env.WECHAT_AUTH_APP_ID || process.env.DEV_BYPASS_WECHAT === 'true') ? [wechat_shopping_assistant_plugin_1.WechatShoppingAssistantPlugin.init({
+                storefrontUrl: process.env.PUBLIC_STOREFRONT_URL || '',
+                assetBaseUrl: process.env.PUBLIC_ASSET_URL || '',
+                // hash 路由前端（如 vshop uni-app H5）的真实页面地址模板；未配置走 history 路由默认拼装
+                productUrlTemplate: process.env.PUBLIC_PRODUCT_URL_TEMPLATE || '',
+                loginUrlTemplate: process.env.PUBLIC_LOGIN_URL_TEMPLATE || '',
+                payUrlTemplate: process.env.PUBLIC_PAY_URL_TEMPLATE || '',
+                searchLocale: 'zh',
+                sessionTtlMinutes: 30,
+                searchLimit: 5,
+                outboundMode: process.env.WECHAT_ASSISTANT_OUTBOUND_MODE === 'echo' ? 'echo' : 'api',
+            })] : []),
         // 必须最后注册：覆盖 MarketplacePlugin 的 Seller 拆分，根治租户渠道商品的幽灵配送子单
+        RelaxArrangingPaymentGuardPlugin,
         DisableSellerSplitPlugin,
     ],
 };

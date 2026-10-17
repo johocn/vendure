@@ -144,6 +144,18 @@ type Query {
   paymentTemplate(id: ID!): PaymentTemplate
   roomTemplates: [RoomTemplate!]!
   roomTemplate(id: ID!): RoomTemplate
+
+  """某月已建房量行（month = YYYY-MM）；未建行回退 hotelRoomConfig.totalRooms，由前端兜底展示"""
+  hotelRoomDays(variantId: ID!, month: String!): [HotelRoomDay!]!
+
+  """逐晚房态（占用已扣），[from, to] 含两端；房量日历「剩 N」用"""
+  hotelAvailability(variantId: ID!, from: String!, to: String!): [HotelAvailabilityDay!]!
+
+  """房型全部房价方案（含停用），按 id 升序"""
+  hotelRatePlans(variantId: ID!): [HotelRatePlan!]!
+
+  """预订单列表（filter 可选，id 倒序，上限 200）"""
+  hotelBookings(filter: HotelBookingFilterInput): [HotelBooking!]!
   permissionCatalog: [PermissionCatalogGroup!]
   tenants(options: ChannelListOptions = null): ChannelList!
   tenant(id: ID!): Channel
@@ -199,6 +211,9 @@ type Query {
   stocktakeResolveCode(taskId: ID!, code: String!): StocktakeScanHit!
   stocktakeStats(taskId: ID!): StocktakeStats!
   stocktakeExport(taskId: ID!, kind: String!): StocktakeExportFile!
+  scopedOrders(filter: ScopedOrderFilterInput, take: Int, skip: Int): ScopedOrderList!
+  scopedOrderCounts(filters: [ScopedOrderFilterInput!]): [Int!]!
+  newOrderSignal(since: DateTime!): NewOrderSignal!
   shops(options: ShopListOptions): [Shop!]!
   shopById(id: ID!): Shop
   myShop: Shop!
@@ -214,8 +229,18 @@ type Query {
   templateReferences(id: ID!): [TemplateReference!]!
   templateMergedPreview(app: String!, templateId: ID, overrides: JSON): MergedPreview!
   palettePresets: JSON!
+  diyCategories(app: String): [DiyCategory!]!
+  diyCategory(id: ID!): DiyCategory
+  diyMaterials(app: String, skip: Int, take: Int): [DiyMaterial!]!
+  diyMaterial(id: ID!): DiyMaterial
+  diyTemplates(app: String): [DiyTemplate!]!
+  diyTemplate(id: ID!): DiyTemplate
+  diyPlans(app: String, status: String, skip: Int, take: Int): DiyPlanList!
   myPickupOrders(options: PickupListOptions): PickupRedemptionList!
   pickupRedemptions(options: PickupListOptions): PickupRedemptionList!
+  wechatCurrentMenu: JSON
+  wechatFans(nextOpenid: String): JSON
+  wechatTemplates: JSON
   invoices(options: InvoiceListOptions): InvoiceList!
   invoice(id: ID!): Invoice
   exportInvoicesCsv(options: InvoiceListOptions): String!
@@ -226,11 +251,28 @@ type Query {
   distributors(options: DistributorListOptions): DistributorList!
   commissionRecords(options: CommissionRecordListOptions): CommissionRecordList!
   withdrawalRequests(options: WithdrawalRequestListOptions): WithdrawalRequestList!
+  clinics(options: TcmClinicListOptions): TcmClinicList!
+  medicalRecords(options: MedicalRecordListOptions): MedicalRecordList!
+  auditLogs(options: AuditLogListOptions): AuditLogList!
+  wellnessPlans(options: TcmWellnessPlanListOptions): TcmWellnessPlanList!
+  followUpTasks(options: TcmFollowUpTaskListOptions): TcmFollowUpTaskList!
+  myStaff: [TcmClinicStaff!]!
+  patientProfiles(options: TcmPatientProfileListOptions): TcmPatientProfileList!
+  patientProfile(id: ID!): TcmPatientProfileView
+  encounters(options: TcmEncounterListOptions): TcmEncounterList!
+  encounter(id: ID!): TcmEncounter
+  medicalRecord(id: ID!): MedicalRecordView
+  wellnessPlan(id: ID!): TcmWellnessPlanDetailView
   rechargeCards(options: RechargeCardAdminListOptions = null): RechargeCardAdminList!
   rechargeCardBatches(options: RechargeCardBatchAdminListOptions = null): RechargeCardBatchAdminList!
   customerBalances(options: RechargeCardListOptions): CustomerBalanceList!
   customerBalanceTransactions(customerId: ID!, options: BalanceTransactionListAdminListOptions = null): BalanceTransactionListAdmin!
+  balanceWithdrawals(options: BalanceWithdrawalListOptions): BalanceWithdrawalList!
   afterSalesRequests(options: AfterSalesRequestAdminListOptions): AfterSalesRequestAdminList!
+  afterSalesRequestAdmin(id: ID!): AfterSalesRequestAdmin
+  afterSalesReturnAddress: String!
+  afterSalesStats(from: String!, to: String!): AfterSalesStats!
+  afterSalesMessages(id: ID!, options: AfterSalesMessageAdminListOptions): AfterSalesMessageAdminList!
   memberInfo(customerId: ID!): MemberInfo!
   pointsHistory(customerId: ID!, options: PointsHistoryListOptions): PointsHistoryList!
   members(options: JSON): MemberList!
@@ -258,6 +300,13 @@ type Query {
   topProducts(startDate: String!, endDate: String!, limit: Int, sortBy: String): TopProductReport!
   syncProducts(since: DateTime!, limit: Int!): SyncProductsResult!
   syncMembers(since: DateTime!, limit: Int!): SyncMembersResult!
+  faqEntries(options: FaqEntryListOptions): FaqEntryList!
+  feedbacks(options: FeedbackListOptions): FeedbackList!
+  lotteryPrizes(options: LotteryPrizeListOptions): LotteryPrizeList!
+  lotteryRecords(options: LotteryRecordListOptions): LotteryRecordList!
+  circlePosts(options: CirclePostListOptions): CirclePostList!
+  pointsProductsAdmin(options: PointsProductAdminListOptions): PointsProductAdminList!
+  pointsOrdersAdmin(options: PointsOrderAdminListOptions): PointsOrderAdminList!
   reviews(options: ReviewListOptions): ReviewList!
   review(id: ID!): Review
   reviewStats(productId: ID!): ReviewStats!
@@ -272,6 +321,7 @@ type Query {
   inStoreBillQuote(code: String!, originalAmount: Int): InStoreBillQuote!
   inStoreBills(options: InStoreBillListOptions): InStoreBillList!
   inStoreBillSummary(options: InStoreBillSummaryOptions): InStoreBillSummary!
+  inStorePendingCoupons(options: InStorePendingCouponListOptions): InStorePendingCouponList!
   inStoreCustomerCoupons(customerId: ID!): [CustomerCoupon!]!
   couponBundles(options: CouponBundleListOptions): CouponBundleList!
   couponBundle(id: ID!): CouponBundle
@@ -282,6 +332,20 @@ type Query {
   myPermissions: MyPermissionsResult!
   myDeliveries(status: String): [Order!]!
   allDeliveries(status: String): [Order!]!
+  campusZones: [CampusZone!]!
+  campusBuildings(zoneId: ID): [CampusBuilding!]!
+  campusConfig: CampusFulfillmentConfig!
+  campusSlots: [DeliverySlot!]!
+  riderApplications(status: String!, skip: Int, take: Int): RiderApplicationList!
+  campusDispatchBoard: CampusDispatchBoard!
+  campusStoreConfigs: [CampusStoreConfigWithChannel!]!
+  campusMerchantBoard: CampusMerchantBoard!
+  riderWithdrawals(status: String, skip: Int, take: Int): [RiderWithdrawalRequest!]!
+  paymentTimeoutTasks(status: String, type: String, from: DateTime, to: DateTime, skip: Int, take: Int): PaymentTimeoutTaskList!
+  paymentTimeoutStats: PaymentTimeoutStats!
+  jianghuListProfiles(cursor: String, limit: Int): [JianghuProfile!]!
+  jianghuListTasks(status: String, limit: Int): [JianghuTask!]!
+  jianghuListClues(status: String, limit: Int): [JianghuClue!]!
   mySales(state: String, page: Int, pageSize: Int): [Order!]!
   allSales(state: String, staffId: String, page: Int, pageSize: Int): [Order!]!
   salesOrder(id: ID!): Order
@@ -323,6 +387,10 @@ type Query {
   dashboardOverview(range: String!): DashboardMetrics!
   salesTrend(days: Int!): [SalesTrendPoint!]!
   categoryTop(days: Int!): [CategoryTopItem!]!
+  repurchaseRate(days: Int!): Float!
+  reviewOverview: ReviewOverview!
+  productSalesTop(days: Int!, take: Int): [ProductSalesItem!]!
+  riderEfficiency(days: Int!, take: Int): [RiderEfficiencyItem!]!
   contentItems(type: String, position: String, enabled: Boolean, page: Int, pageSize: Int): ContentItemList!
   contentItem(id: ID!): ContentItem
   marketingOverview: MarketingOverview!
@@ -333,8 +401,17 @@ type Query {
   messages(options: MessageListOptions = null): MessageList!
   message(id: ID!): Message
   messageDeliveryStats(id: ID!): MessageDeliveryStats!
+  adminInbox: InboxMessageList!
+  adminInboxUnreadCount: Int!
   preSaleActivities(options: PreSaleActivityListOptions): PreSaleActivityList!
   preSaleActivity(id: ID!): PreSaleActivity
+  paymentSchedules(options: PaymentScheduleListOptions): PaymentScheduleList!
+  adminPaymentSchedule(id: ID!): PaymentSchedule
+  installmentPlans(options: InstallmentPlanListOptions): InstallmentPlanList!
+  installmentPlan(id: ID!): InstallmentPlan
+  rentalPlans(options: RentalPlanListOptions): RentalPlanList!
+  rentalPlan(id: ID!): RentalPlan
+  meiliIndexStats: [MeiliIndexStatus!]!
 }
 
 type Mutation {
@@ -896,6 +973,30 @@ type Mutation {
   updateRoomTemplate(id: ID!, input: RoomTemplateInput!): RoomTemplate!
   deleteRoomTemplate(id: ID!): Boolean!
   applyRoomTemplate(variantId: ID!, templateId: ID!): Boolean!
+
+  """upsert 单日房量；totalRooms/closed 可选只更新传入字段"""
+  setHotelRoomDay(variantId: ID!, date: String!, totalRooms: Int, closed: Boolean): HotelRoomDay!
+
+  """批量 upsert [from, to] 含两端；weekdays 0-6 可选过滤（0=周日）；返回写入行数"""
+  batchSetHotelRoomDays(variantId: ID!, from: String!, to: String!, totalRooms: Int, closed: Boolean, weekdays: [Int!]): Int!
+
+  """新建方案（code 行内唯一）；校验失败抛错"""
+  createHotelRatePlan(variantId: ID!, input: HotelRatePlanInput!): HotelRatePlan!
+
+  """
+  更新方案（partial：未传字段沿用现值；memberOnly/dateFrom/dateTo/cancelPolicyOverride 显式 null = 清除）
+  """
+  updateHotelRatePlan(id: ID!, input: HotelRatePlanInput!): HotelRatePlan!
+  deleteHotelRatePlan(id: ID!): Boolean!
+
+  """到店核销（凭 8 位入住码）；仅 confirmed 且当日 ∈ [checkIn, checkOut)，否则抛错"""
+  hotelBookingCheckIn(code: String!): HotelBooking!
+
+  """完成离店（仅已入住 checkedIn）"""
+  hotelBookingComplete(id: ID!): HotelBooking!
+
+  """强制取消（pendingDeposit/confirmed → cancelled 并释放锁房；退款走售后单）"""
+  hotelBookingForceCancel(id: ID!, reason: String): HotelBooking!
   createTenant(input: CreateTenantInput!): Channel!
   updateTenant(id: ID!, input: UpdateTenantInput!): Channel!
   setTenantEnabled(id: ID!, enabled: Boolean!): Channel!
@@ -926,6 +1027,8 @@ type Mutation {
   tenantLinkMember(channelId: ID!, administratorId: ID!, roleIds: [ID!]!, displayName: String, phone: String, remark: String): TenantMember!
   myLinkMember(administratorId: ID!, roleIds: [ID!]!, displayName: String, phone: String, remark: String): TenantMember!
   myResetTenantMemberPassword(id: ID!): Boolean!
+  setTenantMemberRedeemProfiles(id: ID!, shippingProfileIds: [ID!]!): TenantMember!
+  mySetTenantMemberRedeemProfiles(id: ID!, shippingProfileIds: [ID!]!): TenantMember!
   tenantChangeMyPassword(oldPassword: String, newPassword: String!): Boolean!
   myUpdateChannelCustomFields(input: JSON!): JSON!
   adminCreditWallet(amount: Int!): Wallet!
@@ -1003,7 +1106,23 @@ type Mutation {
   copyShopTemplate(id: ID!): ShopTemplate!
   updateShopGlobalConfig(input: UpdateShopGlobalConfigInput!): ShopGlobalConfig!
   restoreTemplateVersion(id: ID!, version: Int!): ShopTemplate!
+  createDiyCategory(input: DiyCategoryInput!): DiyCategory!
+  updateDiyCategory(input: DiyCategoryInput!): DiyCategory!
+  deleteDiyCategory(id: ID!): Boolean!
+  createDiyMaterial(input: DiyMaterialInput!): DiyMaterial!
+  updateDiyMaterial(input: DiyMaterialInput!): DiyMaterial!
+  deleteDiyMaterial(id: ID!): Boolean!
+  copyDiyMaterial(id: ID!): DiyMaterial!
+  diyMaterialsImport(input: JSON!): Int!
+  createDiyTemplate(input: DiyTemplateInput!): DiyTemplate!
+  updateDiyTemplate(input: DiyTemplateInput!): DiyTemplate!
+  deleteDiyTemplate(id: ID!): Boolean!
+  publishDiyTemplate(id: ID!): DiyTemplate!
+  copyDiyTemplate(id: ID!): DiyTemplate!
   claimPickupByShop(code: String!, collect: Boolean): PickupRedemption!
+  wechatMenuPublish(menu: JSON!): JSON!
+  wechatMenuDelete: JSON!
+  wechatTemplateSend(input: JSON!): JSON!
   issueInvoice(id: ID!): Invoice!
   reverseInvoice(id: ID!, reason: String!, reverseAmount: Int): Invoice!
   voidInvoice(id: ID!, reason: String!): Invoice!
@@ -1020,16 +1139,45 @@ type Mutation {
   approveWithdrawal(id: ID!): WithdrawalRequest!
   rejectWithdrawal(id: ID!): WithdrawalRequest!
   markWithdrawalPaid(id: ID!): WithdrawalRequest!
+  createClinic(input: TcmClinicInput!): TcmClinic!
+  createClinicStaff(input: TcmClinicStaffInput!): TcmClinicStaff!
+  createPatientProfile(input: TcmPatientProfileInput!): TcmPatientProfile!
+  createEncounter(input: TcmEncounterInput!): TcmEncounter!
+  startEncounter(id: ID!): TcmEncounter!
+  completeEncounter(id: ID!): TcmEncounter!
+  createMedicalRecord(input: MedicalRecordInput!): MedicalRecordView!
+  updateMedicalRecord(id: ID!, input: UpdateMedicalRecordInput!): MedicalRecordView!
+  createWellnessPlan(input: TcmWellnessPlanInput!): TcmWellnessPlan!
+  transitionWellnessPlan(id: ID!, to: WellnessPlanStatus!): TcmWellnessPlan!
+  addPlanItem(input: TcmPlanItemInput!): TcmPlanItem!
+  createFollowUp(input: TcmFollowUpTaskInput!): TcmFollowUpTask!
+  completeFollowUp(id: ID!, followUpEncounterId: Int): TcmFollowUpTask!
+  cancelFollowUp(id: ID!): TcmFollowUpTask!
   generateInvoicePdf(orderId: ID!): InvoicePdfResult!
   createRechargeCardBatch(input: CreateRechargeBatchInput!): RechargeCardBatchAdmin!
   freezeRechargeCard(id: ID!): RechargeCardAdmin!
   unfreezeRechargeCard(id: ID!): RechargeCardAdmin!
   adminAdjustBalance(input: AdminAdjustBalanceInput!): CustomerBalanceItem!
+  approveBalanceWithdrawal(id: ID!, remark: String): BalanceWithdrawalRequest!
+  rejectBalanceWithdrawal(id: ID!, remark: String): BalanceWithdrawalRequest!
+  markBalanceWithdrawalPaid(id: ID!): BalanceWithdrawalRequest!
   approveAfterSalesRequest(id: ID!): AfterSalesRequestAdmin!
   rejectAfterSalesRequest(id: ID!, reason: String!): AfterSalesRequestAdmin!
   confirmReturnReceived(id: ID!, receivedQuantity: Int): AfterSalesRequestAdmin!
   processAfterSalesRefund(id: ID!): AfterSalesRequestAdmin!
   retryAfterSalesRefund(id: ID!): AfterSalesRequestAdmin!
+  batchApproveAfterSalesRequests(ids: [ID!]!): [AfterSalesBatchResult!]!
+  batchRejectAfterSalesRequests(ids: [ID!]!, reason: String!): [AfterSalesBatchResult!]!
+  updateAfterSalesReturnAddress(address: String!): Boolean!
+
+  """商家回复售后协商留言（Closed 后禁言；图片 ≤3 张、正文 ≤1000 字）"""
+  replyAfterSalesMessage(id: ID!, content: String!, images: [String!]): AfterSalesMessageAdmin!
+
+  """换货发货：Received → ExchangeShipped（仅 exchange 类型）"""
+  exchangeShipAfterSalesRequest(id: ID!, trackingNo: String!, carrier: String!): AfterSalesRequestAdmin!
+
+  """平台仲裁：Appealed → Approved（同意，refund_only 即退款）| Closed（维持拒绝，note 必填）"""
+  arbitrateAfterSales(id: ID!, approve: Boolean!, note: String): AfterSalesRequestAdmin!
   adjustPoints(customerId: ID!, amount: Int!, remark: String): MemberInfo!
   adjustMemberGrowth(customerId: ID!, amount: Int!, source: String): MemberInfo!
   updateLevelConfig(input: UpdateLevelConfigInput!): LevelConfig!
@@ -1064,6 +1212,20 @@ type Mutation {
   syncOrders(input: SyncOrdersInput!): SyncOrdersResult!
   syncPayments(input: SyncPaymentsInput!): SyncPaymentsResult!
   syncSessions(input: SyncSessionsInput!): SyncSessionsResult!
+  saveFaq(input: SaveFaqInput!): FaqEntry!
+  deleteFaq(id: ID!): Boolean!
+  updateFeedbackStatus(id: ID!, status: String!): Feedback!
+  replyFeedback(id: ID!, reply: String!, resolve: Boolean): Feedback!
+  createLotteryPrize(input: CreateLotteryPrizeInput!): LotteryPrize!
+  updateLotteryPrize(input: UpdateLotteryPrizeInput!): LotteryPrize!
+  deleteLotteryPrize(id: ID!): Boolean!
+  updateCirclePost(input: UpdateCirclePostInput!): CirclePost!
+  createPointsProduct(input: CreatePointsProductInput!): PointsProductAdmin!
+  updatePointsProduct(input: UpdatePointsProductInput!): PointsProductAdmin!
+  deletePointsProduct(id: ID!): Boolean!
+  markPointsOrderPaid(id: ID!): PointsOrderAdmin!
+  markPointsOrderShipped(id: ID!, trackingNo: String): PointsOrderAdmin!
+  markPointsOrderCompleted(id: ID!): PointsOrderAdmin!
   replyReview(id: ID!, reply: String!): Review!
   approveReview(id: ID!): Review!
   rejectReview(id: ID!): Review!
@@ -1090,11 +1252,37 @@ type Mutation {
   stopLiveRoom(id: ID!, replayUrl: String): LiveRoom!
   addLiveRoomProduct(roomId: ID!, input: AddLiveRoomProductInput!): LiveRoom!
   removeLiveRoomProduct(roomId: ID!, productId: ID!): LiveRoom!
+  setLiveRoomPlatforms(roomId: ID!, platforms: [LiveRoomPlatformInput!]!): LiveRoom!
   startDelivery(orderId: ID!): Order!
   markDelivered(orderId: ID!, photos: [String!]!, note: String): Order!
   confirmPickupHandover(orderId: ID!): Order!
   reportException(orderId: ID!, type: String!, photos: [String!]!, note: String): Order!
   reassignDelivery(orderId: ID!, newStaffId: ID!): Order!
+  campusCreateZone(name: String!, fee: Int!): CampusZone!
+  campusCreateBuilding(name: String!, zoneId: ID!, detail: String): CampusBuilding!
+  campusUpdateConfig(input: CampusFulfillmentConfigInput!): CampusFulfillmentConfig!
+  campusCreateSlot(input: DeliverySlotInput!): DeliverySlot!
+  campusUpdateSlot(id: ID!, input: DeliverySlotUpdateInput!): DeliverySlot!
+  campusSetRiderStatus(customerId: ID!, status: String!): CampusSetRiderStatusResult!
+  campusAssignOrder(orderId: ID!, riderCustomerId: ID!): CampusDispatchResult!
+  campusBackToHall(orderId: ID!): CampusDispatchResult!
+  campusHandleException(orderId: ID!, action: String!, amount: Int, couponTemplateId: ID, note: String): CampusHandleExceptionResult!
+  campusEnsureErrandProducts: CampusErrandProductResult!
+  campusUpdateStoreConfig(channelId: ID!, input: CampusStoreConfigInput!): CampusStoreConfigWithChannel!
+  campusEnsureDefaultShippingProfile(channelId: ID!): CampusEnsureProfileResult!
+  campusMerchantAcceptOrder(orderId: ID!): CampusMerchantOpResult!
+  campusMerchantCookingDone(orderId: ID!): CampusMerchantOpResult!
+  campusMerchantSetPaused(paused: Boolean!): CampusMerchantOpResult!
+  approveRiderWithdraw(id: ID!, remark: String): RiderWithdrawalRequest!
+  rejectRiderWithdraw(id: ID!, remark: String): RiderWithdrawalRequest!
+  executePaymentTimeoutTask(id: ID!): PaymentTimeoutTask!
+  resendPaymentTimeoutRemind(taskId: ID!): Boolean!
+  runPaymentTimeoutCompensation: Int!
+  jianghuCreateTask(input: JianghuTaskInput!): JianghuTask!
+  jianghuAuditIntel(id: ID!, approve: Boolean!): JianghuIntel!
+  jianghuPenalize(customerId: ID!, level: String!): JianghuProfile!
+  jianghuCreateEvent(input: JianghuEventInput!): JianghuEvent!
+  jianghuAuditClue(id: ID!, approve: Boolean!): JianghuClue!
   salesCreateOrder(input: SalesCreateOrderInput!): Order!
   modifyOrderLinePrice(orderLineId: ID!, newPrice: Int!): Order!
   cancelSalesOrder(orderId: ID!, reason: String): Order!
@@ -1157,10 +1345,23 @@ type Mutation {
   updateMessage(id: ID!, input: UpdateMessageInput!): Message!
   deleteMessage(id: ID!): Boolean!
   sendMessage(id: ID!): Message!
+  markAdminInboxRead(id: ID!): InboxMessage!
   createPreSaleActivity(input: CreatePreSaleActivityInput!): PreSaleActivity!
   updatePreSaleActivity(input: UpdatePreSaleActivityInput!): PreSaleActivity!
   deletePreSaleActivity(id: ID!): Boolean!
   deliverPreSale(id: ID!): PreSaleActivity!
+  openTailWindow(scheduleId: ID!): PaymentSchedule!
+  confirmSellerBreach(scheduleId: ID!): PaymentSchedule!
+  confirmCodReceived(orderId: ID!): PaymentSchedule!
+  releaseRentalDeposit(orderId: ID!): PaymentSchedule!
+  runScheduleScan: PaymentScheduleScanResult!
+  createInstallmentPlan(input: CreateInstallmentPlanInput!): InstallmentPlan!
+  updateInstallmentPlan(input: UpdateInstallmentPlanInput!): InstallmentPlan!
+  deleteInstallmentPlan(id: ID!): Boolean!
+  createRentalPlan(input: CreateRentalPlanInput!): RentalPlan!
+  updateRentalPlan(input: UpdateRentalPlanInput!): RentalPlan!
+  deleteRentalPlan(id: ID!): Boolean!
+  meiliReindex(scope: MeiliReindexScope!): MeiliReindexResult!
 }
 
 input RechargeCardAdminListOptions {
@@ -1636,6 +1837,7 @@ input AssignAssetsToChannelInput {
 
 input AuthenticationInput {
   native: NativeAuthInput
+  tcmSso: TcmSsoAuthInput
 }
 
 union NativeAuthenticationResult = CurrentUser | InvalidCredentialsError | NativeAuthStrategyError
@@ -1949,6 +2151,15 @@ input CustomerFilterParameter {
   growthValue: NumberOperators
   points: NumberOperators
   memberLevel: NumberOperators
+  riderStatus: StringOperators
+  riderRealName: StringOperators
+  riderStudentNo: StringOperators
+  riderCampus: StringOperators
+  riderIdImg: StringOperators
+  riderCredit: NumberOperators
+  riderOnlineAt: DateOperators
+  avatarUrl: StringOperators
+  invoiceTitles: StringOperators
   customerType: StringOperators
   companyInfo: StringOperators
   salesStaffId: StringOperators
@@ -2475,6 +2686,40 @@ input OrderFilterParameter {
   exceptionType: StringOperators
   exceptionNote: StringOperators
   exceptionPhotos: StringListOperators
+  fulfillmentRoute: StringOperators
+  orderKind: StringOperators
+  buildingId: StringOperators
+  campusZone: StringOperators
+  hallStatus: StringOperators
+  hallEnteredAt: DateOperators
+  riderEarning: NumberOperators
+  tip: NumberOperators
+  deliverySlotId: StringOperators
+  deliverySlotText: StringOperators
+  errandKind: StringOperators
+  errandFrom: StringOperators
+  errandTo: StringOperators
+  errandNote: StringOperators
+  leg1Status: StringOperators
+  handoverAt: DateOperators
+  campusCause: StringOperators
+  transferPhotos: StringListOperators
+  transferNote: StringOperators
+  transferAt: DateOperators
+  riderLat: NumberOperators
+  riderLng: NumberOperators
+  urged: BooleanOperators
+  urgedAt: DateOperators
+  scheduledFor: DateOperators
+  exceptionAction: StringOperators
+  exceptionCompensation: NumberOperators
+  exceptionCouponTemplateId: StringOperators
+  exceptionHandledNote: StringOperators
+  exceptionHandledAt: DateOperators
+  exceptionHandledBy: StringOperators
+  routeGroupId: StringOperators
+  invoiceApplied: BooleanOperators
+  invoiceInfo: StringOperators
   salesStaffId: StringOperators
   salesChannel: StringOperators
   salesNote: StringOperators
@@ -2490,6 +2735,7 @@ input OrderFilterParameter {
   preSaleMode: StringOperators
   preSaleDepositTotal: NumberOperators
   preSaleReleaseAt: DateOperators
+  paymentScheduleId: NumberOperators
 }
 
 input OrderSortParameter {
@@ -2569,6 +2815,39 @@ input OrderSortParameter {
   deliveryNote: SortOrder
   exceptionType: SortOrder
   exceptionNote: SortOrder
+  fulfillmentRoute: SortOrder
+  orderKind: SortOrder
+  buildingId: SortOrder
+  campusZone: SortOrder
+  hallStatus: SortOrder
+  hallEnteredAt: SortOrder
+  riderEarning: SortOrder
+  tip: SortOrder
+  deliverySlotId: SortOrder
+  deliverySlotText: SortOrder
+  errandKind: SortOrder
+  errandFrom: SortOrder
+  errandTo: SortOrder
+  errandNote: SortOrder
+  leg1Status: SortOrder
+  handoverAt: SortOrder
+  campusCause: SortOrder
+  transferNote: SortOrder
+  transferAt: SortOrder
+  riderLat: SortOrder
+  riderLng: SortOrder
+  urged: SortOrder
+  urgedAt: SortOrder
+  scheduledFor: SortOrder
+  exceptionAction: SortOrder
+  exceptionCompensation: SortOrder
+  exceptionCouponTemplateId: SortOrder
+  exceptionHandledNote: SortOrder
+  exceptionHandledAt: SortOrder
+  exceptionHandledBy: SortOrder
+  routeGroupId: SortOrder
+  invoiceApplied: SortOrder
+  invoiceInfo: SortOrder
   salesStaffId: SortOrder
   salesChannel: SortOrder
   salesNote: SortOrder
@@ -2584,6 +2863,7 @@ input OrderSortParameter {
   preSaleMode: SortOrder
   preSaleDepositTotal: SortOrder
   preSaleReleaseAt: SortOrder
+  paymentScheduleId: SortOrder
 }
 
 input OrderListOptions {
@@ -3304,6 +3584,7 @@ input ProductFilterParameter {
   enabled: BooleanOperators
   _and: [ProductFilterParameter!]
   _or: [ProductFilterParameter!]
+  productType: StringOperators
   shopId: NumberOperators
   reviewRating: NumberOperators
   reviewCount: NumberOperators
@@ -4756,6 +5037,20 @@ enum Permission {
   """Allows deleting shop templates"""
   ShopTemplatesDelete
 
+  """Allows viewing DIY categories, materials, templates and plans"""
+  DiyRead
+
+  """Allows creating DIY categories, materials and templates"""
+  DiyCreate
+
+  """
+  Allows updating DIY categories, materials, templates and importing materials
+  """
+  DiyUpdate
+
+  """Allows deleting DIY categories, materials and templates"""
+  DiyDelete
+
   """Grants permission to create MemberLevel"""
   CreateMemberLevel
 
@@ -4896,6 +5191,21 @@ enum Permission {
 
   """会员管理"""
   ManageMember
+
+  """校园履约配置"""
+  CampusConfig
+
+  """骑手招募审核"""
+  CampusAuditRider
+
+  """配送调度看板"""
+  CampusViewDispatch
+
+  """商家接单工作台"""
+  CampusMerchant
+
+  """管理江湖域（密信/情报/段位/处罚）"""
+  CampusJianghu
 
   """查看全部销售订单"""
   ViewAllSales
@@ -7835,6 +8145,135 @@ input RoomTemplateInput {
   depositType: String!
 }
 
+type HotelRoomDay {
+  id: ID!
+  productVariantId: ID!
+
+  """YYYY-MM-DD"""
+  date: String!
+  totalRooms: Int!
+  closed: Boolean!
+}
+
+type HotelAvailabilityDay {
+  """YYYY-MM-DD"""
+  date: String!
+
+  """当晚单价（分）；不含连住折扣"""
+  priceCent: Int!
+
+  """weekday | weekend | holiday | custom"""
+  dayType: String!
+
+  """剩余可订间数；null = 不限房"""
+  remaining: Int
+
+  """关房（不可订）"""
+  closed: Boolean!
+}
+
+input HotelRatePlanInput {
+  code: String
+  name: String
+
+  """discount | fixed | surcharge"""
+  adjustType: String
+
+  """discount 千分比（900=×0.9）；fixed/surcharge 分"""
+  adjustValue: Int
+
+  """会员等级门槛（数字字符串如 '2'，达到该等级及以上可见）；null/空 = 全员"""
+  memberOnly: String
+
+  """售卖期起（YYYY-MM-DD，以入住日为准含两端）；null = 不限"""
+  dateFrom: String
+
+  """售卖期止；null = 不限"""
+  dateTo: String
+
+  """
+  取消政策覆盖 JSON（{type:'freeUntil'|'nonRefundable', freeUntilHours?}）；null = 用房型级政策
+  """
+  cancelPolicyOverride: String
+  enabled: Boolean
+}
+
+type HotelRatePlan {
+  id: ID!
+  productVariantId: ID!
+  code: String!
+  name: String!
+  adjustType: String!
+  adjustValue: Int!
+  memberOnly: String
+  dateFrom: String
+  dateTo: String
+  cancelPolicyOverride: String
+  enabled: Boolean!
+}
+
+input HotelBookingFilterInput {
+  """
+  pendingDeposit | confirmed | checkedIn | completed | cancelled | noShow
+  """
+  status: String
+  variantId: ID
+  orderId: ID
+  orderCode: String
+}
+
+type HotelBooking {
+  id: ID!
+  orderId: ID!
+  orderLineId: ID!
+  orderCode: String
+  productVariantId: ID!
+
+  """YYYY-MM-DD"""
+  checkIn: String!
+
+  """YYYY-MM-DD"""
+  checkOut: String!
+  nights: Int!
+  roomCount: Int!
+  status: String!
+  ratePlanCode: String
+
+  """成交总额（分，订单行实付口径）"""
+  totalCent: Int!
+  guestName: String
+  guestPhone: String
+
+  """8 位数字入住码（确认后才有；核销凭码）"""
+  bookingCode: String
+  cancelDeadlineAt: DateTime
+  confirmedAt: DateTime
+  checkedInAt: DateTime
+  completedAt: DateTime
+  cancelledAt: DateTime
+  cancelReason: String
+
+  """实际扣款快照（分；0=免费取消/未付款，null=未取消）"""
+  cancelFeeCent: Int
+
+  """关联退款售后单 id（逾时部分退款/免费取消自动退款）"""
+  afterSalesRequestId: ID
+
+  """已使用改期次数（每单 V1 限改 1 次）"""
+  rescheduleCount: Int!
+
+  """最近改期时间"""
+  rescheduledAt: DateTime
+
+  """是否有在途改期补差价支付"""
+  reschedulePending: Boolean!
+
+  """房型名（admin 列表按语言 enrich；非持久化）"""
+  variantName: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
 type TenantMember implements Node {
   id: ID!
   administratorId: ID!
@@ -7847,6 +8286,7 @@ type TenantMember implements Node {
   emailAddress: String
   roleIds: [ID!]!
   canResetPassword: Boolean!
+  shippingProfileIds: [ID!]!
   createdAt: DateTime!
   initialPassword: String
 }
@@ -7862,6 +8302,7 @@ input UpdateTenantInput {
   tenantNo: Int
   isOfficial: Boolean
   domain: String
+  industryType: String
 }
 
 input TenantListOptions {
@@ -8761,6 +9202,27 @@ input AdjustOrderPriceInput {
   note: String
 }
 
+input ScopedOrderFilterInput {
+  states: [String!]
+  timeStart: String
+  timeEnd: String
+  keyword: String
+  deliveryType: String
+  exceptionType: String
+  exceptionOnly: Boolean
+  afterSales: [String!]
+}
+
+type ScopedOrderList implements PaginatedList {
+  totalItems: Int!
+  items: [Order!]!
+}
+
+type NewOrderSignal {
+  count: Int!
+  latestCreatedAt: DateTime
+}
+
 type Shop implements Node {
   id: ID!
   name: String!
@@ -8968,6 +9430,134 @@ type TemplateReference {
 type MergedPreview {
   merged: JSON!
   sourceByKey: JSON!
+}
+
+type DiyCategory implements Node {
+  id: ID!
+  app: String
+  code: String
+  parentId: Int
+  name: JSON
+  image: String
+  sortOrder: Int!
+  enabled: Boolean!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type DiyMaterial implements Node {
+  id: ID!
+  app: String
+  code: String!
+  name: JSON
+  categoryId: Int!
+  shape: String!
+  diameter: Float
+  axialLength: Float
+  holeSize: Float
+  attrs: JSON
+  render: JSON
+  price: Int!
+  priceUnit: String!
+  currency: String!
+  stock: Int!
+  images: JSON
+  sourceMaterialId: Int
+  enabled: Boolean!
+  sortOrder: Int!
+  renderUrl: String
+  renderPreset: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type DiyTemplate implements Node {
+  id: ID!
+  app: String
+  code: String!
+  name: JSON
+  description: JSON
+  thumb: String
+  images: JSON
+  config: JSON
+  calculatorKey: String
+  status: String!
+  version: Int!
+  sortOrder: Int!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+input DiyCategoryInput {
+  id: ID
+  app: String
+  code: String
+  parentId: Int
+  name: JSON
+  image: String
+  sortOrder: Int
+  enabled: Boolean
+}
+
+input DiyMaterialInput {
+  id: ID
+  app: String
+  code: String
+  name: JSON
+  categoryId: Int
+  shape: String
+  diameter: Float
+  axialLength: Float
+  holeSize: Float
+  attrs: JSON
+  render: JSON
+  price: Int
+  priceUnit: String
+  currency: String
+  stock: Int
+  images: JSON
+  enabled: Boolean
+  sortOrder: Int
+}
+
+input DiyTemplateInput {
+  id: ID
+  app: String
+  code: String
+  name: JSON
+  description: JSON
+  thumb: String
+  images: JSON
+  config: JSON
+  calculatorKey: String
+  status: String
+  sortOrder: Int
+}
+
+type DiyPlan {
+  id: ID!
+  app: String!
+  userId: Int
+  templateId: Int!
+  templateVersion: Int!
+  status: String!
+  spec: JSON
+  bom: JSON
+  calcVersion: String!
+  quoteNo: String
+  expiresAt: DateTime
+  orderLineId: Int
+  thumb: String
+  shareImage: String
+  isPublic: Boolean!
+  publishedAt: DateTime
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type DiyPlanList {
+  items: [DiyPlan!]!
+  total: Int!
 }
 
 type PickupRedemption {
@@ -9413,6 +10003,281 @@ input WithdrawalRequestListOptions {
   filterOperator: LogicalOperator
 }
 
+type TcmClinic {
+  id: ID!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  name: String!
+  licenseNo: String!
+  address: String
+  status: String!
+}
+
+input TcmClinicInput {
+  name: String!
+  licenseNo: String!
+  address: String
+}
+
+input TcmClinicListOptions {
+  skip: Int
+  take: Int
+}
+
+type TcmClinicList {
+  items: [TcmClinic!]!
+  totalItems: Int!
+}
+
+type TcmClinicStaff {
+  id: ID!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  administratorId: ID!
+  clinicId: ID!
+  role: String!
+  displayName: String!
+}
+
+input TcmClinicStaffInput {
+  clinicId: Int!
+  administratorId: Int!
+  displayName: String!
+  role: String
+}
+
+type TcmPatientProfile {
+  id: ID!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  customerId: ID!
+  clinicId: ID!
+  constitution: JSON
+}
+
+input TcmPatientProfileInput {
+  clinicId: Int!
+  customerId: Int!
+  constitution: JSON
+}
+
+type TcmEncounter {
+  id: ID!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  patientProfileId: ID!
+  clinicId: ID!
+  staffId: ID!
+  type: String!
+  status: String!
+  version: Int!
+}
+
+input TcmEncounterInput {
+  patientProfileId: Int!
+  clinicId: Int!
+  type: String
+}
+
+type TcmMedicalRecordRevisionView {
+  version: Int!
+  editedByStaffId: ID!
+  createdAt: DateTime!
+}
+
+type MedicalRecordView {
+  id: ID!
+  encounterId: ID!
+  clinicId: ID!
+  version: Int!
+  chiefComplaint: String!
+  diagnosis: String!
+  prescription: JSON!
+  revisions: [TcmMedicalRecordRevisionView!]!
+}
+
+input MedicalRecordInput {
+  encounterId: Int!
+  chiefComplaint: String!
+  diagnosis: String!
+  prescription: JSON
+}
+
+input UpdateMedicalRecordInput {
+  chiefComplaint: String
+  diagnosis: String
+  prescription: JSON
+}
+
+input MedicalRecordListOptions {
+  skip: Int
+  take: Int
+}
+
+type MedicalRecordList {
+  items: [MedicalRecordView!]!
+  totalItems: Int!
+}
+
+type TcmAuditLogView {
+  id: ID!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  entityType: String!
+  entityId: ID!
+  staffId: ID!
+  action: String!
+  diff: JSON
+}
+
+input AuditLogListOptions {
+  skip: Int
+  take: Int
+}
+
+type AuditLogList {
+  items: [TcmAuditLogView!]!
+  totalItems: Int!
+}
+
+enum WellnessPlanStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  CLOSED
+}
+
+enum FollowUpStatus {
+  PENDING
+  DONE
+  CANCELED
+}
+
+type TcmWellnessPlan {
+  id: ID!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  patientProfileId: ID!
+  clinicId: ID!
+  title: String!
+  status: WellnessPlanStatus!
+  cycleStart: DateTime
+  cycleEnd: DateTime
+}
+
+input TcmWellnessPlanInput {
+  patientProfileId: Int!
+  clinicId: Int!
+  title: String!
+  cycleStart: DateTime
+  cycleEnd: DateTime
+}
+
+type TcmPlanItem {
+  id: ID!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  planId: ID!
+  title: String!
+  frequency: String
+  productVariantId: ID
+  orderId: ID
+}
+
+input TcmPlanItemInput {
+  planId: Int!
+  title: String!
+  frequency: String
+  productVariantId: Int
+}
+
+type TcmFollowUpTask {
+  id: ID!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  patientProfileId: ID!
+  planId: ID
+  title: String!
+  dueAt: DateTime!
+  channel: String!
+  status: FollowUpStatus!
+  followUpEncounterId: ID
+}
+
+input TcmFollowUpTaskInput {
+  patientProfileId: Int!
+  planId: Int
+  title: String!
+  dueAt: DateTime!
+  channel: String
+}
+
+input TcmWellnessPlanListOptions {
+  skip: Int
+  take: Int
+}
+
+type TcmWellnessPlanList {
+  items: [TcmWellnessPlan!]!
+  totalItems: Int!
+}
+
+input TcmFollowUpTaskListOptions {
+  skip: Int
+  take: Int
+}
+
+type TcmFollowUpTaskList {
+  items: [TcmFollowUpTask!]!
+  totalItems: Int!
+}
+
+type TcmPatientProfileView {
+  id: ID!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  customerId: ID!
+  clinicId: ID!
+  customerName: String
+  customerPhone: String
+  constitution: JSON
+}
+
+input TcmPatientProfileListOptions {
+  skip: Int
+  take: Int
+}
+
+type TcmPatientProfileList {
+  items: [TcmPatientProfileView!]!
+  totalItems: Int!
+}
+
+input TcmEncounterListOptions {
+  skip: Int
+  take: Int
+  since: DateTime
+}
+
+type TcmEncounterList {
+  items: [TcmEncounter!]!
+  totalItems: Int!
+}
+
+type TcmWellnessPlanDetailView {
+  id: ID!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  patientProfileId: ID!
+  clinicId: ID!
+  title: String!
+  status: WellnessPlanStatus!
+  cycleStart: DateTime
+  cycleEnd: DateTime
+  items: [TcmPlanItem!]!
+  followUps: [TcmFollowUpTask!]!
+}
+
 type InvoicePdfResult {
   url: String!
   invoiceNumber: String!
@@ -9514,6 +10379,44 @@ input AdminAdjustBalanceInput {
   remark: String
 }
 
+type BalanceWithdrawalRequest implements Node {
+  id: ID!
+  customerId: ID!
+  amount: Int!
+  method: String!
+  accountInfo: String!
+  status: String!
+  remark: String
+  reviewedAt: DateTime
+  paidAt: DateTime
+  createdAt: DateTime!
+}
+
+type BalanceWithdrawalList implements PaginatedList {
+  items: [BalanceWithdrawalRequest!]!
+  totalItems: Int!
+}
+
+input BalanceWithdrawalListOptions {
+  skip: Int
+  take: Int
+  status: String
+}
+
+type AfterSalesStateHistoryEntry {
+  fromState: String
+  toState: String!
+  operatorUserId: ID
+  createdAt: DateTime!
+}
+
+type AfterSalesBatchResult {
+  id: ID!
+  success: Boolean!
+  state: String
+  message: String
+}
+
 type AfterSalesRequestAdmin implements Node {
   id: ID!
   orderId: ID!
@@ -9526,6 +10429,8 @@ type AfterSalesRequestAdmin implements Node {
   refundAmount: Int!
   returnTrackingNo: String
   returnCarrier: String
+  exchangeTrackingNo: String
+  exchangeCarrier: String
   rejectReason: String
   receivedQuantity: Int
   restockJson: String
@@ -9539,11 +10444,45 @@ type AfterSalesRequestAdmin implements Node {
   order: Order
   orderLine: OrderLine
   customer: Customer
+  history: [AfterSalesStateHistoryEntry!]!
+  messageCount: Int!
 }
 
 type AfterSalesRequestAdminList implements PaginatedList {
   items: [AfterSalesRequestAdmin!]!
   totalItems: Int!
+}
+
+type AfterSalesMessageAdmin implements Node {
+  id: ID!
+  requestId: ID!
+  senderType: String!
+  senderUserId: ID
+  senderName: String!
+  content: String!
+  images: [String!]
+  createdAt: DateTime!
+}
+
+type AfterSalesMessageAdminList implements PaginatedList {
+  items: [AfterSalesMessageAdmin!]!
+  totalItems: Int!
+}
+
+input AfterSalesMessageAdminListOptions {
+  skip: Int
+  take: Int
+
+  """Specifies which properties to sort the results by"""
+  sort: AfterSalesMessageAdminSortParameter
+
+  """Allows the results to be filtered"""
+  filter: AfterSalesMessageAdminFilterParameter
+
+  """
+  Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND.
+  """
+  filterOperator: LogicalOperator
 }
 
 input AfterSalesRequestAdminListOptions {
@@ -9563,6 +10502,27 @@ input AfterSalesRequestAdminListOptions {
   Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND.
   """
   filterOperator: LogicalOperator
+}
+
+type AfterSalesDaily {
+  date: String!
+  total: Int!
+}
+
+type AfterSalesBucket {
+  key: String!
+  count: Int!
+  amount: Int!
+}
+
+type AfterSalesStats {
+  totalRequests: Int!
+  pendingCount: Int!
+  totalRefundAmount: Int!
+  avgHandleHours: Float
+  daily: [AfterSalesDaily!]!
+  byState: [AfterSalesBucket!]!
+  byType: [AfterSalesBucket!]!
 }
 
 type MemberInfo {
@@ -10101,6 +11061,340 @@ type MemberCustomFieldsSnapshot {
   points: Int!
 }
 
+type FaqEntry implements Node {
+  id: ID!
+  title: String!
+  content: String!
+  type: String!
+  sort: Int!
+  enabled: Boolean!
+  titleI18n: String
+  contentI18n: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type FaqEntryList implements PaginatedList {
+  items: [FaqEntry!]!
+  totalItems: Int!
+}
+
+input FaqEntryListOptions {
+  skip: Int
+  take: Int
+
+  """Specifies which properties to sort the results by"""
+  sort: FaqEntrySortParameter
+
+  """Allows the results to be filtered"""
+  filter: FaqEntryFilterParameter
+
+  """
+  Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND.
+  """
+  filterOperator: LogicalOperator
+}
+
+input SaveFaqInput {
+  id: ID
+  title: String!
+  content: String!
+  type: String
+  sort: Int
+  enabled: Boolean
+  titleI18n: JSON
+  contentI18n: JSON
+}
+
+type Feedback implements Node {
+  id: ID!
+  customerId: ID!
+  type: String!
+  title: String!
+  content: String!
+  imgs: String
+  contactWay: String
+  status: String!
+  reply: String
+  repliedAt: DateTime
+  repliedBy: String
+  readAt: DateTime
+  handledAt: DateTime
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type FeedbackList implements PaginatedList {
+  items: [Feedback!]!
+  totalItems: Int!
+}
+
+input FeedbackListOptions {
+  skip: Int
+  take: Int
+  status: String
+
+  """Specifies which properties to sort the results by"""
+  sort: FeedbackSortParameter
+
+  """Allows the results to be filtered"""
+  filter: FeedbackFilterParameter
+
+  """
+  Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND.
+  """
+  filterOperator: LogicalOperator
+}
+
+type LotteryPrize implements Node {
+  id: ID!
+  name: String!
+  image: String
+  weight: Int!
+  consume: Int!
+  stock: Int
+  enabled: Boolean!
+  sort: Int!
+}
+
+type LotteryPrizeList implements PaginatedList {
+  items: [LotteryPrize!]!
+  totalItems: Int!
+}
+
+input LotteryPrizeListOptions {
+  skip: Int
+  take: Int
+
+  """Specifies which properties to sort the results by"""
+  sort: LotteryPrizeSortParameter
+
+  """Allows the results to be filtered"""
+  filter: LotteryPrizeFilterParameter
+
+  """
+  Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND.
+  """
+  filterOperator: LogicalOperator
+}
+
+type LotteryRecord implements Node {
+  id: ID!
+  customerId: ID!
+  prizeId: ID!
+  prizeName: String!
+  prizeImage: String
+  consume: Int!
+  channelId: ID!
+  createdAt: DateTime
+}
+
+type LotteryRecordList implements PaginatedList {
+  items: [LotteryRecord!]!
+  totalItems: Int!
+}
+
+input LotteryRecordListOptions {
+  skip: Int
+  take: Int
+
+  """Specifies which properties to sort the results by"""
+  sort: LotteryRecordSortParameter
+
+  """Allows the results to be filtered"""
+  filter: LotteryRecordFilterParameter
+
+  """
+  Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND.
+  """
+  filterOperator: LogicalOperator
+}
+
+input CreateLotteryPrizeInput {
+  name: String!
+  image: String
+  weight: Int!
+  consume: Int!
+  stock: Int
+  enabled: Boolean
+  sort: Int
+}
+
+input UpdateLotteryPrizeInput {
+  id: ID!
+  name: String
+  image: String
+  weight: Int
+  consume: Int
+  stock: Int
+  enabled: Boolean
+  sort: Int
+}
+
+type CirclePost implements Node {
+  id: ID!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  customerId: ID!
+  title: String
+  content: String!
+  images: String
+  videoUrl: String
+  productId: ID
+  likeCount: Int!
+  favoriteCount: Int!
+  status: String!
+  isPinned: Boolean!
+}
+
+type CirclePostList implements PaginatedList {
+  items: [CirclePost!]!
+  totalItems: Int!
+}
+
+input CirclePostListOptions {
+  skip: Int
+  take: Int
+
+  """Specifies which properties to sort the results by"""
+  sort: CirclePostSortParameter
+
+  """Allows the results to be filtered"""
+  filter: CirclePostFilterParameter
+
+  """
+  Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND.
+  """
+  filterOperator: LogicalOperator
+}
+
+input UpdateCirclePostInput {
+  id: ID!
+  status: String
+  isPinned: Boolean
+}
+
+type PointsProductAdmin implements Node {
+  id: ID!
+  productId: ID!
+  variantId: ID!
+  pointsPrice: Int!
+  cashPrice: Int!
+  deliveryType: String!
+  stock: Int!
+  perUserLimit: Int!
+  redeemedCount: Int!
+  validFrom: DateTime
+  validTo: DateTime
+  status: String!
+  sortOrder: Int!
+}
+
+type PointsProductAdminList implements PaginatedList {
+  items: [PointsProductAdmin!]!
+  totalItems: Int!
+}
+
+input PointsProductAdminListOptions {
+  skip: Int
+  take: Int
+  keyword: String
+
+  """Specifies which properties to sort the results by"""
+  sort: PointsProductAdminSortParameter
+
+  """Allows the results to be filtered"""
+  filter: PointsProductAdminFilterParameter
+
+  """
+  Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND.
+  """
+  filterOperator: LogicalOperator
+}
+
+input CreatePointsProductInput {
+  productId: ID!
+  variantId: ID!
+  pointsPrice: Int!
+  cashPrice: Int
+  deliveryType: String!
+  stock: Int!
+  perUserLimit: Int
+  validFrom: DateTime
+  validTo: DateTime
+  status: String
+  sortOrder: Int
+}
+
+input UpdatePointsProductInput {
+  id: ID!
+  pointsPrice: Int
+  cashPrice: Int
+  deliveryType: String
+  stock: Int
+  perUserLimit: Int
+  validFrom: DateTime
+  validTo: DateTime
+  status: String
+  sortOrder: Int
+}
+
+type PointsOrderAdmin implements Node {
+  id: ID!
+  code: String!
+  customerId: ID!
+  quantity: Int!
+  pointsTotal: Int!
+  cashTotal: Int!
+  deliveryType: String!
+  status: String!
+  productSnapshot: JSON
+  addressSnapshot: JSON
+  trackingNo: String
+  paidAt: DateTime
+  shippedAt: DateTime
+  completedAt: DateTime
+  createdAt: DateTime!
+  payments: [PointsOrderPaymentAdmin]
+}
+
+type PointsOrderPaymentAdmin {
+  id: Int!
+  amount: Int!
+  status: String!
+  externalRef: String
+  transactionId: String
+  methodCode: String
+  refundStatus: String!
+  refundNo: String
+  refundedAt: DateTime
+  refundError: String
+  refundAttempts: Int!
+}
+
+type PointsOrderAdminList implements PaginatedList {
+  items: [PointsOrderAdmin!]!
+  totalItems: Int!
+}
+
+input PointsOrderAdminListOptions {
+  skip: Int
+  take: Int
+  status: String
+  keyword: String
+
+  """Specifies which properties to sort the results by"""
+  sort: PointsOrderAdminSortParameter
+
+  """Allows the results to be filtered"""
+  filter: PointsOrderAdminFilterParameter
+
+  """
+  Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND.
+  """
+  filterOperator: LogicalOperator
+}
+
 type Review implements Node {
   id: ID!
   customerId: ID!
@@ -10117,8 +11411,10 @@ type Review implements Node {
   tags: [String!]
   isAnonymous: Boolean!
   status: String!
+  giftGranted: Boolean!
   reply: String
   repliedAt: DateTime
+  reviewedAt: DateTime
   helpfulCount: Int!
   createdAt: DateTime!
   updatedAt: DateTime!
@@ -10428,6 +11724,41 @@ input InStoreBillSummaryOptions {
   to: DateTime
 }
 
+type InStorePendingCoupon implements Node {
+  id: ID!
+  couponCode: String!
+  couponName: String
+  discountType: String!
+  discountValue: Int!
+  minSpend: Int
+  customerId: ID!
+  customerName: String
+  customerPhone: String
+  issuedAt: DateTime
+  expiredAt: DateTime
+}
+
+type InStorePendingCouponList implements PaginatedList {
+  items: [InStorePendingCoupon!]!
+  totalItems: Int!
+}
+
+input InStorePendingCouponListOptions {
+  skip: Int
+  take: Int
+
+  """Specifies which properties to sort the results by"""
+  sort: InStorePendingCouponSortParameter
+
+  """Allows the results to be filtered"""
+  filter: InStorePendingCouponFilterParameter
+
+  """
+  Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND.
+  """
+  filterOperator: LogicalOperator
+}
+
 type CouponIssueCustomer implements Node {
   id: ID!
   emailAddress: String!
@@ -10655,6 +11986,7 @@ type LiveRoom implements Node {
   viewCount: Int!
   pushUrl: String
   products: [LiveRoomProduct!]!
+  platforms: [LiveRoomPlatform!]!
   createdAt: DateTime!
   updatedAt: DateTime!
 }
@@ -10666,6 +11998,12 @@ type LiveRoomProduct implements Node {
   price: Int!
   imageUrl: String
   sortOrder: Int!
+}
+
+type LiveRoomPlatform implements Node {
+  id: ID!
+  platform: String!
+  externalUrl: String!
 }
 
 type LiveRoomList implements PaginatedList {
@@ -10718,6 +12056,11 @@ input AddLiveRoomProductInput {
   sortOrder: Int
 }
 
+input LiveRoomPlatformInput {
+  platform: String!
+  externalUrl: String!
+}
+
 type PermissionModule {
   code: String!
   name: String!
@@ -10731,6 +12074,460 @@ type MyPermissionsResult {
   roles: [String!]!
   permissions: [String!]!
   visibleModules: [PermissionModule!]!
+}
+
+type CampusZone {
+  id: ID!
+  name: String!
+  fee: Int!
+  channelId: ID!
+}
+
+type CampusBuilding {
+  id: ID!
+  name: String!
+  detail: String
+  zoneId: ID!
+  channelId: ID!
+}
+
+type CampusFulfillmentConfig {
+  id: ID!
+  channelId: ID!
+  routesEnabled: [String!]!
+  riderCommissionRate: Int!
+  autoAssignMinutes: Int!
+  paused: Boolean!
+  autoRefundMinutes: Int!
+  inProgressSlaMinutes: Int!
+  compensationCouponTemplateId: String
+  merchantConfirmEnabled: Boolean!
+  merchantAutoOpenMinutes: Int!
+  freeShippingThreshold: Int
+}
+
+input CampusFulfillmentConfigInput {
+  routesEnabled: [String!]
+  riderCommissionRate: Int
+  autoAssignMinutes: Int
+  paused: Boolean
+  autoRefundMinutes: Int
+  inProgressSlaMinutes: Int
+  compensationCouponTemplateId: String
+  merchantConfirmEnabled: Boolean
+  merchantAutoOpenMinutes: Int
+}
+
+type DeliverySlot {
+  id: ID!
+  slotDate: String!
+  startTime: String!
+  endTime: String!
+  zoneId: ID
+  capacity: Int!
+  lockedCount: Int!
+  active: Boolean!
+  channelId: ID!
+}
+
+input DeliverySlotInput {
+  slotDate: String!
+  startTime: String!
+  endTime: String!
+  zoneId: ID
+  capacity: Int
+}
+
+input DeliverySlotUpdateInput {
+  startTime: String
+  endTime: String
+  capacity: Int
+  active: Boolean
+}
+
+type CampusSetRiderStatusResult {
+  status: String!
+}
+
+type MerchantBoardLine {
+  name: String!
+  quantity: Int!
+  price: Int!
+}
+
+type MerchantBoardOrder {
+  id: ID!
+  code: String!
+  createdAt: DateTime!
+  total: Int!
+  building: String!
+  zone: String!
+  slotText: String!
+  route: String!
+  riderName: String
+  lines: [MerchantBoardLine!]!
+}
+
+type CampusMerchantBoard {
+  paused: Boolean!
+  merchantConfirmEnabled: Boolean!
+  pending: [MerchantBoardOrder!]!
+  cooking: [MerchantBoardOrder!]!
+  awaitingRider: [MerchantBoardOrder!]!
+  delivering: [MerchantBoardOrder!]!
+  scheduled: [MerchantBoardOrder!]!
+  completedToday: Int!
+  completedTodayAmount: Int!
+}
+
+type DispatchAlert {
+  orderId: ID!
+  orderCode: String!
+  type: String!
+  detail: String!
+  exceptionNote: String
+  exceptionPhotos: [String!]
+}
+
+type DispatchRider {
+  customerId: ID!
+  realName: String!
+  credit: Int!
+}
+
+type HandedException {
+  orderId: ID!
+  orderCode: String!
+  exceptionType: String
+  action: String!
+  compensation: Int
+  couponTemplateId: String
+  note: String
+  handledAt: String
+  handledBy: String!
+}
+
+type CampusDispatchBoard {
+  paused: Boolean!
+  alerts: [DispatchAlert!]!
+  hallOrders: [Order!]!
+  activeOrders: [Order!]!
+  ridersOnline: [DispatchRider!]!
+  handledOrders: [HandedException!]!
+}
+
+type CampusDispatchResult {
+  assigned: Boolean
+  backToHall: Boolean
+}
+
+type CampusHandleExceptionResult {
+  ok: Boolean
+  action: String
+}
+
+type CampusErrandProductResult {
+  variantId: ID!
+  sku: String!
+}
+
+type CampusEnsureProfileResult {
+  profileId: ID!
+  profileName: String!
+  linkedMethodCodes: [String!]!
+  missingMethodCodes: [String!]!
+  boundVariantCount: Int!
+}
+
+type CampusStoreConfigWithChannel {
+  channelId: ID!
+  channelName: String!
+  channelToken: String!
+  routesEnabled: [String!]!
+  deliveryMinutes: Int
+  minOrderAmount: Int
+  deliveryFee: Int
+  storeAddress: String
+  storePhone: String
+  storeNotice: String
+  errandBaseFee: Int
+  freeShippingThreshold: Int
+  notifyTemplateAccepted: String
+  notifyTemplateRiderAssigned: String
+  notifyTemplateCookingDone: String
+  notifyTemplateDelivered: String
+  notifyTemplateExceptionHandled: String
+  notifyTemplateOrderPlaced: String
+  notifyTemplatePaymentPending: String
+  notifyTemplateCancelled: String
+  notifyTemplateAfterSales: String
+  h5BaseUrl: String
+}
+
+input CampusStoreConfigInput {
+  routesEnabled: [String!]!
+  deliveryMinutes: Int
+  minOrderAmount: Int
+  deliveryFee: Int
+  storeAddress: String
+  storePhone: String
+  storeNotice: String
+  errandBaseFee: Int
+  freeShippingThreshold: Int
+  notifyTemplateAccepted: String
+  notifyTemplateRiderAssigned: String
+  notifyTemplateCookingDone: String
+  notifyTemplateDelivered: String
+  notifyTemplateExceptionHandled: String
+  notifyTemplateOrderPlaced: String
+  notifyTemplatePaymentPending: String
+  notifyTemplateCancelled: String
+  notifyTemplateAfterSales: String
+  h5BaseUrl: String
+}
+
+type RiderWithdrawalRequest {
+  id: ID!
+  customerId: ID!
+  channelId: ID!
+  amount: Int!
+  channel: String!
+  account: String!
+  status: String!
+  remark: String
+  reviewedBy: String
+  reviewedAt: DateTime
+  createdAt: DateTime
+}
+
+type RiderApplicationList {
+  items: [Customer!]!
+  total: Int!
+}
+
+type CampusMerchantOpResult {
+  ok: Boolean!
+}
+
+type PaymentTimeoutTask {
+  id: ID!
+  orderId: ID!
+  type: String!
+  status: String!
+  dueAt: DateTime!
+  retryCount: Int!
+  lastError: String
+}
+
+type PaymentTimeoutTaskRow {
+  id: ID!
+  orderId: ID!
+  channelId: ID!
+  orderCode: String
+  orderState: String
+  type: String!
+  status: String!
+  dueAt: DateTime!
+  retryCount: Int!
+  lastError: String
+}
+
+type PaymentTimeoutTaskList {
+  items: [PaymentTimeoutTaskRow!]!
+  total: Int!
+}
+
+type PaymentTimeoutStats {
+  todayRemind: Int!
+  todayCancel: Int!
+  totalFailed: Int!
+  pendingOverdue: Int!
+}
+
+type JianghuProfile {
+  id: ID!
+  customerId: ID!
+  nickname: String!
+  rep: Int!
+  intel: Int!
+  rankCode: String!
+  rankName: String
+  credit: Int!
+  letterDone: Int!
+  intelDone: Int!
+  plotDone: Int!
+  urgentDone: Int
+  secretDone: Int
+  repToday: Int!
+  repDailyCap: Int!
+  streakDays: Int
+  protectedUntil: String
+  frozenUntil: String
+  violateCount: Int
+}
+
+type JianghuTask {
+  id: ID!
+  type: String!
+  level: String!
+  title: String!
+  brief: String
+  plainText: String
+  campusCode: String
+  buildingCode: String
+  targetNick: String
+  targetBuilding: String
+  rewardRep: Int!
+  rewardIntel: Int
+  verifyMode: String!
+  boundOrderId: String
+  status: String!
+  verifyCode: String
+  codeExpireAt: String
+  tryCount: Int
+  expireInSec: Int
+  lat: Float
+  lng: Float
+  distanceKm: Float
+}
+
+type JianghuRecord {
+  id: ID!
+  taskId: ID
+  reason: String!
+  reasonText: String
+  deltaRep: Int!
+  deltaIntel: Int
+  snapshotRep: Int
+  createdAt: DateTime!
+}
+
+type JianghuIntel {
+  id: ID!
+  category: String!
+  categoryText: String
+  campusCode: String
+  summary: String!
+  content: String
+  sourceNote: String
+  priceIntel: Int!
+  viewCount: Int!
+  unlocked: Boolean!
+}
+
+type JianghuEvent {
+  id: ID!
+  name: String!
+  desc: String!
+  total: Int!
+  collected: Int!
+  perPersonLimit: Int!
+  endAt: String
+  rewardPoolRep: Int
+}
+
+type JianghuClue {
+  id: ID!
+  eventId: ID!
+  nickname: String
+  content: String!
+  sourceNote: String
+  campusCode: String
+  likes: Int!
+  status: String
+  createdAt: String
+}
+
+type JianghuEventDetail {
+  id: ID!
+  name: String!
+  desc: String!
+  total: Int!
+  collected: Int!
+  perPersonLimit: Int!
+  endAt: String
+  rewardPoolRep: Int
+  clues: [JianghuClue!]!
+  myClues: [JianghuClue!]!
+  contributors: [JianghuContributor!]!
+  myContributed: Int!
+  solved: Boolean!
+  myRewardRep: Int
+  rewarded: Boolean
+}
+
+type JianghuContributor {
+  customerId: ID!
+  nickname: String!
+  count: Int!
+  isMe: Boolean
+}
+
+type RankTier {
+  code: String!
+  name: String!
+  rep: Int!
+  realm: String!
+  seal: String!
+  conditionText: String!
+  perksVirtual: [String!]!
+  perksReal: [String!]!
+}
+
+type JianghuRankRow {
+  customerId: ID!
+  nickname: String!
+  rep: Int!
+  isMe: Boolean
+}
+
+type JianghuVerifyResult {
+  ok: Boolean!
+  deltaRep: Int!
+  rep: Int!
+  rankUp: Boolean!
+  rankCode: String
+  rankName: String
+  message: String
+}
+
+type JianghuSubmitResult {
+  id: ID!
+  status: String!
+}
+
+type JianghuEventContent {
+  title: String
+  desc: String
+  bannerImage: String
+  rewardText: String
+  active: Boolean
+}
+
+input JianghuTaskInput {
+  type: String!
+  level: String!
+  title: String!
+  brief: String
+  plainText: String
+  campusCode: String
+  buildingCode: String
+  targetNick: String
+  targetBuilding: String
+  rewardRep: Int
+  verifyMode: String!
+  boundOrderId: String
+  lat: Float
+  lng: Float
+}
+
+input JianghuEventInput {
+  name: String!
+  desc: String!
+  total: Int
+  perPersonLimit: Int
+  endAt: String
+  rewardPoolRep: Int
 }
 
 enum SalesChannel {
@@ -11364,6 +13161,28 @@ type CategoryTopItem {
   orderCount: Int!
 }
 
+type ReviewOverview {
+  totalApproved: Int!
+  avgRating: Float!
+  badRate: Float!
+  pendingCount: Int!
+  withImagesRate: Float!
+}
+
+type ProductSalesItem {
+  productId: ID!
+  name: String!
+  quantity: Int!
+  amount: Int!
+}
+
+type RiderEfficiencyItem {
+  customerId: ID!
+  name: String!
+  completed: Int!
+  onTimeRate: Float!
+}
+
 type ContentItem {
   id: ID!
   type: String!
@@ -11572,6 +13391,21 @@ type MessageDeliveryStats {
   totalRead: Int!
 }
 
+type InboxMessage implements Node {
+  id: ID!
+  scene: String!
+  title: String!
+  content: String!
+  link: String
+  isRead: Boolean!
+  createdAt: DateTime!
+}
+
+type InboxMessageList {
+  items: [InboxMessage!]!
+  totalItems: Int!
+}
+
 enum PreSaleMode {
   deposit
   full
@@ -11601,6 +13435,14 @@ type PreSaleActivity implements Node {
   productId: ID!
   variantId: ID!
   status: PreSaleStatus!
+  depositKind: String!
+  tailTriggerType: String!
+  groupBuyActivityId: Int
+  tailWindowHours: Int
+  graceHours: Int!
+  earnestRefundPolicy: JSON
+  shipDeadlineAt: DateTime
+  agreementVersion: String!
   createdAt: DateTime!
   updatedAt: DateTime!
 }
@@ -11624,6 +13466,14 @@ input CreatePreSaleActivityInput {
   limitPerUser: Int
   productId: ID!
   variantId: ID!
+  depositKind: String
+  tailTriggerType: String
+  groupBuyActivityId: Int
+  tailWindowHours: Int
+  graceHours: Int
+  earnestRefundPolicy: JSON
+  shipDeadlineAt: DateTime
+  agreementVersion: String
 }
 
 input UpdatePreSaleActivityInput {
@@ -11641,6 +13491,14 @@ input UpdatePreSaleActivityInput {
   limitPerUser: Int
   productId: ID
   variantId: ID
+  depositKind: String
+  tailTriggerType: String
+  groupBuyActivityId: Int
+  tailWindowHours: Int
+  graceHours: Int
+  earnestRefundPolicy: JSON
+  shipDeadlineAt: DateTime
+  agreementVersion: String
 }
 
 input PreSaleActivityListOptions {
@@ -11660,6 +13518,256 @@ input PreSaleActivityListOptions {
   Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND.
   """
   filterOperator: LogicalOperator
+}
+
+enum PaymentScheduleScenario {
+  presale
+  installment
+  rental
+}
+
+enum PaymentScheduleStatus {
+  pending
+  in_progress
+  completed
+  breached
+  cancelled
+}
+
+enum PaymentScheduleBreachType {
+  buyer_timeout
+  seller_breach
+  group_buy_failed
+}
+
+enum PaymentScheduleItemStatus {
+  locked
+  payable
+  paid
+  overdue
+  forfeited
+  refunded
+  waived
+}
+
+enum PaymentScheduleItemKind {
+  deposit
+  balance
+  down_payment
+  installment
+  rent
+  buyout
+}
+
+type PaymentScheduleItem implements Node {
+  id: ID!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  seq: Int!
+  kind: PaymentScheduleItemKind!
+  amount: Int!
+  paidAmount: Int!
+  allowCod: Boolean!
+  status: PaymentScheduleItemStatus!
+  dueAt: DateTime
+  graceHours: Int!
+  trigger: JSON!
+  paidAt: DateTime
+  lateFeeAccrued: Int!
+}
+
+type PaymentSchedule implements Node {
+  id: ID!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  orderId: ID!
+  scenario: PaymentScheduleScenario!
+  status: PaymentScheduleStatus!
+  breachType: PaymentScheduleBreachType
+  depositRule: JSON
+  deliveryGate: String!
+  agreementVersion: String!
+  shipDeadline: DateTime
+  meta: JSON
+  items: [PaymentScheduleItem!]!
+  paidTotal: Int!
+  totalAmount: Int!
+}
+
+input PaymentScheduleListOptions {
+  """Skips the first n results, for use in pagination"""
+  skip: Int
+
+  """Takes n results, for use in pagination"""
+  take: Int
+
+  """Specifies which properties to sort the results by"""
+  sort: PaymentScheduleSortParameter
+
+  """Allows the results to be filtered"""
+  filter: PaymentScheduleFilterParameter
+
+  """
+  Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND.
+  """
+  filterOperator: LogicalOperator
+}
+
+type PaymentScheduleList implements PaginatedList {
+  items: [PaymentSchedule!]!
+  totalItems: Int!
+}
+
+type PaymentScheduleScanResult {
+  activated: Int!
+  overdue: Int!
+  shipBreaches: Int!
+}
+
+type InstallmentPlan implements Node {
+  id: ID!
+  name: String!
+  variantId: ID!
+  downPaymentRatio: Int!
+  periods: Int!
+  intervalUnit: String!
+  intervalCount: Int!
+  feeRule: JSON
+  allowCod: Boolean!
+  enabled: Boolean!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type InstallmentPlanList implements PaginatedList {
+  items: [InstallmentPlan!]!
+  totalItems: Int!
+}
+
+input CreateInstallmentPlanInput {
+  name: String!
+  variantId: ID!
+  downPaymentRatio: Int
+  periods: Int
+  intervalUnit: String
+  intervalCount: Int
+  feeRule: JSON
+  allowCod: Boolean
+  enabled: Boolean
+}
+
+input UpdateInstallmentPlanInput {
+  id: ID!
+  name: String
+  downPaymentRatio: Int
+  periods: Int
+  intervalUnit: String
+  intervalCount: Int
+  feeRule: JSON
+  allowCod: Boolean
+  enabled: Boolean
+}
+
+input InstallmentPlanListOptions {
+  """Skips the first n results, for use in pagination"""
+  skip: Int
+
+  """Takes n results, for use in pagination"""
+  take: Int
+
+  """Specifies which properties to sort the results by"""
+  sort: InstallmentPlanSortParameter
+
+  """Allows the results to be filtered"""
+  filter: InstallmentPlanFilterParameter
+
+  """
+  Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND.
+  """
+  filterOperator: LogicalOperator
+}
+
+type RentalPlan implements Node {
+  id: ID!
+  name: String!
+  variantId: ID!
+  depositAmount: Int!
+  rentAmount: Int!
+  rentUnit: String!
+  prepaidOrPostpaid: String!
+  buyoutPrice: Int
+  allowBuyout: Boolean!
+  allowCod: Boolean!
+  enabled: Boolean!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type RentalPlanList implements PaginatedList {
+  items: [RentalPlan!]!
+  totalItems: Int!
+}
+
+input CreateRentalPlanInput {
+  name: String!
+  variantId: ID!
+  depositAmount: Int!
+  rentAmount: Int!
+  rentUnit: String
+  prepaidOrPostpaid: String
+  buyoutPrice: Int
+  allowBuyout: Boolean
+  allowCod: Boolean
+  enabled: Boolean
+}
+
+input UpdateRentalPlanInput {
+  id: ID!
+  name: String
+  depositAmount: Int
+  rentAmount: Int
+  rentUnit: String
+  prepaidOrPostpaid: String
+  buyoutPrice: Int
+  allowBuyout: Boolean
+  allowCod: Boolean
+  enabled: Boolean
+}
+
+input RentalPlanListOptions {
+  """Skips the first n results, for use in pagination"""
+  skip: Int
+
+  """Takes n results, for use in pagination"""
+  take: Int
+
+  """Specifies which properties to sort the results by"""
+  sort: RentalPlanSortParameter
+
+  """Allows the results to be filtered"""
+  filter: RentalPlanFilterParameter
+
+  """
+  Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND.
+  """
+  filterOperator: LogicalOperator
+}
+
+enum MeiliReindexScope {
+  PRODUCTS
+  CONTENTS
+  ALL
+}
+
+type MeiliIndexStatus {
+  index: String!
+  documents: Int!
+  healthy: Boolean!
+}
+
+type MeiliReindexResult {
+  queued: Boolean!
+  contentsTriggered: Boolean!
 }
 
 input AdministratorFilterParameter {
@@ -11751,6 +13859,8 @@ input ChannelFilterParameter {
   _or: [ChannelFilterParameter!]
   displayTemplate: StringOperators
   themeId: StringOperators
+  balanceMinWithdrawalAmount: NumberOperators
+  lotteryFixedCost: NumberOperators
   shopName: StringOperators
   shopLogo: StringOperators
   shopIntro: StringOperators
@@ -11779,6 +13889,7 @@ input ChannelFilterParameter {
   taxMode: StringOperators
   physicalStockEnabled: BooleanOperators
   shareImageUrl: StringOperators
+  industryType: StringOperators
   inventoryMode: StringOperators
   odooBaseUrl: StringOperators
   odooApiKey: StringOperators
@@ -11799,6 +13910,10 @@ input ChannelFilterParameter {
   distributionEnabled: BooleanOperators
   rechargeMinAmount: NumberOperators
   rechargeMaxAmount: NumberOperators
+  afterSalesReturnAddress: StringOperators
+  afterSalesTimeoutHours: NumberOperators
+  afterSalesAutoApproveHours: NumberOperators
+  afterSalesRefundAutoRetry: NumberOperators
   level1Threshold: NumberOperators
   level1Name: StringOperators
   level2Threshold: NumberOperators
@@ -11838,12 +13953,19 @@ input ChannelFilterParameter {
   taskOrderAmountThreshold: NumberOperators
   taskOrderAmountPoints: NumberOperators
   taskOrderAmountGrowth: NumberOperators
+  reviewGiftCouponTemplateId: StringOperators
+  reviewGiftPoints: NumberOperators
+  reviewFollowUpWindowDays: NumberOperators
   orderPaidTemplateId: StringOperators
   orderShippedTemplateId: StringOperators
   orderDeliveredTemplateId: StringOperators
   orderRefundedTemplateId: StringOperators
   subscribeMessagePage: StringOperators
   subscribeMessageMiniprogramState: StringOperators
+  waimaiTags: StringOperators
+  waimaiMonthlySales: NumberOperators
+  waimaiLogo: StringOperators
+  waimaiPromoText: StringOperators
   settlementBasis: StringOperators
   stockLocationPriority: StringOperators
   shippingStrategy: StringOperators
@@ -11863,6 +13985,8 @@ input ChannelSortParameter {
   outOfStockThreshold: SortOrder
   displayTemplate: SortOrder
   themeId: SortOrder
+  balanceMinWithdrawalAmount: SortOrder
+  lotteryFixedCost: SortOrder
   shopName: SortOrder
   shopLogo: SortOrder
   shopIntro: SortOrder
@@ -11890,6 +14014,7 @@ input ChannelSortParameter {
   taxMode: SortOrder
   physicalStockEnabled: SortOrder
   shareImageUrl: SortOrder
+  industryType: SortOrder
   inventoryMode: SortOrder
   odooBaseUrl: SortOrder
   odooApiKey: SortOrder
@@ -11910,6 +14035,10 @@ input ChannelSortParameter {
   distributionEnabled: SortOrder
   rechargeMinAmount: SortOrder
   rechargeMaxAmount: SortOrder
+  afterSalesReturnAddress: SortOrder
+  afterSalesTimeoutHours: SortOrder
+  afterSalesAutoApproveHours: SortOrder
+  afterSalesRefundAutoRetry: SortOrder
   level1Threshold: SortOrder
   level1Name: SortOrder
   level2Threshold: SortOrder
@@ -11949,12 +14078,19 @@ input ChannelSortParameter {
   taskOrderAmountThreshold: SortOrder
   taskOrderAmountPoints: SortOrder
   taskOrderAmountGrowth: SortOrder
+  reviewGiftCouponTemplateId: SortOrder
+  reviewGiftPoints: SortOrder
+  reviewFollowUpWindowDays: SortOrder
   orderPaidTemplateId: SortOrder
   orderShippedTemplateId: SortOrder
   orderDeliveredTemplateId: SortOrder
   orderRefundedTemplateId: SortOrder
   subscribeMessagePage: SortOrder
   subscribeMessageMiniprogramState: SortOrder
+  waimaiTags: SortOrder
+  waimaiMonthlySales: SortOrder
+  waimaiLogo: SortOrder
+  waimaiPromoText: SortOrder
   settlementBasis: SortOrder
   stockLocationPriority: SortOrder
   shippingStrategy: SortOrder
@@ -12099,6 +14235,15 @@ input CustomerSortParameter {
   growthValue: SortOrder
   points: SortOrder
   memberLevel: SortOrder
+  riderStatus: SortOrder
+  riderRealName: SortOrder
+  riderStudentNo: SortOrder
+  riderCampus: SortOrder
+  riderIdImg: SortOrder
+  riderCredit: SortOrder
+  riderOnlineAt: SortOrder
+  avatarUrl: SortOrder
+  invoiceTitles: SortOrder
   customerType: SortOrder
   companyInfo: SortOrder
   salesStaffId: SortOrder
@@ -12244,6 +14389,7 @@ input ProductSortParameter {
   name: SortOrder
   slug: SortOrder
   description: SortOrder
+  productType: SortOrder
   shopId: SortOrder
   reviewRating: SortOrder
   reviewCount: SortOrder
@@ -12723,6 +14869,8 @@ input AfterSalesRequestAdminFilterParameter {
   refundAmount: NumberOperators
   returnTrackingNo: StringOperators
   returnCarrier: StringOperators
+  exchangeTrackingNo: StringOperators
+  exchangeCarrier: StringOperators
   rejectReason: StringOperators
   receivedQuantity: NumberOperators
   restockJson: StringOperators
@@ -12733,6 +14881,7 @@ input AfterSalesRequestAdminFilterParameter {
   customerId: IDOperators
   createdAt: DateOperators
   updatedAt: DateOperators
+  messageCount: NumberOperators
   _and: [AfterSalesRequestAdminFilterParameter!]
   _or: [AfterSalesRequestAdminFilterParameter!]
 }
@@ -12748,6 +14897,8 @@ input AfterSalesRequestAdminSortParameter {
   refundAmount: SortOrder
   returnTrackingNo: SortOrder
   returnCarrier: SortOrder
+  exchangeTrackingNo: SortOrder
+  exchangeCarrier: SortOrder
   rejectReason: SortOrder
   receivedQuantity: SortOrder
   restockJson: SortOrder
@@ -12758,6 +14909,242 @@ input AfterSalesRequestAdminSortParameter {
   customerId: SortOrder
   createdAt: SortOrder
   updatedAt: SortOrder
+  messageCount: SortOrder
+}
+
+input AfterSalesMessageAdminFilterParameter {
+  id: IDOperators
+  requestId: IDOperators
+  senderType: StringOperators
+  senderUserId: IDOperators
+  senderName: StringOperators
+  content: StringOperators
+  createdAt: DateOperators
+  _and: [AfterSalesMessageAdminFilterParameter!]
+  _or: [AfterSalesMessageAdminFilterParameter!]
+}
+
+input AfterSalesMessageAdminSortParameter {
+  id: SortOrder
+  requestId: SortOrder
+  senderType: SortOrder
+  senderUserId: SortOrder
+  senderName: SortOrder
+  content: SortOrder
+  createdAt: SortOrder
+}
+
+input FaqEntryFilterParameter {
+  id: IDOperators
+  title: StringOperators
+  content: StringOperators
+  type: StringOperators
+  sort: NumberOperators
+  enabled: BooleanOperators
+  titleI18n: StringOperators
+  contentI18n: StringOperators
+  createdAt: DateOperators
+  updatedAt: DateOperators
+  _and: [FaqEntryFilterParameter!]
+  _or: [FaqEntryFilterParameter!]
+}
+
+input FaqEntrySortParameter {
+  id: SortOrder
+  title: SortOrder
+  content: SortOrder
+  type: SortOrder
+  sort: SortOrder
+  titleI18n: SortOrder
+  contentI18n: SortOrder
+  createdAt: SortOrder
+  updatedAt: SortOrder
+}
+
+input FeedbackFilterParameter {
+  id: IDOperators
+  customerId: IDOperators
+  type: StringOperators
+  title: StringOperators
+  content: StringOperators
+  imgs: StringOperators
+  contactWay: StringOperators
+  status: StringOperators
+  reply: StringOperators
+  repliedAt: DateOperators
+  repliedBy: StringOperators
+  readAt: DateOperators
+  handledAt: DateOperators
+  createdAt: DateOperators
+  updatedAt: DateOperators
+  _and: [FeedbackFilterParameter!]
+  _or: [FeedbackFilterParameter!]
+}
+
+input FeedbackSortParameter {
+  id: SortOrder
+  customerId: SortOrder
+  type: SortOrder
+  title: SortOrder
+  content: SortOrder
+  imgs: SortOrder
+  contactWay: SortOrder
+  status: SortOrder
+  reply: SortOrder
+  repliedAt: SortOrder
+  repliedBy: SortOrder
+  readAt: SortOrder
+  handledAt: SortOrder
+  createdAt: SortOrder
+  updatedAt: SortOrder
+}
+
+input LotteryPrizeFilterParameter {
+  id: IDOperators
+  name: StringOperators
+  image: StringOperators
+  weight: NumberOperators
+  consume: NumberOperators
+  stock: NumberOperators
+  enabled: BooleanOperators
+  sort: NumberOperators
+  _and: [LotteryPrizeFilterParameter!]
+  _or: [LotteryPrizeFilterParameter!]
+}
+
+input LotteryPrizeSortParameter {
+  id: SortOrder
+  name: SortOrder
+  image: SortOrder
+  weight: SortOrder
+  consume: SortOrder
+  stock: SortOrder
+  sort: SortOrder
+}
+
+input LotteryRecordFilterParameter {
+  id: IDOperators
+  customerId: IDOperators
+  prizeId: IDOperators
+  prizeName: StringOperators
+  prizeImage: StringOperators
+  consume: NumberOperators
+  channelId: IDOperators
+  createdAt: DateOperators
+  _and: [LotteryRecordFilterParameter!]
+  _or: [LotteryRecordFilterParameter!]
+}
+
+input LotteryRecordSortParameter {
+  id: SortOrder
+  customerId: SortOrder
+  prizeId: SortOrder
+  prizeName: SortOrder
+  prizeImage: SortOrder
+  consume: SortOrder
+  channelId: SortOrder
+  createdAt: SortOrder
+}
+
+input CirclePostFilterParameter {
+  id: IDOperators
+  createdAt: DateOperators
+  updatedAt: DateOperators
+  customerId: IDOperators
+  title: StringOperators
+  content: StringOperators
+  images: StringOperators
+  videoUrl: StringOperators
+  productId: IDOperators
+  likeCount: NumberOperators
+  favoriteCount: NumberOperators
+  status: StringOperators
+  isPinned: BooleanOperators
+  _and: [CirclePostFilterParameter!]
+  _or: [CirclePostFilterParameter!]
+}
+
+input CirclePostSortParameter {
+  id: SortOrder
+  createdAt: SortOrder
+  updatedAt: SortOrder
+  customerId: SortOrder
+  title: SortOrder
+  content: SortOrder
+  images: SortOrder
+  videoUrl: SortOrder
+  productId: SortOrder
+  likeCount: SortOrder
+  favoriteCount: SortOrder
+  status: SortOrder
+}
+
+input PointsProductAdminFilterParameter {
+  id: IDOperators
+  productId: IDOperators
+  variantId: IDOperators
+  pointsPrice: NumberOperators
+  cashPrice: NumberOperators
+  deliveryType: StringOperators
+  stock: NumberOperators
+  perUserLimit: NumberOperators
+  redeemedCount: NumberOperators
+  validFrom: DateOperators
+  validTo: DateOperators
+  status: StringOperators
+  sortOrder: NumberOperators
+  _and: [PointsProductAdminFilterParameter!]
+  _or: [PointsProductAdminFilterParameter!]
+}
+
+input PointsProductAdminSortParameter {
+  id: SortOrder
+  productId: SortOrder
+  variantId: SortOrder
+  pointsPrice: SortOrder
+  cashPrice: SortOrder
+  deliveryType: SortOrder
+  stock: SortOrder
+  perUserLimit: SortOrder
+  redeemedCount: SortOrder
+  validFrom: SortOrder
+  validTo: SortOrder
+  status: SortOrder
+  sortOrder: SortOrder
+}
+
+input PointsOrderAdminFilterParameter {
+  id: IDOperators
+  code: StringOperators
+  customerId: IDOperators
+  quantity: NumberOperators
+  pointsTotal: NumberOperators
+  cashTotal: NumberOperators
+  deliveryType: StringOperators
+  status: StringOperators
+  trackingNo: StringOperators
+  paidAt: DateOperators
+  shippedAt: DateOperators
+  completedAt: DateOperators
+  createdAt: DateOperators
+  _and: [PointsOrderAdminFilterParameter!]
+  _or: [PointsOrderAdminFilterParameter!]
+}
+
+input PointsOrderAdminSortParameter {
+  id: SortOrder
+  code: SortOrder
+  customerId: SortOrder
+  quantity: SortOrder
+  pointsTotal: SortOrder
+  cashTotal: SortOrder
+  deliveryType: SortOrder
+  status: SortOrder
+  trackingNo: SortOrder
+  paidAt: SortOrder
+  shippedAt: SortOrder
+  completedAt: SortOrder
+  createdAt: SortOrder
 }
 
 input ReviewFilterParameter {
@@ -12772,8 +15159,10 @@ input ReviewFilterParameter {
   content: StringOperators
   isAnonymous: BooleanOperators
   status: StringOperators
+  giftGranted: BooleanOperators
   reply: StringOperators
   repliedAt: DateOperators
+  reviewedAt: DateOperators
   helpfulCount: NumberOperators
   createdAt: DateOperators
   updatedAt: DateOperators
@@ -12794,6 +15183,7 @@ input ReviewSortParameter {
   status: SortOrder
   reply: SortOrder
   repliedAt: SortOrder
+  reviewedAt: SortOrder
   helpfulCount: SortOrder
   createdAt: SortOrder
   updatedAt: SortOrder
@@ -12940,6 +15330,36 @@ input InStoreBillSortParameter {
   createdAt: SortOrder
 }
 
+input InStorePendingCouponFilterParameter {
+  id: IDOperators
+  couponCode: StringOperators
+  couponName: StringOperators
+  discountType: StringOperators
+  discountValue: NumberOperators
+  minSpend: NumberOperators
+  customerId: IDOperators
+  customerName: StringOperators
+  customerPhone: StringOperators
+  issuedAt: DateOperators
+  expiredAt: DateOperators
+  _and: [InStorePendingCouponFilterParameter!]
+  _or: [InStorePendingCouponFilterParameter!]
+}
+
+input InStorePendingCouponSortParameter {
+  id: SortOrder
+  couponCode: SortOrder
+  couponName: SortOrder
+  discountType: SortOrder
+  discountValue: SortOrder
+  minSpend: SortOrder
+  customerId: SortOrder
+  customerName: SortOrder
+  customerPhone: SortOrder
+  issuedAt: SortOrder
+  expiredAt: SortOrder
+}
+
 input CouponBundleFilterParameter {
   id: IDOperators
   name: StringOperators
@@ -13056,6 +15476,13 @@ input PreSaleActivityFilterParameter {
   productId: IDOperators
   variantId: IDOperators
   status: StringOperators
+  depositKind: StringOperators
+  tailTriggerType: StringOperators
+  groupBuyActivityId: NumberOperators
+  tailWindowHours: NumberOperators
+  graceHours: NumberOperators
+  shipDeadlineAt: DateOperators
+  agreementVersion: StringOperators
   createdAt: DateOperators
   updatedAt: DateOperators
   _and: [PreSaleActivityFilterParameter!]
@@ -13077,6 +15504,101 @@ input PreSaleActivitySortParameter {
   limitPerUser: SortOrder
   productId: SortOrder
   variantId: SortOrder
+  depositKind: SortOrder
+  tailTriggerType: SortOrder
+  groupBuyActivityId: SortOrder
+  tailWindowHours: SortOrder
+  graceHours: SortOrder
+  shipDeadlineAt: SortOrder
+  agreementVersion: SortOrder
+  createdAt: SortOrder
+  updatedAt: SortOrder
+}
+
+input PaymentScheduleFilterParameter {
+  id: IDOperators
+  createdAt: DateOperators
+  updatedAt: DateOperators
+  orderId: IDOperators
+  scenario: StringOperators
+  status: StringOperators
+  breachType: StringOperators
+  deliveryGate: StringOperators
+  agreementVersion: StringOperators
+  shipDeadline: DateOperators
+  paidTotal: NumberOperators
+  totalAmount: NumberOperators
+  _and: [PaymentScheduleFilterParameter!]
+  _or: [PaymentScheduleFilterParameter!]
+}
+
+input PaymentScheduleSortParameter {
+  id: SortOrder
+  createdAt: SortOrder
+  updatedAt: SortOrder
+  orderId: SortOrder
+  deliveryGate: SortOrder
+  agreementVersion: SortOrder
+  shipDeadline: SortOrder
+  paidTotal: SortOrder
+  totalAmount: SortOrder
+}
+
+input InstallmentPlanFilterParameter {
+  id: IDOperators
+  name: StringOperators
+  variantId: IDOperators
+  downPaymentRatio: NumberOperators
+  periods: NumberOperators
+  intervalUnit: StringOperators
+  intervalCount: NumberOperators
+  allowCod: BooleanOperators
+  enabled: BooleanOperators
+  createdAt: DateOperators
+  updatedAt: DateOperators
+  _and: [InstallmentPlanFilterParameter!]
+  _or: [InstallmentPlanFilterParameter!]
+}
+
+input InstallmentPlanSortParameter {
+  id: SortOrder
+  name: SortOrder
+  variantId: SortOrder
+  downPaymentRatio: SortOrder
+  periods: SortOrder
+  intervalUnit: SortOrder
+  intervalCount: SortOrder
+  createdAt: SortOrder
+  updatedAt: SortOrder
+}
+
+input RentalPlanFilterParameter {
+  id: IDOperators
+  name: StringOperators
+  variantId: IDOperators
+  depositAmount: NumberOperators
+  rentAmount: NumberOperators
+  rentUnit: StringOperators
+  prepaidOrPostpaid: StringOperators
+  buyoutPrice: NumberOperators
+  allowBuyout: BooleanOperators
+  allowCod: BooleanOperators
+  enabled: BooleanOperators
+  createdAt: DateOperators
+  updatedAt: DateOperators
+  _and: [RentalPlanFilterParameter!]
+  _or: [RentalPlanFilterParameter!]
+}
+
+input RentalPlanSortParameter {
+  id: SortOrder
+  name: SortOrder
+  variantId: SortOrder
+  depositAmount: SortOrder
+  rentAmount: SortOrder
+  rentUnit: SortOrder
+  prepaidOrPostpaid: SortOrder
+  buyoutPrice: SortOrder
   createdAt: SortOrder
   updatedAt: SortOrder
 }
@@ -13100,16 +15622,25 @@ input HistoryEntrySortParameter {
 type AddressCustomFields {
   latitude: Float
   longitude: Float
+  zoneId: String
+  buildingId: String
+  route: String
 }
 
 input CreateAddressCustomFieldsInput {
   latitude: Float
   longitude: Float
+  zoneId: String
+  buildingId: String
+  route: String
 }
 
 input UpdateAddressCustomFieldsInput {
   latitude: Float
   longitude: Float
+  zoneId: String
+  buildingId: String
+  route: String
 }
 
 type AssetCustomFields {
@@ -13184,6 +15715,8 @@ type ChannelMultiLanguageConfigStruct {
 type ChannelCustomFields {
   displayTemplate: String
   themeId: String
+  balanceMinWithdrawalAmount: Int
+  lotteryFixedCost: Int
   shopName: String
   shopLogo: String
   shopIntro: String
@@ -13220,6 +15753,7 @@ type ChannelCustomFields {
   basicConfig: ChannelBasicConfigStruct
   serviceNotifyConfig: ChannelServiceNotifyConfigStruct
   multiLanguageConfig: ChannelMultiLanguageConfigStruct
+  industryType: String
   inventoryMode: String
   odooBaseUrl: String
   odooApiKey: String
@@ -13240,6 +15774,10 @@ type ChannelCustomFields {
   distributionEnabled: Boolean
   rechargeMinAmount: Int
   rechargeMaxAmount: Int
+  afterSalesReturnAddress: String
+  afterSalesTimeoutHours: Int
+  afterSalesAutoApproveHours: Int
+  afterSalesRefundAutoRetry: Int
   level1Threshold: Int
   level1Name: String
   level2Threshold: Int
@@ -13279,12 +15817,19 @@ type ChannelCustomFields {
   taskOrderAmountThreshold: Int
   taskOrderAmountPoints: Int
   taskOrderAmountGrowth: Int
+  reviewGiftCouponTemplateId: String
+  reviewGiftPoints: Int
+  reviewFollowUpWindowDays: Int
   orderPaidTemplateId: String
   orderShippedTemplateId: String
   orderDeliveredTemplateId: String
   orderRefundedTemplateId: String
   subscribeMessagePage: String
   subscribeMessageMiniprogramState: String
+  waimaiTags: String
+  waimaiMonthlySales: Int
+  waimaiLogo: String
+  waimaiPromoText: String
   settlementBasis: String
   stockLocationPriority: String
   shippingStrategy: String
@@ -13352,6 +15897,8 @@ input ChannelMultiLanguageConfigStructInput {
 input CreateChannelCustomFieldsInput {
   displayTemplate: String
   themeId: String
+  balanceMinWithdrawalAmount: Int
+  lotteryFixedCost: Int
   shopName: String
   shopLogo: String
   shopIntro: String
@@ -13388,6 +15935,7 @@ input CreateChannelCustomFieldsInput {
   basicConfig: ChannelBasicConfigStructInput
   serviceNotifyConfig: ChannelServiceNotifyConfigStructInput
   multiLanguageConfig: ChannelMultiLanguageConfigStructInput
+  industryType: String
   inventoryMode: String
   odooBaseUrl: String
   odooApiKey: String
@@ -13408,6 +15956,10 @@ input CreateChannelCustomFieldsInput {
   distributionEnabled: Boolean
   rechargeMinAmount: Int
   rechargeMaxAmount: Int
+  afterSalesReturnAddress: String
+  afterSalesTimeoutHours: Int
+  afterSalesAutoApproveHours: Int
+  afterSalesRefundAutoRetry: Int
   level1Threshold: Int
   level1Name: String
   level2Threshold: Int
@@ -13447,12 +15999,19 @@ input CreateChannelCustomFieldsInput {
   taskOrderAmountThreshold: Int
   taskOrderAmountPoints: Int
   taskOrderAmountGrowth: Int
+  reviewGiftCouponTemplateId: String
+  reviewGiftPoints: Int
+  reviewFollowUpWindowDays: Int
   orderPaidTemplateId: String
   orderShippedTemplateId: String
   orderDeliveredTemplateId: String
   orderRefundedTemplateId: String
   subscribeMessagePage: String
   subscribeMessageMiniprogramState: String
+  waimaiTags: String
+  waimaiMonthlySales: Int
+  waimaiLogo: String
+  waimaiPromoText: String
   settlementBasis: String
   stockLocationPriority: String
   shippingStrategy: String
@@ -13466,6 +16025,8 @@ input CreateChannelCustomFieldsInput {
 input UpdateChannelCustomFieldsInput {
   displayTemplate: String
   themeId: String
+  balanceMinWithdrawalAmount: Int
+  lotteryFixedCost: Int
   shopName: String
   shopLogo: String
   shopIntro: String
@@ -13502,6 +16063,7 @@ input UpdateChannelCustomFieldsInput {
   basicConfig: ChannelBasicConfigStructInput
   serviceNotifyConfig: ChannelServiceNotifyConfigStructInput
   multiLanguageConfig: ChannelMultiLanguageConfigStructInput
+  industryType: String
   inventoryMode: String
   odooBaseUrl: String
   odooApiKey: String
@@ -13522,6 +16084,10 @@ input UpdateChannelCustomFieldsInput {
   distributionEnabled: Boolean
   rechargeMinAmount: Int
   rechargeMaxAmount: Int
+  afterSalesReturnAddress: String
+  afterSalesTimeoutHours: Int
+  afterSalesAutoApproveHours: Int
+  afterSalesRefundAutoRetry: Int
   level1Threshold: Int
   level1Name: String
   level2Threshold: Int
@@ -13561,12 +16127,19 @@ input UpdateChannelCustomFieldsInput {
   taskOrderAmountThreshold: Int
   taskOrderAmountPoints: Int
   taskOrderAmountGrowth: Int
+  reviewGiftCouponTemplateId: String
+  reviewGiftPoints: Int
+  reviewFollowUpWindowDays: Int
   orderPaidTemplateId: String
   orderShippedTemplateId: String
   orderDeliveredTemplateId: String
   orderRefundedTemplateId: String
   subscribeMessagePage: String
   subscribeMessageMiniprogramState: String
+  waimaiTags: String
+  waimaiMonthlySales: Int
+  waimaiLogo: String
+  waimaiPromoText: String
   settlementBasis: String
   stockLocationPriority: String
   shippingStrategy: String
@@ -13665,6 +16238,15 @@ type CustomerCustomFields {
   growthValue: Int
   points: Int
   memberLevel: Int
+  riderStatus: String
+  riderRealName: String
+  riderStudentNo: String
+  riderCampus: String
+  riderIdImg: String
+  riderCredit: Int
+  riderOnlineAt: DateTime
+  avatarUrl: String
+  invoiceTitles: String
   customerType: String
   companyInfo: String
   salesStaffId: String
@@ -13685,6 +16267,15 @@ input CreateCustomerCustomFieldsInput {
   growthValue: Int
   points: Int
   memberLevel: Int
+  riderStatus: String
+  riderRealName: String
+  riderStudentNo: String
+  riderCampus: String
+  riderIdImg: String
+  riderCredit: Int
+  riderOnlineAt: DateTime
+  avatarUrl: String
+  invoiceTitles: String
   customerType: String
   companyInfo: String
   salesStaffId: String
@@ -13705,6 +16296,15 @@ input UpdateCustomerCustomFieldsInput {
   growthValue: Int
   points: Int
   memberLevel: Int
+  riderStatus: String
+  riderRealName: String
+  riderStudentNo: String
+  riderCampus: String
+  riderIdImg: String
+  riderCredit: Int
+  riderOnlineAt: DateTime
+  avatarUrl: String
+  invoiceTitles: String
   customerType: String
   companyInfo: String
   salesStaffId: String
@@ -13790,6 +16390,40 @@ type OrderCustomFields {
   exceptionType: String
   exceptionNote: String
   exceptionPhotos: [String!]
+  fulfillmentRoute: String
+  orderKind: String
+  buildingId: String
+  campusZone: String
+  hallStatus: String
+  hallEnteredAt: DateTime
+  riderEarning: Int
+  tip: Int
+  deliverySlotId: String
+  deliverySlotText: String
+  errandKind: String
+  errandFrom: String
+  errandTo: String
+  errandNote: String
+  leg1Status: String
+  handoverAt: DateTime
+  campusCause: String
+  transferPhotos: [String!]
+  transferNote: String
+  transferAt: DateTime
+  riderLat: Float
+  riderLng: Float
+  urged: Boolean
+  urgedAt: DateTime
+  scheduledFor: DateTime
+  exceptionAction: String
+  exceptionCompensation: Int
+  exceptionCouponTemplateId: String
+  exceptionHandledNote: String
+  exceptionHandledAt: DateTime
+  exceptionHandledBy: String
+  routeGroupId: String
+  invoiceApplied: Boolean
+  invoiceInfo: String
   salesStaffId: String
   salesChannel: String
   salesNote: String
@@ -13806,6 +16440,7 @@ type OrderCustomFields {
   preSaleMode: String
   preSaleDepositTotal: Int
   preSaleReleaseAt: DateTime
+  paymentScheduleId: Int
 }
 
 input OrderCsNotesStructInput {
@@ -13877,6 +16512,40 @@ input UpdateOrderCustomFieldsInput {
   exceptionType: String
   exceptionNote: String
   exceptionPhotos: [String!]
+  fulfillmentRoute: String
+  orderKind: String
+  buildingId: String
+  campusZone: String
+  hallStatus: String
+  hallEnteredAt: DateTime
+  riderEarning: Int
+  tip: Int
+  deliverySlotId: String
+  deliverySlotText: String
+  errandKind: String
+  errandFrom: String
+  errandTo: String
+  errandNote: String
+  leg1Status: String
+  handoverAt: DateTime
+  campusCause: String
+  transferPhotos: [String!]
+  transferNote: String
+  transferAt: DateTime
+  riderLat: Float
+  riderLng: Float
+  urged: Boolean
+  urgedAt: DateTime
+  scheduledFor: DateTime
+  exceptionAction: String
+  exceptionCompensation: Int
+  exceptionCouponTemplateId: String
+  exceptionHandledNote: String
+  exceptionHandledAt: DateTime
+  exceptionHandledBy: String
+  routeGroupId: String
+  invoiceApplied: Boolean
+  invoiceInfo: String
   salesStaffId: String
   salesChannel: String
   salesNote: String
@@ -13893,12 +16562,19 @@ input UpdateOrderCustomFieldsInput {
   preSaleMode: String
   preSaleDepositTotal: Int
   preSaleReleaseAt: DateTime
+  paymentScheduleId: Int
 }
 
 type OrderLineCustomFields {
   hotelCheckIn: String
   hotelCheckOut: String
   hotelNights: Int
+  ratePlanCode: String
+  diyPlanId: Int
+  diyUnitPrice: Int
+  diyBom: String
+  diyQuoteRefAmount: Int
+  copiedFrom: Int
   originalPrice: Int
   discount: Int
   memberPriceApplied: Boolean
@@ -13921,6 +16597,7 @@ type PaymentCustomFields {
 }
 
 type ProductCustomFields {
+  productType: String
   shopId: Int
   reviewRating: Float
   reviewCount: Int
@@ -13957,6 +16634,7 @@ type ProductTranslationCustomFields {
 }
 
 input CreateProductCustomFieldsInput {
+  productType: String
   shopId: Int
   reviewRating: Float
   reviewCount: Int
@@ -13986,6 +16664,7 @@ input CreateProductCustomFieldsInput {
 }
 
 input UpdateProductCustomFieldsInput {
+  productType: String
   shopId: Int
   reviewRating: Float
   reviewCount: Int
@@ -14170,6 +16849,12 @@ input OrderLineCustomFieldsInput {
   hotelCheckIn: String
   hotelCheckOut: String
   hotelNights: Int
+  ratePlanCode: String
+  diyPlanId: Int
+  diyUnitPrice: Int
+  diyBom: String
+  diyQuoteRefAmount: Int
+  copiedFrom: Int
   originalPrice: Int
   discount: Int
   memberPriceApplied: Boolean
@@ -14187,6 +16872,10 @@ input OrderLineCustomFieldsInput {
 input NativeAuthInput {
   username: String!
   password: String!
+}
+
+input TcmSsoAuthInput {
+  accessToken: String!
 }
 
 """
