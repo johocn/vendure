@@ -383,6 +383,27 @@ describe('CouponService.couponCentre 过滤 claimable', () => {
         );
         expect(qb.andWhere).toHaveBeenNthCalledWith(1, expect.any(Brackets));
     });
+
+    it('scene=IN_STORE → 到店口径：IN_STORE/ALL 场景券可见，ONLINE 券被过滤', async () => {
+        const own = [
+            { id: 1, claimable: true, usageScene: 'ONLINE' },
+            { id: 2, claimable: true, usageScene: 'IN_STORE' },
+            { id: 3, claimable: true, usageScene: 'ALL' },
+        ];
+        qb.getMany.mockResolvedValue(own);
+        const result = await service.couponCentre(ctx, 'IN_STORE');
+        expect(result.map((t: any) => t.id)).toEqual([2, 3]);
+    });
+
+    it('scene 缺省 → ONLINE 口径，行为与历史一致（IN_STORE 券不可见）', async () => {
+        const own = [
+            { id: 1, claimable: true, usageScene: 'ONLINE' },
+            { id: 2, claimable: true, usageScene: 'IN_STORE' },
+        ];
+        qb.getMany.mockResolvedValue(own);
+        const result = await service.couponCentre(ctx);
+        expect(result.map((t: any) => t.id)).toEqual([1]);
+    });
 });
 
 /**

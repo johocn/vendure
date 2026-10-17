@@ -336,6 +336,25 @@ const coupon_runtime_1 = require("./coupon-runtime");
         (0, vitest_1.expect)(qb.innerJoin).toHaveBeenCalledWith('tpl.channels', 'channel', 'channel.id = :channelId', { channelId: 37 });
         (0, vitest_1.expect)(qb.andWhere).toHaveBeenNthCalledWith(1, vitest_1.expect.any(typeorm_1.Brackets));
     });
+    (0, vitest_1.it)('scene=IN_STORE → 到店口径：IN_STORE/ALL 场景券可见，ONLINE 券被过滤', async () => {
+        const own = [
+            { id: 1, claimable: true, usageScene: 'ONLINE' },
+            { id: 2, claimable: true, usageScene: 'IN_STORE' },
+            { id: 3, claimable: true, usageScene: 'ALL' },
+        ];
+        qb.getMany.mockResolvedValue(own);
+        const result = await service.couponCentre(ctx, 'IN_STORE');
+        (0, vitest_1.expect)(result.map((t) => t.id)).toEqual([2, 3]);
+    });
+    (0, vitest_1.it)('scene 缺省 → ONLINE 口径，行为与历史一致（IN_STORE 券不可见）', async () => {
+        const own = [
+            { id: 1, claimable: true, usageScene: 'ONLINE' },
+            { id: 2, claimable: true, usageScene: 'IN_STORE' },
+        ];
+        qb.getMany.mockResolvedValue(own);
+        const result = await service.couponCentre(ctx);
+        (0, vitest_1.expect)(result.map((t) => t.id)).toEqual([1]);
+    });
 });
 /**
  * P5：多语言入参合并（nameZh/nameEn/descZh/descEn → LocalizedText）。

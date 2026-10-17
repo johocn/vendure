@@ -51,9 +51,13 @@ export declare class CouponService {
     /** 合并单条 LocalizedText：当前值（对象取其已有键，纯字符串视为 zh）叠加 zh_Hans/en 覆盖。 */
     private mergeLocalized;
     deleteTemplate(ctx: RequestContext, id: ID): Promise<void>;
-    couponCentre(ctx: RequestContext): Promise<CouponTemplate[]>;
+    /**
+     * 领券中心。scene 口径：ONLINE（默认，历史行为）| IN_STORE（到店券，C 端到店券 tab）| ALL（全部）。
+     * 匹配规则见 matchesScene：ALL 场景券在 ONLINE 与 IN_STORE 口径下均会返回。
+     */
+    couponCentre(ctx: RequestContext, scene?: string): Promise<CouponTemplate[]>;
     /** 领券中心「即将开始」：enabled 且 startsAt 在未来的券模板（与 couponCentre 同渠道/scene 口径） */
-    couponCentreUpcoming(ctx: RequestContext): Promise<CouponTemplate[]>;
+    couponCentreUpcoming(ctx: RequestContext, scene?: string): Promise<CouponTemplate[]>;
     /** 默认商城渠道下，本商城商品（Product.customFields.shopId）中出现过的店铺 id 集合。 */
     private shopIdsPresentInChannel;
     listMyCoupons(ctx: RequestContext, status?: string): Promise<CustomerCoupon[]>;

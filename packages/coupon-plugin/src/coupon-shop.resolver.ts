@@ -11,13 +11,13 @@ export class CouponShopResolver {
     ) {}
 
     @Query()
-    async couponCentre(@Ctx() ctx: RequestContext) {
-        return this.couponService.couponCentre(ctx);
+    async couponCentre(@Ctx() ctx: RequestContext, @Args('scene') scene?: string) {
+        return this.couponService.couponCentre(ctx, scene);
     }
 
     @Query()
-    async couponCentreUpcoming(@Ctx() ctx: RequestContext) {
-        return this.couponService.couponCentreUpcoming(ctx);
+    async couponCentreUpcoming(@Ctx() ctx: RequestContext, @Args('scene') scene?: string) {
+        return this.couponService.couponCentreUpcoming(ctx, scene);
     }
 
     @Query()

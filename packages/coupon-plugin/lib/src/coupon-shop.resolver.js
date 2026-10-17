@@ -21,11 +21,11 @@ let CouponShopResolver = class CouponShopResolver {
         this.couponService = couponService;
         this.orderService = orderService;
     }
-    async couponCentre(ctx) {
-        return this.couponService.couponCentre(ctx);
+    async couponCentre(ctx, scene) {
+        return this.couponService.couponCentre(ctx, scene);
     }
-    async couponCentreUpcoming(ctx) {
-        return this.couponService.couponCentreUpcoming(ctx);
+    async couponCentreUpcoming(ctx, scene) {
+        return this.couponService.couponCentreUpcoming(ctx, scene);
     }
     async myCoupons(ctx, status) {
         return this.couponService.listMyCoupons(ctx, status);
@@ -71,15 +71,17 @@ exports.CouponShopResolver = CouponShopResolver;
 __decorate([
     (0, graphql_1.Query)(),
     __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('scene')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:paramtypes", [core_1.RequestContext, String]),
     __metadata("design:returntype", Promise)
 ], CouponShopResolver.prototype, "couponCentre", null);
 __decorate([
     (0, graphql_1.Query)(),
     __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('scene')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:paramtypes", [core_1.RequestContext, String]),
     __metadata("design:returntype", Promise)
 ], CouponShopResolver.prototype, "couponCentreUpcoming", null);
 __decorate([

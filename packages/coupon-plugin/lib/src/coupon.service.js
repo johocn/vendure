@@ -274,7 +274,12 @@ let CouponService = class CouponService {
         await repo.delete(id);
     }
     /* ------------------------- 领券中心 / 券包 ------------------------- */
-    async couponCentre(ctx) {
+    /**
+     * 领券中心。scene 口径：ONLINE（默认，历史行为）| IN_STORE（到店券，C 端到店券 tab）| ALL（全部）。
+     * 匹配规则见 matchesScene：ALL 场景券在 ONLINE 与 IN_STORE 口径下均会返回。
+     */
+    async couponCentre(ctx, scene) {
+        const effectiveScene = (scene !== null && scene !== void 0 ? scene : 'ONLINE');
         const repo = this.connection.getRepository(ctx, coupon_template_entity_1.CouponTemplate);
         const now = new Date();
         // 粗筛：显式配置了渠道集合的券不再要求 claimable=true（显式优先）；
@@ -292,12 +297,12 @@ let CouponService = class CouponService {
             .getMany();
         // 非默认商城维持现状：仅列出本渠道券。
         if (!(0, coupon_scope_1.isDefaultMallChannel)(ctx)) {
-            return (0, coupon_channel_1.filterTemplatesByChannelAndScene)(own, 'CENTRE', 'ONLINE');
+            return (0, coupon_channel_1.filterTemplatesByChannelAndScene)(own, 'CENTRE', effectiveScene);
         }
         // 默认商城：除本渠道券外，追加列出「其 shopId 对应商品出现在本商城」的租户券。
         const shopIds = await this.shopIdsPresentInChannel(ctx);
         if (shopIds.size === 0) {
-            return (0, coupon_channel_1.filterTemplatesByChannelAndScene)(own, 'CENTRE', 'ONLINE');
+            return (0, coupon_channel_1.filterTemplatesByChannelAndScene)(own, 'CENTRE', effectiveScene);
         }
         const extra = await repo
             .createQueryBuilder('tpl')
@@ -312,10 +317,11 @@ let CouponService = class CouponService {
             .getMany();
         const ownIds = new Set(own.map(t => String(t.id)));
         const merged = [...own, ...extra.filter(t => !ownIds.has(String(t.id)))];
-        return (0, coupon_channel_1.filterTemplatesByChannelAndScene)(merged, 'CENTRE', 'ONLINE');
+        return (0, coupon_channel_1.filterTemplatesByChannelAndScene)(merged, 'CENTRE', effectiveScene);
     }
     /** 领券中心「即将开始」：enabled 且 startsAt 在未来的券模板（与 couponCentre 同渠道/scene 口径） */
-    async couponCentreUpcoming(ctx) {
+    async couponCentreUpcoming(ctx, scene) {
+        const effectiveScene = (scene !== null && scene !== void 0 ? scene : 'ONLINE');
         const repo = this.connection.getRepository(ctx, coupon_template_entity_1.CouponTemplate);
         const now = new Date();
         const own = await repo
@@ -324,7 +330,7 @@ let CouponService = class CouponService {
             .where('tpl.enabled = :enabled', { enabled: true })
             .andWhere('tpl.startsAt > :now', { now })
             .getMany();
-        return (0, coupon_channel_1.filterTemplatesByChannelAndScene)(own, 'CENTRE', 'ONLINE');
+        return (0, coupon_channel_1.filterTemplatesByChannelAndScene)(own, 'CENTRE', effectiveScene);
     }
     /** 默认商城渠道下，本商城商品（Product.customFields.shopId）中出现过的店铺 id 集合。 */
     async shopIdsPresentInChannel(ctx) {

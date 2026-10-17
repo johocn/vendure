@@ -520,8 +520,8 @@ type CustomerCoupon implements Node {
             }
 
             extend type Query {
-                couponCentre: [CouponTemplate!]!
-                couponCentreUpcoming: [CouponTemplate!]!
+                couponCentre(scene: CouponUsageScene): [CouponTemplate!]!
+                couponCentreUpcoming(scene: CouponUsageScene): [CouponTemplate!]!
                 myCoupons(status: CouponStatus): [CustomerCoupon!]!
                 customerCouponByCode(code: String!): CustomerCoupon
                 pointsMallTemplates: [CouponTemplate!]!

@@ -24,6 +24,7 @@ import { COUPON_NOT_OWNED, loggerCtx } from './constants';
 import { localizeText } from './localize';
 import { isDefaultMallChannel, lineHasShopId } from './coupon-scope';
 import { filterTemplatesByChannelAndScene, hasChannel, matchesScene } from './coupon-channel';
+import type { CouponUsageScene } from './types';
 import { CouponBindingService } from './coupon-binding.service';
 import { isNewCustomerWithinChannel } from './coupon-settlement';
 import { CouponTemplate } from './coupon-template.entity';
@@ -315,7 +316,12 @@ export class CouponService {
 
     /* ------------------------- 领券中心 / 券包 ------------------------- */
 
-    async couponCentre(ctx: RequestContext): Promise<CouponTemplate[]> {
+    /**
+     * 领券中心。scene 口径：ONLINE（默认，历史行为）| IN_STORE（到店券，C 端到店券 tab）| ALL（全部）。
+     * 匹配规则见 matchesScene：ALL 场景券在 ONLINE 与 IN_STORE 口径下均会返回。
+     */
+    async couponCentre(ctx: RequestContext, scene?: string): Promise<CouponTemplate[]> {
+        const effectiveScene = (scene ?? 'ONLINE') as CouponUsageScene;
         const repo = this.connection.getRepository(ctx, CouponTemplate);
         const now = new Date();
         // 粗筛：显式配置了渠道集合的券不再要求 claimable=true（显式优先）；
@@ -337,12 +343,12 @@ export class CouponService {
             .getMany();
         // 非默认商城维持现状：仅列出本渠道券。
         if (!isDefaultMallChannel(ctx)) {
-            return filterTemplatesByChannelAndScene(own, 'CENTRE', 'ONLINE');
+            return filterTemplatesByChannelAndScene(own, 'CENTRE', effectiveScene);
         }
         // 默认商城：除本渠道券外，追加列出「其 shopId 对应商品出现在本商城」的租户券。
         const shopIds = await this.shopIdsPresentInChannel(ctx);
         if (shopIds.size === 0) {
-            return filterTemplatesByChannelAndScene(own, 'CENTRE', 'ONLINE');
+            return filterTemplatesByChannelAndScene(own, 'CENTRE', effectiveScene);
         }
         const extra = await repo
             .createQueryBuilder('tpl')
@@ -361,11 +367,12 @@ export class CouponService {
             .getMany();
         const ownIds = new Set(own.map(t => String(t.id)));
         const merged = [...own, ...extra.filter(t => !ownIds.has(String(t.id)))];
-        return filterTemplatesByChannelAndScene(merged, 'CENTRE', 'ONLINE');
+        return filterTemplatesByChannelAndScene(merged, 'CENTRE', effectiveScene);
     }
 
     /** 领券中心「即将开始」：enabled 且 startsAt 在未来的券模板（与 couponCentre 同渠道/scene 口径） */
-    async couponCentreUpcoming(ctx: RequestContext): Promise<CouponTemplate[]> {
+    async couponCentreUpcoming(ctx: RequestContext, scene?: string): Promise<CouponTemplate[]> {
+        const effectiveScene = (scene ?? 'ONLINE') as CouponUsageScene;
         const repo = this.connection.getRepository(ctx, CouponTemplate);
         const now = new Date();
         const own = await repo
@@ -374,7 +381,7 @@ export class CouponService {
             .where('tpl.enabled = :enabled', { enabled: true })
             .andWhere('tpl.startsAt > :now', { now })
             .getMany();
-        return filterTemplatesByChannelAndScene(own, 'CENTRE', 'ONLINE');
+        return filterTemplatesByChannelAndScene(own, 'CENTRE', effectiveScene);
     }
 
     /** 默认商城渠道下，本商城商品（Product.customFields.shopId）中出现过的店铺 id 集合。 */
