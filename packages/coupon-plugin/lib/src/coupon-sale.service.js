@@ -49,9 +49,9 @@ let CouponSaleService = class CouponSaleService {
         }
         return customer.id;
     }
-    /** 券商城目录：可售模板（渠道含 SALE 且 salePrice>0）+ 启用券包；附真实已售数（已支付 coupon_sale_order 聚合）与首购/学生价资格信息 */
+    /** 券商城目录：可售模板（渠道含 SALE 且 salePrice>0）+ 启用券包；附真实已售数、首购/学生价资格信息与倒计时活动位 */
     async saleCatalogue(ctx, scene) {
-        var _a, _b, _c, _d, _e;
+        var _a, _b, _c, _d, _e, _f;
         const repo = this.connection.getRepository(ctx, coupon_template_entity_1.CouponTemplate);
         const all = await repo.find({ relations: { channels: true } });
         const effectiveScene = (scene !== null && scene !== void 0 ? scene : 'ONLINE');
@@ -106,7 +106,15 @@ let CouponSaleService = class CouponSaleService {
             studentApproved =
                 ((_e = customer === null || customer === void 0 ? void 0 : customer.customFields) === null || _e === void 0 ? void 0 : _e.studentStatus) === 'approved';
         }
-        return { templates: saleable, bundles, firstBuyDiscount, firstBuyEligible, studentApproved };
+        return {
+            templates: saleable,
+            bundles,
+            firstBuyDiscount,
+            firstBuyEligible,
+            studentApproved,
+            // 倒计时活动位（单场）：enabled + 服务端时间窗 + 关联券命中本店可售目录；无活动为 null
+            campaign: (0, coupon_sale_1.resolveActiveCampaign)((_f = channel === null || channel === void 0 ? void 0 : channel.customFields) === null || _f === void 0 ? void 0 : _f.couponCampaign, saleable, new Date(), ctx.languageCode),
+        };
     }
     /** 首购资格：本渠道无已支付（PAID）出售单 → true（每用户仅 1 次；取消/退款单不占资格） */
     async isFirstBuyEligible(ctx, customerId) {

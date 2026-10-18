@@ -13,10 +13,11 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AddCouponPromoFieldsMigration = void 0;
-// 券店营销扩展（首购立减 + 学生价）幂等迁移：
+// 券店营销扩展（首购立减 + 学生价 + 倒计时活动）幂等迁移：
 // - coupon_template.studentPrice（学生价，分）
 // - coupon_sale_order.discountType / discountAmount（让利记录）
 // - channel.customFieldsFirstbuydiscount（首购立减，分，customFields 嵌入列）
+// - channel.customFieldsCouponcampaign（倒计时活动配置 JSON，text，customFields 嵌入列）
 // - customer.customFieldsStudentstatus / customFieldsStudentinfo / customFieldsStudentreviewedat（学生认证 customFields 嵌入列）
 //
 // 命名关键：Vendure customFields 注册为实体 embedded 列，TypeORM 生成的 DB 列名带
@@ -54,6 +55,7 @@ let AddCouponPromoFieldsMigration = class AddCouponPromoFieldsMigration {
                     { table: sale, name: 'discountAmount', type: 'integer' },
                     // customFields 嵌入列（列名须与 TypeORM metadata 一致）
                     { table: channel, name: 'customFieldsFirstbuydiscount', type: 'integer', orphan: 'firstBuyDiscount' },
+                    { table: channel, name: 'customFieldsCouponcampaign', type: 'text' },
                     { table: customer, name: 'customFieldsStudentstatus', type: 'varchar', orphan: 'studentStatus' },
                     { table: customer, name: 'customFieldsStudentinfo', type: 'varchar', orphan: 'studentInfo' },
                     { table: customer, name: 'customFieldsStudentreviewedat', type: 'timestamp', orphan: 'studentReviewedAt' },

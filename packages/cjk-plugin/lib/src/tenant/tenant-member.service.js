@@ -373,6 +373,10 @@ let TenantMemberService = class TenantMemberService {
             cf.set('storefrontMode', input.storefrontMode);
         if (input.storefrontHomeLayout !== undefined && input.storefrontHomeLayout !== null)
             cf.set('storefrontHomeLayout', input.storefrontHomeLayout);
+        if (input.firstBuyDiscount !== undefined)
+            cf.set('firstBuyDiscount', input.firstBuyDiscount);
+        if (input.couponCampaign !== undefined)
+            cf.set('couponCampaign', input.couponCampaign);
         await this.channelService.update(ctx, {
             id: channelId,
             customFields: Object.fromEntries(cf),

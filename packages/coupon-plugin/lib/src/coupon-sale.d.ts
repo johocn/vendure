@@ -20,6 +20,45 @@ export declare function expandBundleItems(items: ReadonlyArray<{
 export declare function filterSaleCatalogue<T extends {
     salePrice?: number | null;
 }>(templates: ReadonlyArray<T>): T[];
+/** 活动文案：string 或 {zh,en,...} 多语言（运营 web-admin 填写） */
+export type CampaignText = string | Record<string, string> | null | undefined;
+export interface CouponCampaignConfig {
+    enabled: boolean;
+    name: CampaignText;
+    subtitle: CampaignText;
+    rules: CampaignText;
+    /** ISO 字符串；null=不限端 */
+    startsAt: string | null;
+    endsAt: string | null;
+    templateIds: number[];
+}
+/** 下发给 C 端的活动视图（文案已本地化，templates 已按配置顺序过滤为本店可售券） */
+export interface CouponCampaignView<T> {
+    name: string;
+    subtitle: string | null;
+    rules: string | null;
+    startsAt: string | null;
+    endsAt: string;
+    templates: T[];
+}
+/**
+ * 解析 couponCampaign 配置（JSON 字符串 → 规整结构）。
+ * 坏 JSON / 非对象 / 字段类型不合法返回 null（SSR 友好，不炸页面）。
+ */
+export declare function parseCouponCampaignConfig(raw: unknown): CouponCampaignConfig | null;
+/**
+ * 本地化活动文案：lang 形如 Vendure LanguageCode（zh_Hans / en）。
+ * 兜底链：精确 lang → 去地区码（zh_Hans→zh）→ 首个非空值 → null。
+ */
+export declare function localizeCampaignText(value: CampaignText, lang: string): string | null;
+/**
+ * 解析当前生效活动（单场，纯函数）：
+ * enabled + 时间窗（服务端 now 判定，不信任前端时钟）+ templateIds 命中本店可售券（保持配置顺序）。
+ * 不满足任一条件返回 null（C 端不渲染活动位）。
+ */
+export declare function resolveActiveCampaign<T extends {
+    id: number | string;
+}>(raw: unknown, saleable: ReadonlyArray<T>, now: Date, lang: string): CouponCampaignView<T> | null;
 /**
  * 到手价重算（下单唯一信任源，纯函数）：
  * 学生价（仅单券，需认证通过）与首购立减（单券+券包）各自从原价计算、取低不叠加；

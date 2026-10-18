@@ -17,6 +17,7 @@ export declare class CouponSaleShopResolver {
         firstBuyDiscount: number;
         firstBuyEligible: boolean | null;
         studentApproved: boolean | null;
+        campaign: ReturnType<typeof import("./coupon-sale").resolveActiveCampaign> | null;
     }>;
     myCouponSaleOrders(ctx: RequestContext): Promise<import("./coupon-sale-order.entity").CouponSaleOrder[]>;
     createCouponSaleOrder(ctx: RequestContext, templateId?: ID, bundleId?: ID): Promise<import("./coupon-sale-order.entity").CouponSaleOrder>;

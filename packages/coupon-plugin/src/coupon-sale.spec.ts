@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { expandBundleItems, filterSaleCatalogue, isSaleOrderRefundable } from './coupon-sale';
+import { localizeCampaignText, parseCouponCampaignConfig, resolveActiveCampaign } from './coupon-sale';
 import { CouponService } from './coupon.service';
 import { CouponSaleService } from './coupon-sale.service';
 import { CouponTemplate } from './coupon-template.entity';
@@ -182,5 +183,90 @@ describe('CouponSaleService.saleCatalogue 渠道隔离', () => {
         expect((templates.find(t => t.id === 1) as any).soldCount).toBe(12);
         expect((templates.find(t => t.id === 2) as any).soldCount).toBe(0);
         expect((bundles[0] as any).soldCount).toBe(3);
+    });
+
+    it('活动位：窗口内 + 关联券命中本店目录 → campaign 下发（他店券被过滤）', async () => {
+        const nowMs = Date.now();
+        const cfg = JSON.stringify({
+            enabled: true,
+            name: { zh: '周末限时特惠', en: 'Weekend Flash Sale' },
+            startsAt: new Date(nowMs - 3600e3).toISOString(), // 1 小时前开始
+            endsAt: new Date(nowMs + 3600e3).toISOString(), // 1 小时后结束
+            templateIds: [1, 2],
+        });
+        const svc = makeService([tpl({ id: 1, channels: [{ id: 37 }] }), tpl({ id: 2, channels: [{ id: 1 }] })], {
+            channel: { customFields: { couponCampaign: cfg } },
+        });
+        const { campaign } = await svc.saleCatalogue({ ...ctx, languageCode: 'zh_Hans' });
+        expect(campaign).not.toBeNull();
+        expect(campaign!.name).toBe('周末限时特惠');
+        expect(campaign!.templates.map(t => t.id)).toEqual([1]);
+        expect(campaign!.endsAt).toBe(new Date(nowMs + 3600e3).toISOString());
+    });
+
+    it('活动位：窗口外 / 未配置 / 禁用 → campaign 为 null', async () => {
+        const past = JSON.stringify({ name: '旧活动', endsAt: '2020-01-01T00:00:00Z', templateIds: [1] });
+        expect(
+            (await makeService([tpl({ id: 1, channels: [{ id: 37 }] })], { channel: { customFields: { couponCampaign: past } } }).saleCatalogue(ctx)).campaign,
+        ).toBeNull();
+        expect(
+            (await makeService([tpl({ id: 1, channels: [{ id: 37 }] })], { channel: { customFields: {} } }).saleCatalogue(ctx)).campaign,
+        ).toBeNull();
+        const notStarted = JSON.stringify({ name: '预告', startsAt: '2031-01-01T00:00:00Z', endsAt: '2031-01-02T00:00:00Z', templateIds: [1] });
+        expect(
+            (await makeService([tpl({ id: 1, channels: [{ id: 37 }] })], { channel: { customFields: { couponCampaign: notStarted } } }).saleCatalogue(ctx)).campaign,
+        ).toBeNull();
+        const off = JSON.stringify({ name: 'x', endsAt: '2030-01-01T00:00:00Z', templateIds: [1], enabled: false });
+        expect(
+            (await makeService([tpl({ id: 1, channels: [{ id: 37 }] })], { channel: { customFields: { couponCampaign: off } } }).saleCatalogue(ctx)).campaign,
+        ).toBeNull();
+    });
+});
+
+describe('倒计时活动位纯函数', () => {
+    const saleable = [{ id: 83 }, { id: 84 }, { id: 90 }];
+
+    it('parseCouponCampaignConfig：坏 JSON / 非对象 / 空值 → null；字段规整', () => {
+        expect(parseCouponCampaignConfig(null)).toBeNull();
+        expect(parseCouponCampaignConfig('')).toBeNull();
+        expect(parseCouponCampaignConfig('not-json')).toBeNull();
+        expect(parseCouponCampaignConfig('[1,2]')).toBeNull();
+        const cfg = parseCouponCampaignConfig('{"enabled":false,"name":{"zh":"x"},"endsAt":"2026-10-26T20:00:00+08:00","templateIds":["83","84",-1]}');
+        expect(cfg).toEqual({
+            enabled: false,
+            name: { zh: 'x' },
+            subtitle: null,
+            rules: null,
+            startsAt: null,
+            endsAt: '2026-10-26T12:00:00.000Z',
+            templateIds: [83, 84],
+        });
+    });
+
+    it('resolveActiveCampaign：时间窗判定 + 配置顺序 + 命中过滤', () => {
+        const cfg = { enabled: true, name: '闪购', startsAt: null, endsAt: '2026-10-26T12:00:00Z', templateIds: [90, 84, 999] };
+        const view = resolveActiveCampaign(cfg, saleable, new Date('2026-10-24T00:00:00Z'), 'zh_Hans');
+        expect(view!.templates.map(t => t.id)).toEqual([90, 84]);
+        expect(view!.endsAt).toBe('2026-10-26T12:00:00.000Z');
+        // 未开始
+        expect(resolveActiveCampaign({ ...cfg, startsAt: '2026-12-01T00:00:00Z' }, saleable, new Date('2026-10-24T00:00:00Z'), 'zh_Hans')).toBeNull();
+        // 已结束 / 缺 endsAt
+        expect(resolveActiveCampaign(cfg, saleable, new Date('2026-10-27T00:00:00Z'), 'zh_Hans')).toBeNull();
+        expect(resolveActiveCampaign({ ...cfg, endsAt: null }, saleable, new Date('2026-10-24T00:00:00Z'), 'zh_Hans')).toBeNull();
+        // 命中券为空 / 未配置 templateIds
+        expect(resolveActiveCampaign({ ...cfg, templateIds: [999] }, saleable, new Date('2026-10-24T00:00:00Z'), 'zh_Hans')).toBeNull();
+        expect(resolveActiveCampaign({ ...cfg, templateIds: [] }, saleable, new Date('2026-10-24T00:00:00Z'), 'zh_Hans')).toBeNull();
+        // 无 name → null（活动位无标题不展示）
+        expect(resolveActiveCampaign({ enabled: true, name: null, endsAt: '2030-01-01T00:00:00Z', templateIds: [83] }, saleable, new Date('2026-10-24T00:00:00Z'), 'zh_Hans')).toBeNull();
+    });
+
+    it('localizeCampaignText：lang 精确 → 去地区码 → 首个非空', () => {
+        const v = { zh: '周末特惠', en: 'Weekend Sale' };
+        expect(localizeCampaignText(v, 'zh_Hans')).toBe('周末特惠');
+        expect(localizeCampaignText(v, 'en')).toBe('Weekend Sale');
+        expect(localizeCampaignText({ zh: '仅中文' }, 'en')).toBe('仅中文');
+        expect(localizeCampaignText('纯字符串', 'zh_Hans')).toBe('纯字符串');
+        expect(localizeCampaignText({ zh: '  ' }, 'zh_Hans')).toBeNull();
+        expect(localizeCampaignText(null, 'zh_Hans')).toBeNull();
     });
 });

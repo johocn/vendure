@@ -45,6 +45,8 @@ export declare class TenantAdminResolver {
             industryType?: string;
             storefrontMode?: string;
             storefrontHomeLayout?: string;
+            firstBuyDiscount?: number;
+            couponCampaign?: string;
         };
     }): Promise<any>;
     setTenantEnabled(ctx: RequestContext, args: {

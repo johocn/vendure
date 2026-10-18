@@ -523,12 +523,22 @@ type CustomerCoupon implements Node {
                 spentPoints: Int!
             }
 
+            type CouponCampaign {
+                name: String!
+                subtitle: String
+                rules: String
+                startsAt: DateTime
+                endsAt: DateTime!
+                templates: [CouponTemplate!]!
+            }
+
             type CouponSaleCatalogue {
                 templates: [CouponTemplate!]!
                 bundles: [CouponBundle!]!
                 firstBuyDiscount: Int
                 firstBuyEligible: Boolean
                 studentApproved: Boolean
+                campaign: CouponCampaign
             }
 
             type StudentVerificationItem {

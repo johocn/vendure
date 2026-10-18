@@ -91,6 +91,8 @@ export declare class TenantMemberService {
         industryType?: string;
         storefrontMode?: string;
         storefrontHomeLayout?: string;
+        firstBuyDiscount?: number;
+        couponCampaign?: string;
     }): Promise<void>;
     /** 租户级角色创建（限定 channelIds=[channelId]；权限白名单校验） */
     createTenantRole(ctx: RequestContext, channelId: ID, input: {

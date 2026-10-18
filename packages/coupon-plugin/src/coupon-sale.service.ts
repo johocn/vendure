@@ -18,6 +18,7 @@ import {
     expandBundleItems,
     filterSaleCatalogue,
     isSaleOrderRefundable,
+    resolveActiveCampaign,
     resolvePromoPrice,
 } from './coupon-sale';
 import { filterTemplatesByChannelAndScene, hasChannel, matchesScene } from './coupon-channel';
@@ -55,7 +56,7 @@ export class CouponSaleService {
         return customer.id as number;
     }
 
-    /** 券商城目录：可售模板（渠道含 SALE 且 salePrice>0）+ 启用券包；附真实已售数（已支付 coupon_sale_order 聚合）与首购/学生价资格信息 */
+    /** 券商城目录：可售模板（渠道含 SALE 且 salePrice>0）+ 启用券包；附真实已售数、首购/学生价资格信息与倒计时活动位 */
     async saleCatalogue(
         ctx: RequestContext,
         scene?: string,
@@ -65,6 +66,7 @@ export class CouponSaleService {
         firstBuyDiscount: number;
         firstBuyEligible: boolean | null;
         studentApproved: boolean | null;
+        campaign: ReturnType<typeof resolveActiveCampaign<CouponTemplate>> | null;
     }> {
         const repo = this.connection.getRepository(ctx, CouponTemplate);
         const all = await repo.find({ relations: { channels: true } });
@@ -131,7 +133,20 @@ export class CouponSaleService {
             studentApproved =
                 ((customer as any)?.customFields?.studentStatus as string | undefined) === 'approved';
         }
-        return { templates: saleable, bundles, firstBuyDiscount, firstBuyEligible, studentApproved };
+        return {
+            templates: saleable,
+            bundles,
+            firstBuyDiscount,
+            firstBuyEligible,
+            studentApproved,
+            // 倒计时活动位（单场）：enabled + 服务端时间窗 + 关联券命中本店可售目录；无活动为 null
+            campaign: resolveActiveCampaign(
+                (channel as any)?.customFields?.couponCampaign,
+                saleable,
+                new Date(),
+                ctx.languageCode,
+            ),
+        };
     }
 
     /** 首购资格：本渠道无已支付（PAID）出售单 → true（每用户仅 1 次；取消/退款单不占资格） */
