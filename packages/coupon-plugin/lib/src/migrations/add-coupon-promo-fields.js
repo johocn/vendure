@@ -17,7 +17,7 @@ exports.AddCouponPromoFieldsMigration = void 0;
 // - coupon_template.studentPrice（学生价，分）
 // - coupon_sale_order.discountType / discountAmount（让利记录）
 // - channel.customFieldsFirstbuydiscount（首购立减，分，customFields 嵌入列）
-// - channel.customFieldsCouponcampaign（倒计时活动配置 JSON，text，customFields 嵌入列）
+// - channel.customFieldsCouponcampaign（倒计时活动配置 JSON，varchar(4096)，customFields 嵌入列）
 // - customer.customFieldsStudentstatus / customFieldsStudentinfo / customFieldsStudentreviewedat（学生认证 customFields 嵌入列）
 //
 // 命名关键：Vendure customFields 注册为实体 embedded 列，TypeORM 生成的 DB 列名带
@@ -55,16 +55,22 @@ let AddCouponPromoFieldsMigration = class AddCouponPromoFieldsMigration {
                     { table: sale, name: 'discountAmount', type: 'integer' },
                     // customFields 嵌入列（列名须与 TypeORM metadata 一致）
                     { table: channel, name: 'customFieldsFirstbuydiscount', type: 'integer', orphan: 'firstBuyDiscount' },
-                    { table: channel, name: 'customFieldsCouponcampaign', type: 'text' },
+                    // 活动 JSON 较长：须与 customFields 定义（string length 4096）一致；已建列宽度不足时补 ALTER
+                    { table: channel, name: 'customFieldsCouponcampaign', type: 'varchar', length: 4096 },
                     { table: customer, name: 'customFieldsStudentstatus', type: 'varchar', orphan: 'studentStatus' },
                     { table: customer, name: 'customFieldsStudentinfo', type: 'varchar', orphan: 'studentInfo' },
                     { table: customer, name: 'customFieldsStudentreviewedat', type: 'timestamp', orphan: 'studentReviewedAt' },
                 ];
-                for (const { table, name, type, orphan } of plan) {
+                for (const { table, name, type, length, orphan } of plan) {
                     if (!table)
                         continue;
                     if (!(await queryRunner.hasColumn(table, name))) {
-                        await queryRunner.addColumn(table, new typeorm_2.TableColumn({ name, type, isNullable: true }));
+                        await queryRunner.addColumn(table, new typeorm_2.TableColumn({ name, type, length: length ? String(length) : undefined, isNullable: true }));
+                    }
+                    else if (length) {
+                        // 已建列宽度可能小于当前定义（如先按默认 varchar(255) 落库）：幂等放宽
+                        const col = () => new typeorm_2.TableColumn({ name, type, length: String(length), isNullable: true });
+                        await queryRunner.changeColumn(table, col(), col());
                     }
                     // 历史裸名列：搬数据后删除（避免 synchronize 每次启动 DROP/重建）
                     if (orphan && (await queryRunner.hasColumn(table, orphan))) {

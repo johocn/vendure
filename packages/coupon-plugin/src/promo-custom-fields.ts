@@ -12,7 +12,7 @@ const zh = (value: string) => [{ languageCode: LanguageCode.zh_Hans, value }];
 export const couponPromoCustomFields: CustomFields = {
     Channel: [
         { name: 'firstBuyDiscount', type: 'int', nullable: true, label: zh('首购立减（分）') },
-        { name: 'couponCampaign', type: 'string', nullable: true, label: zh('倒计时活动配置(JSON)') },
+        { name: 'couponCampaign', type: 'string', length: 4096, nullable: true, label: zh('倒计时活动配置(JSON)') },
     ],
     Customer: [
         { name: 'studentStatus', type: 'string', nullable: true, label: zh('学生认证状态') },
