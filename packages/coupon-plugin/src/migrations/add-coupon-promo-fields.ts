@@ -1,12 +1,25 @@
 // 券店营销扩展（首购立减 + 学生价）幂等迁移：
 // - coupon_template.studentPrice（学生价，分）
 // - coupon_sale_order.discountType / discountAmount（让利记录）
-// - channel.firstBuyDiscount（首购立减，分，customFields）
-// - customer.studentStatus / studentInfo / studentReviewedAt（学生认证 customFields）
-// 每列逐个 hasColumn 判断后 addColumn；失败只打日志不抛错，不阻塞启动，等待下次启动重试。
+// - channel.customFieldsFirstbuydiscount（首购立减，分，customFields 嵌入列）
+// - customer.customFieldsStudentstatus / customFieldsStudentinfo / customFieldsStudentreviewedat（学生认证 customFields 嵌入列）
+//
+// 命名关键：Vendure customFields 注册为实体 embedded 列，TypeORM 生成的 DB 列名带
+// `customFields` 前缀（如 customFieldsFirstbuydiscount），与 metadata 一致；
+// 历史版本曾误建裸名列（firstBuyDiscount 等），metadata 不识别 → 生产 synchronize
+// 每次启动都会 DROP。此处建正确列名后，把裸列历史数据搬过去并删除裸列。
+// 每列逐个 hasColumn 判断后执行；失败只打日志不抛错，不阻塞启动，等待下次启动重试。
 import { Injectable, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectConnection } from '@nestjs/typeorm';
 import { Connection, TableColumn } from 'typeorm';
+
+interface ColumnPlan {
+    table: string | null;
+    name: string;
+    type: string;
+    /** 历史误建的裸名列（存在则搬数据后删除） */
+    orphan?: string;
+}
 
 @Injectable()
 export class AddCouponPromoFieldsMigration implements OnApplicationBootstrap {
@@ -28,19 +41,27 @@ export class AddCouponPromoFieldsMigration implements OnApplicationBootstrap {
             const customer = tableName('Customer');
             const queryRunner = this.connection.createQueryRunner();
             try {
-                const plan: Array<[string | null, TableColumn]> = [
-                    [tpl, new TableColumn({ name: 'studentPrice', type: 'integer', isNullable: true })],
-                    [sale, new TableColumn({ name: 'discountType', type: 'varchar', isNullable: true })],
-                    [sale, new TableColumn({ name: 'discountAmount', type: 'integer', isNullable: true })],
-                    [channel, new TableColumn({ name: 'firstBuyDiscount', type: 'integer', isNullable: true })],
-                    [customer, new TableColumn({ name: 'studentStatus', type: 'varchar', isNullable: true })],
-                    [customer, new TableColumn({ name: 'studentInfo', type: 'varchar', isNullable: true })],
-                    [customer, new TableColumn({ name: 'studentReviewedAt', type: 'timestamp', isNullable: true })],
+                const plan: ColumnPlan[] = [
+                    { table: tpl, name: 'studentPrice', type: 'integer' },
+                    { table: sale, name: 'discountType', type: 'varchar' },
+                    { table: sale, name: 'discountAmount', type: 'integer' },
+                    // customFields 嵌入列（列名须与 TypeORM metadata 一致）
+                    { table: channel, name: 'customFieldsFirstbuydiscount', type: 'integer', orphan: 'firstBuyDiscount' },
+                    { table: customer, name: 'customFieldsStudentstatus', type: 'varchar', orphan: 'studentStatus' },
+                    { table: customer, name: 'customFieldsStudentinfo', type: 'varchar', orphan: 'studentInfo' },
+                    { table: customer, name: 'customFieldsStudentreviewedat', type: 'timestamp', orphan: 'studentReviewedAt' },
                 ];
-                for (const [table, column] of plan) {
+                for (const { table, name, type, orphan } of plan) {
                     if (!table) continue;
-                    if (!(await queryRunner.hasColumn(table, column.name))) {
-                        await queryRunner.addColumn(table, column);
+                    if (!(await queryRunner.hasColumn(table, name))) {
+                        await queryRunner.addColumn(table, new TableColumn({ name, type, isNullable: true }));
+                    }
+                    // 历史裸名列：搬数据后删除（避免 synchronize 每次启动 DROP/重建）
+                    if (orphan && (await queryRunner.hasColumn(table, orphan))) {
+                        await queryRunner.query(
+                            `UPDATE "${table}" SET "${name}" = "${orphan}" WHERE "${orphan}" IS NOT NULL`,
+                        );
+                        await queryRunner.dropColumn(table, orphan);
                     }
                 }
             } finally {
