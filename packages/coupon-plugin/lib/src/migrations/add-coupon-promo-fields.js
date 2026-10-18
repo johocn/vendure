@@ -50,7 +50,7 @@ let AddCouponPromoFieldsMigration = class AddCouponPromoFieldsMigration {
                     [channel, new typeorm_2.TableColumn({ name: 'firstBuyDiscount', type: 'integer', isNullable: true })],
                     [customer, new typeorm_2.TableColumn({ name: 'studentStatus', type: 'varchar', isNullable: true })],
                     [customer, new typeorm_2.TableColumn({ name: 'studentInfo', type: 'varchar', isNullable: true })],
-                    [customer, new typeorm_2.TableColumn({ name: 'studentReviewedAt', type: 'datetime', isNullable: true })],
+                    [customer, new typeorm_2.TableColumn({ name: 'studentReviewedAt', type: 'timestamp', isNullable: true })],
                 ];
                 for (const [table, column] of plan) {
                     if (!table)

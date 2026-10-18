@@ -35,7 +35,7 @@ export class AddCouponPromoFieldsMigration implements OnApplicationBootstrap {
                     [channel, new TableColumn({ name: 'firstBuyDiscount', type: 'integer', isNullable: true })],
                     [customer, new TableColumn({ name: 'studentStatus', type: 'varchar', isNullable: true })],
                     [customer, new TableColumn({ name: 'studentInfo', type: 'varchar', isNullable: true })],
-                    [customer, new TableColumn({ name: 'studentReviewedAt', type: 'datetime', isNullable: true })],
+                    [customer, new TableColumn({ name: 'studentReviewedAt', type: 'timestamp', isNullable: true })],
                 ];
                 for (const [table, column] of plan) {
                     if (!table) continue;
