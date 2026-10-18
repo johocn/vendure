@@ -394,7 +394,7 @@ export class TenantMemberService {
     async updateChannel(
         ctx: RequestContext,
         channelId: ID,
-        input: { name?: string; tenantNo?: number; isOfficial?: boolean; domain?: string; industryType?: string },
+        input: { name?: string; tenantNo?: number; isOfficial?: boolean; domain?: string; industryType?: string; storefrontMode?: string; storefrontHomeLayout?: string },
     ): Promise<void> {
         const repo = this.connection.getRepository(ctx, Channel);
         const existing = await repo.findOne({ where: { id: String(channelId) } } as any);
@@ -404,6 +404,8 @@ export class TenantMemberService {
         if (input.name !== undefined && input.name !== null) cf.set('shopName', input.name);
         if (input.domain !== undefined && input.domain !== null) cf.set('domain', input.domain);
         if (input.industryType !== undefined && input.industryType !== null) cf.set('industryType', input.industryType);
+        if (input.storefrontMode !== undefined && input.storefrontMode !== null) cf.set('storefrontMode', input.storefrontMode);
+        if (input.storefrontHomeLayout !== undefined && input.storefrontHomeLayout !== null) cf.set('storefrontHomeLayout', input.storefrontHomeLayout);
         await this.channelService.update(ctx, {
             id: channelId,
             customFields: Object.fromEntries(cf),

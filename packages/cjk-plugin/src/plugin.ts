@@ -1070,6 +1070,8 @@ function mergeCustomFields<T extends { name: string }>(
                     isOfficial: Boolean
                     domain: String
                     industryType: String
+                    storefrontMode: String
+                    storefrontHomeLayout: String
                 }
 
                 input TenantListOptions {
