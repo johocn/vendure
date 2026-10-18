@@ -65,6 +65,7 @@ import { PointsMallPlugin } from '@vendure/points-mall-plugin';
 import { ReviewPlugin } from '@vendure/review-plugin';
 import { WechatSubscribeMessagePlugin } from '@vendure/wechat-subscribe-message-plugin';
 import { CouponPlugin } from '@vendure/coupon-plugin';
+import { BillPayPlugin } from '@vendure/bill-pay-plugin';
 import { CampusDeliveryPlugin } from '@vendure/campus-delivery-plugin';
 import { CampusJianghuPlugin } from '@vendure/campus-jianghu-plugin';
 import { DeliveryPlugin } from '@vendure/delivery-plugin';
@@ -545,6 +546,8 @@ export const devConfig: VendureConfig = {
         FavoritePlugin.init(),
         WechatSubscribeMessagePlugin.init(),
         CouponPlugin.init(),
+        // t3 代买单（委托单模式）：BP- 微信回调结算 / bill_pay_* 独立表，纯增量不触碰既有业务
+        BillPayPlugin.init(),
         LiveStreamingPlugin.init({
             pushDomain: process.env.LIVE_PUSH_DOMAIN || 'rtmp://push.test.com/live/',
             playDomain: process.env.LIVE_PLAY_DOMAIN || 'https://play.test.com/live/',
