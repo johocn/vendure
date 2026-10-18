@@ -358,6 +358,40 @@ exports.tenantChannelCustomFields = {
                 { value: 'other', label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '其他' }, { languageCode: core_1.LanguageCode.en, value: 'Other' }] },
             ],
         },
+        {
+            name: 'storefrontMode',
+            type: 'string',
+            nullable: true,
+            public: true,
+            label: [
+                { languageCode: core_1.LanguageCode.zh_Hans, value: '店面模式' },
+                { languageCode: core_1.LanguageCode.en, value: 'Storefront Mode' },
+            ],
+            description: [
+                { languageCode: core_1.LanguageCode.zh_Hans, value: 'normal=普通商城（默认）；coupon=券店（整店只卖买单券，nshop 首页/导航/路由随之切换）。仅平台管理员可改。' },
+            ],
+            options: [
+                { value: 'normal', label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '普通商城' }, { languageCode: core_1.LanguageCode.en, value: 'Normal' }] },
+                { value: 'coupon', label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '券店（只卖买单券）' }, { languageCode: core_1.LanguageCode.en, value: 'Coupon store' }] },
+            ],
+        },
+        {
+            name: 'storefrontHomeLayout',
+            type: 'string',
+            nullable: true,
+            public: true,
+            label: [
+                { languageCode: core_1.LanguageCode.zh_Hans, value: '券店首页版式' },
+                { languageCode: core_1.LanguageCode.en, value: 'Coupon Store Home Layout' },
+            ],
+            description: [
+                { languageCode: core_1.LanguageCode.zh_Hans, value: '仅 storefrontMode=coupon 时生效：floors=楼层导购（默认）；grid=券卡宫格。' },
+            ],
+            options: [
+                { value: 'floors', label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '楼层导购' }, { languageCode: core_1.LanguageCode.en, value: 'Floors' }] },
+                { value: 'grid', label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '券卡宫格' }, { languageCode: core_1.LanguageCode.en, value: 'Grid' }] },
+            ],
+        },
     ],
 };
 //# sourceMappingURL=tenant-channel-custom-fields.js.map

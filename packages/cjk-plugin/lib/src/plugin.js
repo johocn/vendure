@@ -1336,6 +1336,8 @@ exports.CjkPlugin = CjkPlugin = CjkPlugin_1 = __decorate([
                     isOfficial: Boolean
                     domain: String
                     industryType: String
+                    storefrontMode: String
+                    storefrontHomeLayout: String
                 }
 
                 input TenantListOptions {

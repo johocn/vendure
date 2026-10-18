@@ -361,6 +361,10 @@ let TenantMemberService = class TenantMemberService {
             cf.set('domain', input.domain);
         if (input.industryType !== undefined && input.industryType !== null)
             cf.set('industryType', input.industryType);
+        if (input.storefrontMode !== undefined && input.storefrontMode !== null)
+            cf.set('storefrontMode', input.storefrontMode);
+        if (input.storefrontHomeLayout !== undefined && input.storefrontHomeLayout !== null)
+            cf.set('storefrontHomeLayout', input.storefrontHomeLayout);
         await this.channelService.update(ctx, {
             id: channelId,
             customFields: Object.fromEntries(cf),

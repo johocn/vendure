@@ -43,6 +43,8 @@ export declare class TenantAdminResolver {
             isOfficial?: boolean;
             domain?: string;
             industryType?: string;
+            storefrontMode?: string;
+            storefrontHomeLayout?: string;
         };
     }): Promise<any>;
     setTenantEnabled(ctx: RequestContext, args: {
