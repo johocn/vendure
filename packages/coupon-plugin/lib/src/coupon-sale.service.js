@@ -49,8 +49,9 @@ let CouponSaleService = class CouponSaleService {
         }
         return customer.id;
     }
-    /** 券商城目录：可售模板（渠道含 SALE 且 salePrice>0）+ 启用券包 */
+    /** 券商城目录：可售模板（渠道含 SALE 且 salePrice>0）+ 启用券包；附真实已售数（已支付 coupon_sale_order 聚合） */
     async saleCatalogue(ctx, scene) {
+        var _a, _b;
         const repo = this.connection.getRepository(ctx, coupon_template_entity_1.CouponTemplate);
         const all = await repo.find({ relations: { channels: true } });
         const effectiveScene = (scene !== null && scene !== void 0 ? scene : 'ONLINE');
@@ -62,6 +63,33 @@ let CouponSaleService = class CouponSaleService {
             where: { enabled: true, channelId: ctx.channelId },
             order: { id: 'DESC' },
         });
+        // 真实已售数：按渠道统计已支付（PAID）出售单——单券按 templateId、券包按 bundleId
+        // 分组计数。退款单（REFUNDED）/取消单不计入，保证「已售N」为真实成交口径。
+        const saleOrderRepo = this.connection.getRepository(ctx, coupon_sale_order_entity_1.CouponSaleOrder);
+        const [tplRows, bundleRows] = await Promise.all([
+            saleOrderRepo
+                .createQueryBuilder('s')
+                .select('s.templateId', 'templateId')
+                .addSelect('COUNT(*)', 'cnt')
+                .where('s.channelId = :channelId AND s.status = :status AND s.templateId IS NOT NULL', { channelId: ctx.channelId, status: 'PAID' })
+                .groupBy('s.templateId')
+                .getRawMany(),
+            saleOrderRepo
+                .createQueryBuilder('s')
+                .select('s.bundleId', 'bundleId')
+                .addSelect('COUNT(*)', 'cnt')
+                .where('s.channelId = :channelId AND s.status = :status AND s.bundleId IS NOT NULL', { channelId: ctx.channelId, status: 'PAID' })
+                .groupBy('s.bundleId')
+                .getRawMany(),
+        ]);
+        const tplSold = new Map(tplRows.map(r => [Number(r.templateId), Number(r.cnt)]));
+        const bundleSold = new Map(bundleRows.map(r => [Number(r.bundleId), Number(r.cnt)]));
+        for (const t of saleable) {
+            t.soldCount = (_a = tplSold.get(Number(t.id))) !== null && _a !== void 0 ? _a : 0;
+        }
+        for (const b of bundles) {
+            b.soldCount = (_b = bundleSold.get(Number(b.id))) !== null && _b !== void 0 ? _b : 0;
+        }
         return { templates: saleable, bundles };
     }
     /** 创建出售单（路径 A）：校验渠道含 SALE / 可售 / 未售罄，落 PENDING 单 */

@@ -61,5 +61,9 @@ export declare class CouponTemplate extends VendureEntity implements ChannelAwar
     distributionChannels?: string;
     /** 出售价（分，与 Vendure money 子单位一致）；0 = 不可售 */
     salePrice: number;
+    /** 营销划线锚定价（分，展示为划线「原价」对比）；null/0 = 不展示 */
+    anchorPrice?: number | null;
+    /** 营销标签（如「热卖TOP」，后台可配自由文案，建议 ≤6 字）；空 = 不展示 */
+    label?: string | null;
     channels: Channel[];
 }

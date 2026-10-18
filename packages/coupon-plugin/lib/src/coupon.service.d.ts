@@ -44,6 +44,12 @@ export declare class CouponService {
     createTemplate(ctx: RequestContext, input: any): Promise<CouponTemplate>;
     updateTemplate(ctx: RequestContext, input: any): Promise<CouponTemplate>;
     /**
+     * 营销字段入参规范化（create/update 共用）：
+     * anchorPrice 仅接受正整数（分），非法/<=0 归 null（不展示划线价）；
+     * label 去首尾空白、限 30 字符，空串归 null（不展示标签）。
+     */
+    private applyMarketingInput;
+    /**
      * 多语言合并：nameZh/nameEn/descZh/descEn 按需写入，产出 LocalizedText 对象，
      * 并保留既有的其它语言文案。任一多语言字段均未提供时不改动。
      */

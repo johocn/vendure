@@ -85,6 +85,9 @@ type CouponTemplate implements Node {
     usageScene: CouponUsageScene!
     distributionChannels: String
     salePrice: Int!
+    anchorPrice: Int
+    label: String
+    soldCount: Int
     createdAt: DateTime!
     updatedAt: DateTime!
 }`;
@@ -256,6 +259,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
             migrations_1.AddCouponFieldsMigration,
             migrations_1.CreateProductCouponBindingMigration,
             migrations_1.AddCouponIndexes20260919,
+            migrations_1.AddCouponMarketingFieldsMigration,
             migrations_1.AddCouponUsageSceneMigration,
             add_coupon_distribution_channels_1.AddCouponDistributionChannelsMigration,
             migrations_1.CreateInStoreBillMigration,
@@ -450,6 +454,8 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 usageScene: CouponUsageScene
                 distributionChannels: String
                 salePrice: Int
+                anchorPrice: Int
+                label: String
             }
 
             input UpdateCouponTemplateInput {
@@ -480,6 +486,8 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 usageScene: CouponUsageScene
                 distributionChannels: String
                 salePrice: Int
+                anchorPrice: Int
+                label: String
             }
 
             input CouponTemplateListOptions
@@ -640,6 +648,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 salePrice: Int!
                 enabled: Boolean!
                 channelId: ID!
+                soldCount: Int
                 items: [CouponBundleItem!]!
             }
 

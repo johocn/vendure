@@ -6,3 +6,4 @@ export { AddCouponUsageSceneMigration } from './add-coupon-usage-scene';
 export { CreateInStoreBillMigration } from './create-in-store-bill';
 export { AddCouponDistributionChannelsMigration } from './add-coupon-distribution-channels';
 export { CreateCouponSaleMigration } from './create-coupon-sale';
+export { AddCouponMarketingFieldsMigration } from './add-coupon-marketing-fields';

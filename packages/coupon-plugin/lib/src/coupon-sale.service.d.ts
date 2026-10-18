@@ -16,7 +16,7 @@ export declare class CouponSaleService {
     constructor(connection: TransactionalConnection, couponService: CouponService, customerService: CustomerService);
     /** 当前请求的 customerId */
     private currentCustomerId;
-    /** 券商城目录：可售模板（渠道含 SALE 且 salePrice>0）+ 启用券包 */
+    /** 券商城目录：可售模板（渠道含 SALE 且 salePrice>0）+ 启用券包；附真实已售数（已支付 coupon_sale_order 聚合） */
     saleCatalogue(ctx: RequestContext, scene?: string): Promise<{
         templates: CouponTemplate[];
         bundles: CouponBundle[];

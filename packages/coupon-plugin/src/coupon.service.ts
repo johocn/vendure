@@ -51,6 +51,8 @@ const TEMPLATE_UPDATE_ALLOWED: ReadonlyArray<keyof CouponTemplate> = [
     'usageScene',
     'distributionChannels',
     'salePrice',
+    'anchorPrice',
+    'label',
 ];
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -217,6 +219,7 @@ export class CouponService {
         tpl.claimedCount = 0;
         // 多语言入参（P5）：nameZh/nameEn/descZh/descEn 合并为 LocalizedText 对象。
         this.applyMultilingualInput(tpl, input);
+        this.applyMarketingInput(tpl, input);
         if (tpl.name == null) {
             throw new UserInputError('CouponTemplate name (or nameZh) is required');
         }
@@ -248,7 +251,25 @@ export class CouponService {
         }
         // 多语言入参（P5）：合并 nameZh/nameEn/descZh/descEn（保留既有其它语言文案）。
         this.applyMultilingualInput(tpl, input);
+        this.applyMarketingInput(tpl, input);
         return repo.save(tpl);
+    }
+
+    /**
+     * 营销字段入参规范化（create/update 共用）：
+     * anchorPrice 仅接受正整数（分），非法/<=0 归 null（不展示划线价）；
+     * label 去首尾空白、限 30 字符，空串归 null（不展示标签）。
+     */
+    private applyMarketingInput(tpl: CouponTemplate, input: any): void {
+        if (input.anchorPrice !== undefined) {
+            const n = Math.floor(Number(input.anchorPrice));
+            (tpl as any).anchorPrice =
+                input.anchorPrice == null || !Number.isFinite(n) || n <= 0 ? null : n;
+        }
+        if (input.label !== undefined) {
+            const s = typeof input.label === 'string' ? input.label.trim() : '';
+            (tpl as any).label = s ? s.slice(0, 30) : null;
+        }
     }
 
     /**

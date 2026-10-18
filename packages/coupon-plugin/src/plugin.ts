@@ -37,6 +37,7 @@ import { CustomerCoupon } from './customer-coupon.entity';
 import {
     AddCouponFieldsMigration,
     AddCouponIndexes20260919,
+    AddCouponMarketingFieldsMigration,
     AddCouponUsageSceneMigration,
     CreateCouponSaleMigration,
     CreateInStoreBillMigration,
@@ -90,6 +91,9 @@ type CouponTemplate implements Node {
     usageScene: CouponUsageScene!
     distributionChannels: String
     salePrice: Int!
+    anchorPrice: Int
+    label: String
+    soldCount: Int
     createdAt: DateTime!
     updatedAt: DateTime!
 }`;
@@ -125,6 +129,7 @@ type CustomerCoupon implements Node {
         AddCouponFieldsMigration,
         CreateProductCouponBindingMigration,
         AddCouponIndexes20260919,
+        AddCouponMarketingFieldsMigration,
         AddCouponUsageSceneMigration,
         AddCouponDistributionChannelsMigration,
         CreateInStoreBillMigration,
@@ -319,6 +324,8 @@ type CustomerCoupon implements Node {
                 usageScene: CouponUsageScene
                 distributionChannels: String
                 salePrice: Int
+                anchorPrice: Int
+                label: String
             }
 
             input UpdateCouponTemplateInput {
@@ -349,6 +356,8 @@ type CustomerCoupon implements Node {
                 usageScene: CouponUsageScene
                 distributionChannels: String
                 salePrice: Int
+                anchorPrice: Int
+                label: String
             }
 
             input CouponTemplateListOptions
@@ -509,6 +518,7 @@ type CustomerCoupon implements Node {
                 salePrice: Int!
                 enabled: Boolean!
                 channelId: ID!
+                soldCount: Int
                 items: [CouponBundleItem!]!
             }
 

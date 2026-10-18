@@ -94,6 +94,12 @@ export class CouponTemplate extends VendureEntity implements ChannelAware {
     /** 出售价（分，与 Vendure money 子单位一致）；0 = 不可售 */
     @Column({ default: 0 }) salePrice: number;
 
+    /** 营销划线锚定价（分，展示为划线「原价」对比）；null/0 = 不展示 */
+    @Column({ type: 'int', nullable: true }) anchorPrice?: number | null;
+
+    /** 营销标签（如「热卖TOP」，后台可配自由文案，建议 ≤6 字）；空 = 不展示 */
+    @Column('varchar', { nullable: true }) label?: string | null;
+
     @ManyToMany(() => Channel)
     @JoinTable()
     channels: Channel[];

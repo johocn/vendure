@@ -6,6 +6,7 @@ const coupon_service_1 = require("./coupon.service");
 const coupon_sale_service_1 = require("./coupon-sale.service");
 const coupon_template_entity_1 = require("./coupon-template.entity");
 const coupon_bundle_entity_1 = require("./coupon-bundle.entity");
+const coupon_sale_order_entity_1 = require("./coupon-sale-order.entity");
 (0, vitest_1.describe)('isSaleOrderRefundable', () => {
     (0, vitest_1.it)('全部未使用 → 可退', () => {
         (0, vitest_1.expect)((0, coupon_sale_1.isSaleOrderRefundable)(['UNUSED', 'UNUSED'])).toBe(true);
@@ -60,15 +61,31 @@ const coupon_bundle_entity_1 = require("./coupon-bundle.entity");
  */
 (0, vitest_1.describe)('CouponSaleService.saleCatalogue 渠道隔离', () => {
     const ctx = { channel: { id: 37 }, channelId: 37 };
-    function makeService(allTemplates) {
+    function makeService(allTemplates, opts) {
+        var _a, _b, _d;
         const templateRepo = { find: vitest_1.vi.fn().mockResolvedValue(allTemplates) };
-        const bundleRepo = { find: vitest_1.vi.fn().mockResolvedValue([]) };
+        const bundleRepo = { find: vitest_1.vi.fn().mockResolvedValue((_a = opts === null || opts === void 0 ? void 0 : opts.bundles) !== null && _a !== void 0 ? _a : []) };
+        const saleOrderRepo = {
+            createQueryBuilder: vitest_1.vi.fn().mockReturnValue({
+                select: vitest_1.vi.fn().mockReturnThis(),
+                addSelect: vitest_1.vi.fn().mockReturnThis(),
+                where: vitest_1.vi.fn().mockReturnThis(),
+                groupBy: vitest_1.vi.fn().mockReturnThis(),
+                // 首次调用 → 单券聚合行；第二次 → 券包聚合行
+                getRawMany: vitest_1.vi
+                    .fn()
+                    .mockResolvedValueOnce((_b = opts === null || opts === void 0 ? void 0 : opts.tplRows) !== null && _b !== void 0 ? _b : [])
+                    .mockResolvedValueOnce((_d = opts === null || opts === void 0 ? void 0 : opts.bundleRows) !== null && _d !== void 0 ? _d : []),
+            }),
+        };
         const connection = {
             getRepository: vitest_1.vi.fn((_c, entity) => {
                 if (entity === coupon_template_entity_1.CouponTemplate)
                     return templateRepo;
                 if (entity === coupon_bundle_entity_1.CouponBundle)
                     return bundleRepo;
+                if (entity === coupon_sale_order_entity_1.CouponSaleOrder)
+                    return saleOrderRepo;
                 throw new Error(`unknown entity: ${entity}`);
             }),
         };
@@ -96,6 +113,20 @@ const coupon_bundle_entity_1 = require("./coupon-bundle.entity");
         ]);
         const { templates } = await svc.saleCatalogue(ctx);
         (0, vitest_1.expect)(templates).toEqual([]);
+    });
+    (0, vitest_1.it)('已售数聚合：PAID 出售单按 templateId/bundleId 计数，无成交为 0', async () => {
+        const bundle = { id: 9, enabled: true, channelId: 37, salePrice: 880 };
+        const svc = makeService([tpl({ id: 1, channels: [{ id: 37 }] }), tpl({ id: 2, channels: [{ id: 37 }] })], {
+            tplRows: [
+                { templateId: '1', cnt: '12' }, // postgres raw 计数为字符串
+            ],
+            bundleRows: [{ bundleId: '9', cnt: '3' }],
+            bundles: [bundle],
+        });
+        const { templates, bundles } = await svc.saleCatalogue(ctx);
+        (0, vitest_1.expect)(templates.find(t => t.id === 1).soldCount).toBe(12);
+        (0, vitest_1.expect)(templates.find(t => t.id === 2).soldCount).toBe(0);
+        (0, vitest_1.expect)(bundles[0].soldCount).toBe(3);
     });
 });
 //# sourceMappingURL=coupon-sale.spec.js.map

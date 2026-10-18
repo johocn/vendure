@@ -5,6 +5,7 @@ import { CouponService } from './coupon.service';
 import { CouponSaleService } from './coupon-sale.service';
 import { CouponTemplate } from './coupon-template.entity';
 import { CouponBundle } from './coupon-bundle.entity';
+import { CouponSaleOrder } from './coupon-sale-order.entity';
 
 describe('isSaleOrderRefundable', () => {
     it('全部未使用 → 可退', () => {
@@ -72,13 +73,27 @@ describe('filterSaleCatalogue', () => {
 describe('CouponSaleService.saleCatalogue 渠道隔离', () => {
     const ctx: any = { channel: { id: 37 }, channelId: 37 };
 
-    function makeService(allTemplates: any[]) {
+    function makeService(allTemplates: any[], opts?: { tplRows?: any[]; bundleRows?: any[]; bundles?: any[] }) {
         const templateRepo = { find: vi.fn().mockResolvedValue(allTemplates) };
-        const bundleRepo = { find: vi.fn().mockResolvedValue([]) };
+        const bundleRepo = { find: vi.fn().mockResolvedValue(opts?.bundles ?? []) };
+        const saleOrderRepo = {
+            createQueryBuilder: vi.fn().mockReturnValue({
+                select: vi.fn().mockReturnThis(),
+                addSelect: vi.fn().mockReturnThis(),
+                where: vi.fn().mockReturnThis(),
+                groupBy: vi.fn().mockReturnThis(),
+                // 首次调用 → 单券聚合行；第二次 → 券包聚合行
+                getRawMany: vi
+                    .fn()
+                    .mockResolvedValueOnce(opts?.tplRows ?? [])
+                    .mockResolvedValueOnce(opts?.bundleRows ?? []),
+            }),
+        };
         const connection = {
             getRepository: vi.fn((_c: any, entity: any) => {
                 if (entity === CouponTemplate) return templateRepo;
                 if (entity === CouponBundle) return bundleRepo;
+                if (entity === CouponSaleOrder) return saleOrderRepo;
                 throw new Error(`unknown entity: ${entity}`);
             }),
         };
@@ -111,5 +126,20 @@ describe('CouponSaleService.saleCatalogue 渠道隔离', () => {
         ]);
         const { templates } = await svc.saleCatalogue(ctx);
         expect(templates).toEqual([]);
+    });
+
+    it('已售数聚合：PAID 出售单按 templateId/bundleId 计数，无成交为 0', async () => {
+        const bundle = { id: 9, enabled: true, channelId: 37, salePrice: 880 } as any;
+        const svc = makeService([tpl({ id: 1, channels: [{ id: 37 }] }), tpl({ id: 2, channels: [{ id: 37 }] })], {
+            tplRows: [
+                { templateId: '1', cnt: '12' }, // postgres raw 计数为字符串
+            ],
+            bundleRows: [{ bundleId: '9', cnt: '3' }],
+            bundles: [bundle],
+        });
+        const { templates, bundles } = await svc.saleCatalogue(ctx);
+        expect((templates.find(t => t.id === 1) as any).soldCount).toBe(12);
+        expect((templates.find(t => t.id === 2) as any).soldCount).toBe(0);
+        expect((bundles[0] as any).soldCount).toBe(3);
     });
 });

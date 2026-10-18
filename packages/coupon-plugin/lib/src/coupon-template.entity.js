@@ -119,6 +119,14 @@ __decorate([
     __metadata("design:type", Number)
 ], CouponTemplate.prototype, "salePrice", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ type: 'int', nullable: true }),
+    __metadata("design:type", Object)
+], CouponTemplate.prototype, "anchorPrice", void 0);
+__decorate([
+    (0, typeorm_1.Column)('varchar', { nullable: true }),
+    __metadata("design:type", Object)
+], CouponTemplate.prototype, "label", void 0);
+__decorate([
     (0, typeorm_1.ManyToMany)(() => core_1.Channel),
     (0, typeorm_1.JoinTable)(),
     __metadata("design:type", Array)
