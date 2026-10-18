@@ -366,11 +366,12 @@ export const tenantChannelCustomFields: CustomFields = {
                 { languageCode: LanguageCode.en, value: 'Storefront Mode' },
             ],
             description: [
-                { languageCode: LanguageCode.zh_Hans, value: 'normal=普通商城（默认）；coupon=券店（整店只卖买单券，nshop 首页/导航/路由随之切换）。仅平台管理员可改。' },
+                { languageCode: LanguageCode.zh_Hans, value: 'normal=普通商城（默认）；coupon=券店（整店只卖买单券，nshop 首页/导航/路由随之切换）；billpay=代买单服务店（t3，委托单模式）。仅平台管理员可改。' },
             ],
             options: [
                 { value: 'normal', label: [{ languageCode: LanguageCode.zh_Hans, value: '普通商城' }, { languageCode: LanguageCode.en, value: 'Normal' }] },
                 { value: 'coupon', label: [{ languageCode: LanguageCode.zh_Hans, value: '券店（只卖买单券）' }, { languageCode: LanguageCode.en, value: 'Coupon store' }] },
+                { value: 'billpay', label: [{ languageCode: LanguageCode.zh_Hans, value: '代买单服务店' }, { languageCode: LanguageCode.en, value: 'Bill pay store' }] },
             ],
         },
         {

@@ -139,6 +139,14 @@ exports.PERMISSION_CATALOG = [
             { code: 'CampusAuditRider', label: '拾光达·骑手审核' },
         ],
     },
+    {
+        // t3 代买单工作台（bill-pay-plugin 自定义权限 BillPayManage）
+        key: 'billpay',
+        label: '代买单',
+        items: [
+            { code: 'BillPayManage', label: '代买单·工作台' },
+        ],
+    },
 ];
 /** 租户级角色可用的业务权限白名单（由 PERMISSION_CATALOG 扁平派生，建模/校验统一使用） */
 exports.BUSINESS_PERMISSIONS = exports.PERMISSION_CATALOG.flatMap((g) => g.items.map((i) => i.code));
