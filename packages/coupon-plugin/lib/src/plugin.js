@@ -48,6 +48,9 @@ const in_store_bill_entity_1 = require("./in-store-bill.entity");
 const in_store_bill_admin_resolver_1 = require("./in-store-bill-admin.resolver");
 const in_store_bill_service_1 = require("./in-store-bill.service");
 const order_custom_fields_1 = require("./order-custom-fields");
+const promo_custom_fields_1 = require("./promo-custom-fields");
+const student_service_1 = require("./student.service");
+const student_resolvers_1 = require("./student.resolvers");
 const product_coupon_binding_entity_1 = require("./product-coupon-binding.entity");
 /** Idempotently merge custom fields, deduplicating by field name (preBootstrapConfig may run plugin configurations several times). */
 function mergeCustomFields(existingFields, additions) {
@@ -87,6 +90,7 @@ type CouponTemplate implements Node {
     salePrice: Int!
     anchorPrice: Int
     label: String
+    studentPrice: Int
     soldCount: Int
     createdAt: DateTime!
     updatedAt: DateTime!
@@ -260,6 +264,8 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
             migrations_1.CreateProductCouponBindingMigration,
             migrations_1.AddCouponIndexes20260919,
             migrations_1.AddCouponMarketingFieldsMigration,
+            migrations_1.AddCouponPromoFieldsMigration,
+            student_service_1.StudentVerificationService,
             migrations_1.AddCouponUsageSceneMigration,
             add_coupon_distribution_channels_1.AddCouponDistributionChannelsMigration,
             migrations_1.CreateInStoreBillMigration,
@@ -456,6 +462,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 salePrice: Int
                 anchorPrice: Int
                 label: String
+                studentPrice: Int
             }
 
             input UpdateCouponTemplateInput {
@@ -488,6 +495,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 salePrice: Int
                 anchorPrice: Int
                 label: String
+                studentPrice: Int
             }
 
             input CouponTemplateListOptions
@@ -579,6 +587,20 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 couponBundle(id: ID!): CouponBundle
                 couponSaleOrders(options: CouponSaleOrderListOptions): CouponSaleOrderList!
                 couponSaleOrder(id: ID!): CouponSaleOrder
+                studentVerifications(status: String): [StudentVerificationItem!]!
+            }
+
+            # StudentVerificationItem 原先只声明在 shopApiExtensions，admin schema 引用未知类型
+            # 会导致 dev server 启动即 GraphQL schema 编译失败（Unknown type），此处需同步声明
+            type StudentVerificationItem {
+                customerId: ID!
+                customerName: String!
+                customerEmail: String
+                status: String!
+                school: String
+                studentNo: String
+                idImg: String
+                reviewedAt: DateTime
             }
 
             extend type Mutation {
@@ -598,9 +620,10 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 updateCouponBundle(id: ID!, input: CouponBundleInput!): CouponBundle!
                 deleteCouponBundle(id: ID!): Boolean!
                 refundCouponSaleOrder(id: ID!, reason: String): CouponSaleOrder!
+                reviewStudentVerification(customerId: ID!, approve: Boolean!): StudentVerificationItem!
             }
         `,
-            resolvers: [coupon_admin_resolver_1.CouponAdminResolver, coupon_template_resolver_1.CouponTemplateResolver, coupon_customer_coupon_resolver_1.CustomerCouponResolver, coupon_binding_admin_resolver_1.CouponBindingAdminResolver, in_store_bill_admin_resolver_1.InStoreBillAdminResolver, coupon_sale_admin_resolver_1.CouponSaleAdminResolver, coupon_bundle_resolver_1.CouponBundleResolver],
+            resolvers: [coupon_admin_resolver_1.CouponAdminResolver, coupon_template_resolver_1.CouponTemplateResolver, coupon_customer_coupon_resolver_1.CustomerCouponResolver, coupon_binding_admin_resolver_1.CouponBindingAdminResolver, in_store_bill_admin_resolver_1.InStoreBillAdminResolver, coupon_sale_admin_resolver_1.CouponSaleAdminResolver, coupon_bundle_resolver_1.CouponBundleResolver, student_resolvers_1.StudentAdminResolver],
         },
         shopApiExtensions: {
             schema: () => (0, graphql_tag_1.default) `
@@ -632,6 +655,20 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
             type CouponSaleCatalogue {
                 templates: [CouponTemplate!]!
                 bundles: [CouponBundle!]!
+                firstBuyDiscount: Int
+                firstBuyEligible: Boolean
+                studentApproved: Boolean
+            }
+
+            type StudentVerificationItem {
+                customerId: ID!
+                customerName: String!
+                customerEmail: String
+                status: String!
+                school: String
+                studentNo: String
+                idImg: String
+                reviewedAt: DateTime
             }
 
             type CouponBundleItem {
@@ -660,6 +697,8 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 bundleId: ID
                 orderId: ID
                 amount: Int!
+                discountType: String
+                discountAmount: Int
                 status: String!
                 paidAt: DateTime
                 refundedAt: DateTime
@@ -693,6 +732,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 productCoupons(productId: ID!): [ProductCouponBinding!]!
                 couponSaleCatalogue(scene: CouponUsageScene): CouponSaleCatalogue!
                 myCouponSaleOrders: [CouponSaleOrder!]!
+                myStudentVerification: StudentVerificationItem!
             }
 
             extend type Mutation {
@@ -709,13 +749,16 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 refundCouponSaleOrder(id: ID!, reason: String): CouponSaleOrder!
                 attachCouponToOrder(orderId: ID!, templateId: ID!): CouponSaleOrder!
                 detachCouponFromOrder(orderId: ID!, templateId: ID!): Boolean!
+                applyStudentVerification(school: String!, studentNo: String!, idImg: String): StudentVerificationItem!
             }
         `,
-            resolvers: [coupon_shop_resolver_1.CouponShopResolver, coupon_template_resolver_1.CouponTemplateResolver, coupon_customer_coupon_resolver_1.CustomerCouponResolver, coupon_sale_shop_resolver_1.CouponSaleShopResolver, coupon_bundle_resolver_1.CouponBundleResolver],
+            resolvers: [coupon_shop_resolver_1.CouponShopResolver, coupon_template_resolver_1.CouponTemplateResolver, coupon_customer_coupon_resolver_1.CustomerCouponResolver, coupon_sale_shop_resolver_1.CouponSaleShopResolver, coupon_bundle_resolver_1.CouponBundleResolver, student_resolvers_1.StudentShopResolver],
         },
         configuration: (config) => {
             var _a, _b;
             config.customFields.Order = mergeCustomFields(config.customFields.Order, order_custom_fields_1.couponOrderCustomFields.Order);
+            config.customFields.Channel = mergeCustomFields(config.customFields.Channel, promo_custom_fields_1.couponPromoCustomFields.Channel);
+            config.customFields.Customer = mergeCustomFields(config.customFields.Customer, promo_custom_fields_1.couponPromoCustomFields.Customer);
             config.promotionOptions = config.promotionOptions || {};
             config.promotionOptions.promotionConditions = [
                 ...((_a = config.promotionOptions.promotionConditions) !== null && _a !== void 0 ? _a : []),

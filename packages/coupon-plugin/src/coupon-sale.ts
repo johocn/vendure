@@ -40,3 +40,37 @@ export function filterSaleCatalogue<T extends { salePrice?: number | null }>(
 ): T[] {
     return templates.filter(t => Number(t.salePrice ?? 0) > 0);
 }
+
+/**
+ * 到手价重算（下单唯一信任源，纯函数）：
+ * 学生价（仅单券，需认证通过）与首购立减（单券+券包）各自从原价计算、取低不叠加；
+ * 到手价最低 1 分（避免 0 元单）。返回终价 + 优惠类型 + 让利额。
+ */
+export function resolvePromoPrice(
+    base: number,
+    opts: {
+        studentPrice?: number | null;
+        studentApproved: boolean;
+        firstBuyEligible: boolean;
+        firstBuyDiscount: number;
+    },
+): { final: number; discountType: 'FIRST_BUY' | 'STUDENT' | null; discountAmount: number } {
+    const baseFinal = Math.max(1, Math.floor(Number(base) || 0));
+    // 两条优惠路径各自从原价独立计算（取低不叠加），同价时优先记为学生价
+    const studentPrice = Math.floor(Number(opts.studentPrice ?? 0));
+    const candidates: Array<{ final: number; type: 'FIRST_BUY' | 'STUDENT' }> = [];
+    if (studentPrice > 0 && opts.studentApproved && studentPrice < baseFinal) {
+        candidates.push({ final: Math.max(1, studentPrice), type: 'STUDENT' });
+    }
+    if (opts.firstBuyDiscount > 0 && opts.firstBuyEligible) {
+        const v = Math.max(1, baseFinal - Math.floor(opts.firstBuyDiscount));
+        if (v < baseFinal) {
+            candidates.push({ final: v, type: 'FIRST_BUY' });
+        }
+    }
+    if (!candidates.length) {
+        return { final: baseFinal, discountType: null, discountAmount: 0 };
+    }
+    const best = candidates.reduce((a, b) => (b.final < a.final ? b : a));
+    return { final: best.final, discountType: best.type, discountAmount: baseFinal - best.final };
+}

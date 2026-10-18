@@ -14,6 +14,9 @@ export declare class CouponSaleShopResolver {
     couponSaleCatalogue(ctx: RequestContext, scene?: string): Promise<{
         templates: import("./coupon-template.entity").CouponTemplate[];
         bundles: import("./coupon-bundle.entity").CouponBundle[];
+        firstBuyDiscount: number;
+        firstBuyEligible: boolean | null;
+        studentApproved: boolean | null;
     }>;
     myCouponSaleOrders(ctx: RequestContext): Promise<import("./coupon-sale-order.entity").CouponSaleOrder[]>;
     createCouponSaleOrder(ctx: RequestContext, templateId?: ID, bundleId?: ID): Promise<import("./coupon-sale-order.entity").CouponSaleOrder>;

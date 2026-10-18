@@ -7,6 +7,8 @@ const coupon_sale_service_1 = require("./coupon-sale.service");
 const coupon_template_entity_1 = require("./coupon-template.entity");
 const coupon_bundle_entity_1 = require("./coupon-bundle.entity");
 const coupon_sale_order_entity_1 = require("./coupon-sale-order.entity");
+const core_1 = require("@vendure/core");
+const coupon_sale_2 = require("./coupon-sale");
 (0, vitest_1.describe)('isSaleOrderRefundable', () => {
     (0, vitest_1.it)('全部未使用 → 可退', () => {
         (0, vitest_1.expect)((0, coupon_sale_1.isSaleOrderRefundable)(['UNUSED', 'UNUSED'])).toBe(true);
@@ -59,10 +61,43 @@ const coupon_sale_order_entity_1 = require("./coupon-sale-order.entity");
  * 别家店的券（distributionChannels 含 SALE 但 channels 不含当前渠道）不得进入本店目录；
  * 本店券与 channels 为空的平台券正常可见——与 loadSaleableTemplate 购买校验同口径。
  */
+(0, vitest_1.describe)('resolvePromoPrice 到手价重算', () => {
+    (0, vitest_1.it)('首购立减：¥5 券立减 ¥2 → ¥3 + FIRST_BUY', () => {
+        (0, vitest_1.expect)((0, coupon_sale_2.resolvePromoPrice)(500, { studentApproved: false, firstBuyEligible: true, firstBuyDiscount: 200 })).toEqual({
+            final: 300,
+            discountType: 'FIRST_BUY',
+            discountAmount: 200,
+        });
+    });
+    (0, vitest_1.it)('学生价：认证学生 ¥3 → ¥3 + STUDENT（首购不叠加）', () => {
+        (0, vitest_1.expect)((0, coupon_sale_2.resolvePromoPrice)(500, { studentPrice: 300, studentApproved: true, firstBuyEligible: true, firstBuyDiscount: 200 })).toEqual({
+            final: 300,
+            discountType: 'STUDENT',
+            discountAmount: 200,
+        });
+    });
+    (0, vitest_1.it)('学生价低于首购价时取学生价', () => {
+        (0, vitest_1.expect)((0, coupon_sale_2.resolvePromoPrice)(500, { studentPrice: 100, studentApproved: true, firstBuyEligible: true, firstBuyDiscount: 200 }).final).toBe(100);
+    });
+    (0, vitest_1.it)('学生价高于首购价时取首购立减', () => {
+        (0, vitest_1.expect)((0, coupon_sale_2.resolvePromoPrice)(500, { studentPrice: 450, studentApproved: true, firstBuyEligible: true, firstBuyDiscount: 200 }).discountType).toBe('FIRST_BUY');
+    });
+    (0, vitest_1.it)('未认证学生不享学生价；老客原价', () => {
+        (0, vitest_1.expect)((0, coupon_sale_2.resolvePromoPrice)(500, { studentPrice: 100, studentApproved: false, firstBuyEligible: false, firstBuyDiscount: 200 })).toEqual({
+            final: 500,
+            discountType: null,
+            discountAmount: 0,
+        });
+    });
+    (0, vitest_1.it)('立减超过原价按 1 分兜底；学生价 0/缺省不生效', () => {
+        (0, vitest_1.expect)((0, coupon_sale_2.resolvePromoPrice)(100, { studentApproved: false, firstBuyEligible: true, firstBuyDiscount: 9999 }).final).toBe(1);
+        (0, vitest_1.expect)((0, coupon_sale_2.resolvePromoPrice)(500, { studentPrice: 0, studentApproved: true, firstBuyEligible: false, firstBuyDiscount: 0 }).final).toBe(500);
+    });
+});
 (0, vitest_1.describe)('CouponSaleService.saleCatalogue 渠道隔离', () => {
     const ctx = { channel: { id: 37 }, channelId: 37 };
     function makeService(allTemplates, opts) {
-        var _a, _b, _d;
+        var _a, _b, _d, _e, _f;
         const templateRepo = { find: vitest_1.vi.fn().mockResolvedValue(allTemplates) };
         const bundleRepo = { find: vitest_1.vi.fn().mockResolvedValue((_a = opts === null || opts === void 0 ? void 0 : opts.bundles) !== null && _a !== void 0 ? _a : []) };
         const saleOrderRepo = {
@@ -76,8 +111,11 @@ const coupon_sale_order_entity_1 = require("./coupon-sale-order.entity");
                     .fn()
                     .mockResolvedValueOnce((_b = opts === null || opts === void 0 ? void 0 : opts.tplRows) !== null && _b !== void 0 ? _b : [])
                     .mockResolvedValueOnce((_d = opts === null || opts === void 0 ? void 0 : opts.bundleRows) !== null && _d !== void 0 ? _d : []),
+                getCount: vitest_1.vi.fn().mockResolvedValue(0),
             }),
         };
+        const channelRepo = { findOne: vitest_1.vi.fn().mockResolvedValue((_e = opts === null || opts === void 0 ? void 0 : opts.channel) !== null && _e !== void 0 ? _e : { customFields: {} }) };
+        const customerRepo = { findOne: vitest_1.vi.fn().mockResolvedValue((_f = opts === null || opts === void 0 ? void 0 : opts.customer) !== null && _f !== void 0 ? _f : null) };
         const connection = {
             getRepository: vitest_1.vi.fn((_c, entity) => {
                 if (entity === coupon_template_entity_1.CouponTemplate)
@@ -86,6 +124,10 @@ const coupon_sale_order_entity_1 = require("./coupon-sale-order.entity");
                     return bundleRepo;
                 if (entity === coupon_sale_order_entity_1.CouponSaleOrder)
                     return saleOrderRepo;
+                if (entity === core_1.Channel)
+                    return channelRepo;
+                if (entity === core_1.Customer)
+                    return customerRepo;
                 throw new Error(`unknown entity: ${entity}`);
             }),
         };

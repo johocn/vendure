@@ -45,6 +45,7 @@ const TEMPLATE_UPDATE_ALLOWED = [
     'salePrice',
     'anchorPrice',
     'label',
+    'studentPrice',
 ];
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 function generateCode(prefix) {
@@ -237,6 +238,11 @@ let CouponService = class CouponService {
         if (input.label !== undefined) {
             const s = typeof input.label === 'string' ? input.label.trim() : '';
             tpl.label = s ? s.slice(0, 30) : null;
+        }
+        if (input.studentPrice !== undefined) {
+            const n = Math.floor(Number(input.studentPrice));
+            tpl.studentPrice =
+                input.studentPrice == null || !Number.isFinite(n) || n <= 0 ? null : n;
         }
     }
     /**

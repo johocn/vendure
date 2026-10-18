@@ -24,6 +24,10 @@ export declare class CouponSaleOrder extends VendureEntity {
     paidAt?: Date;
     refundedAt?: Date;
     remark: string | null;
+    /** 优惠类型：FIRST_BUY 首购立减 / STUDENT 学生价；null = 无优惠按原价成交 */
+    discountType: 'FIRST_BUY' | 'STUDENT' | null;
+    /** 让利金额（分，base - final）；0/null = 无优惠 */
+    discountAmount: number | null;
     channel: Channel;
     channelId: number;
 }

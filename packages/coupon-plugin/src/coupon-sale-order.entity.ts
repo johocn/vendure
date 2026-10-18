@@ -58,6 +58,14 @@ export class CouponSaleOrder extends VendureEntity {
     @Column({ type: 'text', nullable: true })
     remark: string | null;
 
+    /** 优惠类型：FIRST_BUY 首购立减 / STUDENT 学生价；null = 无优惠按原价成交 */
+    @Column({ type: 'varchar', nullable: true })
+    discountType: 'FIRST_BUY' | 'STUDENT' | null;
+
+    /** 让利金额（分，base - final）；0/null = 无优惠 */
+    @Column({ type: 'int', nullable: true })
+    discountAmount: number | null;
+
     @ManyToOne(() => Channel, { eager: false })
     channel: Channel;
 

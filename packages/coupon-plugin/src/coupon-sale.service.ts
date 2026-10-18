@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
+    Channel,
+    Customer,
     CustomerService,
     ID,
     RequestContext,
@@ -16,6 +18,7 @@ import {
     expandBundleItems,
     filterSaleCatalogue,
     isSaleOrderRefundable,
+    resolvePromoPrice,
 } from './coupon-sale';
 import { filterTemplatesByChannelAndScene, hasChannel, matchesScene } from './coupon-channel';
 import { getCouponBalancePort } from './coupon-balance-port';
@@ -52,11 +55,17 @@ export class CouponSaleService {
         return customer.id as number;
     }
 
-    /** 券商城目录：可售模板（渠道含 SALE 且 salePrice>0）+ 启用券包；附真实已售数（已支付 coupon_sale_order 聚合） */
+    /** 券商城目录：可售模板（渠道含 SALE 且 salePrice>0）+ 启用券包；附真实已售数（已支付 coupon_sale_order 聚合）与首购/学生价资格信息 */
     async saleCatalogue(
         ctx: RequestContext,
         scene?: string,
-    ): Promise<{ templates: CouponTemplate[]; bundles: CouponBundle[] }> {
+    ): Promise<{
+        templates: CouponTemplate[];
+        bundles: CouponBundle[];
+        firstBuyDiscount: number;
+        firstBuyEligible: boolean | null;
+        studentApproved: boolean | null;
+    }> {
         const repo = this.connection.getRepository(ctx, CouponTemplate);
         const all = await repo.find({ relations: { channels: true } });
         const effectiveScene = (scene ?? 'ONLINE') as any;
@@ -105,7 +114,38 @@ export class CouponSaleService {
         for (const b of bundles) {
             (b as any).soldCount = bundleSold.get(Number(b.id)) ?? 0;
         }
-        return { templates: saleable, bundles };
+
+        // 首购立减/学生价目录信息：firstBuyDiscount 渠道级（0/null=关闭）；
+        // firstBuyEligible / studentApproved 仅登录态计算（匿名 null，由 C 端按新客展示引导）
+        const channelRepo = this.connection.getRepository(ctx, Channel);
+        const channel = await channelRepo.findOne({ where: { id: ctx.channelId as any } });
+        const firstBuyDiscount = Math.max(0, Math.floor(Number((channel as any)?.customFields?.firstBuyDiscount ?? 0)));
+        const customerId = await this.currentCustomerId(ctx).catch(() => null);
+        let firstBuyEligible: boolean | null = null;
+        let studentApproved: boolean | null = null;
+        if (customerId) {
+            firstBuyEligible = await this.isFirstBuyEligible(ctx, customerId);
+            const customer = await this.connection
+                .getRepository(ctx, Customer)
+                .findOne({ where: { id: customerId } });
+            studentApproved =
+                ((customer as any)?.customFields?.studentStatus as string | undefined) === 'approved';
+        }
+        return { templates: saleable, bundles, firstBuyDiscount, firstBuyEligible, studentApproved };
+    }
+
+    /** 首购资格：本渠道无已支付（PAID）出售单 → true（每用户仅 1 次；取消/退款单不占资格） */
+    private async isFirstBuyEligible(ctx: RequestContext, customerId: number): Promise<boolean> {
+        const cnt = await this.connection
+            .getRepository(ctx, CouponSaleOrder)
+            .createQueryBuilder('s')
+            .where('s.customerId = :cid AND s.channelId = :ch AND s.status = :st', {
+                cid: customerId,
+                ch: ctx.channelId,
+                st: 'PAID',
+            })
+            .getCount();
+        return cnt === 0;
     }
 
     /** 创建出售单（路径 A）：校验渠道含 SALE / 可售 / 未售罄，落 PENDING 单 */
@@ -121,15 +161,30 @@ export class CouponSaleService {
             throw new UserInputError('Only one of templateId / bundleId is allowed');
         }
         const customerId = await this.currentCustomerId(ctx);
+        // 首购立减/学生价：渠道配置 + 用户资格 → 后端重算到手价（不信任前端）
+        const channelRepo = this.connection.getRepository(ctx, Channel);
+        const channel = await channelRepo.findOne({ where: { id: ctx.channelId as any } });
+        const firstBuyDiscount = Math.max(0, Math.floor(Number((channel as any)?.customFields?.firstBuyDiscount ?? 0)));
+        const firstBuyEligible = await this.isFirstBuyEligible(ctx, customerId);
+        const customer = await this.connection.getRepository(ctx, Customer).findOne({ where: { id: customerId } });
+        const studentApproved =
+            ((customer as any)?.customFields?.studentStatus as string | undefined) === 'approved';
         let amount = 0;
+        let tpl: CouponTemplate | null = null;
         if (templateId) {
-            const tpl = await this.loadSaleableTemplate(ctx, templateId);
+            tpl = await this.loadSaleableTemplate(ctx, templateId);
             amount = tpl.salePrice;
         } else {
             const { bundle, items } = await this.loadSaleableBundle(ctx, bundleId as ID);
             await this.assertBundleStock(items);
             amount = bundle.salePrice;
         }
+        const promo = resolvePromoPrice(amount, {
+            studentPrice: tpl?.studentPrice,
+            studentApproved,
+            firstBuyEligible,
+            firstBuyDiscount,
+        });
         const repo = this.connection.getRepository(ctx, CouponSaleOrder);
         return repo.save(
             new CouponSaleOrder({
@@ -139,7 +194,9 @@ export class CouponSaleService {
                 bundleId: bundleId ? Number(bundleId) : null,
                 orderId: null,
                 surchargeId: null,
-                amount,
+                amount: promo.final,
+                discountType: promo.discountType,
+                discountAmount: promo.discountAmount,
                 status: 'PENDING',
                 paymentMethod: null,
                 externalRef: null,

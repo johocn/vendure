@@ -6,6 +6,8 @@ import { CouponSaleService } from './coupon-sale.service';
 import { CouponTemplate } from './coupon-template.entity';
 import { CouponBundle } from './coupon-bundle.entity';
 import { CouponSaleOrder } from './coupon-sale-order.entity';
+import { Channel, Customer } from '@vendure/core';
+import { resolvePromoPrice } from './coupon-sale';
 
 describe('isSaleOrderRefundable', () => {
     it('全部未使用 → 可退', () => {
@@ -70,10 +72,44 @@ describe('filterSaleCatalogue', () => {
  * 别家店的券（distributionChannels 含 SALE 但 channels 不含当前渠道）不得进入本店目录；
  * 本店券与 channels 为空的平台券正常可见——与 loadSaleableTemplate 购买校验同口径。
  */
+describe('resolvePromoPrice 到手价重算', () => {
+    it('首购立减：¥5 券立减 ¥2 → ¥3 + FIRST_BUY', () => {
+        expect(resolvePromoPrice(500, { studentApproved: false, firstBuyEligible: true, firstBuyDiscount: 200 })).toEqual({
+            final: 300,
+            discountType: 'FIRST_BUY',
+            discountAmount: 200,
+        });
+    });
+    it('学生价：认证学生 ¥3 → ¥3 + STUDENT（首购不叠加）', () => {
+        expect(resolvePromoPrice(500, { studentPrice: 300, studentApproved: true, firstBuyEligible: true, firstBuyDiscount: 200 })).toEqual({
+            final: 300,
+            discountType: 'STUDENT',
+            discountAmount: 200,
+        });
+    });
+    it('学生价低于首购价时取学生价', () => {
+        expect(resolvePromoPrice(500, { studentPrice: 100, studentApproved: true, firstBuyEligible: true, firstBuyDiscount: 200 }).final).toBe(100);
+    });
+    it('学生价高于首购价时取首购立减', () => {
+        expect(resolvePromoPrice(500, { studentPrice: 450, studentApproved: true, firstBuyEligible: true, firstBuyDiscount: 200 }).discountType).toBe('FIRST_BUY');
+    });
+    it('未认证学生不享学生价；老客原价', () => {
+        expect(resolvePromoPrice(500, { studentPrice: 100, studentApproved: false, firstBuyEligible: false, firstBuyDiscount: 200 })).toEqual({
+            final: 500,
+            discountType: null,
+            discountAmount: 0,
+        });
+    });
+    it('立减超过原价按 1 分兜底；学生价 0/缺省不生效', () => {
+        expect(resolvePromoPrice(100, { studentApproved: false, firstBuyEligible: true, firstBuyDiscount: 9999 }).final).toBe(1);
+        expect(resolvePromoPrice(500, { studentPrice: 0, studentApproved: true, firstBuyEligible: false, firstBuyDiscount: 0 }).final).toBe(500);
+    });
+});
+
 describe('CouponSaleService.saleCatalogue 渠道隔离', () => {
     const ctx: any = { channel: { id: 37 }, channelId: 37 };
 
-    function makeService(allTemplates: any[], opts?: { tplRows?: any[]; bundleRows?: any[]; bundles?: any[] }) {
+    function makeService(allTemplates: any[], opts?: { tplRows?: any[]; bundleRows?: any[]; bundles?: any[]; channel?: any; customer?: any }) {
         const templateRepo = { find: vi.fn().mockResolvedValue(allTemplates) };
         const bundleRepo = { find: vi.fn().mockResolvedValue(opts?.bundles ?? []) };
         const saleOrderRepo = {
@@ -87,13 +123,18 @@ describe('CouponSaleService.saleCatalogue 渠道隔离', () => {
                     .fn()
                     .mockResolvedValueOnce(opts?.tplRows ?? [])
                     .mockResolvedValueOnce(opts?.bundleRows ?? []),
+                getCount: vi.fn().mockResolvedValue(0),
             }),
         };
+        const channelRepo = { findOne: vi.fn().mockResolvedValue(opts?.channel ?? { customFields: {} }) };
+        const customerRepo = { findOne: vi.fn().mockResolvedValue(opts?.customer ?? null) };
         const connection = {
             getRepository: vi.fn((_c: any, entity: any) => {
                 if (entity === CouponTemplate) return templateRepo;
                 if (entity === CouponBundle) return bundleRepo;
                 if (entity === CouponSaleOrder) return saleOrderRepo;
+                if (entity === Channel) return channelRepo;
+                if (entity === Customer) return customerRepo;
                 throw new Error(`unknown entity: ${entity}`);
             }),
         };

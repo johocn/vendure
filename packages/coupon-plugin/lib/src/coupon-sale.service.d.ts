@@ -16,11 +16,16 @@ export declare class CouponSaleService {
     constructor(connection: TransactionalConnection, couponService: CouponService, customerService: CustomerService);
     /** 当前请求的 customerId */
     private currentCustomerId;
-    /** 券商城目录：可售模板（渠道含 SALE 且 salePrice>0）+ 启用券包；附真实已售数（已支付 coupon_sale_order 聚合） */
+    /** 券商城目录：可售模板（渠道含 SALE 且 salePrice>0）+ 启用券包；附真实已售数（已支付 coupon_sale_order 聚合）与首购/学生价资格信息 */
     saleCatalogue(ctx: RequestContext, scene?: string): Promise<{
         templates: CouponTemplate[];
         bundles: CouponBundle[];
+        firstBuyDiscount: number;
+        firstBuyEligible: boolean | null;
+        studentApproved: boolean | null;
     }>;
+    /** 首购资格：本渠道无已支付（PAID）出售单 → true（每用户仅 1 次；取消/退款单不占资格） */
+    private isFirstBuyEligible;
     /** 创建出售单（路径 A）：校验渠道含 SALE / 可售 / 未售罄，落 PENDING 单 */
     createSaleOrder(ctx: RequestContext, templateId?: ID | null, bundleId?: ID | null): Promise<CouponSaleOrder>;
     /** 余额支付（同步结算）：先发券 + 置 PAID，再扣款；扣款内部提交事务，三者一并落库 */

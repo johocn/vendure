@@ -42,12 +42,16 @@ import {
     CreateCouponSaleMigration,
     CreateInStoreBillMigration,
     CreateProductCouponBindingMigration,
+    AddCouponPromoFieldsMigration,
 } from './migrations';
 import { AddCouponDistributionChannelsMigration } from './migrations/add-coupon-distribution-channels';
 import { InStoreBill } from './in-store-bill.entity';
 import { InStoreBillAdminResolver } from './in-store-bill-admin.resolver';
 import { InStoreBillService } from './in-store-bill.service';
 import { couponOrderCustomFields } from './order-custom-fields';
+import { couponPromoCustomFields } from './promo-custom-fields';
+import { StudentVerificationService } from './student.service';
+import { StudentAdminResolver, StudentShopResolver } from './student.resolvers';
 import { ProductCouponBinding } from './product-coupon-binding.entity';
 import { CouponPluginOptions } from './types';
 
@@ -93,6 +97,7 @@ type CouponTemplate implements Node {
     salePrice: Int!
     anchorPrice: Int
     label: String
+    studentPrice: Int
     soldCount: Int
     createdAt: DateTime!
     updatedAt: DateTime!
@@ -130,6 +135,8 @@ type CustomerCoupon implements Node {
         CreateProductCouponBindingMigration,
         AddCouponIndexes20260919,
         AddCouponMarketingFieldsMigration,
+        AddCouponPromoFieldsMigration,
+        StudentVerificationService,
         AddCouponUsageSceneMigration,
         AddCouponDistributionChannelsMigration,
         CreateInStoreBillMigration,
@@ -326,6 +333,7 @@ type CustomerCoupon implements Node {
                 salePrice: Int
                 anchorPrice: Int
                 label: String
+                studentPrice: Int
             }
 
             input UpdateCouponTemplateInput {
@@ -358,6 +366,7 @@ type CustomerCoupon implements Node {
                 salePrice: Int
                 anchorPrice: Int
                 label: String
+                studentPrice: Int
             }
 
             input CouponTemplateListOptions
@@ -449,6 +458,20 @@ type CustomerCoupon implements Node {
                 couponBundle(id: ID!): CouponBundle
                 couponSaleOrders(options: CouponSaleOrderListOptions): CouponSaleOrderList!
                 couponSaleOrder(id: ID!): CouponSaleOrder
+                studentVerifications(status: String): [StudentVerificationItem!]!
+            }
+
+            # StudentVerificationItem 原先只声明在 shopApiExtensions，admin schema 引用未知类型
+            # 会导致 dev server 启动即 GraphQL schema 编译失败（Unknown type），此处需同步声明
+            type StudentVerificationItem {
+                customerId: ID!
+                customerName: String!
+                customerEmail: String
+                status: String!
+                school: String
+                studentNo: String
+                idImg: String
+                reviewedAt: DateTime
             }
 
             extend type Mutation {
@@ -468,9 +491,10 @@ type CustomerCoupon implements Node {
                 updateCouponBundle(id: ID!, input: CouponBundleInput!): CouponBundle!
                 deleteCouponBundle(id: ID!): Boolean!
                 refundCouponSaleOrder(id: ID!, reason: String): CouponSaleOrder!
+                reviewStudentVerification(customerId: ID!, approve: Boolean!): StudentVerificationItem!
             }
         `,
-        resolvers: [CouponAdminResolver, CouponTemplateResolver, CustomerCouponResolver, CouponBindingAdminResolver, InStoreBillAdminResolver, CouponSaleAdminResolver, CouponBundleResolver],
+        resolvers: [CouponAdminResolver, CouponTemplateResolver, CustomerCouponResolver, CouponBindingAdminResolver, InStoreBillAdminResolver, CouponSaleAdminResolver, CouponBundleResolver, StudentAdminResolver],
     },
     shopApiExtensions: {
         schema: () => gql`
@@ -502,6 +526,20 @@ type CustomerCoupon implements Node {
             type CouponSaleCatalogue {
                 templates: [CouponTemplate!]!
                 bundles: [CouponBundle!]!
+                firstBuyDiscount: Int
+                firstBuyEligible: Boolean
+                studentApproved: Boolean
+            }
+
+            type StudentVerificationItem {
+                customerId: ID!
+                customerName: String!
+                customerEmail: String
+                status: String!
+                school: String
+                studentNo: String
+                idImg: String
+                reviewedAt: DateTime
             }
 
             type CouponBundleItem {
@@ -530,6 +568,8 @@ type CustomerCoupon implements Node {
                 bundleId: ID
                 orderId: ID
                 amount: Int!
+                discountType: String
+                discountAmount: Int
                 status: String!
                 paidAt: DateTime
                 refundedAt: DateTime
@@ -563,6 +603,7 @@ type CustomerCoupon implements Node {
                 productCoupons(productId: ID!): [ProductCouponBinding!]!
                 couponSaleCatalogue(scene: CouponUsageScene): CouponSaleCatalogue!
                 myCouponSaleOrders: [CouponSaleOrder!]!
+                myStudentVerification: StudentVerificationItem!
             }
 
             extend type Mutation {
@@ -579,12 +620,15 @@ type CustomerCoupon implements Node {
                 refundCouponSaleOrder(id: ID!, reason: String): CouponSaleOrder!
                 attachCouponToOrder(orderId: ID!, templateId: ID!): CouponSaleOrder!
                 detachCouponFromOrder(orderId: ID!, templateId: ID!): Boolean!
+                applyStudentVerification(school: String!, studentNo: String!, idImg: String): StudentVerificationItem!
             }
         `,
-        resolvers: [CouponShopResolver, CouponTemplateResolver, CustomerCouponResolver, CouponSaleShopResolver, CouponBundleResolver],
+        resolvers: [CouponShopResolver, CouponTemplateResolver, CustomerCouponResolver, CouponSaleShopResolver, CouponBundleResolver, StudentShopResolver],
     },
     configuration: (config) => {
         config.customFields.Order = mergeCustomFields(config.customFields.Order, couponOrderCustomFields.Order);
+        config.customFields.Channel = mergeCustomFields(config.customFields.Channel, couponPromoCustomFields.Channel);
+        config.customFields.Customer = mergeCustomFields(config.customFields.Customer, couponPromoCustomFields.Customer);
 
         config.promotionOptions = config.promotionOptions || {};
         config.promotionOptions.promotionConditions = [

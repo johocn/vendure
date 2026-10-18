@@ -7,6 +7,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.isSaleOrderRefundable = isSaleOrderRefundable;
 exports.expandBundleItems = expandBundleItems;
 exports.filterSaleCatalogue = filterSaleCatalogue;
+exports.resolvePromoPrice = resolvePromoPrice;
 /**
  * 出售单可退判定：出售单生成的券中「没有任何一张状态为 USED」即可退。
  * 过期券（EXPIRED）与回退券（RETURNED）均视为未使用（设计 §16-5：过期券可退）。
@@ -36,5 +37,31 @@ function expandBundleItems(items) {
 /** 出售目录过滤：仅保留 salePrice > 0 的可售模板（0 / null = 不可售）。 */
 function filterSaleCatalogue(templates) {
     return templates.filter(t => { var _a; return Number((_a = t.salePrice) !== null && _a !== void 0 ? _a : 0) > 0; });
+}
+/**
+ * 到手价重算（下单唯一信任源，纯函数）：
+ * 学生价（仅单券，需认证通过）与首购立减（单券+券包）各自从原价计算、取低不叠加；
+ * 到手价最低 1 分（避免 0 元单）。返回终价 + 优惠类型 + 让利额。
+ */
+function resolvePromoPrice(base, opts) {
+    var _a;
+    const baseFinal = Math.max(1, Math.floor(Number(base) || 0));
+    // 两条优惠路径各自从原价独立计算（取低不叠加），同价时优先记为学生价
+    const studentPrice = Math.floor(Number((_a = opts.studentPrice) !== null && _a !== void 0 ? _a : 0));
+    const candidates = [];
+    if (studentPrice > 0 && opts.studentApproved && studentPrice < baseFinal) {
+        candidates.push({ final: Math.max(1, studentPrice), type: 'STUDENT' });
+    }
+    if (opts.firstBuyDiscount > 0 && opts.firstBuyEligible) {
+        const v = Math.max(1, baseFinal - Math.floor(opts.firstBuyDiscount));
+        if (v < baseFinal) {
+            candidates.push({ final: v, type: 'FIRST_BUY' });
+        }
+    }
+    if (!candidates.length) {
+        return { final: baseFinal, discountType: null, discountAmount: 0 };
+    }
+    const best = candidates.reduce((a, b) => (b.final < a.final ? b : a));
+    return { final: best.final, discountType: best.type, discountAmount: baseFinal - best.final };
 }
 //# sourceMappingURL=coupon-sale.js.map

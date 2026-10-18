@@ -20,3 +20,18 @@ export declare function expandBundleItems(items: ReadonlyArray<{
 export declare function filterSaleCatalogue<T extends {
     salePrice?: number | null;
 }>(templates: ReadonlyArray<T>): T[];
+/**
+ * 到手价重算（下单唯一信任源，纯函数）：
+ * 学生价（仅单券，需认证通过）与首购立减（单券+券包）各自从原价计算、取低不叠加；
+ * 到手价最低 1 分（避免 0 元单）。返回终价 + 优惠类型 + 让利额。
+ */
+export declare function resolvePromoPrice(base: number, opts: {
+    studentPrice?: number | null;
+    studentApproved: boolean;
+    firstBuyEligible: boolean;
+    firstBuyDiscount: number;
+}): {
+    final: number;
+    discountType: 'FIRST_BUY' | 'STUDENT' | null;
+    discountAmount: number;
+};
