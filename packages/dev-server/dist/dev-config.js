@@ -56,6 +56,7 @@ const points_mall_plugin_1 = require("@vendure/points-mall-plugin");
 const review_plugin_1 = require("@vendure/review-plugin");
 const wechat_subscribe_message_plugin_1 = require("@vendure/wechat-subscribe-message-plugin");
 const coupon_plugin_1 = require("@vendure/coupon-plugin");
+const bill_pay_plugin_1 = require("@vendure/bill-pay-plugin");
 const campus_delivery_plugin_1 = require("@vendure/campus-delivery-plugin");
 const campus_jianghu_plugin_1 = require("@vendure/campus-jianghu-plugin");
 const delivery_plugin_1 = require("@vendure/delivery-plugin");
@@ -453,6 +454,7 @@ exports.devConfig = {
         favorite_plugin_1.FavoritePlugin.init(),
         wechat_subscribe_message_plugin_1.WechatSubscribeMessagePlugin.init(),
         coupon_plugin_1.CouponPlugin.init(),
+        bill_pay_plugin_1.BillPayPlugin.init(),
         live_streaming_plugin_1.LiveStreamingPlugin.init({
             pushDomain: process.env.LIVE_PUSH_DOMAIN || 'rtmp://push.test.com/live/',
             playDomain: process.env.LIVE_PLAY_DOMAIN || 'https://play.test.com/live/',
