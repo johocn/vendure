@@ -5,7 +5,9 @@ import { CouponSaleService } from './coupon-sale.service';
 
 /**
  * 券商城（shop-api）：可售目录、出售单购买（微信 / 余额）、我的出售单，
- * 以及商品页加价购的挂载 / 摘除。全部要求登录（Permission.Authenticated），
+ * 以及商品页加价购的挂载 / 摘除。目录 couponSaleCatalogue 匿名可查（券店首页新客可浏览，渠道过滤/场景过滤在
+ * CouponSaleService.saleCatalogue 内完成，仅依赖 ctx.channelId，无登录态耦合）；
+ * 其余购买/支付/退款等写操作仍要求登录（Permission.Authenticated），
  * 归属校验（本人 / 本渠道）在 CouponSaleService 内完成。
  */
 @Resolver()
@@ -16,7 +18,6 @@ export class CouponSaleShopResolver {
     ) {}
 
     @Query()
-    @Allow(Permission.Authenticated)
     async couponSaleCatalogue(@Ctx() ctx: RequestContext, @Args('scene', { nullable: true }) scene?: string) {
         return this.couponSaleService.saleCatalogue(ctx, scene ?? undefined);
     }
