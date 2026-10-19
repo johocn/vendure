@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.AddInStoreBillShopFieldsMigration = exports.CreateCouponSettlementMigration = exports.AddCouponCategoryFieldMigration = exports.AddCouponPromoFieldsMigration = exports.AddCouponMarketingFieldsMigration = exports.CreateCouponSaleMigration = exports.AddCouponDistributionChannelsMigration = exports.CreateInStoreBillMigration = exports.AddCouponUsageSceneMigration = exports.AddCouponIndexes20260919 = exports.CreateProductCouponBindingMigration = exports.AddCouponFieldsMigration = void 0;
+exports.CreateCouponFissionMigration = exports.AddInStoreBillShopFieldsMigration = exports.CreateCouponSettlementMigration = exports.AddCouponCategoryFieldMigration = exports.AddCouponPromoFieldsMigration = exports.AddCouponMarketingFieldsMigration = exports.CreateCouponSaleMigration = exports.AddCouponDistributionChannelsMigration = exports.CreateInStoreBillMigration = exports.AddCouponUsageSceneMigration = exports.AddCouponIndexes20260919 = exports.CreateProductCouponBindingMigration = exports.AddCouponFieldsMigration = void 0;
 // packages/coupon-plugin/src/migrations/index.ts
 var add_coupon_fields_1 = require("./add-coupon-fields");
 Object.defineProperty(exports, "AddCouponFieldsMigration", { enumerable: true, get: function () { return add_coupon_fields_1.AddCouponFieldsMigration; } });
@@ -26,4 +26,6 @@ var create_coupon_settlement_1 = require("./create-coupon-settlement");
 Object.defineProperty(exports, "CreateCouponSettlementMigration", { enumerable: true, get: function () { return create_coupon_settlement_1.CreateCouponSettlementMigration; } });
 var add_in_store_bill_shop_fields_1 = require("./add-in-store-bill-shop-fields");
 Object.defineProperty(exports, "AddInStoreBillShopFieldsMigration", { enumerable: true, get: function () { return add_in_store_bill_shop_fields_1.AddInStoreBillShopFieldsMigration; } });
+var create_coupon_fission_1 = require("./create-coupon-fission");
+Object.defineProperty(exports, "CreateCouponFissionMigration", { enumerable: true, get: function () { return create_coupon_fission_1.CreateCouponFissionMigration; } });
 //# sourceMappingURL=index.js.map

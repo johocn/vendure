@@ -22,6 +22,8 @@ const coupon_binding_service_1 = require("./coupon-binding.service");
 const coupon_settlement_1 = require("./coupon-settlement");
 const coupon_template_entity_1 = require("./coupon-template.entity");
 const customer_coupon_entity_1 = require("./customer-coupon.entity");
+const coupon_sale_order_entity_1 = require("./coupon-sale-order.entity");
+const coupon_grant_batch_entity_1 = require("./coupon-grant-batch.entity");
 const product_coupon_binding_entity_1 = require("./product-coupon-binding.entity");
 const redeem_scope_1 = require("./redeem-scope");
 /** 模板 update() 允许写入的字段白名单 */
@@ -47,6 +49,8 @@ const TEMPLATE_UPDATE_ALLOWED = [
     'label',
     'studentPrice',
     'category',
+    'memberLevel',
+    'newCustomerOnly',
 ];
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 function generateCode(prefix) {
@@ -329,12 +333,12 @@ let CouponService = class CouponService {
             .getMany();
         // 非默认商城维持现状：仅列出本渠道券。
         if (!(0, coupon_scope_1.isDefaultMallChannel)(ctx)) {
-            return (0, coupon_channel_1.filterTemplatesByChannelAndScene)(own, 'CENTRE', effectiveScene);
+            return this.filterByMemberLevelVisibility(ctx, (0, coupon_channel_1.filterTemplatesByChannelAndScene)(own, 'CENTRE', effectiveScene));
         }
         // 默认商城：除本渠道券外，追加列出「其 shopId 对应商品出现在本商城」的租户券。
         const shopIds = await this.shopIdsPresentInChannel(ctx);
         if (shopIds.size === 0) {
-            return (0, coupon_channel_1.filterTemplatesByChannelAndScene)(own, 'CENTRE', effectiveScene);
+            return this.filterByMemberLevelVisibility(ctx, (0, coupon_channel_1.filterTemplatesByChannelAndScene)(own, 'CENTRE', effectiveScene));
         }
         const extra = await repo
             .createQueryBuilder('tpl')
@@ -349,7 +353,7 @@ let CouponService = class CouponService {
             .getMany();
         const ownIds = new Set(own.map(t => String(t.id)));
         const merged = [...own, ...extra.filter(t => !ownIds.has(String(t.id)))];
-        return (0, coupon_channel_1.filterTemplatesByChannelAndScene)(merged, 'CENTRE', effectiveScene);
+        return this.filterByMemberLevelVisibility(ctx, (0, coupon_channel_1.filterTemplatesByChannelAndScene)(merged, 'CENTRE', effectiveScene));
     }
     /** 领券中心「即将开始」：enabled 且 startsAt 在未来的券模板（与 couponCentre 同渠道/scene 口径） */
     async couponCentreUpcoming(ctx, scene) {
@@ -362,7 +366,7 @@ let CouponService = class CouponService {
             .where('tpl.enabled = :enabled', { enabled: true })
             .andWhere('tpl.startsAt > :now', { now })
             .getMany();
-        return (0, coupon_channel_1.filterTemplatesByChannelAndScene)(own, 'CENTRE', effectiveScene);
+        return this.filterByMemberLevelVisibility(ctx, (0, coupon_channel_1.filterTemplatesByChannelAndScene)(own, 'CENTRE', effectiveScene));
     }
     /** 默认商城渠道下，本商城商品（Product.customFields.shopId）中出现过的店铺 id 集合。 */
     async shopIdsPresentInChannel(ctx) {
@@ -546,7 +550,7 @@ let CouponService = class CouponService {
             .andWhere('(tpl.endsAt IS NULL OR tpl.endsAt >= :now)', { now })
             .orderBy('tpl.pointsPrice', 'ASC')
             .getMany();
-        return (0, coupon_channel_1.filterTemplatesByChannelAndScene)(rows, 'POINTS', 'ONLINE');
+        return this.filterByMemberLevelVisibility(ctx, (0, coupon_channel_1.filterTemplatesByChannelAndScene)(rows, 'POINTS', 'ONLINE'));
     }
     async exchangeWithPoints(ctx, templateId) {
         if (!this.memberLevelService) {
@@ -582,6 +586,8 @@ let CouponService = class CouponService {
                 throw new core_1.UserInputError('Per-user redemption limit reached');
             }
         }
+        // E2 会员等级门槛：配置等级门槛的券不达标不可兑换
+        await this.assertCouponMemberLevel(ctx, customerId, tpl);
         // 扣积分（原子 + SPEND 流水；不足抛 Insufficient；Transaction 保证与发券同回滚）
         await this.memberLevelService.spendPoints(ctx, customerId, tpl.pointsPrice, null, `积分兑换优惠券:${(0, localize_1.localizeText)(tpl.name, ctx.languageCode, '')}`);
         // 原子扣发行余量（防超发）
@@ -802,8 +808,8 @@ let CouponService = class CouponService {
             channels: [ctx.channel],
         }));
     }
-    async grantCouponIssue(ctx, templateId, customerIds, notify) {
-        var _a;
+    async grantCouponIssue(ctx, templateId, customerIds, notify, opts) {
+        var _a, _b, _c;
         const tpl = await this.findOneTemplate(ctx, templateId);
         if (!tpl) {
             throw new core_1.UserInputError(`CouponTemplate ${templateId} not found`);
@@ -839,19 +845,36 @@ let CouponService = class CouponService {
                     results.push({ customerId, ok: false, code: null, reason: 'MEMBER_LEVEL_BLOCKED' });
                     continue;
                 }
+                // R4 防骚扰（E1 召回复用）：同渠道同模板同渠道标记 N 天内已发过则跳过
+                if (opts === null || opts === void 0 ? void 0 : opts.recentIssuedDays) {
+                    const since = new Date(Date.now() - opts.recentIssuedDays * 86400000);
+                    const recent = await this.connection
+                        .getRepository(ctx, customer_coupon_entity_1.CustomerCoupon)
+                        .createQueryBuilder('cc')
+                        .innerJoin('cc.template', 'tplRef')
+                        .where('cc.customerId = :customerId', { customerId })
+                        .andWhere('tplRef.id = :templateId', { templateId: tpl.id })
+                        .andWhere('cc.issuedBy = :issuedBy', { issuedBy: (_a = opts.issuedBy) !== null && _a !== void 0 ? _a : 'ADMIN' })
+                        .andWhere('cc.createdAt >= :since', { since })
+                        .getCount();
+                    if (recent > 0) {
+                        results.push({ customerId, ok: false, code: null, reason: 'RECENTLY_GRANTED' });
+                        continue;
+                    }
+                }
                 const ok = await this.atomicIncrementClaimed(ctx, tpl.id, tpl);
                 if (!ok) {
                     results.push({ customerId, ok: false, code: null, reason: 'SOLD_OUT' });
                     continue;
                 }
-                const cc = await this.createUserCoupon(ctx, Number(customerId), tpl, 'ADMIN');
+                const cc = await this.createUserCoupon(ctx, Number(customerId), tpl, (_b = opts === null || opts === void 0 ? void 0 : opts.issuedBy) !== null && _b !== void 0 ? _b : 'ADMIN');
                 results.push({ customerId, ok: true, code: cc.code, reason: null });
                 if (notify) {
                     try {
                         await this.notifyCouponIssued(ctx, customerId, tpl, cc.code);
                     }
                     catch (e) {
-                        core_1.Logger.warn(`notifyCouponIssued failed for ${customerId}: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, constants_1.loggerCtx);
+                        core_1.Logger.warn(`notifyCouponIssued failed for ${customerId}: ${(_c = e === null || e === void 0 ? void 0 : e.message) !== null && _c !== void 0 ? _c : e}`, constants_1.loggerCtx);
                     }
                 }
             }
@@ -860,6 +883,91 @@ let CouponService = class CouponService {
             }
         }
         return results;
+    }
+    /* ------------------------- E1 沉睡召回批量发放 ------------------------- */
+    /**
+     * 圈选「N 天未消费」客户（E1）：本渠道内，近期（cutoff 之后）在本渠道无任何有效下单记录的客户。
+     * 两步法（先查近期消费者集合，再差集）避免跨库 NOT EXISTS 方言差异；上限 take 防失控。
+     */
+    async findSleepingCustomerIds(ctx, days, take = 500) {
+        var _a;
+        const cutoff = new Date(Date.now() - Math.max(1, days) * 86400000);
+        const recentConsumerIds = new Set();
+        try {
+            const orderRepo = this.connection.getRepository(ctx, 'Order');
+            const recent = await orderRepo
+                .createQueryBuilder('o')
+                .innerJoin('o.channels', 'oChannel', 'oChannel.id = :channelId', { channelId: ctx.channelId })
+                .select('DISTINCT o.customerId', 'cid')
+                .where('o.orderPlacedAt IS NOT NULL')
+                .andWhere('o.orderPlacedAt >= :cutoff', { cutoff })
+                .getRawMany();
+            for (const r of recent) {
+                const n = Number(r === null || r === void 0 ? void 0 : r.cid);
+                if (Number.isFinite(n))
+                    recentConsumerIds.add(n);
+            }
+        }
+        catch (e) {
+            core_1.Logger.warn(`findSleepingCustomerIds recent-consumer query failed: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, constants_1.loggerCtx);
+        }
+        const customerRepo = this.connection.getRepository(ctx, core_1.Customer);
+        const rows = await customerRepo
+            .createQueryBuilder('c')
+            .innerJoin('c.channels', 'channel', 'channel.id = :channelId', { channelId: ctx.channelId })
+            .select('c.id', 'id')
+            .orderBy('c.id', 'ASC')
+            .getRawMany();
+        return rows
+            .map(r => Number(r.id))
+            .filter(id => Number.isFinite(id) && !recentConsumerIds.has(id))
+            .slice(0, take);
+    }
+    /** E1 圈人预览：只数不发。 */
+    async winBackPreviewCount(ctx, days) {
+        return (await this.findSleepingCustomerIds(ctx, days, 5000)).length;
+    }
+    /**
+     * E1 批量发放：圈人 → 逐人走 grantCouponIssue（RECALL 渠道留痕 + R4 七日防骚扰）→ 落批次留痕。
+     * 单人失败不中断整批；结果逐人记录在批次 resultsJson，可查询。
+     */
+    async winBackGrant(ctx, templateId, days, notify) {
+        const tpl = await this.findOneTemplate(ctx, templateId);
+        if (!tpl) {
+            throw new core_1.UserInputError(`CouponTemplate ${templateId} not found`);
+        }
+        if (!(0, coupon_channel_1.hasChannel)(tpl, false, 'GRANT')) {
+            throw new core_1.UserInputError('Coupon is not available for targeted grant');
+        }
+        const ids = await this.findSleepingCustomerIds(ctx, days, 500);
+        const results = await this.grantCouponIssue(ctx, templateId, ids, notify, {
+            issuedBy: 'RECALL',
+            recentIssuedDays: 7,
+        });
+        const issuedCount = results.filter(r => r.ok).length;
+        const batch = await this.connection.getRepository(ctx, coupon_grant_batch_entity_1.CouponGrantBatch).save(new coupon_grant_batch_entity_1.CouponGrantBatch({
+            channelId: ctx.channelId,
+            templateId: tpl.id,
+            days: Math.max(1, days),
+            totalSelected: ids.length,
+            issuedCount,
+            skippedCount: results.length - issuedCount,
+            resultsJson: JSON.stringify(results),
+            operator: ctx.activeUserId ? String(ctx.activeUserId) : null,
+            notified: notify,
+        }));
+        core_1.Logger.info(`winBackGrant: batch#${batch.id} template=${templateId} days=${days} selected=${ids.length} issued=${issuedCount}`, constants_1.loggerCtx);
+        return batch;
+    }
+    /** E1 批次查询（结果可查询）：本渠道倒序。 */
+    async listGrantBatches(ctx, take = 20) {
+        return this.connection
+            .getRepository(ctx, coupon_grant_batch_entity_1.CouponGrantBatch)
+            .createQueryBuilder('b')
+            .where('b.channelId = :channelId', { channelId: ctx.channelId })
+            .orderBy('b.id', 'DESC')
+            .take(take)
+            .getMany();
     }
     async revokeCoupon(ctx, id) {
         var _a;
@@ -1176,6 +1284,77 @@ let CouponService = class CouponService {
     /** 新客判定：本租户是否已有历史有效订单（排除创建/购物车/待支付/修改/取消等未完成态） */
     async hasPlacedOrder(ctx, customerId) {
         return !(await (0, coupon_settlement_1.isNewCustomerWithinChannel)(ctx, customerId));
+    }
+    /* ---------------- FR-C 裂变 / FR-D 新客购 / E2 等级券 共用判定 ---------------- */
+    /**
+     * 新客综合判定（FR-D/FR-C 口径）：本租户无历史有效订单 且 未持有过新客券
+     * （UNUSED/RETURNED/USED 任一状态的新客券均计「已持」，防 1 元购复购绕过）。
+     */
+    async isCampaignNewCustomer(ctx, customerId) {
+        if (await this.hasPlacedOrder(ctx, customerId))
+            return false;
+        return !(await this.holdsNewCustomerCoupon(ctx, customerId));
+    }
+    /** 是否持有过新客券（newCustomerOnly 模板发放的券，未作废即计）。 */
+    async holdsNewCustomerCoupon(ctx, customerId) {
+        const count = await this.connection
+            .getRepository(ctx, customer_coupon_entity_1.CustomerCoupon)
+            .createQueryBuilder('cc')
+            .innerJoin('cc.template', 'tpl')
+            .where('cc.customerId = :customerId', { customerId })
+            .andWhere('tpl.newCustomerOnly = :nco', { nco: true })
+            .andWhere("cc.status IN ('UNUSED','RETURNED','USED')")
+            .getCount();
+        return count > 0;
+    }
+    /**
+     * 购买/加价购侧硬拦（FR-D）：新客券要求「综合新客 + 每人限购 1 张（PAID 出售单计）」；
+     * E2：配置会员等级门槛的券，不达标不可购（可见性过滤之外的第二道防线）。
+     */
+    async assertCustomerCanBuy(ctx, customerId, tpl) {
+        if (tpl.newCustomerOnly) {
+            if (!(await this.isCampaignNewCustomer(ctx, customerId))) {
+                throw new core_1.UserInputError('Coupon is for new customers only');
+            }
+            const bought = await this.connection
+                .getRepository(ctx, coupon_sale_order_entity_1.CouponSaleOrder)
+                .createQueryBuilder('s')
+                .where('s.customerId = :customerId', { customerId })
+                .andWhere('s.templateId = :templateId', { templateId: tpl.id })
+                .andWhere("s.status IN ('PAID','PENDING')")
+                .getCount();
+            if (bought > 0) {
+                throw new core_1.UserInputError('Per-user purchase limit reached');
+            }
+        }
+        await this.assertCouponMemberLevel(ctx, customerId, tpl);
+    }
+    /** 程序化发放公共入口（FR-C 裂变）：原子扣发行余量 + 建券（R2 计入限量 / R1 issuedBy 渠道留痕）。 */
+    async issueForProgram(ctx, customerId, tpl, issuedBy) {
+        const ok = await this.atomicIncrementClaimed(ctx, tpl.id, tpl);
+        if (!ok) {
+            throw new core_1.UserInputError('Coupon sold out');
+        }
+        return this.createUserCoupon(ctx, customerId, tpl, issuedBy);
+    }
+    /**
+     * E2 会员等级可见性过滤：配置等级门槛的券仅该等级及以上可见；无等级数据按 1 档（非会员）。
+     * 全部模板无门槛（或仅 1 档）时跳过等级查询，零额外 IO。
+     * （saleCatalogue 等目录服务也会调用，故 public。）
+     */
+    async filterByMemberLevelVisibility(ctx, list) {
+        var _a;
+        const required = await Promise.all(list.map(async (t) => ({ t, lv: await this.resolveRequiredMemberLevel(t.memberLevel) })));
+        const maxRequired = required.reduce((m, r) => { var _a; return Math.max(m, (_a = r.lv) !== null && _a !== void 0 ? _a : 0); }, 0);
+        if (maxRequired <= 1)
+            return list;
+        const customerId = await this.currentCustomerId(ctx);
+        let level = 1; // 匿名 / 无等级数据 → 非会员
+        if (customerId && this.memberLevelService) {
+            const tier = await this.memberLevelService.resolveTierForCustomer(ctx, customerId);
+            level = (_a = tier === null || tier === void 0 ? void 0 : tier.tierLevel) !== null && _a !== void 0 ? _a : 1;
+        }
+        return required.filter(r => { var _a; return ((_a = r.lv) !== null && _a !== void 0 ? _a : 0) <= level; }).map(r => r.t);
     }
     /**
      * 出售发券桥接：复用发券不变量（原子扣余量 → 建券并记录出售单溯源）。

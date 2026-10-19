@@ -58,6 +58,8 @@ export class AddCouponPromoFieldsMigration implements OnApplicationBootstrap {
                     { table: channel, name: 'customFieldsFirstbuydiscount', type: 'integer', orphan: 'firstBuyDiscount' },
                     // 活动 JSON 较长：须与 customFields 定义（string length 4096）一致；已建列宽度不足时补 ALTER
                     { table: channel, name: 'customFieldsCouponcampaign', type: 'varchar', length: 4096 },
+                    // 分享裂变活动配置 JSON（FR-C）：同 campaign 口径
+                    { table: channel, name: 'customFieldsCouponfission', type: 'varchar', length: 4096 },
                     // 买单券监管参数组（T4）：全部可空 = 宽松默认，配置后才启用校验
                     { table: channel, name: 'customFieldsBillpaymaxsaleprice', type: 'integer' },
                     { table: channel, name: 'customFieldsBillpaymaxfacevalue', type: 'integer' },

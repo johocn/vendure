@@ -20,6 +20,10 @@ import { CouponBindingAdminResolver } from './coupon-binding-admin.resolver';
 import { CouponBindingService } from './coupon-binding.service';
 import { CouponBundleResolver } from './coupon-bundle.resolver';
 import { setCouponBalancePort } from './coupon-balance-port';
+import { CouponFissionService } from './coupon-fission.service';
+import { CouponFissionShopResolver } from './coupon-fission-shop.resolver';
+import { CouponFissionRecord } from './coupon-fission-record.entity';
+import { CouponGrantBatch } from './coupon-grant-batch.entity';
 import { CouponSaleAdminResolver } from './coupon-sale-admin.resolver';
 import { CouponSaleShopResolver } from './coupon-sale-shop.resolver';
 import { CouponSaleService, setCouponSaleGateway } from './coupon-sale.service';
@@ -50,6 +54,7 @@ import {
     AddCouponCategoryFieldMigration,
     CreateCouponSettlementMigration,
     AddInStoreBillShopFieldsMigration,
+    CreateCouponFissionMigration,
 } from './migrations';
 import { AddCouponDistributionChannelsMigration } from './migrations/add-coupon-distribution-channels';
 import { InStoreBill } from './in-store-bill.entity';
@@ -132,7 +137,7 @@ type CustomerCoupon implements Node {
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [CouponTemplate, CustomerCoupon, ProductCouponBinding, InStoreBill, CouponSaleOrder, CouponBundle, CouponBundleItem, CouponSettlementOrder],
+    entities: [CouponTemplate, CustomerCoupon, ProductCouponBinding, InStoreBill, CouponSaleOrder, CouponBundle, CouponBundleItem, CouponSettlementOrder, CouponFissionRecord, CouponGrantBatch],
     providers: [
         { provide: COUPON_PLUGIN_OPTIONS, useFactory: () => CouponPlugin.options },
         CouponService,
@@ -140,6 +145,7 @@ type CustomerCoupon implements Node {
         CouponSaleService,
         CouponSettlementService,
         CouponExpireReminderService,
+        CouponFissionService,
         InStoreBillService,
         AddCouponFieldsMigration,
         CreateProductCouponBindingMigration,
@@ -154,13 +160,14 @@ type CustomerCoupon implements Node {
         CreateCouponSaleMigration,
         CreateCouponSettlementMigration,
         AddInStoreBillShopFieldsMigration,
+        CreateCouponFissionMigration,
     ],
     exports: [CouponService, CouponBindingService, CouponSaleService],
     adminApiExtensions: {
         schema: () => gql`
             enum CouponType { FIXED PERCENT FULL FREE_SHIPPING }
             enum CouponStatus { UNUSED USED RETURNED EXPIRED INVALID }
-            enum CouponIssuedBy { CENTRE ADMIN EXCHANGE SALE }
+            enum CouponIssuedBy { CENTRE ADMIN EXCHANGE SALE FISSION RECALL }
             enum CouponUsageScene { ONLINE IN_STORE ALL }
 
             ${couponTemplateType}
@@ -537,6 +544,9 @@ type CustomerCoupon implements Node {
                 couponSettlementOrders(options: CouponSettlementOrderListOptions): CouponSettlementOrderList!
                 couponSettlementOrder(id: ID!): CouponSettlementOrder
                 studentVerifications(status: String): [StudentVerificationItem!]!
+                couponGrantBatches(take: Int): [CouponGrantBatch!]!
+                couponFissionRecords(take: Int): [CouponFissionRecord!]!
+                couponWinBackPreviewCount(days: Int!): Int!
             }
 
             # StudentVerificationItem 原先只声明在 shopApiExtensions，admin schema 引用未知类型
@@ -571,6 +581,7 @@ type CustomerCoupon implements Node {
                 refundCouponSaleOrder(id: ID!, reason: String): CouponSaleOrder!
                 runCouponSettlementCycle: CouponSettlementCycleResult!
                 reviewStudentVerification(customerId: ID!, approve: Boolean!): StudentVerificationItem!
+                couponWinBackGrant(templateId: ID!, days: Int!, notify: Boolean): CouponGrantBatch!
             }
         `,
         resolvers: [CouponAdminResolver, CouponTemplateResolver, CustomerCouponResolver, CouponBindingAdminResolver, InStoreBillAdminResolver, CouponSaleAdminResolver, CouponSettlementAdminResolver, CouponBundleResolver, StudentAdminResolver],
@@ -579,11 +590,27 @@ type CustomerCoupon implements Node {
         schema: () => gql`
             enum CouponType { FIXED PERCENT FULL FREE_SHIPPING }
             enum CouponStatus { UNUSED USED RETURNED EXPIRED INVALID }
-            enum CouponIssuedBy { CENTRE ADMIN EXCHANGE SALE }
+            enum CouponIssuedBy { CENTRE ADMIN EXCHANGE SALE FISSION RECALL }
             enum CouponUsageScene { ONLINE IN_STORE ALL }
 
             ${couponTemplateType}
             ${customerCouponType}
+
+            type CouponFissionActivity {
+                name: String!
+                subtitle: String
+                rules: String
+                startsAt: DateTime
+                endsAt: DateTime!
+                inviteeTemplate: CouponTemplate
+                inviterTemplate: CouponTemplate
+            }
+
+            type CouponFissionClaimResult {
+                status: String!
+                inviteeCoupon: CustomerCoupon
+                inviterCoupon: CustomerCoupon
+            }
 
             type ProductCouponBinding implements Node {
                 id: ID!
@@ -693,6 +720,7 @@ type CustomerCoupon implements Node {
                 couponSaleCatalogue(scene: CouponUsageScene): CouponSaleCatalogue!
                 myCouponSaleOrders: [CouponSaleOrder!]!
                 myStudentVerification: StudentVerificationItem!
+                couponFissionActivity: CouponFissionActivity
             }
 
             extend type Mutation {
@@ -710,9 +738,10 @@ type CustomerCoupon implements Node {
                 attachCouponToOrder(orderId: ID!, templateId: ID!): CouponSaleOrder!
                 detachCouponFromOrder(orderId: ID!, templateId: ID!): Boolean!
                 applyStudentVerification(school: String!, studentNo: String!, idImg: String): StudentVerificationItem!
+                claimFissionReward(inviteCode: String!): CouponFissionClaimResult!
             }
         `,
-        resolvers: [CouponShopResolver, CouponTemplateResolver, CustomerCouponResolver, CouponSaleShopResolver, CouponBundleResolver, StudentShopResolver],
+        resolvers: [CouponShopResolver, CouponTemplateResolver, CustomerCouponResolver, CouponSaleShopResolver, CouponBundleResolver, StudentShopResolver, CouponFissionShopResolver],
     },
     configuration: (config) => {
         config.customFields.Order = mergeCustomFields(config.customFields.Order, couponOrderCustomFields.Order);

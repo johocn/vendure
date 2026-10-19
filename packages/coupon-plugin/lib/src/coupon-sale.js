@@ -76,6 +76,7 @@ function parseCouponCampaignConfig(raw) {
         startsAt: dateOrNull(obj.startsAt),
         endsAt: dateOrNull(obj.endsAt),
         templateIds,
+        newCustomerOnly: obj.newCustomerOnly === true,
     };
 }
 /**
@@ -125,6 +126,7 @@ function resolveActiveCampaign(raw, saleable, now, lang) {
         startsAt: config.startsAt,
         endsAt: config.endsAt,
         templates,
+        newCustomerOnly: config.newCustomerOnly,
     };
 }
 /**

@@ -1,5 +1,6 @@
 import { ID, ListQueryOptions, RequestContext } from '@vendure/core';
 import { CouponService } from './coupon.service';
+import { CouponFissionService } from './coupon-fission.service';
 import { CouponTemplate } from './coupon-template.entity';
 import { CustomerCoupon } from './customer-coupon.entity';
 /**
@@ -10,7 +11,8 @@ import { CustomerCoupon } from './customer-coupon.entity';
  */
 export declare class CouponAdminResolver {
     private couponService;
-    constructor(couponService: CouponService);
+    private fissionService;
+    constructor(couponService: CouponService, fissionService: CouponFissionService);
     couponTemplates(ctx: RequestContext, options: ListQueryOptions<CouponTemplate>): Promise<{
         items: CouponTemplate[];
         totalItems: number;
@@ -33,6 +35,14 @@ export declare class CouponAdminResolver {
         redemptionRate: number;
         expiredRate: number;
     }[]>;
+    /** E1 沉睡召回：圈人预览（只数不发） */
+    couponWinBackPreviewCount(ctx: RequestContext, days: number): Promise<number>;
+    /** E1 沉睡召回：批量发放（RECALL 渠道留痕 + R4 防骚扰），返回批次留痕 */
+    couponWinBackGrant(ctx: RequestContext, templateId: ID, days: number, notify?: boolean): Promise<import("./coupon-grant-batch.entity").CouponGrantBatch>;
+    /** E1 批次留痕查询（结果可查） */
+    couponGrantBatches(ctx: RequestContext, take?: number): Promise<import("./coupon-grant-batch.entity").CouponGrantBatch[]>;
+    /** FR-C 裂变记录查询（R1 渠道留痕核对） */
+    couponFissionRecords(ctx: RequestContext, take?: number): Promise<import("./coupon-fission-record.entity").CouponFissionRecord[]>;
     createCouponTemplate(ctx: RequestContext, input: any): Promise<CouponTemplate>;
     updateCouponTemplate(ctx: RequestContext, input: any): Promise<CouponTemplate>;
     deleteCouponTemplate(ctx: RequestContext, id: ID): Promise<boolean>;

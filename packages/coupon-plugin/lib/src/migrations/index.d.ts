@@ -10,3 +10,4 @@ export { AddCouponPromoFieldsMigration } from './add-coupon-promo-fields';
 export { AddCouponCategoryFieldMigration } from './add-coupon-category-field';
 export { CreateCouponSettlementMigration } from './create-coupon-settlement';
 export { AddInStoreBillShopFieldsMigration } from './add-in-store-bill-shop-fields';
+export { CreateCouponFissionMigration } from './create-coupon-fission';

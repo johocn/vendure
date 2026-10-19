@@ -17,6 +17,7 @@ export const couponPromoCustomFields: CustomFields = {
     Channel: [
         { name: 'firstBuyDiscount', type: 'int', nullable: true, label: zh('首购立减（分）') },
         { name: 'couponCampaign', type: 'string', length: 4096, nullable: true, label: zh('倒计时活动配置(JSON)') },
+        { name: 'couponFission', type: 'string', length: 4096, nullable: true, label: zh('分享裂变活动配置(JSON)') },
         { name: 'billpayMaxSalePrice', type: 'int', nullable: true, label: zh('买单券售价上限（分）') },
         { name: 'billpayMaxFaceValue', type: 'int', nullable: true, label: zh('买单券单券面额上限（分）') },
         { name: 'billpayMaxBundleTotal', type: 'int', nullable: true, label: zh('买单券券包总面额上限（分）') },

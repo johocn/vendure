@@ -107,14 +107,28 @@ let CouponSaleService = class CouponSaleService {
             studentApproved =
                 ((_e = customer === null || customer === void 0 ? void 0 : customer.customFields) === null || _e === void 0 ? void 0 : _e.studentStatus) === 'approved';
         }
+        // E2 会员等级可见性过滤：配置等级门槛的券，低等级/无等级（含匿名）不进本店目录
+        const visibleTemplates = await this.couponService.filterByMemberLevelVisibility(ctx, saleable);
+        // 倒计时活动位（单场）：enabled + 服务端时间窗 + 关联券命中本店可售目录；无活动为 null
+        const campaignRaw = (_f = channel === null || channel === void 0 ? void 0 : channel.customFields) === null || _f === void 0 ? void 0 : _f.couponCampaign;
+        let campaign = (0, coupon_sale_1.resolveActiveCampaign)(campaignRaw, visibleTemplates, new Date(), ctx.languageCode);
+        // FR-D 新客 1 元购位：newCustomerOnly 时——仅保留有余量的券（全无余量整位摘除）；
+        // 已登录非新客不下发（匿名保留，登录购买时后端再硬拦）。
+        const campaignCfg = (0, coupon_sale_1.parseCouponCampaignConfig)(campaignRaw);
+        if (campaign && (campaignCfg === null || campaignCfg === void 0 ? void 0 : campaignCfg.newCustomerOnly)) {
+            const inStock = visibleTemplates.filter(t => !(t.totalCount > 0 && t.claimedCount >= t.totalCount));
+            campaign = (0, coupon_sale_1.resolveActiveCampaign)(campaignRaw, inStock, new Date(), ctx.languageCode);
+            if (campaign && customerId && !(await this.couponService.isCampaignNewCustomer(ctx, customerId))) {
+                campaign = null;
+            }
+        }
         return {
-            templates: saleable,
+            templates: visibleTemplates,
             bundles,
             firstBuyDiscount,
             firstBuyEligible,
             studentApproved,
-            // 倒计时活动位（单场）：enabled + 服务端时间窗 + 关联券命中本店可售目录；无活动为 null
-            campaign: (0, coupon_sale_1.resolveActiveCampaign)((_f = channel === null || channel === void 0 ? void 0 : channel.customFields) === null || _f === void 0 ? void 0 : _f.couponCampaign, saleable, new Date(), ctx.languageCode),
+            campaign,
         };
     }
     /** 首购资格：本渠道无已支付（PAID）出售单 → true（每用户仅 1 次；取消/退款单不占资格） */
@@ -153,6 +167,8 @@ let CouponSaleService = class CouponSaleService {
         const limits = (0, coupon_sale_regulatory_1.extractBillpayLimits)(channel);
         if (templateId) {
             tpl = await this.loadSaleableTemplate(ctx, templateId);
+            // FR-D：新客券（newCustomerOnly）非新客/重复购买硬拦；E2：等级门槛不达标硬拦
+            await this.couponService.assertCustomerCanBuy(ctx, customerId, tpl);
             (0, coupon_sale_regulatory_1.assertTemplateWithinRegulatoryLimits)(tpl, limits);
             amount = tpl.salePrice;
         }
@@ -341,6 +357,8 @@ let CouponSaleService = class CouponSaleService {
         var _a, _b;
         const customerId = await this.currentCustomerId(ctx);
         const tpl = await this.loadSaleableTemplate(ctx, templateId);
+        // FR-D/E2：加价购入口同样硬拦新客券与等级门槛
+        await this.couponService.assertCustomerCanBuy(ctx, customerId, tpl);
         if (!(0, coupon_channel_1.matchesScene)(tpl.usageScene, 'ONLINE')) {
             throw new core_1.UserInputError('Coupon is not available for online orders');
         }

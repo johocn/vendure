@@ -17,8 +17,19 @@ export type CouponType = 'FIXED' | 'PERCENT' | 'FULL' | 'FREE_SHIPPING';
  */
 export type CouponStatus = 'UNUSED' | 'USED' | 'RETURNED' | 'EXPIRED' | 'INVALID';
 
-/** 发券来源（SALE = 出售渠道生成，计划 2 新增） */
-export type CouponIssuedBy = 'CENTRE' | 'ADMIN' | 'EXCHANGE' | 'SALE';
+/**
+ * 发券来源：
+ * - CENTRE/ADMIN/EXCHANGE/SALE：中心领取 / 后台定向 / 积分兑换 / 出售生成
+ * - FISSION ：分享裂变奖励（FR-C，R1 独立渠道留痕）
+ * - RECALL  ：沉睡召回批量发放（FR-E1，R1 独立渠道留痕）
+ */
+export type CouponIssuedBy =
+    | 'CENTRE'
+    | 'ADMIN'
+    | 'EXCHANGE'
+    | 'SALE'
+    | 'FISSION'
+    | 'RECALL';
 
 /** 券适用范围 */
 export type CouponScope = 'ALL' | 'CATEGORY' | 'SKU';

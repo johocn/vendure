@@ -240,7 +240,16 @@ describe('倒计时活动位纯函数', () => {
             startsAt: null,
             endsAt: '2026-10-26T12:00:00.000Z',
             templateIds: [83, 84],
+            newCustomerOnly: false,
         });
+    });
+
+    it('parseCouponCampaignConfig：newCustomerOnly 解析（FR-D 新客 1 元购位）', () => {
+        const cfg = parseCouponCampaignConfig(
+            '{"enabled":true,"name":"新人1元购","endsAt":"2026-10-26T20:00:00+08:00","templateIds":[83],"newCustomerOnly":true}',
+        );
+        expect(cfg?.newCustomerOnly).toBe(true);
+        expect(parseCouponCampaignConfig('{"enabled":true,"endsAt":"2026-10-26T12:00:00Z","templateIds":[83]}')?.newCustomerOnly).toBe(false);
     });
 
     it('resolveActiveCampaign：时间窗判定 + 配置顺序 + 命中过滤', () => {

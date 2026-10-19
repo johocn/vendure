@@ -1,7 +1,9 @@
 import { Customer, I18nError, ID, Injector, ListQueryBuilder, ListQueryOptions, RequestContext, TransactionalConnection } from '@vendure/core';
+import type { CouponIssuedBy } from './types';
 import { CouponBindingService } from './coupon-binding.service';
 import { CouponTemplate } from './coupon-template.entity';
 import { CustomerCoupon } from './customer-coupon.entity';
+import { CouponGrantBatch } from './coupon-grant-batch.entity';
 import { ProductCouponBinding } from './product-coupon-binding.entity';
 /**
  * 属店权限不足错误。本版本 Vendure 的 ForbiddenError 构造器固定 message='error.forbidden'（code='FORBIDDEN'），
@@ -126,12 +128,29 @@ export declare class CouponService {
     private findShopProductIds;
     private customerInChannel;
     private notifyCouponIssued;
-    grantCouponIssue(ctx: RequestContext, templateId: ID, customerIds: ID[], notify: boolean): Promise<Array<{
+    grantCouponIssue(ctx: RequestContext, templateId: ID, customerIds: ID[], notify: boolean, opts?: {
+        issuedBy?: CouponIssuedBy;
+        recentIssuedDays?: number;
+    }): Promise<Array<{
         customerId: ID;
         ok: boolean;
         code: string | null;
         reason: string | null;
     }>>;
+    /**
+     * 圈选「N 天未消费」客户（E1）：本渠道内，近期（cutoff 之后）在本渠道无任何有效下单记录的客户。
+     * 两步法（先查近期消费者集合，再差集）避免跨库 NOT EXISTS 方言差异；上限 take 防失控。
+     */
+    findSleepingCustomerIds(ctx: RequestContext, days: number, take?: number): Promise<number[]>;
+    /** E1 圈人预览：只数不发。 */
+    winBackPreviewCount(ctx: RequestContext, days: number): Promise<number>;
+    /**
+     * E1 批量发放：圈人 → 逐人走 grantCouponIssue（RECALL 渠道留痕 + R4 七日防骚扰）→ 落批次留痕。
+     * 单人失败不中断整批；结果逐人记录在批次 resultsJson，可查询。
+     */
+    winBackGrant(ctx: RequestContext, templateId: ID, days: number, notify: boolean): Promise<CouponGrantBatch>;
+    /** E1 批次查询（结果可查询）：本渠道倒序。 */
+    listGrantBatches(ctx: RequestContext, take?: number): Promise<CouponGrantBatch[]>;
     revokeCoupon(ctx: RequestContext, id: ID): Promise<CustomerCoupon>;
     /**
      * 惰性 EXPIRED 落库：把已越界（expiredAt <= now）但仍为 UNUSED/RETURNED 的券置为 EXPIRED。
@@ -178,6 +197,26 @@ export declare class CouponService {
     private atomicIncrementClaimed;
     /** 新客判定：本租户是否已有历史有效订单（排除创建/购物车/待支付/修改/取消等未完成态） */
     private hasPlacedOrder;
+    /**
+     * 新客综合判定（FR-D/FR-C 口径）：本租户无历史有效订单 且 未持有过新客券
+     * （UNUSED/RETURNED/USED 任一状态的新客券均计「已持」，防 1 元购复购绕过）。
+     */
+    isCampaignNewCustomer(ctx: RequestContext, customerId: number): Promise<boolean>;
+    /** 是否持有过新客券（newCustomerOnly 模板发放的券，未作废即计）。 */
+    holdsNewCustomerCoupon(ctx: RequestContext, customerId: number): Promise<boolean>;
+    /**
+     * 购买/加价购侧硬拦（FR-D）：新客券要求「综合新客 + 每人限购 1 张（PAID 出售单计）」；
+     * E2：配置会员等级门槛的券，不达标不可购（可见性过滤之外的第二道防线）。
+     */
+    assertCustomerCanBuy(ctx: RequestContext, customerId: number, tpl: CouponTemplate): Promise<void>;
+    /** 程序化发放公共入口（FR-C 裂变）：原子扣发行余量 + 建券（R2 计入限量 / R1 issuedBy 渠道留痕）。 */
+    issueForProgram(ctx: RequestContext, customerId: number, tpl: CouponTemplate, issuedBy: CouponIssuedBy): Promise<CustomerCoupon>;
+    /**
+     * E2 会员等级可见性过滤：配置等级门槛的券仅该等级及以上可见；无等级数据按 1 档（非会员）。
+     * 全部模板无门槛（或仅 1 档）时跳过等级查询，零额外 IO。
+     * （saleCatalogue 等目录服务也会调用，故 public。）
+     */
+    filterByMemberLevelVisibility<T extends CouponTemplate>(ctx: RequestContext, list: T[]): Promise<T[]>;
     /**
      * 出售发券桥接：复用发券不变量（原子扣余量 → 建券并记录出售单溯源）。
      * 券包逐张调用本方法，任一张售罄即抛错，由调用方事务回滚整包。

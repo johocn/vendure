@@ -215,7 +215,14 @@ const coupon_sale_3 = require("./coupon-sale");
             startsAt: null,
             endsAt: '2026-10-26T12:00:00.000Z',
             templateIds: [83, 84],
+            newCustomerOnly: false,
         });
+    });
+    (0, vitest_1.it)('parseCouponCampaignConfig：newCustomerOnly 解析（FR-D 新客 1 元购位）', () => {
+        var _a;
+        const cfg = (0, coupon_sale_2.parseCouponCampaignConfig)('{"enabled":true,"name":"新人1元购","endsAt":"2026-10-26T20:00:00+08:00","templateIds":[83],"newCustomerOnly":true}');
+        (0, vitest_1.expect)(cfg === null || cfg === void 0 ? void 0 : cfg.newCustomerOnly).toBe(true);
+        (0, vitest_1.expect)((_a = (0, coupon_sale_2.parseCouponCampaignConfig)('{"enabled":true,"endsAt":"2026-10-26T12:00:00Z","templateIds":[83]}')) === null || _a === void 0 ? void 0 : _a.newCustomerOnly).toBe(false);
     });
     (0, vitest_1.it)('resolveActiveCampaign：时间窗判定 + 配置顺序 + 命中过滤', () => {
         const cfg = { enabled: true, name: '闪购', startsAt: null, endsAt: '2026-10-26T12:00:00Z', templateIds: [90, 84, 999] };

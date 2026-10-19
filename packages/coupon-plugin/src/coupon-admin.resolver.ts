@@ -12,6 +12,7 @@ import {
 import { manageOwnShop } from '@vendure/shop-plugin';
 
 import { CouponService } from './coupon.service';
+import { CouponFissionService } from './coupon-fission.service';
 import { CouponTemplate } from './coupon-template.entity';
 import { CustomerCoupon } from './customer-coupon.entity';
 
@@ -23,7 +24,10 @@ import { CustomerCoupon } from './customer-coupon.entity';
  */
 @Resolver()
 export class CouponAdminResolver {
-    constructor(private couponService: CouponService) {}
+    constructor(
+        private couponService: CouponService,
+        private fissionService: CouponFissionService,
+    ) {}
 
     @Query()
     @Allow(Permission.UpdateOrder, manageOwnShop.Permission)
@@ -63,6 +67,39 @@ export class CouponAdminResolver {
             from: from ? new Date(from) : null,
             to: to ? new Date(to) : null,
         });
+    }
+
+    /** E1 沉睡召回：圈人预览（只数不发） */
+    @Query()
+    @Allow(Permission.UpdateOrder, manageOwnShop.Permission)
+    async couponWinBackPreviewCount(@Ctx() ctx: RequestContext, @Args('days', { nullable: false }) days: number) {
+        return this.couponService.winBackPreviewCount(ctx, days);
+    }
+
+    /** E1 沉睡召回：批量发放（RECALL 渠道留痕 + R4 防骚扰），返回批次留痕 */
+    @Mutation()
+    @Allow(Permission.UpdateOrder, manageOwnShop.Permission)
+    async couponWinBackGrant(
+        @Ctx() ctx: RequestContext,
+        @Args('templateId') templateId: ID,
+        @Args('days', { nullable: false }) days: number,
+        @Args('notify', { nullable: true }) notify?: boolean,
+    ) {
+        return this.couponService.winBackGrant(ctx, templateId, days, notify !== false);
+    }
+
+    /** E1 批次留痕查询（结果可查） */
+    @Query()
+    @Allow(Permission.UpdateOrder, manageOwnShop.Permission)
+    async couponGrantBatches(@Ctx() ctx: RequestContext, @Args('take', { nullable: true }) take?: number) {
+        return this.couponService.listGrantBatches(ctx, take ?? 20);
+    }
+
+    /** FR-C 裂变记录查询（R1 渠道留痕核对） */
+    @Query()
+    @Allow(Permission.UpdateOrder, manageOwnShop.Permission)
+    async couponFissionRecords(@Ctx() ctx: RequestContext, @Args('take', { nullable: true }) take?: number) {
+        return this.fissionService.listFissionRecords(ctx, take ?? 50);
     }
 
     @Mutation()

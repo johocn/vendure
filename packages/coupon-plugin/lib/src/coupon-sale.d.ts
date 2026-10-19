@@ -31,6 +31,8 @@ export interface CouponCampaignConfig {
     startsAt: string | null;
     endsAt: string | null;
     templateIds: number[];
+    /** FR-D 新客 1 元购位：true 时仅新客可见（非新客不下发该活动位），余量耗尽整位摘除 */
+    newCustomerOnly: boolean;
 }
 /** 下发给 C 端的活动视图（文案已本地化，templates 已按配置顺序过滤为本店可售券） */
 export interface CouponCampaignView<T> {
@@ -40,6 +42,8 @@ export interface CouponCampaignView<T> {
     startsAt: string | null;
     endsAt: string;
     templates: T[];
+    /** FR-D 新客 1 元购位标记（仅新客可见；C 端展示徽标用） */
+    newCustomerOnly: boolean;
 }
 /**
  * 解析 couponCampaign 配置（JSON 字符串 → 规整结构）。

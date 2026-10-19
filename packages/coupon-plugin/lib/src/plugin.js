@@ -28,6 +28,10 @@ const coupon_binding_admin_resolver_1 = require("./coupon-binding-admin.resolver
 const coupon_binding_service_1 = require("./coupon-binding.service");
 const coupon_bundle_resolver_1 = require("./coupon-bundle.resolver");
 const coupon_balance_port_1 = require("./coupon-balance-port");
+const coupon_fission_service_1 = require("./coupon-fission.service");
+const coupon_fission_shop_resolver_1 = require("./coupon-fission-shop.resolver");
+const coupon_fission_record_entity_1 = require("./coupon-fission-record.entity");
+const coupon_grant_batch_entity_1 = require("./coupon-grant-batch.entity");
 const coupon_sale_admin_resolver_1 = require("./coupon-sale-admin.resolver");
 const coupon_sale_shop_resolver_1 = require("./coupon-sale-shop.resolver");
 const coupon_sale_service_1 = require("./coupon-sale.service");
@@ -291,7 +295,7 @@ CouponPlugin.options = {};
 exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
     (0, core_2.VendurePlugin)({
         imports: [core_2.PluginCommonModule],
-        entities: [coupon_template_entity_1.CouponTemplate, customer_coupon_entity_1.CustomerCoupon, product_coupon_binding_entity_1.ProductCouponBinding, in_store_bill_entity_1.InStoreBill, coupon_sale_order_entity_1.CouponSaleOrder, coupon_bundle_entity_1.CouponBundle, coupon_bundle_entity_1.CouponBundleItem, coupon_settlement_order_entity_1.CouponSettlementOrder],
+        entities: [coupon_template_entity_1.CouponTemplate, customer_coupon_entity_1.CustomerCoupon, product_coupon_binding_entity_1.ProductCouponBinding, in_store_bill_entity_1.InStoreBill, coupon_sale_order_entity_1.CouponSaleOrder, coupon_bundle_entity_1.CouponBundle, coupon_bundle_entity_1.CouponBundleItem, coupon_settlement_order_entity_1.CouponSettlementOrder, coupon_fission_record_entity_1.CouponFissionRecord, coupon_grant_batch_entity_1.CouponGrantBatch],
         providers: [
             { provide: constants_1.COUPON_PLUGIN_OPTIONS, useFactory: () => CouponPlugin.options },
             coupon_service_1.CouponService,
@@ -299,6 +303,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
             coupon_sale_service_1.CouponSaleService,
             coupon_settlement_service_1.CouponSettlementService,
             coupon_expire_reminder_service_1.CouponExpireReminderService,
+            coupon_fission_service_1.CouponFissionService,
             in_store_bill_service_1.InStoreBillService,
             migrations_1.AddCouponFieldsMigration,
             migrations_1.CreateProductCouponBindingMigration,
@@ -313,13 +318,14 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
             migrations_1.CreateCouponSaleMigration,
             migrations_1.CreateCouponSettlementMigration,
             migrations_1.AddInStoreBillShopFieldsMigration,
+            migrations_1.CreateCouponFissionMigration,
         ],
         exports: [coupon_service_1.CouponService, coupon_binding_service_1.CouponBindingService, coupon_sale_service_1.CouponSaleService],
         adminApiExtensions: {
             schema: () => (0, graphql_tag_1.default) `
             enum CouponType { FIXED PERCENT FULL FREE_SHIPPING }
             enum CouponStatus { UNUSED USED RETURNED EXPIRED INVALID }
-            enum CouponIssuedBy { CENTRE ADMIN EXCHANGE SALE }
+            enum CouponIssuedBy { CENTRE ADMIN EXCHANGE SALE FISSION RECALL }
             enum CouponUsageScene { ONLINE IN_STORE ALL }
 
             ${couponTemplateType}
@@ -696,6 +702,9 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 couponSettlementOrders(options: CouponSettlementOrderListOptions): CouponSettlementOrderList!
                 couponSettlementOrder(id: ID!): CouponSettlementOrder
                 studentVerifications(status: String): [StudentVerificationItem!]!
+                couponGrantBatches(take: Int): [CouponGrantBatch!]!
+                couponFissionRecords(take: Int): [CouponFissionRecord!]!
+                couponWinBackPreviewCount(days: Int!): Int!
             }
 
             # StudentVerificationItem 原先只声明在 shopApiExtensions，admin schema 引用未知类型
@@ -730,6 +739,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 refundCouponSaleOrder(id: ID!, reason: String): CouponSaleOrder!
                 runCouponSettlementCycle: CouponSettlementCycleResult!
                 reviewStudentVerification(customerId: ID!, approve: Boolean!): StudentVerificationItem!
+                couponWinBackGrant(templateId: ID!, days: Int!, notify: Boolean): CouponGrantBatch!
             }
         `,
             resolvers: [coupon_admin_resolver_1.CouponAdminResolver, coupon_template_resolver_1.CouponTemplateResolver, coupon_customer_coupon_resolver_1.CustomerCouponResolver, coupon_binding_admin_resolver_1.CouponBindingAdminResolver, in_store_bill_admin_resolver_1.InStoreBillAdminResolver, coupon_sale_admin_resolver_1.CouponSaleAdminResolver, coupon_settlement_admin_resolver_1.CouponSettlementAdminResolver, coupon_bundle_resolver_1.CouponBundleResolver, student_resolvers_1.StudentAdminResolver],
@@ -738,11 +748,27 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
             schema: () => (0, graphql_tag_1.default) `
             enum CouponType { FIXED PERCENT FULL FREE_SHIPPING }
             enum CouponStatus { UNUSED USED RETURNED EXPIRED INVALID }
-            enum CouponIssuedBy { CENTRE ADMIN EXCHANGE SALE }
+            enum CouponIssuedBy { CENTRE ADMIN EXCHANGE SALE FISSION RECALL }
             enum CouponUsageScene { ONLINE IN_STORE ALL }
 
             ${couponTemplateType}
             ${customerCouponType}
+
+            type CouponFissionActivity {
+                name: String!
+                subtitle: String
+                rules: String
+                startsAt: DateTime
+                endsAt: DateTime!
+                inviteeTemplate: CouponTemplate
+                inviterTemplate: CouponTemplate
+            }
+
+            type CouponFissionClaimResult {
+                status: String!
+                inviteeCoupon: CustomerCoupon
+                inviterCoupon: CustomerCoupon
+            }
 
             type ProductCouponBinding implements Node {
                 id: ID!
@@ -852,6 +878,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 couponSaleCatalogue(scene: CouponUsageScene): CouponSaleCatalogue!
                 myCouponSaleOrders: [CouponSaleOrder!]!
                 myStudentVerification: StudentVerificationItem!
+                couponFissionActivity: CouponFissionActivity
             }
 
             extend type Mutation {
@@ -869,9 +896,10 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 attachCouponToOrder(orderId: ID!, templateId: ID!): CouponSaleOrder!
                 detachCouponFromOrder(orderId: ID!, templateId: ID!): Boolean!
                 applyStudentVerification(school: String!, studentNo: String!, idImg: String): StudentVerificationItem!
+                claimFissionReward(inviteCode: String!): CouponFissionClaimResult!
             }
         `,
-            resolvers: [coupon_shop_resolver_1.CouponShopResolver, coupon_template_resolver_1.CouponTemplateResolver, coupon_customer_coupon_resolver_1.CustomerCouponResolver, coupon_sale_shop_resolver_1.CouponSaleShopResolver, coupon_bundle_resolver_1.CouponBundleResolver, student_resolvers_1.StudentShopResolver],
+            resolvers: [coupon_shop_resolver_1.CouponShopResolver, coupon_template_resolver_1.CouponTemplateResolver, coupon_customer_coupon_resolver_1.CustomerCouponResolver, coupon_sale_shop_resolver_1.CouponSaleShopResolver, coupon_bundle_resolver_1.CouponBundleResolver, student_resolvers_1.StudentShopResolver, coupon_fission_shop_resolver_1.CouponFissionShopResolver],
         },
         configuration: (config) => {
             var _a, _b;
