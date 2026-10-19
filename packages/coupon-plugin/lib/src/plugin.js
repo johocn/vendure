@@ -820,6 +820,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 startsAt: DateTime
                 endsAt: DateTime!
                 templates: [CouponTemplate!]!
+                newCustomerOnly: Boolean
             }
 
             type CouponSaleCatalogue {
