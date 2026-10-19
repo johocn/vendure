@@ -48,7 +48,7 @@ let CouponExpireReminderService = class CouponExpireReminderService {
     }
     /** 全渠道扫描（定时环境无请求 ctx：列全部渠道后逐渠道建 admin ctx） */
     async remindAllChannels() {
-        var _a;
+        var _a, _b;
         const channels = await this.connection.rawConnection.getRepository(core_2.Channel).find();
         let scanned = 0;
         let published = 0;
@@ -65,12 +65,11 @@ let CouponExpireReminderService = class CouponExpireReminderService {
                 published += r.published;
             }
             catch (e) {
-                core_1.Logger.error(`remind channel ${channel.id} failed: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, loggerCtx);
+                core_1.Logger.error(`remind channel ${channel.id} failed: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e} :: ${String((_b = e === null || e === void 0 ? void 0 : e.stack) !== null && _b !== void 0 ? _b : '').slice(0, 400)}`, loggerCtx);
             }
         }
-        if (published > 0) {
-            core_1.Logger.info(`Coupon expire reminder: scanned ${scanned}, published ${published} across ${channels.length} channels`, loggerCtx);
-        }
+        // 无条件输出：定时任务可观测性（scanned=0 也留痕，便于线上核验扫描在跑）
+        core_1.Logger.info(`Coupon expire reminder: channels=${channels.length} scanned=${scanned} published=${published}`, loggerCtx);
         return { channels: channels.length, scanned, published };
     }
     /** 单渠道扫描并发布提醒事件：一次 3 天窗口扫描，stage（3d/1d）按剩余时间逐行判定 */
@@ -108,12 +107,12 @@ let CouponExpireReminderService = class CouponExpireReminderService {
             .andWhere('cc.expiredAt > :now', { now })
             .andWhere('cc.expiredAt <= :horizon', { horizon })
             .select([
-            'cc.id AS id',
-            'cc.customerId AS customerId',
-            'cc.code AS code',
-            'cc.expiredAt AS expiredAt',
-            'tpl.id AS templateId',
-            'tpl.name AS name',
+            'cc.id AS "id"',
+            'cc."customerId" AS "customerId"',
+            'cc.code AS "code"',
+            'cc."expiredAt" AS "expiredAt"',
+            'tpl.id AS "templateId"',
+            'tpl.name AS "name"',
         ])
             .getRawMany();
     }

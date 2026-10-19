@@ -63,12 +63,11 @@ export class CouponExpireReminderService {
                 scanned += r.scanned;
                 published += r.published;
             } catch (e: any) {
-                Logger.error(`remind channel ${channel.id} failed: ${e?.message ?? e}`, loggerCtx);
+                Logger.error(`remind channel ${channel.id} failed: ${e?.message ?? e} :: ${String(e?.stack ?? '').slice(0, 400)}`, loggerCtx);
             }
         }
-        if (published > 0) {
-            Logger.info(`Coupon expire reminder: scanned ${scanned}, published ${published} across ${channels.length} channels`, loggerCtx);
-        }
+        // 无条件输出：定时任务可观测性（scanned=0 也留痕，便于线上核验扫描在跑）
+        Logger.info(`Coupon expire reminder: channels=${channels.length} scanned=${scanned} published=${published}`, loggerCtx);
         return { channels: channels.length, scanned, published };
     }
 
@@ -108,12 +107,12 @@ export class CouponExpireReminderService {
             .andWhere('cc.expiredAt > :now', { now })
             .andWhere('cc.expiredAt <= :horizon', { horizon })
             .select([
-                'cc.id AS id',
-                'cc.customerId AS customerId',
-                'cc.code AS code',
-                'cc.expiredAt AS expiredAt',
-                'tpl.id AS templateId',
-                'tpl.name AS name',
+                'cc.id AS "id"',
+                'cc."customerId" AS "customerId"',
+                'cc.code AS "code"',
+                'cc."expiredAt" AS "expiredAt"',
+                'tpl.id AS "templateId"',
+                'tpl.name AS "name"',
             ])
             .getRawMany();
     }
