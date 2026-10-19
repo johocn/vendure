@@ -662,6 +662,7 @@ type CustomerCoupon implements Node {
                 startsAt: DateTime
                 endsAt: DateTime!
                 templates: [CouponTemplate!]!
+                newCustomerOnly: Boolean
             }
 
             type CouponSaleCatalogue {
