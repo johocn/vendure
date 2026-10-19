@@ -44,6 +44,12 @@ export class AddCouponPromoFieldsMigration implements OnApplicationBootstrap {
             const customer = tableName('Customer');
             const queryRunner = this.connection.createQueryRunner();
             try {
+                // SQLite 家族严禁 changeColumn：SQLite 本就不强制 varchar 长度（varchar(4096) 等价 TEXT），
+                // 放宽宽度毫无意义；且 TypeORM 的 SQLite changeColumn 走整表重建，实测会把 channel 的
+                // 多对多 join 表（role_channels）一并 DROP，导致 superadmin 角色失去频道绑定、全部 admin
+                // 接口 FORBIDDEN（e2e/本地启动即复现）。宽度放宽仅在 PostgreSQL 执行（ALTER TYPE，非破坏性）。
+                const driverType = this.connection.driver.options.type;
+                const isSqlite = driverType === 'sqljs' || driverType === 'better-sqlite3' || driverType === 'sqlite';
                 const plan: ColumnPlan[] = [
                     { table: tpl, name: 'studentPrice', type: 'integer' },
                     { table: sale, name: 'discountType', type: 'varchar' },
@@ -52,6 +58,12 @@ export class AddCouponPromoFieldsMigration implements OnApplicationBootstrap {
                     { table: channel, name: 'customFieldsFirstbuydiscount', type: 'integer', orphan: 'firstBuyDiscount' },
                     // 活动 JSON 较长：须与 customFields 定义（string length 4096）一致；已建列宽度不足时补 ALTER
                     { table: channel, name: 'customFieldsCouponcampaign', type: 'varchar', length: 4096 },
+                    // 买单券监管参数组（T4）：全部可空 = 宽松默认，配置后才启用校验
+                    { table: channel, name: 'customFieldsBillpaymaxsaleprice', type: 'integer' },
+                    { table: channel, name: 'customFieldsBillpaymaxfacevalue', type: 'integer' },
+                    { table: channel, name: 'customFieldsBillpaymaxbundletotal', type: 'integer' },
+                    { table: channel, name: 'customFieldsBillpayminvaliddays', type: 'integer' },
+                    { table: channel, name: 'customFieldsBillpayexpirerefundpolicy', type: 'varchar' },
                     { table: customer, name: 'customFieldsStudentstatus', type: 'varchar', orphan: 'studentStatus' },
                     { table: customer, name: 'customFieldsStudentinfo', type: 'varchar', orphan: 'studentInfo' },
                     { table: customer, name: 'customFieldsStudentreviewedat', type: 'timestamp', orphan: 'studentReviewedAt' },
@@ -63,7 +75,7 @@ export class AddCouponPromoFieldsMigration implements OnApplicationBootstrap {
                             table,
                             new TableColumn({ name, type, length: length ? String(length) : undefined, isNullable: true }),
                         );
-                    } else if (length) {
+                    } else if (length && !isSqlite) {
                         // 已建列宽度可能小于当前定义（如先按默认 varchar(255) 落库）：幂等放宽
                         const col = () => new TableColumn({ name, type, length: String(length), isNullable: true });
                         await queryRunner.changeColumn(table, col(), col());

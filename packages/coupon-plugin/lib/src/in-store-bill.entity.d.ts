@@ -35,6 +35,10 @@ export declare class InStoreBill extends VendureEntity {
     operatorId: number;
     /** 核销人名称快照 */
     operatorName?: string;
+    /** 核销门店 id（结算分账的商户定位；平台代核销/无店铺归属为 null） */
+    shopId?: number | null;
+    /** 门店名称快照（结算单/对账留痕） */
+    shopName?: string;
     /** 备注 */
     remark?: string;
     /** 核销（买单）时间 */

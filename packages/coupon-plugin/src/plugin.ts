@@ -22,6 +22,8 @@ import { setCouponBalancePort } from './coupon-balance-port';
 import { CouponSaleAdminResolver } from './coupon-sale-admin.resolver';
 import { CouponSaleShopResolver } from './coupon-sale-shop.resolver';
 import { CouponSaleService, setCouponSaleGateway } from './coupon-sale.service';
+import { CouponSettlementAdminResolver } from './coupon-settlement-admin.resolver';
+import { CouponSettlementService } from './coupon-settlement.service';
 import { CustomerCouponResolver } from './coupon-customer-coupon.resolver';
 import { CouponTemplateResolver } from './coupon-template.resolver';
 import { couponDiscountAction } from './coupon-promotion-action';
@@ -33,6 +35,7 @@ import { CouponShopResolver } from './coupon-shop.resolver';
 import { CouponTemplate } from './coupon-template.entity';
 import { CouponBundle, CouponBundleItem } from './coupon-bundle.entity';
 import { CouponSaleOrder } from './coupon-sale-order.entity';
+import { CouponSettlementOrder } from './coupon-settlement-order.entity';
 import { CustomerCoupon } from './customer-coupon.entity';
 import {
     AddCouponFieldsMigration,
@@ -44,6 +47,8 @@ import {
     CreateProductCouponBindingMigration,
     AddCouponPromoFieldsMigration,
     AddCouponCategoryFieldMigration,
+    CreateCouponSettlementMigration,
+    AddInStoreBillShopFieldsMigration,
 } from './migrations';
 import { AddCouponDistributionChannelsMigration } from './migrations/add-coupon-distribution-channels';
 import { InStoreBill } from './in-store-bill.entity';
@@ -126,12 +131,13 @@ type CustomerCoupon implements Node {
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [CouponTemplate, CustomerCoupon, ProductCouponBinding, InStoreBill, CouponSaleOrder, CouponBundle, CouponBundleItem],
+    entities: [CouponTemplate, CustomerCoupon, ProductCouponBinding, InStoreBill, CouponSaleOrder, CouponBundle, CouponBundleItem, CouponSettlementOrder],
     providers: [
         { provide: COUPON_PLUGIN_OPTIONS, useFactory: () => CouponPlugin.options },
         CouponService,
         CouponBindingService,
         CouponSaleService,
+        CouponSettlementService,
         InStoreBillService,
         AddCouponFieldsMigration,
         CreateProductCouponBindingMigration,
@@ -144,6 +150,8 @@ type CustomerCoupon implements Node {
         AddCouponDistributionChannelsMigration,
         CreateInStoreBillMigration,
         CreateCouponSaleMigration,
+        CreateCouponSettlementMigration,
+        AddInStoreBillShopFieldsMigration,
     ],
     exports: [CouponService, CouponBindingService, CouponSaleService],
     adminApiExtensions: {
@@ -232,6 +240,8 @@ type CustomerCoupon implements Node {
                 finalAmount: Int!
                 operatorId: ID!
                 operatorName: String
+                shopId: ID
+                shopName: String
                 remark: String
                 billedAt: DateTime!
                 createdAt: DateTime!
@@ -447,6 +457,51 @@ type CustomerCoupon implements Node {
                 status: String
             }
 
+            enum CouponSettlementStatus { PENDING SETTLED PAID_OUT REVERSED CANCELLED }
+
+            type CouponSettlementOrder implements Node {
+                id: ID!
+                channelId: ID!
+                saleOrderId: ID
+                customerCouponId: ID!
+                templateId: ID
+                redeemRef: String!
+                inStoreBillId: ID
+                faceAmount: Int!
+                commissionRateBp: Int!
+                commissionAmount: Int!
+                netAmount: Int!
+                status: CouponSettlementStatus!
+                settlementNo: String!
+                splitMode: String
+                splitReceiptNo: String
+                attempts: Int!
+                lastError: String
+                settledAt: DateTime
+                paidOutAt: DateTime
+                reversedAt: DateTime
+                remark: String
+                createdAt: DateTime!
+                updatedAt: DateTime!
+            }
+
+            type CouponSettlementOrderList implements PaginatedList {
+                items: [CouponSettlementOrder!]!
+                totalItems: Int!
+            }
+
+            input CouponSettlementOrderListOptions {
+                skip: Int
+                take: Int
+                status: String
+            }
+
+            type CouponSettlementCycleResult {
+                submitted: Int!
+                promoted: Int!
+                failed: Int!
+            }
+
             extend type Query {
                 couponTemplates(options: CouponTemplateListOptions): CouponTemplateList!
                 couponTemplate(id: ID!): CouponTemplate
@@ -463,6 +518,8 @@ type CustomerCoupon implements Node {
                 couponBundle(id: ID!): CouponBundle
                 couponSaleOrders(options: CouponSaleOrderListOptions): CouponSaleOrderList!
                 couponSaleOrder(id: ID!): CouponSaleOrder
+                couponSettlementOrders(options: CouponSettlementOrderListOptions): CouponSettlementOrderList!
+                couponSettlementOrder(id: ID!): CouponSettlementOrder
                 studentVerifications(status: String): [StudentVerificationItem!]!
             }
 
@@ -496,10 +553,11 @@ type CustomerCoupon implements Node {
                 updateCouponBundle(id: ID!, input: CouponBundleInput!): CouponBundle!
                 deleteCouponBundle(id: ID!): Boolean!
                 refundCouponSaleOrder(id: ID!, reason: String): CouponSaleOrder!
+                runCouponSettlementCycle: CouponSettlementCycleResult!
                 reviewStudentVerification(customerId: ID!, approve: Boolean!): StudentVerificationItem!
             }
         `,
-        resolvers: [CouponAdminResolver, CouponTemplateResolver, CustomerCouponResolver, CouponBindingAdminResolver, InStoreBillAdminResolver, CouponSaleAdminResolver, CouponBundleResolver, StudentAdminResolver],
+        resolvers: [CouponAdminResolver, CouponTemplateResolver, CustomerCouponResolver, CouponBindingAdminResolver, InStoreBillAdminResolver, CouponSaleAdminResolver, CouponSettlementAdminResolver, CouponBundleResolver, StudentAdminResolver],
     },
     shopApiExtensions: {
         schema: () => gql`
@@ -728,6 +786,22 @@ export class CouponPlugin implements OnApplicationBootstrap {
             sweep();
             setInterval(sweep, sweepMs);
             Logger.info(`Coupon expire sweep enabled (every ${sweepMs}ms)`, loggerCtx);
+        }
+
+        // T+1 结算汇总 job（买单券资金流 T2）：补登 → 提交分账（stub，风险铁律①）→ 回执推进。
+        // 显式 set COUPON_SETTLE_JOB_MS 才启动（默认关闭，与过期清扫同先例）；
+        // 生产建议 600000（10 分钟）——job 内部有 T+1 界线与幂等，高频空转无副作用。
+        const settleMs = Number(process.env.COUPON_SETTLE_JOB_MS ?? 0);
+        if (settleMs > 0) {
+            const settle = () => {
+                this.injector
+                    .get(CouponSettlementService)
+                    .runSettlementCycle()
+                    .catch((e) => Logger.error(`Coupon settlement cycle failed: ${e.message}`, loggerCtx));
+            };
+            settle();
+            setInterval(settle, settleMs);
+            Logger.info(`Coupon settlement cycle enabled (every ${settleMs}ms)`, loggerCtx);
         }
 
         // 支付成功（订单下单成功）核销券

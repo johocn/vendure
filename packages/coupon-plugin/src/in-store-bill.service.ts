@@ -2,11 +2,14 @@ import { Injectable } from '@nestjs/common';
 import {
     Administrator,
     Customer,
+    Logger,
     RequestContext,
     TransactionalConnection,
     UserInputError,
 } from '@vendure/core';
 
+import { loggerCtx } from './constants';
+import { CouponSettlementService } from './coupon-settlement.service';
 import { CouponService } from './coupon.service';
 import { CouponTemplate } from './coupon-template.entity';
 import { CustomerCoupon } from './customer-coupon.entity';
@@ -77,6 +80,7 @@ export class InStoreBillService {
     constructor(
         private connection: TransactionalConnection,
         private couponService: CouponService,
+        private settlementService: CouponSettlementService,
     ) {}
 
     /**
@@ -203,6 +207,7 @@ export class InStoreBillService {
 
         const info = await this.loadCustomerInfo(ctx, cc.customerId);
         const operatorName = await this.resolveOperatorName(ctx);
+        const shop = await this.resolveOperatorShop(ctx);
         const bill = new InStoreBill({
             channelId: ctx.channelId,
             customerCouponId: cc.id as number,
@@ -219,10 +224,38 @@ export class InStoreBillService {
             finalAmount: computed.finalAmount,
             operatorId: ctx.activeUserId as number,
             operatorName,
+            shopId: shop?.id ?? null,
+            shopName: shop?.name ?? null,
             remark: remark?.trim() || undefined,
             billedAt: new Date(),
         });
-        return this.connection.getRepository(ctx, InStoreBill).save(bill);
+        const saved = await this.connection.getRepository(ctx, InStoreBill).save(bill);
+        // 核销 → 待结算登记（T2）：仅出售券（有资金冻结）涉及分账；失败不阻断核销，T+1 job 兜底补登
+        if ((cc as any).saleOrderId != null) {
+            await this.settlementService.registerFromBill(ctx, saved, (cc as any).saleOrderId as number);
+        }
+        return saved;
+    }
+
+    /** 核销人所属门店快照（Shop 为可选依赖，查询失败不阻断核销） */
+    private async resolveOperatorShop(
+        ctx: RequestContext,
+    ): Promise<{ id: number; name?: string } | undefined> {
+        try {
+            const shopId = await this.couponService.resolveShopIdFromActiveUser(ctx, ctx.activeUserId);
+            if (shopId == null) return undefined;
+            let name: string | undefined;
+            const ShopClass = this.couponService.findEntityClass('Shop');
+            if (ShopClass) {
+                const shop = await this.connection
+                    .getRepository(ctx, ShopClass)
+                    .findOne({ where: { id: shopId } } as any);
+                name = (shop as any)?.name ?? undefined;
+            }
+            return { id: shopId, name };
+        } catch {
+            return undefined;
+        }
     }
 
     /** 流水列表：按当前渠道强制隔离 + 券码/时间筛选 + 时间倒序分页 */

@@ -1,4 +1,5 @@
 import { RequestContext, TransactionalConnection } from '@vendure/core';
+import { CouponSettlementService } from './coupon-settlement.service';
 import { CouponService } from './coupon.service';
 import { InStoreBill } from './in-store-bill.entity';
 /** 核销表单试算返回（金额单位：分；originalAmount 省略时金额字段为 null，仅回券信息） */
@@ -47,7 +48,8 @@ export interface PendingInStoreCouponListOptions {
 export declare class InStoreBillService {
     private connection;
     private couponService;
-    constructor(connection: TransactionalConnection, couponService: CouponService);
+    private settlementService;
+    constructor(connection: TransactionalConnection, couponService: CouponService, settlementService: CouponSettlementService);
     /**
      * 券码 → 可用到店买单券（校验顺序见 spec §7）：
      * 存在 → 模板启用 → 未使用 → 未过期 → 场景含 IN_STORE → 渠道归属 → 属店权限。
@@ -61,6 +63,8 @@ export declare class InStoreBillService {
      * 需在 @Transaction() 内调用。
      */
     redeem(ctx: RequestContext, code: string, originalAmount: number, remark?: string): Promise<InStoreBill>;
+    /** 核销人所属门店快照（Shop 为可选依赖，查询失败不阻断核销） */
+    private resolveOperatorShop;
     /** 流水列表：按当前渠道强制隔离 + 券码/时间筛选 + 时间倒序分页 */
     list(ctx: RequestContext, options?: InStoreBillListOptions): Promise<{
         items: InStoreBill[];

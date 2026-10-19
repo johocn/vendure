@@ -22,6 +22,11 @@ import {
     resolvePromoPrice,
 } from './coupon-sale';
 import { filterTemplatesByChannelAndScene, hasChannel, matchesScene } from './coupon-channel';
+import {
+    assertBundleWithinRegulatoryLimits,
+    assertTemplateWithinRegulatoryLimits,
+    extractBillpayLimits,
+} from './coupon-sale-regulatory';
 import { getCouponBalancePort } from './coupon-balance-port';
 import { WechatpayService, resolveCustomerOpenid } from '@vendure/wechatpay-plugin';
 
@@ -186,12 +191,21 @@ export class CouponSaleService {
             ((customer as any)?.customFields?.studentStatus as string | undefined) === 'approved';
         let amount = 0;
         let tpl: CouponTemplate | null = null;
+        // 监管参数组（T4）：默认宽松（未配置不校验），配置后才硬拦
+        const limits = extractBillpayLimits(channel);
         if (templateId) {
             tpl = await this.loadSaleableTemplate(ctx, templateId);
+            assertTemplateWithinRegulatoryLimits(tpl, limits);
             amount = tpl.salePrice;
         } else {
             const { bundle, items } = await this.loadSaleableBundle(ctx, bundleId as ID);
-            await this.assertBundleStock(items);
+            const itemTemplates = await this.assertBundleStock(items);
+            assertBundleWithinRegulatoryLimits(
+                bundle.salePrice,
+                itemTemplates,
+                items.map(i => i.quantity),
+                limits,
+            );
             amount = bundle.salePrice;
         }
         const promo = resolvePromoPrice(amount, {
@@ -394,6 +408,10 @@ export class CouponSaleService {
         if (!matchesScene(tpl.usageScene, 'ONLINE')) {
             throw new UserInputError('Coupon is not available for online orders');
         }
+        // 监管参数组（T4）：加价购入口同样受限（默认宽松，配置后才校验）
+        const channelRepo = this.connection.getRepository(ctx, Channel);
+        const channel = await channelRepo.findOne({ where: { id: ctx.channelId as any } });
+        assertTemplateWithinRegulatoryLimits(tpl, extractBillpayLimits(channel));
         const order = await orderService.getOrderOrThrow(ctx, orderId);
         const orderCustomerId = order.customer?.id ?? order.customerId;
         if (String(orderCustomerId) !== String(customerId)) {
@@ -684,15 +702,18 @@ export class CouponSaleService {
         return { bundle, items };
     }
 
-    private async assertBundleStock(items: CouponBundleItem[]): Promise<void> {
+    private async assertBundleStock(items: CouponBundleItem[]): Promise<CouponTemplate[]> {
         // 无法 bundle 内模板一次性带 ctx 精查（省 IO 由发券时的原子扣减兜底），此处仅确认模板存在且启用
         const repo = this.connection.rawConnection.getRepository(CouponTemplate);
+        const templates: CouponTemplate[] = [];
         for (const item of items) {
             const tpl = await repo.findOne({ where: { id: item.templateId as any } });
             if (!tpl || !tpl.enabled) {
                 throw new UserInputError(`Bundle template ${item.templateId} is not available`);
             }
+            templates.push(tpl);
         }
+        return templates;
     }
 
     private async loadOwnedPendingOrder(ctx: RequestContext, id: ID): Promise<CouponSaleOrder> {

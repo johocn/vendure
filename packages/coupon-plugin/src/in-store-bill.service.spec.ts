@@ -35,6 +35,11 @@ function ccStub(over: Record<string, any> = {}): any {
     };
 }
 
+/** 结算登记 mock（T2）：核销流程不应被结算登记阻断 */
+function stubSettlementService(): any {
+    return { registerFromBill: vi.fn(async () => undefined) };
+}
+
 describe('InStoreBillService.quote', () => {
     const ctx: any = { channelId: 3, activeUserId: 99, languageCode: 'zh_Hans' };
 
@@ -64,7 +69,7 @@ describe('InStoreBillService.quote', () => {
             templateBelongsToChannel: vi.fn(() => true),
             assertManagedByShop: vi.fn(async () => undefined),
         };
-        service = new InStoreBillService(connection, couponService);
+        service = new InStoreBillService(connection, couponService, stubSettlementService());
     });
 
     it('券码为空 → COUPON_NOT_FOUND，不查库', async () => {
@@ -197,7 +202,7 @@ describe('InStoreBillService.redeem', () => {
             templateBelongsToChannel: vi.fn(() => true),
             assertManagedByShop: vi.fn(async () => undefined),
         };
-        service = new InStoreBillService(connection, couponService);
+        service = new InStoreBillService(connection, couponService, stubSettlementService());
     });
 
     it('成功核销：条件更新置 USED → 写流水（含券/顾客/核销人/金额快照）', async () => {
@@ -290,7 +295,7 @@ describe('InStoreBillService.list / summary', () => {
         connection = {
             getRepository: vi.fn(() => ({ createQueryBuilder: vi.fn(() => listQb) })),
         };
-        service = new InStoreBillService(connection, {} as any);
+        service = new InStoreBillService(connection, {} as any, stubSettlementService());
     });
 
     it('list：强制按 ctx.channelId 过滤，默认时间倒序 + 分页上限 200', async () => {
@@ -364,7 +369,7 @@ describe('InStoreBillService.listPending（核销页默认待核销券列表）'
             templateBelongsToChannel: vi.fn(() => true),
             resolveShopIdFromActiveUser: vi.fn(async () => undefined),
         };
-        service = new InStoreBillService(connection, couponService);
+        service = new InStoreBillService(connection, couponService, stubSettlementService());
     });
     afterEach(() => setRedeemScopeResolver(null));
 
@@ -454,7 +459,7 @@ describe('InStoreBillService · 受限核销员（VerifyOrder）范围收口', (
             templateBelongsToChannel: vi.fn(() => true),
             assertManagedByShop: vi.fn(async () => undefined),
         };
-        service = new InStoreBillService(connection, couponService);
+        service = new InStoreBillService(connection, couponService, stubSettlementService());
     });
     afterEach(() => setRedeemScopeResolver(null));
 

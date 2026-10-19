@@ -402,7 +402,7 @@ export class TenantMemberService {
     async updateChannel(
         ctx: RequestContext,
         channelId: ID,
-        input: { name?: string; tenantNo?: number; isOfficial?: boolean; domain?: string; industryType?: string; storefrontMode?: string; storefrontHomeLayout?: string; couponFloorGroups?: string; firstBuyDiscount?: number; couponCampaign?: string },
+        input: { name?: string; tenantNo?: number; isOfficial?: boolean; domain?: string; industryType?: string; storefrontMode?: string; storefrontHomeLayout?: string; couponFloorGroups?: string; firstBuyDiscount?: number; couponCampaign?: string; billpayMaxSalePrice?: number; billpayMaxFaceValue?: number; billpayMaxBundleTotal?: number; billpayMinValidDays?: number; billpayExpireRefundPolicy?: string },
     ): Promise<void> {
         const repo = this.connection.getRepository(ctx, Channel);
         const existing = await repo.findOne({ where: { id: String(channelId) } } as any);
@@ -417,6 +417,12 @@ export class TenantMemberService {
         if (input.couponFloorGroups !== undefined) cf.set('couponFloorGroups', input.couponFloorGroups);
         if (input.firstBuyDiscount !== undefined) cf.set('firstBuyDiscount', input.firstBuyDiscount);
         if (input.couponCampaign !== undefined) cf.set('couponCampaign', input.couponCampaign);
+        // 买单券监管参数组（T4）：0/null 清除限制（宽松默认），>0 配置后生效
+        if (input.billpayMaxSalePrice !== undefined) cf.set('billpayMaxSalePrice', input.billpayMaxSalePrice || null);
+        if (input.billpayMaxFaceValue !== undefined) cf.set('billpayMaxFaceValue', input.billpayMaxFaceValue || null);
+        if (input.billpayMaxBundleTotal !== undefined) cf.set('billpayMaxBundleTotal', input.billpayMaxBundleTotal || null);
+        if (input.billpayMinValidDays !== undefined) cf.set('billpayMinValidDays', input.billpayMinValidDays || null);
+        if (input.billpayExpireRefundPolicy !== undefined) cf.set('billpayExpireRefundPolicy', input.billpayExpireRefundPolicy || null);
         await this.channelService.update(ctx, {
             id: channelId,
             customFields: Object.fromEntries(cf),

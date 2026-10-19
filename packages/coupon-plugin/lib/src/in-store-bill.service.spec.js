@@ -14,6 +14,10 @@ function tplStub(over = {}) {
 function ccStub(over = {}) {
     return Object.assign({ id: 11, code: 'C-ABCD-EFGH', customerId: 5, templateId: 7, status: 'UNUSED', expiredAt: null, template: tplStub() }, over);
 }
+/** 结算登记 mock（T2）：核销流程不应被结算登记阻断 */
+function stubSettlementService() {
+    return { registerFromBill: vitest_1.vi.fn(async () => undefined) };
+}
 (0, vitest_1.describe)('InStoreBillService.quote', () => {
     const ctx = { channelId: 3, activeUserId: 99, languageCode: 'zh_Hans' };
     let ccRepo;
@@ -45,7 +49,7 @@ function ccStub(over = {}) {
             templateBelongsToChannel: vitest_1.vi.fn(() => true),
             assertManagedByShop: vitest_1.vi.fn(async () => undefined),
         };
-        service = new in_store_bill_service_1.InStoreBillService(connection, couponService);
+        service = new in_store_bill_service_1.InStoreBillService(connection, couponService, stubSettlementService());
     });
     (0, vitest_1.it)('券码为空 → COUPON_NOT_FOUND，不查库', async () => {
         const r = await service.quote(ctx, '   ', 10000);
@@ -164,7 +168,7 @@ function ccStub(over = {}) {
             templateBelongsToChannel: vitest_1.vi.fn(() => true),
             assertManagedByShop: vitest_1.vi.fn(async () => undefined),
         };
-        service = new in_store_bill_service_1.InStoreBillService(connection, couponService);
+        service = new in_store_bill_service_1.InStoreBillService(connection, couponService, stubSettlementService());
     });
     (0, vitest_1.it)('成功核销：条件更新置 USED → 写流水（含券/顾客/核销人/金额快照）', async () => {
         ccRepo.findOne.mockResolvedValueOnce(ccStub({ template: tplStub({ usageScene: 'IN_STORE' }) }));
@@ -243,7 +247,7 @@ function ccStub(over = {}) {
         connection = {
             getRepository: vitest_1.vi.fn(() => ({ createQueryBuilder: vitest_1.vi.fn(() => listQb) })),
         };
-        service = new in_store_bill_service_1.InStoreBillService(connection, {});
+        service = new in_store_bill_service_1.InStoreBillService(connection, {}, stubSettlementService());
     });
     (0, vitest_1.it)('list：强制按 ctx.channelId 过滤，默认时间倒序 + 分页上限 200', async () => {
         await service.list(ctx, { skip: 0, take: 500 });
@@ -311,7 +315,7 @@ function ccStub(over = {}) {
             templateBelongsToChannel: vitest_1.vi.fn(() => true),
             resolveShopIdFromActiveUser: vitest_1.vi.fn(async () => undefined),
         };
-        service = new in_store_bill_service_1.InStoreBillService(connection, couponService);
+        service = new in_store_bill_service_1.InStoreBillService(connection, couponService, stubSettlementService());
     });
     (0, vitest_1.afterEach)(() => (0, redeem_scope_1.setRedeemScopeResolver)(null));
     (0, vitest_1.it)('默认：固定过滤条件 + 临期优先排序 + 候选集上限 500 + 默认分页 20', async () => {
@@ -397,7 +401,7 @@ function ccStub(over = {}) {
             templateBelongsToChannel: vitest_1.vi.fn(() => true),
             assertManagedByShop: vitest_1.vi.fn(async () => undefined),
         };
-        service = new in_store_bill_service_1.InStoreBillService(connection, couponService);
+        service = new in_store_bill_service_1.InStoreBillService(connection, couponService, stubSettlementService());
     });
     (0, vitest_1.afterEach)(() => (0, redeem_scope_1.setRedeemScopeResolver)(null));
     (0, vitest_1.it)('券模板不在范围（通用券/部分商品越界）→ SCOPE_MISMATCH', async () => {

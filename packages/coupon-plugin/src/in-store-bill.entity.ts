@@ -57,6 +57,12 @@ export class InStoreBill extends VendureEntity {
     /** 核销人名称快照 */
     @Column('varchar', { nullable: true }) operatorName?: string;
 
+    /** 核销门店 id（结算分账的商户定位；平台代核销/无店铺归属为 null） */
+    @Column({ type: 'int', nullable: true }) shopId?: number | null;
+
+    /** 门店名称快照（结算单/对账留痕） */
+    @Column('varchar', { nullable: true }) shopName?: string;
+
     /** 备注 */
     @Column('varchar', { nullable: true }) remark?: string;
 

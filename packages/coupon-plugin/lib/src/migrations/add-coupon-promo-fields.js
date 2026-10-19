@@ -57,6 +57,12 @@ let AddCouponPromoFieldsMigration = class AddCouponPromoFieldsMigration {
                     { table: channel, name: 'customFieldsFirstbuydiscount', type: 'integer', orphan: 'firstBuyDiscount' },
                     // 活动 JSON 较长：须与 customFields 定义（string length 4096）一致；已建列宽度不足时补 ALTER
                     { table: channel, name: 'customFieldsCouponcampaign', type: 'varchar', length: 4096 },
+                    // 买单券监管参数组（T4）：全部可空 = 宽松默认，配置后才启用校验
+                    { table: channel, name: 'customFieldsBillpaymaxsaleprice', type: 'integer' },
+                    { table: channel, name: 'customFieldsBillpaymaxfacevalue', type: 'integer' },
+                    { table: channel, name: 'customFieldsBillpaymaxbundletotal', type: 'integer' },
+                    { table: channel, name: 'customFieldsBillpayminvaliddays', type: 'integer' },
+                    { table: channel, name: 'customFieldsBillpayexpirerefundpolicy', type: 'varchar' },
                     { table: customer, name: 'customFieldsStudentstatus', type: 'varchar', orphan: 'studentStatus' },
                     { table: customer, name: 'customFieldsStudentinfo', type: 'varchar', orphan: 'studentInfo' },
                     { table: customer, name: 'customFieldsStudentreviewedat', type: 'timestamp', orphan: 'studentReviewedAt' },

@@ -95,6 +95,21 @@ export type CouponSalePayMode = 'WECHAT' | 'BALANCE' | 'ORDER_SURCHARGE';
 /** 出售单状态 */
 export type CouponSaleStatus = 'PENDING' | 'PAID' | 'CANCELLED' | 'REFUNDED';
 
+/**
+ * 结算单状态机（买单券资金流 T1）：
+ * - PENDING  ：已核销待结算（T+1 汇总后提交分账）
+ * - SETTLED  ：分账已受理（网关回执 PROCESSING/FINISHED 待确认）
+ * - PAID_OUT ：分账完成（回执 FINISHED）
+ * - REVERSED ：已追偿（退款联动 T8，未上线的预留态）
+ * - CANCELLED：登记作废（核销回退且未提交分账，T8 预留）
+ */
+export type CouponSettlementStatus =
+    | 'PENDING'
+    | 'SETTLED'
+    | 'PAID_OUT'
+    | 'REVERSED'
+    | 'CANCELLED';
+
 /** 券包内单项入参 */
 export interface CouponBundleItemInput {
     templateId: number;

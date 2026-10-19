@@ -48,6 +48,11 @@ export declare class TenantAdminResolver {
             couponFloorGroups?: string;
             firstBuyDiscount?: number;
             couponCampaign?: string;
+            billpayMaxSalePrice?: number;
+            billpayMaxFaceValue?: number;
+            billpayMaxBundleTotal?: number;
+            billpayMinValidDays?: number;
+            billpayExpireRefundPolicy?: string;
         };
     }): Promise<any>;
     setTenantEnabled(ctx: RequestContext, args: {

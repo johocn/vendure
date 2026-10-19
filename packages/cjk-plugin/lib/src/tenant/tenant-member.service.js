@@ -379,6 +379,17 @@ let TenantMemberService = class TenantMemberService {
             cf.set('firstBuyDiscount', input.firstBuyDiscount);
         if (input.couponCampaign !== undefined)
             cf.set('couponCampaign', input.couponCampaign);
+        // 买单券监管参数组（T4）：0/null 清除限制（宽松默认），>0 配置后生效
+        if (input.billpayMaxSalePrice !== undefined)
+            cf.set('billpayMaxSalePrice', input.billpayMaxSalePrice || null);
+        if (input.billpayMaxFaceValue !== undefined)
+            cf.set('billpayMaxFaceValue', input.billpayMaxFaceValue || null);
+        if (input.billpayMaxBundleTotal !== undefined)
+            cf.set('billpayMaxBundleTotal', input.billpayMaxBundleTotal || null);
+        if (input.billpayMinValidDays !== undefined)
+            cf.set('billpayMinValidDays', input.billpayMinValidDays || null);
+        if (input.billpayExpireRefundPolicy !== undefined)
+            cf.set('billpayExpireRefundPolicy', input.billpayExpireRefundPolicy || null);
         await this.channelService.update(ctx, {
             id: channelId,
             customFields: Object.fromEntries(cf),

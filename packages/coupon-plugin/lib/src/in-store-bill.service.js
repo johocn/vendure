@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.InStoreBillService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
+const coupon_settlement_service_1 = require("./coupon-settlement.service");
 const coupon_service_1 = require("./coupon.service");
 const customer_coupon_entity_1 = require("./customer-coupon.entity");
 const in_store_bill_entity_1 = require("./in-store-bill.entity");
@@ -20,9 +21,10 @@ const coupon_channel_1 = require("./coupon-channel");
 const localize_1 = require("./localize");
 const redeem_scope_1 = require("./redeem-scope");
 let InStoreBillService = class InStoreBillService {
-    constructor(connection, couponService) {
+    constructor(connection, couponService, settlementService) {
         this.connection = connection;
         this.couponService = couponService;
+        this.settlementService = settlementService;
     }
     /**
      * 券码 → 可用到店买单券（校验顺序见 spec §7）：
@@ -112,7 +114,7 @@ let InStoreBillService = class InStoreBillService {
      * 需在 @Transaction() 内调用。
      */
     async redeem(ctx, code, originalAmount, remark) {
-        var _a;
+        var _a, _b, _c;
         const located = await this.locate(ctx, code);
         if (!located.ok) {
             throw new core_1.UserInputError(in_store_bill_1.IN_STORE_REASON_MESSAGES[located.reason]);
@@ -135,6 +137,7 @@ let InStoreBillService = class InStoreBillService {
         }
         const info = await this.loadCustomerInfo(ctx, cc.customerId);
         const operatorName = await this.resolveOperatorName(ctx);
+        const shop = await this.resolveOperatorShop(ctx);
         const bill = new in_store_bill_entity_1.InStoreBill({
             channelId: ctx.channelId,
             customerCouponId: cc.id,
@@ -151,10 +154,38 @@ let InStoreBillService = class InStoreBillService {
             finalAmount: computed.finalAmount,
             operatorId: ctx.activeUserId,
             operatorName,
+            shopId: (_b = shop === null || shop === void 0 ? void 0 : shop.id) !== null && _b !== void 0 ? _b : null,
+            shopName: (_c = shop === null || shop === void 0 ? void 0 : shop.name) !== null && _c !== void 0 ? _c : null,
             remark: (remark === null || remark === void 0 ? void 0 : remark.trim()) || undefined,
             billedAt: new Date(),
         });
-        return this.connection.getRepository(ctx, in_store_bill_entity_1.InStoreBill).save(bill);
+        const saved = await this.connection.getRepository(ctx, in_store_bill_entity_1.InStoreBill).save(bill);
+        // 核销 → 待结算登记（T2）：仅出售券（有资金冻结）涉及分账；失败不阻断核销，T+1 job 兜底补登
+        if (cc.saleOrderId != null) {
+            await this.settlementService.registerFromBill(ctx, saved, cc.saleOrderId);
+        }
+        return saved;
+    }
+    /** 核销人所属门店快照（Shop 为可选依赖，查询失败不阻断核销） */
+    async resolveOperatorShop(ctx) {
+        var _a;
+        try {
+            const shopId = await this.couponService.resolveShopIdFromActiveUser(ctx, ctx.activeUserId);
+            if (shopId == null)
+                return undefined;
+            let name;
+            const ShopClass = this.couponService.findEntityClass('Shop');
+            if (ShopClass) {
+                const shop = await this.connection
+                    .getRepository(ctx, ShopClass)
+                    .findOne({ where: { id: shopId } });
+                name = (_a = shop === null || shop === void 0 ? void 0 : shop.name) !== null && _a !== void 0 ? _a : undefined;
+            }
+            return { id: shopId, name };
+        }
+        catch (_b) {
+            return undefined;
+        }
     }
     /** 流水列表：按当前渠道强制隔离 + 券码/时间筛选 + 时间倒序分页 */
     async list(ctx, options) {
@@ -318,6 +349,7 @@ exports.InStoreBillService = InStoreBillService;
 exports.InStoreBillService = InStoreBillService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
-        coupon_service_1.CouponService])
+        coupon_service_1.CouponService,
+        coupon_settlement_service_1.CouponSettlementService])
 ], InStoreBillService);
 //# sourceMappingURL=in-store-bill.service.js.map

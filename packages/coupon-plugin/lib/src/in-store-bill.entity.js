@@ -85,6 +85,14 @@ __decorate([
     __metadata("design:type", String)
 ], InStoreBill.prototype, "operatorName", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ type: 'int', nullable: true }),
+    __metadata("design:type", Object)
+], InStoreBill.prototype, "shopId", void 0);
+__decorate([
+    (0, typeorm_1.Column)('varchar', { nullable: true }),
+    __metadata("design:type", String)
+], InStoreBill.prototype, "shopName", void 0);
+__decorate([
     (0, typeorm_1.Column)('varchar', { nullable: true }),
     __metadata("design:type", String)
 ], InStoreBill.prototype, "remark", void 0);
