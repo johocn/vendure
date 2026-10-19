@@ -373,6 +373,8 @@ let TenantMemberService = class TenantMemberService {
             cf.set('storefrontMode', input.storefrontMode);
         if (input.storefrontHomeLayout !== undefined && input.storefrontHomeLayout !== null)
             cf.set('storefrontHomeLayout', input.storefrontHomeLayout);
+        if (input.couponFloorGroups !== undefined)
+            cf.set('couponFloorGroups', input.couponFloorGroups);
         if (input.firstBuyDiscount !== undefined)
             cf.set('firstBuyDiscount', input.firstBuyDiscount);
         if (input.couponCampaign !== undefined)

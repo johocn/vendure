@@ -1072,6 +1072,7 @@ function mergeCustomFields<T extends { name: string }>(
                     industryType: String
                     storefrontMode: String
                     storefrontHomeLayout: String
+                    couponFloorGroups: String
                 }
 
                 input TenantListOptions {

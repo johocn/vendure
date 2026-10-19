@@ -91,6 +91,7 @@ export declare class TenantMemberService {
         industryType?: string;
         storefrontMode?: string;
         storefrontHomeLayout?: string;
+        couponFloorGroups?: string;
         firstBuyDiscount?: number;
         couponCampaign?: string;
     }): Promise<void>;

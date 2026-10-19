@@ -393,6 +393,19 @@ exports.tenantChannelCustomFields = {
                 { value: 'grid', label: [{ languageCode: core_1.LanguageCode.zh_Hans, value: '券卡宫格' }, { languageCode: core_1.LanguageCode.en, value: 'Grid' }] },
             ],
         },
+        {
+            name: 'couponFloorGroups',
+            type: 'string',
+            nullable: true,
+            public: true,
+            label: [
+                { languageCode: core_1.LanguageCode.zh_Hans, value: '券店楼层分组' },
+                { languageCode: core_1.LanguageCode.en, value: 'Coupon Store Floor Groups' },
+            ],
+            description: [
+                { languageCode: core_1.LanguageCode.zh_Hans, value: '仅 storefrontMode=coupon 时生效。JSON 数组：[{"key":"food","title":{"zh-CN":"美食","en":"Food"}}]。券超 20 张且券模板已配 category 时按此配置分组楼层（顺序=配置顺序，未命中归「更多」）；否则按券类型自动分组。' },
+            ],
+        },
     ],
 };
 //# sourceMappingURL=tenant-channel-custom-fields.js.map
