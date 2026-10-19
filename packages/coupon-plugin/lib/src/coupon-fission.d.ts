@@ -40,6 +40,13 @@ export declare function parseCouponFissionConfig(raw: unknown): CouponFissionCon
 /** 本地化活动文案：lang 形如 Vendure LanguageCode（zh_Hans / en）。兜底链同 campaign。 */
 export declare function localizeFissionText(value: FissionText, lang: string): string | null;
 /**
+ * FR-C 个人邀请码（可逆码，分享链标准形态）：`F<base36(customerId)>`（大写 F + 大写 base36）。
+ * 每位客户固定一人一码，解码直定位分享者，无快照歧义。与 nshop 前端 fissionInviteCodeOf 同构。
+ */
+export declare function buildReversibleInviteCode(customerId: number): string;
+/** 解析可逆码 → customerId；非 F 前缀/非法 base36/非正数返回 null（调用方回退快照反查） */
+export declare function parseReversibleInviteCode(code: string): number | null;
+/**
  * 解析当前生效活动（纯函数）：
  * enabled + 时间窗（服务端 now 判定）+ 文案 + 被分享者奖励模板必填。
  * 不满足任一条件返回 null（C 端不渲染活动、发奖入口关闭）。

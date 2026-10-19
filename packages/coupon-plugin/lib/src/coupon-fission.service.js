@@ -70,7 +70,7 @@ let CouponFissionService = class CouponFissionService {
      * - NOT_LOGGED_IN / NO_INVITER / INACTIVE：登录/邀请码/活动窗口问题（服务端已兜底，前端仍需各自引导）
      */
     async claimReward(ctx, inviteCode) {
-        var _a, _b, _c, _d, _e;
+        var _a, _b, _c, _d, _e, _f, _g;
         const customerId = ctx.activeUserId
             ? (_a = (await this.connection
                 .getRepository(ctx, core_1.Customer)
@@ -96,30 +96,43 @@ let CouponFissionService = class CouponFissionService {
         if (!activity) {
             return { status: 'INACTIVE', inviteeCoupon: null, inviterCoupon: null };
         }
-        // 定位分享者（inviteCode 在 Customer.customFields，cjk 客户字段）
+        // 定位分享者：优先可逆码 F<base36(customerId)>（FR-C 分享链标准形态，每人固定、无快照歧义）；
+        // 非 F 前缀回退 Customer.customFields.inviteCode 反查（SSO 邀请快照，兼容旧链路）。
         const code = String(inviteCode !== null && inviteCode !== void 0 ? inviteCode : '').trim();
         if (!code) {
             return { status: 'NO_INVITER', inviteeCoupon: null, inviterCoupon: null };
         }
-        const isPg = this.connection.rawConnection.options.type === 'postgres';
         let inviter;
-        if (isPg) {
+        const reversibleId = (0, coupon_fission_1.parseReversibleInviteCode)(code);
+        if (reversibleId != null) {
             inviter =
                 (_b = (await this.connection
                     .getRepository(ctx, core_1.Customer)
-                    .createQueryBuilder('c')
-                    .innerJoin('c.channels', 'channel', 'channel.id = :cid', { cid: ctx.channelId })
-                    .where('c.customFields.inviteCode = :code', { code })
-                    .getOne())) !== null && _b !== void 0 ? _b : undefined;
+                    .findOne({ where: { id: reversibleId }, relations: { channels: true } }))) !== null && _b !== void 0 ? _b : undefined;
+            if (inviter && !((_c = inviter.channels) !== null && _c !== void 0 ? _c : []).some(ch => ch.id === ctx.channelId)) {
+                inviter = undefined; // 分享者不属于本租户：按无效码处理
+            }
         }
         else {
-            // e2e（SQLite）：数据量小，全量过滤
-            const all = await this.connection.getRepository(ctx, core_1.Customer).find({ relations: { channels: true } });
-            inviter = all.find(c => {
-                var _a, _b;
-                return ((_a = c.customFields) === null || _a === void 0 ? void 0 : _a.inviteCode) === code &&
-                    ((_b = c.channels) !== null && _b !== void 0 ? _b : []).some(ch => ch.id === ctx.channelId);
-            });
+            const isPg = this.connection.rawConnection.options.type === 'postgres';
+            if (isPg) {
+                inviter =
+                    (_d = (await this.connection
+                        .getRepository(ctx, core_1.Customer)
+                        .createQueryBuilder('c')
+                        .innerJoin('c.channels', 'channel', 'channel.id = :cid', { cid: ctx.channelId })
+                        .where('c.customFields.inviteCode = :code', { code })
+                        .getOne())) !== null && _d !== void 0 ? _d : undefined;
+            }
+            else {
+                // e2e（SQLite）：数据量小，全量过滤
+                const all = await this.connection.getRepository(ctx, core_1.Customer).find({ relations: { channels: true } });
+                inviter = all.find(c => {
+                    var _a, _b;
+                    return ((_a = c.customFields) === null || _a === void 0 ? void 0 : _a.inviteCode) === code &&
+                        ((_b = c.channels) !== null && _b !== void 0 ? _b : []).some(ch => ch.id === ctx.channelId);
+                });
+            }
         }
         if (!(inviter === null || inviter === void 0 ? void 0 : inviter.id)) {
             return { status: 'NO_INVITER', inviteeCoupon: null, inviterCoupon: null };
@@ -151,9 +164,9 @@ let CouponFissionService = class CouponFissionService {
             return await this.connection.withTransaction(ctx, async (txCtx) => this.claimRewardInTransaction(txCtx, { cfg, activity, inviterId, customerId }));
         }
         catch (e) {
-            if (String((_c = e === null || e === void 0 ? void 0 : e.message) !== null && _c !== void 0 ? _c : '').includes('UNIQUE') || String((_d = e === null || e === void 0 ? void 0 : e.code) !== null && _d !== void 0 ? _d : '') === '23505') {
+            if (String((_e = e === null || e === void 0 ? void 0 : e.message) !== null && _e !== void 0 ? _e : '').includes('UNIQUE') || String((_f = e === null || e === void 0 ? void 0 : e.code) !== null && _f !== void 0 ? _f : '') === '23505') {
                 // 并发下唯一索引冲突 = 同被分享者同活动已领过（R3 幂等）
-                core_1.Logger.warn(`fission record conflict for customer ${customerId}: ${(_e = e === null || e === void 0 ? void 0 : e.message) !== null && _e !== void 0 ? _e : e}`, constants_1.loggerCtx);
+                core_1.Logger.warn(`fission record conflict for customer ${customerId}: ${(_g = e === null || e === void 0 ? void 0 : e.message) !== null && _g !== void 0 ? _g : e}`, constants_1.loggerCtx);
                 return { status: 'ALREADY_REWARDED', inviteeCoupon: null, inviterCoupon: null };
             }
             throw e;

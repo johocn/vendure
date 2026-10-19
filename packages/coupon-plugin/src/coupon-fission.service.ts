@@ -10,6 +10,7 @@ import {
     CouponFissionConfig,
     CouponFissionView,
     parseCouponFissionConfig,
+    parseReversibleInviteCode,
     resolveActiveFission,
 } from './coupon-fission';
 import { loggerCtx } from './constants';
@@ -99,29 +100,41 @@ export class CouponFissionService {
             return { status: 'INACTIVE', inviteeCoupon: null, inviterCoupon: null };
         }
 
-        // 定位分享者（inviteCode 在 Customer.customFields，cjk 客户字段）
+        // 定位分享者：优先可逆码 F<base36(customerId)>（FR-C 分享链标准形态，每人固定、无快照歧义）；
+        // 非 F 前缀回退 Customer.customFields.inviteCode 反查（SSO 邀请快照，兼容旧链路）。
         const code = String(inviteCode ?? '').trim();
         if (!code) {
             return { status: 'NO_INVITER', inviteeCoupon: null, inviterCoupon: null };
         }
-        const isPg = this.connection.rawConnection.options.type === 'postgres';
         let inviter: Customer | undefined;
-        if (isPg) {
+        const reversibleId = parseReversibleInviteCode(code);
+        if (reversibleId != null) {
             inviter =
                 (await this.connection
                     .getRepository(ctx, Customer)
-                    .createQueryBuilder('c')
-                    .innerJoin('c.channels', 'channel', 'channel.id = :cid', { cid: ctx.channelId })
-                    .where('c.customFields.inviteCode = :code', { code })
-                    .getOne()) ?? undefined;
+                    .findOne({ where: { id: reversibleId }, relations: { channels: true } })) ?? undefined;
+            if (inviter && !(inviter.channels ?? []).some(ch => ch.id === ctx.channelId)) {
+                inviter = undefined; // 分享者不属于本租户：按无效码处理
+            }
         } else {
-            // e2e（SQLite）：数据量小，全量过滤
-            const all = await this.connection.getRepository(ctx, Customer).find({ relations: { channels: true } });
-            inviter = all.find(
-                c =>
-                    (c.customFields as any)?.inviteCode === code &&
-                    (c.channels ?? []).some(ch => ch.id === ctx.channelId),
-            );
+            const isPg = this.connection.rawConnection.options.type === 'postgres';
+            if (isPg) {
+                inviter =
+                    (await this.connection
+                        .getRepository(ctx, Customer)
+                        .createQueryBuilder('c')
+                        .innerJoin('c.channels', 'channel', 'channel.id = :cid', { cid: ctx.channelId })
+                        .where('c.customFields.inviteCode = :code', { code })
+                        .getOne()) ?? undefined;
+            } else {
+                // e2e（SQLite）：数据量小，全量过滤
+                const all = await this.connection.getRepository(ctx, Customer).find({ relations: { channels: true } });
+                inviter = all.find(
+                    c =>
+                        (c.customFields as any)?.inviteCode === code &&
+                        (c.channels ?? []).some(ch => ch.id === ctx.channelId),
+                );
+            }
         }
         if (!inviter?.id) {
             return { status: 'NO_INVITER', inviteeCoupon: null, inviterCoupon: null };

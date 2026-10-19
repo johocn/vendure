@@ -62,5 +62,22 @@ const coupon_fission_1 = require("./coupon-fission");
         (0, vitest_1.expect)((0, coupon_fission_1.localizeFissionText)({ en: '' }, 'zh_Hans')).toBeNull();
         (0, vitest_1.expect)((0, coupon_fission_1.localizeFissionText)(null, 'zh_Hans')).toBeNull();
     });
+    (0, vitest_1.it)('可逆邀请码：编解码互逆、大小写不敏感、非法输入拒绝（FR-C 分享链）', () => {
+        (0, vitest_1.expect)((0, coupon_fission_1.buildReversibleInviteCode)(123)).toBe('F3F');
+        (0, vitest_1.expect)((0, coupon_fission_1.parseReversibleInviteCode)('F3F')).toBe(123);
+        // 前端小写/后端大写互认
+        (0, vitest_1.expect)((0, coupon_fission_1.parseReversibleInviteCode)('f3f')).toBe(123);
+        // 带空白
+        (0, vitest_1.expect)((0, coupon_fission_1.parseReversibleInviteCode)(' F3F ')).toBe(123);
+        // 非 F 前缀 → null（回退快照反查）
+        (0, vitest_1.expect)((0, coupon_fission_1.parseReversibleInviteCode)('ABC')).toBeNull();
+        (0, vitest_1.expect)((0, coupon_fission_1.parseReversibleInviteCode)('')).toBeNull();
+        // F 后空 / F0 → null
+        (0, vitest_1.expect)((0, coupon_fission_1.parseReversibleInviteCode)('F')).toBeNull();
+        (0, vitest_1.expect)((0, coupon_fission_1.parseReversibleInviteCode)('F0')).toBeNull();
+        // 往返一致性（大 id）
+        const big = 987654;
+        (0, vitest_1.expect)((0, coupon_fission_1.parseReversibleInviteCode)((0, coupon_fission_1.buildReversibleInviteCode)(big))).toBe(big);
+    });
 });
 //# sourceMappingURL=coupon-fission.spec.js.map

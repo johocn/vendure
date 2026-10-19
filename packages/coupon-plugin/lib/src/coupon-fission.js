@@ -6,6 +6,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.parseCouponFissionConfig = parseCouponFissionConfig;
 exports.localizeFissionText = localizeFissionText;
+exports.buildReversibleInviteCode = buildReversibleInviteCode;
+exports.parseReversibleInviteCode = parseReversibleInviteCode;
 exports.resolveActiveFission = resolveActiveFission;
 /**
  * 解析 couponFission 配置（JSON 字符串 → 规整结构）。
@@ -59,6 +61,21 @@ function localizeFissionText(value, lang) {
     }
     const first = Object.values(value).find(v => typeof v === 'string' && v.trim());
     return first ? String(first).trim() : null;
+}
+/**
+ * FR-C 个人邀请码（可逆码，分享链标准形态）：`F<base36(customerId)>`（大写 F + 大写 base36）。
+ * 每位客户固定一人一码，解码直定位分享者，无快照歧义。与 nshop 前端 fissionInviteCodeOf 同构。
+ */
+function buildReversibleInviteCode(customerId) {
+    return `F${customerId.toString(36).toUpperCase()}`;
+}
+/** 解析可逆码 → customerId；非 F 前缀/非法 base36/非正数返回 null（调用方回退快照反查） */
+function parseReversibleInviteCode(code) {
+    const m = /^F([0-9a-z]+)$/i.exec(code.trim());
+    if (!m)
+        return null;
+    const parsed = parseInt(m[1], 36);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 /**
  * 解析当前生效活动（纯函数）：

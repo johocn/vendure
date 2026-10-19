@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { localizeFissionText, parseCouponFissionConfig, resolveActiveFission } from './coupon-fission';
+import { localizeFissionText, parseCouponFissionConfig, parseReversibleInviteCode, buildReversibleInviteCode, resolveActiveFission } from './coupon-fission';
 
 describe('分享裂变纯函数（FR-C）', () => {
     const tpl = (id: number) => ({ id, name: `tpl-${id}` });
@@ -68,5 +68,23 @@ describe('分享裂变纯函数（FR-C）', () => {
         expect(localizeFissionText({ en: 'en' }, 'zh_Hans')).toBe('en');
         expect(localizeFissionText({ en: '' }, 'zh_Hans')).toBeNull();
         expect(localizeFissionText(null, 'zh_Hans')).toBeNull();
+    });
+
+    it('可逆邀请码：编解码互逆、大小写不敏感、非法输入拒绝（FR-C 分享链）', () => {
+        expect(buildReversibleInviteCode(123)).toBe('F3F');
+        expect(parseReversibleInviteCode('F3F')).toBe(123);
+        // 前端小写/后端大写互认
+        expect(parseReversibleInviteCode('f3f')).toBe(123);
+        // 带空白
+        expect(parseReversibleInviteCode(' F3F ')).toBe(123);
+        // 非 F 前缀 → null（回退快照反查）
+        expect(parseReversibleInviteCode('ABC')).toBeNull();
+        expect(parseReversibleInviteCode('')).toBeNull();
+        // F 后空 / F0 → null
+        expect(parseReversibleInviteCode('F')).toBeNull();
+        expect(parseReversibleInviteCode('F0')).toBeNull();
+        // 往返一致性（大 id）
+        const big = 987654;
+        expect(parseReversibleInviteCode(buildReversibleInviteCode(big))).toBe(big);
     });
 });
