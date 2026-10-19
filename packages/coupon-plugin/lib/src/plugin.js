@@ -331,6 +331,32 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
             ${couponTemplateType}
             ${customerCouponType}
 
+            type CouponFissionRecord implements Node {
+                id: ID!
+                channelId: ID!
+                inviterCustomerId: ID!
+                inviteeCustomerId: ID!
+                inviteeCouponId: ID
+                inviterCouponId: ID
+                status: String!
+                sharedAt: DateTime
+                createdAt: DateTime!
+            }
+
+            type CouponGrantBatch implements Node {
+                id: ID!
+                channelId: ID!
+                templateId: ID!
+                days: Int!
+                totalSelected: Int!
+                issuedCount: Int!
+                skippedCount: Int!
+                resultsJson: String
+                operator: String
+                notified: Boolean!
+                createdAt: DateTime!
+            }
+
             type ProductCouponBinding implements Node {
                 id: ID!
                 productId: ID!
