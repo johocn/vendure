@@ -54,6 +54,7 @@ const TEMPLATE_UPDATE_ALLOWED: ReadonlyArray<keyof CouponTemplate> = [
     'anchorPrice',
     'label',
     'studentPrice',
+    'category',
 ];
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -275,6 +276,11 @@ export class CouponService {
             const n = Math.floor(Number(input.studentPrice));
             (tpl as any).studentPrice =
                 input.studentPrice == null || !Number.isFinite(n) || n <= 0 ? null : n;
+        }
+        // 业态分类键：去首尾空白、限 30 字符，空串归 null（未分类）
+        if (input.category !== undefined) {
+            const s = typeof input.category === 'string' ? input.category.trim() : '';
+            (tpl as any).category = s ? s.slice(0, 30) : null;
         }
     }
 

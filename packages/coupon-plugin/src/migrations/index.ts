@@ -8,3 +8,4 @@ export { AddCouponDistributionChannelsMigration } from './add-coupon-distributio
 export { CreateCouponSaleMigration } from './create-coupon-sale';
 export { AddCouponMarketingFieldsMigration } from './add-coupon-marketing-fields';
 export { AddCouponPromoFieldsMigration } from './add-coupon-promo-fields';
+export { AddCouponCategoryFieldMigration } from './add-coupon-category-field';

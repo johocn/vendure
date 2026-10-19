@@ -103,6 +103,9 @@ export class CouponTemplate extends VendureEntity implements ChannelAware {
     /** 学生价（分，仅认证学生可见与生效）；null/0 = 该券无学生价 */
     @Column({ type: 'int', nullable: true }) studentPrice?: number | null;
 
+    /** 业态分类键（如 food/billiards；后台可配自由短串，建议 ≤30 字符）；空 = 未分类（前端落「更多」/按类型分组） */
+    @Column('varchar', { nullable: true }) category?: string | null;
+
     @ManyToMany(() => Channel)
     @JoinTable()
     channels: Channel[];

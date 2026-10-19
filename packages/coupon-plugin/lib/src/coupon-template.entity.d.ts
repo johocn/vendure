@@ -67,5 +67,7 @@ export declare class CouponTemplate extends VendureEntity implements ChannelAwar
     label?: string | null;
     /** 学生价（分，仅认证学生可见与生效）；null/0 = 该券无学生价 */
     studentPrice?: number | null;
+    /** 业态分类键（如 food/billiards；后台可配自由短串，建议 ≤30 字符）；空 = 未分类（前端落「更多」/按类型分组） */
+    category?: string | null;
     channels: Channel[];
 }

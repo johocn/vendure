@@ -43,6 +43,7 @@ import {
     CreateInStoreBillMigration,
     CreateProductCouponBindingMigration,
     AddCouponPromoFieldsMigration,
+    AddCouponCategoryFieldMigration,
 } from './migrations';
 import { AddCouponDistributionChannelsMigration } from './migrations/add-coupon-distribution-channels';
 import { InStoreBill } from './in-store-bill.entity';
@@ -98,6 +99,7 @@ type CouponTemplate implements Node {
     anchorPrice: Int
     label: String
     studentPrice: Int
+    category: String
     soldCount: Int
     createdAt: DateTime!
     updatedAt: DateTime!
@@ -136,6 +138,7 @@ type CustomerCoupon implements Node {
         AddCouponIndexes20260919,
         AddCouponMarketingFieldsMigration,
         AddCouponPromoFieldsMigration,
+        AddCouponCategoryFieldMigration,
         StudentVerificationService,
         AddCouponUsageSceneMigration,
         AddCouponDistributionChannelsMigration,
@@ -334,6 +337,7 @@ type CustomerCoupon implements Node {
                 anchorPrice: Int
                 label: String
                 studentPrice: Int
+                category: String
             }
 
             input UpdateCouponTemplateInput {
@@ -367,6 +371,7 @@ type CustomerCoupon implements Node {
                 anchorPrice: Int
                 label: String
                 studentPrice: Int
+                category: String
             }
 
             input CouponTemplateListOptions

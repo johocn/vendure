@@ -91,6 +91,7 @@ type CouponTemplate implements Node {
     anchorPrice: Int
     label: String
     studentPrice: Int
+    category: String
     soldCount: Int
     createdAt: DateTime!
     updatedAt: DateTime!
@@ -265,6 +266,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
             migrations_1.AddCouponIndexes20260919,
             migrations_1.AddCouponMarketingFieldsMigration,
             migrations_1.AddCouponPromoFieldsMigration,
+            migrations_1.AddCouponCategoryFieldMigration,
             student_service_1.StudentVerificationService,
             migrations_1.AddCouponUsageSceneMigration,
             add_coupon_distribution_channels_1.AddCouponDistributionChannelsMigration,
@@ -463,6 +465,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 anchorPrice: Int
                 label: String
                 studentPrice: Int
+                category: String
             }
 
             input UpdateCouponTemplateInput {
@@ -496,6 +499,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 anchorPrice: Int
                 label: String
                 studentPrice: Int
+                category: String
             }
 
             input CouponTemplateListOptions
