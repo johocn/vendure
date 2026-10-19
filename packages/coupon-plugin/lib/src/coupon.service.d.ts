@@ -81,6 +81,28 @@ export declare class CouponService {
         items: CustomerCoupon[];
         totalItems: number;
     }>;
+    /**
+     * 核销看板四指标：按模板聚合领券记录状态（仅状态计数，不新增埋点）。
+     * 口径：claimed=领取量（记录条数，CustomerCoupon 每行一张券实例）；used=核销量；
+     * redemptionRate=核销率=used/claimed；expiredRate=过期率=expired/claimed（百分比 0-100）。
+     * 时间筛选按领取时间（createdAt）闭区间；templateId 可选；属店隔离与 listAllCoupons 同法。
+     */
+    couponRedemptionStats(ctx: RequestContext, options?: {
+        templateId?: number | null;
+        from?: Date | null;
+        to?: Date | null;
+    }): Promise<Array<{
+        templateId: number;
+        name: string | null;
+        claimed: number;
+        used: number;
+        expired: number;
+        unused: number;
+        returned: number;
+        invalid: number;
+        redemptionRate: number;
+        expiredRate: number;
+    }>>;
     pointsMallTemplates(ctx: RequestContext): Promise<CouponTemplate[]>;
     exchangeWithPoints(ctx: RequestContext, templateId: ID): Promise<{
         coupon: CustomerCoupon;

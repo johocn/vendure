@@ -49,6 +49,12 @@ let AddCouponPromoFieldsMigration = class AddCouponPromoFieldsMigration {
             const customer = tableName('Customer');
             const queryRunner = this.connection.createQueryRunner();
             try {
+                // SQLite 家族严禁 changeColumn：SQLite 本就不强制 varchar 长度（varchar(4096) 等价 TEXT），
+                // 放宽宽度毫无意义；且 TypeORM 的 SQLite changeColumn 走整表重建，实测会把 channel 的
+                // 多对多 join 表（role_channels）一并 DROP，导致 superadmin 角色失去频道绑定、全部 admin
+                // 接口 FORBIDDEN（e2e/本地启动即复现）。宽度放宽仅在 PostgreSQL 执行（ALTER TYPE，非破坏性）。
+                const driverType = this.connection.driver.options.type;
+                const isSqlite = driverType === 'sqljs' || driverType === 'better-sqlite3' || driverType === 'sqlite';
                 const plan = [
                     { table: tpl, name: 'studentPrice', type: 'integer' },
                     { table: sale, name: 'discountType', type: 'varchar' },
@@ -73,7 +79,7 @@ let AddCouponPromoFieldsMigration = class AddCouponPromoFieldsMigration {
                     if (!(await queryRunner.hasColumn(table, name))) {
                         await queryRunner.addColumn(table, new typeorm_2.TableColumn({ name, type, length: length ? String(length) : undefined, isNullable: true }));
                     }
-                    else if (length) {
+                    else if (length && !isSqlite) {
                         // 已建列宽度可能小于当前定义（如先按默认 varchar(255) 落库）：幂等放宽
                         const col = () => new typeorm_2.TableColumn({ name, type, length: String(length), isNullable: true });
                         await queryRunner.changeColumn(table, col(), col());

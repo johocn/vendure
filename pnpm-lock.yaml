@@ -447,7 +447,7 @@ importers:
         version: link:../core
       express:
         specifier: ^5.1.0
-        version: 5.2.1
+        version: 5.2.1(supports-color@7.2.0)
       rimraf:
         specifier: ^5.0.5
         version: 5.0.5
@@ -555,7 +555,7 @@ importers:
         version: link:../core
       express:
         specifier: ^5.1.0
-        version: 5.2.1
+        version: 5.2.1(supports-color@7.2.0)
       node-fetch:
         specifier: ^2.7.0
         version: 2.7.0(encoding@0.1.13)
@@ -875,7 +875,7 @@ importers:
         version: 6.2.1
       express:
         specifier: ^5.1.0
-        version: 5.2.1
+        version: 5.2.1(supports-color@7.2.0)
       fs-extra:
         specifier: ^11.2.0
         version: 11.4.0
@@ -1636,7 +1636,7 @@ importers:
         version: 1.11.23
       jsdom:
         specifier: ^26.0.0
-        version: 26.0.0(supports-color@7.2.0)
+        version: 26.0.0
       progress:
         specifier: ^2.0.3
         version: 2.0.3
@@ -1748,7 +1748,7 @@ importers:
         version: 3.0.3
       express:
         specifier: ^5.1.0
-        version: 5.2.1
+        version: 5.2.1(supports-color@7.2.0)
       fs-extra:
         specifier: ^11.2.0
         version: 11.4.0
@@ -1836,7 +1836,7 @@ importers:
     dependencies:
       express:
         specifier: ^5.1.0
-        version: 5.2.1
+        version: 5.2.1(supports-color@7.2.0)
     devDependencies:
       '@graphiql/toolkit':
         specifier: ^0.11.1
@@ -2103,6 +2103,9 @@ importers:
       '@vendure/core':
         specifier: workspace:*
         version: link:../core
+      '@vendure/coupon-plugin':
+        specifier: workspace:*
+        version: link:../coupon-plugin
       rimraf:
         specifier: ^5.0.5
         version: 5.0.5
@@ -19530,7 +19533,7 @@ snapshots:
       browserslist: 4.28.8
       esbuild: 0.28.0
       fast-glob: 3.3.3
-      https-proxy-agent: 7.0.6(supports-color@7.2.0)
+      https-proxy-agent: 7.0.6
       istanbul-lib-instrument: 6.0.3
       listr2: 8.2.5
       magic-string: 0.30.17
@@ -19581,7 +19584,7 @@ snapshots:
       browserslist: 4.28.8
       esbuild: 0.28.0
       fast-glob: 3.3.3
-      https-proxy-agent: 7.0.6(supports-color@7.2.0)
+      https-proxy-agent: 7.0.6
       istanbul-lib-instrument: 6.0.3
       listr2: 8.2.5
       magic-string: 0.30.17
@@ -23666,7 +23669,7 @@ snapshots:
       cross-spawn: 7.0.6
       eventsource: 3.0.2
       eventsource-parser: 3.1.1
-      express: 5.2.1
+      express: 5.2.1(supports-color@7.2.0)
       express-rate-limit: 8.7.1(express@5.2.1)(supports-color@7.2.0)
       hono: 4.13.13
       jose: 6.2.12
@@ -23888,7 +23891,7 @@ snapshots:
       '@nestjs/common': 11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@nestjs/core': 11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@11.2.7)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       cors: 2.8.6
-      express: 5.2.1
+      express: 5.2.1(supports-color@7.2.0)
       multer: 2.4.0
       path-to-regexp: 8.4.2
       tslib: 2.8.1
@@ -23978,7 +23981,7 @@ snapshots:
 
   '@npmcli/agent@3.0.0':
     dependencies:
-      agent-base: 7.1.0(supports-color@7.2.0)
+      agent-base: 7.1.0
       http-proxy-agent: 7.0.0
       https-proxy-agent: 7.0.1
       lru-cache: 10.0.1
@@ -23988,7 +23991,7 @@ snapshots:
 
   '@npmcli/agent@4.0.2':
     dependencies:
-      agent-base: 7.1.0(supports-color@7.2.0)
+      agent-base: 7.1.0
       http-proxy-agent: 7.0.0
       https-proxy-agent: 7.0.1
       lru-cache: 11.5.2
@@ -27889,7 +27892,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  agent-base@7.1.0(supports-color@7.2.0):
+  agent-base@7.1.0:
     dependencies:
       debug: 4.4.3(supports-color@7.2.0)
     transitivePeerDependencies:
@@ -27901,7 +27904,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  agent-base@7.1.2(supports-color@7.2.0):
+  agent-base@7.1.2:
     dependencies:
       debug: 4.4.3(supports-color@7.2.0)
     transitivePeerDependencies:
@@ -28405,7 +28408,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  body-parser@2.3.0:
+  body-parser@2.3.0(supports-color@7.2.0):
     dependencies:
       bytes: 3.1.2
       content-type: 2.1.0
@@ -30558,12 +30561,12 @@ snapshots:
 
   express-rate-limit@7.5.0(express@5.2.1):
     dependencies:
-      express: 5.2.1
+      express: 5.2.1(supports-color@7.2.0)
 
   express-rate-limit@8.7.1(express@5.2.1)(supports-color@7.2.0):
     dependencies:
       debug: 4.4.3(supports-color@7.2.0)
-      express: 5.2.1
+      express: 5.2.1(supports-color@7.2.0)
       ip-address: 10.5.0
     transitivePeerDependencies:
       - supports-color
@@ -30604,10 +30607,10 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  express@5.2.1:
+  express@5.2.1(supports-color@7.2.0):
     dependencies:
       accepts: 2.0.0
-      body-parser: 2.3.0
+      body-parser: 2.3.0(supports-color@7.2.0)
       content-disposition: 1.1.0
       content-type: 1.0.5
       cookie: 0.7.1
@@ -30617,7 +30620,7 @@ snapshots:
       encodeurl: 2.0.0
       escape-html: 1.0.3
       etag: 1.8.1
-      finalhandler: 2.1.1
+      finalhandler: 2.1.1(supports-color@7.2.0)
       fresh: 2.0.0
       http-errors: 2.0.1
       merge-descriptors: 2.0.0
@@ -30628,8 +30631,8 @@ snapshots:
       proxy-addr: 2.0.8
       qs: 6.16.0
       range-parser: 1.3.0
-      router: 2.2.0
-      send: 1.2.1
+      router: 2.2.0(supports-color@7.2.0)
+      send: 1.2.1(supports-color@7.2.0)
       serve-static: 2.2.1
       statuses: 2.0.2
       type-is: 2.1.0
@@ -30771,7 +30774,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  finalhandler@2.1.1:
+  finalhandler@2.1.1(supports-color@7.2.0):
     dependencies:
       debug: 4.4.3(supports-color@7.2.0)
       encodeurl: 2.0.0
@@ -31523,14 +31526,14 @@ snapshots:
 
   http-proxy-agent@7.0.0:
     dependencies:
-      agent-base: 7.1.0(supports-color@7.2.0)
+      agent-base: 7.1.0
       debug: 4.4.3(supports-color@7.2.0)
     transitivePeerDependencies:
       - supports-color
 
-  http-proxy-agent@7.0.2(supports-color@7.2.0):
+  http-proxy-agent@7.0.2:
     dependencies:
-      agent-base: 7.1.0(supports-color@7.2.0)
+      agent-base: 7.1.0
       debug: 4.4.3(supports-color@7.2.0)
     transitivePeerDependencies:
       - supports-color
@@ -31605,14 +31608,14 @@ snapshots:
 
   https-proxy-agent@7.0.1:
     dependencies:
-      agent-base: 7.1.0(supports-color@7.2.0)
+      agent-base: 7.1.0
       debug: 4.4.3(supports-color@7.2.0)
     transitivePeerDependencies:
       - supports-color
 
-  https-proxy-agent@7.0.6(supports-color@7.2.0):
+  https-proxy-agent@7.0.6:
     dependencies:
-      agent-base: 7.1.2(supports-color@7.2.0)
+      agent-base: 7.1.2
       debug: 4.4.3(supports-color@7.2.0)
     transitivePeerDependencies:
       - supports-color
@@ -32286,15 +32289,15 @@ snapshots:
 
   jsdoc-type-pratt-parser@4.0.0: {}
 
-  jsdom@26.0.0(supports-color@7.2.0):
+  jsdom@26.0.0:
     dependencies:
       cssstyle: 4.2.1
       data-urls: 5.0.0
       decimal.js: 10.6.0
       form-data: 4.0.6
       html-encoding-sniffer: 4.0.0
-      http-proxy-agent: 7.0.2(supports-color@7.2.0)
-      https-proxy-agent: 7.0.6(supports-color@7.2.0)
+      http-proxy-agent: 7.0.2
+      https-proxy-agent: 7.0.6
       is-potential-custom-element-name: 1.0.1
       nwsapi: 2.2.28
       parse5: 7.2.1
@@ -35931,7 +35934,7 @@ snapshots:
 
   rope-sequence@1.3.4: {}
 
-  router@2.2.0:
+  router@2.2.0(supports-color@7.2.0):
     dependencies:
       debug: 4.4.3(supports-color@7.2.0)
       depd: 2.0.0
@@ -36071,7 +36074,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  send@1.2.1:
+  send@1.2.1(supports-color@7.2.0):
     dependencies:
       debug: 4.4.3(supports-color@7.2.0)
       encodeurl: 2.0.0
@@ -36133,7 +36136,7 @@ snapshots:
       encodeurl: 2.0.0
       escape-html: 1.0.3
       parseurl: 1.3.3
-      send: 1.2.1
+      send: 1.2.1(supports-color@7.2.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -36194,7 +36197,7 @@ snapshots:
       fast-glob: 3.3.3
       fs-extra: 11.4.0
       fuzzysort: 3.1.0
-      https-proxy-agent: 7.0.6(supports-color@7.2.0)
+      https-proxy-agent: 7.0.6
       kleur: 4.1.5
       msw: 2.15.0(@types/node@20.19.43)(typescript@5.8.2)
       node-fetch: 3.3.2
@@ -37724,7 +37727,7 @@ snapshots:
     optionalDependencies:
       '@types/node': 20.19.43
       '@vitest/browser': 3.2.7(msw@2.15.0(@types/node@20.19.43)(typescript@5.8.2))(playwright@1.64.0)(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(less@4.9.1)(lightningcss@1.32.0)(sass@1.105.1)(terser@5.51.2)(yaml@2.9.0))(vitest@3.2.7)
-      jsdom: 26.0.0(supports-color@7.2.0)
+      jsdom: 26.0.0
     transitivePeerDependencies:
       - less
       - lightningcss
@@ -37762,7 +37765,7 @@ snapshots:
     optionalDependencies:
       '@types/node': 20.19.43
       '@vitest/browser': 3.2.7(msw@2.15.0(@types/node@20.19.43)(typescript@5.8.2))(playwright@1.64.0)(vite@7.3.6(@types/node@20.19.43)(jiti@2.7.0)(less@4.9.1)(lightningcss@1.32.0)(sass@1.105.1)(terser@5.51.2)(yaml@2.9.0))(vitest@3.2.7)
-      jsdom: 26.0.0(supports-color@7.2.0)
+      jsdom: 26.0.0
     transitivePeerDependencies:
       - jiti
       - less

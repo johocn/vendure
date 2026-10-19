@@ -18,6 +18,7 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@nestjs/core");
 const core_2 = require("@vendure/core");
 const after_sales_plugin_1 = require("@vendure/after-sales-plugin");
+const coupon_plugin_1 = require("@vendure/coupon-plugin");
 const constants_1 = require("./constants");
 const inbox_message_entity_1 = require("./inbox-message.entity");
 const notification_admin_resolver_1 = require("./notification-admin.resolver");
@@ -107,6 +108,10 @@ let NotificationPlugin = NotificationPlugin_1 = class NotificationPlugin {
         // 售后超时自动化等内部触发的商家提醒（after-sales-plugin 经事件解耦发布）
         this.eventBus.ofType(after_sales_plugin_1.AfterSalesMerchantNotifyEvent).subscribe((event) => {
             void this.notificationService.notifyAfterSalesMerchant(event.ctx, event.requestId, event.title, event.content);
+        });
+        // 券过期提醒（FR-A2）：coupon-plugin 定时扫描发布，此处统一触达 + R4 防骚扰去重
+        this.eventBus.ofType(coupon_plugin_1.CouponExpireRemindEvent).subscribe((event) => {
+            void this.notificationService.onCouponExpireRemind(event);
         });
     }
 };

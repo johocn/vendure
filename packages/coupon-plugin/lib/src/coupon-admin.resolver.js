@@ -36,6 +36,14 @@ let CouponAdminResolver = class CouponAdminResolver {
     async customerCoupons(ctx, options) {
         return this.couponService.listAllCoupons(ctx, options);
     }
+    /** 核销看板（FR-A3）：按模板聚合领券量/核销量/核销率/过期率，时间筛选按领取时间闭区间 */
+    async couponRedemptionStats(ctx, templateId, from, to) {
+        return this.couponService.couponRedemptionStats(ctx, {
+            templateId: templateId != null ? Number(templateId) : null,
+            from: from ? new Date(from) : null,
+            to: to ? new Date(to) : null,
+        });
+    }
     async createCouponTemplate(ctx, input) {
         return this.couponService.createTemplate(ctx, input);
     }
@@ -87,6 +95,17 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], CouponAdminResolver.prototype, "customerCoupons", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder, shop_plugin_1.manageOwnShop.Permission),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('templateId', { nullable: true })),
+    __param(2, (0, graphql_1.Args)('from', { nullable: true, type: () => String })),
+    __param(3, (0, graphql_1.Args)('to', { nullable: true, type: () => String })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, String, String]),
+    __metadata("design:returntype", Promise)
+], CouponAdminResolver.prototype, "couponRedemptionStats", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Transaction)(),

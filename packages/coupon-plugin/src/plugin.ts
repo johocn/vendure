@@ -14,6 +14,7 @@ import {
 import gql from 'graphql-tag';
 
 import { COUPON_PLUGIN_OPTIONS, loggerCtx } from './constants';
+import { CouponExpireReminderService } from './coupon-expire-reminder.service';
 import { CouponAdminResolver } from './coupon-admin.resolver';
 import { CouponBindingAdminResolver } from './coupon-binding-admin.resolver';
 import { CouponBindingService } from './coupon-binding.service';
@@ -138,6 +139,7 @@ type CustomerCoupon implements Node {
         CouponBindingService,
         CouponSaleService,
         CouponSettlementService,
+        CouponExpireReminderService,
         InStoreBillService,
         AddCouponFieldsMigration,
         CreateProductCouponBindingMigration,
@@ -206,6 +208,19 @@ type CustomerCoupon implements Node {
             type CustomerCouponList implements PaginatedList {
                 items: [CustomerCoupon!]!
                 totalItems: Int!
+            }
+
+            type CouponRedemptionStat {
+                templateId: ID!
+                name: String
+                claimed: Int!
+                used: Int!
+                expired: Int!
+                unused: Int!
+                returned: Int!
+                invalid: Int!
+                redemptionRate: Float!
+                expiredRate: Float!
             }
 
             type InStoreBillQuote {
@@ -518,6 +533,7 @@ type CustomerCoupon implements Node {
                 couponBundle(id: ID!): CouponBundle
                 couponSaleOrders(options: CouponSaleOrderListOptions): CouponSaleOrderList!
                 couponSaleOrder(id: ID!): CouponSaleOrder
+                couponRedemptionStats(templateId: ID, from: String, to: String): [CouponRedemptionStat!]!
                 couponSettlementOrders(options: CouponSettlementOrderListOptions): CouponSettlementOrderList!
                 couponSettlementOrder(id: ID!): CouponSettlementOrder
                 studentVerifications(status: String): [StudentVerificationItem!]!
@@ -802,6 +818,25 @@ export class CouponPlugin implements OnApplicationBootstrap {
             settle();
             setInterval(settle, settleMs);
             Logger.info(`Coupon settlement cycle enabled (every ${settleMs}ms)`, loggerCtx);
+        }
+
+        // FR-A2 券过期提醒（t1 营销补齐 PRD）：周期扫描 UNUSED/RETURNED 且临期（3 天/1 天窗口）
+        // 的领券记录 → CouponExpireRemindEvent → notification-plugin 触达（站内信全量 +
+        // 公众号增强，R4 同用户同券同阶段 7 天去重在订阅侧统一做，重复扫描幂等）。
+        // 默认开启（间隔 6h，扫描只读+事件发布无全量 UPDATE 风险）；COUPON_EXPIRE_REMIND_MS=0 显式关闭。
+        // 延迟 30s 首跑：避开 pm2 restart 启动窗口，保证 notification-plugin 事件订阅已就绪。
+        const remindMs = Number(process.env.COUPON_EXPIRE_REMIND_MS ?? 21600000);
+        if (remindMs > 0) {
+            const remind = () => {
+                this.injector
+                    .get(CouponExpireReminderService)
+                    .remindAllChannels()
+                    .catch((e) => Logger.error(`Coupon expire reminder failed: ${e.message}`, loggerCtx));
+            };
+            const firstRun = setTimeout(remind, 30000);
+            firstRun.unref?.();
+            setInterval(remind, remindMs);
+            Logger.info(`Coupon expire reminder enabled (every ${remindMs}ms)`, loggerCtx);
         }
 
         // 支付成功（订单下单成功）核销券

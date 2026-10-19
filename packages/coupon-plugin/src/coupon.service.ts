@@ -527,6 +527,77 @@ export class CouponService {
         return qb.getManyAndCount().then(([items, totalItems]) => ({ items, totalItems }));
     }
 
+    /* ------------------------- 核销看板（FR-A3，t1 营销补齐 PRD） ------------------------- */
+
+    /**
+     * 核销看板四指标：按模板聚合领券记录状态（仅状态计数，不新增埋点）。
+     * 口径：claimed=领取量（记录条数，CustomerCoupon 每行一张券实例）；used=核销量；
+     * redemptionRate=核销率=used/claimed；expiredRate=过期率=expired/claimed（百分比 0-100）。
+     * 时间筛选按领取时间（createdAt）闭区间；templateId 可选；属店隔离与 listAllCoupons 同法。
+     */
+    async couponRedemptionStats(
+        ctx: RequestContext,
+        options?: { templateId?: number | null; from?: Date | null; to?: Date | null },
+    ): Promise<Array<{
+        templateId: number;
+        name: string | null;
+        claimed: number;
+        used: number;
+        expired: number;
+        unused: number;
+        returned: number;
+        invalid: number;
+        redemptionRate: number;
+        expiredRate: number;
+    }>> {
+        const qb = this.connection
+            .getRepository(ctx, CustomerCoupon)
+            .createQueryBuilder('cc')
+            .leftJoin(CouponTemplate, 'tpl', 'tpl.id = cc.templateId')
+            .select('cc.templateId', 'templateId')
+            .addSelect('tpl.name', 'name')
+            .addSelect('COUNT(*)', 'total')
+            .addSelect("SUM(CASE WHEN cc.status = 'USED' THEN 1 ELSE 0 END)", 'used')
+            .addSelect("SUM(CASE WHEN cc.status = 'EXPIRED' THEN 1 ELSE 0 END)", 'expired')
+            .addSelect("SUM(CASE WHEN cc.status = 'UNUSED' THEN 1 ELSE 0 END)", 'unused')
+            .addSelect("SUM(CASE WHEN cc.status = 'RETURNED' THEN 1 ELSE 0 END)", 'returned')
+            .addSelect("SUM(CASE WHEN cc.status = 'INVALID' THEN 1 ELSE 0 END)", 'invalid')
+            .groupBy('cc.templateId')
+            .addGroupBy('tpl.name');
+        if (options?.templateId != null) {
+            qb.andWhere('cc.templateId = :templateId', { templateId: options.templateId });
+        }
+        if (options?.from != null) {
+            qb.andWhere('cc.createdAt >= :from', { from: options.from });
+        }
+        if (options?.to != null) {
+            qb.andWhere('cc.createdAt <= :to', { to: options.to });
+        }
+        const adminShopId = await this.resolveShopIdFromActiveUser(ctx, ctx.activeUserId);
+        if (adminShopId != null) {
+            qb.andWhere('(tpl.shopId IS NULL OR tpl.shopId = :adminShopId)', { adminShopId });
+        }
+        const rows = await qb.getRawMany();
+        return rows.map((r: any) => {
+            const claimed = Number(r.total ?? 0);
+            const used = Number(r.used ?? 0);
+            const expired = Number(r.expired ?? 0);
+            const rate = (n: number) => (claimed > 0 ? Math.round((n / claimed) * 10000) / 100 : 0);
+            return {
+                templateId: Number(r.templateId),
+                name: typeof r.name === 'string' ? r.name : null,
+                claimed,
+                used,
+                expired,
+                unused: Number(r.unused ?? 0),
+                returned: Number(r.returned ?? 0),
+                invalid: Number(r.invalid ?? 0),
+                redemptionRate: rate(used),
+                expiredRate: rate(expired),
+            };
+        });
+    }
+
     /* ------------------------- 积分兑换商城 ------------------------- */
 
     async pointsMallTemplates(ctx: RequestContext): Promise<CouponTemplate[]> {

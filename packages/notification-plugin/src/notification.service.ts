@@ -14,6 +14,7 @@ import {
 import { In } from 'typeorm';
 
 import { AfterSalesRequest } from '@vendure/after-sales-plugin';
+import { CouponExpireRemindEvent } from '@vendure/coupon-plugin';
 import { Shop } from '@vendure/shop-plugin';
 
 import { loggerCtx, NOTIFICATION_PLUGIN_OPTIONS } from './constants';
@@ -170,6 +171,52 @@ export class NotificationService {
             customerId: order.customer.id,
             templateParams: { orderCode: order.code, amount: String(refundTotalWithTax) },
         });
+    }
+
+    // ---------- 券过期提醒（FR-A2，事件来自 coupon-plugin 定时扫描） ----------
+
+    /**
+     * R4 防骚扰：同用户同券同阶段 7 天内最多 1 次。
+     * 去重锚点 = scene + 渠道 + 顾客 + 阶段标题 + 券码（content LIKE）；
+     * 同模板多实例只提醒一次（文案一致），不同券各提醒一次。
+     * 微信通道未配置时 deliver 自动降级为仅站内信（WechatNotifierProvider 返回 false）。
+     */
+    async onCouponExpireRemind(event: CouponExpireRemindEvent): Promise<void> {
+        try {
+            const { ctx, payload } = event;
+            const title = payload.stage === '1d' ? '优惠券明天过期' : '优惠券 3 天后过期';
+            const d = payload.expiresAt instanceof Date ? payload.expiresAt : new Date(payload.expiresAt);
+            const dateText = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            const content = `您的优惠券「${payload.templateName}」（券码 ${payload.couponCode}）将于 ${dateText} 过期，记得使用哦。`;
+            const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+            const dup = await this.connection
+                .getRepository(ctx, InboxMessage)
+                .createQueryBuilder('m')
+                .where('m.scene = :scene', { scene: 'coupon_expire' })
+                .andWhere('m.channelId = :channelId', { channelId: ctx.channelId as number })
+                .andWhere('m.customerId = :customerId', { customerId: Number(payload.customerId) })
+                .andWhere('m.title = :title', { title })
+                .andWhere('m.content LIKE :pat', { pat: `%${payload.couponCode}%` })
+                .andWhere('m.createdAt >= :since', { since })
+                .getOne();
+            if (dup) return;
+            await this.deliver(ctx, {
+                scene: 'coupon_expire',
+                title,
+                content,
+                recipientType: 'customer',
+                customerId: payload.customerId,
+                link: '/coupon',
+                templateParams: {
+                    couponCode: payload.couponCode,
+                    couponName: payload.templateName,
+                    expiresAt: d.toISOString(),
+                    stage: payload.stage,
+                },
+            });
+        } catch (err: any) {
+            Logger.warn(`onCouponExpireRemind failed: ${err?.message ?? err}`, loggerCtx);
+        }
     }
 
     // ---------- 工具 ----------

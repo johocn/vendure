@@ -49,6 +49,22 @@ export class CouponAdminResolver {
         return this.couponService.listAllCoupons(ctx, options);
     }
 
+    /** 核销看板（FR-A3）：按模板聚合领券量/核销量/核销率/过期率，时间筛选按领取时间闭区间 */
+    @Query()
+    @Allow(Permission.UpdateOrder, manageOwnShop.Permission)
+    async couponRedemptionStats(
+        @Ctx() ctx: RequestContext,
+        @Args('templateId', { nullable: true }) templateId?: string,
+        @Args('from', { nullable: true, type: () => String }) from?: string,
+        @Args('to', { nullable: true, type: () => String }) to?: string,
+    ) {
+        return this.couponService.couponRedemptionStats(ctx, {
+            templateId: templateId != null ? Number(templateId) : null,
+            from: from ? new Date(from) : null,
+            to: to ? new Date(to) : null,
+        });
+    }
+
     @Mutation()
     @Transaction()
     @Allow(Permission.UpdateOrder, manageOwnShop.Permission)

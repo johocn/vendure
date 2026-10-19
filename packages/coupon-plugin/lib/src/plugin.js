@@ -22,6 +22,7 @@ const core_1 = require("@nestjs/core");
 const core_2 = require("@vendure/core");
 const graphql_tag_1 = __importDefault(require("graphql-tag"));
 const constants_1 = require("./constants");
+const coupon_expire_reminder_service_1 = require("./coupon-expire-reminder.service");
 const coupon_admin_resolver_1 = require("./coupon-admin.resolver");
 const coupon_binding_admin_resolver_1 = require("./coupon-binding-admin.resolver");
 const coupon_binding_service_1 = require("./coupon-binding.service");
@@ -129,7 +130,7 @@ let CouponPlugin = CouponPlugin_1 = class CouponPlugin {
         return CouponPlugin_1;
     }
     async onApplicationBootstrap() {
-        var _a, _b;
+        var _a, _b, _c, _d;
         this.injector = new core_2.Injector(this.moduleRef);
         this.couponService.init(this.injector);
         (0, coupon_runtime_1.setCouponConnection)(this.injector.get(core_2.TransactionalConnection));
@@ -197,6 +198,24 @@ let CouponPlugin = CouponPlugin_1 = class CouponPlugin {
             settle();
             setInterval(settle, settleMs);
             core_2.Logger.info(`Coupon settlement cycle enabled (every ${settleMs}ms)`, constants_1.loggerCtx);
+        }
+        // FR-A2 券过期提醒（t1 营销补齐 PRD）：周期扫描 UNUSED/RETURNED 且临期（3 天/1 天窗口）
+        // 的领券记录 → CouponExpireRemindEvent → notification-plugin 触达（站内信全量 +
+        // 公众号增强，R4 同用户同券同阶段 7 天去重在订阅侧统一做，重复扫描幂等）。
+        // 默认开启（间隔 6h，扫描只读+事件发布无全量 UPDATE 风险）；COUPON_EXPIRE_REMIND_MS=0 显式关闭。
+        // 延迟 30s 首跑：避开 pm2 restart 启动窗口，保证 notification-plugin 事件订阅已就绪。
+        const remindMs = Number((_c = process.env.COUPON_EXPIRE_REMIND_MS) !== null && _c !== void 0 ? _c : 21600000);
+        if (remindMs > 0) {
+            const remind = () => {
+                this.injector
+                    .get(coupon_expire_reminder_service_1.CouponExpireReminderService)
+                    .remindAllChannels()
+                    .catch((e) => core_2.Logger.error(`Coupon expire reminder failed: ${e.message}`, constants_1.loggerCtx));
+            };
+            const firstRun = setTimeout(remind, 30000);
+            (_d = firstRun.unref) === null || _d === void 0 ? void 0 : _d.call(firstRun);
+            setInterval(remind, remindMs);
+            core_2.Logger.info(`Coupon expire reminder enabled (every ${remindMs}ms)`, constants_1.loggerCtx);
         }
         // 支付成功（订单下单成功）核销券
         this.eventBus.ofType(core_2.OrderPlacedEvent).subscribe(async (event) => {
@@ -279,6 +298,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
             coupon_binding_service_1.CouponBindingService,
             coupon_sale_service_1.CouponSaleService,
             coupon_settlement_service_1.CouponSettlementService,
+            coupon_expire_reminder_service_1.CouponExpireReminderService,
             in_store_bill_service_1.InStoreBillService,
             migrations_1.AddCouponFieldsMigration,
             migrations_1.CreateProductCouponBindingMigration,
@@ -347,6 +367,19 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
             type CustomerCouponList implements PaginatedList {
                 items: [CustomerCoupon!]!
                 totalItems: Int!
+            }
+
+            type CouponRedemptionStat {
+                templateId: ID!
+                name: String
+                claimed: Int!
+                used: Int!
+                expired: Int!
+                unused: Int!
+                returned: Int!
+                invalid: Int!
+                redemptionRate: Float!
+                expiredRate: Float!
             }
 
             type InStoreBillQuote {
@@ -659,6 +692,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 couponBundle(id: ID!): CouponBundle
                 couponSaleOrders(options: CouponSaleOrderListOptions): CouponSaleOrderList!
                 couponSaleOrder(id: ID!): CouponSaleOrder
+                couponRedemptionStats(templateId: ID, from: String, to: String): [CouponRedemptionStat!]!
                 couponSettlementOrders(options: CouponSettlementOrderListOptions): CouponSettlementOrderList!
                 couponSettlementOrder(id: ID!): CouponSettlementOrder
                 studentVerifications(status: String): [StudentVerificationItem!]!

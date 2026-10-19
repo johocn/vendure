@@ -19,11 +19,13 @@
     "@vendure/common": "^3.6.0",
     "@vendure/core": "^3.6.0",
     "@vendure/address-plugin": "^0.0.1",
+    "@vendure/coupon-plugin": "^0.0.1",
     "@vendure/shop-plugin": "^0.0.1"
   },
   "devDependencies": {
     "@vendure/common": "workspace:*",
     "@vendure/core": "workspace:*",
+    "@vendure/coupon-plugin": "workspace:*",
     "rimraf": "^5.0.5",
     "typescript": "5.8.2"
   }

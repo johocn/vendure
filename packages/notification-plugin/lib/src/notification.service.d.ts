@@ -1,4 +1,5 @@
 import { CustomerService, ID, OrderService, RequestContext, TransactionalConnection } from '@vendure/core';
+import { CouponExpireRemindEvent } from '@vendure/coupon-plugin';
 import { InboxMessage } from './inbox-message.entity';
 import { NotifierProvider } from './notifier/notifier-provider';
 import { InboxMessageListOptions, NotificationFrame, NotificationPluginOptions } from './types';
@@ -39,6 +40,13 @@ export declare class NotificationService {
     onOrderStateTransition(ctx: RequestContext, orderId: ID, toState: string): Promise<void>;
     /** 退款 Settled → 买家到账通知。 */
     onRefundSettled(ctx: RequestContext, orderId: ID, refundTotalWithTax: number): Promise<void>;
+    /**
+     * R4 防骚扰：同用户同券同阶段 7 天内最多 1 次。
+     * 去重锚点 = scene + 渠道 + 顾客 + 阶段标题 + 券码（content LIKE）；
+     * 同模板多实例只提醒一次（文案一致），不同券各提醒一次。
+     * 微信通道未配置时 deliver 自动降级为仅站内信（WechatNotifierProvider 返回 false）。
+     */
+    onCouponExpireRemind(event: CouponExpireRemindEvent): Promise<void>;
     private deliver;
     /** 涉及店铺的店主收件箱推送（沿 Product.shopId → Shop.administratorId）。 */
     private notifyShopOwners;

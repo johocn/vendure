@@ -20,6 +20,19 @@ export declare class CouponAdminResolver {
         items: CustomerCoupon[];
         totalItems: number;
     }>;
+    /** 核销看板（FR-A3）：按模板聚合领券量/核销量/核销率/过期率，时间筛选按领取时间闭区间 */
+    couponRedemptionStats(ctx: RequestContext, templateId?: string, from?: string, to?: string): Promise<{
+        templateId: number;
+        name: string | null;
+        claimed: number;
+        used: number;
+        expired: number;
+        unused: number;
+        returned: number;
+        invalid: number;
+        redemptionRate: number;
+        expiredRate: number;
+    }[]>;
     createCouponTemplate(ctx: RequestContext, input: any): Promise<CouponTemplate>;
     updateCouponTemplate(ctx: RequestContext, input: any): Promise<CouponTemplate>;
     deleteCouponTemplate(ctx: RequestContext, id: ID): Promise<boolean>;
