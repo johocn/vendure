@@ -90,16 +90,16 @@ __decorate([
     __metadata("design:type", Object)
 ], CouponSettlementOrder.prototype, "lastError", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
-    __metadata("design:type", Object)
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Date)
 ], CouponSettlementOrder.prototype, "settledAt", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
-    __metadata("design:type", Object)
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Date)
 ], CouponSettlementOrder.prototype, "paidOutAt", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'datetime', nullable: true }),
-    __metadata("design:type", Object)
+    (0, typeorm_1.Column)({ nullable: true }),
+    __metadata("design:type", Date)
 ], CouponSettlementOrder.prototype, "reversedAt", void 0);
 __decorate([
     (0, typeorm_1.Column)('varchar', { nullable: true }),

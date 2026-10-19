@@ -83,17 +83,17 @@ export class CouponSettlementOrder extends VendureEntity {
     @Column('text', { nullable: true })
     lastError: string | null;
 
-    /** 分账受理时间 */
-    @Column({ type: 'datetime', nullable: true })
-    settledAt?: Date | null;
+    /** 分账受理时间（禁用 `| null` 联合类型：lib 编译后 design:type 变 Object，TypeORM 无法推断列型） */
+    @Column({ nullable: true })
+    settledAt?: Date;
 
     /** 分账完成（回执 FINISHED）时间 */
-    @Column({ type: 'datetime', nullable: true })
-    paidOutAt?: Date | null;
+    @Column({ nullable: true })
+    paidOutAt?: Date;
 
     /** 追偿完成时间（T8 退款联动） */
-    @Column({ type: 'datetime', nullable: true })
-    reversedAt?: Date | null;
+    @Column({ nullable: true })
+    reversedAt?: Date;
 
     /** 备注 */
     @Column('varchar', { nullable: true })

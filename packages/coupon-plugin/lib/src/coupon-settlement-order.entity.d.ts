@@ -40,12 +40,12 @@ export declare class CouponSettlementOrder extends VendureEntity {
     attempts: number;
     /** 最近一次提交/回执错误（重试队列排查用） */
     lastError: string | null;
-    /** 分账受理时间 */
-    settledAt?: Date | null;
+    /** 分账受理时间（禁用 `| null` 联合类型：lib 编译后 design:type 变 Object，TypeORM 无法推断列型） */
+    settledAt?: Date;
     /** 分账完成（回执 FINISHED）时间 */
-    paidOutAt?: Date | null;
+    paidOutAt?: Date;
     /** 追偿完成时间（T8 退款联动） */
-    reversedAt?: Date | null;
+    reversedAt?: Date;
     /** 备注 */
     remark: string | null;
 }
