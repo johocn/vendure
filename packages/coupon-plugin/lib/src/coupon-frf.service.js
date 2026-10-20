@@ -125,12 +125,7 @@ let CouponFrFService = class CouponFrFService {
         if (!view || !tpl) {
             return { status: 'NOT_IN_ACTIVITY', coupon: null };
         }
-        // 通用领取前校验：perUserLimit + 会员等级（R2/E2）
-        const blocked = await this.couponService.assertCustomerCanClaim(ctx, customerId, tpl);
-        if (blocked) {
-            return { status: blocked, coupon: null };
-        }
-        // 预查当天记录（幂等快路径）
+        // 「当天已领」优先于通用校验（幂等快路径：语义精确为 ALREADY_CLAIMED 而非 PER_USER_LIMIT）
         const date = (0, coupon_frf_1.claimDateUtc8)();
         const recordRepo = this.connection.getRepository(ctx, coupon_daily_claim_record_entity_1.CouponDailyClaimRecord);
         const existing = await recordRepo.findOne({
@@ -146,6 +141,11 @@ let CouponFrFService = class CouponFrFService {
                 ? await this.connection.getRepository(ctx, customer_coupon_entity_1.CustomerCoupon).findOne({ where: { id: existing.couponId } })
                 : null;
             return { status: 'ALREADY_CLAIMED', coupon: coupon !== null && coupon !== void 0 ? coupon : null };
+        }
+        // 通用领取前校验：perUserLimit + 会员等级（R2/E2）
+        const blocked = await this.couponService.assertCustomerCanClaim(ctx, customerId, tpl);
+        if (blocked) {
+            return { status: blocked, coupon: null };
         }
         // 事务化发券（R3）：扣量 → 建券 → 落记录（唯一索引兜底），任一步失败整体回滚
         try {
