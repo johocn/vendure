@@ -37,6 +37,7 @@ const coupon_sale_shop_resolver_1 = require("./coupon-sale-shop.resolver");
 const coupon_sale_service_1 = require("./coupon-sale.service");
 const coupon_settlement_admin_resolver_1 = require("./coupon-settlement-admin.resolver");
 const coupon_settlement_service_1 = require("./coupon-settlement.service");
+const coupon_settlement_reconcile_service_1 = require("./coupon-settlement-reconcile.service");
 const coupon_customer_coupon_resolver_1 = require("./coupon-customer-coupon.resolver");
 const coupon_template_resolver_1 = require("./coupon-template.resolver");
 const coupon_promotion_action_1 = require("./coupon-promotion-action");
@@ -49,6 +50,7 @@ const coupon_template_entity_1 = require("./coupon-template.entity");
 const coupon_bundle_entity_1 = require("./coupon-bundle.entity");
 const coupon_sale_order_entity_1 = require("./coupon-sale-order.entity");
 const coupon_settlement_order_entity_1 = require("./coupon-settlement-order.entity");
+const coupon_settlement_reconcile_diff_entity_1 = require("./coupon-settlement-reconcile-diff.entity");
 const customer_coupon_entity_1 = require("./customer-coupon.entity");
 const migrations_1 = require("./migrations");
 const add_coupon_distribution_channels_1 = require("./migrations/add-coupon-distribution-channels");
@@ -295,13 +297,14 @@ CouponPlugin.options = {};
 exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
     (0, core_2.VendurePlugin)({
         imports: [core_2.PluginCommonModule],
-        entities: [coupon_template_entity_1.CouponTemplate, customer_coupon_entity_1.CustomerCoupon, product_coupon_binding_entity_1.ProductCouponBinding, in_store_bill_entity_1.InStoreBill, coupon_sale_order_entity_1.CouponSaleOrder, coupon_bundle_entity_1.CouponBundle, coupon_bundle_entity_1.CouponBundleItem, coupon_settlement_order_entity_1.CouponSettlementOrder, coupon_fission_record_entity_1.CouponFissionRecord, coupon_grant_batch_entity_1.CouponGrantBatch],
+        entities: [coupon_template_entity_1.CouponTemplate, customer_coupon_entity_1.CustomerCoupon, product_coupon_binding_entity_1.ProductCouponBinding, in_store_bill_entity_1.InStoreBill, coupon_sale_order_entity_1.CouponSaleOrder, coupon_bundle_entity_1.CouponBundle, coupon_bundle_entity_1.CouponBundleItem, coupon_settlement_order_entity_1.CouponSettlementOrder, coupon_settlement_reconcile_diff_entity_1.CouponSettlementReconcileDiff, coupon_fission_record_entity_1.CouponFissionRecord, coupon_grant_batch_entity_1.CouponGrantBatch],
         providers: [
             { provide: constants_1.COUPON_PLUGIN_OPTIONS, useFactory: () => CouponPlugin.options },
             coupon_service_1.CouponService,
             coupon_binding_service_1.CouponBindingService,
             coupon_sale_service_1.CouponSaleService,
             coupon_settlement_service_1.CouponSettlementService,
+            coupon_settlement_reconcile_service_1.CouponSettlementReconcileService,
             coupon_expire_reminder_service_1.CouponExpireReminderService,
             coupon_fission_service_1.CouponFissionService,
             in_store_bill_service_1.InStoreBillService,
@@ -319,6 +322,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
             migrations_1.CreateCouponSettlementMigration,
             migrations_1.AddInStoreBillShopFieldsMigration,
             migrations_1.CreateCouponFissionMigration,
+            migrations_1.CreateCouponReconcileMigration,
         ],
         exports: [coupon_service_1.CouponService, coupon_binding_service_1.CouponBindingService, coupon_sale_service_1.CouponSaleService],
         adminApiExtensions: {
@@ -708,6 +712,42 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 failed: Int!
             }
 
+            type CouponSettlementReconcileDiff implements Node {
+                id: ID!
+                runId: String!
+                channelId: ID!
+                settlementOrderId: ID
+                settlementNo: String
+                diffType: String!
+                severity: String!
+                detail: String
+                resolvedAt: DateTime
+                remark: String
+                createdAt: DateTime!
+            }
+
+            type CouponReconcileDiffList implements PaginatedList {
+                items: [CouponSettlementReconcileDiff!]!
+                totalItems: Int!
+            }
+
+            input CouponReconcileDiffListOptions {
+                skip: Int
+                take: Int
+                severity: String
+                diffType: String
+                includeResolved: Boolean
+            }
+
+            type CouponReconcileRunResult {
+                runId: String!
+                checked: Int!
+                diffs: Int!
+                high: Int!
+                medium: Int!
+                low: Int!
+            }
+
             extend type Query {
                 couponTemplates(options: CouponTemplateListOptions): CouponTemplateList!
                 couponTemplate(id: ID!): CouponTemplate
@@ -727,6 +767,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 couponRedemptionStats(templateId: ID, from: String, to: String): [CouponRedemptionStat!]!
                 couponSettlementOrders(options: CouponSettlementOrderListOptions): CouponSettlementOrderList!
                 couponSettlementOrder(id: ID!): CouponSettlementOrder
+                couponReconcileDiffs(options: CouponReconcileDiffListOptions): CouponReconcileDiffList!
                 studentVerifications(status: String): [StudentVerificationItem!]!
                 couponGrantBatches(take: Int): [CouponGrantBatch!]!
                 couponFissionRecords(take: Int): [CouponFissionRecord!]!
@@ -764,6 +805,8 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 deleteCouponBundle(id: ID!): Boolean!
                 refundCouponSaleOrder(id: ID!, reason: String): CouponSaleOrder!
                 runCouponSettlementCycle: CouponSettlementCycleResult!
+                runCouponReconcile: CouponReconcileRunResult!
+                resolveCouponReconcileDiff(id: ID!, remark: String): Boolean!
                 reviewStudentVerification(customerId: ID!, approve: Boolean!): StudentVerificationItem!
                 couponWinBackGrant(templateId: ID!, days: Int!, notify: Boolean): CouponGrantBatch!
             }

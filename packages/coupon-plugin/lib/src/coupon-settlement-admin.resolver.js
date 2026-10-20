@@ -15,14 +15,16 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CouponSettlementAdminResolver = void 0;
 const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
+const coupon_settlement_reconcile_service_1 = require("./coupon-settlement-reconcile.service");
 const coupon_settlement_service_1 = require("./coupon-settlement.service");
 /**
- * 券结算单后台（admin-api，T1）：结算流水查询 + 手动触发汇总周期（运维）。
+ * 券结算单后台（admin-api，T1 结算流水 + T5 对账）：查询 + 手动触发（运维）。
  * 权限对齐券商城后台（Permission.UpdateOrder），渠道隔离在 service 内按 ctx.channelId 过滤。
  */
 let CouponSettlementAdminResolver = class CouponSettlementAdminResolver {
-    constructor(settlementService) {
+    constructor(settlementService, reconcileService) {
         this.settlementService = settlementService;
+        this.reconcileService = reconcileService;
     }
     async couponSettlementOrders(ctx, options) {
         var _a, _b, _c;
@@ -38,6 +40,26 @@ let CouponSettlementAdminResolver = class CouponSettlementAdminResolver {
     /** 手动触发 T+1 汇总周期（补登 → 提交分账 → 回执推进），运维排查用 */
     async runCouponSettlementCycle(ctx) {
         return this.settlementService.manualRunCycle(ctx);
+    }
+    // ---- T5 结算对账 ----
+    /** 台账页差异查询（默认只看未解决差异） */
+    async couponReconcileDiffs(ctx, options) {
+        var _a, _b, _c, _d, _e;
+        return this.reconcileService.listDiffs(ctx, {
+            skip: (_a = options === null || options === void 0 ? void 0 : options.skip) !== null && _a !== void 0 ? _a : 0,
+            take: (_b = options === null || options === void 0 ? void 0 : options.take) !== null && _b !== void 0 ? _b : 20,
+            severity: (_c = options === null || options === void 0 ? void 0 : options.severity) !== null && _c !== void 0 ? _c : undefined,
+            diffType: (_d = options === null || options === void 0 ? void 0 : options.diffType) !== null && _d !== void 0 ? _d : undefined,
+            includeResolved: (_e = options === null || options === void 0 ? void 0 : options.includeResolved) !== null && _e !== void 0 ? _e : false,
+        });
+    }
+    /** 手动跑一轮对账（结算单 ↔ 分账回单 ↔ 商户核销流水） */
+    async runCouponReconcile(ctx) {
+        return this.reconcileService.runReconcile(ctx);
+    }
+    /** 标记差异已处理（保留审计） */
+    async resolveCouponReconcileDiff(ctx, id, remark) {
+        return this.reconcileService.resolveDiff(ctx, Number(id), remark);
     }
 };
 exports.CouponSettlementAdminResolver = CouponSettlementAdminResolver;
@@ -67,8 +89,36 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext]),
     __metadata("design:returntype", Promise)
 ], CouponSettlementAdminResolver.prototype, "runCouponSettlementCycle", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('options', { nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], CouponSettlementAdminResolver.prototype, "couponReconcileDiffs", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], CouponSettlementAdminResolver.prototype, "runCouponReconcile", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('remark', { nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
+    __metadata("design:returntype", Promise)
+], CouponSettlementAdminResolver.prototype, "resolveCouponReconcileDiff", null);
 exports.CouponSettlementAdminResolver = CouponSettlementAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
-    __metadata("design:paramtypes", [coupon_settlement_service_1.CouponSettlementService])
+    __metadata("design:paramtypes", [coupon_settlement_service_1.CouponSettlementService,
+        coupon_settlement_reconcile_service_1.CouponSettlementReconcileService])
 ], CouponSettlementAdminResolver);
 //# sourceMappingURL=coupon-settlement-admin.resolver.js.map

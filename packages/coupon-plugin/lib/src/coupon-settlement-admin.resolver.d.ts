@@ -1,12 +1,14 @@
 import { ID, RequestContext } from '@vendure/core';
+import { CouponSettlementReconcileService } from './coupon-settlement-reconcile.service';
 import { CouponSettlementService } from './coupon-settlement.service';
 /**
- * 券结算单后台（admin-api，T1）：结算流水查询 + 手动触发汇总周期（运维）。
+ * 券结算单后台（admin-api，T1 结算流水 + T5 对账）：查询 + 手动触发（运维）。
  * 权限对齐券商城后台（Permission.UpdateOrder），渠道隔离在 service 内按 ctx.channelId 过滤。
  */
 export declare class CouponSettlementAdminResolver {
     private settlementService;
-    constructor(settlementService: CouponSettlementService);
+    private reconcileService;
+    constructor(settlementService: CouponSettlementService, reconcileService: CouponSettlementReconcileService);
     couponSettlementOrders(ctx: RequestContext, options?: any): Promise<{
         items: import("./coupon-settlement-order.entity").CouponSettlementOrder[];
         totalItems: number;
@@ -18,4 +20,20 @@ export declare class CouponSettlementAdminResolver {
         promoted: number;
         failed: number;
     }>;
+    /** 台账页差异查询（默认只看未解决差异） */
+    couponReconcileDiffs(ctx: RequestContext, options?: any): Promise<{
+        items: import("./coupon-settlement-reconcile-diff.entity").CouponSettlementReconcileDiff[];
+        totalItems: number;
+    }>;
+    /** 手动跑一轮对账（结算单 ↔ 分账回单 ↔ 商户核销流水） */
+    runCouponReconcile(ctx: RequestContext): Promise<{
+        runId: string;
+        checked: number;
+        diffs: number;
+        high: number;
+        medium: number;
+        low: number;
+    }>;
+    /** 标记差异已处理（保留审计） */
+    resolveCouponReconcileDiff(ctx: RequestContext, id: ID, remark?: string): Promise<boolean>;
 }

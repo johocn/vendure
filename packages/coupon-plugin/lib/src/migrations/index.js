@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CreateCouponFissionMigration = exports.AddInStoreBillShopFieldsMigration = exports.CreateCouponSettlementMigration = exports.AddCouponCategoryFieldMigration = exports.AddCouponPromoFieldsMigration = exports.AddCouponMarketingFieldsMigration = exports.CreateCouponSaleMigration = exports.AddCouponDistributionChannelsMigration = exports.CreateInStoreBillMigration = exports.AddCouponUsageSceneMigration = exports.AddCouponIndexes20260919 = exports.CreateProductCouponBindingMigration = exports.AddCouponFieldsMigration = void 0;
+exports.CreateCouponReconcileMigration = exports.CreateCouponFissionMigration = exports.AddInStoreBillShopFieldsMigration = exports.CreateCouponSettlementMigration = exports.AddCouponCategoryFieldMigration = exports.AddCouponPromoFieldsMigration = exports.AddCouponMarketingFieldsMigration = exports.CreateCouponSaleMigration = exports.AddCouponDistributionChannelsMigration = exports.CreateInStoreBillMigration = exports.AddCouponUsageSceneMigration = exports.AddCouponIndexes20260919 = exports.CreateProductCouponBindingMigration = exports.AddCouponFieldsMigration = void 0;
 // packages/coupon-plugin/src/migrations/index.ts
 var add_coupon_fields_1 = require("./add-coupon-fields");
 Object.defineProperty(exports, "AddCouponFieldsMigration", { enumerable: true, get: function () { return add_coupon_fields_1.AddCouponFieldsMigration; } });
@@ -28,4 +28,6 @@ var add_in_store_bill_shop_fields_1 = require("./add-in-store-bill-shop-fields")
 Object.defineProperty(exports, "AddInStoreBillShopFieldsMigration", { enumerable: true, get: function () { return add_in_store_bill_shop_fields_1.AddInStoreBillShopFieldsMigration; } });
 var create_coupon_fission_1 = require("./create-coupon-fission");
 Object.defineProperty(exports, "CreateCouponFissionMigration", { enumerable: true, get: function () { return create_coupon_fission_1.CreateCouponFissionMigration; } });
+var create_coupon_settlement_reconcile_1 = require("./create-coupon-settlement-reconcile");
+Object.defineProperty(exports, "CreateCouponReconcileMigration", { enumerable: true, get: function () { return create_coupon_settlement_reconcile_1.CreateCouponReconcileMigration; } });
 //# sourceMappingURL=index.js.map

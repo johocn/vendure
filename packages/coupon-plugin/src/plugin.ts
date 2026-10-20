@@ -29,6 +29,7 @@ import { CouponSaleShopResolver } from './coupon-sale-shop.resolver';
 import { CouponSaleService, setCouponSaleGateway } from './coupon-sale.service';
 import { CouponSettlementAdminResolver } from './coupon-settlement-admin.resolver';
 import { CouponSettlementService } from './coupon-settlement.service';
+import { CouponSettlementReconcileService } from './coupon-settlement-reconcile.service';
 import { CustomerCouponResolver } from './coupon-customer-coupon.resolver';
 import { CouponTemplateResolver } from './coupon-template.resolver';
 import { couponDiscountAction } from './coupon-promotion-action';
@@ -41,6 +42,7 @@ import { CouponTemplate } from './coupon-template.entity';
 import { CouponBundle, CouponBundleItem } from './coupon-bundle.entity';
 import { CouponSaleOrder } from './coupon-sale-order.entity';
 import { CouponSettlementOrder } from './coupon-settlement-order.entity';
+import { CouponSettlementReconcileDiff } from './coupon-settlement-reconcile-diff.entity';
 import { CustomerCoupon } from './customer-coupon.entity';
 import {
     AddCouponFieldsMigration,
@@ -55,6 +57,7 @@ import {
     CreateCouponSettlementMigration,
     AddInStoreBillShopFieldsMigration,
     CreateCouponFissionMigration,
+    CreateCouponReconcileMigration,
 } from './migrations';
 import { AddCouponDistributionChannelsMigration } from './migrations/add-coupon-distribution-channels';
 import { InStoreBill } from './in-store-bill.entity';
@@ -137,13 +140,14 @@ type CustomerCoupon implements Node {
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [CouponTemplate, CustomerCoupon, ProductCouponBinding, InStoreBill, CouponSaleOrder, CouponBundle, CouponBundleItem, CouponSettlementOrder, CouponFissionRecord, CouponGrantBatch],
+    entities: [CouponTemplate, CustomerCoupon, ProductCouponBinding, InStoreBill, CouponSaleOrder, CouponBundle, CouponBundleItem, CouponSettlementOrder, CouponSettlementReconcileDiff, CouponFissionRecord, CouponGrantBatch],
     providers: [
         { provide: COUPON_PLUGIN_OPTIONS, useFactory: () => CouponPlugin.options },
         CouponService,
         CouponBindingService,
         CouponSaleService,
         CouponSettlementService,
+        CouponSettlementReconcileService,
         CouponExpireReminderService,
         CouponFissionService,
         InStoreBillService,
@@ -161,6 +165,7 @@ type CustomerCoupon implements Node {
         CreateCouponSettlementMigration,
         AddInStoreBillShopFieldsMigration,
         CreateCouponFissionMigration,
+        CreateCouponReconcileMigration,
     ],
     exports: [CouponService, CouponBindingService, CouponSaleService],
     adminApiExtensions: {
@@ -550,6 +555,42 @@ type CustomerCoupon implements Node {
                 failed: Int!
             }
 
+            type CouponSettlementReconcileDiff implements Node {
+                id: ID!
+                runId: String!
+                channelId: ID!
+                settlementOrderId: ID
+                settlementNo: String
+                diffType: String!
+                severity: String!
+                detail: String
+                resolvedAt: DateTime
+                remark: String
+                createdAt: DateTime!
+            }
+
+            type CouponReconcileDiffList implements PaginatedList {
+                items: [CouponSettlementReconcileDiff!]!
+                totalItems: Int!
+            }
+
+            input CouponReconcileDiffListOptions {
+                skip: Int
+                take: Int
+                severity: String
+                diffType: String
+                includeResolved: Boolean
+            }
+
+            type CouponReconcileRunResult {
+                runId: String!
+                checked: Int!
+                diffs: Int!
+                high: Int!
+                medium: Int!
+                low: Int!
+            }
+
             extend type Query {
                 couponTemplates(options: CouponTemplateListOptions): CouponTemplateList!
                 couponTemplate(id: ID!): CouponTemplate
@@ -569,6 +610,7 @@ type CustomerCoupon implements Node {
                 couponRedemptionStats(templateId: ID, from: String, to: String): [CouponRedemptionStat!]!
                 couponSettlementOrders(options: CouponSettlementOrderListOptions): CouponSettlementOrderList!
                 couponSettlementOrder(id: ID!): CouponSettlementOrder
+                couponReconcileDiffs(options: CouponReconcileDiffListOptions): CouponReconcileDiffList!
                 studentVerifications(status: String): [StudentVerificationItem!]!
                 couponGrantBatches(take: Int): [CouponGrantBatch!]!
                 couponFissionRecords(take: Int): [CouponFissionRecord!]!
@@ -606,6 +648,8 @@ type CustomerCoupon implements Node {
                 deleteCouponBundle(id: ID!): Boolean!
                 refundCouponSaleOrder(id: ID!, reason: String): CouponSaleOrder!
                 runCouponSettlementCycle: CouponSettlementCycleResult!
+                runCouponReconcile: CouponReconcileRunResult!
+                resolveCouponReconcileDiff(id: ID!, remark: String): Boolean!
                 reviewStudentVerification(customerId: ID!, approve: Boolean!): StudentVerificationItem!
                 couponWinBackGrant(templateId: ID!, days: Int!, notify: Boolean): CouponGrantBatch!
             }
