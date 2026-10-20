@@ -46,6 +46,8 @@ export declare class CouponSettlementOrder extends VendureEntity {
     paidOutAt?: Date;
     /** 追偿完成时间（T8 退款联动） */
     reversedAt?: Date;
+    /** 发票凭证类型预留（T6）：'601' 商品销售 / 'CONSUMPTION' 消费 / 'COMMISSION' 佣金；结算登记默认 '601'，开票对接前仅留痕 */
+    voucherType: string | null;
     /** 备注 */
     remark: string | null;
 }

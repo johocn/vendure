@@ -95,6 +95,10 @@ export class CouponSettlementOrder extends VendureEntity {
     @Column({ nullable: true })
     reversedAt?: Date;
 
+    /** 发票凭证类型预留（T6）：'601' 商品销售 / 'CONSUMPTION' 消费 / 'COMMISSION' 佣金；结算登记默认 '601'，开票对接前仅留痕 */
+    @Column('varchar', { nullable: true })
+    voucherType: string | null;
+
     /** 备注 */
     @Column('varchar', { nullable: true })
     remark: string | null;

@@ -1,5 +1,6 @@
 import { CustomerService, ID, RequestContext, TransactionalConnection } from '@vendure/core';
 import { CouponService } from './coupon.service';
+import { CouponSettlementService } from './coupon-settlement.service';
 import { CouponTemplate } from './coupon-template.entity';
 import { CouponSaleOrder } from './coupon-sale-order.entity';
 import { CouponBundle, CouponBundleItem } from './coupon-bundle.entity';
@@ -14,7 +15,8 @@ export declare class CouponSaleService {
     private connection;
     private couponService;
     private customerService;
-    constructor(connection: TransactionalConnection, couponService: CouponService, customerService: CustomerService);
+    private settlementService;
+    constructor(connection: TransactionalConnection, couponService: CouponService, customerService: CustomerService, settlementService: CouponSettlementService);
     /** 当前请求的 customerId */
     private currentCustomerId;
     /** 券商城目录：可售模板（渠道含 SALE 且 salePrice>0）+ 启用券包；附真实已售数、首购/学生价资格信息与倒计时活动位 */

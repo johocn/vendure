@@ -15,6 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CouponSettlementAdminResolver = void 0;
 const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
+const coupon_settlement_adapter_1 = require("./coupon-settlement-adapter");
 const coupon_settlement_reconcile_service_1 = require("./coupon-settlement-reconcile.service");
 const coupon_settlement_service_1 = require("./coupon-settlement.service");
 /**
@@ -42,6 +43,18 @@ let CouponSettlementAdminResolver = class CouponSettlementAdminResolver {
         return this.settlementService.manualRunCycle(ctx);
     }
     // ---- T5 结算对账 ----
+    /** 结算汇总（T11 看板口径 = 结算单聚合；渠道隔离） */
+    async couponSettlementSummary(ctx) {
+        return this.settlementService.settlementSummary(ctx);
+    }
+    /** 分账配置态（T9 进件状态页）：分账模式 + 进件状态（COUPON_SPLIT_ONBOARDING_STATUS，微信实联前为运营人工维护） */
+    async couponSplitConfig(_ctx) {
+        var _a;
+        return {
+            splitMode: (0, coupon_settlement_adapter_1.resolveSplitMode)(),
+            onboardingStatus: ((_a = process.env.COUPON_SPLIT_ONBOARDING_STATUS) !== null && _a !== void 0 ? _a : 'NONE').trim().toUpperCase(),
+        };
+    }
     /** 台账页差异查询（默认只看未解决差异） */
     async couponReconcileDiffs(ctx, options) {
         var _a, _b, _c, _d, _e;
@@ -89,6 +102,22 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext]),
     __metadata("design:returntype", Promise)
 ], CouponSettlementAdminResolver.prototype, "runCouponSettlementCycle", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], CouponSettlementAdminResolver.prototype, "couponSettlementSummary", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.UpdateOrder),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], CouponSettlementAdminResolver.prototype, "couponSplitConfig", null);
 __decorate([
     (0, graphql_1.Query)(),
     (0, core_1.Allow)(core_1.Permission.UpdateOrder),

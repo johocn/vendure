@@ -690,6 +690,7 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 settledAt: DateTime
                 paidOutAt: DateTime
                 reversedAt: DateTime
+                voucherType: String
                 remark: String
                 createdAt: DateTime!
                 updatedAt: DateTime!
@@ -704,6 +705,25 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 skip: Int
                 take: Int
                 status: String
+            }
+
+            """结算汇总（T11 看板口径 = 结算单聚合；金额单位分）"""
+            type CouponSettlementSummary {
+                total: Int!
+                pending: Int!
+                settled: Int!
+                paidOut: Int!
+                reversed: Int!
+                cancelled: Int!
+                totalFace: Int!
+                totalCommission: Int!
+                totalNet: Int!
+            }
+
+            """分账配置态（T9 进件状态预留）：splitMode = stub|wechat|unknown；onboardingStatus = NONE|APPLYING|APPROVED|REJECTED"""
+            type CouponSplitConfig {
+                splitMode: String!
+                onboardingStatus: String!
             }
 
             type CouponSettlementCycleResult {
@@ -768,6 +788,8 @@ exports.CouponPlugin = CouponPlugin = CouponPlugin_1 = __decorate([
                 couponSettlementOrders(options: CouponSettlementOrderListOptions): CouponSettlementOrderList!
                 couponSettlementOrder(id: ID!): CouponSettlementOrder
                 couponReconcileDiffs(options: CouponReconcileDiffListOptions): CouponReconcileDiffList!
+                couponSettlementSummary: CouponSettlementSummary!
+                couponSplitConfig: CouponSplitConfig!
                 studentVerifications(status: String): [StudentVerificationItem!]!
                 couponGrantBatches(take: Int): [CouponGrantBatch!]!
                 couponFissionRecords(take: Int): [CouponFissionRecord!]!

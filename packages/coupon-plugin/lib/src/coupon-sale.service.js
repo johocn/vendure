@@ -14,6 +14,7 @@ exports.setCouponSaleGateway = setCouponSaleGateway;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const coupon_service_1 = require("./coupon.service");
+const coupon_settlement_service_1 = require("./coupon-settlement.service");
 const coupon_template_entity_1 = require("./coupon-template.entity");
 const customer_coupon_entity_1 = require("./customer-coupon.entity");
 const coupon_sale_order_entity_1 = require("./coupon-sale-order.entity");
@@ -37,10 +38,11 @@ function setCouponSaleGateway(gw) {
  * 所有金额单位为「分」。订单/券的最终发放在 CouponService 内完成，本服务只做编排与状态机。
  */
 let CouponSaleService = class CouponSaleService {
-    constructor(connection, couponService, customerService) {
+    constructor(connection, couponService, customerService, settlementService) {
         this.connection = connection;
         this.couponService = couponService;
         this.customerService = customerService;
+        this.settlementService = settlementService;
     }
     /** 当前请求的 customerId */
     async currentCustomerId(ctx) {
@@ -338,6 +340,8 @@ let CouponSaleService = class CouponSaleService {
             await this.connection.rollBackTransaction(ctx);
             throw e;
         }
+        // T8 退款联动：结算单取消（PENDING）/追偿（SETTLED/PAID_OUT）；失败只记日志不阻断退款主流程
+        await this.settlementService.onSaleOrderRefunded(ctx, order.id, reason);
         return (await repo.findOne({ where: { id: order.id } }));
     }
     /** 我的出售单 */
@@ -730,6 +734,7 @@ exports.CouponSaleService = CouponSaleService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
         coupon_service_1.CouponService,
-        core_1.CustomerService])
+        core_1.CustomerService,
+        coupon_settlement_service_1.CouponSettlementService])
 ], CouponSaleService);
 //# sourceMappingURL=coupon-sale.service.js.map

@@ -1,6 +1,7 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { Allow, Ctx, ID, Permission, RequestContext } from '@vendure/core';
 
+import { resolveSplitMode } from './coupon-settlement-adapter';
 import { CouponSettlementReconcileService } from './coupon-settlement-reconcile.service';
 import { CouponSettlementService } from './coupon-settlement.service';
 
@@ -39,6 +40,23 @@ export class CouponSettlementAdminResolver {
     }
 
     // ---- T5 结算对账 ----
+
+    /** 结算汇总（T11 看板口径 = 结算单聚合；渠道隔离） */
+    @Query()
+    @Allow(Permission.UpdateOrder)
+    async couponSettlementSummary(@Ctx() ctx: RequestContext) {
+        return this.settlementService.settlementSummary(ctx);
+    }
+
+    /** 分账配置态（T9 进件状态页）：分账模式 + 进件状态（COUPON_SPLIT_ONBOARDING_STATUS，微信实联前为运营人工维护） */
+    @Query()
+    @Allow(Permission.UpdateOrder)
+    async couponSplitConfig(@Ctx() _ctx: RequestContext) {
+        return {
+            splitMode: resolveSplitMode(),
+            onboardingStatus: (process.env.COUPON_SPLIT_ONBOARDING_STATUS ?? 'NONE').trim().toUpperCase(),
+        };
+    }
 
     /** 台账页差异查询（默认只看未解决差异） */
     @Query()

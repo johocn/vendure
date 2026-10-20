@@ -68,6 +68,7 @@ export class CouponSettlementService {
                 status: 'PENDING',
                 settlementNo: buildSettlementNo(bill.channelId as number, bill.customerCouponId),
                 attempts: 0,
+                voucherType: '601',
                 remark: null,
             });
             await repo.save(row);
@@ -153,6 +154,7 @@ export class CouponSettlementService {
                         status: 'PENDING',
                         settlementNo: buildSettlementNo(channelId, customerCouponId),
                         attempts: 0,
+                        voucherType: '601',
                     }),
                 );
                 n++;
@@ -306,5 +308,119 @@ export class CouponSettlementService {
     async findSettlementsBySaleOrder(ctx: RequestContext, saleOrderIds: number[]): Promise<CouponSettlementOrder[]> {
         if (saleOrderIds.length === 0) return [];
         return this.connection.getRepository(ctx, CouponSettlementOrder).find({ where: { saleOrderId: In(saleOrderIds) } });
+    }
+
+    /**
+     * 退款联动（T8）：出售单退款成功后调用——
+     * - 结算单 PENDING（未提交分账）→ CANCELLED（取消登记；原子更新带原状态条件，风险铁律④）
+     * - SETTLED / PAID_OUT（已提交/完成分账）→ adapter.refundSplit 追偿，受理后 → REVERSED
+     * 在退款主事务 commit 之后调用；任何失败只记日志不抛错（不阻断退款主流程，
+     * 漏网单据由 T5 对账的 MISSING/STUCK 口径兜底暴露）。
+     */
+    async onSaleOrderRefunded(
+        ctx: RequestContext,
+        saleOrderId: number,
+        reason?: string,
+    ): Promise<{ cancelled: number; reversed: number; failed: number }> {
+        const result = { cancelled: 0, reversed: 0, failed: 0 };
+        try {
+            const rows = await this.findSettlementsBySaleOrder(ctx, [saleOrderId]);
+            if (rows.length === 0) return result;
+            const repo = this.connection.rawConnection.getRepository(CouponSettlementOrder);
+            const adapter = resolveSettlementAdapter();
+            for (const row of rows) {
+                try {
+                    if (row.status === 'PENDING') {
+                        const upd = await repo
+                            .createQueryBuilder()
+                            .update(CouponSettlementOrder)
+                            .set({ status: 'CANCELLED', remark: (reason ?? 'sale order refunded').slice(0, 200) })
+                            .where('id = :id AND status = :status', { id: row.id, status: 'PENDING' })
+                            .execute();
+                        if ((upd.affected ?? 0) > 0) result.cancelled++;
+                    } else if (row.status === 'SETTLED' || row.status === 'PAID_OUT') {
+                        const sub = await adapter.refundSplit(row, reason);
+                        if (!sub.accepted) {
+                            result.failed++;
+                            Logger.error(`Refund split rejected for ${row.settlementNo}: ${sub.error ?? 'unknown'}`, loggerCtx);
+                            continue;
+                        }
+                        const upd = await repo
+                            .createQueryBuilder()
+                            .update(CouponSettlementOrder)
+                            .set({
+                                status: 'REVERSED',
+                                reversedAt: new Date(),
+                                remark: `refund receipt ${sub.receiptNo ?? '-'}`.slice(0, 200),
+                            })
+                            .where('id = :id AND status IN (:...st)', { id: row.id, st: ['SETTLED', 'PAID_OUT'] })
+                            .execute();
+                        if ((upd.affected ?? 0) > 0) result.reversed++;
+                        else result.failed++;
+                    }
+                } catch (e: any) {
+                    result.failed++;
+                    Logger.error(`Settlement refund linkage failed for ${row.settlementNo}: ${e?.message}`, loggerCtx);
+                }
+            }
+            if (result.cancelled || result.reversed || result.failed) {
+                Logger.info(
+                    `Settlement refund linkage (sale order ${saleOrderId}): cancelled=${result.cancelled} reversed=${result.reversed} failed=${result.failed}`,
+                    loggerCtx,
+                );
+            }
+        } catch (e: any) {
+            Logger.error(`Settlement refund linkage query failed (sale order ${saleOrderId}): ${e?.message}`, loggerCtx);
+        }
+        return result;
+    }
+
+    /** 结算汇总（T11 看板口径 = 结算单聚合；渠道强制隔离，金额单位分） */
+    async settlementSummary(ctx: RequestContext): Promise<{
+        total: number;
+        pending: number;
+        settled: number;
+        paidOut: number;
+        reversed: number;
+        cancelled: number;
+        totalFace: number;
+        totalCommission: number;
+        totalNet: number;
+    }> {
+        const rows = await this.connection
+            .getRepository(ctx, CouponSettlementOrder)
+            .createQueryBuilder('s')
+            .select('s.status', 'status')
+            .addSelect('COUNT(*)', 'cnt')
+            .addSelect('COALESCE(SUM(s.faceAmount), 0)', 'face')
+            .addSelect('COALESCE(SUM(s.commissionAmount), 0)', 'commission')
+            .addSelect('COALESCE(SUM(s.netAmount), 0)', 'net')
+            .where('s.channelId = :channelId', { channelId: Number(ctx.channelId) })
+            .groupBy('s.status')
+            .getRawMany<{ status: string; cnt: string; face: string; commission: string; net: string }>();
+        const summary = {
+            total: 0,
+            pending: 0,
+            settled: 0,
+            paidOut: 0,
+            reversed: 0,
+            cancelled: 0,
+            totalFace: 0,
+            totalCommission: 0,
+            totalNet: 0,
+        };
+        for (const r of rows) {
+            const cnt = Number(r.cnt);
+            summary.total += cnt;
+            summary.totalFace += Number(r.face);
+            summary.totalCommission += Number(r.commission);
+            summary.totalNet += Number(r.net);
+            if (r.status === 'PENDING') summary.pending = cnt;
+            else if (r.status === 'SETTLED') summary.settled = cnt;
+            else if (r.status === 'PAID_OUT') summary.paidOut = cnt;
+            else if (r.status === 'REVERSED') summary.reversed = cnt;
+            else if (r.status === 'CANCELLED') summary.cancelled = cnt;
+        }
+        return summary;
     }
 }

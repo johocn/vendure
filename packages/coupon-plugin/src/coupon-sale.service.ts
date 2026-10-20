@@ -10,6 +10,7 @@ import {
 } from '@vendure/core';
 
 import { CouponService } from './coupon.service';
+import { CouponSettlementService } from './coupon-settlement.service';
 import { CouponTemplate } from './coupon-template.entity';
 import { CustomerCoupon } from './customer-coupon.entity';
 import { CouponSaleOrder } from './coupon-sale-order.entity';
@@ -51,6 +52,7 @@ export class CouponSaleService {
         private connection: TransactionalConnection,
         private couponService: CouponService,
         private customerService: CustomerService,
+        private settlementService: CouponSettlementService,
     ) {}
 
     /** 当前请求的 customerId */
@@ -391,6 +393,8 @@ export class CouponSaleService {
             await this.connection.rollBackTransaction(ctx);
             throw e;
         }
+        // T8 退款联动：结算单取消（PENDING）/追偿（SETTLED/PAID_OUT）；失败只记日志不阻断退款主流程
+        await this.settlementService.onSaleOrderRefunded(ctx, order.id as number, reason);
         return (await repo.findOne({ where: { id: order.id } })) as CouponSaleOrder;
     }
 

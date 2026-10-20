@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.resolveSplitMode = resolveSplitMode;
 exports.resolveSettlementAdapter = resolveSettlementAdapter;
 exports.computeSettlementAmounts = computeSettlementAmounts;
 exports.buildSettlementNo = buildSettlementNo;
@@ -22,6 +23,16 @@ class StubSettlementAdapter {
     async refundSplit(order, reason) {
         return { accepted: true, receiptNo: `STUB-REV-${order.settlementNo}` };
     }
+}
+/** 分账模式只读解析（T9 进件状态页用）：不实例化适配器、wechat 未持合规结论也不抛错，仅返回配置态 */
+function resolveSplitMode() {
+    var _a;
+    const mode = ((_a = process.env.COUPON_SPLIT_MODE) !== null && _a !== void 0 ? _a : 'stub').trim().toLowerCase();
+    if (mode === 'wechat')
+        return 'wechat';
+    if (mode === 'stub')
+        return 'stub';
+    return 'unknown';
 }
 /**
  * 按环境变量 COUPON_SPLIT_MODE 解析适配器：

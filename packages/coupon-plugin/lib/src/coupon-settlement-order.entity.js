@@ -104,6 +104,10 @@ __decorate([
 __decorate([
     (0, typeorm_1.Column)('varchar', { nullable: true }),
     __metadata("design:type", Object)
+], CouponSettlementOrder.prototype, "voucherType", void 0);
+__decorate([
+    (0, typeorm_1.Column)('varchar', { nullable: true }),
+    __metadata("design:type", Object)
 ], CouponSettlementOrder.prototype, "remark", void 0);
 exports.CouponSettlementOrder = CouponSettlementOrder = __decorate([
     (0, typeorm_1.Entity)(),

@@ -4,7 +4,7 @@
 // 出错只打日志不抛错，不阻塞启动，等待下次启动重试。
 import { Injectable, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectConnection } from '@nestjs/typeorm';
-import { Connection } from 'typeorm';
+import { Connection, TableColumn } from 'typeorm';
 
 @Injectable()
 export class CreateCouponSettlementMigration implements OnApplicationBootstrap {
@@ -43,6 +43,7 @@ export class CreateCouponSettlementMigration implements OnApplicationBootstrap {
                         "settledAt" datetime NULL,
                         "paidOutAt" datetime NULL,
                         "reversedAt" datetime NULL,
+                        "voucherType" varchar(32) NULL,
                         "remark" varchar(255) NULL
                     )`
                     : `
@@ -69,9 +70,17 @@ export class CreateCouponSettlementMigration implements OnApplicationBootstrap {
                         "settledAt" timestamptz NULL,
                         "paidOutAt" timestamptz NULL,
                         "reversedAt" timestamptz NULL,
+                        "voucherType" varchar(32) NULL,
                         "remark" varchar(255) NULL
                     )`;
                 await queryRunner.query(createTableSql);
+                // 存量表补列（T6 发票凭证类型预留；新表已含，幂等跳过）
+                if (!(await queryRunner.hasColumn(tableName, 'voucherType'))) {
+                    await queryRunner.addColumn(
+                        tableName,
+                        new TableColumn({ name: 'voucherType', type: 'varchar', length: '32', isNullable: true }),
+                    );
+                }
                 // 防重复出单双保险：券实例唯一 + 结算单号唯一（幂等键）
                 await queryRunner.query(
                     `CREATE UNIQUE INDEX IF NOT EXISTS ux_coupon_settlement_coupon ON "${tableName}" ("customerCouponId")`,

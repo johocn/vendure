@@ -20,6 +20,23 @@ export declare class CouponSettlementAdminResolver {
         promoted: number;
         failed: number;
     }>;
+    /** 结算汇总（T11 看板口径 = 结算单聚合；渠道隔离） */
+    couponSettlementSummary(ctx: RequestContext): Promise<{
+        total: number;
+        pending: number;
+        settled: number;
+        paidOut: number;
+        reversed: number;
+        cancelled: number;
+        totalFace: number;
+        totalCommission: number;
+        totalNet: number;
+    }>;
+    /** 分账配置态（T9 进件状态页）：分账模式 + 进件状态（COUPON_SPLIT_ONBOARDING_STATUS，微信实联前为运营人工维护） */
+    couponSplitConfig(_ctx: RequestContext): Promise<{
+        splitMode: "stub" | "wechat" | "unknown";
+        onboardingStatus: string;
+    }>;
     /** 台账页差异查询（默认只看未解决差异） */
     couponReconcileDiffs(ctx: RequestContext, options?: any): Promise<{
         items: import("./coupon-settlement-reconcile-diff.entity").CouponSettlementReconcileDiff[];

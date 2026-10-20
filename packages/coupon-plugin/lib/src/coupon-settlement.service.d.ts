@@ -59,4 +59,28 @@ export declare class CouponSettlementService {
     }>;
     /** 供退款联动（T8）预留的批量查询工具 */
     findSettlementsBySaleOrder(ctx: RequestContext, saleOrderIds: number[]): Promise<CouponSettlementOrder[]>;
+    /**
+     * 退款联动（T8）：出售单退款成功后调用——
+     * - 结算单 PENDING（未提交分账）→ CANCELLED（取消登记；原子更新带原状态条件，风险铁律④）
+     * - SETTLED / PAID_OUT（已提交/完成分账）→ adapter.refundSplit 追偿，受理后 → REVERSED
+     * 在退款主事务 commit 之后调用；任何失败只记日志不抛错（不阻断退款主流程，
+     * 漏网单据由 T5 对账的 MISSING/STUCK 口径兜底暴露）。
+     */
+    onSaleOrderRefunded(ctx: RequestContext, saleOrderId: number, reason?: string): Promise<{
+        cancelled: number;
+        reversed: number;
+        failed: number;
+    }>;
+    /** 结算汇总（T11 看板口径 = 结算单聚合；渠道强制隔离，金额单位分） */
+    settlementSummary(ctx: RequestContext): Promise<{
+        total: number;
+        pending: number;
+        settled: number;
+        paidOut: number;
+        reversed: number;
+        cancelled: number;
+        totalFace: number;
+        totalCommission: number;
+        totalNet: number;
+    }>;
 }

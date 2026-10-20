@@ -25,6 +25,8 @@ export interface SettlementAdapter {
     /** 追偿分账（T8 退款联动预留） */
     refundSplit(order: CouponSettlementOrder, reason?: string): Promise<SplitSubmitResult>;
 }
+/** 分账模式只读解析（T9 进件状态页用）：不实例化适配器、wechat 未持合规结论也不抛错，仅返回配置态 */
+export declare function resolveSplitMode(): 'stub' | 'wechat' | 'unknown';
 /**
  * 按环境变量 COUPON_SPLIT_MODE 解析适配器：
  * - 'stub'（默认）：stub 模拟

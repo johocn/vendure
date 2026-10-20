@@ -52,6 +52,14 @@ class StubSettlementAdapter implements SettlementAdapter {
     }
 }
 
+/** 分账模式只读解析（T9 进件状态页用）：不实例化适配器、wechat 未持合规结论也不抛错，仅返回配置态 */
+export function resolveSplitMode(): 'stub' | 'wechat' | 'unknown' {
+    const mode = (process.env.COUPON_SPLIT_MODE ?? 'stub').trim().toLowerCase();
+    if (mode === 'wechat') return 'wechat';
+    if (mode === 'stub') return 'stub';
+    return 'unknown';
+}
+
 /**
  * 按环境变量 COUPON_SPLIT_MODE 解析适配器：
  * - 'stub'（默认）：stub 模拟
