@@ -60,6 +60,10 @@ export class AddCouponPromoFieldsMigration implements OnApplicationBootstrap {
                     { table: channel, name: 'customFieldsCouponcampaign', type: 'varchar', length: 4096 },
                     // 分享裂变活动配置 JSON（FR-C）：同 campaign 口径
                     { table: channel, name: 'customFieldsCouponfission', type: 'varchar', length: 4096 },
+                    // FR-F 营销玩法配置 JSON：每日领券 / 神券日限量抢 / 支付有礼（同 campaign 口径）
+                    { table: channel, name: 'customFieldsCoupondailyclaim', type: 'varchar', length: 4096 },
+                    { table: channel, name: 'customFieldsCouponflashsale', type: 'varchar', length: 4096 },
+                    { table: channel, name: 'customFieldsCouponpaygift', type: 'varchar', length: 4096 },
                     // 买单券监管参数组（T4）：全部可空 = 宽松默认，配置后才启用校验
                     { table: channel, name: 'customFieldsBillpaymaxsaleprice', type: 'integer' },
                     { table: channel, name: 'customFieldsBillpaymaxfacevalue', type: 'integer' },

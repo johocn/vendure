@@ -1329,6 +1329,23 @@ let CouponService = class CouponService {
         }
         await this.assertCouponMemberLevel(ctx, customerId, tpl);
     }
+    /**
+     * FR-F 通用领取前校门面（每日领券/神券日/支付有礼共用）：
+     * 模板 perUserLimit（持有有效张数口径）+ 会员等级门槛（E2）。
+     * 返回拦截原因（PER_USER_LIMIT / MEMBER_LEVEL_BLOCKED）或 null（可领）。
+     */
+    async assertCustomerCanClaim(ctx, customerId, tpl) {
+        if (tpl.perUserLimit > 0) {
+            const owned = await this.countHeld(customerId, tpl.id);
+            if (owned >= tpl.perUserLimit) {
+                return 'PER_USER_LIMIT';
+            }
+        }
+        if (!(await this.couponMeetsMemberLevel(ctx, customerId, tpl))) {
+            return 'MEMBER_LEVEL_BLOCKED';
+        }
+        return null;
+    }
     /** 程序化发放公共入口（FR-C 裂变）：原子扣发行余量 + 建券（R2 计入限量 / R1 issuedBy 渠道留痕）。 */
     async issueForProgram(ctx, customerId, tpl, issuedBy) {
         const ok = await this.atomicIncrementClaimed(ctx, tpl.id, tpl);

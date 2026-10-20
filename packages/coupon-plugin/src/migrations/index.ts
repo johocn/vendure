@@ -12,4 +12,5 @@ export { AddCouponCategoryFieldMigration } from './add-coupon-category-field';
 export { CreateCouponSettlementMigration } from './create-coupon-settlement';
 export { AddInStoreBillShopFieldsMigration } from './add-in-store-bill-shop-fields';
 export { CreateCouponFissionMigration } from './create-coupon-fission';
+export { CreateCouponFrFMigration } from './create-coupon-frf';
 export { CreateCouponReconcileMigration } from './create-coupon-settlement-reconcile';

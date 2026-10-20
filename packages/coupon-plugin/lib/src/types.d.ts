@@ -20,8 +20,9 @@ export type CouponStatus = 'UNUSED' | 'USED' | 'RETURNED' | 'EXPIRED' | 'INVALID
  * - CENTRE/ADMIN/EXCHANGE/SALE：中心领取 / 后台定向 / 积分兑换 / 出售生成
  * - FISSION ：分享裂变奖励（FR-C，R1 独立渠道留痕）
  * - RECALL  ：沉睡召回批量发放（FR-E1，R1 独立渠道留痕）
+ * - DAILY/FLASH/PAYGIFT：每日领券 / 神券日限量抢 / 支付有礼（FR-F，R1 独立渠道留痕）
  */
-export type CouponIssuedBy = 'CENTRE' | 'ADMIN' | 'EXCHANGE' | 'SALE' | 'FISSION' | 'RECALL';
+export type CouponIssuedBy = 'CENTRE' | 'ADMIN' | 'EXCHANGE' | 'SALE' | 'FISSION' | 'RECALL' | 'DAILY' | 'FLASH' | 'PAYGIFT';
 /** 券适用范围 */
 export type CouponScope = 'ALL' | 'CATEGORY' | 'SKU';
 /**

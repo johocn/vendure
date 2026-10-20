@@ -209,6 +209,12 @@ export declare class CouponService {
      * E2：配置会员等级门槛的券，不达标不可购（可见性过滤之外的第二道防线）。
      */
     assertCustomerCanBuy(ctx: RequestContext, customerId: number, tpl: CouponTemplate): Promise<void>;
+    /**
+     * FR-F 通用领取前校门面（每日领券/神券日/支付有礼共用）：
+     * 模板 perUserLimit（持有有效张数口径）+ 会员等级门槛（E2）。
+     * 返回拦截原因（PER_USER_LIMIT / MEMBER_LEVEL_BLOCKED）或 null（可领）。
+     */
+    assertCustomerCanClaim(ctx: RequestContext, customerId: number, tpl: CouponTemplate): Promise<string | null>;
     /** 程序化发放公共入口（FR-C 裂变）：原子扣发行余量 + 建券（R2 计入限量 / R1 issuedBy 渠道留痕）。 */
     issueForProgram(ctx: RequestContext, customerId: number, tpl: CouponTemplate, issuedBy: CouponIssuedBy): Promise<CustomerCoupon>;
     /**

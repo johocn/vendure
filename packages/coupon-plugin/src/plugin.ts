@@ -23,6 +23,9 @@ import { setCouponBalancePort } from './coupon-balance-port';
 import { CouponFissionService } from './coupon-fission.service';
 import { CouponFissionShopResolver } from './coupon-fission-shop.resolver';
 import { CouponFissionRecord } from './coupon-fission-record.entity';
+import { CouponDailyClaimRecord } from './coupon-daily-claim-record.entity';
+import { CouponFrFService } from './coupon-frf.service';
+import { CouponFrFShopResolver } from './coupon-frf-shop.resolver';
 import { CouponGrantBatch } from './coupon-grant-batch.entity';
 import { CouponSaleAdminResolver } from './coupon-sale-admin.resolver';
 import { CouponSaleShopResolver } from './coupon-sale-shop.resolver';
@@ -58,6 +61,7 @@ import {
     AddInStoreBillShopFieldsMigration,
     CreateCouponFissionMigration,
     CreateCouponReconcileMigration,
+    CreateCouponFrFMigration,
 } from './migrations';
 import { AddCouponDistributionChannelsMigration } from './migrations/add-coupon-distribution-channels';
 import { InStoreBill } from './in-store-bill.entity';
@@ -140,7 +144,7 @@ type CustomerCoupon implements Node {
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [CouponTemplate, CustomerCoupon, ProductCouponBinding, InStoreBill, CouponSaleOrder, CouponBundle, CouponBundleItem, CouponSettlementOrder, CouponSettlementReconcileDiff, CouponFissionRecord, CouponGrantBatch],
+    entities: [CouponTemplate, CustomerCoupon, ProductCouponBinding, InStoreBill, CouponSaleOrder, CouponBundle, CouponBundleItem, CouponSettlementOrder, CouponSettlementReconcileDiff, CouponFissionRecord, CouponGrantBatch, CouponDailyClaimRecord],
     providers: [
         { provide: COUPON_PLUGIN_OPTIONS, useFactory: () => CouponPlugin.options },
         CouponService,
@@ -151,6 +155,7 @@ type CustomerCoupon implements Node {
         CouponExpireReminderService,
         CouponFissionService,
         InStoreBillService,
+        CouponFrFService,
         AddCouponFieldsMigration,
         CreateProductCouponBindingMigration,
         AddCouponIndexes20260919,
@@ -166,13 +171,14 @@ type CustomerCoupon implements Node {
         AddInStoreBillShopFieldsMigration,
         CreateCouponFissionMigration,
         CreateCouponReconcileMigration,
+        CreateCouponFrFMigration,
     ],
     exports: [CouponService, CouponBindingService, CouponSaleService],
     adminApiExtensions: {
         schema: () => gql`
             enum CouponType { FIXED PERCENT FULL FREE_SHIPPING }
             enum CouponStatus { UNUSED USED RETURNED EXPIRED INVALID }
-            enum CouponIssuedBy { CENTRE ADMIN EXCHANGE SALE FISSION RECALL }
+            enum CouponIssuedBy { CENTRE ADMIN EXCHANGE SALE FISSION RECALL DAILY FLASH PAYGIFT }
             enum CouponUsageScene { ONLINE IN_STORE ALL }
 
             ${couponTemplateType}
@@ -682,7 +688,7 @@ type CustomerCoupon implements Node {
         schema: () => gql`
             enum CouponType { FIXED PERCENT FULL FREE_SHIPPING }
             enum CouponStatus { UNUSED USED RETURNED EXPIRED INVALID }
-            enum CouponIssuedBy { CENTRE ADMIN EXCHANGE SALE FISSION RECALL }
+            enum CouponIssuedBy { CENTRE ADMIN EXCHANGE SALE FISSION RECALL DAILY FLASH PAYGIFT }
             enum CouponUsageScene { ONLINE IN_STORE ALL }
 
             ${couponTemplateType}
@@ -702,6 +708,42 @@ type CustomerCoupon implements Node {
                 status: String!
                 inviteeCoupon: CustomerCoupon
                 inviterCoupon: CustomerCoupon
+            }
+
+            type CouponDailyClaimItem {
+                template: CouponTemplate!
+                claimedToday: Boolean!
+                soldOut: Boolean!
+            }
+
+            type CouponDailyClaimActivity {
+                name: String!
+                subtitle: String
+                rules: String
+                startsAt: DateTime
+                endsAt: DateTime
+                items: [CouponDailyClaimItem!]!
+            }
+
+            type CouponFlashSaleItem {
+                template: CouponTemplate!
+                soldOut: Boolean!
+                myClaimed: Int!
+            }
+
+            type CouponFlashSaleActivity {
+                name: String!
+                subtitle: String
+                rules: String
+                startsAt: DateTime!
+                endsAt: DateTime!
+                perUserLimit: Int!
+                items: [CouponFlashSaleItem!]!
+            }
+
+            type CouponFrFClaimResult {
+                status: String!
+                coupon: CustomerCoupon
             }
 
             type ProductCouponBinding implements Node {
@@ -814,6 +856,8 @@ type CustomerCoupon implements Node {
                 myCouponSaleOrders: [CouponSaleOrder!]!
                 myStudentVerification: StudentVerificationItem!
                 couponFissionActivity: CouponFissionActivity
+                couponDailyClaimActivity: CouponDailyClaimActivity
+                couponFlashSaleActivity: CouponFlashSaleActivity
             }
 
             extend type Mutation {
@@ -832,9 +876,11 @@ type CustomerCoupon implements Node {
                 detachCouponFromOrder(orderId: ID!, templateId: ID!): Boolean!
                 applyStudentVerification(school: String!, studentNo: String!, idImg: String): StudentVerificationItem!
                 claimFissionReward(inviteCode: String!): CouponFissionClaimResult!
+                claimDailyCoupon(templateId: ID!): CouponFrFClaimResult!
+                claimFlashCoupon(templateId: ID!): CouponFrFClaimResult!
             }
         `,
-        resolvers: [CouponShopResolver, CouponTemplateResolver, CustomerCouponResolver, CouponSaleShopResolver, CouponBundleResolver, StudentShopResolver, CouponFissionShopResolver],
+        resolvers: [CouponShopResolver, CouponTemplateResolver, CustomerCouponResolver, CouponSaleShopResolver, CouponBundleResolver, StudentShopResolver, CouponFissionShopResolver, CouponFrFShopResolver],
     },
     configuration: (config) => {
         config.customFields.Order = mergeCustomFields(config.customFields.Order, couponOrderCustomFields.Order);
@@ -1010,6 +1056,18 @@ export class CouponPlugin implements OnApplicationBootstrap {
                     .settleSurchargeOrdersForOrder(event.ctx, event.order.id);
             } catch (e: any) {
                 Logger.error(`Failed to settle coupon surcharge on order ${event.order.id}: ${e.message}`, loggerCtx);
+            }
+        });
+
+        // 支付有礼（FR-F3）：主订单支付成功 → 按渠道配置自动发奖励券（静默，失败不阻塞支付）
+        this.eventBus.ofType(OrderStateTransitionEvent).subscribe(async (event) => {
+            if (event.toState !== 'PaymentSettled') return;
+            try {
+                await this.injector
+                    .get(CouponFrFService)
+                    .payGiftOnOrderSettled(event.ctx, event.order);
+            } catch (e: any) {
+                Logger.error(`Failed to process pay gift on order ${event.order.id}: ${e.message}`, loggerCtx);
             }
         });
 
