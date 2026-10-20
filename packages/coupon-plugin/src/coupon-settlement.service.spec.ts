@@ -232,3 +232,91 @@ describe('CouponSettlementService.registerFromBill（核销 → 待结算登记�
         await expect(service.registerFromBill(ctx, bill(), 88)).resolves.toBeUndefined();
     });
 });
+
+/**
+ * 退款联动（T8）：refundSaleOrder commit 后调 onSaleOrderRefunded——
+ * - PENDING → CANCELLED（带原状态条件原子更新）
+ * - SETTLED/PAID_OUT → adapter.refundSplit 追偿 → REVERSED（带原状态集合条件）
+ * - 任何失败不抛错（不阻断退款主流程）
+ */
+describe('CouponSettlementService.onSaleOrderRefunded（退款联动）', () => {
+    const ctx: any = { channelId: 7 };
+    let qb: any;
+    let settleRepo: any;
+    let service: CouponSettlementService;
+
+    function makeService() {
+        qb = {
+            update: vi.fn().mockReturnThis(),
+            set: vi.fn().mockReturnThis(),
+            where: vi.fn().mockReturnThis(),
+            execute: vi.fn(async () => ({ affected: 1 })),
+        };
+        settleRepo = { createQueryBuilder: vi.fn(() => qb), find: vi.fn(async () => []) };
+        const connection: any = {
+            rawConnection: { getRepository: vi.fn(() => settleRepo) },
+            getRepository: vi.fn(() => settleRepo),
+        };
+        service = new CouponSettlementService(connection);
+    }
+
+    async function mockAdapter(refund: { accepted: boolean; receiptNo?: string; error?: string }) {
+        const adapterModule = await import('./coupon-settlement-adapter.js');
+        return vi.spyOn(adapterModule, 'resolveSettlementAdapter').mockReturnValue({
+            mode: 'stub',
+            submitSplit: vi.fn(async () => ({ accepted: true })),
+            queryReceipt: vi.fn(async () => ({ state: 'FINISHED' as const })),
+            refundSplit: vi.fn(async () => refund),
+        } as any);
+    }
+
+    beforeEach(makeService);
+
+    it('无结算单 → 空跑 0/0/0 不抛错', async () => {
+        settleRepo.find.mockResolvedValueOnce([]);
+        await expect(service.onSaleOrderRefunded(ctx, 88, 'test')).resolves.toEqual({ cancelled: 0, reversed: 0, failed: 0 });
+    });
+
+    it('PENDING → CANCELLED（原子更新带原状态条件 + 备注原因）', async () => {
+        settleRepo.find.mockResolvedValueOnce([{ id: 1, status: 'PENDING', settlementNo: 'CSTL-7-1' } as any]);
+        const r = await service.onSaleOrderRefunded(ctx, 88, 'sale refunded');
+        expect(r.cancelled).toBe(1);
+        expect(qb.set).toHaveBeenCalledWith(expect.objectContaining({ status: 'CANCELLED', remark: 'sale refunded' }));
+        expect(qb.where).toHaveBeenCalledWith('id = :id AND status = :status', { id: 1, status: 'PENDING' });
+    });
+
+    it('PAID_OUT → 追偿受理 → REVERSED（带原状态集合条件 + 追偿回执备注）', async () => {
+        settleRepo.find.mockResolvedValueOnce([{ id: 2, status: 'PAID_OUT', settlementNo: 'CSTL-7-2' } as any]);
+        const spy = await mockAdapter({ accepted: true, receiptNo: 'STUB-REV-CSTL-7-2' });
+        const r = await service.onSaleOrderRefunded(ctx, 88);
+        expect(r.reversed).toBe(1);
+        expect(qb.set).toHaveBeenCalledWith(
+            expect.objectContaining({ status: 'REVERSED', reversedAt: expect.any(Date), remark: expect.stringContaining('STUB-REV-CSTL-7-2') }),
+        );
+        expect(qb.where).toHaveBeenCalledWith('id = :id AND status IN (:...st)', { id: 2, st: ['SETTLED', 'PAID_OUT'] });
+        spy.mockRestore();
+    });
+
+    it('追偿被拒 → failed 计数不更新状态（留在重试/对账兜底）', async () => {
+        settleRepo.find.mockResolvedValueOnce([{ id: 3, status: 'SETTLED', settlementNo: 'CSTL-7-3' } as any]);
+        const spy = await mockAdapter({ accepted: false, error: 'gateway rejected' });
+        const r = await service.onSaleOrderRefunded(ctx, 88);
+        expect(r.reversed).toBe(0);
+        expect(r.failed).toBe(1);
+        expect(qb.execute).not.toHaveBeenCalled();
+        spy.mockRestore();
+    });
+
+    it('原子更新未命中（并发已变状态）→ 不计 cancelled（不误报，对账兜底）', async () => {
+        settleRepo.find.mockResolvedValueOnce([{ id: 4, status: 'PENDING', settlementNo: 'CSTL-7-4' } as any]);
+        qb.execute.mockResolvedValueOnce({ affected: 0 });
+        const r = await service.onSaleOrderRefunded(ctx, 88);
+        expect(r.cancelled).toBe(0);
+        expect(r.reversed).toBe(0);
+    });
+
+    it('查询异常 → 不抛错全量 failed（退款主流程不被阻断）', async () => {
+        settleRepo.find.mockRejectedValueOnce(new Error('db gone'));
+        await expect(service.onSaleOrderRefunded(ctx, 88)).resolves.toEqual({ cancelled: 0, reversed: 0, failed: 0 });
+    });
+});

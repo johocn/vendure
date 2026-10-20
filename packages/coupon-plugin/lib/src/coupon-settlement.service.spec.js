@@ -195,4 +195,80 @@ const in_store_bill_entity_1 = require("./in-store-bill.entity");
         await (0, vitest_1.expect)(service.registerFromBill(ctx, bill(), 88)).resolves.toBeUndefined();
     });
 });
+/**
+ * 退款联动（T8）：refundSaleOrder commit 后调 onSaleOrderRefunded——
+ * - PENDING → CANCELLED（带原状态条件原子更新）
+ * - SETTLED/PAID_OUT → adapter.refundSplit 追偿 → REVERSED（带原状态集合条件）
+ * - 任何失败不抛错（不阻断退款主流程）
+ */
+(0, vitest_1.describe)('CouponSettlementService.onSaleOrderRefunded（退款联动）', () => {
+    const ctx = { channelId: 7 };
+    let qb;
+    let settleRepo;
+    let service;
+    function makeService() {
+        qb = {
+            update: vitest_1.vi.fn().mockReturnThis(),
+            set: vitest_1.vi.fn().mockReturnThis(),
+            where: vitest_1.vi.fn().mockReturnThis(),
+            execute: vitest_1.vi.fn(async () => ({ affected: 1 })),
+        };
+        settleRepo = { createQueryBuilder: vitest_1.vi.fn(() => qb), find: vitest_1.vi.fn(async () => []) };
+        const connection = {
+            rawConnection: { getRepository: vitest_1.vi.fn(() => settleRepo) },
+            getRepository: vitest_1.vi.fn(() => settleRepo),
+        };
+        service = new coupon_settlement_service_1.CouponSettlementService(connection);
+    }
+    async function mockAdapter(refund) {
+        const adapterModule = await import('./coupon-settlement-adapter.js');
+        return vitest_1.vi.spyOn(adapterModule, 'resolveSettlementAdapter').mockReturnValue({
+            mode: 'stub',
+            submitSplit: vitest_1.vi.fn(async () => ({ accepted: true })),
+            queryReceipt: vitest_1.vi.fn(async () => ({ state: 'FINISHED' })),
+            refundSplit: vitest_1.vi.fn(async () => refund),
+        });
+    }
+    (0, vitest_1.beforeEach)(makeService);
+    (0, vitest_1.it)('无结算单 → 空跑 0/0/0 不抛错', async () => {
+        settleRepo.find.mockResolvedValueOnce([]);
+        await (0, vitest_1.expect)(service.onSaleOrderRefunded(ctx, 88, 'test')).resolves.toEqual({ cancelled: 0, reversed: 0, failed: 0 });
+    });
+    (0, vitest_1.it)('PENDING → CANCELLED（原子更新带原状态条件 + 备注原因）', async () => {
+        settleRepo.find.mockResolvedValueOnce([{ id: 1, status: 'PENDING', settlementNo: 'CSTL-7-1' }]);
+        const r = await service.onSaleOrderRefunded(ctx, 88, 'sale refunded');
+        (0, vitest_1.expect)(r.cancelled).toBe(1);
+        (0, vitest_1.expect)(qb.set).toHaveBeenCalledWith(vitest_1.expect.objectContaining({ status: 'CANCELLED', remark: 'sale refunded' }));
+        (0, vitest_1.expect)(qb.where).toHaveBeenCalledWith('id = :id AND status = :status', { id: 1, status: 'PENDING' });
+    });
+    (0, vitest_1.it)('PAID_OUT → 追偿受理 → REVERSED（带原状态集合条件 + 追偿回执备注）', async () => {
+        settleRepo.find.mockResolvedValueOnce([{ id: 2, status: 'PAID_OUT', settlementNo: 'CSTL-7-2' }]);
+        const spy = await mockAdapter({ accepted: true, receiptNo: 'STUB-REV-CSTL-7-2' });
+        const r = await service.onSaleOrderRefunded(ctx, 88);
+        (0, vitest_1.expect)(r.reversed).toBe(1);
+        (0, vitest_1.expect)(qb.set).toHaveBeenCalledWith(vitest_1.expect.objectContaining({ status: 'REVERSED', reversedAt: vitest_1.expect.any(Date), remark: vitest_1.expect.stringContaining('STUB-REV-CSTL-7-2') }));
+        (0, vitest_1.expect)(qb.where).toHaveBeenCalledWith('id = :id AND status IN (:...st)', { id: 2, st: ['SETTLED', 'PAID_OUT'] });
+        spy.mockRestore();
+    });
+    (0, vitest_1.it)('追偿被拒 → failed 计数不更新状态（留在重试/对账兜底）', async () => {
+        settleRepo.find.mockResolvedValueOnce([{ id: 3, status: 'SETTLED', settlementNo: 'CSTL-7-3' }]);
+        const spy = await mockAdapter({ accepted: false, error: 'gateway rejected' });
+        const r = await service.onSaleOrderRefunded(ctx, 88);
+        (0, vitest_1.expect)(r.reversed).toBe(0);
+        (0, vitest_1.expect)(r.failed).toBe(1);
+        (0, vitest_1.expect)(qb.execute).not.toHaveBeenCalled();
+        spy.mockRestore();
+    });
+    (0, vitest_1.it)('原子更新未命中（并发已变状态）→ 不计 cancelled（不误报，对账兜底）', async () => {
+        settleRepo.find.mockResolvedValueOnce([{ id: 4, status: 'PENDING', settlementNo: 'CSTL-7-4' }]);
+        qb.execute.mockResolvedValueOnce({ affected: 0 });
+        const r = await service.onSaleOrderRefunded(ctx, 88);
+        (0, vitest_1.expect)(r.cancelled).toBe(0);
+        (0, vitest_1.expect)(r.reversed).toBe(0);
+    });
+    (0, vitest_1.it)('查询异常 → 不抛错全量 failed（退款主流程不被阻断）', async () => {
+        settleRepo.find.mockRejectedValueOnce(new Error('db gone'));
+        await (0, vitest_1.expect)(service.onSaleOrderRefunded(ctx, 88)).resolves.toEqual({ cancelled: 0, reversed: 0, failed: 0 });
+    });
+});
 //# sourceMappingURL=coupon-settlement.service.spec.js.map
