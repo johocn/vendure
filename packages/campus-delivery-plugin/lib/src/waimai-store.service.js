@@ -10,9 +10,15 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.WaimaiStoreService = void 0;
+exports.normalizePrintMode = normalizePrintMode;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
+const PRINT_MODES = ['off', 'onPaid', 'onAccepted'];
+/** printMode 归一化：null/非法值一律回 'off'（存量行与脏配置兜底） */
+function normalizePrintMode(v) {
+    return PRINT_MODES.includes(v) ? v : 'off';
+}
 const ROUTE_WHITELIST = ['R1', 'R2', 'R3', 'R4', 'R5'];
 /** R4 自提点标记：campus 配置管理的本渠道门店自提点（幂等 upsert 键，复用 cjk PickupLocation 体系） */
 const CAMPUS_R4_REMARK = 'campus-r4';
@@ -83,6 +89,9 @@ let WaimaiStoreService = class WaimaiStoreService {
         const bad = ((_a = input.routesEnabled) !== null && _a !== void 0 ? _a : []).filter(r => !ROUTE_WHITELIST.includes(r));
         if (bad.length)
             throw new core_1.UserInputError(`不支持的配送路线: ${bad.join(', ')}（仅接受 R1-R5）`);
+        if (input.printMode != null && !PRINT_MODES.includes(input.printMode)) {
+            throw new core_1.UserInputError(`不支持的打印模式: ${input.printMode}（仅接受 off/onPaid/onAccepted）`);
+        }
         const negative = ['deliveryMinutes', 'minOrderAmount', 'deliveryFee', 'errandBaseFee', 'freeShippingThreshold']
             .filter(k => input[k] != null && input[k] < 0);
         if (negative.length)
@@ -114,6 +123,7 @@ let WaimaiStoreService = class WaimaiStoreService {
         cfg.notifyTemplateCancelled = (_s = input.notifyTemplateCancelled) !== null && _s !== void 0 ? _s : null;
         cfg.notifyTemplateAfterSales = (_t = input.notifyTemplateAfterSales) !== null && _t !== void 0 ? _t : null;
         cfg.h5BaseUrl = (_u = input.h5BaseUrl) !== null && _u !== void 0 ? _u : null;
+        cfg.printMode = input.printMode == null || input.printMode === '' ? 'off' : input.printMode;
         await repo.save(cfg);
         const address = ((_v = input.storeAddress) !== null && _v !== void 0 ? _v : '').trim();
         if (address) {
@@ -173,6 +183,7 @@ let WaimaiStoreService = class WaimaiStoreService {
             notifyTemplateCancelled: (_s = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateCancelled) !== null && _s !== void 0 ? _s : null,
             notifyTemplateAfterSales: (_t = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateAfterSales) !== null && _t !== void 0 ? _t : null,
             h5BaseUrl: (_u = cfg === null || cfg === void 0 ? void 0 : cfg.h5BaseUrl) !== null && _u !== void 0 ? _u : null,
+            printMode: normalizePrintMode(cfg === null || cfg === void 0 ? void 0 : cfg.printMode),
         };
     }
 };

@@ -35,6 +35,7 @@ export class CampusFulfillmentConfig extends VendureEntity {
     @Column({ type: 'varchar', nullable: true }) notifyTemplateCancelled: string | null; // 取消通知
     @Column({ type: 'varchar', nullable: true }) notifyTemplateAfterSales: string | null; // 售后进度
     @Column({ type: 'varchar', nullable: true }) h5BaseUrl: string | null; // C 端 H5 站点 origin，如 https://www.yourbao.cn
+    @Column({ type: 'varchar', nullable: true }) printMode: string | null; // 商家小票打印时机 'off' | 'onPaid' | 'onAccepted'（null=off）
     constructor(input?: DeepPartial<CampusFulfillmentConfig>) {
         super(input);
     }

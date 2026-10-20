@@ -12,16 +12,21 @@ export interface MerchantBoardOrder {
     code: string;
     createdAt: Date;
     total: number;
+    shipping: number;
     building: string;
     zone: string;
     slotText: string;
     route: string;
     riderName: string | null;
+    printedAt: Date | null;
     lines: MerchantBoardLine[];
 }
 export interface MerchantBoard {
     paused: boolean;
     merchantConfirmEnabled: boolean;
+    printMode: 'off' | 'onPaid' | 'onAccepted';
+    storeName: string;
+    storePhone: string | null;
     pending: MerchantBoardOrder[];
     cooking: MerchantBoardOrder[];
     awaitingRider: MerchantBoardOrder[];
@@ -53,6 +58,10 @@ export declare class MerchantAdminService {
     }>;
     /** 营业开关：商家仅可切换本渠道 paused，其余配置仍归 CampusConfig 管理员 */
     setPaused(ctx: RequestContext, paused: boolean): Promise<{
+        ok: boolean;
+    }>;
+    /** 小票打印回执：工作台打印成功后回写 waimaiPrintedAt（防重打 + 补打依据），不限订单状态 */
+    markPrinted(ctx: RequestContext, orderId: ID): Promise<{
         ok: boolean;
     }>;
     private assertChannelOrder;

@@ -32,4 +32,11 @@ export class MerchantAdminResolver {
     async campusMerchantSetPaused(@Ctx() ctx: RequestContext, @Args('paused') paused: boolean) {
         return this.merchant.setPaused(ctx, paused);
     }
+
+    /** 小票打印回执：打印成功后回写 waimaiPrintedAt（防重打 + 补打依据） */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantMarkPrinted(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID) {
+        return this.merchant.markPrinted(ctx, orderId);
+    }
 }

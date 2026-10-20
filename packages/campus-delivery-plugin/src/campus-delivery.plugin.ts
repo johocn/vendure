@@ -188,17 +188,22 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     code: String!
                     createdAt: DateTime!
                     total: Int!
+                    shipping: Int!
                     building: String!
                     zone: String!
                     slotText: String!
                     route: String!
                     riderName: String
+                    printedAt: DateTime
                     lines: [MerchantBoardLine!]!
                 }
 
                 type CampusMerchantBoard {
                     paused: Boolean!
                     merchantConfirmEnabled: Boolean!
+                    printMode: String!
+                    storeName: String!
+                    storePhone: String
                     pending: [MerchantBoardOrder!]!
                     cooking: [MerchantBoardOrder!]!
                     awaitingRider: [MerchantBoardOrder!]!
@@ -289,6 +294,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     notifyTemplateCancelled: String
                     notifyTemplateAfterSales: String
                     h5BaseUrl: String
+                    printMode: String!
                 }
 
                 input CampusStoreConfigInput {
@@ -311,6 +317,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     notifyTemplateCancelled: String
                     notifyTemplateAfterSales: String
                     h5BaseUrl: String
+                    printMode: String
                 }
 
                 type RiderWithdrawalRequest {
@@ -360,6 +367,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     campusMerchantAcceptOrder(orderId: ID!): CampusMerchantOpResult!
                     campusMerchantCookingDone(orderId: ID!): CampusMerchantOpResult!
                     campusMerchantSetPaused(paused: Boolean!): CampusMerchantOpResult!
+                    campusMerchantMarkPrinted(orderId: ID!): CampusMerchantOpResult!
                     approveRiderWithdraw(id: ID!, remark: String): RiderWithdrawalRequest!
                     rejectRiderWithdraw(id: ID!, remark: String): RiderWithdrawalRequest!
                 }

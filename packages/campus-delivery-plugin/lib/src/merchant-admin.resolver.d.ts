@@ -15,4 +15,8 @@ export declare class MerchantAdminResolver {
     campusMerchantSetPaused(ctx: RequestContext, paused: boolean): Promise<{
         ok: boolean;
     }>;
+    /** 小票打印回执：打印成功后回写 waimaiPrintedAt（防重打 + 补打依据） */
+    campusMerchantMarkPrinted(ctx: RequestContext, orderId: ID): Promise<{
+        ok: boolean;
+    }>;
 }

@@ -67,6 +67,7 @@ ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "notifyTemplatePa
 ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "notifyTemplateCancelled" varchar;
 ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "notifyTemplateAfterSales" varchar;
 ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "h5BaseUrl" varchar(255);
+ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "printMode" varchar(255);
 CREATE TABLE IF NOT EXISTS payment_timeout_task (
   id SERIAL PRIMARY KEY, "createdAt" timestamptz DEFAULT now(), "updatedAt" timestamptz DEFAULT now(),
   "orderId" int NOT NULL, "channelId" int NOT NULL, type varchar(255) NOT NULL,

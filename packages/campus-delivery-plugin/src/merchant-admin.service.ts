@@ -4,6 +4,7 @@ import { CampusBuilding } from './campus-building.entity';
 import { CampusConfigService } from './campus-config.service';
 import { CampusNotifyService } from './campus-notify.service';
 import { HallService } from './hall.service';
+import { normalizePrintMode } from './waimai-store.service';
 
 export interface MerchantBoardLine {
     name: string;
@@ -16,17 +17,22 @@ export interface MerchantBoardOrder {
     code: string;
     createdAt: Date;
     total: number;
+    shipping: number;
     building: string;
     zone: string;
     slotText: string;
     route: string;
     riderName: string | null;
+    printedAt: Date | null; // 小票最近打印时间（null=未打）
     lines: MerchantBoardLine[];
 }
 
 export interface MerchantBoard {
     paused: boolean;
     merchantConfirmEnabled: boolean;
+    printMode: 'off' | 'onPaid' | 'onAccepted';
+    storeName: string;
+    storePhone: string | null;
     pending: MerchantBoardOrder[];
     cooking: MerchantBoardOrder[];
     awaitingRider: MerchantBoardOrder[];
@@ -95,6 +101,9 @@ export class MerchantAdminService {
         return {
             paused: cfg.paused,
             merchantConfirmEnabled: cfg.merchantConfirmEnabled,
+            printMode: normalizePrintMode(cfg.printMode),
+            storeName: ctx.channel?.code ?? '',
+            storePhone: cfg.storePhone ?? null,
             pending,
             cooking,
             awaitingRider,
@@ -126,6 +135,20 @@ export class MerchantAdminService {
     /** 营业开关：商家仅可切换本渠道 paused，其余配置仍归 CampusConfig 管理员 */
     async setPaused(ctx: RequestContext, paused: boolean) {
         await this.config.updateConfig(ctx, { paused });
+        return { ok: true };
+    }
+
+    /** 小票打印回执：工作台打印成功后回写 waimaiPrintedAt（防重打 + 补打依据），不限订单状态 */
+    async markPrinted(ctx: RequestContext, orderId: ID) {
+        const order = await this.connection.getRepository(ctx, Order).findOne({
+            where: { id: orderId as any },
+            relations: ['channels'],
+        });
+        const inChannel = order?.channels?.some(c => String(c.id) === String(ctx.channelId));
+        if (!order || !inChannel) throw new UserInputError('订单不存在或不属于当前店铺');
+        await this.hall.updateOrder(ctx, order.id as any, {
+            customFields: { waimaiPrintedAt: new Date() },
+        } as any);
         return { ok: true };
     }
 
@@ -168,11 +191,13 @@ export class MerchantAdminService {
                 code: o.code,
                 createdAt: o.createdAt,
                 total: o.total,
+                shipping: o.shipping,
                 building: cf.buildingId ? buildingNames.get(String(cf.buildingId)) ?? '' : '',
                 zone: cf.campusZone ?? '',
                 slotText: cf.deliverySlotText ?? '',
                 route: cf.fulfillmentRoute ?? '',
                 riderName: cf.deliveryStaffId ? riderNames.get(String(cf.deliveryStaffId)) ?? null : null,
+                printedAt: (cf.waimaiPrintedAt as Date | undefined) ?? null,
                 lines: (o.lines ?? []).map(l => ({
                     name: l.productVariant?.name ?? '',
                     quantity: l.quantity,

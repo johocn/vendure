@@ -41,7 +41,12 @@ export interface CampusStoreConfigWithChannel {
     notifyTemplateCancelled: string | null;
     notifyTemplateAfterSales: string | null;
     h5BaseUrl: string | null;
+    printMode: 'off' | 'onPaid' | 'onAccepted';
 }
+declare const PRINT_MODES: readonly ["off", "onPaid", "onAccepted"];
+type PrintMode = (typeof PRINT_MODES)[number];
+/** printMode 归一化：null/非法值一律回 'off'（存量行与脏配置兜底） */
+export declare function normalizePrintMode(v: unknown): PrintMode;
 export declare class WaimaiStoreService {
     private connection;
     constructor(connection: TransactionalConnection);
@@ -71,9 +76,11 @@ export declare class WaimaiStoreService {
         notifyTemplateCancelled?: string | null;
         notifyTemplateAfterSales?: string | null;
         h5BaseUrl?: string | null;
+        printMode?: string | null;
     }): Promise<CampusStoreConfigWithChannel>;
     /** 经 rawConnection 按实体名取 repo（避免对 cjk-plugin 的构建期依赖；PickupLocation 由 cjk-plugin 注册于同一进程）。
      * 可见性：isPublic=false + ownerChannelId=本渠道 + channels 含本渠道 → shop 端 applyVisibility 对本渠道可见（cjk pickup-location.service.ts:35）。 */
     private upsertStorePickupLocation;
     private toConfigView;
 }
+export {};

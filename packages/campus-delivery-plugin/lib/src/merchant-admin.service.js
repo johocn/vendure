@@ -16,6 +16,7 @@ const campus_building_entity_1 = require("./campus-building.entity");
 const campus_config_service_1 = require("./campus-config.service");
 const campus_notify_service_1 = require("./campus-notify.service");
 const hall_service_1 = require("./hall.service");
+const waimai_store_service_1 = require("./waimai-store.service");
 /**
  * 商家接单工作台（admin-api，CampusMerchant 权限，渠道隔离 = 商家角色绑定渠道）。
  * 状态机（merchantConfirmEnabled 渠道）：支付 → pending_merchant（待商家接单）
@@ -30,6 +31,7 @@ let MerchantAdminService = class MerchantAdminService {
         this.notify = notify;
     }
     async board(ctx) {
+        var _a, _b, _c;
         const cfg = await this.config.getConfig(ctx);
         const repo = this.connection.getRepository(ctx, core_1.Order);
         const orders = await repo
@@ -73,6 +75,9 @@ let MerchantAdminService = class MerchantAdminService {
         return {
             paused: cfg.paused,
             merchantConfirmEnabled: cfg.merchantConfirmEnabled,
+            printMode: (0, waimai_store_service_1.normalizePrintMode)(cfg.printMode),
+            storeName: (_b = (_a = ctx.channel) === null || _a === void 0 ? void 0 : _a.code) !== null && _b !== void 0 ? _b : '',
+            storePhone: (_c = cfg.storePhone) !== null && _c !== void 0 ? _c : null,
             pending,
             cooking,
             awaitingRider,
@@ -101,6 +106,21 @@ let MerchantAdminService = class MerchantAdminService {
     /** 营业开关：商家仅可切换本渠道 paused，其余配置仍归 CampusConfig 管理员 */
     async setPaused(ctx, paused) {
         await this.config.updateConfig(ctx, { paused });
+        return { ok: true };
+    }
+    /** 小票打印回执：工作台打印成功后回写 waimaiPrintedAt（防重打 + 补打依据），不限订单状态 */
+    async markPrinted(ctx, orderId) {
+        var _a;
+        const order = await this.connection.getRepository(ctx, core_1.Order).findOne({
+            where: { id: orderId },
+            relations: ['channels'],
+        });
+        const inChannel = (_a = order === null || order === void 0 ? void 0 : order.channels) === null || _a === void 0 ? void 0 : _a.some(c => String(c.id) === String(ctx.channelId));
+        if (!order || !inChannel)
+            throw new core_1.UserInputError('订单不存在或不属于当前店铺');
+        await this.hall.updateOrder(ctx, order.id, {
+            customFields: { waimaiPrintedAt: new Date() },
+        });
         return { ok: true };
     }
     async assertChannelOrder(ctx, orderId, expect) {
@@ -137,19 +157,21 @@ let MerchantAdminService = class MerchantAdminService {
             : [];
         const riderNames = new Map(customers.map(c => { var _a, _b; return [String(c.id), (_b = (_a = c.customFields) === null || _a === void 0 ? void 0 : _a.riderRealName) !== null && _b !== void 0 ? _b : '']; }));
         return orders.map(o => {
-            var _a, _b, _c, _d, _e, _f;
+            var _a, _b, _c, _d, _e, _f, _g;
             const cf = o.customFields;
             return {
                 id: String(o.id),
                 code: o.code,
                 createdAt: o.createdAt,
                 total: o.total,
+                shipping: o.shipping,
                 building: cf.buildingId ? (_a = buildingNames.get(String(cf.buildingId))) !== null && _a !== void 0 ? _a : '' : '',
                 zone: (_b = cf.campusZone) !== null && _b !== void 0 ? _b : '',
                 slotText: (_c = cf.deliverySlotText) !== null && _c !== void 0 ? _c : '',
                 route: (_d = cf.fulfillmentRoute) !== null && _d !== void 0 ? _d : '',
                 riderName: cf.deliveryStaffId ? (_e = riderNames.get(String(cf.deliveryStaffId))) !== null && _e !== void 0 ? _e : null : null,
-                lines: ((_f = o.lines) !== null && _f !== void 0 ? _f : []).map(l => {
+                printedAt: (_f = cf.waimaiPrintedAt) !== null && _f !== void 0 ? _f : null,
+                lines: ((_g = o.lines) !== null && _g !== void 0 ? _g : []).map(l => {
                     var _a, _b;
                     return ({
                         name: (_b = (_a = l.productVariant) === null || _a === void 0 ? void 0 : _a.name) !== null && _b !== void 0 ? _b : '',

@@ -35,6 +35,10 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantSetPaused(ctx, paused) {
         return this.merchant.setPaused(ctx, paused);
     }
+    /** 小票打印回执：打印成功后回写 waimaiPrintedAt（防重打 + 补打依据） */
+    async campusMerchantMarkPrinted(ctx, orderId) {
+        return this.merchant.markPrinted(ctx, orderId);
+    }
 };
 exports.MerchantAdminResolver = MerchantAdminResolver;
 __decorate([
@@ -72,6 +76,15 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Boolean]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantSetPaused", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantMarkPrinted", null);
 exports.MerchantAdminResolver = MerchantAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [merchant_admin_service_1.MerchantAdminService])

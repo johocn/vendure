@@ -29,5 +29,6 @@ export declare class CampusFulfillmentConfig extends VendureEntity {
     notifyTemplateCancelled: string | null;
     notifyTemplateAfterSales: string | null;
     h5BaseUrl: string | null;
+    printMode: string | null;
     constructor(input?: DeepPartial<CampusFulfillmentConfig>);
 }

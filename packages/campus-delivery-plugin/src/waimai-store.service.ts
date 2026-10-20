@@ -45,6 +45,15 @@ export interface CampusStoreConfigWithChannel {
     notifyTemplateCancelled: string | null;
     notifyTemplateAfterSales: string | null;
     h5BaseUrl: string | null;
+    printMode: 'off' | 'onPaid' | 'onAccepted';
+}
+
+const PRINT_MODES = ['off', 'onPaid', 'onAccepted'] as const;
+type PrintMode = (typeof PRINT_MODES)[number];
+
+/** printMode 归一化：null/非法值一律回 'off'（存量行与脏配置兜底） */
+export function normalizePrintMode(v: unknown): PrintMode {
+    return PRINT_MODES.includes(v as PrintMode) ? (v as PrintMode) : 'off';
 }
 
 const ROUTE_WHITELIST = ['R1', 'R2', 'R3', 'R4', 'R5'];
@@ -134,10 +143,14 @@ export class WaimaiStoreService {
             notifyTemplateCancelled?: string | null;
             notifyTemplateAfterSales?: string | null;
             h5BaseUrl?: string | null;
+            printMode?: string | null;
         },
     ): Promise<CampusStoreConfigWithChannel> {
         const bad = (input.routesEnabled ?? []).filter(r => !ROUTE_WHITELIST.includes(r));
         if (bad.length) throw new UserInputError(`不支持的配送路线: ${bad.join(', ')}（仅接受 R1-R5）`);
+        if (input.printMode != null && !PRINT_MODES.includes(input.printMode as PrintMode)) {
+            throw new UserInputError(`不支持的打印模式: ${input.printMode}（仅接受 off/onPaid/onAccepted）`);
+        }
         const negative = (['deliveryMinutes', 'minOrderAmount', 'deliveryFee', 'errandBaseFee', 'freeShippingThreshold'] as const)
             .filter(k => input[k] != null && (input[k] as number) < 0);
         if (negative.length) throw new UserInputError(`不能为负数: ${negative.join(', ')}`);
@@ -166,6 +179,7 @@ export class WaimaiStoreService {
         cfg.notifyTemplateCancelled = input.notifyTemplateCancelled ?? null;
         cfg.notifyTemplateAfterSales = input.notifyTemplateAfterSales ?? null;
         cfg.h5BaseUrl = input.h5BaseUrl ?? null;
+        cfg.printMode = input.printMode == null || input.printMode === '' ? 'off' : input.printMode;
         await repo.save(cfg);
         const address = (input.storeAddress ?? '').trim();
         if (address) {
@@ -231,6 +245,7 @@ export class WaimaiStoreService {
             notifyTemplateCancelled: cfg?.notifyTemplateCancelled ?? null,
             notifyTemplateAfterSales: cfg?.notifyTemplateAfterSales ?? null,
             h5BaseUrl: cfg?.h5BaseUrl ?? null,
+            printMode: normalizePrintMode(cfg?.printMode),
         };
     }
 }
