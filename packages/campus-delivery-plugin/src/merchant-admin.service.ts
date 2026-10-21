@@ -23,6 +23,7 @@ export interface MerchantBoardOrder {
     slotText: string;
     route: string;
     riderName: string | null;
+    note: string | null; // 顾客整单备注（工作台展示 + 小票打印）
     printedAt: Date | null; // 小票最近打印时间（null=未打）
     lines: MerchantBoardLine[];
 }
@@ -197,6 +198,7 @@ export class MerchantAdminService {
                 slotText: cf.deliverySlotText ?? '',
                 route: cf.fulfillmentRoute ?? '',
                 riderName: cf.deliveryStaffId ? riderNames.get(String(cf.deliveryStaffId)) ?? null : null,
+                note: cf.note ?? null,
                 printedAt: (cf.waimaiPrintedAt as Date | undefined) ?? null,
                 lines: (o.lines ?? []).map(l => ({
                     name: l.productVariant?.name ?? '',

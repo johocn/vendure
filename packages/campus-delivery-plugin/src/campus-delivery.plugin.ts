@@ -194,6 +194,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     slotText: String!
                     route: String!
                     riderName: String
+                    note: String
                     printedAt: DateTime
                     lines: [MerchantBoardLine!]!
                 }
