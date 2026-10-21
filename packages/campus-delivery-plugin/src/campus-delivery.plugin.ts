@@ -26,6 +26,7 @@ import { DispatchAdminService } from './dispatch-admin.service';
 import { DispatchJobService } from './dispatch-job.service';
 import { ErrandService } from './errand.service';
 import { ErrandShopResolver } from './errand-shop.resolver';
+import { FavoriteShopResolver } from './favorite-shop.resolver';
 import { CampusErrandShippingLineAssignmentStrategy } from './errand-shipping-line-assignment';
 import { HallGrabService } from './hall-grab.service';
 import { HallService } from './hall.service';
@@ -653,6 +654,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     myRiderWallet: RiderWallet!
                     riderBalanceHistory(skip: Int, take: Int): [RiderBalanceTx!]!
                     riderWithdrawRequests(skip: Int, take: Int): [RiderWithdrawalRequest!]!
+                    campusFavoriteStores: [String!]!
                 }
 
                 extend type Mutation {
@@ -672,10 +674,11 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     campusSetErrandInfo(input: CampusErrandInput!): CampusErrandInfoResult!
                     campusMarkArrived(orderId: ID!): CampusArrivedResult!
                     riderWithdraw(amount: Int!, channel: String!, account: String!): RiderWithdrawalRequest!
+                    campusToggleFavoriteStore(channelId: ID!): [String!]!
                 }
             `;
         },
-        resolvers: [RiderShopResolver, HallShopResolver, RiderTaskShopResolver, ErrandShopResolver, WaimaiShopResolver, R2ShopResolver, InvoiceShopResolver],
+        resolvers: [RiderShopResolver, HallShopResolver, RiderTaskShopResolver, ErrandShopResolver, WaimaiShopResolver, R2ShopResolver, InvoiceShopResolver, FavoriteShopResolver],
     },
     configuration: config => {
         config.authOptions.customPermissions = [

@@ -26,6 +26,7 @@ const dispatch_admin_service_1 = require("./dispatch-admin.service");
 const dispatch_job_service_1 = require("./dispatch-job.service");
 const errand_service_1 = require("./errand.service");
 const errand_shop_resolver_1 = require("./errand-shop.resolver");
+const favorite_shop_resolver_1 = require("./favorite-shop.resolver");
 const errand_shipping_line_assignment_1 = require("./errand-shipping-line-assignment");
 const hall_grab_service_1 = require("./hall-grab.service");
 const hall_service_1 = require("./hall.service");
@@ -724,6 +725,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     myRiderWallet: RiderWallet!
                     riderBalanceHistory(skip: Int, take: Int): [RiderBalanceTx!]!
                     riderWithdrawRequests(skip: Int, take: Int): [RiderWithdrawalRequest!]!
+                    campusFavoriteStores: [String!]!
                 }
 
                 extend type Mutation {
@@ -743,10 +745,11 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusSetErrandInfo(input: CampusErrandInput!): CampusErrandInfoResult!
                     campusMarkArrived(orderId: ID!): CampusArrivedResult!
                     riderWithdraw(amount: Int!, channel: String!, account: String!): RiderWithdrawalRequest!
+                    campusToggleFavoriteStore(channelId: ID!): [String!]!
                 }
             `;
             },
-            resolvers: [rider_shop_resolver_1.RiderShopResolver, hall_shop_resolver_1.HallShopResolver, rider_task_shop_resolver_1.RiderTaskShopResolver, errand_shop_resolver_1.ErrandShopResolver, waimai_shop_resolver_1.WaimaiShopResolver, r2_shop_resolver_1.R2ShopResolver, campus_invoice_resolver_1.InvoiceShopResolver],
+            resolvers: [rider_shop_resolver_1.RiderShopResolver, hall_shop_resolver_1.HallShopResolver, rider_task_shop_resolver_1.RiderTaskShopResolver, errand_shop_resolver_1.ErrandShopResolver, waimai_shop_resolver_1.WaimaiShopResolver, r2_shop_resolver_1.R2ShopResolver, campus_invoice_resolver_1.InvoiceShopResolver, favorite_shop_resolver_1.FavoriteShopResolver],
         },
         configuration: config => {
             var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p;

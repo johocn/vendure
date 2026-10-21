@@ -64,6 +64,10 @@ CREATE TABLE IF NOT EXISTS payment_timeout_task (
   "expectedState" varchar(255) NOT NULL, "retryCount" int DEFAULT 0, "lastError" varchar(255));
 -- 骑手实时位置 riderLat/riderLng（plan 2.2）：Order customFields 列由 Vendure 启动时自动同步（含类型），
 -- 实测列名 customFieldsRiderlat/customFieldsRiderlng（首字母大写+小写化规则），此处无需手工 ALTER。
+-- 商家收藏（常用功能）：channelId = 店铺渠道；独立表避免 customer customFields 列同步依赖，且与当前渠道无关。
+CREATE TABLE IF NOT EXISTS campus_favorite_shop (
+  id SERIAL PRIMARY KEY, "createdAt" timestamptz DEFAULT now(), "updatedAt" timestamptz DEFAULT now(),
+  "customerId" int NOT NULL, "channelId" int NOT NULL, UNIQUE ("customerId", "channelId"));
 `;
 
 @Injectable()
