@@ -18,6 +18,7 @@ export interface MerchantBoardOrder {
     slotText: string;
     route: string;
     riderName: string | null;
+    note: string | null;
     printedAt: Date | null;
     lines: MerchantBoardLine[];
 }

@@ -157,7 +157,7 @@ let MerchantAdminService = class MerchantAdminService {
             : [];
         const riderNames = new Map(customers.map(c => { var _a, _b; return [String(c.id), (_b = (_a = c.customFields) === null || _a === void 0 ? void 0 : _a.riderRealName) !== null && _b !== void 0 ? _b : '']; }));
         return orders.map(o => {
-            var _a, _b, _c, _d, _e, _f, _g;
+            var _a, _b, _c, _d, _e, _f, _g, _h;
             const cf = o.customFields;
             return {
                 id: String(o.id),
@@ -170,8 +170,9 @@ let MerchantAdminService = class MerchantAdminService {
                 slotText: (_c = cf.deliverySlotText) !== null && _c !== void 0 ? _c : '',
                 route: (_d = cf.fulfillmentRoute) !== null && _d !== void 0 ? _d : '',
                 riderName: cf.deliveryStaffId ? (_e = riderNames.get(String(cf.deliveryStaffId))) !== null && _e !== void 0 ? _e : null : null,
-                printedAt: (_f = cf.waimaiPrintedAt) !== null && _f !== void 0 ? _f : null,
-                lines: ((_g = o.lines) !== null && _g !== void 0 ? _g : []).map(l => {
+                note: (_f = cf.note) !== null && _f !== void 0 ? _f : null,
+                printedAt: (_g = cf.waimaiPrintedAt) !== null && _g !== void 0 ? _g : null,
+                lines: ((_h = o.lines) !== null && _h !== void 0 ? _h : []).map(l => {
                     var _a, _b;
                     return ({
                         name: (_b = (_a = l.productVariant) === null || _a === void 0 ? void 0 : _a.name) !== null && _b !== void 0 ? _b : '',

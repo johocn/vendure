@@ -265,6 +265,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     slotText: String!
                     route: String!
                     riderName: String
+                    note: String
                     printedAt: DateTime
                     lines: [MerchantBoardLine!]!
                 }
