@@ -43,8 +43,10 @@ let FavoriteShopResolver = class FavoriteShopResolver {
             throw new core_1.UserInputError('CHANNEL_NOT_FOUND');
         }
         // 已收藏 → 删（取消）；未收藏 → 增。唯一约束兜底并发重复插入。
-        const removed = await this.dataSource.query(`DELETE FROM campus_favorite_shop WHERE "customerId" = $1 AND "channelId" = $2 RETURNING id`, [customerId, channel.id]);
-        if (!removed.length) {
+        // 注意：TypeORM PostgresQueryRunner 对 DELETE/UPDATE 的 raw 返回 [rows, affected]，不是 rows
+        const delResult = await this.dataSource.query(`DELETE FROM campus_favorite_shop WHERE "customerId" = $1 AND "channelId" = $2 RETURNING id`, [customerId, channel.id]);
+        const removedRows = Array.isArray(delResult === null || delResult === void 0 ? void 0 : delResult[0]) ? delResult[0] : delResult !== null && delResult !== void 0 ? delResult : [];
+        if (!removedRows.length) {
             await this.dataSource.query(`INSERT INTO campus_favorite_shop ("customerId", "channelId") VALUES ($1, $2)
                  ON CONFLICT ("customerId", "channelId") DO NOTHING`, [customerId, channel.id]);
         }
