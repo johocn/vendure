@@ -760,18 +760,18 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             resolvers: [rider_shop_resolver_1.RiderShopResolver, hall_shop_resolver_1.HallShopResolver, rider_task_shop_resolver_1.RiderTaskShopResolver, errand_shop_resolver_1.ErrandShopResolver, waimai_shop_resolver_1.WaimaiShopResolver, r2_shop_resolver_1.R2ShopResolver, campus_invoice_resolver_1.InvoiceShopResolver, favorite_shop_resolver_1.FavoriteShopResolver],
         },
         configuration: config => {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r;
             config.authOptions.customPermissions = [
                 ...((_a = config.authOptions.customPermissions) !== null && _a !== void 0 ? _a : []),
                 ...permissions_1.campusPermissionDefinitions,
             ];
-            config.customFields = Object.assign(Object.assign({}, config.customFields), { Order: [...((_b = config.customFields.Order) !== null && _b !== void 0 ? _b : []), ...((_c = custom_fields_1.campusCustomFields.Order) !== null && _c !== void 0 ? _c : [])], Customer: [...((_d = config.customFields.Customer) !== null && _d !== void 0 ? _d : []), ...((_e = custom_fields_1.campusCustomFields.Customer) !== null && _e !== void 0 ? _e : [])], Channel: [...((_f = config.customFields.Channel) !== null && _f !== void 0 ? _f : []), ...((_g = custom_fields_1.campusCustomFields.Channel) !== null && _g !== void 0 ? _g : [])], Address: [...((_h = config.customFields.Address) !== null && _h !== void 0 ? _h : []), ...((_j = custom_fields_1.campusCustomFields.Address) !== null && _j !== void 0 ? _j : [])] });
+            config.customFields = Object.assign(Object.assign({}, config.customFields), { Order: [...((_b = config.customFields.Order) !== null && _b !== void 0 ? _b : []), ...((_c = custom_fields_1.campusCustomFields.Order) !== null && _c !== void 0 ? _c : [])], Customer: [...((_d = config.customFields.Customer) !== null && _d !== void 0 ? _d : []), ...((_e = custom_fields_1.campusCustomFields.Customer) !== null && _e !== void 0 ? _e : [])], Channel: [...((_f = config.customFields.Channel) !== null && _f !== void 0 ? _f : []), ...((_g = custom_fields_1.campusCustomFields.Channel) !== null && _g !== void 0 ? _g : [])], Product: [...((_h = config.customFields.Product) !== null && _h !== void 0 ? _h : []), ...((_j = custom_fields_1.campusCustomFields.Product) !== null && _j !== void 0 ? _j : [])], Address: [...((_k = config.customFields.Address) !== null && _k !== void 0 ? _k : []), ...((_l = custom_fields_1.campusCustomFields.Address) !== null && _l !== void 0 ? _l : [])] });
             config.shippingOptions.shippingCalculators = [
-                ...((_k = config.shippingOptions.shippingCalculators) !== null && _k !== void 0 ? _k : []),
+                ...((_m = config.shippingOptions.shippingCalculators) !== null && _m !== void 0 ? _m : []),
                 shipping_calculator_1.campusErrandCalculator,
             ];
             // 起送价硬校验（二期 §3.2）：ArrangingPayment 过渡拦截，跑腿单豁免
-            config.orderOptions = Object.assign(Object.assign({}, ((_l = config.orderOptions) !== null && _l !== void 0 ? _l : {})), { process: [...((_o = (_m = config.orderOptions) === null || _m === void 0 ? void 0 : _m.process) !== null && _o !== void 0 ? _o : []), min_order_process_1.campusMinOrderProcess] });
+            config.orderOptions = Object.assign(Object.assign({}, ((_o = config.orderOptions) !== null && _o !== void 0 ? _o : {})), { process: [...((_q = (_p = config.orderOptions) === null || _p === void 0 ? void 0 : _p.process) !== null && _q !== void 0 ? _q : []), min_order_process_1.campusMinOrderProcess] });
             // 跑腿单 ShippingLine 分配：包装既有策略（cjk Box 按配送档案分箱，跑腿 0 元载体无档案
             // 绑定会被返回空数组 → 孤儿线）。本插件在 dev-config 中位于 CjkPlugin 之后，
             // configuration 钩子后执行，此处拿到的即为 cjk 已设置的策略，包装后原行为不变。
@@ -781,7 +781,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     new errand_shipping_line_assignment_1.CampusErrandShippingLineAssignmentStrategy(prevAssignmentStrategy);
             }
             // 待付款补偿任务幂等注册
-            config.schedulerOptions.tasks = (_p = config.schedulerOptions.tasks) !== null && _p !== void 0 ? _p : [];
+            config.schedulerOptions.tasks = (_r = config.schedulerOptions.tasks) !== null && _r !== void 0 ? _r : [];
             if (!config.schedulerOptions.tasks.some(t => t.id === PAYMENT_TIMEOUT_COMPENSATION)) {
                 config.schedulerOptions.tasks.push(paymentTimeoutCompensation);
             }

@@ -698,6 +698,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
             Order: [...(config.customFields.Order ?? []), ...(campusCustomFields.Order ?? [])],
             Customer: [...(config.customFields.Customer ?? []), ...(campusCustomFields.Customer ?? [])],
             Channel: [...(config.customFields.Channel ?? []), ...(campusCustomFields.Channel ?? [])],
+            Product: [...(config.customFields.Product ?? []), ...(campusCustomFields.Product ?? [])],
             Address: [...(config.customFields.Address ?? []), ...(campusCustomFields.Address ?? [])],
         };
         config.shippingOptions.shippingCalculators = [
