@@ -18,6 +18,7 @@ export interface WaimaiStore {
     storeAddress: string | null;
     storePhone: string | null;
     storeNotice: string | null;
+    businessHours: string | null;
     errandBaseFee: number | null;
     freeShippingThreshold: number | null;
 }
@@ -98,6 +99,7 @@ export class WaimaiStoreService {
                 storeAddress: cfg.storeAddress ?? null,
                 storePhone: cfg.storePhone ?? null,
                 storeNotice: cfg.storeNotice ?? null,
+                businessHours: cf.waimaiBusinessHours ?? null,
                 errandBaseFee: cfg.errandBaseFee ?? null,
                 freeShippingThreshold: cfg.freeShippingThreshold ?? null,
             });

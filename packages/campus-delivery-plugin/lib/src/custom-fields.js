@@ -46,6 +46,10 @@ exports.campusCustomFields = {
         { name: 'waimaiMonthlySales', type: 'int', nullable: true },
         { name: 'waimaiLogo', type: 'string', nullable: true },
         { name: 'waimaiPromoText', type: 'string', nullable: true }, // 满减 tag 文案，如 '满20减4'（spec §12.2 增补）
+        { name: 'waimaiBusinessHours', type: 'string', nullable: true }, // 店铺营业时间文案，如 10:00-22:00；C 端店铺页展示
+    ],
+    Product: [
+        { name: 'waimaiMonthlySales', type: 'int', nullable: true }, // 商品月销量，C 端菜单排序用，未设置按 0
     ],
     Customer: [
         { name: 'riderStatus', type: 'string', nullable: true }, // none/pending/approved/suspended

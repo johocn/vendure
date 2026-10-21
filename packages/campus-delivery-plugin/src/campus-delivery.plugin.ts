@@ -547,6 +547,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     storeAddress: String
                     storePhone: String
                     storeNotice: String
+                    businessHours: String
                     errandBaseFee: Int
                     freeShippingThreshold: Int
                 }

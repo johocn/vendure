@@ -29,7 +29,7 @@ let WaimaiStoreService = class WaimaiStoreService {
     /** 店铺列表：有履约配置的渠道即外卖店铺（跨渠道公开元数据聚合，供 C 端首页）。
      * C 端进入店铺后用 channelToken 作 vendure-token 切换渠道拉菜单/下单。 */
     async listStores(ctx) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p;
         const configs = await this.connection.getRepository(ctx, campus_fulfillment_config_entity_1.CampusFulfillmentConfig).find();
         const byChannel = new Map(configs.map(c => [Number(c.channelId), c]));
         const channels = await this.connection.getRepository(ctx, core_1.Channel).find();
@@ -63,8 +63,9 @@ let WaimaiStoreService = class WaimaiStoreService {
                 storeAddress: (_j = cfg.storeAddress) !== null && _j !== void 0 ? _j : null,
                 storePhone: (_k = cfg.storePhone) !== null && _k !== void 0 ? _k : null,
                 storeNotice: (_l = cfg.storeNotice) !== null && _l !== void 0 ? _l : null,
-                errandBaseFee: (_m = cfg.errandBaseFee) !== null && _m !== void 0 ? _m : null,
-                freeShippingThreshold: (_o = cfg.freeShippingThreshold) !== null && _o !== void 0 ? _o : null,
+                businessHours: (_m = cf.waimaiBusinessHours) !== null && _m !== void 0 ? _m : null,
+                errandBaseFee: (_o = cfg.errandBaseFee) !== null && _o !== void 0 ? _o : null,
+                freeShippingThreshold: (_p = cfg.freeShippingThreshold) !== null && _p !== void 0 ? _p : null,
             });
         }
         return stores;

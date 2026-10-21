@@ -618,6 +618,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     storeAddress: String
                     storePhone: String
                     storeNotice: String
+                    businessHours: String
                     errandBaseFee: Int
                     freeShippingThreshold: Int
                 }

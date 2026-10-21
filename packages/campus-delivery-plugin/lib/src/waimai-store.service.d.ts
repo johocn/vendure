@@ -15,6 +15,7 @@ export interface WaimaiStore {
     storeAddress: string | null;
     storePhone: string | null;
     storeNotice: string | null;
+    businessHours: string | null;
     errandBaseFee: number | null;
     freeShippingThreshold: number | null;
 }
