@@ -18,10 +18,11 @@ export class CampusConfigService {
         return this.dataSource.getRepository(CampusZone).save({ name, fee, channelId: ctx.channelId } as any);
     }
 
-    listBuildings(zoneId?: number) {
-        return this.dataSource
-            .getRepository(CampusBuilding)
-            .find(zoneId ? { where: { zoneId } } : {});
+    /** 楼栋按当前渠道隔离：后台维护页与 C 端选楼都只读本渠道数据 */
+    listBuildings(ctx: RequestContext, zoneId?: number) {
+        const where: any = { channelId: ctx.channelId as any };
+        if (zoneId) where.zoneId = zoneId;
+        return this.dataSource.getRepository(CampusBuilding).find({ where });
     }
 
     async createBuilding(ctx: RequestContext, name: string, zoneId: number, detail?: string, lat?: number, lng?: number) {
@@ -37,7 +38,8 @@ export class CampusConfigService {
         patch: { name?: string; detail?: string; lat?: number | null; lng?: number | null },
     ) {
         const repo = this.dataSource.getRepository(CampusBuilding);
-        const building = await repo.findOne({ where: { id: id as any } });
+        // 渠道过滤：不允许跨店铺改别家楼栋
+        const building = await repo.findOne({ where: { id: id as any, channelId: ctx.channelId as any } });
         if (!building) throw new UserInputError('宿舍楼不存在');
         if (patch.name !== undefined) building.name = patch.name;
         if (patch.detail !== undefined) building.detail = patch.detail;

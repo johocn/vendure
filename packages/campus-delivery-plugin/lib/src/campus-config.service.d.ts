@@ -10,7 +10,8 @@ export declare class CampusConfigService {
     constructor(dataSource: DataSource, orderService: OrderService);
     listZones(ctx: RequestContext): Promise<CampusZone[]>;
     createZone(ctx: RequestContext, name: string, fee: number): Promise<any>;
-    listBuildings(zoneId?: number): Promise<CampusBuilding[]>;
+    /** 楼栋按当前渠道隔离：后台维护页与 C 端选楼都只读本渠道数据 */
+    listBuildings(ctx: RequestContext, zoneId?: number): Promise<CampusBuilding[]>;
     createBuilding(ctx: RequestContext, name: string, zoneId: number, detail?: string, lat?: number, lng?: number): Promise<any>;
     /** 楼栋信息/坐标维护（骑手跟踪页目标点）；仅更新传入字段 */
     updateBuilding(ctx: RequestContext, id: number, patch: {

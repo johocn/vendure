@@ -94,6 +94,6 @@ export class RiderShopResolver {
 
     @Query()
     async campusBuildings(@Ctx() ctx: RequestContext, @Args({ name: 'zoneId', nullable: true }) zoneId?: ID) {
-        return this.configService.listBuildings(zoneId != null ? Number(zoneId) : undefined);
+        return this.configService.listBuildings(ctx, zoneId != null ? Number(zoneId) : undefined);
     }
 }

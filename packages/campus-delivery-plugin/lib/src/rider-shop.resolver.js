@@ -66,7 +66,7 @@ let RiderShopResolver = class RiderShopResolver {
         return this.configService.listZones(ctx);
     }
     async campusBuildings(ctx, zoneId) {
-        return this.configService.listBuildings(zoneId != null ? Number(zoneId) : undefined);
+        return this.configService.listBuildings(ctx, zoneId != null ? Number(zoneId) : undefined);
     }
 };
 exports.RiderShopResolver = RiderShopResolver;

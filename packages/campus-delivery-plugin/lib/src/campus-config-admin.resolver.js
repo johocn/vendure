@@ -31,7 +31,7 @@ let CampusConfigAdminResolver = class CampusConfigAdminResolver {
         return this.config.listZones(ctx);
     }
     async campusBuildings(ctx, zoneId) {
-        return this.config.listBuildings(zoneId != null ? Number(zoneId) : undefined);
+        return this.config.listBuildings(ctx, zoneId != null ? Number(zoneId) : undefined);
     }
     async campusConfig(ctx) {
         return this.config.getConfig(ctx);

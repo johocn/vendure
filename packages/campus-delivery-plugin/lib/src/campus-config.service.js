@@ -28,10 +28,12 @@ let CampusConfigService = class CampusConfigService {
     async createZone(ctx, name, fee) {
         return this.dataSource.getRepository(campus_zone_entity_1.CampusZone).save({ name, fee, channelId: ctx.channelId });
     }
-    listBuildings(zoneId) {
-        return this.dataSource
-            .getRepository(campus_building_entity_1.CampusBuilding)
-            .find(zoneId ? { where: { zoneId } } : {});
+    /** 楼栋按当前渠道隔离：后台维护页与 C 端选楼都只读本渠道数据 */
+    listBuildings(ctx, zoneId) {
+        const where = { channelId: ctx.channelId };
+        if (zoneId)
+            where.zoneId = zoneId;
+        return this.dataSource.getRepository(campus_building_entity_1.CampusBuilding).find({ where });
     }
     async createBuilding(ctx, name, zoneId, detail, lat, lng) {
         return this.dataSource
@@ -41,7 +43,8 @@ let CampusConfigService = class CampusConfigService {
     /** 楼栋信息/坐标维护（骑手跟踪页目标点）；仅更新传入字段 */
     async updateBuilding(ctx, id, patch) {
         const repo = this.dataSource.getRepository(campus_building_entity_1.CampusBuilding);
-        const building = await repo.findOne({ where: { id: id } });
+        // 渠道过滤：不允许跨店铺改别家楼栋
+        const building = await repo.findOne({ where: { id: id, channelId: ctx.channelId } });
         if (!building)
             throw new core_1.UserInputError('宿舍楼不存在');
         if (patch.name !== undefined)

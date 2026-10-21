@@ -27,7 +27,7 @@ export class CampusConfigAdminResolver {
         @Ctx() ctx: RequestContext,
         @Args({ name: 'zoneId', nullable: true }) zoneId?: ID,
     ) {
-        return this.config.listBuildings(zoneId != null ? Number(zoneId) : undefined);
+        return this.config.listBuildings(ctx, zoneId != null ? Number(zoneId) : undefined);
     }
 
     @Query()
