@@ -39,6 +39,7 @@ exports.campusCustomFields = {
         { name: 'invoiceInfo', type: 'string', nullable: true }, // 开票申请快照 JSON：{titleName,titleType,taxNo,email,appliedAt}
         { name: 'waimaiPrintedAt', type: 'datetime', nullable: true }, // 商家小票最近打印时间（防重打 + 补打依据）
         { name: 'note', type: 'string', nullable: true }, // 顾客整单备注（C 端下单填写，≤200 字，工作台展示 + 小票打印）
+        { name: 'tablewareCount', type: 'int', nullable: true }, // 顾客餐具份数，0=无需餐具，null=未选择
     ],
     Channel: [
         { name: 'waimaiTags', type: 'string', nullable: true }, // '米饭快餐,夜宵' 逗号分隔
