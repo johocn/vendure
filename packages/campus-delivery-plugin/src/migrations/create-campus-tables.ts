@@ -68,6 +68,11 @@ CREATE TABLE IF NOT EXISTS payment_timeout_task (
 CREATE TABLE IF NOT EXISTS campus_favorite_shop (
   id SERIAL PRIMARY KEY, "createdAt" timestamptz DEFAULT now(), "updatedAt" timestamptz DEFAULT now(),
   "customerId" int NOT NULL, "channelId" int NOT NULL, UNIQUE ("customerId", "channelId"));
+-- 商品收藏：variantId = ProductVariant 主键；channelId 便于按店铺分组展示，跨渠道无关读取。
+CREATE TABLE IF NOT EXISTS campus_favorite_variant (
+  id SERIAL PRIMARY KEY, "createdAt" timestamptz DEFAULT now(), "updatedAt" timestamptz DEFAULT now(),
+  "customerId" int NOT NULL, "channelId" int NOT NULL, "variantId" int NOT NULL,
+  UNIQUE ("customerId", "variantId"));
 `;
 
 @Injectable()

@@ -63,6 +63,39 @@ let FavoriteShopResolver = class FavoriteShopResolver {
         }
         return customer.id;
     }
+    // ── 商品收藏（variant 粒度，跨渠道读取） ──
+    async campusFavoriteVariants(ctx) {
+        const customerId = await this.requireCustomerId(ctx);
+        const rows = await this.dataSource.query(`SELECT "variantId", "channelId" FROM campus_favorite_variant WHERE "customerId" = $1 ORDER BY "createdAt" ASC`, [customerId]);
+        return rows.map(r => ({ variantId: String(r.variantId), channelId: String(r.channelId) }));
+    }
+    async campusToggleFavoriteVariant(ctx, variantId, channelId) {
+        const customerId = await this.requireCustomerId(ctx);
+        const variantPk = Number(variantId);
+        const channelPk = Number(channelId);
+        if (!Number.isInteger(variantPk) || variantPk <= 0) {
+            throw new core_1.UserInputError('VARIANT_NOT_FOUND');
+        }
+        if (!Number.isInteger(channelPk) || channelPk <= 0) {
+            throw new core_1.UserInputError('CHANNEL_NOT_FOUND');
+        }
+        const channel = await this.dataSource.getRepository(core_1.Channel).findOne({ where: { id: channelPk } });
+        if (!channel) {
+            throw new core_1.UserInputError('CHANNEL_NOT_FOUND');
+        }
+        const variant = await this.dataSource.getRepository(core_1.ProductVariant).findOne({ where: { id: variantPk } });
+        if (!variant) {
+            throw new core_1.UserInputError('VARIANT_NOT_FOUND');
+        }
+        // 同商家收藏：DELETE…RETURNING 判断是否已收藏；raw 返回 [rows, affected]，兼容数组/对象两种形态
+        const delResult = await this.dataSource.query(`DELETE FROM campus_favorite_variant WHERE "customerId" = $1 AND "variantId" = $2 RETURNING id`, [customerId, variantPk]);
+        const removedRows = Array.isArray(delResult === null || delResult === void 0 ? void 0 : delResult[0]) ? delResult[0] : delResult !== null && delResult !== void 0 ? delResult : [];
+        if (!removedRows.length) {
+            await this.dataSource.query(`INSERT INTO campus_favorite_variant ("customerId", "channelId", "variantId") VALUES ($1, $2, $3)
+                 ON CONFLICT ("customerId", "variantId") DO NOTHING`, [customerId, channelPk, variantPk]);
+        }
+        return this.campusFavoriteVariants(ctx);
+    }
 };
 exports.FavoriteShopResolver = FavoriteShopResolver;
 __decorate([
@@ -82,6 +115,24 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, String]),
     __metadata("design:returntype", Promise)
 ], FavoriteShopResolver.prototype, "campusToggleFavoriteStore", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", Promise)
+], FavoriteShopResolver.prototype, "campusFavoriteVariants", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('variantId')),
+    __param(2, (0, graphql_1.Args)('channelId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, String]),
+    __metadata("design:returntype", Promise)
+], FavoriteShopResolver.prototype, "campusToggleFavoriteVariant", null);
 exports.FavoriteShopResolver = FavoriteShopResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [core_1.CustomerService, typeorm_1.DataSource])

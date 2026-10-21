@@ -708,6 +708,11 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     customFields: CampusHallOrderCustomFields
                 }
 
+                type CampusFavoriteVariant {
+                    variantId: ID!
+                    channelId: ID!
+                }
+
                 extend type Query {
                     myRiderProfile: RiderProfile!
                     campusZones: [CampusZone!]!
@@ -726,6 +731,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     riderBalanceHistory(skip: Int, take: Int): [RiderBalanceTx!]!
                     riderWithdrawRequests(skip: Int, take: Int): [RiderWithdrawalRequest!]!
                     campusFavoriteStores: [String!]!
+                    campusFavoriteVariants: [CampusFavoriteVariant!]!
                 }
 
                 extend type Mutation {
@@ -746,6 +752,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMarkArrived(orderId: ID!): CampusArrivedResult!
                     riderWithdraw(amount: Int!, channel: String!, account: String!): RiderWithdrawalRequest!
                     campusToggleFavoriteStore(channelId: ID!): [String!]!
+                    campusToggleFavoriteVariant(variantId: ID!, channelId: ID!): [CampusFavoriteVariant!]!
                 }
             `;
             },

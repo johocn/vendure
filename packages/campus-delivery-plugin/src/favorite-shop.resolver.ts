@@ -1,6 +1,11 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { Allow, Channel, Ctx, CustomerService, Permission, RequestContext, UserInputError } from '@vendure/core';
+import { Allow, Channel, Ctx, CustomerService, Permission, ProductVariant, RequestContext, UserInputError } from '@vendure/core';
 import { DataSource } from 'typeorm';
+
+export interface FavoriteVariant {
+    variantId: string;
+    channelId: string;
+}
 
 /**
  * 商家收藏（C 端常用功能）。
@@ -65,5 +70,58 @@ export class FavoriteShopResolver {
             throw new UserInputError('CUSTOMER_NOT_FOUND');
         }
         return customer.id as unknown as number;
+    }
+
+    // ── 商品收藏（variant 粒度，跨渠道读取） ──
+
+    @Query()
+    @Allow(Permission.Authenticated)
+    async campusFavoriteVariants(@Ctx() ctx: RequestContext): Promise<FavoriteVariant[]> {
+        const customerId = await this.requireCustomerId(ctx);
+        const rows: Array<{ variantId: number; channelId: number }> = await this.dataSource.query(
+            `SELECT "variantId", "channelId" FROM campus_favorite_variant WHERE "customerId" = $1 ORDER BY "createdAt" ASC`,
+            [customerId],
+        );
+        return rows.map(r => ({ variantId: String(r.variantId), channelId: String(r.channelId) }));
+    }
+
+    @Mutation()
+    @Allow(Permission.Authenticated)
+    async campusToggleFavoriteVariant(
+        @Ctx() ctx: RequestContext,
+        @Args('variantId') variantId: string,
+        @Args('channelId') channelId: string,
+    ): Promise<FavoriteVariant[]> {
+        const customerId = await this.requireCustomerId(ctx);
+        const variantPk = Number(variantId);
+        const channelPk = Number(channelId);
+        if (!Number.isInteger(variantPk) || variantPk <= 0) {
+            throw new UserInputError('VARIANT_NOT_FOUND');
+        }
+        if (!Number.isInteger(channelPk) || channelPk <= 0) {
+            throw new UserInputError('CHANNEL_NOT_FOUND');
+        }
+        const channel = await this.dataSource.getRepository(Channel).findOne({ where: { id: channelPk as any } });
+        if (!channel) {
+            throw new UserInputError('CHANNEL_NOT_FOUND');
+        }
+        const variant = await this.dataSource.getRepository(ProductVariant).findOne({ where: { id: variantPk as any } });
+        if (!variant) {
+            throw new UserInputError('VARIANT_NOT_FOUND');
+        }
+        // 同商家收藏：DELETE…RETURNING 判断是否已收藏；raw 返回 [rows, affected]，兼容数组/对象两种形态
+        const delResult: any = await this.dataSource.query(
+            `DELETE FROM campus_favorite_variant WHERE "customerId" = $1 AND "variantId" = $2 RETURNING id`,
+            [customerId, variantPk],
+        );
+        const removedRows: Array<{ id: number }> = Array.isArray(delResult?.[0]) ? delResult[0] : delResult ?? [];
+        if (!removedRows.length) {
+            await this.dataSource.query(
+                `INSERT INTO campus_favorite_variant ("customerId", "channelId", "variantId") VALUES ($1, $2, $3)
+                 ON CONFLICT ("customerId", "variantId") DO NOTHING`,
+                [customerId, channelPk, variantPk],
+            );
+        }
+        return this.campusFavoriteVariants(ctx);
     }
 }

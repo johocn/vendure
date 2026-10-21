@@ -1,5 +1,9 @@
 import { CustomerService, RequestContext } from '@vendure/core';
 import { DataSource } from 'typeorm';
+export interface FavoriteVariant {
+    variantId: string;
+    channelId: string;
+}
 /**
  * 商家收藏（C 端常用功能）。
  * 店铺 = 渠道，收藏记录落独立表 campus_favorite_shop（customerId + channelId 唯一），
@@ -14,4 +18,6 @@ export declare class FavoriteShopResolver {
     campusToggleFavoriteStore(ctx: RequestContext, channelId: string): Promise<string[]>;
     /** Customer 无 userId 标量，按 user 关系反查（不过滤渠道，避免店铺渠道内收藏失败） */
     private requireCustomerId;
+    campusFavoriteVariants(ctx: RequestContext): Promise<FavoriteVariant[]>;
+    campusToggleFavoriteVariant(ctx: RequestContext, variantId: string, channelId: string): Promise<FavoriteVariant[]>;
 }

@@ -637,6 +637,11 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     customFields: CampusHallOrderCustomFields
                 }
 
+                type CampusFavoriteVariant {
+                    variantId: ID!
+                    channelId: ID!
+                }
+
                 extend type Query {
                     myRiderProfile: RiderProfile!
                     campusZones: [CampusZone!]!
@@ -655,6 +660,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     riderBalanceHistory(skip: Int, take: Int): [RiderBalanceTx!]!
                     riderWithdrawRequests(skip: Int, take: Int): [RiderWithdrawalRequest!]!
                     campusFavoriteStores: [String!]!
+                    campusFavoriteVariants: [CampusFavoriteVariant!]!
                 }
 
                 extend type Mutation {
@@ -675,6 +681,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     campusMarkArrived(orderId: ID!): CampusArrivedResult!
                     riderWithdraw(amount: Int!, channel: String!, account: String!): RiderWithdrawalRequest!
                     campusToggleFavoriteStore(channelId: ID!): [String!]!
+                    campusToggleFavoriteVariant(variantId: ID!, channelId: ID!): [CampusFavoriteVariant!]!
                 }
             `;
         },
