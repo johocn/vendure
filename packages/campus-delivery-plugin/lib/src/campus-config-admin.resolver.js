@@ -39,8 +39,11 @@ let CampusConfigAdminResolver = class CampusConfigAdminResolver {
     async campusCreateZone(ctx, name, fee) {
         return this.config.createZone(ctx, name, fee);
     }
-    async campusCreateBuilding(ctx, name, zoneId, detail) {
-        return this.config.createBuilding(ctx, name, Number(zoneId), detail);
+    async campusCreateBuilding(ctx, name, zoneId, detail, lat, lng) {
+        return this.config.createBuilding(ctx, name, Number(zoneId), detail, lat, lng);
+    }
+    async campusUpdateBuilding(ctx, id, input) {
+        return this.config.updateBuilding(ctx, Number(id), input);
     }
     async campusUpdateConfig(ctx, input) {
         return this.config.updateConfig(ctx, input);
@@ -114,10 +117,22 @@ __decorate([
     __param(1, (0, graphql_1.Args)('name')),
     __param(2, (0, graphql_1.Args)('zoneId')),
     __param(3, (0, graphql_1.Args)('detail', { nullable: true })),
+    __param(4, (0, graphql_1.Args)('lat', { nullable: true, type: () => Number })),
+    __param(5, (0, graphql_1.Args)('lng', { nullable: true, type: () => Number })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, String, Object, String]),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, Object, String, Number, Number]),
     __metadata("design:returntype", Promise)
 ], CampusConfigAdminResolver.prototype, "campusCreateBuilding", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusConfig),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)('input')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object]),
+    __metadata("design:returntype", Promise)
+], CampusConfigAdminResolver.prototype, "campusUpdateBuilding", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusConfig),

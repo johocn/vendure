@@ -27,6 +27,14 @@ __decorate([
     __metadata("design:type", String)
 ], CampusBuilding.prototype, "detail", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ type: 'double precision', nullable: true }),
+    __metadata("design:type", Number)
+], CampusBuilding.prototype, "lat", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'double precision', nullable: true }),
+    __metadata("design:type", Number)
+], CampusBuilding.prototype, "lng", void 0);
+__decorate([
     (0, typeorm_1.Column)('int'),
     __metadata("design:type", Object)
 ], CampusBuilding.prototype, "zoneId", void 0);

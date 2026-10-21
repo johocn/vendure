@@ -13,7 +13,13 @@ export declare class CampusConfigAdminResolver {
     campusBuildings(ctx: RequestContext, zoneId?: ID): Promise<import("./campus-building.entity").CampusBuilding[]>;
     campusConfig(ctx: RequestContext): Promise<import("./campus-fulfillment-config.entity").CampusFulfillmentConfig>;
     campusCreateZone(ctx: RequestContext, name: string, fee: number): Promise<any>;
-    campusCreateBuilding(ctx: RequestContext, name: string, zoneId: ID, detail?: string): Promise<any>;
+    campusCreateBuilding(ctx: RequestContext, name: string, zoneId: ID, detail?: string, lat?: number, lng?: number): Promise<any>;
+    campusUpdateBuilding(ctx: RequestContext, id: ID, input: {
+        name?: string;
+        detail?: string;
+        lat?: number | null;
+        lng?: number | null;
+    }): Promise<import("./campus-building.entity").CampusBuilding>;
     campusUpdateConfig(ctx: RequestContext, input: any): Promise<import("./campus-fulfillment-config.entity").CampusFulfillmentConfig>;
     campusCreateSlot(ctx: RequestContext, input: any): Promise<any>;
     campusUpdateSlot(ctx: RequestContext, id: number, input: any): Promise<import("./delivery-slot.entity").DeliverySlot>;

@@ -11,7 +11,9 @@ export declare class RiderTaskService {
     private notify;
     constructor(connection: TransactionalConnection, riderService: RiderService, credit: RiderCreditService, hall: HallService, notify: CampusNotifyService);
     /** 订单骑手卡信息：C 端订单跟踪轮询用。未指派返回 null。
-     * 位置（plan 2.2）：仅配送中（assigned/in_progress）返回，送达/异常/转单不暴露（隐私）。 */
+     * 位置（plan 2.2）：仅配送中（assigned/in_progress）返回，送达/异常/转单不暴露（隐私）。
+     * 跟踪页：附带目标楼栋坐标与直线距离/ETA（楼栋无坐标时均为 null，前端降级）。
+     * 归属校验：仅下单人本人可查（原实现可越权读任意订单骑手位置）。 */
     orderRider(ctx: RequestContext, orderId: ID): Promise<{
         realName: any;
         credit: any;
@@ -19,6 +21,15 @@ export declare class RiderTaskService {
             lat: number;
             lng: number;
         } | null;
+        destination: {
+            name: string;
+            detail: string | null;
+            lat: number;
+            lng: number;
+        } | null;
+        distanceMeters: number | null;
+        etaMinutes: number | null;
+        deliveryStatus: any;
     } | null>;
     /** 骑手位置上报：本人订单 + 仅 assigned/in_progress 可写（plan 2.2，10s/次）。 */
     reportLocation(ctx: RequestContext, orderId: ID, lat: number, lng: number): Promise<Order>;

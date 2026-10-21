@@ -15,6 +15,15 @@ export declare class RiderTaskShopResolver {
             lat: number;
             lng: number;
         } | null;
+        destination: {
+            name: string;
+            detail: string | null;
+            lat: number;
+            lng: number;
+        } | null;
+        distanceMeters: number | null;
+        etaMinutes: number | null;
+        deliveryStatus: any;
     } | null>;
     campusStartTask(ctx: RequestContext, orderId: ID): Promise<import("@vendure/core").Order>;
     /** 转单回大厅；已取货必须拍照交接。错误语义：未登录/非本人 ForbiddenError，状态/缺照片 UserInputError。 */

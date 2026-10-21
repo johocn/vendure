@@ -188,6 +188,15 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     detail: String
                     zoneId: ID!
                     channelId: ID!
+                    lat: Float
+                    lng: Float
+                }
+
+                input CampusBuildingPatchInput {
+                    name: String
+                    detail: String
+                    lat: Float
+                    lng: Float
                 }
 
                 type CampusFulfillmentConfig {
@@ -425,7 +434,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
 
                 extend type Mutation {
                     campusCreateZone(name: String!, fee: Int!): CampusZone!
-                    campusCreateBuilding(name: String!, zoneId: ID!, detail: String): CampusBuilding!
+                    campusCreateBuilding(name: String!, zoneId: ID!, detail: String, lat: Float, lng: Float): CampusBuilding!
+                    campusUpdateBuilding(id: ID!, input: CampusBuildingPatchInput!): CampusBuilding!
                     campusUpdateConfig(input: CampusFulfillmentConfigInput!): CampusFulfillmentConfig!
                     campusCreateSlot(input: DeliverySlotInput!): DeliverySlot!
                     campusUpdateSlot(id: ID!, input: DeliverySlotUpdateInput!): DeliverySlot!
@@ -615,9 +625,21 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     realName: String!
                     credit: Int!
                     location: CampusRiderLocation
+                    destination: CampusRiderDestination
+                    distanceMeters: Int
+                    etaMinutes: Int
+                    deliveryStatus: String
                 }
 
                 type CampusRiderLocation {
+                    lat: Float!
+                    lng: Float!
+                }
+
+                """配送目标楼栋（有坐标才返回）"""
+                type CampusRiderDestination {
+                    name: String!
+                    detail: String
                     lat: Float!
                     lng: Float!
                 }

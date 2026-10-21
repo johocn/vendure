@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { RiderTaskService } from './rider-task.service';
 
-function makeEnv(opts: { order?: any; rider?: any } = {}) {
+function makeEnv(opts: { order?: any; rider?: any; building?: any } = {}) {
     const repoByEntity: Record<string, any> = {
         Order: { findOne: vi.fn().mockResolvedValue(opts.order ?? null), update: vi.fn().mockResolvedValue({}) },
         Customer: { findOne: vi.fn().mockResolvedValue(opts.rider ?? null) },
+        CampusBuilding: { findOne: vi.fn().mockResolvedValue(opts.building ?? null) },
     };
     const conn = { getRepository: vi.fn((_ctx: any, ent: any) => repoByEntity[ent.name ?? String(ent)]) } as any;
     const svc = new RiderTaskService(
@@ -18,34 +19,86 @@ function makeEnv(opts: { order?: any; rider?: any } = {}) {
 }
 
 describe('RiderTaskService.orderRider', () => {
-    it('已指派订单返回骑手姓名与信用分（无坐标时 location 为 null）', async () => {
+    const ctx = { activeUserId: 42 } as any;
+    const owner = { user: { id: 42 } };
+    it('已指派订单返回骑手姓名与信用分（无坐标时 location/destination 为 null）', async () => {
         const env = makeEnv({
-            order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'assigned' } },
+            order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'assigned' }, customer: owner },
             rider: { id: 7, customFields: { riderRealName: '王同学', riderCredit: 98 } },
         });
-        expect(await env.svc.orderRider({} as any, 5)).toEqual({
-            realName: '王同学', credit: 98, location: null,
+        expect(await env.svc.orderRider(ctx, 5)).toEqual({
+            realName: '王同学',
+            credit: 98,
+            location: null,
+            destination: null,
+            distanceMeters: null,
+            etaMinutes: null,
+            deliveryStatus: 'assigned',
         });
     });
     it('未指派/骑手不存在返回 null', async () => {
-        const env = makeEnv({ order: { id: 5, customFields: {} } });
-        expect(await env.svc.orderRider({} as any, 5)).toBeNull();
-        const env2 = makeEnv({ order: { id: 5, customFields: { deliveryStaffId: '99' } } });
-        expect(await env2.svc.orderRider({} as any, 5)).toBeNull();
+        const env = makeEnv({ order: { id: 5, customFields: {}, customer: owner } });
+        expect(await env.svc.orderRider(ctx, 5)).toBeNull();
+        const env2 = makeEnv({ order: { id: 5, customFields: { deliveryStaffId: '99' }, customer: owner } });
+        expect(await env2.svc.orderRider(ctx, 5)).toBeNull();
     });
     it('配送中且有坐标返回 location；delivered 不暴露（隐私）', async () => {
         const env = makeEnv({
-            order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'in_progress', riderLat: 30.123, riderLng: 120.456 } },
+            order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'in_progress', riderLat: 30.123, riderLng: 120.456 }, customer: owner },
             rider: { id: 7, customFields: { riderRealName: '王同学', riderCredit: 98 } },
         });
-        expect(await env.svc.orderRider({} as any, 5)).toEqual({
-            realName: '王同学', credit: 98, location: { lat: 30.123, lng: 120.456 },
+        const r = await env.svc.orderRider(ctx, 5);
+        expect(r).toEqual({
+            realName: '王同学',
+            credit: 98,
+            location: { lat: 30.123, lng: 120.456 },
+            destination: null,
+            distanceMeters: null,
+            etaMinutes: null,
+            deliveryStatus: 'in_progress',
         });
         const env2 = makeEnv({
-            order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'delivered', riderLat: 30.123, riderLng: 120.456 } },
+            order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'delivered', riderLat: 30.123, riderLng: 120.456 }, customer: owner },
             rider: { id: 7, customFields: { riderRealName: '王同学', riderCredit: 98 } },
         });
-        expect((await env2.svc.orderRider({} as any, 5))!.location).toBeNull();
+        expect((await env2.svc.orderRider(ctx, 5))!.location).toBeNull();
+    });
+    it('楼栋有坐标时返回 destination 与直线距离/ETA；无坐标楼栋降级为 null', async () => {
+        // 骑手 (30.1,120.2) 与楼栋 (30.109,120.2) 纬度相差约 0.009° ≈ 1000m → ETA ≈ 4 分钟
+        const env = makeEnv({
+            order: {
+                id: 5,
+                customFields: { deliveryStaffId: '7', deliveryStatus: 'in_progress', riderLat: 30.1, riderLng: 120.2, buildingId: '3' },
+                customer: owner,
+            },
+            rider: { id: 7, customFields: { riderRealName: '王同学', riderCredit: 98 } },
+            building: { id: 3, name: '桂3栋', detail: '东单元', lat: 30.109, lng: 120.2 },
+        });
+        const r = await env.svc.orderRider(ctx, 5);
+        expect(r!.destination).toEqual({ name: '桂3栋', detail: '东单元', lat: 30.109, lng: 120.2 });
+        expect(r!.distanceMeters).toBeGreaterThan(990);
+        expect(r!.distanceMeters).toBeLessThan(1010);
+        expect(r!.etaMinutes).toBe(4);
+
+        const env2 = makeEnv({
+            order: {
+                id: 5,
+                customFields: { deliveryStaffId: '7', deliveryStatus: 'in_progress', riderLat: 30.1, riderLng: 120.2, buildingId: '3' },
+                customer: owner,
+            },
+            rider: { id: 7, customFields: { riderRealName: '王同学', riderCredit: 98 } },
+            building: { id: 3, name: '桂3栋', detail: null, lat: null, lng: null },
+        });
+        expect((await env2.svc.orderRider(ctx, 5))!.destination).toBeNull();
+        expect((await env2.svc.orderRider(ctx, 5))!.distanceMeters).toBeNull();
+    });
+    it('非下单人读取抛 ForbiddenError（未登录同样拒绝）', async () => {
+        const env = makeEnv({
+            order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'in_progress' }, customer: { user: { id: 99 } } },
+            rider: { id: 7, customFields: {} },
+        });
+        await expect(env.svc.orderRider(ctx, 5)).rejects.toThrow();
+        await expect(env.svc.orderRider({} as any, 5)).rejects.toThrow();
     });
 });
 

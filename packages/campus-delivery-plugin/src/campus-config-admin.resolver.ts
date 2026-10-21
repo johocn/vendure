@@ -53,8 +53,20 @@ export class CampusConfigAdminResolver {
         @Args('name') name: string,
         @Args('zoneId') zoneId: ID,
         @Args('detail', { nullable: true }) detail?: string,
+        @Args('lat', { nullable: true, type: () => Number }) lat?: number,
+        @Args('lng', { nullable: true, type: () => Number }) lng?: number,
     ) {
-        return this.config.createBuilding(ctx, name, Number(zoneId), detail);
+        return this.config.createBuilding(ctx, name, Number(zoneId), detail, lat, lng);
+    }
+
+    @Mutation()
+    @Allow(CampusPermissions.CampusConfig as any)
+    async campusUpdateBuilding(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args('input') input: { name?: string; detail?: string; lat?: number | null; lng?: number | null },
+    ) {
+        return this.config.updateBuilding(ctx, Number(id), input);
     }
 
     @Mutation()

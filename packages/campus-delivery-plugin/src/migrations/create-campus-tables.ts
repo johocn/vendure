@@ -54,6 +54,9 @@ ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "notifyTemplateCa
 ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "notifyTemplateAfterSales" varchar;
 ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "h5BaseUrl" varchar(255);
 ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "printMode" varchar(255);
+-- 楼栋坐标（骑手 GPS 跟踪页目标点）：gcj02，可空；生产 synchronize:false 时靠此处补列
+ALTER TABLE campus_building ADD COLUMN IF NOT EXISTS lat double precision;
+ALTER TABLE campus_building ADD COLUMN IF NOT EXISTS lng double precision;
 CREATE TABLE IF NOT EXISTS payment_timeout_task (
   id SERIAL PRIMARY KEY, "createdAt" timestamptz DEFAULT now(), "updatedAt" timestamptz DEFAULT now(),
   "orderId" int NOT NULL, "channelId" int NOT NULL, type varchar(255) NOT NULL,

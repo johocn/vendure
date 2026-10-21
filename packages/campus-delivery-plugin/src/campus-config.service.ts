@@ -24,10 +24,26 @@ export class CampusConfigService {
             .find(zoneId ? { where: { zoneId } } : {});
     }
 
-    async createBuilding(ctx: RequestContext, name: string, zoneId: number, detail?: string) {
+    async createBuilding(ctx: RequestContext, name: string, zoneId: number, detail?: string, lat?: number, lng?: number) {
         return this.dataSource
             .getRepository(CampusBuilding)
-            .save({ name, zoneId, detail, channelId: ctx.channelId } as any);
+            .save({ name, zoneId, detail, lat, lng, channelId: ctx.channelId } as any);
+    }
+
+    /** 楼栋信息/坐标维护（骑手跟踪页目标点）；仅更新传入字段 */
+    async updateBuilding(
+        ctx: RequestContext,
+        id: number,
+        patch: { name?: string; detail?: string; lat?: number | null; lng?: number | null },
+    ) {
+        const repo = this.dataSource.getRepository(CampusBuilding);
+        const building = await repo.findOne({ where: { id: id as any } });
+        if (!building) throw new UserInputError('宿舍楼不存在');
+        if (patch.name !== undefined) building.name = patch.name;
+        if (patch.detail !== undefined) building.detail = patch.detail;
+        if (patch.lat !== undefined) building.lat = patch.lat as any;
+        if (patch.lng !== undefined) building.lng = patch.lng as any;
+        return repo.save(building);
     }
 
     async getConfig(ctx: RequestContext): Promise<CampusFulfillmentConfig> {

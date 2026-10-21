@@ -3,44 +3,96 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const vitest_1 = require("vitest");
 const rider_task_service_1 = require("./rider-task.service");
 function makeEnv(opts = {}) {
-    var _a, _b;
+    var _a, _b, _c;
     const repoByEntity = {
         Order: { findOne: vitest_1.vi.fn().mockResolvedValue((_a = opts.order) !== null && _a !== void 0 ? _a : null), update: vitest_1.vi.fn().mockResolvedValue({}) },
         Customer: { findOne: vitest_1.vi.fn().mockResolvedValue((_b = opts.rider) !== null && _b !== void 0 ? _b : null) },
+        CampusBuilding: { findOne: vitest_1.vi.fn().mockResolvedValue((_c = opts.building) !== null && _c !== void 0 ? _c : null) },
     };
     const conn = { getRepository: vitest_1.vi.fn((_ctx, ent) => { var _a; return repoByEntity[(_a = ent.name) !== null && _a !== void 0 ? _a : String(ent)]; }) };
     const svc = new rider_task_service_1.RiderTaskService(conn, { assertApprovedRider: vitest_1.vi.fn().mockResolvedValue({ id: 7 }) }, { adjust: vitest_1.vi.fn() }, { backToHall: vitest_1.vi.fn().mockResolvedValue(undefined) }, { user: vitest_1.vi.fn() });
     return { svc, repoByEntity };
 }
 (0, vitest_1.describe)('RiderTaskService.orderRider', () => {
-    (0, vitest_1.it)('已指派订单返回骑手姓名与信用分（无坐标时 location 为 null）', async () => {
+    const ctx = { activeUserId: 42 };
+    const owner = { user: { id: 42 } };
+    (0, vitest_1.it)('已指派订单返回骑手姓名与信用分（无坐标时 location/destination 为 null）', async () => {
         const env = makeEnv({
-            order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'assigned' } },
+            order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'assigned' }, customer: owner },
             rider: { id: 7, customFields: { riderRealName: '王同学', riderCredit: 98 } },
         });
-        (0, vitest_1.expect)(await env.svc.orderRider({}, 5)).toEqual({
-            realName: '王同学', credit: 98, location: null,
+        (0, vitest_1.expect)(await env.svc.orderRider(ctx, 5)).toEqual({
+            realName: '王同学',
+            credit: 98,
+            location: null,
+            destination: null,
+            distanceMeters: null,
+            etaMinutes: null,
+            deliveryStatus: 'assigned',
         });
     });
     (0, vitest_1.it)('未指派/骑手不存在返回 null', async () => {
-        const env = makeEnv({ order: { id: 5, customFields: {} } });
-        (0, vitest_1.expect)(await env.svc.orderRider({}, 5)).toBeNull();
-        const env2 = makeEnv({ order: { id: 5, customFields: { deliveryStaffId: '99' } } });
-        (0, vitest_1.expect)(await env2.svc.orderRider({}, 5)).toBeNull();
+        const env = makeEnv({ order: { id: 5, customFields: {}, customer: owner } });
+        (0, vitest_1.expect)(await env.svc.orderRider(ctx, 5)).toBeNull();
+        const env2 = makeEnv({ order: { id: 5, customFields: { deliveryStaffId: '99' }, customer: owner } });
+        (0, vitest_1.expect)(await env2.svc.orderRider(ctx, 5)).toBeNull();
     });
     (0, vitest_1.it)('配送中且有坐标返回 location；delivered 不暴露（隐私）', async () => {
         const env = makeEnv({
-            order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'in_progress', riderLat: 30.123, riderLng: 120.456 } },
+            order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'in_progress', riderLat: 30.123, riderLng: 120.456 }, customer: owner },
             rider: { id: 7, customFields: { riderRealName: '王同学', riderCredit: 98 } },
         });
-        (0, vitest_1.expect)(await env.svc.orderRider({}, 5)).toEqual({
-            realName: '王同学', credit: 98, location: { lat: 30.123, lng: 120.456 },
+        const r = await env.svc.orderRider(ctx, 5);
+        (0, vitest_1.expect)(r).toEqual({
+            realName: '王同学',
+            credit: 98,
+            location: { lat: 30.123, lng: 120.456 },
+            destination: null,
+            distanceMeters: null,
+            etaMinutes: null,
+            deliveryStatus: 'in_progress',
         });
         const env2 = makeEnv({
-            order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'delivered', riderLat: 30.123, riderLng: 120.456 } },
+            order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'delivered', riderLat: 30.123, riderLng: 120.456 }, customer: owner },
             rider: { id: 7, customFields: { riderRealName: '王同学', riderCredit: 98 } },
         });
-        (0, vitest_1.expect)((await env2.svc.orderRider({}, 5)).location).toBeNull();
+        (0, vitest_1.expect)((await env2.svc.orderRider(ctx, 5)).location).toBeNull();
+    });
+    (0, vitest_1.it)('楼栋有坐标时返回 destination 与直线距离/ETA；无坐标楼栋降级为 null', async () => {
+        // 骑手 (30.1,120.2) 与楼栋 (30.109,120.2) 纬度相差约 0.009° ≈ 1000m → ETA ≈ 4 分钟
+        const env = makeEnv({
+            order: {
+                id: 5,
+                customFields: { deliveryStaffId: '7', deliveryStatus: 'in_progress', riderLat: 30.1, riderLng: 120.2, buildingId: '3' },
+                customer: owner,
+            },
+            rider: { id: 7, customFields: { riderRealName: '王同学', riderCredit: 98 } },
+            building: { id: 3, name: '桂3栋', detail: '东单元', lat: 30.109, lng: 120.2 },
+        });
+        const r = await env.svc.orderRider(ctx, 5);
+        (0, vitest_1.expect)(r.destination).toEqual({ name: '桂3栋', detail: '东单元', lat: 30.109, lng: 120.2 });
+        (0, vitest_1.expect)(r.distanceMeters).toBeGreaterThan(990);
+        (0, vitest_1.expect)(r.distanceMeters).toBeLessThan(1010);
+        (0, vitest_1.expect)(r.etaMinutes).toBe(4);
+        const env2 = makeEnv({
+            order: {
+                id: 5,
+                customFields: { deliveryStaffId: '7', deliveryStatus: 'in_progress', riderLat: 30.1, riderLng: 120.2, buildingId: '3' },
+                customer: owner,
+            },
+            rider: { id: 7, customFields: { riderRealName: '王同学', riderCredit: 98 } },
+            building: { id: 3, name: '桂3栋', detail: null, lat: null, lng: null },
+        });
+        (0, vitest_1.expect)((await env2.svc.orderRider(ctx, 5)).destination).toBeNull();
+        (0, vitest_1.expect)((await env2.svc.orderRider(ctx, 5)).distanceMeters).toBeNull();
+    });
+    (0, vitest_1.it)('非下单人读取抛 ForbiddenError（未登录同样拒绝）', async () => {
+        const env = makeEnv({
+            order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'in_progress' }, customer: { user: { id: 99 } } },
+            rider: { id: 7, customFields: {} },
+        });
+        await (0, vitest_1.expect)(env.svc.orderRider(ctx, 5)).rejects.toThrow();
+        await (0, vitest_1.expect)(env.svc.orderRider({}, 5)).rejects.toThrow();
     });
 });
 (0, vitest_1.describe)('RiderTaskService.reportLocation', () => {

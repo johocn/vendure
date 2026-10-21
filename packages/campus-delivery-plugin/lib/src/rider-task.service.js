@@ -13,12 +13,25 @@ exports.RiderTaskService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const coupon_plugin_1 = require("@vendure/coupon-plugin");
+const campus_building_entity_1 = require("./campus-building.entity");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
 const campus_notify_service_1 = require("./campus-notify.service");
 const hall_service_1 = require("./hall.service");
 const rider_credit_service_1 = require("./rider-credit.service");
 const rider_earning_entity_1 = require("./rider-earning.entity");
 const rider_service_1 = require("./rider.service");
+/** 校园骑手平均速度（m/s）：约 15km/h，用于 ETA 粗估 */
+const RIDER_SPEED_MPS = 4.2;
+/** 球面直线距离（米），gcj02 下作为短距离估算足够 */
+function haversineMeters(a, b) {
+    const R = 6371000;
+    const toRad = (d) => (d * Math.PI) / 180;
+    const dLat = toRad(b.lat - a.lat);
+    const dLng = toRad(b.lng - a.lng);
+    const s = Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(s));
+}
 let RiderTaskService = class RiderTaskService {
     constructor(connection, riderService, credit, hall, notify) {
         this.connection = connection;
@@ -28,25 +41,61 @@ let RiderTaskService = class RiderTaskService {
         this.notify = notify;
     }
     /** 订单骑手卡信息：C 端订单跟踪轮询用。未指派返回 null。
-     * 位置（plan 2.2）：仅配送中（assigned/in_progress）返回，送达/异常/转单不暴露（隐私）。 */
+     * 位置（plan 2.2）：仅配送中（assigned/in_progress）返回，送达/异常/转单不暴露（隐私）。
+     * 跟踪页：附带目标楼栋坐标与直线距离/ETA（楼栋无坐标时均为 null，前端降级）。
+     * 归属校验：仅下单人本人可查（原实现可越权读任意订单骑手位置）。 */
     async orderRider(ctx, orderId) {
-        var _a, _b, _c, _d, _e;
-        const order = await this.connection.getRepository(ctx, core_1.Order).findOne({ where: { id: orderId } });
-        const cf = ((_a = order === null || order === void 0 ? void 0 : order.customFields) !== null && _a !== void 0 ? _a : {});
-        const riderId = Number((_b = cf.deliveryStaffId) !== null && _b !== void 0 ? _b : NaN);
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+        if (!ctx.activeUserId)
+            throw new core_1.ForbiddenError();
+        const order = await this.connection
+            .getRepository(ctx, core_1.Order)
+            .findOne({ where: { id: orderId }, relations: ['customer'] });
+        if (!order)
+            return null;
+        // Customer 实体无 userId 标量属性（user 关系 eager），归属比对取 user.id
+        if (((_b = (_a = order.customer) === null || _a === void 0 ? void 0 : _a.user) === null || _b === void 0 ? void 0 : _b.id) !== ctx.activeUserId)
+            throw new core_1.ForbiddenError();
+        const cf = ((_c = order.customFields) !== null && _c !== void 0 ? _c : {});
+        const riderId = Number((_d = cf.deliveryStaffId) !== null && _d !== void 0 ? _d : NaN);
         if (!riderId)
             return null;
         const rider = await this.connection.getRepository(ctx, core_1.Customer).findOne({ where: { id: riderId } });
         if (!rider)
             return null;
-        const rcf = ((_c = rider.customFields) !== null && _c !== void 0 ? _c : {});
+        const rcf = ((_e = rider.customFields) !== null && _e !== void 0 ? _e : {});
         const locating = cf.deliveryStatus === 'assigned' || cf.deliveryStatus === 'in_progress';
-        const lat = Number(cf.riderLat);
-        const lng = Number(cf.riderLng);
+        // 显式判空：Number(null) === 0 会把「从未上报」误判为 (0,0)
+        const hasReport = cf.riderLat != null && cf.riderLng != null;
+        const lat = hasReport ? Number(cf.riderLat) : NaN;
+        const lng = hasReport ? Number(cf.riderLng) : NaN;
+        const location = locating && Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+        const buildingId = Number((_f = cf.buildingId) !== null && _f !== void 0 ? _f : NaN);
+        let destination = null;
+        if (buildingId) {
+            const building = await this.connection
+                .getRepository(ctx, campus_building_entity_1.CampusBuilding)
+                .findOne({ where: { id: buildingId } });
+            if (building && building.lat != null && building.lng != null) {
+                destination = {
+                    name: building.name,
+                    detail: (_g = building.detail) !== null && _g !== void 0 ? _g : null,
+                    lat: Number(building.lat),
+                    lng: Number(building.lng),
+                };
+            }
+        }
+        const distanceMeters = location && destination ? Math.round(haversineMeters(location, destination)) : null;
+        // 快速估算：校园电瓶车约 15km/h（4.2m/s）；<30m 视为即将送达
+        const etaMinutes = distanceMeters == null ? null : distanceMeters < 30 ? 0 : Math.max(1, Math.ceil(distanceMeters / RIDER_SPEED_MPS / 60));
         return {
-            realName: (_d = rcf.riderRealName) !== null && _d !== void 0 ? _d : '骑手',
-            credit: (_e = rcf.riderCredit) !== null && _e !== void 0 ? _e : 100,
-            location: locating && Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null,
+            realName: (_h = rcf.riderRealName) !== null && _h !== void 0 ? _h : '骑手',
+            credit: (_j = rcf.riderCredit) !== null && _j !== void 0 ? _j : 100,
+            location,
+            destination,
+            distanceMeters,
+            etaMinutes,
+            deliveryStatus: (_k = cf.deliveryStatus) !== null && _k !== void 0 ? _k : null,
         };
     }
     /** 骑手位置上报：本人订单 + 仅 assigned/in_progress 可写（plan 2.2，10s/次）。 */
