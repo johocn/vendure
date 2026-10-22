@@ -34,6 +34,7 @@ describe('RiderTaskService.orderRider', () => {
             distanceMeters: null,
             etaMinutes: null,
             deliveryStatus: 'assigned',
+            phone: null,
         });
     });
     it('未指派/骑手不存在返回 null', async () => {
@@ -56,6 +57,7 @@ describe('RiderTaskService.orderRider', () => {
             distanceMeters: null,
             etaMinutes: null,
             deliveryStatus: 'in_progress',
+            phone: null,
         });
         const env2 = makeEnv({
             order: { id: 5, customFields: { deliveryStaffId: '7', deliveryStatus: 'delivered', riderLat: 30.123, riderLng: 120.456 }, customer: owner },

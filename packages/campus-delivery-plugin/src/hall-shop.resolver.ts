@@ -67,7 +67,7 @@ export class HallShopResolver {
         @Ctx() ctx: RequestContext,
         @Args('zoneId') zoneId: ID,
         @Args('buildingId') buildingId: ID,
-        @Args({ name: 'route', type: () => String, nullable: true }) route?: 'R1' | 'R3',
+        @Args({ name: 'route', type: () => String, nullable: true }) route?: 'R1' | 'R2' | 'R3',
         @Args({ name: 'slotId', type: () => Int, nullable: true }) slotId?: number,
     ) {
         return this.config.setDeliveryTarget(ctx, Number(zoneId), Number(buildingId), route, slotId);

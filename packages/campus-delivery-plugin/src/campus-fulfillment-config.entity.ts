@@ -36,6 +36,23 @@ export class CampusFulfillmentConfig extends VendureEntity {
     @Column({ type: 'varchar', nullable: true }) notifyTemplateAfterSales: string | null; // 售后进度
     @Column({ type: 'varchar', nullable: true }) h5BaseUrl: string | null; // C 端 H5 站点 origin，如 https://www.yourbao.cn
     @Column({ type: 'varchar', nullable: true }) printMode: string | null; // 商家小票打印时机 'off' | 'onPaid' | 'onAccepted'（null=off）
+    /** 第一段由谁送（按路线）：R1 = merchant|owned，R3 = campus|owned|external；缺省 R1=merchant、R3=campus */
+    @Column({ type: 'simple-json', nullable: true })
+    routeFirstLeg: Record<string, string> | null;
+    /** 校园交接点：R1/R2 各一个（键为路线号） */
+    @Column({ type: 'simple-json', nullable: true })
+    handoverPoints: Record<string, { name: string; address?: string; phone?: string; lat: number; lng: number }> | null;
+    /** 外部快递各 provider 的门店编号：{ dada?: string, meituan?: string } */
+    @Column({ type: 'simple-json', nullable: true })
+    providerShopNo: Record<string, string> | null;
+    /** R1 商户接单超时（分钟），超时自动转自营快递；0 = 不自动转 */
+    @Column({ type: 'int', default: 5 }) merchantAcceptMinutes: number;
+    /** 等运营推送外部快递的超时（分钟），超时退回抢单大厅 */
+    @Column({ type: 'int', default: 10 }) externalPushTimeoutMinutes: number;
+    /** 已推送外部快递但久未接单/取货的超时（分钟），超时取消并退回抢单大厅 */
+    @Column({ type: 'int', default: 20 }) externalFallbackMinutes: number;
+    @Column({ nullable: true, type: 'float' }) storeLat: number | null; // 档口/门店取货点纬度
+    @Column({ nullable: true, type: 'float' }) storeLng: number | null; // 档口/门店取货点经度
     constructor(input?: DeepPartial<CampusFulfillmentConfig>) {
         super(input);
     }

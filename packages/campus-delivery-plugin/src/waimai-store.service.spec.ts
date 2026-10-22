@@ -32,7 +32,7 @@ describe('WaimaiStoreService.listStores', () => {
             channels: [
                 { id: 1, token: 'default', code: '__default_channel__', customFields: {} },
                 { id: 2, token: 'canteen', code: '一食堂麻辣香锅',
-                  customFields: { waimaiTags: '米饭快餐, 夜宵', waimaiMonthlySales: 320, waimaiLogo: '/static/a.webp', waimaiPromoText: '满20减4' } },
+                  customFields: { waimaiTags: '米饭快餐, 夜宵', waimaiMonthlySales: 320, waimaiLogo: '/static/a.webp', waimaiPromoText: '满20减4', industryType: 'catering' } },
             ],
         });
         const list = await env.svc.listStores({} as any);
@@ -44,6 +44,7 @@ describe('WaimaiStoreService.listStores', () => {
             paused: false, routesEnabled: ['R1', 'R3'],
             deliveryMinutes: 35, minOrderAmount: 1500, deliveryFee: 200,
             storeAddress: '东门 1 号楼', storePhone: '13800000000', storeNotice: '周末出餐慢',
+            businessHours: null,
             errandBaseFee: 300,
             freeShippingThreshold: 1800,
         });
@@ -51,7 +52,7 @@ describe('WaimaiStoreService.listStores', () => {
     it('空 tags/缺月售/缺新字段容错（全 null），paused 透传', async () => {
         const env = makeEnv({
             configs: [{ channelId: 9, paused: true, routesEnabled: [] }],
-            channels: [{ id: 9, token: 'x', code: 'x店', customFields: {} }],
+            channels: [{ id: 9, token: 'x', code: 'x店', customFields: { industryType: 'catering' } }],
         });
         const list = await env.svc.listStores({} as any);
         expect(list[0].tags).toEqual([]);
@@ -93,6 +94,10 @@ describe('WaimaiStoreService.listStoreConfigs', () => {
             notifyTemplateOrderPlaced: null, notifyTemplatePaymentPending: null,
             notifyTemplateCancelled: null, notifyTemplateAfterSales: null,
             h5BaseUrl: null,
+            printMode: 'off',
+            routeFirstLeg: [], handoverPoints: [], providerShopNo: [],
+            merchantAcceptMinutes: 5, externalPushTimeoutMinutes: 10, externalFallbackMinutes: 20,
+            storeLat: null, storeLng: null,
         });
         expect(list[1]).toEqual({
             channelId: 3, channelName: '奶茶铺', channelToken: 'milktea',
@@ -107,6 +112,10 @@ describe('WaimaiStoreService.listStoreConfigs', () => {
             notifyTemplateOrderPlaced: null, notifyTemplatePaymentPending: null,
             notifyTemplateCancelled: null, notifyTemplateAfterSales: null,
             h5BaseUrl: null,
+            printMode: 'off',
+            routeFirstLeg: [], handoverPoints: [], providerShopNo: [],
+            merchantAcceptMinutes: 5, externalPushTimeoutMinutes: 10, externalFallbackMinutes: 20,
+            storeLat: null, storeLng: null,
         });
     });
 });
@@ -170,6 +179,10 @@ describe('WaimaiStoreService.updateStoreConfig', () => {
             notifyTemplateOrderPlaced: null, notifyTemplatePaymentPending: null,
             notifyTemplateCancelled: null, notifyTemplateAfterSales: null,
             h5BaseUrl: null,
+            printMode: 'off',
+            routeFirstLeg: [], handoverPoints: [], providerShopNo: [],
+            merchantAcceptMinutes: 5, externalPushTimeoutMinutes: 10, externalFallbackMinutes: 20,
+            storeLat: null, storeLng: null,
         });
     });
 });
@@ -254,5 +267,78 @@ describe('WaimaiStoreService R4 store pickup location upsert', () => {
         await env.svc.updateStoreConfig({} as any, 2, { routesEnabled: ['R4'], storeAddress: null } as any);
         expect(locRepo.findOne).not.toHaveBeenCalled();
         expect(locRepo.save).not.toHaveBeenCalled();
+    });
+});
+
+describe('WaimaiStoreService 配送矩阵配置', () => {
+    const channel = { id: 2, token: 'canteen', code: '一食堂' };
+    const point = { route: 'R1', name: '东门岗亭', lat: 30.1, lng: 120.2 };
+
+    it('R1/R3 第一段承运按数组写入并回读为数组', async () => {
+        const env = makeEnv({ channels: [channel] });
+        const out = await env.svc.updateStoreConfig({} as any, 2, {
+            routesEnabled: ['R1', 'R3'],
+            handoverPoints: [point],
+            routeFirstLeg: [{ route: 'R1', carrier: 'owned' }, { route: 'R3', carrier: 'external' }],
+            providerShopNo: [{ provider: 'dada', shopNo: 'D001' }, { provider: 'meituan', shopNo: 'M001' }],
+            merchantAcceptMinutes: 8,
+            externalPushTimeoutMinutes: 12,
+            externalFallbackMinutes: 25,
+            storeLat: 30.0,
+            storeLng: 120.0,
+        } as any);
+        expect(out.routeFirstLeg).toEqual([
+            { route: 'R1', carrier: 'owned' },
+            { route: 'R3', carrier: 'external' },
+        ]);
+        expect(out.handoverPoints).toEqual([{ ...point, address: null, phone: null }]);
+        expect(out.providerShopNo).toHaveLength(2);
+        expect(out).toMatchObject({
+            merchantAcceptMinutes: 8, externalPushTimeoutMinutes: 12, externalFallbackMinutes: 25,
+            storeLat: 30.0, storeLng: 120.0,
+        });
+    });
+
+    it('R2/R4/R5 不允许配置第一段承运；非法承运值拒绝', async () => {
+        const env = makeEnv({ channels: [channel] });
+        await expect(env.svc.updateStoreConfig({} as any, 2, {
+            routesEnabled: ['R2'], routeFirstLeg: [{ route: 'R2', carrier: 'owned' }],
+        } as any)).rejects.toThrow('不支持配置第一段承运方');
+        await expect(env.svc.updateStoreConfig({} as any, 2, {
+            routesEnabled: ['R1'], routeFirstLeg: [{ route: 'R1', carrier: 'external' }],
+        } as any)).rejects.toThrow('第一段承运方不合法');
+        await expect(env.svc.updateStoreConfig({} as any, 2, {
+            routesEnabled: ['R3'], routeFirstLeg: [{ route: 'R3', carrier: 'merchant' }],
+        } as any)).rejects.toThrow('第一段承运方不合法');
+    });
+
+    it('开通 R1/R2 且提交了交接点时必须各有对应交接点', async () => {
+        const env = makeEnv({ channels: [channel] });
+        await expect(env.svc.updateStoreConfig({} as any, 2, {
+            routesEnabled: ['R1', 'R2'], handoverPoints: [point],
+        } as any)).rejects.toThrow('需要先填写对应的校园交接点');
+        await expect(env.svc.updateStoreConfig({} as any, 2, {
+            routesEnabled: ['R1'], handoverPoints: [{ ...point, lat: 200 }],
+        } as any)).rejects.toThrow('经纬度不合法');
+        await expect(env.svc.updateStoreConfig({} as any, 2, {
+            routesEnabled: ['R1'], handoverPoints: [{ ...point, route: 'R3' }],
+        } as any)).rejects.toThrow('不需要校园交接点');
+    });
+
+    it('未传新字段即保留原值（旧后台表单不清空新配置）', async () => {
+        const env = makeEnv({ channels: [channel] });
+        const cfgRepo = env.repoByEntity.CampusFulfillmentConfig;
+        cfgRepo.findOne.mockResolvedValue({
+            channelId: 2, routesEnabled: ['R1', 'R3'],
+            routeFirstLeg: { R3: 'owned' },
+            handoverPoints: { R1: point },
+            providerShopNo: { dada: 'D001' },
+            merchantAcceptMinutes: 7,
+        });
+        const out = await env.svc.updateStoreConfig({} as any, 2, { routesEnabled: ['R1', 'R3'], storeNotice: '改公告' } as any);
+        expect(out.routeFirstLeg).toEqual([{ route: 'R3', carrier: 'owned' }]);
+        expect(out.handoverPoints).toHaveLength(1);
+        expect(out.providerShopNo).toEqual([{ provider: 'dada', shopNo: 'D001' }]);
+        expect(out.merchantAcceptMinutes).toBe(7);
     });
 });

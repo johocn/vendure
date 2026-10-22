@@ -43,6 +43,27 @@ export interface CampusStoreConfigWithChannel {
     notifyTemplateAfterSales: string | null;
     h5BaseUrl: string | null;
     printMode: 'off' | 'onPaid' | 'onAccepted';
+    routeFirstLeg: Array<{
+        route: string;
+        carrier: string;
+    }>;
+    handoverPoints: Array<{
+        route: string;
+        name: string;
+        address: string | null;
+        phone: string | null;
+        lat: number;
+        lng: number;
+    }>;
+    providerShopNo: Array<{
+        provider: string;
+        shopNo: string;
+    }>;
+    merchantAcceptMinutes: number;
+    externalPushTimeoutMinutes: number;
+    externalFallbackMinutes: number;
+    storeLat: number | null;
+    storeLng: number | null;
 }
 declare const PRINT_MODES: readonly ["off", "onPaid", "onAccepted"];
 type PrintMode = (typeof PRINT_MODES)[number];
@@ -78,6 +99,27 @@ export declare class WaimaiStoreService {
         notifyTemplateAfterSales?: string | null;
         h5BaseUrl?: string | null;
         printMode?: string | null;
+        routeFirstLeg?: Array<{
+            route: string;
+            carrier: string;
+        }> | null;
+        handoverPoints?: Array<{
+            route: string;
+            name: string;
+            address?: string | null;
+            phone?: string | null;
+            lat: number;
+            lng: number;
+        }> | null;
+        providerShopNo?: Array<{
+            provider: string;
+            shopNo: string;
+        }> | null;
+        merchantAcceptMinutes?: number | null;
+        externalPushTimeoutMinutes?: number | null;
+        externalFallbackMinutes?: number | null;
+        storeLat?: number | null;
+        storeLng?: number | null;
     }): Promise<CampusStoreConfigWithChannel>;
     /** 经 rawConnection 按实体名取 repo（避免对 cjk-plugin 的构建期依赖；PickupLocation 由 cjk-plugin 注册于同一进程）。
      * 可见性：isPublic=false + ownerChannelId=本渠道 + channels 含本渠道 → shop 端 applyVisibility 对本渠道可见（cjk pickup-location.service.ts:35）。 */

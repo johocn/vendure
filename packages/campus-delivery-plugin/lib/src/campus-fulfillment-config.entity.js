@@ -134,6 +134,38 @@ __decorate([
     (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
     __metadata("design:type", Object)
 ], CampusFulfillmentConfig.prototype, "printMode", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'simple-json', nullable: true }),
+    __metadata("design:type", Object)
+], CampusFulfillmentConfig.prototype, "routeFirstLeg", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'simple-json', nullable: true }),
+    __metadata("design:type", Object)
+], CampusFulfillmentConfig.prototype, "handoverPoints", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'simple-json', nullable: true }),
+    __metadata("design:type", Object)
+], CampusFulfillmentConfig.prototype, "providerShopNo", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', default: 5 }),
+    __metadata("design:type", Number)
+], CampusFulfillmentConfig.prototype, "merchantAcceptMinutes", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', default: 10 }),
+    __metadata("design:type", Number)
+], CampusFulfillmentConfig.prototype, "externalPushTimeoutMinutes", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', default: 20 }),
+    __metadata("design:type", Number)
+], CampusFulfillmentConfig.prototype, "externalFallbackMinutes", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true, type: 'float' }),
+    __metadata("design:type", Object)
+], CampusFulfillmentConfig.prototype, "storeLat", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ nullable: true, type: 'float' }),
+    __metadata("design:type", Object)
+], CampusFulfillmentConfig.prototype, "storeLng", void 0);
 exports.CampusFulfillmentConfig = CampusFulfillmentConfig = __decorate([
     (0, typeorm_1.Entity)(),
     __metadata("design:paramtypes", [Object])

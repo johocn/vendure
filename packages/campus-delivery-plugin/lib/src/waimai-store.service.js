@@ -14,6 +14,7 @@ exports.normalizePrintMode = normalizePrintMode;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
+const route_matrix_1 = require("./route-matrix");
 const PRINT_MODES = ['off', 'onPaid', 'onAccepted'];
 /** printMode 归一化：null/非法值一律回 'off'（存量行与脏配置兜底） */
 function normalizePrintMode(v) {
@@ -86,7 +87,7 @@ let WaimaiStoreService = class WaimaiStoreService {
     }
     /** admin：按 channelId upsert（幂等），routesEnabled 白名单 R1-R5，负数金额拒绝 */
     async updateStoreConfig(ctx, channelId, input) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8;
         const bad = ((_a = input.routesEnabled) !== null && _a !== void 0 ? _a : []).filter(r => !ROUTE_WHITELIST.includes(r));
         if (bad.length)
             throw new core_1.UserInputError(`不支持的配送路线: ${bad.join(', ')}（仅接受 R1-R5）`);
@@ -97,6 +98,57 @@ let WaimaiStoreService = class WaimaiStoreService {
             .filter(k => input[k] != null && input[k] < 0);
         if (negative.length)
             throw new core_1.UserInputError(`不能为负数: ${negative.join(', ')}`);
+        const timeoutKeys = ['merchantAcceptMinutes', 'externalPushTimeoutMinutes', 'externalFallbackMinutes'];
+        const badTimeout = timeoutKeys.filter(k => input[k] != null && input[k] < 0);
+        if (badTimeout.length)
+            throw new core_1.UserInputError(`超时分钟数不能为负数: ${badTimeout.join(', ')}`);
+        // 第一段承运：只有 R1（merchant|owned）、R3（campus|owned|external）可配
+        const routeFirstLeg = {};
+        for (const item of (_b = input.routeFirstLeg) !== null && _b !== void 0 ? _b : []) {
+            const route = String((_c = item === null || item === void 0 ? void 0 : item.route) !== null && _c !== void 0 ? _c : '');
+            if (route !== 'R1' && route !== 'R3') {
+                throw new core_1.UserInputError(`路线 ${route || '(空)'} 不支持配置第一段承运方（仅 R1、R3）`);
+            }
+            const carrier = (0, route_matrix_1.normalizeRouteFirstLeg)(route, item === null || item === void 0 ? void 0 : item.carrier);
+            if (!carrier) {
+                throw new core_1.UserInputError(`路线 ${route} 的第一段承运方不合法: ${(_d = item === null || item === void 0 ? void 0 : item.carrier) !== null && _d !== void 0 ? _d : '(空)'}（可选 ${route_matrix_1.ROUTE_FIRST_LEG_OPTIONS[route].join('/')}）`);
+            }
+            routeFirstLeg[route] = carrier;
+        }
+        // 校园交接点：只有 R1、R2 需要
+        const handoverPoints = {};
+        for (const item of (_e = input.handoverPoints) !== null && _e !== void 0 ? _e : []) {
+            const route = String((_f = item === null || item === void 0 ? void 0 : item.route) !== null && _f !== void 0 ? _f : '');
+            if (route !== 'R1' && route !== 'R2') {
+                throw new core_1.UserInputError(`路线 ${route || '(空)'} 不需要校园交接点（仅 R1、R2）`);
+            }
+            const name = String((_g = item === null || item === void 0 ? void 0 : item.name) !== null && _g !== void 0 ? _g : '').trim();
+            const lat = Number(item === null || item === void 0 ? void 0 : item.lat);
+            const lng = Number(item === null || item === void 0 ? void 0 : item.lng);
+            if (!name)
+                throw new core_1.UserInputError(`路线 ${route} 的交接点名称不能为空`);
+            if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+                throw new core_1.UserInputError(`路线 ${route} 的交接点经纬度不合法`);
+            }
+            handoverPoints[route] = {
+                name,
+                address: ((_h = item === null || item === void 0 ? void 0 : item.address) === null || _h === void 0 ? void 0 : _h.trim()) || undefined,
+                phone: ((_j = item === null || item === void 0 ? void 0 : item.phone) === null || _j === void 0 ? void 0 : _j.trim()) || undefined,
+                lat,
+                lng,
+            };
+        }
+        // 外部快递门店编号：外部快递用哪家由运营中心派单时决定，这里只存各家的门店编号
+        const providerShopNo = {};
+        for (const item of (_k = input.providerShopNo) !== null && _k !== void 0 ? _k : []) {
+            const provider = String((_l = item === null || item === void 0 ? void 0 : item.provider) !== null && _l !== void 0 ? _l : '');
+            if (provider !== 'dada' && provider !== 'meituan') {
+                throw new core_1.UserInputError(`不支持的外部快递: ${provider || '(空)'}（仅 dada/meituan）`);
+            }
+            const shopNo = String((_m = item === null || item === void 0 ? void 0 : item.shopNo) !== null && _m !== void 0 ? _m : '').trim();
+            if (shopNo)
+                providerShopNo[provider] = shopNo;
+        }
         const chRepo = this.connection.getRepository(ctx, core_1.Channel);
         const ch = (await chRepo.find()).find(c => Number(c.id) === Number(channelId));
         if (!ch)
@@ -106,30 +158,55 @@ let WaimaiStoreService = class WaimaiStoreService {
         if (!cfg)
             cfg = new campus_fulfillment_config_entity_1.CampusFulfillmentConfig({ channelId: channelId });
         cfg.routesEnabled = input.routesEnabled;
-        cfg.deliveryMinutes = (_b = input.deliveryMinutes) !== null && _b !== void 0 ? _b : null;
-        cfg.minOrderAmount = (_c = input.minOrderAmount) !== null && _c !== void 0 ? _c : null;
-        cfg.deliveryFee = (_d = input.deliveryFee) !== null && _d !== void 0 ? _d : null;
-        cfg.storeAddress = (_e = input.storeAddress) !== null && _e !== void 0 ? _e : null;
-        cfg.storePhone = (_f = input.storePhone) !== null && _f !== void 0 ? _f : null;
-        cfg.storeNotice = (_g = input.storeNotice) !== null && _g !== void 0 ? _g : null;
-        cfg.errandBaseFee = (_h = input.errandBaseFee) !== null && _h !== void 0 ? _h : null;
-        cfg.freeShippingThreshold = (_j = input.freeShippingThreshold) !== null && _j !== void 0 ? _j : null;
-        cfg.notifyTemplateAccepted = (_k = input.notifyTemplateAccepted) !== null && _k !== void 0 ? _k : null;
-        cfg.notifyTemplateRiderAssigned = (_l = input.notifyTemplateRiderAssigned) !== null && _l !== void 0 ? _l : null;
-        cfg.notifyTemplateCookingDone = (_m = input.notifyTemplateCookingDone) !== null && _m !== void 0 ? _m : null;
-        cfg.notifyTemplateDelivered = (_o = input.notifyTemplateDelivered) !== null && _o !== void 0 ? _o : null;
-        cfg.notifyTemplateExceptionHandled = (_p = input.notifyTemplateExceptionHandled) !== null && _p !== void 0 ? _p : null;
-        cfg.notifyTemplateOrderPlaced = (_q = input.notifyTemplateOrderPlaced) !== null && _q !== void 0 ? _q : null;
-        cfg.notifyTemplatePaymentPending = (_r = input.notifyTemplatePaymentPending) !== null && _r !== void 0 ? _r : null;
-        cfg.notifyTemplateCancelled = (_s = input.notifyTemplateCancelled) !== null && _s !== void 0 ? _s : null;
-        cfg.notifyTemplateAfterSales = (_t = input.notifyTemplateAfterSales) !== null && _t !== void 0 ? _t : null;
-        cfg.h5BaseUrl = (_u = input.h5BaseUrl) !== null && _u !== void 0 ? _u : null;
+        cfg.deliveryMinutes = (_o = input.deliveryMinutes) !== null && _o !== void 0 ? _o : null;
+        cfg.minOrderAmount = (_p = input.minOrderAmount) !== null && _p !== void 0 ? _p : null;
+        cfg.deliveryFee = (_q = input.deliveryFee) !== null && _q !== void 0 ? _q : null;
+        cfg.storeAddress = (_r = input.storeAddress) !== null && _r !== void 0 ? _r : null;
+        cfg.storePhone = (_s = input.storePhone) !== null && _s !== void 0 ? _s : null;
+        cfg.storeNotice = (_t = input.storeNotice) !== null && _t !== void 0 ? _t : null;
+        cfg.errandBaseFee = (_u = input.errandBaseFee) !== null && _u !== void 0 ? _u : null;
+        cfg.freeShippingThreshold = (_v = input.freeShippingThreshold) !== null && _v !== void 0 ? _v : null;
+        cfg.notifyTemplateAccepted = (_w = input.notifyTemplateAccepted) !== null && _w !== void 0 ? _w : null;
+        cfg.notifyTemplateRiderAssigned = (_x = input.notifyTemplateRiderAssigned) !== null && _x !== void 0 ? _x : null;
+        cfg.notifyTemplateCookingDone = (_y = input.notifyTemplateCookingDone) !== null && _y !== void 0 ? _y : null;
+        cfg.notifyTemplateDelivered = (_z = input.notifyTemplateDelivered) !== null && _z !== void 0 ? _z : null;
+        cfg.notifyTemplateExceptionHandled = (_0 = input.notifyTemplateExceptionHandled) !== null && _0 !== void 0 ? _0 : null;
+        cfg.notifyTemplateOrderPlaced = (_1 = input.notifyTemplateOrderPlaced) !== null && _1 !== void 0 ? _1 : null;
+        cfg.notifyTemplatePaymentPending = (_2 = input.notifyTemplatePaymentPending) !== null && _2 !== void 0 ? _2 : null;
+        cfg.notifyTemplateCancelled = (_3 = input.notifyTemplateCancelled) !== null && _3 !== void 0 ? _3 : null;
+        cfg.notifyTemplateAfterSales = (_4 = input.notifyTemplateAfterSales) !== null && _4 !== void 0 ? _4 : null;
+        cfg.h5BaseUrl = (_5 = input.h5BaseUrl) !== null && _5 !== void 0 ? _5 : null;
         cfg.printMode = input.printMode == null || input.printMode === '' ? 'off' : input.printMode;
+        // 未传即保留：后台旧表单不认识的字段不被清空
+        if (input.routeFirstLeg !== undefined)
+            cfg.routeFirstLeg = input.routeFirstLeg === null ? null : routeFirstLeg;
+        if (input.handoverPoints !== undefined)
+            cfg.handoverPoints = input.handoverPoints === null ? null : handoverPoints;
+        if (input.providerShopNo !== undefined)
+            cfg.providerShopNo = input.providerShopNo === null ? null : providerShopNo;
+        if (input.merchantAcceptMinutes != null)
+            cfg.merchantAcceptMinutes = input.merchantAcceptMinutes;
+        if (input.externalPushTimeoutMinutes != null)
+            cfg.externalPushTimeoutMinutes = input.externalPushTimeoutMinutes;
+        if (input.externalFallbackMinutes != null)
+            cfg.externalFallbackMinutes = input.externalFallbackMinutes;
+        if (input.storeLat !== undefined)
+            cfg.storeLat = input.storeLat;
+        if (input.storeLng !== undefined)
+            cfg.storeLng = input.storeLng;
+        // 跨字段：本次提交了交接点（新配置页）时，开通 R1/R2 必须各有对应交接点
+        const enabled = (_6 = input.routesEnabled) !== null && _6 !== void 0 ? _6 : [];
+        if (input.handoverPoints !== undefined) {
+            const missingPoint = ['R1', 'R2'].filter(r => { var _a; return enabled.includes(r) && !((_a = cfg.handoverPoints) === null || _a === void 0 ? void 0 : _a[r]); });
+            if (missingPoint.length) {
+                throw new core_1.UserInputError(`开通 ${missingPoint.join('、')} 需要先填写对应的校园交接点`);
+            }
+        }
         await repo.save(cfg);
-        const address = ((_v = input.storeAddress) !== null && _v !== void 0 ? _v : '').trim();
+        const address = ((_7 = input.storeAddress) !== null && _7 !== void 0 ? _7 : '').trim();
         if (address) {
             // R4：同步幂等 upsert 本渠道门店自提点（名称=店铺名，地址=storeAddress），核销走 pickup_redemption 零新表
-            await this.upsertStorePickupLocation(Number(channelId), ch.code, address, ((_w = input.storePhone) !== null && _w !== void 0 ? _w : '').trim() || null);
+            await this.upsertStorePickupLocation(Number(channelId), ch.code, address, ((_8 = input.storePhone) !== null && _8 !== void 0 ? _8 : '').trim() || null);
         }
         return this.toConfigView(channelId, ch.code, ch.token, cfg);
     }
@@ -160,7 +237,7 @@ let WaimaiStoreService = class WaimaiStoreService {
         });
     }
     toConfigView(channelId, channelName, channelToken, cfg) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2;
         return {
             channelId,
             channelName,
@@ -185,6 +262,24 @@ let WaimaiStoreService = class WaimaiStoreService {
             notifyTemplateAfterSales: (_t = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateAfterSales) !== null && _t !== void 0 ? _t : null,
             h5BaseUrl: (_u = cfg === null || cfg === void 0 ? void 0 : cfg.h5BaseUrl) !== null && _u !== void 0 ? _u : null,
             printMode: normalizePrintMode(cfg === null || cfg === void 0 ? void 0 : cfg.printMode),
+            routeFirstLeg: Object.entries((_v = cfg === null || cfg === void 0 ? void 0 : cfg.routeFirstLeg) !== null && _v !== void 0 ? _v : {}).map(([route, carrier]) => ({ route, carrier })),
+            handoverPoints: Object.entries((_w = cfg === null || cfg === void 0 ? void 0 : cfg.handoverPoints) !== null && _w !== void 0 ? _w : {}).map(([route, p]) => {
+                var _a, _b;
+                return ({
+                    route,
+                    name: p.name,
+                    address: (_a = p.address) !== null && _a !== void 0 ? _a : null,
+                    phone: (_b = p.phone) !== null && _b !== void 0 ? _b : null,
+                    lat: p.lat,
+                    lng: p.lng,
+                });
+            }),
+            providerShopNo: Object.entries((_x = cfg === null || cfg === void 0 ? void 0 : cfg.providerShopNo) !== null && _x !== void 0 ? _x : {}).map(([provider, shopNo]) => ({ provider, shopNo })),
+            merchantAcceptMinutes: (_y = cfg === null || cfg === void 0 ? void 0 : cfg.merchantAcceptMinutes) !== null && _y !== void 0 ? _y : 5,
+            externalPushTimeoutMinutes: (_z = cfg === null || cfg === void 0 ? void 0 : cfg.externalPushTimeoutMinutes) !== null && _z !== void 0 ? _z : 10,
+            externalFallbackMinutes: (_0 = cfg === null || cfg === void 0 ? void 0 : cfg.externalFallbackMinutes) !== null && _0 !== void 0 ? _0 : 20,
+            storeLat: (_1 = cfg === null || cfg === void 0 ? void 0 : cfg.storeLat) !== null && _1 !== void 0 ? _1 : null,
+            storeLng: (_2 = cfg === null || cfg === void 0 ? void 0 : cfg.storeLng) !== null && _2 !== void 0 ? _2 : null,
         };
     }
 };

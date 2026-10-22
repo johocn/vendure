@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Channel, RequestContext, TransactionalConnection, UserInputError } from '@vendure/core';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
+import { CampusRoute, normalizeRouteFirstLeg, ROUTE_FIRST_LEG_OPTIONS } from './route-matrix';
 
 export interface WaimaiStore {
     channelId: number;
@@ -47,6 +48,14 @@ export interface CampusStoreConfigWithChannel {
     notifyTemplateAfterSales: string | null;
     h5BaseUrl: string | null;
     printMode: 'off' | 'onPaid' | 'onAccepted';
+    routeFirstLeg: Array<{ route: string; carrier: string }>;
+    handoverPoints: Array<{ route: string; name: string; address: string | null; phone: string | null; lat: number; lng: number }>;
+    providerShopNo: Array<{ provider: string; shopNo: string }>;
+    merchantAcceptMinutes: number;
+    externalPushTimeoutMinutes: number;
+    externalFallbackMinutes: number;
+    storeLat: number | null;
+    storeLng: number | null;
 }
 
 const PRINT_MODES = ['off', 'onPaid', 'onAccepted'] as const;
@@ -146,6 +155,14 @@ export class WaimaiStoreService {
             notifyTemplateAfterSales?: string | null;
             h5BaseUrl?: string | null;
             printMode?: string | null;
+            routeFirstLeg?: Array<{ route: string; carrier: string }> | null;
+            handoverPoints?: Array<{ route: string; name: string; address?: string | null; phone?: string | null; lat: number; lng: number }> | null;
+            providerShopNo?: Array<{ provider: string; shopNo: string }> | null;
+            merchantAcceptMinutes?: number | null;
+            externalPushTimeoutMinutes?: number | null;
+            externalFallbackMinutes?: number | null;
+            storeLat?: number | null;
+            storeLng?: number | null;
         },
     ): Promise<CampusStoreConfigWithChannel> {
         const bad = (input.routesEnabled ?? []).filter(r => !ROUTE_WHITELIST.includes(r));
@@ -156,6 +173,59 @@ export class WaimaiStoreService {
         const negative = (['deliveryMinutes', 'minOrderAmount', 'deliveryFee', 'errandBaseFee', 'freeShippingThreshold'] as const)
             .filter(k => input[k] != null && (input[k] as number) < 0);
         if (negative.length) throw new UserInputError(`不能为负数: ${negative.join(', ')}`);
+        const timeoutKeys = ['merchantAcceptMinutes', 'externalPushTimeoutMinutes', 'externalFallbackMinutes'] as const;
+        const badTimeout = timeoutKeys.filter(k => input[k] != null && (input[k] as number) < 0);
+        if (badTimeout.length) throw new UserInputError(`超时分钟数不能为负数: ${badTimeout.join(', ')}`);
+
+        // 第一段承运：只有 R1（merchant|owned）、R3（campus|owned|external）可配
+        const routeFirstLeg: Record<string, string> = {};
+        for (const item of input.routeFirstLeg ?? []) {
+            const route = String(item?.route ?? '');
+            if (route !== 'R1' && route !== 'R3') {
+                throw new UserInputError(`路线 ${route || '(空)'} 不支持配置第一段承运方（仅 R1、R3）`);
+            }
+            const carrier = normalizeRouteFirstLeg(route, item?.carrier);
+            if (!carrier) {
+                throw new UserInputError(
+                    `路线 ${route} 的第一段承运方不合法: ${item?.carrier ?? '(空)'}（可选 ${ROUTE_FIRST_LEG_OPTIONS[route as CampusRoute].join('/')}）`,
+                );
+            }
+            routeFirstLeg[route] = carrier;
+        }
+
+        // 校园交接点：只有 R1、R2 需要
+        const handoverPoints: Record<string, { name: string; address?: string; phone?: string; lat: number; lng: number }> = {};
+        for (const item of input.handoverPoints ?? []) {
+            const route = String(item?.route ?? '');
+            if (route !== 'R1' && route !== 'R2') {
+                throw new UserInputError(`路线 ${route || '(空)'} 不需要校园交接点（仅 R1、R2）`);
+            }
+            const name = String(item?.name ?? '').trim();
+            const lat = Number(item?.lat);
+            const lng = Number(item?.lng);
+            if (!name) throw new UserInputError(`路线 ${route} 的交接点名称不能为空`);
+            if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+                throw new UserInputError(`路线 ${route} 的交接点经纬度不合法`);
+            }
+            handoverPoints[route] = {
+                name,
+                address: item?.address?.trim() || undefined,
+                phone: item?.phone?.trim() || undefined,
+                lat,
+                lng,
+            };
+        }
+
+        // 外部快递门店编号：外部快递用哪家由运营中心派单时决定，这里只存各家的门店编号
+        const providerShopNo: Record<string, string> = {};
+        for (const item of input.providerShopNo ?? []) {
+            const provider = String(item?.provider ?? '');
+            if (provider !== 'dada' && provider !== 'meituan') {
+                throw new UserInputError(`不支持的外部快递: ${provider || '(空)'}（仅 dada/meituan）`);
+            }
+            const shopNo = String(item?.shopNo ?? '').trim();
+            if (shopNo) providerShopNo[provider] = shopNo;
+        }
         const chRepo = this.connection.getRepository(ctx, Channel);
         const ch = (await chRepo.find()).find(c => Number(c.id) === Number(channelId));
         if (!ch) throw new UserInputError(`渠道不存在: ${channelId}`);
@@ -182,6 +252,26 @@ export class WaimaiStoreService {
         cfg.notifyTemplateAfterSales = input.notifyTemplateAfterSales ?? null;
         cfg.h5BaseUrl = input.h5BaseUrl ?? null;
         cfg.printMode = input.printMode == null || input.printMode === '' ? 'off' : input.printMode;
+        // 未传即保留：后台旧表单不认识的字段不被清空
+        if (input.routeFirstLeg !== undefined) cfg.routeFirstLeg = input.routeFirstLeg === null ? null : routeFirstLeg;
+        if (input.handoverPoints !== undefined) cfg.handoverPoints = input.handoverPoints === null ? null : handoverPoints;
+        if (input.providerShopNo !== undefined) cfg.providerShopNo = input.providerShopNo === null ? null : providerShopNo;
+        if (input.merchantAcceptMinutes != null) cfg.merchantAcceptMinutes = input.merchantAcceptMinutes;
+        if (input.externalPushTimeoutMinutes != null) cfg.externalPushTimeoutMinutes = input.externalPushTimeoutMinutes;
+        if (input.externalFallbackMinutes != null) cfg.externalFallbackMinutes = input.externalFallbackMinutes;
+        if (input.storeLat !== undefined) cfg.storeLat = input.storeLat;
+        if (input.storeLng !== undefined) cfg.storeLng = input.storeLng;
+
+        // 跨字段：本次提交了交接点（新配置页）时，开通 R1/R2 必须各有对应交接点
+        const enabled = input.routesEnabled ?? [];
+        if (input.handoverPoints !== undefined) {
+            const missingPoint = (['R1', 'R2'] as const).filter(
+                r => enabled.includes(r) && !cfg.handoverPoints?.[r],
+            );
+            if (missingPoint.length) {
+                throw new UserInputError(`开通 ${missingPoint.join('、')} 需要先填写对应的校园交接点`);
+            }
+        }
         await repo.save(cfg);
         const address = (input.storeAddress ?? '').trim();
         if (address) {
@@ -248,6 +338,21 @@ export class WaimaiStoreService {
             notifyTemplateAfterSales: cfg?.notifyTemplateAfterSales ?? null,
             h5BaseUrl: cfg?.h5BaseUrl ?? null,
             printMode: normalizePrintMode(cfg?.printMode),
+            routeFirstLeg: Object.entries(cfg?.routeFirstLeg ?? {}).map(([route, carrier]) => ({ route, carrier })),
+            handoverPoints: Object.entries(cfg?.handoverPoints ?? {}).map(([route, p]) => ({
+                route,
+                name: p.name,
+                address: p.address ?? null,
+                phone: p.phone ?? null,
+                lat: p.lat,
+                lng: p.lng,
+            })),
+            providerShopNo: Object.entries(cfg?.providerShopNo ?? {}).map(([provider, shopNo]) => ({ provider, shopNo })),
+            merchantAcceptMinutes: cfg?.merchantAcceptMinutes ?? 5,
+            externalPushTimeoutMinutes: cfg?.externalPushTimeoutMinutes ?? 10,
+            externalFallbackMinutes: cfg?.externalFallbackMinutes ?? 20,
+            storeLat: cfg?.storeLat ?? null,
+            storeLng: cfg?.storeLng ?? null,
         };
     }
 }
