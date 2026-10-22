@@ -20,6 +20,8 @@ export declare class HallService {
     onOrderPlaced(ctx: RequestContext, order: Order): Promise<void>;
     /** 预约单放量（调度 job 调用，plan 3.1）：按渠道配置进入商家确认或直接入厅 */
     releaseScheduled(ctx: RequestContext, order: Order, cfg: CampusFulfillmentConfig | null): Promise<void>;
+    /** 第一段交接完成：订单进校园抢单大厅（R1/R2 接力上楼） */
+    enterHallForHandover(ctx: RequestContext, orderId: number, cause: string): Promise<void>;
     /** 回大厅：清骑手指派字段，hallStatus 复位 open（拒单/超时改派共用） */
     backToHall(ctx: RequestContext, orderId: number): Promise<void>;
     /** 取消脱厅（3.3 冒烟实测缺陷）：订单取消终态时清 hallStatus，使其退出大厅/打包扫描/整组抢单/调度台。

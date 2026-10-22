@@ -84,6 +84,29 @@ let HallService = HallService_1 = class HallService {
         core_2.Logger.info(`Order ${order.code} scheduled → hall open`, 'CampusHall');
         this.notifyRiders(ctx, order);
     }
+    /** 第一段交接完成：订单进校园抢单大厅（R1/R2 接力上楼） */
+    async enterHallForHandover(ctx, orderId, cause) {
+        const order = await this.connection.getRepository(ctx, core_2.Order).findOne({
+            where: { id: orderId },
+            relations: ['channels'],
+        });
+        if (!order) {
+            core_2.Logger.warn(`enterHallForHandover 订单不存在 #${orderId}`, 'CampusHall');
+            return;
+        }
+        await this.updateOrder(ctx, orderId, {
+            customFields: {
+                hallStatus: 'open',
+                hallEnteredAt: new Date(),
+                deliveryStatus: 'pending',
+                assignedAt: null,
+                deliveryStaffId: null,
+                campusCause: cause,
+            },
+        });
+        this.notifyRiders(ctx, order);
+        core_2.Logger.info(`订单 ${order.code} 交接完成进入大厅 (${cause})`, 'CampusHall');
+    }
     /** 回大厅：清骑手指派字段，hallStatus 复位 open（拒单/超时改派共用） */
     async backToHall(ctx, orderId) {
         await this.connection.getRepository(ctx, core_2.Order).update(orderId, {
