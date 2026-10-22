@@ -24,6 +24,8 @@ const mock_delivery_provider_1 = require("./mock-delivery-provider");
 const mock_admin_resolver_1 = require("./mock-admin.resolver");
 const dada_delivery_provider_1 = require("./dada-delivery-provider");
 const dada_webhook_controller_1 = require("./dada-webhook.controller");
+const meituan_delivery_provider_1 = require("./meituan-delivery-provider");
+const meituan_webhook_controller_1 = require("./meituan-webhook.controller");
 const { gql } = require('graphql-tag');
 const DELIVERY_GATEWAY_OPTIONS = 'DELIVERY_GATEWAY_OPTIONS';
 const adminSchema = () => gql `
@@ -85,7 +87,7 @@ let DeliveryGatewayPlugin = DeliveryGatewayPlugin_1 = class DeliveryGatewayPlugi
         return DeliveryGatewayPlugin_1;
     }
     async onApplicationBootstrap() {
-        var _a, _b, _c, _d;
+        var _a, _b, _c, _d, _e;
         this.injector = new core_2.Injector(this.moduleRef);
         this.deliveryGateway.init(this.injector);
         this.deliveryGateway.registerProvider(new mock_delivery_provider_1.MockDeliveryProvider());
@@ -103,6 +105,21 @@ let DeliveryGatewayPlugin = DeliveryGatewayPlugin_1 = class DeliveryGatewayPlugi
         else {
             core_2.Logger.warn('未配置达达凭据（dada.appKey），跳过 DadaDeliveryProvider 注册', constants_1.loggerCtx);
         }
+        const mt = ((_e = DeliveryGatewayPlugin_1.options.meituan) !== null && _e !== void 0 ? _e : {});
+        if ((mt === null || mt === void 0 ? void 0 : mt.appKey) && (mt === null || mt === void 0 ? void 0 : mt.appSecret) && (mt === null || mt === void 0 ? void 0 : mt.shopId)) {
+            this.deliveryGateway.registerProvider(new meituan_delivery_provider_1.MeituanDeliveryProvider({
+                appKey: String(mt.appKey),
+                appSecret: String(mt.appSecret),
+                signMode: mt.signMode === 'open' ? 'open' : 'legacy',
+                shopId: String(mt.shopId),
+                baseUrl: mt.baseUrl ? String(mt.baseUrl) : undefined,
+                callbackUrl: mt.callbackUrl ? String(mt.callbackUrl) : undefined,
+                defaultCourierPhone: mt.defaultCourierPhone ? String(mt.defaultCourierPhone) : undefined,
+            }));
+        }
+        else {
+            core_2.Logger.warn('未配置美团凭据（meituan.appKey/appSecret/shopId），跳过 MeituanDeliveryProvider 注册', constants_1.loggerCtx);
+        }
         core_2.Logger.info('DeliveryGatewayPlugin initialized (MockProvider 已注册)', constants_1.loggerCtx);
     }
 };
@@ -111,7 +128,7 @@ DeliveryGatewayPlugin.options = {};
 exports.DeliveryGatewayPlugin = DeliveryGatewayPlugin = DeliveryGatewayPlugin_1 = __decorate([
     (0, core_2.VendurePlugin)({
         imports: [core_2.PluginCommonModule],
-        controllers: [dada_webhook_controller_1.DadaWebhookController],
+        controllers: [dada_webhook_controller_1.DadaWebhookController, meituan_webhook_controller_1.MeituanWebhookController],
         entities: [delivery_order_entity_1.DeliveryOrder],
         providers: [
             { provide: DELIVERY_GATEWAY_OPTIONS, useFactory: () => DeliveryGatewayPlugin.options },

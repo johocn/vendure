@@ -62,7 +62,7 @@ class DadaDeliveryProvider {
         var _a, _b, _c, _d, _e, _f, _g, _h;
         const originId = `TDD${Date.now()}${Math.floor(Math.random() * 1000)}`;
         const body = {
-            shop_no: this.config.shopNo,
+            shop_no: req.providerShopNo || this.config.shopNo,
             origin_id: originId,
             cargo_price: 0, // 骨架阶段占位：按需结合订单金额
             is_prepay: 0,
