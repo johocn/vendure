@@ -18,7 +18,7 @@ export declare class HallService {
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
     private get injector();
     onOrderPlaced(ctx: RequestContext, order: Order): Promise<void>;
-    /** 预约单放量（调度 job 调用，plan 3.1）：按渠道配置进入商家确认或直接入厅 */
+    /** 预约单放量（调度 job 调用，plan 3.1）：按路由/快照分流 */
     releaseScheduled(ctx: RequestContext, order: Order, cfg: CampusFulfillmentConfig | null): Promise<void>;
     /** 第一段交接完成：订单进校园抢单大厅（R1/R2 接力上楼） */
     enterHallForHandover(ctx: RequestContext, orderId: number, cause: string): Promise<void>;

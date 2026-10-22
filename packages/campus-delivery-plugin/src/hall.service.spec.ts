@@ -30,19 +30,18 @@ const future = (min: number) => new Date(Date.now() + min * 60_000);
 describe('HallService.onOrderPlaced 预约闸门', () => {
     const base = { id: 9, code: 'S1', customFields: { fulfillmentRoute: 'R3' } };
 
-    it('scheduledFor 距今超 30min → 挂 scheduled 暂不入厅（不查商家配置）', async () => {
+    it('scheduledFor 距今超 30min → 挂 scheduled 暂不入厅', async () => {
         const env = makeEnv();
         const order = { ...base, customFields: { fulfillmentRoute: 'R3', scheduledFor: future(120) } };
         await env.svc.onOrderPlaced({ channelId: 1 } as any, order as any);
         expect(env.updates[0].customFields.hallStatus).toBe('scheduled');
-        expect(env.cfgRepo.findOne).not.toHaveBeenCalled();
     });
 
     it('锁位失败仍挂 scheduled 且带 campusCause=slot_full', async () => {
         const env = makeEnv({ slotLocked: false });
         const order = { ...base, customFields: { fulfillmentRoute: 'R3', scheduledFor: future(60) } };
         await env.svc.onOrderPlaced({ channelId: 1 } as any, order as any);
-        expect(env.updates[0].customFields).toEqual({ hallStatus: 'scheduled', campusCause: 'slot_full' });
+        expect(env.updates[0].customFields).toMatchObject({ hallStatus: 'scheduled', campusCause: 'slot_full' });
     });
 
     it('scheduledFor 距今不足 30min → 照旧即时入厅 open', async () => {
@@ -58,10 +57,43 @@ describe('HallService.onOrderPlaced 预约闸门', () => {
         await env.svc.onOrderPlaced({ channelId: 1 } as any, { ...base, customFields: { fulfillmentRoute: 'R3' } } as any);
         expect(env.updates[0].customFields.hallStatus).toBe('open');
     });
+
+    it('R1 有交接点 → pending_merchant（商户/自营先送交接点）', async () => {
+        const env = makeEnv({ cfg: { channelId: 1, handoverPoints: { R1: { name: '东门岗亭', lat: 30.1, lng: 120.2 } } } });
+        await env.svc.onOrderPlaced({ channelId: 1 } as any, { ...base, customFields: { fulfillmentRoute: 'R1' } } as any);
+        expect(env.updates[0].customFields).toMatchObject({ hallStatus: 'pending_merchant', deliveryPlan: 'merchant' });
+    });
+
+    it('R2 有交接点 → pending_dispatch；快照写外部快递与交接点', async () => {
+        const env = makeEnv({ cfg: { channelId: 1, handoverPoints: { R2: { name: '菜鸟驿站', lat: 30.2, lng: 120.2 } } } });
+        await env.svc.onOrderPlaced({ channelId: 1 } as any, { ...base, customFields: { fulfillmentRoute: 'R2' } } as any);
+        expect(env.updates[0].customFields).toMatchObject({
+            hallStatus: 'pending_dispatch',
+            deliveryPlan: 'external_courier',
+            handoverMode: 'to_campus_rider',
+            handoverPointName: '菜鸟驿站',
+        });
+    });
+
+    it('R2 缺交接点 → 降级传信者直送入大厅，标 no_handover_point', async () => {
+        const env = makeEnv();
+        await env.svc.onOrderPlaced({ channelId: 1 } as any, { ...base, customFields: { fulfillmentRoute: 'R2' } } as any);
+        expect(env.updates[0].customFields).toMatchObject({
+            hallStatus: 'open',
+            deliveryPlan: 'campus_rider',
+            campusCause: 'no_handover_point',
+        });
+    });
+
+    it('R3 第一段自营快递 → owned_pool', async () => {
+        const env = makeEnv({ cfg: { channelId: 1, routeFirstLeg: { R3: 'owned' } } });
+        await env.svc.onOrderPlaced({ channelId: 1 } as any, { ...base, customFields: { fulfillmentRoute: 'R3' } } as any);
+        expect(env.updates[0].customFields).toMatchObject({ hallStatus: 'owned_pool', deliveryPlan: 'owned' });
+    });
 });
 
 describe('HallService.releaseScheduled', () => {
-    const order = { id: 9, code: 'S1' } as unknown as Order;
+    const order = { id: 9, code: 'S1', customFields: { fulfillmentRoute: 'R3' } } as unknown as Order;
 
     it('商家确认模式 → pending_merchant', async () => {
         const env = makeEnv();
@@ -74,6 +106,19 @@ describe('HallService.releaseScheduled', () => {
         await env.svc.releaseScheduled({ channelId: 1 } as any, order, { merchantConfirmEnabled: false } as CampusFulfillmentConfig);
         expect(env.updates[0].customFields.hallStatus).toBe('open');
         expect(env.updates[0].customFields.hallEnteredAt).toBeInstanceOf(Date);
+    });
+
+    it('R1 → pending_merchant；R2 → pending_dispatch；R3 快照 owned → owned_pool', async () => {
+        const env = makeEnv();
+        await env.svc.releaseScheduled({ channelId: 1 } as any,
+            { id: 9, code: 'S1', customFields: { fulfillmentRoute: 'R1' } } as any, null);
+        expect(env.updates[0].customFields).toEqual({ hallStatus: 'pending_merchant' });
+        await env.svc.releaseScheduled({ channelId: 1 } as any,
+            { id: 9, code: 'S1', customFields: { fulfillmentRoute: 'R2' } } as any, null);
+        expect(env.updates[1].customFields).toEqual({ hallStatus: 'pending_dispatch' });
+        await env.svc.releaseScheduled({ channelId: 1 } as any,
+            { id: 9, code: 'S1', customFields: { fulfillmentRoute: 'R3', deliveryPlan: 'owned' } } as any, null);
+        expect(env.updates[2].customFields).toEqual({ hallStatus: 'owned_pool' });
     });
 });
 

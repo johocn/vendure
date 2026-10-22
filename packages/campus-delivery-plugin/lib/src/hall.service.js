@@ -18,6 +18,7 @@ const wechat_subscribe_message_plugin_1 = require("@vendure/wechat-subscribe-mes
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
 const capacity_service_1 = require("./capacity.service");
 const slot_lock_service_1 = require("./slot-lock.service");
+const route_matrix_1 = require("./route-matrix");
 /**
  * 入厅服务：跑腿单（orderKind='errand'）或路线 R1/R3 的订单在支付后自动进入抢单大厅。
  * 含预约时段锁位（T0 前置）：锁位失败标 campusCause='slot_full'，靠调度告警人工跟进。
@@ -34,55 +35,91 @@ let HallService = HallService_1 = class HallService {
         return new core_2.Injector(this.moduleRef);
     }
     async onOrderPlaced(ctx, order) {
-        var _a, _b;
+        var _a, _b, _c, _d, _e, _f, _g;
         const cf = order.customFields;
-        if (cf.orderKind === 'errand' || cf.fulfillmentRoute === 'R1' || cf.fulfillmentRoute === 'R3') {
-            // 时段锁位（T0 前置）：商家确认模式同样要先锁容量（用户已支付占用时段），
-            // 锁位失败标 campusCause='slot_full'，靠调度告警人工跟进。
-            const locked = await this.slotLock.lock(ctx, order);
-            // 预约单闸门（plan 3.1）：scheduledFor 距今超 30min 时挂 'scheduled' 暂不入厅，
-            // 由调度 job 到点前 30min 放量（releaseScheduled）；临近时段照旧即时流转。
-            const scheduledAt = cf.scheduledFor ? new Date(cf.scheduledFor).getTime() : NaN;
-            if (!Number.isNaN(scheduledAt) && scheduledAt - Date.now() > HallService_1.SCHEDULE_RELEASE_MIN * 60000) {
-                await this.connection.getRepository(ctx, core_2.Order).update(order.id, {
-                    customFields: Object.assign({ hallStatus: 'scheduled' }, (locked ? {} : { campusCause: 'slot_full' })),
-                });
-                core_2.Logger.info(`Order ${order.code} deferred (scheduled=${cf.scheduledFor}, slotLocked=${locked})`, 'CampusHall');
+        const isErrand = cf.orderKind === 'errand';
+        const route = String((_a = cf.fulfillmentRoute) !== null && _a !== void 0 ? _a : (isErrand ? 'R5' : ''));
+        // 需要派单的只有 R1/R2/R3；R4 到店自取、R5 跑腿走原链路
+        if (!isErrand && !['R1', 'R2', 'R3'].includes(route))
+            return;
+        const cfg = await this.connection
+            .getRepository(ctx, campus_fulfillment_config_entity_1.CampusFulfillmentConfig)
+            .findOne({ where: { channelId: ctx.channelId } });
+        const plan = (0, route_matrix_1.resolveRoutePlan)(route, cfg !== null && cfg !== void 0 ? cfg : {});
+        // R1/R2 恒接力，必须有校园交接点；缺失则降级为传信者到店取餐直送（不能让订单卡住）
+        const needsPoint = route === 'R1' || route === 'R2';
+        const point = needsPoint ? (0, route_matrix_1.resolveHandoverPoint)(route, cfg !== null && cfg !== void 0 ? cfg : {}) : null;
+        const degrade = needsPoint && !point;
+        // 履约快照：下单时冻结，后续配置变更不影响在途单
+        const snapshot = Object.assign({ deliveryPlan: degrade ? 'campus_rider' : ((_b = plan === null || plan === void 0 ? void 0 : plan.leg1) !== null && _b !== void 0 ? _b : 'campus_rider'), handoverMode: degrade ? '' : ((_c = plan === null || plan === void 0 ? void 0 : plan.handover) !== null && _c !== void 0 ? _c : ''), thirdPartyProvider: '', handoverPointName: (_d = point === null || point === void 0 ? void 0 : point.name) !== null && _d !== void 0 ? _d : '', handoverPointAddress: (_e = point === null || point === void 0 ? void 0 : point.address) !== null && _e !== void 0 ? _e : '', handoverPointLat: (_f = point === null || point === void 0 ? void 0 : point.lat) !== null && _f !== void 0 ? _f : null, handoverPointLng: (_g = point === null || point === void 0 ? void 0 : point.lng) !== null && _g !== void 0 ? _g : null }, (degrade ? { campusCause: 'no_handover_point' } : {}));
+        const locked = await this.slotLock.lock(ctx, order);
+        const scheduledAt = cf.scheduledFor ? new Date(cf.scheduledFor).getTime() : NaN;
+        const deferred = !Number.isNaN(scheduledAt) && scheduledAt - Date.now() > HallService_1.SCHEDULE_RELEASE_MIN * 60000;
+        const update = (patch) => this.connection.getRepository(ctx, core_2.Order).update(order.id, {
+            customFields: Object.assign(Object.assign(Object.assign({}, snapshot), (locked || snapshot.campusCause ? {} : { campusCause: 'slot_full' })), patch),
+        });
+        // R1：商户/自营快递先完成第一段（送到校园交接点），出餐后由商家工作台分流
+        if (route === 'R1' && !degrade) {
+            if (deferred) {
+                await update({ hallStatus: 'scheduled' });
                 return;
             }
-            // 商家确认模式：先挂「待商家接单」，出餐完成（merchantCookingDone）才入大厅；
-            // 未启用则照旧直接入厅。商家超时未处理由调度 job 自动入厅兜底。
-            const cfg = await this.connection
-                .getRepository(ctx, campus_fulfillment_config_entity_1.CampusFulfillmentConfig)
-                .findOne({ where: { channelId: ctx.channelId } });
-            if (cfg === null || cfg === void 0 ? void 0 : cfg.merchantConfirmEnabled) {
-                await this.connection.getRepository(ctx, core_2.Order).update(order.id, {
-                    customFields: Object.assign({ hallStatus: 'pending_merchant' }, (locked ? {} : { campusCause: 'slot_full' })),
-                });
-                core_2.Logger.info(`Order ${order.code} awaiting merchant confirm (${cf.fulfillmentRoute}, slot=${(_a = cf.deliverySlotText) !== null && _a !== void 0 ? _a : 'immediate'}, slotLocked=${locked})`, 'CampusHall');
-                return;
-            }
-            await this.connection.getRepository(ctx, core_2.Order).update(order.id, {
-                customFields: Object.assign({ hallStatus: 'open', hallEnteredAt: new Date() }, (locked ? {} : { campusCause: 'slot_full' })),
-            });
-            core_2.Logger.info(`Order ${order.code} entered hall (${cf.fulfillmentRoute}, slot=${(_b = cf.deliverySlotText) !== null && _b !== void 0 ? _b : 'immediate'}, slotLocked=${locked})`, 'CampusHall');
-            this.notifyRiders(ctx, order);
-        }
-    }
-    /** 预约单放量（调度 job 调用，plan 3.1）：按渠道配置进入商家确认或直接入厅 */
-    async releaseScheduled(ctx, order, cfg) {
-        if (cfg === null || cfg === void 0 ? void 0 : cfg.merchantConfirmEnabled) {
-            await this.connection.getRepository(ctx, core_2.Order).update(order.id, {
-                customFields: { hallStatus: 'pending_merchant' },
-            });
-            core_2.Logger.info(`Order ${order.code} scheduled → pending_merchant`, 'CampusHall');
+            await update({ hallStatus: 'pending_merchant' });
+            core_2.Logger.info(`Order ${order.code} awaiting merchant (R1/${snapshot.deliveryPlan})`, 'CampusHall');
             return;
         }
-        await this.connection.getRepository(ctx, core_2.Order).update(order.id, {
-            customFields: { hallStatus: 'open', hallEnteredAt: new Date() },
-        });
-        core_2.Logger.info(`Order ${order.code} scheduled → hall open`, 'CampusHall');
+        // R2：固定外部快递，等运营中心选择提供方推送
+        if (route === 'R2' && !degrade) {
+            await update({ hallStatus: deferred ? 'scheduled' : 'pending_dispatch' });
+            core_2.Logger.info(`Order ${order.code} awaiting external push (R2)`, 'CampusHall');
+            return;
+        }
+        // R3：一段到底，按第一段进入对应池
+        const leg1 = String(snapshot.deliveryPlan);
+        if (deferred) {
+            await update({ hallStatus: 'scheduled' });
+            return;
+        }
+        if (leg1 === 'external_courier') {
+            await update({ hallStatus: 'pending_dispatch' });
+            core_2.Logger.info(`Order ${order.code} awaiting external push (R3)`, 'CampusHall');
+            return;
+        }
+        if (leg1 === 'owned') {
+            await update({ hallStatus: 'owned_pool' });
+            core_2.Logger.info(`Order ${order.code} in owned pool (R3)`, 'CampusHall');
+            return;
+        }
+        if (cfg === null || cfg === void 0 ? void 0 : cfg.merchantConfirmEnabled) {
+            await update({ hallStatus: 'pending_merchant' });
+            return;
+        }
+        await update({ hallStatus: 'open', hallEnteredAt: new Date() });
+        core_2.Logger.info(`Order ${order.code} entered hall (${route}, slotLocked=${locked})`, 'CampusHall');
         this.notifyRiders(ctx, order);
+    }
+    /** 预约单放量（调度 job 调用，plan 3.1）：按路由/快照分流 */
+    async releaseScheduled(ctx, order, cfg) {
+        var _a;
+        const cf = order.customFields;
+        const route = String((_a = cf.fulfillmentRoute) !== null && _a !== void 0 ? _a : '');
+        let next = 'open';
+        if (route === 'R1')
+            next = 'pending_merchant';
+        else if (route === 'R2' || cf.deliveryPlan === 'external_courier')
+            next = 'pending_dispatch';
+        else if (cf.deliveryPlan === 'owned')
+            next = 'owned_pool';
+        else if (cfg === null || cfg === void 0 ? void 0 : cfg.merchantConfirmEnabled)
+            next = 'pending_merchant';
+        await this.connection.getRepository(ctx, core_2.Order).update(order.id, {
+            customFields: next === 'open'
+                ? { hallStatus: next, hallEnteredAt: new Date() }
+                : { hallStatus: next },
+        });
+        core_2.Logger.info(`Order ${order.code} scheduled → ${next}`, 'CampusHall');
+        if (next === 'open')
+            this.notifyRiders(ctx, order);
     }
     /** 第一段交接完成：订单进校园抢单大厅（R1/R2 接力上楼） */
     async enterHallForHandover(ctx, orderId, cause) {
@@ -119,7 +156,8 @@ let HallService = HallService_1 = class HallService {
         var _a;
         const cur = await this.connection.getRepository(ctx, core_2.Order).findOne({ where: { id: order.id } });
         const hs = (_a = cur === null || cur === void 0 ? void 0 : cur.customFields) === null || _a === void 0 ? void 0 : _a.hallStatus;
-        if (!hs || !['open', 'pending_merchant', 'accepted', 'scheduled', 'grabbed'].includes(hs))
+        const active = ['open', 'pending_merchant', 'accepted', 'scheduled', 'grabbed', 'third_party', 'merchant_delivering', 'owned_pool', 'owned_dispatched', 'pending_dispatch'];
+        if (!hs || !active.includes(hs))
             return;
         await this.connection.getRepository(ctx, core_2.Order).update(order.id, {
             customFields: Object.assign({ hallStatus: 'cancelled' }, (hs === 'grabbed' ? { deliveryStaffId: null, deliveryStatus: null, assignedAt: null } : {})),
