@@ -26,6 +26,8 @@ export interface DeliveryCreateRequest extends DeliveryQuoteRequest {
     packageId: string;
     remark?: string;
     callbackUrl?: string;
+    /** 平台侧门店编号覆盖（同一 Provider 多门店/多渠道时使用；不传则用 Provider 配置） */
+    providerShopNo?: string;
 }
 
 export interface DeliveryCreateResult {
@@ -33,6 +35,8 @@ export interface DeliveryCreateResult {
     thirdPartyNo: string;      // 平台单号
     status: 'pending' | 'accepted';
     fee: number;
+    /** 平台预估送达分钟数（可选；美团/达达不同接口返回字段不一） */
+    etaMinutes?: number;
 }
 
 export interface DeliveryCancelResult { success: boolean; reason?: string; }
@@ -53,4 +57,23 @@ export interface DeliveryProvider {
     createDelivery(ctx: RequestContext, req: DeliveryCreateRequest): Promise<DeliveryCreateResult>;
     cancelDelivery(ctx: RequestContext, deliveryOrderNo: string, reason?: string): Promise<DeliveryCancelResult>;
     parseWebhook(payload: unknown): DeliveryStatusEvent;
+    /** 校验平台回调签名（未实现则不校验） */
+    verifyCallback?(payload: unknown): boolean;
+}
+
+/** 网关 → 业务侧状态回传（业务侧用字符串 token 注册，避免循环依赖） */
+export interface DeliveryStatusUpdate {
+    deliveryOrderId: ID;
+    orderId: ID;
+    packageId?: string | null;
+    providerCode: string;
+    thirdPartyNo: string;
+    status: DeliveryStatus;
+    courierName?: string;
+    courierPhone?: string;
+    reason?: string;
+}
+
+export interface DeliveryStatusSink {
+    onDeliveryStatus(ctx: RequestContext, update: DeliveryStatusUpdate): Promise<void>;
 }

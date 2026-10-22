@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Injector, ID, Logger, RequestContext, TransactionalConnection } from '@vendure/core';
 import { DeliveryOrder } from './delivery-order.entity';
-import { DeliveryProvider, DeliveryStatus, DeliveryStatusEvent } from './delivery-provider';
+import { DeliveryCancelResult, DeliveryProvider, DeliveryStatus, DeliveryStatusEvent, DeliveryStatusSink } from './delivery-provider';
 import { loggerCtx } from './constants';
 
 const TRANSITIONS: Record<DeliveryStatus, DeliveryStatus[]> = {
@@ -25,6 +25,8 @@ export class DeliveryGatewayService {
         linkDeliveryOrder(ctx: any, orderId: ID, packageId: string, deliveryOrderId: ID): Promise<boolean>;
         transition(ctx: any, orderId: ID, packageId: string, toStatus: 'shipped' | 'delivered' | 'cancelled'): Promise<boolean>;
     } | null = null;
+    /** 可选：业务侧（campus-delivery-plugin）注册的状态接收器，避免反向编译依赖 */
+    private statusSink: DeliveryStatusSink | null = null;
 
     init(injector: Injector): void {
         this.injector = injector;
@@ -35,6 +37,19 @@ export class DeliveryGatewayService {
         } catch {
             this.orderPackageLinker = null;
         }
+        try {
+            // 业务侧可能先于 init 注册（插件 bootstrap 顺序不定），两者都尝试
+            const sink = injector.get('DeliveryStatusSink') as DeliveryStatusSink | null;
+            if (sink && typeof sink.onDeliveryStatus === 'function') {
+                this.statusSink = sink;
+            }
+        } catch {
+            /* 未注册，保持 null */
+        }
+    }
+
+    registerStatusSink(sink: DeliveryStatusSink): void {
+        this.statusSink = sink;
     }
 
     registerProvider(provider: DeliveryProvider): void {
@@ -48,7 +63,16 @@ export class DeliveryGatewayService {
 
     async createDelivery(
         ctx: RequestContext,
-        input: { orderId: ID; packageId: string; providerCode: string; pickup: any; dropoff: any; items: any[]; remark?: string },
+        input: {
+            orderId: ID;
+            packageId: string;
+            providerCode: string;
+            pickup: any;
+            dropoff: any;
+            items: any[];
+            remark?: string;
+            providerShopNo?: string;
+        },
     ): Promise<DeliveryOrder> {
         const provider = this.getProvider(input.providerCode);
         if (!provider) {
@@ -62,6 +86,7 @@ export class DeliveryGatewayService {
             items: input.items,
             deliveryType: 'instant',
             remark: input.remark,
+            providerShopNo: input.providerShopNo,
         });
         const entity = this.connection.getRepository(ctx, DeliveryOrder).create({
             // 必须用 Provider 返回的单号，applyStatusEvent 按 code 定位配送单
@@ -76,6 +101,7 @@ export class DeliveryGatewayService {
             dropoffJson: JSON.stringify(input.dropoff),
             itemsJson: JSON.stringify(input.items),
             fee: result.fee,
+            etaMinutes: result.etaMinutes ?? undefined,
         });
         await this.connection.getRepository(ctx, DeliveryOrder).save(entity);
         // 挂钩点3：按 orderId + packageId 回填 OrderPackage.deliveryOrderId（未命中仅告警，不阻断）
@@ -103,6 +129,36 @@ export class DeliveryGatewayService {
             where: { orderId: orderId as any },
             order: { createdAt: 'ASC' as any },
         });
+    }
+
+    /** 取订单最新配送单（派单/展示用） */
+    async findLatestByOrder(ctx: RequestContext, orderId: ID): Promise<DeliveryOrder | null> {
+        const rows = await this.findByOrder(ctx, orderId);
+        return rows.length ? rows[rows.length - 1] : null;
+    }
+
+    /** 取消外部快递配送（非终态才真正调用；终态直接返回幂等成功） */
+    async cancelDelivery(ctx: RequestContext, deliveryOrderId: ID, reason?: string): Promise<DeliveryCancelResult> {
+        const repo = this.connection.getRepository(ctx, DeliveryOrder);
+        const delivery = await repo.findOne({ where: { id: deliveryOrderId } });
+        if (!delivery) {
+            throw new Error(`配送单不存在: ${deliveryOrderId}`);
+        }
+        if (delivery.status === 'delivered' || delivery.status === 'cancelled') {
+            return { success: true, reason: 'already-final' };
+        }
+        const provider = this.getProvider(delivery.providerCode);
+        if (!provider) {
+            throw new Error(`未注册的配送商: ${delivery.providerCode}`);
+        }
+        const result = await provider.cancelDelivery(ctx, delivery.thirdPartyNo ?? delivery.code, reason);
+        if (result.success) {
+            delivery.status = 'cancelled';
+            delivery.cancelledAt = new Date();
+            delivery.reason = reason ?? delivery.reason;
+            await repo.save(delivery);
+        }
+        return result;
     }
 
     /** 处理平台回写（webhook 或 Mock 模拟），驱动状态机 */
@@ -134,6 +190,24 @@ export class DeliveryGatewayService {
         if (event.status === 'delivered') delivery.deliveredAt = new Date();
         if (event.status === 'cancelled') delivery.cancelledAt = new Date();
         await repo.save(delivery);
+        if (this.statusSink) {
+            try {
+                await this.statusSink.onDeliveryStatus(ctx, {
+                    deliveryOrderId: delivery.id,
+                    orderId: delivery.orderId,
+                    packageId: delivery.packageId,
+                    providerCode: delivery.providerCode,
+                    thirdPartyNo: delivery.thirdPartyNo ?? event.deliveryOrderNo,
+                    status: event.status,
+                    courierName: delivery.courierName ?? undefined,
+                    courierPhone: delivery.courierPhone ?? undefined,
+                    reason: event.reason,
+                });
+            } catch (e: any) {
+                // 业务侧异常绝不影响平台回调 200
+                Logger.warn(`DeliveryStatusSink 处理失败 ${delivery.code}: ${e?.message ?? e}`, loggerCtx);
+            }
+        }
         // 挂钩点3c：配送终态（delivered/cancelled）回写 OrderPackage（未命中仅告警，不阻断）
         if ((event.status === 'delivered' || event.status === 'cancelled') && this.orderPackageLinker && delivery.packageId) {
             try {
