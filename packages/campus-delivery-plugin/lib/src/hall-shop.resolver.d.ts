@@ -5,6 +5,20 @@ import { HallService } from './hall.service';
 import { RiderEarning } from './rider-earning.entity';
 import { RiderCreditService } from './rider-credit.service';
 import { RiderService } from './rider.service';
+export declare class OrderDeliveryShopResolver {
+    /** 订单配送卡：直接读下单快照，避免在途单被后台配置变更影响 */
+    campusOrderDelivery(order: Order): {
+        plan: any;
+        handoverMode: any;
+        provider: any;
+        thirdPartyNo: any;
+        thirdPartyState: any;
+        courierName: any;
+        courierPhone: any;
+        handoverPointName: any;
+        handoverPointAddress: any;
+    } | null;
+}
 export declare class HallShopResolver {
     private grab;
     private config;

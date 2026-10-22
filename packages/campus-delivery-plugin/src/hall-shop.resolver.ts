@@ -1,4 +1,4 @@
-import { Args, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Args, Int, Mutation, Parent, Query, ResolveField, Resolver } from '@nestjs/graphql';
 import { Ctx, ID, Order, RequestContext, TransactionalConnection, UserInputError } from '@vendure/core';
 import { CampusConfigService } from './campus-config.service';
 import { HallGrabService } from './hall-grab.service';
@@ -6,6 +6,27 @@ import { HallService } from './hall.service';
 import { RiderEarning } from './rider-earning.entity';
 import { CREDIT_REJECT, RiderCreditService } from './rider-credit.service';
 import { RiderService } from './rider.service';
+
+@Resolver('Order')
+export class OrderDeliveryShopResolver {
+    /** 订单配送卡：直接读下单快照，避免在途单被后台配置变更影响 */
+    @ResolveField()
+    campusOrderDelivery(@Parent() order: Order) {
+        const cf = (order.customFields ?? {}) as any;
+        if (!cf.deliveryPlan && !cf.thirdPartyProvider && !cf.handoverPointName) return null;
+        return {
+            plan: cf.deliveryPlan ?? null,
+            handoverMode: cf.handoverMode ?? null,
+            provider: cf.thirdPartyProvider ?? null,
+            thirdPartyNo: cf.thirdPartyNo ?? null,
+            thirdPartyState: cf.thirdPartyState ?? null,
+            courierName: cf.thirdPartyCourierName ?? null,
+            courierPhone: cf.thirdPartyCourierPhone ?? null,
+            handoverPointName: cf.handoverPointName ?? null,
+            handoverPointAddress: cf.handoverPointAddress ?? null,
+        };
+    }
+}
 
 @Resolver()
 export class HallShopResolver {

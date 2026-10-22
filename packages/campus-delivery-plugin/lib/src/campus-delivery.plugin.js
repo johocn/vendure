@@ -279,6 +279,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     riderName: String
                     note: String
                     printedAt: DateTime
+                    provider: String
+                    thirdPartyNo: String
                     lines: [MerchantBoardLine!]!
                 }
 
@@ -292,6 +294,11 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     cooking: [MerchantBoardOrder!]!
                     awaitingRider: [MerchantBoardOrder!]!
                     delivering: [MerchantBoardOrder!]!
+                    pendingDispatch: [MerchantBoardOrder!]!
+                    thirdParty: [MerchantBoardOrder!]!
+                    ownedPool: [MerchantBoardOrder!]!
+                    ownedDispatched: [MerchantBoardOrder!]!
+                    merchantDelivering: [MerchantBoardOrder!]!
                     scheduled: [MerchantBoardOrder!]!
                     completedToday: Int!
                     completedTodayAmount: Int!
@@ -355,11 +362,60 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     boundVariantCount: Int!
                 }
 
+                """第一段承运方（仅 R1: merchant|owned，R3: campus|owned|external）"""
+                type CampusRouteCarrier {
+                    route: String!
+                    carrier: String!
+                }
+
+                input CampusRouteCarrierInput {
+                    route: String!
+                    carrier: String!
+                }
+
+                """校园交接点（仅 R1、R2 需要，接力起点）"""
+                type CampusHandoverPoint {
+                    route: String!
+                    name: String!
+                    address: String
+                    phone: String
+                    lat: Float!
+                    lng: Float!
+                }
+
+                input CampusHandoverPointInput {
+                    route: String!
+                    name: String!
+                    address: String
+                    phone: String
+                    lat: Float!
+                    lng: Float!
+                }
+
+                """外部快递门店编号（运营中心维护，不对外暴露给商户）"""
+                type CampusProviderShopNo {
+                    provider: String!
+                    shopNo: String!
+                }
+
+                input CampusProviderShopNoInput {
+                    provider: String!
+                    shopNo: String!
+                }
+
                 type CampusStoreConfigWithChannel {
                     channelId: ID!
                     channelName: String!
                     channelToken: String!
                     routesEnabled: [String!]!
+                    routeFirstLeg: [CampusRouteCarrier!]!
+                    handoverPoints: [CampusHandoverPoint!]!
+                    providerShopNo: [CampusProviderShopNo!]!
+                    merchantAcceptMinutes: Int!
+                    externalPushTimeoutMinutes: Int!
+                    externalFallbackMinutes: Int!
+                    storeLat: Float
+                    storeLng: Float
                     deliveryMinutes: Int
                     minOrderAmount: Int
                     deliveryFee: Int
@@ -383,6 +439,14 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
 
                 input CampusStoreConfigInput {
                     routesEnabled: [String!]!
+                    routeFirstLeg: [CampusRouteCarrierInput!]
+                    handoverPoints: [CampusHandoverPointInput!]
+                    providerShopNo: [CampusProviderShopNoInput!]
+                    merchantAcceptMinutes: Int
+                    externalPushTimeoutMinutes: Int
+                    externalFallbackMinutes: Int
+                    storeLat: Float
+                    storeLng: Float
                     deliveryMinutes: Int
                     minOrderAmount: Int
                     deliveryFee: Int
@@ -453,12 +517,37 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantCookingDone(orderId: ID!): CampusMerchantOpResult!
                     campusMerchantSetPaused(paused: Boolean!): CampusMerchantOpResult!
                     campusMerchantMarkPrinted(orderId: ID!): CampusMerchantOpResult!
+                    campusMerchantDispatchExternal(orderId: ID!, provider: String!): CampusExternalDelivery!
+                    campusMerchantCancelExternal(orderId: ID!, reason: String): CampusExternalCancelResult!
+                    campusMerchantAcceptOwned(orderId: ID!): CampusMerchantOpResult!
+                    campusMerchantMarkHandoverArrived(orderId: ID!): CampusFirstLegResult!
+                    campusMerchantMarkOwnedArrived(orderId: ID!): CampusFirstLegResult!
                     approveRiderWithdraw(id: ID!, remark: String): RiderWithdrawalRequest!
                     rejectRiderWithdraw(id: ID!, remark: String): RiderWithdrawalRequest!
                 }
 
                 type CampusMerchantOpResult {
                     ok: Boolean!
+                }
+
+                """外部快递推送结果；already=true 表示重复推送（幂等）"""
+                type CampusExternalDelivery {
+                    ok: Boolean!
+                    provider: String
+                    thirdPartyNo: String
+                    already: Boolean
+                }
+
+                type CampusExternalCancelResult {
+                    ok: Boolean!
+                    reason: String
+                    skipped: Boolean
+                }
+
+                """第一段完成结果；done=true 表示订单已直送完成（R3）"""
+                type CampusFirstLegResult {
+                    ok: Boolean!
+                    done: Boolean!
                 }
 
                 type PaymentTimeoutTask {
@@ -649,6 +738,23 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     lng: Float!
                 }
 
+                """C 端订单配送卡：承运方、外部快递单号与骑手、校园交接点"""
+                type CampusOrderDelivery {
+                    plan: String
+                    handoverMode: String
+                    provider: String
+                    thirdPartyNo: String
+                    thirdPartyState: String
+                    courierName: String
+                    courierPhone: String
+                    handoverPointName: String
+                    handoverPointAddress: String
+                }
+
+                extend type Order {
+                    campusOrderDelivery: CampusOrderDelivery
+                }
+
                 type CampusR2Relay {
                     orderId: ID!
                     orderCode: String!
@@ -760,7 +866,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                 }
             `;
             },
-            resolvers: [rider_shop_resolver_1.RiderShopResolver, hall_shop_resolver_1.HallShopResolver, rider_task_shop_resolver_1.RiderTaskShopResolver, errand_shop_resolver_1.ErrandShopResolver, waimai_shop_resolver_1.WaimaiShopResolver, r2_shop_resolver_1.R2ShopResolver, campus_invoice_resolver_1.InvoiceShopResolver, favorite_shop_resolver_1.FavoriteShopResolver],
+            resolvers: [hall_shop_resolver_1.OrderDeliveryShopResolver, rider_shop_resolver_1.RiderShopResolver, hall_shop_resolver_1.HallShopResolver, rider_task_shop_resolver_1.RiderTaskShopResolver, errand_shop_resolver_1.ErrandShopResolver, waimai_shop_resolver_1.WaimaiShopResolver, r2_shop_resolver_1.R2ShopResolver, campus_invoice_resolver_1.InvoiceShopResolver, favorite_shop_resolver_1.FavoriteShopResolver],
         },
         configuration: config => {
             var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r;
