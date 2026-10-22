@@ -316,5 +316,46 @@ function injectT4Services(svc) {
             customFields: vitest_1.expect.objectContaining({ hallStatus: 'pending_dispatch', campusCause: 'external_fallback' }),
         });
     });
+    (0, vitest_1.it)('外部已接单/取货 → 超 fallback 也不取消（避免干掉在途骑手）', async () => {
+        const env = makeEnv({
+            openOrders: [{ id: 26, code: 'R2A', createdAt: minAgo(60), customFields: { hallStatus: 'third_party', fulfillmentRoute: 'R2', deliveryPlan: 'external_courier', thirdPartyDispatchAt: minAgo(30), thirdPartyState: 'accepted' } }],
+            cfg: Object.assign(Object.assign({}, cfg), { externalFallbackMinutes: 20 }),
+        });
+        await env.svc.scan({ channelId: 1 });
+        (0, vitest_1.expect)(env.hallSvc.updateOrder).not.toHaveBeenCalled();
+    });
+    (0, vitest_1.it)('外部接单后超 3×fallback → 硬上限仍取消回落', async () => {
+        const env = makeEnv({
+            openOrders: [{ id: 27, code: 'R3A', createdAt: minAgo(90), customFields: { hallStatus: 'third_party', fulfillmentRoute: 'R3', deliveryPlan: 'external_courier', thirdPartyDispatchAt: minAgo(70), thirdPartyState: 'pickup' } }],
+            cfg: Object.assign(Object.assign({}, cfg), { externalFallbackMinutes: 20 }),
+        });
+        await env.svc.scan({ channelId: 1 });
+        (0, vitest_1.expect)(env.hallSvc.updateOrder).toHaveBeenCalledWith(vitest_1.expect.anything(), 27, {
+            customFields: vitest_1.expect.objectContaining({ hallStatus: 'open', campusCause: 'external_fallback' }),
+        });
+    });
+    (0, vitest_1.it)('自营快递池久无人接单 → 回抢单大厅（传信者兜底）', async () => {
+        const env = makeEnv({
+            openOrders: [{ id: 28, code: 'R3O', createdAt: minAgo(40), customFields: { hallStatus: 'owned_pool', fulfillmentRoute: 'R3', deliveryPlan: 'owned' } }],
+            cfg: Object.assign(Object.assign({}, cfg), { merchantAutoOpenMinutes: 15 }),
+        });
+        await env.svc.scan({ channelId: 1 });
+        (0, vitest_1.expect)(env.hallSvc.updateOrder).toHaveBeenCalledWith(vitest_1.expect.anything(), 28, {
+            customFields: vitest_1.expect.objectContaining({ hallStatus: 'open', campusCause: 'owned_pool_timeout' }),
+        });
+    });
+    (0, vitest_1.it)('自营快递已派出久未送达 → 回抢单大厅并清空骑手', async () => {
+        const env = makeEnv({
+            openOrders: [{ id: 29, code: 'R1O', createdAt: minAgo(60), customFields: { hallStatus: 'owned_dispatched', fulfillmentRoute: 'R1', deliveryPlan: 'owned', assignedAt: minAgo(20), deliveryStaffId: '9' } }],
+            cfg: Object.assign(Object.assign({}, cfg), { merchantAutoOpenMinutes: 15 }),
+        });
+        await env.svc.scan({ channelId: 1 });
+        (0, vitest_1.expect)(env.hallSvc.updateOrder).toHaveBeenCalledWith(vitest_1.expect.anything(), 29, {
+            customFields: vitest_1.expect.objectContaining({
+                hallStatus: 'open', campusCause: 'owned_deliver_timeout',
+                deliveryStaffId: null, assignedAt: null,
+            }),
+        });
+    });
 });
 //# sourceMappingURL=dispatch-job.service.spec.js.map

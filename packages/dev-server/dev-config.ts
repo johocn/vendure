@@ -578,16 +578,33 @@ export const devConfig: VendureConfig = {
         }),
         // 同城配送抽象网关：Provider 注册表 + Mock 配送商，必须在 LogisticsPlugin 之后注册（Task5）
         DeliveryGatewayPlugin.init({
-            // 达达凭据：默认占位（dev 骨架），生产用环境变量注入；凭据不落 git。
-            // 配置了 DADA_APP_KEY 即注册 DadaProvider；否则回退 mock provider。
-            dada: {
-                appKey: process.env.DADA_APP_KEY || 'dev-dada-app-key',
-                appSecret: process.env.DADA_APP_SECRET || 'dev-dada-app-secret',
-                shopNo: process.env.DADA_SHOP_NO || 'dev-dada-shop-no',
-                sourceId: process.env.DADA_SOURCE_ID || 'dev-dada-source',
-                environment: (process.env.DADA_ENV as 'sandbox' | 'production') || 'sandbox',
-                callbackUrl: process.env.DADA_CALLBACK_URL || 'http://127.0.0.1:3000/delivery-gateway/dada/webhook',
-            },
+            // 外部快递凭据一律走环境变量，不落 git、不用占位值：
+            // 缺凭据时不注册对应 Provider（运营选派单会明确报「未注册的配送商」，而不是拿假 key 请求平台）。
+            ...(process.env.DADA_APP_KEY && process.env.DADA_APP_SECRET
+                ? {
+                      dada: {
+                          appKey: process.env.DADA_APP_KEY,
+                          appSecret: process.env.DADA_APP_SECRET,
+                          shopNo: process.env.DADA_SHOP_NO || '',
+                          sourceId: process.env.DADA_SOURCE_ID || undefined,
+                          environment: (process.env.DADA_ENV as 'sandbox' | 'production') || 'sandbox',
+                          callbackUrl: process.env.DADA_CALLBACK_URL || '',
+                      },
+                  }
+                : {}),
+            ...(process.env.MEITUAN_APP_KEY && process.env.MEITUAN_APP_SECRET && process.env.MEITUAN_SHOP_ID
+                ? {
+                      meituan: {
+                          appKey: process.env.MEITUAN_APP_KEY,
+                          appSecret: process.env.MEITUAN_APP_SECRET,
+                          shopId: process.env.MEITUAN_SHOP_ID,
+                          signMode: process.env.MEITUAN_SIGN_MODE === 'open' ? 'open' : 'legacy',
+                          baseUrl: process.env.MEITUAN_BASE_URL || undefined,
+                          callbackUrl: process.env.MEITUAN_CALLBACK_URL || '',
+                          defaultCourierPhone: process.env.MEITUAN_COURIER_PHONE || undefined,
+                      },
+                  }
+                : {}),
         }),
         CustomerServicePlugin.init(),
         InventoryPlugin.init(),

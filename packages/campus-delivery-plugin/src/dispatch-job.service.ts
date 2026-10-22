@@ -211,6 +211,9 @@ export class DispatchJobService implements OnApplicationShutdown {
      * 2) merchant_delivering 超 merchantAutoOpenMinutes → 回抢单大厅（传信者到档口取餐）
      * 3) pending_dispatch 超 externalPushTimeoutMinutes → 回抢单大厅
      * 4) third_party 超 externalFallbackMinutes → 取消外部快递；R2 回待推送换一家，R3 回大厅
+     *    （平台已接单/取货不按该阈值取消，仅 3× 硬上限兜底）
+     * 5) owned_pool 超 merchantAutoOpenMinutes 无人接 → 回大厅
+     * 6) owned_dispatched 超 merchantAutoOpenMinutes 未送达交接点 → 回大厅并清空骑手
      */
     private async sweepRouteTimeouts(
         ctx: RequestContext,
@@ -279,9 +282,17 @@ export class DispatchJobService implements OnApplicationShutdown {
                 continue;
             }
 
-            // 4) 已推送但久未接单/取货 → 取消并回落
-            if (cf.hallStatus === 'third_party' && cf.thirdPartyDispatchAt
-                && now - new Date(cf.thirdPartyDispatchAt).getTime() > fallbackMs) {
+            // 4) 已推送但久未接单/取货 → 取消并回落。
+            //    平台已接单/取货（accepted/pickup）不按 fallbackMs 取消，避免把在途骑手干掉；
+            //    但仍设 3×fallbackMs 硬上限，防止「接单后永不送达」永久占用。
+            const tpState = String(cf.thirdPartyState ?? '');
+            const inDelivery = tpState === 'accepted' || tpState === 'pickup';
+            const tpElapsed = cf.thirdPartyDispatchAt
+                ? now - new Date(cf.thirdPartyDispatchAt).getTime()
+                : 0;
+            const tpStale = cf.thirdPartyDispatchAt
+                && ((!inDelivery && tpElapsed > fallbackMs) || tpElapsed > fallbackMs * 3);
+            if (cf.hallStatus === 'third_party' && tpStale) {
                 if (this.thirdParty) {
                     try {
                         await this.thirdParty.cancel(ctx, o.id as any, 'external fallback timeout');
@@ -315,6 +326,42 @@ export class DispatchJobService implements OnApplicationShutdown {
                     cf.hallStatus = 'open';
                 }
                 Logger.warn(`Order ${o.code} external fallback (${route})`, 'CampusDispatch');
+            }
+
+            // 5) 自营快递池久无人接单 → 回抢单大厅（传信者兜底）
+            if (cf.hallStatus === 'owned_pool'
+                && now - new Date(o.createdAt).getTime() > deliverMs) {
+                await this.hall.updateOrder(ctx, o.id as any, {
+                    customFields: {
+                        hallStatus: 'open',
+                        hallEnteredAt: new Date(),
+                        deliveryPlan: 'campus_rider',
+                        handoverMode: '',
+                        campusCause: 'owned_pool_timeout',
+                    },
+                } as any);
+                Logger.warn(`Order ${o.code} owned pool timeout → hall`, 'CampusDispatch');
+                cf.hallStatus = 'open';
+                continue;
+            }
+
+            // 6) 自营快递已派出但久未送达交接点 → 回抢单大厅（传信者到店取餐兜底）
+            if (cf.hallStatus === 'owned_dispatched' && cf.assignedAt
+                && now - new Date(cf.assignedAt).getTime() > deliverMs) {
+                await this.hall.updateOrder(ctx, o.id as any, {
+                    customFields: {
+                        hallStatus: 'open',
+                        hallEnteredAt: new Date(),
+                        deliveryPlan: 'campus_rider',
+                        handoverMode: '',
+                        deliveryStaffId: null,
+                        deliveryStatus: null,
+                        assignedAt: null,
+                        campusCause: 'owned_deliver_timeout',
+                    },
+                } as any);
+                Logger.warn(`Order ${o.code} owned courier timeout → hall`, 'CampusDispatch');
+                cf.hallStatus = 'open';
             }
         }
     }

@@ -67,7 +67,7 @@ let ThirdPartyDeliveryService = class ThirdPartyDeliveryService {
      * - R3：当前策略为 external 时，外部快递整段直送学生
      */
     async dispatchExternal(ctx, orderId, provider) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1;
         if (provider !== 'dada' && provider !== 'meituan')
             throw new core_2.UserInputError('外部快递仅支持 dada/meituan');
         const order = await this.orderRepo(ctx).findOne({
@@ -79,14 +79,15 @@ let ThirdPartyDeliveryService = class ThirdPartyDeliveryService {
         const cf = order.customFields;
         if (cf.hallStatus === 'cancelled')
             throw new core_2.UserInputError('订单已取消');
-        if (cf.thirdPartyNo && cf.thirdPartyState !== 'cancelled') {
+        // 已成功推送则在途，不重复下单；但平台取消/异常后允许换一家重推
+        if (cf.thirdPartyNo && !['cancelled', 'exception'].includes(String((_a = cf.thirdPartyState) !== null && _a !== void 0 ? _a : ''))) {
             return { ok: true, already: true, thirdPartyNo: cf.thirdPartyNo };
         }
-        const channelId = (_c = (_b = (_a = order.channels) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.id) !== null && _c !== void 0 ? _c : ctx.channelId;
+        const channelId = (_d = (_c = (_b = order.channels) === null || _b === void 0 ? void 0 : _b[0]) === null || _c === void 0 ? void 0 : _c.id) !== null && _d !== void 0 ? _d : ctx.channelId;
         const cfg = await this.cfgRepo.findOne({ where: { channelId: channelId } });
         if (!cfg)
             throw new core_2.UserInputError('店铺未配置履约信息');
-        const route = String((_d = cf.fulfillmentRoute) !== null && _d !== void 0 ? _d : '');
+        const route = String((_e = cf.fulfillmentRoute) !== null && _e !== void 0 ? _e : '');
         const plan = (0, route_matrix_1.resolveRoutePlan)(route, cfg, provider);
         if (!plan)
             throw new core_2.UserInputError(`路线 ${route} 不支持外部快递`);
@@ -105,22 +106,22 @@ let ThirdPartyDeliveryService = class ThirdPartyDeliveryService {
             })
             : null;
         const userPoint = {
-            name: (_f = (_e = order.shippingAddress) === null || _e === void 0 ? void 0 : _e.fullName) !== null && _f !== void 0 ? _f : '用户',
-            address: [building === null || building === void 0 ? void 0 : building.name, (_g = order.shippingAddress) === null || _g === void 0 ? void 0 : _g.streetLine1].filter(Boolean).join(' ') || undefined,
-            lat: Number((_h = building === null || building === void 0 ? void 0 : building.lat) !== null && _h !== void 0 ? _h : 0),
-            lng: Number((_j = building === null || building === void 0 ? void 0 : building.lng) !== null && _j !== void 0 ? _j : 0),
-            phone: (_l = (_k = order.shippingAddress) === null || _k === void 0 ? void 0 : _k.phoneNumber) !== null && _l !== void 0 ? _l : undefined,
+            name: (_g = (_f = order.shippingAddress) === null || _f === void 0 ? void 0 : _f.fullName) !== null && _g !== void 0 ? _g : '用户',
+            address: [building === null || building === void 0 ? void 0 : building.name, (_h = order.shippingAddress) === null || _h === void 0 ? void 0 : _h.streetLine1].filter(Boolean).join(' ') || undefined,
+            lat: Number((_j = building === null || building === void 0 ? void 0 : building.lat) !== null && _j !== void 0 ? _j : 0),
+            lng: Number((_k = building === null || building === void 0 ? void 0 : building.lng) !== null && _k !== void 0 ? _k : 0),
+            phone: (_m = (_l = order.shippingAddress) === null || _l === void 0 ? void 0 : _l.phoneNumber) !== null && _m !== void 0 ? _m : undefined,
         };
         // 交接点按「本路线」取：下单快照优先，缺失才用店铺当前配置
         const snapPoint = cf.handoverPointLat != null && cf.handoverPointLng != null
             ? {
-                name: String((_m = cf.handoverPointName) !== null && _m !== void 0 ? _m : ''),
-                address: (_o = cf.handoverPointAddress) !== null && _o !== void 0 ? _o : undefined,
+                name: String((_o = cf.handoverPointName) !== null && _o !== void 0 ? _o : ''),
+                address: (_p = cf.handoverPointAddress) !== null && _p !== void 0 ? _p : undefined,
                 lat: Number(cf.handoverPointLat),
                 lng: Number(cf.handoverPointLng),
             }
             : undefined;
-        const effCfg = Object.assign(Object.assign({}, cfg), { handoverPoints: Object.assign(Object.assign({}, ((_p = cfg.handoverPoints) !== null && _p !== void 0 ? _p : {})), (snapPoint ? { [plan.route]: [snapPoint] } : {})) });
+        const effCfg = Object.assign(Object.assign({}, cfg), { handoverPoints: Object.assign(Object.assign({}, ((_q = cfg.handoverPoints) !== null && _q !== void 0 ? _q : {})), (snapPoint ? { [plan.route]: [snapPoint] } : {})) });
         // 无快照时按楼栋坐标挑最近交接点；楼栋缺坐标则由默认点兜底
         const dest = (building === null || building === void 0 ? void 0 : building.lat) != null && (building === null || building === void 0 ? void 0 : building.lng) != null
             ? { lat: Number(building.lat), lng: Number(building.lng) }
@@ -134,36 +135,36 @@ let ThirdPartyDeliveryService = class ThirdPartyDeliveryService {
             orderId: order.id,
             packageId: String(order.id),
             providerCode: provider,
-            providerShopNo: (_r = (_q = cfg.providerShopNo) === null || _q === void 0 ? void 0 : _q[provider]) !== null && _r !== void 0 ? _r : undefined,
+            providerShopNo: (_s = (_r = cfg.providerShopNo) === null || _r === void 0 ? void 0 : _r[provider]) !== null && _s !== void 0 ? _s : undefined,
             pickup,
             dropoff,
-            items: ((_s = order.lines) !== null && _s !== void 0 ? _s : []).map(l => { var _a, _b; return ({ name: (_b = (_a = l.productVariant) === null || _a === void 0 ? void 0 : _a.name) !== null && _b !== void 0 ? _b : '餐品', quantity: l.quantity }); }),
-            remark: (_t = cf.note) !== null && _t !== void 0 ? _t : undefined,
+            items: ((_t = order.lines) !== null && _t !== void 0 ? _t : []).map(l => { var _a, _b; return ({ name: (_b = (_a = l.productVariant) === null || _a === void 0 ? void 0 : _a.name) !== null && _b !== void 0 ? _b : '餐品', quantity: l.quantity }); }),
+            remark: (_u = cf.note) !== null && _u !== void 0 ? _u : undefined,
         });
         await this.hall.updateOrder(oCtx, orderId, {
             customFields: {
                 deliveryPlan: 'external_courier',
-                handoverMode: (_u = plan.handover) !== null && _u !== void 0 ? _u : '',
+                handoverMode: (_v = plan.handover) !== null && _v !== void 0 ? _v : '',
                 thirdPartyProvider: provider,
                 thirdPartyDeliveryOrderId: String(delivery.id),
-                thirdPartyNo: (_v = delivery.thirdPartyNo) !== null && _v !== void 0 ? _v : delivery.code,
+                thirdPartyNo: (_w = delivery.thirdPartyNo) !== null && _w !== void 0 ? _w : delivery.code,
                 thirdPartyState: delivery.status,
-                thirdPartyFee: (_w = delivery.fee) !== null && _w !== void 0 ? _w : null,
+                thirdPartyFee: (_x = delivery.fee) !== null && _x !== void 0 ? _x : null,
                 thirdPartyDispatchAt: new Date(),
-                handoverPointName: (_x = dropoff.name) !== null && _x !== void 0 ? _x : '',
-                handoverPointAddress: (_y = dropoff.address) !== null && _y !== void 0 ? _y : null,
+                handoverPointName: (_y = dropoff.name) !== null && _y !== void 0 ? _y : '',
+                handoverPointAddress: (_z = dropoff.address) !== null && _z !== void 0 ? _z : null,
                 handoverPointLat: dropoff.lat,
                 handoverPointLng: dropoff.lng,
                 hallStatus: 'third_party',
                 campusCause: 'external_dispatched',
             },
         });
-        core_2.Logger.info(`订单 ${order.code} 已推送 ${provider}:${(_z = delivery.thirdPartyNo) !== null && _z !== void 0 ? _z : delivery.code}`, loggerCtx);
-        return { ok: true, thirdPartyNo: (_0 = delivery.thirdPartyNo) !== null && _0 !== void 0 ? _0 : delivery.code, provider };
+        core_2.Logger.info(`订单 ${order.code} 已推送 ${provider}:${(_0 = delivery.thirdPartyNo) !== null && _0 !== void 0 ? _0 : delivery.code}`, loggerCtx);
+        return { ok: true, thirdPartyNo: (_1 = delivery.thirdPartyNo) !== null && _1 !== void 0 ? _1 : delivery.code, provider };
     }
     /** 取消外部快递配送（商家关单 / 推送失败回落前调用），幂等 */
     async cancel(ctx, orderId, reason) {
-        var _a, _b, _c;
+        var _a, _b, _c, _d, _e, _f, _g;
         const order = await this.orderRepo(ctx).findOne({ where: { id: orderId }, relations: ['channels'] });
         if (!order)
             throw new core_2.UserInputError('订单不存在');
@@ -173,9 +174,27 @@ let ThirdPartyDeliveryService = class ThirdPartyDeliveryService {
         const oCtx = await this.ctxForChannel((_c = (_b = (_a = order.channels) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.id) !== null && _c !== void 0 ? _c : ctx.channelId);
         const res = await this.gateway.cancelDelivery(oCtx, Number(cf.thirdPartyDeliveryOrderId), reason);
         if (res.success) {
-            await this.hall.updateOrder(oCtx, orderId, {
-                customFields: { thirdPartyState: 'cancelled', campusCause: 'third_party_cancelled' },
-            });
+            // 平台取消成功后立刻回退本地状态，不等超时扫描：
+            // R2 回待推送（运营换一家），R3 回抢单大厅（传信者兜底）。
+            // 重新读库：并发下订单可能已被取消（hallStatus=cancelled），此时不得把订单复活。
+            const fresh = await this.orderRepo(oCtx).findOne({ where: { id: orderId } });
+            const hs = String((_e = (_d = fresh === null || fresh === void 0 ? void 0 : fresh.customFields) === null || _d === void 0 ? void 0 : _d.hallStatus) !== null && _e !== void 0 ? _e : '');
+            const route = String((_g = (_f = fresh === null || fresh === void 0 ? void 0 : fresh.customFields) === null || _f === void 0 ? void 0 : _f.fulfillmentRoute) !== null && _g !== void 0 ? _g : '');
+            const patch = { thirdPartyState: 'cancelled', campusCause: 'third_party_cancelled' };
+            if (hs === 'third_party') {
+                if (route === 'R2') {
+                    patch.hallStatus = 'pending_dispatch';
+                    patch.thirdPartyDispatchAt = new Date();
+                }
+                else {
+                    patch.hallStatus = 'open';
+                    patch.hallEnteredAt = new Date();
+                    patch.deliveryPlan = 'campus_rider';
+                    patch.handoverMode = '';
+                    patch.thirdPartyProvider = '';
+                }
+            }
+            await this.hall.updateOrder(oCtx, orderId, { customFields: patch });
         }
         return { ok: res.success, reason: res.reason };
     }

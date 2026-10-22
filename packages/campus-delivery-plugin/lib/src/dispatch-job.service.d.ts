@@ -39,6 +39,9 @@ export declare class DispatchJobService implements OnApplicationShutdown {
      * 2) merchant_delivering 超 merchantAutoOpenMinutes → 回抢单大厅（传信者到档口取餐）
      * 3) pending_dispatch 超 externalPushTimeoutMinutes → 回抢单大厅
      * 4) third_party 超 externalFallbackMinutes → 取消外部快递；R2 回待推送换一家，R3 回大厅
+     *    （平台已接单/取货不按该阈值取消，仅 3× 硬上限兜底）
+     * 5) owned_pool 超 merchantAutoOpenMinutes 无人接 → 回大厅
+     * 6) owned_dispatched 超 merchantAutoOpenMinutes 未送达交接点 → 回大厅并清空骑手
      */
     private sweepRouteTimeouts;
     /** 即时单（无 deliverySlotId）打包时间窗：入厅时间差 ≤10min 视为顺路 */

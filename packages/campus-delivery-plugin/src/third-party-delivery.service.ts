@@ -84,7 +84,8 @@ export class ThirdPartyDeliveryService implements OnApplicationBootstrap {
         if (!order) throw new UserInputError('订单不存在');
         const cf = order.customFields as any;
         if (cf.hallStatus === 'cancelled') throw new UserInputError('订单已取消');
-        if (cf.thirdPartyNo && cf.thirdPartyState !== 'cancelled') {
+        // 已成功推送则在途，不重复下单；但平台取消/异常后允许换一家重推
+        if (cf.thirdPartyNo && !['cancelled', 'exception'].includes(String(cf.thirdPartyState ?? ''))) {
             return { ok: true, already: true, thirdPartyNo: cf.thirdPartyNo };
         }
 
@@ -186,9 +187,26 @@ export class ThirdPartyDeliveryService implements OnApplicationBootstrap {
         const oCtx = await this.ctxForChannel(order.channels?.[0]?.id ?? ctx.channelId);
         const res = await this.gateway.cancelDelivery(oCtx, Number(cf.thirdPartyDeliveryOrderId), reason);
         if (res.success) {
-            await this.hall.updateOrder(oCtx, orderId, {
-                customFields: { thirdPartyState: 'cancelled', campusCause: 'third_party_cancelled' },
-            } as any);
+            // 平台取消成功后立刻回退本地状态，不等超时扫描：
+            // R2 回待推送（运营换一家），R3 回抢单大厅（传信者兜底）。
+            // 重新读库：并发下订单可能已被取消（hallStatus=cancelled），此时不得把订单复活。
+            const fresh = await this.orderRepo(oCtx).findOne({ where: { id: orderId as any } });
+            const hs = String((fresh?.customFields as any)?.hallStatus ?? '');
+            const route = String((fresh?.customFields as any)?.fulfillmentRoute ?? '');
+            const patch: Record<string, unknown> = { thirdPartyState: 'cancelled', campusCause: 'third_party_cancelled' };
+            if (hs === 'third_party') {
+                if (route === 'R2') {
+                    patch.hallStatus = 'pending_dispatch';
+                    patch.thirdPartyDispatchAt = new Date();
+                } else {
+                    patch.hallStatus = 'open';
+                    patch.hallEnteredAt = new Date();
+                    patch.deliveryPlan = 'campus_rider';
+                    patch.handoverMode = '';
+                    patch.thirdPartyProvider = '';
+                }
+            }
+            await this.hall.updateOrder(oCtx, orderId, { customFields: patch } as any);
         }
         return { ok: res.success, reason: res.reason };
     }
