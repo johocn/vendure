@@ -278,3 +278,65 @@ describe('DispatchJobService.scan 多单顺路打包 T1.5（plan 3.3）', () => 
     });
 });
 
+describe('DispatchJobService.scan 路线超时兜底（R1–R3）', () => {
+    const cfg = { channelId: 1, autoAssignMinutes: 10, autoRefundMinutes: 30 };
+
+    it('R1 商户接单超时 → 转自营快递（owned_dispatched）', async () => {
+        const env = makeEnv({
+            openOrders: [{ id: 21, code: 'R1T', createdAt: minAgo(10), customFields: { hallStatus: 'pending_merchant', fulfillmentRoute: 'R1', deliveryPlan: 'merchant' } }],
+            cfg: { ...cfg, merchantAcceptMinutes: 5 },
+        });
+        await env.svc.scan({ channelId: 1 } as any);
+        expect(env.hallSvc.updateOrder).toHaveBeenCalledWith(expect.anything(), 21, {
+            customFields: expect.objectContaining({
+                hallStatus: 'owned_dispatched',
+                deliveryPlan: 'owned',
+                campusCause: 'merchant_accept_timeout',
+            }),
+        });
+    });
+
+    it('R1 商户久未送达交接点 → 回大厅由传信者取餐', async () => {
+        const env = makeEnv({
+            openOrders: [{ id: 22, code: 'R1D', createdAt: minAgo(40), customFields: { hallStatus: 'merchant_delivering', fulfillmentRoute: 'R1', deliveryPlan: 'merchant', assignedAt: minAgo(20) } }],
+            cfg: { ...cfg, merchantAutoOpenMinutes: 15 },
+        });
+        await env.svc.scan({ channelId: 1 } as any);
+        expect(env.hallSvc.updateOrder).toHaveBeenCalledWith(expect.anything(), 22, {
+            customFields: expect.objectContaining({
+                hallStatus: 'open',
+                deliveryPlan: 'campus_rider',
+                campusCause: 'merchant_deliver_timeout',
+            }),
+        });
+    });
+
+    it('R2 迟迟未推送外部快递 → 回大厅', async () => {
+        const env = makeEnv({
+            openOrders: [{ id: 23, code: 'R2P', createdAt: minAgo(30), customFields: { hallStatus: 'pending_dispatch', fulfillmentRoute: 'R2', deliveryPlan: 'external_courier' } }],
+            cfg: { ...cfg, externalPushTimeoutMinutes: 10 },
+        });
+        await env.svc.scan({ channelId: 1 } as any);
+        expect(env.hallSvc.updateOrder).toHaveBeenCalledWith(expect.anything(), 23, {
+            customFields: expect.objectContaining({ hallStatus: 'open', campusCause: 'external_push_timeout' }),
+        });
+    });
+
+    it('R3 外部快递久未接单 → 取消并回抢单大厅；R2 回待推送', async () => {
+        const env = makeEnv({
+            openOrders: [
+                { id: 24, code: 'R3F', createdAt: minAgo(40), customFields: { hallStatus: 'third_party', fulfillmentRoute: 'R3', deliveryPlan: 'external_courier', thirdPartyDispatchAt: minAgo(30) } },
+                { id: 25, code: 'R2F', createdAt: minAgo(40), customFields: { hallStatus: 'third_party', fulfillmentRoute: 'R2', deliveryPlan: 'external_courier', thirdPartyDispatchAt: minAgo(30) } },
+            ],
+            cfg: { ...cfg, externalFallbackMinutes: 20 },
+        });
+        await env.svc.scan({ channelId: 1 } as any);
+        expect(env.hallSvc.updateOrder).toHaveBeenCalledWith(expect.anything(), 24, {
+            customFields: expect.objectContaining({ hallStatus: 'open', campusCause: 'external_fallback' }),
+        });
+        expect(env.hallSvc.updateOrder).toHaveBeenCalledWith(expect.anything(), 25, {
+            customFields: expect.objectContaining({ hallStatus: 'pending_dispatch', campusCause: 'external_fallback' }),
+        });
+    });
+});
+

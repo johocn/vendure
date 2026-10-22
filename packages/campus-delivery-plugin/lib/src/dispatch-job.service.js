@@ -18,18 +18,20 @@ const capacity_service_1 = require("./capacity.service");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
 const hall_grab_service_1 = require("./hall-grab.service");
 const hall_service_1 = require("./hall.service");
+const third_party_delivery_service_1 = require("./third-party-delivery.service");
 const rider_credit_service_1 = require("./rider-credit.service");
 const NOT_PICKED_TIMEOUT_MIN = 15;
 // F6 单渠道单轮扫描上限：按 createdAt 升序截断（最老的最紧急），超限告警暴露积压
 const SCAN_LIMIT = 200;
 let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
-    constructor(connection, grab, hall, capacity, credit, moduleRef) {
+    constructor(connection, grab, hall, capacity, credit, moduleRef, thirdParty) {
         this.connection = connection;
         this.grab = grab;
         this.hall = hall;
         this.capacity = capacity;
         this.credit = credit;
         this.moduleRef = moduleRef;
+        this.thirdParty = thirdParty;
         this.timer = null;
         this.running = false;
     }
@@ -92,7 +94,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
         const orders = await repo.createQueryBuilder('order')
             .leftJoin('order.channels', 'channel')
             .where('channel.id = :ch', { ch: ctx.channelId })
-            .andWhere("order.customFields.hallStatus IN ('open', 'grabbed', 'pending_merchant', 'accepted', 'scheduled')")
+            .andWhere("order.customFields.hallStatus IN ('open', 'grabbed', 'pending_merchant', 'accepted', 'scheduled', 'pending_dispatch', 'third_party', 'owned_pool', 'owned_dispatched', 'merchant_delivering')")
             .orderBy('order.createdAt', 'ASC')
             .take(SCAN_LIMIT)
             .getMany();
@@ -129,6 +131,8 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                 // 内存同步防同轮 T2/T4 误处理（释放即离开 scheduled 态）
                 o.customFields.hallStatus = cfg.merchantConfirmEnabled ? 'pending_merchant' : 'open';
             }
+            // 路线兜底（R1/R2/R3）：商户接单超时转自营、送达超时回落大厅、外部快递推送/接单超时
+            await this.sweepRouteTimeouts(ctx, cfg, orders, now);
             // 商家确认模式卡单兜底：待接单/备餐中超 merchantAutoOpenMinutes 自动入厅
             // （跳过商家确认，campusCause 留痕；以支付时间 createdAt 为基准）
             if (cfg.merchantConfirmEnabled) {
@@ -188,6 +192,112 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
             });
             for (const o of staleFinal) {
                 await this.refundNoRider(ctx, o, cfg);
+            }
+        }
+    }
+    /**
+     * 路线超时兜底：
+     * 1) R1 pending_merchant 超 merchantAcceptMinutes → 自动转自营快递（owned_dispatched）
+     * 2) merchant_delivering 超 merchantAutoOpenMinutes → 回抢单大厅（传信者到档口取餐）
+     * 3) pending_dispatch 超 externalPushTimeoutMinutes → 回抢单大厅
+     * 4) third_party 超 externalFallbackMinutes → 取消外部快递；R2 回待推送换一家，R3 回大厅
+     */
+    async sweepRouteTimeouts(ctx, cfg, orders, now) {
+        var _a, _b;
+        const minutes = (v, def) => (v !== null && v !== void 0 ? v : def) * 60000;
+        const acceptMs = minutes(cfg.merchantAcceptMinutes, 5);
+        const deliverMs = minutes(cfg.merchantAutoOpenMinutes, 15);
+        const pushMs = minutes(cfg.externalPushTimeoutMinutes, 10);
+        const fallbackMs = minutes(cfg.externalFallbackMinutes, 20);
+        for (const o of orders) {
+            const cf = o.customFields;
+            const route = String((_a = cf.fulfillmentRoute) !== null && _a !== void 0 ? _a : '');
+            // 1) 商户接单超时 → 自营快递接单
+            if (cf.hallStatus === 'pending_merchant' && route === 'R1' && acceptMs > 0
+                && now - new Date(o.createdAt).getTime() > acceptMs) {
+                await this.hall.updateOrder(ctx, o.id, {
+                    customFields: {
+                        hallStatus: 'owned_dispatched',
+                        deliveryPlan: 'owned',
+                        assignedAt: new Date(),
+                        campusCause: 'merchant_accept_timeout',
+                    },
+                });
+                core_2.Logger.warn(`Order ${o.code} merchant accept timeout → owned courier`, 'CampusDispatch');
+                cf.hallStatus = 'owned_dispatched';
+                cf.deliveryPlan = 'owned';
+                continue;
+            }
+            // 2) 商户久未送达交接点 → 回大厅（传信者到档口取餐直送）
+            if (cf.hallStatus === 'merchant_delivering' && cf.assignedAt
+                && now - new Date(cf.assignedAt).getTime() > deliverMs) {
+                await this.hall.updateOrder(ctx, o.id, {
+                    customFields: {
+                        hallStatus: 'open',
+                        hallEnteredAt: new Date(),
+                        deliveryPlan: 'campus_rider',
+                        handoverMode: '',
+                        campusCause: 'merchant_deliver_timeout',
+                    },
+                });
+                core_2.Logger.warn(`Order ${o.code} merchant deliver timeout → hall`, 'CampusDispatch');
+                cf.hallStatus = 'open';
+                continue;
+            }
+            // 3) 迟迟未推送外部快递 → 回大厅
+            if (cf.hallStatus === 'pending_dispatch'
+                && now - new Date((_b = cf.thirdPartyDispatchAt) !== null && _b !== void 0 ? _b : o.createdAt).getTime() > pushMs) {
+                await this.hall.updateOrder(ctx, o.id, {
+                    customFields: {
+                        hallStatus: 'open',
+                        hallEnteredAt: new Date(),
+                        deliveryPlan: 'campus_rider',
+                        handoverMode: '',
+                        campusCause: 'external_push_timeout',
+                    },
+                });
+                core_2.Logger.warn(`Order ${o.code} external push timeout → hall`, 'CampusDispatch');
+                cf.hallStatus = 'open';
+                continue;
+            }
+            // 4) 已推送但久未接单/取货 → 取消并回落
+            if (cf.hallStatus === 'third_party' && cf.thirdPartyDispatchAt
+                && now - new Date(cf.thirdPartyDispatchAt).getTime() > fallbackMs) {
+                if (this.thirdParty) {
+                    try {
+                        await this.thirdParty.cancel(ctx, o.id, 'external fallback timeout');
+                    }
+                    catch (e) {
+                        core_2.Logger.warn(`Order ${o.code} cancel external failed: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch');
+                    }
+                }
+                if (route === 'R2') {
+                    // R2 固定外部快递：重新计时，等运营中心换一家推送
+                    await this.hall.updateOrder(ctx, o.id, {
+                        customFields: {
+                            hallStatus: 'pending_dispatch',
+                            thirdPartyDispatchAt: new Date(),
+                            thirdPartyState: 'cancelled',
+                            campusCause: 'external_fallback',
+                        },
+                    });
+                    cf.hallStatus = 'pending_dispatch';
+                }
+                else {
+                    // R3 外部快递失败：回抢单大厅由传信者兜底
+                    await this.hall.updateOrder(ctx, o.id, {
+                        customFields: {
+                            hallStatus: 'open',
+                            hallEnteredAt: new Date(),
+                            deliveryPlan: 'campus_rider',
+                            handoverMode: '',
+                            thirdPartyState: 'cancelled',
+                            campusCause: 'external_fallback',
+                        },
+                    });
+                    cf.hallStatus = 'open';
+                }
+                core_2.Logger.warn(`Order ${o.code} external fallback (${route})`, 'CampusDispatch');
             }
         }
     }
@@ -369,6 +479,7 @@ exports.DispatchJobService = DispatchJobService = DispatchJobService_1 = __decor
         hall_service_1.HallService,
         capacity_service_1.CapacityService,
         rider_credit_service_1.RiderCreditService,
-        core_1.ModuleRef])
+        core_1.ModuleRef,
+        third_party_delivery_service_1.ThirdPartyDeliveryService])
 ], DispatchJobService);
 //# sourceMappingURL=dispatch-job.service.js.map

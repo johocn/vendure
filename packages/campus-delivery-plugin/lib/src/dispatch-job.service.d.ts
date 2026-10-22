@@ -4,6 +4,7 @@ import { RequestContext, TransactionalConnection } from '@vendure/core';
 import { CapacityService } from './capacity.service';
 import { HallGrabService } from './hall-grab.service';
 import { HallService } from './hall.service';
+import { ThirdPartyDeliveryService } from './third-party-delivery.service';
 import { RiderCreditService } from './rider-credit.service';
 export declare class DispatchJobService implements OnApplicationShutdown {
     private connection;
@@ -12,12 +13,13 @@ export declare class DispatchJobService implements OnApplicationShutdown {
     private capacity;
     private credit;
     private moduleRef;
+    private thirdParty?;
     private timer;
     private running;
     private orderSvc?;
     private couponSvc?;
     private paymentRepo?;
-    constructor(connection: TransactionalConnection, grab: HallGrabService, hall: HallService, capacity: CapacityService, credit: RiderCreditService, moduleRef: ModuleRef);
+    constructor(connection: TransactionalConnection, grab: HallGrabService, hall: HallService, capacity: CapacityService, credit: RiderCreditService, moduleRef: ModuleRef, thirdParty?: ThirdPartyDeliveryService | undefined);
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
     private get injector();
     start(intervalMs?: number): void;
@@ -31,6 +33,14 @@ export declare class DispatchJobService implements OnApplicationShutdown {
      * （T4 退款扫描在 Task 8 追加到此方法）
      */
     scan(ctx: RequestContext): Promise<void>;
+    /**
+     * 路线超时兜底：
+     * 1) R1 pending_merchant 超 merchantAcceptMinutes → 自动转自营快递（owned_dispatched）
+     * 2) merchant_delivering 超 merchantAutoOpenMinutes → 回抢单大厅（传信者到档口取餐）
+     * 3) pending_dispatch 超 externalPushTimeoutMinutes → 回抢单大厅
+     * 4) third_party 超 externalFallbackMinutes → 取消外部快递；R2 回待推送换一家，R3 回大厅
+     */
+    private sweepRouteTimeouts;
     /** 即时单（无 deliverySlotId）打包时间窗：入厅时间差 ≤10min 视为顺路 */
     private static readonly ROUTE_IMM_WINDOW_MIN;
     /**
