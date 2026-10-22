@@ -39,6 +39,26 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantMarkPrinted(ctx, orderId) {
         return this.merchant.markPrinted(ctx, orderId);
     }
+    /** 推送外部快递：provider = dada | meituan（由运营中心在派单时选择） */
+    async campusMerchantDispatchExternal(ctx, orderId, provider) {
+        return this.merchant.dispatchExternal(ctx, orderId, provider);
+    }
+    /** 取消外部快递（改推另一家前先取消，或运力失败回落） */
+    async campusMerchantCancelExternal(ctx, orderId, reason) {
+        return this.merchant.cancelExternal(ctx, orderId, reason);
+    }
+    /** 自营快递接单（R1 商户超时转自营 / R3 自营池） */
+    async campusMerchantAcceptOwned(ctx, orderId) {
+        return this.merchant.acceptOwned(ctx, orderId);
+    }
+    /** R1：商户送达校园交接点（之后由传信者接力） */
+    async campusMerchantMarkHandoverArrived(ctx, orderId) {
+        return this.merchant.markHandoverArrived(ctx, orderId);
+    }
+    /** 自营快递送达：R1/R2 到交接点，R3 到学生 */
+    async campusMerchantMarkOwnedArrived(ctx, orderId) {
+        return this.merchant.markOwnedArrived(ctx, orderId);
+    }
 };
 exports.MerchantAdminResolver = MerchantAdminResolver;
 __decorate([
@@ -85,6 +105,53 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantMarkPrinted", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __param(2, (0, graphql_1.Args)('provider')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantDispatchExternal", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __param(2, (0, graphql_1.Args)({ name: 'reason', type: () => String, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantCancelExternal", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantAcceptOwned", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantMarkHandoverArrived", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantMarkOwnedArrived", null);
 exports.MerchantAdminResolver = MerchantAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [merchant_admin_service_1.MerchantAdminService])

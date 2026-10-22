@@ -1,7 +1,9 @@
 import { ID, RequestContext, TransactionalConnection } from '@vendure/core';
 import { CampusConfigService } from './campus-config.service';
 import { CampusNotifyService } from './campus-notify.service';
+import { ExternalProviderCode } from './route-matrix';
 import { HallService } from './hall.service';
+import { ThirdPartyDeliveryService } from './third-party-delivery.service';
 export interface MerchantBoardLine {
     name: string;
     quantity: number;
@@ -20,6 +22,8 @@ export interface MerchantBoardOrder {
     riderName: string | null;
     note: string | null;
     printedAt: Date | null;
+    provider: string | null;
+    thirdPartyNo: string | null;
     lines: MerchantBoardLine[];
 }
 export interface MerchantBoard {
@@ -32,6 +36,11 @@ export interface MerchantBoard {
     cooking: MerchantBoardOrder[];
     awaitingRider: MerchantBoardOrder[];
     delivering: MerchantBoardOrder[];
+    pendingDispatch: MerchantBoardOrder[];
+    thirdParty: MerchantBoardOrder[];
+    ownedPool: MerchantBoardOrder[];
+    ownedDispatched: MerchantBoardOrder[];
+    merchantDelivering: MerchantBoardOrder[];
     scheduled: MerchantBoardOrder[];
     completedToday: number;
     completedTodayAmount: number;
@@ -47,15 +56,52 @@ export declare class MerchantAdminService {
     private config;
     private hall;
     private notify;
-    constructor(connection: TransactionalConnection, config: CampusConfigService, hall: HallService, notify: CampusNotifyService);
+    private thirdParty;
+    constructor(connection: TransactionalConnection, config: CampusConfigService, hall: HallService, notify: CampusNotifyService, thirdParty: ThirdPartyDeliveryService);
     board(ctx: RequestContext): Promise<MerchantBoard>;
     /** 商家接单确认：pending_merchant → accepted */
     acceptOrder(ctx: RequestContext, orderId: ID): Promise<{
         ok: boolean;
     }>;
-    /** 出餐完成：accepted → open 入大厅（hallEnteredAt 重置，骑手侧调度计时从此起算） */
+    /** 出餐完成：按路线/承运分流（不再统一入抢单大厅） */
     cookingDone(ctx: RequestContext, orderId: ID): Promise<{
         ok: boolean;
+    }>;
+    /** 运营中心推送外部快递（选 dada / meituan） */
+    dispatchExternal(ctx: RequestContext, orderId: ID, provider: ExternalProviderCode): Promise<{
+        ok: boolean;
+        already: boolean;
+        thirdPartyNo: any;
+        provider?: undefined;
+    } | {
+        ok: boolean;
+        thirdPartyNo: any;
+        provider: ExternalProviderCode;
+        already?: undefined;
+    }>;
+    /** 取消外部快递（改推另一家 / 回落大厅前） */
+    cancelExternal(ctx: RequestContext, orderId: ID, reason?: string): Promise<{
+        ok: boolean;
+        skipped: boolean;
+        reason?: undefined;
+    } | {
+        ok: boolean;
+        reason: string | undefined;
+        skipped?: undefined;
+    }>;
+    /** 自营快递接单（R1 商户超时转自营 / R3 自营池） */
+    acceptOwned(ctx: RequestContext, orderId: ID): Promise<{
+        ok: boolean;
+    }>;
+    /** R1：商户把餐送到校园交接点 → 传信者接力 */
+    markHandoverArrived(ctx: RequestContext, orderId: ID): Promise<{
+        ok: boolean;
+        done: boolean;
+    }>;
+    /** 自营快递送达（R1/R2 到交接点，R3 到学生） */
+    markOwnedArrived(ctx: RequestContext, orderId: ID): Promise<{
+        ok: boolean;
+        done: boolean;
     }>;
     /** 营业开关：商家仅可切换本渠道 paused，其余配置仍归 CampusConfig 管理员 */
     setPaused(ctx: RequestContext, paused: boolean): Promise<{
@@ -65,6 +111,7 @@ export declare class MerchantAdminService {
     markPrinted(ctx: RequestContext, orderId: ID): Promise<{
         ok: boolean;
     }>;
+    private assertAnyChannelOrder;
     private assertChannelOrder;
     /** 组装商家视图 DTO：楼栋名批量查、骑手名批量查，不外泄 admin 内部字段 */
     private toDto;

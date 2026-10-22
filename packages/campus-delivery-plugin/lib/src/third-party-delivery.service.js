@@ -33,6 +33,16 @@ let ThirdPartyDeliveryService = class ThirdPartyDeliveryService {
         this.notify = notify;
         this.moduleRef = moduleRef;
     }
+    onApplicationBootstrap() {
+        var _a;
+        try {
+            this.gateway.registerStatusSink(this);
+            core_2.Logger.info('外部快递状态回调已接入订单履约', loggerCtx);
+        }
+        catch (e) {
+            core_2.Logger.warn(`外部快递状态回调接入失败: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, loggerCtx);
+        }
+    }
     /** 懒解析网关（字符串 token，避免 campus → gateway 编译依赖） */
     get gateway() {
         return new core_2.Injector(this.moduleRef).get('DeliveryGatewayService');

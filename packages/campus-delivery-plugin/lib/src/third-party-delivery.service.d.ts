@@ -1,3 +1,4 @@
+import { OnApplicationBootstrap } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { ID, RequestContext, TransactionalConnection } from '@vendure/core';
 import { CampusNotifyService } from './campus-notify.service';
@@ -8,12 +9,13 @@ export declare function nextHallStateAfterHandover(handover: string): {
     hallStatus: string;
     deliveryStatus: string | null;
 };
-export declare class ThirdPartyDeliveryService {
+export declare class ThirdPartyDeliveryService implements OnApplicationBootstrap {
     private connection;
     private hall;
     private notify;
     private moduleRef;
     constructor(connection: TransactionalConnection, hall: HallService, notify: CampusNotifyService, moduleRef: ModuleRef);
+    onApplicationBootstrap(): void;
     /** 懒解析网关（字符串 token，避免 campus → gateway 编译依赖） */
     private get gateway();
     private get cfgRepo();

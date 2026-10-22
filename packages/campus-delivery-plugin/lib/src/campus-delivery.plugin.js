@@ -42,6 +42,7 @@ const payment_timeout_entity_1 = require("./payment-timeout.entity");
 const permissions_1 = require("./permissions");
 const merchant_admin_resolver_1 = require("./merchant-admin.resolver");
 const merchant_admin_service_1 = require("./merchant-admin.service");
+const third_party_delivery_service_1 = require("./third-party-delivery.service");
 const campus_notify_service_1 = require("./campus-notify.service");
 const r2_mark_service_1 = require("./r2-mark.service");
 const r2_shop_resolver_1 = require("./r2-shop.resolver");
@@ -169,6 +170,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             waimai_store_service_1.WaimaiStoreService,
             merchant_admin_service_1.MerchantAdminService,
             campus_notify_service_1.CampusNotifyService,
+            third_party_delivery_service_1.ThirdPartyDeliveryService,
             payment_timeout_job_1.PaymentTimeoutJob,
             payment_timeout_admin_service_1.PaymentTimeoutAdminService,
         ],

@@ -19,4 +19,40 @@ export declare class MerchantAdminResolver {
     campusMerchantMarkPrinted(ctx: RequestContext, orderId: ID): Promise<{
         ok: boolean;
     }>;
+    /** 推送外部快递：provider = dada | meituan（由运营中心在派单时选择） */
+    campusMerchantDispatchExternal(ctx: RequestContext, orderId: ID, provider: string): Promise<{
+        ok: boolean;
+        already: boolean;
+        thirdPartyNo: any;
+        provider?: undefined;
+    } | {
+        ok: boolean;
+        thirdPartyNo: any;
+        provider: import("./route-matrix").ExternalProviderCode;
+        already?: undefined;
+    }>;
+    /** 取消外部快递（改推另一家前先取消，或运力失败回落） */
+    campusMerchantCancelExternal(ctx: RequestContext, orderId: ID, reason?: string): Promise<{
+        ok: boolean;
+        skipped: boolean;
+        reason?: undefined;
+    } | {
+        ok: boolean;
+        reason: string | undefined;
+        skipped?: undefined;
+    }>;
+    /** 自营快递接单（R1 商户超时转自营 / R3 自营池） */
+    campusMerchantAcceptOwned(ctx: RequestContext, orderId: ID): Promise<{
+        ok: boolean;
+    }>;
+    /** R1：商户送达校园交接点（之后由传信者接力） */
+    campusMerchantMarkHandoverArrived(ctx: RequestContext, orderId: ID): Promise<{
+        ok: boolean;
+        done: boolean;
+    }>;
+    /** 自营快递送达：R1/R2 到交接点，R3 到学生 */
+    campusMerchantMarkOwnedArrived(ctx: RequestContext, orderId: ID): Promise<{
+        ok: boolean;
+        done: boolean;
+    }>;
 }

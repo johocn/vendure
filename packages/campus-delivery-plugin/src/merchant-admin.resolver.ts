@@ -39,4 +39,47 @@ export class MerchantAdminResolver {
     async campusMerchantMarkPrinted(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID) {
         return this.merchant.markPrinted(ctx, orderId);
     }
+
+    /** 推送外部快递：provider = dada | meituan（由运营中心在派单时选择） */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantDispatchExternal(
+        @Ctx() ctx: RequestContext,
+        @Args('orderId') orderId: ID,
+        @Args('provider') provider: string,
+    ) {
+        return this.merchant.dispatchExternal(ctx, orderId, provider as any);
+    }
+
+    /** 取消外部快递（改推另一家前先取消，或运力失败回落） */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantCancelExternal(
+        @Ctx() ctx: RequestContext,
+        @Args('orderId') orderId: ID,
+        @Args({ name: 'reason', type: () => String, nullable: true }) reason?: string,
+    ) {
+        return this.merchant.cancelExternal(ctx, orderId, reason);
+    }
+
+    /** 自营快递接单（R1 商户超时转自营 / R3 自营池） */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantAcceptOwned(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID) {
+        return this.merchant.acceptOwned(ctx, orderId);
+    }
+
+    /** R1：商户送达校园交接点（之后由传信者接力） */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantMarkHandoverArrived(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID) {
+        return this.merchant.markHandoverArrived(ctx, orderId);
+    }
+
+    /** 自营快递送达：R1/R2 到交接点，R3 到学生 */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantMarkOwnedArrived(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID) {
+        return this.merchant.markOwnedArrived(ctx, orderId);
+    }
 }

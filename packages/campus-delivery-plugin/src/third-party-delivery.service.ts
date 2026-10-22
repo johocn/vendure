@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnApplicationBootstrap } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import {
     Channel,
@@ -27,16 +27,26 @@ export function nextHallStateAfterHandover(handover: string): { hallStatus: stri
 interface GatewayLike {
     createDelivery(ctx: RequestContext, input: any): Promise<any>;
     cancelDelivery(ctx: RequestContext, deliveryOrderId: ID, reason?: string): Promise<{ success: boolean; reason?: string }>;
+    registerStatusSink(sink: unknown): void;
 }
 
 @Injectable()
-export class ThirdPartyDeliveryService {
+export class ThirdPartyDeliveryService implements OnApplicationBootstrap {
     constructor(
         private connection: TransactionalConnection,
         private hall: HallService,
         private notify: CampusNotifyService,
         private moduleRef: ModuleRef,
     ) {}
+
+    onApplicationBootstrap(): void {
+        try {
+            this.gateway.registerStatusSink(this);
+            Logger.info('外部快递状态回调已接入订单履约', loggerCtx);
+        } catch (e: any) {
+            Logger.warn(`外部快递状态回调接入失败: ${e?.message ?? e}`, loggerCtx);
+        }
+    }
 
     /** 懒解析网关（字符串 token，避免 campus → gateway 编译依赖） */
     private get gateway(): GatewayLike {

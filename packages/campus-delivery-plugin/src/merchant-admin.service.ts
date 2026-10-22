@@ -3,7 +3,9 @@ import { ID, Order, RequestContext, TransactionalConnection, UserInputError } fr
 import { CampusBuilding } from './campus-building.entity';
 import { CampusConfigService } from './campus-config.service';
 import { CampusNotifyService } from './campus-notify.service';
+import { ExternalProviderCode } from './route-matrix';
 import { HallService } from './hall.service';
+import { ThirdPartyDeliveryService } from './third-party-delivery.service';
 import { normalizePrintMode } from './waimai-store.service';
 
 export interface MerchantBoardLine {
@@ -25,6 +27,8 @@ export interface MerchantBoardOrder {
     riderName: string | null;
     note: string | null; // 顾客整单备注（工作台展示 + 小票打印）
     printedAt: Date | null; // 小票最近打印时间（null=未打）
+    provider: string | null; // 外部快递：dada / meituan（运营中心派单后写入）
+    thirdPartyNo: string | null; // 外部快递平台单号
     lines: MerchantBoardLine[];
 }
 
@@ -38,6 +42,11 @@ export interface MerchantBoard {
     cooking: MerchantBoardOrder[];
     awaitingRider: MerchantBoardOrder[];
     delivering: MerchantBoardOrder[];
+    pendingDispatch: MerchantBoardOrder[]; // 待运营推送外部快递（R2 / R3-外部）
+    thirdParty: MerchantBoardOrder[]; // 外部快递配送中
+    ownedPool: MerchantBoardOrder[]; // 待自营快递接单（R3）
+    ownedDispatched: MerchantBoardOrder[]; // 自营快递配送中
+    merchantDelivering: MerchantBoardOrder[]; // 商户自行送往交接点（R1）
     scheduled: MerchantBoardOrder[]; // 预约单（plan 3.1）：已支付未放量，到点前 30min 自动进入待接单/大厅
     completedToday: number;
     completedTodayAmount: number;
@@ -56,6 +65,7 @@ export class MerchantAdminService {
         private config: CampusConfigService,
         private hall: HallService,
         private notify: CampusNotifyService,
+        private thirdParty: ThirdPartyDeliveryService,
     ) {}
 
     async board(ctx: RequestContext): Promise<MerchantBoard> {
@@ -81,7 +91,10 @@ export class MerchantAdminService {
 
         const active = orders.filter(o => {
             const s = (o.customFields as any).hallStatus;
-            return ['pending_merchant', 'accepted', 'open', 'grabbed'].includes(s);
+            return [
+                'pending_merchant', 'accepted', 'open', 'grabbed',
+                'pending_dispatch', 'third_party', 'owned_pool', 'owned_dispatched', 'merchant_delivering',
+            ].includes(s);
         });
         // 预约单（scheduled）：按预约锚点升序，供商家提前备料知悉（不进入四栏流转）
         const scheduledOrders = orders
@@ -98,6 +111,7 @@ export class MerchantAdminService {
         const cooking = dtos.filter((_, i) => cfOf(active[i]).hallStatus === 'accepted');
         const awaitingRider = dtos.filter((_, i) => cfOf(active[i]).hallStatus === 'open');
         const delivering = dtos.filter((_, i) => cfOf(active[i]).hallStatus === 'grabbed');
+        const pick = (s: string) => dtos.filter((_, i) => cfOf(active[i]).hallStatus === s);
         const completedTodayAmount = deliveredToday.reduce((s, o) => s + (o.total || 0), 0);
         return {
             paused: cfg.paused,
@@ -109,6 +123,11 @@ export class MerchantAdminService {
             cooking,
             awaitingRider,
             delivering,
+            pendingDispatch: pick('pending_dispatch'),
+            thirdParty: pick('third_party'),
+            ownedPool: pick('owned_pool'),
+            ownedDispatched: pick('owned_dispatched'),
+            merchantDelivering: pick('merchant_delivering'),
             scheduled: scheduledDtos,
             completedToday: deliveredToday.length,
             completedTodayAmount,
@@ -123,14 +142,81 @@ export class MerchantAdminService {
         return { ok: true };
     }
 
-    /** 出餐完成：accepted → open 入大厅（hallEnteredAt 重置，骑手侧调度计时从此起算） */
+    /** 出餐完成：按路线/承运分流（不再统一入抢单大厅） */
     async cookingDone(ctx: RequestContext, orderId: ID) {
         const order = await this.assertChannelOrder(ctx, orderId, 'accepted');
+        const cf = order.customFields as any;
+        const route = String(cf.fulfillmentRoute ?? '');
+        const plan = String(cf.deliveryPlan ?? '');
+
+        // R1：第一段由商户或自营快递完成，之后才进校园接力大厅
+        if (route === 'R1') {
+            if (plan === 'owned') {
+                // 自营快递接单后送往交接点（cookingDone 即表示可以出发）
+                await this.hall.updateOrder(ctx, order.id as any, {
+                    customFields: { hallStatus: 'owned_dispatched', assignedAt: new Date() },
+                } as any);
+            } else {
+                await this.hall.updateOrder(ctx, order.id as any, {
+                    customFields: { hallStatus: 'merchant_delivering', assignedAt: new Date() },
+                } as any);
+            }
+            this.notify.user(ctx, order.id as any, 'cookingDone');
+            return { ok: true };
+        }
+
+        // R2 与 R3-外部：等运营中心推送外部快递
+        if (plan === 'external_courier') {
+            await this.hall.updateOrder(ctx, order.id as any, {
+                customFields: { hallStatus: 'pending_dispatch' },
+            } as any);
+            this.notify.user(ctx, order.id as any, 'cookingDone');
+            return { ok: true };
+        }
+        // R3-自营：进自营快递池抢单
+        if (plan === 'owned') {
+            await this.hall.updateOrder(ctx, order.id as any, {
+                customFields: { hallStatus: 'owned_pool' },
+            } as any);
+            this.notify.user(ctx, order.id as any, 'cookingDone');
+            return { ok: true };
+        }
+        // R3-传信者：正常入抢单大厅
         await this.hall.updateOrder(ctx, order.id as any, {
             customFields: { hallStatus: 'open', hallEnteredAt: new Date() },
         } as any);
         this.notify.user(ctx, order.id as any, 'cookingDone');
         return { ok: true };
+    }
+
+    /** 运营中心推送外部快递（选 dada / meituan） */
+    async dispatchExternal(ctx: RequestContext, orderId: ID, provider: ExternalProviderCode) {
+        await this.assertAnyChannelOrder(ctx, orderId);
+        return this.thirdParty.dispatchExternal(ctx, orderId as any, provider);
+    }
+
+    /** 取消外部快递（改推另一家 / 回落大厅前） */
+    async cancelExternal(ctx: RequestContext, orderId: ID, reason?: string) {
+        await this.assertAnyChannelOrder(ctx, orderId);
+        return this.thirdParty.cancel(ctx, orderId as any, reason);
+    }
+
+    /** 自营快递接单（R1 商户超时转自营 / R3 自营池） */
+    async acceptOwned(ctx: RequestContext, orderId: ID) {
+        await this.assertAnyChannelOrder(ctx, orderId);
+        return this.thirdParty.acceptOwned(ctx, orderId as any);
+    }
+
+    /** R1：商户把餐送到校园交接点 → 传信者接力 */
+    async markHandoverArrived(ctx: RequestContext, orderId: ID) {
+        await this.assertAnyChannelOrder(ctx, orderId);
+        return this.thirdParty.completeFirstLeg(ctx, orderId as any, 'merchant_handover');
+    }
+
+    /** 自营快递送达（R1/R2 到交接点，R3 到学生） */
+    async markOwnedArrived(ctx: RequestContext, orderId: ID) {
+        await this.assertAnyChannelOrder(ctx, orderId);
+        return this.thirdParty.completeFirstLeg(ctx, orderId as any, 'owned_handover');
     }
 
     /** 营业开关：商家仅可切换本渠道 paused，其余配置仍归 CampusConfig 管理员 */
@@ -151,6 +237,16 @@ export class MerchantAdminService {
             customFields: { waimaiPrintedAt: new Date() },
         } as any);
         return { ok: true };
+    }
+
+    private async assertAnyChannelOrder(ctx: RequestContext, orderId: ID) {
+        const order = await this.connection.getRepository(ctx, Order).findOne({
+            where: { id: orderId as any },
+            relations: ['channels'],
+        });
+        const inChannel = order?.channels?.some(c => String(c.id) === String(ctx.channelId));
+        if (!order || !inChannel) throw new UserInputError('订单不存在或不属于当前店铺');
+        return order;
     }
 
     private async assertChannelOrder(ctx: RequestContext, orderId: ID, expect: string) {
@@ -200,6 +296,8 @@ export class MerchantAdminService {
                 riderName: cf.deliveryStaffId ? riderNames.get(String(cf.deliveryStaffId)) ?? null : null,
                 note: cf.note ?? null,
                 printedAt: (cf.waimaiPrintedAt as Date | undefined) ?? null,
+                provider: cf.thirdPartyProvider || null,
+                thirdPartyNo: cf.thirdPartyNo || null,
                 lines: (o.lines ?? []).map(l => ({
                     name: l.productVariant?.name ?? '',
                     quantity: l.quantity,

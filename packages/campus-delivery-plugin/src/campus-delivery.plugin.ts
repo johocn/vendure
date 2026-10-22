@@ -42,6 +42,7 @@ import { PaymentTimeoutTask } from './payment-timeout.entity';
 import { campusPermissionDefinitions } from './permissions';
 import { MerchantAdminResolver } from './merchant-admin.resolver';
 import { MerchantAdminService } from './merchant-admin.service';
+import { ThirdPartyDeliveryService } from './third-party-delivery.service';
 import { CampusNotifyService } from './campus-notify.service';
 import { R2MarkService } from './r2-mark.service';
 import { R2ShopResolver } from './r2-shop.resolver';
@@ -98,6 +99,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
         WaimaiStoreService,
         MerchantAdminService,
         CampusNotifyService,
+        ThirdPartyDeliveryService,
         PaymentTimeoutJob,
         PaymentTimeoutAdminService,
     ],
