@@ -477,16 +477,30 @@ exports.devConfig = {
             defaultCompleteDays: 3,
             stockLocationStrategy: new cjk_plugin_1.PhysicalAwareStockLocationStrategy(),
         }),
-        delivery_gateway_plugin_1.DeliveryGatewayPlugin.init({
-            dada: {
-                appKey: process.env.DADA_APP_KEY || 'dev-dada-app-key',
-                appSecret: process.env.DADA_APP_SECRET || 'dev-dada-app-secret',
-                shopNo: process.env.DADA_SHOP_NO || 'dev-dada-shop-no',
-                sourceId: process.env.DADA_SOURCE_ID || 'dev-dada-source',
-                environment: process.env.DADA_ENV || 'sandbox',
-                callbackUrl: process.env.DADA_CALLBACK_URL || 'http://127.0.0.1:3000/delivery-gateway/dada/webhook',
-            },
-        }),
+        delivery_gateway_plugin_1.DeliveryGatewayPlugin.init(Object.assign(Object.assign({}, (process.env.DADA_APP_KEY && process.env.DADA_APP_SECRET
+            ? {
+                dada: {
+                    appKey: process.env.DADA_APP_KEY,
+                    appSecret: process.env.DADA_APP_SECRET,
+                    shopNo: process.env.DADA_SHOP_NO || '',
+                    sourceId: process.env.DADA_SOURCE_ID || undefined,
+                    environment: process.env.DADA_ENV || 'sandbox',
+                    callbackUrl: process.env.DADA_CALLBACK_URL || '',
+                },
+            }
+            : {})), (process.env.MEITUAN_APP_KEY && process.env.MEITUAN_APP_SECRET && process.env.MEITUAN_SHOP_ID
+            ? {
+                meituan: {
+                    appKey: process.env.MEITUAN_APP_KEY,
+                    appSecret: process.env.MEITUAN_APP_SECRET,
+                    shopId: process.env.MEITUAN_SHOP_ID,
+                    signMode: process.env.MEITUAN_SIGN_MODE === 'open' ? 'open' : 'legacy',
+                    baseUrl: process.env.MEITUAN_BASE_URL || undefined,
+                    callbackUrl: process.env.MEITUAN_CALLBACK_URL || '',
+                    defaultCourierPhone: process.env.MEITUAN_COURIER_PHONE || undefined,
+                },
+            }
+            : {}))),
         customer_service_plugin_1.CustomerServicePlugin.init(),
         inventory_plugin_1.InventoryPlugin.init(),
         operations_plugin_1.OperationsPlugin.init(),
