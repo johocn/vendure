@@ -45,7 +45,7 @@ let RiderTaskService = class RiderTaskService {
      * 跟踪页：附带目标楼栋坐标与直线距离/ETA（楼栋无坐标时均为 null，前端降级）。
      * 归属校验：仅下单人本人可查（原实现可越权读任意订单骑手位置）。 */
     async orderRider(ctx, orderId) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
         if (!ctx.activeUserId)
             throw new core_1.ForbiddenError();
         const order = await this.connection
@@ -91,11 +91,12 @@ let RiderTaskService = class RiderTaskService {
         return {
             realName: (_h = rcf.riderRealName) !== null && _h !== void 0 ? _h : '骑手',
             credit: (_j = rcf.riderCredit) !== null && _j !== void 0 ? _j : 100,
+            phone: (_k = rider.phoneNumber) !== null && _k !== void 0 ? _k : null,
             location,
             destination,
             distanceMeters,
             etaMinutes,
-            deliveryStatus: (_k = cf.deliveryStatus) !== null && _k !== void 0 ? _k : null,
+            deliveryStatus: (_l = cf.deliveryStatus) !== null && _l !== void 0 ? _l : null,
         };
     }
     /** 骑手位置上报：本人订单 + 仅 assigned/in_progress 可写（plan 2.2，10s/次）。 */

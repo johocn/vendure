@@ -626,6 +626,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                 type CampusOrderRider {
                     realName: String!
                     credit: Int!
+                    phone: String
                     location: CampusRiderLocation
                     destination: CampusRiderDestination
                     distanceMeters: Int

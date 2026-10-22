@@ -11,6 +11,7 @@ export declare class RiderTaskShopResolver {
     campusOrderRider(ctx: RequestContext, orderId: ID): Promise<{
         realName: any;
         credit: any;
+        phone: string;
         location: {
             lat: number;
             lng: number;

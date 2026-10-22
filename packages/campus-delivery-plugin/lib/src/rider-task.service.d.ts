@@ -17,6 +17,7 @@ export declare class RiderTaskService {
     orderRider(ctx: RequestContext, orderId: ID): Promise<{
         realName: any;
         credit: any;
+        phone: string;
         location: {
             lat: number;
             lng: number;

@@ -90,6 +90,7 @@ export class RiderTaskService {
         return {
             realName: rcf.riderRealName ?? '骑手',
             credit: rcf.riderCredit ?? 100,
+            phone: rider.phoneNumber ?? null,
             location,
             destination,
             distanceMeters,
