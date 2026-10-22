@@ -40,6 +40,21 @@ exports.campusCustomFields = {
         { name: 'waimaiPrintedAt', type: 'datetime', nullable: true }, // 商家小票最近打印时间（防重打 + 补打依据）
         { name: 'note', type: 'string', nullable: true }, // 顾客整单备注（C 端下单填写，≤200 字，工作台展示 + 小票打印）
         { name: 'tablewareCount', type: 'int', nullable: true }, // 顾客餐具份数，0=无需餐具，null=未选择
+        // 履约快照（下单固化，后台改配置不影响在途单）
+        { name: 'deliveryPlan', type: 'string', nullable: true }, // merchant/owned/external_courier/campus_rider/self_pickup
+        { name: 'handoverMode', type: 'string', nullable: true }, // to_campus_rider / direct_to_user
+        { name: 'thirdPartyProvider', type: 'string', nullable: true }, // dada / meituan（运营中心派单时确定）
+        { name: 'thirdPartyDeliveryOrderId', type: 'string', nullable: true }, // 网关内部单号
+        { name: 'thirdPartyNo', type: 'string', nullable: true }, // 外部快递平台单号
+        { name: 'thirdPartyState', type: 'string', nullable: true }, // pending/accepted/pickup/delivered/cancelled/exception
+        { name: 'thirdPartyFee', type: 'int', nullable: true }, // 外部快递费用（分）
+        { name: 'thirdPartyCourierName', type: 'string', nullable: true },
+        { name: 'thirdPartyCourierPhone', type: 'string', nullable: true },
+        { name: 'handoverPointName', type: 'string', nullable: true }, // 校园交接点快照（R1/R2）
+        { name: 'handoverPointAddress', type: 'string', nullable: true },
+        { name: 'handoverPointLat', type: 'float', nullable: true },
+        { name: 'handoverPointLng', type: 'float', nullable: true },
+        { name: 'thirdPartyDispatchAt', type: 'datetime', nullable: true }, // 推送外部快递时间
     ],
     Channel: [
         { name: 'waimaiTags', type: 'string', nullable: true }, // '米饭快餐,夜宵' 逗号分隔
