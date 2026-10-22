@@ -34,6 +34,7 @@ import { HallShopResolver, OrderDeliveryShopResolver } from './hall-shop.resolve
 import { InvoiceShopResolver } from './campus-invoice.resolver';
 import { CreateCampusTablesMigration } from './migrations/create-campus-tables';
 import { BackfillWaimaiIndustryMigration } from './migrations/backfill-waimai-industry';
+import { AddRouteDeliveryConfigMigration } from './migrations/add-route-delivery-config';
 import { bindMinOrderConnection, campusMinOrderProcess } from './min-order.process';
 import { PaymentTimeoutAdminResolver } from './payment-timeout-admin.resolver';
 import { PaymentTimeoutAdminService } from './payment-timeout-admin.service';
@@ -80,6 +81,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
     entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig, DeliverySlot, RiderCreditLog, RiderWithdrawalRequest, PaymentTimeoutTask],
     providers: [
         CreateCampusTablesMigration,
+        AddRouteDeliveryConfigMigration,
         BackfillWaimaiIndustryMigration,
         CampusConfigService,
         RiderService,
