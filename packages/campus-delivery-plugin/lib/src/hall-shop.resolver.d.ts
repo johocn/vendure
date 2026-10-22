@@ -8,15 +8,16 @@ import { RiderService } from './rider.service';
 export declare class OrderDeliveryShopResolver {
     /** 订单配送卡：直接读下单快照，避免在途单被后台配置变更影响 */
     campusOrderDelivery(order: Order): {
-        plan: any;
+        deliveryPlan: any;
         handoverMode: any;
         provider: any;
         thirdPartyNo: any;
-        thirdPartyState: any;
+        state: any;
         courierName: any;
         courierPhone: any;
         handoverPointName: any;
         handoverPointAddress: any;
+        handoverAt: any;
     } | null;
 }
 export declare class HallShopResolver {

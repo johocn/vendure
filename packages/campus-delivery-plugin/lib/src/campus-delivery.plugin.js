@@ -740,15 +740,16 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
 
                 """C 端订单配送卡：承运方、外部快递单号与骑手、校园交接点"""
                 type CampusOrderDelivery {
-                    plan: String
+                    deliveryPlan: String
                     handoverMode: String
                     provider: String
                     thirdPartyNo: String
-                    thirdPartyState: String
+                    state: String
                     courierName: String
                     courierPhone: String
                     handoverPointName: String
                     handoverPointAddress: String
+                    handoverAt: DateTime
                 }
 
                 extend type Order {

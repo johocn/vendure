@@ -15,15 +15,16 @@ export class OrderDeliveryShopResolver {
         const cf = (order.customFields ?? {}) as any;
         if (!cf.deliveryPlan && !cf.thirdPartyProvider && !cf.handoverPointName) return null;
         return {
-            plan: cf.deliveryPlan ?? null,
+            deliveryPlan: cf.deliveryPlan ?? null,
             handoverMode: cf.handoverMode ?? null,
             provider: cf.thirdPartyProvider ?? null,
             thirdPartyNo: cf.thirdPartyNo ?? null,
-            thirdPartyState: cf.thirdPartyState ?? null,
+            state: cf.thirdPartyState ?? null,
             courierName: cf.thirdPartyCourierName ?? null,
             courierPhone: cf.thirdPartyCourierPhone ?? null,
             handoverPointName: cf.handoverPointName ?? null,
             handoverPointAddress: cf.handoverPointAddress ?? null,
+            handoverAt: cf.handoverAt ?? null,
         };
     }
 }

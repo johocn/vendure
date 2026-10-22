@@ -24,20 +24,21 @@ const rider_service_1 = require("./rider.service");
 let OrderDeliveryShopResolver = class OrderDeliveryShopResolver {
     /** 订单配送卡：直接读下单快照，避免在途单被后台配置变更影响 */
     campusOrderDelivery(order) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
         const cf = ((_a = order.customFields) !== null && _a !== void 0 ? _a : {});
         if (!cf.deliveryPlan && !cf.thirdPartyProvider && !cf.handoverPointName)
             return null;
         return {
-            plan: (_b = cf.deliveryPlan) !== null && _b !== void 0 ? _b : null,
+            deliveryPlan: (_b = cf.deliveryPlan) !== null && _b !== void 0 ? _b : null,
             handoverMode: (_c = cf.handoverMode) !== null && _c !== void 0 ? _c : null,
             provider: (_d = cf.thirdPartyProvider) !== null && _d !== void 0 ? _d : null,
             thirdPartyNo: (_e = cf.thirdPartyNo) !== null && _e !== void 0 ? _e : null,
-            thirdPartyState: (_f = cf.thirdPartyState) !== null && _f !== void 0 ? _f : null,
+            state: (_f = cf.thirdPartyState) !== null && _f !== void 0 ? _f : null,
             courierName: (_g = cf.thirdPartyCourierName) !== null && _g !== void 0 ? _g : null,
             courierPhone: (_h = cf.thirdPartyCourierPhone) !== null && _h !== void 0 ? _h : null,
             handoverPointName: (_j = cf.handoverPointName) !== null && _j !== void 0 ? _j : null,
             handoverPointAddress: (_k = cf.handoverPointAddress) !== null && _k !== void 0 ? _k : null,
+            handoverAt: (_l = cf.handoverAt) !== null && _l !== void 0 ? _l : null,
         };
     }
 };
