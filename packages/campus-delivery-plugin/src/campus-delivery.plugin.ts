@@ -304,7 +304,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     carrier: String!
                 }
 
-                """校园交接点（仅 R1、R2 需要，接力起点）"""
+                """校园交接点（仅 R1、R2 需要，同一路线可配多个，按收货楼栋取最近）"""
                 type CampusHandoverPoint {
                     route: String!
                     name: String!
@@ -312,6 +312,8 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     phone: String
                     lat: Float!
                     lng: Float!
+                    """无收货坐标时的兜底默认点"""
+                    isDefault: Boolean!
                 }
 
                 input CampusHandoverPointInput {
@@ -321,6 +323,8 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     phone: String
                     lat: Float!
                     lng: Float!
+                    """无收货坐标时的兜底默认点（每条路线只保留一个）"""
+                    isDefault: Boolean
                 }
 
                 """外部快递门店编号（运营中心维护，不对外暴露给商户）"""

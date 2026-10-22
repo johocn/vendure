@@ -120,8 +120,12 @@ let ThirdPartyDeliveryService = class ThirdPartyDeliveryService {
                 lng: Number(cf.handoverPointLng),
             }
             : undefined;
-        const effCfg = Object.assign(Object.assign({}, cfg), { handoverPoints: Object.assign(Object.assign({}, ((_p = cfg.handoverPoints) !== null && _p !== void 0 ? _p : {})), (snapPoint ? { [plan.route]: snapPoint } : {})) });
-        const dropoff = (0, route_matrix_1.resolveDropoff)(plan.route, plan, effCfg, userPoint);
+        const effCfg = Object.assign(Object.assign({}, cfg), { handoverPoints: Object.assign(Object.assign({}, ((_p = cfg.handoverPoints) !== null && _p !== void 0 ? _p : {})), (snapPoint ? { [plan.route]: [snapPoint] } : {})) });
+        // 无快照时按楼栋坐标挑最近交接点；楼栋缺坐标则由默认点兜底
+        const dest = (building === null || building === void 0 ? void 0 : building.lat) != null && (building === null || building === void 0 ? void 0 : building.lng) != null
+            ? { lat: Number(building.lat), lng: Number(building.lng) }
+            : null;
+        const dropoff = (0, route_matrix_1.resolveDropoff)(plan.route, plan, effCfg, userPoint, dest);
         if (!dropoff)
             throw new core_2.UserInputError(`路线 ${plan.route} 未配置校园交接点，无法推送外部快递`);
         if (!dropoff.lat || !dropoff.lng)

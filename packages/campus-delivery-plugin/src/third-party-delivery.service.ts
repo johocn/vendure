@@ -131,10 +131,15 @@ export class ThirdPartyDeliveryService implements OnApplicationBootstrap {
             ...cfg,
             handoverPoints: {
                 ...(cfg.handoverPoints ?? {}),
-                ...(snapPoint ? { [plan.route]: snapPoint } : {}),
+                ...(snapPoint ? { [plan.route]: [snapPoint] } : {}),
             },
         };
-        const dropoff = resolveDropoff(plan.route, plan, effCfg, userPoint);
+        // 无快照时按楼栋坐标挑最近交接点；楼栋缺坐标则由默认点兜底
+        const dest =
+            building?.lat != null && building?.lng != null
+                ? { lat: Number(building.lat), lng: Number(building.lng) }
+                : null;
+        const dropoff = resolveDropoff(plan.route, plan, effCfg, userPoint, dest);
         if (!dropoff) throw new UserInputError(`路线 ${plan.route} 未配置校园交接点，无法推送外部快递`);
         if (!dropoff.lat || !dropoff.lng) throw new UserInputError('收货点经纬度缺失，无法推送外部快递');
 

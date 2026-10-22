@@ -4,6 +4,9 @@ exports.ROUTE_FIRST_LEG_DEFAULTS = exports.ROUTE_FIRST_LEG_OPTIONS = exports.CAM
 exports.normalizeRouteFirstLeg = normalizeRouteFirstLeg;
 exports.resolveRoutePlan = resolveRoutePlan;
 exports.resolvePickup = resolvePickup;
+exports.listHandoverPoints = listHandoverPoints;
+exports.haversineMeters = haversineMeters;
+exports.selectHandoverPoint = selectHandoverPoint;
 exports.resolveHandoverPoint = resolveHandoverPoint;
 exports.resolveDropoff = resolveDropoff;
 /**
@@ -113,24 +116,57 @@ function resolvePickup(_route, cfg) {
         phone: (_b = cfg.storePhone) !== null && _b !== void 0 ? _b : undefined,
     };
 }
-/** 该路线配置的交接点（未配置返回 null，由调用方报「未配置交接点」） */
-function resolveHandoverPoint(route, cfg) {
+/** 归一某路线的交接点列表：兼容历史「单点对象」写法，剔除缺名称/坐标的脏数据 */
+function listHandoverPoints(route, cfg) {
+    var _a;
+    const raw = (_a = cfg.handoverPoints) === null || _a === void 0 ? void 0 : _a[route];
+    if (!raw)
+        return [];
+    const arr = Array.isArray(raw) ? raw : [raw];
+    return arr.filter(p => { var _a; return !!p && !!String((_a = p.name) !== null && _a !== void 0 ? _a : '').trim() && p.lat != null && p.lng != null; });
+}
+/** 两点间球面距离（米），用于按收货楼栋挑最近交接点 */
+function haversineMeters(a, b) {
+    const R = 6371000;
+    const rad = (d) => (d * Math.PI) / 180;
+    const dLat = rad(b.lat - a.lat);
+    const dLng = rad(b.lng - a.lng);
+    const s = Math.sin(dLat / 2) ** 2 +
+        Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(Math.min(1, s)));
+}
+/**
+ * 选交接点：有收货坐标取最近；否则取默认点；再否则取第一个。
+ * 都缺返回 null（调用方按「未配置交接点」降级处理，禁止用 (0,0) 派单）。
+ */
+function selectHandoverPoint(route, cfg, dest) {
     var _a, _b, _c;
-    const p = (_a = cfg.handoverPoints) === null || _a === void 0 ? void 0 : _a[route];
-    if (!p || !p.name || p.lat == null || p.lng == null)
+    const list = listHandoverPoints(route, cfg);
+    if (!list.length)
         return null;
+    let picked;
+    if (dest && Number.isFinite(dest.lat) && Number.isFinite(dest.lng)) {
+        picked = list.reduce((best, p) => haversineMeters(dest, p) < haversineMeters(dest, best) ? p : best);
+    }
+    else {
+        picked = (_a = list.find(p => p.isDefault)) !== null && _a !== void 0 ? _a : list[0];
+    }
     return {
-        name: p.name,
-        address: (_b = p.address) !== null && _b !== void 0 ? _b : undefined,
-        phone: (_c = p.phone) !== null && _c !== void 0 ? _c : undefined,
-        lat: Number(p.lat),
-        lng: Number(p.lng),
+        name: picked.name,
+        address: (_b = picked.address) !== null && _b !== void 0 ? _b : undefined,
+        phone: (_c = picked.phone) !== null && _c !== void 0 ? _c : undefined,
+        lat: Number(picked.lat),
+        lng: Number(picked.lng),
     };
 }
+/** 该路线选中的交接点（未配置返回 null，由调用方报「未配置交接点」） */
+function resolveHandoverPoint(route, cfg, dest) {
+    return selectHandoverPoint(route, cfg, dest);
+}
 /** 外部快递的收货点：R1/R2 打本路线交接点；R3 直送打用户地址；R4 无配送 */
-function resolveDropoff(route, plan, cfg, userPoint) {
+function resolveDropoff(route, plan, cfg, userPoint, dest) {
     if (route === 'R1' || route === 'R2')
-        return resolveHandoverPoint(route, cfg);
+        return resolveHandoverPoint(route, cfg, dest);
     if (route === 'R4')
         return null;
     return userPoint;

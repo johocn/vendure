@@ -33,13 +33,14 @@ export declare class CampusFulfillmentConfig extends VendureEntity {
     /** 第一段由谁送（按路线）：R1 = merchant|owned，R3 = campus|owned|external；缺省 R1=merchant、R3=campus */
     routeFirstLeg: Record<string, string> | null;
     /** 校园交接点：R1/R2 各一个（键为路线号） */
-    handoverPoints: Record<string, {
+    handoverPoints: Record<string, Array<{
         name: string;
         address?: string;
         phone?: string;
         lat: number;
         lng: number;
-    }> | null;
+        isDefault?: boolean;
+    }>> | null;
     /** 外部快递各 provider 的门店编号：{ dada?: string, meituan?: string } */
     providerShopNo: Record<string, string> | null;
     /** R1 商户接单超时（分钟），超时自动转自营快递；0 = 不自动转 */

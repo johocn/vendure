@@ -17,6 +17,8 @@ export declare class HallService {
     constructor(connection: TransactionalConnection, slotLock: SlotLockService, moduleRef: ModuleRef, capacity: CapacityService);
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
     private get injector();
+    /** 收货楼栋坐标（用于挑最近交接点）；楼栋未配坐标返回 null */
+    private resolveDestPoint;
     onOrderPlaced(ctx: RequestContext, order: Order): Promise<void>;
     /** 预约单放量（调度 job 调用，plan 3.1）：按路由/快照分流 */
     releaseScheduled(ctx: RequestContext, order: Order, cfg: CampusFulfillmentConfig | null): Promise<void>;

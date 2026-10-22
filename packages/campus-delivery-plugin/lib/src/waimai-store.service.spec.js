@@ -127,7 +127,7 @@ function makeEnv(opts = {}) {
         const cfgRepo = env.repoByEntity.CampusFulfillmentConfig;
         cfgRepo.findOne.mockResolvedValueOnce(undefined); // 第一次：无行
         cfgRepo.findOne.mockResolvedValueOnce({ channelId: 2, routesEnabled: ['R1'] }); // 第二次：已有行
-        const input = { routesEnabled: ['R1', 'R3'], deliveryMinutes: 35, minOrderAmount: 1500, deliveryFee: 200, storeAddress: '东门 1 号楼', storePhone: '13800000000', storeNotice: '周末出餐慢' };
+        const input = { routesEnabled: ['R1', 'R3'], handoverPoints: [{ route: 'R1', name: '东门岗亭', lat: 30.1, lng: 120.2 }], deliveryMinutes: 35, minOrderAmount: 1500, deliveryFee: 200, storeAddress: '东门 1 号楼', storePhone: '13800000000', storeNotice: '周末出餐慢' };
         await env.svc.updateStoreConfig({}, 2, input);
         await env.svc.updateStoreConfig({}, 2, Object.assign(Object.assign({}, input), { routesEnabled: ['R3'] }));
         (0, vitest_1.expect)(cfgRepo.save).toHaveBeenCalledTimes(2);
@@ -160,7 +160,7 @@ function makeEnv(opts = {}) {
     (0, vitest_1.it)('成功保存后返回 WithChannel 视图', async () => {
         const env = makeEnv({ channels: [{ id: 2, token: 'canteen', code: '一食堂麻辣香锅' }] });
         env.repoByEntity.CampusFulfillmentConfig.findOne.mockResolvedValue({ channelId: 2, routesEnabled: ['R1'] });
-        const out = await env.svc.updateStoreConfig({}, 2, { routesEnabled: ['R2'], storeNotice: '公告' });
+        const out = await env.svc.updateStoreConfig({}, 2, { routesEnabled: ['R2'], handoverPoints: [{ route: 'R2', name: '菜鸟驿站', lat: 30.2, lng: 120.25 }], storeNotice: '公告' });
         (0, vitest_1.expect)(out).toEqual({
             channelId: 2, channelName: '一食堂麻辣香锅', channelToken: 'canteen',
             routesEnabled: ['R2'],
@@ -175,7 +175,9 @@ function makeEnv(opts = {}) {
             notifyTemplateCancelled: null, notifyTemplateAfterSales: null,
             h5BaseUrl: null,
             printMode: 'off',
-            routeFirstLeg: [], handoverPoints: [], providerShopNo: [],
+            routeFirstLeg: [],
+            handoverPoints: [{ route: 'R2', name: '菜鸟驿站', address: null, phone: null, lat: 30.2, lng: 120.25, isDefault: true }],
+            providerShopNo: [],
             merchantAcceptMinutes: 5, externalPushTimeoutMinutes: 10, externalFallbackMinutes: 20,
             storeLat: null, storeLng: null,
         });
@@ -206,11 +208,11 @@ function makeEnv(opts = {}) {
     (0, vitest_1.it)('持久化并回读（null=不启用）', async () => {
         const env = makeEnv({ channels: [{ id: 2, token: 'canteen', code: '一食堂', customFields: {} }] });
         const out = await env.svc.updateStoreConfig({}, 2, {
-            routesEnabled: ['R1'], freeShippingThreshold: 1800,
+            routesEnabled: ['R1'], handoverPoints: [{ route: 'R1', name: '东门岗亭', lat: 30.1, lng: 120.2 }], freeShippingThreshold: 1800,
         });
         (0, vitest_1.expect)(out.freeShippingThreshold).toBe(1800);
         const off = await env.svc.updateStoreConfig({}, 2, {
-            routesEnabled: ['R1'], freeShippingThreshold: null,
+            routesEnabled: ['R1'], handoverPoints: [{ route: 'R1', name: '东门岗亭', lat: 30.1, lng: 120.2 }], freeShippingThreshold: null,
         });
         (0, vitest_1.expect)(off.freeShippingThreshold).toBeNull();
     });
@@ -278,7 +280,7 @@ function makeEnv(opts = {}) {
             { route: 'R1', carrier: 'owned' },
             { route: 'R3', carrier: 'external' },
         ]);
-        (0, vitest_1.expect)(out.handoverPoints).toEqual([Object.assign(Object.assign({}, point), { address: null, phone: null })]);
+        (0, vitest_1.expect)(out.handoverPoints).toEqual([Object.assign(Object.assign({}, point), { address: null, phone: null, isDefault: true })]);
         (0, vitest_1.expect)(out.providerShopNo).toHaveLength(2);
         (0, vitest_1.expect)(out).toMatchObject({
             merchantAcceptMinutes: 8, externalPushTimeoutMinutes: 12, externalFallbackMinutes: 25,
@@ -301,13 +303,33 @@ function makeEnv(opts = {}) {
         const env = makeEnv({ channels: [channel] });
         await (0, vitest_1.expect)(env.svc.updateStoreConfig({}, 2, {
             routesEnabled: ['R1', 'R2'], handoverPoints: [point],
-        })).rejects.toThrow('需要先填写对应的校园交接点');
+        })).rejects.toThrow('需要先填写至少一个校园交接点');
         await (0, vitest_1.expect)(env.svc.updateStoreConfig({}, 2, {
             routesEnabled: ['R1'], handoverPoints: [Object.assign(Object.assign({}, point), { lat: 200 })],
         })).rejects.toThrow('经纬度不合法');
         await (0, vitest_1.expect)(env.svc.updateStoreConfig({}, 2, {
             routesEnabled: ['R1'], handoverPoints: [Object.assign(Object.assign({}, point), { route: 'R3' })],
         })).rejects.toThrow('不需要校园交接点');
+    });
+    (0, vitest_1.it)('同一路线可配多个交接点，且只保留一个默认点', async () => {
+        const env = makeEnv({ channels: [channel] });
+        const out = await env.svc.updateStoreConfig({}, 2, {
+            routesEnabled: ['R1'],
+            handoverPoints: [
+                { route: 'R1', name: '东门岗亭', lat: 30.1, lng: 120.2, isDefault: true },
+                { route: 'R1', name: '西门驿站', lat: 30.3, lng: 120.4, isDefault: true },
+            ],
+        });
+        (0, vitest_1.expect)(out.handoverPoints).toHaveLength(2);
+        (0, vitest_1.expect)(out.handoverPoints.filter(p => p.isDefault)).toEqual([
+            vitest_1.expect.objectContaining({ name: '东门岗亭' }),
+        ]);
+        // 未标注默认点时，第一个自动成为默认
+        const out2 = await env.svc.updateStoreConfig({}, 2, {
+            routesEnabled: ['R1'],
+            handoverPoints: [{ route: 'R1', name: '东门岗亭', lat: 30.1, lng: 120.2 }],
+        });
+        (0, vitest_1.expect)(out2.handoverPoints[0].isDefault).toBe(true);
     });
     (0, vitest_1.it)('未传新字段即保留原值（旧后台表单不清空新配置）', async () => {
         const env = makeEnv({ channels: [channel] });

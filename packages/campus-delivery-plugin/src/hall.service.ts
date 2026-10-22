@@ -3,6 +3,7 @@ import { ModuleRef } from '@nestjs/core';
 import { Injector, Logger, Order, RequestContext, TransactionalConnection } from '@vendure/core';
 import { SubscribeMessageService } from '@vendure/wechat-subscribe-message-plugin';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
+import { CampusBuilding } from './campus-building.entity';
 import { CapacityService } from './capacity.service';
 import { SlotLockService } from './slot-lock.service';
 import { resolveHandoverPoint, resolveRoutePlan } from './route-matrix';
@@ -28,6 +29,21 @@ export class HallService {
         return new Injector(this.moduleRef);
     }
 
+    /** 收货楼栋坐标（用于挑最近交接点）；楼栋未配坐标返回 null */
+    private async resolveDestPoint(
+        ctx: RequestContext,
+        order: Order,
+    ): Promise<{ lat: number; lng: number } | null> {
+        const cf = order.customFields as any;
+        const buildingId = cf?.buildingId ?? (order.shippingAddress?.customFields as any)?.buildingId;
+        if (!buildingId) return null;
+        const b = await this.connection
+            .getRepository(ctx, CampusBuilding)
+            .findOne({ where: { id: Number(buildingId) as any } });
+        if (!b || b.lat == null || b.lng == null) return null;
+        return { lat: Number(b.lat), lng: Number(b.lng) };
+    }
+
     async onOrderPlaced(ctx: RequestContext, order: Order) {
         const cf = order.customFields as any;
         const isErrand = cf.orderKind === 'errand';
@@ -41,7 +57,9 @@ export class HallService {
         const plan = resolveRoutePlan(route, cfg ?? {});
         // R1/R2 恒接力，必须有校园交接点；缺失则降级为传信者到店取餐直送（不能让订单卡住）
         const needsPoint = route === 'R1' || route === 'R2';
-        const point = needsPoint ? resolveHandoverPoint(route as 'R1' | 'R2', cfg ?? {}) : null;
+        // 多交接点时按收货楼栋坐标取最近；楼栋无坐标退回该路线默认点
+        const dest = needsPoint ? await this.resolveDestPoint(ctx, order) : null;
+        const point = needsPoint ? resolveHandoverPoint(route as 'R1' | 'R2', cfg ?? {}, dest) : null;
         const degrade = needsPoint && !point;
         // 履约快照：下单时冻结，后续配置变更不影响在途单
         const snapshot = {

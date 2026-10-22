@@ -41,7 +41,7 @@ export class CampusFulfillmentConfig extends VendureEntity {
     routeFirstLeg: Record<string, string> | null;
     /** 校园交接点：R1/R2 各一个（键为路线号） */
     @Column({ type: 'simple-json', nullable: true })
-    handoverPoints: Record<string, { name: string; address?: string; phone?: string; lat: number; lng: number }> | null;
+    handoverPoints: Record<string, Array<{ name: string; address?: string; phone?: string; lat: number; lng: number; isDefault?: boolean }>> | null;
     /** 外部快递各 provider 的门店编号：{ dada?: string, meituan?: string } */
     @Column({ type: 'simple-json', nullable: true })
     providerShopNo: Record<string, string> | null;

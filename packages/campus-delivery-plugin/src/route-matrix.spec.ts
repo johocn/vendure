@@ -70,6 +70,38 @@ describe('route-matrix', () => {
         expect(resolveDropoff('R2', plan, cfg, user)).toBeNull();
     });
 
+    it('多交接点：按收货楼栋坐标取最近', () => {
+        const multi = {
+            ...base,
+            handoverPoints: {
+                R1: [
+                    { name: '东门岗亭', lat: 30.10, lng: 120.20, isDefault: true },
+                    { name: '西门驿站', lat: 30.30, lng: 120.31 },
+                ],
+            },
+        };
+        expect(resolveHandoverPoint('R1', multi, { lat: 30.31, lng: 120.32 })?.name).toBe('西门驿站');
+        expect(resolveHandoverPoint('R1', multi, { lat: 30.11, lng: 120.21 })?.name).toBe('东门岗亭');
+    });
+
+    it('多交接点：无收货坐标用默认点；未标默认则用第一个', () => {
+        const multi = {
+            ...base,
+            handoverPoints: {
+                R2: [
+                    { name: '菜鸟驿站', lat: 30.2, lng: 120.25 },
+                    { name: '体育馆驿站', lat: 30.4, lng: 120.4, isDefault: true },
+                ],
+            },
+        };
+        expect(resolveHandoverPoint('R2', multi)?.name).toBe('体育馆驿站');
+        const noDefault = {
+            ...base,
+            handoverPoints: { R2: [{ name: '菜鸟驿站', lat: 30.2, lng: 120.25 }] },
+        };
+        expect(resolveHandoverPoint('R2', noDefault)?.name).toBe('菜鸟驿站');
+    });
+
     it('R3 默认传信者直送，不接力', () => {
         expect(resolveRoutePlan('R3', { ...base })).toEqual({
             route: 'R3',

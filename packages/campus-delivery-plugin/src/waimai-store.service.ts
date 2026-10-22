@@ -49,7 +49,7 @@ export interface CampusStoreConfigWithChannel {
     h5BaseUrl: string | null;
     printMode: 'off' | 'onPaid' | 'onAccepted';
     routeFirstLeg: Array<{ route: string; carrier: string }>;
-    handoverPoints: Array<{ route: string; name: string; address: string | null; phone: string | null; lat: number; lng: number }>;
+    handoverPoints: Array<{ route: string; name: string; address: string | null; phone: string | null; lat: number; lng: number; isDefault: boolean }>;
     providerShopNo: Array<{ provider: string; shopNo: string }>;
     merchantAcceptMinutes: number;
     externalPushTimeoutMinutes: number;
@@ -156,7 +156,7 @@ export class WaimaiStoreService {
             h5BaseUrl?: string | null;
             printMode?: string | null;
             routeFirstLeg?: Array<{ route: string; carrier: string }> | null;
-            handoverPoints?: Array<{ route: string; name: string; address?: string | null; phone?: string | null; lat: number; lng: number }> | null;
+            handoverPoints?: Array<{ route: string; name: string; address?: string | null; phone?: string | null; lat: number; lng: number; isDefault?: boolean | null }> | null;
             providerShopNo?: Array<{ provider: string; shopNo: string }> | null;
             merchantAcceptMinutes?: number | null;
             externalPushTimeoutMinutes?: number | null;
@@ -193,8 +193,8 @@ export class WaimaiStoreService {
             routeFirstLeg[route] = carrier;
         }
 
-        // 校园交接点：只有 R1、R2 需要
-        const handoverPoints: Record<string, { name: string; address?: string; phone?: string; lat: number; lng: number }> = {};
+        // 校园交接点：只有 R1、R2 需要；同一路线可配多个，按楼栋距离选最近，默认点做无坐标兜底
+        const handoverPoints: Record<string, Array<{ name: string; address?: string; phone?: string; lat: number; lng: number; isDefault?: boolean }>> = {};
         for (const item of input.handoverPoints ?? []) {
             const route = String(item?.route ?? '');
             if (route !== 'R1' && route !== 'R2') {
@@ -207,13 +207,23 @@ export class WaimaiStoreService {
             if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
                 throw new UserInputError(`路线 ${route} 的交接点经纬度不合法`);
             }
-            handoverPoints[route] = {
+            (handoverPoints[route] ??= []).push({
                 name,
                 address: item?.address?.trim() || undefined,
                 phone: item?.phone?.trim() || undefined,
                 lat,
                 lng,
-            };
+                ...(item?.isDefault ? { isDefault: true } : {}),
+            });
+        }
+        // 每条路线只保留一个默认点：已标注取第一个，未标注取该路线第一个
+        for (const list of Object.values(handoverPoints)) {
+            let seen = false;
+            for (const p of list) {
+                if (p.isDefault && !seen) seen = true;
+                else delete p.isDefault;
+            }
+            if (!seen && list[0]) list[0].isDefault = true;
         }
 
         // 外部快递门店编号：外部快递用哪家由运营中心派单时决定，这里只存各家的门店编号
@@ -232,6 +242,8 @@ export class WaimaiStoreService {
         const repo = this.connection.getRepository(ctx, CampusFulfillmentConfig);
         let cfg = await repo.findOne({ where: { channelId: channelId as any } });
         if (!cfg) cfg = new CampusFulfillmentConfig({ channelId: channelId as any });
+        // 记录「本次新开通」的路线：只有新开通 R1/R2 才强制交接点，历史配置（已开通但缺点）不阻断其它字段编辑
+        const prevEnabled = [...(cfg.routesEnabled ?? [])];
         cfg.routesEnabled = input.routesEnabled;
         cfg.deliveryMinutes = input.deliveryMinutes ?? null;
         cfg.minOrderAmount = input.minOrderAmount ?? null;
@@ -262,15 +274,18 @@ export class WaimaiStoreService {
         if (input.storeLat !== undefined) cfg.storeLat = input.storeLat;
         if (input.storeLng !== undefined) cfg.storeLng = input.storeLng;
 
-        // 跨字段：本次提交了交接点（新配置页）时，开通 R1/R2 必须各有对应交接点
+        // 跨字段：新开通 R1/R2 必须有至少一个可用交接点（名称+经纬度），否则订单会降级为传信者到店取餐
         const enabled = input.routesEnabled ?? [];
-        if (input.handoverPoints !== undefined) {
-            const missingPoint = (['R1', 'R2'] as const).filter(
-                r => enabled.includes(r) && !cfg.handoverPoints?.[r],
-            );
-            if (missingPoint.length) {
-                throw new UserInputError(`开通 ${missingPoint.join('、')} 需要先填写对应的校园交接点`);
-            }
+        const hasPoint = (r: 'R1' | 'R2') => {
+            const raw = cfg.handoverPoints?.[r];
+            const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
+            return list.some(p => !!String(p?.name ?? '').trim() && p?.lat != null && p?.lng != null);
+        };
+        const missingPoint = (['R1', 'R2'] as const).filter(
+            r => enabled.includes(r) && !prevEnabled.includes(r) && !hasPoint(r),
+        );
+        if (missingPoint.length) {
+            throw new UserInputError(`开通 ${missingPoint.join('、')} 需要先填写至少一个校园交接点（名称+经纬度）`);
         }
         await repo.save(cfg);
         const address = (input.storeAddress ?? '').trim();
@@ -339,14 +354,17 @@ export class WaimaiStoreService {
             h5BaseUrl: cfg?.h5BaseUrl ?? null,
             printMode: normalizePrintMode(cfg?.printMode),
             routeFirstLeg: Object.entries(cfg?.routeFirstLeg ?? {}).map(([route, carrier]) => ({ route, carrier })),
-            handoverPoints: Object.entries(cfg?.handoverPoints ?? {}).map(([route, p]) => ({
-                route,
-                name: p.name,
-                address: p.address ?? null,
-                phone: p.phone ?? null,
-                lat: p.lat,
-                lng: p.lng,
-            })),
+            handoverPoints: Object.entries(cfg?.handoverPoints ?? {}).flatMap(([route, raw]) =>
+                (Array.isArray(raw) ? raw : raw ? [raw] : []).map(p => ({
+                    route,
+                    name: p.name,
+                    address: p.address ?? null,
+                    phone: p.phone ?? null,
+                    lat: p.lat,
+                    lng: p.lng,
+                    isDefault: !!p.isDefault,
+                })),
+            ),
             providerShopNo: Object.entries(cfg?.providerShopNo ?? {}).map(([provider, shopNo]) => ({ provider, shopNo })),
             merchantAcceptMinutes: cfg?.merchantAcceptMinutes ?? 5,
             externalPushTimeoutMinutes: cfg?.externalPushTimeoutMinutes ?? 10,

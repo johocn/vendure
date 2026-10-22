@@ -16,6 +16,7 @@ const core_1 = require("@nestjs/core");
 const core_2 = require("@vendure/core");
 const wechat_subscribe_message_plugin_1 = require("@vendure/wechat-subscribe-message-plugin");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
+const campus_building_entity_1 = require("./campus-building.entity");
 const capacity_service_1 = require("./capacity.service");
 const slot_lock_service_1 = require("./slot-lock.service");
 const route_matrix_1 = require("./route-matrix");
@@ -34,6 +35,20 @@ let HallService = HallService_1 = class HallService {
     get injector() {
         return new core_2.Injector(this.moduleRef);
     }
+    /** 收货楼栋坐标（用于挑最近交接点）；楼栋未配坐标返回 null */
+    async resolveDestPoint(ctx, order) {
+        var _a, _b, _c;
+        const cf = order.customFields;
+        const buildingId = (_a = cf === null || cf === void 0 ? void 0 : cf.buildingId) !== null && _a !== void 0 ? _a : (_c = (_b = order.shippingAddress) === null || _b === void 0 ? void 0 : _b.customFields) === null || _c === void 0 ? void 0 : _c.buildingId;
+        if (!buildingId)
+            return null;
+        const b = await this.connection
+            .getRepository(ctx, campus_building_entity_1.CampusBuilding)
+            .findOne({ where: { id: Number(buildingId) } });
+        if (!b || b.lat == null || b.lng == null)
+            return null;
+        return { lat: Number(b.lat), lng: Number(b.lng) };
+    }
     async onOrderPlaced(ctx, order) {
         var _a, _b, _c, _d, _e, _f, _g;
         const cf = order.customFields;
@@ -48,7 +63,9 @@ let HallService = HallService_1 = class HallService {
         const plan = (0, route_matrix_1.resolveRoutePlan)(route, cfg !== null && cfg !== void 0 ? cfg : {});
         // R1/R2 恒接力，必须有校园交接点；缺失则降级为传信者到店取餐直送（不能让订单卡住）
         const needsPoint = route === 'R1' || route === 'R2';
-        const point = needsPoint ? (0, route_matrix_1.resolveHandoverPoint)(route, cfg !== null && cfg !== void 0 ? cfg : {}) : null;
+        // 多交接点时按收货楼栋坐标取最近；楼栋无坐标退回该路线默认点
+        const dest = needsPoint ? await this.resolveDestPoint(ctx, order) : null;
+        const point = needsPoint ? (0, route_matrix_1.resolveHandoverPoint)(route, cfg !== null && cfg !== void 0 ? cfg : {}, dest) : null;
         const degrade = needsPoint && !point;
         // 履约快照：下单时冻结，后续配置变更不影响在途单
         const snapshot = Object.assign({ deliveryPlan: degrade ? 'campus_rider' : ((_b = plan === null || plan === void 0 ? void 0 : plan.leg1) !== null && _b !== void 0 ? _b : 'campus_rider'), handoverMode: degrade ? '' : ((_c = plan === null || plan === void 0 ? void 0 : plan.handover) !== null && _c !== void 0 ? _c : ''), thirdPartyProvider: '', handoverPointName: (_d = point === null || point === void 0 ? void 0 : point.name) !== null && _d !== void 0 ? _d : '', handoverPointAddress: (_e = point === null || point === void 0 ? void 0 : point.address) !== null && _e !== void 0 ? _e : '', handoverPointLat: (_f = point === null || point === void 0 ? void 0 : point.lat) !== null && _f !== void 0 ? _f : null, handoverPointLng: (_g = point === null || point === void 0 ? void 0 : point.lng) !== null && _g !== void 0 ? _g : null }, (degrade ? { campusCause: 'no_handover_point' } : {}));

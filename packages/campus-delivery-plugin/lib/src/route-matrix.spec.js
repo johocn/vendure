@@ -57,6 +57,29 @@ const user = { name: '学生', address: '三号楼 502', lat: 30.3, lng: 120.3 }
         (0, vitest_1.expect)((0, route_matrix_1.resolveHandoverPoint)('R2', cfg)).toBeNull();
         (0, vitest_1.expect)((0, route_matrix_1.resolveDropoff)('R2', plan, cfg, user)).toBeNull();
     });
+    (0, vitest_1.it)('多交接点：按收货楼栋坐标取最近', () => {
+        var _a, _b;
+        const multi = Object.assign(Object.assign({}, base), { handoverPoints: {
+                R1: [
+                    { name: '东门岗亭', lat: 30.10, lng: 120.20, isDefault: true },
+                    { name: '西门驿站', lat: 30.30, lng: 120.31 },
+                ],
+            } });
+        (0, vitest_1.expect)((_a = (0, route_matrix_1.resolveHandoverPoint)('R1', multi, { lat: 30.31, lng: 120.32 })) === null || _a === void 0 ? void 0 : _a.name).toBe('西门驿站');
+        (0, vitest_1.expect)((_b = (0, route_matrix_1.resolveHandoverPoint)('R1', multi, { lat: 30.11, lng: 120.21 })) === null || _b === void 0 ? void 0 : _b.name).toBe('东门岗亭');
+    });
+    (0, vitest_1.it)('多交接点：无收货坐标用默认点；未标默认则用第一个', () => {
+        var _a, _b;
+        const multi = Object.assign(Object.assign({}, base), { handoverPoints: {
+                R2: [
+                    { name: '菜鸟驿站', lat: 30.2, lng: 120.25 },
+                    { name: '体育馆驿站', lat: 30.4, lng: 120.4, isDefault: true },
+                ],
+            } });
+        (0, vitest_1.expect)((_a = (0, route_matrix_1.resolveHandoverPoint)('R2', multi)) === null || _a === void 0 ? void 0 : _a.name).toBe('体育馆驿站');
+        const noDefault = Object.assign(Object.assign({}, base), { handoverPoints: { R2: [{ name: '菜鸟驿站', lat: 30.2, lng: 120.25 }] } });
+        (0, vitest_1.expect)((_b = (0, route_matrix_1.resolveHandoverPoint)('R2', noDefault)) === null || _b === void 0 ? void 0 : _b.name).toBe('菜鸟驿站');
+    });
     (0, vitest_1.it)('R3 默认传信者直送，不接力', () => {
         (0, vitest_1.expect)((0, route_matrix_1.resolveRoutePlan)('R3', Object.assign({}, base))).toEqual({
             route: 'R3',

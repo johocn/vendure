@@ -54,6 +54,7 @@ export interface CampusStoreConfigWithChannel {
         phone: string | null;
         lat: number;
         lng: number;
+        isDefault: boolean;
     }>;
     providerShopNo: Array<{
         provider: string;
@@ -110,6 +111,7 @@ export declare class WaimaiStoreService {
             phone?: string | null;
             lat: number;
             lng: number;
+            isDefault?: boolean | null;
         }> | null;
         providerShopNo?: Array<{
             provider: string;

@@ -41,13 +41,15 @@ export interface HandoverPointConfig {
     phone?: string;
     lat: number;
     lng: number;
+    /** 兜底默认点：订单无可定位坐标时使用；每条路线最多一个生效 */
+    isDefault?: boolean;
 }
 
 export interface RouteConfig {
     /** 按路线配置第一段承运方（只有 R1/R3 生效），未配置用默认值 */
     routeFirstLeg?: Record<string, string> | null;
-    /** 校园交接点：R1/R2 各一个 */
-    handoverPoints?: Record<string, HandoverPointConfig> | null;
+    /** 校园交接点：R1/R2 可配多个（数组），兼容历史单点对象写法 */
+    handoverPoints?: Record<string, HandoverPointConfig | HandoverPointConfig[]> | null;
     storeAddress?: string | null;
     storePhone?: string | null;
     storeLat?: number | null;
@@ -160,17 +162,61 @@ export function resolvePickup(_route: CampusRoute, cfg: RouteConfig): GeoPointLi
     };
 }
 
-/** 该路线配置的交接点（未配置返回 null，由调用方报「未配置交接点」） */
-export function resolveHandoverPoint(route: CampusRoute, cfg: RouteConfig): GeoPointLike | null {
-    const p = cfg.handoverPoints?.[route];
-    if (!p || !p.name || p.lat == null || p.lng == null) return null;
+/** 归一某路线的交接点列表：兼容历史「单点对象」写法，剔除缺名称/坐标的脏数据 */
+export function listHandoverPoints(route: CampusRoute, cfg: RouteConfig): HandoverPointConfig[] {
+    const raw = cfg.handoverPoints?.[route];
+    if (!raw) return [];
+    const arr = Array.isArray(raw) ? raw : [raw];
+    return arr.filter(p => !!p && !!String(p.name ?? '').trim() && p.lat != null && p.lng != null);
+}
+
+/** 两点间球面距离（米），用于按收货楼栋挑最近交接点 */
+export function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+    const R = 6371000;
+    const rad = (d: number) => (d * Math.PI) / 180;
+    const dLat = rad(b.lat - a.lat);
+    const dLng = rad(b.lng - a.lng);
+    const s =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(Math.min(1, s)));
+}
+
+/**
+ * 选交接点：有收货坐标取最近；否则取默认点；再否则取第一个。
+ * 都缺返回 null（调用方按「未配置交接点」降级处理，禁止用 (0,0) 派单）。
+ */
+export function selectHandoverPoint(
+    route: CampusRoute,
+    cfg: RouteConfig,
+    dest?: { lat: number; lng: number } | null,
+): GeoPointLike | null {
+    const list = listHandoverPoints(route, cfg);
+    if (!list.length) return null;
+    let picked: HandoverPointConfig;
+    if (dest && Number.isFinite(dest.lat) && Number.isFinite(dest.lng)) {
+        picked = list.reduce((best, p) =>
+            haversineMeters(dest, p) < haversineMeters(dest, best) ? p : best,
+        );
+    } else {
+        picked = list.find(p => p.isDefault) ?? list[0];
+    }
     return {
-        name: p.name,
-        address: p.address ?? undefined,
-        phone: p.phone ?? undefined,
-        lat: Number(p.lat),
-        lng: Number(p.lng),
+        name: picked.name,
+        address: picked.address ?? undefined,
+        phone: picked.phone ?? undefined,
+        lat: Number(picked.lat),
+        lng: Number(picked.lng),
     };
+}
+
+/** 该路线选中的交接点（未配置返回 null，由调用方报「未配置交接点」） */
+export function resolveHandoverPoint(
+    route: CampusRoute,
+    cfg: RouteConfig,
+    dest?: { lat: number; lng: number } | null,
+): GeoPointLike | null {
+    return selectHandoverPoint(route, cfg, dest);
 }
 
 /** 外部快递的收货点：R1/R2 打本路线交接点；R3 直送打用户地址；R4 无配送 */
@@ -179,8 +225,9 @@ export function resolveDropoff(
     plan: RoutePlan,
     cfg: RouteConfig,
     userPoint: GeoPointLike,
+    dest?: { lat: number; lng: number } | null,
 ): GeoPointLike | null {
-    if (route === 'R1' || route === 'R2') return resolveHandoverPoint(route, cfg);
+    if (route === 'R1' || route === 'R2') return resolveHandoverPoint(route, cfg, dest);
     if (route === 'R4') return null;
     return userPoint;
 }

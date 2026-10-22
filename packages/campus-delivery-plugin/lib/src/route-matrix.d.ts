@@ -28,12 +28,14 @@ export interface HandoverPointConfig {
     phone?: string;
     lat: number;
     lng: number;
+    /** 兜底默认点：订单无可定位坐标时使用；每条路线最多一个生效 */
+    isDefault?: boolean;
 }
 export interface RouteConfig {
     /** 按路线配置第一段承运方（只有 R1/R3 生效），未配置用默认值 */
     routeFirstLeg?: Record<string, string> | null;
-    /** 校园交接点：R1/R2 各一个 */
-    handoverPoints?: Record<string, HandoverPointConfig> | null;
+    /** 校园交接点：R1/R2 可配多个（数组），兼容历史单点对象写法 */
+    handoverPoints?: Record<string, HandoverPointConfig | HandoverPointConfig[]> | null;
     storeAddress?: string | null;
     storePhone?: string | null;
     storeLat?: number | null;
@@ -63,7 +65,31 @@ export declare function normalizeRouteFirstLeg(route: string, value: string | nu
 export declare function resolveRoutePlan(route: string, cfg: RouteConfig, externalProvider?: ExternalProviderCode | null): RoutePlan | null;
 /** 取货点：店铺经纬度（档口/门店）；缺坐标返回 null，禁止用 (0,0) 派单 */
 export declare function resolvePickup(_route: CampusRoute, cfg: RouteConfig): GeoPointLike | null;
-/** 该路线配置的交接点（未配置返回 null，由调用方报「未配置交接点」） */
-export declare function resolveHandoverPoint(route: CampusRoute, cfg: RouteConfig): GeoPointLike | null;
+/** 归一某路线的交接点列表：兼容历史「单点对象」写法，剔除缺名称/坐标的脏数据 */
+export declare function listHandoverPoints(route: CampusRoute, cfg: RouteConfig): HandoverPointConfig[];
+/** 两点间球面距离（米），用于按收货楼栋挑最近交接点 */
+export declare function haversineMeters(a: {
+    lat: number;
+    lng: number;
+}, b: {
+    lat: number;
+    lng: number;
+}): number;
+/**
+ * 选交接点：有收货坐标取最近；否则取默认点；再否则取第一个。
+ * 都缺返回 null（调用方按「未配置交接点」降级处理，禁止用 (0,0) 派单）。
+ */
+export declare function selectHandoverPoint(route: CampusRoute, cfg: RouteConfig, dest?: {
+    lat: number;
+    lng: number;
+} | null): GeoPointLike | null;
+/** 该路线选中的交接点（未配置返回 null，由调用方报「未配置交接点」） */
+export declare function resolveHandoverPoint(route: CampusRoute, cfg: RouteConfig, dest?: {
+    lat: number;
+    lng: number;
+} | null): GeoPointLike | null;
 /** 外部快递的收货点：R1/R2 打本路线交接点；R3 直送打用户地址；R4 无配送 */
-export declare function resolveDropoff(route: CampusRoute, plan: RoutePlan, cfg: RouteConfig, userPoint: GeoPointLike): GeoPointLike | null;
+export declare function resolveDropoff(route: CampusRoute, plan: RoutePlan, cfg: RouteConfig, userPoint: GeoPointLike, dest?: {
+    lat: number;
+    lng: number;
+} | null): GeoPointLike | null;
