@@ -87,14 +87,14 @@ let WaimaiStoreService = class WaimaiStoreService {
     }
     /** admin：按 channelId upsert（幂等），routesEnabled 白名单 R1-R5，负数金额拒绝 */
     async updateStoreConfig(ctx, channelId, input) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11;
         const bad = ((_a = input.routesEnabled) !== null && _a !== void 0 ? _a : []).filter(r => !ROUTE_WHITELIST.includes(r));
         if (bad.length)
             throw new core_1.UserInputError(`不支持的配送路线: ${bad.join(', ')}（仅接受 R1-R5）`);
         if (input.printMode != null && !PRINT_MODES.includes(input.printMode)) {
             throw new core_1.UserInputError(`不支持的打印模式: ${input.printMode}（仅接受 off/onPaid/onAccepted）`);
         }
-        const negative = ['deliveryMinutes', 'minOrderAmount', 'deliveryFee', 'errandBaseFee', 'freeShippingThreshold']
+        const negative = ['deliveryMinutes', 'minOrderAmount', 'deliveryFee', 'errandBaseFee', 'thirdPartyBaseFee', 'freeShippingThreshold']
             .filter(k => input[k] != null && input[k] < 0);
         if (negative.length)
             throw new core_1.UserInputError(`不能为负数: ${negative.join(', ')}`);
@@ -174,17 +174,20 @@ let WaimaiStoreService = class WaimaiStoreService {
         cfg.storePhone = (_u = input.storePhone) !== null && _u !== void 0 ? _u : null;
         cfg.storeNotice = (_v = input.storeNotice) !== null && _v !== void 0 ? _v : null;
         cfg.errandBaseFee = (_w = input.errandBaseFee) !== null && _w !== void 0 ? _w : null;
-        cfg.freeShippingThreshold = (_x = input.freeShippingThreshold) !== null && _x !== void 0 ? _x : null;
-        cfg.notifyTemplateAccepted = (_y = input.notifyTemplateAccepted) !== null && _y !== void 0 ? _y : null;
-        cfg.notifyTemplateRiderAssigned = (_z = input.notifyTemplateRiderAssigned) !== null && _z !== void 0 ? _z : null;
-        cfg.notifyTemplateCookingDone = (_0 = input.notifyTemplateCookingDone) !== null && _0 !== void 0 ? _0 : null;
-        cfg.notifyTemplateDelivered = (_1 = input.notifyTemplateDelivered) !== null && _1 !== void 0 ? _1 : null;
-        cfg.notifyTemplateExceptionHandled = (_2 = input.notifyTemplateExceptionHandled) !== null && _2 !== void 0 ? _2 : null;
-        cfg.notifyTemplateOrderPlaced = (_3 = input.notifyTemplateOrderPlaced) !== null && _3 !== void 0 ? _3 : null;
-        cfg.notifyTemplatePaymentPending = (_4 = input.notifyTemplatePaymentPending) !== null && _4 !== void 0 ? _4 : null;
-        cfg.notifyTemplateCancelled = (_5 = input.notifyTemplateCancelled) !== null && _5 !== void 0 ? _5 : null;
-        cfg.notifyTemplateAfterSales = (_6 = input.notifyTemplateAfterSales) !== null && _6 !== void 0 ? _6 : null;
-        cfg.h5BaseUrl = (_7 = input.h5BaseUrl) !== null && _7 !== void 0 ? _7 : null;
+        // 第三方到校基价：未传即保留（旧表单不清空）；传 null 表示不接管顾客侧运费
+        if (input.thirdPartyBaseFee !== undefined)
+            cfg.thirdPartyBaseFee = (_x = input.thirdPartyBaseFee) !== null && _x !== void 0 ? _x : null;
+        cfg.freeShippingThreshold = (_y = input.freeShippingThreshold) !== null && _y !== void 0 ? _y : null;
+        cfg.notifyTemplateAccepted = (_z = input.notifyTemplateAccepted) !== null && _z !== void 0 ? _z : null;
+        cfg.notifyTemplateRiderAssigned = (_0 = input.notifyTemplateRiderAssigned) !== null && _0 !== void 0 ? _0 : null;
+        cfg.notifyTemplateCookingDone = (_1 = input.notifyTemplateCookingDone) !== null && _1 !== void 0 ? _1 : null;
+        cfg.notifyTemplateDelivered = (_2 = input.notifyTemplateDelivered) !== null && _2 !== void 0 ? _2 : null;
+        cfg.notifyTemplateExceptionHandled = (_3 = input.notifyTemplateExceptionHandled) !== null && _3 !== void 0 ? _3 : null;
+        cfg.notifyTemplateOrderPlaced = (_4 = input.notifyTemplateOrderPlaced) !== null && _4 !== void 0 ? _4 : null;
+        cfg.notifyTemplatePaymentPending = (_5 = input.notifyTemplatePaymentPending) !== null && _5 !== void 0 ? _5 : null;
+        cfg.notifyTemplateCancelled = (_6 = input.notifyTemplateCancelled) !== null && _6 !== void 0 ? _6 : null;
+        cfg.notifyTemplateAfterSales = (_7 = input.notifyTemplateAfterSales) !== null && _7 !== void 0 ? _7 : null;
+        cfg.h5BaseUrl = (_8 = input.h5BaseUrl) !== null && _8 !== void 0 ? _8 : null;
         cfg.printMode = input.printMode == null || input.printMode === '' ? 'off' : input.printMode;
         // 超时赔付：未传即保留（旧表单不会清空已配值）
         if (input.timeoutCompensationEnabled != null)
@@ -221,7 +224,7 @@ let WaimaiStoreService = class WaimaiStoreService {
                 try {
                     parsed = JSON.parse(input.dynamicPricing);
                 }
-                catch (_11) {
+                catch (_12) {
                     throw new core_1.UserInputError('动态计价配置不是合法 JSON');
                 }
                 if (!parsed || typeof parsed !== 'object')
@@ -230,7 +233,7 @@ let WaimaiStoreService = class WaimaiStoreService {
             }
         }
         // 跨字段：新开通 R1/R2 必须有至少一个可用交接点（名称+经纬度），否则订单会降级为传信者到店取餐
-        const enabled = (_8 = input.routesEnabled) !== null && _8 !== void 0 ? _8 : [];
+        const enabled = (_9 = input.routesEnabled) !== null && _9 !== void 0 ? _9 : [];
         const hasPoint = (r) => {
             var _a;
             const raw = (_a = cfg.handoverPoints) === null || _a === void 0 ? void 0 : _a[r];
@@ -242,10 +245,10 @@ let WaimaiStoreService = class WaimaiStoreService {
             throw new core_1.UserInputError(`开通 ${missingPoint.join('、')} 需要先填写至少一个校园交接点（名称+经纬度）`);
         }
         await repo.save(cfg);
-        const address = ((_9 = input.storeAddress) !== null && _9 !== void 0 ? _9 : '').trim();
+        const address = ((_10 = input.storeAddress) !== null && _10 !== void 0 ? _10 : '').trim();
         if (address) {
             // R4：同步幂等 upsert 本渠道门店自提点（名称=店铺名，地址=storeAddress），核销走 pickup_redemption 零新表
-            await this.upsertStorePickupLocation(Number(channelId), ch.code, address, ((_10 = input.storePhone) !== null && _10 !== void 0 ? _10 : '').trim() || null);
+            await this.upsertStorePickupLocation(Number(channelId), ch.code, address, ((_11 = input.storePhone) !== null && _11 !== void 0 ? _11 : '').trim() || null);
         }
         return this.toConfigView(channelId, ch.code, ch.token, cfg);
     }
@@ -276,7 +279,7 @@ let WaimaiStoreService = class WaimaiStoreService {
         });
     }
     toConfigView(channelId, channelName, channelToken, cfg) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6;
         return {
             channelId,
             channelName,
@@ -289,23 +292,24 @@ let WaimaiStoreService = class WaimaiStoreService {
             storePhone: (_f = cfg === null || cfg === void 0 ? void 0 : cfg.storePhone) !== null && _f !== void 0 ? _f : null,
             storeNotice: (_g = cfg === null || cfg === void 0 ? void 0 : cfg.storeNotice) !== null && _g !== void 0 ? _g : null,
             errandBaseFee: (_h = cfg === null || cfg === void 0 ? void 0 : cfg.errandBaseFee) !== null && _h !== void 0 ? _h : null,
-            freeShippingThreshold: (_j = cfg === null || cfg === void 0 ? void 0 : cfg.freeShippingThreshold) !== null && _j !== void 0 ? _j : null,
-            notifyTemplateAccepted: (_k = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateAccepted) !== null && _k !== void 0 ? _k : null,
-            notifyTemplateRiderAssigned: (_l = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateRiderAssigned) !== null && _l !== void 0 ? _l : null,
-            notifyTemplateCookingDone: (_m = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateCookingDone) !== null && _m !== void 0 ? _m : null,
-            notifyTemplateDelivered: (_o = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateDelivered) !== null && _o !== void 0 ? _o : null,
-            notifyTemplateExceptionHandled: (_p = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateExceptionHandled) !== null && _p !== void 0 ? _p : null,
-            notifyTemplateOrderPlaced: (_q = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateOrderPlaced) !== null && _q !== void 0 ? _q : null,
-            notifyTemplatePaymentPending: (_r = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplatePaymentPending) !== null && _r !== void 0 ? _r : null,
-            notifyTemplateCancelled: (_s = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateCancelled) !== null && _s !== void 0 ? _s : null,
-            notifyTemplateAfterSales: (_t = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateAfterSales) !== null && _t !== void 0 ? _t : null,
-            h5BaseUrl: (_u = cfg === null || cfg === void 0 ? void 0 : cfg.h5BaseUrl) !== null && _u !== void 0 ? _u : null,
+            thirdPartyBaseFee: (_j = cfg === null || cfg === void 0 ? void 0 : cfg.thirdPartyBaseFee) !== null && _j !== void 0 ? _j : null,
+            freeShippingThreshold: (_k = cfg === null || cfg === void 0 ? void 0 : cfg.freeShippingThreshold) !== null && _k !== void 0 ? _k : null,
+            notifyTemplateAccepted: (_l = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateAccepted) !== null && _l !== void 0 ? _l : null,
+            notifyTemplateRiderAssigned: (_m = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateRiderAssigned) !== null && _m !== void 0 ? _m : null,
+            notifyTemplateCookingDone: (_o = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateCookingDone) !== null && _o !== void 0 ? _o : null,
+            notifyTemplateDelivered: (_p = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateDelivered) !== null && _p !== void 0 ? _p : null,
+            notifyTemplateExceptionHandled: (_q = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateExceptionHandled) !== null && _q !== void 0 ? _q : null,
+            notifyTemplateOrderPlaced: (_r = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateOrderPlaced) !== null && _r !== void 0 ? _r : null,
+            notifyTemplatePaymentPending: (_s = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplatePaymentPending) !== null && _s !== void 0 ? _s : null,
+            notifyTemplateCancelled: (_t = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateCancelled) !== null && _t !== void 0 ? _t : null,
+            notifyTemplateAfterSales: (_u = cfg === null || cfg === void 0 ? void 0 : cfg.notifyTemplateAfterSales) !== null && _u !== void 0 ? _u : null,
+            h5BaseUrl: (_v = cfg === null || cfg === void 0 ? void 0 : cfg.h5BaseUrl) !== null && _v !== void 0 ? _v : null,
             printMode: normalizePrintMode(cfg === null || cfg === void 0 ? void 0 : cfg.printMode),
-            timeoutCompensationEnabled: (_v = cfg === null || cfg === void 0 ? void 0 : cfg.timeoutCompensationEnabled) !== null && _v !== void 0 ? _v : false,
-            timeoutGraceMinutes: (_w = cfg === null || cfg === void 0 ? void 0 : cfg.timeoutGraceMinutes) !== null && _w !== void 0 ? _w : 10,
-            timeoutCompensationCouponTemplateId: (_x = cfg === null || cfg === void 0 ? void 0 : cfg.timeoutCompensationCouponTemplateId) !== null && _x !== void 0 ? _x : null,
-            routeFirstLeg: Object.entries((_y = cfg === null || cfg === void 0 ? void 0 : cfg.routeFirstLeg) !== null && _y !== void 0 ? _y : {}).map(([route, carrier]) => ({ route, carrier })),
-            handoverPoints: Object.entries((_z = cfg === null || cfg === void 0 ? void 0 : cfg.handoverPoints) !== null && _z !== void 0 ? _z : {}).flatMap(([route, raw]) => (Array.isArray(raw) ? raw : raw ? [raw] : []).map(p => {
+            timeoutCompensationEnabled: (_w = cfg === null || cfg === void 0 ? void 0 : cfg.timeoutCompensationEnabled) !== null && _w !== void 0 ? _w : false,
+            timeoutGraceMinutes: (_x = cfg === null || cfg === void 0 ? void 0 : cfg.timeoutGraceMinutes) !== null && _x !== void 0 ? _x : 10,
+            timeoutCompensationCouponTemplateId: (_y = cfg === null || cfg === void 0 ? void 0 : cfg.timeoutCompensationCouponTemplateId) !== null && _y !== void 0 ? _y : null,
+            routeFirstLeg: Object.entries((_z = cfg === null || cfg === void 0 ? void 0 : cfg.routeFirstLeg) !== null && _z !== void 0 ? _z : {}).map(([route, carrier]) => ({ route, carrier })),
+            handoverPoints: Object.entries((_0 = cfg === null || cfg === void 0 ? void 0 : cfg.handoverPoints) !== null && _0 !== void 0 ? _0 : {}).flatMap(([route, raw]) => (Array.isArray(raw) ? raw : raw ? [raw] : []).map(p => {
                 var _a, _b;
                 return ({
                     route,
@@ -317,12 +321,12 @@ let WaimaiStoreService = class WaimaiStoreService {
                     isDefault: !!p.isDefault,
                 });
             })),
-            providerShopNo: Object.entries((_0 = cfg === null || cfg === void 0 ? void 0 : cfg.providerShopNo) !== null && _0 !== void 0 ? _0 : {}).map(([provider, shopNo]) => ({ provider, shopNo })),
-            merchantAcceptMinutes: (_1 = cfg === null || cfg === void 0 ? void 0 : cfg.merchantAcceptMinutes) !== null && _1 !== void 0 ? _1 : 5,
-            externalPushTimeoutMinutes: (_2 = cfg === null || cfg === void 0 ? void 0 : cfg.externalPushTimeoutMinutes) !== null && _2 !== void 0 ? _2 : 10,
-            externalFallbackMinutes: (_3 = cfg === null || cfg === void 0 ? void 0 : cfg.externalFallbackMinutes) !== null && _3 !== void 0 ? _3 : 20,
-            storeLat: (_4 = cfg === null || cfg === void 0 ? void 0 : cfg.storeLat) !== null && _4 !== void 0 ? _4 : null,
-            storeLng: (_5 = cfg === null || cfg === void 0 ? void 0 : cfg.storeLng) !== null && _5 !== void 0 ? _5 : null,
+            providerShopNo: Object.entries((_1 = cfg === null || cfg === void 0 ? void 0 : cfg.providerShopNo) !== null && _1 !== void 0 ? _1 : {}).map(([provider, shopNo]) => ({ provider, shopNo })),
+            merchantAcceptMinutes: (_2 = cfg === null || cfg === void 0 ? void 0 : cfg.merchantAcceptMinutes) !== null && _2 !== void 0 ? _2 : 5,
+            externalPushTimeoutMinutes: (_3 = cfg === null || cfg === void 0 ? void 0 : cfg.externalPushTimeoutMinutes) !== null && _3 !== void 0 ? _3 : 10,
+            externalFallbackMinutes: (_4 = cfg === null || cfg === void 0 ? void 0 : cfg.externalFallbackMinutes) !== null && _4 !== void 0 ? _4 : 20,
+            storeLat: (_5 = cfg === null || cfg === void 0 ? void 0 : cfg.storeLat) !== null && _5 !== void 0 ? _5 : null,
+            storeLng: (_6 = cfg === null || cfg === void 0 ? void 0 : cfg.storeLng) !== null && _6 !== void 0 ? _6 : null,
             dynamicPricing: (cfg === null || cfg === void 0 ? void 0 : cfg.dynamicPricing) ? JSON.stringify(cfg.dynamicPricing) : null,
         };
     }

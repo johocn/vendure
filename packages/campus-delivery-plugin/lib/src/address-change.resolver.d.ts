@@ -63,6 +63,22 @@ export declare class AddressChangeAdminResolver {
         onlineRiders: number;
         manualMultiplier: number;
         maxAddFee: number;
+        errand: {
+            key: "errand" | "third-party";
+            configured: boolean;
+            baseFee: number;
+            price: number;
+            addFee: number;
+            breakdown: import("./dynamic-pricing").PricingBreakdownItem[];
+        } | null;
+        thirdParty: {
+            key: "errand" | "third-party";
+            configured: boolean;
+            baseFee: number;
+            price: number;
+            addFee: number;
+            breakdown: import("./dynamic-pricing").PricingBreakdownItem[];
+        } | null;
         supply: {
             backlogThreshold: number;
             riderThreshold: number | null;

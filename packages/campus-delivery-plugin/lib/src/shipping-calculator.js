@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.campusErrandCalculator = void 0;
 exports.bindCampusErrandCalculatorConnection = bindCampusErrandCalculatorConnection;
 exports.readHallBacklog = readHallBacklog;
+exports.quoteDynamicBaseFee = quoteDynamicBaseFee;
 exports.quoteZoneFee = quoteZoneFee;
 const core_1 = require("@vendure/core");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
@@ -57,12 +58,11 @@ exports.campusErrandCalculator = new core_1.ShippingCalculator({
     description: [{ languageCode: core_1.LanguageCode.zh, value: '校园配送分区运费' }],
     args: {},
     calculate: async (ctx, order) => {
-        var _a, _b, _c;
+        var _a, _b, _c, _d;
         const cf = ((_a = order.customFields) !== null && _a !== void 0 ? _a : {});
         const route = cf.fulfillmentRoute;
         const isErrand = cf.orderKind === 'errand';
-        // R2 返回 undefined：快递段运费走店铺普通快递运费（接力费用由 R5 接力单单独承担）
-        if (!isErrand && route !== 'R1' && route !== 'R3')
+        if (!isErrand && route !== 'R1' && route !== 'R2' && route !== 'R3')
             return undefined;
         const conn = connectionRef;
         if (!conn)
@@ -71,13 +71,15 @@ exports.campusErrandCalculator = new core_1.ShippingCalculator({
             where: { channelId: ctx.channelId },
         });
         if (isErrand) {
-            // R5 跑腿费 = 固定起步价 errandBaseFee（后台可配；null=默认 200 分），不按分区、不参与动态计价
-            return {
-                price: (_b = cfg === null || cfg === void 0 ? void 0 : cfg.errandBaseFee) !== null && _b !== void 0 ? _b : 200,
-                priceIncludesTax: true,
-                taxRate: 0,
-                metadata: { calculator: 'campus-errand', pricing: 'errand-base-fee' },
-            };
+            // R5 跑腿费 = 起步价 errandBaseFee（null=默认 200 分），叠加时段高峰/供需/手动倍率，单笔封顶
+            return quoteDynamicBaseFee(conn, ctx.channelId, (_b = cfg === null || cfg === void 0 ? void 0 : cfg.errandBaseFee) !== null && _b !== void 0 ? _b : 200, cfg, 'errand');
+        }
+        if (route === 'R2') {
+            // R2 第三方到校：仅当店铺配置了 thirdPartyBaseFee 才接管顾客侧运费，否则沿用店铺普通快递运费
+            const thirdPartyBase = (_c = cfg === null || cfg === void 0 ? void 0 : cfg.thirdPartyBaseFee) !== null && _c !== void 0 ? _c : null;
+            if (thirdPartyBase == null || thirdPartyBase <= 0)
+                return undefined;
+            return quoteDynamicBaseFee(conn, ctx.channelId, thirdPartyBase, cfg, 'third-party');
         }
         const zones = (await conn.rawConnection.getRepository(campus_zone_entity_1.CampusZone).find({
             where: { channelId: ctx.channelId },
@@ -85,11 +87,34 @@ exports.campusErrandCalculator = new core_1.ShippingCalculator({
         }));
         if (!zones.length)
             return undefined;
-        const zone = (_c = zones.find(z => z.name === cf.campusZone)) !== null && _c !== void 0 ? _c : zones[0];
+        const zone = (_d = zones.find(z => z.name === cf.campusZone)) !== null && _d !== void 0 ? _d : zones[0];
         const fee = await quoteZoneFee(conn, ctx.channelId, zone, cfg, order);
         return fee;
     },
 });
+/**
+ * 非分区基价的动态报价（R5 跑腿起步价、R2 第三方到校基价复用）。
+ * 满额免配送费不参与（门槛仅针对 R1/R3 外卖单），加价规则与分区运费一致。
+ */
+async function quoteDynamicBaseFee(conn, channelId, baseFee, cfg, scope) {
+    var _a;
+    const pricing = (0, dynamic_pricing_1.parseDynamicPricing)((_a = cfg === null || cfg === void 0 ? void 0 : cfg.dynamicPricing) !== null && _a !== void 0 ? _a : null);
+    const backlog = pricing.enabled && pricing.supply ? await readHallBacklog(conn, channelId) : 0;
+    const quote = (0, dynamic_pricing_1.quoteDynamicFee)({ baseFee, config: pricing, at: new Date(), backlog });
+    return {
+        price: quote.price,
+        priceIncludesTax: true,
+        taxRate: 0,
+        metadata: {
+            calculator: 'campus-errand',
+            scope,
+            baseFee: quote.baseFee,
+            addFee: quote.addFee,
+            breakdown: quote.breakdown,
+            pricing: pricing.enabled ? 'dynamic' : 'base-fee',
+        },
+    };
+}
 /** 分区运费报价（改址差额也复用此函数，保证前后口径一致） */
 async function quoteZoneFee(conn, channelId, zone, cfg, order) {
     var _a, _b, _c, _d;

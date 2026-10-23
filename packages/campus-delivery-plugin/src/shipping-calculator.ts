@@ -57,21 +57,21 @@ export const campusErrandCalculator = new ShippingCalculator({
         const cf = (order.customFields ?? {}) as any;
         const route = cf.fulfillmentRoute;
         const isErrand = cf.orderKind === 'errand';
-        // R2 返回 undefined：快递段运费走店铺普通快递运费（接力费用由 R5 接力单单独承担）
-        if (!isErrand && route !== 'R1' && route !== 'R3') return undefined;
+        if (!isErrand && route !== 'R1' && route !== 'R2' && route !== 'R3') return undefined;
         const conn = connectionRef;
         if (!conn) return undefined;
         const cfg = await conn.rawConnection.getRepository(CampusFulfillmentConfig).findOne({
             where: { channelId: ctx.channelId as any },
         });
         if (isErrand) {
-            // R5 跑腿费 = 固定起步价 errandBaseFee（后台可配；null=默认 200 分），不按分区、不参与动态计价
-            return {
-                price: cfg?.errandBaseFee ?? 200,
-                priceIncludesTax: true,
-                taxRate: 0,
-                metadata: { calculator: 'campus-errand', pricing: 'errand-base-fee' },
-            };
+            // R5 跑腿费 = 起步价 errandBaseFee（null=默认 200 分），叠加时段高峰/供需/手动倍率，单笔封顶
+            return quoteDynamicBaseFee(conn, ctx.channelId as ID, cfg?.errandBaseFee ?? 200, cfg, 'errand');
+        }
+        if (route === 'R2') {
+            // R2 第三方到校：仅当店铺配置了 thirdPartyBaseFee 才接管顾客侧运费，否则沿用店铺普通快递运费
+            const thirdPartyBase = cfg?.thirdPartyBaseFee ?? null;
+            if (thirdPartyBase == null || thirdPartyBase <= 0) return undefined;
+            return quoteDynamicBaseFee(conn, ctx.channelId as ID, thirdPartyBase, cfg, 'third-party');
         }
         const zones = (await conn.rawConnection.getRepository(CampusZone).find({
             where: { channelId: ctx.channelId as any },
@@ -83,6 +83,38 @@ export const campusErrandCalculator = new ShippingCalculator({
         return fee;
     },
 });
+
+/** 运费口径：分区配送 / 跑腿起步价 / 第三方到校配基价 */
+export type CampusFeeScope = 'zone' | 'errand' | 'third-party';
+
+/**
+ * 非分区基价的动态报价（R5 跑腿起步价、R2 第三方到校基价复用）。
+ * 满额免配送费不参与（门槛仅针对 R1/R3 外卖单），加价规则与分区运费一致。
+ */
+export async function quoteDynamicBaseFee(
+    conn: TransactionalConnection,
+    channelId: ID,
+    baseFee: number,
+    cfg: CampusFulfillmentConfig | null | undefined,
+    scope: Exclude<CampusFeeScope, 'zone'>,
+) {
+    const pricing = parseDynamicPricing(cfg?.dynamicPricing ?? null);
+    const backlog = pricing.enabled && pricing.supply ? await readHallBacklog(conn, channelId) : 0;
+    const quote = quoteDynamicFee({ baseFee, config: pricing, at: new Date(), backlog });
+    return {
+        price: quote.price,
+        priceIncludesTax: true,
+        taxRate: 0,
+        metadata: {
+            calculator: 'campus-errand',
+            scope,
+            baseFee: quote.baseFee,
+            addFee: quote.addFee,
+            breakdown: quote.breakdown,
+            pricing: pricing.enabled ? 'dynamic' : 'base-fee',
+        },
+    };
+}
 
 /** 分区运费报价（改址差额也复用此函数，保证前后口径一致） */
 export async function quoteZoneFee(

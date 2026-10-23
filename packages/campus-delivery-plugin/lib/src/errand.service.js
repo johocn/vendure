@@ -14,6 +14,7 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@nestjs/core");
 const core_2 = require("@vendure/core");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
+const shipping_calculator_1 = require("./shipping-calculator");
 /** 0 元载体商品 SKU：幂等创建的查重键，C 端 addItemToOrder 用其 variantId 加购物车 */
 exports.ERRAND_BASE_SKU = 'CAMPUS-ERRAND-BASE';
 exports.ERRAND_BASE_SLUG = 'campus-errand-base';
@@ -108,13 +109,14 @@ let ErrandService = class ErrandService {
         }
         return order;
     }
-    /** R5 发单页读起步价：当前渠道 errandBaseFee（null → 默认 200 分） */
+    /** R5 发单页读起步价：起步价 + 当前时段/供需/倍率后的实时价格（null → 默认 200 分） */
     async getErrandBaseFee(ctx) {
         var _a;
         const cfg = await this.connection.getRepository(ctx, campus_fulfillment_config_entity_1.CampusFulfillmentConfig).findOne({
             where: { channelId: ctx.channelId },
         });
-        return (_a = cfg === null || cfg === void 0 ? void 0 : cfg.errandBaseFee) !== null && _a !== void 0 ? _a : 200;
+        const quote = await (0, shipping_calculator_1.quoteDynamicBaseFee)(this.connection, ctx.channelId, (_a = cfg === null || cfg === void 0 ? void 0 : cfg.errandBaseFee) !== null && _a !== void 0 ? _a : 200, cfg, 'errand');
+        return quote.price;
     }
 };
 exports.ErrandService = ErrandService;

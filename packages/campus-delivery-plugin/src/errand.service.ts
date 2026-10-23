@@ -15,6 +15,7 @@ import {
     UserInputError,
 } from '@vendure/core';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
+import { quoteDynamicBaseFee } from './shipping-calculator';
 
 /** 0 元载体商品 SKU：幂等创建的查重键，C 端 addItemToOrder 用其 variantId 加购物车 */
 export const ERRAND_BASE_SKU = 'CAMPUS-ERRAND-BASE';
@@ -116,11 +117,18 @@ export class ErrandService {
         return order;
     }
 
-    /** R5 发单页读起步价：当前渠道 errandBaseFee（null → 默认 200 分） */
+    /** R5 发单页读起步价：起步价 + 当前时段/供需/倍率后的实时价格（null → 默认 200 分） */
     async getErrandBaseFee(ctx: RequestContext): Promise<number> {
         const cfg = await this.connection.getRepository(ctx, CampusFulfillmentConfig).findOne({
             where: { channelId: ctx.channelId as any },
         });
-        return cfg?.errandBaseFee ?? 200;
+        const quote = await quoteDynamicBaseFee(
+            this.connection,
+            ctx.channelId as ID,
+            cfg?.errandBaseFee ?? 200,
+            cfg,
+            'errand',
+        );
+        return quote.price;
     }
 }

@@ -41,6 +41,7 @@ import { InvoiceShopResolver } from './campus-invoice.resolver';
 import { CreateCampusTablesMigration } from './migrations/create-campus-tables';
 import { BackfillWaimaiIndustryMigration } from './migrations/backfill-waimai-industry';
 import { AddRouteDeliveryConfigMigration } from './migrations/add-route-delivery-config';
+import { AddThirdPartyBaseFeeMigration } from './migrations/add-third-party-base-fee';
 import { bindMinOrderConnection, campusMinOrderProcess } from './min-order.process';
 import { PaymentTimeoutAdminResolver } from './payment-timeout-admin.resolver';
 import { PaymentTimeoutAdminService } from './payment-timeout-admin.service';
@@ -88,6 +89,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
     providers: [
         CreateCampusTablesMigration,
         AddRouteDeliveryConfigMigration,
+        AddThirdPartyBaseFeeMigration,
         AddAddressChangePricingMigration,
         AddressChangeService,
         BackfillWaimaiIndustryMigration,
@@ -374,6 +376,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     storePhone: String
                     storeNotice: String
                     errandBaseFee: Int
+                    thirdPartyBaseFee: Int
                     freeShippingThreshold: Int
                     dynamicPricing: String
                     notifyTemplateAccepted: String
@@ -409,6 +412,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     storePhone: String
                     storeNotice: String
                     errandBaseFee: Int
+                    thirdPartyBaseFee: Int
                     freeShippingThreshold: Int
                     dynamicPricing: String
                     notifyTemplateAccepted: String
@@ -566,6 +570,15 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     addFee: Int!
                 }
 
+                type CampusDynamicPricingBaseQuote {
+                    key: String!
+                    configured: Boolean!
+                    baseFee: Int!
+                    price: Int!
+                    addFee: Int!
+                    breakdown: [CampusPricingBreakdownItem!]!
+                }
+
                 """动态计价试算预览：当前供需 + 各分区加价拆解"""
                 type CampusDynamicPricingPreview {
                     at: DateTime!
@@ -577,6 +590,10 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     supply: CampusDynamicPricingSupply
                     peakWindows: [CampusDynamicPricingPeakWindow!]!
                     zones: [CampusDynamicPricingZoneQuote!]!
+                    """R5 跑腿起步价口径（未配置按默认 2 元）"""
+                    errand: CampusDynamicPricingBaseQuote!
+                    """R2 第三方到校基价口径（未配置返回 null，沿用店铺普通快递运费）"""
+                    thirdParty: CampusDynamicPricingBaseQuote
                 }
 
                 type CampusAddressChangeStats {

@@ -106,4 +106,57 @@ describe('campusErrandCalculator', () => {
         expect(res!.price).toBe(300);
         expect(res!.metadata?.freeShipping).toBeUndefined();
     });
+
+    // ===== 动态计价覆盖跑腿/第三方（2026-10-23） =====
+    const dynamicMul = (multiplier: number) => JSON.stringify({
+        enabled: true, peakWindows: [], supply: null, manualMultiplier: multiplier, maxAddFee: 600,
+    });
+
+    it('R5 跑腿单：动态倍率作用于起步价（300 ×1.5 → 450）', async () => {
+        cfgRepo.findOne.mockResolvedValue({ errandBaseFee: 300, dynamicPricing: JSON.parse(dynamicMul(1.5)) });
+        const res = await campusErrandCalculator.calculate(
+            makeCtx(2),
+            { customFields: { orderKind: 'errand' } } as any,
+            [] as any, {} as any,
+        );
+        expect(res!.price).toBe(450);
+        expect(res!.metadata).toMatchObject({ scope: 'errand', baseFee: 300, addFee: 150, pricing: 'dynamic' });
+    });
+
+    it('R5 跑腿单：动态倍率受单笔封顶（300 ×2 → 450，封顶 150）', async () => {
+        cfgRepo.findOne.mockResolvedValue({
+            errandBaseFee: 300,
+            dynamicPricing: { enabled: true, peakWindows: [], supply: null, manualMultiplier: 2, maxAddFee: 150 },
+        });
+        const res = await campusErrandCalculator.calculate(
+            makeCtx(2),
+            { customFields: { orderKind: 'errand' } } as any,
+            [] as any, {} as any,
+        );
+        expect(res!.price).toBe(450);
+        expect(res!.metadata?.addFee).toBe(150);
+    });
+
+    it('R2 第三方到校：配置 thirdPartyBaseFee 后接管运费并叠加动态倍率', async () => {
+        cfgRepo.findOne.mockResolvedValue({ thirdPartyBaseFee: 500, dynamicPricing: JSON.parse(dynamicMul(1.5)) });
+        const res = await campusErrandCalculator.calculate(
+            makeCtx(2),
+            { subTotalWithTax: 999999, customFields: { fulfillmentRoute: 'R2', campusZone: '东区' } } as any,
+            [] as any, {} as any,
+        );
+        expect(res!.price).toBe(750);
+        expect(res!.metadata).toMatchObject({ scope: 'third-party', baseFee: 500, addFee: 250, pricing: 'dynamic' });
+        // 满免门槛仅针对 R1/R3：第三方基价不因商品金额达标归零
+        expect(res!.metadata?.freeShipping).toBeUndefined();
+    });
+
+    it('R2 第三方到校：未配置 thirdPartyBaseFee 返回 undefined（沿用店铺普通快递运费）', async () => {
+        cfgRepo.findOne.mockResolvedValue({ thirdPartyBaseFee: null, dynamicPricing: JSON.parse(dynamicMul(1.5)) });
+        const res = await campusErrandCalculator.calculate(
+            makeCtx(2),
+            { customFields: { fulfillmentRoute: 'R2', campusZone: '东区' } } as any,
+            [] as any, {} as any,
+        );
+        expect(res).toBeUndefined();
+    });
 });

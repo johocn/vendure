@@ -36,6 +36,7 @@ export interface CampusStoreConfigWithChannel {
     storePhone: string | null;
     storeNotice: string | null;
     errandBaseFee: number | null;
+    thirdPartyBaseFee: number | null;
     freeShippingThreshold: number | null;
     notifyTemplateAccepted: string | null;
     notifyTemplateRiderAssigned: string | null;
@@ -148,6 +149,7 @@ export class WaimaiStoreService {
             storePhone?: string | null;
             storeNotice?: string | null;
             errandBaseFee?: number | null;
+            thirdPartyBaseFee?: number | null;
             freeShippingThreshold?: number | null;
             notifyTemplateAccepted?: string | null;
             notifyTemplateRiderAssigned?: string | null;
@@ -180,7 +182,7 @@ export class WaimaiStoreService {
         if (input.printMode != null && !PRINT_MODES.includes(input.printMode as PrintMode)) {
             throw new UserInputError(`不支持的打印模式: ${input.printMode}（仅接受 off/onPaid/onAccepted）`);
         }
-        const negative = (['deliveryMinutes', 'minOrderAmount', 'deliveryFee', 'errandBaseFee', 'freeShippingThreshold'] as const)
+        const negative = (['deliveryMinutes', 'minOrderAmount', 'deliveryFee', 'errandBaseFee', 'thirdPartyBaseFee', 'freeShippingThreshold'] as const)
             .filter(k => input[k] != null && (input[k] as number) < 0);
         if (negative.length) throw new UserInputError(`不能为负数: ${negative.join(', ')}`);
         const timeoutKeys = ['merchantAcceptMinutes', 'externalPushTimeoutMinutes', 'externalFallbackMinutes'] as const;
@@ -262,6 +264,8 @@ export class WaimaiStoreService {
         cfg.storePhone = input.storePhone ?? null;
         cfg.storeNotice = input.storeNotice ?? null;
         cfg.errandBaseFee = input.errandBaseFee ?? null;
+        // 第三方到校基价：未传即保留（旧表单不清空）；传 null 表示不接管顾客侧运费
+        if (input.thirdPartyBaseFee !== undefined) cfg.thirdPartyBaseFee = input.thirdPartyBaseFee ?? null;
         cfg.freeShippingThreshold = input.freeShippingThreshold ?? null;
         cfg.notifyTemplateAccepted = input.notifyTemplateAccepted ?? null;
         cfg.notifyTemplateRiderAssigned = input.notifyTemplateRiderAssigned ?? null;
@@ -372,6 +376,7 @@ export class WaimaiStoreService {
             storePhone: cfg?.storePhone ?? null,
             storeNotice: cfg?.storeNotice ?? null,
             errandBaseFee: cfg?.errandBaseFee ?? null,
+            thirdPartyBaseFee: cfg?.thirdPartyBaseFee ?? null,
             freeShippingThreshold: cfg?.freeShippingThreshold ?? null,
             notifyTemplateAccepted: cfg?.notifyTemplateAccepted ?? null,
             notifyTemplateRiderAssigned: cfg?.notifyTemplateRiderAssigned ?? null,

@@ -40,6 +40,6 @@ export declare class ErrandService {
         buildingId?: string;
         campusZone?: string;
     }): Promise<Order>;
-    /** R5 发单页读起步价：当前渠道 errandBaseFee（null → 默认 200 分） */
+    /** R5 发单页读起步价：起步价 + 当前时段/供需/倍率后的实时价格（null → 默认 200 分） */
     getErrandBaseFee(ctx: RequestContext): Promise<number>;
 }

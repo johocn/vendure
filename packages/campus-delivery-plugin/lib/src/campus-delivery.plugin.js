@@ -41,6 +41,7 @@ const campus_invoice_resolver_1 = require("./campus-invoice.resolver");
 const create_campus_tables_1 = require("./migrations/create-campus-tables");
 const backfill_waimai_industry_1 = require("./migrations/backfill-waimai-industry");
 const add_route_delivery_config_1 = require("./migrations/add-route-delivery-config");
+const add_third_party_base_fee_1 = require("./migrations/add-third-party-base-fee");
 const min_order_process_1 = require("./min-order.process");
 const payment_timeout_admin_resolver_1 = require("./payment-timeout-admin.resolver");
 const payment_timeout_admin_service_1 = require("./payment-timeout-admin.service");
@@ -164,6 +165,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
         providers: [
             create_campus_tables_1.CreateCampusTablesMigration,
             add_route_delivery_config_1.AddRouteDeliveryConfigMigration,
+            add_third_party_base_fee_1.AddThirdPartyBaseFeeMigration,
             add_address_change_pricing_1.AddAddressChangePricingMigration,
             address_change_service_1.AddressChangeService,
             backfill_waimai_industry_1.BackfillWaimaiIndustryMigration,
@@ -450,6 +452,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     storePhone: String
                     storeNotice: String
                     errandBaseFee: Int
+                    thirdPartyBaseFee: Int
                     freeShippingThreshold: Int
                     dynamicPricing: String
                     notifyTemplateAccepted: String
@@ -485,6 +488,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     storePhone: String
                     storeNotice: String
                     errandBaseFee: Int
+                    thirdPartyBaseFee: Int
                     freeShippingThreshold: Int
                     dynamicPricing: String
                     notifyTemplateAccepted: String
@@ -642,6 +646,15 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     addFee: Int!
                 }
 
+                type CampusDynamicPricingBaseQuote {
+                    key: String!
+                    configured: Boolean!
+                    baseFee: Int!
+                    price: Int!
+                    addFee: Int!
+                    breakdown: [CampusPricingBreakdownItem!]!
+                }
+
                 """动态计价试算预览：当前供需 + 各分区加价拆解"""
                 type CampusDynamicPricingPreview {
                     at: DateTime!
@@ -653,6 +666,10 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     supply: CampusDynamicPricingSupply
                     peakWindows: [CampusDynamicPricingPeakWindow!]!
                     zones: [CampusDynamicPricingZoneQuote!]!
+                    """R5 跑腿起步价口径（未配置按默认 2 元）"""
+                    errand: CampusDynamicPricingBaseQuote!
+                    """R2 第三方到校基价口径（未配置返回 null，沿用店铺普通快递运费）"""
+                    thirdParty: CampusDynamicPricingBaseQuote
                 }
 
                 type CampusAddressChangeStats {

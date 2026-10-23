@@ -149,6 +149,21 @@ let AddressChangeService = class AddressChangeService {
         const backlog = pricing.enabled && pricing.supply ? await (0, shipping_calculator_1.readHallBacklog)(this.connection, channelId) : 0;
         const onlineRiders = (await this.capacity.listOnlineRiders(ctx)).length;
         const now = new Date();
+        // 非分区口径：R5 跑腿起步价（未配置按默认 200）、R2 第三方到校基价（未配置不接管）
+        const quoteBase = (key, raw, fallback) => {
+            const base = raw !== null && raw !== void 0 ? raw : fallback;
+            if (base == null)
+                return null;
+            const q = (0, dynamic_pricing_1.quoteDynamicFee)({ baseFee: Number(base), config: pricing, at: now, backlog, onlineRiders });
+            return {
+                key,
+                configured: raw != null,
+                baseFee: q.baseFee,
+                price: q.price,
+                addFee: q.addFee,
+                breakdown: q.breakdown,
+            };
+        };
         return {
             at: now.toISOString(),
             enabled: pricing.enabled,
@@ -156,6 +171,8 @@ let AddressChangeService = class AddressChangeService {
             onlineRiders,
             manualMultiplier: pricing.manualMultiplier,
             maxAddFee: pricing.maxAddFee,
+            errand: quoteBase('errand', cfg === null || cfg === void 0 ? void 0 : cfg.errandBaseFee, 200),
+            thirdParty: quoteBase('third-party', cfg === null || cfg === void 0 ? void 0 : cfg.thirdPartyBaseFee, null),
             supply: pricing.supply
                 ? {
                     backlogThreshold: pricing.supply.backlogThreshold,
