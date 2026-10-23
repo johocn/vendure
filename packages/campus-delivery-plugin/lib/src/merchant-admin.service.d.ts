@@ -24,6 +24,7 @@ export interface MerchantBoardOrder {
     printedAt: Date | null;
     provider: string | null;
     thirdPartyNo: string | null;
+    handoverCode: string | null;
     lines: MerchantBoardLine[];
 }
 export interface MerchantBoard {

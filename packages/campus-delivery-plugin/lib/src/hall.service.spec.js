@@ -55,11 +55,11 @@ const future = (min) => new Date(Date.now() + min * 60000);
         await env.svc.onOrderPlaced({ channelId: 1 }, Object.assign(Object.assign({}, base), { customFields: { fulfillmentRoute: 'R1' } }));
         (0, vitest_1.expect)(env.updates[0].customFields).toMatchObject({ hallStatus: 'pending_merchant', deliveryPlan: 'merchant' });
     });
-    (0, vitest_1.it)('R2 有交接点 → pending_dispatch；快照写外部快递与交接点', async () => {
+    (0, vitest_1.it)('R2 有交接点 → pending_merchant（出餐闸门，出餐后才推外部快递）；快照写外部快递与交接点', async () => {
         const env = makeEnv({ cfg: { channelId: 1, handoverPoints: { R2: { name: '菜鸟驿站', lat: 30.2, lng: 120.2 } } } });
         await env.svc.onOrderPlaced({ channelId: 1 }, Object.assign(Object.assign({}, base), { customFields: { fulfillmentRoute: 'R2' } }));
         (0, vitest_1.expect)(env.updates[0].customFields).toMatchObject({
-            hallStatus: 'pending_dispatch',
+            hallStatus: 'pending_merchant',
             deliveryPlan: 'external_courier',
             handoverMode: 'to_campus_rider',
             handoverPointName: '菜鸟驿站',
@@ -93,12 +93,12 @@ const future = (min) => new Date(Date.now() + min * 60000);
         (0, vitest_1.expect)(env.updates[0].customFields.hallStatus).toBe('open');
         (0, vitest_1.expect)(env.updates[0].customFields.hallEnteredAt).toBeInstanceOf(Date);
     });
-    (0, vitest_1.it)('R1 → pending_merchant；R2 → pending_dispatch；R3 快照 owned → owned_pool', async () => {
+    (0, vitest_1.it)('R1 → pending_merchant；R2 → pending_merchant；R3 快照 owned → owned_pool', async () => {
         const env = makeEnv();
         await env.svc.releaseScheduled({ channelId: 1 }, { id: 9, code: 'S1', customFields: { fulfillmentRoute: 'R1' } }, null);
         (0, vitest_1.expect)(env.updates[0].customFields).toEqual({ hallStatus: 'pending_merchant' });
         await env.svc.releaseScheduled({ channelId: 1 }, { id: 9, code: 'S1', customFields: { fulfillmentRoute: 'R2' } }, null);
-        (0, vitest_1.expect)(env.updates[1].customFields).toEqual({ hallStatus: 'pending_dispatch' });
+        (0, vitest_1.expect)(env.updates[1].customFields).toEqual({ hallStatus: 'pending_merchant' });
         await env.svc.releaseScheduled({ channelId: 1 }, { id: 9, code: 'S1', customFields: { fulfillmentRoute: 'R3', deliveryPlan: 'owned' } }, null);
         (0, vitest_1.expect)(env.updates[2].customFields).toEqual({ hallStatus: 'owned_pool' });
     });

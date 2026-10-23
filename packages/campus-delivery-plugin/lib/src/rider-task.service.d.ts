@@ -46,8 +46,9 @@ export declare class RiderTaskService {
      * 回大厅复用 backToHall（清骑手指派、hallStatus 复位 open），存证写 transferPhotos。
      * 一期转单不扣信用分（规则后续租户可配）。 */
     transfer(ctx: RequestContext, orderId: ID, photos: string[], note?: string): Promise<Order>;
-    /** 开始配送：assigned → in_progress */
-    start(ctx: RequestContext, orderId: ID): Promise<Order>;
+    /** 开始配送：assigned → in_progress。
+     * 两段接力单（R1/R2 第一段已送达交接点并生成了 handoverCode）必须校验交接码，防丢餐扯皮。 */
+    start(ctx: RequestContext, orderId: ID, code?: string): Promise<Order>;
     /** 送达：拍照必传 → delivered → 分成入余额（0 分成单跳过入账） */
     deliver(ctx: RequestContext, orderId: ID, photos: string[], note?: string): Promise<Order>;
     /** 异常上报：不校验状态，标记 exception */

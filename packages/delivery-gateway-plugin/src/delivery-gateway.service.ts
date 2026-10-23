@@ -161,6 +161,29 @@ export class DeliveryGatewayService {
         return result;
     }
 
+    /** 轮询对账：主动查平台运单状态并驱动同一状态机（幂等）。
+     * 终态/Provider 未实现 queryStatus/状态未变化时返回原配送单，不产生额外流转。 */
+    async syncDeliveryStatus(ctx: RequestContext, deliveryOrderId: ID): Promise<DeliveryOrder | null> {
+        const repo = this.connection.getRepository(ctx, DeliveryOrder);
+        const delivery = await repo.findOne({ where: { id: deliveryOrderId as any } });
+        if (!delivery) return null;
+        if (delivery.status === 'delivered' || delivery.status === 'cancelled') return delivery;
+        const provider = this.getProvider(delivery.providerCode);
+        if (!provider?.queryStatus) return delivery;
+        let event: DeliveryStatusEvent | null = null;
+        try {
+            event = await provider.queryStatus(ctx, delivery.thirdPartyNo ?? delivery.code);
+        } catch (e: any) {
+            Logger.warn(`配送单 ${delivery.code} 状态查询失败: ${e?.message ?? e}`, loggerCtx);
+            return delivery;
+        }
+        if (!event || event.status === delivery.status) return delivery;
+        return this.applyStatusEvent(ctx, {
+            ...event,
+            deliveryOrderNo: event.deliveryOrderNo || delivery.thirdPartyNo || delivery.code,
+        });
+    }
+
     /** 处理平台回写（webhook 或 Mock 模拟），驱动状态机 */
     async applyStatusEvent(ctx: RequestContext, event: DeliveryStatusEvent): Promise<DeliveryOrder> {
         const repo = this.connection.getRepository(ctx, DeliveryOrder);

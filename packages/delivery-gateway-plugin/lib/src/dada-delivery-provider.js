@@ -111,6 +111,29 @@ class DadaDeliveryProvider {
             return { success: false, reason: (_c = e === null || e === void 0 ? void 0 : e.message) !== null && _c !== void 0 ? _c : String(e) };
         }
     }
+    /** 主动查询运单状态（轮询对账）：达达状态码复用回调映射；查不到/未识别返回 null */
+    async queryStatus(_ctx, deliveryOrderNo) {
+        var _a, _b, _c, _d;
+        try {
+            const res = await this.request('/api/order/status/query', { order_id: deliveryOrderNo });
+            const result = ((_a = res === null || res === void 0 ? void 0 : res.result) !== null && _a !== void 0 ? _a : {});
+            const status = exports.DADA_STATUS_MAP[Number((_b = result.statusCode) !== null && _b !== void 0 ? _b : -1)];
+            if (!status)
+                return null;
+            const reason = (_c = result.cancelReason) !== null && _c !== void 0 ? _c : result.reason;
+            return {
+                deliveryOrderNo,
+                status,
+                courierName: result.transporterName ? String(result.transporterName) : undefined,
+                courierPhone: result.transporterPhone ? String(result.transporterPhone) : undefined,
+                reason: reason ? String(reason) : undefined,
+            };
+        }
+        catch (e) {
+            core_1.Logger.warn(`达达状态查询失败 ${deliveryOrderNo}: ${(_d = e === null || e === void 0 ? void 0 : e.message) !== null && _d !== void 0 ? _d : e}`, constants_1.loggerCtx);
+            return null;
+        }
+    }
     parseWebhook(payload) {
         var _a, _b, _c, _d, _e;
         // 达达回调业务字段位于 body(JSON 字符串)；兼容平铺 top-level

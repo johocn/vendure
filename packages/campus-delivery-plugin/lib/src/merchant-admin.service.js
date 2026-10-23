@@ -128,10 +128,10 @@ let MerchantAdminService = class MerchantAdminService {
             this.notify.user(ctx, order.id, 'cookingDone');
             return { ok: true };
         }
-        // R2 与 R3-外部：等运营中心推送外部快递
+        // R2 与 R3-外部：等运营中心推送外部快递（assignedAt 标记出餐时刻，未推送超时从此计时）
         if (plan === 'external_courier') {
             await this.hall.updateOrder(ctx, order.id, {
-                customFields: { hallStatus: 'pending_dispatch' },
+                customFields: { hallStatus: 'pending_dispatch', assignedAt: new Date() },
             });
             this.notify.user(ctx, order.id, 'cookingDone');
             return { ok: true };
@@ -258,6 +258,7 @@ let MerchantAdminService = class MerchantAdminService {
                 printedAt: (_g = cf.waimaiPrintedAt) !== null && _g !== void 0 ? _g : null,
                 provider: cf.thirdPartyProvider || null,
                 thirdPartyNo: cf.thirdPartyNo || null,
+                handoverCode: cf.handoverCode || null,
                 lines: ((_h = o.lines) !== null && _h !== void 0 ? _h : []).map(l => {
                     var _a, _b;
                     return ({

@@ -29,6 +29,7 @@ export interface MerchantBoardOrder {
     printedAt: Date | null; // 小票最近打印时间（null=未打）
     provider: string | null; // 外部快递：dada / meituan（运营中心派单后写入）
     thirdPartyNo: string | null; // 外部快递平台单号
+    handoverCode: string | null; // 交接码（第一段送达交接点后生成，骑手取货时核对）
     lines: MerchantBoardLine[];
 }
 
@@ -165,10 +166,10 @@ export class MerchantAdminService {
             return { ok: true };
         }
 
-        // R2 与 R3-外部：等运营中心推送外部快递
+        // R2 与 R3-外部：等运营中心推送外部快递（assignedAt 标记出餐时刻，未推送超时从此计时）
         if (plan === 'external_courier') {
             await this.hall.updateOrder(ctx, order.id as any, {
-                customFields: { hallStatus: 'pending_dispatch' },
+                customFields: { hallStatus: 'pending_dispatch', assignedAt: new Date() },
             } as any);
             this.notify.user(ctx, order.id as any, 'cookingDone');
             return { ok: true };
@@ -298,6 +299,7 @@ export class MerchantAdminService {
                 printedAt: (cf.waimaiPrintedAt as Date | undefined) ?? null,
                 provider: cf.thirdPartyProvider || null,
                 thirdPartyNo: cf.thirdPartyNo || null,
+                handoverCode: cf.handoverCode || null,
                 lines: (o.lines ?? []).map(l => ({
                     name: l.productVariant?.name ?? '',
                     quantity: l.quantity,

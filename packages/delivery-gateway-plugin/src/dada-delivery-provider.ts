@@ -131,6 +131,27 @@ export class DadaDeliveryProvider implements DeliveryProvider {
         }
     }
 
+    /** 主动查询运单状态（轮询对账）：达达状态码复用回调映射；查不到/未识别返回 null */
+    async queryStatus(_ctx: RequestContext, deliveryOrderNo: string): Promise<DeliveryStatusEvent | null> {
+        try {
+            const res = await this.request('/api/order/status/query', { order_id: deliveryOrderNo });
+            const result = (res?.result ?? {}) as Record<string, unknown>;
+            const status = DADA_STATUS_MAP[Number(result.statusCode ?? -1)];
+            if (!status) return null;
+            const reason = result.cancelReason ?? result.reason;
+            return {
+                deliveryOrderNo,
+                status,
+                courierName: result.transporterName ? String(result.transporterName) : undefined,
+                courierPhone: result.transporterPhone ? String(result.transporterPhone) : undefined,
+                reason: reason ? String(reason) : undefined,
+            };
+        } catch (e: any) {
+            Logger.warn(`达达状态查询失败 ${deliveryOrderNo}: ${e?.message ?? e}`, loggerCtx);
+            return null;
+        }
+    }
+
     parseWebhook(payload: any): DeliveryStatusEvent {
         // 达达回调业务字段位于 body(JSON 字符串)；兼容平铺 top-level
         let business = payload;

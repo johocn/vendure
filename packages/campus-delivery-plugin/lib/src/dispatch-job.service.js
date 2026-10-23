@@ -21,6 +21,8 @@ const hall_service_1 = require("./hall.service");
 const third_party_delivery_service_1 = require("./third-party-delivery.service");
 const rider_credit_service_1 = require("./rider-credit.service");
 const NOT_PICKED_TIMEOUT_MIN = 15;
+/** 外部运单轮询对账间隔（防平台回调丢失）：每单 5min 一次主动查询 */
+const EXTERNAL_SYNC_INTERVAL_MIN = 5;
 // F6 单渠道单轮扫描上限：按 createdAt 升序截断（最老的最紧急），超限告警暴露积压
 const SCAN_LIMIT = 200;
 let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
@@ -206,7 +208,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
      * 6) owned_dispatched 超 merchantAutoOpenMinutes 未送达交接点 → 回大厅并清空骑手
      */
     async sweepRouteTimeouts(ctx, cfg, orders, now) {
-        var _a, _b, _c;
+        var _a, _b, _c, _d;
         const minutes = (v, def) => (v !== null && v !== void 0 ? v : def) * 60000;
         const acceptMs = minutes(cfg.merchantAcceptMinutes, 5);
         const deliverMs = minutes(cfg.merchantAutoOpenMinutes, 15);
@@ -215,20 +217,53 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
         for (const o of orders) {
             const cf = o.customFields;
             const route = String((_a = cf.fulfillmentRoute) !== null && _a !== void 0 ? _a : '');
-            // 1) 商户接单超时 → 自营快递接单
-            if (cf.hallStatus === 'pending_merchant' && route === 'R1' && acceptMs > 0
+            // 1) 商户接单超时 → R1 转自营快递；R2 降级传信者到店取餐直送（外部快递无餐可取，不能推）
+            if (cf.hallStatus === 'pending_merchant' && (route === 'R1' || route === 'R2') && acceptMs > 0
                 && now - new Date(o.createdAt).getTime() > acceptMs) {
+                if (route === 'R1') {
+                    await this.hall.updateOrder(ctx, o.id, {
+                        customFields: {
+                            hallStatus: 'owned_dispatched',
+                            deliveryPlan: 'owned',
+                            assignedAt: new Date(),
+                            campusCause: 'merchant_accept_timeout',
+                        },
+                    });
+                    core_2.Logger.warn(`Order ${o.code} merchant accept timeout → owned courier`, 'CampusDispatch');
+                    cf.hallStatus = 'owned_dispatched';
+                    cf.deliveryPlan = 'owned';
+                }
+                else {
+                    await this.hall.updateOrder(ctx, o.id, {
+                        customFields: {
+                            hallStatus: 'open',
+                            hallEnteredAt: new Date(),
+                            deliveryPlan: 'campus_rider',
+                            handoverMode: '',
+                            campusCause: 'merchant_accept_timeout',
+                        },
+                    });
+                    core_2.Logger.warn(`Order ${o.code} merchant accept timeout (R2) → hall`, 'CampusDispatch');
+                    cf.hallStatus = 'open';
+                    cf.deliveryPlan = 'campus_rider';
+                }
+                continue;
+            }
+            // 1b) R2 已接单但久未出餐（出餐闸门卡住）→ 降级传信者到店取餐直送
+            if (cf.hallStatus === 'accepted' && route === 'R2'
+                && now - new Date(o.createdAt).getTime() > deliverMs) {
                 await this.hall.updateOrder(ctx, o.id, {
                     customFields: {
-                        hallStatus: 'owned_dispatched',
-                        deliveryPlan: 'owned',
-                        assignedAt: new Date(),
-                        campusCause: 'merchant_accept_timeout',
+                        hallStatus: 'open',
+                        hallEnteredAt: new Date(),
+                        deliveryPlan: 'campus_rider',
+                        handoverMode: '',
+                        campusCause: 'merchant_cooking_timeout',
                     },
                 });
-                core_2.Logger.warn(`Order ${o.code} merchant accept timeout → owned courier`, 'CampusDispatch');
-                cf.hallStatus = 'owned_dispatched';
-                cf.deliveryPlan = 'owned';
+                core_2.Logger.warn(`Order ${o.code} R2 cooking timeout → hall`, 'CampusDispatch');
+                cf.hallStatus = 'open';
+                cf.deliveryPlan = 'campus_rider';
                 continue;
             }
             // 2) 商户久未送达交接点 → 回大厅（传信者到档口取餐直送）
@@ -247,9 +282,9 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                 cf.hallStatus = 'open';
                 continue;
             }
-            // 3) 迟迟未推送外部快递 → 回大厅
+            // 3) 迟迟未推送外部快递 → 回大厅（R2 出餐闸门后从出餐时刻计时，避免把备餐时间算进超时）
             if (cf.hallStatus === 'pending_dispatch'
-                && now - new Date((_b = cf.thirdPartyDispatchAt) !== null && _b !== void 0 ? _b : o.createdAt).getTime() > pushMs) {
+                && now - new Date((_c = (_b = cf.assignedAt) !== null && _b !== void 0 ? _b : cf.thirdPartyDispatchAt) !== null && _c !== void 0 ? _c : o.createdAt).getTime() > pushMs) {
                 await this.hall.updateOrder(ctx, o.id, {
                     customFields: {
                         hallStatus: 'open',
@@ -266,7 +301,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
             // 4) 已推送但久未接单/取货 → 取消并回落。
             //    平台已接单/取货（accepted/pickup）不按 fallbackMs 取消，避免把在途骑手干掉；
             //    但仍设 3×fallbackMs 硬上限，防止「接单后永不送达」永久占用。
-            const tpState = String((_c = cf.thirdPartyState) !== null && _c !== void 0 ? _c : '');
+            const tpState = String((_d = cf.thirdPartyState) !== null && _d !== void 0 ? _d : '');
             const inDelivery = tpState === 'accepted' || tpState === 'pickup';
             const tpElapsed = cf.thirdPartyDispatchAt
                 ? now - new Date(cf.thirdPartyDispatchAt).getTime()
@@ -343,6 +378,29 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                 });
                 core_2.Logger.warn(`Order ${o.code} owned courier timeout → hall`, 'CampusDispatch');
                 cf.hallStatus = 'open';
+            }
+            // 7) 外部运单轮询对账（防平台回调丢失）：third_party 在途单每 5min 主动查询一次
+            if (cf.hallStatus === 'third_party' && cf.thirdPartyDeliveryOrderId && this.thirdParty) {
+                const lastSync = cf.thirdPartySyncAt ? new Date(cf.thirdPartySyncAt).getTime() : 0;
+                if (now - lastSync > EXTERNAL_SYNC_INTERVAL_MIN * 60000) {
+                    cf.thirdPartySyncAt = new Date();
+                    await this.hall.updateOrder(ctx, o.id, {
+                        customFields: { thirdPartySyncAt: cf.thirdPartySyncAt },
+                    });
+                    try {
+                        const res = await this.thirdParty.syncStatus(ctx, Number(o.id));
+                        if (res === null || res === void 0 ? void 0 : res.state) {
+                            cf.thirdPartyState = res.state;
+                            // 已送达交接点：回调侧已入大厅接力，内存同步防同轮规则误判
+                            if (res.state === 'delivered')
+                                cf.hallStatus = 'open';
+                            core_2.Logger.info(`Order ${o.code} external status synced → ${res.state}`, 'CampusDispatch');
+                        }
+                    }
+                    catch (e) {
+                        core_2.Logger.warn(`Order ${o.code} external status sync failed: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch');
+                    }
+                }
             }
         }
     }

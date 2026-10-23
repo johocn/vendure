@@ -29,6 +29,9 @@ export declare class DeliveryGatewayService {
     findLatestByOrder(ctx: RequestContext, orderId: ID): Promise<DeliveryOrder | null>;
     /** 取消外部快递配送（非终态才真正调用；终态直接返回幂等成功） */
     cancelDelivery(ctx: RequestContext, deliveryOrderId: ID, reason?: string): Promise<DeliveryCancelResult>;
+    /** 轮询对账：主动查平台运单状态并驱动同一状态机（幂等）。
+     * 终态/Provider 未实现 queryStatus/状态未变化时返回原配送单，不产生额外流转。 */
+    syncDeliveryStatus(ctx: RequestContext, deliveryOrderId: ID): Promise<DeliveryOrder | null>;
     /** 处理平台回写（webhook 或 Mock 模拟），驱动状态机 */
     applyStatusEvent(ctx: RequestContext, event: DeliveryStatusEvent): Promise<DeliveryOrder>;
     /** 供 C端 Shop API 查询：返回配送单骑手信息（仅公开字段） */

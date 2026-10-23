@@ -198,6 +198,23 @@ let ThirdPartyDeliveryService = class ThirdPartyDeliveryService {
         }
         return { ok: res.success, reason: res.reason };
     }
+    /** 轮询对账：主动向平台查询运单状态（防外部回调丢失），幂等交给网关状态机。
+     * 已到终态/未推送的订单直接跳过；Provider 未实现 queryStatus 时网关返回 null（静默）。 */
+    async syncStatus(ctx, orderId) {
+        var _a, _b, _c, _d, _e;
+        const order = await this.orderRepo(ctx).findOne({ where: { id: orderId }, relations: ['channels'] });
+        if (!order)
+            return { ok: false, skipped: 'missing' };
+        const cf = order.customFields;
+        if (!cf.thirdPartyDeliveryOrderId)
+            return { ok: false, skipped: 'no-delivery' };
+        if (['delivered', 'cancelled'].includes(String((_a = cf.thirdPartyState) !== null && _a !== void 0 ? _a : ''))) {
+            return { ok: false, skipped: 'final' };
+        }
+        const oCtx = await this.ctxForChannel((_d = (_c = (_b = order.channels) === null || _b === void 0 ? void 0 : _b[0]) === null || _c === void 0 ? void 0 : _c.id) !== null && _d !== void 0 ? _d : ctx.channelId);
+        const delivery = await this.gateway.syncDeliveryStatus(oCtx, Number(cf.thirdPartyDeliveryOrderId));
+        return { ok: !!delivery, state: (_e = delivery === null || delivery === void 0 ? void 0 : delivery.status) !== null && _e !== void 0 ? _e : null };
+    }
     /** 网关回调（由 DeliveryStatusSink 调用） */
     async onDeliveryStatus(ctx, update) {
         var _a, _b, _c, _d, _e;

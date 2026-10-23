@@ -148,6 +148,31 @@ let DeliveryGatewayService = class DeliveryGatewayService {
         }
         return result;
     }
+    /** 轮询对账：主动查平台运单状态并驱动同一状态机（幂等）。
+     * 终态/Provider 未实现 queryStatus/状态未变化时返回原配送单，不产生额外流转。 */
+    async syncDeliveryStatus(ctx, deliveryOrderId) {
+        var _a, _b;
+        const repo = this.connection.getRepository(ctx, delivery_order_entity_1.DeliveryOrder);
+        const delivery = await repo.findOne({ where: { id: deliveryOrderId } });
+        if (!delivery)
+            return null;
+        if (delivery.status === 'delivered' || delivery.status === 'cancelled')
+            return delivery;
+        const provider = this.getProvider(delivery.providerCode);
+        if (!(provider === null || provider === void 0 ? void 0 : provider.queryStatus))
+            return delivery;
+        let event = null;
+        try {
+            event = await provider.queryStatus(ctx, (_a = delivery.thirdPartyNo) !== null && _a !== void 0 ? _a : delivery.code);
+        }
+        catch (e) {
+            core_1.Logger.warn(`配送单 ${delivery.code} 状态查询失败: ${(_b = e === null || e === void 0 ? void 0 : e.message) !== null && _b !== void 0 ? _b : e}`, constants_1.loggerCtx);
+            return delivery;
+        }
+        if (!event || event.status === delivery.status)
+            return delivery;
+        return this.applyStatusEvent(ctx, Object.assign(Object.assign({}, event), { deliveryOrderNo: event.deliveryOrderNo || delivery.thirdPartyNo || delivery.code }));
+    }
     /** 处理平台回写（webhook 或 Mock 模拟），驱动状态机 */
     async applyStatusEvent(ctx, event) {
         var _a, _b, _c, _d, _e, _f, _g, _h;

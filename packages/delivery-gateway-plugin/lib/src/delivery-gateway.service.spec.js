@@ -44,5 +44,29 @@ function makeService(row) {
         (0, vitest_1.expect)(res.success).toBe(true);
         (0, vitest_1.expect)(repo.save).toHaveBeenCalledWith(vitest_1.expect.objectContaining({ status: 'cancelled', reason: '商家关单' }));
     });
+    (0, vitest_1.it)('syncDeliveryStatus 主动查询并驱动状态机（回调丢失兜底）', async () => {
+        const { svc, repo } = makeService({
+            id: 9, code: 'D1', orderId: 100, packageId: 'p1', providerCode: 'dada',
+            thirdPartyNo: 'T1', status: 'accepted',
+        });
+        const sink = { onDeliveryStatus: vitest_1.vi.fn(async () => undefined) };
+        svc.statusSink = sink;
+        const queryStatus = vitest_1.vi.fn(async () => ({ deliveryOrderNo: 'T1', status: 'delivered' }));
+        svc.providers.set('dada', { queryStatus });
+        const res = await svc.syncDeliveryStatus({}, 9);
+        (0, vitest_1.expect)(queryStatus).toHaveBeenCalledWith({}, 'T1');
+        (0, vitest_1.expect)(res === null || res === void 0 ? void 0 : res.status).toBe('delivered');
+        (0, vitest_1.expect)(sink.onDeliveryStatus).toHaveBeenCalledWith({}, vitest_1.expect.objectContaining({ status: 'delivered' }));
+    });
+    (0, vitest_1.it)('syncDeliveryStatus Provider 未实现 queryStatus → 原样返回不改状态', async () => {
+        const { svc, repo } = makeService({
+            id: 9, code: 'D1', orderId: 100, packageId: 'p1', providerCode: 'dada',
+            thirdPartyNo: 'T1', status: 'pending',
+        });
+        svc.providers.set('dada', {});
+        const res = await svc.syncDeliveryStatus({}, 9);
+        (0, vitest_1.expect)(res === null || res === void 0 ? void 0 : res.status).toBe('pending');
+        (0, vitest_1.expect)(repo.save).not.toHaveBeenCalled();
+    });
 });
 //# sourceMappingURL=delivery-gateway.service.spec.js.map

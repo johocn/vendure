@@ -276,6 +276,34 @@ function injectT4Services(svc) {
             }),
         });
     });
+    (0, vitest_1.it)('R2 商户接单超时 → 降级传信者到店取餐直送（open）', async () => {
+        const env = makeEnv({
+            openOrders: [{ id: 24, code: 'R2A', createdAt: minAgo(10), customFields: { hallStatus: 'pending_merchant', fulfillmentRoute: 'R2', deliveryPlan: 'external_courier' } }],
+            cfg: Object.assign(Object.assign({}, cfg), { merchantAcceptMinutes: 5 }),
+        });
+        await env.svc.scan({ channelId: 1 });
+        (0, vitest_1.expect)(env.hallSvc.updateOrder).toHaveBeenCalledWith(vitest_1.expect.anything(), 24, {
+            customFields: vitest_1.expect.objectContaining({
+                hallStatus: 'open',
+                deliveryPlan: 'campus_rider',
+                campusCause: 'merchant_accept_timeout',
+            }),
+        });
+    });
+    (0, vitest_1.it)('R2 已接单但久未出餐 → 降级传信者到店取餐直送（open）', async () => {
+        const env = makeEnv({
+            openOrders: [{ id: 25, code: 'R2C', createdAt: minAgo(40), customFields: { hallStatus: 'accepted', fulfillmentRoute: 'R2', deliveryPlan: 'external_courier' } }],
+            cfg: Object.assign(Object.assign({}, cfg), { merchantAutoOpenMinutes: 15 }),
+        });
+        await env.svc.scan({ channelId: 1 });
+        (0, vitest_1.expect)(env.hallSvc.updateOrder).toHaveBeenCalledWith(vitest_1.expect.anything(), 25, {
+            customFields: vitest_1.expect.objectContaining({
+                hallStatus: 'open',
+                deliveryPlan: 'campus_rider',
+                campusCause: 'merchant_cooking_timeout',
+            }),
+        });
+    });
     (0, vitest_1.it)('R1 商户久未送达交接点 → 回大厅由传信者取餐', async () => {
         const env = makeEnv({
             openOrders: [{ id: 22, code: 'R1D', createdAt: minAgo(40), customFields: { hallStatus: 'merchant_delivering', fulfillmentRoute: 'R1', deliveryPlan: 'merchant', assignedAt: minAgo(20) } }],

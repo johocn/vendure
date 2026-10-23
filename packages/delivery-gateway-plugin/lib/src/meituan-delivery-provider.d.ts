@@ -24,6 +24,8 @@ export declare class MeituanDeliveryProvider implements DeliveryProvider {
     quote(_ctx: RequestContext, req: DeliveryQuoteRequest): Promise<DeliveryQuote>;
     createDelivery(_ctx: RequestContext, req: DeliveryCreateRequest): Promise<DeliveryCreateResult>;
     cancelDelivery(_ctx: RequestContext, deliveryOrderNo: string, reason?: string): Promise<DeliveryCancelResult>;
+    /** 主动查询运单状态（轮询对账）：美团订单详情接口，状态复用回调映射 */
+    queryStatus(_ctx: RequestContext, deliveryOrderNo: string): Promise<DeliveryStatusEvent | null>;
     /** 美团回调字段兼容：order_id / status / courier_name / courier_phone / cancel_reason */
     parseWebhook(payload: unknown): DeliveryStatusEvent;
     verifyCallback(payload: unknown): boolean;

@@ -116,6 +116,28 @@ export class MeituanDeliveryProvider implements DeliveryProvider {
         }
     }
 
+    /** 主动查询运单状态（轮询对账）：美团订单详情接口，状态复用回调映射 */
+    async queryStatus(_ctx: RequestContext, deliveryOrderNo: string): Promise<DeliveryStatusEvent | null> {
+        try {
+            const data: any = await this.http.post('/api/order/query', {
+                shop_id: this.config.shopId,
+                order_id: deliveryOrderNo,
+            });
+            const raw = data?.status ?? data?.order_status;
+            if (raw == null) return null;
+            return {
+                deliveryOrderNo,
+                status: mapMeituanStatus(raw),
+                courierName: data?.courier_name ? String(data.courier_name) : undefined,
+                courierPhone: data?.courier_phone ? String(data.courier_phone) : undefined,
+                reason: data?.cancel_reason ? String(data.cancel_reason) : undefined,
+            };
+        } catch (e: any) {
+            Logger.warn(`美团状态查询失败 ${deliveryOrderNo}: ${e?.message ?? e}`, loggerCtx);
+            return null;
+        }
+    }
+
     /** 美团回调字段兼容：order_id / status / courier_name / courier_phone / cancel_reason */
     parseWebhook(payload: unknown): DeliveryStatusEvent {
         const raw = (payload ?? {}) as Record<string, unknown>;

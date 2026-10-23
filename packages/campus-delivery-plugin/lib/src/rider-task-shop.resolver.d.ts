@@ -26,7 +26,8 @@ export declare class RiderTaskShopResolver {
         etaMinutes: number | null;
         deliveryStatus: any;
     } | null>;
-    campusStartTask(ctx: RequestContext, orderId: ID): Promise<import("@vendure/core").Order>;
+    /** 开始配送：接力单（R1/R2）需传交接码，service 内校验。 */
+    campusStartTask(ctx: RequestContext, orderId: ID, code?: string): Promise<import("@vendure/core").Order>;
     /** 转单回大厅；已取货必须拍照交接。错误语义：未登录/非本人 ForbiddenError，状态/缺照片 UserInputError。 */
     campusTransferTask(ctx: RequestContext, orderId: ID, photos: string[], note?: string): Promise<import("@vendure/core").Order>;
     campusDeliverTask(ctx: RequestContext, orderId: ID, photos: string[], note?: string): Promise<import("@vendure/core").Order>;

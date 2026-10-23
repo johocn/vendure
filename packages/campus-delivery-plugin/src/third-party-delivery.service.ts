@@ -27,6 +27,7 @@ export function nextHallStateAfterHandover(handover: string): { hallStatus: stri
 interface GatewayLike {
     createDelivery(ctx: RequestContext, input: any): Promise<any>;
     cancelDelivery(ctx: RequestContext, deliveryOrderId: ID, reason?: string): Promise<{ success: boolean; reason?: string }>;
+    syncDeliveryStatus(ctx: RequestContext, deliveryOrderId: ID): Promise<{ status?: string } | null>;
     registerStatusSink(sink: unknown): void;
 }
 
@@ -209,6 +210,21 @@ export class ThirdPartyDeliveryService implements OnApplicationBootstrap {
             await this.hall.updateOrder(oCtx, orderId, { customFields: patch } as any);
         }
         return { ok: res.success, reason: res.reason };
+    }
+
+    /** 轮询对账：主动向平台查询运单状态（防外部回调丢失），幂等交给网关状态机。
+     * 已到终态/未推送的订单直接跳过；Provider 未实现 queryStatus 时网关返回 null（静默）。 */
+    async syncStatus(ctx: RequestContext, orderId: number) {
+        const order = await this.orderRepo(ctx).findOne({ where: { id: orderId as any }, relations: ['channels'] });
+        if (!order) return { ok: false, skipped: 'missing' };
+        const cf = order.customFields as any;
+        if (!cf.thirdPartyDeliveryOrderId) return { ok: false, skipped: 'no-delivery' };
+        if (['delivered', 'cancelled'].includes(String(cf.thirdPartyState ?? ''))) {
+            return { ok: false, skipped: 'final' };
+        }
+        const oCtx = await this.ctxForChannel(order.channels?.[0]?.id ?? ctx.channelId);
+        const delivery = await this.gateway.syncDeliveryStatus(oCtx, Number(cf.thirdPartyDeliveryOrderId));
+        return { ok: !!delivery, state: delivery?.status ?? null };
     }
 
     /** 网关回调（由 DeliveryStatusSink 调用） */

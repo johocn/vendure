@@ -50,4 +50,32 @@ describe('DeliveryGatewayService', () => {
         expect(res.success).toBe(true);
         expect(repo.save).toHaveBeenCalledWith(expect.objectContaining({ status: 'cancelled', reason: '商家关单' }));
     });
+
+    it('syncDeliveryStatus 主动查询并驱动状态机（回调丢失兜底）', async () => {
+        const { svc, repo } = makeService({
+            id: 9, code: 'D1', orderId: 100, packageId: 'p1', providerCode: 'dada',
+            thirdPartyNo: 'T1', status: 'accepted',
+        });
+        const sink = { onDeliveryStatus: vi.fn(async () => undefined) };
+        (svc as any).statusSink = sink;
+        const queryStatus = vi.fn(async () => ({ deliveryOrderNo: 'T1', status: 'delivered' }));
+        (svc as any).providers.set('dada', { queryStatus });
+
+        const res = await svc.syncDeliveryStatus({} as any, 9);
+
+        expect(queryStatus).toHaveBeenCalledWith({} as any, 'T1');
+        expect(res?.status).toBe('delivered');
+        expect(sink.onDeliveryStatus).toHaveBeenCalledWith({} as any, expect.objectContaining({ status: 'delivered' }));
+    });
+
+    it('syncDeliveryStatus Provider 未实现 queryStatus → 原样返回不改状态', async () => {
+        const { svc, repo } = makeService({
+            id: 9, code: 'D1', orderId: 100, packageId: 'p1', providerCode: 'dada',
+            thirdPartyNo: 'T1', status: 'pending',
+        });
+        (svc as any).providers.set('dada', {});
+        const res = await svc.syncDeliveryStatus({} as any, 9);
+        expect(res?.status).toBe('pending');
+        expect(repo.save).not.toHaveBeenCalled();
+    });
 });

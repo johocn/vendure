@@ -29,6 +29,18 @@ const assigned = { id: 10, code: 'A1', shipping: 300, customFields: { deliverySt
         await svc.start({ channelId: 1 }, 10);
         (0, vitest_1.expect)(repo.update).toHaveBeenCalledWith(10, vitest_1.expect.objectContaining({ customFields: { deliveryStatus: 'in_progress' } }));
     });
+    (0, vitest_1.it)('接力单交接码正确 → 可开始配送', async () => {
+        const relay = Object.assign(Object.assign({}, assigned), { customFields: Object.assign(Object.assign({}, assigned.customFields), { handoverCode: '1234' }) });
+        const { svc, repo } = make(relay);
+        await svc.start({ channelId: 1 }, 10, '1234');
+        (0, vitest_1.expect)(repo.update).toHaveBeenCalledWith(10, vitest_1.expect.objectContaining({ customFields: { deliveryStatus: 'in_progress' } }));
+    });
+    (0, vitest_1.it)('接力单交接码错误/缺失 → 拒绝开始配送', async () => {
+        const relay = Object.assign(Object.assign({}, assigned), { customFields: Object.assign(Object.assign({}, assigned.customFields), { handoverCode: '1234' }) });
+        const { svc } = make(relay);
+        await (0, vitest_1.expect)(svc.start({ channelId: 1 }, 10, '9999')).rejects.toThrow('交接码不正确');
+        await (0, vitest_1.expect)(svc.start({ channelId: 1 }, 10)).rejects.toThrow('交接码不正确');
+    });
     (0, vitest_1.it)('delivered 需照片且分成=配送费+小费', async () => {
         const inProg = Object.assign(Object.assign({}, assigned), { customFields: Object.assign(Object.assign({}, assigned.customFields), { deliveryStatus: 'in_progress' }) });
         const { svc, repo, saved } = make(inProg, { riderCommissionRate: 100 });

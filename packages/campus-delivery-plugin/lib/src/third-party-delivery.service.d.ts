@@ -47,6 +47,17 @@ export declare class ThirdPartyDeliveryService implements OnApplicationBootstrap
         reason: string | undefined;
         skipped?: undefined;
     }>;
+    /** 轮询对账：主动向平台查询运单状态（防外部回调丢失），幂等交给网关状态机。
+     * 已到终态/未推送的订单直接跳过；Provider 未实现 queryStatus 时网关返回 null（静默）。 */
+    syncStatus(ctx: RequestContext, orderId: number): Promise<{
+        ok: boolean;
+        skipped: string;
+        state?: undefined;
+    } | {
+        ok: boolean;
+        state: string | null;
+        skipped?: undefined;
+    }>;
     /** 网关回调（由 DeliveryStatusSink 调用） */
     onDeliveryStatus(ctx: RequestContext, update: {
         orderId: ID;

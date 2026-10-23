@@ -96,6 +96,30 @@ class MeituanDeliveryProvider {
             return { success: false, reason: (_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : String(e) };
         }
     }
+    /** 主动查询运单状态（轮询对账）：美团订单详情接口，状态复用回调映射 */
+    async queryStatus(_ctx, deliveryOrderNo) {
+        var _a, _b;
+        try {
+            const data = await this.http.post('/api/order/query', {
+                shop_id: this.config.shopId,
+                order_id: deliveryOrderNo,
+            });
+            const raw = (_a = data === null || data === void 0 ? void 0 : data.status) !== null && _a !== void 0 ? _a : data === null || data === void 0 ? void 0 : data.order_status;
+            if (raw == null)
+                return null;
+            return {
+                deliveryOrderNo,
+                status: mapMeituanStatus(raw),
+                courierName: (data === null || data === void 0 ? void 0 : data.courier_name) ? String(data.courier_name) : undefined,
+                courierPhone: (data === null || data === void 0 ? void 0 : data.courier_phone) ? String(data.courier_phone) : undefined,
+                reason: (data === null || data === void 0 ? void 0 : data.cancel_reason) ? String(data.cancel_reason) : undefined,
+            };
+        }
+        catch (e) {
+            core_1.Logger.warn(`美团状态查询失败 ${deliveryOrderNo}: ${(_b = e === null || e === void 0 ? void 0 : e.message) !== null && _b !== void 0 ? _b : e}`, constants_1.loggerCtx);
+            return null;
+        }
+    }
     /** 美团回调字段兼容：order_id / status / courier_name / courier_phone / cancel_reason */
     parseWebhook(payload) {
         var _a, _b;

@@ -23,6 +23,8 @@ export declare class DadaDeliveryProvider implements DeliveryProvider {
     quote(_ctx: RequestContext, req: DeliveryQuoteRequest): Promise<DeliveryQuote>;
     createDelivery(_ctx: RequestContext, req: DeliveryCreateRequest): Promise<DeliveryCreateResult>;
     cancelDelivery(_ctx: RequestContext, deliveryOrderNo: string, reason?: string): Promise<DeliveryCancelResult>;
+    /** 主动查询运单状态（轮询对账）：达达状态码复用回调映射；查不到/未识别返回 null */
+    queryStatus(_ctx: RequestContext, deliveryOrderNo: string): Promise<DeliveryStatusEvent | null>;
     parseWebhook(payload: any): DeliveryStatusEvent;
     private request;
     private estimateWeight;

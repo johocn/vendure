@@ -57,6 +57,8 @@ export interface DeliveryProvider {
     createDelivery(ctx: RequestContext, req: DeliveryCreateRequest): Promise<DeliveryCreateResult>;
     cancelDelivery(ctx: RequestContext, deliveryOrderNo: string, reason?: string): Promise<DeliveryCancelResult>;
     parseWebhook(payload: unknown): DeliveryStatusEvent;
+    /** 可选：主动查询运单状态（轮询对账，防回调丢失）；未实现 = 跳过对账 */
+    queryStatus?(ctx: RequestContext, deliveryOrderNo: string): Promise<DeliveryStatusEvent | null>;
     /** 校验平台回调签名（未实现则不校验） */
     verifyCallback?(payload: unknown): boolean;
 }

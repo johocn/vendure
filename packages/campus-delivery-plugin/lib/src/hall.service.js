@@ -85,10 +85,10 @@ let HallService = HallService_1 = class HallService {
             core_2.Logger.info(`Order ${order.code} awaiting merchant (R1/${snapshot.deliveryPlan})`, 'CampusHall');
             return;
         }
-        // R2：固定外部快递，等运营中心选择提供方推送
+        // R2：固定外部快递，但必须先经商户接单/出餐（出餐闸门），cookingDone 后才推送外部快递
         if (route === 'R2' && !degrade) {
-            await update({ hallStatus: deferred ? 'scheduled' : 'pending_dispatch' });
-            core_2.Logger.info(`Order ${order.code} awaiting external push (R2)`, 'CampusHall');
+            await update({ hallStatus: deferred ? 'scheduled' : 'pending_merchant' });
+            core_2.Logger.info(`Order ${order.code} awaiting merchant (R2 cooking gate)`, 'CampusHall');
             return;
         }
         // R3：一段到底，按第一段进入对应池
@@ -123,7 +123,9 @@ let HallService = HallService_1 = class HallService {
         let next = 'open';
         if (route === 'R1')
             next = 'pending_merchant';
-        else if (route === 'R2' || cf.deliveryPlan === 'external_courier')
+        else if (route === 'R2')
+            next = 'pending_merchant'; // 出餐闸门：放量后先等商户接单/出餐
+        else if (cf.deliveryPlan === 'external_courier')
             next = 'pending_dispatch';
         else if (cf.deliveryPlan === 'owned')
             next = 'owned_pool';
@@ -138,7 +140,8 @@ let HallService = HallService_1 = class HallService {
         if (next === 'open')
             this.notifyRiders(ctx, order);
     }
-    /** 第一段交接完成：订单进校园抢单大厅（R1/R2 接力上楼） */
+    /** 第一段交接完成：订单进校园抢单大厅（R1/R2 接力上楼）。
+     * 同时生成 4 位交接码（第二段骑手取货时校验，防丢餐扯皮），返回码值供调用方通知用户。 */
     async enterHallForHandover(ctx, orderId, cause) {
         const order = await this.connection.getRepository(ctx, core_2.Order).findOne({
             where: { id: orderId },
@@ -146,8 +149,9 @@ let HallService = HallService_1 = class HallService {
         });
         if (!order) {
             core_2.Logger.warn(`enterHallForHandover 订单不存在 #${orderId}`, 'CampusHall');
-            return;
+            return '';
         }
+        const handoverCode = String(Math.floor(1000 + Math.random() * 9000));
         await this.updateOrder(ctx, orderId, {
             customFields: {
                 hallStatus: 'open',
@@ -156,10 +160,13 @@ let HallService = HallService_1 = class HallService {
                 assignedAt: null,
                 deliveryStaffId: null,
                 campusCause: cause,
+                handoverCode,
+                handoverCodeAt: new Date(),
             },
         });
         this.notifyRiders(ctx, order);
-        core_2.Logger.info(`订单 ${order.code} 交接完成进入大厅 (${cause})`, 'CampusHall');
+        core_2.Logger.info(`订单 ${order.code} 交接完成进入大厅 (${cause})，交接码 ${handoverCode}`, 'CampusHall');
+        return handoverCode;
     }
     /** 回大厅：清骑手指派字段，hallStatus 复位 open（拒单/超时改派共用） */
     async backToHall(ctx, orderId) {

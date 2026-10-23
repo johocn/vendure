@@ -212,6 +212,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     printedAt: DateTime
                     provider: String
                     thirdPartyNo: String
+                    handoverCode: String
                     lines: [MerchantBoardLine!]!
                 }
 

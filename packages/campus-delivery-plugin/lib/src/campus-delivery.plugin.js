@@ -288,6 +288,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     printedAt: DateTime
                     provider: String
                     thirdPartyNo: String
+                    handoverCode: String
                     lines: [MerchantBoardLine!]!
                 }
 

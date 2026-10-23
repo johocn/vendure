@@ -19,9 +19,14 @@ export class RiderTaskShopResolver {
         return this.riderTaskService.orderRider(ctx, orderId);
     }
 
+    /** 开始配送：接力单（R1/R2）需传交接码，service 内校验。 */
     @Mutation()
-    async campusStartTask(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID) {
-        return this.riderTaskService.start(ctx, orderId);
+    async campusStartTask(
+        @Ctx() ctx: RequestContext,
+        @Args('orderId') orderId: ID,
+        @Args('code', { nullable: true }) code?: string,
+    ) {
+        return this.riderTaskService.start(ctx, orderId, code);
     }
 
     /** 转单回大厅；已取货必须拍照交接。错误语义：未登录/非本人 ForbiddenError，状态/缺照片 UserInputError。 */

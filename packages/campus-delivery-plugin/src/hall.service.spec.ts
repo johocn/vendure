@@ -64,11 +64,11 @@ describe('HallService.onOrderPlaced 预约闸门', () => {
         expect(env.updates[0].customFields).toMatchObject({ hallStatus: 'pending_merchant', deliveryPlan: 'merchant' });
     });
 
-    it('R2 有交接点 → pending_dispatch；快照写外部快递与交接点', async () => {
+    it('R2 有交接点 → pending_merchant（出餐闸门，出餐后才推外部快递）；快照写外部快递与交接点', async () => {
         const env = makeEnv({ cfg: { channelId: 1, handoverPoints: { R2: { name: '菜鸟驿站', lat: 30.2, lng: 120.2 } } } });
         await env.svc.onOrderPlaced({ channelId: 1 } as any, { ...base, customFields: { fulfillmentRoute: 'R2' } } as any);
         expect(env.updates[0].customFields).toMatchObject({
-            hallStatus: 'pending_dispatch',
+            hallStatus: 'pending_merchant',
             deliveryPlan: 'external_courier',
             handoverMode: 'to_campus_rider',
             handoverPointName: '菜鸟驿站',
@@ -108,14 +108,14 @@ describe('HallService.releaseScheduled', () => {
         expect(env.updates[0].customFields.hallEnteredAt).toBeInstanceOf(Date);
     });
 
-    it('R1 → pending_merchant；R2 → pending_dispatch；R3 快照 owned → owned_pool', async () => {
+    it('R1 → pending_merchant；R2 → pending_merchant；R3 快照 owned → owned_pool', async () => {
         const env = makeEnv();
         await env.svc.releaseScheduled({ channelId: 1 } as any,
             { id: 9, code: 'S1', customFields: { fulfillmentRoute: 'R1' } } as any, null);
         expect(env.updates[0].customFields).toEqual({ hallStatus: 'pending_merchant' });
         await env.svc.releaseScheduled({ channelId: 1 } as any,
             { id: 9, code: 'S1', customFields: { fulfillmentRoute: 'R2' } } as any, null);
-        expect(env.updates[1].customFields).toEqual({ hallStatus: 'pending_dispatch' });
+        expect(env.updates[1].customFields).toEqual({ hallStatus: 'pending_merchant' });
         await env.svc.releaseScheduled({ channelId: 1 } as any,
             { id: 9, code: 'S1', customFields: { fulfillmentRoute: 'R3', deliveryPlan: 'owned' } } as any, null);
         expect(env.updates[2].customFields).toEqual({ hallStatus: 'owned_pool' });

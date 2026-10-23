@@ -31,6 +31,18 @@ describe('RiderTaskService', () => {
         await svc.start({ channelId: 1 } as any, 10 as any);
         expect(repo.update).toHaveBeenCalledWith(10, expect.objectContaining({ customFields: { deliveryStatus: 'in_progress' } }));
     });
+    it('接力单交接码正确 → 可开始配送', async () => {
+        const relay = { ...assigned, customFields: { ...assigned.customFields, handoverCode: '1234' } };
+        const { svc, repo } = make(relay);
+        await svc.start({ channelId: 1 } as any, 10 as any, '1234');
+        expect(repo.update).toHaveBeenCalledWith(10, expect.objectContaining({ customFields: { deliveryStatus: 'in_progress' } }));
+    });
+    it('接力单交接码错误/缺失 → 拒绝开始配送', async () => {
+        const relay = { ...assigned, customFields: { ...assigned.customFields, handoverCode: '1234' } };
+        const { svc } = make(relay);
+        await expect(svc.start({ channelId: 1 } as any, 10 as any, '9999')).rejects.toThrow('交接码不正确');
+        await expect(svc.start({ channelId: 1 } as any, 10 as any)).rejects.toThrow('交接码不正确');
+    });
     it('delivered 需照片且分成=配送费+小费', async () => {
         const inProg = { ...assigned, customFields: { ...assigned.customFields, deliveryStatus: 'in_progress' } };
         const { svc, repo, saved } = make(inProg, { riderCommissionRate: 100 });

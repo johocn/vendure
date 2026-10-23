@@ -30,8 +30,9 @@ let RiderTaskShopResolver = class RiderTaskShopResolver {
     async campusOrderRider(ctx, orderId) {
         return this.riderTaskService.orderRider(ctx, orderId);
     }
-    async campusStartTask(ctx, orderId) {
-        return this.riderTaskService.start(ctx, orderId);
+    /** 开始配送：接力单（R1/R2）需传交接码，service 内校验。 */
+    async campusStartTask(ctx, orderId, code) {
+        return this.riderTaskService.start(ctx, orderId, code);
     }
     /** 转单回大厅；已取货必须拍照交接。错误语义：未登录/非本人 ForbiddenError，状态/缺照片 UserInputError。 */
     async campusTransferTask(ctx, orderId, photos, note) {
@@ -77,8 +78,9 @@ __decorate([
     (0, graphql_1.Mutation)(),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('orderId')),
+    __param(2, (0, graphql_1.Args)('code', { nullable: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
     __metadata("design:returntype", Promise)
 ], RiderTaskShopResolver.prototype, "campusStartTask", null);
 __decorate([

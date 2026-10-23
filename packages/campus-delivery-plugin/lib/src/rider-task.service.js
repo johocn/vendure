@@ -187,9 +187,15 @@ let RiderTaskService = class RiderTaskService {
         }
         return order;
     }
-    /** 开始配送：assigned → in_progress */
-    async start(ctx, orderId) {
+    /** 开始配送：assigned → in_progress。
+     * 两段接力单（R1/R2 第一段已送达交接点并生成了 handoverCode）必须校验交接码，防丢餐扯皮。 */
+    async start(ctx, orderId, code) {
+        var _a, _b;
         const order = await this.assertOwner(ctx, orderId, 'assigned');
+        const expected = String((_b = (_a = order.customFields) === null || _a === void 0 ? void 0 : _a.handoverCode) !== null && _b !== void 0 ? _b : '');
+        if (expected && String(code !== null && code !== void 0 ? code : '').trim() !== expected) {
+            throw new core_1.UserInputError('交接码不正确，请与交接点核对后重试');
+        }
         await this.connection
             .getRepository(ctx, core_1.Order)
             .update(order.id, { customFields: { deliveryStatus: 'in_progress' } });
