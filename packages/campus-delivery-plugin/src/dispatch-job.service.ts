@@ -142,8 +142,12 @@ export class DispatchJobService implements OnApplicationShutdown {
             });
             for (const o of toRelease) {
                 await this.hall.releaseScheduled(ctx, o, cfg);
-                // 内存同步防同轮 T2/T4 误处理（释放即离开 scheduled 态）
-                (o.customFields as any).hallStatus = cfg.merchantConfirmEnabled ? 'pending_merchant' : 'open';
+                // 内存同步防同轮 T2/T4 误处理（释放即离开 scheduled 态；R1/R2 出口均为待接单）
+                const cf = o.customFields as any;
+                const route = String(cf.fulfillmentRoute ?? '');
+                cf.hallStatus =
+                    route === 'R1' || route === 'R2' ? 'pending_merchant'
+                    : cfg.merchantConfirmEnabled ? 'pending_merchant' : 'open';
             }
             // 路线兜底（R1/R2/R3）：商户接单超时转自营、送达超时回落大厅、外部快递推送/接单超时
             await this.sweepRouteTimeouts(ctx, cfg, orders, now);

@@ -92,6 +92,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
      * （T4 退款扫描在 Task 8 追加到此方法）
      */
     async scan(ctx) {
+        var _a;
         const repo = this.connection.getRepository(ctx, core_2.Order);
         const orders = await repo.createQueryBuilder('order')
             .leftJoin('order.channels', 'channel')
@@ -130,8 +131,12 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
             });
             for (const o of toRelease) {
                 await this.hall.releaseScheduled(ctx, o, cfg);
-                // 内存同步防同轮 T2/T4 误处理（释放即离开 scheduled 态）
-                o.customFields.hallStatus = cfg.merchantConfirmEnabled ? 'pending_merchant' : 'open';
+                // 内存同步防同轮 T2/T4 误处理（释放即离开 scheduled 态；R1/R2 出口均为待接单）
+                const cf = o.customFields;
+                const route = String((_a = cf.fulfillmentRoute) !== null && _a !== void 0 ? _a : '');
+                cf.hallStatus =
+                    route === 'R1' || route === 'R2' ? 'pending_merchant'
+                        : cfg.merchantConfirmEnabled ? 'pending_merchant' : 'open';
             }
             // 路线兜底（R1/R2/R3）：商户接单超时转自营、送达超时回落大厅、外部快递推送/接单超时
             await this.sweepRouteTimeouts(ctx, cfg, orders, now);
