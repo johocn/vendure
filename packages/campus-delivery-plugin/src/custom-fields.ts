@@ -6,6 +6,7 @@ export const campusCustomFields: CustomFields = {
         { name: 'orderKind', type: 'string', nullable: true, defaultValue: 'normal' },
         { name: 'buildingId', type: 'string', nullable: true },
         { name: 'campusZone', type: 'string', nullable: true },
+        { name: 'deliveryDetail', type: 'string', nullable: true }, // 改址后的门牌/详细地址（覆盖下单地址展示）
         { name: 'hallStatus', type: 'string', nullable: true }, // open/grabbed
         { name: 'hallEnteredAt', type: 'datetime', nullable: true },
         { name: 'riderEarning', type: 'int', nullable: true },

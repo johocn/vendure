@@ -57,6 +57,8 @@ export class CampusFulfillmentConfig extends VendureEntity {
     @Column({ type: 'int', default: 20 }) externalFallbackMinutes: number;
     @Column({ nullable: true, type: 'float' }) storeLat: number | null; // 档口/门店取货点纬度
     @Column({ nullable: true, type: 'float' }) storeLng: number | null; // 档口/门店取货点经度
+    /** 动态配送计价配置（时段高峰/供需/手动倍率/封顶），null=关闭，回退分区固定运费 */
+    @Column({ type: 'simple-json', nullable: true }) dynamicPricing: Record<string, any> | null;
     constructor(input?: DeepPartial<CampusFulfillmentConfig>) {
         super(input);
     }

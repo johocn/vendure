@@ -1,6 +1,7 @@
 import { ID, LanguageCode, Order, ShippingCalculator, TransactionalConnection } from '@vendure/core';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CampusZone } from './campus-zone.entity';
+import { parseDynamicPricing, quoteDynamicFee } from './dynamic-pricing';
 
 /**
  * 校园单运费 calculator：R5 跑腿单固定起步价（errandBaseFee）+ R1/R3 分区运费（zone.fee）。
@@ -13,12 +14,38 @@ import { CampusZone } from './campus-zone.entity';
  * 渠道取 ctx.channelId（Order 无标量 channelId 列）；zone 按名字匹配本渠道分区，
  * 匹配不到兜底渠道第一个分区；渠道无分区时不计运费（undefined）。
  *
+ * 动态计价（2026-10-23）：分区基价 + 时段高峰 + 供需（大厅积压）+ 手动倍率，单笔封顶；
+ * 满额免配送费优先（达标直接 0）。只影响结算时实时报价，已支付订单运费不变。
+ *
  * connection 由 plugin onApplicationBootstrap 注入（calculate 闭包无 injector 可用）。
  */
 let connectionRef: TransactionalConnection | null = null;
 
 export function bindCampusErrandCalculatorConnection(conn: TransactionalConnection) {
     connectionRef = conn;
+}
+
+/** 供需因子：大厅积压单量，按渠道缓存 30s（结算页会连续多次调用 calculator） */
+const backlogCache = new Map<string, { at: number; value: number }>();
+const BACKLOG_TTL = 30_000;
+
+async function readBacklog(conn: TransactionalConnection, channelId: ID): Promise<number> {
+    const key = String(channelId);
+    const hit = backlogCache.get(key);
+    if (hit && Date.now() - hit.at < BACKLOG_TTL) return hit.value;
+    try {
+        const value = await conn.rawConnection
+            .getRepository(Order)
+            .createQueryBuilder('order')
+            .innerJoin('order.channels', 'channel', 'channel.id = :cid', { cid: channelId })
+            .where('order.customFields.hallStatus = :open', { open: 'open' })
+            .andWhere('order.state != :cancelled', { cancelled: 'Cancelled' })
+            .getCount();
+        backlogCache.set(key, { at: Date.now(), value });
+        return value;
+    } catch {
+        return 0;
+    }
 }
 
 export const campusErrandCalculator = new ShippingCalculator({
@@ -33,11 +60,11 @@ export const campusErrandCalculator = new ShippingCalculator({
         if (!isErrand && route !== 'R1' && route !== 'R3') return undefined;
         const conn = connectionRef;
         if (!conn) return undefined;
+        const cfg = await conn.rawConnection.getRepository(CampusFulfillmentConfig).findOne({
+            where: { channelId: ctx.channelId as any },
+        });
         if (isErrand) {
-            // R5 跑腿费 = 固定起步价 errandBaseFee（后台可配；null=默认 200 分），不按分区
-            const cfg = await conn.rawConnection.getRepository(CampusFulfillmentConfig).findOne({
-                where: { channelId: ctx.channelId as any },
-            });
+            // R5 跑腿费 = 固定起步价 errandBaseFee（后台可配；null=默认 200 分），不按分区、不参与动态计价
             return {
                 price: cfg?.errandBaseFee ?? 200,
                 priceIncludesTax: true,
@@ -51,24 +78,44 @@ export const campusErrandCalculator = new ShippingCalculator({
         })) as Array<CampusZone & { id: ID }>;
         if (!zones.length) return undefined;
         const zone = zones.find(z => z.name === cf.campusZone) ?? zones[0];
-        // 满 X 元免配送费（plan 3.2）：门店级门槛，达标即运费 0（仅 R1/R3 外卖单；跑腿单不参与）
-        const threshold = (await conn.rawConnection.getRepository(CampusFulfillmentConfig).findOne({
-            where: { channelId: ctx.channelId as any },
-        }))?.freeShippingThreshold ?? null;
-        const goods = order.subTotalWithTax ?? order.subTotal ?? 0;
-        if (threshold != null && threshold > 0 && goods >= threshold) {
-            return {
-                price: 0,
-                priceIncludesTax: true,
-                taxRate: 0,
-                metadata: { zoneName: zone.name, calculator: 'campus-errand', freeShipping: true, originalPrice: zone.fee, threshold },
-            };
-        }
-        return {
-            price: zone.fee,
-            priceIncludesTax: true,
-            taxRate: 0,
-            metadata: { zoneName: zone.name, calculator: 'campus-errand' },
-        };
+        const fee = await quoteZoneFee(conn, ctx.channelId as ID, zone, cfg, order);
+        return fee;
     },
 });
+
+/** 分区运费报价（改址差额也复用此函数，保证前后口径一致） */
+export async function quoteZoneFee(
+    conn: TransactionalConnection,
+    channelId: ID,
+    zone: { name: string; fee: number },
+    cfg: CampusFulfillmentConfig | null | undefined,
+    order: { subTotalWithTax?: number; subTotal?: number },
+) {
+    // 满 X 元免配送费（plan 3.2）：门店级门槛，达标即运费 0（仅 R1/R3 外卖单；跑腿单不参与）
+    const threshold = cfg?.freeShippingThreshold ?? null;
+    const goods = order.subTotalWithTax ?? order.subTotal ?? 0;
+    if (threshold != null && threshold > 0 && goods >= threshold) {
+        return {
+            price: 0,
+            priceIncludesTax: true,
+            taxRate: 0,
+            metadata: { zoneName: zone.name, calculator: 'campus-errand', freeShipping: true, originalPrice: zone.fee, threshold },
+        };
+    }
+    const pricing = parseDynamicPricing(cfg?.dynamicPricing ?? null);
+    const backlog = pricing.enabled && pricing.supply ? await readBacklog(conn, channelId) : 0;
+    const quote = quoteDynamicFee({ baseFee: zone.fee, config: pricing, at: new Date(), backlog });
+    return {
+        price: quote.price,
+        priceIncludesTax: true,
+        taxRate: 0,
+        metadata: {
+            zoneName: zone.name,
+            calculator: 'campus-errand',
+            baseFee: quote.baseFee,
+            addFee: quote.addFee,
+            breakdown: quote.breakdown,
+            pricing: pricing.enabled ? 'dynamic' : 'zone-fee',
+        },
+    };
+}

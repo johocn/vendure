@@ -211,6 +211,24 @@ let WaimaiStoreService = class WaimaiStoreService {
             cfg.storeLat = input.storeLat;
         if (input.storeLng !== undefined)
             cfg.storeLng = input.storeLng;
+        // 动态计价：未传即保留；传 null/'' 关闭。写入前解析校验，坏 JSON 直接拒绝
+        if (input.dynamicPricing !== undefined) {
+            if (input.dynamicPricing === null || input.dynamicPricing.trim() === '') {
+                cfg.dynamicPricing = null;
+            }
+            else {
+                let parsed;
+                try {
+                    parsed = JSON.parse(input.dynamicPricing);
+                }
+                catch (_11) {
+                    throw new core_1.UserInputError('动态计价配置不是合法 JSON');
+                }
+                if (!parsed || typeof parsed !== 'object')
+                    throw new core_1.UserInputError('动态计价配置必须是 JSON 对象');
+                cfg.dynamicPricing = parsed;
+            }
+        }
         // 跨字段：新开通 R1/R2 必须有至少一个可用交接点（名称+经纬度），否则订单会降级为传信者到店取餐
         const enabled = (_8 = input.routesEnabled) !== null && _8 !== void 0 ? _8 : [];
         const hasPoint = (r) => {
@@ -305,6 +323,7 @@ let WaimaiStoreService = class WaimaiStoreService {
             externalFallbackMinutes: (_3 = cfg === null || cfg === void 0 ? void 0 : cfg.externalFallbackMinutes) !== null && _3 !== void 0 ? _3 : 20,
             storeLat: (_4 = cfg === null || cfg === void 0 ? void 0 : cfg.storeLat) !== null && _4 !== void 0 ? _4 : null,
             storeLng: (_5 = cfg === null || cfg === void 0 ? void 0 : cfg.storeLng) !== null && _5 !== void 0 ? _5 : null,
+            dynamicPricing: (cfg === null || cfg === void 0 ? void 0 : cfg.dynamicPricing) ? JSON.stringify(cfg.dynamicPricing) : null,
         };
     }
 };

@@ -68,6 +68,8 @@ export interface CampusStoreConfigWithChannel {
     timeoutCompensationEnabled: boolean;
     timeoutGraceMinutes: number;
     timeoutCompensationCouponTemplateId: string | null;
+    /** 动态计价配置 JSON 字符串（null=关闭，回退分区固定运费） */
+    dynamicPricing: string | null;
 }
 declare const PRINT_MODES: readonly ["off", "onPaid", "onAccepted"];
 type PrintMode = (typeof PRINT_MODES)[number];
@@ -128,6 +130,8 @@ export declare class WaimaiStoreService {
         externalFallbackMinutes?: number | null;
         storeLat?: number | null;
         storeLng?: number | null;
+        /** 动态计价 JSON 字符串；null/'' = 关闭 */
+        dynamicPricing?: string | null;
     }): Promise<CampusStoreConfigWithChannel>;
     /** 经 rawConnection 按实体名取 repo（避免对 cjk-plugin 的构建期依赖；PickupLocation 由 cjk-plugin 注册于同一进程）。
      * 可见性：isPublic=false + ownerChannelId=本渠道 + channels 含本渠道 → shop 端 applyVisibility 对本渠道可见（cjk pickup-location.service.ts:35）。 */

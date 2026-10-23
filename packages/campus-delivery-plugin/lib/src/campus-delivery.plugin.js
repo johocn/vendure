@@ -26,6 +26,10 @@ const dispatch_admin_service_1 = require("./dispatch-admin.service");
 const dispatch_job_service_1 = require("./dispatch-job.service");
 const delivery_stats_resolver_1 = require("./delivery-stats.resolver");
 const delivery_stats_service_1 = require("./delivery-stats.service");
+const address_change_resolver_1 = require("./address-change.resolver");
+const address_change_service_1 = require("./address-change.service");
+const campus_address_change_entity_1 = require("./campus-address-change.entity");
+const add_address_change_pricing_1 = require("./migrations/add-address-change-pricing");
 const errand_service_1 = require("./errand.service");
 const errand_shop_resolver_1 = require("./errand-shop.resolver");
 const favorite_shop_resolver_1 = require("./favorite-shop.resolver");
@@ -156,10 +160,12 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin;
 exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
     (0, core_1.VendurePlugin)({
         imports: [core_1.PluginCommonModule],
-        entities: [campus_zone_entity_1.CampusZone, campus_building_entity_1.CampusBuilding, rider_earning_entity_1.RiderEarning, campus_fulfillment_config_entity_1.CampusFulfillmentConfig, delivery_slot_entity_1.DeliverySlot, rider_credit_log_entity_1.RiderCreditLog, rider_withdrawal_entity_1.RiderWithdrawalRequest, payment_timeout_entity_1.PaymentTimeoutTask],
+        entities: [campus_zone_entity_1.CampusZone, campus_building_entity_1.CampusBuilding, rider_earning_entity_1.RiderEarning, campus_fulfillment_config_entity_1.CampusFulfillmentConfig, delivery_slot_entity_1.DeliverySlot, rider_credit_log_entity_1.RiderCreditLog, rider_withdrawal_entity_1.RiderWithdrawalRequest, payment_timeout_entity_1.PaymentTimeoutTask, campus_address_change_entity_1.CampusAddressChange],
         providers: [
             create_campus_tables_1.CreateCampusTablesMigration,
             add_route_delivery_config_1.AddRouteDeliveryConfigMigration,
+            add_address_change_pricing_1.AddAddressChangePricingMigration,
+            address_change_service_1.AddressChangeService,
             backfill_waimai_industry_1.BackfillWaimaiIndustryMigration,
             campus_config_service_1.CampusConfigService,
             rider_service_1.RiderService,
@@ -445,6 +451,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     storeNotice: String
                     errandBaseFee: Int
                     freeShippingThreshold: Int
+                    dynamicPricing: String
                     notifyTemplateAccepted: String
                     notifyTemplateRiderAssigned: String
                     notifyTemplateCookingDone: String
@@ -459,6 +466,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     timeoutCompensationEnabled: Boolean!
                     timeoutGraceMinutes: Int!
                     timeoutCompensationCouponTemplateId: String
+                    dynamicPricing: String
                 }
 
                 input CampusStoreConfigInput {
@@ -479,6 +487,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     storeNotice: String
                     errandBaseFee: Int
                     freeShippingThreshold: Int
+                    dynamicPricing: String
                     notifyTemplateAccepted: String
                     notifyTemplateRiderAssigned: String
                     notifyTemplateCookingDone: String
@@ -525,6 +534,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantBoard: CampusMerchantBoard!
                     riderWithdrawals(status: String, skip: Int, take: Int): [RiderWithdrawalRequest!]!
                     campusDeliveryStats(range: String): CampusDeliveryStats!
+                    campusAddressChanges(status: String, skip: Int, take: Int): [CampusAddressChangeRow!]!
+                    campusAddressChangeStats: CampusAddressChangeStats!
                 }
 
                 type CampusDeliveryStatsKpi {
@@ -569,6 +580,42 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     storeComparison: [CampusDeliveryStoreLine!]!
                 }
 
+                type CampusAddressChangeRow {
+                    id: ID!
+                    orderId: ID!
+                    orderCode: String!
+                    customerId: ID
+                    fromZone: String!
+                    fromBuilding: String!
+                    fromDetail: String
+                    toZone: String!
+                    toBuilding: String!
+                    toDetail: String
+                    oldFee: Int!
+                    newFee: Int!
+                    diff: Int!
+                    status: String!
+                    settledAt: DateTime
+                    settleAction: String
+                    createdAt: DateTime!
+                }
+
+                type CampusAddressChangeStats {
+                    total: Int!
+                    pendingCount: Int!
+                    pendingCollect: Int!
+                    pendingRefund: Int!
+                }
+
+                type CampusAddressChangeResult {
+                    diff: Int!
+                    oldFee: Int!
+                    newFee: Int!
+                    fromZone: String!
+                    toZone: String!
+                    recordId: ID!
+                }
+
                 extend type Mutation {
                     campusCreateZone(name: String!, fee: Int!): CampusZone!
                     campusCreateBuilding(name: String!, zoneId: ID!, detail: String, lat: Float, lng: Float): CampusBuilding!
@@ -582,6 +629,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusHandleException(orderId: ID!, action: String!, amount: Int, couponTemplateId: ID, note: String): CampusHandleExceptionResult!
                     campusEnsureErrandProducts: CampusErrandProductResult!
                     campusUpdateStoreConfig(channelId: ID!, input: CampusStoreConfigInput!): CampusStoreConfigWithChannel!
+                    campusSettleAddressChange(id: ID!, action: String!): CampusAddressChangeRow!
                     campusEnsureDefaultShippingProfile(channelId: ID!): CampusEnsureProfileResult!
                     campusMerchantAcceptOrder(orderId: ID!): CampusMerchantOpResult!
                     campusMerchantCookingDone(orderId: ID!): CampusMerchantOpResult!
@@ -667,7 +715,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                 }
             `;
             },
-            resolvers: [campus_config_admin_resolver_1.CampusConfigAdminResolver, rider_admin_resolver_1.RiderAdminResolver, dispatch_admin_resolver_1.DispatchAdminResolver, merchant_admin_resolver_1.MerchantAdminResolver, payment_timeout_admin_resolver_1.PaymentTimeoutAdminResolver, delivery_stats_resolver_1.DeliveryStatsResolver],
+            resolvers: [campus_config_admin_resolver_1.CampusConfigAdminResolver, rider_admin_resolver_1.RiderAdminResolver, dispatch_admin_resolver_1.DispatchAdminResolver, merchant_admin_resolver_1.MerchantAdminResolver, payment_timeout_admin_resolver_1.PaymentTimeoutAdminResolver, delivery_stats_resolver_1.DeliveryStatsResolver, address_change_resolver_1.AddressChangeAdminResolver, address_change_resolver_1.AddressChangeShopResolver],
         },
         shopApiExtensions: {
             schema: () => {
@@ -915,6 +963,15 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusFavoriteVariants: [CampusFavoriteVariant!]!
                 }
 
+                type CampusAddressChangeResult {
+                    diff: Int!
+                    oldFee: Int!
+                    newFee: Int!
+                    fromZone: String!
+                    toZone: String!
+                    recordId: ID!
+                }
+
                 extend type Mutation {
                     applyRider(realName: String!, studentNo: String!, campus: String!, idImg: String): RiderApplyResult!
                     campusGrabOrder(orderId: ID!): Order!
@@ -925,6 +982,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusUrgeOrder(orderId: ID!): Order!
                     campusReportException(orderId: ID!, type: String!, photos: [String!]!, note: String): Order!
                     campusSetDeliveryTarget(zoneId: ID!, buildingId: ID!, route: String, slotId: Int): Order!
+                    campusChangeDeliveryAddress(orderId: ID!, zoneId: ID!, buildingId: ID!, detail: String): CampusAddressChangeResult!
                     applyOrderInvoice(orderId: ID!, invoiceInfo: String!): Boolean!
                     campusRejectAssignment(orderId: ID!): CampusRejectResult!
                     campusRiderOnline(online: Boolean!): CampusRiderOnlineResult!

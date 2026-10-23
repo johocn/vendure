@@ -178,6 +178,10 @@ __decorate([
     (0, typeorm_1.Column)({ nullable: true, type: 'float' }),
     __metadata("design:type", Object)
 ], CampusFulfillmentConfig.prototype, "storeLng", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'simple-json', nullable: true }),
+    __metadata("design:type", Object)
+], CampusFulfillmentConfig.prototype, "dynamicPricing", void 0);
 exports.CampusFulfillmentConfig = CampusFulfillmentConfig = __decorate([
     (0, typeorm_1.Entity)(),
     __metadata("design:paramtypes", [Object])

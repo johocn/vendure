@@ -59,6 +59,8 @@ export interface CampusStoreConfigWithChannel {
     timeoutCompensationEnabled: boolean;
     timeoutGraceMinutes: number;
     timeoutCompensationCouponTemplateId: string | null;
+    /** 动态计价配置 JSON 字符串（null=关闭，回退分区固定运费） */
+    dynamicPricing: string | null;
 }
 
 const PRINT_MODES = ['off', 'onPaid', 'onAccepted'] as const;
@@ -169,6 +171,8 @@ export class WaimaiStoreService {
             externalFallbackMinutes?: number | null;
             storeLat?: number | null;
             storeLng?: number | null;
+            /** 动态计价 JSON 字符串；null/'' = 关闭 */
+            dynamicPricing?: string | null;
         },
     ): Promise<CampusStoreConfigWithChannel> {
         const bad = (input.routesEnabled ?? []).filter(r => !ROUTE_WHITELIST.includes(r));
@@ -285,6 +289,21 @@ export class WaimaiStoreService {
         if (input.externalFallbackMinutes != null) cfg.externalFallbackMinutes = input.externalFallbackMinutes;
         if (input.storeLat !== undefined) cfg.storeLat = input.storeLat;
         if (input.storeLng !== undefined) cfg.storeLng = input.storeLng;
+        // 动态计价：未传即保留；传 null/'' 关闭。写入前解析校验，坏 JSON 直接拒绝
+        if (input.dynamicPricing !== undefined) {
+            if (input.dynamicPricing === null || input.dynamicPricing.trim() === '') {
+                cfg.dynamicPricing = null;
+            } else {
+                let parsed: any;
+                try {
+                    parsed = JSON.parse(input.dynamicPricing);
+                } catch {
+                    throw new UserInputError('动态计价配置不是合法 JSON');
+                }
+                if (!parsed || typeof parsed !== 'object') throw new UserInputError('动态计价配置必须是 JSON 对象');
+                cfg.dynamicPricing = parsed;
+            }
+        }
 
         // 跨字段：新开通 R1/R2 必须有至少一个可用交接点（名称+经纬度），否则订单会降级为传信者到店取餐
         const enabled = input.routesEnabled ?? [];
@@ -386,6 +405,7 @@ export class WaimaiStoreService {
             externalFallbackMinutes: cfg?.externalFallbackMinutes ?? 20,
             storeLat: cfg?.storeLat ?? null,
             storeLng: cfg?.storeLng ?? null,
+            dynamicPricing: cfg?.dynamicPricing ? JSON.stringify(cfg.dynamicPricing) : null,
         };
     }
 }

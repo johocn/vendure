@@ -54,5 +54,7 @@ export declare class CampusFulfillmentConfig extends VendureEntity {
     externalFallbackMinutes: number;
     storeLat: number | null;
     storeLng: number | null;
+    /** 动态配送计价配置（时段高峰/供需/手动倍率/封顶），null=关闭，回退分区固定运费 */
+    dynamicPricing: Record<string, any> | null;
     constructor(input?: DeepPartial<CampusFulfillmentConfig>);
 }

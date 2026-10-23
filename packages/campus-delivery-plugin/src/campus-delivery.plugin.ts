@@ -26,6 +26,10 @@ import { DispatchAdminService } from './dispatch-admin.service';
 import { DispatchJobService } from './dispatch-job.service';
 import { DeliveryStatsResolver } from './delivery-stats.resolver';
 import { DeliveryStatsService } from './delivery-stats.service';
+import { AddressChangeAdminResolver, AddressChangeShopResolver } from './address-change.resolver';
+import { AddressChangeService } from './address-change.service';
+import { CampusAddressChange } from './campus-address-change.entity';
+import { AddAddressChangePricingMigration } from './migrations/add-address-change-pricing';
 import { ErrandService } from './errand.service';
 import { ErrandShopResolver } from './errand-shop.resolver';
 import { FavoriteShopResolver } from './favorite-shop.resolver';
@@ -80,10 +84,12 @@ const paymentTimeoutCompensation = new ScheduledTask({
 
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig, DeliverySlot, RiderCreditLog, RiderWithdrawalRequest, PaymentTimeoutTask],
+    entities: [CampusZone, CampusBuilding, RiderEarning, CampusFulfillmentConfig, DeliverySlot, RiderCreditLog, RiderWithdrawalRequest, PaymentTimeoutTask, CampusAddressChange],
     providers: [
         CreateCampusTablesMigration,
         AddRouteDeliveryConfigMigration,
+        AddAddressChangePricingMigration,
+        AddressChangeService,
         BackfillWaimaiIndustryMigration,
         CampusConfigService,
         RiderService,
@@ -369,6 +375,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     storeNotice: String
                     errandBaseFee: Int
                     freeShippingThreshold: Int
+                    dynamicPricing: String
                     notifyTemplateAccepted: String
                     notifyTemplateRiderAssigned: String
                     notifyTemplateCookingDone: String
@@ -383,6 +390,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     timeoutCompensationEnabled: Boolean!
                     timeoutGraceMinutes: Int!
                     timeoutCompensationCouponTemplateId: String
+                    dynamicPricing: String
                 }
 
                 input CampusStoreConfigInput {
@@ -403,6 +411,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     storeNotice: String
                     errandBaseFee: Int
                     freeShippingThreshold: Int
+                    dynamicPricing: String
                     notifyTemplateAccepted: String
                     notifyTemplateRiderAssigned: String
                     notifyTemplateCookingDone: String
@@ -449,6 +458,8 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     campusMerchantBoard: CampusMerchantBoard!
                     riderWithdrawals(status: String, skip: Int, take: Int): [RiderWithdrawalRequest!]!
                     campusDeliveryStats(range: String): CampusDeliveryStats!
+                    campusAddressChanges(status: String, skip: Int, take: Int): [CampusAddressChangeRow!]!
+                    campusAddressChangeStats: CampusAddressChangeStats!
                 }
 
                 type CampusDeliveryStatsKpi {
@@ -493,6 +504,42 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     storeComparison: [CampusDeliveryStoreLine!]!
                 }
 
+                type CampusAddressChangeRow {
+                    id: ID!
+                    orderId: ID!
+                    orderCode: String!
+                    customerId: ID
+                    fromZone: String!
+                    fromBuilding: String!
+                    fromDetail: String
+                    toZone: String!
+                    toBuilding: String!
+                    toDetail: String
+                    oldFee: Int!
+                    newFee: Int!
+                    diff: Int!
+                    status: String!
+                    settledAt: DateTime
+                    settleAction: String
+                    createdAt: DateTime!
+                }
+
+                type CampusAddressChangeStats {
+                    total: Int!
+                    pendingCount: Int!
+                    pendingCollect: Int!
+                    pendingRefund: Int!
+                }
+
+                type CampusAddressChangeResult {
+                    diff: Int!
+                    oldFee: Int!
+                    newFee: Int!
+                    fromZone: String!
+                    toZone: String!
+                    recordId: ID!
+                }
+
                 extend type Mutation {
                     campusCreateZone(name: String!, fee: Int!): CampusZone!
                     campusCreateBuilding(name: String!, zoneId: ID!, detail: String, lat: Float, lng: Float): CampusBuilding!
@@ -506,6 +553,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     campusHandleException(orderId: ID!, action: String!, amount: Int, couponTemplateId: ID, note: String): CampusHandleExceptionResult!
                     campusEnsureErrandProducts: CampusErrandProductResult!
                     campusUpdateStoreConfig(channelId: ID!, input: CampusStoreConfigInput!): CampusStoreConfigWithChannel!
+                    campusSettleAddressChange(id: ID!, action: String!): CampusAddressChangeRow!
                     campusEnsureDefaultShippingProfile(channelId: ID!): CampusEnsureProfileResult!
                     campusMerchantAcceptOrder(orderId: ID!): CampusMerchantOpResult!
                     campusMerchantCookingDone(orderId: ID!): CampusMerchantOpResult!
@@ -591,7 +639,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
                 }
             `;
         },
-        resolvers: [CampusConfigAdminResolver, RiderAdminResolver, DispatchAdminResolver, MerchantAdminResolver, PaymentTimeoutAdminResolver, DeliveryStatsResolver],
+        resolvers: [CampusConfigAdminResolver, RiderAdminResolver, DispatchAdminResolver, MerchantAdminResolver, PaymentTimeoutAdminResolver, DeliveryStatsResolver, AddressChangeAdminResolver, AddressChangeShopResolver],
     },
     shopApiExtensions: {
         schema: () => {
@@ -839,6 +887,15 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     campusFavoriteVariants: [CampusFavoriteVariant!]!
                 }
 
+                type CampusAddressChangeResult {
+                    diff: Int!
+                    oldFee: Int!
+                    newFee: Int!
+                    fromZone: String!
+                    toZone: String!
+                    recordId: ID!
+                }
+
                 extend type Mutation {
                     applyRider(realName: String!, studentNo: String!, campus: String!, idImg: String): RiderApplyResult!
                     campusGrabOrder(orderId: ID!): Order!
@@ -849,6 +906,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     campusUrgeOrder(orderId: ID!): Order!
                     campusReportException(orderId: ID!, type: String!, photos: [String!]!, note: String): Order!
                     campusSetDeliveryTarget(zoneId: ID!, buildingId: ID!, route: String, slotId: Int): Order!
+                    campusChangeDeliveryAddress(orderId: ID!, zoneId: ID!, buildingId: ID!, detail: String): CampusAddressChangeResult!
                     applyOrderInvoice(orderId: ID!, invoiceInfo: String!): Boolean!
                     campusRejectAssignment(orderId: ID!): CampusRejectResult!
                     campusRiderOnline(online: Boolean!): CampusRiderOnlineResult!
