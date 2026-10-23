@@ -109,6 +109,9 @@ export class DispatchAdminService {
                 handled.push(o);
                 continue;
             }
+            // 终态单不进墙：取消 / 无人接退款完结 / 已送达（含历史脏数据仅 deliveryStatus=delivered 的单）
+            if (cf.hallStatus === 'cancelled' || cf.hallStatus === 'no_rider_final' || cf.hallStatus === 'delivered') continue;
+            if (cf.deliveryStatus === 'delivered') continue;
             if (cf.hallStatus === 'scheduled') continue; // 预约单未放量，不进调度墙（商家工作台可见，plan 3.1）
             if (cf.hallStatus === 'open') {
                 hallOrders.push(o);

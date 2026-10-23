@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { aggregateStats, windowStartOf, normalizeRange } from './delivery-stats.service';
+import { describe, expect, it, vi } from 'vitest';
+import { aggregateStats, windowStartOf, normalizeRange, DeliveryStatsService } from './delivery-stats.service';
 
 const now = new Date('2026-10-23T15:30:00+08:00').getTime();
 const min = (m: number, base = now) => new Date(base - m * 60_000);
@@ -175,5 +175,21 @@ describe('aggregateStats', () => {
         const s2 = res.storeComparison.find(s => s.channelId === '2')!;
         expect(s1.onTimeRate).toBe(0); // late=20 > 10
         expect(s2.onTimeRate).toBe(100); // late=20 ≤ 60
+    });
+});
+
+describe('DeliveryStatsService.stats 口径', () => {
+    it('SQL 只取校园履约单（hallStatus 非空）', async () => {
+        const andWhere = vi.fn().mockReturnThis();
+        const qb = {
+            leftJoinAndSelect: vi.fn().mockReturnThis(),
+            where: vi.fn().mockReturnThis(),
+            andWhere,
+            getMany: vi.fn().mockResolvedValue([]),
+        };
+        const repo = { createQueryBuilder: vi.fn(() => qb), find: vi.fn().mockResolvedValue([]) };
+        const svc = new DeliveryStatsService({ getRepository: vi.fn(() => repo) } as any);
+        await svc.stats({} as any, 'today');
+        expect(andWhere).toHaveBeenCalledWith('order.customFields.hallStatus IS NOT NULL');
     });
 });

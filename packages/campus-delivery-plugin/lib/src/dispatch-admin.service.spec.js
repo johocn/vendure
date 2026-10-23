@@ -104,6 +104,22 @@ const exceptionOrder = (id, code, extra = {}) => ({
         const board = await svc.board({ channelId: 1 });
         (0, vitest_1.expect)(board.alerts[0]).toEqual(vitest_1.expect.objectContaining({ orderId: '3', type: 'slot_full' }));
     });
+    (0, vitest_1.it)('终态单（取消/无人接退款/已送达）与历史脏数据不进调度墙', async () => {
+        const { svc } = makeEnv({
+            orders: [
+                { id: 11, code: 'C1', customFields: { hallStatus: 'cancelled', deliveryStatus: 'pending' } },
+                { id: 12, code: 'C2', customFields: { hallStatus: 'no_rider_final' } },
+                { id: 13, code: 'C3', customFields: { hallStatus: 'delivered', deliveryStatus: 'delivered' } },
+                // 历史脏数据：送达后 hallStatus 未同步
+                { id: 14, code: 'C4', customFields: { hallStatus: 'grabbed', deliveryStatus: 'delivered' } },
+            ],
+        });
+        const board = await svc.board({ channelId: 1 });
+        (0, vitest_1.expect)(board.hallOrders).toHaveLength(0);
+        (0, vitest_1.expect)(board.activeOrders).toHaveLength(0);
+        (0, vitest_1.expect)(board.alerts).toHaveLength(0);
+        (0, vitest_1.expect)(board.handledOrders).toHaveLength(0);
+    });
     (0, vitest_1.it)('exception_final 已处置完结单 → 不进墙，进 handledOrders 留痕（plan 3.4）', async () => {
         const { svc } = makeEnv({
             orders: [

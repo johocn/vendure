@@ -55,11 +55,14 @@ let MerchantAdminService = class MerchantAdminService {
             .andWhere('order.customFields.deliveredAt >= :start', { start: startOfDay })
             .getMany();
         const active = orders.filter(o => {
-            const s = o.customFields.hallStatus;
+            const cf = o.customFields;
+            // 送达终态不再进流转栏（兼容历史脏数据：hallStatus 仍为 grabbed 但已送达）
+            if (cf.deliveryStatus === 'delivered')
+                return false;
             return [
                 'pending_merchant', 'accepted', 'open', 'grabbed',
                 'pending_dispatch', 'third_party', 'owned_pool', 'owned_dispatched', 'merchant_delivering',
-            ].includes(s);
+            ].includes(cf.hallStatus);
         });
         // 预约单（scheduled）：按预约锚点升序，供商家提前备料知悉（不进入四栏流转）
         const scheduledOrders = orders

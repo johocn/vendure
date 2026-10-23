@@ -155,7 +155,8 @@ export class CampusConfigService {
         patch: { capacity?: number; active?: boolean; startTime?: string; endTime?: string },
     ) {
         const repo = this.dataSource.getRepository(DeliverySlot);
-        const slot = await repo.findOne({ where: { id: id as any } });
+        // 渠道隔离：只能改本渠道时段（DeliverySlot.channelId 物理列，直接按标量查）
+        const slot = await repo.findOne({ where: { id: id as any, channelId: ctx.channelId as any } });
         if (!slot) throw new UserInputError('时段不存在');
         Object.assign(slot, patch);
         return repo.save(slot);

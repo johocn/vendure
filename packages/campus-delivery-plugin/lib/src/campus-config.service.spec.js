@@ -40,6 +40,14 @@ const campus_config_service_1 = require("./campus-config.service");
         await svc.createSlot({ channelId: 7 }, { slotDate: '2026-10-06', startTime: '11:00', endTime: '11:30', capacity: 30 });
         (0, vitest_1.expect)(repo.save).toHaveBeenCalledWith(vitest_1.expect.objectContaining({ channelId: 7, capacity: 30 }));
     });
+    (0, vitest_1.it)('updateSlot 只能改本渠道时段（跨渠道 → 时段不存在）', async () => {
+        const repo = mkRepo([]);
+        repo.findOne.mockResolvedValue(null);
+        const svc = new campus_config_service_1.CampusConfigService({ getRepository: () => repo }, {});
+        await (0, vitest_1.expect)(svc.updateSlot({ channelId: 2 }, 5, { capacity: 30 })).rejects.toThrow('时段不存在');
+        (0, vitest_1.expect)(repo.findOne).toHaveBeenCalledWith({ where: { id: 5, channelId: 2 } });
+        (0, vitest_1.expect)(repo.save).not.toHaveBeenCalled();
+    });
 });
 (0, vitest_1.describe)('setDeliveryTarget route/slot 扩展', () => {
     const slot = {

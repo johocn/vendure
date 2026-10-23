@@ -301,14 +301,21 @@ let ThirdPartyDeliveryService = class ThirdPartyDeliveryService {
     }
     /** 第一段（商户 / 自营快递）送达校园交接点：R1/R2 进大厅接力，R3 直接完成 */
     async completeFirstLeg(ctx, orderId, cause) {
-        var _a, _b;
+        var _a, _b, _c;
         const order = await this.orderRepo(ctx).findOne({ where: { id: orderId } });
         if (!order)
             throw new core_2.UserInputError('订单不存在');
         const cf = order.customFields;
         const route = String((_a = cf.fulfillmentRoute) !== null && _a !== void 0 ? _a : '');
-        if (!['merchant', 'owned'].includes(String((_b = cf.deliveryPlan) !== null && _b !== void 0 ? _b : ''))) {
+        const plan = String((_b = cf.deliveryPlan) !== null && _b !== void 0 ? _b : '');
+        if (!['merchant', 'owned'].includes(plan)) {
             throw new core_2.UserInputError('当前订单第一段不是商户/自营快递');
+        }
+        // 前置状态校验：只允许「本段配送中」的订单确认送达，防止重复调用把已进大厅/已送达的单
+        // 再次 enterHallForHandover（重置 hallStatus、清空骑手、重生成交接码）
+        const expectedStatus = plan === 'merchant' ? 'merchant_delivering' : 'owned_dispatched';
+        if (String((_c = cf.hallStatus) !== null && _c !== void 0 ? _c : '') !== expectedStatus) {
+            throw new core_2.UserInputError('第一段已送达或订单状态已变更，请刷新后重试');
         }
         if (route === 'R3') {
             await this.hall.updateOrder(ctx, orderId, {

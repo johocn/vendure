@@ -229,13 +229,14 @@ export class DeliveryStatsService {
         const range = normalizeRange(rangeInput);
         const now = Date.now();
         const windowStart = windowStartOf(range, now);
-        // 渠道过滤：Order 无标量 channelId，join order.channels（同 board 模式）
+        // 只计校园履约单（hallStatus 非空），避免把普通快递/自提订单计入配送 KPI
         const orders = (await this.connection
             .getRepository(ctx, Order)
             .createQueryBuilder('order')
             .leftJoinAndSelect('order.channels', 'channel')
             .where('order.createdAt >= :ws', { ws: new Date(windowStart) })
             .andWhere('order.state != :st', { st: 'Cancelled' })
+            .andWhere('order.customFields.hallStatus IS NOT NULL')
             .getMany()) as unknown as StatsOrderLike[];
         const configs = await this.connection.getRepository(ctx, CampusFulfillmentConfig).find();
         const graceByChannel = new Map(

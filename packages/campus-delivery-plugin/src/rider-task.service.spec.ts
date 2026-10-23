@@ -47,7 +47,9 @@ describe('RiderTaskService', () => {
         const inProg = { ...assigned, customFields: { ...assigned.customFields, deliveryStatus: 'in_progress' } };
         const { svc, repo, saved } = make(inProg, { riderCommissionRate: 100 });
         await svc.deliver({ channelId: 1 } as any, 10 as any, ['p1']);
-        expect(repo.update).toHaveBeenCalled();
+        expect(repo.update).toHaveBeenCalledWith(10, expect.objectContaining({
+            customFields: expect.objectContaining({ deliveryStatus: 'delivered', hallStatus: 'delivered' }),
+        }));
         expect(saved[0].amount).toBe(400); // 300 shipping + 100 tip
     });
     it('分成比例 80%', async () => {

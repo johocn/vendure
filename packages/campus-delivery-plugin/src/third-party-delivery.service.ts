@@ -332,8 +332,15 @@ export class ThirdPartyDeliveryService implements OnApplicationBootstrap {
         if (!order) throw new UserInputError('订单不存在');
         const cf = order.customFields as any;
         const route = String(cf.fulfillmentRoute ?? '');
-        if (!['merchant', 'owned'].includes(String(cf.deliveryPlan ?? ''))) {
+        const plan = String(cf.deliveryPlan ?? '');
+        if (!['merchant', 'owned'].includes(plan)) {
             throw new UserInputError('当前订单第一段不是商户/自营快递');
+        }
+        // 前置状态校验：只允许「本段配送中」的订单确认送达，防止重复调用把已进大厅/已送达的单
+        // 再次 enterHallForHandover（重置 hallStatus、清空骑手、重生成交接码）
+        const expectedStatus = plan === 'merchant' ? 'merchant_delivering' : 'owned_dispatched';
+        if (String(cf.hallStatus ?? '') !== expectedStatus) {
+            throw new UserInputError('第一段已送达或订单状态已变更，请刷新后重试');
         }
         if (route === 'R3') {
             await this.hall.updateOrder(ctx, orderId, {

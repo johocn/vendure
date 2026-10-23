@@ -45,7 +45,9 @@ const assigned = { id: 10, code: 'A1', shipping: 300, customFields: { deliverySt
         const inProg = Object.assign(Object.assign({}, assigned), { customFields: Object.assign(Object.assign({}, assigned.customFields), { deliveryStatus: 'in_progress' }) });
         const { svc, repo, saved } = make(inProg, { riderCommissionRate: 100 });
         await svc.deliver({ channelId: 1 }, 10, ['p1']);
-        (0, vitest_1.expect)(repo.update).toHaveBeenCalled();
+        (0, vitest_1.expect)(repo.update).toHaveBeenCalledWith(10, vitest_1.expect.objectContaining({
+            customFields: vitest_1.expect.objectContaining({ deliveryStatus: 'delivered', hallStatus: 'delivered' }),
+        }));
         (0, vitest_1.expect)(saved[0].amount).toBe(400); // 300 shipping + 100 tip
     });
     (0, vitest_1.it)('分成比例 80%', async () => {

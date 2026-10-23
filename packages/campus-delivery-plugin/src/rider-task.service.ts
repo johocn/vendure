@@ -222,6 +222,8 @@ export class RiderTaskService {
         await this.connection.getRepository(ctx, Order).update(order.id, {
             customFields: {
                 deliveryStatus: 'delivered',
+                // 终态：hallStatus 同步置 delivered，调度看板/骑手台按终态过滤，避免送达后仍挂在「配送中」
+                hallStatus: 'delivered',
                 deliveredAt: new Date(),
                 deliveryPhotos: photos,
                 deliveryNote: note ?? null,

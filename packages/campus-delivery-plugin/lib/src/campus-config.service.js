@@ -150,7 +150,8 @@ let CampusConfigService = class CampusConfigService {
     }
     async updateSlot(ctx, id, patch) {
         const repo = this.dataSource.getRepository(delivery_slot_entity_1.DeliverySlot);
-        const slot = await repo.findOne({ where: { id: id } });
+        // 渠道隔离：只能改本渠道时段（DeliverySlot.channelId 物理列，直接按标量查）
+        const slot = await repo.findOne({ where: { id: id, channelId: ctx.channelId } });
         if (!slot)
             throw new core_1.UserInputError('时段不存在');
         Object.assign(slot, patch);

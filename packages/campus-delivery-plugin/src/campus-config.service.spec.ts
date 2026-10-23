@@ -40,6 +40,14 @@ describe('CampusConfigService slots', () => {
         await svc.createSlot({ channelId: 7 } as any, { slotDate: '2026-10-06', startTime: '11:00', endTime: '11:30', capacity: 30 });
         expect(repo.save).toHaveBeenCalledWith(expect.objectContaining({ channelId: 7, capacity: 30 }));
     });
+    it('updateSlot 只能改本渠道时段（跨渠道 → 时段不存在）', async () => {
+        const repo = mkRepo([]);
+        repo.findOne.mockResolvedValue(null);
+        const svc = new CampusConfigService({ getRepository: () => repo } as any, {} as any);
+        await expect(svc.updateSlot({ channelId: 2 } as any, 5, { capacity: 30 })).rejects.toThrow('时段不存在');
+        expect(repo.findOne).toHaveBeenCalledWith({ where: { id: 5, channelId: 2 } });
+        expect(repo.save).not.toHaveBeenCalled();
+    });
 });
 
 describe('setDeliveryTarget route/slot 扩展', () => {

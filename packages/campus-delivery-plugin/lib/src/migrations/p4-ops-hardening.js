@@ -14,11 +14,16 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.P4OpsHardeningMigration = exports.p4OpsHardeningSql = void 0;
 // P4 履约加固（2026-10-23）：超时赔付回扫窗口可配（生产关闭 synchronize，启动幂等补列）
+// P5 终态补偿（2026-10-24）：历史送达单 hallStatus 未同步（骑手送达只写 deliveryStatus）→ 幂等回填
 const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 exports.p4OpsHardeningSql = `
 ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "timeoutCompensationWindowHours" integer NOT NULL DEFAULT 24;
+UPDATE "order" SET "customFieldsHallstatus" = 'delivered'
+WHERE "customFieldsDeliverystatus" = 'delivered'
+  AND "customFieldsHallstatus" IS NOT NULL
+  AND "customFieldsHallstatus" NOT IN ('delivered', 'cancelled', 'no_rider_final', 'exception_final');
 `;
 let P4OpsHardeningMigration = class P4OpsHardeningMigration {
     constructor(connection) {
