@@ -860,7 +860,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                 extend type Mutation {
                     applyRider(realName: String!, studentNo: String!, campus: String!, idImg: String): RiderApplyResult!
                     campusGrabOrder(orderId: ID!): Order!
-                    campusStartTask(orderId: ID!): Order!
+                    campusStartTask(orderId: ID!, code: String): Order!
                     campusTransferTask(orderId: ID!, photos: [String!]!, note: String): Order!
                     campusDeliverTask(orderId: ID!, photos: [String!]!, note: String): Order!
                     campusRiderReportLocation(orderId: ID!, lat: Float!, lng: Float!): Order!
