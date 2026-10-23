@@ -1,4 +1,4 @@
-import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Args, ID as GqlID, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { Allow, Ctx, ID, Permission, RequestContext } from '@vendure/core';
 import { AddressChangeService } from './address-change.service';
 import { CampusPermissions } from './permissions';
@@ -38,10 +38,11 @@ export class AddressChangeAdminResolver {
     campusAddressChanges(
         @Ctx() ctx: RequestContext,
         @Args({ name: 'status', type: () => String, nullable: true }) status?: string,
+        @Args({ name: 'orderId', type: () => GqlID, nullable: true }) orderId?: ID,
         @Args({ name: 'skip', type: () => Number, nullable: true }) skip?: number,
         @Args({ name: 'take', type: () => Number, nullable: true }) take?: number,
     ) {
-        return this.service.list(ctx, { status, skip, take });
+        return this.service.list(ctx, { status, orderId, skip, take });
     }
 
     @Query()
@@ -56,8 +57,9 @@ export class AddressChangeAdminResolver {
         @Ctx() ctx: RequestContext,
         @Args('id') id: ID,
         @Args('action') action: string,
+        @Args({ name: 'note', type: () => String, nullable: true }) note?: string,
     ) {
-        return this.service.settle(ctx, id, action);
+        return this.service.settle(ctx, id, action, note);
     }
 
     /** 运营代客改址（取货后也可代改，必须填原因） */

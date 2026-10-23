@@ -2,6 +2,7 @@ import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { Allow, Ctx, ID, RequestContext } from '@vendure/core';
 import { CampusConfigService } from './campus-config.service';
 import { ErrandService } from './errand.service';
+import { MerchantAdminService } from './merchant-admin.service';
 import { CampusPermissions } from './permissions';
 import { ShippingProfileEnsureService } from './shipping-profile-ensure.service';
 import { WaimaiStoreService } from './waimai-store.service';
@@ -13,6 +14,7 @@ export class CampusConfigAdminResolver {
         private errand: ErrandService,
         private stores: WaimaiStoreService,
         private profileEnsure: ShippingProfileEnsureService,
+        private merchant: MerchantAdminService,
     ) {}
 
     @Query()
@@ -44,6 +46,23 @@ export class CampusConfigAdminResolver {
         @Args('fee') fee: number,
     ) {
         return this.config.createZone(ctx, name, fee);
+    }
+
+    @Mutation()
+    @Allow(CampusPermissions.CampusConfig as any)
+    async campusUpdateZone(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args({ name: 'name', type: () => String, nullable: true }) name?: string,
+        @Args({ name: 'fee', type: () => Number, nullable: true }) fee?: number,
+    ) {
+        return this.config.updateZone(ctx, Number(id), { name, fee });
+    }
+
+    @Mutation()
+    @Allow(CampusPermissions.CampusConfig as any)
+    async campusDeleteBuilding(@Ctx() ctx: RequestContext, @Args('id') id: ID) {
+        return this.config.deleteBuilding(ctx, Number(id));
     }
 
     @Mutation()
@@ -116,6 +135,28 @@ export class CampusConfigAdminResolver {
         @Args('input') input: any,
     ) {
         return this.stores.updateStoreConfig(ctx, Number(channelId), input);
+    }
+
+    /** 运营中心推送/重推外部快递（R2 待推送、R3 外部策略；复用商家侧同源实现，带渠道归属校验） */
+    @Mutation()
+    @Allow(CampusPermissions.CampusViewDispatch as any)
+    async campusAdminDispatchExternal(
+        @Ctx() ctx: RequestContext,
+        @Args('orderId') orderId: ID,
+        @Args('provider') provider: string,
+    ) {
+        return this.merchant.dispatchExternal(ctx, orderId, provider as any);
+    }
+
+    /** 运营中心取消外部快递（换一家重推前，或运力失败回落大厅） */
+    @Mutation()
+    @Allow(CampusPermissions.CampusViewDispatch as any)
+    async campusAdminCancelExternal(
+        @Ctx() ctx: RequestContext,
+        @Args('orderId') orderId: ID,
+        @Args({ name: 'reason', type: () => String, nullable: true }) reason?: string,
+    ) {
+        return this.merchant.cancelExternal(ctx, orderId, reason);
     }
 
     /** R2/R4 档案冲突治本：get-or-create 渠道合并默认配送档案（store-pickup+courier-delivery）并补绑未绑档案变体 */

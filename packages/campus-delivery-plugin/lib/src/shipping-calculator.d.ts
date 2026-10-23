@@ -23,6 +23,20 @@ export declare function quoteDynamicBaseFee(conn: TransactionalConnection, chann
         pricing: string;
     };
 }>;
+/** C 端结算页分区实时报价：与结算同口径（基价 + 时段/供需/手动倍率，单笔封顶）。
+ * 仅用于展示；满免门槛仍由结算侧 quoteZoneFee 判断，避免把「已满免」误显示为加价。 */
+export declare function quoteZonesForShop(conn: TransactionalConnection, channelId: ID, zones: Array<{
+    id: any;
+    name: string;
+    fee: number;
+}>): Promise<{
+    fee: number;
+    price: number;
+    addFee: number;
+    breakdown: import("./dynamic-pricing").PricingBreakdownItem[];
+    id: any;
+    name: string;
+}[]>;
 /** 分区运费报价（改址差额也复用此函数，保证前后口径一致） */
 export declare function quoteZoneFee(conn: TransactionalConnection, channelId: ID, zone: {
     name: string;

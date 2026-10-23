@@ -1,9 +1,10 @@
 import { Args, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { Ctx, ID, RequestContext } from '@vendure/core';
+import { Ctx, ID, RequestContext, TransactionalConnection } from '@vendure/core';
 import { CapacityService } from './capacity.service';
 import { CampusConfigService } from './campus-config.service';
 import { RiderService } from './rider.service';
 import { RiderWalletService } from './rider-wallet.service';
+import { quoteZonesForShop } from './shipping-calculator';
 
 @Resolver()
 export class RiderShopResolver {
@@ -12,6 +13,7 @@ export class RiderShopResolver {
         private configService: CampusConfigService,
         private capacity: CapacityService,
         private wallet: RiderWalletService,
+        private connection: TransactionalConnection,
     ) {}
 
     /** 需登录：service 内部校验当前顾客，未登录抛 ForbiddenError。 */
@@ -86,10 +88,11 @@ export class RiderShopResolver {
         return this.capacity.capacityCheck(ctx);
     }
 
-    // 公开只读：C 端选楼用
+    // 公开只读：C 端选楼用（分区带实时报价：price/addFee/breakdown，与结算同口径）
     @Query()
     async campusZones(@Ctx() ctx: RequestContext) {
-        return this.configService.listZones(ctx);
+        const zones = await this.configService.listZones(ctx);
+        return quoteZonesForShop(this.connection, ctx.channelId as ID, zones as any[]);
     }
 
     @Query()

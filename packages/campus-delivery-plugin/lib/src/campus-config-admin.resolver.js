@@ -17,15 +17,17 @@ const graphql_1 = require("@nestjs/graphql");
 const core_1 = require("@vendure/core");
 const campus_config_service_1 = require("./campus-config.service");
 const errand_service_1 = require("./errand.service");
+const merchant_admin_service_1 = require("./merchant-admin.service");
 const permissions_1 = require("./permissions");
 const shipping_profile_ensure_service_1 = require("./shipping-profile-ensure.service");
 const waimai_store_service_1 = require("./waimai-store.service");
 let CampusConfigAdminResolver = class CampusConfigAdminResolver {
-    constructor(config, errand, stores, profileEnsure) {
+    constructor(config, errand, stores, profileEnsure, merchant) {
         this.config = config;
         this.errand = errand;
         this.stores = stores;
         this.profileEnsure = profileEnsure;
+        this.merchant = merchant;
     }
     async campusZones(ctx) {
         return this.config.listZones(ctx);
@@ -38,6 +40,12 @@ let CampusConfigAdminResolver = class CampusConfigAdminResolver {
     }
     async campusCreateZone(ctx, name, fee) {
         return this.config.createZone(ctx, name, fee);
+    }
+    async campusUpdateZone(ctx, id, name, fee) {
+        return this.config.updateZone(ctx, Number(id), { name, fee });
+    }
+    async campusDeleteBuilding(ctx, id) {
+        return this.config.deleteBuilding(ctx, Number(id));
     }
     async campusCreateBuilding(ctx, name, zoneId, detail, lat, lng) {
         return this.config.createBuilding(ctx, name, Number(zoneId), detail, lat, lng);
@@ -68,6 +76,14 @@ let CampusConfigAdminResolver = class CampusConfigAdminResolver {
     }
     async campusUpdateStoreConfig(ctx, channelId, input) {
         return this.stores.updateStoreConfig(ctx, Number(channelId), input);
+    }
+    /** 运营中心推送/重推外部快递（R2 待推送、R3 外部策略；复用商家侧同源实现，带渠道归属校验） */
+    async campusAdminDispatchExternal(ctx, orderId, provider) {
+        return this.merchant.dispatchExternal(ctx, orderId, provider);
+    }
+    /** 运营中心取消外部快递（换一家重推前，或运力失败回落大厅） */
+    async campusAdminCancelExternal(ctx, orderId, reason) {
+        return this.merchant.cancelExternal(ctx, orderId, reason);
     }
     /** R2/R4 档案冲突治本：get-or-create 渠道合并默认配送档案（store-pickup+courier-delivery）并补绑未绑档案变体 */
     async campusEnsureDefaultShippingProfile(ctx, channelId) {
@@ -110,6 +126,26 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, String, Number]),
     __metadata("design:returntype", Promise)
 ], CampusConfigAdminResolver.prototype, "campusCreateZone", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusConfig),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __param(2, (0, graphql_1.Args)({ name: 'name', type: () => String, nullable: true })),
+    __param(3, (0, graphql_1.Args)({ name: 'fee', type: () => Number, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String, Number]),
+    __metadata("design:returntype", Promise)
+], CampusConfigAdminResolver.prototype, "campusUpdateZone", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusConfig),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", Promise)
+], CampusConfigAdminResolver.prototype, "campusDeleteBuilding", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusConfig),
@@ -197,6 +233,26 @@ __decorate([
 ], CampusConfigAdminResolver.prototype, "campusUpdateStoreConfig", null);
 __decorate([
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusViewDispatch),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __param(2, (0, graphql_1.Args)('provider')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
+    __metadata("design:returntype", Promise)
+], CampusConfigAdminResolver.prototype, "campusAdminDispatchExternal", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusViewDispatch),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __param(2, (0, graphql_1.Args)({ name: 'reason', type: () => String, nullable: true })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
+    __metadata("design:returntype", Promise)
+], CampusConfigAdminResolver.prototype, "campusAdminCancelExternal", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusConfig),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('channelId')),
@@ -209,6 +265,7 @@ exports.CampusConfigAdminResolver = CampusConfigAdminResolver = __decorate([
     __metadata("design:paramtypes", [campus_config_service_1.CampusConfigService,
         errand_service_1.ErrandService,
         waimai_store_service_1.WaimaiStoreService,
-        shipping_profile_ensure_service_1.ShippingProfileEnsureService])
+        shipping_profile_ensure_service_1.ShippingProfileEnsureService,
+        merchant_admin_service_1.MerchantAdminService])
 ], CampusConfigAdminResolver);
 //# sourceMappingURL=campus-config-admin.resolver.js.map

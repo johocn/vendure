@@ -1,4 +1,4 @@
-import { OrderService, RequestContext } from '@vendure/core';
+import { Order, OrderService, RequestContext } from '@vendure/core';
 import { DataSource } from 'typeorm';
 import { CampusBuilding } from './campus-building.entity';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
@@ -10,6 +10,13 @@ export declare class CampusConfigService {
     constructor(dataSource: DataSource, orderService: OrderService);
     listZones(ctx: RequestContext): Promise<CampusZone[]>;
     createZone(ctx: RequestContext, name: string, fee: number): Promise<any>;
+    /** 分区改名/改运费（渠道隔离）；分区名被历史订单快照引用，仅改当前配置不影响已下单 */
+    updateZone(ctx: RequestContext, id: number, patch: {
+        name?: string;
+        fee?: number;
+    }): Promise<CampusZone>;
+    /** 删除楼栋：仅当无订单引用（含历史指向该楼栋的订单）时允许，避免配送目标丢失 */
+    deleteBuilding(ctx: RequestContext, id: number): Promise<boolean>;
     /** 楼栋按当前渠道隔离：后台维护页与 C 端选楼都只读本渠道数据 */
     listBuildings(ctx: RequestContext, zoneId?: number): Promise<CampusBuilding[]>;
     createBuilding(ctx: RequestContext, name: string, zoneId: number, detail?: string, lat?: number, lng?: number): Promise<any>;
@@ -53,5 +60,5 @@ export declare class CampusConfigService {
     }[]>;
     /** C 端选楼/选区/选路线/选时段写入 activeOrder。
      * route/slot 可选（向后兼容 plan2 旧调用形态）；route 为 R1/R2/R3；R2 的到校确认走 r2-mark 链路。 */
-    setDeliveryTarget(ctx: RequestContext, zoneId: number, buildingId: number, route?: 'R1' | 'R2' | 'R3', slotId?: number): Promise<import("@vendure/core").Order>;
+    setDeliveryTarget(ctx: RequestContext, zoneId: number, buildingId: number, route?: 'R1' | 'R2' | 'R3', slotId?: number): Promise<Order>;
 }

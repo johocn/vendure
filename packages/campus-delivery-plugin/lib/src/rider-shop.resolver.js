@@ -19,12 +19,14 @@ const capacity_service_1 = require("./capacity.service");
 const campus_config_service_1 = require("./campus-config.service");
 const rider_service_1 = require("./rider.service");
 const rider_wallet_service_1 = require("./rider-wallet.service");
+const shipping_calculator_1 = require("./shipping-calculator");
 let RiderShopResolver = class RiderShopResolver {
-    constructor(riderService, configService, capacity, wallet) {
+    constructor(riderService, configService, capacity, wallet, connection) {
         this.riderService = riderService;
         this.configService = configService;
         this.capacity = capacity;
         this.wallet = wallet;
+        this.connection = connection;
     }
     /** 需登录：service 内部校验当前顾客，未登录抛 ForbiddenError。 */
     async applyRider(ctx, realName, studentNo, campus, idImg) {
@@ -61,9 +63,10 @@ let RiderShopResolver = class RiderShopResolver {
     async campusCapacityCheck(ctx) {
         return this.capacity.capacityCheck(ctx);
     }
-    // 公开只读：C 端选楼用
+    // 公开只读：C 端选楼用（分区带实时报价：price/addFee/breakdown，与结算同口径）
     async campusZones(ctx) {
-        return this.configService.listZones(ctx);
+        const zones = await this.configService.listZones(ctx);
+        return (0, shipping_calculator_1.quoteZonesForShop)(this.connection, ctx.channelId, zones);
     }
     async campusBuildings(ctx, zoneId) {
         return this.configService.listBuildings(ctx, zoneId != null ? Number(zoneId) : undefined);
@@ -165,6 +168,7 @@ exports.RiderShopResolver = RiderShopResolver = __decorate([
     __metadata("design:paramtypes", [rider_service_1.RiderService,
         campus_config_service_1.CampusConfigService,
         capacity_service_1.CapacityService,
-        rider_wallet_service_1.RiderWalletService])
+        rider_wallet_service_1.RiderWalletService,
+        core_1.TransactionalConnection])
 ], RiderShopResolver);
 //# sourceMappingURL=rider-shop.resolver.js.map

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { OrderService, RequestContext, UserInputError } from '@vendure/core';
+import { Order, OrderService, RequestContext, UserInputError } from '@vendure/core';
 import { DataSource } from 'typeorm';
 import { CampusBuilding } from './campus-building.entity';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
@@ -16,6 +16,43 @@ export class CampusConfigService {
 
     async createZone(ctx: RequestContext, name: string, fee: number) {
         return this.dataSource.getRepository(CampusZone).save({ name, fee, channelId: ctx.channelId } as any);
+    }
+
+    /** 分区改名/改运费（渠道隔离）；分区名被历史订单快照引用，仅改当前配置不影响已下单 */
+    async updateZone(
+        ctx: RequestContext,
+        id: number,
+        patch: { name?: string; fee?: number },
+    ) {
+        const repo = this.dataSource.getRepository(CampusZone);
+        const zone = await repo.findOne({ where: { id: id as any, channelId: ctx.channelId as any } });
+        if (!zone) throw new UserInputError('分区不存在');
+        if (patch.name !== undefined) {
+            const name = String(patch.name).trim();
+            if (!name) throw new UserInputError('分区名称不能为空');
+            zone.name = name;
+        }
+        if (patch.fee !== undefined) {
+            const fee = Number(patch.fee);
+            if (!Number.isInteger(fee) || fee < 0) throw new UserInputError('分区运费必须为非负整数（分）');
+            zone.fee = fee;
+        }
+        return repo.save(zone);
+    }
+
+    /** 删除楼栋：仅当无订单引用（含历史指向该楼栋的订单）时允许，避免配送目标丢失 */
+    async deleteBuilding(ctx: RequestContext, id: number) {
+        const repo = this.dataSource.getRepository(CampusBuilding);
+        const building = await repo.findOne({ where: { id: id as any, channelId: ctx.channelId as any } });
+        if (!building) throw new UserInputError('宿舍楼不存在');
+        const used = await this.dataSource
+            .getRepository(Order)
+            .createQueryBuilder('order')
+            .where('order.customFields.buildingId = :bid', { bid: String(id) })
+            .getCount();
+        if (used > 0) throw new UserInputError(`该宿舍楼已有 ${used} 个订单引用，不能删除`);
+        await repo.remove(building);
+        return true;
     }
 
     /** 楼栋按当前渠道隔离：后台维护页与 C 端选楼都只读本渠道数据 */
@@ -68,6 +105,23 @@ export class CampusConfigService {
 
     async updateConfig(ctx: RequestContext, patch: Partial<CampusFulfillmentConfig>) {
         const cfg = await this.getConfig(ctx);
+        // 超时赔付（P2）：开启必须指定券模板；宽限非法值直接拒绝，不再静默回落默认 10 分钟
+        if (patch.timeoutGraceMinutes != null) {
+            const grace = Number(patch.timeoutGraceMinutes);
+            if (!Number.isInteger(grace) || grace < 0 || grace > 240) {
+                throw new UserInputError('超时宽限必须为 0-240 的整数（分钟）');
+            }
+            patch.timeoutGraceMinutes = grace;
+        }
+        const nextEnabled =
+            patch.timeoutCompensationEnabled !== undefined ? !!patch.timeoutCompensationEnabled : cfg.timeoutCompensationEnabled;
+        const nextTemplate =
+            patch.timeoutCompensationCouponTemplateId !== undefined
+                ? patch.timeoutCompensationCouponTemplateId
+                : cfg.timeoutCompensationCouponTemplateId;
+        if (nextEnabled && !nextTemplate) {
+            throw new UserInputError('开启超时赔付前必须选择赔付券模板');
+        }
         Object.assign(cfg, patch);
         return this.dataSource.getRepository(CampusFulfillmentConfig).save(cfg);
     }

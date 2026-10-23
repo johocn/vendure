@@ -23,6 +23,10 @@ export declare class CampusAddressChange extends VendureEntity {
     settledBy: ID | null;
     /** refund=已退顾客 | collect=已补收 | waive=免收 */
     settleAction: string | null;
+    /** 结清凭证：补收的收款方式/流水号，退款/免收的说明（补收必填） */
+    settleNote: string | null;
+    /** 实际退款单 id（action=refund 且差额>0 时写入，便于财务对账） */
+    refundId: ID | null;
     /** customer=顾客自助 | admin=运营代改 */
     source: string | null;
     /** 代改原因（运营代改必填，顾客自助可空） */

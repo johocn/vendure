@@ -61,14 +61,14 @@ let AddressChangeAdminResolver = class AddressChangeAdminResolver {
     constructor(service) {
         this.service = service;
     }
-    campusAddressChanges(ctx, status, skip, take) {
-        return this.service.list(ctx, { status, skip, take });
+    campusAddressChanges(ctx, status, orderId, skip, take) {
+        return this.service.list(ctx, { status, orderId, skip, take });
     }
     campusAddressChangeStats(ctx) {
         return this.service.stats(ctx);
     }
-    campusSettleAddressChange(ctx, id, action) {
-        return this.service.settle(ctx, id, action);
+    campusSettleAddressChange(ctx, id, action, note) {
+        return this.service.settle(ctx, id, action, note);
     }
     /** 运营代客改址（取货后也可代改，必须填原因） */
     campusAdminChangeDeliveryAddress(ctx, orderId, zoneId, buildingId, detail, reason) {
@@ -89,10 +89,11 @@ __decorate([
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusConfig),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)({ name: 'status', type: () => String, nullable: true })),
-    __param(2, (0, graphql_1.Args)({ name: 'skip', type: () => Number, nullable: true })),
-    __param(3, (0, graphql_1.Args)({ name: 'take', type: () => Number, nullable: true })),
+    __param(2, (0, graphql_1.Args)({ name: 'orderId', type: () => graphql_1.ID, nullable: true })),
+    __param(3, (0, graphql_1.Args)({ name: 'skip', type: () => Number, nullable: true })),
+    __param(4, (0, graphql_1.Args)({ name: 'take', type: () => Number, nullable: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, String, Number, Number]),
+    __metadata("design:paramtypes", [core_1.RequestContext, String, Object, Number, Number]),
     __metadata("design:returntype", void 0)
 ], AddressChangeAdminResolver.prototype, "campusAddressChanges", null);
 __decorate([
@@ -109,8 +110,9 @@ __decorate([
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('id')),
     __param(2, (0, graphql_1.Args)('action')),
+    __param(3, (0, graphql_1.Args)({ name: 'note', type: () => String, nullable: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String, String]),
     __metadata("design:returntype", void 0)
 ], AddressChangeAdminResolver.prototype, "campusSettleAddressChange", null);
 __decorate([

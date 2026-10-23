@@ -1,4 +1,4 @@
-import { ID, RequestContext } from '@vendure/core';
+import { ID, RequestContext, TransactionalConnection } from '@vendure/core';
 import { CapacityService } from './capacity.service';
 import { CampusConfigService } from './campus-config.service';
 import { RiderService } from './rider.service';
@@ -8,7 +8,8 @@ export declare class RiderShopResolver {
     private configService;
     private capacity;
     private wallet;
-    constructor(riderService: RiderService, configService: CampusConfigService, capacity: CapacityService, wallet: RiderWalletService);
+    private connection;
+    constructor(riderService: RiderService, configService: CampusConfigService, capacity: CapacityService, wallet: RiderWalletService, connection: TransactionalConnection);
     /** 需登录：service 内部校验当前顾客，未登录抛 ForbiddenError。 */
     applyRider(ctx: RequestContext, realName: string, studentNo: string, campus: string, idImg?: string): Promise<{
         status: string;
@@ -46,6 +47,13 @@ export declare class RiderShopResolver {
         paused: boolean;
         ridersOnline: number;
     }>;
-    campusZones(ctx: RequestContext): Promise<import("./campus-zone.entity").CampusZone[]>;
+    campusZones(ctx: RequestContext): Promise<{
+        fee: number;
+        price: number;
+        addFee: number;
+        breakdown: import("./dynamic-pricing").PricingBreakdownItem[];
+        id: any;
+        name: string;
+    }[]>;
     campusBuildings(ctx: RequestContext, zoneId?: ID): Promise<import("./campus-building.entity").CampusBuilding[]>;
 }

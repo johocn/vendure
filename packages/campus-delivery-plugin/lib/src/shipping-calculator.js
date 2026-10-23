@@ -4,6 +4,7 @@ exports.campusErrandCalculator = void 0;
 exports.bindCampusErrandCalculatorConnection = bindCampusErrandCalculatorConnection;
 exports.readHallBacklog = readHallBacklog;
 exports.quoteDynamicBaseFee = quoteDynamicBaseFee;
+exports.quoteZonesForShop = quoteZonesForShop;
 exports.quoteZoneFee = quoteZoneFee;
 const core_1 = require("@vendure/core");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
@@ -114,6 +115,21 @@ async function quoteDynamicBaseFee(conn, channelId, baseFee, cfg, scope) {
             pricing: pricing.enabled ? 'dynamic' : 'base-fee',
         },
     };
+}
+/** C 端结算页分区实时报价：与结算同口径（基价 + 时段/供需/手动倍率，单笔封顶）。
+ * 仅用于展示；满免门槛仍由结算侧 quoteZoneFee 判断，避免把「已满免」误显示为加价。 */
+async function quoteZonesForShop(conn, channelId, zones) {
+    var _a;
+    const cfg = await conn.rawConnection.getRepository(campus_fulfillment_config_entity_1.CampusFulfillmentConfig).findOne({
+        where: { channelId: channelId },
+    });
+    const pricing = (0, dynamic_pricing_1.parseDynamicPricing)((_a = cfg === null || cfg === void 0 ? void 0 : cfg.dynamicPricing) !== null && _a !== void 0 ? _a : null);
+    const backlog = pricing.enabled && pricing.supply ? await readHallBacklog(conn, channelId) : 0;
+    const at = new Date();
+    return zones.map(z => {
+        const q = (0, dynamic_pricing_1.quoteDynamicFee)({ baseFee: Number(z.fee), config: pricing, at, backlog });
+        return Object.assign(Object.assign({}, z), { fee: Number(z.fee), price: q.price, addFee: q.addFee, breakdown: q.breakdown });
+    });
 }
 /** 分区运费报价（改址差额也复用此函数，保证前后口径一致） */
 async function quoteZoneFee(conn, channelId, zone, cfg, order) {

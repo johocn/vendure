@@ -211,6 +211,8 @@ let AddressChangeService = class AddressChangeService {
             .take(Math.min((_b = opts.take) !== null && _b !== void 0 ? _b : 50, 200));
         if (opts.status)
             qb.andWhere('r.status = :st', { st: opts.status });
+        if (opts.orderId != null)
+            qb.andWhere('r.orderId = :oid', { oid: Number(opts.orderId) });
         return qb.getMany();
     }
     async stats(ctx) {
@@ -244,8 +246,8 @@ let AddressChangeService = class AddressChangeService {
             pendingRefund,
         };
     }
-    /** 运营结清：refund=已退顾客 / collect=已补收 / waive=免收 / pending=撤销结清 */
-    async settle(ctx, id, action) {
+    /** 运营结清：refund=真实退款 / collect=补收（必须填凭证）/ waive=免收 / pending=撤销结清 */
+    async settle(ctx, id, action, note) {
         var _a;
         if (!['refund', 'collect', 'waive', 'pending'].includes(action)) {
             throw new core_1.UserInputError('无效的结清动作');
@@ -256,19 +258,74 @@ let AddressChangeService = class AddressChangeService {
             throw new core_1.UserInputError('台账记录不存在');
         if (Number(row.channelId) !== Number(ctx.channelId))
             throw new core_1.ForbiddenError();
+        const trimmed = (note !== null && note !== void 0 ? note : '').trim();
         if (action === 'pending') {
+            if (row.refundId)
+                throw new core_1.UserInputError('该差额已实际退款，无法撤销结清');
             row.status = 'pending';
             row.settledAt = null;
             row.settledBy = null;
             row.settleAction = null;
+            row.settleNote = null;
         }
         else {
+            if (action === 'refund') {
+                if (Number(row.diff) >= 0)
+                    throw new core_1.UserInputError('本单不是待退差额，不能按已退款结清');
+                if (row.refundId)
+                    throw new core_1.UserInputError('该差额已退款，请勿重复操作');
+                const amount = Math.abs(Number(row.diff));
+                if (amount > 0) {
+                    const order = await this.loadOrder(ctx, row.orderId);
+                    const refund = await this.refundAmount(ctx, order, amount, `address change refund (${row.orderCode})`);
+                    row.refundId = refund.id;
+                }
+            }
+            if (action === 'collect') {
+                if (Number(row.diff) <= 0)
+                    throw new core_1.UserInputError('本单无待补收差额，无需补收');
+                if (!trimmed)
+                    throw new core_1.UserInputError('请填写补收凭证（收款方式或流水号）');
+            }
             row.status = 'settled';
             row.settledAt = new Date();
             row.settledBy = ((_a = ctx.activeUserId) !== null && _a !== void 0 ? _a : null);
             row.settleAction = action;
+            row.settleNote = trimmed || null;
         }
         return repo.save(row);
+    }
+    /** 部分退款（fork 无 core RefundService，走 OrderService.refundOrder/settleRefund，与 dispatch-admin 同源）。
+     * refund 表 shipping/adjustment 列 NOT NULL 必须显式传 0；超额退款抛错。 */
+    async refundAmount(ctx, order, amount, reason) {
+        var _a, _b;
+        const payment = await this.connection.rawConnection.getRepository(core_1.Payment).findOne({
+            where: { order: { id: order.id } },
+            order: { id: 'DESC' },
+        });
+        if (!payment)
+            throw new core_1.UserInputError('订单无支付记录，无法退款');
+        const refunded = await this.connection.rawConnection
+            .getRepository(core_1.Refund)
+            .createQueryBuilder('r')
+            .select('COALESCE(SUM(r.total), 0)', 'sum')
+            .where('r."paymentId" = :pid', { pid: payment.id })
+            .getRawOne();
+        if (Number((_a = refunded === null || refunded === void 0 ? void 0 : refunded.sum) !== null && _a !== void 0 ? _a : 0) + amount > Number(payment.amount)) {
+            throw new core_1.UserInputError('退款金额超过可退余额（订单可能已全额退款）');
+        }
+        const created = await this.orderService.refundOrder(ctx, {
+            paymentId: payment.id,
+            amount,
+            shipping: 0,
+            adjustment: 0,
+            reason,
+        });
+        if (!created || created.errorCode) {
+            throw new core_1.UserInputError(`退款失败：${(_b = created === null || created === void 0 ? void 0 : created.errorCode) !== null && _b !== void 0 ? _b : '未知原因'}`);
+        }
+        await this.orderService.settleRefund(ctx, { id: created.id });
+        return created;
     }
     async loadOrder(ctx, orderId) {
         const order = await this.connection

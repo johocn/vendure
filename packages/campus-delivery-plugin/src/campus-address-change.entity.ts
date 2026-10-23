@@ -30,6 +30,10 @@ export class CampusAddressChange extends VendureEntity {
     @Column('int', { nullable: true }) settledBy: ID | null;
     /** refund=已退顾客 | collect=已补收 | waive=免收 */
     @Column({ type: 'varchar', nullable: true }) settleAction: string | null;
+    /** 结清凭证：补收的收款方式/流水号，退款/免收的说明（补收必填） */
+    @Column({ type: 'varchar', nullable: true }) settleNote: string | null;
+    /** 实际退款单 id（action=refund 且差额>0 时写入，便于财务对账） */
+    @Column('int', { nullable: true }) refundId: ID | null;
 
     /** customer=顾客自助 | admin=运营代改 */
     @Column({ type: 'varchar', nullable: true }) source: string | null;

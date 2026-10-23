@@ -116,6 +116,31 @@ export async function quoteDynamicBaseFee(
     };
 }
 
+/** C 端结算页分区实时报价：与结算同口径（基价 + 时段/供需/手动倍率，单笔封顶）。
+ * 仅用于展示；满免门槛仍由结算侧 quoteZoneFee 判断，避免把「已满免」误显示为加价。 */
+export async function quoteZonesForShop(
+    conn: TransactionalConnection,
+    channelId: ID,
+    zones: Array<{ id: any; name: string; fee: number }>,
+) {
+    const cfg = await conn.rawConnection.getRepository(CampusFulfillmentConfig).findOne({
+        where: { channelId: channelId as any },
+    });
+    const pricing = parseDynamicPricing(cfg?.dynamicPricing ?? null);
+    const backlog = pricing.enabled && pricing.supply ? await readHallBacklog(conn, channelId) : 0;
+    const at = new Date();
+    return zones.map(z => {
+        const q = quoteDynamicFee({ baseFee: Number(z.fee), config: pricing, at, backlog });
+        return {
+            ...z,
+            fee: Number(z.fee),
+            price: q.price,
+            addFee: q.addFee,
+            breakdown: q.breakdown,
+        };
+    });
+}
+
 /** 分区运费报价（改址差额也复用此函数，保证前后口径一致） */
 export async function quoteZoneFee(
     conn: TransactionalConnection,

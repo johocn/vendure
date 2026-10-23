@@ -30,6 +30,7 @@ const address_change_resolver_1 = require("./address-change.resolver");
 const address_change_service_1 = require("./address-change.service");
 const campus_address_change_entity_1 = require("./campus-address-change.entity");
 const add_address_change_pricing_1 = require("./migrations/add-address-change-pricing");
+const add_address_change_settle_proof_1 = require("./migrations/add-address-change-settle-proof");
 const errand_service_1 = require("./errand.service");
 const errand_shop_resolver_1 = require("./errand-shop.resolver");
 const favorite_shop_resolver_1 = require("./favorite-shop.resolver");
@@ -167,6 +168,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             add_route_delivery_config_1.AddRouteDeliveryConfigMigration,
             add_third_party_base_fee_1.AddThirdPartyBaseFeeMigration,
             add_address_change_pricing_1.AddAddressChangePricingMigration,
+            add_address_change_settle_proof_1.AddAddressChangeSettleProofMigration,
             address_change_service_1.AddressChangeService,
             backfill_waimai_industry_1.BackfillWaimaiIndustryMigration,
             campus_config_service_1.CampusConfigService,
@@ -537,7 +539,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantBoard: CampusMerchantBoard!
                     riderWithdrawals(status: String, skip: Int, take: Int): [RiderWithdrawalRequest!]!
                     campusDeliveryStats(range: String): CampusDeliveryStats!
-                    campusAddressChanges(status: String, skip: Int, take: Int): [CampusAddressChangeRow!]!
+                    campusAddressChanges(status: String, orderId: ID, skip: Int, take: Int): [CampusAddressChangeRow!]!
                     campusAddressChangeStats: CampusAddressChangeStats!
                     campusAdminQuoteAddressChange(orderId: ID!, zoneId: ID!): CampusAddressChangeQuote!
                     campusDynamicPricingPreview: CampusDynamicPricingPreview!
@@ -602,6 +604,10 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     status: String!
                     settledAt: DateTime
                     settleAction: String
+                    """结清凭证：补收收款方式/流水号，或退款说明"""
+                    settleNote: String
+                    """实际退款单 id（财务对账）"""
+                    refundId: ID
                     source: String
                     reason: String
                     changedBy: ID
@@ -690,8 +696,12 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
 
                 extend type Mutation {
                     campusCreateZone(name: String!, fee: Int!): CampusZone!
+                    """分区改名/改运费（渠道隔离）"""
+                    campusUpdateZone(id: ID!, name: String, fee: Int): CampusZone!
                     campusCreateBuilding(name: String!, zoneId: ID!, detail: String, lat: Float, lng: Float): CampusBuilding!
                     campusUpdateBuilding(id: ID!, input: CampusBuildingPatchInput!): CampusBuilding!
+                    """删除宿舍楼（有订单引用时拒绝）"""
+                    campusDeleteBuilding(id: ID!): Boolean!
                     campusUpdateConfig(input: CampusFulfillmentConfigInput!): CampusFulfillmentConfig!
                     campusCreateSlot(input: DeliverySlotInput!): DeliverySlot!
                     campusUpdateSlot(id: ID!, input: DeliverySlotUpdateInput!): DeliverySlot!
@@ -701,7 +711,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusHandleException(orderId: ID!, action: String!, amount: Int, couponTemplateId: ID, note: String): CampusHandleExceptionResult!
                     campusEnsureErrandProducts: CampusErrandProductResult!
                     campusUpdateStoreConfig(channelId: ID!, input: CampusStoreConfigInput!): CampusStoreConfigWithChannel!
-                    campusSettleAddressChange(id: ID!, action: String!): CampusAddressChangeRow!
+                    campusSettleAddressChange(id: ID!, action: String!, note: String): CampusAddressChangeRow!
                     """运营代客改址：取货后也可代改，必须填写原因"""
                     campusAdminChangeDeliveryAddress(orderId: ID!, zoneId: ID!, buildingId: ID!, detail: String, reason: String!): CampusAddressChangeResult!
                     campusEnsureDefaultShippingProfile(channelId: ID!): CampusEnsureProfileResult!
@@ -711,6 +721,10 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusMerchantMarkPrinted(orderId: ID!): CampusMerchantOpResult!
                     campusMerchantDispatchExternal(orderId: ID!, provider: String!): CampusExternalDelivery!
                     campusMerchantCancelExternal(orderId: ID!, reason: String): CampusExternalCancelResult!
+                    """运营中心推送/重推外部快递"""
+                    campusAdminDispatchExternal(orderId: ID!, provider: String!): CampusExternalDelivery!
+                    """运营中心取消外部快递"""
+                    campusAdminCancelExternal(orderId: ID!, reason: String): CampusExternalCancelResult!
                     campusMerchantAcceptOwned(orderId: ID!): CampusMerchantOpResult!
                     campusMerchantMarkHandoverArrived(orderId: ID!): CampusFirstLegResult!
                     campusMerchantMarkOwnedArrived(orderId: ID!): CampusFirstLegResult!
@@ -796,10 +810,23 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                 const { gql } = require('graphql-tag');
                 // shop 与 admin 是两个独立 schema，输出类型需各自定义
                 return gql `
+                """结算页分区动态加价拆解（时段/供需/手动倍率）"""
+                type CampusPricingBreakdownItem {
+                    key: String!
+                    label: String!
+                    fee: Int!
+                }
+
                 type CampusZone {
                     id: ID!
                     name: String!
+                    """分区基价（分）"""
                     fee: Int!
+                    """实时应付（分，= 基价 + 动态加价，单笔封顶）"""
+                    price: Int!
+                    """动态加价金额（分）"""
+                    addFee: Int!
+                    breakdown: [CampusPricingBreakdownItem!]!
                     channelId: ID!
                 }
 

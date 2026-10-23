@@ -29,14 +29,14 @@ export declare class AddressChangeShopResolver {
 export declare class AddressChangeAdminResolver {
     private service;
     constructor(service: AddressChangeService);
-    campusAddressChanges(ctx: RequestContext, status?: string, skip?: number, take?: number): Promise<import("./campus-address-change.entity").CampusAddressChange[]>;
+    campusAddressChanges(ctx: RequestContext, status?: string, orderId?: ID, skip?: number, take?: number): Promise<import("./campus-address-change.entity").CampusAddressChange[]>;
     campusAddressChangeStats(ctx: RequestContext): Promise<{
         total: number;
         pendingCount: number;
         pendingCollect: number;
         pendingRefund: number;
     }>;
-    campusSettleAddressChange(ctx: RequestContext, id: ID, action: string): Promise<import("./campus-address-change.entity").CampusAddressChange>;
+    campusSettleAddressChange(ctx: RequestContext, id: ID, action: string, note?: string): Promise<import("./campus-address-change.entity").CampusAddressChange>;
     /** 运营代客改址（取货后也可代改，必须填原因） */
     campusAdminChangeDeliveryAddress(ctx: RequestContext, orderId: ID, zoneId: ID, buildingId: ID, detail: string | undefined, reason: string): Promise<{
         diff: number;
