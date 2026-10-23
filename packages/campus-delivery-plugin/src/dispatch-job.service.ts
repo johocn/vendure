@@ -22,6 +22,9 @@ import { CREDIT_LIMIT, CREDIT_TIMEOUT, RiderCreditService } from './rider-credit
 const NOT_PICKED_TIMEOUT_MIN = 15;
 /** 外部运单轮询对账间隔（防平台回调丢失）：每单 5min 一次主动查询 */
 const EXTERNAL_SYNC_INTERVAL_MIN = 5;
+/** 超时赔付扫描：仅处理近 24h 送达单，单轮上限防长事务 */
+const TIMEOUT_COMPENSATION_WINDOW_H = 24;
+const TIMEOUT_COMPENSATION_LIMIT = 200;
 // F6 单渠道单轮扫描上限：按 createdAt 升序截断（最老的最紧急），超限告警暴露积压
 const SCAN_LIMIT = 200;
 
@@ -33,6 +36,8 @@ export class DispatchJobService implements OnApplicationShutdown {
     private orderSvc?: OrderService;
     private couponSvc?: { grantCoupon: (ctx: RequestContext, templateId: ID, customerIds: ID[]) => Promise<string[]> } | null;
     private paymentRepo?: any;
+    /** 超时赔付缺配置告警限频（避免每分钟刷日志） */
+    private compensationWarnAt = 0;
 
     constructor(
         private connection: TransactionalConnection,
@@ -151,6 +156,8 @@ export class DispatchJobService implements OnApplicationShutdown {
             }
             // 路线兜底（R1/R2/R3）：商户接单超时转自营、送达超时回落大厅、外部快递推送/接单超时
             await this.sweepRouteTimeouts(ctx, cfg, orders, now);
+            // 超时赔付：送达超承诺 → 自动发定向券（开关默认关）
+            await this.sweepTimeoutCompensation(ctx, cfg, now);
 
             // 商家确认模式卡单兜底：待接单/备餐中超 merchantAutoOpenMinutes 自动入厅
             // （跳过商家确认，campusCause 留痕；以支付时间 createdAt 为基准）
@@ -425,6 +432,96 @@ export class DispatchJobService implements OnApplicationShutdown {
                 }
             }
         }
+    }
+
+    /**
+     * 超时赔付（P0）：近 24h 已送达单，实际送达超出承诺时间 + 宽限 → 自动发定向券。
+     * 幂等：timeoutCompensatedAt 作闸，已赔单不再扫；发券失败不落痕，下一轮重试。
+     * 归因（粗判）：无骑手承接 = platform；接单前耗时 > 骑手在途 = merchant，否则 rider。
+     */
+    private async sweepTimeoutCompensation(ctx: RequestContext, cfg: CampusFulfillmentConfig, now: number) {
+        if (!cfg.timeoutCompensationEnabled) return;
+        const since = new Date(now - TIMEOUT_COMPENSATION_WINDOW_H * 3600_000);
+        const repo = this.connection.getRepository(ctx, Order);
+        let rows: Order[];
+        try {
+            rows = await repo.createQueryBuilder('order')
+                .leftJoin('order.channels', 'channel')
+                .where('channel.id = :ch', { ch: ctx.channelId as any })
+                .andWhere('order.customFields.deliveredAt IS NOT NULL')
+                .andWhere('order.customFields.deliveredAt >= :since', { since })
+                .andWhere('order.customFields.promisedAt IS NOT NULL')
+                .andWhere('order.customFields.timeoutCompensatedAt IS NULL')
+                .andWhere('order.state != :cancelled', { cancelled: 'Cancelled' })
+                .take(TIMEOUT_COMPENSATION_LIMIT)
+                .getMany();
+        } catch (e: any) {
+            Logger.warn(`timeout compensation query failed: ${e?.message}`, 'CampusDispatch');
+            return;
+        }
+        if (!rows.length) return;
+
+        const grace = cfg.timeoutGraceMinutes ?? 10;
+        const templateId = cfg.timeoutCompensationCouponTemplateId;
+        // 开关开但未配券模板：不写闸（保留待赔资格），限频告警等运营补配置
+        if (!templateId) {
+            if (now - this.compensationWarnAt > 10 * 60_000) {
+                this.compensationWarnAt = now;
+                Logger.warn(
+                    `timeout compensation enabled but no coupon template for channel ${cfg.channelId}; ${rows.length} order(s) pending`,
+                    'CampusDispatch',
+                );
+            }
+            return;
+        }
+        const { coupon } = this.services();
+        for (const o of rows) {
+            const cf = o.customFields as any;
+            const deliveredMs = new Date(cf.deliveredAt).getTime();
+            const promisedMs = new Date(cf.promisedAt).getTime();
+            const lateMin = Math.floor((deliveredMs - promisedMs) / 60_000);
+            if (lateMin <= grace) continue;
+
+            let couponId = '';
+            if (o.customerId && coupon) {
+                try {
+                    const ids = await coupon.grantCoupon(ctx, templateId, [o.customerId as any]);
+                    couponId = ids?.[0] ? String(ids[0]) : '';
+                } catch (e: any) {
+                    // 发券失败不写闸，下轮重试（模板配错等需人工修配置）
+                    Logger.error(`timeout compensation coupon failed for ${o.code}: ${e?.message}`, 'CampusDispatch');
+                    continue;
+                }
+            } else {
+                Logger.warn(
+                    `timeout compensation skipped for ${o.code}: coupon service/customer unavailable (channel ${cfg.channelId})`,
+                    'CampusDispatch',
+                );
+                continue;
+            }
+            await this.hall.updateOrder(ctx, o.id as any, {
+                customFields: {
+                    timeoutCompensatedAt: new Date(),
+                    timeoutCompensationCouponId: couponId,
+                    timeoutLateMinutes: lateMin,
+                    timeoutAttribution: this.timeoutAttribution(o),
+                },
+            } as any);
+            Logger.warn(
+                `Order ${o.code} timeout compensation: late ${lateMin}min, attribute=${this.timeoutAttribution(o)}, coupon=${couponId || 'none'}`,
+                'CampusDispatch',
+            );
+        }
+    }
+
+    /** 超时归因粗判：无骑手承接=platform；接单前耗时更长=merchant，否则=rider */
+    private timeoutAttribution(order: Order): string {
+        const cf = order.customFields as any;
+        const deliveredMs = new Date(cf.deliveredAt).getTime();
+        if (!cf.assignedAt) return 'platform';
+        const assignedMs = new Date(cf.assignedAt).getTime();
+        const preAssignMs = assignedMs - new Date(order.createdAt).getTime();
+        return preAssignMs > deliveredMs - assignedMs ? 'merchant' : 'rider';
     }
 
     /** 即时单（无 deliverySlotId）打包时间窗：入厅时间差 ≤10min 视为顺路 */

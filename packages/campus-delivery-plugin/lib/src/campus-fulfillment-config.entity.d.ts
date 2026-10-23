@@ -19,6 +19,9 @@ export declare class CampusFulfillmentConfig extends VendureEntity {
     freeShippingThreshold: number | null;
     merchantConfirmEnabled: boolean;
     merchantAutoOpenMinutes: number;
+    timeoutCompensationEnabled: boolean;
+    timeoutGraceMinutes: number;
+    timeoutCompensationCouponTemplateId: string | null;
     notifyTemplateAccepted: string | null;
     notifyTemplateRiderAssigned: string | null;
     notifyTemplateCookingDone: string | null;

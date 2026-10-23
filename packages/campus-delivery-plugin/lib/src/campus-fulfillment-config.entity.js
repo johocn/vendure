@@ -91,6 +91,18 @@ __decorate([
     __metadata("design:type", Number)
 ], CampusFulfillmentConfig.prototype, "merchantAutoOpenMinutes", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ default: false }),
+    __metadata("design:type", Boolean)
+], CampusFulfillmentConfig.prototype, "timeoutCompensationEnabled", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'int', default: 10 }),
+    __metadata("design:type", Number)
+], CampusFulfillmentConfig.prototype, "timeoutGraceMinutes", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], CampusFulfillmentConfig.prototype, "timeoutCompensationCouponTemplateId", void 0);
+__decorate([
     (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
     __metadata("design:type", Object)
 ], CampusFulfillmentConfig.prototype, "notifyTemplateAccepted", void 0);

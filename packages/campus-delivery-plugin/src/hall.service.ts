@@ -44,6 +44,31 @@ export class HallService {
         return { lat: Number(b.lat), lng: Number(b.lng) };
     }
 
+    /** 预约单时段文本（'2026-10-06 11:00-11:30' 或 '11:00-11:30'）解析时长；无法解析返回 null */
+    static slotSpanMinutes(text: string): number | null {
+        const m = /(\d{1,2}):(\d{2})\s*[-–~至]\s*(\d{1,2}):(\d{2})/.exec(text);
+        if (!m) return null;
+        const start = Number(m[1]) * 60 + Number(m[2]);
+        const end = Number(m[3]) * 60 + Number(m[4]);
+        const span = end - start;
+        return span > 0 && span <= 12 * 60 ? span : null;
+    }
+
+    /**
+     * 承诺送达时间（支付时固化，超时赔付判定基准）：
+     * - 预约单：时段结束时间（文本解析失败退回「时段开始 + 配送时长」）
+     * - 即时单：支付时间 + 店铺配送时长（未配置按 40min）
+     */
+    private resolvePromise(cf: any, cfg?: CampusFulfillmentConfig | null): { at: Date; source: string } {
+        const minutes = Math.max(10, Number(cfg?.deliveryMinutes ?? 40));
+        const start = cf.scheduledFor ? new Date(cf.scheduledFor).getTime() : NaN;
+        if (!Number.isNaN(start)) {
+            const span = HallService.slotSpanMinutes(String(cf.deliverySlotText ?? ''));
+            return { at: new Date(start + (span ?? minutes) * 60_000), source: span ? 'slot' : 'slot_estimate' };
+        }
+        return { at: new Date(Date.now() + minutes * 60_000), source: 'store_minutes' };
+    }
+
     async onOrderPlaced(ctx: RequestContext, order: Order) {
         const cf = order.customFields as any;
         const isErrand = cf.orderKind === 'errand';
@@ -61,6 +86,7 @@ export class HallService {
         const dest = needsPoint ? await this.resolveDestPoint(ctx, order) : null;
         const point = needsPoint ? resolveHandoverPoint(route as 'R1' | 'R2', cfg ?? {}, dest) : null;
         const degrade = needsPoint && !point;
+        const promise = this.resolvePromise(cf, cfg);
         // 履约快照：下单时冻结，后续配置变更不影响在途单
         const snapshot = {
             deliveryPlan: degrade ? 'campus_rider' : (plan?.leg1 ?? 'campus_rider'),
@@ -70,6 +96,8 @@ export class HallService {
             handoverPointAddress: point?.address ?? '',
             handoverPointLat: point?.lat ?? null,
             handoverPointLng: point?.lng ?? null,
+            promisedAt: promise.at,
+            promiseSource: promise.source,
             ...(degrade ? { campusCause: 'no_handover_point' } : {}),
         };
         const locked = await this.slotLock.lock(ctx, order);

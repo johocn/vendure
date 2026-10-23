@@ -58,6 +58,13 @@ export const campusCustomFields: CustomFields = {
         // 交接码（两段接力防丢餐扯皮）：第一段送达交接点时生成 4 位码，第二段骑手取货时校验
         { name: 'handoverCode', type: 'string', nullable: true },
         { name: 'handoverCodeAt', type: 'datetime', nullable: true },
+        // 超时赔付：支付时固化承诺送达时间，送达超时后自动发定向券（幂等闸 + 归因留痕）
+        { name: 'promisedAt', type: 'datetime', nullable: true },
+        { name: 'promiseSource', type: 'string', nullable: true }, // slot / store_minutes
+        { name: 'timeoutCompensatedAt', type: 'datetime', nullable: true },
+        { name: 'timeoutCompensationCouponId', type: 'string', nullable: true },
+        { name: 'timeoutLateMinutes', type: 'int', nullable: true },
+        { name: 'timeoutAttribution', type: 'string', nullable: true }, // merchant / rider / platform
     ],
     Channel: [
         { name: 'waimaiTags', type: 'string', nullable: true }, // '米饭快餐,夜宵' 逗号分隔

@@ -19,6 +19,14 @@ export declare class HallService {
     private get injector();
     /** 收货楼栋坐标（用于挑最近交接点）；楼栋未配坐标返回 null */
     private resolveDestPoint;
+    /** 预约单时段文本（'2026-10-06 11:00-11:30' 或 '11:00-11:30'）解析时长；无法解析返回 null */
+    static slotSpanMinutes(text: string): number | null;
+    /**
+     * 承诺送达时间（支付时固化，超时赔付判定基准）：
+     * - 预约单：时段结束时间（文本解析失败退回「时段开始 + 配送时长」）
+     * - 即时单：支付时间 + 店铺配送时长（未配置按 40min）
+     */
+    private resolvePromise;
     onOrderPlaced(ctx: RequestContext, order: Order): Promise<void>;
     /** 预约单放量（调度 job 调用，plan 3.1）：按路由/快照分流 */
     releaseScheduled(ctx: RequestContext, order: Order, cfg: CampusFulfillmentConfig | null): Promise<void>;

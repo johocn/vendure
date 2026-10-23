@@ -92,6 +92,61 @@ describe('HallService.onOrderPlaced 预约闸门', () => {
     });
 });
 
+describe('HallService 承诺送达时间固化（P0 超时赔付）', () => {
+    const base = { id: 9, code: 'S1', customFields: { fulfillmentRoute: 'R3' } };
+
+    it('即时单 → 支付时间 + 店铺配送时长，source=store_minutes', async () => {
+        const env = makeEnv({ cfg: { channelId: 1, deliveryMinutes: 30 } });
+        const before = Date.now();
+        await env.svc.onOrderPlaced({ channelId: 1 } as any, { ...base } as any);
+        const cf = env.updates[0].customFields;
+        expect(cf.promiseSource).toBe('store_minutes');
+        expect(cf.promisedAt.getTime()).toBeGreaterThanOrEqual(before + 30 * 60_000 - 1000);
+        expect(cf.promisedAt.getTime()).toBeLessThanOrEqual(Date.now() + 30 * 60_000 + 1000);
+    });
+
+    it('未配配送时长 → 退回 40min 默认', async () => {
+        const env = makeEnv();
+        await env.svc.onOrderPlaced({ channelId: 1 } as any, { ...base } as any);
+        const delta = env.updates[0].customFields.promisedAt.getTime() - Date.now();
+        expect(Math.round(delta / 60_000)).toBe(40);
+    });
+
+    it('预约单 → 承诺 = 时段开始 + 时段长度（按文本解析），source=slot', async () => {
+        const env = makeEnv({ cfg: { channelId: 1, deliveryMinutes: 30 } });
+        const start = future(120);
+        const hh = (d: Date) => String(d.getHours()).padStart(2, '0');
+        const mm = (d: Date) => String(d.getMinutes()).padStart(2, '0');
+        const end = new Date(start.getTime() + 30 * 60_000);
+        await env.svc.onOrderPlaced({ channelId: 1 } as any, {
+            ...base,
+            customFields: {
+                fulfillmentRoute: 'R3', scheduledFor: start,
+                deliverySlotText: `${hh(start)}:${mm(start)}-${hh(end)}:${mm(end)}`,
+            },
+        } as any);
+        const cf = env.updates[0].customFields;
+        expect(cf.promiseSource).toBe('slot');
+        expect(Math.round((cf.promisedAt.getTime() - start.getTime()) / 60_000)).toBe(30);
+    });
+
+    it('预约单时段文本不可解析 → 退回开始 + 配送时长，source=slot_estimate', async () => {
+        const env = makeEnv({ cfg: { channelId: 1, deliveryMinutes: 25 } });
+        const start = future(120);
+        await env.svc.onOrderPlaced({ channelId: 1 } as any, {
+            ...base, customFields: { fulfillmentRoute: 'R3', scheduledFor: start, deliverySlotText: '晚间' },
+        } as any);
+        const cf = env.updates[0].customFields;
+        expect(cf.promiseSource).toBe('slot_estimate');
+        expect(Math.round((cf.promisedAt.getTime() - start.getTime()) / 60_000)).toBe(25);
+    });
+
+    it('时段文本跨零点/异常长度 → 视为不可解析', () => {
+        expect(HallService.slotSpanMinutes('23:30-00:30')).toBeNull();
+        expect(HallService.slotSpanMinutes('11:00-11:30')).toBe(30);
+    });
+});
+
 describe('HallService.releaseScheduled', () => {
     const order = { id: 9, code: 'S1', customFields: { fulfillmentRoute: 'R3' } } as unknown as Order;
 

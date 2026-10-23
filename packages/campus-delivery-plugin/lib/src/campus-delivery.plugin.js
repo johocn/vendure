@@ -222,6 +222,9 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     merchantConfirmEnabled: Boolean!
                     merchantAutoOpenMinutes: Int!
                     freeShippingThreshold: Int
+                    timeoutCompensationEnabled: Boolean!
+                    timeoutGraceMinutes: Int!
+                    timeoutCompensationCouponTemplateId: String
                 }
 
                 input CampusFulfillmentConfigInput {
@@ -234,6 +237,9 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     compensationCouponTemplateId: String
                     merchantConfirmEnabled: Boolean
                     merchantAutoOpenMinutes: Int
+                    timeoutCompensationEnabled: Boolean
+                    timeoutGraceMinutes: Int
+                    timeoutCompensationCouponTemplateId: String
                 }
 
                 type DeliverySlot {
@@ -447,6 +453,9 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     notifyTemplateAfterSales: String
                     h5BaseUrl: String
                     printMode: String!
+                    timeoutCompensationEnabled: Boolean!
+                    timeoutGraceMinutes: Int!
+                    timeoutCompensationCouponTemplateId: String
                 }
 
                 input CampusStoreConfigInput {
@@ -478,6 +487,9 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     notifyTemplateAfterSales: String
                     h5BaseUrl: String
                     printMode: String
+                    timeoutCompensationEnabled: Boolean
+                    timeoutGraceMinutes: Int
+                    timeoutCompensationCouponTemplateId: String
                 }
 
                 type RiderWithdrawalRequest {

@@ -56,6 +56,9 @@ export interface CampusStoreConfigWithChannel {
     externalFallbackMinutes: number;
     storeLat: number | null;
     storeLng: number | null;
+    timeoutCompensationEnabled: boolean;
+    timeoutGraceMinutes: number;
+    timeoutCompensationCouponTemplateId: string | null;
 }
 
 const PRINT_MODES = ['off', 'onPaid', 'onAccepted'] as const;
@@ -155,6 +158,9 @@ export class WaimaiStoreService {
             notifyTemplateAfterSales?: string | null;
             h5BaseUrl?: string | null;
             printMode?: string | null;
+            timeoutCompensationEnabled?: boolean | null;
+            timeoutGraceMinutes?: number | null;
+            timeoutCompensationCouponTemplateId?: string | null;
             routeFirstLeg?: Array<{ route: string; carrier: string }> | null;
             handoverPoints?: Array<{ route: string; name: string; address?: string | null; phone?: string | null; lat: number; lng: number; isDefault?: boolean | null }> | null;
             providerShopNo?: Array<{ provider: string; shopNo: string }> | null;
@@ -264,6 +270,12 @@ export class WaimaiStoreService {
         cfg.notifyTemplateAfterSales = input.notifyTemplateAfterSales ?? null;
         cfg.h5BaseUrl = input.h5BaseUrl ?? null;
         cfg.printMode = input.printMode == null || input.printMode === '' ? 'off' : input.printMode;
+        // 超时赔付：未传即保留（旧表单不会清空已配值）
+        if (input.timeoutCompensationEnabled != null) cfg.timeoutCompensationEnabled = input.timeoutCompensationEnabled;
+        if (input.timeoutGraceMinutes != null) cfg.timeoutGraceMinutes = input.timeoutGraceMinutes;
+        if (input.timeoutCompensationCouponTemplateId !== undefined) {
+            cfg.timeoutCompensationCouponTemplateId = input.timeoutCompensationCouponTemplateId || null;
+        }
         // 未传即保留：后台旧表单不认识的字段不被清空
         if (input.routeFirstLeg !== undefined) cfg.routeFirstLeg = input.routeFirstLeg === null ? null : routeFirstLeg;
         if (input.handoverPoints !== undefined) cfg.handoverPoints = input.handoverPoints === null ? null : handoverPoints;
@@ -353,6 +365,9 @@ export class WaimaiStoreService {
             notifyTemplateAfterSales: cfg?.notifyTemplateAfterSales ?? null,
             h5BaseUrl: cfg?.h5BaseUrl ?? null,
             printMode: normalizePrintMode(cfg?.printMode),
+            timeoutCompensationEnabled: cfg?.timeoutCompensationEnabled ?? false,
+            timeoutGraceMinutes: cfg?.timeoutGraceMinutes ?? 10,
+            timeoutCompensationCouponTemplateId: cfg?.timeoutCompensationCouponTemplateId ?? null,
             routeFirstLeg: Object.entries(cfg?.routeFirstLeg ?? {}).map(([route, carrier]) => ({ route, carrier })),
             handoverPoints: Object.entries(cfg?.handoverPoints ?? {}).flatMap(([route, raw]) =>
                 (Array.isArray(raw) ? raw : raw ? [raw] : []).map(p => ({

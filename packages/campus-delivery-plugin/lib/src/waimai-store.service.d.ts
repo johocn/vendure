@@ -65,6 +65,9 @@ export interface CampusStoreConfigWithChannel {
     externalFallbackMinutes: number;
     storeLat: number | null;
     storeLng: number | null;
+    timeoutCompensationEnabled: boolean;
+    timeoutGraceMinutes: number;
+    timeoutCompensationCouponTemplateId: string | null;
 }
 declare const PRINT_MODES: readonly ["off", "onPaid", "onAccepted"];
 type PrintMode = (typeof PRINT_MODES)[number];
@@ -100,6 +103,9 @@ export declare class WaimaiStoreService {
         notifyTemplateAfterSales?: string | null;
         h5BaseUrl?: string | null;
         printMode?: string | null;
+        timeoutCompensationEnabled?: boolean | null;
+        timeoutGraceMinutes?: number | null;
+        timeoutCompensationCouponTemplateId?: string | null;
         routeFirstLeg?: Array<{
             route: string;
             carrier: string;

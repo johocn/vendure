@@ -80,6 +80,50 @@ const future = (min) => new Date(Date.now() + min * 60000);
         (0, vitest_1.expect)(env.updates[0].customFields).toMatchObject({ hallStatus: 'owned_pool', deliveryPlan: 'owned' });
     });
 });
+(0, vitest_1.describe)('HallService 承诺送达时间固化（P0 超时赔付）', () => {
+    const base = { id: 9, code: 'S1', customFields: { fulfillmentRoute: 'R3' } };
+    (0, vitest_1.it)('即时单 → 支付时间 + 店铺配送时长，source=store_minutes', async () => {
+        const env = makeEnv({ cfg: { channelId: 1, deliveryMinutes: 30 } });
+        const before = Date.now();
+        await env.svc.onOrderPlaced({ channelId: 1 }, Object.assign({}, base));
+        const cf = env.updates[0].customFields;
+        (0, vitest_1.expect)(cf.promiseSource).toBe('store_minutes');
+        (0, vitest_1.expect)(cf.promisedAt.getTime()).toBeGreaterThanOrEqual(before + 30 * 60000 - 1000);
+        (0, vitest_1.expect)(cf.promisedAt.getTime()).toBeLessThanOrEqual(Date.now() + 30 * 60000 + 1000);
+    });
+    (0, vitest_1.it)('未配配送时长 → 退回 40min 默认', async () => {
+        const env = makeEnv();
+        await env.svc.onOrderPlaced({ channelId: 1 }, Object.assign({}, base));
+        const delta = env.updates[0].customFields.promisedAt.getTime() - Date.now();
+        (0, vitest_1.expect)(Math.round(delta / 60000)).toBe(40);
+    });
+    (0, vitest_1.it)('预约单 → 承诺 = 时段开始 + 时段长度（按文本解析），source=slot', async () => {
+        const env = makeEnv({ cfg: { channelId: 1, deliveryMinutes: 30 } });
+        const start = future(120);
+        const hh = (d) => String(d.getHours()).padStart(2, '0');
+        const mm = (d) => String(d.getMinutes()).padStart(2, '0');
+        const end = new Date(start.getTime() + 30 * 60000);
+        await env.svc.onOrderPlaced({ channelId: 1 }, Object.assign(Object.assign({}, base), { customFields: {
+                fulfillmentRoute: 'R3', scheduledFor: start,
+                deliverySlotText: `${hh(start)}:${mm(start)}-${hh(end)}:${mm(end)}`,
+            } }));
+        const cf = env.updates[0].customFields;
+        (0, vitest_1.expect)(cf.promiseSource).toBe('slot');
+        (0, vitest_1.expect)(Math.round((cf.promisedAt.getTime() - start.getTime()) / 60000)).toBe(30);
+    });
+    (0, vitest_1.it)('预约单时段文本不可解析 → 退回开始 + 配送时长，source=slot_estimate', async () => {
+        const env = makeEnv({ cfg: { channelId: 1, deliveryMinutes: 25 } });
+        const start = future(120);
+        await env.svc.onOrderPlaced({ channelId: 1 }, Object.assign(Object.assign({}, base), { customFields: { fulfillmentRoute: 'R3', scheduledFor: start, deliverySlotText: '晚间' } }));
+        const cf = env.updates[0].customFields;
+        (0, vitest_1.expect)(cf.promiseSource).toBe('slot_estimate');
+        (0, vitest_1.expect)(Math.round((cf.promisedAt.getTime() - start.getTime()) / 60000)).toBe(25);
+    });
+    (0, vitest_1.it)('时段文本跨零点/异常长度 → 视为不可解析', () => {
+        (0, vitest_1.expect)(hall_service_1.HallService.slotSpanMinutes('23:30-00:30')).toBeNull();
+        (0, vitest_1.expect)(hall_service_1.HallService.slotSpanMinutes('11:00-11:30')).toBe(30);
+    });
+});
 (0, vitest_1.describe)('HallService.releaseScheduled', () => {
     const order = { id: 9, code: 'S1', customFields: { fulfillmentRoute: 'R3' } };
     (0, vitest_1.it)('商家确认模式 → pending_merchant', async () => {

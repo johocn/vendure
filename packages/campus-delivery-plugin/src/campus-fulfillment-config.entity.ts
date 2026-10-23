@@ -23,6 +23,10 @@ export class CampusFulfillmentConfig extends VendureEntity {
     @Column({ type: 'int', nullable: true }) freeShippingThreshold: number | null; // 满 X 元免配送费（分；null=不启用，仅 R1/R3 外卖单）
     @Column({ default: false }) merchantConfirmEnabled: boolean; // 商家接单确认模式：支付后先待商家接单，出餐完成才入大厅
     @Column({ type: 'int', default: 15 }) merchantAutoOpenMinutes: number; // 商家未处理（待接单/备餐中）超时自动入厅，防卡单
+    // 超时赔付（P0）：开关默认关（灰度），独立券模板与 T4 no_rider 补偿券隔离
+    @Column({ default: false }) timeoutCompensationEnabled: boolean;
+    @Column({ type: 'int', default: 10 }) timeoutGraceMinutes: number; // 超时宽限（分钟），超过才赔
+    @Column({ type: 'varchar', nullable: true }) timeoutCompensationCouponTemplateId: string | null;
     // 用户侧节点通知（公众号模板消息）：五个触点的模板 ID，未配置 = 该节点静默跳过
     @Column({ type: 'varchar', nullable: true }) notifyTemplateAccepted: string | null; // 商家已接单
     @Column({ type: 'varchar', nullable: true }) notifyTemplateRiderAssigned: string | null; // 骑手已接单

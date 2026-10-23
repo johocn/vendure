@@ -386,4 +386,85 @@ function injectT4Services(svc) {
         });
     });
 });
+/** 超时赔付专用环境：绕过 scan 的混合查询，直接替换仓库返回待判定送达单 */
+function makeTimeoutEnv(opts) {
+    var _a;
+    const env = makeEnv({ cfg: Object.assign({ channelId: 1 }, opts.cfg) });
+    const repo = {
+        createQueryBuilder: () => ({
+            leftJoin: vitest_1.vi.fn().mockReturnThis(),
+            where: vitest_1.vi.fn().mockReturnThis(),
+            andWhere: vitest_1.vi.fn().mockReturnThis(),
+            take: vitest_1.vi.fn().mockReturnThis(),
+            getMany: vitest_1.vi.fn().mockResolvedValue(opts.orders),
+        }),
+    };
+    // 券服务 mock 需固定实例（services() 每次调用都会重建对象，不能在里面新建 spy）
+    const coupon = opts.coupon === null ? null : ((_a = opts.coupon) !== null && _a !== void 0 ? _a : { grantCoupon: vitest_1.vi.fn().mockResolvedValue(['coupon-1']) });
+    env.svc.connection = { getRepository: vitest_1.vi.fn(() => repo) };
+    env.svc.services = () => ({ order: null, coupon });
+    return Object.assign(Object.assign({}, env), { coupon });
+}
+(0, vitest_1.describe)('DispatchJobService 超时赔付（P0）', () => {
+    const cfgOn = { timeoutCompensationEnabled: true, timeoutGraceMinutes: 10, timeoutCompensationCouponTemplateId: 'T-LATE' };
+    const deliveredOrder = (over = {}) => ({
+        id: 31, code: 'TO1', customerId: '5', createdAt: minAgo(60),
+        customFields: Object.assign({ promisedAt: new Date(now - 25 * 60000), deliveredAt: new Date(now), assignedAt: minAgo(58) }, over),
+    });
+    (0, vitest_1.it)('超出承诺 + 宽限 → 自动发券并写幂等闸与归因', async () => {
+        const env = makeTimeoutEnv({ orders: [deliveredOrder()], cfg: cfgOn });
+        await env.svc.sweepTimeoutCompensation({ channelId: 1 }, cfgOn, now);
+        (0, vitest_1.expect)(env.coupon.grantCoupon).toHaveBeenCalledWith(vitest_1.expect.anything(), 'T-LATE', ['5']);
+        (0, vitest_1.expect)(env.hallSvc.updateOrder).toHaveBeenCalledWith(vitest_1.expect.anything(), 31, {
+            customFields: vitest_1.expect.objectContaining({
+                timeoutLateMinutes: 25,
+                timeoutCompensationCouponId: 'coupon-1',
+                timeoutAttribution: 'rider',
+            }),
+        });
+        const patch = env.hallSvc.updateOrder.mock.calls[0][2].customFields;
+        (0, vitest_1.expect)(patch.timeoutCompensatedAt).toBeInstanceOf(Date);
+    });
+    (0, vitest_1.it)('超时未过宽限 → 不赔', async () => {
+        const env = makeTimeoutEnv({
+            orders: [deliveredOrder({ promisedAt: new Date(now - 8 * 60000) })], cfg: cfgOn,
+        });
+        await env.svc.sweepTimeoutCompensation({ channelId: 1 }, cfgOn, now);
+        (0, vitest_1.expect)(env.hallSvc.updateOrder).not.toHaveBeenCalled();
+    });
+    (0, vitest_1.it)('接单前耗时更长 → 归因 merchant', async () => {
+        const env = makeTimeoutEnv({
+            orders: [deliveredOrder({ assignedAt: minAgo(5), deliveredAt: new Date(now - 40 * 60000), promisedAt: new Date(now - 70 * 60000) })],
+            cfg: cfgOn,
+        });
+        await env.svc.sweepTimeoutCompensation({ channelId: 1 }, cfgOn, now);
+        (0, vitest_1.expect)(env.hallSvc.updateOrder.mock.calls[0][2].customFields.timeoutAttribution).toBe('merchant');
+    });
+    (0, vitest_1.it)('全程无骑手承接 → 归因 platform', async () => {
+        const env = makeTimeoutEnv({ orders: [deliveredOrder({ assignedAt: null })], cfg: cfgOn });
+        await env.svc.sweepTimeoutCompensation({ channelId: 1 }, cfgOn, now);
+        (0, vitest_1.expect)(env.hallSvc.updateOrder.mock.calls[0][2].customFields.timeoutAttribution).toBe('platform');
+    });
+    (0, vitest_1.it)('开关关闭 → 整轮跳过（不发券不查询）', async () => {
+        const env = makeTimeoutEnv({ orders: [deliveredOrder()], cfg: { timeoutCompensationEnabled: false } });
+        await env.svc.sweepTimeoutCompensation({ channelId: 1 }, { timeoutCompensationEnabled: false }, now);
+        (0, vitest_1.expect)(env.hallSvc.updateOrder).not.toHaveBeenCalled();
+    });
+    (0, vitest_1.it)('未配置券模板 → 不发券也不写闸（保留待赔资格）', async () => {
+        const env = makeTimeoutEnv({
+            orders: [deliveredOrder()],
+            cfg: Object.assign(Object.assign({}, cfgOn), { timeoutCompensationCouponTemplateId: null }),
+        });
+        await env.svc.sweepTimeoutCompensation({ channelId: 1 }, Object.assign(Object.assign({}, cfgOn), { timeoutCompensationCouponTemplateId: null }), now);
+        (0, vitest_1.expect)(env.hallSvc.updateOrder).not.toHaveBeenCalled();
+    });
+    (0, vitest_1.it)('发券异常 → 不写闸，下一轮可重试', async () => {
+        const env = makeTimeoutEnv({
+            orders: [deliveredOrder()], cfg: cfgOn,
+            coupon: { grantCoupon: vitest_1.vi.fn().mockRejectedValue(new Error('template disabled')) },
+        });
+        await env.svc.sweepTimeoutCompensation({ channelId: 1 }, cfgOn, now);
+        (0, vitest_1.expect)(env.hallSvc.updateOrder).not.toHaveBeenCalled();
+    });
+});
 //# sourceMappingURL=dispatch-job.service.spec.js.map

@@ -19,6 +19,8 @@ export declare class DispatchJobService implements OnApplicationShutdown {
     private orderSvc?;
     private couponSvc?;
     private paymentRepo?;
+    /** 超时赔付缺配置告警限频（避免每分钟刷日志） */
+    private compensationWarnAt;
     constructor(connection: TransactionalConnection, grab: HallGrabService, hall: HallService, capacity: CapacityService, credit: RiderCreditService, moduleRef: ModuleRef, thirdParty?: ThirdPartyDeliveryService | undefined);
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
     private get injector();
@@ -44,6 +46,14 @@ export declare class DispatchJobService implements OnApplicationShutdown {
      * 6) owned_dispatched 超 merchantAutoOpenMinutes 未送达交接点 → 回大厅并清空骑手
      */
     private sweepRouteTimeouts;
+    /**
+     * 超时赔付（P0）：近 24h 已送达单，实际送达超出承诺时间 + 宽限 → 自动发定向券。
+     * 幂等：timeoutCompensatedAt 作闸，已赔单不再扫；发券失败不落痕，下一轮重试。
+     * 归因（粗判）：无骑手承接 = platform；接单前耗时 > 骑手在途 = merchant，否则 rider。
+     */
+    private sweepTimeoutCompensation;
+    /** 超时归因粗判：无骑手承接=platform；接单前耗时更长=merchant，否则=rider */
+    private timeoutAttribution;
     /** 即时单（无 deliverySlotId）打包时间窗：入厅时间差 ≤10min 视为顺路 */
     private static readonly ROUTE_IMM_WINDOW_MIN;
     /**

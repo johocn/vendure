@@ -415,3 +415,104 @@ describe('DispatchJobService.scan 路线超时兜底（R1–R3）', () => {
     });
 });
 
+/** 超时赔付专用环境：绕过 scan 的混合查询，直接替换仓库返回待判定送达单 */
+function makeTimeoutEnv(opts: {
+    orders: any[];
+    cfg?: any;
+    coupon?: { grantCoupon: any } | null;
+}) {
+    const env = makeEnv({ cfg: { channelId: 1, ...opts.cfg } });
+    const repo = {
+        createQueryBuilder: () => ({
+            leftJoin: vi.fn().mockReturnThis(),
+            where: vi.fn().mockReturnThis(),
+            andWhere: vi.fn().mockReturnThis(),
+            take: vi.fn().mockReturnThis(),
+            getMany: vi.fn().mockResolvedValue(opts.orders),
+        }),
+    };
+    // 券服务 mock 需固定实例（services() 每次调用都会重建对象，不能在里面新建 spy）
+    const coupon = opts.coupon === null ? null : (opts.coupon ?? { grantCoupon: vi.fn().mockResolvedValue(['coupon-1']) });
+    (env.svc as any).connection = { getRepository: vi.fn(() => repo) };
+    (env.svc as any).services = () => ({ order: null, coupon });
+    return { ...env, coupon };
+}
+
+describe('DispatchJobService 超时赔付（P0）', () => {
+    const cfgOn = { timeoutCompensationEnabled: true, timeoutGraceMinutes: 10, timeoutCompensationCouponTemplateId: 'T-LATE' };
+    const deliveredOrder = (over: any = {}) => ({
+        id: 31, code: 'TO1', customerId: '5', createdAt: minAgo(60),
+        customFields: {
+            promisedAt: new Date(now - 25 * 60_000), deliveredAt: new Date(now),
+            assignedAt: minAgo(58), // 下单 60min 前、接单 58min 前 → 在途占比更长，归因 rider
+            ...over,
+        },
+    });
+
+    it('超出承诺 + 宽限 → 自动发券并写幂等闸与归因', async () => {
+        const env = makeTimeoutEnv({ orders: [deliveredOrder()], cfg: cfgOn });
+        await (env.svc as any).sweepTimeoutCompensation({ channelId: 1 } as any, cfgOn, now);
+        expect(env.coupon!.grantCoupon).toHaveBeenCalledWith(
+            expect.anything(), 'T-LATE', ['5'],
+        );
+        expect(env.hallSvc.updateOrder).toHaveBeenCalledWith(expect.anything(), 31, {
+            customFields: expect.objectContaining({
+                timeoutLateMinutes: 25,
+                timeoutCompensationCouponId: 'coupon-1',
+                timeoutAttribution: 'rider',
+            }),
+        });
+        const patch = env.hallSvc.updateOrder.mock.calls[0][2].customFields;
+        expect(patch.timeoutCompensatedAt).toBeInstanceOf(Date);
+    });
+
+    it('超时未过宽限 → 不赔', async () => {
+        const env = makeTimeoutEnv({
+            orders: [deliveredOrder({ promisedAt: new Date(now - 8 * 60_000) })], cfg: cfgOn,
+        });
+        await (env.svc as any).sweepTimeoutCompensation({ channelId: 1 } as any, cfgOn, now);
+        expect(env.hallSvc.updateOrder).not.toHaveBeenCalled();
+    });
+
+    it('接单前耗时更长 → 归因 merchant', async () => {
+        const env = makeTimeoutEnv({
+            orders: [deliveredOrder({ assignedAt: minAgo(5), deliveredAt: new Date(now - 40 * 60_000), promisedAt: new Date(now - 70 * 60_000) })],
+            cfg: cfgOn,
+        });
+        await (env.svc as any).sweepTimeoutCompensation({ channelId: 1 } as any, cfgOn, now);
+        expect(env.hallSvc.updateOrder.mock.calls[0][2].customFields.timeoutAttribution).toBe('merchant');
+    });
+
+    it('全程无骑手承接 → 归因 platform', async () => {
+        const env = makeTimeoutEnv({ orders: [deliveredOrder({ assignedAt: null })], cfg: cfgOn });
+        await (env.svc as any).sweepTimeoutCompensation({ channelId: 1 } as any, cfgOn, now);
+        expect(env.hallSvc.updateOrder.mock.calls[0][2].customFields.timeoutAttribution).toBe('platform');
+    });
+
+    it('开关关闭 → 整轮跳过（不发券不查询）', async () => {
+        const env = makeTimeoutEnv({ orders: [deliveredOrder()], cfg: { timeoutCompensationEnabled: false } });
+        await (env.svc as any).sweepTimeoutCompensation({ channelId: 1 } as any, { timeoutCompensationEnabled: false } as any, now);
+        expect(env.hallSvc.updateOrder).not.toHaveBeenCalled();
+    });
+
+    it('未配置券模板 → 不发券也不写闸（保留待赔资格）', async () => {
+        const env = makeTimeoutEnv({
+            orders: [deliveredOrder()],
+            cfg: { ...cfgOn, timeoutCompensationCouponTemplateId: null },
+        });
+        await (env.svc as any).sweepTimeoutCompensation(
+            { channelId: 1 } as any, { ...cfgOn, timeoutCompensationCouponTemplateId: null } as any, now,
+        );
+        expect(env.hallSvc.updateOrder).not.toHaveBeenCalled();
+    });
+
+    it('发券异常 → 不写闸，下一轮可重试', async () => {
+        const env = makeTimeoutEnv({
+            orders: [deliveredOrder()], cfg: cfgOn,
+            coupon: { grantCoupon: vi.fn().mockRejectedValue(new Error('template disabled')) },
+        });
+        await (env.svc as any).sweepTimeoutCompensation({ channelId: 1 } as any, cfgOn, now);
+        expect(env.hallSvc.updateOrder).not.toHaveBeenCalled();
+    });
+});
+

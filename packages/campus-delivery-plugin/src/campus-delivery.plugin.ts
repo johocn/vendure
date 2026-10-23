@@ -146,6 +146,9 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     merchantConfirmEnabled: Boolean!
                     merchantAutoOpenMinutes: Int!
                     freeShippingThreshold: Int
+                    timeoutCompensationEnabled: Boolean!
+                    timeoutGraceMinutes: Int!
+                    timeoutCompensationCouponTemplateId: String
                 }
 
                 input CampusFulfillmentConfigInput {
@@ -158,6 +161,9 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     compensationCouponTemplateId: String
                     merchantConfirmEnabled: Boolean
                     merchantAutoOpenMinutes: Int
+                    timeoutCompensationEnabled: Boolean
+                    timeoutGraceMinutes: Int
+                    timeoutCompensationCouponTemplateId: String
                 }
 
                 type DeliverySlot {
@@ -371,6 +377,9 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     notifyTemplateAfterSales: String
                     h5BaseUrl: String
                     printMode: String!
+                    timeoutCompensationEnabled: Boolean!
+                    timeoutGraceMinutes: Int!
+                    timeoutCompensationCouponTemplateId: String
                 }
 
                 input CampusStoreConfigInput {
@@ -402,6 +411,9 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     notifyTemplateAfterSales: String
                     h5BaseUrl: String
                     printMode: String
+                    timeoutCompensationEnabled: Boolean
+                    timeoutGraceMinutes: Int
+                    timeoutCompensationCouponTemplateId: String
                 }
 
                 type RiderWithdrawalRequest {

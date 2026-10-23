@@ -49,6 +49,31 @@ let HallService = HallService_1 = class HallService {
             return null;
         return { lat: Number(b.lat), lng: Number(b.lng) };
     }
+    /** 预约单时段文本（'2026-10-06 11:00-11:30' 或 '11:00-11:30'）解析时长；无法解析返回 null */
+    static slotSpanMinutes(text) {
+        const m = /(\d{1,2}):(\d{2})\s*[-–~至]\s*(\d{1,2}):(\d{2})/.exec(text);
+        if (!m)
+            return null;
+        const start = Number(m[1]) * 60 + Number(m[2]);
+        const end = Number(m[3]) * 60 + Number(m[4]);
+        const span = end - start;
+        return span > 0 && span <= 12 * 60 ? span : null;
+    }
+    /**
+     * 承诺送达时间（支付时固化，超时赔付判定基准）：
+     * - 预约单：时段结束时间（文本解析失败退回「时段开始 + 配送时长」）
+     * - 即时单：支付时间 + 店铺配送时长（未配置按 40min）
+     */
+    resolvePromise(cf, cfg) {
+        var _a, _b;
+        const minutes = Math.max(10, Number((_a = cfg === null || cfg === void 0 ? void 0 : cfg.deliveryMinutes) !== null && _a !== void 0 ? _a : 40));
+        const start = cf.scheduledFor ? new Date(cf.scheduledFor).getTime() : NaN;
+        if (!Number.isNaN(start)) {
+            const span = HallService_1.slotSpanMinutes(String((_b = cf.deliverySlotText) !== null && _b !== void 0 ? _b : ''));
+            return { at: new Date(start + (span !== null && span !== void 0 ? span : minutes) * 60000), source: span ? 'slot' : 'slot_estimate' };
+        }
+        return { at: new Date(Date.now() + minutes * 60000), source: 'store_minutes' };
+    }
     async onOrderPlaced(ctx, order) {
         var _a, _b, _c, _d, _e, _f, _g;
         const cf = order.customFields;
@@ -67,8 +92,9 @@ let HallService = HallService_1 = class HallService {
         const dest = needsPoint ? await this.resolveDestPoint(ctx, order) : null;
         const point = needsPoint ? (0, route_matrix_1.resolveHandoverPoint)(route, cfg !== null && cfg !== void 0 ? cfg : {}, dest) : null;
         const degrade = needsPoint && !point;
+        const promise = this.resolvePromise(cf, cfg);
         // 履约快照：下单时冻结，后续配置变更不影响在途单
-        const snapshot = Object.assign({ deliveryPlan: degrade ? 'campus_rider' : ((_b = plan === null || plan === void 0 ? void 0 : plan.leg1) !== null && _b !== void 0 ? _b : 'campus_rider'), handoverMode: degrade ? '' : ((_c = plan === null || plan === void 0 ? void 0 : plan.handover) !== null && _c !== void 0 ? _c : ''), thirdPartyProvider: '', handoverPointName: (_d = point === null || point === void 0 ? void 0 : point.name) !== null && _d !== void 0 ? _d : '', handoverPointAddress: (_e = point === null || point === void 0 ? void 0 : point.address) !== null && _e !== void 0 ? _e : '', handoverPointLat: (_f = point === null || point === void 0 ? void 0 : point.lat) !== null && _f !== void 0 ? _f : null, handoverPointLng: (_g = point === null || point === void 0 ? void 0 : point.lng) !== null && _g !== void 0 ? _g : null }, (degrade ? { campusCause: 'no_handover_point' } : {}));
+        const snapshot = Object.assign({ deliveryPlan: degrade ? 'campus_rider' : ((_b = plan === null || plan === void 0 ? void 0 : plan.leg1) !== null && _b !== void 0 ? _b : 'campus_rider'), handoverMode: degrade ? '' : ((_c = plan === null || plan === void 0 ? void 0 : plan.handover) !== null && _c !== void 0 ? _c : ''), thirdPartyProvider: '', handoverPointName: (_d = point === null || point === void 0 ? void 0 : point.name) !== null && _d !== void 0 ? _d : '', handoverPointAddress: (_e = point === null || point === void 0 ? void 0 : point.address) !== null && _e !== void 0 ? _e : '', handoverPointLat: (_f = point === null || point === void 0 ? void 0 : point.lat) !== null && _f !== void 0 ? _f : null, handoverPointLng: (_g = point === null || point === void 0 ? void 0 : point.lng) !== null && _g !== void 0 ? _g : null, promisedAt: promise.at, promiseSource: promise.source }, (degrade ? { campusCause: 'no_handover_point' } : {}));
         const locked = await this.slotLock.lock(ctx, order);
         const scheduledAt = cf.scheduledFor ? new Date(cf.scheduledFor).getTime() : NaN;
         const deferred = !Number.isNaN(scheduledAt) && scheduledAt - Date.now() > HallService_1.SCHEDULE_RELEASE_MIN * 60000;
