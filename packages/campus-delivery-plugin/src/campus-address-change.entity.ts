@@ -14,11 +14,11 @@ export class CampusAddressChange extends VendureEntity {
 
     @Column() fromZone: string;
     @Column() fromBuilding: string;
-    @Column({ nullable: true }) fromDetail: string | null;
+    @Column({ type: 'varchar', nullable: true }) fromDetail: string | null;
 
     @Column() toZone: string;
     @Column() toBuilding: string;
-    @Column({ nullable: true }) toDetail: string | null;
+    @Column({ type: 'varchar', nullable: true }) toDetail: string | null;
 
     @Column('int') oldFee: number; // 分
     @Column('int') newFee: number; // 分
@@ -29,7 +29,7 @@ export class CampusAddressChange extends VendureEntity {
     @Column({ nullable: true, type: 'timestamp' }) settledAt: Date | null;
     @Column('int', { nullable: true }) settledBy: ID | null;
     /** refund=已退顾客 | collect=已补收 | waive=免收 */
-    @Column({ nullable: true }) settleAction: string | null;
+    @Column({ type: 'varchar', nullable: true }) settleAction: string | null;
 
     constructor(input?: DeepPartial<CampusAddressChange>) {
         super(input);

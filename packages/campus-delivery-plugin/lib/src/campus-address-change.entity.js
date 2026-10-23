@@ -47,7 +47,7 @@ __decorate([
     __metadata("design:type", String)
 ], CampusAddressChange.prototype, "fromBuilding", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
     __metadata("design:type", Object)
 ], CampusAddressChange.prototype, "fromDetail", void 0);
 __decorate([
@@ -59,7 +59,7 @@ __decorate([
     __metadata("design:type", String)
 ], CampusAddressChange.prototype, "toBuilding", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
     __metadata("design:type", Object)
 ], CampusAddressChange.prototype, "toDetail", void 0);
 __decorate([
@@ -87,7 +87,7 @@ __decorate([
     __metadata("design:type", Object)
 ], CampusAddressChange.prototype, "settledBy", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ nullable: true }),
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
     __metadata("design:type", Object)
 ], CampusAddressChange.prototype, "settleAction", void 0);
 exports.CampusAddressChange = CampusAddressChange = __decorate([
