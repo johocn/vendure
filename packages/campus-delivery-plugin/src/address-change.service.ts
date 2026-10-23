@@ -14,7 +14,9 @@ import { CampusAddressChange } from './campus-address-change.entity';
 import { CampusBuilding } from './campus-building.entity';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CampusZone } from './campus-zone.entity';
-import { quoteZoneFee } from './shipping-calculator';
+import { CapacityService } from './capacity.service';
+import { quoteZoneFee, readHallBacklog } from './shipping-calculator';
+import { parseDynamicPricing, quoteDynamicFee } from './dynamic-pricing';
 
 const loggerCtx = 'CampusAddressChange';
 
@@ -27,6 +29,7 @@ export class AddressChangeService {
         private connection: TransactionalConnection,
         private orderService: OrderService,
         private customerService: CustomerService,
+        private capacity: CapacityService,
     ) {}
 
     /** 顾客自助改址（取货前、可跨分区）。差额不阻塞改址，写入台账待运营结算。 */
@@ -38,85 +41,145 @@ export class AddressChangeService {
         const customer = await this.customerService.findOneByUserId(ctx, ctx.activeUserId);
         if (!customer) throw new ForbiddenError();
 
-        const order = await this.connection
-            .getRepository(ctx, Order)
-            .createQueryBuilder('order')
-            .leftJoinAndSelect('order.channels', 'channel')
-            .leftJoinAndSelect('order.customer', 'customer')
-            .where('order.id = :id', { id: input.orderId })
-            .getOne();
-        if (!order) throw new UserInputError('订单不存在');
+        const order = await this.loadOrder(ctx, input.orderId);
         if ((order.customer as any)?.id !== customer.id) throw new ForbiddenError();
+        this.assertNotCancelledOrDelivered(order);
 
         const cf = (order.customFields ?? {}) as any;
-        if (order.state === 'Cancelled') throw new UserInputError('订单已取消，无法改址');
-        if (cf.deliveredAt) throw new UserInputError('订单已送达，无法改址');
         if (cf.deliveryStatus === 'in_progress') throw new UserInputError('骑手已取货，无法自助改址，请联系客服');
         if (THIRD_PARTY_LOCKED.includes(cf.thirdPartyState)) throw new UserInputError('外部配送已接单，无法自助改址');
 
-        const zone = await this.connection.getRepository(ctx, CampusZone).findOne({
-            where: { id: input.zoneId as any },
+        const { zone, building } = await this.resolveTarget(ctx, input.zoneId, input.buildingId);
+        return this.applyChange(ctx, order, zone, building, input.detail, {
+            source: 'customer',
+            reason: null,
+            changedBy: ctx.activeUserId as any,
+            customerId: customer.id,
         });
+    }
+
+    /**
+     * 运营代客改址：C 端取货后锁死，运营可代改（必须填原因，全程留痕）。
+     * 仅「已取消 / 已送达」拒绝；骑手取货、外部已接单均允许代改。
+     */
+    async adminChange(
+        ctx: RequestContext,
+        input: { orderId: ID; zoneId: ID; buildingId: ID; detail?: string; reason: string },
+    ) {
+        const reason = (input.reason ?? '').trim();
+        if (!reason) throw new UserInputError('请填写代改原因');
+        const order = await this.loadOrder(ctx, input.orderId);
+        if (Number(this.channelIdOf(order, ctx)) !== Number(ctx.channelId)) throw new ForbiddenError();
+        this.assertNotCancelledOrDelivered(order);
+
+        const { zone, building } = await this.resolveTarget(ctx, input.zoneId, input.buildingId);
+        return this.applyChange(ctx, order, zone, building, input.detail, {
+            source: 'admin',
+            reason,
+            changedBy: (ctx.activeUserId ?? null) as any,
+            customerId: ((order.customer as any)?.id ?? null) as any,
+        });
+    }
+
+    /** 改址差额试算（运营端预览：不写台账、不改订单） */
+    async quote(ctx: RequestContext, orderId: ID, zoneId: ID) {
+        const order = await this.loadOrder(ctx, orderId);
+        if (Number(this.channelIdOf(order, ctx)) !== Number(ctx.channelId)) throw new ForbiddenError();
+        this.assertNotCancelledOrDelivered(order);
+        const zone = await this.connection.getRepository(ctx, CampusZone).findOne({ where: { id: zoneId as any } });
         if (!zone) throw new UserInputError('分区不存在');
-        const building = await this.connection.getRepository(ctx, CampusBuilding).findOne({
-            where: { id: input.buildingId as any },
-        });
-        if (!building) throw new UserInputError('宿舍楼不存在');
-        if (Number(building.zoneId) !== Number(zone.id)) throw new UserInputError('楼栋不属于所选分区');
+        if (Number((zone as any).channelId) !== Number(ctx.channelId)) throw new ForbiddenError();
 
         const channelId = this.channelIdOf(order, ctx);
         const cfg = await this.connection.rawConnection.getRepository(CampusFulfillmentConfig).findOne({
             where: { channelId: channelId as any },
         });
-
         const oldFee = Number(order.shippingWithTax ?? 0);
-        const quote = await quoteZoneFee(this.connection, channelId, { name: zone.name, fee: Number(zone.fee) }, cfg, order);
-        const newFee = Number(quote?.price ?? oldFee);
-        const diff = newFee - oldFee;
-
-        const fromZone = String(cf.campusZone ?? '');
-        const fromBuilding = String(cf.buildingId ?? '');
-        const fromDetail = cf.deliveryDetail ?? null;
-        const toDetail = input.detail?.trim() || fromDetail;
-
-        const record = await this.connection.getRepository(ctx, CampusAddressChange).save(
-            new CampusAddressChange({
-                channelId,
-                orderId: Number(order.id),
-                orderCode: order.code,
-                customerId: customer.id,
-                fromZone,
-                fromBuilding,
-                fromDetail,
-                toZone: zone.name,
-                toBuilding: building.name,
-                toDetail,
-                oldFee,
-                newFee,
-                diff,
-                status: diff === 0 ? 'settled' : 'pending',
-                settledAt: diff === 0 ? new Date() : null,
-                settleAction: diff === 0 ? 'waive' : null,
-            }),
-        );
-
-        await this.orderService.updateCustomFields(ctx, order.id, {
-            buildingId: String(building.id),
-            campusZone: zone.name,
-            deliveryDetail: toDetail,
-        } as any);
-
-        Logger.info(
-            `address change order=${order.code} ${fromZone}/${fromBuilding} -> ${zone.name}/${building.name} diff=${diff}`,
-            loggerCtx,
-        );
+        const q = await quoteZoneFee(this.connection, channelId, { name: zone.name, fee: Number(zone.fee) }, cfg, order);
+        const newFee = Number(q?.price ?? oldFee);
+        const buildings = await this.connection
+            .getRepository(ctx, CampusBuilding)
+            .find({ where: { zoneId: (zone as any).id, channelId: channelId as any } });
         return {
-            diff,
             oldFee,
             newFee,
-            fromZone,
-            toZone: zone.name,
-            recordId: record.id,
+            diff: newFee - oldFee,
+            zoneId: (zone as any).id,
+            zoneName: zone.name,
+            buildings,
+        };
+    }
+
+    /** 顾客端：本单最近一次改址（差额状态感知，含已结清） */
+    async myLatest(ctx: RequestContext, orderId: ID) {
+        if (!ctx.activeUserId) throw new ForbiddenError();
+        const customer = await this.customerService.findOneByUserId(ctx, ctx.activeUserId);
+        if (!customer) throw new ForbiddenError();
+        const order = await this.loadOrder(ctx, orderId);
+        if ((order.customer as any)?.id !== customer.id) throw new ForbiddenError();
+        const row = await this.connection
+            .getRepository(ctx, CampusAddressChange)
+            .findOne({ where: { orderId: Number(order.id) }, order: { createdAt: 'DESC' as any } });
+        if (!row) return null;
+        return {
+            id: row.id,
+            diff: row.diff,
+            status: row.status,
+            settleAction: row.settleAction,
+            fromZone: row.fromZone,
+            fromBuilding: row.fromBuilding,
+            toZone: row.toZone,
+            toBuilding: row.toBuilding,
+            createdAt: row.createdAt,
+        };
+    }
+
+    /** 动态计价预览：当前供需 + 各分区试算拆解（后台配置页用） */
+    async dynamicPreview(ctx: RequestContext) {
+        const channelId = ctx.channelId;
+        const cfg = await this.connection.rawConnection.getRepository(CampusFulfillmentConfig).findOne({
+            where: { channelId: channelId as any },
+        });
+        const pricing = parseDynamicPricing(cfg?.dynamicPricing ?? null);
+        const zones = (await this.connection.rawConnection.getRepository(CampusZone).find({
+            where: { channelId: channelId as any },
+            order: { id: 'ASC' as any },
+        })) as CampusZone[];
+        const backlog = pricing.enabled && pricing.supply ? await readHallBacklog(this.connection, channelId) : 0;
+        const onlineRiders = (await this.capacity.listOnlineRiders(ctx)).length;
+        const now = new Date();
+        return {
+            at: now.toISOString(),
+            enabled: pricing.enabled,
+            backlog,
+            onlineRiders,
+            manualMultiplier: pricing.manualMultiplier,
+            maxAddFee: pricing.maxAddFee,
+            supply: pricing.supply
+                ? {
+                      backlogThreshold: pricing.supply.backlogThreshold,
+                      riderThreshold: pricing.supply.riderThreshold ?? null,
+                      addFee: pricing.supply.addFee,
+                  }
+                : null,
+            peakWindows: pricing.peakWindows,
+            zones: zones.map(z => {
+                const q = quoteDynamicFee({
+                    baseFee: Number(z.fee),
+                    config: pricing,
+                    at: now,
+                    backlog,
+                    onlineRiders,
+                });
+                return {
+                    zoneId: (z as any).id,
+                    zoneName: z.name,
+                    baseFee: q.baseFee,
+                    price: q.price,
+                    addFee: q.addFee,
+                    breakdown: q.breakdown,
+                };
+            }),
         };
     }
 
@@ -185,6 +248,106 @@ export class AddressChangeService {
             row.settleAction = action;
         }
         return repo.save(row);
+    }
+
+    private async loadOrder(ctx: RequestContext, orderId: ID): Promise<Order> {
+        const order = await this.connection
+            .getRepository(ctx, Order)
+            .createQueryBuilder('order')
+            .leftJoinAndSelect('order.channels', 'channel')
+            .leftJoinAndSelect('order.customer', 'customer')
+            .where('order.id = :id', { id: orderId })
+            .getOne();
+        if (!order) throw new UserInputError('订单不存在');
+        return order;
+    }
+
+    private assertNotCancelledOrDelivered(order: Order) {
+        const cf = (order.customFields ?? {}) as any;
+        if (order.state === 'Cancelled') throw new UserInputError('订单已取消，无法改址');
+        if (cf.deliveredAt) throw new UserInputError('订单已送达，无法改址');
+    }
+
+    private async resolveTarget(ctx: RequestContext, zoneId: ID, buildingId: ID) {
+        const zone = await this.connection.getRepository(ctx, CampusZone).findOne({
+            where: { id: zoneId as any },
+        });
+        if (!zone) throw new UserInputError('分区不存在');
+        const building = await this.connection.getRepository(ctx, CampusBuilding).findOne({
+            where: { id: buildingId as any },
+        });
+        if (!building) throw new UserInputError('宿舍楼不存在');
+        if (Number(building.zoneId) !== Number(zone.id)) throw new UserInputError('楼栋不属于所选分区');
+        if (Number((building as any).channelId) !== Number((zone as any).channelId)) throw new UserInputError('楼栋不属于所选分区');
+        return { zone, building };
+    }
+
+    private async applyChange(
+        ctx: RequestContext,
+        order: Order,
+        zone: CampusZone,
+        building: CampusBuilding,
+        detail: string | undefined,
+        actor: { source: 'customer' | 'admin'; reason: string | null; changedBy: ID | null; customerId: ID | null },
+    ) {
+        const channelId = this.channelIdOf(order, ctx);
+        const cfg = await this.connection.rawConnection.getRepository(CampusFulfillmentConfig).findOne({
+            where: { channelId: channelId as any },
+        });
+
+        const cf = (order.customFields ?? {}) as any;
+        const oldFee = Number(order.shippingWithTax ?? 0);
+        const quote = await quoteZoneFee(this.connection, channelId, { name: zone.name, fee: Number(zone.fee) }, cfg, order);
+        const newFee = Number(quote?.price ?? oldFee);
+        const diff = newFee - oldFee;
+
+        const fromZone = String(cf.campusZone ?? '');
+        const fromBuilding = String(cf.buildingId ?? '');
+        const fromDetail = cf.deliveryDetail ?? null;
+        const toDetail = detail?.trim() || fromDetail;
+
+        const record = await this.connection.getRepository(ctx, CampusAddressChange).save(
+            new CampusAddressChange({
+                channelId,
+                orderId: Number(order.id),
+                orderCode: order.code,
+                customerId: actor.customerId as any,
+                fromZone,
+                fromBuilding,
+                fromDetail,
+                toZone: zone.name,
+                toBuilding: building.name,
+                toDetail,
+                oldFee,
+                newFee,
+                diff,
+                status: diff === 0 ? 'settled' : 'pending',
+                settledAt: diff === 0 ? new Date() : null,
+                settleAction: diff === 0 ? 'waive' : null,
+                source: actor.source,
+                reason: actor.reason,
+                changedBy: actor.changedBy as any,
+            }),
+        );
+
+        await this.orderService.updateCustomFields(ctx, order.id, {
+            buildingId: String((building as any).id),
+            campusZone: zone.name,
+            deliveryDetail: toDetail,
+        } as any);
+
+        Logger.info(
+            `address change [${actor.source}] order=${order.code} ${fromZone}/${fromBuilding} -> ${zone.name}/${building.name} diff=${diff}`,
+            loggerCtx,
+        );
+        return {
+            diff,
+            oldFee,
+            newFee,
+            fromZone,
+            toZone: zone.name,
+            recordId: record.id,
+        };
     }
 
     private channelIdOf(order: Order, ctx: RequestContext): ID {

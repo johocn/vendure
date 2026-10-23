@@ -36,6 +36,13 @@ ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "dynamicPricing" 
 ALTER TABLE "order" ADD COLUMN IF NOT EXISTS "customFieldsDeliverydetail" varchar;
 `;
 
+/** 改址台账增补：来源/原因/操作人（2026-10-23 运营代改址） */
+export const addAddressChangeActorSql = `
+ALTER TABLE campus_address_change ADD COLUMN IF NOT EXISTS "source" varchar;
+ALTER TABLE campus_address_change ADD COLUMN IF NOT EXISTS "reason" varchar;
+ALTER TABLE campus_address_change ADD COLUMN IF NOT EXISTS "changedBy" int;
+`;
+
 @Injectable()
 export class AddAddressChangePricingMigration implements OnApplicationBootstrap {
     constructor(@InjectConnection() private connection: Connection) {}
@@ -45,6 +52,7 @@ export class AddAddressChangePricingMigration implements OnApplicationBootstrap 
             const queryRunner = this.connection.createQueryRunner();
             try {
                 await queryRunner.query(addAddressChangePricingSql);
+                await queryRunner.query(addAddressChangeActorSql);
             } finally {
                 await queryRunner.release();
             }

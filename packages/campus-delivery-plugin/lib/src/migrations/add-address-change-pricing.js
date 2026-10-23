@@ -12,7 +12,7 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.AddAddressChangePricingMigration = exports.addAddressChangePricingSql = void 0;
+exports.AddAddressChangePricingMigration = exports.addAddressChangeActorSql = exports.addAddressChangePricingSql = void 0;
 // 改址 + 动态计价新增结构（2026-10-23）：
 // 1) 台账表 campus_address_change（多退少补流水）
 // 2) campus_fulfillment_config.dynamicPricing（动态计价 JSON 配置）
@@ -49,6 +49,12 @@ CREATE INDEX IF NOT EXISTS idx_campus_address_change_order ON campus_address_cha
 ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "dynamicPricing" jsonb;
 ALTER TABLE "order" ADD COLUMN IF NOT EXISTS "customFieldsDeliverydetail" varchar;
 `;
+/** 改址台账增补：来源/原因/操作人（2026-10-23 运营代改址） */
+exports.addAddressChangeActorSql = `
+ALTER TABLE campus_address_change ADD COLUMN IF NOT EXISTS "source" varchar;
+ALTER TABLE campus_address_change ADD COLUMN IF NOT EXISTS "reason" varchar;
+ALTER TABLE campus_address_change ADD COLUMN IF NOT EXISTS "changedBy" int;
+`;
 let AddAddressChangePricingMigration = class AddAddressChangePricingMigration {
     constructor(connection) {
         this.connection = connection;
@@ -58,6 +64,7 @@ let AddAddressChangePricingMigration = class AddAddressChangePricingMigration {
             const queryRunner = this.connection.createQueryRunner();
             try {
                 await queryRunner.query(exports.addAddressChangePricingSql);
+                await queryRunner.query(exports.addAddressChangeActorSql);
             }
             finally {
                 await queryRunner.release();

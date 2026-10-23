@@ -29,7 +29,8 @@ export function bindCampusErrandCalculatorConnection(conn: TransactionalConnecti
 const backlogCache = new Map<string, { at: number; value: number }>();
 const BACKLOG_TTL = 30_000;
 
-async function readBacklog(conn: TransactionalConnection, channelId: ID): Promise<number> {
+/** 大厅待抢单量（30s 缓存）；动态计价预览与运费报价共用同一口径 */
+export async function readHallBacklog(conn: TransactionalConnection, channelId: ID): Promise<number> {
     const key = String(channelId);
     const hit = backlogCache.get(key);
     if (hit && Date.now() - hit.at < BACKLOG_TTL) return hit.value;
@@ -103,7 +104,7 @@ export async function quoteZoneFee(
         };
     }
     const pricing = parseDynamicPricing(cfg?.dynamicPricing ?? null);
-    const backlog = pricing.enabled && pricing.supply ? await readBacklog(conn, channelId) : 0;
+    const backlog = pricing.enabled && pricing.supply ? await readHallBacklog(conn, channelId) : 0;
     const quote = quoteDynamicFee({ baseFee: zone.fee, config: pricing, at: new Date(), backlog });
     return {
         price: quote.price,

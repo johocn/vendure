@@ -25,6 +25,10 @@ let AddressChangeShopResolver = class AddressChangeShopResolver {
     campusChangeDeliveryAddress(ctx, orderId, zoneId, buildingId, detail) {
         return this.service.changeByCustomer(ctx, { orderId, zoneId, buildingId, detail });
     }
+    /** 顾客端：本单最近一次改址差额状态（待补/待退/已结清） */
+    campusMyAddressChange(ctx, orderId) {
+        return this.service.myLatest(ctx, orderId);
+    }
 };
 exports.AddressChangeShopResolver = AddressChangeShopResolver;
 __decorate([
@@ -39,6 +43,15 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, Object, String]),
     __metadata("design:returntype", void 0)
 ], AddressChangeShopResolver.prototype, "campusChangeDeliveryAddress", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:returntype", void 0)
+], AddressChangeShopResolver.prototype, "campusMyAddressChange", null);
 exports.AddressChangeShopResolver = AddressChangeShopResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [address_change_service_1.AddressChangeService])
@@ -56,6 +69,18 @@ let AddressChangeAdminResolver = class AddressChangeAdminResolver {
     }
     campusSettleAddressChange(ctx, id, action) {
         return this.service.settle(ctx, id, action);
+    }
+    /** 运营代客改址（取货后也可代改，必须填原因） */
+    campusAdminChangeDeliveryAddress(ctx, orderId, zoneId, buildingId, detail, reason) {
+        return this.service.adminChange(ctx, { orderId, zoneId, buildingId, detail, reason });
+    }
+    /** 改址差额试算（不写台账） */
+    campusAdminQuoteAddressChange(ctx, orderId, zoneId) {
+        return this.service.quote(ctx, orderId, zoneId);
+    }
+    /** 动态计价试算预览（当前供需 + 各分区加价拆解） */
+    campusDynamicPricingPreview(ctx) {
+        return this.service.dynamicPreview(ctx);
     }
 };
 exports.AddressChangeAdminResolver = AddressChangeAdminResolver;
@@ -88,6 +113,37 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
     __metadata("design:returntype", void 0)
 ], AddressChangeAdminResolver.prototype, "campusSettleAddressChange", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusConfig),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __param(2, (0, graphql_1.Args)('zoneId')),
+    __param(3, (0, graphql_1.Args)('buildingId')),
+    __param(4, (0, graphql_1.Args)({ name: 'detail', type: () => String, nullable: true })),
+    __param(5, (0, graphql_1.Args)('reason')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object, Object, Object, String]),
+    __metadata("design:returntype", void 0)
+], AddressChangeAdminResolver.prototype, "campusAdminChangeDeliveryAddress", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusConfig),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __param(2, (0, graphql_1.Args)('zoneId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, Object]),
+    __metadata("design:returntype", void 0)
+], AddressChangeAdminResolver.prototype, "campusAdminQuoteAddressChange", null);
+__decorate([
+    (0, graphql_1.Query)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusConfig),
+    __param(0, (0, core_1.Ctx)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext]),
+    __metadata("design:returntype", void 0)
+], AddressChangeAdminResolver.prototype, "campusDynamicPricingPreview", null);
 exports.AddressChangeAdminResolver = AddressChangeAdminResolver = __decorate([
     (0, graphql_1.Resolver)(),
     __metadata("design:paramtypes", [address_change_service_1.AddressChangeService])

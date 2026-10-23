@@ -459,6 +459,8 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     campusDeliveryStats(range: String): CampusDeliveryStats!
                     campusAddressChanges(status: String, skip: Int, take: Int): [CampusAddressChangeRow!]!
                     campusAddressChangeStats: CampusAddressChangeStats!
+                    campusAdminQuoteAddressChange(orderId: ID!, zoneId: ID!): CampusAddressChangeQuote!
+                    campusDynamicPricingPreview: CampusDynamicPricingPreview!
                 }
 
                 type CampusDeliveryStatsKpi {
@@ -520,7 +522,61 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     status: String!
                     settledAt: DateTime
                     settleAction: String
+                    source: String
+                    reason: String
+                    changedBy: ID
                     createdAt: DateTime!
+                }
+
+                """改址差额试算（不落台账）"""
+                type CampusAddressChangeQuote {
+                    oldFee: Int!
+                    newFee: Int!
+                    diff: Int!
+                    zoneId: ID!
+                    zoneName: String!
+                    buildings: [CampusBuilding!]!
+                }
+
+                type CampusPricingBreakdownItem {
+                    key: String!
+                    label: String!
+                    fee: Int!
+                }
+
+                type CampusDynamicPricingZoneQuote {
+                    zoneId: ID!
+                    zoneName: String!
+                    baseFee: Int!
+                    price: Int!
+                    addFee: Int!
+                    breakdown: [CampusPricingBreakdownItem!]!
+                }
+
+                type CampusDynamicPricingSupply {
+                    backlogThreshold: Int!
+                    riderThreshold: Int
+                    addFee: Int!
+                }
+
+                type CampusDynamicPricingPeakWindow {
+                    label: String
+                    start: String!
+                    end: String!
+                    addFee: Int!
+                }
+
+                """动态计价试算预览：当前供需 + 各分区加价拆解"""
+                type CampusDynamicPricingPreview {
+                    at: DateTime!
+                    enabled: Boolean!
+                    backlog: Int!
+                    onlineRiders: Int!
+                    manualMultiplier: Float!
+                    maxAddFee: Int!
+                    supply: CampusDynamicPricingSupply
+                    peakWindows: [CampusDynamicPricingPeakWindow!]!
+                    zones: [CampusDynamicPricingZoneQuote!]!
                 }
 
                 type CampusAddressChangeStats {
@@ -553,6 +609,8 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     campusEnsureErrandProducts: CampusErrandProductResult!
                     campusUpdateStoreConfig(channelId: ID!, input: CampusStoreConfigInput!): CampusStoreConfigWithChannel!
                     campusSettleAddressChange(id: ID!, action: String!): CampusAddressChangeRow!
+                    """运营代客改址：取货后也可代改，必须填写原因"""
+                    campusAdminChangeDeliveryAddress(orderId: ID!, zoneId: ID!, buildingId: ID!, detail: String, reason: String!): CampusAddressChangeResult!
                     campusEnsureDefaultShippingProfile(channelId: ID!): CampusEnsureProfileResult!
                     campusMerchantAcceptOrder(orderId: ID!): CampusMerchantOpResult!
                     campusMerchantCookingDone(orderId: ID!): CampusMerchantOpResult!
@@ -884,6 +942,20 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     riderWithdrawRequests(skip: Int, take: Int): [RiderWithdrawalRequest!]!
                     campusFavoriteStores: [String!]!
                     campusFavoriteVariants: [CampusFavoriteVariant!]!
+                    """本单最近一次改址的差额状态（待补/待退/已结清）"""
+                    campusMyAddressChange(orderId: ID!): CampusMyAddressChange
+                }
+
+                type CampusMyAddressChange {
+                    id: ID!
+                    diff: Int!
+                    status: String!
+                    settleAction: String
+                    fromZone: String!
+                    fromBuilding: String!
+                    toZone: String!
+                    toBuilding: String!
+                    createdAt: DateTime!
                 }
 
                 type CampusAddressChangeResult {

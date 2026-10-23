@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.campusErrandCalculator = void 0;
 exports.bindCampusErrandCalculatorConnection = bindCampusErrandCalculatorConnection;
+exports.readHallBacklog = readHallBacklog;
 exports.quoteZoneFee = quoteZoneFee;
 const core_1 = require("@vendure/core");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
@@ -30,7 +31,8 @@ function bindCampusErrandCalculatorConnection(conn) {
 /** 供需因子：大厅积压单量，按渠道缓存 30s（结算页会连续多次调用 calculator） */
 const backlogCache = new Map();
 const BACKLOG_TTL = 30000;
-async function readBacklog(conn, channelId) {
+/** 大厅待抢单量（30s 缓存）；动态计价预览与运费报价共用同一口径 */
+async function readHallBacklog(conn, channelId) {
     const key = String(channelId);
     const hit = backlogCache.get(key);
     if (hit && Date.now() - hit.at < BACKLOG_TTL)
@@ -103,7 +105,7 @@ async function quoteZoneFee(conn, channelId, zone, cfg, order) {
         };
     }
     const pricing = (0, dynamic_pricing_1.parseDynamicPricing)((_d = cfg === null || cfg === void 0 ? void 0 : cfg.dynamicPricing) !== null && _d !== void 0 ? _d : null);
-    const backlog = pricing.enabled && pricing.supply ? await readBacklog(conn, channelId) : 0;
+    const backlog = pricing.enabled && pricing.supply ? await readHallBacklog(conn, channelId) : 0;
     const quote = (0, dynamic_pricing_1.quoteDynamicFee)({ baseFee: zone.fee, config: pricing, at: new Date(), backlog });
     return {
         price: quote.price,

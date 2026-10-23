@@ -90,6 +90,18 @@ __decorate([
     (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
     __metadata("design:type", Object)
 ], CampusAddressChange.prototype, "settleAction", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], CampusAddressChange.prototype, "source", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], CampusAddressChange.prototype, "reason", void 0);
+__decorate([
+    (0, typeorm_1.Column)('int', { nullable: true }),
+    __metadata("design:type", Object)
+], CampusAddressChange.prototype, "changedBy", void 0);
 exports.CampusAddressChange = CampusAddressChange = __decorate([
     (0, typeorm_1.Entity)(),
     __metadata("design:paramtypes", [Object])

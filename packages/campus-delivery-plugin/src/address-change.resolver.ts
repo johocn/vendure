@@ -19,6 +19,13 @@ export class AddressChangeShopResolver {
     ) {
         return this.service.changeByCustomer(ctx, { orderId, zoneId, buildingId, detail });
     }
+
+    /** 顾客端：本单最近一次改址差额状态（待补/待退/已结清） */
+    @Query()
+    @Allow(Permission.Authenticated)
+    campusMyAddressChange(@Ctx() ctx: RequestContext, @Args('orderId') orderId: ID) {
+        return this.service.myLatest(ctx, orderId);
+    }
 }
 
 /** 运营端：改址台账查询/统计/结清 */
@@ -51,5 +58,37 @@ export class AddressChangeAdminResolver {
         @Args('action') action: string,
     ) {
         return this.service.settle(ctx, id, action);
+    }
+
+    /** 运营代客改址（取货后也可代改，必须填原因） */
+    @Mutation()
+    @Allow(CampusPermissions.CampusConfig as any)
+    campusAdminChangeDeliveryAddress(
+        @Ctx() ctx: RequestContext,
+        @Args('orderId') orderId: ID,
+        @Args('zoneId') zoneId: ID,
+        @Args('buildingId') buildingId: ID,
+        @Args({ name: 'detail', type: () => String, nullable: true }) detail: string | undefined,
+        @Args('reason') reason: string,
+    ) {
+        return this.service.adminChange(ctx, { orderId, zoneId, buildingId, detail, reason });
+    }
+
+    /** 改址差额试算（不写台账） */
+    @Query()
+    @Allow(CampusPermissions.CampusConfig as any)
+    campusAdminQuoteAddressChange(
+        @Ctx() ctx: RequestContext,
+        @Args('orderId') orderId: ID,
+        @Args('zoneId') zoneId: ID,
+    ) {
+        return this.service.quote(ctx, orderId, zoneId);
+    }
+
+    /** 动态计价试算预览（当前供需 + 各分区加价拆解） */
+    @Query()
+    @Allow(CampusPermissions.CampusConfig as any)
+    campusDynamicPricingPreview(@Ctx() ctx: RequestContext) {
+        return this.service.dynamicPreview(ctx);
     }
 }

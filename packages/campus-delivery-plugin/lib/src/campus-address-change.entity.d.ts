@@ -23,5 +23,11 @@ export declare class CampusAddressChange extends VendureEntity {
     settledBy: ID | null;
     /** refund=已退顾客 | collect=已补收 | waive=免收 */
     settleAction: string | null;
+    /** customer=顾客自助 | admin=运营代改 */
+    source: string | null;
+    /** 代改原因（运营代改必填，顾客自助可空） */
+    reason: string | null;
+    /** 发起改址的用户 id（顾客=本人，运营=管理员） */
+    changedBy: ID | null;
     constructor(input?: DeepPartial<CampusAddressChange>);
 }

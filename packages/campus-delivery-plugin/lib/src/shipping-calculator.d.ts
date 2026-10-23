@@ -1,6 +1,8 @@
 import { ID, ShippingCalculator, TransactionalConnection } from '@vendure/core';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 export declare function bindCampusErrandCalculatorConnection(conn: TransactionalConnection): void;
+/** 大厅待抢单量（30s 缓存）；动态计价预览与运费报价共用同一口径 */
+export declare function readHallBacklog(conn: TransactionalConnection, channelId: ID): Promise<number>;
 export declare const campusErrandCalculator: ShippingCalculator<{}>;
 /** 分区运费报价（改址差额也复用此函数，保证前后口径一致） */
 export declare function quoteZoneFee(conn: TransactionalConnection, channelId: ID, zone: {

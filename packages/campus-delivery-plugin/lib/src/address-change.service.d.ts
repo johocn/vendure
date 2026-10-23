@@ -1,10 +1,13 @@
 import { CustomerService, ID, OrderService, RequestContext, TransactionalConnection } from '@vendure/core';
 import { CampusAddressChange } from './campus-address-change.entity';
+import { CampusBuilding } from './campus-building.entity';
+import { CapacityService } from './capacity.service';
 export declare class AddressChangeService {
     private connection;
     private orderService;
     private customerService;
-    constructor(connection: TransactionalConnection, orderService: OrderService, customerService: CustomerService);
+    private capacity;
+    constructor(connection: TransactionalConnection, orderService: OrderService, customerService: CustomerService, capacity: CapacityService);
     /** 顾客自助改址（取货前、可跨分区）。差额不阻塞改址，写入台账待运营结算。 */
     changeByCustomer(ctx: RequestContext, input: {
         orderId: ID;
@@ -19,6 +22,68 @@ export declare class AddressChangeService {
         toZone: string;
         recordId: ID;
     }>;
+    /**
+     * 运营代客改址：C 端取货后锁死，运营可代改（必须填原因，全程留痕）。
+     * 仅「已取消 / 已送达」拒绝；骑手取货、外部已接单均允许代改。
+     */
+    adminChange(ctx: RequestContext, input: {
+        orderId: ID;
+        zoneId: ID;
+        buildingId: ID;
+        detail?: string;
+        reason: string;
+    }): Promise<{
+        diff: number;
+        oldFee: number;
+        newFee: number;
+        fromZone: string;
+        toZone: string;
+        recordId: ID;
+    }>;
+    /** 改址差额试算（运营端预览：不写台账、不改订单） */
+    quote(ctx: RequestContext, orderId: ID, zoneId: ID): Promise<{
+        oldFee: number;
+        newFee: number;
+        diff: number;
+        zoneId: any;
+        zoneName: string;
+        buildings: CampusBuilding[];
+    }>;
+    /** 顾客端：本单最近一次改址（差额状态感知，含已结清） */
+    myLatest(ctx: RequestContext, orderId: ID): Promise<{
+        id: ID;
+        diff: number;
+        status: string;
+        settleAction: string | null;
+        fromZone: string;
+        fromBuilding: string;
+        toZone: string;
+        toBuilding: string;
+        createdAt: Date;
+    } | null>;
+    /** 动态计价预览：当前供需 + 各分区试算拆解（后台配置页用） */
+    dynamicPreview(ctx: RequestContext): Promise<{
+        at: string;
+        enabled: boolean;
+        backlog: number;
+        onlineRiders: number;
+        manualMultiplier: number;
+        maxAddFee: number;
+        supply: {
+            backlogThreshold: number;
+            riderThreshold: number | null;
+            addFee: number;
+        } | null;
+        peakWindows: import("./dynamic-pricing").PeakWindow[];
+        zones: {
+            zoneId: any;
+            zoneName: string;
+            baseFee: number;
+            price: number;
+            addFee: number;
+            breakdown: import("./dynamic-pricing").PricingBreakdownItem[];
+        }[];
+    }>;
     list(ctx: RequestContext, opts?: {
         status?: string;
         skip?: number;
@@ -32,5 +97,9 @@ export declare class AddressChangeService {
     }>;
     /** 运营结清：refund=已退顾客 / collect=已补收 / waive=免收 / pending=撤销结清 */
     settle(ctx: RequestContext, id: ID, action: string): Promise<CampusAddressChange>;
+    private loadOrder;
+    private assertNotCancelledOrDelivered;
+    private resolveTarget;
+    private applyChange;
     private channelIdOf;
 }
