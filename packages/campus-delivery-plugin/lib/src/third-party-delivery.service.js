@@ -20,6 +20,8 @@ const campus_notify_service_1 = require("./campus-notify.service");
 const hall_service_1 = require("./hall.service");
 const route_matrix_1 = require("./route-matrix");
 const loggerCtx = 'ThirdPartyDelivery';
+/** 外部运单状态推进序（回调乱序时只接受前进，不接受回退） */
+const TP_STATUS_RANK = { pending: 0, accepted: 1, pickup: 2, delivered: 3 };
 /** 第一段完成后的本地状态（纯函数，便于单测）：只有「直送」才算完成，其余都进大厅接力 */
 function nextHallStateAfterHandover(handover) {
     if (handover === 'direct_to_user')
@@ -67,9 +69,34 @@ let ThirdPartyDeliveryService = class ThirdPartyDeliveryService {
      * - R3：当前策略为 external 时，外部快递整段直送学生
      */
     async dispatchExternal(ctx, orderId, provider) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0;
+        var _a;
         if (provider !== 'dada' && provider !== 'meituan')
             throw new core_2.UserInputError('外部快递仅支持 dada/meituan');
+        // 并发/重复推送：订单级咨询锁串行化，防两名运营同时推送产生两张外部运单（孤儿单 + 双倍运费）。
+        // 锁内重读订单，「已在途不重推」的前置判断才可靠。
+        const runner = this.connection.rawConnection.createQueryRunner();
+        await runner.connect();
+        const lockKey = `campus:thirdparty:${orderId}`;
+        try {
+            const got = await runner.query('SELECT pg_try_advisory_lock(hashtext($1)) AS ok', [lockKey]);
+            const rows = Array.isArray(got) && Array.isArray(got[0]) ? got[0] : got;
+            if (!((_a = rows === null || rows === void 0 ? void 0 : rows[0]) === null || _a === void 0 ? void 0 : _a.ok))
+                throw new core_2.UserInputError('该订单正在推送外部快递，请稍后重试');
+            return await this.doDispatchExternal(ctx, orderId, provider);
+        }
+        finally {
+            try {
+                await runner.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]);
+            }
+            catch (_b) {
+                // 释放失败交给连接回收兜底
+            }
+            await runner.release();
+        }
+    }
+    /** 推送主体（须由 dispatchExternal 持订单级锁调用）：幂等判断与下单在同一锁内 */
+    async doDispatchExternal(ctx, orderId, provider) {
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0;
         const order = await this.orderRepo(ctx).findOne({
             where: { id: orderId },
             relations: ['channels', 'lines', 'lines.productVariant', 'customer', 'shippingAddress'],
@@ -216,7 +243,7 @@ let ThirdPartyDeliveryService = class ThirdPartyDeliveryService {
     }
     /** 网关回调（由 DeliveryStatusSink 调用） */
     async onDeliveryStatus(ctx, update) {
-        var _a, _b, _c, _d, _e, _f;
+        var _a, _b, _c, _d, _e, _f, _g, _h;
         const order = await this.orderRepo(ctx).findOne({
             where: { id: update.orderId },
             relations: ['channels', 'customer'],
@@ -228,6 +255,17 @@ let ThirdPartyDeliveryService = class ThirdPartyDeliveryService {
         const channelId = (_c = (_b = (_a = order.channels) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.id) !== null && _c !== void 0 ? _c : ctx.channelId;
         const oCtx = await this.ctxForChannel(channelId);
         const cf = order.customFields;
+        // 回调幂等/防回退：同状态重复、旧状态乱序、送达后的迟到回调一律忽略。
+        // 否则重复 delivered 会把已进大厅/已被抢的单再次 enterHallForHandover
+        //（清空骑手、重新生成交接码 → 可二次配送、二次分成）。
+        const current = String((_d = cf.thirdPartyState) !== null && _d !== void 0 ? _d : '');
+        const incomingRank = TP_STATUS_RANK[update.status];
+        if (current === update.status)
+            return;
+        if (current === 'delivered')
+            return;
+        if (TP_STATUS_RANK[current] != null && incomingRank != null && incomingRank < TP_STATUS_RANK[current])
+            return;
         const patch = {
             thirdPartyState: update.status,
             thirdPartyNo: update.thirdPartyNo || cf.thirdPartyNo,
@@ -237,7 +275,12 @@ let ThirdPartyDeliveryService = class ThirdPartyDeliveryService {
         if (update.courierPhone)
             patch.thirdPartyCourierPhone = update.courierPhone;
         if (update.status === 'delivered') {
-            const next = nextHallStateAfterHandover(String((_d = cf.handoverMode) !== null && _d !== void 0 ? _d : ''));
+            // 第一段已结束（已进大厅 / 已被抢 / 已送达）：迟到或重复回调只补终态与快递员信息，不重置履约链路
+            if (String((_e = cf.hallStatus) !== null && _e !== void 0 ? _e : '') !== 'third_party') {
+                await this.hall.updateOrder(oCtx, Number(order.id), { customFields: patch });
+                return;
+            }
+            const next = nextHallStateAfterHandover(String((_f = cf.handoverMode) !== null && _f !== void 0 ? _f : ''));
             patch.handoverAt = new Date();
             if (next.hallStatus === 'open') {
                 // R1/R2：送达交接点 → 进大厅接力（统一写 open/hallEnteredAt/campusCause 并提醒骑手）
@@ -253,7 +296,7 @@ let ThirdPartyDeliveryService = class ThirdPartyDeliveryService {
             patch.deliveredAt = new Date();
         }
         else if (update.status === 'cancelled' || update.status === 'exception') {
-            const route = String((_e = cf.fulfillmentRoute) !== null && _e !== void 0 ? _e : '');
+            const route = String((_g = cf.fulfillmentRoute) !== null && _g !== void 0 ? _g : '');
             if (route === 'R2') {
                 // R2 回到待推送，由运营中心换一家外部快递
                 patch.hallStatus = 'pending_dispatch';
@@ -276,7 +319,7 @@ let ThirdPartyDeliveryService = class ThirdPartyDeliveryService {
         // dedupe 后缀区分接单与取货两个节点，避免与出餐完成通知抢同一幂等键。
         if (update.status === 'accepted' || update.status === 'pickup') {
             const cfg = await this.cfgRepo.findOne({ where: { channelId: channelId } });
-            this.notify.user(oCtx, order.id, 'riderAssigned', undefined, (_f = cfg === null || cfg === void 0 ? void 0 : cfg.h5BaseUrl) !== null && _f !== void 0 ? _f : undefined, `external_${update.status}`);
+            this.notify.user(oCtx, order.id, 'riderAssigned', undefined, (_h = cfg === null || cfg === void 0 ? void 0 : cfg.h5BaseUrl) !== null && _h !== void 0 ? _h : undefined, `external_${update.status}`);
         }
     }
     /** 自营快递接单（R1 商户超时转自营 / R3 自营快递池） */

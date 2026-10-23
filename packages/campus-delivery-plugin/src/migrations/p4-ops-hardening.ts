@@ -7,6 +7,12 @@ import { Connection } from 'typeorm';
 export const p4OpsHardeningSql = `
 ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "timeoutCompensationWindowHours" integer NOT NULL DEFAULT 24;
 ALTER TABLE "order" ADD COLUMN IF NOT EXISTS "customFieldsExceptionreportedat" timestamp;
+ALTER TABLE "order" ADD COLUMN IF NOT EXISTS "customFieldsSlotlocked" boolean DEFAULT false;
+-- 时段锁位标记回填：在途预约单视为已锁位（历史未落标记），避免其取消时无法归还容量
+UPDATE "order" SET "customFieldsSlotlocked" = true
+WHERE "customFieldsDeliveryslotid" IS NOT NULL
+  AND COALESCE("customFieldsSlotlocked", false) = false
+  AND "customFieldsHallstatus" IN ('scheduled', 'pending_merchant', 'accepted', 'open', 'pending_dispatch', 'third_party', 'owned_pool', 'owned_dispatched', 'merchant_delivering', 'grabbed');
 UPDATE "order" SET "customFieldsHallstatus" = 'delivered'
 WHERE "customFieldsDeliverystatus" = 'delivered'
   AND "customFieldsHallstatus" IS NOT NULL

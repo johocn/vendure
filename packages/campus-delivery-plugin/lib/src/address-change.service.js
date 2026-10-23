@@ -21,6 +21,7 @@ const campus_notify_service_1 = require("./campus-notify.service");
 const shipping_calculator_1 = require("./shipping-calculator");
 const dynamic_pricing_1 = require("./dynamic-pricing");
 const route_matrix_1 = require("./route-matrix");
+const refund_lock_1 = require("./refund-lock");
 const third_party_delivery_service_1 = require("./third-party-delivery.service");
 const loggerCtx = 'CampusAddressChange';
 /** 外部配送已接单/取货后不可改址 */
@@ -281,9 +282,19 @@ let AddressChangeService = class AddressChangeService {
                     throw new core_1.UserInputError('该差额已退款，请勿重复操作');
                 const amount = Math.abs(Number(row.diff));
                 if (amount > 0) {
-                    const order = await this.loadOrder(ctx, row.orderId);
-                    const refund = await this.refundAmount(ctx, order, amount, `address change refund (${row.orderCode})`);
-                    row.refundId = refund.id;
+                    // 与商家拒单/T4/异常处置共用订单级退款锁，锁内复查防并发双退
+                    const done = await (0, refund_lock_1.withRefundLock)(this.connection, Number(row.orderId), async () => {
+                        const fresh = await repo.findOne({ where: { id: id } });
+                        if (!fresh)
+                            throw new core_1.UserInputError('台账记录不存在');
+                        if (fresh.refundId)
+                            throw new core_1.UserInputError('该差额已退款，请勿重复操作');
+                        const order = await this.loadOrder(ctx, row.orderId);
+                        const refund = await this.refundAmount(ctx, order, amount, `address change refund (${row.orderCode})`);
+                        row.refundId = refund.id;
+                    });
+                    if (!done.ok)
+                        throw new core_1.UserInputError('该订单正在退款处理中，请稍后重试');
                 }
             }
             if (action === 'collect') {

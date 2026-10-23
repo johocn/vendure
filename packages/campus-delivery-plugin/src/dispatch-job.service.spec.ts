@@ -551,3 +551,44 @@ describe('DispatchJobService 超时赔付（P0）', () => {
     });
 });
 
+describe('DispatchJobService.tick 多实例扫描锁', () => {
+    it('渠道锁被占用 → 跳过该渠道；其余渠道照常扫描（渠道故障隔离）', async () => {
+        const env = makeEnv({});
+        const conn = (env.svc as any).connection;
+        const channelRepo = { findOne: vi.fn().mockResolvedValue(null) };
+        const cfgRepo = { find: vi.fn().mockResolvedValue([{ channelId: 1 }, { channelId: 2 }]) };
+        conn.rawConnection.getRepository = vi.fn((ent: any) => ((ent as any).name === 'Channel' ? channelRepo : cfgRepo));
+        const mkRunner = (lockOk: boolean) => ({
+            connect: vi.fn().mockResolvedValue(undefined),
+            query: vi.fn().mockResolvedValueOnce([[{ ok: lockOk }]]).mockResolvedValue([[]]),
+            release: vi.fn().mockResolvedValue(undefined),
+        });
+        const runners = [mkRunner(false), mkRunner(true)];
+        conn.rawConnection.createQueryRunner = vi.fn(() => runners.shift());
+        const scanSpy = vi.spyOn(env.svc as any, 'scan').mockResolvedValue({} as any);
+        await (env.svc as any).tick();
+        expect(scanSpy).toHaveBeenCalledTimes(1);
+        expect((scanSpy.mock.calls[0][0] as any).channelId).toBe(2);
+    });
+
+    it('单渠道扫描抛错 → 不中断后续渠道', async () => {
+        const env = makeEnv({});
+        const conn = (env.svc as any).connection;
+        const channelRepo = { findOne: vi.fn().mockResolvedValue(null) };
+        const cfgRepo = { find: vi.fn().mockResolvedValue([{ channelId: 1 }, { channelId: 2 }]) };
+        conn.rawConnection.getRepository = vi.fn((ent: any) => ((ent as any).name === 'Channel' ? channelRepo : cfgRepo));
+        conn.rawConnection.createQueryRunner = vi.fn(() => ({
+            connect: vi.fn().mockResolvedValue(undefined),
+            query: vi.fn().mockResolvedValueOnce([[{ ok: true }]]).mockResolvedValue([[]]),
+            release: vi.fn().mockResolvedValue(undefined),
+        }));
+        const scanSpy = vi
+            .spyOn(env.svc as any, 'scan')
+            .mockRejectedValueOnce(new Error('channel 1 boom'))
+            .mockResolvedValueOnce({} as any);
+        await (env.svc as any).tick();
+        expect(scanSpy).toHaveBeenCalledTimes(2);
+        expect((scanSpy.mock.calls[1][0] as any).channelId).toBe(2);
+    });
+});
+

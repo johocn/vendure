@@ -18,7 +18,10 @@ const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.
 const campus_notify_service_1 = require("./campus-notify.service");
 const hall_grab_service_1 = require("./hall-grab.service");
 const hall_service_1 = require("./hall.service");
+const refund_lock_1 = require("./refund-lock");
 const rider_credit_service_1 = require("./rider-credit.service");
+/** 骑手在线窗口（与 CapacityService 心跳窗口 5min 对齐） */
+const RIDER_ONLINE_WINDOW_MS = 5 * 60 * 1000;
 /** 处置完结 push 文案（公众号模板 thing 字段 ≤20 字符，均已核对） */
 const EXCEPTION_NOTIFY_TEXT = {
     refund_diff: '异常已处理，差价原路退回',
@@ -187,6 +190,11 @@ let DispatchAdminService = class DispatchAdminService {
             throw new core_2.UserInputError('该骑手未通过审核或已停用');
         if (((_b = rcf.riderCredit) !== null && _b !== void 0 ? _b : 100) < rider_credit_service_1.CREDIT_LIMIT)
             throw new core_2.UserInputError('该骑手信用分不足，无法派单');
+        // 在线校验（与 CapacityService 在线窗口一致）：离线骑手派单必然 15min 未取货回厅
+        const onlineAt = rcf.riderOnlineAt ? new Date(rcf.riderOnlineAt).getTime() : 0;
+        if (!onlineAt || Date.now() - onlineAt > RIDER_ONLINE_WINDOW_MS) {
+            throw new core_2.UserInputError('该骑手当前不在线，无法派单');
+        }
         const ok = await this.grab.grabByRider(ctx, orderId, { id: riderCustomerId });
         if (!ok)
             throw new core_2.UserInputError('派单失败：订单已不在大厅（已被抢/已退款）');
@@ -203,36 +211,70 @@ let DispatchAdminService = class DispatchAdminService {
      * refund_all：全额退款+取消订单完结。完结单 hallStatus='exception_final' 退出调度墙，
      * 全部动作写 exceptionAction* 记录留痕。 */
     async handleException(ctx, orderId, action, amount, couponTemplateId, note) {
-        var _a;
+        var _a, _b;
         const order = await this.assertOrderInChannel(ctx, orderId);
-        if (order.customFields.deliveryStatus !== 'exception') {
+        const cf = order.customFields;
+        if (order.state === 'Cancelled')
+            throw new core_2.UserInputError('订单已取消，无法处置');
+        if (cf.deliveryStatus !== 'exception') {
             throw new core_2.UserInputError('仅骑手上报异常的订单可处置');
         }
-        switch (action) {
-            case 'reassign':
-                await this.hall.backToHall(ctx, order.id);
-                break;
-            case 'refund_diff':
-                if (!amount || amount <= 0)
-                    throw new core_2.UserInputError('赔付金额必须大于 0');
-                await this.refundAmount(ctx, order, amount, `exception diff refund (${order.code})`);
-                break;
-            case 'coupon': {
-                if (!couponTemplateId)
-                    throw new core_2.UserInputError('请选择补偿券模板');
-                const coupon = this.getCouponService();
-                if (!coupon)
-                    throw new core_2.UserInputError('券服务不可用');
-                if (!order.customerId)
-                    throw new core_2.UserInputError('订单无客户信息，无法发券');
-                await coupon.grantCoupon(ctx, couponTemplateId, [order.customerId]);
-                break;
+        const origHallStatus = String((_a = cf.hallStatus) !== null && _a !== void 0 ? _a : '');
+        // 幂等认领：原子消费异常态（重派=清 deliveryStatus；完结=置 exception_final），
+        // 防重复点击/并发重复赔付（补偿券无累计上限，退款也可多次小额）。
+        const claimed = action === 'reassign'
+            ? await this.claimException('UPDATE "order" SET "customFieldsDeliverystatus" = NULL '
+                + 'WHERE id = $1 AND "customFieldsDeliverystatus" = $2 RETURNING id', [orderId, 'exception'])
+            : await this.claimException('UPDATE "order" SET "customFieldsHallstatus" = $1 '
+                + 'WHERE id = $2 AND "customFieldsDeliverystatus" = $3 '
+                + 'AND COALESCE("customFieldsHallstatus", \'\') <> $1 RETURNING id', ['exception_final', orderId, 'exception']);
+        if (!claimed)
+            throw new core_2.UserInputError('该异常已处置，请刷新后重试');
+        const restore = () => this.hall.updateOrder(ctx, order.id, {
+            customFields: { hallStatus: origHallStatus, deliveryStatus: 'exception' },
+        });
+        try {
+            switch (action) {
+                case 'reassign':
+                    await this.hall.backToHall(ctx, order.id);
+                    // 重置入厅时间：否则同轮 T4 会按旧 hallEnteredAt 立即自动退款
+                    await this.hall.updateOrder(ctx, order.id, {
+                        customFields: { hallEnteredAt: new Date(), campusCause: 'exception_reassign' },
+                    });
+                    break;
+                case 'refund_diff': {
+                    if (!amount || amount <= 0)
+                        throw new core_2.UserInputError('赔付金额必须大于 0');
+                    const done = await (0, refund_lock_1.withRefundLock)(this.connection, Number(order.id), () => this.refundAmount(ctx, order, amount, `exception diff refund (${order.code})`));
+                    if (!done.ok)
+                        throw new core_2.UserInputError('该订单正在退款处理中，请稍后重试');
+                    break;
+                }
+                case 'coupon': {
+                    if (!couponTemplateId)
+                        throw new core_2.UserInputError('请选择补偿券模板');
+                    const coupon = this.getCouponService();
+                    if (!coupon)
+                        throw new core_2.UserInputError('券服务不可用');
+                    if (!order.customerId)
+                        throw new core_2.UserInputError('订单无客户信息，无法发券');
+                    await coupon.grantCoupon(ctx, couponTemplateId, [order.customerId]);
+                    break;
+                }
+                case 'refund_all': {
+                    const done = await (0, refund_lock_1.withRefundLock)(this.connection, Number(order.id), () => this.refundAllAndCancel(ctx, order));
+                    if (!done.ok)
+                        throw new core_2.UserInputError('该订单正在退款处理中，请稍后重试');
+                    break;
+                }
+                default:
+                    throw new core_2.UserInputError('未知处置动作');
             }
-            case 'refund_all':
-                await this.refundAllAndCancel(ctx, order);
-                break;
-            default:
-                throw new core_2.UserInputError('未知处置动作');
+        }
+        catch (e) {
+            // 处置失败回滚认领，保留异常态供重试（避免「标记已处置但钱未退/券未发」）
+            await restore().catch(() => undefined);
+            throw e;
         }
         const patch = {
             exceptionAction: action,
@@ -240,7 +282,7 @@ let DispatchAdminService = class DispatchAdminService {
             exceptionCouponTemplateId: action === 'coupon' ? String(couponTemplateId) : null,
             exceptionHandledNote: note !== null && note !== void 0 ? note : null,
             exceptionHandledAt: new Date(),
-            exceptionHandledBy: String((_a = ctx.activeUserId) !== null && _a !== void 0 ? _a : ''),
+            exceptionHandledBy: String((_b = ctx.activeUserId) !== null && _b !== void 0 ? _b : ''),
         };
         if (action !== 'reassign') {
             patch.hallStatus = 'exception_final';
@@ -252,6 +294,12 @@ let DispatchAdminService = class DispatchAdminService {
         // 处置完结 push（fire-and-forget，plan 3.4 补全）：按 action 带动态文案通知下单用户
         this.notify.user(ctx, order.id, 'exceptionHandled', EXCEPTION_NOTIFY_TEXT[action]);
         return { ok: true, action };
+    }
+    /** 异常处置原子认领：仅首次调用返回 true（并发/重复点击只有一路能消费掉异常态） */
+    async claimException(sql, params) {
+        const res = await this.connection.rawConnection.query(sql, params);
+        const rows = Array.isArray(res) && Array.isArray(res[0]) ? res[0] : res;
+        return Array.isArray(rows) && rows.length > 0;
     }
     /** 跨店守卫：订单必须属于当前渠道（调度写操作统一入口校验） */
     async assertOrderInChannel(ctx, orderId) {

@@ -27,6 +27,12 @@ export declare class DispatchJobService implements OnApplicationShutdown {
     start(intervalMs?: number): void;
     onApplicationShutdown(): void;
     private tick;
+    /**
+     * 按渠道加扫描锁：多实例幂等（pm2 多进程/多副本时同一渠道同一轮只允许一个实例扫描），
+     * 同时把渠道间故障隔离——单渠道扫描抛错不再中断其余渠道（上一版全局锁整体串行，渠道多时
+     * 一轮超 60s 会被 running 标志跳过，造成积压）。
+     */
+    private scanChannelWithLock;
     private ctxForChannel;
     /**
      * 扫描当前 ctx 渠道：

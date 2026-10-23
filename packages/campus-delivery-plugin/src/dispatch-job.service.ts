@@ -70,32 +70,43 @@ export class DispatchJobService implements OnApplicationShutdown {
         if (this.running) return; // 上一轮未结束跳过
         this.running = true;
         try {
-            // 多实例幂等：pm2 多进程/多副本时同一轮只允许一个实例扫描（PG 会话级咨询锁，
-            // 抢不到直接跳过本轮；runner 释放即解锁，进程崩溃由连接关闭兜底）。
-            const runner = this.connection.rawConnection.createQueryRunner();
-            await runner.connect();
-            const lockKey = 'campus:dispatch:scan';
-            try {
-                const got: any = await runner.query('SELECT pg_try_advisory_lock(hashtext($1)) AS ok', [lockKey]);
-                const rows = Array.isArray(got) && Array.isArray(got[0]) ? got[0] : got;
-                if (!rows?.[0]?.ok) return;
-                // 扫描跨渠道：逐渠道配置构造真实 RequestContext（getRepository 仅接受 RequestContext 实例）
-                const cfgs = await this.connection.rawConnection
-                    .getRepository(CampusFulfillmentConfig)
-                    .find();
-                for (const cfg of cfgs) {
-                    await this.scan(await this.ctxForChannel(cfg.channelId));
-                }
-            } finally {
-                try {
-                    await runner.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]);
-                } catch {
-                    // 释放失败交给连接回收兜底
-                }
-                await runner.release();
+            // 扫描跨渠道：逐渠道配置构造真实 RequestContext（getRepository 仅接受 RequestContext 实例）
+            const cfgs = await this.connection.rawConnection
+                .getRepository(CampusFulfillmentConfig)
+                .find();
+            for (const cfg of cfgs) {
+                await this.scanChannelWithLock(cfg.channelId);
             }
         } finally {
             this.running = false;
+        }
+    }
+
+    /**
+     * 按渠道加扫描锁：多实例幂等（pm2 多进程/多副本时同一渠道同一轮只允许一个实例扫描），
+     * 同时把渠道间故障隔离——单渠道扫描抛错不再中断其余渠道（上一版全局锁整体串行，渠道多时
+     * 一轮超 60s 会被 running 标志跳过，造成积压）。
+     */
+    private async scanChannelWithLock(channelId: ID) {
+        const runner = this.connection.rawConnection.createQueryRunner();
+        await runner.connect();
+        const lockKey = `campus:dispatch:scan:${channelId}`;
+        try {
+            const got: any = await runner.query('SELECT pg_try_advisory_lock(hashtext($1)) AS ok', [lockKey]);
+            const rows = Array.isArray(got) && Array.isArray(got[0]) ? got[0] : got;
+            if (!rows?.[0]?.ok) return;
+            try {
+                await this.scan(await this.ctxForChannel(channelId));
+            } catch (e: any) {
+                Logger.error(`dispatch scan failed for channel ${channelId}: ${e?.message}`, 'CampusDispatch');
+            }
+        } finally {
+            try {
+                await runner.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]);
+            } catch {
+                // 释放失败交给连接回收兜底
+            }
+            await runner.release();
         }
     }
 

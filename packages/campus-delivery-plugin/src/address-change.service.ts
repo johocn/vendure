@@ -21,6 +21,7 @@ import { CampusNotifyService } from './campus-notify.service';
 import { quoteZoneFee, readHallBacklog } from './shipping-calculator';
 import { parseDynamicPricing, quoteDynamicFee } from './dynamic-pricing';
 import { resolveHandoverPoint } from './route-matrix';
+import { withRefundLock } from './refund-lock';
 import { ThirdPartyDeliveryService } from './third-party-delivery.service';
 
 const loggerCtx = 'CampusAddressChange';
@@ -274,14 +275,21 @@ export class AddressChangeService {
                 if (row.refundId) throw new UserInputError('该差额已退款，请勿重复操作');
                 const amount = Math.abs(Number(row.diff));
                 if (amount > 0) {
-                    const order = await this.loadOrder(ctx, row.orderId);
-                    const refund = await this.refundAmount(
-                        ctx,
-                        order,
-                        amount,
-                        `address change refund (${row.orderCode})`,
-                    );
-                    row.refundId = refund.id as any;
+                    // 与商家拒单/T4/异常处置共用订单级退款锁，锁内复查防并发双退
+                    const done = await withRefundLock(this.connection, Number(row.orderId), async () => {
+                        const fresh = await repo.findOne({ where: { id: id as any } });
+                        if (!fresh) throw new UserInputError('台账记录不存在');
+                        if (fresh.refundId) throw new UserInputError('该差额已退款，请勿重复操作');
+                        const order = await this.loadOrder(ctx, row.orderId);
+                        const refund = await this.refundAmount(
+                            ctx,
+                            order,
+                            amount,
+                            `address change refund (${row.orderCode})`,
+                        );
+                        row.refundId = refund.id as any;
+                    });
+                    if (!done.ok) throw new UserInputError('该订单正在退款处理中，请稍后重试');
                 }
             }
             if (action === 'collect') {

@@ -61,3 +61,74 @@ describe('ThirdPartyDeliveryService.completeFirstLeg 状态前置校验', () => 
         await expect(svc.completeFirstLeg(ctx, 3, 'owned_handover')).rejects.toThrow('第一段已送达或订单状态已变更');
     });
 });
+
+describe('ThirdPartyDeliveryService.onDeliveryStatus 回调幂等', () => {
+    function makeEnv(order: any) {
+        const orderRepo = { findOne: vi.fn().mockResolvedValue(order) };
+        const channelRepo = { findOne: vi.fn().mockResolvedValue(null) };
+        const cfgRepo = { findOne: vi.fn().mockResolvedValue(null) };
+        const hall = {
+            updateOrder: vi.fn().mockResolvedValue({}),
+            enterHallForHandover: vi.fn().mockResolvedValue({}),
+        };
+        const notify = { user: vi.fn() };
+        const conn = {
+            getRepository: vi.fn(() => orderRepo),
+            rawConnection: {
+                getRepository: vi.fn((ent: any) => ((ent as any).name === 'Channel' ? channelRepo : cfgRepo)),
+            },
+        } as any;
+        const svc = new ThirdPartyDeliveryService(conn, hall as any, notify as any, {} as any);
+        return { svc, hall, notify };
+    }
+    const ctx = { channelId: 1 } as any;
+    const update = (status: any) => ({ orderId: 1, thirdPartyNo: 'TP1', status });
+
+    it('送达回调落在已进大厅的单 → 只补状态，不二次入厅（防重复派送/分成）', async () => {
+        const { svc, hall } = makeEnv({
+            id: 1, code: 'A1',
+            customFields: { thirdPartyState: 'pickup', hallStatus: 'open', handoverMode: 'to_campus_rider' },
+        });
+        await svc.onDeliveryStatus(ctx, update('delivered'));
+        expect(hall.enterHallForHandover).not.toHaveBeenCalled();
+        expect(hall.updateOrder).toHaveBeenCalledOnce();
+        expect(hall.updateOrder.mock.calls[0][2].customFields).toEqual(expect.objectContaining({ thirdPartyState: 'delivered' }));
+        expect(hall.updateOrder.mock.calls[0][2].customFields.hallStatus).toBeUndefined();
+    });
+
+    it('送达后的乱序回调 → 忽略，不回退状态', async () => {
+        const { svc, hall } = makeEnv({
+            id: 1, code: 'A1',
+            customFields: { thirdPartyState: 'delivered', hallStatus: 'delivered' },
+        });
+        await svc.onDeliveryStatus(ctx, update('accepted'));
+        expect(hall.updateOrder).not.toHaveBeenCalled();
+    });
+
+    it('同状态重复回调 → 忽略', async () => {
+        const { svc, hall } = makeEnv({
+            id: 1, code: 'A1',
+            customFields: { thirdPartyState: 'pickup', hallStatus: 'third_party' },
+        });
+        await svc.onDeliveryStatus(ctx, update('pickup'));
+        expect(hall.updateOrder).not.toHaveBeenCalled();
+    });
+
+    it('乱序回退（pickup 后收到 accepted）→ 忽略', async () => {
+        const { svc, hall } = makeEnv({
+            id: 1, code: 'A1',
+            customFields: { thirdPartyState: 'pickup', hallStatus: 'third_party' },
+        });
+        await svc.onDeliveryStatus(ctx, update('accepted'));
+        expect(hall.updateOrder).not.toHaveBeenCalled();
+    });
+
+    it('仍处 third_party 的送达回调 → 正常入厅接力', async () => {
+        const { svc, hall } = makeEnv({
+            id: 1, code: 'A1',
+            customFields: { thirdPartyState: 'pickup', hallStatus: 'third_party', handoverMode: 'to_campus_rider' },
+        });
+        await svc.onDeliveryStatus(ctx, update('delivered'));
+        expect(hall.enterHallForHandover).toHaveBeenCalledWith(expect.anything(), 1, 'external_handover');
+    });
+});

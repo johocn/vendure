@@ -77,6 +77,8 @@ export declare class DispatchAdminService {
         ok: boolean;
         action: ExceptionAction;
     }>;
+    /** 异常处置原子认领：仅首次调用返回 true（并发/重复点击只有一路能消费掉异常态） */
+    private claimException;
     /** 跨店守卫：订单必须属于当前渠道（调度写操作统一入口校验） */
     private assertOrderInChannel;
     /** 部分退款（fork 无 core RefundService，走 OrderService.refundOrder/settleRefund，与 T4 同源）。

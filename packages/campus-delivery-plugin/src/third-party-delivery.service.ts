@@ -18,6 +18,9 @@ import { ExternalProviderCode, GeoPointLike, resolveDropoff, resolvePickup, reso
 
 const loggerCtx = 'ThirdPartyDelivery';
 
+/** 外部运单状态推进序（回调乱序时只接受前进，不接受回退） */
+const TP_STATUS_RANK: Record<string, number> = { pending: 0, accepted: 1, pickup: 2, delivered: 3 };
+
 /** 第一段完成后的本地状态（纯函数，便于单测）：只有「直送」才算完成，其余都进大厅接力 */
 export function nextHallStateAfterHandover(handover: string): { hallStatus: string; deliveryStatus: string | null } {
     if (handover === 'direct_to_user') return { hallStatus: 'delivered', deliveryStatus: 'delivered' };
@@ -78,6 +81,28 @@ export class ThirdPartyDeliveryService implements OnApplicationBootstrap {
      */
     async dispatchExternal(ctx: RequestContext, orderId: number, provider: ExternalProviderCode) {
         if (provider !== 'dada' && provider !== 'meituan') throw new UserInputError('外部快递仅支持 dada/meituan');
+        // 并发/重复推送：订单级咨询锁串行化，防两名运营同时推送产生两张外部运单（孤儿单 + 双倍运费）。
+        // 锁内重读订单，「已在途不重推」的前置判断才可靠。
+        const runner = this.connection.rawConnection.createQueryRunner();
+        await runner.connect();
+        const lockKey = `campus:thirdparty:${orderId}`;
+        try {
+            const got: any = await runner.query('SELECT pg_try_advisory_lock(hashtext($1)) AS ok', [lockKey]);
+            const rows = Array.isArray(got) && Array.isArray(got[0]) ? got[0] : got;
+            if (!rows?.[0]?.ok) throw new UserInputError('该订单正在推送外部快递，请稍后重试');
+            return await this.doDispatchExternal(ctx, orderId, provider);
+        } finally {
+            try {
+                await runner.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]);
+            } catch {
+                // 释放失败交给连接回收兜底
+            }
+            await runner.release();
+        }
+    }
+
+    /** 推送主体（须由 dispatchExternal 持订单级锁调用）：幂等判断与下单在同一锁内 */
+    private async doDispatchExternal(ctx: RequestContext, orderId: number, provider: ExternalProviderCode) {
         const order = await this.orderRepo(ctx).findOne({
             where: { id: orderId as any },
             relations: ['channels', 'lines', 'lines.productVariant', 'customer', 'shippingAddress'],
@@ -249,6 +274,14 @@ export class ThirdPartyDeliveryService implements OnApplicationBootstrap {
         const channelId = order.channels?.[0]?.id ?? ctx.channelId;
         const oCtx = await this.ctxForChannel(channelId);
         const cf = order.customFields as any;
+        // 回调幂等/防回退：同状态重复、旧状态乱序、送达后的迟到回调一律忽略。
+        // 否则重复 delivered 会把已进大厅/已被抢的单再次 enterHallForHandover
+        //（清空骑手、重新生成交接码 → 可二次配送、二次分成）。
+        const current = String(cf.thirdPartyState ?? '');
+        const incomingRank = TP_STATUS_RANK[update.status];
+        if (current === update.status) return;
+        if (current === 'delivered') return;
+        if (TP_STATUS_RANK[current] != null && incomingRank != null && incomingRank < TP_STATUS_RANK[current]) return;
         const patch: Record<string, unknown> = {
             thirdPartyState: update.status,
             thirdPartyNo: update.thirdPartyNo || cf.thirdPartyNo,
@@ -257,6 +290,11 @@ export class ThirdPartyDeliveryService implements OnApplicationBootstrap {
         if (update.courierPhone) patch.thirdPartyCourierPhone = update.courierPhone;
 
         if (update.status === 'delivered') {
+            // 第一段已结束（已进大厅 / 已被抢 / 已送达）：迟到或重复回调只补终态与快递员信息，不重置履约链路
+            if (String(cf.hallStatus ?? '') !== 'third_party') {
+                await this.hall.updateOrder(oCtx, Number(order.id), { customFields: patch } as any);
+                return;
+            }
             const next = nextHallStateAfterHandover(String(cf.handoverMode ?? ''));
             patch.handoverAt = new Date();
             if (next.hallStatus === 'open') {

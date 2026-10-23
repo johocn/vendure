@@ -14,6 +14,7 @@ exports.campusCustomFields = {
         { name: 'tip', type: 'int', nullable: true },
         { name: 'deliverySlotId', type: 'string', nullable: true }, // ID 存 string，与 customFields 类型系统一致
         { name: 'deliverySlotText', type: 'string', nullable: true }, // '2026-10-06 11:00-11:30'
+        { name: 'slotLocked', type: 'boolean', nullable: true, defaultValue: false }, // 时段锁位成功标记：仅锁定成功的单在取消时归还容量（防容量虚增）
         { name: 'errandKind', type: 'string', nullable: true }, // pickup_express / bring_food / buy / other
         { name: 'errandFrom', type: 'string', nullable: true },
         { name: 'errandTo', type: 'string', nullable: true },

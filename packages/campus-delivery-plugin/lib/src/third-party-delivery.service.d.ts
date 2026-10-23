@@ -37,6 +37,8 @@ export declare class ThirdPartyDeliveryService implements OnApplicationBootstrap
         provider: ExternalProviderCode;
         already?: undefined;
     }>;
+    /** 推送主体（须由 dispatchExternal 持订单级锁调用）：幂等判断与下单在同一锁内 */
+    private doDispatchExternal;
     /** 取消外部快递配送（商家关单 / 推送失败回落前调用），幂等 */
     cancel(ctx: RequestContext, orderId: number, reason?: string): Promise<{
         ok: boolean;

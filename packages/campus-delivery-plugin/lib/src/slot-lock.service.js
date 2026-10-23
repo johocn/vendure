@@ -21,6 +21,8 @@ let SlotLockService = class SlotLockService {
     /**
      * 支付成功后锁位：UPDATE ... WHERE lockedCount < capacity 乐观锁，affected=0 即满。
      * 返回 false 时调用方标 campusCause='slot_full' 进调度告警，不阻断订单。
+     * 锁位成功写 slotLocked=true，取消时只有带此标记的单才归还容量（否则未支付/锁位失败单
+     * 取消会把已满时段「放空」，造成容量虚增与超卖）。
      */
     async lock(ctx, order) {
         var _a, _b;
@@ -39,21 +41,29 @@ let SlotLockService = class SlotLockService {
             .set({ lockedCount: () => '"lockedCount" + 1' })
             .where('id = :id AND "lockedCount" < :cap', { id: slot.id, cap: slot.capacity })
             .execute();
-        return ((_b = res.affected) !== null && _b !== void 0 ? _b : 0) > 0;
+        const ok = ((_b = res.affected) !== null && _b !== void 0 ? _b : 0) > 0;
+        if (ok && (order === null || order === void 0 ? void 0 : order.id)) {
+            // 锁位成功标记：与容量递增同源，供取消时幂等释放
+            await this.connection.getRepository(ctx, core_2.Order).update(order.id, {
+                customFields: { slotLocked: true },
+            });
+        }
+        return ok;
     }
     /**
      * 释放锁位（取消/退款/未支付超时）：订单离开履约链路时归还容量。
-     * 仅由「Cancelled 状态转换」调用一次（状态机保证每单只触发一次），
-     * 因此无需额外幂等标记；lockedCount 用 GREATEST 兜底防负数。
+     * 原子认领 slotLocked=true → false，保证「同一单只释放一次」，且未锁位/锁位失败的单一律不释放。
+     * 返回 true 表示本次确实归还了一个名额。
      */
     async unlock(ctx, orderId) {
         var _a, _b;
-        const order = await this.connection.getRepository(ctx, core_2.Order).findOne({
-            where: { id: orderId },
-        });
-        const slotId = (_a = order === null || order === void 0 ? void 0 : order.customFields) === null || _a === void 0 ? void 0 : _a.deliverySlotId;
+        const claimed = await this.connection.rawConnection.query('UPDATE "order" SET "customFieldsSlotlocked" = false '
+            + 'WHERE id = $1 AND COALESCE("customFieldsSlotlocked", false) = true '
+            + 'RETURNING "customFieldsDeliveryslotid" AS slot', [orderId]);
+        const rows = Array.isArray(claimed) && Array.isArray(claimed[0]) ? claimed[0] : claimed;
+        const slotId = (_a = rows === null || rows === void 0 ? void 0 : rows[0]) === null || _a === void 0 ? void 0 : _a.slot;
         if (!slotId)
-            return false;
+            return false; // 未锁位（未支付取消 / 时段已满 / 已释放过）
         const res = await this.connection
             .getRepository(ctx, delivery_slot_entity_1.DeliverySlot)
             .createQueryBuilder()
@@ -61,7 +71,7 @@ let SlotLockService = class SlotLockService {
             .set({ lockedCount: () => 'GREATEST("lockedCount" - 1, 0)' })
             .where('id = :id', { id: slotId })
             .execute();
-        core_1.Logger.info(`Order ${order === null || order === void 0 ? void 0 : order.code} slot ${slotId} released`, 'CampusSlot');
+        core_1.Logger.info(`Order ${orderId} slot ${slotId} released`, 'CampusSlot');
         return ((_b = res.affected) !== null && _b !== void 0 ? _b : 0) > 0;
     }
 };

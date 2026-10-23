@@ -12,7 +12,10 @@ interface HandleEnvOpts {
 
 function makeEnv(opts: HandleEnvOpts = {}) {
     const grabSvc = { grabByRider: vi.fn().mockResolvedValue(true) };
-    const hallSvc = { backToHall: vi.fn().mockResolvedValue({}) };
+    const hallSvc = {
+        backToHall: vi.fn().mockResolvedValue({}),
+        updateOrder: vi.fn().mockResolvedValue({}),
+    };
     const capacitySvc = { listOnlineRiders: vi.fn().mockResolvedValue(opts.onlineRiders ?? []) };
     const orderRepo = {
         findOne: vi.fn(),
@@ -35,6 +38,7 @@ function makeEnv(opts: HandleEnvOpts = {}) {
             getRawOne: vi.fn().mockResolvedValue({ sum: String(opts.refundedSum ?? 0) }),
         }),
     };
+    const rawQuery = vi.fn().mockResolvedValue([{ id: 1 }]);
     const conn = {
         getRepository: vi.fn((_ctx: any, ent: any) => {
             const name = (ent as any).name;
@@ -42,6 +46,14 @@ function makeEnv(opts: HandleEnvOpts = {}) {
             return orderRepo;
         }),
         rawConnection: {
+            // 异常处置认领（UPDATE ... RETURNING）：默认认领成功
+            query: rawQuery,
+            // 退款咨询锁：默认抢锁成功
+            createQueryRunner: () => ({
+                connect: vi.fn().mockResolvedValue(undefined),
+                query: vi.fn().mockResolvedValue([[{ ok: true }], []]),
+                release: vi.fn().mockResolvedValue(undefined),
+            }),
             getRepository: vi.fn((ent: any) => {
                 const name = (ent as any).name ?? ent;
                 if (name === 'Payment') return paymentRepo;
@@ -57,7 +69,7 @@ function makeEnv(opts: HandleEnvOpts = {}) {
         cancelOrder: vi.fn().mockResolvedValue({}),
     };
     (svc as any).orderSvc = orderSvc;
-    return { svc, grabSvc, hallSvc, capacitySvc, orderRepo, configRepo, paymentRepo, refundRepo, orderSvc, notifySvc: (svc as any).notify };
+    return { svc, grabSvc, hallSvc, capacitySvc, orderRepo, configRepo, paymentRepo, refundRepo, rawQuery, orderSvc, notifySvc: (svc as any).notify };
 }
 
 const now = Date.now();
@@ -158,8 +170,17 @@ describe('DispatchAdminService.assign 资质校验', () => {
         const { svc, orderRepo, grabSvc } = makeEnv();
         orderRepo.findOne
             .mockResolvedValueOnce(order)
-            .mockResolvedValueOnce({ id: 9, customFields: { riderStatus: 'approved', riderCredit: 59 } });
+            .mockResolvedValueOnce({ id: 9, customFields: { riderStatus: 'approved', riderCredit: 59, riderOnlineAt: new Date() } });
         await expect(svc.assign(ctx, 5 as any, 9 as any)).rejects.toThrow('该骑手信用分不足');
+        expect(grabSvc.grabByRider).not.toHaveBeenCalled();
+    });
+
+    it('离线骑手（心跳超 5min）→ 拒绝派单', async () => {
+        const { svc, orderRepo, grabSvc } = makeEnv();
+        orderRepo.findOne
+            .mockResolvedValueOnce(order)
+            .mockResolvedValueOnce({ id: 9, customFields: { riderStatus: 'approved', riderCredit: 88, riderOnlineAt: minAgo(6) } });
+        await expect(svc.assign(ctx, 5 as any, 9 as any)).rejects.toThrow('该骑手当前不在线，无法派单');
         expect(grabSvc.grabByRider).not.toHaveBeenCalled();
     });
 
@@ -167,7 +188,7 @@ describe('DispatchAdminService.assign 资质校验', () => {
         const { svc, orderRepo, grabSvc } = makeEnv();
         orderRepo.findOne
             .mockResolvedValueOnce(order)
-            .mockResolvedValueOnce({ id: 9, customFields: { riderStatus: 'approved', riderCredit: 88 } });
+            .mockResolvedValueOnce({ id: 9, customFields: { riderStatus: 'approved', riderCredit: 88, riderOnlineAt: new Date() } });
         await expect(svc.assign(ctx, 5 as any, 9 as any)).resolves.toEqual({ assigned: true });
         expect(grabSvc.grabByRider).toHaveBeenCalledWith(ctx, 5, { id: 9 });
     });
@@ -272,5 +293,31 @@ describe('DispatchAdminService.handleException', () => {
         env2.orderRepo.findOne.mockResolvedValue(exceptionOrder(12, 'A12'));
         await env2.svc.handleException(ctx, 12 as any, 'refund_diff', 300);
         expect(env2.notifySvc.user).toHaveBeenCalledWith(ctx, 12, 'exceptionHandled', '异常已处理，差价原路退回');
+    });
+
+    it('已取消订单 → 拒绝处置（防取消后退款/发券）', async () => {
+        const { svc, orderRepo } = makeEnv();
+        orderRepo.findOne.mockResolvedValue({ ...exceptionOrder(13, 'A13'), state: 'Cancelled' });
+        await expect(svc.handleException(ctx, 13 as any, 'refund_all')).rejects.toThrow('订单已取消，无法处置');
+    });
+
+    it('重复/并发处置 → 认领失败直接拒绝（不二次退款/发券）', async () => {
+        const { svc, orderRepo, rawQuery, orderSvc } = makeEnv();
+        orderRepo.findOne.mockResolvedValue(exceptionOrder(14, 'A14'));
+        rawQuery.mockResolvedValueOnce([]); // 异常态已被另一路消费
+        await expect(svc.handleException(ctx, 14 as any, 'refund_all')).rejects.toThrow('该异常已处置，请刷新后重试');
+        expect(orderSvc.refundOrder).not.toHaveBeenCalled();
+        expect(orderSvc.cancelOrder).not.toHaveBeenCalled();
+    });
+
+    it('处置失败 → 回滚认领，异常态保留可重试', async () => {
+        const env = makeEnv({ payment: { id: 9, amount: 2300 }, refundedSum: 0 });
+        env.orderRepo.findOne.mockResolvedValue(exceptionOrder(15, 'A15'));
+        env.orderSvc.refundOrder.mockResolvedValue({ errorCode: 'REFUND_FAILED' });
+        await expect(env.svc.handleException(ctx, 15 as any, 'refund_diff', 300)).rejects.toThrow('refundOrder failed');
+        expect(env.hallSvc.updateOrder).toHaveBeenCalledWith(ctx, 15, {
+            customFields: { hallStatus: 'grabbed', deliveryStatus: 'exception' },
+        });
+        expect(env.orderRepo.update).not.toHaveBeenCalled();
     });
 });

@@ -500,4 +500,43 @@ function makeTimeoutEnv(opts) {
         (0, vitest_1.expect)(env.hallSvc.updateOrder).not.toHaveBeenCalled();
     });
 });
+(0, vitest_1.describe)('DispatchJobService.tick 多实例扫描锁', () => {
+    (0, vitest_1.it)('渠道锁被占用 → 跳过该渠道；其余渠道照常扫描（渠道故障隔离）', async () => {
+        const env = makeEnv({});
+        const conn = env.svc.connection;
+        const channelRepo = { findOne: vitest_1.vi.fn().mockResolvedValue(null) };
+        const cfgRepo = { find: vitest_1.vi.fn().mockResolvedValue([{ channelId: 1 }, { channelId: 2 }]) };
+        conn.rawConnection.getRepository = vitest_1.vi.fn((ent) => (ent.name === 'Channel' ? channelRepo : cfgRepo));
+        const mkRunner = (lockOk) => ({
+            connect: vitest_1.vi.fn().mockResolvedValue(undefined),
+            query: vitest_1.vi.fn().mockResolvedValueOnce([[{ ok: lockOk }]]).mockResolvedValue([[]]),
+            release: vitest_1.vi.fn().mockResolvedValue(undefined),
+        });
+        const runners = [mkRunner(false), mkRunner(true)];
+        conn.rawConnection.createQueryRunner = vitest_1.vi.fn(() => runners.shift());
+        const scanSpy = vitest_1.vi.spyOn(env.svc, 'scan').mockResolvedValue({});
+        await env.svc.tick();
+        (0, vitest_1.expect)(scanSpy).toHaveBeenCalledTimes(1);
+        (0, vitest_1.expect)(scanSpy.mock.calls[0][0].channelId).toBe(2);
+    });
+    (0, vitest_1.it)('单渠道扫描抛错 → 不中断后续渠道', async () => {
+        const env = makeEnv({});
+        const conn = env.svc.connection;
+        const channelRepo = { findOne: vitest_1.vi.fn().mockResolvedValue(null) };
+        const cfgRepo = { find: vitest_1.vi.fn().mockResolvedValue([{ channelId: 1 }, { channelId: 2 }]) };
+        conn.rawConnection.getRepository = vitest_1.vi.fn((ent) => (ent.name === 'Channel' ? channelRepo : cfgRepo));
+        conn.rawConnection.createQueryRunner = vitest_1.vi.fn(() => ({
+            connect: vitest_1.vi.fn().mockResolvedValue(undefined),
+            query: vitest_1.vi.fn().mockResolvedValueOnce([[{ ok: true }]]).mockResolvedValue([[]]),
+            release: vitest_1.vi.fn().mockResolvedValue(undefined),
+        }));
+        const scanSpy = vitest_1.vi
+            .spyOn(env.svc, 'scan')
+            .mockRejectedValueOnce(new Error('channel 1 boom'))
+            .mockResolvedValueOnce({});
+        await env.svc.tick();
+        (0, vitest_1.expect)(scanSpy).toHaveBeenCalledTimes(2);
+        (0, vitest_1.expect)(scanSpy.mock.calls[1][0].channelId).toBe(2);
+    });
+});
 //# sourceMappingURL=dispatch-job.service.spec.js.map
