@@ -417,15 +417,17 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
         }
     }
     /**
-     * 超时赔付（P0）：近 24h 已送达单，实际送达超出承诺时间 + 宽限 → 自动发定向券。
+     * 超时赔付（P0）：回扫窗口内（默认近 24h，可配）已送达单，实际送达超出承诺时间 + 宽限 → 自动发定向券。
      * 幂等：timeoutCompensatedAt 作闸，已赔单不再扫；发券失败不落痕，下一轮重试。
      * 归因（粗判）：无骑手承接 = platform；接单前耗时 > 骑手在途 = merchant，否则 rider。
      */
     async sweepTimeoutCompensation(ctx, cfg, now) {
-        var _a;
+        var _a, _b;
         if (!cfg.timeoutCompensationEnabled)
             return;
-        const since = new Date(now - TIMEOUT_COMPENSATION_WINDOW_H * 3600000);
+        // 回扫窗口可配（默认 24h），钳制 1-168 防脏配置把陈年旧单批量补赔
+        const windowH = Math.min(168, Math.max(1, Number((_a = cfg.timeoutCompensationWindowHours) !== null && _a !== void 0 ? _a : TIMEOUT_COMPENSATION_WINDOW_H)));
+        const since = new Date(now - windowH * 3600000);
         const repo = this.connection.getRepository(ctx, core_2.Order);
         let rows;
         try {
@@ -446,7 +448,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
         }
         if (!rows.length)
             return;
-        const grace = (_a = cfg.timeoutGraceMinutes) !== null && _a !== void 0 ? _a : 10;
+        const grace = (_b = cfg.timeoutGraceMinutes) !== null && _b !== void 0 ? _b : 10;
         const templateId = cfg.timeoutCompensationCouponTemplateId;
         // 开关开但未配券模板：不写闸（保留待赔资格），限频告警等运营补配置
         if (!templateId) {

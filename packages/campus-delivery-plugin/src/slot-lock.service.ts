@@ -28,4 +28,26 @@ export class SlotLockService {
             .execute();
         return (res.affected ?? 0) > 0;
     }
+
+    /**
+     * 释放锁位（取消/退款/未支付超时）：订单离开履约链路时归还容量。
+     * 仅由「Cancelled 状态转换」调用一次（状态机保证每单只触发一次），
+     * 因此无需额外幂等标记；lockedCount 用 GREATEST 兜底防负数。
+     */
+    async unlock(ctx: RequestContext, orderId: number): Promise<boolean> {
+        const order = await this.connection.getRepository(ctx, Order).findOne({
+            where: { id: orderId as any },
+        });
+        const slotId = (order?.customFields as any)?.deliverySlotId;
+        if (!slotId) return false;
+        const res = await this.connection
+            .getRepository(ctx, DeliverySlot)
+            .createQueryBuilder()
+            .update(DeliverySlot)
+            .set({ lockedCount: () => 'GREATEST("lockedCount" - 1, 0)' })
+            .where('id = :id', { id: slotId as any })
+            .execute();
+        Logger.info(`Order ${order?.code} slot ${slotId} released`, 'CampusSlot');
+        return (res.affected ?? 0) > 0;
+    }
 }

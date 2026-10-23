@@ -292,6 +292,19 @@ export class ThirdPartyDeliveryService implements OnApplicationBootstrap {
         if (update.status === 'delivered' && cf.handoverMode === 'direct_to_user') {
             this.notify.user(oCtx, order.id, 'orderDelivered');
         }
+        // 外部快递接单/取货顾客通知（D 组漏项）：复用「骑手已接单」模板，
+        // dedupe 后缀区分接单与取货两个节点，避免与出餐完成通知抢同一幂等键。
+        if (update.status === 'accepted' || update.status === 'pickup') {
+            const cfg = await this.cfgRepo.findOne({ where: { channelId: channelId as any } });
+            this.notify.user(
+                oCtx,
+                order.id,
+                'riderAssigned',
+                undefined,
+                cfg?.h5BaseUrl ?? undefined,
+                `external_${update.status}`,
+            );
+        }
     }
 
     /** 自营快递接单（R1 商户超时转自营 / R3 自营快递池） */

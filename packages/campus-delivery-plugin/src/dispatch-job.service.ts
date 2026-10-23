@@ -435,13 +435,15 @@ export class DispatchJobService implements OnApplicationShutdown {
     }
 
     /**
-     * 超时赔付（P0）：近 24h 已送达单，实际送达超出承诺时间 + 宽限 → 自动发定向券。
+     * 超时赔付（P0）：回扫窗口内（默认近 24h，可配）已送达单，实际送达超出承诺时间 + 宽限 → 自动发定向券。
      * 幂等：timeoutCompensatedAt 作闸，已赔单不再扫；发券失败不落痕，下一轮重试。
      * 归因（粗判）：无骑手承接 = platform；接单前耗时 > 骑手在途 = merchant，否则 rider。
      */
     private async sweepTimeoutCompensation(ctx: RequestContext, cfg: CampusFulfillmentConfig, now: number) {
         if (!cfg.timeoutCompensationEnabled) return;
-        const since = new Date(now - TIMEOUT_COMPENSATION_WINDOW_H * 3600_000);
+        // 回扫窗口可配（默认 24h），钳制 1-168 防脏配置把陈年旧单批量补赔
+        const windowH = Math.min(168, Math.max(1, Number(cfg.timeoutCompensationWindowHours ?? TIMEOUT_COMPENSATION_WINDOW_H)));
+        const since = new Date(now - windowH * 3600_000);
         const repo = this.connection.getRepository(ctx, Order);
         let rows: Order[];
         try {

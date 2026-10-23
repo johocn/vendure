@@ -184,8 +184,10 @@ export class DispatchAdminService {
     }
 
     /** 手动派单/改派：信任 admin 输入的目标骑手（MVP 不校验资质）。
+     * 跨店守卫：只能操作本渠道订单（与 address-change 同源校验）。
      * grabByRider 返回 false 表示订单已不在大厅（已被抢/已退款）。 */
     async assign(ctx: RequestContext, orderId: ID, riderCustomerId: ID) {
+        await this.assertOrderInChannel(ctx, orderId);
         const ok = await this.grab.grabByRider(ctx, orderId, { id: riderCustomerId });
         if (!ok) throw new UserInputError('派单失败：订单已不在大厅（已被抢/已退款）');
         return { assigned: true };
@@ -193,10 +195,7 @@ export class DispatchAdminService {
 
     /** 回大厅（改派前置）：清骑手指派字段，hallStatus 复位 open */
     async backToHall(ctx: RequestContext, orderId: ID) {
-        const order = await this.connection
-            .getRepository(ctx, Order)
-            .findOne({ where: { id: orderId as any } });
-        if (!order) throw new UserInputError('订单不存在');
+        await this.assertOrderInChannel(ctx, orderId);
         await this.hall.backToHall(ctx, orderId as any);
         return { backToHall: true };
     }
@@ -213,8 +212,7 @@ export class DispatchAdminService {
         couponTemplateId?: ID,
         note?: string,
     ) {
-        const order = await this.connection.getRepository(ctx, Order).findOne({ where: { id: orderId as any } });
-        if (!order) throw new UserInputError('订单不存在');
+        const order = await this.assertOrderInChannel(ctx, orderId);
         if ((order.customFields as any).deliveryStatus !== 'exception') {
             throw new UserInputError('仅骑手上报异常的订单可处置');
         }
@@ -257,6 +255,18 @@ export class DispatchAdminService {
         // 处置完结 push（fire-and-forget，plan 3.4 补全）：按 action 带动态文案通知下单用户
         this.notify.user(ctx, order.id, 'exceptionHandled', EXCEPTION_NOTIFY_TEXT[action]);
         return { ok: true, action };
+    }
+
+    /** 跨店守卫：订单必须属于当前渠道（调度写操作统一入口校验） */
+    private async assertOrderInChannel(ctx: RequestContext, orderId: ID): Promise<Order> {
+        const order = await this.connection.getRepository(ctx, Order).findOne({
+            where: { id: orderId as any },
+            relations: ['channels'],
+        });
+        if (!order) throw new UserInputError('订单不存在');
+        const inChannel = (order.channels ?? []).some(c => String(c.id) === String(ctx.channelId));
+        if (!inChannel) throw new UserInputError('订单不属于当前店铺');
+        return order;
     }
 
     /** 部分退款（fork 无 core RefundService，走 OrderService.refundOrder/settleRefund，与 T4 同源）。

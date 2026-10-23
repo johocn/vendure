@@ -60,6 +60,7 @@ export declare class DispatchAdminService {
         handledOrders: HandedException[];
     }>;
     /** 手动派单/改派：信任 admin 输入的目标骑手（MVP 不校验资质）。
+     * 跨店守卫：只能操作本渠道订单（与 address-change 同源校验）。
      * grabByRider 返回 false 表示订单已不在大厅（已被抢/已退款）。 */
     assign(ctx: RequestContext, orderId: ID, riderCustomerId: ID): Promise<{
         assigned: boolean;
@@ -76,6 +77,8 @@ export declare class DispatchAdminService {
         ok: boolean;
         action: ExceptionAction;
     }>;
+    /** 跨店守卫：订单必须属于当前渠道（调度写操作统一入口校验） */
+    private assertOrderInChannel;
     /** 部分退款（fork 无 core RefundService，走 OrderService.refundOrder/settleRefund，与 T4 同源）。
      * refund 表 shipping/adjustment 列 NOT NULL 必须显式传 0；
      * 幂等保护：累计已退 + 本次 ≤ payment.amount，超额抛错。 */

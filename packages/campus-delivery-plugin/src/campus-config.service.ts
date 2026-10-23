@@ -113,6 +113,14 @@ export class CampusConfigService {
             }
             patch.timeoutGraceMinutes = grace;
         }
+        // 赔付回扫窗口（P2）：1-168h，避免窗口过大把陈年旧单批量补赔
+        if (patch.timeoutCompensationWindowHours != null) {
+            const hours = Number(patch.timeoutCompensationWindowHours);
+            if (!Number.isInteger(hours) || hours < 1 || hours > 168) {
+                throw new UserInputError('赔付回扫窗口必须为 1-168 的整数（小时）');
+            }
+            patch.timeoutCompensationWindowHours = hours;
+        }
         const nextEnabled =
             patch.timeoutCompensationEnabled !== undefined ? !!patch.timeoutCompensationEnabled : cfg.timeoutCompensationEnabled;
         const nextTemplate =

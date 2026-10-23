@@ -11,6 +11,10 @@ export declare class MerchantAdminResolver {
     campusMerchantCookingDone(ctx: RequestContext, orderId: ID): Promise<{
         ok: boolean;
     }>;
+    /** 商家拒单/缺货：全额退款并取消订单（接单前或备餐中可用） */
+    campusMerchantRejectOrder(ctx: RequestContext, orderId: ID, reason: string): Promise<{
+        ok: boolean;
+    }>;
     /** 营业中开关（本渠道 paused） */
     campusMerchantSetPaused(ctx: RequestContext, paused: boolean): Promise<{
         ok: boolean;

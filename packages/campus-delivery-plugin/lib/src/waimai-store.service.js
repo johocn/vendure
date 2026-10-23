@@ -195,6 +195,13 @@ let WaimaiStoreService = class WaimaiStoreService {
             cfg.timeoutCompensationEnabled = input.timeoutCompensationEnabled;
         if (input.timeoutGraceMinutes != null)
             cfg.timeoutGraceMinutes = input.timeoutGraceMinutes;
+        if (input.timeoutCompensationWindowHours != null) {
+            const hours = Number(input.timeoutCompensationWindowHours);
+            if (!Number.isInteger(hours) || hours < 1 || hours > 168) {
+                throw new core_1.UserInputError('赔付回扫窗口必须为 1-168 的整数（小时）');
+            }
+            cfg.timeoutCompensationWindowHours = hours;
+        }
         if (input.timeoutCompensationCouponTemplateId !== undefined) {
             cfg.timeoutCompensationCouponTemplateId = input.timeoutCompensationCouponTemplateId || null;
         }
@@ -280,7 +287,7 @@ let WaimaiStoreService = class WaimaiStoreService {
         });
     }
     toConfigView(channelId, channelName, channelToken, cfg) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8;
         return {
             channelId,
             channelName,
@@ -309,9 +316,10 @@ let WaimaiStoreService = class WaimaiStoreService {
             printMode: normalizePrintMode(cfg === null || cfg === void 0 ? void 0 : cfg.printMode),
             timeoutCompensationEnabled: (_x = cfg === null || cfg === void 0 ? void 0 : cfg.timeoutCompensationEnabled) !== null && _x !== void 0 ? _x : false,
             timeoutGraceMinutes: (_y = cfg === null || cfg === void 0 ? void 0 : cfg.timeoutGraceMinutes) !== null && _y !== void 0 ? _y : 10,
-            timeoutCompensationCouponTemplateId: (_z = cfg === null || cfg === void 0 ? void 0 : cfg.timeoutCompensationCouponTemplateId) !== null && _z !== void 0 ? _z : null,
-            routeFirstLeg: Object.entries((_0 = cfg === null || cfg === void 0 ? void 0 : cfg.routeFirstLeg) !== null && _0 !== void 0 ? _0 : {}).map(([route, carrier]) => ({ route, carrier })),
-            handoverPoints: Object.entries((_1 = cfg === null || cfg === void 0 ? void 0 : cfg.handoverPoints) !== null && _1 !== void 0 ? _1 : {}).flatMap(([route, raw]) => (Array.isArray(raw) ? raw : raw ? [raw] : []).map(p => {
+            timeoutCompensationWindowHours: (_z = cfg === null || cfg === void 0 ? void 0 : cfg.timeoutCompensationWindowHours) !== null && _z !== void 0 ? _z : 24,
+            timeoutCompensationCouponTemplateId: (_0 = cfg === null || cfg === void 0 ? void 0 : cfg.timeoutCompensationCouponTemplateId) !== null && _0 !== void 0 ? _0 : null,
+            routeFirstLeg: Object.entries((_1 = cfg === null || cfg === void 0 ? void 0 : cfg.routeFirstLeg) !== null && _1 !== void 0 ? _1 : {}).map(([route, carrier]) => ({ route, carrier })),
+            handoverPoints: Object.entries((_2 = cfg === null || cfg === void 0 ? void 0 : cfg.handoverPoints) !== null && _2 !== void 0 ? _2 : {}).flatMap(([route, raw]) => (Array.isArray(raw) ? raw : raw ? [raw] : []).map(p => {
                 var _a, _b;
                 return ({
                     route,
@@ -323,12 +331,12 @@ let WaimaiStoreService = class WaimaiStoreService {
                     isDefault: !!p.isDefault,
                 });
             })),
-            providerShopNo: Object.entries((_2 = cfg === null || cfg === void 0 ? void 0 : cfg.providerShopNo) !== null && _2 !== void 0 ? _2 : {}).map(([provider, shopNo]) => ({ provider, shopNo })),
-            merchantAcceptMinutes: (_3 = cfg === null || cfg === void 0 ? void 0 : cfg.merchantAcceptMinutes) !== null && _3 !== void 0 ? _3 : 5,
-            externalPushTimeoutMinutes: (_4 = cfg === null || cfg === void 0 ? void 0 : cfg.externalPushTimeoutMinutes) !== null && _4 !== void 0 ? _4 : 10,
-            externalFallbackMinutes: (_5 = cfg === null || cfg === void 0 ? void 0 : cfg.externalFallbackMinutes) !== null && _5 !== void 0 ? _5 : 20,
-            storeLat: (_6 = cfg === null || cfg === void 0 ? void 0 : cfg.storeLat) !== null && _6 !== void 0 ? _6 : null,
-            storeLng: (_7 = cfg === null || cfg === void 0 ? void 0 : cfg.storeLng) !== null && _7 !== void 0 ? _7 : null,
+            providerShopNo: Object.entries((_3 = cfg === null || cfg === void 0 ? void 0 : cfg.providerShopNo) !== null && _3 !== void 0 ? _3 : {}).map(([provider, shopNo]) => ({ provider, shopNo })),
+            merchantAcceptMinutes: (_4 = cfg === null || cfg === void 0 ? void 0 : cfg.merchantAcceptMinutes) !== null && _4 !== void 0 ? _4 : 5,
+            externalPushTimeoutMinutes: (_5 = cfg === null || cfg === void 0 ? void 0 : cfg.externalPushTimeoutMinutes) !== null && _5 !== void 0 ? _5 : 10,
+            externalFallbackMinutes: (_6 = cfg === null || cfg === void 0 ? void 0 : cfg.externalFallbackMinutes) !== null && _6 !== void 0 ? _6 : 20,
+            storeLat: (_7 = cfg === null || cfg === void 0 ? void 0 : cfg.storeLat) !== null && _7 !== void 0 ? _7 : null,
+            storeLng: (_8 = cfg === null || cfg === void 0 ? void 0 : cfg.storeLng) !== null && _8 !== void 0 ? _8 : null,
             dynamicPricing: (cfg === null || cfg === void 0 ? void 0 : cfg.dynamicPricing) ? JSON.stringify(cfg.dynamicPricing) : null,
         };
     }

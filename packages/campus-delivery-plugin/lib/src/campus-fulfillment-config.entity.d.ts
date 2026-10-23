@@ -22,6 +22,8 @@ export declare class CampusFulfillmentConfig extends VendureEntity {
     merchantAutoOpenMinutes: number;
     timeoutCompensationEnabled: boolean;
     timeoutGraceMinutes: number;
+    /** 超时赔付回扫窗口（小时）：只回补近 N 小时送达单（默认 24，可放大以覆盖更长账期） */
+    timeoutCompensationWindowHours: number;
     timeoutCompensationCouponTemplateId: string | null;
     notifyTemplateAccepted: string | null;
     notifyTemplateRiderAssigned: string | null;

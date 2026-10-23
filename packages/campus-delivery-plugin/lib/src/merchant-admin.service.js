@@ -25,12 +25,13 @@ const waimai_store_service_1 = require("./waimai-store.service");
  * campusMerchantCookingDone）→ 骑手 grabbed/delivering → delivered。
  */
 let MerchantAdminService = class MerchantAdminService {
-    constructor(connection, config, hall, notify, thirdParty) {
+    constructor(connection, config, hall, notify, thirdParty, orderService) {
         this.connection = connection;
         this.config = config;
         this.hall = hall;
         this.notify = notify;
         this.thirdParty = thirdParty;
+        this.orderService = orderService;
     }
     async board(ctx) {
         var _a, _b, _c;
@@ -103,6 +104,56 @@ let MerchantAdminService = class MerchantAdminService {
         const order = await this.assertChannelOrder(ctx, orderId, 'pending_merchant');
         await this.hall.updateOrder(ctx, order.id, { customFields: { hallStatus: 'accepted' } });
         this.notify.user(ctx, order.id, 'orderAccepted');
+        return { ok: true };
+    }
+    /** 商家拒单/商品缺货：接单前（pending_merchant）或备餐中（accepted）可拒，
+     * 全额退款 + 取消订单（取消后由 Cancelled 转换自动脱厅/释放时段锁位）。
+     * 退款幂等口径与 T4/异常处置一致：先查已退总额，仅退剩余部分。 */
+    async rejectOrder(ctx, orderId, reason) {
+        var _a, _b;
+        const trimmed = (reason !== null && reason !== void 0 ? reason : '').trim();
+        if (!trimmed)
+            throw new core_1.UserInputError('请填写拒单原因');
+        const order = await this.assertChannelOrderState(ctx, orderId, ['pending_merchant', 'accepted']);
+        const payment = await this.connection.rawConnection.getRepository(core_1.Payment).findOne({
+            where: { order: { id: order.id } },
+            order: { id: 'DESC' },
+        });
+        if (payment) {
+            const refunded = await this.connection.rawConnection
+                .getRepository(core_1.Refund)
+                .createQueryBuilder('r')
+                .select('COALESCE(SUM(r.total), 0)', 'sum')
+                .where('r."paymentId" = :pid', { pid: payment.id })
+                .getRawOne();
+            const rest = Number(payment.amount) - Number((_a = refunded === null || refunded === void 0 ? void 0 : refunded.sum) !== null && _a !== void 0 ? _a : 0);
+            if (rest > 0) {
+                const created = await this.orderService.refundOrder(ctx, {
+                    paymentId: payment.id,
+                    amount: rest,
+                    // refund 表 shipping/adjustment 列 NOT NULL，显式给 0（同 T4）
+                    shipping: 0,
+                    adjustment: 0,
+                    reason: `merchant reject (${order.code})`,
+                });
+                if (!created || created.errorCode) {
+                    throw new core_1.UserInputError(`退款失败：${(_b = created === null || created === void 0 ? void 0 : created.errorCode) !== null && _b !== void 0 ? _b : '未知原因'}`);
+                }
+                await this.orderService.settleRefund(ctx, { id: created.id });
+            }
+        }
+        // 先留痕再取消：脱厅只写 hallStatus，不覆盖 campusCause
+        await this.hall.updateOrder(ctx, order.id, {
+            customFields: { campusCause: 'merchant_rejected' },
+        });
+        const cancelled = await this.orderService.cancelOrder(ctx, {
+            orderId: order.id,
+            reason: `商家拒单：${trimmed}`,
+        });
+        if (cancelled && cancelled.errorCode) {
+            throw new Error(`cancelOrder failed: ${cancelled.errorCode}`);
+        }
+        this.notify.user(ctx, order.id, 'orderCancelled', trimmed);
         return { ok: true };
     }
     /** 出餐完成：按路线/承运分流（不再统一入抢单大厅） */
@@ -208,6 +259,9 @@ let MerchantAdminService = class MerchantAdminService {
         return order;
     }
     async assertChannelOrder(ctx, orderId, expect) {
+        return this.assertChannelOrderState(ctx, orderId, [expect]);
+    }
+    async assertChannelOrderState(ctx, orderId, expects) {
         var _a;
         const order = await this.connection.getRepository(ctx, core_1.Order).findOne({
             where: { id: orderId },
@@ -216,7 +270,8 @@ let MerchantAdminService = class MerchantAdminService {
         const inChannel = (_a = order === null || order === void 0 ? void 0 : order.channels) === null || _a === void 0 ? void 0 : _a.some(c => String(c.id) === String(ctx.channelId));
         if (!order || !inChannel)
             throw new core_1.UserInputError('订单不存在或不属于当前店铺');
-        if (order.customFields.hallStatus !== expect) {
+        const hs = order.customFields.hallStatus;
+        if (!expects.includes(hs)) {
             throw new core_1.UserInputError('当前状态不允许该操作');
         }
         return order;
@@ -278,6 +333,7 @@ exports.MerchantAdminService = MerchantAdminService = __decorate([
         campus_config_service_1.CampusConfigService,
         hall_service_1.HallService,
         campus_notify_service_1.CampusNotifyService,
-        third_party_delivery_service_1.ThirdPartyDeliveryService])
+        third_party_delivery_service_1.ThirdPartyDeliveryService,
+        core_1.OrderService])
 ], MerchantAdminService);
 //# sourceMappingURL=merchant-admin.service.js.map

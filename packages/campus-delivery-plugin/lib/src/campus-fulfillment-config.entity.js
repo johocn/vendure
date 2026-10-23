@@ -103,6 +103,10 @@ __decorate([
     __metadata("design:type", Number)
 ], CampusFulfillmentConfig.prototype, "timeoutGraceMinutes", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ type: 'int', default: 24 }),
+    __metadata("design:type", Number)
+], CampusFulfillmentConfig.prototype, "timeoutCompensationWindowHours", void 0);
+__decorate([
     (0, typeorm_1.Column)({ type: 'varchar', nullable: true }),
     __metadata("design:type", Object)
 ], CampusFulfillmentConfig.prototype, "timeoutCompensationCouponTemplateId", void 0);

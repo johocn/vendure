@@ -60,6 +60,7 @@ export interface CampusStoreConfigWithChannel {
     storeLng: number | null;
     timeoutCompensationEnabled: boolean;
     timeoutGraceMinutes: number;
+    timeoutCompensationWindowHours: number;
     timeoutCompensationCouponTemplateId: string | null;
     /** 动态计价配置 JSON 字符串（null=关闭，回退分区固定运费） */
     dynamicPricing: string | null;
@@ -166,6 +167,7 @@ export class WaimaiStoreService {
             printMode?: string | null;
             timeoutCompensationEnabled?: boolean | null;
             timeoutGraceMinutes?: number | null;
+            timeoutCompensationWindowHours?: number | null;
             timeoutCompensationCouponTemplateId?: string | null;
             routeFirstLeg?: Array<{ route: string; carrier: string }> | null;
             handoverPoints?: Array<{ route: string; name: string; address?: string | null; phone?: string | null; lat: number; lng: number; isDefault?: boolean | null }> | null;
@@ -284,6 +286,13 @@ export class WaimaiStoreService {
         // 超时赔付：未传即保留（旧表单不会清空已配值）
         if (input.timeoutCompensationEnabled != null) cfg.timeoutCompensationEnabled = input.timeoutCompensationEnabled;
         if (input.timeoutGraceMinutes != null) cfg.timeoutGraceMinutes = input.timeoutGraceMinutes;
+        if (input.timeoutCompensationWindowHours != null) {
+            const hours = Number(input.timeoutCompensationWindowHours);
+            if (!Number.isInteger(hours) || hours < 1 || hours > 168) {
+                throw new UserInputError('赔付回扫窗口必须为 1-168 的整数（小时）');
+            }
+            cfg.timeoutCompensationWindowHours = hours;
+        }
         if (input.timeoutCompensationCouponTemplateId !== undefined) {
             cfg.timeoutCompensationCouponTemplateId = input.timeoutCompensationCouponTemplateId || null;
         }
@@ -395,6 +404,7 @@ export class WaimaiStoreService {
             printMode: normalizePrintMode(cfg?.printMode),
             timeoutCompensationEnabled: cfg?.timeoutCompensationEnabled ?? false,
             timeoutGraceMinutes: cfg?.timeoutGraceMinutes ?? 10,
+            timeoutCompensationWindowHours: cfg?.timeoutCompensationWindowHours ?? 24,
             timeoutCompensationCouponTemplateId: cfg?.timeoutCompensationCouponTemplateId ?? null,
             routeFirstLeg: Object.entries(cfg?.routeFirstLeg ?? {}).map(([route, carrier]) => ({ route, carrier })),
             handoverPoints: Object.entries(cfg?.handoverPoints ?? {}).flatMap(([route, raw]) =>

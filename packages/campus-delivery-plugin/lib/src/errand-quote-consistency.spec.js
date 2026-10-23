@@ -8,6 +8,7 @@ const shipping_calculator_1 = require("./shipping-calculator");
  * 必须与结算时 ShippingCalculator 实际收取的运费同口径（同一份动态加价规则 + 同一封顶）。
  */
 function makeEnv(dynamicPricing) {
+    // 实体列 dynamicPricing 为 simple-json，运行时已反序列化为对象（非 JSON 字符串）
     const cfg = { channelId: 1, errandBaseFee: 200, dynamicPricing };
     const cfgRepo = { findOne: vitest_1.vi.fn().mockResolvedValue(cfg) };
     const conn = {
@@ -22,7 +23,7 @@ async function quoteAndCharge(dynamicPricing) {
     const { svc } = makeEnv(dynamicPricing);
     const ctx = { channelId: 1 };
     const quote = await svc.getErrandBaseFee(ctx);
-    const charge = await shipping_calculator_1.campusErrandCalculator.calculate(ctx, { customFields: { orderKind: 'errand' } }, {}, {});
+    const charge = await shipping_calculator_1.campusErrandCalculator.calculate(ctx, { customFields: { orderKind: 'errand' } }, [], {});
     return { quote, charge: charge };
 }
 (0, vitest_1.describe)('跑腿报价一致性（发单页报价 = 结算实收）', () => {
@@ -32,7 +33,7 @@ async function quoteAndCharge(dynamicPricing) {
         (0, vitest_1.expect)(charge.price).toBe(200);
     });
     (0, vitest_1.it)('手动倍率 1.5x + 加价封顶 100：两处均为 300 分且拆解一致', async () => {
-        const pricing = JSON.stringify({ enabled: true, manualMultiplier: 1.5, maxAddFee: 100 });
+        const pricing = { enabled: true, manualMultiplier: 1.5, maxAddFee: 100 };
         const { quote, charge } = await quoteAndCharge(pricing);
         (0, vitest_1.expect)(quote).toBe(300);
         (0, vitest_1.expect)(charge.price).toBe(300);

@@ -139,7 +139,7 @@ export class CampusConfigAdminResolver {
 
     /** 运营中心推送/重推外部快递（R2 待推送、R3 外部策略；复用商家侧同源实现，带渠道归属校验） */
     @Mutation()
-    @Allow(CampusPermissions.CampusViewDispatch as any)
+    @Allow(CampusPermissions.CampusDispatch as any)
     async campusAdminDispatchExternal(
         @Ctx() ctx: RequestContext,
         @Args('orderId') orderId: ID,
@@ -150,7 +150,7 @@ export class CampusConfigAdminResolver {
 
     /** 运营中心取消外部快递（换一家重推前，或运力失败回落大厅） */
     @Mutation()
-    @Allow(CampusPermissions.CampusViewDispatch as any)
+    @Allow(CampusPermissions.CampusDispatch as any)
     async campusAdminCancelExternal(
         @Ctx() ctx: RequestContext,
         @Args('orderId') orderId: ID,

@@ -21,8 +21,9 @@ const capacity_service_1 = require("./capacity.service");
 const slot_lock_service_1 = require("./slot-lock.service");
 const route_matrix_1 = require("./route-matrix");
 /**
- * 入厅服务：跑腿单（orderKind='errand'）或路线 R1/R3 的订单在支付后自动进入抢单大厅。
+ * 入厅服务：跑腿单（orderKind='errand'）或路线 R1/R3 的订单在**支付成功后**自动进入抢单大厅。
  * 含预约时段锁位（T0 前置）：锁位失败标 campusCause='slot_full'，靠调度告警人工跟进。
+ * 支付闸门：由插件订阅 PaymentStateTransitionEvent（Authorized/Settled）触发，未支付订单不进大厅、不可被抢。
  */
 let HallService = HallService_1 = class HallService {
     constructor(connection, slotLock, moduleRef, capacity) {
@@ -74,9 +75,21 @@ let HallService = HallService_1 = class HallService {
         }
         return { at: new Date(Date.now() + minutes * 60000), source: 'store_minutes' };
     }
-    async onOrderPlaced(ctx, order) {
+    async onOrderPlaced(ctx, orderInput) {
         var _a, _b, _c, _d, _e, _f, _g;
+        // 支付事件（Authorized → Settled）可能连发两次：以 DB 当前值为准做幂等闸，
+        // 事件里的实体快照不含上一次订阅写入的 customFields。
+        // 读不到时退回事件实体（正常流程订单必然存在，兜底避免事件对象为空导致漏入厅）。
+        const fresh = await this.connection.getRepository(ctx, core_2.Order).findOne({
+            where: { id: orderInput.id },
+            relations: ['shippingAddress'],
+        });
+        const order = fresh !== null && fresh !== void 0 ? fresh : orderInput;
+        if (order.state === 'Cancelled')
+            return;
         const cf = order.customFields;
+        if (cf.hallStatus)
+            return; // 已入厅（或已挂 scheduled），幂等跳过
         const isErrand = cf.orderKind === 'errand';
         const route = String((_a = cf.fulfillmentRoute) !== null && _a !== void 0 ? _a : (isErrand ? 'R5' : ''));
         // 需要派单的只有 R1/R2/R3；R4 到店自取、R5 跑腿走原链路

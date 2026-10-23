@@ -157,8 +157,10 @@ let DispatchAdminService = class DispatchAdminService {
         return { paused: (_j = cfg === null || cfg === void 0 ? void 0 : cfg.paused) !== null && _j !== void 0 ? _j : false, alerts, hallOrders, activeOrders, ridersOnline, handledOrders };
     }
     /** 手动派单/改派：信任 admin 输入的目标骑手（MVP 不校验资质）。
+     * 跨店守卫：只能操作本渠道订单（与 address-change 同源校验）。
      * grabByRider 返回 false 表示订单已不在大厅（已被抢/已退款）。 */
     async assign(ctx, orderId, riderCustomerId) {
+        await this.assertOrderInChannel(ctx, orderId);
         const ok = await this.grab.grabByRider(ctx, orderId, { id: riderCustomerId });
         if (!ok)
             throw new core_2.UserInputError('派单失败：订单已不在大厅（已被抢/已退款）');
@@ -166,11 +168,7 @@ let DispatchAdminService = class DispatchAdminService {
     }
     /** 回大厅（改派前置）：清骑手指派字段，hallStatus 复位 open */
     async backToHall(ctx, orderId) {
-        const order = await this.connection
-            .getRepository(ctx, core_2.Order)
-            .findOne({ where: { id: orderId } });
-        if (!order)
-            throw new core_2.UserInputError('订单不存在');
+        await this.assertOrderInChannel(ctx, orderId);
         await this.hall.backToHall(ctx, orderId);
         return { backToHall: true };
     }
@@ -180,9 +178,7 @@ let DispatchAdminService = class DispatchAdminService {
      * 全部动作写 exceptionAction* 记录留痕。 */
     async handleException(ctx, orderId, action, amount, couponTemplateId, note) {
         var _a;
-        const order = await this.connection.getRepository(ctx, core_2.Order).findOne({ where: { id: orderId } });
-        if (!order)
-            throw new core_2.UserInputError('订单不存在');
+        const order = await this.assertOrderInChannel(ctx, orderId);
         if (order.customFields.deliveryStatus !== 'exception') {
             throw new core_2.UserInputError('仅骑手上报异常的订单可处置');
         }
@@ -230,6 +226,20 @@ let DispatchAdminService = class DispatchAdminService {
         // 处置完结 push（fire-and-forget，plan 3.4 补全）：按 action 带动态文案通知下单用户
         this.notify.user(ctx, order.id, 'exceptionHandled', EXCEPTION_NOTIFY_TEXT[action]);
         return { ok: true, action };
+    }
+    /** 跨店守卫：订单必须属于当前渠道（调度写操作统一入口校验） */
+    async assertOrderInChannel(ctx, orderId) {
+        var _a;
+        const order = await this.connection.getRepository(ctx, core_2.Order).findOne({
+            where: { id: orderId },
+            relations: ['channels'],
+        });
+        if (!order)
+            throw new core_2.UserInputError('订单不存在');
+        const inChannel = ((_a = order.channels) !== null && _a !== void 0 ? _a : []).some(c => String(c.id) === String(ctx.channelId));
+        if (!inChannel)
+            throw new core_2.UserInputError('订单不属于当前店铺');
+        return order;
     }
     /** 部分退款（fork 无 core RefundService，走 OrderService.refundOrder/settleRefund，与 T4 同源）。
      * refund 表 shipping/adjustment 列 NOT NULL 必须显式传 0；

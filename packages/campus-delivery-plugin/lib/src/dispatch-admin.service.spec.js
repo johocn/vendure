@@ -67,6 +67,7 @@ const exceptionOrder = (id, code, extra = {}) => ({
     id,
     code,
     customerId: 160,
+    channels: [{ id: 1 }],
     customFields: Object.assign({ hallStatus: 'grabbed', deliveryStatus: 'exception', exceptionType: 'food_spilled' }, extra),
 });
 (0, vitest_1.describe)('DispatchAdminService.board', () => {
@@ -122,7 +123,7 @@ const exceptionOrder = (id, code, extra = {}) => ({
     const ctx = { channelId: 1, activeUserId: 3 };
     (0, vitest_1.it)('非异常单拒绝处置', async () => {
         const { svc, orderRepo } = makeEnv();
-        orderRepo.findOne.mockResolvedValue({ id: 5, code: 'A5', customFields: { deliveryStatus: 'in_progress' } });
+        orderRepo.findOne.mockResolvedValue({ id: 5, code: 'A5', channels: [{ id: 1 }], customFields: { deliveryStatus: 'in_progress' } });
         await (0, vitest_1.expect)(svc.handleException(ctx, 5, 'refund_diff', 300)).rejects.toThrow('仅骑手上报异常的订单可处置');
     });
     (0, vitest_1.it)('reassign：回大厅 + 留痕，不置 exception_final', async () => {

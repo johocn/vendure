@@ -32,6 +32,7 @@ const campus_address_change_entity_1 = require("./campus-address-change.entity")
 const add_address_change_pricing_1 = require("./migrations/add-address-change-pricing");
 const add_address_change_settle_proof_1 = require("./migrations/add-address-change-settle-proof");
 const p3_data_cleanup_1 = require("./migrations/p3-data-cleanup");
+const p4_ops_hardening_1 = require("./migrations/p4-ops-hardening");
 const errand_service_1 = require("./errand.service");
 const errand_shop_resolver_1 = require("./errand-shop.resolver");
 const favorite_shop_resolver_1 = require("./favorite-shop.resolver");
@@ -83,7 +84,7 @@ const paymentTimeoutCompensation = new core_1.ScheduledTask({
     },
 });
 let CampusDeliveryPlugin = class CampusDeliveryPlugin {
-    constructor(eventBus, hallService, r4TagService, moduleRef, notify, paymentTimeout, configService) {
+    constructor(eventBus, hallService, r4TagService, moduleRef, notify, paymentTimeout, configService, slotLock, connection) {
         this.eventBus = eventBus;
         this.hallService = hallService;
         this.r4TagService = r4TagService;
@@ -91,6 +92,8 @@ let CampusDeliveryPlugin = class CampusDeliveryPlugin {
         this.notify = notify;
         this.paymentTimeout = paymentTimeout;
         this.configService = configService;
+        this.slotLock = slotLock;
+        this.connection = connection;
     }
     /** vendure Injector 需由 ModuleRef 构造（插件模块类构造器不直接提供 Injector） */
     get injector() {
@@ -99,15 +102,23 @@ let CampusDeliveryPlugin = class CampusDeliveryPlugin {
     onApplicationBootstrap() {
         (0, shipping_calculator_1.bindCampusErrandCalculatorConnection)(this.injector.get(core_1.TransactionalConnection));
         (0, min_order_process_1.bindMinOrderConnection)(this.injector.get(core_1.TransactionalConnection));
+        // 权限迁移（B 组漏项）：写操作拆出 CampusDispatch，给已持有看板权限的角色补授，防现有运营失权
+        void this.grantDispatchPermission().catch(e => core_1.Logger.error(`grant CampusDispatch failed: ${String(e)}`, 'CampusDispatch'));
         // 待付款任务队列（+10min 提醒 / +15min 取消）
         this.injector
             .get(payment_timeout_job_1.PaymentTimeoutJob)
             .init()
             .catch(e => core_1.Logger.error(`PaymentTimeout init failed: ${String(e)}`, 'PaymentTimeout'));
         this.eventBus.ofType(core_1.OrderPlacedEvent).subscribe(({ ctx, order }) => {
-            this.hallService.onOrderPlaced(ctx, order).catch(e => core_1.Logger.error(String(e), 'CampusHall'));
             // 下单成功通知（waimai 流程下单即支付完成；进大厅逻辑同源）
             void this.h5BaseUrl(ctx).then(url => this.notify.user(ctx, order.id, 'orderPlaced', undefined, url));
+        });
+        // 支付闸门（A 组漏项）：进入 ArrangingPayment≠已支付，只有 Payment Authorized/Settled 才入厅，
+        // 未支付订单不进大厅、不可被抢（15min 待付款窗口内的单不再占用运力）。
+        this.eventBus.ofType(core_1.PaymentStateTransitionEvent).subscribe(({ ctx, toState, order }) => {
+            if (toState !== 'Authorized' && toState !== 'Settled')
+                return;
+            this.hallService.onOrderPlaced(ctx, order).catch(e => core_1.Logger.error(String(e), 'CampusHall'));
         });
         // R4 到店自取打标（二期 §5.4）：store-pickup 运费方式订单在支付闸门补写 fulfillmentRoute；
         // 取消脱厅（3.3）：订单取消终态时清 hallStatus/指派字段，退出大厅与整组抢单链路；
@@ -121,6 +132,8 @@ let CampusDeliveryPlugin = class CampusDeliveryPlugin {
                     .cancel(e.ctx, Number(e.order.id), 'order cancelled')
                     .catch(err => core_1.Logger.warn(`Cancel external delivery failed: ${String(err)}`, 'CampusHall'));
                 this.hallService.exitHall(e.ctx, e.order).catch(err => core_1.Logger.error(`Hall exit failed: ${String(err)}`, 'CampusHall'));
+                // 时段锁位释放（A 组漏项）：取消/退款/未支付超时统一经 Cancelled 转换归还容量
+                this.slotLock.unlock(e.ctx, Number(e.order.id)).catch(err => core_1.Logger.warn(`Slot unlock failed: ${String(err)}`, 'CampusSlot'));
                 // 用户本人主动取消不推（ctx.activeUserId 存在即本人操作）；商家/系统/超时取消才推
                 if (!e.ctx.activeUserId) {
                     void this.h5BaseUrl(e.ctx).then(url => this.notify.user(e.ctx, e.order.id, 'orderCancelled', undefined, url));
@@ -147,6 +160,27 @@ let CampusDeliveryPlugin = class CampusDeliveryPlugin {
         });
         this.injector.get(dispatch_job_service_1.DispatchJobService).start();
     }
+    /** 权限迁移：permissions 为 simple-array（逗号分隔），给持有 CampusViewDispatch 的角色补授 CampusDispatch。
+     * 幂等；启动时执行，早于任何请求，不涉及权限缓存失效问题。 */
+    async grantDispatchPermission() {
+        var _a;
+        const raw = this.connection.rawConnection;
+        const rows = await raw.query(`SELECT id, permissions FROM role WHERE permissions LIKE '%CampusViewDispatch%'`);
+        let granted = 0;
+        for (const row of rows) {
+            const perms = String((_a = row.permissions) !== null && _a !== void 0 ? _a : '')
+                .split(',')
+                .map(p => p.trim())
+                .filter(Boolean);
+            if (perms.includes(permissions_1.CampusPermissions.CampusDispatch))
+                continue;
+            perms.push(permissions_1.CampusPermissions.CampusDispatch);
+            await raw.query(`UPDATE role SET permissions = $1 WHERE id = $2`, [perms.join(','), row.id]);
+            granted += 1;
+        }
+        if (granted)
+            core_1.Logger.info(`CampusDispatch granted to ${granted} role(s)`, 'CampusDispatch');
+    }
     /** h5BaseUrl 取渠道配置（未配置返回 undefined，通知静默不带 url） */
     async h5BaseUrl(ctx) {
         var _a;
@@ -171,6 +205,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             add_address_change_pricing_1.AddAddressChangePricingMigration,
             add_address_change_settle_proof_1.AddAddressChangeSettleProofMigration,
             p3_data_cleanup_1.P3DataCleanupMigration,
+            p4_ops_hardening_1.P4OpsHardeningMigration,
             address_change_service_1.AddressChangeService,
             backfill_waimai_industry_1.BackfillWaimaiIndustryMigration,
             campus_config_service_1.CampusConfigService,
@@ -239,6 +274,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     freeShippingThreshold: Int
                     timeoutCompensationEnabled: Boolean!
                     timeoutGraceMinutes: Int!
+                    """超时赔付回扫窗口（小时，1-168），默认 24"""
+                    timeoutCompensationWindowHours: Int!
                     timeoutCompensationCouponTemplateId: String
                 }
 
@@ -254,6 +291,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     merchantAutoOpenMinutes: Int
                     timeoutCompensationEnabled: Boolean
                     timeoutGraceMinutes: Int
+                    timeoutCompensationWindowHours: Int
                     timeoutCompensationCouponTemplateId: String
                 }
 
@@ -473,6 +511,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     printMode: String!
                     timeoutCompensationEnabled: Boolean!
                     timeoutGraceMinutes: Int!
+                    """超时赔付回扫窗口（小时，1-168），默认 24"""
+                    timeoutCompensationWindowHours: Int!
                     timeoutCompensationCouponTemplateId: String
                 }
 
@@ -510,6 +550,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     printMode: String
                     timeoutCompensationEnabled: Boolean
                     timeoutGraceMinutes: Int
+                    timeoutCompensationWindowHours: Int
                     timeoutCompensationCouponTemplateId: String
                 }
 
@@ -721,6 +762,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusEnsureDefaultShippingProfile(channelId: ID!): CampusEnsureProfileResult!
                     campusMerchantAcceptOrder(orderId: ID!): CampusMerchantOpResult!
                     campusMerchantCookingDone(orderId: ID!): CampusMerchantOpResult!
+                    campusMerchantRejectOrder(orderId: ID!, reason: String!): CampusMerchantOpResult!
                     campusMerchantSetPaused(paused: Boolean!): CampusMerchantOpResult!
                     campusMerchantMarkPrinted(orderId: ID!): CampusMerchantOpResult!
                     campusMerchantDispatchExternal(orderId: ID!, provider: String!): CampusExternalDelivery!
@@ -1152,6 +1194,8 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
         core_2.ModuleRef,
         campus_notify_service_1.CampusNotifyService,
         payment_timeout_job_1.PaymentTimeoutJob,
-        campus_config_service_1.CampusConfigService])
+        campus_config_service_1.CampusConfigService,
+        slot_lock_service_1.SlotLockService,
+        core_1.TransactionalConnection])
 ], CampusDeliveryPlugin);
 //# sourceMappingURL=campus-delivery.plugin.js.map

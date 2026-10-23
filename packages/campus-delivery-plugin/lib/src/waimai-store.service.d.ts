@@ -69,6 +69,7 @@ export interface CampusStoreConfigWithChannel {
     storeLng: number | null;
     timeoutCompensationEnabled: boolean;
     timeoutGraceMinutes: number;
+    timeoutCompensationWindowHours: number;
     timeoutCompensationCouponTemplateId: string | null;
     /** 动态计价配置 JSON 字符串（null=关闭，回退分区固定运费） */
     dynamicPricing: string | null;
@@ -111,6 +112,7 @@ export declare class WaimaiStoreService {
         printMode?: string | null;
         timeoutCompensationEnabled?: boolean | null;
         timeoutGraceMinutes?: number | null;
+        timeoutCompensationWindowHours?: number | null;
         timeoutCompensationCouponTemplateId?: string | null;
         routeFirstLeg?: Array<{
             route: string;

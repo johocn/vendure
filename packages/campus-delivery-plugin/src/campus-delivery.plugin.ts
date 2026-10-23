@@ -5,6 +5,7 @@ import {
     Logger,
     OrderPlacedEvent,
     OrderStateTransitionEvent,
+    PaymentStateTransitionEvent,
     PluginCommonModule,
     RequestContext,
     ScheduledTask,
@@ -32,6 +33,7 @@ import { CampusAddressChange } from './campus-address-change.entity';
 import { AddAddressChangePricingMigration } from './migrations/add-address-change-pricing';
 import { AddAddressChangeSettleProofMigration } from './migrations/add-address-change-settle-proof';
 import { P3DataCleanupMigration } from './migrations/p3-data-cleanup';
+import { P4OpsHardeningMigration } from './migrations/p4-ops-hardening';
 import { ErrandService } from './errand.service';
 import { ErrandShopResolver } from './errand-shop.resolver';
 import { FavoriteShopResolver } from './favorite-shop.resolver';
@@ -49,7 +51,7 @@ import { PaymentTimeoutAdminResolver } from './payment-timeout-admin.resolver';
 import { PaymentTimeoutAdminService } from './payment-timeout-admin.service';
 import { PaymentTimeoutJob } from './payment-timeout.job';
 import { PaymentTimeoutTask } from './payment-timeout.entity';
-import { campusPermissionDefinitions } from './permissions';
+import { CampusPermissions, campusPermissionDefinitions } from './permissions';
 import { MerchantAdminResolver } from './merchant-admin.resolver';
 import { MerchantAdminService } from './merchant-admin.service';
 import { ThirdPartyDeliveryService } from './third-party-delivery.service';
@@ -95,6 +97,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
         AddAddressChangePricingMigration,
         AddAddressChangeSettleProofMigration,
         P3DataCleanupMigration,
+        P4OpsHardeningMigration,
         AddressChangeService,
         BackfillWaimaiIndustryMigration,
         CampusConfigService,
@@ -163,6 +166,8 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     freeShippingThreshold: Int
                     timeoutCompensationEnabled: Boolean!
                     timeoutGraceMinutes: Int!
+                    """超时赔付回扫窗口（小时，1-168），默认 24"""
+                    timeoutCompensationWindowHours: Int!
                     timeoutCompensationCouponTemplateId: String
                 }
 
@@ -178,6 +183,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     merchantAutoOpenMinutes: Int
                     timeoutCompensationEnabled: Boolean
                     timeoutGraceMinutes: Int
+                    timeoutCompensationWindowHours: Int
                     timeoutCompensationCouponTemplateId: String
                 }
 
@@ -397,6 +403,8 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     printMode: String!
                     timeoutCompensationEnabled: Boolean!
                     timeoutGraceMinutes: Int!
+                    """超时赔付回扫窗口（小时，1-168），默认 24"""
+                    timeoutCompensationWindowHours: Int!
                     timeoutCompensationCouponTemplateId: String
                 }
 
@@ -434,6 +442,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     printMode: String
                     timeoutCompensationEnabled: Boolean
                     timeoutGraceMinutes: Int
+                    timeoutCompensationWindowHours: Int
                     timeoutCompensationCouponTemplateId: String
                 }
 
@@ -645,6 +654,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     campusEnsureDefaultShippingProfile(channelId: ID!): CampusEnsureProfileResult!
                     campusMerchantAcceptOrder(orderId: ID!): CampusMerchantOpResult!
                     campusMerchantCookingDone(orderId: ID!): CampusMerchantOpResult!
+                    campusMerchantRejectOrder(orderId: ID!, reason: String!): CampusMerchantOpResult!
                     campusMerchantSetPaused(paused: Boolean!): CampusMerchantOpResult!
                     campusMerchantMarkPrinted(orderId: ID!): CampusMerchantOpResult!
                     campusMerchantDispatchExternal(orderId: ID!, provider: String!): CampusExternalDelivery!
@@ -1088,6 +1098,8 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
         private notify: CampusNotifyService,
         private paymentTimeout: PaymentTimeoutJob,
         private configService: CampusConfigService,
+        private slotLock: SlotLockService,
+        private connection: TransactionalConnection,
     ) {}
 
     /** vendure Injector 需由 ModuleRef 构造（插件模块类构造器不直接提供 Injector） */
@@ -1098,15 +1110,24 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
     onApplicationBootstrap(): void {
         bindCampusErrandCalculatorConnection(this.injector.get(TransactionalConnection));
         bindMinOrderConnection(this.injector.get(TransactionalConnection));
+        // 权限迁移（B 组漏项）：写操作拆出 CampusDispatch，给已持有看板权限的角色补授，防现有运营失权
+        void this.grantDispatchPermission().catch(e =>
+            Logger.error(`grant CampusDispatch failed: ${String(e)}`, 'CampusDispatch'),
+        );
         // 待付款任务队列（+10min 提醒 / +15min 取消）
         this.injector
             .get(PaymentTimeoutJob)
             .init()
             .catch(e => Logger.error(`PaymentTimeout init failed: ${String(e)}`, 'PaymentTimeout'));
         this.eventBus.ofType(OrderPlacedEvent).subscribe(({ ctx, order }) => {
-            this.hallService.onOrderPlaced(ctx, order).catch(e => Logger.error(String(e), 'CampusHall'));
             // 下单成功通知（waimai 流程下单即支付完成；进大厅逻辑同源）
             void this.h5BaseUrl(ctx).then(url => this.notify.user(ctx, order.id, 'orderPlaced', undefined, url));
+        });
+        // 支付闸门（A 组漏项）：进入 ArrangingPayment≠已支付，只有 Payment Authorized/Settled 才入厅，
+        // 未支付订单不进大厅、不可被抢（15min 待付款窗口内的单不再占用运力）。
+        this.eventBus.ofType(PaymentStateTransitionEvent).subscribe(({ ctx, toState, order }) => {
+            if (toState !== 'Authorized' && toState !== 'Settled') return;
+            this.hallService.onOrderPlaced(ctx, order).catch(e => Logger.error(String(e), 'CampusHall'));
         });
         // R4 到店自取打标（二期 §5.4）：store-pickup 运费方式订单在支付闸门补写 fulfillmentRoute；
         // 取消脱厅（3.3）：订单取消终态时清 hallStatus/指派字段，退出大厅与整组抢单链路；
@@ -1120,6 +1141,8 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
                     .cancel(e.ctx, Number(e.order.id), 'order cancelled')
                     .catch(err => Logger.warn(`Cancel external delivery failed: ${String(err)}`, 'CampusHall'));
                 this.hallService.exitHall(e.ctx, e.order).catch(err => Logger.error(`Hall exit failed: ${String(err)}`, 'CampusHall'));
+                // 时段锁位释放（A 组漏项）：取消/退款/未支付超时统一经 Cancelled 转换归还容量
+                this.slotLock.unlock(e.ctx, Number(e.order.id)).catch(err => Logger.warn(`Slot unlock failed: ${String(err)}`, 'CampusSlot'));
                 // 用户本人主动取消不推（ctx.activeUserId 存在即本人操作）；商家/系统/超时取消才推
                 if (!e.ctx.activeUserId) {
                     void this.h5BaseUrl(e.ctx).then(url => this.notify.user(e.ctx, e.order.id, 'orderCancelled', undefined, url));
@@ -1144,6 +1167,27 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
             void this.h5BaseUrl(e.ctx).then(url => this.notify.user(e.ctx, e.orderId, 'afterSales', text, url));
         });
         this.injector.get(DispatchJobService).start();
+    }
+
+    /** 权限迁移：permissions 为 simple-array（逗号分隔），给持有 CampusViewDispatch 的角色补授 CampusDispatch。
+     * 幂等；启动时执行，早于任何请求，不涉及权限缓存失效问题。 */
+    private async grantDispatchPermission(): Promise<void> {
+        const raw = this.connection.rawConnection;
+        const rows: Array<{ id: number; permissions: string }> = await raw.query(
+            `SELECT id, permissions FROM role WHERE permissions LIKE '%CampusViewDispatch%'`,
+        );
+        let granted = 0;
+        for (const row of rows) {
+            const perms = String(row.permissions ?? '')
+                .split(',')
+                .map(p => p.trim())
+                .filter(Boolean);
+            if (perms.includes(CampusPermissions.CampusDispatch)) continue;
+            perms.push(CampusPermissions.CampusDispatch);
+            await raw.query(`UPDATE role SET permissions = $1 WHERE id = $2`, [perms.join(','), row.id]);
+            granted += 1;
+        }
+        if (granted) Logger.info(`CampusDispatch granted to ${granted} role(s)`, 'CampusDispatch');
     }
 
     /** h5BaseUrl 取渠道配置（未配置返回 undefined，通知静默不带 url） */

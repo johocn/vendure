@@ -216,7 +216,7 @@ let ThirdPartyDeliveryService = class ThirdPartyDeliveryService {
     }
     /** 网关回调（由 DeliveryStatusSink 调用） */
     async onDeliveryStatus(ctx, update) {
-        var _a, _b, _c, _d, _e;
+        var _a, _b, _c, _d, _e, _f;
         const order = await this.orderRepo(ctx).findOne({
             where: { id: update.orderId },
             relations: ['channels', 'customer'],
@@ -271,6 +271,12 @@ let ThirdPartyDeliveryService = class ThirdPartyDeliveryService {
         await this.hall.updateOrder(oCtx, Number(order.id), { customFields: patch });
         if (update.status === 'delivered' && cf.handoverMode === 'direct_to_user') {
             this.notify.user(oCtx, order.id, 'orderDelivered');
+        }
+        // 外部快递接单/取货顾客通知（D 组漏项）：复用「骑手已接单」模板，
+        // dedupe 后缀区分接单与取货两个节点，避免与出餐完成通知抢同一幂等键。
+        if (update.status === 'accepted' || update.status === 'pickup') {
+            const cfg = await this.cfgRepo.findOne({ where: { channelId: channelId } });
+            this.notify.user(oCtx, order.id, 'riderAssigned', undefined, (_f = cfg === null || cfg === void 0 ? void 0 : cfg.h5BaseUrl) !== null && _f !== void 0 ? _f : undefined, `external_${update.status}`);
         }
     }
     /** 自营快递接单（R1 商户超时转自营 / R3 自营快递池） */

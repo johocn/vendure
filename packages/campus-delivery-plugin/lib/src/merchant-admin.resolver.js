@@ -31,6 +31,10 @@ let MerchantAdminResolver = class MerchantAdminResolver {
     async campusMerchantCookingDone(ctx, orderId) {
         return this.merchant.cookingDone(ctx, orderId);
     }
+    /** 商家拒单/缺货：全额退款并取消订单（接单前或备餐中可用） */
+    async campusMerchantRejectOrder(ctx, orderId, reason) {
+        return this.merchant.rejectOrder(ctx, orderId, reason);
+    }
     /** 营业中开关（本渠道 paused） */
     async campusMerchantSetPaused(ctx, paused) {
         return this.merchant.setPaused(ctx, paused);
@@ -87,6 +91,16 @@ __decorate([
     __metadata("design:paramtypes", [core_1.RequestContext, Object]),
     __metadata("design:returntype", Promise)
 ], MerchantAdminResolver.prototype, "campusMerchantCookingDone", null);
+__decorate([
+    (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),
+    __param(0, (0, core_1.Ctx)()),
+    __param(1, (0, graphql_1.Args)('orderId')),
+    __param(2, (0, graphql_1.Args)('reason')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
+    __metadata("design:returntype", Promise)
+], MerchantAdminResolver.prototype, "campusMerchantRejectOrder", null);
 __decorate([
     (0, graphql_1.Mutation)(),
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusMerchant),

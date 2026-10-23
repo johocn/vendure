@@ -46,7 +46,7 @@ __decorate([
 ], DispatchAdminResolver.prototype, "campusDispatchBoard", null);
 __decorate([
     (0, graphql_1.Mutation)(),
-    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusViewDispatch),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusDispatch),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('orderId')),
     __param(2, (0, graphql_1.Args)('riderCustomerId')),
@@ -56,7 +56,7 @@ __decorate([
 ], DispatchAdminResolver.prototype, "campusAssignOrder", null);
 __decorate([
     (0, graphql_1.Mutation)(),
-    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusViewDispatch),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusDispatch),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('orderId')),
     __metadata("design:type", Function),
@@ -65,7 +65,7 @@ __decorate([
 ], DispatchAdminResolver.prototype, "campusBackToHall", null);
 __decorate([
     (0, graphql_1.Mutation)(),
-    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusViewDispatch),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusDispatch),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('orderId')),
     __param(2, (0, graphql_1.Args)('action')),

@@ -4,8 +4,9 @@ import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CapacityService } from './capacity.service';
 import { SlotLockService } from './slot-lock.service';
 /**
- * 入厅服务：跑腿单（orderKind='errand'）或路线 R1/R3 的订单在支付后自动进入抢单大厅。
+ * 入厅服务：跑腿单（orderKind='errand'）或路线 R1/R3 的订单在**支付成功后**自动进入抢单大厅。
  * 含预约时段锁位（T0 前置）：锁位失败标 campusCause='slot_full'，靠调度告警人工跟进。
+ * 支付闸门：由插件订阅 PaymentStateTransitionEvent（Authorized/Settled）触发，未支付订单不进大厅、不可被抢。
  */
 export declare class HallService {
     private connection;
@@ -27,7 +28,7 @@ export declare class HallService {
      * - 即时单：支付时间 + 店铺配送时长（未配置按 40min）
      */
     private resolvePromise;
-    onOrderPlaced(ctx: RequestContext, order: Order): Promise<void>;
+    onOrderPlaced(ctx: RequestContext, orderInput: Order): Promise<void>;
     /** 预约单放量（调度 job 调用，plan 3.1）：按路由/快照分流 */
     releaseScheduled(ctx: RequestContext, order: Order, cfg: CampusFulfillmentConfig | null): Promise<void>;
     /** 第一段交接完成：订单进校园抢单大厅（R1/R2 接力上楼）。

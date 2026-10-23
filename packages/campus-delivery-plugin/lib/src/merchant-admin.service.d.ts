@@ -1,4 +1,4 @@
-import { ID, RequestContext, TransactionalConnection } from '@vendure/core';
+import { ID, OrderService, RequestContext, TransactionalConnection } from '@vendure/core';
 import { CampusConfigService } from './campus-config.service';
 import { CampusNotifyService } from './campus-notify.service';
 import { ExternalProviderCode } from './route-matrix';
@@ -58,10 +58,17 @@ export declare class MerchantAdminService {
     private hall;
     private notify;
     private thirdParty;
-    constructor(connection: TransactionalConnection, config: CampusConfigService, hall: HallService, notify: CampusNotifyService, thirdParty: ThirdPartyDeliveryService);
+    private orderService;
+    constructor(connection: TransactionalConnection, config: CampusConfigService, hall: HallService, notify: CampusNotifyService, thirdParty: ThirdPartyDeliveryService, orderService: OrderService);
     board(ctx: RequestContext): Promise<MerchantBoard>;
     /** 商家接单确认：pending_merchant → accepted */
     acceptOrder(ctx: RequestContext, orderId: ID): Promise<{
+        ok: boolean;
+    }>;
+    /** 商家拒单/商品缺货：接单前（pending_merchant）或备餐中（accepted）可拒，
+     * 全额退款 + 取消订单（取消后由 Cancelled 转换自动脱厅/释放时段锁位）。
+     * 退款幂等口径与 T4/异常处置一致：先查已退总额，仅退剩余部分。 */
+    rejectOrder(ctx: RequestContext, orderId: ID, reason: string): Promise<{
         ok: boolean;
     }>;
     /** 出餐完成：按路线/承运分流（不再统一入抢单大厅） */
@@ -114,6 +121,7 @@ export declare class MerchantAdminService {
     }>;
     private assertAnyChannelOrder;
     private assertChannelOrder;
+    private assertChannelOrderState;
     /** 组装商家视图 DTO：楼栋名批量查、骑手名批量查，不外泄 admin 内部字段 */
     private toDto;
 }

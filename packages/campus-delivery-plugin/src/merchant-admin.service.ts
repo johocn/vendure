@@ -1,5 +1,14 @@
 import { Injectable } from '@nestjs/common';
-import { ID, Order, RequestContext, TransactionalConnection, UserInputError } from '@vendure/core';
+import {
+    ID,
+    Order,
+    OrderService,
+    Payment,
+    Refund,
+    RequestContext,
+    TransactionalConnection,
+    UserInputError,
+} from '@vendure/core';
 import { CampusBuilding } from './campus-building.entity';
 import { CampusConfigService } from './campus-config.service';
 import { CampusNotifyService } from './campus-notify.service';
@@ -67,6 +76,7 @@ export class MerchantAdminService {
         private hall: HallService,
         private notify: CampusNotifyService,
         private thirdParty: ThirdPartyDeliveryService,
+        private orderService: OrderService,
     ) {}
 
     async board(ctx: RequestContext): Promise<MerchantBoard> {
@@ -140,6 +150,57 @@ export class MerchantAdminService {
         const order = await this.assertChannelOrder(ctx, orderId, 'pending_merchant');
         await this.hall.updateOrder(ctx, order.id as any, { customFields: { hallStatus: 'accepted' } } as any);
         this.notify.user(ctx, order.id as any, 'orderAccepted');
+        return { ok: true };
+    }
+
+    /** 商家拒单/商品缺货：接单前（pending_merchant）或备餐中（accepted）可拒，
+     * 全额退款 + 取消订单（取消后由 Cancelled 转换自动脱厅/释放时段锁位）。
+     * 退款幂等口径与 T4/异常处置一致：先查已退总额，仅退剩余部分。 */
+    async rejectOrder(ctx: RequestContext, orderId: ID, reason: string) {
+        const trimmed = (reason ?? '').trim();
+        if (!trimmed) throw new UserInputError('请填写拒单原因');
+        const order = await this.assertChannelOrderState(ctx, orderId, ['pending_merchant', 'accepted']);
+
+        const payment = await this.connection.rawConnection.getRepository(Payment).findOne({
+            where: { order: { id: order.id } },
+            order: { id: 'DESC' as any },
+        });
+        if (payment) {
+            const refunded = await this.connection.rawConnection
+                .getRepository(Refund)
+                .createQueryBuilder('r')
+                .select('COALESCE(SUM(r.total), 0)', 'sum')
+                .where('r."paymentId" = :pid', { pid: payment.id })
+                .getRawOne();
+            const rest = Number(payment.amount) - Number(refunded?.sum ?? 0);
+            if (rest > 0) {
+                const created: any = await this.orderService.refundOrder(ctx, {
+                    paymentId: payment.id,
+                    amount: rest,
+                    // refund 表 shipping/adjustment 列 NOT NULL，显式给 0（同 T4）
+                    shipping: 0,
+                    adjustment: 0,
+                    reason: `merchant reject (${order.code})`,
+                } as any);
+                if (!created || created.errorCode) {
+                    throw new UserInputError(`退款失败：${created?.errorCode ?? '未知原因'}`);
+                }
+                await this.orderService.settleRefund(ctx, { id: created.id } as any);
+            }
+        }
+
+        // 先留痕再取消：脱厅只写 hallStatus，不覆盖 campusCause
+        await this.hall.updateOrder(ctx, order.id as any, {
+            customFields: { campusCause: 'merchant_rejected' },
+        } as any);
+        const cancelled = await this.orderService.cancelOrder(ctx, {
+            orderId: order.id as any,
+            reason: `商家拒单：${trimmed}`,
+        } as any);
+        if (cancelled && (cancelled as any).errorCode) {
+            throw new Error(`cancelOrder failed: ${(cancelled as any).errorCode}`);
+        }
+        this.notify.user(ctx, order.id as any, 'orderCancelled', trimmed);
         return { ok: true };
     }
 
@@ -251,13 +312,18 @@ export class MerchantAdminService {
     }
 
     private async assertChannelOrder(ctx: RequestContext, orderId: ID, expect: string) {
+        return this.assertChannelOrderState(ctx, orderId, [expect]);
+    }
+
+    private async assertChannelOrderState(ctx: RequestContext, orderId: ID, expects: string[]) {
         const order = await this.connection.getRepository(ctx, Order).findOne({
             where: { id: orderId as any },
             relations: ['channels'],
         });
         const inChannel = order?.channels?.some(c => String(c.id) === String(ctx.channelId));
         if (!order || !inChannel) throw new UserInputError('订单不存在或不属于当前店铺');
-        if ((order.customFields as any).hallStatus !== expect) {
+        const hs = (order.customFields as any).hallStatus;
+        if (!expects.includes(hs)) {
             throw new UserInputError('当前状态不允许该操作');
         }
         return order;

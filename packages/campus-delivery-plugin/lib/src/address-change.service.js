@@ -20,16 +20,19 @@ const capacity_service_1 = require("./capacity.service");
 const campus_notify_service_1 = require("./campus-notify.service");
 const shipping_calculator_1 = require("./shipping-calculator");
 const dynamic_pricing_1 = require("./dynamic-pricing");
+const route_matrix_1 = require("./route-matrix");
+const third_party_delivery_service_1 = require("./third-party-delivery.service");
 const loggerCtx = 'CampusAddressChange';
 /** 外部配送已接单/取货后不可改址 */
 const THIRD_PARTY_LOCKED = ['accepted', 'pickup', 'delivered'];
 let AddressChangeService = class AddressChangeService {
-    constructor(connection, orderService, customerService, capacity, notify) {
+    constructor(connection, orderService, customerService, capacity, notify, thirdParty) {
         this.connection = connection;
         this.orderService = orderService;
         this.customerService = customerService;
         this.capacity = capacity;
         this.notify = notify;
+        this.thirdParty = thirdParty;
     }
     /** 顾客自助改址（取货前、可跨分区）。差额不阻塞改址，写入台账待运营结算。 */
     async changeByCustomer(ctx, input) {
@@ -367,7 +370,7 @@ let AddressChangeService = class AddressChangeService {
         return { zone, building };
     }
     async applyChange(ctx, order, zone, building, detail, actor) {
-        var _a, _b, _c, _d, _e, _f, _g;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o;
         const channelId = this.channelIdOf(order, ctx);
         const cfg = await this.connection.rawConnection.getRepository(campus_fulfillment_config_entity_1.CampusFulfillmentConfig).findOne({
             where: { channelId: channelId },
@@ -381,6 +384,16 @@ let AddressChangeService = class AddressChangeService {
         const fromBuilding = String((_e = cf.buildingId) !== null && _e !== void 0 ? _e : '');
         const fromDetail = (_f = cf.deliveryDetail) !== null && _f !== void 0 ? _f : null;
         const toDetail = (detail === null || detail === void 0 ? void 0 : detail.trim()) || fromDetail;
+        const route = String((_g = cf.fulfillmentRoute) !== null && _g !== void 0 ? _g : '');
+        const hallStatus = String((_h = cf.hallStatus) !== null && _h !== void 0 ? _h : '');
+        // 交接点快照联动：R1/R2 按新楼栋坐标重选最近交接点（未配置交接点时为 null，保留旧快照）。
+        // 餐已实到交接点（open）或已被骑手取走（grabbed/delivered）时不改快照，否则会把骑手指向错误位置。
+        const atHandoverPoint = ['open', 'grabbed', 'delivered'].includes(hallStatus);
+        const point = (route === 'R1' || route === 'R2') && cfg && !atHandoverPoint
+            ? (0, route_matrix_1.resolveHandoverPoint)(route, cfg, building.lat != null && building.lng != null
+                ? { lat: Number(building.lat), lng: Number(building.lng) }
+                : null)
+            : null;
         const record = await this.connection.getRepository(ctx, campus_address_change_entity_1.CampusAddressChange).save(new campus_address_change_entity_1.CampusAddressChange({
             channelId,
             orderId: Number(order.id),
@@ -402,14 +415,43 @@ let AddressChangeService = class AddressChangeService {
             reason: actor.reason,
             changedBy: actor.changedBy,
         }));
-        await this.orderService.updateCustomFields(ctx, order.id, {
-            buildingId: String(building.id),
-            campusZone: zone.name,
-            deliveryDetail: toDetail,
-        });
+        await this.orderService.updateCustomFields(ctx, order.id, Object.assign({ buildingId: String(building.id), campusZone: zone.name, deliveryDetail: toDetail }, (point
+            ? {
+                handoverPointName: point.name,
+                handoverPointAddress: (_j = point.address) !== null && _j !== void 0 ? _j : null,
+                handoverPointLat: point.lat,
+                handoverPointLng: point.lng,
+            }
+            : {})));
+        // 外部快递在途（已接单/已取货）：旧运单目的地已失效，取消后回待推送，由运营按新址重推。
+        // 未推送（pending_dispatch/未入 third_party）无需处理，重推时自然读取新址。
+        const tpState = String((_k = cf.thirdPartyState) !== null && _k !== void 0 ? _k : '');
+        const externalInFlight = hallStatus === 'third_party'
+            && String((_l = cf.deliveryPlan) !== null && _l !== void 0 ? _l : '') === 'external_courier'
+            && ['pending', 'accepted', 'pickup'].includes(tpState);
+        if (externalInFlight) {
+            try {
+                const res = await this.thirdParty.cancel(ctx, Number(order.id), 'address changed');
+                if (res === null || res === void 0 ? void 0 : res.ok) {
+                    // cancel 按路线回落（R2 待推送 / R3 大厅且 deliveryPlan 改回 campus_rider）；
+                    // 改址场景统一恢复外部快递计划并回待推送，等运营按新址重推。
+                    await this.orderService.updateCustomFields(ctx, order.id, {
+                        hallStatus: 'pending_dispatch',
+                        deliveryPlan: 'external_courier',
+                        handoverMode: route === 'R2' ? 'to_campus_rider' : 'direct_to_user',
+                        thirdPartyState: 'cancelled',
+                        thirdPartyDispatchAt: new Date(),
+                        campusCause: 'address_changed_repush',
+                    });
+                }
+            }
+            catch (e) {
+                core_1.Logger.warn(`address change repush failed for ${order.code}: ${(_m = e === null || e === void 0 ? void 0 : e.message) !== null && _m !== void 0 ? _m : e}`, loggerCtx);
+            }
+        }
         core_1.Logger.info(`address change [${actor.source}] order=${order.code} ${fromZone}/${fromBuilding} -> ${zone.name}/${building.name} diff=${diff}`, loggerCtx);
         // 改址成功通知（fire-and-forget）：以台账记录 id 作幂等后缀，同一订单多次改址各推一条
-        this.notify.user(ctx, order.id, 'addressChanged', `${zone.name}·${building.name}`, (_g = cfg === null || cfg === void 0 ? void 0 : cfg.h5BaseUrl) !== null && _g !== void 0 ? _g : undefined, String(record.id));
+        this.notify.user(ctx, order.id, 'addressChanged', `${zone.name}·${building.name}`, (_o = cfg === null || cfg === void 0 ? void 0 : cfg.h5BaseUrl) !== null && _o !== void 0 ? _o : undefined, String(record.id));
         return {
             diff,
             oldFee,
@@ -433,6 +475,7 @@ exports.AddressChangeService = AddressChangeService = __decorate([
         core_1.OrderService,
         core_1.CustomerService,
         capacity_service_1.CapacityService,
-        campus_notify_service_1.CampusNotifyService])
+        campus_notify_service_1.CampusNotifyService,
+        third_party_delivery_service_1.ThirdPartyDeliveryService])
 ], AddressChangeService);
 //# sourceMappingURL=address-change.service.js.map

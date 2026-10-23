@@ -27,6 +27,8 @@ export class CampusFulfillmentConfig extends VendureEntity {
     // 超时赔付（P0）：开关默认关（灰度），独立券模板与 T4 no_rider 补偿券隔离
     @Column({ default: false }) timeoutCompensationEnabled: boolean;
     @Column({ type: 'int', default: 10 }) timeoutGraceMinutes: number; // 超时宽限（分钟），超过才赔
+    /** 超时赔付回扫窗口（小时）：只回补近 N 小时送达单（默认 24，可放大以覆盖更长账期） */
+    @Column({ type: 'int', default: 24 }) timeoutCompensationWindowHours: number;
     @Column({ type: 'varchar', nullable: true }) timeoutCompensationCouponTemplateId: string | null;
     // 用户侧节点通知（公众号模板消息）：五个触点的模板 ID，未配置 = 该节点静默跳过
     @Column({ type: 'varchar', nullable: true }) notifyTemplateAccepted: string | null; // 商家已接单

@@ -233,7 +233,7 @@ __decorate([
 ], CampusConfigAdminResolver.prototype, "campusUpdateStoreConfig", null);
 __decorate([
     (0, graphql_1.Mutation)(),
-    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusViewDispatch),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusDispatch),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('orderId')),
     __param(2, (0, graphql_1.Args)('provider')),
@@ -243,7 +243,7 @@ __decorate([
 ], CampusConfigAdminResolver.prototype, "campusAdminDispatchExternal", null);
 __decorate([
     (0, graphql_1.Mutation)(),
-    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusViewDispatch),
+    (0, core_1.Allow)(permissions_1.CampusPermissions.CampusDispatch),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('orderId')),
     __param(2, (0, graphql_1.Args)({ name: 'reason', type: () => String, nullable: true })),

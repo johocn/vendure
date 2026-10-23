@@ -47,7 +47,7 @@ export declare class DispatchJobService implements OnApplicationShutdown {
      */
     private sweepRouteTimeouts;
     /**
-     * 超时赔付（P0）：近 24h 已送达单，实际送达超出承诺时间 + 宽限 → 自动发定向券。
+     * 超时赔付（P0）：回扫窗口内（默认近 24h，可配）已送达单，实际送达超出承诺时间 + 宽限 → 自动发定向券。
      * 幂等：timeoutCompensatedAt 作闸，已赔单不再扫；发券失败不落痕，下一轮重试。
      * 归因（粗判）：无骑手承接 = platform；接单前耗时 > 骑手在途 = merchant，否则 rider。
      */

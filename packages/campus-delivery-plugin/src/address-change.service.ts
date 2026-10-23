@@ -20,6 +20,8 @@ import { CapacityService } from './capacity.service';
 import { CampusNotifyService } from './campus-notify.service';
 import { quoteZoneFee, readHallBacklog } from './shipping-calculator';
 import { parseDynamicPricing, quoteDynamicFee } from './dynamic-pricing';
+import { resolveHandoverPoint } from './route-matrix';
+import { ThirdPartyDeliveryService } from './third-party-delivery.service';
 
 const loggerCtx = 'CampusAddressChange';
 
@@ -34,6 +36,7 @@ export class AddressChangeService {
         private customerService: CustomerService,
         private capacity: CapacityService,
         private notify: CampusNotifyService,
+        private thirdParty: ThirdPartyDeliveryService,
     ) {}
 
     /** 顾客自助改址（取货前、可跨分区）。差额不阻塞改址，写入台账待运营结算。 */
@@ -381,6 +384,22 @@ export class AddressChangeService {
         const fromDetail = cf.deliveryDetail ?? null;
         const toDetail = detail?.trim() || fromDetail;
 
+        const route = String(cf.fulfillmentRoute ?? '');
+        const hallStatus = String(cf.hallStatus ?? '');
+        // 交接点快照联动：R1/R2 按新楼栋坐标重选最近交接点（未配置交接点时为 null，保留旧快照）。
+        // 餐已实到交接点（open）或已被骑手取走（grabbed/delivered）时不改快照，否则会把骑手指向错误位置。
+        const atHandoverPoint = ['open', 'grabbed', 'delivered'].includes(hallStatus);
+        const point =
+            (route === 'R1' || route === 'R2') && cfg && !atHandoverPoint
+                ? resolveHandoverPoint(
+                      route as 'R1' | 'R2',
+                      cfg,
+                      building.lat != null && building.lng != null
+                          ? { lat: Number(building.lat), lng: Number(building.lng) }
+                          : null,
+                  )
+                : null;
+
         const record = await this.connection.getRepository(ctx, CampusAddressChange).save(
             new CampusAddressChange({
                 channelId,
@@ -409,7 +428,44 @@ export class AddressChangeService {
             buildingId: String((building as any).id),
             campusZone: zone.name,
             deliveryDetail: toDetail,
+            // 改址联动（C 组漏项）：R1/R2 按新楼栋坐标重算最近交接点快照，
+            // 否则第一段仍会把餐送到旧地址对应的交接点。
+            ...(point
+                ? {
+                      handoverPointName: point.name,
+                      handoverPointAddress: point.address ?? null,
+                      handoverPointLat: point.lat,
+                      handoverPointLng: point.lng,
+                  }
+                : {}),
         } as any);
+
+        // 外部快递在途（已接单/已取货）：旧运单目的地已失效，取消后回待推送，由运营按新址重推。
+        // 未推送（pending_dispatch/未入 third_party）无需处理，重推时自然读取新址。
+        const tpState = String(cf.thirdPartyState ?? '');
+        const externalInFlight =
+            hallStatus === 'third_party'
+            && String(cf.deliveryPlan ?? '') === 'external_courier'
+            && ['pending', 'accepted', 'pickup'].includes(tpState);
+        if (externalInFlight) {
+            try {
+                const res = await this.thirdParty.cancel(ctx, Number(order.id), 'address changed');
+                if (res?.ok) {
+                    // cancel 按路线回落（R2 待推送 / R3 大厅且 deliveryPlan 改回 campus_rider）；
+                    // 改址场景统一恢复外部快递计划并回待推送，等运营按新址重推。
+                    await this.orderService.updateCustomFields(ctx, order.id, {
+                        hallStatus: 'pending_dispatch',
+                        deliveryPlan: 'external_courier',
+                        handoverMode: route === 'R2' ? 'to_campus_rider' : 'direct_to_user',
+                        thirdPartyState: 'cancelled',
+                        thirdPartyDispatchAt: new Date(),
+                        campusCause: 'address_changed_repush',
+                    } as any);
+                }
+            } catch (e: any) {
+                Logger.warn(`address change repush failed for ${order.code}: ${e?.message ?? e}`, loggerCtx);
+            }
+        }
 
         Logger.info(
             `address change [${actor.source}] order=${order.code} ${fromZone}/${fromBuilding} -> ${zone.name}/${building.name} diff=${diff}`,

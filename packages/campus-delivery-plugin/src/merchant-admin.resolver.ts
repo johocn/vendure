@@ -26,6 +26,17 @@ export class MerchantAdminResolver {
         return this.merchant.cookingDone(ctx, orderId);
     }
 
+    /** 商家拒单/缺货：全额退款并取消订单（接单前或备餐中可用） */
+    @Mutation()
+    @Allow(CampusPermissions.CampusMerchant as any)
+    async campusMerchantRejectOrder(
+        @Ctx() ctx: RequestContext,
+        @Args('orderId') orderId: ID,
+        @Args('reason') reason: string,
+    ) {
+        return this.merchant.rejectOrder(ctx, orderId, reason);
+    }
+
     /** 营业中开关（本渠道 paused） */
     @Mutation()
     @Allow(CampusPermissions.CampusMerchant as any)
