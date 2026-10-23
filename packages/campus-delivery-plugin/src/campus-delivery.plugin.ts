@@ -390,7 +390,6 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     timeoutCompensationEnabled: Boolean!
                     timeoutGraceMinutes: Int!
                     timeoutCompensationCouponTemplateId: String
-                    dynamicPricing: String
                 }
 
                 input CampusStoreConfigInput {

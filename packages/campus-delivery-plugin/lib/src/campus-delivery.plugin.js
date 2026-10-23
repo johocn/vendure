@@ -466,7 +466,6 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     timeoutCompensationEnabled: Boolean!
                     timeoutGraceMinutes: Int!
                     timeoutCompensationCouponTemplateId: String
-                    dynamicPricing: String
                 }
 
                 input CampusStoreConfigInput {
