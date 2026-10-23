@@ -24,6 +24,7 @@ const TEMPLATE_FIELD = {
     paymentPending: 'notifyTemplatePaymentPending',
     orderCancelled: 'notifyTemplateCancelled',
     afterSales: 'notifyTemplateAfterSales',
+    addressChanged: 'notifyTemplateAddressChanged',
 };
 /** 售后类型短语（微信 phrase 占位符 ≤5 字符） */
 const AFTER_SALE_TYPE = {
@@ -49,8 +50,8 @@ let CampusNotifyService = class CampusNotifyService {
         this.connection = connection;
         this.config = config;
     }
-    /** 发送节点通知（异步不等待，不抛错）。text：动态文案覆盖 status（如异常处置结果，超 20 字符自动截断）；h5BaseUrl：配置后消息带 url 跳 H5 订单详情落地页 */
-    user(ctx, orderId, event, text, h5BaseUrl) {
+    /** 发送节点通知（异步不等待，不抛错）。text：动态文案覆盖 status（如异常处置结果/改址新址，超 20 字符自动截断）；h5BaseUrl：配置后消息带 url 跳 H5 订单详情落地页；dedupeSuffix：同一订单多次同类事件（如多次改址）的幂等键后缀 */
+    user(ctx, orderId, event, text, h5BaseUrl, dedupeSuffix) {
         void (async () => {
             var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v;
             try {
@@ -83,13 +84,15 @@ let CampusNotifyService = class CampusNotifyService {
                 const amount = (((_g = order.totalWithTax) !== null && _g !== void 0 ? _g : 0) / 100).toFixed(2);
                 const params = event === 'orderCancelled'
                     ? { orderCode: order.code, itemName, refundAmount: amount }
-                    : event === 'afterSales' || event === 'exceptionHandled'
-                        ? {
-                            orderCode: order.code,
-                            itemName,
-                            afterSaleType: ((_h = text !== null && text !== void 0 ? text : AFTER_SALE_TYPE[event]) !== null && _h !== void 0 ? _h : '进度更新').slice(0, 5),
-                        }
-                        : { orderCode: order.code, itemName, amount, payMethod: '在线支付' };
+                    : event === 'addressChanged'
+                        ? { orderCode: order.code, itemName, newAddress: (text !== null && text !== void 0 ? text : '').slice(0, 20) }
+                        : event === 'afterSales' || event === 'exceptionHandled'
+                            ? {
+                                orderCode: order.code,
+                                itemName,
+                                afterSaleType: ((_h = text !== null && text !== void 0 ? text : AFTER_SALE_TYPE[event]) !== null && _h !== void 0 ? _h : '进度更新').slice(0, 5),
+                            }
+                            : { orderCode: order.code, itemName, amount, payMethod: '在线支付' };
                 const link = h5BaseUrl
                     ? `${h5BaseUrl.replace(/\/$/, '')}/#/pkg-order/pages/order-detail?code=${order.code}`
                     : undefined;
@@ -101,7 +104,7 @@ let CampusNotifyService = class CampusNotifyService {
                     params,
                     link,
                     scene: `campus:${event}`,
-                    dedupe_key: `campus:${event}:${orderId}`,
+                    dedupe_key: `campus:${event}:${orderId}${dedupeSuffix ? `:${dedupeSuffix}` : ''}`,
                 });
                 // 发送 + 退避重试：2s / 8s，单次超时 10s；dedupe_key 幂等，重发不产生重复消息
                 let lastErr;

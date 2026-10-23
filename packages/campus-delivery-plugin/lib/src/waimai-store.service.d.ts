@@ -42,6 +42,7 @@ export interface CampusStoreConfigWithChannel {
     notifyTemplatePaymentPending: string | null;
     notifyTemplateCancelled: string | null;
     notifyTemplateAfterSales: string | null;
+    notifyTemplateAddressChanged: string | null;
     h5BaseUrl: string | null;
     printMode: 'off' | 'onPaid' | 'onAccepted';
     routeFirstLeg: Array<{
@@ -105,6 +106,7 @@ export declare class WaimaiStoreService {
         notifyTemplatePaymentPending?: string | null;
         notifyTemplateCancelled?: string | null;
         notifyTemplateAfterSales?: string | null;
+        notifyTemplateAddressChanged?: string | null;
         h5BaseUrl?: string | null;
         printMode?: string | null;
         timeoutCompensationEnabled?: boolean | null;

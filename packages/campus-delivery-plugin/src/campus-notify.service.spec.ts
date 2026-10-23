@@ -40,6 +40,7 @@ describe('CampusNotifyService', () => {
                     notifyTemplatePaymentPending: opts.templateCode ?? null,
                     notifyTemplateCancelled: opts.templateCode ?? null,
                     notifyTemplateAfterSales: opts.templateCode ?? null,
+                    notifyTemplateAddressChanged: opts.templateCode ?? null,
                 }),
             } as any,
         );
@@ -135,6 +136,19 @@ describe('CampusNotifyService', () => {
         await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
         const body = JSON.parse(fetchMock.mock.calls[0][1].body);
         expect(body.link).toBe('https://www.yourbao.cn/#/pkg-order/pages/order-detail?code=ORD1');
+    });
+
+    it('addressChanged：新址文案 → newAddress 型 params + 台账 id 后缀区分多次改址', async () => {
+        const { svc, fetchMock } = makeSvc({ templateCode: 'waimai_address_changed' });
+        svc.user(makeCtx(), 4, 'addressChanged', '东区·桂1栋', undefined, '77');
+        await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        expect(body.params).toEqual({
+            orderCode: 'ORD1',
+            itemName: '拿铁 等2件',
+            newAddress: '东区·桂1栋',
+        });
+        expect(body.dedupe_key).toBe('campus:addressChanged:4:77');
     });
 
     // F7 进程内重试：首发失败退避 2s/8s 重发（dedupe_key 幂等，重发不产生重复消息）

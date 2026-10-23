@@ -2,10 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { Logger, Order, RequestContext, TransactionalConnection } from '@vendure/core';
 import { CampusConfigService } from './campus-config.service';
 
-/** 用户侧节点通知触点（履约 5 + 用户订单域 4） */
+/** 用户侧节点通知触点（履约 5 + 用户订单域 4 + 改址 1） */
 export type CampusNotifyEvent =
     | 'orderAccepted' | 'riderAssigned' | 'cookingDone' | 'orderDelivered' | 'exceptionHandled'
-    | 'orderPlaced' | 'paymentPending' | 'orderCancelled' | 'afterSales';
+    | 'orderPlaced' | 'paymentPending' | 'orderCancelled' | 'afterSales' | 'addressChanged';
 
 /** 触点 → 配置实体模板字段（值 = SSO msg-template 的 templateCode；未配置 = 该节点静默跳过） */
 const TEMPLATE_FIELD: Record<CampusNotifyEvent, string> = {
@@ -18,6 +18,7 @@ const TEMPLATE_FIELD: Record<CampusNotifyEvent, string> = {
     paymentPending: 'notifyTemplatePaymentPending',
     orderCancelled: 'notifyTemplateCancelled',
     afterSales: 'notifyTemplateAfterSales',
+    addressChanged: 'notifyTemplateAddressChanged',
 };
 
 /** 售后类型短语（微信 phrase 占位符 ≤5 字符） */
@@ -48,8 +49,15 @@ export class CampusNotifyService {
         private config: CampusConfigService,
     ) {}
 
-    /** 发送节点通知（异步不等待，不抛错）。text：动态文案覆盖 status（如异常处置结果，超 20 字符自动截断）；h5BaseUrl：配置后消息带 url 跳 H5 订单详情落地页 */
-    user(ctx: RequestContext, orderId: number | string, event: CampusNotifyEvent, text?: string, h5BaseUrl?: string): void {
+    /** 发送节点通知（异步不等待，不抛错）。text：动态文案覆盖 status（如异常处置结果/改址新址，超 20 字符自动截断）；h5BaseUrl：配置后消息带 url 跳 H5 订单详情落地页；dedupeSuffix：同一订单多次同类事件（如多次改址）的幂等键后缀 */
+    user(
+        ctx: RequestContext,
+        orderId: number | string,
+        event: CampusNotifyEvent,
+        text?: string,
+        h5BaseUrl?: string,
+        dedupeSuffix?: string,
+    ): void {
         void (async () => {
             try {
                 const baseUrl = process.env.SSO_NOTIFY_BASE_URL;
@@ -85,7 +93,9 @@ export class CampusNotifyService {
                 const params =
                     event === 'orderCancelled'
                         ? { orderCode: order.code, itemName, refundAmount: amount }
-                        : event === 'afterSales' || event === 'exceptionHandled'
+                        : event === 'addressChanged'
+                          ? { orderCode: order.code, itemName, newAddress: (text ?? '').slice(0, 20) }
+                          : event === 'afterSales' || event === 'exceptionHandled'
                           ? {
                                 orderCode: order.code,
                                 itemName,
@@ -103,7 +113,7 @@ export class CampusNotifyService {
                     params,
                     link,
                     scene: `campus:${event}`,
-                    dedupe_key: `campus:${event}:${orderId}`,
+                    dedupe_key: `campus:${event}:${orderId}${dedupeSuffix ? `:${dedupeSuffix}` : ''}`,
                 });
                 // 发送 + 退避重试：2s / 8s，单次超时 10s；dedupe_key 幂等，重发不产生重复消息
                 let lastErr: unknown;

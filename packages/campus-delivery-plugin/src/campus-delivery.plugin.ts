@@ -31,6 +31,7 @@ import { AddressChangeService } from './address-change.service';
 import { CampusAddressChange } from './campus-address-change.entity';
 import { AddAddressChangePricingMigration } from './migrations/add-address-change-pricing';
 import { AddAddressChangeSettleProofMigration } from './migrations/add-address-change-settle-proof';
+import { P3DataCleanupMigration } from './migrations/p3-data-cleanup';
 import { ErrandService } from './errand.service';
 import { ErrandShopResolver } from './errand-shop.resolver';
 import { FavoriteShopResolver } from './favorite-shop.resolver';
@@ -93,6 +94,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
         AddThirdPartyBaseFeeMigration,
         AddAddressChangePricingMigration,
         AddAddressChangeSettleProofMigration,
+        P3DataCleanupMigration,
         AddressChangeService,
         BackfillWaimaiIndustryMigration,
         CampusConfigService,
@@ -390,6 +392,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     notifyTemplatePaymentPending: String
                     notifyTemplateCancelled: String
                     notifyTemplateAfterSales: String
+                    notifyTemplateAddressChanged: String
                     h5BaseUrl: String
                     printMode: String!
                     timeoutCompensationEnabled: Boolean!
@@ -426,6 +429,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     notifyTemplatePaymentPending: String
                     notifyTemplateCancelled: String
                     notifyTemplateAfterSales: String
+                    notifyTemplateAddressChanged: String
                     h5BaseUrl: String
                     printMode: String
                     timeoutCompensationEnabled: Boolean

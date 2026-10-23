@@ -47,6 +47,7 @@ export interface CampusStoreConfigWithChannel {
     notifyTemplatePaymentPending: string | null;
     notifyTemplateCancelled: string | null;
     notifyTemplateAfterSales: string | null;
+    notifyTemplateAddressChanged: string | null;
     h5BaseUrl: string | null;
     printMode: 'off' | 'onPaid' | 'onAccepted';
     routeFirstLeg: Array<{ route: string; carrier: string }>;
@@ -160,6 +161,7 @@ export class WaimaiStoreService {
             notifyTemplatePaymentPending?: string | null;
             notifyTemplateCancelled?: string | null;
             notifyTemplateAfterSales?: string | null;
+            notifyTemplateAddressChanged?: string | null;
             h5BaseUrl?: string | null;
             printMode?: string | null;
             timeoutCompensationEnabled?: boolean | null;
@@ -276,6 +278,7 @@ export class WaimaiStoreService {
         cfg.notifyTemplatePaymentPending = input.notifyTemplatePaymentPending ?? null;
         cfg.notifyTemplateCancelled = input.notifyTemplateCancelled ?? null;
         cfg.notifyTemplateAfterSales = input.notifyTemplateAfterSales ?? null;
+        cfg.notifyTemplateAddressChanged = input.notifyTemplateAddressChanged ?? null;
         cfg.h5BaseUrl = input.h5BaseUrl ?? null;
         cfg.printMode = input.printMode == null || input.printMode === '' ? 'off' : input.printMode;
         // 超时赔付：未传即保留（旧表单不会清空已配值）
@@ -387,6 +390,7 @@ export class WaimaiStoreService {
             notifyTemplatePaymentPending: cfg?.notifyTemplatePaymentPending ?? null,
             notifyTemplateCancelled: cfg?.notifyTemplateCancelled ?? null,
             notifyTemplateAfterSales: cfg?.notifyTemplateAfterSales ?? null,
+            notifyTemplateAddressChanged: cfg?.notifyTemplateAddressChanged ?? null,
             h5BaseUrl: cfg?.h5BaseUrl ?? null,
             printMode: normalizePrintMode(cfg?.printMode),
             timeoutCompensationEnabled: cfg?.timeoutCompensationEnabled ?? false,

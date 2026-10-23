@@ -47,7 +47,6 @@ export const campusCustomFields: CustomFields = {
         { name: 'thirdPartyDeliveryOrderId', type: 'string', nullable: true }, // 网关内部单号
         { name: 'thirdPartyNo', type: 'string', nullable: true }, // 外部快递平台单号
         { name: 'thirdPartyState', type: 'string', nullable: true }, // pending/accepted/pickup/delivered/cancelled/exception
-        { name: 'thirdPartyFee', type: 'int', nullable: true }, // 外部快递费用（分）
         { name: 'thirdPartyCourierName', type: 'string', nullable: true },
         { name: 'thirdPartyCourierPhone', type: 'string', nullable: true },
         { name: 'handoverPointName', type: 'string', nullable: true }, // 校园交接点快照（R1/R2）

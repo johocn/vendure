@@ -17,6 +17,7 @@ import { CampusBuilding } from './campus-building.entity';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CampusZone } from './campus-zone.entity';
 import { CapacityService } from './capacity.service';
+import { CampusNotifyService } from './campus-notify.service';
 import { quoteZoneFee, readHallBacklog } from './shipping-calculator';
 import { parseDynamicPricing, quoteDynamicFee } from './dynamic-pricing';
 
@@ -32,6 +33,7 @@ export class AddressChangeService {
         private orderService: OrderService,
         private customerService: CustomerService,
         private capacity: CapacityService,
+        private notify: CampusNotifyService,
     ) {}
 
     /** 顾客自助改址（取货前、可跨分区）。差额不阻塞改址，写入台账待运营结算。 */
@@ -412,6 +414,15 @@ export class AddressChangeService {
         Logger.info(
             `address change [${actor.source}] order=${order.code} ${fromZone}/${fromBuilding} -> ${zone.name}/${building.name} diff=${diff}`,
             loggerCtx,
+        );
+        // 改址成功通知（fire-and-forget）：以台账记录 id 作幂等后缀，同一订单多次改址各推一条
+        this.notify.user(
+            ctx,
+            order.id,
+            'addressChanged',
+            `${zone.name}·${building.name}`,
+            cfg?.h5BaseUrl ?? undefined,
+            String(record.id),
         );
         return {
             diff,

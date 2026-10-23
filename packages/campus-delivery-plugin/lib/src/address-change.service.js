@@ -17,17 +17,19 @@ const campus_building_entity_1 = require("./campus-building.entity");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
 const campus_zone_entity_1 = require("./campus-zone.entity");
 const capacity_service_1 = require("./capacity.service");
+const campus_notify_service_1 = require("./campus-notify.service");
 const shipping_calculator_1 = require("./shipping-calculator");
 const dynamic_pricing_1 = require("./dynamic-pricing");
 const loggerCtx = 'CampusAddressChange';
 /** 外部配送已接单/取货后不可改址 */
 const THIRD_PARTY_LOCKED = ['accepted', 'pickup', 'delivered'];
 let AddressChangeService = class AddressChangeService {
-    constructor(connection, orderService, customerService, capacity) {
+    constructor(connection, orderService, customerService, capacity, notify) {
         this.connection = connection;
         this.orderService = orderService;
         this.customerService = customerService;
         this.capacity = capacity;
+        this.notify = notify;
     }
     /** 顾客自助改址（取货前、可跨分区）。差额不阻塞改址，写入台账待运营结算。 */
     async changeByCustomer(ctx, input) {
@@ -365,7 +367,7 @@ let AddressChangeService = class AddressChangeService {
         return { zone, building };
     }
     async applyChange(ctx, order, zone, building, detail, actor) {
-        var _a, _b, _c, _d, _e, _f;
+        var _a, _b, _c, _d, _e, _f, _g;
         const channelId = this.channelIdOf(order, ctx);
         const cfg = await this.connection.rawConnection.getRepository(campus_fulfillment_config_entity_1.CampusFulfillmentConfig).findOne({
             where: { channelId: channelId },
@@ -406,6 +408,8 @@ let AddressChangeService = class AddressChangeService {
             deliveryDetail: toDetail,
         });
         core_1.Logger.info(`address change [${actor.source}] order=${order.code} ${fromZone}/${fromBuilding} -> ${zone.name}/${building.name} diff=${diff}`, loggerCtx);
+        // 改址成功通知（fire-and-forget）：以台账记录 id 作幂等后缀，同一订单多次改址各推一条
+        this.notify.user(ctx, order.id, 'addressChanged', `${zone.name}·${building.name}`, (_g = cfg === null || cfg === void 0 ? void 0 : cfg.h5BaseUrl) !== null && _g !== void 0 ? _g : undefined, String(record.id));
         return {
             diff,
             oldFee,
@@ -428,6 +432,7 @@ exports.AddressChangeService = AddressChangeService = __decorate([
     __metadata("design:paramtypes", [core_1.TransactionalConnection,
         core_1.OrderService,
         core_1.CustomerService,
-        capacity_service_1.CapacityService])
+        capacity_service_1.CapacityService,
+        campus_notify_service_1.CampusNotifyService])
 ], AddressChangeService);
 //# sourceMappingURL=address-change.service.js.map

@@ -16,7 +16,7 @@ const campus_notify_service_1 = require("./campus-notify.service");
         lines: [{ productVariant: { name: '拿铁' } }, { productVariant: { name: '三明治' } }],
     };
     function makeSvc(opts) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
         const findOne = vitest_1.vi.fn().mockResolvedValue(opts.ssoId === null
             ? Object.assign(Object.assign({}, ORDER), { customer: { customFields: { wechatOpenid: 'o-123' } } }) : Object.assign(Object.assign({}, ORDER), { customer: { customFields: { ssoId: (_a = opts.ssoId) !== null && _a !== void 0 ? _a : '3' } } }));
         const fetchMock = vitest_1.vi.fn().mockResolvedValue({
@@ -35,6 +35,7 @@ const campus_notify_service_1 = require("./campus-notify.service");
                 notifyTemplatePaymentPending: (_h = opts.templateCode) !== null && _h !== void 0 ? _h : null,
                 notifyTemplateCancelled: (_j = opts.templateCode) !== null && _j !== void 0 ? _j : null,
                 notifyTemplateAfterSales: (_k = opts.templateCode) !== null && _k !== void 0 ? _k : null,
+                notifyTemplateAddressChanged: (_l = opts.templateCode) !== null && _l !== void 0 ? _l : null,
             }),
         });
         return { svc, findOne, fetchMock };
@@ -121,6 +122,18 @@ const campus_notify_service_1 = require("./campus-notify.service");
         await vitest_1.vi.waitFor(() => (0, vitest_1.expect)(fetchMock).toHaveBeenCalled());
         const body = JSON.parse(fetchMock.mock.calls[0][1].body);
         (0, vitest_1.expect)(body.link).toBe('https://www.yourbao.cn/#/pkg-order/pages/order-detail?code=ORD1');
+    });
+    (0, vitest_1.it)('addressChanged：新址文案 → newAddress 型 params + 台账 id 后缀区分多次改址', async () => {
+        const { svc, fetchMock } = makeSvc({ templateCode: 'waimai_address_changed' });
+        svc.user(makeCtx(), 4, 'addressChanged', '东区·桂1栋', undefined, '77');
+        await vitest_1.vi.waitFor(() => (0, vitest_1.expect)(fetchMock).toHaveBeenCalled());
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        (0, vitest_1.expect)(body.params).toEqual({
+            orderCode: 'ORD1',
+            itemName: '拿铁 等2件',
+            newAddress: '东区·桂1栋',
+        });
+        (0, vitest_1.expect)(body.dedupe_key).toBe('campus:addressChanged:4:77');
     });
     // F7 进程内重试：首发失败退避 2s/8s 重发（dedupe_key 幂等，重发不产生重复消息）
     (0, vitest_1.it)('F7：首发失败 → 退避 2s 后第 2 次重试成功（共 2 次调用）', async () => {

@@ -164,7 +164,6 @@ export class ThirdPartyDeliveryService implements OnApplicationBootstrap {
                 thirdPartyDeliveryOrderId: String(delivery.id),
                 thirdPartyNo: delivery.thirdPartyNo ?? delivery.code,
                 thirdPartyState: delivery.status,
-                thirdPartyFee: delivery.fee ?? null,
                 thirdPartyDispatchAt: new Date(),
                 handoverPointName: dropoff.name ?? '',
                 handoverPointAddress: dropoff.address ?? null,

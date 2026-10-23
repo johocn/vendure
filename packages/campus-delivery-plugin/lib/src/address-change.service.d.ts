@@ -2,12 +2,14 @@ import { CustomerService, ID, OrderService, RequestContext, TransactionalConnect
 import { CampusAddressChange } from './campus-address-change.entity';
 import { CampusBuilding } from './campus-building.entity';
 import { CapacityService } from './capacity.service';
+import { CampusNotifyService } from './campus-notify.service';
 export declare class AddressChangeService {
     private connection;
     private orderService;
     private customerService;
     private capacity;
-    constructor(connection: TransactionalConnection, orderService: OrderService, customerService: CustomerService, capacity: CapacityService);
+    private notify;
+    constructor(connection: TransactionalConnection, orderService: OrderService, customerService: CustomerService, capacity: CapacityService, notify: CampusNotifyService);
     /** 顾客自助改址（取货前、可跨分区）。差额不阻塞改址，写入台账待运营结算。 */
     changeByCustomer(ctx: RequestContext, input: {
         orderId: ID;

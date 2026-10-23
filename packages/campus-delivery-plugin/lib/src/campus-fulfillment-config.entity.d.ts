@@ -32,6 +32,7 @@ export declare class CampusFulfillmentConfig extends VendureEntity {
     notifyTemplatePaymentPending: string | null;
     notifyTemplateCancelled: string | null;
     notifyTemplateAfterSales: string | null;
+    notifyTemplateAddressChanged: string | null;
     h5BaseUrl: string | null;
     printMode: string | null;
     /** 第一段由谁送（按路线）：R1 = merchant|owned，R3 = campus|owned|external；缺省 R1=merchant、R3=campus */

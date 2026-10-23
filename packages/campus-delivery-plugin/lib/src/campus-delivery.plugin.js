@@ -31,6 +31,7 @@ const address_change_service_1 = require("./address-change.service");
 const campus_address_change_entity_1 = require("./campus-address-change.entity");
 const add_address_change_pricing_1 = require("./migrations/add-address-change-pricing");
 const add_address_change_settle_proof_1 = require("./migrations/add-address-change-settle-proof");
+const p3_data_cleanup_1 = require("./migrations/p3-data-cleanup");
 const errand_service_1 = require("./errand.service");
 const errand_shop_resolver_1 = require("./errand-shop.resolver");
 const favorite_shop_resolver_1 = require("./favorite-shop.resolver");
@@ -169,6 +170,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             add_third_party_base_fee_1.AddThirdPartyBaseFeeMigration,
             add_address_change_pricing_1.AddAddressChangePricingMigration,
             add_address_change_settle_proof_1.AddAddressChangeSettleProofMigration,
+            p3_data_cleanup_1.P3DataCleanupMigration,
             address_change_service_1.AddressChangeService,
             backfill_waimai_industry_1.BackfillWaimaiIndustryMigration,
             campus_config_service_1.CampusConfigService,
@@ -466,6 +468,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     notifyTemplatePaymentPending: String
                     notifyTemplateCancelled: String
                     notifyTemplateAfterSales: String
+                    notifyTemplateAddressChanged: String
                     h5BaseUrl: String
                     printMode: String!
                     timeoutCompensationEnabled: Boolean!
@@ -502,6 +505,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     notifyTemplatePaymentPending: String
                     notifyTemplateCancelled: String
                     notifyTemplateAfterSales: String
+                    notifyTemplateAddressChanged: String
                     h5BaseUrl: String
                     printMode: String
                     timeoutCompensationEnabled: Boolean

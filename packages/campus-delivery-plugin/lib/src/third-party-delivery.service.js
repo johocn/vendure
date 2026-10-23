@@ -67,7 +67,7 @@ let ThirdPartyDeliveryService = class ThirdPartyDeliveryService {
      * - R3：当前策略为 external 时，外部快递整段直送学生
      */
     async dispatchExternal(ctx, orderId, provider) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0;
         if (provider !== 'dada' && provider !== 'meituan')
             throw new core_2.UserInputError('外部快递仅支持 dada/meituan');
         const order = await this.orderRepo(ctx).findOne({
@@ -149,18 +149,17 @@ let ThirdPartyDeliveryService = class ThirdPartyDeliveryService {
                 thirdPartyDeliveryOrderId: String(delivery.id),
                 thirdPartyNo: (_w = delivery.thirdPartyNo) !== null && _w !== void 0 ? _w : delivery.code,
                 thirdPartyState: delivery.status,
-                thirdPartyFee: (_x = delivery.fee) !== null && _x !== void 0 ? _x : null,
                 thirdPartyDispatchAt: new Date(),
-                handoverPointName: (_y = dropoff.name) !== null && _y !== void 0 ? _y : '',
-                handoverPointAddress: (_z = dropoff.address) !== null && _z !== void 0 ? _z : null,
+                handoverPointName: (_x = dropoff.name) !== null && _x !== void 0 ? _x : '',
+                handoverPointAddress: (_y = dropoff.address) !== null && _y !== void 0 ? _y : null,
                 handoverPointLat: dropoff.lat,
                 handoverPointLng: dropoff.lng,
                 hallStatus: 'third_party',
                 campusCause: 'external_dispatched',
             },
         });
-        core_2.Logger.info(`订单 ${order.code} 已推送 ${provider}:${(_0 = delivery.thirdPartyNo) !== null && _0 !== void 0 ? _0 : delivery.code}`, loggerCtx);
-        return { ok: true, thirdPartyNo: (_1 = delivery.thirdPartyNo) !== null && _1 !== void 0 ? _1 : delivery.code, provider };
+        core_2.Logger.info(`订单 ${order.code} 已推送 ${provider}:${(_z = delivery.thirdPartyNo) !== null && _z !== void 0 ? _z : delivery.code}`, loggerCtx);
+        return { ok: true, thirdPartyNo: (_0 = delivery.thirdPartyNo) !== null && _0 !== void 0 ? _0 : delivery.code, provider };
     }
     /** 取消外部快递配送（商家关单 / 推送失败回落前调用），幂等 */
     async cancel(ctx, orderId, reason) {
