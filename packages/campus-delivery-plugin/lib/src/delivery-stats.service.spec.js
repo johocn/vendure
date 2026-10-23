@@ -79,6 +79,21 @@ const order = (id, ch, cf, extra = {}) => {
             { key: 'transit', label: '在途', avgMinutes: 20 },
         ]);
     });
+    (0, vitest_1.it)('接单段排除预约单（scheduledFor 非空：assignedAt 在放量后写入，跨时长不代表接单效率）', () => {
+        const orders = [
+            order(1, 1, { createdAt: min(40), assignedAt: min(30), scheduledFor: min(-600) }), // 预约单
+            order(2, 1, { createdAt: min(20), assignedAt: min(10) }), // 即时单
+        ];
+        const res = (0, delivery_stats_service_1.aggregateStats)({
+            orders,
+            graceByChannel: new Map([[1, 10]]),
+            windowStart: now - 24 * 3600000,
+            now,
+            range: '7d',
+        });
+        (0, vitest_1.expect)(res.stages[0].avgMinutes).toBe(10); // 仅即时单计入
+        (0, vitest_1.expect)(res.kpis.totalOrders).toBe(2); // 单量不受影响
+    });
     (0, vitest_1.it)('dailyTrend 7d：逐日出点，无单日补零', () => {
         const res = (0, delivery_stats_service_1.aggregateStats)({
             orders: [order(1, 1, { promisedAt: min(30), deliveredAt: min(20), createdAt: min(60) })],

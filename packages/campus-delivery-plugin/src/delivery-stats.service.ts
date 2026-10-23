@@ -21,6 +21,7 @@ export interface StatsOrderLike {
         promisedAt?: Date | string | null;
         assignedAt?: Date | string | null;
         deliveredAt?: Date | string | null;
+        scheduledFor?: Date | string | null;
         timeoutCompensatedAt?: Date | string | null;
         timeoutAttribution?: string | null;
     };
@@ -160,7 +161,8 @@ export function aggregateStats(args: {
             transitSum += new Date(cf.deliveredAt).getTime() - new Date(cf.assignedAt).getTime();
             transitN++;
         }
-        if (cf.assignedAt) {
+        // 接单段排除预约单：预约单 assignedAt 在放量后写入，createdAt→assignedAt 跨数小时属正常，不代表接单效率
+        if (cf.assignedAt && !cf.scheduledFor) {
             assignSum += new Date(cf.assignedAt).getTime() - createdAt;
             assignN++;
         }

@@ -88,6 +88,22 @@ describe('aggregateStats', () => {
         ]);
     });
 
+    it('接单段排除预约单（scheduledFor 非空：assignedAt 在放量后写入，跨时长不代表接单效率）', () => {
+        const orders = [
+            order(1, 1, { createdAt: min(40), assignedAt: min(30), scheduledFor: min(-600) }), // 预约单
+            order(2, 1, { createdAt: min(20), assignedAt: min(10) }), // 即时单
+        ];
+        const res = aggregateStats({
+            orders,
+            graceByChannel: new Map([[1, 10]]),
+            windowStart: now - 24 * 3600_000,
+            now,
+            range: '7d',
+        });
+        expect(res.stages[0].avgMinutes).toBe(10); // 仅即时单计入
+        expect(res.kpis.totalOrders).toBe(2); // 单量不受影响
+    });
+
     it('dailyTrend 7d：逐日出点，无单日补零', () => {
         const res = aggregateStats({
             orders: [order(1, 1, { promisedAt: min(30), deliveredAt: min(20), createdAt: min(60) })],

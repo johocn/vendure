@@ -13,6 +13,7 @@ export interface StatsOrderLike {
         promisedAt?: Date | string | null;
         assignedAt?: Date | string | null;
         deliveredAt?: Date | string | null;
+        scheduledFor?: Date | string | null;
         timeoutCompensatedAt?: Date | string | null;
         timeoutAttribution?: string | null;
     };
