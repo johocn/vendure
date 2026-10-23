@@ -24,6 +24,8 @@ import { DeliverySlot } from './delivery-slot.entity';
 import { DispatchAdminResolver } from './dispatch-admin.resolver';
 import { DispatchAdminService } from './dispatch-admin.service';
 import { DispatchJobService } from './dispatch-job.service';
+import { DeliveryStatsResolver } from './delivery-stats.resolver';
+import { DeliveryStatsService } from './delivery-stats.service';
 import { ErrandService } from './errand.service';
 import { ErrandShopResolver } from './errand-shop.resolver';
 import { FavoriteShopResolver } from './favorite-shop.resolver';
@@ -94,6 +96,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
         RiderWalletService,
         DispatchJobService,
         DispatchAdminService,
+        DeliveryStatsService,
         ErrandService,
         R2MarkService,
         R4TagService,
@@ -445,6 +448,49 @@ const paymentTimeoutCompensation = new ScheduledTask({
                     campusStoreConfigs: [CampusStoreConfigWithChannel!]!
                     campusMerchantBoard: CampusMerchantBoard!
                     riderWithdrawals(status: String, skip: Int, take: Int): [RiderWithdrawalRequest!]!
+                    campusDeliveryStats(range: String): CampusDeliveryStats!
+                }
+
+                type CampusDeliveryStatsKpi {
+                    totalOrders: Int!
+                    onTimeRate: Float!
+                    avgDeliveryMinutes: Float!
+                    timeoutCompensated: Int!
+                }
+
+                type CampusDeliveryDailyPoint {
+                    date: String!
+                    orders: Int!
+                    onTimeRate: Float!
+                }
+
+                type CampusDeliveryStage {
+                    key: String!
+                    label: String!
+                    avgMinutes: Float!
+                }
+
+                type CampusDeliveryAttribution {
+                    merchant: Int!
+                    rider: Int!
+                    platform: Int!
+                }
+
+                type CampusDeliveryStoreLine {
+                    channelId: ID!
+                    channelName: String!
+                    orders: Int!
+                    onTimeRate: Float!
+                }
+
+                type CampusDeliveryStats {
+                    range: String!
+                    windowStart: DateTime!
+                    kpis: CampusDeliveryStatsKpi!
+                    dailyTrend: [CampusDeliveryDailyPoint!]!
+                    stages: [CampusDeliveryStage!]!
+                    attribution: CampusDeliveryAttribution!
+                    storeComparison: [CampusDeliveryStoreLine!]!
                 }
 
                 extend type Mutation {
@@ -545,7 +591,7 @@ const paymentTimeoutCompensation = new ScheduledTask({
                 }
             `;
         },
-        resolvers: [CampusConfigAdminResolver, RiderAdminResolver, DispatchAdminResolver, MerchantAdminResolver, PaymentTimeoutAdminResolver],
+        resolvers: [CampusConfigAdminResolver, RiderAdminResolver, DispatchAdminResolver, MerchantAdminResolver, PaymentTimeoutAdminResolver, DeliveryStatsResolver],
     },
     shopApiExtensions: {
         schema: () => {

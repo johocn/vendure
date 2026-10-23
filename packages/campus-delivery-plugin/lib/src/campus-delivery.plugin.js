@@ -24,6 +24,8 @@ const delivery_slot_entity_1 = require("./delivery-slot.entity");
 const dispatch_admin_resolver_1 = require("./dispatch-admin.resolver");
 const dispatch_admin_service_1 = require("./dispatch-admin.service");
 const dispatch_job_service_1 = require("./dispatch-job.service");
+const delivery_stats_resolver_1 = require("./delivery-stats.resolver");
+const delivery_stats_service_1 = require("./delivery-stats.service");
 const errand_service_1 = require("./errand.service");
 const errand_shop_resolver_1 = require("./errand-shop.resolver");
 const favorite_shop_resolver_1 = require("./favorite-shop.resolver");
@@ -170,6 +172,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             rider_wallet_service_1.RiderWalletService,
             dispatch_job_service_1.DispatchJobService,
             dispatch_admin_service_1.DispatchAdminService,
+            delivery_stats_service_1.DeliveryStatsService,
             errand_service_1.ErrandService,
             r2_mark_service_1.R2MarkService,
             r4_tag_service_1.R4TagService,
@@ -521,6 +524,49 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                     campusStoreConfigs: [CampusStoreConfigWithChannel!]!
                     campusMerchantBoard: CampusMerchantBoard!
                     riderWithdrawals(status: String, skip: Int, take: Int): [RiderWithdrawalRequest!]!
+                    campusDeliveryStats(range: String): CampusDeliveryStats!
+                }
+
+                type CampusDeliveryStatsKpi {
+                    totalOrders: Int!
+                    onTimeRate: Float!
+                    avgDeliveryMinutes: Float!
+                    timeoutCompensated: Int!
+                }
+
+                type CampusDeliveryDailyPoint {
+                    date: String!
+                    orders: Int!
+                    onTimeRate: Float!
+                }
+
+                type CampusDeliveryStage {
+                    key: String!
+                    label: String!
+                    avgMinutes: Float!
+                }
+
+                type CampusDeliveryAttribution {
+                    merchant: Int!
+                    rider: Int!
+                    platform: Int!
+                }
+
+                type CampusDeliveryStoreLine {
+                    channelId: ID!
+                    channelName: String!
+                    orders: Int!
+                    onTimeRate: Float!
+                }
+
+                type CampusDeliveryStats {
+                    range: String!
+                    windowStart: DateTime!
+                    kpis: CampusDeliveryStatsKpi!
+                    dailyTrend: [CampusDeliveryDailyPoint!]!
+                    stages: [CampusDeliveryStage!]!
+                    attribution: CampusDeliveryAttribution!
+                    storeComparison: [CampusDeliveryStoreLine!]!
                 }
 
                 extend type Mutation {
@@ -621,7 +667,7 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
                 }
             `;
             },
-            resolvers: [campus_config_admin_resolver_1.CampusConfigAdminResolver, rider_admin_resolver_1.RiderAdminResolver, dispatch_admin_resolver_1.DispatchAdminResolver, merchant_admin_resolver_1.MerchantAdminResolver, payment_timeout_admin_resolver_1.PaymentTimeoutAdminResolver],
+            resolvers: [campus_config_admin_resolver_1.CampusConfigAdminResolver, rider_admin_resolver_1.RiderAdminResolver, dispatch_admin_resolver_1.DispatchAdminResolver, merchant_admin_resolver_1.MerchantAdminResolver, payment_timeout_admin_resolver_1.PaymentTimeoutAdminResolver, delivery_stats_resolver_1.DeliveryStatsResolver],
         },
         shopApiExtensions: {
             schema: () => {
