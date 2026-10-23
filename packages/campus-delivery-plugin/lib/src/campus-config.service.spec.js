@@ -52,12 +52,12 @@ const campus_config_service_1 = require("./campus-config.service");
 (0, vitest_1.describe)('setDeliveryTarget route/slot 扩展', () => {
     const slot = {
         id: 5, channelId: 1, active: true, capacity: 20, lockedCount: 3,
-        slotDate: '2026-10-06', startTime: '11:00', endTime: '11:30',
+        slotDate: '2099-01-01', startTime: '11:00', endTime: '11:30',
     };
     const ctx = { channelId: 1, session: { activeOrderId: 100 } };
     function makeEnv(opts = {}) {
-        const zoneRepo = { findOne: vitest_1.vi.fn().mockResolvedValue({ id: 1, name: '东区' }) };
-        const buildingRepo = { findOne: vitest_1.vi.fn().mockResolvedValue({ id: 7, name: '1号楼' }) };
+        const zoneRepo = { findOne: vitest_1.vi.fn().mockResolvedValue({ id: 1, name: '东区', channelId: 1 }) };
+        const buildingRepo = { findOne: vitest_1.vi.fn().mockResolvedValue({ id: 7, name: '1号楼', zoneId: 1, channelId: 1 }) };
         const slotRepo = { findOne: vitest_1.vi.fn().mockResolvedValue(opts.slot === undefined ? slot : opts.slot) };
         const repos = {
             CampusZone: zoneRepo,
@@ -77,9 +77,17 @@ const campus_config_service_1 = require("./campus-config.service");
             campusZone: '东区',
             fulfillmentRoute: 'R3',
             deliverySlotId: '5',
-            deliverySlotText: '2026-10-06 11:00-11:30',
-            scheduledFor: new Date('2026-10-06T11:00:00'),
+            deliverySlotText: '2099-01-01 11:00-11:30',
+            scheduledFor: new Date('2099-01-01T11:00:00'),
         });
+    });
+    (0, vitest_1.it)('过期时段（历史日期）→ 拒绝下单', async () => {
+        const env = makeEnv({ slot: Object.assign(Object.assign({}, slot), { slotDate: '2000-01-01' }) });
+        await (0, vitest_1.expect)(env.svc.setDeliveryTarget(ctx, 1, 7, 'R1', 5)).rejects.toThrow('时段已过期');
+    });
+    (0, vitest_1.it)('分区/楼栋跨渠道 → 拒绝', async () => {
+        const env = makeEnv();
+        await (0, vitest_1.expect)(env.svc.setDeliveryTarget(Object.assign(Object.assign({}, ctx), { channelId: 2 }), 1, 7, 'R1')).rejects.toThrow('分区不属于当前店铺');
     });
     (0, vitest_1.it)('slot 余量为 0 抛 UserInputError("该时段已满")', async () => {
         const env = makeEnv({ slot: Object.assign(Object.assign({}, slot), { lockedCount: 20 }) });

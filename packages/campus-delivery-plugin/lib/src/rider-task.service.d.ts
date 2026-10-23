@@ -34,8 +34,8 @@ export declare class RiderTaskService {
     } | null>;
     /** 骑手位置上报：本人订单 + 仅 assigned/in_progress 可写（plan 2.2，10s/次）。 */
     reportLocation(ctx: RequestContext, orderId: ID, lat: number, lng: number): Promise<Order>;
-    /** 用户催单（plan 2.4）：仅下单人本人；校园履约单未终态可催；10min 内重复催单拒绝。
-     * 一期催单不推送骑手（骑手端任务卡轮询读 customFields.urged 显示提醒），虚拟号/订阅消息留待下一轮。 */
+    /** 用户催单（plan 2.4）：仅下单人本人；校园履约单未终态可催（含待接单/大厅阶段）；10min 内重复催单拒绝。
+     * 一期催单不推送骑手（骑手端任务卡轮询读 customFields.urged 显示提醒），大厅阶段由调度墙「顾客催单」告警提示运营。 */
     urgeOrder(ctx: RequestContext, orderId: ID): Promise<Order>;
     /** 我的任务：本骑手名下已进入配送流程的订单，按下单时间倒序。
      * customFields 为嵌入式物理列，QueryBuilder 用 embedded 路径 order.customFields.deliveryStaffId
@@ -51,7 +51,7 @@ export declare class RiderTaskService {
     start(ctx: RequestContext, orderId: ID, code?: string): Promise<Order>;
     /** 送达：拍照必传 → delivered → 分成入余额（0 分成单跳过入账） */
     deliver(ctx: RequestContext, orderId: ID, photos: string[], note?: string): Promise<Order>;
-    /** 异常上报：不校验状态，标记 exception */
+    /** 异常上报：仅配送中（已接单/配送中）可上报，记录上报时间供调度扫描超时升级 */
     reportException(ctx: RequestContext, orderId: ID, type: string, photos: string[], note?: string): Promise<Order>;
     private calcEarning;
     private getConfig;

@@ -20,6 +20,7 @@ const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 exports.p4OpsHardeningSql = `
 ALTER TABLE campus_fulfillment_config ADD COLUMN IF NOT EXISTS "timeoutCompensationWindowHours" integer NOT NULL DEFAULT 24;
+ALTER TABLE "order" ADD COLUMN IF NOT EXISTS "customFieldsExceptionreportedat" timestamp;
 UPDATE "order" SET "customFieldsHallstatus" = 'delivered'
 WHERE "customFieldsDeliverystatus" = 'delivered'
   AND "customFieldsHallstatus" IS NOT NULL

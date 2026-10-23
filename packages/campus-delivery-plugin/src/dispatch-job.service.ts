@@ -70,12 +70,29 @@ export class DispatchJobService implements OnApplicationShutdown {
         if (this.running) return; // 上一轮未结束跳过
         this.running = true;
         try {
-            // 扫描跨渠道：逐渠道配置构造真实 RequestContext（getRepository 仅接受 RequestContext 实例）
-            const cfgs = await this.connection.rawConnection
-                .getRepository(CampusFulfillmentConfig)
-                .find();
-            for (const cfg of cfgs) {
-                await this.scan(await this.ctxForChannel(cfg.channelId));
+            // 多实例幂等：pm2 多进程/多副本时同一轮只允许一个实例扫描（PG 会话级咨询锁，
+            // 抢不到直接跳过本轮；runner 释放即解锁，进程崩溃由连接关闭兜底）。
+            const runner = this.connection.rawConnection.createQueryRunner();
+            await runner.connect();
+            const lockKey = 'campus:dispatch:scan';
+            try {
+                const got: any = await runner.query('SELECT pg_try_advisory_lock(hashtext($1)) AS ok', [lockKey]);
+                const rows = Array.isArray(got) && Array.isArray(got[0]) ? got[0] : got;
+                if (!rows?.[0]?.ok) return;
+                // 扫描跨渠道：逐渠道配置构造真实 RequestContext（getRepository 仅接受 RequestContext 实例）
+                const cfgs = await this.connection.rawConnection
+                    .getRepository(CampusFulfillmentConfig)
+                    .find();
+                for (const cfg of cfgs) {
+                    await this.scan(await this.ctxForChannel(cfg.channelId));
+                }
+            } finally {
+                try {
+                    await runner.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]);
+                } catch {
+                    // 释放失败交给连接回收兜底
+                }
+                await runner.release();
             }
         } finally {
             this.running = false;
@@ -156,6 +173,8 @@ export class DispatchJobService implements OnApplicationShutdown {
             }
             // 路线兜底（R1/R2/R3）：商户接单超时转自营、送达超时回落大厅、外部快递推送/接单超时
             await this.sweepRouteTimeouts(ctx, cfg, orders, now);
+            // 异常上报超时未处置：自动回大厅重派，避免卡死在 exception
+            await this.sweepExceptionTimeout(ctx, cfg, orders, now);
             // 超时赔付：送达超承诺 → 自动发定向券（开关默认关）
             await this.sweepTimeoutCompensation(ctx, cfg, now);
 
@@ -215,6 +234,35 @@ export class DispatchJobService implements OnApplicationShutdown {
             for (const o of staleFinal) {
                 await this.refundNoRider(ctx, o, cfg);
             }
+        }
+    }
+
+    /**
+     * 异常上报超时升级：骑手上报异常后运营未在 SLA 内处置（inProgressSlaMinutes，默认 45）→
+     * 自动回大厅重新派单（等价运营「重派」处置），避免订单卡死在 exception 占用骑手与履约时效。
+     * 异常类型/照片/说明保留供追责；campusCause 留痕 exception_timeout。
+     */
+    private async sweepExceptionTimeout(
+        ctx: RequestContext,
+        cfg: CampusFulfillmentConfig,
+        orders: Order[],
+        now: number,
+    ) {
+        const slaMs = (cfg.inProgressSlaMinutes ?? 45) * 60_000;
+        for (const o of orders) {
+            const cf = o.customFields as any;
+            if (cf.deliveryStatus !== 'exception') continue;
+            const at = cf.exceptionReportedAt ? new Date(cf.exceptionReportedAt).getTime() : NaN;
+            if (Number.isNaN(at) || now - at <= slaMs) continue;
+            await this.hall.backToHall(ctx, o.id as any);
+            // backToHall 不刷新 hallEnteredAt，需重置避免同轮 T4 立即按超时退款
+            await this.hall.updateOrder(ctx, o.id as any, {
+                customFields: { hallEnteredAt: new Date(), campusCause: 'exception_timeout' },
+            } as any);
+            cf.hallStatus = 'open';
+            cf.deliveryStatus = null;
+            cf.hallEnteredAt = new Date();
+            Logger.warn(`Order ${o.code} exception not handled in ${cfg.inProgressSlaMinutes ?? 45}min → back to hall`, 'CampusDispatch');
         }
     }
 
@@ -635,63 +683,79 @@ export class DispatchJobService implements OnApplicationShutdown {
         const mark = () => this.hall.updateOrder(ctx, order.id as any, {
             customFields: { campusCause: 'no_rider', hallStatus: 'no_rider_final' },
         });
+        // 多实例/与商家拒单并发：咨询锁按订单串行化退款，抢不到说明另一路正在处理，本轮跳过
+        const runner = this.connection.rawConnection.createQueryRunner();
+        await runner.connect();
+        const lockKey = `campus:refund:${order.id}`;
         try {
-            const { order: orderSvc, coupon } = this.services();
-            const payment = await this.paymentRepo!.findOne({
-                where: { order: { id: order.id } },
-                order: { id: 'DESC' as any },
-            });
-            if (payment) {
-                // 幂等重试：上一轮 refund 成功但 transition 失败时，payment 已全额退，
-                // 再次 refundOrder 会报 REFUND_AMOUNT_ERROR——先查已退总额，退完则跳过退款只做取消
-                const refunded = await this.connection.rawConnection
-                    .getRepository(Refund)
-                    .createQueryBuilder('r')
-                    .select('COALESCE(SUM(r.total), 0)', 'sum')
-                    .where('r."paymentId" = :pid', { pid: payment.id })
-                    .getRawOne();
-                if (Number(refunded?.sum ?? 0) < Number(payment.amount)) {
-                    const created = await orderSvc!.refundOrder(ctx, {
-                        paymentId: payment.id,
-                        amount: payment.amount,
-                        // fork 的 refund 表 shipping/adjustment 列 NOT NULL（payment.service createRefund 透传
-                        // input.shipping/input.adjustment），全额退款经 amount 通道，两者必须显式给 0，
-                        // 否则 INSERT 报 not-null violation
-                        shipping: 0,
-                        adjustment: 0,
-                        reason: `no_rider auto refund (${order.code})`,
-                    } as any);
-                    if (!created || (created as any).errorCode) {
-                        throw new Error(`refundOrder failed: ${(created as any)?.errorCode ?? 'no result'}`);
+            const got: any = await runner.query('SELECT pg_try_advisory_lock(hashtext($1)) AS ok', [lockKey]);
+            const rows = Array.isArray(got) && Array.isArray(got[0]) ? got[0] : got;
+            if (!rows?.[0]?.ok) return;
+            try {
+                const { order: orderSvc, coupon } = this.services();
+                const payment = await this.paymentRepo!.findOne({
+                    where: { order: { id: order.id } },
+                    order: { id: 'DESC' as any },
+                });
+                if (payment) {
+                    // 幂等重试：上一轮 refund 成功但 transition 失败时，payment 已全额退，
+                    // 再次 refundOrder 会报 REFUND_AMOUNT_ERROR——先查已退总额，退完则跳过退款只做取消
+                    const refunded = await this.connection.rawConnection
+                        .getRepository(Refund)
+                        .createQueryBuilder('r')
+                        .select('COALESCE(SUM(r.total), 0)', 'sum')
+                        .where('r."paymentId" = :pid', { pid: payment.id })
+                        .getRawOne();
+                    if (Number(refunded?.sum ?? 0) < Number(payment.amount)) {
+                        const created = await orderSvc!.refundOrder(ctx, {
+                            paymentId: payment.id,
+                            amount: payment.amount,
+                            // fork 的 refund 表 shipping/adjustment 列 NOT NULL（payment.service createRefund 透传
+                            // input.shipping/input.adjustment），全额退款经 amount 通道，两者必须显式给 0，
+                            // 否则 INSERT 报 not-null violation
+                            shipping: 0,
+                            adjustment: 0,
+                            reason: `no_rider auto refund (${order.code})`,
+                        } as any);
+                        if (!created || (created as any).errorCode) {
+                            throw new Error(`refundOrder failed: ${(created as any)?.errorCode ?? 'no result'}`);
+                        }
+                        await orderSvc!.settleRefund(ctx, { id: (created as any).id } as any);
                     }
-                    await orderSvc!.settleRefund(ctx, { id: (created as any).id } as any);
+                }
+                // 用 cancelOrder 而非 transitionToState(Cancelled)：默认 checkAllItemsBeforeCancel 要求
+                // 订单行先取消，cancelOrder 内部完成行取消+状态转换；transitionToState 会静默返回 ErrorResult
+                const cancelled = await orderSvc!.cancelOrder(ctx, {
+                    orderId: order.id as any,
+                    reason: `no_rider auto cancel (${order.code})`,
+                } as any);
+                if (cancelled && (cancelled as any).errorCode) {
+                    throw new Error(`cancelOrder failed: ${(cancelled as any).errorCode}`);
+                }
+                await mark();
+                const templateId = cfg.compensationCouponTemplateId;
+                if (templateId && order.customerId && coupon) {
+                    await coupon.grantCoupon(ctx, templateId, [order.customerId as any]);
+                }
+                Logger.warn(
+                    `Order ${order.code} auto-refunded (no rider within ${cfg.autoRefundMinutes ?? 30}min)`,
+                    'CampusDispatch',
+                );
+            } catch (e: any) {
+                Logger.error(`T4 refund failed for order ${order.code}: ${e?.message}`, 'CampusDispatch');
+                try {
+                    await mark();
+                } catch (e2: any) {
+                    Logger.error(`T4 fallback mark failed for order ${order.code}: ${e2?.message}`, 'CampusDispatch');
                 }
             }
-            // 用 cancelOrder 而非 transitionToState(Cancelled)：默认 checkAllItemsBeforeCancel 要求
-            // 订单行先取消，cancelOrder 内部完成行取消+状态转换；transitionToState 会静默返回 ErrorResult
-            const cancelled = await orderSvc!.cancelOrder(ctx, {
-                orderId: order.id as any,
-                reason: `no_rider auto cancel (${order.code})`,
-            } as any);
-            if (cancelled && (cancelled as any).errorCode) {
-                throw new Error(`cancelOrder failed: ${(cancelled as any).errorCode}`);
-            }
-            await mark();
-            const templateId = cfg.compensationCouponTemplateId;
-            if (templateId && order.customerId && coupon) {
-                await coupon.grantCoupon(ctx, templateId, [order.customerId as any]);
-            }
-            Logger.warn(
-                `Order ${order.code} auto-refunded (no rider within ${cfg.autoRefundMinutes ?? 30}min)`,
-                'CampusDispatch',
-            );
-        } catch (e: any) {
-            Logger.error(`T4 refund failed for order ${order.code}: ${e?.message}`, 'CampusDispatch');
+        } finally {
             try {
-                await mark();
-            } catch (e2: any) {
-                Logger.error(`T4 fallback mark failed for order ${order.code}: ${e2?.message}`, 'CampusDispatch');
+                await runner.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]);
+            } catch {
+                // 释放失败交给连接回收兜底
             }
+            await runner.release();
         }
     }
 }

@@ -111,25 +111,31 @@ let RiderTaskService = class RiderTaskService {
         });
         return order;
     }
-    /** 用户催单（plan 2.4）：仅下单人本人；校园履约单未终态可催；10min 内重复催单拒绝。
-     * 一期催单不推送骑手（骑手端任务卡轮询读 customFields.urged 显示提醒），虚拟号/订阅消息留待下一轮。 */
+    /** 用户催单（plan 2.4）：仅下单人本人；校园履约单未终态可催（含待接单/大厅阶段）；10min 内重复催单拒绝。
+     * 一期催单不推送骑手（骑手端任务卡轮询读 customFields.urged 显示提醒），大厅阶段由调度墙「顾客催单」告警提示运营。 */
     async urgeOrder(ctx, orderId) {
-        var _a, _b, _c;
+        var _a, _b, _c, _d;
         if (!ctx.activeUserId)
             throw new core_1.ForbiddenError();
         const order = await this.connection
             .getRepository(ctx, core_1.Order)
             .findOne({ where: { id: orderId }, relations: ['customer'] });
         const cf = ((_a = order === null || order === void 0 ? void 0 : order.customFields) !== null && _a !== void 0 ? _a : {});
-        if (!order || !cf.deliveryStatus) {
+        const hallStatus = String((_b = cf.hallStatus) !== null && _b !== void 0 ? _b : '');
+        const activeHall = [
+            'scheduled', 'pending_merchant', 'accepted', 'open', 'grabbed',
+            'pending_dispatch', 'third_party', 'owned_pool', 'owned_dispatched', 'merchant_delivering',
+        ].includes(hallStatus);
+        if (!order || (!cf.deliveryStatus && !activeHall)) {
             throw new core_1.UserInputError('订单不存在或不在配送流程中');
         }
         // Customer 实体无 userId 标量属性（user 关系 eager），归属比对取 user.id
-        if (((_c = (_b = order.customer) === null || _b === void 0 ? void 0 : _b.user) === null || _c === void 0 ? void 0 : _c.id) !== ctx.activeUserId) {
+        if (((_d = (_c = order.customer) === null || _c === void 0 ? void 0 : _c.user) === null || _d === void 0 ? void 0 : _d.id) !== ctx.activeUserId) {
             throw new core_1.ForbiddenError();
         }
         const status = cf.deliveryStatus;
-        if (status === 'delivered' || status === 'exception') {
+        if (status === 'delivered' || status === 'exception' || hallStatus === 'delivered'
+            || hallStatus === 'cancelled' || hallStatus === 'no_rider_final' || hallStatus === 'exception_final') {
             throw new core_1.UserInputError('当前状态无需催单');
         }
         const last = cf.urgedAt ? new Date(cf.urgedAt).getTime() : 0;
@@ -272,15 +278,21 @@ let RiderTaskService = class RiderTaskService {
         this.notify.user(ctx, order.id, 'orderDelivered');
         return order;
     }
-    /** 异常上报：不校验状态，标记 exception */
+    /** 异常上报：仅配送中（已接单/配送中）可上报，记录上报时间供调度扫描超时升级 */
     async reportException(ctx, orderId, type, photos, note) {
+        var _a;
         const order = await this.assertOwner(ctx, orderId);
+        const status = (_a = order.customFields) === null || _a === void 0 ? void 0 : _a.deliveryStatus;
+        if (status !== 'assigned' && status !== 'in_progress') {
+            throw new core_1.UserInputError('当前状态不允许上报异常');
+        }
         await this.connection.getRepository(ctx, core_1.Order).update(order.id, {
             customFields: {
                 deliveryStatus: 'exception',
                 exceptionType: type,
                 exceptionPhotos: photos,
                 exceptionNote: note !== null && note !== void 0 ? note : null,
+                exceptionReportedAt: new Date(),
             },
         });
         return order;

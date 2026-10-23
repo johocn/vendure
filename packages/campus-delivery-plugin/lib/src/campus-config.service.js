@@ -17,6 +17,16 @@ const campus_building_entity_1 = require("./campus-building.entity");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
 const campus_zone_entity_1 = require("./campus-zone.entity");
 const delivery_slot_entity_1 = require("./delivery-slot.entity");
+/** 本地日期 YYYY-MM-DD（slotDate 为本地日期字符串，勿用 UTC 的 toISOString） */
+function localDateStr(d) {
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${d.getFullYear()}-${m}-${day}`;
+}
+/** 本地 HH:mm，用于判断当天时段是否已结束 */
+function localHhmm(d) {
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
 let CampusConfigService = class CampusConfigService {
     constructor(dataSource, orderService) {
         this.dataSource = dataSource;
@@ -169,10 +179,14 @@ let CampusConfigService = class CampusConfigService {
             where: { channelId: ctx.channelId, active: true },
             order: { slotDate: 'ASC', startTime: 'ASC' },
         });
-        const today = new Date().toISOString().slice(0, 10);
+        // 本地时区口径（slotDate 是本地日期字符串，不能用 toISOString 的 UTC 日期比较，
+        // 否则 00:00–08:00 会少显示/多显示一天）
+        const now = new Date();
+        const today = localDateStr(now);
+        const hhmm = localHhmm(now);
         return slots
             .filter(s => s.active)
-            .filter(s => s.slotDate >= today)
+            .filter(s => s.slotDate > today || (s.slotDate === today && s.endTime > hhmm))
             .map(s => (Object.assign(Object.assign({}, s), { remaining: Math.max(0, s.capacity - s.lockedCount) })))
             .filter(s => s.remaining > 0);
     }
@@ -183,11 +197,17 @@ let CampusConfigService = class CampusConfigService {
         const zone = await this.dataSource.getRepository(campus_zone_entity_1.CampusZone).findOne({ where: { id: zoneId } });
         if (!zone)
             throw new core_1.UserInputError('分区不存在');
+        // 跨店守卫：只能选本渠道分区/楼栋
+        if (Number(zone.channelId) !== Number(ctx.channelId))
+            throw new core_1.UserInputError('分区不属于当前店铺');
         const building = await this.dataSource
             .getRepository(campus_building_entity_1.CampusBuilding)
             .findOne({ where: { id: buildingId } });
         if (!building)
             throw new core_1.UserInputError('宿舍楼不存在');
+        if (Number(building.zoneId) !== Number(zone.id) || Number(building.channelId) !== Number(ctx.channelId)) {
+            throw new core_1.UserInputError('楼栋不属于所选分区');
+        }
         // R2 与 R1/R3 同走 zone/building 写入（R2 原单收宿舍楼信息供接力预填）；R4 不经骑手不落此链路
         if (route && !['R1', 'R2', 'R3'].includes(route))
             throw new core_1.UserInputError('配送路线不合法');
@@ -201,6 +221,12 @@ let CampusConfigService = class CampusConfigService {
             const slot = await this.dataSource.getRepository(delivery_slot_entity_1.DeliverySlot).findOne({ where: { id: slotId } });
             if (!slot || !slot.active || Number(slot.channelId) !== Number(ctx.channelId)) {
                 throw new core_1.UserInputError('时段不可用');
+            }
+            const now = new Date();
+            const today = localDateStr(now);
+            const hhmm = localHhmm(now);
+            if (slot.slotDate < today || (slot.slotDate === today && slot.endTime <= hhmm)) {
+                throw new core_1.UserInputError('时段已过期，请重新选择');
             }
             if (slot.lockedCount >= slot.capacity)
                 throw new core_1.UserInputError('该时段已满');

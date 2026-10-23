@@ -351,6 +351,8 @@ export class AddressChangeService {
             where: { id: zoneId as any },
         });
         if (!zone) throw new UserInputError('分区不存在');
+        // 跨店守卫：分区/楼栋必须属于当前店铺，防止改址到别家渠道的地址
+        if (Number((zone as any).channelId) !== Number(ctx.channelId)) throw new UserInputError('分区不属于当前店铺');
         const building = await this.connection.getRepository(ctx, CampusBuilding).findOne({
             where: { id: buildingId as any },
         });

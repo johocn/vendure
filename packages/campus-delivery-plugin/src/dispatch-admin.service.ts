@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import {
+    Customer,
     ID,
     Injector,
     Logger,
@@ -17,6 +18,7 @@ import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CampusNotifyService } from './campus-notify.service';
 import { HallGrabService } from './hall-grab.service';
 import { HallService } from './hall.service';
+import { CREDIT_LIMIT } from './rider-credit.service';
 
 export type ExceptionAction = 'reassign' | 'refund_diff' | 'coupon' | 'refund_all';
 
@@ -31,7 +33,7 @@ const EXCEPTION_NOTIFY_TEXT: Record<ExceptionAction, string> = {
 export interface DispatchAlert {
     orderId: string;
     orderCode: string;
-    type: 'stale_open' | 'sla_breach' | 'slot_full' | 'exception';
+    type: 'stale_open' | 'sla_breach' | 'slot_full' | 'exception' | 'urged';
     detail: string;
     exceptionNote?: string | null; // 骑手上报说明（plan 3.4 处置卡展示）
     exceptionPhotos?: string[] | null; // 骑手存证照片
@@ -155,6 +157,15 @@ export class DispatchAdminService {
             } else {
                 activeOrders.push(o);
             }
+            // 顾客催单（plan 2.4）：30 分钟内有效，覆盖待接单/大厅/配送中全部活跃阶段
+            if (cf.urged && cf.urgedAt && now - new Date(cf.urgedAt).getTime() < 30 * 60_000) {
+                alerts.push({
+                    orderId: String(o.id),
+                    orderCode: o.code,
+                    type: 'urged',
+                    detail: '顾客催单，请优先处理',
+                });
+            }
         }
         const riders = await this.capacity.listOnlineRiders(ctx);
         const ridersOnline: DispatchRider[] = riders.map(r => ({
@@ -186,11 +197,18 @@ export class DispatchAdminService {
         return { paused: cfg?.paused ?? false, alerts, hallOrders, activeOrders, ridersOnline, handledOrders };
     }
 
-    /** 手动派单/改派：信任 admin 输入的目标骑手（MVP 不校验资质）。
+    /** 手动派单/改派：目标骑手须在职（approved）且信用分达标，避免把单派给封禁/低分骑手。
      * 跨店守卫：只能操作本渠道订单（与 address-change 同源校验）。
      * grabByRider 返回 false 表示订单已不在大厅（已被抢/已退款）。 */
     async assign(ctx: RequestContext, orderId: ID, riderCustomerId: ID) {
         await this.assertOrderInChannel(ctx, orderId);
+        const rider = await this.connection.getRepository(ctx, Customer).findOne({
+            where: { id: riderCustomerId as any },
+        });
+        if (!rider) throw new UserInputError('骑手不存在');
+        const rcf = (rider.customFields ?? {}) as any;
+        if (rcf.riderStatus !== 'approved') throw new UserInputError('该骑手未通过审核或已停用');
+        if ((rcf.riderCredit ?? 100) < CREDIT_LIMIT) throw new UserInputError('该骑手信用分不足，无法派单');
         const ok = await this.grab.grabByRider(ctx, orderId, { id: riderCustomerId });
         if (!ok) throw new UserInputError('派单失败：订单已不在大厅（已被抢/已退款）');
         return { assigned: true };

@@ -53,7 +53,15 @@ function makeEnv(opts) {
                 return refundRepo;
             return orderRepo;
         }),
-        rawConnection: { getRepository: vitest_1.vi.fn((_ent) => refundRepo) },
+        rawConnection: {
+            getRepository: vitest_1.vi.fn((_ent) => refundRepo),
+            // 退款并发咨询锁 / 扫描多实例锁：默认抢锁成功
+            createQueryRunner: () => ({
+                connect: vitest_1.vi.fn().mockResolvedValue(undefined),
+                query: vitest_1.vi.fn().mockResolvedValue([[{ ok: true }], []]),
+                release: vitest_1.vi.fn().mockResolvedValue(undefined),
+            }),
+        },
     };
     const svc = new dispatch_job_service_1.DispatchJobService(conn, grabSvc, hallSvc, capacitySvc, creditSvc, { get: vitest_1.vi.fn() });
     return { svc, grabSvc, creditSvc, hallSvc, capacitySvc, orderRepo, configRepo, grabResults };
@@ -144,6 +152,31 @@ function injectT4Services(svc) {
     svc['paymentRepo'] = { findOne: vitest_1.vi.fn().mockResolvedValue({ id: 55, amount: 8800 }) };
     svc['couponSvc'] = { grantCoupon: vitest_1.vi.fn().mockResolvedValue([]) };
 }
+(0, vitest_1.describe)('DispatchJobService.scan 异常超时升级', () => {
+    (0, vitest_1.it)('异常上报超 SLA 未处置 → 自动回大厅重派', async () => {
+        const { svc, hallSvc } = makeEnv({
+            openOrders: [{
+                    id: 9, code: 'E1', createdAt: minAgo(90),
+                    customFields: { hallStatus: 'grabbed', deliveryStatus: 'exception', exceptionReportedAt: minAgo(60) },
+                }],
+        });
+        await svc.scan({ channelId: 1 });
+        (0, vitest_1.expect)(hallSvc.backToHall).toHaveBeenCalledWith(vitest_1.expect.anything(), 9);
+        (0, vitest_1.expect)(hallSvc.updateOrder).toHaveBeenCalledWith(vitest_1.expect.anything(), 9, vitest_1.expect.objectContaining({
+            customFields: vitest_1.expect.objectContaining({ campusCause: 'exception_timeout' }),
+        }));
+    });
+    (0, vitest_1.it)('异常上报未超 SLA → 保持不动', async () => {
+        const { svc, hallSvc } = makeEnv({
+            openOrders: [{
+                    id: 9, code: 'E1', createdAt: minAgo(30),
+                    customFields: { hallStatus: 'grabbed', deliveryStatus: 'exception', exceptionReportedAt: minAgo(10) },
+                }],
+        });
+        await svc.scan({ channelId: 1 });
+        (0, vitest_1.expect)(hallSvc.backToHall).not.toHaveBeenCalled();
+    });
+});
 (0, vitest_1.describe)('DispatchJobService.scan T4 自动退款', () => {
     (0, vitest_1.it)('open 超 autoRefundMinutes → 退款 + Cancelled + cause=no_rider + 补偿券', async () => {
         const env = makeEnv({

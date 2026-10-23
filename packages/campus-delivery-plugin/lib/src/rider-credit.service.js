@@ -22,17 +22,15 @@ let RiderCreditService = class RiderCreditService {
         this.connection = connection;
     }
     /** 加减分 + 流水。下限 0。
-     * 读取在 rawConnection.transaction 内直读 customFields.riderCredit（与 grab 事务模式一致），更新/流水走 ctx 仓储。 */
+     * 并发安全：单条 UPDATE 原子读改写（GREATEST 夹紧），避免并发 adjust 互相覆盖丢分。
+     * 列名为 customFields 物理列（riderCredit → customFieldsRidercredit）。 */
     async adjust(ctx, customerId, delta, reason, orderId) {
-        const next = await this.connection.rawConnection.transaction(async (em) => {
-            var _a, _b;
-            const customer = await em.getRepository(core_1.Customer).findOne({ where: { id: customerId } });
-            const current = (_b = (_a = customer === null || customer === void 0 ? void 0 : customer.customFields) === null || _a === void 0 ? void 0 : _a.riderCredit) !== null && _b !== void 0 ? _b : 100;
-            return Math.max(0, current + delta);
-        });
-        await this.connection.getRepository(ctx, core_1.Customer).update(customerId, {
-            customFields: { riderCredit: next },
-        });
+        var _a, _b;
+        const rows = await this.connection.rawConnection.query('UPDATE "customer" SET "customFieldsRidercredit" = '
+            + 'GREATEST(0, COALESCE("customFieldsRidercredit", 100) + $1) '
+            + 'WHERE id = $2 RETURNING "customFieldsRidercredit" AS credit', [delta, customerId]);
+        const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        const next = Number((_b = (_a = list === null || list === void 0 ? void 0 : list[0]) === null || _a === void 0 ? void 0 : _a.credit) !== null && _b !== void 0 ? _b : (delta > 0 ? 100 + delta : 100));
         await this.connection.getRepository(ctx, rider_credit_log_entity_1.RiderCreditLog).save({
             customerId, delta, reason, orderId: orderId !== null && orderId !== void 0 ? orderId : null, channelId: ctx.channelId,
         });

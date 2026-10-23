@@ -135,6 +135,34 @@ const exceptionOrder = (id, code, extra = {}) => ({
         ]);
     });
 });
+(0, vitest_1.describe)('DispatchAdminService.assign 资质校验', () => {
+    const ctx = { channelId: 1 };
+    const order = { id: 5, code: 'A5', channels: [{ id: 1 }], customFields: { hallStatus: 'open' } };
+    (0, vitest_1.it)('未审核/已停用骑手 → 拒绝派单', async () => {
+        const { svc, orderRepo, grabSvc } = makeEnv();
+        orderRepo.findOne
+            .mockResolvedValueOnce(order)
+            .mockResolvedValueOnce({ id: 9, customFields: { riderStatus: 'pending', riderCredit: 100 } });
+        await (0, vitest_1.expect)(svc.assign(ctx, 5, 9)).rejects.toThrow('该骑手未通过审核或已停用');
+        (0, vitest_1.expect)(grabSvc.grabByRider).not.toHaveBeenCalled();
+    });
+    (0, vitest_1.it)('信用分低于 60 → 拒绝派单', async () => {
+        const { svc, orderRepo, grabSvc } = makeEnv();
+        orderRepo.findOne
+            .mockResolvedValueOnce(order)
+            .mockResolvedValueOnce({ id: 9, customFields: { riderStatus: 'approved', riderCredit: 59 } });
+        await (0, vitest_1.expect)(svc.assign(ctx, 5, 9)).rejects.toThrow('该骑手信用分不足');
+        (0, vitest_1.expect)(grabSvc.grabByRider).not.toHaveBeenCalled();
+    });
+    (0, vitest_1.it)('在职且信用达标 → 正常强派', async () => {
+        const { svc, orderRepo, grabSvc } = makeEnv();
+        orderRepo.findOne
+            .mockResolvedValueOnce(order)
+            .mockResolvedValueOnce({ id: 9, customFields: { riderStatus: 'approved', riderCredit: 88 } });
+        await (0, vitest_1.expect)(svc.assign(ctx, 5, 9)).resolves.toEqual({ assigned: true });
+        (0, vitest_1.expect)(grabSvc.grabByRider).toHaveBeenCalledWith(ctx, 5, { id: 9 });
+    });
+});
 (0, vitest_1.describe)('DispatchAdminService.handleException', () => {
     const ctx = { channelId: 1, activeUserId: 3 };
     (0, vitest_1.it)('非异常单拒绝处置', async () => {

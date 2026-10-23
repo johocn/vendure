@@ -358,6 +358,9 @@ let AddressChangeService = class AddressChangeService {
         });
         if (!zone)
             throw new core_1.UserInputError('分区不存在');
+        // 跨店守卫：分区/楼栋必须属于当前店铺，防止改址到别家渠道的地址
+        if (Number(zone.channelId) !== Number(ctx.channelId))
+            throw new core_1.UserInputError('分区不属于当前店铺');
         const building = await this.connection.getRepository(ctx, campus_building_entity_1.CampusBuilding).findOne({
             where: { id: buildingId },
         });

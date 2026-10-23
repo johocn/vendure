@@ -80,5 +80,42 @@ const assigned = { id: 10, code: 'A1', shipping: 300, customFields: { deliverySt
         (0, vitest_1.expect)(saved).toHaveLength(1);
         (0, vitest_1.expect)(saved[0].amount).toBe(0);
     });
+    (0, vitest_1.it)('大厅阶段（尚无 deliveryStatus）也可催单', async () => {
+        const hallOrder = {
+            id: 12, code: 'A3', shipping: 0,
+            customFields: { hallStatus: 'open' },
+            customer: { user: { id: 5 } },
+        };
+        const { svc, repo } = make(hallOrder);
+        await svc.urgeOrder({ channelId: 1, activeUserId: 5 }, 12);
+        (0, vitest_1.expect)(repo.update).toHaveBeenCalledWith(12, vitest_1.expect.objectContaining({
+            customFields: vitest_1.expect.objectContaining({ urged: true }),
+        }));
+    });
+    (0, vitest_1.it)('已送达终态 → 拒绝催单', async () => {
+        const done = {
+            id: 13, code: 'A4', shipping: 0,
+            customFields: { hallStatus: 'delivered', deliveryStatus: 'delivered' },
+            customer: { user: { id: 5 } },
+        };
+        const { svc } = make(done);
+        await (0, vitest_1.expect)(svc.urgeOrder({ channelId: 1, activeUserId: 5 }, 13)).rejects.toThrow('当前状态无需催单');
+    });
+    (0, vitest_1.it)('非配送中状态（已送达）上报异常 → 拒绝', async () => {
+        const done = Object.assign(Object.assign({}, assigned), { customFields: Object.assign(Object.assign({}, assigned.customFields), { deliveryStatus: 'delivered' }) });
+        const { svc } = make(done);
+        await (0, vitest_1.expect)(svc.reportException({ channelId: 1 }, 10, 'food_spilled', ['p1']))
+            .rejects.toThrow('当前状态不允许上报异常');
+    });
+    (0, vitest_1.it)('配送中上报异常 → 写入 exception 与上报时间', async () => {
+        const inProg = Object.assign(Object.assign({}, assigned), { customFields: Object.assign(Object.assign({}, assigned.customFields), { deliveryStatus: 'in_progress' }) });
+        const { svc, repo } = make(inProg);
+        await svc.reportException({ channelId: 1 }, 10, 'food_spilled', ['p1'], '洒漏');
+        (0, vitest_1.expect)(repo.update).toHaveBeenCalledWith(10, vitest_1.expect.objectContaining({
+            customFields: vitest_1.expect.objectContaining({
+                deliveryStatus: 'exception', exceptionType: 'food_spilled', exceptionReportedAt: vitest_1.expect.any(Date),
+            }),
+        }));
+    });
 });
 //# sourceMappingURL=rider-task.service.spec.js.map

@@ -113,51 +113,71 @@ let MerchantAdminService = class MerchantAdminService {
      * 全额退款 + 取消订单（取消后由 Cancelled 转换自动脱厅/释放时段锁位）。
      * 退款幂等口径与 T4/异常处置一致：先查已退总额，仅退剩余部分。 */
     async rejectOrder(ctx, orderId, reason) {
-        var _a, _b;
+        var _a, _b, _c;
         const trimmed = (reason !== null && reason !== void 0 ? reason : '').trim();
         if (!trimmed)
             throw new core_1.UserInputError('请填写拒单原因');
         const order = await this.assertChannelOrderState(ctx, orderId, ['pending_merchant', 'accepted']);
-        const payment = await this.connection.rawConnection.getRepository(core_1.Payment).findOne({
-            where: { order: { id: order.id } },
-            order: { id: 'DESC' },
-        });
-        if (payment) {
-            const refunded = await this.connection.rawConnection
-                .getRepository(core_1.Refund)
-                .createQueryBuilder('r')
-                .select('COALESCE(SUM(r.total), 0)', 'sum')
-                .where('r."paymentId" = :pid', { pid: payment.id })
-                .getRawOne();
-            const rest = Number(payment.amount) - Number((_a = refunded === null || refunded === void 0 ? void 0 : refunded.sum) !== null && _a !== void 0 ? _a : 0);
-            if (rest > 0) {
-                const created = await this.orderService.refundOrder(ctx, {
-                    paymentId: payment.id,
-                    amount: rest,
-                    // refund 表 shipping/adjustment 列 NOT NULL，显式给 0（同 T4）
-                    shipping: 0,
-                    adjustment: 0,
-                    reason: `merchant reject (${order.code})`,
-                });
-                if (!created || created.errorCode) {
-                    throw new core_1.UserInputError(`退款失败：${(_b = created === null || created === void 0 ? void 0 : created.errorCode) !== null && _b !== void 0 ? _b : '未知原因'}`);
+        // 并发防重退款：拒单是「查已退总额 → 退差额 → 取消」的复合动作，
+        // 与 T4/运营处置并发时无锁会双退。用 PG 会话级咨询锁按订单串行化（同连接 runner 持有/释放）。
+        const runner = this.connection.rawConnection.createQueryRunner();
+        await runner.connect();
+        const lockKey = `campus:refund:${order.id}`;
+        try {
+            const got = await runner.query('SELECT pg_try_advisory_lock(hashtext($1)) AS ok', [lockKey]);
+            const rows = Array.isArray(got) && Array.isArray(got[0]) ? got[0] : got;
+            if (!((_a = rows === null || rows === void 0 ? void 0 : rows[0]) === null || _a === void 0 ? void 0 : _a.ok))
+                throw new core_1.UserInputError('该订单正在退款处理中，请稍后重试');
+            const payment = await this.connection.rawConnection.getRepository(core_1.Payment).findOne({
+                where: { order: { id: order.id } },
+                order: { id: 'DESC' },
+            });
+            if (payment) {
+                const refunded = await this.connection.rawConnection
+                    .getRepository(core_1.Refund)
+                    .createQueryBuilder('r')
+                    .select('COALESCE(SUM(r.total), 0)', 'sum')
+                    .where('r."paymentId" = :pid', { pid: payment.id })
+                    .getRawOne();
+                const rest = Number(payment.amount) - Number((_b = refunded === null || refunded === void 0 ? void 0 : refunded.sum) !== null && _b !== void 0 ? _b : 0);
+                if (rest > 0) {
+                    const created = await this.orderService.refundOrder(ctx, {
+                        paymentId: payment.id,
+                        amount: rest,
+                        // refund 表 shipping/adjustment 列 NOT NULL，显式给 0（同 T4）
+                        shipping: 0,
+                        adjustment: 0,
+                        reason: `merchant reject (${order.code})`,
+                    });
+                    if (!created || created.errorCode) {
+                        throw new core_1.UserInputError(`退款失败：${(_c = created === null || created === void 0 ? void 0 : created.errorCode) !== null && _c !== void 0 ? _c : '未知原因'}`);
+                    }
+                    await this.orderService.settleRefund(ctx, { id: created.id });
                 }
-                await this.orderService.settleRefund(ctx, { id: created.id });
             }
+            // 先留痕再取消：脱厅只写 hallStatus，不覆盖 campusCause
+            await this.hall.updateOrder(ctx, order.id, {
+                customFields: { campusCause: 'merchant_rejected' },
+            });
+            const cancelled = await this.orderService.cancelOrder(ctx, {
+                orderId: order.id,
+                reason: `商家拒单：${trimmed}`,
+            });
+            if (cancelled && cancelled.errorCode) {
+                throw new Error(`cancelOrder failed: ${cancelled.errorCode}`);
+            }
+            this.notify.user(ctx, order.id, 'orderCancelled', trimmed);
+            return { ok: true };
         }
-        // 先留痕再取消：脱厅只写 hallStatus，不覆盖 campusCause
-        await this.hall.updateOrder(ctx, order.id, {
-            customFields: { campusCause: 'merchant_rejected' },
-        });
-        const cancelled = await this.orderService.cancelOrder(ctx, {
-            orderId: order.id,
-            reason: `商家拒单：${trimmed}`,
-        });
-        if (cancelled && cancelled.errorCode) {
-            throw new Error(`cancelOrder failed: ${cancelled.errorCode}`);
+        finally {
+            try {
+                await runner.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]);
+            }
+            catch (_d) {
+                // 释放失败交给连接回收兜底
+            }
+            await runner.release();
         }
-        this.notify.user(ctx, order.id, 'orderCancelled', trimmed);
-        return { ok: true };
     }
     /** 出餐完成：按路线/承运分流（不再统一入抢单大厅） */
     async cookingDone(ctx, orderId) {

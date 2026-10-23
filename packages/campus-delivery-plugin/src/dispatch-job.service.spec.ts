@@ -49,7 +49,15 @@ function makeEnv(opts: {
             if (name === 'Refund') return refundRepo;
             return orderRepo;
         }),
-        rawConnection: { getRepository: vi.fn((_ent: any) => refundRepo) },
+        rawConnection: {
+            getRepository: vi.fn((_ent: any) => refundRepo),
+            // 退款并发咨询锁 / 扫描多实例锁：默认抢锁成功
+            createQueryRunner: () => ({
+                connect: vi.fn().mockResolvedValue(undefined),
+                query: vi.fn().mockResolvedValue([[{ ok: true }], []]),
+                release: vi.fn().mockResolvedValue(undefined),
+            }),
+        },
     } as any;
     const svc = new DispatchJobService(
         conn, grabSvc as any, hallSvc as any, capacitySvc as any, creditSvc as any, { get: vi.fn() } as any,
@@ -152,6 +160,33 @@ function injectT4Services(svc: DispatchJobService) {
     svc['paymentRepo'] = { findOne: vi.fn().mockResolvedValue({ id: 55, amount: 8800 }) };
     svc['couponSvc'] = { grantCoupon: vi.fn().mockResolvedValue([]) };
 }
+
+describe('DispatchJobService.scan 异常超时升级', () => {
+    it('异常上报超 SLA 未处置 → 自动回大厅重派', async () => {
+        const { svc, hallSvc } = makeEnv({
+            openOrders: [{
+                id: 9, code: 'E1', createdAt: minAgo(90),
+                customFields: { hallStatus: 'grabbed', deliveryStatus: 'exception', exceptionReportedAt: minAgo(60) },
+            }],
+        });
+        await svc.scan({ channelId: 1 } as any);
+        expect(hallSvc.backToHall).toHaveBeenCalledWith(expect.anything(), 9);
+        expect(hallSvc.updateOrder).toHaveBeenCalledWith(expect.anything(), 9, expect.objectContaining({
+            customFields: expect.objectContaining({ campusCause: 'exception_timeout' }),
+        }));
+    });
+
+    it('异常上报未超 SLA → 保持不动', async () => {
+        const { svc, hallSvc } = makeEnv({
+            openOrders: [{
+                id: 9, code: 'E1', createdAt: minAgo(30),
+                customFields: { hallStatus: 'grabbed', deliveryStatus: 'exception', exceptionReportedAt: minAgo(10) },
+            }],
+        });
+        await svc.scan({ channelId: 1 } as any);
+        expect(hallSvc.backToHall).not.toHaveBeenCalled();
+    });
+});
 
 describe('DispatchJobService.scan T4 自动退款', () => {
     it('open 超 autoRefundMinutes → 退款 + Cancelled + cause=no_rider + 补偿券', async () => {

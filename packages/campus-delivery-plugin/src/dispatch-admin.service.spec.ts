@@ -141,6 +141,38 @@ describe('DispatchAdminService.board', () => {
     });
 });
 
+describe('DispatchAdminService.assign 资质校验', () => {
+    const ctx = { channelId: 1 } as any;
+    const order = { id: 5, code: 'A5', channels: [{ id: 1 }], customFields: { hallStatus: 'open' } };
+
+    it('未审核/已停用骑手 → 拒绝派单', async () => {
+        const { svc, orderRepo, grabSvc } = makeEnv();
+        orderRepo.findOne
+            .mockResolvedValueOnce(order)
+            .mockResolvedValueOnce({ id: 9, customFields: { riderStatus: 'pending', riderCredit: 100 } });
+        await expect(svc.assign(ctx, 5 as any, 9 as any)).rejects.toThrow('该骑手未通过审核或已停用');
+        expect(grabSvc.grabByRider).not.toHaveBeenCalled();
+    });
+
+    it('信用分低于 60 → 拒绝派单', async () => {
+        const { svc, orderRepo, grabSvc } = makeEnv();
+        orderRepo.findOne
+            .mockResolvedValueOnce(order)
+            .mockResolvedValueOnce({ id: 9, customFields: { riderStatus: 'approved', riderCredit: 59 } });
+        await expect(svc.assign(ctx, 5 as any, 9 as any)).rejects.toThrow('该骑手信用分不足');
+        expect(grabSvc.grabByRider).not.toHaveBeenCalled();
+    });
+
+    it('在职且信用达标 → 正常强派', async () => {
+        const { svc, orderRepo, grabSvc } = makeEnv();
+        orderRepo.findOne
+            .mockResolvedValueOnce(order)
+            .mockResolvedValueOnce({ id: 9, customFields: { riderStatus: 'approved', riderCredit: 88 } });
+        await expect(svc.assign(ctx, 5 as any, 9 as any)).resolves.toEqual({ assigned: true });
+        expect(grabSvc.grabByRider).toHaveBeenCalledWith(ctx, 5, { id: 9 });
+    });
+});
+
 describe('DispatchAdminService.handleException', () => {
     const ctx = { channelId: 1, activeUserId: 3 } as any;
 

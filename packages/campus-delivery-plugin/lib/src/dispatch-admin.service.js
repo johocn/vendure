@@ -18,6 +18,7 @@ const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.
 const campus_notify_service_1 = require("./campus-notify.service");
 const hall_grab_service_1 = require("./hall-grab.service");
 const hall_service_1 = require("./hall.service");
+const rider_credit_service_1 = require("./rider-credit.service");
 /** 处置完结 push 文案（公众号模板 thing 字段 ≤20 字符，均已核对） */
 const EXCEPTION_NOTIFY_TEXT = {
     refund_diff: '异常已处理，差价原路退回',
@@ -126,6 +127,15 @@ let DispatchAdminService = class DispatchAdminService {
             else {
                 activeOrders.push(o);
             }
+            // 顾客催单（plan 2.4）：30 分钟内有效，覆盖待接单/大厅/配送中全部活跃阶段
+            if (cf.urged && cf.urgedAt && now - new Date(cf.urgedAt).getTime() < 30 * 60000) {
+                alerts.push({
+                    orderId: String(o.id),
+                    orderCode: o.code,
+                    type: 'urged',
+                    detail: '顾客催单，请优先处理',
+                });
+            }
         }
         const riders = await this.capacity.listOnlineRiders(ctx);
         const ridersOnline = riders.map(r => {
@@ -161,11 +171,22 @@ let DispatchAdminService = class DispatchAdminService {
         });
         return { paused: (_j = cfg === null || cfg === void 0 ? void 0 : cfg.paused) !== null && _j !== void 0 ? _j : false, alerts, hallOrders, activeOrders, ridersOnline, handledOrders };
     }
-    /** 手动派单/改派：信任 admin 输入的目标骑手（MVP 不校验资质）。
+    /** 手动派单/改派：目标骑手须在职（approved）且信用分达标，避免把单派给封禁/低分骑手。
      * 跨店守卫：只能操作本渠道订单（与 address-change 同源校验）。
      * grabByRider 返回 false 表示订单已不在大厅（已被抢/已退款）。 */
     async assign(ctx, orderId, riderCustomerId) {
+        var _a, _b;
         await this.assertOrderInChannel(ctx, orderId);
+        const rider = await this.connection.getRepository(ctx, core_2.Customer).findOne({
+            where: { id: riderCustomerId },
+        });
+        if (!rider)
+            throw new core_2.UserInputError('骑手不存在');
+        const rcf = ((_a = rider.customFields) !== null && _a !== void 0 ? _a : {});
+        if (rcf.riderStatus !== 'approved')
+            throw new core_2.UserInputError('该骑手未通过审核或已停用');
+        if (((_b = rcf.riderCredit) !== null && _b !== void 0 ? _b : 100) < rider_credit_service_1.CREDIT_LIMIT)
+            throw new core_2.UserInputError('该骑手信用分不足，无法派单');
         const ok = await this.grab.grabByRider(ctx, orderId, { id: riderCustomerId });
         if (!ok)
             throw new core_2.UserInputError('派单失败：订单已不在大厅（已被抢/已退款）');

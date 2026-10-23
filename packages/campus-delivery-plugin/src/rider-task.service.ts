@@ -112,15 +112,20 @@ export class RiderTaskService {
         return order;
     }
 
-    /** 用户催单（plan 2.4）：仅下单人本人；校园履约单未终态可催；10min 内重复催单拒绝。
-     * 一期催单不推送骑手（骑手端任务卡轮询读 customFields.urged 显示提醒），虚拟号/订阅消息留待下一轮。 */
+    /** 用户催单（plan 2.4）：仅下单人本人；校园履约单未终态可催（含待接单/大厅阶段）；10min 内重复催单拒绝。
+     * 一期催单不推送骑手（骑手端任务卡轮询读 customFields.urged 显示提醒），大厅阶段由调度墙「顾客催单」告警提示运营。 */
     async urgeOrder(ctx: RequestContext, orderId: ID) {
         if (!ctx.activeUserId) throw new ForbiddenError();
         const order = await this.connection
             .getRepository(ctx, Order)
             .findOne({ where: { id: orderId as any }, relations: ['customer'] });
         const cf = (order?.customFields ?? {}) as any;
-        if (!order || !cf.deliveryStatus) {
+        const hallStatus = String(cf.hallStatus ?? '');
+        const activeHall = [
+            'scheduled', 'pending_merchant', 'accepted', 'open', 'grabbed',
+            'pending_dispatch', 'third_party', 'owned_pool', 'owned_dispatched', 'merchant_delivering',
+        ].includes(hallStatus);
+        if (!order || (!cf.deliveryStatus && !activeHall)) {
             throw new UserInputError('订单不存在或不在配送流程中');
         }
         // Customer 实体无 userId 标量属性（user 关系 eager），归属比对取 user.id
@@ -128,7 +133,8 @@ export class RiderTaskService {
             throw new ForbiddenError();
         }
         const status = cf.deliveryStatus as string;
-        if (status === 'delivered' || status === 'exception') {
+        if (status === 'delivered' || status === 'exception' || hallStatus === 'delivered'
+            || hallStatus === 'cancelled' || hallStatus === 'no_rider_final' || hallStatus === 'exception_final') {
             throw new UserInputError('当前状态无需催单');
         }
         const last = cf.urgedAt ? new Date(cf.urgedAt).getTime() : 0;
@@ -271,15 +277,20 @@ export class RiderTaskService {
         return order;
     }
 
-    /** 异常上报：不校验状态，标记 exception */
+    /** 异常上报：仅配送中（已接单/配送中）可上报，记录上报时间供调度扫描超时升级 */
     async reportException(ctx: RequestContext, orderId: ID, type: string, photos: string[], note?: string) {
         const order = await this.assertOwner(ctx, orderId);
+        const status = (order.customFields as any)?.deliveryStatus;
+        if (status !== 'assigned' && status !== 'in_progress') {
+            throw new UserInputError('当前状态不允许上报异常');
+        }
         await this.connection.getRepository(ctx, Order).update(order.id, {
             customFields: {
                 deliveryStatus: 'exception',
                 exceptionType: type,
                 exceptionPhotos: photos,
                 exceptionNote: note ?? null,
+                exceptionReportedAt: new Date(),
             },
         } as any);
         return order;

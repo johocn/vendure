@@ -82,4 +82,41 @@ describe('RiderTaskService', () => {
         expect(saved).toHaveLength(1);
         expect(saved[0].amount).toBe(0);
     });
+    it('大厅阶段（尚无 deliveryStatus）也可催单', async () => {
+        const hallOrder = {
+            id: 12, code: 'A3', shipping: 0,
+            customFields: { hallStatus: 'open' },
+            customer: { user: { id: 5 } },
+        };
+        const { svc, repo } = make(hallOrder);
+        await svc.urgeOrder({ channelId: 1, activeUserId: 5 } as any, 12 as any);
+        expect(repo.update).toHaveBeenCalledWith(12, expect.objectContaining({
+            customFields: expect.objectContaining({ urged: true }),
+        }));
+    });
+    it('已送达终态 → 拒绝催单', async () => {
+        const done = {
+            id: 13, code: 'A4', shipping: 0,
+            customFields: { hallStatus: 'delivered', deliveryStatus: 'delivered' },
+            customer: { user: { id: 5 } },
+        };
+        const { svc } = make(done);
+        await expect(svc.urgeOrder({ channelId: 1, activeUserId: 5 } as any, 13 as any)).rejects.toThrow('当前状态无需催单');
+    });
+    it('非配送中状态（已送达）上报异常 → 拒绝', async () => {
+        const done = { ...assigned, customFields: { ...assigned.customFields, deliveryStatus: 'delivered' } };
+        const { svc } = make(done);
+        await expect(svc.reportException({ channelId: 1 } as any, 10 as any, 'food_spilled', ['p1']))
+            .rejects.toThrow('当前状态不允许上报异常');
+    });
+    it('配送中上报异常 → 写入 exception 与上报时间', async () => {
+        const inProg = { ...assigned, customFields: { ...assigned.customFields, deliveryStatus: 'in_progress' } };
+        const { svc, repo } = make(inProg);
+        await svc.reportException({ channelId: 1 } as any, 10 as any, 'food_spilled', ['p1'], '洒漏');
+        expect(repo.update).toHaveBeenCalledWith(10, expect.objectContaining({
+            customFields: expect.objectContaining({
+                deliveryStatus: 'exception', exceptionType: 'food_spilled', exceptionReportedAt: expect.any(Date),
+            }),
+        }));
+    });
 });

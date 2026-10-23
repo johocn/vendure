@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Customer, RequestContext, TransactionalConnection } from '@vendure/core';
+import { RequestContext, TransactionalConnection } from '@vendure/core';
 import { RiderCreditLog } from './rider-credit-log.entity';
 
 export const CREDIT_COMPLETE = 2;
@@ -12,16 +12,17 @@ export class RiderCreditService {
     constructor(private connection: TransactionalConnection) {}
 
     /** 加减分 + 流水。下限 0。
-     * 读取在 rawConnection.transaction 内直读 customFields.riderCredit（与 grab 事务模式一致），更新/流水走 ctx 仓储。 */
+     * 并发安全：单条 UPDATE 原子读改写（GREATEST 夹紧），避免并发 adjust 互相覆盖丢分。
+     * 列名为 customFields 物理列（riderCredit → customFieldsRidercredit）。 */
     async adjust(ctx: RequestContext, customerId: number, delta: number, reason: string, orderId?: number) {
-        const next = await this.connection.rawConnection.transaction(async em => {
-            const customer = await em.getRepository(Customer).findOne({ where: { id: customerId as any } });
-            const current = (customer?.customFields as any)?.riderCredit ?? 100;
-            return Math.max(0, current + delta);
-        });
-        await this.connection.getRepository(ctx, Customer).update(customerId, {
-            customFields: { riderCredit: next },
-        } as any);
+        const rows: any = await this.connection.rawConnection.query(
+            'UPDATE "customer" SET "customFieldsRidercredit" = '
+            + 'GREATEST(0, COALESCE("customFieldsRidercredit", 100) + $1) '
+            + 'WHERE id = $2 RETURNING "customFieldsRidercredit" AS credit',
+            [delta, customerId],
+        );
+        const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+        const next = Number(list?.[0]?.credit ?? (delta > 0 ? 100 + delta : 100));
         await this.connection.getRepository(ctx, RiderCreditLog).save({
             customerId, delta, reason, orderId: orderId ?? null, channelId: ctx.channelId,
         } as any);

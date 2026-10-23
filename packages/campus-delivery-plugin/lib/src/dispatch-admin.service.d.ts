@@ -8,7 +8,7 @@ export type ExceptionAction = 'reassign' | 'refund_diff' | 'coupon' | 'refund_al
 export interface DispatchAlert {
     orderId: string;
     orderCode: string;
-    type: 'stale_open' | 'sla_breach' | 'slot_full' | 'exception';
+    type: 'stale_open' | 'sla_breach' | 'slot_full' | 'exception' | 'urged';
     detail: string;
     exceptionNote?: string | null;
     exceptionPhotos?: string[] | null;
@@ -59,7 +59,7 @@ export declare class DispatchAdminService {
         ridersOnline: DispatchRider[];
         handledOrders: HandedException[];
     }>;
-    /** 手动派单/改派：信任 admin 输入的目标骑手（MVP 不校验资质）。
+    /** 手动派单/改派：目标骑手须在职（approved）且信用分达标，避免把单派给封禁/低分骑手。
      * 跨店守卫：只能操作本渠道订单（与 address-change 同源校验）。
      * grabByRider 返回 false 表示订单已不在大厅（已被抢/已退款）。 */
     assign(ctx: RequestContext, orderId: ID, riderCustomerId: ID): Promise<{

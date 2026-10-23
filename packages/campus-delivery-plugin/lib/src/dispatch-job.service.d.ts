@@ -36,6 +36,12 @@ export declare class DispatchJobService implements OnApplicationShutdown {
      */
     scan(ctx: RequestContext): Promise<void>;
     /**
+     * 异常上报超时升级：骑手上报异常后运营未在 SLA 内处置（inProgressSlaMinutes，默认 45）→
+     * 自动回大厅重新派单（等价运营「重派」处置），避免订单卡死在 exception 占用骑手与履约时效。
+     * 异常类型/照片/说明保留供追责；campusCause 留痕 exception_timeout。
+     */
+    private sweepExceptionTimeout;
+    /**
      * 路线超时兜底：
      * 1) R1 pending_merchant 超 merchantAcceptMinutes → 自动转自营快递（owned_dispatched）
      * 2) merchant_delivering 超 merchantAutoOpenMinutes → 回抢单大厅（传信者到档口取餐）

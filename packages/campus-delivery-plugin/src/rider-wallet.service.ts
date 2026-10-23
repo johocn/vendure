@@ -204,11 +204,13 @@ export class RiderWalletService {
 
     private async sumEarned(ctx: RequestContext, riderCustomerId: number) {
         // 骑手为平台级角色：分成流水写在各店铺渠道，钱包查询固定默认渠道上下文，
-        // 按渠道过滤会导致累计收入恒为 0，此处跨渠道汇总
+        // 按渠道过滤会导致累计收入恒为 0，此处跨渠道汇总。
+        // 口径：入账只加 e.amount（小费已包含在分成金额内），故累计收入只 SUM(amount)，
+        // 不能再加 e.tip，否则小费被重复计入累计。
         const row = await this.connection
             .getRepository(ctx, RiderEarning)
             .createQueryBuilder('e')
-            .select('COALESCE(SUM(e.amount + e.tip), 0)', 'sum')
+            .select('COALESCE(SUM(e.amount), 0)', 'sum')
             .where('e.riderCustomerId = :id', { id: riderCustomerId })
             .getRawOne();
         return Number(row?.sum) || 0;

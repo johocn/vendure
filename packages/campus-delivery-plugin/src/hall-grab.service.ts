@@ -69,8 +69,9 @@ export class HallGrabService {
             return { order, targetIds: targets.map(t => t.id) };
         });
         // 事务提交后通知下单用户（fire-and-forget，不影响抢单主流程）：整组逐单通知各自用户
+        // dedupe 后缀带骑手 id + 时间戳：改派/回厅重抢时不与首次接单通知撞同一幂等键
         for (const id of grabbed.targetIds) {
-            this.notify.user(ctx, id, 'riderAssigned');
+            this.notify.user(ctx, id, 'riderAssigned', undefined, undefined, `r${rider.id}_${Date.now()}`);
         }
         return grabbed.order;
     }
@@ -97,8 +98,8 @@ export class HallGrabService {
             } as any);
             return true;
         });
-        // 事务提交后通知下单用户（T2 自动强派/手动强派共用此触点）
-        if (ok) this.notify.user(ctx, orderId, 'riderAssigned');
+        // 事务提交后通知下单用户（T2 自动强派/手动强派共用此触点）；后缀带骑手 id + 时间戳防改派被去重吞掉
+        if (ok) this.notify.user(ctx, orderId, 'riderAssigned', undefined, undefined, `r${rider.id}_${Date.now()}`);
         return ok;
     }
 

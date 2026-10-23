@@ -53,13 +53,13 @@ describe('CampusConfigService slots', () => {
 describe('setDeliveryTarget route/slot 扩展', () => {
     const slot = {
         id: 5, channelId: 1, active: true, capacity: 20, lockedCount: 3,
-        slotDate: '2026-10-06', startTime: '11:00', endTime: '11:30',
+        slotDate: '2099-01-01', startTime: '11:00', endTime: '11:30',
     };
     const ctx = { channelId: 1, session: { activeOrderId: 100 } } as any;
 
     function makeEnv(opts: { slot?: any } = {}) {
-        const zoneRepo = { findOne: vi.fn().mockResolvedValue({ id: 1, name: '东区' }) };
-        const buildingRepo = { findOne: vi.fn().mockResolvedValue({ id: 7, name: '1号楼' }) };
+        const zoneRepo = { findOne: vi.fn().mockResolvedValue({ id: 1, name: '东区', channelId: 1 }) };
+        const buildingRepo = { findOne: vi.fn().mockResolvedValue({ id: 7, name: '1号楼', zoneId: 1, channelId: 1 }) };
         const slotRepo = { findOne: vi.fn().mockResolvedValue(opts.slot === undefined ? slot : opts.slot) };
         const repos: Record<string, any> = {
             CampusZone: zoneRepo,
@@ -80,9 +80,17 @@ describe('setDeliveryTarget route/slot 扩展', () => {
             campusZone: '东区',
             fulfillmentRoute: 'R3',
             deliverySlotId: '5',
-            deliverySlotText: '2026-10-06 11:00-11:30',
-            scheduledFor: new Date('2026-10-06T11:00:00'),
+            deliverySlotText: '2099-01-01 11:00-11:30',
+            scheduledFor: new Date('2099-01-01T11:00:00'),
         });
+    });
+    it('过期时段（历史日期）→ 拒绝下单', async () => {
+        const env = makeEnv({ slot: { ...slot, slotDate: '2000-01-01' } });
+        await expect(env.svc.setDeliveryTarget(ctx, 1, 7, 'R1', 5)).rejects.toThrow('时段已过期');
+    });
+    it('分区/楼栋跨渠道 → 拒绝', async () => {
+        const env = makeEnv();
+        await expect(env.svc.setDeliveryTarget({ ...ctx, channelId: 2 } as any, 1, 7, 'R1')).rejects.toThrow('分区不属于当前店铺');
     });
     it('slot 余量为 0 抛 UserInputError("该时段已满")', async () => {
         const env = makeEnv({ slot: { ...slot, lockedCount: 20 } });

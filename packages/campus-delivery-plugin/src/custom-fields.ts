@@ -34,6 +34,7 @@ export const campusCustomFields: CustomFields = {
         { name: 'exceptionHandledNote', type: 'string', nullable: true }, // 处置备注
         { name: 'exceptionHandledAt', type: 'datetime', nullable: true }, // 处置时间
         { name: 'exceptionHandledBy', type: 'string', nullable: true }, // 处置人（admin userId）
+        { name: 'exceptionReportedAt', type: 'datetime', nullable: true }, // 骑手上报异常时间（调度超时升级基准）
         { name: 'routeGroupId', type: 'string', nullable: true }, // 多单顺路路线组（plan 3.3）：同楼栋+同时段打包，整组抢单
         { name: 'invoiceApplied', type: 'boolean', nullable: true, defaultValue: false }, // 开票申请幂等闸（个人中心 spec §4）
         { name: 'invoiceInfo', type: 'string', nullable: true }, // 开票申请快照 JSON：{titleName,titleType,taxNo,email,appliedAt}
