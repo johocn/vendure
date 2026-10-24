@@ -2,20 +2,25 @@ import { RequestContextService, TransactionalConnection } from '@vendure/core';
 import { DeliveryStatsService } from '../delivery-stats.service';
 import { MerchantAdminService } from '../merchant-admin.service';
 import { FeishuClient } from './feishu.client';
-import { FeishuConfigService } from './feishu.config';
-export type FeishuCommandName = 'help' | 'board' | 'accept' | 'cooking' | 'reject' | 'confirmReject' | 'close' | 'open' | 'digest' | 'unknown';
+import { FeishuChatConfig, FeishuConfigService } from './feishu.config';
+export type FeishuCommandName = 'help' | 'board' | 'digest' | 'status' | 'exceptions' | 'accept' | 'cooking' | 'reject' | 'confirmReject' | 'close' | 'open' | 'unknown';
 export interface ParsedCommand {
     name: FeishuCommandName;
     orderCode?: string;
     reason?: string;
+    /** 关店/开店的目标店铺（平台管理群必填） */
+    store?: string;
 }
 /** 去掉 @ 占位符与首尾空白，再按首个空格切命令与参数（纯函数，便于单测） */
 export declare function parseCommand(raw: string): ParsedCommand;
-/** 指令所需权限等级：operator=接单/出餐/看板；owner=拒单/开关店 */
+/** 指令所需权限等级：operator=查询/接单/出餐；owner=拒单/开关店 */
 export declare function requiredRole(cmd: FeishuCommandName): 'none' | 'operator' | 'owner';
 /**
  * 飞书群指令：解析 → 权限校验 → 调商家工作台服务 → 回复结果。
- * 鉴权模型：chat_id 绑定渠道（FEISHU_CHAT_MAP），open_id 分 operators / owners 两级白名单；
+ * 群定位：
+ * - channel：店铺群，看板/汇总/写操作都限定绑定的店铺；
+ * - platform：平台管理群，看板/异常/汇总跨全部店铺，写操作按单号/店铺参数指定。
+ * 鉴权：chat_id 白名单（FEISHU_CHAT_MAP）+ open_id 分 operators / owners 两级；
  * 所有操作记审计日志，回复里不出现顾客手机号/详细地址。
  */
 export declare class FeishuCommandService {
@@ -33,15 +38,27 @@ export declare class FeishuCommandService {
         openId: string;
         text: string;
     }): Promise<void>;
+    renderBoard(chat: FeishuChatConfig): Promise<string>;
+    renderDigest(chat: FeishuChatConfig): Promise<string>;
+    renderExceptions(chat: FeishuChatConfig): Promise<string>;
+    private platformBoardText;
+    private platformDigestText;
+    private channelBoardText;
+    private orderStatusText;
+    private collectIssues;
+    /** 各环节超时判定（与调度兜底阈值保持一致，仅用于群里提示，不做任何改单） */
+    private overdueOf;
     private accept;
     private cooking;
     /** 拒单第一步：只登记待确认，不执行任何退款/取消 */
     private stageReject;
     private confirmReject;
     private setPaused;
-    private boardText;
     private requireOrder;
-    private ctxFor;
+    private channelTargets;
+    private ctxForToken;
+    private cancelledCount;
+    private exceptionCount;
     private isOperator;
     private isRateLimited;
     private cleanupConfirmations;

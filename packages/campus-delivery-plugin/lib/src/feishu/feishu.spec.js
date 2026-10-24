@@ -41,6 +41,14 @@ function encrypt(plain, encryptKey) {
         (0, vitest_1.expect)((0, feishu_command_service_1.parseCommand)('帮助').name).toBe('help');
         (0, vitest_1.expect)((0, feishu_command_service_1.parseCommand)('随便说点什么').name).toBe('unknown');
     });
+    (0, vitest_1.it)('平台管理群指令：查单 / 异常 / 带店铺开关店', () => {
+        (0, vitest_1.expect)((0, feishu_command_service_1.parseCommand)('查 A1234')).toEqual({ name: 'status', orderCode: 'A1234' });
+        (0, vitest_1.expect)((0, feishu_command_service_1.parseCommand)('异常')).toEqual({ name: 'exceptions' });
+        (0, vitest_1.expect)((0, feishu_command_service_1.parseCommand)('关店 canteen-a')).toEqual({ name: 'close', store: 'canteen-a' });
+        (0, vitest_1.expect)((0, feishu_command_service_1.parseCommand)('开店 canteen-b')).toEqual({ name: 'open', store: 'canteen-b' });
+        (0, vitest_1.expect)((0, feishu_command_service_1.requiredRole)('status')).toBe('operator');
+        (0, vitest_1.expect)((0, feishu_command_service_1.requiredRole)('exceptions')).toBe('operator');
+    });
     (0, vitest_1.it)('去掉 @ 提及与多余空白后再解析', () => {
         (0, vitest_1.expect)((0, feishu_command_service_1.parseCommand)('  @_user_1   接单   A1234  ')).toEqual({ name: 'accept', orderCode: 'A1234' });
     });
@@ -60,8 +68,22 @@ function encrypt(plain, encryptKey) {
             oc_1: { channel: 'canteen-a', operators: 'ou_a,ou_b', owners: ['ou_owner'] },
             bad: { channel: 1 },
         }));
-        (0, vitest_1.expect)(chats.oc_1).toEqual({ channel: 'canteen-a', operators: ['ou_a', 'ou_b'], owners: ['ou_owner'] });
+        (0, vitest_1.expect)(chats.oc_1).toEqual({
+            scope: 'channel',
+            channel: 'canteen-a',
+            operators: ['ou_a', 'ou_b'],
+            owners: ['ou_owner'],
+        });
         (0, vitest_1.expect)(chats.bad).toBeUndefined();
+    });
+    (0, vitest_1.it)('平台管理群：scope=platform 或 channel=* 均可，且不绑定店铺', () => {
+        const chats = (0, feishu_config_1.parseChatMap)(JSON.stringify({
+            oc_admin: { scope: 'platform', operators: 'ou_a', owners: 'ou_b' },
+            oc_admin2: { channel: '*', operators: ['ou_a'], owners: ['ou_b'] },
+        }));
+        (0, vitest_1.expect)(chats.oc_admin).toEqual({ scope: 'platform', channel: undefined, operators: ['ou_a'], owners: ['ou_b'] });
+        (0, vitest_1.expect)(chats.oc_admin2.scope).toBe('platform');
+        (0, vitest_1.expect)(chats.oc_admin2.channel).toBeUndefined();
     });
     (0, vitest_1.it)('坏 JSON 不抛错，退回空表', () => {
         (0, vitest_1.expect)((0, feishu_config_1.parseChatMap)('{oops')).toEqual({});
@@ -123,6 +145,99 @@ function encrypt(plain, encryptKey) {
         (0, vitest_1.expect)(d).toContain('2026-10-24');
         (0, vitest_1.expect)(d).toContain('订单量 12（取消 1）');
         (0, vitest_1.expect)(d).toContain('准点率 92%');
+    });
+    (0, vitest_1.it)('跨店看板汇总多店铺并进行中/完成合计', () => {
+        const text = (0, feishu_templates_1.formatPlatformBoard)({
+            at: Date.UTC(2026, 0, 2, 1, 30),
+            exceptions: ['A9 canteen-a 骑手失联（已 12 分钟）'],
+            overdue: ['A8 canteen-b 商户 8 分钟未接单（阈值 5）'],
+            stores: [
+                {
+                    name: 'canteen-a',
+                    paused: false,
+                    pending: 2,
+                    pendingCodes: ['A1', 'A2'],
+                    cooking: 1,
+                    awaitingRider: 0,
+                    delivering: 1,
+                    pendingDispatch: 0,
+                    thirdParty: 0,
+                    ownedPool: 0,
+                    ownedDispatched: 0,
+                    merchantDelivering: 0,
+                    completedToday: 5,
+                    completedTodayAmount: 12000,
+                    exceptionCount: 1,
+                },
+                {
+                    name: 'canteen-b',
+                    paused: true,
+                    pending: 0,
+                    pendingCodes: [],
+                    cooking: 0,
+                    awaitingRider: 0,
+                    delivering: 0,
+                    pendingDispatch: 0,
+                    thirdParty: 0,
+                    ownedPool: 0,
+                    ownedDispatched: 0,
+                    merchantDelivering: 0,
+                    completedToday: 1,
+                    completedTodayAmount: 1800,
+                    exceptionCount: 0,
+                },
+            ],
+        });
+        (0, vitest_1.expect)(text).toContain('【跨店看板】2026-01-02 09:30');
+        (0, vitest_1.expect)(text).toContain('canteen-a 营业中｜待接单 2（A1、A2）');
+        (0, vitest_1.expect)(text).toContain('canteen-b 已暂停');
+        (0, vitest_1.expect)(text).toContain('合计：进行中 4 单｜今日完成 6 单 ¥138.00');
+        (0, vitest_1.expect)(text).toContain('【异常未处置 1】');
+        (0, vitest_1.expect)(text).toContain('【超时风险 1】');
+    });
+    (0, vitest_1.it)('全平台汇总逐店 + 合计行', () => {
+        const text = (0, feishu_templates_1.formatPlatformDigest)({
+            date: '2026-10-24',
+            stores: [{ name: 'canteen-a', completed: 8, amount: 16800, onTimeRate: 95, cancelled: 1, exception: 0 }],
+            totalOrders: 10,
+            cancelled: 1,
+            completed: 8,
+            amount: 16800,
+            onTimeRate: 95,
+            exception: 0,
+        });
+        (0, vitest_1.expect)(text).toContain('【每日汇总】2026-10-24 全平台');
+        (0, vitest_1.expect)(text).toContain('canteen-a 完成 8 单 ¥168.00');
+        (0, vitest_1.expect)(text).toContain('合计：订单 10（取消 1）');
+    });
+    (0, vitest_1.it)('异常清单为空时给出明确提示', () => {
+        (0, vitest_1.expect)((0, feishu_templates_1.formatExceptions)([], [])).toContain('当前没有异常或超时订单');
+        (0, vitest_1.expect)((0, feishu_templates_1.formatExceptions)(['A1 canteen-a 异常未处置'], [])).toContain('【异常未处置 1】');
+    });
+    (0, vitest_1.it)('单号查询展示配送环节、骑手与异常耗时', () => {
+        const text = (0, feishu_templates_1.formatOrderStatus)({
+            code: 'A1',
+            store: 'canteen-a',
+            orderState: 'ArrangingPayment',
+            hallStatus: 'grabbed',
+            deliveryStatus: 'picked',
+            route: '一食堂 → 3 号宿舍楼',
+            riderName: '张三',
+            building: '3 号宿舍楼',
+            zone: '北区',
+            slotText: '12:00-12:30',
+            total: 2500,
+            exceptionType: '骑手失联',
+            exceptionNote: '联系不上',
+            exceptionMinutes: 12,
+            createdAt: Date.UTC(2026, 0, 2, 1, 0),
+            at: Date.UTC(2026, 0, 2, 1, 40),
+        });
+        (0, vitest_1.expect)(text).toContain('【订单 A1】canteen-a');
+        (0, vitest_1.expect)(text).toContain('配送环节：骑手已接单（已取货）');
+        (0, vitest_1.expect)(text).toContain('骑手：张三');
+        (0, vitest_1.expect)(text).toContain('异常：骑手失联｜联系不上（已上报 12 分钟）');
+        (0, vitest_1.expect)(text).toContain('已过 40 分钟');
     });
 });
 (0, vitest_1.describe)('feishu digest time gate', () => {

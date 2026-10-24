@@ -1,12 +1,10 @@
 import { Injectable, OnApplicationShutdown } from '@nestjs/common';
-import { Logger, Order, RequestContext, RequestContextService, TransactionalConnection } from '@vendure/core';
+import { Logger, TransactionalConnection } from '@vendure/core';
 
 import { campusDayKey, CAMPUS_TZ_OFFSET_MS } from '../campus-time';
-import { DeliveryStatsService } from '../delivery-stats.service';
-import { MerchantAdminService } from '../merchant-admin.service';
 import { FeishuChatConfig, FeishuConfigService } from './feishu.config';
 import { FeishuClient } from './feishu.client';
-import { formatDigest } from './feishu.templates';
+import { FeishuCommandService } from './feishu.command.service';
 
 const loggerCtx = 'Feishu';
 const DIGEST_TABLE = 'feishu_digest_state';
@@ -28,10 +26,8 @@ export class FeishuDigestService implements OnApplicationShutdown {
     constructor(
         private cfg: FeishuConfigService,
         private client: FeishuClient,
-        private requestContextService: RequestContextService,
         private connection: TransactionalConnection,
-        private merchant: MerchantAdminService,
-        private stats: DeliveryStatsService,
+        private command: FeishuCommandService,
     ) {}
 
     start(intervalMs = 60_000): void {
@@ -90,41 +86,9 @@ export class FeishuDigestService implements OnApplicationShutdown {
         }
     }
 
-    private async buildDigest(chat: FeishuChatConfig): Promise<string> {
-        const ctx: RequestContext = await this.requestContextService.create({
-            apiType: 'admin',
-            channelOrToken: chat.channel,
-        });
-        const board = await this.merchant.board(ctx);
-        const stats = await this.stats.stats(ctx, 'today');
-        const startOfDay = new Date(Date.now() - this.msIntoToday());
-        const repo = this.connection.getRepository(ctx, Order);
-        const cancelled = await repo.createQueryBuilder('order')
-            .leftJoin('order.channels', 'channel')
-            .where('channel.id = :ch', { ch: ctx.channelId as any })
-            .andWhere('order.state = :st', { st: 'Cancelled' })
-            .andWhere('order.createdAt >= :start', { start: startOfDay })
-            .getCount();
-        const exceptionCount = await repo.createQueryBuilder('order')
-            .leftJoin('order.channels', 'channel')
-            .where('channel.id = :ch', { ch: ctx.channelId as any })
-            .andWhere("order.customFields.deliveryStatus = 'exception'")
-            .getCount();
-        return formatDigest({
-            ...board,
-            date: campusDayKey(Date.now()),
-            totalOrders: stats.kpis.totalOrders,
-            onTimeRate: stats.kpis.onTimeRate,
-            cancelled,
-            exceptionCount,
-        });
-    }
-
-    /** 今日 0 点（UTC+8）→ 当前已经过的毫秒数 */
-    private msIntoToday(): number {
-        const shifted = Date.now() + CAMPUS_TZ_OFFSET_MS;
-        const day = 24 * 3600_000;
-        return ((shifted % day) + day) % day;
+    /** 汇总内容由指令服务统一生成：平台群走全平台，店铺群走单店 */
+    private buildDigest(chat: FeishuChatConfig): Promise<string> {
+        return this.command.renderDigest(chat);
     }
 
     private async ensureStateTable(): Promise<void> {

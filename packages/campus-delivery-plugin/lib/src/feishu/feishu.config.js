@@ -30,10 +30,16 @@ function parseChatMap(raw) {
         const out = {};
         for (const [chatId, v] of Object.entries(parsed !== null && parsed !== void 0 ? parsed : {})) {
             const item = v;
-            if (!item || typeof item.channel !== 'string')
+            if (!item)
+                continue;
+            // channel='*' 或 scope='platform' 表示平台管理群（跨店铺）
+            const platform = item.scope === 'platform' || item.channel === '*';
+            const channel = typeof item.channel === 'string' && item.channel !== '*' ? item.channel : undefined;
+            if (!platform && !channel)
                 continue;
             out[chatId] = {
-                channel: item.channel,
+                scope: platform ? 'platform' : 'channel',
+                channel,
                 operators: Array.isArray(item.operators)
                     ? item.operators.map(String)
                     : splitIds(item.operators),

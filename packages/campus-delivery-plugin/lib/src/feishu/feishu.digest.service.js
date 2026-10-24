@@ -14,11 +14,9 @@ exports.campusHhmm = campusHhmm;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const campus_time_1 = require("../campus-time");
-const delivery_stats_service_1 = require("../delivery-stats.service");
-const merchant_admin_service_1 = require("../merchant-admin.service");
 const feishu_config_1 = require("./feishu.config");
 const feishu_client_1 = require("./feishu.client");
-const feishu_templates_1 = require("./feishu.templates");
+const feishu_command_service_1 = require("./feishu.command.service");
 const loggerCtx = 'Feishu';
 const DIGEST_TABLE = 'feishu_digest_state';
 /** 当前校园时区 HH:mm */
@@ -29,13 +27,11 @@ function campusHhmm(t) {
 }
 /** 到达汇总时间且今天未发 → 逐群推送当天经营汇总（advisory lock + 落库标记，防多进程/重发） */
 let FeishuDigestService = class FeishuDigestService {
-    constructor(cfg, client, requestContextService, connection, merchant, stats) {
+    constructor(cfg, client, connection, command) {
         this.cfg = cfg;
         this.client = client;
-        this.requestContextService = requestContextService;
         this.connection = connection;
-        this.merchant = merchant;
-        this.stats = stats;
+        this.command = command;
         this.running = false;
         this.ready = false;
     }
@@ -101,34 +97,9 @@ let FeishuDigestService = class FeishuDigestService {
             await runner.release();
         }
     }
-    async buildDigest(chat) {
-        const ctx = await this.requestContextService.create({
-            apiType: 'admin',
-            channelOrToken: chat.channel,
-        });
-        const board = await this.merchant.board(ctx);
-        const stats = await this.stats.stats(ctx, 'today');
-        const startOfDay = new Date(Date.now() - this.msIntoToday());
-        const repo = this.connection.getRepository(ctx, core_1.Order);
-        const cancelled = await repo.createQueryBuilder('order')
-            .leftJoin('order.channels', 'channel')
-            .where('channel.id = :ch', { ch: ctx.channelId })
-            .andWhere('order.state = :st', { st: 'Cancelled' })
-            .andWhere('order.createdAt >= :start', { start: startOfDay })
-            .getCount();
-        const exceptionCount = await repo.createQueryBuilder('order')
-            .leftJoin('order.channels', 'channel')
-            .where('channel.id = :ch', { ch: ctx.channelId })
-            .andWhere("order.customFields.deliveryStatus = 'exception'")
-            .getCount();
-        return (0, feishu_templates_1.formatDigest)(Object.assign(Object.assign({}, board), { date: (0, campus_time_1.campusDayKey)(Date.now()), totalOrders: stats.kpis.totalOrders, onTimeRate: stats.kpis.onTimeRate, cancelled,
-            exceptionCount }));
-    }
-    /** 今日 0 点（UTC+8）→ 当前已经过的毫秒数 */
-    msIntoToday() {
-        const shifted = Date.now() + campus_time_1.CAMPUS_TZ_OFFSET_MS;
-        const day = 24 * 3600000;
-        return ((shifted % day) + day) % day;
+    /** 汇总内容由指令服务统一生成：平台群走全平台，店铺群走单店 */
+    buildDigest(chat) {
+        return this.command.renderDigest(chat);
     }
     async ensureStateTable() {
         await this.connection.rawConnection.query(`CREATE TABLE IF NOT EXISTS "${DIGEST_TABLE}" ("chatId" varchar PRIMARY KEY, "sentDay" varchar NOT NULL, "sentAt" timestamp NOT NULL DEFAULT now())`);
@@ -153,9 +124,7 @@ exports.FeishuDigestService = FeishuDigestService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [feishu_config_1.FeishuConfigService,
         feishu_client_1.FeishuClient,
-        core_1.RequestContextService,
         core_1.TransactionalConnection,
-        merchant_admin_service_1.MerchantAdminService,
-        delivery_stats_service_1.DeliveryStatsService])
+        feishu_command_service_1.FeishuCommandService])
 ], FeishuDigestService);
 //# sourceMappingURL=feishu.digest.service.js.map

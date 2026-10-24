@@ -3,13 +3,21 @@ import { Logger } from '@vendure/core';
 
 const loggerCtx = 'Feishu';
 
+/**
+ * 群定位：
+ * - channel：店铺群，所有指令只作用于绑定的店铺渠道
+ * - platform：平台管理群，看板/汇总/异常为跨店铺视角，写操作按单号/店铺参数指定
+ */
+export type FeishuChatScope = 'channel' | 'platform';
+
 /** 单个飞书群的授权与渠道绑定（FEISHU_CHAT_MAP 的一项） */
 export interface FeishuChatConfig {
-    /** Vendure 渠道 token（canteen-a-token 等），决定指令操作哪个店铺 */
-    channel: string;
-    /** 普通指令白名单（帮助/待处理/接单/出餐/今日汇总） */
+    scope: FeishuChatScope;
+    /** 店铺群必填：Vendure 渠道 token（canteen-a-token 等）；平台群留空 */
+    channel?: string;
+    /** 普通指令白名单（帮助/待处理/查单/异常/接单/出餐/今日汇总） */
     operators: string[];
-    /** 高危指令白名单（拒单/关店/开店），通常只给店主 */
+    /** 高危指令白名单（拒单/关店/开店） */
     owners: string[];
 }
 
@@ -41,9 +49,14 @@ export function parseChatMap(raw: string | undefined): Record<string, FeishuChat
         const out: Record<string, FeishuChatConfig> = {};
         for (const [chatId, v] of Object.entries(parsed ?? {})) {
             const item = v as any;
-            if (!item || typeof item.channel !== 'string') continue;
+            if (!item) continue;
+            // channel='*' 或 scope='platform' 表示平台管理群（跨店铺）
+            const platform = item.scope === 'platform' || item.channel === '*';
+            const channel = typeof item.channel === 'string' && item.channel !== '*' ? item.channel : undefined;
+            if (!platform && !channel) continue;
             out[chatId] = {
-                channel: item.channel,
+                scope: platform ? 'platform' : 'channel',
+                channel,
                 operators: Array.isArray(item.operators)
                     ? item.operators.map(String)
                     : splitIds(item.operators),

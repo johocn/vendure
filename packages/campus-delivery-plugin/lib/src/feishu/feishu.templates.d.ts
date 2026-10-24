@@ -43,3 +43,64 @@ export interface DigestInput extends BoardLike {
     exceptionCount: number;
 }
 export declare function formatDigest(d: DigestInput): string;
+export interface PlatformStoreLine {
+    name: string;
+    paused: boolean;
+    pending: number;
+    pendingCodes: string[];
+    cooking: number;
+    awaitingRider: number;
+    delivering: number;
+    pendingDispatch: number;
+    thirdParty: number;
+    ownedPool: number;
+    ownedDispatched: number;
+    merchantDelivering: number;
+    completedToday: number;
+    completedTodayAmount: number;
+    exceptionCount: number;
+}
+export declare function formatPlatformBoard(input: {
+    stores: PlatformStoreLine[];
+    exceptions: string[];
+    overdue: string[];
+    at: number;
+}): string;
+export declare function formatExceptions(exceptions: string[], overdue: string[]): string;
+export interface PlatformDigestStore {
+    name: string;
+    completed: number;
+    amount: number;
+    onTimeRate: number;
+    cancelled: number;
+    exception: number;
+}
+export declare function formatPlatformDigest(input: {
+    date: string;
+    stores: PlatformDigestStore[];
+    totalOrders: number;
+    cancelled: number;
+    completed: number;
+    amount: number;
+    onTimeRate: number;
+    exception: number;
+}): string;
+export interface OrderStatusInput {
+    code: string;
+    store: string;
+    orderState: string;
+    hallStatus?: string | null;
+    deliveryStatus?: string | null;
+    route?: string | null;
+    riderName?: string | null;
+    building?: string | null;
+    zone?: string | null;
+    slotText?: string | null;
+    total?: number;
+    exceptionType?: string | null;
+    exceptionNote?: string | null;
+    exceptionMinutes?: number | null;
+    createdAt: number;
+    at: number;
+}
+export declare function formatOrderStatus(o: OrderStatusInput): string;
