@@ -38,7 +38,9 @@ let RiderCreditService = class RiderCreditService {
         const rows = await this.connection.rawConnection.query('UPDATE "customer" SET "customFieldsRidercredit" = ' + clamp
             + ' WHERE id = $2 RETURNING "customFieldsRidercredit" AS credit', [delta, customerId]);
         const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
-        const next = Number((_b = (_a = list === null || list === void 0 ? void 0 : list[0]) === null || _a === void 0 ? void 0 : _a.credit) !== null && _b !== void 0 ? _b : (delta > 0 ? 100 + delta : 100));
+        // 无匹配行（顾客不存在）时回退默认值，同样要夹在 0-100 之间
+        const fallback = Math.min(exports.CREDIT_RECOVERY_CAP, Math.max(0, 100 + delta));
+        const next = Number((_b = (_a = list === null || list === void 0 ? void 0 : list[0]) === null || _a === void 0 ? void 0 : _a.credit) !== null && _b !== void 0 ? _b : fallback);
         try {
             await this.connection.getRepository(ctx, rider_credit_log_entity_1.RiderCreditLog).save({
                 customerId, delta, reason, orderId: orderId !== null && orderId !== void 0 ? orderId : null, channelId: ctx.channelId,
@@ -51,25 +53,35 @@ let RiderCreditService = class RiderCreditService {
         }
         return next;
     }
-    /** 骑手信用自动恢复：7 天没 timeout 扣分的骑手 credit<100 时 +5 分。
+    /** 骑手信用自动恢复：7 天没 timeout 扣分且 7 天内未恢复过的骑手 credit<100 时 +5 分。
      *  每轮 dispatch sweep 每 channel 扫一次，每轮最多恢复 RECOVERY_LIMIT 人防长事务。
-     *  并发安全：每个 customerId 单独 adjust 原子 UPDATE + 流水。 */
+     *  去重：同一骑手 7 天内最多恢复一次（否则 sweep 每分钟一轮会把信用分一路刷回 100）。
+     *  并发安全：每个 customerId 单独 adjust 原子 UPDATE + 流水。
+     *  注意：rider_credit_log 物理列是带引号的 camelCase（"customerId"/"channelId"），
+     *  原生 SQL 内必须加双引号，否则 PG 折叠成小写报 column "customerid" does not exist。 */
     async sweepRecovery(ctx) {
         const since = new Date(Date.now() - exports.CREDIT_RECOVERY_DAYS * 86400000);
-        // 排除近 7 天有 timeout_not_picked 扣分记录的骑手
+        // 排除近 7 天有 timeout_not_picked 扣分记录的骑手；同时排除近 7 天已恢复过的骑手
         const rows = await this.connection.rawConnection.query(`SELECT DISTINCT c.id FROM "customer" c
              WHERE c."customFieldsRidercredit" IS NOT NULL
                AND c."customFieldsRidercredit" < ${exports.CREDIT_RECOVERY_CAP}
                AND c.id IN (
-                   SELECT DISTINCT customerId FROM rider_credit_log
-                   WHERE channelId = $1
+                   SELECT DISTINCT "customerId" FROM rider_credit_log
+                   WHERE "channelId" = $1
                )
                AND NOT EXISTS (
                    SELECT 1 FROM rider_credit_log log
-                   WHERE log.customerId = c.id
-                     AND log.channelId = $1
+                   WHERE log."customerId" = c.id
+                     AND log."channelId" = $1
                      AND log.reason = 'timeout_not_picked'
                      AND log."createdAt" >= $2
+               )
+               AND NOT EXISTS (
+                   SELECT 1 FROM rider_credit_log rec
+                   WHERE rec."customerId" = c.id
+                     AND rec."channelId" = $1
+                     AND rec.reason = 'recovery_7d_clean'
+                     AND rec."createdAt" >= $2
                )
              LIMIT ${RECOVERY_LIMIT}`, [ctx.channelId, since]);
         const list = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;

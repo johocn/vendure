@@ -14,8 +14,11 @@ export declare class RiderCreditService {
      * 并发安全：单条 UPDATE 原子读改写（GREATEST 夹紧），避免并发 adjust 互相覆盖丢分。
      * 列名为 customFields 物理列（riderCredit → customFieldsRidercredit）。 */
     adjust(ctx: RequestContext, customerId: number, delta: number, reason: string, orderId?: number): Promise<number>;
-    /** 骑手信用自动恢复：7 天没 timeout 扣分的骑手 credit<100 时 +5 分。
+    /** 骑手信用自动恢复：7 天没 timeout 扣分且 7 天内未恢复过的骑手 credit<100 时 +5 分。
      *  每轮 dispatch sweep 每 channel 扫一次，每轮最多恢复 RECOVERY_LIMIT 人防长事务。
-     *  并发安全：每个 customerId 单独 adjust 原子 UPDATE + 流水。 */
+     *  去重：同一骑手 7 天内最多恢复一次（否则 sweep 每分钟一轮会把信用分一路刷回 100）。
+     *  并发安全：每个 customerId 单独 adjust 原子 UPDATE + 流水。
+     *  注意：rider_credit_log 物理列是带引号的 camelCase（"customerId"/"channelId"），
+     *  原生 SQL 内必须加双引号，否则 PG 折叠成小写报 column "customerid" does not exist。 */
     sweepRecovery(ctx: RequestContext): Promise<number>;
 }

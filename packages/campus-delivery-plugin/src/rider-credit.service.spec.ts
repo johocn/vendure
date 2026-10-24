@@ -51,4 +51,67 @@ describe('RiderCreditService.adjust', () => {
         expect(warn).toHaveBeenCalledWith(expect.stringContaining('rider credit log save failed'), 'CampusCredit');
         warn.mockRestore();
     });
+
+    it('UPDATE 未匹配行（顾客不存在）→ 回退值仍夹在 0-100', async () => {
+        const conn = {
+            getRepository: vi.fn(() => ({ save: vi.fn().mockResolvedValue({}) })),
+            rawConnection: { query: vi.fn().mockResolvedValue([[], []]) },
+        } as any;
+        const svc = new RiderCreditService(conn);
+        await expect(svc.adjust({ channelId: 1 } as any, 9, 5, 'recovery_7d_clean')).resolves.toBe(100);
+        await expect(svc.adjust({ channelId: 1 } as any, 9, -200, 'timeout_not_picked')).resolves.toBe(0);
+    });
+});
+
+describe('RiderCreditService.sweepRecovery', () => {
+    const mk = (
+        candidates: any[],
+        opts: { failFor?: number[] } = {},
+    ) => {
+        const saved: any[] = [];
+        const logRepo = { save: vi.fn().mockImplementation(v => { saved.push(v); return Promise.resolve(v); }) };
+        const query = vi.fn().mockImplementation((sql: string, params: any[]) => {
+            if (String(sql).includes('SELECT DISTINCT c.id')) return Promise.resolve([candidates, []]);
+            if (opts.failFor?.includes(params?.[1])) return Promise.reject(new Error('db down'));
+            return Promise.resolve([[{ credit: 60 }], []]);
+        });
+        const conn = { getRepository: vi.fn(() => logRepo), rawConnection: { query } } as any;
+        return { svc: new RiderCreditService(conn), query, saved };
+    };
+
+    it('候选骑手逐个 +5 并落 recovery_7d_clean 流水', async () => {
+        const { svc, saved } = mk([{ id: 7 }, { id: 8 }]);
+        await expect(svc.sweepRecovery({ channelId: 3 } as any)).resolves.toBe(2);
+        expect(saved.filter(s => s.reason === 'recovery_7d_clean').map(s => s.customerId)).toEqual([7, 8]);
+        expect(saved[0]).toEqual(expect.objectContaining({ delta: 5, channelId: 3 }));
+    });
+
+    it('候选为空 → 不执行加分，返回 0', async () => {
+        const { svc, query } = mk([]);
+        await expect(svc.sweepRecovery({ channelId: 3 } as any)).resolves.toBe(0);
+        expect(query).toHaveBeenCalledTimes(1);
+    });
+
+    it('SQL 用带引号的 camelCase 列名 + 7 天恢复去重（防 PG 折叠报错与每轮重复加分）', async () => {
+        const { svc, query } = mk([]);
+        await svc.sweepRecovery({ channelId: 3 } as any);
+        const sql = String(query.mock.calls[0][0]);
+        expect(sql).toContain('SELECT DISTINCT "customerId" FROM rider_credit_log');
+        expect(sql).toContain('"channelId" = $1');
+        expect(sql).toContain('log."customerId" = c.id');
+        expect(sql).toContain("reason = 'recovery_7d_clean'");
+        // 时间窗参数 = 7 天前
+        const since = query.mock.calls[0][1][1] as Date;
+        expect(Date.now() - since.getTime()).toBeGreaterThan(6 * 86_400_000);
+        expect(Date.now() - since.getTime()).toBeLessThan(8 * 86_400_000);
+    });
+
+    it('单个骑手加分失败 → 跳过并告警，其余继续', async () => {
+        const warn = vi.spyOn(Logger, 'warn').mockImplementation(() => undefined as any);
+        const { svc, saved } = mk([{ id: 7 }, { id: 8 }], { failFor: [7] });
+        await expect(svc.sweepRecovery({ channelId: 3 } as any)).resolves.toBe(1);
+        expect(saved.map(s => s.customerId)).toEqual([8]);
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('credit recovery failed rider=7'), 'CampusCredit');
+        warn.mockRestore();
+    });
 });
