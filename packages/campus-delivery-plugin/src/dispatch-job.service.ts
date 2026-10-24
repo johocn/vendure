@@ -331,11 +331,26 @@ export class DispatchJobService implements OnApplicationShutdown {
         now: number,
     ) {
         const slaMs = (cfg.inProgressSlaMinutes ?? 45) * 60_000;
+        // P1 提前告警：兜底前 2/3 时间点（默认 15min）先推群，留足处置窗口
+        const alertMs = Math.max(60_000, Math.floor(slaMs / 3));
         for (const o of orders) {
             const cf = o.customFields as any;
             if (cf.deliveryStatus !== 'exception') continue;
             const at = cf.exceptionReportedAt ? new Date(cf.exceptionReportedAt).getTime() : NaN;
-            if (Number.isNaN(at) || now - at <= slaMs) continue;
+            if (Number.isNaN(at)) continue;
+            // P1 提前告警：异常已上报但还没到自动回厅时间（dedupe 5min 窗口）
+            if (now - at >= alertMs && now - at < slaMs) {
+                const mins = Math.round((now - at) / 60_000);
+                const dedupeKey = `exception_alert:${o.code}`;
+                void this.feishu?.pushEvent(
+                    'alert',
+                    '🚨 异常待处置',
+                    `订单 ${o.code} 异常上报 ${mins} 分钟未处置（${cf.exceptionType ?? '未知类型'}），${cfg.inProgressSlaMinutes ?? 45} 分钟后将自动回大厅。`,
+                    o.code,
+                    dedupeKey,
+                );
+            }
+            if (now - at <= slaMs) continue;
             try {
                 const enteredAt = new Date();
                 const moved = await this.hall.transitionFrom(ctx, Number(o.id), ACTIVE_HALL_STATUSES, {
@@ -390,17 +405,35 @@ export class DispatchJobService implements OnApplicationShutdown {
         const deliverMs = minutes(cfg.merchantAutoOpenMinutes, 15);
         const pushMs = minutes(cfg.externalPushTimeoutMinutes, 10);
         const fallbackMs = minutes(cfg.externalFallbackMinutes, 20);
+        // P1 告警阈值：兜底前 2min 先告警，给运营介入窗口
+        const merchantAlertMs = acceptMs > 0 ? Math.max(60_000, acceptMs - 2 * 60_000) : 0;
 
         for (const o of orders) {
             const cf = o.customFields as any;
             const route = String(cf.fulfillmentRoute ?? '');
             // 逐单隔离：单笔规则异常（DB/外部网关）只跳过该单，不阻断同轮其余订单兜底
             try {
+                const enteredAt = cf.hallEnteredAt ? new Date(cf.hallEnteredAt).getTime() : new Date(o.createdAt).getTime();
+
+                // P1 提前告警：商家即将超时但还没兜底（dedupe 5min 窗口防刷屏）
+                if (cf.hallStatus === 'pending_merchant' && (route === 'R1' || route === 'R2')
+                    && merchantAlertMs > 0 && acceptMs > 0
+                    && now - enteredAt >= merchantAlertMs && now - enteredAt < acceptMs) {
+                    const mins = Math.round((now - enteredAt) / 60_000);
+                    const dedupeKey = `accept_alert:${o.code}`;
+                    void this.feishu?.pushEvent(
+                        'alert',
+                        '⚠️ 商家即将超时',
+                        `订单 ${o.code} 入厅 ${mins} 分钟，商家 ${cfg.merchantAcceptMinutes ?? 5} 分钟内未接单将自动${route === 'R1' ? '转自营快递' : '回大厅'}。`,
+                        o.code,
+                        dedupeKey,
+                    );
+                }
 
                 // 1) 商户接单超时 → R1 转自营快递；R2 降级传信者到店取餐直送（外部快递无餐可取，不能推）
                 //    计时锚 hallEnteredAt：预约单 createdAt 可能早于放量数小时，必须从放量/入厅时刻起算
                 if (cf.hallStatus === 'pending_merchant' && (route === 'R1' || route === 'R2') && acceptMs > 0
-                    && now - new Date(cf.hallEnteredAt ?? o.createdAt).getTime() > acceptMs) {
+                    && now - enteredAt > acceptMs) {
                     if (route === 'R1') {
                         const moved = await this.hall.transitionFrom(ctx, Number(o.id), ['pending_merchant'], {
                             hallStatus: 'owned_dispatched',
