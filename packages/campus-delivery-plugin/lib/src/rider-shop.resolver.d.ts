@@ -42,7 +42,7 @@ export declare class RiderShopResolver {
     campusRiderHeartbeat(ctx: RequestContext): Promise<{
         online: boolean;
     }>;
-    /** T0 运力预检：C 端下单前提示「运力紧张」 */
+    /** T0 运力预检：C 端下单前提示「运力紧张」（公开只读，无需登录） */
     campusCapacityCheck(ctx: RequestContext): Promise<{
         paused: boolean;
         ridersOnline: number;

@@ -470,13 +470,14 @@ export class FeishuCommandService {
         return order.channels?.some(c => c.token === chat.channel) ? order : null;
     }
 
-    /** 模糊检索：今日订单按完整/尾号/楼栋匹配（最多 5 条），纯读、不建索引 */
+    /** 模糊检索：近 7 天订单按完整单号/尾号/楼栋匹配（最多 5 条），纯读、不建索引 */
     private async searchOrders(chat: FeishuChatConfig, query: string): Promise<SearchRow[]> {
         const needle = (query ?? '').trim();
         if (!needle) return [];
+        const since = new Date(Date.now() - 7 * 24 * 3600_000);
         const qb = this.connection.rawConnection.getRepository(Order).createQueryBuilder('order')
             .leftJoinAndSelect('order.channels', 'channel')
-            .where('order.createdAt >= :start', { start: new Date(startOfCampusDay(Date.now())) })
+            .where('order.createdAt >= :start', { start: since })
             .orderBy('order.createdAt', 'DESC')
             .take(200);
         if (chat.scope !== 'platform' && chat.channel) {

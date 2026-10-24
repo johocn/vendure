@@ -59,7 +59,7 @@ let RiderShopResolver = class RiderShopResolver {
     async campusRiderHeartbeat(ctx) {
         return this.capacity.heartbeat(ctx);
     }
-    /** T0 运力预检：C 端下单前提示「运力紧张」 */
+    /** T0 运力预检：C 端下单前提示「运力紧张」（公开只读，无需登录） */
     async campusCapacityCheck(ctx) {
         return this.capacity.capacityCheck(ctx);
     }
@@ -75,6 +75,7 @@ let RiderShopResolver = class RiderShopResolver {
 exports.RiderShopResolver = RiderShopResolver;
 __decorate([
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('realName')),
     __param(2, (0, graphql_1.Args)('studentNo')),
@@ -86,6 +87,7 @@ __decorate([
 ], RiderShopResolver.prototype, "applyRider", null);
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext]),
@@ -93,6 +95,7 @@ __decorate([
 ], RiderShopResolver.prototype, "myRiderProfile", null);
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext]),
@@ -100,6 +103,7 @@ __decorate([
 ], RiderShopResolver.prototype, "myRiderWallet", null);
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('skip', { nullable: true })),
     __param(2, (0, graphql_1.Args)('take', { nullable: true })),
@@ -109,6 +113,7 @@ __decorate([
 ], RiderShopResolver.prototype, "riderBalanceHistory", null);
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('skip', { nullable: true })),
     __param(2, (0, graphql_1.Args)('take', { nullable: true })),
@@ -118,6 +123,7 @@ __decorate([
 ], RiderShopResolver.prototype, "riderWithdrawRequests", null);
 __decorate([
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('amount')),
     __param(2, (0, graphql_1.Args)('channel')),
@@ -128,6 +134,7 @@ __decorate([
 ], RiderShopResolver.prototype, "riderWithdraw", null);
 __decorate([
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('online')),
     __metadata("design:type", Function),
@@ -136,6 +143,7 @@ __decorate([
 ], RiderShopResolver.prototype, "campusRiderOnline", null);
 __decorate([
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext]),
@@ -143,6 +151,7 @@ __decorate([
 ], RiderShopResolver.prototype, "campusRiderHeartbeat", null);
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Public),
     __param(0, (0, core_1.Ctx)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext]),
@@ -150,6 +159,7 @@ __decorate([
 ], RiderShopResolver.prototype, "campusCapacityCheck", null);
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Public),
     __param(0, (0, core_1.Ctx)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext]),
@@ -157,6 +167,7 @@ __decorate([
 ], RiderShopResolver.prototype, "campusZones", null);
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Public),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)({ name: 'zoneId', nullable: true })),
     __metadata("design:type", Function),

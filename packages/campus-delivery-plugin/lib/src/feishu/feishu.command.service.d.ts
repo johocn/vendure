@@ -60,7 +60,7 @@ export declare class FeishuCommandService {
     private status;
     statusText(code: string): Promise<string>;
     private findExactOrder;
-    /** 模糊检索：今日订单按完整/尾号/楼栋匹配（最多 5 条），纯读、不建索引 */
+    /** 模糊检索：近 7 天订单按完整单号/尾号/楼栋匹配（最多 5 条），纯读、不建索引 */
     private searchOrders;
     /** 允许用尾号/楼栋操作：唯一命中才放行，多命中发候选卡片 */
     private resolveOrderCode;

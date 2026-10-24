@@ -415,15 +415,16 @@ let FeishuCommandService = class FeishuCommandService {
             return order;
         return ((_a = order.channels) === null || _a === void 0 ? void 0 : _a.some(c => c.token === chat.channel)) ? order : null;
     }
-    /** 模糊检索：今日订单按完整/尾号/楼栋匹配（最多 5 条），纯读、不建索引 */
+    /** 模糊检索：近 7 天订单按完整单号/尾号/楼栋匹配（最多 5 条），纯读、不建索引 */
     async searchOrders(chat, query) {
         var _a, _b, _c, _d, _e, _f, _g;
         const needle = (query !== null && query !== void 0 ? query : '').trim();
         if (!needle)
             return [];
+        const since = new Date(Date.now() - 7 * 24 * 3600000);
         const qb = this.connection.rawConnection.getRepository(core_1.Order).createQueryBuilder('order')
             .leftJoinAndSelect('order.channels', 'channel')
-            .where('order.createdAt >= :start', { start: new Date((0, campus_time_1.startOfCampusDay)(Date.now())) })
+            .where('order.createdAt >= :start', { start: since })
             .orderBy('order.createdAt', 'DESC')
             .take(200);
         if (chat.scope !== 'platform' && chat.channel) {
