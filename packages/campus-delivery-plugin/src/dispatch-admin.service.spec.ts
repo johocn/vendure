@@ -47,6 +47,8 @@ function makeEnv(opts: HandleEnvOpts = {}) {
             andWhere: vi.fn().mockReturnThis(),
             getRawOne: vi.fn().mockResolvedValue({ sum: String(opts.refundedSum ?? 0) }),
         }),
+        // settleRefundOrMarkFailed 读取退款单关联 paymentId 作 transactionId
+        findOne: vi.fn().mockResolvedValue({ id: 55, paymentId: 9 }),
         // 结算失败置 Failed
         update: vi.fn().mockResolvedValue({}),
     };
@@ -133,6 +135,23 @@ describe('DispatchAdminService.board', () => {
         });
         const board = await svc.board({ channelId: 1 } as any);
         expect(board.alerts[0]).toEqual(expect.objectContaining({ orderId: '3', type: 'slot_full' }));
+    });
+
+    it('campusCause=address_change_cancel_failed → 常驻 exception 告警（旧运单仍送旧地址）', async () => {
+        const { svc } = makeEnv({
+            orders: [
+                {
+                    id: 4,
+                    code: 'A4',
+                    customFields: { hallStatus: 'third_party', campusCause: 'address_change_cancel_failed' },
+                },
+            ],
+        });
+        const board = await svc.board({ channelId: 1 } as any);
+        expect(board.alerts[0]).toEqual(
+            expect.objectContaining({ orderId: '4', type: 'exception', detail: expect.stringContaining('旧地址') }),
+        );
+        expect(board.activeOrders).toHaveLength(1);
     });
 
     it('终态单（取消/无人接退款/已送达）与历史脏数据不进调度墙', async () => {
@@ -249,7 +268,7 @@ describe('DispatchAdminService.handleException', () => {
         expect(orderSvc.refundOrder).toHaveBeenCalledWith(ctx, expect.objectContaining({
             paymentId: 9, amount: 300, shipping: 0, adjustment: 0,
         }));
-        expect(orderSvc.settleRefund).toHaveBeenCalledWith(ctx, { id: 55 });
+        expect(orderSvc.settleRefund).toHaveBeenCalledWith(ctx, { id: 55, transactionId: 9 });
         // 留痕条件写：仅 exception_final 单写处置记录
         expect(hallSvc.transitionFrom).toHaveBeenCalledWith(
             ctx, 7, ['exception_final'], expect.any(Object),

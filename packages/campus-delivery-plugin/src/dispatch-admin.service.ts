@@ -156,6 +156,15 @@ export class DispatchAdminService {
                 activeOrders.push(o);
                 continue;
             }
+            // 改址后原外部配送单未确认取消：旧运单仍会送到旧地址，必须常驻告警人工取消并按新址重推
+            if (cf.campusCause === 'address_change_cancel_failed') {
+                alerts.push({
+                    orderId: String(o.id),
+                    orderCode: o.code,
+                    type: 'exception',
+                    detail: '改址后原外部配送单未取消（仍会送至旧地址），请人工取消并按新址重推',
+                });
+            }
             if (cf.hallStatus === 'open') {
                 hallOrders.push(o);
                 if (cf.campusCause === 'slot_full') {

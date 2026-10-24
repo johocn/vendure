@@ -377,3 +377,58 @@ describe('WaimaiStoreService 配送矩阵配置', () => {
         expect(out.merchantAcceptMinutes).toBe(7);
     });
 });
+
+describe('WaimaiStoreService.updateStoreConfig 数值/坐标校验（第13轮）', () => {
+    const channel = { id: 2, token: 'canteen', code: '一食堂' };
+    const point = { route: 'R1', name: '东门岗亭', lat: 30.1, lng: 120.2 };
+
+    it('金额/时长超上限或低于下限拒绝，不落库', async () => {
+        const env = makeEnv({ channels: [channel] });
+        const cfgRepo = env.repoByEntity.CampusFulfillmentConfig;
+        await expect(env.svc.updateStoreConfig({} as any, 2, {
+            routesEnabled: ['R1'], handoverPoints: [point], minOrderAmount: 10_000_001,
+        } as any)).rejects.toThrow('超出允许上限');
+        await expect(env.svc.updateStoreConfig({} as any, 2, {
+            routesEnabled: ['R1'], handoverPoints: [point], deliveryMinutes: 241,
+        } as any)).rejects.toThrow('超出允许上限');
+        await expect(env.svc.updateStoreConfig({} as any, 2, {
+            routesEnabled: ['R1'], handoverPoints: [point], externalPushTimeoutMinutes: 0,
+        } as any)).rejects.toThrow('不能小于');
+        expect(cfgRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('金额按整数分归一（小数四舍五入）', async () => {
+        const env = makeEnv({ channels: [channel] });
+        const out = await env.svc.updateStoreConfig({} as any, 2, {
+            routesEnabled: ['R1'], handoverPoints: [point], minOrderAmount: 1500.6,
+        } as any);
+        expect(out.minOrderAmount).toBe(1501);
+    });
+
+    it('门店坐标越界/非有限数拒绝，传 null 可清空', async () => {
+        const env = makeEnv({ channels: [channel] });
+        await expect(env.svc.updateStoreConfig({} as any, 2, {
+            routesEnabled: ['R1'], handoverPoints: [point], storeLat: 91,
+        } as any)).rejects.toThrow('storeLat 不合法');
+        await expect(env.svc.updateStoreConfig({} as any, 2, {
+            routesEnabled: ['R1'], handoverPoints: [point], storeLng: Infinity,
+        } as any)).rejects.toThrow('storeLng 不合法');
+
+        env.repoByEntity.CampusFulfillmentConfig.findOne.mockResolvedValue({
+            channelId: 2, routesEnabled: ['R1'], handoverPoints: { R1: point }, storeLat: 30.1, storeLng: 120.2,
+        });
+        const out = await env.svc.updateStoreConfig({} as any, 2, {
+            routesEnabled: ['R1'], handoverPoints: [point], storeLat: null,
+        } as any);
+        expect(out.storeLat).toBeNull();
+        expect(out.storeLng).toBe(120.2);
+    });
+
+    it('routesEnabled 重复项去重后落库', async () => {
+        const env = makeEnv({ channels: [channel] });
+        const out = await env.svc.updateStoreConfig({} as any, 2, {
+            routesEnabled: ['R1', 'R1', 'R3'], handoverPoints: [point],
+        } as any);
+        expect(out.routesEnabled).toEqual(['R1', 'R3']);
+    });
+});

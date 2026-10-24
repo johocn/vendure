@@ -12,6 +12,7 @@ import { getCouponBalancePort } from '@vendure/coupon-plugin';
 import { CampusBuilding } from './campus-building.entity';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CampusNotifyService } from './campus-notify.service';
+import { ERRAND_TIP_SURCHARGE_DESC } from './errand.service';
 import { FeishuNotifyService } from './feishu/feishu-notify.service';
 import { HallService } from './hall.service';
 import { CREDIT_COMPLETE, RiderCreditService } from './rider-credit.service';
@@ -240,8 +241,10 @@ export class RiderTaskService {
         if (!photos?.length) throw new UserInputError('送达需至少一张照片');
         const order = await this.assertOwner(ctx, orderId, 'in_progress');
         const rider = await this.riderService.assertApprovedRider(ctx);
-        const earning = this.calcEarning(order, await this.getConfig(ctx, order));
-        const tip = (order.customFields as any).tip ?? 0;
+        // 小费以实际收取的 surcharge 为准：customFields.tip 可能因写入失败未真正计费，
+        // 按 cf.tip 计分成会虚高（平台多发钱）。
+        const tip = this.actualTip(order);
+        const earning = this.calcEarning(order, await this.getConfig(ctx, order), tip);
         const deliveredAt = new Date();
         // 单条原子 UPDATE 完成「认领 + 终态」：deliveryStatus 条件更新与 hallStatus/照片/分成/位置清空
         // 同语句落库（原两步写在两步之间宕机会留下 delivered 但 hallStatus 仍旧态的半完成单）。
@@ -361,10 +364,17 @@ export class RiderTaskService {
         return order;
     }
 
-    private calcEarning(order: Order, cfg: CampusFulfillmentConfig): number {
-        // 跑腿单：跑腿费在 orderLines 单价中（虚拟商品 0 元时全在 shipping）；统一取 shipping + 小费
+    /** 实收跑腿小费：以订单小费 surcharge 合计为准（0 元小费在 errand.service 只清不加） */
+    private actualTip(order: Order): number {
+        const list = ((order as any).surcharges ?? []) as Array<{ description?: string; listPrice?: number }>;
+        return list
+            .filter(s => s?.description === ERRAND_TIP_SURCHARGE_DESC)
+            .reduce((sum, s) => sum + Number(s?.listPrice ?? 0), 0);
+    }
+
+    private calcEarning(order: Order, cfg: CampusFulfillmentConfig, tip: number): number {
+        // 跑腿单：跑腿费在 orderLines 单价中（虚拟商品 0 元时全在 shipping）；统一取 shipping + 实收小费
         const shipping = order.shipping || 0;
-        const tip = (order.customFields as any).tip ?? 0;
         return Math.floor(((shipping + tip) * cfg.riderCommissionRate) / 100);
     }
 
@@ -383,7 +393,7 @@ export class RiderTaskService {
         const rider = await this.riderService.assertApprovedRider(ctx);
         const order = await this.connection
             .getRepository(ctx, Order)
-            .findOne({ where: { id: orderId as any }, relations: ['customer', 'channels'] });
+            .findOne({ where: { id: orderId as any }, relations: ['customer', 'channels', 'surcharges'] });
         const cf = order?.customFields as any;
         if (!order || cf?.deliveryStaffId !== String(rider.id)) throw new ForbiddenError();
         if (expect && cf?.deliveryStatus !== expect) {

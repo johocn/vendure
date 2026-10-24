@@ -326,6 +326,31 @@ describe('DispatchJobService.scan T4 自动退款', () => {
         expect(env.hallSvc.updateOrder).not.toHaveBeenCalledWith(expect.anything(), 4, expect.anything());
     });
 
+    it('补偿券发放失败 → 退款/取消照常成功并推飞书告警（不误记退款失败）', async () => {
+        const feishu = { pushEvent: vi.fn() };
+        const env = makeEnv({
+            openOrders: [{ id: 4, code: 'T4', customerId: 501, customFields: { hallStatus: 'open', hallEnteredAt: minAgo(31) } }],
+            cfg: { channelId: 1, autoAssignMinutes: 10, autoRefundMinutes: 30, compensationCouponTemplateId: '9' },
+            feishu,
+        });
+        injectT4Services(env.svc);
+        (env.svc as any).couponSvc.grantCoupon.mockRejectedValueOnce(new Error('template disabled'));
+        await env.svc.scan({ channelId: 1 } as any);
+        expect(env.hallSvc.updateOrder).toHaveBeenCalledWith(expect.anything(), 4, expect.objectContaining({
+            customFields: expect.objectContaining({ campusCause: 'no_rider', hallStatus: 'no_rider_final' }),
+        }));
+        expect(env.hallSvc.transitionFrom).not.toHaveBeenCalledWith(
+            expect.anything(), 4, ['open'], expect.objectContaining({ hallStatus: 'refund_failed' }),
+        );
+        expect(feishu.pushEvent).toHaveBeenCalledWith(
+            'alert',
+            '无人接单补偿券发放失败',
+            expect.stringContaining('T4'),
+            'T4',
+            'compensation_coupon_failed:T4',
+        );
+    });
+
     it('单笔退款异常不阻断本轮其余订单（逐单隔离）', async () => {
         const env = makeEnv({
             openOrders: [

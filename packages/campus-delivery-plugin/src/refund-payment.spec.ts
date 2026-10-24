@@ -10,6 +10,8 @@ function makeConn() {
     };
     const repo = {
         createQueryBuilder: vi.fn(() => qb),
+        // settleRefundOrMarkFailed 读取退款单关联 paymentId 作 transactionId
+        findOne: vi.fn().mockResolvedValue({ id: 55, paymentId: 9 }),
         update: vi.fn().mockResolvedValue({}),
     };
     return { conn: { rawConnection: { getRepository: vi.fn(() => repo) } } as any, qb, repo };
@@ -29,7 +31,7 @@ describe('settleRefundOrMarkFailed', () => {
         const { conn, repo } = makeConn();
         const settleRefund = vi.fn().mockResolvedValue({});
         await settleRefundOrMarkFailed(conn, { settleRefund } as any, {} as any, 55);
-        expect(settleRefund).toHaveBeenCalledWith({}, { id: 55 });
+        expect(settleRefund).toHaveBeenCalledWith({}, { id: 55, transactionId: 9 });
         expect(repo.update).not.toHaveBeenCalled();
     });
 

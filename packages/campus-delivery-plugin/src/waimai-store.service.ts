@@ -76,6 +76,19 @@ export function normalizePrintMode(v: unknown): PrintMode {
 
 const ROUTE_WHITELIST = ['R1', 'R2', 'R3', 'R4', 'R5'];
 
+/** 数值配置合法区间（金额=分，时长=分钟）：与 campus-config 另一写入口同口径，超界直接拒绝 */
+const INT_RANGES: Record<string, [number, number]> = {
+    deliveryMinutes: [1, 240],
+    minOrderAmount: [0, 10_000_000],
+    deliveryFee: [0, 10_000_000],
+    errandBaseFee: [0, 10_000_000],
+    thirdPartyBaseFee: [0, 10_000_000],
+    freeShippingThreshold: [0, 10_000_000],
+    merchantAcceptMinutes: [0, 240],
+    externalPushTimeoutMinutes: [1, 240],
+    externalFallbackMinutes: [1, 240],
+};
+
 /** R4 自提点标记：campus 配置管理的本渠道门店自提点（幂等 upsert 键，复用 cjk PickupLocation 体系） */
 const CAMPUS_R4_REMARK = 'campus-r4';
 
@@ -181,17 +194,25 @@ export class WaimaiStoreService {
             dynamicPricing?: string | null;
         },
     ): Promise<CampusStoreConfigWithChannel> {
-        const bad = (input.routesEnabled ?? []).filter(r => !ROUTE_WHITELIST.includes(r));
+        // 路线去重：重复项会让开点校验/前端渲染出现重复楼层
+        const routes = Array.from(new Set((input.routesEnabled ?? []).map(r => String(r))));
+        const bad = routes.filter(r => !ROUTE_WHITELIST.includes(r));
         if (bad.length) throw new UserInputError(`不支持的配送路线: ${bad.join(', ')}（仅接受 R1-R5）`);
         if (input.printMode != null && !PRINT_MODES.includes(input.printMode as PrintMode)) {
             throw new UserInputError(`不支持的打印模式: ${input.printMode}（仅接受 off/onPaid/onAccepted）`);
         }
-        const negative = (['deliveryMinutes', 'minOrderAmount', 'deliveryFee', 'errandBaseFee', 'thirdPartyBaseFee', 'freeShippingThreshold'] as const)
-            .filter(k => input[k] != null && (input[k] as number) < 0);
-        if (negative.length) throw new UserInputError(`不能为负数: ${negative.join(', ')}`);
-        const timeoutKeys = ['merchantAcceptMinutes', 'externalPushTimeoutMinutes', 'externalFallbackMinutes'] as const;
-        const badTimeout = timeoutKeys.filter(k => input[k] != null && (input[k] as number) < 0);
-        if (badTimeout.length) throw new UserInputError(`超时分钟数不能为负数: ${badTimeout.join(', ')}`);
+        // 数值字段：有限数 + 区间校验 + 整数归一（金额为分），超界一律拒绝，避免脏值污染运费/超时链路
+        const nums: Record<string, number> = {};
+        for (const [key, [min, max]] of Object.entries(INT_RANGES)) {
+            const raw = (input as any)[key];
+            if (raw == null) continue;
+            const n = Number(raw);
+            if (!Number.isFinite(n)) throw new UserInputError(`${key} 必须是数字`);
+            if (n < 0) throw new UserInputError(`${key} 不能为负数`);
+            if (n > max) throw new UserInputError(`${key} 超出允许上限（${max}）`);
+            if (n < min) throw new UserInputError(`${key} 不能小于 ${min}`);
+            nums[key] = Math.round(n);
+        }
 
         // 第一段承运：只有 R1（merchant|owned）、R3（campus|owned|external）可配
         const routeFirstLeg: Record<string, string> = {};
@@ -260,17 +281,17 @@ export class WaimaiStoreService {
         if (!cfg) cfg = new CampusFulfillmentConfig({ channelId: channelId as any });
         // 记录「本次新开通」的路线：只有新开通 R1/R2 才强制交接点，历史配置（已开通但缺点）不阻断其它字段编辑
         const prevEnabled = [...(cfg.routesEnabled ?? [])];
-        cfg.routesEnabled = input.routesEnabled;
-        cfg.deliveryMinutes = input.deliveryMinutes ?? null;
-        cfg.minOrderAmount = input.minOrderAmount ?? null;
-        cfg.deliveryFee = input.deliveryFee ?? null;
+        cfg.routesEnabled = routes;
+        cfg.deliveryMinutes = nums.deliveryMinutes ?? null;
+        cfg.minOrderAmount = nums.minOrderAmount ?? null;
+        cfg.deliveryFee = nums.deliveryFee ?? null;
         cfg.storeAddress = input.storeAddress ?? null;
         cfg.storePhone = input.storePhone ?? null;
         cfg.storeNotice = input.storeNotice ?? null;
-        cfg.errandBaseFee = input.errandBaseFee ?? null;
+        cfg.errandBaseFee = nums.errandBaseFee ?? null;
         // 第三方到校基价：未传即保留（旧表单不清空）；传 null 表示不接管顾客侧运费
-        if (input.thirdPartyBaseFee !== undefined) cfg.thirdPartyBaseFee = input.thirdPartyBaseFee ?? null;
-        cfg.freeShippingThreshold = input.freeShippingThreshold ?? null;
+        if (input.thirdPartyBaseFee !== undefined) cfg.thirdPartyBaseFee = nums.thirdPartyBaseFee ?? null;
+        cfg.freeShippingThreshold = nums.freeShippingThreshold ?? null;
         cfg.notifyTemplateAccepted = input.notifyTemplateAccepted ?? null;
         cfg.notifyTemplateRiderAssigned = input.notifyTemplateRiderAssigned ?? null;
         cfg.notifyTemplateCookingDone = input.notifyTemplateCookingDone ?? null;
@@ -300,11 +321,22 @@ export class WaimaiStoreService {
         if (input.routeFirstLeg !== undefined) cfg.routeFirstLeg = input.routeFirstLeg === null ? null : routeFirstLeg;
         if (input.handoverPoints !== undefined) cfg.handoverPoints = input.handoverPoints === null ? null : handoverPoints;
         if (input.providerShopNo !== undefined) cfg.providerShopNo = input.providerShopNo === null ? null : providerShopNo;
-        if (input.merchantAcceptMinutes != null) cfg.merchantAcceptMinutes = input.merchantAcceptMinutes;
-        if (input.externalPushTimeoutMinutes != null) cfg.externalPushTimeoutMinutes = input.externalPushTimeoutMinutes;
-        if (input.externalFallbackMinutes != null) cfg.externalFallbackMinutes = input.externalFallbackMinutes;
-        if (input.storeLat !== undefined) cfg.storeLat = input.storeLat;
-        if (input.storeLng !== undefined) cfg.storeLng = input.storeLng;
+        if (input.merchantAcceptMinutes != null) cfg.merchantAcceptMinutes = nums.merchantAcceptMinutes;
+        if (input.externalPushTimeoutMinutes != null) cfg.externalPushTimeoutMinutes = nums.externalPushTimeoutMinutes;
+        if (input.externalFallbackMinutes != null) cfg.externalFallbackMinutes = nums.externalFallbackMinutes;
+        // 门店坐标：R2/R3 距离计算与动态计价依赖，必须为有限数且在合法经纬度范围内
+        for (const [key, limit] of [['storeLat', 90], ['storeLng', 180]] as const) {
+            if (input[key] === undefined) continue;
+            if (input[key] == null) {
+                cfg[key] = null;
+                continue;
+            }
+            const n = Number(input[key]);
+            if (!Number.isFinite(n) || Math.abs(n) > limit) {
+                throw new UserInputError(`${key} 不合法（需 -${limit}~${limit} 的有限数）`);
+            }
+            cfg[key] = n;
+        }
         // 动态计价：未传即保留；传 null/'' 关闭。写入前解析校验，坏 JSON 直接拒绝
         if (input.dynamicPricing !== undefined) {
             if (input.dynamicPricing === null || input.dynamicPricing.trim() === '') {
@@ -322,7 +354,7 @@ export class WaimaiStoreService {
         }
 
         // 跨字段：新开通 R1/R2 必须有至少一个可用交接点（名称+经纬度），否则订单会降级为传信者到店取餐
-        const enabled = input.routesEnabled ?? [];
+        const enabled = routes;
         const hasPoint = (r: 'R1' | 'R2') => {
             const raw = cfg.handoverPoints?.[r];
             const list = Array.isArray(raw) ? raw : raw ? [raw] : [];

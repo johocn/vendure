@@ -25,7 +25,14 @@ function make(order: any, cfg: any = { riderCommissionRate: 100 }, feishu?: any)
     return { svc: new RiderTaskService(conn, riderSvc, { adjust: vi.fn().mockResolvedValue(102) } as any, { backToHall: vi.fn() } as any, { user: vi.fn() } as any, feishu), repo, saved, rawQuery, feishu };
 }
 
-const assigned = { id: 10, code: 'A1', shipping: 300, customFields: { deliveryStaffId: '9', deliveryStatus: 'assigned', tip: 100 } };
+const assigned = {
+    id: 10,
+    code: 'A1',
+    shipping: 300,
+    // 分成小费以实际收取的跑腿小费 surcharge 为准（第13轮）
+    surcharges: [{ description: '跑腿小费', listPrice: 100 }],
+    customFields: { deliveryStaffId: '9', deliveryStatus: 'assigned', tip: 100 },
+};
 
 describe('RiderTaskService', () => {
     it('assigned 可开始配送', async () => {
@@ -92,6 +99,18 @@ describe('RiderTaskService', () => {
         const { svc, saved } = make(inProg, { riderCommissionRate: 80 });
         await svc.deliver({ channelId: 1 } as any, 10 as any, ['p1']);
         expect(saved[0].amount).toBe(320);
+    });
+    it('小费未实际收取（无 surcharge）→ 分成只按运费计，tip 记 0（防分成虚高）', async () => {
+        // customFields.tip=100 但小费 surcharge 未落库（errand 写入失败）：不得按 cf.tip 多发分成
+        const inProg = {
+            ...assigned,
+            surcharges: [],
+            customFields: { ...assigned.customFields, deliveryStatus: 'in_progress' },
+        };
+        const { svc, saved } = make(inProg, { riderCommissionRate: 100 });
+        await svc.deliver({ channelId: 1 } as any, 10 as any, ['p1']);
+        expect(saved[0].amount).toBe(300);
+        expect(saved[0].tip).toBe(0);
     });
     it('无照片拒单', async () => {
         const inProg = { ...assigned, customFields: { ...assigned.customFields, deliveryStatus: 'in_progress' } };

@@ -220,3 +220,92 @@ describe('ThirdPartyDeliveryService.onDeliveryStatus 回调幂等', () => {
         expect(notify.user).not.toHaveBeenCalled();
     });
 });
+
+describe('ThirdPartyDeliveryService.cancel 回退条件写（第13轮）', () => {
+    const ctx = { channelId: 1 } as any;
+
+    function makeEnv(opts: { order: any; fresh?: any; moved?: boolean; cancelOk?: boolean }) {
+        const orderRepo = {
+            findOne: vi.fn()
+                .mockResolvedValueOnce(opts.order) // doCancel 初次读
+                .mockResolvedValueOnce(opts.fresh ?? opts.order), // 平台取消成功后重读
+        };
+        const rawQuery = vi.fn().mockResolvedValue([[{ id: 1 }], []]);
+        const conn = {
+            getRepository: vi.fn(() => orderRepo),
+            rawConnection: {
+                // ctxForChannel 建 Channel 上下文：缺省空渠道即可
+                getRepository: vi.fn(() => ({ findOne: vi.fn().mockResolvedValue(null) })),
+                query: rawQuery,
+                createQueryRunner: () => ({
+                    connect: vi.fn().mockResolvedValue(undefined),
+                    query: vi.fn().mockResolvedValue([[{ ok: true }], []]),
+                    release: vi.fn().mockResolvedValue(undefined),
+                }),
+            },
+        } as any;
+        const hall = {
+            transitionFrom: vi.fn().mockResolvedValue(opts.moved ?? true),
+            updateOrder: vi.fn(),
+        };
+        const gateway = { cancelDelivery: vi.fn().mockResolvedValue({ success: opts.cancelOk ?? true }) };
+        const svc = new ThirdPartyDeliveryService(
+            conn,
+            hall as any,
+            { user: vi.fn() } as any,
+            { get: vi.fn(() => gateway) } as any,
+        );
+        return { svc, hall, rawQuery };
+    }
+
+    const order = (route: string) => ({
+        id: 7,
+        code: 'TP7',
+        channels: [{ id: 1 }],
+        customFields: {
+            thirdPartyDeliveryOrderId: 'TP1',
+            thirdPartyState: 'accepted',
+            hallStatus: 'third_party',
+            fulfillmentRoute: route,
+        },
+    });
+
+    it('R3 取消成功 → 按 third_party 条件写回抢单大厅（CAS，不再读后无条件覆写）', async () => {
+        const { svc, hall } = makeEnv({ order: order('R3') });
+        await expect(svc.cancel(ctx, 7)).resolves.toMatchObject({ ok: true });
+        expect(hall.transitionFrom).toHaveBeenCalledWith(
+            expect.anything(),
+            7,
+            ['third_party'],
+            expect.objectContaining({
+                hallStatus: 'open',
+                thirdPartyState: 'cancelled',
+                deliveryPlan: 'campus_rider',
+                campusCause: 'third_party_cancelled',
+            }),
+        );
+        expect(hall.updateOrder).not.toHaveBeenCalled();
+    });
+
+    it('R2 取消成功 → 回待推送（运营换一家重推）', async () => {
+        const { svc, hall } = makeEnv({ order: order('R2') });
+        await svc.cancel(ctx, 7);
+        expect(hall.transitionFrom).toHaveBeenCalledWith(
+            expect.anything(),
+            7,
+            ['third_party'],
+            expect.objectContaining({ hallStatus: 'pending_dispatch', thirdPartyState: 'cancelled' }),
+        );
+    });
+
+    it('读后已被取消/回退（CAS 未命中）→ 只补第三方状态，绝不改 hallStatus', async () => {
+        const { svc, hall, rawQuery } = makeEnv({ order: order('R3'), moved: false });
+        await svc.cancel(ctx, 7);
+        expect(hall.transitionFrom).toHaveBeenCalledOnce();
+        expect(hall.updateOrder).not.toHaveBeenCalled();
+        expect(rawQuery).toHaveBeenCalledOnce();
+        const [sql, params] = rawQuery.mock.calls[0];
+        expect(sql).not.toContain('Hallstatus');
+        expect(params).toContain('cancelled');
+    });
+});

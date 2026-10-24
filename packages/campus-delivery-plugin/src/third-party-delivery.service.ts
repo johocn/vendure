@@ -282,12 +282,15 @@ export class ThirdPartyDeliveryService implements OnApplicationBootstrap {
         if (res.success) {
             // 平台取消成功后立刻回退本地状态，不等超时扫描：
             // R2 回待推送（运营换一家），R3 回抢单大厅（传信者兜底）。
-            // 重新读库：并发下订单可能已被取消（hallStatus=cancelled），此时不得把订单复活。
+            // 条件写（CAS）：并发下订单可能已被取消/已被其它路径回退，读后无条件写会把已退款单复活。
             const fresh = await this.orderRepo(oCtx).findOne({ where: { id: orderId as any } });
             const hs = String((fresh?.customFields as any)?.hallStatus ?? '');
             const route = String((fresh?.customFields as any)?.fulfillmentRoute ?? '');
-            const patch: Record<string, unknown> = { thirdPartyState: 'cancelled', campusCause: 'third_party_cancelled' };
             if (hs === 'third_party') {
+                const patch: Record<string, unknown> = {
+                    thirdPartyState: 'cancelled',
+                    campusCause: 'third_party_cancelled',
+                };
                 if (route === 'R2') {
                     patch.hallStatus = 'pending_dispatch';
                     patch.thirdPartyDispatchAt = new Date();
@@ -298,8 +301,22 @@ export class ThirdPartyDeliveryService implements OnApplicationBootstrap {
                     patch.handoverMode = '';
                     patch.thirdPartyProvider = '';
                 }
+                const moved = await this.hall.transitionFrom(oCtx, orderId, ['third_party'], patch);
+                if (!moved) {
+                    // 读后被取消/回退：只补第三方状态，绝不动 hallStatus
+                    await this.writeThirdPartyPatch(
+                        orderId,
+                        { thirdPartyState: 'cancelled', campusCause: 'third_party_cancelled' },
+                        String(cf.thirdPartyState ?? ''),
+                    );
+                }
+            } else {
+                await this.writeThirdPartyPatch(
+                    orderId,
+                    { thirdPartyState: 'cancelled', campusCause: 'third_party_cancelled' },
+                    String(cf.thirdPartyState ?? ''),
+                );
             }
-            await this.hall.updateOrder(oCtx, orderId, { customFields: patch } as any);
         }
         return { ok: res.success, reason: res.reason };
     }

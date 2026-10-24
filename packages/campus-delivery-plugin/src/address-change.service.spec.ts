@@ -1,0 +1,193 @@
+// 第13轮 P1/P2-1/P3：改址差额退款必须走 settleRefundOrMarkFailed、台账 refundId 锁内 CAS、改址失败回滚台账
+import { UserInputError } from '@vendure/core';
+import { describe, expect, it, vi } from 'vitest';
+import { AddressChangeService } from './address-change.service';
+
+interface EnvOpts {
+    order?: any;
+    zone?: any;
+    building?: any;
+    /** applyChange 先查改址史（effectiveOldFee）：默认无历史 */
+    history?: any;
+    updateAffected?: number;
+}
+
+function makeEnv(opts: EnvOpts = {}) {
+    const ledgerRepo = {
+        findOne: vi.fn().mockResolvedValue(null),
+        update: vi.fn().mockResolvedValue({ affected: opts.updateAffected ?? 1 }),
+        save: vi.fn(async (x: any) => ({ id: 99, ...x })),
+        delete: vi.fn().mockResolvedValue({ affected: 1 }),
+        createQueryBuilder: vi.fn(),
+    };
+    const order = opts.order ?? {
+        id: 10,
+        code: 'A10',
+        state: 'AddingItems',
+        shippingWithTax: 300,
+        customer: { id: 5 },
+        channels: [{ id: 2, code: 'canteen' }],
+        customFields: {},
+    };
+    const orderRepo = {
+        findOne: vi.fn().mockResolvedValue(order),
+        createQueryBuilder: () => ({
+            leftJoinAndSelect: vi.fn().mockReturnThis(),
+            where: vi.fn().mockReturnThis(),
+            getOne: vi.fn().mockResolvedValue(order),
+        }),
+    };
+    const zoneRepo = {
+        findOne: vi.fn().mockResolvedValue(opts.zone ?? { id: 3, name: 'B区', fee: 200, channelId: 1 }),
+    };
+    const buildingRepo = {
+        findOne: vi.fn().mockResolvedValue(
+            opts.building ?? { id: 7, name: '7栋', zoneId: 3, channelId: 1, lat: 30.1, lng: 120.2 },
+        ),
+    };
+    const cfgRepo = { findOne: vi.fn().mockResolvedValue(null) };
+    const paymentRepo = {
+        find: vi.fn().mockResolvedValue([{ id: 55, amount: 8800, state: 'Settled' }]),
+    };
+    const refundRepo = {
+        // refundedTotal 聚合
+        createQueryBuilder: () => ({
+            select: vi.fn().mockReturnThis(),
+            where: vi.fn().mockReturnThis(),
+            andWhere: vi.fn().mockReturnThis(),
+            getRawOne: vi.fn().mockResolvedValue({ sum: '0' }),
+        }),
+        // settleRefundOrMarkFailed 取 paymentId 作 transactionId
+        findOne: vi.fn().mockResolvedValue({ id: 77, paymentId: 7 }),
+        update: vi.fn().mockResolvedValue({}),
+    };
+    const conn = {
+        getRepository: vi.fn((_ctx: any, ent: any) => {
+            const name = (ent as any)?.name ?? String(ent);
+            if (name === 'CampusAddressChange') return ledgerRepo;
+            if (name === 'CampusZone') return zoneRepo;
+            if (name === 'CampusBuilding') return buildingRepo;
+            return orderRepo;
+        }),
+        rawConnection: {
+            getRepository: vi.fn((ent: any) => {
+                const name = (ent as any)?.name ?? String(ent);
+                if (name === 'Payment') return paymentRepo;
+                if (name === 'Refund') return refundRepo;
+                if (name === 'CampusFulfillmentConfig') return cfgRepo;
+                return ledgerRepo;
+            }),
+            query: vi.fn().mockResolvedValue([[{ id: 1 }], []]),
+            createQueryRunner: () => ({
+                connect: vi.fn().mockResolvedValue(undefined),
+                query: vi.fn().mockResolvedValue([[{ ok: true }], []]),
+                release: vi.fn().mockResolvedValue(undefined),
+            }),
+        },
+    } as any;
+    const orderService = {
+        refundOrder: vi.fn().mockResolvedValue({ id: 77 }),
+        settleRefund: vi.fn().mockResolvedValue({}),
+        updateCustomFields: vi.fn().mockResolvedValue(order),
+    };
+    const svc = new AddressChangeService(
+        conn,
+        orderService as any,
+        { findOneByUserId: vi.fn().mockResolvedValue({ id: 5 }) } as any,
+        { listOnlineRiders: vi.fn().mockResolvedValue([]) } as any,
+        { user: vi.fn() } as any,
+        { cancel: vi.fn().mockResolvedValue({ ok: true }) } as any,
+        {} as any,
+        { transitionFrom: vi.fn().mockResolvedValue(true), updateOrder: vi.fn() } as any,
+        { pushEvent: vi.fn() } as any,
+    );
+    return { svc, ledgerRepo, orderService, refundRepo, order, zoneRepo, buildingRepo, cfgRepo };
+}
+
+const pendingRow = {
+    id: 1,
+    channelId: 1,
+    orderId: 10,
+    orderCode: 'A10',
+    diff: -200,
+    status: 'pending',
+    refundId: null,
+};
+
+describe('AddressChangeService.settle 差额退款（第13轮 P1/P2-1）', () => {
+    it('结算走 settleRefundOrMarkFailed：传 paymentId 作 transactionId，台账 refundId 锁内 CAS 落库', async () => {
+        const env = makeEnv();
+        const settled = { ...pendingRow, refundId: 77, status: 'settled' };
+        // 调用次序：初始读 → 锁内复查 → 返回最新行
+        env.ledgerRepo.findOne
+            .mockResolvedValueOnce(pendingRow)
+            .mockResolvedValueOnce(pendingRow)
+            .mockResolvedValueOnce(settled);
+
+        const out = await env.svc.settle({ channelId: 1, activeUserId: 3 } as any, 1 as any, 'refund', '已退');
+
+        expect(env.orderService.settleRefund).toHaveBeenCalledWith(expect.anything(), { id: 77, transactionId: 7 });
+        expect(env.ledgerRepo.update).toHaveBeenCalledWith(
+            expect.objectContaining({ id: 1, refundId: expect.anything() }),
+            expect.objectContaining({
+                refundId: 77,
+                status: 'settled',
+                settleAction: 'refund',
+                settleNote: '已退',
+                settledBy: 3,
+            }),
+        );
+        // 禁止再用锁外旧 row 覆盖（原实现 save(row)）
+        expect(env.ledgerRepo.save).not.toHaveBeenCalled();
+        expect(out).toEqual(settled);
+    });
+
+    it('结算失败 → 退款单置 Failed（不占已退额度），台账不写 refundId 且不外抛成功', async () => {
+        const env = makeEnv();
+        env.ledgerRepo.findOne.mockResolvedValueOnce(pendingRow).mockResolvedValueOnce(pendingRow);
+        env.orderService.settleRefund.mockRejectedValueOnce(new Error('gateway down'));
+
+        await expect(env.svc.settle({ channelId: 1 } as any, 1 as any, 'refund')).rejects.toThrow('gateway down');
+        expect(env.refundRepo.update).toHaveBeenCalledWith(77, { state: 'Failed' });
+        expect(env.ledgerRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('CAS 未命中（并发已退款）→ 报重复操作，不覆盖台账', async () => {
+        const env = makeEnv({ updateAffected: 0 });
+        env.ledgerRepo.findOne.mockResolvedValueOnce(pendingRow).mockResolvedValueOnce(pendingRow);
+
+        await expect(env.svc.settle({ channelId: 1 } as any, 1 as any, 'refund')).rejects.toThrow(
+            '该差额已退款，请勿重复操作',
+        );
+    });
+
+    it('结清备注超 200 字 → 拒绝（settleNote 列 varchar(255)）', async () => {
+        const env = makeEnv();
+        env.ledgerRepo.findOne.mockResolvedValueOnce(pendingRow);
+        await expect(
+            env.svc.settle({ channelId: 1 } as any, 1 as any, 'collect', 'x'.repeat(201)),
+        ).rejects.toThrow(UserInputError);
+        expect(env.ledgerRepo.save).not.toHaveBeenCalled();
+        expect(env.orderService.refundOrder).not.toHaveBeenCalled();
+    });
+});
+
+describe('AddressChangeService.applyChange 台账回滚（第13轮 P3）', () => {
+    it('订单地址更新失败 → 删除台账行，避免「已改址待补差额」幽灵记录', async () => {
+        const env = makeEnv();
+        env.ledgerRepo.findOne.mockResolvedValue(null); // 无改址史
+        env.orderService.updateCustomFields.mockRejectedValueOnce(new Error('order update failed'));
+
+        await expect(
+            env.svc.changeByCustomer({ channelId: 1, activeUserId: 5 } as any, {
+                orderId: 10,
+                zoneId: 3,
+                buildingId: 7,
+            } as any),
+        ).rejects.toThrow('order update failed');
+
+        expect(env.ledgerRepo.delete).toHaveBeenCalledWith(99);
+        // 改址失败不得通知用户/触发外部快递取消
+        expect(env.orderService.updateCustomFields).toHaveBeenCalledTimes(1);
+    });
+});

@@ -1057,7 +1057,22 @@ export class DispatchJobService implements OnApplicationShutdown {
                 await mark();
                 const templateId = cfg.compensationCouponTemplateId;
                 if (templateId && order.customerId && coupon) {
-                    await coupon.grantCoupon(ctx, templateId, [order.customerId as any]);
+                    try {
+                        await coupon.grantCoupon(ctx, templateId, [order.customerId as any]);
+                    } catch (e: any) {
+                        // 退款/取消已成功，发券失败不能算「退款失败」：订单已是终态，券静默丢失必须告警人工补发
+                        Logger.error(
+                            `T4 compensation coupon failed for order ${order.code}: ${e?.message ?? e}`,
+                            'CampusDispatch',
+                        );
+                        void this.feishu?.pushEvent(
+                            'alert',
+                            '无人接单补偿券发放失败',
+                            `订单 ${order.code} 已自动退款，但补偿券（模板 ${templateId}）发放失败，请人工补发。原因：${e?.message ?? e}`,
+                            order.code,
+                            `compensation_coupon_failed:${order.code}`,
+                        );
+                    }
                 }
                 Logger.warn(
                     `Order ${order.code} auto-refunded (no rider within ${cfg.autoRefundMinutes ?? 30}min)`,
