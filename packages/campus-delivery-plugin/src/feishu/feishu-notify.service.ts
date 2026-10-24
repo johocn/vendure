@@ -69,7 +69,9 @@ export class FeishuNotifyService {
         // P2.1 同单告警合并：有 orderCode 时先尝试 PATCH 已有订单卡片追加告警行，找不到再降级广播文本
         if (orderCode) {
             const alertText = `${title} · ${content}`;
-            if (await this.cards.appendAlert(orderCode, alertText)) {
+            // Bug 2 修复：把 dedupeKey 透传给 appendAlert，用于精确匹配（同告警类型但内容不同如 13→14min 会追加新行）
+            const alertDedupeKey = key ?? dedupeKey;
+            if (await this.cards.appendAlert(orderCode, alertText, alertDedupeKey)) {
                 // 已合并到卡片，不再额外发文本
                 return;
             }

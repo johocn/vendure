@@ -240,6 +240,8 @@ export interface OrderStatusInput {
     exceptionMinutes?: number | null;
     createdAt: number;
     at: number;
+    /** P2.1 同单告警行：由 FeishuCardService 从 codeToAlerts Map 读取注入，卡片重建时保留 */
+    alerts?: string[];
 }
 
 const HALL_LABEL: Record<string, string> = {
@@ -347,6 +349,14 @@ export function buildOrderCard(o: OrderStatusInput): Record<string, unknown> {
     const elements: any[] = [
         { tag: 'div', text: { tag: 'lark_md', content: mainDiv } },
     ];
+
+    // P2.1 同单告警合并：由 FeishuCardService 传入，每次 buildCard 重建时都会带上
+    // 这样卡片被按钮 handler 刷新（refresh/updateCard）时不会丢失之前 appendAlert 追加的告警行
+    if (o.alerts?.length) {
+        for (const alert of o.alerts) {
+            elements.push({ tag: 'div', text: { tag: 'lark_md', content: `🚨 **${alert}**` } });
+        }
+    }
 
     // 异常单独一行（红色 header 已经显眼，这里只给处置线索）
     if (exception) {

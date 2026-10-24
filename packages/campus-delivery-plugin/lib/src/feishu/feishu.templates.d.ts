@@ -102,6 +102,8 @@ export interface OrderStatusInput {
     exceptionMinutes?: number | null;
     createdAt: number;
     at: number;
+    /** P2.1 同单告警行：由 FeishuCardService 从 codeToAlerts Map 读取注入，卡片重建时保留 */
+    alerts?: string[];
 }
 export declare function orderHallLabel(status?: string | null): string;
 export declare function orderDeliveryLabel(status?: string | null): string | null;

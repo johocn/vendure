@@ -226,7 +226,7 @@ function cardNote(content) {
     return { tag: 'note', elements: [{ tag: 'plain_text', content }] };
 }
 function buildOrderCard(o) {
-    var _a, _b;
+    var _a, _b, _c;
     const short = shortCode(o.code);
     const hall = orderHallLabel(o.hallStatus);
     const delivery = orderDeliveryLabel(o.deliveryStatus);
@@ -263,6 +263,13 @@ function buildOrderCard(o) {
     const elements = [
         { tag: 'div', text: { tag: 'lark_md', content: mainDiv } },
     ];
+    // P2.1 同单告警合并：由 FeishuCardService 传入，每次 buildCard 重建时都会带上
+    // 这样卡片被按钮 handler 刷新（refresh/updateCard）时不会丢失之前 appendAlert 追加的告警行
+    if ((_c = o.alerts) === null || _c === void 0 ? void 0 : _c.length) {
+        for (const alert of o.alerts) {
+            elements.push({ tag: 'div', text: { tag: 'lark_md', content: `🚨 **${alert}**` } });
+        }
+    }
     // 异常单独一行（红色 header 已经显眼，这里只给处置线索）
     if (exception) {
         const reported = o.exceptionMinutes != null ? `（已上报 ${o.exceptionMinutes} 分钟）` : '';
