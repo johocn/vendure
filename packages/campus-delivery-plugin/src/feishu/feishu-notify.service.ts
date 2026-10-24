@@ -7,7 +7,7 @@ import { FeishuClient } from './feishu.client';
 import { formatPush } from './feishu.templates';
 
 const loggerCtx = 'Feishu';
-const DEDUPE_MS = 5 * 60_000;
+const DEDUPE_MS = 2 * 60_000;
 
 /**
  * 管理侧外发：订阅 notification-plugin 的 AdminNotifyEvent，把新订单/售后推到飞书群；

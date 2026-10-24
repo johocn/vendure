@@ -16,7 +16,7 @@ const feishu_card_service_1 = require("./feishu-card.service");
 const feishu_client_1 = require("./feishu.client");
 const feishu_templates_1 = require("./feishu.templates");
 const loggerCtx = 'Feishu';
-const DEDUPE_MS = 5 * 60000;
+const DEDUPE_MS = 2 * 60000;
 /**
  * 管理侧外发：订阅 notification-plugin 的 AdminNotifyEvent，把新订单/售后推到飞书群；
  * 新订单优先发订单卡片（尾号 + 按钮 + 话题归集），卡片失败再降级为文本；

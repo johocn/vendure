@@ -156,8 +156,8 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
             core_2.Logger.warn(`channel ${ctx.channelId} dispatch backlog: >=${SCAN_LIMIT} in-flight orders, scan truncated (oldest-first)`, 'CampusDispatch');
         }
         const now = Date.now();
-        // P1 骑手超时提前告警阈值：兜底前 3min 先告警
-        const notPickedAlertMs = Math.max(60000, (NOT_PICKED_TIMEOUT_MIN - 3) * 60000);
+        // P1 骑手超时提前告警阈值：兜底前 1.5min 先告警（原值 3min，缩短一倍）
+        const notPickedAlertMs = Math.max(60000, Math.round((NOT_PICKED_TIMEOUT_MIN - 1.5) * 60000));
         // 1) assigned 超 15min 未取货 → 回大厅 + 扣分（逐单隔离：单笔异常不阻断本轮）
         for (const o of orders) {
             const cf = o.customFields;
@@ -351,8 +351,8 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
     async sweepExceptionTimeout(ctx, cfg, orders, now) {
         var _a, _b, _c, _d, _e, _f, _g, _h;
         const slaMs = ((_a = cfg.inProgressSlaMinutes) !== null && _a !== void 0 ? _a : 45) * 60000;
-        // P1 提前告警：兜底前 2/3 时间点（默认 15min）先推群，留足处置窗口
-        const alertMs = Math.max(60000, Math.floor(slaMs / 3));
+        // P1 提前告警：兜底前 1/6 时间点（原值 1/3，缩短一倍；默认 7.5min 先推群）
+        const alertMs = Math.max(30000, Math.floor(slaMs / 6));
         for (const o of orders) {
             const cf = o.customFields;
             if (cf.deliveryStatus !== 'exception')
@@ -413,8 +413,8 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
         const deliverMs = minutes(cfg.merchantAutoOpenMinutes, 15);
         const pushMs = minutes(cfg.externalPushTimeoutMinutes, 10);
         const fallbackMs = minutes(cfg.externalFallbackMinutes, 20);
-        // P1 告警阈值：兜底前 2min 先告警，给运营介入窗口
-        const merchantAlertMs = acceptMs > 0 ? Math.max(60000, acceptMs - 2 * 60000) : 0;
+        // P1 告警阈值：兜底前 1min 先告警（原值 2min，缩短一倍）
+        const merchantAlertMs = acceptMs > 0 ? Math.max(30000, acceptMs - 60000) : 0;
         for (const o of orders) {
             const cf = o.customFields;
             const route = String((_a = cf.fulfillmentRoute) !== null && _a !== void 0 ? _a : '');
@@ -535,8 +535,8 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                     : 0;
                 const tpStale = cf.thirdPartyDispatchAt
                     && ((!inDelivery && tpElapsed > fallbackMs) || tpElapsed > fallbackMs * 3);
-                // P1 提前告警：外部快递在途超 fallbackMs - 5min 仍无有效状态 → 推群（给运营时间介入/换平台）
-                const tpAlertMs = cf.thirdPartyDispatchAt ? Math.max(60000, fallbackMs - 5 * 60000) : 0;
+                // P1 提前告警：外部快递在途超 fallbackMs-2.5min 仍无有效状态 → 推群（原值 5min，缩短一倍）
+                const tpAlertMs = cf.thirdPartyDispatchAt ? Math.max(30000, fallbackMs - Math.round(2.5 * 60000)) : 0;
                 if (cf.hallStatus === 'third_party' && tpAlertMs > 0 && tpElapsed >= tpAlertMs && tpElapsed < fallbackMs) {
                     const mins = Math.round(tpElapsed / 60000);
                     const dedupeKey = `third_party_alert:${o.code}`;
