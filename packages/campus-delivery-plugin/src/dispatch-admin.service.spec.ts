@@ -152,6 +152,8 @@ describe('DispatchAdminService.board', () => {
         expect(board.handledOrders).toEqual([
             expect.objectContaining({ orderId: '9', orderCode: 'A9', action: 'refund_diff', compensation: 300, handledBy: '3' }),
         ]);
+        // 处置时间必须输出 ISO 字符串，否则前端 hhmm 会渲染 NaN:NaN
+        expect(board.handledOrders[0].handledAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     });
 });
 

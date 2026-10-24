@@ -147,6 +147,8 @@ const exceptionOrder = (id, code, extra = {}) => ({
         (0, vitest_1.expect)(board.handledOrders).toEqual([
             vitest_1.expect.objectContaining({ orderId: '9', orderCode: 'A9', action: 'refund_diff', compensation: 300, handledBy: '3' }),
         ]);
+        // 处置时间必须输出 ISO 字符串，否则前端 hhmm 会渲染 NaN:NaN
+        (0, vitest_1.expect)(board.handledOrders[0].handledAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     });
 });
 (0, vitest_1.describe)('DispatchAdminService.assign 资质校验', () => {

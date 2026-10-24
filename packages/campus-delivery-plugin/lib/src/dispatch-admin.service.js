@@ -170,7 +170,7 @@ let DispatchAdminService = class DispatchAdminService {
         })
             .slice(0, 10)
             .map(o => {
-            var _a, _b, _c, _d, _e, _f, _g;
+            var _a, _b, _c, _d, _e, _f;
             const cf = o.customFields;
             return {
                 orderId: String(o.id),
@@ -180,8 +180,9 @@ let DispatchAdminService = class DispatchAdminService {
                 compensation: (_c = cf.exceptionCompensation) !== null && _c !== void 0 ? _c : null,
                 couponTemplateId: (_d = cf.exceptionCouponTemplateId) !== null && _d !== void 0 ? _d : null,
                 note: (_e = cf.exceptionHandledNote) !== null && _e !== void 0 ? _e : null,
-                handledAt: (_f = cf.exceptionHandledAt) !== null && _f !== void 0 ? _f : null,
-                handledBy: (_g = cf.exceptionHandledBy) !== null && _g !== void 0 ? _g : '',
+                // 显式 ISO：datetime 自定义字段按 String 标量输出时会退化成毫秒数，前端格式化得 NaN:NaN
+                handledAt: cf.exceptionHandledAt ? new Date(cf.exceptionHandledAt).toISOString() : null,
+                handledBy: (_f = cf.exceptionHandledBy) !== null && _f !== void 0 ? _f : '',
             };
         });
         return { paused: (_l = cfg === null || cfg === void 0 ? void 0 : cfg.paused) !== null && _l !== void 0 ? _l : false, alerts, hallOrders, activeOrders, ridersOnline, handledOrders };

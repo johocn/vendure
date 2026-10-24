@@ -206,7 +206,8 @@ export class DispatchAdminService {
                     compensation: cf.exceptionCompensation ?? null,
                     couponTemplateId: cf.exceptionCouponTemplateId ?? null,
                     note: cf.exceptionHandledNote ?? null,
-                    handledAt: cf.exceptionHandledAt ?? null,
+                    // 显式 ISO：datetime 自定义字段按 String 标量输出时会退化成毫秒数，前端格式化得 NaN:NaN
+                    handledAt: cf.exceptionHandledAt ? new Date(cf.exceptionHandledAt).toISOString() : null,
                     handledBy: cf.exceptionHandledBy ?? '',
                 };
             });
