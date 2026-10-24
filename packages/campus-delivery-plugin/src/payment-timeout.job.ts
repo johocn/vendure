@@ -5,15 +5,17 @@ import {
     JobQueue,
     JobQueueService,
     Logger,
+    Order,
     OrderService,
     RequestContext,
     StockMovementService,
     TransactionalConnection,
 } from '@vendure/core';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 
 import { CampusConfigService } from './campus-config.service';
 import { CampusNotifyService } from './campus-notify.service';
+import { FeishuNotifyService } from './feishu/feishu-notify.service';
 import { PaymentTimeoutStatus, PaymentTimeoutTask, PaymentTimeoutType } from './payment-timeout.entity';
 
 export interface PaymentTimeoutJobData { taskId: number; }
@@ -28,6 +30,10 @@ const TASK_BUSY = 'PAYMENT_TIMEOUT_TASK_BUSY';
 const COMPENSATION_INTERVAL_MS = 5 * 60_000;
 /** 启动后首跑延迟：等 JobQueue 完成初始化 */
 const COMPENSATION_BOOT_DELAY_MS = 30_000;
+/** FAILED 任务告警重复窗口：同一任务 24h 内只推一次（避免每 5min 补偿轮次刷屏） */
+const FAILED_ALERT_REPEAT_MS = 24 * 3600_000;
+/** 单轮最多扫描的 FAILED 任务数（防长事务） */
+const FAILED_SCAN_LIMIT = 100;
 
 /**
  * 到点复查是竞态防线：任务执行时订单已离开 ArrangingPayment（已支付/已取消）→ 任务作废。
@@ -46,6 +52,8 @@ export class PaymentTimeoutJob implements OnApplicationShutdown {
     private compensationTimer: ReturnType<typeof setInterval> | null = null;
     private compensationBootTimer: ReturnType<typeof setTimeout> | null = null;
     private compensationRunning = false;
+    /** FAILED 任务告警去重：taskId → 上次告警时间（24h 内不重复推） */
+    private alertedFailed = new Map<number, number>();
 
     constructor(
         private jobQueueService: JobQueueService,
@@ -55,6 +63,7 @@ export class PaymentTimeoutJob implements OnApplicationShutdown {
         private stockMovementService: StockMovementService,
         private notify: CampusNotifyService,
         private campusConfig: CampusConfigService,
+        private feishu: FeishuNotifyService,
     ) {
         this.taskRepo = this.connection.rawConnection.getRepository(PaymentTimeoutTask);
     }
@@ -255,7 +264,56 @@ export class PaymentTimeoutJob implements OnApplicationShutdown {
         if (overdue.length) {
             Logger.info(`compensation re-enqueued ${overdue.length} overdue task(s)`, loggerCtx);
         }
+        // FAILED 任务（重试耗尽、订单仍卡在 ArrangingPayment）推飞书，运营不再靠翻 PM2 日志发现卡单
+        await this.alertFailedTasks().catch(e =>
+            Logger.warn(`failed-task alert sweep error: ${String(e?.message ?? e)}`, loggerCtx),
+        );
         return overdue.length;
+    }
+
+    /**
+     * FAILED 任务告警：补偿轮次里扫 FAILED 任务，按 taskId 24h 内只推一次飞书。
+     * 此前仅 Logger.warn 到 stdout，生产曾有订单卡在 ArrangingPayment 11 天才被发现。
+     * 未启用飞书时 pushEvent 静默降级，不影响主流程。
+     */
+    private async alertFailedTasks(): Promise<void> {
+        const now = Date.now();
+        // GC：超过去重窗口的记录清除，保证 Map 有界
+        const expired: number[] = [];
+        for (const [id, at] of this.alertedFailed) if (now - at > FAILED_ALERT_REPEAT_MS) expired.push(id);
+        for (const id of expired) this.alertedFailed.delete(id);
+
+        const failed = await this.taskRepo.find({
+            where: { status: PaymentTimeoutStatus.FAILED } as any,
+            order: { updatedAt: 'DESC' } as any,
+            take: FAILED_SCAN_LIMIT,
+        });
+        if (!failed.length) return;
+
+        const orderIds = [...new Set(failed.map(t => Number(t.orderId)))];
+        const orders = orderIds.length
+            ? await this.connection.rawConnection.getRepository(Order).find({ where: { id: In(orderIds) } as any })
+            : [];
+        const codeById = new Map(orders.map((o: any) => [Number(o.id), o.code]));
+
+        for (const t of failed) {
+            const tid = Number(t.id);
+            if (this.alertedFailed.has(tid)) continue;
+            this.alertedFailed.set(tid, now);
+            const code = codeById.get(Number(t.orderId)) ?? `#${t.orderId}`;
+            const typeLabel = t.type === PaymentTimeoutType.CANCEL ? '超时取消' : '待付款提醒';
+            try {
+                await this.feishu.pushEvent(
+                    'payment_timeout_failed',
+                    '待付款任务失败',
+                    `订单 ${code} ${typeLabel}重试 ${t.retryCount} 次仍失败：${t.lastError ?? '未知错误'}（订单可能卡在待付款）`,
+                    String(code),
+                    `paytimeout_failed:${tid}`,
+                );
+            } catch (e: any) {
+                Logger.warn(`failed-task alert push error task=${tid}: ${String(e?.message ?? e)}`, loggerCtx);
+            }
+        }
     }
 
     private async h5Base(ctx: RequestContext): Promise<string | undefined> {

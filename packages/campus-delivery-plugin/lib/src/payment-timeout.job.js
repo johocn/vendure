@@ -12,8 +12,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PaymentTimeoutJob = exports.PAYMENT_CANCEL_MS = exports.PAYMENT_REMIND_MS = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
+const typeorm_1 = require("typeorm");
 const campus_config_service_1 = require("./campus-config.service");
 const campus_notify_service_1 = require("./campus-notify.service");
+const feishu_notify_service_1 = require("./feishu/feishu-notify.service");
 const payment_timeout_entity_1 = require("./payment-timeout.entity");
 /** 待付款提醒 / 超时取消（时长常量，不做配置，spec §4.3） */
 exports.PAYMENT_REMIND_MS = 10 * 60 * 1000;
@@ -25,6 +27,10 @@ const TASK_BUSY = 'PAYMENT_TIMEOUT_TASK_BUSY';
 const COMPENSATION_INTERVAL_MS = 5 * 60000;
 /** 启动后首跑延迟：等 JobQueue 完成初始化 */
 const COMPENSATION_BOOT_DELAY_MS = 30000;
+/** FAILED 任务告警重复窗口：同一任务 24h 内只推一次（避免每 5min 补偿轮次刷屏） */
+const FAILED_ALERT_REPEAT_MS = 24 * 3600000;
+/** 单轮最多扫描的 FAILED 任务数（防长事务） */
+const FAILED_SCAN_LIMIT = 100;
 /**
  * 到点复查是竞态防线：任务执行时订单已离开 ArrangingPayment（已支付/已取消）→ 任务作废。
  * 取消路径按 order-timeout-plugin 先例：先幂等释放库存分配（createOutstandingReleasesForOrderLines），
@@ -36,7 +42,7 @@ const COMPENSATION_BOOT_DELAY_MS = 30000;
  * 飞书汇总）同样用自管定时器，部署形态一致。
  */
 let PaymentTimeoutJob = class PaymentTimeoutJob {
-    constructor(jobQueueService, connection, orderService, channelService, stockMovementService, notify, campusConfig) {
+    constructor(jobQueueService, connection, orderService, channelService, stockMovementService, notify, campusConfig, feishu) {
         this.jobQueueService = jobQueueService;
         this.connection = connection;
         this.orderService = orderService;
@@ -44,9 +50,12 @@ let PaymentTimeoutJob = class PaymentTimeoutJob {
         this.stockMovementService = stockMovementService;
         this.notify = notify;
         this.campusConfig = campusConfig;
+        this.feishu = feishu;
         this.compensationTimer = null;
         this.compensationBootTimer = null;
         this.compensationRunning = false;
+        /** FAILED 任务告警去重：taskId → 上次告警时间（24h 内不重复推） */
+        this.alertedFailed = new Map();
         this.taskRepo = this.connection.rawConnection.getRepository(payment_timeout_entity_1.PaymentTimeoutTask);
     }
     async init() {
@@ -263,7 +272,51 @@ let PaymentTimeoutJob = class PaymentTimeoutJob {
         if (overdue.length) {
             core_1.Logger.info(`compensation re-enqueued ${overdue.length} overdue task(s)`, loggerCtx);
         }
+        // FAILED 任务（重试耗尽、订单仍卡在 ArrangingPayment）推飞书，运营不再靠翻 PM2 日志发现卡单
+        await this.alertFailedTasks().catch(e => { var _a; return core_1.Logger.warn(`failed-task alert sweep error: ${String((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e)}`, loggerCtx); });
         return overdue.length;
+    }
+    /**
+     * FAILED 任务告警：补偿轮次里扫 FAILED 任务，按 taskId 24h 内只推一次飞书。
+     * 此前仅 Logger.warn 到 stdout，生产曾有订单卡在 ArrangingPayment 11 天才被发现。
+     * 未启用飞书时 pushEvent 静默降级，不影响主流程。
+     */
+    async alertFailedTasks() {
+        var _a, _b, _c;
+        const now = Date.now();
+        // GC：超过去重窗口的记录清除，保证 Map 有界
+        const expired = [];
+        for (const [id, at] of this.alertedFailed)
+            if (now - at > FAILED_ALERT_REPEAT_MS)
+                expired.push(id);
+        for (const id of expired)
+            this.alertedFailed.delete(id);
+        const failed = await this.taskRepo.find({
+            where: { status: payment_timeout_entity_1.PaymentTimeoutStatus.FAILED },
+            order: { updatedAt: 'DESC' },
+            take: FAILED_SCAN_LIMIT,
+        });
+        if (!failed.length)
+            return;
+        const orderIds = [...new Set(failed.map(t => Number(t.orderId)))];
+        const orders = orderIds.length
+            ? await this.connection.rawConnection.getRepository(core_1.Order).find({ where: { id: (0, typeorm_1.In)(orderIds) } })
+            : [];
+        const codeById = new Map(orders.map((o) => [Number(o.id), o.code]));
+        for (const t of failed) {
+            const tid = Number(t.id);
+            if (this.alertedFailed.has(tid))
+                continue;
+            this.alertedFailed.set(tid, now);
+            const code = (_a = codeById.get(Number(t.orderId))) !== null && _a !== void 0 ? _a : `#${t.orderId}`;
+            const typeLabel = t.type === payment_timeout_entity_1.PaymentTimeoutType.CANCEL ? '超时取消' : '待付款提醒';
+            try {
+                await this.feishu.pushEvent('payment_timeout_failed', '待付款任务失败', `订单 ${code} ${typeLabel}重试 ${t.retryCount} 次仍失败：${(_b = t.lastError) !== null && _b !== void 0 ? _b : '未知错误'}（订单可能卡在待付款）`, String(code), `paytimeout_failed:${tid}`);
+            }
+            catch (e) {
+                core_1.Logger.warn(`failed-task alert push error task=${tid}: ${String((_c = e === null || e === void 0 ? void 0 : e.message) !== null && _c !== void 0 ? _c : e)}`, loggerCtx);
+            }
+        }
     }
     async h5Base(ctx) {
         var _a;
@@ -291,6 +344,7 @@ exports.PaymentTimeoutJob = PaymentTimeoutJob = __decorate([
         core_1.ChannelService,
         core_1.StockMovementService,
         campus_notify_service_1.CampusNotifyService,
-        campus_config_service_1.CampusConfigService])
+        campus_config_service_1.CampusConfigService,
+        feishu_notify_service_1.FeishuNotifyService])
 ], PaymentTimeoutJob);
 //# sourceMappingURL=payment-timeout.job.js.map

@@ -14,7 +14,13 @@ describe('PaymentTimeoutJob', () => {
             findOne: vi.fn().mockResolvedValue(task),
             save: vi.fn().mockImplementation(async (t: any) => t),
             find: vi.fn().mockResolvedValue([]),
+            createQueryBuilder: vi.fn().mockReturnValue({
+                where: vi.fn().mockReturnThis(),
+                andWhere: vi.fn().mockReturnThis(),
+                getMany: vi.fn().mockResolvedValue([]),
+            }),
         };
+        const orderRepo = { find: vi.fn().mockResolvedValue([{ id: 11, code: 'ORD1' }]) };
         const order = { id: 11, code: 'ORD1', state: opts.orderState, lines: [{ id: 'L1', quantity: 1 }] };
         const orderService = {
             findOne: vi.fn().mockResolvedValue(order),
@@ -22,21 +28,28 @@ describe('PaymentTimeoutJob', () => {
         };
         const stockMovementService = { createOutstandingReleasesForOrderLines: vi.fn().mockResolvedValue([]) };
         const notify = { user: vi.fn() };
+        const feishu = { pushEvent: vi.fn().mockResolvedValue(undefined) };
         const queryRunner = {
             connect: vi.fn().mockResolvedValue(undefined),
             query: vi.fn().mockResolvedValue([{ locked: true }]),
             release: vi.fn().mockResolvedValue(undefined),
         };
+        // 按实体分派：FAILED 告警取订单号走 Order 仓，任务仓走 PaymentTimeoutTask
+        const rawConnection = {
+            getRepository: (entity: any) => (entity && entity.name === 'Order' ? orderRepo : taskRepo),
+            createQueryRunner: () => queryRunner,
+        };
         const job = new PaymentTimeoutJob(
             { createQueue: vi.fn() } as any, // jobQueueService（process 不经 init 也能跑）
-            { rawConnection: { getRepository: () => taskRepo, createQueryRunner: () => queryRunner } } as any,
+            { rawConnection } as any,
             orderService as any,
             { findOne: vi.fn().mockResolvedValue({}) } as any, // channelService
             stockMovementService as any,
             notify as any,
             { getConfig: vi.fn().mockResolvedValue({ h5BaseUrl: null }) } as any, // campusConfig
+            feishu as any, // FeishuNotifyService（FAILED 任务告警）
         );
-        return { job, taskRepo, task, orderService, stockMovementService, notify, order, queryRunner };
+        return { job, taskRepo, orderRepo, task, orderService, stockMovementService, notify, feishu, order, queryRunner };
     }
 
     beforeEach(() => { vi.clearAllMocks(); });
@@ -143,6 +156,48 @@ describe('PaymentTimeoutJob', () => {
 
         it('init 未完成（无 jobQueue）→ runCompensation 返回 0', async () => {
             const { job } = makeJob({ orderState: 'ArrangingPayment' });
+            await expect(job.runCompensation()).resolves.toBe(0);
+        });
+    });
+
+    describe('FAILED 任务飞书告警（运营不再靠翻日志发现卡单）', () => {
+        const failedTask = () => ({
+            id: 5, orderId: 11, channelId: 7, type: PaymentTimeoutType.CANCEL,
+            dueAt: new Date(Date.now() - 60_000), status: PaymentTimeoutStatus.FAILED,
+            expectedState: 'ArrangingPayment', retryCount: 3, lastError: 'db down', updatedAt: new Date(),
+        });
+
+        it('有 FAILED 任务 → pushEvent 一次（带订单号/重试次数/lastError），紧接着再扫不重复推', async () => {
+            const { job, taskRepo, feishu } = makeJob({ orderState: 'ArrangingPayment' });
+            (job as any).jobQueue = { add: vi.fn().mockResolvedValue(undefined) };
+            taskRepo.find.mockResolvedValue([failedTask()]);
+            await job.runCompensation();
+            expect(feishu.pushEvent).toHaveBeenCalledTimes(1);
+            expect(feishu.pushEvent).toHaveBeenCalledWith(
+                'payment_timeout_failed',
+                '待付款任务失败',
+                expect.stringContaining('ORD1'),
+                'ORD1',
+                'paytimeout_failed:5',
+            );
+            // 24h 去重：同一 taskId 后续轮次不再推
+            await job.runCompensation();
+            expect(feishu.pushEvent).toHaveBeenCalledTimes(1);
+        });
+
+        it('无 FAILED 任务 → 不推送', async () => {
+            const { job, taskRepo, feishu } = makeJob({ orderState: 'ArrangingPayment' });
+            (job as any).jobQueue = { add: vi.fn().mockResolvedValue(undefined) };
+            taskRepo.find.mockResolvedValue([]);
+            await job.runCompensation();
+            expect(feishu.pushEvent).not.toHaveBeenCalled();
+        });
+
+        it('pushEvent 抛错 → 吞错不阻断 runCompensation（返回逾期条数）', async () => {
+            const { job, taskRepo, feishu } = makeJob({ orderState: 'ArrangingPayment' });
+            (job as any).jobQueue = { add: vi.fn().mockResolvedValue(undefined) };
+            taskRepo.find.mockResolvedValue([failedTask()]);
+            feishu.pushEvent.mockRejectedValueOnce(new Error('feishu down'));
             await expect(job.runCompensation()).resolves.toBe(0);
         });
     });

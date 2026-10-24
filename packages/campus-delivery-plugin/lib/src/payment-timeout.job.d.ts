@@ -2,6 +2,7 @@ import { OnApplicationShutdown } from '@nestjs/common';
 import { ChannelService, JobQueueService, OrderService, RequestContext, StockMovementService, TransactionalConnection } from '@vendure/core';
 import { CampusConfigService } from './campus-config.service';
 import { CampusNotifyService } from './campus-notify.service';
+import { FeishuNotifyService } from './feishu/feishu-notify.service';
 import { PaymentTimeoutTask } from './payment-timeout.entity';
 export interface PaymentTimeoutJobData {
     taskId: number;
@@ -27,12 +28,15 @@ export declare class PaymentTimeoutJob implements OnApplicationShutdown {
     private stockMovementService;
     private notify;
     private campusConfig;
+    private feishu;
     private jobQueue;
     private taskRepo;
     private compensationTimer;
     private compensationBootTimer;
     private compensationRunning;
-    constructor(jobQueueService: JobQueueService, connection: TransactionalConnection, orderService: OrderService, channelService: ChannelService, stockMovementService: StockMovementService, notify: CampusNotifyService, campusConfig: CampusConfigService);
+    /** FAILED 任务告警去重：taskId → 上次告警时间（24h 内不重复推） */
+    private alertedFailed;
+    constructor(jobQueueService: JobQueueService, connection: TransactionalConnection, orderService: OrderService, channelService: ChannelService, stockMovementService: StockMovementService, notify: CampusNotifyService, campusConfig: CampusConfigService, feishu: FeishuNotifyService);
     init(): Promise<void>;
     /**
      * 启动补偿扫描循环（幂等）：30s 后首跑，此后每 intervalMs 一轮。
@@ -60,6 +64,12 @@ export declare class PaymentTimeoutJob implements OnApplicationShutdown {
     resendRemind(taskId: number): Promise<boolean>;
     /** 补偿扫描：捡起 dueAt 已过的 PENDING 任务重新入队，返回处理条数 */
     runCompensation(): Promise<number>;
+    /**
+     * FAILED 任务告警：补偿轮次里扫 FAILED 任务，按 taskId 24h 内只推一次飞书。
+     * 此前仅 Logger.warn 到 stdout，生产曾有订单卡在 ArrangingPayment 11 天才被发现。
+     * 未启用飞书时 pushEvent 静默降级，不影响主流程。
+     */
+    private alertFailedTasks;
     private h5Base;
     private buildCtx;
 }
