@@ -199,15 +199,22 @@ let RiderTaskService = class RiderTaskService {
     /** 开始配送：assigned → in_progress。
      * 两段接力单（R1/R2 第一段已送达交接点并生成了 handoverCode）必须校验交接码，防丢餐扯皮。 */
     async start(ctx, orderId, code) {
-        var _a, _b;
+        var _a, _b, _c;
         const order = await this.assertOwner(ctx, orderId, 'assigned');
-        const expected = String((_b = (_a = order.customFields) === null || _a === void 0 ? void 0 : _a.handoverCode) !== null && _b !== void 0 ? _b : '');
+        const cf = ((_a = order.customFields) !== null && _a !== void 0 ? _a : {});
+        const expected = String((_b = cf.handoverCode) !== null && _b !== void 0 ? _b : '');
         if (expected && String(code !== null && code !== void 0 ? code : '').trim() !== expected) {
             throw new core_1.UserInputError('交接码不正确，请与交接点核对后重试');
         }
-        await this.connection
-            .getRepository(ctx, core_1.Order)
-            .update(order.id, { customFields: { deliveryStatus: 'in_progress' } });
+        // 条件写（P2-3）：与用户取消/运营改派并发时，不得把已脱厅/已取消单改成 in_progress
+        const res = await this.connection.rawConnection.query('UPDATE "order" SET "customFieldsDeliverystatus" = $1 '
+            + 'WHERE id = $2 AND "customFieldsDeliverystatus" = $3 '
+            + 'AND "customFieldsDeliverystaffid" = $4 AND "customFieldsHallstatus" = $5 '
+            + `AND "state" <> 'Cancelled' RETURNING id`, ['in_progress', order.id, 'assigned', String((_c = cf.deliveryStaffId) !== null && _c !== void 0 ? _c : ''), 'grabbed']);
+        const rows = Array.isArray(res) && Array.isArray(res[0]) ? res[0] : res;
+        if (!Array.isArray(rows) || !rows.length) {
+            throw new core_1.UserInputError('订单已被取消或改派，无法开始配送');
+        }
         return order;
     }
     /** 送达：拍照必传 → delivered → 分成入余额（0 分成单跳过入账） */

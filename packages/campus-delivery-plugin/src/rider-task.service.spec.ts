@@ -28,15 +28,23 @@ const assigned = { id: 10, code: 'A1', shipping: 300, customFields: { deliverySt
 
 describe('RiderTaskService', () => {
     it('assigned 可开始配送', async () => {
-        const { svc, repo } = make(assigned);
+        const { svc, rawQuery } = make(assigned);
         await svc.start({ channelId: 1 } as any, 10 as any);
-        expect(repo.update).toHaveBeenCalledWith(10, expect.objectContaining({ customFields: { deliveryStatus: 'in_progress' } }));
+        expect(rawQuery).toHaveBeenCalledTimes(1);
+        expect(rawQuery.mock.calls[0][0]).toContain('"customFieldsDeliverystatus"');
+        expect(rawQuery.mock.calls[0][1]).toEqual(['in_progress', 10, 'assigned', '9', 'grabbed']);
     });
     it('接力单交接码正确 → 可开始配送', async () => {
         const relay = { ...assigned, customFields: { ...assigned.customFields, handoverCode: '1234' } };
-        const { svc, repo } = make(relay);
+        const { svc, rawQuery } = make(relay);
         await svc.start({ channelId: 1 } as any, 10 as any, '1234');
-        expect(repo.update).toHaveBeenCalledWith(10, expect.objectContaining({ customFields: { deliveryStatus: 'in_progress' } }));
+        expect(rawQuery).toHaveBeenCalledTimes(1);
+        expect(rawQuery.mock.calls[0][1][0]).toBe('in_progress');
+    });
+    it('开始配送时订单已被取消/改派（条件写未命中）→ 拒绝', async () => {
+        const { svc, rawQuery } = make(assigned);
+        rawQuery.mockResolvedValueOnce([[], []]);
+        await expect(svc.start({ channelId: 1 } as any, 10 as any)).rejects.toThrow('订单已被取消或改派');
     });
     it('接力单交接码错误/缺失 → 拒绝开始配送', async () => {
         const relay = { ...assigned, customFields: { ...assigned.customFields, handoverCode: '1234' } };

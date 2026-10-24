@@ -24,7 +24,8 @@ describe('ThirdPartyDeliveryService.completeFirstLeg 状态前置校验', () => 
         const orderRepo = { findOne: vi.fn().mockResolvedValue(order) };
         const hall = {
             updateOrder: vi.fn().mockResolvedValue({}),
-            enterHallForHandover: vi.fn().mockResolvedValue({}),
+            enterHallForHandover: vi.fn().mockResolvedValue('1234'),
+            transitionFrom: vi.fn().mockResolvedValue(true),
         };
         const notify = { user: vi.fn() };
         const conn = { getRepository: vi.fn(() => orderRepo) } as any;
@@ -36,8 +37,21 @@ describe('ThirdPartyDeliveryService.completeFirstLeg 状态前置校验', () => 
     it('商户配送中（merchant_delivering）→ 进大厅接力', async () => {
         const { svc, hall } = makeEnv({ id: 1, code: 'A1', customFields: { fulfilment: 'x', fulfillmentRoute: 'R1', deliveryPlan: 'merchant', hallStatus: 'merchant_delivering' } });
         const res = await svc.completeFirstLeg(ctx, 1, 'merchant_handover');
-        expect(hall.enterHallForHandover).toHaveBeenCalledWith(ctx, 1, 'merchant_handover');
+        // 条件入厅：仅 merchant_delivering 可入厅，附加 handoverAt/thirdPartyState 同语句落库
+        expect(hall.enterHallForHandover).toHaveBeenCalledWith(
+            ctx,
+            1,
+            'merchant_handover',
+            ['merchant_delivering'],
+            expect.objectContaining({ thirdPartyState: '' }),
+        );
         expect(res).toEqual({ ok: true, done: false });
+    });
+
+    it('入厅条件写未命中（并发取消）→ 拒绝，不返回成功', async () => {
+        const { svc, hall } = makeEnv({ id: 1, code: 'A1', customFields: { fulfillmentRoute: 'R1', deliveryPlan: 'merchant', hallStatus: 'merchant_delivering' } });
+        hall.enterHallForHandover.mockResolvedValueOnce('');
+        await expect(svc.completeFirstLeg(ctx, 1, 'merchant_handover')).rejects.toThrow('第一段已送达或订单状态已变更');
     });
 
     it('重复调用（已回大厅 open）→ 拒绝，不重置大厅/交接码', async () => {
@@ -49,11 +63,18 @@ describe('ThirdPartyDeliveryService.completeFirstLeg 状态前置校验', () => 
     it('自营快递配送中（owned_dispatched）R3 → 直接完成', async () => {
         const { svc, hall, notify } = makeEnv({ id: 2, code: 'A2', customFields: { fulfillmentRoute: 'R3', deliveryPlan: 'owned', hallStatus: 'owned_dispatched' } });
         const res = await svc.completeFirstLeg(ctx, 2, 'owned_handover');
-        expect(hall.updateOrder).toHaveBeenCalledWith(ctx, 2, expect.objectContaining({
-            customFields: expect.objectContaining({ hallStatus: 'delivered', deliveryStatus: 'delivered' }),
+        expect(hall.transitionFrom).toHaveBeenCalledWith(ctx, 2, ['owned_dispatched'], expect.objectContaining({
+            hallStatus: 'delivered', deliveryStatus: 'delivered',
         }));
         expect(notify.user).toHaveBeenCalledWith(ctx, 2, 'orderDelivered');
         expect(res).toEqual({ ok: true, done: true });
+    });
+
+    it('R3 第一段完成时订单已取消（条件写未命中）→ 拒绝且不通知', async () => {
+        const { svc, hall, notify } = makeEnv({ id: 2, code: 'A2', customFields: { fulfillmentRoute: 'R3', deliveryPlan: 'owned', hallStatus: 'owned_dispatched' } });
+        hall.transitionFrom.mockResolvedValueOnce(false);
+        await expect(svc.completeFirstLeg(ctx, 2, 'owned_handover')).rejects.toThrow('第一段已送达或订单状态已变更');
+        expect(notify.user).not.toHaveBeenCalled();
     });
 
     it('状态与线路不符（自营 plan 但仍是 merchant_delivering）→ 拒绝', async () => {
@@ -69,7 +90,8 @@ describe('ThirdPartyDeliveryService.onDeliveryStatus 回调幂等', () => {
         const cfgRepo = { findOne: vi.fn().mockResolvedValue(null) };
         const hall = {
             updateOrder: vi.fn().mockResolvedValue({}),
-            enterHallForHandover: vi.fn().mockResolvedValue({}),
+            enterHallForHandover: vi.fn().mockResolvedValue('1234'),
+            transitionFrom: vi.fn().mockResolvedValue(true),
         };
         const notify = { user: vi.fn() };
         const conn = {
@@ -129,6 +151,36 @@ describe('ThirdPartyDeliveryService.onDeliveryStatus 回调幂等', () => {
             customFields: { thirdPartyState: 'pickup', hallStatus: 'third_party', handoverMode: 'to_campus_rider' },
         });
         await svc.onDeliveryStatus(ctx, update('delivered'));
-        expect(hall.enterHallForHandover).toHaveBeenCalledWith(expect.anything(), 1, 'external_handover');
+        expect(hall.enterHallForHandover).toHaveBeenCalledWith(
+            expect.anything(),
+            1,
+            'external_handover',
+            ['third_party'],
+            expect.objectContaining({ thirdPartyState: 'delivered' }),
+        );
+    });
+
+    it('已取消订单收到送达回调 → 只补状态，不复活进入大厅', async () => {
+        const { svc, hall } = makeEnv({
+            id: 1, code: 'A1',
+            customFields: { thirdPartyState: 'pickup', hallStatus: 'cancelled', handoverMode: 'to_campus_rider' },
+        });
+        await svc.onDeliveryStatus(ctx, update('delivered'));
+        expect(hall.enterHallForHandover).not.toHaveBeenCalled();
+        expect(hall.updateOrder.mock.calls[0][2].customFields.hallStatus).toBeUndefined();
+    });
+
+    it('R3 外部运力异常 → 条件写回大厅并刷新入厅时间', async () => {
+        const { svc, hall } = makeEnv({
+            id: 1, code: 'A1',
+            customFields: { thirdPartyState: 'accepted', hallStatus: 'third_party', fulfillmentRoute: 'R3' },
+        });
+        await svc.onDeliveryStatus(ctx, update('exception'));
+        expect(hall.transitionFrom).toHaveBeenCalledWith(
+            expect.anything(),
+            1,
+            ['third_party'],
+            expect.objectContaining({ hallStatus: 'open', hallEnteredAt: expect.any(Date) }),
+        );
     });
 });

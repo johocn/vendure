@@ -40,16 +40,20 @@ export declare class HallService {
     /** 放量目标态（put 与调度 job 共用；job 用它在内存里同步订单快照，避免同轮二次误判） */
     static releaseTarget(cf: any, cfg: CampusFulfillmentConfig | null): string;
     /** 第一段交接完成：订单进校园抢单大厅（R1/R2 接力上楼）。
+     * 条件写（CAS）：仅当 hallStatus 仍在 from 集合内（本段确实在途）才入厅并生成交接码，
+     * 否则说明订单已被取消/已入厅（并发回调），返回空串由调用方决定是否报错。
+     * extra 承载调用方需要同语句落库的附加字段（如 handoverAt/thirdPartyState），避免两步写。
      * 同时生成 4 位交接码（第二段骑手取货时校验，防丢餐扯皮），返回码值供调用方通知用户。 */
-    enterHallForHandover(ctx: RequestContext, orderId: number, cause: string): Promise<string>;
+    enterHallForHandover(ctx: RequestContext, orderId: number, cause: string, from?: string[], extra?: Record<string, unknown>): Promise<string>;
     /** 回大厅：清骑手指派字段，hallStatus 复位 open（拒单/超时改派共用）。
      *  条件写：仅活跃流转态可回厅，已取消/已终态单不被复活；返回是否命中。 */
     backToHall(ctx: RequestContext, orderId: number): Promise<boolean>;
     /**
-     * 条件状态迁移（CAS）：仅当 hallStatus 仍在 from 集合内时才写入 patch，返回 affected>0。
+     * 条件状态迁移（CAS）：仅当 hallStatus 仍在 from 集合内、且订单未被取消时才写入 patch，返回 affected>0。
      * 调度扫描/商家操作都是「先读后写」，若期间用户取消并脱厅（hallStatus=cancelled），
      * 无条件 update 会把已退款单改回 open/pending_merchant 重新进入大厅被抢。
-     * 用单条 UPDATE + hallStatus 条件把「校验与写入」合并成一个原子动作。
+     * 额外加 state != 'Cancelled'：取消事件异步写完 hallStatus 前仍有窗口，仅凭 hallStatus 条件不足。
+     * 用单条 UPDATE + 条件把「校验与写入」合并成一个原子动作。
      */
     transitionFrom(_ctx: RequestContext, orderId: number, from: string[], patch: Record<string, unknown>): Promise<boolean>;
     /** 取消脱厅（3.3 冒烟实测缺陷）：订单取消终态时清 hallStatus，使其退出大厅/打包扫描/整组抢单/调度台。

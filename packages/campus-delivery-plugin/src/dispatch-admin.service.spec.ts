@@ -13,8 +13,10 @@ interface HandleEnvOpts {
 function makeEnv(opts: HandleEnvOpts = {}) {
     const grabSvc = { grabByRider: vi.fn().mockResolvedValue(true) };
     const hallSvc = {
-        backToHall: vi.fn().mockResolvedValue({}),
+        backToHall: vi.fn().mockResolvedValue(true),
         updateOrder: vi.fn().mockResolvedValue({}),
+        // 异常处置留痕/回滚改条件写（CAS）：默认命中
+        transitionFrom: vi.fn().mockResolvedValue(true),
     };
     const capacitySvc = { listOnlineRiders: vi.fn().mockResolvedValue(opts.onlineRiders ?? []) };
     const orderRepo = {
@@ -209,7 +211,7 @@ describe('DispatchAdminService.handleException', () => {
         const res = await svc.handleException(ctx, 6 as any, 'reassign', undefined, undefined, '改派');
         expect(res).toEqual({ ok: true, action: 'reassign' });
         expect(hallSvc.backToHall).toHaveBeenCalledWith(ctx, 6);
-        const patch = orderRepo.update.mock.calls[0][1].customFields;
+        const patch = hallSvc.transitionFrom.mock.calls[0][3];
         expect(patch).toEqual(expect.objectContaining({ exceptionAction: 'reassign', exceptionHandledNote: '改派', exceptionHandledBy: '3' }));
         expect(patch.hallStatus).toBeUndefined();
         // 处置完结 push：reassign 也通知（dedupe 后缀=本次异常上报时间）
@@ -217,7 +219,7 @@ describe('DispatchAdminService.handleException', () => {
     });
 
     it('refund_diff：部分退款（shipping/adjustment 显式 0）+ settleRefund + exception_final 留痕', async () => {
-        const { svc, orderRepo, orderSvc, paymentRepo } = makeEnv({
+        const { svc, orderRepo, hallSvc, orderSvc, paymentRepo } = makeEnv({
             payment: { id: 9, amount: 2300 },
             refundedSum: 0,
         });
@@ -228,7 +230,11 @@ describe('DispatchAdminService.handleException', () => {
             paymentId: 9, amount: 300, shipping: 0, adjustment: 0,
         }));
         expect(orderSvc.settleRefund).toHaveBeenCalledWith(ctx, { id: 55 });
-        const patch = orderRepo.update.mock.calls[0][1].customFields;
+        // 留痕条件写：仅 exception_final 单写处置记录
+        expect(hallSvc.transitionFrom).toHaveBeenCalledWith(
+            ctx, 7, ['exception_final'], expect.any(Object),
+        );
+        const patch = hallSvc.transitionFrom.mock.calls[0][3];
         expect(patch).toEqual(expect.objectContaining({
             exceptionAction: 'refund_diff', exceptionCompensation: 300, hallStatus: 'exception_final',
         }));
@@ -251,12 +257,12 @@ describe('DispatchAdminService.handleException', () => {
     });
 
     it('coupon：发补偿券 + exception_final 留痕', async () => {
-        const { svc, orderRepo } = makeEnv();
+        const { svc, orderRepo, hallSvc } = makeEnv();
         orderRepo.findOne.mockResolvedValue(exceptionOrder(8, 'A8'));
         (svc as any).couponSvc = { grantCoupon: vi.fn().mockResolvedValue(['CODE1']) };
         await svc.handleException(ctx, 8 as any, 'coupon', undefined, '9' as any, '无骑手补偿');
         expect((svc as any).couponSvc.grantCoupon).toHaveBeenCalledWith(ctx, '9', [160]);
-        const patch = orderRepo.update.mock.calls[0][1].customFields;
+        const patch = hallSvc.transitionFrom.mock.calls[0][3];
         expect(patch).toEqual(expect.objectContaining({
             exceptionAction: 'coupon', exceptionCouponTemplateId: '9', hallStatus: 'exception_final',
         }));
@@ -269,14 +275,14 @@ describe('DispatchAdminService.handleException', () => {
     });
 
     it('refund_all：退剩余全额 + cancelOrder + campusCause=exception_refund', async () => {
-        const { svc, orderRepo, orderSvc, paymentRepo } = makeEnv({ refundedSum: 300 });
+        const { svc, orderRepo, hallSvc, orderSvc, paymentRepo } = makeEnv({ refundedSum: 300 });
         paymentRepo.findOne.mockResolvedValue({ id: 9, amount: 2300 });
         orderRepo.findOne.mockResolvedValue(exceptionOrder(10, 'A10'));
         await svc.handleException(ctx, 10 as any, 'refund_all');
         // 已退 300，剩余 2000 补退
         expect(orderSvc.refundOrder).toHaveBeenCalledWith(ctx, expect.objectContaining({ paymentId: 9, amount: 2000 }));
         expect(orderSvc.cancelOrder).toHaveBeenCalledWith(ctx, expect.objectContaining({ orderId: 10 }));
-        const patch = orderRepo.update.mock.calls[0][1].customFields;
+        const patch = hallSvc.transitionFrom.mock.calls[0][3];
         expect(patch).toEqual(expect.objectContaining({
             exceptionAction: 'refund_all', hallStatus: 'exception_final', campusCause: 'exception_refund',
         }));
@@ -332,8 +338,9 @@ describe('DispatchAdminService.handleException', () => {
         env.orderRepo.findOne.mockResolvedValue(exceptionOrder(15, 'A15'));
         env.orderSvc.refundOrder.mockResolvedValue({ errorCode: 'REFUND_FAILED' });
         await expect(env.svc.handleException(ctx, 15 as any, 'refund_diff', 300)).rejects.toThrow('refundOrder failed');
-        expect(env.hallSvc.updateOrder).toHaveBeenCalledWith(ctx, 15, {
-            customFields: { hallStatus: 'grabbed', deliveryStatus: 'exception' },
+        // 认领（置 exception_final）+ 回滚（从 exception_final 恢复原态）各一次条件写
+        expect(env.hallSvc.transitionFrom).toHaveBeenLastCalledWith(ctx, 15, ['exception_final'], {
+            hallStatus: 'grabbed', deliveryStatus: 'exception',
         });
         expect(env.orderRepo.update).not.toHaveBeenCalled();
     });

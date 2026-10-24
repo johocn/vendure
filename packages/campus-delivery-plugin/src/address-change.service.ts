@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import {
     CustomerService,
     ForbiddenError,
     ID,
+    Injector,
     Logger,
     Order,
     OrderService,
@@ -12,11 +14,13 @@ import {
     TransactionalConnection,
     UserInputError,
 } from '@vendure/core';
+import { SubscribeMessageService } from '@vendure/wechat-subscribe-message-plugin';
 import { CampusAddressChange } from './campus-address-change.entity';
 import { CampusBuilding } from './campus-building.entity';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CampusZone } from './campus-zone.entity';
 import { CapacityService } from './capacity.service';
+import { HallService } from './hall.service';
 import { CampusNotifyService } from './campus-notify.service';
 import { quoteZoneFee, readHallBacklog } from './shipping-calculator';
 import { parseDynamicPricing, quoteDynamicFee } from './dynamic-pricing';
@@ -38,6 +42,8 @@ export class AddressChangeService {
         private capacity: CapacityService,
         private notify: CampusNotifyService,
         private thirdParty: ThirdPartyDeliveryService,
+        private moduleRef: ModuleRef,
+        private hall: HallService,
     ) {}
 
     /** 顾客自助改址（取货前、可跨分区）。差额不阻塞改址，写入台账待运营结算。 */
@@ -450,6 +456,14 @@ export class AddressChangeService {
                 : {}),
         } as any);
 
+        // 已指派骑手在途：改址必须让骑手知道（否则仍按旧地址送达）。
+        // campusCause 供调度墙展示；骑手订阅消息复用渠道 orderShippedTemplateId（同入厅提醒口径）。
+        const riderId = String(cf.deliveryStaffId ?? '');
+        if (riderId) {
+            await this.orderService.updateCustomFields(ctx, order.id, { campusCause: 'address_changed' } as any);
+            this.notifyRiderAddressChanged(ctx, order, riderId, zone, building);
+        }
+
         // 外部快递在途（已接单/已取货）：旧运单目的地已失效，取消后回待推送，由运营按新址重推。
         // 未推送（pending_dispatch/未入 third_party）无需处理，重推时自然读取新址。
         const tpState = String(cf.thirdPartyState ?? '');
@@ -468,14 +482,26 @@ export class AddressChangeService {
             if (cancelled) {
                 // cancel 按路线回落（R2 待推送 / R3 大厅且 deliveryPlan 改回 campus_rider）；
                 // 改址场景统一恢复外部快递计划并回待推送，等运营按新址重推。
-                await this.orderService.updateCustomFields(ctx, order.id, {
-                    hallStatus: 'pending_dispatch',
-                    deliveryPlan: 'external_courier',
-                    handoverMode: route === 'R2' ? 'to_campus_rider' : 'direct_to_user',
-                    thirdPartyState: 'cancelled',
-                    thirdPartyDispatchAt: new Date(),
-                    campusCause: 'address_changed_repush',
-                } as any);
+                // 条件写：与用户取消并发时不得把已退款单改回待推送（cancel 期间可能已脱厅）
+                const moved = await this.hall.transitionFrom(
+                    ctx,
+                    Number(order.id),
+                    ['open', 'pending_dispatch', 'third_party'],
+                    {
+                        hallStatus: 'pending_dispatch',
+                        deliveryPlan: 'external_courier',
+                        handoverMode: route === 'R2' ? 'to_campus_rider' : 'direct_to_user',
+                        thirdPartyState: 'cancelled',
+                        thirdPartyDispatchAt: new Date(),
+                        campusCause: 'address_changed_repush',
+                    },
+                );
+                if (!moved) {
+                    Logger.warn(
+                        `address change: order ${order.code} already cancelled/left flow, skip repush reset`,
+                        loggerCtx,
+                    );
+                }
             } else {
                 // 旧运单未确认取消：仍会按旧地址送达，新址无人处理。留痕给运营人工取消/改址，不可静默。
                 await this.orderService.updateCustomFields(ctx, order.id, {
@@ -509,6 +535,31 @@ export class AddressChangeService {
             toZone: zone.name,
             recordId: record.id,
         };
+    }
+
+    /** 改址定向提醒在途骑手（best-effort，失败不阻塞改址）：复用渠道 orderShippedTemplateId。 */
+    private notifyRiderAddressChanged(
+        ctx: RequestContext,
+        order: Order,
+        riderId: string,
+        zone: CampusZone,
+        building: CampusBuilding,
+    ) {
+        void (async () => {
+            try {
+                const templateId = ((ctx.channel as any)?.customFields ?? {}).orderShippedTemplateId as
+                    | string
+                    | undefined;
+                if (!templateId) return;
+                const msg = new Injector(this.moduleRef).get(SubscribeMessageService);
+                await msg.sendCustomMessage(ctx, riderId as any, templateId, {
+                    orderCode: { value: order.code },
+                    zone: { value: `${zone.name}·${building.name}` },
+                });
+            } catch (e: any) {
+                Logger.warn(`address change: rider notify failed (${riderId}): ${e?.message ?? e}`, loggerCtx);
+            }
+        })();
     }
 
     private channelIdOf(order: Order, ctx: RequestContext): ID {

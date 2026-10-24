@@ -142,7 +142,14 @@ export class DispatchJobService implements OnApplicationShutdown {
             .andWhere("order.customFields.hallStatus IN ('open', 'grabbed', 'pending_merchant', 'accepted', 'scheduled', 'pending_dispatch', 'third_party', 'owned_pool', 'owned_dispatched', 'merchant_delivering')")
             // 已取消单即使 hallStatus 未及时清也绝不参与扫描：所有兜底写都必须落在活单上
             .andWhere('order.state != :cancelled', { cancelled: 'Cancelled' })
-            .orderBy('order.createdAt', 'ASC')
+            // 预约单排序靠后（P2-8）：它们与活单混排时不得挤占 take 窗口，
+            // 否则大量未到点的预约单会把 open 强派/T4 退款扫出窗口。预约单内部按 scheduledFor 升序。
+            .orderBy("CASE WHEN order.customFields.hallStatus = 'scheduled' THEN 1 ELSE 0 END", 'ASC')
+            .addOrderBy(
+                "CASE WHEN order.customFields.hallStatus = 'scheduled' "
+                + 'THEN order.customFields.scheduledFor ELSE order.createdAt END',
+                'ASC',
+            )
             .take(SCAN_LIMIT)
             .getMany();
         if (orders.length >= SCAN_LIMIT) {
@@ -675,17 +682,36 @@ export class DispatchJobService implements OnApplicationShutdown {
             const lateMin = Math.floor((deliveredMs - promisedMs) / 60_000);
             if (lateMin <= grace) continue;
 
+            // 先抢赔付闸（CAS）：发券与写闸合并为「先认领后发券」，部署重启/并发扫描不会重复发券。
+            // 认领失败说明已被其他轮次赔付（或正赔付中），本轮跳过。
+            const claimedAt = new Date();
+            const claimed: any = await this.connection.rawConnection.query(
+                'UPDATE "order" SET "customFieldsTimeoutcompensatedat" = $1 '
+                + 'WHERE id = $2 AND "customFieldsTimeoutcompensatedat" IS NULL RETURNING id',
+                [claimedAt, o.id],
+            );
+            const claimedRows = Array.isArray(claimed) && Array.isArray(claimed[0]) ? claimed[0] : claimed;
+            if (!Array.isArray(claimedRows) || !claimedRows.length) continue;
+            const releaseClaim = () =>
+                this.connection.rawConnection.query(
+                    'UPDATE "order" SET "customFieldsTimeoutcompensatedat" = NULL '
+                    + 'WHERE id = $1 AND "customFieldsTimeoutcompensatedat" = $2',
+                    [o.id, claimedAt],
+                ).catch(() => undefined);
+
             let couponId = '';
             if (o.customerId && coupon) {
                 try {
                     const ids = await coupon.grantCoupon(ctx, templateId, [o.customerId as any]);
                     couponId = ids?.[0] ? String(ids[0]) : '';
                 } catch (e: any) {
-                    // 发券失败不写闸，下轮重试（模板配错等需人工修配置）
+                    // 发券失败释放闸，下轮重试（模板配错等需人工修配置）
+                    await releaseClaim();
                     Logger.error(`timeout compensation coupon failed for ${o.code}: ${e?.message}`, 'CampusDispatch');
                     continue;
                 }
             } else {
+                await releaseClaim();
                 Logger.warn(
                     `timeout compensation skipped for ${o.code}: coupon service/customer unavailable (channel ${cfg.channelId})`,
                     'CampusDispatch',
@@ -694,7 +720,6 @@ export class DispatchJobService implements OnApplicationShutdown {
             }
             await this.hall.updateOrder(ctx, o.id as any, {
                 customFields: {
-                    timeoutCompensatedAt: new Date(),
                     timeoutCompensationCouponId: couponId,
                     timeoutLateMinutes: lateMin,
                     timeoutAttribution: this.timeoutAttribution(o),
@@ -767,7 +792,6 @@ export class DispatchJobService implements OnApplicationShutdown {
             }
             if (cluster.length >= 2) groups.push(cluster);
         }
-        const repo = this.connection.getRepository(ctx, Order);
         for (const g of groups) {
             const existing = g
                 .map(o => (o.customFields as any).routeGroupId as string | undefined)
@@ -775,12 +799,23 @@ export class DispatchJobService implements OnApplicationShutdown {
             const gid = existing ?? `rg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
             const todo = g.filter(o => (o.customFields as any).routeGroupId !== gid);
             if (!todo.length) continue;
-            await repo.update(todo.map(o => String(o.id)), {
-                customFields: { routeGroupId: gid },
-            } as any);
-            for (const o of todo) (o.customFields as any).routeGroupId = gid;
+            // 条件写（P2-9）：仅对仍在大厅且未取消的单写组 id，避免把并发下已抢/已取消单写回 open 口径的聚合组
+            const res: any = await this.connection.rawConnection.query(
+                'UPDATE "order" SET "customFieldsRoutegroupid" = $1 '
+                + 'WHERE id = ANY($2::int[]) AND "customFieldsHallstatus" = $3 '
+                + `AND "state" <> 'Cancelled' RETURNING id`,
+                [gid, todo.map(o => Number(o.id)), 'open'],
+            );
+            const rows = Array.isArray(res) && Array.isArray(res[0]) ? res[0] : res;
+            const hit = new Set(
+                (Array.isArray(rows) ? rows : []).map((r: any) => Number(r.id)),
+            );
+            for (const o of todo) {
+                if (hit.has(Number(o.id))) (o.customFields as any).routeGroupId = gid;
+            }
+            if (!hit.size) continue;
             Logger.info(
-                `Route packed: ${gid} (${g.length} orders, buildings=${[...new Set(g.map(o => (o.customFields as any).buildingId))].join('/')})`,
+                `Route packed: ${gid} (${hit.size}/${g.length} orders, buildings=${[...new Set(g.map(o => (o.customFields as any).buildingId))].join('/')})`,
                 'CampusDispatch',
             );
         }

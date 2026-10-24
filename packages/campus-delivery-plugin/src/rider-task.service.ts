@@ -201,13 +201,23 @@ export class RiderTaskService {
      * 两段接力单（R1/R2 第一段已送达交接点并生成了 handoverCode）必须校验交接码，防丢餐扯皮。 */
     async start(ctx: RequestContext, orderId: ID, code?: string) {
         const order = await this.assertOwner(ctx, orderId, 'assigned');
-        const expected = String((order.customFields as any)?.handoverCode ?? '');
+        const cf = (order.customFields ?? {}) as any;
+        const expected = String(cf.handoverCode ?? '');
         if (expected && String(code ?? '').trim() !== expected) {
             throw new UserInputError('交接码不正确，请与交接点核对后重试');
         }
-        await this.connection
-            .getRepository(ctx, Order)
-            .update(order.id, { customFields: { deliveryStatus: 'in_progress' } } as any);
+        // 条件写（P2-3）：与用户取消/运营改派并发时，不得把已脱厅/已取消单改成 in_progress
+        const res: any = await this.connection.rawConnection.query(
+            'UPDATE "order" SET "customFieldsDeliverystatus" = $1 '
+            + 'WHERE id = $2 AND "customFieldsDeliverystatus" = $3 '
+            + 'AND "customFieldsDeliverystaffid" = $4 AND "customFieldsHallstatus" = $5 '
+            + `AND "state" <> 'Cancelled' RETURNING id`,
+            ['in_progress', order.id, 'assigned', String(cf.deliveryStaffId ?? ''), 'grabbed'],
+        );
+        const rows = Array.isArray(res) && Array.isArray(res[0]) ? res[0] : res;
+        if (!Array.isArray(rows) || !rows.length) {
+            throw new UserInputError('订单已被取消或改派，无法开始配送');
+        }
         return order;
     }
 

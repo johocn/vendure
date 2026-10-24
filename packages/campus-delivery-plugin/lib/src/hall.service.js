@@ -197,8 +197,11 @@ let HallService = HallService_1 = class HallService {
         return (cfg === null || cfg === void 0 ? void 0 : cfg.merchantConfirmEnabled) ? 'pending_merchant' : 'open';
     }
     /** 第一段交接完成：订单进校园抢单大厅（R1/R2 接力上楼）。
+     * 条件写（CAS）：仅当 hallStatus 仍在 from 集合内（本段确实在途）才入厅并生成交接码，
+     * 否则说明订单已被取消/已入厅（并发回调），返回空串由调用方决定是否报错。
+     * extra 承载调用方需要同语句落库的附加字段（如 handoverAt/thirdPartyState），避免两步写。
      * 同时生成 4 位交接码（第二段骑手取货时校验，防丢餐扯皮），返回码值供调用方通知用户。 */
-    async enterHallForHandover(ctx, orderId, cause) {
+    async enterHallForHandover(ctx, orderId, cause, from = ['third_party', 'merchant_delivering', 'owned_dispatched'], extra = {}) {
         const order = await this.connection.getRepository(ctx, core_2.Order).findOne({
             where: { id: orderId },
             relations: ['channels'],
@@ -208,18 +211,11 @@ let HallService = HallService_1 = class HallService {
             return '';
         }
         const handoverCode = String(Math.floor(1000 + Math.random() * 9000));
-        await this.updateOrder(ctx, orderId, {
-            customFields: {
-                hallStatus: 'open',
-                hallEnteredAt: new Date(),
-                deliveryStatus: 'pending',
-                assignedAt: null,
-                deliveryStaffId: null,
-                campusCause: cause,
-                handoverCode,
-                handoverCodeAt: new Date(),
-            },
-        });
+        const moved = await this.transitionFrom(ctx, orderId, from, Object.assign(Object.assign({}, extra), { hallStatus: 'open', hallEnteredAt: new Date(), deliveryStatus: 'pending', assignedAt: null, deliveryStaffId: null, campusCause: cause, handoverCode, handoverCodeAt: new Date() }));
+        if (!moved) {
+            core_2.Logger.warn(`订单 ${order.code} 交接入厅被跳过（已取消或状态已变更，from=${from.join('/')}）`, 'CampusHall');
+            return '';
+        }
         this.notifyRiders(ctx, order);
         core_2.Logger.info(`订单 ${order.code} 交接完成进入大厅 (${cause})，交接码 ${handoverCode}`, 'CampusHall');
         return handoverCode;
@@ -235,10 +231,11 @@ let HallService = HallService_1 = class HallService {
         });
     }
     /**
-     * 条件状态迁移（CAS）：仅当 hallStatus 仍在 from 集合内时才写入 patch，返回 affected>0。
+     * 条件状态迁移（CAS）：仅当 hallStatus 仍在 from 集合内、且订单未被取消时才写入 patch，返回 affected>0。
      * 调度扫描/商家操作都是「先读后写」，若期间用户取消并脱厅（hallStatus=cancelled），
      * 无条件 update 会把已退款单改回 open/pending_merchant 重新进入大厅被抢。
-     * 用单条 UPDATE + hallStatus 条件把「校验与写入」合并成一个原子动作。
+     * 额外加 state != 'Cancelled'：取消事件异步写完 hallStatus 前仍有窗口，仅凭 hallStatus 条件不足。
+     * 用单条 UPDATE + 条件把「校验与写入」合并成一个原子动作。
      */
     async transitionFrom(_ctx, orderId, from, patch) {
         const entries = Object.entries(patch).filter(([, v]) => v !== undefined);
@@ -248,6 +245,7 @@ let HallService = HallService_1 = class HallService {
         const values = entries.map(([, v]) => (Array.isArray(v) ? JSON.stringify(v) : v));
         const out = await this.connection.rawConnection.query(`UPDATE "order" SET ${sets} `
             + `WHERE id = $1 AND COALESCE("customFieldsHallstatus", '') = ANY($${entries.length + 2}::text[]) `
+            + `AND "state" <> 'Cancelled' `
             + 'RETURNING id', [orderId, ...values, from]);
         const rows = Array.isArray(out) && Array.isArray(out[0]) ? out[0] : out;
         return Array.isArray(rows) && rows.length > 0;

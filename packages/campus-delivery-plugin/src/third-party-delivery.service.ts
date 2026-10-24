@@ -139,7 +139,12 @@ export class ThirdPartyDeliveryService implements OnApplicationBootstrap {
             : null;
         const userPoint: GeoPointLike = {
             name: order.shippingAddress?.fullName ?? '用户',
-            address: [building?.name, order.shippingAddress?.streetLine1].filter(Boolean).join(' ') || undefined,
+            // 改址（P2-4）只写订单 campus 字段（buildingId/campusZone/deliveryDetail），
+            // shippingAddress.streetLine1 仍是下单时地址，推送外部运单必须按实时字段拼装。
+            address:
+                [building?.name, cf.deliveryDetail || order.shippingAddress?.streetLine1]
+                    .filter(Boolean)
+                    .join(' ') || undefined,
             lat: Number(building?.lat ?? 0),
             lng: Number(building?.lng ?? 0),
             phone: order.shippingAddress?.phoneNumber ?? undefined,
@@ -181,8 +186,13 @@ export class ThirdPartyDeliveryService implements OnApplicationBootstrap {
             remark: cf.note ?? undefined,
         });
 
-        await this.hall.updateOrder(oCtx, orderId, {
-            customFields: {
+        // 落库改条件写（P1-1）：下单与落库之间用户可能已取消（hallStatus 已脱厅或订单 state=Cancelled），
+        // 无条件写会把已退款单改回 third_party 复活，并留下孤儿运单（双份运费）。
+        const committed = await this.hall.transitionFrom(
+            oCtx,
+            orderId,
+            ['pending_merchant', 'accepted', 'pending_dispatch', 'third_party'],
+            {
                 deliveryPlan: 'external_courier',
                 handoverMode: plan.handover ?? '',
                 thirdPartyProvider: provider,
@@ -197,7 +207,27 @@ export class ThirdPartyDeliveryService implements OnApplicationBootstrap {
                 hallStatus: 'third_party',
                 campusCause: 'external_dispatched',
             },
-        } as any);
+        );
+        if (!committed) {
+            // 订单已取消/已流转：立刻撤回刚创建的外部运单，避免快递按旧单上门取餐
+            let revoked = false;
+            try {
+                const res = await this.gateway.cancelDelivery(oCtx, delivery.id, 'order state changed before commit');
+                revoked = !!res?.success;
+            } catch (e: any) {
+                Logger.error(
+                    `订单 ${order.code} 外部运单 ${delivery.id} 撤销失败，需人工处理：${e?.message ?? e}`,
+                    loggerCtx,
+                );
+            }
+            if (!revoked) {
+                Logger.error(
+                    `订单 ${order.code} 已不处于可推送状态，外部运单 ${delivery.id} 未确认撤销（孤儿单风险）`,
+                    loggerCtx,
+                );
+            }
+            throw new UserInputError('订单状态已变更（可能已取消），外部运单已撤销');
+        }
 
         Logger.info(`订单 ${order.code} 已推送 ${provider}:${delivery.thirdPartyNo ?? delivery.code}`, loggerCtx);
         return { ok: true, thirdPartyNo: delivery.thirdPartyNo ?? delivery.code, provider };
@@ -289,47 +319,69 @@ export class ThirdPartyDeliveryService implements OnApplicationBootstrap {
         if (update.courierName) patch.thirdPartyCourierName = update.courierName;
         if (update.courierPhone) patch.thirdPartyCourierPhone = update.courierPhone;
 
+        const orderIdNum = Number(order.id);
+        const hallStatus = String(cf.hallStatus ?? '');
         if (update.status === 'delivered') {
             // 第一段已结束（已进大厅 / 已被抢 / 已送达）：迟到或重复回调只补终态与快递员信息，不重置履约链路
-            if (String(cf.hallStatus ?? '') !== 'third_party') {
-                await this.hall.updateOrder(oCtx, Number(order.id), { customFields: patch } as any);
+            if (hallStatus !== 'third_party') {
+                await this.hall.updateOrder(oCtx, orderIdNum, { customFields: patch } as any);
                 return;
             }
             const next = nextHallStateAfterHandover(String(cf.handoverMode ?? ''));
-            patch.handoverAt = new Date();
             if (next.hallStatus === 'open') {
-                // R1/R2：送达交接点 → 进大厅接力（统一写 open/hallEnteredAt/campusCause 并提醒骑手）
-                await this.hall.updateOrder(oCtx, Number(order.id), {
-                    customFields: { ...patch, thirdPartyState: update.status, thirdPartyNo: patch.thirdPartyNo },
-                } as any);
-                await this.hall.enterHallForHandover(oCtx, Number(order.id), 'external_handover');
+                // R1/R2：送达交接点 → 进大厅接力。条件写（仅 third_party）：
+                // 与用户取消并发时不得把已退款单拉回大厅（否则可被抢、被送达、领分成）。
+                const code = await this.hall.enterHallForHandover(oCtx, orderIdNum, 'external_handover', ['third_party'], {
+                    ...patch,
+                    handoverAt: new Date(),
+                });
+                if (!code) {
+                    Logger.warn(`订单 ${order.code} 外部送达回调未入厅（订单已取消或状态已变更）`, loggerCtx);
+                }
                 return;
             }
-            // R3 外部快递整段直送：直接完成
-            patch.hallStatus = 'delivered';
-            patch.deliveryStatus = 'delivered';
-            patch.deliveredAt = new Date();
-        } else if (update.status === 'cancelled' || update.status === 'exception') {
+            // R3 外部快递整段直送：直接完成（条件写，取消后不复活）
+            const done = await this.hall.transitionFrom(oCtx, orderIdNum, ['third_party'], {
+                ...patch,
+                hallStatus: 'delivered',
+                deliveryStatus: 'delivered',
+                deliveredAt: new Date(),
+                handoverAt: new Date(),
+            });
+            if (!done) {
+                Logger.warn(`订单 ${order.code} 外部送达回调未完成（订单已取消或状态已变更）`, loggerCtx);
+                return;
+            }
+            if (cf.handoverMode === 'direct_to_user') {
+                this.notify.user(oCtx, order.id, 'orderDelivered');
+            }
+            return;
+        }
+        if (update.status === 'cancelled' || update.status === 'exception') {
             const route = String(cf.fulfillmentRoute ?? '');
             if (route === 'R2') {
                 // R2 回到待推送，由运营中心换一家外部快递
                 patch.hallStatus = 'pending_dispatch';
                 patch.campusCause = update.status === 'exception' ? 'external_exception' : 'external_cancelled';
             } else {
-                // R3 运力失败 → 回抢单大厅，由传信者兜底
+                // R3 运力失败 → 回抢单大厅，由传信者兜底。
+                // 刷新入厅时间：否则 T4 按旧 hallEnteredAt 判定滞留，可能立即自动退款。
                 patch.hallStatus = 'open';
+                patch.hallEnteredAt = new Date();
                 patch.deliveryPlan = 'campus_rider';
                 patch.handoverMode = '';
                 patch.thirdPartyProvider = '';
                 patch.campusCause = 'external_failed_to_hall';
             }
+            const moved = await this.hall.transitionFrom(oCtx, orderIdNum, ['third_party'], patch);
+            if (!moved) {
+                Logger.warn(`订单 ${order.code} 外部失败回调忽略（订单已取消或状态已变更）`, loggerCtx);
+            }
+            return;
         }
 
-        await this.hall.updateOrder(oCtx, Number(order.id), { customFields: patch } as any);
+        await this.hall.updateOrder(oCtx, orderIdNum, { customFields: patch } as any);
 
-        if (update.status === 'delivered' && cf.handoverMode === 'direct_to_user') {
-            this.notify.user(oCtx, order.id, 'orderDelivered');
-        }
         // 外部快递接单/取货顾客通知（D 组漏项）：复用「骑手已接单」模板，
         // dedupe 后缀区分接单与取货两个节点，避免与出餐完成通知抢同一幂等键。
         if (update.status === 'accepted' || update.status === 'pickup') {
@@ -353,14 +405,14 @@ export class ThirdPartyDeliveryService implements OnApplicationBootstrap {
         if (!['pending_merchant', 'open', 'owned_pool'].includes(String(cf.hallStatus ?? ''))) {
             throw new UserInputError('订单当前状态不可由自营快递接单');
         }
-        await this.hall.updateOrder(ctx, orderId, {
-            customFields: {
-                deliveryPlan: 'owned',
-                hallStatus: 'owned_dispatched',
-                assignedAt: new Date(),
-                campusCause: 'owned_accepted',
-            },
-        } as any);
+        // 条件写：校验与写入原子化，与用户取消并发时不把已退款单改回 owned_dispatched
+        const moved = await this.hall.transitionFrom(ctx, orderId, ['pending_merchant', 'open', 'owned_pool'], {
+            deliveryPlan: 'owned',
+            hallStatus: 'owned_dispatched',
+            assignedAt: new Date(),
+            campusCause: 'owned_accepted',
+        });
+        if (!moved) throw new UserInputError('订单状态已变更（可能已取消），请刷新后重试');
         return { ok: true };
     }
 
@@ -381,22 +433,24 @@ export class ThirdPartyDeliveryService implements OnApplicationBootstrap {
             throw new UserInputError('第一段已送达或订单状态已变更，请刷新后重试');
         }
         if (route === 'R3') {
-            await this.hall.updateOrder(ctx, orderId, {
-                customFields: {
-                    hallStatus: 'delivered',
-                    deliveryStatus: 'delivered',
-                    deliveredAt: new Date(),
-                    handoverAt: new Date(),
-                    campusCause: cause,
-                },
-            } as any);
+            // 条件写（仅本段配送中）：并发取消时不得把已退款单写成 delivered
+            const done = await this.hall.transitionFrom(ctx, orderId, [expectedStatus], {
+                hallStatus: 'delivered',
+                deliveryStatus: 'delivered',
+                deliveredAt: new Date(),
+                handoverAt: new Date(),
+                campusCause: cause,
+            });
+            if (!done) throw new UserInputError('第一段已送达或订单状态已变更，请刷新后重试');
             this.notify.user(ctx, order.id, 'orderDelivered');
             return { ok: true, done: true };
         }
-        await this.hall.updateOrder(ctx, orderId, {
-            customFields: { handoverAt: new Date(), thirdPartyState: '' },
-        } as any);
-        await this.hall.enterHallForHandover(ctx, orderId, cause);
+        // 条件入厅（仅本段配送中），handoverAt/thirdPartyState 与入厅同语句落库
+        const code = await this.hall.enterHallForHandover(ctx, orderId, cause, [expectedStatus], {
+            handoverAt: new Date(),
+            thirdPartyState: '',
+        });
+        if (!code) throw new UserInputError('第一段已送达或订单状态已变更，请刷新后重试');
         return { ok: true, done: false };
     }
 }

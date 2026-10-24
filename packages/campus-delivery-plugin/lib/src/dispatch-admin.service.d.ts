@@ -65,7 +65,8 @@ export declare class DispatchAdminService {
     assign(ctx: RequestContext, orderId: ID, riderCustomerId: ID): Promise<{
         assigned: boolean;
     }>;
-    /** 回大厅（改派前置）：清骑手指派字段，hallStatus 复位 open */
+    /** 回大厅（改派前置）：清骑手指派字段，hallStatus 复位 open。
+     * 条件写：已取消/已终态单不可回厅，返回失败让前端明确提示（不能假装成功）。 */
     backToHall(ctx: RequestContext, orderId: ID): Promise<{
         backToHall: boolean;
     }>;

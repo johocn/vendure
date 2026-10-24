@@ -6,8 +6,10 @@ function makeEnv(opts = {}) {
     var _a, _b, _c, _d;
     const grabSvc = { grabByRider: vitest_1.vi.fn().mockResolvedValue(true) };
     const hallSvc = {
-        backToHall: vitest_1.vi.fn().mockResolvedValue({}),
+        backToHall: vitest_1.vi.fn().mockResolvedValue(true),
         updateOrder: vitest_1.vi.fn().mockResolvedValue({}),
+        // 异常处置留痕/回滚改条件写（CAS）：默认命中
+        transitionFrom: vitest_1.vi.fn().mockResolvedValue(true),
     };
     const capacitySvc = { listOnlineRiders: vitest_1.vi.fn().mockResolvedValue((_a = opts.onlineRiders) !== null && _a !== void 0 ? _a : []) };
     const orderRepo = {
@@ -196,14 +198,14 @@ const exceptionOrder = (id, code, extra = {}) => ({
         const res = await svc.handleException(ctx, 6, 'reassign', undefined, undefined, '改派');
         (0, vitest_1.expect)(res).toEqual({ ok: true, action: 'reassign' });
         (0, vitest_1.expect)(hallSvc.backToHall).toHaveBeenCalledWith(ctx, 6);
-        const patch = orderRepo.update.mock.calls[0][1].customFields;
+        const patch = hallSvc.transitionFrom.mock.calls[0][3];
         (0, vitest_1.expect)(patch).toEqual(vitest_1.expect.objectContaining({ exceptionAction: 'reassign', exceptionHandledNote: '改派', exceptionHandledBy: '3' }));
         (0, vitest_1.expect)(patch.hallStatus).toBeUndefined();
         // 处置完结 push：reassign 也通知（dedupe 后缀=本次异常上报时间）
         (0, vitest_1.expect)(notifySvc.user).toHaveBeenCalledWith(ctx, 6, 'exceptionHandled', '平台已重新安排配送', undefined, vitest_1.expect.any(String));
     });
     (0, vitest_1.it)('refund_diff：部分退款（shipping/adjustment 显式 0）+ settleRefund + exception_final 留痕', async () => {
-        const { svc, orderRepo, orderSvc, paymentRepo } = makeEnv({
+        const { svc, orderRepo, hallSvc, orderSvc, paymentRepo } = makeEnv({
             payment: { id: 9, amount: 2300 },
             refundedSum: 0,
         });
@@ -214,7 +216,9 @@ const exceptionOrder = (id, code, extra = {}) => ({
             paymentId: 9, amount: 300, shipping: 0, adjustment: 0,
         }));
         (0, vitest_1.expect)(orderSvc.settleRefund).toHaveBeenCalledWith(ctx, { id: 55 });
-        const patch = orderRepo.update.mock.calls[0][1].customFields;
+        // 留痕条件写：仅 exception_final 单写处置记录
+        (0, vitest_1.expect)(hallSvc.transitionFrom).toHaveBeenCalledWith(ctx, 7, ['exception_final'], vitest_1.expect.any(Object));
+        const patch = hallSvc.transitionFrom.mock.calls[0][3];
         (0, vitest_1.expect)(patch).toEqual(vitest_1.expect.objectContaining({
             exceptionAction: 'refund_diff', exceptionCompensation: 300, hallStatus: 'exception_final',
         }));
@@ -234,12 +238,12 @@ const exceptionOrder = (id, code, extra = {}) => ({
         await (0, vitest_1.expect)(svc.handleException(ctx, 7, 'refund_diff', 300)).rejects.toThrow('订单无支付记录');
     });
     (0, vitest_1.it)('coupon：发补偿券 + exception_final 留痕', async () => {
-        const { svc, orderRepo } = makeEnv();
+        const { svc, orderRepo, hallSvc } = makeEnv();
         orderRepo.findOne.mockResolvedValue(exceptionOrder(8, 'A8'));
         svc.couponSvc = { grantCoupon: vitest_1.vi.fn().mockResolvedValue(['CODE1']) };
         await svc.handleException(ctx, 8, 'coupon', undefined, '9', '无骑手补偿');
         (0, vitest_1.expect)(svc.couponSvc.grantCoupon).toHaveBeenCalledWith(ctx, '9', [160]);
-        const patch = orderRepo.update.mock.calls[0][1].customFields;
+        const patch = hallSvc.transitionFrom.mock.calls[0][3];
         (0, vitest_1.expect)(patch).toEqual(vitest_1.expect.objectContaining({
             exceptionAction: 'coupon', exceptionCouponTemplateId: '9', hallStatus: 'exception_final',
         }));
@@ -250,14 +254,14 @@ const exceptionOrder = (id, code, extra = {}) => ({
         await (0, vitest_1.expect)(svc.handleException(ctx, 8, 'coupon')).rejects.toThrow('请选择补偿券模板');
     });
     (0, vitest_1.it)('refund_all：退剩余全额 + cancelOrder + campusCause=exception_refund', async () => {
-        const { svc, orderRepo, orderSvc, paymentRepo } = makeEnv({ refundedSum: 300 });
+        const { svc, orderRepo, hallSvc, orderSvc, paymentRepo } = makeEnv({ refundedSum: 300 });
         paymentRepo.findOne.mockResolvedValue({ id: 9, amount: 2300 });
         orderRepo.findOne.mockResolvedValue(exceptionOrder(10, 'A10'));
         await svc.handleException(ctx, 10, 'refund_all');
         // 已退 300，剩余 2000 补退
         (0, vitest_1.expect)(orderSvc.refundOrder).toHaveBeenCalledWith(ctx, vitest_1.expect.objectContaining({ paymentId: 9, amount: 2000 }));
         (0, vitest_1.expect)(orderSvc.cancelOrder).toHaveBeenCalledWith(ctx, vitest_1.expect.objectContaining({ orderId: 10 }));
-        const patch = orderRepo.update.mock.calls[0][1].customFields;
+        const patch = hallSvc.transitionFrom.mock.calls[0][3];
         (0, vitest_1.expect)(patch).toEqual(vitest_1.expect.objectContaining({
             exceptionAction: 'refund_all', hallStatus: 'exception_final', campusCause: 'exception_refund',
         }));
@@ -303,8 +307,9 @@ const exceptionOrder = (id, code, extra = {}) => ({
         env.orderRepo.findOne.mockResolvedValue(exceptionOrder(15, 'A15'));
         env.orderSvc.refundOrder.mockResolvedValue({ errorCode: 'REFUND_FAILED' });
         await (0, vitest_1.expect)(env.svc.handleException(ctx, 15, 'refund_diff', 300)).rejects.toThrow('refundOrder failed');
-        (0, vitest_1.expect)(env.hallSvc.updateOrder).toHaveBeenCalledWith(ctx, 15, {
-            customFields: { hallStatus: 'grabbed', deliveryStatus: 'exception' },
+        // 认领（置 exception_final）+ 回滚（从 exception_final 恢复原态）各一次条件写
+        (0, vitest_1.expect)(env.hallSvc.transitionFrom).toHaveBeenLastCalledWith(ctx, 15, ['exception_final'], {
+            hallStatus: 'grabbed', deliveryStatus: 'exception',
         });
         (0, vitest_1.expect)(env.orderRepo.update).not.toHaveBeenCalled();
     });

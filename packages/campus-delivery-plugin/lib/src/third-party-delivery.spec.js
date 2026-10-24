@@ -22,7 +22,8 @@ const third_party_delivery_service_1 = require("./third-party-delivery.service")
         const orderRepo = { findOne: vitest_1.vi.fn().mockResolvedValue(order) };
         const hall = {
             updateOrder: vitest_1.vi.fn().mockResolvedValue({}),
-            enterHallForHandover: vitest_1.vi.fn().mockResolvedValue({}),
+            enterHallForHandover: vitest_1.vi.fn().mockResolvedValue('1234'),
+            transitionFrom: vitest_1.vi.fn().mockResolvedValue(true),
         };
         const notify = { user: vitest_1.vi.fn() };
         const conn = { getRepository: vitest_1.vi.fn(() => orderRepo) };
@@ -33,8 +34,14 @@ const third_party_delivery_service_1 = require("./third-party-delivery.service")
     (0, vitest_1.it)('商户配送中（merchant_delivering）→ 进大厅接力', async () => {
         const { svc, hall } = makeEnv({ id: 1, code: 'A1', customFields: { fulfilment: 'x', fulfillmentRoute: 'R1', deliveryPlan: 'merchant', hallStatus: 'merchant_delivering' } });
         const res = await svc.completeFirstLeg(ctx, 1, 'merchant_handover');
-        (0, vitest_1.expect)(hall.enterHallForHandover).toHaveBeenCalledWith(ctx, 1, 'merchant_handover');
+        // 条件入厅：仅 merchant_delivering 可入厅，附加 handoverAt/thirdPartyState 同语句落库
+        (0, vitest_1.expect)(hall.enterHallForHandover).toHaveBeenCalledWith(ctx, 1, 'merchant_handover', ['merchant_delivering'], vitest_1.expect.objectContaining({ thirdPartyState: '' }));
         (0, vitest_1.expect)(res).toEqual({ ok: true, done: false });
+    });
+    (0, vitest_1.it)('入厅条件写未命中（并发取消）→ 拒绝，不返回成功', async () => {
+        const { svc, hall } = makeEnv({ id: 1, code: 'A1', customFields: { fulfillmentRoute: 'R1', deliveryPlan: 'merchant', hallStatus: 'merchant_delivering' } });
+        hall.enterHallForHandover.mockResolvedValueOnce('');
+        await (0, vitest_1.expect)(svc.completeFirstLeg(ctx, 1, 'merchant_handover')).rejects.toThrow('第一段已送达或订单状态已变更');
     });
     (0, vitest_1.it)('重复调用（已回大厅 open）→ 拒绝，不重置大厅/交接码', async () => {
         const { svc, hall } = makeEnv({ id: 1, code: 'A1', customFields: { fulfillmentRoute: 'R1', deliveryPlan: 'merchant', hallStatus: 'open' } });
@@ -44,11 +51,17 @@ const third_party_delivery_service_1 = require("./third-party-delivery.service")
     (0, vitest_1.it)('自营快递配送中（owned_dispatched）R3 → 直接完成', async () => {
         const { svc, hall, notify } = makeEnv({ id: 2, code: 'A2', customFields: { fulfillmentRoute: 'R3', deliveryPlan: 'owned', hallStatus: 'owned_dispatched' } });
         const res = await svc.completeFirstLeg(ctx, 2, 'owned_handover');
-        (0, vitest_1.expect)(hall.updateOrder).toHaveBeenCalledWith(ctx, 2, vitest_1.expect.objectContaining({
-            customFields: vitest_1.expect.objectContaining({ hallStatus: 'delivered', deliveryStatus: 'delivered' }),
+        (0, vitest_1.expect)(hall.transitionFrom).toHaveBeenCalledWith(ctx, 2, ['owned_dispatched'], vitest_1.expect.objectContaining({
+            hallStatus: 'delivered', deliveryStatus: 'delivered',
         }));
         (0, vitest_1.expect)(notify.user).toHaveBeenCalledWith(ctx, 2, 'orderDelivered');
         (0, vitest_1.expect)(res).toEqual({ ok: true, done: true });
+    });
+    (0, vitest_1.it)('R3 第一段完成时订单已取消（条件写未命中）→ 拒绝且不通知', async () => {
+        const { svc, hall, notify } = makeEnv({ id: 2, code: 'A2', customFields: { fulfillmentRoute: 'R3', deliveryPlan: 'owned', hallStatus: 'owned_dispatched' } });
+        hall.transitionFrom.mockResolvedValueOnce(false);
+        await (0, vitest_1.expect)(svc.completeFirstLeg(ctx, 2, 'owned_handover')).rejects.toThrow('第一段已送达或订单状态已变更');
+        (0, vitest_1.expect)(notify.user).not.toHaveBeenCalled();
     });
     (0, vitest_1.it)('状态与线路不符（自营 plan 但仍是 merchant_delivering）→ 拒绝', async () => {
         const { svc } = makeEnv({ id: 3, code: 'A3', customFields: { fulfillmentRoute: 'R1', deliveryPlan: 'owned', hallStatus: 'merchant_delivering' } });
@@ -62,7 +75,8 @@ const third_party_delivery_service_1 = require("./third-party-delivery.service")
         const cfgRepo = { findOne: vitest_1.vi.fn().mockResolvedValue(null) };
         const hall = {
             updateOrder: vitest_1.vi.fn().mockResolvedValue({}),
-            enterHallForHandover: vitest_1.vi.fn().mockResolvedValue({}),
+            enterHallForHandover: vitest_1.vi.fn().mockResolvedValue('1234'),
+            transitionFrom: vitest_1.vi.fn().mockResolvedValue(true),
         };
         const notify = { user: vitest_1.vi.fn() };
         const conn = {
@@ -117,7 +131,24 @@ const third_party_delivery_service_1 = require("./third-party-delivery.service")
             customFields: { thirdPartyState: 'pickup', hallStatus: 'third_party', handoverMode: 'to_campus_rider' },
         });
         await svc.onDeliveryStatus(ctx, update('delivered'));
-        (0, vitest_1.expect)(hall.enterHallForHandover).toHaveBeenCalledWith(vitest_1.expect.anything(), 1, 'external_handover');
+        (0, vitest_1.expect)(hall.enterHallForHandover).toHaveBeenCalledWith(vitest_1.expect.anything(), 1, 'external_handover', ['third_party'], vitest_1.expect.objectContaining({ thirdPartyState: 'delivered' }));
+    });
+    (0, vitest_1.it)('已取消订单收到送达回调 → 只补状态，不复活进入大厅', async () => {
+        const { svc, hall } = makeEnv({
+            id: 1, code: 'A1',
+            customFields: { thirdPartyState: 'pickup', hallStatus: 'cancelled', handoverMode: 'to_campus_rider' },
+        });
+        await svc.onDeliveryStatus(ctx, update('delivered'));
+        (0, vitest_1.expect)(hall.enterHallForHandover).not.toHaveBeenCalled();
+        (0, vitest_1.expect)(hall.updateOrder.mock.calls[0][2].customFields.hallStatus).toBeUndefined();
+    });
+    (0, vitest_1.it)('R3 外部运力异常 → 条件写回大厅并刷新入厅时间', async () => {
+        const { svc, hall } = makeEnv({
+            id: 1, code: 'A1',
+            customFields: { thirdPartyState: 'accepted', hallStatus: 'third_party', fulfillmentRoute: 'R3' },
+        });
+        await svc.onDeliveryStatus(ctx, update('exception'));
+        (0, vitest_1.expect)(hall.transitionFrom).toHaveBeenCalledWith(vitest_1.expect.anything(), 1, ['third_party'], vitest_1.expect.objectContaining({ hallStatus: 'open', hallEnteredAt: vitest_1.expect.any(Date) }));
     });
 });
 //# sourceMappingURL=third-party-delivery.spec.js.map

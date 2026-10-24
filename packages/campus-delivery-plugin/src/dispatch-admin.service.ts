@@ -17,7 +17,7 @@ import { CapacityService } from './capacity.service';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CampusNotifyService } from './campus-notify.service';
 import { HallGrabService } from './hall-grab.service';
-import { HallService } from './hall.service';
+import { HallService, ACTIVE_HALL_STATUSES } from './hall.service';
 import { withRefundLock } from './refund-lock';
 import { CREDIT_LIMIT } from './rider-credit.service';
 
@@ -111,7 +111,19 @@ export class DispatchAdminService {
         for (const o of orders) {
             const cf = o.customFields as any;
             if (cf.hallStatus === 'exception_final') {
-                // 已处置完结（plan 3.4）：不进调度墙，进留痕列表
+                // 已处置完结（plan 3.4）：不进调度墙，进留痕列表。
+                // 但若「已认领处置」却未写 exceptionHandledAt（赔付/留痕前宕机），必须继续告警让人工补处理，
+                // 否则订单被静默吞掉（骑手异常上报无下文）。
+                if (cf.deliveryStatus === 'exception' && !cf.exceptionHandledAt) {
+                    alerts.push({
+                        orderId: String(o.id),
+                        orderCode: o.code,
+                        type: 'exception',
+                        detail: '异常处置未完成（已标记但未赔付/未留痕），请人工核对补处理',
+                        exceptionNote: cf.exceptionNote ?? null,
+                        exceptionPhotos: cf.exceptionPhotos ?? null,
+                    });
+                }
                 handled.push(o);
                 continue;
             }
@@ -223,10 +235,12 @@ export class DispatchAdminService {
         return { assigned: true };
     }
 
-    /** 回大厅（改派前置）：清骑手指派字段，hallStatus 复位 open */
+    /** 回大厅（改派前置）：清骑手指派字段，hallStatus 复位 open。
+     * 条件写：已取消/已终态单不可回厅，返回失败让前端明确提示（不能假装成功）。 */
     async backToHall(ctx: RequestContext, orderId: ID) {
         await this.assertOrderInChannel(ctx, orderId);
-        await this.hall.backToHall(ctx, orderId as any);
+        const moved = await this.hall.backToHall(ctx, orderId as any);
+        if (!moved) throw new UserInputError('订单已取消或已不在履约流程中，无法回大厅');
         return { backToHall: true };
     }
 
@@ -264,19 +278,24 @@ export class DispatchAdminService {
                   ['exception_final', orderId, 'exception'],
               );
         if (!claimed) throw new UserInputError('该异常已处置，请刷新后重试');
-        const restore = () =>
-            this.hall.updateOrder(ctx, order.id as any, {
-                customFields: { hallStatus: origHallStatus, deliveryStatus: 'exception' },
-            } as any);
+        // 回滚认领也走条件写：期间若订单已取消（state=Cancelled）则不再恢复异常态（避免复活）
+        const restore = action === 'reassign'
+            ? () => this.hall.transitionFrom(ctx, Number(order.id), ACTIVE_HALL_STATUSES, { deliveryStatus: 'exception' })
+            : () => this.hall.transitionFrom(ctx, Number(order.id), ['exception_final'], {
+                  hallStatus: origHallStatus,
+                  deliveryStatus: 'exception',
+              });
         try {
             switch (action) {
-                case 'reassign':
-                    await this.hall.backToHall(ctx, order.id as any);
+                case 'reassign': {
+                    const moved = await this.hall.backToHall(ctx, order.id as any);
+                    if (!moved) throw new UserInputError('订单已取消，无法重新派送');
                     // 重置入厅时间：否则同轮 T4 会按旧 hallEnteredAt 立即自动退款
                     await this.hall.updateOrder(ctx, order.id as any, {
                         customFields: { hallEnteredAt: new Date(), campusCause: 'exception_reassign' },
                     } as any);
                     break;
+                }
                 case 'refund_diff': {
                     if (!amount || amount <= 0) throw new UserInputError('赔付金额必须大于 0');
                     const done = await withRefundLock(this.connection, Number(order.id), () =>
@@ -320,7 +339,19 @@ export class DispatchAdminService {
             patch.hallStatus = 'exception_final';
             if (action === 'refund_all') patch.campusCause = 'exception_refund';
         }
-        await this.connection.getRepository(ctx, Order).update(order.id, { customFields: patch });
+        // 留痕条件写：期间订单被取消/已离开预期状态时不写处置记录（终态优先，不覆盖取消）
+        const recorded = await this.hall.transitionFrom(
+            ctx,
+            Number(order.id),
+            action === 'reassign' ? ACTIVE_HALL_STATUSES : ['exception_final'],
+            patch,
+        );
+        if (!recorded) {
+            Logger.warn(
+                `Order ${order.code} exception handled (${action}) but hall state changed; record skipped`,
+                'CampusDispatch',
+            );
+        }
         Logger.info(`Order ${order.code} exception handled: ${action}`, 'CampusDispatch');
         // 处置完结 push（fire-and-forget，plan 3.4 补全）：按 action 带动态文案通知下单用户
         // dedupe 后缀用本次异常上报时间：重派后再次异常处置各推一条（固定键会把第二次吞掉）

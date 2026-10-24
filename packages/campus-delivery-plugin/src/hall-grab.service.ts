@@ -40,6 +40,7 @@ export class HallGrabService {
             });
             const cf = order?.customFields as any;
             if (!order || cf?.hallStatus !== 'open') throw new UserInputError('手慢了，该订单已被抢');
+            if ((order as any).state === 'Cancelled') throw new UserInputError('该订单已取消');
             if (order.customer?.id === rider.id) throw new UserInputError('不能抢自己的订单');
             // 整组抢单：同组 open 单按 id 升序锁定（主单已在锁内，重复锁无害）。
             // 注意：单表查询直接 FOR UPDATE 即可——setLock 的 lockTables 第三参
@@ -50,6 +51,7 @@ export class HallGrabService {
                 mates = await em.getRepository(Order).createQueryBuilder('order')
                     .where('order.customFields.routeGroupId = :gid', { gid: cf.routeGroupId })
                     .andWhere('order.customFields.hallStatus = :s', { s: 'open' })
+                    .andWhere('order.state != :cancelled', { cancelled: 'Cancelled' })
                     .orderBy('order.id', 'ASC')
                     .setLock('pessimistic_write')
                     .getMany();
@@ -88,6 +90,7 @@ export class HallGrabService {
             });
             const cf = order?.customFields as any;
             if (!order || cf?.hallStatus !== 'open') return false;
+            if ((order as any).state === 'Cancelled') return false;
             await em.getRepository(Order).update(order.id, {
                 customFields: {
                     hallStatus: 'grabbed',
@@ -118,6 +121,8 @@ export class HallGrabService {
             .leftJoin('order.channels', 'channel')
             .where('channel.id = :ch', { ch: ctx.channelId as any })
             .andWhere('order.customFields.hallStatus = :s', { s: 'open' })
+            // 取消事件异步脱厅存在窗口：已取消单即使 hallStatus 仍为 open 也绝不进大厅
+            .andWhere('order.state != :cancelled', { cancelled: 'Cancelled' })
             .getMany();
         return this.sortHall(orders);
     }
@@ -143,6 +148,8 @@ export class HallGrabService {
             .leftJoinAndSelect('order.channels', 'channel')
             .where('channel.id IN (:...ids)', { ids: stores.map(s => s.id) })
             .andWhere('order.customFields.hallStatus = :s', { s: 'open' })
+            // 取消事件异步脱厅存在窗口：已取消单绝不进骑手大厅
+            .andWhere('order.state != :cancelled', { cancelled: 'Cancelled' })
             // PG LIMIT 无 ORDER BY 时截断集不确定：按创建时间升序（最老最紧急优先）固定截断口径，
             // 且保证 sortHall 的小费降序作用于确定的候选集（不会漏掉高小费单）
             .orderBy('order.createdAt', 'ASC')

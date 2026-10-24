@@ -53,7 +53,7 @@ let DispatchAdminService = class DispatchAdminService {
         return new core_2.Injector(this.moduleRef);
     }
     async board(ctx) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
         const cfg = await this.connection
             .getRepository(ctx, campus_fulfillment_config_entity_1.CampusFulfillmentConfig)
             .findOne({ where: { channelId: ctx.channelId } });
@@ -74,7 +74,19 @@ let DispatchAdminService = class DispatchAdminService {
         for (const o of orders) {
             const cf = o.customFields;
             if (cf.hallStatus === 'exception_final') {
-                // 已处置完结（plan 3.4）：不进调度墙，进留痕列表
+                // 已处置完结（plan 3.4）：不进调度墙，进留痕列表。
+                // 但若「已认领处置」却未写 exceptionHandledAt（赔付/留痕前宕机），必须继续告警让人工补处理，
+                // 否则订单被静默吞掉（骑手异常上报无下文）。
+                if (cf.deliveryStatus === 'exception' && !cf.exceptionHandledAt) {
+                    alerts.push({
+                        orderId: String(o.id),
+                        orderCode: o.code,
+                        type: 'exception',
+                        detail: '异常处置未完成（已标记但未赔付/未留痕），请人工核对补处理',
+                        exceptionNote: (_a = cf.exceptionNote) !== null && _a !== void 0 ? _a : null,
+                        exceptionPhotos: (_b = cf.exceptionPhotos) !== null && _b !== void 0 ? _b : null,
+                    });
+                }
                 handled.push(o);
                 continue;
             }
@@ -96,24 +108,24 @@ let DispatchAdminService = class DispatchAdminService {
                     });
                 }
                 const enteredAt = cf.hallEnteredAt;
-                if (enteredAt && now - new Date(enteredAt).getTime() > ((_a = cfg === null || cfg === void 0 ? void 0 : cfg.autoAssignMinutes) !== null && _a !== void 0 ? _a : 10) * 60000) {
+                if (enteredAt && now - new Date(enteredAt).getTime() > ((_c = cfg === null || cfg === void 0 ? void 0 : cfg.autoAssignMinutes) !== null && _c !== void 0 ? _c : 10) * 60000) {
                     alerts.push({
                         orderId: String(o.id),
                         orderCode: o.code,
                         type: 'stale_open',
-                        detail: `大厅滞留超 ${(_b = cfg === null || cfg === void 0 ? void 0 : cfg.autoAssignMinutes) !== null && _b !== void 0 ? _b : 10} 分钟，自动派单未完成`,
+                        detail: `大厅滞留超 ${(_d = cfg === null || cfg === void 0 ? void 0 : cfg.autoAssignMinutes) !== null && _d !== void 0 ? _d : 10} 分钟，自动派单未完成`,
                     });
                 }
             }
             else if (cf.deliveryStatus === 'in_progress') {
                 activeOrders.push(o);
-                const at = (_c = cf.assignedAt) !== null && _c !== void 0 ? _c : cf.hallEnteredAt;
-                if (at && now - new Date(at).getTime() > ((_d = cfg === null || cfg === void 0 ? void 0 : cfg.inProgressSlaMinutes) !== null && _d !== void 0 ? _d : 45) * 60000) {
+                const at = (_e = cf.assignedAt) !== null && _e !== void 0 ? _e : cf.hallEnteredAt;
+                if (at && now - new Date(at).getTime() > ((_f = cfg === null || cfg === void 0 ? void 0 : cfg.inProgressSlaMinutes) !== null && _f !== void 0 ? _f : 45) * 60000) {
                     alerts.push({
                         orderId: String(o.id),
                         orderCode: o.code,
                         type: 'sla_breach',
-                        detail: `配送超 SLA（>${(_e = cfg === null || cfg === void 0 ? void 0 : cfg.inProgressSlaMinutes) !== null && _e !== void 0 ? _e : 45} 分钟）`,
+                        detail: `配送超 SLA（>${(_g = cfg === null || cfg === void 0 ? void 0 : cfg.inProgressSlaMinutes) !== null && _g !== void 0 ? _g : 45} 分钟）`,
                     });
                 }
             }
@@ -122,9 +134,9 @@ let DispatchAdminService = class DispatchAdminService {
                     orderId: String(o.id),
                     orderCode: o.code,
                     type: 'exception',
-                    detail: (_f = cf.exceptionType) !== null && _f !== void 0 ? _f : '骑手上报异常',
-                    exceptionNote: (_g = cf.exceptionNote) !== null && _g !== void 0 ? _g : null,
-                    exceptionPhotos: (_h = cf.exceptionPhotos) !== null && _h !== void 0 ? _h : null,
+                    detail: (_h = cf.exceptionType) !== null && _h !== void 0 ? _h : '骑手上报异常',
+                    exceptionNote: (_j = cf.exceptionNote) !== null && _j !== void 0 ? _j : null,
+                    exceptionPhotos: (_k = cf.exceptionPhotos) !== null && _k !== void 0 ? _k : null,
                 });
             }
             else {
@@ -172,7 +184,7 @@ let DispatchAdminService = class DispatchAdminService {
                 handledBy: (_g = cf.exceptionHandledBy) !== null && _g !== void 0 ? _g : '',
             };
         });
-        return { paused: (_j = cfg === null || cfg === void 0 ? void 0 : cfg.paused) !== null && _j !== void 0 ? _j : false, alerts, hallOrders, activeOrders, ridersOnline, handledOrders };
+        return { paused: (_l = cfg === null || cfg === void 0 ? void 0 : cfg.paused) !== null && _l !== void 0 ? _l : false, alerts, hallOrders, activeOrders, ridersOnline, handledOrders };
     }
     /** 手动派单/改派：目标骑手须在职（approved）且信用分达标，避免把单派给封禁/低分骑手。
      * 跨店守卫：只能操作本渠道订单（与 address-change 同源校验）。
@@ -200,10 +212,13 @@ let DispatchAdminService = class DispatchAdminService {
             throw new core_2.UserInputError('派单失败：订单已不在大厅（已被抢/已退款）');
         return { assigned: true };
     }
-    /** 回大厅（改派前置）：清骑手指派字段，hallStatus 复位 open */
+    /** 回大厅（改派前置）：清骑手指派字段，hallStatus 复位 open。
+     * 条件写：已取消/已终态单不可回厅，返回失败让前端明确提示（不能假装成功）。 */
     async backToHall(ctx, orderId) {
         await this.assertOrderInChannel(ctx, orderId);
-        await this.hall.backToHall(ctx, orderId);
+        const moved = await this.hall.backToHall(ctx, orderId);
+        if (!moved)
+            throw new core_2.UserInputError('订单已取消或已不在履约流程中，无法回大厅');
         return { backToHall: true };
     }
     /** 异常处置（plan 3.4）：仅 deliveryStatus='exception' 的订单可处置。
@@ -230,18 +245,25 @@ let DispatchAdminService = class DispatchAdminService {
                 + 'AND COALESCE("customFieldsHallstatus", \'\') <> $1 RETURNING id', ['exception_final', orderId, 'exception']);
         if (!claimed)
             throw new core_2.UserInputError('该异常已处置，请刷新后重试');
-        const restore = () => this.hall.updateOrder(ctx, order.id, {
-            customFields: { hallStatus: origHallStatus, deliveryStatus: 'exception' },
-        });
+        // 回滚认领也走条件写：期间若订单已取消（state=Cancelled）则不再恢复异常态（避免复活）
+        const restore = action === 'reassign'
+            ? () => this.hall.transitionFrom(ctx, Number(order.id), hall_service_1.ACTIVE_HALL_STATUSES, { deliveryStatus: 'exception' })
+            : () => this.hall.transitionFrom(ctx, Number(order.id), ['exception_final'], {
+                hallStatus: origHallStatus,
+                deliveryStatus: 'exception',
+            });
         try {
             switch (action) {
-                case 'reassign':
-                    await this.hall.backToHall(ctx, order.id);
+                case 'reassign': {
+                    const moved = await this.hall.backToHall(ctx, order.id);
+                    if (!moved)
+                        throw new core_2.UserInputError('订单已取消，无法重新派送');
                     // 重置入厅时间：否则同轮 T4 会按旧 hallEnteredAt 立即自动退款
                     await this.hall.updateOrder(ctx, order.id, {
                         customFields: { hallEnteredAt: new Date(), campusCause: 'exception_reassign' },
                     });
                     break;
+                }
                 case 'refund_diff': {
                     if (!amount || amount <= 0)
                         throw new core_2.UserInputError('赔付金额必须大于 0');
@@ -289,7 +311,11 @@ let DispatchAdminService = class DispatchAdminService {
             if (action === 'refund_all')
                 patch.campusCause = 'exception_refund';
         }
-        await this.connection.getRepository(ctx, core_2.Order).update(order.id, { customFields: patch });
+        // 留痕条件写：期间订单被取消/已离开预期状态时不写处置记录（终态优先，不覆盖取消）
+        const recorded = await this.hall.transitionFrom(ctx, Number(order.id), action === 'reassign' ? hall_service_1.ACTIVE_HALL_STATUSES : ['exception_final'], patch);
+        if (!recorded) {
+            core_2.Logger.warn(`Order ${order.code} exception handled (${action}) but hall state changed; record skipped`, 'CampusDispatch');
+        }
         core_2.Logger.info(`Order ${order.code} exception handled: ${action}`, 'CampusDispatch');
         // 处置完结 push（fire-and-forget，plan 3.4 补全）：按 action 带动态文案通知下单用户
         // dedupe 后缀用本次异常上报时间：重派后再次异常处置各推一条（固定键会把第二次吞掉）

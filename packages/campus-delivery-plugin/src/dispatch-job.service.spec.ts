@@ -36,6 +36,7 @@ function makeEnv(opts: {
             where: vi.fn().mockReturnThis(),
             andWhere: vi.fn().mockReturnThis(),
             orderBy: vi.fn().mockReturnThis(),
+            addOrderBy: vi.fn().mockReturnThis(),
             take: vi.fn().mockReturnThis(),
             getMany: vi.fn().mockResolvedValue([...allOrders]),
         }),
@@ -57,6 +58,14 @@ function makeEnv(opts: {
         }),
         rawConnection: {
             getRepository: vi.fn((_ent: any) => refundRepo),
+            // 超时赔付闸 CAS（UPDATE ... WHERE timeoutcompensatedat IS NULL RETURNING id）：默认命中
+            query: vi.fn().mockImplementation((sql: string, params?: any[]) => {
+                // 打包条件写：回放命中的 id（模拟全部仍 open）
+                if (String(sql).includes('"customFieldsRoutegroupid"')) {
+                    return Promise.resolve([((params?.[1] ?? []) as number[]).map(id => ({ id })), []]);
+                }
+                return Promise.resolve([[{ id: 30 }], []]);
+            }),
             // 退款并发咨询锁 / 扫描多实例锁：默认抢锁成功
             createQueryRunner: () => ({
                 connect: vi.fn().mockResolvedValue(undefined),
@@ -68,7 +77,7 @@ function makeEnv(opts: {
     const svc = new DispatchJobService(
         conn, grabSvc as any, hallSvc as any, capacitySvc as any, creditSvc as any, { get: vi.fn() } as any,
     );
-    return { svc, grabSvc, creditSvc, hallSvc, capacitySvc, orderRepo, configRepo, grabResults };
+    return { svc, grabSvc, creditSvc, hallSvc, capacitySvc, orderRepo, configRepo, grabResults, rawQuery: conn.rawConnection.query };
 }
 
 const now = Date.now();
@@ -310,31 +319,37 @@ describe('DispatchJobService.scan 多单顺路打包 T1.5（plan 3.3）', () => 
         createdAt: minAgo(20),
         customFields: { hallStatus: 'open', hallEnteredAt: minAgo(1), fulfillmentRoute: 'R1', ...cf },
     });
+    // 打包已改裸 SQL 条件写：从 rawConnection.query 调用中筛出 routeGroupId 写入
+    const packCalls = (rawQuery: any) =>
+        (rawQuery.mock.calls as any[][]).filter((c: any[]) => String(c[0]).includes('"customFieldsRoutegroupid"'));
 
     it('同楼栋+同时段 2 单 → 写同一 routeGroupId', async () => {
-        const { svc, orderRepo } = makeEnv({
+        const { svc, rawQuery } = makeEnv({
             openOrders: [
                 fresh(1, { buildingId: 'b1', deliverySlotId: '11', deliverySlotText: '11:00-11:30' }),
                 fresh(2, { buildingId: 'b1', deliverySlotId: '11', deliverySlotText: '11:00-11:30' }),
             ],
         });
         await svc.scan({ channelId: 1 } as any);
-        expect(orderRepo.update).toHaveBeenCalledOnce();
-        const [ids, patch] = orderRepo.update.mock.calls[0];
-        expect([...ids].sort()).toEqual(['1', '2']);
-        const gid = patch.customFields.routeGroupId;
-        expect(gid).toMatch(/^rg-/);
+        const calls = packCalls(rawQuery);
+        expect(calls).toHaveLength(1);
+        const [sql, params] = calls[0];
+        // 条件写：仅 open 且未取消的单
+        expect(String(sql)).toContain('"customFieldsHallstatus" = $3');
+        expect(params[1]).toEqual([1, 2]);
+        expect(params[2]).toBe('open');
+        expect(params[0]).toMatch(/^rg-/);
     });
 
     it('不同楼栋不成组', async () => {
-        const { svc, orderRepo } = makeEnv({
+        const { svc, rawQuery } = makeEnv({
             openOrders: [
                 fresh(1, { buildingId: 'b1', deliverySlotId: '11' }),
                 fresh(2, { buildingId: 'b2', deliverySlotId: '11' }),
             ],
         });
         await svc.scan({ channelId: 1 } as any);
-        expect(orderRepo.update).not.toHaveBeenCalled();
+        expect(packCalls(rawQuery)).toHaveLength(0);
     });
 
     it('即时单同楼栋入厅差 ≤10min 成组，超窗不成组', async () => {
@@ -343,33 +358,34 @@ describe('DispatchJobService.scan 多单顺路打包 T1.5（plan 3.3）', () => 
         const far = { id: 3, createdAt: minAgo(40), customFields: { hallStatus: 'open', fulfillmentRoute: 'R1', buildingId: 'b1', hallEnteredAt: minAgo(30) } };
         const env = makeEnv({ openOrders: [near, near2, far] });
         await env.svc.scan({ channelId: 1 } as any);
-        const [ids] = env.orderRepo.update.mock.calls[0];
-        expect([...ids].sort()).toEqual(['1', '2']); // far 单差 29min 不入组
+        const [, ids] = packCalls(env.rawQuery)[0][1];
+        expect([...ids].sort()).toEqual([1, 2]); // far 单差 29min 不入组
     });
 
     it('errand 跑腿单不打包', async () => {
-        const { svc, orderRepo } = makeEnv({
+        const { svc, rawQuery } = makeEnv({
             openOrders: [
                 fresh(1, { buildingId: 'b1' }),
                 fresh(2, { buildingId: 'b1', fulfillmentRoute: undefined, orderKind: 'errand' }),
             ],
         });
         await svc.scan({ channelId: 1 } as any);
-        expect(orderRepo.update).not.toHaveBeenCalled();
+        expect(packCalls(rawQuery)).toHaveLength(0);
     });
 
     it('批内已有 routeGroupId → 复用不重生成', async () => {
-        const { svc, orderRepo } = makeEnv({
+        const { svc, rawQuery } = makeEnv({
             openOrders: [
                 fresh(1, { buildingId: 'b1', deliverySlotId: '11', routeGroupId: 'rg-old' }),
                 fresh(2, { buildingId: 'b1', deliverySlotId: '11' }),
             ],
         });
         await svc.scan({ channelId: 1 } as any);
-        expect(orderRepo.update).toHaveBeenCalledOnce();
-        const [ids, patch] = orderRepo.update.mock.calls[0];
-        expect(patch.customFields.routeGroupId).toBe('rg-old');
-        expect(ids).toEqual(['2']); // 已带组 id 的单不再 update
+        const calls = packCalls(rawQuery);
+        expect(calls).toHaveLength(1);
+        const [, params] = calls[0];
+        expect(params[0]).toBe('rg-old');
+        expect(params[1]).toEqual([2]); // 已带组 id 的单不再 update
     });
 });
 
@@ -552,15 +568,18 @@ function makeTimeoutEnv(opts: {
             leftJoin: vi.fn().mockReturnThis(),
             where: vi.fn().mockReturnThis(),
             andWhere: vi.fn().mockReturnThis(),
+            orderBy: vi.fn().mockReturnThis(),
+            addOrderBy: vi.fn().mockReturnThis(),
             take: vi.fn().mockReturnThis(),
             getMany: vi.fn().mockResolvedValue(opts.orders),
         })),
     };
     // 券服务 mock 需固定实例（services() 每次调用都会重建对象，不能在里面新建 spy）
     const coupon = opts.coupon === null ? null : (opts.coupon ?? { grantCoupon: vi.fn().mockResolvedValue(['coupon-1']) });
-    (env.svc as any).connection = { getRepository: vi.fn(() => repo) };
+    const baseConn = (env.svc as any).connection;
+    (env.svc as any).connection = { getRepository: vi.fn(() => repo), rawConnection: baseConn.rawConnection };
     (env.svc as any).services = () => ({ order: null, coupon });
-    return { ...env, coupon, repo };
+    return { ...env, coupon, repo, rawQuery: baseConn.rawConnection.query as any };
 }
 
 describe('DispatchJobService 超时赔付（P0）', () => {
@@ -574,9 +593,14 @@ describe('DispatchJobService 超时赔付（P0）', () => {
         },
     });
 
-    it('超出承诺 + 宽限 → 自动发券并写幂等闸与归因', async () => {
+    it('超出承诺 + 宽限 → 先抢赔付闸（CAS）再发券并写归因', async () => {
         const env = makeTimeoutEnv({ orders: [deliveredOrder()], cfg: cfgOn });
         await (env.svc as any).sweepTimeoutCompensation({ channelId: 1 } as any, cfgOn, now);
+        // 先认领闸：UPDATE ... WHERE timeoutcompensatedat IS NULL
+        expect(env.rawQuery).toHaveBeenCalledWith(
+            expect.stringContaining('"customFieldsTimeoutcompensatedat" IS NULL'),
+            [expect.any(Date), 31],
+        );
         expect(env.coupon!.grantCoupon).toHaveBeenCalledWith(
             expect.anything(), 'T-LATE', ['5'],
         );
@@ -587,8 +611,16 @@ describe('DispatchJobService 超时赔付（P0）', () => {
                 timeoutAttribution: 'rider',
             }),
         });
-        const patch = env.hallSvc.updateOrder.mock.calls[0][2].customFields;
-        expect(patch.timeoutCompensatedAt).toBeInstanceOf(Date);
+        // 闸已在认领时写入，最终留痕不重复写（避免覆盖认领时间）
+        expect(env.hallSvc.updateOrder.mock.calls[0][2].customFields.timeoutCompensatedAt).toBeUndefined();
+    });
+
+    it('赔付闸已被上一轮抢占（认领失败）→ 不发券', async () => {
+        const env = makeTimeoutEnv({ orders: [deliveredOrder()], cfg: cfgOn });
+        env.rawQuery.mockResolvedValueOnce([[], []]);
+        await (env.svc as any).sweepTimeoutCompensation({ channelId: 1 } as any, cfgOn, now);
+        expect(env.coupon!.grantCoupon).not.toHaveBeenCalled();
+        expect(env.hallSvc.updateOrder).not.toHaveBeenCalled();
     });
 
     it('超时未过宽限 → 不赔', async () => {
@@ -631,13 +663,16 @@ describe('DispatchJobService 超时赔付（P0）', () => {
         expect(env.hallSvc.updateOrder).not.toHaveBeenCalled();
     });
 
-    it('发券异常 → 不写闸，下一轮可重试', async () => {
+    it('发券异常 → 释放赔付闸，下一轮可重试', async () => {
         const env = makeTimeoutEnv({
             orders: [deliveredOrder()], cfg: cfgOn,
             coupon: { grantCoupon: vi.fn().mockRejectedValue(new Error('template disabled')) },
         });
         await (env.svc as any).sweepTimeoutCompensation({ channelId: 1 } as any, cfgOn, now);
         expect(env.hallSvc.updateOrder).not.toHaveBeenCalled();
+        // 认领 + 释放两次 SQL：第二次把闸清空
+        expect(env.rawQuery).toHaveBeenCalledTimes(2);
+        expect(env.rawQuery.mock.calls[1][0]).toContain('"customFieldsTimeoutcompensatedat" = NULL');
     });
 
     it('已全额退款订单在查询层剔除（不参与赔付）', async () => {

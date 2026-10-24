@@ -26,15 +26,23 @@ function make(order, cfg = { riderCommissionRate: 100 }) {
 const assigned = { id: 10, code: 'A1', shipping: 300, customFields: { deliveryStaffId: '9', deliveryStatus: 'assigned', tip: 100 } };
 (0, vitest_1.describe)('RiderTaskService', () => {
     (0, vitest_1.it)('assigned 可开始配送', async () => {
-        const { svc, repo } = make(assigned);
+        const { svc, rawQuery } = make(assigned);
         await svc.start({ channelId: 1 }, 10);
-        (0, vitest_1.expect)(repo.update).toHaveBeenCalledWith(10, vitest_1.expect.objectContaining({ customFields: { deliveryStatus: 'in_progress' } }));
+        (0, vitest_1.expect)(rawQuery).toHaveBeenCalledTimes(1);
+        (0, vitest_1.expect)(rawQuery.mock.calls[0][0]).toContain('"customFieldsDeliverystatus"');
+        (0, vitest_1.expect)(rawQuery.mock.calls[0][1]).toEqual(['in_progress', 10, 'assigned', '9', 'grabbed']);
     });
     (0, vitest_1.it)('接力单交接码正确 → 可开始配送', async () => {
         const relay = Object.assign(Object.assign({}, assigned), { customFields: Object.assign(Object.assign({}, assigned.customFields), { handoverCode: '1234' }) });
-        const { svc, repo } = make(relay);
+        const { svc, rawQuery } = make(relay);
         await svc.start({ channelId: 1 }, 10, '1234');
-        (0, vitest_1.expect)(repo.update).toHaveBeenCalledWith(10, vitest_1.expect.objectContaining({ customFields: { deliveryStatus: 'in_progress' } }));
+        (0, vitest_1.expect)(rawQuery).toHaveBeenCalledTimes(1);
+        (0, vitest_1.expect)(rawQuery.mock.calls[0][1][0]).toBe('in_progress');
+    });
+    (0, vitest_1.it)('开始配送时订单已被取消/改派（条件写未命中）→ 拒绝', async () => {
+        const { svc, rawQuery } = make(assigned);
+        rawQuery.mockResolvedValueOnce([[], []]);
+        await (0, vitest_1.expect)(svc.start({ channelId: 1 }, 10)).rejects.toThrow('订单已被取消或改派');
     });
     (0, vitest_1.it)('接力单交接码错误/缺失 → 拒绝开始配送', async () => {
         const relay = Object.assign(Object.assign({}, assigned), { customFields: Object.assign(Object.assign({}, assigned.customFields), { handoverCode: '1234' }) });
