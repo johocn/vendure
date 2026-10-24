@@ -18,7 +18,8 @@ const crypto_1 = require("crypto");
 const feishu_config_1 = require("./feishu.config");
 const loggerCtx = 'Feishu';
 const API_BASE = 'https://open.feishu.cn/open-apis';
-const HTTP_TIMEOUT_MS = 5000;
+// Bug 4 修复：生产 PATCH updateCard / listMessages 翻页 8-10s 常见，5s 太严导致频繁超时
+const HTTP_TIMEOUT_MS = 10000;
 /** 自定义群机器人签名：base64(hmac_sha256(key = `${timestamp}\n${secret}`, data = '')) */
 function buildWebhookSignature(timestamp, secret) {
     return (0, crypto_1.createHmac)('sha256', `${timestamp}\n${secret}`).update('').digest('base64');
@@ -188,8 +189,10 @@ let FeishuClient = class FeishuClient {
         }
         return (_d = (_c = json === null || json === void 0 ? void 0 : json.data) === null || _c === void 0 ? void 0 : _c.message_id) !== null && _d !== void 0 ? _d : null;
     }
+    // Bug 8 修复：严格只认飞书返回 code=0 为成功；undefined/空对象/未知错误码一律当失败
+    // 之前把 code===undefined 也当成功，网络异常返回 {} 空对象时会误判为成功→以为卡片发出去了实际没发
     ok(json) {
-        return !!json && !json.__httpStatus && (json.code === 0 || json.code === undefined);
+        return !!json && !json.__httpStatus && json.code === 0;
     }
     async request(method, url, body) {
         var _a;

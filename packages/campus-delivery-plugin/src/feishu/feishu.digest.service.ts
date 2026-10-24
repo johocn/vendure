@@ -119,20 +119,52 @@ export class FeishuDigestService implements OnApplicationShutdown {
     }
 
     // ---------- 心跳（每整点一次；静默 ≠ 没事；进程挂了不会有人收到这条） ----------
+    // Bug 3 修复：多实例容器部署时 heartbeatTick 没有 PG lock → 每整点 N 条心跳刷屏
+    // 改成和 digest.sendOnce 一样的 advisory lock 模式，逐群拿 campus:feishu:heartbeat:${chatId}:${hour} 锁
 
     private sentHeartbeat = new Map<string, string>();
 
     private async heartbeatTick(): Promise<void> {
-        const hh = campusHhmm(Date.now()).slice(0, 2);
         if (!campusHhmm(Date.now()).endsWith(':00')) return; // 只在每整点触发
+        const hh = campusHhmm(Date.now()).slice(0, 2);
         const hour = `${campusDayKey(Date.now())}-${hh}`;
+        // Bug 5/6 模式安全 GC sentHeartbeat
+        this.gcSentHeartbeat();
+
         for (const [chatId] of Object.entries(this.cfg.settings.chats)) {
             if (this.sentHeartbeat.get(chatId) === hour) continue;
-            const text = await this.buildHeartbeat();
-            if (await this.client.sendToChat(chatId, text)) {
-                this.sentHeartbeat.set(chatId, hour);
+
+            // 和 digest 同模式：拿 PG advisory lock，拿不到说明别的实例在发 → 跳过
+            const runner = this.connection.rawConnection.createQueryRunner();
+            await runner.connect();
+            const lockKey = `campus:feishu:heartbeat:${chatId}:${hour}`;
+            try {
+                const got: any = await runner.query('SELECT pg_try_advisory_lock(hashtext($1)) AS ok', [lockKey]);
+                const rows = Array.isArray(got) && Array.isArray(got[0]) ? got[0] : got;
+                if (!rows?.[0]?.ok) continue; // 别的实例拿了锁，跳过
+                try {
+                    if (this.sentHeartbeat.get(chatId) === hour) continue; // double-check
+                    const text = await this.buildHeartbeat();
+                    if (await this.client.sendToChat(chatId, text)) {
+                        this.sentHeartbeat.set(chatId, hour);
+                    }
+                } finally {
+                    await runner.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]).catch(() => undefined);
+                }
+            } finally {
+                await runner.release();
             }
         }
+    }
+
+    // Bug 3 配套：sentHeartbeat 是进程内 Map，理论上永远有新 hour 写入，但清理旧数据避免 Map 膨胀
+    private gcSentHeartbeat(): void {
+        const expired: string[] = [];
+        const keep = campusDayKey(Date.now());
+        for (const [k, v] of this.sentHeartbeat) {
+            if (!v.startsWith(keep)) expired.push(k);
+        }
+        for (const k of expired) this.sentHeartbeat.delete(k);
     }
 
     /** 轻量心跳：活动中订单数（非终态）+ 店铺数 + 系统时间戳，一次 COUNT 搞定 */

@@ -6,7 +6,8 @@ import { FeishuConfigService } from './feishu.config';
 
 const loggerCtx = 'Feishu';
 const API_BASE = 'https://open.feishu.cn/open-apis';
-const HTTP_TIMEOUT_MS = 5000;
+// Bug 4 修复：生产 PATCH updateCard / listMessages 翻页 8-10s 常见，5s 太严导致频繁超时
+const HTTP_TIMEOUT_MS = 10_000;
 
 /** 飞书消息体（只取用到的字段） */
 export interface FeishuMessage {
@@ -193,8 +194,10 @@ export class FeishuClient {
         return json?.data?.message_id ?? null;
     }
 
+    // Bug 8 修复：严格只认飞书返回 code=0 为成功；undefined/空对象/未知错误码一律当失败
+    // 之前把 code===undefined 也当成功，网络异常返回 {} 空对象时会误判为成功→以为卡片发出去了实际没发
     private ok(json: any): boolean {
-        return !!json && !json.__httpStatus && (json.code === 0 || json.code === undefined);
+        return !!json && !json.__httpStatus && json.code === 0;
     }
 
     private async request(method: string, url: string, body?: unknown): Promise<any | null> {

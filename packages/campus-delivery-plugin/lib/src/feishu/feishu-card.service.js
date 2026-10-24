@@ -16,13 +16,16 @@ const campus_building_entity_1 = require("../campus-building.entity");
 const feishu_client_1 = require("./feishu.client");
 const feishu_templates_1 = require("./feishu.templates");
 const loggerCtx = 'Feishu';
+const ALERT_MAX_AGE_MS = 24 * 3600000; // 告警超过 24h 没更新 → GC
+const MSG_MAX_AGE_MS = 48 * 3600000; // message_id 缓存 48h（卡片 PATCH 需要）
+const GC_TRIGGER_SIZE = 500; // Map 超过 500 条触发主动 GC
 /**
  * 订单卡片：数据只从现有 order / campus_building / customer 读，不建表、不落索引。
  * 短码在展示层计算，完整单号只放在按钮 value 里（点击事件原样带回，引用回复也能回读到）。
  *
  * P2.1 告警合并缓存：
- * - codeToMessage   → orderCode → { chatId: messageId }        （发卡片时写，用于 PATCH 刷新）
- * - codeToAlerts    → orderCode → [{ dedupeKey, alertText }]   （appendAlert 时写，buildCard 重建卡片时读）
+ * - codeToMessage   → orderCode → { chats: { chatId: messageId }, at }  （发卡片时写，用于 PATCH 刷新）
+ * - codeToAlerts    → orderCode → AlertEntry[]                          （appendAlert 写，buildCard 重建读）
  *
  * 关键：appendAlert 先写入 codeToAlerts → 再调 buildCard（模板渲染时带 alerts 数组）→ updateCard PATCH 整卡。
  *       这样运营点按钮 handler 调 cards.refresh → buildCard 时 alerts 还在 Map 里 → 告警行不会被刷新覆盖丢失。
@@ -31,9 +34,7 @@ let FeishuCardService = class FeishuCardService {
     constructor(client, connection) {
         this.client = client;
         this.connection = connection;
-        /** orderCode → { chatId: messageId } */
         this.codeToMessage = new Map();
-        /** orderCode → [{ dedupeKey, alertText }] 进程内告警历史，buildCard 重建卡片时注入 */
         this.codeToAlerts = new Map();
     }
     /** 告警合并入口：pushEvent 带 orderCode 时先尝试 PATCH 卡片追加告警，返回是否成功 */
@@ -42,24 +43,26 @@ let FeishuCardService = class FeishuCardService {
         const mapping = this.codeToMessage.get(orderCode);
         if (!mapping)
             return false;
-        // Bug 2 修复：去重用 dedupeKey 精确匹配（dispatch 传的如 rider_pick_alert:CODE），
-        // 不是 title 文本。相同 dedupeKey + 相同 text 才跳过；相同 dedupeKey 但 text 不同（如 13→14min）追加新行。
+        // Bug 2 修复：去重用 dedupeKey 精确匹配，不是 title 文本。
+        // 相同 dedupeKey + 相同 text 才跳过；相同 dedupeKey 但 text 不同（如 13→14min）追加新行
         const existing = (_a = this.codeToAlerts.get(orderCode)) !== null && _a !== void 0 ? _a : [];
         const matched = dedupeKey
             ? existing.find(a => a.key === dedupeKey && a.text === alertText)
             : existing.find(a => a.text === alertText);
         if (matched)
             return true; // 已在 Map 里，buildCard 会带上
-        existing.push({ key: dedupeKey !== null && dedupeKey !== void 0 ? dedupeKey : alertText, text: alertText });
+        existing.push({ key: dedupeKey !== null && dedupeKey !== void 0 ? dedupeKey : alertText, text: alertText, at: Date.now() });
         // 最多保留 10 条（同单告警不可能超过这个数，超出丢最老的）
         if (existing.length > 10)
             existing.splice(0, existing.length - 10);
         this.codeToAlerts.set(orderCode, existing);
-        // 如果已经超过 20 条告警（异常反复触发），手动触发一轮 GC——进程内不能无限增
-        if (this.codeToAlerts.size > 200)
+        // Bug 7 修复：Map 超过阈值主动 GC，按时间清 24h 前的过期数据 + 安全 GC 模式
+        if (this.codeToAlerts.size > GC_TRIGGER_SIZE)
             this.gcAlerts();
+        if (this.codeToMessage.size > GC_TRIGGER_SIZE)
+            this.gcMessages();
         let anyOk = false;
-        for (const [chatId, messageId] of Object.entries(mapping)) {
+        for (const [chatId, messageId] of Object.entries(mapping.chats)) {
             try {
                 const card = await this.buildCard(orderCode);
                 if (!card)
@@ -76,21 +79,30 @@ let FeishuCardService = class FeishuCardService {
     clearAlerts(orderCode) {
         this.codeToAlerts.delete(orderCode);
     }
+    // ---------- GC：Bug 7 修复：安全模式（数组收集再统一 delete），按时间清 ----------
     gcAlerts() {
         const now = Date.now();
-        // 只清已经超过 24h 没更新的 order 的 alerts
-        // 但我们没存时间戳，简单点：超过 500 就清前半（FIFO 近似）
-        if (this.codeToAlerts.size > 500) {
-            let n = 0;
-            for (const k of this.codeToAlerts.keys()) {
-                this.codeToAlerts.delete(k);
-                n++;
-                if (n >= Math.floor(this.codeToAlerts.size / 2))
-                    break;
-            }
+        const expired = [];
+        for (const [code, alerts] of this.codeToAlerts) {
+            // 整条过期（最后一条告警时间戳）或数组本身过期
+            const lastAt = Math.max(...alerts.map(a => a.at), 0);
+            if (now - lastAt > ALERT_MAX_AGE_MS)
+                expired.push(code);
         }
-        void now; // silence unused
+        for (const k of expired)
+            this.codeToAlerts.delete(k);
     }
+    gcMessages() {
+        const now = Date.now();
+        const expired = [];
+        for (const [code, entry] of this.codeToMessage) {
+            if (now - entry.at > MSG_MAX_AGE_MS)
+                expired.push(code);
+        }
+        for (const k of expired)
+            this.codeToMessage.delete(k);
+    }
+    // ---------- 数据加载 ----------
     /** 读现有表组装卡片所需数据（与文本查单共用同一份视图） */
     async loadOrderView(code) {
         var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q;
@@ -118,7 +130,7 @@ let FeishuCardService = class FeishuCardService {
             riderName = (_c = (_b = rider === null || rider === void 0 ? void 0 : rider.customFields) === null || _b === void 0 ? void 0 : _b.riderRealName) !== null && _c !== void 0 ? _c : null;
         }
         const reportedAt = (cf === null || cf === void 0 ? void 0 : cf.exceptionReportedAt) ? new Date(cf.exceptionReportedAt).getTime() : NaN;
-        // Bug 1 修复：从 codeToAlerts Map 读告警历史注入 views，这样 buildCard → 按钮 refresh 重建时告警行保留
+        // Bug 1 修复：从 codeToAlerts Map 读告警历史注入 views
         const alerts = (_e = (_d = this.codeToAlerts.get(code)) === null || _d === void 0 ? void 0 : _d.map(a => a.text)) !== null && _e !== void 0 ? _e : [];
         return {
             code: order.code,
@@ -170,14 +182,15 @@ let FeishuCardService = class FeishuCardService {
             }
         }
         if (ok)
-            this.codeToMessage.set(code, msgMap);
+            this.codeToMessage.set(code, { chats: msgMap, at: Date.now() });
         return ok;
     }
     /** 外部写入 message_id（如用户查单触发 sendOrderCard 后） */
     trackMessage(code, chatId, messageId) {
         var _a;
-        const cur = (_a = this.codeToMessage.get(code)) !== null && _a !== void 0 ? _a : {};
-        cur[chatId] = messageId;
+        const cur = (_a = this.codeToMessage.get(code)) !== null && _a !== void 0 ? _a : { chats: {}, at: 0 };
+        cur.chats[chatId] = messageId;
+        cur.at = Date.now();
         this.codeToMessage.set(code, cur);
     }
     /** 按钮操作后原地刷新卡片（失败不抛错，由调用方决定是否补文本） */

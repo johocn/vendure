@@ -31,6 +31,7 @@ export declare class FeishuDigestService implements OnApplicationShutdown {
     private sentToday;
     private sentHeartbeat;
     private heartbeatTick;
+    private gcSentHeartbeat;
     /** 轻量心跳：活动中订单数（非终态）+ 店铺数 + 系统时间戳，一次 COUNT 搞定 */
     private buildHeartbeat;
 }

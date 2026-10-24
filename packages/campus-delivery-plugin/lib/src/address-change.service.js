@@ -14,6 +14,7 @@ const common_1 = require("@nestjs/common");
 const core_1 = require("@nestjs/core");
 const core_2 = require("@vendure/core");
 const wechat_subscribe_message_plugin_1 = require("@vendure/wechat-subscribe-message-plugin");
+const typeorm_1 = require("typeorm");
 const campus_address_change_entity_1 = require("./campus-address-change.entity");
 const campus_building_entity_1 = require("./campus-building.entity");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
@@ -233,7 +234,7 @@ let AddressChangeService = class AddressChangeService {
             .createQueryBuilder('r')
             .where('r.channelId = :cid', { cid: ctx.channelId })
             .orderBy('r.createdAt', 'DESC')
-            .skip((_a = opts.skip) !== null && _a !== void 0 ? _a : 0)
+            .skip(Math.max(0, (_a = opts.skip) !== null && _a !== void 0 ? _a : 0))
             .take(Math.min((_b = opts.take) !== null && _b !== void 0 ? _b : 50, 200));
         if (opts.status)
             qb.andWhere('r.status = :st', { st: opts.status });
@@ -285,6 +286,9 @@ let AddressChangeService = class AddressChangeService {
         if (Number(row.channelId) !== Number(ctx.channelId))
             throw new core_2.ForbiddenError();
         const trimmed = (note !== null && note !== void 0 ? note : '').trim();
+        // settleNote 列为 varchar(255)：超长会触发数据库写入失败，提前拦截
+        if (trimmed.length > 200)
+            throw new core_2.UserInputError('结清备注不能超过 200 字');
         if (action === 'pending') {
             if (row.refundId)
                 throw new core_2.UserInputError('该差额已实际退款，无法撤销结清');
@@ -295,6 +299,12 @@ let AddressChangeService = class AddressChangeService {
             row.settleNote = null;
         }
         else {
+            if (action === 'collect') {
+                if (Number(row.diff) <= 0)
+                    throw new core_2.UserInputError('本单无待补收差额，无需补收');
+                if (!trimmed)
+                    throw new core_2.UserInputError('请填写补收凭证（收款方式或流水号）');
+            }
             if (action === 'refund') {
                 if (Number(row.diff) >= 0)
                     throw new core_2.UserInputError('本单不是待退差额，不能按已退款结清');
@@ -302,8 +312,11 @@ let AddressChangeService = class AddressChangeService {
                     throw new core_2.UserInputError('该差额已退款，请勿重复操作');
                 const amount = Math.abs(Number(row.diff));
                 if (amount > 0) {
-                    // 与商家拒单/T4/异常处置共用订单级退款锁，锁内复查防并发双退
+                    // 与商家拒单/T4/异常处置共用订单级退款锁，锁内复查防并发双退；
+                    // 台账 refundId 必须在锁内与退款单同临界区落库（CAS：refundId IS NULL），
+                    // 否则退款已打款而台账保存失败时会再次退款。
                     const done = await (0, refund_lock_1.withRefundLock)(this.connection, Number(row.orderId), async () => {
+                        var _a, _b;
                         const fresh = await repo.findOne({ where: { id: id } });
                         if (!fresh)
                             throw new core_2.UserInputError('台账记录不存在');
@@ -311,17 +324,22 @@ let AddressChangeService = class AddressChangeService {
                             throw new core_2.UserInputError('该差额已退款，请勿重复操作');
                         const order = await this.loadOrder(ctx, row.orderId);
                         const refund = await this.refundAmount(ctx, order, amount, `address change refund (${row.orderCode})`);
-                        row.refundId = refund.id;
+                        const saved = await repo.update({ id: id, refundId: (0, typeorm_1.IsNull)() }, {
+                            refundId: refund.id,
+                            status: 'settled',
+                            settledAt: new Date(),
+                            settledBy: ((_a = ctx.activeUserId) !== null && _a !== void 0 ? _a : null),
+                            settleAction: 'refund',
+                            settleNote: trimmed || null,
+                        });
+                        if (!Number((_b = saved === null || saved === void 0 ? void 0 : saved.affected) !== null && _b !== void 0 ? _b : 0)) {
+                            throw new core_2.UserInputError('该差额已退款，请勿重复操作');
+                        }
                     });
                     if (!done.ok)
                         throw new core_2.UserInputError('该订单正在退款处理中，请稍后重试');
+                    return repo.findOne({ where: { id: id } });
                 }
-            }
-            if (action === 'collect') {
-                if (Number(row.diff) <= 0)
-                    throw new core_2.UserInputError('本单无待补收差额，无需补收');
-                if (!trimmed)
-                    throw new core_2.UserInputError('请填写补收凭证（收款方式或流水号）');
             }
             row.status = 'settled';
             row.settledAt = new Date();
@@ -352,7 +370,9 @@ let AddressChangeService = class AddressChangeService {
         if (!created || created.errorCode) {
             throw new core_2.UserInputError(`退款失败：${(_a = created === null || created === void 0 ? void 0 : created.errorCode) !== null && _a !== void 0 ? _a : '未知原因'}`);
         }
-        await this.orderService.settleRefund(ctx, { id: created.id });
+        // 结算失败必须把退款单置 Failed（与商家拒单/T4/异常处置同一口径），
+        // 否则该 Pending 单仍占已退额度，后续重试/拒单退款会少退。
+        await (0, refund_payment_1.settleRefundOrMarkFailed)(this.connection, this.orderService, ctx, created.id);
         return created;
     }
     async loadOrder(ctx, orderId) {
@@ -443,14 +463,28 @@ let AddressChangeService = class AddressChangeService {
             reason: actor.reason,
             changedBy: actor.changedBy,
         }));
-        await this.orderService.updateCustomFields(ctx, order.id, Object.assign({ buildingId: String(building.id), campusZone: zone.name, deliveryDetail: toDetail }, (point
-            ? {
-                handoverPointName: point.name,
-                handoverPointAddress: (_h = point.address) !== null && _h !== void 0 ? _h : null,
-                handoverPointLat: point.lat,
-                handoverPointLng: point.lng,
-            }
-            : {})));
+        try {
+            await this.orderService.updateCustomFields(ctx, order.id, Object.assign({ buildingId: String(building.id), campusZone: zone.name, deliveryDetail: toDetail }, (point
+                ? {
+                    handoverPointName: point.name,
+                    handoverPointAddress: (_h = point.address) !== null && _h !== void 0 ? _h : null,
+                    handoverPointLat: point.lat,
+                    handoverPointLng: point.lng,
+                }
+                : {})));
+        }
+        catch (e) {
+            // 订单地址未改成功时台账不得残留：否则会留下「已改址待补差额」幽灵记录，
+            // 运营按台账退款/补收却从未真正改址。
+            await this.connection
+                .getRepository(ctx, campus_address_change_entity_1.CampusAddressChange)
+                .delete(record.id)
+                .catch((err) => {
+                var _a;
+                return core_2.Logger.error(`address change: rollback record ${record.id} failed for ${order.code}: ${(_a = err === null || err === void 0 ? void 0 : err.message) !== null && _a !== void 0 ? _a : err}`, loggerCtx);
+            });
+            throw e;
+        }
         // 已指派骑手在途 / R1 商户自配送：改址必须触达实际履约方，否则仍按旧地址送达。
         // campusCause 供调度墙展示；骑手订阅消息复用渠道 orderShippedTemplateId（同入厅提醒口径）。
         const riderId = String((_j = cf.deliveryStaffId) !== null && _j !== void 0 ? _j : '');

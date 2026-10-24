@@ -123,7 +123,7 @@ export declare class AddressChangeService {
         pendingRefund: number;
     }>;
     /** 运营结清：refund=真实退款 / collect=补收（必须填凭证）/ waive=免收 / pending=撤销结清 */
-    settle(ctx: RequestContext, id: ID, action: string, note?: string): Promise<CampusAddressChange>;
+    settle(ctx: RequestContext, id: ID, action: string, note?: string): Promise<CampusAddressChange | null>;
     /** 部分退款（fork 无 core RefundService，走 OrderService.refundOrder/settleRefund，与 dispatch-admin 同源）。
      * refund 表 shipping/adjustment 列 NOT NULL 必须显式传 0；超额退款抛错。 */
     private refundAmount;

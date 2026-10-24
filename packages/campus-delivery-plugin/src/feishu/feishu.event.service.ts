@@ -127,11 +127,15 @@ export class FeishuEventService {
             .filter(Boolean);
     }
 
+    // Bug 5 修复：Map 遍历时 delete 会跳过下一个元素，导致每次只清一半过期 key
+    // 改成先收集要删的 key 数组，遍历完统一 delete
     private isDuplicate(eventId: string): boolean {
         const now = Date.now();
+        const expired: string[] = [];
         for (const [k, at] of this.seen) {
-            if (now - at > EVENT_DEDUPE_MS) this.seen.delete(k);
+            if (now - at > EVENT_DEDUPE_MS) expired.push(k);
         }
+        for (const k of expired) this.seen.delete(k);
         if (this.seen.has(eventId)) return true;
         this.seen.set(eventId, now);
         return false;

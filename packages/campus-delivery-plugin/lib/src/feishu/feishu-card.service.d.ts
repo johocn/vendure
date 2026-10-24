@@ -6,8 +6,8 @@ import { OrderStatusInput } from './feishu.templates';
  * 短码在展示层计算，完整单号只放在按钮 value 里（点击事件原样带回，引用回复也能回读到）。
  *
  * P2.1 告警合并缓存：
- * - codeToMessage   → orderCode → { chatId: messageId }        （发卡片时写，用于 PATCH 刷新）
- * - codeToAlerts    → orderCode → [{ dedupeKey, alertText }]   （appendAlert 时写，buildCard 重建卡片时读）
+ * - codeToMessage   → orderCode → { chats: { chatId: messageId }, at }  （发卡片时写，用于 PATCH 刷新）
+ * - codeToAlerts    → orderCode → AlertEntry[]                          （appendAlert 写，buildCard 重建读）
  *
  * 关键：appendAlert 先写入 codeToAlerts → 再调 buildCard（模板渲染时带 alerts 数组）→ updateCard PATCH 整卡。
  *       这样运营点按钮 handler 调 cards.refresh → buildCard 时 alerts 还在 Map 里 → 告警行不会被刷新覆盖丢失。
@@ -15,9 +15,7 @@ import { OrderStatusInput } from './feishu.templates';
 export declare class FeishuCardService {
     private client;
     private connection;
-    /** orderCode → { chatId: messageId } */
     private codeToMessage;
-    /** orderCode → [{ dedupeKey, alertText }] 进程内告警历史，buildCard 重建卡片时注入 */
     private codeToAlerts;
     constructor(client: FeishuClient, connection: TransactionalConnection);
     /** 告警合并入口：pushEvent 带 orderCode 时先尝试 PATCH 卡片追加告警，返回是否成功 */
@@ -25,6 +23,7 @@ export declare class FeishuCardService {
     /** 显式清掉某单的告警行（异常终态改 exception_final 时由 notify 层调用） */
     clearAlerts(orderCode: string): void;
     private gcAlerts;
+    private gcMessages;
     /** 读现有表组装卡片所需数据（与文本查单共用同一份视图） */
     loadOrderView(code: string): Promise<OrderStatusInput | null>;
     buildCard(code: string): Promise<Record<string, unknown> | null>;

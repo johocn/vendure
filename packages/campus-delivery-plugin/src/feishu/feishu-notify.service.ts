@@ -89,11 +89,14 @@ export class FeishuNotifyService {
         }
     }
 
+    // Bug 6 修复：同 Bug 5，Map 遍历时 delete 跳过元素导致泄漏；改数组收集再统一 delete
     private isDuplicate(key: string): boolean {
         const now = Date.now();
+        const expired: string[] = [];
         for (const [k, at] of this.recent) {
-            if (now - at > DEDUPE_MS) this.recent.delete(k);
+            if (now - at > DEDUPE_MS) expired.push(k);
         }
+        for (const k of expired) this.recent.delete(k);
         const seen = this.recent.get(key);
         if (seen && now - seen <= DEDUPE_MS) return true;
         this.recent.set(key, now);

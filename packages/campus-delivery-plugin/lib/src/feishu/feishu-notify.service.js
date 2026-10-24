@@ -97,12 +97,16 @@ let FeishuNotifyService = class FeishuNotifyService {
             core_1.Logger.warn(`飞书推送异常 scene=${scene}: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, loggerCtx);
         }
     }
+    // Bug 6 修复：同 Bug 5，Map 遍历时 delete 跳过元素导致泄漏；改数组收集再统一 delete
     isDuplicate(key) {
         const now = Date.now();
+        const expired = [];
         for (const [k, at] of this.recent) {
             if (now - at > DEDUPE_MS)
-                this.recent.delete(k);
+                expired.push(k);
         }
+        for (const k of expired)
+            this.recent.delete(k);
         const seen = this.recent.get(key);
         if (seen && now - seen <= DEDUPE_MS)
             return true;

@@ -36,7 +36,7 @@ export declare class AddressChangeAdminResolver {
         pendingCollect: number;
         pendingRefund: number;
     }>;
-    campusSettleAddressChange(ctx: RequestContext, id: ID, action: string, note?: string): Promise<import("./campus-address-change.entity").CampusAddressChange>;
+    campusSettleAddressChange(ctx: RequestContext, id: ID, action: string, note?: string): Promise<import("./campus-address-change.entity").CampusAddressChange | null>;
     /** 运营代客改址（取货后也可代改，必须填原因） */
     campusAdminChangeDeliveryAddress(ctx: RequestContext, orderId: ID, zoneId: ID, buildingId: ID, detail: string | undefined, reason: string): Promise<{
         diff: number;
