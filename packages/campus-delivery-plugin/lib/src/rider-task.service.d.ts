@@ -17,7 +17,7 @@ export declare class RiderTaskService {
     orderRider(ctx: RequestContext, orderId: ID): Promise<{
         realName: any;
         credit: any;
-        phone: string;
+        phone: null;
         location: {
             lat: number;
             lng: number;
@@ -54,6 +54,7 @@ export declare class RiderTaskService {
     /** 异常上报：仅配送中（已接单/配送中）可上报，记录上报时间供调度扫描超时升级 */
     reportException(ctx: RequestContext, orderId: ID, type: string, photos: string[], note?: string): Promise<Order>;
     private calcEarning;
+    /** 配送配置按订单所属渠道解析（P2）：跨店骑手请求头渠道与订单渠道不一致时，佣金比例必须锚定订单渠道 */
     private getConfig;
     private assertOwner;
 }

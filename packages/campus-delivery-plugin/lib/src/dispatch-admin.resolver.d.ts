@@ -14,7 +14,7 @@ export declare class DispatchAdminResolver {
     campusAssignOrder(ctx: RequestContext, orderId: ID, riderCustomerId: ID): Promise<{
         assigned: boolean;
     }>;
-    campusBackToHall(ctx: RequestContext, orderId: ID): Promise<{
+    campusBackToHall(ctx: RequestContext, orderId: ID, note?: string): Promise<{
         backToHall: boolean;
     }>;
     /** 异常处置（plan 3.4）：reassign 回大厅 / refund_diff 退差价 / coupon 发补偿券 / refund_all 全额退单 */

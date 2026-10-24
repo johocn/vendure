@@ -66,8 +66,9 @@ export declare class DispatchAdminService {
         assigned: boolean;
     }>;
     /** 回大厅（改派前置）：清骑手指派字段，hallStatus 复位 open。
-     * 条件写：已取消/已终态单不可回厅，返回失败让前端明确提示（不能假装成功）。 */
-    backToHall(ctx: RequestContext, orderId: ID): Promise<{
+     * 条件写：已取消/已终态单不可回厅，返回失败让前端明确提示（不能假装成功）。
+     * 骑手已取货（in_progress）时强制回厅等于让其白跑，必须带交接说明并留痕（transferNote/transferAt）。 */
+    backToHall(ctx: RequestContext, orderId: ID, note?: string): Promise<{
         backToHall: boolean;
     }>;
     /** 异常处置（plan 3.4）：仅 deliveryStatus='exception' 的订单可处置。

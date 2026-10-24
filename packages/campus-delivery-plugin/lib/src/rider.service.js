@@ -30,9 +30,23 @@ let RiderService = class RiderService {
         return customer;
     }
     async applyRider(ctx, input) {
-        var _a, _b, _c;
+        var _a, _b, _c, _d, _e;
         const customer = await this.requireCustomer(ctx);
-        const current = String((_b = (_a = customer.customFields) === null || _a === void 0 ? void 0 : _a.riderStatus) !== null && _b !== void 0 ? _b : 'none');
+        const realName = String((_a = input.realName) !== null && _a !== void 0 ? _a : '').trim();
+        const studentNo = String((_b = input.studentNo) !== null && _b !== void 0 ? _b : '').trim();
+        const campus = String((_c = input.campus) !== null && _c !== void 0 ? _c : '').trim();
+        const idImg = input.idImg == null ? null : String(input.idImg).trim();
+        if (!realName || !studentNo || !campus) {
+            throw new core_1.UserInputError('请填写姓名、学号和校区');
+        }
+        // 入参上限：防超长文本写库（字段无长度约束，前端也校验）
+        if ([realName, studentNo, campus].some(v => v.length > 30)) {
+            throw new core_1.UserInputError('姓名、学号、校区均不能超过 30 个字符');
+        }
+        if (idImg && idImg.length > 500) {
+            throw new core_1.UserInputError('证件图片地址不合法');
+        }
+        const current = String((_e = (_d = customer.customFields) === null || _d === void 0 ? void 0 : _d.riderStatus) !== null && _e !== void 0 ? _e : 'none');
         // 已停用账号不得自助复申请（否则改回 pending 可绕过停用）；
         // 已通过审核者仅更新资料，保留 approved（重新提交不能把在职骑手打回待审）
         if (current === 'suspended')
@@ -41,17 +55,24 @@ let RiderService = class RiderService {
         await this.connection.getRepository(ctx, core_1.Customer).update(customer.id, {
             customFields: {
                 riderStatus: status,
-                riderRealName: input.realName,
-                riderStudentNo: input.studentNo,
-                riderCampus: input.campus,
-                riderIdImg: (_c = input.idImg) !== null && _c !== void 0 ? _c : null,
+                riderRealName: realName,
+                riderStudentNo: studentNo,
+                riderCampus: campus,
+                riderIdImg: idImg,
             },
         });
         return { status };
     }
     async setRiderStatus(ctx, customerId, status) {
+        if (!['none', 'approved', 'suspended'].includes(String(status !== null && status !== void 0 ? status : ''))) {
+            throw new core_1.UserInputError('骑手状态不合法');
+        }
+        const customFields = { riderStatus: status };
+        // 停用/重置即强制下线：否则残留的心跳时间仍让对方出现在在线运力池里被派单
+        if (status !== 'approved')
+            customFields.riderOnlineAt = null;
         await this.connection.getRepository(ctx, core_1.Customer).update(customerId, {
-            customFields: { riderStatus: status },
+            customFields,
         });
         return { status };
     }

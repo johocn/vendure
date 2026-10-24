@@ -35,6 +35,14 @@ let InvoiceShopResolver = class InvoiceShopResolver {
         if (!ctx.activeUserId) {
             throw new core_1.UserInputError('NOT_LOGGED_IN');
         }
+        // 入参收敛：发票信息为自由文本，限长防超大字段污染订单表/前端渲染
+        const info = String(invoiceInfo !== null && invoiceInfo !== void 0 ? invoiceInfo : '').trim();
+        if (!info) {
+            throw new core_1.UserInputError('INVOICE_INFO_REQUIRED');
+        }
+        if (info.length > 500) {
+            throw new core_1.UserInputError('INVOICE_INFO_TOO_LONG');
+        }
         const order = await this.dataSource.getRepository(core_1.Order).findOne({
             where: { id: orderId },
             relations: ['customer'],
@@ -54,13 +62,14 @@ let InvoiceShopResolver = class InvoiceShopResolver {
         if (!INVOICE_ELIGIBLE_STATES.includes(order.state)) {
             throw new core_1.UserInputError('ORDER_NOT_PAID');
         }
-        await this.orderService.updateCustomFields(ctx, orderId, { invoiceApplied: true, invoiceInfo });
+        await this.orderService.updateCustomFields(ctx, orderId, { invoiceApplied: true, invoiceInfo: info });
         return true;
     }
 };
 exports.InvoiceShopResolver = InvoiceShopResolver;
 __decorate([
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('orderId')),
     __param(2, (0, graphql_1.Args)('invoiceInfo')),

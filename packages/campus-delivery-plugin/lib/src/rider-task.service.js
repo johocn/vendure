@@ -22,6 +22,8 @@ const rider_earning_entity_1 = require("./rider-earning.entity");
 const rider_service_1 = require("./rider.service");
 /** 校园骑手平均速度（m/s）：约 15km/h，用于 ETA 粗估 */
 const RIDER_SPEED_MPS = 4.2;
+/** 骑手异常上报类型白名单（与 H5 上报面板四类一致）：防任意字符串污染调度墙与追责记录 */
+const EXCEPTION_TYPES = ['merchant_issue', 'no_recipient', 'food_spilled', 'other'];
 /** 球面直线距离（米），gcj02 下作为短距离估算足够 */
 function haversineMeters(a, b) {
     const R = 6371000;
@@ -45,7 +47,7 @@ let RiderTaskService = class RiderTaskService {
      * 跟踪页：附带目标楼栋坐标与直线距离/ETA（楼栋无坐标时均为 null，前端降级）。
      * 归属校验：仅下单人本人可查（原实现可越权读任意订单骑手位置）。 */
     async orderRider(ctx, orderId) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
         if (!ctx.activeUserId)
             throw new core_1.ForbiddenError();
         const order = await this.connection
@@ -91,24 +93,31 @@ let RiderTaskService = class RiderTaskService {
         return {
             realName: (_h = rcf.riderRealName) !== null && _h !== void 0 ? _h : '骑手',
             credit: (_j = rcf.riderCredit) !== null && _j !== void 0 ? _j : 100,
-            phone: (_k = rider.phoneNumber) !== null && _k !== void 0 ? _k : null,
+            // 隐私：骑手手机号不向顾客侧透出，与 resolver 契约「姓名+信用分，不含联系方式」保持一致
+            phone: null,
             location,
             destination,
             distanceMeters,
             etaMinutes,
-            deliveryStatus: (_l = cf.deliveryStatus) !== null && _l !== void 0 ? _l : null,
+            deliveryStatus: (_k = cf.deliveryStatus) !== null && _k !== void 0 ? _k : null,
         };
     }
     /** 骑手位置上报：本人订单 + 仅 assigned/in_progress 可写（plan 2.2，10s/次）。 */
     async reportLocation(ctx, orderId, lat, lng) {
-        const order = await this.assertOwner(ctx, orderId);
-        const status = order.customFields.deliveryStatus;
-        if (status !== 'assigned' && status !== 'in_progress') {
-            throw new core_1.UserInputError('仅配送中的订单可上报位置');
+        var _a, _b;
+        if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+            throw new core_1.UserInputError('位置坐标不合法');
         }
-        await this.connection.getRepository(ctx, core_1.Order).update(order.id, {
-            customFields: { riderLat: lat, riderLng: lng },
-        });
+        const order = await this.assertOwner(ctx, orderId);
+        const cf = ((_a = order.customFields) !== null && _a !== void 0 ? _a : {});
+        // 条件写（P3）：与改派/取消并发时，旧骑手不得覆盖新骑手位置，也不得写已终态单
+        const res = await this.connection.rawConnection.query('UPDATE "order" SET "customFieldsRiderlat" = $1, "customFieldsRiderlng" = $2 '
+            + 'WHERE id = $3 AND "customFieldsDeliverystaffid" = $4 '
+            + 'AND "customFieldsDeliverystatus" = ANY($5::text[]) AND "state" <> \'Cancelled\' RETURNING id', [lat, lng, order.id, String((_b = cf.deliveryStaffId) !== null && _b !== void 0 ? _b : ''), ['assigned', 'in_progress']]);
+        const rows = Array.isArray(res) && Array.isArray(res[0]) ? res[0] : res;
+        if (!Array.isArray(rows) || !rows.length) {
+            throw new core_1.UserInputError('订单已被取消或改派，无法上报位置');
+        }
         return order;
     }
     /** 用户催单（plan 2.4）：仅下单人本人；校园履约单未终态可催（含待接单/大厅阶段）；10min 内重复催单拒绝。
@@ -219,12 +228,12 @@ let RiderTaskService = class RiderTaskService {
     }
     /** 送达：拍照必传 → delivered → 分成入余额（0 分成单跳过入账） */
     async deliver(ctx, orderId, photos, note) {
-        var _a, _b, _c, _d, _e, _f;
+        var _a, _b, _c, _d, _e, _f, _g;
         if (!(photos === null || photos === void 0 ? void 0 : photos.length))
             throw new core_1.UserInputError('送达需至少一张照片');
         const order = await this.assertOwner(ctx, orderId, 'in_progress');
         const rider = await this.riderService.assertApprovedRider(ctx);
-        const earning = this.calcEarning(order, await this.getConfig(ctx));
+        const earning = this.calcEarning(order, await this.getConfig(ctx, order));
         const tip = (_a = order.customFields.tip) !== null && _a !== void 0 ? _a : 0;
         const deliveredAt = new Date();
         // 单条原子 UPDATE 完成「认领 + 终态」：deliveryStatus 条件更新与 hallStatus/照片/分成/位置清空
@@ -233,8 +242,11 @@ let RiderTaskService = class RiderTaskService {
         const claimed = await this.connection.rawConnection.query('UPDATE "order" SET "customFieldsDeliverystatus" = $1, "customFieldsDeliveredat" = $2, '
             + '"customFieldsHallstatus" = $3, "customFieldsDeliveryphotos" = $4, "customFieldsDeliverynote" = $5, '
             + '"customFieldsRiderearning" = $6, "customFieldsRiderlat" = NULL, "customFieldsRiderlng" = NULL '
-            // 已取消单绝不落 delivered（否则取消退款后仍会算作送达并入账分成）
-            + `WHERE id = $7 AND "customFieldsDeliverystatus" = $8 AND "state" <> 'Cancelled' RETURNING id`, ['delivered', deliveredAt, 'delivered', JSON.stringify(photos), note !== null && note !== void 0 ? note : null, earning, order.id, 'in_progress']);
+            // 已取消单绝不落 delivered（否则取消退款后仍会算作送达并入账分成）；
+            // 同时锚定「当前仍是本人的 grabbed 单」，防改派窗口内旧骑手完成送达并领分成。
+            + `WHERE id = $7 AND "customFieldsDeliverystatus" = $8 AND "customFieldsDeliverystaffid" = $9 `
+            + `AND "customFieldsHallstatus" = $10 AND "state" <> 'Cancelled' RETURNING id`, ['delivered', deliveredAt, 'delivered', JSON.stringify(photos), note !== null && note !== void 0 ? note : null, earning, order.id, 'in_progress',
+            String((_b = order.customFields.deliveryStaffId) !== null && _b !== void 0 ? _b : ''), 'grabbed']);
         const claimedRows = Array.isArray(claimed) ? claimed[0] : claimed;
         if (!(claimedRows === null || claimedRows === void 0 ? void 0 : claimedRows.length))
             throw new core_1.UserInputError('订单已被取消或处理，无法送达');
@@ -242,7 +254,7 @@ let RiderTaskService = class RiderTaskService {
             // 0 分成单：不写 earning 不调 addBalance（余额端口对 0 金额入账会抛错，
             // 且 0 金额 pending 行会在钱包补账时永久重试报错）。
             // 判据只看 earning（小费已计入 calcEarning），避免 earning=0 但 tip>0 时仍落 0 元 pending。
-            common_1.Logger.log(`订单 ${(_b = order.code) !== null && _b !== void 0 ? _b : order.id} 0 分成，跳过入账`, 'RiderTask');
+            common_1.Logger.log(`订单 ${(_c = order.code) !== null && _c !== void 0 ? _c : order.id} 0 分成，跳过入账`, 'RiderTask');
         }
         else {
             // 先落 earning（pending），入账成功才置 credited：addBalance 失败时订单已终态、
@@ -266,7 +278,7 @@ let RiderTaskService = class RiderTaskService {
                         });
                     }
                     catch (e) {
-                        common_1.Logger.error(`分成入账失败（earning ${earningRow.id} 留 pending 待补账）：${(_c = e === null || e === void 0 ? void 0 : e.message) !== null && _c !== void 0 ? _c : e}`, 'RiderTask');
+                        common_1.Logger.error(`分成入账失败（earning ${earningRow.id} 留 pending 待补账）：${(_d = e === null || e === void 0 ? void 0 : e.message) !== null && _d !== void 0 ? _d : e}`, 'RiderTask');
                     }
                 }
                 else {
@@ -274,7 +286,7 @@ let RiderTaskService = class RiderTaskService {
                 }
             }
             catch (e) {
-                common_1.Logger.error(`分成落库失败（订单已送达 ${(_d = order.code) !== null && _d !== void 0 ? _d : order.id}，需人工补账 ${earning} 分）：${(_e = e === null || e === void 0 ? void 0 : e.message) !== null && _e !== void 0 ? _e : e}`, 'RiderTask');
+                common_1.Logger.error(`分成落库失败（订单已送达 ${(_e = order.code) !== null && _e !== void 0 ? _e : order.id}，需人工补账 ${earning} 分）：${(_f = e === null || e === void 0 ? void 0 : e.message) !== null && _f !== void 0 ? _f : e}`, 'RiderTask');
             }
         }
         // 完单信用加分（+2）；非资金项，失败不阻断送达
@@ -282,7 +294,7 @@ let RiderTaskService = class RiderTaskService {
             await this.credit.adjust(ctx, rider.id, rider_credit_service_1.CREDIT_COMPLETE, 'complete', order.id);
         }
         catch (e) {
-            common_1.Logger.warn(`完单信用加分失败：${(_f = e === null || e === void 0 ? void 0 : e.message) !== null && _f !== void 0 ? _f : e}`, 'RiderTask');
+            common_1.Logger.warn(`完单信用加分失败：${(_g = e === null || e === void 0 ? void 0 : e.message) !== null && _g !== void 0 ? _g : e}`, 'RiderTask');
         }
         // 通知下单用户已送达（fire-and-forget）
         this.notify.user(ctx, order.id, 'orderDelivered');
@@ -291,6 +303,9 @@ let RiderTaskService = class RiderTaskService {
     /** 异常上报：仅配送中（已接单/配送中）可上报，记录上报时间供调度扫描超时升级 */
     async reportException(ctx, orderId, type, photos, note) {
         var _a, _b, _c;
+        if (!EXCEPTION_TYPES.includes(String(type !== null && type !== void 0 ? type : ''))) {
+            throw new core_1.UserInputError('异常类型不合法');
+        }
         const order = await this.assertOwner(ctx, orderId);
         const status = (_a = order.customFields) === null || _a === void 0 ? void 0 : _a.deliveryStatus;
         if (status !== 'assigned' && status !== 'in_progress') {
@@ -316,10 +331,14 @@ let RiderTaskService = class RiderTaskService {
         const tip = (_a = order.customFields.tip) !== null && _a !== void 0 ? _a : 0;
         return Math.floor(((shipping + tip) * cfg.riderCommissionRate) / 100);
     }
-    async getConfig(ctx) {
+    /** 配送配置按订单所属渠道解析（P2）：跨店骑手请求头渠道与订单渠道不一致时，佣金比例必须锚定订单渠道 */
+    async getConfig(ctx, order) {
+        var _a, _b, _c;
+        const orderChannelId = Number((_c = (_b = ((_a = order === null || order === void 0 ? void 0 : order.channels) !== null && _a !== void 0 ? _a : [])[0]) === null || _b === void 0 ? void 0 : _b.id) !== null && _c !== void 0 ? _c : NaN);
+        const channelId = Number.isFinite(orderChannelId) && orderChannelId > 0 ? orderChannelId : ctx.channelId;
         const cfg = await this.connection
             .getRepository(ctx, campus_fulfillment_config_entity_1.CampusFulfillmentConfig)
-            .findOne({ where: { channelId: ctx.channelId } });
+            .findOne({ where: { channelId: channelId } });
         if (!cfg)
             throw new core_1.UserInputError('校园履约未配置');
         return cfg;
@@ -328,7 +347,7 @@ let RiderTaskService = class RiderTaskService {
         const rider = await this.riderService.assertApprovedRider(ctx);
         const order = await this.connection
             .getRepository(ctx, core_1.Order)
-            .findOne({ where: { id: orderId }, relations: ['customer'] });
+            .findOne({ where: { id: orderId }, relations: ['customer', 'channels'] });
         const cf = order === null || order === void 0 ? void 0 : order.customFields;
         if (!order || (cf === null || cf === void 0 ? void 0 : cf.deliveryStaffId) !== String(rider.id))
             throw new core_1.ForbiddenError();

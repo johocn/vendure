@@ -28,6 +28,7 @@ let WaimaiShopResolver = class WaimaiShopResolver {
 exports.WaimaiShopResolver = WaimaiShopResolver;
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Public),
     __param(0, (0, core_1.Ctx)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext]),

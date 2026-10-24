@@ -4,7 +4,9 @@ export declare class CapacityService {
     private connection;
     private riderService;
     constructor(connection: TransactionalConnection, riderService: RiderService);
-    /** 在线骑手：approved 且 5min 内有心跳。运力池当前不分分区（MVP），后续在此加 where。
+    /** 在线骑手：approved 且 5min 内有心跳，**限当前渠道**。
+     * 骑手资格本身按渠道生效（rider.service 用 findOneByUserId 默认按当前渠道过滤），
+     * 不做渠道过滤会把 A 店的单派给 B 店骑手（其 assertApprovedRider 会直接拒绝）。
      * customFields 为嵌入式物理列，QueryBuilder 用 embedded 路径 customer.customFields.riderStatus
      * （与 rider.service.ts listApplications 写法一致）。内存侧再校验一次 riderStatus 双保险。 */
     listOnlineRiders(ctx: RequestContext): Promise<Customer[]>;

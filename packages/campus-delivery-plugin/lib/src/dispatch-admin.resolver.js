@@ -27,8 +27,8 @@ let DispatchAdminResolver = class DispatchAdminResolver {
     async campusAssignOrder(ctx, orderId, riderCustomerId) {
         return this.dispatchAdmin.assign(ctx, orderId, riderCustomerId);
     }
-    async campusBackToHall(ctx, orderId) {
-        return this.dispatchAdmin.backToHall(ctx, orderId);
+    async campusBackToHall(ctx, orderId, note) {
+        return this.dispatchAdmin.backToHall(ctx, orderId, note);
     }
     /** 异常处置（plan 3.4）：reassign 回大厅 / refund_diff 退差价 / coupon 发补偿券 / refund_all 全额退单 */
     async campusHandleException(ctx, orderId, action, amount, couponTemplateId, note) {
@@ -59,8 +59,9 @@ __decorate([
     (0, core_1.Allow)(permissions_1.CampusPermissions.CampusDispatch),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('orderId')),
+    __param(2, (0, graphql_1.Args)({ name: 'note', type: () => String, nullable: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [core_1.RequestContext, Object]),
+    __metadata("design:paramtypes", [core_1.RequestContext, Object, String]),
     __metadata("design:returntype", Promise)
 ], DispatchAdminResolver.prototype, "campusBackToHall", null);
 __decorate([

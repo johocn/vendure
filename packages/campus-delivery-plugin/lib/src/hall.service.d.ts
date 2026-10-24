@@ -46,8 +46,9 @@ export declare class HallService {
      * 同时生成 4 位交接码（第二段骑手取货时校验，防丢餐扯皮），返回码值供调用方通知用户。 */
     enterHallForHandover(ctx: RequestContext, orderId: number, cause: string, from?: string[], extra?: Record<string, unknown>): Promise<string>;
     /** 回大厅：清骑手指派字段，hallStatus 复位 open（拒单/超时改派共用）。
-     *  条件写：仅活跃流转态可回厅，已取消/已终态单不被复活；返回是否命中。 */
-    backToHall(ctx: RequestContext, orderId: number): Promise<boolean>;
+     *  条件写：仅活跃流转态可回厅，已取消/已终态单不被复活；extra 与复位字段同语句落库（后台强制回厅留痕）。
+     *  返回是否命中。 */
+    backToHall(ctx: RequestContext, orderId: number, extra?: Record<string, unknown>): Promise<boolean>;
     /**
      * 条件状态迁移（CAS）：仅当 hallStatus 仍在 from 集合内、且订单未被取消时才写入 patch，返回 affected>0。
      * 调度扫描/商家操作都是「先读后写」，若期间用户取消并脱厅（hallStatus=cancelled），
@@ -57,8 +58,9 @@ export declare class HallService {
      */
     transitionFrom(_ctx: RequestContext, orderId: number, from: string[], patch: Record<string, unknown>): Promise<boolean>;
     /** 取消脱厅（3.3 冒烟实测缺陷）：订单取消终态时清 hallStatus，使其退出大厅/打包扫描/整组抢单/调度台。
-     * 先读 DB 当前值防 T4 mark() 竞态覆盖（no_rider_final 不碰）；grabbed 单连带清骑手指派字段。 */
-    exitHall(ctx: RequestContext, order: Order): Promise<void>;
+     * 单条条件写：仅活跃流转态可脱厅——先读后写会被 T4 mark() 写 no_rider_final 的竞态覆盖；
+     * grabbed 单连带清骑手指派字段（CASE 表达式读同一语句的旧值）。 */
+    exitHall(_ctx: RequestContext, order: Order): Promise<void>;
     /** 通用订单更新（T4 退款终态标记等复用） */
     updateOrder(ctx: RequestContext, orderId: number, patch: any): Promise<import("typeorm").UpdateResult>;
     /** T0: 新单入厅即提醒在线骑手（订阅消息），失败只记日志不阻塞入厅。

@@ -63,6 +63,7 @@ export declare class HallShopResolver {
         createdAt: Date;
         updatedAt: Date;
     }[]>;
+    /** 写 activeOrder 的配送目标（分区/楼栋/路线/时段）：按 Owner 校验，游客会话同样可用 */
     campusSetDeliveryTarget(ctx: RequestContext, zoneId: ID, buildingId: ID, route?: 'R1' | 'R2' | 'R3', slotId?: number): Promise<Order>;
     myRiderEarnings(ctx: RequestContext, skip?: number, take?: number): Promise<RiderEarning[]>;
 }

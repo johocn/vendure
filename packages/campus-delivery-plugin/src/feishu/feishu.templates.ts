@@ -296,33 +296,54 @@ export function buildOrderCard(o: OrderStatusInput): Record<string, unknown> {
                 : o.hallStatus
                     ? 'turquoise'
                     : 'grey';
+
+    // 头部主状态最显眼：emoji + 中文状态 + 短码，一眼看清卡要干啥
+    const emoji = exception ? '⚠️'
+        : o.hallStatus === 'pending_merchant' ? '🟠'
+        : o.hallStatus === 'accepted' ? '🔵'
+        : o.hallStatus === 'open' ? '🟢'
+        : o.hallStatus ? '🔷'
+        : '⚪';
+    const headerTitle = `${emoji} ${hall ?? o.hallStatus ?? '未入厅'} · ${short}`;
+
     const addr = [o.building, o.zone, o.slotText].filter(Boolean).join(' ') || '-';
-    const fields = [
-        { is_short: true, text: { tag: 'lark_md', content: `**送达**\n${addr}` } },
-        { is_short: true, text: { tag: 'lark_md', content: `**金额**\n¥${((o.total ?? 0) / 100).toFixed(2)}` } },
-        { is_short: true, text: { tag: 'lark_md', content: `**骑手**\n${o.riderName || '-'}` } },
-        { is_short: true, text: { tag: 'lark_md', content: `**已过**\n${mins} 分钟` } },
-    ];
+    const rider = o.riderName ? `🏍 ${o.riderName}` : '';
+    const route = o.route ? `📦 ${o.route}` : '';
+    const amount = `¥${((o.total ?? 0) / 100).toFixed(2)}`;
+
+    // 主信息块合并：一行关键数据，不用 2×2 fields 网格（用户说乱）
+    const mainDiv = [
+        `📍 **${addr}**`,
+        route,
+        rider,
+        `⏱ 已过 ${mins} 分钟 · 💰 ${amount}`,
+    ].filter(Boolean).join(' ｜ ');
+
     const elements: any[] = [
-        { tag: 'div', text: { tag: 'lark_md', content: `**${hall}**${delivery ? `（${delivery}）` : ''}｜${o.orderState}` } },
+        { tag: 'div', text: { tag: 'lark_md', content: mainDiv } },
     ];
+
+    // 异常单独一行（红色 header 已经显眼，这里只给处置线索）
     if (exception) {
         const reported = o.exceptionMinutes != null ? `（已上报 ${o.exceptionMinutes} 分钟）` : '';
         const detail = [o.exceptionType, o.exceptionNote].filter(Boolean).join('｜') || '异常未处置';
-        elements.push({ tag: 'div', text: { tag: 'lark_md', content: `**异常**：${detail}${reported}` } });
+        elements.push({ tag: 'div', text: { tag: 'lark_md', content: `**⚠️ 异常**：${detail}${reported}` } });
     }
-    elements.push({ tag: 'div', fields });
+
+    // 按钮：状态相关的 primary 放最左，其余次级按使用频率排
     const actions: any[] = [];
     if (o.hallStatus === 'pending_merchant') actions.push(cardButton('接单', { a: 'accept', c: o.code }, 'primary'));
     if (o.hallStatus === 'accepted') actions.push(cardButton('出餐', { a: 'cooking', c: o.code }, 'primary'));
     actions.push(cardButton('状态', { a: 'status', c: o.code }));
     actions.push(cardButton('快捷回复', { a: 'template', c: o.code }));
-    actions.push(cardButton('报异常', { a: 'exception', c: o.code }, 'danger'));
+    if (exception) actions.push(cardButton('报异常', { a: 'exception', c: o.code }, 'danger'));
     elements.push({ tag: 'action', actions });
-    elements.push(cardNote(`短码 ${short} · ${o.store}｜点击按钮或引用本卡回复，沟通自动归入本订单`));
+
+    elements.push(cardNote(`短码 ${short} · ${o.store} · 引用本卡回复自动归入本订单`));
+
     return {
         config: { wide_screen_mode: true, update_multi: true },
-        header: { template, title: { tag: 'plain_text', content: `订单 ${short} · ${o.store}` } },
+        header: { template, title: { tag: 'plain_text', content: headerTitle } },
         elements,
     };
 }

@@ -41,12 +41,13 @@ let SlotLockService = class SlotLockService {
             if (!Array.isArray(claimed) || !claimed.length)
                 return true; // 已锁位：幂等跳过
         }
+        // 容量条件直接用列比较：先用读到快照做条件时，管理员并发调低 capacity 会超额锁位
         const res = await this.connection
             .getRepository(ctx, delivery_slot_entity_1.DeliverySlot)
             .createQueryBuilder()
             .update(delivery_slot_entity_1.DeliverySlot)
             .set({ lockedCount: () => '"lockedCount" + 1' })
-            .where('id = :id AND "lockedCount" < :cap', { id: slot.id, cap: slot.capacity })
+            .where('id = :id AND "lockedCount" < "capacity"', { id: slot.id })
             .execute();
         const ok = ((_c = res.affected) !== null && _c !== void 0 ? _c : 0) > 0;
         if (!ok && Number.isFinite(orderId)) {

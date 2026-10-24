@@ -95,6 +95,7 @@ let HallShopResolver = class HallShopResolver {
     async campusShopSlots(ctx) {
         return this.config.slotsForShop(ctx);
     }
+    /** 写 activeOrder 的配送目标（分区/楼栋/路线/时段）：按 Owner 校验，游客会话同样可用 */
     async campusSetDeliveryTarget(ctx, zoneId, buildingId, route, slotId) {
         return this.config.setDeliveryTarget(ctx, Number(zoneId), Number(buildingId), route, slotId);
     }
@@ -113,6 +114,7 @@ let HallShopResolver = class HallShopResolver {
 exports.HallShopResolver = HallShopResolver;
 __decorate([
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('orderId')),
     __metadata("design:type", Function),
@@ -121,6 +123,7 @@ __decorate([
 ], HallShopResolver.prototype, "campusGrabOrder", null);
 __decorate([
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('orderId')),
     __metadata("design:type", Function),
@@ -129,6 +132,7 @@ __decorate([
 ], HallShopResolver.prototype, "campusRejectAssignment", null);
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext]),
@@ -136,6 +140,7 @@ __decorate([
 ], HallShopResolver.prototype, "campusHall", null);
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext]),
@@ -143,6 +148,7 @@ __decorate([
 ], HallShopResolver.prototype, "campusHallAll", null);
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Public),
     __param(0, (0, core_1.Ctx)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [core_1.RequestContext]),
@@ -150,6 +156,7 @@ __decorate([
 ], HallShopResolver.prototype, "campusShopSlots", null);
 __decorate([
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Owner),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('zoneId')),
     __param(2, (0, graphql_1.Args)('buildingId')),
@@ -161,6 +168,7 @@ __decorate([
 ], HallShopResolver.prototype, "campusSetDeliveryTarget", null);
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('skip', { nullable: true })),
     __param(2, (0, graphql_1.Args)('take', { nullable: true })),

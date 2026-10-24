@@ -221,14 +221,10 @@ let HallService = HallService_1 = class HallService {
         return handoverCode;
     }
     /** 回大厅：清骑手指派字段，hallStatus 复位 open（拒单/超时改派共用）。
-     *  条件写：仅活跃流转态可回厅，已取消/已终态单不被复活；返回是否命中。 */
-    async backToHall(ctx, orderId) {
-        return this.transitionFrom(ctx, orderId, exports.ACTIVE_HALL_STATUSES, {
-            hallStatus: 'open',
-            deliveryStaffId: null,
-            deliveryStatus: null,
-            assignedAt: null,
-        });
+     *  条件写：仅活跃流转态可回厅，已取消/已终态单不被复活；extra 与复位字段同语句落库（后台强制回厅留痕）。
+     *  返回是否命中。 */
+    async backToHall(ctx, orderId, extra) {
+        return this.transitionFrom(ctx, orderId, exports.ACTIVE_HALL_STATUSES, Object.assign(Object.assign({}, (extra !== null && extra !== void 0 ? extra : {})), { hallStatus: 'open', deliveryStaffId: null, deliveryStatus: null, assignedAt: null }));
     }
     /**
      * 条件状态迁移（CAS）：仅当 hallStatus 仍在 from 集合内、且订单未被取消时才写入 patch，返回 affected>0。
@@ -251,17 +247,19 @@ let HallService = HallService_1 = class HallService {
         return Array.isArray(rows) && rows.length > 0;
     }
     /** 取消脱厅（3.3 冒烟实测缺陷）：订单取消终态时清 hallStatus，使其退出大厅/打包扫描/整组抢单/调度台。
-     * 先读 DB 当前值防 T4 mark() 竞态覆盖（no_rider_final 不碰）；grabbed 单连带清骑手指派字段。 */
-    async exitHall(ctx, order) {
-        var _a;
-        const cur = await this.connection.getRepository(ctx, core_2.Order).findOne({ where: { id: order.id } });
-        const hs = (_a = cur === null || cur === void 0 ? void 0 : cur.customFields) === null || _a === void 0 ? void 0 : _a.hallStatus;
-        if (!hs || !exports.ACTIVE_HALL_STATUSES.includes(hs))
+     * 单条条件写：仅活跃流转态可脱厅——先读后写会被 T4 mark() 写 no_rider_final 的竞态覆盖；
+     * grabbed 单连带清骑手指派字段（CASE 表达式读同一语句的旧值）。 */
+    async exitHall(_ctx, order) {
+        const hsCol = orderColumn('hallStatus');
+        const clearIfGrabbed = (field) => `${orderColumn(field)} = CASE WHEN ${hsCol} = 'grabbed' THEN NULL ELSE ${orderColumn(field)} END`;
+        const out = await this.connection.rawConnection.query(`UPDATE "order" SET ${hsCol} = 'cancelled', `
+            + `${clearIfGrabbed('deliveryStaffId')}, ${clearIfGrabbed('deliveryStatus')}, `
+            + `${clearIfGrabbed('assignedAt')} `
+            + `WHERE id = $1 AND COALESCE(${hsCol}, '') = ANY($2::text[]) RETURNING id`, [order.id, exports.ACTIVE_HALL_STATUSES]);
+        const rows = Array.isArray(out) && Array.isArray(out[0]) ? out[0] : out;
+        if (!Array.isArray(rows) || !rows.length)
             return;
-        await this.connection.getRepository(ctx, core_2.Order).update(order.id, {
-            customFields: Object.assign({ hallStatus: 'cancelled' }, (hs === 'grabbed' ? { deliveryStaffId: null, deliveryStatus: null, assignedAt: null } : {})),
-        });
-        core_2.Logger.info(`Order ${order.code} exited hall (${hs} → cancelled)`, 'CampusHall');
+        core_2.Logger.info(`Order ${order.code} exited hall (→ cancelled)`, 'CampusHall');
     }
     /** 通用订单更新（T4 退款终态标记等复用） */
     updateOrder(ctx, orderId, patch) {

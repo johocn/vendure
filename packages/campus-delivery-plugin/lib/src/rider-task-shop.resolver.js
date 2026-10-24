@@ -26,7 +26,7 @@ let RiderTaskShopResolver = class RiderTaskShopResolver {
     async campusMyTasks(ctx, status) {
         return this.riderTaskService.myTasks(ctx, status);
     }
-    /** 公开只读：C 端订单跟踪骑手卡（姓名+信用分，不含联系方式） */
+    /** 需登录：仅下单人本人可查（service 内归属校验） */
     async campusOrderRider(ctx, orderId) {
         return this.riderTaskService.orderRider(ctx, orderId);
     }
@@ -60,6 +60,7 @@ let RiderTaskShopResolver = class RiderTaskShopResolver {
 exports.RiderTaskShopResolver = RiderTaskShopResolver;
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('status', { nullable: true })),
     __metadata("design:type", Function),
@@ -68,6 +69,7 @@ __decorate([
 ], RiderTaskShopResolver.prototype, "campusMyTasks", null);
 __decorate([
     (0, graphql_1.Query)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('orderId')),
     __metadata("design:type", Function),
@@ -76,6 +78,7 @@ __decorate([
 ], RiderTaskShopResolver.prototype, "campusOrderRider", null);
 __decorate([
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('orderId')),
     __param(2, (0, graphql_1.Args)('code', { nullable: true })),
@@ -85,6 +88,7 @@ __decorate([
 ], RiderTaskShopResolver.prototype, "campusStartTask", null);
 __decorate([
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('orderId')),
     __param(2, (0, graphql_1.Args)('photos')),
@@ -95,6 +99,7 @@ __decorate([
 ], RiderTaskShopResolver.prototype, "campusTransferTask", null);
 __decorate([
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('orderId')),
     __param(2, (0, graphql_1.Args)('photos')),
@@ -105,6 +110,7 @@ __decorate([
 ], RiderTaskShopResolver.prototype, "campusDeliverTask", null);
 __decorate([
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('orderId')),
     __param(2, (0, graphql_1.Args)('lat')),
@@ -115,6 +121,7 @@ __decorate([
 ], RiderTaskShopResolver.prototype, "campusRiderReportLocation", null);
 __decorate([
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('orderId')),
     __param(2, (0, graphql_1.Args)('type')),
@@ -126,6 +133,7 @@ __decorate([
 ], RiderTaskShopResolver.prototype, "campusReportException", null);
 __decorate([
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('orderId')),
     __metadata("design:type", Function),
@@ -134,6 +142,7 @@ __decorate([
 ], RiderTaskShopResolver.prototype, "campusMarkArrived", null);
 __decorate([
     (0, graphql_1.Mutation)(),
+    (0, core_1.Allow)(core_1.Permission.Authenticated),
     __param(0, (0, core_1.Ctx)()),
     __param(1, (0, graphql_1.Args)('orderId')),
     __metadata("design:type", Function),
