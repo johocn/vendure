@@ -28,7 +28,11 @@ function makeEnv(opts = {}) {
     const configRepo = {
         findOne: vitest_1.vi.fn().mockResolvedValue((_b = opts.cfg) !== null && _b !== void 0 ? _b : { autoAssignMinutes: 10, inProgressSlaMinutes: 45 }),
     };
-    const paymentRepo = { findOne: vitest_1.vi.fn().mockResolvedValue((_c = opts.payment) !== null && _c !== void 0 ? _c : null) };
+    const paymentRepo = {
+        // 可退支付单查询（state 必须是 Settled/Authorized）
+        find: vitest_1.vi.fn().mockImplementation(async () => (opts.payment ? [Object.assign(Object.assign({}, opts.payment), { state: 'Settled' })] : [])),
+        findOne: vitest_1.vi.fn().mockResolvedValue((_c = opts.payment) !== null && _c !== void 0 ? _c : null),
+    };
     const refundRepo = {
         createQueryBuilder: () => {
             var _a;
@@ -211,7 +215,7 @@ const exceptionOrder = (id, code, extra = {}) => ({
             payment: { id: 9, amount: 2300 },
             refundedSum: 0,
         });
-        paymentRepo.findOne.mockResolvedValue({ id: 9, amount: 2300 });
+        paymentRepo.find.mockResolvedValue([{ id: 9, amount: 2300, state: 'Settled' }]);
         orderRepo.findOne.mockResolvedValue(exceptionOrder(7, 'A7'));
         await svc.handleException(ctx, 7, 'refund_diff', 300, undefined, '洒漏赔付');
         (0, vitest_1.expect)(orderSvc.refundOrder).toHaveBeenCalledWith(ctx, vitest_1.expect.objectContaining({
@@ -227,17 +231,17 @@ const exceptionOrder = (id, code, extra = {}) => ({
     });
     (0, vitest_1.it)('refund_diff 超可退余额（已全额退）→ 拒绝', async () => {
         const { svc, orderRepo, orderSvc, paymentRepo } = makeEnv({ refundedSum: 2300 });
-        paymentRepo.findOne.mockResolvedValue({ id: 9, amount: 2300 });
+        paymentRepo.find.mockResolvedValue([{ id: 9, amount: 2300, state: 'Settled' }]);
         orderRepo.findOne.mockResolvedValue(exceptionOrder(7, 'A7'));
-        await (0, vitest_1.expect)(svc.handleException(ctx, 7, 'refund_diff', 100)).rejects.toThrow('退款金额超过可退余额');
+        await (0, vitest_1.expect)(svc.handleException(ctx, 7, 'refund_diff', 100)).rejects.toThrow('无可退支付余额');
         (0, vitest_1.expect)(orderSvc.refundOrder).not.toHaveBeenCalled();
     });
     (0, vitest_1.it)('refund_diff 金额 ≤0 / 无支付记录 → 拒绝', async () => {
         const { svc, orderRepo, paymentRepo } = makeEnv({ payment: null });
         orderRepo.findOne.mockResolvedValue(exceptionOrder(7, 'A7'));
         await (0, vitest_1.expect)(svc.handleException(ctx, 7, 'refund_diff', 0)).rejects.toThrow('赔付金额必须大于 0');
-        paymentRepo.findOne.mockResolvedValue(null);
-        await (0, vitest_1.expect)(svc.handleException(ctx, 7, 'refund_diff', 300)).rejects.toThrow('订单无支付记录');
+        paymentRepo.find.mockResolvedValue([]);
+        await (0, vitest_1.expect)(svc.handleException(ctx, 7, 'refund_diff', 300)).rejects.toThrow('无可退支付余额');
     });
     (0, vitest_1.it)('coupon：发补偿券 + exception_final 留痕', async () => {
         const { svc, orderRepo, hallSvc } = makeEnv();
@@ -257,7 +261,7 @@ const exceptionOrder = (id, code, extra = {}) => ({
     });
     (0, vitest_1.it)('refund_all：退剩余全额 + cancelOrder + campusCause=exception_refund', async () => {
         const { svc, orderRepo, hallSvc, orderSvc, paymentRepo } = makeEnv({ refundedSum: 300 });
-        paymentRepo.findOne.mockResolvedValue({ id: 9, amount: 2300 });
+        paymentRepo.find.mockResolvedValue([{ id: 9, amount: 2300, state: 'Settled' }]);
         orderRepo.findOne.mockResolvedValue(exceptionOrder(10, 'A10'));
         await svc.handleException(ctx, 10, 'refund_all');
         // 已退 300，剩余 2000 补退

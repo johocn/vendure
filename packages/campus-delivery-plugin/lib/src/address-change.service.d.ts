@@ -3,6 +3,7 @@ import { CustomerService, ID, OrderService, RequestContext, TransactionalConnect
 import { CampusAddressChange } from './campus-address-change.entity';
 import { CampusBuilding } from './campus-building.entity';
 import { CapacityService } from './capacity.service';
+import { FeishuNotifyService } from './feishu/feishu-notify.service';
 import { HallService } from './hall.service';
 import { CampusNotifyService } from './campus-notify.service';
 import { ThirdPartyDeliveryService } from './third-party-delivery.service';
@@ -15,7 +16,8 @@ export declare class AddressChangeService {
     private thirdParty;
     private moduleRef;
     private hall;
-    constructor(connection: TransactionalConnection, orderService: OrderService, customerService: CustomerService, capacity: CapacityService, notify: CampusNotifyService, thirdParty: ThirdPartyDeliveryService, moduleRef: ModuleRef, hall: HallService);
+    private feishu;
+    constructor(connection: TransactionalConnection, orderService: OrderService, customerService: CustomerService, capacity: CapacityService, notify: CampusNotifyService, thirdParty: ThirdPartyDeliveryService, moduleRef: ModuleRef, hall: HallService, feishu: FeishuNotifyService);
     /** 顾客自助改址（取货前、可跨分区）。差额不阻塞改址，写入台账待运营结算。 */
     changeByCustomer(ctx: RequestContext, input: {
         orderId: ID;
@@ -129,6 +131,10 @@ export declare class AddressChangeService {
     private assertNotCancelledOrDelivered;
     private resolveTarget;
     private applyChange;
+    /** 生效运费：最近一次改址落库的 newFee；无改址史回退下单快照 shippingWithTax */
+    private effectiveOldFee;
+    /** R1 商户自配送改址：推管理群（商户履约方），避免商户仍按旧楼栋配送 */
+    private notifyMerchantAddressChanged;
     /** 改址定向提醒在途骑手（best-effort，失败不阻塞改址）：复用渠道 orderShippedTemplateId。 */
     private notifyRiderAddressChanged;
     private channelIdOf;

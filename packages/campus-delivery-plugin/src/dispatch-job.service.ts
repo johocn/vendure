@@ -7,8 +7,6 @@ import {
     Logger,
     Order,
     OrderService,
-    Payment,
-    Refund,
     RequestContext,
     TransactionalConnection,
 } from '@vendure/core';
@@ -17,6 +15,7 @@ import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { FeishuNotifyService } from './feishu/feishu-notify.service';
 import { HallGrabService } from './hall-grab.service';
 import { ACTIVE_HALL_STATUSES, HallService } from './hall.service';
+import { refundablePayments } from './refund-payment';
 import { ThirdPartyDeliveryService } from './third-party-delivery.service';
 import { CREDIT_LIMIT, CREDIT_TIMEOUT, RiderCreditService } from './rider-credit.service';
 
@@ -38,7 +37,6 @@ export class DispatchJobService implements OnApplicationShutdown {
     // T4 惰性服务（job 定时器早于插件依赖可用，首次执行时经 Injector 解析）
     private orderSvc?: OrderService;
     private couponSvc?: { grantCoupon: (ctx: RequestContext, templateId: ID, customerIds: ID[]) => Promise<string[]> } | null;
-    private paymentRepo?: any;
     /** 超时赔付缺配置告警限频（避免每分钟刷日志） */
     private compensationWarnAt = 0;
 
@@ -888,7 +886,6 @@ export class DispatchJobService implements OnApplicationShutdown {
     private services() {
         if (!this.orderSvc) {
             this.orderSvc = this.injector.get(OrderService);
-            this.paymentRepo = this.connection.rawConnection.getRepository(Payment);
             this.couponSvc = this.tryGetCouponService();
         }
         return { order: this.orderSvc, coupon: this.couponSvc ?? null };
@@ -937,35 +934,23 @@ export class DispatchJobService implements OnApplicationShutdown {
                 if (!Number.isNaN(enteredMs)
                     && Date.now() - enteredMs <= (cfg.autoRefundMinutes ?? 30) * 60_000) return;
                 const { order: orderSvc, coupon } = this.services();
-                const payment = await this.paymentRepo!.findOne({
-                    where: { order: { id: order.id } },
-                    order: { id: 'DESC' as any },
-                });
-                if (payment) {
-                    // 幂等重试：上一轮 refund 成功但 transition 失败时，payment 已全额退，
-                    // 再次 refundOrder 会报 REFUND_AMOUNT_ERROR——先查已退总额，退完则跳过退款只做取消
-                    const refunded = await this.connection.rawConnection
-                        .getRepository(Refund)
-                        .createQueryBuilder('r')
-                        .select('COALESCE(SUM(r.total), 0)', 'sum')
-                        .where('r."paymentId" = :pid', { pid: payment.id })
-                        .getRawOne();
-                    if (Number(refunded?.sum ?? 0) < Number(payment.amount)) {
-                        const created = await orderSvc!.refundOrder(ctx, {
-                            paymentId: payment.id,
-                            amount: payment.amount,
-                            // fork 的 refund 表 shipping/adjustment 列 NOT NULL（payment.service createRefund 透传
-                            // input.shipping/input.adjustment），全额退款经 amount 通道，两者必须显式给 0，
-                            // 否则 INSERT 报 not-null violation
-                            shipping: 0,
-                            adjustment: 0,
-                            reason: `no_rider auto refund (${order.code})`,
-                        } as any);
-                        if (!created || (created as any).errorCode) {
-                            throw new Error(`refundOrder failed: ${(created as any)?.errorCode ?? 'no result'}`);
-                        }
-                        await orderSvc!.settleRefund(ctx, { id: (created as any).id } as any);
+                // 只退成功支付且仍有余额的支付单（避免选中 Declined/Error 重试单；已全额退则列表为空）
+                const refundable = await refundablePayments(this.connection, Number(order.id));
+                for (const picked of refundable) {
+                    const created = await orderSvc!.refundOrder(ctx, {
+                        paymentId: picked.payment.id,
+                        amount: picked.remaining,
+                        // fork 的 refund 表 shipping/adjustment 列 NOT NULL（payment.service createRefund 透传
+                        // input.shipping/input.adjustment），全额退款经 amount 通道，两者必须显式给 0，
+                        // 否则 INSERT 报 not-null violation
+                        shipping: 0,
+                        adjustment: 0,
+                        reason: `no_rider auto refund (${order.code})`,
+                    } as any);
+                    if (!created || (created as any).errorCode) {
+                        throw new Error(`refundOrder failed: ${(created as any)?.errorCode ?? 'no result'}`);
                     }
+                    await orderSvc!.settleRefund(ctx, { id: (created as any).id } as any);
                 }
                 // 用 cancelOrder 而非 transitionToState(Cancelled)：默认 checkAllItemsBeforeCancel 要求
                 // 订单行先取消，cancelOrder 内部完成行取消+状态转换；transitionToState 会静默返回 ErrorResult

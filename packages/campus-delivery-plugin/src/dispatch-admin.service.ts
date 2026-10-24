@@ -7,8 +7,6 @@ import {
     Logger,
     Order,
     OrderService,
-    Payment,
-    Refund,
     RequestContext,
     TransactionalConnection,
     UserInputError,
@@ -18,6 +16,7 @@ import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
 import { CampusNotifyService } from './campus-notify.service';
 import { HallGrabService } from './hall-grab.service';
 import { HallService, ACTIVE_HALL_STATUSES } from './hall.service';
+import { refundablePayments } from './refund-payment';
 import { withRefundLock } from './refund-lock';
 import { CREDIT_LIMIT } from './rider-credit.service';
 
@@ -392,22 +391,13 @@ export class DispatchAdminService {
      * 幂等保护：累计已退 + 本次 ≤ payment.amount，超额抛错。 */
     private async refundAmount(ctx: RequestContext, order: Order, amount: number, reason: string) {
         const orderSvc = this.getOrderService();
-        const payment = await this.connection.rawConnection.getRepository(Payment).findOne({
-            where: { order: { id: order.id } },
-            order: { id: 'DESC' as any },
-        });
-        if (!payment) throw new UserInputError('订单无支付记录，无法退款');
-        const refunded = await this.connection.rawConnection
-            .getRepository(Refund)
-            .createQueryBuilder('r')
-            .select('COALESCE(SUM(r.total), 0)', 'sum')
-            .where('r."paymentId" = :pid', { pid: payment.id })
-            .getRawOne();
-        if (Number(refunded?.sum ?? 0) + amount > Number(payment.amount)) {
-            throw new UserInputError('退款金额超过可退余额（订单可能已全额退款）');
-        }
+        // 只认 Settled/Authorized 且余额足够的支付单，避免选中失败重试单导致退款失败
+        const payments = await refundablePayments(this.connection, Number(order.id));
+        if (!payments.length) throw new UserInputError('订单无可退支付余额（可能未支付或已全额退款）');
+        const picked = payments.find(p => p.remaining >= amount);
+        if (!picked) throw new UserInputError('退款金额超过可退余额（订单可能已全额退款）');
         const created = await orderSvc.refundOrder(ctx, {
-            paymentId: payment.id,
+            paymentId: picked.payment.id,
             amount,
             shipping: 0,
             adjustment: 0,
@@ -422,21 +412,9 @@ export class DispatchAdminService {
     /** 全额退单：退剩余未退部分 + cancelOrder（行取消+状态转换，同 T4） */
     private async refundAllAndCancel(ctx: RequestContext, order: Order) {
         const orderSvc = this.getOrderService();
-        const payment = await this.connection.rawConnection.getRepository(Payment).findOne({
-            where: { order: { id: order.id } },
-            order: { id: 'DESC' as any },
-        });
-        if (payment) {
-            const refunded = await this.connection.rawConnection
-                .getRepository(Refund)
-                .createQueryBuilder('r')
-                .select('COALESCE(SUM(r.total), 0)', 'sum')
-                .where('r."paymentId" = :pid', { pid: payment.id })
-                .getRawOne();
-            const rest = Number(payment.amount) - Number(refunded?.sum ?? 0);
-            if (rest > 0) {
-                await this.refundAmount(ctx, order, rest, `exception full refund (${order.code})`);
-            }
+        // 覆盖多支付单场景：逐张退剩余（单支付单订单等价于原「退剩余」）
+        for (const picked of await refundablePayments(this.connection, Number(order.id))) {
+            await this.refundAmount(ctx, order, picked.remaining, `exception full refund (${order.code})`);
         }
         const cancelled = await orderSvc.cancelOrder(ctx, {
             orderId: order.id as any,

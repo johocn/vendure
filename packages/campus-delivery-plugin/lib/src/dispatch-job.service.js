@@ -19,6 +19,7 @@ const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.
 const feishu_notify_service_1 = require("./feishu/feishu-notify.service");
 const hall_grab_service_1 = require("./hall-grab.service");
 const hall_service_1 = require("./hall.service");
+const refund_payment_1 = require("./refund-payment");
 const third_party_delivery_service_1 = require("./third-party-delivery.service");
 const rider_credit_service_1 = require("./rider-credit.service");
 const NOT_PICKED_TIMEOUT_MIN = 15;
@@ -807,7 +808,6 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
         var _a;
         if (!this.orderSvc) {
             this.orderSvc = this.injector.get(core_2.OrderService);
-            this.paymentRepo = this.connection.rawConnection.getRepository(core_2.Payment);
             this.couponSvc = this.tryGetCouponService();
         }
         return { order: this.orderSvc, coupon: (_a = this.couponSvc) !== null && _a !== void 0 ? _a : null };
@@ -833,7 +833,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
      * 失败降级：同样写 campusCause='no_rider' + hallStatus='no_rider_final' 留人工，Logger 留痕，不抛出。
      */
     async refundNoRider(ctx, order, cfg) {
-        var _a, _b, _c, _d, _e, _f, _g;
+        var _a, _b, _c, _d, _e, _f;
         const mark = () => this.hall.updateOrder(ctx, order.id, {
             customFields: { campusCause: 'no_rider', hallStatus: 'no_rider_final' },
         });
@@ -860,35 +860,23 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                     && Date.now() - enteredMs <= ((_d = cfg.autoRefundMinutes) !== null && _d !== void 0 ? _d : 30) * 60000)
                     return;
                 const { order: orderSvc, coupon } = this.services();
-                const payment = await this.paymentRepo.findOne({
-                    where: { order: { id: order.id } },
-                    order: { id: 'DESC' },
-                });
-                if (payment) {
-                    // 幂等重试：上一轮 refund 成功但 transition 失败时，payment 已全额退，
-                    // 再次 refundOrder 会报 REFUND_AMOUNT_ERROR——先查已退总额，退完则跳过退款只做取消
-                    const refunded = await this.connection.rawConnection
-                        .getRepository(core_2.Refund)
-                        .createQueryBuilder('r')
-                        .select('COALESCE(SUM(r.total), 0)', 'sum')
-                        .where('r."paymentId" = :pid', { pid: payment.id })
-                        .getRawOne();
-                    if (Number((_e = refunded === null || refunded === void 0 ? void 0 : refunded.sum) !== null && _e !== void 0 ? _e : 0) < Number(payment.amount)) {
-                        const created = await orderSvc.refundOrder(ctx, {
-                            paymentId: payment.id,
-                            amount: payment.amount,
-                            // fork 的 refund 表 shipping/adjustment 列 NOT NULL（payment.service createRefund 透传
-                            // input.shipping/input.adjustment），全额退款经 amount 通道，两者必须显式给 0，
-                            // 否则 INSERT 报 not-null violation
-                            shipping: 0,
-                            adjustment: 0,
-                            reason: `no_rider auto refund (${order.code})`,
-                        });
-                        if (!created || created.errorCode) {
-                            throw new Error(`refundOrder failed: ${(_f = created === null || created === void 0 ? void 0 : created.errorCode) !== null && _f !== void 0 ? _f : 'no result'}`);
-                        }
-                        await orderSvc.settleRefund(ctx, { id: created.id });
+                // 只退成功支付且仍有余额的支付单（避免选中 Declined/Error 重试单；已全额退则列表为空）
+                const refundable = await (0, refund_payment_1.refundablePayments)(this.connection, Number(order.id));
+                for (const picked of refundable) {
+                    const created = await orderSvc.refundOrder(ctx, {
+                        paymentId: picked.payment.id,
+                        amount: picked.remaining,
+                        // fork 的 refund 表 shipping/adjustment 列 NOT NULL（payment.service createRefund 透传
+                        // input.shipping/input.adjustment），全额退款经 amount 通道，两者必须显式给 0，
+                        // 否则 INSERT 报 not-null violation
+                        shipping: 0,
+                        adjustment: 0,
+                        reason: `no_rider auto refund (${order.code})`,
+                    });
+                    if (!created || created.errorCode) {
+                        throw new Error(`refundOrder failed: ${(_e = created === null || created === void 0 ? void 0 : created.errorCode) !== null && _e !== void 0 ? _e : 'no result'}`);
                     }
+                    await orderSvc.settleRefund(ctx, { id: created.id });
                 }
                 // 用 cancelOrder 而非 transitionToState(Cancelled)：默认 checkAllItemsBeforeCancel 要求
                 // 订单行先取消，cancelOrder 内部完成行取消+状态转换；transitionToState 会静默返回 ErrorResult
@@ -904,7 +892,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                 if (templateId && order.customerId && coupon) {
                     await coupon.grantCoupon(ctx, templateId, [order.customerId]);
                 }
-                core_2.Logger.warn(`Order ${order.code} auto-refunded (no rider within ${(_g = cfg.autoRefundMinutes) !== null && _g !== void 0 ? _g : 30}min)`, 'CampusDispatch');
+                core_2.Logger.warn(`Order ${order.code} auto-refunded (no rider within ${(_f = cfg.autoRefundMinutes) !== null && _f !== void 0 ? _f : 30}min)`, 'CampusDispatch');
             }
             catch (e) {
                 core_2.Logger.error(`T4 refund failed for order ${order.code}: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch');
@@ -920,7 +908,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
             try {
                 await runner.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]);
             }
-            catch (_h) {
+            catch (_g) {
                 // 释放失败交给连接回收兜底
             }
             await runner.release();

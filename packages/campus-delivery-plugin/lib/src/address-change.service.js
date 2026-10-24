@@ -19,8 +19,10 @@ const campus_building_entity_1 = require("./campus-building.entity");
 const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.entity");
 const campus_zone_entity_1 = require("./campus-zone.entity");
 const capacity_service_1 = require("./capacity.service");
+const feishu_notify_service_1 = require("./feishu/feishu-notify.service");
 const hall_service_1 = require("./hall.service");
 const campus_notify_service_1 = require("./campus-notify.service");
+const refund_payment_1 = require("./refund-payment");
 const shipping_calculator_1 = require("./shipping-calculator");
 const dynamic_pricing_1 = require("./dynamic-pricing");
 const route_matrix_1 = require("./route-matrix");
@@ -30,7 +32,7 @@ const loggerCtx = 'CampusAddressChange';
 /** 外部配送已接单/取货后不可改址 */
 const THIRD_PARTY_LOCKED = ['accepted', 'pickup', 'delivered'];
 let AddressChangeService = class AddressChangeService {
-    constructor(connection, orderService, customerService, capacity, notify, thirdParty, moduleRef, hall) {
+    constructor(connection, orderService, customerService, capacity, notify, thirdParty, moduleRef, hall, feishu) {
         this.connection = connection;
         this.orderService = orderService;
         this.customerService = customerService;
@@ -39,56 +41,69 @@ let AddressChangeService = class AddressChangeService {
         this.thirdParty = thirdParty;
         this.moduleRef = moduleRef;
         this.hall = hall;
+        this.feishu = feishu;
     }
     /** 顾客自助改址（取货前、可跨分区）。差额不阻塞改址，写入台账待运营结算。 */
     async changeByCustomer(ctx, input) {
-        var _a, _b;
         if (!ctx.activeUserId)
             throw new core_2.ForbiddenError();
         const customer = await this.customerService.findOneByUserId(ctx, ctx.activeUserId);
         if (!customer)
             throw new core_2.ForbiddenError();
-        const order = await this.loadOrder(ctx, input.orderId);
-        if (((_a = order.customer) === null || _a === void 0 ? void 0 : _a.id) !== customer.id)
-            throw new core_2.ForbiddenError();
-        this.assertNotCancelledOrDelivered(order);
-        const cf = ((_b = order.customFields) !== null && _b !== void 0 ? _b : {});
-        if (cf.deliveryStatus === 'in_progress')
-            throw new core_2.UserInputError('骑手已取货，无法自助改址，请联系客服');
-        if (THIRD_PARTY_LOCKED.includes(cf.thirdPartyState))
-            throw new core_2.UserInputError('外部配送已接单，无法自助改址');
-        const { zone, building } = await this.resolveTarget(ctx, input.zoneId, input.buildingId);
-        return this.applyChange(ctx, order, zone, building, input.detail, {
-            source: 'customer',
-            reason: null,
-            changedBy: ctx.activeUserId,
-            customerId: customer.id,
+        const locked = await (0, refund_lock_1.withAddressLock)(this.connection, input.orderId, async () => {
+            var _a, _b;
+            // 锁内重读：并发双击/两个标签页同时改址时，后到者必须基于最新地址与最新运费计算差额
+            const order = await this.loadOrder(ctx, input.orderId);
+            if (((_a = order.customer) === null || _a === void 0 ? void 0 : _a.id) !== customer.id)
+                throw new core_2.ForbiddenError();
+            this.assertNotCancelledOrDelivered(order);
+            const cf = ((_b = order.customFields) !== null && _b !== void 0 ? _b : {});
+            if (cf.deliveryStatus === 'in_progress')
+                throw new core_2.UserInputError('骑手已取货，无法自助改址，请联系客服');
+            if (THIRD_PARTY_LOCKED.includes(cf.thirdPartyState))
+                throw new core_2.UserInputError('外部配送已接单，无法自助改址');
+            const { zone, building } = await this.resolveTarget(ctx, input.zoneId, input.buildingId);
+            return this.applyChange(ctx, order, zone, building, input.detail, {
+                source: 'customer',
+                reason: null,
+                changedBy: ctx.activeUserId,
+                customerId: customer.id,
+            });
         });
+        if (!locked.ok)
+            throw new core_2.UserInputError('该订单正在处理其他改址，请稍后重试');
+        return locked.value;
     }
     /**
      * 运营代客改址：C 端取货后锁死，运营可代改（必须填原因，全程留痕）。
      * 仅「已取消 / 已送达」拒绝；骑手取货、外部已接单均允许代改。
      */
     async adminChange(ctx, input) {
-        var _a, _b, _c, _d;
+        var _a;
         const reason = ((_a = input.reason) !== null && _a !== void 0 ? _a : '').trim();
         if (!reason)
             throw new core_2.UserInputError('请填写代改原因');
-        const order = await this.loadOrder(ctx, input.orderId);
-        if (Number(this.channelIdOf(order, ctx)) !== Number(ctx.channelId))
-            throw new core_2.ForbiddenError();
-        this.assertNotCancelledOrDelivered(order);
-        const { zone, building } = await this.resolveTarget(ctx, input.zoneId, input.buildingId);
-        return this.applyChange(ctx, order, zone, building, input.detail, {
-            source: 'admin',
-            reason,
-            changedBy: ((_b = ctx.activeUserId) !== null && _b !== void 0 ? _b : null),
-            customerId: ((_d = (_c = order.customer) === null || _c === void 0 ? void 0 : _c.id) !== null && _d !== void 0 ? _d : null),
+        const locked = await (0, refund_lock_1.withAddressLock)(this.connection, input.orderId, async () => {
+            var _a, _b, _c;
+            const order = await this.loadOrder(ctx, input.orderId);
+            if (Number(this.channelIdOf(order, ctx)) !== Number(ctx.channelId))
+                throw new core_2.ForbiddenError();
+            this.assertNotCancelledOrDelivered(order);
+            const { zone, building } = await this.resolveTarget(ctx, input.zoneId, input.buildingId);
+            return this.applyChange(ctx, order, zone, building, input.detail, {
+                source: 'admin',
+                reason,
+                changedBy: ((_a = ctx.activeUserId) !== null && _a !== void 0 ? _a : null),
+                customerId: ((_c = (_b = order.customer) === null || _b === void 0 ? void 0 : _b.id) !== null && _c !== void 0 ? _c : null),
+            });
         });
+        if (!locked.ok)
+            throw new core_2.UserInputError('该订单正在处理其他改址，请稍后重试');
+        return locked.value;
     }
     /** 改址差额试算（运营端预览：不写台账、不改订单） */
     async quote(ctx, orderId, zoneId) {
-        var _a, _b;
+        var _a;
         const order = await this.loadOrder(ctx, orderId);
         if (Number(this.channelIdOf(order, ctx)) !== Number(ctx.channelId))
             throw new core_2.ForbiddenError();
@@ -102,9 +117,9 @@ let AddressChangeService = class AddressChangeService {
         const cfg = await this.connection.rawConnection.getRepository(campus_fulfillment_config_entity_1.CampusFulfillmentConfig).findOne({
             where: { channelId: channelId },
         });
-        const oldFee = Number((_a = order.shippingWithTax) !== null && _a !== void 0 ? _a : 0);
+        const oldFee = await this.effectiveOldFee(ctx, order);
         const q = await (0, shipping_calculator_1.quoteZoneFee)(this.connection, channelId, { name: zone.name, fee: Number(zone.fee) }, cfg, order);
-        const newFee = Number((_b = q === null || q === void 0 ? void 0 : q.price) !== null && _b !== void 0 ? _b : oldFee);
+        const newFee = Number((_a = q === null || q === void 0 ? void 0 : q.price) !== null && _a !== void 0 ? _a : oldFee);
         const buildings = await this.connection
             .getRepository(ctx, campus_building_entity_1.CampusBuilding)
             .find({ where: { zoneId: zone.id, channelId: channelId } });
@@ -319,31 +334,23 @@ let AddressChangeService = class AddressChangeService {
     /** 部分退款（fork 无 core RefundService，走 OrderService.refundOrder/settleRefund，与 dispatch-admin 同源）。
      * refund 表 shipping/adjustment 列 NOT NULL 必须显式传 0；超额退款抛错。 */
     async refundAmount(ctx, order, amount, reason) {
-        var _a, _b;
-        const payment = await this.connection.rawConnection.getRepository(core_2.Payment).findOne({
-            where: { order: { id: order.id } },
-            order: { id: 'DESC' },
-        });
-        if (!payment)
-            throw new core_2.UserInputError('订单无支付记录，无法退款');
-        const refunded = await this.connection.rawConnection
-            .getRepository(core_2.Refund)
-            .createQueryBuilder('r')
-            .select('COALESCE(SUM(r.total), 0)', 'sum')
-            .where('r."paymentId" = :pid', { pid: payment.id })
-            .getRawOne();
-        if (Number((_a = refunded === null || refunded === void 0 ? void 0 : refunded.sum) !== null && _a !== void 0 ? _a : 0) + amount > Number(payment.amount)) {
+        var _a;
+        // 只认 Settled/Authorized 且仍有余额的支付单，避免选中失败重试单导致退款失败
+        const payments = await (0, refund_payment_1.refundablePayments)(this.connection, Number(order.id));
+        if (!payments.length)
+            throw new core_2.UserInputError('订单无可退支付余额（可能未支付或已全额退款）');
+        const picked = payments.find(p => p.remaining >= amount);
+        if (!picked)
             throw new core_2.UserInputError('退款金额超过可退余额（订单可能已全额退款）');
-        }
         const created = await this.orderService.refundOrder(ctx, {
-            paymentId: payment.id,
+            paymentId: picked.payment.id,
             amount,
             shipping: 0,
             adjustment: 0,
             reason,
         });
         if (!created || created.errorCode) {
-            throw new core_2.UserInputError(`退款失败：${(_b = created === null || created === void 0 ? void 0 : created.errorCode) !== null && _b !== void 0 ? _b : '未知原因'}`);
+            throw new core_2.UserInputError(`退款失败：${(_a = created === null || created === void 0 ? void 0 : created.errorCode) !== null && _a !== void 0 ? _a : '未知原因'}`);
         }
         await this.orderService.settleRefund(ctx, { id: created.id });
         return created;
@@ -389,22 +396,24 @@ let AddressChangeService = class AddressChangeService {
         return { zone, building };
     }
     async applyChange(ctx, order, zone, building, detail, actor) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o;
         const channelId = this.channelIdOf(order, ctx);
         const cfg = await this.connection.rawConnection.getRepository(campus_fulfillment_config_entity_1.CampusFulfillmentConfig).findOne({
             where: { channelId: channelId },
         });
         const cf = ((_a = order.customFields) !== null && _a !== void 0 ? _a : {});
-        const oldFee = Number((_b = order.shippingWithTax) !== null && _b !== void 0 ? _b : 0);
+        // 差额基准必须取「上一次改址后的生效运费」：order.shippingWithTax 是下单快照且从不回写，
+        // 连续改址（A→B→A）会重复记差额。无改址史时退回下单快照。
+        const oldFee = await this.effectiveOldFee(ctx, order);
         const quote = await (0, shipping_calculator_1.quoteZoneFee)(this.connection, channelId, { name: zone.name, fee: Number(zone.fee) }, cfg, order);
-        const newFee = Number((_c = quote === null || quote === void 0 ? void 0 : quote.price) !== null && _c !== void 0 ? _c : oldFee);
+        const newFee = Number((_b = quote === null || quote === void 0 ? void 0 : quote.price) !== null && _b !== void 0 ? _b : oldFee);
         const diff = newFee - oldFee;
-        const fromZone = String((_d = cf.campusZone) !== null && _d !== void 0 ? _d : '');
-        const fromBuilding = String((_e = cf.buildingId) !== null && _e !== void 0 ? _e : '');
-        const fromDetail = (_f = cf.deliveryDetail) !== null && _f !== void 0 ? _f : null;
+        const fromZone = String((_c = cf.campusZone) !== null && _c !== void 0 ? _c : '');
+        const fromBuilding = String((_d = cf.buildingId) !== null && _d !== void 0 ? _d : '');
+        const fromDetail = (_e = cf.deliveryDetail) !== null && _e !== void 0 ? _e : null;
         const toDetail = (detail === null || detail === void 0 ? void 0 : detail.trim()) || fromDetail;
-        const route = String((_g = cf.fulfillmentRoute) !== null && _g !== void 0 ? _g : '');
-        const hallStatus = String((_h = cf.hallStatus) !== null && _h !== void 0 ? _h : '');
+        const route = String((_f = cf.fulfillmentRoute) !== null && _f !== void 0 ? _f : '');
+        const hallStatus = String((_g = cf.hallStatus) !== null && _g !== void 0 ? _g : '');
         // 交接点快照联动：R1/R2 按新楼栋坐标重选最近交接点（未配置交接点时为 null，保留旧快照）。
         // 餐已实到交接点（open）或已被骑手取走（grabbed/delivered）时不改快照，否则会把骑手指向错误位置。
         const atHandoverPoint = ['open', 'grabbed', 'delivered'].includes(hallStatus);
@@ -437,23 +446,29 @@ let AddressChangeService = class AddressChangeService {
         await this.orderService.updateCustomFields(ctx, order.id, Object.assign({ buildingId: String(building.id), campusZone: zone.name, deliveryDetail: toDetail }, (point
             ? {
                 handoverPointName: point.name,
-                handoverPointAddress: (_j = point.address) !== null && _j !== void 0 ? _j : null,
+                handoverPointAddress: (_h = point.address) !== null && _h !== void 0 ? _h : null,
                 handoverPointLat: point.lat,
                 handoverPointLng: point.lng,
             }
             : {})));
-        // 已指派骑手在途：改址必须让骑手知道（否则仍按旧地址送达）。
+        // 已指派骑手在途 / R1 商户自配送：改址必须触达实际履约方，否则仍按旧地址送达。
         // campusCause 供调度墙展示；骑手订阅消息复用渠道 orderShippedTemplateId（同入厅提醒口径）。
-        const riderId = String((_k = cf.deliveryStaffId) !== null && _k !== void 0 ? _k : '');
-        if (riderId) {
+        const riderId = String((_j = cf.deliveryStaffId) !== null && _j !== void 0 ? _j : '');
+        const merchantSelfDelivery = route === 'R1';
+        if (riderId || merchantSelfDelivery) {
             await this.orderService.updateCustomFields(ctx, order.id, { campusCause: 'address_changed' });
+        }
+        if (riderId) {
             this.notifyRiderAddressChanged(ctx, order, riderId, zone, building);
+        }
+        if (merchantSelfDelivery) {
+            this.notifyMerchantAddressChanged(ctx, order, record.id, zone, building);
         }
         // 外部快递在途（已接单/已取货）：旧运单目的地已失效，取消后回待推送，由运营按新址重推。
         // 未推送（pending_dispatch/未入 third_party）无需处理，重推时自然读取新址。
-        const tpState = String((_l = cf.thirdPartyState) !== null && _l !== void 0 ? _l : '');
+        const tpState = String((_k = cf.thirdPartyState) !== null && _k !== void 0 ? _k : '');
         const externalInFlight = hallStatus === 'third_party'
-            && String((_m = cf.deliveryPlan) !== null && _m !== void 0 ? _m : '') === 'external_courier'
+            && String((_l = cf.deliveryPlan) !== null && _l !== void 0 ? _l : '') === 'external_courier'
             && ['pending', 'accepted', 'pickup'].includes(tpState);
         if (externalInFlight) {
             let cancelled = false;
@@ -462,7 +477,7 @@ let AddressChangeService = class AddressChangeService {
                 cancelled = !!(res === null || res === void 0 ? void 0 : res.ok);
             }
             catch (e) {
-                core_2.Logger.error(`address change: cancel external failed for ${order.code}: ${(_o = e === null || e === void 0 ? void 0 : e.message) !== null && _o !== void 0 ? _o : e}`, loggerCtx);
+                core_2.Logger.error(`address change: cancel external failed for ${order.code}: ${(_m = e === null || e === void 0 ? void 0 : e.message) !== null && _m !== void 0 ? _m : e}`, loggerCtx);
             }
             if (cancelled) {
                 // cancel 按路线回落（R2 待推送 / R3 大厅且 deliveryPlan 改回 campus_rider）；
@@ -490,7 +505,7 @@ let AddressChangeService = class AddressChangeService {
         }
         core_2.Logger.info(`address change [${actor.source}] order=${order.code} ${fromZone}/${fromBuilding} -> ${zone.name}/${building.name} diff=${diff}`, loggerCtx);
         // 改址成功通知（fire-and-forget）：以台账记录 id 作幂等后缀，同一订单多次改址各推一条
-        this.notify.user(ctx, order.id, 'addressChanged', `${zone.name}·${building.name}`, (_p = cfg === null || cfg === void 0 ? void 0 : cfg.h5BaseUrl) !== null && _p !== void 0 ? _p : undefined, String(record.id));
+        this.notify.user(ctx, order.id, 'addressChanged', `${zone.name}·${building.name}`, (_o = cfg === null || cfg === void 0 ? void 0 : cfg.h5BaseUrl) !== null && _o !== void 0 ? _o : undefined, String(record.id));
         return {
             diff,
             oldFee,
@@ -499,6 +514,21 @@ let AddressChangeService = class AddressChangeService {
             toZone: zone.name,
             recordId: record.id,
         };
+    }
+    /** 生效运费：最近一次改址落库的 newFee；无改址史回退下单快照 shippingWithTax */
+    async effectiveOldFee(ctx, order) {
+        var _a;
+        const latest = await this.connection.getRepository(ctx, campus_address_change_entity_1.CampusAddressChange).findOne({
+            where: { orderId: Number(order.id) },
+            order: { createdAt: 'DESC', id: 'DESC' },
+        });
+        return latest ? Number(latest.newFee) : Number((_a = order.shippingWithTax) !== null && _a !== void 0 ? _a : 0);
+    }
+    /** R1 商户自配送改址：推管理群（商户履约方），避免商户仍按旧楼栋配送 */
+    notifyMerchantAddressChanged(ctx, order, recordId, zone, building) {
+        void this.feishu
+            .pushEvent('campus_address_changed', '订单改址（商户自配送）', `订单 ${order.code} 收货地址改为 ${zone.name}·${building.name}，请按新地址配送`, order.code, String(recordId))
+            .catch((e) => { var _a; return core_2.Logger.warn(`address change: merchant notify failed: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, loggerCtx); });
     }
     /** 改址定向提醒在途骑手（best-effort，失败不阻塞改址）：复用渠道 orderShippedTemplateId。 */
     notifyRiderAddressChanged(ctx, order, riderId, zone, building) {
@@ -536,6 +566,7 @@ exports.AddressChangeService = AddressChangeService = __decorate([
         campus_notify_service_1.CampusNotifyService,
         third_party_delivery_service_1.ThirdPartyDeliveryService,
         core_1.ModuleRef,
-        hall_service_1.HallService])
+        hall_service_1.HallService,
+        feishu_notify_service_1.FeishuNotifyService])
 ], AddressChangeService);
 //# sourceMappingURL=address-change.service.js.map

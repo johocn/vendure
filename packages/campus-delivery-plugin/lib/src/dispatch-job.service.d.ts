@@ -20,7 +20,6 @@ export declare class DispatchJobService implements OnApplicationShutdown {
     private running;
     private orderSvc?;
     private couponSvc?;
-    private paymentRepo?;
     /** 超时赔付缺配置告警限频（避免每分钟刷日志） */
     private compensationWarnAt;
     constructor(connection: TransactionalConnection, grab: HallGrabService, hall: HallService, capacity: CapacityService, credit: RiderCreditService, moduleRef: ModuleRef, thirdParty?: ThirdPartyDeliveryService | undefined, feishu?: FeishuNotifyService | undefined);

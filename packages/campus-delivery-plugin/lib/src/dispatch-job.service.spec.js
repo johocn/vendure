@@ -40,6 +40,8 @@ function makeEnv(opts) {
     };
     const configRepo = { findOne: vitest_1.vi.fn().mockResolvedValue((_d = opts.cfg) !== null && _d !== void 0 ? _d : { autoAssignMinutes: 10, autoRefundMinutes: 30, inProgressSlaMinutes: 45 }) };
     const refundRepo = {
+        // 部分退款支付单查询：可退支付单（state 必须是 Settled/Authorized）
+        find: vitest_1.vi.fn().mockResolvedValue([{ id: 55, amount: 8800, state: 'Settled' }]),
         createQueryBuilder: () => {
             var _a;
             return ({
@@ -195,7 +197,6 @@ function injectT4Services(svc) {
         settleRefund: vitest_1.vi.fn().mockResolvedValue({}),
         cancelOrder: vitest_1.vi.fn().mockResolvedValue({ id: 4 }),
     };
-    svc['paymentRepo'] = { findOne: vitest_1.vi.fn().mockResolvedValue({ id: 55, amount: 8800 }) };
     svc['couponSvc'] = { grantCoupon: vitest_1.vi.fn().mockResolvedValue([]) };
 }
 (0, vitest_1.describe)('DispatchJobService.scan 异常超时升级', () => {

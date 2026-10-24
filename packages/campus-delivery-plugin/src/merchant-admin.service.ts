@@ -3,8 +3,6 @@ import {
     ID,
     Order,
     OrderService,
-    Payment,
-    Refund,
     RequestContext,
     TransactionalConnection,
     UserInputError,
@@ -15,6 +13,7 @@ import { CampusNotifyService } from './campus-notify.service';
 import { startOfCampusDay } from './campus-time';
 import { ExternalProviderCode } from './route-matrix';
 import { HallService } from './hall.service';
+import { refundablePayments } from './refund-payment';
 import { ThirdPartyDeliveryService } from './third-party-delivery.service';
 import { normalizePrintMode } from './waimai-store.service';
 
@@ -191,21 +190,12 @@ export class MerchantAdminService {
                 throw new UserInputError('订单状态已变更，请刷新');
             }
 
-            const payment = await this.connection.rawConnection.getRepository(Payment).findOne({
-                where: { order: { id: order.id } },
-                order: { id: 'DESC' as any },
-            });
-            if (payment) {
-                const refunded = await this.connection.rawConnection
-                    .getRepository(Refund)
-                    .createQueryBuilder('r')
-                    .select('COALESCE(SUM(r.total), 0)', 'sum')
-                    .where('r."paymentId" = :pid', { pid: payment.id })
-                    .getRawOne();
-                const rest = Number(payment.amount) - Number(refunded?.sum ?? 0);
+            // 只退成功支付且仍有余额的支付单（避免选中 Declined/Error 重试单导致退款失败）
+            for (const picked of await refundablePayments(this.connection, Number(order.id))) {
+                const rest = picked.remaining;
                 if (rest > 0) {
                     const created: any = await this.orderService.refundOrder(ctx, {
-                        paymentId: payment.id,
+                        paymentId: picked.payment.id,
                         amount: rest,
                         // refund 表 shipping/adjustment 列 NOT NULL，显式给 0（同 T4）
                         shipping: 0,

@@ -3,21 +3,23 @@ import { TransactionalConnection } from '@vendure/core';
 /** 退款串行化锁键：商家拒单 / T4 无人接 / 运营异常处置 / 改址差额结清共用，按订单维度互斥 */
 export const refundLockKey = (orderId: number | string) => `campus:refund:${orderId}`;
 
+/** 改址串行化锁键：同一订单的并发改址必须串行，避免重复写台账/重复计差额 */
+export const addressLockKey = (orderId: number | string) => `campus:address:${orderId}`;
+
 export type RefundLockResult<T> = { ok: true; value: T } | { ok: false };
 
 /**
- * 在订单级咨询锁内执行退款复合动作（查已退总额 → 退差额 → 落记录）。
- * ok=false 表示该订单已有另一路退款在处理，调用方应提示重试或本轮跳过。
+ * 在订单级咨询锁内执行复合动作（查已退总额 → 退差额 → 落记录）。
+ * ok=false 表示该订单已有另一路操作在处理，调用方应提示重试或本轮跳过。
  * 锁由同一 QueryRunner 持有/释放，避免连接池换连接导致锁泄漏。
  */
-export async function withRefundLock<T>(
+export async function withAdvisoryLock<T>(
     connection: TransactionalConnection,
-    orderId: number | string,
+    lockKey: string,
     fn: () => Promise<T>,
 ): Promise<RefundLockResult<T>> {
     const runner = connection.rawConnection.createQueryRunner();
     await runner.connect();
-    const lockKey = refundLockKey(orderId);
     try {
         const got: any = await runner.query('SELECT pg_try_advisory_lock(hashtext($1)) AS ok', [lockKey]);
         const rows = Array.isArray(got) && Array.isArray(got[0]) ? got[0] : got;
@@ -31,4 +33,21 @@ export async function withRefundLock<T>(
         }
         await runner.release();
     }
+}
+
+export function withRefundLock<T>(
+    connection: TransactionalConnection,
+    orderId: number | string,
+    fn: () => Promise<T>,
+): Promise<RefundLockResult<T>> {
+    return withAdvisoryLock(connection, refundLockKey(orderId), fn);
+}
+
+/** 改址锁：同一订单的改址（含台账写入）串行化 */
+export function withAddressLock<T>(
+    connection: TransactionalConnection,
+    orderId: number | string,
+    fn: () => Promise<T>,
+): Promise<RefundLockResult<T>> {
+    return withAdvisoryLock(connection, addressLockKey(orderId), fn);
 }

@@ -55,6 +55,7 @@ import { CreateCampusTablesMigration } from './migrations/create-campus-tables';
 import { BackfillWaimaiIndustryMigration } from './migrations/backfill-waimai-industry';
 import { AddRouteDeliveryConfigMigration } from './migrations/add-route-delivery-config';
 import { AddThirdPartyBaseFeeMigration } from './migrations/add-third-party-base-fee';
+import { campusCancelGuardProcess } from './cancel-guard.process';
 import { bindMinOrderConnection, campusMinOrderProcess } from './min-order.process';
 import { PaymentTimeoutAdminResolver } from './payment-timeout-admin.resolver';
 import { PaymentTimeoutAdminService } from './payment-timeout-admin.service';
@@ -1085,9 +1086,10 @@ const paymentTimeoutCompensation = new ScheduledTask({
             campusErrandCalculator,
         ];
         // 起送价硬校验（二期 §3.2）：ArrangingPayment 过渡拦截，跑腿单豁免
+        // 取消守卫：C 端在骑手已接单/配送中/已送达时不可自助取消（后台强制路径不受限）
         config.orderOptions = {
             ...(config.orderOptions ?? {}),
-            process: [...(config.orderOptions?.process ?? []), campusMinOrderProcess],
+            process: [...(config.orderOptions?.process ?? []), campusMinOrderProcess, campusCancelGuardProcess],
         } as any;
         // 跑腿单 ShippingLine 分配：包装既有策略（cjk Box 按配送档案分箱，跑腿 0 元载体无档案
         // 绑定会被返回空数组 → 孤儿线）。本插件在 dev-config 中位于 CjkPlugin 之后，

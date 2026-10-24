@@ -18,6 +18,7 @@ const campus_fulfillment_config_entity_1 = require("./campus-fulfillment-config.
 const campus_notify_service_1 = require("./campus-notify.service");
 const hall_grab_service_1 = require("./hall-grab.service");
 const hall_service_1 = require("./hall.service");
+const refund_payment_1 = require("./refund-payment");
 const refund_lock_1 = require("./refund-lock");
 const rider_credit_service_1 = require("./rider-credit.service");
 /** 骑手在线窗口（与 CapacityService 心跳窗口 5min 对齐） */
@@ -348,54 +349,33 @@ let DispatchAdminService = class DispatchAdminService {
      * refund 表 shipping/adjustment 列 NOT NULL 必须显式传 0；
      * 幂等保护：累计已退 + 本次 ≤ payment.amount，超额抛错。 */
     async refundAmount(ctx, order, amount, reason) {
-        var _a, _b;
+        var _a;
         const orderSvc = this.getOrderService();
-        const payment = await this.connection.rawConnection.getRepository(core_2.Payment).findOne({
-            where: { order: { id: order.id } },
-            order: { id: 'DESC' },
-        });
-        if (!payment)
-            throw new core_2.UserInputError('订单无支付记录，无法退款');
-        const refunded = await this.connection.rawConnection
-            .getRepository(core_2.Refund)
-            .createQueryBuilder('r')
-            .select('COALESCE(SUM(r.total), 0)', 'sum')
-            .where('r."paymentId" = :pid', { pid: payment.id })
-            .getRawOne();
-        if (Number((_a = refunded === null || refunded === void 0 ? void 0 : refunded.sum) !== null && _a !== void 0 ? _a : 0) + amount > Number(payment.amount)) {
+        // 只认 Settled/Authorized 且余额足够的支付单，避免选中失败重试单导致退款失败
+        const payments = await (0, refund_payment_1.refundablePayments)(this.connection, Number(order.id));
+        if (!payments.length)
+            throw new core_2.UserInputError('订单无可退支付余额（可能未支付或已全额退款）');
+        const picked = payments.find(p => p.remaining >= amount);
+        if (!picked)
             throw new core_2.UserInputError('退款金额超过可退余额（订单可能已全额退款）');
-        }
         const created = await orderSvc.refundOrder(ctx, {
-            paymentId: payment.id,
+            paymentId: picked.payment.id,
             amount,
             shipping: 0,
             adjustment: 0,
             reason,
         });
         if (!created || created.errorCode) {
-            throw new Error(`refundOrder failed: ${(_b = created === null || created === void 0 ? void 0 : created.errorCode) !== null && _b !== void 0 ? _b : 'no result'}`);
+            throw new Error(`refundOrder failed: ${(_a = created === null || created === void 0 ? void 0 : created.errorCode) !== null && _a !== void 0 ? _a : 'no result'}`);
         }
         await orderSvc.settleRefund(ctx, { id: created.id });
     }
     /** 全额退单：退剩余未退部分 + cancelOrder（行取消+状态转换，同 T4） */
     async refundAllAndCancel(ctx, order) {
-        var _a;
         const orderSvc = this.getOrderService();
-        const payment = await this.connection.rawConnection.getRepository(core_2.Payment).findOne({
-            where: { order: { id: order.id } },
-            order: { id: 'DESC' },
-        });
-        if (payment) {
-            const refunded = await this.connection.rawConnection
-                .getRepository(core_2.Refund)
-                .createQueryBuilder('r')
-                .select('COALESCE(SUM(r.total), 0)', 'sum')
-                .where('r."paymentId" = :pid', { pid: payment.id })
-                .getRawOne();
-            const rest = Number(payment.amount) - Number((_a = refunded === null || refunded === void 0 ? void 0 : refunded.sum) !== null && _a !== void 0 ? _a : 0);
-            if (rest > 0) {
-                await this.refundAmount(ctx, order, rest, `exception full refund (${order.code})`);
-            }
+        // 覆盖多支付单场景：逐张退剩余（单支付单订单等价于原「退剩余」）
+        for (const picked of await (0, refund_payment_1.refundablePayments)(this.connection, Number(order.id))) {
+            await this.refundAmount(ctx, order, picked.remaining, `exception full refund (${order.code})`);
         }
         const cancelled = await orderSvc.cancelOrder(ctx, {
             orderId: order.id,

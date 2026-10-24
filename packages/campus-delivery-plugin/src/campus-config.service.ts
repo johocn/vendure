@@ -18,6 +18,38 @@ function localHhmm(d: Date): string {
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
+const SLOT_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const SLOT_TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** 时段入参校验（create/update 共用）：日期/时刻格式 + 起止先后 */
+function normalizeSlotDate(v: unknown): string {
+    const s = String(v ?? '').trim();
+    if (!SLOT_DATE_RE.test(s)) throw new UserInputError('日期格式必须为 YYYY-MM-DD');
+    return s;
+}
+
+function normalizeSlotTime(v: unknown, label: string): string {
+    const s = String(v ?? '').trim();
+    if (!SLOT_TIME_RE.test(s)) throw new UserInputError(`${label}格式必须为 HH:mm`);
+    return s;
+}
+
+function normalizeCapacity(v: unknown): number {
+    const n = Number(v);
+    if (!Number.isInteger(n) || n < 1 || n > 9999) throw new UserInputError('时段容量必须为 1-9999 的整数');
+    return n;
+}
+
+/** 经纬度范围校验（未传返回 null） */
+function normalizeCoord(v: unknown, kind: 'lat' | 'lng'): number | null {
+    if (v == null || v === '') return null;
+    const n = Number(v);
+    if (!Number.isFinite(n) || (kind === 'lat' ? Math.abs(n) > 90 : Math.abs(n) > 180)) {
+        throw new UserInputError(kind === 'lat' ? '纬度必须在 -90~90 之间' : '经度必须在 -180~180 之间');
+    }
+    return n;
+}
+
 @Injectable()
 export class CampusConfigService {
     constructor(private dataSource: DataSource, private orderService: OrderService) {}
@@ -27,7 +59,11 @@ export class CampusConfigService {
     }
 
     async createZone(ctx: RequestContext, name: string, fee: number) {
-        return this.dataSource.getRepository(CampusZone).save({ name, fee, channelId: ctx.channelId } as any);
+        const zoneName = String(name ?? '').trim();
+        if (!zoneName) throw new UserInputError('分区名称不能为空');
+        const zoneFee = Number(fee);
+        if (!Number.isInteger(zoneFee) || zoneFee < 0) throw new UserInputError('分区运费必须为非负整数（分）');
+        return this.dataSource.getRepository(CampusZone).save({ name: zoneName, fee: zoneFee, channelId: ctx.channelId } as any);
     }
 
     /** 分区改名/改运费（渠道隔离）；分区名被历史订单快照引用，仅改当前配置不影响已下单 */
@@ -75,9 +111,21 @@ export class CampusConfigService {
     }
 
     async createBuilding(ctx: RequestContext, name: string, zoneId: number, detail?: string, lat?: number, lng?: number) {
-        return this.dataSource
-            .getRepository(CampusBuilding)
-            .save({ name, zoneId, detail, lat, lng, channelId: ctx.channelId } as any);
+        const buildingName = String(name ?? '').trim();
+        if (!buildingName) throw new UserInputError('楼栋名称不能为空');
+        // 分区必须属于当前店铺，防止把楼栋挂到别家分区
+        const zone = await this.dataSource
+            .getRepository(CampusZone)
+            .findOne({ where: { id: zoneId as any, channelId: ctx.channelId as any } });
+        if (!zone) throw new UserInputError('分区不存在或不属于当前店铺');
+        return this.dataSource.getRepository(CampusBuilding).save({
+            name: buildingName,
+            zoneId: Number(zoneId),
+            detail: detail?.trim() || null,
+            lat: normalizeCoord(lat, 'lat'),
+            lng: normalizeCoord(lng, 'lng'),
+            channelId: ctx.channelId,
+        } as any);
     }
 
     /** 楼栋信息/坐标维护（骑手跟踪页目标点）；仅更新传入字段 */
@@ -90,10 +138,14 @@ export class CampusConfigService {
         // 渠道过滤：不允许跨店铺改别家楼栋
         const building = await repo.findOne({ where: { id: id as any, channelId: ctx.channelId as any } });
         if (!building) throw new UserInputError('宿舍楼不存在');
-        if (patch.name !== undefined) building.name = patch.name;
+        if (patch.name !== undefined) {
+            const name = String(patch.name ?? '').trim();
+            if (!name) throw new UserInputError('楼栋名称不能为空');
+            building.name = name;
+        }
         if (patch.detail !== undefined) building.detail = patch.detail;
-        if (patch.lat !== undefined) building.lat = patch.lat as any;
-        if (patch.lng !== undefined) building.lng = patch.lng as any;
+        if (patch.lat !== undefined) building.lat = normalizeCoord(patch.lat, 'lat') as any;
+        if (patch.lng !== undefined) building.lng = normalizeCoord(patch.lng, 'lng') as any;
         return repo.save(building);
     }
 
@@ -150,12 +202,37 @@ export class CampusConfigService {
         ctx: RequestContext,
         input: { slotDate: string; startTime: string; endTime: string; zoneId?: number; capacity?: number },
     ) {
-        return this.dataSource.getRepository(DeliverySlot).save({
-            slotDate: input.slotDate,
-            startTime: input.startTime,
-            endTime: input.endTime,
-            zoneId: input.zoneId != null ? Number(input.zoneId) : null,
-            capacity: input.capacity ?? 20,
+        const slotDate = normalizeSlotDate(input.slotDate);
+        const startTime = normalizeSlotTime(input.startTime, '开始时间');
+        const endTime = normalizeSlotTime(input.endTime, '结束时间');
+        if (startTime >= endTime) throw new UserInputError('开始时间必须早于结束时间');
+        const capacity = input.capacity == null ? 20 : normalizeCapacity(input.capacity);
+        let zoneId: number | null = null;
+        if (input.zoneId != null) {
+            zoneId = Number(input.zoneId);
+            const zone = await this.dataSource
+                .getRepository(CampusZone)
+                .findOne({ where: { id: zoneId as any, channelId: ctx.channelId as any } });
+            if (!zone) throw new UserInputError('分区不存在或不属于当前店铺');
+        }
+        const repo = this.dataSource.getRepository(DeliverySlot);
+        // 同店铺同日期同开始时间（同分区）已有生效时段 → 拒绝重复创建
+        const dup = await repo.findOne({
+            where: {
+                channelId: ctx.channelId as any,
+                slotDate,
+                startTime,
+                zoneId: zoneId as any,
+                active: true,
+            },
+        });
+        if (dup) throw new UserInputError('同一时段已存在，请勿重复创建');
+        return repo.save({
+            slotDate,
+            startTime,
+            endTime,
+            zoneId,
+            capacity,
             active: true,
             channelId: ctx.channelId,
         } as any);
@@ -170,7 +247,13 @@ export class CampusConfigService {
         // 渠道隔离：只能改本渠道时段（DeliverySlot.channelId 物理列，直接按标量查）
         const slot = await repo.findOne({ where: { id: id as any, channelId: ctx.channelId as any } });
         if (!slot) throw new UserInputError('时段不存在');
-        Object.assign(slot, patch);
+        if (patch.capacity !== undefined) patch.capacity = normalizeCapacity(patch.capacity);
+        const startTime = patch.startTime !== undefined
+            ? normalizeSlotTime(patch.startTime, '开始时间')
+            : slot.startTime;
+        const endTime = patch.endTime !== undefined ? normalizeSlotTime(patch.endTime, '结束时间') : slot.endTime;
+        if (startTime >= endTime) throw new UserInputError('开始时间必须早于结束时间');
+        Object.assign(slot, patch, { startTime, endTime });
         return repo.save(slot);
     }
 

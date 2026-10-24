@@ -43,6 +43,8 @@ function makeEnv(opts: {
     };
     const configRepo = { findOne: vi.fn().mockResolvedValue(opts.cfg ?? { autoAssignMinutes: 10, autoRefundMinutes: 30, inProgressSlaMinutes: 45 }) };
     const refundRepo = {
+        // 部分退款支付单查询：可退支付单（state 必须是 Settled/Authorized）
+        find: vi.fn().mockResolvedValue([{ id: 55, amount: 8800, state: 'Settled' }]),
         createQueryBuilder: () => ({
             select: vi.fn().mockReturnThis(),
             where: vi.fn().mockReturnThis(),
@@ -206,7 +208,6 @@ function injectT4Services(svc: DispatchJobService) {
         settleRefund: vi.fn().mockResolvedValue({}),
         cancelOrder: vi.fn().mockResolvedValue({ id: 4 }),
     } as any;
-    svc['paymentRepo'] = { findOne: vi.fn().mockResolvedValue({ id: 55, amount: 8800 }) };
     svc['couponSvc'] = { grantCoupon: vi.fn().mockResolvedValue([]) };
 }
 

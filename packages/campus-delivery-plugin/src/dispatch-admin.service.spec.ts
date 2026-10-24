@@ -32,7 +32,11 @@ function makeEnv(opts: HandleEnvOpts = {}) {
     const configRepo = {
         findOne: vi.fn().mockResolvedValue(opts.cfg ?? { autoAssignMinutes: 10, inProgressSlaMinutes: 45 }),
     };
-    const paymentRepo = { findOne: vi.fn().mockResolvedValue(opts.payment ?? null) };
+    const paymentRepo = {
+        // 可退支付单查询（state 必须是 Settled/Authorized）
+        find: vi.fn().mockImplementation(async () => (opts.payment ? [{ ...opts.payment, state: 'Settled' }] : [])),
+        findOne: vi.fn().mockResolvedValue(opts.payment ?? null),
+    };
     const refundRepo = {
         createQueryBuilder: () => ({
             select: vi.fn().mockReturnThis(),
@@ -225,7 +229,7 @@ describe('DispatchAdminService.handleException', () => {
             payment: { id: 9, amount: 2300 },
             refundedSum: 0,
         });
-        paymentRepo.findOne.mockResolvedValue({ id: 9, amount: 2300 });
+        paymentRepo.find.mockResolvedValue([{ id: 9, amount: 2300, state: 'Settled' }]);
         orderRepo.findOne.mockResolvedValue(exceptionOrder(7, 'A7'));
         await svc.handleException(ctx, 7 as any, 'refund_diff', 300, undefined, '洒漏赔付');
         expect(orderSvc.refundOrder).toHaveBeenCalledWith(ctx, expect.objectContaining({
@@ -244,9 +248,9 @@ describe('DispatchAdminService.handleException', () => {
 
     it('refund_diff 超可退余额（已全额退）→ 拒绝', async () => {
         const { svc, orderRepo, orderSvc, paymentRepo } = makeEnv({ refundedSum: 2300 });
-        paymentRepo.findOne.mockResolvedValue({ id: 9, amount: 2300 });
+        paymentRepo.find.mockResolvedValue([{ id: 9, amount: 2300, state: 'Settled' }]);
         orderRepo.findOne.mockResolvedValue(exceptionOrder(7, 'A7'));
-        await expect(svc.handleException(ctx, 7 as any, 'refund_diff', 100)).rejects.toThrow('退款金额超过可退余额');
+        await expect(svc.handleException(ctx, 7 as any, 'refund_diff', 100)).rejects.toThrow('无可退支付余额');
         expect(orderSvc.refundOrder).not.toHaveBeenCalled();
     });
 
@@ -254,8 +258,8 @@ describe('DispatchAdminService.handleException', () => {
         const { svc, orderRepo, paymentRepo } = makeEnv({ payment: null });
         orderRepo.findOne.mockResolvedValue(exceptionOrder(7, 'A7'));
         await expect(svc.handleException(ctx, 7 as any, 'refund_diff', 0)).rejects.toThrow('赔付金额必须大于 0');
-        paymentRepo.findOne.mockResolvedValue(null);
-        await expect(svc.handleException(ctx, 7 as any, 'refund_diff', 300)).rejects.toThrow('订单无支付记录');
+        paymentRepo.find.mockResolvedValue([]);
+        await expect(svc.handleException(ctx, 7 as any, 'refund_diff', 300)).rejects.toThrow('无可退支付余额');
     });
 
     it('coupon：发补偿券 + exception_final 留痕', async () => {
@@ -278,7 +282,7 @@ describe('DispatchAdminService.handleException', () => {
 
     it('refund_all：退剩余全额 + cancelOrder + campusCause=exception_refund', async () => {
         const { svc, orderRepo, hallSvc, orderSvc, paymentRepo } = makeEnv({ refundedSum: 300 });
-        paymentRepo.findOne.mockResolvedValue({ id: 9, amount: 2300 });
+        paymentRepo.find.mockResolvedValue([{ id: 9, amount: 2300, state: 'Settled' }]);
         orderRepo.findOne.mockResolvedValue(exceptionOrder(10, 'A10'));
         await svc.handleException(ctx, 10 as any, 'refund_all');
         // 已退 300，剩余 2000 补退
