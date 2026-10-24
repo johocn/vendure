@@ -2,7 +2,7 @@ import { createCipheriv, createHash } from 'crypto';
 import { describe, expect, it } from 'vitest';
 
 import { buildWebhookPayload, buildWebhookSignature } from './feishu.client';
-import { parseCommand, requiredRole } from './feishu.command.service';
+import { AUDIT_TABLE_SQL, buildRestoreSQL, parseCommand, requiredRole } from './feishu.command.service';
 import { parseChatMap, readFeishuSettings } from './feishu.config';
 import { decryptFeishuPayload } from './feishu.crypto';
 import { campusHhmm } from './feishu.digest.service';
@@ -484,5 +484,31 @@ describe('feishu 零建表卡片', () => {
             expect(title).toContain(emoji);
             expect(title).toContain(label);
         }
+    });
+
+    // ---------- Bug 9 回归测试：confirmRestore SQL 不含幽灵列 ----------
+
+    it('Bug 9 回归：buildRestoreSQL 不含 customFieldsExceptionfinal 幽灵列', () => {
+        // 历史 bug: 曾硬写 customFieldsExceptionfinal=FLASE——custom-fields.ts 未定义
+        // PostgreSQL 会报 column does not exist，恢复功能完全不可用
+        const { sql, fields } = buildRestoreSQL();
+        expect(sql).not.toMatch(/exceptionfinal/i); // 不区分大小写
+        expect(sql).not.toMatch(/exception_final/i);
+        // 必须包含真正有用的清理字段
+        expect(sql).toContain('customFieldsHallstatus');
+        expect(sql).toContain('customFieldsExceptionaction');
+        expect(sql).toContain('customFieldsExceptionhandledat');
+        expect(fields.length).toBeGreaterThanOrEqual(4);
+    });
+
+    it('Bug 9 回归：AUDIT_TABLE_SQL 建表语句合法且字段齐全', () => {
+        // audit 日志零 migration：首次 audit 时 CREATE TABLE IF NOT EXISTS
+        expect(AUDIT_TABLE_SQL).toContain('CREATE TABLE IF NOT EXISTS feishu_audit_log');
+        expect(AUDIT_TABLE_SQL).toContain('bigserial'); // 自增主键
+        expect(AUDIT_TABLE_SQL).toContain('timestamptz'); // 带时区
+        expect(AUDIT_TABLE_SQL).toContain('cmd_name');
+        expect(AUDIT_TABLE_SQL).toContain('card_action');
+        expect(AUDIT_TABLE_SQL).toContain('order_code');
+        expect(AUDIT_TABLE_SQL).toContain('result');
     });
 });

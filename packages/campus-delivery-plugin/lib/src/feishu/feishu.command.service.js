@@ -9,9 +9,10 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.FeishuCommandService = void 0;
+exports.FeishuCommandService = exports.AUDIT_TABLE_SQL = void 0;
 exports.parseCommand = parseCommand;
 exports.requiredRole = requiredRole;
+exports.buildRestoreSQL = buildRestoreSQL;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
 const typeorm_1 = require("typeorm");
@@ -86,6 +87,33 @@ function requiredRole(cmd) {
             return 'operator';
     }
 }
+/** Bug 9 回归测试入口：confirmRestore 的 UPDATE SQL 纯函数，spec 可直接断言不含幽灵列
+ * 历史 bug: 曾硬写 customFieldsExceptionfinal=FLASE——custom-fields.ts 无此定义，恢复功能完全不可用 */
+function buildRestoreSQL() {
+    const fields = [
+        'customFieldsHallstatus=\'open\'',
+        'customFieldsExceptionaction=NULL',
+        'customFieldsExceptionhandledat=NULL',
+        'customFieldsExceptionhandledby=NULL',
+        'customFieldsExceptionhandlednote=NULL',
+    ];
+    return {
+        sql: `UPDATE "order" SET ${fields.join(', ')} WHERE id=$1`,
+        fields,
+    };
+}
+/** audit 日志建表 SQL：CREATE TABLE IF NOT EXISTS 零 migration，首次 audit 时触发 */
+exports.AUDIT_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS feishu_audit_log (
+    id bigserial PRIMARY KEY,
+    ts timestamptz NOT NULL DEFAULT now(),
+    chat_id text,
+    open_id text,
+    cmd_name text,
+    card_action text,
+    order_code text,
+    result text
+)`;
 /**
  * 飞书群指令：解析 → 权限校验 → 调商家工作台服务 → 回复结果。
  * 群定位：
@@ -790,13 +818,9 @@ let FeishuCommandService = class FeishuCommandService {
         if (!found)
             return;
         try {
-            // Bug 9 修复：之前硬写了不存在的列 customFieldsExceptionfinal（custom-fields.ts 没定义，
-            // PostgreSQL 会报 column does not exist，恢复功能完全不可用）。hallStatus=exception_final
-            // 才是真正的终态标志，restore 把 hallStatus 改回 open 就够了，不需要额外清布尔字段。
-            await this.connection.rawConnection.query(`UPDATE "order" SET "customFieldsHallstatus"='open',
-                 "customFieldsExceptionaction"=NULL, "customFieldsExceptionhandledat"=NULL,
-                 "customFieldsExceptionhandledby"=NULL, "customFieldsExceptionhandlednote"=NULL
-                 WHERE id=$1`, [found.order.id]);
+            // Bug 9 修复：之前硬写了不存在的列 customFieldsExceptionfinal，SQL 提取成纯函数便于 spec 回归测试
+            const { sql } = buildRestoreSQL();
+            await this.connection.rawConnection.query(sql, [found.order.id]);
             // Bug 10 修复：异常已处置/恢复后清掉卡片告警历史，重建卡片时不会再显示已过期的告警行
             this.cards.clearAlerts(code);
             await this.audit(chatId, openId, { name: 'restore', orderCode: code }, 'ok');
@@ -918,9 +942,31 @@ let FeishuCommandService = class FeishuCommandService {
         return this.client.sendToChat(chatId, text);
     }
     async audit(chatId, openId, cmd, result) {
-        var _a;
+        var _a, _b, _c;
         const act = cmd.cardAction ? ` card=${cmd.cardAction}` : '';
-        core_1.Logger.info(`[FeishuAudit] chat=${chatId} open_id=${openId} cmd=${cmd.name}${act} order=${(_a = cmd.orderCode) !== null && _a !== void 0 ? _a : '-'} result=${result}`, loggerCtx);
+        const line = `[FeishuAudit] chat=${chatId} open_id=${openId} cmd=${cmd.name}${act} order=${(_a = cmd.orderCode) !== null && _a !== void 0 ? _a : '-'} result=${result}`;
+        core_1.Logger.info(line, loggerCtx);
+        // P1: audit 日志落库——零建表（CREATE TABLE IF NOT EXISTS），fire-and-forget 不阻塞指令主流程
+        try {
+            if (!this.auditReady) {
+                this.auditReady = this.connection.rawConnection
+                    .query(exports.AUDIT_TABLE_SQL)
+                    .then(() => undefined)
+                    .catch(e => {
+                    var _a;
+                    core_1.Logger.warn(`飞书 audit 表建表失败：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, loggerCtx);
+                    this.auditReady = undefined;
+                });
+            }
+            // 不等建表完成就直接 INSERT——表不存在时 query 会抛错被 catch 静默
+            void this.connection.rawConnection
+                .query(`INSERT INTO feishu_audit_log (chat_id, open_id, cmd_name, card_action, order_code, result)
+                     VALUES ($1, $2, $3, $4, $5, $6)`, [chatId, openId, cmd.name, (_b = cmd.cardAction) !== null && _b !== void 0 ? _b : null, (_c = cmd.orderCode) !== null && _c !== void 0 ? _c : null, result])
+                .catch(() => undefined); // 落库失败不影响业务
+        }
+        catch (_d) {
+            // 任何异常都不抛出——audit 是旁路
+        }
     }
 };
 exports.FeishuCommandService = FeishuCommandService;

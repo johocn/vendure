@@ -19,6 +19,14 @@ export interface ParsedCommand {
 export declare function parseCommand(raw: string): ParsedCommand;
 /** 指令所需权限等级：operator=查询/接单/出餐；owner=拒单/开关店 */
 export declare function requiredRole(cmd: FeishuCommandName): 'none' | 'operator' | 'owner';
+/** Bug 9 回归测试入口：confirmRestore 的 UPDATE SQL 纯函数，spec 可直接断言不含幽灵列
+ * 历史 bug: 曾硬写 customFieldsExceptionfinal=FLASE——custom-fields.ts 无此定义，恢复功能完全不可用 */
+export declare function buildRestoreSQL(): {
+    sql: string;
+    fields: string[];
+};
+/** audit 日志建表 SQL：CREATE TABLE IF NOT EXISTS 零 migration，首次 audit 时触发 */
+export declare const AUDIT_TABLE_SQL = "\nCREATE TABLE IF NOT EXISTS feishu_audit_log (\n    id bigserial PRIMARY KEY,\n    ts timestamptz NOT NULL DEFAULT now(),\n    chat_id text,\n    open_id text,\n    cmd_name text,\n    card_action text,\n    order_code text,\n    result text\n)";
 /**
  * 飞书群指令：解析 → 权限校验 → 调商家工作台服务 → 回复结果。
  * 群定位：
@@ -39,6 +47,8 @@ export declare class FeishuCommandService {
     private rate;
     private pendingReject;
     private pendingRestore;
+    /** audit 表建表单飞 Promise（零 migration，首次写库时自动建表） */
+    private auditReady?;
     constructor(cfg: FeishuConfigService, client: FeishuClient, cards: FeishuCardService, requestContextService: RequestContextService, connection: TransactionalConnection, merchant: MerchantAdminService, dispatchAdmin: DispatchAdminService, deliveryStats: DeliveryStatsService);
     handleMessage(input: {
         chatId: string;
