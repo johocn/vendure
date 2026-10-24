@@ -1,4 +1,4 @@
-import { CustomerService, ID, OrderService, RequestContext, TransactionalConnection } from '@vendure/core';
+import { CustomerService, EventBus, ID, OrderService, RequestContext, TransactionalConnection } from '@vendure/core';
 import { CouponExpireRemindEvent } from '@vendure/coupon-plugin';
 import { InboxMessage } from './inbox-message.entity';
 import { NotifierProvider } from './notifier/notifier-provider';
@@ -12,8 +12,9 @@ export declare class NotificationService {
     private connection;
     private orderService;
     private customerService;
+    private eventBus;
     private notifier;
-    constructor(options: NotificationPluginOptions, connection: TransactionalConnection, orderService: OrderService, customerService: CustomerService);
+    constructor(options: NotificationPluginOptions, connection: TransactionalConnection, orderService: OrderService, customerService: CustomerService, eventBus: EventBus);
     /** 由插件 onApplicationBootstrap 注入 notifier（避免 DI 环）。 */
     init(notifier: NotifierProvider): void;
     /** 写一条站内信，返回落库实体。 */

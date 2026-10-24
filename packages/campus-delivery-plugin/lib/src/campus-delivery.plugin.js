@@ -13,6 +13,7 @@ exports.CampusDeliveryPlugin = void 0;
 const core_1 = require("@vendure/core");
 const core_2 = require("@nestjs/core");
 const after_sales_plugin_1 = require("@vendure/after-sales-plugin");
+const notification_plugin_1 = require("@vendure/notification-plugin");
 const campus_building_entity_1 = require("./campus-building.entity");
 const capacity_service_1 = require("./capacity.service");
 const campus_config_admin_resolver_1 = require("./campus-config-admin.resolver");
@@ -36,6 +37,13 @@ const p4_ops_hardening_1 = require("./migrations/p4-ops-hardening");
 const errand_service_1 = require("./errand.service");
 const errand_shop_resolver_1 = require("./errand-shop.resolver");
 const favorite_shop_resolver_1 = require("./favorite-shop.resolver");
+const feishu_client_1 = require("./feishu/feishu.client");
+const feishu_command_service_1 = require("./feishu/feishu.command.service");
+const feishu_config_1 = require("./feishu/feishu.config");
+const feishu_controller_1 = require("./feishu/feishu.controller");
+const feishu_digest_service_1 = require("./feishu/feishu.digest.service");
+const feishu_event_service_1 = require("./feishu/feishu.event.service");
+const feishu_notify_service_1 = require("./feishu/feishu-notify.service");
 const errand_shipping_line_assignment_1 = require("./errand-shipping-line-assignment");
 const hall_grab_service_1 = require("./hall-grab.service");
 const hall_service_1 = require("./hall.service");
@@ -160,6 +168,12 @@ let CampusDeliveryPlugin = class CampusDeliveryPlugin {
             void this.h5BaseUrl(e.ctx).then(url => this.notify.user(e.ctx, e.orderId, 'afterSales', text, url, e.toState));
         });
         this.injector.get(dispatch_job_service_1.DispatchJobService).start();
+        // 管理消息推送：notification 发布 AdminNotifyEvent（新订单/售后），本插件订阅后转飞书群
+        this.eventBus.ofType(notification_plugin_1.AdminNotifyEvent).subscribe(event => {
+            void this.injector.get(feishu_notify_service_1.FeishuNotifyService).onAdminNotify(event);
+        });
+        // 每日经营汇总（UTC+8 定点，advisory lock + 落库标记防重）
+        this.injector.get(feishu_digest_service_1.FeishuDigestService).start();
     }
     /** 权限迁移：permissions 为 simple-array（逗号分隔），给持有 CampusViewDispatch 的角色补授 CampusDispatch。
      * 幂等；启动时执行，早于任何请求，不涉及权限缓存失效问题。 */
@@ -231,7 +245,14 @@ exports.CampusDeliveryPlugin = CampusDeliveryPlugin = __decorate([
             third_party_delivery_service_1.ThirdPartyDeliveryService,
             payment_timeout_job_1.PaymentTimeoutJob,
             payment_timeout_admin_service_1.PaymentTimeoutAdminService,
+            feishu_config_1.FeishuConfigService,
+            feishu_client_1.FeishuClient,
+            feishu_notify_service_1.FeishuNotifyService,
+            feishu_command_service_1.FeishuCommandService,
+            feishu_event_service_1.FeishuEventService,
+            feishu_digest_service_1.FeishuDigestService,
         ],
+        controllers: [feishu_controller_1.FeishuController],
         adminApiExtensions: {
             schema: () => {
                 const { gql } = require('graphql-tag');

@@ -1,0 +1,84 @@
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.FeishuNotifyService = void 0;
+const common_1 = require("@nestjs/common");
+const core_1 = require("@vendure/core");
+const feishu_client_1 = require("./feishu.client");
+const feishu_config_1 = require("./feishu.config");
+const feishu_templates_1 = require("./feishu.templates");
+const loggerCtx = 'Feishu';
+const DEDUPE_MS = 5 * 60000;
+/**
+ * 管理侧外发：订阅 notification-plugin 的 AdminNotifyEvent，把新订单/售后推到飞书群；
+ * 外卖插件内部的异常/超时也走 push() 复用同一条通道。
+ * 未启用、未配置、发送失败一律静默降级，绝不阻塞订单主流程。
+ */
+let FeishuNotifyService = class FeishuNotifyService {
+    constructor(cfg, client) {
+        this.cfg = cfg;
+        this.client = client;
+        this.recent = new Map();
+    }
+    async onAdminNotify(event) {
+        if (!this.client.enabled)
+            return;
+        const link = event.link
+            ? `${process.env.ADMIN_UI_BASE_URL || 'https://e.joho.cn'}${event.link.startsWith('/') ? '' : '/'}${event.link}`
+            : undefined;
+        const text = (0, feishu_templates_1.formatPush)({
+            scene: event.scene,
+            title: event.title,
+            content: event.content,
+            orderCode: event.orderCode,
+            link,
+            at: Date.now(),
+        });
+        await this.push(event.scene, event.orderId != null ? String(event.orderId) : event.orderCode, text);
+    }
+    /** 内部事件（异常/超时/支付取消）直接推群；按业务键 5 分钟去重 */
+    async push(scene, dedupeKey, text) {
+        var _a;
+        if (!this.client.enabled)
+            return;
+        if (dedupeKey && this.isDuplicate(`${scene}:${dedupeKey}`))
+            return;
+        try {
+            const ok = await this.client.broadcast(text);
+            if (!ok)
+                core_1.Logger.warn(`飞书推送未送达 scene=${scene}`, loggerCtx);
+        }
+        catch (e) {
+            core_1.Logger.warn(`飞书推送异常 scene=${scene}: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, loggerCtx);
+        }
+    }
+    async pushEvent(scene, title, content, orderCode, dedupeKey) {
+        await this.push(scene, dedupeKey !== null && dedupeKey !== void 0 ? dedupeKey : orderCode, (0, feishu_templates_1.formatPush)({ scene, title, content, orderCode, at: Date.now() }));
+    }
+    isDuplicate(key) {
+        const now = Date.now();
+        for (const [k, at] of this.recent) {
+            if (now - at > DEDUPE_MS)
+                this.recent.delete(k);
+        }
+        const seen = this.recent.get(key);
+        if (seen && now - seen <= DEDUPE_MS)
+            return true;
+        this.recent.set(key, now);
+        return false;
+    }
+};
+exports.FeishuNotifyService = FeishuNotifyService;
+exports.FeishuNotifyService = FeishuNotifyService = __decorate([
+    (0, common_1.Injectable)(),
+    __metadata("design:paramtypes", [feishu_config_1.FeishuConfigService, feishu_client_1.FeishuClient])
+], FeishuNotifyService);
+//# sourceMappingURL=feishu-notify.service.js.map

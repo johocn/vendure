@@ -1,0 +1,109 @@
+import { Injectable } from '@nestjs/common';
+import { Logger } from '@vendure/core';
+
+const loggerCtx = 'Feishu';
+
+/** 单个飞书群的授权与渠道绑定（FEISHU_CHAT_MAP 的一项） */
+export interface FeishuChatConfig {
+    /** Vendure 渠道 token（canteen-a-token 等），决定指令操作哪个店铺 */
+    channel: string;
+    /** 普通指令白名单（帮助/待处理/接单/出餐/今日汇总） */
+    operators: string[];
+    /** 高危指令白名单（拒单/关店/开店），通常只给店主 */
+    owners: string[];
+}
+
+export interface FeishuSettings {
+    enabled: boolean;
+    webhook?: string;
+    secret?: string;
+    appId?: string;
+    appSecret?: string;
+    verifyToken?: string;
+    encryptKey?: string;
+    chats: Record<string, FeishuChatConfig>;
+    /** 每日汇总时间 HH:mm（UTC+8） */
+    digestAt: string;
+}
+
+function splitIds(v: string | undefined): string[] {
+    return (v ?? '')
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+}
+
+/** 解析 FEISHU_CHAT_MAP（坏 JSON 只告警并退回空表，绝不抛错） */
+export function parseChatMap(raw: string | undefined): Record<string, FeishuChatConfig> {
+    if (!raw || !raw.trim()) return {};
+    try {
+        const parsed = JSON.parse(raw);
+        const out: Record<string, FeishuChatConfig> = {};
+        for (const [chatId, v] of Object.entries(parsed ?? {})) {
+            const item = v as any;
+            if (!item || typeof item.channel !== 'string') continue;
+            out[chatId] = {
+                channel: item.channel,
+                operators: Array.isArray(item.operators)
+                    ? item.operators.map(String)
+                    : splitIds(item.operators),
+                owners: Array.isArray(item.owners) ? item.owners.map(String) : splitIds(item.owners),
+            };
+        }
+        return out;
+    } catch (e: any) {
+        Logger.error(`FEISHU_CHAT_MAP 解析失败，指令功能将不可用：${e?.message}`, loggerCtx);
+        return {};
+    }
+}
+
+export function readFeishuSettings(env: NodeJS.ProcessEnv = process.env): FeishuSettings {
+    const enabled = String(env.FEISHU_ENABLED ?? '').toLowerCase() === 'true'
+        || String(env.FEISHU_ENABLED ?? '') === '1';
+    const settings: FeishuSettings = {
+        enabled,
+        webhook: env.FEISHU_WEBHOOK?.trim() || undefined,
+        secret: env.FEISHU_SECRET?.trim() || undefined,
+        appId: env.FEISHU_APP_ID?.trim() || undefined,
+        appSecret: env.FEISHU_APP_SECRET?.trim() || undefined,
+        verifyToken: env.FEISHU_VERIFY_TOKEN?.trim() || undefined,
+        encryptKey: env.FEISHU_ENCRYPT_KEY?.trim() || undefined,
+        chats: parseChatMap(env.FEISHU_CHAT_MAP),
+        digestAt: /^\d{2}:\d{2}$/.test(env.FEISHU_DIGEST_AT ?? '') ? String(env.FEISHU_DIGEST_AT) : '08:30',
+    };
+    if (!enabled) return settings;
+
+    const hasSend = !!(settings.webhook || (settings.appId && settings.appSecret));
+    const hasReceive = !!(settings.appId && settings.appSecret && settings.verifyToken);
+    if (!hasSend && !hasReceive) {
+        Logger.error(
+            'FEISHU_ENABLED=true 但未配置发送通道（FEISHU_WEBHOOK 或 FEISHU_APP_ID/SECRET），飞书功能禁用',
+            loggerCtx,
+        );
+        settings.enabled = false;
+    } else if (!hasSend) {
+        Logger.warn('飞书接收通道已配置但缺发送通道，推送与回复将不可用', loggerCtx);
+    }
+    return settings;
+}
+
+@Injectable()
+export class FeishuConfigService {
+    readonly settings: FeishuSettings;
+
+    constructor() {
+        this.settings = readFeishuSettings(process.env);
+        if (this.settings.enabled) {
+            const mode = this.settings.webhook ? 'webhook' : 'app';
+            Logger.info(`飞书已启用（${mode}，群数 ${Object.keys(this.settings.chats).length}）`, loggerCtx);
+        }
+    }
+
+    get enabled(): boolean {
+        return this.settings.enabled;
+    }
+
+    chatOf(chatId: string): FeishuChatConfig | undefined {
+        return this.settings.chats[chatId];
+    }
+}

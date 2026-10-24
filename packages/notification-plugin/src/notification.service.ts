@@ -3,6 +3,7 @@ import {
     Administrator,
     CustomerService,
     EntityNotFoundError,
+    EventBus,
     ID,
     Logger,
     OrderService,
@@ -18,6 +19,7 @@ import { CouponExpireRemindEvent } from '@vendure/coupon-plugin';
 import { Shop } from '@vendure/shop-plugin';
 
 import { loggerCtx, NOTIFICATION_PLUGIN_OPTIONS } from './constants';
+import { AdminNotifyEvent } from './admin-notify.event';
 import { InboxMessage } from './inbox-message.entity';
 import { NotifierProvider } from './notifier/notifier-provider';
 import { InboxMessageListOptions, NotificationFrame, NotificationPluginOptions } from './types';
@@ -35,6 +37,7 @@ export class NotificationService {
         private connection: TransactionalConnection,
         private orderService: OrderService,
         private customerService: CustomerService,
+        private eventBus: EventBus,
     ) {
         this.notifier = {} as NotifierProvider;
     }
@@ -249,6 +252,14 @@ export class NotificationService {
                 recipientType: 'admin', administratorId: shop.administratorId,
             });
         }
+        // 管理侧外发钩子（飞书等）：订阅方决定是否推送，失败不影响站内信
+        try {
+            await this.eventBus.publish(
+                new AdminNotifyEvent(ctx, 'shop_new_order', title, content, order.id, order.code, shopIds[0]),
+            );
+        } catch (e: any) {
+            Logger.warn(`admin notify publish failed: ${e?.message}`, loggerCtx);
+        }
     }
 
     /** 订单行 → productVariant.productId → Product.shopId 反查去重（对齐 address-plugin getOrderShopIds）。 */
@@ -380,6 +391,13 @@ export class NotificationService {
                     scene: 'after_sales', title, content, recipientType: 'admin',
                     link: `/after-sale/detail?id=${requestId}`,
                 }, { recipientType: 'admin', administratorId: shop.administratorId });
+            }
+            try {
+                await this.eventBus.publish(
+                    new AdminNotifyEvent(ctx, 'after_sales', title, content, request.order.id, request.order.code, shopIds[0], `/after-sale/detail?id=${requestId}`),
+                );
+            } catch (e: any) {
+                Logger.warn(`admin notify publish failed: ${e?.message}`, loggerCtx);
             }
         } catch (err: any) {
             Logger.warn(`notifyAfterSalesMerchant failed: ${err?.message ?? err}`, loggerCtx);

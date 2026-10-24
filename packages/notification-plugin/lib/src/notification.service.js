@@ -19,17 +19,19 @@ const typeorm_1 = require("typeorm");
 const after_sales_plugin_1 = require("@vendure/after-sales-plugin");
 const shop_plugin_1 = require("@vendure/shop-plugin");
 const constants_1 = require("./constants");
+const admin_notify_event_1 = require("./admin-notify.event");
 const inbox_message_entity_1 = require("./inbox-message.entity");
 /**
  * 消息触达编排与站内信存储。
  * deliver(frame)：站内信真实落库（inboxEnabled 开关），再经 notifier 外发（微信，失败不阻断）。
  */
 let NotificationService = class NotificationService {
-    constructor(options, connection, orderService, customerService) {
+    constructor(options, connection, orderService, customerService, eventBus) {
         this.options = options;
         this.connection = connection;
         this.orderService = orderService;
         this.customerService = customerService;
+        this.eventBus = eventBus;
         this.notifier = {};
     }
     /** 由插件 onApplicationBootstrap 注入 notifier（避免 DI 环）。 */
@@ -243,6 +245,13 @@ let NotificationService = class NotificationService {
                 recipientType: 'admin', administratorId: shop.administratorId,
             });
         }
+        // 管理侧外发钩子（飞书等）：订阅方决定是否推送，失败不影响站内信
+        try {
+            await this.eventBus.publish(new admin_notify_event_1.AdminNotifyEvent(ctx, 'shop_new_order', title, content, order.id, order.code, shopIds[0]));
+        }
+        catch (e) {
+            core_1.Logger.warn(`admin notify publish failed: ${e === null || e === void 0 ? void 0 : e.message}`, constants_1.loggerCtx);
+        }
     }
     /** 订单行 → productVariant.productId → Product.shopId 反查去重（对齐 address-plugin getOrderShopIds）。 */
     async getOrderShopIds(ctx, order) {
@@ -372,6 +381,12 @@ let NotificationService = class NotificationService {
                     link: `/after-sale/detail?id=${requestId}`,
                 }, { recipientType: 'admin', administratorId: shop.administratorId });
             }
+            try {
+                await this.eventBus.publish(new admin_notify_event_1.AdminNotifyEvent(ctx, 'after_sales', title, content, request.order.id, request.order.code, shopIds[0], `/after-sale/detail?id=${requestId}`));
+            }
+            catch (e) {
+                core_1.Logger.warn(`admin notify publish failed: ${e === null || e === void 0 ? void 0 : e.message}`, constants_1.loggerCtx);
+            }
         }
         catch (err) {
             core_1.Logger.warn(`notifyAfterSalesMerchant failed: ${(_a = err === null || err === void 0 ? void 0 : err.message) !== null && _a !== void 0 ? _a : err}`, constants_1.loggerCtx);
@@ -387,6 +402,7 @@ exports.NotificationService = NotificationService = __decorate([
     __param(0, (0, common_1.Inject)(constants_1.NOTIFICATION_PLUGIN_OPTIONS)),
     __metadata("design:paramtypes", [Object, core_1.TransactionalConnection,
         core_1.OrderService,
-        core_1.CustomerService])
+        core_1.CustomerService,
+        core_1.EventBus])
 ], NotificationService);
 //# sourceMappingURL=notification.service.js.map

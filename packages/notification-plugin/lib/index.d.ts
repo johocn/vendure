@@ -1,4 +1,5 @@
 export * from './src/plugin';
+export * from './src/admin-notify.event';
 export * from './src/types';
 export * from './src/constants';
 export * from './src/inbox-message.entity';

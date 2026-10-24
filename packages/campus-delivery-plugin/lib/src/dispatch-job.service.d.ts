@@ -2,6 +2,7 @@ import { OnApplicationShutdown } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { RequestContext, TransactionalConnection } from '@vendure/core';
 import { CapacityService } from './capacity.service';
+import { FeishuNotifyService } from './feishu/feishu-notify.service';
 import { HallGrabService } from './hall-grab.service';
 import { HallService } from './hall.service';
 import { ThirdPartyDeliveryService } from './third-party-delivery.service';
@@ -14,6 +15,7 @@ export declare class DispatchJobService implements OnApplicationShutdown {
     private credit;
     private moduleRef;
     private thirdParty?;
+    private feishu?;
     private timer;
     private running;
     private orderSvc?;
@@ -21,7 +23,7 @@ export declare class DispatchJobService implements OnApplicationShutdown {
     private paymentRepo?;
     /** 超时赔付缺配置告警限频（避免每分钟刷日志） */
     private compensationWarnAt;
-    constructor(connection: TransactionalConnection, grab: HallGrabService, hall: HallService, capacity: CapacityService, credit: RiderCreditService, moduleRef: ModuleRef, thirdParty?: ThirdPartyDeliveryService | undefined);
+    constructor(connection: TransactionalConnection, grab: HallGrabService, hall: HallService, capacity: CapacityService, credit: RiderCreditService, moduleRef: ModuleRef, thirdParty?: ThirdPartyDeliveryService | undefined, feishu?: FeishuNotifyService | undefined);
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
     private get injector();
     start(intervalMs?: number): void;

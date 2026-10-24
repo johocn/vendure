@@ -14,6 +14,7 @@ import {
 } from '@vendure/core';
 import { ModuleRef } from '@nestjs/core';
 import { AfterSalesStateTransitionEvent } from '@vendure/after-sales-plugin';
+import { AdminNotifyEvent } from '@vendure/notification-plugin';
 import { CampusBuilding } from './campus-building.entity';
 import { CapacityService } from './capacity.service';
 import { CampusConfigAdminResolver } from './campus-config-admin.resolver';
@@ -37,6 +38,13 @@ import { P4OpsHardeningMigration } from './migrations/p4-ops-hardening';
 import { ErrandService } from './errand.service';
 import { ErrandShopResolver } from './errand-shop.resolver';
 import { FavoriteShopResolver } from './favorite-shop.resolver';
+import { FeishuClient } from './feishu/feishu.client';
+import { FeishuCommandService } from './feishu/feishu.command.service';
+import { FeishuConfigService } from './feishu/feishu.config';
+import { FeishuController } from './feishu/feishu.controller';
+import { FeishuDigestService } from './feishu/feishu.digest.service';
+import { FeishuEventService } from './feishu/feishu.event.service';
+import { FeishuNotifyService } from './feishu/feishu-notify.service';
 import { CampusErrandShippingLineAssignmentStrategy } from './errand-shipping-line-assignment';
 import { HallGrabService } from './hall-grab.service';
 import { HallService } from './hall.service';
@@ -122,7 +130,14 @@ const paymentTimeoutCompensation = new ScheduledTask({
         ThirdPartyDeliveryService,
         PaymentTimeoutJob,
         PaymentTimeoutAdminService,
+        FeishuConfigService,
+        FeishuClient,
+        FeishuNotifyService,
+        FeishuCommandService,
+        FeishuEventService,
+        FeishuDigestService,
     ],
+    controllers: [FeishuController],
     adminApiExtensions: {
         schema: () => {
             const { gql } = require('graphql-tag');
@@ -1170,6 +1185,12 @@ export class CampusDeliveryPlugin implements OnApplicationBootstrap {
             );
         });
         this.injector.get(DispatchJobService).start();
+        // 管理消息推送：notification 发布 AdminNotifyEvent（新订单/售后），本插件订阅后转飞书群
+        this.eventBus.ofType(AdminNotifyEvent).subscribe(event => {
+            void this.injector.get(FeishuNotifyService).onAdminNotify(event);
+        });
+        // 每日经营汇总（UTC+8 定点，advisory lock + 落库标记防重）
+        this.injector.get(FeishuDigestService).start();
     }
 
     /** 权限迁移：permissions 为 simple-array（逗号分隔），给持有 CampusViewDispatch 的角色补授 CampusDispatch。

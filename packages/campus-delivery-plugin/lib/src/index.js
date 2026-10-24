@@ -37,4 +37,13 @@ __exportStar(require("./errand.service"), exports);
 __exportStar(require("./shipping-calculator"), exports);
 __exportStar(require("./errand-shipping-line-assignment"), exports);
 __exportStar(require("./r2-mark.service"), exports);
+__exportStar(require("./feishu/feishu.config"), exports);
+__exportStar(require("./feishu/feishu.crypto"), exports);
+__exportStar(require("./feishu/feishu.templates"), exports);
+__exportStar(require("./feishu/feishu.client"), exports);
+__exportStar(require("./feishu/feishu-notify.service"), exports);
+__exportStar(require("./feishu/feishu.command.service"), exports);
+__exportStar(require("./feishu/feishu.digest.service"), exports);
+__exportStar(require("./feishu/feishu.event.service"), exports);
+__exportStar(require("./feishu/feishu.controller"), exports);
 //# sourceMappingURL=index.js.map

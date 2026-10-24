@@ -14,6 +14,7 @@ import {
 } from '@vendure/core';
 import { CapacityService } from './capacity.service';
 import { CampusFulfillmentConfig } from './campus-fulfillment-config.entity';
+import { FeishuNotifyService } from './feishu/feishu-notify.service';
 import { HallGrabService } from './hall-grab.service';
 import { ACTIVE_HALL_STATUSES, HallService } from './hall.service';
 import { ThirdPartyDeliveryService } from './third-party-delivery.service';
@@ -47,6 +48,7 @@ export class DispatchJobService implements OnApplicationShutdown {
         private credit: RiderCreditService,
         private moduleRef: ModuleRef,
         private thirdParty?: ThirdPartyDeliveryService,
+        private feishu?: FeishuNotifyService,
     ) {}
 
     /** vendure Injector 需由 ModuleRef 构造（Nest 不直接提供 Injector 作为可注入项） */
@@ -323,6 +325,13 @@ export class DispatchJobService implements OnApplicationShutdown {
             cf.hallEnteredAt = enteredAt;
             cf.exceptionReportedAt = null;
             Logger.warn(`Order ${o.code} exception not handled in ${cfg.inProgressSlaMinutes ?? 45}min → back to hall`, 'CampusDispatch');
+            void this.feishu?.pushEvent(
+                'exception',
+                '异常超时自动回厅',
+                `订单 ${o.code} 异常上报 ${cfg.inProgressSlaMinutes ?? 45} 分钟未处置，已回大厅重新派单。`,
+                o.code,
+                o.code,
+            );
         }
     }
 
@@ -365,6 +374,13 @@ export class DispatchJobService implements OnApplicationShutdown {
                     });
                     if (!moved) continue;
                     Logger.warn(`Order ${o.code} merchant accept timeout → owned courier`, 'CampusDispatch');
+                    void this.feishu?.pushEvent(
+                        'exception',
+                        '商户接单超时（转自营）',
+                        `订单 ${o.code} 商户 ${cfg.merchantAcceptMinutes ?? 5} 分钟未接单，已转自营快递。`,
+                        o.code,
+                        o.code,
+                    );
                     cf.hallStatus = 'owned_dispatched';
                     cf.deliveryPlan = 'owned';
                 } else {
@@ -377,6 +393,13 @@ export class DispatchJobService implements OnApplicationShutdown {
                     });
                     if (!moved) continue;
                     Logger.warn(`Order ${o.code} merchant accept timeout (R2) → hall`, 'CampusDispatch');
+                    void this.feishu?.pushEvent(
+                        'exception',
+                        '商户接单超时（回大厅）',
+                        `订单 ${o.code} 商户 ${cfg.merchantAcceptMinutes ?? 5} 分钟未接单，已回抢单大厅。`,
+                        o.code,
+                        o.code,
+                    );
                     cf.hallStatus = 'open';
                     cf.deliveryPlan = 'campus_rider';
                     cf.hallEnteredAt = new Date();
@@ -396,6 +419,13 @@ export class DispatchJobService implements OnApplicationShutdown {
                 });
                 if (!moved) continue;
                 Logger.warn(`Order ${o.code} R2 cooking timeout → hall`, 'CampusDispatch');
+                void this.feishu?.pushEvent(
+                    'exception',
+                    '商户出餐超时',
+                    `订单 ${o.code} 商户 ${cfg.merchantAutoOpenMinutes ?? 15} 分钟未出餐，已回抢单大厅。`,
+                    o.code,
+                    o.code,
+                );
                 cf.hallStatus = 'open';
                 cf.deliveryPlan = 'campus_rider';
                 cf.hallEnteredAt = new Date();
@@ -415,6 +445,13 @@ export class DispatchJobService implements OnApplicationShutdown {
                 });
                 if (!moved) continue;
                 Logger.warn(`Order ${o.code} merchant deliver timeout → hall`, 'CampusDispatch');
+                void this.feishu?.pushEvent(
+                    'exception',
+                    '商户送达交接点超时',
+                    `订单 ${o.code} 商户 ${cfg.merchantAutoOpenMinutes ?? 15} 分钟未送达交接点，已回抢单大厅。`,
+                    o.code,
+                    o.code,
+                );
                 cf.hallStatus = 'open';
                 cf.hallEnteredAt = enteredAt;
                 continue;
@@ -433,6 +470,13 @@ export class DispatchJobService implements OnApplicationShutdown {
                 });
                 if (!moved) continue;
                 Logger.warn(`Order ${o.code} external push timeout → hall`, 'CampusDispatch');
+                void this.feishu?.pushEvent(
+                    'exception',
+                    '外部快递推送超时',
+                    `订单 ${o.code} ${cfg.externalPushTimeoutMinutes ?? 10} 分钟未推送外部快递，已回抢单大厅。`,
+                    o.code,
+                    o.code,
+                );
                 cf.hallStatus = 'open';
                 cf.hallEnteredAt = enteredAt;
                 continue;
@@ -490,6 +534,13 @@ export class DispatchJobService implements OnApplicationShutdown {
                 }
                 cf.thirdPartyState = 'cancelled';
                 Logger.warn(`Order ${o.code} external fallback (${route})`, 'CampusDispatch');
+                void this.feishu?.pushEvent(
+                    'exception',
+                    '外部快递超时回落',
+                    `订单 ${o.code} 外部快递 ${cfg.externalFallbackMinutes ?? 20} 分钟未接单/取货，已回落（${route}）。`,
+                    o.code,
+                    `${o.code}:fallback`,
+                );
             }
 
             // 5) 自营快递池久无人接单 → 回抢单大厅（传信者兜底）
@@ -505,6 +556,13 @@ export class DispatchJobService implements OnApplicationShutdown {
                 });
                 if (!moved) continue;
                 Logger.warn(`Order ${o.code} owned pool timeout → hall`, 'CampusDispatch');
+                void this.feishu?.pushEvent(
+                    'exception',
+                    '自营快递无人接单',
+                    `订单 ${o.code} 自营快递池 ${cfg.merchantAutoOpenMinutes ?? 15} 分钟无人接单，已回抢单大厅。`,
+                    o.code,
+                    o.code,
+                );
                 cf.hallStatus = 'open';
                 cf.hallEnteredAt = enteredAt;
                 continue;
@@ -526,6 +584,13 @@ export class DispatchJobService implements OnApplicationShutdown {
                 });
                 if (!moved) continue;
                 Logger.warn(`Order ${o.code} owned courier timeout → hall`, 'CampusDispatch');
+                void this.feishu?.pushEvent(
+                    'exception',
+                    '自营快递送达超时',
+                    `订单 ${o.code} 自营快递 ${cfg.merchantAutoOpenMinutes ?? 15} 分钟未送达交接点，已回抢单大厅。`,
+                    o.code,
+                    o.code,
+                );
                 cf.hallStatus = 'open';
                 cf.hallEnteredAt = enteredAt;
             }
