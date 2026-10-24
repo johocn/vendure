@@ -85,10 +85,14 @@ export class FeishuClient {
     }
 
     /** 以自建应用身份发到指定群；未配置应用时退回 webhook */
-    async sendToChat(chatId: string, text: string): Promise<boolean> {
+    async sendToChat(chatId: string, text: string, opts?: { atAll?: boolean }): Promise<boolean> {
         const { appId, appSecret } = this.cfg.settings;
         if (!appId || !appSecret) return this.sendWebhook(text);
-        return (await this.sendMessage(chatId, 'text', { text })) != null;
+        const content: any = { text };
+        if (opts?.atAll) {
+            content.text = `<at user_id="all">所有人</at> ${text}`;
+        }
+        return (await this.sendMessage(chatId, 'text', content)) != null;
     }
 
     /** 发交互卡片，返回 message_id（失败 null；调用方自行降级） */
@@ -219,13 +223,15 @@ export class FeishuClient {
     }
 
     /** 广播：优先发到所有已映射群；没有群映射时退回 webhook */
-    async broadcast(text: string): Promise<boolean> {
+    async broadcast(text: string, opts?: { atAll?: boolean; scope?: string }): Promise<boolean> {
         if (!this.enabled) return false;
-        const chats = Object.keys(this.cfg.settings.chats);
+        const chats = Object.entries(this.cfg.settings.chats);
         if (chats.length === 0) return this.sendWebhook(text);
         let ok = false;
-        for (const chatId of chats) {
-            if (await this.sendToChat(chatId, text)) ok = true;
+        for (const [chatId, chat] of chats) {
+            // scope=platform 只发跨店平台群；未指定则全发
+            if (opts?.scope && chat.scope !== opts.scope) continue;
+            if (await this.sendToChat(chatId, text, opts)) ok = true;
         }
         return ok;
     }

@@ -24,6 +24,38 @@ let FeishuCardService = class FeishuCardService {
     constructor(client, connection) {
         this.client = client;
         this.connection = connection;
+        /** 同单告警合并缓存：orderCode → { chatId: messageId }。进程内，不持久化 */
+        this.codeToMessage = new Map();
+    }
+    /** 告警合并入口：pushEvent 带 orderCode 时先尝试 PATCH 卡片追加告警，返回是否成功 */
+    async appendAlert(orderCode, alertText) {
+        var _a;
+        const mapping = this.codeToMessage.get(orderCode);
+        if (!mapping)
+            return false;
+        let anyOk = false;
+        for (const [chatId, messageId] of Object.entries(mapping)) {
+            try {
+                const card = await this.buildCard(orderCode);
+                if (!card)
+                    continue;
+                // 在卡片 elements 里追加一个 alert div（红色 md 文本）
+                const elems = (_a = card.elements) !== null && _a !== void 0 ? _a : [];
+                const lastDiv = elems.findIndex((e) => { var _a, _b; return e.tag === 'div' && ((_b = (_a = e.text) === null || _a === void 0 ? void 0 : _a.content) === null || _b === void 0 ? void 0 : _b.startsWith('📍')); });
+                const alertElem = { tag: 'div', text: { tag: 'lark_md', content: `🚨 **${alertText}** · ${new Date().toLocaleTimeString('zh-CN')}` } };
+                if (lastDiv >= 0) {
+                    elems.splice(lastDiv + 1, 0, alertElem);
+                }
+                else {
+                    elems.unshift(alertElem);
+                }
+                const ok = await this.client.updateCard(messageId, card);
+                if (ok)
+                    anyOk = true;
+            }
+            catch ( /* 单群失败不影响其他群 */_b) { /* 单群失败不影响其他群 */ }
+        }
+        return anyOk;
     }
     /** 读现有表组装卡片所需数据（与文本查单共用同一份视图） */
     async loadOrderView(code) {
@@ -84,12 +116,32 @@ let FeishuCardService = class FeishuCardService {
     }
     /** 新订单卡片：发到所有已映射群；一个都没发出去时返回 false，让调用方降级文本 */
     async broadcastOrderCard(code) {
+        var _a, _b, _c;
         if (!this.client.enabled)
             return false;
         const card = await this.buildCard(code);
         if (!card)
             return false;
-        return this.client.broadcastCard(card);
+        const chats = Object.keys((_c = (_b = (_a = this.client.cfg) === null || _a === void 0 ? void 0 : _a.settings) === null || _b === void 0 ? void 0 : _b.chats) !== null && _c !== void 0 ? _c : {});
+        const msgMap = {};
+        let ok = false;
+        for (const chatId of chats) {
+            const mid = await this.client.sendCard(chatId, card);
+            if (mid) {
+                msgMap[chatId] = mid;
+                ok = true;
+            }
+        }
+        if (ok)
+            this.codeToMessage.set(code, msgMap);
+        return ok;
+    }
+    /** 外部写入 message_id（如用户查单触发 sendOrderCard 后） */
+    trackMessage(code, chatId, messageId) {
+        var _a;
+        const cur = (_a = this.codeToMessage.get(code)) !== null && _a !== void 0 ? _a : {};
+        cur[chatId] = messageId;
+        this.codeToMessage.set(code, cur);
     }
     /** 按钮操作后原地刷新卡片（失败不抛错，由调用方决定是否补文本） */
     async refresh(messageId, code) {

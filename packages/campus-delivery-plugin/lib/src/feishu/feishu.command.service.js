@@ -64,6 +64,8 @@ function parseCommand(raw) {
         const [orderCode, ...reasonParts] = arg.split(' ').filter(Boolean);
         return { name: 'reject', orderCode, reason: reasonParts.join(' ').trim() || undefined };
     }
+    if (/^(恢复|restore)$/i.test(head))
+        return { name: 'restore', orderCode: arg ? arg.split(' ')[0] : undefined };
     return { name: 'unknown' };
 }
 /** 指令所需权限等级：operator=查询/接单/出餐；owner=拒单/开关店 */
@@ -179,6 +181,9 @@ let FeishuCommandService = class FeishuCommandService {
                 case 'open':
                     await this.setPaused(chat, chatId, openId, cmd.name === 'close', cmd.store);
                     break;
+                case 'restore':
+                    await this.restore(chat, chatId, openId, cmd);
+                    break;
                 default: {
                     const tpl = (0, feishu_templates_1.matchReplyTemplate)(input.text);
                     await this.reply(chatId, tpl
@@ -206,7 +211,7 @@ let FeishuCommandService = class FeishuCommandService {
         }
         const action = String((_b = (_a = input.value) === null || _a === void 0 ? void 0 : _a.a) !== null && _b !== void 0 ? _b : '');
         const code = typeof ((_c = input.value) === null || _c === void 0 ? void 0 : _c.c) === 'string' ? input.value.c : undefined;
-        const known = ['accept', 'cooking', 'status', 'view', 'template', 'tpl', 'reassign', 'handled'];
+        const known = ['accept', 'cooking', 'status', 'view', 'template', 'tpl', 'reassign', 'handled', 'refund_diff', 'coupon', 'refund_all'];
         if (!known.includes(action))
             return;
         const cmd = {
@@ -287,6 +292,21 @@ let FeishuCommandService = class FeishuCommandService {
                     }
                     break;
                 }
+                case 'refund_diff':
+                case 'coupon':
+                case 'refund_all': {
+                    const found = await this.requireOrder(chat, chatId, code);
+                    if (!found)
+                        return;
+                    const actionName = action;
+                    const label = actionName === 'refund_diff' ? '退差价' : actionName === 'coupon' ? '发补偿券' : '全额退款';
+                    await this.dispatchAdmin.handleException(found.ctx, found.order.id, actionName);
+                    await this.audit(chatId, openId, { name: 'status', orderCode: code }, `ok-card:${actionName}`);
+                    if (!(await this.cards.refresh(messageId, code))) {
+                        await this.reply(chatId, `${label}已执行：${code}`);
+                    }
+                    break;
+                }
             }
         }
         catch (e) {
@@ -310,14 +330,14 @@ let FeishuCommandService = class FeishuCommandService {
         const targets = chat.scope === 'platform'
             ? await this.channelTargets()
             : [{ token: chat.channel, name: chat.channel }];
-        const { exceptions, overdue } = await this.collectIssues(targets);
-        return (0, feishu_templates_1.formatExceptions)(exceptions, overdue);
+        const { exceptions, overdue, soonOverdue } = await this.collectIssues(targets);
+        return (0, feishu_templates_1.formatExceptions)(exceptions, overdue, soonOverdue);
     }
     async platformBoardText() {
         const targets = await this.channelTargets();
         if (!targets.length)
             return '暂无已开通外卖的店铺。';
-        const { exceptions, overdue } = await this.collectIssues(targets);
+        const { exceptions, overdue, soonOverdue } = await this.collectIssues(targets);
         const stores = [];
         for (const t of targets) {
             const ctx = await this.ctxForToken(t.token);
@@ -536,6 +556,7 @@ let FeishuCommandService = class FeishuCommandService {
     async collectIssues(targets) {
         const exceptions = [];
         const overdue = [];
+        const soonOverdue = [];
         for (const t of targets) {
             const ctx = await this.ctxForToken(t.token);
             const cfg = await this.connection.getRepository(ctx, campus_fulfillment_config_entity_1.CampusFulfillmentConfig).findOne({
@@ -562,9 +583,47 @@ let FeishuCommandService = class FeishuCommandService {
                 const entry = this.overdueOf(o, cf, cfg, now);
                 if (entry)
                     overdue.push(`${o.code} ${t.name} ${entry}`);
+                else {
+                    const soon = this.soonOverdueOf(o, cf, cfg, now);
+                    if (soon)
+                        soonOverdue.push(`${o.code} ${t.name} ${soon}`);
+                }
             }
         }
-        return { exceptions, overdue };
+        return { exceptions, overdue, soonOverdue };
+    }
+    /** 即将超时（提前告警窗口内但还没真超阈值） */
+    soonOverdueOf(order, cf, cfg, now) {
+        var _a, _b, _c, _d, _e;
+        const minutesSince = (t) => t ? Math.round((now - new Date(t).getTime()) / 60000) : null;
+        const accept = (_a = cfg.merchantAcceptMinutes) !== null && _a !== void 0 ? _a : 5;
+        const push = (_b = cfg.externalPushTimeoutMinutes) !== null && _b !== void 0 ? _b : 10;
+        const fallback = (_c = cfg.externalFallbackMinutes) !== null && _c !== void 0 ? _c : 20;
+        const sla = (_d = cfg.inProgressSlaMinutes) !== null && _d !== void 0 ? _d : 45;
+        const NOT_PICKED = 15;
+        switch (cf.hallStatus) {
+            case 'pending_merchant': {
+                const m = minutesSince((_e = cf.hallEnteredAt) !== null && _e !== void 0 ? _e : order.createdAt);
+                if (m != null && m >= accept - 1 && m <= accept)
+                    return `⚠️ 商户即将超时（${m}/${accept}min）`;
+                return null;
+            }
+            case 'grabbed':
+            case 'assigned': {
+                const m = minutesSince(cf.assignedAt);
+                if (m != null && m >= NOT_PICKED - 1.5 && m <= NOT_PICKED)
+                    return `⚠️ 骑手即将超时（${m}/${NOT_PICKED}min）`;
+                return null;
+            }
+            case 'third_party': {
+                const m = minutesSince(cf.thirdPartyDispatchAt);
+                if (m != null && m >= fallback - 2.5 && m <= fallback)
+                    return `⚠️ 外部快递即将超时（${m}/${fallback}min）`;
+                return null;
+            }
+            default:
+                return null;
+        }
     }
     /** 各环节超时判定（与调度兜底阈值保持一致，仅用于群里提示，不做任何改单） */
     overdueOf(order, cf, cfg, now) {
@@ -680,6 +739,31 @@ let FeishuCommandService = class FeishuCommandService {
         await this.merchant.rejectOrder(found.ctx, found.order.id, pending.reason || '飞书指令拒单');
         await this.audit(chatId, openId, Object.assign(Object.assign({}, cmd), { orderCode: code }), `ok reason=${(_a = pending.reason) !== null && _a !== void 0 ? _a : ''}`);
         await this.reply(chatId, `已拒单并退款：${found.order.code}`);
+    }
+    /** restore：恢复 hallStatus 到指定值（open/pending_merchant/accepted），用于 exception_final 卡死的单重新进调度墙 */
+    async restore(chat, chatId, openId, cmd) {
+        var _a;
+        if (!cmd.orderCode) {
+            await this.reply(chatId, '请带单号，例如「恢复 A1234」。');
+            return;
+        }
+        const code = await this.resolveOrderCode(chat, chatId, cmd.orderCode);
+        if (!code)
+            return;
+        const found = await this.requireOrder(chat, chatId, code);
+        if (!found)
+            return;
+        try {
+            // 回到 open 进调度墙；exception_final 的单 hallStatus 被锁死，需要显式改
+            await this.connection.rawConnection.query(`UPDATE "order" SET "customFieldsHallstatus"='open', "customFieldsExceptionfinal"=FALSE,
+                 "customFieldsExceptionaction"=NULL, "customFieldsExceptionhandledat"=NULL
+                 WHERE id=$1`, [found.order.id]);
+            await this.audit(chatId, openId, Object.assign(Object.assign({}, cmd), { orderCode: code }), 'ok');
+            await this.reply(chatId, `已恢复进大厅：${found.order.code}（hallStatus→open）`);
+        }
+        catch (e) {
+            await this.reply(chatId, `恢复失败：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`);
+        }
     }
     async setPaused(chat, chatId, openId, paused, store) {
         let token = chat.channel;

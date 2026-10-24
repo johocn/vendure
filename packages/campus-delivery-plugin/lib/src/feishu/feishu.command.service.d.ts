@@ -5,7 +5,7 @@ import { MerchantAdminService } from '../merchant-admin.service';
 import { FeishuCardService } from './feishu-card.service';
 import { FeishuClient } from './feishu.client';
 import { FeishuChatConfig, FeishuConfigService } from './feishu.config';
-export type FeishuCommandName = 'help' | 'board' | 'digest' | 'status' | 'exceptions' | 'accept' | 'cooking' | 'reject' | 'confirmReject' | 'reassign' | 'handled' | 'close' | 'open' | 'unknown';
+export type FeishuCommandName = 'help' | 'board' | 'digest' | 'status' | 'exceptions' | 'accept' | 'cooking' | 'reject' | 'confirmReject' | 'reassign' | 'handled' | 'restore' | 'close' | 'open' | 'unknown';
 export interface ParsedCommand {
     name: FeishuCommandName;
     orderCode?: string;
@@ -70,6 +70,8 @@ export declare class FeishuCommandService {
     private quotedCodeOf;
     private codeFromMessage;
     private collectIssues;
+    /** 即将超时（提前告警窗口内但还没真超阈值） */
+    private soonOverdueOf;
     /** 各环节超时判定（与调度兜底阈值保持一致，仅用于群里提示，不做任何改单） */
     private overdueOf;
     private accept;
@@ -77,6 +79,8 @@ export declare class FeishuCommandService {
     /** 拒单第一步：只登记待确认，不执行任何退款/取消 */
     private stageReject;
     private confirmReject;
+    /** restore：恢复 hallStatus 到指定值（open/pending_merchant/accepted），用于 exception_final 卡死的单重新进调度墙 */
+    private restore;
     private setPaused;
     private requireOrder;
     private channelTargets;

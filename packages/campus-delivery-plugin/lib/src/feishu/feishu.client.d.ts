@@ -29,7 +29,9 @@ export declare class FeishuClient {
     /** 推送到群自定义机器人（or 单群 webhook） */
     sendWebhook(text: string): Promise<boolean>;
     /** 以自建应用身份发到指定群；未配置应用时退回 webhook */
-    sendToChat(chatId: string, text: string): Promise<boolean>;
+    sendToChat(chatId: string, text: string, opts?: {
+        atAll?: boolean;
+    }): Promise<boolean>;
     /** 发交互卡片，返回 message_id（失败 null；调用方自行降级） */
     sendCard(chatId: string, card: unknown): Promise<string | null>;
     /** 更新已发送的卡片（局部刷新，不刷屏） */
@@ -51,7 +53,10 @@ export declare class FeishuClient {
     private ok;
     private request;
     /** 广播：优先发到所有已映射群；没有群映射时退回 webhook */
-    broadcast(text: string): Promise<boolean>;
+    broadcast(text: string, opts?: {
+        atAll?: boolean;
+        scope?: string;
+    }): Promise<boolean>;
     /** tenant_access_token 缓存（提前 5 分钟过期），单飞防并发重复取 */
     private tenantToken;
 }

@@ -29,4 +29,8 @@ export declare class FeishuDigestService implements OnApplicationShutdown {
     /** 回读当天群消息，已有当日「【每日汇总】」则跳过（最多翻 5 页，纯读）
      * 只从当日汇总时间点开始算，避免早上人工查过一次汇总就把定时汇总吞掉 */
     private sentToday;
+    private sentHeartbeat;
+    private heartbeatTick;
+    /** 轻量心跳：活动中订单数（非终态）+ 店铺数 + 系统时间戳，一次 COUNT 搞定 */
+    private buildHeartbeat;
 }

@@ -66,7 +66,7 @@ export declare function formatPlatformBoard(input: {
     overdue: string[];
     at: number;
 }): string;
-export declare function formatExceptions(exceptions: string[], overdue: string[]): string;
+export declare function formatExceptions(exceptions: string[], overdue: string[], soonOverdue?: string[]): string;
 export interface PlatformDigestStore {
     name: string;
     completed: number;

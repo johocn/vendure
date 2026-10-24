@@ -38,8 +38,9 @@ export class FeishuDigestService implements OnApplicationShutdown {
         if (this.timer || !this.client.enabled) return;
         this.timer = setInterval(() => {
             void this.tick().catch(e => Logger.error(`digest tick: ${e?.message ?? e}`, loggerCtx));
+            void this.heartbeatTick().catch(e => Logger.error(`heartbeat tick: ${e?.message ?? e}`, loggerCtx));
         }, intervalMs);
-        Logger.info(`每日汇总已启用，时间 ${this.cfg.settings.digestAt}（UTC+8）`, loggerCtx);
+        Logger.info(`每日汇总 + 心跳已启用，汇总 ${this.cfg.settings.digestAt}（UTC+8），心跳 1h（UTC+8）`, loggerCtx);
     }
 
     onApplicationShutdown(): void {
@@ -115,5 +116,37 @@ export class FeishuDigestService implements OnApplicationShutdown {
             pageToken = nextToken;
         }
         return false;
+    }
+
+    // ---------- 心跳（每整点一次；静默 ≠ 没事；进程挂了不会有人收到这条） ----------
+
+    private sentHeartbeat = new Map<string, string>();
+
+    private async heartbeatTick(): Promise<void> {
+        const hh = campusHhmm(Date.now()).slice(0, 2);
+        if (!campusHhmm(Date.now()).endsWith(':00')) return; // 只在每整点触发
+        const hour = `${campusDayKey(Date.now())}-${hh}`;
+        for (const [chatId] of Object.entries(this.cfg.settings.chats)) {
+            if (this.sentHeartbeat.get(chatId) === hour) continue;
+            const text = await this.buildHeartbeat();
+            if (await this.client.sendToChat(chatId, text)) {
+                this.sentHeartbeat.set(chatId, hour);
+            }
+        }
+    }
+
+    /** 轻量心跳：活动中订单数（非终态）+ 店铺数 + 系统时间戳，一次 COUNT 搞定 */
+    private async buildHeartbeat(): Promise<string> {
+        const [active, channels] = await Promise.all([
+            this.connection.rawConnection.query(
+                `SELECT COUNT(*)::int AS n FROM "order"
+                 WHERE "customFieldsHallstatus" NOT IN ('delivered','cancelled','exception_final')`,
+            ).then((r: any) => Number(r?.[0]?.n ?? 0)).catch(() => -1),
+            this.connection.rawConnection.query(
+                `SELECT COUNT(*)::int AS n FROM "channel" WHERE "enabled"=true AND "code"<>'__default_channel__'`,
+            ).then((r: any) => Number(r?.[0]?.n ?? 0)).catch(() => -1),
+        ]);
+        const ts = campusHhmm(Date.now());
+        return `💓 服务健康 · ${ts} · 活动单 ${active === -1 ? 'DB 查询异常' : active} · 店铺 ${channels === -1 ? '?' : channels}`;
     }
 }

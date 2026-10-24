@@ -38,14 +38,17 @@ let FeishuDigestService = class FeishuDigestService {
         this.running = false;
         /** 进程内兜底（webhook 模式无法回读消息时防同进程重复发送，不落库） */
         this.sent = new Map();
+        // ---------- 心跳（每整点一次；静默 ≠ 没事；进程挂了不会有人收到这条） ----------
+        this.sentHeartbeat = new Map();
     }
     start(intervalMs = 60000) {
         if (this.timer || !this.client.enabled)
             return;
         this.timer = setInterval(() => {
             void this.tick().catch(e => { var _a; return core_1.Logger.error(`digest tick: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, loggerCtx); });
+            void this.heartbeatTick().catch(e => { var _a; return core_1.Logger.error(`heartbeat tick: ${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, loggerCtx); });
         }, intervalMs);
-        core_1.Logger.info(`每日汇总已启用，时间 ${this.cfg.settings.digestAt}（UTC+8）`, loggerCtx);
+        core_1.Logger.info(`每日汇总 + 心跳已启用，汇总 ${this.cfg.settings.digestAt}（UTC+8），心跳 1h（UTC+8）`, loggerCtx);
     }
     onApplicationShutdown() {
         if (this.timer)
@@ -128,6 +131,30 @@ let FeishuDigestService = class FeishuDigestService {
             pageToken = nextToken;
         }
         return false;
+    }
+    async heartbeatTick() {
+        const hh = campusHhmm(Date.now()).slice(0, 2);
+        if (!campusHhmm(Date.now()).endsWith(':00'))
+            return; // 只在每整点触发
+        const hour = `${(0, campus_time_1.campusDayKey)(Date.now())}-${hh}`;
+        for (const [chatId] of Object.entries(this.cfg.settings.chats)) {
+            if (this.sentHeartbeat.get(chatId) === hour)
+                continue;
+            const text = await this.buildHeartbeat();
+            if (await this.client.sendToChat(chatId, text)) {
+                this.sentHeartbeat.set(chatId, hour);
+            }
+        }
+    }
+    /** 轻量心跳：活动中订单数（非终态）+ 店铺数 + 系统时间戳，一次 COUNT 搞定 */
+    async buildHeartbeat() {
+        const [active, channels] = await Promise.all([
+            this.connection.rawConnection.query(`SELECT COUNT(*)::int AS n FROM "order"
+                 WHERE "customFieldsHallstatus" NOT IN ('delivered','cancelled','exception_final')`).then((r) => { var _a, _b; return Number((_b = (_a = r === null || r === void 0 ? void 0 : r[0]) === null || _a === void 0 ? void 0 : _a.n) !== null && _b !== void 0 ? _b : 0); }).catch(() => -1),
+            this.connection.rawConnection.query(`SELECT COUNT(*)::int AS n FROM "channel" WHERE "enabled"=true AND "code"<>'__default_channel__'`).then((r) => { var _a, _b; return Number((_b = (_a = r === null || r === void 0 ? void 0 : r[0]) === null || _a === void 0 ? void 0 : _a.n) !== null && _b !== void 0 ? _b : 0); }).catch(() => -1),
+        ]);
+        const ts = campusHhmm(Date.now());
+        return `💓 服务健康 · ${ts} · 活动单 ${active === -1 ? 'DB 查询异常' : active} · 店铺 ${channels === -1 ? '?' : channels}`;
     }
 };
 exports.FeishuDigestService = FeishuDigestService;

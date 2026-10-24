@@ -112,8 +112,8 @@ function formatPlatformBoard(input) {
     }
     return lines.join('\n');
 }
-function formatExceptions(exceptions, overdue) {
-    if (!exceptions.length && !overdue.length)
+function formatExceptions(exceptions, overdue, soonOverdue = []) {
+    if (!exceptions.length && !overdue.length && !soonOverdue.length)
         return '当前没有异常或超时订单。';
     const lines = [];
     if (exceptions.length) {
@@ -121,8 +121,12 @@ function formatExceptions(exceptions, overdue) {
         lines.push(...exceptions.slice(0, 15).map(t => `· ${t}`));
     }
     if (overdue.length) {
-        lines.push(`【超时风险 ${overdue.length}】`);
+        lines.push(`【已超时 ${overdue.length}】`);
         lines.push(...overdue.slice(0, 15).map(t => `· ${t}`));
+    }
+    if (soonOverdue.length) {
+        lines.push(`【即将超时 ⚠️ ${soonOverdue.length}】`);
+        lines.push(...soonOverdue.slice(0, 15).map(t => `· ${t}`));
     }
     return lines.join('\n');
 }
@@ -248,6 +252,9 @@ function buildOrderCard(o) {
     if (exception) {
         actions.push(cardButton('改派', { a: 'reassign', c: o.code }, 'primary'));
         actions.push(cardButton('已处置', { a: 'handled', c: o.code }));
+        actions.push(cardButton('退差价', { a: 'refund_diff', c: o.code }));
+        actions.push(cardButton('发券', { a: 'coupon', c: o.code }));
+        actions.push(cardButton('全额退款', { a: 'refund_all', c: o.code }, 'danger'));
     }
     else {
         if (o.hallStatus === 'pending_merchant')
