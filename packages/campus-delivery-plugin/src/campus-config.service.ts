@@ -268,6 +268,38 @@ export class CampusConfigService {
         if (nextEnabled && !nextTemplate) {
             throw new UserInputError('开启超时赔付前必须选择赔付券模板');
         }
+        // 坐标（P2）：非法经纬度会让导航/取货点失效且前端无感，直接拒绝
+        for (const [field, limit] of [['storeLat', 90], ['storeLng', 180]] as Array<[string, number]>) {
+            const v = (patch as any)[field];
+            if (v === undefined || v === null) continue;
+            const num = Number(v);
+            if (!Number.isFinite(num) || Math.abs(num) > limit) {
+                throw new UserInputError(`${field} 必须是合法的${field === 'storeLat' ? '纬' : '经'}度`);
+            }
+            (patch as any)[field] = num;
+        }
+        // 结构化配置（P2）：必须是对象，防字符串/数组写法把 JSON 列写坏导致交接点/计价静默失效
+        for (const field of ['routeFirstLeg', 'providerShopNo', 'dynamicPricing']) {
+            const v = (patch as any)[field];
+            if (v !== undefined && v !== null && (typeof v !== 'object' || Array.isArray(v))) {
+                throw new UserInputError(`${field} 必须是对象`);
+            }
+        }
+        if (patch.handoverPoints !== undefined && patch.handoverPoints !== null) {
+            const points = patch.handoverPoints as Record<string, any>;
+            if (typeof points !== 'object' || Array.isArray(points)) {
+                throw new UserInputError('handoverPoints 必须是对象');
+            }
+            for (const [route, list] of Object.entries(points)) {
+                if (!Array.isArray(list)) throw new UserInputError(`交接点 ${route} 必须是数组`);
+                for (const p of list) {
+                    if (!p || typeof p !== 'object'
+                        || !Number.isFinite(Number(p.lat)) || !Number.isFinite(Number(p.lng))) {
+                        throw new UserInputError(`交接点 ${route} 坐标不合法`);
+                    }
+                }
+            }
+        }
         Object.assign(cfg, patch);
         return this.dataSource.getRepository(CampusFulfillmentConfig).save(cfg);
     }

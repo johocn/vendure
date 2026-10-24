@@ -160,6 +160,14 @@ export class DispatchJobService implements OnApplicationShutdown {
                 `channel ${ctx.channelId} dispatch backlog: >=${SCAN_LIMIT} in-flight orders, scan truncated (oldest-first)`,
                 'CampusDispatch',
             );
+            // P3：积压时年轻订单可能被 oldest-first 长期饿死，日志之外必须让运营看到
+            void this.feishu?.pushEvent(
+                'alert',
+                '调度扫描积压',
+                `渠道 ${ctx.channelId} 在途订单已达 ${SCAN_LIMIT} 上限，本轮只处理最老订单，请及时增派运力/清理异常单。`,
+                undefined,
+                `dispatch_backlog:${ctx.channelId}`,
+            );
         }
         const now = Date.now();
         // P1 骑手超时提前告警阈值：兜底前 1.5min 先告警（原值 3min，缩短一倍）

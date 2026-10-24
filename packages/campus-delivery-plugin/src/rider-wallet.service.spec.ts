@@ -30,6 +30,9 @@ function make() {
         where: vi.fn().mockReturnThis(),
         andWhere: vi.fn().mockReturnThis(),
         execute: vi.fn().mockResolvedValue({ affected: 1 }),
+        // 钱包汇总：SUM(PENDING 冻结) / SUM(分成) 走 getRawOne
+        select: vi.fn().mockReturnThis(),
+        getRawOne: vi.fn().mockResolvedValue({ sum: 0 }),
     };
     const repo = {
         save: vi.fn().mockImplementation((v: any) => {
@@ -55,12 +58,14 @@ function make() {
         query: vi.fn().mockResolvedValue([{ id: 9 }]),
         getRepository: vi.fn(() => emRepo),
     };
+    // 补账行级认领：UPDATE rider_earning ... RETURNING id（默认命中一行；[[],[]] 表示已被别处认领）
+    const rawQuery = vi.fn().mockResolvedValue([[{ id: 1 }], []]);
     const conn = {
         getRepository: () => repo,
-        rawConnection: { transaction: vi.fn((fn: any) => fn(em)) },
+        rawConnection: { transaction: vi.fn((fn: any) => fn(em)), query: rawQuery },
     } as any;
     const reqCtxSvc = { create: vi.fn().mockResolvedValue(platformCtx) } as any;
-    return { svc: new RiderWalletService(conn, riderSvc, reqCtxSvc), repo, emRepo, em, saved, reqCtxSvc, conn, qb };
+    return { svc: new RiderWalletService(conn, riderSvc, reqCtxSvc), repo, emRepo, em, saved, reqCtxSvc, conn, qb, rawQuery };
 }
 
 describe('RiderWalletService', () => {
@@ -162,5 +167,59 @@ describe('RiderWalletService', () => {
             '您有审核中的提现申请',
         );
         expect(mocks.port.deductBalance).not.toHaveBeenCalled();
+    });
+
+    // P1：补账（pending → 入账）必须行级认领，否则多端并发读钱包会把同一笔分成加两次
+    it('补账：认领成功才入账并置 credited（pending 与超时 crediting 都纳入）', async () => {
+        const { svc, repo, rawQuery } = make();
+        repo.find
+            .mockResolvedValueOnce([{ id: 11, amount: 800, status: 'pending' }])
+            .mockResolvedValueOnce([]);
+        mocks.port.getBalance.mockResolvedValue(0);
+
+        await svc.myRiderWallet(ctx);
+
+        expect(rawQuery).toHaveBeenCalledWith(
+            expect.stringContaining('UPDATE rider_earning'),
+            ['crediting', 11, 'pending'],
+        );
+        // 超时 crediting 残留也要重新纳入补账（取 where 条件里的 status）
+        expect(repo.find).toHaveBeenLastCalledWith(expect.objectContaining({
+            where: expect.objectContaining({ status: 'crediting' }),
+        }));
+        expect(mocks.port.addBalance).toHaveBeenCalledWith(platformCtx, 9, 800);
+        expect(repo.update).toHaveBeenCalledWith(11, { status: 'credited' });
+    });
+
+    it('补账：认领未命中（另一路已认领）→ 不入账', async () => {
+        const { svc, repo, rawQuery } = make();
+        repo.find
+            .mockResolvedValueOnce([{ id: 12, amount: 500, status: 'pending' }])
+            .mockResolvedValueOnce([]);
+        rawQuery.mockResolvedValueOnce([[], []]);
+        mocks.port.getBalance.mockResolvedValue(0);
+
+        await svc.myRiderWallet(ctx);
+
+        expect(mocks.port.addBalance).not.toHaveBeenCalled();
+        expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it('补账：入账失败回 pending 供下次重试，且中断本轮后续行', async () => {
+        const { svc, repo } = make();
+        repo.find
+            .mockResolvedValueOnce([
+                { id: 13, amount: 300, status: 'pending' },
+                { id: 14, amount: 200, status: 'pending' },
+            ])
+            .mockResolvedValueOnce([]);
+        mocks.port.addBalance.mockRejectedValueOnce(new Error('port down'));
+        mocks.port.getBalance.mockResolvedValue(0);
+
+        await svc.myRiderWallet(ctx);
+
+        expect(repo.update).toHaveBeenCalledWith(13, { status: 'pending' });
+        expect(repo.update).not.toHaveBeenCalledWith(14, { status: 'pending' });
+        expect(mocks.port.addBalance).toHaveBeenCalledTimes(1);
     });
 });

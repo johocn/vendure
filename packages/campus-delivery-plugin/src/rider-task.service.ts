@@ -275,18 +275,36 @@ export class RiderTaskService {
                     status: 'pending',
                     channelId: ctx.channelId,
                 } as any);
-                const port = getCouponBalancePort();
-                if (port) {
-                    try {
-                        await port.addBalance(ctx, rider.id as number, earning);
-                        await this.connection.getRepository(ctx, RiderEarning).update(earningRow.id, {
-                            status: 'credited',
-                        } as any);
-                    } catch (e: any) {
-                        Logger.error(`分成入账失败（earning ${earningRow.id} 留 pending 待补账）：${e?.message ?? e}`, 'RiderTask');
-                    }
+                // 行级认领后再入账（P1）：防「入账成功但置 credited 失败 → 钱包补账再次入账」与并发补账双加；
+                // 认领失败说明另一路已在处理，直接跳过。
+                const claimed: any = await this.connection.rawConnection.query(
+                    'UPDATE rider_earning SET status = $1 WHERE id = $2 AND status = $3 RETURNING id',
+                    ['crediting', earningRow.id, 'pending'],
+                );
+                const claimedRows = Array.isArray(claimed) && Array.isArray(claimed[0]) ? claimed[0] : claimed;
+                if (!Array.isArray(claimedRows) || !claimedRows.length) {
+                    Logger.warn(`分成 ${earningRow.id} 已被另一路认领，跳过本次入账`, 'RiderTask');
                 } else {
-                    Logger.warn('余额端口未注册，分成未入账', 'RiderTask');
+                    const port = getCouponBalancePort();
+                    if (port) {
+                        try {
+                            await port.addBalance(ctx, rider.id as number, earning);
+                            await this.connection.getRepository(ctx, RiderEarning).update(earningRow.id, {
+                                status: 'credited',
+                            } as any);
+                        } catch (e: any) {
+                            // 回 pending 供钱包补账重试（crediting 需等待超时才可重试）
+                            await this.connection.getRepository(ctx, RiderEarning)
+                                .update(earningRow.id, { status: 'pending' } as any)
+                                .catch(() => undefined);
+                            Logger.error(`分成入账失败（earning ${earningRow.id} 留 pending 待补账）：${e?.message ?? e}`, 'RiderTask');
+                        }
+                    } else {
+                        Logger.warn('余额端口未注册，分成未入账', 'RiderTask');
+                        await this.connection.getRepository(ctx, RiderEarning)
+                            .update(earningRow.id, { status: 'pending' } as any)
+                            .catch(() => undefined);
+                    }
                 }
             } catch (e: any) {
                 Logger.error(

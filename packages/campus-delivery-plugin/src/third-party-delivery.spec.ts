@@ -94,55 +94,59 @@ describe('ThirdPartyDeliveryService.onDeliveryStatus 回调幂等', () => {
             transitionFrom: vi.fn().mockResolvedValue(true),
         };
         const notify = { user: vi.fn() };
+        // 第三方字段条件写（P3）：默认命中一行；置 [] 模拟订单已取消/并发状态变更
+        const rawQuery = vi.fn().mockResolvedValue([[{ id: 1 }], []]);
         const conn = {
             getRepository: vi.fn(() => orderRepo),
             rawConnection: {
                 getRepository: vi.fn((ent: any) => ((ent as any).name === 'Channel' ? channelRepo : cfgRepo)),
+                query: rawQuery,
             },
         } as any;
         const svc = new ThirdPartyDeliveryService(conn, hall as any, notify as any, {} as any);
-        return { svc, hall, notify };
+        return { svc, hall, notify, rawQuery };
     }
     const ctx = { channelId: 1 } as any;
     const update = (status: any) => ({ orderId: 1, thirdPartyNo: 'TP1', status });
 
     it('送达回调落在已进大厅的单 → 只补状态，不二次入厅（防重复派送/分成）', async () => {
-        const { svc, hall } = makeEnv({
+        const { svc, hall, rawQuery } = makeEnv({
             id: 1, code: 'A1',
             customFields: { thirdPartyState: 'pickup', hallStatus: 'open', handoverMode: 'to_campus_rider' },
         });
         await svc.onDeliveryStatus(ctx, update('delivered'));
         expect(hall.enterHallForHandover).not.toHaveBeenCalled();
-        expect(hall.updateOrder).toHaveBeenCalledOnce();
-        expect(hall.updateOrder.mock.calls[0][2].customFields).toEqual(expect.objectContaining({ thirdPartyState: 'delivered' }));
-        expect(hall.updateOrder.mock.calls[0][2].customFields.hallStatus).toBeUndefined();
+        expect(rawQuery).toHaveBeenCalledOnce();
+        const [sql, params] = rawQuery.mock.calls[0];
+        expect(sql).not.toContain('Hallstatus');
+        expect(params).toContain('delivered');
     });
 
     it('送达后的乱序回调 → 忽略，不回退状态', async () => {
-        const { svc, hall } = makeEnv({
+        const { svc, rawQuery } = makeEnv({
             id: 1, code: 'A1',
             customFields: { thirdPartyState: 'delivered', hallStatus: 'delivered' },
         });
         await svc.onDeliveryStatus(ctx, update('accepted'));
-        expect(hall.updateOrder).not.toHaveBeenCalled();
+        expect(rawQuery).not.toHaveBeenCalled();
     });
 
     it('同状态重复回调 → 忽略', async () => {
-        const { svc, hall } = makeEnv({
+        const { svc, rawQuery } = makeEnv({
             id: 1, code: 'A1',
             customFields: { thirdPartyState: 'pickup', hallStatus: 'third_party' },
         });
         await svc.onDeliveryStatus(ctx, update('pickup'));
-        expect(hall.updateOrder).not.toHaveBeenCalled();
+        expect(rawQuery).not.toHaveBeenCalled();
     });
 
     it('乱序回退（pickup 后收到 accepted）→ 忽略', async () => {
-        const { svc, hall } = makeEnv({
+        const { svc, rawQuery } = makeEnv({
             id: 1, code: 'A1',
             customFields: { thirdPartyState: 'pickup', hallStatus: 'third_party' },
         });
         await svc.onDeliveryStatus(ctx, update('accepted'));
-        expect(hall.updateOrder).not.toHaveBeenCalled();
+        expect(rawQuery).not.toHaveBeenCalled();
     });
 
     it('仍处 third_party 的送达回调 → 正常入厅接力', async () => {
@@ -161,13 +165,14 @@ describe('ThirdPartyDeliveryService.onDeliveryStatus 回调幂等', () => {
     });
 
     it('已取消订单收到送达回调 → 只补状态，不复活进入大厅', async () => {
-        const { svc, hall } = makeEnv({
-            id: 1, code: 'A1',
+        const { svc, hall, rawQuery } = makeEnv({
+            id: 1, code: 'A1', state: 'Cancelled',
             customFields: { thirdPartyState: 'pickup', hallStatus: 'cancelled', handoverMode: 'to_campus_rider' },
         });
+        rawQuery.mockResolvedValueOnce([[], []]); // state=Cancelled → 条件写不命中
         await svc.onDeliveryStatus(ctx, update('delivered'));
         expect(hall.enterHallForHandover).not.toHaveBeenCalled();
-        expect(hall.updateOrder.mock.calls[0][2].customFields.hallStatus).toBeUndefined();
+        expect(rawQuery.mock.calls[0][0]).not.toContain('Hallstatus');
     });
 
     it('R3 外部运力异常 → 条件写回大厅并刷新入厅时间', async () => {
@@ -184,22 +189,34 @@ describe('ThirdPartyDeliveryService.onDeliveryStatus 回调幂等', () => {
         );
     });
     it('旧运单号迟到回调（已换运力重推）→ 忽略，不污染新运单状态', async () => {
-        const { svc, hall } = makeEnv({
+        const { svc, hall, rawQuery } = makeEnv({
             id: 1, code: 'A1',
             customFields: { thirdPartyNo: 'TP2', thirdPartyState: 'pending', hallStatus: 'third_party' },
         });
         await svc.onDeliveryStatus(ctx, { ...update('delivered'), thirdPartyNo: 'TP1' });
-        expect(hall.updateOrder).not.toHaveBeenCalled();
+        expect(rawQuery).not.toHaveBeenCalled();
         expect(hall.transitionFrom).not.toHaveBeenCalled();
     });
 
     it('已取消终态后的迟到回调 → 忽略（cancelled/exception 同属终态档）', async () => {
-        const { svc, hall } = makeEnv({
+        const { svc, hall, rawQuery } = makeEnv({
             id: 1, code: 'A1',
             customFields: { thirdPartyNo: 'TP1', thirdPartyState: 'cancelled', hallStatus: 'open' },
         });
         await svc.onDeliveryStatus(ctx, update('delivered'));
-        expect(hall.updateOrder).not.toHaveBeenCalled();
+        expect(rawQuery).not.toHaveBeenCalled();
         expect(hall.enterHallForHandover).not.toHaveBeenCalled();
+    });
+
+    it('中间态回调条件写未命中（并发已推进/已取消）→ 不覆盖也不发接单通知', async () => {
+        const { svc, notify, rawQuery } = makeEnv({
+            id: 1, code: 'A1',
+            customFields: { thirdPartyState: 'pending', hallStatus: 'third_party' },
+        });
+        rawQuery.mockResolvedValueOnce([[], []]);
+        await svc.onDeliveryStatus(ctx, update('accepted'));
+        expect(rawQuery).toHaveBeenCalledOnce();
+        expect(rawQuery.mock.calls[0][0]).toContain('customFieldsThirdpartystate');
+        expect(notify.user).not.toHaveBeenCalled();
     });
 });

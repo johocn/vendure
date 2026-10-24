@@ -289,10 +289,15 @@ let DispatchAdminService = class DispatchAdminService {
                     const moved = await this.hall.backToHall(ctx, order.id);
                     if (!moved)
                         throw new core_2.UserInputError('订单已取消，无法重新派送');
-                    // 重置入厅时间：否则同轮 T4 会按旧 hallEnteredAt 立即自动退款
-                    await this.hall.updateOrder(ctx, order.id, {
-                        customFields: { hallEnteredAt: new Date(), campusCause: 'exception_reassign' },
+                    // 重置入厅时间：否则同轮 T4 会按旧 hallEnteredAt 立即自动退款。
+                    // 条件写（仅 open）：并发取消时不得把已取消单改回履约态/写调度字段。
+                    const reset = await this.hall.transitionFrom(ctx, Number(order.id), ['open'], {
+                        hallEnteredAt: new Date(),
+                        campusCause: 'exception_reassign',
                     });
+                    if (!reset) {
+                        core_2.Logger.warn(`Order ${order.code} reassign 后状态已变更，入厅时间未重置`, 'CampusDispatch');
+                    }
                     break;
                 }
                 case 'refund_diff': {

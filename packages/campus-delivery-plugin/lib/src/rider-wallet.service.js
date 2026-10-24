@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.RiderWalletService = void 0;
 const common_1 = require("@nestjs/common");
 const core_1 = require("@vendure/core");
+const typeorm_1 = require("typeorm");
 const coupon_plugin_1 = require("@vendure/coupon-plugin");
 const recharge_card_plugin_1 = require("@vendure/recharge-card-plugin");
 const rider_earning_entity_1 = require("./rider-earning.entity");
@@ -42,24 +43,41 @@ let RiderWalletService = class RiderWalletService {
         const totalEarned = await this.sumEarned(pc, rider.id);
         return { available, frozen, totalEarned };
     }
-    /** 分成入账失败的自愈补账：deliver 落 pending 后入账失败/未注册端口的记录，读取钱包时重试入账 */
+    /** 分成入账失败的自愈补账：deliver 落 pending 后入账失败/未注册端口的记录，读取钱包时重试入账。
+     * 防重复入账（P1）：先按行 CAS 认领（pending/超时 crediting → crediting）成功的进程才入账，
+     * 入账成功置 credited、失败回 pending；崩溃残留在 crediting 的行超过 10 分钟也重新认领（避免永久卡款）。
+     * 残余风险：入账成功但进程在置 credited 前崩溃 → 10 分钟后会被再次入账，仅能靠日志人工对账。 */
     async settlePendingEarnings(pc, riderCustomerId) {
         var _a;
         const port = (0, coupon_plugin_1.getCouponBalancePort)();
         if (!port)
             return;
         const repo = this.connection.getRepository(pc, rider_earning_entity_1.RiderEarning);
+        // 超过 10 分钟仍停留在 crediting = 上次入账链路中断，重新纳入补账
+        const staleBefore = new Date(Date.now() - 10 * 60000);
         const pending = await repo.find({
             where: { riderCustomerId, status: 'pending' },
             take: 50,
         });
-        for (const row of pending) {
+        const stale = await repo.find({
+            where: { riderCustomerId, status: 'crediting', updatedAt: (0, typeorm_1.LessThan)(staleBefore) },
+            take: 50,
+        });
+        for (const row of [...pending, ...stale]) {
             try {
+                // 行级认领：并发读钱包（多端/多进程）只有一个能拿到该行
+                const claimed = await this.connection.rawConnection.query('UPDATE rider_earning SET status = $1, "updatedAt" = now() '
+                    + 'WHERE id = $2 AND status = $3 RETURNING id', ['crediting', row.id, row.status]);
+                const rows = Array.isArray(claimed) && Array.isArray(claimed[0]) ? claimed[0] : claimed;
+                if (!Array.isArray(rows) || !rows.length)
+                    continue; // 另一路已认领
                 await port.addBalance(pc, riderCustomerId, row.amount);
                 await repo.update(row.id, { status: 'credited' });
                 common_1.Logger.warn(`补账成功：earning ${row.id}（${row.amount} 分）`, 'RiderWallet');
             }
             catch (e) {
+                // 入账失败回 pending 供下次重试（crediting 会让该行等待 10 分钟才可重试）
+                await repo.update(row.id, { status: 'pending' }).catch(() => undefined);
                 common_1.Logger.error(`补账失败：earning ${row.id}：${(_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e}`, 'RiderWallet');
                 break; // 余额端口异常时停止本轮，避免逐条打错误
             }

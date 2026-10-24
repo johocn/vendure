@@ -18,7 +18,10 @@ export declare class RiderWalletService {
         frozen: number;
         totalEarned: number;
     }>;
-    /** 分成入账失败的自愈补账：deliver 落 pending 后入账失败/未注册端口的记录，读取钱包时重试入账 */
+    /** 分成入账失败的自愈补账：deliver 落 pending 后入账失败/未注册端口的记录，读取钱包时重试入账。
+     * 防重复入账（P1）：先按行 CAS 认领（pending/超时 crediting → crediting）成功的进程才入账，
+     * 入账成功置 credited、失败回 pending；崩溃残留在 crediting 的行超过 10 分钟也重新认领（避免永久卡款）。
+     * 残余风险：入账成功但进程在置 credited 前崩溃 → 10 分钟后会被再次入账，仅能靠日志人工对账。 */
     private settlePendingEarnings;
     /** 余额流水（recharge-card BalanceTransaction，默认渠道本人倒序） */
     riderBalanceHistory(ctx: RequestContext, skip?: number, take?: number): Promise<BalanceTransaction[]>;

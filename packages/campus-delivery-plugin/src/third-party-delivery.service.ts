@@ -18,6 +18,10 @@ import { ExternalProviderCode, GeoPointLike, resolveDropoff, resolvePickup, reso
 
 const loggerCtx = 'ThirdPartyDelivery';
 
+/** customFields 物理列名（thirdPartyState → customFieldsThirdpartystate） */
+const cfColumn = (field: string) =>
+    `"customFields${field.charAt(0).toUpperCase()}${field.slice(1).toLowerCase()}"`;
+
 /** 外部运单状态推进序（回调乱序时只接受前进，不接受回退）。
  *  cancelled/exception 与 delivered 同属终态档：终态之后到达的任何回调一律忽略。 */
 const TP_STATUS_RANK: Record<string, number> = {
@@ -315,6 +319,28 @@ export class ThirdPartyDeliveryService implements OnApplicationBootstrap {
         return { ok: !!delivery, state: delivery?.status ?? null };
     }
 
+    /** 第三方字段条件写（P3）：guardState 非空时要求 thirdPartyState 仍为读取时的值（防并发回退），
+     * 且始终要求订单未取消——已退款取消单不得被迟到回调写回履约态。 */
+    private async writeThirdPartyPatch(
+        orderId: number,
+        patch: Record<string, unknown>,
+        guardState?: string,
+    ): Promise<boolean> {
+        const entries = Object.entries(patch).filter(([, v]) => v !== undefined);
+        if (!entries.length) return false;
+        const sets = entries.map(([k], i) => `${cfColumn(k)} = $${i + 2}`).join(', ');
+        const values = entries.map(([, v]) => (Array.isArray(v) ? JSON.stringify(v) : v));
+        const guard = guardState !== undefined
+            ? `COALESCE("customFieldsThirdpartystate", '') = $${entries.length + 2}`
+            : 'TRUE';
+        const out: any = await this.connection.rawConnection.query(
+            `UPDATE "order" SET ${sets} WHERE id = $1 AND ${guard} AND "state" <> 'Cancelled' RETURNING id`,
+            [orderId, ...values, ...(guardState !== undefined ? [guardState] : [])],
+        );
+        const rows = Array.isArray(out) && Array.isArray(out[0]) ? out[0] : out;
+        return Array.isArray(rows) && rows.length > 0;
+    }
+
     /** 网关回调（由 DeliveryStatusSink 调用） */
     async onDeliveryStatus(
         ctx: RequestContext,
@@ -367,7 +393,11 @@ export class ThirdPartyDeliveryService implements OnApplicationBootstrap {
         if (update.status === 'delivered') {
             // 第一段已结束（已进大厅 / 已被抢 / 已送达）：迟到或重复回调只补终态与快递员信息，不重置履约链路
             if (hallStatus !== 'third_party') {
-                await this.hall.updateOrder(oCtx, orderIdNum, { customFields: patch } as any);
+                // 条件写（取消后不补写）：已退款取消单不应再被标成 delivered 污染报表口径
+                const written = await this.writeThirdPartyPatch(orderIdNum, patch);
+                if (!written) {
+                    Logger.warn(`订单 ${order.code} 迟到送达回调忽略（订单已取消）`, loggerCtx);
+                }
                 return;
             }
             const next = nextHallStateAfterHandover(String(cf.handoverMode ?? ''));
@@ -423,11 +453,16 @@ export class ThirdPartyDeliveryService implements OnApplicationBootstrap {
             return;
         }
 
-        await this.hall.updateOrder(oCtx, orderIdNum, { customFields: patch } as any);
-
-        // 外部快递接单/取货顾客通知（D 组漏项）：复用「骑手已接单」模板，
-        // dedupe 后缀区分接单与取货两个节点，避免与出餐完成通知抢同一幂等键。
+        // 中间态（pending/accepted/pickup）：条件写锚定读取时的状态，
+        // 防并发乱序回调把已推进的状态回退（read-then-write 的丢更新）。
+        const written = await this.writeThirdPartyPatch(orderIdNum, patch, current);
+        if (!written) {
+            Logger.warn(`订单 ${order.code} 回调 ${update.status} 写入跳过（状态已变更/已取消）`, loggerCtx);
+            return;
+        }
         if (update.status === 'accepted' || update.status === 'pickup') {
+            // 外部快递接单/取货顾客通知：复用「骑手已接单」模板，
+            // dedupe 后缀区分接单与取货两个节点，避免与出餐完成通知抢同一幂等键。
             const cfg = await this.cfgRepo.findOne({ where: { channelId: channelId as any } });
             this.notify.user(
                 oCtx,

@@ -134,7 +134,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
      * （T4 退款扫描在 Task 8 追加到此方法）
      */
     async scan(ctx) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o;
         const repo = this.connection.getRepository(ctx, core_2.Order);
         const orders = await repo.createQueryBuilder('order')
             .leftJoin('order.channels', 'channel')
@@ -154,6 +154,8 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
             .getMany();
         if (orders.length >= SCAN_LIMIT) {
             core_2.Logger.warn(`channel ${ctx.channelId} dispatch backlog: >=${SCAN_LIMIT} in-flight orders, scan truncated (oldest-first)`, 'CampusDispatch');
+            // P3：积压时年轻订单可能被 oldest-first 长期饿死，日志之外必须让运营看到
+            void ((_a = this.feishu) === null || _a === void 0 ? void 0 : _a.pushEvent('alert', '调度扫描积压', `渠道 ${ctx.channelId} 在途订单已达 ${SCAN_LIMIT} 上限，本轮只处理最老订单，请及时增派运力/清理异常单。`, undefined, `dispatch_backlog:${ctx.channelId}`));
         }
         const now = Date.now();
         // P1 骑手超时提前告警阈值：兜底前 1.5min 先告警（原值 3min，缩短一倍）
@@ -168,7 +170,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                 if (elapsed >= notPickedAlertMs && elapsed <= NOT_PICKED_TIMEOUT_MIN * 60000) {
                     const mins = Math.round(elapsed / 60000);
                     const dedupeKey = `rider_pick_alert:${o.code}`;
-                    void ((_a = this.feishu) === null || _a === void 0 ? void 0 : _a.pushEvent('alert', '⏱ 骑手取货超时', `订单 ${o.code} 骑手已抢单 ${mins} 分钟未取货，${NOT_PICKED_TIMEOUT_MIN} 分钟后将自动回大厅重派。`, o.code, dedupeKey));
+                    void ((_b = this.feishu) === null || _b === void 0 ? void 0 : _b.pushEvent('alert', '⏱ 骑手取货超时', `订单 ${o.code} 骑手已抢单 ${mins} 分钟未取货，${NOT_PICKED_TIMEOUT_MIN} 分钟后将自动回大厅重派。`, o.code, dedupeKey));
                 }
                 if (elapsed > NOT_PICKED_TIMEOUT_MIN * 60000) {
                     try {
@@ -178,10 +180,10 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                             continue;
                         await this.credit.adjust(ctx, Number(cf.deliveryStaffId), rider_credit_service_1.CREDIT_TIMEOUT, 'timeout_not_picked', o.id);
                         core_2.Logger.warn(`Order ${o.code} reassigned (rider ${cf.deliveryStaffId} not picked in ${NOT_PICKED_TIMEOUT_MIN}min)`, 'CampusDispatch');
-                        void ((_b = this.feishu) === null || _b === void 0 ? void 0 : _b.pushEvent('exception', '骑手取货超时自动回厅', `订单 ${o.code} 骑手 ${NOT_PICKED_TIMEOUT_MIN} 分钟未取货，已回抢单大厅。`, o.code, o.code));
+                        void ((_c = this.feishu) === null || _c === void 0 ? void 0 : _c.pushEvent('exception', '骑手取货超时自动回厅', `订单 ${o.code} 骑手 ${NOT_PICKED_TIMEOUT_MIN} 分钟未取货，已回抢单大厅。`, o.code, o.code));
                     }
                     catch (e) {
-                        core_2.Logger.error(`not-picked timeout failed for order ${(_c = o.code) !== null && _c !== void 0 ? _c : o.id}: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch');
+                        core_2.Logger.error(`not-picked timeout failed for order ${(_d = o.code) !== null && _d !== void 0 ? _d : o.id}: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch');
                     }
                 }
             }
@@ -211,7 +213,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                     cf.hallEnteredAt = new Date();
                 }
                 catch (e) {
-                    core_2.Logger.error(`scheduled release failed for order ${(_d = o.code) !== null && _d !== void 0 ? _d : o.id}: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch');
+                    core_2.Logger.error(`scheduled release failed for order ${(_e = o.code) !== null && _e !== void 0 ? _e : o.id}: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch');
                 }
             }
             // 路线兜底（R1/R2/R3）：商户接单超时转自营、送达超时回落大厅、外部快递推送/接单超时
@@ -252,7 +254,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                         cf.handoverMode = '';
                     }
                     catch (e) {
-                        core_2.Logger.error(`merchant stale auto-open failed for order ${(_e = o.code) !== null && _e !== void 0 ? _e : o.id}: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch');
+                        core_2.Logger.error(`merchant stale auto-open failed for order ${(_f = o.code) !== null && _f !== void 0 ? _f : o.id}: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch');
                     }
                 }
             }
@@ -277,14 +279,14 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                 const load = new Map();
                 for (const o of orders) {
                     const cf = o.customFields;
-                    const rid = Number((_f = cf.deliveryStaffId) !== null && _f !== void 0 ? _f : NaN);
+                    const rid = Number((_g = cf.deliveryStaffId) !== null && _g !== void 0 ? _g : NaN);
                     if (!Number.isFinite(rid) || !rid)
                         continue;
-                    const active = ['assigned', 'in_progress'].includes(String((_g = cf.deliveryStatus) !== null && _g !== void 0 ? _g : ''))
-                        || ['grabbed', 'owned_dispatched'].includes(String((_h = cf.hallStatus) !== null && _h !== void 0 ? _h : ''));
+                    const active = ['assigned', 'in_progress'].includes(String((_h = cf.deliveryStatus) !== null && _h !== void 0 ? _h : ''))
+                        || ['grabbed', 'owned_dispatched'].includes(String((_j = cf.hallStatus) !== null && _j !== void 0 ? _j : ''));
                     if (!active)
                         continue;
-                    load.set(rid, ((_j = load.get(rid)) !== null && _j !== void 0 ? _j : 0) + 1);
+                    load.set(rid, ((_k = load.get(rid)) !== null && _k !== void 0 ? _k : 0) + 1);
                 }
                 const pickRider = () => {
                     var _a, _b;
@@ -312,7 +314,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                         const rider = pickRider();
                         const ok = await this.grab.grabByRider(ctx, o.id, rider);
                         if (ok) {
-                            load.set(Number(rider.id), ((_k = load.get(Number(rider.id))) !== null && _k !== void 0 ? _k : 0) + 1);
+                            load.set(Number(rider.id), ((_l = load.get(Number(rider.id))) !== null && _l !== void 0 ? _l : 0) + 1);
                             core_2.Logger.warn(`Order ${o.code} auto-assigned to rider ${rider.id} (T2)`, 'CampusDispatch');
                         }
                         // 无论成败，该单已离开 open 大厅（成功→grabbed；失败→已被抢/已退款），
@@ -320,7 +322,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                         o.customFields.hallStatus = 'grabbed';
                     }
                     catch (e) {
-                        core_2.Logger.error(`T2 auto-assign failed for order ${(_l = o.code) !== null && _l !== void 0 ? _l : o.id}: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch');
+                        core_2.Logger.error(`T2 auto-assign failed for order ${(_m = o.code) !== null && _m !== void 0 ? _m : o.id}: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch');
                     }
                 }
             }
@@ -336,7 +338,7 @@ let DispatchJobService = DispatchJobService_1 = class DispatchJobService {
                     await this.refundNoRider(ctx, o, cfg);
                 }
                 catch (e) {
-                    core_2.Logger.error(`T4 auto-refund failed for order ${(_m = o.code) !== null && _m !== void 0 ? _m : o.id}: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch');
+                    core_2.Logger.error(`T4 auto-refund failed for order ${(_o = o.code) !== null && _o !== void 0 ? _o : o.id}: ${e === null || e === void 0 ? void 0 : e.message}`, 'CampusDispatch');
                 }
             }
         }

@@ -69,7 +69,10 @@ let FeishuNotifyService = class FeishuNotifyService {
         await this.deliver(text, scene);
     }
     async pushEvent(scene, title, content, orderCode, dedupeKey) {
-        await this.push(scene, dedupeKey !== null && dedupeKey !== void 0 ? dedupeKey : orderCode, (0, feishu_templates_1.formatPush)({ scene, title, content, orderCode, at: Date.now() }));
+        // 缺省键必须带事件标题：同一订单 2 分钟内可能连发多个不同事件（如取货超时告警 + 回厅），
+        // 只用 orderCode 会把后到的那条吞掉。显式传键的调用方保持原语义。
+        const key = dedupeKey !== null && dedupeKey !== void 0 ? dedupeKey : (orderCode ? `${orderCode}:${title}` : undefined);
+        await this.push(scene, key, (0, feishu_templates_1.formatPush)({ scene, title, content, orderCode, at: Date.now() }));
     }
     async deliver(text, scene) {
         var _a;

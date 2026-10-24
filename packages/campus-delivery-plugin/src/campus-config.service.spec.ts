@@ -188,4 +188,35 @@ describe('CampusConfigService.updateConfig 字段白名单（P2）', () => {
         const { svc: svc2 } = makeEnv();
         await expect(svc2.updateConfig(ctx, { routesEnabled: ['R9'] } as any)).rejects.toThrow('配送路线配置不合法');
     });
+
+    it('经纬度越界/非法 → 拒绝（合法值转数值落库）', async () => {
+        const { svc, repo } = makeEnv();
+        await expect(svc.updateConfig(ctx, { storeLat: 91 } as any)).rejects.toThrow('storeLat');
+        await expect(svc.updateConfig(ctx, { storeLng: -181 } as any)).rejects.toThrow('storeLng');
+        await expect(svc.updateConfig(ctx, { storeLat: 'abc' } as any)).rejects.toThrow('storeLat');
+        expect(repo.save).not.toHaveBeenCalled();
+
+        await svc.updateConfig(ctx, { storeLat: '30.5', storeLng: 120 } as any);
+        expect(repo.save).toHaveBeenCalledWith(expect.objectContaining({ storeLat: 30.5, storeLng: 120 }));
+    });
+
+    it('结构化配置必须是对象（字符串/数组 → 拒绝）', async () => {
+        const { svc, repo } = makeEnv();
+        await expect(svc.updateConfig(ctx, { dynamicPricing: 'x' } as any)).rejects.toThrow('dynamicPricing 必须是对象');
+        await expect(svc.updateConfig(ctx, { routeFirstLeg: [] } as any)).rejects.toThrow('routeFirstLeg 必须是对象');
+        await expect(svc.updateConfig(ctx, { providerShopNo: 1 } as any)).rejects.toThrow('providerShopNo 必须是对象');
+        expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('交接点校验：非对象/非数组/坐标非法 → 拒绝', async () => {
+        const { svc, repo } = makeEnv();
+        await expect(svc.updateConfig(ctx, { handoverPoints: 'x' } as any)).rejects.toThrow('handoverPoints 必须是对象');
+        await expect(svc.updateConfig(ctx, { handoverPoints: { R2: 'x' } } as any)).rejects.toThrow('交接点 R2 必须是数组');
+        await expect(svc.updateConfig(ctx, { handoverPoints: { R2: [{ lat: 'a', lng: 1 }] } } as any))
+            .rejects.toThrow('交接点 R2 坐标不合法');
+        expect(repo.save).not.toHaveBeenCalled();
+
+        await svc.updateConfig(ctx, { handoverPoints: { R2: [{ lat: 30, lng: 120 }] } } as any);
+        expect(repo.save).toHaveBeenCalled();
+    });
 });

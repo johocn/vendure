@@ -12,7 +12,8 @@ function make(order: any, cfg: any = { riderCommissionRate: 100 }) {
         update: vi.fn().mockResolvedValue({}),
         save: vi.fn().mockImplementation((v: any) => {
             saved.push(v);
-            return Promise.resolve(v);
+            // 落库后带 id（分成行 CAS 认领需要行 id）
+            return Promise.resolve({ id: 501, ...v });
         }),
     };
     const rawQuery = vi.fn().mockResolvedValue([[{ id: 10 }], []]);
@@ -52,17 +53,20 @@ describe('RiderTaskService', () => {
         await expect(svc.start({ channelId: 1 } as any, 10 as any, '9999')).rejects.toThrow('交接码不正确');
         await expect(svc.start({ channelId: 1 } as any, 10 as any)).rejects.toThrow('交接码不正确');
     });
-    it('delivered 需照片且分成=配送费+小费（单条原子写终态）', async () => {
+    it('delivered 需照片且分成=配送费+小费（单条原子写终态 + 认领后入账）', async () => {
         const inProg = { ...assigned, customFields: { ...assigned.customFields, deliveryStatus: 'in_progress' } };
         const { svc, saved, rawQuery } = make(inProg, { riderCommissionRate: 100 });
         await svc.deliver({ channelId: 1 } as any, 10 as any, ['p1']);
-        // 认领与终态同一条 UPDATE：delivered + hallStatus=delivered + 照片 JSON + 分成 一次落库
-        expect(rawQuery).toHaveBeenCalledTimes(1);
+        // 第一次：认领与终态同一条 UPDATE（delivered + hallStatus + 照片 JSON + 分成 一次落库）
+        // 第二次：P1 分成行 CAS 认领（pending → crediting），认领成功才入账
+        expect(rawQuery).toHaveBeenCalledTimes(2);
         expect(rawQuery.mock.calls[0][0]).toContain('"customFieldsHallstatus"');
         expect(rawQuery.mock.calls[0][1]).toEqual([
             'delivered', expect.any(Date), 'delivered', JSON.stringify(['p1']), null, 400, 10, 'in_progress',
             '9', 'grabbed',
         ]);
+        expect(rawQuery.mock.calls[1][0]).toContain('UPDATE rider_earning');
+        expect(rawQuery.mock.calls[1][1]).toEqual(['crediting', 501, 'pending']);
         expect(saved[0].amount).toBe(400); // 300 shipping + 100 tip
     });
     it('并发双送达/已取消 → 认领失败拒绝，不写分成（防双入账）', async () => {

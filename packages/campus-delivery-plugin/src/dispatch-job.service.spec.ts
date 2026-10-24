@@ -9,6 +9,8 @@ function makeEnv(opts: {
     refundedSum?: number;
     thirdParty?: any;
     feishu?: any;
+    /** 覆盖扫描查询返回（用于构造积压等极端批次），未传时用 open/assigned 拼装 */
+    scanOrders?: any[];
 }) {
     const grabResults: any[] = [];
     const grabSvc = {
@@ -19,6 +21,7 @@ function makeEnv(opts: {
     };
     const creditSvc = { adjust: vi.fn().mockResolvedValue(95) };
     const allOrders = [...(opts.openOrders ?? []), ...(opts.assignedOrders ?? [])];
+    const scanned = opts.scanOrders ?? allOrders;
     const hallSvc = {
         backToHall: vi.fn().mockResolvedValue(true),
         updateOrder: vi.fn().mockResolvedValue({}),
@@ -30,7 +33,7 @@ function makeEnv(opts: {
     const orderRepo = {
         // T4 锁内复查 / 商家拒单复查用：默认回放扫描到的订单快照
         findOne: vi.fn().mockImplementation(({ where }: any) => Promise.resolve(
-            allOrders.find(o => String(o.id) === String(where?.id)) ?? null,
+            scanned.find(o => String(o.id) === String(where?.id)) ?? null,
         )),
         update: vi.fn().mockResolvedValue({}),
         createQueryBuilder: () => ({
@@ -40,7 +43,7 @@ function makeEnv(opts: {
             orderBy: vi.fn().mockReturnThis(),
             addOrderBy: vi.fn().mockReturnThis(),
             limit: vi.fn().mockReturnThis(),
-            getMany: vi.fn().mockResolvedValue([...allOrders]),
+            getMany: vi.fn().mockResolvedValue([...scanned]),
         }),
     };
     const configRepo = { findOne: vi.fn().mockResolvedValue(opts.cfg ?? { autoAssignMinutes: 10, autoRefundMinutes: 30, inProgressSlaMinutes: 45 }) };
@@ -842,6 +845,33 @@ describe('DispatchJobService.tick 多实例扫描锁', () => {
         expect(call).toBeDefined();
         expect(call[1]).toBe('📦 外部快递在途超时');
         expect(call[2]).toContain('not_received');
+    });
+
+    // P3：拍平截断时年轻订单会被 oldest-first 长期饿死，必须让运营在飞书看到积压
+    it('单轮扫描达到 200 上限 → 飞书推送调度积压告警（按渠道去重键）', async () => {
+        const feishu = { pushEvent: vi.fn() };
+        const many = Array.from({ length: 200 }, (_v, i) => ({
+            id: 1000 + i,
+            code: `BULK${i}`,
+            createdAt: minAgo(1),
+            customFields: { hallStatus: 'open', hallEnteredAt: minAgo(1) },
+        }));
+        const { svc } = makeEnv({ scanOrders: many, feishu });
+        await svc.scan({ channelId: 1 } as any);
+        const call = feishu.pushEvent.mock.calls.find((c: any[]) => c[4] === 'dispatch_backlog:1');
+        expect(call).toBeDefined();
+        expect(call[1]).toBe('调度扫描积压');
+        expect(call[2]).toContain('200');
+    });
+
+    it('未达上限 → 不推积压告警', async () => {
+        const feishu = { pushEvent: vi.fn() };
+        const { svc } = makeEnv({
+            openOrders: [{ id: 501, code: 'ONE', customFields: { hallStatus: 'open', hallEnteredAt: minAgo(1) } }],
+            feishu,
+        });
+        await svc.scan({ channelId: 1 } as any);
+        expect(feishu.pushEvent.mock.calls.some((c: any[]) => c[4] === 'dispatch_backlog:1')).toBe(false);
     });
 });
 

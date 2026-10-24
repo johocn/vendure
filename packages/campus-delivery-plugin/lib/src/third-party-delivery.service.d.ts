@@ -62,6 +62,9 @@ export declare class ThirdPartyDeliveryService implements OnApplicationBootstrap
         state: string | null;
         skipped?: undefined;
     }>;
+    /** 第三方字段条件写（P3）：guardState 非空时要求 thirdPartyState 仍为读取时的值（防并发回退），
+     * 且始终要求订单未取消——已退款取消单不得被迟到回调写回履约态。 */
+    private writeThirdPartyPatch;
     /** 网关回调（由 DeliveryStatusSink 调用） */
     onDeliveryStatus(ctx: RequestContext, update: {
         orderId: ID;

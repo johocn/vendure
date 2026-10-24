@@ -212,13 +212,18 @@ describe('DispatchAdminService.handleException', () => {
         await expect(svc.handleException(ctx, 5 as any, 'refund_diff', 300)).rejects.toThrow('仅骑手上报异常的订单可处置');
     });
 
-    it('reassign：回大厅 + 留痕，不置 exception_final', async () => {
+    it('reassign：回大厅 + 重置入厅时间 + 留痕，不置 exception_final', async () => {
         const { svc, orderRepo, hallSvc, notifySvc } = makeEnv();
         orderRepo.findOne.mockResolvedValue(exceptionOrder(6, 'A6'));
         const res = await svc.handleException(ctx, 6 as any, 'reassign', undefined, undefined, '改派');
         expect(res).toEqual({ ok: true, action: 'reassign' });
         expect(hallSvc.backToHall).toHaveBeenCalledWith(ctx, 6);
-        const patch = hallSvc.transitionFrom.mock.calls[0][3];
+        // 先条件重置入厅时间（仅 open；否则同轮 T4 按旧 hallEnteredAt 立即退款）
+        expect(hallSvc.transitionFrom).toHaveBeenNthCalledWith(1, ctx, 6, ['open'], expect.objectContaining({
+            hallEnteredAt: expect.any(Date),
+            campusCause: 'exception_reassign',
+        }));
+        const patch = hallSvc.transitionFrom.mock.calls[1][3];
         expect(patch).toEqual(expect.objectContaining({ exceptionAction: 'reassign', exceptionHandledNote: '改派', exceptionHandledBy: '3' }));
         expect(patch.hallStatus).toBeUndefined();
         // 处置完结 push：reassign 也通知（dedupe 后缀=本次异常上报时间）

@@ -269,20 +269,36 @@ let RiderTaskService = class RiderTaskService {
                     status: 'pending',
                     channelId: ctx.channelId,
                 });
-                const port = (0, coupon_plugin_1.getCouponBalancePort)();
-                if (port) {
-                    try {
-                        await port.addBalance(ctx, rider.id, earning);
-                        await this.connection.getRepository(ctx, rider_earning_entity_1.RiderEarning).update(earningRow.id, {
-                            status: 'credited',
-                        });
-                    }
-                    catch (e) {
-                        common_1.Logger.error(`分成入账失败（earning ${earningRow.id} 留 pending 待补账）：${(_d = e === null || e === void 0 ? void 0 : e.message) !== null && _d !== void 0 ? _d : e}`, 'RiderTask');
-                    }
+                // 行级认领后再入账（P1）：防「入账成功但置 credited 失败 → 钱包补账再次入账」与并发补账双加；
+                // 认领失败说明另一路已在处理，直接跳过。
+                const claimed = await this.connection.rawConnection.query('UPDATE rider_earning SET status = $1 WHERE id = $2 AND status = $3 RETURNING id', ['crediting', earningRow.id, 'pending']);
+                const claimedRows = Array.isArray(claimed) && Array.isArray(claimed[0]) ? claimed[0] : claimed;
+                if (!Array.isArray(claimedRows) || !claimedRows.length) {
+                    common_1.Logger.warn(`分成 ${earningRow.id} 已被另一路认领，跳过本次入账`, 'RiderTask');
                 }
                 else {
-                    common_1.Logger.warn('余额端口未注册，分成未入账', 'RiderTask');
+                    const port = (0, coupon_plugin_1.getCouponBalancePort)();
+                    if (port) {
+                        try {
+                            await port.addBalance(ctx, rider.id, earning);
+                            await this.connection.getRepository(ctx, rider_earning_entity_1.RiderEarning).update(earningRow.id, {
+                                status: 'credited',
+                            });
+                        }
+                        catch (e) {
+                            // 回 pending 供钱包补账重试（crediting 需等待超时才可重试）
+                            await this.connection.getRepository(ctx, rider_earning_entity_1.RiderEarning)
+                                .update(earningRow.id, { status: 'pending' })
+                                .catch(() => undefined);
+                            common_1.Logger.error(`分成入账失败（earning ${earningRow.id} 留 pending 待补账）：${(_d = e === null || e === void 0 ? void 0 : e.message) !== null && _d !== void 0 ? _d : e}`, 'RiderTask');
+                        }
+                    }
+                    else {
+                        common_1.Logger.warn('余额端口未注册，分成未入账', 'RiderTask');
+                        await this.connection.getRepository(ctx, rider_earning_entity_1.RiderEarning)
+                            .update(earningRow.id, { status: 'pending' })
+                            .catch(() => undefined);
+                    }
                 }
             }
             catch (e) {
